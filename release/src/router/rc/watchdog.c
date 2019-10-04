@@ -80,6 +80,10 @@
 #include <cfg_event.h>
 #endif
 
+#if defined(K3)
+#include "k3.h"
+#endif
+
 #define BCM47XX_SOFTWARE_RESET	0x40		/* GPIO 6 */
 #define RESET_WAIT		2		/* seconds */
 #define RESET_WAIT_COUNT	RESET_WAIT * 10 /* 10 times a second */
@@ -4085,8 +4089,11 @@ void fake_etlan_led(void)
 	}
 	allstatus = 1;
 #endif
-
+#if defined(K3)
+	if (!GetPhyStatusk3(0)) {
+#else
 	if (!GetPhyStatus(0)) {
+#endif
 		if (lstatus)
 #ifdef GTAC5300
 			aggled_control(AGGLED_ACT_ALLOFF);
@@ -5371,6 +5378,38 @@ void dnsmasq_check()
 #endif
 	}
 }
+#if defined(K3)
+void k3screen_check()
+{
+	if ((strcmp(nvram_get("k3screen"), "A")==0) || (strcmp(nvram_get("k3screen"), "a")==0))
+	{
+		if (!pids("phi_speed"))
+			doSystem("phi_speed &");
+		if (!pids("wl_cr"))
+			doSystem("wl_cr &");
+		if (!pids("uhmi"))
+			doSystem("uhmi &");
+	} else {
+		if (!pids("k3screend")){
+			char *k3screend_argv[] = { "k3screend",NULL };
+			pid_t pid;
+			_eval(k3screend_argv, NULL, 0, &pid);
+			logmessage("watchdog", "restart k3screend");
+		}
+		if (!pids("k3screenctrl")){
+			char *timeout;
+			if (nvram_get_int("k3screen_timeout")==1)
+				timeout = "-m0";
+			else
+				timeout = "-m30";
+			char *k3screenctrl_argv[] = { "k3screenctrl", timeout,NULL };
+			pid_t pid;
+			_eval(k3screenctrl_argv, NULL, 0, &pid);
+			logmessage("watchdog", "restart k3screenctrl");
+		}
+	}
+}
+#endif
 
 #ifdef RTCONFIG_NEW_USER_LOW_RSSI
 void roamast_check()
@@ -7336,6 +7375,10 @@ wdp:
 	networkmap_check();
 	httpd_check();
 	dnsmasq_check();
+#if defined(K3)
+	k3screen_check();
+#endif
+
 #ifdef RTCONFIG_NEW_USER_LOW_RSSI
 	roamast_check();
 #endif
@@ -7362,7 +7405,7 @@ wdp:
 #endif
 #endif
 #ifdef RTCONFIG_FORCE_AUTO_UPGRADE
-	auto_firmware_check();
+	//auto_firmware_check();
 #endif
 #ifdef RTCONFIG_BWDPI
 	auto_sig_check();		// libbwdpi.so

@@ -23,7 +23,9 @@
 #if defined(RTCONFIG_LP5523)
 #include <lp5523led.h>
 #endif
-
+#if defined(K3)
+#include <k3.h>
+#endif
 #ifndef ARRAYSIZE
 #define ARRAYSIZE(a) (sizeof(a) / sizeof(a[0]))
 #endif /* ARRAYSIZE */
@@ -275,10 +277,18 @@ static int rctest_main(int argc, char *argv[])
 	}
 #endif
 	else if (strcmp(argv[1], "GetPhyStatus")==0) {
+#if defined(K3)
+		printf("Get Phy status:%d\n", GetPhyStatusk3(0));
+#else
 		printf("Get Phy status:%d\n", GetPhyStatus(0));
+#endif
 	}
 	else if (strcmp(argv[1], "GetExtPhyStatus")==0) {
+#if defined(K3)
+		printf("Get Ext Phy status:%d\n", GetPhyStatusk3(atoi(argv[2])));
+#else
 		printf("Get Ext Phy status:%d\n", GetPhyStatus(atoi(argv[2])));
+#endif
 	}
 #ifdef HND_ROTUER
 	else if (strcmp(argv[1], "memdw")==0) {
@@ -792,6 +802,7 @@ static const applets_t applets[] = {
 	{ "usbled",			usbled_main			},
 #endif
 	{ "ddns_updated", 		ddns_updated_main		},
+	{ "ddns_custom_updated",	ddns_custom_updated_main	},
 	{ "radio",			radio_main			},
 	{ "udhcpc",			udhcpc_wan			},
 	{ "udhcpc_lan",			udhcpc_lan			},
@@ -1653,6 +1664,12 @@ int main(int argc, char **argv)
 		_start_telnetd(1);
 		return 0;
 	}
+#if defined(K3)
+	else if(!strcmp(base, "k3screen")) {
+		start_k3screen();
+		return 0;
+	}
+#endif
 #ifdef RTCONFIG_SSH
 	else if (!strcmp(base, "run_sshd")) {
 		start_sshd();

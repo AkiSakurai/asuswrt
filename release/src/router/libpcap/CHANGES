@@ -1,9 +1,44 @@
-Monday March 18, 2013 guy@alum.mit.edu
+Wednesday December 18, 2013 guy@alum.mit.edu
+Summary for 1.5.3 libpcap release
+	Don't let packets that don't match the current filter get to the
+	    application when TPACKET_V3 is used. (GitHub issue #331)
+	Fix handling of pcap_loop()/pcap_dispatch() with a packet count
+	    of 0 on some platforms (including Linux with TPACKET_V3).
+	    (GitHub issue #333)
+	Work around TPACKET_V3 deficiency that causes packets to be lost
+	    when a timeout of 0 is specified. (GitHub issue #335)
+	Man page formatting fixes.
+
+Wednesday December 4, 2013 guy@alum.mit.edu
+Summary for 1.5.2 libpcap release
+	Fix libpcap to work when compiled with TPACKET_V3 support and
+	    running on a kernel without TPACKET_V3 support. (GitHub
+	    issue #329)
+
+Wednesday November 20, 2013 guy@alum.mit.edu
+Summary for 1.5.1 libpcap release
+	Report an error, rather than crashing, if an IPv6 address is
+	    used for link-layer filtering.  (Wireshark bug 9376)
+
+Wednesday October 30, 2013 guy@alum.mit.edu
+Summary for 1.5.0 libpcap release
+	TPACKET_V3 support added for Linux
+	Point users to the the-tcpdump-group repository on GitHub rather
+	    than the mcr repository
+	Checks added for malloc()/realloc()/etc. failures
+	Fixed build on Solaris 11
+	Support filtering filtering E1 SS7 traffic on MTP2 layer Annex A
+	Use "ln -s" to link man pages by default
+        Add support for getting nanosecond-resolution time stamps when
+	    capturing and reading capture files
+        Many changes to autoconf to deal better with non-GCC compilers
+        added many new DLT types
+
+Saturday April 6, 2013 guy@alum.mit.edu
 Summary for 1.4.0 libpcap release
 	Add netfilter/nfqueue interface.
 	If we don't have support for IPv6 address resolution, support,
 	    in filter expressions, what IPv6 stuff we can.
-	Checks added for malloc()/realloc()/etc. failures.
 	Fix pcap-config to include -lpthread if canusb support is
 	    present
 	Try to fix "pcap_parse not defined" problems when --without-flex
@@ -29,6 +64,7 @@ Summary for 1.4.0 libpcap release
 	    kernels, for VLAN tag valid flag
 	Clean up some man pages
 	Support libnl3 as well as libnl1 and libnl2 on Linux
+	Fix handling of Bluetooth devices on 3.x Linux kernels
 
 Friday  March 30, 2012.  mcr@sandelman.ca
 Summary for 1.3.0 libpcap release

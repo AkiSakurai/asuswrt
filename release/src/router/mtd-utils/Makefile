@@ -50,11 +50,14 @@ endif
 ifeq ($(UBI),y)
 #Override default UBI binary list
 UBI_BINS = ubinfo mtdinfo
-ifeq ($(MTK_NAND),y)
-UBI_BINS += ubiattach ubimkvol
+ifeq ($(BUILD_NAME), $(filter $(BUILD_NAME), RT-AC68U RT-AC3200 RT-AC3100 RT-AC86U GT-AC2900 GT-AC5300))
+UBI_BINS += mtdinfo ubinfo ubiformat ubiattach ubimkvol ubidetach ubirmvol
 endif
 ifeq ($(ALPINE)$(LANTIQ),y)
 UBI_BINS += ubiformat ubiattach ubimkvol ubidetach ubiupdatevol ubirmvol
+endif
+ifeq ($(MTK_NAND),y)
+UBI_BINS += ubiattach ubimkvol
 endif
 BINS += $(addprefix ubi-utils/,$(UBI_BINS))
 endif

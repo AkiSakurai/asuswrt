@@ -516,6 +516,11 @@ struct vlan_rules_s {
 
 extern char *read_whole_file(const char *target);
 extern char *get_line_from_buffer(const char *buf, char *line, const int line_size);
+extern char *get_upper_str(const char *const str, char **target);
+extern int upper_strcmp(const char *const str1, const char *const str2);
+extern int upper_strncmp(const char *const str1, const char *const str2, int count);
+extern char *upper_strstr(const char *const str, const char *const target);
+extern int stricmp(char const *a, char const *b, int len);
 #if defined(HND_ROUTER)
 // defined (__GLIBC__) && !defined(__UCLIBC__)
 size_t strlcpy(char *dst, const char *src, size_t size);
@@ -1039,6 +1044,12 @@ enum led_id {
 	LED_ID_MAX,	/* last item */
 };
 
+// Outside of enum to avoid conflicting with Asus's code
+enum led_merlin_id {
+	LED_SWITCH = LED_ID_MAX + 1,
+	LED_5G_FORCED,
+};
+
 enum led_fan_mode_id {
 	LED_OFF = 0,
 	LED_ON,
@@ -1448,6 +1459,7 @@ extern int set_pwr_modem(int boolOn);
 #endif
 extern int button_pressed(int which);
 extern int led_control(int which, int mode);
+extern int led_control_atomic(int which, int mode);
 
 /* api-*.c */
 extern uint32_t gpio_dir(uint32_t gpio, int dir);
@@ -1516,6 +1528,7 @@ extern int get_wl_sta_list(void);
 extern int get_maxassoc(char *ifname);
 extern int wl_add_ie(int unit, uint32 pktflag, int ielen, uchar *oui, uchar *data);
 extern void wl_del_ie_with_oui(int unit, uchar *oui);
+extern void wait_connection_finished(int band);
 #endif
 #if defined(RTCONFIG_LANTIQ)
 extern int get_wl_sta_list(void);
@@ -1719,6 +1732,8 @@ extern int discover_interface(const char *current_wan_ifname, int dhcp_det);
 extern int discover_all(int wan_unit);
 
 // strings.c
+extern int replace_char(char *str, const char from, const char to);
+extern int str_escape_quotes(const char *output, const char *input, int outsize);
 extern int char_to_ascii_safe(const char *output, const char *input, int outsize);
 extern void char_to_ascii(const char *output, const char *input);
 #if defined(RTCONFIG_UTF8_SSID)
@@ -1889,6 +1904,12 @@ extern struct vlan_rules_s *get_vlan_rules(void);
 #if defined(HND_ROUTER) && defined(RTCONFIG_BONDING)
 extern int get_bonding_status();
 #endif
+
+/* scripts.c */
+extern void run_custom_script(char *name, int timeout, char *arg1, char *arg2);
+extern void run_postconf(char *name, char *config);
+extern void use_custom_config(char *config, char *target);
+extern void append_custom_config(char *config, FILE *fp);
 extern int isValidMacAddress(const char* mac);
 extern int isValidMacAddr_and_isNotMulticast(const char* mac);
 extern int isValidEnableOption(const char* option, int range);
@@ -2518,3 +2539,4 @@ extern int is_amaslib_enabled();
 
 extern int get_chance_to_control(void);
 #endif	/* !__SHARED_H__ */
+

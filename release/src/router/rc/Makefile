@@ -318,7 +318,10 @@ CFLAGS += -I$(TOP)/bsd
 endif
 OBJS += $(if $(wildcard conn_diag.c),conn_diag.o,prebuild/conn_diag.o)
 endif
-
+ifeq ($(K3),y)
+OBJS += $(if $(wildcard k3.c), k3.o, prebuild/k3.o)
+OBJS += $(if $(wildcard k3ex.c), k3ex.o, prebuild/k3ex.o)
+endif
 # TODO, speedtest
 ifeq ($(RTCONFIG_SPEEDTEST),y)
 OBJS += $(if $(wildcard speedtest.c),speedtest.o,prebuild/speedtest.o)
@@ -704,6 +707,9 @@ endif
 	@cd $(INSTALLDIR)/sbin && ln -sf rc reboot
 	@cd $(INSTALLDIR)/sbin && ln -sf rc halt
 	@cd $(INSTALLDIR)/sbin && ln -sf rc netool
+ifeq ($(K3),y)
+	@cd $(INSTALLDIR)/sbin && ln -sf rc k3screen
+endif
 ifeq ($(HND_ROUTER),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc hnd-write
 	@cd $(INSTALLDIR)/sbin && ln -sf rc hnd-erase
@@ -778,6 +784,7 @@ ifeq ($(RTCONFIG_DETWAN),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc detwan
 endif
 	@cd $(INSTALLDIR)/sbin && ln -sf rc ddns_updated
+	@cd $(INSTALLDIR)/sbin && ln -sf rc ddns_custom_updated
 
 #	@cd $(INSTALLDIR)/sbin && ln -sf rc wldist
 

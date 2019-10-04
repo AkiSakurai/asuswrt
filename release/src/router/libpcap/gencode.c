@@ -84,7 +84,7 @@ static const char rcsid[] _U_ =
 #include "pcap/sll.h"
 #include "pcap/ipnet.h"
 #include "arcnet.h"
-#if defined(PF_PACKET) && defined(SO_ATTACH_FILTER)
+#if defined(linux) && defined(PF_PACKET) && defined(SO_ATTACH_FILTER)
 #include <linux/types.h>
 #include <linux/if_packet.h>
 #include <linux/filter.h>
@@ -141,9 +141,7 @@ static u_int	orig_linktype = -1U, orig_nl = -1U, label_stack_depth = -1U;
 #endif
 
 /* XXX */
-#ifdef PCAP_FDDIPAD
 static int	pcap_fddipad;
-#endif
 
 /* VARARGS */
 void
@@ -876,6 +874,7 @@ static u_int off_proto;
  * These are offsets for the MTP2 fields.
  */
 static u_int off_li;
+static u_int off_li_hsl;
 
 /*
  * These are offsets for the MTP3 fields.
@@ -925,9 +924,7 @@ init_linktype(p)
 	pcap_t *p;
 {
 	linktype = pcap_datalink(p);
-#ifdef PCAP_FDDIPAD
 	pcap_fddipad = p->fddipad;
-#endif
 
 	/*
 	 * Assume it's not raw ATM with a pseudo-header, for now.
@@ -949,6 +946,7 @@ init_linktype(p)
 	 * And assume we're not doing SS7.
 	 */
 	off_li = -1;
+	off_li_hsl = -1;
 	off_sio = -1;
 	off_opc = -1;
 	off_dpc = -1;
@@ -1064,13 +1062,9 @@ init_linktype(p)
 		 * XXX - should we generate code to check for SNAP?
 		 */
 		off_linktype = 13;
-#ifdef PCAP_FDDIPAD
 		off_linktype += pcap_fddipad;
-#endif
 		off_macpl = 13;		/* FDDI MAC header length */
-#ifdef PCAP_FDDIPAD
 		off_macpl += pcap_fddipad;
-#endif
 		off_nl = 8;		/* 802.2+SNAP */
 		off_nl_nosnap = 3;	/* 802.2 */
 		return;
@@ -1341,6 +1335,13 @@ init_linktype(p)
 		off_nl_nosnap = -1;	/* no 802.2 LLC */
 		return;
 
+	case DLT_BACNET_MS_TP:
+		off_linktype = -1;
+		off_macpl = -1;
+		off_nl = -1;
+		off_nl_nosnap = -1;
+		return;
+
 	case DLT_JUNIPER_SERVICES:
 		off_linktype = 12;
 		off_macpl = -1;		/* L3 proto location dep. on cookie type */
@@ -1381,6 +1382,7 @@ init_linktype(p)
 
 	case DLT_MTP2:
 		off_li = 2;
+		off_li_hsl = 4;
 		off_sio = 3;
 		off_opc = 4;
 		off_dpc = 4;
@@ -1393,6 +1395,7 @@ init_linktype(p)
 
 	case DLT_MTP2_WITH_PHDR:
 		off_li = 6;
+		off_li_hsl = 8;
 		off_sio = 7;
 		off_opc = 8;
 		off_dpc = 8;
@@ -1405,6 +1408,7 @@ init_linktype(p)
 
 	case DLT_ERF:
 		off_li = 22;
+		off_li_hsl = 24;
 		off_sio = 23;
 		off_opc = 24;
 		off_dpc = 24;
@@ -3193,8 +3197,7 @@ gen_linktype(proto)
 			 * Then we run it through "htonl()", and
 			 * generate code to compare against the result.
 			 */
-			if (bpf_pcap->sf.rfile != NULL &&
-			    bpf_pcap->sf.swapped)
+			if (bpf_pcap->rfile != NULL && bpf_pcap->swapped)
 				proto = SWAPLONG(proto);
 			proto = htonl(proto);
 		}
@@ -3348,6 +3351,9 @@ gen_linktype(proto)
 		 * FIXME encapsulation specific BPF_ filters
 		 */
 		return gen_mcmp(OR_LINK, 0, BPF_W, 0x4d474300, 0xffffff00); /* compare the magic number */
+
+	case DLT_BACNET_MS_TP:
+		return gen_mcmp(OR_LINK, 0, BPF_W, 0x55FF0000, 0xffff0000);
 
 	case DLT_IPNET:
 		return gen_ipnet_linktype(proto);
@@ -3703,18 +3709,10 @@ gen_fhostop(eaddr, dir)
 
 	switch (dir) {
 	case Q_SRC:
-#ifdef PCAP_FDDIPAD
 		return gen_bcmp(OR_LINK, 6 + 1 + pcap_fddipad, 6, eaddr);
-#else
-		return gen_bcmp(OR_LINK, 6 + 1, 6, eaddr);
-#endif
 
 	case Q_DST:
-#ifdef PCAP_FDDIPAD
 		return gen_bcmp(OR_LINK, 0 + 1 + pcap_fddipad, 6, eaddr);
-#else
-		return gen_bcmp(OR_LINK, 0 + 1, 6, eaddr);
-#endif
 
 	case Q_AND:
 		b0 = gen_fhostop(eaddr, Q_SRC);
@@ -4574,6 +4572,9 @@ gen_host6(addr, mask, proto, dir, type)
 
 	case Q_DEFAULT:
 		return gen_host6(addr, mask, Q_IPV6, dir, type);
+
+	case Q_LINK:
+		bpf_error("link-layer modifier applied to ip6 %s", typestr);
 
 	case Q_IP:
 		bpf_error("'ip' modifier applied to ip6 %s", typestr);
@@ -7533,14 +7534,14 @@ gen_inbound(dir)
 		 * check it, otherwise give up as this link-layer type
 		 * has nothing in the packet data.
 		 */
-#if defined(PF_PACKET) && defined(SO_ATTACH_FILTER)
+#if defined(linux) && defined(PF_PACKET) && defined(SO_ATTACH_FILTER)
 		/*
-		 * We infer that this is Linux with PF_PACKET support.
+		 * This is Linux with PF_PACKET support.
 		 * If this is a *live* capture, we can look at
 		 * special meta-data in the filter expression;
 		 * if it's a savefile, we can't.
 		 */
-		if (bpf_pcap->sf.rfile != NULL) {
+		if (bpf_pcap->rfile != NULL) {
 			/* We have a FILE *, so this is a savefile */
 			bpf_error("inbound/outbound not supported on linktype %d when reading savefiles",
 			    linktype);
@@ -7554,12 +7555,12 @@ gen_inbound(dir)
 			/* to filter on inbound traffic, invert the match */
 			gen_not(b0);
 		}
-#else /* defined(PF_PACKET) && defined(SO_ATTACH_FILTER) */
+#else /* defined(linux) && defined(PF_PACKET) && defined(SO_ATTACH_FILTER) */
 		bpf_error("inbound/outbound not supported on linktype %d",
 		    linktype);
 		b0 = NULL;
 		/* NOTREACHED */
-#endif /* defined(PF_PACKET) && defined(SO_ATTACH_FILTER) */
+#endif /* defined(linux) && defined(PF_PACKET) && defined(SO_ATTACH_FILTER) */
 	}
 	return (b0);
 }
@@ -8019,9 +8020,10 @@ gen_pppoed()
 }
 
 struct block *
-gen_pppoes()
+gen_pppoes(sess_num)
+	int sess_num;
 {
-	struct block *b0;
+	struct block *b0, *b1;
 
 	/*
 	 * Test against the PPPoE session link-layer type.
@@ -8060,6 +8062,14 @@ gen_pppoes()
 	orig_linktype = off_linktype;	/* save original values */
 	orig_nl = off_nl;
 	is_pppoes = 1;
+
+	/* If a specific session is requested, check PPPoE session id */
+	if (sess_num >= 0) {
+		b1 = gen_mcmp(OR_MACPL, orig_nl, BPF_W,
+		    (bpf_int32)sess_num, 0x0000ffff);
+		gen_and(b0, b1);
+		b0 = b1;
+	}
 
 	/*
 	 * The "network-layer" protocol is PPPoE, which has a 6-byte
@@ -8250,6 +8260,7 @@ gen_atmtype_abbrev(type)
  * FISU, length is null
  * LSSU, length is 1 or 2
  * MSU, length is 3 or more
+ * For MTP2_HSL, sequences are on 2 bytes, and length on 9 bits
  */
 struct block *
 gen_mtp2type_abbrev(type)
@@ -8286,6 +8297,33 @@ gen_mtp2type_abbrev(type)
 		b0 = gen_ncmp(OR_PACKET, off_li, BPF_B, 0x3f, BPF_JGT, 0, 2);
 		break;
 
+	case MH_FISU:
+		if ( (linktype != DLT_MTP2) &&
+		     (linktype != DLT_ERF) &&
+		     (linktype != DLT_MTP2_WITH_PHDR) )
+			bpf_error("'hfisu' supported only on MTP2_HSL");
+		/* gen_ncmp(offrel, offset, size, mask, jtype, reverse, value) */
+		b0 = gen_ncmp(OR_PACKET, off_li_hsl, BPF_H, 0xff80, BPF_JEQ, 0, 0);
+		break;
+
+	case MH_LSSU:
+		if ( (linktype != DLT_MTP2) &&
+		     (linktype != DLT_ERF) &&
+		     (linktype != DLT_MTP2_WITH_PHDR) )
+			bpf_error("'hlssu' supported only on MTP2_HSL");
+		b0 = gen_ncmp(OR_PACKET, off_li_hsl, BPF_H, 0xff80, BPF_JGT, 1, 0x0100);
+		b1 = gen_ncmp(OR_PACKET, off_li_hsl, BPF_H, 0xff80, BPF_JGT, 0, 0);
+		gen_and(b1, b0);
+		break;
+
+	case MH_MSU:
+		if ( (linktype != DLT_MTP2) &&
+		     (linktype != DLT_ERF) &&
+		     (linktype != DLT_MTP2_WITH_PHDR) )
+			bpf_error("'hmsu' supported only on MTP2_HSL");
+		b0 = gen_ncmp(OR_PACKET, off_li_hsl, BPF_H, 0xff80, BPF_JGT, 0, 0x0100);
+		break;
+
 	default:
 		abort();
 	}
@@ -8301,8 +8339,16 @@ gen_mtp3field_code(mtp3field, jvalue, jtype, reverse)
 {
 	struct block *b0;
 	bpf_u_int32 val1 , val2 , val3;
+	u_int newoff_sio=off_sio;
+	u_int newoff_opc=off_opc;
+	u_int newoff_dpc=off_dpc;
+	u_int newoff_sls=off_sls;
 
 	switch (mtp3field) {
+
+	case MH_SIO:
+		newoff_sio += 3; /* offset for MTP2_HSL */
+		/* FALLTHROUGH */
 
 	case M_SIO:
 		if (off_sio == (u_int)-1)
@@ -8311,10 +8357,12 @@ gen_mtp3field_code(mtp3field, jvalue, jtype, reverse)
 		if(jvalue > 255)
 		        bpf_error("sio value %u too big; max value = 255",
 		            jvalue);
-		b0 = gen_ncmp(OR_PACKET, off_sio, BPF_B, 0xffffffff,
+		b0 = gen_ncmp(OR_PACKET, newoff_sio, BPF_B, 0xffffffff,
 		    (u_int)jtype, reverse, (u_int)jvalue);
 		break;
 
+	case MH_OPC:
+		newoff_opc+=3;
         case M_OPC:
 	        if (off_opc == (u_int)-1)
 			bpf_error("'opc' supported only on SS7");
@@ -8331,9 +8379,13 @@ gen_mtp3field_code(mtp3field, jvalue, jtype, reverse)
 		val3 = jvalue & 0x00000003;
 		val3 = val3 <<22;
 		jvalue = val1 + val2 + val3;
-		b0 = gen_ncmp(OR_PACKET, off_opc, BPF_W, 0x00c0ff0f,
+		b0 = gen_ncmp(OR_PACKET, newoff_opc, BPF_W, 0x00c0ff0f,
 		    (u_int)jtype, reverse, (u_int)jvalue);
 		break;
+
+	case MH_DPC:
+		newoff_dpc += 3;
+		/* FALLTHROUGH */
 
 	case M_DPC:
 	        if (off_dpc == (u_int)-1)
@@ -8349,10 +8401,12 @@ gen_mtp3field_code(mtp3field, jvalue, jtype, reverse)
 		val2 = jvalue & 0x00003f00;
 		val2 = val2 << 8;
 		jvalue = val1 + val2;
-		b0 = gen_ncmp(OR_PACKET, off_dpc, BPF_W, 0xff3f0000,
+		b0 = gen_ncmp(OR_PACKET, newoff_dpc, BPF_W, 0xff3f0000,
 		    (u_int)jtype, reverse, (u_int)jvalue);
 		break;
 
+	case MH_SLS:
+	  newoff_sls+=3;
 	case M_SLS:
 	        if (off_sls == (u_int)-1)
 			bpf_error("'sls' supported only on SS7");
@@ -8363,7 +8417,7 @@ gen_mtp3field_code(mtp3field, jvalue, jtype, reverse)
 		/* the following instruction is made to convert jvalue
 		 * to the forme used to write sls in an ss7 message*/
 		jvalue = jvalue << 4;
-		b0 = gen_ncmp(OR_PACKET, off_sls, BPF_B, 0xf0,
+		b0 = gen_ncmp(OR_PACKET, newoff_sls, BPF_B, 0xf0,
 		    (u_int)jtype,reverse, (u_int)jvalue);
 		break;
 

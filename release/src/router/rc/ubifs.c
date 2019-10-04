@@ -31,6 +31,22 @@
 #define LEBS		0x1F000		/* 124 KiB */
 #define NUM_OH_LEB	24		/* for ubifs overhead */
 #endif
+#if defined(RTAC68U) || defined(RTAC3200) || defined(RTAC3100)
+#define JFFS2_MTD_NAME	"brcmnand"
+#define UBI_DEV_NUM	"0"
+#define UBI_DEV_PATH	"/dev/ubi0"
+#define LEBS		0x1F000		/* 124 KiB */
+#define NUM_OH_LEB	20		/* for ubifs overhead */
+#endif
+// AC86U/GTAC2900/GTAC5300/R7900P/R8000P
+#ifdef HND_ROUTER
+#define PATH_MAX	512
+#define JFFS2_MTD_NAME	"misc2"
+#define UBI_DEV_NUM	"2"
+#define UBI_DEV_PATH	"/dev/ubi2"
+#define LEBS		0x1F000		/* 124 KiB */
+#define NUM_OH_LEB	20		/* for ubifs overhead */
+#endif
 
 static void error(const char *message)
 {
@@ -125,7 +141,10 @@ void start_ubifs(void)
 	int mtd_part = 0, mtd_size = 0;
 	char dev_mtd[] = "/dev/mtdXXX";
 #endif
-
+#if defined(RTAC68U) || defined(RTAC3200) || defined(RTAC3100) || defined(HND_ROUTER)
+	int mtd_part = 0, mtd_size = 0;
+	char dev_mtd[] = "/dev/mtdXXX";
+#endif
 #ifndef RTCONFIG_NVRAM_FILE
 	if (!nvram_match("ubifs_on", "1")) {
 		notice_set("ubifs", "");
@@ -187,6 +206,67 @@ void start_ubifs(void)
 			eval("ubimkvol", UBI_DEV_PATH, "-s", vol_size_s, "-N", UBIFS_VOL_NAME);
 		}
 	}
+#endif
+#if defined(RTAC68U) || defined(RTAC3200) || defined(RTAC3100) || defined(HND_ROUTER)
+	if (!mtd_getinfo(JFFS2_MTD_NAME, &mtd_part, &mtd_size)) return;
+	snprintf(dev_mtd, sizeof(dev_mtd), "/dev/mtd%d", mtd_part);
+	_dprintf("*** ubifs: %s (%d, %d)\n", JFFS2_MTD_NAME, mtd_part, mtd_size);
+
+	if (nvram_match("ubifs_clean_fs", "1") || nvram_match("jffs2_format", "1") || nvram_match("ubifs_format", "1")) {
+		nvram_unset("ubifs_clean_fs");
+		nvram_set("jffs2_format", "0");
+		nvram_set("ubifs_format", "0");
+		eval("ubiformat",dev_mtd,"-y");
+#if defined(HND_ROUTER)
+//ubi0:rootfs ubi1:nvram ubi2:jffs or ubi0:rootfs ubi1:data ubi2:nvram ubi3:jffs
+		eval("ubiattach","-p",dev_mtd,"-d","2");
+		eval("ubimkvol","/dev/ubi2","-N", UBIFS_VOL_NAME,"-m");
+#else
+		eval("ubiattach","-p",dev_mtd,"-d","0");
+		eval("ubimkvol","/dev/ubi0","-N", UBIFS_VOL_NAME,"-m");
+#endif
+		format = 1;
+	} else {
+		/* attach ubi */
+		_dprintf("*** ubifs: attach (%s, %s)\n", dev_mtd, UBI_DEV_NUM);
+		eval("ubiattach", "-p", dev_mtd, "-d", UBI_DEV_NUM);
+	}
+	if (ubi_getinfo(JFFS2_MTD_NAME, &dev, &part, &size)==0) {
+		sprintf(s, "%d", size);
+		p = nvram_get("ubifs_size");
+		if ((p == NULL) || (strcmp(p, s) != 0)) {
+			nvram_set("ubifs_size", s);
+			nvram_commit_x();
+		}
+	}
+#if defined(HND_ROUTER)
+	if (mount("/dev/ubi2_0", UBIFS_MNT_DIR, UBIFS_FS_TYPE, MS_NOATIME, "") != 0) {
+#else
+	if (mount("/dev/ubi0_0", UBIFS_MNT_DIR, UBIFS_FS_TYPE, MS_NOATIME, "") != 0) {
+#endif
+		_dprintf("*** ubifs mount error\n");
+		eval("ubidetach", "-p", dev_mtd);
+		eval("ubiformat", dev_mtd, "-y");
+#if defined(HND_ROUTER)
+		eval("ubiattach","-p",dev_mtd,"-d","2");
+		eval("ubimkvol","/dev/ubi2","-N", UBIFS_VOL_NAME,"-m");
+#else
+		eval("ubiattach","-p",dev_mtd,"-d","0");
+		eval("ubimkvol","/dev/ubi0","-N", UBIFS_VOL_NAME,"-m");
+#endif
+		format = 1;
+#if defined(HND_ROUTER)
+		if (mount("/dev/ubi2_0", UBIFS_MNT_DIR, UBIFS_FS_TYPE, MS_NOATIME, "") != 0) {
+#else
+		if (mount("/dev/ubi0_0", UBIFS_MNT_DIR, UBIFS_FS_TYPE, MS_NOATIME, "") != 0) {
+#endif
+			_dprintf("*** ubifs 2-nd mount error\n");
+			error("mounting");
+			return;
+		}
+	}
+	goto BRCM_UBI;
+
 #endif
 #endif
 
@@ -258,7 +338,13 @@ void start_ubifs(void)
 		}
 	}
 
-	set_proper_perm();
+#if defined(RTAC68U) || defined(RTAC3200) || defined(RTAC3100) || defined(HND_ROUTER)
+BRCM_UBI:
+		nvram_unset("ubifs_clean_fs");
+		nvram_commit_x();
+#endif
+	//set_proper_perm();
+
 
 #ifndef RTCONFIG_NVRAM_FILE
 	if (nvram_get_int("ubifs_clean_fs")) {
@@ -294,7 +380,9 @@ void start_ubifs(void)
 		_dprintf("%s: bind mount " UBIFS_MNT_DIR "/firmware fail! (r = %d)\n", __func__, r);
 #endif
 #endif
-
+	if (!check_if_dir_exist("/jffs/scripts/")) mkdir("/jffs/scripts/", 0755);
+	if (!check_if_dir_exist("/jffs/configs/")) mkdir("/jffs/configs/", 0755);
+	if (!check_if_dir_exist("/jffs/opt/")) mkdir("/jffs/opt/", 0755);
 }
 
 void stop_ubifs(int stop)

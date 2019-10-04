@@ -102,18 +102,21 @@ static char *defenv[] = {
 	"HOME=/",
 	//"PATH=/usr/bin:/bin:/usr/sbin:/sbin",
 #ifdef RTCONFIG_LANTIQ
-	"PATH=/opt/usr/bin:/opt/bin:/opt/usr/sbin:/opt/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/rom/opt/lantiq/bin:/rom/opt/lantiq/usr/sbin",
+	"PATH=/opt/usr/bin:/opt/bin:/opt/usr/sbin:/opt/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/rom/opt/lantiq/bin:/rom/opt/lantiq/usr/sbin:/jffs/softcenter/bin:/jffs/softcenter/scripts",
 #else
-	"PATH=/opt/usr/bin:/opt/bin:/opt/usr/sbin:/opt/sbin:/usr/bin:/bin:/usr/sbin:/sbin",
+	"PATH=/opt/usr/bin:/opt/bin:/opt/usr/sbin:/opt/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/jffs/softcenter/bin:/jffs/softcenter/scripts",
 #endif
 #ifdef HND_ROUTER
-	"LD_LIBRARY_PATH=/lib:/usr/lib:/lib/aarch64",
+	"LD_LIBRARY_PATH=/lib:/usr/lib:/lib/aarch64:/jffs/softcenter/lib",
 #ifdef RTCONFIG_HNDMFG
 	"PS1=# ",
 #endif
 #endif
 #ifdef RTCONFIG_LANTIQ
-	"LD_LIBRARY_PATH=/lib:/usr/lib:/opt/lantiq/usr/lib:/opt/lantiq/usr/sbin/:/tmp/wireless/lantiq/usr/lib/",
+	"LD_LIBRARY_PATH=/lib:/usr/lib:/opt/lantiq/usr/lib:/opt/lantiq/usr/sbin/:/tmp/wireless/lantiq/usr/lib/:/jffs/softcenter/lib",
+#endif
+#if defined(RTAC3100) || defined(RTAC68U) || defined(RTAC3200)
+	"LD_LIBRARY_PATH=/lib:/usr/lib:/jffs/softcenter/lib",
 #endif
 	"SHELL=" SHELL,
 	"USER=root",
@@ -7351,6 +7354,9 @@ int init_nvram(void)
 #endif
 	case MODEL_RTAC88U:
 	case MODEL_RTAC3100:
+#if defined(RTAC3100)
+		k3_init();
+#endif
 		ldo_patch();
 
 		set_tcode_misc();
@@ -9935,6 +9941,7 @@ static void sysinit(void)
 		"/tmp/etc/rc.d",
 #endif
 		"/tmp/var/tmp",
+		"/tmp/etc/dnsmasq.user",	// ssr and adbyby
 		NULL
 	};
 	umask(0);
@@ -10567,6 +10574,7 @@ int init_main(int argc, char *argv[])
 #ifdef RTN65U
 		asm1042_upgrade(1);	// check whether upgrade firmware of ASM1042
 #endif
+		run_custom_script("init-start", 0, NULL, NULL);
 
 		state = SIGUSR2;	/* START */
 
@@ -11085,6 +11093,43 @@ dbg("boot/continue fail= %d/%d\n", nvram_get_int("Ate_boot_fail"),nvram_get_int(
 #ifndef RTCONFIG_LANTIQ
 			nvram_set("success_start_service", "1");
 			force_free_caches();
+#if defined(K3)
+			k3_init_done();
+#endif
+#if defined(HND_ROUTER)
+#if defined(R7900P)||defined(R8000P)
+			r8000p_init_done();
+#else
+#ifdef RTCONFIG_SOFTCENTER
+			if (!f_exists("/jffs/softcenter/scripts/ks_tar_intall.sh")){
+				doSystem("/usr/sbin/jffsinit.sh");
+				logmessage("软件中心", "开始安装......");
+				logmessage("软件中心", "1分钟后完成安装");
+				_dprintf("....softcenter ok....\n");
+			}
+#endif
+			eval("insmod", "ip_set");
+			eval("insmod", "ip_set_bitmap_ip");
+			eval("insmod", "ip_set_bitmap_ipmac");
+			eval("insmod", "ip_set_bitmap_port");
+			eval("insmod", "ip_set_hash_ip");
+			eval("insmod", "ip_set_hash_ipport");
+			eval("insmod", "ip_set_hash_ipportip");
+			eval("insmod", "ip_set_hash_ipportnet");
+			eval("insmod", "ip_set_hash_ipmac");
+			eval("insmod", "ip_set_hash_ipmark");
+			eval("insmod", "ip_set_hash_net");
+			eval("insmod", "ip_set_hash_netport");
+			eval("insmod", "ip_set_hash_netiface");
+			eval("insmod", "ip_set_hash_netnet");
+			eval("insmod", "ip_set_hash_netportnet");
+			eval("insmod", "ip_set_hash_mac");
+			eval("insmod", "ip_set_list_set");
+			eval("insmod", "nf_tproxy_core");
+			eval("insmod", "xt_TPROXY");
+			eval("insmod", "xt_set");
+#endif
+#endif
 #endif
 
 #ifdef RTCONFIG_AMAS

@@ -234,8 +234,7 @@
 /* Linker compiler command */
 #undef LLDP_LD
 
-/* Define to the sub-directory in which libtool stores uninstalled libraries.
-   */
+/* Define to the sub-directory where libtool stores uninstalled libraries. */
 #undef LT_OBJDIR
 
 /* Minimal kernel version required */

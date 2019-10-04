@@ -1289,6 +1289,7 @@ void start_dnsmasq(void)
 	fprintf(fp, "pid-file=/var/run/dnsmasq.pid\n"
 		    "user=nobody\n"
 		    "bind-dynamic\n"		// listen only on interface & lo
+		    "conf-dir=/tmp/etc/dnsmasq.user\n"
 		);
 
 #if defined(RTCONFIG_REDIRECT_DNAME)
@@ -1671,10 +1672,12 @@ void start_dnsmasq(void)
 #elif (defined(RTCONFIG_TR069) && !defined(RTCONFIG_TR181))
 	fprintf(fp, "dhcp-script=/sbin/dhcpc_lease\n");
 #endif
-
+	append_custom_config("dnsmasq.conf", fp);
 	/* close fp move to the last */
 	fclose(fp);
-
+	use_custom_config("dnsmasq.conf", "/etc/dnsmasq.conf");
+	run_postconf("dnsmasq", "/etc/dnsmasq.conf");
+	chmod("/etc/dnsmasq.conf", 0644);
 	/* Create resolv.conf with empty nameserver list */
 	f_write(dmresolv, NULL, 0, FW_APPEND, 0666);
 	/* Create resolv.dnsmasq with empty server list */
@@ -1715,6 +1718,10 @@ int dnsmasq_script_main(int argc, char **argv)
 
 #if defined(RTCONFIG_AMAS)
 	amaslib_lease_main(argc, argv);
+#endif
+#if defined(RTCONFIG_SOFTCENTER)
+	if(nvram_get("sc_dhcp_script"))
+		doSystem("/jffs/softcenter/scripts/%s",nvram_get("sc_dhcp_script"));
 #endif
 	return 0;
 }
@@ -3178,7 +3185,12 @@ start_ddns(void)
 		service = "dyndns", asus_ddns=3;
 	else if (strcmp(server, "WWW.ORAY.COM")==0) {
 		service = "peanuthull", asus_ddns = 2;
-	} else {
+	} 
+	else if (strcmp(server, "WWW.3322.ORG")==0)
+		service = "qdns dynamic";
+    else if (strcmp(server, "CUSTOM")==0)
+                service = "";
+	else {
 		logmessage("start_ddns", "Error ddns server name: %s\n", server);
 		return 0;
 	}
@@ -3242,8 +3254,13 @@ start_ddns(void)
 		     "-u", usrstr, wild ? "-w" : "", "-e", "/sbin/ddns_updated",
 		     "-b", "/tmp/ddns.cache", NULL };
 		_eval(argv, NULL, 0, &pid);
-	}
+	} else {	// Custom DDNS
+		// Block until it completes and updates the DDNS update results in nvram
+		run_custom_script("ddns-start", 120, wan_ip, NULL);
+		return 0;
 
+	}
+	run_custom_script("ddns-start", 0, wan_ip, NULL);
 	return 0;
 }
 
@@ -4147,6 +4164,35 @@ stop_telnetd(void)
 	if (pids("telnetd"))
 		killall_tk("telnetd");
 }
+
+#ifdef RTCONFIG_SOFTCENTER
+void
+start_skipd(void)
+{
+	char *skipd_argv[] = { "skipd", NULL };
+	pid_t pid;
+	if (getpid() != 1) {
+		notify_rc("start_skipd");
+		return;
+	}
+	if (pids("skipd"))
+		killall_tk("skipd");
+	logmessage(LOGNAME, "start skipd:%d", pid);
+	_eval(skipd_argv, NULL, 0, &pid);
+
+}
+
+void
+stop_skipd(void)
+{
+	if (getpid() != 1) {
+		notify_rc("stop_skipd");
+		return;
+	}
+	if (pids("skipd"))
+		killall_tk("skipd");
+}
+#endif
 
 void
 start_httpd(void)
@@ -7587,6 +7633,9 @@ stop_netool(void)
 int
 start_services(void)
 {
+#ifdef RTCONFIG_SOFTCENTER
+	start_skipd();
+#endif
 #ifdef RTCONFIG_LANTIQ
 	start_wave_monitor();
 #endif
@@ -7895,6 +7944,8 @@ start_services(void)
 #if defined(RTCONFIG_AMAS)
 	start_amas_lib();
 #endif
+	run_custom_script("services-start", 0, NULL, NULL);
+	
 	return 0;
 }
 
@@ -7910,6 +7961,10 @@ stop_logger(void)
 void
 stop_services(void)
 {
+	run_custom_script("services-stop", 0, NULL, NULL);
+#ifdef RTCONFIG_SOFTCENTER
+	stop_skipd();
+#endif
 #if defined(RTCONFIG_AMAS)
 	stop_amas_lib();
 #endif
@@ -9118,7 +9173,7 @@ void factory_reset(void)
 void handle_notifications(void)
 {
 	char nv[256], nvtmp[32], *cmd[8], *script;
-	char *nvp, *b, *nvptr;
+	char *nvp, *b, *nvptr, *actionstr;
 	int action = 0;
 	int count;
 	int i;
@@ -9158,21 +9213,26 @@ again:
 	if(strncmp(cmd[0], "start_", 6)==0) {
 		action |= RC_SERVICE_START;
 		script = &cmd[0][6];
+		actionstr = "start";
 	}
 	else if(strncmp(cmd[0], "stop_", 5)==0) {
 		action |= RC_SERVICE_STOP;
 		script = &cmd[0][5];
+		actionstr = "stop";
 	}
 	else if(strncmp(cmd[0], "restart_", 8)==0) {
 		action |= (RC_SERVICE_START | RC_SERVICE_STOP);
 		script = &cmd[0][8];
+		actionstr = "restart";
 	}
 	else {
 		action = 0;
 		script = cmd[0];
+		actionstr = "";
 	}
 
 	TRACE_PT("running: %d %s\n", action, script);
+	run_custom_script("service-event", 120, actionstr, script);
 
 #ifdef RTCONFIG_USB_MODEM
 	if(!strcmp(script, "simauth")
@@ -9572,6 +9632,19 @@ again:
 		}
 	}
 	else if(strcmp(script, "upgrade") == 0) {
+//we must make sure that usb can umount and do not start skipd again
+#if defined(RTCONFIG_SOFTCENTER)
+#if defined(RTCONFIG_LANTIQ)
+	if(nvram_get_int("k3c_enable"))
+		doSystem("/usr/sbin/plugin.sh stop");
+#elif defined(RTCONFIG_BCMARM) || defined(HND_ROUTER)
+	doSystem("/usr/sbin/plugin.sh stop");
+#elif defined(RTCONFIG_QCA)
+	doSystem("/usr/sbin/plugin.sh stop");
+#elif defined(RTCONFIG_MTK)
+	doSystem("/usr/sbin/plugin.sh stop");
+#endif
+#endif
 		int stop_commit;
 		stop_commit = nvram_get_int(ASUS_STOP_COMMIT);
 		if(stop_commit == 0) {
@@ -10758,6 +10831,7 @@ _dprintf("multipath(%s): unit_now: (%d, %d, %s), unit_next: (%d, %d, %s).\n", mo
 #endif
 
 		}
+		reset_leds();
 		nvram_set("restart_wifi", "0");
 	}
 #if defined(RTCONFIG_POWER_SAVE)
@@ -11850,6 +11924,13 @@ check_ddr_done:
 		if(action & RC_SERVICE_STOP) stop_dnsmasq();
 		if(action & RC_SERVICE_START) start_dnsmasq();
 	}
+#ifdef RTCONFIG_SOFTCENTER
+	else if (strcmp(script, "skipd") == 0)
+	{
+		if(action & RC_SERVICE_STOP) stop_skipd();
+		if(action & RC_SERVICE_START) start_skipd();
+	}
+#endif
 #ifdef RTCONFIG_DHCP_OVERRIDE
 	else if (strcmp(script, "dhcpd") == 0)
 	{
@@ -12515,6 +12596,9 @@ retry_wps_enr:
 		_dprintf("%s: shell: %s\n", __FUNCTION__, cmd[1]);
 		if(cmd[1]) system(cmd[1]);
 	}
+	else if (strcmp(script, "leds") == 0) {
+		reset_leds();
+	}
 	else if (strcmp(script, "app") == 0) {
 #if defined(RTCONFIG_APP_PREINSTALLED) || defined(RTCONFIG_APP_NETINSTALLED)
 		if(action & RC_SERVICE_STOP)
@@ -13016,7 +13100,7 @@ _dprintf("goto again(%d)...\n", getpid());
 		unsetenv("unit");
 	}
 #endif
-
+	run_custom_script("service-event-end", 0, actionstr, script);
 	nvram_set("rc_service", "");
 	nvram_set("rc_service_pid", "");
 _dprintf("handle_notifications() end\n");
@@ -13598,6 +13682,7 @@ _dprintf("nat_rule: the nat rule file was not ready. wait %d seconds...\n", retr
 	setup_ct_timeout(TRUE);
 	setup_udp_timeout(TRUE);
 
+	run_custom_script("nat-start", 0, NULL, NULL);
 	return NAT_STATE_NORMAL;
 }
 
@@ -14277,6 +14362,105 @@ int service_main(int argc, char *argv[])
 	if (argc != 2) usage_exit(argv[0], "<action_service>");
 	notify_rc(argv[1]);
 	printf("\nDone.\n");
+	return 0;
+}
+
+void reset_leds()
+{
+	int model;
+
+	model = get_model();
+
+	if (nvram_get_int("led_disable") == 1) {
+		if ((model == MODEL_RTAC56U) || (model == MODEL_RTAC56S) ||
+		    (model == MODEL_RTAC68U) || (model == MODEL_RTAC87U) ||
+		    (model == MODEL_RTAC3200) || (model == MODEL_RTAC88U) ||
+		    (model == MODEL_RTAC3100) || (model == MODEL_RTAC5300) ||
+		    (model == MODEL_RTAC86U)) {
+			setAllLedOff();
+			if (model == MODEL_RTAC87U)
+				led_control_atomic(LED_5G, LED_OFF);
+		} else {        // TODO: Can other routers also use the same code?
+			led_control_atomic(LED_2G, LED_OFF);
+			led_control_atomic(LED_5G, LED_OFF);
+			led_control_atomic(LED_POWER, LED_OFF);
+			led_control_atomic(LED_SWITCH, LED_OFF);
+			led_control_atomic(LED_LAN, LED_OFF);
+			led_control_atomic(LED_WAN, LED_OFF);
+		}
+#ifdef RTCONFIG_USB
+		stop_usbled();
+		led_control_atomic(LED_USB, LED_OFF);
+#endif
+
+	} else {
+#ifdef RTCONFIG_USB
+		start_usbled();
+#endif
+#ifdef RTCONFIG_LED_ALL
+		led_control_atomic(LED_ALL, LED_ON);
+#endif
+
+/* LAN */
+#if defined(HND_ROUTER) && defined(RTCONFIG_LAN4WAN_LED)
+		setLANLedOn();
+#endif
+
+/* WAN */
+#if defined(RTAC3200) || defined(RTCONFIG_BCM_7114) || defined(HND_ROUTER)
+#ifndef HND_ROUTER
+		eval("et", "-i", "eth0", "robowr", "0", "0x18", "0x01ff");
+		eval("et", "-i", "eth0", "robowr", "0", "0x1a", "0x01ff");
+#else
+		led_control(LED_WAN_NORMAL, LED_ON);
+#endif
+#else
+		eval("et", "robowr", "0", "0x18", "0x01ff");
+		eval("et", "robowr", "0", "0x1a", "0x01ff");
+#endif
+
+/* Wifi */
+		if (nvram_match("wl1_radio", "1")
+#if defined(RTAC3200) || defined(RTAC5300)
+		    || nvram_match("wl2_radio", "1")
+#endif
+		   ) {
+			led_control_atomic(LED_5G_FORCED, LED_ON);
+		}
+		if (nvram_match("wl0_radio", "1")) {
+			led_control_atomic(LED_2G, LED_ON);
+		}
+#ifdef RTCONFIG_QTN
+		setAllLedOn_qtn();
+#endif
+		led_control_atomic(LED_SWITCH, LED_ON);
+		led_control_atomic(LED_POWER, LED_ON);
+
+#if defined(RTAC3200) || defined(RTAC88U) || defined(RTAC3100) || defined(RTAC5300)
+		kill_pidfile_s("/var/run/wanduck.pid", SIGUSR2);
+#endif
+	}
+}
+
+// Takes one argument:  0 = update failure
+//                      1 (or missing argument) = update success
+int
+ddns_custom_updated_main(int argc, char *argv[])
+{
+	if ((argc == 2 && !strcmp(argv[1], "1")) || (argc == 1)) {
+		nvram_set("ddns_status", "1");
+		nvram_set("ddns_updated", "1");
+		nvram_set("ddns_return_code", "200");
+		nvram_set("ddns_return_code_chk", "200");
+		nvram_set("ddns_server_x_old", nvram_safe_get("ddns_server_x"));
+		nvram_set("ddns_hostname_old", nvram_safe_get("ddns_hostname_x"));
+		logmessage("ddns", "Completed custom ddns update");
+	} else {
+		nvram_set("ddns_return_code", "unknown_error");
+		nvram_set("ddns_return_code_chk", "unknown_error");
+		logmessage("ddns", "Custom ddns update failed");
+	}
+
 	return 0;
 }
 
