@@ -176,7 +176,7 @@ function show_etherstate(){
 	var line;
 	var wan_array;
 	var port_array= Array();
-	if (based_modelid == "RT-AC86U") {
+	if ((based_modelid == "RT-AC86U") || (based_modelid == "GT-AC5300") || (based_modelid == "GT-AC2900")) {
 		show_etherstate_hnd();
 		return;
 	} else if ((based_modelid == "RT-N16") || (based_modelid == "RT-AC87U")
