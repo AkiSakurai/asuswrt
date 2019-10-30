@@ -259,6 +259,9 @@ function appPostScript(moduleInfo, script) {
 	    else if(db_softcenter_["softcenter_server_tcode"] == "GB") {
 	        data["softcenter_home_url"] = "https://sc.paldier.com/arm64";
 	    }
+	else if(db_softcenter_["softcenter_server_tcode"] == "ALI") {
+		data["softcenter_home_url"] = "https://121.40.153.145/arm64";
+	}
  	   else
 	        data["softcenter_home_url"] = "http://update.wifi.com.cn/arm64";
 	data["softcenter_installing_todo"] = moduleInfo.name;
@@ -572,6 +575,9 @@ $(function() {
 			}
 			else if(db_softcenter_["softcenter_server_tcode"] == "GB") {
 			        db_softcenter_["softcenter_home_url"] = "https://sc.paldier.com/arm64";
+			}
+			else if(db_softcenter_["softcenter_server_tcode"] == "ALI") {
+					db_softcenter_["softcenter_home_url"] = "https://121.40.153.145/arm64";
 			}
 			else
 			        db_softcenter_["softcenter_home_url"] = "http://update.wifi.com.cn/arm64";

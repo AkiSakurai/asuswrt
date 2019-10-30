@@ -21,6 +21,7 @@ cp -rf /rom/etc/softcenter/res/* /jffs/softcenter/res/
 cp -rf /rom/etc/softcenter/webs/* /jffs/softcenter/webs/
 cp -rf /rom/etc/softcenter/bin/* /jffs/softcenter/bin/
 cp -rf /rom/etc/softcenter/perp /jffs/softcenter/
+rm -rf /jffs/softcenter/ROG
 ln -sf /jffs/softcenter/bin/base64_encode /jffs/softcenter/bin/base64_decode
 ln -sf /jffs/softcenter/scripts/ks_app_install.sh /jffs/softcenter/scripts/ks_app_remove.sh
 ln -sf  /jffs/softcenter/bin/softcenter.sh /jffs/.asusrouter
@@ -32,6 +33,9 @@ chmod 755 /jffs/softcenter/perp/*
 chmod 755 /jffs/softcenter/perp/.boot/*
 chmod 755 /jffs/softcenter/perp/.control/*
 echo 1.2.0 > /jffs/softcenter/.soft_ver
+dbus set softcenter_firmware_version=`nvram get extendno|cut -d "_" -f2|cut -d "-" -f1|cut -c2-5`
+dbus set softcenter_arch=`uname -m`
+dbus set softcenter_api=`cat /jffs/softcenter/.soft_ver`
 if [ "`nvram get model`" == "GT-AC5300" ] || [ "`nvram get model`" == "GT-AC2900" ];then
 	cp -rf /rom/etc/softcenter/ROG/webs/* /jffs/softcenter/webs/
 	cp -rf /rom/etc/softcenter/ROG/res/* /jffs/softcenter/res/

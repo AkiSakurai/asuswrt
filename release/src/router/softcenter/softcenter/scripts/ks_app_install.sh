@@ -96,12 +96,16 @@ install_module() {
 			dbus set softcenter_server_tcode=CN
 		elif [ "$modelname" == "SBR-AC1900P" -o "$modelname" == "SBR-AC3200P" -o "$modelname" == "R7900P" ]; then
 			dbus set softcenter_server_tcode=ALI
+		elif [ "$modelname" == "GT-AC2900" -o "$modelname" == "GT-AC5300" ]; then
+			dbus set softcenter_server_tcode=CN1
 		else
 			dbus set softcenter_server_tcode=`nvram get territory_code |cut -c 1-2`
 		fi
 	fi
 	if [ "$(dbus get softcenter_server_tcode)" == "CN" ]; then
 		HOME_URL="http://update.wifi.com.cn/$ARCH_SUFFIX"
+	elif [ "$(dbus get softcenter_server_tcode)" == "CN1" ]; then
+		HOME_URL="https://123.56.45.194/$ARCH_SUFFIX"
 	elif [ "$(dbus get softcenter_server_tcode)" == "ALI" ]; then
 		HOME_URL="https://121.40.153.145/$ARCH_SUFFIX"
 	else
