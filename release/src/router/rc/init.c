@@ -11108,6 +11108,14 @@ dbg("boot/continue fail= %d/%d\n", nvram_get_int("Ate_boot_fail"),nvram_get_int(
 				_dprintf("....softcenter ok....\n");
 			}
 #endif
+			if (!nvram_get("modelname"))
+#if defined(RTAC86U)
+				nvram_set("modelname", "RT-AC86U");
+#elif defined(GTAC2900)
+				nvram_set("modelname", "GT-AC2900");
+#elif defined(GTAC5300)
+				nvram_set("modelname", "GT-AC5300");
+#endif
 			eval("insmod", "ip_set");
 			eval("insmod", "ip_set_bitmap_ip");
 			eval("insmod", "ip_set_bitmap_ipmac");
