@@ -5892,7 +5892,7 @@ static int get_fanctrl_info(int eid, webs_t wp, int argc, char_t **argv)
 }
 #endif
 
-#ifdef RTCONFIG_BCMARM
+#if defined(RTCONFIG_BCMARM) || defined(RTCONFIG_LANTIQ)
 static int get_cpu_temperature(int eid, webs_t wp, int argc, char_t **argv)
 {
 #ifdef HND_ROUTER
@@ -5905,6 +5905,17 @@ static int get_cpu_temperature(int eid, webs_t wp, int argc, char_t **argv)
 	}
 
 	return websWrite(wp, "%3.3f", (double) temperature / 1000);
+#elif  defined(RTCONFIG_LANTIQ)
+	FILE *fp;
+	int temperature;
+	system("awk 'NR==1' /sys/kernel/debug/ltq_tempsensor/allsensors | cut -c25-26 >/tmp/allsensors.txt");
+	if ((fp = fopen("/tmp/allsensors.txt", "r")) != NULL) {
+		fscanf(fp, "%d", &temperature);
+		fclose(fp);
+	}
+	unlink("/tmp/allsensors.txt");
+
+	return websWrite(wp, "%d", temperature);
 #else
 	FILE *fp;
 	int temperature = -1;
@@ -8263,14 +8274,12 @@ static int get_client_detail_info(struct json_object *clients, struct json_objec
 					json_object_object_add(client, "isOnline", json_object_new_string("0"));
 			}
 			else
-#if defined(K3) || defined(K3C) || defined(SBRAC1900P) || defined(R8000) || defined(R7000) || defined(R6300V2) || defined(R7900P) || defined(R8000P)
-				if(!pids("cfg_server")&&(p_client_info_tab->device_flag[i]&(1<<FLAG_EXIST)))
+#if defined(MERLINR_VER_MAJOR_B)
+				if(p_client_info_tab->device_flag[i]&(1<<FLAG_EXIST))
 					json_object_object_add(client, "isOnline", json_object_new_string("1"));
 				else
-					json_object_object_add(client, "isOnline", json_object_new_string("0"));
-#else
-				json_object_object_add(client, "isOnline", json_object_new_string("0"));
 #endif
+				json_object_object_add(client, "isOnline", json_object_new_string("0"));
 #endif
 			json_object_object_add(client, "ssid", json_object_new_string(p_client_info_tab->ssid[i]));
 			if(!strcmp(ipaddr, nvram_safe_get("login_ip_str"))){
@@ -11769,10 +11778,23 @@ wps_finish:
 		char event_msg[64] = {0};
 
 		if (!strcmp(action_mode, "firmware_check"))
+#if defined(MERLINR_VER_MAJOR_B)
+		{
+#endif
 			snprintf(event_msg, sizeof(event_msg), HTTPD_GENERIC_MSG, EID_HTTPD_FW_CHECK);
+#if defined(MERLINR_VER_MAJOR_B)
+			system("/usr/sbin/webs_update.sh");
+		}
+#endif
 		else if (!strcmp(action_mode, "firmware_upgrade"))
+#if defined(MERLINR_VER_MAJOR_B)
+		{
+#endif
 			snprintf(event_msg, sizeof(event_msg), HTTPD_GENERIC_MSG, EID_HTTPD_FW_UPGRADE);
-
+#if defined(MERLINR_VER_MAJOR_B)
+			system("/usr/sbin/webs_upgrade.sh");
+		}
+#endif
 		if (strlen(event_msg))
 			send_cfgmnt_event(event_msg);
 	}
@@ -12073,7 +12095,7 @@ do_upgrade_post(char *url, FILE *stream, int len, char *boundary)
 	int count, cnt;
 	long filelen;
 	int offset;
-#if defined(K3) || defined(K3C) || defined(SBRAC1900P) || defined(SBRAC3200P)
+#if defined(K3) || defined(K3C) || defined(SBRAC1900P) || defined(SBRAC3200P) || defined(R8000P)
 	int checkname=0;
 #endif
 #ifndef RTCONFIG_SMALL_FW_UPDATE
@@ -12123,11 +12145,14 @@ do_upgrade_post(char *url, FILE *stream, int len, char *boundary)
 #elif defined(SBRAC3200P)
 		if (strstr(buf, "SBRAC3200P"))
 			checkname=1;
+#elif defined(R8000P)
+		if (strstr(buf, "R7900P")||strstr(buf, "R8000P"))
+			checkname=1;
 #endif
 		if (!strncasecmp(buf, "Content-Disposition:", 20) && strstr(buf, "name=\"file\""))
 			break;
 	}
-#if defined(K3) || defined(K3C) || defined(SBRAC1900P) || defined(SBRAC3200P)
+#if defined(K3) || defined(K3C) || defined(SBRAC1900P) || defined(SBRAC3200P) || defined(R8000P)
 	if(checkname==0)
 		goto err;
 #endif
@@ -15809,6 +15834,24 @@ applydb_cgi(webs_t wp, char_t *urlPrefix, char_t *webDir, int arg,
 		strncpy(notify_cmd, action_script, 128);
 		strcat(scPath, notify_cmd);
 		snprintf(db_cmd, sizeof(db_cmd), " clean");
+		strcat(scPath, db_cmd);
+		strlcpy(SystemCmd, scPath, sizeof(SystemCmd));
+		sys_script("syscmd.sh");
+	}
+	else if(!strcmp(action_mode, "ks_app_install")){
+		snprintf(scPath, sizeof(scPath), "/jffs/softcenter/scripts/");
+		strncpy(notify_cmd, action_script, 128);
+		strcat(scPath, notify_cmd);
+		snprintf(db_cmd, sizeof(db_cmd), " ks_app_install");
+		strcat(scPath, db_cmd);
+		strlcpy(SystemCmd, scPath, sizeof(SystemCmd));
+		sys_script("syscmd.sh");
+	}
+	else if(!strcmp(action_mode, "ks_app_remove")){
+		snprintf(scPath, sizeof(scPath), "/jffs/softcenter/scripts/");
+		strncpy(notify_cmd, action_script, 128);
+		strcat(scPath, notify_cmd);
+		snprintf(db_cmd, sizeof(db_cmd), " ks_app_remove");
 		strcat(scPath, db_cmd);
 		strlcpy(SystemCmd, scPath, sizeof(SystemCmd));
 		sys_script("syscmd.sh");
@@ -23911,7 +23954,11 @@ ej_get_wan_lan_status(int eid, webs_t wp, int argc, char **argv)
 	struct json_object *wanLanLinkSpeed = NULL;
 	struct json_object *wanLanCount = NULL;
 
+#if defined(K3) || defined(R8000P)
+	fp = popen("rc Get_PhyStatus", "r");
+#else
 	fp = popen("ATE Get_WanLanStatus", "r");
+#endif
 	if (fp == NULL)
 		goto error;
 
@@ -25092,3 +25139,4 @@ struct AiMesh_whitelist AiMesh_whitelists[] = {
 	{ NULL, NULL }
 };
 #endif
+

@@ -23,9 +23,21 @@
 #if defined(RTCONFIG_LP5523)
 #include <lp5523led.h>
 #endif
+
 #if defined(K3)
 #include <k3.h>
+#elif defined(R8000P)
+#include <r7900p.h>
+#elif defined(K3C)
+#include <k3c.h>
+#elif defined(SBRAC1900P)
+#include "ac1900p.h"
+#elif defined(SBRAC3200P)
+#include "ac3200p.h"
+#else
+#include "merlinr.h"
 #endif
+
 #ifndef ARRAYSIZE
 #define ARRAYSIZE(a) (sizeof(a) / sizeof(a[0]))
 #endif /* ARRAYSIZE */
@@ -261,6 +273,11 @@ static int rctest_main(int argc, char *argv[])
 	else if (strcmp(argv[1], "rc_service")==0) {
 		notify_rc(argv[2]);
 	}
+#if defined(RTCONFIG_FRS_FEEDBACK)
+	else if (strcmp(argv[1], "sendfeedback")==0) {
+		start_sendfeedback();
+	}
+#endif
 #if defined(RTCONFIG_HTTPS) && defined(RTCONFIG_PUSH_EMAIL)
 	else if (strcmp(argv[1], "sendmail")==0) {
 		start_DSLsendmail();
@@ -277,18 +294,25 @@ static int rctest_main(int argc, char *argv[])
 	}
 #endif
 	else if (strcmp(argv[1], "GetPhyStatus")==0) {
-#if defined(K3)
+#if defined(R8000P)
+		printf("Get Phy status:%d\n", GetPhyStatus2(0));
+#elif defined(K3)
 		printf("Get Phy status:%d\n", GetPhyStatusk3(0));
 #else
 		printf("Get Phy status:%d\n", GetPhyStatus(0));
 #endif
 	}
-	else if (strcmp(argv[1], "GetExtPhyStatus")==0) {
+#if defined(K3) || defined(R8000P)
+	else if (strcmp(argv[1], "Get_PhyStatus")==0) {
 #if defined(K3)
-		printf("Get Ext Phy status:%d\n", GetPhyStatusk3(atoi(argv[2])));
-#else
-		printf("Get Ext Phy status:%d\n", GetPhyStatus(atoi(argv[2])));
+		GetPhyStatusk3(1);
+#elif defined(R7900P)
+		 GetPhyStatus2(1);
 #endif
+	}
+#endif
+	else if (strcmp(argv[1], "GetExtPhyStatus")==0) {
+		printf("Get Ext Phy status:%d\n", GetPhyStatus(atoi(argv[2])));
 	}
 #ifdef HND_ROTUER
 	else if (strcmp(argv[1], "memdw")==0) {
@@ -540,10 +564,15 @@ static int rctest_main(int argc, char *argv[])
 		else if (strcmp(argv[1], "gpior") == 0) {
 			printf("%d\n", get_gpio(atoi(argv[2])));
 		}
-#ifndef HND_ROUTER
+#if !defined(HND_ROUTER) || defined(R8000P)
 		else if (strcmp(argv[1], "gpiod") == 0) {
 			if (argc>=4) gpio_dir(atoi(argv[2]), atoi(argv[3]));
 		}
+#if defined(R8000P)
+		else if (strcmp(argv[1], "gpiodd") == 0) {
+			if (argc>=3) gpio_dis(atoi(argv[2]));
+		}
+#endif
 #endif
 		else if (strcmp(argv[1], "init_switch") == 0) {
 			init_switch();
@@ -867,6 +896,13 @@ static const applets_t applets[] = {
 	{ "disk_remove",		diskremove_main			},
 #endif
 	{ "firmware_check",		firmware_check_main		},
+#if defined(RTCONFIG_FRS_LIVE_UPDATE)
+#if defined(K3) || defined(K3C) || defined(SBRAC1900P) || defined(SBRAC3200P) || defined(R8000P) || defined(RTAC86U)
+	{ "firmware_check_update",	merlinr_firmware_check_update_main	},
+#else
+	{ "firmware_check_update",	firmware_check_update_main	},
+#endif
+#endif
 #ifdef RTAC68U
 	{ "firmware_enc_crc",		firmware_enc_crc_main		},
 	{ "fw_check",			fw_check_main			},
@@ -2010,3 +2046,4 @@ int main(int argc, char **argv)
 	printf("Unknown applet: %s\n", base);
 	return 0;
 }
+

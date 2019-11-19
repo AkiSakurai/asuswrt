@@ -158,7 +158,7 @@ config RTCONFIG_BRCM_NAND_JFFS2
 
 config RTCONFIG_JFFS_NVRAM
 	bool "NVRAM on JFFS support"
-	depends on RTCONFIG_BRCM_NAND_JFFS2
+	depends on RTCONFIG_BRCM_NAND_JFFS2  || RTCONFIG_UBIFS
 	default y
 
 config RTCONFIG_JFFS2
@@ -1800,3 +1800,20 @@ endchoice
 config RTCONFIG_SOFTCENTER
 	bool "softcenter"
 	default n
+
+config RTCONFIG_SMARTDNS
+	bool "smart dns"
+	default n
+
+config RTCONFIG_FRS_LIVE_UPDATE
+	bool "RTCONFIG_FRS_LIVE_UPDATE support"
+	default n
+
+config RTCONFIG_UUPLUGIN
+	bool "UU plugin support"
+	default n
+
+config RTCONFIG_FRS_FEEDBACK
+	bool "Feedback features Support"
+	default n
+

@@ -364,6 +364,15 @@ BRCM_UBI:
 		chdir("/");
 	}
 #endif
+
+#ifdef HND_ROUTER
+#ifdef RTCONFIG_JFFS_NVRAM
+	system("rm -rf /jffs/nvram_war");
+	jffs_nvram_init();
+	system("touch /jffs/nvram_war");
+#endif
+#endif
+
 	run_userfile(UBIFS_MNT_DIR, ".asusrouter", UBIFS_MNT_DIR, 3);
 
 #ifndef RTCONFIG_NVRAM_FILE
