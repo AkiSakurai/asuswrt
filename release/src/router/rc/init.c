@@ -9166,36 +9166,7 @@ NO_USB_CAP:
 #ifdef RTCONFIG_QCA
 	add_rc_support("qca");
 #endif
-	if(!nvram_get("modelname"))
-#if defined(K3)
-		nvram_set("modelname", "K3");
-#elif defined(K3C)
-		nvram_set("modelname", "K3C");
-#elif defined(SBRAC1900P)
-		nvram_set("modelname", "SBRAC1900P");
-#elif defined(SBRAC3200P)
-		nvram_set("modelname", "SBRAC3200P");
-#elif defined(R8000P)
-		nvram_set("modelname", "R8000P");
-#elif defined(RTAC3100)
-		nvram_set("modelname", "RTAC3100");
-#elif defined(BULECAVE)
-		nvram_set("modelname", "BULECAVE");
-#elif defined(RTAC68U)
-		nvram_set("modelname", "RTAC68U");
-#elif defined(RTAC68P)
-		nvram_set("modelname", "RTAC68P");
-#elif defined(RTAC3200)
-		nvram_set("modelname", "RTAC3200");
-#elif defined(GTAC2900)
-		nvram_set("modelname", "GTAC2900");
-#elif defined(GTAC5300)
-		nvram_set("modelname", "GTAC5300");
-#elif defined(RTAC86U)
-		nvram_set("modelname", "RTAC86U");
-#elif defined(RTACRH17)
-		nvram_set("modelname", "RTACRH17");
-#endif
+
 	return 0;
 }
 
@@ -11137,13 +11108,35 @@ dbg("boot/continue fail= %d/%d\n", nvram_get_int("Ate_boot_fail"),nvram_get_int(
 				_dprintf("....softcenter ok....\n");
 			}
 #endif
-			if (!nvram_get("modelname"))
-#if defined(RTAC86U)
-				nvram_set("modelname", "RT-AC86U");
+	if(!nvram_get("modelname"))
+#if defined(K3)
+		nvram_set("modelname", "K3");
+#elif defined(K3C)
+		nvram_set("modelname", "K3C");
+#elif defined(SBRAC1900P)
+		nvram_set("modelname", "SBRAC1900P");
+#elif defined(SBRAC3200P)
+		nvram_set("modelname", "SBRAC3200P");
+#elif defined(R8000P)
+		nvram_set("modelname", "R8000P");
+#elif defined(RTAC3100)
+		nvram_set("modelname", "RTAC3100");
+#elif defined(BULECAVE)
+		nvram_set("modelname", "BULECAVE");
+#elif defined(RTAC68U)
+		nvram_set("modelname", "RTAC68U");
+#elif defined(RTAC68P)
+		nvram_set("modelname", "RTAC68P");
+#elif defined(RTAC3200)
+		nvram_set("modelname", "RTAC3200");
 #elif defined(GTAC2900)
-				nvram_set("modelname", "GT-AC2900");
+		nvram_set("modelname", "GTAC2900");
 #elif defined(GTAC5300)
-				nvram_set("modelname", "GT-AC5300");
+		nvram_set("modelname", "GTAC5300");
+#elif defined(RTAC86U)
+		nvram_set("modelname", "RTAC86U");
+#elif defined(RTACRH17)
+		nvram_set("modelname", "RTACRH17");
 #endif
 			eval("insmod", "ip_set");
 			eval("insmod", "ip_set_bitmap_ip");
