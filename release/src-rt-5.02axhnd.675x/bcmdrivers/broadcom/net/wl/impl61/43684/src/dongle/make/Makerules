@@ -1,0 +1,2488 @@
+#
+# Makefile for standalone programs based on hndrte
+#
+# Copyright 2019 Broadcom
+#
+# This program is the proprietary software of Broadcom and/or
+# its licensors, and may only be used, duplicated, modified or distributed
+# pursuant to the terms and conditions of a separate, written license
+# agreement executed between you and Broadcom (an "Authorized License").
+# Except as set forth in an Authorized License, Broadcom grants no license
+# (express or implied), right to use, or waiver of any kind with respect to
+# the Software, and Broadcom expressly reserves all rights in and to the
+# Software and all intellectual property rights therein.  IF YOU HAVE NO
+# AUTHORIZED LICENSE, THEN YOU HAVE NO RIGHT TO USE THIS SOFTWARE IN ANY
+# WAY, AND SHOULD IMMEDIATELY NOTIFY BROADCOM AND DISCONTINUE ALL USE OF
+# THE SOFTWARE.
+#
+# Except as expressly set forth in the Authorized License,
+#
+# 1. This program, including its structure, sequence and organization,
+# constitutes the valuable trade secrets of Broadcom, and you shall use
+# all reasonable efforts to protect the confidentiality thereof, and to
+# use this information only in connection with your use of Broadcom
+# integrated circuit products.
+#
+# 2. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED
+# "AS IS" AND WITH ALL FAULTS AND BROADCOM MAKES NO PROMISES,
+# REPRESENTATIONS OR WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR
+# OTHERWISE, WITH RESPECT TO THE SOFTWARE.  BROADCOM SPECIFICALLY
+# DISCLAIMS ANY AND ALL IMPLIED WARRANTIES OF TITLE, MERCHANTABILITY,
+# NONINFRINGEMENT, FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES,
+# ACCURACY OR COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR
+# CORRESPONDENCE TO DESCRIPTION. YOU ASSUME THE ENTIRE RISK ARISING
+# OUT OF USE OR PERFORMANCE OF THE SOFTWARE.
+#
+# 3. TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL
+# BROADCOM OR ITS LICENSORS BE LIABLE FOR (i) CONSEQUENTIAL, INCIDENTAL,
+# SPECIAL, INDIRECT, OR EXEMPLARY DAMAGES WHATSOEVER ARISING OUT OF OR
+# IN ANY WAY RELATING TO YOUR USE OF OR INABILITY TO USE THE SOFTWARE EVEN
+# IF BROADCOM HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES; OR (ii)
+# ANY AMOUNT IN EXCESS OF THE AMOUNT ACTUALLY PAID FOR THE SOFTWARE ITSELF
+# OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
+# NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
+#
+# $Id: Makerules 767822 2018-09-26 22:29:36Z $
+#
+
+# validate basic requirements
+ifeq ($(EXE),)
+$(error EXE is not defined)
+endif
+ifeq ($(OBJECTS),)
+$(error OBJECTS is not defined)
+endif
+
+# Default is quiet/silent builds
+# use "V=1" on make command line to see execution of commands without explicit @
+# use "V=2" on make command line to see more verbose commands
+V ?= 0
+GE = $(shell if [ $(if $1,$1,0) -ge $2 ]; then echo "1"; else echo "0"; fi)
+ifeq ($(call GE,$(V),2),1)
+	QUIET := @>/dev/null
+	QUIET += # append a space to prevent shell errors
+	LOUD :=
+endif
+QUIET ?= @
+LOUD ?= @
+
+# Supported TARGET_ARCH: arm
+# Supported TARGET_CPU (arm): cm3[default] ca8 cr4 ca7
+
+# Toolchain. Use these variables in make command line to change the toolchain:
+#	CROSS_COMPILE: default to $(TARGET_ARCH)+$(TARGET_CPU)
+#	TOOLSROOT: default to /projects/hnd_tools/linux
+#	TOOLSVER: default to $(CROSS_COMPILE) specific
+#	TOOLSDIR: combine three variables above
+#
+
+ifeq ($(TARGET_ARCH),arm)
+	TARGET_CPU ?= cm3
+	ifeq ($(TARGET_CPU),cm3)
+		CROSS_COMPILE ?= arm-none-eabi
+	endif
+	ifeq ($(TARGET_CPU),ca8)
+		CROSS_COMPILE ?= arm-none-eabi
+	endif
+	ifeq ($(TARGET_CPU),cr4)
+		CROSS_COMPILE ?= arm-none-eabi
+	endif
+	ifeq ($(TARGET_CPU),ca7)
+		CROSS_COMPILE ?= arm-none-eabi
+	endif
+endif
+
+$(if $(CROSS_COMPILE),,$(error TARGET_ARCH $(TARGET_ARCH) is unknown))
+
+CC		:= $(CROSS_COMPILE)-gcc
+LD		:= $(CROSS_COMPILE)-ld
+NM		:= $(CROSS_COMPILE)-nm
+OBJDUMP		:= $(CROSS_COMPILE)-objdump
+OBJCOPY		:= $(CROSS_COMPILE)-objcopy
+SIZE		:= $(CROSS_COMPILE)-size
+AR		:= $(CROSS_COMPILE)-ar
+GDB		:= $(CROSS_COMPILE)-gdb
+STRIP		:= $(CROSS_COMPILE)-strip
+
+TRXTOOL		:= trx
+HEXDUMP		:= hexdump
+
+#
+# Dongle directory structure
+#
+DNGL_ROML_IMAGE_DIR := $(WLAN_TreeBaseA)/components
+DNGL_BLD_SCRIPT_DIR := $(WLAN_TreeBaseA)/components/chipscripts
+DNGL_TOP_MAKE_DIR := $(SRCBASE)/dongle/make
+ROML_SUPPORT_DIR := $(SRCBASE)/dongle/roml
+
+# Include directory for perl modules.
+PERL     := perl -I $(DNGL_BLD_SCRIPT_DIR)
+
+# Allow specific toolchain and/or version
+ifndef DONGLE_TOOLCHAIN_BASE
+	TOOLSROOT ?= /projects/bca/tools/linux
+else
+	TOOLSROOT := $(DONGLE_TOOLCHAIN_BASE)
+endif # DONGLE_TOOLCHAIN_BASE
+
+# Non-compilation utils need to be in path
+UTILSDIR  ?= /projects/bca/tools/linux/bin
+
+ifeq ($(CROSS_COMPILE),arm-none-eabi)
+	ifeq ($(TARGET_CPU),cm3)
+		TOOLSVER ?= 2009q3
+		TOOLSDIR ?= $(TOOLSROOT)/hndtools-armeabi-$(TOOLSVER)/bin
+		TOOLSCCFLAGS ?=
+		# This toolchain computes b.w instruction correctly
+		TCAMLD ?= $(TOOLSROOT)/hndtools-armeabi-2010.09/bin/$(CROSS_COMPILE)-ld
+	endif
+
+	ifeq ($(TARGET_CPU),cr4)
+		TOOLSVER ?= 2010.09
+		TOOLSDIR ?= $(TOOLSROOT)/hndtools-armeabi-$(TOOLSVER)/bin
+		TOOLSCCFLAGS ?=
+		TRXTOOL	:= trxv2
+		# TCAMLD = LD for 2010 toolchain
+		TCAMLD ?= $(LD)
+	endif
+	ifeq ($(TARGET_CPU),ca7)
+		TOOLSVER ?= 2013.11
+		TOOLSDIR ?= $(TOOLSROOT)/hndtools-armeabi-$(TOOLSVER)/bin
+		TOOLSCCFLAGS ?=
+		TRXTOOL	:= trxv2
+		# TCAMLD = LD for 2013 toolchain
+		TCAMLD ?= $(LD)
+	endif
+	ifeq ($(TARGET_CPU),ca8)
+		TOOLSCCFLAGS ?=
+	endif
+
+	# Prevents ROM<->RAM call convention problems by disabling optimizations.
+	# Note: newer gcc compiler versions (>=5.0) have renamed '-fuse-caller-save'
+	# to '-fipa-ra'.
+	TOOLSCCFLAGS += -fno-ipa-reference
+	ifeq (,$(filter $(TOOLSVER),2007q3 2009q3 2010.09))
+		TOOLSCCFLAGS += -fno-use-caller-save -fno-ipa-profile
+	endif
+
+	# The toolchain may rename some static function to save a few extra bytes.
+	# For 'full' ROM builds and the corresponding rom offload(s) this renaming will cause
+	# mismatches. To prevent the renaming of function at the cost of saving a few extra
+	# bytes NOFNRENAME can be set to 1 in the makefiles. For min rom builds this might
+	# not be required.
+	NOFNRENAME ?= 1
+	ifeq ($(NOFNRENAME),1)
+		TOOLSCCFLAGS += -fno-ipa-cp -fno-reorder-functions
+
+		# Additional compiler options to disable function renaming for toolchains > 2009q3.
+		ifneq ($(TOOLSVER),2009q3)
+		ifneq ($(TOOLSVER),2007q3)
+			TOOLSCCFLAGS += -fno-ipa-sra
+		endif
+		endif
+
+		ifeq ($(TOOLSVER),2011.09)
+			TCAMLD := $(LD)
+		endif
+	endif
+
+	# Use newer 'ld' to support OVERLAYs for logstrs in linker script files.
+	ifeq ($(TOOLSVER),2009q3)
+		LD := $(TOOLSROOT)/hndtools-armeabi-2011.09/bin/$(CROSS_COMPILE)-ld
+	endif
+endif
+
+ifeq ($(CROSS_COMPILE),arm-elf)
+	TOOLSVER ?= 4.0.1
+	TOOLSDIR ?= $(TOOLSROOT)/hndtools-armelf-linux-$(TOOLSVER)/bin
+	TOOLSCCFLAGS ?=
+endif
+
+# ToolChain Path Check
+TCPATHCHK ?= 1
+ifeq ($(TCPATHCHK),1)
+$(if $(wildcard $(TOOLSDIR)),,$(error $(TOOLSDIR): no such file or directory))
+endif
+
+# Add toolchain to the path
+# Append utils dir to path. Allow overrides if there are any $(PATH)
+PATH := $(UTILSDIR):$(TOOLSDIR):$(PATH)
+
+##################################################################
+# execution and cpu options
+##################################################################
+
+# Bootloader eXecutes In Place
+CONFIG_XIP	?= 0
+
+# decide if we need to turn on ROM processing or not
+ifeq ($(ROMLIB),1)
+	ROM_PROC := 1
+endif
+ifeq ($(ROMOFFLOAD),1)
+	ROM_PROC := 1
+endif
+
+# initialize ROM processing (ROML or ROM offload) related variables
+ifeq ($(ROM_PROC),1)
+	# turn on canned compiler switches to compile code without inlining
+	NOINLINE := 1
+	# turn on the sub process to make all static symbols extern
+	GLOBALIZE := 1
+	# turn on jump table sub process
+	BLDJMPTBL := 1
+	# No longer supported but set it here for scripts to consume
+	MINROML_BUILD ?= 0
+	# Place each string into its own section in the output file.
+	STRING_SECTIONS ?= 1
+endif
+
+# init JMPTBL mode variables
+# XXX JMPTBL JMPTBL_FULL JMPTBL_TCAN variable are no longer need but
+# XXX keep them here as some scripts still need parameters derived from them
+ifeq ($(BLDJMPTBL),1)
+	JMPTBL ?= 1
+	JMPTBL_FULL ?= 1
+	JMPTBL_TCAM ?= 1
+endif
+
+ifeq ($(JMPTBL_TCAM),1)
+	EXTRA_DFLAGS += -DBCMJMPTBL_TCAM
+	JMPTBL_FULL := 1
+endif
+ifeq ($(JMPTBL_FULL),1)
+	EXTRA_DFLAGS += -DBCMJMPTBL_FULL
+	JMPTBL := 1
+endif
+
+# Protect reclaimed symbols from being accessed by non-reclaimed
+RECLAIM_PROTECT_ENAB ?= 1
+
+# dump make internals
+define dump_make_vars
+    $(info =============================)
+    $(info ROMLIB=$(ROMLIB))
+    $(info ROMOFFLOAD=$(ROMOFFLOAD))
+    $(info GENROMTBL=$(GENROMTBL))
+    $(info GLOBALIZE=$(GLOBALIZE))
+    $(info STRING_SECTIONS=$(STRING_SECTIONS))
+    $(info RECLAIM_PROTECT_ENAB=$(RECLAIM_PROTECT_ENAB))
+    $(info BCM_ROM_AUTO_IOCTL_PATCH=$(BCM_ROM_AUTO_IOCTL_PATCH))
+    $(info CRC32BIN=$(CRC32BIN))
+    $(info =============================)
+endef
+
+##################################################################
+# cpu options
+##################################################################
+
+# ARCH/CPU specific compile/link flags
+DFLAGS		:= -Ulinux -D_RTE_ -DBCMDRIVER
+DFLAGS		+= -DSTRICT_GCC_WARNINGS
+
+IFLAGS		:= -I. -I$(SRCBASE)/rte/posix
+
+ifeq ($(TARGET_ARCH),arm)
+	ifeq ($(ROMLIB),1)
+		LIBFNFILTER := __aeabi_.*\|__.*_change_to_arm\|__udivsi3\|__divsi3\|__div0\|
+		LIBFNFILTER := $(LIBFNFILTER)__muldi3\|__umodsi3\|__modsi3
+	endif
+	ifeq ($(CONFIG_XIP),1)
+		DFLAGS		+= -DCONFIG_XIP
+	endif
+
+	CCFLAGS	= -fno-pic
+	ifeq ($(TARGET_CPU),cm3)
+		ifeq ($(CONFIG_XIP),1)
+			TEXT_START	?= 0x1e000000
+			DATA_START	?= 0x60040000
+		else
+			TEXT_START	?= 0
+			DATA_START	?= 0x100
+		endif
+		CCFLAGS	+= -mcpu=cortex-m3
+		CCFLAGS += -fdollars-in-identifiers
+#		# Flag available only in later compilers (-fno-inline-functions not good enough)
+		CFLAG_NIFCO = -fno-inline-functions-called-once
+		BOOTLOADER_PATCH_SIZE ?= 0
+	endif
+
+	ifeq ($(TARGET_CPU),cr4)
+		ifeq ($(CONFIG_XIP),1)
+			TEXT_START	?= 0x000f0000
+			DATA_START	?= 0x000d0000
+		else
+			TEXT_START	?= 0
+			BOOTLOADER_PATCH_SIZE ?= 0
+		endif
+		ifneq (,$(filter $(HBUS_ENAB), usb m2m))
+			BOOTLOADER_PATCH_SIZE := 0
+		endif
+		# TCAM Patchcount of 0 is unsupported for ARM CR4
+		ifeq ($(TCAM_PCNT),0)
+			TCAM_PCNT := 1
+		endif
+		CCFLAGS	+= -march=armv7-r -mcpu=cortex-r4
+		CCFLAGS += -fdollars-in-identifiers
+		# Flag available only in later compilers (-fno-inline-functions not good enough)
+		CFLAG_NIFCO = -fno-inline-functions-called-once
+	endif
+	ifeq ($(TARGET_CPU),ca7)
+		TEXT_START	?= 0x200000
+		BOOTLOADER_PATCH_SIZE ?= 0
+		CCFLAGS	+= -mcpu=cortex-a7 -DCA7
+		CCFLAGS += -DRTE_CACHED -DBCM_DMA_TRANSCOHERENT
+		CCFLAGS += -fdollars-in-identifiers
+		# Flag available only in later compilers (-fno-inline-functions not good enough)
+		CFLAG_NIFCO = -fno-inline-functions-called-once
+	endif
+	ifeq ($(TARGET_CPU),ca8)
+		ifeq ($(CONFIG_XIP),1)
+			TEXT_START	?= 0x20000000
+			DATA_START	?= 0x6006b000
+		else
+			TEXT_START	?= 0
+		endif
+		CCFLAGS	+= -mcpu=cortex-a8
+	endif
+
+	CFLAGS_IL_OFF   = -fno-ipa-pure-const
+
+	CCFLAGS += -mstructure-size-boundary=8
+
+	ifeq ($(FORCE_LONG_CALL),1)
+		CCFLAGS += -mlong-calls
+	endif
+
+	ifeq ($(THUMB),1)
+		CCFLAGS		+= -mthumb
+	endif
+
+	DISARCH	= -marm
+endif	# TARGET_ARCH=arm
+
+THUMB	?= 0
+
+####################################################################################################
+# FLAGS
+#    -ffreestanding: we supply our own bcmstdlib, so instruct compiler to not use default libs.
+#    -fno-common:  controls the placement of uninitialized global variables.  This has the effect
+#                  that if the same variable is declared (without extern) in two different
+#                  compilations, you get a multiple-definition error when you link them.
+#    -ffunction-sections: Place each function in its own section. Helps to decrease image size and
+#                         prevent linker errors from unused functions referring to undefined
+#                         functions when used with the --gc-sections linker option.
+####################################################################################################
+
+# Debug level 3 includes extra information, such as all the macro definitions present in the
+# program. It greatly increases the size of the debug (ELF) image.
+CFLAGS_DEBUG_LEVEL_DEFAULT := -g
+CFLAGS_DEBUG_LEVEL_EXTRA   := -g3
+# stabs+ format is more convenient for manual comparison of structs
+CFLAGS_DEBUG	:= -gdwarf-2 $(CFLAGS_DEBUG_LEVEL_DEFAULT)
+
+# Assembly compile flags
+ASFLAGS		+= -D_LANGUAGE_ASSEMBLY
+ASFLAGS		+= $(IFLAGS) $(EXTRA_IFLAGS) $(DFLAGS) $(EXTRA_DFLAGS) $(CCFLAGS) $(EXTRA_CFLAGS)
+ifdef TOOLSCCFLAGS
+ASFLAGS		+= $(TOOLSCCFLAGS)
+endif
+ASFLAGS		+= $(CFLAGS_DEBUG)
+#ASFLAGS	+= -Wa,-adhlns=$*.lst
+
+# C compiler flags
+# Flags that do not have to do with optimization
+CFLAGS		+= $(IFLAGS) $(EXTRA_IFLAGS) $(DFLAGS) $(EXTRA_DFLAGS) $(CCFLAGS) $(EXTRA_CFLAGS)
+ifdef TOOLSCCFLAGS
+CFLAGS		+= $(TOOLSCCFLAGS)
+endif
+CFLAGS		+= $(CFLAGS_DEBUG)
+#CFLAGS		+= -Wa,-adhlns=$*.lst
+# Other compiler flags
+CFLAGS		+= -ffreestanding
+CFLAGS		+= -fno-common -fno-short-enums
+CFLAGS		+= -ffunction-sections -fdata-sections
+# Compiler warning levels
+CFLAGS		+= -Wall -Werror -Wstrict-prototypes -Wmissing-prototypes -Wmissing-field-initializers \
+			-Wswitch -Wclobbered -Wmissing-parameter-type -Woverride-init -Wtype-limits \
+			-Wold-style-declaration -Wpointer-arith
+ifeq ($(call wlan_version_ge,$(shell PATH=$(PATH) $(CC) -dumpversion),4.6),TRUE)
+CFLAGS		+= -Werror=unused-but-set-variable
+endif
+ifneq ($(TARGET_CPU),cm3)
+# ThreadX cm3 port isn't -Wshadow clean
+CFLAGS		+= -Wshadow
+endif
+# To be enabled...
+# Enable -DSTRICT_GCC_WARNINGS above also when enabling -Wcast-qual
+#CFLAGS		+= -Wsign-compare -Wcast-qual
+CFLAGS += -Wcast-qual
+
+# Exceptions which must come at the end so that they can override earlier ones.
+CFLAGS		+= -Wno-strict-aliasing
+
+# GCC still inlines functions with the inline keyword unless -finline-limit=0 is used.
+# GCC still inlines stub functions unless '-fno-ipa-pure-const' is used.
+CFLAGS_IL_OFF	+= -fno-inline -fno-inline-small-functions -fno-inline-functions $(CFLAG_NIFCO) -finline-limit=0
+CFLAGS_IL_ON	= -finline-functions
+CFLAGS_IL	= $(if $(NOINLINE),$(CFLAGS_IL_OFF),$(CFLAGS_IL_ON))
+
+# Optimization level
+SIZE_OPTL := -Os
+PERF_OPTL := -O3
+
+# optimization makes it harder to step through source code using a debugger
+REDUCE_OPTIMIZATION_FOR_DEBUG ?= 0
+
+ifeq ($(REDUCE_OPTIMIZATION_FOR_DEBUG),0)
+# Two sets of flags, one optimized for size and one for performance
+CFLAGS_SIZE	= $(CFLAGS_IL)
+CFLAGS_PERF	= $(CFLAGS_IL_ON) $(PERF_OPTL)
+else
+CFLAGS_SIZE	= $(CFLAGS_IL_OFF)
+CFLAGS_PERF	= $(CFLAGS_SIZE)
+endif
+CFLAGS_SIZE	+= -fno-unroll-loops $(SIZE_OPTL)
+
+# --- BUZZZ_FUNC
+ifeq ($(BCM_BUZZZ_FUNC),1)
+#CFILES_BUZZZ_FUNC      += hnddma.c hnddma_rx.c hnddma_tx.c hnd_lbuf.c hndmem.c hnd_pkt.c hnd_pktpool.c hnd_pktq.c
+#CFILES_BUZZZ_FUNC      += rte_isr.c rte_pktfetch.c rte_pktpool.c threadx.c dngl_rte.c
+CFILES_BUZZZ_FUNC       += wl_rte.c wlc.c wlc_amsdu.c wlc_ampdu.c hnd_pktq.c hnddma.c
+CFILES_BUZZZ_FUNC       += wlc_tx.c wlc_txc.c
+CFILES_BUZZZ_FUNC       += wlc_cfp.c pciedev_data.c
+#CFILES_BUZZZ_FUNC      += wlc_scb.c
+#CFILES_BUZZZ_FUNC      += wlc_scb_ratesel.c wlc_rate.c wlc_rate_def.c wlc_rate_sel.c wlc_rspec.c wlc_bsscfg.c
+#CFILES_BUZZZ_FUNC      += wlc_bmac.c wlc_intr.c
+
+CFLAGS_BUZZZ_FUNC       = -finstrument-functions
+endif
+# --- BUZZZ_FUNC
+
+# C files always fully performance-optimized (inlined and less patchable)
+#CFILES_PERF	= prf.c rijndael-alg-fst.c sms4.c
+#CFILES_PERF	+= des.c rc4.c tkhash.c tkmic.c
+#CFILES_PERF	+= pciedev.c pciedev_data.c
+
+# Convert the string given in format of [./]xx/yy/ to format of xx.yy.
+# 1) strip off the possible leading './'
+# 2) replace '/' with '.'
+# There're the same set of .o files in different subdirs but all .o.depend
+# files are in the same subdir hence we need to give the corresponding
+# .o.depend files different names. Use the directory portion of the .o files
+# as the differentiator.
+define tgt_dir_to_pfx
+$(if $(subst ./,,$1),$(subst /,.,$(subst ./,,$1)),)
+endef
+
+# convert a target string ($@ that is) to file name (.$@.depend)
+define tgt_to_depend_fname
+.$(call tgt_dir_to_pfx,$(dir $1))$(notdir $1).depend
+endef
+
+# convert a target string ($@ that is) to file name (.$@.flags)
+define tgt_to_flags_fname
+.$(call tgt_dir_to_pfx,$(dir $1))$(notdir $1).flags
+endef
+
+# Mechanism to customize cflags based on the name of the file being compiled:
+# in all C compile lines below, use $(call file_cflags,$*.c) rather than $(CFLAGS).
+# The optional $2 parameter requests to generate a .depend file for $3.
+# We use $(CC) with "-MD -MF ... -MT ... -MP" to generate dependency data.
+# See http://make.mad-scientist.net/papers/advanced-auto-dependency-generation/#advanced
+# for background. There's also a sample standalone implementation at
+# $svn/groups/software/build/make/examples/recipe-changed with many comments.
+define file_cflags
+$(strip $(CFLAGS) \
+    $(if $2,-MD -MF $(call tgt_to_depend_fname,$3) -MT $3 -MP) \
+    $(if $(findstring $1,$(CFILES_PERF)),$(CFLAGS_PERF),$(CFLAGS_SIZE)) \
+    $(if $(findstring $1,$(CFILES_BUZZZ_FUNC)),$(CFLAGS_BUZZZ_FUNC)) \
+    $(if $(findstring $1,$(CFILES_NETX)),$(NETX_NOWERR),))
+endef
+
+# Mechanism to filter asflags based on the file being assembled:
+# in all .S assemble lines below, use $(call file_asflags,$*.S) rather than $(ASFLAGS).
+define file_asflags
+$(strip $(ASFLAGS) \
+    $(if $2,-MD -MF $(call tgt_to_depend_fname,$3) -MT $3 -MP) \
+    $(if $(findstring $1,$(ASFILES_NETX)),$(NETX_NOWERR),))
+endef
+
+# Common linker flags
+#     gc-sections: garbage collect unreferenced sections. Serves two purposes: decreases executable
+#                  image size, and prevents linker errors for unreferenced functions referencing
+#                  undefined functions.
+LDFLAGS		:= -static --gc-sections -no-warn-mismatch
+
+# Flags to exclude from CFLAGS and ASFLAGS when compiling ROM signatures
+# Without -Os, default is -O0
+ROMDASM_XFLAGS = $(SIZE_OPTL) $(PERF_OPTL) $(CFLAGS_DEBUG)
+ifeq ($(ROMLIB),1)
+	ifneq ($(DBG_ASSERT),1)
+		ROMDASM_XFLAGS += -DBCMDBG_ASSERT
+	endif
+else
+	ROMDASM_XFLAGS += -DBCMDBG_ASSERT
+endif
+
+MEM_WIDTH ?= 4
+FLOPS_SUPPORT ?= 0
+FLOPS_START ?= 0
+ADD_FLOPS_SECTION ?= 0
+
+ifeq ($(FLOPS_SUPPORT),1)
+	CFLAGS += -DFLOPS_SUPPORT
+	ASFLAGS += -DFLOPS_SUPPORT
+endif # FLOPS_SUPPORT
+
+include $(DNGL_TOP_MAKE_DIR)/../../../../main/src/.config
+MODEL = $(subst -,,$(BUILD_NAME))
+CFLAGS += -D$(MODEL)
+
+LDS   := $(basename $(EXE)).lds
+MAP   := $(basename $(EXE)).map
+OPT   := $(basename $(EXE)).opt
+DISAS := $(basename $(EXE)).dis
+
+##################################################################
+# Build ROM offload image(driver) on ROM library
+##################################################################
+
+NONEXISTFILE := __non_exist_file__
+
+ifeq ($(ROMOFFLOAD),1)
+	CHIP		?= 43xx
+	REV		?= a0
+	ROMLDIR		?= $(DNGL_ROML_IMAGE_DIR)/$(CHIP)$(ROMREV)/roml
+	ROMLVRTSDIR	?= $(ROML_SUPPORT_DIR)/$(CHIP)$(ROMREV)
+	ROMLLIB		?= roml.exe
+	ROMLPATCH	?= patch.c
+	ROMLPATCHOBJ	:= $(if $(wildcard $(ROMLDIR)/$(ROMLPATCH)),$(basename $(ROMLPATCH)).o)
+	ROMLSYMRAW	:= romtable.S
+	ROMLSYM_I	:= romtable.i
+	ROMLSYMRAW_AUTO	:= romtable_auto.S
+	ROMLSYM_I_AUTO  := romtable_auto.i
+ifeq ($(BCM_ROM_AUTO_ABANDON),1)
+	ROMLSYMCPP	:= $(ROMLSYM_I_AUTO)
+else
+	ROMLSYMCPP	:= $(ROMLSYM_I)
+endif
+	ROMLOPT         := $(basename $(ROMLLIB)).opt
+	ROMLBIN		:= $(basename $(ROMLLIB)).bin
+	ROMLMAP		:= $(basename $(ROMLLIB)).map
+	ROML_SYM_TBL	:= $(basename $(ROMLLIB)).sym_tbl
+	ROMLHEX		:= $(basename $(ROMLLIB)).hex
+	RAMFNSTUBSRC	:= ramfnstub.S
+	RAMFNSTUBSYM	:= ramfnstub.w
+	RAMFNSTUBOBJ	:= ramfnstub.o
+	ROMLMAPSRC	:= rommap.S
+	ROMLMAPOBJ	:= rommap.o
+	JMPTBLSRC	:= jmptbl_tcam.S
+	JMPTBLOBJ	:= jmptbl_tcam.o
+	PATCHTBLSRC	:= patchtbl_tcam.S
+	PATCHTBLOBJ	:= patchtbl_tcam.o
+	TCAMSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/build-tcam
+	ROMLLDSSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/replace-rommap
+	ROMLMAPSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/build-rommap
+	ROMLCHKRAMSCRIPT := $(DNGL_BLD_SCRIPT_DIR)/check-rammap
+	ROMLCHKSECSCRIPT := $(DNGL_BLD_SCRIPT_DIR)/check-ramsec
+	ROMLSTRSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/replace-rostrings
+	ROMLRODATASCRIPT:= $(DNGL_BLD_SCRIPT_DIR)/replace-rodata
+	ROMLBASEADDR	?= 0x800000
+	RCLMROSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/place-reclaimro
+	RAMFNSTUBSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/build-ramfnstub
+	ROMCTL		?= romctl.txt
+ifeq ($(wildcard $(ROMLVRTSDIR)/roml.chk),)
+$(error $(ROMLVRTSDIR)/roml.chk: no such file or directory)
+endif
+	ROMLCHKVAL      := roml.chk
+	ROMESC		:= $(NONEXISTFILE)
+	ROMESC_MIN	?= $(NONEXISTFILE)
+	RAMSEC		:= ramsec.txt
+	WEAKEN_OBJ	:= $(DNGL_BLD_SCRIPT_DIR)/weaken-obj
+	# This is the sizeof(patch_hdr_t) in hndtcam.h
+	PATCH_HDR_SIZE	:= 8
+	ROM_AUTO_IOCTL_PATCH_ROMLSYM := $(ROMLSYM_I)
+endif	# ROMOFFLOAD
+
+FLOPSCOPYSCRIPT		:= $(DNGL_BLD_SCRIPT_DIR)/flopscopy
+GENFLOPSVALUESCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/gen-flopsvalue
+
+####################################################################
+# Build ROM offload image(driver) on ROM library using auto abandon.
+####################################################################
+
+ifeq ($(BCM_ROM_AUTO_ABANDON),1)
+	ROMLSIGN          := romtable.md5sign
+	RAMLSIGN          := ramtable.md5sign
+ifeq ($(PATCHSIGN_ENABLED),1)
+	PATCHSIGN	  := patch.md5sign
+endif
+	RAMDASMDIR        := ramdasm
+	RAMNOPTOBJDIR     := $(RAMDASMDIR)/tmpobjs
+	ROMDASMSCRIPT     := $(DNGL_BLD_SCRIPT_DIR)/gen-romdasm
+	AUTOROMTBLSCRIPT  := $(DNGL_BLD_SCRIPT_DIR)/gen-autoromtbl
+	ABANDONDIFFSCRIPT := $(DNGL_BLD_SCRIPT_DIR)/abandon-diff.py
+	ABANDONDIFFLOG    := abandon.log
+	AUTO_ABN_CFG_FILE := $(if $(wildcard $(ROMLVRTSDIR)/autoabn.cfg),autoabn.cfg)
+	MANUAL_TCAM_CFG_FILE := $(if $(wildcard $(ROMLVRTSDIR)/manual_tcam_entries.cfg),manual_tcam_entries.cfg)
+	TARGET_ROMOFFLOAD_CFG := $(if $(wildcard $(ROMLVRTSDIR)/$(TARGET_CONFIG_NAME).cfg),$(TARGET_CONFIG_NAME).cfg)
+endif
+
+##################################################################
+# Common scripts/files.
+##################################################################
+
+MD5SUMSCRIPT            := $(DNGL_BLD_SCRIPT_DIR)/gen-md5sum
+ROMSYMDEPSCRIPT         := $(DNGL_BLD_SCRIPT_DIR)/gen-symdep
+ROMSYMDEPS              := romsym.dep
+ROMLXREF                := romtable.xref
+ROMDASMDIR              := romdasm
+ROMDASMDIR_IOCTL        := romdasm_ioctl
+ROMNOPTOBJDIR           := $(ROMDASMDIR)/tmpobjs
+ROMNOPTOBJDIR_IOCTL     := $(ROMDASMDIR_IOCTL)/tmpobjs
+IMGSIZESCRIPT           := $(DNGL_BLD_SCRIPT_DIR)/check-imgsize
+STRING_SECTIONS_SCRIPT  := $(DNGL_BLD_SCRIPT_DIR)/string-sections
+ROMLLOGSTRS             := $(if $(wildcard $(ROMLDIR)/roml.logstrs),roml.logstrs)
+ROML_PATCH_PREAMBLE_SRC := roml_patch_preamble.S
+ROML_PATCH_PREAMBLE_OBJ := $(ROML_PATCH_PREAMBLE_SRC:.S=.o)
+
+# If manual patches of ROM functions are enabled and the chip uses TCAM patching, then enable
+# ROM "patch preambles".
+ifneq ($(WLPATCHFILE),)
+      ROM_PATCH_PREAMBLE ?= 1
+endif	# WLPATCHFILE
+
+# ROM "patch preambles" are assembly instructions corresponding to the first couple instructions
+# for each ROM function. These instructions are executed by patch functions prior to branching
+# to an offset within the ROM functions. This avoids recursively hitting the TCAM entry located
+# at the beginning of the ROM function.
+ifeq ($(ROM_PATCH_PREAMBLE),1)
+   # Error check - ensure that the ROM preamble assembly file exists.
+   ifeq ($(wildcard $(ROMLDIR)/$(ROML_PATCH_PREAMBLE_SRC)),)
+      $(error "$(ROMLDIR)/$(ROML_PATCH_PREAMBLE_SRC): no such file or directory")
+   endif
+
+   # Compile the ROM preamble assembly file.
+   DFLAGS += -DBCMROM_PATCH_PREAMBLE
+   OBJECTS += $(ROML_PATCH_PREAMBLE_OBJ)
+endif # ROM_PATCH_PREAMBLE
+
+##################################################################
+# ROM library and files ROM library creation process produces
+##################################################################
+
+ifeq ($(ROMLIB),1)
+	CHIP		?= 43xx
+	REV		?= a0
+	ROMLDIR		?= $(DNGL_ROML_IMAGE_DIR)/$(CHIP)$(REV)/roml
+	ROMLSYM		?= romtable.S
+	ROMLSYM_MIN	?= romtable_min.S
+	ROMLSIGN	:= romtable.md5sign
+	ROMREFSLOG	:= romrefs.log
+	ROMDOBJSTGZ	:= romdobjs.tgz
+	ROMDBASEOBJSTGZ	:= $(ROMLDIR)/$(ROMDOBJSTGZ)
+	ROMDASMDIRBASE	:= romdasm-base
+	ROMDSTATSLOG	:= romdiff-stats.log
+	RAMFNSTUBSRC	:= ramfnstub.S
+	RAMFNSTUBSYM	:= ramfnstub.w
+	RAMFNSTUBOBJ	:= ramfnstub.o
+	ROMLLDSSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/replace-rommap
+	RAMFNSTUBSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/build-ramfnstub
+	ROMFNJMPSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/build_rom_idxtbl
+	ROMLCHKSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/check-rommap
+	ROMDASMSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/gen-romdasm
+	ROMDIFFSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/gen-romdiff
+	ROMXREFSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/gen-romxref
+	ROM_PATCH_PREAMBLE_SCRIPT := $(DNGL_BLD_SCRIPT_DIR)/gen-patch-preamble
+	ROM_SYM_CHECK	:= $(DNGL_BLD_SCRIPT_DIR)/rom_sym_check.sh
+	ROMESCSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/gen-romesc -t
+	ROMESC		:= $(NONEXISTFILE)
+	ROMCHKVALSCRIPT := $(DNGL_BLD_SCRIPT_DIR)/check-value-types
+$(if $(CHKROMMAP_OVERRIDE),\
+	$(if $(wildcard $(CHKROMMAP_OVERRIDE)),,\
+	$(error $(CHKROMMAP_OVERRIDE): no such file or directory)),\
+	$(error CHKROMMAP_OVERRIDE not defined))
+$(if $(ROMCTL),\
+	$(if $(wildcard $(ROMCTL)),,\
+	$(error $(ROMCTL): no such file or directory)),\
+	$(error ROMCTL not defined))
+	ROM_AUTO_IOCTL_PATCH_ROMLSYM := $(ROMLSYM)
+endif	# ROMLIB
+
+# globalizer
+GLOBALIZESCRIPT := $(DNGL_BLD_SCRIPT_DIR)/globalize
+
+# ucode download
+ifeq ($(UCDOWNLOAD),1)
+	UCODETRXFILE ?= ucode.trx
+	UCPROCPL ?= $(DNGL_BLD_SCRIPT_DIR)/ucprocess
+endif	# UCDOWNLOAD
+
+####################################################################
+# Build ROM offload image(driver) using auto IOCTL/IOVAR patching.
+####################################################################
+
+ifeq ($(BCM_ROM_AUTO_IOCTL_PATCH),1)
+	ROMLSIGN_IOCTL                          := romtable_ioctl.md5sign
+	ROM_AUTO_IOCTL_PATCH_SCRIPT             := $(DNGL_BLD_SCRIPT_DIR)/gen-auto-ioctl-patch
+	ROM_AUTO_IOCTL_PATCH_CFG_TEMPLATE_FILE  := $(ROML_SUPPORT_DIR)/autopatch_roml_template.cfg
+ifeq ($(ROMLIB),1)
+	ROM_AUTO_IOCTL_PATCH_CFG_FILE           := $(ROM_AUTO_IOCTL_PATCH_CFG_TEMPLATE_FILE)
+else
+	ROM_AUTO_IOCTL_PATCH_CFG_FILE           ?= $(ROMLVRTSDIR)/autopatch_ram.cfg
+endif
+	ROM_AUTO_IOCTL_PATCH_SUFFIX             := patch_ioctl
+	ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX    := patch_ioctl_checksum
+	ROM_AUTO_IOCTL_PATCH_FLAG               := -DWLC_PATCH_IOCTL
+	ROM_AUTO_IOCTL_PATCH_CHECKSUM_FLAG      := -DWLC_PATCH_IOCTL_CHECKSUM
+ifeq ($(ROMOFFLOAD),1)
+	ROM_AUTO_IOCTL_PATCH_FILE             = -DWLC_PATCH_IOCTL_FILE=\"$*_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).c\"
+endif
+	ROM_AUTO_IOCTL_PATCH_CHECKSUM_FILE    = -DWLC_PATCH_IOCTL_FILE=\"$*_$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX).c\"
+endif   # BCM_ROM_AUTO_IOCTL_PATCH
+
+##################################################################
+# Generate romtable.S
+##################################################################
+ifeq ($(GENROMTBL),1)
+	ROMTBLSCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/gen-romtbl
+	ROMTBLSYM	?= romtable_full.S
+	LDMAPCREF	:= .ldmap.cref
+	LDFLAGS		+= --cref -Map $(LDMAPCREF)
+endif
+
+##################################################################
+# Generate symbols for ROM base and sizes
+##################################################################
+# See if there is a mapfile.  We cannot use ROMLMAP since that is apparently
+# used or other purposes.
+ifeq ($(ROMLDIR),)
+	ROMLMAPFILE ?= $(DNGL_ROML_IMAGE_DIR)/$(CHIP)$(ROMREV)/roml/roml.map
+else
+	ROMLMAPFILE	?= $(ROMLDIR)/roml.map
+endif
+
+ifneq ($(wildcard $(ROMLMAPFILE)),)
+	ROMBASE	:= $(shell awk '/ text_start$$/ {print "0x" $$1}' $(ROMLMAPFILE))
+	ROMEND		:= $(shell awk '/ text_end$$/ {print "0x" $$1}' $(ROMLMAPFILE))
+	DFLAGS		+= -DROMBASE=$(ROMBASE) -DROMEND=$(ROMEND)
+endif
+
+##################################################################
+# linker script template path
+##################################################################
+# NOTE: Add flops section for romoffload and ram images if flops are supported.
+ifeq ($(ROMOFFLOAD),1)
+	LDSIN	?= $(SRCBASE)/shared/run-roml.lds.in
+ifeq ($(FLOPS_SUPPORT),1)
+	ADD_FLOPS_SECTION = 1
+endif # FLOPS_SUPPORT
+else	# !ROMOFFLOAD
+ifeq ($(ROMLIB),1)
+	LDSIN	?= $(SRCBASE)/shared/roml.lds.in
+else	# !ROMLIB
+ifeq ($(CONFIG_XIP),1)
+	LDSIN	?= $(SRCBASE)/shared/xip.lds.in
+else	# !CONFIG_XIP
+ifeq ($(SFBOOTLOADER_NONXIP),1)
+	LDSIN	?= $(SRCBASE)/dongle/rte/usbrdl/43236/sfbootloader_nonxip.lds.in
+else
+ifeq ($(DEVRAM_REMAP),1)
+	LDSIN	?= $(SRCBASE)/shared/run-remap.lds.in
+else
+	LDSIN	?= $(SRCBASE)/shared/run.lds.in
+ifeq ($(FLOPS_SUPPORT),1)
+	ADD_FLOPS_SECTION = 1
+endif # FLOPS_SUPPORT
+
+endif	# DEVRAM_REMAP
+endif	# SFBOOTLOADER_NONXIP
+endif	# !CONFIG_XIP
+endif	# !ROMLIB
+endif	# !ROMOFFLOAD
+
+##################################################################
+# common tools options
+##################################################################
+# common objcopy flags
+OBJCOPYFLAGS	:= -R .reginfo -R .note -R .comment -R .mdebug -R .logstrs -R .lognums -S
+ifeq ($(ROMLIB),1)
+OBJCOPYFLAGS	+= -R .data
+endif
+OBJCOPYBIN	:= $(OBJCOPY) -O binary $(OBJCOPYFLAGS)
+OBJCOPYSREC	:= $(OBJCOPY) -O srec --srec-forceS3 $(OBJCOPYFLAGS)
+
+# No support for swapqt output in TOOLSVER 2011.09, so use the 2010.09 version.
+ifeq ($(TOOLSVER),2011.09)
+	OBJCOPYQT	:= /projects/bca/tools/linux/hndtools-armeabi-2010.09/bin/arm-none-eabi-objcopy -O swapqt $(OBJCOPYFLAGS) $(EXTRAOBJCOPYFLAGS)
+else
+	OBJCOPYQT	:= $(OBJCOPY) -O swapqt $(OBJCOPYFLAGS) $(EXTRAOBJCOPYFLAGS)
+endif # TOOLSVER 2011.09
+
+MEM4TO8QT	:= $(SRCBASE)/tools/misc/qtmem4to8.pl
+# nm with common flags
+NMCMN	:= $(NM) --defined-only
+
+VSPLIT ?= 0
+# QT file prefix
+ifeq ($(TARGET_CPU),cr4)
+QTFILEPFX := armcr4_rom_
+QTEXTRAOPTIONS := -width 8
+else ifeq ($(TARGET_CPU),ca7)
+QTFILEPFX := armca7_rom_
+QTEXTRAOPTIONS := -width 8
+else
+QTFILEPFX := soc_rom_
+endif
+
+##################################################################
+# control auto file and flag dependencies
+##################################################################
+#ifdef LOCALBUILD
+# removed by mogrifier
+LOCALBUILD ?= 1
+#endif // endif
+ifeq ($(LOCALBUILD),1)
+# enable .*.flags files generation for local builds
+CFLAGSCHECK ?= 1
+# enable .*.depend files generation for local builds
+AUTODEPENDS ?= 1
+endif	# LOCALBUILD
+
+##################################################################
+# control .c -> .o process (two step .c -> .S -> .o; or one step)
+##################################################################
+ifeq ($(JMPTBL_FULL),1)
+	TWOSTEPCC	:= 1
+endif
+ifeq ($(GLOBALIZE),1)
+	TWOSTEPCC	:= 1
+endif
+TWOSTEPCC	?= 0
+
+##################################################################
+# check .bin file size
+##################################################################
+MAXSIZE ?= 0
+NOMAXSIZE ?= 0
+
+# Generate build errors by default for invalid types (e.g. arrays,
+# structs) found in the shared data (shdat) section for ROM
+# builds. (Disable build error by setting SHDAT_TYPES_ERR=0 on
+# build command line).
+SHDAT_TYPES_ERR ?= 1
+
+# Generate build errors by default for ROM auto patching config files issues.
+# (Disable build error by setting ROM_AUTO_PATCH_CONFIG_ERR=0 on build command line).
+ROM_AUTO_PATCH_CONFIG_ERR ?= 1
+
+##################################################################
+# common make rules
+##################################################################
+
+# delete the target in progress when any command exits with error
+.DELETE_ON_ERROR:
+
+# reset suffix list and built-in suffix rules
+.SUFFIXES:
+
+# keep these intermediate files
+.PRECIOUS: %.lds %.o %.S %.w %.c %.h \
+    .%.depend .%.flags %.sect_hdr %.sym_tbl
+
+##################################################################
+# !!!!!!!!!!!!!! implicit targets/rules start here !!!!!!!!!!!!!!!
+##################################################################
+
+# create C pre-processed source code
+%.i: %.c
+	$(CC) $(call file_cflags,$*.c) -E -P -o $@ $<
+
+%.i: %.S
+	$(CC) $(call file_asflags,$*.S) -E -P -o $@ $<
+
+# create assembly file
+%.s: %.c
+	$(CC) $(call file_cflags,$*.c) -S -P -o $@ $<
+
+# dump macros/defines
+%.dM %.dD %.dN %.dI: %.c
+	$(CC) $(call file_cflags,$*.c) -E -P -$(@:$*.%=%) -o $@ $<
+
+# Generate section headers file.
+%.sect_hdr: %.o
+	$(OBJDUMP) -h $< > $@
+
+%.sect_hdr: %.exe
+	$(OBJDUMP) -h $< > $@
+
+# Generate symbol table file.
+%.sym_tbl: %.o
+	$(OBJDUMP) -t $< > $@
+
+%.sym_tbl: %.exe
+	$(OBJDUMP) -t $< > $@
+
+##################################################################
+# compile source to object
+##################################################################
+# Auto patch config fille.
+ifeq ($(BCM_ROM_AUTO_IOCTL_PATCH),1)
+   ROMLRODATASCRIPT_PATCH_CFG := "-p $(ROM_AUTO_IOCTL_PATCH_CFG_FILE)"
+endif   # BCM_ROM_AUTO_IOCTL_PATCH
+
+# Create .*.flags file
+# $1 is one of the file_flags functions names
+# $2 is the $*.c or $*.S (base name of the prerequisite in %.o: %c rule),
+#    it is used as the input param $1 to $1 above
+# $3 is the $@ (target's full path)
+ifeq ($(CFLAGSCHECK),1)
+define file_flags
+	@( \
+	echo 'ifneq ($(strip $(call $1,$2)),$$(strip $$(call $1,$2)))' ; \
+	echo 'FILES_FLAGS_CHANGED += $3' ; \
+	echo 'endif' \
+	) > $(call tgt_to_flags_fname,$3)
+endef
+else
+define file_flags
+endef
+endif
+
+ifeq ($(ROMOFFLOAD),1)
+ifeq ($(wildcard $(ROMLDIR)/$(ROMLMAP)),)
+    $(error $(ROMLDIR)/$(ROMLMAP): no such file or directory)
+endif
+ROM_TEXT_START   := $(shell awk '/ text_start$$/ {print "0x" $$1}' $(ROMLDIR)/$(ROMLMAP))
+ROM_RODATA_END   := $(shell awk '/ rodata_end$$/ {print "0x" $$1}' $(ROMLDIR)/$(ROMLMAP))
+endif
+
+ifeq ($(ROMLIB),1)
+    JMPTBLMOD_ASFLAGS := $(filter-out $(ROMDASM_XFLAGS),$(ASFLAGS))
+else
+    JMPTBLMOD_ASFLAGS := $(ASFLAGS)
+endif
+
+# Uses two-stage compile to permit intermediate processing of assembler code.
+# Use "KEEPASM=1" on make command line to retain .S files for build debug and size analysis.
+ifeq ($(ROMLIB),1)
+%.o: %.c $(ROMLSYM)
+else
+%.o: %.c
+endif
+	$(QUIET)echo "Compiling $*.c -> $@"
+ifeq ($(TWOSTEPCC),1)
+	$(LOUD)$(CC) $(call file_cflags,$*.c,$(AUTODEPENDS),$@) \
+		-D__FILENAME_NOEXTN__=$* \
+		$(if $(filter $(<F),$(ROM_IOCTL_FILES)),$(ROM_AUTO_IOCTL_PATCH_FILE),) -S -o $*.S $<
+	@# Allow abandoning of static functions by making them global, giving them a globally unique
+	@# name in the process.
+	$(LOUD)$(PERL) $(GLOBALIZESCRIPT) $*.S $(subst -,_,$*)$$
+ifeq ($(STRING_SECTIONS),1)
+	$(LOUD)$(PERL) $(STRING_SECTIONS_SCRIPT) $*.S
+endif
+ifeq ($(ROMLIB),1)
+	@# When building a ROM library, searches . S file and locates functions that can be patched,
+	@# outputting them to romesc.txt. Uses romtable.S as an input file.
+	$(LOUD)$(PERL) $(ROMESCSCRIPT) $(ROMLSYM) $(ROMLSYM_MIN) $*.S $(ROMCTL) $(ROMESC) $(DATA_START)
+endif
+ifeq ($(ROMOFFLOAD),1)
+	@# Decreases RAM usage by modifying the .S file such that read-only ascii strings are read
+	@# from ROM instead of being contained in RAM.
+	$(LOUD)$(PERL) $(ROMLSTRSCRIPT) $(ROM_TEXT_START) $(ROMLBIN) $*.S
+	@# Decreases RAM usage by modifying the .S file. Any data in the RAM .rodata section that is
+	@# already present in the ROM is replaced by a symbol pointing to ROM.
+	$(LOUD)$(PERL) $(ROMLRODATASCRIPT) $(ROMLRODATASCRIPT_PATCH_CFG) \
+		$(ROM_TEXT_START) $(ROM_RODATA_END) $(ROMLMAP) $(ROMLBIN) $*.S
+	@# Places __FUNCTION__ strings unto new rodataini section
+	$(LOUD)$(PERL) $(RCLMROSCRIPT) $*.S
+endif
+	@# convert modified assembler file (.S) into an object file (.o)
+	$(LOUD)$(CC) $(call file_asflags,$*.c) -c -o $@ $*.S
+ifeq ($(ROMOFFLOAD),1)
+	$(LOUD)$(PERL) $(WEAKEN_OBJ) $(OBJCOPY) $@
+	@# Don't delete the $*.S, check-ramsec needs it and deletes it
+else
+	$(if $(KEEPASM),,$(LOUD)$(RM) $*.S)
+endif
+else	# !TWOSTEPCC
+	$(LOUD)$(CC) $(call file_cflags,$*.c,$(AUTODEPENDS),$@) -D_FILENAME_=\"$*.c\" -c -o $@ $<
+endif	# !TWOSTEPCC
+	$(call file_flags,file_cflags,$*.c,$@)
+
+%.o: %.S
+	$(QUIET)echo "Assembling $*.S -> $@"
+	$(LOUD)$(CC) $(call file_asflags,$*.S,$(AUTODEPENDS),$@) -c -o $@ $<
+	$(call file_flags,file_asflags,$*.S,$@)
+
+# unoptimized compiles
+ifeq ($(ROMDASM),1)
+# Mechanism to customize cflags based on the name of the file being compiled:
+# in all C compile lines below, use $(call rom_file_cflags,$*.c) rather than $(CFLAGS).
+# The optional $2 parameter requests to generate a .depend file for $3.
+# We use $(CC) with "-MD -MF ... -MT ... -MP" to generate dependency data.
+# See http://make.mad-scientist.net/papers/advanced-auto-dependency-generation/#advanced
+# for background. There's also a sample standalone implementation at
+# $svn/groups/software/build/make/examples/recipe-changed with many comments.
+define rom_file_cflags
+    $(filter-out $(ROMDASM_XFLAGS),$(call file_cflags,$1,$2,$3))
+endef
+
+# Mechanism to filter asflags based on the file being assembled:
+# in all .S assemble lines below, use $(call rom_file_asflags,$*.S) rather than $(ASFLAGS).
+define rom_file_asflags
+    $(filter-out $(ROMDASM_XFLAGS),$(call file_asflags,$1,$2,$3))
+endef
+
+# Create output folder for non-optimized objects files.
+$(ROMNOPTOBJDIR):
+	mkdir -p $@
+
+.PRECIOUS: $(ROMNOPTOBJDIR)/%.o.nopt
+$(ROMNOPTOBJDIR)/%.nopt.o: TGT_IAF=$(@:.o=.S)
+$(ROMNOPTOBJDIR)/%.nopt.o: %.c | $(ROMNOPTOBJDIR)
+	$(QUIET)echo "Compiling $*.c -> $@"
+	$(LOUD)$(CC) $(call rom_file_cflags,$*.c,$(AUTODEPENDS),$@) \
+		-D__FILENAME_NOEXTN__=$* $(ROM_AUTO_IOCTL_PATCH_CHECKSUM_FLAG) \
+		$(if $(filter $(<F),$(ROM_IOCTL_FILES)),$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_FILE),) \
+		-S -o $(TGT_IAF) $<
+	$(LOUD)$(PERL) $(GLOBALIZESCRIPT) $(TGT_IAF) $(subst -,_,$*)$$
+	$(LOUD)$(CC) $(call rom_file_asflags,$*.c) -c -o $@ $(TGT_IAF)
+	$(if $(KEEPASM),,$(LOUD)$(RM) $(TGT_IAF))
+	$(call file_flags,rom_file_cflags,$*.c,$@)
+
+$(ROMNOPTOBJDIR)/%.nopt.o: %.S | $(ROMNOPTOBJDIR)
+	$(QUIET)echo "Assembling $*.S -> $@"
+	$(LOUD)$(CC) $(call rom_file_asflags,$*.S,$(AUTODEPENDS),$@) -c -o $@ $<
+	$(call file_flags,rom_file_asflags,$*.S,$@)
+
+# Create output folder for non-optimized objects files.
+$(ROMNOPTOBJDIR_IOCTL):
+	mkdir -p $@
+
+.PRECIOUS: $(ROMNOPTOBJDIR_IOCTL)/%.o.nopt
+$(ROMNOPTOBJDIR_IOCTL)/%.nopt.o: TGT_IAF=$(@:.o=.S)
+$(ROMNOPTOBJDIR_IOCTL)/%.nopt.o: %.c | $(ROMNOPTOBJDIR_IOCTL)
+	$(QUIET)echo "Compiling $*.c -> $@"
+	$(LOUD)$(CC) $(call rom_file_cflags,$*.c,$(AUTODEPENDS),$@) \
+		-D__FILENAME_NOEXTN__=$* $(ROM_AUTO_IOCTL_PATCH_CHECKSUM_FLAG) \
+		$(if $(filter $(<F),$(ROM_IOCTL_FILES)),$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_FILE),) \
+		-S -o $(TGT_IAF) $<
+	$(LOUD)$(PERL) $(GLOBALIZESCRIPT) $(TGT_IAF) $(subst -,_,$*)$$
+	$(LOUD)$(CC) $(call rom_file_asflags,$*.c) -c -o $@ $(TGT_IAF)
+	$(if $(KEEPASM),,$(LOUD)$(RM) $(TGT_IAF))
+	$(call file_flags,rom_file_cflags,$*.c,$@)
+
+$(ROMNOPTOBJDIR_IOCTL)/%.nopt.o: %.S | $(ROMNOPTOBJDIR_IOCTL)
+	$(QUIET)echo "Assembling $*.S -> $@"
+	$(LOUD)$(CC) $(call rom_file_asflags,$*.S,$(AUTODEPENDS),$@) -c -o $@ $<
+	$(call file_flags,rom_file_asflags,$*.S,$@)
+endif	# ROMDASM
+
+%.chk: %.exe
+	@echo "Creating $< -> $@"
+	@$(PERL) $(ROMCHKVALSCRIPT) $< > $@
+
+%.logstrs: %.exe
+	@echo "Extracting $< -> $@"
+	@$(OBJCOPY) --set-section-flags .romlogstrs=load --set-section-flags .romlognums=load -j .romlogstrs -j .romlognums $< $@
+
+# Include generated single-case ("checksum") IOCTL/IOVAR handler functions.
+ifeq ($(BCM_ROM_AUTO_IOCTL_PATCH),1)
+   CFLAGS_NOPT_EXTRA  += $(ROM_AUTO_IOCTL_PATCH_CHECKSUM_FLAG)
+endif   # BCM_ROM_AUTO_IOCTL_PATCH
+
+ifeq ($(BCM_ROM_AUTO_ABANDON),1)
+
+# When generating unoptimized objects, use the same compiler version that was used to compile the
+# ROM. This will provide consistent disassembly for comparison purposes. The compiler version
+# can be determined from the the roml.opt file.
+ROM_CC_INFO := $(shell grep -A 1 '\[TOOLSDIR\]' $(ROMLDIR)/$(ROMLOPT) | tail -n 1)
+ROM_TOOLS_DIR := $(strip $(ROM_CC_INFO))
+$(if $(ROM_TOOLS_DIR),,$(error unknown ROM toolchain $(ROM_CC_INFO) in $(ROMLDIR)/$(ROMLOPT).))
+
+ROMCC = $(ROM_TOOLS_DIR)/$(CC)
+ROM_OBJDUMP = $(ROM_TOOLS_DIR)/$(OBJDUMP)
+$(if $(wildcard $(ROMCC)),,$(error $(ROMCC): no such file or directory))
+$(if $(wildcard $(ROM_OBJDUMP)),,$(error $(ROM_OBJDUMP): no such file or directory))
+
+# When generating unoptimized objects, use the same compiler options that were used to compile the
+# ROM. This will provide consistent disassembly for comparison purposes. The compiler options
+# can be determined from the the roml.opt file.
+#
+# Extract CFLAGS from roml.opt. Filter-out any -Dxxx defines and -I include directories. This
+# will leave the compiler options (e.g. -mcpu=cortex-m3).
+ROM_CFLAGS_ORIG := $(shell grep -A 1 '\[CFLAGS\]' $(ROMLDIR)/$(ROMLOPT))
+ROM_CFLAGS := $(filter-out [CFLAGS] -D% -U% -I%,$(ROM_CFLAGS_ORIG))
+$(if $(ROM_CFLAGS),,$(error ROM_CFLAGS does not exist))
+
+# Extract compiler optimization options from roml.opt. (For size and speed).
+ROM_CFLAGS_SIZE := $(shell grep -A 1 '\[CFLAGS_SIZE\]' $(ROMLDIR)/$(ROMLOPT))
+ROM_CFLAGS_SIZE := $(filter-out [CFLAGS_SIZE] -D% -U% -I%,$(ROM_CFLAGS_SIZE))
+ROM_CFLAGS_PERF := $(shell grep -A 1 '\[CFLAGS_PERF\]' $(ROMLDIR)/$(ROMLOPT))
+ROM_CFLAGS_PERF := $(filter-out [CFLAGS_PERF] -D% -U% -I%,$(ROM_CFLAGS_PERF))
+$(if $(ROM_CFLAGS_SIZE),,$(error ROM_CFLAGS_SIZE does not exist))
+$(if $(ROM_CFLAGS_PERF),,$(error ROM_CFLAGS_PERF does not exist))
+
+# Extract the compiler flags to exclude for unoptimized builds from roml.opt.
+ROMOPT_DASM_XFLAGS := $(shell grep -A 1 '\[ROMDASM_XFLAGS\]' $(ROMLDIR)/$(ROMLOPT))
+ROMOPT_DASM_XFLAGS := $(filter-out [ROMDASM_XFLAGS],$(ROMOPT_DASM_XFLAGS))
+ifeq ($(ROMOPT_DASM_XFLAGS),)
+	# ROMDASM_XFLAGS not present in roml.opt, use default settings. (For backwards compatibitiliy).
+	ROMOPT_DASM_XFLAGS := $(ROMDASM_XFLAGS)
+endif
+ROMOPT_DASM_XFLAGS += $(SIZE_OPTL) $(PERF_OPTL)
+
+# Enable run-time check for xxx_ENAB() macros. This is consistent with how the ROM is built.
+CFLAGS_NOPT_EXTRA += -DROM_ENAB_RUNTIME_CHECK
+
+# Use consistent BCMDBG_ERR (WL_ERROR) settings for non-optimized comparisons. Typically, ROMs
+# are built with BCMDBG_ERR enabled. Avoid function mismatches if BCMDBG_ERR is disabled for the
+# ROM offload build.
+ROM_DBG_ERR_FLAG := $(findstring -DBCMDBG_ERR,$(ROM_CFLAGS_ORIG))
+ifeq ($(ROM_DBG_ERR_FLAG),)
+	ROMOPT_DASM_XFLAGS          += -DBCMDBG_ERR
+	ROM_AUTO_IOCTL_PATCH_XFLAGS += -DBCMDBG_ERR
+else
+	CFLAGS_NOPT_EXTRA  += -DBCMDBG_ERR
+endif
+
+# Use consistent ERR_USE_EVENT_LOG (*_ERROR) settings for non-optimized comparisons. Typically, ROMs
+# are built with BCMDBG_ERR enabled. Avoid function mismatches if BCMDBG_ERR is disabled for the
+# ROM offload build.
+ROM_ERR_USE_EVENT_LOG_FLAG := $(findstring -DERR_USE_EVENT_LOG,$(ROM_CFLAGS_ORIG))
+ifeq ($(ROM_ERR_USE_EVENT_LOG_FLAG),)
+	ROMOPT_DASM_XFLAGS          += -DERR_USE_EVENT_LOG
+	ROM_AUTO_IOCTL_PATCH_XFLAGS += -DERR_USE_EVENT_LOG
+else
+	CFLAGS_NOPT_EXTRA  += -DERR_USE_EVENT_LOG
+endif
+
+# Use consistent ERR_USE_EVENT_LOG_RA (*_ERROR) settings for non-optimized comparisons. Typically, ROMs
+# are built with BCMDBG_ERR enabled. Avoid function mismatches if BCMDBG_ERR is disabled for the
+# ROM offload build.
+ROM_ERR_USE_EVENT_LOG_RA_FLAG := $(findstring -DERR_USE_EVENT_LOG_RA,$(ROM_CFLAGS_ORIG))
+ifeq ($(ROM_ERR_USE_EVENT_LOG_RA_FLAG),)
+	ROMOPT_DASM_XFLAGS          += -DERR_USE_EVENT_LOG_RA
+	ROM_AUTO_IOCTL_PATCH_XFLAGS += -DERR_USE_EVENT_LOG_RA
+else
+	CFLAGS_NOPT_EXTRA  += -DERR_USE_EVENT_LOG_RA
+endif
+
+# Use consistent BCMDBG_ERR_ROM_STRINGOFFLOAD settings for non-optimized comparisons. Compile
+# the non-optimized object files with BCMDBG_ERR_ROM_STRINGOFFLOAD if the ROM was also compiled
+# with this define in order to avoid false function mismatches.
+ROM_STRINGOFFLOAD_FLAG := $(findstring -DBCMDBG_ERR_ROM_STRINGOFFLOAD,$(ROM_CFLAGS_ORIG))
+ifneq ($(ROM_STRINGOFFLOAD_FLAG),)
+	CFLAGS_NOPT_EXTRA  += -DBCMDBG_ERR_ROM_STRINGOFFLOAD_SUPPORT
+endif
+
+# Use consistent BCMDBG_ASSERT settings for non-optimized comparisons. Typically, ROMs
+# are built with BCMDBG_ASSERT disabled. However, simulation ROMs may be built with BCMDBG_ASSERT
+# enabled. Avoid function mismatches if BCMDBG_ASSERT is enabled in ROM but disabled in the
+# ROM offload build.
+ROM_DBG_ASSERT_FLAG := $(findstring -DBCMDBG_ASSERT,$(ROM_CFLAGS_ORIG))
+ifneq ($(ROM_DBG_ASSERT_FLAG),)
+	CFLAGS_NOPT_EXTRA  += -DBCMDBG_ASSERT
+else
+	ROM_AUTO_IOCTL_PATCH_XFLAGS += -DBCMDBG_ASSERT
+endif
+
+# Construct the CFLAGS used for unoptimized compiles:
+#    - Use the same compiler options used to compile the ROM (filter-out -D's and -I's).
+#    - Add the same optimization compiler options used to compile ROM.
+#    - Filter out size compiler optimizations (to generate unoptimized objects for comparison).
+#    - Add -Dxxx defines and -I include paths from the current rom-offload build.
+#    - Add any extra flags for consistency with ROM (CFLAGS_NOPT_EXTRA).
+CFLAGS_NOPT := $(filter -D% -U% -I%,$(CFLAGS)) $(ROM_CFLAGS) $(CFLAGS_NOPT_EXTRA)
+
+# Mechanism to customize cflags based on the name of the file being compiled:
+# in all C compile lines below, use $(call file_cflags_nopt,$*.c) rather than $(CFLAGS_NOPT).
+define file_cflags_nopt
+$(strip $(filter-out $(ROMOPT_DASM_XFLAGS),$(CFLAGS_NOPT) \
+    $(if $(findstring $1,$(CFILES_PERF)),$(ROM_CFLAGS_PERF),$(ROM_CFLAGS_SIZE))) \
+    $(if $(findstring $1,$(CFILES_NETX)),$(NETX_NOWERR)) \
+    $(if $2,-MD -MF $(call tgt_to_depend_fname,$3) -MT $3 -MP))
+endef
+
+define file_asflags_nopt
+$(strip $(filter-out $(ROMOPT_DASM_XFLAGS),$(ASFLAGS_NOPT)) \
+    $(if $(findstring $1,$(CFILES_NETX)),$(NETX_NOWERR)) \
+    $(if $2,-MD -MF $(call tgt_to_depend_fname,$3) -MT $3 -MP))
+endef
+
+# Extract ASFLAGS from roml.opt. Filter-out any -Dxxx defines and -I include directories. This
+# will leave the assembler options (e.g. -mcpu=cortex-m3).
+ROM_ASFLAGS := $(shell grep -A 1 '\[ASFLAGS\]' $(ROMLDIR)/$(ROMLOPT))
+ROM_ASFLAGS := $(filter-out [ASFLAGS] -D% -U% -I%,$(ROM_ASFLAGS))
+$(if $(ROM_ASFLAGS),,$(error ROM_ASFLAGS does not exist))
+
+# Construct the ASFLAGS used for unoptimized compiles:
+#    - Use the same assembler options used to compile the ROM (filter-out -D's and -I's).
+#    - Filter out size compiler optimizations (to generate unoptimized objects for comparison).
+#    - Add -Dxxx defines and -I include paths from the current rom-offload build.
+#    - Add any extra flags for consistency with ROM (CFLAGS_NOPT_EXTRA).
+ASFLAGS_NOPT := $(filter-out $(ROMOPT_DASM_XFLAGS),$(ROM_ASFLAGS))
+ASFLAGS_NOPT := $(filter -D% -U% -I%,$(ASFLAGS)) $(ASFLAGS_NOPT) $(CFLAGS_NOPT_EXTRA)
+
+# Create output folder for non-optimized objects files.
+$(RAMNOPTOBJDIR):
+	mkdir -p $@
+
+# Compile C source to unoptimized object.
+.PRECIOUS: $(RAMNOPTOBJDIR)/%.nopt.o
+$(RAMNOPTOBJDIR)/%.nopt.o: TGT_IAF=$(@:.o=.S)
+$(RAMNOPTOBJDIR)/%.nopt.o: %.c | $(RAMNOPTOBJDIR)
+	$(QUIET)echo "Compiling $*.c -> $@"
+	$(LOUD)$(ROMCC) $(call file_cflags_nopt,$*.c,$(AUTODEPENDS),$@) \
+		-D__FILENAME_NOEXTN__=$* \
+		$(if $(filter $(<F),$(ROM_IOCTL_FILES)),$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_FILE),) \
+		-S -o $(TGT_IAF) $<
+	$(LOUD)$(PERL) $(GLOBALIZESCRIPT) $(TGT_IAF) $(subst -,_,$*)$$
+	$(LOUD)$(ROMCC) $(call file_asflags_nopt,$*.c) -c -o $@ $(TGT_IAF)
+	$(if $(KEEPASM),,$(LOUD)$(RM) $(TGT_IAF))
+	$(call file_flags,file_cflags_nopt,$*.c,$@)
+
+# Compile assembly source to unoptimized object.
+$(RAMNOPTOBJDIR)/%.nopt.o: %.S | $(RAMNOPTOBJDIR)
+	$(QUIET)echo "Assembling $*.S -> $@"
+	$(LOUD)$(ROMCC) $(call file_asflags_nopt,$*.S,$(AUTODEPENDS),$@) -c -o $@ $<
+	$(call file_flags,file_asflags_nopt,$*.S,$@)
+
+# Disassemble and post-process unoptimized object file. Outputs a disassembly listing file, which
+# contains a list of all symbols disassembled for the object file.
+$(RAMNOPTOBJDIR)/%.nopt.lst: $(RAMNOPTOBJDIR)/%.nopt.o $(ROMLSYMRAW) $(ROMDASMSCRIPT)
+	@echo "Disassembling $< -> $@"
+	@$(PERL) $(ROMDASMSCRIPT) -o $@ -i ".o" -e ".lst" $(ROMLSYMRAW) $< $(RAMDASMDIR) $(ROM_OBJDUMP) $(JMPTBL_FULL) 0
+endif	# BCM_ROM_AUTO_ABANDON
+
+##################################################################
+# create RAM stub functions file
+##################################################################
+%.S: %.w
+	@echo "Generating $< -> $@"
+ifeq ($(ROMOFFLOAD),1)
+	$(PERL) $(RAMFNSTUBSCRIPT) $(if $(FULL_RAM_TARGET_MAP),-r $(FULL_RAM_TARGET_MAP),) $(if $(TARGET_ROMOFFLOAD_CFG),-t $(TARGET_ROMOFFLOAD_CFG)) < $< > $@
+endif
+ifeq ($(ROMLIB),1)
+	$(PERL) $(RAMFNSTUBSCRIPT) < $< > $@
+endif
+
+##################################################################
+# create linker script
+##################################################################
+
+# Manual patch file section headers.
+ifneq ($(WLPATCHFILE),)
+   WLPATCHFILE_SECT_HDR := $(WLPATCHFILE:.c=.sect_hdr)
+   ROMLLDSSCRIPT_PATCH_SECT_HDR := "-h $(WLPATCHFILE_SECT_HDR)"
+endif
+
+ifdef HOFFLOAD_MODULES
+HOFFLOAD_DO_LDS := $(DNGL_BLD_SCRIPT_DIR)/hoffload_replace.py
+HOFFLOAD_DEPS = $(HOFFLOAD_CFG)
+endif # HOFFLOAD_MODULES
+
+%.lds: TMP_SYM=.tmp.$(notdir $@).in
+%.lds: TMP_LDS=.tmp.$(notdir $@)
+ifeq ($(ROMLIB),1)
+%.lds: $(OBJECTS) $(LDSIN) $(WLPATCHFILE_SECT_HDR) $(HOFFLOAD_DEPS) $(ROMLSYM)
+else
+%.lds: $(OBJECTS) $(LDSIN) $(WLPATCHFILE_SECT_HDR) $(HOFFLOAD_DEPS)
+endif
+ifeq ($(ROMOFFLOAD),1)
+	{ $(NMCMN) -n $(ROMLLIB) | sed /.*LANCHOR.*/d && $(OBJDUMP) -t $(ROMLLIB); } > $(TMP_SYM)
+	cat $(RAMFNSTUBSYM) > .tmp.$(RAMFNSTUBSRC)
+	$(CC) $(ASFLAGS) -E -P -o .tmp.$(RAMFNSTUBSYM) .tmp.$(RAMFNSTUBSRC)
+	$(strip $(PERL) $(ROMLCHKSECSCRIPT) $(if $(KEEPASM),,-rm) -o $(RAMSEC) $(patsubst %.o,%.S,$(filter %.o,$?)))
+	$(PERL) $(ROMLLDSSCRIPT) $(ROMLLDSSCRIPT_PATCH_SECT_HDR) $(if $(FULL_RAM_TARGET_MAP),-r $(FULL_RAM_TARGET_MAP),) \
+		$(ROMLSYMCPP) $(LDSIN) $(JMPTBL_FULL) $(MINROML_BUILD) $(ROMESC) $(DATA_START) \
+		$(ROMESC_MIN) $(BOOTLOADER_PATCH_SIZE) $(RAMFNSTUBSYM) \
+		.tmp.$(RAMFNSTUBSYM) $(if $(TCAM),1+$(TCAM_PCNT)+$(TCAM_SIZE)+$(PATCH_HDR_SIZE),0) $(RAMSEC) < $(TMP_SYM) > $(TMP_LDS)
+	$(if $(KEEPTMP),,$(LOUD)$(RM) .tmp.$(RAMFNSTUBSYM) .tmp.$(RAMFNSTUBSRC))
+	sed -e s/TARGET_ARCH/$(TARGET_ARCH)/g \
+	    -e s/TEXT_START/$(TEXT_START)/g \
+	    -e s/DATA_START/$(DATA_START)/g < $(TMP_LDS) > $@
+	$(if $(KEEPTMP),,$(LOUD)$(RM) $(TMP_SYM) $(TMP_LDS))
+else	# !ROMOFFLOAD
+ifeq ($(ROMLIB),1)
+	$(PERL) $(ROMLLDSSCRIPT) $(ROMLSYM) $(LDSIN) \
+		$(JMPTBL_FULL) $(MINROML_BUILD) $(ROMESC) $(DATA_START) $(ROMESC_MIN)< /dev/null > $(TMP_LDS)
+	sed -e s/TARGET_ARCH/$(TARGET_ARCH)/g \
+	    -e s/TEXT_START/$(TEXT_START)/g \
+	    -e s/DATA_START/$(DATA_START)/g < $(TMP_LDS) > $@
+	$(if $(KEEPTMP),,$(LOUD)$(RM) $(TMP_LDS))
+else	# !ROMLIB
+ifeq ($(CONFIG_XIP),1)
+	sed -e s/TARGET_ARCH/$(TARGET_ARCH)/g \
+	    -e s/TEXT_START/$(TEXT_START)/g \
+	    -e s/DATA_START/$(DATA_START)/g < $(LDSIN) > $@
+else	# !CONFIG_XIP
+ifeq ($(DEVRAM_REMAP),1)
+	sed -e s/TARGET_ARCH/$(TARGET_ARCH)/g \
+	    -e s/RELOC_TEXT_START/$(RELOC_TEXT_START)/g \
+	    -e s/TEXT_START/$(TEXT_START)/g < $(LDSIN) > $@
+else
+	sed -e s/TARGET_ARCH/$(TARGET_ARCH)/g \
+	    -e s/TEXT_START/$(TEXT_START)/g < $(LDSIN) > $@
+endif	# DEVRAM_REMAP
+endif	# !CONFIG_XIP
+endif	# !ROMLIB
+endif	# !ROMOFFLOAD
+ifdef HOFFLOAD_MODULES
+	$(HOFFLOAD_DO_LDS) -c $(HOFFLOAD_CFG) -l $@
+endif # HOFFLOAD_MODULES
+ifeq ($(SR_ATTACH_MOVE),1)
+	sed -i -e 's/SR_MEM_START/. = $(SR_MEM_START);/g' \
+	    -e 's/SR_ATTACH_MOVE_MAX_SIZE/$(SR_MEMSIZE) - MAX($(SR_ASMSIZE), $(MAXSZ_NVRAM_VARS))/g' $@
+else
+	sed -i -e s/SR_MEM_START//g \
+	    -e s/SR_ATTACH_MOVE_MAX_SIZE/0/g $@
+endif
+ifeq ($(FLOPS_SUPPORT),1)
+ifeq ($(ADD_FLOPS_SECTION),1)
+	$(LOUD)$(PERL) $(GENFLOPSVALUESCRIPT) -addsection $@ $(FLOPS_START) $(TEXT_START)
+endif
+endif # FLOPS_SUPPORT
+ifeq ($(RECLAIM_PROTECT_ENAB),1)
+	sed -e '/SECTIONS/a \/DISCARD\/ : { *(.textini2.*) *(.dataini2.*) *(.textini3.*) *(.dataini3.*) }' $@ > $@.reclaim
+endif
+	$(LOUD)$(PERL) $(GENFLOPSVALUESCRIPT) -delsection $@
+
+##################################################################
+# create ELF file
+##################################################################
+ifeq ($(ROMLIB),1)
+%.exe:	%.lds $(ROMLLOGSTRS) $(ROMLSYM)
+else
+%.exe:	%.lds $(ROMLLOGSTRS)
+endif
+ifeq ($(ROMOFFLOAD),1)
+	@echo "------ Patching Linker Stage 2: Link $(PATCHTBLOBJ) ------"
+	$(LD) $(LDFLAGS) -T $*.lds -Map $*.ldmap -o $@ \
+		$(sort $(OBJECTS) $(RAMFNSTUBOBJ) $(ROMFNJMPOBJ) $(ROMLPATCHOBJ) $(ROMLMAPOBJ) $(HOFFLOAD_JMP_OBJS) $(PATCHTBLOBJ) $(ROMLLOGSTRS)) $(LIB)
+	$(OBJDUMP) -h $@ > $*.section_hdrs
+else	# !ROMOFFLOAD
+ifeq ($(ROMLIB),1)
+	@echo "-------- link pass 3: generate ROM library --------"
+	@( \
+	objs=""; \
+	stub=`cat 2$(RAMFNSTUBSYM)` && \
+	match=`echo $$stub | sed -e "s/ /\\\\\\\\|/g"` && \
+	for obj in $(OBJECTS); do \
+		echo "Postprocessing $$obj -> .tmp.$$obj"; \
+		weak=`$(NMCMN) $$obj | \
+			sed -n "s/^[0-9a-fA-F]\{8\} T \($$match\)$$/\1/p" | \
+			sed -e "s/\(.*\)/--weaken-symbol \1/"` && \
+		$(OBJCOPY) $$weak $$obj .tmp.$$obj; \
+	done \
+	)
+	$(LD) $(LDFLAGS) -T $*.lds -Map $*.ldmap -o $@ $(OBJECTS:%=.tmp.%) 2$(RAMFNSTUBOBJ) $(ROMFNJMPOBJ) $(LIB)
+	$(if $(KEEPTMP),,$(RM) $(OBJECTS:%=.tmp.%))
+	{ $(NMCMN) -n $@ | sed /.*LANCHOR.*/d && $(OBJDUMP) -t $@; } > .tmp.$@.in
+	$(PERL) $(ROMLCHKSCRIPT) $(if $(CHKROMMAP_OVERRIDE),-d $(CHKROMMAP_OVERRIDE),) $(ROMLSYM) $@ $(GDB) $(SHDAT_TYPES_ERR) < .tmp.$@.in
+	$(if $(KEEPTMP),,$(LOUD)$(RM) .tmp.$@.in)
+else	# !ROMLIB
+	$(LD) $(LDFLAGS) -T $*.lds -o $@ $(OBJECTS) $(HOFFLOAD_JMP_OBJS) $(LIB)
+endif	# !ROMLIB
+endif	# !ROMOFFLOAD
+ifeq ($(UCDOWNLOAD),1)
+	$(PERL) $(UCPROCPL) $(OBJDUMP) $(OBJCOPY) $(P2PUCODE) $(WLTUNEFILE) $(WLCFGDIR) $(BT_FLAG)
+endif	# UCDOWNLOAD
+ifneq ($(ROMLIB),1)
+ifeq ($(FLOPS_SUPPORT),1)
+	$(PERL) $(FLOPSCOPYSCRIPT) $@ $(TEXT_START) $(FLOPS_START) $(HBUS_ENAB) $(BOOTLOADER_PATCH_SIZE)
+endif # FLOPS_SUPPORT
+endif # !ROMLIB
+
+##################################################################
+# extract code/data from ELF file
+##################################################################
+%.bin:	%.exe %.map
+ifeq ($(CRC32BIN),1)
+	$(OBJCOPYBIN) --pad-to 0x$(shell grep " _end" $(MAP) | cut -d " " -f 1) $< $@
+	addcrc $@
+	fwtag -f $@ -p $(SRCBASE) -i $(UTILSDIR)/fwtag.ini -u $(SRCBASE)/../$(UCODE_RAM_DIR) -s $(SRCBASE)/../components/proto/
+else
+	$(OBJCOPYBIN) $< $@
+endif
+ifeq ($(ROMOFFLOAD),1)
+	$(LOUD)( \
+	{ $(NMCMN) -n $(ROMLLIB) | sed /.*LANCHOR.*/d && echo "SPLIT" && \
+	  cat $(MAP) && echo "SPLIT" && \
+	  $(OBJDUMP) -t $<; \
+	} > .tmp.$@.in && \
+	grep -e "^[^#].*\bcheck_value\b" $(ROMCTL) | \
+		sed -e s/check_value//g > .tmp.$@.lst && \
+	if [ ! -z "$(ROMLCHKVAL)" ]; then \
+		cat $(ROMLCHKVAL) >> .tmp.$@.lst; \
+	fi && \
+	$(PERL) $(ROMLCHKRAMSCRIPT) .tmp.$@.lst $(ROMLLIB) $< $(JMPTBLOBJ).dis, $(TARGET_CPU) $(GDB) < .tmp.$@.in; \
+	if [ "$$?" != "0" ]; then \
+		exit 2; \
+	fi; \
+	$(if $(KEEPTMP),,$(RM) .tmp.$@.in .tmp.$@.lst;) \
+	)
+endif
+
+%.srec: %.exe
+	$(OBJCOPYSREC) $< $@
+	@if [ `stat -c %s $@` -le 60 ]; then \
+		echo >&2 "$<: empty text"; \
+		$(RM) $@; \
+		exit 3; \
+	fi
+
+%.qt:	%.exe
+	$(OBJCOPYQT) $< $@
+ifeq ($(MEM_WIDTH),8)
+	@( \
+	$(PERL) $(MEM4TO8QT) $@ > .tmp.$@ && \
+	mv .tmp.$@ $@ \
+	)
+endif
+	@( \
+	duplicate="`cat $@ | awk '{print $$1}' | uniq -d`" ; \
+	if [ "$$duplicate" ]; then \
+		echo >&2 "ERROR: duplicate Address[es] detected in qt file"; \
+		echo >&2 "ERROR:Duplicate Addresses are"; \
+		echo >&2 "ERROR:$$duplicate"; \
+		exit 11;\
+	fi; \
+	)
+
+# create qt file with trx header prefixed
+%.qt.trx:	%.bin.trx
+	$(OBJCOPYQT) -I binary $< $@
+ifeq ($(MEM_WIDTH),8)
+	@( \
+	$(PERL) $(MEM4TO8QT) $@ > .tmp.$@ && \
+	mv .tmp.$@ $@ \
+	)
+endif
+	@( \
+	duplicate="`cat $@ | awk '{print $$1}' | uniq -d`" ; \
+	if [ "$$duplicate" ]; then \
+		echo >&2 "ERROR: duplicate Address[es] detected in qt file"; \
+		echo >&2 "ERROR:Duplicate Addresses are"; \
+		echo >&2 "ERROR:$$duplicate"; \
+		exit 11;\
+	fi; \
+	)
+
+# create disassembly file
+%.dis:	%.exe
+	$(OBJDUMP) -d $(DISARCH) $< > $@
+	$(OBJDUMP) -S $(DISARCH) $< > $@.src
+
+# create map file
+%.map:	%.exe
+	$(NMCMN) -n $< | sed /.*LANCHOR.*/d > $@
+ifeq ($(ROMOFFLOAD),1)
+	@( \
+	differr="`diff -q --ignore-matching-lines=__tcpatched \
+	                  --ignore-matching-lines=\"00000000 t\" \
+	                  --ignore-matching-lines=\"logstr\" \
+	                  --ignore-matching-lines=\"fmtnum\" \
+	                  --ignore-matching-lines=\"000000.. . excvtbl\" \
+	                  --ignore-matching-lines=\"00000000 . startup\" \
+	                  --ignore-matching-lines=\".*_lognums_offset\" \
+	                  --ignore-matching-lines=\"\.LANCHOR" \
+	                  --ignore-matching-lines="_rend3" \
+	                  --ignore-matching-lines="_rstart3" \
+	                  --ignore-matching-lines=\"_srm_end\" \
+	                  --ignore-matching-lines=\"_srm_start\" \
+	                  1$(EXE).map $@ | cut -d' ' -f5`"; \
+	if [ "$$differr" == "differ" ]; then \
+		echo >&2 "   WARN:"; \
+		echo >&2 "   WARN: TCAM: Possible jmptbl instruction mismatch!"; \
+		echo >&2 "   WARN:"; \
+	fi; \
+	)
+endif
+
+# create sizing data file (append sizes to nm output)
+%.map-size: export SHELLOPTS := pipefail
+%.map-size: %.exe
+	$(NMCMN) -nS -f posix $< | awk '{if ($$3=="") {$$3="\t\t"} \
+			if ($$4!="") {$$4=" "$$4} \
+			printf("%s %s %s%s\n",$$3,$$2,$$1,$$4)}' > $@
+
+##################################################################
+# create other formats from BIN
+##################################################################
+
+# build uncompressed trx image for usb
+%.bin.trx: %.bin
+	@( \
+	BIN_SIZE="`stat -c %s $<`"; \
+	$(TRXTOOL) -f $(TRX_FLAGS) -x $$BIN_SIZE -x $(TRX_OFFSET1) $(BIN_TRX_OPTIONS_SUFFIX) -o $@ \
+		$< $(UCODETRXFILE); \
+	)
+
+# build Binary Eventlog Archive for PCIe event logging
+%.bea: %.bin $(ROMLBIN) $(LOGSTRS).bin $(MAP) $(ROMLBIN) $(ROMLMAP)
+	python $(SRCBASE)/tools/build/binary_eventlog_archive.py --create \
+		--rtecdc_bin $< --logstrs_bin $(LOGSTRS).bin --rtecdc_map $(MAP) \
+		--roml_bin $(ROMLBIN) --roml_map $(ROMLMAP) $@
+
+# build romlsim offload image
+%.romlsim.trx: %.bin
+	@( \
+	TMPFILE="tmp_$@" && \
+	$(RM) $$TMPFILE && \
+	cat $(BIN) $(ROMLBIN) > $$TMPFILE && \
+	RAMSIZE="`stat -c %s $(BIN)`" && \
+	ROMLSIZE="`stat -L -c %s $(ROMLBIN)`" && \
+	ROMLLMA="`cat $(ROMLMAP) | sed -n "s/^\([0-9a-fA-F]\{8\}\) . text_start$$/\1/p"`" && \
+	if [ "$$ROMLLMA" = "" ]; then \
+		exit 1; \
+	fi && \
+	$(TRXTOOL) -f 0x0010 -x $$RAMSIZE -x $$ROMLSIZE -x 0x$$ROMLLMA -o $@ $$TMPFILE && \
+	$(RM) $$TMPFILE \
+	)
+
+ifdef CHIP
+ifneq ($(CHIP),43xx)
+# Build a .clm_bin from a .clm specification file in the src/wl/clm/types directory.  Also build
+# the .clm_blob from the .clm_bin.  The former is actually needed for a clm download.
+#
+# Clm blob has the required chipid/num to be validated by clm download. Because the CHIP make variable
+# is an ascii string and the chip id's are hex if four digits and decimal if five digits the
+# CHIPID make variable is created to have the always decimal form via shell/bash trickery.
+# The master, i.e. "global", xml is components/clm-private/wlc_clm_data.xml.
+# Optionally use a "per project" xml file if a matching one exists for the .clm file used.  For example
+# if src/wl/clm/types/4355_zumba.clm exists then use \
+	src/wl/clm/private/wlc_clm_data_4355_zumba.xml else use
+# the master xml.  Note that the per project xml comes from the proj trunk/branch, i.e. src/wl/clm/private,
+# not the clm-private component.
+
+# Below we have two almost identical target rules.  The only difference is their xml file dependency.  Make will
+# prefer the first if there are two identical "stem" matches.  This means that we will prefer to use a xml file
+# based on the stem name (the .clm file) over the hardcoded CLM_XML_NAME.  The identical recipe is shared via a
+# multi-line variable. Note the rule specific make variable definition, CHIPID, is common by make semantics.
+%.clm_bin $.clm_blob: CHIPID := $(shell if [[ $(CHIP) -gt 5999 ]] ; then echo $(CHIP); else echo $$((0x$(CHIP))); fi)
+
+%.clm_bin %.clm_blob: $(SRCBASE)/wl/clm/private/wlc_clm_data_%.xml $(SRCBASE)/wl/clm/types/%.clm
+	$(CLM_BIN_RECIPE)
+%.clm_bin %.clm_blob: $(SRCBASE)/../components/clm-private/wlc_clm_data.xml $(SRCBASE)/wl/clm/types/%.clm
+	$(CLM_BIN_RECIPE)
+
+define CLM_BIN_RECIPE
+	@echo ClmCompiling config file $*.clm to $*.clm_bin and $*.clm_blob using $<. Config file content:
+	cat $(SRCBASE)/wl/clm/types/$*.clm
+	$(LOUD)$(SRCBASE)/../components/clm-bin/ClmCompiler.py --print_options --clmapi_include_dir $(SRCBASE)/../components/clm-api/include --bcmwifi_include_dir $(SRCBASE)/shared/bcmwifi/include --config_file $(SRCBASE)/wl/clm/types/$*.clm $< $*.c
+	#@echo C compile $*.c to $*.o
+	$(LOUD)$(CC) $(call file_cflags,$*.c,$(AUTODEPENDS),$@) -D_FILENAME_=\"$*.c\" -c -o $*.o $*.c
+	#@echo Linking $*.o to $*.exe
+	( \
+		echo 'SECTIONS {'; \
+		echo '  . = 0;'; \
+		echo '  .clmdata : {'; \
+		echo '      *(.*.clm_header)'; \
+		echo '      *(.rodata.*)'; \
+		echo '   }'; \
+		echo '}'; \
+	) >$*.lds
+	$(LD) -S -Map=$*.map -T $*.lds -o $*.exe $*.o
+	#$(SIZE) $*.exe
+	#@echo objcopy $*.exe to $*.clm_bin
+	$(OBJCOPYBIN) $*.exe $*.clm_bin
+	@echo MSFing $*.clm_bin to $*.clm_blob using chipid 0x$$(printf '%x' $(CHIPID))
+	python2.7 $(SRCBASE)/tools/build/msf.py -f $*.clm_bin -o $*.clm_blob -i '$(CHIPID)'
+	$(RM) $*.o $*.lds $*.map $*.exe
+endef
+
+# Build a .txcap_bin from a .txcap specification file in the src/wl/txcap/types directory.  Also build
+# a .txcap_blob from the .txcap_bin.  The former is actually needed for a txcap download.
+#
+# Txcap blob has the required chipid/num to be validated by txcap download. Because the CHIP make variable
+# is an ascii string and the chip id's are hex if four digits and decimal if five digits the
+# CHIPID make variable is created to have the always decimal form via shell/bash trickery.
+%.txcap_bin: CHIPID := $(shell if [ $(CHIP) -gt 5999 ] ; then echo $(CHIP); else echo $$((0x$(CHIP))); fi)
+%.txcap_bin: $(SRCBASE)/wl/txcap/types/%.txcap
+	@echo TxcapCompiling config file $*.txcap to $*.txcap_bin and $*.txcap_blob.
+	python $(SRCBASE)/wl/txcap/bin/TxcapCompiler.py $(SRCBASE)/wl/txcap/types/$*.txcap $*.txcap_bin
+	python $(SRCBASE)/tools/build/blob.py $*.txcap_bin $*.txcap_blob '$(CHIPID)'
+endif	# 43xx
+endif
+
+%.noe:	%.bin
+	$(TRXTOOL) -f noheader -o $@ $<
+
+%.hex: %.bin
+	$(HEXDUMP) -v -e '4/4 "%08X " "\n"' $< > $@
+
+##################################################################
+# create TRX file
+##################################################################
+# embed code/data in TRX file
+# Compress file directly as a workaround for cygwin to ensure no CR/LF conversion via stdout
+%.bin.gz: %.bin
+	gzip -cf $< > $@
+
+%.trx:	%.bin.gz
+	$(TRXTOOL) $(TRX_OPTIONS_PREFIX) $(TRX_OPTIONS) $(TRX_OPTIONS_SUFFIX) -o $@ $<
+
+##################################################################
+# !!!!!!!!!!!!!! explicit targets/rules start here !!!!!!!!!!!!!!!
+##################################################################
+
+# default make target
+# in case this file is included before all target is defined!
+.PHONY: default
+default: all
+
+##################################################################
+# explicit targets/rules for ROMOFFLOAD builds
+##################################################################
+
+##################################################################
+# explicit targets/rules for Host Offloaded Modules (HOFFLOAD) builds
+##################################################################
+ifdef HOFFLOAD_MODULES
+hmsg = $(info HML: $(strip $1 $2 $3 $4 $5 $6 $7 $8 $9))
+HOFFLOAD_STITCH := $(DNGL_BLD_SCRIPT_DIR)/hoffload_stitch.py
+HOFFLOAD_FINALIMAGE := modules.img
+HOFFLOAD_ENUM := $(SRCBASE)/../components/hml/include/bcm_hoffload.h
+HOFFLOAD_BINS :=
+
+# Compile host offload modules.
+define hoffload_do_compile
+$(eval hdir := $(call get_hoffload_dirs,$(hmod)))
+$(eval HOFFLOAD_JMP_OBJ := $(hdir:/=)_jmp.o)
+all: $(HOFFLOAD_JMP_OBJ)
+
+$(HOFFLOAD_JMP_OBJ): wlconf.h d11shm.h | $(hdir)
+	$$(call hmsg,Compiling $$(@F))
+	+$(MAKE) -C $(SRCBASE)/$(hmod) CC="$(CC)" CFLAGS="$(CFLAGS)" \
+		CROSS_COMPILE="$(CROSS_COMPILE)" \
+		DNGL_BLD_SCRIPT_DIR="$(DNGL_BLD_SCRIPT_DIR)" \
+		JMPTBLMOD_ASFLAGS="$(JMPTBLMOD_ASFLAGS)" \
+        SRCBASE="$(SRCBASE)" TOOLSDIR="$(TOOLSDIR)" \
+		HOFFLOAD_CFG="$(HOFFLOAD_CFG)" LOUD="$(LOUD)" $$@
+endef
+
+# Link host offload modules.
+define hoffload_do_link
+$(eval hdir := $(call get_hoffload_dirs,$(hmod)))
+$(eval HOFFLOAD_BIN := $(hdir)$(notdir $(hdir:/=)).bin)
+$(eval HOFFLOAD_BINS += $(HOFFLOAD_BIN))
+
+$(HOFFLOAD_BIN): $(MAP) | $(hdir)
+	$$(call hmsg,Linking $$(@F))
+	+$(MAKE) -C $(SRCBASE)/$(hmod) CC="$(CC)" CFLAGS="$(CFLAGS)" \
+		CROSS_COMPILE="$(CROSS_COMPILE)" \
+		DNGL_BLD_SCRIPT_DIR="$(DNGL_BLD_SCRIPT_DIR)" \
+		JMPTBLMOD_ASFLAGS="$(JMPTBLMOD_ASFLAGS)" \
+		MAP="$(MAP)" OBJCOPYBIN="$(OBJCOPYBIN)" \
+		SRCBASE="$(SRCBASE)" \
+		TOOLSDIR="$(TOOLSDIR)" LOUD="$(LOUD)" $$@
+endef
+
+# Evaluate major host offload rules.
+$(foreach hmod,$(strip $(HMODULES)),$(eval $(call hoffload_do_compile)))
+$(foreach hmod,$(strip $(HMODULES)),$(eval $(call hoffload_do_link)))
+
+$(HOFFLOAD_DIRS):
+	mkdir -p $@
+
+$(HOFFLOAD_BINS): $(HOFFLOAD_JMP_OBJS)
+all: $(HOFFLOAD_FINALIMAGE)
+
+# Stitch modules into a single file.
+$(HOFFLOAD_FINALIMAGE): $(HOFFLOAD_CFG) $(HOFFLOAD_ENUM) $(HOFFLOAD_BINS)
+	$(call hmsg,Stitching $(notdir $(HOFFLOAD_BINS)))
+	$(HOFFLOAD_STITCH) -c $(HOFFLOAD_CFG) -e $(HOFFLOAD_ENUM) -r $@ \
+		$(HOFFLOAD_BINS)
+
+# Clean host offloaded modules.
+.PHONY: hmodule_clean
+hmodule_clean:
+	$(RM) -r $(HOFFLOAD_DIRS)
+clean: hmodule_clean
+endif # HOFFLOAD_MODULES
+
+$(LIBDIR)$(LIBNAME): $(LIB_OBJECTS)
+	$(AR) $(ARFLAGS) $@ $(LIB_OBJECTS)
+
+ifeq ($(RECLAIM_PROTECT_ENAB),1)
+	RECLAIM_PROTECT_EXE	:= $(EXE).reclaim
+else
+	RECLAIM_PROTECT_EXE	:=
+endif
+RECLAIM_PROTECT_SCRIPT	:= $(DNGL_BLD_SCRIPT_DIR)/reclaim-protect
+RECLAIM_PROTECT_CFG	:= $(ROML_SUPPORT_DIR)/reclaim_protect.cfg
+
+# common ELF file dependencies
+$(EXE): $(OBJECTS) $(LIB_NAME) $(HOFFLOAD_JMP_OBJS) $(RECLAIM_PROTECT_EXE)
+
+$(RECLAIM_PROTECT_EXE): $(LDS) $(OBJECTS) $(LIB) $(RECLAIM_PROTECT_SCRIPT) $(RECLAIM_PROTECT_CFG) $(HOFFLOAD_JMP_OBJ)
+	@echo "---- reclaim validation -----"
+	$(LD) $(LDFLAGS) -T $(LDS).reclaim -o $@ $(OBJECTS) $(HOFFLOAD_JMP_OBJS) $(LIB) 2>&1 | \
+		$(PERL) $(RECLAIM_PROTECT_SCRIPT) $(RECLAIM_PROTECT_CFG)
+ifeq ($(ROMOFFLOAD),1)
+# create links to the ROM files
+ROMLTGTS := $(ROMLLIB)
+ROMLTGTS += $(ROMLBIN)
+ROMLTGTS += $(ROMLMAP)
+ROMLTGTS += $(ROMLSYMRAW)
+ifeq ($(BCM_ROM_AUTO_ABANDON),1)
+ROMLTGTS += $(ROMLSIGN)
+ROMLTGTS += $(ROMSYMDEPS)
+ROMLVRTS += $(AUTO_ABN_CFG_FILE)
+ROMLVRTS += $(MANUAL_TCAM_CFG_FILE)
+ifneq ($(WLPATCHFILE),)
+ifeq ($(PATCHSIGN_ENABLED),1)
+ROMLVRTS += $(PATCHSIGN)
+endif # PATCHSIGN_ENABLED
+endif # !WLPATCHFILE
+endif # BCM_ROM_AUTO_ABANDON
+
+ifeq ($(BCM_ROM_AUTO_IOCTL_PATCH),1)
+ROMLTGTS += $(ROMLSIGN_IOCTL)
+endif # BCM_ROM_AUTO_IOCTL_PATCH
+
+ifeq ($(ROM_PATCH_PREAMBLE),1)
+ROMLTGTS += $(ROML_PATCH_PREAMBLE_SRC)
+endif # ROM_PATCH_PREAMBLE
+
+ROMLTGTS += $(ROMCTL)
+ROMLVRTS += $(ROMLCHKVAL)
+ROMLTGTS += $(ROMLLOGSTRS)
+ifneq ($(ROMLPATCHOBJ),)
+ROMLTGTS += $(ROMLPATCH)
+endif
+ROMLTGTS += $(RAMFNSTUBSYM)
+ROMLTGTS += $(ROMFNJMPSRC)
+ROMLVRTS += $(TARGET_ROMOFFLOAD_CFG)
+
+$(ROMLTGTS):
+	ln -sf $(ROMLDIR)/$@ .
+$(ROMLVRTS):
+	ln -sf $(ROMLVRTSDIR)/$@ .
+
+$(LDS): $(ROMLLIB) $(ROMLSYMCPP)
+1$(EXE): $(OBJECTS) $(RAMFNSTUBOBJ) $(ROMLMAPOBJ) $(JMPTBLOBJ) 1$(PATCHTBLOBJ) $(HOFFLOAD_JMP_OBJS)
+	@echo "------ Patching Linker Stage 1: Generate $(PATCHTBLSRC) ------"
+	@$(TCAMLD) $(LDFLAGS) -T $(LDS) -o $@ \
+		$(sort $(OBJECTS) $(RAMFNSTUBOBJ) $(ROMFNJMPOBJ) \
+        $(ROMLPATCHOBJ) $(ROMLMAPOBJ) 1$(PATCHTBLOBJ) \
+        $(JMPTBLOBJ) $(HOFFLOAD_JMP_OBJ) $(PROJECT).o) $(LIB)
+	$(STRIP) --strip-debug $@
+
+$(EXE): $(PATCHTBLOBJ) 1$(EXE) $(ROMLMAPOBJ) $(HOFFLOAD_JMP_OBJS)
+$(ROMLMAPOBJ): $(ROMLMAPSRC)
+$(ROMLMAPSRC): $(ROMLLIB) $(ROMLSYMCPP)
+	$(NMCMN) -n $(ROMLLIB) > .tmp.$@.in
+	$(PERL) $(ROMLMAPSCRIPT) $(ROMLSYM_I) $(ROMLSYMCPP) $(THUMB) \
+		$(JMPTBL) $(JMPTBL_FULL) < .tmp.$@.in > $@
+
+$(JMPTBLOBJ): $(JMPTBLSRC) $(LDS)
+$(JMPTBLSRC): $(ROMLLIB) $(ROMLSYMCPP) $(ROMLMAPSCRIPT) $(LDS) $(TCAMSCRIPT)
+$(PATCHTBLOBJ): $(PATCHTBLSRC) 1$(EXE)
+$(PATCHTBLSRC): 1$(EXE) $(ROMLHEX) $(MANUAL_TCAM_CFG_FILE)
+	$(NMCMN) -n $< > 1$(EXE).map
+ifeq ($(TARGET_CPU),cr4)
+	$(OBJDUMP) -d $(DISARCH) --start-address=$(ROM_LOW) --stop-address=$(ROM_HIGH) $< > $(JMPTBLOBJ).dis
+else ifeq ($(TARGET_CPU),ca7)
+	$(OBJDUMP) -d $(DISARCH) --start-address=$(ROM_LOW) --stop-address=$(ROM_HIGH) $< > $(JMPTBLOBJ).dis
+else
+	@$(OBJDUMP) -d $(DISARCH) --start-address=0x800000 $< > $(JMPTBLOBJ).dis
+endif
+	$(NMCMN) -n $(ROMLLIB) > .tmp.$<.in
+	$(PERL) $(TCAMSCRIPT) $(MANUAL_TCAM_CFG) $(ROMLSYMCPP) $(if $(TCAM),1+$(TCAM_PCNT)+$(TCAM_SIZE)+$(PATCH_HDR_SIZE),0) $(JMPTBLOBJ).dis \
+		$(ROM_TEXT_START) $(ROMLHEX) < .tmp.$<.in > $(PATCHTBLSRC)
+	$(if $(KEEPTMP),,$(LOUD)$(RM) .tmp.$<.in)
+1$(PATCHTBLOBJ): 1$(PATCHTBLSRC)
+1$(PATCHTBLSRC): $(ROMLLIB) $(ROMLSYMCPP) $(ROMLMAPSCRIPT) $(LDS) $(TCAMSCRIPT) $(ROMLHEX) $(MANUAL_TCAM_CFG_FILE)
+	@$(NMCMN) -n $(ROMLLIB) > .tmp.$@.in
+	@$(PERL) $(TCAMSCRIPT) $(MANUAL_TCAM_CFG) $(ROMLSYMCPP) $(if $(TCAM),1+$(TCAM_PCNT)+$(TCAM_SIZE)+$(PATCH_HDR_SIZE),0) $(NONEXISTFILE) \
+		$(ROM_TEXT_START) $(ROMLHEX) < .tmp.$@.in > 1$(PATCHTBLSRC)
+	$(if $(KEEPTMP),,$(LOUD)$(RM) .tmp.$@.in)
+$(ROMLSYM_I): $(ROMLSYMRAW)
+$(ROMLSYM_I_AUTO): $(ROMLSYMRAW_AUTO)
+ifneq ($(ROMLPATCHOBJ),)
+$(EXE): $(ROMLPATCHOBJ) $(HOFFLOAD_JMP_OBJS)
+$(ROMLPATCHOBJ): $(ROMLPATCH)
+endif	# ROMLPATCHOBJ
+$(EXE): $(RAMFNSTUBOBJ) $(ROMFNJMPOBJ) $(HOFFLOAD_JMP_OBJS)
+$(LDS): $(RAMFNSTUBSYM)
+$(ROMFNJMPOBJ): $(ROMFNJMPSRC)
+.PHONY: _unimplramfns
+_unimplramfns: $(MAP)
+	@( \
+	map=`cat $(MAP)` && \
+	addr=`echo "$$map" | sed -n "s/^\([0-9a-fA-F]\{8\}\) T hnd_unimpl$$/\1/p"` && \
+	match=`echo "$$map" | sed -n "s/^$$addr T \(.*\)$$/\1/p"` && \
+	unimpl=`echo "$$match" | sed -e "/^hnd_unimpl$$/d"` && \
+	num=`echo "$$unimpl" | sed -e "/^$$/d" | wc -l | sed -e "s/ *//g"` && \
+	if [ $$num -gt 0 ]; then \
+		echo "< THESE $$num SYMBOLS ARE NOT IMPLEMENTED >" && \
+		echo "$$unimpl" && \
+		echo "< SYMBOL LIST ENDS >"; \
+	fi \
+	)
+# display stats
+STATS := _unimplramfns
+$(OBJECTS): $(ROMLMAP) $(ROMLBIN)
+# shared memory layout consistency check
+$(BIN): $(MAP) $(ROMLLIB) $(ROMCTL) $(ROMLCHKVAL)
+# to build romlsim
+$(ROM_TRX): $(ROMLBIN) $(ROMLMAP) $(ROMLLIB)
+endif	# ROMOFFLOAD
+
+##################################################################
+# Explicit targets/rules for ROM auto IOCTL patch builds.
+##################################################################
+ifeq ($(BCM_ROM_AUTO_IOCTL_PATCH),1)
+
+# Keep these intermediate files
+.PRECIOUS: %_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).pp %_$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX).pp
+
+# Validate that config file exists.
+$(if $(wildcard $(ROM_AUTO_IOCTL_PATCH_CFG_FILE)),,\
+                $(error $(ROM_AUTO_IOCTL_PATCH_CFG_FILE): no such file or directory))
+
+# Parse the config file. Get a list of source files that contain IOCTL/IOVAR handlers.
+ROM_IOCTL_FILES := $(shell grep "^\(IOCTL\|IOVAR\)" $(ROM_AUTO_IOCTL_PATCH_CFG_FILE) | \
+                           sed -e "s/\(.*\)\s\+\(.*\.c\).*/\2/g")
+
+# Sort to eliminate duplicates (since multiple handlers may exist in a single source file).
+# Also filter through WLFILES to avoid generating patch files for source files that are not
+# part of this build.
+ROM_IOCTL_FILES := $(sort $(filter $(WLFILES),$(ROM_IOCTL_FILES)))
+
+# List of object files that contain IOCTL/IOVAR handlers.
+ROM_IOCTL_OBJS   := $(ROM_IOCTL_FILES:.c=.o)
+
+# Create C pre-processed source for "checksum" patch handler C file. For ROM comparison purposes:
+#    - Define ROM_ENAB_RUNTIME_CHECK (via CFLAGS_NOPT_EXTRA) to enable run-time check for xxx_ENAB()
+#      macros. This is consistent with how the ROM is built.
+#    - Exclude BCMDBG_ERR, BCMDBG_ASSERT etc (via ROM_AUTO_IOCTL_PATCH_XFLAGS) based upon ROM build
+#      options for consistent non-optimized comparisons.
+#    - Exclude SEQ_CMDs (for consistency with ROM) to allow -seqcmds- targets to use auto patching.
+#    - Include preprocessor macro definitions via '-g3'. These are parsed by auto patching scripts.
+ROM_AUTO_IOCTL_PATCH_XFLAGS += -DSEQ_CMDS
+define rom_ioc_file_cflags
+    $(filter-out $(ROM_AUTO_IOCTL_PATCH_XFLAGS),$(call file_cflags,$1,$2,$3) $(CFLAGS_NOPT_EXTRA))
+endef
+%_$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX).pp: %.c
+	$(QUIET)echo "Preprocessing $*.c -> $@"
+	$(LOUD)$(CC) $(call rom_ioc_file_cflags,$*.c,$(AUTODEPENDS),$@) \
+		$(CFLAGS_DEBUG_LEVEL_EXTRA) -E -P -o $@ $<
+	$(call file_flags,rom_ioc_file_cflags,$*.c,$@)
+
+# Create C pre-processed source for final patch handler C file.
+%_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).pp: %.c
+	$(QUIET)echo "Preprocessing $*.c -> $@"
+	$(LOUD)$(CC) $(call file_cflags,$*.c,$(AUTODEPENDS),$@) \
+		$(CFLAGS_DEBUG_LEVEL_EXTRA) -E -P -o $@ $<
+	$(call file_flags,file_cflags,$*.c,$@)
+
+# Generate the "checksum" patch handler C file (with 1 function per case statement,
+# e.g. wlc_patch_ioctl_checksum.c).
+%_$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX).c: %_$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX).pp \
+                                             $(ROM_AUTO_IOCTL_PATCH_SCRIPT) \
+                                             $(ROM_AUTO_IOCTL_PATCH_CFG_FILE) \
+                                             $(ROM_AUTO_IOCTL_PATCH_ROMLSYM)
+	@echo "Generating $< -> $@"
+	@$(PERL) $(ROM_AUTO_IOCTL_PATCH_SCRIPT) $< $(@:_$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX).c=.c) \
+	        $(ROM_AUTO_IOCTL_PATCH_CFG_FILE) $(ROM_AUTO_IOCTL_PATCH_ROMLSYM) \
+	        $(ROM_AUTO_PATCH_CONFIG_ERR) $@
+
+#############
+# ROMOFFLOAD
+#############
+ifeq ($(ROMOFFLOAD),1)
+
+# The final (optimized) object files rely upon the generated patch handler files. (Since the
+# generated patch handler C file is included in the C file that contains the IOCTL/IOVAR handler,
+# e.g. wlc.c #includes wlc_patch_ioctl.c).
+$(ROM_IOCTL_OBJS): %.o: %_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).c
+
+IOCTL_PATCH_SCRIPT_OPTS := -f
+
+# Generate the patch handler C file (e.g. wlc_patch_ioctl.c).
+%_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).c: %_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).pp $(ROM_AUTO_IOCTL_PATCH_SCRIPT) \
+                                    $(ROM_AUTO_IOCTL_PATCH_CFG_FILE) $(ROMLSYM_I) $(ROMLSIGN_IOCTL) \
+                                    %_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).md5sign
+	@echo "Generating $< -> $@"
+	@$(PERL) $(ROM_AUTO_IOCTL_PATCH_SCRIPT) $(IOCTL_PATCH_SCRIPT_OPTS) $< \
+		$(@:_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).c=.c) \
+	        $(ROM_AUTO_IOCTL_PATCH_CFG_FILE) $(ROMLSYM_I) $(ROM_AUTO_PATCH_CONFIG_ERR) $@ \
+	        $(ROMLSIGN_IOCTL) $(@:.c=.md5sign)
+
+# Keep these intermediate files
+.PRECIOUS: %_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).md5sign
+
+# Create RAM MD5 signature file for generated handler functions.
+%_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).md5sign: $(RAMNOPTOBJDIR)/%_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).nopt.lst \
+                                          $(MD5SUMSCRIPT)
+	@echo "Signing $< -> $@"
+	@$(PERL) $(MD5SUMSCRIPT) $@ $<
+
+# Keep these intermediate files
+.PRECIOUS: $(RAMNOPTOBJDIR)/%_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).nopt.lst
+
+# Disassemble and post-process patch handlers contained in unoptimized object file. Outputs a
+# disassembly listing file, which contains a list of all patch symbols disassembled.
+$(RAMNOPTOBJDIR)/%_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).nopt.lst: $(RAMNOPTOBJDIR)/%.nopt.o $(ROMDASMSCRIPT) $(ROMLSYM_I)
+	@echo "Disassembling $< -> $@"
+	@$(PERL) $(ROMDASMSCRIPT) -o $@ -p -i ".o" -e ".lst" $(ROMLSYM_I) $< $(RAMDASMDIR) $(ROM_OBJDUMP) $(JMPTBL_FULL) 0
+
+# List of unoptimized object files that contain IOCTL/IOVAR handlers.
+ROM_IOCTL_OBJS_NOPT := $(foreach obj,$(ROM_IOCTL_OBJS),$(RAMNOPTOBJDIR)/$(obj:.o=.nopt.o))
+
+# The unoptimized object files rely upon the generated "checksum" patch handler files. (Since the
+# generated "checksum" patch handler C file is included in the C file that contains the
+# IOCTL/IOVAR handler, e.g. wlc.c #includes wlc_patch_ioctl_checksum.c).
+$(ROM_IOCTL_OBJS_NOPT): $(RAMNOPTOBJDIR)/%.nopt.o: %_$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX).c
+
+endif # ROMOFFLOAD
+
+#########
+# ROMLIB
+#########
+ifeq ($(ROMLIB),1)
+
+# List of unoptimized object files that contain IOCTL/IOVAR handlers.
+ROM_IOCTL_OBJS_NOPT := $(foreach obj,$(ROM_IOCTL_OBJS),$(ROMNOPTOBJDIR)/$(obj:.o=.nopt.o))
+ROM_IOCTL_OBJS_NOPT_IOCTL := $(foreach obj,$(ROM_IOCTL_OBJS),$(ROMNOPTOBJDIR_IOCTL)/$(obj:.o=.nopt.o))
+# List of disassembly listing files.
+ROM_IOCTL_LST := $(ROM_IOCTL_OBJS_NOPT_IOCTL:.nopt.o=_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).nopt.lst)
+
+# Create ROM MD5 signature file for generated handler functions.
+$(ROMLSIGN_IOCTL): $(MD5SUMSCRIPT) $(ROM_IOCTL_LST)
+	@echo "Signing $(ROM_IOCTL_LST:$(ROMNOPTOBJDIR_IOCTL)/%=%) -> $@"
+	@$(PERL) $(MD5SUMSCRIPT) $@ $(ROM_IOCTL_LST)
+
+# Disassemble and post-process patch handlers contained in unoptimized object file. Outputs a
+# disassembly listing file, which contains a list of all patch symbols disassembled.
+$(ROMNOPTOBJDIR_IOCTL)/%_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).nopt.lst: $(ROMNOPTOBJDIR_IOCTL)/%.nopt.o $(ROMDASMSCRIPT) $(ROMLSYM)
+	@echo "Disassembling $< -> $@"
+	@$(PERL) $(ROMDASMSCRIPT) -o $@ -p -i ".o" -e ".lst" $(ROMLSYM) $< $(ROMDASMDIR_IOCTL) $(OBJDUMP) $(JMPTBL_FULL) 0
+
+# The unoptimized object files rely upon the generated "checksum" patch handler files. (Since the
+# generated "checksum" patch handler C file is included in the C file that contains the
+# IOCTL/IOVAR handler, e.g. wlc.c #includes wlc.patch_ioctl_checksum.c).
+$(ROM_IOCTL_OBJS_NOPT): $(ROMNOPTOBJDIR)/%.nopt.o: %_$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX).c
+$(ROM_IOCTL_OBJS_NOPT_IOCTL): $(ROMNOPTOBJDIR_IOCTL)/%.nopt.o: %_$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX).c
+
+endif # ROMLIB
+endif # BCM_ROM_AUTO_IOCTL_PATCH
+
+##################################################################
+# explicit targets/rules for ROM auto abandon builds.
+##################################################################
+ifeq ($(BCM_ROM_AUTO_ABANDON),1)
+
+# List of non-optimized object files.
+RAMNOPTOBJS := $(OBJECTS:.o=.nopt.o)
+RAMNOPTOBJSWITHDIR := $(foreach OBJECT,$(RAMNOPTOBJS),$(RAMNOPTOBJDIR)/$(OBJECT))
+
+# List of disassembly listing files.
+RAM_NOPT_LST := $(OBJECTS:.o=.nopt.lst)
+RAM_NOPT_LST_WITH_DIR := $(foreach OBJECT,$(RAM_NOPT_LST),$(RAMNOPTOBJDIR)/$(OBJECT))
+
+# Create RAM MD5 signature file.
+$(RAMLSIGN): $(MD5SUMSCRIPT) $(RAM_NOPT_LST_WITH_DIR)
+	@echo "Signing $(RAM_NOPT_LST_WITH_DIR:$(RAMNOPTOBJDIR)/%=%) -> $@"
+	@$(PERL) $(MD5SUMSCRIPT) $@ $(RAM_NOPT_LST_WITH_DIR)
+
+# The auto romtable generation script (gen-autoromtbl) needs to know which symbols are actually
+# in use in the target image. This can be used to filter which symbols get abandoned. The symbols
+# in use are determined by building an all-RAM target.
+FULL_RAM_TARGET         = $(PROJECT)_ram.exe
+FULL_RAM_TARGET_LDS     = $(FULL_RAM_TARGET:.exe=.lds)
+FULL_RAM_TARGET_MAP     = $(FULL_RAM_TARGET:.exe=.map)
+FULL_RAM_TARGET_SYM_TBL = $(FULL_RAM_TARGET:.exe=.sym_tbl)
+
+# Create the linker script file for the all-RAM image required by the auto romtable generation
+# script (gen-autoromtbl). Use the rom-offload lds and filter-out unneeded sections.
+$(FULL_RAM_TARGET_LDS): $(LDSIN)
+	@echo "Generating $@"
+	sed -e 's/TARGET_ARCH/$(TARGET_ARCH)/g' \
+	    -e 's/TEXT_START/$(TEXT_START)/g' \
+	    -e 's/DATA_START/$(DATA_START)/g' \
+	    -e 's/CALLROM_DISCARD//g' \
+	    -e 's/FLOPS_EXECV_SECTION//g' \
+	    -e 's/BOOTLOADER_PATCH_MEM/bootloader_patch_start = .;bootloader_patch_end = .;/g' \
+	    -e 's/SHDAT_MAP//g' \
+	    -e 's/UNDEF_MAP//g' \
+	    -e 's/PATCH_TBL/_patch_align_start = .;_patch_table_start = .;_patch_table_last = .;_patch_table_end = .;/g' \
+	    -e 's/PATCH_HDR/_patch_hdr_start = .;_patch_hdr_end = .;/g' \
+	    -e 's/PATCH_JMPT//g' \
+	    -e 's/SR_MEM_START//g' \
+	    -e 's/SR_ATTACH_MOVE_MAX_SIZE/$(SR_MEMSIZE)/g' \
+	       < $(LDSIN) > $@
+
+# Create all-RAM image required by the auto romtable generation script (gen-autoromtbl).
+# (Filter out the patch file since it contains references to ROM functions, and linking with the
+# patch file will provide incorrect data about which functions are required by the target image).
+$(FULL_RAM_TARGET): $(FULL_RAM_TARGET_LDS) $(OBJECTS) $(LIB) $(HOFFLOAD_JMP_OBJS)
+	@echo "Generating $@"
+	$(LD) $(LDFLAGS) -T $(FULL_RAM_TARGET_LDS) -o $@ $(filter-out $(WLPATCHFILE:.c=.o), $(OBJECTS)) $(HOFFLOAD_JMP_OBJS) $(LIB)
+	$(STRIP) --strip-debug $@
+
+# Create all-RAM image map file.
+$(FULL_RAM_TARGET_MAP): $(FULL_RAM_TARGET)
+	@echo "Generating $@"
+	$(NMCMN) -n $< > $@
+
+# Auto generate romtable.
+ifneq ($(AUTO_ABN_CFG_FILE),)
+   AUTO_ABN_CFG := "-c $(AUTO_ABN_CFG_FILE)"
+endif
+
+# Auto patch config file.
+ifeq ($(BCM_ROM_AUTO_IOCTL_PATCH),1)
+   AUTO_ABN_PATCH_CFG := "-p $(ROM_AUTO_IOCTL_PATCH_CFG_FILE)"
+endif   # BCM_ROM_AUTO_IOCTL_PATCH
+
+# Maximum number of TCAM entries. (-1 for software patch table).
+AUTO_ABN_MAX_TCAMS := $(TCAM_SIZE)
+
+# Manual patch file symbol table.
+ifneq ($(WLPATCHFILE),)
+   WLPATCHFILE_SYM_TBL := $(WLPATCHFILE:.c=.sym_tbl)
+   AUTOROMTBLSCRIPT_PATCH_SYM_TBL := "-s $(WLPATCHFILE_SYM_TBL)"
+ifeq ($(PATCHSIGN_ENABLED),1)
+# Manual patching requires that $(PATCHSIGN) exists and is maintained.
+ifeq ($(wildcard $(ROMLDIR)/$(PATCHSIGN)),)
+   $(error $(ROMLDIR)/$(PATCHSIGN): no such file or directory)
+else
+   AUTOROMTBLSCRIPT_PATCH_SIGN := "-j $(PATCHSIGN)"
+endif
+endif # PATCHSIGN_ENABLED
+endif
+
+# Manual TCAM ROM patch file.
+ifneq ($(MANUAL_TCAM_CFG_FILE),)
+   MANUAL_TCAM_CFG := "-m $(MANUAL_TCAM_CFG_FILE)"
+endif
+
+# Auto generate romtable.
+$(ROMLSYMRAW_AUTO): $(AUTOROMTBLSCRIPT) $(ROMLSIGN) $(RAMLSIGN) $(ROMSYMDEPS) $(PATCHSIGN) \
+                    $(FULL_RAM_TARGET_MAP) $(ROMLSYM_I) $(AUTO_ABN_CFG_FILE) \
+                    $(ROML_SYM_TBL) $(FULL_RAM_TARGET_SYM_TBL) $(WLPATCHFILE_SYM_TBL) \
+                    $(MANUAL_TCAM_CFG_FILE) $(TARGET_ROMOFFLOAD_CFG)
+	@echo "Generating $@"
+	$(PERL) $(AUTOROMTBLSCRIPT) $(AUTOROMTBLSCRIPT_PATCH_SYM_TBL) $(AUTOROMTBLSCRIPT_PATCH_SIGN) \
+	        $(AUTO_ABN_CFG) $(AUTO_ABN_PATCH_CFG) $(MANUAL_TCAM_CFG) $(ROMLSYM_I) $(ROMLSIGN) $(RAMLSIGN) \
+	        $@ $(ROML_SYM_TBL) $(FULL_RAM_TARGET_SYM_TBL) $(FULL_RAM_TARGET_MAP) \
+	        $(AUTO_ABN_MAX_TCAMS) $(ROMSYMDEPS) 0 $(TCAM_PCNT)
+endif # BCM_ROM_AUTO_ABANDON
+
+ifeq ($(ROMOFFLOAD),1)
+$(RAMFNSTUBSRC): $(FULL_RAM_TARGET_MAP)
+$(LDS): $(FULL_RAM_TARGET_MAP)
+endif
+
+# Re-generate ROM symbol dependencies files (post tape-out), typically due to an update in the symbol
+# dependencies generation script (ROMSYMDEPSCRIPT). No make target dependencies, since we just want
+# to regenerate the symbols deps file without having to rebuild the entire ROM.
+.PHONY: regen_rom_symdeps
+regen_rom_symdeps:
+	@$(PERL) $(ROMSYMDEPSCRIPT) -e ".nopt.o" $(ROMLDIR)/romtable.S $(ROMLDIR)/$(basename $(EXE)).dis $(ROMLDIR)/$(ROMLXREF) \
+		$(ROMSYMDEPS) $(ROMLDIR)/$(basename $(EXE)).map $(ROMDBASEOBJSTGZ) $(OBJDUMP)
+
+# Re-generate ROM symbol dependencies files (post tape-out), typically due to an update in the
+# disassembly generation script (ROMDASMSCRIPT). No make target dependencies, since we just want
+# to regenerate the symbols deps file without having to rebuild the entire ROM.
+.PHONY: regen_rom_md5sign
+regen_rom_md5sign:
+	$(RM) -r $(ROMDASMDIR)
+	@$(PERL) $(ROMDASMSCRIPT) -i ".o" -e ".lst" $(ROMLDIR)/romtable.S $(ROMDBASEOBJSTGZ) $(ROMDASMDIR) $(OBJDUMP) $(JMPTBL_FULL) 0
+	@$(PERL) $(MD5SUMSCRIPT) $(ROMLSIGN) $(ROMNOPTOBJDIR)/*.nopt.lst
+
+.PHONY: regen_rom_ioctl_md5sign
+regen_rom_ioctl_md5sign:
+	$(RM) -r $(ROMDASMDIR_IOCTL)
+	@$(PERL) $(ROMDASMSCRIPT) -p -i ".o" -e ".lst" $(ROMLDIR)/romtable.S $(ROMDBASEOBJSTGZ) $(ROMDASMDIR_IOCTL) $(OBJDUMP) $(JMPTBL_FULL) 0
+	@$(PERL) $(MD5SUMSCRIPT) $(ROMLSIGN_IOCTL) $(ROMNOPTOBJDIR_IOCTL)/*.nopt.lst
+
+# Check romming issues like
+# 1. Symbomls from 'romctl.txt' are excluded from ROM
+# 2. Files from 'romctl.txt' are excluded from ROM
+# 3.a List IOVAR's which are not enabled for iovar patching
+# 3.b List IOVAR's which are not added to rom
+.PHONY: rom_sym_check
+rom_sym_check:
+ifneq ($(CHIP),43xx)
+	@echo "Checking $(CHIP)$(REV)"
+	@$(ROM_SYM_CHECK) $(CHIP)$(REV) $(ROMTBL_VARIANT)
+endif	# 43xx
+
+##################################################################
+# explicit targets/rules for ROMLIB builds
+##################################################################
+
+ifeq ($(ROMLIB),1)
+# Generate ROM symbol dependencies files.
+$(ROMSYMDEPS): $(ROMSYMDEPSCRIPT) $(ROMLSYM) $(DISAS) $(ROMLXREF) $(MAP) $(ROMDOBJSTGZ)
+	@$(PERL) $(ROMSYMDEPSCRIPT) -e ".nopt.o" $(ROMLSYM) $(DISAS) $(ROMLXREF) $@ $(MAP) $(ROMDOBJSTGZ) $(OBJDUMP)
+
+# Generate ROM patch preamble file.
+$(ROML_PATCH_PREAMBLE_SRC): $(ROM_PATCH_PREAMBLE_SCRIPT) $(ROMLSYM) $(DISAS)
+	@$(PERL) $(ROM_PATCH_PREAMBLE_SCRIPT) $(ROMLSYM) $(DISAS) $@
+
+$(RAMFNSTUBSYM): $(MAP) $(ROMCTL)
+	@echo "-------- Generate RAM stubs list --------"
+	cat $(MAP) | $(PERL) $(RAMFNSTUBSCRIPT) 1 $(ROMCTL) > $@
+$(EXE): $(LDS) 2$(RAMFNSTUBSYM) 2$(RAMFNSTUBOBJ) $(ROMFNJMPOBJ)
+2$(RAMFNSTUBSYM): $(LDS) $(OBJECTS) 1$(RAMFNSTUBSYM) 1$(RAMFNSTUBOBJ) $(ROMFNJMPOBJ)
+	@echo "-------- link pass 2: find more RAM stub candidates --------"
+	$(LD) $(LDFLAGS) -T $(LDS) -o 2$(EXE) $(OBJECTS) 1$(RAMFNSTUBOBJ) $(ROMFNJMPOBJ) $(LIB)
+	@( \
+	extra=`$(NMCMN) -n -g 2$(EXE)` && \
+	start=`echo "$$extra" | sed -n "s/^\([0-9a-fA-F]\{8\}\) T extra_start$$/\1/p"` && \
+	end=`echo "$$extra" | sed -n "s/^\([0-9a-fA-F]\{8\}\) T extra_end$$/\1/p"` && \
+	echo "$$extra" | \
+		sed -n "/$$start/,/$$end/p" | \
+		sed -n "s/^[0-9a-fA-F]\{8\} [TWV] \(.*\)$$/\1/p" | \
+		sed -e "s/^\(extra_start\|extra_end\|$(LIBFNFILTER)\)$$//g" -e "/^\s*$$/d" > $@ \
+	)
+1$(RAMFNSTUBSYM): 1$(LDS) $(OBJECTS) $(ROMFNJMPOBJ)
+	@echo "-------- link pass 1: find RAM stub candidates --------"
+	$(LD) $(LDFLAGS) -T 1$(LDS) -o 1$(EXE) $(OBJECTS) $(ROMFNJMPOBJ) $(LIB) 2>&1 | \
+		sed -n "s/.*: undefined reference to \`\(.*\)'/\1/p" | sort -u > $@
+1$(RAMFNSTUBOBJ): 1$(RAMFNSTUBSRC)
+$(LDS):$(ROMLSYM)
+1$(LDS): $(ROMLSYM) 0$(LDS)
+	$(PERL) $(ROMLLDSSCRIPT) $(ROMLSYM) 0$(LDS) \
+		$(JMPTBL_FULL) $(MINROML_BUILD) $(ROMESC) $(DATA_START) < /dev/null > $@
+ifeq ($(ROMDASM),1)
+$(ROMREFSLOG): 1$(LDS) $(OBJECTS) $(ROMFNJMPOBJ)
+	$(LD) $(LDFLAGS) -T 1$(LDS) -o /dev/null $(OBJECTS) $(ROMFNJMPOBJ) $(LIB) 2>&1 | tee $@ > /dev/null
+$(ROMLXREF): $(ROMREFSLOG)
+	$(PERL) $(ROMXREFSCRIPT) $< $@
+
+# List of non-optimized object files.
+ROMNOPTOBJS := $(OBJECTS:.o=.nopt.o)
+ROMNOPTOBJSWITHDIR := $(foreach OBJECT,$(ROMNOPTOBJS),$(ROMNOPTOBJDIR)/$(OBJECT))
+
+# List of disassembly listing files.
+ROM_NOPT_LST := $(OBJECTS:.o=.nopt.lst)
+ROM_NOPT_LST_WITH_DIR := $(foreach OBJECT,$(ROM_NOPT_LST),$(ROMNOPTOBJDIR)/$(OBJECT))
+
+$(ROMDOBJSTGZ): $(ROMNOPTOBJSWITHDIR) | $(ROMNOPTOBJDIR)
+	@echo "Archive unoptimized objects"
+	@echo "---------------------------"
+	@( \
+	CURDIR=`pwd`; \
+	cd $(ROMNOPTOBJDIR); \
+	tar -vzcf $$CURDIR/$@ $(ROMNOPTOBJS); \
+	)
+
+$(ROMLSIGN): $(ROMDASMSCRIPT) $(ROMLSYM) $(ROMDOBJSTGZ) $(MD5SUMSCRIPT)
+	@echo "Generate unoptimized assembly"
+	@echo "-----------------------------"
+	@$(PERL) $(ROMDASMSCRIPT) -i ".o" -e ".lst" $(ROMLSYM) $(ROMDOBJSTGZ) $(ROMDASMDIR) $(OBJDUMP) $(JMPTBL_FULL) 1
+	@echo "Signing $(ROM_NOPT_LST_WITH_DIR:$(ROMNOPTOBJDIR)/%=%) -> $@"
+	@$(PERL) $(MD5SUMSCRIPT) $@ $(ROM_NOPT_LST_WITH_DIR)
+
+ifeq ($(ROMDIFF),1)
+$(ROMDSTATSLOG): $(ROMLSYM) $(EXE) $(ROMLSIGN) $(ROMLXREF)
+ifneq ($(CHIP),43xx)
+	@( \
+	echo "Comparing against $(CHIP)$(REV) ROM archive."; \
+	if test -e $(ROMDBASEOBJSTGZ); then \
+		echo "Generate ROM (base) unoptimized assembly"; \
+		echo "----------------------------------------"; \
+		$(PERL) $(ROMDASMSCRIPT) -i ".o" -e ".lst" $(ROMLSYM) $(ROMDBASEOBJSTGZ) $(ROMDASMDIRBASE) $(OBJDUMP) $(JMPTBL_FULL) 1; \
+		{ $(OBJDUMP) -t $(EXE); } > .tmp.$@.in; \
+		$(PERL) $(ROMDIFFSCRIPT) $(ROMDASMDIRBASE) $(ROMDASMDIR) $(ROMLDIR) \
+			$(ROMLSIGN) $(ROMLXREF) $@ $(JMPTBL_FULL) < .tmp.$@.in; \
+		$(if $(KEEPTMP),,$(RM) .tmp.$@.in;) \
+		cat $@; \
+	else \
+		echo "Nothing to diff: $(ROMDBASEOBJSTGZ) does not exist."; \
+		echo "----------------------------------------"; \
+	fi \
+	)
+endif	# 43xx
+endif
+endif	# ROMDASM
+
+_ramfnstubs: $(RAMFNSTUBSYM)
+	@( \
+	stub=`cat $(RAMFNSTUBSYM)` && \
+	num=`echo "$$stub" | sed -e "/^$$/d" | wc -l | sed -e "s/ *//g"` && \
+	if [ $$num -gt 0 ]; then \
+		echo "< CREATED RAM STUBS FOR THESE $$num SYMBOLS >" && \
+		echo "$$stub" | sed -n "s/\(.*\)/\t\1/p" | sort && \
+		echo "< SYMBOL LIST ENDS >"; \
+	fi \
+	)
+_romjmptbl: $(MAP)
+	@( \
+	jmp=`cat $(MAP) | sed -n "s/^[0-9a-fA-F]\{8\} D _bcmjmptbl__\(.*\)$$/\1/p"` && \
+	num=`echo "$$jmp" | sed -e "/^$$/d" | wc -l | sed -e "s/ *//g"` && \
+	if [ $$num -gt 0 ]; then \
+		echo "< CREATED JUMP TABLE ENTRIES FOR THESE $$num SYMBOLS >" && \
+		echo "$$jmp" | sed -n "s/\(.*\)/\t\1/p" | sort && \
+		echo "< SYMBOL LIST ENDS >"; \
+	fi \
+	)
+# display stats
+STATS := _ramfnstubs _romjmptbl
+endif	# ROMLIB
+
+##################################################################
+# explicit targets/rules for romtable_full.S generation
+##################################################################
+ifeq ($(GENROMTBL),1)
+$(ROMTBLSYM): $(MAP) $(ROMCTL)
+	@echo "Generating $(MAP) $(ROMCTL) -> $@..."
+	@$(PERL) $(ROMTBLSCRIPT) $(ROMCTL) $(LDMAPCREF) $(MAP) > $@
+endif
+
+##################################################################
+# explicit targets/rules for FCBS stuff
+##################################################################
+include $(DNGL_TOP_MAKE_DIR)/fcbsrom.mk
+
+ifdef HBUS_OBJECTS
+$(HBUS_OBJECTS:%.c=%.o): d11regsoffs.h
+endif
+
+ifdef PCIEDEV_OBJECTS
+$(PCIEDEV_OBJECTS): pcieregsoffs.h
+$(PCIEDEV_OBJECTS:%.o=%_$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX).pp): pcieregsoffs.h
+$(PCIEDEV_OBJECTS:%.o=%_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).pp): pcieregsoffs.h
+$(PCIEDEV_OBJECTS:%.o=$(ROMNOPTOBJDIR)/%.nopt.o): pcieregsoffs.h
+$(PCIEDEV_OBJECTS:%.o=$(ROMNOPTOBJDIR_IOCTL)/%.nopt.o): pcieregsoffs.h
+$(PCIEDEV_OBJECTS:%.o=$(RAMNOPTOBJDIR)/%.nopt.o): pcieregsoffs.h
+$(PCIEDEV_OBJECTS:%.o=%.i): pcieregsoffs.h
+$(PCIEDEV_OBJECTS:%.o=%.s): pcieregsoffs.h
+$(PCIEDEV_OBJECTS:%.o=%.dM): pcieregsoffs.h
+$(PCIEDEV_OBJECTS:%.o=%.dD): pcieregsoffs.h
+$(PCIEDEV_OBJECTS:%.o=%.dN): pcieregsoffs.h
+$(PCIEDEV_OBJECTS:%.o=%.dI): pcieregsoffs.h
+endif
+
+##################################################################
+# explicit targets/rules for wl objects
+##################################################################
+ifdef WLFILES
+# make all files in WLFILES list and only those depend on wlconf.h
+# (for there is no better way knowing what files depend on wlconf.h)
+# XXX should have created wlc_cfg.h: wlconf.h rule but that will make
+# all illegitamate inclusion of wlc_cfg.h in files in non wl subdir
+# undetectable so let's not do that.
+# XXX could also have create $(WLFILES): wlconf.h rule but that will
+# require we know how vpath is configured (absolute or relative or etc)
+# hence it won't work properly most time.
+$(WLFILES:%.c=%.o): wlconf.h d11shm.h d11regsoffs.h
+$(WLFILES:%.c=%_$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX).pp): wlconf.h d11shm.h d11regsoffs.h
+$(WLFILES:%.c=%_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).pp): wlconf.h d11shm.h d11regsoffs.h
+$(WLFILES:%.c=$(ROMNOPTOBJDIR)/%.nopt.o): wlconf.h d11shm.h d11regsoffs.h
+$(WLFILES:%.c=$(ROMNOPTOBJDIR_IOCTL)/%.nopt.o): wlconf.h d11shm.h d11regsoffs.h
+$(WLFILES:%.c=$(RAMNOPTOBJDIR)/%.nopt.o): wlconf.h d11shm.h d11regsoffs.h
+$(WLFILES:%.c=%.i): wlconf.h d11shm.h d11regsoffs.h
+$(WLFILES:%.c=%.s): wlconf.h d11shm.h d11regsoffs.h
+$(WLFILES:%.c=%.dM): wlconf.h d11shm.h d11regsoffs.h
+$(WLFILES:%.c=%.dD): wlconf.h d11shm.h d11regsoffs.h
+$(WLFILES:%.c=%.dN): wlconf.h d11shm.h d11regsoffs.h
+$(WLFILES:%.c=%.dI): wlconf.h d11shm.h d11regsoffs.h
+
+# rule to build wlconf.h
+include $(DNGL_TOP_MAKE_DIR)/wlconf.mk
+endif	# WLFILES
+
+# Can't use $* or $@ in file_cflags below because they evaluate
+# to null. A fix would require work within d11shm.mk.
+D11SHM_CFLAGS = $(call file_cflags,d11shm)
+D11SHM_CFGFILE = wlconf.h
+# Include makefile to build d11 shm files
+include $(SRCBASE)/makefiles/d11shm.mk
+
+AUTOREGS_CFLAGS = $(call file_cflags,$*.c)
+D11REGS_CFGFILE = wlconf.h
+# Include makefile to build d11 shm files
+include $(SRCBASE)/makefiles/autoregs.mk
+
+# Generate the make rule for the CLM data file
+$(call WLAN_GenClmCompilerRule,.,$(SRCBASE),$(CLM_FLAGS))
+
+ifeq ($(WL_SARLIMIT),1)
+ifeq ($(WL_SARLIMIT_DISABLED),0)
+# Rule for wlc_sar_tbl.c generation
+$(call WLAN_GenSarTblRule,.,$(SRCBASE))
+endif
+endif
+
+##################################################################
+# explicit targets/rules for .bin with CRC
+##################################################################
+ifeq ($(CRC32BIN),1)
+$(BIN): $(MAP)
+endif
+
+##################################################################
+# explicit targets for event log strings
+##################################################################
+$(LOGSTRS).bin:	$(EXE)
+	$(OBJCOPY) -O binary --set-section-flags .logstrs=load -j .logstrs $< $@
+
+##################################################################
+# explicit targets/rules for tarball
+##################################################################
+# create tarball (appears unused)
+ifeq ($(ARCHIVESRC),1)
+ifdef TAR
+.PHONY: $(TAR)
+$(TAR):
+	$(QUIET) echo "Archiving source files ..."
+	$(LOUD)(set -o pipefail && \
+	    sources=$$($(MAKE) -f $(DNGL_TOP_MAKE_DIR)/depslist.mk |\
+	        sort -u | xargs -n1 readlink -f) && \
+	    tar -P -czvf $@ $$sources \
+	)
+endif   # TAR
+endif	# ARCHIVESRC=1
+
+##################################################################
+# files to delete
+##################################################################
+INTERMEDIATE_FILES := *.lds *.o .*.{S,depend,proto,flags} {1,2}* .tmp.*
+INTERMEDIATE_FILES += $(RAMFNSTUBSYM) $(ROMFNJMPSRC) $(ROMFNJMPHDR)
+INTERMEDIATE_FILES += $(IMAGES)
+INTERMEDIATE_FILES += wltunable.h wlconf.h d11shm.h d11regsoffs.h
+INTERMEDIATE_FILES += $(LDMAPCREF)
+INTERMEDIATE_FILES += *_$(ROM_AUTO_IOCTL_PATCH_CHECKSUM_SUFFIX).*
+INTERMEDIATE_FILES += *_$(ROM_AUTO_IOCTL_PATCH_SUFFIX).*
+
+##################################################################
+# explicit targets/rules for misc files
+##################################################################
+
+define opt_write
+	echo "[$1]" >> $@; \
+	$2 | sed -e 's/^/    /' >> $@; \
+	echo "" >> $@
+endef
+
+# Write compiler options to file
+%.opt:
+	$(dump_make_vars)
+	@$(RM) $@
+	@$(call opt_write,TOOLSDIR,echo $(TOOLSDIR))
+	@$(call opt_write,UTILSDIR,echo $(UTILSDIR))
+	@$(call opt_write,CROSS_COMPILE,echo $(CROSS_COMPILE))
+	@$(call opt_write,TOOLSVER,echo $(TOOLSVER))
+	@$(call opt_write,Compiler,echo "`$(CC) --version | head -1`")
+ifneq ($(TARGET),)
+	@$(call opt_write,TARGET,echo $(TARGET))
+	@$(call opt_write,TARGET_OPTIONS,echo $(TARGET_OPTIONS))
+endif
+	@$(call opt_write,CFLAGS,echo $(CFLAGS))
+	@$(call opt_write,CFLAGS_sort,echo $(CFLAGS) | fmt -w1 | sort -V)
+	@$(call opt_write,CFLAGS_SIZE,echo $(CFLAGS_SIZE))
+	@$(call opt_write,CFLAGS_PERF,echo $(CFLAGS_PERF))
+	@$(call opt_write,ROMDASM_XFLAGS,echo $(ROMDASM_XFLAGS))
+	@$(call opt_write,ASFLAGS,echo $(ASFLAGS))
+	@$(call opt_write,ASFLAGS_sort,echo $(ASFLAGS) | fmt -w1 | sort -V)
+
+# Write unoptimized compiler options to file
+%.nopt.opt:
+	$(dump_make_vars)
+	@$(RM) $@
+	@$(call opt_write,TOOLSDIR,echo $(TOOLSDIR))
+	@$(call opt_write,UTILSDIR,echo $(UTILSDIR))
+	@$(call opt_write,CROSS_COMPILE,echo $(CROSS_COMPILE))
+ifeq ($(ROMOFFLOAD),1)
+	@$(call opt_write,ROM_TOOLS_DIR,echo $(ROM_TOOLS_DIR))
+endif
+	@$(call opt_write,Compiler,echo "`$(ROMCC) --version | head -1`")
+ifneq ($(TARGET),)
+	@$(call opt_write,TARGET,echo $(TARGET))
+	@$(call opt_write,TARGET_OPTIONS,echo $(TARGET_OPTIONS))
+endif
+	@$(call opt_write,CFLAGS_NOPT,echo $(call file_cflags_nopt,bogus.c))
+	@$(call opt_write,CFLAGS_NOPT_sort,echo $(call file_cflags_nopt,bogus.c) | fmt -w1 | sort -V)
+ifeq ($(ROMOFFLOAD),1)
+	@$(call opt_write,ROMOPT_DASM_XFLAGS,echo $(ROMOPT_DASM_XFLAGS))
+endif
+	@$(call opt_write,ASFLAGS,echo $(ASFLAGS_NOPT))
+	@$(call opt_write,ASFLAGS_sort,echo $(ASFLAGS_NOPT) | fmt -w1 | sort -V)
+
+ifdef ROMSIZE
+# phony dependency to cause a failure if image exceeds limit
+.PHONY: checksize
+checksize: $(BIN)
+	@( \
+	size="`stat -t $(BIN) | cut -d' ' -f2`";                              \
+	over=$$(($$size-$(ROMSIZE)));                                         \
+	if [ "$$NOMAXSIZE" != "1" -a "$$over" -gt 0 ]; then                   \
+		echo >&2 "Image exceeds ROM size by $$over bytes";            \
+		exit 9;                                                       \
+	fi;                                                                   \
+	)
+
+# display image SIZE and ROMSIZE
+.PHONY: showsize
+showsize: $(MAP)
+	@( \
+	txtsize=`awk '{ if ($$3 == "text_start") { s = strtonum("0x"$$1) }    \
+		     if ($$3 == "text_end") { e = strtonum("0x"$$1) } }       \
+		END { printf "%d", e - s }'                                   \
+		$(MAP)`;                                                      \
+	rosize=`awk '{ if ($$3 == "rodata_start") { s = strtonum("0x"$$1) }   \
+		     if ($$3 == "rodata_end") { e = strtonum("0x"$$1) } }     \
+		END { printf "%d", e - s }'                                   \
+		$(MAP)`;                                                      \
+	size=$$(($$txtsize+$$rosize));                                        \
+	diff=$$(($(ROMSIZE)-$$size));                                         \
+	echo "Image size: $$size; limit: $(strip $(ROMSIZE)); remaining: $$diff"; \
+	if [ $$size -lt 16 ]; then \
+		echo >&2 "$(MAP): no text"; \
+		exit 10; \
+	fi; \
+	extra=`awk '{if ($$3 == "extra_start") { s = strtonum("0x"$$1) }      \
+		     if ($$3 == "extra_end") { e = strtonum("0x"$$1) } }      \
+		END { if (e - s > 15) { printf "%d", e - s } }'               \
+		$(MAP)`;                                                      \
+	echo "Extra code/data not in romtable: $$extra";                      \
+	escsize=`awk '{if ($$3 == "esc_start") { s = strtonum("0x"$$1) }      \
+		     if ($$3 == "esc_end") { e = strtonum("0x"$$1) } }        \
+		END { if (e - s > 15) { printf "%d", e - s } }'               \
+		$(MAP)`;                                                      \
+	echo "Patch table size: $$escsize"; \
+	)
+endif	# ROMSIZE
+
+# display stats info
+_stats: $(STATS)
+
+# remove/load auto dependencies files
+ifeq ($(MAKECMDGOALS),clean)
+# remove all intermediate files
+ifdef INTERMEDIATE_FILES
+$(shell rm -rf $(INTERMEDIATE_FILES))
+endif
+else	# MAKECMDGOALS != clean
+# include rules to check compile flags
+FILES_FLAGS_CHANGED :=
+-include $(sort $(wildcard .*.flags))
+ifneq ($(FILES_FLAGS_CHANGED),)
+$(FILES_FLAGS_CHANGED): FORCE
+endif
+# include rules to check dependencies
+-include $(sort $(wildcard .*.depend))
+# See http://make.mad-scientist.net/papers/advanced-auto-dependency-generation/#depdelete
+.%.depend: ;
+endif	# MAKECMDGOALS != clean
+
+.PHONY: FORCE
+FORCE:
+
+.PHONY: dM
+dM: $(WLFILES:%.c=%.dM) $(COMMON_OBJECTS:%.o=%.dM) $(HBUS_OBJECTS:%.o=%.dM)
+
+# Tell emacs to use Makefile mode since it does not know from the filename:
+#       Local Variables:
+#       mode: makefile
+#       End:
