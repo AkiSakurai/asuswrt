@@ -2533,6 +2533,7 @@ static bool
 wlc_vht_oper_mode_ie_allowed(uint16 ft, wlc_iem_cbparm_t *cbparm)
 {
 	bool ret = FALSE;
+#if 0
 	wlc_iem_ft_cbparm_t *ftcparm = cbparm->ft;
 	struct scb *scb = NULL;
 
@@ -2562,7 +2563,7 @@ wlc_vht_oper_mode_ie_allowed(uint16 ft, wlc_iem_cbparm_t *cbparm)
 			ret = TRUE;
 		}
 	}
-
+#endif
 	return ret;
 }
 
@@ -2570,14 +2571,13 @@ wlc_vht_oper_mode_ie_allowed(uint16 ft, wlc_iem_cbparm_t *cbparm)
 static uint
 wlc_vht_calc_oper_mode_ie_len(void *ctx, wlc_iem_calc_data_t *data)
 {
-#ifdef WL_MODESW
 	wlc_vht_info_t *vhti = (wlc_vht_info_t *)ctx;
 	wlc_bsscfg_t *cfg = data->cfg;
 	wlc_info_t *wlc = cfg->wlc;
-#endif
 	bool narrow_bw = FALSE;
 
-	if (!wlc_vht_oper_mode_ie_allowed(wlc_iem_calc_get_ft(data),
+	if (!(DYN160_ACTIVE(wlc->pub) && WL_BW_CAP_160MHZ(wlc->band->bw_cap)) ||
+		!wlc_vht_oper_mode_ie_allowed(wlc_iem_calc_get_ft(data),
 		wlc_iem_calc_get_parm(data))) {
 		return 0;
 	}
@@ -2608,7 +2608,8 @@ wlc_vht_write_oper_mode_ie(void *ctx, wlc_iem_build_data_t *data)
 	wlc_bsscfg_t *cfg = data->cfg;
 	bool narrow_bw = FALSE;
 
-	if (!wlc_vht_oper_mode_ie_allowed(wlc_iem_build_get_ft(data),
+	if (!(DYN160_ACTIVE(wlc->pub) && WL_BW_CAP_160MHZ(wlc->band->bw_cap)) ||
+		!wlc_vht_oper_mode_ie_allowed(wlc_iem_build_get_ft(data),
 		wlc_iem_build_get_parm(data))) {
 		return BCME_OK;
 	}

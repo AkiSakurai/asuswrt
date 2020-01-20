@@ -8,7 +8,7 @@
 
 include $(SRCBASE)/router/.config
 
-CFLAGS	+= -I. -I$(TOP)/shared -I$(SRCBASE)/include -I$(SRCBASE)/common/include -Wall -Werror
+CFLAGS	+= -I. -I$(TOP)/shared -I$(SRCBASE)/include -I$(SRCBASE)/common/include -Wall -Wno-implicit-function-declaration
 CFLAGS	+= $(if $(WLAN_ComponentIncPath),$(WLAN_ComponentIncPath),$(addprefix -I,$(wildcard $(SRCBASE)/shared/bcmwifi/include)))
 #CFLAGS	+= -g -DDEBUG
 CFLAGS	+= -s -O2
@@ -58,7 +58,17 @@ else
 all: hapdevent
 endif
 
-OBJS = hapdevent_main.o
+OBJS = hapdevent_main.o 
+ifeq ($(RTCONFIG_SOC_IPQ40XX),y)
+OBJS += $(SRCBASE)/router/qca-hostap.ipq40xx/source/src/common/wpa_ctrl.o
+OBJS += $(SRCBASE)/router/qca-hostap.ipq40xx/source/src/utils/os_unix.o
+else ifneq ($(PLATFORM_ROUTER),)
+OBJS += $(SRCBASE)/$(PLATFORM_ROUTER)/qca-hostap/source/src/common/wpa_ctrl.o
+OBJS += $(SRCBASE)/$(PLATFORM_ROUTER)/qca-hostap/source/src/utils/os_unix.o
+else
+OBJS += ../hostapd-2.6/src/common/wpa_ctrl.o
+OBJS += ../hostapd-2.6/src/utils/os_unix.o
+endif
 
 install: all
 	install -d $(INSTALLDIR)/usr/sbin/

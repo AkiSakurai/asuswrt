@@ -1191,7 +1191,6 @@ static void server_switch(skipd_server* server) {
 
     server->db = other;
     server->curr_db = n2;
-    skipd_log(SKIPD_DEBUG, "switch|use path:%s db:%d",server->db_path,server->curr_db);
     SkipDB_delete(tmp);
     SkipDB_free(tmp);
 }
@@ -1415,11 +1414,6 @@ int main(int argc, char **argv)
     //struct ev_periodic every_few_seconds;
     ev_timer init_watcher = {0};
     EV_P  = ev_default_loop(0);
-	FILE *fplock;
-	if ((fplock = fopen("/var/run/skipd.lock", "r")) != NULL) {
-   		printf("don't start second skipd\n");
-		return -1;
-	}
 
     global_server = (skipd_server*)calloc(1, sizeof(skipd_server));
     server = global_server;
@@ -1471,10 +1465,7 @@ int main(int argc, char **argv)
 
     setlogmask(LOG_UPTO (LOG_DEBUG));
     openlog("skipd", syslog_options, LOG_DAEMON);
-	if ((fplock = fopen("/var/run/skipd.lock", "a")) != NULL) {
-		fprintf(fplock, "lock");
-		fclose(fplock);
-	}
+
     //kill -SIGUSR2 22459
     signal(SIGPIPE, SIG_IGN);
     signal(SIGABRT, SIG_IGN);
@@ -1503,13 +1494,11 @@ int main(int argc, char **argv)
     ev_loop(EV_A_ 0);
 
     //sync at exit
-skipd_log(SKIPD_DEBUG, "close path:%s db:%d",server->db_path,server->curr_db);
     SkipDB_beginTransaction(server->db);
     SkipDB_commitTransaction(server->db);
 	
     SkipDB_close(server->db);
     skipd_log(SKIPD_DEBUG, "exit..\n");
-	unlink("/var/run/skipd.lock");
     // This point is only ever reached if the loop is manually exited
     close(server->fd);
     return EXIT_SUCCESS;

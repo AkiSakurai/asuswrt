@@ -20,6 +20,7 @@
 <script type="text/javascript" src="/disk_functions.js"></script>
 <script type="text/javascript" src="/js/jquery.js"></script>
 <script type="text/javascript" src="/switcherplugin/jquery.iphone-switch.js"></script>
+<script type="text/javascript" src="/js/httpApi.js"></script>
 <script type="text/javascript">
 <% get_AiDisk_status(); %>
 <% get_permissions_of_account(); %>
@@ -47,7 +48,7 @@ var changedPermissions = new Array();
 var folderlist = new Array();
 
 var ddns_enable = '<% nvram_get("ddns_enable_x"); %>';
-
+var usb_port_conflict_faq = "https://www.asus.com/support/FAQ/1037906";
 function initial(){
 	show_menu();
 	document.aidiskForm.protocol.value = PROTOCOL;
@@ -63,9 +64,6 @@ function initial(){
 	showPermissionTitle();
 	if("<% nvram_get("ddns_enable_x"); %>" == 1)
 		document.getElementById("machine_name").innerHTML = "<% nvram_get("ddns_hostname_x"); %>";
-	else
-		document.getElementById("machine_name").innerHTML = "<#Web_Title2#>";
-		
 
 	// show mask
 	if(get_manage_type(PROTOCOL)){
@@ -97,6 +95,19 @@ function initial(){
 		$("#trPMGroup").css("display", "block");
 	else
 		$("#trAccount").css("display", "block");
+
+	if(FTP_status && httpApi.ftp_port_conflict_check.conflict()){
+		$("#ftpPortConflict").show();
+		var text = httpApi.ftp_port_conflict_check.usb_ftp.hint;
+		text += "<br>";
+		text += "<a id='ftp_port_conflict_faq' href='" + usb_port_conflict_faq + "' target='_blank' style='text-decoration:underline;color:#FC0;'><#FAQ_Find#></a>";
+		$("#ftpPortConflict").html(text);
+	}
+	httpApi.faqURL("1037906", function(url){
+		usb_port_conflict_faq = url;
+		if($("#ftpPortConflict").find("#ftp_port_conflict_faq").length)
+			$("#ftpPortConflict").find("#ftp_port_conflict_faq").attr("href", usb_port_conflict_faq);
+	});
 }
 
 function get_disk_tree(){
@@ -163,6 +174,13 @@ function switchAppStatus(protocol){  // turn on/off the share
 
 		confirm_str_off = "<#confirm_disableftp#>";
 		confirm_str_on = "<#confirm_enableftp#>";
+		if(httpApi.ftp_port_conflict_check.port_forwarding.enabled() && httpApi.ftp_port_conflict_check.port_forwarding.use_usb_ftp_port()){
+			confirm_str_on += "\n";
+			confirm_str_on += httpApi.ftp_port_conflict_check.usb_ftp.hint;
+			confirm_str_on += "\n";
+			confirm_str_on += "<#FAQ_Find#> : ";
+			confirm_str_on += usb_port_conflict_faq;
+		}
 	}
 
 	switch(status){
@@ -700,7 +718,7 @@ function switchUserType(flag){
 </script>
 </head>
 
-<body onLoad="initial();" onunload="unload_body();">
+<body onLoad="initial();" onunload="unload_body();" class="bg">
 <div id="TopBanner"></div>
 
 <div id="Loading" class="popup_bg"></div>
@@ -780,8 +798,9 @@ function switchUserType(flag){
 										switchAppStatus(PROTOCOL);
 									}
 								);
-							</script>			
-						</div>	
+							</script>
+						</div>
+						<span id="ftpPortConflict"></span>
 					</td>
 				</tr>										
 
@@ -892,7 +911,7 @@ function switchUserType(flag){
 			  		<table width="480"  border="0" cellspacing="0" cellpadding="0" class="FileStatusTitle">
 		  	    		<tr>
 		    	  			<td width="290" height="20" align="left">
-				    			<div id="machine_name" class="machineName"></div>
+				    			<div id="machine_name" class="machineName"><#Web_Title2#></div>
 				    		</td>
 				  		<td>
 				    			<div id="permissionTitle"></div>

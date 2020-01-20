@@ -4273,10 +4273,10 @@ wlc_validate_mac(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct ether_addr *addr)
 			/* setting first VIF addr, start by checking
 			 * for collision with primary config
 			 */
-			if (EADDR_TO_UC_IDX(*addr, WLC_MBSS_UCIDX_MASK(wlc->pub->corerev)) ==
+			if (!MBSS_IGN_MAC_VALID(wlc->pub) &&
+				EADDR_TO_UC_IDX(*addr, WLC_MBSS_UCIDX_MASK(wlc->pub->corerev)) ==
 			    EADDR_TO_UC_IDX(wlc->cfg->cur_etheraddr,
-			                    WLC_MBSS_UCIDX_MASK(wlc->pub->corerev)) &&
-			    !BSSCFG_RMAC(cfg))
+			                    WLC_MBSS_UCIDX_MASK(wlc->pub->corerev)))
 				return BCME_BADADDR;
 
 			/* Apply mask and save the base */
@@ -4290,8 +4290,8 @@ wlc_validate_mac(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct ether_addr *addr)
 			 */
 			bcopy(addr, &temp, ETHER_ADDR_LEN);
 			temp.octet[5] &= ~(WLC_MBSS_UCIDX_MASK(wlc->pub->corerev));
-			if (bcmp(&temp, &wlc->mbss->vether_base, ETHER_ADDR_LEN) &&
-				!BSSCFG_RMAC(cfg))
+			if (!MBSS_IGN_MAC_VALID(wlc->pub) &&
+				bcmp(&temp, &wlc->mbss->vether_base, ETHER_ADDR_LEN))
 				return BCME_BADADDR;
 
 			/* verify that there isn't a
@@ -4303,7 +4303,8 @@ wlc_validate_mac(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct ether_addr *addr)
 				if ((bsscfg == cfg) ||
 				    (ETHER_ISNULLADDR(&bsscfg->cur_etheraddr)))
 					continue;
-				if (ucidx == EADDR_TO_UC_IDX(bsscfg->cur_etheraddr,
+				if (!MBSS_IGN_MAC_VALID(wlc->pub) &&
+					ucidx == EADDR_TO_UC_IDX(bsscfg->cur_etheraddr,
 					WLC_MBSS_UCIDX_MASK(wlc->pub->corerev)))
 					return BCME_BADADDR;
 			}
@@ -4386,7 +4387,10 @@ wlc_set_mac(wlc_bsscfg_t *cfg)
 #endif /* PSTA */
 #ifdef MBSS
 	else if (MBSS_ENAB(wlc->pub) && BSSCFG_AP(cfg)) {
-		wlc_write_mbss_basemac(wlc, &wlc->mbss->vether_base);
+		if (MBSS_IGN_MAC_VALID(wlc->pub))
+			wlc_write_mbss_basemac(wlc, addr);
+		else
+			wlc_write_mbss_basemac(wlc, &wlc->mbss->vether_base);
 	}
 #endif /* MBSS */
 #ifdef WLMCNX
@@ -35213,6 +35217,10 @@ wlc_sta_info(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, const struct ether_addr *ea,
 		sta.rateset_adv.vht_mcs[nss - 1] = VHT_MCS_CODE_TO_MCS_MAP(mcs_code) |
 		VHT_PROP_MCS_CODE_TO_PROP_MCS_MAP(prop_mcs_code);
 	}
+
+#ifdef WLWNM_AP
+	sta.wnm_cap = wlc_wnm_get_scbcap(wlc, scb);
+#endif /* WLWNM_AP */
 
 	sta.len = (uint16)copy_len;
 	/* bcopy to avoid alignment issues */

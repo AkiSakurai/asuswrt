@@ -68,15 +68,15 @@ all:
 clean:
 #	rm -f rom/etc/motd
 
-rom/etc/ssl/certs/ca-certificates.crt:
-	ssl/mk-ca-bundle.pl -fu $@
+certs/ca-bundle.crt:
+	certs/mk-ca-bundle.pl -fu $@
 
 certs: dummy
-	ssl/mk-ca-bundle.pl -fu rom/etc/ssl/certs/ca-certificates.crt
+	certs/mk-ca-bundle.pl -fu certs/ca-bundle.crt
 
-certs-install: rom/etc/ssl/certs/ca-certificates.crt
+certs-install: certs/ca-bundle.crt
 	install -d $(INSTALLDIR)/rom/etc/ssl/certs
-	install -m 0644 rom/etc/ssl/certs/ca-certificates.crt $(INSTALLDIR)/rom/etc/ssl/certs/ca-certificates.crt
+	install -m 0644 certs/ca-bundle.crt $(INSTALLDIR)/rom/etc/ssl/certs/ca-certificates.crt
 	sed -r '/^\s*(#|$$)/d;/\-BEGIN/{h;d};H;/\-END/{x;/\-BEGIN/p};d' -i $(INSTALLDIR)/rom/etc/ssl/certs/ca-certificates.crt
 
 install:
@@ -85,7 +85,7 @@ install:
 
 	$(MAKE) certs-install
 ifeq ($(RTCONFIG_LETSENCRYPT),y)
-	install -m 0644 rom/etc/ssl/certs/DST_Root_CA_X3.pem $(INSTALLDIR)/rom/etc/ssl/certs/letsencrypt.pem
+	install -m 0644 certs/DST_Root_CA_X3.pem $(INSTALLDIR)/rom/etc/ssl/certs/letsencrypt.pem
 endif
 ifeq ($(RTCONFIG_APP_FILEFLEX),y)
 	install -m 0644 ipkg.conf $(INSTALLDIR)/rom/ipkg.conf
@@ -180,7 +180,7 @@ endif
 endif
 else
 ifeq ($(RTCONFIG_HTTPS),y)
-ifeq ($(MERLINR_NAME), $(filter $(MERLINR_NAME), K3 K3C R8000P SBRAC1900P SBRAC3200P RTAC86U))
+ifeq ($(BUILD_NAME), $(filter $(BUILD_NAME), RT-AC3100 RT-AC3200 RT-AC68U RT-AC86U GT-AC5300 GT-AC2900 BLUECAVE RT-AC85P RT-ACRH17 RT-AX88U GT-AX11000 RT-AX92U))
 	cp -f webs_scripts/merlinr_webs_upgrade.sh $(INSTALLDIR)/usr/sbin/webs_upgrade.sh
 else
 	cp -f webs_scripts/ssl_webs_upgrade.sh $(INSTALLDIR)/usr/sbin/webs_upgrade.sh
@@ -195,7 +195,7 @@ else
 	cp -f webs_scripts/ssl_webs_update.sh $(INSTALLDIR)/usr/sbin/webs_update.sh
 endif
 ifeq ($(RTCONFIG_CFGSYNC),y)
-ifeq ($(MERLINR_NAME), $(filter $(MERLINR_NAME), K3 K3C  R8000P SBRAC1900P SBRAC3200P RTAC86U))
+ifeq ($(BUILD_NAME), $(filter $(BUILD_NAME), RT-AC3100 RT-AC3200 RT-AC68U RT-AC86U GT-AC5300 GT-AC2900 BLUECAVE RT-AC85P RT-ACRH17 RT-AX88U GT-AX11000 RT-AX92U))
 	cp -f webs_scripts/merlinr_webs_download.sh $(INSTALLDIR)/usr/sbin/webs_download.sh
 	cp -f webs_scripts/merlinr_webs_note.sh $(INSTALLDIR)/usr/sbin/webs_note.sh
 else

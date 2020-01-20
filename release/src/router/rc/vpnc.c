@@ -41,6 +41,9 @@
 #include <arpa/inet.h>
 #include <net/if_arp.h>
 
+/* TODO: remove */
+#undef VPNC_LEGACY
+
 #define L2TP_VPNC_PID	"/var/run/l2tpd-vpnc.pid"
 #define L2TP_VPNC_CTRL	"/var/run/l2tpctrl-vpnc"
 #define L2TP_VPNC_CONF	"/tmp/l2tp-vpnc.conf"
@@ -70,6 +73,7 @@ start_vpnc(void)
 	snprintf(wan_prefix, sizeof(wan_prefix), "wan%d_", wan_primary_ifunit());
 	snprintf(wan_proto, sizeof(wan_proto), "%s", nvram_safe_get(strcat_r(wan_prefix, "proto", tmp)));
 
+/* TODO: remove */
 #if 0
 	if (nvram_match(strcat_r(wan_prefix, "proto", tmp), "pptp") || nvram_match(strcat_r(wan_prefix, "proto", tmp), "l2tp"))
 		return 0;
@@ -111,11 +115,13 @@ start_vpnc(void)
 
 	umask(mask);
 
+#ifdef VPNC_LEGACY
 	/* route for pptp/l2tp's server */
 	if (nvram_match(strcat_r(wan_prefix, "proto", tmp), "pptp") || nvram_match(strcat_r(wan_prefix, "proto", tmp), "l2tp")) {
 		char *wan_ifname = nvram_safe_get(strcat_r(wan_prefix, "pppoe_ifname", tmp));
 		route_add(wan_ifname, 0, nvram_safe_get(strcat_r(wan_prefix, "gateway", tmp)), "0.0.0.0", "255.255.255.255");
 	}
+#endif /* VPNC_LEGACY */
 
 	/* do not authenticate peer and do not use eap */
 	fprintf(fp, "noauth\n");
@@ -131,7 +137,6 @@ start_vpnc(void)
 			nvram_invmatch(strcat_r(prefix, "heartbeat_x", tmp), "") ?
 			nvram_safe_get(strcat_r(prefix, "heartbeat_x", tmp)) :
 			nvram_safe_get(strcat_r(prefix, "gateway_x", tmp)));
-		fprintf(fp, "vpnc 1\n");
 		/* see KB Q189595 -- historyless & mtu */
 		if (nvram_match(strcat_r(wan_prefix, "proto", tmp), "pptp") || nvram_match(strcat_r(wan_prefix, "proto", tmp), "l2tp"))
 			fprintf(fp, "nomppe-stateful mtu 1300\n");
@@ -243,7 +248,6 @@ start_vpnc(void)
 			"section peer\n"
 			"port 1701\n"
 			"peername %s\n"
-			"vpnc 1\n"
 			"hostname %s\n"
 			"lac-handler sync-pppd\n"
 			"persist yes\n"
@@ -352,15 +356,15 @@ void update_vpnc_state(char *prefix, int state, int reason)
 
 int vpnc_update_resolvconf(void)
 {
-	FILE *fp;
-#ifdef NORESOLV /* dnsmasq uses no resolv.conf */
-	FILE *fp_servers;
-#endif
+	FILE *fp, *fp_servers;
 	char tmp[100], prefix[] = "vpnc_";
 	char *wan_dns, *next;
 	int lock;
 #ifdef RTCONFIG_YANDEXDNS
 	int yadns_mode = nvram_get_int("yadns_enable_x") ? nvram_get_int("yadns_mode") : YADNS_DISABLED;
+#endif
+#ifdef RTCONFIG_DNSPRIVACY
+	int dnspriv_enable = nvram_get_int("dnspriv_enable");
 #endif
 
 	lock = file_lock("resolv");
@@ -369,10 +373,15 @@ int vpnc_update_resolvconf(void)
 		perror("/tmp/resolv.conf");
 		goto error;
 	}
-#ifdef NORESOLV /* dnsmasq uses no resolv.conf */
 #ifdef RTCONFIG_YANDEXDNS
 	if (yadns_mode != YADNS_DISABLED) {
 		/* keep yandex.dns servers */
+		fp_servers = NULL;
+	} else
+#endif
+#ifdef RTCONFIG_DNSPRIVACY
+	if (dnspriv_enable) {
+		/* keep dns privacy servers */
 		fp_servers = NULL;
 	} else
 #endif
@@ -381,25 +390,17 @@ int vpnc_update_resolvconf(void)
 		fclose(fp);
 		goto error;
 	}
-#endif
 
 	wan_dns = nvram_safe_get(strcat_r(prefix, "dns", tmp));
 	foreach(tmp, wan_dns, next) {
 		fprintf(fp, "nameserver %s\n", tmp);
-#ifdef NORESOLV /* dnsmasq uses no resolv.conf */
-#ifdef RTCONFIG_YANDEXDNS
-		if (yadns_mode != YADNS_DISABLED)
-			continue;
-#endif
-		fprintf(fp_servers, "server=%s\n", tmp);
-#endif
+		if (fp_servers)
+			fprintf(fp_servers, "server=%s\n", tmp);
 	}
 
 	fclose(fp);
-#ifdef NORESOLV /* dnsmasq uses no resolv.conf */
 	if (fp_servers)
 		fclose(fp_servers);
-#endif
 	file_unlock(lock);
 
 	reload_dnsmasq();
@@ -449,6 +450,7 @@ void vpnc_add_firewall_rule()
 void
 vpnc_up(char *vpnc_ifname)
 {
+#ifdef VPNC_LEGACY
 	int ret = 0;
 	char tmp[100], prefix[] = "vpnc_", wan_prefix[] = "wanXXXXXXXXXX_";
 	char *wan_ifname = NULL, *wan_proto = NULL;
@@ -490,6 +492,27 @@ vpnc_up(char *vpnc_ifname)
 	}
 	/* Remove route to the gateway - no longer needed */
 	route_del(vpnc_ifname, 0, nvram_safe_get(strcat_r(prefix, "gateway", tmp)), NULL, "255.255.255.255");
+#else /* VPNC_LEGACY */
+	char tmp[100], prefix[] = "vpnc_";
+	char *gateway = nvram_safe_get(strcat_r(prefix, "gateway", tmp));
+
+	/* Add default routes via VPN interface */
+	if (route_add(vpnc_ifname, 0, "0.0.0.0", gateway, "128.0.0.0") != 0)
+		goto error;
+	if (route_add(vpnc_ifname, 0, "128.0.0.0", gateway, "128.0.0.0") != 0) {
+		route_del(vpnc_ifname, 0, "0.0.0.0", gateway, "128.0.0.0");
+	error:
+		_dprintf("%s: fail to add route table\n", __FUNCTION__);
+		update_vpnc_state(prefix, WAN_STATE_STOPPED, WAN_STOPPED_REASON_IPGATEWAY_CONFLICT);
+		return;
+	}
+
+	/* Remove obsolete default route via VPN interface */
+	route_del(vpnc_ifname, 0, "0.0.0.0", NULL, "0.0.0.0");
+
+	/* Remove gateway route - no longer needed, avoid routing loops */
+	route_del(vpnc_ifname, 0, gateway, NULL, "255.255.255.255");
+#endif
 
 	/* Add dns servers to resolv.conf */
 	if (nvram_invmatch(strcat_r(prefix, "dns", tmp), ""))
@@ -585,6 +608,7 @@ void vpnc_del_firewall_rule()
 void
 vpnc_down(char *vpnc_ifname)
 {
+#ifdef VPNC_LEGACY
 	char tmp[100], prefix[] = "vpnc_", wan_prefix[] = "wanXXXXXXXXXX_";
 	char *wan_ifname = NULL, *wan_proto = NULL;
 
@@ -648,6 +672,7 @@ vpnc_down(char *vpnc_ifname)
 #if !defined(CONFIG_BCMWL5) && defined(RTCONFIG_DUALWAN)
 	}
 #endif
+#endif /* VPNC_LEGACY */
 
 	/* Delete firewall rules for VPN client */
 	vpnc_del_firewall_rule();
@@ -735,5 +760,14 @@ vpnc_authfail_main(int argc, char **argv)
 	update_vpnc_state(prefix, WAN_STATE_STOPPED, WAN_STOPPED_REASON_PPP_AUTH_FAIL);
 
 	_dprintf("%s:: done\n", __FUNCTION__);
+	return 0;
+}
+
+int is_vpnc_dns_active()
+{
+	if (nvram_get_int("vpnc_state_t") == WAN_STATE_CONNECTED &&
+	    nvram_invmatch("vpnc_dns", ""))
+		return 1;
+
 	return 0;
 }

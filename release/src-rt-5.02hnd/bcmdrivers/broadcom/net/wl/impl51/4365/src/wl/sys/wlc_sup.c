@@ -744,6 +744,7 @@ wlc_wpa_sup_gtk_update(wlc_sup_info_t *sup_info, wlc_bsscfg_t *cfg,
 	supplicant_t *sup = SUP_BSSCFG_CUBBY_PRIV(sup_info, cfg);
 	wpapsk_t *wpa = sup->wpa;
 
+	key_len = MIN(key_len, sizeof(wpa->gtk));
 	wpa->gtk_len = (ushort)key_len;
 	wpa->gtk_index = (uint8)index;
 	memcpy(wpa->gtk, key, key_len);
@@ -975,7 +976,9 @@ wlc_wpa_sup_eapol(supplicant_t *sup, eapol_header_t *eapol, bool encrypted)
 				data_len = ntoh16_ua(&body->data_len);
 				data_encap = wpa_find_kde(body->data, data_len,
 				                          WPA2_KEY_DATA_SUBTYPE_PMKID);
-				if (data_encap) {
+				if (data_encap && (data_encap->length >=
+					(OFFSETOF(eapol_wpa2_encap_data_t, data)
+						- TLV_HDR_LEN + WPA2_PMKID_LEN))) {
 
 #if defined(BCMDBG) || defined(WLMSG_WSEC)
 					if (WL_WSEC_ON()) {
@@ -994,6 +997,9 @@ wlc_wpa_sup_eapol(supplicant_t *sup, eapol_header_t *eapol, bool encrypted)
 					}
 					else
 						return TRUE;
+				}
+				else {
+					return TRUE;
 				}
 			}
 #if defined(BCMSUP_PSK)
@@ -1216,16 +1222,15 @@ wlc_wpa_sup_eapol(supplicant_t *sup, eapol_header_t *eapol, bool encrypted)
 
 				/* extract GTK */
 				data_encap = wpa_find_gtk_encap(body->data, data_len);
-				if (!data_encap) {
+				if (!data_encap || ((uint)(data_encap->length -
+					EAPOL_WPA2_GTK_ENCAP_MIN_LEN) > sizeof(wpa->gtk))) {
 					WL_WSEC(("wl%d: wlc_wpa_sup_eapol: encapsulated GTK missing"
 					         " from message 3\n", UNIT(sup_priv)));
 					wlc_wpa_send_sup_status(sup_info, sup->cfg,
 						WLC_E_SUP_MSG3_NO_GTK);
 					return FALSE;
 				}
-				wpa->gtk_len = data_encap->length -
-				    ((EAPOL_WPA2_ENCAP_DATA_HDR_LEN - TLV_HDR_LEN) +
-				     EAPOL_WPA2_KEY_GTK_ENCAP_HDR_LEN);
+				wpa->gtk_len = data_encap->length - EAPOL_WPA2_GTK_ENCAP_MIN_LEN;
 				gtk_kde = (eapol_wpa2_key_gtk_encap_t *)data_encap->data;
 				wpa->gtk_index = (gtk_kde->flags & WPA2_GTK_INDEX_MASK) >>
 				    WPA2_GTK_INDEX_SHIFT;
@@ -1309,16 +1314,16 @@ wlc_wpa_sup_eapol(supplicant_t *sup, eapol_header_t *eapol, bool encrypted)
 			/* extract GTK */
 			data_len = ntoh16_ua(&body->data_len);
 			data_encap = wpa_find_gtk_encap(body->data, data_len);
-			if (!data_encap) {
+			if (!data_encap || ((uint)(data_encap->length -
+				EAPOL_WPA2_GTK_ENCAP_MIN_LEN) > sizeof(wpa->gtk))) {
 				WL_WSEC(("wl%d: wlc_wpa_sup_eapol: encapsulated GTK missing from"
 					" group message 1\n", UNIT(sup)));
 				wlc_wpa_send_sup_status(sup_info, sup->cfg,
 					WLC_E_SUP_GRP_MSG1_NO_GTK);
 				return FALSE;
 			}
-			wpa->gtk_len = data_encap->length - ((EAPOL_WPA2_ENCAP_DATA_HDR_LEN -
-			                                          TLV_HDR_LEN) +
-			                                         EAPOL_WPA2_KEY_GTK_ENCAP_HDR_LEN);
+			/* note: data encap length checked during lookup above */
+			wpa->gtk_len = data_encap->length - EAPOL_WPA2_GTK_ENCAP_MIN_LEN;
 			gtk_kde = (eapol_wpa2_key_gtk_encap_t *)data_encap->data;
 			wpa->gtk_index = (gtk_kde->flags & WPA2_GTK_INDEX_MASK) >>
 			    WPA2_GTK_INDEX_SHIFT;

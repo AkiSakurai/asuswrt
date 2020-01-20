@@ -287,30 +287,6 @@ void usage_exit(const char *cmd, const char *help)
 	exit(1);
 }
 
-#if 0 // replaced by #define in rc.h
-int modprobe(const char *mod)
-{
-#if 1
-	return eval("modprobe", "-s", (char *)mod);
-#else
-	int r = eval("modprobe", "-s", (char *)mod);
-	cprintf("modprobe %s = %d\n", mod, r);
-	return r;
-#endif
-}
-#endif // 0
-
-int modprobe_r(const char *mod)
-{
-#if 1
-	return eval("modprobe", "-r", (char *)mod);
-#else
-	int r = eval("modprobe", "-r", (char *)mod);
-	cprintf("modprobe -r %s = %d\n", mod, r);
-	return r;
-#endif
-}
-
 #ifndef ct_modprobe
 #ifdef LINUX26
 #define ct_modprobe(mod, args...) ({ \
@@ -848,12 +824,28 @@ void setup_pt_conntrack(void)
 	}
 
 #ifdef LINUX26
+#if defined(BRTAC828)
+	if (!nvram_match("fw_pt_sip", "0")) {
+		if (nvram_get_int("fw_pt_sip_mode") == 1) {
+			ct_modprobe_r("sip");
+			ct_modprobe("cisco_sip");
+		} else {
+			ct_modprobe_r("cisco_sip");
+			ct_modprobe("sip");
+		}
+	}
+	else {
+		ct_modprobe_r("sip");
+		ct_modprobe_r("cisco_sip");
+	}
+#else
 	if (!nvram_match("fw_pt_sip", "0")) {
 		ct_modprobe("sip");
 	}
 	else {
 		ct_modprobe_r("sip");
 	}
+#endif
 #endif
 }
 
@@ -865,6 +857,9 @@ void remove_conntrack(void)
 	ct_modprobe_r("h323");
 #ifdef LINUX26
 	ct_modprobe_r("sip");
+#if defined(BRTAC828)
+	ct_modprobe_r("cisco_sip");
+#endif
 #endif
 }
 
@@ -1398,89 +1393,6 @@ setup_timezone(void)
 	}
 
 	settimeofday(tvp, &tz);
-}
-
-int
-is_invalid_char_for_hostname(char c)
-{
-	int ret = 0;
-
-	if (c < 0x20)
-		ret = 1;
-#if 0
-	else if (c >= 0x21 && c <= 0x2c)	/* !"#$%&'()*+, */
-		ret = 1;
-#else	/* allow '+' */
-	else if (c >= 0x21 && c <= 0x2a)	/* !"#$%&'()* */
-		ret = 1;
-	else if (c == 0x2c)			/* , */
-		ret = 1;
-#endif
-	else if (c >= 0x2e && c <= 0x2f)	/* ./ */
-		ret = 1;
-	else if (c >= 0x3a && c <= 0x40)	/* :;<=>?@ */
-		ret = 1;
-#if 0
-	else if (c >= 0x5b && c <= 0x60)	/* [\]^_ */
-		ret = 1;
-#else	/* allow '_' */
-	else if (c >= 0x5b && c <= 0x5e)	/* [\]^ */
-		ret = 1;
-	else if (c == 0x60)			/* ` */
-		ret = 1;
-#endif
-	else if (c >= 0x7b)			/* {|}~ DEL */
-		ret = 1;
-#if 0
-	printf("%c (0x%02x) is %svalid for hostname\n", c, c, (ret == 0) ? "  " : "in");
-#endif
-	return ret;
-}
-
-int
-is_valid_hostname(const char *name)
-{
-	int len, i;
-
-	if (!name)
-		return 0;
-
-	len = strlen(name);
-	for (i = 0; i < len ; i++) {
-		if (is_invalid_char_for_hostname(name[i])) {
-			len = 0;
-			break;
-		}
-	}
-#if 0
-	printf("%s is %svalid for hostname\n", name, len ? "" : "in");
-#endif
-	return len;
-}
-
-int
-is_valid_domainname(const char *name)
-{
-	int len, i;
-	unsigned char c;
-
-	if (!name)
-		return 0;
-
-	len = strlen(name);
-	for (i = 0; i < len; i++) {
-		c = name[i];
-		if (((c | 0x20) < 'a' || (c | 0x20) > 'z') &&
-		    ((c < '0' || c > '9')) &&
-		    (c != '.' && c != '-' && c != '_')) {
-			len = 0;
-			break;
-		}
-	}
-#if 0
-	printf("%s is %svalid for domainname\n", name, len ? "" : "in");
-#endif
-	return len;
 }
 
 int get_meminfo_item(const char *name)

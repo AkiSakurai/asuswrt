@@ -63,12 +63,6 @@
 #define BSSCFG_ACKSUPR(cfg) (BSSCFG_AP(cfg) && cfg->acksupr_mac_filter)
 #endif /* ACKSUPR_MAC_FILTER */
 
-#ifdef MBSS
-#define BSSCFG_RMAC(cfg)	((cfg)->_mbss_rmac)
-#else
-#define BSSCFG_RMAC(cfg)	(0)
-#endif
-
 /* forward declarations */
 struct scb;
 
@@ -850,7 +844,6 @@ struct wlc_bsscfg {
 #endif /* ACKSUPR_MAC_FILTER */
 	struct wl_timer *pilot_timer;     /* Measurement Piolt timer */
 	uint8 mp_period;
-	uint8 _mbss_rmac;	/* allow to use real-mac bssid */
 };
 
 /* wlc_bsscfg_t flags */

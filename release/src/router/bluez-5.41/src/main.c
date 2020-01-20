@@ -363,8 +363,10 @@ static void init_defaults(void)
 		main_opts.name = g_strdup_printf("ASUS_%02X_MESH", mac_binary[5]);
 	else
 		main_opts.name = g_strdup_printf("VZW_%02X", mac_binary[5]);
-#else
+#elif defined(RTCONFIG_SSID_AMAPS)
 	main_opts.name = g_strdup_printf("ASUS_%02X_AMAPS", mac_binary[5]);
+#else
+	main_opts.name = g_strdup_printf("ASUS_%02X", mac_binary[5]);
 #endif
 	main_opts.class = 0x000000;
 	main_opts.pairto = DEFAULT_PAIRABLE_TIMEOUT;

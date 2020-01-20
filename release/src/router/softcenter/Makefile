@@ -10,6 +10,15 @@ install:
 	install -d $(INSTALLDIR)/usr/share
 	install -d $(INSTALLDIR)/usr/lib
 	install -d $(INSTALLDIR)/rom/etc
+ifeq ($(HND_ROUTER), y)
+	install -d $(INSTALLDIR)/www/www
+	install -d $(INSTALLDIR)/www/www/js
+	install -d $(INSTALLDIR)/www/www/res
+else
+	install -d $(INSTALLDIR)/www
+	install -d $(INSTALLDIR)/www/js
+	install -d $(INSTALLDIR)/www/res
+endif
 	install -d $(INSTALLDIR)/rom/etc/softcenter/bin
 	install -d $(INSTALLDIR)/rom/etc/softcenter/res
 	install -d $(INSTALLDIR)/rom/etc/softcenter/res/layer
@@ -25,9 +34,6 @@ install:
 ifeq ($(BUILD_NAME), $(filter $(BUILD_NAME), GT-AC2900 GT-AC5300))
 	install -d $(INSTALLDIR)/rom/etc/softcenter/ROG/res
 	install -d $(INSTALLDIR)/rom/etc/softcenter/ROG/webs
-endif
-ifeq ($(MERLINR_NAME), $(filter $(MERLINR_NAME), R7900P))
-	install -m 0755 gt-ac2900_nvram.nvm $(INSTALLDIR)/rom/etc/
 endif
 # softcenter
 	install -m 0755 softcenter/bin/base64_encode $(INSTALLDIR)/rom/etc/softcenter/bin
@@ -78,5 +84,21 @@ endif
 	install -m 0755 jffsinit.sh $(INSTALLDIR)/usr/sbin
 	install -m 0755 plugin.sh $(INSTALLDIR)/usr/sbin
 	install -m 0755 helper.sh $(INSTALLDIR)/usr/sbin
+ifeq ($(HND_ROUTER), y)
+	install -m 0755 i18n.js $(INSTALLDIR)/www/www/js
+	install -m 0755 scCN.json $(INSTALLDIR)/www/www/res
+	install -m 0755 scEN.json $(INSTALLDIR)/www/www/res
+	install -m 0755 scTW.json $(INSTALLDIR)/www/www/res
+	install -m 0755 Softcenter.asp $(INSTALLDIR)/www/www
+	install -m 0755 Softcenter_mount.asp $(INSTALLDIR)/www/www
+else
+	install -m 0755 i18n.js $(INSTALLDIR)/www/js
+	install -m 0755 scCN.json $(INSTALLDIR)/www/res
+	install -m 0755 scEN.json $(INSTALLDIR)/www/res
+	install -m 0755 scTW.json $(INSTALLDIR)/www/res
+	install -m 0755 Softcenter.asp $(INSTALLDIR)/www
+	install -m 0755 Softcenter_mount.asp $(INSTALLDIR)/www
+endif
 
 clean:
+

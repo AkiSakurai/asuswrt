@@ -381,8 +381,8 @@ enum {
 #endif /* WLAUTHRESP_MAC_FILTER */
 	IOV_PROXY_ARP_ADVERTISE,    /* Update beacon, probe response frames for proxy arp bit */
 	IOV_SET_RADAR,		/* Set radar. Convert IOCTL to IOVAR for RSDB/BG DFS Scan. */
-	IOV_MBSS_RMAC,		/* Allow to use real-mac bssid */
 	IOV_DY_ED_THRESH,	/* Enable TXOP based dynamic ed thresh */
+	IOV_MBSS_IGN_MAC_VALID,
 	IOV_LAST		/* In case of a need to check max ID number */
 
 };
@@ -522,8 +522,8 @@ static const bcm_iovar_t wlc_ap_iovars[] = {
 	{"radar", IOV_SET_RADAR,
 	(IOVF_RSDB_SET), IOVT_BOOL, 0
 	},
-	{"mbss_rmac", IOV_MBSS_RMAC,
-	(IOVF_SET_DOWN), IOVT_UINT8, 0,
+	{"mbss_ign_mac_valid", IOV_MBSS_IGN_MAC_VALID,
+	(IOVF_SET_DOWN), IOVT_BOOL, 0
 	},
 	{"dy_ed_thresh", IOV_DY_ED_THRESH,
 	(0), IOVT_BOOL, 0
@@ -4495,7 +4495,11 @@ wlc_ap_doiovar(void *hdl, const bcm_iovar_t *vi, uint32 actionid, const char *na
 			break;
 		}
 
-		if (int_val2 > WLC_AP_IOV_OP_DISABLE) {
+#define WLC_AP_IOV_OP_ENABLE_BCN	8
+#define WLC_AP_IOV_OP_DISABLE_BCN	9
+
+		if ((int_val2 > WLC_AP_IOV_OP_DISABLE &&
+				int_val2 < WLC_AP_IOV_OP_DISABLE_BCN)) {
 			if (bsscfg->up) {
 				WL_APSTA_UPDN(("wl%d: Ignoring UP, bsscfg %d already UP\n",
 					wlc->pub->unit, int_val));
@@ -4511,8 +4515,19 @@ wlc_ap_doiovar(void *hdl, const bcm_iovar_t *vi, uint32 actionid, const char *na
 
 			WL_APSTA_UPDN(("wl%d: BSS up cfg %d (%s) -> wlc_bsscfg_enable()\n",
 				wlc->pub->unit, int_val, (BSSCFG_AP(bsscfg) ? "AP" : "STA")));
-			if (BSSCFG_AP(bsscfg))
+			if (BSSCFG_AP(bsscfg)) {
 				err = wlc_bsscfg_enable(wlc, bsscfg);
+
+				if ((int_val2 == WLC_AP_IOV_OP_ENABLE_BCN) &&
+						APSTA_ENAB(wlc->pub) && !MBSS_ENAB(wlc->pub)) {
+					uint32 hostflag1 = wlc_read_shm(wlc, M_HOST_FLAGS1);
+					if (hostflag1 & MHF1_MBSS_EN) {
+						wlc_suspend_mac_and_wait(wlc);
+						(void)wlc_mhf(wlc, MHF1, MHF1_MBSS_EN, 0, WLC_BAND_AUTO);
+						wlc_enable_mac(wlc);
+					}
+				}
+			}
 #ifdef WLP2P
 			else if (BSS_P2P_ENAB(wlc, bsscfg))
 				err = BCME_ERROR;
@@ -4546,6 +4561,20 @@ wlc_ap_doiovar(void *hdl, const bcm_iovar_t *vi, uint32 actionid, const char *na
 				if (!wlc_ap_on_radarchan(wlc->ap) && !(BSSCFG_SRADAR_ENAB(bsscfg) ||
 					BSSCFG_AP_NORADAR_CHAN_ENAB(bsscfg)))
 					wlc_set_dfs_cacstate(wlc->dfs, OFF);
+			}
+
+			/* ucode Legacy BSS mode can't disable beaconing, so set
+			 * MHF1_MBSS_EN to HOST_FLAGS1 to force disable beacon.
+			 */
+			if (int_val2 == WLC_AP_IOV_OP_DISABLE_BCN && APSTA_ENAB(wlc->pub) &&
+					(wlc_bsscfg_primary(wlc)->associated == 0) &&
+				BSSCFG_AP(bsscfg) && !MBSS_ENAB(wlc->pub)) {
+				uint32 hostflag1 = wlc_read_shm(wlc, M_HOST_FLAGS1);
+				if (!(hostflag1 & MHF1_MBSS_EN)) {
+					wlc_suspend_mac_and_wait(wlc);
+					(void)wlc_mhf(wlc, MHF1, MHF1_MBSS_EN, MHF1_MBSS_EN, WLC_BAND_AUTO);
+					wlc_enable_mac(wlc);
+				}
 			}
 		}
 		break;
@@ -5108,12 +5137,12 @@ wlc_ap_doiovar(void *hdl, const bcm_iovar_t *vi, uint32 actionid, const char *na
 		*ret_int_ptr = (int32)wlc_dfs_get_radar(wlc->dfs);
 		break;
 
-	case IOV_GVAL(IOV_MBSS_RMAC):
-		*ret_int_ptr = bsscfg->_mbss_rmac;
+	case IOV_GVAL(IOV_MBSS_IGN_MAC_VALID):
+		*ret_int_ptr = wlc->pub->_mbss_ign_mac_valid ? TRUE : FALSE;
 		break;
 
-	case IOV_SVAL(IOV_MBSS_RMAC):
-		bsscfg->_mbss_rmac = (uint8)int_val;
+	case IOV_SVAL(IOV_MBSS_IGN_MAC_VALID):
+		wlc->pub->_mbss_ign_mac_valid = bool_val;
 		break;
 
 	case IOV_SVAL(IOV_DY_ED_THRESH): {

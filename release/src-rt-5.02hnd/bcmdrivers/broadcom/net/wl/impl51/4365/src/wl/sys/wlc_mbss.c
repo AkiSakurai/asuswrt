@@ -718,7 +718,10 @@ wlc_mbss_bsscfg_up(wlc_info_t *wlc, wlc_bsscfg_t *cfg)
 		if ((ret = mbss_bsscfg_up(wlc, cfg)) != BCME_OK)
 			return ret;
 
-		wlc_write_mbss_basemac(wlc, &wlc->mbss->vether_base);
+		if (MBSS_IGN_MAC_VALID(wlc->pub))
+			wlc_write_mbss_basemac(wlc, &cfg->cur_etheraddr);
+		else
+			wlc_write_mbss_basemac(wlc, &wlc->mbss->vether_base);
 	}
 	mbss_ucode_set(wlc, cfg);
 

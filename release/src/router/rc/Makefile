@@ -1,4 +1,6 @@
 include ../common.mak
+include $(SRCBASE)/.config
+
 CFLAGS += -Wall -Os $(EXTRACFLAGS)
 CFLAGS += -I. -I$(TOP)/shared -I$(SRCBASE)/include
 ifneq ($(HND_ROUTER),y)
@@ -19,7 +21,7 @@ ifeq ($(RTCONFIG_DPSTA),y)
 CFLAGS += -I$(TOP)/dpsta
 endif
 CFLAGS += -ffunction-sections -fdata-sections
-CFLAGS += -DDLM -DASUS_DDNS -DASUS_EXT -DBTN_SETUP -DWEB_REDIRECT -DNORESOLV
+CFLAGS += -DDLM -DASUS_DDNS -DASUS_EXT -DBTN_SETUP -DWEB_REDIRECT
 
 CFLAGS += -DDEBUG_RCTEST
 
@@ -51,7 +53,7 @@ endif
 
 ifeq ($(RTCONFIG_QCA),y)
 CFLAGS += -I$(TOP)/shared/sysdeps/qca -I$(TOP)/wireless_tools
-CFLAGS += $(if $(RTCONFIG_SOC_IPQ8064),-DSMP)
+CFLAGS += $(if $(or $(RTCONFIG_SOC_IPQ8064),$(RTCONFIG_SOC_IPQ8074)),-DSMP)
 endif
 ifeq ($(RTCONFIG_WBD),y)
 CFLAGS += -D__CONFIG_WBD__
@@ -65,8 +67,6 @@ ifeq ($(RTCONFIG_LANTIQ),y)
 CFLAGS += -I$(TOP)/shared/sysdeps/lantiq -I$(TOP)/wireless_tools -I$(TOP)/fapi_wlan_common-05.04.00.131/include -I$(TOP)/libhelper-1.4.0.2/include -DPACKAGE_ID=\"fapi_wlan_common\" -DLOGGING_ID="fapi_wlan_common"
 CFLAGS  += -I$(TOP)/wlc_nt
 endif
-
-include $(SRCBASE)/.config
 
 ifeq ($(RTCONFIG_REALTEK),y)
 LDFLAGS = -L$(TOP)/nvram${BCMEX} -lnvram -L$(TOP)/shared -lshared -lcrypt -ldl
@@ -109,7 +109,7 @@ LDFLAGS += -L$(TOP)/openssl -lcrypto -lssl $(if $(RTCONFIG_OPENSSL11),-lpthread,
 endif
 
 ifeq ($(RTCONFIG_BWDPI),y)
-CFLAGS += -I$(TOP)/bwdpi_source/asus_include
+CFLAGS += -I$(TOP)/bwdpi_source/asus_include -I$(TOP)/bwdpi_source/src/tdts_udb_sample/linux
 CFLAGS += -I$(TOP)/bwdpi_source/src/tdts_udb_sample
 CFLAGS += -I$(TOP)/bwdpi_source/include
 CFLAGS += -I$(TOP)/httpd/
@@ -241,7 +241,7 @@ endif
 
 OBJS := rc.o init.o interface.o lan.o wireless.o wan.o pppd.o auth.o services.o
 OBJS += firewall.o ppp.o services.o common.o
-OBJS += watchdog.o ntp.o $(if $(RTCONFIG_MULTIWAN_CFG),qos_multiwan.o,qos.o) udhcpc.o ate.o
+OBJS += watchdog.o check_watchdog.o ntp.o $(if $(RTCONFIG_MULTIWAN_CFG),qos_multiwan.o,qos.o) udhcpc.o ate.o
 OBJS += format.o
 ifeq ($(RTCONFIG_CONNTRACK),y)
 OBJS += pctime.o
@@ -258,7 +258,7 @@ else
 OBJS += mtd.o
 endif
 
-ifeq ($(RTCONFIG_FANCTRL),y)
+ifeq ($(and $(CONFIG_BCMWL5),$(RTCONFIG_FANCTRL)),y)
 OBJS += phy_tempsense.o
 endif
 ifeq ($(RTCONFIG_BCMARM),y)
@@ -317,12 +317,6 @@ endif
 endif
 
 OBJS += $(if $(wildcard private.c),private.o,prebuild/private.o)
-ifeq ($(RTCONFIG_CONNDIAG),y)
-ifeq ($(RTCONFIG_BCMBSD),y)
-CFLAGS += -I$(TOP)/bsd
-endif
-OBJS += $(if $(wildcard conn_diag.c),conn_diag.o,prebuild/conn_diag.o)
-endif
 ifeq ($(K3),y)
 OBJS += $(if $(wildcard k3.c), k3.o, prebuild/k3.o)
 OBJS += $(if $(wildcard k3ex.c), k3ex.o, prebuild/k3ex.o)
@@ -574,9 +568,6 @@ OBJS += roamast-ralink.o
 endif
 ifeq ($(CONFIG_BCMWL5),y)
 OBJS += roamast-broadcom.o
-ifeq ($(RTCONFIG_CONNDIAG),y)
-OBJS += conn_diag-broadcom.o
-endif
 endif
 ifeq ($(RTCONFIG_REALTEK),y)
 OBJS += roamast-realtek.o
@@ -602,7 +593,7 @@ endif
 endif
 
 ifeq ($(or $(RTCONFIG_LACP),$(RTCONFIG_BONDING)),y)
-OBJS += agg_brcm.o
+OBJS += $(if $(CONFIG_BCMWL5),agg_brcm.o)
 endif
 
 ifeq ($(and $(CONFIG_BCMWL5),$(RTCONFIG_DUALWAN)),y)
@@ -653,6 +644,7 @@ endif
 
 ifeq ($(RTCONFIG_TUNNEL),y)
 OBJS += natnl_api.o
+CFLAGS += -I$(TOP)/aaews
 endif
 
 ifneq ($(RTCONFIG_RALINK)$(RTCONFIG_QCA)$(RTCONFIG_REALTEK),y)
@@ -679,6 +671,7 @@ CFLAGS += -I$(TOP)/libasuslog
 endif
 
 CFLAGS += -I$(TOP)/wlceventd
+LDFLAGS2 = $(LDFLAGS)
 
 ifeq ($(RTCONFIG_QCA_LBD),y)
 OBJS += lbd-qca.o
@@ -689,17 +682,43 @@ CFLAGS += -DRTAC1200V2
 endif
 
 ifeq ($(RTCONFIG_ISP_CUSTOMIZE),y)
-OBJS	+= $(if $(wildcard customize_rc.c),customize_rc.o,prebuild/customize_rc.o)
+OBJS += $(if $(wildcard customize_rc.c),customize_rc.o,prebuild/customize_rc.o)
 endif
+
+ifeq ($(RTCONFIG_CONNDIAG),y)
+ifeq ($(RTCONFIG_BCMBSD),y)
+CFLAGS += -I$(TOP)/bsd
+endif
+ifeq ($(RTCONFIG_LANTIQ),y)
+CFLAGS += -fPIC
+endif
+ifeq ($(RTCONFIG_HND_ROUTER_AX),y)
+CFLAGS += $(ACSDV2_DIR)
+endif
+CFLAGS += -I$(TOP)/acsd$(BCMEX)$(EX7)
+LDFLAGS2 += -L$(TOP)/sqlite/.libs -lsqlite3
+LDFLAGS2 += -L. -lconn_diag
+
+OBJS += conn_diag.o
+ifeq ($(CONFIG_BCMWL5),y)
+OBJS += conn_diag-broadcom.o
+else ifeq ($(RTCONFIG_LANTIQ),y)
+OBJS += conn_diag-lantiq.o
+else ifeq ($(RTCONFIG_QCA),y)
+OBJS += conn_diag-qca.o
+endif
+DIAG_OBJS += conn_diag-sql.o
+endif
+
 
 all: PB rc init.prep
 
 PB:
 	[ ! -d prebuild ] || cp prebuild/* ./
 
-rc: $(OBJS)
+rc: $(OBJS) $(if $(RTCONFIG_CONNDIAG),libconn_diag.so,)
 	@echo " [rc] CC $@"
-	@$(CC) -o $@ $^ $(LDFLAGS) $(CFLAGS)
+	@$(CC) -o $@ $^ $(LDFLAGS2) $(CFLAGS)
 
 	$(SIZECHECK)
 	$(CPTMP)
@@ -709,6 +728,10 @@ install: all
 	@install -D rc $(INSTALLDIR)/sbin/rc
 	@$(STRIP) $(INSTALLDIR)/sbin/rc
 	@chmod 0500 $(INSTALLDIR)/sbin/rc
+ifeq ($(RTCONFIG_CONNDIAG),y)
+	@install -D libconn_diag.so $(INSTALLDIR)/usr/lib/libconn_diag.so
+	@$(STRIP) $(INSTALLDIR)/usr/lib/libconn_diag.so
+endif
 
 ifeq ($(RTCONFIG_BCMARM),y)
 ifneq ($(HND_ROUTER),y)
@@ -752,6 +775,7 @@ ifeq ($(RTCONFIG_DUAL_TRX2),y)
 endif
 #	@cd $(INSTALLDIR)/sbin && ln -sf rc ots
 	@cd $(INSTALLDIR)/sbin && ln -sf rc watchdog
+	@cd $(INSTALLDIR)/sbin && ln -sf rc check_watchdog
 ifeq ($(RTCONFIG_CONNTRACK),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc pctime
 endif
@@ -760,7 +784,6 @@ ifeq ($(RTCONFIG_LANTIQ),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc restart_bluetoothd
 	@cd $(INSTALLDIR)/sbin && ln -sf rc set_usb3_to_usb2
 	@cd $(INSTALLDIR)/sbin && ln -sf rc set_usb2_to_usb3
-	@cd $(INSTALLDIR)/sbin && ln -sf rc update_client
 	@cd $(INSTALLDIR)/sbin && ln -sf rc start_repeater
 endif
 ifneq ($(RTCONFIG_QCA)$(RTCONFIG_RALINK)$(RTCONFIG_ALPINE)$(RTCONFIG_LANTIQ),y)
@@ -871,6 +894,7 @@ endif
 	@cd $(INSTALLDIR)/sbin && ln -sf rc wanduck
 ifeq ($(RTCONFIG_CONNDIAG),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc conn_diag
+	@cd $(INSTALLDIR)/sbin && ln -sf rc diag_data
 endif
 ifeq ($(and $(CONFIG_BCMWL5),$(RTCONFIG_DUALWAN)),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc dualwan
@@ -892,6 +916,9 @@ endif
 	@cd $(INSTALLDIR)/sbin && ln -sf rc asus_tty
 	@cd $(INSTALLDIR)/sbin && ln -sf rc asus_usbbcm
 	@cd $(INSTALLDIR)/sbin && ln -sf rc asus_usb_interface
+	@cd $(INSTALLDIR)/sbin && ln -sf rc get_usb_node_by_string
+	@cd $(INSTALLDIR)/sbin && ln -sf rc unset_usb_nvram
+	@cd $(INSTALLDIR)/sbin && ln -sf rc detect_usb_devices
 	@cd $(INSTALLDIR)/sbin && ln -sf rc usb_notify
 	@cd $(INSTALLDIR)/sbin && ln -sf rc ejusb
 ifeq ($(RTCONFIG_DISK_MONITOR),y)
@@ -905,6 +932,9 @@ endif
 endif
 	@cd $(INSTALLDIR)/sbin && ln -sf rc restart_wireless
 
+ifeq ($(RTCONFIG_PTHSAFE_POPEN), y)
+	@cd $(INSTALLDIR)/sbin && ln -sf rc PS_pod
+endif
 ifeq ($(RTCONFIG_WIFI_SON),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc hive_cap 
 	@cd $(INSTALLDIR)/sbin && ln -sf rc hive_re
@@ -996,8 +1026,11 @@ ifeq ($(HND_ROUTER),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc memdw
 endif
 	@cd $(INSTALLDIR)/sbin && ln -sf rc firmware_check
-ifeq ($(RTCONFIG_SOC_IPQ8064),y)
+ifeq ($(or $(RTCONFIG_SOC_IPQ8064),$(RTCONFIG_SOC_IPQ8074)),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc readmem
+endif
+ifeq ($(RTCONFIG_WIFI_QCN5024_QCN5054),y)
+	@cd $(INSTALLDIR)/sbin && ln -sf rc stress_pktgen
 endif
 ifeq ($(RTCONFIG_HTTPS),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc rsasign_check
@@ -1093,7 +1126,7 @@ ifeq ($(or $(RTAC68U),$(RT4GAC68U)),y)
 endif
 
 clean:
-	rm -f rc *.o .*.depend *.prep
+	rm -f rc *.o .*.depend *.prep libconn_diag.so
 
 size: rc
 	mipsel-uclibc-nm --print-size --size-sort rc
@@ -1121,6 +1154,11 @@ dsl_fb.o:dsl_fb.c
 #	./dsl_fb_dec.sh
 endif
 endif
+endif
+
+ifneq ($(wildcard ./prebuild/frs_service.o),)
+frs_service.o:
+	@-cp -f ./prebuild/frs_service.o .
 endif
 
 ifneq ($(wildcard ./prebuild/bwdpi*.o),)
@@ -1369,12 +1407,6 @@ ifneq ($(wildcard ./prebuild/roamast-lantiq.o),)
 roamast-lantiq.o:
 	@-cp -f ./prebuild/roamast-lantiq.o .
 endif
-ifeq ($(RTCONFIG_CONNDIAG),y)
-ifneq ($(wildcard ./prebuild/conn_diag-broadcom.o),)
-conn_diag-broadcom.o:
-	@-cp -f ./prebuild/conn_diag-broadcom.o .
-endif
-endif
 endif
 
 ifeq ($(RTCONFIG_TR069),y)
@@ -1421,4 +1453,13 @@ pswatch: pswatch.c
 	@$(CC) -o $@ $^
 	$(STRIP) $@
 	$(CPTMP)
+
+ifeq ($(RTCONFIG_CONNDIAG),y)
+libconn_diag.so: $(DIAG_OBJS)
+ifeq ($(HND_ROUTER_AX),y)
+	$(LD) -L$(TOP_PLATFORM)/nvram -lnvram -L$(TOP)/shared -lshared -shared -o $@ $^
+else
+	$(LD) -L$(TOP)/nvram${BCMEX}${EX7} -lnvram -L$(TOP)/shared -lshared -shared -o $@ $^
+endif
+endif
 

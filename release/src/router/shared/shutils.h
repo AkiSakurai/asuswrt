@@ -14,6 +14,7 @@
 
 #ifndef _shutils_h_
 #define _shutils_h_
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <rtconfig.h>
@@ -82,10 +83,8 @@ extern int _eval(char *const argv[], const char *path, int timeout, pid_t *ppid)
  */
 #define CPU0	"0"
 #define CPU1	"1"
-#if defined(GTAC5300)
 #define CPU2	"2"
 #define CPU3	"3"
-#endif
 
 extern int _cpu_eval(int *ppid, char *cmds[]);
 
@@ -173,11 +172,7 @@ static inline char * strcat_r(const char *s1, const char *s2, char *buf)
 })
 
 /* skip the space ' ' in front of s (string) */
-#define skip_space(s) {						\
-	while(*s == ' ')					\
-		s++;						\
-}
-
+#define skip_space(p)	{if(p != NULL){ while(isspace(*p)) p++;}}
 
 /* Simple version of _eval() (no timeout and wait for child termination) */
 #if 1

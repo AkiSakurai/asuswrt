@@ -160,7 +160,7 @@ wlc_wpa_plumb_gtk(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, uint8 *gtk, uint32 gtk_
 	key->index = key_index;
 	/* NB: wlc_insert_key() will re-infer key->algo from key_len */
 	key->algo = cipher;
-	key->len = gtk_len;
+	key->len = MIN(gtk_len, sizeof(key->data));
 	bcopy(gtk, key->data, key->len);
 
 	if (primary_key)

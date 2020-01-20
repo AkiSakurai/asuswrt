@@ -470,9 +470,12 @@ wlc_mfp_extract_igtk(const wlc_mfp_info_t *mfp, wlc_bsscfg_t *bsscfg,
 	key_id = (wlc_key_id_t)ltoh16_ua(&igtk_kde->key_id);
 	igtk = wlc_keymgmt_get_bss_key(wlc->keymgmt, bsscfg, key_id, &key_info);
 
-	igtk_key_len = data_encap->length -
-		((EAPOL_WPA2_ENCAP_DATA_HDR_LEN - TLV_HDR_LEN) +
-		EAPOL_WPA2_KEY_IGTK_ENCAP_HDR_LEN);
+	/* ensure key id and ipn are present */
+	if (data_encap->length < EAPOL_WPA2_IGTK_ENCAP_MIN_LEN) {
+		igtk_key_len = 0;
+		return FALSE;
+	}
+	igtk_key_len = data_encap->length - EAPOL_WPA2_IGTK_ENCAP_MIN_LEN;
 
 	err = wlc_key_set_data(igtk, CRYPTO_ALGO_BIP, igtk_kde->key, igtk_key_len);
 	if (err != BCME_OK)
@@ -529,8 +532,7 @@ wlc_mfp_insert_igtk(const wlc_mfp_info_t *mfp, const wlc_bsscfg_t *bsscfg,
 
 	data_encap = (eapol_wpa2_encap_data_t *) (body->data + len);
 	data_encap->type = DOT11_MNG_PROPR_ID;
-	data_encap->length = (EAPOL_WPA2_ENCAP_DATA_HDR_LEN - TLV_HDR_LEN) +
-		EAPOL_WPA2_KEY_IGTK_ENCAP_HDR_LEN + key_info.key_len;
+	data_encap->length = EAPOL_WPA2_IGTK_ENCAP_MIN_LEN + key_info.key_len;
 	memcpy(data_encap->oui, WPA2_OUI, DOT11_OUI_LEN);
 	data_encap->subtype = WPA2_KEY_DATA_SUBTYPE_IGTK;
 	len += EAPOL_WPA2_ENCAP_DATA_HDR_LEN;
