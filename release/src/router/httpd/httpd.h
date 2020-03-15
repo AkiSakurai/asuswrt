@@ -32,6 +32,7 @@
 #include <dmalloc.h>
 #endif
 #include <rtconfig.h>
+#include "merlinr.h"
 
 /* DEBUG DEFINE */
 #define HTTPD_DEBUG             "/tmp/HTTPD_DEBUG"
@@ -134,7 +135,7 @@ struct iptv_profile {
 };
 
 #ifdef RTCONFIG_ODMPID
-struct REPLACE_ODMPID_S {
+struct REPLACE_PRODUCTID_S {
         char *org_name;
         char *replace_name;
 };
@@ -466,11 +467,12 @@ extern void wtfast_gen_partnercode(char *str, size_t size);
 #endif
 extern void update_wlan_log(int sig);
 extern void system_cmd_test(char *system_cmd, char *SystemCmd, int len);
+extern int is_amas_support(void);
 extern void do_feedback_mail_cgi(char *url, FILE *stream);
 extern void do_dfb_log_file(char *url, FILE *stream);
-extern int is_amas_support(void);
 extern void do_set_fw_path_cgi(char *url, FILE *stream);
-extern int inet_raddr6_pton(const char *src, void *dst, void *buf);
-extern void get_ipv6_client_info(void);
-extern void get_ipv6_client_list(void);
+#if defined(RTCONFIG_AMAZON_WSS)
+extern void amazon_wss_enable(char *wss_enable, char *do_rc);
+#endif
 #endif /* _httpd_h_ */
+

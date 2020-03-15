@@ -70,7 +70,7 @@
         lsusb, md5sum, mdev, mkdir, mknod, mkswap, modprobe, more, mount,
         mv, nc, netstat, nice, nohup, nslookup, pidof, ping, ping6,
         poweroff, printf, ps, pwd, pwdx, readlink, reboot, remove-shell,
-        renice, rm, rmdir, rmmod, route, sed, setconsole, sh, sleep,
+        renice, rm, rmdir, rmmod, route, sed, setconsole, sh, shuf, sleep,
         smemcap, sort, split, start-stop-daemon, strings, stty, swapoff,
         swapon, sync, syslogd, tail, tar, taskset, telnetd, test, tftp,
         tftpd, top, touch, tr, traceroute, traceroute6, true, tty, udhcpc,
@@ -1059,7 +1059,7 @@ TYPE:
 <dt id="netstat"><b>netstat</b></dt>
 <dd>
 
-<p>netstat [-ral] [-tuwx] [-enW]</p>
+<p>netstat [-ral] [-tuwx] [-enWp]</p>
 
 <p>Display networking information</p>
 
@@ -1074,7 +1074,8 @@ TYPE:
                 Else: all socket types
         -e      Other/more information
         -n      Don&#39;t resolve names
-        -W      Wide display</code></pre>
+        -W      Wide display
+        -p      Show PID/program name for sockets</code></pre>
 
 </dd>
 <dt id="nice"><b>nice</b></dt>
@@ -1318,6 +1319,20 @@ TYPE:
 <p>sh [-/+OPTIONS] [-/+o OPT]... [-c &#39;SCRIPT&#39; [ARG0 [ARGS]] / FILE [ARGS]]</p>
 
 <p>Unix shell interpreter</p>
+
+</dd>
+<dt id="shuf"><b>shuf</b></dt>
+<dd>
+
+<p>shuf [-e|-i L-H] [-n NUM] [-o FILE] [-z] [FILE|ARG...]</p>
+
+<p>Randomly permute lines</p>
+
+<pre><code>        -e      Treat ARGs as lines
+        -i L-H  Treat numbers L-H as lines
+        -n NUM  Output at most NUM lines
+        -o FILE Write to FILE, not standard output
+        -z      End lines with zero byte, not newline</code></pre>
 
 </dd>
 <dt id="sleep"><b>sleep</b></dt>

@@ -47,6 +47,7 @@ var etherstate = "<% sysinfo("ethernet"); %>";
 var rtkswitch = "<% sysinfo("ethernet.rtk"); %>";
 var odmpid = "<% nvram_get("odmpid");%>";
 var ctf_fa = "<% nvram_get("ctf_fa_mode"); %>";
+var modelname = "<% nvram_get("modelname"); %>";
 overlib_str_tmp = "";
 overlib.isOut = true;
 function initial(){
@@ -176,7 +177,7 @@ function show_etherstate(){
 	var line;
 	var wan_array;
 	var port_array= Array();
-	if ((based_modelid == "RT-AC86U") || (based_modelid == "GT-AC5300") || (based_modelid == "GT-AC2900")) {
+	if (based_modelid == "RT-AC86U") {
 		show_etherstate_hnd();
 		return;
 	} else if ((based_modelid == "RT-N16") || (based_modelid == "RT-AC87U")
@@ -213,11 +214,26 @@ function show_etherstate(){
 				}
 			}
 			port = line[1].replace(":","");
+			if (modelname == "K3") {
+			if (port > 3) {	//int ports[SWPORT_COUNT] = { 3, 1, 0, 2, 5 };
+				continue;
+			} else if (port == "3") {
+				wan_array = [ "WAN", (line[7] & 0xFFF), state2, devicename];
+				continue;
+			} else {
+				if (port == "0")
+					port_array.unshift(["LAN2 ", (line[7] & 0xFFF), state2, devicename]);
+				else if (port == "1")
+					port_array.unshift(["LAN1 ", (line[7] & 0xFFF), state2, devicename]);
+				else if (port == "2")
+					port_array.unshift(["LAN3 ", (line[7] & 0xFFF), state2, devicename]);
+			}
+			} else {
 			if (port == "8") {		// CPU Port
 				continue;
 			} else if ((based_modelid == "RT-AC56U") || (based_modelid == "RT-AC56S") || (based_modelid == "RT-AC88U") || (based_modelid == "RT-AC3100")) {
 				port++;		// Port starts at 0
-				if (port == "4") port = 0;	// Last port is WAN
+				if (port == "5") port = 0;	// Last port is WAN
 			} else if (based_modelid == "RT-AC87U") {
 				if (port == "4")
 					continue;	// This is the internal LAN port
@@ -232,12 +248,13 @@ function show_etherstate(){
 			} else if (port > 4) {
 				continue;	// Internal port
 			} else {
-				if (reversed) port = 4 - port;
+				if (reversed) port = 5 - port;
 			}
 			if (reversed)
 				port_array.unshift(["LAN "+ port, (line[7] & 0xFFF), state2, devicename]);
 			else
 				port_array.push(["LAN " + port, (line[7] & 0xFFF), state2, devicename]);
+			}
 		}
 	}
 	if (based_modelid == "RT-AC88U")
@@ -459,8 +476,8 @@ function update_sysinfo(e){
 						<td id="rc_td"></td>
 					</tr>
 					<tr>
-						<th><#General_x_SystemUpTime_itemname#></th>
-						<td><span id="boot_days"></span> <#Day#> <span id="boot_hours"></span> <#Hour#> <span id="boot_minutes"></span> <#Minute#> <span id="boot_seconds"></span> <#Second#></td>
+						<th>System Up Time</th>
+						<td><span id="boot_days"></span> Day(s) <span id="boot_hours"></span> Hour(s) <span id="boot_minutes"></span> Minute(s) <span id="boot_seconds"></span> Second(s)</td>
 					</tr>
 
 					<tr>

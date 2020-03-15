@@ -132,11 +132,13 @@ int ej_show_sysinfo(int eid, webs_t wp, int argc, char_t ** argv)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,36)
 				int count = 0;
 				char model[64];
-
+#if !defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)
 				tmp = strstr(buffer, "Processor");
 				if (tmp)
 					sscanf(tmp, "Processor  :  %[^\n]", model);
-				else {	// BCM490x
+				else
+#endif
+				 {	// BCM490x
 					char impl[8], arch[8], variant[8], part[10];
 					impl[0]='\0'; arch[0]='\0'; variant[0]='\0'; part[0]='\0';
 
@@ -148,12 +150,19 @@ int ej_show_sysinfo(int eid, webs_t wp, int argc, char_t ** argv)
 					sscanf(tmp, "CPU variant  :  %7[^\n]s", variant);
 					tmp = strstr(buffer, "CPU part");
 					sscanf(tmp, "CPU part  :  %9[^\n]s", part);
-
+#if defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)
+					if (!strcmp(impl, "0x41")
+					    && !strcmp(variant, "0x0")
+					    && !strcmp(part, "0xc07")
+					    && !strcmp(arch, "7"))
+						strcpy(model, "Cortex A7 ARMv7l");
+#else//490x or 671x
 					if (!strcmp(impl, "0x42")
 					    && !strcmp(variant, "0x0")
 					    && !strcmp(part, "0x100")
 					    && !strcmp(arch, "8"))
 						strcpy(model, "Cortex A53 ARMv8");
+#endif
 					else
 						sprintf(model, "Implementer: %s, Part: %s, Variant: %s, Arch: %s",impl, part, variant, arch);
 				}
@@ -177,10 +186,11 @@ int ej_show_sysinfo(int eid, webs_t wp, int argc, char_t ** argv)
 			}
 
 		} else if(strcmp(type,"cpu.freq") == 0) {
-#ifdef HND_ROUTER
+#if defined(RTCONFIG_HND_ROUTER_AX_675X)  || defined(RTCONFIG_HND_ROUTER_AX_6710)
+			strcpy(result, "1500");
+#elif defined(HND_ROUTER)
 			int freq = 0;
 			char *buffer;
-
 			buffer = read_whole_file("/sys/devices/system/cpu/bcm_arm_cpuidle/admin_max_freq");
 
 			if (buffer) {

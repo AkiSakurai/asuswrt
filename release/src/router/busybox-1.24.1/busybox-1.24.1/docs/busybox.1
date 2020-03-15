@@ -129,7 +129,7 @@
 .\" ========================================================================
 .\"
 .IX Title "BUSYBOX 1"
-.TH BUSYBOX 1 "2020-01-21" "version 1.24.1" "busybox"
+.TH BUSYBOX 1 "2020-03-15" "version 1.24.1" "busybox"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -226,7 +226,7 @@ Currently available applets include:
 \&        lsusb, md5sum, mdev, mkdir, mknod, mkswap, modprobe, more, mount,
 \&        mv, nc, netstat, nice, nohup, nslookup, pidof, ping, ping6,
 \&        poweroff, printf, ps, pwd, pwdx, readlink, reboot, remove\-shell,
-\&        renice, rm, rmdir, rmmod, route, sed, setconsole, sh, sleep,
+\&        renice, rm, rmdir, rmmod, route, sed, setconsole, sh, shuf, sleep,
 \&        smemcap, sort, split, start\-stop\-daemon, strings, stty, swapoff,
 \&        swapon, sync, syslogd, tail, tar, taskset, telnetd, test, tftp,
 \&        tftpd, top, touch, tr, traceroute, traceroute6, true, tty, udhcpc,
@@ -1138,11 +1138,11 @@ nc [\s-1IPADDR PORT\s0]
 Open a pipe to \s-1IP:PORT\s0
 .IP "\fBnetstat\fR" 4
 .IX Item "netstat"
-netstat [\-ral] [\-tuwx] [\-enW]
+netstat [\-ral] [\-tuwx] [\-enWp]
 .Sp
 Display networking information
 .Sp
-.Vb 12
+.Vb 10
 \&        \-r      Routing table
 \&        \-a      All sockets
 \&        \-l      Listening sockets
@@ -1155,6 +1155,7 @@ Display networking information
 \&        \-e      Other/more information
 \&        \-n      Don\*(Aqt resolve names
 \&        \-W      Wide display
+\&        \-p      Show PID/program name for sockets
 .Ve
 .IP "\fBnice\fR" 4
 .IX Item "nice"
@@ -1364,6 +1365,19 @@ Redirect system console output to \s-1DEVICE\s0 (default: /dev/tty)
 sh [\-/+OPTIONS] [\-/+o \s-1OPT\s0]... [\-c '\s-1SCRIPT\s0' [\s-1ARG0\s0 [\s-1ARGS\s0]] / \s-1FILE\s0 [\s-1ARGS\s0]]
 .Sp
 Unix shell interpreter
+.IP "\fBshuf\fR" 4
+.IX Item "shuf"
+shuf [\-e|\-i L\-H] [\-n \s-1NUM\s0] [\-o \s-1FILE\s0] [\-z] [FILE|ARG...]
+.Sp
+Randomly permute lines
+.Sp
+.Vb 5
+\&        \-e      Treat ARGs as lines
+\&        \-i L\-H  Treat numbers L\-H as lines
+\&        \-n NUM  Output at most NUM lines
+\&        \-o FILE Write to FILE, not standard output
+\&        \-z      End lines with zero byte, not newline
+.Ve
 .IP "\fBsleep\fR" 4
 .IX Item "sleep"
 sleep [N]...

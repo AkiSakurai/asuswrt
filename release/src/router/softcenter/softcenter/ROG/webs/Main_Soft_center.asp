@@ -557,32 +557,31 @@ $(function() {
 		dataType: "script",
 		success: function(response) {
 			db_softcenter_ = db_softcenter;
-			if(typeof db_softcenter_["softcenter_server_tcode"] == "undefined") {
-				db_softcenter_["softcenter_home_url"] = "http://update.wifi.com.cn";
-			}
-			else if(db_softcenter_["softcenter_server_tcode"] == "CN") {
+			if(db_softcenter_["softcenter_server_tcode"] == "CN") {
 			        db_softcenter_["softcenter_home_url"] = "http://update.wifi.com.cn";
 			}
 			else if(db_softcenter_["softcenter_server_tcode"] == "GB") {
 			        db_softcenter_["softcenter_home_url"] = "https://sc.paldier.com";
 			}
 			else if(db_softcenter_["softcenter_server_tcode"] == "CN1") {
-			        db_softcenter_["softcenter_home_url"] = "http://123.56.45.194";
+			        db_softcenter_["softcenter_home_url"] = "https://sc.softcenter.site";
 			}
 			else if(db_softcenter_["softcenter_server_tcode"] == "ALI") {
-			        db_softcenter_["softcenter_home_url"] = "http://121.40.153.145";
+			        db_softcenter_["softcenter_home_url"] = "https://wufan.softcenter.site";
 			}
 			else
 			        db_softcenter_["softcenter_home_url"] = "https://sc.paldier.com";
-			if(db_softcenter_["softcenter_arch"] == "mips")
+			if(db_softcenter_["softcenter_arch"] == "mips")//for grx500
 				scarch="mips";
-			else if (db_softcenter_["softcenter_arch"] == "armv7l")
+			else if (db_softcenter_["softcenter_arch"] == "armv7l")//for bcm4709
 				scarch="arm";
-			else if (db_softcenter_["softcenter_arch"] == "aarch64")
+			else if (db_softcenter_["softcenter_arch"] == "armng")//for bcm6750/ipq4019
+				scarch="armng";
+			else if (db_softcenter_["softcenter_arch"] == "aarch64")//for bcm4908/bcm6710
 				scarch="arm64";
-			else if (db_softcenter_["softcenter_arch"] == "mipsle")
+			else if (db_softcenter_["softcenter_arch"] == "mipsle")//for mtk7621
 				scarch="mipsle";
-			else if (db_softcenter_["softcenter_arch"] == "x86")
+			else if (db_softcenter_["softcenter_arch"] == "x86")//for grx750
 				scarch="x86";
 			else
 				scarch="mips";
@@ -641,7 +640,15 @@ function notice_show(){
 	else {
 	$("#modelid").html("Software Center " + model );
 	}
-	var pushurl = 'https://sc.paldier.com/' + scarch + '/softcenter/push_message.json.js';
+	var pushlog;
+	switch ("<% nvram_get("preferred_lang"); %>") {
+	case "EN":
+		pushlog="push_message_en.json.js";
+		break
+	default:
+		pushlog="push_message.json.js";
+	}
+	var pushurl = 'https://sc.paldier.com/' + scarch + '/softcenter/' + pushlog;
 	$.ajax({
 		url: pushurl,
 		type: 'GET',
@@ -703,7 +710,7 @@ function notice_show(){
 																						<h2 id="push_titile"><em>软件中心</em></h2>
 																					</li>
 																					<li style="margin-top:-5px;">
-																						<h4 id="push_content1" ><font color='#1E90FF'>交流反馈:&nbsp;&nbsp;</font><a href='https://github.com/paldier/softcenter' target='_blank'><em>1.软件中心GitHub项目</em></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href='https://t.me/merlinsc' target='_blank'><em>2.加入telegram群</em></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href='https://www.right.com.cn/forum/forum-173-1.html' target='_blank'><em>3.恩山论坛插件版块</em></a></h4>
+																						<h4 id="push_content1" ><font color='#1E90FF'>交流反馈:&nbsp;&nbsp;</font><a href='https://github.com/paldier/softcenter' target='_blank'><em>1.软件中心GitHub项目</em></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href='https://t.me/merlinchat' target='_blank'><em>2.加入telegram群</em></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href='https://www.right.com.cn/forum/forum-173-1.html' target='_blank'><em>3.恩山论坛插件版块</em></a></h4>
 																					</li>
 																					<li id="push_content2_li" style="margin-top:-5px;">
                                                                                     <h4 id="push_content2">如果你看到这个页面说明主服务器连接不上,如果获取不到在线版本说明节点服务器连接不上！</h4>
@@ -758,7 +765,7 @@ function notice_show(){
 													<br/>Github项目： <a href="https://github.com/koolshare/rogsoft" target="_blank"> <i><u>github.com/koolshare</u></i> </a>
 													<br/>Shell & Web by： <a href="mailto:sadoneli@gmail.com"> <i>sadoneli</i> </a>, <i>Xiaobao</i>
 													<br/>修改版 by： <i>paldier</i>
-													<br/>Github项目： <a href="https://github.com/paldier/softcenter" target="_blank"> <i><u>https://github.com/paldier</u></i> </a>
+													<br/>Github项目： <a href="https://github.com/paldier/softcenterarm64" target="_blank"> <i><u>https://github.com/paldier</u></i> </a>
 												</div>
 											</td>
 										</tr>

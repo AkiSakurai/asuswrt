@@ -71,7 +71,7 @@ export PATH := $(RELEASEDIR)/tools:$(SRCBASE)/ctools:$(PATH)
 #B:no aimesh, R:aimesh, X:special
 export MERLINR_NAME := RTAC86U
 export MERLINR_VER_MAJOR :=R
-export MERLINR_VER_MINOR :=5.0.8
+export MERLINR_VER_MINOR :=5.0.9
 export MERLINR_VER := $(MERLINR_VER_MAJOR)$(MERLINR_VER_MINOR)
 export MERLINRVER := $(MERLINR_NAME)_$(MERLINR_VER)
 

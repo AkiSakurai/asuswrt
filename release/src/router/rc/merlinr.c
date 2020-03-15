@@ -14,7 +14,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
  * MA 02111-1307 USA
  *
- * Copyright 2019, paldier <paldier@hotmail.com>.
+ * Copyright 2019-2020, paldier <paldier@hotmail.com>.
  * All Rights Reserved.
  * 
  *
@@ -68,6 +68,11 @@ void merlinr_init()
 	nvram_set("sc_nat_sig", "0");
 	nvram_set("sc_mount_sig", "0");
 #endif
+#if defined(TUFAX3000)
+//only an idiot would use 160 in china
+	if(!nvram_get("wl1_bw_160"))
+		nvram_set("wl1_bw_160", "0");
+#endif
 	merlinr_insmod();
 }
 void merlinr_init_done()
@@ -92,6 +97,11 @@ void merlinr_init_done()
 #if defined(RTCONFIG_QCA)
 	if(!nvram_get("bl_ver"))
 		nvram_set("bl_ver", "1.0.0.0");
+#elif defined(RTCONFIG_LANTIQ)
+#if !defined(K3C)
+	if(!nvram_get("bl_ver"))
+		doSystem("nvram set bl_ver=`uboot_env --get --name bl_ver`");
+#endif
 #endif
 	if(!nvram_get("modelname"))
 #if defined(K3)
@@ -106,8 +116,8 @@ void merlinr_init_done()
 		nvram_set("modelname", "R8000P");
 #elif defined(RTAC3100)
 		nvram_set("modelname", "RTAC3100");
-#elif defined(BULECAVE)
-		nvram_set("modelname", "BULECAVE");
+#elif defined(BLUECAVE)
+		nvram_set("modelname", "BLUECAVE");
 #elif defined(RTAC68U)
 		nvram_set("modelname", "RTAC68U");
 #elif defined(RTAC68P)
@@ -147,8 +157,14 @@ void merlinr_init_done()
 	nvram_set("ping_target","www.taobao.com");
 	nvram_commit();
 #endif
+#if defined(TUFAX3000) && defined(MERLINR_VER_MAJOR_X)
+//tufax3000=ax82u,ax58u=ax3000
+	//enable_4t4r();
+#endif
+#if defined(MERLINR_VER_MAJOR_X) && defined(RTAC86U)
+	merlinr_patch_nvram();
+#endif
 }
-
 
 
 #define FWUPDATE_DBG(fmt,args...) \
@@ -365,7 +381,7 @@ int merlinr_firmware_check_update_main(int argc, char *argv[])
 					//_dprintf("%s#%s\n",fwver,cur_fwver);
 					if(versioncmp((cur_fwver+1),(fwver+1))==1){
 						nvram_set("webs_state_url", "");
-#if defined(SBRAC3200P) || defined(RTACRH17) || defined(RTAC3200)
+#if defined(SBRAC3200P) || defined(RTACRH17) || defined(RTAC3200) || defined(RTAC85P)
 						snprintf(info,sizeof(info),"3004_382_%s_%s-%s",modelname,fwver,tag);
 #else
 						snprintf(info,sizeof(info),"3004_384_%s_%s-%s",modelname,fwver,tag);
@@ -415,7 +431,7 @@ int merlinr_firmware_check_update_main(int argc, char *argv[])
 	curl_global_cleanup();
 
 GODONE:
-#if defined(SBRAC3200P) || defined(RTACRH17) || defined(RTAC3200)
+#if defined(SBRAC3200P) || defined(RTACRH17) || defined(RTAC3200) || defined(RTAC85P)
 	snprintf(info,sizeof(info),"3004_382_%s",nvram_get("extendno"));
 #else
 	snprintf(info,sizeof(info),"3004_384_%s",nvram_get("extendno"));
@@ -522,7 +538,7 @@ void exec_uu_merlinr()
 		}
 	}
 }
-#if !defined(RTAC68U) && !defined(GTAC5300) && !defined(GTAC2900) && !defined(RTAC86U)
+#if !defined(RTAC68U) && !defined(GTAC5300) && !defined(GTAC2900) && !defined(RTAC86U)&& !defined(TUFAX3000)
 void start_sendfeedback(void)
 {
 
@@ -551,3 +567,4 @@ void softcenter_eval(int sig)
 	_eval(eval_argv, NULL, 0, &pid);
 }
 #endif
+

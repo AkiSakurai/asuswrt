@@ -998,7 +998,7 @@ handle_request(void)
 						{
 							char dictname[32];
 							_dprintf("handle_request: pLang->Lang = %s\n", pLang->Lang);
-							if (!check_lang_support(pLang->Target_Lang))
+							if (!check_lang_support_merlinr(pLang->Target_Lang))
 								break;
 
 							snprintf(dictname, sizeof(dictname), "%s.dict", pLang->Target_Lang);
@@ -1205,14 +1205,15 @@ handle_request(void)
 	char scPath[128];
 	if ((strncmp(file, "Main_S", 6)==0) || (strncmp(file, "Module_", 7)==0))//jsp
 	{
-		snprintf(scPath, sizeof(scPath), "/jffs/softcenter/webs/");
-		strcat(scPath, file);
-
-		if(check_if_file_exist(scPath)){
-			file = scPath;
+		if(!check_if_file_exist(file)){
+			snprintf(scPath, sizeof(scPath), "/jffs/softcenter/webs/");
+			strcat(scPath, file);
+			if(check_if_file_exist(scPath)){
+				file = scPath;
+			}
 		}
 	}
-	if ((strstr(file, "res/")))//jpg,png,js,css,html
+	else if (strstr(file, "res/"))//jpg,png,js,css,html
 	{
 		if(!check_if_file_exist(file)){
 			snprintf(scPath, sizeof(scPath), "/jffs/softcenter/");
@@ -2362,4 +2363,5 @@ int check_current_ip_is_lan_or_wan()
 
 	return (lan & mask) == (login_ip_tmp & mask);
 }
+
 
