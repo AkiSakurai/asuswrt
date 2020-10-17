@@ -60,7 +60,7 @@ void merlinr_insmod(){
 	eval("insmod", "xt_TPROXY");
 	eval("insmod", "xt_set");
 }
-
+#if defined(TUFAX3000) || defined(RTAX58U)
 void enable_4t4r_ax58()
 {
 //ensure that the hardware support 4t4r
@@ -84,7 +84,7 @@ void enable_4t4r()
 		doSystem("envram commit");
 	}
 }
-
+#endif
 void merlinr_init()
 {
 	_dprintf("############################ MerlinR init #################################\n");
@@ -148,16 +148,24 @@ void merlinr_init_done()
 		nvram_set("modelname", "EA6700");
 #elif defined(R8000P) || defined(R7900P)
 		nvram_set("modelname", "R8000P");
-#elif defined(RTAC3100)
-		nvram_set("modelname", "RTAC3100");
+#elif defined(RAX20)
+		nvram_set("modelname", "RAX20");
+#elif defined(RAX80)
+		nvram_set("modelname", "RAX80");
+#elif defined(RAX200)
+		nvram_set("modelname", "RAX200");
 #elif defined(BLUECAVE)
 		nvram_set("modelname", "BLUECAVE");
 #elif defined(RTAC68U)
 		nvram_set("modelname", "RTAC68U");
-#elif defined(RTAC68P)
-		nvram_set("modelname", "RTAC68P");
 #elif defined(RTAC3200)
 		nvram_set("modelname", "RTAC3200");
+#elif defined(RTAC3100)
+		nvram_set("modelname", "RTAC3100");
+#elif defined(RTAC88U)
+		nvram_set("modelname", "RTAC88U");
+#elif defined(RTAC5300)
+		nvram_set("modelname", "RTAC5300");
 #elif defined(GTAC2900)
 		nvram_set("modelname", "GTAC2900");
 #elif defined(GTAC5300)
@@ -166,24 +174,28 @@ void merlinr_init_done()
 		nvram_set("modelname", "RTAC86U");
 #elif defined(RTACRH17)
 		nvram_set("modelname", "RTACRH17");
-#elif defined(TUFAX3000) || defined(RTAX58U)
-		nvram_set("modelname", "TUFAX3000");
+#elif defined(RTAX55)
+		nvram_set("modelname", "RTAX55");//ax55 and ax56 v2
 #elif defined(RTAX56U)
 		nvram_set("modelname", "RTAX56U");
+#elif defined(TUFAX3000)
+		nvram_set("modelname", "TUFAX3000");
+#elif defined(RTAX58U)
+		nvram_set("modelname", "RTAX58U");
+#elif defined(RTAX68U)
+		nvram_set("modelname", "RTAX68U");
+#elif defined(RTAX82U)
+		nvram_set("modelname", "RTAX82U")
+#elif defined(RTAX86U)
+		nvram_set("modelname", "RTAX86U")
 #elif defined(RTAX88U)
 		nvram_set("modelname", "RTAX88U");
+#elif defined(RTAX89U)
+		nvram_set("modelname", "RTAX89U");
 #elif defined(GTAX11000)
 		nvram_set("modelname", "GTAX11000");
-#elif defined(RAX20)
-		nvram_set("modelname", "RAX20");
-#elif defined(RAX80)
-		nvram_set("modelname", "RAX80");
-#elif defined(RAX200)
-		nvram_set("modelname", "RAX200");
 #elif defined(TUFAC1750)
 		nvram_set("modelname", "TUFAC1750");
-#elif defined(RTACRH26)
-		nvram_set("modelname", "RTACRH26");
 #elif defined(RTAC85P)
 		nvram_set("modelname", "RTAC85P");
 #elif defined(RMAC2100)
