@@ -644,6 +644,7 @@ udhcpc_wan(int argc, char **argv)
 {
 	if(argv[1] && !strstr(argv[1], "leasefail"))
 		_dprintf("%s:: %s\n", __func__, argv[1]);
+	run_custom_script("dhcpc-event", 0, argv[1], NULL);
 	if (!argv[1]){
 		_dprintf("%s::\n", __func__);
 		return EINVAL;
@@ -920,6 +921,7 @@ int
 zcip_wan(int argc, char **argv)
 {
 	_dprintf("%s:: %s\n", __FUNCTION__, argv[1] ? : "");
+	run_custom_script("zcip-event", 0, argv[1], NULL);
 	if (!argv[1])
 		return EINVAL;
 	else if (strstr(argv[1], "deconfig"))
@@ -1159,6 +1161,7 @@ int
 udhcpc_lan(int argc, char **argv)
 {
 	_dprintf("%s:: %s\n", __FUNCTION__, argv[1] ? : "");
+	run_custom_script("dhcpc-event", 0, argv[1], NULL);
 	if (!argv[1])
 		return EINVAL;
 	else if (strstr(argv[1], "deconfig"))
@@ -1351,6 +1354,7 @@ ra_updated6(char *wan_ifname)
 
 int dhcp6c_wan(int argc, char **argv)
 {
+	if (argv[2]) run_custom_script("dhcpc-event", 0, argv[2], NULL);
 	if (!argv[1] || !argv[2])
 		return EINVAL;
 	else if (strcmp(argv[2], "started") == 0 ||
@@ -1492,3 +1496,4 @@ void stop_6relayd(void)
 #endif // RTCONFIG_6RELAYD
 
 #endif // RTCONFIG_IPV6
+

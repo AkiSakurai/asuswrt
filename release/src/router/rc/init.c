@@ -74,6 +74,20 @@
 #include <aura_rgb.h>
 #endif
 
+#if defined(K3C)
+#include "k3c.h"
+#elif defined(K3)
+#include "k3.h"
+#elif defined(SBRAC1900P)
+#include "1900p.h"
+#elif defined(SBRAC3200P)
+#include "3200p.h"
+#elif defined(R7900P) || defined(R8000P)
+#include "r7900p.h"
+#else
+#include "merlinr.h"
+#endif
+
 #define SHELL "/bin/sh"
 #define LOGIN "/bin/login"
 
@@ -8148,6 +8162,7 @@ int init_nvram(void)
 
 #if defined(RTAX58U) || defined(TUFAX3000) || defined(RTAX82U)
 	case MODEL_RTAX58U:
+		merlinr_init();
 		nvram_set("lan_ifname", "br0");
 		if (is_router_mode()) {
 			nvram_set("lan_ifnames", "eth0 eth1 eth2 eth3 eth5 eth6");
@@ -11676,6 +11691,7 @@ static void sysinit(void)
 		"/tmp/etc/rc.d",
 #endif
 		"/tmp/var/tmp",
+		"/tmp/etc/dnsmasq.user",	// ssr and adbyby
 		NULL
 	};
 	umask(0);
@@ -11997,8 +12013,13 @@ static void sysinit(void)
 	init_nvram();  // for system indepent part after getting model
 #ifdef RTCONFIG_JFFS_NVRAM
 	if(RESTORE_DEFAULTS()) {
+#if defined(RTCONFIG_UBIFS)
+		nvram_set("ubifs_on", "1");
+		nvram_set("ubifs_clean_fs", "1");
+#else
 		nvram_set("jffs2_on", "1");
 		nvram_set("jffs2_clean_fs", "1");
+#endif
 	}
 	start_jffs2();
 #endif
@@ -12328,6 +12349,7 @@ int init_main(int argc, char *argv[])
 #ifdef RTN65U
 		asm1042_upgrade(1);	// check whether upgrade firmware of ASM1042
 #endif
+		run_custom_script("init-start", 0, NULL, NULL);
 
 		state = SIGUSR2;	/* START */
 
@@ -12920,6 +12942,14 @@ _dprintf("%s %d reset EXTPhy here\n", __func__, __LINE__);
 #endif
 
 			start_misc_services();
+#if defined(K3)
+			k3_init_done();
+#elif defined(R7900P)||defined(R8000P)
+			r8000p_init_done();
+#else
+			merlinr_init_done();
+#endif
+
 #ifdef RTCONFIG_AMAS
 			nvram_set("start_service_ready", "1");
 #endif

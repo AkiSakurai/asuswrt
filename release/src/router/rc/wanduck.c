@@ -218,7 +218,8 @@ int update_wan_leds(int wan_unit, int link_wan_unit)
 #ifdef RTCONFIG_WPS_ALLLED_BTN
 	if (nvram_match("AllLED", "1"))
 #endif
-	update_wan_led_and_wanred_led(wan_unit);
+		if (!nvram_get_int("led_disable"))
+			update_wan_led_and_wanred_led(wan_unit);
 
 #else	/* !RTCONFIG_WANRED_LED */
 	int link_internet = nvram_get_int("link_internet");
@@ -228,6 +229,7 @@ int update_wan_leds(int wan_unit, int link_wan_unit)
 #ifdef RTCONFIG_WPS_ALLLED_BTN
 			&& nvram_match("AllLED", "1")
 #endif
+ 			&& !nvram_get_int("led_disable")
 	) {
 		led_control(LED_WAN, LED_ON);
 	} else {
@@ -325,6 +327,7 @@ static void wan_led_control(int sig) {
 	}
 #else
 	if(nvram_match("AllLED", "1")
+			&& !nvram_get_int("led_disable")
 #ifdef RTAC68U
 			&& is_ac66u_v2_series()
 #endif
@@ -4071,12 +4074,13 @@ _dprintf("wanduck(%d)(all   end): state %d, state_old %d, changed %d, wan_state 
 			}
 			if(internet_led) {
 #if defined(RTCONFIG_WPS_ALLLED_BTN)
-				if(nvram_match("AllLED", "1"))
+				if(nvram_match("AllLED", "1") && !nvram_get_int("led_disable"))
 					led_control(LED_WAN, LED_ON);
 				else
 					led_control(LED_WAN, LED_OFF);
 #else
-				led_control(LED_WAN, LED_ON);
+				if (!nvram_get_int("led_disable"))
+					led_control(LED_WAN, LED_ON);
 #endif
 			}
 			else {
@@ -4303,7 +4307,7 @@ _dprintf("nat_rule: start_nat_rules 6.\n");
 #endif // RTCONFIG_DUALWAN
 					){
 						logmessage("DualWAN", "skip single wan wan_led_control - WANRED off\n");
-						if(nvram_match("AllLED", "1"))
+						if(nvram_match("AllLED", "1") && !nvram_get_int("led_disable"))
 						{
 							led_control(LED_WAN, LED_ON);
 							disable_wan_led();
@@ -4371,7 +4375,7 @@ _dprintf("nat_rule: start_nat_rules 6.\n");
 			if(rule_setup && !isFirstUse){
 #if defined(RTCONFIG_WPS_ALLLED_BTN) || \
     ((defined(RTCONFIG_LED_BTN) || defined(RTCONFIG_TURBO_BTN)) && defined(RTCONFIG_QCA))
-				if (!inhibit_led_on())
+				if (!inhibit_led_on()&& !nvram_get_int("led_disable"))
 					led_control(LED_WAN, LED_ON);
 				else
 					led_control(LED_WAN, LED_OFF);
@@ -4382,6 +4386,7 @@ _dprintf("nat_rule: start_nat_rules 6.\n");
 				update_wan_leds(current_wan_unit, link_wan[current_wan_unit]);
 #else
 				if(nvram_match("AllLED", "1")
+					&& !nvram_get_int("led_disable")
 #ifdef RTAC68U
 						&& is_ac66u_v2_series()
 #endif
@@ -4522,6 +4527,7 @@ _dprintf("nat_rule: stop_nat_rules 7.\n");
 #ifndef RTCONFIG_HND_ROUTER_AX
 		if (strcmp(dualwan_wans, "wan none")) {
 			if(nvram_match("AllLED", "1")
+				&& !nvram_get_int("led_disable")
 #ifdef RTAC68U
 				&& is_ac66u_v2_series()
 #endif
@@ -4635,3 +4641,4 @@ WANDUCK_SELECT:
 	_dprintf("# wanduck exit error\n");
 	exit(1);
 }
+
