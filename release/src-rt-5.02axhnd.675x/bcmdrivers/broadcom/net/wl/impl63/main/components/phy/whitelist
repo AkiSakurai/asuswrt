@@ -1,0 +1,23 @@
+# Whitelist for PHY_TWIG_17_100_121, used with KUDU_TWIG_17_10_121
+# 
+# Please add new items at the bottom.
+#
+# **Gain approval from you manager before editing this file.**
+#
+# <<Broadcom-WL-IPTag/Open:>>
+#
+# format:
+# JIRA:BCAWLAN-xxxxxx <description>
+JIRA:BCAWLAN-212802 43684 improve FCC-4 radar detection rate on BW160 CH50
+JIRA:BCAWLAN-212933 43684 use radarFIFO from one of ANT0/1 instead of forcing radarFIFO to ANT0 for FCC-5 detection
+JIRA:BCAWLAN-213066 43684 fix incorrect FIFO data for FCC-5 detection
+JIRA:BCAWLAN-213489 Add PHY API to switch and restore BBPLL post-divider for BCM6710
+JIRA:BCAWLAN-208168 AVS function caused STA unable to associate in 5G 80MHz for BCM6710
+JIRA:BCAWLAN-212455 [43684C0] update radio tuning tables per tcl rev 845002
+JIRA:BCAWLAN-213137 [43684C0] change the tx5g_idac_mx_bbdc for C0 and above, TCL r844802
+JIRA:BCAWLAN-213194 [43684C0] txgain table rev3, TCL r844804
+JIRA:BCAWLAN-212428 6755TBRHX P305, 2G RX throughput RSSI see drop in RX power -40~-50dBm after 17.10.118 image
+JIRA:BCAWLAN-212735 Have 63178/47622 also turn dac clks on before dccal when c2csync is enabled
+JIRA:BCAWLAN-212999 [47622][63178][6878] BBPLL - use spur avoidance mode always - phy code (2/2)
+JIRA:BCAWLAN-212823 [47622] DC runaway after multiple DC cals
+JIRA:BCAWLAN-211307 [63178][47622] Channel 6 BW40 ANT1 sensitivity worse than other channels
