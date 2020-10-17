@@ -191,7 +191,7 @@ void merlinr_init_done()
 #elif defined(RTAX88U)
 		nvram_set("modelname", "RTAX88U");
 #elif defined(RTAX89U)
-		nvram_set("modelname", "RTAX89U");
+		nvram_set("modelname", "RTAX89X");
 #elif defined(GTAX11000)
 		nvram_set("modelname", "GTAX11000");
 #elif defined(TUFAC1750)
