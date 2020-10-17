@@ -897,7 +897,42 @@
  */
 #define LINKTYPE_SCTP		248
 
-#define LINKTYPE_MATCHING_MAX	248		/* highest value in the "matching" range */
+/*
+ * USB packets, beginning with a USBPcap header.
+ *
+ * Requested by Tomasz Mon <desowin@gmail.com>
+ */
+#define LINKTYPE_USBPCAP	249
+
+/*
+ * Schweitzer Engineering Laboratories "RTAC" product serial-line
+ * packets.
+ *
+ * Requested by Chris Bontje <chris_bontje@selinc.com>.
+ */
+#define DLT_RTAC_SERIAL		250
+
+/*
+ * Bluetooth Low Energy air interface link-layer packets.
+ *
+ * Requested by Mike Kershaw <dragorn@kismetwireless.net>.
+ */
+#define LINKTYPE_BLUETOOTH_LE_LL	251
+
+/*
+ * Link-layer header type for upper-protocol layer PDU saves from wireshark.
+ * 
+ * the actual contents are determined by two TAGs stored with each
+ * packet:
+ *   EXP_PDU_TAG_LINKTYPE          the link type (LINKTYPE_ value) of the
+ *				   original packet.
+ *
+ *   EXP_PDU_TAG_PROTO_NAME        the name of the wireshark dissector
+ * 				   that can make sense of the data stored.
+ */
+#define LINKTYPE_WIRESHARK_UPPER_PDU	252
+
+#define LINKTYPE_MATCHING_MAX	252		/* highest value in the "matching" range */
 
 static struct linktype_map {
 	int	dlt;

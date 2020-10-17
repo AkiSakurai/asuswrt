@@ -105,12 +105,24 @@ static const char rcsid[] _U_ =
 #include "pcap-netfilter-linux.h"
 #endif
 
+#ifdef PCAP_SUPPORT_DBUS
+#include "pcap-dbus.h"
+#endif
+
 int 
-pcap_not_initialized(pcap_t *pcap)
+pcap_not_initialized(pcap_t *pcap _U_)
 {
 	/* this means 'not initialized' */
 	return (PCAP_ERROR_NOT_ACTIVATED);
 }
+
+#ifdef WIN32
+Adapter *
+pcap_no_adapter(pcap_t *pcap _U_)
+{
+	return (NULL);
+}
+#endif
 
 /*
  * Returns 1 if rfmon mode can be set on the pcap_t, 0 if it can't,
@@ -186,7 +198,7 @@ pcap_free_tstamp_types(int *tstamp_type_list)
  * packet data cannot be guaranteed to be available after the callback
  * returns, so that a copy must be made.
  */
-static void
+void
 pcap_oneshot(u_char *user, const struct pcap_pkthdr *h, const u_char *pkt)
 {
 	struct oneshot_userdata *sp = (struct oneshot_userdata *)user;
@@ -222,7 +234,7 @@ pcap_next_ex(pcap_t *p, struct pcap_pkthdr **pkt_header,
 	/* Saves a pointer to the packet headers */
 	*pkt_header= &p->pcap_header;
 
-	if (p->sf.rfile != NULL) {
+	if (p->rfile != NULL) {
 		int status;
 
 		/* We are on an offline capture */
@@ -323,6 +335,9 @@ struct capture_source_type {
 #endif
 #ifdef PCAP_SUPPORT_NETFILTER
 	{ netfilter_findalldevs, netfilter_create },
+#endif
+#ifdef PCAP_SUPPORT_DBUS
+	{ dbus_findalldevs, dbus_create },
 #endif
 	{ NULL, NULL }
 };
@@ -446,6 +461,7 @@ initialize_ops(pcap_t *p)
 	p->setbuff_op = (setbuff_op_t)pcap_not_initialized;
 	p->setmode_op = (setmode_op_t)pcap_not_initialized;
 	p->setmintocopy_op = (setmintocopy_op_t)pcap_not_initialized;
+	p->getadapter_op = pcap_no_adapter;
 #endif
 
 	/*
@@ -456,29 +472,64 @@ initialize_ops(pcap_t *p)
 	p->cleanup_op = pcap_cleanup_live_common;
 
 	/*
-	 * In most cases, the standard one-short callback can
+	 * In most cases, the standard one-shot callback can
 	 * be used for pcap_next()/pcap_next_ex().
 	 */
 	p->oneshot_callback = pcap_oneshot;
 }
 
-pcap_t *
-pcap_create_common(const char *source, char *ebuf)
+static pcap_t *
+pcap_alloc_pcap_t(char *ebuf, size_t size)
 {
+	char *chunk;
 	pcap_t *p;
 
-	p = malloc(sizeof(*p));
-	if (p == NULL) {
+	/*
+	 * Allocate a chunk of memory big enough for a pcap_t
+	 * plus a structure following it of size "size".  The
+	 * structure following it is a private data structure
+	 * for the routines that handle this pcap_t.
+	 */
+	chunk = malloc(sizeof (pcap_t) + size);
+	if (chunk == NULL) {
 		snprintf(ebuf, PCAP_ERRBUF_SIZE, "malloc: %s",
 		    pcap_strerror(errno));
 		return (NULL);
 	}
-	memset(p, 0, sizeof(*p));
+	memset(chunk, 0, sizeof (pcap_t) + size);
+
+	/*
+	 * Get a pointer to the pcap_t at the beginning.
+	 */
+	p = (pcap_t *)chunk;
+
 #ifndef WIN32
 	p->fd = -1;	/* not opened yet */
 	p->selectable_fd = -1;
-	p->send_fd = -1;
 #endif 
+
+	if (size == 0) {
+		/* No private data was requested. */
+		p->priv = NULL;
+	} else {
+		/*
+		 * Set the pointer to the private data; that's the structure
+		 * of size "size" following the pcap_t.
+		 */
+		p->priv = (void *)(chunk + sizeof (pcap_t));
+	}
+
+	return (p);
+}
+
+pcap_t *
+pcap_create_common(const char *source, char *ebuf, size_t size)
+{
+	pcap_t *p;
+
+	p = pcap_alloc_pcap_t(ebuf, size);
+	if (p == NULL)
+		return (NULL);
 
 	p->opt.source = strdup(source);
 	if (p->opt.source == NULL) {
@@ -499,11 +550,14 @@ pcap_create_common(const char *source, char *ebuf)
 	initialize_ops(p);
 
 	/* put in some defaults*/
-	pcap_set_timeout(p, 0);
-	pcap_set_snaplen(p, 65535);	/* max packet size */
+ 	pcap_set_snaplen(p, 65535);	/* max packet size */
+	p->opt.timeout = 0;		/* no timeout specified */
+	p->opt.buffer_size = 0;		/* use the platform's default */
 	p->opt.promisc = 0;
-	p->opt.buffer_size = 0;
+	p->opt.rfmon = 0;
+	p->opt.immediate = 0;
 	p->opt.tstamp_type = -1;	/* default to not setting time stamp type */
+	p->opt.tstamp_precision = PCAP_TSTAMP_PRECISION_MICRO;
 	return (p);
 }
 
@@ -550,7 +604,7 @@ pcap_set_timeout(pcap_t *p, int timeout_ms)
 {
 	if (pcap_check_activated(p))
 		return (PCAP_ERROR_ACTIVATED);
-	p->md.timeout = timeout_ms;
+	p->opt.timeout = timeout_ms;
 	return (0);
 }
 
@@ -563,30 +617,42 @@ pcap_set_tstamp_type(pcap_t *p, int tstamp_type)
 		return (PCAP_ERROR_ACTIVATED);
 
 	/*
-	 * If p->tstamp_type_count is 0, we don't support setting
-	 * the time stamp type at all.
+	 * If p->tstamp_type_count is 0, we only support PCAP_TSTAMP_HOST;
+	 * the default time stamp type is PCAP_TSTAMP_HOST.
 	 */
-	if (p->tstamp_type_count == 0)
-		return (PCAP_ERROR_CANTSET_TSTAMP_TYPE);
-
-	/*
-	 * Check whether we claim to support this type of time stamp.
-	 */
-	for (i = 0; i < p->tstamp_type_count; i++) {
-		if (p->tstamp_type_list[i] == tstamp_type) {
-			/*
-			 * Yes.
-			 */
+	if (p->tstamp_type_count == 0) {
+		if (tstamp_type == PCAP_TSTAMP_HOST) {
 			p->opt.tstamp_type = tstamp_type;
 			return (0);
+		}
+	} else {
+		/*
+		 * Check whether we claim to support this type of time stamp.
+		 */
+		for (i = 0; i < p->tstamp_type_count; i++) {
+			if (p->tstamp_type_list[i] == tstamp_type) {
+				/*
+				 * Yes.
+				 */
+				p->opt.tstamp_type = tstamp_type;
+				return (0);
+			}
 		}
 	}
 
 	/*
-	 * No.  We support setting the time stamp type, but not to this
-	 * particular value.
+	 * We don't support this type of time stamp.
 	 */
 	return (PCAP_WARNING_TSTAMP_TYPE_NOTSUP);
+}
+
+int
+pcap_set_immediate_mode(pcap_t *p, int immediate)
+{
+	if (pcap_check_activated(p))
+		return (PCAP_ERROR_ACTIVATED);
+	p->opt.immediate = immediate;
+	return (0);
 }
 
 int
@@ -596,6 +662,54 @@ pcap_set_buffer_size(pcap_t *p, int buffer_size)
 		return (PCAP_ERROR_ACTIVATED);
 	p->opt.buffer_size = buffer_size;
 	return (0);
+}
+
+int
+pcap_set_tstamp_precision(pcap_t *p, int tstamp_precision)
+{
+	int i;
+
+	if (pcap_check_activated(p))
+		return (PCAP_ERROR_ACTIVATED);
+
+	/*
+	 * If p->tstamp_precision_count is 0, we only support setting
+	 * the time stamp precision to microsecond precision; every
+	 * pcap module *MUST* support microsecond precision, even if
+	 * it does so by converting the native precision to
+	 * microseconds.
+	 */
+	if (p->tstamp_precision_count == 0) {
+		if (tstamp_precision == PCAP_TSTAMP_PRECISION_MICRO) {
+			p->opt.tstamp_precision = tstamp_precision;
+			return (0);
+		}
+	} else {
+		/*
+		 * Check whether we claim to support this precision of
+		 * time stamp.
+		 */
+		for (i = 0; i < p->tstamp_precision_count; i++) {
+			if (p->tstamp_precision_list[i] == tstamp_precision) {
+				/*
+				 * Yes.
+				 */
+				p->opt.tstamp_precision = tstamp_precision;
+				return (0);
+			}
+		}
+	}
+
+	/*
+	 * We don't support this time stamp precision.
+	 */
+	return (PCAP_ERROR_TSTAMP_PRECISION_NOTSUP);
+}
+
+int
+pcap_get_tstamp_precision(pcap_t *p)
+{
+        return (p->opt.tstamp_precision);
 }
 
 int
@@ -685,6 +799,27 @@ fail:
 	return (NULL);
 }
 
+pcap_t *
+pcap_open_offline_common(char *ebuf, size_t size)
+{
+	pcap_t *p;
+
+	p = pcap_alloc_pcap_t(ebuf, size);
+	if (p == NULL)
+		return (NULL);
+
+	p->opt.tstamp_precision = PCAP_TSTAMP_PRECISION_MICRO;
+	p->opt.source = strdup("(savefile)");
+	if (p->opt.source == NULL) {
+		snprintf(ebuf, PCAP_ERRBUF_SIZE, "malloc: %s",
+		    pcap_strerror(errno));
+		free(p);
+		return (NULL);
+	}
+
+	return (p);
+}
+
 int
 pcap_dispatch(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 {
@@ -707,7 +842,7 @@ pcap_loop(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 	register int n;
 
 	for (;;) {
-		if (p->sf.rfile != NULL) {
+		if (p->rfile != NULL) {
 			/*
 			 * 0 means EOF, so don't loop if we get 0.
 			 */
@@ -723,7 +858,7 @@ pcap_loop(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 		}
 		if (n <= 0)
 			return (n);
-		if (cnt > 0) {
+		if (!PACKET_COUNT_IS_UNLIMITED(cnt)) {
 			cnt -= n;
 			if (cnt <= 0)
 				return (0);
@@ -743,18 +878,24 @@ pcap_breakloop(pcap_t *p)
 int
 pcap_datalink(pcap_t *p)
 {
+	if (!p->activated)
+		return (PCAP_ERROR_NOT_ACTIVATED);
 	return (p->linktype);
 }
 
 int
 pcap_datalink_ext(pcap_t *p)
 {
+	if (!p->activated)
+		return (PCAP_ERROR_NOT_ACTIVATED);
 	return (p->linktype_ext);
 }
 
 int
 pcap_list_datalinks(pcap_t *p, int **dlt_buffer)
 {
+	if (!p->activated)
+		return (PCAP_ERROR_NOT_ACTIVATED);
 	if (p->dlt_count == 0) {
 		/*
 		 * We couldn't fetch the list of DLTs, which means
@@ -766,7 +907,7 @@ pcap_list_datalinks(pcap_t *p, int **dlt_buffer)
 		if (*dlt_buffer == NULL) {
 			(void)snprintf(p->errbuf, sizeof(p->errbuf),
 			    "malloc: %s", pcap_strerror(errno));
-			return (-1);
+			return (PCAP_ERROR);
 		}
 		**dlt_buffer = p->linktype;
 		return (1);
@@ -775,7 +916,7 @@ pcap_list_datalinks(pcap_t *p, int **dlt_buffer)
 		if (*dlt_buffer == NULL) {
 			(void)snprintf(p->errbuf, sizeof(p->errbuf),
 			    "malloc: %s", pcap_strerror(errno));
-			return (-1);
+			return (PCAP_ERROR);
 		}
 		(void)memcpy(*dlt_buffer, p->dlt_list,
 		    sizeof(**dlt_buffer) * p->dlt_count);
@@ -1003,6 +1144,7 @@ static struct dlt_choice dlt_choices[] = {
 	DLT_CHOICE(DLT_LINUX_IRDA, "Linux IrDA"),
 	DLT_CHOICE(DLT_IEEE802_11_RADIO_AVS, "802.11 plus AVS radio information header"),
         DLT_CHOICE(DLT_JUNIPER_MONITOR, "Juniper Passive Monitor PIC"),
+	DLT_CHOICE(DLT_BACNET_MS_TP, "BACnet MS/TP"),
 	DLT_CHOICE(DLT_PPP_PPPD, "PPP for pppd, with direction flag"),
 	DLT_CHOICE(DLT_JUNIPER_PPPOE, "Juniper PPPoE"),
 	DLT_CHOICE(DLT_JUNIPER_PPPOE_ATM, "Juniper PPPoE/ATM"),
@@ -1060,6 +1202,7 @@ static struct dlt_choice dlt_choices[] = {
 	DLT_CHOICE(DLT_NETANALYZER, "Ethernet with Hilscher netANALYZER pseudo-header"),
 	DLT_CHOICE(DLT_NETANALYZER_TRANSPARENT, "Ethernet with Hilscher netANALYZER pseudo-header and with preamble and SFD"),
 	DLT_CHOICE(DLT_IPOIB, "RFC 4391 IP-over-Infiniband"),
+	DLT_CHOICE(DLT_DBUS, "D-Bus"),
 	DLT_CHOICE_SENTINEL
 };
 
@@ -1154,31 +1297,39 @@ pcap_tstamp_type_val_to_description(int tstamp_type)
 int
 pcap_snapshot(pcap_t *p)
 {
+	if (!p->activated)
+		return (PCAP_ERROR_NOT_ACTIVATED);
 	return (p->snapshot);
 }
 
 int
 pcap_is_swapped(pcap_t *p)
 {
-	return (p->sf.swapped);
+	if (!p->activated)
+		return (PCAP_ERROR_NOT_ACTIVATED);
+	return (p->swapped);
 }
 
 int
 pcap_major_version(pcap_t *p)
 {
-	return (p->sf.version_major);
+	if (!p->activated)
+		return (PCAP_ERROR_NOT_ACTIVATED);
+	return (p->version_major);
 }
 
 int
 pcap_minor_version(pcap_t *p)
 {
-	return (p->sf.version_minor);
+	if (!p->activated)
+		return (PCAP_ERROR_NOT_ACTIVATED);
+	return (p->version_minor);
 }
 
 FILE *
 pcap_file(pcap_t *p)
 {
-	return (p->sf.rfile);
+	return (p->rfile);
 }
 
 int
@@ -1190,7 +1341,7 @@ pcap_fileno(pcap_t *p)
 	if (p->adapter != NULL)
 		return ((int)(DWORD)p->adapter->hFile);
 	else
-		return (-1);
+		return (PCAP_ERROR);
 #endif
 }
 
@@ -1389,6 +1540,9 @@ pcap_statustostr(int errnum)
 
 	case PCAP_ERROR_PROMISC_PERM_DENIED:
 		return ("You don't have permission to capture in promiscuous mode on that device");
+
+	case PCAP_ERROR_TSTAMP_PRECISION_NOTSUP:
+		return ("That device doesn't support that time stamp precision");
 	}
 	(void)snprintf(ebuf, sizeof ebuf, "Unknown error: %d", errnum);
 	return(ebuf);
@@ -1486,6 +1640,12 @@ pcap_setmintocopy(pcap_t *p, int size)
 	return (p->setmintocopy_op(p, size));
 }
 
+Adapter *
+pcap_get_adapter(pcap_t *p)
+{
+	return (p->getadapter_op(p));
+}
+
 static int
 pcap_setmintocopy_dead(pcap_t *p, int size)
 {
@@ -1553,7 +1713,7 @@ pcap_do_addexit(pcap_t *p)
 void
 pcap_add_to_pcaps_to_close(pcap_t *p)
 {
-	p->md.next = pcaps_to_close;
+	p->next = pcaps_to_close;
 	pcaps_to_close = p;
 }
 
@@ -1563,7 +1723,7 @@ pcap_remove_from_pcaps_to_close(pcap_t *p)
 	pcap_t *pc, *prevpc;
 
 	for (pc = pcaps_to_close, prevpc = NULL; pc != NULL;
-	    prevpc = pc, pc = pc->md.next) {
+	    prevpc = pc, pc = pc->next) {
 		if (pc == p) {
 			/*
 			 * Found it.  Remove it from the list.
@@ -1572,12 +1732,12 @@ pcap_remove_from_pcaps_to_close(pcap_t *p)
 				/*
 				 * It was at the head of the list.
 				 */
-				pcaps_to_close = pc->md.next;
+				pcaps_to_close = pc->next;
 			} else {
 				/*
 				 * It was in the middle of the list.
 				 */
-				prevpc->md.next = pc->md.next;
+				prevpc->next = pc->next;
 			}
 			break;
 		}
@@ -1601,6 +1761,11 @@ pcap_cleanup_live_common(pcap_t *p)
 		p->tstamp_type_list = NULL;
 		p->tstamp_type_count = 0;
 	}
+	if (p->tstamp_precision_list != NULL) {
+		free(p->tstamp_precision_list);
+		p->tstamp_precision_list = NULL;
+		p->tstamp_precision_count = 0;
+	}
 	pcap_freecode(&p->fcode);
 #if !defined(WIN32) && !defined(MSDOS)
 	if (p->fd >= 0) {
@@ -1608,7 +1773,6 @@ pcap_cleanup_live_common(pcap_t *p)
 		p->fd = -1;
 	}
 	p->selectable_fd = -1;
-	p->send_fd = -1;
 #endif
 }
 
@@ -1619,16 +1783,26 @@ pcap_cleanup_dead(pcap_t *p _U_)
 }
 
 pcap_t *
-pcap_open_dead(int linktype, int snaplen)
+pcap_open_dead_with_tstamp_precision(int linktype, int snaplen, u_int precision)
 {
 	pcap_t *p;
 
+	switch (precision) {
+
+	case PCAP_TSTAMP_PRECISION_MICRO:
+	case PCAP_TSTAMP_PRECISION_NANO:
+		break;
+
+	default:
+		return NULL;
+	}
 	p = malloc(sizeof(*p));
 	if (p == NULL)
 		return NULL;
 	memset (p, 0, sizeof(*p));
 	p->snapshot = snaplen;
 	p->linktype = linktype;
+	p->opt.tstamp_precision = precision;
 	p->stats_op = pcap_stats_dead;
 #ifdef WIN32
 	p->setbuff_op = pcap_setbuff_dead;
@@ -1638,6 +1812,13 @@ pcap_open_dead(int linktype, int snaplen)
 	p->cleanup_op = pcap_cleanup_dead;
 	p->activated = 1;
 	return (p);
+}
+
+pcap_t *
+pcap_open_dead(int linktype, int snaplen)
+{
+	return (pcap_open_dead_with_tstamp_precision(linktype, snaplen,
+	    PCAP_TSTAMP_PRECISION_MICRO));
 }
 
 /*
@@ -1745,6 +1926,8 @@ pcap_lib_version(void)
 			    strlen(pcap_version_string);
 			full_pcap_version_string =
 			    malloc(full_pcap_version_string_len);
+			if (full_pcap_version_string == NULL)
+				return (NULL);
 			sprintf(full_pcap_version_string,
 			    pcap_version_string_fmt, wpcap_version_string,
 			    pcap_version_string);
@@ -1762,7 +1945,8 @@ pcap_lib_version(void)
 			    strlen(packet_version_string) +
 			    strlen(pcap_version_string);
 			full_pcap_version_string = malloc(full_pcap_version_string_len);
-
+			if (full_pcap_version_string == NULL)
+				return (NULL);
 			sprintf(full_pcap_version_string,
 			    pcap_version_string_packet_dll_fmt,
 			    wpcap_version_string, packet_version_string,
@@ -1791,6 +1975,8 @@ pcap_lib_version (void)
 		    sizeof dospfx + strlen(pcap_version_string);
 		full_pcap_version_string =
 		    malloc(full_pcap_version_string_len);
+		if (full_pcap_version_string == NULL)
+			return (NULL);
 		strcpy(full_pcap_version_string, dospfx);
 		strcat(full_pcap_version_string, pcap_version_string);
 	}

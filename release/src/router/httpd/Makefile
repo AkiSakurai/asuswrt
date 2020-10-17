@@ -149,6 +149,11 @@ ifeq ($(RTCONFIG_HTTPS),y)
 OBJS += $(if $(wildcard pwenc.c), pwenc.o, prebuild/pwenc.o)
 endif
 
+OBJS += sysinfo.o
+OBJS += merlinr.o
+ifeq ($(RTCONFIG_SOFTCENTER),y)
+OBJS += dbapi.o
+endif
 ifeq ($(RTCONFIG_CAPTCHA),y)
 OBJS += libcaptcha.o
 endif
@@ -294,6 +299,13 @@ CFLAGS += -I$(TOP)/libasuslog
 LIBS += -L$(TOP)/libasuslog -lasuslog
 endif
 
+ifeq ($(RTCONFIG_HND_ROUTER_AX_6710),y)
+CFLAGS +=-DRTCONFIG_HND_ROUTER_AX_6710
+endif
+ifeq ($(RTCONFIG_HND_ROUTER_AX_675X),y)
+CFLAGS +=-DRTCONFIG_HND_ROUTER_AX_675X
+endif
+
 all: httpd #test_apps
 
 #test_apps: apps.c
@@ -340,3 +352,4 @@ endif
 	@$(CC) $(CFLAGS) -M $< > $@
 
 -include $(OBJS:%.o=.%.depend)
+

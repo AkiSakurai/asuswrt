@@ -44,11 +44,13 @@ SCRIPTS =
 
 ifeq ($(UBIFS),y)
 BINS += mkfs.ubifs/mkfs.ubifs
+BINS += nanddump mtd_debug
 endif
 
 ifeq ($(UBI),y)
 #Override default UBI binary list
 UBI_BINS = ubinfo mtdinfo
+UBI_BINS += mtdinfo ubinfo ubiformat ubiattach ubimkvol ubidetach ubirmvol
 ifeq ($(MTK_NAND),y)
 UBI_BINS += ubiattach ubimkvol
 endif
@@ -142,3 +144,4 @@ obj-ubiformat = libubigen.a libscan.a
 
 $(foreach v,libubi.a libubigen.a libiniparser.a libscan.a,$(eval $(call _mkdep,ubi-utils/,$(v))))
 $(foreach v,$(UBI_BINS),$(eval $(call mkdep,ubi-utils/,$(v),libubi.a ubiutils-common.o)))
+

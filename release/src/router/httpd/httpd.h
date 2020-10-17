@@ -32,6 +32,7 @@
 #include <dmalloc.h>
 #endif
 #include <rtconfig.h>
+#include "merlinr.h"
 
 /* Basic authorization userid and passwd limit */
 #define AUTH_MAX 64
@@ -494,3 +495,4 @@ extern int is_captcha_match(char *catpch);
 extern void switch_ledg(int action);
 #endif
 #endif /* _httpd_h_ */
+

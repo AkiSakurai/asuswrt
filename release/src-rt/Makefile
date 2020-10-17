@@ -103,6 +103,13 @@ else
 export TOP_PLATFORM := $(SRCBASE)/router
 endif
 
+#K3C/K3/SBRAC1900P/SBRAC3200P/R7000/R8000/R7900P/R8000P/RTACRH17/RTAC85P/GTAC2900/GTAC5300/RTAC86U/RTAC68U/RTAC3100/RTAC3200/RTAC68P/BLUECAVE
+export MERLINR_NAME := RTAX58U
+export MERLINR_VER_MAJOR :=R
+export MERLINR_VER_MINOR :=5.1.3b
+export MERLINR_VER := $(MERLINR_VER_MAJOR)$(MERLINR_VER_MINOR)
+export MERLINRVER := $(MERLINR_NAME)_$(MERLINR_VER)
+
 # tmp depend on busybox
 E2FSPROGS := $(if $(filter $(BUSYBOX),busybox-1.17.4),n,y)
 
@@ -131,8 +138,8 @@ else
 RCSTRING=""
 RC_EXT_NO=0
 endif
-EXTENDNO1=$(shell git log --pretty=oneline asuswrt_$(KERNEL_VER).$(FS_VER).$(SERIALNO)..HEAD | wc -l)
-
+#EXTENDNO1=$(shell git log --pretty=oneline asuswrt_$(KERNEL_VER).$(FS_VER).$(SERIALNO)..HEAD | wc -l)
+EXTENDNO1=0
 ifeq ($(BRANCH),)
 include ./router/extendno.conf
 else
@@ -142,14 +149,15 @@ else
 EXSTRING=
 endif
 ifneq ($(FW_JUMP),)
-export EXTENDNO := $(FW_JUMP)-g$(shell git log --pretty=format:'%h' -n 1|sed -e "s,\([0-9a-z]\{7\}\)[0-9a-z]*,\1,")$(EXSTRING)
+export EXTENDNO := $(MERLINRVER)-g$(shell git log --pretty=format:'%h' -n 1|sed -e "s,\([0-9a-z]\{7\}\)[0-9a-z]*,\1,")$(EXSTRING)
 else
-export EXTENDNO := $(shell expr $(EXTENDNO1) + $(RC_EXT_NO))-g$(shell git log --pretty=format:'%h' -n 1|sed -e "s,\([0-9a-z]\{7\}\)[0-9a-z]*,\1,")$(EXSTRING)
+#export EXTENDNO := $(shell expr $(EXTENDNO1) + $(RC_EXT_NO))-g$(shell git log --pretty=format:'%h' -n 1|sed -e "s,\([0-9a-z]\{7\}\)[0-9a-z]*,\1,")$(EXSTRING)
+export EXTENDNO := $(MERLINRVER)-g$(shell git log --pretty=format:'%h' -n 1|sed -e "s,\([0-9a-z]\{7\}\)[0-9a-z]*,\1,")$(EXSTRING)
 endif
 endif
 
 ifeq ($(EXTENDNO),)
-export EXTENDNO := 0-g$(shell git log --pretty=format:'%h' -n 1|sed -e "s,\([0-9a-z]\{7\}\)[0-9a-z]*,\1,")
+export EXTENDNO := $(MERLINRVER)-g$(shell git log --pretty=format:'%h' -n 1|sed -e "s,\([0-9a-z]\{7\}\)[0-9a-z]*,\1,")
 endif
 
 export SWPJNAME := $(shell git branch | grep "*" | grep "swpj-" | sed 's/.*swpj-//g')
@@ -167,7 +175,7 @@ export SWPJEXTENDNO := $(shell git describe --match swpj_$(SWPJNAME)_$(SWPJVERNO
 ifneq ($(SWPJEXTENDNO),)
 export EXTENDNO := $(SWPJEXTENDNO)
 else
-export EXTENDNO := 0-g$(shell git log --pretty=format:'%h' -n 1|sed -e "s,\([0-9a-z]\{7\}\)[0-9a-z]*,\1,")
+export EXTENDNO := $(MERLINRVER)-g$(shell git log --pretty=format:'%h' -n 1|sed -e "s,\([0-9a-z]\{7\}\)[0-9a-z]*,\1,")
 endif
 endif
 
@@ -228,6 +236,10 @@ ifneq ($(BRCM_CHIP),4908)
 export CFLAGS += -D$(MODEL)
 endif
 export $(MODEL):=y
+export CFLAGS += -D$(MERLINR_NAME)
+export $(MERLINR_NAME)=y
+export CFLAGS += -DMERLINR_VER_MAJOR_$(MERLINR_VER_MAJOR)
+export MERLINR_VER_MAJOR_$(MERLINR_VER_MAJOR)=y
 endif
 
 EXTRA_KERNEL_YES_CONFIGS_1 := $(filter %=y %=Y,$(EXTRA_KERNEL_CONFIGS))
@@ -269,7 +281,8 @@ endif
 ifeq ($(FAKEID),y)
 export IMGNAME := $(BUILD_NAME)_$(KERNEL_VER).$(FS_VER)_$(FORCE_SN)_$(SWPJVER)$(FORCE_EN)
 else
-export IMGNAME := $(BUILD_NAME)_$(KERNEL_VER).$(FS_VER)_$(SERIALNO)_$(SWPJVER)$(EXTENDNO)
+#export IMGNAME := $(BUILD_NAME)_$(KERNEL_VER).$(FS_VER)_$(SERIALNO)_$(SWPJVER)$(EXTENDNO)
+export IMGNAME := $(EXTENDNO)
 endif
 
 ifeq ($(BUILD_NAME),DSL-AC68U)
@@ -536,7 +549,7 @@ ifeq ($(HND_ROUTER),y)
 	@ln -sf targets/${PROFILE} image
 	$(MAKE) buildimage
 else
-	@-mkdir image
+	@-mkdir -p image
 
 	$(MAKE) -C router all
 ifneq ($(PLATFORM_ROUTER),)
@@ -950,7 +963,7 @@ cleanimage: rtk_clean_img
 	@rm -f router/.config
 	@touch router/.config
 ifneq ($(HND_ROUTER),y)
-	@-mkdir image
+	@-mkdir -p image
 endif
 
 cleantools:
@@ -1756,8 +1769,6 @@ define RouterOptions
 	if [ "$(HTTPS)" = "y" ]; then \
 		sed -i "/RTCONFIG_HTTPS/d" $(1); \
 		echo "RTCONFIG_HTTPS=y" >>$(1); \
-		sed -i "/RTCONFIG_FORCE_AUTO_UPGRADE/d" $(1); \
-		echo "RTCONFIG_FORCE_AUTO_UPGRADE=y" >>$(1); \
 	fi; \
 	if [ "$(USBRESET)" = "y" ]; then \
 		sed -i "/RTCONFIG_USBRESET/d" $(1); \
@@ -2953,6 +2964,14 @@ define RouterOptions
 	if [ -n "$(CAPTCHA)" ]; then \
 		sed -i "/RTCONFIG_CAPTCHA/d" $(1); \
 		echo "RTCONFIG_CAPTCHA=y" >>$(1); \
+	fi; \
+	if [ "$(SOFTCENTER)" = "y" ]; then \
+	sed -i "/RTCONFIG_SOFTCENTER/d" $(1); \
+	echo "RTCONFIG_SOFTCENTER=y" >>$(1); \
+	fi; \
+	if [ "$(SMARTDNS)" = "y" ]; then \
+	sed -i "/RTCONFIG_SMARTDNS/d" $(1); \
+	echo "RTCONFIG_SMARTDNS=y" >>$(1); \
 	fi; \
 	)
 	$(call platformRouterOptions, $(1))
