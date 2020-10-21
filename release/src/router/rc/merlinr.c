@@ -67,21 +67,27 @@ void enable_4t4r_ax58()
 	if(!strcmp(nvram_get("1:sw_rxchain_mask"), "0xf") ){
 //4t4r
 		nvram_set("1:sw_txchain_mask", "0xf");
+		nvram_set("wl1_txchain", "15");
 		nvram_commit();
 	} else {
 //2t2r
 		nvram_set("1:sw_txchain_mask", "0x9");
+		nvram_set("wl1_txchain", "9");
 		nvram_commit();
 	}
 }
 void enable_4t4r()
 {
-//hack asus watchdog and modify this to enable 4t4r
+//unlock 4t4r for all regions, not just china
 //ensure that the hardware support 4t4r
 	if(!strcmp(cfe_nvram_get("1:sw_rxchain_mask"), "0xf") && strcmp(cfe_nvram_get("1:sw_txchain_mask"), "0xf")){
-		doSystem("envrams");
-		doSystem("envram set 1:sw_txchain_mask=0xf");
-		doSystem("envram commit");
+		if ( !pids("envrams") )
+		{
+		  system("/usr/sbin/envrams &> /dev/null");
+		  usleep(100000);
+		}
+		ATE_BRCM_SET("1:sw_txchain_mask", "0xf");
+		ATE_BRCM_COMMIT();
 	}
 }
 #endif
