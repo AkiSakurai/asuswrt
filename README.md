@@ -9,3 +9,4 @@
 [RT-AX82U](../../tree/RT-AX82U)
 
 
+[RT_AX82U](../../tree/RT_AX88U)
