@@ -413,6 +413,10 @@ var httpApi ={
 				retData.wanType = wanTypeList.noWan;
 			}
 		}
+		else if(wanInfo.wan0_state_t == "4" && wanInfo.wan0_sbstate_t == "4"){
+			retData.wanType = wanTypeList.dhcp;
+			retData.isIPConflict = true;
+		}
 		else{
 			retData.wanType = wanTypeList.check;
 			if(this.detRetryCnt > 0){

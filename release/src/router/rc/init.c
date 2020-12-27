@@ -10852,6 +10852,11 @@ NO_USB_CAP:
 	add_rc_support("pipefw");
 #endif
 
+#ifdef CONFIG_BCMWL5
+	if (nvram_get_int("CoBrand") == 1)
+		add_rc_support("GD");
+#endif
+
 	return 0;
 }
 
@@ -11636,7 +11641,7 @@ static void sysinit(void)
 	system("tmctl porttminit --devtype 0 --if eth3 --flag 1");
 #ifndef RTAX95Q
 	system("tmctl porttminit --devtype 0 --if eth4 --flag 1");
-#ifdef RTCONFIG_EXT_BCM53134
+#if defined(RTCONFIG_EXT_BCM53134) || defined(RTCONFIG_EXTPHY_BCM84880)
 	system("tmctl porttminit --devtype 0 --if eth5 --flag 1");
 #endif
 #endif

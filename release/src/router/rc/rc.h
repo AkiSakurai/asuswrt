@@ -727,6 +727,9 @@ extern void dump_WlGetDriverStats(int fb, int count);
 #ifdef RTCONFIG_HND_ROUTER_AX
 extern void dfs_cac_check(void);
 #endif
+extern int set_cb_flag(int flag);
+extern int unset_cb_flag(void);
+extern int get_cb_flag(void);
 #endif
 
 #ifdef RTCONFIG_WIFI_SON

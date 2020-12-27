@@ -1,0 +1,5 @@
+*.o
+*.d*
+tags
+ref*
+mcpctl

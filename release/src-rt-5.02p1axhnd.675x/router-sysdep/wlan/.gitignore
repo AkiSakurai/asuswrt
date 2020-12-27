@@ -1,0 +1,8 @@
+*.o
+*.a
+*.d
+*.so
+components
+src
+dhd_monitor
+utils

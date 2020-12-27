@@ -32,9 +32,9 @@
 #endif
 /* shared memory / cfg_mnt / json */
 #include <sys/shm.h>
+#include <json.h>
 #include <cfg_slavelist.h>
 #include <cfg_clientlist.h>
-#include <json.h>
 /* linklist */
 #include <linklist.h>
 #ifdef RTCONFIG_LIBASUSLOG

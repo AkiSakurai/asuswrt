@@ -2498,6 +2498,22 @@ int asus_ate_command(const char *command, const char *value, const char *value2)
 		get_DateCode();
 		return 0;
 	}
+	else if (!strcmp(command, "Set_CoBrand")) {
+		int n = atoi(value);
+		if ((n >= 0) && (n <= 100))
+			set_cb(n);
+		else
+			puts("ATE_ERROR");
+		return 0;
+	}
+	else if (!strcmp(command, "Unset_CoBrand")) {
+		unset_cb();
+		return 0;
+	}
+	else if (!strcmp(command, "Get_CoBrand")) {
+		get_cb();
+		return 0;
+	}
 #endif
 	else
 	{

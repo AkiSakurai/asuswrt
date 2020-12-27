@@ -1,0 +1,12 @@
+*.orig
+*.diff
+*~
+*.swp
+*.o
+*.mod.c
+*.ko
+.*.cmd
+*.depend
+tags
+Makefile.*
+modules.*

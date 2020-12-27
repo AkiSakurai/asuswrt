@@ -1766,6 +1766,8 @@ void init_switch()
 					snprintf(ptr, sizeof(buf)-len, "%s%d", (len > 0)?" ":"", ports[0]);
 				else if(tmp_type == WANS_DUALWAN_IF_LAN)
 					snprintf(ptr, sizeof(buf)-len, "%s%d", (len > 0)?" ":"", ports[wancfg]);
+				else // USB
+					snprintf(ptr, sizeof(buf)-len, "%s%d", (len > 0)?" ":"", -1);
 				ptr = buf+strlen(buf);
 			}
 
@@ -1855,6 +1857,19 @@ void init_switch()
 
 #ifdef RTCONFIG_EXTPHY_BCM84880
 #if defined(RTAX86U) || defined(RTAX5700)
+			char *port_intf[] = {"eth0", "eth4", "eth3", "eth2", "eth1", "eth5"};
+			int eee_enable = nvram_get_int("eee_enable");
+
+			if(!eee_enable){
+				for(i = 0; i < LAN_PORTS+1; ++i){
+					_dprintf("%s: Disable %s eee...\n", __func__, port_intf[i]);
+					snprintf(buf, sizeof(buf), "/bin/ethctl %s eee off", port_intf[i]);
+					system(buf);
+				}
+			}
+			else
+				_dprintf("%s: Enable eee default.\n", __func__);
+
 			int ext_phy_model = nvram_get_int("ext_phy_model"); // 0: BCM54991, 1: RTL8226
 #endif
 #endif
@@ -1878,6 +1893,8 @@ void init_switch()
 					snprintf(ptr, sizeof(buf)-len, "%s%d", (len > 0)?" ":"", ports[0]);
 				else if(tmp_type == WANS_DUALWAN_IF_LAN)
 					snprintf(ptr, sizeof(buf)-len, "%s%d", (len > 0)?" ":"", ports[wancfg]);
+				else // USB
+					snprintf(ptr, sizeof(buf)-len, "%s%d", (len > 0)?" ":"", -1);
 				ptr = buf+strlen(buf);
 			}
 			nvram_set("wanports", buf);
@@ -1945,6 +1962,8 @@ void init_switch()
 					snprintf(ptr, sizeof(buf)-len, "%s%d", (len > 0)?" ":"", ports[0]);
 				else if (tmp_type == WANS_DUALWAN_IF_LAN)
 					snprintf(ptr, sizeof(buf)-len, "%s%d", (len > 0)?" ":"", ports[wancfg]);
+				else // USB
+					snprintf(ptr, sizeof(buf)-len, "%s%d", (len > 0)?" ":"", -1);
 				ptr = buf+strlen(buf);
 			}
 			nvram_set("wanports", buf);

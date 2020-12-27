@@ -1839,7 +1839,7 @@ feedback_note1=De firmwareversie wordt ingediend naast elke andere info die u hi
 feedback_note2=Feedback wordt gebruikt om een diagnose te stellen van problemen en helpt ons de firmware van ZVMODELVZ te verbeteren. Alle persoonlijke informatie die u hebt ingediend, uitdrukkelijk of incidenteel, wordt beschermd in overeenstemming met ons <a style="font-weight: bolder;text-decoration:underline;cursor:pointer;" href="https://www.asus.com/Terms_of_Use_Notice_Privacy_Policy/Privacy_Policy/" target="_blank">privacybeleid</a>.
 feedback_note3=Door deze feedback in te dienen, gaat u ermee akkoord dat ASUS feedback die u hebt gegeven, mag gebruiken om het ASUS netwerk- en draadloos product te verbeteren.
 [###MODEL_DEP###][DSL-AC68U][DSL-N55U][DSL-N55U-B]feedback_note3=Door deze feedback in te dienen, gaat u ermee akkoord dat ASUS feedback die u hebt gegeven, mag gebruiken om de xDSL-modemrouter van ASUS te verbeteren.
-feedback_note4=Is ere en dringend probleem, neem dan contact op met de plaatselijke technische ondersteuning.
+feedback_note4=Is er een dringend probleem, neem dan contact op met de plaatselijke technische ondersteuning.
 feedback_Occasion_interrupt=Occasionele onderbrekingen
 feedback_optional=* Optioneel
 feedback_problem_desc=Feedback probleembeschrijving
@@ -1847,7 +1847,7 @@ feedback_problem_type=Feedback probleemtype
 feedback_setting_file=Instellingsbestand
 feedback_setting_problem=Configuratieprobleem
 feedback_stable=stabiele verbinding
-feedback_success_rt=Wij stellen alle feedback die we ontvangen op prijs. We zullen uw feedback en opmerkingen gebruik om te streven naar ene verbetering van uw ASUS-ervaring.
+feedback_success_rt=Wij stellen alle feedback die we ontvangen op prijs. We zullen uw feedback en opmerkingen gebruiken om te streven naar ene verbetering van uw ASUS-ervaring.
 feedback_thanks=Bedankt om de tijd te nemen om ons uw feedback te sturen.
 feedback_suggestion=Suggestion
 feedback_suggestion_cf=Current Feature

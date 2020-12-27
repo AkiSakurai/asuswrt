@@ -575,7 +575,8 @@ function handleSysDep(){
 		$("#amasonboarding_page").load("/mobile/pages/amasonboarding_page.html");
 	}
 
-	if(isSku("GD") && !$('.GD-head').length){
+	if(isGundam() && !$('.GD-head').length){
+		$('head').append('<link rel="stylesheet" type="text/css" href="/css/gundam.css">');
 		$("#summary_page").append($("<div>").attr({"id": "gdContainer", "class": "gundam-footer-field"}).hide())
 		$("#gdContainer").append($("<div>").attr({"class": "GD-head"}))
 		$("#gdContainer").append($("<div>").attr({"class": "GD-wait"}).append($("<div>").attr({"id": "GD-status"}).html("Installing..")))
@@ -599,8 +600,10 @@ function handleSysDep(){
 
 function handleModelIcon() {
 	$('#ModelPid_img').css('background-image', 'url(' + function() {
-		var modelInfo = httpApi.nvramGet(["territory_code", "productid", "odmpid", "color", "rc_support"], true);
+		var modelInfo = httpApi.nvramGet(["territory_code", "productid", "odmpid", "color", "rc_support", "CoBrand"], true);
 		var ttc = modelInfo.territory_code;
+		var CoBrand = modelInfo.CoBrand;
+		var isGundam = (CoBrand == 1 || ttc.search('GD') == '0');
 		var based_modelid = modelInfo.productid;
 		var odmpid = modelInfo.odmpid;
 		var color = modelInfo.color;
@@ -657,6 +660,9 @@ function handleModelIcon() {
 				else
 					return default_png_path;
 			}
+		}
+		else if((based_modelid == 'RT-AX82U' || based_modelid == 'RT-AX86U') && isGundam){
+			return default_png_path = "/images/Model_product_GD.png";
 		}
 		else if(odm_support){
 			return default_png_path = "/images/Model_product_COD.png";
@@ -981,10 +987,12 @@ var isPage = function(page){
 
 var isSupport = function(_ptn){
 	var ui_support = JSON.parse(JSON.stringify(httpApi.hookGet("get_ui_support")));
-	var modelInfo = httpApi.nvramGet(["productid"]);
+	var modelInfo = httpApi.nvramGet(["productid", "odmpid"]);
 	var based_modelid = modelInfo.productid;
+	var odmpid = modelInfo.odmpid;
 	var matchingResult = false;
 	var odmpid = httpApi.nvramGet(["odmpid"]).odmpid;
+	var amas_bdlkey = httpApi.nvramGet(["amas_bdlkey"]).amas_bdlkey;
 
 	if(ui_support["triband"] && ui_support["concurrep"] && (isSwMode("RP") || isSwMode("MB"))){
 		/* setup as dualband models, will copy wlc1 to wlc2 in apply.submitQIS */
@@ -1004,7 +1012,7 @@ var isSupport = function(_ptn){
 			matchingResult = false;
 			break;
 		case "VPNCLIENT":
-			matchingResult = (isSku("US") || isSku("CA") || isSku("TW") || isSku("CN")) ? false : true;
+			matchingResult = (isSku("US") || isSku("CA") || isSku("TW") || isSku("CN") || isSku("CT") || isSku("GD")) ? false : true;
 			break;
 		case "IPTV":
 			matchingResult = (isSku("US") || isSku("CN") || isSku("CT") || isSku("GD") || isSku("CA")) ? false : true;
@@ -1013,10 +1021,7 @@ var isSupport = function(_ptn){
 			matchingResult = (ui_support["smart_connect"] == 1 || ui_support["bandstr"] == 1) ? true : false;
 			break;
 		case "GUNDAM_UI":
-			matchingResult = (isSku("GD") && $(".desktop_left_field").is(":visible")) ? true : false;
-			break;
-		case "WPA3Support":
-			matchingResult = (based_modelid == 'RT-AX88U' || based_modelid == 'RT-AX92U'  || based_modelid == 'RT-AX95Q' || based_modelid == 'RT-AX56_XD4' || based_modelid == 'RT-AX58U' || based_modelid == "TUF-AX3000" || based_modelid == "RT-AX82U" || based_modelid == 'RT-AX56U' || based_modelid == 'GT-AX11000') ? true : false;
+			matchingResult = (isGundam() && $(".desktop_left_field").is(":visible")) ? true : false;
 			break;
 		case "MB_mode_concurrep":
 			if(isSwMode("MB") && isSupport("concurrep") && odmpid != "RP-AC1900")
@@ -1030,6 +1035,10 @@ var isSupport = function(_ptn){
 	}
 
 	return matchingResult;
+}
+
+var isGundam = function(){
+	return (isSku("GD") || systemVariable.CoBrand == "1");
 }
 
 var isSku = function(_ptn){
@@ -1388,6 +1397,11 @@ handleWLAuthModeItem = function(){
 		$("#manual_pap_setup-key").show();
 		if(crypto == "tkip")
 			$("#manual_pap_setup-nmode_hint").show();
+	}
+	else if(auth_mode == "sae"){
+		$("#manual_pap_setup-crypto").show();
+		$("#manual_pap_setup-key").show();
+		$("#wlc_crypto_manual option[value='tkip']").remove();
 	}
 };
 clearIntervalStatus = function(){

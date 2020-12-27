@@ -1,2 +1,0 @@
-#define SQUASHFS_MAGIC_LZMA             0x71736873
-#define SQUASHFS_MAGIC_LZMA_SWAP        0x73687371

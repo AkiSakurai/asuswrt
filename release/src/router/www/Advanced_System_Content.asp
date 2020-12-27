@@ -1409,7 +1409,7 @@ function appendMonitorOption(obj){
 var isPingListOpen = 0;
 function showPingTargetList(){
 	var ttc = httpApi.nvramGet(["territory_code"]).territory_code;
-	if(ttc.search("CN") >= 0){
+	if(ttc.search("CN") >= 0 || ttc.search("GD") >= 0 || ttc.search("CT") >= 0){
 		var APPListArray = [
 			["Baidu", "www.baidu.com"], ["QQ", "www.qq.com"], ["Taobao", "www.taobao.com"]
 		];

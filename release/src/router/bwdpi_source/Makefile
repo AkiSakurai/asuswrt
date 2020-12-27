@@ -189,7 +189,11 @@ else
 ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME),RT-AX56_XD4 RT-AX55))
 	@cp -f bin/wrs/rule.trf RC_INDEP/ # wrs / lite version
 endif
+ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME),RT-AX58U TUF-AX3000 RT-AX82U RT-AX82_XD6)) # model flag
+	@cp -f modules/bcm6750/* RC_INDEP/
+else
 	@cp -f modules/bcm675x/* RC_INDEP/
+endif # model flag
 endif # RTCONFIG_HND_ROUTER_AX_6710
 else
 	@cp -f modules/axhnd/* RC_INDEP/

@@ -313,6 +313,7 @@ var qos_enable_flag = ('<% nvram_get("qos_enable"); %>' == 1) ? true : false;
 var bwdpi_app_rulelist = "<% nvram_get("bwdpi_app_rulelist"); %>".replace(/&#60/g, "<");
 var qos_type_flag = "<% nvram_get("qos_type"); %>";
 var exist_firmver="<% nvram_get("firmver"); %>";
+var CoBrand_flag = '<% nvram_get("CoBrand"); %>';
 
 //territory_code sku
 function in_territory_code(_ptn){
@@ -320,12 +321,14 @@ function in_territory_code(_ptn){
 }
 var ttc = '<% nvram_get("territory_code"); %>';
 var is_KR_sku = in_territory_code("KR");
-var is_CN = in_territory_code("CN");
+var is_CN = (in_territory_code("CN") || in_territory_code("CT") || in_territory_code("GD"));
 var is_TW_sku = in_territory_code("TW");
 var is_US_sku = in_territory_code("US");
 var is_UA_sku = in_territory_code("UA");
-var is_GD_sku = in_territory_code("GD");
-if(is_GD_sku){
+var is_OP_sku = in_territory_code("OP");
+
+var isGundam = in_territory_code("GD") || CoBrand_flag == 1;
+if(isGundam){
 	document.write('<link rel="stylesheet" type="text/css" href="/css/gundam.css"></link>');
 }
 
@@ -1193,7 +1196,7 @@ function show_menu(){
 	show_selected_language();
 	autoFocus('<% get_parameter("af"); %>');
 
-	if(is_GD_sku){
+	if(isGundam){
 		calGDpostion(); 
 		if(window.top === window.self){
 			var banner = document.getElementsByClassName('banner1')[0];
@@ -3799,16 +3802,22 @@ function setRadioValue(obj,val) {
 function calGDpostion(){
 	if(window.top === window.self){
 		document.body.className = 'gundam-bg';
+
 		var windowWidth = document.body.clientWidth;
 		var contentWidth = 998;
 		var bgWidth = 456;
-		var left = ((windowWidth-contentWidth)/2)-bgWidth;
+		var bgShift = 52;
+		var gap = (windowWidth-contentWidth)/2;
+		var objWidth = Math.min(456, gap+bgShift*2);
+		var left = gap + ((bgShift/bgWidth)*objWidth) - objWidth;
 		var obj = document.getElementsByClassName('gundam-bg')[0];
+		
+		obj.style.backgroundSize = objWidth + 'px';
 		obj.style.backgroundPosition = left + 'px 0';
 	}
 }
 
-if(is_GD_sku){
+if(isGundam){
 	window.addEventListener('resize', function(event){
 		calGDpostion();	
 	});

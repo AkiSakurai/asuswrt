@@ -4355,21 +4355,10 @@ wlc_phy_set_reg_on_reset_majorrev32_33_37_47_51_129(phy_info_t *pi)
 		MOD_PHYREGCEE(pi, RxStatPwrOffset, core, use_gainVar_for_rssi, 1);
 	}
 
-	if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
 		MOD_PHYREG(pi, SlnaControl, inv_btcx_prisel_polarity, 1);
-		MOD_PHYREG(pi, Core1TxControl, loft_comp_shift, 1);
-		MOD_PHYREG(pi, Core2TxControl, loft_comp_shift, 1);
-		MOD_PHYREG(pi, Core3TxControl, loft_comp_shift, 1);
-		MOD_PHYREG(pi, Core4TxControl, loft_comp_shift, 1);
-	} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
-		MOD_PHYREG(pi, SlnaControl, inv_btcx_prisel_polarity, 1);
-		MOD_PHYREG(pi, Core1TxControl, loft_comp_shift, 1);
-		MOD_PHYREG(pi, Core2TxControl, loft_comp_shift, 1);
-		MOD_PHYREG(pi, Core3TxControl, loft_comp_shift, 1);
-	} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
-		MOD_PHYREG(pi, SlnaControl, inv_btcx_prisel_polarity, 1);
-		MOD_PHYREG(pi, Core1TxControl, loft_comp_shift, 1);
-		MOD_PHYREG(pi, Core2TxControl, loft_comp_shift, 1);
+		MOD_PHYREG(pi, Core1TxControl, loft_comp_shift, 2);
+		MOD_PHYREG(pi, Core2TxControl, loft_comp_shift, 2);
 	}
 
 	/* [4365] need to reduce FSTR threshold by 12dB to resolve
@@ -6763,6 +6752,26 @@ wlc_phy_set_regtbl_on_band_change_acphy(phy_info_t *pi)
 			RADIOID_IS(pi->pubpi->radioid, BCM20693_ID))
 			wlc_phy_config_bias_settings_20693(pi);
 	}
+
+    /* Increase LOFT comp range to avoid LOFT failure */
+    if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+        MOD_PHYREG(pi, SlnaControl, inv_btcx_prisel_polarity, 1);
+        MOD_PHYREG(pi, Core1TxControl, loft_comp_shift, 2);
+        MOD_PHYREG(pi, Core2TxControl, loft_comp_shift, 2);
+        MOD_PHYREG(pi, Core3TxControl, loft_comp_shift, 2);
+        MOD_PHYREG(pi, Core4TxControl, loft_comp_shift, 2);
+    } else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+        MOD_PHYREG(pi, SlnaControl, inv_btcx_prisel_polarity, 1);
+        if (CHSPEC_IS2G(pi->radio_chanspec) && !PHY_IPA(pi)) {
+           MOD_PHYREG(pi, Core1TxControl, loft_comp_shift, 2);
+           MOD_PHYREG(pi, Core2TxControl, loft_comp_shift, 2);
+           MOD_PHYREG(pi, Core3TxControl, loft_comp_shift, 2);
+        } else {
+           MOD_PHYREG(pi, Core1TxControl, loft_comp_shift, 1);
+           MOD_PHYREG(pi, Core2TxControl, loft_comp_shift, 1);
+           MOD_PHYREG(pi, Core3TxControl, loft_comp_shift, 1);
+        }
+    }
 
 #ifdef WL_EAP_NOISE_MEASUREMENTS
 	/* knoise rxgain override value initializaiton */

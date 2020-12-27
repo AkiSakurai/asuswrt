@@ -1,0 +1,12 @@
+*.o
+*.d
+*.la
+*.lo
+*.so
+.deps
+.libs
+config.h
+config.log
+config.status
+libtool
+objs

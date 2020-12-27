@@ -558,10 +558,6 @@ apply.wireless = function(){
 		qisPostData.wl0_wpa_psk = $("#wireless_key_0").val();
 		qisPostData.wl0_auth_mode_x = "psk2";
 		qisPostData.wl0_crypto = "aes";
-		/*if(isSupport('WPA3Support')){
-			qisPostData.wl0_auth_mode_x = "psk2sae";
-			qisPostData.wl0_mfp = "1";
-		}*/
 	}
 
 	if(qisPostData.hasOwnProperty("wl1_ssid")){
@@ -571,10 +567,6 @@ apply.wireless = function(){
 		qisPostData.wl1_wpa_psk = ($("#wireless_key_1").length) ? $("#wireless_key_1").val() : qisPostData.wl0_wpa_psk;
 		qisPostData.wl1_auth_mode_x = "psk2";
 		qisPostData.wl1_crypto = "aes";
-		/*if(isSupport('WPA3Support')){
-			qisPostData.wl1_auth_mode_x = "psk2sae";
-			qisPostData.wl1_mfp = "1";
-		}*/
 	}
 
 	if(qisPostData.hasOwnProperty("wl2_ssid")){
@@ -584,10 +576,6 @@ apply.wireless = function(){
 		qisPostData.wl2_wpa_psk = ($("#wireless_key_2").length) ? $("#wireless_key_2").val() : qisPostData.wl0_wpa_psk;
 		qisPostData.wl2_auth_mode_x = "psk2";
 		qisPostData.wl2_crypto = "aes";
-		/*if(isSupport('WPA3Support')){
-			qisPostData.wl2_auth_mode_x = "psk2sae";
-			qisPostData.wl2_mfp = "1";
-		}*/
 	}
 
 	if(isSupport("11AX") && !isSupport("qis_hide_he_features")){
@@ -2264,6 +2252,13 @@ goTo.wlcKey = function(){
 	goTo.loadPage("wlcKey_setting", false);
 };
 goTo.wlcManual = function(){
+	if(isSupport('wpa3')){
+		$("#wlc_auth_mode_manual").append($('<option>', {
+			"value": "sae",
+			"text": "WPA3-Personal"
+		}))
+	}
+
 	systemVariable.selectedAP = [];
 	$(".manual_pap_setup").show();
 	genWLBandOption();
@@ -2887,7 +2882,8 @@ goTo.ResetModem = function(){
 
 goTo.Waiting = function(){
 	systemVariable.manualWanSetup = false;
-	var wandog_interval = parseInt(httpApi.nvramGet(["wandog_interval"], true).wandog_interval);
+	var wandog_interval_str = httpApi.nvramGet(["wandog_interval"], true).wandog_interval;
+	var wandog_interval = (wandog_interval_str == "") ? 5: parseInt(wandog_interval_str);
 	var errCount = 0;
 	var check_linkInternet_count = 0;
 	var MAX_WAN_Detection = wandog_interval * 4;

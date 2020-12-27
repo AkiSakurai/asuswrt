@@ -1,0 +1,13 @@
+*.orig
+*.diff
+*~
+*.swp
+*.o
+*.mod.c
+*.ko
+.*.cmd
+*.depend
+tags
+Makefile.*
+modules.*
+shared_ksyms.c

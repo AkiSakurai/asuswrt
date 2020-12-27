@@ -393,6 +393,7 @@ char ProductID[32]="";
 #ifdef RTCONFIG_LANTIQ
 int wave_app_flag=0;
 #endif
+int hook_get_json = 0;
 extern int redirect;
 extern int change_passwd;	// 2008.08 magic
 extern int reget_passwd;	// 2008.08 magic
@@ -15794,6 +15795,7 @@ do_appGet_cgi(char *url, FILE *stream)
 	char *substr = NULL;
 	char * delim = ";";
 
+	hook_get_json = 1;
 	char *pattern = websGetVar(wp, "hook","");
 	char *dup_pattern = strdup(pattern);
 	char *sepstr = dup_pattern;
@@ -15813,6 +15815,7 @@ do_appGet_cgi(char *url, FILE *stream)
 
 	websWrite(stream,"\n}\n" );
 	free(dup_pattern);
+	hook_get_json = 0;
 }
 
 static void
@@ -24646,7 +24649,7 @@ static int ej_get_label_mac(int eid, webs_t wp, int argc, char **argv){
 
 static int ej_get_lan_hwaddr(int eid, webs_t wp, int argc, char **argv){
 
-	if(check_user_agent(user_agent) == FROM_BROWSER)
+	if(check_user_agent(user_agent) == FROM_BROWSER && hook_get_json == 0)
 		websWrite(wp, "%s", get_lan_hwaddr());
 	else
 		websWrite(wp, "\"%s\"", get_lan_hwaddr());

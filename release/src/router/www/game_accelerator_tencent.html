@@ -246,6 +246,14 @@ body{
 	margin: 20px 0 0 10px;
 }
 
+@media screen and (-ms-high-contrast: active),(-ms-high-contrast: none)
+ {
+    #switch_mask { margin-top: -16px; } /* IE10 */
+    *::-ms-backdrop, #switch_mask { margin-top: -16px; } /* IE11 */
+    #tencent_login_btn_mask { margin-top: -17px; } /* IE10 */
+    *::-ms-backdrop, #tencent_login_btn_mask { margin-top: -17px; } /* IE11 */
+ }
+
 @media (max-width: 420px) {
 	.bg-tencent{
 		height: 100%;
@@ -314,7 +322,9 @@ body{
 </style>
 <script>
 var orig_tencent_qmacc_enable = httpApi.nvramGet(["tencent_qmacc_enable"], true).tencent_qmacc_enable;
+var curState = orig_tencent_qmacc_enable;
 var orig_tencent_eula_check = httpApi.nvramGet(["tencent_eula_check"], true).tencent_eula_check;
+var cur_eula_check = orig_tencent_eula_check;
 var label_mac = <% get_label_mac(); %>.toLowerCase().split(":").join("");
 var productid = httpApi.nvramGet(["productid"], true).productid;
 
@@ -371,20 +381,18 @@ function close_tencent_eula(){
 }
 
 function check_eula(){
-	var eula_check = "0";
-
 	$("#tencent_eula_checkbox").toggleClass("tencent_eula_check_yes");
 	if($("#tencent_eula_checkbox").hasClass("tencent_eula_check_yes")){
-		eula_check = "1";
+		cur_eula_check = "1";
 		$("#switch_mask").css("display", "none");
 	}
 	else{
-		eula_check = "0";
+		cur_eula_check = "0";
 		$("#switch_mask").css("display", "block");
 	}
 
 	httpApi.nvramSet({
-		"tencent_eula_check": eula_check,
+		"tencent_eula_check": cur_eula_check,
 		"action_mode": "apply",
 		"action_script": "saveNvram"
 	});
@@ -437,37 +445,48 @@ function show_tencent_login(show){
 					<div class="left" style="cursor:pointer;" id="tencent_qmacc_enable"></div>
 					<div class="iphone_switch_container">
 					<script type="text/javascript">
-						$('#tencent_qmacc_enable').iphoneSwitch(orig_tencent_qmacc_enable == "1",
-
+						$('#tencent_qmacc_enable').iphoneSwitch(orig_tencent_qmacc_enable,
 							function() {
-								httpApi.nvramSet({
-									"tencent_qmacc_enable": "1",
-									"action_mode": "apply",
-									"rc_service": "start_qmacc"
-								}, function( response ) {
-									if($("#tencent_eula_div").css("display") != "none"){
-										$("#tencent_eula_div").hide();
-									}
+								if(cur_eula_check == "1"){
+									httpApi.nvramSet({
+										"tencent_qmacc_enable": "1",
+										"action_mode": "apply",
+										"rc_service": "start_qmacc"
+										}, function( response ) {
+											if($("#tencent_eula_div").css("display") != "none"){
+												$("#tencent_eula_div").hide();
+											}
 
-									if($("#tencent_login_div").css("display") != "none")
-										$("#tencent_login_div").hide();
+											if($("#tencent_login_div").css("display") != "none")
+												$("#tencent_login_div").hide();
 
-									$("#loadingIcon").show();
-									setTimeout("show_tencent_login(1);", 10000);
-								});
+											$("#loadingIcon").show();
+											setTimeout("show_tencent_login(1);", 10000);
+									});
+									curState = "1";
+								}
+								else{
+									$('#tencent_qmacc_enable').find('.iphone_switch').animate({backgroundPosition: -37}, "slow");
+								}
 							},
 							function() {
-								httpApi.nvramSet({
-									"tencent_qmacc_enable": "0",
-									"action_mode": "apply",
-									"rc_service": "stop_qmacc"
-								}, function( response ) {
-									if($("#tencent_login_div").css("display") != "none")
-										$("#tencent_login_div").hide();
+								if(cur_eula_check == "1"){
+									httpApi.nvramSet({
+										"tencent_qmacc_enable": "0",
+										"action_mode": "apply",
+										"rc_service": "stop_qmacc"
+										}, function( response ) {
+											if($("#tencent_login_div").css("display") != "none")
+												$("#tencent_login_div").hide();
 
-									$("#loadingIcon").show();
-									setTimeout("show_tencent_login(-1);", 5000);
-								});
+											$("#loadingIcon").show();
+											setTimeout("show_tencent_login(-1);", 5000);
+									});
+									curState = "0";
+								}
+								else{
+									$('#tencent_qmacc_enable').find('.iphone_switch').animate({backgroundPosition: 0}, "slow");
+								}
 							}
 						);
 					</script>

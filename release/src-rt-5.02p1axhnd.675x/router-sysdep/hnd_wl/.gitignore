@@ -1,0 +1,15 @@
+*.orig
+*.diff
+*~
+*.swp
+*.o
+*.mod.c
+*.ko
+.*.cmd
+*.depend
+*.tmp
+tags
+Makefile.*
+modules.*
+wlconf.h
+impl
