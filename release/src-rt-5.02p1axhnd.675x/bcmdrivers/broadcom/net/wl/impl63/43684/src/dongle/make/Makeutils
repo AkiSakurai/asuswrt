@@ -1,0 +1,82 @@
+# Shared utilities
+#
+# $Copyright Broadcom Corporation$
+#
+# $Id$
+
+ifneq ($(_MAKEUTILS_),1)
+_MAKEUTILS_ := 1
+###########################################
+
+# NOTE - this function contains two blank lines and evaluates to \n.
+define newline
+
+
+endef
+
+# Remove all comments which lead to extraneous whitespace .e.g.
+# "MYVAR = 1    # ..."  causes variable MYVAR to be defined as "1    ".
+# When it happens any string comparison e.g. ifeq ($(MYVAR),1) will fail.
+# 's/$/@@@@/' inserts @@@@ at the end of each line (before \n) and
+# $(shell ...) function converts \n to space so use $(subst @@@@ ,@@@@,...)
+# to remove the space before $(subst @@@@,$(newline),...) replaces
+# @@@@ back with \n.
+# 1. ':x; /\\[[:space:]]*$/ { N; s/\\[[:space:]]*\n//; tx }' combines continued lines
+# 2. '/^[[:blank:]]*#/d' deletes comment only lines
+# 3. 's/[[:blank:]]*#.*//' removes # ... and spaces before #
+# 4. 's/$/@@@@/' inserts @@@@ before \n
+define _load_config_file
+$(subst @@@@,$(newline),$(subst @@@@ ,@@@@,$(shell sed -e ':x; /\\[[:space:]]*$$/ { N; s/\\[[:space:]]*\n//; tx }' -e '/^[[:space:]]*\#/d' -e 's/[[:space:]]*\#.*//' -e 's/$$/@@@@/' $1)))
+endef
+
+# Include config file with all comments removed: include_config_file(NAME)
+# See comments for _load_config_file function above
+define include_config_file
+$(eval $(call _load_config_file,$1))
+endef
+
+# Undefine variable: undef_var(MYVAR)
+# The "undefine" directive is only available in make 3.82 and newer versions
+# so a trick is done to "unset" the variable instead on those older versions
+# which has a caveat - subsequent conditional settings of the same variable
+# (e.g. MYVAR ?= DEFVAL) will not work. The caller must be aware of this limit
+# and do one of the following to work around the limitation:
+# 1) do explicit value check (do not rely on ifdef/ifndef):
+#    ifeq ($(MYVAR),)
+#         MYVAR := DEFVAL
+#    endif
+# 2) call cond_set_var
+#    $(call cond_set_var,MYVAR,DEFVAL)
+define undef_var
+$(eval $(if $(filter undefine,$(.FEATURES)),undefine $1,$1 :=))
+endef
+
+# Conditionally set variable: cond_set_var(MYVAR,DEFVAL)
+# Only set value to variable when the variable's value is empty
+define cond_set_var
+$(eval $(if $($1),,$1 := $2))
+endef
+
+# Test targets
+ifeq ($(_TEST_),1)
+$(info CONF_FILE=$(CONF_FILE))
+$(info $(call _load_config_file,$(CONF_FILE)))
+.PHONY: load_conf
+load_conf:;@:
+endif
+ifeq ($(_TEST_),2)
+$(call include_config_file,$(CONF_FILE))
+$(info !!!$(VAR_NAME)=$(value $(VAR_NAME))!!!)
+.PHONY: load_conf
+load_conf:;@:
+endif
+ifeq ($(_TEST_),3)
+MYVAR := $(TEST_VAL)
+$(call cond_set_var,MYVAR,NewDefaultValue)
+$(info !!!MYVAR=$(MYVAR)!!!)
+.PHONY: load_conf
+load_conf:;@:
+endif
+
+###########################################
+endif	# _MAKEUTILS_

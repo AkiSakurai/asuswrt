@@ -1,0 +1,1 @@
+--full_set --max_chains 4 --txbf --max_bandwidth 80 --ccrev "all/0" --1024_qam
