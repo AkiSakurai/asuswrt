@@ -1,0 +1,38 @@
+# Makefile for ppr unit test.
+#
+# Copyright (C) 2013, Broadcom Corporation
+# All Rights Reserved.
+#
+# This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
+# the contents of this file may not be disclosed to third parties, copied
+# or duplicated in any form, in whole or in part, without the prior
+# written permission of Broadcom Corporation.
+#
+# $Id: Makefile xxxxxx 2013-11-14 06:00:44Z emanuell,shaib $
+
+#####################################################################################
+##################### Following items require developer customization. ##############
+#####################################################################################
+
+# path of source file
+SOURCE = ../src/wlc_ppr.c
+
+# path of header file
+INCLUDE = ../include ../../../include ../../../shared/bcmwifi/include
+
+# path of unit test file
+TEST_SRC= test_ppr.c
+
+# Path to Check tool directory from the unit test source directory
+CHECK_ROOT_PATH = ../../../unittest
+
+#####################################################################################
+##################### None customized parameter #####################################
+#####################################################################################
+
+# Makefile path
+makefile_path := $(CURDIR)/$(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST))
+
+# Path to central make file
+UNITTEST_MK_PATH = $(CHECK_ROOT_PATH)/unittest.mk
+include $(UNITTEST_MK_PATH)
