@@ -1,0 +1,27 @@
+# Manually maintained.  Update at time of manual patch implementation.
+# RAM MD5 Symbol Signatures of corresponding manual patches.
+# These signatures prevent a manual patch from invalidation after
+# implementation due to further changes to the function it is patching.
+# Duplicate signatures are supported for patches that support multiple
+# differing firmware targets.
+#Manual Patch implemented
+6629f60cc835dfbe8edb188fc0741446  wlc$wlc_recv_mgmtact.wlc.func.S
+2fbcdde5c8d08db9ee50d7714e99c523  wlc$wlc_set_phy_chanspec.wlc.func.S
+5d0569f08458aa35d2877a952b6e90ec  wlc_init.wlc.func.S
+c50f506fd3ae78aaec6a344b22e7fa0e  wlc_set_chanspec.wlc.func.S
+7481ca25d1388c4a0384f8a7f1e8cd0b  wlc_ap$wlc_pwrsave_mode_check.wlc_ap.func.S
+1eb734656541095850ac24f6ca78bbad  wlc_assoc$wlc_assoc_complete.wlc_assoc.func.S
+562936f7f4a68ff2e3a43767fdca4769  wlc_sup_clear_replay.wlc_sup.func.S
+c06840e5106226c444b8817031627055  wlc_assoc$wlc_assoc_scan_complete.wlc_assoc.func.S
+14e25617f65469e4ebe1ee8459e88b27  wlc_pmkid_build_cand_list.wlc_assoc.func.S
+b3481271781ee1f44ca35a6edfe18de7  wlc_phy_cmn$wlc_phy_radar_detect_init_acphy.wlc_phy_cmn.func.S
+489ba972afc4f843e80893ed90cf67f2  wlc_phy_ac$wlc_phy_chanspec_radio2069_setup.wlc_phy_ac.func.S
+
+# mfgtest in targetstring
+ce2c981fe17dffef8d95c817770e6f54  wlc_init.wlc.func.S
+
+# no fbt in targetstring
+e1f7009933c8cdd3eb1e0c19512030ae  wlc$wlc_recv_mgmtact.wlc.func.S
+f2c4cdfc34aec9af736f4f3b81e0eccb  wlc_assoc$wlc_assoc_complete.wlc_assoc.func.S
+aac4415817a564a66e0ca60f62cbcf70  wlc_assoc$wlc_assoc_scan_complete.wlc_assoc.func.S
+

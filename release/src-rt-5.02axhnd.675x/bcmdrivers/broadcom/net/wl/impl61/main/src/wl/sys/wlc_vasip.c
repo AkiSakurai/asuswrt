@@ -1,0 +1,1825 @@
+/*
+ * VASIP related functions
+ * Broadcom 802.11abg Networking Device Driver
+ *
+ * Copyright 2019 Broadcom
+ *
+ * This program is the proprietary software of Broadcom and/or
+ * its licensors, and may only be used, duplicated, modified or distributed
+ * pursuant to the terms and conditions of a separate, written license
+ * agreement executed between you and Broadcom (an "Authorized License").
+ * Except as set forth in an Authorized License, Broadcom grants no license
+ * (express or implied), right to use, or waiver of any kind with respect to
+ * the Software, and Broadcom expressly reserves all rights in and to the
+ * Software and all intellectual property rights therein.  IF YOU HAVE NO
+ * AUTHORIZED LICENSE, THEN YOU HAVE NO RIGHT TO USE THIS SOFTWARE IN ANY
+ * WAY, AND SHOULD IMMEDIATELY NOTIFY BROADCOM AND DISCONTINUE ALL USE OF
+ * THE SOFTWARE.
+ *
+ * Except as expressly set forth in the Authorized License,
+ *
+ * 1. This program, including its structure, sequence and organization,
+ * constitutes the valuable trade secrets of Broadcom, and you shall use
+ * all reasonable efforts to protect the confidentiality thereof, and to
+ * use this information only in connection with your use of Broadcom
+ * integrated circuit products.
+ *
+ * 2. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED
+ * "AS IS" AND WITH ALL FAULTS AND BROADCOM MAKES NO PROMISES,
+ * REPRESENTATIONS OR WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR
+ * OTHERWISE, WITH RESPECT TO THE SOFTWARE.  BROADCOM SPECIFICALLY
+ * DISCLAIMS ANY AND ALL IMPLIED WARRANTIES OF TITLE, MERCHANTABILITY,
+ * NONINFRINGEMENT, FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES,
+ * ACCURACY OR COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR
+ * CORRESPONDENCE TO DESCRIPTION. YOU ASSUME THE ENTIRE RISK ARISING
+ * OUT OF USE OR PERFORMANCE OF THE SOFTWARE.
+ *
+ * 3. TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL
+ * BROADCOM OR ITS LICENSORS BE LIABLE FOR (i) CONSEQUENTIAL, INCIDENTAL,
+ * SPECIAL, INDIRECT, OR EXEMPLARY DAMAGES WHATSOEVER ARISING OUT OF OR
+ * IN ANY WAY RELATING TO YOUR USE OF OR INABILITY TO USE THE SOFTWARE EVEN
+ * IF BROADCOM HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES; OR (ii)
+ * ANY AMOUNT IN EXCESS OF THE AMOUNT ACTUALLY PAID FOR THE SOFTWARE ITSELF
+ * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
+ * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
+ *
+ *
+ * <<Broadcom-WL-IPTag/Proprietary:>>
+ *
+ * $Id: wlc_vasip.c 777791 2019-08-09 23:07:16Z $
+ */
+
+#include <wlc_cfg.h>
+
+#if defined(WLVASIP) || defined(SAVERESTORE)
+#include <typedefs.h>
+#include <wlc_types.h>
+#include <siutils.h>
+#include <wlioctl.h>
+#include <wlc_pub.h>
+#include <wlioctl.h>
+#include <wlc.h>
+#include <wlc_dbg.h>
+#include <phy_vasip_api.h>
+#include <phy_stf_api.h>
+#include <phy_prephy_api.h>
+#include <wlc_hw_priv.h>
+#include <d11vasip_code.h>
+#include <pcicfg.h>
+#include <wl_export.h>
+#include <wlc_vasip.h>
+#include <wlc_dump.h>
+#include <wlc_stf.h>
+#include <wlc_scb.h>
+#include <wlc_scb_ratesel.h>
+#include <wlc_rate.h>
+
+#define VASIP_COUNTERS_LMT		256
+#define VASIP_DEFINED_COUNTER_NUM	26
+#define SVMP_MEM_OFFSET_MAX_NOT_SUPPORT   0x0
+#define SVMP_MEM_OFFSET_MAX_BCM4365C0 0x30000
+#define SVMP_MEM_OFFSET_MAX_BCM43684  0x58000
+#define SVMP_MEM_OFFSET_MAX_BCM63178  0x30000
+#define SVMP_MEM_OFFSET_MAX_BCM6710  0x30000
+
+#define SVMP_MEM_DUMP_LEN_MAX		4096
+
+#define SVMP_ACCESS_VIA_PHYTBL
+#define SVMP_ACCESS_BLOCK_SIZE 16
+
+/* local prototypes */
+#if defined(BCMDBG)
+/* dump vasip counters from vasip program memory */
+static int wlc_dump_vasip_counters(wlc_info_t *wlc, struct bcmstrbuf *b);
+
+/* dump vasip status data from vasip program memory */
+static int wlc_dump_vasip_status(wlc_info_t *wlc, struct bcmstrbuf *b);
+
+/* clear vasip counters */
+static int wlc_vasip_counters_clear(wlc_hw_info_t *wlc_hw);
+
+/* clear vasip error */
+static int wlc_vasip_error_clear(wlc_hw_info_t *wlc_hw);
+
+/* copy svmp memory to a buffer starting from offset of length 'len', len is count of uint16's */
+static int
+wlc_svmp_mem_read(wlc_hw_info_t *wlc_hw, uint16 *ret_svmp_addr, uint32 offset, uint16 len);
+
+/* set svmp memory with a value from offset of length 'len', len is count of uint16's */
+static int wlc_svmp_mem_set(wlc_hw_info_t *wlc_hw, uint32 offset, uint16 len, uint16 val);
+#endif // endif
+
+static uint32 *wlc_vasip_addr(wlc_hw_info_t *wlc_hw, uint32 offset);
+
+static void wlc_vasip_download(wlc_hw_info_t *wlc_hw, const vasip_fw_t *fw,
+	uint32 vasipver, bool nopi);
+
+#if defined(BCMDBG)
+static void wlc_vasip_verify(wlc_hw_info_t *wlc_hw, const uint32 vasip_code[],
+	const uint nbytes, uint32 offset, uint32 offset_tbl);
+#endif // endif
+
+/* read/write svmp memory */
+int wlc_svmp_read_blk(wlc_hw_info_t *wlc_hw, uint16 *val, uint32 offset, uint16 len);
+int wlc_svmp_write_blk(wlc_hw_info_t *wlc_hw, uint16 *val, uint32 offset, uint16 len);
+
+/* get max SVMP address offset  */;
+int wlc_svmp_mem_offset_max(wlc_hw_info_t *wlc_hw);
+
+/* iovar table */
+enum {
+	IOV_VASIP_COUNTERS_CLEAR,
+	IOV_SVMP_MEM,
+	IOV_MU_RATE,
+	IOV_MU_GROUP,
+	IOV_MU_MCS_RECMD,
+	IOV_MU_MCS_CAPPING,
+	IOV_MU_SGI_RECMD,
+	IOV_MU_SGI_RECMD_TH,
+	IOV_MU_GROUP_DELAY,
+	IOV_MU_PRECODER_DELAY,
+	IOV_SVMP_DOWNLOAD,
+	IOV_VASIP_ERROR_CLEAR,
+	IOV_VASIP_LAST
+};
+
+static int
+wlc_vasip_doiovar(void *context, uint32 actionid,
+	void *params, uint p_len, void *arg, uint len, uint vsize, struct wlc_if *wlcif);
+
+static const bcm_iovar_t vasip_iovars[] = {
+#if defined(BCMDBG)
+	{"vasip_counters_clear", IOV_VASIP_COUNTERS_CLEAR,
+	(0), 0, IOVT_VOID, 0
+	},
+	{"svmp_mem", IOV_SVMP_MEM,
+	(0), 0, IOVT_BUFFER, sizeof(svmp_mem_t),
+	},
+	{"mu_rate", IOV_MU_RATE,
+	(0), 0, IOVT_BUFFER, 0,
+	},
+	{"mu_group", IOV_MU_GROUP,
+	(0), 0, IOVT_BUFFER, 0,
+	},
+	{"mu_mcs_recmd", IOV_MU_MCS_RECMD,
+	(0), 0, IOVT_UINT16, 0
+	},
+	{"mu_mcs_capping", IOV_MU_MCS_CAPPING,
+	(0), 0, IOVT_UINT16, 0
+	},
+	{"mu_sgi_recmd", IOV_MU_SGI_RECMD,
+	(0), 0, IOVT_INT16, 0
+	},
+	{"mu_sgi_recmd_th", IOV_MU_SGI_RECMD_TH,
+	(0), 0, IOVT_UINT16, 0
+	},
+	{"mu_group_delay", IOV_MU_GROUP_DELAY,
+	(0), 0, IOVT_UINT16, 0
+	},
+	{"mu_precoder_delay", IOV_MU_PRECODER_DELAY,
+	(0), 0, IOVT_UINT16, 0
+	},
+	{"svmp_download", IOV_SVMP_DOWNLOAD,
+	(0), 0, IOVT_VOID, 0
+	},
+	{"vasip_error_clear", IOV_VASIP_ERROR_CLEAR,
+	(0), 0, IOVT_VOID, 0
+	},
+#endif // endif
+	{NULL, 0, 0, 0, 0, 0}
+};
+
+void
+BCMATTACHFN(wlc_vasip_detach)(wlc_vasip_info_t *vasip)
+{
+	wlc_info_t *wlc;
+
+	if (!vasip)
+		return;
+
+	wlc = vasip->wlc;
+	wlc_module_unregister(wlc->pub, "vasip", vasip);
+	MFREE(wlc->osh, vasip, sizeof(*vasip));
+}
+
+/* Returns base address of the SVMP memory.
+ * Depends heavily on platform
+ * Variant 1 - Dongle
+ * Variant 2 - NIC driver
+ * Variant 3 - SoC with integrated WLAN
+ */
+static uint32 *wlc_vasip_base(wlc_hw_info_t *wlc_hw)
+{
+#if !defined(DONGLEBUILD) && !defined(STB_SOC_WIFI)
+	osl_t *osh = wlc_hw->osh;
+	uchar *bar_va;
+	uint32 bar_size;
+#endif /* DONGLEBUILD */
+	uint32 *vasip_mem = NULL;
+	int idx;
+	uint32 vasipaddr;
+
+	/* save current core */
+	idx = si_coreidx(wlc_hw->sih);
+	if (si_setcore(wlc_hw->sih, ACPHY_CORE_ID, 0) != NULL) {
+		/* get the VASIP memory base */
+#ifdef STB_SOC_WIFI
+		vasipaddr = (uint32)(unsigned long)si_coreregs(wlc_hw->sih);
+#else
+		vasipaddr = si_addrspace(wlc_hw->sih, CORE_SLAVE_PORT_0, CORE_BASE_ADDR_0);
+#endif /* STB_SOC_WIFI */
+		/* restore core */
+		(void)si_setcoreidx(wlc_hw->sih, idx);
+	} else {
+		/* This chip does not have a Vasip */
+		WL_INFORM(("%s: wl%d: Failed to find ACPHY core \n",
+			__FUNCTION__, wlc_hw->unit));
+		return NULL;
+	}
+
+#if !defined(DONGLEBUILD) && !defined(STB_SOC_WIFI)
+	if (BUSTYPE(wlc_hw->sih->bustype) == PCI_BUS) {
+		bar_size = wl_pcie_bar2(wlc_hw->wlc->wl, &bar_va);
+
+		if (bar_size) {
+			OSL_PCI_WRITE_CONFIG(osh, PCI_BAR1_CONTROL, sizeof(uint32), vasipaddr);
+		} else {
+			bar_size = wl_pcie_bar1(wlc_hw->wlc->wl, &bar_va);
+			OSL_PCI_WRITE_CONFIG(osh, PCI_BAR1_WIN, sizeof(uint32), vasipaddr);
+		}
+
+		BCM_REFERENCE(bar_size);
+		ASSERT(bar_va != NULL && bar_size != 0);
+
+		vasip_mem = (uint32 *)bar_va;
+	} else if (BUSTYPE(wlc_hw->sih->bustype) == SI_BUS) {
+		vasipaddr -= SI_ENUM_BASE(wlc_hw->sih);
+		vasip_mem = (uint32 *)(wlc_hw->sih->enum_base_va + vasipaddr);
+	}
+#else
+	vasip_mem = (uint32 *)(unsigned long)vasipaddr;
+#endif /* DONGLEBUILD && STB_SOC_WIFI */
+
+	ASSERT(vasip_mem);
+
+	return vasip_mem;
+}
+
+wlc_vasip_info_t *
+BCMATTACHFN(wlc_vasip_attach)(wlc_info_t *wlc)
+{
+	wlc_pub_t *pub = wlc->pub;
+	wlc_vasip_info_t *vasip;
+	wlc_hw_info_t *wlc_hw = wlc->hw;
+
+	wlc_hw->vasip_loaded = FALSE;
+
+	if ((vasip = MALLOCZ(wlc->osh, sizeof(wlc_vasip_info_t))) == NULL) {
+		WL_ERROR(("wl%d: %s: vasip memory alloc. failed\n",
+			pub->unit, __FUNCTION__));
+		return NULL;
+	}
+
+	vasip->wlc = wlc;
+	vasip->sym_map = NULL;
+	vasip->sym_map_size = NULL;
+	vasip->mu_supported_Ntx = 0;
+
+	if ((wlc_module_register(pub, vasip_iovars, "vasip",
+		vasip, wlc_vasip_doiovar, NULL, NULL, NULL)) != BCME_OK) {
+		WL_ERROR(("wl%d: %s: wlc_module_register() failed\n",
+			pub->unit, __FUNCTION__));
+		MFREE(wlc->osh, vasip, sizeof(*vasip));
+		return NULL;
+	}
+
+	pub->_vasip = TRUE;
+
+	/* disable vasip function in emulation platform */
+#ifdef BCMQT
+	pub->_vasip = FALSE;
+#endif // endif
+
+#if defined(BCMDBG)
+	wlc_dump_register(pub, "vasip_counters", (dump_fn_t)wlc_dump_vasip_counters, (void *)wlc);
+	wlc_dump_register(pub, "vasip_status", (dump_fn_t)wlc_dump_vasip_status, (void *)wlc);
+#endif // endif
+
+	wlc_hw->vasip_addr = (uint16 *)wlc_vasip_base(wlc_hw);
+
+	return vasip;
+}
+
+static int
+wlc_vasip_doiovar(void *context, uint32 actionid,
+	void *params, uint p_len, void *arg, uint len, uint vsize, struct wlc_if *wlcif)
+{
+	wlc_vasip_info_t *vasip = (wlc_vasip_info_t*)context;
+	wlc_info_t *wlc = vasip->wlc;
+	int err = BCME_OK;
+
+	BCM_REFERENCE(wlc);
+
+	/* IOVAR works only if VASIP FW is loaded */
+	if (!wlc->hw->vasip_loaded) {
+		WL_ERROR(("wl%d: %s: VASIP FW is not loaded!\n",
+			wlc->hw->unit, __FUNCTION__));
+		return BCME_UNSUPPORTED;
+	}
+
+	switch (actionid) {
+#if defined(BCMDBG)
+	case IOV_SVAL(IOV_VASIP_COUNTERS_CLEAR): {
+		err = wlc_vasip_counters_clear(wlc->hw);
+		break;
+	}
+
+	case IOV_GVAL(IOV_SVMP_MEM): {
+		svmp_mem_t *mem = (svmp_mem_t *)params;
+		uint32 mem_addr;
+		uint16 mem_len;
+
+		mem_addr = mem->addr;
+		mem_len = mem->len;
+
+		if (len < mem_len) {
+			err = BCME_BUFTOOSHORT;
+			break;
+		}
+
+		// allow to access odd int16 addr
+		//if (mem_addr & 1) {
+		//	err = BCME_BADADDR;
+		//	break;
+		//}
+
+		err = wlc_svmp_mem_read(wlc->hw, (uint16 *)arg, mem_addr, mem_len);
+		break;
+	}
+
+	case IOV_SVAL(IOV_SVMP_MEM): {
+		svmp_mem_t *mem = (svmp_mem_t *)params;
+		uint32 mem_addr;
+		uint16 mem_len;
+
+		mem_addr = mem->addr;
+		mem_len = mem->len;
+
+		// allow to access odd int16 addr
+		//if (mem_addr & 1) {
+		//	err = BCME_BADADDR;
+		//	break;
+		//}
+
+		err = wlc_svmp_mem_set(wlc->hw, mem_addr, mem_len, mem->val);
+		break;
+	}
+
+	case IOV_SVAL(IOV_SVMP_DOWNLOAD):
+	{
+		/* download vasip codes - wlc_vasip_download() */
+		break;
+	}
+
+	case IOV_GVAL(IOV_MU_RATE): {
+		WL_ERROR(("wl%d: %s: wl mu_rate is no longer supported\n",
+			wlc->hw->unit, __FUNCTION__));
+		err = BCME_UNSUPPORTED;
+		break;
+	}
+
+	case IOV_SVAL(IOV_MU_RATE): {
+		WL_ERROR(("wl%d: %s: wl mu_rate is no longer supported\n",
+			wlc->hw->unit, __FUNCTION__));
+		err = BCME_UNSUPPORTED;
+		break;
+	}
+
+	case IOV_GVAL(IOV_MU_GROUP): {
+		mu_group_t *mugrp = (mu_group_t *)arg;
+		uint16 forced_group = 0;
+		uint32 mem_addr;
+		uint16 mem_len;
+		uint16 v2m_grp[22]; // 2 + 4 * msg_peruser_nword
+		uint16 m, n;
+		uint16 grp_num;
+		uint16 msg_len, msg_peruser_nword;
+		uint16 msg_offset_usr, msg_offset_mcs;
+		uint16 pos_usr, pos_mcs;
+		uint16 k = 0, support_agfsnr = 0;
+
+		/* set WL_MU_GROUP_PARAMS_VERSION */
+		mugrp->version = WL_MU_GROUP_PARAMS_VERSION;
+
+		/* check if forced */
+		mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grouping_forced);
+		mem_len = 1;
+		err = wlc_svmp_mem_read(wlc->hw, &forced_group, mem_addr, mem_len);
+
+		if (forced_group > 0) {
+			mugrp->forced = 1;
+			mugrp->forced_group_num = forced_group;
+			/* get forced_group_mcs */
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grouping_forced_mcs);
+			mem_len = 1;
+			err = wlc_svmp_mem_read(wlc->hw,
+				(uint16*)(&(mugrp->forced_group_mcs)), mem_addr, mem_len);
+			/* get forced_group_option */
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grp_forced_buf);
+			mem_len = forced_group*WL_MU_GROUP_NUSER_MAX;
+			err = wlc_svmp_mem_read(wlc->hw,
+				(uint16*)(&(mugrp->group_option[0][0])), mem_addr, mem_len);
+		} else {
+			mugrp->forced = 0;
+			mugrp->forced_group_num = 0;
+			/* get group_method */
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grouping_method);
+			mem_len = 1;
+			err = wlc_svmp_mem_read(wlc->hw,
+				(uint16*)&(mugrp->group_method), mem_addr, mem_len);
+			/* get group_number */
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grouping_number);
+			mem_len = 1;
+			err = wlc_svmp_mem_read(wlc->hw,
+				(uint16*)(&(mugrp->group_number)), mem_addr, mem_len);
+			/* method name */
+			if (mugrp->group_method == 0) {
+				snprintf((char *)mugrp->group_method_name,
+					sizeof(mugrp->group_method_name),
+					"1 group for all admitted users");
+			} else if (mugrp->group_method == 1) {
+				snprintf((char *)mugrp->group_method_name,
+					sizeof(mugrp->group_method_name),
+					"N best THPT groups and equally distributed across all BW");
+			} else if (mugrp->group_method == 2) {
+				snprintf((char *)mugrp->group_method_name,
+					sizeof(mugrp->group_method_name),
+					"greedy-cover non-disjoint grouping");
+			} else if (mugrp->group_method == 3) {
+				snprintf((char *)mugrp->group_method_name,
+					sizeof(mugrp->group_method_name),
+					"disjoint grouping");
+			} else if (mugrp->group_method == 4) {
+				snprintf((char *)mugrp->group_method_name,
+					sizeof(mugrp->group_method_name),
+					"greedy-cover-extension grouping");
+			} else if (mugrp->group_method == 5) {
+				snprintf((char *)mugrp->group_method_name,
+					sizeof(mugrp->group_method_name),
+					"greedy-cover-extension grouping with max-phyrate group");
+			} else {
+				snprintf((char *)mugrp->group_method_name,
+					sizeof(mugrp->group_method_name),
+					"not support yet");
+			}
+			/* read out v2m_buf_grp[] to get latest recommend grouping */
+
+			if (IS_V2M_FORMAT_V1X(wlc->hw->corerev)) {
+				// m2v/v2m interface v1.X
+				msg_peruser_nword = 3;
+				msg_offset_usr = 2;
+				msg_offset_mcs = 3;
+			} else if (IS_V2M_FORMAT_V3(wlc->hw->corerev)) {
+				// m2v/v2m interface v3 or later
+				msg_peruser_nword = 3;
+				msg_offset_usr = 2;
+				msg_offset_mcs = 4;
+			} else {
+				WL_ERROR(("wl%d: %s: invalid chip or m2v format\n",
+				    wlc->hw->unit, __FUNCTION__));
+				//err = BCME_ERROR;
+				break;
+			}
+			msg_len = 4 + 4 * msg_peruser_nword * 2; // in byte
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, v2m_buf_grp);
+			mem_len = 2;
+			err = wlc_svmp_mem_read(wlc->hw, v2m_grp, mem_addr, mem_len);
+			grp_num = (v2m_grp[0] - 2) / msg_len;
+			//seq_num = v2m_grp[1];
+			if (((grp_num > mugrp->group_number) && (mugrp->group_method == 1)) ||
+					((v2m_grp[0] != 0) &&
+					(v2m_grp[0] != (grp_num * msg_len + 2)))) {
+				mugrp->auto_group_num = 0;
+				WL_ERROR(("wl%d: %s: unexpected auto_group_num=%d "
+				    "or v2m_len=%d (should be 2+%d*N)\n",
+				    wlc->hw->unit, __FUNCTION__, grp_num, v2m_grp[0], msg_len));
+				//err = BCME_ERROR;
+			} else {
+				/* group_option can store up to 15 groups info
+				 * overload unused group_option to store AGF/SNR
+				 *   groups:  group_option[0:(grp_num-1)][:]
+				 *   check:   group_option[grp_num][:]
+				 *   agf/snr: group_option[(grp_num+1):NGROUP_MAX][:]
+				 * support_agfsnr: bit0 for SNR and bit1 for AGF
+				 * after m2v v1.5 (FW v5.25), there is no AGF info in group response
+				 */
+				if (grp_num <= (WL_MU_GROUP_NGROUP_MAX-2)) {
+					if (IS_V2M_FORMAT_V1_5(wlc->hw->corerev) ||
+					    IS_V2M_FORMAT_V3(wlc->hw->corerev)) {
+						support_agfsnr = 1;
+					} else {
+						support_agfsnr = 3;
+					}
+					k = grp_num;
+					mugrp->group_option[k][0] = WL_MU_GROUP_PARAMS_VERSION;
+					mugrp->group_option[k][1] = mugrp->group_method;
+					mugrp->group_option[k][2] = grp_num;
+					mugrp->group_option[k][3] = support_agfsnr;
+					k++;
+				}
+				mugrp->auto_group_num = grp_num;
+				mem_addr = VASIP_SHARED_OFFSET(wlc->hw, v2m_buf_grp) + 2;
+				mem_len = msg_len / 2; // byte to word
+				for (m = 0; m < grp_num; m++) {
+					err = wlc_svmp_mem_read(wlc->hw, v2m_grp,
+							mem_addr, mem_len);
+					mugrp->group_GID[m] = v2m_grp[1] & 0x003f;
+					for (n = 0; n < 4; n++) {
+						// main info for user and rate
+						pos_usr = msg_offset_usr + msg_peruser_nword * n;
+						pos_mcs = msg_offset_mcs + msg_peruser_nword * n;
+						mugrp->group_option[m][n] = // [Uid/Rate]
+						    ((v2m_grp[pos_usr] & 0x00ff) << 8) +
+						    (v2m_grp[pos_mcs] & 0x00ff);
+						// additional info for SNR/AGF
+						if (k >= WL_MU_GROUP_NGROUP_MAX) {
+							continue;
+						}
+						mugrp->group_option[k][n] = 0;
+						if (support_agfsnr & 0x1) { // SNR
+							mugrp->group_option[k][n] |=
+							    ((v2m_grp[pos_mcs] & 0xff00) >> 8);
+						}
+						if (support_agfsnr & 0x2) { // AGF
+							mugrp->group_option[k][n] |=
+							    (v2m_grp[pos_usr] & 0xff00);
+						}
+					}
+					mem_addr += mem_len;
+					k++;
+				}
+			}
+		}
+		break;
+	}
+
+	case IOV_SVAL(IOV_MU_GROUP): {
+		mu_group_t *mugrp = (mu_group_t *)arg;
+		uint16 forced_group = 0;
+		uint32 mem_addr;
+		uint16 mem_len;
+
+		/* check WL_MU_GROUP_PARAMS_VERSION */
+		if (mugrp->version != WL_MU_GROUP_PARAMS_VERSION) {
+			err = BCME_BADARG;
+			break;
+		}
+
+		/* forced grouping */
+		if (mugrp->forced == WL_MU_GROUP_MODE_FORCED) {
+			/* set forced_group with forced_group_num */
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grouping_forced);
+			mem_len = 1;
+			if ((err = wlc_svmp_mem_set(wlc->hw, mem_addr, mem_len,
+					mugrp->forced_group_num)) != BCME_OK) {
+				break;
+			}
+			/* set forced_group mcs */
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grouping_forced_mcs);
+			mem_len = 1;
+			if ((err = wlc_svmp_mem_set(wlc->hw, mem_addr, mem_len,
+					mugrp->forced_group_mcs)) != BCME_OK) {
+				break;
+			}
+			/* store forced grouping options into SVMP */
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grp_forced_buf);
+			mem_len = mugrp->forced_group_num*WL_MU_GROUP_NUSER_MAX;
+			if ((err = wlc_svmp_write_blk(wlc->hw,
+					(uint16*)(&(mugrp->group_option[0][0])),
+					mem_addr, mem_len)) != BCME_OK) {
+				break;
+			}
+			/* set fix_rate=0 for forced_group==1 && forced_group_num!=1 */
+			if (mugrp->forced_group_num != 1) {
+				mem_addr = VASIP_SHARED_OFFSET(wlc->hw, mcs_overwrite_flag);
+				mem_len = 1;
+				if ((err = wlc_svmp_mem_set(wlc->hw,
+						mem_addr, mem_len, 0)) != BCME_OK) {
+					break;
+				}
+			}
+		} else if (mugrp->forced == WL_MU_GROUP_MODE_AUTO) {
+			/* disable forced_group */
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grouping_forced);
+			mem_len = 1;
+			if ((err = wlc_svmp_mem_set(wlc->hw,
+					mem_addr, mem_len, 0)) != BCME_OK) {
+				break;
+			}
+			/* clean first forced grouping option in SVMP */
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grp_forced_buf);
+			mem_len = WL_MU_GROUP_NGROUP_MAX*WL_MU_GROUP_NUSER_MAX;
+			if ((err = wlc_svmp_mem_set(wlc->hw,
+					mem_addr, mem_len, 0xffff)) != BCME_OK) {
+				break;
+			}
+		} /* mugrp->forced can be WL_MU_GROUP_ENTRY_EMPTY for no '-g' option */
+
+		/* auto grouping parameters only when not-forced-group */
+		mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grouping_forced);
+		mem_len = 1;
+		err = wlc_svmp_mem_read(wlc->hw, &forced_group, mem_addr, mem_len);
+		if (forced_group == WL_MU_GROUP_MODE_AUTO) {
+			if (mugrp->group_number != WL_MU_GROUP_ENTRY_EMPTY) {
+				/* update group_number */
+				mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grouping_number);
+				mem_len = 1;
+				if ((err = wlc_svmp_mem_set(wlc->hw, mem_addr, mem_len,
+						mugrp->group_number)) != BCME_OK) {
+					break;
+				}
+			}
+			if (mugrp->group_method != WL_MU_GROUP_ENTRY_EMPTY) {
+				/* update group method */
+				mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grouping_method);
+				mem_len = 1;
+				if ((err = wlc_svmp_mem_set(wlc->hw, mem_addr, mem_len,
+						mugrp->group_method)) != BCME_OK) {
+					break;
+				}
+				/* set group number */
+				if (mugrp->group_method == WL_MU_GROUP_METHOD_OLD) {
+					/*  old method: it should be 1 */
+					mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grouping_number);
+					mem_len = 1;
+					if ((err = wlc_svmp_mem_set(wlc->hw, mem_addr, mem_len,
+							1)) != BCME_OK) {
+						break;
+					}
+				} else if (mugrp->group_number == WL_MU_GROUP_ENTRY_EMPTY) {
+					/* set if not specified group_number
+					*   method 1: set 1 if not specified group_number
+					*   method 2&3: don't-care (set to 4)
+					*/
+					mem_addr = VASIP_SHARED_OFFSET(wlc->hw, grouping_number);
+					mem_len = 1;
+					if (mugrp->group_method == 1) {
+						mugrp->group_number = 1;
+					} else if ((mugrp->group_method == 2) ||
+							(mugrp->group_method == 3)) {
+						mugrp->group_number = 4;
+					}
+					if ((err = wlc_svmp_mem_set(wlc->hw,
+							mem_addr, mem_len,
+							mugrp->group_number)) != BCME_OK) {
+						break;
+					}
+				}
+				/* set fix_rate=0 for forced_group==0 && old mathod */
+				if (mugrp->group_method != WL_MU_GROUP_METHOD_OLD) {
+					mem_addr = VASIP_SHARED_OFFSET(wlc->hw, mcs_overwrite_flag);
+					mem_len = 1;
+					if ((err = wlc_svmp_mem_set(wlc->hw,
+							mem_addr, mem_len, 0)) != BCME_OK) {
+						break;
+					}
+				}
+			}
+		}
+		break;
+	}
+
+	/* VASIP FW knobs: unsigned int16 */
+	case IOV_GVAL(IOV_MU_MCS_RECMD):
+	case IOV_GVAL(IOV_MU_MCS_CAPPING):
+	case IOV_GVAL(IOV_MU_SGI_RECMD_TH):
+	case IOV_GVAL(IOV_MU_GROUP_DELAY):
+	case IOV_GVAL(IOV_MU_PRECODER_DELAY): {
+		uint16 value = 0;
+		uint32 tmp_val;
+		uint16 mem_len = 1;
+		uint32 mem_addr = VASIP_SHARED_OFFSET(wlc->hw, mi_mcs_recommend_enable);
+
+		if (len < mem_len) {
+			err = BCME_BUFTOOSHORT;
+			break;
+		}
+
+		if (IOV_ID(actionid) == IOV_MU_MCS_RECMD) {
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, mi_mcs_recommend_enable);
+		} else if (IOV_ID(actionid) == IOV_MU_MCS_CAPPING) {
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, mcs_capping_enable);
+		} else if (IOV_ID(actionid) == IOV_MU_SGI_RECMD_TH) {
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, sgi_threshold_80M);
+		} else if (IOV_ID(actionid) == IOV_MU_GROUP_DELAY) {
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, delay_grouping_us);
+		} else if (IOV_ID(actionid) == IOV_MU_PRECODER_DELAY) {
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, delay_precoding_us);
+		}
+
+		err = wlc_svmp_mem_read(wlc->hw, &value, mem_addr, mem_len);
+		tmp_val = (uint32)value;
+		memcpy(arg, &tmp_val, sizeof(uint32));
+		break;
+	}
+
+	case IOV_SVAL(IOV_MU_MCS_RECMD):
+	case IOV_SVAL(IOV_MU_MCS_CAPPING):
+	case IOV_SVAL(IOV_MU_SGI_RECMD_TH):
+	case IOV_SVAL(IOV_MU_GROUP_DELAY):
+	case IOV_SVAL(IOV_MU_PRECODER_DELAY): {
+		uint16 value;
+		uint16 mem_len = 1;
+		uint32 mem_addr = VASIP_SHARED_OFFSET(wlc->hw, mi_mcs_recommend_enable);
+
+		if (len < mem_len) {
+			err = BCME_BUFTOOSHORT;
+			break;
+		}
+
+		memcpy(&value, params, sizeof(uint16));
+
+		if (IOV_ID(actionid) == IOV_MU_MCS_RECMD) {
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, mi_mcs_recommend_enable);
+			if ((value != 0) && (value != 1)) {
+				return BCME_USAGE_ERROR;
+			}
+		} else if (IOV_ID(actionid) == IOV_MU_MCS_CAPPING) {
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, mcs_capping_enable);
+			if ((value != 0) && (value != 1)) {
+				return BCME_USAGE_ERROR;
+			}
+		} else if (IOV_ID(actionid) == IOV_MU_SGI_RECMD_TH) {
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, sgi_threshold_80M);
+		} else if (IOV_ID(actionid) == IOV_MU_GROUP_DELAY) {
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, delay_grouping_us);
+		} else if (IOV_ID(actionid) == IOV_MU_PRECODER_DELAY) {
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, delay_precoding_us);
+		}
+
+		err = wlc_svmp_mem_set(wlc->hw, mem_addr, mem_len, value);
+		break;
+	}
+
+	/* VASIP FW knobs: signed int16 */
+	case IOV_GVAL(IOV_MU_SGI_RECMD): {
+		int16 value = 0;
+		uint32 tmp_val;
+		uint16 mem_len = 1;
+		uint32 mem_addr = VASIP_SHARED_OFFSET(wlc->hw, sgi_method);
+
+		if (len < mem_len) {
+			err = BCME_BUFTOOSHORT;
+			break;
+		}
+
+		if (IOV_ID(actionid) == IOV_MU_SGI_RECMD) {
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, sgi_method);
+		}
+
+		err = wlc_svmp_mem_read(wlc->hw, (uint16*)&value, mem_addr, mem_len);
+		tmp_val = (uint32)value;
+		memcpy(arg, &tmp_val, sizeof(uint32));
+		break;
+	}
+
+	case IOV_SVAL(IOV_MU_SGI_RECMD): {
+		int16 value;
+		uint16 mem_len = 1;
+		uint32 mem_addr = VASIP_SHARED_OFFSET(wlc->hw, sgi_method);
+
+		if (len < mem_len) {
+			err = BCME_BUFTOOSHORT;
+			break;
+		}
+
+		memcpy(&value, params, sizeof(uint16));
+
+		if (IOV_ID(actionid) == IOV_MU_SGI_RECMD) {
+			mem_addr = VASIP_SHARED_OFFSET(wlc->hw, sgi_method);
+			if ((value != 0) && (value != 1) && (value != -1) && (value != 2)) {
+				return BCME_USAGE_ERROR;
+			}
+		}
+
+		err = wlc_svmp_mem_set(wlc->hw, mem_addr, mem_len, (uint16)value);
+		break;
+	}
+
+	case IOV_SVAL(IOV_VASIP_ERROR_CLEAR): {
+		err = wlc_vasip_error_clear(wlc->hw);
+		break;
+	}
+#endif // endif
+
+	default :
+		err = BCME_ERROR;
+		break;
+	}
+	return err;
+}
+
+/**
+ * Returns the virtual address where the VASIP window starts
+ * @param offset[in]    Word count
+ */
+static uint32 *
+wlc_vasip_addr(wlc_hw_info_t *wlc_hw, uint32 offset)
+{
+	return (uint32 *)(wlc_hw->vasip_addr + offset);
+}
+
+/* write vasip code to vasip program memory */
+void wlc_vasip_write(wlc_hw_info_t *wlc_hw, const uint32 vasip_code[],
+	const uint count, uint32 offset, uint32 offset_tbl)
+{
+	uint32 *vasip_mem;
+	int i;
+
+	WL_TRACE(("wl%d: %s\n", wlc_hw->unit, __FUNCTION__));
+
+	vasip_mem = wlc_vasip_addr(wlc_hw, offset);
+
+	/* write vasip code to program memory */
+	for (i = 0; i < count; i++) {
+		vasip_mem[i + offset_tbl] = vasip_code[i];
+	}
+}
+
+void wlc_vasip_read(wlc_hw_info_t *wlc_hw, uint32 vasip_code[],
+	const uint count, uint32 offset)
+{
+	uint32 *vasip_mem;
+	int i;
+
+	WL_TRACE(("wl%d: %s\n", wlc_hw->unit, __FUNCTION__));
+
+	vasip_mem = wlc_vasip_addr(wlc_hw, offset);
+
+	/* write vasip code to program memory */
+	for (i = 0; i < count; i++) {
+		vasip_code[i] = vasip_mem[i];
+	}
+}
+
+bool
+wlc_vasip_present(wlc_hw_info_t *wlc_hw)
+{
+	if (si_findcoreidx(wlc_hw->sih, ACPHY_CORE_ID, 0) == BADIDX) {
+		return FALSE;
+	} else {
+		return TRUE;
+	}
+}
+
+#if defined(BCMDBG)
+/* read from vasip program memory and compare it with vasip code */
+static void
+wlc_vasip_verify(wlc_hw_info_t *wlc_hw, const uint32 vasip_code[], const uint count,
+	uint32 offset, uint32 offset_tbl)
+{
+	uint32 *vasip_mem;
+	uint32 rd_data, err_cnt = 0;
+	int i;
+
+	WL_TRACE(("wl%d: %s\n", wlc_hw->unit, __FUNCTION__));
+
+	vasip_mem = wlc_vasip_addr(wlc_hw, offset);
+
+	/* write vasip code to program memory */
+	for (i = 0; i < count; i++) {
+		rd_data = vasip_mem[i + offset_tbl];
+		if (rd_data != vasip_code[i]) {
+			err_cnt++;
+		}
+	}
+	if (err_cnt == 0) {
+		WL_TRACE(("wl%d: %s, download success, count %d, vasip_mem %p\n",
+			wlc_hw->unit, __FUNCTION__, count, vasip_mem));
+	} else {
+		WL_ERROR(("wl%d: %s, download error, err_cnt %d\n",
+			wlc_hw->unit, __FUNCTION__, err_cnt));
+	}
+}
+#endif // endif
+
+bool
+BCMRAMFN(wlc_vasip_support)(wlc_hw_info_t *wlc_hw, uint32 *vasipver, bool nopi)
+{
+	d11regs_t *regs = wlc_hw->regs;
+
+	if (!wlc_vasip_present(wlc_hw)) {
+		WL_ERROR(("%s: wl%d: vasip hw is not present\n", __FUNCTION__, wlc_hw->unit));
+		return FALSE;
+	}
+
+	if (nopi) {
+		phy_prephy_vasip_ver_get(wlc_hw->prepi, regs, vasipver);
+	} else {
+		*vasipver = phy_vasip_get_ver((phy_info_t *)wlc_hw->band->pi);
+	}
+
+	if (*vasipver == 0) {
+		WL_TRACE(("%s: wl%d: vasipver %d\n",
+			__FUNCTION__, wlc_hw->unit, *vasipver));
+		return TRUE;
+	} else if (*vasipver == 3) {
+		if (D11REV_GE(wlc_hw->corerev, 65) && D11REV_LE(wlc_hw->corerev, 131)) {
+			WL_TRACE(("%s: wl%d: vasipver %d\n",
+				__FUNCTION__, wlc_hw->unit, *vasipver));
+			return TRUE;
+		} else {
+			/* TBD : need to be updated once vasip image is ready */
+			WL_ERROR(("%s: wl%d: unsupported vasipver %d\n",
+				__FUNCTION__, wlc_hw->unit, *vasipver));
+			return FALSE;
+		}
+	} else {
+		WL_ERROR(("%s: wl%d: unsupported vasipver %d\n",
+			__FUNCTION__, wlc_hw->unit, *vasipver));
+		return FALSE;
+	}
+}
+
+/* initialize the vasip data memory */
+static void
+wlc_vasip_init_data(wlc_hw_info_t *wlc_hw, const uint32* data, const uint data_words)
+{
+	uint word = 0;
+	uint32 addr, segment_len;
+
+	while (word + 1 < data_words) {
+		segment_len = data[word++];
+
+		ASSERT(segment_len);
+
+		if (segment_len > 0) {
+			addr = data[word++];
+
+			ASSERT(data_words >= (segment_len + word));
+
+			if (data_words < (segment_len + word)) {
+				WL_ERROR(("wl%d: wlc_vasip_init_data overrun: %d %d %d\n",
+						wlc_hw->unit, data_words, segment_len, word));
+				break;
+			}
+
+			wlc_vasip_write(wlc_hw, &data[word], segment_len, VASIP_CODE_OFFSET,
+				VASIP_OFFSET_32(addr));
+
+#if defined(BCMDBG)
+			wlc_vasip_verify(wlc_hw, &data[word], segment_len, VASIP_CODE_OFFSET,
+				VASIP_OFFSET_32(addr));
+#endif // endif
+			word += segment_len;
+
+		} else {
+			WL_ERROR(("wl%d: wlc_vasip_init_data 0 block: %d of %d\n",
+				wlc_hw->unit, word, data_words));
+			break;
+		}
+	}
+}
+
+/* vasip code download */
+static void
+wlc_vasip_download(wlc_hw_info_t *wlc_hw, const vasip_fw_t *fw,
+	uint32 vasipver, bool nopi)
+{
+	d11regs_t *regs = wlc_hw->regs;
+	wlc_vasip_info_t *vasip = wlc_hw->wlc->vasip;
+
+	ASSERT(vasip);
+	ASSERT(fw);
+
+	/* stop the vasip processor */
+	if (nopi) {
+		phy_prephy_vasip_clk_set(wlc_hw->prepi, regs, TRUE);
+		phy_prephy_vasip_proc_reset(wlc_hw->prepi, regs, TRUE);
+	} else {
+		phy_vasip_set_clk((phy_info_t *)wlc_hw->band->pi, TRUE);
+		phy_vasip_reset_proc((phy_info_t *)wlc_hw->band->pi, TRUE);
+	}
+
+	/* write binary to the vasip program memory */
+	if (!wlc_hw->vasip_loaded) {
+#ifdef DONGLEBUILD
+		/* VASIP FW is in postattach data, which is reclaimed. It cannot be
+		 * referenced after reclaim.
+		 */
+		ASSERT(! POSTATTACH_PART_RECLAIMED());
+#endif /* DONGLEBUILD */
+
+		/* write binary to the vasip program memory */
+		wlc_vasip_write(wlc_hw, fw->code, fw->code_size, VASIP_CODE_OFFSET, 0);
+
+#if defined(BCMDBG)
+		wlc_vasip_verify(wlc_hw, fw->code, fw->code_size, VASIP_CODE_OFFSET, 0);
+#endif // endif
+
+		/* Initialize data memory */
+		wlc_vasip_init_data(wlc_hw, fw->data, fw->data_size);
+
+		vasip->sym_map = fw->map;
+		vasip->sym_map_size = fw->size;
+		vasip->mu_supported_Ntx = fw->ntx;
+
+		wlc_hw->vasip_loaded = TRUE;
+	}
+
+	/* reset and start the vasip processor */
+	if (nopi) {
+		phy_prephy_vasip_proc_reset(wlc_hw->prepi, regs, FALSE);
+	} else {
+		phy_vasip_reset_proc((phy_info_t *)wlc_hw->band->pi, 0);
+	}
+}
+
+/* initialize vasip */
+void
+BCMINITFN(wlc_vasip_init)(wlc_hw_info_t *wlc_hw, uint32 vasipver, bool nopi)
+{
+	const vasip_fw_t *vasip_fw = NULL;
+	int txchains;
+	int err = 0;
+	wlc_info_t *wlc = wlc_hw->wlc;
+
+	if (wlc == NULL) {
+		WL_INFORM(("%s: wl%d: Failure to load VASIP FW: need wlc.\n",
+			__FUNCTION__, wlc_hw->unit));
+		return;
+	} else if (nopi) {
+		WL_ERROR(("%s: wl%d: Failure to load VASIP FW: need phy up.\n",
+			__FUNCTION__, wlc_hw->unit));
+		return;
+	} else {
+		txchains = WLC_BITSCNT(wlc->stf->hw_txchain);
+	}
+
+	if (D11REV_IS(wlc_hw->corerev, 128)) {
+		vasip_fw = &vasip_11ax_4x4_fw;
+		err = 2;
+	} else if (D11REV_IS(wlc_hw->corerev, 129)) {
+		vasip_fw = &vasip_11ax_4x4_fw;
+		WL_INFORM(("wl%d: vasip 4x4 11ax ver %d.%d\n",
+		    wlc_hw->unit, d11vasipcode_major, d11vasipcode_minor));
+	} else if (D11REV_IS(wlc_hw->corerev, 130)) {
+		vasip_fw = &vasip_11ax_2x2_fw;
+		WL_INFORM(("wl%d: vasip 2x2 11ax ver %d.%d\n",
+		    wlc_hw->unit, d11vasipcode_major, d11vasipcode_minor));
+	} else {
+		if (txchains == 4) {
+			vasip_fw = &vasip_11ac_4x4_fw;
+			WL_INFORM(("wl%d: vasip 4x4 11ac ver %d.%d\n",
+				wlc_hw->unit, d11vasipcode_major, d11vasipcode_minor));
+		} else if (txchains == 3) {
+			vasip_fw = &vasip_11ac_3x3_fw;
+			WL_INFORM(("wl%d: vasip 3x3 11ac ver %d.%d\n",
+				wlc_hw->unit, d11vasipcode_major, d11vasipcode_minor));
+
+			if (ACREV_IS(wlc->band->phyrev, 129)) {
+				err = 2;
+			}
+		} else {
+			vasip_fw = &vasip_11ac_4x4_fw;
+			err = 1;
+		}
+	}
+
+	if (err == 1) {
+		WL_ERROR(("%s: wl%d: not downloading VASIP FW!\n",
+			__FUNCTION__, wlc_hw->unit));
+		return;
+	} else if (err == 2) {
+		WL_ERROR(("%s: wl%d: not downloading VASIP FW! but enable VASIP clock\n",
+			__FUNCTION__, wlc_hw->unit));
+		phy_vasip_set_clk((phy_info_t *)wlc_hw->band->pi, TRUE);
+		return;
+	}
+
+	wlc_vasip_download(wlc_hw, vasip_fw, vasipver, nopi);
+}
+
+#if defined(BCMDBG)
+/* dump vasip code info */
+void
+wlc_vasip_code_info(wlc_info_t *wlc, struct bcmstrbuf *b)
+{
+	bcm_bprintf(b, "vasip code ver %d.%d\n", d11vasipcode_major, d11vasipcode_minor);
+	bcm_bprintf(b, "vasip hw rev %d\n",
+		phy_vasip_get_ver((phy_info_t *)wlc->hw->band->pi));
+	bcm_bprintf(b, "vasip mem addr %p\n", wlc_vasip_addr(wlc->hw, VASIP_CODE_OFFSET));
+}
+
+/* dump vasip status data from vasip program memory */
+int
+wlc_dump_vasip_status(wlc_info_t *wlc, struct bcmstrbuf *b)
+{
+#ifdef SVMP_ACCESS_VIA_PHYTBL
+	uint16 status[VASIP_COUNTERS_LMT];
+#else
+	uint16 *status;
+#endif // endif
+	wlc_hw_info_t *wlc_hw = wlc->hw;
+	uint32 offset;
+	int i;
+
+	/* IOVAR works only if VASIP is present && VASIP FW is loaded */
+	if (!VASIP_PRESENT(wlc_hw)) {
+		bcm_bprintf(b, "VASIP is not present!\n");
+		return BCME_UNSUPPORTED;
+	}
+	if (!wlc_hw->vasip_loaded) {
+		bcm_bprintf(b, "VASIP FW is not loaded!\n");
+		return BCME_UNSUPPORTED;
+	}
+
+	if (!wlc->clk) {
+		return BCME_NOCLK;
+	}
+
+	offset = VASIP_SHARED_OFFSET(wlc_hw, interrupt);
+
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	status = (uint16 *)wlc_vasip_addr(wlc_hw, offset);
+#endif // endif
+
+	for (i = 0; i < VASIP_SHARED_SIZE(wlc_hw, interrupt); i++) {
+#ifdef SVMP_ACCESS_VIA_PHYTBL
+		phy_vasip_read_svmp((phy_info_t *)wlc_hw->band->pi, offset+i, &status[i]);
+#endif // endif
+		bcm_bprintf(b, "status[%d] %u\n", i, status[i]);
+	}
+
+	return BCME_OK;
+}
+
+/* dump vasip error status */
+#if (VASIP_FW_VER >= VASIP_FW_VER_NUM(6, 1))
+static int wlc_vasip_error_clear(wlc_hw_info_t *wlc_hw)
+{
+	phy_info_t* pi;
+	uint32 offset_error_cnt, offset_error_code[4];
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	uint16 *ptr_error_cnt, *ptr_error_code[2];
+#endif // endif
+
+	if (!VASIP_PRESENT(wlc_hw)) {
+		return BCME_UNSUPPORTED;
+	}
+	if (!wlc_hw->clk) {
+		return BCME_NOCLK;
+	}
+
+	pi = (phy_info_t *)wlc_hw->band->pi;
+	offset_error_cnt = VASIP_SHARED_OFFSET(wlc_hw, err_count);
+	offset_error_code[0] = VASIP_SHARED_OFFSET(wlc_hw, err_code_group);
+	offset_error_code[1] = VASIP_SHARED_OFFSET(wlc_hw, err_code_precoder);
+
+#ifdef SVMP_ACCESS_VIA_PHYTBL
+	phy_vasip_write_svmp(pi, offset_error_cnt, 0);
+	phy_vasip_write_svmp(pi, offset_error_code[0], 0);
+	phy_vasip_write_svmp(pi, offset_error_code[1], 0);
+#else
+	ptr_error_cnt  = (uint16 *)wlc_vasip_addr(wlc_hw, offset_error_cnt);
+	ptr_error_code[0] = (uint16 *)wlc_vasip_addr(wlc_hw, offset_error_code[0]);
+	ptr_error_code[1] = (uint16 *)wlc_vasip_addr(wlc_hw, offset_error_code[1]);
+	*ptr_error_cnt = 0;
+	*ptr_error_code[0] = 0;
+	*ptr_error_code[1] = 0;
+#endif // endif
+
+	return BCME_OK;
+}
+
+static void wlc_dump_vasip_error_mu_general(struct bcmstrbuf *b, int err_code)
+{
+	if (err_code & 0x1) {
+		bcm_bprintf(b, "  ERROR: invalid number of users.\n");
+	}
+	if (err_code & 0x2) {
+		bcm_bprintf(b, "  ERROR: sounding report type is incorrect.\n");
+	}
+	if (err_code & 0x4) {
+		bcm_bprintf(b, "  ERROR: TXV index is out of range.\n");
+	}
+	if (err_code & 0x8) {
+		bcm_bprintf(b, "  ERROR: TXV index is repeated.\n");
+	}
+	if (err_code & 0x10) {
+		bcm_bprintf(b, "  ERROR: TXV index points to empty TxV slot.\n");
+	}
+	if (err_code & 0x20) {
+		bcm_bprintf(b, "  ERROR: number of TX antenna is incorrect.\n");
+	}
+	if (err_code & 0x40) {
+		bcm_bprintf(b, "  ERROR: users' BW are mismatched.\n");
+	}
+	if (err_code & 0x80) {
+		bcm_bprintf(b, "  ERROR: user's BW is beyond 80MHz.\n");
+	}
+}
+
+static void wlc_dump_vasip_error_mu(struct bcmstrbuf *b, int err_cnt,
+    int err_code_group, int err_code_precoder) {
+	if (err_cnt > 0) {
+		bcm_bprintf(b, "\nERROR_cnt: %d.\n", err_cnt);
+	}
+	if (err_code_group != 0) {
+		bcm_bprintf(b, "ERROR in group request:\n");
+		wlc_dump_vasip_error_mu_general(b, err_code_group);
+	}
+	if (err_code_precoder != 0) {
+		bcm_bprintf(b, "ERROR in precoder request:\n");
+		wlc_dump_vasip_error_mu_general(b, err_code_precoder);
+		if (err_code_precoder & 0x1000) {
+			bcm_bprintf(b, "  ERROR: user has more than 2 streams.\n");
+		}
+		if (err_code_precoder & 0x2000) {
+			bcm_bprintf(b, "  ERROR: total stream is more than 4.\n");
+		}
+		if (err_code_precoder & 0x4000) {
+			bcm_bprintf(b, "  ERROR: output address is out of range.\n");
+		}
+	}
+}
+#else
+static int wlc_vasip_error_clear(wlc_hw_info_t *wlc_hw)
+{
+	phy_info_t* pi;
+	uint32 offset_error;
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	uint16* ptr_error;
+#endif // endif
+
+	if (!VASIP_PRESENT(wlc_hw)) {
+		return BCME_UNSUPPORTED;
+	}
+	if (!wlc_hw->clk) {
+		return BCME_NOCLK;
+	}
+
+	pi = (phy_info_t *)wlc_hw->band->pi;
+	offset_error = VASIP_SHARED_OFFSET(wlc_hw, err_code);
+
+#ifdef SVMP_ACCESS_VIA_PHYTBL
+	phy_vasip_write_svmp(pi, offset_error, 0);
+	phy_vasip_write_svmp(pi, offset_error+1, 0);
+#else
+	error = (uint16 *)wlc_vasip_addr(wlc_hw, offset_error);
+	error[0] = 0;
+	error[1] = 0;
+#endif // endif
+
+	return BCME_OK;
+}
+
+static void wlc_dump_vasip_error_mu(struct bcmstrbuf *b, int err_cnt, int err_code)
+{
+	if ((err_cnt > 0) && (err_code != 0)) {
+		bcm_bprintf(b, "\nERROR_cnt: %d.\n", err_cnt);
+	}
+	if (err_code & 0x1) {
+		bcm_bprintf(b, "ERROR: more than 4 users in group selecton.\n");
+	}
+	if (err_code & 0x2) {
+		bcm_bprintf(b, "ERROR: user BW mismatch in group selecton.\n");
+	}
+	if (err_code & 0x4) {
+		bcm_bprintf(b, "ERROR: user BW is beyond 80MHz in group selecton.\n");
+	}
+	if (err_code & 0x8) {
+		bcm_bprintf(b, "ERROR: BFM index is out of range in group selecton.\n");
+	}
+	if (err_code & 0x10) {
+		bcm_bprintf(b, "ERROR: BFM index is repeated in group selecton.\n");
+	}
+	if (err_code & 0x20) {
+		bcm_bprintf(b, "ERROR: output address is out of range in precoder.\n");
+	}
+	if (err_code & 0x40) {
+		bcm_bprintf(b, "ERROR: BFM index is out of range in precoder.\n");
+	}
+	if (err_code & 0x80) {
+		bcm_bprintf(b, "ERROR: one user has more than 2 streams in precoder.\n");
+	}
+	if (err_code & 0x100) {
+		bcm_bprintf(b, "ERROR: more than 4 streams in precoder.\n");
+	}
+	if (err_code & 0x200) {
+		bcm_bprintf(b, "ERROR: user BW mismatch in precoder.\n");
+	}
+	if (err_code & 0x400) {
+		bcm_bprintf(b, "ERROR: user BW is beyond 80MHz in precoder.\n");
+	}
+	if (err_code & 0x800) {
+		bcm_bprintf(b, "ERROR: number of TX antenna is not 4.\n");
+	}
+	if (err_code & 0x1000) {
+		bcm_bprintf(b, "ERROR: sounding report type is not correct.\n");
+	}
+	if (err_code & 0x2000) {
+		bcm_bprintf(b, "ERROR: BFM index is repeated in precoder.\n");
+	}
+	if (err_code & 0x4000) {
+		bcm_bprintf(b, "ERROR: Empty TxV slot in group selecton.\n");
+	}
+}
+#endif /* VASIP_FW_VER >= VASIP_FW_VER_NUM(6,1) */
+
+/* dump vasip counters from vasip program memory */
+int
+wlc_dump_vasip_counters(wlc_info_t *wlc, struct bcmstrbuf *b)
+{
+#ifdef SVMP_ACCESS_VIA_PHYTBL
+	uint16 counter[VASIP_COUNTERS_LMT], error[7];
+#else
+	uint16 *counter, *error;
+#endif // endif
+	uint16 mcs[16], mcs1[16], c[4], s[4], c1[4], s1[4], N_user;
+	uint32 offset, offset_steered_mcs, offset_recommended_mcs, offset_error;
+
+	wlc_hw_info_t *wlc_hw = wlc->hw;
+	phy_info_t * pi;
+	int i;
+
+	/* IOVAR works only if VASIP is present && VASIP FW is loaded */
+	if (!VASIP_PRESENT(wlc_hw)) {
+		bcm_bprintf(b, "VASIP is not present!\n");
+		return BCME_UNSUPPORTED;
+	}
+	if (!wlc_hw->vasip_loaded) {
+		bcm_bprintf(b, "VASIP FW is not loaded!\n");
+		return BCME_UNSUPPORTED;
+	}
+
+	if (!wlc->clk) {
+		return BCME_NOCLK;
+	}
+
+	pi = (phy_info_t *)wlc_hw->band->pi;
+	offset = VASIP_SHARED_OFFSET(wlc->hw, interrupt);
+	offset_steered_mcs = VASIP_SHARED_OFFSET(wlc->hw, steering_mcs);
+	offset_recommended_mcs = VASIP_SHARED_OFFSET(wlc->hw, recommend_mcs);
+	offset_error = VASIP_SHARED_OFFSET(wlc->hw, err_code);
+
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	counter = (uint16 *)wlc_vasip_addr(wlc_hw, offset);
+	mcs = (uint16 *)wlc_vasip_addr(wlc_hw, offset_steered_mcs);
+	mcs1 = (uint16 *)wlc_vasip_addr(wlc_hw, offset_recommended_mcs);
+	error = (uint16 *)wlc_vasip_addr(wlc_hw, offset_error);
+#else
+	/* print for any non-zero values */
+	for (i = 0; i < VASIP_SHARED_SIZE(wlc->hw, interrupt); i++) {
+		phy_vasip_read_svmp(pi, offset+i, &counter[i]);
+	}
+	for (i = 0; i < 16; i++) {
+		phy_vasip_read_svmp(pi, offset_steered_mcs+i, &mcs[i]);
+	}
+	for (i = 0; i < 4; i++) {
+		phy_vasip_read_svmp(pi, offset_recommended_mcs+i, &mcs1[i]);
+	}
+	for (i = 0; i < 7; i++) {
+		phy_vasip_read_svmp(pi, offset_error+i, &error[i]);
+	}
+#endif /* SVMP_ACCESS_VIA_PHYTBL */
+
+	for (i = 0; i < 4; i++) {
+		s[i] = ((mcs[i] & 0xf0) >> 4) + 1;
+		c[i] = mcs[i] & 0xf;
+	}
+	for (i = 0; i < 4; i++) {
+		s1[i] = ((mcs1[i] & 0xf0) >> 4) + 1;
+		c1[i] = mcs1[i] & 0xf;
+	}
+
+	if (D11REV_IS(wlc_hw->corerev, 128) || D11REV_IS(wlc_hw->corerev, 129)) {
+		bcm_bprintf(b, "Received Interrupts:\n"
+			"      bfe_module_done:0x%x     bfe_imp_done:0x%x     bfd_interrupt:0x%x\n"
+			"      m2v_transfer_done:0x%x   v2m_transfder_done:0x%x\n\n",
+			counter[11], counter[12], counter[10]+counter[13]+counter[14]+counter[15],
+			counter[19], counter[20]);
+	} else {
+		bcm_bprintf(b, "Received Interrupts:\n"
+		"      bfr_module_done:0x%x     bfe_module_done:0x%x     bfe_imp_done:0x%x\n"
+		"      m2v_transfer_done:0x%x   v2m_transfder_done:0x%x\n\n",
+		counter[10], counter[11], counter[12], counter[19], counter[20]);
+	}
+
+	N_user = (mcs[9] > 4) ? 0 : mcs[9];
+	for (i = 0; i < N_user; i++) {
+		bcm_bprintf(b, "user%d: bfidx %d, steered rate c%ds%d, "
+				"recommended rate c%ds%d, precoderSNR %ddB\n",
+				i, mcs[10+i], c[i], s[i], c1[i], s1[i], mcs[5+i]/4);
+	}
+
+	bcm_bprintf(b, "\nImportant SVMP address:\n"
+			"      M2V address0:                0x%x\n"
+			"      M2V address1:                0x%x\n"
+			"      grouping V2M address:        0x%x\n"
+			"      precoder V2M address:        0x%x\n"
+			"      PPR table address:           0x%x\n"
+			"      STA rate_cap address:        0x%x\n",
+			VASIP_SHARED_OFFSET(wlc->hw, m2v_buf0),
+			VASIP_SHARED_OFFSET(wlc->hw, m2v_buf1),
+			VASIP_SHARED_OFFSET(wlc->hw, v2m_buf_grp),
+			VASIP_SHARED_OFFSET(wlc->hw, v2m_buf_mvp),
+			VASIP_SHARED_OFFSET(wlc->hw, txbf_ppr_tbl),
+			VASIP_SHARED_OFFSET(wlc->hw, mcs_map));
+#if (VASIP_FW_VER >= VASIP_FW_VER_NUM(6, 1))
+	// error[]: err_code, err_count, err_hang_mask
+	//          err_code_group, err_code_precoder, err_code_cqi, err_code_ru_alloc
+	wlc_dump_vasip_error_mu(b, error[1], error[3], error[4]);
+	//wlc_dump_vasip_error_cqi
+	//wlc_dump_vasip_error_ru_alloc
+#else
+	// error[]: err_code, err_count
+	wlc_dump_vasip_error_mu(b, error[1], error[0]);
+#endif // endif
+
+	bcm_bprintf(b, "\n");
+	return BCME_OK;
+}
+
+/* clear vasip counters */
+int
+wlc_vasip_counters_clear(wlc_hw_info_t *wlc_hw)
+{
+	int i;
+	uint32 offset;
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	uint16 *counter;
+#endif // endif
+	phy_info_t * pi;
+
+	if (!VASIP_PRESENT(wlc_hw)) {
+		return BCME_UNSUPPORTED;
+	}
+	if (!wlc_hw->clk) {
+		return BCME_NOCLK;
+	}
+
+	pi = (phy_info_t *)wlc_hw->band->pi;
+	offset = VASIP_SHARED_OFFSET(wlc_hw, interrupt);
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	uint16 *counter = (uint16 *)wlc_vasip_addr(wlc_hw, offset);
+#endif // endif
+
+	for (i = 0; i < VASIP_SHARED_SIZE(wlc_hw, interrupt); i++) {
+#ifdef SVMP_ACCESS_VIA_PHYTBL
+		phy_vasip_write_svmp(pi, offset+i, 0);
+#else
+		counter[i] = 0;
+#endif // endif
+	}
+	return BCME_OK;
+}
+
+/* copy svmp memory to a buffer starting from offset of length 'len', len is count of uint16's */
+int
+wlc_svmp_mem_read(wlc_hw_info_t *wlc_hw, uint16 *ret_svmp_addr, uint32 offset, uint16 len)
+{
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	uint16 * svmp_addr;
+#endif // endif
+	uint16 i;
+	uint32 svmp_mem_offset_max;
+
+	if (!VASIP_PRESENT(wlc_hw)) {
+		return BCME_UNSUPPORTED;
+	}
+
+	if (!wlc_hw->clk) {
+		return BCME_NOCLK;
+	}
+
+	svmp_mem_offset_max = wlc_svmp_mem_offset_max(wlc_hw);
+	if ((offset + len) >= svmp_mem_offset_max) {
+		return BCME_RANGE;
+	}
+
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	svmp_addr = (uint16 *)wlc_vasip_addr(wlc_hw, offset);
+#endif // endif
+
+	for (i = 0; i < len; i++) {
+#ifdef SVMP_ACCESS_VIA_PHYTBL
+		phy_vasip_read_svmp((phy_info_t *)wlc_hw->band->pi, offset+i, &ret_svmp_addr[i]);
+#else
+		ret_svmp_addr[i] = svmp_addr[i];
+#endif // endif
+	}
+	return BCME_OK;
+}
+
+/* set svmp memory with a value from offset of length 'len', len is count of uint16's */
+int
+wlc_svmp_mem_set(wlc_hw_info_t *wlc_hw, uint32 offset, uint16 len, uint16 val)
+{
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	volatile uint16 * svmp_addr;
+#endif // endif
+	uint16 i;
+	uint32 svmp_mem_offset_max;
+
+	if (!VASIP_PRESENT(wlc_hw)) {
+		return BCME_UNSUPPORTED;
+	}
+
+	if (!wlc_hw->clk) {
+		return BCME_NOCLK;
+	}
+
+	svmp_mem_offset_max = wlc_svmp_mem_offset_max(wlc_hw);
+	if ((offset + len) >= svmp_mem_offset_max) {
+		return BCME_RANGE;
+	}
+
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	svmp_addr = (volatile uint16 *)wlc_vasip_addr(wlc_hw, offset);
+#endif // endif
+
+	for (i = 0; i < len; i++) {
+#ifdef SVMP_ACCESS_VIA_PHYTBL
+		phy_vasip_write_svmp((phy_info_t *)wlc_hw->band->pi, offset+i, val);
+#else
+		svmp_addr[i] = val;
+#endif // endif
+	}
+	return BCME_OK;
+}
+#endif // endif
+
+/* set svmp memory with a value from offset of length 'len', len is count of uint16's */
+int
+wlc_svmp_mem_blk_set(wlc_hw_info_t *wlc_hw, uint32 offset, uint16 len, uint16 *val)
+{
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	volatile uint16 * svmp_addr;
+#endif // endif
+	uint16 i;
+	uint32 svmp_mem_offset_max;
+
+	if (!VASIP_PRESENT(wlc_hw)) {
+		return BCME_UNSUPPORTED;
+	}
+
+	if (!wlc_hw->clk) {
+		return BCME_NOCLK;
+	}
+
+	svmp_mem_offset_max = wlc_svmp_mem_offset_max(wlc_hw);
+	if ((offset + len) >= svmp_mem_offset_max) {
+		return BCME_RANGE;
+	}
+
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	svmp_addr = (volatile uint16 *)wlc_vasip_addr(wlc_hw, offset);
+#endif // endif
+
+	for (i = 0; i < len; i++) {
+		if (val[i] != 0xffff) {
+#ifdef SVMP_ACCESS_VIA_PHYTBL
+			phy_vasip_write_svmp((phy_info_t *)wlc_hw->band->pi, offset+i, val[i]);
+#else
+			svmp_addr[i] = val[i];
+#endif // endif
+		}
+	}
+	return BCME_OK;
+}
+
+#ifdef WL_AIR_IQ
+/* copy svmp memory to a buffer starting from offset of length 'len', len is
+ * count of uint64's
+ */
+int
+wlc_svmp_mem_read64(wlc_hw_info_t *wlc_hw, uint64 *ret_svmp_addr, uint32 offset, uint16 len)
+{
+	uint64 * svmp_addr;
+	uint16 i;
+
+	if (((offset + (len * sizeof(*ret_svmp_addr))) > SVMP_MEM_OFFSET_MAX_BCM4365C0) ||
+		(len * sizeof(*ret_svmp_addr)) > SVMP_MEM_DUMP_LEN_MAX) {
+		return BCME_RANGE;
+	}
+	offset = offset >> 2;
+	svmp_addr = (uint64 *)((uint64 *)wlc_vasip_addr(wlc_hw, offset));
+
+	for (i = 0; i < len; i++) {
+		ret_svmp_addr[i] = svmp_addr[i];
+	}
+
+	return BCME_OK;
+}
+/* set svmp memory with a value from offset of length 'len', len is count of uint16's */
+int
+wlc_svmp_mem_set_axi(wlc_hw_info_t *wlc_hw, uint32 offset, uint16 len, uint16 val)
+{
+	volatile uint16 * svmp_addr;
+	uint16 i;
+
+	svmp_addr = (volatile uint16 *)wlc_vasip_addr(wlc_hw, offset);
+
+	for (i = 0; i < len; i++) {
+		svmp_addr[i] = val;
+	}
+	return BCME_OK;
+}
+
+int
+wlc_svmp_mem_read_axi(wlc_hw_info_t *wlc_hw, uint16 *ret_svmp_addr, uint32 offset, uint16 len)
+{
+	uint16 * svmp_addr;
+	uint16 i;
+
+	svmp_addr = (uint16 *)wlc_vasip_addr(wlc_hw, offset);
+
+	for (i = 0; i < len; i++) {
+		ret_svmp_addr[i] = svmp_addr[i];
+	}
+	return BCME_OK;
+}
+#endif /* WL_AIR_IQ */
+
+int
+wlc_svmp_read_blk(wlc_hw_info_t *wlc_hw, uint16 *val, uint32 offset, uint16 len)
+{
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	uint16 *svmp_addr;
+	uint16 i;
+#endif // endif
+	uint32 svmp_mem_offset_max;
+
+	if (!VASIP_PRESENT(wlc_hw)) {
+		return BCME_UNSUPPORTED;
+	}
+
+	if (!wlc_hw->clk) {
+		return BCME_NOCLK;
+	}
+
+	svmp_mem_offset_max = wlc_svmp_mem_offset_max(wlc_hw);
+	if ((offset + len) >= svmp_mem_offset_max) {
+		return BCME_RANGE;
+	}
+
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	svmp_addr = (uint16 *)wlc_vasip_addr(wlc_hw, offset);
+	for (i = 0; i < len; i++) {
+		val[i] = svmp_addr[i];
+	}
+#else
+	for (; len / SVMP_ACCESS_BLOCK_SIZE; len -= SVMP_ACCESS_BLOCK_SIZE) {
+		phy_vasip_read_svmp_blk((phy_info_t *)wlc_hw->band->pi,
+		        offset, SVMP_ACCESS_BLOCK_SIZE, val);
+		offset += SVMP_ACCESS_BLOCK_SIZE;
+		val += SVMP_ACCESS_BLOCK_SIZE;
+	}
+	if (len > 0) {
+		phy_vasip_read_svmp_blk((phy_info_t *)wlc_hw->band->pi, offset, len, val);
+	}
+#endif /* SVMP_ACCESS_VIA_PHYTBL */
+
+	return BCME_OK;
+}
+
+int
+wlc_svmp_write_blk(wlc_hw_info_t *wlc_hw, uint16 *val, uint32 offset, uint16 len)
+{
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	volatile uint16 * svmp_addr;
+	uint16 i;
+#endif // endif
+	uint32 svmp_mem_offset_max;
+
+	if (!VASIP_PRESENT(wlc_hw)) {
+		return BCME_UNSUPPORTED;
+	}
+
+	if (!wlc_hw->clk) {
+		return BCME_NOCLK;
+	}
+
+	svmp_mem_offset_max = wlc_svmp_mem_offset_max(wlc_hw);
+	if ((offset + len) >= svmp_mem_offset_max) {
+		return BCME_RANGE;
+	}
+
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	svmp_addr = (uint16 *)wlc_vasip_addr(wlc_hw, offset);
+	for (i = 0; i < len; i++) {
+		if (val[i] != 0xffff) {
+			svmp_addr[i] = val[i];
+		}
+	}
+#else
+	for (; len / SVMP_ACCESS_BLOCK_SIZE; len -= SVMP_ACCESS_BLOCK_SIZE) {
+		phy_vasip_write_svmp_blk((phy_info_t *)wlc_hw->band->pi,
+		        offset, SVMP_ACCESS_BLOCK_SIZE, val);
+		offset += SVMP_ACCESS_BLOCK_SIZE;
+		val += SVMP_ACCESS_BLOCK_SIZE;
+	}
+	if (len > 0) {
+		phy_vasip_write_svmp_blk((phy_info_t *)wlc_hw->band->pi, offset, len, val);
+	}
+#endif /* SVMP_ACCESS_VIA_PHYTBL */
+
+	return BCME_OK;
+}
+
+int
+wlc_svmp_mem_offset_max(wlc_hw_info_t *wlc_hw)
+{
+	uint32 svmp_mem_offset_max;
+
+	if D11REV_IS(wlc_hw->corerev, 65) {
+		svmp_mem_offset_max = SVMP_MEM_OFFSET_MAX_BCM4365C0;
+	} else if (D11REV_IS(wlc_hw->corerev, 128) || D11REV_IS(wlc_hw->corerev, 129)) {
+		svmp_mem_offset_max = SVMP_MEM_OFFSET_MAX_BCM43684;
+	} else if D11REV_IS(wlc_hw->corerev, 130) {
+		svmp_mem_offset_max = SVMP_MEM_OFFSET_MAX_BCM63178;
+	} else if D11REV_IS(wlc_hw->corerev, 131) {
+		svmp_mem_offset_max = SVMP_MEM_OFFSET_MAX_BCM6710;
+	} else {
+		svmp_mem_offset_max = SVMP_MEM_OFFSET_MAX_NOT_SUPPORT;
+	}
+
+	return svmp_mem_offset_max;
+}
+
+/* **DO NOT CALL DIRECTLY. USE VASIP_SHARED_OFFSET() macro
+ * This function is intended to be accessed by VASIP_SHARED_OFFSET()
+ * 'sym' input is the enumerated symbol defined in d11vasip_code.h
+ * This indexes the sym_map table to retrieve the offset for the
+ * particular chip.
+ */
+uint32 vasip_shared_offset(wlc_hw_info_t *wlc_hw, unsigned int sym)
+{
+	wlc_vasip_info_t *vasip = wlc_hw->wlc->vasip;
+
+	ASSERT(sym < vasipfw_symbol_count);
+	ASSERT(vasip->sym_map);
+	ASSERT(vasip->sym_map[sym] < wlc_svmp_mem_offset_max(wlc_hw));
+
+	return vasip->sym_map[sym];
+}
+
+/* **DO NOT CALL DIRECTLY. USE VASIP_SHARED_SIZE() macro
+ * The vasip_shared_offset input is the enumerated input from
+ * 'sym' input is the enumerated symbol defined in d11vasip_code.h
+ * This indexes the sym_map table to retrieve the offset for the
+ * particular chip.
+ */
+uint32 vasip_shared_size(wlc_hw_info_t *wlc_hw, unsigned int sym)
+{
+	wlc_vasip_info_t *vasip = wlc_hw->wlc->vasip;
+
+	ASSERT(sym < vasipfw_symbol_count);
+	ASSERT(vasip->sym_map_size);
+	ASSERT(vasip->sym_map_size[sym] > 0);
+
+	return vasip->sym_map_size[sym];
+}
+
+/* Update rate capabilites in svmp for MU user indexed by bfm index */
+void
+wlc_svmp_update_ratecap(wlc_info_t *wlc, scb_t *scb, uint8 bfm_index)
+{
+	uint16 mcs_bitmap[MCSSET_LEN];
+	uint16 rate_cap = 0, mcscap_sz, mcscap_offset;
+	uint8 sgi;
+	uint32 offset;
+
+	wlc_scb_ratesel_get_ratecap(wlc->wrsi, scb, &sgi, mcs_bitmap, 0 /* AC_BE */);
+
+	/* unused(10) | brcmSTA(1) | ldpc(1) | sgi(2) | bw(2) |
+	 * mcs_nss0(16) | mcs_nss1(16) | mcs_nss2(16) | mcs_nss3(16)
+	 */
+	rate_cap = (wlc_scb_ratesel_get_link_bw(wlc, scb) - 1);
+	rate_cap |= sgi << VASIP_RTCAP_SGI_NBIT;
+	if (SCB_LDPC_CAP(scb)) {
+		rate_cap |= 1 << VASIP_RTCAP_LDPC_NBIT;
+	}
+	if (scb->flags & SCB_BRCM) {
+		rate_cap |= 1 << VASIP_RTCAP_BCMSTA_NBIT;
+	}
+
+	offset = VASIP_SHARED_OFFSET(wlc->hw, mcs_map);
+	if (IS_V2M_FORMAT_V3(wlc->hw->corerev)) {
+		mcscap_offset = 3;
+		mcscap_sz = 2;
+	} else {
+		mcscap_offset = 5;
+		mcscap_sz = 4;
+	}
+
+	wlc_svmp_mem_blk_set(wlc->hw, offset + (bfm_index * mcscap_offset), 1, &rate_cap);
+	wlc_svmp_mem_blk_set(wlc->hw, offset + 1 + (bfm_index * mcscap_offset),
+		mcscap_sz, mcs_bitmap);
+
+	WL_MUTX(("wl%d: %s Update rate_cap:%04x for STA "MACF" bfmidx %d\n",
+		wlc->pub->unit, __FUNCTION__, rate_cap, ETHER_TO_MACF(scb->ea), bfm_index));
+}
+
+#endif /* WLVASIP */

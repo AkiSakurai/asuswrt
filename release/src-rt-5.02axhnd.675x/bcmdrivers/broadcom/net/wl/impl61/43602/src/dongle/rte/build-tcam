@@ -1,0 +1,250 @@
+#!/usr/bin/perl
+#
+# This script lists ROM symbols as absolute values in assembly using information
+# found in romtable.S and symtbl files and outputs the list to STDOUT.
+#
+#     - symtbl map ('nm -n roml' output) from STDIN
+#     - symbols in romtable.S with .extern keyword
+#
+# $Id: build-rommap,v 1.13.2.1 2010-12-23 07:27:07 lut Exp $
+#
+
+use strict;
+use warnings;
+use File::Basename;
+
+sub usage {
+    print STDERR "Usage: build-tcam <romtbl> <file>\n";
+    exit 1;
+}
+
+my $idre = '([\w$]+)';
+my $fnre = '([\w.-]+)';
+my $adr = '([0-9a-fA-F]{1,8})';
+my $adr4 = '([0-9a-fA-F]{4})';
+my $fnromtbl = "nil";
+my $tcam_enab = 0;
+my $tcam_pcnt = 0;
+my $tcam_size = 0;
+my $fnasm;
+
+# Name of this script.
+my $g_script = basename($0);
+
+# Hash that maps abandoned ROM functions that use TCAM entries to their ROM addresses.
+my %g_rom_abandon_sym_addrs;
+
+($fnromtbl = shift @ARGV) || &usage;
+(($tcam_enab, $tcam_pcnt, $tcam_size) = split(/\+/, shift @ARGV)) || &usage;
+($fnasm = shift @ARGV) || &usage;
+
+my @nm = <STDIN>;
+# find all symbols with .extern keyword in the rom table
+my $fhromtbl;
+open($fhromtbl, "<$fnromtbl") or die "Unable to open file $fnromtbl: $!\n";
+my %g_extern = ();
+my %g_rodata = ();
+my %g_abandon = ();
+my @declare = ();
+my %abandoned = ();
+my %not_abandoned = ();
+map {
+    $g_extern{$1} = 1 if /^\s*\.extern\s+${idre}\b/;
+    $g_rodata{$1} = 1 if /^\s*\.extern\s+${idre}\s+\#\s*\.rodata\b/;
+    $g_abandon{$1} = 1 if /^\s*\.extern\s+${idre}\s+\#\s*\.abandon\b/;
+    my $sym = $1 if /^\s*\.extern\s+${idre}\b/;
+    if (defined $sym) {
+        if (/\#.*\.abandon\b/) {
+            $abandoned{$sym} = 1;
+        } else {
+            $not_abandoned{$sym} = 1;
+        }
+        die "$sym is both abandoned and not abandoned in $fnromtbl\n"
+            if $abandoned{$sym} && $not_abandoned{$sym};
+        push(@declare, $_);     # save whole line
+    }
+} <$fhromtbl>;
+close($fhromtbl);
+
+die if ($tcam_enab == 0);
+die if ($tcam_pcnt > 4 || $tcam_pcnt < 0);
+
+my $fh;
+my %plut = ();
+if ($fnasm && open($fh, $fnasm)) {
+    while (<$fh>) {
+	if(/^\s+${adr}:\s+${adr4}\s*${adr4}\b/) {
+	    $plut{sprintf("%08s", $1)} = $3.$2;
+	}
+    }
+    close $fh;
+}
+my $plut_entries = scalar keys %plut;
+
+my %g_patchaddr = ();
+sub patch_noesc {
+        my $sym = shift;
+        my $addr = shift;
+        my $pcnt = shift;
+        my $pentry_size = (1 << $pcnt) * 4;
+        my $entry_len;
+        my $desc;
+	my $addr_orig = $addr;
+
+        die if ($pentry_size < 4);
+
+        $entry_len = 4;
+
+	printf("\t.global $sym\n");
+
+	$addr = hex($addr);
+
+	# Track duplicate patch addresses
+	if ($g_patchaddr{$addr}) {
+		printf STDERR ("ERROR: Dup patch entry at 0x%x for $sym and %s\n", $addr, $g_patchaddr{$addr});
+		die;
+	}
+
+	$g_patchaddr{$addr} = $sym;
+
+        $desc = $sym;
+
+        printf("\t/* Patch Entry: $sym */\n");
+        printf("\t.section        .patchentry.%s__patentry,\"aw\",%%progbits\n", $desc);
+        printf("\t.align 2\n");
+        printf("\t.type %s__patentry, %%object\n", $desc);
+        printf("\t.size %s__patentry, $pentry_size\n", $desc);  # SRPC_PATCHNLOC * 4
+        printf("\t.global %s__patentry\n", $desc);
+        printf("%s__patentry:\n", $desc);
+
+	#
+	# NOPs for now; fill in with b.w instruction later
+	#
+	if ($plut_entries) {
+		if ($plut{$addr_orig}) {
+			printf("\t.word 0x%x\n", hex($plut{$addr_orig}));
+		} else {
+			printf STDERR ("ERROR:\n");
+			printf STDERR ("ERROR: Missing patch instruction $sym @ $addr_orig\n");
+			printf STDERR ("ERROR:\n");
+			exit 1;
+		}
+	} else {
+		printf("\t.word $sym\n");
+	}
+
+	printf("\t.space %d\n", $pentry_size - 4) if ($pentry_size - 4) > 0;	# Filler SRPC_PATCHNLOC - 4
+        printf("\n");
+
+        printf("\t/* Patch Header: $sym */\n");
+        printf("\t.section        .patchhdr.%s__pathdr,\"aw\",%%progbits\n", $desc);
+        printf("\t.align 2\n");
+        printf("\t.type %s__pathdr, %%object\n", $desc);
+        printf("\t.size %s__pathdr, 12\n", $desc);
+        printf("\t.global %s__pathdr\n", $desc);
+        printf("%s__pathdr:\n", $desc);
+        printf("\t.word 0x%x\n", $addr);			# ROM address to patch
+        printf("\t.word %d\n", $entry_len);			# Len of patch entry
+        printf("\t.word %s__patentry\n", $desc);
+        printf("\n");
+
+        $addr += 4;
+}
+
+
+# Error checking function.
+#    Check for overlapping TCAM entries. Starting with ARM CR4/TCM, RAM/ROM are 64-bit/8-byte wide
+#    so TCAM entries also need to be 8-byte blocks (PCNT=1). This creates a potential for overlapping
+#    TCAM patches if one of the adjacent patched symbols is only 4 bytes.
+sub verify_tcam_entries {
+	my ($abandon_sym_addrs, $pcnt) = @_;
+	my $found_err = 0;
+
+	# Create a sorted list (based upon ROM address) of patched TCAM symbols.
+	my @abandon_syms_sorted =
+		sort { $abandon_sym_addrs->{$a} <=> $abandon_sym_addrs->{$b} } keys %{$abandon_sym_addrs};
+
+	# TCAM patch entry size.
+	my $pentry_size = (1 << $pcnt) * 4;
+	# TCAM patch address mask. Patched addresses are aligned based upon patch entry size.
+	my $addr_mask = ~($pentry_size - 1);
+
+	# Cache first entry for comparison.
+	my $prev_sym;
+	my $cur_sym = $abandon_syms_sorted[0];
+	splice(@abandon_syms_sorted, 0, 1);
+
+	# Search for adjacent TCAM patches that overlap.
+	foreach my $sym (@abandon_syms_sorted) {
+		$prev_sym = $cur_sym;
+		$cur_sym  = $sym;
+		my $addr_delta = ($abandon_sym_addrs->{$sym}      & $addr_mask) -
+		                 ($abandon_sym_addrs->{$prev_sym} & $addr_mask);
+
+		if ($addr_delta < $pentry_size) {
+			printf STDERR ("$g_script: ERROR: TCAM overlap for functions '$sym' and '$prev_sym'.\n");
+			$found_err = 1;
+		}
+	}
+
+	# Bail if overlapping TCAM patches found.
+	if ($found_err) {
+		printf STDERR ("$g_script: ERROR: ROM work-around required! Avoid ROM invalidation " .
+		               "for one of the overlapping functions. Alternatively, invalidate " .
+			       "all callers for one the overlapping functions to eliminate the " .
+			       "need for a TCAM entry.\n");
+		exit 1;
+	}
+}
+
+
+# ROM func name suffix
+my $g_romdat_suffix = "__bcmromdat";
+my $g_romfn_suffix = "__bcmromfn";
+my $g_romdat_patch_suffix = "__bcmpatch";
+
+my %g_nm_decl = ();
+# Lookup symbols from romtable.S in nm
+foreach (@nm) {
+	chomp;
+	my($addr, $attr, $sym) = split(/\s+/);
+
+	$sym =~ s/$g_romfn_suffix$//; 
+	$sym =~ s/$g_romdat_suffix$//; 
+
+	push(@{$g_nm_decl{$sym}}, $_) if ($g_extern{$sym});
+}
+
+# print each symbol declared as .extern in romtable.S file as an absolute address
+# found in symtbl map file
+foreach my $line (sort keys %g_extern) {
+
+	if (!$g_nm_decl{$line}) {
+		printf("\t/* SYMBOL %s NOT FOUND IN ROM IMAGE */\n", $line);
+		printf("\n");
+		next;
+	}
+
+	my @nmsyms = @{$g_nm_decl{$line}};
+	my $abandon = 0;
+	my $noesc = 0;
+	my $data = 0;
+
+	$data = 1 if ($g_rodata{$line});
+	$abandon = 1 if ($g_abandon{$line});
+
+	foreach (@nmsyms) {
+		my ($addr, $flag, $sym) = split(/\s+/);
+
+		if ($abandon == 1 && $sym !~ /$g_romfn_suffix$/ && $data == 0) {
+			die "ERROR: $sym @ $addr not 4-byte aligned!\n" if (hex($addr) & 0x3);
+			patch_noesc($sym, $addr, $tcam_pcnt);
+
+			# Hash abandoned ROM functions that use TCAM entries to their ROM addresses.
+			$g_rom_abandon_sym_addrs{$sym} = hex($addr);
+		}
+	}
+}
+
+# Error checking.
+verify_tcam_entries(\%g_rom_abandon_sym_addrs, $tcam_pcnt);
