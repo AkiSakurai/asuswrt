@@ -217,6 +217,7 @@ struct phy_ac_chanmgr_info {
 	* 1st entry: 2G, 2nd entry: 5G
 	*/
 	int8 lesi_perband[2];
+	bool bypass_idle_tssi;
 
 	bool veloce_farrow_db;
 	/* add other variable size variables here at the end */
@@ -261,6 +262,7 @@ static bool phy_ac_chanmgr_is_txbfcal(phy_type_chanmgr_ctx_t *ctx);
 static bool phy_ac_chanmgr_is_smth_en(phy_type_chanmgr_ctx_t *ctx);
 static void wlc_tiny_setup_coarse_dcc(phy_info_t *pi);
 void wlc_phy_toggle_resetcca_hwbit_acphy(phy_info_t *pi);
+static void phy_ac_chanmgr_bypass_itssi(phy_type_chanmgr_ctx_t *ctx, bool force);
 #if defined(WLTEST)
 static int phy_ac_chanmgr_get_smth(phy_type_chanmgr_ctx_t *ctx, int32* ret_int_ptr);
 static int phy_ac_chanmgr_set_smth(phy_type_chanmgr_ctx_t *ctx, int8 int_val);
@@ -343,6 +345,7 @@ BCMATTACHFN(phy_ac_chanmgr_register_impl)(phy_info_t *pi, phy_ac_info_t *aci,
 	fns.tdcs_enable_160m = phy_ac_chanmgr_tdcs_enable_160m;
 	fns.pad_online_enable = phy_ac_chanmgr_pad_online_enable;
 	fns.dccal_force = phy_ac_chanmgr_dccal_force;
+	fns.bypass_itssi = phy_ac_chanmgr_bypass_itssi;
 #if defined(WLTEST)
 	fns.get_smth = phy_ac_chanmgr_get_smth;
 	fns.set_smth = phy_ac_chanmgr_set_smth;
@@ -492,6 +495,7 @@ BCMATTACHFN(phy_ac_chanmgr_std_params_attach)(phy_ac_chanmgr_info_t *chanmgri)
 	}
 
 	chanmgri->veloce_farrow_db = FALSE;
+	chanmgri->bypass_idle_tssi = FALSE;
 	if (ISSIM_ENAB(pi->sh->sih)) {
 		/* Only for QT/Veloce */
 		if (ACMAJORREV_47_129(pi->pubpi->phy_rev)) {
@@ -546,7 +550,8 @@ WLBANDINITFN(phy_ac_chanmgr_init_chanspec)(phy_type_chanmgr_ctx_t *ctx)
 			phy_ac_rfseq_mode_set(pi, 1);
 		}
 		if (pi->u.pi_acphy->sromi->srom_low_adc_rate_en &&
-			ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			ACMAJORREV_47(pi->pubpi->phy_rev) &&
+			chanmgri->bypass_idle_tssi == FALSE) {
 			/* Disable core2core sync (and enable later)
 			 * as AFE overrides below can mess with it
 			 */
@@ -601,7 +606,12 @@ WLBANDINITFN(phy_ac_chanmgr_init_chanspec)(phy_type_chanmgr_ctx_t *ctx)
 		    !ACMAJORREV_128(pi->pubpi->phy_rev))) {
 			wlc_phy_txpwrctrl_idle_tssi_phyreg_setup_acphy(pi);
 		}
-		wlc_phy_txpwrctrl_idle_tssi_meas_acphy(pi);
+		if (chanmgri->bypass_idle_tssi == TRUE && ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			// bypass idle tssi cal for DFS channels
+		} else {
+			wlc_phy_txpwrctrl_idle_tssi_meas_acphy(pi);
+		}
+
 		if (pi->u.pi_acphy->sromi->srom_low_adc_rate_en &&
 			ACMAJORREV_129(pi->pubpi->phy_rev)) {
 			/* Remove afe_div overrides */
@@ -613,7 +623,8 @@ WLBANDINITFN(phy_ac_chanmgr_init_chanspec)(phy_type_chanmgr_ctx_t *ctx)
 			}
 		}
 		if (pi->u.pi_acphy->sromi->srom_low_adc_rate_en &&
-			ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			ACMAJORREV_47(pi->pubpi->phy_rev) &&
+			chanmgri->bypass_idle_tssi == FALSE) {
 			/* Remove afe_div overrides */
 			wlc_phy_radio20698_afe_div_ratio(pi, 0, 0, 0);
 			wlc_phy_low_rate_adc_enable_acphy(pi, TRUE);
@@ -12941,6 +12952,21 @@ phy_ac_chanmgr_core2core_sync_dac_clks(phy_ac_chanmgr_info_t *chanmgri, bool ena
 {
 	phy_info_t *pi = chanmgri->pi;
 	uint8 core;
+	uint8 restore_ext_5g_papu[PHY_CORE_MAX];
+	uint8 restore_override_ext_pa[PHY_CORE_MAX];
+
+	/* Disable PA during rfseq setting */
+	FOREACH_CORE(pi, core) {
+		restore_ext_5g_papu[core] = READ_PHYREGFLDCE(pi, RfctrlIntc,
+				core, ext_5g_papu);
+		restore_override_ext_pa[core] = READ_PHYREGFLDCE(pi, RfctrlIntc,
+				core, override_ext_pa);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, override_ext_pa, 1);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, ext_5g_papu, 0);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, tr_sw_tx_pu, 0);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, tr_sw_rx_pu, 1);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, override_tr_sw, 1);
+	}
 
 	/* Additional radio settings to keep DAC clocks powered on (sequence matters!) */
 	if (enable) {
@@ -13061,6 +13087,16 @@ phy_ac_chanmgr_core2core_sync_dac_clks(phy_ac_chanmgr_info_t *chanmgri, bool ena
 				                    afediv_dac_div_reset, 0);
 			}
 		}
+	}
+	/* Restore PA reg value after reseq setting */
+	FOREACH_CORE(pi, core) {
+		MOD_PHYREGCE(pi, RfctrlIntc,
+				core, ext_5g_papu, restore_ext_5g_papu[core]);
+		MOD_PHYREGCE(pi, RfctrlIntc,
+				core, override_ext_pa, restore_override_ext_pa[core]);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, tr_sw_tx_pu, 0);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, tr_sw_rx_pu, 0);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, override_tr_sw, 0);
 	}
 }
 
@@ -17149,6 +17185,14 @@ phy_ac_chanmgr_cal_reset(phy_info_t *pi)
 			wlc_phy_modify_txafediv_acphy(pi, 6);
 	}
 }
+
+static void
+phy_ac_chanmgr_bypass_itssi(phy_type_chanmgr_ctx_t *ctx, bool force)
+{
+	phy_ac_chanmgr_info_t *ci = (phy_ac_chanmgr_info_t *)ctx;
+	ci->bypass_idle_tssi = force;
+}
+
 
 #if defined(WLTEST)
 static int

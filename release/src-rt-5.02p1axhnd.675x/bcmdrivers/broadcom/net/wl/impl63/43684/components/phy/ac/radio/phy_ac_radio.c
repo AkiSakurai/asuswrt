@@ -16254,7 +16254,20 @@ wlc_phy_radio20698_afecal(phy_info_t *pi)
 {
 	/* 20698_procs.tcl r708059: 20698_afe_cal */
 
+	uint8 core;
+	uint8 restore_ext_5g_papu[PHY_CORE_MAX];
+	uint8 restore_override_ext_pa[PHY_CORE_MAX];
+
 	ASSERT(RADIOID(pi->pubpi->radioid) == BCM20698_ID);
+	/* Disable PA during rfseq setting */
+	FOREACH_CORE(pi, core) {
+		restore_ext_5g_papu[core] = READ_PHYREGFLDCE(pi, RfctrlIntc,
+				core, ext_5g_papu);
+		restore_override_ext_pa[core] = READ_PHYREGFLDCE(pi, RfctrlIntc,
+				core, override_ext_pa);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, override_ext_pa, 1);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, ext_5g_papu, 0);
+	}
 
 	wlc_phy_radio20698_adc_cap_cal(pi, 0);
 	//for 160(TI-ADC) calibrate rail 1 too.
@@ -16264,6 +16277,13 @@ wlc_phy_radio20698_afecal(phy_info_t *pi)
 
 	wlc_phy_radio20698_txdac_bw_setup(pi);
 	wlc_phy_radio20698_adc_offset_gain_cal(pi);
+	/* Restore PA reg value after reseq setting */
+	FOREACH_CORE(pi, core) {
+		MOD_PHYREGCE(pi, RfctrlIntc,
+				core, ext_5g_papu, restore_ext_5g_papu[core]);
+		MOD_PHYREGCE(pi, RfctrlIntc,
+				core, override_ext_pa, restore_override_ext_pa[core]);
+	}
 }
 
 static void

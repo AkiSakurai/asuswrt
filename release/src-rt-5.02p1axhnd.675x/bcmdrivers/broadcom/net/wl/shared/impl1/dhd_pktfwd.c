@@ -796,9 +796,12 @@ dhd_pktfwd_cache(uint8_t * d3addr, struct net_device * net_device)
     
     	if (cache_eligible && (strncmp(net_device->name, "wds", 3) == 0))
     	    cache_eligible = false; /* exclude WDS endpoints */
+    } else {
+        cache_eligible = true; /* LAN endpoints are always eligible */
+
+        if (net_device->priv_flags & IFF_BONDING)
+            cache_eligible = false; /* exclude bond endpoints */
     }
-    else
-	    cache_eligible = true; /* LAN endpoints are always eligible */
 
     if (cache_eligible == false)
 	    goto dhd_pktfwd_cache_failure;

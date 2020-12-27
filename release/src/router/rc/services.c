@@ -3668,6 +3668,32 @@ _dprintf("%s:\n", __FUNCTION__);
 #endif
 #endif
 
+#ifdef RTCONFIG_BCM_HND_CRASHLOG
+	char path[32];
+	FILE *fp;
+	char line[256];
+	int count = 0;
+
+#if defined(RTCONFIG_JFFS2) || defined(RTCONFIG_BRCM_NAND_JFFS2)
+	snprintf(path, sizeof(path), "/jffs/crashlog.log");
+#else
+	snprintf(path, sizeof(path), "/tmp/crashlog.log");
+#endif
+
+	if ((fp = fopen(path, "r")) != NULL) {
+		while (fgets(line, sizeof(line), fp) && count < 5) {
+			logmessage("crashlog", "%s", line);
+
+			if (!strlen(line))
+				count++;
+		}
+
+		fclose(fp);
+
+		unlink(path);
+	}
+#endif
+
 	return 0;
 }
 
@@ -8268,7 +8294,10 @@ start_services(void)
 #ifdef RTCONFIG_TCPLUGIN
 	exec_tcplugin();
 #endif
-
+#ifdef RTCONFIG_TENCENT_QMACC
+	if(nvram_match("tencent_qmacc_enable", "1") && nvram_match("tencent_eula_check", "1"))
+		start_qmacc();
+#endif
 	return 0;
 }
 
@@ -8502,6 +8531,9 @@ stop_services(void)
 #endif
 #ifdef RTAX82U
 	stop_ledg();
+#endif
+	#ifdef RTCONFIG_TENCENT_QMACC
+	stop_qmacc();
 #endif
 }
 
@@ -11738,6 +11770,13 @@ check_ddr_done:
 	else if(strcmp(script, "wtfast_rule") == 0){
 		//_dprintf("send SIGHUP to wtfast_rule SIGHUP = %d\n", SIGHUP);
 		killall("wtfslhd", SIGHUP);
+	}
+#endif
+#ifdef RTCONFIG_TENCENT_QMACC
+	else if (strcmp(script, "qmacc") == 0)
+	{
+		if(action & RC_SERVICE_STOP) stop_qmacc();
+		if(action & RC_SERVICE_START) start_qmacc();
 	}
 #endif
 #if defined(RTCONFIG_USB) && defined(RTCONFIG_USB_PRINTER)

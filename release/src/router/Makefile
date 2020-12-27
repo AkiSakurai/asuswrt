@@ -43,7 +43,8 @@ export BCM_CHIP := $(BRCM_CHIP)
 else
 export BCM_CHIP := $(CUR_CHIP_PROFILE)
 endif
-else
+else # non-675x
+export BRCM_CHIP := 4908
 export BCM_CHIP := 4908
 endif # HND_ROUTER_AX_675X
 export SRCBASE := $(shell pwd | sed 's/\(.*src-rt-.*hnd.*\).*/\1/' | sed 's|router|bcmdrivers\/broadcom\/net\/wl\/bcm9$(BCM_CHIP)\/main\/src/|g')
@@ -274,22 +275,19 @@ export TOOLCHAIN_LIB_DIR=$(KDIR)/lib
 export SRCBASE_ROUTER=$(SRCBASE)/router
 endif
 ifeq ($(HND_ROUTER_AX),y)
-ifeq ($(HND_ROUTER_AX_675X),y)
-else
+ifeq ($(BRCM_CHIP),4908)
 export CROSS_COMPILE_64 := /opt/toolchains/crosstools-aarch64-gcc-5.5-linux-4.1-glibc-2.26-binutils-2.28.1/usr/bin/aarch64-buildroot-linux-gnu-
 endif
 else
 export CROSS_COMPILE_64 := /opt/toolchains/crosstools-aarch64-gcc-5.3-linux-4.1-glibc-2.22-binutils-2.25/usr/bin/aarch64-buildroot-linux-gnu-
 endif
-ifeq ($(HND_ROUTER_AX_675X),y)
-else
+ifeq ($(BRCM_CHIP),4908)
 export STRIP_64 := $(CROSS_COMPILE_64)strip
 export TOOLCHAIN_64 := $(shell cd $(dir $(shell which $(CROSS_COMPILE_64)gcc))/.. && pwd -P)
 export TOOL_SYS_INCLUDE_64=$(TOOLCHAIN_64)/aarch64-buildroot-linux-gnu/sysroot/usr/include
 endif
 ifeq ($(HND_ROUTER_AX),y)
-ifeq ($(HND_ROUTER_AX_675X),y)
-else
+ifeq ($(BRCM_CHIP),4908)
 export PATH:=$(PATH):/opt/toolchains/crosstools-aarch64-gcc-5.5-linux-4.1-glibc-2.26-binutils-2.28.1/usr/bin
 endif
 else
@@ -1249,6 +1247,7 @@ obj-$(RTCONFIG_HTTPS) += wget
 obj-$(RTCONFIG_HTTPS) += zlib
 obj-$(RTCONFIG_SSH) += dropbear
 obj-$(RTCONFIG_WTFAST) += wtfast
+obj-$(RTCONFIG_TENCENT_QMACC) += qmacc
 #obj-$(RTCONFIG_ZEBRA) += zebra
 obj-$(RTCONFIG_QUAGGA) += quagga
 #obj-$(RTCONFIG_IPP2P) += ipp2p
@@ -1780,8 +1779,7 @@ reinstall:
 	install -D $(TOOLCHAIN)/arm-buildroot-linux-gnueabi/sysroot/lib/libpthread.so.0 $(INSTALLDIR)/lib/libpthread.so.0
 	install -D $(TOOLCHAIN)/arm-buildroot-linux-gnueabi/sysroot/lib/libdl.so.2 $(INSTALLDIR)/lib/libdl.so.2
 	install -D $(TOOLCHAIN)/arm-buildroot-linux-gnueabi/sysroot/lib/libgcc_s.so.1 $(INSTALLDIR)/lib/libgcc_s.so.1
-ifeq ($(HND_ROUTER_AX_675X),y)
-else
+ifeq ($(BRCM_CHIP),4908)
 	install -D $(TOOLCHAIN_64)/aarch64-buildroot-linux-gnu/sysroot/lib/ld-linux-aarch64.so.1 $(INSTALLDIR)/lib/ld-linux-aarch64.so.1
 	install -D $(TOOLCHAIN_64)/aarch64-buildroot-linux-gnu/sysroot/lib/libc.so.6 $(INSTALLDIR)/lib/aarch64/libc.so.6
 	install -D $(TOOLCHAIN_64)/aarch64-buildroot-linux-gnu/sysroot/lib/libnss_dns.so.2 $(INSTALLDIR)/lib/aarch64/libnss_dns.so.2
@@ -2860,8 +2858,7 @@ fsbuild:
 	#-mkdir -p $(INSTALL_DIR)/etc
 	-mkdir -p $(INSTALL_DIR)/lib/public
 	-mkdir -p $(INSTALL_DIR)/lib/private
-ifeq ($(HND_ROUTER_AX_675X),y)
-else
+ifeq ($(BRCM_CHIP),4908)
 	-mkdir -p $(INSTALL_DIR)/lib/aarch64
 endif
 	-mkdir -p $(INSTALL_DIR)/opt
@@ -5261,25 +5258,19 @@ igs$(BCMEX)$(EX7)-clean:
 	-@$(MAKE) -C $(TOPX_DIR)/igsconf clean
 
 ifeq ($(HND_ROUTER),y)
-ifeq ($(HND_ROUTER_AX_675X),y)
-EBK_INC=$(KERNEL_HEADER_DIR)
-else
+ifeq ($(BRCM_CHIP),4908)
 EBK_INC=$(TOOL_SYS_INCLUDE_64)
+else
+EBK_INC=$(KERNEL_HEADER_DIR)
 endif
 else
 EBK_INC=$(TOP)/kernel_header/include
 endif
 
 ebtables: kernel_header dummy
-ifeq ($(RTCONFIG_HND_ROUTER),y)
-	$(MAKE) -C ebtables $(if $(RTCONFIG_HND_ROUTER_AX_675X),CC=$(CC) LD=$(LD),CC=$(CROSS_COMPILE_64)gcc LD=$(CROSS_COMPILE_64)ld CURRENT_ARCH=aarch64) \
+	$(MAKE) -C ebtables $(if $(filter 4908,$(BRCM_CHIP)),CC=$(CROSS_COMPILE_64)gcc LD=$(CROSS_COMPILE_64)ld CURRENT_ARCH=aarch64,CC=$(CC) LD=$(LD)) \
 	CFLAGS="-Os -Wall -Wunused $(if $(RTCONFIG_HND_ROUTER),-DHND_ROUTER,)" \
 	BINDIR="/usr/sbin" LIBDIR="/usr/lib/ebtables" KERNEL_INCLUDES=$(EBK_INC) $(if $(RTCONFIG_IPV6),DO_IPV6=1,) $(if $(OLD_QCA),USE_ARPNAT=1,)
-else
-	$(MAKE) -C ebtables $(if $(RTCONFIG_HND_ROUTER),CC=$(CROSS_COMPILE_64)gcc LD=$(CROSS_COMPILE_64)ld CURRENT_ARCH=aarch64,CC=$(CC) LD=$(LD)) \
-	CFLAGS="-Os -Wall -Wunused $(if $(RTCONFIG_HND_ROUTER),-DHND_ROUTER,)" \
-	BINDIR="/usr/sbin" LIBDIR="/usr/lib/ebtables" KERNEL_INCLUDES=$(EBK_INC) $(if $(RTCONFIG_IPV6),DO_IPV6=1,) $(if $(OLD_QCA),USE_ARPNAT=1,)
-endif
 
 ebtables-install: ebtables
 	install -D ebtables/ebtables $(INSTALLDIR)/ebtables/usr/sbin/ebtables
@@ -5290,14 +5281,14 @@ ebtables-install: ebtables
 	install -D ebtables/extensions/*.so $(INSTALLDIR)/ebtables/usr/lib/ebtables/
 
 ifeq ($(HND_ROUTER),y)
-ifeq ($(HND_ROUTER_AX_675X),y)
-	$(STRIP) $(INSTALLDIR)/ebtables/usr/sbin/ebtables
-	$(STRIP) $(INSTALLDIR)/ebtables/usr/lib/ebtables/*.so
-	$(STRIP) $(INSTALLDIR)/ebtables/usr/lib/libebt*.so
-else
+ifeq ($(BRCM_CHIP),4908)
 	$(STRIP_64) $(INSTALLDIR)/ebtables/usr/sbin/ebtables
 	$(STRIP_64) $(INSTALLDIR)/ebtables/usr/lib/ebtables/*.so
 	$(STRIP_64) $(INSTALLDIR)/ebtables/usr/lib/libebt*.so
+else
+	$(STRIP) $(INSTALLDIR)/ebtables/usr/sbin/ebtables
+	$(STRIP) $(INSTALLDIR)/ebtables/usr/lib/ebtables/*.so
+	$(STRIP) $(INSTALLDIR)/ebtables/usr/lib/libebt*.so
 endif
 else
 	$(STRIP) $(INSTALLDIR)/ebtables/usr/sbin/ebtables
@@ -5646,7 +5637,7 @@ libiconv-1.14/stamp-h1:
 	touch $@
 
 libiconv-1.14:libiconv-1.14/stamp-h1
-	@$(MAKE) -C $@ CFLAGS="$(CFLAGS) $(if $(filter-out y,$(HND_ROUTER)),-DHND_ROUTER,)" && $(MAKE) $@-stage
+	@$(MAKE) -C $@ CFLAGS="$(CFLAGS) $(if $(filter y,$(HND_ROUTER)),-DHND_ROUTER,)" && $(MAKE) $@-stage
 
 libiconv-1.14-install: libiconv-1.14
 	@$(SEP)
@@ -5760,7 +5751,7 @@ strongswan-5.2.1/stamp-h1:
 	--with-strongswan-conf=/etc/strongswan.conf --enable-md4 --enable-acert \
 	--enable-cmd --enable-eap-tls --enable-libipsec \
 	CFLAGS="-I$(STAGEDIR)/usr/include -I$(TOP)/openssl/include \
-		$(if $(filter y,$(HND_ROUTER)),$(if $(filter y,$(HND_ROUTER_AX_675X)),,-DHND_ROUTER),)" \
+		$(if $(filter y,$(HND_ROUTER)),$(if $(filter 4908,$(BRCM_CHIP)),-DHND_ROUTER,),)" \
 	LDFLAGS="-L$(STAGEDIR)/usr/lib -L$(TOP)/openssl" \
 	LIBS="-lssl -lcrypto -lpthread -ldl -lm"
 	touch $@

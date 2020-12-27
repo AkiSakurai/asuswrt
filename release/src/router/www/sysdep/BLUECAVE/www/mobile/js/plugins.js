@@ -574,10 +574,30 @@ function handleSysDep(){
 		$("#amassearch_page").load("/mobile/pages/amassearch_page.html");
 		$("#amasonboarding_page").load("/mobile/pages/amasonboarding_page.html");
 	}
+
+	if(isSku("GD") && !$('.GD-head').length){
+		$("#summary_page").append($("<div>").attr({"id": "gdContainer", "class": "gundam-footer-field"}).hide())
+		$("#gdContainer").append($("<div>").attr({"class": "GD-head"}))
+		$("#gdContainer").append($("<div>").attr({"class": "GD-wait"}).append($("<div>").attr({"id": "GD-status"}).html("Installing..")))
+		$("#gdContainer").append($("<div>").attr({"class": "GD-footer-left"}))
+		$("#gdContainer").append($("<div>").attr({"class": "GD-footer-extend"}))
+		$("#gdContainer").append($("<div>").attr({"class": "GD-footer-center"}))
+		$("#gdContainer").append($("<div>").attr({"class": "GD-footer-extend"}))
+		$("#gdContainer").append($("<div>").attr({"class": "GD-footer-right"}))
+		$("#gdContainer").append($("<div>").attr({"class": "GD-law-label"}))
+
+		// systemVariable.imgContainer = [];
+
+		var gdImagesList = ["-head", "_bg", "_bg_bottom01", "_bg_bottom02", "_bg_bottom03", "_bg_bottom04", "_lawlabel", "-logo", "-waiting"]
+		gdImagesList.forEach(function(imageUrl){
+			var tmpObj = new Image();
+			tmpObj.src = "/images/gundam" + imageUrl + ".png";
+			// systemVariable.imgContainer.push(tmpObj)
+		})
+	}
 }
 
 function handleModelIcon() {
-
 	$('#ModelPid_img').css('background-image', 'url(' + function() {
 		var modelInfo = httpApi.nvramGet(["territory_code", "productid", "odmpid", "color", "rc_support"], true);
 		var ttc = modelInfo.territory_code;
@@ -987,10 +1007,13 @@ var isSupport = function(_ptn){
 			matchingResult = (isSku("US") || isSku("CA") || isSku("TW") || isSku("CN")) ? false : true;
 			break;
 		case "IPTV":
-			matchingResult = (isSku("US") || isSku("CN") || isSku("CA")) ? false : true;
+			matchingResult = (isSku("US") || isSku("CN") || isSku("CT") || isSku("GD") || isSku("CA")) ? false : true;
 			break;
 		case "SMARTCONNECT":
 			matchingResult = (ui_support["smart_connect"] == 1 || ui_support["bandstr"] == 1) ? true : false;
+			break;
+		case "GUNDAM_UI":
+			matchingResult = (isSku("GD") && $(".desktop_left_field").is(":visible")) ? true : false;
 			break;
 		case "WPA3Support":
 			matchingResult = (based_modelid == 'RT-AX88U' || based_modelid == 'RT-AX92U'  || based_modelid == 'RT-AX95Q' || based_modelid == 'RT-AX56_XD4' || based_modelid == 'RT-AX58U' || based_modelid == "TUF-AX3000" || based_modelid == "RT-AX82U" || based_modelid == 'RT-AX56U' || based_modelid == 'GT-AX11000') ? true : false;

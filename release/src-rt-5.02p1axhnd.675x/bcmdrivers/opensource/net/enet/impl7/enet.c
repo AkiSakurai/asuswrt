@@ -902,15 +902,17 @@ static inline netdev_tx_t __enet_xmit(pNBuff_t pNBuff, struct net_device *dev)
 	/* If Broadstream iqos enable, for WAN egress packets, need to call dev_queue_xmit */
     if (BROADSTREAM_IQOS_ENABLE() && pNBuff && DEV_ISWAN(dev)) {
         if(IS_FKBUFF_PTR(pNBuff)) {
-            /* From wl or enet driver rx */
+            /* From enet driver rx */
             skb = bcm_iqoshdl_wrapper(dev, pNBuff);
+            if (skb == FKB_FRM_GSO) {
+                goto normal_path;
+            }
             if (skb == NULL) {
                 goto drop_exit;
             }
-            PKTSETFKBTOQMIT(skb);
         }
         else if(IS_SKBUFF_PTR(pNBuff)) {
-            /* From dhd driver rx */
+            /* From wl or dhd driver rx */
             skb = PNBUFF_2_SKBUFF(pNBuff);
             if (PKTISFCDONE(skb)) {
                 PKTCLRFCDONE(skb);
@@ -1047,7 +1049,7 @@ normal_path:
             {
                 PNBUFF_2_SKBUFF(pNBuff)->blog_p->lag_port = dispatch_info.lag_port;
                 if (BROADSTREAM_IQOS_ENABLE()) {
-                    if (((dev->priv_flags & IFF_WANDEV) && !PKTISFKBTOQMIT(skb)) ||
+                    if ((dev->priv_flags & IFF_WANDEV) ||
                         !DEV_ISWAN(PNBUFF_2_SKBUFF(pNBuff)->blog_p->rx_dev_p))
                         blog_emit(pNBuff, dev, TYPE_ETH, port->n.set_channel_in_mark ? dispatch_info.channel : port->n.blog_chnl, port->n.blog_phy);
                 }
@@ -2747,4 +2749,3 @@ enet_swqueue_xmit(enet_swqueue_t  * enet_swqueue,
 
 MODULE_DESCRIPTION("BCM internal ethernet network driver");
 MODULE_LICENSE("GPL");
-

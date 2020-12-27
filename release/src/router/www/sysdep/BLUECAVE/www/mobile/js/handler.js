@@ -2611,6 +2611,8 @@ goTo.Upload = function(){
 }
 
 goTo.Finish = function(){
+	if(isSupport("GUNDAM_UI")) $("#gdContainer").show()
+
 	var restartService = getRestartService();
 	if(
 		!(restartService.indexOf("restart_wireless") != -1 && isWlUser) &&
@@ -2618,7 +2620,8 @@ goTo.Finish = function(){
 		restartService.indexOf("reboot") == -1 &&
 		restartService.indexOf("restart_all") == -1 &&
 		systemVariable.isNewFw == 0 &&
-		!isSupport("lantiq")
+		!isSupport("lantiq")  &&
+		!isSupport("GUNDAM_UI")
 	){
 		goTo.leaveQIS();
 		return false;
@@ -2658,7 +2661,23 @@ goTo.Finish = function(){
 	else{
 		setTimeout(function(){
 			var interval_isAlive = setInterval(function(){
-				httpApi.isAlive("", updateSubnet(systemVariable.lanIpaddr), function(){ clearInterval(interval_isAlive); goTo.leaveQIS();});
+				httpApi.isAlive("", updateSubnet(systemVariable.lanIpaddr), function(){
+					clearInterval(interval_isAlive); 
+					if($("#gdContainer").is(":visible")){
+						$("#GD-status").html("Finish!");
+
+						$('#summary_page').find(".tableContainer")
+							.replaceWith($("#gundam_page").children().hide())
+
+						$('#summary_page').find(".GD-content")
+							.fadeIn(1000)
+
+						setTimeout(goTo.leaveQIS, 8000);
+					}
+					else{
+						goTo.leaveQIS();
+					}
+				});
 			}, 2000);
 		}, 8000);
 	}

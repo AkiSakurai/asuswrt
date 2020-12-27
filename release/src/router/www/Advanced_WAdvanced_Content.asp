@@ -160,6 +160,7 @@ var mcast_rates = [
 	["CCK 11",	 "6",  1, 0, 1]
 ];
 
+var tcode = ttc.substring(0,2);
 var sdk_6 = sdk_version_array[0] == "6" ? true:false
 var sdk_7 = sdk_version_array[0] == "7" ? true:false
 var wl_user_rssi_onload = '<% nvram_get("wl_user_rssi"); %>';
@@ -180,6 +181,11 @@ var country_selection_list = [["AA", "<#country_AA#>"], ["CN", "<#country_CN#>"]
 var country_selection_array = new Array();
 var _AU1_support = false;
 var _AU2_support = false;
+
+if(tcode == "GD"){
+	country_array = country_array.join("-").replace("-CN", "").split("-")
+	country_selection_list.push(["GD", "<#country_CN#>"]);
+}
 
 if(country_array.indexOf("NZ") != -1){
 	country_selection_list[7][1] = "New Zealand";
@@ -681,7 +687,6 @@ function initial(){
 	}
 }
 
-var tcode = ttc.substring(0,2);
 function generate_country_selection(){
 	var code = '';
 	var matched = false;

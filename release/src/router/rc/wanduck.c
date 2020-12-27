@@ -4466,7 +4466,8 @@ _dprintf("nat_rule: stop_nat_rules 7.\n");
 		else if(conn_changed_state[current_wan_unit] == PHY_RECONN){
 #ifdef RTCONFIG_USB_MODEM
 			if(dualwan_unit__usbif(current_wan_unit)){
-				if(current_state[current_wan_unit] == WAN_STATE_INITIALIZING){
+				if(current_state[current_wan_unit] == WAN_STATE_INITIALIZING
+						|| (nvram_get_int(nvram_state[current_wan_unit]) == WAN_STATE_STOPPED && nvram_get_int(nvram_sbstate[current_wan_unit]) == WAN_STOPPED_REASON_NONE)){
 					if((modem_unit = get_modemunit_by_type(get_dualwan_by_unit(current_wan_unit))) == MODEM_UNIT_NONE){
 						_dprintf("%s 5: cannot get the modem unit!\n", __FUNCTION__);
 						goto WANDUCK_SELECT;

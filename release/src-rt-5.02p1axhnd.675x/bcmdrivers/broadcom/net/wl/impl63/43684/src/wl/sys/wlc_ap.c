@@ -4148,7 +4148,7 @@ wlc_restart_ap(wlc_ap_info_t *ap)
 		 * this defer operation enabled by roam_complete routine once STA
 		 * interface losses the number of beacons greater than threshold
 		 */
-		return;
+		goto bring_down_aps;
 	}
 
 #if defined(STA) && defined(AP)
@@ -4156,7 +4156,7 @@ wlc_restart_ap(wlc_ap_info_t *ap)
 	* bringup the AP.
 	*/
 	if (!wlc_apup_allowed(wlc)) {
-		return;
+		goto bring_down_aps;
 	}
 #endif /* STA && AP */
 
@@ -4213,6 +4213,15 @@ wlc_restart_ap(wlc_ap_info_t *ap)
 
 	BCM_REFERENCE(ap);
 	BCM_REFERENCE(bsscfg);
+	return;
+
+bring_down_aps:
+	FOREACH_UP_AP(wlc, i, bsscfg) {
+		wlc_bsscfg_down(wlc, bsscfg);
+		WL_ASSOC(("wl%d.%d : %s: bring down bsscfg %d .\n", wlc->pub->unit,
+			WLC_BSSCFG_IDX(bsscfg), __FUNCTION__, i));
+	}
+	wlc->aps_associated = 0;
 }
 
 int
@@ -5181,7 +5190,7 @@ wlc_ap_watchdog(void *arg)
 				if (((appvt->txbcn_inactivity >= appvt->txbcn_timeout) && !edcrs) ||
 					((appvt->txbcn_inactivity >= appvt->txbcn_edcrs_timeout))) {
 
-					WL_ERROR(("wl%d: bcn inactivity detected\n",
+					WL_PRINT(("wl%d: bcn inactivity detected\n",
 					          wlc->pub->unit));
 					WL_ERROR(("wl%d: txbcnfrm %d prev txbcnfrm %d "
 					          "txbcn inactivity %d timeout %d edcrs_timeout %d "

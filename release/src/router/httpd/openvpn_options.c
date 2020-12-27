@@ -690,11 +690,12 @@ void parse_openvpn_status(int unit)
 				token = strtok(NULL, ",");	//Bytes Sent
 				token = strtok(NULL, ",");	//Connected Since
 				token = strtok(NULL, ",");	//Connected Since (time_t)
-				token = strtok(NULL, ",");	//Username, include'\n'
+				token = strtok(NULL, ",");	//Username
 				if(token)
 					fprintf(fpo, "%s", token);
 				else
 					fprintf(fpo, "NoUsername");
+				fprintf(fpo, "\n");
 			}
 			else if(!strncmp(buf, "REMOTE", 6) && conf.auth_mode == OVPN_AUTH_STATIC) {
 				token = strtok(buf, ",");	//REMOTE,

@@ -93,6 +93,7 @@ void wlc_phy_chanspec_set(wlc_phy_t *ppi, chanspec_t chanspec);
 void wlc_phy_chanspec_radio_set(wlc_phy_t *ppi, chanspec_t newch);
 bool wlc_phy_is_txbfcal(wlc_phy_t *ppi);
 bool wlc_phy_is_smth_en(wlc_phy_t *ppi);
+void wlc_phy_bypass_idletssi_init(wlc_phy_t *ppi, bool force);
 
 /* band specific init */
 int phy_chanmgr_bsinit(phy_info_t *pi, chanspec_t chanspec, bool forced);

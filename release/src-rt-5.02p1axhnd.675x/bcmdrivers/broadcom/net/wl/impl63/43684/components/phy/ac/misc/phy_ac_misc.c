@@ -1940,8 +1940,23 @@ wlc_phy_force_rfseq_noLoleakage_acphy(phy_info_t *pi)
 {
 	uint8 core;
 	phy_stf_data_t *stf_shdata = phy_stf_get_data(pi->stfi);
+	uint8 restore_ext_5g_papu[PHY_CORE_MAX];
+	uint8 restore_override_ext_pa[PHY_CORE_MAX];
 
 	BCM_REFERENCE(stf_shdata);
+
+	/* Disable PA during rfseq setting */
+	FOREACH_CORE(pi, core) {
+		restore_ext_5g_papu[core] = READ_PHYREGFLDCE(pi, RfctrlIntc,
+				core, ext_5g_papu);
+		restore_override_ext_pa[core] = READ_PHYREGFLDCE(pi, RfctrlIntc,
+				core, override_ext_pa);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, override_ext_pa, 1);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, ext_5g_papu, 0);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, tr_sw_tx_pu, 0);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, tr_sw_rx_pu, 1);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, override_tr_sw, 1);
+	}
 
 	if (PHY_IPA(pi)) {
 		/* Turn Off iPA in override mode */
@@ -1962,6 +1977,16 @@ wlc_phy_force_rfseq_noLoleakage_acphy(phy_info_t *pi)
 		}
 	}
 	wlc_phy_force_femreset_acphy(pi, FALSE);
+	/* Restore PA reg value after reseq setting */
+	FOREACH_CORE(pi, core) {
+		MOD_PHYREGCE(pi, RfctrlIntc,
+				core, ext_5g_papu, restore_ext_5g_papu[core]);
+		MOD_PHYREGCE(pi, RfctrlIntc,
+				core, override_ext_pa, restore_override_ext_pa[core]);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, tr_sw_tx_pu, 0);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, tr_sw_rx_pu, 0);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, override_tr_sw, 0);
+	}
 }
 
 void

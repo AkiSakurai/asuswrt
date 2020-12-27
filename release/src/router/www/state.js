@@ -324,6 +324,11 @@ var is_CN = in_territory_code("CN");
 var is_TW_sku = in_territory_code("TW");
 var is_US_sku = in_territory_code("US");
 var is_UA_sku = in_territory_code("UA");
+var is_GD_sku = in_territory_code("GD");
+if(is_GD_sku){
+	document.write('<link rel="stylesheet" type="text/css" href="/css/gundam.css"></link>');
+}
+
 var is_RU_sku = (function(){
 	var location = '<% nvram_get("location_code"); %>';
 	if(location != ''){
@@ -581,6 +586,7 @@ var nt_center_support = isSupport("nt_center");
 var dblog_support = isSupport("dblog");
 var wan_bonding_support = isSupport("wanbonding");
 var geforceNow_support = isSupport("nvgfn");
+var tencent_qmacc_support = (isSupport("tencent_qmacc") && (in_territory_code("GD") || in_territory_code("CN")))? true: false;
 
 var amazon_wss_support = isSupport("amazon_wss");
 if(nt_center_support)
@@ -1186,6 +1192,14 @@ function show_menu(){
 	show_footer();
 	show_selected_language();
 	autoFocus('<% get_parameter("af"); %>');
+
+	if(is_GD_sku){
+		calGDpostion(); 
+		if(window.top === window.self){
+			var banner = document.getElementsByClassName('banner1')[0];
+			banner.style.backgroundImage = 'url(images/Gundam_header_bg.png)';			
+		}
+	}
 
 	try{
 		showMenuTree(Session.get("menuList"), Session.get("menuExclude"));
@@ -3780,4 +3794,22 @@ function setRadioValue(obj,val) {
 		if (obj[i].value==val)
 			obj[i].checked = true;
 	}
+}
+
+function calGDpostion(){
+	if(window.top === window.self){
+		document.body.className = 'gundam-bg';
+		var windowWidth = document.body.clientWidth;
+		var contentWidth = 998;
+		var bgWidth = 456;
+		var left = ((windowWidth-contentWidth)/2)-bgWidth;
+		var obj = document.getElementsByClassName('gundam-bg')[0];
+		obj.style.backgroundPosition = left + 'px 0';
+	}
+}
+
+if(is_GD_sku){
+	window.addEventListener('resize', function(event){
+		calGDpostion();	
+	});
 }

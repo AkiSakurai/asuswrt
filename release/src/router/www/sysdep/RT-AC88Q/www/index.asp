@@ -1480,21 +1480,16 @@ function hideEditBlock(){
 
 function oui_query(mac){
 	var queryStr = mac.replace(/\:/g, "").splice(6,6,"");
-	$.ajax({
-	    url: 'https://services11.ieee.org/RST/standards-ra-web/rest/assignments/download/?registry=MA-L&format=html&text='+ queryStr,
-		type: 'GET',
-		success: function(response) {
+
+	$.getJSON("http://nw-dlcdnet.asus.com/plugin/js/ouiDB.json", function(data){
+		if(data != "" && data[queryStr] != undefined){
 			if(document.getElementById("edit_client_block").style.display == "none") return true;
-			if(response.search("Sorry!") == -1) {
-				if(response.search(queryStr) != -1) {
-					var retData = response.split("pre")[1].split("(hex)")[1].split(queryStr)[0].split("<b>");
-					document.getElementById('manufacturer_field').value = retData[0].trim();
-					document.getElementById('manufacturer_field').title = "";
-					if(retData[0].trim().length > 38) {
-						document.getElementById('manufacturer_field').value = retData[0].trim().substring(0, 36) + "..";
-						document.getElementById('manufacturer_field').title = retData[0].trim();
-					}
-				}
+			var vendor_name = data[queryStr].trim();
+			document.getElementById('manufacturer_field').value = vendor_name;
+			document.getElementById('manufacturer_field').title = "";
+			if(vendor_name.length > 38) {
+				document.getElementById('manufacturer_field').value = vendor_name.substring(0, 36) + "..";
+				document.getElementById('manufacturer_field').title = vendor_name;
 			}
 		}
 	});

@@ -221,6 +221,9 @@
 #define ACMAJORREV_4(phy_rev) \
 	(ACREV_IS(phy_rev, 12) || ACREV_IS(phy_rev, 24))
 
+#define ACMAJORREV_51_131(phy_rev) \
+	(ACREV_IS(phy_rev, 51) || ACREV_IS(phy_rev, 131))
+
 #define ACMAJORREV_3(phy_rev) \
 	(ACREV_IS(phy_rev, 4) || ACREV_IS(phy_rev, 7) || ACREV_IS(phy_rev, 10) || \
 	 ACREV_IS(phy_rev, 11) || ACREV_IS(phy_rev, 13) || ACREV_IS(phy_rev, 16) || \

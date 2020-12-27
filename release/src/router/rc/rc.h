@@ -1620,6 +1620,10 @@ extern void stop_sshd(void);
 extern void start_wtfast(void);
 extern void stop_wtfast(void);
 #endif
+#ifdef RTCONFIG_TENCENT_QMACC
+extern void start_qmacc(void);
+extern void stop_qmacc(void);
+#endif
 extern void start_hotplug2(void);
 extern void stop_services(void);
 extern void stop_services_mfg(void);

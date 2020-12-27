@@ -171,21 +171,32 @@ enet_fwdcb_register(enet_fwdcb_t fwdcb)
 }
 EXPORT_SYMBOL(enet_fwdcb_register);
 #else /* IQOS_DUMMY_FN */
+static void bcm_sw_gso_recycle_func(void *pNBuff, unsigned long context, uint32_t flags);
 struct sk_buff *
 bcm_iqoshdl_wrapper(struct net_device *dev, void *pNBuff)
 {
 	struct sk_buff *skb = NULL;
 	FkBuff_t * pFkb = NULL;
 
-	pFkb = PNBUFF_2_FKBUFF((pNBuff_t)pNBuff);
-	if ( !pFkb)
-	    return (NULL);
+	if (!pNBuff) {
+		return NULL;
+	}
 
-	/*allocate skb & initialize it using fkb */
+	if (IS_FKBUFF_PTR(pNBuff)) {
+		pFkb = PNBUFF_2_FKBUFF(pNBuff);
+		if (pFkb->recycle_hook == bcm_sw_gso_recycle_func) {
+			return FKB_FRM_GSO;
+		}
+	        skb = nbuff_xlate((pNBuff_t )pNBuff);
 
-	skb = skb_xlate_dp(pFkb, NULL);
-	if (!skb)
-		return (NULL);
+		if (skb == NULL) {
+			return NULL;
+		}
+	} else {
+		skb = PNBUFF_2_SKBUFF(pNBuff);
+		return skb;
+	}
+
 	skb->fkb_mark = pFkb->mark;
 	skb->priority = pFkb->priority;
 	skb->dev = dev;

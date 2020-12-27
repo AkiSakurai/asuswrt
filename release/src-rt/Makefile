@@ -74,15 +74,16 @@ export BCM_CHIP := $(BRCM_CHIP)
 else
 export BCM_CHIP := $(CUR_CHIP_PROFILE)
 endif
-else
+else # non-675x
 export PROFILE ?= 94908HND
+export BRCM_CHIP := 4908
 export BCM_CHIP := 4908
-endif
+endif # HND_ROUTER_AX_675X
 export SRCBASE := $(shell pwd | sed 's/\(.*src-rt-.*hnd.*\).*/\1\/bcmdrivers\/broadcom\/net\/wl\/bcm9$(BCM_CHIP)\/main\/src/')
 export SRC_ROOT := $(HND_SRC)/../src
 export BUSYBOX := busybox-1.24.1
 export BUSYBOX_DIR := $(SRCBASE)/router/busybox-1.24.1/busybox-1.24.1
-else
+else # non-hnd
 export SRCBASE := $(shell pwd)
 ifeq ($(or $(BCM7),$(BCM_7114),$(BCM9)),y)
 export SRC_ROOT := $(SRCBASE)/../../src
@@ -91,7 +92,7 @@ export SRC_ROOT := $(SRCBASE)/../src
 endif
 export BUSYBOX := busybox-1.17.4
 export BUSYBOX_DIR := $(SRCBASE)/router/$(BUSYBOX)
-endif
+endif # HND_ROUTER
 export SRCBASEDIR := $(shell pwd | sed 's/.*release\///g')
 RELEASEDIR := $(shell (cd $(SRC_ROOT)/.. && pwd -P))
 export PATH := $(RELEASEDIR)/tools:$(SRCBASE)/ctools:$(PATH)
@@ -2936,6 +2937,10 @@ define RouterOptions
 	if [ -n "$(CAPTCHA)" ]; then \
 		sed -i "/RTCONFIG_CAPTCHA/d" $(1); \
 		echo "RTCONFIG_CAPTCHA=y" >>$(1); \
+	fi; \
+	if [ -n "$(TENCENT_QMACC)" ]; then \
+		sed -i "/RTCONFIG_TENCENT_QMACC/d" $(1); \
+		echo "RTCONFIG_TENCENT_QMACC=y" >>$(1); \
 	fi; \
 	)
 	$(call platformRouterOptions, $(1))

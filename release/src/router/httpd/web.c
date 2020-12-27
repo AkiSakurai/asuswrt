@@ -313,8 +313,6 @@ static int nvram_check_and_set(char *name, char *value);
 static int nvram_check_and_set_for_prefix(char *name, char *tmp, char *value);
 #define wan_prefix(unit, prefix)	snprintf(prefix, sizeof(prefix), "wan%d_", unit)
 
-#define nvram_default_safe_get(name) (nvram_default_get(name) ? : "")
-
 /*
 #define csprintf(fmt, args...) do{\
 	FILE *cp = fopen("/dev/console", "w");\
@@ -4565,7 +4563,7 @@ static int ej_update_variables(int eid, webs_t wp, int argc, char_t **argv) {
 				if(strcmp(action_script, "saveNvram"))
 				{
 #ifdef RTCONFIG_CFGSYNC
-					if (is_cfg_server_ready())
+					if (cfg_changed && is_cfg_server_ready())
 					{
 						/* trigger cfg_server to send notification */
 						kill_pidfile_s(CFG_SERVER_PID, SIGUSR2);
@@ -4581,7 +4579,7 @@ static int ej_update_variables(int eid, webs_t wp, int argc, char_t **argv) {
 #ifdef RTCONFIG_CFGSYNC
 				else if (strcmp(action_script, "saveNvram") == 0)
 				{
-					if (is_cfg_server_ready())
+					if (cfg_changed && is_cfg_server_ready())
 					{
 						/* trigger cfg_server to send notification */
 						kill_pidfile_s(CFG_SERVER_PID, SIGUSR2);
@@ -10650,7 +10648,7 @@ apply_cgi(webs_t wp, char_t *urlPrefix, char_t *webDir, int arg,
 
 		if(action_para && strlen(action_para) > 0) {
 #ifdef RTCONFIG_CFGSYNC
-			if (is_cfg_server_ready())
+			if (cfg_changed && is_cfg_server_ready())
 			{
 				json_object *cfg_root = NULL;
 
@@ -13182,24 +13180,33 @@ err:
 static void
 do_upload_cert_key_cgi(char *url, FILE *stream)
 {
-	_dprintf("do_upload_cert_key_cgi\n");
+	//_dprintf("do_upload_cert_key_cgi\n");
 }
 #endif
 
 static void
-do_download_cert_key_cgi(char *url, FILE *stream)
+do_download_cert_key_cgi(char *url, FILE *stream)//for DUT
 {
-	_dprintf("do_download_cert_key_cgi\n");
 	eval("tar", "cf",
 		"/tmp/cert_key.tar",
 		"-C",
 		"/etc",
 		"cert.pem",
-		"key.pem",
-		"server.pem",
-		"cert.crt"
+		"key.pem"
 		);
 	do_file("/tmp/cert_key.tar", stream);
+}
+
+static void
+do_download_cert_cgi(char *url, FILE *stream)//for browser
+{
+	eval("tar", "cf",
+		"/tmp/cert.tar",
+		"-C",
+		"/etc",
+		"cert.crt"
+		);
+	do_file("/tmp/cert.tar", stream);
 }
 
 // Viz 2010.08
@@ -16641,19 +16648,19 @@ do_amazon_wss_cgi(char *url, FILE *stream)
 
 	if(!isValidEnableOption(wss_enable, 1)){
 		HTTPD_DBG("invalid enabled option\n");
-		ret = 4001;
+		ret = HTTP_INVALID_ENABLE_OPT;
 		goto FINISH;
 	}
 
 	if(!isValidEnableOption(do_rc, 1)){
 		HTTPD_DBG("invalid enabled option\n");
-		ret = 4002;
+		ret = HTTP_INVALID_ENABLE_OPT;
 		goto FINISH;
 	}
 
 	if(num_of_mssid_support(0) < 2){
 		HTTPD_DBG("mssid is not support\n");
-		ret = 4003;
+		ret = HTTP_INVALID_SUPPORT;
 		goto FINISH;
 	}
 
@@ -17246,6 +17253,7 @@ struct mime_handler mime_handlers[] = {
 	{ "upload_cert_key.cgi*", "text/html", no_cache_IE7, do_upload_cert_key, do_upload_cert_key_cgi, do_auth },
 #endif
 	{ "cert_key.tar", "application/force-download", NULL, do_html_post_and_get, do_download_cert_key_cgi, do_auth },
+	{ "cert.tar", "application/force-download", NULL, do_html_post_and_get, do_download_cert_cgi, do_auth },
 #if defined(RTCONFIG_IFTTT) || defined(RTCONFIG_ALEXA)
 	{ "get_IFTTTPincode.cgi", "text/html", no_cache_IE7, do_html_post_and_get, do_get_IFTTTPincode_cgi, do_auth },
 	{ "send_IFTTTPincode.cgi", "text/html", no_cache_IE7, do_html_post_and_get, do_send_IFTTTPincode_cgi, do_auth },

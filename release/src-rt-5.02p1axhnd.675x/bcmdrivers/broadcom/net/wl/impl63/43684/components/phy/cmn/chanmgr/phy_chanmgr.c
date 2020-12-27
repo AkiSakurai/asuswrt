@@ -297,6 +297,18 @@ wlc_phy_is_smth_en(wlc_phy_t *ppi)
 	}
 }
 
+void
+wlc_phy_bypass_idletssi_init(wlc_phy_t *ppi, bool force)
+{
+	phy_info_t *pi = (phy_info_t*)ppi;
+	phy_chanmgr_info_t *chanmgri = pi->chanmgri;
+	phy_type_chanmgr_fns_t *fns = chanmgri->fns;
+
+	if (fns->bypass_itssi != NULL) {
+		(fns->bypass_itssi)(fns->ctx, force);
+	}
+}
+
 int
 wlc_phy_chanspec_bandrange_get(phy_info_t *pi, chanspec_t chanspec)
 {

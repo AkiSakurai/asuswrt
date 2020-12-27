@@ -7661,7 +7661,6 @@ fwder_bypass:
 				continue;
 		}
 #endif /* BCM_BLOG */
-
 		PKTCLRFCDONE(pktbuf);
 #if defined(BCM_NBUFF_PKT_BPM)
 		/* Legacy slow path through stack which accepts skb

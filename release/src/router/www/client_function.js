@@ -1233,29 +1233,22 @@ function select_image(type,  vender) {
 
 function oui_query_card(mac) {
 	var queryStr = mac.replace(/\:/g, "").splice(6,6,"");
-	$.ajax({
-	    url: 'https://services11.ieee.org/RST/standards-ra-web/rest/assignments/download/?registry=MA-L&format=html&text='+ queryStr,
-		type: 'GET',
-		success: function(response) {
-			if(document.getElementById("edit_client_block") == null) return true;
-			if(mac != document.getElementById("client_macaddr_field").value) {//avoid click two device quickly
-				oui_query_card(document.getElementById("client_macaddr_field").value);
-			}
-			else {
-				if(response.search("Sorry!") == -1) {
-					if(response.search(queryStr) != -1) {
-						var retData = response.split("pre")[1].split("(hex)")[1].split(queryStr)[0].split("<b>");
-						document.getElementById("client_manufacturer_field").value = retData[0].trim();
-						document.getElementById("client_manufacturer_field").title = "";
-						if(retData[0].trim().length > 38) {
-							document.getElementById("client_manufacturer_field").value = retData[0].trim().substring(0, 36) + "..";
-							document.getElementById("client_manufacturer_field").title = retData[0].trim();
-						}
-					}
+	if(mac != document.getElementById("client_macaddr_field").value) //avoid click two device quickly
+		oui_query_card(document.getElementById("client_macaddr_field").value);
+	else{
+		$.getJSON("http://nw-dlcdnet.asus.com/plugin/js/ouiDB.json", function(data){
+			if(data != "" && data[queryStr] != undefined){
+				if(document.getElementById("edit_client_block") == null) return true;
+				var vendor_name = data[queryStr].trim();
+				document.getElementById("client_manufacturer_field").value = vendor_name;
+				document.getElementById("client_manufacturer_field").title = "";
+				if(vendor_name.length > 38) {
+					document.getElementById("client_manufacturer_field").value = vendor_name.substring(0, 36) + "..";
+					document.getElementById("client_manufacturer_field").title = vendor_name;
 				}
 			}
-		}
-	});
+		});
+	}
 }
 
 /*

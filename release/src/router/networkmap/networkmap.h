@@ -151,7 +151,7 @@ typedef struct {
 	unsigned char	ip_addr[MAX_NR_CLIENT_LIST][4];
 	unsigned char	mac_addr[MAX_NR_CLIENT_LIST][6];
 	unsigned char	user_define[MAX_NR_CLIENT_LIST][16];
-	unsigned char	vendor_name[MAX_NR_CLIENT_LIST][32];
+	unsigned char	vendor_name[MAX_NR_CLIENT_LIST][128];
 	unsigned char	device_name[MAX_NR_CLIENT_LIST][32];
 	unsigned char	apple_model[MAX_NR_CLIENT_LIST][16];
 	unsigned char	type[MAX_NR_CLIENT_LIST];

@@ -87,6 +87,7 @@ extern struct sk_buff *bcm_iqoshdl_wrapper(struct net_device *dev, void *pNBuff)
 	do {(ct) = ((struct nf_conn *)(*(unsigned long *)&(skb)->mark)); \
 		(skb)->mark = ((struct nf_conn *)(ct))->cb.skb_mark;} while (0)
 
+#define FKB_FRM_GSO	((void *)-1)
 #define DEVQXMIT  (1 << 15)
 #define PKTDEVQXMIT(skb) \
     ({ \

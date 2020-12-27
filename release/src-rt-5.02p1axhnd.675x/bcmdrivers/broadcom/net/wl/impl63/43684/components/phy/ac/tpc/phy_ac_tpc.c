@@ -643,8 +643,14 @@ WLBANDINITFN(phy_ac_tpc_init)(phy_type_tpc_ctx_t *ctx)
 	uint8 core;
 
 	FOREACH_CORE(tpci->pi, core) {
-		tpci->ti->data->base_index_init[core] = 20;
-		tpci->ti->data->base_index_cck_init[core] = 20;
+		if (ACMAJORREV_51_131(pi->pubpi->phy_rev)) {
+			tpci->ti->data->base_index_init[core] = 50;
+			tpci->ti->data->base_index_cck_init[core] =
+				tpci->ti->data->base_index_init[core];
+		} else {
+			tpci->ti->data->base_index_init[core] = 20;
+			tpci->ti->data->base_index_cck_init[core] = 20;
+		}
 #ifdef PREASSOC_PWRCTRL
 		tpci->pwr_ctrl_save->status_idx_carry_2g[core] = FALSE;
 		tpci->pwr_ctrl_save->status_idx_carry_5g[core] = FALSE;
@@ -3305,8 +3311,10 @@ wlc_phy_txpwrctrl_pwr_setup_srom12_acphy(phy_info_t *pi)
 		       (RADIOREV(pi->pubpi->radiorev) == 8) ||
 		       (ACMAJORREV_5(pi->pubpi->phy_rev))) {
 			iidx = 20;
+		    } else if (ACMAJORREV_51_131(pi->pubpi->phy_rev)) {
+				iidx = ti->data->base_index_init[core];
 		    } else {
-			iidx = 50;
+				iidx = 50;
 		    }
 			if (!pi->tpci->data->ovrinitbaseidx) {
 				MOD_PHYREGCEE(pi, TxPwrCtrlInit_path, core,
@@ -5302,7 +5310,11 @@ wlc_phy_txpwrctrl_enable_acphy(phy_info_t *pi, uint8 ctrl_type)
 		if (wlc_phy_txpwrctrl_ison_acphy(pi)) {
 			FOREACH_ACTV_CORE(pi, rx_coremask, core) {
 				tpci->txpwrindex_hw_save[core] =
-					READ_PHYREGFLDCE(pi, TxPwrCtrlStatus_path, core, baseIndex);
+					((ACMAJORREV_51_131(pi->pubpi->phy_rev) &&
+					tpci->txpwrindex_hw_save[core] == 128) ?
+					tpci->ti->data->base_index_init[core] :
+					READ_PHYREGFLDCE(pi, TxPwrCtrlStatus_path, core,
+					baseIndex));
 				PHY_TXPWR(("wl%d: %s PWRCTRL: %d Cache Baseindex: %d Core: %d\n",
 					pi->sh->unit, __FUNCTION__, ctrl_type,
 					tpci->txpwrindex_hw_save[core], core));

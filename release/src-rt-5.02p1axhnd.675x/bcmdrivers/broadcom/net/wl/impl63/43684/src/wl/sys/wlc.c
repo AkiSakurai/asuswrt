@@ -2817,6 +2817,7 @@ void BCMINITFN(wlc_init)(wlc_info_t *wlc)
 			wlc_quiet_chanspec(wlc->cmi, chanspec)) {
 		mute = TRUE;
 	}
+	wlc_phy_bypass_idletssi_init(WLC_PI(wlc), mute);
 #ifdef WL_SARLIMIT
 	/* initialize SAR limit per SROM */
 	wlc_channel_sar_init(wlc->cmi);

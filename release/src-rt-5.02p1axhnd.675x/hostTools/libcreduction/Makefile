@@ -45,11 +45,11 @@ SHLIBS32 := $(shell find -L $(BIN_INSTALL_DIRS) $(INSTALL_DIR)/lib $(INSTALL_DIR
 endif
 
 # Get list of all required 64-bit libraries in final image
-SHLIBS64 := $(shell find -L $(BIN_INSTALL_DIRS) $(INSTALL_DIR)/lib $(INSTALL_DIR)/usr/lib -type f | file -f - \
+SHLIBS64 := $(shell find -L $(INSTALL_DIR) -type f | file -f - \
              | grep "ELF 64-bit" )
 
 ifneq ($(SHLIBS64),)
-SHLIBS64 := $(shell find -L $(BIN_INSTALL_DIRS) $(INSTALL_DIR)/lib $(INSTALL_DIR)/usr/lib -type f | file -f - \
+SHLIBS64 := $(shell find -L $(INSTALL_DIR) -type f | file -f - \
              | grep "ELF 64-bit" | cut -d':' -f1 | xargs $(READELF) -d | grep NEEDED \
 	     | cut -d'[' -f2 | sed -e 's/]//g' | sort | uniq)
 endif
@@ -176,7 +176,7 @@ SHLIBS64 := $(filter-out $(LINKER64),$(SHLIBS64))
 SHLIBS64 += $(EXTRALIBS64)
 
 # Remove all shared libs which are already present in INSTALL_DIR/lib
-EXP_TOOLCHAIN_LIBS64 := $(shell for j in $(SHLIBS64); do if test -n "$$(find -L $(INSTALL_DIR)/lib/$(INSTALL_SUFFIX64) -name $$j)" \
+#EXP_TOOLCHAIN_LIBS64 := $(shell for j in $(SHLIBS64); do if test -n "$$(find -L $(INSTALL_DIR)/lib/$(INSTALL_SUFFIX64) -name $$j)" \
                                ; then echo ""; else echo $$j; fi; done;)
 EXP_TOOLCHAIN_LIBS64 := $(shell for j in $(EXP_TOOLCHAIN_LIBS64); do if test -n "$$(find -L $(INSTALL_DIR)/usr/lib/$(INSTALL_SUFFIX64) -name $$j)" \
                                ; then echo ""; else echo $$j; fi; done;)

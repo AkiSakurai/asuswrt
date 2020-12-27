@@ -807,6 +807,13 @@ _wmf_forward(void *wrapper, void *p, uint32 mgrp_ip,
 	osl_t *osh;
 	int err;
 
+#ifdef BCM_NBUFF_WLMCAST
+	if (rt_port & 0x80) {
+		_wmf_forward(wrapper, p, mgrp_ip, txif, (rt_port & 0x7f));
+		return WMF_TAKEN;
+	}
+#endif
+
 	osh = wlc->osh;
 	scb = (struct scb *)txif;
 

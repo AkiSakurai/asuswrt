@@ -8612,6 +8612,10 @@ int init_nvram(void)
 					set_lan_phy("eth4 eth3 eth1 eth5");
 				else if (nvram_match("wans_lanport", "4"))
 					set_lan_phy("eth4 eth3 eth2 eth5");
+#ifdef RTCONFIG_EXTPHY_BCM84880
+				else if (nvram_match("wans_lanport", "5"))
+					set_lan_phy("eth4 eth3 eth2 eth1");
+#endif
 			}
 			else
 				set_lan_phy("eth4 eth3 eth2 eth1 eth5");
@@ -8627,14 +8631,17 @@ int init_nvram(void)
 				for(unit = WAN_UNIT_FIRST; unit < WAN_UNIT_MAX; ++unit) {
 					if (get_dualwan_by_unit(unit) == WANS_DUALWAN_IF_LAN) {
 						if (nvram_match("wans_lanport", "1"))
-							sprintf(wan_if, "eth4");
+							add_wan_phy("eth4");
 						else if (nvram_match("wans_lanport", "2"))
-							sprintf(wan_if, "eth3");
+							add_wan_phy("eth3");
 						else if (nvram_match("wans_lanport", "3"))
-							sprintf(wan_if, "eth2");
+							add_wan_phy("eth2");
 						else if (nvram_match("wans_lanport", "4"))
-							sprintf(wan_if, "eth1");
-						add_wan_phy(wan_if);
+							add_wan_phy("eth1");
+#ifdef RTCONFIG_EXTPHY_BCM84880
+						else if (nvram_match("wans_lanport", "5"))
+							add_wan_phy("eth5");
+#endif
 					}
 					else if (get_dualwan_by_unit(unit) == WANS_DUALWAN_IF_2G)
 						add_wan_phy("eth6");
@@ -10564,6 +10571,12 @@ NO_USB_CAP:
 
 #ifdef RTCONFIG_HTTPS
 	add_rc_support("HTTPS");
+
+	/* workaround : openssl self-signed certificate from old firmware version */
+	// force to enable https_crt_save to store certificate
+	if (nvram_get_int("https_crt_save") == 0) {
+		nvram_set_int("https_crt_save", 1);
+	}
 #ifdef RTCONFIG_LETSENCRYPT
 	add_rc_support("letsencrypt");
 #endif
@@ -10651,7 +10664,7 @@ NO_USB_CAP:
 #endif
 #endif
 
-#ifdef RTCONFIG_WPS_ALLLED_BTN
+#if defined(RTCONFIG_WPS_ALLLED_BTN) || (!defined(RTCONFIG_LED_BTN) && !defined(RTCONFIG_WIFI_TOG_BTN) && !defined(RTCONFIG_QCA))
 	add_rc_support("cfg_wps_btn");
 #endif
 
@@ -10833,10 +10846,6 @@ NO_USB_CAP:
 #ifdef RTCONFIG_AMAZON_WSS
 	add_rc_support("amazon_wss"); // depends on gn_wbl
 #endif
-#endif
-
-#if !defined(RTCONFIG_WIFI_TOG_BTN) && !defined(RTCONFIG_QCA)
-	add_rc_support("cfg_wps_btn");
 #endif
 
 #ifdef RTCONFIG_PIPEFW
@@ -12543,7 +12552,8 @@ dbg("boot/continue fail= %d/%d\n", nvram_get_int("Ate_boot_fail"),nvram_get_int(
 #endif
 			start_wan();
 
-#if defined(RTCONFIG_HND_ROUTER_AX) && !defined(RTCONFIG_HND_ROUTER_AX_675X)
+#if defined(RTCONFIG_HND_ROUTER_AX)
+#if defined(RTCONFIG_HND_ROUTER_AX_6710) || !defined(RTCONFIG_HND_ROUTER_AX_675X)
 			char word[64], *next;
 _dprintf("%s %d turnning on power on ethernet here\n", __func__, __LINE__);
 
@@ -12551,8 +12561,18 @@ _dprintf("%s %d turnning on power on ethernet here\n", __func__, __LINE__);
 				int unit = WAN_UNIT_FIRST;
 
 				foreach(word, nvram_safe_get("wan_ifnames"), next){
-					if(dualwan_unit__nonusbif(unit))
+					if(dualwan_unit__nonusbif(unit)){
+#ifdef RTCONFIG_EXTPHY_BCM84880
+#if defined(RTAX86U) || defined(RTAX5700)
+						if(!strcmp(word, "eth0") && nvram_get_int("ext_phy_model") == 0 && nvram_get_int("wans_extwan")){
+							eth_phypower(word, 0);
+							sleep(1);
+						}
+#endif
+#endif
+
 						eth_phypower(word, 1);
+					}
 
 					++unit;
 				}
@@ -12560,14 +12580,6 @@ _dprintf("%s %d turnning on power on ethernet here\n", __func__, __LINE__);
 			else{
 				foreach(word, nvram_safe_get("eth_ifnames"), next)
 					eth_phypower(word, 1);
-			}
-#endif
-#ifdef RTCONFIG_EXTPHY_BCM84880
-#if defined(RTAX86U) || defined(RTAX5700)
-			if(nvram_get_int("ext_phy_model") == 0 && nvram_get_int("wans_extwan")){
-				// when BCM84880 is as a WAN port, it needs to be reset once
-_dprintf("%s %d reset EXTPhy here\n", __func__, __LINE__);
-				eval("ethctl", "phy", "ext", EXTPHY_ADDR_STR, "0x10000", "0x8000");
 			}
 #endif
 #endif

@@ -446,7 +446,7 @@ function applyRule(){
 			}
 		}
 		
-		var re_asus = new RegExp("^[a-zA-Z][0-9]{9,10}","gi");
+		var re_asus = new RegExp("^[a-zA-Z][0-9]{8,11}","gi");
 		var re_crs = new RegExp("^[0-9]{5}","gi");
 		var re_valid = 0;
 		if(document.form.fb_serviceno.value != ""){

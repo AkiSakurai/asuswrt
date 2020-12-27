@@ -387,6 +387,10 @@ ifeq ($(RTCONFIG_WTFAST),y)
 OBJS += wtfast.o
 endif
 
+ifeq ($(RTCONFIG_TENCENT_QMACC),y)
+OBJS += qmacc.o
+endif
+
 ifeq ($(or $(RTCONFIG_PPTPD),$(RTCONFIG_ACCEL_PPTPD)),y)
 OBJS += vpn.o
 endif

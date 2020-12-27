@@ -404,20 +404,13 @@ function oui_query_full_vendor(mac){
 	else {
 		if('<% nvram_get("x_Setting"); %>' == '1' && wanConnectStatus && clientList[mac].internetState) {
 			var queryStr = mac.replace(/\:/g, "").splice(6,6,"");
-			$.ajax({
-			 	url: 'https://services11.ieee.org/RST/standards-ra-web/rest/assignments/download/?registry=MA-L&format=html&text='+ queryStr,
-				type: 'GET',
-			 	success: function(response) {
+			var overlibStrTmp = retOverLibStr(clientList[mac]);
+			$.getJSON("http://nw-dlcdnet.asus.com/plugin/js/ouiDB.json", function(data){
+				if(data != "" && data[queryStr] != undefined){
 					if(overlib.isOut) return nd();
-
-					var overlibStrTmp = retOverLibStr(clientList[mac]);
-					if(response.search("Sorry!") == -1) {
-						if(response.search(queryStr) != -1) {
-							var retData = response.split("pre")[1].split("(base 16)")[1].replace("PROVINCE OF CHINA", "R.O.C").split("</");
-							overlibStrTmp += "<p><span>.....................................</span></p><p style='margin-top:5px'><#Manufacturer#> :</p>";
-							overlibStrTmp += retData[0];
-						}
-					}
+					var vendor_name = data[queryStr].trim();
+					overlibStrTmp += "<p><span>.....................................</span></p><p style='margin-top:5px'><#Manufacturer#> :</p>";
+					overlibStrTmp += vendor_name;
 					return overlib(overlibStrTmp);
 				}
 			});

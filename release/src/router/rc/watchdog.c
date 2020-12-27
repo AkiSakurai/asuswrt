@@ -2512,9 +2512,8 @@ static inline void __handle_led_onoff_button(int led_onoff)
 		/* check LED_WAN status */
 		kill_pidfile_s("/var/run/wanduck.pid", SIGUSR2);
 	}
-	else {
+	else
 		setAllLedOff();
-	}
 }
 #elif ((defined(RTCONFIG_LED_BTN) || defined(RTCONFIG_TURBO_BTN)) && defined(RTCONFIG_HND_ROUTER_AX))
 static inline void __handle_led_onoff_button(int led_onoff)
@@ -2545,9 +2544,8 @@ static inline void __handle_led_onoff_button(int led_onoff)
 #endif
 		kill_pidfile_s("/var/run/usbled.pid", SIGTSTP); // inform usbled to reset status
 	}
-	else {
+	else
 		setAllLedOff();
-	}
 }
 #else
 static inline void __handle_led_onoff_button(int led_onoff) { }
@@ -3426,10 +3424,6 @@ void btn_check(void)
 #ifdef RTCONFIG_EXTPHY_BCM84880
 #if defined(RTAX86U) || defined(RTAX5700)
 			if(nvram_get_int("ext_phy_model") == 0){
-				if(nvram_get_int("wans_extwan")){
-					led_control(LED_LAN, LED_ON);
-				}
-
 				eval("ethctl", "phy", "ext", EXTPHY_ADDR_STR, "0x1a832", "0x6");	// default. CTL LED3 MASK LOW
 				eval("ethctl", "phy", "ext", EXTPHY_ADDR_STR, "0x1a835", "0x40");	// default. CTL LED4 MASK LOW
 			}
@@ -5069,6 +5063,15 @@ void led_check(int sig)
 		led_table_ctrl(LED_OFF);
 		swled_alloff_x++;
 		_dprintf("force turnoff led table again!\n");
+#ifdef RTCONFIG_EXTPHY_BCM84880
+#if defined(RTAX86U) || defined(RTAX5700)
+		if(nvram_get_int("ext_phy_model") == 0){
+			if(nvram_get_int("wans_extwan")){
+				eval("ethctl", "phy", "ext", EXTPHY_ADDR_STR, "0x1a835", "0x0");	// CTL LED4 MASK LOW
+			}
+		}
+#endif
+#endif
 		return;
 	}
 

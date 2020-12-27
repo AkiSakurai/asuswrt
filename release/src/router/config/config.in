@@ -1948,3 +1948,11 @@ config RTCONFIG_AMAS_ADTBW
 config RTCONFIG_CAPTCHA
 	bool "Web UI supprts captcha"
 	default n
+
+config RTCONFIG_TENCENT_QMACC
+	bool "Tencent game acceleration support"
+	default n
+
+config RTCONFIG_BCMRGBLED
+	bool "Brcm RGB LED"
+	default n

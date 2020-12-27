@@ -81,6 +81,8 @@
 
 
 var wans_caps = '<% nvram_get("wans_cap"); %>';
+if(based_modelid == "GT-AX11000" || based_modelid == "RT-AX86U")
+	wans_caps = wans_caps + " lan2";
 var wans_routing_rulelist_array = [];
 var wans_flag;
 var switch_stb_x = '<% nvram_get("switch_stb_x"); %>';
@@ -219,6 +221,9 @@ function form_show(v){
 		if(based_modelid == "GT-AX11000" || based_modelid == "RT-AX86U"){
 			if( (wans_dualwan_array[0] == "wan" && document.form.wans_extwan.value == "1") ||
 				(wans_dualwan_array[0] == "lan" && document.form.wans_lanport.value == "5" && document.form.wans_extwan.value == "0") ){
+				var wans_caps_tmp = wans_caps_secondary.split(" ");
+				wans_caps_tmp = wans_caps_tmp.slice(1);
+				addWANOption(document.form.wans_second, wans_caps_tmp);
 				document.form.wans_primary.value = "lan2";
 			}
 			else{
@@ -245,6 +250,14 @@ function form_show(v){
 				if(wans_caps.search("wan2") >= 0)
 					document.form.wans_second.value = "wan2";
 				else if(wans_caps.search("usb") >= 0)
+					document.form.wans_second.value = "usb";
+				else
+					document.form.wans_second.value = "lan";
+			}
+			else if((wans_dualwan_array[0] == "wan" && document.form.wans_extwan.value == "1") ||
+					(wans_dualwan_array[0] == "lan" && document.form.wans_lanport.value == "5" && document.form.wans_extwan.value == "0")){
+
+				if(wans_caps.search("usb") >= 0)
 					document.form.wans_second.value = "usb";
 				else
 					document.form.wans_second.value = "lan";
@@ -575,20 +588,28 @@ function addWANOption(obj, wanscapItem){
 				wanscapName = "Ethernet LAN";
 			else if(wanscapName == "USB" && (based_modelid == "4G-AC53U" || based_modelid == "4G-AC55U" || based_modelid == "4G-AC68U"))
 				wanscapName = "<#Mobile_title#>";
-			obj.options[i] = new Option(wanscapName, wanscapItem[i]);
-		}
+			else if(wanscapName == "LAN2"){
+				wanscapName = "2.5G WAN";
+			}
 
-		if((based_modelid == "GT-AX11000" || based_modelid == "RT-AX86U") && i == wanscapItem.length-1){
-			obj.options[i+1] = new Option("2.5G WAN", "lan2");
+			obj.options[i] = new Option(wanscapName, wanscapItem[i]);
 		}
 	}
 }
 
-function changeWANProto(obj){	
+function changeWANProto(obj){
 	if(wans_flag == 1){	//dual WAN on
+		if(obj.name == "wans_primary" && (based_modelid == "RT-AX86U" || based_modelid == "GT-AX11000")){
+			var wans_caps_tmp = wans_caps_secondary.split(" ");
+			if(obj.value == "lan2"){
+				wans_caps_tmp = wans_caps_tmp.slice(1);
+			}
+			addWANOption(document.form.wans_second, wans_caps_tmp);
+		}
+
 		if(document.form.wans_primary.value == document.form.wans_second.value){
 			if(obj.name == "wans_primary"){
-				if (obj.value == "dsl"){				
+				if (obj.value == "dsl"){
 					if(wans_caps.search("wan") >= 0)
 						document.form.wans_second.value = "wan";
 					else if(wans_caps.search("wan2") >= 0)
@@ -598,7 +619,7 @@ function changeWANProto(obj){
 					else
 						document.form.wans_second.value = "lan";
 				}
-				else if(obj.value == "wan"){				
+				else if(obj.value == "wan"){
 					if(wans_caps.search("wan2") >= 0)
 						document.form.wans_second.value = "wan2";
 					else if(wans_caps.search("usb") >= 0)
@@ -613,14 +634,12 @@ function changeWANProto(obj){
 						document.form.wans_second.value = "lan";
 				}
 				else if(obj.value == "lan2"){
-					if(wans_caps.search("wan") >= 0)
-						document.form.wans_second.value = "wan";
-					else if(wans_caps.search("usb") >= 0)
+					if(wans_caps.search("usb") >= 0)
 						document.form.wans_second.value = "usb";
 				}
 				else{
 					if(wans_caps.search("wan") >= 0)
-						document.form.wans_second.value = "wan";					
+						document.form.wans_second.value = "wan";
 					else if(wans_caps.search("usb") >= 0)
 						document.form.wans_second.value = "usb";
 				}
@@ -637,6 +656,9 @@ function changeWANProto(obj){
 						document.form.wans_primary.value = "lan";
 				}
 				else if(obj.value == "lan2"){
+					var wans_caps_tmp = wans_caps_secondary.split(" ");
+					addWANOption(document.form.wans_second, wans_caps_tmp);
+					document.form.wans_second.value = "lan2";
 					if(wans_caps.search("wan") >= 0)
 						document.form.wans_primary.value = "wan";
 					else if(wans_caps.search("usb") >= 0)
@@ -650,7 +672,7 @@ function changeWANProto(obj){
 					else if(wans_caps.search("wan2") >= 0)
 						document.form.wans_primary.value = "wan2";
 				}
-			}			
+			}
 		}
 
 		if(gobi_support){
@@ -1221,9 +1243,9 @@ function remain_origins(){
 																document.form.wans_mode.value = "lb";
 															else
 																document.form.wans_mode.value = "fo";
+
 															addWANOption(document.form.wans_primary, wans_caps_primary.split(" "));
 															form_show(wans_flag);
-
 														 },
 														 function() {
 															if(wans_caps_primary.indexOf("wan") >= 0 && wans_dualwan_array[0] == "lan"){

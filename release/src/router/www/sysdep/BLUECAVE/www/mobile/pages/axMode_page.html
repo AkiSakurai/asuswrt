@@ -101,8 +101,16 @@
 		})
 
 
-	var _chanspecs_5g =  JSON.parse('<% chanspecs_5g(); %>');
-	var _chanspecs_5g_2 = JSON.parse('<% chanspecs_5g_2(); %>');
+	var _chanspecs_5g = (function(){
+		var temp = '<% chanspecs_5g(); %>';
+		return (temp == '') ? [] : JSON.parse(temp);
+	})();
+
+	var _chanspecs_5g_2 = (function(){
+		var temp = '<% chanspecs_5g_2(); %>';
+		return (temp == '') ? [] : JSON.parse(temp);
+	})();
+
 	var Bcmwifi_support = isSupport("bcmwifi");
 	var bw_160_support = (function(){
 		var count1 = 0;

@@ -566,6 +566,12 @@ ifneq ($(RTCONFIG_WTF_REDEEM)$(RTCONFIG_WTFAST), y)
 	rm -rf $(INSTALLDIR)/www/images/New_ui/GameBoost_QoS.png
 endif
 
+ifneq ($(RTCONFIG_TENCENT_QMACC), y)
+	rm -rf $(INSTALLDIR)/www/images/tencent
+	rm -f $(INSTALLDIR)/www/GameBoost_Tencent.asp
+	rm -f $(INSTALLDIR)/www/game_accelerator_tencent.html
+endif
+
 ifneq ($(RTCONFIG_IPSEC), y)
 	rm -rf $(INSTALLDIR)/www/Advanced_VPN_IPSec.asp
 	rm -rf $(INSTALLDIR)/www/ajax_ipsec.asp
@@ -759,3 +765,15 @@ ifneq ($(RTCONFIG_ROG_UI),y)
 	rm -rf $(INSTALLDIR)/www/GearAccelerator.asp
 endif
 
+ifneq ($(BUILD_NAME),$(filter $(BUILD_NAME), GT-AC2900 GT-AC5300 GT-AX11000 GT-AXE11000 GT-AXY16000 RT-AX82U))
+	rm -rf $(INSTALLDIR)/www/fonts
+endif
+
+ifneq ($(BUILD_NAME),$(filter $(BUILD_NAME), RT-AX82U))
+	rm -rf $(INSTALLDIR)/www/light_effect
+	rm -rf $(INSTALLDIR)/www/images/New_ui/light_effect
+endif
+
+ifneq ($(BUILD_NAME),$(filter $(BUILD_NAME), RT-AX82U RT-AX86U))
+	rm -rf $(INSTALLDIR)/www/css/gundam.css
+endif

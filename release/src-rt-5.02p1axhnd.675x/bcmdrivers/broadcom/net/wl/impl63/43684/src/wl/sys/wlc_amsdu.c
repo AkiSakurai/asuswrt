@@ -1688,6 +1688,8 @@ wlc_amsdu_scb_aggsf_upd(amsdu_info_t *ami, struct scb *scb)
 	wlc_info_t *wlc;
 	scb_amsdu_t *scb_ami;
 	uint8 i, bw, amsdu_aggsf;
+	int peervht1ss = 0;
+	peervht1ss = SCB_VHT_CAP(scb) && !(VHT_MCS_SS_SUPPORTED(2, scb->rateset.vht_mcsmap));
 
 	wlc = ami->wlc;
 	scb_ami = SCB_AMSDU_CUBBY(ami, scb);
@@ -1698,8 +1700,10 @@ wlc_amsdu_scb_aggsf_upd(amsdu_info_t *ami, struct scb *scb)
 	 */
 	if (bw == BW_160MHZ) {
 		amsdu_aggsf = MAX_AMSDU_AGGSF_RELEASE;
+		amsdu_aggsf = (peervht1ss)? MIN(amsdu_aggsf, 2) :amsdu_aggsf;
 	} else if (bw == BW_80MHZ) {
 		amsdu_aggsf = ami->txpolicy.amsdu_max_sframes;
+		amsdu_aggsf = (peervht1ss)? MIN(amsdu_aggsf, 2) :amsdu_aggsf;
 	} else {
 		/* If bandwidth is 40Mhz or 20Mhz, use amsdu_aggsf=2 or less to
 		 * override the per-SCB value.
