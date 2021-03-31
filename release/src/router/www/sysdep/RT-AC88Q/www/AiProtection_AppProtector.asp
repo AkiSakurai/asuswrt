@@ -333,7 +333,7 @@ function addRow_main(obj, length){
 	}
 
 	if(blank_category == 0){
-		alert("The Content Category can not be empty");
+		alert("<#AiProtection_Category_Alert#>");
 		return false;
 	}
 
@@ -593,7 +593,7 @@ function edit_table(){
 		}
 
 		if(blank_category == 0){
-			alert("The Content Category can not be empty");
+			alert("<#AiProtection_Category_Alert#>");
 			return false;
 		}
 	}

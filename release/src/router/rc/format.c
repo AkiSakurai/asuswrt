@@ -116,7 +116,7 @@ void adjust_access_restrict_config(void)
 }
 
 #if defined(RTCONFIG_VPN_FUSION)
-static VPNC_PROFILE vpnc_profile_tmp[MAX_VPNC_PROFILE] = {0};
+static VPNC_PROFILE vpnc_profile_tmp[MAX_VPNC_PROFILE] = {{0}};
 static int vpnc_prof_cnt_tmp;
 
 static int _find_active_vpnc_id()

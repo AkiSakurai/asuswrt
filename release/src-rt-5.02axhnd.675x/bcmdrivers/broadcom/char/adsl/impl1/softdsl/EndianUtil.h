@@ -115,6 +115,7 @@ static __inline uint brev1616(uint x)
 
 #else /* !ADSLDRV_LITTLE_ENDIAN */
 
+#define	ADSL_ENDIAN_CONV_INT64(x)	( (long)(x) )
 #define	ADSL_ENDIAN_CONV_INT32(x)	( (int)(x) )
 #define	ADSL_ENDIAN_CONV_SHORT(x)	( (short)(x) )
 #define	ADSL_ENDIAN_CONV_2SHORTS(x)	( (int)(x) )
@@ -123,5 +124,7 @@ static __inline uint brev1616(uint x)
 #define	ADSL_ENDIAN_CONV_2USHORTS(x)	( (uint)(x) )
 
 #endif /* defined(WINNT) || defined(LINUX_DRIVER) */
+
+#define	ADSL_SWAP_UINT32(x)	( ((x) << 24) | (((x) << 8) & 0x00FF0000) | (((x) >> 8) & 0x0000FF00) | ((uint)(x) >> 24) )
 
 #endif

@@ -4796,6 +4796,13 @@ enum wpa_event_type {
 	  * EVENT_UPDATE_DH - Notification of updated DH information
 	  */
 	EVENT_UPDATE_DH,
+
+#ifdef CONFIG_DRIVER_BRCM
+	/**
+	  * EVENT_INTERFACE_ADDR_CHANGED - Notification of updated ip addr for interface
+	  */
+	EVENT_INTERFACE_IP_ADDR_CHANGED,
+#endif	/* CONFIG_DRIVER_BRCM */
 };
 
 /**

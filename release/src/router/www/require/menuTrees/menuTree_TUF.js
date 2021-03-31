@@ -1,4 +1,4 @@
-﻿/* menuTree_ROG.js */
+/* menuTree_TUF.js */
 define(function(){
 	var menuTree = {
 		list: [
@@ -43,6 +43,14 @@ define(function(){
 				]
 			},
 			{
+				menuName: "AiMesh",
+				index: "menu_AiMesh", 
+				tab: [
+					{url: "AiMesh.asp", tabName: "AiMesh"},
+					{url: "NULL", tabName: "__INHERIT__"}
+				]
+			},
+			{
 				menuName: "<#Guest_Network#>",
 				index: "menu_GuestNetwork",
 				tab: [
@@ -71,10 +79,10 @@ define(function(){
 				] 
 			},
 			{
-				menuName: "网易UU加速器",
+				menuName: "<#UU_Accelerator#>",
 				index: "menu_UU",
 				tab: [
-						{url: "UUAccelerator.asp", tabName: "网易UU加速器"},
+						{url: "UUAccelerator.asp", tabName: "<#UU_Accelerator#>"},
 						{url: "NULL", tabName: "__INHERIT__"}
 				]
 			},
@@ -84,6 +92,14 @@ define(function(){
 				tab: [
 						{url: "GameBoost.asp", tabName: "<#Game_Boost#>"},
 						{url: "NULL", tabName: "__INHERIT__"}
+				]
+			},
+			{
+				menuName: "<#TencentAcceleration#>",
+				index: "menu_TencentAcceleration",
+				tab: [
+					{url: "GameBoost_Tencent.asp", tabName: "<#TencentAcceleration#>"},
+					{url: "NULL", tabName: "__INHERIT__"}
 				]
 			},
 			{
@@ -150,7 +166,15 @@ define(function(){
 					{url: "NULL", tabName: "__INHERIT__"}
 				] 
 			},
-
+			{
+				menuName: "<#Softcenter_tool#>",
+				index: "menu_Tools",
+				tab: [
+					{url: "Tools_Sysinfo.asp", tabName: "Sysinfo"},
+					{url: "Softcenter.asp", tabName: "<#Softcenter_tool#>"},
+					{url: "NULL", tabName: "__INHERIT__"}
+				] 
+			},
 			/* ============================================================================================================ */
 
 			{
@@ -235,6 +259,7 @@ define(function(){
 					{url: "Advanced_VPN_IPSec.asp", tabName: "__INHERIT__"},
 					{url: "Advanced_VPNClient_Content.asp", tabName: (vpn_fusion_support) ? "<#VPN_Fusion#>" : "<#vpnc_title#>"},
 					{url: "Advanced_TOR_Content.asp", tabName: "TOR"},
+					{url: "Advanced_Instant_Guard.asp", tabName: "Instant Guard"},/*untranslated*/
 					{url: "NULL", tabName: "__INHERIT__"}
 				]
 			},
@@ -294,6 +319,22 @@ define(function(){
 					{url: "Advanced_Smart_Connect.asp", tabName: "<#smart_connect_rule#>"},
 					{url: "NULL", tabName: "__INHERIT__"}
 				]
+			},
+			{
+				menuName: "<#Softcenter#>",
+				index: "menu_Split",
+				tab: [
+					{url: "NULL", tabName: "__HIDE__"}
+				]
+			},
+			{
+				menuName: "<#Softcenter#>",
+				index: "menu_Softcenter",
+				tab: [
+					{url: "Main_Soft_center.asp", tabName: "<#Softcenter#>"},
+					{url: "Main_Soft_setting.asp", tabName: "ManualInstall"},
+					{url: "NULL", tabName: "__INHERIT__"}
+				]
 			}
 		],
 
@@ -311,11 +352,19 @@ define(function(){
 					retArray.push("menu_BandwidthMonitor");
 				}
 
+				if(!adaptiveqos_support){	
+					for(i=0; i<menuTree.list.length; i++){
+						if(menuTree.list[i].menuName == '<#Adaptive_QoS#>'){
+							menuTree.list[i].menuName = '<#menu5_3_2#>';
+						}
+					}
+				}
+
 				if(!usb_support){
 					retArray.push("menu_APP");
 				}
 
-				if(!cloudsync_support && !aicloudipk_support){
+				if((!cloudsync_support && !aicloudipk_support) || nocloudsync_support){
 					retArray.push("menu_AiCloud");
 				}
 
@@ -342,6 +391,9 @@ define(function(){
 				if(!wtfast_support) {
 					retArray.push("menu_Wtfast");
 				}
+
+				if(!tencent_qmacc_support)
+					retArray.push("menu_TencentAcceleration");
 
 				if(!uu_support){
 					retArray.push("menu_UU");
@@ -374,14 +426,7 @@ define(function(){
 					retArray.push("menu_VPN");
 					retArray.push("menu_VLAN");
 					retArray.push("menu_Firewall");
-
-					if(!userRSSI_support){
-						retArray.push("menu_Wireless");
-					}
-
-					if(wlc_express != 0){
-						retArray.push("menu_Wireless");
-					}
+					retArray.push("menu_Wireless");
 
 					if(ifttt_support || alexa_support){
 						retArray.push("menu_Alexa_IFTTT");
@@ -427,6 +472,9 @@ define(function(){
 					if(ifttt_support || alexa_support){
 						retArray.push("menu_Alexa_IFTTT");
 					}
+				}
+				else if (<% nvram_get("sc_installed"); %> == "0"){
+					retArray.push("menu_Softcenter");
 				}
 
 				return retArray;
@@ -477,6 +525,9 @@ define(function(){
 				if(!vpnc_support){
 					retArray.push("Advanced_VPNClient_Content.asp");
 				}
+
+				if(!isSupport("Instant_Guard"))
+					retArray.push("Advanced_Instant_Guard.asp");
 
 				if(!ParentalCtrl2_support){
 					retArray.push("ParentalControl.asp");
@@ -575,6 +626,9 @@ define(function(){
 					retArray.push("AdaptiveQoS_ROG.asp");
 				}
 
+				if(!tencent_qmacc_support)
+					retArray.push("GameBoost_Tencent.asp");
+
 				if(!alexa_support){
 					retArray.push("Advanced_Smart_Home_Alexa.asp");
 				}
@@ -639,12 +693,12 @@ define(function(){
 					retArray.push("Advanced_MultiSubnet_Content.asp");
 					retArray.push("Advanced_GWStaticRoute_Content.asp");
 					retArray.push("Advanced_IPTV_Content.asp");
-					retArray.push("Advanced_SwitchCtrl_Content.asp");
 					retArray.push("Main_DHCPStatus_Content.asp");
 					retArray.push("Main_IPV6Status_Content.asp");
 					retArray.push("Main_RouteStatus_Content.asp");
 					retArray.push("Main_IPTStatus_Content.asp");
 					retArray.push("Main_ConnStatus_Content.asp");
+					retArray.push("Advanced_Smart_Connect.asp");
 
 					if(userRSSI_support){
 						retArray.push("Advanced_ACL_Content.asp");
@@ -665,7 +719,6 @@ define(function(){
 					retArray.push("Advanced_MultiSubnet_Content.asp");
 					retArray.push("Advanced_GWStaticRoute_Content.asp");
 					retArray.push("Advanced_IPTV_Content.asp");
-					retArray.push("Advanced_SwitchCtrl_Content.asp");
 					retArray.push("Main_DHCPStatus_Content.asp");
 					retArray.push("Main_IPV6Status_Content.asp");
 					retArray.push("Main_RouteStatus_Content.asp");
@@ -684,7 +737,6 @@ define(function(){
 					retArray.push("Advanced_MultiSubnet_Content.asp");
 					retArray.push("Advanced_GWStaticRoute_Content.asp");
 					retArray.push("Advanced_IPTV_Content.asp");
-					retArray.push("Advanced_SwitchCtrl_Content.asp");
 					retArray.push("Main_DHCPStatus_Content.asp");
 					retArray.push("Main_IPV6Status_Content.asp");
 					retArray.push("Main_RouteStatus_Content.asp");
@@ -722,3 +774,4 @@ define(function(){
 
 	return menuTree;
 });
+

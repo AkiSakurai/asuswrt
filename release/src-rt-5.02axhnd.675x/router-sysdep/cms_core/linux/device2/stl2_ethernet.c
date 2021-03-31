@@ -119,6 +119,7 @@ CmsRet stl_dev2EthernetInterfaceObject(_Dev2EthernetInterfaceObject *obj,
 
    if (cmsUtl_strcmp(obj->status, currentStatus))
    {
+      CmsRet ret;
       UBOOL8 prevStatusWasUp = (cmsUtl_strcmp(obj->status, MDMVS_UP) == 0);
 
       /* link status has changed */
@@ -150,61 +151,52 @@ CmsRet stl_dev2EthernetInterfaceObject(_Dev2EthernetInterfaceObject *obj,
                                            (duplex ? MDMVS_FULL : MDMVS_HALF),
                                            mdmLibCtx.allocFlags);
 
+         /* Eth WAN needs rutQos_tmPortInit() when link goes from down to up,
+            but Eth LAN does not need. rutQos_tmPortInit() for Eth LAN causes
+            "can't map DS port/queue" no-harm error messages on XRDP platform.
+            So we run rutQos_tmPortInit() here for Eth WAN only. */
+         ret = CMSRET_SUCCESS;
          if (obj->upstream)
          {
-            /* Eth WAN UP */
-             CmsRet r2;
-            if ((r2 = rutQos_tmPortInit(obj->name, TRUE)) != CMSRET_SUCCESS)
+            if ((ret = rutQos_tmPortInit(obj->name, TRUE)) != CMSRET_SUCCESS)
             {
-               cmsLog_error("rutQos_tmPortInit() returns error. ret=%d", r2);
+               cmsLog_error("rutQos_tmPortInit() returns error. ret=%d", ret);
             }
-            else
-            {
-#ifdef DMP_DEVICE2_QOS_1
-               /*
-                * Due to complications with DMP_DEVICE2_ETHERNET_INTERFACE
-                * and DMP_DEVICE2_ETHERNET_LINK in Hybrid mode, we need to put
-                * #ifdef DMP_DEVICE2_QOS_1 around just this particular call to
-                * rutQos_reconfigAllQueuesOnLayer2Intf_dev2() because it is
-                * not present in a Hybrid build.
-                */
-               rutQos_reconfigAllQueuesOnLayer2Intf_dev2(obj->name);
-
-               /* some classifications may reference this intf on ingress side,
-                * so check if they need to be reconfigured.
-                */
-               rutQos_reconfigAllClassifications_dev2(obj->name);
-#endif  /* DMP_DEVICE2_QOS_1 */
-            }
-            rutQos_tmPortShaperCfg(obj->name,
-                                   obj->X_BROADCOM_COM_ShapingRate,
-                                   obj->X_BROADCOM_COM_ShapingBurstSize,
-                                   obj->status, obj->upstream);
          }
-         else
+         
+         if (ret == CMSRET_SUCCESS)
          {
-            /* Eth LAN UP */
-            rutQos_tmPortShaperCfg(obj->name,
-                                   obj->X_BROADCOM_COM_ShapingRate,
-                                   obj->X_BROADCOM_COM_ShapingBurstSize,
-                                   obj->status, obj->upstream);
+#ifdef DMP_DEVICE2_QOS_1
+            /*
+             * Due to complications with DMP_DEVICE2_ETHERNET_INTERFACE
+             * and DMP_DEVICE2_ETHERNET_LINK in Hybrid mode, we need to put
+             * #ifdef DMP_DEVICE2_QOS_1 around just this particular call to
+             * rutQos_reconfigAllQueuesOnLayer2Intf_dev2() because it is
+             * not present in a Hybrid build.
+             */
+            rutQos_reconfigAllQueuesOnLayer2Intf_dev2(obj->name);
+           
+            /* some classifications may reference this intf on ingress side,
+             * so check if they need to be reconfigured.
+             */
+            rutQos_reconfigAllClassifications_dev2(obj->name);
+     
+            /* reconfig port shaper */
+            rutQos_reconfigShaperOnLayer2Intf_dev2(obj->name);            
+#endif  /* DMP_DEVICE2_QOS_1 */
          }
       }
       else if (prevStatusWasUp && cmsUtl_strcmp(currentStatus, MDMVS_UP))
       {
+         /* Eth interface goes from up to down. */
          if (obj->upstream)
          {
-            /* Eth WAN Down (specifically: from UP to some non-UP status )*/
-             CmsRet r2;
-            if ((r2 = rutQos_tmPortUninit(obj->name, TRUE)) != CMSRET_SUCCESS)
+            /* Eth WAN needs rutQos_tmPortUninit() when link goes from up to down,
+               but Eth LAN does not need. */
+            if ((ret = rutQos_tmPortUninit(obj->name, TRUE)) != CMSRET_SUCCESS)
             {
-               cmsLog_error("rutQos_tmPortUninit() returns error. ret=%d", r2);
+               cmsLog_error("rutQos_tmPortUninit() returns error. ret=%d", ret);
             }
-         }
-         else
-         {
-            /* Eth LAN Down (specifically: from UP to some non-UP status )*/
-            /* We don't deconfig FAP TM when link goes down? */
          }
       }
    }

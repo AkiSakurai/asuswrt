@@ -3,7 +3,7 @@
 #
 # Note that this is an direct filter file
 #
-# Copyright 2019 Broadcom
+# Copyright 2020 Broadcom
 #
 # This program is the proprietary software of Broadcom and/or
 # its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
 #
 # <<Broadcom-WL-IPTag/Proprietary:>>
 #
-# $Id: linux-2.6.36-dhdap-gpl-filelist.txt 777968 2019-08-19 13:54:59Z $
+# $Id: linux-2.6.36-dhdap-gpl-filelist.txt 788376 2020-06-30 10:09:14Z $
 #
 # NOTE: Wildcards are NOT allowed in any filelist. List actual file/dir names
 
@@ -35034,7 +35034,6 @@ main/src/shared/linux_osl.c
 main/src/shared/linux_pkt.c
 main/src/shared/linux_osl_priv.h
 main/src/shared/linux_gpio.c
-main/src/shared/linux.module.arm.lds
 main/src/shared/load.c
 main/src/shared/min_osl.c
 main/src/shared/nvramstubs.c
@@ -37070,6 +37069,8 @@ main/components/router/config/zconf.tab.h_shipped
 main/components/router/cramfs/GNUmakefile
 main/components/router/cramfs/cramfsck.c
 main/components/router/cramfs/mkcramfs.c
+main/components/router/csimond/Makefile
+main/components/router/csimond/csimond.c
 main/components/router/emf/emfconf/prebuilt/emf
 main/components/router/emf/emfconf/Makefile
 main/components/router/emf/igsconf/prebuilt/igs
@@ -38483,8 +38484,6 @@ main/components/router/arm-uclibc/install/igd/usr/sbin/igd
 main/components/router/arm-uclibc/install/igd/usr/sbin/igdnat
 main/components/router/arm-uclibc/install/igmp/usr/sbin/igmp
 main/components/router/arm-uclibc/install/igs/usr/sbin/igs
-main/components/router/arm-uclibc/install/nas/usr/sbin/nas
-main/components/router/arm-uclibc/install/nas/usr/sbin/nas4not
 main/components/router/arm-uclibc/install/netconf/usr/lib/libnetconf.so
 main/components/router/arm-uclibc/install/nfc/bin/nsa_server
 main/components/router/arm-uclibc/install/nfc/usr/patch/bcm2079x_firmware.ncd
@@ -38569,8 +38568,6 @@ main/components/router/mipsel/install/igd/usr/sbin/igd
 main/components/router/mipsel/install/igd/usr/sbin/igdnat
 main/components/router/mipsel/install/igmp/usr/sbin/igmp
 main/components/router/mipsel/install/igs/usr/sbin/igs
-main/components/router/mipsel/install/nas/usr/sbin/nas
-main/components/router/mipsel/install/nas/usr/sbin/nas4not
 main/components/router/mipsel/install/netconf/usr/lib/libnetconf.so
 main/components/router/mipsel/install/ntpclient/usr/sbin/ntpclient
 main/components/router/mipsel/install/nvram/usr/lib/libnvram.so
@@ -38642,8 +38639,6 @@ main/components/router/mipsel-uclibc/install/igd/usr/sbin/igd
 main/components/router/mipsel-uclibc/install/igd/usr/sbin/igdnat
 main/components/router/mipsel-uclibc/install/igmp/usr/sbin/igmp
 main/components/router/mipsel-uclibc/install/igs/usr/sbin/igs
-main/components/router/mipsel-uclibc/install/nas/usr/sbin/nas
-main/components/router/mipsel-uclibc/install/nas/usr/sbin/nas4not
 main/components/router/mipsel-uclibc/install/netconf/usr/lib/libnetconf.so
 main/components/router/mipsel-uclibc/install/ntpclient/usr/sbin/ntpclient
 main/components/router/mipsel-uclibc/install/nvram/usr/lib/libnvram.so
@@ -39203,6 +39198,8 @@ main/components/apps/moca/moca20core-gen22.bin
 main/components/apps/moca/Makefile
 main/components/apps/utils/WlGetDriverCfg.sh
 main/components/apps/utils/WlGetDriverStats.sh
+main/components/apps/utils/debug_loop_acs_dfs.sh
+main/components/apps/utils/mapgetcfg.sh
 main/components/apps/cevent_app
 main/components/opensource/sqlite3
 main/components/opensource/libxml2
@@ -41298,6 +41295,7 @@ sys/src/shared/siutils.c
 sys/src/shared/siutils_priv.h
 sys/src/shared/nvram_ext.c
 sys/src/shared/linux_osl_priv.h
+sys/src/shared/linux.module.arm.lds
 sys/src/dhd/sys/dhd_cfg80211.c
 sys/src/dhd/sys/dhd_cfg80211.h
 sys/src/dhd/sys/dhd_cfg_vendor.c
@@ -41320,8 +41318,12 @@ sys/src/include/bcmendian.h
 sys/src/include/bcmpcispi.h
 sys/src/include/bcmperf.h
 sys/src/include/bcmsdbus.h
+sys/src/include/hndbme.h
+sys/src/include/bcmhme.h
+sys/src/include/bcm_csimon.h
+sys/src/include/bcm_ring.h
 sys/components/proto/include/bcmmsgbuf.h
-sys//components/proto/include/bcmpcie.h
+sys/components/proto/include/bcmpcie.h
 sys/src/include/pcie_core.h
 sys/src/include/bcmsdh.h
 sys/components/proto/include/bcmsdpcm.h

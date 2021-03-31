@@ -1013,9 +1013,9 @@ void runnerEnable(void)
 
     blog_unlock();
 
-    __print("Enabled Runner binding to Flow Cache\n");
+    bcm_print("Enabled Runner binding to Flow Cache\n");
 #else
-    __print("Flow Cache is not built\n");
+    bcm_print("Flow Cache is not built\n");
 #endif
 }
 
@@ -1051,9 +1051,9 @@ void runnerDisable(void)
 
     blog_unlock();
 
-    __print("Disabled Runner binding to Flow Cache\n");
+    bcm_print("Disabled Runner binding to Flow Cache\n");
 #else
-    __print("Flow Cache is not built\n");
+    bcm_print("Flow Cache is not built\n");
 #endif
 }
 
@@ -1293,13 +1293,13 @@ int __init runnerProto_construct(void)
 
         get_rdp_freq(&rdp_freq);
 
-        __print("Initialized Runner Protocol Layer (%u)\n", rdp_freq);
+        bcm_print("Initialized Runner Protocol Layer (%u)\n", rdp_freq);
     }
 #else
     /* Override default log level to DEBUG */
     bcmLog_setLogLevel(BCM_LOG_ID_PKTRUNNER, BCM_LOG_LEVEL_DEBUG);
 
-    __print("Initialized Runner Protocol Layer in SIMULATION MODE\n");
+    bcm_print("Initialized Runner Protocol Layer in SIMULATION MODE\n");
 #endif /* CONFIG_BCM_CMDLIST_SIM */
 
     return 0;

@@ -486,13 +486,13 @@ static int fhw_get_gre_flow_support(Blog_t * blog_p )
         ((TOTG4(blog_p) || TOTG6(blog_p)) && (blog_p->grerx.gre_flags.u16 || blog_p->gretx.gre_flags.u16)))
         return 0;
 
-    /* Workaround: Block LAN originated L2GRE flow */
-    if ( (RX_GRE_ETH(blog_p) && !FHW_IS_RX_DEV_WAN(blog_p)) || (TX_GRE_ETH(blog_p) && !FHW_IS_TX_DEV_WAN(blog_p)) )
-        return 0;
-
     /* White list */
-    /* Runner support L2GRE_4in4 and L3GRE_4in4 full acceleration */
-    if (TG24in4DN(blog_p) || TG24in4UP(blog_p))
+    /* Runner support L3GRE_4in4 acceleration */
+    if (TG4in4DN(blog_p) || TG4in4UP(blog_p))
+        return 1;
+    
+    /* L2GRE_4in4 */
+    if (TG2in4DN(blog_p) || (TG2in4UP(blog_p) && blog_p->l2_ipv4))
         return 1;
     
     /* GRE_tunnel_in_tunnel_out */
@@ -515,6 +515,33 @@ static int fhw_get_gre_flow_support(Blog_t * blog_p )
     /* L2 acceleration GRE pass thru case should be accelerated */
     if ((blog_p->rx.info.bmap.PLD_L2 == 1) && (blog_p->rx.info.bmap.GRE == 1) && (blog_p->tx.info.bmap.GRE == 1))
         return 1;
+
+    /* GRE Acceleration. No support for GRE flags (C, K, S, etc.) */
+    if ((RX_GRE(blog_p) && !TX_GRE(blog_p) && blog_p->grerx.gre_flags.u16) || 
+        (!RX_GRE(blog_p) && TX_GRE(blog_p) && blog_p->gretx.gre_flags.u16) ||
+        ((TOTG4(blog_p) || TOTG6(blog_p)) && (blog_p->grerx.gre_flags.u16 || blog_p->gretx.gre_flags.u16)))
+        return 0;
+
+    /* White list */
+    /* Runner support L3GRE_4in4 acceleration */
+    if (TG4in4DN(blog_p) || TG4in4UP(blog_p))
+        return 1;
+    
+    /* L2GRE_4in4 */
+    if (TG2in4DN(blog_p) || (TG2in4UP(blog_p) && blog_p->l2_ipv4))
+        return 1;
+    
+    /* GRE_tunnel_in_tunnel_out */
+    if (TOTG4(blog_p))
+        return 1;
+
+    /* L3GRE_4in6 */
+    if ((TG4in6DN(blog_p) || TG4in6UP(blog_p)) && !RX_GRE_ETH(blog_p))
+        return 1;    
+
+    /* L3GRE_6in4 */
+    if ((TG6in4DN(blog_p) || TG6in4UP(blog_p)) && !RX_GRE_ETH(blog_p))
+        return 1;     
 #endif
 
     return 0;
@@ -800,6 +827,12 @@ int fhw_chk_support_hw( Blog_t * blog_p, uint32_t *out_hybrid_p )
         if (blog_p->rtp_seq_chk)
         {
             /* TODO : Hybrid possible when multicast-hybrid gets supported */
+            return 0;
+        }
+
+        if (TX_GRE(blog_p))
+        {
+            /* Multicast GRE Hardware acceleration not supported */
             return 0;
         }
 

@@ -2,7 +2,7 @@
  * BSS Config related declarations and exported functions for
  * Broadcom 802.11abg Networking Device Driver
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_bsscfg.h 779981 2019-10-11 12:16:31Z $
+ * $Id: wlc_bsscfg.h 782660 2019-12-31 04:49:02Z $
  */
 #ifndef _WLC_BSSCFG_H_
 #define _WLC_BSSCFG_H_
@@ -404,7 +404,7 @@ struct wlc_bsscfg {
 
 	wl_scan_params_t *roam_scan_params; /* customize roam scans */
 
-	bool _dwds;	/**< Dynamic WDS */
+	uint8		_dwds;	/**< Dynamic WDS */
 
 	bool		mcast_regen_enable;	/**< Multicast Regeneration is enabled or not */
 	bool		wmf_enable;		/**< WMF is enabled or not */
@@ -480,6 +480,7 @@ struct wlc_bsscfg {
 #ifdef WL11AX
 	wlc_block_he_mac_t *block_he_list;
 #endif /* WL11AX */
+	uint32 wds_bitmap;	/* wds interface bit map per scbs */
 #ifdef BCMDBG
 	/* ====== LEAVE THESE AT THE END ====== */
 	/* Rapid PM transition */
@@ -619,7 +620,11 @@ struct wlc_bsscfg {
 #endif // endif
 
 #ifdef DWDS
-#define DWDS_ENAB(cfg)	((cfg)->_dwds)
+#define BRCM_DWDS		(1 << 0)
+#define GENERAL_DWDS	(1 << 1)
+
+#define DWDS_ENAB(cfg)	((cfg)->_dwds & BRCM_DWDS)
+#define DWDS_GENAB(cfg)	((cfg)->_dwds & GENERAL_DWDS)
 #else
 #define DWDS_ENAB(cfg)	FALSE
 #endif // endif

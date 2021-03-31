@@ -171,8 +171,8 @@ static int archer_wfd_config(void *arg_p)
 
     queue_p->wfd_bulk_get = config_p->wfd_bulk_get;
 
-    __print("Archer WFD FWD: Radio %d, Queue %d\n",
-            config_p->radio_index, config_p->queue_index);
+    bcm_print("Archer WFD FWD: Radio %d, Queue %d\n",
+              config_p->radio_index, config_p->queue_index);
 
     return 0;
 }
@@ -207,16 +207,16 @@ void archer_wfd_stats(void)
 #if defined(CC_ARCHER_WFD_FORWARD)
         int queue_index;
 
-        __print("Archer WFD Forwarder\n");
+        bcm_print("Archer WFD Forwarder\n");
 
         for(queue_index=0; queue_index<ARCHER_WFD_QUEUE_MAX; ++queue_index)
         {
             archer_wfd_queue_t *queue_p = &archer_wfd_g.queue[queue_index];
 
-            __print("\tQueue[%d]: rx_packets %d, rx_packets_max %d, rx_runs %d, rx_packets_per_run %d\n",
-                    queue_index, queue_p->stats.rx_packets, queue_p->stats.rx_packets_max,
-                    queue_p->stats.rx_runs,
-                    queue_p->stats.rx_runs ? queue_p->stats.rx_packets / queue_p->stats.rx_runs : 0);
+            bcm_print("\tQueue[%d]: rx_packets %d, rx_packets_max %d, rx_runs %d, rx_packets_per_run %d\n",
+                      queue_index, queue_p->stats.rx_packets, queue_p->stats.rx_packets_max,
+                      queue_p->stats.rx_runs,
+                      queue_p->stats.rx_runs ? queue_p->stats.rx_packets / queue_p->stats.rx_runs : 0);
 
             memset(&queue_p->stats, 0, sizeof(archer_wfd_queue_stats_t));
         }
@@ -225,7 +225,7 @@ void archer_wfd_stats(void)
     }
     else
     {
-        __print("WFD is not available\n");
+        bcm_print("WFD is not available\n");
     }
 }
 
@@ -239,7 +239,7 @@ static int archer_wfd_bind(void *arg_p)
     archer_wfd_hooks.queue_notify = archer_wfd_notify;
 #endif
 
-    __print("Archer WFD Binding Successfull\n");
+    bcm_print("Archer WFD Binding Successfull\n");
 
     return 0;
 }

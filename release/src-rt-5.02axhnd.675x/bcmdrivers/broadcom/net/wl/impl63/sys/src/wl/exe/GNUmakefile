@@ -1,7 +1,7 @@
 
 # GNUmakefile for wl/exe
 #
-#  Copyright 2019 Broadcom
+#  Copyright 2020 Broadcom
 #
 #  This program is the proprietary software of Broadcom and/or
 #  its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
 #
 #  <<Broadcom-WL-IPTag/Proprietary:>>
 #
-# $Id: GNUmakefile 777778 2019-08-09 17:33:41Z $
+# $Id: GNUmakefile 786269 2020-04-22 21:40:36Z $
 
 # Work out the directory of this file.
 MWD := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
@@ -94,6 +94,10 @@ else
   CFLAGS += -fno-strict-aliasing
 endif # CONFIG_STBAP
 endif
+
+include ../../../../main/src/.config
+MODEL = $(subst -,,$(BUILD_NAME))
+CFLAGS += -D$(MODEL)
 
 # Use newer 11ac ratespec for wl command line
 CFLAGS += -DD11AC_IOTYPES
@@ -285,7 +289,6 @@ ifeq ($(CONFIG_EAP),y)
   CFLAGS += -DWL_EAP_SCAN_BEACON_DELAY
   CFLAGS += -DWL_EAP_SCAN_TEST
   CFLAGS += -DWL_EAP_80211RAW
-  CFLAGS += -DWL_EAP_PER_VAP_DTIM
   CFLAGS += -DWL_EAP_CUST_EVENT_HNDLR
   CFLAGS += -DWL_EAP_MONITOR
   CFLAGS += -DWL_EAP_STATS -DWLPROPRIETARY_11N_RATES

@@ -1,48 +1,48 @@
 /*
-<:copyright-BRCM:2017:proprietary:standard
+  <:copyright-BRCM:2017:proprietary:standard
 
-   Copyright (c) 2017 Broadcom 
-   All Rights Reserved
+  Copyright (c) 2017 Broadcom 
+  All Rights Reserved
 
- This program is the proprietary software of Broadcom and/or its
- licensors, and may only be used, duplicated, modified or distributed pursuant
- to the terms and conditions of a separate, written license agreement executed
- between you and Broadcom (an "Authorized License").  Except as set forth in
- an Authorized License, Broadcom grants no license (express or implied), right
- to use, or waiver of any kind with respect to the Software, and Broadcom
- expressly reserves all rights in and to the Software and all intellectual
- property rights therein.  IF YOU HAVE NO AUTHORIZED LICENSE, THEN YOU HAVE
- NO RIGHT TO USE THIS SOFTWARE IN ANY WAY, AND SHOULD IMMEDIATELY NOTIFY
- BROADCOM AND DISCONTINUE ALL USE OF THE SOFTWARE.
+  This program is the proprietary software of Broadcom and/or its
+  licensors, and may only be used, duplicated, modified or distributed pursuant
+  to the terms and conditions of a separate, written license agreement executed
+  between you and Broadcom (an "Authorized License").  Except as set forth in
+  an Authorized License, Broadcom grants no license (express or implied), right
+  to use, or waiver of any kind with respect to the Software, and Broadcom
+  expressly reserves all rights in and to the Software and all intellectual
+  property rights therein.  IF YOU HAVE NO AUTHORIZED LICENSE, THEN YOU HAVE
+  NO RIGHT TO USE THIS SOFTWARE IN ANY WAY, AND SHOULD IMMEDIATELY NOTIFY
+  BROADCOM AND DISCONTINUE ALL USE OF THE SOFTWARE.
 
- Except as expressly set forth in the Authorized License,
+  Except as expressly set forth in the Authorized License,
 
- 1. This program, including its structure, sequence and organization,
-    constitutes the valuable trade secrets of Broadcom, and you shall use
-    all reasonable efforts to protect the confidentiality thereof, and to
-    use this information only in connection with your use of Broadcom
-    integrated circuit products.
+  1. This program, including its structure, sequence and organization,
+  constitutes the valuable trade secrets of Broadcom, and you shall use
+  all reasonable efforts to protect the confidentiality thereof, and to
+  use this information only in connection with your use of Broadcom
+  integrated circuit products.
 
- 2. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS"
-    AND WITH ALL FAULTS AND BROADCOM MAKES NO PROMISES, REPRESENTATIONS OR
-    WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, WITH
-    RESPECT TO THE SOFTWARE.  BROADCOM SPECIFICALLY DISCLAIMS ANY AND
-    ALL IMPLIED WARRANTIES OF TITLE, MERCHANTABILITY, NONINFRINGEMENT,
-    FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES, ACCURACY OR
-    COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR CORRESPONDENCE
-    TO DESCRIPTION. YOU ASSUME THE ENTIRE RISK ARISING OUT OF USE OR
-    PERFORMANCE OF THE SOFTWARE.
+  2. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS"
+  AND WITH ALL FAULTS AND BROADCOM MAKES NO PROMISES, REPRESENTATIONS OR
+  WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, WITH
+  RESPECT TO THE SOFTWARE.  BROADCOM SPECIFICALLY DISCLAIMS ANY AND
+  ALL IMPLIED WARRANTIES OF TITLE, MERCHANTABILITY, NONINFRINGEMENT,
+  FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES, ACCURACY OR
+  COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR CORRESPONDENCE
+  TO DESCRIPTION. YOU ASSUME THE ENTIRE RISK ARISING OUT OF USE OR
+  PERFORMANCE OF THE SOFTWARE.
 
- 3. TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL BROADCOM OR
-    ITS LICENSORS BE LIABLE FOR (i) CONSEQUENTIAL, INCIDENTAL, SPECIAL,
-    INDIRECT, OR EXEMPLARY DAMAGES WHATSOEVER ARISING OUT OF OR IN ANY
-    WAY RELATING TO YOUR USE OF OR INABILITY TO USE THE SOFTWARE EVEN
-    IF BROADCOM HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES;
-    OR (ii) ANY AMOUNT IN EXCESS OF THE AMOUNT ACTUALLY PAID FOR THE
-    SOFTWARE ITSELF OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS
-    SHALL APPLY NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY
-    LIMITED REMEDY.
-:> 
+  3. TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL BROADCOM OR
+  ITS LICENSORS BE LIABLE FOR (i) CONSEQUENTIAL, INCIDENTAL, SPECIAL,
+  INDIRECT, OR EXEMPLARY DAMAGES WHATSOEVER ARISING OUT OF OR IN ANY
+  WAY RELATING TO YOUR USE OF OR INABILITY TO USE THE SOFTWARE EVEN
+  IF BROADCOM HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES;
+  OR (ii) ANY AMOUNT IN EXCESS OF THE AMOUNT ACTUALLY PAID FOR THE
+  SOFTWARE ITSELF OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS
+  SHALL APPLY NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY
+  LIMITED REMEDY.
+  :> 
 */
 
 #ifndef __ARCHER_DRIVER_H_INCLUDED__
@@ -57,7 +57,6 @@
  * Debugging
  *
  *******************************************************************************/
-#define __print(fmt, arg...) bcm_printk(fmt, ##arg)
 #define isLogDebug bcmLog_logIsEnabled(BCM_LOG_ID_ARCHER, BCM_LOG_LEVEL_DEBUG)
 #define __logDebug(fmt, arg...)   BCM_LOG_DEBUG(BCM_LOG_ID_ARCHER, fmt, ##arg)
 #define __logInfo(fmt, arg...)    BCM_LOG_INFO(BCM_LOG_ID_ARCHER, fmt, ##arg)
@@ -67,7 +66,7 @@
 #define __debug(fmt, arg...)                    \
     BCM_LOGCODE(                                \
         if(isLogDebug)                          \
-            __print(fmt, ##arg); )
+            bcm_print(fmt, ##arg); )
 
 extern int archer_packet_length_max_g;
 extern int archer_packet_headroom_g;
@@ -81,7 +80,7 @@ long archer_driver_get_time_ns(void);
     BCM_LOGCODE(                                                        \
         if(isLogDebug)                                                  \
         {                                                               \
-            __print("\n********** Command List **********\n");          \
+            bcm_print("\n********** Command List **********\n");        \
             cmdlist_dump((_cmdList), CMDLIST_CMD_LIST_SIZE_MAX_32);     \
         } )
 
@@ -90,7 +89,7 @@ long archer_driver_get_time_ns(void);
         if(isLogDebug)                          \
         {                                       \
             cmdlist_dump_partial();             \
-            __print("\n");                      \
+            bcm_print("\n");                    \
         } )
 
 #define __dump_blog(_blog_p)                    \
@@ -98,7 +97,7 @@ long archer_driver_get_time_ns(void);
         if(isLogDebug)                          \
         {                                       \
             blog_dump((_blog_p));               \
-            __print("\n");                      \
+            bcm_print("\n");                    \
         } )
 
 #define __dump_blog_rule(_blogRule_p)           \
@@ -106,7 +105,7 @@ long archer_driver_get_time_ns(void);
         if(isLogDebug)                          \
         {                                       \
             blog_rule_dump((_blogRule_p));      \
-            __print("\n");                      \
+            bcm_print("\n");                    \
         } )
 
 #define ARCHER_RX_ENET_LAN(_blog_p)                                     \
@@ -162,11 +161,18 @@ void __exit archer_host_destruct(void);
 
 void *archer_coherent_mem_alloc(int size, void **phys_addr_pp);
 void archer_coherent_mem_free(int size, void *phys_addr_p, void *p);
-void *archer_mem_alloc(int size);
-void archer_mem_free(void *p);
+void *archer_mem_kzalloc(int size);
+void *archer_mem_kalloc(int size);
+void archer_mem_kfree(void *p);
+void *archer_mem_valloc(int size);
+void archer_mem_vfree(void *p);
 
-void archer_driver_nbuff_params(pNBuff_t pNBuff, uint8_t **data_p, uint32_t *length_p);
+void archer_driver_nbuff_params(pNBuff_t pNBuff, uint8_t **data_p, uint32_t *length_p, int *tc_p);
 void *archer_driver_skb_params(void *buf_p, uint8_t **data_p, uint32_t *length_p, void **fkbInSkb_p);
+
+#if defined(CC_SYSPORT_DRIVER_TM)
+void archer_driver_enet_tm_enable(int enable);
+#endif
 
 #if defined(CONFIG_BCM_ARCHER_GSO)
 void archer_gso(pNBuff_t pNBuff, int nbuff_max, pNBuff_t *pNBuff_list, int *nbuff_count_p);

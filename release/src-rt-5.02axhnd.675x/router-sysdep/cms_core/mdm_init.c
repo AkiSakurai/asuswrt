@@ -224,7 +224,13 @@ CmsRet cmsMdm_initWithAcc(CmsEntityId eid, UINT32 acc, void *msgHandle, SINT32 *
    shmSize = MDM_SHM_BASE_SIZE;
 #ifdef BRCM_WLAN
    shmSize += MDM_SHM_WLAN_EXTRA;
-#endif
+   /**
+    * EAP platform will require more shared memory to support 512 clients.
+    */
+#ifdef BCA_HND_EAP
+   shmSize += MDM_SHM_WLAN_EXTRA;
+#endif /* BCA_HND_EAP */
+#endif /* BRCM_WLAN */
 #ifdef BRCM_VOICE_SUPPORT
    shmSize += MDM_SHM_VOIP_EXTRA;
 #endif

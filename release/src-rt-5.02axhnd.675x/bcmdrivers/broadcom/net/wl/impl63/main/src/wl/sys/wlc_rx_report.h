@@ -3,7 +3,7 @@
  *
  * This module provides definitions for the Band Steering Daemon "bs_data" IOVAR functionality.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

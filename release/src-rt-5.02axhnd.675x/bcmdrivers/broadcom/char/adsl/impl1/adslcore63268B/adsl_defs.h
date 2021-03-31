@@ -1,5 +1,5 @@
 /* TARGET=bcm63268-vdsl6b-adsl-HW-firmware-g994p1-e14-chip-afeproc-fire-bcm6306-annexB-annexJ-ginp-vectoring  */
-/* VERSION=B2pv6F039v  */
+/* VERSION=B2pv6F039y1  */
 
 #define SOURCE_FILE_ 
 #define SOURCE_FILE  
@@ -20,6 +20,7 @@
 #define SYNCTONEGRID 
 #define PROBETONEDETECT 
 #define ENABLE_REF_ERR_SAMPLE_GEN 
+#define G9935_EXTEN_BMAX_SUPPORT 
 #define FIRE_RETRANSMISSION 
 #define PHYR_VERSION_01 
 #define PHYR_NO_DELAY 
@@ -31,6 +32,8 @@
 #define VDSL_LINE_PROBE 
 #define RIPOLICY_SUPPORT 
 #define G994_RX_WINDOWING 
+#define G994P1_SELECT_TONESET_USING_SNR 
+#define G994P1_IMPROVED_RCV_FOR_HIGH_NOISE 
 #define INM 
 #define ROBUST_G992P1_AOC 
 #define CCOMB_POWER_DETECTION 
@@ -99,7 +102,6 @@
 #define FAST_8KHZ_6306 
 #define QPROC_6306_EARLY_START 
 #define REDUCE_4KHZ_6306_AFE_BUF 
-#define VDSL_IMP_GATING 
 #define TRAINING_IMPULSE_GATING 
 #define BUMP_INP_FOR_TRAINING_REIN 
 #define CLEAN_FRAME_PARAM_EXCHANGE 

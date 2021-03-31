@@ -657,7 +657,7 @@ rdpa_wan_type try_wan_type_sensing(pmd_calibration_parameters *calibration_param
         SET_SCRATCHPAD_RETURN_WAN_NONE_ON_ERROR(RDPA_WAN_TYPE_PSP_KEY, RDPA_WAN_TYPE_VALUE_GBE);
         SET_SCRATCHPAD_RETURN_WAN_NONE_ON_ERROR(RDPA_WAN_OEMAC_PSP_KEY, RDPA_WAN_OEMAC_VALUE_EPONMAC);
         SET_SCRATCHPAD_RETURN_WAN_NONE_ON_ERROR(RDPA_WAN_RATE_PSP_KEY, "0101");
-        return rdpa_wan_gbe;
+        return rdpa_wan_xepon;
     }
 
     if (SHOULD_SET_WAN_TYPE_IN_SCRATCHPAD(SUPPORTED_WAN_TYPES_BIT_AE_10_10))

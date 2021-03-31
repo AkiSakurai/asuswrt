@@ -1,7 +1,7 @@
 /*
  * WBD Data structures for Master and Slave Info
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_ds.h 781755 2019-11-28 04:51:13Z $
+ * $Id: wbd_ds.h 785203 2020-03-17 06:18:08Z $
  */
 
 #ifndef _WBD_DS_H_
@@ -101,13 +101,17 @@ typedef struct wbd_blanket_master wbd_blanket_master_t;
 /* Minimum number of associated STAs in a slave below which the normalized score is 100 */
 #define WBD_TBSS_MIN_STA_THLD		5
 
-/* Maximum phyrate boundary above which the normalized value is 100 */
+/* Maximum phyrate/RSSI boundary above which the normalized value is 100 */
 #define WBD_TBSS_MAX_PHYRATE_BOUNDARY_2G	100
 #define WBD_TBSS_MAX_PHYRATE_BOUNDARY_5G	300
+#define WBD_TBSS_MAX_RSSI_BOUNDARY_2G		(-45)
+#define WBD_TBSS_MAX_RSSI_BOUNDARY_5G		(-45)
 
 /* Minimum phyrate boundary below which the normalized value is 0 */
 #define WBD_TBSS_MIN_PHYRATE_BOUNDARY_2G	36
 #define WBD_TBSS_MIN_PHYRATE_BOUNDARY_5G	36
+#define WBD_TBSS_MIN_RSSI_BOUNDARY_2G		(-85)
+#define WBD_TBSS_MIN_RSSI_BOUNDARY_5G		(-85)
 
 /* Bit mask for finding target BSS based on weightage */
 #define WBD_WGHT_FLAG_RSSI		0x0001
@@ -301,12 +305,10 @@ typedef struct wbd_tbss_ident_info {
 	uint8 tbss_algo;		/* Target BSS finding algorithm index */
 	uint8 tbss_algo_bh;		/* Target BSS finding algorithm index for backhaul STA */
 	int tbss_stacnt_thld;		/* Threshold for minimum STA count in SoF */
-	int tbss_min_phyrate;		/* Minimum phyrate boundary below which the normalized
-					 * value is 0
-					 */
-	int tbss_max_phyrate;		/* Maximum phyrate boundary above which the normalized
-					 * value is 100
-					 */
+	int tbss_min_phyrate;		/* Phyrate below this is normalized to 0 */
+	int tbss_max_phyrate;		/* Phyrate above this is normalized to 100 */
+	int tbss_min_rssi;		/* RSSI below this is normalized to 0  */
+	int tbss_max_rssi;		/* RSSI above this is normalized to 100 */
 	int max_nss;			/* Max NSS to serve */
 	wbd_tbss_wght_t wght_cfg;	/* Weightage config for finding target BSS */
 	wbd_tbss_wght_t wght_cfg_bh;	/* Backhaul Weightage config for finding target BSS */
@@ -607,6 +609,8 @@ struct wbd_slave_item {
 					 * Repeaters, This List will be same across all
 					 * Repeaters, will be set by Root AP
 					 */
+	uint32 steer_flags;		/* Steering flags  */
+	wbd_weak_sta_policy_t weak_sta_policy;	/* Weak sta policy */
 };
 
 /* Device specific flags */
@@ -658,10 +662,6 @@ typedef struct wbd_bss_item {
 	uint32 bssid_info;		/* BSSID info to be passed for steering */
 	uint8 phytype;			/* BSS's phytype */
 	wbd_glist_t monitor_sta_list;	/* List of wbd_monitor_sta_item_t type objects */
-
-	uint32 avg_tx_rate;		/* Average tx_rate w.r.t associated clients */
-	uint32 max_tx_rate;		/* Max possible tx_rate */
-
 	time_t apmetrics_timestamp;	/* AP metrics query timestamp */
 #if defined(MULTIAPR2)
 	wbd_per_bss_mbo_params_t mbo_params;	/* per bss mbo support */
@@ -935,10 +935,10 @@ extern wbd_master_info_t* wbd_ds_find_master_in_blanket_master(wbd_blanket_maste
 /* Traverse I5's Device to find a BSS in any Interface based on band and MAPFLags(Fronthaul or
  * Backhaul), without Error check
  */
-#define WBD_DS_FIND_I5_BSS_IN_DEVICE_FOR_BAND_AND_MAPFLAG(i5_device, band, i5_bss, map, find_ret) \
+#define WBD_DS_FIND_I5_BSS_IN_DEVICE_FOR_BAND_AND_SSID(i5_device, band, i5_bss,	ssid, find_ret) \
 		do { \
-			(i5_bss) = wbd_ds_get_i5_bss_in_device_for_band_and_mapflag((i5_device), \
-					(band), (map), (find_ret)); \
+			(i5_bss) = wbd_ds_get_i5_bss_in_device_for_band_and_ssid((i5_device), \
+					(band), (ssid), (find_ret)); \
 		} while (0)
 
 /* Traverse I5's Interfaces to find a BSS, with Error check */
@@ -968,6 +968,11 @@ extern wbd_master_info_t* wbd_ds_find_master_in_blanket_master(wbd_blanket_maste
 				goto end; \
 			} \
 		} while (0)
+
+/* Compare two SSID's TRUE: ssid's are same FALSE: ssid's are different */
+#define WBD_SSIDS_MATCH(x, y) \
+		(((x).SSID_len == (y).SSID_len) && \
+		(memcmp((char *)(x).SSID, (char *)(y).SSID, (x).SSID_len) == 0))
 /* --------------------------------- Macros to Get Values ---------------------------------- */
 
 /* ----------------------------- Extern Function Declaration -------------------------------- */
@@ -1014,6 +1019,9 @@ extern int wbd_ds_slave_item_cleanup(wbd_slave_item_t *slave_item, bool free_sla
 extern int wbd_ds_slave_stamon_init(wbd_slave_item_t *slave_item);
 /* Cleanup stamon module for Slave's interface */
 extern void wbd_ds_slave_stamon_cleanup(wbd_slave_item_t *slave_item);
+
+/* Free taf' list */
+extern int wbd_ds_slave_free_taf_list(wbd_taf_params_t* taf);
 
 /* Cleanup STA bounce table */
 extern void wbd_ds_cleanup_sta_bounce_table(wbd_blanket_master_t *wbd_master);
@@ -1064,7 +1072,7 @@ extern int wbd_ds_add_sta_in_bss_monitorlist(i5_dm_bss_type *i5_bss,
  * Fronthaul BSS or Bakhaul BSS
  */
 extern int wbd_ds_add_sta_in_peer_devices_monitorlist(wbd_master_info_t *master_info,
-	i5_dm_clients_type *i5_assoc_sta, uint8 map_flags);
+	i5_dm_clients_type *i5_assoc_sta);
 /* Add a STA item in parent Slave's Assoc STA List and all peer Slaves' Monitor STA List */
 extern int wbd_ds_add_sta_in_controller(wbd_blanket_master_t *wbd_master,
 	i5_dm_clients_type *i5_assoc_sta);
@@ -1089,7 +1097,7 @@ extern int wbd_ds_remove_sta_fm_bss_monitorlist(i5_dm_bss_type *i5_bss,
 
 /* Remove a STA item from all peer BSS' Monitor STA List */
 extern int wbd_ds_remove_sta_fm_peer_devices_monitorlist(struct ether_addr * parent_slave_bssid,
-	struct ether_addr *sta_mac, uint8 mapFlags);
+	struct ether_addr *sta_mac, ieee1905_ssid_type *ssid);
 /* Remove beacon request */
 extern int wbd_ds_remove_beacon_report(wbd_info_t *info, struct ether_addr *sta_mac);
 
@@ -1166,8 +1174,8 @@ i5_dm_bss_type* wbd_ds_get_i5_bss_in_device(i5_dm_device_type *i5_device, unsign
 	int *error);
 
 /* Find BSS using Device and band */
-i5_dm_bss_type* wbd_ds_get_i5_bss_in_device_for_band_and_mapflag(i5_dm_device_type *i5_device,
-	int band, uint8 map, int *error);
+i5_dm_bss_type* wbd_ds_get_i5_bss_in_device_for_band_and_ssid(i5_dm_device_type *i5_device,
+	int band, ieee1905_ssid_type *ssid, int *error);
 
 /* Find BSS from complete topology */
 i5_dm_bss_type* wbd_ds_get_i5_bss_in_topology(unsigned char *bssid, int *error);

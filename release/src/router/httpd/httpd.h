@@ -24,7 +24,11 @@
 #ifndef _httpd_h_
 #define _httpd_h_
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
+
+#include <time.h>
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -39,8 +43,10 @@
 
 #define DEFAULT_LOGIN_MAX_NUM	5
 
+#ifdef RTCONFIG_CAPTCHA
 /* Limit of login failure. If the number of login failure excceds this limit, captcha will show. */
 #define CAPTCHA_MAX_LOGIN_NUM   2
+#endif
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
@@ -124,8 +130,13 @@ struct iptv_profile {
 struct REPLACE_PRODUCTID_S {
         char *org_name;
         char *replace_name;
+        char *p_lang;
 };
 #endif
+
+struct REPLACE_MODELNAME_S {
+        char *modelname;
+};
 
 #define MIME_EXCEPTION_NOAUTH_ALL 	1<<0
 #define MIME_EXCEPTION_NOAUTH_FIRST	1<<1
@@ -185,6 +196,7 @@ enum {
 	HTTP_RULE_ADD_SUCCESS = 2001,
 	HTTP_RULE_DEL_SUCCESS,
 	HTTP_NORULE_DEL,
+    HTTP_RULE_MODIFY_SUCCESS,
 	HTTP_OVER_MAX_RULE_LIMIT = 4000,
 	HTTP_INVALID_ACTION,
 	HTTP_INVALID_MAC,
@@ -195,6 +207,7 @@ enum {
 	HTTP_INVALID_IPADDR,
 	HTTP_INVALID_TS,
 	HTTP_INVALID_FILE,
+    HTTP_INVALID_SUPPORT,
 	HTTP_SHMGET_FAIL = 5000,
 	HTTP_FB_SVR_FAIL
 };
@@ -314,6 +327,7 @@ typedef char char_t;
 #define websDefaultHandler(wp, urlPrefix, webDir, arg, url, path, query) ({ do_ej(path, wp); fflush(wp); 1; })
 #define websWriteData(wp, buf, nChars) ({ int TMPVAR = fwrite(buf, 1, nChars, wp); fflush(wp); TMPVAR; })
 #define websWriteDataNonBlock websWriteData
+#define nvram_default_safe_get(name) (nvram_default_get(name) ? : "")
 
 extern int ejArgs(int argc, char_t **argv, char_t *fmt, ...);
 
@@ -329,7 +343,7 @@ extern struct ej_handler ej_handlers[];
 #define LOCK_LOGIN_LAN 	0x01
 #define LOCK_LOGIN_WAN 	0x02
 
-#ifdef RTAX82U
+#if defined(RTAX82U) || defined(DSL_AX82U) || defined(GSAX3000) || defined(GSAX5400)
 enum {
         LEDG_QIS_RUN = 1,
         LEDG_QIS_FINISH
@@ -370,7 +384,14 @@ extern void do_f(char *path, webs_t wp);
 
 /* cgi.c */
 extern int web_read(void *buffer, int len);
+extern void unescape(char *s);
+extern char *get_cgi(char *name);
 extern void set_cgi(char *name, char *value);
+extern void init_cgi(char *query);
+extern char *webcgi_get(const char *name);
+extern void webcgi_set(char *name, char *value);
+extern void webcgi_init(char *query);
+extern int web_read(void *buffer, int len);
 
 /* httpd.c */
 extern int json_support;
@@ -392,6 +413,8 @@ extern int ej_lan_leases(int eid, webs_t wp, int argc, char_t **argv);
 extern int get_nat_vserver_table(int eid, webs_t wp, int argc, char_t **argv);
 extern int ej_route_table(int eid, webs_t wp, int argc, char_t **argv);
 extern void copy_index_to_unindex(char *prefix, int unit, int subunit);
+extern void json_unescape(char *s);
+extern void decode_json_buffer(char *query);
 extern void logmessage(char *logheader, char *fmt, ...);
 extern int is_private_subnet(const char *ip);
 extern char* INET6_rresolve(struct sockaddr_in6 *sin6, int numeric);
@@ -417,6 +440,7 @@ extern int ej_wl_status(int eid, webs_t wp, int argc, char_t **argv, int unit);
 extern int ej_wl_status_2g(int eid, webs_t wp, int argc, char_t **argv);
 extern int ej_wps_info_2g(int eid, webs_t wp, int argc, char_t **argv);
 extern int ej_wps_info(int eid, webs_t wp, int argc, char_t **argv);
+extern const char *syslog_msg_filter[];
 
 /* web.c/web-*.c */
 extern char referer_host[64];
@@ -471,6 +495,9 @@ extern int gen_guestnetwork_pass(char *key, size_t size);
 extern int alexa_pause_internet(int pause);
 extern int httpd_sw_hw_check(void);
 extern int ej_get_ui_support(int eid, webs_t wp, int argc, char **argv);
+#if defined(R7000P)
+extern int ej_get_ui_support_merlinr(int eid, webs_t wp, int argc, char **argv);
+#endif
 extern void page_default_redirect(int fromapp_flag, char* url);
 #ifdef RTCONFIG_LANTIQ
 extern int wave_app_flag;
@@ -479,20 +506,29 @@ extern int wave_handle_app_flag(char *name, int wave_app_flag);
 #ifdef RTCONFIG_TCODE
 extern int change_location(char *lang);
 #endif
+#ifdef RTCONFIG_WTF_REDEEM
+extern void wtfast_gen_partnercode(char *str, size_t size);
+#endif
 extern void update_wlan_log(int sig);
 extern void system_cmd_test(char *system_cmd, char *SystemCmd, int len);
-extern int is_amas_support(void);
 extern void do_feedback_mail_cgi(char *url, FILE *stream);
 extern void do_dfb_log_file(char *url, FILE *stream);
+extern int is_amas_support(void);
 extern void do_set_fw_path_cgi(char *url, FILE *stream);
 #if defined(RTCONFIG_AMAZON_WSS)
 extern void amazon_wss_enable(char *wss_enable, char *do_rc);
 #endif
+#ifdef RTCONFIG_ACCOUNT_BINDING
+extern void do_get_eptoken_cgi(char *url, FILE *stream);
+#endif
 #ifdef RTCONFIG_CAPTCHA
+extern unsigned int login_fail_num;
 extern int is_captcha_match(char *catpch);
 #endif
-#ifdef RTAX82U
+#if defined(RTAX82U) || defined(DSL_AX82U) || defined(GSAX3000) || defined(GSAX5400)
 extern void switch_ledg(int action);
 #endif
+extern int get_external_ip(void);
+extern int get_rtinfo();
 #endif /* _httpd_h_ */
 

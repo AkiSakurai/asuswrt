@@ -30,6 +30,7 @@
 #ifndef _RDPA_GPON_H_
 #define _RDPA_GPON_H_
 
+#include "bcm_ploam_api.h"
 #include "rdpa_types.h"
 #include "bcm_intr.h"
 #include "rdpa_gpon_cfg.h"
@@ -94,8 +95,9 @@ typedef enum
     rdpa_indication_state_transition,               /**< State transition indication */
     rdpa_indication_assign_onu_id_msg,              /**< Assign ONU ID Message indication */
     rdpa_indication_link_state_transition,          /**< Link state transition indication */
-    rdpa_indication_rouge_onu,                      /**< Rogue ONU indication */
+    rdpa_indication_rogue_onu,                      /**< Rogue ONU indication */
     rdpa_indication_pmd_alarm,                      /**< PMD alarm indication */
+    rdpa_indication_reboot_msg,                     /**< Reboot Message */
     rdpa_indication_none = 0xffff
 }rdpa_pon_indication;
 
@@ -206,16 +208,16 @@ typedef struct
 /** Rogue ONU mode */
 typedef enum
 {
-    rdpa_monitor_rouge_mode,
-    rdpa_fault_rouge_mode,
-}rdpa_rouge_onu_mode;
+    rdpa_monitor_rogue_mode,
+    rdpa_fault_rogue_mode,
+}rdpa_rogue_onu_mode;
 
 /** Rogue ONU parameters */
 typedef struct
 {
     bdmf_boolean status;
-    rdpa_rouge_onu_mode type;
-}rdpa_rlouge_onu_param;
+    rdpa_rogue_onu_mode type;
+}rdpa_rogue_onu_param;
 
 /** Rogue ONU Detection Mode */
 typedef enum
@@ -273,7 +275,6 @@ typedef struct
     bdmf_boolean esc_alarm;
 }rdpa_pmd_alarm_param;
 
-
 /** GPON Callback Indication */
 typedef union
 {
@@ -293,8 +294,9 @@ typedef union
     rdpa_key_switch_param key_switch_parameters;                /* Key switch parameters */
     rdpa_oper_state_param state_transition_parameters;          /* State transition parameters */
     rdpa_link_state_param link_state_transition_parameters;     /* Link State transition parameters */
-    rdpa_rlouge_onu_param rogue_onu ;                           /* Rogue ONU parameters */
+    rdpa_rogue_onu_param rogue_onu;                             /* Rogue ONU parameters */
     rdpa_pmd_alarm_param pmd_alarm;                             /* PMD Alarm parameters */
+    PON_REBOOT_PLOAM_FLAGS reboot_ploam_flags;                  /* reboot ploam flags */
 } rdpa_callback_indication;
 
 /** PON-level counters.
@@ -332,6 +334,7 @@ typedef struct
     uint32_t tx_reg;            /**< Tx registration PLOAM counter */
     uint32_t tx_ack;            /**< Tx acknowledge PLOAM counter */
     uint32_t tx_key_rep;        /**< Tx key report PLOAM counter */
+    uint32_t tx_sleep_request;  /**< Tx sleep request PLOAM counter */
     uint32_t fec_errors;        /**< obsolete, duplicates fec_uncorr_cw*/
     uint32_t hec_errors;        /**< obsolete, duplicates psbd_hec_errors*/
 

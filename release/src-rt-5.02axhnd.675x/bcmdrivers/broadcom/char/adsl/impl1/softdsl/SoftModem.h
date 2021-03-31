@@ -715,12 +715,12 @@
 #if defined __linux__ && !defined _NO_WHCAR_DEF_
 typedef	long int __wchar_t;
 #endif
-#if !defined(__KERNEL__) && !defined(_CFE_) && !defined(__ECOS)
+#if !defined(__KERNEL__) && !defined(__ECOS)
 #include <stdio.h>
 #include <stdlib.h>
 #endif
 
-#if defined(__linux__) || defined (__unix__) || defined (__unix) || (defined (__mips__) && !defined(_CFE_) && !defined(__ECOS) && !defined(VXWORKS) && !defined(TARG_OS_RTEMS))/* enable if necessary, but not for dos-based builds */
+#if defined(__linux__) || defined (__unix__) || defined (__unix) /* enable if necessary, but not for dos-based builds */
 #include <linux/types.h>
 #endif
 

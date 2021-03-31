@@ -51,20 +51,12 @@ static int septel_stats(pcap_t *p, struct pcap_stat *ps);
 static int septel_setnonblock(pcap_t *p, int nonblock, char *errbuf);
 
 /*
- * Private data for capturing on Septel devices.
- */
-struct pcap_septel {
-	struct pcap_stat stat;
-}
-
-/*
  *  Read at most max_packets from the capture queue and call the callback
  *  for each of them. Returns the number of packets handled, -1 if an
  *  error occured, or -2 if we were told to break out of the loop.
  */
 static int septel_read(pcap_t *p, int cnt, pcap_handler callback, u_char *user) {
 
-  struct pcap_septel *ps = p->priv;
   HDR *h;
   MSG *m;
   int processed = 0 ;
@@ -162,7 +154,7 @@ loop:
         pcap_header.len = packet_len;
 
         /* Count the packet. */
-        ps->stat.ps_recv++;
+        p->md.stat.ps_recv++;
 
         /* Call the user supplied callback function */
         callback(user, &pcap_header, dp);
@@ -237,7 +229,7 @@ pcap_t *septel_create(const char *device, char *ebuf, int *is_ours) {
 	/* OK, it's probably ours. */
 	*is_ours = 1;
 
-	p = pcap_create_common(device, ebuf, sizeof (struct pcap_septel));
+	p = pcap_create_common(device, ebuf);
 	if (p == NULL)
 		return NULL;
 
@@ -246,11 +238,10 @@ pcap_t *septel_create(const char *device, char *ebuf, int *is_ours) {
 }
 
 static int septel_stats(pcap_t *p, struct pcap_stat *ps) {
-  struct pcap_septel *handlep = p->priv;
-  /*handlep->stat.ps_recv = 0;*/
-  /*handlep->stat.ps_drop = 0;*/
+  /*p->md.stat.ps_recv = 0;*/
+  /*p->md.stat.ps_drop = 0;*/
   
-  *ps = handlep->stat;
+  *ps = p->md.stat;
  
   return 0;
 }
@@ -291,6 +282,8 @@ static int septel_setfilter(pcap_t *p, struct bpf_program *fp) {
     return -1;
   }
 
+  p->md.use_bpf = 0;
+
   return (0);
 }
 
@@ -298,6 +291,5 @@ static int septel_setfilter(pcap_t *p, struct bpf_program *fp) {
 static int
 septel_setnonblock(pcap_t *p, int nonblock, char *errbuf)
 {
-  fprintf(errbuf, PCAP_ERRBUF_SIZE, "Non-blocking mode not supported on Septel devices");
-  return (-1);
+  return (0);
 }

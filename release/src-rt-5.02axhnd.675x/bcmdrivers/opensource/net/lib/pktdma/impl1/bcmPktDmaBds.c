@@ -373,6 +373,8 @@ static int bcmPktDma_calc_rxbds( void )
      * Currently we assign the same number of RX buffers to each interface.
      */
     {
+        #define BCM947189_ETH_MAX_RXBD (4096)
+
         const ETHERNET_MAC_INFO *EnetInfo;
         int num_channels = 0;
 
@@ -387,6 +389,8 @@ static int bcmPktDma_calc_rxbds( void )
             {
                 bcmPktDma_Bds_p->host.eth_rxbds[chnl] =
                                   host_eth_rxbds / num_channels;
+                if(bcmPktDma_Bds_p->host.eth_rxbds[chnl] > BCM947189_ETH_MAX_RXBD)
+                    bcmPktDma_Bds_p->host.eth_rxbds[chnl] = BCM947189_ETH_MAX_RXBD;
             }
         }
     }

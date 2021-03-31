@@ -95,7 +95,8 @@ int bcmxapiex_ring_create_delete(int q_id, int size, rdpa_cpu_rxq_cfg_t *rxq_cfg
 int bcmxapiex_get_pkt_from_ring(int hw_q_id, FkBuff_t **ppFkb, rdpa_cpu_rx_info_t *info);
 int bcmxapiex_add_proc_files(void);
 int bcmxapiex_del_proc_files(void);
-int bcmxapiex_runner_xtm_objects_init(bdmf_object_handle wan);
+int bcmxapiex_runner_xtm_orl_rl_set(bdmf_object_handle Xtm_orl_tm, PXTMRT_PORT_SHAPER_INFO pPortRateShaperInfo);
+int bcmxapiex_runner_xtm_objects_init(bdmf_object_handle wan, bdmf_object_handle *pXtm_orl_tm);
 int bcmxapiex_cfg_cpu_ds_queues (rdpa_cpu_reason reason, uint8_t tc, uint8_t queue_id);
 void bcmxapiex_SetOrStartTxQueue (rdpa_tm_queue_cfg_t *pQueueCfg, bdmf_object_handle egress_tm);
 void bcmxapiex_StopTxQueue (rdpa_tm_queue_cfg_t *pQueueCfg, bdmf_object_handle egress_tm);

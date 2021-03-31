@@ -352,10 +352,12 @@ void rutQos_doDefaultPolicy(void)
 #ifdef SUPPORT_DSL
 
    CmsRet ret = CMSRET_SUCCESS;
-   char cmd[BUFLEN_1024];
    UBOOL8 bridgeQos = FALSE;
    UBOOL8 routeQos  = FALSE;
+#if defined (SUPPORT_NF_NAT) || defined(SUPPORT_NF_MANGLE)
+   char cmd[BUFLEN_1024];
    UINT32 i;
+#endif
 
    /* check if there is any QoS-enabled route connection */
    if ((ret = rutQos_getWanQosInfo(&bridgeQos, &routeQos)) != CMSRET_SUCCESS)
@@ -367,10 +369,13 @@ void rutQos_doDefaultPolicy(void)
    /* make sure that all the required modules for qos support are loaded */
    rutIpt_qosLoadModule();
 
+#ifdef SUPPORT_NF_NAT
    /* first, remove all the implicit QoS policies regardless they have been launched or not */
    sprintf(cmd, "ebtables -t nat -D POSTROUTING -j mark --mark-or 0x%x -p ARP 2>/dev/null", XTM_QOS_LEVELS-1);
    rut_doSystemAction("rutQos_doDefaultPolicy", cmd);
+#endif // SUPPORT_NF_NAT
 
+#ifdef SUPPORT_NF_MANGLE
    for (i = 0; i < sizeOfDefaultClassifications()/sizeof(char *); i++)
    {
       sprintf(cmd, "iptables -w -t mangle -D OUTPUT -j MARK --or-mark 0x%x %s 2>/dev/null",
@@ -381,7 +386,7 @@ void rutQos_doDefaultPolicy(void)
       sprintf(cmd, "ip6tables -w -t mangle -D OUTPUT -j MARK --or-mark 0x%x %s 2>/dev/null",
               XTM_QOS_LEVELS-1, defaultClassifications[i]);
       rut_doSystemAction("rutQos_doDefaultPolicy", cmd);
-#endif      
+#endif
    }
 
 #ifdef SUPPORT_IPV6
@@ -389,11 +394,14 @@ void rutQos_doDefaultPolicy(void)
    sprintf(cmd, "ip6tables -w -t mangle -D OUTPUT -j MARK --or-mark 0x%x -p udp --dport 546:547 2>/dev/null",
            XTM_QOS_LEVELS-1);
    rut_doSystemAction("rutQos_doDefaultPolicy", cmd);
-#endif      
+#endif
+#endif // SUPPORT_NF_MANGLE
 
+#ifdef SUPPORT_NF_NAT
    /* Set up the implicit rule to give priority to ARP packets */
    sprintf(cmd, "ebtables -t nat -A POSTROUTING -j mark --mark-or 0x%x -p ARP", XTM_QOS_LEVELS-1);
    rut_doSystemAction("rutQos_doDefaultPolicy", cmd);
+#endif // SUPPORT_NF_NAT
 
    /* do nothing if there is no QoS-enabled route connection */
    if (routeQos == FALSE)
@@ -409,6 +417,7 @@ void rutQos_doDefaultPolicy(void)
     * so that the router can still respond to those protocols. 
     * Note: output chain will NOT affect routing performance.
     */
+#ifdef SUPPORT_NF_MANGLE
    for (i = 0; i < sizeOfDefaultClassifications()/sizeof(char *); i++)
    {
       sprintf(cmd, "iptables -w -t mangle -A OUTPUT -j MARK --or-mark 0x%x %s",
@@ -419,7 +428,7 @@ void rutQos_doDefaultPolicy(void)
       sprintf(cmd, "ip6tables -w -t mangle -A OUTPUT -j MARK --or-mark 0x%x %s",
               XTM_QOS_LEVELS-1, defaultClassifications[i]);
       rut_doSystemAction("rutQos_doDefaultPolicy", cmd);
-#endif      
+#endif
    }
 
 #ifdef SUPPORT_IPV6
@@ -431,7 +440,8 @@ void rutQos_doDefaultPolicy(void)
    sprintf(cmd, "ip6tables -w -t mangle -A OUTPUT -j MARK --or-mark 0x%x -p udp --dport 546:547",
            XTM_QOS_LEVELS-1);
    rut_doSystemAction("rutQos_doDefaultPolicy", cmd);
-#endif      
+#endif
+#endif // SUPPORT_NF_MANGLE
 
    return;
 #else

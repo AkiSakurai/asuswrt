@@ -67,8 +67,14 @@ CmsRet rcl_speedServiceObject( _SpeedServiceObject *newObj,
 {
    if (ADD_NEW(newObj, currObj))
       return CMSRET_SUCCESS;
+
+   /* Store the diagnostics parameters */
+   if (strcmp(newObj->diagnosticsState, MDMVS_REQUESTED))
+   {
+      return CMSRET_SUCCESS;
+   }
    /* Initiate a new diagnostics */
-   if (!strcmp(newObj->diagnosticsState, MDMVS_REQUESTED) && strcmp(currObj->diagnosticsState, MDMVS_REQUESTED))
+   else if (!strcmp(newObj->diagnosticsState, MDMVS_REQUESTED) && strcmp(currObj->diagnosticsState, MDMVS_REQUESTED))
    {
       // add the previous test result into history list
       if (!strcmp(currObj->diagnosticsState, MDMVS_COMPLETED))
@@ -76,11 +82,6 @@ CmsRet rcl_speedServiceObject( _SpeedServiceObject *newObj,
          rutSpdsvc_addPreviousTestResult(currObj, newObj);
       }
       return rutSpdsvc_runSpeedService(newObj);
-   }
-   /* Store the diagnostics result */
-   else if (strcmp(newObj->diagnosticsState, MDMVS_REQUESTED) && !strcmp(currObj->diagnosticsState, MDMVS_REQUESTED))
-   {
-      return CMSRET_SUCCESS;
    }
    else /* Deny a request when a test is still running */ 
    {

@@ -657,9 +657,21 @@ Private void * MibGetAdslChanObjPtr (void *gDslVars, uchar chId, uchar *objId, i
 	return pObj;
 }
 
-Private uchar * perToneToPerToneGrpArray(void	*gDslVars, uchar *dstPtr, uchar *srcPtr, bandPlanDescriptor *bp, short gFactor, int elemSize)
+Private uchar * perToneToPerToneGrpArray(void	*gDslVars, uchar *dstPtr, uchar *srcPtr, bandPlanDescriptor *bp, short gFactor, int elemSize, int defVal)
 {
-	int n,gpNum;
+#if defined(PSDATA_IMPL_VERSION) && (PSDATA_IMPL_VERSION >= 2)
+	int  i, n;
+	VdslToneGroup  *pCurToneRange = &bp->toneGroups[0];
+	VdslToneGroup  lastRange = { 0x7FFF, 0x7FFF };
+	uchar          *pDef = (void *) &defVal;
+#if !(defined(__arm) || defined(CONFIG_ARM) || defined(CONFIG_ARM64))
+	/* for big endian MIPS */
+	pDef += 4 - elemSize;
+#endif
+#else
+	int   n, gpNum;
+#endif
+
 	if (globalVar.actualgFactorForToneGroupObjects==false)
 		gFactor=8;
 	
@@ -674,11 +686,23 @@ Private uchar * perToneToPerToneGrpArray(void	*gDslVars, uchar *dstPtr, uchar *s
 	}
 	
 	globalVar.actualgFactorForToneGroupObjects=false;
+#if defined(PSDATA_IMPL_VERSION) && (PSDATA_IMPL_VERSION >= 2)
+	for (i = 0, n = 0; i < 512; i++, n += gFactor)
+	  do {
+		if (n <= pCurToneRange->endTone) {
+			AdslMibByteMove(elemSize, (n < pCurToneRange->startTone ? pDef : &srcPtr[n*elemSize]), &dstPtr[i*elemSize]);
+			break;
+		}
+		else
+			pCurToneRange = (pCurToneRange != &bp->toneGroups[bp->noOfToneGroups-1]) ? pCurToneRange + 1 : &lastRange;
+	  } while (1);
+#else
 	BlockByteClear(elemSize*512, (void*)dstPtr);
 	for(n=0;n<bp->noOfToneGroups;n++)
 		for(gpNum=bp->toneGroups[n].startTone/gFactor;gpNum<=bp->toneGroups[n].endTone/gFactor;gpNum++)
 			AdslMibByteMove(elemSize, &srcPtr[gpNum*gFactor*elemSize], &dstPtr[gpNum*elemSize]);
-	
+#endif
+
 	return dstPtr;
 }
 Private void CreateUserBandPlanUS(void *gDslVars, bandPlanDescriptor32 *usrBp, bandPlanDescriptor *bp)
@@ -1197,7 +1221,7 @@ Public long	AdslMibGetObjectValue (
 						objLen = sizeof (globalVar.distNoisedB[0])*kAdslMibToneNum*2;
 						break;
 					case kOidAdslPrivChanCharLinDsPerToneGroup:
-						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *) (&globalVar.chanCharLin[0]), &globalVar.adslMib.dsNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETds,sizeof(ComplexShort));
+						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *) (&globalVar.chanCharLin[0]), &globalVar.adslMib.dsNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETds,sizeof(ComplexShort),0x8000);
 						if(NULL == pObj)
 							break;
 						objLen=512*sizeof(ComplexShort);
@@ -1211,7 +1235,7 @@ Public long	AdslMibGetObjectValue (
 						else
 #endif
 							pChanCharLin = globalVar.chanCharLin;
-						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *)pChanCharLin, &globalVar.adslMib.usNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETus,sizeof(ComplexShort));
+						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *)pChanCharLin, &globalVar.adslMib.usNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETus,sizeof(ComplexShort),0x8000);
 						if(NULL == pObj)
 							break;
 						objLen=512*sizeof(ComplexShort);
@@ -1220,7 +1244,7 @@ Public long	AdslMibGetObjectValue (
 					case kOidAdslPrivChanCharLogDsPerToneGroup:
 						if(globalVar.dsBpHlogForReport==NULL)
 							break;
-						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *) (&globalVar.chanCharLog[0]), globalVar.dsBpHlogForReport, globalVar.adslMib.gFactors.Gfactor_SUPPORTERCARRIERSds,sizeof(short));
+						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *) (&globalVar.chanCharLog[0]), globalVar.dsBpHlogForReport, globalVar.adslMib.gFactors.Gfactor_SUPPORTERCARRIERSds,sizeof(short),0x8000);
 						if(NULL == pObj)
 							break;
 						objLen=512*sizeof(short);
@@ -1234,7 +1258,7 @@ Public long	AdslMibGetObjectValue (
 						else
 #endif
 							pChanCharLog = globalVar.chanCharLog;
-						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *)pChanCharLog, &globalVar.adslMib.usNegBandPlanDiscovery, globalVar.adslMib.gFactors.Gfactor_SUPPORTERCARRIERSus,sizeof(short));
+						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *)pChanCharLog, &globalVar.adslMib.usNegBandPlanDiscovery, globalVar.adslMib.gFactors.Gfactor_SUPPORTERCARRIERSus,sizeof(short),0x8000);
 						if(NULL == pObj)
 							break;
 						objLen=512*sizeof(short);
@@ -1243,7 +1267,7 @@ Public long	AdslMibGetObjectValue (
 					case kOidAdslPrivQuietLineNoiseDsPerToneGroup:
 						if(globalVar.dsBpQLNForReport==NULL)
 							break;
-						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *) (&globalVar.quietLineNoise[0]), globalVar.dsBpQLNForReport, globalVar.adslMib.gFactors.Gfactor_SUPPORTERCARRIERSds,sizeof(short));
+						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *) (&globalVar.quietLineNoise[0]), globalVar.dsBpQLNForReport, globalVar.adslMib.gFactors.Gfactor_SUPPORTERCARRIERSds,sizeof(short),0);
 						if(NULL == pObj)
 							break;
 						objLen=512*sizeof(short);
@@ -1257,7 +1281,7 @@ Public long	AdslMibGetObjectValue (
 						else
 #endif
 							pQln = globalVar.quietLineNoise;
-						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *)pQln, &globalVar.adslMib.usNegBandPlanDiscovery, globalVar.adslMib.gFactors.Gfactor_SUPPORTERCARRIERSus,sizeof(short));
+						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *)pQln, &globalVar.adslMib.usNegBandPlanDiscovery, globalVar.adslMib.gFactors.Gfactor_SUPPORTERCARRIERSus,sizeof(short),0);
 						if(NULL == pObj)
 							break;
 						objLen=512*sizeof(short);
@@ -1266,7 +1290,7 @@ Public long	AdslMibGetObjectValue (
 					case kOidAdslPrivSNRDsPerToneGroup:
 						if (globalVar.dsBpSNRForReport==NULL)
 							break;
-						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *) (&globalVar.snr[0]), globalVar.dsBpSNRForReport, *globalVar.dsGfactorForSNRReport,sizeof(short));
+						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *) (&globalVar.snr[0]), globalVar.dsBpSNRForReport, *globalVar.dsGfactorForSNRReport,sizeof(short),0x8000);
 						if(NULL == pObj)
 							break;
 						objLen=512*sizeof(short);
@@ -1280,7 +1304,7 @@ Public long	AdslMibGetObjectValue (
 						else
 #endif
 							pSnr = globalVar.snr;
-						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *)pSnr, &globalVar.adslMib.usNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETus,sizeof(short));
+						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *)pSnr, &globalVar.adslMib.usNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETus,sizeof(short),0x8000);
 						if(NULL == pObj)
 							break;
 						objLen=512*sizeof(short);
@@ -1335,7 +1359,7 @@ Public long	AdslMibGetObjectValue (
 						objLen=5*sizeof(short);
 						break;
 					case kOidAdslPrivBitAllocDsPerToneGroup:
-						pObj=perToneToPerToneGrpArray(gDslVars, globalVar.scratchObject,(uchar *) (&globalVar.bitAlloc[0]), &globalVar.adslMib.dsNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETds,sizeof(uchar));
+						pObj=perToneToPerToneGrpArray(gDslVars, globalVar.scratchObject,(uchar *) (&globalVar.bitAlloc[0]), &globalVar.adslMib.dsNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETds,sizeof(uchar),0);
 						if(NULL == pObj)
 							break;
 						objLen=512*sizeof(uchar);
@@ -1349,14 +1373,14 @@ Public long	AdslMibGetObjectValue (
 						else
 #endif
 							pBitAlloc = globalVar.bitAlloc;
-						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *)pBitAlloc, &globalVar.adslMib.usNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETus,sizeof(uchar));
+						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *)pBitAlloc, &globalVar.adslMib.usNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETus,sizeof(uchar),0);
 						if(NULL == pObj)
 							break;
 						objLen=512*sizeof(uchar);
 					}
 						break;
 					case kOidAdslPrivGainDsPerToneGroup:
-						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *) (&globalVar.gain[0]), &globalVar.adslMib.dsNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETds,sizeof(short));
+						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *) (&globalVar.gain[0]), &globalVar.adslMib.dsNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETds,sizeof(short),0);
 						if(NULL == pObj)
 							break;
 						objLen=512*sizeof(short);
@@ -1370,7 +1394,7 @@ Public long	AdslMibGetObjectValue (
 						else
 #endif
 							pGain = globalVar.gain;
-						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *)pGain, &globalVar.adslMib.usNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETus,sizeof(short));
+						pObj=perToneToPerToneGrpArray(gDslVars,globalVar.scratchObject,(uchar *)pGain, &globalVar.adslMib.usNegBandPlan, globalVar.adslMib.gFactors.Gfactor_MEDLEYSETus,sizeof(short),0);
 						if(NULL == pObj)
 							break;
 						objLen=512*sizeof(short);
@@ -1433,6 +1457,10 @@ Public long	AdslMibGetObjectValue (
 					case kOidAdslPrivGetMrefPsdInfo:
 						pObj = (void *)&globalVar.gMrefPsd;
 						objLen = sizeof(globalVar.gMrefPsd);
+						break;
+					case kOidAdslPrivGetLineFeatures:
+						pObj = (void *)&globalVar.lineFeatureInfos;
+						objLen = sizeof(globalVar.lineFeatureInfos);
 						break;
 #endif
 					case kOidAdslPrivExtraInfo:

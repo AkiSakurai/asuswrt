@@ -77,7 +77,7 @@ def Init_api():
 
     tn.read_until(" >", 3)
 
-    tn.write("cat /proc/pmd_calibration &\r\n")
+    tn.write("cat /proc/pmd/calibration &\r\n")
 
     tn.read_until(" >", 3)
 

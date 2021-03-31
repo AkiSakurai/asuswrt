@@ -474,57 +474,58 @@ CmsRet rcl_wanIpConnObject(_WanIpConnObject *newObj,
    }
    else if (DELETE_OR_DISABLE_EXISTING(newObj, currObj))
    {   
-      if (!cmsUtl_strcmp(currObj->connectionStatus, MDMVS_CONNECTED) || 
-          !cmsUtl_strcmp(currObj->connectionStatus, MDMVS_CONNECTING))
+      if ( currObj->X_BROADCOM_COM_IPv4Enabled )
       {
-         /* Only tearDown when currObj->connectionStatus is CONNECTED/CONNECTING  */
-   
-         cmsLed_setWanDisconnected();
+         if (!cmsUtl_strcmp(currObj->connectionStatus, MDMVS_CONNECTED) || 
+	          !cmsUtl_strcmp(currObj->connectionStatus, MDMVS_CONNECTING))
+         {
+            /* Only tearDown when currObj->connectionStatus is CONNECTED/CONNECTING  */
+	   
+            cmsLed_setWanDisconnected();
 
-         /* for delete or disable wan interface */
-         if ((ret = rutCfg_tearDownWanIpConnection(iidStack, 
-                                                   currObj, TRUE)) == CMSRET_SUCCESS)
-         {                                                    
-            cmsLog_debug("rutCfg_tearDownWanIpConnection ok.");
-         }           
-         else
-         {
-            cmsLog_error("rutCfg_tearDownWanIpConnection failed, ret=%d", ret);
-         }
+            /* for delete or disable wan interface */
+            if ((ret = rutCfg_tearDownWanIpConnection(iidStack, currObj, TRUE)) == CMSRET_SUCCESS)
+            {                                                    
+               cmsLog_debug("rutCfg_tearDownWanIpConnection ok.");
+            }           
+            else
+            {
+               cmsLog_error("rutCfg_tearDownWanIpConnection failed, ret=%d", ret);
+            }
 
-         if ((ret = rutCfg_stopWanIpConnection(iidStack, currObj, TRUE)) == CMSRET_SUCCESS)
-         {
-            cmsLog_debug("rutCfg_stopWanIpConnection ok");
+            if ((ret = rutCfg_stopWanIpConnection(iidStack, currObj, TRUE)) == CMSRET_SUCCESS)
+            {
+               cmsLog_debug("rutCfg_stopWanIpConnection ok");
+            }
+            else
+            {
+               cmsLog_error("rutCfg_stopWanIpConnection failed, ret=%d", ret);
+            }
          }
-         else
-         {
-            cmsLog_error("rutCfg_stopWanIpConnection failed, ret=%d", ret);
-         }
-      }
       
-      /* For Dynamic IPoE, wipe out  the external ip address, default gateway, etc.  */
-      if (newObj && !cmsUtl_strcmp(newObj->addressingType, MDMVS_DHCP))
-      {
-         CMSMEM_REPLACE_STRING_FLAGS(newObj->externalIPAddress, "0.0.0.0", mdmLibCtx.allocFlags);         
-         CMSMEM_REPLACE_STRING_FLAGS(newObj->subnetMask, "", mdmLibCtx.allocFlags);
-         CMSMEM_REPLACE_STRING_FLAGS(newObj->defaultGateway, "", mdmLibCtx.allocFlags);
-         CMSMEM_REPLACE_STRING_FLAGS(newObj->DNSServers, "", mdmLibCtx.allocFlags);
+         /* For Dynamic IPoE, wipe out  the external ip address, default gateway, etc.  */
+         if (newObj && !cmsUtl_strcmp(newObj->addressingType, MDMVS_DHCP))
+         {
+            CMSMEM_REPLACE_STRING_FLAGS(newObj->externalIPAddress, "0.0.0.0", mdmLibCtx.allocFlags);         
+            CMSMEM_REPLACE_STRING_FLAGS(newObj->subnetMask, "", mdmLibCtx.allocFlags);
+            CMSMEM_REPLACE_STRING_FLAGS(newObj->defaultGateway, "", mdmLibCtx.allocFlags);
+            CMSMEM_REPLACE_STRING_FLAGS(newObj->DNSServers, "", mdmLibCtx.allocFlags);
 
-         if (!newObj->enable)
+            if (!newObj->enable)
+            {
+               cmsLog_debug("Setting connStatus to UNCONFIGURED if it is disabled by users.");
+               CMSMEM_REPLACE_STRING_FLAGS(newObj->connectionStatus, MDMVS_UNCONFIGURED, mdmLibCtx.allocFlags);
+            } 
+         }
+         if (newObj && !cmsUtl_strcmp(newObj->addressingType, MDMVS_STATIC))
          {
-            cmsLog_debug("Setting connStatus to UNCONFIGURED if it is disabled by users.");
-            CMSMEM_REPLACE_STRING_FLAGS(newObj->connectionStatus, MDMVS_UNCONFIGURED, mdmLibCtx.allocFlags);
-         } 
-      }
-      if (newObj && !cmsUtl_strcmp(newObj->addressingType, MDMVS_STATIC))
-      {
-         if (!newObj->enable)
-         {
-            cmsLog_debug("Setting connStatus to UNCONFIGURED if it is disabled by users.");
-            CMSMEM_REPLACE_STRING_FLAGS(newObj->connectionStatus, MDMVS_UNCONFIGURED, mdmLibCtx.allocFlags);
+            if (!newObj->enable)
+            {
+               cmsLog_debug("Setting connStatus to UNCONFIGURED if it is disabled by users.");
+               CMSMEM_REPLACE_STRING_FLAGS(newObj->connectionStatus, MDMVS_UNCONFIGURED, mdmLibCtx.allocFlags);
+            }
          }
       }
-
 #ifdef DMP_X_BROADCOM_COM_IPV6_1 /* aka SUPPORT_IPV6 */
       rutWan_ipv6IpConnDisable(newObj, currObj, iidStack);
 #endif

@@ -5,6 +5,7 @@
 #
 EXE = archerctl
 OBJS = archer_ctl.o
+LIBS = -larcher
 
 PROGRAM_NAME_ALT:=archer
 

@@ -1,7 +1,7 @@
 /*
  * wl_linux.c exported functions and definitions
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_linux.h 780978 2019-11-07 08:27:46Z $
+ * $Id: wl_linux.h 789025 2020-07-16 17:54:34Z $
  */
 
 #ifndef _wl_linux_h_
@@ -86,6 +86,9 @@ typedef struct priv_link {
 #define WL_CONFIG_SMP()		FALSE
 #endif /* CONFIG_SMP */
 
+/* With WFD max interfaces supported should not exceed WIFI_MW_MAX_NUM_IF */
+#define WL_MAX_IFS (16U)
+
 #define WL_IFTYPE_BSS	1 /**< iftype subunit for BSS */
 #define WL_IFTYPE_WDS	2 /**< iftype subunit for WDS */
 #define WL_IFTYPE_MON	3 /**< iftype subunit for MONITOR */
@@ -106,7 +109,10 @@ struct wl_if {
 	struct fwder *fwdh;     /**< pointer to forwarder handle */
 #endif /* BCM_GMAC3 */
 	struct wlc_if *wlcif;		/**< wlc interface handle */
-	uint subunit;			/**< WDS/BSS unit */
+	uint subunit;			/**< assigned in wl_add_if(), index of the wlif if any,
+					* not necessarily corresponding to bsscfg._idx or
+					* AID2PVBMAP(scb).
+					*/
 	bool dev_registered;	/**< netdev registed done */
 	int  if_type;			/**< WL_IFTYPE */
 	char name[IFNAMSIZ];		/**< netdev may not be alloced yet, so store the name
@@ -131,6 +137,7 @@ struct wl_if {
 	    struct pktc_info	*pktci;
     };
 #endif // endif
+	int wds_index; /* wds interface indexing */
 };
 
 struct rfkill_stuff {
@@ -305,6 +312,7 @@ struct wl_info {
 #if defined(CONFIG_BCM_WLAN_DPDCTL)
 	char pciname[32];
 #endif /* CONFIG_BCM_WLAN_DPDCTL */
+	int ifidx_bitmap;
 };
 
 #if (defined(NAPI_POLL) && defined(WL_ALL_PASSIVE))
@@ -432,5 +440,21 @@ extern void wl_cfp_sendup(wl_info_t *wl, wl_if_t *wlif, void *pkt, uint16 flowid
 
 extern bool wl_intrabss_forward(wl_info_t *wl, struct net_device *net_device, void *pkt);
 extern void wl_sendup_ex(wl_info_t *wl, void *pkt);
+
+#if defined(WDS)
+int wlc_get_wlif_wdsindex(struct wl_if *wlif);
+#endif // endif
+
+#if !defined(FLAG_DWDS_AP)
+#define netdev_wlan_set_dwds_ap(wlif)    ({ BCM_REFERENCE(wlif); })
+#define netdev_wlan_unset_dwds_ap(wlif)  ({ BCM_REFERENCE(wlif); })
+#define is_netdev_wlan_dwds_ap(wlif)     (0)
+#endif // endif
+
+#if !defined(FLAG_DWDS_CLIENT)
+#define netdev_wlan_set_dwds_client(wlif)    ({ BCM_REFERENCE(wlif); })
+#define netdev_wlan_unset_dwds_client(wlif)  ({ BCM_REFERENCE(wlif); })
+#define is_netdev_wlan_dwds_client(wlif)     (0)
+#endif // endif
 
 #endif /* _wl_linux_h_ */

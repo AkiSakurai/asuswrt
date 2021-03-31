@@ -2,7 +2,7 @@
  * Common (OS-independent) definitions for
  * Broadcom 802.11abg Networking Device Driver
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -19,7 +19,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wlc_pub.h 781538 2019-11-22 20:17:23Z $
+ * $Id: wlc_pub.h 787796 2020-06-11 23:04:24Z $
  */
 
 #ifndef _wlc_pub_h_
@@ -685,6 +685,7 @@ typedef struct wlc_pub {
 	bool		_txbf;
 
 	pktpool_t	*pktpool_rxlfrag;		/**< use the pktpool for rx  buffers */
+	pktpool_t	*pktpool_utxd;		/**< use the pktpool for utxd  */
 	bool		_wlstats;		/**< wlc statistics */
 	bool		_amsdu_tx_support;	/**< true if amsdu tx agg is supported */
 	bool		_clear_restricted_chan;	/**< clear restricted channels on rx frames */
@@ -820,6 +821,10 @@ typedef struct wlc_pub {
 	bool		_dtpc;			/**< dynamic tx power control enable flag */
 	bool		_mbss_ign_mac_valid;	/* Ignore validation/auto-generation of MBSS MACs */
 	bool		_wrr_adaptive;			/* Adaptive round robin weights for uCode */
+	bool            _csimon;                /* Channel State Info Monitor feature */
+
+	/* ULOFDMA */
+	pktpool_t	*utxd_pool;	/* utxd buf pool */
 } wlc_pub_t;
 
 /** Shared portion of wlc_pub structure across WLC's in case of RSDB. */
@@ -1046,7 +1051,8 @@ typedef struct {
 			uint8	flags;
 		} ampdu_info_to_host;
 	} u;
-	struct scb	*_scb;		/**< Pointer to SCB for associated ea */
+	uint16		scb_flowid;	/**< 12 bit SCB flowid + 2 bit incarnation + 2 bit radio */
+	uint16		flags4;		/**< Unused */
 	uint32		rspec;		/**< Phy rate for received packet */
 	union {
 		uint32		packetid;
@@ -1083,10 +1089,17 @@ typedef struct {
 typedef struct {
 	uint8		flags3;		/**< Describe various packet properties */
 	uint8		index; /* window index */
+	uint8		ref_cnt; /* reference count to utxd pkt */
 	uint32		units; /* duration */
+	uint32		req_trig_units; /* requested units */
+	uint32		compl_trig_units; /* completed units */
+	uint32		req_trig_bytes; /* requsted trigger bytes */
+	uint32		trig_ts; /* timestamp */
 } wlc_ulpkttag_t;
 
+#define ULPKTTAG(osh, p) ((wlc_ulpkttag_t*) (PKTDATA(osh, p)))
 #define WLULPKTTAG(p) ((wlc_ulpkttag_t*)(p))
+#define WLULPKTTAGLEN (sizeof(wlc_ulpkttag_t))
 #endif // endif
 
 typedef struct wrr_info
@@ -1164,6 +1177,13 @@ typedef struct wrr_info
 /* re using wapi flag for mesh */
 #define WLF_MESH_RETX		0x80000000	/* mesh pkt identifier */
 
+#ifdef BCM_CSIMON
+/* overload WLF_VRATE_PROBE that is deprecated for rev128 and CSI is applicable
+ * to rev128++
+ */
+#define WLF_CSI_NULL_PKT    0x00002000    /**< CSI monitor  */
+#endif /* BCM_CSIMON */
+
 /* Flags2 used in wlc_pkttag_t (8 bits). */
 #define WLF2_PCB1_MASK		0x0f	/**< see pcb1 definitions */
 #define WLF2_PCB1_SHIFT		0
@@ -1224,7 +1244,6 @@ typedef struct wrr_info
 #if defined(MBSS)
 #define WLF2_PCB1_MBSS_BCMC	14	/** wlc_mbss_bcmc_free_cb */
 #endif /* MBSS */
-#define WLF2_PCB1_HTC		15	/**< HTC+ TX packets */
 
 /* macros to access the pkttag.flags2.pcb1 field */
 #define WLF2_PCB1(p)		((WLPKTTAG(p)->flags2 & WLF2_PCB1_MASK) >> WLF2_PCB1_SHIFT)
@@ -1417,10 +1436,18 @@ wlc_pkttag_bsscfg_get(void *p)
 /* Raw get of bss idx from pkt tag without error checking */
 #define WLPKTTAG_BSSIDX_GET(pkttag) ((pkttag)->_bsscfgidx)
 
-/* API for accessing SCB pointer in WLPKTTAG */
-#define WLPKTTAGSCBGET(p)	(WLPKTTAG(p)->_scb)
-#define WLPKTTAGSCBSET(p, scb)	(WLPKTTAG(p)->_scb = scb)
-#define WLPKTTAGSCBCLR(p)	(WLPKTTAG(p)->_scb = NULL)
+/* Raw get of scb flowid from pkttag without error checking */
+#define WLPKTTAGSCBFLOWIDGET(p) (WLPKTTAG(p)->scb_flowid)
+/* API for accessing SCB pointer in WLPKTTAG
+ * Returns NULL for invalid ID <SCB_FLOWID_INVALID>
+ * Returns scb from global scb lookup table for valid ID
+ */
+#define WLPKTTAGSCBGET(p)	(wlc_scb_flowid_global_lookup(WLPKTTAGSCBFLOWIDGET(p)))
+#define WLPKTTAGSCBSET(p, _scb) \
+	(WLPKTTAG(p)->scb_flowid = ((_scb) ? (SCB_FLOWID_GLOBAL((struct scb *)(_scb))) : \
+		(SCB_FLOWID_INVALID)))
+
+#define WLPKTTAGSCBCLR(p)	(WLPKTTAG(p)->scb_flowid = SCB_FLOWID_INVALID)
 
 #define WLRXPKTTAGSCBGET(p)	(WLRXPKTTAG(p)->_scb)
 #define WLRXPKTTAGSCBSET(p, scb)	(WLRXPKTTAG(p)->_scb = scb)
@@ -1622,6 +1649,12 @@ wlc_pkttag_bsscfg_get(void *p)
 #else
 #define STAMON_ENAB(pub) (0)
 #endif /* WL_STA_MONITOR */
+
+#ifdef BCM_CSIMON
+#define CSIMON_ENAB(pub) ((pub)->_csimon)
+#else
+#define CSIMON_ENAB(pub) (0)
+#endif /* BCM_CSIMON */
 
 /* Some useful combinations */
 #define STA_ONLY(pub)	(!AP_ENAB(pub))
@@ -2013,6 +2046,7 @@ wlc_pkttag_bsscfg_get(void *p)
 /* 11ax MU-MIMO/OFDMA support */
 #define HE_DLMU_ENAB(pub)		(HE_ENAB(pub) && WLC_HE_FEATURES_DLOMU(pub))
 #define HE_ULMU_ENAB(pub)		(HE_ENAB(pub) && WLC_HE_FEATURES_ULOMU(pub))
+#define HE_DLMMU_ENAB(pub)		(HE_ENAB(pub) && WLC_HE_FEATURES_DLMMU(pub))
 #define HE_MMU_ENAB(pub)		(HE_ENAB(pub) && WLC_HE_FEATURES_DLMMU(pub))
 
 #if defined(WLWRR) && defined(BCMDBG)
@@ -2034,6 +2068,7 @@ wlc_pkttag_bsscfg_get(void *p)
 #define HE_ENAB_BAND(pub, band)		(FALSE)
 #define HE_DLMU_ENAB(pub)		(FALSE)
 #define HE_ULMU_ENAB(pub)		(FALSE)
+#define HE_DLMMU_ENAB(pub)		(FALSE)
 #define HE_MMU_ENAB(pub)		(FALSE)
 #define WLC_WRR_ENAB(pub)		(FALSE)
 #define HE_SU_FRAGTX_ENAB(pub)		(FALSE)

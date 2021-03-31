@@ -2,7 +2,7 @@
  * VASIP related declarations
  * Broadcom 802.11abg Networking Device Driver
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_vasip.h 780862 2019-11-05 07:30:33Z $
+ * $Id: wlc_vasip.h 785555 2020-03-31 02:22:56Z $
  */
 
 #ifndef _WLC_VASIP_H_
@@ -106,6 +106,7 @@ bool wlc_vasip_present(wlc_hw_info_t *wlc_hw);
 #define VASIP_RTCAP_SGI_NBIT    0x2
 #define VASIP_RTCAP_LDPC_NBIT   0x4
 #define VASIP_RTCAP_BCMSTA_NBIT 0x5
+#define VASIP_RTCAP_NRX_NBIT    0x6
 
 /* initialize vasip */
 void wlc_vasip_init(wlc_hw_info_t *wlc_hw, uint32 vasipver, bool nopi);
@@ -136,14 +137,19 @@ uint32 vasip_shared_size(wlc_hw_info_t *wlc_hw, unsigned int sym);
 #define VASIP_SHARED_OFFSET(HW, SYM) vasip_shared_offset(HW, VASIP_SYM(SYM))
 #define VASIP_SHARED_SIZE(HW, SYM) vasip_shared_size(HW, VASIP_SYM(SYM))
 
+uint32 *wlc_vasip_addr(wlc_hw_info_t *wlc_hw, uint32 offset);
+
+/* copy svmp memory to a buffer starting from offset of length 'len', len is count of uint16's */
+int wlc_svmp_mem_read(wlc_hw_info_t *wlc_hw, uint16 *ret_svmp_addr, uint32 offset, uint16 len);
+
 #ifdef WL_AIR_IQ
 int wlc_svmp_mem_read64(wlc_hw_info_t *wlc_hw, uint64 *ret_svmp_addr, uint32 offset, uint16 len);
 int wlc_svmp_mem_set_axi(wlc_hw_info_t *wlc_hw, uint32 offset, uint16 len, uint16 val);
 int wlc_svmp_mem_read_axi(wlc_hw_info_t *wlc_hw, uint16 *ret_svmp_addr, uint32 offset, uint16 len);
 #endif // endif
-extern void wlc_svmp_update_ratecap(wlc_info_t *wlc, scb_t *scb, uint8 bfm_index);
+extern void wlc_svmp_update_ratecap(wlc_info_t *wlc, scb_t *scb, uint8 bfm_index, uint8 bfe_nr);
 #endif /* WLVASIP */
 #if !defined(WLVASIP)
-#define wlc_svmp_update_ratecap(a, b, c) do {} while (0)
+#define wlc_svmp_update_ratecap(a, b, c, d) do {} while (0)
 #endif // endif
 #endif /* _WLC_VASIP_H_ */

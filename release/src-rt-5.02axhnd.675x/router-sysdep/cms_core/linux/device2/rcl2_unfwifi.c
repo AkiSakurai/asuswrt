@@ -195,20 +195,6 @@ CmsRet rcl_dev2WifiRadioObject( _Dev2WifiRadioObject *newObj,
         {
             newObj->autoChannelEnable=0;
         }
-
-        /* Validate control sideband for 2.4G 40MHz */
-        if (strcmp(newObj->operatingChannelBandwidth,MDMVS_40MHZ) == 0 &&
-            strcmp(newObj->operatingFrequencyBand, MDMVS_2_4GHZ) == 0)
-        {
-            if (newObj->channel < 5)
-            {
-                REPLACE_STRING_IF_NOT_EQUAL_FLAGS(newObj->extensionChannel, MDMVS_BELOWCONTROLCHANNEL, mdmLibCtx.allocFlags);
-            }
-            else if (newObj->channel > 7 && newObj->channel <= 14)
-            {
-                REPLACE_STRING_IF_NOT_EQUAL_FLAGS(newObj->extensionChannel, MDMVS_ABOVECONTROLCHANNEL, mdmLibCtx.allocFlags);
-            }
-        }
     }
 
     rut2_sendWifiChange();
@@ -524,10 +510,11 @@ CmsRet rcl_dev2WifiAccessPointSecurityObject( _Dev2WifiAccessPointSecurityObject
     if (newObj && currObj)
     {
         cmsLog_debug("....newObj->reset:%d\n",newObj->reset);
+        InstanceIdStack ancestorIidStack = *iidStack;
 
         if (cmsObj_getAncestor(MDMOID_DEV2_WIFI_ACCESS_POINT,
                     MDMOID_DEV2_WIFI_ACCESS_POINT_SECURITY,
-                    iidStack,(void **)&wifiAccessPointObj) != CMSRET_SUCCESS)
+                    &ancestorIidStack,(void **)&wifiAccessPointObj) != CMSRET_SUCCESS)
         {
             return CMSRET_INVALID_PARAM_VALUE;
         }
@@ -666,6 +653,8 @@ CmsRet rcl_dev2WifiAccessPointSecurityObject( _Dev2WifiAccessPointSecurityObject
             // check nvram wep key or index change and update WEPKey
             ret = updateNvramWEPKeyChanged(newObj, currObj);
         } /* no reset */
+
+        cmsObj_free((void **)&wifiAccessPointObj);
     }
 
     if (ret == CMSRET_SUCCESS)

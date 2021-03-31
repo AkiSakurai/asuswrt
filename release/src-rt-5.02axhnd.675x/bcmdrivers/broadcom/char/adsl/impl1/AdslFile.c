@@ -101,7 +101,9 @@ int AdslFileLoadImage(char * fname, void *pAdslLMem, void *pAdslSDRAM)
 {
 	adslPhyImageHdr		phyHdr;
 	struct file  			* fp;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0))
 	mm_segment_t		fs;
+#endif
 #if 1 && defined(LMEM_ACCESS_WORKAROUND)
 	uint	lmemhdr[4];
 #endif
@@ -114,14 +116,15 @@ int AdslFileLoadImage(char * fname, void *pAdslLMem, void *pAdslSDRAM)
 		printk("Unable to load '%s'.\n", fname);
 		return 0;
 	}
-
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+   if (kernel_read(fp, (void *)&phyHdr, sizeof(phyHdr), &fp->f_pos) != sizeof(phyHdr)) {
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0))
+	if (kernel_read(fp, fp->f_pos, (void *)&phyHdr, sizeof(phyHdr)) != sizeof(phyHdr)) {
+#else
 	fs= get_fs();
 	set_fs(get_ds());
 
 	fp->f_pos = 0;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0))
-	if (vfs_read(fp, (void *)&phyHdr, sizeof(phyHdr), &fp->f_pos) != sizeof(phyHdr)) {
-#else
 	if (fp->f_op->read(fp, (void *)&phyHdr, sizeof(phyHdr), &fp->f_pos) != sizeof(phyHdr)) {
 #endif
 		printk("Failed to read image header from '%s'.\n", fname);
@@ -131,16 +134,18 @@ int AdslFileLoadImage(char * fname, void *pAdslLMem, void *pAdslSDRAM)
 #ifdef SUPPORT_PHY_BIN_FROM_SDRAM
 	memcpy(&phyBinAddr[0], (void *)&phyHdr, sizeof(phyHdr));
 #endif
-#ifdef ADSLDRV_LITTLE_ENDIAN
-	phyHdr.lmemOffset = ADSL_ENDIAN_CONV_INT32(phyHdr.lmemOffset);
-	phyHdr.lmemSize = ADSL_ENDIAN_CONV_INT32(phyHdr.lmemSize);
-	phyHdr.sdramOffset = ADSL_ENDIAN_CONV_INT32(phyHdr.sdramOffset);
-	phyHdr.sdramSize = ADSL_ENDIAN_CONV_INT32(phyHdr.sdramSize);
+#if defined(__arm) || defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+	phyHdr.lmemOffset = ADSL_SWAP_UINT32(phyHdr.lmemOffset);
+	phyHdr.lmemSize = ADSL_SWAP_UINT32(phyHdr.lmemSize);
+	phyHdr.sdramOffset = ADSL_SWAP_UINT32(phyHdr.sdramOffset);
+	phyHdr.sdramSize = ADSL_SWAP_UINT32(phyHdr.sdramSize);
 #endif
 #if 1 && defined(LMEM_ACCESS_WORKAROUND)
 	fp->f_pos = phyHdr.lmemOffset;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0))
-	if (vfs_read(fp, (void *)lmemhdr, sizeof(lmemhdr), &fp->f_pos) != sizeof(lmemhdr)) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+   if (kernel_read(fp, (void *)lmemhdr, sizeof(lmemhdr), &fp->f_pos) != sizeof(lmemhdr)) {
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0))
+	if (kernel_read(fp, fp->f_pos, (void *)lmemhdr, sizeof(lmemhdr)) != sizeof(lmemhdr)) {
 #else
 	if (fp->f_op->read(fp, (void *)lmemhdr, sizeof(lmemhdr), &fp->f_pos) != sizeof(lmemhdr)) {
 #endif
@@ -150,8 +155,10 @@ int AdslFileLoadImage(char * fname, void *pAdslLMem, void *pAdslSDRAM)
 	}
 #endif
 	fp->f_pos = phyHdr.lmemOffset;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0))
-	if (vfs_read(fp, pAdslLMem, phyHdr.lmemSize, &fp->f_pos) != phyHdr.lmemSize) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+   if (kernel_read(fp, pAdslLMem, phyHdr.lmemSize, &fp->f_pos) != phyHdr.lmemSize) {
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0))
+	if (kernel_read(fp, fp->f_pos, pAdslLMem, phyHdr.lmemSize) != phyHdr.lmemSize) {
 #else
 	if (fp->f_op->read(fp, pAdslLMem, phyHdr.lmemSize, &fp->f_pos) != phyHdr.lmemSize) {
 #endif
@@ -168,8 +175,10 @@ int AdslFileLoadImage(char * fname, void *pAdslLMem, void *pAdslSDRAM)
 	AdslCoreSetXfaceOffset(pAdslLMem, phyHdr.lmemSize);
 
 	fp->f_pos = phyHdr.sdramOffset;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0))
-	if (vfs_read(fp, pAdslSDRAM, phyHdr.sdramSize, &fp->f_pos) != phyHdr.sdramSize) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+   if (kernel_read(fp, pAdslSDRAM, phyHdr.sdramSize, &fp->f_pos) != phyHdr.sdramSize) {
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0))
+	if (kernel_read(fp, fp->f_pos, pAdslSDRAM, phyHdr.sdramSize) != phyHdr.sdramSize) {
 #else
 	if (fp->f_op->read(fp, pAdslSDRAM, phyHdr.sdramSize, &fp->f_pos) != phyHdr.sdramSize) {
 #endif
@@ -184,7 +193,9 @@ int AdslFileLoadImage(char * fname, void *pAdslLMem, void *pAdslSDRAM)
 	memcpy(&phyBinAddr[phyHdr.sdramOffset], pAdslSDRAM, phyHdr.sdramSize);
 #endif
 	filp_close(fp, NULL);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0))
 	set_fs(fs);
+#endif
 	return phyHdr.lmemSize + phyHdr.sdramSize;
 }
 

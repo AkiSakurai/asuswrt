@@ -243,7 +243,7 @@ static u16 Laser_Dev_Ioctl_Get_Voltage(void)
     if (Laser_Dev_Is_XFP())
     {
         u8 i, aux_measurement_types = -1;
-        bcmsfp_read_byte(i2c_bus, 0, TRANSCEIVER_IDENTIFIER_OFFSET, &aux_measurement_types);
+        bcmsfp_read_byte(i2c_bus, 0, TRANSCEIVER_AUX_MON_OFFSET, &aux_measurement_types);
         for (i = 0; i < 2; i++, aux_measurement_types <<= 4)
         {
             if ( (aux_measurement_types & 0xF0) == (TRANSCEIVER_AUX_MON_TYPE_VOLT << 4) )

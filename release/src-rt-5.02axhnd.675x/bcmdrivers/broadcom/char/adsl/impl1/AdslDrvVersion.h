@@ -48,5 +48,5 @@
 #define ADSL_DRV_MJ_VERNUM		25
 #define ADSL_DRV_MN_VERSYM		' '
 #define ADSL_DRV_MN_VERNUM		0
-#define ADSL_DRV_VER_STR		"27h"
+#define ADSL_DRV_VER_STR		"27l"
 

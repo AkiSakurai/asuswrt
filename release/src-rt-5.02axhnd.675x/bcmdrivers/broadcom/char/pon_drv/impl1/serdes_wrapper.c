@@ -105,7 +105,7 @@ static err_code_t access_serdes_reg(bool ctrl_cmd, bool do_read, uint16_t addr, 
 {
     pmi_lp_3_t pmi_lp_3;
 
-    spin_lock(&serdes_lock);
+    spin_lock_bh(&serdes_lock);
 
     ag_drv_pmi_lp_1_set(MAPPED_ADDR(addr));
     ag_drv_pmi_lp_2_set(wr_data, mask_data);
@@ -139,7 +139,7 @@ static err_code_t access_serdes_reg(bool ctrl_cmd, bool do_read, uint16_t addr, 
 
     *rddata = pmi_lp_3.pmi_lp_rddata;
 
-    spin_unlock(&serdes_lock);
+    spin_unlock_bh(&serdes_lock);
 
     return ((!pmi_lp_3.pmi_lp_ack || pmi_lp_3.pmi_lp_err) ? ERR_CODE_POLLING_TIMEOUT : ERR_CODE_NONE);
 }

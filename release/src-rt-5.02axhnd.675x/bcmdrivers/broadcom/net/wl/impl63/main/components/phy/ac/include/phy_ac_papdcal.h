@@ -1,7 +1,7 @@
 /*
  * ACPHY PAPD CAL module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_papdcal.h 779852 2019-10-09 00:31:39Z $
+ * $Id: phy_ac_papdcal.h 783292 2020-01-21 18:48:30Z $
  */
 
 #ifndef _phy_ac_papdcal_h_

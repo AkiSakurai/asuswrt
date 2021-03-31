@@ -202,7 +202,7 @@ Public Boolean G997SetTxBuffer(void *gDslVars, int len, void *bufPtr)
 	if ((0 == len) || (NULL == bufPtr))
 		return false;
 	
-	DiagWriteString(gLineId(gDslVars), DIAG_DSL_CLIENT, "%s: line%d - bufPtr=0x%p len=%d\n", __FUNCTION__, gLineId(gDslVars), bufPtr, len);
+	DiagWriteString(gLineId(gDslVars), DIAG_DSL_CLIENT, "%s: line%d - bufPtr=0x%px len=%d\n", __FUNCTION__, gLineId(gDslVars), bufPtr, len);
 	
 	globalVar.txMsgBufLen = len;
 	globalVar.txMsgBufPtr = bufPtr;
@@ -381,6 +381,7 @@ Public void G997StatusSnooper (void *gDslVars, dslStatusStruct *status)
 	
 	switch (DSL_STATUS_CODE(status->code)) {
 		case kDslEscapeToG994p1Status:
+		case kDslFastRetrain:
 			G997Reset(gDslVars);
 			break;
 

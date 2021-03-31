@@ -2,7 +2,7 @@
  * Minimal debug/trace/assert driver definitions for
  * Broadcom 802.11 Networking Adapter.
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -19,7 +19,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_dbg.h 779781 2019-10-07 15:25:52Z $
+ * $Id: wl_dbg.h 787038 2020-05-14 15:01:45Z $
  */
 
 /* XXX, some old "wl msglevel" for PHY module has been moved to phy on 6/10/2009 "wl phymsglevel"
@@ -132,7 +132,7 @@ extern int wl_print_backtrace(const char * prefix, void * i_backtrace, int i_bac
 #define WL_SPARE3(args)		do {if (wl_msg_level & WL_LOFT_VAL) WL_PRINT(args);} while (0)
 #define WL_REGULATORY(args)	do {if (wl_msg_level & WL_REGULATORY_VAL) WL_PRINT(args);} while (0)
 #define WL_SPARE4(args)		do {if (wl_msg_level & WL_PHYCAL_VAL) WL_PRINT(args);} while (0)
-#define WL_WDI(args)		do {if (wl_msg_level & WL_WDI_VAL) WL_PRINT(args);} while (0)
+#define WL_ULO(args)		do {if (wl_msg_level & WL_ULMU_VAL) WL_PRINT(args);} while (0)
 #define WL_MPC(args)		do {if (wl_msg_level & WL_MPC_VAL) WL_PRINT(args);} while (0)
 #define WL_APSTA(args)		do {if (wl_msg_level & WL_APSTA_VAL) WL_PRINT(args);} while (0)
 #define WL_DFS(args)		do {if (wl_msg_level & WL_DFS_VAL) WL_PRINT(args);} while (0)
@@ -244,6 +244,7 @@ extern int wl_print_backtrace(const char * prefix, void * i_backtrace, int i_bac
 #define WL_OCE_DBG_ON()		(wl_msg_level2 & WL_OCE_VAL)
 #define WL_OCE_ERR_ON()		(wl_msg_level2 & WL_OCE_VAL)
 #define WL_OCE_INFO_ON()	(wl_msg_level2 & WL_OCE_VAL)
+#define WL_ULMU_ON()		(wl_msg_level & WL_ULMU_VAL)
 
 /* Extra message control for APSTA debugging */
 #define	WL_APSTA_UPDN_VAL	0x00000001 /* Config up/down related  */
@@ -373,6 +374,7 @@ extern uint32 wl_ampdu_dbg;
 #define WL_ROAM(args)
 #define WL_WNM(args)
 #define WL_NAT(args)
+#define WL_ULO(args)
 
 #ifdef WLMSG_NATOE
 #define WL_NAT(args)           do {if (wl_msg_level2 & WL_NATOE_VAL) WL_PRINT(args);} while (0)
@@ -469,6 +471,7 @@ extern uint32 wl_ampdu_dbg;
 #define WL_MBO_DBG_ON()		0
 #define WL_ADPS_ON()            0
 #define WL_OCE_DBG_ON()		0
+#define WL_ULMU_ON()		0
 
 #else /* !BCMDBG */
 
@@ -770,6 +773,7 @@ extern uint32 wl_ampdu_dbg;
 #define WL_RRM_HEX(m, b, n)
 #define WL_SWDIV(args)
 #define WL_ADPS(args)
+#define WL_ULO(args)
 
 #ifdef BCMDBG_ERR
 #define WL_ERROR_ON()		1
@@ -855,6 +859,7 @@ extern uint32 wl_ampdu_dbg;
 #define WL_MUMIMO_ON()		0
 #define WL_MUTX_ON()		0
 #define WL_SWDIV_ON()		0
+#define WL_ULMU_ON()            0
 
 #define WL_AMPDU_UPDN(args)
 #define WL_AMPDU_RX(args)

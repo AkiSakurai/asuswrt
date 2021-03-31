@@ -141,6 +141,17 @@ UBOOL8 rutWl2_isWanLayer2DSL(MdmObjectId wanConnOid, const InstanceIdStack *iidS
 UBOOL8 rutWl2_isPPPoA(const InstanceIdStack *iidStack);
 
 
+/** This function finds out if the WanPppConnObject is ppp over l2tp and is used by
+ * rut_WanPPPConnection
+ *
+ * @param iidStack (IN) iidStack of the WanPppConnObject.  This iidStack is
+ *                  used to find the ancestor object
+ *
+ * @return UBOOL8 FALSE if it is not L2tp
+ */
+UBOOL8 rutWl2_isPPPoL2tp(const InstanceIdStack *iidStack);
+
+
 /** This function finds out if the WanIPConnObject is a IPoA and is called by rcl_wanIPConnectiObject
  *
  *
@@ -313,15 +324,14 @@ CmsRet rutWl2_getGponWanIidStack(InstanceIdStack *gponWanIid);
  */
 CmsRet rutWl2_getEponWanIidStack(InstanceIdStack *eponWanIid);
 
-/** Get the (layer 2) Wan L2tpAc InterfaceConfig object.
+
+/** Get the (layer 2) Wan L2tpAc iidStack .
  *
  * @param iidStack (OUT) The iidStack of the requested object.
- * @param wanL2tpAcIntfObj (OUT) The requested object.
  *
  * @return CmsRet enum.
  */
-CmsRet rutWl2_getWanL2tpAcObject(InstanceIdStack *iidStack, _L2tpAcIntfConfigObject **wanL2tpAcIntfObj);
-
+CmsRet rutWl2_getL2tpWanIidStack(InstanceIdStack *l2tpWanIid);
 #endif /* __RUT_WANLAYER2_H__ */
                                    
 

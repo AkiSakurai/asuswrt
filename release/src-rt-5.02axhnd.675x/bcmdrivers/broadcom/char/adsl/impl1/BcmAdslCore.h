@@ -187,7 +187,10 @@ char isGdbOn(void);
 void BcmAdslCoreGdbCmd(void *pCmd, int cmdLen);
 void BcmAdslCoreGdbTask(void);
 void BcmAdslCoreGdbSetMemDumpState(int bOn);
+int is_udp_connection(void);
 #endif
+
+void BcmXdslEocWakeup(unsigned lineId, int eocMsgType);
 
 void BcmXdslCoreGetCurrentMedia(unsigned int *pMediaInUse);
 int  BcmXdslCoreGetLineActive(int lineId);
@@ -225,6 +228,8 @@ void BcmXdslCoreMiscIoCtlFunc(unsigned char lineId);
 void BcmXdslCoreMaintenanceTask(void);
 #if defined(SUPPORT_HMI)
 void BcmXdslCoreSendHmiConfig(unsigned char lineId, int configId, void *data, int dataLen);
+void BcmXdslNotifyFastRetrain(unsigned char lineId);
+void BcmXdslNotifyPeriodCounterEvent(unsigned char lineId, unsigned int event);
 #endif
 
 int BcmXdslCoreGetAfeBoardId(unsigned int *pAfeIds);

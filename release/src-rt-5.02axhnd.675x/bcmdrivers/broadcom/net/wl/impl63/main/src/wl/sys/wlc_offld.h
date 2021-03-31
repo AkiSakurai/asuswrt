@@ -2,7 +2,7 @@
  * Common (OS-independent) portion of Broadcom 802.11 Networking Device Driver
  * TX and RX status offload module
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

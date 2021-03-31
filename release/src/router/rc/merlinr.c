@@ -14,8 +14,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
  * MA 02111-1307 USA
  *
- * Copyright 2019-2020, paldier <paldier@hotmail.com>.
- * Copyright 2019-2020, lostlonger<lostlonger.g@gmail.com>.
+ * Copyright 2019-2021, paldier <paldier@hotmail.com>.
+ * Copyright 2019-2021, lostlonger<lostlonger.g@gmail.com>.
  * All Rights Reserved.
  * 
  *
@@ -35,7 +35,7 @@
 #endif
 #include "merlinr.h"
 #include <curl/curl.h>
-
+#include <auth_common.h>
 
 void merlinr_insmod(){
 	eval("insmod", "nfnetlink");
@@ -78,7 +78,7 @@ void enable_4t4r_ax58()
 }
 void enable_4t4r()
 {
-//unlock 4t4r for all regions, not just china
+//unlock 4t4r for all regions
 //ensure that the hardware support 4t4r
 	if(!strcmp(cfe_nvram_get("1:sw_rxchain_mask"), "0xf") && strcmp(cfe_nvram_get("1:sw_txchain_mask"), "0xf")){
 		if ( !pids("envrams") )
@@ -152,7 +152,7 @@ void merlinr_init_done()
 		nvram_set("modelname", "SBRAC3200P");
 #elif defined(EA6700)
 		nvram_set("modelname", "EA6700");
-#elif defined(R8000P) || defined(R7900P)
+#elif defined(R8000P)
 		nvram_set("modelname", "R8000P");
 #elif defined(RAX20)
 		nvram_set("modelname", "RAX20");
@@ -207,7 +207,7 @@ void merlinr_init_done()
 #elif defined(RMAC2100)
 		nvram_set("modelname", "RMAC2100");
 #endif
-#if defined(R8000P) || defined(R7900P)
+#if defined(R8000P)
 	nvram_set("ping_target","www.taobao.com");
 	nvram_commit();
 #endif
@@ -443,12 +443,10 @@ int merlinr_firmware_check_update_main(int argc, char *argv[])
 						nvram_set("webs_state_url", "");
 #if (defined(RTAC82U) && !defined(RTCONFIG_AMAS)) || defined(RTAC3200) || defined(RTAC85P) || defined(RMAC2100)
 						snprintf(info,sizeof(info),"3004_382_%s_%s-%s",modelname,fwver,tag);
-#elif (defined(RTAC82U) && defined(RTCONFIG_AMAS)) || defined(RTAC95U) || defined(RTAX56_XD4) || defined(RTAX95Q)
-						snprintf(info,sizeof(info),"3004_386_%s_%s-%s",modelname,fwver,tag);
-#elif defined(RTAC68U) || defined(RTAC3100) || defined(RTAC88U)
-						snprintf(info,sizeof(info),"3004_385_%s_%s-%s",modelname,fwver,tag);
-#else
+#elif defined(BLUECAVE)
 						snprintf(info,sizeof(info),"3004_384_%s_%s-%s",modelname,fwver,tag);
+#else
+						snprintf(info,sizeof(info),"3004_386_%s_%s-%s",modelname,fwver,tag);
 #endif
 						FWUPDATE_DBG("---- current version : %s ----", nvram_get("extendno"));
 						FWUPDATE_DBG("---- productid : %s_%s-%s ----", modelname, fwver, tag);
@@ -500,12 +498,10 @@ int merlinr_firmware_check_update_main(int argc, char *argv[])
 GODONE:
 #if (defined(RTAC82U) && !defined(RTCONFIG_AMAS)) || defined(RTAC3200) || defined(RTAC85P) || defined(RMAC2100)
 	snprintf(info,sizeof(info),"3004_382_%s",nvram_get("extendno"));
-#elif (defined(RTAC82U) && defined(RTCONFIG_AMAS)) || defined(RTAC95U) || defined(RTAX56_XD4) || defined(RTAX95Q)
-	snprintf(info,sizeof(info),"3004_386_%s",nvram_get("extendno"));
-#elif defined(RTAC68U) || defined(RTAC3100) || defined(RTAC88U)
-	snprintf(info,sizeof(info),"3004_385_%s",nvram_get("extendno"));
-#else
+#elif defined(BLUECAVE)
 	snprintf(info,sizeof(info),"3004_384_%s",nvram_get("extendno"));
+#else
+	snprintf(info,sizeof(info),"3004_386_%s",nvram_get("extendno"));
 #endif
 	nvram_set("webs_state_url", "");
 	nvram_set("webs_state_flag", "0");
@@ -522,7 +518,7 @@ GODONE:
 	FWUPDATE_DBG("---- firmware check update finish ----");
 	return 0;
 }
-#if !defined(BLUECAVE)
+#if defined(RTCONFIG_BCMARM) || defined(RTCONFIG_HND_ROUTER) || defined(RTCONFIG_RALINK)
 void exec_uu_merlinr()
 {
 	FILE *fp;
@@ -622,4 +618,59 @@ void softcenter_eval(int sig)
 	_eval(eval_argv, NULL, 0, &pid);
 }
 #endif
+
+static void show_help(void)
+{
+	printf("usage:\n");
+	printf("toolbox reset [all]\n");
+	printf("\treset softcenter files only\n");
+	printf("\t\tor reset softcenter files and database\n");
+}
+static int
+reset_sc(int all)
+{
+	if(all){
+		killall_tk("skipd");
+		doSystem("rm -rf /jffs/db");
+		if(strcmp(nvram_get("preferred_lang"), "CN"))
+			printf("Database has been cleared.\n");
+		else
+			printf("数据库已清空！\n");
+	}
+	doSystem("rm -rf /jffs/softcenter/bin/*");
+	doSystem("rm -rf /jffs/softcenter/scripts/*");
+	doSystem("rm -rf /jffs/softcenter/webs/*");
+	doSystem("rm -rf /jffs/softcenter/res/*");
+	doSystem("rm -rf /jffs/softcenter");
+	doSystem("rm -rf /jffs/configs");
+	doSystem("rm -rf /jffs/scripts/dnsmasq.postconf");
+	doSystem("service restart_dnsmasq >/dev/null 2>&1");
+	sleep(1);
+	doSystem("jffsinit.sh >/dev/null 2>&1");
+	if(strcmp(nvram_get("preferred_lang"), "CN"))
+		printf("Software Center reset is complete, Please clear your browser cache and reopen the website page of the software center!\n");
+	else
+		printf("软件中心重置完成，请清空浏览器缓存后重新进入软件中心！\n");
+	return 0;
+}
+
+
+int
+merlinr_toolbox(int argc, char **argv)
+{
+
+	if (argc == 1) {
+		show_help();
+	} else {
+		if (argv[1] && !strcmp(argv[1], "reset")) {
+			if(argv[2] && !strcmp(argv[2], "all"))
+				reset_sc(1);
+			else
+				reset_sc(0);
+		} else {
+			show_help();
+		}
+	}
+	return 0;
+}
 

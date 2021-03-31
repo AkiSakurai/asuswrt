@@ -429,6 +429,9 @@ int rdpa_cmd_pbit_to_q_ioctl(unsigned long arg)
 
                         if (dev_has_table)
                             bdmf_put(cur_p_to_q_obj);
+
+                        bdmf_unlink(p_to_q_obj, dev_obj);
+                        bdmf_link(p_to_q_obj, dev_obj, NULL);
                         
                         if (cur_p_to_q_obj != p_to_q_obj)
                             bdmf_put(p_to_q_obj);

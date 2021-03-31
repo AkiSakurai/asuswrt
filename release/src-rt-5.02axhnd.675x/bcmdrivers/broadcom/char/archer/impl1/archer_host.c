@@ -261,7 +261,7 @@ static void archer_host_mac_addr_table_dump(void)
     uint32_t ii;
     int res;
 
-    bcm_printk("idx                  MAC  mac_ref\n");
+    bcm_print("idx                  MAC  mac_ref\n");
 
     for(ii = 0; ii < ARCHER_HOST_MAC_ADDR_TABLE_SIZE; ++ii)
     {
@@ -270,10 +270,10 @@ static void archer_host_mac_addr_table_dump(void)
 
         if(ref_count)
         {
-            bcm_printk("%3u  <%02x:%2x:%02x:%02x:%02x:%02x>  %7d\n", ii, 
-                       mac_addr.u8[0], mac_addr.u8[1], mac_addr.u8[2],
-                       mac_addr.u8[3], mac_addr.u8[4], mac_addr.u8[5],
-                       ref_count);
+            bcm_print("%3u  <%02x:%2x:%02x:%02x:%02x:%02x>  %7d\n", ii, 
+                      mac_addr.u8[0], mac_addr.u8[1], mac_addr.u8[2],
+                      mac_addr.u8[3], mac_addr.u8[4], mac_addr.u8[5],
+                      ref_count);
         }
     }
 }
@@ -405,7 +405,7 @@ static void archer_host_dev_table_dump(void)
     uint32_t ii;
     int res;
 
-    bcm_printk("idx            device               dev_p  dev_ref  mac_idx\n");
+    bcm_print("idx            device               dev_p  dev_ref  mac_idx\n");
 
     /* Find a free entry. Reference count 0 means entry is free. */
     for(ii = 0; ii < ARCHER_HOST_DEV_TABLE_SIZE; ++ii)
@@ -416,9 +416,9 @@ static void archer_host_dev_table_dump(void)
         if(ref_count)
         {
             /*Look up dev in local table.*/
-            bcm_printk("%3u  %16s  0x%16p  %7d  %7d\n",
-                       ii, __getDevName(dev_p),
-                       dev_p, ref_count, mac_index);
+            bcm_print("%3u  %16s  0x%16p  %7d  %7d\n",
+                      ii, __getDevName(dev_p),
+                      dev_p, ref_count, mac_index);
         }
     }
 }
@@ -531,7 +531,7 @@ static int archer_host_mlt_config(sysport_driver_mlt_cmd_t cmd,
     mlt_data.mac_da_47_32 = ntohs(mac_da_47_32);
     mlt_data.mac_da_31_0 = ntohl(mac_da_31_0);
 
-//    printk("%s: cmd %d, valid %d, mac_da_type %d, rxq_index %d, mac_da_47_32 0x%04X, mac_da_31_0 0x%08X\n", __FUNCTION__, cmd, mlt_data.valid, mlt_data.mac_da_type, mlt_data.rxq_index, mlt_data.mac_da_47_32, mlt_data.mac_da_31_0);
+//    bcm_print("%s: cmd %d, valid %d, mac_da_type %d, rxq_index %d, mac_da_47_32 0x%04X, mac_da_31_0 0x%08X\n", __FUNCTION__, cmd, mlt_data.valid, mlt_data.mac_da_type, mlt_data.rxq_index, mlt_data.mac_da_47_32, mlt_data.mac_da_31_0);
 
     return sysport_driver_mlt_cmd(cmd, &mlt_data, &mlt_index);
 }
@@ -730,7 +730,7 @@ int archer_host_mode_set(archer_mode_t mode)
             return -1;
     }
 
-    __print("Archer Mode set to %s\n", mode_name);
+    bcm_print("Archer Mode set to %s\n", mode_name);
 
     return 0;
 }
@@ -759,13 +759,13 @@ static int archer_host_fc_accel_mode_set(uint32_t accel_mode)
 
 void archer_host_info_dump(void)
 {
-    bcm_printk("Archer Mode: %s\n\n",
-               (archer_mode_g == ARCHER_MODE_L3) ? "L3" : "L2+L3");
+    bcm_print("Archer Mode: %s\n\n",
+              (archer_mode_g == ARCHER_MODE_L3) ? "L3" : "L2+L3");
 
-    bcm_printk("Archer Device Table\n");
+    bcm_print("Archer Device Table\n");
     archer_host_dev_table_dump();
 
-    bcm_printk("\nArcher Host MAC Addresses Table\n");
+    bcm_print("\nArcher Host MAC Addresses Table\n");
     archer_host_mac_addr_table_dump();
 }
 
@@ -795,7 +795,7 @@ int __init archer_host_construct(void)
     /* Set the Archer acceleration mode to be in sync with blog/flow cache */
     archer_host_fc_accel_mode_set( blog_support_get_accel_mode() );
 
-    __print("Initialized Archer Host Layer\n");
+    bcm_print("Initialized Archer Host Layer\n");
 
     return 0;
 }

@@ -57,7 +57,7 @@ obj-$(CONFIG_BCM_ADSL) += adsldd.o
 softdsl-objs += softdsl/SoftDslFrame.o softdsl/HdlcFramer.o softdsl/HdlcByte.o softdsl/G997.o 
 softdsl-objs += softdsl/Flatten.o softdsl/DslFramer.o softdsl/AdslMibObj.o softdsl/AdslMib.o softdsl/G992p3OvhMsg.o
 
-ifneq "$(findstring 63138,$(BRCM_CHIP))$(findstring 63148,$(BRCM_CHIP))$(findstring 63158,$(BRCM_CHIP))$(findstring 63178,$(BRCM_CHIP))" ""
+ifeq ($(findstring _$(strip $(BRCM_CHIP))_,_63138_63148_63158_63178_63146_),_$(strip $(BRCM_CHIP))_)
 softdsl-objs += softdsl/BlockUtil.o
 else
 softdsl-objs += softdsl/BlockShortMove.o softdsl/BlockLongMove.o softdsl/BlockByteMove.o softdsl/BlockByteFill.o softdsl/ASSERT_SIZE.o
@@ -68,7 +68,7 @@ adsldd-objs += $(softdsl-objs)
 
 
 ifeq "$(BRCM_PHY_CO)" "y"
-adsldd-objs += hmimsg/Core.o hmimsg/LineMgr.o hmimsg/bcm_hmiLineMsg.o hmimsg/bcm_DrvXface.o
+adsldd-objs += hmimsg/Core.o hmimsg/LineMgr.o hmimsg/bcm_hmiLineMsg.o hmimsg/bcm_DrvXface.o hmimsg/bcm_layout.o
 EXTRA_CFLAGS += -DBCM_PACKING_ATTRIBUTE="__attribute__ ((packed))"
 EXTRA_CFLAGS += -DSUPPORT_HMI
 endif
@@ -79,7 +79,7 @@ EXTRA_CFLAGS += -D_NOOS
 adsldd-objs += adsldrv_noos.o BcmAdslDiagNone.o BcmOs_None.o
 else
 adsldd-objs += adsldrv.o BcmAdslDiagCommon.o BcmAdslDiagLinux.o BcmOs.o AdslFile.o
-ifneq "$(findstring 6368,$(BRCM_CHIP))$(findstring 63268,$(BRCM_CHIP))$(findstring 63381,$(BRCM_CHIP))$(findstring 63138,$(BRCM_CHIP))$(findstring 63148,$(BRCM_CHIP))$(findstring 63158,$(BRCM_CHIP))$(findstring 63178,$(BRCM_CHIP))" ""
+ifeq ($(findstring _$(strip $(BRCM_CHIP))_,_6368_63268_63381_63138_63148_63158_63178_63146_),_$(strip $(BRCM_CHIP))_)
 ifneq "$(BRCM_PHY_CO)" "y"
 adsldd-objs += BcmXdslVectLinux.o
 endif
@@ -93,7 +93,13 @@ endif
 #BRCM_xDSL_GDB_SUPPORT=y
 
 ifeq "$(BRCM_xDSL_GDB_SUPPORT)" "y"
+
+ifeq "$(findstring 63146,$(BRCM_CHIP))" ""
 adsldd-objs += BcmAdslGdbStub.o
+else
+adsldd-objs += BcmAdslArmGdbStub.o
+endif
+
 EXTRA_CFLAGS += -DSUPPORT_XDSLDRV_GDB
 endif
 
@@ -209,11 +215,11 @@ phy_mode = ao
 endif
 endif
 
-ifneq "$(findstring 63158,$(BRCM_CHIP))$(findstring 63178,$(BRCM_CHIP))" ""
+ifneq "$(findstring 63158,$(BRCM_CHIP))$(findstring 63178,$(BRCM_CHIP))$(findstring 63146,$(BRCM_CHIP))" ""
 EXTRA_CFLAGS += -DUSE_RESERVE_SHARE_MEM
 endif
 
-ifneq "$(findstring 63381,$(BRCM_CHIP))$(findstring 63138,$(BRCM_CHIP))$(findstring 63148,$(BRCM_CHIP))$(findstring 63158,$(BRCM_CHIP))$(findstring 63178,$(BRCM_CHIP))" ""
+ifeq ($(findstring _$(strip $(BRCM_CHIP))_,_63381_63138_63148_63158_63178_63146_),_$(strip $(BRCM_CHIP))_)
 EXTRA_CFLAGS += -DSUPPORT_STATUS_BACKUP -DCONFIG_VDSL_SUPPORTED -DUSE_PMC_API -DUSE_PINMUX_DSLCTL_API -DNTR_SUPPORT
 endif
 
@@ -234,7 +240,7 @@ endif
 endif
 endif
 
-ifeq "$(BRCM_PHY_BONDING)$(findstring 63138,$(BRCM_CHIP))$(findstring 63148,$(BRCM_CHIP))$(findstring 63158,$(BRCM_CHIP))" "y"
+ifeq "$(BRCM_PHY_BONDING)$(findstring 63138,$(BRCM_CHIP))$(findstring 63148,$(BRCM_CHIP))$(findstring 63158,$(BRCM_CHIP))$(findstring 63146,$(BRCM_CHIP))" "y"
 phy_bnd = bnd
 endif
 ifeq "$(BRCM_PHY_BONDING5B)" "y"
@@ -282,6 +288,8 @@ EXTRA_CFLAGS += -DLINUX_FW_EXTRAVERSION=$(BRCM_VERSION)$(BRCM_RELEASE)$(shell ec
 
 EXTRA_CFLAGS += -I. -I$(INC_BRCMDRIVER_PUB_PATH)/$(BRCM_BOARD) -I$(INC_BRCMDRIVER_PRIV_PATH)/$(BRCM_BOARD) -I$(INC_BRCMBOARDPARMS_PATH)/$(BRCM_BOARD) -I$(INC_BRCMSHARED_PUB_PATH)/$(BRCM_BOARD) -I$(INC_BRCMSHARED_PRIV_PATH)/$(BRCM_BOARD)
 
+EXTRA_CFLAGS += -I$(INC_BRCMDRIVER_PUB_PATH)/$(BRCM_BOARD)/pmc
+# DO NOT CHANGE THE SEQUENCE OF INCLUDES 
 EXTRA_CFLAGS += -I$(INC_BRCMSHARED_PUB_PATH)/pmc
 
 EXTRA_CFLAGS +=-fms-extensions
@@ -310,7 +318,7 @@ endif
 
 ifeq "$(ADSL_PHY_MODE)" "file"
 
-HOST_EXTRACFLAGS += -m32 -I. -I$(INC_BRCMDRIVER_PUB_PATH)/$(BRCM_BOARD) -I$(INC_BRCMDRIVER_PRIV_PATH)/$(BRCM_BOARD) -I$(INC_BRCMSHARED_PUB_PATH)/$(BRCM_BOARD) -I$(INC_BRCMSHARED_PRIV_PATH)/$(BRCM_BOARD)
+HOST_EXTRACFLAGS += -I. -I$(INC_BRCMDRIVER_PUB_PATH)/$(BRCM_BOARD) -I$(INC_BRCMDRIVER_PRIV_PATH)/$(BRCM_BOARD) -I$(INC_BRCMSHARED_PUB_PATH)/$(BRCM_BOARD) -I$(INC_BRCMSHARED_PRIV_PATH)/$(BRCM_BOARD)
 
 ifeq "$(ADSL_SELF_TEST)" "y"
 PHYBLD_EXE := $(obj)/$(adslphy)/AdslTestPhyBld
@@ -329,24 +337,25 @@ PHY_BIN1  := $(obj)/adsl_phy1.bin
 endif
 
 clean-files := adsl_phy.bin adsl_test_phy.bin
-clean-files += $(PHYBLD_EXE)
+
+clean-files += $(adslphy)/AdslPhyBld
 ifeq "$(BRCM_PHY_BONDING_C0)" "y"
-clean-files += adsl_phy0.bin $(PHYBLD0_EXE)
+clean-files += adsl_phy0.bin $(adslphy0)/AdslPhyBld
 endif
 ifneq "$(findstring 63268,$(BRCM_CHIP))$(findstring 6368,$(BRCM_CHIP))" ""
 ifeq "$(BRCM_MULTI_PHY)" "y"
 ifeq "$(BRCM_PHY_BONDING_C0)" "y"
-clean-files += adsl_phy1.bin $(PHYBLD1_EXE)
+clean-files += adsl_phy1.bin $(adslphy1)/AdslPhyBld
 else
-clean-files += adsl_phy0.bin $(PHYBLD0_EXE)
+clean-files += adsl_phy0.bin $(adslphy0)/AdslPhyBld
 endif
 endif
 endif
 ifeq "$(BRCM_ANNEXAB_COMBO)" "y"
-clean-files += adsl_phy0.bin $(PHYBLD0_EXE)
+clean-files += adsl_phy0.bin $(adslphy0)/AdslPhyBld
 endif
 ifeq "$(BRCM_PHY_GFAST)" "y"
-clean-files += adsl_phy0.bin $(PHYBLD0_EXE)
+clean-files += adsl_phy0.bin $(adslphy0)/AdslPhyBld
 endif
 
 $(PHY_BIN): $(PHYBLD_EXE) 
@@ -406,7 +415,7 @@ endif
 
 $(obj)/adsldrv.o: $(PHY_BIN_FN)
 targets += $(obj)/adsldrv.o
- 
+
 else
 
 ifeq "$(ADSL_SELF_TEST)" "y"
@@ -414,13 +423,13 @@ adsldd-objs += $(adslphy)/adsl_selftest_lmem.o $(adslphy)/adsl_selftest_sdram.o
 else
 adsldd-objs += $(adslphy)/adsl_lmem.o $(adslphy)/adsl_sdram.o
 endif
-	
+
 endif
 
-$(info clean-files: $(clean--files))
+$(info clean-files: $(clean-files))
 
 
 -include $(TOPDIR)/Rules.make
 
 clean:
-	rm -rf adslcore*/AdslPhyBld
+	rm -rf $(clean-files)

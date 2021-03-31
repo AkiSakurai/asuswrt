@@ -1,7 +1,7 @@
 /*
  * 802.11ah/11ax Target Wake Time protocol and d11 h/w manipulation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_twt.h 781060 2019-11-08 21:32:36Z $
+ * $Id: wlc_twt.h 788958 2020-07-15 09:17:23Z $
  */
 
 #ifndef _wlc_twt_h_
@@ -52,6 +52,7 @@
 
 #define WLC_TWT_CAP_BCAST_TWT_SUPPORT		0
 #define WLC_TWT_CAP_TWT_RESP_SUPPORT		1
+#define WLC_TWT_CAP_TWT_REQ_SUPPORT		2
 
 #ifdef WLTWT
 
@@ -59,6 +60,7 @@
 extern wlc_twt_info_t *wlc_twt_attach(wlc_info_t *wlc);
 extern void wlc_twt_detach(wlc_twt_info_t *twti);
 extern void wlc_twt_disable(wlc_info_t *wlc);
+extern void wlc_twt_dump_schedblk(wlc_info_t *wlc);
 extern bool wlc_twt_req_cap(wlc_info_t *wlc, wlc_bsscfg_t *cfg);
 extern bool wlc_twt_resp_cap(wlc_info_t *wlc, wlc_bsscfg_t *cfg);
 extern bool wlc_twt_bcast_cap(wlc_info_t *wlc, wlc_bsscfg_t *cfg);
@@ -67,6 +69,7 @@ extern void wlc_twt_tbtt(wlc_info_t *wlc, wlc_bsscfg_t *cfg);
 extern int wlc_twt_actframe_proc(wlc_twt_info_t *twti, uint action_id,
 	struct dot11_management_header *hdr, scb_t *scb, uint8 *body, uint body_len);
 extern bool wlc_twt_scb_active(wlc_twt_info_t *twti, scb_t *scb);
+extern uint8 wlc_twt_scb_info(wlc_twt_info_t *twti, scb_t *scb);
 extern void wlc_twt_rx_pkt_trigger(wlc_twt_info_t *twti, scb_t *scb);
 extern void wlc_twt_intr(wlc_twt_info_t *twti);
 extern bool wlc_twt_scb_get_schedid(wlc_twt_info_t *twti, scb_t *scb, uint16 *schedid);
@@ -79,6 +82,7 @@ extern bool wlc_twt_scb_is_trig_enab(wlc_twt_info_t *twti, scb_t *scb);
 #else
 
 #define wlc_twt_disable(a)
+#define wlc_twt_dump_schedblk(a)
 #define wlc_twt_req_cap(a, b)			FALSE
 #define wlc_twt_resp_cap(a, b)			FALSE
 #define wlc_twt_bcast_cap(a, b)			FALSE

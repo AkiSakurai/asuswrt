@@ -563,6 +563,7 @@ typedef struct {
   ieee1905_ap_metric  APMetric; /* Ap Metric */
 
   uint8	assoc_allowance_status;	/* whether BSS is capable of accepting assoc req or not */
+  uint32 avg_tx_rate;		/* Avg tx rate based on the mcs map, nss and bw */
   void *vndr_data;    /* vendor specific data pointer which can be filled by the user */
 } i5_dm_bss_type;
 

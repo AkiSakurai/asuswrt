@@ -2,7 +2,7 @@
  * Monitor Mode routines.
  * This header file housing the define and function use by DHD
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -105,7 +105,7 @@ extern uint16 bcmwifi_monitor_create(monitor_info_t**);
 extern void bcmwifi_monitor_delete(monitor_info_t* info);
 extern uint16 bcmwifi_monitor(monitor_info_t* info,
 		monitor_pkt_info_t* pkt_info, void *pdata, uint16 len,
-		void* pout, int16* offset, uint16 *pkt_type, uint8 dma_flags);
+		void* pout, int16* offset, uint16 *pkt_type, uint8 dma_flags, void  *phyextract);
 extern uint32 wlc_he_sig_a1_from_plcp(uint8 *plcp);
 extern uint32 wlc_he_sig_a2_from_plcp(uint8 *plcp);
 #endif /* _BCMWIFI_MONITOR_H_ */

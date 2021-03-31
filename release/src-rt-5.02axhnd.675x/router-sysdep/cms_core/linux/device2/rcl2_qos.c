@@ -305,6 +305,24 @@ CmsRet rcl_dev2QosQueueObject( _Dev2QosQueueObject *newObj,
 
    if (newObj != NULL && currObj != NULL)
    {
+      UBOOL8 enableStateChanged = TRUE;
+      {
+         _Dev2QosObject *qosObj=NULL;
+
+         INIT_INSTANCE_ID_STACK(&iidStack);
+         ret = cmsObj_get(MDMOID_DEV2_QOS, &iidStack, OGF_NO_VALUE_UPDATE, (void **)&qosObj);
+         if (ret != CMSRET_SUCCESS)
+         {
+            cmsLog_error("Could not get QOS obj, ret=%d", ret);
+         }
+         else
+         {
+            /* we are in the case of switched on/off QoS from web if X_BROADCOM_COM_EnableStateChanged is set */
+            enableStateChanged = qosObj->X_BROADCOM_COM_EnableStateChanged;
+            cmsObj_free((void **)&qosObj);
+         }
+      }
+
       /*
        * Queue obj is being modified or disabled, or
        * rutQos_reconfigAllQueuesOnLayer2Intf_dev2 is doing a set on this obj
@@ -317,7 +335,10 @@ CmsRet rcl_dev2QosQueueObject( _Dev2QosQueueObject *newObj,
          cmsLog_notice("unconfig queue %s on intf %s",
                        currObj->X_BROADCOM_COM_QueueName, currObj->interface);
 
-         if (newObj->enable == FALSE && currObj->enable == TRUE)
+         /* don't reconfigure any classifiers here when enableStateChanged is TRUE,
+          * we will handle it outside RCL, see dalQos_configQosMgmt_dev2().
+          */
+         if (newObj->enable == FALSE && currObj->enable == TRUE && !enableStateChanged)
          {
             /*
              * Someone has disabled this specific queue, reconfig all
@@ -362,7 +383,10 @@ CmsRet rcl_dev2QosQueueObject( _Dev2QosQueueObject *newObj,
          /* Mark the fact we successfully configured */
          REPLACE_STRING_IF_NOT_EQUAL_FLAGS(newObj->status, MDMVS_ENABLED, mdmLibCtx.allocFlags);
 
-         if (newObj->enable == TRUE && currObj->enable == FALSE)
+         /* don't reconfigure any classifiers here when enableStateChanged is TRUE,
+          * we will handle it outside RCL, see dalQos_configQosMgmt_dev2().
+          */
+         if (newObj->enable == TRUE && currObj->enable == FALSE && !enableStateChanged)
          {
             /*
              * Someone has enabled this specific queue, reconfig all
@@ -520,7 +544,7 @@ CmsRet rcl_dev2QosShaperObject( _Dev2QosShaperObject *newObj,
           newObj->shapingRate != currObj->shapingRate ||
           newObj->shapingBurstSize != currObj->shapingBurstSize)
       {
-         ret = rutQos_tmPortShaperCfg(intfName, (SINT32) newObj->shapingRate * 1000,
+         ret = rutQos_tmPortShaperCfg(intfName, (SINT32) newObj->shapingRate,
                                     (SINT32) newObj->shapingBurstSize, MDMVS_UP, FALSE); 
 
          if (ret == CMSRET_SUCCESS)

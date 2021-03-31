@@ -26,7 +26,7 @@
 # If the version header file already exists, increment its build number.
 # Otherwise, create a new file.
 #
-# Copyright 2019 Broadcom
+# Copyright 2020 Broadcom
 #
 # This program is the proprietary software of Broadcom and/or
 # its licensors, and may only be used, duplicated, modified or distributed
@@ -111,7 +111,7 @@ else # epivers.h doesn't exist
 	fi
 
 	# Following SVNURL should be expanded on checkout
-	SVNURL='$HeadURL: http://bcawlan-svn.sj.broadcom.net/svn/bcawlan/proj/tags/KUDU/KUDU_REL_17_10_121_4/src/include/epivers.sh $'
+	SVNURL='$HeadURL: http://bcawlan-svn.sj.broadcom.net/svn/bcawlan/proj/tags/KUDU/KUDU_REL_17_10_121_37/src/include/epivers.sh $'
 
 	# .gclient_info is created by gclient checkout/sync steps
 	# and contains "DEPS='<deps-url1> <deps-url2> ..." entry

@@ -1484,7 +1484,7 @@ struct ntrCntStruct {
     /* 6362/63268 */
 #if defined(CONFIG_BCM96362) || defined(CONFIG_BCM96328) || defined(CONFIG_BCM963268) || defined(CONFIG_BCM96318) ||\
     defined(CONFIG_BCM963138) || defined(CONFIG_BCM963381) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || \
-    defined(CONFIG_BCM963178)
+    defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146)
     int    phaseError;
     int    VCOAdjInfo;
 #endif

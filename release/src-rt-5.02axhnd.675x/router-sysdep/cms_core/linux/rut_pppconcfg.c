@@ -83,7 +83,9 @@
 #include "rut_wanlayer2.h"
 #include "rut_multicast.h"
 #include "rut_iptunnel.h"
-
+#ifdef DMP_X_BROADCOM_COM_L2TPAC_1
+#include "rut_l2tpac.h"
+#endif
 CmsRet rutCfg_startWanPppConnection(const InstanceIdStack *iidStack,
                                     _WanPppConnObject *newObj)
 {
@@ -93,8 +95,14 @@ CmsRet rutCfg_startWanPppConnection(const InstanceIdStack *iidStack,
    char l2IfName[CMS_IFNAME_LENGTH]={0};
    char baseL3IfName[CMS_IFNAME_LENGTH]={0};
 
-   
    cmsLog_debug("Enter.");
+
+#ifdef DMP_X_BROADCOM_COM_L2TPAC_1
+   if (rutWl2_isPPPoL2tp(iidStack))
+   {
+	  return CMSRET_SUCCESS;
+   }
+#endif   
 
    /* if ppp interface is created, skip initPPP part */
    if (rut_wanGetIntfIndex(newObj->X_BROADCOM_COM_IfName) <= 0)
@@ -171,6 +179,13 @@ CmsRet rutCfg_setupWanPppConnection(const InstanceIdStack *iidStack  __attribute
    CmsRet ret = CMSRET_SUCCESS;
 
    cmsLog_debug("Enter.");
+
+#ifdef DMP_X_BROADCOM_COM_L2TPAC_1
+   if (rutWl2_isPPPoL2tp(iidStack))
+   {
+	 return CMSRET_SUCCESS;
+   }
+#endif   
 
    /* after ppp connected, ip extension requires its own ip rules  */
    if (newObj->X_BROADCOM_COM_IPExtension) 
@@ -267,6 +282,10 @@ CmsRet rutCfg_setupWanPppConnection(const InstanceIdStack *iidStack  __attribute
      rutIPSec_restart();
 #endif /* SUPPORT_IPSEC */
 
+#ifdef DMP_X_BROADCOM_COM_L2TPAC_1
+	rutL2tp_refreshL2tp();
+#endif 
+
    rutMulti_updateIgmpMldProxyIntfList();
 
    printf("All services associated with %s is activated.\n", newObj->X_BROADCOM_COM_IfName);
@@ -291,6 +310,12 @@ CmsRet rutCfg_tearDownWanPppConnection(const InstanceIdStack *iidStack,
  * the host UPnP.  So no rut_stopUpnp(); here
  */ 
 
+#ifdef DMP_X_BROADCOM_COM_L2TPAC_1
+   if (rutWl2_isPPPoL2tp(iidStack))
+   {
+	 return CMSRET_SUCCESS;
+   }
+#endif 
 
 #ifdef DMP_BRIDGING_1  /* aka SUPPORT_PORT_MAP */
    /* Only pppoe can be in the interface group and if this WAN is part of the interface group,
@@ -357,7 +382,14 @@ CmsRet rutCfg_tearDownWanPppConnection(const InstanceIdStack *iidStack,
       }
    }
 
-   rutMulti_updateIgmpMldProxyIntfList();
+   if (isIPv4)
+   {
+      rutMulti_updateIgmpProxyIntfList();
+   }
+   else
+   {
+      rutMulti_updateMldProxyIntfList();
+   }
 
    cmsLog_debug("Exit ret %d", ret);
    
@@ -372,6 +404,13 @@ CmsRet rutCfg_stopWanPppConnection(const InstanceIdStack *iidStack,
    CmsRet ret = CMSRET_SUCCESS;
    
    cmsLog_debug("Enter");
+
+#ifdef DMP_X_BROADCOM_COM_L2TPAC_1
+   if (rutWl2_isPPPoL2tp(iidStack))
+   {
+ 	 return CMSRET_SUCCESS;
+   }
+#endif   
 
    if (!isIPv4 )
    {

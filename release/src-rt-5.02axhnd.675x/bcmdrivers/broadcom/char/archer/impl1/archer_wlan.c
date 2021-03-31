@@ -109,16 +109,17 @@ pktlist_context_t *pktlist_context_init(
 #define ARCHER_WLAN_STATS_UPDATE(_counter)
 #endif
 
-#define ARCHER_WLAN_FLUSH_BANDWIDTH     1000000000 // 1Gbps
-#define ARCHER_WLAN_FLUSH_PACKET_SIZE   ( (1518 + 20) * 8 ) // In bits, including overheads
-#define ARCHER_WLAN_FLUSH_PACKET_RATE   ( ARCHER_WLAN_FLUSH_BANDWIDTH / ARCHER_WLAN_FLUSH_PACKET_SIZE ) // pps
-#define ARCHER_WLAN_FLUSH_PACKET_NSEC   ( 1000000000 / ARCHER_WLAN_FLUSH_PACKET_RATE )
-#define ARCHER_WLAN_FLUSH_THRESHOLD     64 // packets
-#define ARCHER_WLAN_FLUSH_TIMEOUT_NSEC  ( (ARCHER_WLAN_FLUSH_THRESHOLD * ARCHER_WLAN_FLUSH_PACKET_NSEC * 110) / 100 )
-#define ARCHER_WLAN_FLUSH_JIFFIES       ( ((ARCHER_WLAN_FLUSH_TIMEOUT_NSEC / 1000) / BCM_TIMER_PERIOD_uSEC) + 1 )
+#define ARCHER_WLAN_FLUSH_THRESHOLD     32 // packets
+#define ARCHER_WLAN_FLUSH_TIMEOUT_USEC  500
+#define ARCHER_WLAN_FLUSH_JIFFIES       ( ARCHER_WLAN_FLUSH_TIMEOUT_USEC / BCM_TIMER_PERIOD_uSEC )
 #if(!ARCHER_WLAN_FLUSH_JIFFIES)
 #error "!ARCHER_WLAN_FLUSH_JIFFIES"
 #endif
+
+#define ARCHER_WLAN_FLCTL_PKT_PRIO_FAVOR         4  /* Favor Pkt Prio >= 4 : VI,VO */
+#define ARCHER_WLAN_FLCTL_SKB_EXHAUSTION_LO_PCNT 25 /* Favored Pkt threshold */
+#define ARCHER_WLAN_FLCTL_SKB_EXHAUSTION_HI_PCNT 10
+#define ARCHER_WLAN_FLCTL_DROP_CREDITS           32
 
 #define ARCHER_WLAN_SKB_CACHE_SIZE           64
 
@@ -138,12 +139,12 @@ typedef struct {
 typedef struct {
     spinlock_t lock;
     bcm_async_queue_t queue;
-    int notify_enable;
 } archer_wlan_socket_tx_t;
 
 typedef struct {
     archer_wlan_rx_miss_handler_t handler;
     void *context;
+    pktlist_t pktl;             /* lockless usage */
 } archer_wlan_rx_miss_radio_t;
 
 typedef struct {
@@ -167,6 +168,9 @@ typedef struct {
     unsigned int transfers;
     unsigned int expirations;
     unsigned int discards;
+    unsigned int fc_discards_hi;
+    unsigned int fc_discards_lo;
+    unsigned int fc_discards_credit;
 } archer_wlan_radio_stats_t;
 
 typedef struct {
@@ -180,6 +184,11 @@ typedef struct {
     bcm_timer_user_t timer;
     archer_task_t task;
     int flush_counter;
+#if defined(CC_AWL_FLCTL)
+    unsigned int skb_exhaustion_hi;
+    unsigned int skb_exhaustion_lo;
+    unsigned short pkt_prio_favor;
+#endif /* CC_AWL_FLCTL */
 } archer_wlan_radio_t;
 
 typedef struct {
@@ -188,6 +197,202 @@ typedef struct {
 } archer_wlan_t;
 
 static archer_wlan_t archer_wlan_g;
+
+/*****************************************************************************
+ * SKB flow control
+ *****************************************************************************/
+
+#if defined(CC_AWL_FLCTL)
+static inline void archer_wlan_skb_flctl_init(archer_wlan_radio_t *radio_p, struct pktlist_context *pktlist_context)
+{
+    uint32_t bpm_total_skb = gbpm_total_skb();
+
+    radio_p->skb_exhaustion_hi = (bpm_total_skb * ARCHER_WLAN_FLCTL_SKB_EXHAUSTION_HI_PCNT)/100;
+    radio_p->skb_exhaustion_lo = (bpm_total_skb * ARCHER_WLAN_FLCTL_SKB_EXHAUSTION_LO_PCNT)/100;
+    radio_p->pkt_prio_favor = ARCHER_WLAN_FLCTL_PKT_PRIO_FAVOR;
+
+#if defined(BCM_PKTFWD_FLCTL)
+    if (pktlist_context->fctable != PKTLIST_FCTABLE_NULL) {
+        radio_p->pktlist_context->fctable = pktlist_context->fctable;
+        pktlist_context->fctable->pkt_prio_favor = radio_p->pkt_prio_favor;
+    } else {
+        radio_p->pktlist_context->fctable = PKTLIST_FCTABLE_NULL;
+    }
+#endif /* BCM_PKTFWD_FLCTL */
+
+    radio_p->stats.fc_discards_hi = 0;
+    radio_p->stats.fc_discards_lo = 0;
+    radio_p->stats.fc_discards_credit = 0;
+
+    bcm_print("WL_FLCTL[%d] bpm_total_skb %d, exhaustion_hi %d, exhaustion_lo %d, prio_favor %d\n",
+              radio_p->wl_radio_idx, bpm_total_skb, radio_p->skb_exhaustion_hi,
+              radio_p->skb_exhaustion_lo, radio_p->pkt_prio_favor);
+}
+
+static inline bool archer_wlan_skb_flctl_should_drop(archer_wlan_radio_t *radio_p, wlFlowInf_t wl)
+{
+    /* Check for flow-control over-subscription */
+    bool fc_drop = false;
+
+    if(wl.ucast.nic.is_ucast) {
+        uint16_t dest;
+        uint16_t prio;
+        uint32_t avail_skb;
+
+        /* Fetch the 3b WLAN prio, by skipping the 1b IQPRIO */
+        prio = GET_WLAN_PRIORITY(wl.ucast.nic.wl_prio);
+        avail_skb = gbpm_avail_skb(); /* BPM free skb availability */
+        dest = PKTLIST_DEST(wl.ucast.nic.wl_chainidx);
+
+        if (avail_skb <= radio_p->skb_exhaustion_hi) {
+            /* High threshold, drop all packets */
+            fc_drop = true;
+            ARCHER_WLAN_STATS_UPDATE(radio_p->stats.fc_discards_hi);
+        } else if (prio < radio_p->pkt_prio_favor) {
+            if (avail_skb <= radio_p->skb_exhaustion_lo) {
+                /* Low threshold, drop low priority packets */
+                fc_drop = true;
+                ARCHER_WLAN_STATS_UPDATE(radio_p->stats.fc_discards_lo);
+            }
+#if defined(BCM_PKTFWD_FLCTL)
+            else if ((radio_p->pktlist_context->fctable != PKTLIST_FCTABLE_NULL) &&
+                     (__pktlist_fctable_get_credits(radio_p->pktlist_context, prio, dest) <= 0)) {
+                /* drop BE/BK if no credits available */
+                fc_drop = true;
+                ARCHER_WLAN_STATS_UPDATE(radio_p->stats.fc_discards_credit);
+            }
+#endif /* BCM_PKTFWD_FLCTL */
+        }
+    }
+
+    return fc_drop;
+}
+
+int archer_wlan_flctl_config_set(archer_wlflctl_config_t *cfg_p)
+{
+    archer_wlan_radio_t *radio_p;
+
+    if (!cfg_p) {
+        bcm_print("NULL config\n");
+        return -EINVAL;
+    }
+
+    if (cfg_p->radio_idx >= ARCHER_WLAN_RADIO_MAX) {
+        bcm_print("Invalid radio index %x\n", cfg_p->radio_idx);
+        return -ENODEV;
+    }
+
+    radio_p = &archer_wlan_g.radio[cfg_p->radio_idx];
+
+    if(!radio_p->valid) {
+        bcm_print("Inactive radio index %x\n", cfg_p->radio_idx);
+        return -EPERM;
+    }
+
+    if ( cfg_p->skb_exhaustion_lo < cfg_p->skb_exhaustion_hi) {
+        bcm_print("Invalid exhaustion level lo<%u> hi<%u>\n",
+                  cfg_p->skb_exhaustion_lo, cfg_p->skb_exhaustion_hi);
+        return -EINVAL;
+    }
+
+    if (cfg_p->pkt_prio_favor > 7) { /* prio 0 .. 7 */
+        bcm_print("Invalid pkt priority <%u>\n", cfg_p->pkt_prio_favor);
+        return -EINVAL;
+    }
+
+    radio_p->skb_exhaustion_hi = cfg_p->skb_exhaustion_hi;
+    radio_p->skb_exhaustion_lo = cfg_p->skb_exhaustion_lo;
+    radio_p->pkt_prio_favor = cfg_p->pkt_prio_favor;
+
+#if defined(BCM_PKTFWD_FLCTL)
+    if (radio_p->pktlist_context->fctable != PKTLIST_FCTABLE_NULL) {
+        radio_p->pktlist_context->fctable->pkt_prio_favor = cfg_p->pkt_prio_favor;
+    }
+#endif /* BCM_PKTFWD_FLCTL */
+
+    return 0;
+}
+
+int archer_wlan_flctl_config_get(archer_wlflctl_config_t *cfg_p)
+{
+    archer_wlan_radio_t *radio_p;
+
+    if (!cfg_p) {
+        bcm_print("NULL config\n");
+        return -EINVAL;
+    }
+
+    if (cfg_p->radio_idx >= ARCHER_WLAN_RADIO_MAX) {
+        bcm_print("Invalid radio index %x\n", cfg_p->radio_idx);
+        return -ENODEV;
+    }
+
+    radio_p = &archer_wlan_g.radio[cfg_p->radio_idx];
+
+    if(!radio_p->valid) {
+        bcm_print("Inactive radio index %x\n", cfg_p->radio_idx);
+        return -EPERM;
+    }
+
+    cfg_p->skb_exhaustion_hi = radio_p->skb_exhaustion_hi;
+    cfg_p->skb_exhaustion_lo = radio_p->skb_exhaustion_lo;
+    cfg_p->pkt_prio_favor = radio_p->pkt_prio_favor;
+
+    return 0;
+}
+#endif /* CC_AWL_FLCTL */
+
+/* Single Linked List using pktlist */
+static inline void archer_wlan_sll_init(pktlist_t *pktl_p)
+{
+	pktl_p->head = pktl_p->tail = PKTLIST_PKT_NULL;
+
+	PKTLIST_RESET(pktl_p);
+}
+
+static inline int archer_wlan_sll_size(pktlist_t *pktl_p)
+{
+	return pktl_p->len;
+}
+
+static inline void archer_wlan_sll_add_skb(pktlist_t *pktl_p, struct sk_buff *skb_p)
+{
+	if (likely(pktl_p->len != 0))
+    {
+	    /* pend to tail */
+	    PKTLIST_PKT_SET_SLL(pktl_p->tail, skb_p, SKBUFF_PTR);
+
+	    pktl_p->tail = skb_p;
+	}
+    else
+    {
+	    pktl_p->head = pktl_p->tail = skb_p;
+	}
+
+	++pktl_p->len;
+
+    return;
+}
+
+static inline void archer_wlan_rx_miss_sll_transfer(void)
+{
+    int radio_idx;
+    archer_wlan_rx_miss_radio_t *radio_p;
+    pktlist_t *sll_p;
+
+    for (radio_idx = 0; radio_idx < ARCHER_WLAN_RADIO_MAX; radio_idx++)
+    {
+        radio_p = &archer_wlan_g.socket.miss.radio[radio_idx];
+        sll_p = &radio_p->pktl;
+
+        if ((radio_p->handler) && archer_wlan_sll_size(sll_p))
+        {
+            radio_p->handler(radio_p->context, sll_p);
+        }
+    }
+
+    return;
+}
 
 /*****************************************************************************
  * SKB Pool
@@ -345,8 +550,8 @@ static void archer_wlan_recycle(pNBuff_t pNBuff, unsigned long context, uint32_t
 
                 if (dirty_p) {
                     if ((dirty_p < (void *)skb->head) || (dirty_p > shinfoBegin)) {
-                        printk("invalid dirty_p detected: %p valid=[%p %p]\n",
-                               dirty_p, skb->head, shinfoBegin);
+                        bcm_print("invalid dirty_p detected: %px valid=[%px %px]\n",
+                                  dirty_p, skb->head, shinfoBegin);
                         data_endp = shinfoBegin;
                     } else {
                         data_endp = (dirty_p < data_startp) ? data_startp : dirty_p;
@@ -368,7 +573,7 @@ static void archer_wlan_recycle(pNBuff_t pNBuff, unsigned long context, uint32_t
 #if defined(CC_ARCHER_WLAN_DEBUG)
         else
         {
-            printk("%s: Error only DATA recycle is supported\n", __FUNCTION__);
+            bcm_print("%s: Error only DATA recycle is supported\n", __FUNCTION__);
         }
 #endif
     }
@@ -427,20 +632,13 @@ static int archer_wlan_socket_tx_queue_not_empty(void)
     return bcm_async_queue_not_empty(&archer_wlan_g.socket.tx.queue);
 }
 
-static int archer_wlan_socket_tx_queue_notify(void)
-{
-    archer_wlan_g.socket.tx.notify_enable = 1;
-
-    return 0;
-}
-
 /************************** Socket Miss Queue *************************/
 
 static int archer_wlan_socket_miss_thread(void *context)
 {
     archer_wlan_socket_miss_t *miss_p = &archer_wlan_g.socket.miss;
 
-    __print("Archer WLAN Rx Thread Initialized\n");
+    bcm_print("Archer WLAN Rx Thread Initialized\n");
 
     miss_p->notify_enable = 1;
 
@@ -459,7 +657,7 @@ static int archer_wlan_socket_miss_thread(void *context)
 
         if(miss_p->work_avail)
         {
-            int budget = 64;
+            int budget = ARCHER_WLAN_RX_BUDGET;
 
             if(miss_p->notify_pending_disable)
             {
@@ -481,7 +679,7 @@ static int archer_wlan_socket_miss_thread(void *context)
 
                 if(radio_p->handler)
                 {
-                    radio_p->handler(radio_p->context, skb_p);
+                    archer_wlan_sll_add_skb(&radio_p->pktl, skb_p);
 
                     ARCHER_WLAN_STATS_UPDATE(miss_p->queue.stats.reads);
                 }
@@ -492,6 +690,8 @@ static int archer_wlan_socket_miss_thread(void *context)
                     ARCHER_WLAN_STATS_UPDATE(miss_p->queue.stats.discards);
                 }
             }
+
+            archer_wlan_rx_miss_sll_transfer();
 
             if(bcm_async_queue_not_empty(&miss_p->queue))
             {
@@ -553,7 +753,7 @@ static void archer_wlan_socket_miss_write(void *skb_p, int ingress_port)
         ARCHER_WLAN_STATS_UPDATE(miss_p->queue.stats.discards);
     }
 
-	archer_wlan_socket_miss_notify();
+    archer_wlan_socket_miss_notify();
 }
 
 /************************** Socket Initialization *************************/
@@ -610,7 +810,6 @@ static int archer_wlan_rx_construct(void)
 
     args.tx_queue_read = archer_wlan_socket_tx_queue_read;
     args.tx_queue_not_empty = archer_wlan_socket_tx_queue_not_empty;
-    args.tx_queue_notify = archer_wlan_socket_tx_queue_notify;
     args.free_skb_and_data = archer_wlan_socket_free_skb_and_data;
     args.miss_write = archer_wlan_socket_miss_write;
     args.ingress_phy = SYSPORT_RSB_PHY_WLAN;
@@ -640,6 +839,8 @@ int archer_wlan_rx_register(int radio_index, archer_wlan_rx_miss_handler_t handl
     archer_wlan_g.socket.miss.radio[radio_index].handler = handler;
     archer_wlan_g.socket.miss.radio[radio_index].context = context;
 
+    archer_wlan_sll_init(&archer_wlan_g.socket.miss.radio[radio_index].pktl);
+
     return 0;
 }
 EXPORT_SYMBOL(archer_wlan_rx_register);
@@ -666,15 +867,10 @@ void archer_wlan_rx_send(struct sk_buff *skb_p)
         ARCHER_WLAN_STATS_UPDATE(archer_wlan_g.socket.tx.queue.stats.discards);
     }
 
-    /* notify send thread regardless if the queue is full or not to make sure send can proceed */
-    if(archer_wlan_g.socket.tx.notify_enable)
-    {
-        archer_wlan_g.socket.tx.notify_enable = 0;
-
-        archer_socket_run(archer_wlan_g.socket.index);
-    }
-
     spin_unlock_bh(&archer_wlan_g.socket.tx.lock);
+
+    /* notify send thread regardless if the queue is full or not to make sure send can proceed */
+    archer_socket_run(archer_wlan_g.socket.index);
 }
 EXPORT_SYMBOL(archer_wlan_rx_send);
 
@@ -685,7 +881,7 @@ EXPORT_SYMBOL(archer_wlan_rx_send);
 static inline struct sk_buff *archer_wlan_fkb_to_skb(archer_wlan_radio_t *radio_p,
                                                      FkBuff_t *fkb_p)
 {
-    struct sk_buff *skb_p;
+    struct sk_buff *skb_p = NULL;
 
     if(_is_in_skb_tag_(fkb_p->ptr, fkb_p->flags))
     {
@@ -697,39 +893,42 @@ static inline struct sk_buff *archer_wlan_fkb_to_skb(archer_wlan_radio_t *radio_
         DECODE_WLAN_PRIORITY_MARK(skb_p->wl.ucast.nic.wl_prio, skb_p->mark);
     }
     else
-    {
-        archer_wlan_skb_cache_prefetch(radio_p);
-
-        skb_p = archer_wlan_skb_alloc(radio_p);
-
-        if(likely(skb_p))
+#if defined(CC_AWL_FLCTL)
+        if (archer_wlan_skb_flctl_should_drop(radio_p, fkb_p->wl) == false)
+#endif /* CC_AWL_FLCTL */
         {
-            uint8_t *pData = PFKBUFF_TO_PDATA(fkb_p, archer_packet_headroom_g);
-            int offset_from_pData = (int)((uintptr_t)(fkb_p->data) - (uintptr_t)(pData));
-            int length_at_pData = fkb_p->len + offset_from_pData;
-            wlFlowInf_t wl = fkb_p->wl;
+            archer_wlan_skb_cache_prefetch(radio_p);
 
-            bcm_prefetch(fkb_p->data + /* skb_shared_info at end of data buf */
-                         BCM_DCACHE_ALIGN(archer_packet_length_max_g + archer_skb_tailroom_g));
+            skb_p = archer_wlan_skb_alloc(radio_p);
+
+            if(likely(skb_p))
+            {
+                uint8_t *pData = PFKBUFF_TO_PDATA(fkb_p, archer_packet_headroom_g);
+                int offset_from_pData = (int)((uintptr_t)(fkb_p->data) - (uintptr_t)(pData));
+                int length_at_pData = fkb_p->len + offset_from_pData;
+                wlFlowInf_t wl = fkb_p->wl;
+
+                bcm_prefetch(fkb_p->data + /* skb_shared_info at end of data buf */
+                             BCM_DCACHE_ALIGN(archer_packet_length_max_g + archer_skb_tailroom_g));
 
 //        bcm_prefetch(&skb_p->tail); /* tail, end, head, truesize, users */
 
-            archer_wlan_skb_header_init(skb_p, pData, length_at_pData);
+                archer_wlan_skb_header_init(skb_p, pData, length_at_pData);
 
-            if(offset_from_pData < 0)
-            {
-                skb_push(skb_p, abs(offset_from_pData));
+                if(offset_from_pData < 0)
+                {
+                    skb_push(skb_p, abs(offset_from_pData));
+                }
+                else if(offset_from_pData > 0)
+                {
+                    skb_pull(skb_p, offset_from_pData);
+                }
+
+                skb_p->wl = wl;
+
+                DECODE_WLAN_PRIORITY_MARK(wl.ucast.dhd.wl_prio, skb_p->mark);
             }
-            else if(offset_from_pData > 0)
-            {
-                skb_pull(skb_p, offset_from_pData);
-            }
-
-            skb_p->wl = wl;
-
-            DECODE_WLAN_PRIORITY_MARK(wl.ucast.dhd.wl_prio, skb_p->mark);
         }
-    }
 
     return skb_p;
 }
@@ -778,7 +977,7 @@ static inline int archer_wlan_tx_packet_fkb(archer_wlan_radio_t *radio_p, FkBuff
         flowring_idx = fkb_p->wl.ucast.dhd.flowring_idx;
 
         (dst_pktlist_context->keymap_fn)(radio_p->wl_radio_idx, &pktfwd_key,
-                &flowring_idx, pktlist_prio, PKTFWD_KEYMAP_F2K);
+                                         &flowring_idx, pktlist_prio, PKTFWD_KEYMAP_F2K);
 
         if (pktfwd_key == ((uint16_t)~0)) {
             /* Stale packets */
@@ -833,12 +1032,20 @@ static inline int archer_wlan_tx_packet_skb(archer_wlan_radio_t *radio_p, FkBuff
         /* Fetch the 3b WLAN prio, by skipping the 1b IQPRIO */
         pktlist_prio = GET_WLAN_PRIORITY(skb_p->wl.ucast.nic.wl_prio);
 
+        PKTFWD_ASSERT(pktlist_prio == LINUX_GET_PRIO_MARK(skb_p->mark));
         PKTFWD_ASSERT(pktlist_dest <= PKTLIST_MCAST_ELEM);
         PKTFWD_ASSERT(pktlist_prio <  PKTLIST_PRIO_MAX);
 
         /* add to local pktlist */
         __pktlist_add_pkt(radio_p->pktlist_context, pktlist_prio, pktlist_dest,
                           wl_key, (pktlist_pkt_t *)skb_p, SKBUFF_PTR);
+
+#if defined(BCM_PKTFWD_FLCTL)
+        if (radio_p->pktlist_context->fctable != PKTLIST_FCTABLE_NULL) {
+            /* Decrement available credits for pktlist */
+            __pktlist_fctable_dec_credits(radio_p->pktlist_context, pktlist_prio, pktlist_dest);
+        }
+#endif /* BCM_PKTFWD_FLCTL */
 
         ARCHER_WLAN_STATS_UPDATE(radio_p->stats.packets);
 
@@ -947,7 +1154,7 @@ int archer_wlan_tx_task_handler(void *arg_p)
 {
     archer_wlan_radio_t *radio_p = (archer_wlan_radio_t *)arg_p;
 
-//    __print("Radio Timeout!\n");
+//    bcm_print("Radio Timeout!\n");
 
     if(radio_p->flush_counter)
     {
@@ -978,17 +1185,17 @@ char *archer_wlan_tx_dev_name_int(int radio_index)
 #if defined(CC_ARCHER_WLAN_STATS)
 static void archer_wlan_cpu_queue_dump(bcm_async_queue_t *queue_p, char *name, int index)
 {
-    printk("%s[%d]: Depth %d, Level %d, Writes %d, Reads %d, Discards %d, Writes+Discards %d\n", name, index,
-           queue_p->depth, queue_p->depth - bcm_async_queue_free_entries(queue_p),
-           queue_p->stats.writes, queue_p->stats.reads, queue_p->stats.discards,
-           queue_p->stats.writes + queue_p->stats.discards);
+    bcm_print("%s[%d]: Depth %d, Level %d, Writes %d, Reads %d, Discards %d, Writes+Discards %d\n", name, index,
+              queue_p->depth, queue_p->depth - bcm_async_queue_free_entries(queue_p),
+              queue_p->stats.writes, queue_p->stats.reads, queue_p->stats.discards,
+              queue_p->stats.writes + queue_p->stats.discards);
 }
 #else
 static void archer_wlan_cpu_queue_dump(bcm_async_queue_t *queue_p, char *name, int index)
 {
-    printk("%s[%d]: Depth %d, Level %d, Write %d, Read %d\n", name, index,
-           queue_p->depth, queue_p->depth - bcm_async_queue_free_entries(queue_p),
-           queue_p->write, queue_p->read);
+    bcm_print("%s[%d]: Depth %d, Level %d, Write %d, Read %d\n", name, index,
+              queue_p->depth, queue_p->depth - bcm_async_queue_free_entries(queue_p),
+              queue_p->write, queue_p->read);
 }
 #endif
 
@@ -1006,12 +1213,13 @@ void archer_wlan_stats(void)
             int coalescing = (radio_p->stats.transfers) ?
                 (radio_p->stats.packets / radio_p->stats.transfers) : 0;
 
-            __print("WLAN_TX[%d]: %s, packets %u, transfers %u, coalescing %u, "
-                    "expirations %u, discards %u\n",
-                    radio_index, archer_wlan_tx_dev_name_int(radio_index),
-                    radio_p->stats.packets, radio_p->stats.transfers,
-                    coalescing, radio_p->stats.expirations,
-                    radio_p->stats.discards);
+            bcm_print("WLAN_TX[%d]: %s, packets %u, transfers %u, coalescing %u, "
+                      "expirations %u, discards %u (fc:lo %u hi %u credit %u)\n",
+                      radio_index, archer_wlan_tx_dev_name_int(radio_index),
+                      radio_p->stats.packets, radio_p->stats.transfers,
+                      coalescing, radio_p->stats.expirations,
+                      radio_p->stats.discards, radio_p->stats.fc_discards_lo,
+                      radio_p->stats.fc_discards_hi, radio_p->stats.fc_discards_credit);
         }
     }
 
@@ -1020,7 +1228,7 @@ void archer_wlan_stats(void)
 }
 
 static int archer_wlan_pktlist_context_keymap_fn_t(uint32_t radio_idx,
-    uint16_t * key, uint16_t * flowid, uint16_t prio, bool k2f) 
+                                                   uint16_t * key, uint16_t * flowid, uint16_t prio, bool k2f) 
 {
     __logError("Not supported");
 
@@ -1061,6 +1269,23 @@ int archer_wlan_bind(struct net_device *dev_p,
         return -1;
     }
 
+#if defined(CONFIG_BCM_WLAN_DPDCTL)
+    /* Use radio_idx as wfd idx as well */
+    radio_index = wl_radio_idx;
+    if(radio_index >= ARCHER_WLAN_RADIO_MAX)
+    {
+        __logError("Radios idx %d range exceeded, max %d", radio_index, ARCHER_WLAN_RADIO_MAX);
+
+        return -1;
+    }
+    radio_p = &archer_wlan_g.radio[radio_index];
+    if(radio_p->valid)
+    {
+        __logError("Already in use radio idx %d", radio_index);
+
+        return -1;
+    }
+#else  /* !CONFIG_BCM_WLAN_DPDCTL */
     // Find a free radio entry
     for(radio_index=0; radio_index<ARCHER_WLAN_RADIO_MAX; ++radio_index)
     {
@@ -1078,6 +1303,7 @@ int archer_wlan_bind(struct net_device *dev_p,
 
         return -1;
     }
+#endif /* !CONFIG_BCM_WLAN_DPDCTL */
 
     memset(radio_p, 0, sizeof(archer_wlan_radio_t));
 
@@ -1097,6 +1323,13 @@ int archer_wlan_bind(struct net_device *dev_p,
         return -1;
     }
 
+#if defined(CC_AWL_FLCTL)
+    if ((wl_pktlist_context != PKTLIST_CONTEXT_NULL) &&
+        (mode == ARCHER_WLAN_RADIO_MODE_SKB)) {
+        archer_wlan_skb_flctl_init(radio_p, wl_pktlist_context);
+    }
+#endif /* CC_AWL_FLCTL */
+
     bcm_timer_init(&radio_p->timer, BCM_TIMER_MODE_ONESHOT, 0,
                    archer_wlan_tx_timer_handler, radio_p);
 
@@ -1105,9 +1338,9 @@ int archer_wlan_bind(struct net_device *dev_p,
 
     radio_p->valid = 1;
 
-    __print(CLRb "Archer WLAN Bind: %s, wl_radio_idx %d, radio_index %d, mode %s" CLRnl,
-            dev_p->name, wl_radio_idx, radio_index,
-            (mode == ARCHER_WLAN_RADIO_MODE_SKB) ? "SKB" : "FKB");
+    bcm_print(CLRb "Archer WLAN Bind: %s, wl_radio_idx %d, radio_index %d, mode %s" CLRnl,
+              dev_p->name, wl_radio_idx, radio_index,
+              (mode == ARCHER_WLAN_RADIO_MODE_SKB) ? "SKB" : "FKB");
 
     return radio_index;
 }
@@ -1138,9 +1371,9 @@ int archer_wlan_unbind(int radio_index)
         pktlist_context_fini(radio_p->pktlist_context);
     }
 
-    __print(CLRb "Archer WLAN Unbind: %s, radio_index %d, mode %s" CLRnl,
-            radio_p->dev_p->name, radio_index,
-            (radio_p->mode == ARCHER_WLAN_RADIO_MODE_SKB) ? "SKB" : "FKB");
+    bcm_print(CLRb "Archer WLAN Unbind: %s, radio_index %d, mode %s" CLRnl,
+              radio_p->dev_p->name, radio_index,
+              (radio_p->mode == ARCHER_WLAN_RADIO_MODE_SKB) ? "SKB" : "FKB");
 
     radio_p->valid = 0;
 
@@ -1156,8 +1389,8 @@ int __init archer_wlan_construct(void)
 {
     memset(&archer_wlan_g, 0, sizeof(archer_wlan_t));
 
-    __print("Archer WLAN Interface Construct (Threshold %u packets, Timeout %u nsec, Jiffies %u)\n",
-            ARCHER_WLAN_FLUSH_THRESHOLD, ARCHER_WLAN_FLUSH_TIMEOUT_NSEC, ARCHER_WLAN_FLUSH_JIFFIES);
+    bcm_print("Archer WLAN Interface Construct (Threshold %u packets, Timeout %u usec, Jiffies %u)\n",
+              ARCHER_WLAN_FLUSH_THRESHOLD, ARCHER_WLAN_FLUSH_TIMEOUT_USEC, ARCHER_WLAN_FLUSH_JIFFIES);
 
     return archer_wlan_rx_construct();
 }

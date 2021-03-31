@@ -92,9 +92,13 @@
 #define XDSL_ENUM_BASE		0xB0156000	/* DHIF */
 #elif defined(CONFIG_BCM963138) || defined(CONFIG_BCM963381) || defined(CONFIG_BCM963148)
 #define XDSL_ENUM_BASE		(DSLPHY_BASE + 0x00056000)
-#elif defined(CONFIG_BCM963158)
+#elif defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)
 #ifdef _NOOS
+#ifdef CONFIG_BCM963158
 #define XDSL_ENUM_BASE		0x80657000
+#else
+#define XDSL_ENUM_BASE		0x80757000
+#endif
 #else
 #define XDSL_ENUM_BASE		(DSLPHY_BASE + 0x00007000)
 #endif
@@ -111,7 +115,7 @@
  #define HOST_LMEM_BASE          0xB0780000
 #elif defined(CONFIG_BCM96318)
  #define HOST_LMEM_BASE          0xB0180000
-#elif defined(CONFIG_BCM963138) || defined(CONFIG_BCM963381) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178)
+#elif defined(CONFIG_BCM963138) || defined(CONFIG_BCM963381) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146)
  #if defined(_NOOS) && defined(CONFIG_BCM963158)
  #define HOST_LMEM_BASE          0x80800000
  #else

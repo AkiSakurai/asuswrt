@@ -107,11 +107,11 @@ UBOOL8 rut_isRoutedWanExisted()
    {
       if ( strcmp(wan_ip_con->connectionType, MDMVS_IP_BRIDGED) != 0 ) 
       {
-         cmsObj_free((void **) &wan_ip_con);	
+         cmsObj_free((void **) &wan_ip_con);    
          return TRUE;
       }
 
-      cmsObj_free((void **) &wan_ip_con);		 
+      cmsObj_free((void **) &wan_ip_con);        
    }
 
    if ( cmsObj_getNextFlags(MDMOID_WAN_PPP_CONN, &iidStack2, OGF_NO_VALUE_UPDATE, (void **) &wan_ppp_con) == CMSRET_SUCCESS ) 
@@ -141,13 +141,13 @@ void rut_accessTimeRestriction(const _AccessTimeRestrictionObject *Obj, const UB
    /* This needs to be BridgeMode */
    if ( qdmIpIntf_isBridgedWanExistedLocked() )
    {
-      sprintf( cmd, "ebtables -%c FORWARD %c %s", add?'I':'D', add?'1':' ', eb_options );	  
+      sprintf( cmd, "ebtables -%c FORWARD %c %s", add?'I':'D', add?'1':' ', eb_options );     
       rut_doSystemAction( "rut_accessTimeRestriction", cmd );
    }
    
    if ( qdmIpIntf_isRoutedWanExistedLocked() )
    {
-      sprintf( cmd, "ebtables -%c INPUT %c %s", add?'I':'D', add?'1':' ', eb_options );	  
+      sprintf( cmd, "ebtables -%c INPUT %c %s", add?'I':'D', add?'1':' ', eb_options );   
       rut_doSystemAction( "rut_accessTimeRestriction", cmd );
    }
 
@@ -199,7 +199,6 @@ void rutEbt_changeMacFilterPolicy(const char *ifName, UBOOL8 isForward)
       rut_doSystemAction("rutEbt_changeMacFilterPolicy", cmd);
    }
 }
-
 
 void rutEbt_addMacFilter_raw(char* protocol,char* direction ,char* sourceMAC
                    ,char* destinationMAC,const char *ifName, const char *policy, UBOOL8 add) 
@@ -430,5 +429,43 @@ void rutEbt_removePppIntfFromBridge(const char *baseL3IfName)
 
 }
 
+void rutEbt_defaultLANSetup6(void)
+{
+    char line[BUFLEN_512];
+    static UBOOL8 lanSetup6 = FALSE;
+    
+    if (lanSetup6 == TRUE)
+        return;
+    
+    lanSetup6 = TRUE;
+    snprintf(line, sizeof(line), "ebtables -t nat -N brchain 2>/dev/null");
+    rut_doSystemAction("rutEbt_defaultLANSetup6", line);
+    
+    snprintf(line, sizeof(line), "ebtables -t nat -I PREROUTING -j brchain 2>/dev/null");
+    rut_doSystemAction("rutEbt_defaultLANSetup6", line);
+    
+    
+    snprintf(line, sizeof(line), "ebtables -t nat -I brchain -p ipv6 --ip6-protocol 58 --ip6-icmp-type 128 -j REJECT --reject-with 0 2>/dev/null");
+    rut_doSystemAction("rutEbt_defaultLANSetup6", line);
+
+    snprintf(line, sizeof(line), "ebtables -t nat -I brchain -p ipv6 --ip6-protocol 58 --ip6-icmp-type 128 --ip6-src fe80::/16 -j RETURN 2>/dev/null");
+    rut_doSystemAction("rutEbt_defaultLANSetup6", line);
+}
+
+void rutEbt_configICMPv6Reply(const char *prefix, UBOOL8 add)
+{
+    char line[BUFLEN_512];
+        
+    cmsLog_debug("prefix=%s, add<%d>", prefix, add);
+    if (prefix == NULL)
+		return;
+	
+    if (add)
+        snprintf(line, sizeof(line), "ebtables -t nat -I brchain -p ipv6 --ip6-protocol 58 --ip6-icmp-type 128 --ip6-src %s -j RETURN 2>/dev/null", prefix);
+    else
+        snprintf(line, sizeof(line), "ebtables -t nat -D brchain -p ipv6 --ip6-protocol 58 --ip6-icmp-type 128 --ip6-src %s -j RETURN 2>/dev/null", prefix);
+    
+    rut_doSystemAction("rutEbt_configICMPv6Reply", line);
+}
 
 

@@ -792,6 +792,7 @@ CmsRet rutWan_initPPPoE_igd(const InstanceIdStack *iidStack,  void *obj)
    char l2IfName[CMS_IFNAME_LENGTH]={0};
    char baseL3IfName[CMS_IFNAME_LENGTH]={0};
    CmsRet ret=CMSRET_SUCCESS;
+   char idlelimit[BUFLEN_32] = {0};
    _WanPppConnObject *newObj = (_WanPppConnObject *) obj;
 
    /* Need baseL3IfName for PPPoE */
@@ -842,6 +843,13 @@ CmsRet rutWan_initPPPoE_igd(const InstanceIdStack *iidStack,  void *obj)
    if (newObj->X_BROADCOM_COM_Enable_Debug)
    {
       strncat(cmdLine, " -d", sizeof(cmdLine)-1);
+   }
+
+   /* enable dial-on-demand if it is selected */
+   if (!cmsUtl_strcmp(newObj->connectionTrigger, MDMVS_ONDEMAND))
+   {
+      snprintf(idlelimit, sizeof(idlelimit), " -D -I %d", newObj->idleDisconnectTime);
+      strncat(cmdLine, idlelimit, sizeof(cmdLine) -1);
    }
 
    /* IP extension */

@@ -3,4 +3,4 @@
 **	This file has been generated automatically by bin2c program
 */
 
-extern const unsigned char adsl_sdram[1091780];
+extern const unsigned char adsl_sdram[1117992];

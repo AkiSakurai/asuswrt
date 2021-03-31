@@ -2,7 +2,7 @@
  * tkhash.h
  * Prototypes for TKIP hash functions.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -49,7 +49,7 @@
  * duplicated in any form, in whole or in part, without the prior written
  * permission of Broadcom Corporation.
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above

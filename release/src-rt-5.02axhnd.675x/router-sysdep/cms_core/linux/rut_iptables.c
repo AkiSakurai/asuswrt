@@ -98,69 +98,64 @@
 typedef enum
 {
    x_tables=1,
+   nf_defrag_ipv4,
    nf_conntrack,
-   nf_conntrack_ipv4,   
+   nf_conntrack_ipv4,
    nfnetlink,
    xt_tcpudp,
    xt_multiport,
+#ifdef SUPPORT_NF_FIREWALL
    xt_conntrack,
+#endif
+#ifdef SUPPORT_NF_MANGLE
    xt_dscp,
    xt_DSCP,
-   xt_esp,
-   xt_limit,
-   xt_hashlimit,
    xt_mac,
    xt_mac_extend,
    xt_flowlabel,
    xt_u32,
+   xt_esp,
+   xt_hashlimit,
    xt_mark,
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
-   xt_MARK,
+#endif // SUPPORT_NF_MANGLE
+#ifdef SUPPORT_NF_FIREWALL
+   xt_limit,
 #endif
-   xt_TCPMSS,
-   xt_SKIPLOG,
-   nfnetlink_queue,
-//   ip_queue,  /* ip_queue is obsoleted in kernel 2.6.30 */
-   xt_state,
    xt_addrtype,
    xt_blog,
 #ifdef SUPPORT_IPSET
    xt_set,
 #endif
+   xt_TCPMSS,
+   xt_SKIPLOG,
+   nfnetlink_queue,
+   xt_state,
 #ifdef SUPPORT_L7_FILTER
    xt_layer7,
    xt_DC,
 #endif
    ip_tables,
+#ifdef SUPPORT_NF_NAT
    nf_nat,      /* nat ipv4 */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,7,0)
    nf_nat_core, /* nat common driver for new kernel */
-#endif
-   iptable_filter,
    iptable_nat,
+#endif // SUPPORT_NF_NAT
+   iptable_filter,
 #ifdef SUPPORT_NF_MANGLE
    iptable_mangle,
 #endif
    iptable_raw,
-#if LINUX_VERSION_CODE > KERNEL_VERSION(3,3,0)
+#ifdef SUPPORT_NF_FIREWALL
    xt_LOG,
-#else
-   ipt_LOG,
-#endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,1,0)
    nf_log_common,
    nf_log_ipv4,
+#endif
+#ifdef SUPPORT_NF_NAT
    nf_nat_masquerade_ipv4,
    xt_nat,
-#endif
    ipt_MASQUERADE,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,7,0)
    nf_nat_redirect,
    xt_REDIRECT,
-#else
-   ipt_REDIRECT,
-#endif
-   nf_defrag_ipv4,
    nf_conntrack_ftp,
    nf_conntrack_h323,
    nf_conntrack_irc,
@@ -191,6 +186,7 @@ typedef enum
    nf_conntrack_ipsec,
    nf_nat_ipsec,
 #endif //SUPPORT_IPSEC_PASSTHROUGH
+#endif // SUPPORT_NF_NAT
 
 #ifdef SUPPORT_IPV6
    ip6_tables,
@@ -198,13 +194,10 @@ typedef enum
 #ifdef SUPPORT_NF_MANGLE
    ip6table_mangle,
 #endif
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,3,0)
-   ip6t_LOG,
-#endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,1,0)
+   nf_defrag_ipv6,
+#ifdef SUPPORT_NF_FIREWALL
    nf_log_ipv6,
 #endif
-   nf_defrag_ipv6,
    nf_conntrack_ipv6,
 #endif
 #if defined(SUPPORT_CONNTRACK_TOOLS) || defined(SUPPORT_DPI)
@@ -246,7 +239,7 @@ void insertModuleByName(char *moduleName);
  *      2). change the FALSE to TRUE on the isStatic field (the last parameter) on 
  *         the corresponding module below.
  */
- 
+
 static MODULE_INFO modules[] =
 {
    {x_tables, "x_tables", {0}, {NF_DIR}, NULL, TRUE},
@@ -256,7 +249,9 @@ static MODULE_INFO modules[] =
    {nfnetlink, "nfnetlink", {0}, {NF_DIR}, NULL, FALSE},
    {xt_tcpudp, "xt_tcpudp", {x_tables, 0}, {NF_DIR}, NULL, TRUE},
    {xt_multiport, "xt_multiport", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
+#ifdef SUPPORT_NF_FIREWALL
    {xt_conntrack, "xt_conntrack", {x_tables, nf_conntrack, 0}, {NF_DIR}, NULL, FALSE},
+#endif
 #ifdef SUPPORT_NF_MANGLE
    {xt_dscp, "xt_dscp", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
    {xt_DSCP, "xt_DSCP", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
@@ -264,59 +259,48 @@ static MODULE_INFO modules[] =
    {xt_mac_extend, "xt_mac_extend", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
    {xt_flowlabel, "xt_flowlabel", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
    {xt_u32, "xt_u32", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
-#endif
    {xt_esp, "xt_esp", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
-   {xt_limit, "xt_limit", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
    {xt_hashlimit, "xt_hashlimit", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
    {xt_mark, "xt_mark", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
+#endif
+#ifdef SUPPORT_NF_FIREWALL
+   {xt_limit, "xt_limit", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
+#endif
    {xt_addrtype, "xt_addrtype", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
    {xt_blog, "xt_blog", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
 #ifdef SUPPORT_IPSET
    {xt_set, "xt_set", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
 #endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
-   {xt_MARK, "xt_MARK", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
-#endif
    {xt_TCPMSS, "xt_TCPMSS", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
    {xt_SKIPLOG, "xt_SKIPLOG", {x_tables, 0}, {NF_DIR}, NULL, FALSE},
    {nfnetlink_queue, "nfnetlink_queue", {nfnetlink, 0}, {NF_DIR}, NULL, FALSE},
-//   {ip_queue, "ip_queue", {nfnetlink, 0}, {IPV4_NF_DIR}, NULL, FALSE}, /* ip_queue is obsoleted in kernel 2.6.30 */
    {xt_state, "xt_state", {x_tables, nf_conntrack_ipv4, 0}, {NF_DIR}, NULL, FALSE},
 #ifdef SUPPORT_L7_FILTER
    {xt_layer7, "xt_layer7", {x_tables, nf_conntrack, 0}, {NF_DIR}, NULL, FALSE},
    {xt_DC, "xt_DC", {x_tables, nf_conntrack, 0}, {NF_DIR}, NULL, FALSE},
 #endif
    {ip_tables, "ip_tables", {x_tables, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
-   {nf_nat, "nf_nat", {ip_tables, nf_conntrack_ipv4, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-#else
+#ifdef SUPPORT_NF_NAT
    {nf_nat_core, "nf_nat", {ip_tables, nf_conntrack, 0}, {NF_DIR}, NULL, FALSE},
    {nf_nat, "nf_nat_ipv4", {nf_nat_core, nf_conntrack_ipv4, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-#endif
-   {iptable_filter, "iptable_filter", {ip_tables, 0}, {IPV4_NF_DIR}, NULL, FALSE},
    {iptable_nat, "iptable_nat", {nf_nat, 0}, {IPV4_NF_DIR}, NULL, FALSE},
+#endif // SUPPORT_NF_NAT
+   {iptable_filter, "iptable_filter", {ip_tables, 0}, {IPV4_NF_DIR}, NULL, FALSE},
 #ifdef SUPPORT_NF_MANGLE
    {iptable_mangle, "iptable_mangle", {ip_tables, 0}, {IPV4_NF_DIR}, NULL, FALSE},
 #endif
    {iptable_raw, "iptable_raw", {ip_tables, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-#if LINUX_VERSION_CODE > KERNEL_VERSION(3,3,0)
+#ifdef SUPPORT_NF_FIREWALL
    {xt_LOG, "xt_LOG", {ip_tables, 0}, {NF_DIR}, NULL, FALSE},
-#else
-   {ipt_LOG, "ipt_LOG", {ip_tables, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-#endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,1,0)
    {nf_log_common, "nf_log_common", {ip_tables, 0}, {NF_DIR}, NULL, FALSE},
    {nf_log_ipv4, "nf_log_ipv4", {nf_log_common, 0}, {IPV4_NF_DIR}, NULL, FALSE},
+#endif
+#ifdef SUPPORT_NF_NAT
    {nf_nat_masquerade_ipv4, "nf_nat_masquerade_ipv4", {nf_nat, 0}, {IPV4_NF_DIR}, NULL, FALSE},
    {xt_nat, "xt_nat", {iptable_nat, 0}, {NF_DIR}, NULL, FALSE},
-#endif
    {ipt_MASQUERADE, "ipt_MASQUERADE", {nf_nat, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
-   {ipt_REDIRECT, "ipt_REDIRECT", {nf_nat, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-#else
    {nf_nat_redirect, "nf_nat_redirect", {nf_nat_core, 0}, {NF_DIR}, NULL, FALSE},
    {xt_REDIRECT, "xt_REDIRECT", {nf_nat_core, 0}, {NF_DIR}, NULL, FALSE},
-#endif
    {nf_conntrack_ftp, "nf_conntrack_ftp", {nf_conntrack, 0}, {NF_DIR}, NULL, FALSE},
    {nf_conntrack_h323, "nf_conntrack_h323", {nf_conntrack, 0}, {NF_DIR}, NULL, FALSE},
    {nf_conntrack_irc, "nf_conntrack_irc", {nf_conntrack, 0}, {NF_DIR}, NULL, FALSE},
@@ -325,16 +309,6 @@ static MODULE_INFO modules[] =
    {nf_conntrack_sip, "nf_conntrack_sip",  {nf_conntrack, 0}, {NF_DIR}, "sip_direct_media=0", FALSE},
 #endif   
    {nf_conntrack_rtsp, "nf_conntrack_rtsp",  {nf_conntrack, 0}, {NF_DIR}, NULL, FALSE},
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
-   {nf_nat_ftp, "nf_nat_ftp", {nf_nat, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-   {nf_nat_tftp, "nf_nat_tftp", {nf_nat, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-   {nf_nat_irc, "nf_nat_irc", {nf_nat, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-   {nf_nat_h323, "nf_nat_h323", {nf_nat, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-#ifdef SUPPORT_SIP 
-   {nf_nat_sip, "nf_nat_sip", {nf_nat, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-#endif   
-   {nf_nat_rtsp, "nf_nat_rtsp", {nf_nat, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-#else
    {nf_nat_ftp, "nf_nat_ftp", {nf_nat_core, 0}, {NF_DIR}, NULL, FALSE},
    {nf_nat_tftp, "nf_nat_tftp", {nf_nat_core, 0}, {NF_DIR}, NULL, FALSE},
    {nf_nat_irc, "nf_nat_irc", {nf_nat_core, 0}, {NF_DIR}, NULL, FALSE},
@@ -343,7 +317,6 @@ static MODULE_INFO modules[] =
    {nf_nat_sip, "nf_nat_sip", {nf_nat_core, 0}, {NF_DIR}, NULL, FALSE},
 #endif   
    {nf_nat_rtsp, "nf_nat_rtsp", {nf_nat, 0}, {IPV4_NF_DIR}, NULL, FALSE},
-#endif
 #if defined(SUPPORT_PPTP) || defined(SUPPORT_GRE_TUNNEL)
    {nf_conntrack_proto_gre, "nf_conntrack_proto_gre", {nf_conntrack, 0}, {NF_DIR}, NULL, FALSE},
    {nf_nat_proto_gre, "nf_nat_proto_gre", {nf_nat, nf_conntrack_proto_gre, 0}, {IPV4_NF_DIR}, NULL, FALSE},
@@ -358,6 +331,7 @@ static MODULE_INFO modules[] =
    {nf_conntrack_ipsec, "nf_conntrack_ipsec", {nf_conntrack, 0}, {NF_DIR}, NULL, FALSE},
    {nf_nat_ipsec, "nf_nat_ipsec", {nf_nat, nf_conntrack_ipsec, 0}, {IPV4_NF_DIR}, NULL, FALSE},
 #endif //SUPPORT_IPSEC_PASSTHROUGH
+#endif // SUPPORT_NF_NAT
 #ifdef SUPPORT_IPV6
    {ip6_tables, "ip6_tables", {x_tables, 0}, {IPV6_NF_DIR}, NULL, FALSE},
    {ip6table_filter, "ip6table_filter", {ip6_tables, iptable_filter, 0}, {IPV6_NF_DIR}, NULL, FALSE},
@@ -365,10 +339,7 @@ static MODULE_INFO modules[] =
    {ip6table_mangle, "ip6table_mangle", {ip6_tables, iptable_mangle, 0}, {IPV6_NF_DIR}, NULL, FALSE},
 #endif
    {nf_defrag_ipv6, "nf_defrag_ipv6", {0}, {IPV6_NF_DIR}, NULL, FALSE},
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,3,0)
-   {ip6t_LOG, "ip6t_LOG", {ip6table_filter, 0}, {IPV6_NF_DIR}, NULL, FALSE},
-#endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,1,0)
+#ifdef SUPPORT_NF_FIREWALL
    {nf_log_ipv6, "nf_log_ipv6", {nf_log_common, 0}, {IPV6_NF_DIR}, NULL, FALSE},
 #endif
    {nf_conntrack_ipv6, "nf_conntrack_ipv6", {nf_conntrack, nf_defrag_ipv6, 0}, {IPV6_NF_DIR}, NULL, FALSE},
@@ -460,8 +431,7 @@ static CmsRet insertModuleByIndex(moduleEnum Idx)
    CmsRet ret = CMSRET_SUCCESS;
 
    /* if idx is not in the range or pMod can not be filled, just return error */
-   if (!(Idx > 0 && Idx < (sizeof(modules) / sizeof(modules[0]))) ||
-      (pMod = findModule(Idx, modules)) == NULL)
+   if (!(Idx > 0) || (pMod = findModule(Idx, modules)) == NULL)
    {
       cmsLog_error("Invalid index %d", Idx);
       return CMSRET_INTERNAL_ERROR;
@@ -713,10 +683,7 @@ void rutIpt_qosLoadModule(void)
    insertModuleByName("xt_mac_extend");
    insertModuleByName("xt_flowlabel");
    insertModuleByName("xt_u32");
-#endif
    insertModuleByName("xt_mark");
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
-   insertModuleByName("xt_MARK");
 #endif
    insertModuleByName("xt_multiport");
    insertModuleByName("xt_tcpudp");
@@ -772,17 +739,11 @@ void rutIpt_BeepPortMappingModule(void)
    insertModuleByName("xt_tcpudp");
    insertModuleByName("xt_blog");
    insertModuleByName("xt_addrtype");
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,1,0)
    insertModuleByName("nf_nat_masquerade_ipv4");
    insertModuleByName("xt_nat");
-#endif
    insertModuleByName("ipt_MASQUERADE");
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,7,0)
    insertModuleByName("nf_nat_redirect");
    insertModuleByName("xt_REDIRECT");
-#else
-   insertModuleByName("ipt_REDIRECT");
-#endif
    insertModuleByName("br_netfilter");
 #endif
 }
@@ -804,29 +765,26 @@ void rutIpt_insertIpModules6(void)
 #endif
 
    /* firewall modules */
+#ifdef SUPPORT_NF_FIREWALL
    insertModuleByName("xt_conntrack");
    insertModuleByName("xt_state");
    insertModuleByName("xt_limit");
+#endif
 
-   /* other modules */      
+   /* other modules */
 #ifdef SUPPORT_IPSET
    rutIpt_insertIpsetModule();
    insertModuleByName("xt_set");
 #endif
    insertModuleByName("nfnetlink_queue");
-//   insertModuleByName("ip_queue"); /* ip_queue is obsoleted in kernel 2.6.30 */
 
    insertModuleByName("ip6table_filter");
 #ifdef SUPPORT_NF_MANGLE
    insertModuleByName("ip6table_mangle");
 #endif
-#if LINUX_VERSION_CODE > KERNEL_VERSION(3,3,0)
+#ifdef SUPPORT_NF_FIREWALL
    insertModuleByName("xt_LOG");
-#else
-   insertModuleByName("ip6t_LOG");
-#endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,1,0)
    insertModuleByName("nf_log_ipv6");
 #endif
 
@@ -983,12 +941,6 @@ void rutIpt_configRoutingChain6(const char *prefix, const char *ifName, UBOOL8 a
       snprintf(line, sizeof(line), "ip6tables -w -D rtchain -i %s -s %s -j RETURN 2>/dev/null", ifName, prefix);
       rut_doSystemAction("rtchain", line);
 
-      /* Should we remove the drop rule here? */
-      if (drop_found && (ret_count == 1))
-      {
-         snprintf(line, sizeof(line), "ip6tables -w -D rtchain -i %s ! -d ff00::/8 -j DROP 2>/dev/null", ifName);
-         rut_doSystemAction("rtchain", line);
-      }
    }
 }
 
@@ -1109,50 +1061,37 @@ void rutIpt_insertIpModules(void)
 #endif
 
    /* nat modules */
+#ifdef SUPPORT_NF_NAT
    insertModuleByName("iptable_nat");    //depends on nf_conntrack, nf_conntrack_ipv4, nf_nat
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,1,0)
    insertModuleByName("nf_nat_masquerade_ipv4");
    insertModuleByName("xt_nat");
-#endif
    insertModuleByName("ipt_MASQUERADE");
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,7,0)
    insertModuleByName("nf_nat_redirect");
    insertModuleByName("xt_REDIRECT");
-#else
-   insertModuleByName("ipt_REDIRECT");
-#endif
-
+#endif // SUPPORT_NF_NAT
    /* firewall modules */
+#ifdef SUPPORT_NF_FIREWALL
    insertModuleByName("xt_conntrack");
    insertModuleByName("xt_state");
    insertModuleByName("xt_limit");
-#if LINUX_VERSION_CODE > KERNEL_VERSION(3,3,0)
-   insertModuleByName("xt_LOG");  
-#else
-   insertModuleByName("ipt_LOG");
-#endif
+   insertModuleByName("xt_LOG");
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,1,0)
    insertModuleByName("nf_log_ipv4");
 #endif
 
+#ifdef SUPPORT_NF_MANGLE
    /* mangle modules */
    insertModuleByName("xt_mark");
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
-   insertModuleByName("xt_MARK");
-#endif
-#ifdef SUPPORT_NF_MANGLE
    insertModuleByName("iptable_mangle");
 #endif
 //   insertModuleByName("ipt_ftos");              /* NOT WORKING YET!! */
 
-   /* other modules */      
+   /* other modules */
    insertModuleByName("nfnetlink_queue");
 #ifdef SUPPORT_IPSET
    rutIpt_insertIpsetModule();
    insertModuleByName("xt_set");
 #endif
-//   insertModuleByName("ip_queue"); /* ip_queue is obsoleted in kernel 2.6.30 */
 
 #ifdef SUPPORT_L7_FILTER
    /* DPI modules */
@@ -1162,7 +1101,8 @@ void rutIpt_insertIpModules(void)
    //TODO: For CONFIG_BRIDGE_NETFILTER
    //rut_doSystemAction("DPI", "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables");
 #endif
-   
+
+#ifdef SUPPORT_NF_NAT
 #if defined(SUPPORT_PPTP) || defined(SUPPORT_GRE_TUNNEL)
    /* for gre and pptp */
    insertModuleByName("nf_conntrack_proto_gre");
@@ -1212,6 +1152,7 @@ void rutIpt_insertIpModules(void)
       insertModuleByName("nf_conntrack_rtsp");
    }
 #endif
+#endif // SUPPORT_NF_NAT
 
 }
 
@@ -1278,7 +1219,8 @@ static void rut_unfakeDnsForwarding(void)
 #endif
 
    /* get local ip address */
-   rut_getIfAddr("br0", addr);
+   if(rut_getIfAddr("br0", addr) == FALSE)
+      return ;
    
    /* setup dns forwarding with fake DNS server is the root IP address
     * to make PPP on demand can be waked up when there is traffic from LAN to WAN
@@ -1301,7 +1243,8 @@ static void rut_fakeDnsForwarding(void)
    char cmd[BUFLEN_256],  addr[BUFLEN_128];
 
    /* get local ip address */
-   rut_getIfAddr("br0", addr);
+   if(rut_getIfAddr("br0", addr) == FALSE)
+      return ;
 
    
    /* setup dns forwarding with fake DNS server is the root IP address
@@ -1524,7 +1467,7 @@ void rutIpt_initNat(const char *ifcName, UBOOL8 isFullCone)
 #ifdef DESKTOP_LINUX
    strcpy(localSubnet, "192.168.1.0");
    strcpy(localSubnetmask, "255.255.255.0");
-#else   
+#else
    if (!rut_getIfSubnet("br0", localSubnet) || !rut_getIfMask("br0", localSubnetmask))
    {
       cmsLog_error("failed to get subnet or netmask info for br0!");
@@ -1613,6 +1556,22 @@ void rutIpt_initNat(const char *ifcName, UBOOL8 isFullCone)
 #endif 
 
 #ifdef DMP_DEVICE2_BRIDGE_1  /* aka SUPPORT_PORT_MAP */
+
+   if (!IS_EMPTY_STRING(ifcName) && qdmIpIntf_isNatEnabledOnIntfNameLocked_dev2(ifcName))
+   {
+      char bridgeIfName[CMS_IFNAME_LENGTH]; 
+
+      if(qdmIntf_getBridgeNameByIntfName(ifcName,bridgeIfName) == CMSRET_SUCCESS)
+      {
+         cmsLog_debug("ifname:%s, bridgeIfName=%s Nat:%d"
+                      ,ifcName
+                      ,bridgeIfName
+                      ,(qdmIpIntf_isNatEnabledOnIntfNameLocked_dev2(ifcName)));
+
+         rutIpt_configNatForIntfGroup_dev2(TRUE, ifcName, bridgeIfName, qdmIpIntf_isFullConeNatEnabledOnIntfNameLocked_dev2(ifcName));
+      }
+   }
+
    /* For BEEP security */
    {
       UINT32 key;
@@ -1669,12 +1628,12 @@ void rutIpt_initNatAndFirewallOnWanConnection(const char *ifName,
    if (isNatEnabled || isFirewallEnabled)
    {
       rutIpt_insertIpModules();
-   
+
       if (isNatEnabled)
       {
          rutIpt_initNat(ifName, isFullCone);
       }
-      
+
 #if (defined(CONFIG_BCM_INGQOS) || defined(CONFIG_BCM_INGQOS_MODULE))
       isFirewallEnabled = TRUE;
 #endif
@@ -1687,7 +1646,7 @@ void rutIpt_initNatAndFirewallOnWanConnection(const char *ifName,
 #ifdef SUPPORT_L7_FILTER
       rutIpt_executeDPIRules(PF_INET, ifName);
 #endif
-      
+
       /* set TCPMSS for this interface */
       rutIpt_insertTCPMSSRules(PF_INET, ifName);
 
@@ -1753,6 +1712,14 @@ void rutIpt_setupFirewallForDHCPv6(UBOOL8 unblock, const char *ifName)
    }
 
 }  /* End of rutIpt_setupFirewallForDHCPv6() */
+
+void rutIpt_defaultLANSetup6(const char *ifName)
+{
+	insertModuleByName("ip6table_filter");
+	rutIpt_createRoutingChain6();
+	/* empty prefix case */
+	rutIpt_configRoutingChain6("", ifName, TRUE);
+}
 #endif
 
 
@@ -1863,6 +1830,7 @@ void rutIpt_initFirewallExceptions_igd(const char *ifName)
 }  /* End of rutIpt_initFirewallExceptions_igd() */    
 
 
+#ifdef SUPPORT_NF_MANGLE
 #ifdef SUPPORT_IPSEC
 void rutIpt_initIpSecPolicy(const char *ifName)
 {
@@ -1917,6 +1885,7 @@ void rutIpt_removeIpSecPolicy(const char *ifName)
    return;
 }
 #endif /* SUPPORT_IPSEC */
+#endif // SUPPORT_NF_MANGLE
 
 void rutIpt_initFirewall(SINT32 domain, const char *ifName) 
 {
@@ -1939,10 +1908,11 @@ void rutIpt_initFirewall(SINT32 domain, const char *ifName)
       /* Enable anti-IPspoofing */
       rutIpt_activateFirewallAntiIPspoofing(ifName);
    }
-   
+
    /* The following rules are mainly handling INPUT and FORWARD chain
     * setup stateful packet inspection
     */
+#ifdef SUPPORT_NF_NAT
    sprintf(cmd, "%s -w -A INPUT -p ALL -i %s -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT", ipt, ifName);
    rut_doSystemAction("initFirewall", cmd);
 
@@ -1951,6 +1921,7 @@ void rutIpt_initFirewall(SINT32 domain, const char *ifName)
       sprintf(cmd, "%s -w -A FORWARD -p ALL -i %s -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT", ipt, ifName);
       rut_doSystemAction("initFirewall", cmd);   
    }
+#endif
 
    /* TODO:  setup RIP hole if RIP on WAN is enabled
     * doRipPolicy(ifName);
@@ -1959,10 +1930,11 @@ void rutIpt_initFirewall(SINT32 domain, const char *ifName)
     * doIPSecPolicy(ifName);
     */
 
+#ifdef SUPPORT_NF_MANGLE
 #ifdef SUPPORT_IPSEC
    rutIpt_initIpSecPolicy(ifName);
 #endif
-    
+#endif
 
 #ifdef SUPPORT_TR69C
    /*
@@ -2037,7 +2009,7 @@ void rutIpt_initFirewall(SINT32 domain, const char *ifName)
    {
       sprintf(cmd, "%s -w -A FORWARD -i %s -p tcp --syn -m limit --limit 6/h -j LOG --log-level 1 --log-prefix=\"Intrusion -> \"", ipt, ifName);
       rut_doSystemAction("initFirewall", cmd);
-   
+
       sprintf(cmd, "%s -w -A FORWARD -i %s -j DROP", ipt, ifName);
       rut_doSystemAction("initFirewall", cmd);   
    }
@@ -2045,7 +2017,7 @@ void rutIpt_initFirewall(SINT32 domain, const char *ifName)
    cmsLog_debug("done");
 
    return;
-}    
+}
 
 
 
@@ -2199,8 +2171,10 @@ void rutIpt_removeInterfaceIptableRules(const char *ifcName, UBOOL8 isIPv4)
    }
 #endif
 
+#ifdef SUPPORT_NF_MANGLE
 #ifdef SUPPORT_IPSEC
    rutIpt_removeIpSecPolicy(ifcName);
+#endif
 #endif
 }
 
@@ -3485,7 +3459,7 @@ void rutIpt_initNatForIntfGroup(const char *ifName, const char *bridgeIfName,
 
       /* Need to add back the TCPMSS rules during the rutPMap_disassociateWanIntfFromBridge */
       rutIpt_insertTCPMSSRules(PF_INET, ifName);
-      
+
    }
 }
 
@@ -3506,7 +3480,7 @@ void rutIpt_redirectHttpTelnetPorts(const char *ifName, const char *ipAddress)
    snprintf(cmd,  sizeof(cmd), "iptables -w -t nat -A PREROUTING -i %s -p tcp --dport %d -j DNAT --to-destination %s:%d",
      ifName, WEB_SERVER_PORT_8080, ipAddress, WEB_SERVER_PORT_80);
    rut_doSystemAction("rut", cmd);
-   
+
    /* Move local Telnet server to port 2323 and redirect TCP traffic on port
      * 2323 to local Telnet deamon.
      */
@@ -3521,9 +3495,9 @@ void rutIpt_deleteTCPMSSRules(SINT32 domain, const char *ifName)
 {
    char cmd[BUFLEN_128];
    char ipt[BUFLEN_16];
-   
+
    sprintf(ipt, "%s", (domain == PF_INET)? "iptables" : "ip6tables");   
-   
+
    /* remove TCP MSS option manipulation */
 
    snprintf(cmd, sizeof(cmd), "%s -w -D FORWARD -i %s -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null", ipt,ifName);
@@ -3538,13 +3512,13 @@ void rutIpt_insertTCPMSSRules(SINT32 domain, const char *ifName)
 {
    char cmd[BUFLEN_128];
    char ipt[BUFLEN_16];
-   
+
    sprintf(ipt, "%s", (domain == PF_INET)? "iptables" : "ip6tables");   
-   
+
    /* setup TCP MSS option manipulation */
 
    rutIpt_deleteTCPMSSRules(domain,ifName);
-   
+
    snprintf(cmd, sizeof(cmd), "%s -w -I FORWARD -i %s -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu", ipt,ifName);
    rut_doSystemAction("TCPMSSRules", cmd);   
    snprintf(cmd, sizeof(cmd), "%s -w -I FORWARD -o %s -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu", ipt,ifName);
@@ -3555,7 +3529,7 @@ void rutIpt_insertTCPMSSRules(SINT32 domain, const char *ifName)
 void rutIpt_activateFirewallAntiIPspoofing(const char *ifName)
 {
    char cmd[BUFLEN_128];
-   
+
    /* Enable anti-IPspoofing */
    sprintf(cmd, "echo 1 > /proc/sys/net/ipv4/conf/%s/rp_filter", ifName);
    rut_doSystemAction("Firewall anti-IPSpoofing", cmd);

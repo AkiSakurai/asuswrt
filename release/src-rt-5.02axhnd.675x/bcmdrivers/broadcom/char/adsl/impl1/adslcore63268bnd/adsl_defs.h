@@ -1,5 +1,5 @@
 /* TARGET=bcm63268-vdsl4b-adsl-bonding-HW-firmware-g994p1-e14-chip-afeproc-fire-bcm6306-ginp-vectoring  */
-/* VERSION=A2pv4bF038r1  */
+/* VERSION=A2pv4bF038r2  */
 
 #define SOURCE_FILE_ 
 #define SOURCE_FILE  

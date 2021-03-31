@@ -9,28 +9,29 @@
 <link rel="shortcut icon" href="images/favicon.png">
 <link rel="icon" href="images/favicon.png">
 <title>ASUS Login</title>
+<script type="text/javascript" src="/require/require.min.js"></script>
 <style>
+body{
+	font-family: Arial, MS UI Gothic, MS P Gothic, Microsoft Yahei UI, sans-serif;
+}
 .content{
 	width:580px;
 	height:526px;
 	background:rgba(40,52,55,0.1);
 }
 .wrapper{
-	background:url(images/New_ui/login_bg.png) no-repeat center center fixed;
+	background:#1F1F1F url(images/New_ui/login_bg.png) no-repeat center center fixed;
 	background-size: cover;
 }
 .title_name {
-	font-family:Arial;
 	font-size: 40pt;
 	color:#93d2d9;
 }
 .prod_madelName{
-	font-family: Arial;
 	font-size: 26pt;
 	color:#fff;
 }
 .p1{
-	font-family: Arial;
 	font-size: 16pt;
 	color:#fff;
 }
@@ -41,14 +42,12 @@
 	transition: visibility 0s linear 0.218s,opacity 0.218s,background-color 0.218s;
 	height: 68px;
 	width: 300px;
-	font-family: Arial;
 	font-size: 28pt;
 	color:#fff;
 	text-align:center;
 	vertical-align:center
 }
 .button_text{
-	font-family: Arial;
 	font-size: 28pt;
 	color:#fff;
 	text-align:center;
@@ -66,12 +65,10 @@
 	font-size:28px
 }
 .form_input_text{
-	font-family: Arial;
 	font-size: 28pt;
 	color:#a9a9a9;
 }
 .p2{
-	font-family: Arial;
 	font-size: 18pt;
 	color:#28fff7;
 }
@@ -103,6 +100,8 @@ var is_KR_sku = (function(){
 })();
 var isIE8 = navigator.userAgent.search("MSIE 8") > -1; 
 var isIE9 = navigator.userAgent.search("MSIE 9") > -1; 
+var defaultPass = ("<% check_pw(); %>" == "1");
+var timeZoneObj;
 
 function initial(){
 	if(is_KR_sku)
@@ -147,6 +146,19 @@ function initial(){
 				submitForm();
 			}
 		};
+	}
+
+	if(defaultPass){
+		require(['/require/modules/timeZone.js'], function(timeZone) {
+			var preferredLang = "<% nvram_get("preferred_lang"); %>";
+			timeZoneObj = new timeZone.get(preferredLang);
+
+			document.form.time_zone.value = timeZoneObj.time_zone;
+			document.form.time_zone.disabled = false;
+			document.form.time_zone_dst.value = (timeZoneObj.hasDst) ? 1 : 0;
+			document.form.time_zone_dst.disabled = !timeZoneObj.hasDst;
+			document.form.action_script.value = "restart_time";
+		});
 	}
 }
 
@@ -412,6 +424,8 @@ function showError(str){
 <input name="foilautofill" style="display: none;" type="password">
 <input type="hidden" name="http_username" value="">
 <input type="hidden" name="http_passwd" value="">
+<input type="hidden" name="time_zone" value="" disabled>
+<input type="hidden" name="time_zone_dst" value="" disabled>
 <table id="loginTable" align="center" cellpadding="0" cellspacing="0" style="display:none">
 	<tr>
 		<td>

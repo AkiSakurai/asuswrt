@@ -503,6 +503,11 @@ static struct sk_buff *removeOuterTagOnReceive(bcmVlan_cmdInfo_t *cmdInfo, struc
     /* On receive direction, skb->data points to the outer tag */
 
     skb->protocol = ((bcmVlan_vlanHeader_t *)(skb->data))->etherType;
+    // similar to eth_type_trans() or saveSkbVlanOnReceive() set proper protocol
+    if (ntohs(skb->protocol) < 1536)
+    {
+        skb->protocol = htons(ETH_P_802_2);
+    }
 
 
     skb = unshareSkb(cmdInfo, skb);

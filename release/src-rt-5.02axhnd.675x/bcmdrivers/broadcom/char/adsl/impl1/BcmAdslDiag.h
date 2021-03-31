@@ -105,9 +105,8 @@ int	 BcmAdslDiagEnable(void);
 void BcmAdslDiagDisconnect(int keepDiagConInfo);
 int  BcmAdslDiagIsActive(void);
 uint BcmXdslDiagGetSrvIpAddr(void);
-#ifdef SUPPORT_EXT_DSL_BONDING_SLAVE
 int  BcmAdslDiagIsConnected(void);
-#endif
+int  BcmAdslGdbIsConnected(void);
 void BcmAdslCoreDiagStartLog_1(unsigned char lineId, uint map, uint time);
 void BcmAdslCoreDiagStartLog_2(unsigned char lineId, uint map, uint time);
 void BcmAdslCoreWriteOvhMsg(void *gDslVars, char *hdr, dslFrame *pFrame);
@@ -123,5 +122,10 @@ void BcmAdslDiagSendHdr(void);
 
 #define BcmAdslCoreDiagWriteFile(lineId, fname, ptr, len)		DiagWriteFile(lineId,DIAG_DSL_CLIENT, fname, ptr, len)
 #define BcmAdslCoreDiagOpenFile(lineId, fname)		DiagOpenFile(lineId,DIAG_DSL_CLIENT, fname)
+
+void BcmAdslPendingSkbMsgRead(void* d, long* dlen);
+int  BcmAdslPendingSkbMsgQueueSize(void);
+void BcmAdslPendingSkbMsgQueueEnable(int bEn);
+void BcmAdslPendingSkbMsgQueueClear(void);
 
 #endif /* _BCM_ADSL_DIAG_H_ */

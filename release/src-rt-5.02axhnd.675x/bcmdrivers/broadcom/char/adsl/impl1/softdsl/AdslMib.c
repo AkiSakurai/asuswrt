@@ -132,6 +132,9 @@
 #include <asm/div64.h>
 #endif
 #include "G992p3OvhMsg.h"
+#ifdef SUPPORT_HMI
+#include "../hmimsg/bcm_DrvXface.h"
+#endif
 
 #define globalVar   gAdslMibVars
 
@@ -247,11 +250,13 @@ static char                    gVendorTbl[][6] =
 #define AddGinpUsCounterVar(mib, varname, ct) do {                   \
     (*(adslMibInfo*)(mib)).adslStat.ginpStat.cntUS.varname += ct;              \
     (*(adslMibInfo*)(mib)).adslStatSincePowerOn.ginpStat.cntUS.varname += ct;  \
+    (*(adslMibInfo*)(mib)).ginpCur15MinCntrs[1].varname += ct;                 \
 } while (0)
 
 #define AddGinpDsCounterVar(mib, varname, ct) do {                   \
     (*(adslMibInfo*)(mib)).adslStat.ginpStat.cntDS.varname += ct;              \
     (*(adslMibInfo*)(mib)).adslStatSincePowerOn.ginpStat.cntDS.varname += ct;  \
+    (*(adslMibInfo*)(mib)).ginpCur15MinCntrs[0].varname += ct;                 \
 } while (0)
 
 #ifdef CONFIG_BCM_DSL_GFAST
@@ -270,6 +275,7 @@ static char                    gVendorTbl[][6] =
 #define AddGfastCounterVar(mib, varname, ct) do {                        \
     (*(adslMibInfo*)(mib)).adslStat.gfastStat.varname += ct;             \
     (*(adslMibInfo*)(mib)).adslStatSincePowerOn.gfastStat.varname += ct; \
+    (*(adslMibInfo*)(mib)).gfastCur15MinCntrs.varname += ct;             \
 } while (0)
 #endif
 
@@ -342,6 +348,13 @@ Private int SM_DECL AdslMibNotifyIdle (void *gDslVars, uint event)
 }
 
 #if defined(CONFIG_BCM_DSL_GFAST)
+#ifdef SUPPORT_HMI
+Public Boolean XdslMibIsVendorIdReceived(void *gDslVars)
+{
+    return globalVar.vendorIdReceived;
+}
+#endif
+
 Public Boolean XdslMibIsFastRetrain(void *gDslVars)
 {
     return globalVar.adslMib.fastRetrainActive;
@@ -799,6 +812,7 @@ Private void XdslMibConvertFromAdslFramerParam(void *gDslVars,
 
 #if defined(SUPPORT_HMI)
 extern void LineUpdateBearerLatencyInfo(unsigned char lineId, FramerDeframerOptions *param, int dir);
+extern void XdslCoreMibNotifyShowtimeEvent(void *gDslV, ShowtimeEvent event);
 #endif
 
 Private void Xdsl2MibConvertConnectionInfo(void *gDslVars, int pathId, int dir)
@@ -1029,7 +1043,7 @@ Private void Xdsl2MibSetConnectionInfo(void *gDslVars, FramerDeframerOptions *pa
    }
 
 #ifdef CONFIG_BCM_DSL_GFAST
-   if(XdslMibIsGfastMod(gDslVars) && (msgLen >= sizeof(FramerDeframerOptions))) {
+   if(XdslMibIsGfastMod(gDslVars) && (msgLen >= ETR_MIN_EOC_FRAMER_STRUCT_SIZE)) {
       pFramingInfo->etru = param->etru;
       pFramingInfo->ETRminEoc = param->ETRminEoc;
       pFramingInfo->Ldr = param->Ldr;
@@ -1466,6 +1480,11 @@ Private void AdslMibUpdateIntervalCounters (void *gDslVars, uint sec)
 
     secElapsed  = sec + globalVar.adslMib.adslPerfData.adslPerfCurr15MinTimeElapsed;
     if (secElapsed >= k15MinInSeconds) {
+#ifdef SUPPORT_HMI
+        AdslMibNotify(gDslVars, kXdslEvent15MinutesCntrs);
+        BlockByteClear(sizeof(pMib->ginpCur15MinCntrs), (void*)&pMib->ginpCur15MinCntrs[0]);
+        BlockByteClear(sizeof(pMib->gfastCur15MinCntrs), (void*)&pMib->gfastCur15MinCntrs);
+#endif
         n = globalVar.adslMib.adslPerfData.adslPerfValidIntervals;
         if (n < kAdslMibPerfIntervals)
             n++;
@@ -1542,6 +1561,9 @@ Private void AdslMibUpdateIntervalCounters (void *gDslVars, uint sec)
 #endif
     secElapsed = sec + globalVar.adslMib.adslPerfData.adslPerfCurr1DayTimeElapsed;
     if (secElapsed >= k1DayInSeconds) {
+#ifdef SUPPORT_HMI
+        AdslMibNotify(gDslVars, kXdslEvent24HoursCntrs);
+#endif
         AdslMibByteMove(
             sizeof(adslPerfCounters), 
             &globalVar.adslMib.adslPerfData.perfCurr1Day, 
@@ -1698,7 +1720,9 @@ Public void AdslMibResetConectionStatCounters(void *gDslVars)
     BlockByteClear (sizeof(globalVar.adslMib.rtxCounterData), (void *) &globalVar.adslMib.rtxCounterData);
 #ifdef CONFIG_BCM_DSL_GFAST
     BlockByteClear (sizeof(globalVar.adslMib.gfastOlrXoiCounterData), (void *) &globalVar.adslMib.gfastOlrXoiCounterData[0]);
+    BlockByteClear (sizeof(globalVar.adslMib.gfastCur15MinCntrs), (void *) &globalVar.adslMib.gfastCur15MinCntrs);
 #endif
+    BlockByteClear (sizeof(globalVar.adslMib.ginpCur15MinCntrs), (void *) &globalVar.adslMib.ginpCur15MinCntrs[0]);
     BlockByteClear (sizeof(globalVar.adslMib.adslChanIntlPerfData), (void *) &globalVar.adslMib.adslChanIntlPerfData);
     BlockByteClear (sizeof(globalVar.adslMib.adslChanFastPerfData), (void *) &globalVar.adslMib.adslChanFastPerfData);
     BlockByteClear (sizeof(globalVar.adslMib.adslPerfIntervals), (void *) &globalVar.adslMib.adslPerfIntervals);
@@ -2445,13 +2469,20 @@ void AdslMibInitTxStat(
   void          *gDslVars, 
   adslConnectionDataStat  *adslTxData, 
   adslPerfCounters    *adslTxPerf, 
-  ginpCounters          *pGinpCounters)
+  ginpCounters          *pGinpCounters
+#ifdef CONFIG_BCM_DSL_GFAST
+  ,gfastCounters      *pGfastCounters
+#endif
+  )
 {
   adslMibInfo               *pMib = &globalVar.adslMib;
 
   BlockByteClear(sizeof(adslPerfCounters), (void*)&pMib->adslTxPerfSinceShowTime);
   BlockByteMove(sizeof(adslPerfCounters), (void *)adslTxPerf, (void*)&pMib->adslTxPerfLast);
   BlockByteMove(sizeof(ginpCounters), (void *)pGinpCounters, (void*)&globalVar.lastTxGinpCounters);
+#ifdef CONFIG_BCM_DSL_GFAST
+  BlockByteMove(sizeof(gfastCounters), (void *)pGfastCounters, (void*)&globalVar.lastGfastCounters);
+#endif
 }
 
 Public int XdslMibGetCurrentMappedPathId(void *gDslVars, unsigned char dir)
@@ -2521,7 +2552,11 @@ Public void AdslMibUpdateTxStat(
   adslConnectionDataStat  *adslTxData, 
   adslPerfCounters    *adslTxPerf, 
   atmConnectionDataStat *atmTxData,
-  ginpCounters          *pGinpCounters)
+  ginpCounters          *pGinpCounters
+#ifdef CONFIG_BCM_DSL_GFAST
+  ,gfastCounters      *pGfastCounters
+#endif
+  )
 {
   adslMibInfo       *pMib = &globalVar.adslMib;
   adslPerfCounters    txPerfTemp;
@@ -2537,7 +2572,11 @@ Public void AdslMibUpdateTxStat(
   if(!globalVar.txCntReceived) {
     globalVar.txCntReceived++;
     globalVar.txCountersReportedTime = globalVar.txShowtimeTime;
-    AdslMibInitTxStat(gDslVars, adslTxData, adslTxPerf, pGinpCounters);
+    AdslMibInitTxStat(gDslVars, adslTxData, adslTxPerf, pGinpCounters
+#ifdef CONFIG_BCM_DSL_GFAST
+                      ,pGfastCounters
+#endif
+                      );
     for(i=0; i<MAX_LP_NUM; i++) {
       if( (0==i) || XdslMibIs2lpActive(gDslVars, TX_DIRECTION) ) {
         globalVar.shtCounters2lp[i][kG992ShowtimeNumOfFEBE] = adslTxData[i].cntSFErr;
@@ -2668,9 +2707,26 @@ Public void AdslMibUpdateTxStat(
         AddGinpUsCounterVar(&globalVar.adslMib, LEFTRS, n);
       }
     }
+#ifdef CONFIG_BCM_DSL_GFAST
+    if(XdslMibIsGfastMod(gDslVars) && XdslMibReportAmd4GfastCounters(gDslVars)) {
+      pMib->adslStat.gfastStat.rxANDEFTRmin = pGfastCounters->rxANDEFTRmin;
+      pMib->gfastCur15MinCntrs.rxANDEFTRmin = pGfastCounters->rxANDEFTRmin;
+      pMib->adslStat.gfastStat.rxANDEFTRmax = pGfastCounters->rxANDEFTRmax;
+      pMib->gfastCur15MinCntrs.rxANDEFTRmax = pGfastCounters->rxANDEFTRmax;
+      n = pGfastCounters->rxANDEFTRsum - globalVar.lastGfastCounters.rxANDEFTRsum;
+      AddGfastCounterVar(&globalVar.adslMib, rxANDEFTRsum, n);
+      n = pGfastCounters->rxANDEFTRDS - globalVar.lastGfastCounters.rxANDEFTRDS;
+      AddGfastCounterVar(&globalVar.adslMib, rxANDEFTRDS, n);
+      n = pGfastCounters->rxLANDEFTRS - globalVar.lastGfastCounters.rxLANDEFTRS;
+      AddGfastCounterVar(&globalVar.adslMib, rxLANDEFTRS, n);
+    }
+#endif
   }
   BlockByteMove(sizeof(adslPerfCounters), (void *)&txPerfTemp, (void*)&pMib->adslTxPerfLast);
   BlockByteMove(sizeof(ginpCounters), (void *)pGinpCounters, (void*)&globalVar.lastTxGinpCounters);
+#ifdef CONFIG_BCM_DSL_GFAST
+  BlockByteMove(sizeof(gfastCounters), (void *)pGfastCounters, (void*)&globalVar.lastGfastCounters);
+#endif
   globalVar.txCountersReportedTime = globalVar.txShowtimeTime;
 }
 
@@ -2683,7 +2739,7 @@ Private int XdslMibGetMaxToneNum(void *gDslVars)
 #ifdef CONFIG_VDSLBRCMPRIV2_SUPPORT
     vdsl2Profile = kVdslProfileBrcmPriv2;
 #else
-    vdsl2Profile = kVdslProfileBrcmPriv1;
+    vdsl2Profile = kVdslProfile35b;
 #endif
     if(vdsl2Profile == globalVar.adslMib.xdslInfo.vdsl2Profile)
         n = MAX_TONE_NUM;
@@ -2730,6 +2786,51 @@ Private VdslToneGroup *getCorrespondingNegToneGroup(VdslToneGroup *pPhysToneGrou
 #endif
 
 #ifdef CONFIG_BCM_DSL_GFAST
+
+#ifdef SUPPORT_HMI
+void XdslMibNotifyGfastRxCompleteCounter(void *gDslVars, int cntType)
+{
+  switch(cntType) {
+    case kOlrBSW:
+      XdslCoreMibNotifyShowtimeEvent(gDslVars,SHOWTIME_RX_BS_APPLIED);
+      break;
+    case kOlrSRA:
+      XdslCoreMibNotifyShowtimeEvent(gDslVars,SHOWTIME_RX_SRA_APPLIED);
+      break;
+    case kOlrRPA:
+      XdslCoreMibNotifyShowtimeEvent(gDslVars,SHOWTIME_RX_RPA_APPLIED);
+      break;
+    case kOlrFRA:
+      XdslCoreMibNotifyShowtimeEvent(gDslVars,SHOWTIME_RX_FRA_APPLIED);
+      break;
+    default:
+      break;
+  }
+}
+void XdslMibNotifyGfastTxCompleteCounter(void *gDslVars, int cntType)
+{
+  switch(cntType) {
+    case kOlrBSW:
+      XdslCoreMibNotifyShowtimeEvent(gDslVars,SHOWTIME_TX_BS_APPLIED);
+      break;
+    case kOlrSRA:
+      XdslCoreMibNotifyShowtimeEvent(gDslVars,SHOWTIME_TX_SRA_APPLIED);
+      break;
+    case kOlrTIGA:
+      XdslCoreMibNotifyShowtimeEvent(gDslVars,SHOWTIME_TX_TIGA_APPLIED);
+      break;
+    case kOlrRPA:
+      XdslCoreMibNotifyShowtimeEvent(gDslVars,SHOWTIME_TX_RPA_APPLIED);
+      break;
+    case kOlrFRA:
+      XdslCoreMibNotifyShowtimeEvent(gDslVars,SHOWTIME_TX_FRA_APPLIED);
+      break;
+    default:
+      break;
+  }
+}
+#endif
+
 Private void updateGfastOlrCompletedCounter(int cntType, gfastOlrCounterInfo *pGfastOlrCounterInfo)
 {
    switch(cntType) {
@@ -3008,7 +3109,7 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
 #ifdef CONFIG_VDSLBRCMPRIV2_SUPPORT
             n = kVdslProfileBrcmPriv2;
 #else
-            n = kVdslProfileBrcmPriv1;
+            n = kVdslProfile35b;
 #endif
             if(n == globalVar.adslMib.xdslInfo.vdsl2Profile) {
                 globalVar.nTones = MAX_TONE_NUM;
@@ -3018,7 +3119,7 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
 #endif
             }
 #ifdef CONFIG_VDSLBRCMPRIV2_SUPPORT
-            else if(kVdslProfileBrcmPriv1 == globalVar.adslMib.xdslInfo.vdsl2Profile)
+            else if(kVdslProfile35b == globalVar.adslMib.xdslInfo.vdsl2Profile)
                 globalVar.nTones = MAX_TONE_NUM/2;
 #endif
 #endif /* defined(CONFIG_VDSLBRCMPRIV1_SUPPORT) */
@@ -3159,7 +3260,7 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
 #ifdef CONFIG_VDSLBRCMPRIV2_SUPPORT
                 n = kVdslProfileBrcmPriv2;
 #else
-                n = kVdslProfileBrcmPriv1;
+                n = kVdslProfile35b;
 #endif
                 if(n == globalVar.adslMib.xdslInfo.vdsl2Profile) {
                     XdslMibAdjustMibDataPtr(gDslVars, 1);
@@ -3207,6 +3308,9 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
             globalVar.adslMib.adslStat.gfastStat.txANDEFTRsum = 0;
             globalVar.adslMib.adslStat.gfastStat.txANDEFTRDS = 0;
             globalVar.adslMib.adslStat.gfastStat.txLANDEFTRS = 0;
+#ifdef SUPPORT_HMI
+            BlockByteClear(sizeof(LineFeatureInfos), (void*)&globalVar.lineFeatureInfos[TX_DIRECTION]);
+#endif
 #endif
             globalVar.adslMib.xdslStat[0].fireStat.status=0;
             globalVar.adslMib.xdslStat[0].ginpStat.status=0;
@@ -3933,12 +4037,15 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
             else
 #endif
             {
-               n = globalVar.nTones;
                if (val > nMaxToneAllow)
                    val = nMaxToneAllow;
-               BlockShortMoveReverse(val, (short *)status->param.dslConnectInfo.buffPtr, globalVar.snr + globalVar.nMsgCnt * n);
 #ifdef G992_ANNEXC
+               n = globalVar.nTones;
+               BlockShortMoveReverse(val, (short *)status->param.dslConnectInfo.buffPtr, globalVar.snr + globalVar.nMsgCnt * n);
                globalVar.nMsgCnt ^= 1;
+#else
+               n = AdslMibIsLinkActive(gDslVars) ? globalVar.adslMib.dsPhyBandPlan.toneGroups[0].startTone : 0;
+               BlockShortMoveReverse( val - n, (short *)status->param.dslConnectInfo.buffPtr + n, globalVar.snr + n);
 #endif
             }
             break;
@@ -4291,6 +4398,9 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
                 counters[kG992ShowtimeNumOfFHEC] = globalVar.shtCounters2lp[pathId][kG992ShowtimeNumOfFHEC];
             }
             
+            val = counters[kG992ShowtimeRSCodewordsRcvedUncorrectable] - globalVar.shtCounters2lp[pathId][kG992ShowtimeRSCodewordsRcvedUncorrectable];
+            AddBlockCounterVar(pChanPerfData, rxUncorrectableCW, val);
+            
             AdslMibConnectionStatUpdate (gDslVars, (uint *)&globalVar.shtCounters2lp[pathId], counters, pathId);
             AdslMibByteMove(sizeof(globalVar.shtCounters), counters, &globalVar.shtCounters2lp[pathId]);
             
@@ -4364,6 +4474,10 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
             if(XdslMibIsGfastMod(gDslVars)) {
                int xoiType = (int)(kOlrXOIMask & val);
                int cntType = (int)(~kOlrXOIMask & val);
+#ifdef SUPPORT_HMI
+               if((kOlrNoi == xoiType) || (kOlrNoiDoi == xoiType))
+                  XdslMibNotifyGfastTxCompleteCounter(gDslVars, cntType);
+#endif
                if(kOlrNoi == xoiType)
                   updateGfastOlrCompletedCounter(cntType, &globalVar.adslMib.gfastOlrXoiCounterData[0].cntUS);
                else if(kOlrDoi == xoiType)
@@ -4386,6 +4500,10 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
             if(XdslMibIsGfastMod(gDslVars)) {
                int xoiType = (int)(kOlrXOIMask & val);
                int cntType = (int)(~kOlrXOIMask & val);
+#ifdef SUPPORT_HMI
+               if((kOlrNoi == xoiType) || (kOlrNoiDoi == xoiType))
+                  XdslMibNotifyGfastRxCompleteCounter(gDslVars, cntType);
+#endif
                if(kOlrNoi == xoiType)
                   updateGfastOlrCompletedCounter(cntType, &globalVar.adslMib.gfastOlrXoiCounterData[0].cntDS);
                else if(kOlrDoi == xoiType)
@@ -4830,6 +4948,8 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
                // Reset min/max ANDEFTR
               globalVar.adslMib.adslStat.gfastStat.txANDEFTRmin = pGinpCounter->ANDEFTR;
               globalVar.adslMib.adslStat.gfastStat.txANDEFTRmax = pGinpCounter->ANDEFTR;
+              globalVar.adslMib.gfastCur15MinCntrs.txANDEFTRmin = globalVar.adslMib.adslStat.gfastStat.txANDEFTRmin;
+              globalVar.adslMib.gfastCur15MinCntrs.txANDEFTRmax = globalVar.adslMib.adslStat.gfastStat.txANDEFTRmax;
             }
 #endif
           }
@@ -4841,6 +4961,8 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
               // Evaluate min/max ANDEFTR
               globalVar.adslMib.adslStat.gfastStat.txANDEFTRmin = MIN(globalVar.adslMib.adslStatSincePowerOn.gfastStat.txANDEFTRmin, pGinpCounter->ANDEFTR);
               globalVar.adslMib.adslStat.gfastStat.txANDEFTRmax = MAX(globalVar.adslMib.adslStatSincePowerOn.gfastStat.txANDEFTRmax, pGinpCounter->ANDEFTR);
+              globalVar.adslMib.gfastCur15MinCntrs.txANDEFTRmin = globalVar.adslMib.adslStat.gfastStat.txANDEFTRmin;
+              globalVar.adslMib.gfastCur15MinCntrs.txANDEFTRmax = globalVar.adslMib.adslStat.gfastStat.txANDEFTRmax;
             }
 #endif
           }
@@ -4854,6 +4976,7 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
                globalVar.txANDEFTRacc = (globalVar.txANDEFTRacc + pGinpCounter->ANDEFTR) & ((ulonglong)-1 >> 16);   // 48 bits wraparound counter;
                x = (globalVar.txANDEFTRacc + ((1 << 16)-1))/(1 << 16);  // Ceiling of txANDEFTRacc/(1<<16) = txANDEFTRsum
                globalVar.adslMib.adslStat.gfastStat.txANDEFTRsum = x;
+               globalVar.adslMib.gfastCur15MinCntrs.txANDEFTRsum = x;
                // Update StatSincePowerOn min/max ANDEFTR
                globalVar.adslMib.adslStatSincePowerOn.gfastStat.txANDEFTRmin = globalVar.adslMib.adslStat.gfastStat.txANDEFTRmin;
                globalVar.adslMib.adslStatSincePowerOn.gfastStat.txANDEFTRmax = globalVar.adslMib.adslStat.gfastStat.txANDEFTRmax;
@@ -4945,15 +5068,21 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
             pFramerParam->ndr = ADSL_ENDIAN_CONV_INT32(pFramerParam->ndr);
             pFramerParam->Ldr = ADSL_ENDIAN_CONV_SHORT(pFramerParam->Ldr);
           }
-          if(n >= sizeof(FramerDeframerOptions)) {
+          if(n >= ETR_MIN_EOC_FRAMER_STRUCT_SIZE) {
             pFramerParam->etru = ADSL_ENDIAN_CONV_INT32(pFramerParam->etru);
             pFramerParam->Lmax = ADSL_ENDIAN_CONV_INT32(pFramerParam->Lmax);
             pFramerParam->Lmin = ADSL_ENDIAN_CONV_INT32(pFramerParam->Lmin);
             pFramerParam->ETRminEoc = ADSL_ENDIAN_CONV_INT32(pFramerParam->ETRminEoc);
           }
+          if(n >= RX_QUEUE16_FRAMER_STRUCT_SIZE) {
+            pFramerParam->fireRxQueue = ADSL_ENDIAN_CONV_SHORT(pFramerParam->fireRxQueue);
+          }
 #endif
           if(n < L32_FRAMER_STRUCT_SIZE)
             pFramerParam->L = pFramerParam->L16;
+
+          if(n < RX_QUEUE16_FRAMER_STRUCT_SIZE)
+            pFramerParam->fireRxQueue = pFramerParam->fireRxQueueOld;
           
           if(kDsl993p2FramerDeframerUs == msgId) {
 #ifdef PHY_CO
@@ -5337,6 +5466,20 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
         __SoftDslPrintf(gDslVars, "reserved = %02x, n = %02x", 0, ((uchar *)pDst)[0], ((uchar *)pDst)[1]);
       }
         break;
+      case kDslLineFeaturesNE:
+      case kDslLineFeaturesFE:
+      {
+        uint *pDst, *pSrc = (uint *)status->param.dslClearEocMsg.dataPtr;
+        n = status->param.dslClearEocMsg.msgType & kDslClearEocMsgLengthMask;
+        n = (n < sizeof(LineFeatureInfos)) ? n: sizeof(LineFeatureInfos);
+        if(kDslLineFeaturesNE == status->param.dslClearEocMsg.msgId)
+          pDst = (uint *)&globalVar.lineFeatureInfos[RX_DIRECTION];
+        else
+          pDst = (uint *)&globalVar.lineFeatureInfos[TX_DIRECTION];
+        n = n >> 2;
+        BlockLongMoveReverse(n, pSrc, pDst);
+      }
+        break;
 #endif
 #endif
 #if defined(CONFIG_RNC_SUPPORT)
@@ -5365,6 +5508,39 @@ Public int AdslMibStatusSnooper (void *gDslVars, dslStatusStruct *status)
           BlockShortMoveReverse(kVdslMibMaxToneNum,(short *)(status->param.dslClearEocMsg.dataPtr),(short *)globalVar.echoVariance);
         break;
 #endif
+#endif
+#if defined(CONFIG_BCM_DSL_GFAST) && defined(SUPPORT_HMI)
+      case kDsl993p2FeHlog:
+        if(XdslMibIsGfastMod(gDslVars)) {
+          int k, n, i;
+          short *HlogBuff, *pChanCharLog;
+          HlogBuff=(short *)(status->param.dslClearEocMsg.dataPtr); 
+          k=0;
+          pChanCharLog = globalVar.chanCharLog + globalVar.nTonesGfast/2;
+          for(n=0;n<globalVar.adslMib.dsPhyBandPlanDiscovery.noOfToneGroups;n++)
+            if(globalVar.adslMib.dsPhyBandPlanDiscovery.toneGroups[n].endTone < globalVar.nTonesGfast)
+              for(i=globalVar.adslMib.dsPhyBandPlanDiscovery.toneGroups[n].startTone;i<=globalVar.adslMib.dsPhyBandPlanDiscovery.toneGroups[n].endTone;i++)
+                pChanCharLog[i] = (short)ADSL_ENDIAN_CONV_SHORT(HlogBuff[k++]) >> 4;
+        }
+        break;
+      case kDsl993p2FeQln:
+      {
+        int k, n, i, j; short *QLNBuff, *pQuietLineNoise;
+        QLNBuff = (short *)(status->param.dslClearEocMsg.dataPtr);
+        if(XdslMibIsGfastMod(gDslVars))
+        {
+          k = 0;
+          j = 754;
+          pQuietLineNoise = globalVar.quietLineNoise + globalVar.nTonesGfast/2;
+          for(n = 0; n < globalVar.adslMib.dsPhyBandPlanDiscovery.noOfToneGroups; n++)
+          {
+            if(globalVar.adslMib.dsPhyBandPlanDiscovery.toneGroups[n].endTone < globalVar.nTonesGfast)
+              for(i=globalVar.adslMib.dsPhyBandPlanDiscovery.toneGroups[n].startTone;i<=globalVar.adslMib.dsPhyBandPlanDiscovery.toneGroups[n].endTone;i++)
+                pQuietLineNoise[i]=(short)(ADSL_ENDIAN_CONV_SHORT(QLNBuff[k++])/16-j); //convert dBm per tone to dBm per Hz
+          }
+        }
+      }
+        break;
 #endif
       case kDsl993p2HlogRaw:
       {

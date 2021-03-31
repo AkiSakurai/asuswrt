@@ -1,7 +1,7 @@
 /*
  * DHD Linux header file (dhd_linux exports for cfg80211 and other components)
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -87,7 +87,6 @@ typedef struct dhd_sta {
 #ifdef BCM_NBUFF_WLMCAST
 	uint32 src_ip;             /* sta's ip address, which is used for emf */
 #endif // endif
-	bool dwds_client;	/* Station is DWDS/MAP capable client. */
 } dhd_sta_t;
 typedef dhd_sta_t dhd_sta_pool_t;
 

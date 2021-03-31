@@ -1,7 +1,7 @@
 /*
  * Linux Packet (skb) interface
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: linux_pkt.h 777118 2019-07-19 14:08:09Z $
+ * $Id: linux_pkt.h 781993 2019-12-09 04:52:00Z $
  */
 
 #ifndef _linux_pkt_h_
@@ -841,6 +841,10 @@ extern struct sk_buff *osl_pkt_tonative(osl_t *osh, void *pkt);
 extern bool osl_pktshared(void *skb);
 
 #endif	/* BINOSL */
+
+#define FOREACHPKT(skb, nskb, nskb1) \
+for (nskb = (struct sk_buff *)skb; nskb; nskb = nskb->next) \
+	for (nskb1 = nskb; nskb1 != NULL; nskb1 = PKTISCHAINED(nskb1) ? PKTCLINK(nskb1) : NULL)
 
 #define PKTALLOCED(osh)		osl_pktalloced(osh)
 extern uint osl_pktalloced(osl_t *osh);

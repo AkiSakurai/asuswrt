@@ -1,7 +1,7 @@
 #
 # Broadcom Linux Router Makefile
 #
-# Copyright (C) 2019, Broadcom. All Rights Reserved.
+# Copyright (C) 2020, Broadcom. All Rights Reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -53,7 +53,7 @@ OBJS = $(CEVENTD_OBJS) $(CEVENTC_OBJS)
 
 ${OBJS}: cevent_app_common.h
 
-EXES = ceventd ceventc
+EXES = $(if $(wildcard prebuilt/ceventd),prebuilt/ceventd,ceventd) $(if $(wildcard prebuilt/ceventc),prebuilt/ceventc,ceventc)
 
 INST = $(addsuffix -install,$(EXES))
 

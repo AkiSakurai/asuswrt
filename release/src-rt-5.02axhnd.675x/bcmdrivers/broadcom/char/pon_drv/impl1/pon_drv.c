@@ -138,6 +138,26 @@ static wan_info_t wan_info [] =
 };
 
 
+static int i2c_sfp_cb(struct notifier_block *nb, unsigned long action, void *data);
+static struct notifier_block i2c_sfp_nb = {
+    .notifier_call = i2c_sfp_cb,
+};
+
+static int i2c_sfp_cb(struct notifier_block *nb, unsigned long action, void *data)
+{
+    serdes_wan_type_t wan_type = wan_serdes_type_get();
+
+    if ((action == SFP_STATUS_REMOVED) && 
+        (wan_type != SERDES_WAN_TYPE_AE) &&
+        (wan_type != SERDES_WAN_TYPE_AE_2_5G) &&
+        (wan_type != SERDES_WAN_TYPE_AE_10G))
+    {
+        bcm_i2c_optics_tx_control(BCM_I2C_OPTICS_DISABLE);
+    }
+
+    return NOTIFY_OK;
+}
+
 err_code_t serdes_poll_uc_dsc_ready_for_cmd(uint32_t timeout_ms)
 {
     int32_t loop;
@@ -355,7 +375,7 @@ void serdes_eye_graph_display(void)
 }
 EXPORT_SYMBOL(serdes_eye_graph_display);
 
-static uint8_t get_lbe_invert_bit_val(void)
+static uint8_t get_gpon_lbe_invert_bit_val(void)
 {
     TRX_SIG_ACTIVE_POLARITY lbe_polarity ;
     TRX_SIG_ACTIVE_POLARITY tx_sd_polarity ;
@@ -422,6 +442,7 @@ int wan_serdes_config(serdes_wan_type_t wan_type)
         remap_ru_block_addrs(XRDP_IDX, WAN_TOP_BLOCKS);
 #endif
         serdes_debug_init();
+        bcm_i2c_sfp_register_notifier(&i2c_sfp_nb);
     }
 
     if ((wan_type == SERDES_WAN_TYPE_XGPON_10G_2_5G) ||
@@ -439,15 +460,8 @@ int wan_serdes_config(serdes_wan_type_t wan_type)
         return -1;
     }
 
-    /* Set WANTOP LBE before laser output enable */
-    lbe_invert_bit = get_lbe_invert_bit_val();
-    wan_top_set_lbe_invert(lbe_invert_bit);
-
     switch (wan_type)
     {
-        case SERDES_WAN_TYPE_GPON:
-            pon_drv_gpon_init(wan_type, pll50mhz); //  GPON_2_1 @ 50MHz`
-            break;
         case SERDES_WAN_TYPE_EPON_1G:
         case SERDES_WAN_TYPE_AE:
         case SERDES_WAN_TYPE_AE_2_5G:
@@ -458,14 +472,20 @@ int wan_serdes_config(serdes_wan_type_t wan_type)
             __logInfo("Configured with %s Mhz PLL", !pll50mhz ? "156.25" : "50");
             pon_drv_epon_init(wan_type, pll50mhz);
             break;
+        case SERDES_WAN_TYPE_GPON:
 #if defined(CONFIG_BCM_NGPON) || defined(CONFIG_BCM_NGPON_MODULE)
         case SERDES_WAN_TYPE_XGPON_10G_2_5G:
         case SERDES_WAN_TYPE_NGPON_10G_2_5G:
         case SERDES_WAN_TYPE_NGPON_10G_10G:
+#endif
+            /* Set WANTOP LBE before laser output enable */
+            lbe_invert_bit = get_gpon_lbe_invert_bit_val();
+            wan_top_set_lbe_invert(lbe_invert_bit);
+
             __logInfo("Configured with %s Mhz PLL", !pll50mhz ? "155.52" : "50");
             pon_drv_gpon_init(wan_type, pll50mhz);
             break;
-#endif
+
         default:
             __logInfo("Wan type: %s -- not supported yet", wan_info[wan_type].name);
     }
@@ -478,7 +498,8 @@ int wan_serdes_config(serdes_wan_type_t wan_type)
         config_wan_ewake(PMD_EWAKE_OFF_TIME, PMD_EWAKE_SETUP_TIME, PMD_EWAKE_HOLD_TIME);
     }
 
-    if ((wan_type == SERDES_WAN_TYPE_NGPON_10G_10G) || (wan_type == SERDES_WAN_TYPE_EPON_10G_SYM) || (wan_type == SERDES_WAN_TYPE_AE_10G))
+    /* skip EPON AE 10G mode */
+    if ((wan_type == SERDES_WAN_TYPE_NGPON_10G_10G) || (wan_type == SERDES_WAN_TYPE_EPON_10G_SYM))
     {
         __logInfo("Load & verify microcode ...");
         serdes_firmware_download();
@@ -543,7 +564,12 @@ void wan_prbs_gen(uint32_t enable, int enable_host_tracking, int mode, serdes_wa
 
     if (!enable)
     {
-        bcm_i2c_optics_tx_control(BCM_I2C_OPTICS_DISABLE);
+        if ((wan_type != SERDES_WAN_TYPE_AE) &&
+            (wan_type != SERDES_WAN_TYPE_AE_2_5G) &&
+            (wan_type != SERDES_WAN_TYPE_AE_10G))
+        {
+            bcm_i2c_optics_tx_control(BCM_I2C_OPTICS_DISABLE);
+        }
         wan_top_transmitter_control(mac_control);
 
         /* Disable PRBS */
@@ -705,13 +731,23 @@ void wan_top_transmitter_control(enum transmitter_control mode)
     TRX_SIG_ACTIVE_POLARITY trx_lbe_polarity = TRX_ACTIVE_LOW; /* Init to arbitrary value to prevent troubles if TRX not inserted */
     int bus = -1;
     int lbe_invert_bit;
+    serdes_wan_type_t wan_type = wan_serdes_type_get();
 
     opticaldet_get_xpon_i2c_bus_num(&bus);
     trx_get_lbe_polarity(bus, &trx_lbe_polarity);
 
     /* Set WANTOP LBE */
-    lbe_invert_bit = get_lbe_invert_bit_val();
-    wan_top_set_lbe_invert(lbe_invert_bit);
+    if (!(wan_type == SERDES_WAN_TYPE_EPON_1G ||
+          wan_type == SERDES_WAN_TYPE_AE ||
+          wan_type == SERDES_WAN_TYPE_AE_2_5G ||
+          wan_type == SERDES_WAN_TYPE_EPON_2G ||
+          wan_type == SERDES_WAN_TYPE_EPON_10G_ASYM ||
+          wan_type == SERDES_WAN_TYPE_EPON_10G_SYM ||
+          wan_type == SERDES_WAN_TYPE_AE_10G))
+    {
+        lbe_invert_bit = get_gpon_lbe_invert_bit_val();
+        wan_top_set_lbe_invert(lbe_invert_bit);
+    }
 
     /* Set FORCE_LBE or MAC control */
 #if defined(CONFIG_BCM96846) || defined(CONFIG_BCM96878)

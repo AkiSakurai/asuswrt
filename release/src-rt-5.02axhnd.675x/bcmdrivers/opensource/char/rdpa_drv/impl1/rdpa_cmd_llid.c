@@ -223,13 +223,8 @@ int rdpa_cmd_llid_ioctl(unsigned long arg)
                 if (epon_mode == rdpa_epon_dpoe)
                 { 
                     rdpa_egress_tm_mode_set(tm_mattrs, rdpa_tm_sched_sp_wrr);
-#if defined(CONFIG_BCM96846)
-                    rdpa_egress_tm_num_queues_set(tm_mattrs, 8);
-                    rdpa_egress_tm_num_sp_elements_set(tm_mattrs, 8);
-#else
                     rdpa_egress_tm_num_queues_set(tm_mattrs, 32);
                     rdpa_egress_tm_num_sp_elements_set(tm_mattrs, 16);
-#endif
                     rdpa_egress_tm_rl_rate_mode_set(tm_mattrs, rdpa_tm_rl_dual_rate);
                 }
 #endif

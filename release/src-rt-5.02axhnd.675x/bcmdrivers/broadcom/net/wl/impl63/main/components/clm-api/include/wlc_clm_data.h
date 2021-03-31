@@ -1,6 +1,6 @@
 /*
  * CLM Data structure definitions
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -50,7 +50,13 @@
 #ifndef _WLC_CLM_DATA_H_
 #define _WLC_CLM_DATA_H_
 
+#ifdef _MSC_VER
+	#pragma warning(push, 3)
+#endif /* _MSC_VER */
 #include <bcmwifi_rates.h>
+#ifdef _MSC_VER
+	#pragma warning(pop)
+#endif /* _MSC_VER */
 
 #define CLMATTACHDATA(_data) __attribute__ ((__section__ (".clmdataini2." #_data))) _data
 
@@ -380,7 +386,7 @@ enum clm_data_const {
 #define CLM_FORMAT_VERSION_MAJOR 24
 
 /* Minor version number of CLM data format */
-#define CLM_FORMAT_VERSION_MINOR 0
+#define CLM_FORMAT_VERSION_MINOR 1
 
 /** Flags and flag masks used in BLOB's byte fields */
 enum clm_data_flags {
@@ -559,6 +565,13 @@ enum clm_data_flags {
 
 	/** China Spur WAR2 flag from CLM XML */
 	CLM_DATA_FLAG_2_REG_CHSPRWAR2 = 0x40,
+
+	/** Disable Dynamic SAR Averaging. Dynamic SAR Averaging allows SAR to
+	 * be above threshold sometimes, if in average it is below threshold -
+	 * this is default behavior. Dthis flag disables it, thus forcing SAR
+	 * to always be below the threshold
+	 */
+	CLM_DATA_FLAG_2_REG_DDSA = 0x80,
 
 	/* SUBCHANNEL RULES BANDWIDTH FLAGS */
 

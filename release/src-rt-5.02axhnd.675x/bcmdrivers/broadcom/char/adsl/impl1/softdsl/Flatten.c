@@ -612,7 +612,12 @@ Public int FlattenCommand (dslCommandStruct *cmd, uint *dstPtr, uint nAvail)
 				{
 					*dstPtr++ = ADSL_ENDIAN_CONV_INT32((uint) cmd->param.dslPlnSpec.inmInpEqScale);
 					*dstPtr++ = ADSL_ENDIAN_CONV_INT32((uint) cmd->param.dslPlnSpec.inmIATScale);
-					*dstPtr++ = ADSL_ENDIAN_CONV_INT32((uint) cmd->param.dslPlnSpec.inmBRGN);
+					if (cmd->param.dslPlnSpec.inmBRGN & 0x80) { /* newer PHY */
+						*dstPtr++ = ADSL_ENDIAN_CONV_INT32((uint) (cmd->param.dslPlnSpec.inmBRGN & 0x7f));
+						*dstPtr++ = ADSL_ENDIAN_CONV_INT32((uint) cmd->param.dslPlnSpec.inmInpEqFormat);
+					} else {
+						*dstPtr++ = ADSL_ENDIAN_CONV_INT32((uint) cmd->param.dslPlnSpec.inmBRGN);
+					}
 				}
 			}
 			else if (kDslINMConfigInpEqFormat == cmd->param.dslPlnSpec.plnCmd)

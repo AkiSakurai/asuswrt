@@ -120,7 +120,7 @@ CmsRet rutL2tpAC_start_dev2(Dev2PppInterfaceL2tpObject *newObj, const char *serv
    CmsRet ret = CMSRET_SUCCESS;
    char l2tpcmd[BUFLEN_128];
     /* start l2tpac connection */
-   snprintf(l2tpcmd, sizeof(l2tpcmd), "-r %s -U %s -P %s -f", server, userid, password);
+   snprintf(l2tpcmd, sizeof(l2tpcmd), "-r %s -U %s -P %s -f -c ppp0", server, userid, password);
    
    cmsLog_debug("l2tpcmd is %s", l2tpcmd);
    /* send message to ssk to launch l2tpd */

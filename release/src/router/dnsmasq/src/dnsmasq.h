@@ -95,10 +95,10 @@ typedef unsigned long long u64;
 #if defined(HAVE_SOLARIS_NETWORK)
 #  include <sys/sockio.h>
 #endif
-#if defined(HAVE_POLL_H)
-#  include <poll.h>
+#if defined(__GLIBC__) || defined(__UCLIBC__) /* not musl */
+#include <sys/poll.h>
 #else
-#  include <sys/poll.h>
+#include <poll.h>
 #endif
 #include <sys/wait.h>
 #include <sys/time.h>
@@ -1419,6 +1419,7 @@ void lease_set_expires(struct dhcp_lease *lease, unsigned int len, time_t now);
 void lease_set_interface(struct dhcp_lease *lease, int interface, time_t now);
 struct dhcp_lease *lease_find_by_client(unsigned char *hwaddr, int hw_len, int hw_type,  
 					unsigned char *clid, int clid_len);
+struct dhcp_lease *lease_find_by_hwaddr(unsigned char *hwaddr, int hw_len, int hw_type);
 struct dhcp_lease *lease_find_by_addr(struct in_addr addr);
 struct in_addr lease_find_max_addr(struct dhcp_context *context);
 void lease_prune(struct dhcp_lease *target, time_t now);

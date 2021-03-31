@@ -1032,6 +1032,11 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 	e = wpa_blacklist_get(wpa_s, bss->bssid);
 	if (e) {
 		int limit = 1;
+#ifdef CONFIG_DRIVER_BRCM_MAP
+	if (wpa_s->wps->map_bh_sta) {
+		limit = 3;
+	}
+#endif	/* CONFIG_DRIVER_BRCM_MAP */
 		if (wpa_supplicant_enabled_networks(wpa_s) == 1) {
 			/*
 			 * When only a single network is enabled, we can

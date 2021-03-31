@@ -91,7 +91,8 @@
 /* character major device number */
 #define PMD_DEV_MAJOR   314
 
-static struct proc_dir_entry *pmd_procfs_entry;
+static struct proc_dir_entry *pmd_msg_procfs_entry;
+static struct proc_dir_entry *pmd_rst_procfs_entry = NULL;
 static wait_queue_head_t pmd_log_wait;
 
 uint16_t last_hmid_cal_set_argument;
@@ -132,6 +133,7 @@ static struct task_struct *pmd_timer_thread;
 static wait_queue_head_t pmd_thread_event;
 static int pmd_thread_sched;
 
+static int pmd_reset_mode = 0;
 static uint16_t pmd_state;
 static uint16_t pmd_prev_state;
 static bool pmd_fb_done;
@@ -381,6 +383,7 @@ static void set_rstn(uint8_t gpio_state)
     {
         kerSysSetGpioDir(rstn);
         kerSysSetGpioState(rstn, gpio_state);
+        pmd_reset_mode = gpio_state;
         BCM_LOG_DEBUG(BCM_LOG_ID_PMD, "rstn gpio %d set to %s \n", rstn, gpio_state ? "active" : "inactive");
     }
     else
@@ -474,7 +477,7 @@ static long pmd_dev_file_ioctl(struct file *file, unsigned int cmd, unsigned lon
             {
                 BCM_LOG_ERROR(BCM_LOG_ID_PMD, " Error reading PMD RX optical power \n");
             }
-            *pPwr = ((uint32_t)op * 10 / 16); //PMD units is 1/16uW, converting to 0.1uW units
+            *pPwr = ((uint32_t)op * 10 / 16); /* PMD units is 1/16uW, converting to 0.1uW units */
             break;
         }
         case LASER_IOCTL_GET_TX_PWR:
@@ -577,7 +580,7 @@ static long pmd_dev_file_ioctl(struct file *file, unsigned int cmd, unsigned lon
                 BCM_LOG_ERROR(BCM_LOG_ID_PMD, " Error reading PMD current bias \n");
             }
 
-            *pPwr = (uint32_t)cur_bias * 10;   //In 2 uA
+            *pPwr = (uint32_t)cur_bias * 10; /* In 2 uA */
             break;
         }
         case PMD_IOCTL_SET_PARAMS:
@@ -888,8 +891,8 @@ static long pmd_dev_file_ioctl(struct file *file, unsigned int cmd, unsigned lon
                 pmd_wan_type = PMD_XGPON1_10_2_WAN;
             else
             {
-                BCM_LOG_ERROR(BCM_LOG_ID_PMD, "Error can't determine the PMD WAN type\n");
-                rc = -EFAULT;
+                BCM_LOG_NOTICE(BCM_LOG_ID_PMD, "Error can't determine the PMD WAN type\n");
+                rc = -EINVAL;
                 break;
             }
 #endif
@@ -1330,7 +1333,7 @@ static int pmd_set_init_val(void)
     if (rc)
         return rc;*/
     /* set board type */
-    //rc = pmd_msg_handler(hmid_board_type_set, &pmd_wan_type, sizeof(uint16_t));
+    /* rc = pmd_msg_handler(hmid_board_type_set, &pmd_wan_type, sizeof(uint16_t)); */
     rc = set_param_from_flash(PMD_ADF_LOS_THRESHOLDS, hmid_adf_los_thresholds_set);
     if (rc)
         return rc;
@@ -1390,7 +1393,7 @@ static int pmd_dev_init_seq(const uint32_t *pmd_res_temp_conv, const uint16_t *p
     BCM_LOG_DEBUG(BCM_LOG_ID_PMD, "Going to sleep, waiting for PMD reset normal indication \n");
 
     wait_event_interruptible(pmd_reset_event, pmd_reset_normal != 0);
-    //wait_event_interruptible_timeout(pmd_reset_event, pmd_reset_normal != 0, 5000);
+    /* wait_event_interruptible_timeout(pmd_reset_event, pmd_reset_normal != 0, 5000); */
 
     pmd_reset_normal = 0;
 
@@ -1912,7 +1915,7 @@ void pmd_dev_change_tracking_state(uint32_t old_state, uint32_t new_state)
             case rdpa_epon_link_unregistered:
             {
                 temp_poll = 0;
-                pmd_state = pmd_tracking_state_disabled;  //????
+                pmd_state = pmd_tracking_state_disabled;
                 break;
             }
             case rdpa_epon_link_awaiting_register:
@@ -2048,30 +2051,31 @@ static int pmd_dev_int_connect(void)
     if (BpGetPmdAlarmExtIntr(&pmd_irq))
         return -1;
 
-    rc = ext_irq_connect(pmd_irq, (void*)0, (FN_HANDLER)pmd_dev_fault_isr);
-    if (rc)
-        return rc;
-
     tasklet_init(&fault_tasklet, pmd_dev_alarm_handler, 0);
 
-    return PMD_OPERATION_SUCCESS;
-}
+    rc = ext_irq_connect(pmd_irq, (void*)0, (FN_HANDLER)pmd_dev_fault_isr);
+    if (rc)
+        tasklet_kill(&fault_tasklet);
 
+    return rc;
+}
 
 #if defined(CONFIG_BCM96838)
 static int pmd_dev_sd_int_connect(void)
 {
-    int rc = 0;
+    int rc;
     unsigned short pmd_irq;
     BCM_LOG_DEBUG(BCM_LOG_ID_PMD, "\n");
-
-    tasklet_init(&sd_tasklet, pmd_dev_sd_handler, 0);
-
+ 
     /*connect SD interrupt in B0, register pmd_sd_isr */
     if (BpGetWanSignalDetectedExtIntr(&pmd_irq))
         return -1;
 
+    tasklet_init(&sd_tasklet, pmd_dev_sd_handler, 0);
+
     rc = ext_irq_connect(pmd_irq, (void*)3, (FN_HANDLER)pmd_dev_sd_isr);
+    if (rc)
+        tasklet_kill(&sd_tasklet);
 
     return rc;
 }
@@ -2192,6 +2196,72 @@ static ssize_t pmdmsg_read(struct file *file, char __user *ubuf, size_t _user_bu
     }
 
     return copy_to_user_length;
+}
+
+static ssize_t pmdrst_read(struct file *file, char __user *ubuf, size_t _user_buffer_size, loff_t *ppos)
+{
+    int copy_to_user_length = 0;
+    char pmdrst_buf[MAX_PMD_MESSAGE_LENGTH];
+
+    if (*ppos > 0 || _user_buffer_size < MAX_PMD_MESSAGE_LENGTH)
+        return 0;
+
+    copy_to_user_length = snprintf(pmdrst_buf, MAX_PMD_MESSAGE_LENGTH, "%d\n", pmd_reset_mode);
+
+    if (copy_to_user(ubuf, pmdrst_buf, copy_to_user_length))
+        return -EFAULT;
+
+    *ppos = copy_to_user_length;
+
+	return copy_to_user_length;
+}
+
+static ssize_t pmdrst_write(struct file *file, const char __user *ubuf, size_t _user_buffer_size, loff_t *ppos)
+{
+    int new_pmd_reset_mode, items;
+    char reset_msg[12];
+
+    if (0 < *ppos || 8 < _user_buffer_size)
+    {
+        BCM_LOG_ERROR(BCM_LOG_ID_PMD, "PMD reset write handler error.\n");
+        return -EFAULT;
+    }
+    if(copy_from_user(reset_msg, ubuf, _user_buffer_size))
+    {
+        BCM_LOG_ERROR(BCM_LOG_ID_PMD, "PMD reset write handler copy_from_user failed\n");
+        return -EFAULT;
+    }
+    reset_msg[8] = 0;
+    items = sscanf(reset_msg, "%d", &new_pmd_reset_mode);
+    if (1 != items)
+    {
+        BCM_LOG_ERROR(BCM_LOG_ID_PMD, "PMD reset write handler invalid input error.\n");
+        return -EFAULT;
+    }
+
+    if (new_pmd_reset_mode)
+    {
+        if (pmd_reset_mode)
+        {
+            BCM_LOG_ERROR(BCM_LOG_ID_PMD, "PMD reset write handler error: already in reset mode.\n");
+            return -EFAULT;
+        }
+        set_rstn(1);
+        BCM_LOG_NOTICE(BCM_LOG_ID_PMD, "PMD is in reset mode\n");
+    }
+    else
+    {
+        if (!pmd_reset_mode)
+        {
+            BCM_LOG_ERROR(BCM_LOG_ID_PMD, "PMD reset write handler error: already in out of reset mode.\n");
+            return -EFAULT;
+        }
+        pmd_dev_reconfigure_wan_type(pmd_wan_type, &static_calibration_parameters_from_json);
+        BCM_LOG_NOTICE(BCM_LOG_ID_PMD, "PMD is in out of reset mode\n");
+    }
+
+    *ppos = _user_buffer_size;
+    return _user_buffer_size;
 }
 
 static int pmdmsg_try_single_user_session(void)
@@ -2369,9 +2439,65 @@ static void pmdmsg_write_calibration_state(const char *calibration_state_message
     wake_up_interruptible(&pmd_log_wait);
 }
 
+#define PROC_DIR           "pmd"
+
+static struct proc_dir_entry *proc_dir;
+
 static const struct file_operations proc_pmdmsg_operations = {
     .read       = pmdmsg_read,
 };
+
+static const struct file_operations proc_pmdrst_operations = {
+    .read       = pmdrst_read,
+    .write      = pmdrst_write,
+};
+
+static int pmd_dev_create_proc(void)
+{
+    proc_dir = proc_mkdir(PROC_DIR, NULL);
+    if (!proc_dir) 
+    {
+        printk(KERN_ERR "Failed to create pmd proc directory %s.\n", PROC_DIR);
+        return -1;
+    }
+
+    pmd_msg_procfs_entry = proc_create("calibration", S_IRUSR, proc_dir, &proc_pmdmsg_operations);
+    if (!pmd_msg_procfs_entry)
+    {
+        printk(KERN_ERR "\nPMD module failed to create a procfs calibration entry.\n");
+        return -1;
+    }
+
+    pmd_rst_procfs_entry = proc_create("reset", S_IRUSR | S_IWUSR, proc_dir, &proc_pmdrst_operations);
+    if (!pmd_rst_procfs_entry)
+    {
+        printk(KERN_ERR "\nPMD module failed to create a procfs reset entry.\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+static void pmd_dev_remove_proc(void)
+{
+    if (pmd_msg_procfs_entry)
+    {
+        proc_remove(pmd_msg_procfs_entry);
+        pmd_msg_procfs_entry = NULL;
+    }
+
+    if (pmd_rst_procfs_entry)
+    {
+        proc_remove(pmd_rst_procfs_entry);
+        pmd_rst_procfs_entry = NULL;
+    }
+
+    if (proc_dir)
+    {
+        remove_proc_entry(PROC_DIR, NULL);
+        proc_dir = NULL;
+    }	
+}
 
 static void pmd_dev_exit_steps(void)
 {
@@ -2400,13 +2526,12 @@ static void pmd_dev_exit_steps(void)
         ext_irq_disconnect(pmd_irq, 0);
     tasklet_kill(&sd_tasklet);
 #endif
-
-    proc_remove(pmd_procfs_entry);
-    pmd_procfs_entry = NULL;
 }
 
 static void pmd_dev_exit(void)
 {
+    pmd_dev_remove_proc();
+
     pmd_dev_exit_steps();
 
     mutex_destroy(&pmd_dev_lock);
@@ -2448,12 +2573,6 @@ static int pmd_dev_init_steps(pmd_calibration_parameters *calibration_parameters
     printk("PMD: wan_type = %s\n", pmd_wan_type_string[pmd_wan_type]);
 
     init_waitqueue_head(&pmd_log_wait);
-    pmd_procfs_entry = proc_create("pmd_calibration", S_IRUSR, NULL, &proc_pmdmsg_operations);
-    if (!pmd_procfs_entry)
-    {
-        printk(KERN_ERR "\nPMD module failed to create a procfs entry.\n");
-        return -1;
-    }
 
     pmd_dev_init_globals();
     msg_system_init();
@@ -2580,9 +2699,11 @@ static int pmd_dev_init(void)
         printk(KERN_ERR "\nPMD module failed to load.\n");
         goto exit;
     }
-    
+
+    pmd_dev_create_proc();
+
     printk(KERN_INFO "\nPMD module loaded.\n");
-    
+
     return PMD_OPERATION_SUCCESS;
 
 exit:

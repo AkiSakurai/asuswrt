@@ -1,7 +1,7 @@
 /*
  * Broadcom 802.11 Networking Device Driver Configuration file
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -30,13 +30,13 @@
 					 * 61(6878)
 					 */
 #define D11CONF3	0x00000000	/* D11 Core Rev > 63 */
-#define D11CONF5	0x00000000	/* D11 Core Rev > 127 */
+#define D11CONF5	0x00000008	/* D11 Core Rev > 127, Rev 131 (6710) */
 #define ACCONF		0x00000002	/* AC-Phy Rev 1(4360b0) */
 #define ACCONF2		0x00000000	/* AC-Phy Rev > 31 */
 
 #define D11CONF4	0x0
 
-#define ACCONF5		0x00000001	/* AC-Phy Rev > 127, Rev 128 (6878) */
+#define ACCONF5		0x00000003	/* AC-Phy Rev > 127, Rev 128 (6878), Rev 129(6710) */
 #define NCONF		0x00020000	/* Rev 17(43217) */
 #define LCN20CONF	0x0
 

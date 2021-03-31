@@ -1,7 +1,7 @@
 # Helper makefile for building Broadcom wl device driver
 # This file maps wl driver feature flags (import) to WLFLAGS and WLFILES_SRC (export).
 #
-# Copyright (C) 2019, Broadcom. All Rights Reserved.
+# Copyright (C) 2020, Broadcom. All Rights Reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
 #
 # <<Broadcom-WL-IPTag/Open:>>
 #
-# $Id: wl.mk 780851 2019-11-05 06:28:05Z $
+# $Id: wl.mk 789167 2020-07-21 17:34:58Z $
 
 WLFLAGS += -DBCM943217ROUTER_ACI_SCANMORECH
 WLFLAGS += -DBPHY_DESENSE
@@ -40,8 +40,12 @@ endif
 
 # debug/internal
 ifeq ($(DEBUG),1)
-	WLFLAGS += -DBCMDBG -DWLTEST -DRWL_WIFI -DWLRWL -DWL_EXPORT_CURPOWER
-	WLRWL = 1
+	ifeq ($(CMWIFI),)
+		WLFLAGS += -DBCMDBG -DWLTEST -DRWL_WIFI -DWLRWL -DWL_EXPORT_CURPOWER
+		WLRWL = 1
+	else
+		WLFLAGS += -DBCMDBG -DWLTEST -DWL_EXPORT_CURPOWER
+	endif
 	WIFI_ACT_FRAME := 1
 else ifeq ($(WLDEBUG),1)
 	BCMUTILS = 1
@@ -173,6 +177,12 @@ ifeq ($(PKTQ_LOG),1)
 		WLFILES_SRC += src/wl/sys/wlc_bs_data.c
 		WLFLAGS += -DSCB_BS_DATA
 	endif
+endif
+#endif // endif
+
+#ifdef PKTQ_STATUS
+ifeq ($(PKTQ_STATUS),1)
+	WLFLAGS += -DPKTQ_STATUS
 endif
 #endif // endif
 
@@ -339,7 +349,11 @@ ifeq ($(WL),1)
 		WLFILES_SRC += src/wl/sys/d11ucode_wlcx.c
 		WLFLAGS += -DWLCX_ATLAS
 	endif
-	WLFILES_SRC += src/wl/sys/d11ucode_btcxmu.c
+	ifeq ($(WL_EAP_UCODE),1)
+		WLFILES_SRC += $(UCODE_RAM_DIR)/d11ucode_btcx_eap.c
+	else
+		WLFILES_SRC += src/wl/sys/d11ucode_btcxmu.c
+	endif
 	WLFILES_SRC += src/wl/sys/wlc.c
 	ifeq ($(BCM_ECOUNTERS),1)
 		WLFILES_SRC += src/wl/sys/wlc_event_ecounters.c
@@ -421,6 +435,7 @@ endif
 	ifeq ($(WL_PROXDETECT),1)
 		WLFLAGS += -DWL_PROXDETECT
 		WLFLAGS += -DWL_PROXD_UCODE_TSYNC
+		WLFLAGS += -DWL_PROXD_GDCOMP
 		WLFLAGS += -DWL_PROXD_OUTLIER_FILTERING
 		ifeq ($(WLDEBUG),1)
 			WLFLAGS += -DTOF_DEBUG -DTOF_DEBUG_TIME
@@ -717,8 +732,18 @@ endif
 		WLFILES_SRC += $(WLC_SAR_TBL_DIR)/wlc_sar_tbl.c
 	endif
 #endif // endif
+
+	# If wlc_clm_data.xml is not there and we have generated wlc_clm_data_xxxx.c
+	# files, use the generated file for compilation.
+	WLCLM_SRC   = components/clm-api/src/wlc_clm_data.c
+ifeq (,$(wildcard $(SRCBASE)/../components/clm-private/wlc_clm_data.xml))
+ifneq (,$(wildcard $(SRCBASE)/../components/clm-api/src/wlc_clm_data$(CLM_FILE_SUFFIX).c))
+	WLCLM_SRC   = components/clm-api/src/wlc_clm_data$(CLM_FILE_SUFFIX).c
+endif
+endif
+
 	WLFILES_SRC += components/clm-api/src/wlc_clm.c
-	WLFILES_SRC += components/clm-api/src/wlc_clm_data.c
+	WLFILES_SRC += $(WLCLM_SRC)
 #ifdef WLC_TXCAL
 	ifeq ($(WLC_TXCAL),1)
 		WLFLAGS += -DWLC_TXCAL
@@ -3254,6 +3279,10 @@ ifeq ($(BAND6G),1)
 	WLFLAGS += -DWL_BAND6G
 endif
 
+ifeq ($(BCM_CSIMON),1)
+	WLFILES_SRC += src/wl/sys/wlc_csimon.c
+endif
+
 # randomize probe req seq
 ifeq ($(WL_PRQ_RAND_SEQ),1)
     WLFLAGS += -DWL_PRQ_RAND_SEQ
@@ -3460,6 +3489,11 @@ ifeq ($(HWADBG),1)
 endif
 endif
 
+ifneq ($(HNDM2M),)
+	WLFLAGS += -DHNDM2M=$(HNDM2M)
+	WLFILES_SRC += src/shared/hndm2m.c
+endif
+
 # Enable phytx error logging
 ifeq ($(PHYTXERR_DUMP),1)
 	WLFLAGS += -DPHYTXERR_DUMP
@@ -3516,3 +3550,11 @@ ifeq ($(WL_PS_STATS),1)
 endif
 
 WLFLAGS += -DWL_REG_SIZECHECK
+
+ifeq ($(WL_VASIP_MU_INFO),1)
+	WLFLAGS += -DWL_VASIP_MU_INFO
+endif
+
+ifeq ($(WL_TXPKTPEND_SYNC),1)
+    WLFLAGS += -DWL_TXPKTPEND_SYNC
+endif

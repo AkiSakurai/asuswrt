@@ -109,57 +109,7 @@ typedef unsigned long   uintptr_t;
 
 #endif /* _NOOS */
 
-#if !defined(CONFIG_BCM96362) && (defined(BOARD_bcm96362) || defined(_BCM96362_))
-#define CONFIG_BCM96362	1
-#endif
-
-#if !defined(CONFIG_BCM96328) && (defined(BOARD_bcm96328) || defined(_BCM96328_))
-#define CONFIG_BCM96328	1
-#endif
-
-#if !defined(CONFIG_BCM963268) && (defined(BOARD_bcm963268) || defined(_BCM963268_))
-#define	CONFIG_BCM963268	1
-#endif
-
-#if !defined(CONFIG_BCM96318) && (defined(BOARD_bcm96318) || defined(_BCM96318_))
-#define	CONFIG_BCM96318	1
-#endif
-
-#if !defined(CONFIG_BCM963138) && (defined(BOARD_bcm963138) || defined(_BCM963138_))
-#define	CONFIG_BCM963138	1
-#endif
-
-#if !defined(CONFIG_BCM963381) && (defined(BOARD_bcm963381) || defined(_BCM963381_))
-#define	CONFIG_BCM963381	1
-#endif
-
-#if !defined(CONFIG_BCM963148) && (defined(BOARD_bcm963148) || defined(_BCM963148_))
-#define	CONFIG_BCM963148	1
-#endif
-
-#if !defined(CONFIG_BCM963158) && (defined(BOARD_bcm963158) || defined(_BCM963158_))
-#define	CONFIG_BCM963158	1
-#endif
-
-#if !defined(CONFIG_BCM963178) && (defined(BOARD_bcm963178) || defined(_BCM963178_))
-#define	CONFIG_BCM963178	1
-#endif
-
-#if defined(CONFIG_BCM96362) ||      \
-	defined(CONFIG_BCM96328) ||      \
-	defined(CONFIG_BCM963268) ||     \
-	defined(CONFIG_BCM96318) ||      \
-	defined(CONFIG_BCM963138) ||     \
-	defined(CONFIG_BCM963381) ||     \
-	defined(CONFIG_BCM963148) ||     \
-	defined(CONFIG_BCM963158) ||     \
-	defined(CONFIG_BCM963178)
-#define	CONFIG_BCM963x8
-#endif
-
-#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148)
-#define	CONFIG_PHY_PARAM
-#endif
+#include "AdsPhyMemDefs.h"
 
 #if defined(CONFIG_BCM963x8)
 
@@ -168,101 +118,7 @@ typedef unsigned long   uintptr_t;
 #define    __inline__    __inline
 #endif
 
-
-#if defined(CONFIG_BCM96362) || defined(CONFIG_BCM96328)
-
-#ifdef ADSL_ANNEXB
-#include "../adslcore6362B/adsl_defs.h"
-#else
-#include "../adslcore6362/adsl_defs.h"
 #endif
-
-#elif defined(CONFIG_BCM963268)
-
-#ifdef PHY_LOOPBACK
-#include "../adslcore63268LB/adsl_defs.h"
-#else
-#ifdef ADSL_ANNEXB
-#include "../adslcore63268B/adsl_defs.h"
-#elif defined(SUPPORT_DSL_BONDING) && !defined(SUPPORT_2CHIP_BONDING)
-#ifdef SUPPORT_DSL_BONDING5B
-#include "../adslcore63268bnd5/adsl_defs.h"
-#else
-#include "../adslcore63268bnd/adsl_defs.h"
-#endif
-#else
-#include "../adslcore63268/adsl_defs.h"
-#endif
-#endif
-
-#elif defined(CONFIG_BCM96318)
-
-#ifdef ADSL_ANNEXB
-#include "../adslcore6318B/adsl_defs.h"
-#else
-#include "../adslcore6318/adsl_defs.h"
-#endif
-
-#elif defined(CONFIG_BCM963138)
-
-#if defined(PHY_LOOPBACK)
-#include "../adslcore63138LB/adsl_defs.h"
-#elif defined(ADSL_ANNEXB)
-#include "../adslcore63138B/adsl_defs.h"
-#else
-#include "../adslcore63138/adsl_defs.h"
-#endif
-
-#elif defined(CONFIG_BCM963381)
-
-#ifdef PHY_LOOPBACK
-#include "../adslcore63381LB/adsl_defs.h"
-#else
-#ifdef ADSL_ANNEXB
-#include "../adslcore63381B/adsl_defs.h"
-#else
-#include "../adslcore63381/adsl_defs.h"
-#endif
-#endif
-
-#elif defined(CONFIG_BCM963148)
-
-#ifdef PHY_LOOPBACK
-#include "../adslcore63148LB/adsl_defs.h"
-#else
-#ifdef ADSL_ANNEXB
-#include "../adslcore63148B/adsl_defs.h"
-#else
-#include "../adslcore63148/adsl_defs.h"
-#endif
-#endif
-
-#elif defined(CONFIG_BCM963158)
-
-#ifdef PHY_LOOPBACK
-#include "../adslcore63158LB/adsl_defs.h"
-#elif defined(PHY_CO)
-#include "../adslcore63158CO/adsl_defs.h"
-#elif defined(ADSL_ANNEXB)
-#include "../adslcore63158B/adsl_defs.h"
-#elif (CONFIG_BRCM_CHIP_REV==0x63158A0)
-#include "../adslcore63158_A0/adsl_defs.h"
-#else
-#include "../adslcore63158/adsl_defs.h"
-#endif
-
-#elif defined(CONFIG_BCM963178)
-
-#ifdef PHY_LOOPBACK
-#include "../adslcore63178LB/adsl_defs.h"
-#elif defined(ADSL_ANNEXB)
-#include "../adslcore63178B/adsl_defs.h"
-#else
-#include "../adslcore63178/adsl_defs.h"
-#endif
-
-#endif
-#endif /* defined(CONFIG_BCM963x8) */
 
 #ifdef _WIN32_WCE
 #define	ASSERT(a)
@@ -340,13 +196,17 @@ int DslGetLineId(void *gDslVars);
 
 #endif
 
+#if defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146)
+#define XTM_NOTIFY_CORE_RESET  /* when DSL core reset causes SAR reset */
+#endif
+
 /* ADSL PHY definition */
 
 typedef struct {
-	uint	sdramPageAddr0;		/* Place holder for backward compatibility with DslDiags */
-	uint	sdramImageAddr0;
+	uint	sdramPageAddr0;		/* Host physical address of PHY's SDRAM page */
+	uint	sdramImageAddr0;    /* Host physical address of PHY's SDRAM start */
 	uint	sdramImageSize;
-	uint	sdramPhyImageAddr;
+	uint	sdramPhyImageAddr;  /* PHY virtual address of SDRAM start such as 0x10500000 */
 	ushort	fwType;
 	ushort	chipType;
 	ushort	mjVerNum;
@@ -354,8 +214,12 @@ typedef struct {
 	uint	pVerStr0;
 	uint	features[4];
 	uint	sdramPageSize;
-	uintptr_t	sdramPageAddr;
-	uintptr_t	sdramImageAddr;
+#ifdef SDRAM4G_SUPPORT1
+	uint	sdramPhyAddrMaskAny;
+	uint	sdramPhyConvAddr;
+#endif
+	uintptr_t	sdramPageAddr;   /* Host virtual address of PHY's SDRAM page */
+	uintptr_t	sdramImageAddr;  /* Host virtual address of PHY's SDRAM start */
 	char		*pVerStr;
 } adslPhyInfo;
 extern adslPhyInfo	adslCorePhyDesc;
@@ -378,6 +242,7 @@ extern unsigned int	adslPhyXfaceOffset;
 #define	kAdslPhyChip63148			0xA00	/* J */
 #define	kAdslPhyChip63158			0xB00	/* K */
 #define	kAdslPhyChip63178			0xC00	/* L */
+#define	kAdslPhyChip63146			0xD00	/* M */
 
 #define	kAdslPhyChipRev0			0
 #define	kAdslPhyChipRev1			1
@@ -396,7 +261,7 @@ extern unsigned int	adslPhyXfaceOffset;
  #define HOST_LMEM_BASE					0xB0780000L
 #elif defined(CONFIG_BCM96318)
  #define HOST_LMEM_BASE					0xB0180000
-#elif defined(CONFIG_BCM963138) || defined(CONFIG_BCM963381) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178)
+#elif defined(CONFIG_BCM963138) || defined(CONFIG_BCM963381) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146)
  #if defined(_NOOS) && defined(CONFIG_BCM963158)
  #define HOST_LMEM_BASE					0x80800000
  #else
@@ -407,13 +272,25 @@ extern unsigned int	adslPhyXfaceOffset;
 #endif
 #endif	/* !HOST_LMEM_BASE */
 
+#if defined(CONFIG_BCM963146) || defined(CONFIG_BCM963158)
+#define  PHY_ADDR_MASK_3MSB  /* bits 31-29 special address bits */
+#endif
+
 #ifndef DSL_PHY_LMEM_BASE
 #define DSL_PHY_LMEM_BASE				0x19000000L
 #endif
 
 #ifndef DSL_PHY_SDRAM_BASE
+#if defined(CONFIG_BCM963146)
+#define DSL_PHY_SDRAM_BASE				0x18000000L
+#else
 #define DSL_PHY_SDRAM_BASE				0x10000000L
-#define DSL_PHY_SDRAM_ADDR_MASK			0xF0000000
+#endif
+#ifdef PHY_ADDR_MASK_3MSB
+#define DSL_PHY_SDRAM_ADDR_MASK			0x18000000
+#else
+#define DSL_PHY_SDRAM_ADDR_MASK			0xF8000000
+#endif
 #endif
 
 #ifndef FLATTEN_ADDR_ADJUST
@@ -428,25 +305,8 @@ extern unsigned int	adslPhyXfaceOffset;
 #ifndef ADSL_PHY_SDRAM_START
 #define ADSL_PHY_SDRAM_START			0x10000000
 #endif
-#ifndef ADSL_PHY_SDRAM_BIAS
-#define ADSL_PHY_SDRAM_BIAS				0x00040000
-#endif
+
 #define	ADSL_PHY_SDRAM_START_4			(ADSL_PHY_SDRAM_START + ADSL_PHY_SDRAM_BIAS)
-
-#ifndef	ADSL_PHY_SDRAM_PAGE_SIZE
-#define ADSL_PHY_SDRAM_PAGE_SIZE		0x00080000
-#endif
-
-#ifdef ADSL_PHY_SDRAM_BIAS
-#define ADSL_SDRAM_IMAGE_SIZE			(ADSL_PHY_SDRAM_PAGE_SIZE - ADSL_PHY_SDRAM_BIAS)
-#else
-#define ADSL_SDRAM_IMAGE_SIZE			(256*1024)
-#endif
-
-
-#ifndef	ADSL_PHY_SDRAM_LINK_OFFSET
-#define ADSL_PHY_SDRAM_LINK_OFFSET		0x00040000
-#endif
 
 #define ADSL_SDRAM_TOTAL_SIZE			0x00800000
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
@@ -465,7 +325,7 @@ extern unsigned int	adslPhyXfaceOffset;
 #define	SDRAM_ADDR_TO_HOST(a)			((void *) ((uintptr_t)((uint)(a) - adslCorePhyDesc.sdramPhyImageAddr) + \
 										(adslCorePhyDesc.sdramImageAddr ? (uintptr_t) adslCorePhyDesc.sdramImageAddr : (uintptr_t)ADSL_SDRAM_HOST_ADDR_DEFAULT)))
 #endif
-#ifndef CONFIG_BCM963158
+#if !defined(CONFIG_BCM963158) && !defined(CONFIG_BCM963146)
 #define LMEM_ADDR_TO_HOST(a)			((void *)((uintptr_t)((uint) (a) + (HOST_LMEM_BASE - ((uint)(a) & 0xff000000)))))
 #else
 #define HOST_XMEM_BASE				DSLXMEM_BASE
@@ -477,18 +337,23 @@ extern unsigned int	adslPhyXfaceOffset;
 #if defined(_NOOS)
 #define SDRAM_ADDR_TO_ADSL(a)			(((uintptr_t)(a)) | 0xA0000000)
 #elif defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+#define	SDRAM_ADDR_TO_PHYS(a)			( (uint) (((uintptr_t)(a) - adslCorePhyDesc.sdramImageAddr) + adslCorePhyDesc.sdramImageAddr0))
+#ifdef SDRAM4G_SUPPORT1
+#define ANY_SDRAM_ADDR_TO_ADSL(a)		(virt_to_phys((void *)(uintptr_t)(a)) | adslCorePhyDesc.sdramPhyAddrMaskAny)
+#define	SDRAM_ADDR_TO_ADSL(a)			( (uint) (((uintptr_t)(a) - adslCorePhyDesc.sdramImageAddr) + adslCorePhyDesc.sdramPhyConvAddr) )
+#else
 #define ANY_SDRAM_ADDR_TO_ADSL(a)		(virt_to_phys((void *)(uintptr_t)(a)) | 0xA0000000)
-#define	RES_SDRAM_ADDR_TO_ADSL(a)		( (uint) (((uintptr_t)(a) - adslCorePhyDesc.sdramPageAddr) + adslCorePhyDesc.sdramPageAddr0))
 #define	SDRAM_ADDR_TO_ADSL(a)			( (uint) (((uintptr_t)(a) - adslCorePhyDesc.sdramImageAddr) + adslCorePhyDesc.sdramImageAddr0) | 0xA0000000 )
+#endif /* SDRAM4G_SUPPORT1 */
 #else
 #define	RES_SDRAM_ADDR_TO_ADSL(a)		(a)
 #define SDRAM_ADDR_TO_ADSL(a)			(a)
+#define	SDRAM_ADDR_TO_PHYS(a)			(a)
 #endif
-#define SDRAM_ADDR_FOR_PHY(a)			(((uintptr_t)(a)) | 0xA0000000)
 #ifndef ANY_SDRAM_ADDR_TO_ADSL
 #define ANY_SDRAM_ADDR_TO_ADSL(a)		SDRAM_ADDR_TO_ADSL(a)
 #endif
-#define ADSL_ADDR_TO_HOST(addr)			ADSL_MIPS_LMEM_ADDR(addr) ?  LMEM_ADDR_TO_HOST(addr) : (ADSL_MIPS_SDRAM_ADDR(addr) ?  SDRAM_ADDR_TO_HOST(addr) : (void *)(uintptr_t)(addr))
+#define ADSL_ADDR_TO_HOST(addr)			ADSL_MIPS_LMEM_ADDR(addr) ?  LMEM_ADDR_TO_HOST((addr) & 0x1FFFFFFF) : (ADSL_MIPS_SDRAM_ADDR(addr) ?  SDRAM_ADDR_TO_HOST((addr) & 0x1FFFFFFF) : (void *)(uintptr_t)(addr))
 
 #ifndef DEBUG
 #if !defined(CONFIG_BCM963158) && !defined(CONFIG_BCM963178)	/* TONY - Excluded due to "uint32 DEBUG[2]" in 63158/63178_map_part.h causes build error */

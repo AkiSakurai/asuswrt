@@ -1,7 +1,7 @@
 /*
  * HND generic pktq operation primitives
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: hnd_pktq.h 778335 2019-08-29 09:32:28Z $
+ * $Id: hnd_pktq.h 786143 2020-04-17 20:29:02Z $
  */
 
 #ifndef _hnd_pktq_h_
@@ -59,8 +59,6 @@ typedef struct pktq_prec {
 	void *head;     /**< first packet to dequeue */
 	void *tail;     /**< last packet to dequeue */
 	uint16 n_pkts;       /**< number of queued packets */
-	uint16 v_pkts;       /**< number of virtual packets */
-	uint16 v2r_pkts;     /**< number of packets pending release after a v2r conversion */
 	uint16 max_pkts;     /**< maximum number of queued packets */
 	uint16 stall_count;    /**< # seconds since no packets are dequeued  */
 	uint16 dequeue_count;  /**< # of packets dequeued in last 1 second */
@@ -90,13 +88,9 @@ typedef struct {
 	uint32 ps_retry;     /**< packets retried again prior to moving power save mode */
 	uint32 suppress;     /**< packets which were suppressed and not transmitted */
 	uint32 retry_drop;   /**< packets finally dropped after retry limit */
-	uint32 max_avail;    /**< the high-water mark of the queue capacity for packets -
-	                            goes to zero as queue fills
-	                      */
 	uint32 max_used;     /**< the high-water mark of the queue utilisation for packets -
 						        increases with use ('inverse' of max_avail)
 				          */
-	uint16 queue_capacity; /**< the maximum capacity of the queue */
 	uint32 rtsfail;        /**< count of rts attempts that failed to receive cts */
 	uint32 acked;   /**< count of packets sent (acked) successfully index by NSS */
 	uint64 txrate_succ;    /**< running total of phy rate of packets sent successfully */
@@ -254,13 +248,8 @@ extern bool spktq_full(struct spktq *spq);
 #define spktqdeinit(spq)		spktq_deinit((spq))
 #define spktqavail(spq)			spktq_avail((spq))
 #define spktqfull(spq)			spktq_full((spq))
-#if defined(PROP_TXSTATUS)
 #define spktqfilter(spq, fltr, fltr_ctx, defer, defer_ctx, flush, flush_ctx) \
 	spktq_filter((spq), (fltr), (fltr_ctx), (defer), (defer_ctx), (flush), (flush_ctx), NULL)
-#else
-#define spktqfilter(spq, fltr, fltr_ctx, defer, defer_ctx, flush, flush_ctx) \
-	spktq_filter((spq), (fltr), (fltr_ctx), (defer), (defer_ctx), (flush), (flush_ctx))
-#endif /* PROP_TXSTATUS */
 extern bool pktq_init(struct pktq *pq, int num_prec, int max_pkts);
 extern bool pktq_deinit(struct pktq *pq);
 extern bool spktq_init(struct spktq *spq, int max_pkts);

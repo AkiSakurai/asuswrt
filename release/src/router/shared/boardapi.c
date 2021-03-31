@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <netinet/if_ether.h>		//have to in front of <linux/ethtool.h> and <linux/mii.h> to avoid redefinition of 'struct ethhdr'
 #include <linux/mii.h>
 #include <bcmnvram.h>
 
@@ -30,6 +31,9 @@
 #ifdef HND_ROUTER
 #include "ethswctl.h"
 #include "ethctl.h"
+#ifdef RTCONFIG_HND_ROUTER_AX_675X
+#include "bcmnet.h"
+#endif
 #endif
 
 int led_control(int which, int mode);
@@ -82,6 +86,9 @@ static const struct led_btn_table_s {
 	{ "btn_ejusb1_gpio",	&btn_gpio_table[BTN_EJUSB1] },
 	{ "btn_ejusb2_gpio",	&btn_gpio_table[BTN_EJUSB2] },
 #endif
+#if defined(R8000P)
+	{ "switch_led_gpio",		&btn_gpio_table[SWITCH_LED] },
+#endif
 	/* LED */
 	{ "led_pwr_gpio",	&led_gpio_table[LED_POWER] },
 #if defined(RTCONFIG_PWRRED_LED)
@@ -110,8 +117,14 @@ static const struct led_btn_table_s {
 #ifdef RTCONFIG_EXTPHY_BCM84880
 	{ "led_extphy_gpio",&led_gpio_table[LED_EXTPHY] },
 #endif
-#if defined(RTCONFIG_WANPORT2)
+#if defined(RTCONFIG_WANLEDX2)
 	{ "led_wan2_gpio",	&led_gpio_table[LED_WAN2] },
+#endif
+#if defined(RTCONFIG_R10G_LED)
+	{ "led_r10g_gpio",	&led_gpio_table[LED_R10G] },
+#endif
+#if defined(RTCONFIG_SFPP_LED)
+	{ "led_sfpp_gpio",	&led_gpio_table[LED_SFPP] },
 #endif
 #if defined(RTCONFIG_FAILOVER_LED)
 	{ "led_failover_gpio",	&led_gpio_table[LED_FAILOVER] },
@@ -133,8 +146,13 @@ static const struct led_btn_table_s {
 #ifdef RTCONFIG_LOGO_LED
 	{ "led_logo_gpio",	&led_gpio_table[LED_LOGO] },
 #endif
+#ifdef TUFAX5400
+	{ "led_logo1_gpio",	&led_gpio_table[LED_LOGO1] },
+	{ "led_logo2_gpio",	&led_gpio_table[LED_LOGO2] },
+	{ "led_logo3_gpio",	&led_gpio_table[LED_LOGO3] },
+#endif
 	{ "led_wan_red_gpio",	&led_gpio_table[LED_WAN_RED] },
-#if defined(RTCONFIG_WANPORT2) && defined(RTCONFIG_WANRED_LED)
+#if defined(RTCONFIG_WANLEDX2) && defined(RTCONFIG_WANRED_LED)
 	{ "led_wan2_red_gpio",	&led_gpio_table[LED_WAN2_RED] },
 #endif
 #ifdef RTCONFIG_QTN
@@ -169,6 +187,9 @@ static const struct led_btn_table_s {
 #endif
 #ifdef RTCONFIG_USB
 	{ "pwr_usb_gpio",	&led_gpio_table[PWR_USB] },
+#if defined(RTAX89U) || defined(GTAXY16000)
+	{ "pwr_usb_gpio2",	&led_gpio_table[PWR_USB2] },
+#endif
 #endif
 
 #if defined(PLN12) || defined(PLAC56)
@@ -180,10 +201,32 @@ static const struct led_btn_table_s {
 	{ "led_5g_green_gpio",	&led_gpio_table[LED_5G_GREEN] },
 	{ "led_5g_orange_gpio",	&led_gpio_table[LED_5G_ORANGE] },
 	{ "led_5g_red_gpio",	&led_gpio_table[LED_5G_RED] },
-#elif defined(MAPAC1750)
+#elif defined(RTCONFIG_FIXED_BRIGHTNESS_RGBLED)
 	{ "led_blue_gpio",	&led_gpio_table[LED_BLUE] },
 	{ "led_green_gpio",	&led_gpio_table[LED_GREEN] },
 	{ "led_red_gpio",	&led_gpio_table[LED_RED] },
+#if defined(RTAC59_CD6R) || defined(RTAC59_CD6N) || defined(PLAX56_XP4)
+	{ "led_white_gpio",	&led_gpio_table[LED_WHITE] },
+#endif
+#endif
+#if defined(RTAX82U) || defined(DSL_AX82U) || defined(GSAX3000) || defined(GSAX5400)
+	{ "led_group1_red_gpio",	&led_gpio_table[LED_GROUP1_RED] },
+	{ "led_group1_green_gpio",	&led_gpio_table[LED_GROUP1_GREEN] },
+	{ "led_group1_blue_gpio",	&led_gpio_table[LED_GROUP1_BLUE] },
+	{ "led_group2_red_gpio",	&led_gpio_table[LED_GROUP2_RED] },
+	{ "led_group2_green_gpio",	&led_gpio_table[LED_GROUP2_GREEN] },
+	{ "led_group2_blue_gpio",	&led_gpio_table[LED_GROUP2_BLUE] },
+	{ "led_group3_red_gpio",	&led_gpio_table[LED_GROUP3_RED] },
+	{ "led_group3_green_gpio",	&led_gpio_table[LED_GROUP3_GREEN] },
+	{ "led_group3_blue_gpio",	&led_gpio_table[LED_GROUP3_BLUE] },
+	{ "led_group4_red_gpio",	&led_gpio_table[LED_GROUP4_RED] },
+	{ "led_group4_green_gpio",	&led_gpio_table[LED_GROUP4_GREEN] },
+	{ "led_group4_blue_gpio",	&led_gpio_table[LED_GROUP4_BLUE] },
+#endif
+#if defined(GSAX3000) || defined(GSAX5400)
+	{ "led_group5_red_gpio",	&led_gpio_table[LED_GROUP5_RED] },
+	{ "led_group5_green_gpio",	&led_gpio_table[LED_GROUP5_GREEN] },
+	{ "led_group5_blue_gpio",	&led_gpio_table[LED_GROUP5_BLUE] },
 #endif
 
 #ifdef RPAC53
@@ -207,8 +250,8 @@ static const struct led_btn_table_s {
 #if defined(RPAC51)
 	{ "led_pwr_red_gpio",&led_gpio_table[LED_RED_POWER] },
 	{ "led_single_gpio",	&led_gpio_table[LED_SINGLE] },
-	{ "led_far_gpio",	&led_gpio_table[LED_FAR] },
 	{ "led_near_gpio",	&led_gpio_table[LED_NEAR] },
+	{ "led_far_gpio",	&led_gpio_table[LED_FAR] },
 #endif
 #ifdef RPAC87
 	{ "led_2g_green_gpio1",	&led_gpio_table[LED_2G_GREEN1] },
@@ -226,31 +269,45 @@ static const struct led_btn_table_s {
 	{ "led_wifi_gpio",		&led_gpio_table[LED_WIFI] },
 	{ "led_sig1_gpio",		&led_gpio_table[LED_SIG1] },
 	{ "led_sig2_gpio",		&led_gpio_table[LED_SIG2] },
+#endif
+#if defined(R8000P)
+	{ "led_pwr_red_gpio",	&led_gpio_table[LED_POWER_RED] },
+	{ "led_wifi_gpio",		&led_gpio_table[LED_WIFI] },
+	{ "led_guest_gpio",		&led_gpio_table[LED_GUEST] },
+#endif
+#ifdef RPAC92
+	{ "led_pwr_red_gpio",	&led_gpio_table[LED_POWER_RED] },
+	{ "led_wifi_gpio",		&led_gpio_table[LED_WIFI] },
+	{ "led_sig1_gpio",		&led_gpio_table[LED_SIG1] },
+	{ "led_sig2_gpio",		&led_gpio_table[LED_SIG2] },
+	{ "led_purple_gpio",		&led_gpio_table[LED_PURPLE] },
 #endif		
-#if defined(RTAX95Q) || defined(RTAX56_XD4)
+#ifdef RPAX56
+	{ "led_red_gpio",       &led_gpio_table[LED_RED_GPIO] },
+	{ "led_green_gpio",     &led_gpio_table[LED_GREEN_GPIO] },
+	{ "led_blue_gpio",      &led_gpio_table[LED_BLUE_GPIO] },
+	{ "led_white_gpio",     &led_gpio_table[LED_WHITE_GPIO] },
+	{ "led_yellow_gpio",    &led_gpio_table[LED_YELLOW_GPIO] },
+	{ "led_purple_gpio",    &led_gpio_table[LED_PURPLE_GPIO] },
+#endif
+#if defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56_XD4) || defined(RTAX82_XD6)
 	{ "bt_rst_gpio",        &led_gpio_table[BT_RESET] },
 	{ "bt_disable_gpio",    &led_gpio_table[BT_DISABLE] },
-	{ "led_rgb1_red_gpio",	&led_gpio_table[LED_RGB1_RED] },
-	{ "led_rgb1_green_gpio",	&led_gpio_table[LED_RGB1_GREEN] },
-	{ "led_rgb1_blue_gpio",	&led_gpio_table[LED_RGB1_BLUE] },
+	{ "led_rgb1_red_gpio",  &led_gpio_table[LED_RGB1_RED] },
+	{ "led_rgb1_green_gpio",        &led_gpio_table[LED_RGB1_GREEN] },
+	{ "led_rgb1_blue_gpio", &led_gpio_table[LED_RGB1_BLUE] },
+#endif
+#if defined(CTAX56_XD4)
+	{ "led_rgb1_red_gpio",  &led_gpio_table[LED_RGB1_RED] },
+	{ "led_rgb1_green_gpio",        &led_gpio_table[LED_RGB1_GREEN] },
+	{ "led_rgb1_blue_gpio", &led_gpio_table[LED_RGB1_BLUE] },
 #endif
 #if defined(RTAX56_XD4)
 	{ "btn_bt_indicator_gpio",        &led_gpio_table[IND_BT] },
 	{ "btn_pa_indicator_gpio",    &led_gpio_table[IND_PA] },
 #endif
-#ifdef RTAX82U
-	{ "led_group1_red_gpio",	&led_gpio_table[LED_GROUP1_RED] },
-	{ "led_group1_green_gpio",	&led_gpio_table[LED_GROUP1_GREEN] },
-	{ "led_group1_blue_gpio",	&led_gpio_table[LED_GROUP1_BLUE] },
-	{ "led_group2_red_gpio",	&led_gpio_table[LED_GROUP2_RED] },
-	{ "led_group2_green_gpio",	&led_gpio_table[LED_GROUP2_GREEN] },
-	{ "led_group2_blue_gpio",	&led_gpio_table[LED_GROUP2_BLUE] },
-	{ "led_group3_red_gpio",	&led_gpio_table[LED_GROUP3_RED] },
-	{ "led_group3_green_gpio",	&led_gpio_table[LED_GROUP3_GREEN] },
-	{ "led_group3_blue_gpio",	&led_gpio_table[LED_GROUP3_BLUE] },
-	{ "led_group4_red_gpio",	&led_gpio_table[LED_GROUP4_RED] },
-	{ "led_group4_green_gpio",	&led_gpio_table[LED_GROUP4_GREEN] },
-	{ "led_group4_blue_gpio",	&led_gpio_table[LED_GROUP4_BLUE] },
+#if defined(DSL_AX82U)
+	{ "led_wifi_gpio",		&led_gpio_table[LED_WIFI] },
 #endif
 
 	{ NULL, NULL },
@@ -294,6 +351,9 @@ int init_gpio(void)
 #ifdef RTCONFIG_EJUSB_BTN
 		, "btn_ejusb1_gpio", "btn_ejusb2_gpio"
 #endif
+#if defined(R8000P)
+		, "switch_led_gpio"
+#endif
 	};
 	char *led_list[] = { "led_pwr_gpio", "led_usb_gpio", "led_wps_gpio", "fan_gpio", "have_fan_gpio", "led_wan_gpio", "led_usb3_gpio", "led_2g_gpio", "led_5g_gpio"
 #if defined(RTCONFIG_HAS_5G_2)
@@ -325,20 +385,27 @@ int init_gpio(void)
 #ifdef RTCONFIG_LED_ALL
 		, "led_all_gpio"
 #endif
-#if defined(RTCONFIG_WANPORT2)
+#if defined(RTCONFIG_WANLEDX2)
 		, "led_wan2_gpio"
 #endif
 #if defined(RTCONFIG_WANRED_LED)
 		, "led_wan_red_gpio"
-#if defined(RTCONFIG_WANPORT2)
+#if defined(RTCONFIG_WANLEDX2)
 		, "led_wan2_red_gpio"
 #endif
+#endif
+#if defined(RTCONFIG_R10G_LED)
+		, "led_r10g_gpio"
+#endif
+#if defined(RTCONFIG_SFPP_LED)
+		, "led_sfpp_gpio"
 #endif
 #ifdef RTCONFIG_QTN
 		, "reset_qtn_gpio"
 #endif
 		, "pwr_usb_gpio"
-#ifdef RTCONFIG_USBRESET
+#if defined(RTCONFIG_USBRESET) \
+ || defined(RTAX89U) || defined(GTAXY16000)
 		, "pwr_usb_gpio2"
 #endif
 #ifdef RTCONFIG_WIFIPWR
@@ -365,8 +432,11 @@ int init_gpio(void)
 		, "led_pwr_red_gpio"
 		, "led_2g_green_gpio", "led_2g_orange_gpio", "led_2g_red_gpio"
 		, "led_5g_green_gpio", "led_5g_orange_gpio", "led_5g_red_gpio"
-#elif defined(MAPAC1750)
+#elif defined(RTCONFIG_FIXED_BRIGHTNESS_RGBLED)
 		, "led_blue_gpio", "led_green_gpio", "led_red_gpio"
+#if defined(RTAC59_CD6R) || defined(RTAC59_CD6N) || defined(PLAX56_XP4)
+		, "led_white_gpio"
+#endif
 #endif
 #ifdef RPAC53
 		, "led_pwr_red_gpio"
@@ -388,6 +458,13 @@ int init_gpio(void)
 		, "led_pwr_red_gpio"
 		, "led_wifi_gpio", "led_sig1_gpio", "led_sig2_gpio"
 #endif
+#ifdef RPAC92
+		, "led_pwr_red_gpio"
+		, "led_wifi_gpio", "led_sig1_gpio", "led_sig2_gpio", "led_purple_gpio"
+#endif
+#ifdef RPAX56
+		, "led_red_gpio", "led_green_gpio", "led_blue_gpio", "led_white_gpio", "led_yellow_gpio", "led_purple_gpio"
+#endif
 #ifdef BLUECAVE
 		, "led_ctl_sig1_gpio", "led_ctl_sig2_gpio", "led_ctl_sig3_gpio"
 		, "led_idr_sig1_gpio", "led_idr_sig2_gpio"
@@ -400,6 +477,11 @@ int init_gpio(void)
 #endif
 #ifdef RTCONFIG_RESET_SWITCH
 		, "reset_switch_gpio"
+#endif
+#if defined(R8000P)
+	, "led_pwr_red_gpio"
+	, "led_wifi_gpio"
+	, "led_guest_gpio"
 #endif
 			   };
 	int use_gpio, gpio_pin;
@@ -458,7 +540,7 @@ int init_gpio(void)
 		gpio_dir(gpio_pin, GPIO_DIR_OUT);
 #endif
 
-#if defined(RTCONFIG_WANPORT2)
+#if defined(RTCONFIG_WANLEDX2)
 		/* Turn on WAN RED LED at system start-up if and only if coresponding WAN unit is enabled. */
 		if (is_router_mode()) {
 			if ((!strcmp(led_list[i], "led_wan_red_gpio") && get_dualwan_by_unit(0) != WANS_DUALWAN_IF_NONE) ||
@@ -469,7 +551,13 @@ int init_gpio(void)
 #if defined(RTCONFIG_WANRED_LED)
 		/* If WAN RED LED is defined, keep it on until Internet connection ready in router mode. */
 		if (!strcmp(led_list[i], "led_wan_red_gpio") && is_router_mode())
+		{
 			disable = !disable;
+#if defined(RTCONFIG_DSL_HOST) && defined(RTCONFIG_DUALWAN)
+			if (get_wans_dualwan() & WANSCAP_DSL)
+				disable = 1;
+#endif
+		}
 #endif
 #endif
 
@@ -482,17 +570,22 @@ int init_gpio(void)
 #endif
 	}
 
-#if (defined(PLN12) || defined(PLAC56))
+#if (defined(PLN12) || defined(PLAC56) || defined(R8000P))
 	if((gpio_pin = (use_gpio = nvram_get_int("led_pwr_red_gpio")) & 0xff) != 0xff)
 #elif defined(MAPAC1750)
 	if((gpio_pin = (use_gpio = nvram_get_int("led_blue_gpio")) & 0xff) != 0xff)
+#elif defined(RTAC59_CD6R) || defined(RTAC59_CD6N) || defined(PLAX56_XP4)
+	if((gpio_pin = (use_gpio = nvram_get_int("led_green_gpio")) & 0xff) != 0xff)
 #else
 	if((gpio_pin = (use_gpio = nvram_get_int("led_pwr_gpio")) & 0xff) != 0xff)
 #endif
 	{
 		enable = (use_gpio&GPIO_ACTIVE_LOW)==0 ? 1 : 0;
 #if !defined(RTCONFIG_CONCURRENTREPEATER)
-		set_gpio(gpio_pin, enable);
+#ifdef RTCONFIG_SW_CTRL_ALLLED
+		if (nvram_match("AllLED", "1"))
+#endif
+			set_gpio(gpio_pin, enable);
 #endif
 #ifdef RT4GAC55U	// save setting value
 		{ int i; char led[16]; for(i=0; i<LED_ID_MAX; i++) if(gpio_pin == (led_gpio_table[i]&0xff)){snprintf(led, sizeof(led), "led%02d", i); nvram_set_int(led, LED_ON); break;}}
@@ -509,7 +602,7 @@ int init_gpio(void)
 		set_gpio(gpio_pin, enable);
 	}
 
-#if defined(RTAC5300) || defined(GTAC5300)
+#if defined(RTAC5300) || (defined(GTAC5300) && !defined(R8000P))
 	// RPM of FAN
 	if((gpio_pin = (use_gpio = nvram_get_int("rpm_fan_gpio")) & 0xff) != 0xff){
 	enable = (use_gpio&GPIO_ACTIVE_LOW)==0 ? 1 : 0;
@@ -572,12 +665,14 @@ int set_pwr_usb(int boolOn) {
 			if (!hw_usb_cap())
 				return 0;
 			if ((nvram_get_int("HW_ver") != 170) &&
+			    (nvram_get_int("HW_ver") != 180) &&
 			    (nvram_get_double("HW_ver") != 1.10) &&
 			    (nvram_get_double("HW_ver") != 1.85) &&
 			    (nvram_get_double("HW_ver") != 1.90) &&
 			    (nvram_get_double("HW_ver") != 1.95) &&
 			    (nvram_get_double("HW_ver") != 2.10) &&
 			    (nvram_get_double("HW_ver") != 2.20) &&
+			    (nvram_get_double("HW_ver") != 3.00) &&
 			    !is_ac66u_v2_series() &&
 			    !nvram_match("cpurev", "c0"))
 				return 0;
@@ -641,12 +736,15 @@ void get_gpio_values_once(int force)
 	if (gpio_values_loaded && !force) return;
 
 	gpio_values_loaded = 1;
+
 	// TODO : add other models
 	for (i = 0; i < ARRAY_SIZE(led_gpio_table); ++i) {
 		led_gpio_table[i] = -1;
 	}
+
 	for (p = &led_btn_table[0]; p->p_val; ++p)
 		*(p->p_val) = __get_gpio(p->nv);
+
 }
 
 int button_pressed(int which)
@@ -732,11 +830,8 @@ int do_led_control(int which, int mode)
 	int use_gpio, gpio_nr;
 	int v = (mode == LED_OFF)? 0:1;
 
-	if ((mode == LED_ON) && (nvram_get_int("led_disable") == 1)
-#ifdef RTCONFIG_QTN
-		&& (which != BTN_QTN_RESET)
-#endif
-	)
+	// Did the user disable the leds?
+	if ((mode == LED_ON) && (nvram_get_int("led_disable") == 1))
 	{
 		return 0;
 	}
@@ -790,103 +885,6 @@ int do_led_control(int which, int mode)
 	}
 #endif
 	return 0;
-}
-
-/* Led control code used by Stealth Mode.  Unlike led_control(), this
- * function can also use other methods of enabling/disabling a LED
- * beside gpio - required for some models
- *
- * Also call led_control(), as it will handle gpio-based leds.
-*/
-
-int led_control_atomic(int which, int mode)
-{
-	int model;
-
-	model = get_model();
-
-	switch(which) {
-		case LED_2G:
-			if ((model == MODEL_RTN66U) || (model == MODEL_RTAC66U) || (model == MODEL_RTN16)) {
-				if (mode == LED_ON)
-					eval("wl", "-i", "eth1", "leddc", "0");
-				else if (mode == LED_OFF)
-					eval("wl", "-i", "eth1", "leddc", "1");
-			} else if ((model == MODEL_RTAC56U) || (model == MODEL_RTAC56S)) {
-				if (mode == LED_ON)
-					eval("wl", "-i", "eth1", "ledbh", "3", "7");
-				else if (mode == LED_OFF)
-					eval("wl", "-i", "eth1", "ledbh", "3", "0");
-			} else if ((model == MODEL_RTAC68U) || (model == MODEL_RTAC87U) || (model == MODEL_RTAC3200)) {
-				if (mode == LED_ON)
-					eval("wl", "ledbh", "10", "7");
-				else if (mode == LED_OFF)
-					eval("wl", "ledbh", "10", "0");
-			} else if ((model == MODEL_RTAC88U) || (model == MODEL_RTAC3100) || (model == MODEL_RTAC5300) || (model == MODEL_RTAC86U)) {
-				if (mode == LED_ON)
-					eval("wl", "ledbh", "9", "7");
-				else if (mode == LED_OFF)
-					eval("wl", "ledbh", "9", "0");
-			}
-			break;
-		case LED_5G_FORCED:
-			if ((model == MODEL_RTAC68U) || (model == MODEL_RTAC3200)) {
-				if (mode == LED_ON) {
-					nvram_set("led_5g", "1");
-		                        eval("wl", "-i", "eth2", "ledbh", "10", "7");
-				} else if (mode == LED_OFF) {
-					nvram_set("led_5g", "0");
-					eval("wl", "-i", "eth2", "ledbh", "10", "0");
-				}
-			} else if ((model == MODEL_RTAC88U) || (model == MODEL_RTAC3100) || (model == MODEL_RTAC5300)) {
-				if (mode == LED_ON)
-					eval("wl", "-i", "eth2", "ledbh", "9", "7");
-				else if (mode == LED_OFF)
-					eval("wl", "-i", "eth2", "ledbh", "9", "0");
-			} else if (model == MODEL_RTAC86U) {
-				if (mode == LED_ON)
-					eval("wl", "-i", "eth6", "ledbh", "9", "7");
-				else if (mode == LED_OFF)
-					eval("wl", "-i", "eth6", "ledbh", "9", "0");
-			}
-			// Second 5 GHz radio
-			if (model == MODEL_RTAC5300) {
-				if (mode == LED_ON)
-					eval("wl", "-i", "eth3", "ledbh", "9", "7");
-				else if (mode == LED_OFF)
-					eval("wl", "-i", "eth3", "ledbh", "9", "0");
-			} else if (model == MODEL_RTAC3200) {
-				if (mode == LED_ON)
-					eval("wl", "-i", "eth3", "ledbh", "10", "7");
-				else if (mode == LED_OFF)
-					eval("wl", "-i", "eth3", "ledbh", "10", "0");
-			}
-			which = LED_5G;	// Fall through regular LED_5G to handle other models
-		case LED_5G:
-			if ((model == MODEL_RTN66U) || (model == MODEL_RTN16)) {
-                                if (mode == LED_ON)
-                                        eval("wl", "-i", "eth2", "leddc", "0");
-                                else if (mode == LED_OFF)
-                                        eval("wl", "-i", "eth2", "leddc", "1");
-			} else if ((model == MODEL_RTAC66U) || (model == MODEL_RTAC56U) || (model == MODEL_RTAC56S)) {
-				if (mode == LED_ON)
-					nvram_set("led_5g", "1");
-				else if (mode == LED_OFF)
-					nvram_set("led_5g", "0");
-			}
-			break;
-		case LED_SWITCH:
-			if (mode == LED_ON) {
-				eval("et", "robowr", "0x00", "0x18", "0x01ff");
-				eval("et", "robowr", "0x00", "0x1a", "0x01ff");
-			} else if (mode == LED_OFF) {
-				eval("et", "robowr", "0x00", "0x18", "0x01e0");
-				eval("et", "robowr", "0x00", "0x1a", "0x01e0");
-			}
-			break;
-	}
-
-	return led_control(which, mode);
 }
 
 #ifdef RT4GAC55U
@@ -1098,7 +1096,9 @@ int wanport_status(int wan_unit)
 		case MODEL_GTAC5300:
 		case MODEL_RTAX88U:
 		case MODEL_RTAX95Q:
+		case MODEL_RTAXE95Q:
 		case MODEL_GTAX11000:
+		case MODEL_GTAXE11000:
 			extra_p0 = S_53134;
 			break;
 	}
@@ -1135,8 +1135,42 @@ int wanport_speed(void)
 	return get_phy_speed(mask);
 }
 
+#ifdef RTCONFIG_HND_ROUTER_AX_675X
+int ethctl_set_phy(char *ifname, int ctrl)
+{
+	struct ifreq ifr;
+	struct ethctl_data ethctl;
+	int skfd;
+	int ret = 0;
+
+	if ((skfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+		fprintf(stderr, "socket open error\n");
+		return -1;
+	}
+
+	strcpy(ifr.ifr_name, ifname);
+
+	memset(&ethctl, 0, sizeof(ethctl));
+	ifr.ifr_data = &ethctl;
+	ethctl.op = ctrl==1?ETHSETPHYPWRON:ctrl==0?ETHSETPHYPWROFF:ETHGETPHYPWR;
+	ethctl.sub_port = -1;   // when no port specified
+	ethctl.phy_addr = 0;
+
+	ret = ioctl(skfd, SIOCETHCTLOPS, &ifr);
+	if (ret) {
+		fprintf(stderr, "command error, op=%d ret=%d\n", ethctl.op, ret);
+		return ret;
+	}
+
+	return 0;
+}
+#endif
+
 int wanport_ctrl(int ctrl)
 {
+#ifdef RPAX56
+	return ethctl_set_phy("eth0", ctrl);
+#endif
 #ifdef RTCONFIG_RALINK
 
 #ifdef RTCONFIG_DSL
@@ -1186,8 +1220,16 @@ int lanport_status(void)
 
 #elif defined(RTCONFIG_QCA)
 	return rtkswitch_lanPorts_phyStatus();
-#elif defined(RTAX55)
+#elif defined(RTAX55) || defined(RTAX1800)
 	return rtkswitch_lanPorts_phyStatus();
+#elif defined(RTCONFIG_HND_ROUTER_AX_675X)
+	int status = 0;
+	char word[16] = {0};
+	char *next = NULL;
+	foreach(word, nvram_safe_get("lanports"), next) {
+		status |= hnd_get_phy_status(atoi(word));
+	}
+	return status;
 #else
 	char word[100], *next;
 	int mask;
@@ -1222,6 +1264,9 @@ int lanport_speed(void)
 
 int lanport_ctrl(int ctrl)
 {
+#ifdef RPAX56
+	return ethctl_set_phy("eth0", ctrl);
+#endif
 	// no general way for ralink platform, so individual api for each kind of switch are used
 #ifdef RTCONFIG_RALINK
 
@@ -1282,12 +1327,21 @@ int lanport_ctrl(int ctrl)
 		system("/usr/bin/switch_cli GSW_MDIO_DATA_WRITE nAddressDev=5 nAddressReg=0 nData=0x1c00");
 	}
 	return 1;
-#elif defined(RTAX55)
+#elif defined(RTAX55) || defined(RTAX1800)
 	if (ctrl)
 		rtkswitch_LanPort_linkUp();
 	else
 		rtkswitch_LanPort_linkDown();
 	return 1;
+#elif defined(DSL_AX82U)
+	char word[32] = {0};
+	char *next = NULL;
+	char cmd[64];
+	foreach(word, nvram_safe_get("wired_ifnames"), next) {
+		snprintf(cmd, sizeof(cmd), "ethctl %s phy-power %s"
+			, word, ctrl ? "up" : "down");
+		system(cmd);
+	}
 #else
 	char word[100], *next;
 	int mask = 0;

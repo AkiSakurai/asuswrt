@@ -83,6 +83,10 @@
 #include "rut_multicast.h"
 #include "rut_iptunnel.h"
 #include "rut_ebtables.h"
+#ifdef DMP_X_BROADCOM_COM_L2TPAC_1
+#include "rut_l2tpac.h"
+#endif
+
 #ifdef DMP_X_BROADCOM_COM_OPENVSWITCH_1
 #include "rut_openvswitch.h"
 #endif
@@ -412,6 +416,9 @@ CmsRet rutCfg_setupWanIpConnection(const InstanceIdStack *iidStack,
    }
 #endif
 
+#ifdef DMP_X_BROADCOM_COM_L2TPAC_1
+   rutL2tp_refreshL2tp();
+#endif 
    rutMulti_updateIgmpMldProxyIntfList();
 
    printf("All services associated with %s is activated.\n", newObj->X_BROADCOM_COM_IfName);
@@ -442,9 +449,10 @@ CmsRet rutCfg_tearDownWanIpConnection(const InstanceIdStack *iidStack __attribut
          rutPMap_configPolicyRoute(add, currObj->X_BROADCOM_COM_IfName, currObj->defaultGateway);
       }
 #endif
-   
+
       cmsLog_debug("Removing iptables rules for %s", currObj->X_BROADCOM_COM_IfName);
       rutIpt_removeInterfaceIptableRules(currObj->X_BROADCOM_COM_IfName, isIPv4);
+
 #ifdef DMP_X_BROADCOM_COM_IGMP_1
       if ( isIPv4 && currObj->X_BROADCOM_COM_IGMPEnabled)
       {
@@ -500,9 +508,12 @@ CmsRet rutCfg_tearDownWanIpConnection(const InstanceIdStack *iidStack __attribut
    if ( !isIPv4 )
    {
       rutCfg_tearDownWanCon6(currObj, TRUE);
+	  rutMulti_updateMldProxyIntfList();
    }
-
-   rutMulti_updateIgmpMldProxyIntfList();
+   else
+   {
+	  rutMulti_updateIgmpProxyIntfList();
+   }
 
    cmsLog_debug("Exit ret %d", ret);
    

@@ -1867,6 +1867,16 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			data->wds_sta_interface.ifname,
 			data->wds_sta_interface.sta_addr);
 		break;
+
+#if defined(CONFIG_DRIVER_BRCM) && defined(CONFIG_WPS_UPNP)
+	case EVENT_INTERFACE_IP_ADDR_CHANGED:
+		if (hapd->conf->upnp_iface &&
+			!os_strcmp(hapd->conf->upnp_iface, data->interface_status.ifname)) {
+			hostapd_wps_upnp_ifcae_ip_changed(hapd);
+		}
+		break;
+#endif	/* CONFIG_DRIVER_BRCM && CONFIG_WPS_UPNP */
+
 	default:
 		wpa_printf(MSG_DEBUG, "Unknown event %d", event);
 		break;

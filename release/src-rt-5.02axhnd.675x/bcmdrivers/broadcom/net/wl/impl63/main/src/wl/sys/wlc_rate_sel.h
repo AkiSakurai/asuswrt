@@ -2,7 +2,7 @@
  * Common OS-independent driver header file for rate selection
  * algorithm of Broadcom 802.11b DCF-only Networking Adapter.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -47,7 +47,7 @@
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
  *
- * $Id: wlc_rate_sel.h 779517 2019-10-01 14:48:46Z $
+ * $Id: wlc_rate_sel.h 786099 2020-04-16 14:03:07Z $
  */
 
 #ifndef	_WLC_RATE_SEL_H_
@@ -219,6 +219,11 @@ extern bool wlc_ratesel_gettxrate(rcb_t *state,
 	uint16 *frameid, ratesel_txparams_t *cur_rate, uint16 *flags);
 extern ratespec_t wlc_ratesel_get_opstats(rcb_t *state, uint16 flags);
 
+#ifdef WL_VASIP_MU_INFO
+extern ratespec_t wlc_ratesel_get_sum_nss_mu_rate(rcb_t *state, uint8 *mu_client_count,
+	uint8 *mu_group_count);
+#endif // endif
+
 /* get the fallback rate of the specified mcs rate */
 extern ratespec_t wlc_ratesel_getmcsfbr(rcb_t *state, uint8 ac, uint8 plcp0);
 
@@ -259,8 +264,8 @@ extern void	wlc_ratesel_lpc_update(ratesel_info_t *rsi, rcb_t *state);
 extern void wlc_ratesel_lpc_init(rcb_t *state);
 extern void wlc_ratesel_get_info(rcb_t *state, uint8 rate_stab_thresh, uint32 *new_rate_kbps,
 	bool *rate_stable, rate_lcb_info_t *lcb_info);
-extern void wlc_ratesel_clr_cache(rcb_t *state);
 #endif /* WL_LPC */
+extern void wlc_ratesel_clr_cache(rcb_t *state);
 extern void wlc_ratesel_filter_minrateset(wlc_rateset_t *rateset, wlc_rateset_t *new_rateset,
 	bool is40bw, uint8 min_rate);
 extern void wlc_ratesel_set_link_bw(rcb_t *rcb, uint8 link_bw);

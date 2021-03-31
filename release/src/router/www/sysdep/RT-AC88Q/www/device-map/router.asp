@@ -13,6 +13,7 @@
 <script type="text/javascript" src="/general.js"></script>
 <script type="text/javascript" src="/state.js"></script>
 <script type="text/javascript" src="/js/jquery.js"></script>
+<script type="text/javascript" src="/switcherplugin/jquery.iphone-switch.js"></script>
 <style>
 .cancel{
 	border: 2px solid #898989;
@@ -123,7 +124,7 @@ $(function () {
 			.attr('src', _src)
 			.appendTo('head');
 	};
-	if(parent.amesh_support && (parent.isSwMode("rt") || parent.isSwMode("ap")))
+	if(parent.amesh_support && (parent.isSwMode("rt") || parent.isSwMode("ap")) && parent.ameshRouter_support)
 		dynamic_include_js('/require/modules/amesh.js');
 	if(parent.smart_connect_support && (parent.isSwMode("rt") || parent.isSwMode("ap")))
 		dynamic_include_js('/switcherplugin/jquery.iphone-switch.js');
@@ -376,7 +377,7 @@ function initial(){
 			parent.based_modelid == "RT-AC3200" || 
 			parent.based_modelid == "RT-AC88U" ||
 			parent.based_modelid == "RT-AC86U" ||
-			parent.based_modelid == "AC2900" ||
+			parent.based_modelid == "GT-AC2900" ||
 			parent.based_modelid == "RT-AC3100" ||
 			parent.based_modelid == "BLUECAVE"){
 			var value = new Array();
@@ -392,7 +393,7 @@ function initial(){
 				value = ["0", "1"];
 				add_options_x2(document.form.smart_connect_t, desc, value, smart_connect_x);						
 			}
-			else if(parent.based_modelid == "RT-AC88U" || parent.based_modelid == "RT-AC86U" || parent.based_modelid == "AC2900" || parent.based_modelid == "RT-AC3100" || parent.based_modelid == "BLUECAVE"){
+			else if(parent.based_modelid == "RT-AC88U" || parent.based_modelid == "RT-AC86U" || parent.based_modelid == "GT-AC2900" || parent.based_modelid == "RT-AC3100" || parent.based_modelid == "BLUECAVE"){
 				desc = ["none", "Dual-Band Smart Connect"];
 				value = ["0", "1"];
 				add_options_x2(document.form.smart_connect_t, desc, value, smart_connect_x);						
@@ -444,16 +445,16 @@ function initial(){
 		wireless_subunit = document.form.wl_subunit.value;
 		var array_idx = (document.form.wl_subunit.value - 1);
 		wireless_profile.wl_bss_enabled = gn_array[array_idx][0];
-		wireless_profile.ssid = gn_array[array_idx][1];
-		wireless_profile.wl_auth_mode_x = gn_array[array_idx][2];
-		wireless_profile.wl_crypto = gn_array[array_idx][3];
-		wireless_profile.wl_wpa_psk = gn_array[array_idx][4];
-		wireless_profile.wl_wep_x = gn_array[array_idx][5];
-		wireless_profile.wl_key = gn_array[array_idx][6];
-		wireless_profile.wl_key1 = gn_array[array_idx][7];
-		wireless_profile.wl_key2 = gn_array[array_idx][8];
-		wireless_profile.wl_key3 = gn_array[array_idx][9];
-		wireless_profile.wl_key4 = gn_array[array_idx][10];
+		wireless_profile.ssid = decodeURIComponent(gn_array[array_idx][1]);
+		wireless_profile.wl_auth_mode_x = decodeURIComponent(gn_array[array_idx][2]);
+		wireless_profile.wl_crypto = decodeURIComponent(gn_array[array_idx][3]);
+		wireless_profile.wl_wpa_psk = decodeURIComponent(gn_array[array_idx][4]);
+		wireless_profile.wl_wep_x = decodeURIComponent(gn_array[array_idx][5]);
+		wireless_profile.wl_key = decodeURIComponent(gn_array[array_idx][6]);
+		wireless_profile.wl_key1 = decodeURIComponent(gn_array[array_idx][7]);
+		wireless_profile.wl_key2 = decodeURIComponent(gn_array[array_idx][8]);
+		wireless_profile.wl_key3 = decodeURIComponent(gn_array[array_idx][9]);
+		wireless_profile.wl_key4 = decodeURIComponent(gn_array[array_idx][10]);
 		//Guestnetwork not need
 		document.form.wl_nmode_x.disabled = true;
 		document.form.wps_enable.disabled = true;
@@ -977,7 +978,7 @@ function submitForm(){
 	}
 	document.form.wsc_config_state.value = "1";
 
-	if(parent.amesh_support && (parent.isSwMode("rt") || parent.isSwMode("ap"))) {
+	if(parent.amesh_support && (parent.isSwMode("rt") || parent.isSwMode("ap")) && parent.ameshRouter_support) {
 		if(!check_wl_auth_support(auth_mode, $("select[name=wl_auth_mode_x] option:selected")))
 			return false;
 		else {
@@ -1089,7 +1090,7 @@ function tab_reset(v){
 	}else if(v == 1){	//Smart Connect
 		if(parent.based_modelid == "RT-AC5300" || parent.based_modelid == "RT-AC3200" || parent.based_modelid == "GT-AC5300")
 			document.getElementById("span0").innerHTML = "2.4GHz, 5GHz-1 and 5GHz-2";
-		else if(parent.based_modelid == "RT-AC88U" || parent.based_modelid == "RT-AC86U" || parent.based_modelid == "AC2900" || parent.based_modelid == "RT-AC3100" || parent.based_modelid == "BLUECAVE")
+		else if(parent.based_modelid == "RT-AC88U" || parent.based_modelid == "RT-AC86U" || parent.based_modelid == "GT-AC2900" || parent.based_modelid == "RT-AC3100" || parent.based_modelid == "BLUECAVE")
 			document.getElementById("span0").innerHTML = "2.4GHz and 5GHz";
 		
 		document.getElementById("t1").style.display = "none";

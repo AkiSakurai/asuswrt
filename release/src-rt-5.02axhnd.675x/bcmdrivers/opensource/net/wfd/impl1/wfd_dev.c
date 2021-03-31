@@ -89,6 +89,7 @@ static const char *version = "Wifi Forwarding Driver";
 #define WFD_QUEUE_TO_WFD_IDX_MASK 0x1
 #define WIFI_IF_NAME_STR_LEN  ( IFNAMSIZ )
 #define WLAN_CHAINID_OFFSET 8
+
 #if defined(CONFIG_BCM94908)
 #define WFD_INTERRUPT_COALESCING_TIMEOUT_US 1000
 #define WFD_INTERRUPT_COALESCING_MAX_PKT_CNT 63
@@ -99,12 +100,26 @@ static const char *version = "Wifi Forwarding Driver";
 #define WFD_BRIDGED_OBJECT_IDX 2
 #define WFD_BRIDGED_QUEUE_IDX 2
 
+#if defined(BCM_PKTFWD)
+#define WFD_FLCTL /* BPM PktPool Availability based WFD Ingress throttle */
+#define WFD_FLCTL_PKT_PRIO_FAVOR         4  /* Favor Pkt Prio >= 4 : VI,VO */
+#define WFD_FLCTL_DROP_CREDITS           32
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+#define WFD_FLCTL_SKB_EXHAUSTION_LO_PCNT 25 /* Favored Pkt threshold */
+#define WFD_FLCTL_SKB_EXHAUSTION_HI_PCNT 10
+#endif /* CONFIG_BCM_BPM || CONFIG_BCM_BPM_MODULE */
+#endif
+
 /****************************************************************************/
 /*********************** Multiple SSID FUNCTIONALITY ************************/
 /****************************************************************************/
 static struct net_device __read_mostly *wifi_net_devices[WIFI_MW_MAX_NUM_IF]={NULL, } ;
 
-static struct proc_dir_entry *proc_directory, *proc_file_conf;
+static struct proc_dir_entry *proc_wfd_dir;          /* /proc/wfd */
+static struct proc_dir_entry *proc_wfd_stats_file;   /* /proc/wfd/stats */
+#if defined(WFD_FLCTL)
+static struct proc_dir_entry *proc_wfd_flctl_file;   /* /proc/wfd/flctl */
+#endif
 
 extern void replace_upper_layer_packet_destination( void * cb, void * napi_cb );
 extern void unreplace_upper_layer_packet_destination( void );
@@ -157,6 +172,9 @@ static unsigned int gs_max_rx_pkt [WFD_NUM_QUEUE_SUPPORTED] = { } ;
 static unsigned int gs_count_rx_invalid_ssid_vector[WFD_NUM_QUEUE_SUPPORTED] = {};
 static unsigned int gs_count_rx_no_wifi_interface[WFD_NUM_QUEUE_SUPPORTED] = {} ;
 static unsigned int gs_count_rx_error[WFD_NUM_QUEUE_SUPPORTED] = {} ;
+#if defined(WFD_FLCTL)
+static unsigned int gs_count_flctl_pkts[WFD_NUM_QUEUE_SUPPORTED] = {} ;
+#endif
 
 /* Forward declaration */
 struct wfd_object;
@@ -165,11 +183,9 @@ typedef struct wfd_object wfd_object_t;
 /* Note: keep budget <= NUM_PACKETS_TO_READ_MAX */
 typedef uint32_t (*wfd_bulk_get_t)(unsigned long qid, unsigned long budget, void *wfd_p);
 
-#if defined(BCM_PKTFWD) && defined(BCM_PKTQUEUE)
-#if !defined(CONFIG_BCM_PON)
+#if defined(BCM_PKTFWD) && defined(BCM_PKTQUEUE) && !defined(CONFIG_BCM_PON)
 #define WFD_SWQUEUE
 #endif
-#endif /* BCM_PKTFWD && BCM_PKTQUEUE */
 
 #if defined(WFD_SWQUEUE)
 
@@ -257,6 +273,13 @@ struct wfd_object
     unsigned int        count_rx_queue_packets;
     unsigned int        wl_chained_packets;
     unsigned int        wl_mcast_packets;
+#if defined(WFD_FLCTL)  /* BPM Skb availability based Rx flowcontrol */
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+    unsigned int        skb_exhaustion_lo; /* avail < lo: admit ONLY favored */
+    unsigned int        skb_exhaustion_hi; /* avail < hi: admit none */
+#endif
+    unsigned short      pkt_prio_favor;    /* favor pkt prio >= 4 */
+#endif /* WFD_FLCTL */
     struct pktlist_context *pktlist_context_p; /* BCM_PKTFWD && BCM_PKTLIST */
     struct net_device  *wl_dev_p;
     wfd_bulk_get_t      wfd_bulk_get;
@@ -326,6 +349,10 @@ void (*wfd_dump_fn)(void) = NULL;
 void (*wfd_dump_fn)(void) = 0; // not support dump yet ..
 #endif
 
+#ifndef WFD_PLATFORM_PROC
+#define wfd_plat_proc_init() (0)
+#define wfd_plat_proc_uninit(p) 
+#endif
 
 /****************************************************************************/
 /**                                                                        **/
@@ -509,17 +536,17 @@ struct net_device *wfd_dev_by_name_get(char *name, uint32_t *radio_idx, uint32_t
 /**                                                                        **/
 /** Name:                                                                  **/
 /**                                                                        **/
-/**   wifi_mw_proc_read_func_conf                                          **/
+/**   wfd_stats_file_read_proc                                             **/
 /**                                                                        **/
 /** Title:                                                                 **/
 /**                                                                        **/
-/**   wifi mw - proc read                                                  **/
+/**   wfd stats - proc file read handler                                   **/
 /**                                                                        **/
 /** Abstract:                                                              **/
 /**                                                                        **/
 /**   Procfs callback method.                                              **/
 /**      Called when someone reads proc command                            **/
-/**   using: cat /proc/wifi_mw                                             **/
+/**   using: cat /proc/wfd/stats                                           **/
 /**                                                                        **/
 /** Input:                                                                 **/
 /**                                                                        **/
@@ -535,9 +562,9 @@ struct net_device *wfd_dev_by_name_get(char *name, uint32_t *radio_idx, uint32_t
 /**                                                                        **/
 /****************************************************************************/
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 10, 0)
-static int wifi_mw_proc_read_func_conf(char* page, char** start, off_t off, int count, int* eof, void* data)
+static int wfd_stats_file_read_proc(char* page, char** start, off_t off, int count, int* eof, void* data)
 #else
-static ssize_t wifi_mw_proc_read_func_conf(struct file *filep, char __user *page, size_t count, loff_t *data)
+static ssize_t wfd_stats_file_read_proc(struct file *filep, char __user *page, size_t count, loff_t *data)
 #endif
 {
     int wifi_index ;
@@ -620,6 +647,10 @@ static ssize_t wifi_mw_proc_read_func_conf(struct file *filep, char __user *page
                         len += sprintf((page+len), "\ncount_rx_pkt              =%d", gs_count_rx_pkt[qidx]) ;
                         len += sprintf((page+len), "\nmax_rx_pkt                =%d", gs_max_rx_pkt[qidx]) ;
                         count_rx_queue_packets_total += gs_count_rx_pkt[qidx];
+#if defined(WFD_FLCTL)
+                        len += sprintf((page+len), "\nflctl_pkts                =%d", gs_count_flctl_pkts[qidx]) ;
+                        gs_count_flctl_pkts[qidx] = 0;
+#endif
                         len += sprintf((page+len), "\nno_bpm_buffers_error      =%d", gs_count_no_buffers[qidx]) ;
                         len += sprintf((page+len), "\nno_skb_error              =%d", gs_count_no_skbs[qidx]) ;
                         len += sprintf((page+len), "\nInvalid SSID vector       =%d",
@@ -708,7 +739,124 @@ static ssize_t wifi_mw_proc_read_func_conf(struct file *filep, char __user *page
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0)
 static const struct file_operations stats_fops = {
        .owner  = THIS_MODULE,
-       .read   = wifi_mw_proc_read_func_conf,
+       .read   = wfd_stats_file_read_proc,
+};
+#endif
+
+
+#if defined(WFD_FLCTL)
+static ssize_t wfd_flctl_file_read_proc(struct file *file, char *buff, size_t len, loff_t *offset)
+{
+    uint32_t radio_id;
+    char *header, *format;
+
+    if (*offset)
+        return 0;
+
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+    *offset += sprintf(buff + *offset,
+        "BPM system total<%u> avail<%u>\n", gbpm_total_skb(), gbpm_avail_skb());
+    header = "WFD ExhaustionLO ExhaustionHI PktPrioFavor\n";
+    format = "%2u. %12u %12u %12u\n";
+#else
+    header = "WFD PktPrioFavor\n";
+    format = "%2u. %12u\n";
+#endif
+    *offset += sprintf(buff + *offset, header);
+    for (radio_id = 0; radio_id < WFD_MAX_OBJECTS; radio_id++)
+    {
+       *offset += sprintf(buff + *offset, format, radio_id,
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+           wfd_objects[radio_id].skb_exhaustion_lo,
+           wfd_objects[radio_id].skb_exhaustion_hi,
+#endif
+           wfd_objects[radio_id].pkt_prio_favor);
+    }
+
+    return *offset;
+}
+
+#define WFD_FLCTL_PROC_CMD_MAX_LEN    64
+static ssize_t wfd_flctl_file_write_proc(struct file *file, const char *buff, size_t len, loff_t *offset)
+{
+    int ret;
+    char input[WFD_FLCTL_PROC_CMD_MAX_LEN];
+    uint32_t radio_id, pkt_prio_favor;
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+    uint32_t skb_exhaustion_lo, skb_exhaustion_hi;
+#endif
+
+    if (copy_from_user(input, buff, len) != 0)
+        return -EFAULT;
+
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+    ret = sscanf(input, "%u %u %u %u", &radio_id, &skb_exhaustion_lo, &skb_exhaustion_hi, &pkt_prio_favor);
+    if (ret < 4)
+        goto Usage;
+#else
+    ret = sscanf(input, "%u %u", &radio_id, &pkt_prio_favor);
+    if (ret < 2)
+        goto Usage;
+#endif
+
+    if (radio_id >= WFD_MAX_OBJECTS)
+    {
+        printk("Invalid radio_id %u, must be less than %u\n", radio_id, WFD_MAX_OBJECTS);
+        goto Usage;
+    }
+
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+    if (skb_exhaustion_lo < skb_exhaustion_hi)
+    {
+        printk("Invalid exhaustion level lo<%u> hi<%u>\n", skb_exhaustion_lo, skb_exhaustion_hi);
+        goto Usage;
+    }
+#endif
+
+    if (pkt_prio_favor > 7)
+    { /* prio 0 .. 7 */
+        printk("Invalid pkt priority <%u>\n", pkt_prio_favor);
+        goto Usage;
+    }
+
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+    wfd_objects[radio_id].skb_exhaustion_lo = skb_exhaustion_lo;
+    wfd_objects[radio_id].skb_exhaustion_hi = skb_exhaustion_hi;
+#endif
+    wfd_objects[radio_id].pkt_prio_favor    = pkt_prio_favor;
+
+#if defined(BCM_PKTFWD_FLCTL)
+    if (wfd_objects[radio_id].pktlist_context_p->fctable != PKTLIST_FCTABLE_NULL)
+        wfd_objects[radio_id].pktlist_context_p->fctable->pkt_prio_favor = pkt_prio_favor;
+#endif /* BCM_PKTFWD_FLCTL */
+
+    printk("Radio<%u> "
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+        "exhaustion level lo<%u> hi<%u>, "
+#endif
+        "favor pkt prio >= %u\n",
+        radio_id, 
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+        skb_exhaustion_lo, skb_exhaustion_hi,
+#endif
+        pkt_prio_favor);
+    goto Exit;
+
+Usage:
+    printk("\nUsage: <radio_id> "
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+        "<skb_exhaustion_lo> <skb_exhaustion_hi> "
+#endif
+        "<pkt_prio_favor>\n");
+
+Exit:
+    return len;
+}
+
+static const struct file_operations flctl_fops = {
+    .owner  = THIS_MODULE,
+    .read   = wfd_flctl_file_read_proc,
+    .write  = wfd_flctl_file_write_proc,
 };
 #endif
 
@@ -735,35 +883,34 @@ static const struct file_operations stats_fops = {
 /****************************************************************************/
 static int wifi_proc_init(void)
 {
-    /* make a directory in /proc */
-    proc_directory = proc_mkdir("wfd", NULL) ;
-
-    if (proc_directory==NULL) goto fail_dir ;
+    if (!(proc_wfd_dir = proc_mkdir("wfd", NULL))) 
+        goto fail;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 10, 0)
-    /* make conf file */
-    proc_file_conf = create_proc_entry("stats", 0444, proc_directory) ;
+    /* /proc/wfd/stats file */
+    if (!(proc_wfd_stats_file = create_proc_entry("stats", 0444, proc_wfd_dir))) 
+        goto fail;
 
-    if (proc_file_conf==NULL ) goto fail_entry ;
-
-    /* set callback function on file */
-    proc_file_conf->read_proc = wifi_mw_proc_read_func_conf;
-
+    /* set callback handler for "stats" file */
+    proc_wfd_stats_file->read_proc = wfd_stats_file_read_proc;
 #else
-       if ((proc_file_conf = proc_create("wfd/stats", 0644, NULL, &stats_fops)) == NULL) {
-		goto fail_entry;
-	}
+    if (!(proc_wfd_stats_file = proc_create("wfd/stats", 0644, NULL, &stats_fops))) 
+        goto fail;
 #endif
 
-    return (0) ;
+#if defined(WFD_FLCTL)
+    if (!(proc_wfd_flctl_file = proc_create("wfd/flctl", 0644, NULL, &flctl_fops)))
+        goto fail;
+#endif
+    if (wfd_plat_proc_init()) /* platform specific procs */
+        goto fail;
+ 
+    return 0;
 
-fail_entry:
-    printk("%s %s: Failed to create proc entry in wifi_mw\n", __FILE__, __FUNCTION__);
-    remove_proc_entry("wfd" ,NULL); /* remove already registered directory */
-
-fail_dir:
-    printk("%s %s: Failed to create directory wifi_mw\n", __FILE__, __FUNCTION__) ;
-    return (-1) ;
+fail:
+    printk("%s %s: Failed to create proc /wfd\n", __FILE__, __FUNCTION__);
+    remove_proc_entry("wfd" ,NULL);
+    return (-1);
 }
 
 
@@ -838,9 +985,13 @@ static void wfd_dev_close(void)
     release_wfd_os_resources();
 
 #ifdef CONFIG_BCM_WFD_RATE_LIMITER
-    remove_proc_entry("rate_limit", proc_directory);
+    remove_proc_entry("rate_limit", proc_wfd_dir);
 #endif
-    remove_proc_entry("stats", proc_directory);
+#if defined(WFD_FLCTL)
+    remove_proc_entry("flctl", proc_wfd_dir);
+#endif
+    remove_proc_entry("stats", proc_wfd_dir);
+    wfd_plat_proc_uninit(proc_wfd_dir); /* remove platform-specific procs */
     remove_proc_entry("wfd", NULL);
 
 #if defined(CONFIG_BCM_PON) || defined(CONFIG_BCM963158)
@@ -928,9 +1079,9 @@ cleanup:
 
 proc_release:
 #ifdef CONFIG_BCM_WFD_RATE_LIMITER
-    remove_proc_entry("rate_limit", proc_directory);
+    remove_proc_entry("rate_limit", proc_wfd_dir);
 #endif
-    remove_proc_entry("stats", proc_directory);
+    remove_proc_entry("stats", proc_wfd_dir);
     remove_proc_entry("wfd", NULL);
 
     return -1;
@@ -982,13 +1133,9 @@ int wfd_bind(struct net_device *wl_dev_p,
     if (wfd_objects_num > wfd_max_objects)
     {
         WFD_ERROR("ERROR. WFD_MAX_OBJECTS(%d) limit reached\n", WFD_MAX_OBJECTS);
+        rc = WFD_FAILURE;
         goto wfd_bind_failure;
     }
-
-#if (defined(CONFIG_BCM_RDPA)||defined(CONFIG_BCM_RDPA_MODULE)) && defined(XRDP)
-    if ((rc = wfd_rdpa_init(wl_radio_idx)))
-        goto wfd_bind_failure;
-#endif
 
 #if defined(CONFIG_BCM_PON_RDP)
     if (!wl_dev_p)
@@ -1004,9 +1151,15 @@ int wfd_bind(struct net_device *wl_dev_p,
 #if defined(CONFIG_BCM_WLAN_DPDCTL)
         /* Use radio_idx as wfd idx as well */
         tmp_idx = wl_radio_idx;
+        if (tmp_idx >= wfd_max_objects) {
+            WFD_ERROR("%s ERROR. WFD_OBJECT(%d) > MAX(%d)\n", __FUNCTION__, wl_radio_idx, wfd_max_objects);
+            rc = WFD_FAILURE;
+            goto wfd_bind_failure;
+        }
 
         if (wfd_objects[tmp_idx].wfd_bulk_get) {
-            WFD_ERROR("ERROR. WFD_OBJECT(%d) in Use\n", wl_radio_idx);
+            WFD_ERROR("%s ERROR. WFD_OBJECT(%d) in Use\n", __FUNCTION__, wl_radio_idx);
+            rc = WFD_FAILURE;
             goto wfd_bind_failure;
         }
 #else  /* !CONFIG_BCM_WLAN_DPDCTL */
@@ -1022,6 +1175,11 @@ int wfd_bind(struct net_device *wl_dev_p,
         minQIdx = wfd_get_minQIdx(tmp_idx);
         maxQIdx = wfd_get_maxQIdx(tmp_idx);
     }
+
+#if (defined(CONFIG_BCM_RDPA)||defined(CONFIG_BCM_RDPA_MODULE)) && defined(XRDP)
+    if ((rc = wfd_rdpa_init(wl_radio_idx)))
+        goto wfd_bind_failure;
+#endif
 
     memset(&wfd_objects[tmp_idx], 0, sizeof(wfd_objects[tmp_idx]));
 
@@ -1048,6 +1206,32 @@ int wfd_bind(struct net_device *wl_dev_p,
     sprintf(threadname,"wfd%lu-thrd", tmp_idx);
 
 #if defined(BCM_PKTFWD)
+#if defined(WFD_FLCTL)
+    /* Apply default BPM exhaustion level thresholds */
+    if ((wl_pktlist_context != PKTLIST_CONTEXT_NULL) &&
+        (eFwdHookType == WFD_WL_FWD_HOOKTYPE_SKB))
+    {
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+        uint32_t bpm_total_skb = gbpm_total_skb();
+        wfd_objects[tmp_idx].skb_exhaustion_lo =
+            ((bpm_total_skb * WFD_FLCTL_SKB_EXHAUSTION_LO_PCNT) / 100);
+        wfd_objects[tmp_idx].skb_exhaustion_hi =
+            ((bpm_total_skb * WFD_FLCTL_SKB_EXHAUSTION_HI_PCNT) / 100);
+#endif
+        wfd_objects[tmp_idx].pkt_prio_favor = WFD_FLCTL_PKT_PRIO_FAVOR;
+        printk("%s WL %u FLowControl "
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+            "total<%u> lo<%u> hi<%u> "
+#endif
+            "favor prio<%u>\n",
+               threadname, wl_radio_idx,
+#if (defined(CONFIG_BCM_BPM) || defined(CONFIG_BCM_BPM_MODULE))
+               bpm_total_skb, wfd_objects[tmp_idx].skb_exhaustion_lo, wfd_objects[tmp_idx].skb_exhaustion_hi,
+#endif
+               wfd_objects[tmp_idx].pkt_prio_favor);
+    }
+#endif
+
     PKTLIST_TRACE(" radio %d wl_pktlist_context %p %pS",
                   wl_radio_idx, wl_pktlist_context, wfd_completeHook);
 
@@ -1065,6 +1249,30 @@ int wfd_bind(struct net_device *wl_dev_p,
             rc = WFD_FAILURE;
             goto wfd_bind_failure;
         }
+
+#if defined(BCM_PKTFWD_FLCTL)
+        if ((eFwdHookType == WFD_WL_FWD_HOOKTYPE_SKB) &&
+            (wl_pktlist_context->fctable != PKTLIST_FCTABLE_NULL))
+        {
+            /* Point WFD pktlist_fctable to WLAN pktlist_fctable */
+            wfd_objects[tmp_idx].pktlist_context_p->fctable =
+                wl_pktlist_context->fctable;
+
+#if defined(WFD_FLCTL)
+            /* Set pktlist_context pkt_prio_favor*/
+            wl_pktlist_context->fctable->pkt_prio_favor =
+                wfd_objects[tmp_idx].pkt_prio_favor;
+#else /* ! WFD_FLCTL */
+            wl_pktlist_context->fctable->pkt_prio_favor = PKTFWD_PRIO_MAX;
+#endif /* WFD_FLCTL */
+
+        }
+        else
+        {
+            wfd_objects[tmp_idx].pktlist_context_p->fctable =
+               PKTLIST_FCTABLE_NULL;
+        }
+#endif /* BCM_PKTFWD_FLCTL */
 
         WFD_ERROR("%s initialized pktlists: radio %u nodes %u xfer %pS\n",
             threadname, wl_radio_idx, PKTLIST_NODES_MAX, wfd_completeHook);
@@ -1149,7 +1357,7 @@ void wfd_unbind(int wfdIdx, enumWFD_WlFwdHookType hook_type)
     int maxQIdx;
 
     // simple reclaim iff idx of last bind
-    if (wfdIdx >= WFD_MAX_OBJECTS)
+    if ((wfdIdx < 0) || (wfdIdx >= WFD_MAX_OBJECTS))
     {
         WFD_ERROR("wfd_idx %d out of bounds %d\n", wfdIdx, WFD_MAX_OBJECTS);
         return;
@@ -1218,57 +1426,63 @@ EXPORT_SYMBOL(wfd_unbind);
 
 int wfd_registerdevice(uint32_t wfd_idx, int ifidx, struct net_device *dev)
 {
-   if (wfd_idx > WFD_MAX_OBJECTS )
-   {
-      printk("%s Error Incorrect wfd_idx %d passed\n", __FUNCTION__, wfd_idx);
-      return -1;
-   }
+    if (wfd_idx >= WFD_MAX_OBJECTS)
+    {
+        printk("%s Error Incorrect wfd_idx %d passed\n", __FUNCTION__, wfd_idx);
+        return -1;
+    }
    
-   if (ifidx > WIFI_MW_MAX_NUM_IF)
-   {
-       printk("%s Error ifidx %d out of bounds(%d)\n", 
-              __FUNCTION__, ifidx, WIFI_MW_MAX_NUM_IF);
-   }
+    WFD_ASSERT(ifidx < WIFI_MW_MAX_NUM_IF);
+    if (ifidx >= WIFI_MW_MAX_NUM_IF)
+    {
+        printk("%s Error ifidx %d out of bounds(%d)\n", 
+            __FUNCTION__, ifidx, WIFI_MW_MAX_NUM_IF);
+        return -1;
+    }
 
-   if (wfd_objects[wfd_idx].wl_if_dev[ifidx] != NULL)
-   {
-      printk("%s Device already registered for wfd_idx %d ifidx %d\n", 
-              __FUNCTION__, wfd_idx, ifidx);
-   }
+    WFD_ASSERT(wfd_objects[wfd_idx].wl_if_dev[ifidx] == NULL);
+    if (wfd_objects[wfd_idx].wl_if_dev[ifidx] != NULL)
+    {
+        printk("%s Device already registered for wfd_idx %d ifidx %d\n", 
+            __FUNCTION__, wfd_idx, ifidx);
+        return -1;
+    }
 
-   wfd_objects[wfd_idx].wl_if_dev[ifidx] = dev;
+    wfd_objects[wfd_idx].wl_if_dev[ifidx] = dev;
 
-   printk("%s Successfully registered dev %s ifidx %d wfd_idx %d\n", 
-          __FUNCTION__, dev->name, ifidx, wfd_idx);
+    printk("%s Successfully registered dev %s ifidx %d wfd_idx %d\n", 
+        __FUNCTION__, dev->name, ifidx, wfd_idx);
 
-   return 0;
+    return 0;
 }
 EXPORT_SYMBOL(wfd_registerdevice);
 
 
 int wfd_unregisterdevice(uint32_t wfd_idx, int ifidx)
 {
-   if (wfd_idx > WFD_MAX_OBJECTS )
-   {
-      printk("%s Error Incorrect wfd_idx %d passed\n", __FUNCTION__, wfd_idx);
-      return -1;
-   }
+    if (wfd_idx >= WFD_MAX_OBJECTS)
+    {
+        printk("%s Error Incorrect wfd_idx %d passed\n", __FUNCTION__, wfd_idx);
+        return -1;
+    }
    
-   if (ifidx > WIFI_MW_MAX_NUM_IF)
-   {
-       printk("%s Error ifidx %d out of bounds(%d)\n", 
-              __FUNCTION__, ifidx, WIFI_MW_MAX_NUM_IF);
-   }
+    WFD_ASSERT(ifidx < WIFI_MW_MAX_NUM_IF);
+    if (ifidx >= WIFI_MW_MAX_NUM_IF)
+    {
+        printk("%s Error ifidx %d out of bounds(%d)\n", 
+            __FUNCTION__, ifidx, WIFI_MW_MAX_NUM_IF);
+        return -1;
+    }
 
 #if (defined(CONFIG_BCM_MCAST) || defined(CONFIG_BCM_MCAST_MODULE))
-   bcm_mcast_handle_dev_down(wfd_objects[wfd_idx].wl_if_dev[ifidx]);
+    bcm_mcast_handle_dev_down(wfd_objects[wfd_idx].wl_if_dev[ifidx]);
 #endif
-   wfd_objects[wfd_idx].wl_if_dev[ifidx] = NULL;
+    wfd_objects[wfd_idx].wl_if_dev[ifidx] = NULL;
 
-   printk("%s Successfully unregistered ifidx %d wfd_idx %d\n", 
-          __FUNCTION__, ifidx, wfd_idx);
+    printk("%s Successfully unregistered ifidx %d wfd_idx %d\n", 
+        __FUNCTION__, ifidx, wfd_idx);
 
-   return 0;
+    return 0;
 }
 EXPORT_SYMBOL(wfd_unregisterdevice);
 
@@ -1638,27 +1852,39 @@ wfd_swqueue_skb_xmit(wfd_object_t * wfd_p, uint32_t budget)
     uint16_t pktfwd_key;
     uint16_t pktlist_prio, pktlist_dest;
     uint32_t            rx_pktcnt;
+    pktqueue_t          temp_pktqueue; /* Declared on stack */
     struct sk_buff    * skb;
     pktqueue_pkt_t    * pkt;
     pktqueue_t        * pktqueue;
     wfd_swqueue_t     * wfd_swqueue = wfd_p->wfd_swqueue;
     pktlist_context_t * pktlist_context = wfd_p->pktlist_context_p;
 
+    pktqueue    = &wfd_swqueue->pktqueue;
 
     WFD_SWQUEUE_LOCK(wfd_swqueue); // +++++++++++++++++++++++++++++++++++++++++
 
-    pktqueue    = &wfd_swqueue->pktqueue;
+    /* Transfer packets to a local pktqueue */
+    temp_pktqueue.head   = pktqueue->head;
+    temp_pktqueue.tail   = pktqueue->tail;
+    temp_pktqueue.len    = pktqueue->len;
+
+    PKTQUEUE_RESET(pktqueue); /* head,tail, not reset */
+
+    WFD_SWQUEUE_UNLK(wfd_swqueue); // -----------------------------------------
+
+    /* Now lock-less; transmit packets from local pktqueue */
+
     pktfwd_key  = 0; /* 2b-radio, 2b-incarn, 12b-dest */
     rx_pktcnt   = 0;
 
     while (budget)
     {
-        if (pktqueue->len != 0U)
+        if (temp_pktqueue.len != 0U)
         {
-            pkt             = pktqueue->head;
-            pktqueue->head  = PKTQUEUE_PKT_SLL(pkt, SKBUFF_PTR);
+            pkt             = temp_pktqueue.head;
+            temp_pktqueue.head  = PKTQUEUE_PKT_SLL(pkt, SKBUFF_PTR);
             PKTQUEUE_PKT_SET_SLL(pkt, PKTQUEUE_PKT_NULL, SKBUFF_PTR);
-            pktqueue->len--;
+            temp_pktqueue.len--;
 
             skb = (struct sk_buff *)pkt;
 
@@ -1686,17 +1912,32 @@ wfd_swqueue_skb_xmit(wfd_object_t * wfd_p, uint32_t budget)
                 pktlist_dest = PKTLIST_MCAST_ELEM; /* last col in 2d pktlist */
             }
 
-            WFD_ASSERT(pktlist_prio == LINUX_GET_PRIO_MARK(skb->mark));
+            skb->mark = LINUX_SET_PRIO_MARK(skb->mark, pktlist_prio);
+
+#if defined(BCM_PKTFWD_FLCTL)
+            /* FIXME: Implement a credit based flow control logic for SWq. */
+#endif /* BCM_PKTFWD_FLCTL */
+
             WFD_ASSERT(pktlist_dest <= PKTLIST_MCAST_ELEM);
             WFD_ASSERT(pktlist_prio <  PKTLIST_PRIO_MAX);
 
             /* add to local pktlist */
             __pktlist_add_pkt(pktlist_context, pktlist_prio, pktlist_dest,
                               pktfwd_key, (pktlist_pkt_t *)skb, SKBUFF_PTR);
+
+#if defined(BCM_PKTFWD_FLCTL)
+            if (pktlist_context->fctable != PKTLIST_FCTABLE_NULL)
+            {
+                /* Decreament avail credits for pktlist */
+                __pktlist_fctable_dec_credits(pktlist_context, pktlist_prio,
+                        pktlist_dest);
+            }
+#endif /* BCM_PKTFWD_FLCTL */
+
             ++rx_pktcnt;
 
         }
-        else /* pktqueue->len == 0 : No more packets to read */
+        else /* temp_pktqueue.len == 0 : No more packets to read */
         {
             break;
         }
@@ -1704,7 +1945,25 @@ wfd_swqueue_skb_xmit(wfd_object_t * wfd_p, uint32_t budget)
         --budget;
     } /* while (budget) */
 
-    WFD_SWQUEUE_UNLK(wfd_swqueue); // -----------------------------------------
+    if (temp_pktqueue.len != 0U) {
+        /* Out of budget, prepend left-over packets to ENET SWq */
+
+        WFD_SWQUEUE_LOCK(wfd_swqueue); // +++++++++++++++++++++++++++++++++++++
+
+        if (pktqueue->len == 0) {
+            pktqueue->tail = temp_pktqueue.tail;
+        } else {
+            PKTQUEUE_PKT_SET_SLL(temp_pktqueue.tail, pktqueue->head, SKBUFF_PTR);
+        }
+
+        pktqueue->head = temp_pktqueue.head;
+        pktqueue->len += temp_pktqueue.len;
+
+        WFD_SWQUEUE_UNLK(wfd_swqueue); // -------------------------------------
+
+        PKTQUEUE_RESET(&temp_pktqueue); /* head,tail, not reset */
+
+    }
 
     if (likely(rx_pktcnt))
     {
@@ -1740,6 +1999,7 @@ wfd_swqueue_fkb_xmit(wfd_object_t * wfd_p, uint32_t budget)
     uint16_t pktlist_prio, pktlist_dest;
     uint32_t ssid;
     uint32_t            rx_pktcnt;
+    pktqueue_t          temp_pktqueue; /* Declared on stack */
     FkBuff_t          * fkb;
     pktqueue_pkt_t    * pkt;
     pktqueue_t        * pktqueue;
@@ -1749,20 +2009,32 @@ wfd_swqueue_fkb_xmit(wfd_object_t * wfd_p, uint32_t budget)
 
     ASSERT(peer_pktlist_context->keymap_fn);
 
+    pktqueue    = &wfd_swqueue->pktqueue;
+
     WFD_SWQUEUE_LOCK(wfd_swqueue); // +++++++++++++++++++++++++++++++++++++++++
 
-    pktqueue    = &wfd_swqueue->pktqueue;
+    /* Transfer packets to a local pktqueue */
+    temp_pktqueue.head   = pktqueue->head;
+    temp_pktqueue.tail   = pktqueue->tail;
+    temp_pktqueue.len    = pktqueue->len;
+
+    PKTQUEUE_RESET(pktqueue); /* head,tail, not reset */
+
+    WFD_SWQUEUE_UNLK(wfd_swqueue); // -----------------------------------------
+
+    /* Now lock-less; transmit packets from local pktqueue */
+
     pktfwd_key  = 0; /* 2b-radio, 2b-incarn, 12b-dest */
     rx_pktcnt   = 0;
 
     while (budget)
     {
-        if (pktqueue->len != 0U)
+        if (temp_pktqueue.len != 0U)
         {
-            pkt             = pktqueue->head;
-            pktqueue->head  = PKTQUEUE_PKT_SLL(pkt, FKBUFF_PTR);
+            pkt             = temp_pktqueue.head;
+            temp_pktqueue.head  = PKTQUEUE_PKT_SLL(pkt, FKBUFF_PTR);
             PKTQUEUE_PKT_SET_SLL(pkt, PKTQUEUE_PKT_NULL, FKBUFF_PTR);
-            pktqueue->len--;
+            temp_pktqueue.len--;
 
             fkb = PNBUFF_2_FKBUFF(pkt);
 
@@ -1802,7 +2074,7 @@ wfd_swqueue_fkb_xmit(wfd_object_t * wfd_p, uint32_t budget)
             ++rx_pktcnt;
 
         }
-        else /* pktqueue->len == 0 : No more packets to read */
+        else /* temp_pktqueue.len == 0 : No more packets to read */
         {
             break;
         }
@@ -1810,7 +2082,25 @@ wfd_swqueue_fkb_xmit(wfd_object_t * wfd_p, uint32_t budget)
         --budget;
     } /* while (budget) */
 
-    WFD_SWQUEUE_UNLK(wfd_swqueue); // -----------------------------------------
+    if (temp_pktqueue.len != 0U) {
+        /* Out of budget, prepend left-over packets to ENET SWq */
+
+        WFD_SWQUEUE_LOCK(wfd_swqueue); // +++++++++++++++++++++++++++++++++++++
+
+        if (pktqueue->len == 0) {
+            pktqueue->tail = temp_pktqueue.tail;
+        } else {
+            PKTQUEUE_PKT_SET_SLL(temp_pktqueue.tail, pktqueue->head, FKBUFF_PTR);
+        }
+
+        pktqueue->head = temp_pktqueue.head;
+        pktqueue->len += temp_pktqueue.len;
+
+        WFD_SWQUEUE_UNLK(wfd_swqueue); // -------------------------------------
+
+        PKTQUEUE_RESET(&temp_pktqueue); /* head,tail, not reset */
+
+    }
 
     if (likely(rx_pktcnt))
     {

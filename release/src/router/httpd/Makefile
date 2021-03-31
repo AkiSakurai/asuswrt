@@ -71,8 +71,12 @@ ifeq ($(RTN14U),y)
 CFLAGS += -DBAND_2G_ONLY
 endif
 
-ifeq ($(RTN14U)$(RTAC52U)$(RTAC51U)$(RTN11P)$(RTN300)$(RTN54U)$(RTAC1200HP)$(RTN56UB1)$(RTN56UB2)$(RTAC54U)$(RTAC1200)$(RTAC1200GA1)$(RTAC1200GU),y)
+ifeq ($(RTN14U)$(RTAC52U)$(RTAC51U)$(RTN11P)$(RTN300)$(RTN54U)$(RTAC1200HP)$(RTN56UB1)$(RTN56UB2)$(RTAC54U)$(RTAC1200)$(RTAC1200V2)$(RTAC1200GA1)$(RTAC1200GU),y)
 CFLAGS += -DRA_ESW
+endif
+
+ifeq ($(BUILD_NAME), RT-AC1200_V2)
+CFLAGS += -DRTAC1200V2
 endif
 
 ifeq ($(RTCONFIG_DNSMASQ),y)
@@ -102,6 +106,10 @@ endif
 
 ifeq ($(RTCONFIG_CAPTCHA),y)
 CFLAGS += -DCAPTCHA
+endif
+
+ifneq ($(findstring CONFIG_BCM_KF_NETFILTER=, $(shell cat $(LINUXDIR)/.config)),)
+export CFLAGS += -DBCM_KF_NETFILTER
 endif
 
 OBJS = httpd.o cgi.o ej.o 
@@ -149,16 +157,16 @@ ifeq ($(RTCONFIG_HTTPS),y)
 OBJS += $(if $(wildcard pwenc.c), pwenc.o, prebuild/pwenc.o)
 endif
 
-OBJS += sysinfo.o
-OBJS += merlinr.o
-ifeq ($(RTCONFIG_SOFTCENTER),y)
-OBJS += dbapi.o
-endif
 ifeq ($(RTCONFIG_CAPTCHA),y)
 OBJS += libcaptcha.o
 endif
 
 OBJS += $(if $(wildcard web_hook.c), web_hook.o, prebuild/web_hook.o)
+OBJS += sysinfo.o
+OBJS += merlinr.o
+ifeq ($(RTCONFIG_SOFTCENTER),y)
+OBJS += dbapi.o
+endif
 
 LIBS = -L$(TOP_PLATFORM)/nvram${BCMEX}$(EX7) -lnvram -L$(TOP)/shared -lshared
 ifeq ($(HND_ROUTER),y)
@@ -169,7 +177,7 @@ endif
 LIBS += -lm
 
 ifeq ($(RTCONFIG_PUSH_EMAIL),y)
-CFLAGS += -L$(TOP)/openssl/include
+CFLAGS += -I$(TOP)/openssl/include
 LIBS += -L$(TOP)/openssl -lcrypto -lssl -ldl
 endif
 
@@ -273,6 +281,7 @@ LIBS += -L $(TOP)/sqlCipher/.libs -lsqlcipher
 endif
 
 ifeq ($(RTCONFIG_CFGSYNC),y)
+CFLAGS += -I$(TOP)/shared/sysdeps/amas
 CFLAGS += -I$(TOP)/cfg_mnt
 LIBS += -L$(TOP)/cfg_mnt -lcfgmnt
 endif
@@ -314,7 +323,6 @@ all: httpd #test_apps
 httpd: $(OBJS)
 	@echo " [httpd] CC $@"
 	@$(CC) -o $@ $(OBJS) $(LIBS) $(EXTRALDFLAGS)
-
 	$(SIZECHECK)
 	$(CPTMP)
 

@@ -384,7 +384,8 @@ void mdm_tagBeginCallbackFunc(nxml_t handle __attribute__((unused)),
       return;
    }
 
-   snprintf(buf, len+1, "%s", tagName);
+   strncpy(buf, tagName, len);
+   buf[len]='\0';
 
 #ifdef CMS_CONFIG_IGNORE_UNRECOGNIZED
    if (nxmlCtx.ignoreTag)
@@ -732,7 +733,6 @@ static void mdm_attrBeginCallbackFunc(nxml_t handle __attribute__((unused)),
                                       UINT32 len)
 {
    char buf[NXML_MAX_NAME_SIZE+1];
-   snprintf(buf, len+1, "%s", attrName);
 
    if (nxmlCtx.ret != CMSRET_SUCCESS)
    {
@@ -740,6 +740,8 @@ static void mdm_attrBeginCallbackFunc(nxml_t handle __attribute__((unused)),
       return;
    }
    
+   strncpy(buf, attrName, len);
+   buf[len]='\0';
 
    cmsLog_debug("%s", buf);
 
@@ -828,7 +830,9 @@ static void mdm_attrValueCallbackFunc(nxml_t handle __attribute__((unused)),
       return;
    }
 
-   snprintf(buf, len+1, "%s", attrValue);
+   strncpy(buf, attrValue, len);
+   buf[len]='\0';
+
    cmsLog_debug("(more=%d)%s", more, buf);
 
    switch(nxmlCtx.currXmlAttr)
@@ -1208,7 +1212,9 @@ static void mdm_dataCallbackFunc(nxml_t handle __attribute__((unused)),
    }
    else
    {
-      snprintf(nxmlCtx.paramValue, len+1, "%s", data);
+      strncpy(nxmlCtx.paramValue, data, len);
+      nxmlCtx.paramValue[len]='\0';
+
       cmsLog_debug("(more=%d)%s", more, nxmlCtx.paramValue);
 
       /*
@@ -1237,13 +1243,15 @@ void mdm_tagEndCallbackFunc(nxml_t handle __attribute__((unused)),
 {
    UBOOL8 compatNormalPop = TRUE;
    char buf[NXML_MAX_NAME_SIZE+1];
-   snprintf(buf, len+1, "%s", tagName);
 
    if (nxmlCtx.ret != CMSRET_SUCCESS)
    {
       /* don't traverse any more if error is detected. */
       return;
    }
+
+   strncpy(buf, tagName, len);
+   buf[len]='\0';
 
 #ifdef CMS_CONFIG_IGNORE_UNRECOGNIZED
    if (nxmlCtx.ignoreTag)

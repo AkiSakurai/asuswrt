@@ -404,6 +404,64 @@ void rutQos_getIntfNumOfCreatedQueues_dev2(const void *queueObj,
 
 }
 
+void rutQos_reconfigShaperOnLayer2Intf_dev2(const char *l2IntfName)
+{
+   InstanceIdStack iidStack = EMPTY_INSTANCE_ID_STACK;
+   Dev2QosShaperObject *shaperObj = NULL;
+  
+   char *fullPath=NULL;
+   CmsRet ret;
+
+   cmsLog_notice("Enter: l2IntfName=%s", l2IntfName);
+
+   /* convert l2IntfName to fullpath for comparison */
+   if ((ret = qdmIntf_intfnameToFullPathLocked(l2IntfName, TRUE, &fullPath)) != CMSRET_SUCCESS)
+   {
+      cmsLog_error("qdmIntf_intfnameToFullPath for %s returns error. ret=%d",
+                    l2IntfName, ret);
+      return;
+   }
+   else
+   {
+      cmsLog_debug("l2IntfName %s ==> %s", l2IntfName, fullPath);
+   }
+
+   while ((ret = cmsObj_getNextFlags(MDMOID_DEV2_QOS_SHAPER, &iidStack, OGF_NO_VALUE_UPDATE,
+                                     (void **) &shaperObj)) == CMSRET_SUCCESS)
+   {
+      if (!cmsUtl_strcmp(shaperObj->interface, fullPath))
+      {
+         CmsRet r2;
+         SINT32 shapingRate = -1;
+         if (shaperObj->enable)
+         {
+            shapingRate = shaperObj->shapingRate;
+         }
+         r2 = rutQos_tmPortShaperCfg(l2IntfName, shapingRate, (SINT32)shaperObj->shapingBurstSize, MDMVS_UP, FALSE);
+         if (r2 == CMSRET_SUCCESS)
+         {
+            cmsLog_debug("Set QoS port shaper successfully, intf=%s, shapingRate=%d, shapingBurstSize=%u",
+                         l2IntfName, shapingRate, shaperObj->shapingBurstSize);
+         }
+         else
+         {
+            cmsLog_error("Could not set QoS port shaper, intf=%s, shapingRate=%d, shapingBurstSize=%u, retTm=%d",
+                         l2IntfName, shapingRate, shaperObj->shapingBurstSize, ret);
+         }
+      }
+      cmsObj_free((void **) &shaperObj);
+   }
+
+   CMSMEM_FREE_BUF_AND_NULL_PTR(fullPath);
+
+   if (ret != CMSRET_SUCCESS && ret != CMSRET_NO_MORE_INSTANCES)
+   {
+      cmsLog_error("error while traversing shaper objects, ret=%d", ret);
+   }
+
+   return;
+}
+
 #endif  /* DMP_DEVICE2_QOS_1 */
 
 #endif /* DMP_DEVICE2_BASELINE_1 */

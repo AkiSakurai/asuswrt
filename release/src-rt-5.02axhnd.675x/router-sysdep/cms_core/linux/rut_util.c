@@ -1482,7 +1482,7 @@ CmsRet rut_intfnameToFullPath(const char *intfname, UBOOL8 layer2, char **mdmPat
    }
 
    INIT_INSTANCE_ID_STACK(&iidStack);
-   while ((ret = cmsObj_getNextFlags(oid, &iidStack, OGF_NO_VALUE_UPDATE, &mdmObj)) == CMSRET_SUCCESS)
+   while ((ret = cmsObj_getNextFlags(oid, &iidStack, OGF_NO_VALUE_UPDATE, (void **) &mdmObj)) == CMSRET_SUCCESS)
    {
       char *mdmIfName;
 
@@ -1539,7 +1539,6 @@ CmsRet rut_intfnameToFullPath(const char *intfname, UBOOL8 layer2, char **mdmPat
          break;
       }
 
-      cmsObj_free(&mdmObj);
 
 #ifdef BRCM_WLAN
       if (cmsUtl_strcmp(mdmIfName, wlifname[0]?wlifname:intfname) == 0)
@@ -1557,8 +1556,10 @@ CmsRet rut_intfnameToFullPath(const char *intfname, UBOOL8 layer2, char **mdmPat
          {
             cmsLog_error("cmsMdm_pathDescriptorToFullPath returns error. ret=%d", ret);
          }
+         cmsObj_free(&mdmObj);
          return ret;
       }
+      cmsObj_free(&mdmObj);
    }
 
 
@@ -1640,7 +1641,7 @@ CmsRet rut_intfnameToFullPath(const char *intfname, UBOOL8 layer2, char **mdmPat
       if (oid != 0)
       {
          INIT_INSTANCE_ID_STACK(&iidStack);
-         while ((ret = cmsObj_getNextFlags(oid, &iidStack, OGF_NO_VALUE_UPDATE, &mdmObj)) == CMSRET_SUCCESS)
+         while ((ret = cmsObj_getNextFlags(oid, &iidStack, OGF_NO_VALUE_UPDATE, (void **) &mdmObj)) == CMSRET_SUCCESS)
          {
             char *mdmIfName;
 
@@ -1699,7 +1700,7 @@ CmsRet rut_intfnameToFullPath(const char *intfname, UBOOL8 layer2, char **mdmPat
             char *mdmIfName;
             oid = MDMOID_WAN_PPP_CONN;
             INIT_INSTANCE_ID_STACK(&iidStack);
-            while ((ret = cmsObj_getNextFlags(oid, &iidStack, OGF_NO_VALUE_UPDATE, &mdmObj)) == CMSRET_SUCCESS)
+            while ((ret = cmsObj_getNextFlags(oid, &iidStack, OGF_NO_VALUE_UPDATE, (void **)&mdmObj)) == CMSRET_SUCCESS)
             {
                 mdmIfName = ((WanPppConnObject *)mdmObj)->X_BROADCOM_COM_IfName;
                 if (cmsUtl_strcmp(mdmIfName, intfname) == 0)

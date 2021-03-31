@@ -96,6 +96,8 @@ void bcmxapi_StopTxQueue(PBCMXTMRT_DEV_CONTEXT pDevCtx,
                               volatile BcmPktDma_XtmTxDma *txdma);
 void bcmxapi_StartTxQueue(PBCMXTMRT_DEV_CONTEXT pDevCtx,
                               volatile BcmPktDma_XtmTxDma *txdma);
+int  bcmxapi_SetTxPortShaperInfo(PBCMXTMRT_GLOBAL_INFO pGi, 
+                             PXTMRT_PORT_SHAPER_INFO pShaperInfo);
 void bcmxapi_SetPtmBondPortMask(UINT32 portMask);
 void bcmxapi_SetPtmBonding(UINT32 bonding);
 void bcmxapi_XtmGetStats(UINT8 vport, UINT32 *rxDropped, UINT32 *txDropped);

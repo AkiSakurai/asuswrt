@@ -1,6 +1,6 @@
 /*
  * Public interface to wireless security key operations
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: wlc_key.h 781792 2019-11-28 15:43:27Z $
+ * $Id: wlc_key.h 782567 2019-12-24 06:43:32Z $
  */
 
 #ifndef _wlc_key_h_
@@ -185,7 +185,7 @@ typedef uint32 wlc_key_flags_t;
 #define WLC_KEY_FLAG_PRIMARY WLC_KEY_FLAG_TX
 
 /* externally settable flags */
-#ifdef BCMDBG
+#if defined(BCMDBG) || defined(MFP_TEST)
 #define WLC_KEY_DBG_SETTABLE_FLAGS (\
 	WLC_KEY_FLAG_GEN_MIC_ERR|\
 	WLC_KEY_FLAG_GEN_REPLAY|\
@@ -195,7 +195,7 @@ typedef uint32 wlc_key_flags_t;
 	WLC_KEY_FLAG_GEN_MFP_DEAUTH_ERR)
 #else
 #define WLC_KEY_DBG_SETTABLE_FLAGS 0
-#endif /* BCMDBG */
+#endif /* BCMDBG || MFP_TEST */
 
 #define WLC_KEY_SETTABLE_FLAGS WLC_KEY_DBG_SETTABLE_FLAGS
 

@@ -66,6 +66,7 @@
 #include "rut_network.h"
 #include "rut_wan.h"
 #include "rut_iptables.h"
+#include "rut_ebtables.h"
 #include "rut_multicast.h"
 #if defined(DMP_DEVICE2_HOMEPLUG_1) || (defined(DHCP_CLIENT_DEFAULT) && defined(DMP_DEVICE2_DHCPV4_1))
 #include "device2/rut2_dhcpv4.h"
@@ -598,6 +599,11 @@ void rutLan_enableBridge(const char *bridgeIfName, UBOOL8 isNewBridge, const cha
 
    }
 
+#if defined(DMP_X_BROADCOM_COM_IPV6_1)
+   /* RFC7084 requirement */
+   rutIpt_defaultLANSetup6(bridgeIfName);
+   rutEbt_defaultLANSetup6();
+#endif
    rut_doSystemAction("rcl_lan", cmdStr);
 
 

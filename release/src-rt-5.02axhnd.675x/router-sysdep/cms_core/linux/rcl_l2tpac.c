@@ -63,7 +63,6 @@
  *
  */
 
-
 CmsRet rcl_l2tpAcIntfConfigObject(_L2tpAcIntfConfigObject *newObj,
                 const _L2tpAcIntfConfigObject *currObj,
                 const InstanceIdStack *iidStack __attribute__((unused)),
@@ -71,80 +70,72 @@ CmsRet rcl_l2tpAcIntfConfigObject(_L2tpAcIntfConfigObject *newObj,
                 CmsRet *errorCode __attribute__((unused)))
 
 {
-   L2tpAcIntfConfigObject *L2tpAcIntf = NULL;
-   InstanceIdStack iidStack0 = EMPTY_INSTANCE_ID_STACK;
-   InstanceIdStack iidStack1 = EMPTY_INSTANCE_ID_STACK;
-   void *obj = NULL;
-   WanPppConnObject *pppCon=NULL;
-   char l2tpAcUsername[BUFLEN_128]="username";
-   char l2tpAcPassword[BUFLEN_128]="password";
-   CmsRet ret=CMSRET_SUCCESS;
+    CmsRet ret=CMSRET_SUCCESS;
+	InstanceIdStack L2tpAciidStack = EMPTY_INSTANCE_ID_STACK;
+	L2tpAcClientCfgObject *L2tpAc = NULL;	
+	
+	if ((ret = rut_validateObjects(newObj, currObj)) != CMSRET_SUCCESS)
+	{
+		cmsLog_error("rut_validateObjects returns error. ret=%d", ret);
+		return ret;
+	}
+	
+	if ((ret = cmsObj_get(MDMOID_L2TP_AC_CLIENT_CFG, &L2tpAciidStack, 0, (void **) &L2tpAc)) != CMSRET_SUCCESS)
+	{
+		cmsLog_error("Failed to get L2tpAcClientCfgObject, ret=%d", ret);
+		return ret;
+	}
 
-   if ((ret = rut_validateObjects(newObj, currObj)) != CMSRET_SUCCESS)
-   {
-      cmsLog_error("rut_validateObjects returns error. ret=%d", ret);
-      return ret;
-   }
+	if (ADD_NEW(newObj,currObj))
+    {		
+		L2tpAc->numberOfClient += 1;
+		L2tpAc->enable = TRUE;
 
-   /* enable L2tpAc connection */
-   if (ENABLE_NEW_OR_ENABLE_EXISTING(newObj, currObj))
-   {
-      if ((ret = rutWl2_getWanL2tpAcObject(&iidStack0, &L2tpAcIntf)) != CMSRET_SUCCESS)
-      {
-          cmsLog_error("could not get L2tpAcIntf object");
-          return ret;
-      }
-      else
-      {
-          cmsObj_free((void **) &L2tpAcIntf);
-      
-          /* get iidstack of WANConnectionDevice */
-          if ((ret = cmsObj_getNextInSubTree(MDMOID_WAN_CONN_DEVICE, &iidStack0, &iidStack1, (void **)&obj)) != CMSRET_SUCCESS)
-          {
-            cmsLog_error("failed to get WanConnDevice, ret=%d", ret);
-            return ret;
-          }
-          cmsObj_free(&obj);   /* no longer needed */
-          INIT_INSTANCE_ID_STACK(&iidStack0);
-          if ((ret = cmsObj_getNextInSubTreeFlags(MDMOID_WAN_PPP_CONN, &iidStack1, &iidStack0, OGF_NO_VALUE_UPDATE,(void **) &pppCon)) == CMSRET_SUCCESS)
-          {
-              //cmsLog_error("\n~~~ pppConn->username=%s, pppConn->password=%s", pppCon->username, pppCon->password);          
-            
-              if(pppCon->username != NULL)		
-                 strcpy(l2tpAcUsername, pppCon->username);
-              else
-                 l2tpAcUsername[0] = '\0';
-				
-              if(pppCon->password != NULL)
-                  strcpy(l2tpAcPassword, pppCon->password);
-              else
-                  l2tpAcPassword[0] = '\0';
-            
-              if ((ret = rutL2tpAC_start(pppCon, newObj->lnsIpAddress, l2tpAcUsername, l2tpAcPassword)) != CMSRET_SUCCESS)
-              {
-                  cmsLog_error("L2tpAc initialzation failed, ret=%d", ret);
-                  cmsObj_free((void **) &pppCon);
-                  return ret;
-              }
-              cmsObj_free((void **) &pppCon);
-          }
-          else
-          {
-            cmsLog_error("failed to get pppCon, ret=%d", ret);
-          }
-      }
-   }
-   else if (POTENTIAL_CHANGE_OF_EXISTING(newObj, currObj))
-   {
-      /* check for change in config params, if changed */
-   }
-   /* delete L2tpAc connection */
-   else if (DELETE_OR_DISABLE_EXISTING(newObj, currObj))
-   {
-      rutL2tpAC_stop((_L2tpAcIntfConfigObject *) currObj);
-   }
+		ret = cmsObj_set(L2tpAc, &L2tpAciidStack);
+		if (ret != CMSRET_SUCCESS)
+		{
+			cmsLog_error("Failed to set L2tpAcClientCfgObject, ret = %d", ret);
+			cmsObj_free((void **) &L2tpAc);
+			return ret;
+		}
+		
+        if (L2tpAc->numberOfClient == 1)
+        {
+			rutL2tp_startL2tpd();
+		}
+	}
 
-   return ret;
+	if (ENABLE_NEW_OR_ENABLE_EXISTING(newObj, currObj) ||
+		POTENTIAL_CHANGE_OF_EXISTING(newObj, currObj))
+	{	  
+		ret = rutL2tp_createTunnel(newObj);
+		cmsLog_debug("L2tp create Tunnel ret(%d)", ret);
+	}
+	else if (DELETE_OR_DISABLE_EXISTING(newObj, currObj))
+	{
+		ret = rutL2tp_deleteTunnel(currObj);
+		cmsLog_debug("L2tp delete Tunnel ret(%d)",ret);
+
+		L2tpAc->numberOfClient -= 1;
+		
+		ret = cmsObj_set(L2tpAc, &L2tpAciidStack);
+		if (ret != CMSRET_SUCCESS)
+		{
+			cmsLog_error("Failed to set L2tpAcClientCfgObject, ret = %d", ret);
+			cmsObj_free((void **) &L2tpAc);
+			return ret;
+		}
+
+		if (L2tpAc->numberOfClient == 0)
+		{
+			L2tpAc->enable = FALSE;
+			rutL2tp_stopL2tpd();
+		}
+	}
+
+	cmsObj_free((void **) &L2tpAc);
+	
+    return CMSRET_SUCCESS;
 }
 
    
@@ -154,28 +145,68 @@ CmsRet rcl_l2tpAcLinkConfigObject(_L2tpAcLinkConfigObject *newObj,
                 char **errorParam __attribute__((unused)),
                 CmsRet *errorCode __attribute__((unused)))
 {
-   CmsRet ret=CMSRET_SUCCESS;
+	CmsRet ret                       = CMSRET_SUCCESS;
+	InstanceIdStack iidStackAncestor = EMPTY_INSTANCE_ID_STACK;
+	InstanceIdStack iidStackSub      = EMPTY_INSTANCE_ID_STACK;
+	WanPppConnObject *pppCon         = NULL;
+	void *obj                        = NULL;
 
-    // cwu
-   //system("echo ---ACLink & \n");
+	if ((ret = rut_validateObjects(newObj, currObj)) != CMSRET_SUCCESS)
+	{
+		cmsLog_error("rut_validateObjects returns error. ret=%d", ret);
+		return ret;
+	}
 
-   if (ENABLE_NEW_OR_ENABLE_EXISTING(newObj, currObj))
-   {
-       // cwu
-       //system("echo ------ LinkConfigObject_Enable & \n");
-   }
-   else if (POTENTIAL_CHANGE_OF_EXISTING(newObj, currObj))
-   {
-      /* check for change in config params, if changed */
-   }
-   /* delete L2tpAc connection */
-   else if (DELETE_OR_DISABLE_EXISTING(newObj, currObj))
-   {
-    // cwu
-      // system("echo ------ LinkConfigObject_Disable & \n");
-	  // rutL2tpAC_stop((_L2tpAcIntfConfigObject *) currObj);
-   }
+	if (rut_isApplicationActive(EID_L2TPD) == FALSE)
+	{
+		cmsLog_debug("l2tpd is not ready");
+		return ret;
+	}
 
-   return ret;
+	if (ENABLE_NEW_OR_ENABLE_EXISTING(newObj, currObj) ||
+		POTENTIAL_CHANGE_OF_EXISTING(newObj, currObj))
+	{
+		iidStackAncestor = *iidStack;
+
+		/*find current object ancestor*/
+		if (cmsObj_getAncestor(MDMOID_WAN_CONN_DEVICE, MDMOID_L2TP_AC_LINK_CONFIG,
+							  &iidStackAncestor, (void **) &obj) != CMSRET_SUCCESS)
+		{
+			cmsLog_error("Current L2TP LINK CONFIG object have no ancestor.");
+			return CMSRET_MDM_TREE_ERROR;
+		}
+		cmsObj_free((void **) &obj);
+
+		INIT_INSTANCE_ID_STACK(&iidStackSub);
+		while (((ret = cmsObj_getNextInSubTree(MDMOID_WAN_PPP_CONN, &iidStackAncestor, 
+                                    &iidStackSub, (void **)&pppCon)) == CMSRET_SUCCESS))
+		{
+			if (!IS_EMPTY_STRING(newObj->tunnelName) && !IS_EMPTY_STRING(newObj->sessionName) && !IS_EMPTY_STRING(newObj->ifName)) 
+			{
+				ret = rutL2tp_createLink(newObj, pppCon);
+	 			cmsLog_debug("create session ret(%d) username=%s,password=%s,tunnelName=%s,sessionName=%s,ifName=%s",
+				        ret, pppCon->username, pppCon->password, newObj->tunnelName, newObj->sessionName, newObj->ifName);
+			}
+		}
+	}
+	else if (DELETE_OR_DISABLE_EXISTING(newObj, currObj))
+	{
+		if (!IS_EMPTY_STRING(currObj->tunnelName) && !IS_EMPTY_STRING(currObj->sessionName))
+	    {
+			ret = rutL2tp_deleteLink(currObj);
+	   		cmsLog_debug("delete session ret(%d) tunnelName=%s,sessionName=%s,ifName=%s", ret, currObj->tunnelName, currObj->sessionName, currObj->ifName);
+		}
+	}
+   
+	return CMSRET_SUCCESS;
+}
+
+CmsRet rcl_l2tpAcClientCfgObject(_L2tpAcClientCfgObject *newObj __attribute__((unused)),
+                const _L2tpAcClientCfgObject *currObj __attribute__((unused)),
+                const InstanceIdStack *iidStack __attribute__((unused)),
+                char **errorParam __attribute__((unused)),
+                CmsRet *errorCode __attribute__((unused)))
+{   
+	return CMSRET_SUCCESS;
 }
 #endif /* DMP_X_BROADCOM_COM_L2TPAC_1 */

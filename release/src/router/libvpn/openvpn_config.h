@@ -229,7 +229,7 @@ extern void update_ovpn_status(ovpn_type_t type, int unit, ovpn_status_t status_
 extern ovpn_status_t get_ovpn_status(ovpn_type_t type, int unit);
 extern ovpn_errno_t get_ovpn_errno(ovpn_type_t type, int unit);
 extern void wait_time_sync(int max);
-extern char* adjust_smp_affinity(ovpn_type_t type, int unit);
+extern unsigned int adjust_smp_affinity(ovpn_type_t type, int unit);
 
 extern ovpn_accnt_info_t* get_ovpn_accnt(ovpn_accnt_info_t *accnt_info);
 

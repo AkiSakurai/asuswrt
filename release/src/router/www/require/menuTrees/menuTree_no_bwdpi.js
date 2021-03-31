@@ -43,6 +43,14 @@ define(function(){
 				]
 			}, 
 			{
+				menuName: "AiMesh",
+				index: "menu_AiMesh", 
+				tab: [
+					{url: "AiMesh.asp", tabName: "AiMesh"},
+					{url: "NULL", tabName: "__INHERIT__"}
+				]
+			},
+			{
 				menuName: "<#Guest_Network#>",
 				index: "menu_GuestNetwork",
 				tab: [
@@ -94,6 +102,14 @@ define(function(){
 				] 
 			},
 			{
+				menuName: "腾讯网游加速器",
+				index: "menu_TencentAcceleration",
+				tab: [
+					{url: "GameBoost_Tencent.asp", tabName: "Tencent Game Acceleration"},
+					{url: "NULL", tabName: "__INHERIT__"}
+				]
+			},
+			{
 				menuName: "<#Menu_usb_application#>",
 				index: "menu_APP", 
 				tab: [
@@ -105,6 +121,7 @@ define(function(){
 					{url: "PrinterServer.asp", tabName: "__INHERIT__"},
 					{url: "Advanced_Modem_Content.asp", tabName: "__INHERIT__"},
 					{url: "Advanced_TimeMachine.asp", tabName: "__INHERIT__"},
+					{url: "fileflex.asp", tabName: "__INHERIT__"},
 					{url: "NULL", tabName: "__INHERIT__"}
 				] 
 			},
@@ -191,6 +208,7 @@ define(function(){
 					{url: "Advanced_VPN_IPSec.asp", tabName: "__INHERIT__"},
 					{url: "Advanced_VPNClient_Content.asp", tabName: (vpn_fusion_support) ? "<#VPN_Fusion#>" : "<#vpnc_title#>"},
 					{url: "Advanced_TOR_Content.asp", tabName: "TOR"},
+					{url: "Advanced_Instant_Guard.asp", tabName: "Instant Guard"},/*untranslated*/
 					{url: "NULL", tabName: "__INHERIT__"}
 				]
 			},		
@@ -213,7 +231,7 @@ define(function(){
 					{url: "Advanced_System_Content.asp", tabName: "<#menu5_6_2#>"},
 					{url: "Advanced_FirmwareUpgrade_Content.asp", tabName: "<#menu5_6_3#>"},
 					{url: "Advanced_SettingBackup_Content.asp", tabName: "<#menu5_6_4#>"},
-					{url: "Advanced_PerformanceTuning_Content.asp", tabName: "Performance tuning"},
+					{url: "Advanced_PerformanceTuning_Content.asp", tabName: "Fan tuning"},
 					{url: "Advanced_ADSL_Content.asp", tabName: "<#menu_dsl_setting#>"},
 					{url: "Advanced_Feedback.asp", tabName: "<#menu_feedback#>"},
 					{url: "Feedback_Info.asp", tabName: "__INHERIT__"},
@@ -257,11 +275,7 @@ define(function(){
 			menus: function(){
 				var retArray = [];
 
-				if(multissid_support == -1){
-					retArray.push("menu_GuestNetwork");
-				}
-
-				if(multissid_support == -1){
+				if(!multissid_support){
 					retArray.push("menu_GuestNetwork");
 				}
 
@@ -271,11 +285,19 @@ define(function(){
 					retArray.push("menu_BandwidthMonitor");
 				}
 
+				if(!adaptiveqos_support){	
+					for(i=0; i<menuTree.list.length; i++){
+						if(menuTree.list[i].menuName == '<#Adaptive_QoS#>'){
+							menuTree.list[i].menuName = '<#menu5_3_2#>';
+						}
+					}
+				}
+
 				if(!usb_support){
 					retArray.push("menu_APP");
 				}
 
-				if(!cloudsync_support && !aicloudipk_support){
+				if((!cloudsync_support && !aicloudipk_support) || nocloudsync_support){
 					retArray.push("menu_AiCloud");
 				}
 
@@ -299,9 +321,24 @@ define(function(){
 					retArray.push("menu_GameBoost");
 				}
 
+				if(!tencent_qmacc_support)
+					retArray.push("menu_TencentAcceleration");
+
 				if(!uu_support){
 					retArray.push("menu_UU");
 				}
+
+				if(!amesh_support)
+					retArray.push("menu_AiMesh");
+				else{
+					if(ameshRouter_support){
+						if(!isSwMode("rt") && !isSwMode("ap"))
+							retArray.push("menu_AiMesh");
+					}
+					else if(ameshNode_support)
+						retArray.push("menu_AiMesh");
+				}
+
 				/* Operation Mode */
 				if(isSwMode("re")){
 					retArray.push("menu_ParentalControl");
@@ -316,10 +353,7 @@ define(function(){
 					retArray.push("menu_VPN");
 					retArray.push("menu_VLAN");
 					retArray.push("menu_Firewall");
-
-					if(!concurrep_support){
-						retArray.push("menu_Wireless");
-					}
+					retArray.push("menu_Wireless");
 				}
 				else if(isSwMode("ap")){
 					retArray.push("menu_ParentalControl");
@@ -417,6 +451,9 @@ define(function(){
 					retArray.push("Advanced_VPNClient_Content.asp");
 				}
 
+				if(!isSupport("Instant_Guard"))
+					retArray.push("Advanced_Instant_Guard.asp");
+
 				if(!ParentalCtrl2_support){
 					retArray.push("ParentalControl.asp");
 				}
@@ -469,7 +506,7 @@ define(function(){
 					retArray.push("Advanced_Notification_Content.asp");
 				}
 
-				if(!smart_connect_support){
+				if(!smart_connect_support || Qcawifi_support){
 					retArray.push("Advanced_Smart_Connect.asp");
 				}
 				
@@ -518,6 +555,9 @@ define(function(){
 					retArray.push("GameBoost.asp");
 				}
 
+				if(!tencent_qmacc_support)
+					retArray.push("GameBoost_Tencent.asp");
+
 				if(!IPv6_support){
 					retArray.push("Main_IPV6Status_Content.asp");
 				}
@@ -565,6 +605,17 @@ define(function(){
 
 				if(!amesh_support)
 					retArray.push("Advanced_Roaming_Block_Content.asp");
+				else{
+					if(ameshRouter_support){
+						if(!isSwMode("rt") && !isSwMode("ap"))
+							retArray.push("Advanced_Roaming_Block_Content.asp");
+					}
+					else if(ameshNode_support)
+						retArray.push("Advanced_Roaming_Block_Content.asp");
+				}
+
+				if(!fileflex_support)
+					retArray.push("fileflex.asp");
 
 				/* Operation Mode */
 				if(isSwMode("re") || isSwMode("ew")){
@@ -574,12 +625,12 @@ define(function(){
 					retArray.push("Advanced_MultiSubnet_Content.asp");
 					retArray.push("Advanced_GWStaticRoute_Content.asp");
 					retArray.push("Advanced_IPTV_Content.asp");
-					retArray.push("Advanced_SwitchCtrl_Content.asp");
 					retArray.push("Main_DHCPStatus_Content.asp");
 					retArray.push("Main_IPV6Status_Content.asp");
 					retArray.push("Main_RouteStatus_Content.asp");
 					retArray.push("Main_IPTStatus_Content.asp");
 					retArray.push("Main_ConnStatus_Content.asp");
+					retArray.push("Advanced_Smart_Connect.asp");
 
 					if(!concurrep_support){
 						retArray.push("Advanced_Wireless_Content.asp");
@@ -603,7 +654,6 @@ define(function(){
 					retArray.push("Advanced_MultiSubnet_Content.asp");
 					retArray.push("Advanced_GWStaticRoute_Content.asp");
 					retArray.push("Advanced_IPTV_Content.asp");
-					retArray.push("Advanced_SwitchCtrl_Content.asp");
 					retArray.push("Main_DHCPStatus_Content.asp");
 					retArray.push("Main_IPV6Status_Content.asp");
 					retArray.push("Main_RouteStatus_Content.asp");
@@ -622,7 +672,6 @@ define(function(){
 					retArray.push("Advanced_MultiSubnet_Content.asp");
 					retArray.push("Advanced_GWStaticRoute_Content.asp");
 					retArray.push("Advanced_IPTV_Content.asp");
-					retArray.push("Advanced_SwitchCtrl_Content.asp");
 					retArray.push("Main_DHCPStatus_Content.asp");
 					retArray.push("Main_IPV6Status_Content.asp");
 					retArray.push("Main_RouteStatus_Content.asp");
@@ -630,9 +679,6 @@ define(function(){
 					retArray.push("Main_ConnStatus_Content.asp");
 					retArray.push("Advanced_Smart_Connect.asp");
 				}
-
-				if(amesh_support && (!isSwMode("rt") && !isSwMode("ap")))
-					retArray.push("Advanced_Roaming_Block_Content.asp");
 
 				/* System Status Changed */
 				// --

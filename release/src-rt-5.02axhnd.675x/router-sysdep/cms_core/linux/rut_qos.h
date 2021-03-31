@@ -143,6 +143,10 @@ CmsRet rutQos_qMgmtQueueReconfig_igd(char *ifcname, UBOOL8 layer2Intf);
 void rutQos_reconfigAllQueuesOnLayer2Intf_dev2(const char *l2IntfName);
 
 
+/* All TR181 layer 2 interfaces must call this function on layer 2 link up/down.
+ * This function re-configures shaper object on a specific layer 2 interface.
+ */
+void rutQos_reconfigShaperOnLayer2Intf_dev2(const char *l2IntfName);
 
 
 /* Delete or unconfigure all the QoS queues associated with a layer 2 interface.

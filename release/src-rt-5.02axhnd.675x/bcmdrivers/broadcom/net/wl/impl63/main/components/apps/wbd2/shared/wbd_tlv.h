@@ -1,7 +1,7 @@
 /*
  * WBD Vendor Message TLV definitions
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_tlv.h 780859 2019-11-05 07:02:42Z $
+ * $Id: wbd_tlv.h 785203 2020-03-17 06:18:08Z $
  */
 
 #ifndef _WBD_TLV_H_
@@ -60,8 +60,6 @@
 #define WBD_MAX_LEN_TLV_WEAK_CLIENT_RESP		17
 #define WBD_MAX_LEN_TLV_BSS_CAPABILITY_QUERY		7
 #define WBD_MIN_LEN_TLV_BSS_CAPABILITY_REPORT		7
-#define WBD_MIN_LEN_TLV_BSS_METRICS_QUERY		1
-#define WBD_MIN_LEN_TLV_BSS_METRICS_REPORT		1
 #define WBD_LEN_TLV_STEER_RESP_REPORT			13
 #define WBD_LEN_TLV_STEER_REQUEST			1
 #define WBD_LEN_TLV_BH_STA_METRIC_POLICY		15
@@ -77,8 +75,9 @@ typedef enum wbd_tlv_types {
 	WBD_TLV_REMOVE_CLIENT_REQ_TYPE			= 6,
 	WBD_TLV_BSS_CAPABILITY_QUERY_TYPE		= 7,
 	WBD_TLV_BSS_CAPABILITY_REPORT_TYPE		= 8,
-	WBD_TLV_BSS_METRICS_QUERY_TYPE			= 9,
-	WBD_TLV_BSS_METRICS_REPORT_TYPE			= 10,
+	/* Kept the below next 2 enums to maintain the backward compatibility with smartmesh v1 */
+	WBD_TLV_TYPE_UNUSED_9				= 9,
+	WBD_TLV_TYPE_UNUSED_10				= 10,
 	WBD_TLV_STEER_RESP_REPORT_TYPE			= 11,
 	WBD_TLV_STEER_REQUEST_TYPE			= 12,
 	WBD_TLV_ZWDFS_TYPE				= 13,
@@ -168,22 +167,6 @@ extern int wbd_tlv_encode_remove_client_request(void* data, unsigned char* tlv_d
 
 /* Decode Vendor Specific TLV for Message : REMOVE_CLIENT_REQ on recieve */
 extern int wbd_tlv_decode_remove_client_request(void* data, unsigned char* tlv_data,
-	unsigned int tlv_data_len);
-
-/* Encode Vendor Specific TLV for Message : BSS metrics query */
-extern int wbd_tlv_encode_bss_metrics_query(void* data, unsigned char* tlv_data,
-	unsigned int* tlv_data_len);
-
-/* Decode Vendor Specific TLV for Message : BSS metrics query on recieve */
-extern int wbd_tlv_decode_bss_metrics_query(void* data, unsigned char* tlv_data,
-	unsigned int tlv_data_len);
-
-/* Encode Vendor Specific TLV for Message : BSS metrics Report */
-extern int wbd_tlv_encode_bss_metrics_report(void* data, unsigned char* tlv_data,
-	unsigned int* tlv_data_len);
-
-/* Decode Vendor Specific TLV for Message : BSS metrics report on recieve */
-extern int wbd_tlv_decode_bss_metrics_report(void* data, unsigned char* tlv_data,
 	unsigned int tlv_data_len);
 
 /* Encode Vendor Specific TLV for Message : Steer resp report */

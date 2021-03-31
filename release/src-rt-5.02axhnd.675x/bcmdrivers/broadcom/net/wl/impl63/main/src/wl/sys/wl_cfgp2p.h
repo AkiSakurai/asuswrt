@@ -1,7 +1,7 @@
 /*
  * Linux cfgp2p driver
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfgp2p.h 775370 2019-05-29 08:20:33Z $
+ * $Id: wl_cfgp2p.h 786445 2020-04-28 02:46:59Z $
  */
 #ifndef _wl_cfgp2p_h_
 #define _wl_cfgp2p_h_
@@ -128,7 +128,9 @@ enum wl_cfgp2p_status {
 #define p2p_is_on(cfg) ((cfg)->p2p && (cfg)->p2p->on)
 
 /* dword align allocation */
+#ifndef WLC_IOCTL_MAXLEN
 #define WLC_IOCTL_MAXLEN 8192
+#endif // endif
 
 /* XXX Samsung want to print INFO2 instead of ERROR
  * because most of case, ERROR message is not a real ERROR.

@@ -62,11 +62,6 @@
 #include <hwcomapi.h>
 #include <devload.h>
 #include <pm.h>
-#elif defined(_CFE_)
-#include "lib_types.h"
-#include "lib_string.h"
-#include "lib_printf.h"
-#include "boardparms.h"
 #elif defined(__ECOS)
 #include "boardparms.h"
 #elif defined(TARG_OS_RTEMS)
@@ -108,8 +103,12 @@
 #include "softdsl/SoftDsl.h"
 #include "BcmAdslDiag.h"
 #ifdef USE_PMC_API
-#include "pmc_drv.h"
 #include "pmc_dsl.h"
+#if defined(PMC_API_VER)
+#include "pmc_core_api.h"
+#else
+#include "pmc_drv.h"
+#endif
 #endif
 
 #if !defined(__KERNEL__)
@@ -229,7 +228,7 @@ BCMADSL_STATUS BcmAdsl_Initialize(unsigned char lineId, ADSL_FN_NOTIFY_CB pFnNot
 {
 	int	i;
 	
-	AdslDrvPrintf (TEXT("BcmAdsl_Initialize=0x%p, g_pFnNotifyCallback=0x%p\n"), BcmAdsl_Initialize, g_pFnNotifyCallback);
+	AdslDrvPrintf (TEXT("BcmAdsl_Initialize=0x%p, g_pFnNotifyCallback=0x%px\n"), BcmAdsl_Initialize, g_pFnNotifyCallback);
 #if 0
 	stop_TEST(get_cpuid());
 	return BCMADSL_STATUS_SUCCESS;
@@ -270,16 +269,41 @@ extern void BcmXdslCoreLocksInit(void);
 #ifdef SUPPORT_HMI
 
 #include "hmimsg/HpiMessage.h"
+#include "hmimsg/bcm_DrvXface.h"
 
 extern void CoreMgr_init(void);
 extern void LineMgr_init(void);
 extern void LineMgr_changeState(unsigned char lineId, int state);
 extern void lineIRQ_setStatus(uint32 lineId, uint32 newAlarms);
+extern void LineMgr_LogShowtimeEventTimeStamp(unsigned char lineId, ShowtimeEvent event);
 
 static void HmiInit(void)
 {
   CoreMgr_init();
   LineMgr_init();
+}
+
+void BcmXdslNotifyFastRetrain(unsigned char lineId)
+{
+	LineMgr_changeState(lineId, LINE_TRAINING);
+}
+
+void BcmXdslNotifyLinkUp(unsigned char lineId)
+{
+	LineMgr_changeState(lineId, LINE_SHOWTIME);
+}
+
+void BcmXdslNotifyPeriodCounterEvent(unsigned char lineId, uint event)
+{
+	if(kXdslEvent15MinutesCntrs == event)
+		lineIRQ_setStatus(lineId,INT_15MIN_PERIOD_MASK);
+	else if(kXdslEvent24HoursCntrs == event)
+		lineIRQ_setStatus(lineId,INT_24H_PERIOD_MASK);
+}
+
+void BcmXdslNotifyShowtimeEvent(unsigned char lineId, ShowtimeEvent event)
+{
+  LineMgr_LogShowtimeEventTimeStamp(lineId, event);
 }
 
 #endif
@@ -294,7 +318,7 @@ BCMADSL_STATUS BcmAdsl_Initialize(unsigned char lineId, ADSL_FN_NOTIFY_CB pFnNot
 	}
 #endif
 	
-	printk("BcmAdsl_Initialize=0x%p, g_pFnNotifyCallback=0x%p\n", BcmAdsl_Initialize, g_pFnNotifyCallback);
+	printk("BcmAdsl_Initialize=0x%p, g_pFnNotifyCallback=0x%px\n", BcmAdsl_Initialize, g_pFnNotifyCallback);
 
 	if (g_nAdslInitialized != 0) {
 		BcmAdslCoreConfigure(lineId, pAdslCfg);
@@ -347,7 +371,7 @@ BCMADSL_STATUS BcmAdsl_Initialize(unsigned char lineId, ADSL_FN_NOTIFY_CB pFnNot
 	g_pFnNotifyCallback = (pFnNotifyCb != NULL) ? pFnNotifyCb : IdleNotifyCallback;
 	g_ulNotifyCallbackParm = pParm;
 	
-#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178)
+#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146)
 	BcmAdslCoreSetSDRAMBaseAddr(kerSysGetDslPhyMemory());
 #else
 	BcmAdslCoreSetSDRAMBaseAddr((void *) ((uint) kerSysGetSdramSize() - 0x40000));
@@ -452,6 +476,9 @@ BCMADSL_STATUS BcmAdsl_ConnectionStart(unsigned char lineId)
 {
 	if (0 == g_nAdslInitialized)
 		return BCMADSL_STATUS_ERROR;
+#ifdef SUPPORT_HMI
+	LineMgr_changeState(lineId, LINE_ITU_HANDSHAKE);
+#endif
 	BcmAdslCoreConnectionStart(lineId);
 	return BCMADSL_STATUS_SUCCESS;
 }
@@ -859,7 +886,6 @@ void BcmAdsl_G997GetAndSendFrameData(unsigned char lineId, int eocMsgType)
 }
 
 extern int ClearEOCLoopBackEnabled;
-extern void BcmXdslEocWakeup(unsigned lineId, int eocMsgType);
 
 void __BcmAdsl_Status(unsigned char lineId)
 {
@@ -871,9 +897,6 @@ void __BcmAdsl_Status(unsigned char lineId)
 	if ((ConnectionInfo.LinkState != g_LinkState[lineId]) || (BcmXdslCoreGetLineActive(lineId) != g_LineActiveState[lineId])) {
 		switch (ConnectionInfo.LinkState) {
 			case BCM_ADSL_LINK_UP:
-#ifdef SUPPORT_HMI
-				LineMgr_changeState(lineId, LINE_SHOWTIME);
-#endif
 				//LGD_FOR_TR098
 				bcmOsGetTime(&g_ShowtimeStartTicks[lineId]);
 				
@@ -1076,7 +1099,7 @@ void BcmXdslNotifyRateChange(unsigned char lineId)
 	if((BCM_ADSL_LINK_UP == g_LinkState[lineId]) &&
 		(ConnectionInfo.LinkState == g_LinkState[lineId])) {
 #ifdef SUPPORT_HMI	/* INT_SOS_RATE_CHANGE_MASK? */
-		lineIRQ_setStatus(lineId, INT_SRA_RATE_CHANGE_MASK);
+//		lineIRQ_setStatus(lineId, INT_SRA_RATE_CHANGE_MASK);
 #endif
 		if( ConnectionInfo.ulInterleavedUpStreamRate ) {
 			BCMOS_EVENT_LOG((KERN_CRIT \
@@ -1326,12 +1349,18 @@ LOCAL unsigned int BcmDyingGaspIsr( void )
 // Description  : Handles power off to the board.
 // Returns      : none
 //**************************************************************************
+#if defined(BOARD_H_API_VER) && BOARD_H_API_VER > 15
+void BcmAdsl_DyingGaspHandler(void *context, int event)
+{
+	if (event == DGASP_EVT_SENDMSG)
+		BcmAdslCoreSendDyingGasp(1);
+}
+#else
 void BcmAdsl_DyingGaspHandler(void *context)
 {
-	BcmAdslCoreSendDyingGasp(1);	
-	
+	BcmAdslCoreSendDyingGasp(1);
 }
-
+#endif // #if defined(BOARD_H_API_VER) && BOARD_H_API_VER > 15
 #endif
 
 extern BCMADSL_STATUS BcmAdslDiagStatSaveInit(void *pAddr, int len);

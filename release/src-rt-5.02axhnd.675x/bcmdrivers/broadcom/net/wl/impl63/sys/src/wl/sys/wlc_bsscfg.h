@@ -2,7 +2,7 @@
  * BSS Config related declarations and exported functions for
  * Broadcom 802.11abg Networking Device Driver
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_bsscfg.h 779981 2019-10-11 12:16:31Z $
+ * $Id: wlc_bsscfg.h 782660 2019-12-31 04:49:02Z $
  */
 #ifndef _WLC_BSSCFG_H_
 #define _WLC_BSSCFG_H_
@@ -480,6 +480,7 @@ struct wlc_bsscfg {
 #ifdef WL11AX
 	wlc_block_he_mac_t *block_he_list;
 #endif /* WL11AX */
+	uint32 wds_bitmap;	/* wds interface bit map per scbs */
 #ifdef BCMDBG
 	/* ====== LEAVE THESE AT THE END ====== */
 	/* Rapid PM transition */

@@ -673,7 +673,7 @@ void rutPMap_configIntfGrouping(Dev2IpInterfaceObject *newObj, Dev2IpInterfaceOb
    char gwIP[CMS_IPADDR_LENGTH]={0};
  		
    qdmRt_getGatewayIpv4AddrByFullPathLocked_dev2(ipIntfFullPath, gwIP);
- 		
+
    if ( currObj->X_BROADCOM_COM_Upstream &&
         !currObj->X_BROADCOM_COM_BridgeService &&
        (!cmsUtl_strcmp(currObj->X_BROADCOM_COM_IPv4ServiceStatus, MDMVS_SERVICEUP) ||
@@ -704,17 +704,16 @@ void rutPMap_configIntfGrouping(Dev2IpInterfaceObject *newObj, Dev2IpInterfaceOb
  		   
          newObj->X_BROADCOM_COM_GroupName = savedGroupName;
          newObj->X_BROADCOM_COM_BridgeName = savedBridgeName;
- 		   
- #ifdef DMP_DEVICE2_NAT_1
-         if (qdmIpIntf_isNatEnabledOnIpIntfFullPathLocked_dev2(ipIntfFullPath))
-         {
-            rutIpt_configNatForIntfGroup_dev2(FALSE, currObj->name, 
-                                              IS_EMPTY_STRING(currObj->X_BROADCOM_COM_BridgeName)?"br0":currObj->X_BROADCOM_COM_BridgeName, 
-                                              qdmIpIntf_isFullConeNatEnabledOnIpIntfFullPathLocked_dev2(ipIntfFullPath));
-         }
- #endif     			
- 		   
-      }		   
+     }
+
+#ifdef DMP_DEVICE2_NAT_1
+     if (qdmIpIntf_isNatEnabledOnIpIntfFullPathLocked_dev2(ipIntfFullPath))
+     {
+        rutIpt_configNatForIntfGroup_dev2(FALSE, currObj->name, 
+                                          IS_EMPTY_STRING(currObj->X_BROADCOM_COM_BridgeName)?"br0":currObj->X_BROADCOM_COM_BridgeName, 
+                                          qdmIpIntf_isFullConeNatEnabledOnIpIntfFullPathLocked_dev2(ipIntfFullPath));
+     }
+#endif     			
    }		   
  
    if ( newObj->X_BROADCOM_COM_Upstream &&
@@ -731,16 +730,16 @@ void rutPMap_configIntfGrouping(Dev2IpInterfaceObject *newObj, Dev2IpInterfaceOb
         rutPMap_doPoliceRoutingOnWanIfc(TRUE, newObj->name, gwIP,
                                          newObj->X_BROADCOM_COM_BridgeName, 
                                          newObj->X_BROADCOM_COM_GroupName);
- #ifdef DMP_DEVICE2_NAT_1
-         if (qdmIpIntf_isNatEnabledOnIpIntfFullPathLocked_dev2(ipIntfFullPath))
-         {
-            rutIpt_configNatForIntfGroup_dev2(TRUE, newObj->name, 
-                                              IS_EMPTY_STRING(newObj->X_BROADCOM_COM_BridgeName)?"br0":newObj->X_BROADCOM_COM_BridgeName, 
-                                              qdmIpIntf_isFullConeNatEnabledOnIpIntfFullPathLocked_dev2(ipIntfFullPath));
-         }
- #endif     			
       }
- 		
+
+#ifdef DMP_DEVICE2_NAT_1
+      if (qdmIpIntf_isNatEnabledOnIpIntfFullPathLocked_dev2(ipIntfFullPath))
+      {
+        rutIpt_configNatForIntfGroup_dev2(TRUE, newObj->name, 
+                                          IS_EMPTY_STRING(newObj->X_BROADCOM_COM_BridgeName)?"br0":newObj->X_BROADCOM_COM_BridgeName, 
+                                          qdmIpIntf_isFullConeNatEnabledOnIpIntfFullPathLocked_dev2(ipIntfFullPath));
+      }
+#endif     			
    }		  
  
    /* Sarah: TODO: not sure how dns should work in this stage, implement it later...... */

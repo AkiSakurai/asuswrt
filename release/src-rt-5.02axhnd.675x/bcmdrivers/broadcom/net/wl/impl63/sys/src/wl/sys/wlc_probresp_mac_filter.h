@@ -2,7 +2,7 @@
  * MAC based SW probe response module header file -
  * It uses the MAC filter list to influence the decision about
  * which MAC to send SW probe response.
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

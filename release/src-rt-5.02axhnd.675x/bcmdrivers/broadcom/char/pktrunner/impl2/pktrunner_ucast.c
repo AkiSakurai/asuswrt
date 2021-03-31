@@ -163,7 +163,7 @@ int runnerUcast_activate(Blog_t *blog_p, uint8_t *prependData_p, int prependSize
 
     ip_addresses_table_index_g = RDPA_UCAST_IP_ADDRESSES_TABLE_INDEX_INVALID;
     ip_flow.result.ip_addresses_table_index = RDPA_UCAST_IP_ADDRESSES_TABLE_INDEX_INVALID;
-    ip_flow.result.service_q_id = 0xff;
+    ip_flow.result.service_q_id = blog_p->dpi_queue;
 
     *err = __ucastSetFwdAndFilters(blog_p, &ip_flow);
     if(*err != 0)
@@ -439,7 +439,7 @@ int __init runnerUcast_construct(void *idx_p, void *disp_p)
     runnerSim_init();
 #endif
 
-    __print("Initialized Runner Unicast Layer\n");
+    bcm_print("Initialized Runner Unicast Layer\n");
 
     return 0;
 }

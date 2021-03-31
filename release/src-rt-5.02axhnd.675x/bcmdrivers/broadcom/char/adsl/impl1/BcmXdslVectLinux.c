@@ -88,11 +88,12 @@ static unsigned char ethHeaderBuffer[ETH_HEADER_ITU_LENGTH]={
 	0x00, 0x03	/* SNAP PDU : PRIVATE protocol ID */
 	};
 #endif
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
 /* Note: Linux4.04L.02 and older don't have "netdev_ops->ndo_start_xmit" */
-#define	DEV_TRANSMIT(x)	(x)->dev->netdev_ops->ndo_start_xmit (x, (x)->dev)
+#define	DEV_VECT_TRANSMIT(x)	(x)->dev->netdev_ops->ndo_start_xmit (x, (x)->dev)
 #else
-#define	DEV_TRANSMIT(x)	dev_queue_xmit(x)
+#define	DEV_VECT_TRANSMIT(x)	dev_queue_xmit(x)
 #endif
 
 #define VECT_FRAME_SIZE	(ETH_HEADER_ITU_LENGTH+ERRORSAMPLES_OFFSET+SYMB_VECT_SEGMENT)
@@ -206,7 +207,7 @@ void * BcmXdslCreatePktHdr(unsigned char lineId, struct sk_buff **ppSkb)
 		
 		memcpy((void *)&ethHeaderBuffer[6], dev->dev_addr, 6);
 		
-		printk ("\tdev = %s(0x%p) macAddr=%X:%X:%X:%X:%X:%X\n",
+		printk ("\tdev = %s(0x%px) macAddr=%X:%X:%X:%X:%X:%X\n",
 			wanDevNames[i], dev,
 			dev->dev_addr[0], dev->dev_addr[1], dev->dev_addr[2],
 			dev->dev_addr[3], dev->dev_addr[4], dev->dev_addr[5]);
@@ -268,7 +269,7 @@ void BcmXdslSendErrorSamples(unsigned char lineId, VectorErrorSample *pVectError
 		}
 		if(NULL != vectSkbDev) {
 			if(!DevSkbFree(vectSkbDev, 0))
-				printk("%s: Still not able to free previous vectSkbDev(0x%p). Discarding it anyway!\n", __FUNCTION__, vectSkbDev);
+				printk("%s: Still not able to free previous vectSkbDev(0x%px). Discarding it anyway!\n", __FUNCTION__, vectSkbDev);
 		}
 		if(NULL == (vectSkbDev = DevSkbAllocate(vectSkbModel, VECT_FRAME_SIZE, VECT_SKBS_IN_POOL, 0,0, dataAlignMask, ETH_HEADER_ITU_LENGTH, 0, SKB_HEADROOM_RESERVE))) {
 			printk("%s: Errored allocating skb buffer pool!\n", __FUNCTION__);
@@ -315,7 +316,7 @@ void BcmXdslSendErrorSamples(unsigned char lineId, VectorErrorSample *pVectError
 		skb->len = ETH_HEADER_ITU_LENGTH + ERRORSAMPLES_OFFSET + lengthToCopy;
 		skb->tail = (sk_buff_data_t)(uintptr_t)(skb->data + skb->len);
 		skb->mark |= 0x7;	/* Change packet priority to highest */
-		if(0 != DEV_TRANSMIT(skb)) {
+		if(0 != DEV_VECT_TRANSMIT(skb)) {
 			pXdslMib->vectData.vectStat.cntESStatDrop++;
 			pXdslMib->vectData.vectStat.cntESPktSend += segmentIdx;
 			pXdslMib->vectData.vectStat.cntESPktDrop += (nbPartForSymbol-segmentIdx);

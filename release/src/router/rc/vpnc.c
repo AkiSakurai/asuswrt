@@ -88,6 +88,7 @@ start_vpnc(void)
 	/* shut down previous instance if any */
 	stop_vpnc();
 
+#if !defined(DSL_AX82U) ///TODO: !defined(RTCONFIG_HND_ROUTER_AX_675X)
 #ifdef HND_ROUTER
 	/* workaround for ppp packets are dropped by fc GRE learning when pptp server / client enabled */
 	if (nvram_match("fc_disable", "0") &&
@@ -97,6 +98,7 @@ start_vpnc(void)
 		dbg("[%s, %d] Flow Cache Learning of GRE flows Tunnel: DISABLED, PassThru: ENABLED\n", __FUNCTION__, __LINE__);
 		eval("fc", "config", "--gre", "0");
 	}
+#endif
 #endif
 
 	/* unset vpnc_dut_disc */
@@ -315,9 +317,11 @@ stop_vpnc(void)
 		kill_pidfile_tk(pidfile);
 	}
 
+#if !defined(DSL_AX82U) ///TODO: !defined(RTCONFIG_HND_ROUTER_AX_675X)
 #ifdef HND_ROUTER
 	/* workaround for ppp packets are dropped by fc GRE learning when pptp server / client enabled */
 	if (nvram_match("fc_disable", "0")) eval("fc", "config", "--gre", "1");
+#endif
 #endif
 }
 
@@ -356,15 +360,15 @@ void update_vpnc_state(char *prefix, int state, int reason)
 
 int vpnc_update_resolvconf(void)
 {
-	FILE *fp;
-#ifdef NORESOLV /* dnsmasq uses no resolv.conf */
-	FILE *fp_servers;
-#endif
+	FILE *fp, *fp_servers;
 	char tmp[100], prefix[] = "vpnc_";
 	char *wan_dns, *next;
 	int lock;
 #ifdef RTCONFIG_YANDEXDNS
 	int yadns_mode = nvram_get_int("yadns_enable_x") ? nvram_get_int("yadns_mode") : YADNS_DISABLED;
+#endif
+#ifdef RTCONFIG_DNSPRIVACY
+	int dnspriv_enable = nvram_get_int("dnspriv_enable");
 #endif
 
 	lock = file_lock("resolv");
@@ -373,10 +377,15 @@ int vpnc_update_resolvconf(void)
 		perror("/tmp/resolv.conf");
 		goto error;
 	}
-#ifdef NORESOLV /* dnsmasq uses no resolv.conf */
 #ifdef RTCONFIG_YANDEXDNS
 	if (yadns_mode != YADNS_DISABLED) {
 		/* keep yandex.dns servers */
+		fp_servers = NULL;
+	} else
+#endif
+#ifdef RTCONFIG_DNSPRIVACY
+	if (dnspriv_enable) {
+		/* keep dns privacy servers */
 		fp_servers = NULL;
 	} else
 #endif
@@ -385,25 +394,17 @@ int vpnc_update_resolvconf(void)
 		fclose(fp);
 		goto error;
 	}
-#endif
 
 	wan_dns = nvram_safe_get(strcat_r(prefix, "dns", tmp));
 	foreach(tmp, wan_dns, next) {
 		fprintf(fp, "nameserver %s\n", tmp);
-#ifdef NORESOLV /* dnsmasq uses no resolv.conf */
-#ifdef RTCONFIG_YANDEXDNS
-		if (yadns_mode != YADNS_DISABLED)
-			continue;
-#endif
-		fprintf(fp_servers, "server=%s\n", tmp);
-#endif
+		if (fp_servers)
+			fprintf(fp_servers, "server=%s\n", tmp);
 	}
 
 	fclose(fp);
-#ifdef NORESOLV /* dnsmasq uses no resolv.conf */
 	if (fp_servers)
 		fclose(fp_servers);
-#endif
 	file_unlock(lock);
 
 	reload_dnsmasq();
@@ -766,10 +767,11 @@ vpnc_authfail_main(int argc, char **argv)
 	return 0;
 }
 
-int is_vpnc_connected()
+int is_vpnc_dns_active()
 {
-	if (nvram_get_int("vpnc_state_t") == WAN_STATE_CONNECTED)
+	if (nvram_get_int("vpnc_state_t") == WAN_STATE_CONNECTED &&
+	    nvram_invmatch("vpnc_dns", ""))
 		return 1;
-	else
-		return 0;
+
+	return 0;
 }

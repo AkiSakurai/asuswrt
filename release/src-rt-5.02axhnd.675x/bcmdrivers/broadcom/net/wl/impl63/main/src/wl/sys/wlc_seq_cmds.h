@@ -32,7 +32,7 @@
  * Because of the nature of the batching, it is suited towards a series of
  * set commands. IOCTLs/IOVARS that query information are not supported.
  *
- *   Copyright 2019 Broadcom
+ *   Copyright 2020 Broadcom
  *
  *   This program is the proprietary software of Broadcom and/or
  *   its licensors, and may only be used, duplicated, modified or distributed

@@ -28,10 +28,10 @@ struct wbint_TransIDArray {
 };
 
 struct wbint_userinfo {
-	const char *acct_name;/* [charset(UTF8),unique] */
-	const char *full_name;/* [charset(UTF8),unique] */
-	const char *homedir;/* [unique,charset(UTF8)] */
-	const char *shell;/* [charset(UTF8),unique] */
+	const char *acct_name;/* [unique,charset(UTF8)] */
+	const char *full_name;/* [unique,charset(UTF8)] */
+	const char *homedir;/* [charset(UTF8),unique] */
+	const char *shell;/* [unique,charset(UTF8)] */
 	uint64_t primary_gid;
 	struct dom_sid user_sid;
 	struct dom_sid group_sid;
@@ -83,8 +83,8 @@ struct wbint_LookupSid {
 
 	struct {
 		enum lsa_SidType *type;/* [ref] */
-		const char **domain;/* [charset(UTF8),ref] */
-		const char **name;/* [ref,charset(UTF8)] */
+		const char **domain;/* [ref,charset(UTF8)] */
+		const char **name;/* [charset(UTF8),ref] */
 		NTSTATUS result;
 	} out;
 
@@ -108,7 +108,7 @@ struct wbint_LookupSids {
 struct wbint_LookupName {
 	struct {
 		const char *domain;/* [charset(UTF8),ref] */
-		const char *name;/* [charset(UTF8),ref] */
+		const char *name;/* [ref,charset(UTF8)] */
 		uint32_t flags;
 	} in;
 
@@ -123,7 +123,7 @@ struct wbint_LookupName {
 
 struct wbint_Sid2Uid {
 	struct {
-		const char *dom_name;/* [charset(UTF8),unique] */
+		const char *dom_name;/* [unique,charset(UTF8)] */
 		struct dom_sid *sid;/* [ref] */
 	} in;
 
@@ -137,7 +137,7 @@ struct wbint_Sid2Uid {
 
 struct wbint_Sid2Gid {
 	struct {
-		const char *dom_name;/* [charset(UTF8),unique] */
+		const char *dom_name;/* [unique,charset(UTF8)] */
 		struct dom_sid *sid;/* [ref] */
 	} in;
 
@@ -165,7 +165,7 @@ struct wbint_Sids2UnixIDs {
 
 struct wbint_Uid2Sid {
 	struct {
-		const char *dom_name;/* [unique,charset(UTF8)] */
+		const char *dom_name;/* [charset(UTF8),unique] */
 		uint64_t uid;
 	} in;
 
@@ -179,7 +179,7 @@ struct wbint_Uid2Sid {
 
 struct wbint_Gid2Sid {
 	struct {
-		const char *dom_name;/* [charset(UTF8),unique] */
+		const char *dom_name;/* [unique,charset(UTF8)] */
 		uint64_t gid;
 	} in;
 
@@ -293,7 +293,7 @@ struct wbint_DsGetDcName {
 	struct {
 		const char *domain_name;/* [charset(UTF8),ref] */
 		struct GUID *domain_guid;/* [unique] */
-		const char *site_name;/* [charset(UTF8),unique] */
+		const char *site_name;/* [unique,charset(UTF8)] */
 		uint32_t flags;
 	} in;
 

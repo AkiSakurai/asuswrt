@@ -13,7 +13,7 @@
  * The user who instantiates the instance for the BMAC driver (who has the handle)
  * must implement these two interfaces.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

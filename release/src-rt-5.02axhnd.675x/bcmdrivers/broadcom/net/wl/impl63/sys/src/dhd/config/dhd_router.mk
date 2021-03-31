@@ -2,7 +2,7 @@
 # router platforms
 # This file maps dhd feature flags DHDFLAGS(import) and DHDFILES_SRC(export).
 #
-# Copyright (C) 2019, Broadcom. All Rights Reserved.
+# Copyright (C) 2020, Broadcom. All Rights Reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -45,7 +45,7 @@ ifeq ($(BCMQT),1)
 endif
 
 # Common Flags
-DHDFLAGS        += -Werror
+DHDFLAGS        += -Werror -Wno-incompatible-pointer-types
 DHDFLAGS        += -DLINUX
 DHDFLAGS        += -DBCMDRIVER
 DHDFLAGS        += -DBCMDONGLEHOST
@@ -53,7 +53,7 @@ DHDFLAGS        += -DBCMDONGLEHOST
 ifneq ($(strip $(BCA_HNDROUTER)),)
 DHDFLAGS        += -DDHDAP
 ifneq ($(strip $(CONFIG_BCM_PKTFWD)),)
-    DHDFLAGS    += -DPKTC -DBCM_PKTFWD
+    DHDFLAGS    += -DPKTC -DBCM_PKTFWD -DBCM_PKTFWD_DWDS
 endif
 
 ifneq ($(strip $(CONFIG_BCM_CPEPKTC)),)
@@ -200,17 +200,10 @@ DHDFLAGS	+= -DWL_DPP
 ifeq ($(call wlan_version_ge,$(LINUXVERSION),3.14.0),TRUE)
   DHDFLAGS	+= -DWL_VENDOR_EXT_SUPPORT
 endif
-ifeq ($(CONFIG_STBAP),y)
-  #For STB AP (And STB STA), STB_SAE should be exported if kernel have SAE backport code
-  ifeq ($(STB_SAE),1)
-    DHDFLAGS        += -DWL_SAE
-  endif
-  ifeq ($(call wlan_version_ge,$(LINUXVERSION),4.17.0),TRUE)
-    DHDFLAGS	+= -DWL_SAE
-  endif
-else
-  #For router, SAE is always enabled
-  DHDFLAGS        += -DWL_SAE
+
+ifneq ($(CONFIG_STBAP),y)
+#For router, SAE is always enabled
+DHDFLAGS        += -DWL_SAE
 endif
 endif
 
@@ -227,7 +220,7 @@ DHDIFLAGS       += -I$(SRCBASE)/../../$(SRCBASE_DHD)/shared/bcmwifi/include
 DHDIFLAGS       += -I$(SRCBASE)/../../$(SRCBASE_DHD)/dhd/sys
 DHDIFLAGS       += -I$(SRCBASE)/../../$(SRCBASE_DHD)/dongle/include
 DHDIFLAGS       += -I$(SRCBASE)/../../$(SRCBASE_DHD)/wl/sys
-DHDIFLAGS       += -I$(SRCBASE)/../../main/src/router-sysdep/bcmdrv/include
+DHDIFLAGS	+= -I$(SRCBASE)/../../main/src/router-sysdep/bcmdrv/include
 ifeq ($(CONFIG_BCM_HOSTAPD),y)
 DHDIFLAGS       += -I$(SRCBASE)/../../$(SRCBASE_DHD)/../components/clm-api/include
 DHDIFLAGS       += -I$(SRCBASE)/../../$(SRCBASE_DHD)/wl/ppr/include

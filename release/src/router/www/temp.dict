@@ -1,0 +1,11 @@
+﻿QIS_welcome_feature1=Швидкість 5334 Мб/сек.－безперешкодне відтворення відео 4K та он-лайн ігри без затримки на ПК, Xbox One™ і PlayStation®
+QIS_welcome_feature2=Smart Connect－кожен пристрій підключений до ідеального діапазону Wi-Fi, щоб забезпечити найшвидшу роботу
+QIS_welcome_feature3=AiProtection з Trend Micro™ －моніторинг мережі в реальному часі та повна безпека.
+QIS_welcome_feature4=Адаптивна QoS － автоматичне керування передачею оптимізує робочі характеристики кожної мережі.
+AiProtection_sites_block_desc=Блокування шкідливих сайтів забороняєдоступ до відомих шкідливих сайтів, щоб запобігти потрапляюю вірусів, крадіжкам персональних даних (фішінг), спаму, рекламного ПЗ, протистояти хакерським атакаміпрограмам-шантажистам.
+PPTP_desc2=Для користування сервером VPN, будь ласка, виконуйте наступні кроки.<br>(1) Активуйте сервер PPTP VPN<br>(2) Вкажіть пул ІР для ІР клієнтів. (Максимум 30 клієнтів)<br>(3)Вкажіть ім\'я користувача і пароль для клієнта VPN/<br>(4) Відкрийте програму підключення VPN на комп'ютері або смартфоні.<br>(5) Додайте нове підключення PPTP VPN, і адреса сервера VPN буде
+vpn_max_clients=Сервер VPN дозволяє максимум 30 клієнтів!
+vpn_maximum_clients=Максимум 30 клієнтів
+WLANConfig11b_display2_sectiondesc=The function does not support [ WPA2-Enterprise, WPA-Auto-Enterprise ] security authentication method.
+VPN_Fusion=Ф‘южн VPN
+VPN_Fusion_FAQ=<a id="faq1" href="" target="_blank" style="font-weight:bolder;text-decoration:underline;">Ф‘южн VPN - Розповсюджені питання</a>

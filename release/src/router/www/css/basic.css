@@ -40,7 +40,7 @@
     width: 769px; 
     position: relative;
     margin-bottom: 20px;
-    border: 1px solid #475A5F;
+    border: 1px solid #5C0C0B;
     border-top-left-radius: 18px;
     border-top-right-radius: 8px;
     border-bottom-left-radius: 18px;
@@ -70,7 +70,7 @@
     top: 0;
     bottom: 0;
     left: 3px;
-    background-color: #475A5F;
+    background-color: #5C0C0B;
 }
 
 /* Title */
@@ -80,14 +80,14 @@
 .title-symbol{
     width: 9px;
     transform: skew(24deg);
-    background-color: #576D73;
+    background-color: #E64100;
 }
 .title-content{
     width: 100%;
     font-size: 24px;
     margin: 0 0 0 18px;
     padding-bottom: 4px;
-    border-bottom: 1px solid #475A5F;
+    border-bottom: 1px solid #5C0C0B;
 }
 /* End Title */
 /* Description */
@@ -132,12 +132,12 @@
 /* Button*/
 .button-container:hover, .button-container:active,
 .icon-button-container:hover, .icon-button-container:active{
-    border: 2px solid #576D73;
+    border: 2px solid #E64100;
     background-color: #000000;
 }
 .button-container{
     display: table;
-    border: 2px solid #444;
+    border: 2px solid #842500;
     border-radius: 24px;
     padding: 12px 24px;
     background-color: #141618;
@@ -170,7 +170,7 @@
 .divide-line{
     height:1px;
     margin: 18px 24px 18px 36px;
-    background-color: #475A5F;
+    background-color: #5C0C0B;
 }
 /* checkbox */
 input[type="checkbox"]{

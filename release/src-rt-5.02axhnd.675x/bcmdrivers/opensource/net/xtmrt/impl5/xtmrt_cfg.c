@@ -125,6 +125,7 @@ static int DoGetNetDevTxChannel(PXTMRT_NETDEV_TXCHANNEL pParm);
 static int DoTogglePortDataStatusReq(PBCMXTMRT_DEV_CONTEXT pDevCtx,
                                      PXTMRT_TOGGLE_PORT_DATA_STATUS_CHANGE pParm);
 
+static int DoSetTxPortShaperInfo (PXTMRT_PORT_SHAPER_INFO pShaperInfo) ;
 
 /**** Statics ****/
 
@@ -590,10 +591,15 @@ int bcmxtmrt_request(XTMRT_HANDLE hDev, UINT32 ulCommand, void *pParm)
          nRet = DoStartTxQueues(pDevCtx);
          break;
 
+      case XTMRT_CMD_SET_TX_PORT_SHAPER_INFO:
+         nRet = DoSetTxPortShaperInfo((PXTMRT_PORT_SHAPER_INFO)pParm);
+         break;
+
       default:
          nRet = -EINVAL;
          break;
-   }
+
+   } /* switch (ulCommand) */
 
    return (nRet);
    
@@ -1644,6 +1650,28 @@ static int DoTogglePortDataStatusReq(PBCMXTMRT_DEV_CONTEXT pDevCtx,
 
 }  /* DoTogglePortDataStatusReq() */
 
+
+/*---------------------------------------------------------------------------
+ * int DoSetTxPortShaperInfo (PXTMRT_PORT_SHAPER_INFO pShaperInfo)
+ * Description:
+ *    Processes an XTMRT_CMD_SET_TX_PORT_SHAPER_INFO command.
+ *    This can be called to set as well as unset the overall port shaping
+ *    feature on the tx side.
+ * Returns:
+ *    0 if successful or error status
+ *---------------------------------------------------------------------------
+ */
+static int DoSetTxPortShaperInfo (PXTMRT_PORT_SHAPER_INFO pShaperInfo)
+{
+   int nRet = 0;
+
+   PBCMXTMRT_GLOBAL_INFO pGi = &g_GlobalInfo;
+
+   nRet = bcmxapi_SetTxPortShaperInfo (pGi, pShaperInfo) ;
+
+   return (nRet);
+
+}  /* DoSetTxPortShaperInfo() */
 
 
 EXPORT_SYMBOL(bcmxtmrt_request);

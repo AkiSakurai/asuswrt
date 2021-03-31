@@ -5,7 +5,7 @@
  * to enums defined in wlc_phy_hal.h and ultimately calls wlc_phy_iovar_dispatch() in
  * the wlc_phy_hal.h
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

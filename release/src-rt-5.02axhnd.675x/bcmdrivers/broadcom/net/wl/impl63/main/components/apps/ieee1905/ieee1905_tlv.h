@@ -127,7 +127,7 @@ enum i5TlvLinkMetricResultCode_Values {
 #define i5TlvBeaconMetricsQuery_Min_Length  18 /* includes only SSIDlen, ChanrepCount and elementIDCount */
 #define i5TlvBeaconMetricsRespomse_Min_Length  8
 #define i5TlvErrorCode_Length  7
-#define i5TlvOperatingChannelReport_Min_Length  9
+#define i5TlvOperatingChannelReport_Min_Length  10
 #define i5Tlv_AssociationStatusNotification_Min_Length	1
 #define i5Tlv_SourceTlv_Min_Length	6
 #define i5Tlv_Tunneled_Msg_Type_Min_Length	1
@@ -241,7 +241,6 @@ unsigned int i5TlvGetFreqBandFromMediaType(unsigned short mediaType);
 int i5TlvWscTypeInsert(i5_message_type *pmsg, unsigned char const * wscPacket, unsigned wscLength);
 int i5TlvWscTypeExtract(i5_message_type *pmsg, unsigned char * wscPacket, unsigned maxWscLength, unsigned *actualWscLength);
 int i5TlvWscTypeM2Extract(i5_message_type *pmsg);
-int i5TlvVendorGuestSsidExtract(i5_message_type *pmsg, ieee1905_vendor_data *msg_data);
 int i5TlvPushButtonEventNotificationTypeInsert(i5_message_type *pmsg, unsigned char* genericPhyIncluded);
 int i5TlvPushButtonEventNotificationTypeExtract(i5_message_type * pmsg, unsigned int *pMediaCount, unsigned short **pMediaList);
 int i5TlvPushButtonGenericPhyEventNotificationTypeExtract (i5_message_type * pmsg, unsigned int *pMediaCount, unsigned char **pMediaList);
@@ -388,8 +387,8 @@ int i5TlvChannelPreferenceTypeExtract(i5_message_type *pmsg, int isAgent);
 int i5TlvTransmitPowerLimitTypeExtract(i5_message_type *pmsg);
 int i5TlvChannelSelectionResponseTypeInsert(i5_message_type *pmsg, unsigned char *mac, uint8 resp_code);
 int i5TlvChannelSelectionResponseTypeExtract(i5_message_type *pmsg);
-int i5TlvOperatingChannelReportTypeInsert(i5_message_type *pmsg, unsigned char *mac,
-  uint8 channel, uint8 rclass, int8 tx_pwr);
+int i5TlvOperatingChannelReportTypeInsert(i5_message_type *pmsg,
+  ieee1905_operating_chan_report *chan_rpt);
 /* Extract Operating Channel report TLV */
 int i5TlvOperatingChannelReportTypeExtract(i5_message_type *pmsg);
 /* TLV to add Ap Metric Query. All the BSSIDs are stored in the linear array */

@@ -188,8 +188,9 @@ static UBOOL8 isGponActive(void)
             case BCM_PLOAM_OSTATE_RANGING_O4:
             case BCM_PLOAM_OSTATE_OPERATION_O5:
             case BCM_PLOAM_OSTATE_POPUP_O6:
-            case BCM_PLOAM_OSTATE_DEACTIVATED_O8:
             case BCM_PLOAM_OSTATE_EMERGENCY_STOP_O7:
+            case BCM_PLOAM_OSTATE_DS_TUNING_O8:
+            case BCM_PLOAM_OSTATE_US_TUNING_O9:
                 ret = TRUE;
                 break;
             default:
@@ -219,6 +220,8 @@ static CmsRet updateGponStatus(OpticalInterfaceObject *obj)
             switch (info.operState)
             {
                 case BCM_PLOAM_OSTATE_OPERATION_O5:
+                case BCM_PLOAM_OSTATE_DS_TUNING_O8:
+                case BCM_PLOAM_OSTATE_US_TUNING_O9:
                     linkStatus = MDMVS_UP;
                     break;
                 case BCM_PLOAM_OSTATE_INITIAL_O1:
@@ -226,7 +229,6 @@ static CmsRet updateGponStatus(OpticalInterfaceObject *obj)
                 case BCM_PLOAM_OSTATE_SERIAL_NUMBER_O3:
                 case BCM_PLOAM_OSTATE_RANGING_O4:
                 case BCM_PLOAM_OSTATE_POPUP_O6:
-                case BCM_PLOAM_OSTATE_DEACTIVATED_O8:
                     linkStatus = MDMVS_DOWN;
                     break;
                 case BCM_PLOAM_OSTATE_EMERGENCY_STOP_O7:

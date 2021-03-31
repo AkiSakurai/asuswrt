@@ -50,26 +50,85 @@
 #ifndef __RUT_L2TPAC_H__
 #define __RUT_L2TPAC_H__
 
-#define PPPoL2TPAC_PID_FILENAME	"/var/run/PPPoL2tpAc.pid"
-
-/** Connect the L2TPAC tunnel.  
- *
- * @param newObj (IN) 
- *
- * @enum CmsRet enum.
- */
-
-CmsRet rutL2tpAC_start(WanPppConnObject *newObj, const char *server, const char *userid, const char *password);
-
-
-/** Disconnect the L2TPAC tunnel.  
- *
- * @param currObj (IN) 
+/** Start L2tpd as daemon.  
  *
  * @return CmsRet enum.
  */
-CmsRet rutL2tpAC_stop(_L2tpAcIntfConfigObject *currObj);
+CmsRet rutL2tp_startL2tpd();
 
+/** Stop L2tpd as daemon.  
+ *
+ * @return CmsRet enum.
+ */
+CmsRet rutL2tp_stopL2tpd();
+
+/** Create the L2TPAC tunnel.
+ *
+ * @param l2tpAcIntfObj (IN) 
+ *
+ * @return CmsRet enum.
+ */
+CmsRet rutL2tp_createTunnel(_L2tpAcIntfConfigObject *l2tpAcIntfObj __attribute__((unused)));
+
+/** Delete the L2TPAC tunnel.
+ *
+ * @param l2tpAcIntfObj (IN) 
+ *
+ * @return CmsRet enum.
+ */
+CmsRet rutL2tp_deleteTunnel(const _L2tpAcIntfConfigObject *l2tpAcIntfObj __attribute__((unused)));
+
+
+/** Create the L2TPAC Link.
+ *
+ * @param l2tpLinkObj (IN) 
+ *
+ * @param pppObj (IN) 
+ *
+ * @return CmsRet enum.
+ */
+CmsRet rutL2tp_createLink(_L2tpAcLinkConfigObject *l2tpAcLinkObj __attribute__((unused)), _WanPppConnObject *pppObj __attribute__((unused)));
+
+/** Delete the L2TPAC Link.  
+ *
+ * @param l2tpLinkObj (IN) 
+ *
+ * @return CmsRet enum.
+ */
+CmsRet rutL2tp_deleteLink(const _L2tpAcLinkConfigObject *l2tpLinkObj __attribute__((unused)));
+
+/** Refresh L2tpd config.  
+ *
+ * @return void.
+ */
+void rutL2tp_refreshL2tp();
+
+/** check if the tunnel exists or not.  
+ *
+ * @param tunnelName (IN) 
+ *
+ * @return UBOOL8.
+ */
+UBOOL8 rutL2tp_isTunnelExist(const char * tunnelName);
+
+/** check if the tunnel state=ESTABLISHED or not.  
+ *
+ * @param tunnelName (IN) 
+ *
+ * @return UBOOL8.
+ */
+UBOOL8 rutL2tp_isTunnelActive(const char *tunnelName);
+
+
+/** check if the link exists or not.   
+ *
+ * @param tunnelName (IN) 
+ *
+ * @param sessionName (IN) 
+ *
+ * @return UBOOL8.
+ */
+UBOOL8 rutL2tp_isLinkExist(const char *tunnelName, const char *sessionName);
 
 #endif  /* __RUT_L2TPAC_H__ */
 

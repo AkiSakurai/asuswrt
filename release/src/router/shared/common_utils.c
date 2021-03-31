@@ -1,7 +1,7 @@
 /*
  * Common utility functions across router code
  *
- * Copyright (C) 2018, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -261,5 +261,20 @@ dm_register_app_restart_info(int pid, int argc, char **argv,
 			fprintf(fp, "%s ", argv[i]);
 		}
 		fclose(fp);
+	}
+}
+
+/* To remove information from debug_monitor to restart the service.
+ * This API is used when service exits normally, so it does not want
+ * debug_monitor to restart the service.
+ */
+void
+dm_unregister_app_restart_info(int pid)
+{
+	char buf[16];
+
+	snprintf(buf, sizeof(buf), "/tmp/dm/%d", pid);
+	if (remove(buf)) {
+		printf("Unable to remove file %s. %s\n", buf, strerror(errno));
 	}
 }

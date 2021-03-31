@@ -6,7 +6,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,7 +21,7 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wlioctl.h 781445 2019-11-21 00:14:08Z $
+ * $Id: wlioctl.h 787840 2020-06-12 22:59:01Z $
  */
 
 #ifndef _wlioctl_h_
@@ -1830,12 +1830,13 @@ typedef struct {
 	uint32                  rx_rspec;       /* Rate of last successful rx frame */
 	uint32                  wnm_cap;        /* wnm capabilities */
 
-	uint16                  he_flags;	/* converted he flags */
-	uint16                  he_omi;
+	uint32                  he_flags;	/* converted he flags */
 	sta_vendor_oui_t        sta_vendor_oui;
 	uint8			link_bw;
 	uint32			wpauth;		/* authentication type */
 	int8			srssi;		/* smoothed rssi info */
+	uint8			twt_info;
+	uint16                  he_omi;
 
 	/* #ifdef WL_EAP_STATS */
 	uint32			tx_mgmt_pkts;	/**< # of management packets txed by driver */
@@ -1845,6 +1846,7 @@ typedef struct {
 	/* #endif WL_EAP_STATS */
 
 	uint8		rrm_capabilities[DOT11_RRM_CAP_LEN];	/* rrm capabilities of station */
+	uint8			PAD;
 	uint16			map_flags;	/* MultiAP Flags. WL_MAP_STA_XXX */
 } sta_info_v8_t;
 
@@ -5099,6 +5101,12 @@ typedef struct wl_lifetime {
 	uint32 ac;	        /**< access class */
 	uint32 lifetime;    /**< Packet lifetime value in ms */
 } wl_lifetime_t;
+
+/** MUTX mpdu size admit threshold per bw */
+typedef struct wl_mutx_mpdusz_admit_thresh {
+	uint32 bw;	        /**< BW */
+	uint32 mpdusz;    /**< mpdu size threshold in Bytes */
+} wl_mutx_mpdusz_admit_thresh_t;
 
 #ifndef LINUX_POSTMOGRIFY_REMOVAL
 /** Management time configuration */
@@ -9798,6 +9806,23 @@ typedef struct txdelay_stats {
 	scb_total_delay_stats_t scb_delay_stats[1];
 } txdelay_stats_t;
 
+#define WL_PKTQ_STATUS_VERSION 2
+#define WL_PKTQ_HIST_NBINS     8
+typedef struct scb_pktq_status {
+	uint16  ver; /* structure  version */
+	uint16  size;  /* pad for 4 byte struct alignment */
+	struct  ether_addr ea;
+	uint8   enable_delay_stat;
+	uint8   pad;
+} scb_pktq_status_t;
+
+typedef struct pktq_delay_stats {
+	uint32 delay_min;	/**< minimum packet latency observed */
+	uint32 delay_max;	/**< maximum packet latency observed */
+	uint32 delay_hist[WL_PKTQ_HIST_NBINS];	/**< delay histogram */
+	uint32 delay_count;	/**< number of packet delay events generated */
+} pktq_delay_stats_t;
+
 #define WL_TXDELAY_STATS_FIXED_SIZE \
 	(sizeof(txdelay_stats_t)+(MAX_TXDELAY_STATS_SCBS-1)*sizeof(scb_total_delay_stats_t))
 #endif /* LINUX_POSTMOGRIFY_REMOVAL */
@@ -13589,6 +13614,40 @@ typedef struct wlc_stamon_sta_config {
 	uint32 offchan_time;	/* Time (ms) for which off-channel STA's are monitored. */
 } wlc_stamon_sta_config_t;
 
+#define CSIMON_STACONFIG_VER    1
+#define CSIMON_CNTR_VER		1
+#define CSIMON_STACONFIG_LENGTH sizeof(wlc_csimon_sta_config_t)
+/* Note that the del/add commands are per STA whereas the disable/enable
+ * commands are for the CSIMON feature applicable to all STAs
+ */
+typedef enum wl_csimon_cfg_cmd_type {
+	CSIMON_CFG_CMD_DEL = 0,
+	CSIMON_CFG_CMD_ADD = 1,
+	CSIMON_CFG_CMD_ENB = 2,
+	CSIMON_CFG_CMD_DSB = 3,
+	CSIMON_CFG_CMD_RSTCNT = 4
+} wl_csimon_cfg_cmd_type_t;
+
+typedef struct csimon_state {
+	uint32 version;
+	uint32 length;
+	bool enabled;
+	uint32 null_frm_cnt;
+	uint32 m2mxfer_cnt;
+	uint32 ack_fail_cnt;
+	uint32 rec_ovfl_cnt;
+	uint32 xfer_fail_cnt;
+} csimon_state_t;
+
+typedef struct wlc_csimon_sta_config {
+	wl_csimon_cfg_cmd_type_t cmd;	/* 0 - delete, 1 - add */
+	struct ether_addr ea;
+	uint16	version;		/* Command structure version */
+	uint16	length;			/* Command structure length */
+	/* Time (ms) interval between successive CSI reports generated for STA */
+	uint32	monitor_interval;
+} wlc_csimon_sta_config_t;
+
 /* ifdef SR_DEBUG */
 typedef struct /* pmu_reg */{
 	uint32  pmu_control;
@@ -15703,7 +15762,8 @@ typedef struct svmp_mem {
 #define EAP_AMSDU_CRYPTO_OFFLD_CAP		(1 << 19)
 #define EAP_ALLOW_OMGMT_FRM_CAP			(1 << 20)
 #define EAP_ACK_RSSI_CAP			(1 << 21)
-#define EAP_FTM_CAP				(1 << 22)
+#define EAP_AMPDU_RTS_RETRIES_CAP		(1 << 22)
+#define EAP_FTM_CAP				(1 << 23)
 
 // Keep in sync with above definitions
 typedef enum
@@ -15757,8 +15817,10 @@ typedef enum
 	C_UCODE_FEAT_ALLOW_OMGMT_FRM_NBIT			= 4,
 	// Include ack RSSI in txstatus
 	C_UCODE_FEAT_ACK_RSSI_NBIT				= 5,
+	// AMPDU's RTSs use SRL/LRL
+	C_FEAT_AMPDU_RTS_RETRIES_NBIT				= 6,
 	// Is EAP FTM AVB Capability present
-	C_UCODE_FEAT_FTM_NBIT					= 6
+	C_UCODE_FEAT_FTM_NBIT					= 7
 } ePsmFeatureSetRegBitDefinitions2;
 
 /** IOVAR 'mu_rate' parameter. read/set mu rate for upto four users */
@@ -18233,12 +18295,25 @@ typedef enum wl_dtpc_iov_v1 {
 	WL_DTPC_CMD_PROBSTEP =    0x2,  /**< step size */
 	WL_DTPC_CMD_ALPHA =       0x3,  /**< mv alpha */
 	WL_DTPC_CMD_TRIGINT =     0x4,  /**< pwr prob trigger interval */
+	WL_DTPC_CMD_HEADROOM =    0x5,  /**< power headroom */
+	WL_DTPC_CMD_CLMOVR =      0x6,  /**< clm validation */
 	WL_DTPC_CMD_TOTAL
 } wl_dtpc_iov_v1_t;
 
+/* Comment: do we ever use this structure? */
 typedef struct wl_dtpc_cfg_v1 {
 	uint16 version;              /**< version control */
 	uint16 len;                  /**< total struct length */
 	uint8 pmac[ETHER_ADDR_LEN];  /**< extention for per-scb query */
 } wl_dtpc_cfg_v1_t;
+
+#define MAX_NUM_KNOWN_RATES 640
+typedef struct wl_dtpc_cfg_headroom {
+	uint16	len;
+	uint8   max_bw;
+	uint8   max_nss;
+	uint32	rspec[MAX_NUM_KNOWN_RATES];
+	uint8	headroom[MAX_NUM_KNOWN_RATES];
+} wl_dtpc_cfg_headroom_t;
+
 #endif /* _wlioctl_h_ */

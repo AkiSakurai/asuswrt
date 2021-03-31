@@ -4,7 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,7 +21,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_proto.h 775595 2019-06-05 16:37:28Z $
+ * $Id: dhd_proto.h 783797 2020-02-10 20:24:41Z $
  */
 
 #ifndef _dhd_proto_h_
@@ -127,6 +127,7 @@ extern void dhd_prot_rx_dataoffset(dhd_pub_t *dhd, uint32 offset);
 extern int dhd_prot_txdata(dhd_pub_t *dhd, void *p, uint8 ifidx);
 extern int dhdmsgbuf_dmaxfer_req(dhd_pub_t *dhd, uint len, uint srcdelay, uint destdelay);
 extern int dhd_prot_hme_init(dhd_pub_t *dhdp, uint16 *hme_page_req_table);
+extern int dhd_prot_hme_reset(dhd_pub_t *dhdp);
 extern void dhd_dma_buf_init(dhd_pub_t *dhd, void *dma_buf,
 	void *va, uint32 len, dmaaddr_t pa, void *dmah, void *secdma);
 extern void dhd_prot_flowrings_pool_release(dhd_pub_t *dhd,
@@ -177,4 +178,8 @@ extern void dhd_lb_rx_process_handler(unsigned long data);
 #if defined(BCM_DHD_RUNNER)
 extern void dhd_prot_schedule_runner(dhd_pub_t *dhd);
 #endif /* BCM_DHD_RUNNER */
+
+/** CSI Monitor */
+extern int dhd_csimon_dump(dhd_pub_t *dhd);
+extern int dhd_csimon_watchdog(dhd_pub_t *dhd);
 #endif /* _dhd_proto_h_ */

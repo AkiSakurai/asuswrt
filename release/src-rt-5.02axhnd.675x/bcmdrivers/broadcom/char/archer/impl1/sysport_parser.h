@@ -57,7 +57,7 @@
 #ifndef __SYSPORT_PARSER_H__
 #define __SYSPORT_PARSER_H__
 
-#if !defined(CONFIG_BCM_KF_BLOG)
+#if !defined(__KERNEL__)
 #define ___constant_swab16(x) ((uint16_t)                               \
                                ((((uint16_t)(x) & (uint16_t)0x00ffU) << 8) | \
                                 (((uint16_t)(x) & (uint16_t)0xff00U) >> 8)))
@@ -87,6 +87,8 @@
 
 uint32_t sysport_crc32( const unsigned char *data, int size, uint32_t crc_prev);
 uint16_t sysport_crc16( const unsigned char *data, int size, uint16_t crc_prev);
+void sysport_crc32_init(void);
+void sysport_crc16_init(void);
 
 static inline uint32_t sysport_parser_crc32(void *buffer, int size)
 {
@@ -127,6 +129,12 @@ static inline int sysport_parser_ucast_tuple_crc16(sysport_rsb_flow_tuple_t *tup
 static inline int sysport_parser_mcast_tuple_crc16(sysport_rsb_flow_tuple_t *tuple_p)
 {
     return sysport_parser_crc16(tuple_p, sizeof(sysport_rsb_flow_tuple_t) / 2);
+}
+
+static inline void sysport_parser_crc_init(void)
+{
+    sysport_crc32_init();
+    sysport_crc16_init();
 }
 
 #endif  /* __SYSPORT_PARSER_H__ */

@@ -32,73 +32,6 @@
 
 #define RTKSWITCH_DEV	"/dev/rtkswitch"
 
-/* port statistic counter structure */
-typedef struct rtk_stat_port_cntr_s
-{
-	uint64 ifInOctets;
-	uint32 dot3StatsFCSErrors;
-	uint32 dot3StatsSymbolErrors;
-	uint32 dot3InPauseFrames;
-	uint32 dot3ControlInUnknownOpcodes;
-	uint32 etherStatsFragments;
-	uint32 etherStatsJabbers;
-	uint32 ifInUcastPkts;
-	uint32 etherStatsDropEvents;
-	uint64 etherStatsOctets;
-	uint32 etherStatsUndersizePkts;
-	uint32 etherStatsOversizePkts;
-	uint32 etherStatsPkts64Octets;
-	uint32 etherStatsPkts65to127Octets;
-	uint32 etherStatsPkts128to255Octets;
-	uint32 etherStatsPkts256to511Octets;
-	uint32 etherStatsPkts512to1023Octets;
-	uint32 etherStatsPkts1024toMaxOctets;
-	uint32 etherStatsMcastPkts;
-	uint32 etherStatsBcastPkts;
-	uint64 ifOutOctets;
-	uint32 dot3StatsSingleCollisionFrames;
-	uint32 dot3StatsMultipleCollisionFrames;
-	uint32 dot3StatsDeferredTransmissions;
-	uint32 dot3StatsLateCollisions;
-	uint32 etherStatsCollisions;
-	uint32 dot3StatsExcessiveCollisions;
-	uint32 dot3OutPauseFrames;
-	uint32 dot1dBasePortDelayExceededDiscards;
-	uint32 dot1dTpPortInDiscards;
-	uint32 ifOutUcastPkts;
-	uint32 ifOutMulticastPkts;
-	uint32 ifOutBrocastPkts;
-	uint32 outOampduPkts;
-	uint32 inOampduPkts;
-	uint32 pktgenPkts;
-	uint32 inMldChecksumError;
-	uint32 inIgmpChecksumError;
-	uint32 inMldSpecificQuery;
-	uint32 inMldGeneralQuery;
-	uint32 inIgmpSpecificQuery;
-	uint32 inIgmpGeneralQuery;
-	uint32 inMldLeaves;
-	uint32 inIgmpLeaves;
-	uint32 inIgmpJoinsSuccess;
-	uint32 inIgmpJoinsFail;
-	uint32 inMldJoinsSuccess;
-	uint32 inMldJoinsFail;
-	uint32 inReportSuppressionDrop;
-	uint32 inLeaveSuppressionDrop;
-	uint32 outIgmpReports;
-	uint32 outIgmpLeaves;
-	uint32 outIgmpGeneralQuery;
-	uint32 outIgmpSpecificQuery;
-	uint32 outMldReports;
-	uint32 outMldLeaves;
-	uint32 outMldGeneralQuery;
-	uint32 outMldSpecificQuery;
-	uint32 inKnownMulticastPkts;
-	uint32 ifInMulticastPkts;
-	uint32 ifInBroadcastPkts;
-	uint32 ifOutDiscards;
-} rtk_stat_port_cntr_t;
-
 typedef struct {
 	uint32	count;
 	struct	ether_addr ea[256];
@@ -138,14 +71,15 @@ int rtkswitch_ioctl(int val, int val2)
 	case 25:
 	case 34:	/* Set VoIP port. Cherry Cho added in 2011/6/30. */
 	case 35:
+	case 99:
+	case 100:
+#endif
 	case 36:	/* Set Vlan VID. */
 	case 37:	/* Set Vlan PRIO. */
 	case 38:	/* Initialize VLAN. Cherry Cho added in 2011/7/15. */
 	case 39:	/* Create VLAN. Cherry Cho added in 2011/7/15. */
 	case 40:
-	case 99:
-	case 100:
-#endif
+
 		p = &value;
 		value = (unsigned int)val2;
 		break;

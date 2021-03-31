@@ -1775,6 +1775,20 @@ void bcmxapi_StartTxQueue(PBCMXTMRT_DEV_CONTEXT pDevCtx,
 }
 
 /*---------------------------------------------------------------------------
+ * int bcmxapi_SetPortShaperInfo (PBCMXTMRT_GLOBAL_INFO pGi)
+ * Description:
+ *    Set/UnSet the global port shaper information.
+ * Returns: void
+ * Notes:
+ *    pDevCtx is not used.
+ *---------------------------------------------------------------------------
+ */
+int bcmxapi_SetTxPortShaperInfo(PBCMXTMRT_GLOBAL_INFO pGi, PXTMRT_PORT_SHAPER_INFO pShaperInfo)
+{
+   return (0) ;
+}  /* bcmxapi_SetTxPortShaperInfo () */
+
+/*---------------------------------------------------------------------------
  * void bcmxapi_SetPtmBondPortMask(UINT32 portMask)
  * Description:
  *    Set the value of portMask in ptmBondInfo data structure.

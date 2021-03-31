@@ -1,7 +1,7 @@
 #
 # GNUmakefile for dhd/exe
 #
-# Copyright 2019 Broadcom
+# Copyright 2020 Broadcom
 #
 # This program is the proprietary software of Broadcom and/or
 # its licensors, and may only be used, duplicated, modified or distributed
@@ -163,7 +163,11 @@ ifeq ($(findstring $(TARGETARCH), "x86 x86_mmx"),)
   DHD_OBJS := $(DHD_OBJS:%.o=$(TARGETARCH)/%.o)
 endif
 
+ifneq ($(wildcard prebuilt/dhd),)
+all: prebuilt/dhd
+else
 all: $(DHD_EXE)
+endif
 
 clean:
 	 rm -fr $(DHD_EXE) $(DHD_OBJS) $(TARGETARCH)

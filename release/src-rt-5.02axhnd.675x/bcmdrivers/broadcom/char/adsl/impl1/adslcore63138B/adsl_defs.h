@@ -1,5 +1,5 @@
 /* TARGET=bcm63138b0-vdsl6b-adsl-bonding-gfast-HW-firmware-g994p1-e14-common-chip-afeproc-fire-annexB-annexJ-ginp-vectoring-gcc7  */
-/* VERSION=B2pvfbH045n  */
+/* VERSION=B2pvfbH045q  */
 
 #define SOURCE_FILE_ 
 #define SOURCE_FILE  
@@ -53,6 +53,7 @@
 #define FEQ_CHECK_8KTONE 
 #define VDSL_GFAST_MULTI_PILOT 
 #define PILOT_AFTER_VEC2PHASE 
+#define RFI_GUARD_TONES 
 #define VDSL_ADAPTIVE_BW_PLL 
 #define GFAST_EXTN_PROBE_SEQ 
 #define FIRE_RETRANSMISSION 
@@ -122,6 +123,7 @@
 #define G994P1_SELECT_TONESET_USING_SNR 
 #define G994P1_IMPROVED_RCV_FOR_HIGH_NOISE 
 #define G994P1_SUPPORT_A43C 
+#define VDSLAFE_GFAST_DIRECT_SWITCH 
 #define GFAST_SUPPORT 
 #define GFAST_G994 
 #define GFAST_VDSL_MULTIMODE 

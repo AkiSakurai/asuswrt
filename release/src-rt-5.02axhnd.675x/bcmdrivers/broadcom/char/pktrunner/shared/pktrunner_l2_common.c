@@ -52,18 +52,13 @@
 #define protoInfo(fmt, arg...)    BCM_LOG_INFO(BCM_LOG_ID_PKTRUNNER, fmt, ##arg)
 #define protoNotice(fmt, arg...)  BCM_LOG_NOTICE(BCM_LOG_ID_PKTRUNNER, fmt, ##arg)
 #define protoError(fmt, arg...)   BCM_LOG_ERROR(BCM_LOG_ID_PKTRUNNER, fmt, ##arg)
-#define protoPrint(fmt, arg...)   bcm_printk(fmt, ##arg)
+#define protoPrint(fmt, arg...)   bcm_print(fmt, ##arg)
 
 uint32_t pktrunner_l2flow_key_construct(Blog_t *blog_p, rdpa_l2_flow_key_t* l2_key)
 {
     /*Start of key build */
-#ifdef CONFIG_BCM_INTF_BRG_ENABLED
     memcpy(&l2_key->src_mac, &blog_p->rx.l2hdr[6], sizeof(BlogEthAddr_t));
     memcpy(&l2_key->dst_mac, &blog_p->rx.l2hdr[0], sizeof(BlogEthAddr_t));
-#else
-    memcpy(&l2_key->src_mac, blog_p->src_mac.u8, sizeof(BlogEthAddr_t));
-    memcpy(&l2_key->dst_mac, blog_p->dst_mac.u8, sizeof(BlogEthAddr_t));
-#endif
 
     l2_key->vtag_num = blog_p->vtag_num;
 

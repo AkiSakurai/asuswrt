@@ -1,6 +1,6 @@
 # Broadcom 802.11abg Networking Device Driver Configuration file
 #
-# Copyright (C) 2019, Broadcom. All Rights Reserved.
+# Copyright (C) 2020, Broadcom. All Rights Reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -32,6 +32,7 @@ WL11AC=1
 WL11AC_160=1
 WLATF=1
 WLTAF=1
+WL_VASIP_MU_INFO=1
 WL11H=1
 WL11D=1
 BAND2G=1

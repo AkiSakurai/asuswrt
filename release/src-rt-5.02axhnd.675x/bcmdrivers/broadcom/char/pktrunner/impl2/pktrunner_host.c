@@ -309,7 +309,7 @@ int __init runnerHost_construct(void)
     /* Set the Runner TCP ack priority flow to be in sync with blog/flow cache */
     runnerUcast_fc_tcp_ack_mflows_set( blog_support_get_tcp_ack_mflows() );
 
-    __print("Initialized Runner Host Layer\n");
+    bcm_print("Initialized Runner Host Layer\n");
 
     return 0;
 }

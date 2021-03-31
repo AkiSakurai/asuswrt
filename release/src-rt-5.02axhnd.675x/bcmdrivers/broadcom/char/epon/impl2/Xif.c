@@ -1087,7 +1087,8 @@ void XifRxClk161Enable(void)
 void XifIpgInsertionSet (U8 bytesToInsert)
     {
     bdmf_error_t drv_error = BDMF_ERR_OK;
-    BOOL cfgshortipg, cfginsertipg;
+    BOOL cfgshortipg = 0;
+    BOOL cfginsertipg = 0;
     U8 cfgipgword;
     
     if (bytesToInsert == 0)
@@ -1239,6 +1240,22 @@ void XifXpcsInrpMaskSet(const xpcstx_tx_int_mask *tx_int_mask)
     bdmf_error_t drv_error = BDMF_ERR_OK;
     
     drv_error += ag_drv_xpcstx_tx_int_mask_set(tx_int_mask);
+    }
+
+////////////////////////////////////////////////////////////////////////////////
+//extern
+void XifXpcsLbePolaritySet(Polarity polarity)
+    {
+    xpcstx_tx_control xpcs_tx_ctl = {0};
+    bdmf_error_t drv_error = BDMF_ERR_OK;
+
+    drv_error += ag_drv_xpcstx_tx_control_get(&xpcs_tx_ctl);
+    if (polarity == ActiveHi)
+        xpcs_tx_ctl.cfglsrenacthi125 = 1;
+    else
+        xpcs_tx_ctl.cfglsrenacthi125 = 0;
+    drv_error += ag_drv_xpcstx_tx_control_set(&xpcs_tx_ctl);
+
     }
 
 ////////////////////////////////////////////////////////////////////////////////

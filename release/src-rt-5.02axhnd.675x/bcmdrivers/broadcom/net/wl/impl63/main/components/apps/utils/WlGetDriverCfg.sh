@@ -1,8 +1,8 @@
 #!/bin/sh
 #
-# WlGetDriverCfg.sh <WiFi interface name> <Band: 2|5> <Driver mode: nic|dhd>
+# WlGetDriverCfg.sh <WiFi interface name> <Band: 2|5|6> <Driver mode: nic|dhd>
 #
-# Copyright (C) 2019, Broadcom. All Rights Reserved.
+# Copyright (C) 2020, Broadcom. All Rights Reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -22,9 +22,10 @@
 #
 IFS=
 show_help () {
-	echo "Syntax: $0 <WiFi interface name> <Band: 2|5> <Driver mode: nic|dhd>"
-	echo "Example 1: $0 wl1  2 nic"
-	echo "Example 2: $0 eth5 5 dhd"
+	echo "Syntax: $0 <WiFi interface name> <Band: 2|5|6> <Driver mode: auto|nic|dhd>"
+	echo "Example 1: $0 wl1  2 auto"
+	echo "Example 2: $0 eth5 2 nic"
+	echo "Example 3: $0 eth5 5 dhd"
 	#echo "Try \`$0 --help' for more information."
 	exit
 }
@@ -47,7 +48,7 @@ ifname=$1
 
 # Argument 2 is band
 band=$2
-if [[ $band != "2" ]] && [[ $band != "5" ]]; then
+if [[ $band != "2" ]] && [[ $band != "5" ]] && [[ $band != "6" ]] ; then
 echo "Invalid band!"
 show_help
 exit 0
@@ -55,6 +56,15 @@ fi
 
 # Argument 3 is driver mode
 mode=$3
+if [ $mode = "auto" ]; then
+	fwid=$(wl -i $ifname ver | grep -c FWID)
+	if [ $fwid = "1" ]; then
+		mode="dhd"
+	else
+		mode="nic"
+	fi
+fi
+
 if [[ $mode != "nic" ]] && [[ $mode != "dhd" ]]; then
 echo "Invalid driver mode!"
 show_help
@@ -243,6 +253,11 @@ echo -n wpa_cap=; echo $(wl -i $ifname wpa_cap)
 echo -n wsec=; echo $(wl -i $ifname wsec)
 echo -n wsec_restrict=; echo $(wl -i $ifname wsec_restrict)
 
+if [[ $band == "6" ]]; then
+echo -n 6g_mrate=; echo $(wl -i $ifname 6g_mrate)
+echo -n 6g_rate=; echo $(wl -i $ifname 6g_rate)
+fi
+
 if [[ $band == "5" ]]; then
 echo -n 5g_mrate=; echo $(wl -i $ifname 5g_mrate)
 echo -n 5g_rate=; echo $(wl -i $ifname 5g_rate)
@@ -341,6 +356,15 @@ echo -n msched=; echo $(wl -i $ifname msched)
 echo -n msched rucfg=; echo $(wl -i $ifname msched rucfg)
 echo -n msched maxn=; echo $(wl -i $ifname msched maxn)
 echo -n umsched=; echo $(wl -i $ifname umsched)
+echo -n dfs_postism=; echo $(wl -i $ifname dfs_postism)
+echo -n dfs_pretism=; echo $(wl -i $ifname dfs_preism)
+echo -n ldpc_cap=; echo $(wl -i $ifname ldpc_cap)
+echo -n ldpc_tx=; echo $(wl -i $ifname ldpc_tx)
+echo -n mfp=; echo $(wl -i $ifname mfp)
+echo -n pkteng_cmd=; echo $(wl -i $ifname pkteng_cmd)
+echo -n twt_prestop=; echo $(wl -i $ifname twt_prestop)
+echo -n twt_prestrt=; echo $(wl -i $ifname twt_prestrt)
+echo -n txbf_mutimer=; echo $(wl -i $ifname txbf_mutimer)
 
 echo ""
 echo ""

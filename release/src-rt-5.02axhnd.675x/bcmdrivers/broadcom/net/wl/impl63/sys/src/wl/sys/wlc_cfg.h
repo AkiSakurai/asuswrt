@@ -2,7 +2,7 @@
  * Configuration-related definitions for
  * Broadcom 802.11abg Networking Device Driver
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_cfg.h 781855 2019-12-03 10:56:10Z $
+ * $Id: wlc_cfg.h 784470 2020-02-27 20:11:47Z $
  */
 
 #ifndef _wlc_cfg_h_
@@ -130,7 +130,7 @@
 #define D11_DEFAULT5	0x0000001e	/* Supported  D11 revs: 129(43684b0),
 					 * 130(63178a0), 131(6710a0), 132(6715a0)
 					 */
-#define D11_MINOR_DEFAULT    0x00000023	/* Supported  D11 minor revs: 0-1, 5 */
+#define D11_MINOR_DEFAULT    0x00000027	/* Supported  D11 minor revs: 0-2, 5 */
 
 /*
  * The supported PHYs are either specified explicitly in the wltunable_xxx.h file, or the
@@ -692,11 +692,11 @@ static const int acphy_hecap_rev[] = {
 #if (D11CONF_HAS(128) || D11CONF_HAS(129))
 #define VASIP_11AX_4X4_ENAB 1
 #endif // endif
-#if D11CONF_HAS(131)
-#define VASIP_11AX_3X3_ENAB 1
-#endif // endif
 #if D11CONF_HAS(130)
 #define VASIP_11AX_2X2_ENAB 1
+#endif // endif
+#if D11CONF_HAS(131)
+#define VASIP_11AX_3X3_ENAB 1
 #endif // endif
 
 #ifndef DONGLEBUILD
@@ -932,7 +932,7 @@ static const int acphy_hecap_rev[] = {
 #endif // endif
 
 #ifndef WLC_MAXMODULES
-#define WLC_MAXMODULES		89	/* max #  wlc_module_register() calls */
+#define WLC_MAXMODULES		90	/* max #  wlc_module_register() calls */
 #endif // endif
 
 #ifndef MAXSCB				/* station control blocks in cache */
@@ -948,7 +948,7 @@ static const int acphy_hecap_rev[] = {
 #endif /* DEFMAXSCB */
 
 #ifndef MAXSCBCUBBIES
-#define MAXSCBCUBBIES		48	/* max number of cubbies in scb container */
+#define MAXSCBCUBBIES		50	/* max number of cubbies in scb container */
 #endif // endif
 
 #ifndef MAXBSSCFGCUBBIES
@@ -1400,6 +1400,28 @@ static const int acphy_hecap_rev[] = {
 #define DTPC_NOTIF_CLNT_OBJ  0
 #endif /* WLC_DTPC */
 
+#if defined(WL_MBO) && defined(MBO_AP)
+#define MBO_NOTIF_CLNT_OBJ  1
+#else
+#define MBO_NOTIF_CLNT_OBJ  0
+#endif /* WL_MBO */
+
+#ifdef WL_PWRSTATS
+#define PWRSTATS_NOTIF_CLNT_OBJ  1
+#else
+#define PWRSTATS_NOTIF_CLNT_OBJ  0
+#endif /* WL_PWRSTATS */
+
+#ifdef BCM_CSIMON
+#define CSIMON_NOTIF_CLNT_OBJ  1
+#else
+#define CSIMON_NOTIF_CLNT_OBJ  0
+#endif /* BCM_CSIMON */
+
+/* The following is added for EAP only as insurance against */
+/* further client object allocation issues */
+#define EAP_NOTIF_CLNT_OBJ  0
+
 /* Maximum number of notification servers. */
 #ifndef MAX_NOTIF_SERVERS
 #define MAX_NOTIF_SERVERS	(24 + \
@@ -1426,8 +1448,12 @@ static const int acphy_hecap_rev[] = {
 	CSA_NOTIF_CLNT_OBJS + \
 	SCB_NOTIF_CLNT_OBJ + \
 	WNM_NOTIF_CLNT_OBJ + \
+	EAP_NOTIF_CLNT_OBJ + \
+	MBO_NOTIF_CLNT_OBJ + \
+	PWRSTATS_NOTIF_CLNT_OBJ + \
+	CSIMON_NOTIF_CLNT_OBJ + \
 	DTPC_NOTIF_CLNT_OBJ)
-#endif // endif
+#endif /* MAX_NOTIF_CLIENTS */
 
 /* Maximum number of memory pools. */
 #ifndef MAX_MEMPOOLS

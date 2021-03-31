@@ -77,6 +77,7 @@
 #include <linux/fs.h>
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h> /* copy_from_user */
+#include <linux/gbpm.h>
 #include <bcm_eapfwd.h>
 
 #if defined(CONFIG_BCM_FPP)
@@ -111,11 +112,27 @@
 /* In BRCM reference, we do not have a Tunnel, and ONLY 802.3 header */
 #define EAPFWD_HLEN    14 /* uapi/linux/if_ether.h ETH_HLEN */
 
+#if defined(BCM_PKTFWD)
+#define EAPFWD_FLCTL /* BPM PktPool Availability based EAPFWD Ingress throttle */
+#define EAPFWD_FLCTL_PKT_PRIO_FAVOR         4  /* Favor Pkt Prio >= 4 : VI,VO */
+#define EAPFWD_FLCTL_SKB_EXHAUSTION_LO_PCNT 25 /* Favored Pkt threshold */
+#define EAPFWD_FLCTL_SKB_EXHAUSTION_HI_PCNT 10
+#define EAPFWD_FLCTL_DROP_CREDITS           32
+#define EAPFWD_FLCTL_ENABLE                 1
+#endif
+
 /** typedefs */
 
 struct eap_dev {                /** eap_dev */
     struct d3lut           * d3lut;
     struct pktlist_context * pktlist_context[EAP_WLAN_RADIOS_MAX];
+#if defined(EAPFWD_FLCTL)  /* BPM Skb availability based Rx flowcontrol */
+    unsigned int        skb_exhaustion_lo[EAP_WLAN_RADIOS_MAX]; /* avail < lo: admit ONLY favored */
+    unsigned int        skb_exhaustion_hi[EAP_WLAN_RADIOS_MAX]; /* avail < hi: admit none */
+    unsigned short      pkt_prio_favor[EAP_WLAN_RADIOS_MAX];    /* favor pkt prio >= 4 */
+    unsigned int        flctl_enable[EAP_WLAN_RADIOS_MAX];      /* Is HFC feature enabled/disabled */
+    unsigned int        count_flctl_pkts[EAP_WLAN_RADIOS_MAX];
+#endif
 } ____cacheline_aligned;
 typedef struct eap_dev eap_dev_t;
 
@@ -195,6 +212,33 @@ uint32_t eap_fpp_id[EAP_FPP_FUNC_MAX];                      // CONFIG_BCM_FPP
 void enet_rx_loop(void) {} /* used by FPP tool for symbol printing */
 #endif /*  CONFIG_BCM_FPP */
 
+#ifdef EAPFWD_FLCTL
+/* FlowControl over-subscription */
+static inline bool ucast_should_drop_skb(pktlist_context_t *pktlist_context,
+        uint32_t avail_skb, uint16_t pkt_prio, uint16_t pkt_dest, uint32_t radio_idx)
+{
+    if (eap_dev_g.flctl_enable[radio_idx] == 0) return false;
+
+	if (avail_skb <= eap_dev_g.skb_exhaustion_hi[radio_idx]) return true; // drop ALL
+    if ((avail_skb <= eap_dev_g.skb_exhaustion_lo[radio_idx]) &&
+        (pkt_prio < eap_dev_g.pkt_prio_favor[radio_idx]))    return true; // drop low prio
+
+#if defined(BCM_PKTFWD_FLCTL)
+    if ((pktlist_context->fctable != PKTLIST_FCTABLE_NULL) &&
+        (pkt_prio < eap_dev_g.pkt_prio_favor[radio_idx]))
+    {
+        int32_t credits;
+        credits = __pktlist_fctable_get_credits(pktlist_context, 
+                                                pkt_prio, pkt_dest);
+
+        if (credits <= 0) return true;      // drop BE/BK if no credits avail
+    }
+#endif /* BCM_PKTFWD_FLCTL */
+
+    return false;
+}
+#endif
+
 
 /**
  * -----------------------------------------------------------------------------
@@ -249,11 +293,18 @@ eap_xmit_enqueue(struct sk_buff * skb)
     d3lut_elem_t      * d3lut_elem;
     d3lut_t           * d3lut;
     d3fwd_wlif_t      * d3fwd_wlif;
+    struct ethhdr     * eh;
+
+#ifdef EAPFWD_FLCTL
+    unsigned long drop_credits = 0;
+    uint32_t avail_skb = gbpm_avail_skb(); /* BPM free skb availability */
+#endif
 
     fpp_entry(eap_fpp_id[EAP_XMIT_ENQUEUE]);                // CONFIG_BCM_FPP
 
     d3addr = skb->data - EAPFWD_HLEN;
     d3lut  = eap_dev_g.d3lut;
+    eh = (struct ethhdr *)d3addr;
 
     /**
      * In this model, we leverage the Linux bridge to populate the
@@ -280,13 +331,13 @@ eap_xmit_enqueue(struct sk_buff * skb)
     goto sendup_to_linux;
 #endif
 
-    /* undo eth_type_trans() */
-    __skb_push(skb, EAPFWD_HLEN);
-
-    /* Multicast handled by linux stack */
-    if (ETHER_ISMULTI(skb->data)) {
+    /* Multicast and ARP handled by linux stack */
+    if ((ETHER_ISMULTI(d3addr)) || (eh->h_proto == ntohs(ETH_P_ARP))) {
         goto sendup_to_linux;
     }
+
+    /* undo eth_type_trans() */
+    __skb_push(skb, EAPFWD_HLEN);
 
     /* EAPFWD tunnel termination would have set this */
     d3fwd_wlif = d3lut_elem->ext.d3fwd_wlif; /* Use D3LUT's extension D3FWD */
@@ -307,6 +358,16 @@ eap_xmit_enqueue(struct sk_buff * skb)
     if (pktlist_context == (PKTLIST_CONTEXT_NULL))
         goto sendup_to_linux;
 
+#if defined(EAPFWD_FLCTL)
+    if (ucast_should_drop_skb(pktlist_context, avail_skb, prio, dest, radio))
+    {
+        drop_credits++;
+        eap_dev_g.count_flctl_pkts[radio]++; 
+        dev_kfree_skb(skb);
+        return;
+     }
+#endif /* EAPFWD_FLCTL */
+
     /**
      * BINNING packets into multiple queues<dest,prio>
      *
@@ -314,6 +375,14 @@ eap_xmit_enqueue(struct sk_buff * skb)
      * active work list of queues.
      */
     __pktlist_add_pkt(pktlist_context, prio, dest, d3lut_elem->key.v16, skb, SKBUFF_PTR);
+
+#if defined(BCM_PKTFWD_FLCTL)
+    if (pktlist_context->fctable != PKTLIST_FCTABLE_NULL)
+    {
+        /* Decrement avail credits for pktlist */
+        __pktlist_fctable_dec_credits(pktlist_context, prio, dest);
+    }
+#endif /* BCM_PKTFWD_FLCTL */
 
     fpp_exit(eap_fpp_id[EAP_XMIT_ENQUEUE], 1);              // CONFIG_BCM_FPP
 
@@ -573,16 +642,71 @@ wl_eap_bind(void * wl, struct net_device * wl_dev, int radio_idx,
     eap_receive_skb_hook   =  eap_receive_skb;
     eap_xmit_schedule_hook =  eap_xmit_schedule;
 
+#if defined(EAPFWD_FLCTL)
+    /* Apply default BPM exhaustion level thresholds */
+    if (wl_pktlist_context != PKTLIST_CONTEXT_NULL)
+    {
+        uint32_t bpm_total_skb = gbpm_total_skb();
+        eap_dev_g.skb_exhaustion_lo[radio_idx] =
+            ((bpm_total_skb * EAPFWD_FLCTL_SKB_EXHAUSTION_LO_PCNT) / 100);
+        eap_dev_g.skb_exhaustion_hi[radio_idx] =
+            ((bpm_total_skb * EAPFWD_FLCTL_SKB_EXHAUSTION_HI_PCNT) / 100);
+        eap_dev_g.pkt_prio_favor[radio_idx] = EAPFWD_FLCTL_PKT_PRIO_FAVOR;
+        eap_dev_g.flctl_enable[radio_idx] = EAPFWD_FLCTL_ENABLE;
+        eap_dev_g.count_flctl_pkts[radio_idx] = 0;
+        printk("%u FlowControl total<%u> lo<%u> hi<%u> favor prio<%u> enabled<%u>\n",
+               radio_idx, bpm_total_skb,
+               eap_dev_g.skb_exhaustion_lo[radio_idx],
+               eap_dev_g.skb_exhaustion_hi[radio_idx],
+               eap_dev_g.pkt_prio_favor[radio_idx],
+               eap_dev_g.flctl_enable[radio_idx]);
+    }
+#endif /* EAPFWD_FLCTL */
+
+#if defined(BCM_PKTFWD_FLCTL)
+        if (wl_pktlist_context->fctable != PKTLIST_FCTABLE_NULL)
+        {
+            /* Point EAPFWD pktlist_fctable to WLAN pktlist_fctable */
+            eap_dev_g.pktlist_context[radio_idx]->fctable = 
+                wl_pktlist_context->fctable;
+
+            /* Set pktlist_context pkt_prio_favor */
+            wl_pktlist_context->fctable->pkt_prio_favor =
+                eap_dev_g.pkt_prio_favor[radio_idx];
+        }
+        else
+        {
+            eap_dev_g.pktlist_context[radio_idx]->fctable =
+               PKTLIST_FCTABLE_NULL;
+        }
+#endif /* BCM_PKTFWD_FLCTL */
+
     return radio_idx;
 
 }   /* wl_eap_bind */
 EXPORT_SYMBOL(wl_eap_bind);
+
+
+int wl_eap_unbind(int radio_idx)
+{
+    pktlist_context_t * pktlist_context;
+
+	pktlist_context = eap_dev_g.pktlist_context[radio_idx];
+	if (pktlist_context != PKTLIST_CONTEXT_NULL) {
+		eap_dev_g.pktlist_context[radio_idx] = pktlist_context_fini(pktlist_context);
+	}
+	return 0;
+}   /* wl_eap_unbind */
+EXPORT_SYMBOL(wl_eap_unbind);
 
 /**************** EAPFWD PROC ENTRIES **********************/ 
 #define EAPFWD_PROC_DEBUG_MAX_SIZE 10
 
 static struct proc_dir_entry *eapfwd_proc_dir;
 static struct proc_dir_entry *eapfwd_proc_debug, *eapfwd_proc_stats;
+#ifdef EAPFWD_FLCTL
+static struct proc_dir_entry *eapfwd_proc_flctl;
+#endif
 
 /* Global debug variable for eapfwd */
 static unsigned int eapfwd_debug = 0;
@@ -590,11 +714,20 @@ static unsigned int eapfwd_debug = 0;
 static ssize_t eapfwd_stats_rd_func(struct file *filep, char __user *buf, size_t count, loff_t *offset)
 {
     int len = 0;
+#if defined(BCM_PKTFWD_FLCTL)
+    int radio = 0;
+#endif
 
     if (*offset != 0)
         return 0;
 
-    len += sprintf(buf, "EAPFWD Stats \n");
+    len += sprintf(buf + len, "EAPFWD Stats \n");
+
+#if defined(BCM_PKTFWD_FLCTL)
+    for (radio = 0; radio < EAP_WLAN_RADIOS_MAX; radio++) {
+        len += sprintf(buf + len, "Radio %d flctl_pkts = %u\n", radio, eap_dev_g.count_flctl_pkts[radio]);
+    }
+#endif
 
     *offset = len;
 
@@ -636,6 +769,79 @@ static ssize_t eapfwd_debug_wr_func(struct file *filep, const char __user *buf, 
 
 } /* eapfwd_debug_rd_func */
 
+#if defined(EAPFWD_FLCTL)
+static ssize_t eapfwd_flctl_rd_proc(struct file *file, char *buff, size_t len, loff_t *offset)
+{
+    uint32_t radio_idx;
+
+    if (*offset)
+        return 0;
+    *offset += sprintf(buff + *offset,
+        "BPM system total<%u> avail<%u>\n", gbpm_total_skb(), gbpm_avail_skb());
+    *offset += sprintf(buff + *offset,
+                       "Radio ExhaustionLO ExhaustionHI PktPrioFavor Enabled\n");
+
+    for (radio_idx = 0; radio_idx < EAP_WLAN_RADIOS_MAX; radio_idx++) {
+        *offset += sprintf(buff + *offset, "%2u. %14u %12u %12u %7u\n", radio_idx,
+                eap_dev_g.skb_exhaustion_lo[radio_idx],
+                eap_dev_g.skb_exhaustion_hi[radio_idx],
+                eap_dev_g.pkt_prio_favor[radio_idx],
+                eap_dev_g.flctl_enable[radio_idx]);
+    }
+
+    return *offset;
+}
+
+#define EAPFWD_FLCTL_PROC_CMD_MAX_LEN    64
+static ssize_t eapfwd_flctl_wr_proc(struct file *file, const char *buff, size_t len, loff_t *offset)
+{
+    int ret;
+    char input[EAPFWD_FLCTL_PROC_CMD_MAX_LEN];
+    uint32_t radio_idx, skb_exhaustion_lo, skb_exhaustion_hi, pkt_prio_favor, flctl_enable;
+    if (copy_from_user(input, buff, len) != 0)
+        return -EFAULT;
+    ret = sscanf(input, "%u %u %u %u %u",
+        &radio_idx, &skb_exhaustion_lo, &skb_exhaustion_hi, &pkt_prio_favor, &flctl_enable);
+    if (ret < 5)
+        goto Usage;
+    if (radio_idx >= EAP_WLAN_RADIOS_MAX) {
+        printk("Invalid radio_id %u, must be less than %u\n",
+            radio_idx, EAP_WLAN_RADIOS_MAX);
+        goto Usage;
+    }
+    if (skb_exhaustion_lo < skb_exhaustion_hi) {
+        printk("Invalid exhaustion level lo<%u> hi<%u>\n",
+            skb_exhaustion_lo, skb_exhaustion_hi);
+        goto Usage;
+    }
+    if (pkt_prio_favor > 7) { /* prio 0 .. 7 */
+        printk("Invalid pkt priority <%u>\n", pkt_prio_favor);
+        goto Usage;
+    }
+    if (flctl_enable != 0 && flctl_enable != 1) { /* enable 0, 1 */
+        printk("Enable must be 0 or 1 <%u>\n", flctl_enable);
+        goto Usage;
+    }
+    eap_dev_g.skb_exhaustion_lo[radio_idx] = skb_exhaustion_lo;
+    eap_dev_g.skb_exhaustion_hi[radio_idx] = skb_exhaustion_hi;
+    eap_dev_g.pkt_prio_favor[radio_idx]    = pkt_prio_favor;
+    eap_dev_g.flctl_enable[radio_idx]      = flctl_enable;
+#if defined(BCM_PKTFWD_FLCTL)
+    if (eap_dev_g.pktlist_context[radio_idx]->fctable != PKTLIST_FCTABLE_NULL)
+    {
+        eap_dev_g.pktlist_context[radio_idx]->fctable->pkt_prio_favor = pkt_prio_favor;
+    }
+#endif /* BCM_PKTFWD_FLCTL */
+    printk("Radio<%u> exhaustion level lo<%u> hi<%u>, favor pkt prio >= %u enabled<%u>\n",
+        radio_idx,  skb_exhaustion_lo, skb_exhaustion_hi, pkt_prio_favor, flctl_enable);
+    goto Exit;
+Usage:
+    printk("\nUsage: <radio_id> <skb_exhaustion_lo> <skb_exhaustion_hi> <pkt_prio_favor> <enable(0/1)>\n");
+Exit:
+    return len;
+}
+#endif /* EAPFWD_FLCTL */
+
 static const struct file_operations eapfwd_stats_fops = {
 	.owner = THIS_MODULE,
 	.read  = eapfwd_stats_rd_func,
@@ -646,6 +852,15 @@ static const struct file_operations eapfwd_debug_fops = {
 	.read  = eapfwd_debug_rd_func,
 	.write  = eapfwd_debug_wr_func,
 };
+
+
+#ifdef EAPFWD_FLCTL
+static const struct file_operations eapfwd_flctl_fops = {
+	.owner = THIS_MODULE,
+	.read  = eapfwd_flctl_rd_proc,
+	.write  = eapfwd_flctl_wr_proc,
+};
+#endif
 
 static int eapfwd_proc_init(void)
 {
@@ -666,6 +881,15 @@ static int eapfwd_proc_init(void)
 		printk("%s %s: Failed to create proc entry debug for eapfwd\n", __FILE__, __FUNCTION__);
 		return (-EIO);
 	}
+
+#ifdef EAPFWD_FLCTL
+	if ((eapfwd_proc_flctl = proc_create("eapfwd/flctl", 0666, NULL, &eapfwd_flctl_fops))
+		== NULL) {
+		printk("%s %s: Failed to create proc entry flctl for eapfwd\n", __FILE__, __FUNCTION__);
+		return (-EIO);
+	}
+#endif
+
 	return (0);
 
 }

@@ -828,6 +828,7 @@ static Blog_t *deactivate_blogRule(uint32_t blog_key)
     }
     bdmf_put(ingress_class_obj); /* above rdpa_ingress_class_get, obj still locked by 'blog-flow' so its safe to put */
 
+    deconfigure_action_per_port(ingress_class_obj, FLOW_IDX_FROM_BLOG_KEY(blog_key), EGRESS_PORT_FROM_BLOG_KEY(blog_key));
     if (--(*ref_cnt))
     {
         protoDebug("IC flow still in use, setting port-action to drop, still in use by %d ports", *ref_cnt);
@@ -841,7 +842,6 @@ static Blog_t *deactivate_blogRule(uint32_t blog_key)
     {
         bdmf_put(ic_flow.result.vlan_action);
     }
-    deconfigure_action_per_port(ingress_class_obj, FLOW_IDX_FROM_BLOG_KEY(blog_key), EGRESS_PORT_FROM_BLOG_KEY(blog_key));
 
     rc = rdpa_ingress_class_flow_delete(ingress_class_obj, FLOW_IDX_FROM_BLOG_KEY(blog_key));
     if (rc)

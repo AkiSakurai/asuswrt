@@ -96,15 +96,28 @@ LOCAL int g_isSemTaken[MAX_SEMS] = {0};
 LOCAL struct semaphore g_Sems[MAX_SEMS] = {0};
 #endif
 
-LOCAL struct {
+typedef struct _g_Dpc_t{
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0))
     struct tq_struct		taskQueue;
 #else
     struct tasklet_struct   task;
 #endif
     struct timer_list       timerList;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+    void                    (*timer_cb_func)(unsigned long arg);
+    unsigned long           timer_cb_arg;
+#endif
     unsigned long           ulTimeout;
-} g_Dpc[MAX_DPC];
+} g_Dpc_t;
+
+LOCAL g_Dpc_t g_Dpc[MAX_DPC];
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+typedef struct _bcm_sema_timer_list{
+   struct timer_list to_timer;
+   OS_SEMID semid;
+}bcm_sema_timer_list;
+#endif
 
 /*****************************************************************************
 ** FUNCTION:   bcmOsTaskCreate
@@ -284,6 +297,25 @@ OS_STATUS bcmOsSemCreate(char *semName, OS_SEMID *semId)
 }
 #endif //(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30)
 
+/***************************************************************************
+ * Function Name: bcmOsSemTakeTo
+ * Description  : Timeout handler for bcmOsSemTake
+ * Returns      : 0 if successful.
+ ***************************************************************************/
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0))
+void bcmOsSemTakeTo( unsigned long ulSem )
+#else
+void bcmOsSemTakeTo( struct timer_list *timer)
+#endif
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+   bcm_sema_timer_list *sema_to_timer;
+   OS_SEMID *ulSem;
+   sema_to_timer = from_timer(sema_to_timer,timer,to_timer);
+   ulSem = (OS_SEMID *)(sema_to_timer->semid);
+#endif
+    up( (struct semaphore *) ulSem );
+} /* XtmOsRequestSemTo */
 /*****************************************************************************
 ** FUNCTION:   bcmOsSemDelete
 **
@@ -337,7 +369,7 @@ OS_STATUS bcmOsSemDelete( OS_SEMID semId )
 OS_STATUS bcmOsSemTake(OS_SEMID semId, OS_TIME timeout)
 {
     OS_STATUS nRet = OS_STATUS_OK;
-    typedef void  (*FN_TIMER) (unsigned long);
+    //typedef void  (*FN_TIMER) (unsigned long);
 
     if( timeout == OS_WAIT_FOREVER ) {
         if (down_interruptible( (struct semaphore *) semId ) != 0) {
@@ -345,12 +377,12 @@ OS_STATUS bcmOsSemTake(OS_SEMID semId, OS_TIME timeout)
         }
     }
     else {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0))
         struct timer_list Timer;
-
         init_timer (&Timer);
-        Timer.expires = jiffies + timeout;
-        Timer.function = (FN_TIMER)up;
+        Timer.function = bcmOsSemTakeTo;
         Timer.data = semId;
+        Timer.expires = jiffies + timeout;
         add_timer (&Timer);
 
         if (down_interruptible( (struct semaphore *) semId ) != 0) {
@@ -358,12 +390,28 @@ OS_STATUS bcmOsSemTake(OS_SEMID semId, OS_TIME timeout)
             del_timer_sync( &Timer );
             nRet = OS_STATUS_FAIL;
         }
-        else if (!del_timer_sync( &Timer )) {
+        else if (!del_timer_sync( &Timer)) {
             /* Timer already timeout */
             nRet = OS_STATUS_TIMEOUT;
         }
-    }
+#else
+        bcm_sema_timer_list Timer;
+        timer_setup(&Timer.to_timer, bcmOsSemTakeTo, 0);
+        Timer.semid = semId;
+        Timer.to_timer.expires = jiffies + timeout;
+        add_timer (&Timer.to_timer);
 
+        if (down_interruptible( (struct semaphore *) semId ) != 0) {
+            /* Error on event */
+            del_timer_sync( &Timer.to_timer );
+            nRet = OS_STATUS_FAIL;
+        }
+        else if (!del_timer_sync( &Timer.to_timer )) {
+            /* Timer already timeout */
+            nRet = OS_STATUS_TIMEOUT;
+        }
+#endif
+    }
     return (nRet);
 }
 
@@ -484,7 +532,17 @@ void bcmOsDpcEnqueue(void* dpcHandle)
 #endif
 }
 
-
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+void bcmOsTimerCb(struct timer_list *timer)
+{
+   g_Dpc_t *pg_Dpc;
+   pg_Dpc = (g_Dpc_t *)from_timer(pg_Dpc,timer,timerList);
+   if(pg_Dpc != NULL)
+   {
+      pg_Dpc->timer_cb_func(pg_Dpc->timer_cb_arg);
+   }
+}
+#endif
 /*****************************************************************************
 ** FUNCTION:   bcmOsTimerCreate
 **
@@ -524,9 +582,15 @@ void * bcmOsTimerCreate(void* timerEntry, void * arg)
 			return NULL;
 	}
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0))
 	init_timer(&g_Dpc[i].timerList);
 	g_Dpc[i].timerList.function = timerEntry;
 	g_Dpc[i].timerList.data = (unsigned long) arg;
+#else
+   g_Dpc[i].timer_cb_func = timerEntry;
+   g_Dpc[i].timer_cb_arg = (unsigned long)arg;
+   timer_setup(&g_Dpc[i].timerList, bcmOsTimerCb, 0);
+#endif
 
 	return &g_Dpc[i].timerList;
 }

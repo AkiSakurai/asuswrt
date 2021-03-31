@@ -1,4 +1,4 @@
-﻿/* CSS Document */
+/* CSS Document */
 body{
 /*	background-color: rgb(31, 31, 31) !important; */
 }
@@ -870,7 +870,10 @@ width:122px;
 	background-image: url(images/New_ui/icon_menues.png);
 	background-position: -0px -144px;
 }
-
+.menu_Tools{
+	background-image: url(images/New_ui/icon_menues.png);
+	background-position: -0px -144px;
+}
 .menu_Dashboard{
 	background-image: url(images/New_ui/icon_Gamecenter.png);
 	background-position: -0px 0px;
@@ -894,6 +897,10 @@ width:122px;
 .menu_GameProfile{
 	background-image: url(images/New_ui/icon_Gamecenter.png);
 	background-position: -0px -90px;
+}
+.menu_AiMesh{
+	background: url(images/New_ui/icon_AiMesh.png);
+	background-size: cover;
 }
 .menuClicked{
 	width: 192px;
@@ -1004,3 +1011,7 @@ width:122px;
   background: url(images/New_ui/icon_indexes.png);
   background-position: -0px -40px; width: 43px; height: 43px;
 }
+.radio_hint{
+    background-color: #E64100;
+}
+

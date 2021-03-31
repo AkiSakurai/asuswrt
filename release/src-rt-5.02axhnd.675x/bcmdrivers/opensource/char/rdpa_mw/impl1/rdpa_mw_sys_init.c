@@ -366,11 +366,22 @@ int fc_tcp_ack_prio_ena_get(int *tcp_ack_prio_ena)
 
 int fw_clang_dis_get(int *fw_clang_dis)
 {
+#if defined(CONFIG_BCM96878) || defined(CONFIG_BCM96858) || defined(CONFIG_BCM963146)
     int rc;
     char buf[PSP_BUFLEN_16];
+#endif
 
-    *fw_clang_dis = 0; /* Default */
+#ifdef CONFIG_BCM96878
+    *fw_clang_dis = 0; /* By Default 96878 chip runs C based FW */
+#else
+    *fw_clang_dis = 1; /* By Default Gen3 and Gen4 chips, and 963146, run Assembler based FW 
+						  Among all 4G platforms only 96858 can be switched to C version.
+						  Other platforms don't have C code compiled in.
+                       */
+#endif 
 
+    /* For 96858, 96878 and 963146 we allow to change the default */
+#if defined(CONFIG_BCM96878) || defined(CONFIG_BCM96858) || defined(CONFIG_BCM963146)
     rc = scratchpad_get_or_init(FW_CLANG_DISABLE, buf, sizeof(buf), NULL, scratchpad_func_get);
     if (rc < 0)
         return rc;
@@ -379,6 +390,12 @@ int fw_clang_dis_get(int *fw_clang_dis)
     {
         *fw_clang_dis = 1;
     }
+    else if (!strcmp(buf ,"0")) 
+    {
+        *fw_clang_dis = 0;
+    }
+
+#endif 
 
     return 0;
 }
@@ -524,6 +541,9 @@ int rdpa_init_system(void)
 	rdpa_counter_cfg_t counter_cfg = {};
     bdmf_object_handle rdpa_cpu_port_obj = NULL;
     BDMF_MATTR(rdpa_port_attrs, rdpa_port_drv());
+#if !(defined(CHIP_63158) || defined(CHIP_6856) || defined(CHIP_6878))
+    rdpa_packet_buffer_cfg_t packet_buffer_cfg = {};
+#endif
 #endif
 
     mw_wan_type wan_type;
@@ -610,7 +630,15 @@ int rdpa_init_system(void)
 
     rdpa_system_cfg_set(rdpa_system_attrs, &sys_cfg);
     rdpa_system_init_cfg_set(rdpa_system_attrs, &sys_init_cfg);
+
 #ifdef XRDP
+
+#if !(defined(CHIP_63158) || defined(CHIP_6856) || defined(CHIP_6878))
+    packet_buffer_cfg.us_prio_rsv_thrs.min_buf_rsv_threshold = 1;
+    packet_buffer_cfg.ds_prio_rsv_thrs.min_buf_rsv_threshold = 1;
+    rdpa_system_packet_buffer_cfg_set(rdpa_system_attrs, &packet_buffer_cfg);
+#endif
+
     if (rc_dqm == 0)
         rdpa_system_qm_cfg_set(rdpa_system_attrs, &qm_cfg);
     if (rc_cntr_cfg == 0)

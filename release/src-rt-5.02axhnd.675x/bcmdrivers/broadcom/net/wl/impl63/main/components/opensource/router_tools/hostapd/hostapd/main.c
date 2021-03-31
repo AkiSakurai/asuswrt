@@ -721,7 +721,13 @@ int main(int argc, char *argv[])
 			break;
 #ifdef CONFIG_DEBUG_SYSLOG
 		case 's':
+#if 0
 			wpa_debug_syslog = 1;
+#else
+			debug++;
+			wpa_debug_level = 0;
+			wpa_debug_syslog++;
+#endif
 			break;
 #endif /* CONFIG_DEBUG_SYSLOG */
 		case 'S':

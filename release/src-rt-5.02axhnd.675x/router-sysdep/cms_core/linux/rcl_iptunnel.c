@@ -65,6 +65,7 @@
 #include "rcl.h"
 #include "rut_util.h"
 #include "rut_iptables.h"
+#include "rut_ebtables.h"
 #include "rut_iptunnel.h"
 
 CmsRet rcl_ipTunnelObject( _IPTunnelObject *newObj,
@@ -157,6 +158,7 @@ CmsRet rcl_ipv6inIpv4TunnelObject( _Ipv6inIpv4TunnelObject *newObj,
 
    if ( ADD_NEW(newObj, currObj) )
    {
+      rutEbt_configICMPv6Reply(newObj->prefix, TRUE);
       return ret;
    }
 

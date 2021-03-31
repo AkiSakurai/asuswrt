@@ -49,7 +49,7 @@
 *******************************************************************************
 * File Name  : sysport_print.h
 *
-* Description: define __print(...)
+* Description: define bcm_print(...)
 *
 *******************************************************************************
 */
@@ -59,18 +59,17 @@
 
 #if defined(__KERNEL__)
     #include <linux/bcm_log.h>
-    #define __print(fmt, arg...) bcm_printk(fmt, ##arg)
 #else
     #if defined(BCU_BCBUILD)
         #include "log.h"
-        #define __print(fmt, arg...) print_log(fmt, ##arg)
+        #define bcm_print(fmt, arg...) print_log(fmt, ##arg)
     #else
-        #define __print(fmt, arg...) printf(fmt, ##arg)
+        #define bcm_print(fmt, arg...) printf(fmt, ##arg)
     #endif
 #endif
 
 #define __error(fmt, arg...)                                            \
-    __print("ERROR [%s,%u]: " fmt "\n", __FUNCTION__, __LINE__, ##arg)
+    bcm_print("ERROR [%s,%u]: " fmt "\n", __FUNCTION__, __LINE__, ##arg)
 
 #define __error_ret(fmt, arg...)                \
     do {                                        \

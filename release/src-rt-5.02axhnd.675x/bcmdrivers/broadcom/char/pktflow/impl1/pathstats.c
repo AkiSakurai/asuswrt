@@ -219,10 +219,7 @@ static inline uint32_t _path_fhw_live(void)
  */
 int path_pathstat_print(char * p, int * index_p, int * linesbudget_p)
 {
-    int bytes = 0, i, dev_idx;
-    Path_t * path_p;
-    PathStatsEnt_t *sw_stat_p, *hw_stat_p;
-    uint8_t hw_pathstat_idx;
+    int bytes = 0;
 
     if (*index_p == 0)
     {
@@ -231,64 +228,8 @@ int path_pathstat_print(char * p, int * index_p, int * linesbudget_p)
         bytes += sprintf( p + bytes, "Active # of Path = %d\n", devpathdb.active_sw_path_num);        
         bytes += sprintf( p + bytes, "Active # of vt device = %d\n", devpathdb.active_vtdev_num);
         bytes += sprintf( p + bytes, "Auto refresh path HW slice_idx_step = %u\n", devpathdb.slice_idx_step);
-        bytes += sprintf( p + bytes, "Auto refresh path HW path_num_per_slice = %u\n\n", devpathdb.path_num_per_slice);
+        bytes += sprintf( p + bytes, "Auto refresh path HW path_num_per_slice = %u\n", devpathdb.path_num_per_slice);
         bytes += sprintf( p + bytes, "Auto refresh cur_refresh_idx = %u\n\n", devpathdb.cur_refresh_idx);
-
-        for( i = PATH_IX_INVALID; i < devpathdb.max_sw_path_ent; i++ )
-        {
-            path_p = &devpathdb.path_table[i];
-            /* only print non_zero entry */
-            if ( path_p->path_key )
-            {
-                sw_stat_p = &devpathdb.sw_pathstat_tbl[i];
-                hw_pathstat_idx = path_p->hw_pathstat_idx;                
-                bytes += sprintf( p + bytes, "\n<Path_%d> key=0x%llx, active_flows=%d, sw_pathstat_idx=%d, hw_pathstat_idx=%d\n",
-                            i, path_p->path_key, path_p->ref_count, path_p->sw_pathstat_idx, hw_pathstat_idx );
-                bytes += sprintf( p + bytes,
-                            "\t sw_pkt_count=%llu, sw_pkt_bytes=%llu, ",
-                            sw_stat_p->pkt_count, sw_stat_p->pkt_bytes );
-
-                if ( _path_fhw_live() )
-                {
-                    path_flush_hw_stats( hw_pathstat_idx );
-                    hw_stat_p = &devpathdb.hw_pathstat_tbl[hw_pathstat_idx];
-                    bytes += sprintf( p + bytes,
-                                "hw_pkt_count=%llu, hw_pkt_bytes=%llu ",
-                                hw_stat_p->pkt_count, hw_stat_p->pkt_bytes );
-                }
-
-                bytes += sprintf( p + bytes, "\n\t ");
-                for (dev_idx=0; dev_idx<MAX_PATH_DEV; dev_idx++)
-                {
-                    void * detach_dev_p;
-                    struct net_device * disp_dev_p;
-                    BlogDir_t dir;
-
-                    detach_dev_p = DEVP_DETACH_DIR( path_p->path_dev_p[dev_idx] );
-                    if ( detach_dev_p == (void *)NULL )
-                        break;
-
-                    dir = IS_RX_DIR( path_p->path_dev_p[dev_idx] ) ? DIR_RX : DIR_TX;
-                    disp_dev_p = (struct net_device *)detach_dev_p;
-                    bytes += sprintf( p + bytes, "%s_%s [%d] -> ",
-                                disp_dev_p->name, (dir == DIR_RX) ? "rx" : "tx",  path_p->delta[dev_idx] );
-                }
-                bytes += sprintf( p + bytes, "End\n");
-            }
-        }
-
-        if ( _path_fhw_live() )
-        {
-            bytes += sprintf( p + bytes, "\nHWACC cntr table\n");
-            for ( i = PATH_IX_INVALID; i < devpathdb.max_hwacc_counter; i++ )
-            {
-                hw_stat_p = &devpathdb.hw_pathstat_tbl[i];
-                if ( hw_stat_p->pkt_bytes )
-                    bytes += sprintf( p + bytes, "<%d>, valid=%d, hit=%llu, byte=%llu\n", 
-                                  i, hw_stat_p->valid, hw_stat_p->pkt_count, hw_stat_p->pkt_bytes);        
-            }
-            bytes += sprintf( p + bytes, "\n\n");
-        }
     }
 
     *index_p += 1;
@@ -358,28 +299,44 @@ int pathstat_print_by_idx(char * p, int index)
     PathStatsEnt_t *sw_stat_p, *hw_stat_p;
 
     path_p = &devpathdb.path_table[index];
+    /* only print non_zero entry */
+    if ( path_p->path_key == 0 )
+        return bytes;
 
-    bytes += sprintf( p + bytes, "\n<Path_%d> key=0x%llx, active_flows=%d, sw_pathstat_idx=%d, sw_pathstat_idx=%d, hw_pathstat_age=%lu\n",
+    bytes += sprintf( p + bytes, "\n<Path_%d> key=0x%llx, active_flows=%d, sw_pathstat_idx=%d, hw_pathstat_idx=%d, hw_pathstat_age=%lu\n",
                     index, path_p->path_key, path_p->ref_count, path_p->sw_pathstat_idx, path_p->hw_pathstat_idx, path_p->hw_pathstat_age );
 
     path_idx = path_p->sw_pathstat_idx;
     sw_stat_p = &devpathdb.sw_pathstat_tbl[path_idx];
-    bytes += sprintf( p + bytes, "\t sw_pkt_count=%llu, sw_pkt_bytes=%llu, ",
+    bytes += sprintf( p + bytes, "\t sw_pkt_count=%llu, sw_pkt_bytes=%llu \n",
                     sw_stat_p->pkt_count, sw_stat_p->pkt_bytes );
 
     if ( _path_fhw_live() )
     {
         path_flush_hw_stats( path_p->hw_pathstat_idx );
         hw_stat_p = &devpathdb.hw_pathstat_tbl[path_p->hw_pathstat_idx];
-        bytes += sprintf( p + bytes, "hw_pkt_count=%llu, hw_pkt_bytes=%llu\n",
-                        hw_stat_p->pkt_count, hw_stat_p->pkt_bytes );
+        bytes += sprintf( p + bytes, "\t hw_counter_valid=%d, hw_pkt_count=%llu, hw_pkt_bytes=%llu \n",
+                        hw_stat_p->valid, hw_stat_p->pkt_count, hw_stat_p->pkt_bytes );
     }
+    bytes += sprintf( p + bytes, "\t ");
 
     for (dev_idx=0; dev_idx<MAX_PATH_DEV; dev_idx++)
     {
-        bytes += sprintf( p + bytes, " %p[%d], ", path_p->path_dev_p[dev_idx], path_p->delta[dev_idx] );
+        void * detach_dev_p;
+        struct net_device * disp_dev_p;
+        BlogDir_t dir;
+
+        detach_dev_p = DEVP_DETACH_DIR( path_p->path_dev_p[dev_idx] );
+        if ( detach_dev_p == (void *)NULL )
+            break;
+
+        dir = IS_RX_DIR( path_p->path_dev_p[dev_idx] ) ? DIR_RX : DIR_TX;
+        disp_dev_p = (struct net_device *)detach_dev_p;
+        bytes += sprintf( p + bytes, "%s_%s [%d] -> ",
+                    disp_dev_p->name, (dir == DIR_RX) ? "rx" : "tx",  path_p->delta[dev_idx] );
     }
-    bytes += sprintf( p + bytes, "\n\n");
+    bytes += sprintf( p + bytes, "End\n\n");
+
     return bytes;
 }
 
@@ -665,7 +622,7 @@ int path_drv_construct(int procfs)
     if ( procfs == 1 ) {
         struct proc_dir_entry *entry;
 
-        entry = proc_create_data(FCACHE_STATS_PROCFS_DIR_PATH "/path",
+        entry = proc_create_data(FCACHE_STATS_PROCFS_DIR_PATH "/path_usage",
             S_IRUGO, NULL, &pathstatDrvPathStatsProcfs_proc, NULL);
         if (!entry)
         {
@@ -683,7 +640,7 @@ int path_drv_construct(int procfs)
            return FCACHE_ERROR;
         }
 
-        entry = proc_create_data(FCACHE_STATS_PROCFS_DIR_PATH "/path_index", 
+        entry = proc_create_data(FCACHE_STATS_PROCFS_DIR_PATH "/path", 
             S_IRUGO, NULL, &pathstatDrvProcfs_proc, NULL);
         if (!entry)
         {

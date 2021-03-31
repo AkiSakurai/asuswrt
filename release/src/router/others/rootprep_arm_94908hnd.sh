@@ -10,7 +10,8 @@ mkdir -p -m 0755 cifs1
 mkdir -p -m 0755 cifs2
 mkdir -p -m 0755 sysroot
 mkdir -p -m 0755 var
-#ln -sf tmp/opt opt
+rm -rf opt
+ln -sf tmp/opt opt
 
 # tmp
 mkdir -p -m 0755 tmp

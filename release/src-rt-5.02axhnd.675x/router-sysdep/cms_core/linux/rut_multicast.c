@@ -763,6 +763,11 @@ CmsRet rutMulti_CreateMcpdCfg( void )
    IgmpCfgObject *igmpObj = NULL;
    InstanceIdStack iidStack = EMPTY_INSTANCE_ID_STACK;
 
+#ifdef DMP_X_BROADCOM_COM_GPON_1
+   BcmOmciRtdMcastObject *gponObj = NULL;
+   InstanceIdStack iidStack2 = EMPTY_INSTANCE_ID_STACK;
+#endif
+
    ret = cmsObj_get(MDMOID_IGMP_CFG, &iidStack, 0, (void **) &igmpObj);
 
    if (ret != CMSRET_SUCCESS)
@@ -776,10 +781,22 @@ CmsRet rutMulti_CreateMcpdCfg( void )
 
    if (ret != CMSRET_SUCCESS)
    {
-      cmsLog_error("could not get mcastCfgObject, ret=%d", ret);
+      cmsLog_error("rutMulti_IsMcastStrictWan() failed, ret=%d", ret);
+      cmsObj_free((void **)&igmpObj);
       fclose(fp);
       return CMSRET_INTERNAL_ERROR;
    }
+
+#ifdef DMP_X_BROADCOM_COM_GPON_1
+   if ((ret = cmsObj_get(MDMOID_BCM_OMCI_RTD_MCAST, &iidStack2, 0,
+     (void**)&gponObj)) != CMSRET_SUCCESS)
+   {
+      cmsLog_error("could not get MDMOID_BCM_OMCI_RTD_MCAST, ret=%d", ret);
+      cmsObj_free((void **)&igmpObj);
+      fclose(fp);
+      return CMSRET_INTERNAL_ERROR;
+   }
+#endif
 
    fprintf(fp, "#\n");
    fprintf(fp, "#Begin IGMP configuration\n");
@@ -818,6 +835,7 @@ CmsRet rutMulti_CreateMcpdCfg( void )
       fprintf(fp, "igmp-snooping-interfaces\n");
    }
 
+#ifndef DMP_X_BROADCOM_COM_GPON_1
    if(igmpObj->igmpMcastIfNames && strlen(igmpObj->igmpMcastIfNames) > 0)
    {
       fprintf(fp, "igmp-mcast-interfaces %s\n", igmpObj->igmpMcastIfNames);
@@ -826,10 +844,28 @@ CmsRet rutMulti_CreateMcpdCfg( void )
    {
       fprintf(fp, "igmp-mcast-interfaces\n");
    }
+#else
+   fprintf(fp, "igmp-mcast-interfaces");
+   if(igmpObj->igmpMcastIfNames && strlen(igmpObj->igmpMcastIfNames) > 0)
+   {
+      fprintf(fp, " %s", igmpObj->igmpMcastIfNames);
+   }
+
+   if(gponObj->igmpMcastIfNames && strlen(gponObj->igmpMcastIfNames) > 0)
+   {
+      fprintf(fp, " %s", gponObj->igmpMcastIfNames);
+   }
+
+   fprintf(fp, "\n");
+#endif
 
    fprintf(fp, "#\n");
    fprintf(fp, "#End IGMP configuration\n");
    fprintf(fp, "#\n");
+
+#ifdef DMP_X_BROADCOM_COM_GPON_1
+   cmsObj_free((void **)&gponObj);
+#endif
 
    cmsObj_free((void **) &igmpObj);
    }
@@ -966,7 +1002,7 @@ CmsRet rutMulti_CreateMcpdCfg( void )
 
 
 
-CmsRet rutMulti_reloadMcpd(void)
+CmsRet rutMulti_reloadMcpdWithType(int protoType __attribute__((unused)))
 {
    CmsRet ret = CMSRET_SUCCESS;
 
@@ -983,6 +1019,7 @@ CmsRet rutMulti_reloadMcpd(void)
    msg.src = mdmLibCtx.eid;
    msg.dst = EID_MCPD;
    msg.flags_request = 1;
+   msg.wordData = protoType;
 
    /*  NOTE: if mcpd is not in the system, 
     *        it will be launched to receive this message 
@@ -1002,9 +1039,48 @@ CmsRet rutMulti_reloadMcpd(void)
 #endif /* DMP_X_BROADCOM_COM_IGMP_1 || DMP_X_BROADCOM_COM_IGMP_1 */
 
    return ret;
-
+   
 } /* rutMulti_reloadMcpd */
 
+CmsRet rutMulti_reloadMcpd(void)
+{
+   CmsRet ret = CMSRET_SUCCESS;
+
+#if defined(DMP_X_BROADCOM_COM_IGMP_1) || defined(DMP_X_BROADCOM_COM_MLD_1)
+   CmsMsgHeader msg = EMPTY_MSG_HEADER;
+
+   rutMulti_CreateMcpdCfg();
+
+   /* make sure modules needed for mcpd are loaded */
+   rutIpt_McpdLoadModules();
+
+   /*reload mcpd*/
+   msg.type = CMS_MSG_MCPD_RELOAD;
+   msg.src = mdmLibCtx.eid;
+   msg.dst = EID_MCPD;
+   msg.flags_request = 1;
+   msg.wordData = BCM_MCAST_PROTO_ALL;
+
+   /*  NOTE: if mcpd is not in the system, 
+    *        it will be launched to receive this message 
+    */
+   ret = cmsMsg_send(mdmLibCtx.msgHandle, &msg);
+
+   if(ret != CMSRET_SUCCESS)
+   {
+      cmsLog_error("could not send CMS_MSG_MCPD_RELOAD msg to mcpd, ret=%d", ret);
+      ret = CMSRET_INTERNAL_ERROR;
+   }
+   else
+   {
+      cmsLog_debug("CMS_MSG_MCPD_RELOAD sent successfully");
+   }
+
+#endif /* DMP_X_BROADCOM_COM_IGMP_1 || DMP_X_BROADCOM_COM_IGMP_1 */
+
+   return ret;
+   
+} /* rutMulti_reloadMcpd */
 
 CmsRet rutMulti_resetMcpd(void)
 {

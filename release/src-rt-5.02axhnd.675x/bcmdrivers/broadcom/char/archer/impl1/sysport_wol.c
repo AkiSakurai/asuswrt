@@ -187,7 +187,7 @@ void sysport_wol_mpd_cfg (archer_mpd_cfg_t *mpd_cfg)
 
         /* configure the mac address for MPD */
         mac_h = (uint32_t)mac_addr[0] << 24 | (uint32_t)mac_addr[1] << 16 |
-                (uint32_t)mac_addr[2] << 8  | mac_addr[3];
+            (uint32_t)mac_addr[2] << 8  | mac_addr[3];
         mac_l = (uint32_t)mac_addr[4] << 8  | mac_addr[5];
 
         sysport_p->SYSTEMPORT_UNIMAC.SYSTEMPORT_UMAC_MAC0 = mac_h;
@@ -199,7 +199,7 @@ void sysport_wol_mpd_cfg (archer_mpd_cfg_t *mpd_cfg)
 *******************************************************************************
 * Function   : sysport_wol_enter
 * Description: set specific system port to WOL mode 
-               this function is called assuming MPD MAC addresses has been programmed
+this function is called assuming MPD MAC addresses has been programmed
 *******************************************************************************
 */
 void sysport_wol_enter(char *dev_name)
@@ -235,7 +235,7 @@ static struct proc_dir_entry *proc_dir;
 static struct proc_dir_entry *wol_proc_entry;
 
 static ssize_t archer_wol_status_procfs(struct file *file, char __user *page,
-        size_t len, loff_t *offset)
+                                        size_t len, loff_t *offset)
 {
     int i, bytes = 0;
     uint32_t v32;
@@ -252,7 +252,7 @@ static ssize_t archer_wol_status_procfs(struct file *file, char __user *page,
             v32 = sysport_p->SYSTEMPORT_RBUF.SYSTEMPORT_RBUF_RBUF_STATUS;
 
             bytes += sprintf (page+bytes, "interface %d in %s mode\n", i, 
-                          (v32 & SYSPORT_RBUF_STATUS_WOL_M)? "WOL" : "Active");
+                              (v32 & SYSPORT_RBUF_STATUS_WOL_M)? "WOL" : "Active");
         }
         *offset += bytes;
     }
@@ -274,7 +274,7 @@ int sysport_wol_proc_init(void)
         ret = -1;
     }
     wol_proc_entry = proc_create_data (PROC_DIR WOL_PROC_FILE, 
-        S_IRUGO, NULL, &archer_wol_interface_status_proc, NULL);
+                                       S_IRUGO, NULL, &archer_wol_interface_status_proc, NULL);
 
     if (!wol_proc_entry)
     {
@@ -312,7 +312,7 @@ static FN_HANDLER_RT sysport_wol_isr(int irq, void *param)
     v32 &= ~SYSPORT_RXCHK_CONTROL_BRCM_TAG_MATCH_EN_M;
     sysport_p->SYSTEMPORT_RXCHK.SYSTEMPORT_RXCHK_CONTROL = v32;
 
-    __print("\n* WOL IRQ %d ** rbuf status 0x%x\n", irq, rbuf_status);
+    bcm_print("\n* WOL IRQ %d ** rbuf status 0x%x\n", irq, rbuf_status);
 
     return BCM_IRQ_HANDLED;
 }
@@ -331,7 +331,7 @@ int sysport_wol_init(void)
 
     BcmHalMapInterrupt(sysport_wol_isr, 0, wol_interrupt_id);
 
-    __print("Sysport 0 WOL IRQ %d\n", wol_interrupt_id);
+    bcm_print("Sysport 0 WOL IRQ %d\n", wol_interrupt_id);
 
     /* Enable RX ARP Interrupts for WOL */
     phy_intrl2_p->SYSTEMPORT_INTRL2_PHY_CPU_MASK_CLEAR = 0x10000;
@@ -343,7 +343,7 @@ int sysport_wol_init(void)
 
     BcmHalMapInterrupt(sysport_wol_isr, (void *)1, wol_interrupt_id);
 
-    __print("Sysport 1 WOL IRQ %d\n", wol_interrupt_id);
+    bcm_print("Sysport 1 WOL IRQ %d\n", wol_interrupt_id);
 
     /* Enable RX ARP Interrupts for WOL */
     phy_intrl2_p->SYSTEMPORT_INTRL2_PHY_CPU_MASK_CLEAR = 0x10000;

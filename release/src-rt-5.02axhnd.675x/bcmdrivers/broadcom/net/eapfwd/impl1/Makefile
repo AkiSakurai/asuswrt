@@ -10,6 +10,12 @@ EXTRA_CFLAGS += -DBCM_PKTFWD
 
 ifneq ($(strip $(CONFIG_BCM_EAPFWD)),)
 EXTRA_CFLAGS += -DBCM_EAPFWD
+
+# Enable credit based Host Flow Control
+ifneq ($(strip $(CONFIG_BCM_PKTFWD_FLCTL)),)
+EXTRA_CFLAGS += -DBCM_PKTFWD_FLCTL
+endif
+
 endif
 
 endif

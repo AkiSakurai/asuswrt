@@ -2,7 +2,7 @@
  * Private H/W info of
  * Broadcom 802.11bang Networking Device Driver
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_hw_priv.h 779779 2019-10-07 14:58:11Z $
+ * $Id: wlc_hw_priv.h 786280 2020-04-22 23:59:59Z $
  */
 
 #ifndef _wlc_hw_priv_h_
@@ -74,8 +74,7 @@
 #define MI_PHYTXERR_EN 0
 #endif /* PHYTXERR_DUMP */
 
-/* Air-IQ uses PSMX interrupt */
-#ifdef WL_AIR_IQ
+#ifdef WL_PSMX
 #define MI_PSMX_EN MI_PSMX
 #else
 #define MI_PSMX_EN 0
@@ -87,7 +86,11 @@
 			 MI_BT_RFACT_STUCK | MI_BT_PRED_REQ | MI_HWACI_NOTIFY | \
 			 MI_BUS_ERROR | MI_PSMX_EN)
 
-#define DEF_MACINTMASK_X MIX_AIRIQ
+#ifdef WL_AIR_IQ
+#define DEF_MACINTMASK_X (MIX_AIRIQ | MI_GP0)
+#else
+#define DEF_MACINTMASK_X MI_GP0
+#endif // endif
 
 /* Below interrupts can be delayed and piggybacked with other interrupts.
  * We don't want these interrupts to trigger an isr so we can save CPU & power.
@@ -230,20 +233,32 @@ typedef struct prxs_stats {
 	uint32 n_miss;
 	uint32 n_cons_intr;
 } prxs_stats_t;
-
-typedef struct cons_seq {
-	uint8 sssn;
-	uint8 pad;
-	uint16 seq;
-} cons_seq_t;
-
-typedef struct curr_seq {
-	uint8 sssn;
-	uint8 pad;
-	uint16 seq;
-} curr_seq_t;
 #endif /* STS_FIFO_RXEN || WLC_OFFLOADS_RXSTS */
 
+#define ISSTS_INVALID(sts_buff) \
+				((sts_buff)->phystshdr->PhyRxStatusLen == (uint16)-1)
+#define STS_MAX_SSSN 256
+#define STS_NEXT_SSSN(sssn) MODINC_POW2((sssn), (STS_MAX_SSSN))
+#define STS_PREV_SSSN(sssn) MODDEC_POW2((sssn), (STS_MAX_SSSN))
+#define STS_SEQNUM_MAX 4096
+#define STS_SEQNUM_INVALID (STS_SEQNUM_MAX)
+#define IS_STSSEQ_ADVANCED(a, b) \
+	((MODSUB_POW2((a), (b), STS_SEQNUM_MAX) > 0) && \
+	(MODSUB_POW2((a), (b), STS_SEQNUM_MAX) < (STS_SEQNUM_MAX >> 1)))
+#define RXPEN_LIST_IDX0 0
+#define RXPEN_LIST_IDX1 1
+#define RXPEN_LIST_IDX  RXPEN_LIST_IDX0
+#if defined(BCMPCIEDEV)
+#define MAX_RXPEN_LIST 2
+#else
+#define MAX_RXPEN_LIST 1
+#endif /* BCMPCIEDEV */
+
+typedef struct rxh_seq_dbg {
+	uint16	rd_idx;
+	uint16	wr_idx;
+	uint16 seq[STS_SEQNUM_MAX];
+} rxh_seq_dbg_t;
 struct wlc_hw_info {
 	wlc_info_t	*wlc;
 	wlc_hw_t	*pub;			/**< public API */
@@ -446,31 +461,15 @@ struct wlc_hw_info {
 	dmaaddr_t pap;
 	uint32    _alloced;
 #endif /* BCM_SECURE_DMA */
-#define ISSTS_INVALID(sts_buff) \
-				((sts_buff)->phystshdr->PhyRxStatusLen == (uint16)-1)
-#define STS_MAX_SSSN 256
-#define STS_NEXT_SSSN(sssn) MODINC_POW2((sssn), (STS_MAX_SSSN))
-#define STS_PREV_SSSN(sssn) MODDEC_POW2((sssn), (STS_MAX_SSSN))
-#define STS_SEQNUM_MAX 4096
-#define STS_SEQNUM_INVALID (STS_SEQNUM_MAX)
-#define IS_STSSEQ_ADVANCED(a, b) \
-	(MODSUB_POW2((a), (b), STS_SEQNUM_MAX) < (STS_SEQNUM_MAX >> 1))
-#define RXPEN_LIST_IDX0 0
-#define RXPEN_LIST_IDX1 1
-#define RXPEN_LIST_IDX  RXPEN_LIST_IDX0
-#if defined(BCMPCIEDEV)
-#define MAX_RXPEN_LIST 2
-#else
-#define MAX_RXPEN_LIST 1
-#endif /* BCMPCIEDEV */
 	rx_list_t rxpen_list[MAX_RXPEN_LIST];
-	curr_seq_t curr_seq[MAX_RXPEN_LIST];
-	cons_seq_t cons_seq[MAX_RXPEN_LIST];
-	uint16 seqcnt;
-	uint8 sssn;
+	uint16 curr_seq[MAX_RXPEN_LIST];
+	uint16 cons_seq[MAX_RXPEN_LIST];
+	uint16 prxs_rd_idx;
+	uint16 prxs_wr_idx;
 	rx_list_t  rx_sts_list; /**< linked list, oldest (non-consumed) status being the head */
 	bool sts_fifo_intr;
 	prxs_stats_t  prxs_stats;
+	rxh_seq_dbg_t *rxh_seq_dbg;
 #endif /* STS_FIFO_RXEN || WLC_OFFLOADS_RXSTS */
 	uint32 d11war_flags;	/* flags to store d11 WARS */
 	bool is_pcielink_slowspeed;

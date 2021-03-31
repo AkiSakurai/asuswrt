@@ -135,6 +135,8 @@
 #include <net/net_namespace.h>
 #endif
 
+#include <asm/uaccess.h> /* copy_to_user */
+
 extern stretchBufferStruct * volatile pPhySbCmd;
 
 extern DiagConnectInfo diagConnectInfo;
@@ -162,6 +164,26 @@ extern DiagConnectInfo diagConnectInfo;
 void    *diagDescMemStart = NULL;
 uint   diagDescMemSize = 0;
 
+static void skb_users_set(struct sk_buff *skb, unsigned int n)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+   refcount_set(&skb->users,n);
+#else
+   atomic_set(&skb->users,n);
+#endif
+}
+
+static unsigned int skb_users_read(struct sk_buff *skb)
+{
+   unsigned int count;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+   count = refcount_read(&skb->users);
+#else
+   count = atomic_read(&skb->users);
+#endif
+   return count;
+}
+
 dslDrvSkbPool * DevSkbAllocate(struct sk_buff *model,
 		int skbMaxBufSize, int numOfSkbsInPool,
 		int shortSkbMaxBufSize, int numOfShortSkbsInPool,
@@ -172,6 +194,8 @@ dslDrvSkbPool * DevSkbAllocate(struct sk_buff *model,
 	dslDrvSkbPool	* skbDev = NULL;
 	struct sk_buff ** ppskb;
 	gfp_t	gfp_mask;
+
+    int skb_reroute = (SKB_REROUTE_FIELD(model)==0);
 
 	if(dmaZone)
 		gfp_mask = (GFP_ATOMIC | GFP_DMA);
@@ -188,13 +212,13 @@ dslDrvSkbPool * DevSkbAllocate(struct sk_buff *model,
 				if(skbHeadRoomReserve)
 					skb_reserve (skb, skbHeadRoomReserve);
 				skb->dev = model->dev;
-				skb->protocol = htons(eth_type_trans (skb, model->dev));
+				skb->protocol = (skb_reroute)?model->protocol:htons(eth_type_trans (skb, model->dev));
 				skb->data = DIAG_DATA_ALIGN(skb->data, dataAlignMask);
 				memcpy(skb->data, model->data, frameHeaderLength);
 #ifdef DIAG_ALLOC_SKB_DYNAMICALLY
-				atomic_set(&skb->users, DIAG_SKB_USERS);
+				skb_users_set(skb, DIAG_SKB_USERS);
 #else
-				atomic_set(&skb->users, DIAG_SKB_USERS-1);
+				skb_users_set(skb, DIAG_SKB_USERS-1);
 #endif
 				ppskb[n] = skb;
 			} else {
@@ -209,13 +233,13 @@ dslDrvSkbPool * DevSkbAllocate(struct sk_buff *model,
 				if(skbHeadRoomReserve)
 					skb_reserve (skb, skbHeadRoomReserve);
 				skb->dev = model->dev;
-				skb->protocol = htons(eth_type_trans (skb, model->dev));
+				skb->protocol = (skb_reroute)?model->protocol:htons(eth_type_trans (skb, model->dev));
 				skb->data = DIAG_DATA_ALIGN(skb->data, dataAlignMask);
 				memcpy(skb->data, model->data, frameHeaderLength);
 #ifdef DIAG_ALLOC_SKB_DYNAMICALLY
-				atomic_set(&skb->users, DIAG_SKB_USERS);
+				skb_users_set(skb, DIAG_SKB_USERS);
 #else
-				atomic_set(&skb->users, DIAG_SKB_USERS-1);
+				skb_users_set(skb, DIAG_SKB_USERS-1);
 #endif
 				ppskb[n] = skb;
 			} else {
@@ -247,13 +271,13 @@ struct sk_buff * GetSkb(dslDrvSkbPool *skbDev, int len)
 	
 	//BcmCoreDpcSyncEnter();	// Caller should have called BcmCoreDpcSyncEnter(&gXdslGlobalInfo.xdslLockDiags);
 	if(totalLen < skbDev->shortSkbLengh) {
-		if (DIAG_SKB_USERS != atomic_read(&(ppskb[skbDev->shortSkbBufIndex])->users)) {
+		if (DIAG_SKB_USERS != skb_users_read((ppskb[skbDev->shortSkbBufIndex]))) {
 			skbDiag = ppskb[skbDev->shortSkbBufIndex];
 			skbDev->shortSkbBufIndex++;
 			if (skbDev->shortSkbBufIndex == (skbDev->numOfSkbs + skbDev->numOfShortSkbs))
 				skbDev->shortSkbBufIndex -= skbDev->numOfShortSkbs;
 		}
-	} else if (DIAG_SKB_USERS != atomic_read(&(ppskb[skbDev->skbBufIndex])->users)) {
+	} else if (DIAG_SKB_USERS != skb_users_read((ppskb[skbDev->skbBufIndex]))) {
 		skbDiag = ppskb[skbDev->skbBufIndex];
 		skbDev->skbBufIndex++;
 		if (skbDev->skbBufIndex == skbDev->numOfSkbs)
@@ -261,7 +285,7 @@ struct sk_buff * GetSkb(dslDrvSkbPool *skbDev, int len)
 	}
 	
 	if (skbDiag != NULL) {
-		atomic_set(&skbDiag->users, DIAG_SKB_USERS);
+		skb_users_set(skbDiag, DIAG_SKB_USERS);
 		skbDiag->data = skbDiag->head;
 		if(skbDev->skbHeadRoomReserve)
 			skb_reserve (skbDiag, skbDev->skbHeadRoomReserve);
@@ -273,13 +297,15 @@ struct sk_buff * GetSkb(dslDrvSkbPool *skbDev, int len)
 		if(len < MIN_DAIG_DATA_LEN)
 			totalLen += (MIN_DAIG_DATA_LEN - len);
 		if( NULL != (skbDiag = alloc_skb (totalLen+skbDev->dataAlignMask + skbDev->skbHeadRoomReserve, GFP_ATOMIC)) ) {
+			int skb_reroute;
+			skbRef = skbDev->skbModel;
+			skb_reroute = (SKB_REROUTE_FIELD(skbRef)==0);
 			if(skbDev->skbHeadRoomReserve)
 				skb_reserve (skbDiag, skbDev->skbHeadRoomReserve);
 			skbDev->extraSkb++;
-			skbRef = skbDev->skbModel;
 			skbDiag->data = DIAG_DATA_ALIGN(skbDiag->data, skbDev->dataAlignMask);
 			skbDiag->dev = skbRef->dev;
-			skbDiag->protocol = htons(eth_type_trans (skbDiag, skbRef->dev));
+			skbDiag->protocol = (skb_reroute)?skbRef->protocol:htons(eth_type_trans (skbDiag, skbRef->dev));
 			memcpy(skbDiag->data, skbRef->data, skbDev->frameHeaderLen);
 			skbDiag->len = skbDev->frameHeaderLen;
 		}
@@ -289,6 +315,8 @@ struct sk_buff * GetSkb(dslDrvSkbPool *skbDev, int len)
 	return skbDiag;
 }
 
+void BcmAdslPendingSkbMsgQueuePurge(int bFreeMem);
+
 int DevSkbFree(dslDrvSkbPool *skbDev, int enableWA){
 	OS_TICKS	osTime0;
 	int			n;
@@ -297,11 +325,12 @@ int DevSkbFree(dslDrvSkbPool *skbDev, int enableWA){
 	struct sk_buff ** ppskb = skbDev->skbPool;
 	Boolean freeSkbDev = 0;
 	int	totalSkbs = skbDev->numOfSkbs + skbDev->numOfShortSkbs;
+	int skb_reroute = (SKB_REROUTE_FIELD(skbDev->skbModel)==0);
 	
 	do {
 		for (n = 0; n < totalSkbs; n++) {
 			skb = ppskb[n];
-			if ( DIAG_SKB_USERS == atomic_read(&skb->users ) )
+			if ( DIAG_SKB_USERS == skb_users_read(skb) )
 				break;
 		}
 		if ( n >= totalSkbs ){
@@ -321,7 +350,7 @@ int DevSkbFree(dslDrvSkbPool *skbDev, int enableWA){
 				char buf[4] = {0};
 				skbRef = skbDev->skbModel;
 				skb->dev = skbRef->dev;
-				skb->protocol = htons(eth_type_trans(skb, skbRef->dev));
+				skb->protocol = (skb_reroute)?skbRef->protocol:htons(eth_type_trans(skb, skbRef->dev));
 				skb->data = DIAG_DATA_ALIGN(skb->head, skbDev->dataAlignMask);
 				memcpy(skb->data, skbRef->data, skbDev->frameHeaderLen);
 				skb->len = skbDev->frameHeaderLen;
@@ -335,9 +364,15 @@ int DevSkbFree(dslDrvSkbPool *skbDev, int enableWA){
 
 	if(freeSkbDev)
 	{
+		if ( skb_reroute ) {
+			for (n = 0; n < totalSkbs; n++)
+				skb_users_set( ppskb[n], 0 );
+			BcmAdslPendingSkbMsgQueuePurge(0);
+		}
+		
 		for (n = 0; n < totalSkbs; n++) {
 			skb = ppskb[n];
-			atomic_set(&skb->users, 1);
+			skb_users_set(skb, 1);
 			kfree_skb(skb);
 		}
 		kfree(skbDev);
@@ -358,7 +393,7 @@ static int __GdbWriteData(struct sk_buff *skb, char *buf0, int len0)
 	memcpy (dd->diagData-sizeof(LogProtoHeader), buf0, len0);
 
 	skb->len  = DIAG_FRAME_HEADER_LEN + len0 - sizeof(LogProtoHeader);
-	skb->tail = (sk_buff_data_t)((uintptr_t)skb->data + skb->len);
+	skb_set_tail_pointer(skb, skb->len);
 
 	n = DEV_TRANSMIT(skb);
 
@@ -374,9 +409,10 @@ int GdbWriteData(char *buf0, int len0)
   int dataAlignMask;
   dataAlignMask = 3;
 
-  if (NULL == diagCtrl.gdbDev)
+  //if (NULL == diagCtrl.gdbDev)
+  if ( ! BcmAdslGdbIsConnected() )
     return 0;
-
+  
 #ifdef DEBUG_GDB_STUB
   printk("GdbWriteData::'");
   for (i = 0; i < len0; i++) 
@@ -390,7 +426,7 @@ int GdbWriteData(char *buf0, int len0)
 
   if(diagCtrl.skbGdb != NULL){
     skb->dev = diagCtrl.gdbDev;
-    skb->protocol = htons(eth_type_trans (skb, diagCtrl.gdbDev));
+    skb->protocol = (diagCtrl.skbGdbReroute)?diagCtrl.skbGdb->protocol:htons(eth_type_trans (skb, diagCtrl.gdbDev));
     skb->data = DIAG_DATA_ALIGN(skb->head, dataAlignMask);
     memcpy(skb->data, diagCtrl.skbGdb->data, DIAG_FRAME_HEADER_LEN);
     return __GdbWriteData(skb, buf0, len0);
@@ -485,7 +521,7 @@ int __DiagWriteData(struct sk_buff *skbDiag, uint cmd, char *buf0, int len0, cha
 		totalBufLen += padSize;
 	}
 	skbDiag->len += totalBufLen;
-	skbDiag->tail = (sk_buff_data_t)((uintptr_t)skbDiag->data + skbDiag->len);
+	skb_set_tail_pointer(skbDiag, skbDiag->len);
 
 #if defined(SUPPORT_EXT_DSL_BONDING_SLAVE)
 	if (clientType == DIAG_DSL_CLIENT)
@@ -597,7 +633,7 @@ BcmAdslCoreInitNetDev(PADSL_DIAG pAdslDiag, int port, struct sk_buff **ppskb, ch
 #endif
 		if (NULL == dev)
 			continue;
-		printk ("\tdev = %s(0x%p) hwAddr=%X:%X:%X:%X:%X:%X\n",
+		printk ("\tdev = %s(0x%px) hwAddr=%X:%X:%X:%X:%X:%X\n",
 			diagDevNames[n], dev,
 			dev->dev_addr[0], dev->dev_addr[1], dev->dev_addr[2],
 			dev->dev_addr[3], dev->dev_addr[4], dev->dev_addr[5]);
@@ -723,7 +759,7 @@ BcmAdslCoreInitNetDev(PADSL_DIAG pAdslDiag, int port, struct sk_buff **ppskb, ch
 
 	/* to prevent skb from deallocation */
 	pskb->data = pskb->head + DIAG_FRAME_PAD_SIZE;
-	atomic_set(&pskb->users, DIAG_SKB_USERS);
+	skb_users_set(pskb, DIAG_SKB_USERS);
 
 	*ppskb = pskb;
 
@@ -771,9 +807,18 @@ LOCAL uint sndCnt = 0;
 LOCAL uint failCnt = 0, prevFailSndCnt = 0, continousFailcnt=0;
 
 LOCAL int sendCmdStarted = 0;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0))
 LOCAL struct timer_list sendCmdTimer;
-
 LOCAL void BcmAdslCoreProfileSendCmdFn(uintptr_t arg);
+#else
+typedef struct {
+   struct timer_list timer;
+   unsigned long arg;
+}sendCmdTimer_t;
+LOCAL sendCmdTimer_t sendCmdTimer;
+LOCAL void BcmAdslCoreProfileSendCmdFn(struct timer_list *timer);
+#endif
+
 
 LOCAL VOID	*pData = NULL;
 LOCAL uint	gInterval = 10;
@@ -789,15 +834,24 @@ LOCAL void BcmAdslCoreTestCmdStart(uint interval)
 	}
 	
 	gInterval = interval;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0))
 	init_timer(&sendCmdTimer);
 	sendCmdTimer.function = BcmAdslCoreProfileSendCmdFn;
 	sendCmdTimer.data = interval;
 	sendCmdTimer.expires = jiffies + 2; /* 10ms */
+#else
+   timer_setup(&sendCmdTimer.timer, BcmAdslCoreProfileSendCmdFn, 0);
+   sendCmdTimer.timer.expires = jiffies + 2;
+#endif
 	PROF_TIMER_SEED_INIT;
 	sendCmdStarted = 1;
 	sndCnt = 0;
 	failCnt = 0;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0))
 	add_timer(&sendCmdTimer);
+#else
+   add_timer(&sendCmdTimer.timer);
+#endif
 }
 
 void BcmAdslCoreTestCmdStop(void)
@@ -806,7 +860,11 @@ void BcmAdslCoreTestCmdStop(void)
 	printk("*** %s ***\n", __FUNCTION__);
 
 	if(sendCmdStarted) {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0))
 		del_timer(&sendCmdTimer);
+#else
+		del_timer(&sendCmdTimer.timer);
+#endif
 		sendCmdStarted = 0;
 	}
 	
@@ -818,12 +876,23 @@ void BcmAdslCoreTestCmdStop(void)
 
 extern AC_BOOL AdslCoreCommandWrite(dslCommandStruct *cmdPtr);
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0))
 LOCAL void BcmAdslCoreProfileSendCmdFn(uintptr_t arg)
+#else
+LOCAL void BcmAdslCoreProfileSendCmdFn(struct timer_list *tmr)
+#endif
 {
 	uint				msgLen;
 	dslCommandStruct		cmd;
 	int					len, i;	
 	volatile AdslXfaceData	*pAdslX = (AdslXfaceData *) ADSL_LMEM_XFACE_DATA;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+   sendCmdTimer_t *ptimer;
+   unsigned long arg;
+
+   ptimer = from_timer(ptimer,tmr,timer);
+   arg = ptimer->arg;
+#endif
 	AC_BOOL			res=TRUE;
 	
 	if(!sendCmdStarted)
@@ -901,9 +970,13 @@ LOCAL void BcmAdslCoreProfileSendCmdFn(uintptr_t arg)
 	}
 			
 	/* Re-schedule the timer */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0))
 	sendCmdTimer.expires = jiffies + gInterval;
 	add_timer(&sendCmdTimer);
-
+#else
+	sendCmdTimer.timer.expires = jiffies + gInterval;
+	add_timer(&sendCmdTimer.timer);
+#endif
 }
 #endif /* TEST_CMD_BUF_RING */
 
@@ -986,4 +1059,171 @@ void BcmXdslCoreDiagProcFileRemove(void)
 	remove_proc_entry(XDSL_PROC_FILE_NAME, NULL);
 	BcmXdslCoreDiagStat_procEntry = NULL;
 #endif
+}
+
+static int obj_pending_skb_pool_en = 0;
+static struct sk_buff_head obj_pending_skb_pool;
+static struct sk_buff_head* pending_skb_pool = NULL;
+
+int BcmAdslPendingSkbMsgQueueSize(void)
+{
+    int retval = 0;
+    if ( pending_skb_pool )
+        retval = skb_queue_len(pending_skb_pool);
+    return retval;
+}
+
+void BcmAdslPendingSkbMsgQueueEnable(int bEn) {
+	obj_pending_skb_pool_en = bEn;
+}
+
+/**
+   This method parses the queue and dequeues the element with user count 0
+ */
+void BcmAdslPendingSkbMsgQueuePurge(int bFreeMem) {
+	if (pending_skb_pool) {
+		int qlen = pending_skb_pool->qlen;
+		while(qlen>0) {
+			struct sk_buff* skb;
+			qlen--;
+			if((skb=skb_dequeue(pending_skb_pool))) {
+				int skb_users;
+				skb_users = skb_users_read(skb);
+				if ( skb_users ) {
+					skb_queue_tail(pending_skb_pool, skb);
+				}
+				else if(bFreeMem) {
+					skb_users_set(skb, 1);
+					kfree_skb(skb);
+				}
+			}
+		}
+		//printk("%s: qlen = %d\n", __FUNCTION__, pending_skb_pool->qlen);
+	}
+}
+
+void BcmAdslPendingSkbMsgQueueClear(void) {
+	if (pending_skb_pool) {
+		struct sk_buff* skb = NULL;
+		while((skb=skb_dequeue(pending_skb_pool))) {
+			int skb_users;
+			skb_users = skb_users_read(skb);
+			if(DIAG_SKB_USERS != skb_users) {
+				skb_users_set(skb, 1);
+				kfree_skb(skb);
+			}
+			else {
+				skb_users_set(skb, (DIAG_SKB_USERS-1) );
+			}
+		}
+	}
+}
+
+int BcmAdslPendingSkbAdd(struct sk_buff* skb)
+{
+	static int showErrMsg = 0;
+	int retval;
+
+	if ( SKB_REROUTE_FIELD(skb) != 0 )
+		return DEV_TRANSMIT_(skb);
+
+	if (pending_skb_pool==NULL) {
+		pending_skb_pool = &obj_pending_skb_pool;
+		skb_queue_head_init(pending_skb_pool);
+	}
+
+	retval = skb->len;
+
+	if ( obj_pending_skb_pool_en )
+	{
+		unsigned int pool_queue_size = skb_queue_len(pending_skb_pool);
+		if ( pool_queue_size < 256 ) {
+			showErrMsg = 1;
+			//skb->list = pending_skb_pool;
+			skb_queue_tail(pending_skb_pool, skb);
+			//printk("%s: skb queue len = %u; skb->len = %d\n",__FUNCTION__, pending_skb_pool->qlen,(int)skb->len);
+			BcmXdslEocWakeup(0, BCM_XDSL_SKB_EOC_MSG);
+		}
+		else {
+			if (showErrMsg) {
+				showErrMsg = 0;
+				printk("%s: queue error\n",__FUNCTION__);
+			}
+			retval = -ENOMEM;
+		}
+	}
+
+	return retval;
+}
+
+/**
+ * Read only SkbDiagFrameData+diagHdr+msg, ignoring ipHdr+udpHdr
+ * (*d)    -
+ *     this pointer points to USER memory location, not KERNEL
+ * (*dlen) - 
+ *     this pointer points to KERNEL memory location
+ *     IN:  specifies available number of bytes under d
+ *     OUT: specifies number of bytes written to d
+ *  Note: it is easier to return copied number of bytes through dlen
+ *        this means, the caller HAS to check dlen, 
+ *        and update frameLen in SkbDiagFrameData object
+ */
+void BcmAdslPendingSkbMsgRead(void* d, long* dlen)
+{
+  int skb_users = 0;
+    struct sk_buff* skb = NULL;
+    if ( pending_skb_pool )
+        skb = skb_dequeue(pending_skb_pool);
+
+    if (skb==NULL) {
+        *dlen = 0;
+    }
+    else
+    {
+        static const int prefixSize = sizeof(SkbDiagFrameData) - sizeof(DiagProtoFrame);
+
+        diagSockFrame		*dd;
+        unsigned short bytesToCopy;
+     
+        //printk("%s: skbs in queue: %d\n",__FUNCTION__, (int)pending_skb_pool->qlen);
+
+        dd = PTRDIAGSOCKFRAME(skb); //(diagSockFrame *)((uintptr_t) skb->data-DIAG_FRAME_PAD_SIZE);
+
+        bytesToCopy = ntohs(dd->udpHdr.len) - sizeof(diagUdpHeader) + (unsigned short)prefixSize; // expecting this to be a valid len
+
+        //printk("%s: skb bytesToCopy=%d prefixSize=%d\n", __FUNCTION__,bytesToCopy,(int)prefixSize&0xFFFF);
+        
+        if ( bytesToCopy > *dlen ) {
+            printk("%s: Error: not enough buffer memory(src:%u dst:%u)...trunc\n", __FUNCTION__, bytesToCopy, (unsigned int)*dlen);
+            bytesToCopy = *dlen;
+        }
+        
+
+        {
+            // Ugly hack:
+            // copying SkbDiagFrameData struct in one go.
+            unsigned int bytes_not_copied;
+            SkbDiagFrameData* dfd = (SkbDiagFrameData*)( (uintptr_t)&dd->diagHdr - prefixSize );
+            dfd->frameLen = (unsigned short)(bytesToCopy - prefixSize);
+            dfd->target = SKB_REROUTE_DEST_FIELD(skb);
+
+            bytes_not_copied = copy_to_user(d, dfd, bytesToCopy);
+#if 0
+            if (bytes_not_copied) {
+                printk("%s: Error: bytes_not_copied = %d...msg trunc.\n",__FUNCTION__, bytes_not_copied);
+            }
+#endif            
+            *dlen = bytesToCopy - bytes_not_copied;
+        }
+
+		skb_users = skb_users_read(skb);
+
+        if(DIAG_SKB_USERS != skb_users) {
+			skb_users_set(skb, 1);
+            kfree_skb(skb);
+        }
+        else {
+			skb_users_set(skb, (DIAG_SKB_USERS-1) );
+        }
+    }
 }

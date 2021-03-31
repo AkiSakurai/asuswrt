@@ -1,7 +1,7 @@
 /*
  * STA Module Public Interface
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_sta.h 774070 2019-04-09 08:16:27Z $
+ * $Id: wlc_sta.h 782179 2019-12-12 11:32:03Z $
  */
 #ifndef _WLC_STA_H_
 #define _WLC_STA_H_
@@ -61,6 +61,7 @@ void wlc_sta_detach(wlc_sta_info_t *sta_info);
 extern int wlc_sta_timeslot_register(wlc_bsscfg_t *cfg);
 extern void wlc_sta_timeslot_unregister(wlc_bsscfg_t *cfg);
 extern bool wlc_sta_timeslot_registed(wlc_bsscfg_t *cfg);
+extern bool wlc_sta_timeslot_onchannel(wlc_bsscfg_t *cfg);
 extern void wlc_sta_timeslot_update(wlc_bsscfg_t *cfg, uint32 start_tsf, uint32 interval);
 
 extern void wlc_sta_pm_pending_complete(wlc_info_t *wlc);

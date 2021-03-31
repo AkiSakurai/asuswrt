@@ -40,12 +40,41 @@
 
 struct REPLACE_PRODUCTID_S replace_productid_t[] =
 {
-	{"LYRA_VOICE", "LYRA VOICE"},
-	{"RT-AC57U_V2", "RT-AC57U V2"},
-	{"RT-AC58U_V2", "RT-AC58U V2"},
-	{"RT-AC1300G_PLUS_V2", "RT-AC1300G PLUS V2"},
-	{"RT-AC1500G_PLUS", "RT-AC1500G PLUS"},
-	{NULL, NULL}
+	{"LYRA_VOICE", "LYRA VOICE", "global"},
+	{"RT-AC57U_V2", "RT-AC57U V2", "global"},
+	{"RT-AC58U_V2", "RT-AC58U V2", "global"},
+	{"RT-AC1300G_PLUS_V2", "RT-AC1300G PLUS V2", "global"},
+	{"RT-AC1500G_PLUS", "RT-AC1500G PLUS", "global"},
+	{"ZenWiFi_CT8", "ZenWiFi AC", "global"},
+	{"ZenWiFi_CT8", "灵耀AC3000", "CN"},
+	{"ZenWiFi_XT8", "ZenWiFi AX", "global"},
+	{"ZenWiFi_XT8", "灵耀AX6600", "CN"},
+	{"ZenWiFi_XD4", "ZenWiFi AX Mini", "global"},
+	{"ZenWiFi_XD4", "灵耀AX魔方", "CN"},
+	{"ZenWiFi_CD6R", "ZenWiFi AC Mini", "global"},
+	{"ZenWiFi_CD6N", "ZenWiFi AC Mini", "global"},
+	{"ZenWiFi_XP4", "ZenWiFi AX Hybrid", "global"},
+	{"ZenWiFi_CV4", "ZenWiFi Voice", "global"},
+	{NULL, NULL, NULL}
+};
+
+struct REPLACE_MODELNAME_S replace_modelname_t[] = {
+	{ "K3C" },//Must be before k3
+	{ "K3" },
+	{ "XWR3100" },
+	{ "R7000P" },
+	{ "EA6700" },
+	{ "SBRAC1900P" },
+	{ "F9K1118" },
+	{ "SBRAC3200P" },
+	{ "R8500" },
+	{ "R8000P" },
+	{ "TY6201_RTK" },
+	{ "TY6201_BCM" },
+	{ "RAX120" },
+	{ "DIR868L" },
+	//{ "RMAC2100" },move to model_list
+	{ NULL },
 };
 
 static char * get_arg(char *args, char **next);
@@ -53,18 +82,18 @@ static void call(char *func, FILE *stream);
 
 /* Look for unquoted character within a string */
 static char *
-unqstrstr(char *haystack, char *needle)
+unqstrstr(const char *haystack, const char *needle)
 {
 	char *cur;
 	int q;
 
-	for (cur = haystack, q = 0;
-	     cur < &haystack[strlen(haystack)] && !(!q && !strncmp(needle, cur, strlen(needle)));
+	for (cur = (char*) haystack, q = 0;
+	     cur < (haystack + strlen(haystack)) && !(!q && !strncmp(needle, cur, strlen(needle)));
 	     cur++) {
 		if (*cur == '"')
 			q ? q-- : q++;
 	}
-	return (cur < &haystack[strlen(haystack)]) ? cur : NULL;
+	return (cur < (haystack + strlen(haystack))) ? cur : NULL;
 }
 
 static char *
@@ -152,10 +181,16 @@ extern void replace_productid(char *GET_PID_STR, char *RP_PID_STR, int len){
 
 	for(p = &replace_productid_t[0]; p->org_name; p++){
 		if(!strcmp(GET_PID_STR, p->org_name)){
-			strlcpy(RP_PID_STR, p->replace_name, len);
-			return;
+			if(!strncmp(nvram_safe_get("preferred_lang"), p->p_lang, 2))
+				strlcpy(RP_PID_STR, p->replace_name, len);
+
+			if(!strcmp("global", p->p_lang) && !strlen(RP_PID_STR))
+				strlcpy(RP_PID_STR, p->replace_name, len);
 		}
 	}
+
+	if(strlen(RP_PID_STR))
+		return;
 
 	/* general  replace underscore with space */
 	strlcpy(RP_PID_STR, GET_PID_STR, len);
@@ -164,6 +199,19 @@ extern void replace_productid(char *GET_PID_STR, char *RP_PID_STR, int len){
 		if (*RP_PID_STR == '_')
 			*RP_PID_STR = ' ';
 	}
+}
+
+extern int replace_modelname(char *GET_PID_STR, char *RP_PID_STR, int len){
+
+	struct REPLACE_MODELNAME_S *p;
+
+	for(p = &replace_modelname_t[0]; p->modelname; p++){
+		if(!strcmp(GET_PID_STR, p->modelname)){
+			strlcpy(RP_PID_STR, p->modelname, len);
+			return 1;
+		}
+	}
+	return 0;
 }
 
 // Call this function if and only if we can read whole <#....#> pattern.
@@ -190,10 +238,7 @@ translate_lang (char *s, char *e, FILE *f, kw_t *pkw)
 			char GET_PID_STR[32]={0};
 			char *p_PID_STR = NULL;
 			char *PID_STR = nvram_safe_get("productid");
-#if defined(R7900P) || defined(SBRAC1900P) || defined(SBRAC3200P) || defined(K3) || defined(K3C) || defined(R8000P) || defined(RAX20)
 			char *modelname = nvram_safe_get("modelname");
-			int merlinr_len;
-#endif
 			char *pSrc, *pDest;
 			int pid_len, get_pid_len;
 
@@ -201,14 +246,10 @@ translate_lang (char *s, char *e, FILE *f, kw_t *pkw)
 			pid_len = strlen(PID_STR);
 			get_pid_len = strlen(GET_PID_STR);
 
-#if defined(R7900P) || defined(SBRAC1900P) || defined(SBRAC3200P) || defined(K3) || defined(K3C) || defined(R8000P) || defined(RAX20)
-			merlinr_len = strlen(modelname);
-			if (merlinr_len && strcmp(RP_PID_STR, modelname) != 0)
-				strlcpy(RP_PID_STR, modelname, merlinr_len+1);
-#else 
 			memset(RP_PID_STR, 0, sizeof(RP_PID_STR));
-			replace_productid(GET_PID_STR, RP_PID_STR, sizeof(RP_PID_STR));
-#endif
+			if(replace_modelname(modelname, RP_PID_STR, sizeof(RP_PID_STR)) != 1)
+				replace_productid(GET_PID_STR, RP_PID_STR, sizeof(RP_PID_STR));
+			
 			if(strcmp(PID_STR, RP_PID_STR) != 0){
 				get_pid_len = strlen(RP_PID_STR);
 				pSrc  = desc;
@@ -300,10 +341,12 @@ do_ej(char *path, FILE *stream)
 		if (((pattern + pattern_size) - end_pat) < frag_size)
 		{
 			len = end_pat - start_pat;
-			memcpy (pattern, start_pat, len);
-			start_pat = pattern;
-			end_pat = start_pat + len;
-			*end_pat = '\0';
+			if(len < pattern_size){
+				memcpy (pattern, start_pat, len);
+				start_pat = pattern;
+				end_pat = start_pat + len;
+				*end_pat = '\0';
+			}
 		}
 
 		read_len = (pattern + pattern_size) - end_pat;

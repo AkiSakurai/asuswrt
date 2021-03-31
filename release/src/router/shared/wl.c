@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl.c 780737 2019-11-01 18:50:56Z $
+ * $Id: wl.c 787328 2020-05-26 20:17:46Z $
  */
 #include <typedefs.h>
 #include <string.h>
@@ -36,7 +36,9 @@
 #include <bcmutils.h>
 #include <wlutils.h>
 #include <bcmconfig.h>
+#ifdef RTCONFIG_HND_ROUTER_AX
 #include <bcmiov.h>
+#endif
 
 #ifndef MAX_WLAN_ADAPTER
 #define MAX_WLAN_ADAPTER	16
@@ -119,7 +121,7 @@ wl_probe(char *name)
 	/* Check interface */
 	if ((ret = wl_ioctl(name, WLC_GET_MAGIC, &val, sizeof(val))))
 		return ret;
-#endif
+#endif // endif
 	if ((ret = wl_ioctl(name, WLC_GET_VERSION, &val, sizeof(val))))
 		return ret;
 	if (val > WLC_IOCTL_VERSION)
@@ -494,7 +496,7 @@ dhd_bssiovar_get(char *ifname, char *iovar, int bssidx, void *outbuf, int len)
 
 	return err;
 }
-#endif
+#endif /* __CONFIG_DHDAP__ */
 
 /*
  * get named & bss indexed driver variable buffer value
@@ -526,6 +528,76 @@ wl_bssiovar_setint(char *ifname, char *iovar, int bssidx, int val)
 {
 	return wl_bssiovar_set(ifname, iovar, bssidx, &val, sizeof(int));
 }
+
+#ifdef __CONFIG_DHDAP__
+/*
+ * set named & bss indexed driver variable to int value
+ */
+int
+dhd_bssiovar_setint(char *ifname, char *iovar, int bssidx, int val)
+{
+	return dhd_bssiovar_set(ifname, iovar, bssidx, &val, sizeof(int));
+}
+
+static int
+dhd_get(void *dhd, int cmd, void *buf, int len)
+{
+	return dhd_ioctl(dhd, cmd, buf, len);
+}
+
+static int
+dhd_bssiovar_mkbuf(const char *iovar, int bssidx, void *param,
+	int paramlen, void *bufptr, int buflen, int *perr)
+{
+	const char *prefix = "bsscfg:";
+	int8* p;
+	uint prefixlen;
+	uint namelen;
+	uint iolen;
+
+	prefixlen = strlen(prefix);	/* length of bsscfg prefix */
+	namelen = strlen(iovar) + 1;	/* length of iovar name + null */
+	iolen = prefixlen + namelen + sizeof(int) + paramlen;
+
+	/* check for overflow */
+	if (buflen < 0 || iolen > (uint)buflen) {
+		*perr = BCME_BUFTOOSHORT;
+		return 0;
+	}
+
+	p = (int8*)bufptr;
+
+	/* copy prefix, no null */
+	memcpy(p, prefix, prefixlen);
+	p += prefixlen;
+
+	/* copy iovar name including null */
+	memcpy(p, iovar, namelen);
+	p += namelen;
+
+	/* bss config index as first param */
+	bssidx = bssidx;
+	memcpy(p, &bssidx, sizeof(int32));
+	p += sizeof(int32);
+
+	/* parameter buffer follows */
+	if (paramlen) {
+		memcpy(p, param, paramlen);
+	}
+
+	*perr = 0;
+	return iolen;
+}
+
+int
+dhd_bssiovar_getint(void *dhd, const char *iovar, int bssidx, int *pval)
+{
+	int ret;
+
+	ret = dhd_bssiovar_get(dhd, iovar, bssidx, pval, sizeof(int));
+	return ret;
+}
+#endif
 
 /*
 void
@@ -569,6 +641,12 @@ wl_heiovar_setint(char *ifname, char *iovar, char *subcmd, int val)
 		v32.val = (uint32)val;
 
 		subcmd_len = sizeof(v32.id) + sizeof(v32.len) + v32.len;
+	} else if (strcmp(subcmd, "enab") == 0) {
+		v32.id = WL_HE_CMD_ENAB;
+		v32.len = 4;
+		v32.val = (uint32)val;
+
+		subcmd_len = sizeof(v32.id) + sizeof(v32.len) + v32.len;
 	} else if (strcmp(subcmd, "bssaxmode") == 0) {
 		v32.id = WL_HE_CMD_AXMODE;
 		v32.len = 4;
@@ -595,7 +673,6 @@ wl_heiovar_setint(char *ifname, char *iovar, char *subcmd, int val)
 
 	return wl_ioctl(ifname, WLC_SET_VAR, (void *)smbuf, iolen);
 }
-#endif
 
 /*
  * Set msched subcommand to int value
@@ -641,17 +718,6 @@ fail:
 
 	return ret;
 }
-
-#ifdef __CONFIG_DHDAP__
-/*
- * set named & bss indexed driver variable to int value
- */
-int
-dhd_bssiovar_setint(char *ifname, char *iovar, int bssidx, int val)
-{
-	return dhd_bssiovar_set(ifname, iovar, bssidx, &val, sizeof(int));
-}
-#endif
 
 int
 wl_iovar_xtlv_setbuf(char *ifname, char *iovar, uint8* param, uint16 paramlen, uint16 version,
@@ -710,3 +776,4 @@ wl_iovar_xtlv_setint(char *ifname, char *iovar, int32 val, uint16 version,
 	return wl_iovar_xtlv_set(ifname, iovar, (uint8*)&val, sizeof(val), version,
 		cmd_id, xtlv_id, BCM_XTLV_OPTION_ALIGN32);
 }
+#endif

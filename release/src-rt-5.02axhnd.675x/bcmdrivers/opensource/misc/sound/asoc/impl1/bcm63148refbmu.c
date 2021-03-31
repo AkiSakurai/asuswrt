@@ -51,12 +51,6 @@ static int pcm5100_hw_params(struct snd_pcm_substream *substream,
       return ret;
    }
 
-   ret = snd_soc_dai_set_sysclk(cpu_dai, 0, params_rate(params), SND_SOC_CLOCK_OUT);
-   if (ret < 0)
-   {
-      return ret;
-   }
-
    return 0;
 }
 
@@ -108,7 +102,7 @@ static int __init bcm63xx_audio_init(void)
    return ret;
 }
 
-module_init(bcm63xx_audio_init);
+late_initcall(bcm63xx_audio_init);
 
 static void __exit bcm63xx_audio_exit(void)
 {

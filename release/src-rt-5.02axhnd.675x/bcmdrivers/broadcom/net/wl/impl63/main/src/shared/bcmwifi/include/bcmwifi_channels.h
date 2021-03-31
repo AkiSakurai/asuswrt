@@ -3,7 +3,7 @@
  * This header file housing the define and function prototype use by
  * both the wl driver, tools & Apps.
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -102,8 +102,6 @@ typedef struct {
 #define WL_CHANSPEC_CHAN0_SHIFT		0u
 #define WL_CHANSPEC_CHAN1_MASK		0x00f0u
 #define WL_CHANSPEC_CHAN1_SHIFT		4u
-#define WL_CHANSPEC_CHAN2_MASK		0x00f0
-#define WL_CHANSPEC_CHAN2_SHIFT		4
 
 #define WL_CHANSPEC_CTL_SB_MASK		0x0700u
 #define WL_CHANSPEC_CTL_SB_SHIFT	8u
@@ -200,44 +198,10 @@ typedef struct {
 #endif // endif
 #define CHSPEC_CHAN0(chspec)	((chspec) & WL_CHANSPEC_CHAN0_MASK) >> WL_CHANSPEC_CHAN0_SHIFT
 #define CHSPEC_CHAN1(chspec)	((chspec) & WL_CHANSPEC_CHAN1_MASK) >> WL_CHANSPEC_CHAN1_SHIFT
-#define CHSPEC_CHAN2(chspec)	((chspec) & WL_CHANSPEC_CHAN2_MASK) >> WL_CHANSPEC_CHAN2_SHIFT
 #define CHSPEC_BAND(chspec)	((chspec) & WL_CHANSPEC_BAND_MASK)
 #define CHSPEC_CTL_SB(chspec)	((chspec) & WL_CHANSPEC_CTL_SB_MASK)
 #define CHSPEC_SB(chspec)	((chspec) & WL_CHANSPEC_CTL_SB_MASK) >> WL_CHANSPEC_CTL_SB_SHIFT
 #define CHSPEC_BW(chspec)	((chspec) & WL_CHANSPEC_BW_MASK)
-
-#ifdef WL11N_20MHZONLY
-#define CHSPEC_IS2P5(chspec)	0
-#define CHSPEC_IS5(chspec)	0
-#define CHSPEC_IS10(chspec)	0
-#define CHSPEC_IS20(chspec)	1
-#define CHSPEC_IS20_2G(chspec)	((((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_20) && \
-								CHSPEC_IS2G(chspec))
-#ifndef CHSPEC_IS40
-#define CHSPEC_IS40(chspec)	0
-#endif // endif
-#ifndef CHSPEC_IS80
-#define CHSPEC_IS80(chspec)	0
-#endif // endif
-#ifndef CHSPEC_IS160
-#define CHSPEC_IS160(chspec)	0
-#endif // endif
-#ifndef CHSPEC_IS8080
-#define CHSPEC_IS8080(chspec)	0
-#endif // endif
-#define BW_LE20(bw)		TRUE
-#define CHSPEC_ISLE20(chspec)	TRUE
-
-/* see FOREACH_20_SB in !WL11N_20MHZONLY section */
-#define FOREACH_20_SB(chspec, channel) \
-		for (channel = CHSPEC_CHANNEL(chspec); channel; channel = 0)
-
-/* see GET_ALL_SB in !WL11N_20MHZONLY section */
-#define GET_ALL_SB(chspec, psb) do { \
-	psb[0] = CHSPEC_CHANNEL(chspec); \
-} while (0)
-
-#else /* !WL11N_20MHZONLY */
 
 #define CHSPEC_IS2P5(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_2P5)
 #define CHSPEC_IS5(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_5)
@@ -410,7 +374,6 @@ typedef struct {
 
 #define BW_LE20(bw)		((bw) == WL_CHANSPEC_BW_20)
 #define CHSPEC_ISLE20(chspec)	(CHSPEC_IS20(chspec))
-#endif /* !WL11N_20MHZONLY */
 
 #define BW_LE40(bw)		(BW_LE20(bw) || ((bw) == WL_CHANSPEC_BW_40))
 #define BW_LE80(bw)		(BW_LE40(bw) || ((bw) == WL_CHANSPEC_BW_80))

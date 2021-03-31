@@ -54,7 +54,7 @@
 *******************************************************************************
 */
 
-#if defined(CONFIG_BCM_KF_BLOG)
+#if defined(__KERNEL__)
 #include <linux/module.h>
 #include <linux/blog_net.h>
 #else
@@ -116,18 +116,18 @@ void sysport_rsb_mem_dump(void *p, int length)
     uint8_t *mem_p = (uint8_t *)p;
     int i;
 
-    __print("addr <0x%p>, length <%d>\n", mem_p, length);
+    bcm_print("addr <0x%px>, length <%d>\n", mem_p, length);
 
     for(i=0; i<length; ++i)
     {
         if((i != 0) && ((i % 16) == 0))
         {
-            __print("\n");
+            bcm_print("\n");
         }
-        __print("%02X ", *(mem_p + i));
+        bcm_print("%02X ", *(mem_p + i));
     }
 
-    __print("\n");
+    bcm_print("\n");
 }
 
 void sysport_rsb_tuple_dump(sysport_rsb_flow_tuple_t *tuple_p,
@@ -135,9 +135,9 @@ void sysport_rsb_tuple_dump(sysport_rsb_flow_tuple_t *tuple_p,
 {
     sysport_rsb_flow_header_t *header_p = &tuple_p->header;
 
-    __print("valid %d, flow_type %s (%d), ingress_phy %s (%d), ingress_port %d\n",
-            header_p->valid, sysport_rsb_flow_type_name[header_p->flow_type], header_p->flow_type,
-            sysport_rsb_phy_name[header_p->ingress_phy], header_p->ingress_phy, header_p->ingress_port);
+    bcm_print("valid %d, flow_type %s (%d), ingress_phy %s (%d), ingress_port %d\n",
+              header_p->valid, sysport_rsb_flow_type_name[header_p->flow_type], header_p->flow_type,
+              sysport_rsb_phy_name[header_p->ingress_phy], header_p->ingress_phy, header_p->ingress_port);
 
     switch(header_p->flow_type)
     {
@@ -152,37 +152,37 @@ void sysport_rsb_tuple_dump(sysport_rsb_flow_tuple_t *tuple_p,
             {
                 if(tuple_info_p->l3.is_ipv6)
                 {
-                    __print("ip_protocol %d, ip_tos %d\n"
-                            "IPv6 src_addr " BLOG_IPV6_ADDR_FMT " (0x%08x)\n"
-                            "IPv6 dst_addr " BLOG_IPV6_ADDR_FMT " (0x%08x)\n"
-                            "src_port 0x%04x, dst_port 0x%04x\n",
-                            ucast_l3_p->ip_protocol, ucast_l3_p->ip_tos,
-                            BLOG_IPV6_ADDR(tuple_info_p->l3.ipv6.src_addr.u8), ucast_l3_p->ip_src_addr,
-                            BLOG_IPV6_ADDR(tuple_info_p->l3.ipv6.dst_addr.u8), ucast_l3_p->ip_dst_addr,
-                            ucast_l3_p->l4_ports.src_port, ucast_l3_p->l4_ports.dst_port);
+                    bcm_print("ip_protocol %d, ip_tos %d\n"
+                              "IPv6 src_addr " BLOG_IPV6_ADDR_FMT " (0x%08x)\n"
+                              "IPv6 dst_addr " BLOG_IPV6_ADDR_FMT " (0x%08x)\n"
+                              "src_port 0x%04x, dst_port 0x%04x\n",
+                              ucast_l3_p->ip_protocol, ucast_l3_p->ip_tos,
+                              BLOG_IPV6_ADDR(tuple_info_p->l3.ipv6.src_addr.u8), ucast_l3_p->ip_src_addr,
+                              BLOG_IPV6_ADDR(tuple_info_p->l3.ipv6.dst_addr.u8), ucast_l3_p->ip_dst_addr,
+                              ucast_l3_p->l4_ports.src_port, ucast_l3_p->l4_ports.dst_port);
                 }
                 else
                 {
-                    __print("ip_protocol %d, ip_tos %d\n"
-                            "IPv4 src_addr " BLOG_IPV4_ADDR_FMT "\n"
-                            "IPv4 dst_addr " BLOG_IPV4_ADDR_FMT "\n"
-                            "src_port 0x%04x, dst_port 0x%04x\n",
-                            ucast_l3_p->ip_protocol, ucast_l3_p->ip_tos,
-                            BLOG_IPV4_ADDR_HOST(ucast_l3_p->ip_src_addr),
-                            BLOG_IPV4_ADDR_HOST(ucast_l3_p->ip_dst_addr),
-                            ucast_l3_p->l4_ports.src_port, ucast_l3_p->l4_ports.dst_port);
+                    bcm_print("ip_protocol %d, ip_tos %d\n"
+                              "IPv4 src_addr " BLOG_IPV4_ADDR_FMT "\n"
+                              "IPv4 dst_addr " BLOG_IPV4_ADDR_FMT "\n"
+                              "src_port 0x%04x, dst_port 0x%04x\n",
+                              ucast_l3_p->ip_protocol, ucast_l3_p->ip_tos,
+                              BLOG_IPV4_ADDR_HOST(ucast_l3_p->ip_src_addr),
+                              BLOG_IPV4_ADDR_HOST(ucast_l3_p->ip_dst_addr),
+                              ucast_l3_p->l4_ports.src_port, ucast_l3_p->l4_ports.dst_port);
                 }
             }
             else
             {
-                __print("ip_protocol %d, ip_tos %d\n"
-                        "ip_src_addr " BLOG_IPV4_ADDR_FMT " (0x%08x)\n"
-                        "ip_dst_addr " BLOG_IPV4_ADDR_FMT " (0x%08x)\n"
-                        "src_port 0x%04x, dst_port 0x%04x\n",
-                        ucast_l3_p->ip_protocol, ucast_l3_p->ip_tos,
-                        BLOG_IPV4_ADDR_HOST(ucast_l3_p->ip_src_addr), ucast_l3_p->ip_src_addr,
-                        BLOG_IPV4_ADDR_HOST(ucast_l3_p->ip_dst_addr), ucast_l3_p->ip_dst_addr,
-                        ucast_l3_p->l4_ports.src_port, ucast_l3_p->l4_ports.dst_port);
+                bcm_print("ip_protocol %d, ip_tos %d\n"
+                          "ip_src_addr " BLOG_IPV4_ADDR_FMT " (0x%08x)\n"
+                          "ip_dst_addr " BLOG_IPV4_ADDR_FMT " (0x%08x)\n"
+                          "src_port 0x%04x, dst_port 0x%04x\n",
+                          ucast_l3_p->ip_protocol, ucast_l3_p->ip_tos,
+                          BLOG_IPV4_ADDR_HOST(ucast_l3_p->ip_src_addr), ucast_l3_p->ip_src_addr,
+                          BLOG_IPV4_ADDR_HOST(ucast_l3_p->ip_dst_addr), ucast_l3_p->ip_dst_addr,
+                          ucast_l3_p->l4_ports.src_port, ucast_l3_p->l4_ports.dst_port);
             }
 
             break;
@@ -196,14 +196,14 @@ void sysport_rsb_tuple_dump(sysport_rsb_flow_tuple_t *tuple_p,
             {
                 int i;
 
-                __print("ip_tos 0x%02x, ethertype 0x%04x\n"
-                        "dst_mac " BLOG_ETH_ADDR_FMT " (0x%08x)\n"
-                        "src_mac " BLOG_ETH_ADDR_FMT " (0x%08x)\n"
-                        "nbr_of_vlans %d (0x%08x)\n",
-                        ucast_l2_p->ip_tos, ucast_l2_p->ethertype,
-                        BLOG_ETH_ADDR(tuple_info_p->l2.dst_mac), ucast_l2_p->dst_mac_crc32,
-                        BLOG_ETH_ADDR(tuple_info_p->l2.src_mac), ucast_l2_p->src_mac_crc32,
-                        tuple_info_p->l2.nbr_of_vlans, ucast_l2_p->vlan_tag_crc32);
+                bcm_print("ip_tos 0x%02x, ethertype 0x%04x\n"
+                          "dst_mac " BLOG_ETH_ADDR_FMT " (0x%08x)\n"
+                          "src_mac " BLOG_ETH_ADDR_FMT " (0x%08x)\n"
+                          "nbr_of_vlans %d (0x%08x)\n",
+                          ucast_l2_p->ip_tos, ucast_l2_p->ethertype,
+                          BLOG_ETH_ADDR(tuple_info_p->l2.dst_mac), ucast_l2_p->dst_mac_crc32,
+                          BLOG_ETH_ADDR(tuple_info_p->l2.src_mac), ucast_l2_p->src_mac_crc32,
+                          tuple_info_p->l2.nbr_of_vlans, ucast_l2_p->vlan_tag_crc32);
 
                 for(i=0; i<tuple_info_p->l2.nbr_of_vlans; ++i)
                 {
@@ -212,16 +212,16 @@ void sysport_rsb_tuple_dump(sysport_rsb_flow_tuple_t *tuple_p,
                     vlan.u16[0] = ntohs(tuple_info_p->l2.vlan[i].u16[0]);
                     vlan.u16[1] = ntohs(tuple_info_p->l2.vlan[i].u16[1]);
 
-                    __print("VLAN[%d] " BLOG_VLAN_HDR_FMT "\n", i, BLOG_VLAN_HDR(vlan));
+                    bcm_print("VLAN[%d] " BLOG_VLAN_HDR_FMT "\n", i, BLOG_VLAN_HDR(vlan));
                 }
             }
             else
             {
-                __print("ip_tos 0x%02x, ethertype 0x%04x\n"
-                        "dst_mac_crc32 0x%08x, src_mac_crc32 0x%08x\n"
-                        "vlan_tag_crc32 0x%08x\n",
-                        ucast_l2_p->ip_tos, ucast_l2_p->ethertype, ucast_l2_p->dst_mac_crc32,
-                        ucast_l2_p->src_mac_crc32, ucast_l2_p->vlan_tag_crc32);
+                bcm_print("ip_tos 0x%02x, ethertype 0x%04x\n"
+                          "dst_mac_crc32 0x%08x, src_mac_crc32 0x%08x\n"
+                          "vlan_tag_crc32 0x%08x\n",
+                          ucast_l2_p->ip_tos, ucast_l2_p->ethertype, ucast_l2_p->dst_mac_crc32,
+                          ucast_l2_p->src_mac_crc32, ucast_l2_p->vlan_tag_crc32);
             }
 
             break;
@@ -235,39 +235,39 @@ void sysport_rsb_tuple_dump(sysport_rsb_flow_tuple_t *tuple_p,
             {
                 if(tuple_info_p->l3.is_ipv6)
                 {
-                    __print("ip_protocol %d\n"
-                            "IPv6 src_addr " BLOG_IPV6_ADDR_FMT " (0x%08x)\n"
-                            "IPv6 dst_addr " BLOG_IPV6_ADDR_FMT " (0x%08x)\n"
-                            "nbr_of_vlans %d, outer_vlan_id %d, inner_vlan_id %d\n",
-                            mcast_p->ip_protocol,
-                            BLOG_IPV6_ADDR(tuple_info_p->l3.ipv6.src_addr.u8), mcast_p->ip_src_addr,
-                            BLOG_IPV6_ADDR(tuple_info_p->l3.ipv6.dst_addr.u8), mcast_p->ip_dst_addr,
-                            mcast_p->nbr_of_vlans,
-                            mcast_p->vlan.outer_vlan_id, mcast_p->vlan.inner_vlan_id);
+                    bcm_print("ip_protocol %d\n"
+                              "IPv6 src_addr " BLOG_IPV6_ADDR_FMT " (0x%08x)\n"
+                              "IPv6 dst_addr " BLOG_IPV6_ADDR_FMT " (0x%08x)\n"
+                              "nbr_of_vlans %d, outer_vlan_id %d, inner_vlan_id %d\n",
+                              mcast_p->ip_protocol,
+                              BLOG_IPV6_ADDR(tuple_info_p->l3.ipv6.src_addr.u8), mcast_p->ip_src_addr,
+                              BLOG_IPV6_ADDR(tuple_info_p->l3.ipv6.dst_addr.u8), mcast_p->ip_dst_addr,
+                              mcast_p->nbr_of_vlans,
+                              mcast_p->vlan.outer_vlan_id, mcast_p->vlan.inner_vlan_id);
                 }
                 else
                 {
-                    __print("ip_protocol %d\n"
-                            "IPv4 src_addr " BLOG_IPV4_ADDR_FMT "\n"
-                            "IPv4 dst_addr " BLOG_IPV4_ADDR_FMT "\n"
-                            "nbr_of_vlans %d, outer_vlan_id %d, inner_vlan_id %d\n",
-                            mcast_p->ip_protocol,
-                            BLOG_IPV4_ADDR_HOST(mcast_p->ip_src_addr),
-                            BLOG_IPV4_ADDR_HOST(mcast_p->ip_dst_addr),
-                            mcast_p->nbr_of_vlans,
-                            mcast_p->vlan.outer_vlan_id, mcast_p->vlan.inner_vlan_id);
+                    bcm_print("ip_protocol %d\n"
+                              "IPv4 src_addr " BLOG_IPV4_ADDR_FMT "\n"
+                              "IPv4 dst_addr " BLOG_IPV4_ADDR_FMT "\n"
+                              "nbr_of_vlans %d, outer_vlan_id %d, inner_vlan_id %d\n",
+                              mcast_p->ip_protocol,
+                              BLOG_IPV4_ADDR_HOST(mcast_p->ip_src_addr),
+                              BLOG_IPV4_ADDR_HOST(mcast_p->ip_dst_addr),
+                              mcast_p->nbr_of_vlans,
+                              mcast_p->vlan.outer_vlan_id, mcast_p->vlan.inner_vlan_id);
                 }
             }
             else
             {
-                __print("ip_protocol %d\n"
-                        "ip_src_addr " BLOG_IPV4_ADDR_FMT " (0x%08x)\n"
-                        "ip_dst_addr " BLOG_IPV4_ADDR_FMT " (0x%08x)\n"
-                        "nbr_of_vlans %d, outer_vlan_id %d, inner_vlan_id %d\n",
-                        mcast_p->ip_protocol, BLOG_IPV4_ADDR_HOST(mcast_p->ip_src_addr),
-                        mcast_p->ip_src_addr, BLOG_IPV4_ADDR_HOST(mcast_p->ip_dst_addr),
-                        mcast_p->ip_dst_addr, mcast_p->nbr_of_vlans,
-                        mcast_p->vlan.outer_vlan_id, mcast_p->vlan.inner_vlan_id);
+                bcm_print("ip_protocol %d\n"
+                          "ip_src_addr " BLOG_IPV4_ADDR_FMT " (0x%08x)\n"
+                          "ip_dst_addr " BLOG_IPV4_ADDR_FMT " (0x%08x)\n"
+                          "nbr_of_vlans %d, outer_vlan_id %d, inner_vlan_id %d\n",
+                          mcast_p->ip_protocol, BLOG_IPV4_ADDR_HOST(mcast_p->ip_src_addr),
+                          mcast_p->ip_src_addr, BLOG_IPV4_ADDR_HOST(mcast_p->ip_dst_addr),
+                          mcast_p->ip_dst_addr, mcast_p->nbr_of_vlans,
+                          mcast_p->vlan.outer_vlan_id, mcast_p->vlan.inner_vlan_id);
             }
 
             break;
@@ -275,7 +275,7 @@ void sysport_rsb_tuple_dump(sysport_rsb_flow_tuple_t *tuple_p,
 
         default:
             /* We should never get here */
-            __print("Internal Error\n");
+            bcm_print("Internal Error\n");
     }
 }
 
@@ -283,44 +283,44 @@ void sysport_rsb_dump(sysport_rsb_t *rsb_p, sysport_rsb_flow_tuple_info_t *tuple
 {
     sysport_rsb_flow_tuple_t *tuple_p = &rsb_p->tuple;
 
-    __print("\nRSB\n");
+    bcm_print("\nRSB\n");
 
     sysport_rsb_mem_dump(rsb_p, sizeof(sysport_rsb_t));
 
-    __print("\nRSB RX_INFO\n");
+    bcm_print("\nRSB RX_INFO\n");
 
     if(mlt_enable)
     {
-        __print("mlt_index 0x%x, ", rsb_p->mlt_index);
+        bcm_print("mlt_index 0x%x, ", rsb_p->mlt_index);
     }
     else
     {
-        __print("traffic_class %d, reason_code %d, pkt_type %d, ",
-                rsb_p->traffic_class, rsb_p->reason_code, rsb_p->pkt_type);
+        bcm_print("traffic_class %d, reason_code %d, pkt_type %d, ",
+                  rsb_p->traffic_class, rsb_p->reason_code, rsb_p->pkt_type);
     }
 
-    __print("error %d, overflow %d\n"
-            "parse_fail %d, l4_checksum %d, sop %d, eop %d, data_length %d\n",
-            rsb_p->error, rsb_p->overflow,
-            rsb_p->parse_fail, rsb_p->l4_checksum, rsb_p->sop, rsb_p->eop, rsb_p->data_length);
+    bcm_print("error %d, overflow %d\n"
+              "parse_fail %d, l4_checksum %d, sop %d, eop %d, data_length %d\n",
+              rsb_p->error, rsb_p->overflow,
+              rsb_p->parse_fail, rsb_p->l4_checksum, rsb_p->sop, rsb_p->eop, rsb_p->data_length);
 
-    __print("\nRSB PARSING\n");
+    bcm_print("\nRSB PARSING\n");
 
-    __print("tunnel_ip_src_addr " BLOG_IPV4_ADDR_FMT " (0x%08x)\n",
-            BLOG_IPV4_ADDR_HOST(rsb_p->tunnel_ip_src_addr), rsb_p->tunnel_ip_src_addr);
+    bcm_print("tunnel_ip_src_addr " BLOG_IPV4_ADDR_FMT " (0x%08x)\n",
+              BLOG_IPV4_ADDR_HOST(rsb_p->tunnel_ip_src_addr), rsb_p->tunnel_ip_src_addr);
 
-    __print("ip_offset %d, ip_tos 0x%02x, ip_length %d\n",
-            rsb_p->ip_offset, rsb_p->ip_tos, rsb_p->ip_length);
+    bcm_print("ip_offset %d, ip_tos 0x%02x, ip_length %d\n",
+              rsb_p->ip_offset, rsb_p->ip_tos, rsb_p->ip_length);
 
-    __print("nbr_of_vlans %d, pppoe %d, llc_snap %d, l3_type %s (%d)\n"
-            "tcp %d, udp %d, ip_version_mismatch %d, ipv4_options %d, ttl_expired %d\n"
-            "ipv4_df %d, ipv4_frag %d, tcp_rst_syn_fin %d, tuple_crc16 0x%04x\n",
-            rsb_p->nbr_of_vlans, rsb_p->pppoe, rsb_p->llc_snap, __rsb_l3_type_name(rsb_p->l3_type),
-            rsb_p->l3_type, rsb_p->tcp, rsb_p->udp, rsb_p->ip_version_mismatch,
-            rsb_p->ipv4_options, rsb_p->ttl_expired, rsb_p->ipv4_df, rsb_p->ipv4_frag,
-            rsb_p->tcp_rst_syn_fin, rsb_p->tuple_crc16);
+    bcm_print("nbr_of_vlans %d, pppoe %d, llc_snap %d, l3_type %s (%d)\n"
+              "tcp %d, udp %d, ip_version_mismatch %d, ipv4_options %d, ttl_expired %d\n"
+              "ipv4_df %d, ipv4_frag %d, tcp_rst_syn_fin %d, tuple_crc16 0x%04x\n",
+              rsb_p->nbr_of_vlans, rsb_p->pppoe, rsb_p->llc_snap, __rsb_l3_type_name(rsb_p->l3_type),
+              rsb_p->l3_type, rsb_p->tcp, rsb_p->udp, rsb_p->ip_version_mismatch,
+              rsb_p->ipv4_options, rsb_p->ttl_expired, rsb_p->ipv4_df, rsb_p->ipv4_frag,
+              rsb_p->tcp_rst_syn_fin, rsb_p->tuple_crc16);
 
-    __print("\nRSB TUPLE\n");
+    bcm_print("\nRSB TUPLE\n");
 
     sysport_rsb_tuple_dump(tuple_p, tuple_info_p);
 }

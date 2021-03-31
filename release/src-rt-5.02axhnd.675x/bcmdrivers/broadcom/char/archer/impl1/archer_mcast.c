@@ -67,6 +67,7 @@
 
 #include "archer.h"
 #include "archer_driver.h"
+#include "archer_drop.h"
 
 #include "cmdlist_api.h"
 
@@ -281,6 +282,7 @@ static int archer_mcast_flow_context_set(Blog_t *blog_p, sysport_classifier_flow
     {
         sysport_classifier_flow_port_t *port_p;
         blogRuleAction_t *blog_rule_action_p;
+        archer_drop_config_t drop_config;
         int switch_queue;
         int txq_index;
 
@@ -301,7 +303,7 @@ static int archer_mcast_flow_context_set(Blog_t *blog_p, sysport_classifier_flow
             switch_queue = SKBMARK_GET_Q_PRIO(blog_p->mark);
         }
 
-        if(sysport_driver_switch_queue_to_txq_index(switch_queue, &txq_index))
+        if(sysport_driver_switch_queue_to_txq_index(egress_port, switch_queue, &txq_index))
         {
             __logError("Could not sysport_driver_switch_queue_to_txq_index");
 
@@ -316,6 +318,17 @@ static int archer_mcast_flow_context_set(Blog_t *blog_p, sysport_classifier_flow
 
             return SYSPORT_CLASSIFIER_ERROR_INVALID;
         }
+
+        ret = sysport_driver_drop_config_get(egress_port, switch_queue, &drop_config);
+        if(ret)
+        {
+            __logError("Could not sysport_driver_drop_config_get");
+
+            return SYSPORT_CLASSIFIER_ERROR_INVALID;
+        }
+
+        context_p->drop_profile =
+            archer_drop_profile_by_tc(&drop_config, SKBMARK_GET_TC_ID(blog_p->mark));
     }
 
     // The Egress PHY is not used for MCAST
@@ -324,8 +337,6 @@ static int archer_mcast_flow_context_set(Blog_t *blog_p, sysport_classifier_flow
     context_p->egress_port_or_mask = (1 << egress_port);
 
     context_p->mtu = blog_getTxMtu(blog_p);
-
-    context_p->tc = SKBMARK_GET_TC_ID(blog_p->mark);
 
 #if 0 // XXX
     if((blog_p->mcast_learn) && (blog_p->rx.info.bmap.PLD_IPv4))

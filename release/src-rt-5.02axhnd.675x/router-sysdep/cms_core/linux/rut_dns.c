@@ -664,7 +664,7 @@ CmsRet rutDns_dumpDnsInfo_igd(FILE *fp, UBOOL8 needDefaultDns)
                InstanceIdStack defaultDnsIpIid = EMPTY_INSTANCE_ID_STACK;
                UBOOL8 found = FALSE;
 
-               if ((ret = cmsObj_get(MDMOID_I_PV6_LAN_HOST_CFG, &Ipv6LanCfgIid, OGF_NO_VALUE_UPDATE, (void *) &ipv6LanCfgObj)) != CMSRET_SUCCESS)
+               if ((ret = cmsObj_getNext(MDMOID_I_PV6_LAN_HOST_CFG, &Ipv6LanCfgIid, (void *) &ipv6LanCfgObj)) != CMSRET_SUCCESS)
                {
                   cmsLog_error("Could not get MDMOID_I_PV6_LAN_HOST_CFG. ret=%d", ret);
                   return ret;

@@ -136,8 +136,91 @@ void rutIp_configureIpv6Addr(const char *ifname, const char *addr,
    if (cmsUtl_isValidIpAddress(AF_INET6, addr) == TRUE)
    {
       char cmdStr[BUFLEN_128];
+      Dev2IpInterfaceObject *ipIntfObj = NULL;
+      InstanceIdStack iidStack;
+      InstanceIdStack iidStackChild;
+      UBOOL8 found = FALSE;
+      UBOOL8 isWan = FALSE;
+      UBOOL8 isStateful = FALSE;
+      UBOOL8 onLink = TRUE;
+
+      /* 1: Check if it is a WAN interface */
+      INIT_INSTANCE_ID_STACK(&iidStack);
+      while (!found &&
+                 (cmsObj_getNextFlags(MDMOID_DEV2_IP_INTERFACE, &iidStack,
+                    OGF_NO_VALUE_UPDATE, (void **)&ipIntfObj) == CMSRET_SUCCESS))
+      {
+         if (!cmsUtl_strcmp(ipIntfObj->name, ifname))
+         {
+            isWan = ipIntfObj->X_BROADCOM_COM_Upstream;
+            found = TRUE;
+         }
+         cmsObj_free((void **) &ipIntfObj);
+      }
+
+      /* 2: What if the address is stateful */
+      if (isWan)
+      {
+         Dev2Ipv6AddressObject *ipv6AddrObj = NULL;
+
+         found = FALSE;
+         INIT_INSTANCE_ID_STACK(&iidStackChild);
+         while (!found &&
+                    (cmsObj_getNextInSubTreeFlags(MDMOID_DEV2_IPV6_ADDRESS,
+                              &iidStack, &iidStackChild,
+                              OGF_NO_VALUE_UPDATE,
+                              (void **)&ipv6AddrObj) == CMSRET_SUCCESS))
+         {
+            if (!cmsUtl_strcmp(ipv6AddrObj->IPAddress, addr))
+            {
+               if (!cmsUtl_strcmp(ipv6AddrObj->origin, MDMVS_AUTOCONFIGURED))
+               {
+                  cmsLog_debug("no action for SLAAC address");
+                  cmsObj_free((void **) &ipv6AddrObj);
+                  return;
+               }
+               else if (!cmsUtl_strcmp(ipv6AddrObj->origin, MDMVS_DHCPV6))
+               {
+                  isStateful = TRUE;
+               }
+               found = TRUE;
+            }
+            cmsObj_free((void **) &ipv6AddrObj);
+         }
+      }
+
+      /* 3: Follow RFC 7084 Section 4.2 (WAA-2) */
+      if (isStateful)
+      {
+         Dev2Ipv6PrefixObject *ipv6PrefixObj = NULL;
+
+         found = FALSE;
+         INIT_INSTANCE_ID_STACK(&iidStackChild);
+         while (!found &&
+                    (cmsObj_getNextInSubTreeFlags(MDMOID_DEV2_IPV6_PREFIX,
+                                  &iidStack, &iidStackChild,
+                                  OGF_NO_VALUE_UPDATE,
+                                  (void **)&ipv6PrefixObj) == CMSRET_SUCCESS))
+				 {
+            if (!cmsUtl_strcmp(ipv6PrefixObj->origin, MDMVS_ROUTERADVERTISEMENT) &&
+                !cmsUtl_strcmp(ipv6PrefixObj->staticType, MDMVS_INAPPLICABLE) &&
+                cmsNet_isHostInSameSubnet(addr, ipv6PrefixObj->prefix))
+            {
+               /* evaluate L (Onlink) Flag in the RA PIO */
+               onLink = ipv6PrefixObj->onLink;
+               found = TRUE;
+            }
+            cmsObj_free((void **) &ipv6PrefixObj);
+         }
+      }
+
       snprintf(cmdStr, sizeof(cmdStr), "ip -6 addr add %s/64 dev %s", 
                addr, ifname);
+
+      /* The interface route at WAN should not happen when advertised
+       * RA message with the L Flag clear set.
+       */
+      strncat(cmdStr, onLink? "" : " noprefixroute", sizeof(cmdStr)-1);
 
       rut_doSystemAction("rut2_ip6", cmdStr);
 

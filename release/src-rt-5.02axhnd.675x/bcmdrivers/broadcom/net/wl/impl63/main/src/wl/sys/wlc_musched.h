@@ -1,7 +1,7 @@
 /*
  * 802.11ax MU scheduler and scheduler statistics module
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -112,4 +112,5 @@ extern void wlc_musched_admit_dlclients(wlc_muscheduler_info_t *musched);
 extern void wlc_musched_get_min_dlofdma_users(wlc_muscheduler_info_t *musched,
 	uint16 *min_users, bool *allow_bw160);
 extern void wlc_musched_update_dlofdma(wlc_muscheduler_info_t *musched, scb_t* scb);
+extern bool wlc_musched_wfa20in80_enab(wlc_muscheduler_info_t *musched);
 #endif /* _wlc_muscheduler_h_ */

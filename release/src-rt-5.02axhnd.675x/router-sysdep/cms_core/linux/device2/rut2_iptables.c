@@ -1021,7 +1021,19 @@ void rutIpt_configNatForIntfGroup_dev2(UBOOL8 isAdd, const char *ifName, const c
                  cmdType, bridgeIfName, ifcIpAddress, ipAddress);
          rut_doSystemAction("configNatForIntfGroup -- DnsForward", cmd);
       }
-#endif	  
+#endif
+
+      /* Remove  the binding to br0 here (was done int rutIpt_initNat)
+       * for the problem maybe caused by MASQUERADE.
+       */
+      if(isAdd && cmsUtl_strcmp("br0", bridgeIfName))
+      {
+         if (rut_getIfSubnet("br0", localSubnet) && rut_getIfMask("br0", localSubnetmask)) 
+         {
+            rutIpt_deleteNatMasquerade(ifName, localSubnet, localSubnetmask);      
+         }
+      }
+
    }
 }
 #endif /* DMP_DEVICE2_BRIDGE_1 */

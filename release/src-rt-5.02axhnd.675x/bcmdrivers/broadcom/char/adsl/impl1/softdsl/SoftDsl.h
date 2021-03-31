@@ -2314,7 +2314,7 @@
 #define	SoftDslHeader
 
 /* for builds in Linux/VxWorks CommEngine environment */
-#if (defined(__KERNEL__) && !defined(LINUX_DRIVER)) || defined(VXWORKS) || defined(_WIN32_WCE) || defined(TARG_OS_RTEMS) || defined(_CFE_) || defined(__ECOS) || defined(_NOOS)
+#if (defined(__KERNEL__) && !defined(LINUX_DRIVER)) || defined(VXWORKS) || defined(_WIN32_WCE) || defined(TARG_OS_RTEMS) || defined(__ECOS) || defined(_NOOS)
 #include "AdslCoreDefs.h"
 #else
 #include "Bcm6345_To_Bcm6348.h"		/* File for 45->48 changes */
@@ -2675,6 +2675,10 @@ typedef struct
 #pragma pack(push,1)
 #endif
 
+#if defined(WINNT) || defined(LINUX_DRIVER) || defined(__KERNEL__)
+#define DIAG_OR_HOST_BUILD
+#endif
+
 typedef struct UDenNum16 UDenNum16;
 struct UDenNum16
 {
@@ -2720,7 +2724,7 @@ struct FramerDeframerOptions
     struct {
       unsigned char         fireEnabled;/* bitmap flagging fire support for this direction and/or for reverse direction
                                      * No more used - Kept in the structure for backward compatibility with Diags */
-      unsigned char         fireRxQueue;/* length of the retransmission queue in Rx direction */
+      unsigned char         fireRxQueueOld;/* length of the retransmission queue in Rx direction */
     } ALIGN_PACKED;
     struct { /* Gfast */
       unsigned char         MNDSNOI;    /* Min Data Symbols in NOI */
@@ -2750,7 +2754,7 @@ struct FramerDeframerOptions
   unsigned short        INPshine;   /* G.Inp: For G.Inp the INP is 2 bytes and supports values up to 204.7 0.1 symbols which won't fit in existing INP. We use Q1 format
                                        to be the same as the existing INP and the driver will limit to 204.7 when reporting to the CO */
   unsigned int          L;
-#if defined(GFAST_SUPPORT) || defined(WINNT) || defined(LINUX_DRIVER) || defined(__KERNEL__)
+#if defined(GFAST_SUPPORT) || defined(DIAG_OR_HOST_BUILD)
   unsigned int          maxMemory;  /* Maximum available nominal memory at NE for the current lp */
   unsigned int          ndr;        /* Net Data Rate */
   unsigned short        Ldr;        /* Number of bearer bits per symbol during RMC symbol */
@@ -2759,8 +2763,16 @@ struct FramerDeframerOptions
   unsigned int          Lmax;       /* Maximum possible L (SRA upshift) */
   unsigned int          Lmin;       /* Minimum possible L (SRA downshift) */
   unsigned int          ETRminEoc;  /* ETR_min_eoc, see table 9-21 in corrigendum 1 */
+#if defined(GFAST_DTA_SUPPORTED) || defined(DIAG_OR_HOST_BUILD)
+  unsigned char         dtaMmax;    /* Mds Max when dta is enabled */
 #endif
+#endif
+  unsigned short        fireRxQueue;/* length of the retransmission queue in Rx direction */
 };
+
+#define ETR_MIN_EOC_FRAMER_STRUCT_SIZE  (sizeof(FramerDeframerOptions) - 3)
+#define RX_QUEUE16_FRAMER_STRUCT_SIZE   sizeof(FramerDeframerOptions)
+
 
 /* Negotiated DTA parameters */
 typedef struct GfastDtaOptions {
@@ -3244,6 +3256,8 @@ typedef int						dslStatusCode;
 /* AFE LD power modes */
 #define kDslLDPowerMode12V       0	/* 12V */
 #define kDslLDPowerMode15V       1	/* 15V */
+#define kDslDrvConfigRdAfePLLChCfg      (15)	/* regAddr - 0/1/2(ch01/ch23/ch45), regValue - chCfg(value read) */
+#define kDslDrvConfigWrAfePLLChCfg      (16)	/* regAddr - 0/1/2(ch01/ch23/ch45), regValue - chCfg(value to be written) */
 
 #define kDslPwrMgrSrAddrStatus			(kFirstDslStatusCode + 46)
 
@@ -3924,6 +3938,13 @@ typedef	struct
 		} param ALIGN_PACKED;
 	} dslStatusStruct;
 
+typedef struct {
+  uint  supportedStandards;
+  uint  enabledStandards;
+  uint  supportedOptions;
+  uint  enabledOptions;
+} lineFeaturesInfo;
+
 #ifndef DSLVARS_GLOBAL_REG
 typedef	void	(SM_DECL *dslStatusHandlerType)		(void *gDslVars, dslStatusStruct*);
 #else
@@ -4206,6 +4227,17 @@ typedef int						dslCommandCode;
 #endif
 #define kDslHostResettingPHYMIPS        (kFirstDslCommandCode + 95)
 #define kDslSetTestModeRateSelect       (kFirstDslCommandCode + 96)
+#define kDslReportLinkState             (kFirstDslCommandCode + 97)
+#define kDslSetCrestFactor              (kFirstDslCommandCode + 98) /* 354 if kFirstDslCommandCode is 256 */
+#define kDslSetLineResumeDelay          (kFirstDslCommandCode + 99)
+#define kDslSetTxHeadroomPower          (kFirstDslCommandCode + 100) /* 356 if kFirstDslCommandCode is 256 */
+#define kDslSetTxNoiseOnOff             (kFirstDslCommandCode + 101) /* 357 */
+#define kDslSetTxNoiseRelGain           (kFirstDslCommandCode + 102) /* 358 */
+#define kDslSetTxPulseDuration          (kFirstDslCommandCode + 103) /* 359 */
+#define kDslSetTxPulsePeriod            (kFirstDslCommandCode + 104) /* 360 */
+#define kDslStartHlogComp               (kFirstDslCommandCode + 105) /* 361 */
+#define kDslStartQlnComp                (kFirstDslCommandCode + 106) /* 362 */
+
 
 /* Bit fields for use with kDslStatPrintCmd */
     #define kDslStatBgPrint                     1 /* Print BG statistics if 1 */
@@ -4463,6 +4495,10 @@ typedef int						dslCommandCode;
 #define kDslSprocDis                          476
 #define kDslCmdDispTblDump                    477
 #define kDsl993p2LRActOpType                  478
+#define kDsl993p2FeQln                        479
+#define kDsl993p2FeHlog                       480
+#define kDslLineFeaturesNE                    481
+#define kDslLineFeaturesFE                    482
 
 /* Interop footprint bits */
 #define kDslInteropDisablePhyRDs            0x0001
@@ -6550,7 +6586,7 @@ extern uint	        SM_DECL SoftDslGetRefData	(void *gDslVars);
 extern int		SM_DECL SoftDslGetMemorySize(void);
 extern void		SM_DECL SoftDslInit			(void *gDslVars);
 extern void		SM_DECL SoftDslReset		(void *gDslVars);
-#if !defined(__KERNEL__) && !defined(_CFE_) && !defined(__ECOS) && !defined(_NOOS)
+#if !defined(__KERNEL__) && !defined(__ECOS) && !defined(_NOOS)
 #ifdef ADSL_SHOWTEXT
 extern void		SM_DECL SoftDslLineHandler	(void *gDslVars, int rxNSamps, int txNSamps, short *rcvPtr, short *xmtPtr) SHOWTEXT_ADSL;
 #else
@@ -6860,7 +6896,7 @@ extern	void		StackSizeTestRestoreStack(void);
 #endif
 #endif
 
-#if !defined(WINNT) && !defined(__KERNEL__) && !defined(_CFE_) && !defined(__ECOS) && !defined(_NOOS)
+#if !defined(WINNT) && !defined(__KERNEL__) && !defined(__ECOS) && !defined(_NOOS)
 #include "SoftDslStatus.h"
 #include "SoftDslApi.h"
 #endif
@@ -6881,7 +6917,7 @@ extern	void		StackSizeTestRestoreStack(void);
 #define	DSL_LINE_ID(x)		0
 #endif
 
-#if defined(__KERNEL__) || defined(_CFE_) || defined(__ECOS) || defined(_NOOS)
+#if defined(__KERNEL__) || defined(__ECOS) || defined(_NOOS)
 #define gLineId(x)			(((dslVarsStruct *)(x))->lineId)
 #endif
 

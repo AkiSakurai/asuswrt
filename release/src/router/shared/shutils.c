@@ -51,7 +51,9 @@
 
 /* Linux specific headers */
 #ifdef linux
+#if (defined(__GLIBC__) || defined(__UCLIBC__))
 #include <error.h>
+#endif
 #include <termios.h>
 #include <sys/time.h>
 //#include <net/ethernet.h>
@@ -117,8 +119,11 @@ void dbgprintf (const char * format, ...)
 			va_end(args);
 			fclose(f);
 		}
+		else
+		{
 		close(nfd);
 	}
+}
 }
 
 void dbg(const char * format, ...)
@@ -134,6 +139,7 @@ void dbg(const char * format, ...)
 		vfprintf(f, format, args);
 		va_end(args);
 		fclose(f);
+		nfd = -1;
 	}
 	else
 	{
@@ -246,15 +252,13 @@ int _eval(char *const argv[], const char *path, int timeout, int *ppid)
 	sighandler_t chld = SIG_IGN;
 	pid_t pid, w;
 	int status = 0;
-	int fd;
-	int flags;
-	int sig;
-	int n;
-	const char *p;
-	char s[256];
-	int debug_logeval = atoi(nvram_safe_get("debug_logeval"));
-	//char *cpu0_argv[32] = { "taskset", "-c", "0"};
-	//char *cpu1_argv[32] = { "taskset", "-c", "1"};
+	int fd, flags, sig, n;
+	char s[256], *p;
+	int debug_logeval = nvram_get_int("debug_logeval");
+#if 0
+	char *cpu = "0";
+	char *cpu_argv[32] = { "taskset", "-c", cpu, NULL};
+#endif
 
 	if (!ppid) {
 		// block SIGCHLD
@@ -268,7 +272,9 @@ int _eval(char *const argv[], const char *path, int timeout, int *ppid)
 #ifdef HND_ROUTER
 	p = nvram_safe_get("env_path");
 	snprintf(s, sizeof(s), "%s%s/sbin:/bin:/usr/sbin:/usr/bin:/opt/sbin:/opt/bin", *p ? p : "", *p ? ":" : "");
-	setenv("PATH", s, 1);
+	p = getenv("PATH");
+	if (p == NULL || strcmp(p, s) != 0)
+		setenv("PATH", s, 1);
 #endif
 	pid = fork();
 	if (pid == -1) {
@@ -304,43 +310,22 @@ EXIT:
 
 	// child
 
+	setsid();
+
 	// reset signal handlers
-	for (sig = 0; sig < (_NSIG - 1); sig++)
+	for (sig = 1; sig < _NSIG; sig++)
 		signal(sig, SIG_DFL);
 
 	// unblock signals if called from signal handler
 	sigemptyset(&set);
 	sigprocmask(SIG_SETMASK, &set, NULL);
 
-	setsid();
-
-	close(STDIN_FILENO);
-	close(STDOUT_FILENO);
-	close(STDERR_FILENO);
-	open("/dev/null", O_RDONLY);
-	open("/dev/null", O_WRONLY);
-	open("/dev/null", O_WRONLY);
-
-	if (debug_logeval == 1) {
-		pid = getpid();
-
-		cprintf("_eval +%ld pid=%d ", uptime(), pid);
-		for (n = 0; argv[n]; ++n) cprintf("%s ", argv[n]);
-		cprintf("\n");
-
-		if ((fd = open("/dev/console", O_RDWR | O_NONBLOCK)) >= 0) {
-			dup2(fd, STDIN_FILENO);
-			dup2(fd, STDOUT_FILENO);
-			dup2(fd, STDERR_FILENO);
-		}
-		else {
-			sprintf(s, "/tmp/eval.%d", pid);
-			if ((fd = open(s, O_CREAT | O_RDWR | O_NONBLOCK, 0600)) >= 0) {
-				dup2(fd, STDOUT_FILENO);
-				dup2(fd, STDERR_FILENO);
-			}
-		}
-		if (fd > STDERR_FILENO) close(fd);
+	if ((fd = open("/dev/null", O_RDWR)) >= 0) {
+		dup2(fd, STDIN_FILENO);
+		dup2(fd, STDOUT_FILENO);
+		dup2(fd, STDERR_FILENO);
+		if (fd > STDERR_FILENO)
+			close(fd);
 	}
 
 	// Redirect stdout & stderr to <path>
@@ -361,11 +346,30 @@ EXIT:
 
 		if ((fd = open(path, flags, 0644)) < 0) {
 			perror(path);
-		}
-		else {
+		} else {
 			dup2(fd, STDOUT_FILENO);
 			dup2(fd, STDERR_FILENO);
-			close(fd);
+			if (fd > STDERR_FILENO)
+				close(fd);
+		}
+	} else if (debug_logeval) {
+		pid = getpid();
+
+		if ((fd = open("/dev/console", O_RDWR | O_NONBLOCK)) < 0) {
+			sprintf(s, "/tmp/eval.%d", pid);
+			fd = open(s, O_CREAT | O_RDWR | O_NONBLOCK, 0600);
+		} else
+			dup2(fd, STDIN_FILENO);
+
+		if (fd >= 0) {
+			dup2(fd, STDOUT_FILENO);
+			dup2(fd, STDERR_FILENO);
+			if (fd > STDERR_FILENO)
+				close(fd);
+
+			printf("_eval +%ld pid=%d ", uptime(), getpid());
+			for (n = 0; argv[n]; n++) printf("%s ", argv[n]);
+			printf("\n");
 		}
 	}
 
@@ -373,33 +377,27 @@ EXIT:
 #ifndef HND_ROUTER
 	p = nvram_safe_get("env_path");
 	snprintf(s, sizeof(s), "%s%s/sbin:/bin:/usr/sbin:/usr/bin:/opt/sbin:/opt/bin", *p ? p : "", *p ? ":" : "");
-	setenv("PATH", s, 1);
+	p = getenv("PATH");
+	if (p == NULL || strcmp(p, s) != 0)
+		setenv("PATH", s, 1);
 #endif
 
 	alarm(timeout);
+
 #if 1
 	execvp(argv[0], argv);
+#else
+	for (n = 0; argv[n]; n++) {
+		cpu_argv[n+3] = argv[n];
+	execvp(cpu_argv[0], cpu_argv);
+#endif
 
 	perror(argv[0]);
-#elif 0
-	for(n = 0; argv[n]; ++n)
-		cpu0_argv[n+3] = argv[n];
-	execvp(cpu0_argv[0], cpu0_argv);
-
-	perror(cpu0_argv[0]);
-#else
-	for(n = 0; argv[n]; ++n)
-		cpu1_argv[n+3] = argv[n];
-	execvp(cpu1_argv[0], cpu1_argv);
-
-	perror(cpu1_argv[0]);
-
-#endif
 
 	_exit(errno);
 }
 
-static int get_cmds_size(char **cmds)
+static int get_cmds_size(char *const *cmds)
 {
         int i=0;
         for(; cmds[i]; ++i);
@@ -440,6 +438,27 @@ int _cpu_eval(int *ppid, char *cmds[])
         for(; cmds[n]; cpucmd[ncmds++]=cmds[n++]);
 
         return _eval(cpucmd, NULL, 0, ppid);;
+}
+
+int _cpu_mask_eval(char *const argv[], const char *path, int timeout, int *ppid, unsigned int mask)
+{
+	int maxn = get_cmds_size(argv) + 3;
+	char *cpuargv[maxn];
+	int argc = 0;
+	int i;
+	char mask_str[16] = {0};
+
+	for (i = 0;i < maxn; i++)
+		cpuargv[i] = NULL;
+
+	cpuargv[argc++] = "taskset";
+	snprintf(mask_str, sizeof(mask_str), "0x%x", mask);
+	cpuargv[argc++] = mask_str;
+	for(i = 0; argv[i]; i++)
+		cpuargv[argc++] = argv[i];
+
+	//_dprintf("\n=====\n"); for(i = 0; cpuargv[i]; i++) _dprintf("%s ", cpuargv[i]); _dprintf("\n=====\n");
+	return _eval(cpuargv, path, timeout, ppid);
 }
 
 /*
@@ -659,6 +678,30 @@ char *ether_etoa2(const unsigned char *e, char *a)
 	return a;
 }
 
+/*
+ * Increase Ethernet address e with n
+ */
+int ether_inc(unsigned char *e, const unsigned char n)
+{
+	int c = 0;
+	int ret = 0;
+
+	c = (e[5] >= (0xff - n + 1)) ? 1 : 0;
+	e[5] += n;
+
+	if (c) {
+		c = (e[4] >= 0xff) ? 1 : 0;
+		e[4] += 1;
+
+		if (c) {
+			ret = (e[3] >= 0xff) ? -1 : 0;
+			e[3] += 1;
+		}
+	}
+
+	return (ret);
+}
+
 #ifdef GTAC5300
 static int dbg_noisy = -1;
 #endif
@@ -668,10 +711,6 @@ void cprintf(const char *format, ...)
 	FILE *f;
 	int nfd;
 	va_list args;
-#ifdef RTCONFIG_NVRAM_FILE
-	int debug_cprintf = 1;
-	int debug_cprintf_file = 0;
-#endif
 
 #if defined(DEBUG_NOISY) && !defined(HND_ROUTER)
 	{
@@ -684,29 +723,21 @@ void cprintf(const char *format, ...)
 		return;
 	{
 #else
-#ifdef RTCONFIG_NVRAM_FILE
-	if ( debug_cprintf == 1 ) {
-#else
 	if (nvram_match("debug_cprintf", "1")) {
 #endif
 #endif
-#endif
-		if((nfd = open("/dev/console", O_WRONLY | O_NONBLOCK)) > 0){
+		if((nfd = open("/dev/console", O_WRONLY | O_NONBLOCK)) >= 0){
 			if((f = fdopen(nfd, "w")) != NULL){
 				va_start(args, format);
 				vfprintf(f, format, args);
 				va_end(args);
 				fclose(f);
-			}
-			close(nfd);
+			} else
+				close(nfd);
 		}
 	}
 #if 1
-#ifdef RTCONFIG_NVRAM_FILE
-	if (debug_cprintf_file == 1) {
-#else
 	if (nvram_match("debug_cprintf_file", "1")) {
-#endif
 //		char s[32];
 //		sprintf(s, "/tmp/cprintf.%d", getpid());
 //		if ((f = fopen(s, "a")) != NULL) {
@@ -1814,7 +1845,11 @@ int doSystem(char *fmt, ...)
 	va_end(vargs);
 
 	if(cmd) {
-		if (!strncmp(cmd, "iwpriv", 6))
+		if (!strncmp(cmd, "iwpriv", 6)
+#if defined(RTCONFIG_CFG80211)
+		    || !strncmp(cmd, "cfg80211tool", 12)
+#endif
+		   )
 			_dprintf("[doSystem] %s\n", cmd);
 		rc = system(cmd);
 		bfree(B_L, cmd);
@@ -2018,7 +2053,7 @@ int generate_wireless_key(unsigned char *key)
 	unsigned char ea[ETHER_ADDR_LEN];
 	char *mac = nvram_safe_get("et1macaddr");
 
-	memset(key, sizeof(key), 32);
+	memset(key, 0, 32);
 	ether_atoe(mac, ea);
 
 	sprintf((char *) key, "%x%x%x%x%x%x%x%x",
@@ -2063,7 +2098,7 @@ int generate_wireless_key(unsigned char *key)
 		}
 	}
 
-	printf("key:  %s (%d)\n", key, strlen((const char *) key));
+	printf("key:  %s (%d)\n", (char *)key, (int)strlen((const char *) key));
 
 	return 0;
 }
@@ -2118,6 +2153,31 @@ char *trimNL(char *str)
 	}
 	str[len] = '\0';
 	return str;
+}
+
+/**
+** get_char_count()
+** return the number of occurrence of character 'ch' in the C string 'str'.
+** The terminating null-character is considered part of the C string.
+** Therefore, it can also be located in order to retrieve a pointer to the end of a string.
+**/
+int get_char_count(char *str, int ch)
+{
+	int count = 0;
+	char *pch = NULL;
+
+	if(!str)
+	{
+		return 0;
+	}
+
+	pch = strchr(str, ch);
+	while(pch != NULL)
+	{
+		count++;
+		pch = strchr(pch+1, ch);
+	}
+	return count;
 }
 
 char *get_process_name_by_pid(const int pid)
@@ -2193,12 +2253,105 @@ sysfail:
  return NULL;
 }
 
+#if 0 // replaced by #define in shared.h
+int modprobe(const char *mod)
+{
+#if 1
+	return eval("modprobe", "-s", (char *)mod);
+#else
+	int r = eval("modprobe", "-s", (char *)mod);
+	cprintf("modprobe %s = %d\n", mod, r);
+	return r;
+#endif
+}
+#endif // 0
+
+int modprobe_r(const char *mod)
+{
+#if 1
+	return eval("modprobe", "-r", (char *)mod);
+#else
+	int r = eval("modprobe", "-r", (char *)mod);
+	cprintf("modprobe -r %s = %d\n", mod, r);
+	return r;
+#endif
+}
+
+/**
+ * Load kernel modules in @kmods_list in original order.
+ * @kmods_list:	a string contains all kernel modules should be loaded by this function.
+ * @return:
+ * 	0:	success
+ *     -1:	invalid parameter
+ */
+int load_kmods(char *kmods_list)
+{
+	char kmod[128], *next;
+
+	if (!kmods_list)
+		return -1;
+
+	foreach(kmod, kmods_list, next) {
+		if (module_loaded(kmod))
+			continue;
+
+		modprobe(kmod);
+	}
+
+	return 0;
+}
+
+/**
+ * Remove kernel modules in @kmods_list in REVERSE order.
+ * @kmods_list:	a string contains all kernel modules should be loaded by this function.
+ * @return:
+ * 	0:	success
+ *     -1:	invalid parameter
+ *     -2:	can't allocate memory for holding parameter.
+ */
+int remove_kmods(char *kmods_list)
+{
+	char buf[256], *p, *q;
+
+	if (!kmods_list)
+		return -1;
+
+	if (strlen(kmods_list) > sizeof(buf) - 1) {
+		p = strdup(kmods_list);
+		if (p == NULL) {
+			dbg("%s: Can't allocate memory for [%s]\n",
+				__func__, kmods_list);
+			return -2;
+		}
+	} else
+		p = strcpy(buf, kmods_list);
+
+	for (q = NULL; q != p;) {
+		q = strrchr(p, ' ') ? : p;
+		if (*q == ' ')
+			*q++ = '\0';
+		if (*q == '\0')
+			continue;
+		if (!module_loaded(q))
+			continue;
+
+		modprobe_r(q);
+	}
+
+	if (p != buf)
+		free(p);
+
+	return 0;
+}
+
 int num_of_wl_if()
 {
 	char word[256], *next;
 	int count = 0;
+	char wl_ifnames[32] = { 0 };
 
-	foreach (word, nvram_safe_get("wl_ifnames"), next)
+	strlcpy(wl_ifnames, nvram_safe_get("wl_ifnames"), sizeof(wl_ifnames));
+	foreach (word, wl_ifnames, next)
 		count++;
 
 	return count;
@@ -2363,4 +2516,167 @@ found_next:
                 ptr += len;
         }
         return NULL;
+}
+
+#ifdef CONFIG_BCMWL5
+void retrieve_static_maclist_from_nvram(int idx,struct maclist *maclist,int maclist_buf_size)
+{
+	char prefix[16]={0};
+	struct ether_addr *ea;
+	char *buf = maclist;
+	char tmp[100];
+	char var[80], *next;
+	unsigned char sta_ea[6] = {0};
+	char *nv, *nvp, *b;
+#ifdef RTCONFIG_AMAS
+	char mac2g[32], mac5g[32], *next_mac;
+	char *reMac, *maclist2g, *maclist5g, *timestamp;
+	char stamac2g[18] = {0};
+	char stamac5g[18] = {0};
+#endif
+
+	if(!maclist) return;
+
+#ifdef RTCONFIG_AMAS
+	if (nvram_get_int("re_mode") == 1)
+		snprintf(prefix, sizeof(prefix), "wl%d.1_", idx);
+	else
+#endif
+	snprintf(prefix,16,"wl%d_",idx);
+
+#ifdef RTCONFIG_AMAS
+	if (nvram_get("cfg_relist"))
+	{
+		if (nvram_get_int("re_mode") == 1) {
+			nv = nvp = strdup(nvram_safe_get("cfg_relist"));
+			if (nv) {
+				while ((b = strsep(&nvp, "<")) != NULL) {
+					if ((vstrsep(b, ">", &reMac, &maclist2g, &maclist5g, &timestamp) != 4))
+						continue;
+					/* first mac for sta 2g of dut */
+					foreach_44 (mac2g, maclist2g, next_mac)
+						break;
+					/* first mac for sta 5g of dut */
+					foreach_44 (mac5g, maclist5g, next_mac)
+						break;
+
+					if (strcmp(reMac, get_lan_hwaddr()) == 0) {
+						snprintf(stamac2g, sizeof(stamac2g), "%s", mac2g);
+						//dbg("dut 2g sta (%s)\n", stamac2g);
+						snprintf(stamac5g, sizeof(stamac5g), "%s", mac5g);
+						//dbg("dut 5g sta (%s)\n", stamac5g);
+						break;
+					}
+				}
+				free(nv);
+			}
+		}
+	}
+#endif
+
+	maclist->count = 0;
+	if (!nvram_match(strcat_r(prefix, "macmode", tmp), "disabled")) {
+		memset(maclist, 0, sizeof(maclist_buf_size));
+		ea = &(maclist->ea[0]);
+
+		nv = nvp = strdup(nvram_safe_get(strcat_r(prefix, "maclist_x", tmp)));
+		if (nv) {
+			while ((b = strsep(&nvp, "<")) != NULL) {
+				if (strlen(b) == 0) continue;
+
+#ifdef RTCONFIG_AMAS
+				if(nvram_match(strcat_r(prefix, "macmode", tmp), "allow")){
+					if (nvram_get_int("re_mode") == 1) {
+						if (strcmp(b, stamac2g) == 0 ||
+							strcmp(b, stamac5g) == 0)
+							continue;
+					}
+				}
+#endif
+				//dbg("maclist sta (%s) in %s\n", b, wlif_name);
+				ether_atoe(b, sta_ea);
+				memcpy(ea, sta_ea, sizeof(struct ether_addr));
+				maclist->count++;
+				ea++;
+			}
+			free(nv);
+		}
+#ifdef RTCONFIG_AMAS
+		if (nvram_match(strcat_r(prefix, "macmode", tmp), "allow"))
+		{
+			nv = nvp = strdup(nvram_safe_get("cfg_relist"));
+			if (nv) {
+				while ((b = strsep(&nvp, "<")) != NULL) {
+					if ((vstrsep(b, ">", &reMac, &maclist2g, &maclist5g, &timestamp) != 4))
+						continue;
+
+					if (strcmp(reMac, get_lan_hwaddr()) == 0)
+						continue;
+
+					if (idx == 0) {
+						foreach_44 (mac2g, maclist2g, next_mac) {
+							if (check_re_in_macfilter(idx, mac2g))
+								continue;
+							//dbg("relist sta (%s) in %s\n", mac2g, wlif_name);
+							ether_atoe(mac2g, sta_ea);
+							memcpy(ea, sta_ea, sizeof(struct ether_addr));
+							maclist->count++;
+							ea++;
+						}
+					}
+					else
+					{
+						foreach_44 (mac5g, maclist5g, next_mac) {
+							if (check_re_in_macfilter(idx, mac5g))
+								continue;
+							//dbg("relist sta (%s) in %s\n", mac5g, wlif_name);
+							ether_atoe(mac5g, sta_ea);
+							memcpy(ea, sta_ea, sizeof(struct ether_addr));
+							maclist->count++;
+							ea++;
+						}
+					}
+				}
+				free(nv);
+			}
+		}
+#endif
+
+	}
+}
+#endif
+
+/* Compare two space-separated/null-terminated lists(str1 and str2)
+ * NOTE : The individual names in the list should not exceed NVRAM_MAX_VALUE_LEN
+ *
+ * @param      str1    space-separated/null-terminated list
+ * @param      str2    space-separated/null-terminated list
+ *
+ * @return     0 if both strings are same else return -1
+ */
+int
+compare_lists(char *str1, char *str2)
+{
+       char name[NVRAM_MAX_VALUE_LEN + 1], *next_str;
+
+       /* Check for arg and len */
+       if (!str1 || !str2 || (strlen(str1) != strlen(str2))) {
+               return -1;
+       }
+
+       /* First check whether each element in str1 list is present in str2's list */
+       foreach(name, str1, next_str) {
+               if (find_in_list(str2, name) == NULL) {
+                       return -1;
+               }
+       }
+
+       /* Now check whether each element in str2 list is present in str1's list */
+       foreach(name, str2, next_str) {
+               if (find_in_list(str1, name) == NULL) {
+                       return -1;
+               }
+       }
+
+       return 0;
 }

@@ -42,7 +42,7 @@
 <script>
 var wItem = new Array(new Array("", "", "TCP"),
 											new Array("FTP", "20,21", "TCP"),
-											new Array("FTP_ALG", "2021", "TCP"),
+											new Array("FTP ALG", "2021", "TCP"),
 											new Array("TELNET", "23", "TCP"),
 											new Array("SMTP", "25", "TCP"),
 											new Array("DNS", "53", "UDP"),
@@ -715,7 +715,7 @@ function cancelProfile() {
 </script>
 </head>
 
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <iframe name="hidden_frame" id="hidden_frame" src="" width="0" height="0" frameborder="0"></iframe>

@@ -8,83 +8,83 @@
 <script >
 var $light_effect_bg = $("#light_effect_bg");
 var scheme_item_post = {
-	"LED_Set" : {
-		"1" : {"R" : 0, "G" : 0, "B" : 128},
-		"2" : {"R" : 0, "G" : 0, "B" : 128},
-		"3" : {"R" : 0, "G" : 0, "B" : 128},
-		"4" : {"R" : 0, "G" : 0, "B" : 128},
-	},
+	"LED_Set" : {},
 	"Mode" : 6
 }
+var ledg_group = ((isSupport("ledg_count") == 0) ? 4 : isSupport("ledg_count"));
+for(var i = 1; i <= ledg_group; i += 1){
+	var led_group = {};
+	led_group[i] = {"R" : 0, "G" : 0, "B" : 128};
+	$.extend(true, scheme_item_post.LED_Set, led_group);
+}
+
 function initial_led_control() {
+	var set_scheme_item_post = function(_ledg_rgb) {
+		var ledg_rgb_array = _ledg_rgb.split(",");
+		if(ledg_rgb_array.length == (ledg_group * 3)) {
+			for(var i = 0; i < ledg_rgb_array.length; i += 3) {
+				var group_idx = (Math.floor(i / 3)) + 1;
+				scheme_item_post["LED_Set"][group_idx]["R"] = multiply_rgb(parseInt(ledg_rgb_array[i]));
+				scheme_item_post["LED_Set"][group_idx]["G"] = multiply_rgb(parseInt(ledg_rgb_array[i+1]));
+				scheme_item_post["LED_Set"][group_idx]["B"] = multiply_rgb(parseInt(ledg_rgb_array[i+2]));
+			}
+		}
+	};
 	$light_effect_bg = $("#light_effect_bg");
 
 	var ledg_scheme = httpApi.nvramGet(["ledg_scheme"], true).ledg_scheme;
-	if(ledg_scheme == "2" || ledg_scheme == "3" || ledg_scheme == "7") {
+	if(ledg_scheme == "1" ||ledg_scheme == "2" || ledg_scheme == "3" || ledg_scheme == "7") {
 		var ledg_rgb = httpApi.nvramGet(["ledg_rgb" + ledg_scheme + ""], true)["ledg_rgb" + ledg_scheme + ""];
 		var ledg_rgb_array = ledg_rgb.split(",");
-		scheme_item_post["LED_Set"]["1"]["R"] = multiply_rgb(parseInt(ledg_rgb_array[0]));
-		scheme_item_post["LED_Set"]["1"]["G"] = multiply_rgb(parseInt(ledg_rgb_array[1]));
-		scheme_item_post["LED_Set"]["1"]["B"] = multiply_rgb(parseInt(ledg_rgb_array[2]));
-		scheme_item_post["LED_Set"]["4"] = scheme_item_post["LED_Set"]["3"] = scheme_item_post["LED_Set"]["2"] = scheme_item_post["LED_Set"]["1"];
+		set_scheme_item_post(ledg_rgb);
 	}
-	else if(ledg_scheme == "6") {
-		scheme_item_post["LED_Set"]["1"]["R"] = multiply_rgb(0);
-		scheme_item_post["LED_Set"]["1"]["G"] = multiply_rgb(0);
-		scheme_item_post["LED_Set"]["1"]["B"] = multiply_rgb(128);
-		scheme_item_post["LED_Set"]["4"] = scheme_item_post["LED_Set"]["3"] = scheme_item_post["LED_Set"]["2"] = scheme_item_post["LED_Set"]["1"];
-	}
-	scheme_item_post.Mode = ledg_scheme;
-	var default_rgb = [scheme_item_post["LED_Set"]["1"]["R"], scheme_item_post["LED_Set"]["1"]["G"], scheme_item_post["LED_Set"]["1"]["B"]];
-	set_scheme_mode(scheme_item_post.Mode, default_rgb);
 
 	if(ledg_scheme == "0") {
 		lightl_effect_animate.clear($light_effect_bg);
 		$light_effect_bg.removeClass().addClass("light_effect_bg prePage");
 		$light_effect_bg.css("background", "initial");
 	}
+	else
+		setTimeout(function () {set_scheme_mode(ledg_scheme, scheme_item_post["LED_Set"])}, 50);
 }
-function set_scheme_mode(_type, _rgbArr){
+function set_scheme_mode(_type, _LED_Set_Obj){
+	Object.keys(_LED_Set_Obj).forEach(function(group_idx) {
+		scheme_item_post["LED_Set"][group_idx]["R"] = _LED_Set_Obj[group_idx]["R"];
+		scheme_item_post["LED_Set"][group_idx]["G"] = _LED_Set_Obj[group_idx]["G"];
+		scheme_item_post["LED_Set"][group_idx]["B"] = _LED_Set_Obj[group_idx]["B"];
+	});
+
+	var group_rgb = scheme_item_post["LED_Set"];
+	var hue_slider_rgb = [group_rgb[4]["R"],group_rgb[4]["G"],group_rgb[4]["B"]];
 	switch(_type) {
 		case "2" :
-			$light_effect_bg.css("background", "rgb("+ _rgbArr[0] + ", " + _rgbArr[1] + ", " + _rgbArr[2] + ")");
-			scheme_item_post["LED_Set"]["1"]["R"] = _rgbArr[0];
-			scheme_item_post["LED_Set"]["1"]["G"] = _rgbArr[1];
-			scheme_item_post["LED_Set"]["1"]["B"] = _rgbArr[2];
-			scheme_item_post.Mode = "2";//static
+			$light_effect_bg.css("background", "rgb("+ group_rgb[4]["R"] + ", " + group_rgb[4]["G"] + ", " + group_rgb[4]["B"] + ")");
 			break;
 		case "3" :
-			$light_effect_bg.css("background", "rgb("+ _rgbArr[0] + ", " + _rgbArr[1] + ", " + _rgbArr[2] + ")");
-			lightl_effect_animate.breathing($light_effect_bg, _rgbArr);
-			scheme_item_post["LED_Set"]["1"]["R"] = _rgbArr[0];
-			scheme_item_post["LED_Set"]["1"]["G"] = _rgbArr[1];
-			scheme_item_post["LED_Set"]["1"]["B"] = _rgbArr[2];
-			scheme_item_post.Mode = "3";//breathing
+			$light_effect_bg.css("background", "rgb("+ group_rgb[4]["R"] + ", " + group_rgb[4]["G"] + ", " + group_rgb[4]["B"] + ")");
+			lightl_effect_animate.breathing($light_effect_bg, hue_slider_rgb);
 			break;
 		case "6" :
-			$light_effect_bg.css("background", "rgb("+ _rgbArr[0] + ", " + _rgbArr[1] + ", " + _rgbArr[2] + ")");
-			lightl_effect_animate.wave($light_effect_bg, _rgbArr);
-			scheme_item_post.Mode = "6";//wave
+			$light_effect_bg.css("background", "rgb("+ group_rgb[4]["R"] + ", " + group_rgb[4]["G"] + ", " + group_rgb[4]["B"] + ")");
+			lightl_effect_animate.wave($light_effect_bg, hue_slider_rgb);
 			break;
 		case "7" :
-			$light_effect_bg.css("background", "rgb("+ _rgbArr[0] + ", " + _rgbArr[1] + ", " + _rgbArr[2] + ")");
-			lightl_effect_animate.marquee($light_effect_bg, _rgbArr);
-			scheme_item_post["LED_Set"]["1"]["R"] = _rgbArr[0];
-			scheme_item_post["LED_Set"]["1"]["G"] = _rgbArr[1];
-			scheme_item_post["LED_Set"]["1"]["B"] = _rgbArr[2];
-			scheme_item_post.Mode = 7;//marquee
+			$light_effect_bg.css("background", "rgb("+ group_rgb[4]["R"] + ", " + group_rgb[4]["G"] + ", " + group_rgb[4]["B"] + ")");
+			lightl_effect_animate.marquee($light_effect_bg, hue_slider_rgb);
 			break;
 		case "1" :
-			$light_effect_bg.addClass("gradient");
-			scheme_item_post.Mode = "1";//gradient
+			var group_1 = group_rgb[1]["R"] + ", " + group_rgb[1]["G"] + ", " + group_rgb[1]["B"];
+			var group_2 = group_rgb[2]["R"] + ", " + group_rgb[2]["G"] + ", " + group_rgb[2]["B"];
+			var group_3 = group_rgb[3]["R"] + ", " + group_rgb[3]["G"] + ", " + group_rgb[3]["B"];
+			var group_4 = group_rgb[4]["R"] + ", " + group_rgb[4]["G"] + ", " + group_rgb[4]["B"];
+			$light_effect_bg.css("background",
+				"linear-gradient(to right, rgb("+group_1+") 50%, rgb("+group_2+") 60%, rgb("+group_3+") 70%, rgb("+group_4+") 80%)");
 			break;
 		case "4" :
 			$light_effect_bg.addClass("evolution");
-			scheme_item_post.Mode = "4";//evolution
 			break;
 		case "5" :
 			$light_effect_bg.addClass("rainbow");
-			scheme_item_post.Mode = "5";//rainbow
 			break;
 	}
 }
@@ -145,6 +145,10 @@ var lightl_effect_animate = {
 }
 function multiply_rgb(_value) {
 	return (Math.ceil(_value * 2) > 255) ? 255 : Math.ceil(_value * 2);
+}
+function isSupport(_ptn){
+	var ui_support = [<% get_ui_support(); %>][0];
+	return (ui_support[_ptn]) ? ui_support[_ptn] : 0;
 }
 $(document).ready(initial_led_control);
 </script>

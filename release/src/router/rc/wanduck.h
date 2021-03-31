@@ -167,7 +167,6 @@ typedef struct REQCLIENT{
 
 // var
 int test_log = 0;
-char tcode[8];
 char router_name[PATHLEN];
 int sw_mode, isFirstUse;
 int boot_end;

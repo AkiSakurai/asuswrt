@@ -168,12 +168,15 @@ static void bcm63xx_rx_chars(struct uart_port *port)
 	printk("FIX ME %s %d\n", __FILE__, __LINE__);
 #endif
         }
+#endif /* CONFIG_BCM_KF_SYSRQ_AUX_CHAR */
+
         if (uart_handle_sysrq_char(port, ch))
         {
+#ifdef CONFIG_BCM_KF_SYSRQ_AUX_CHAR
             if( ch != sysrq_aux_start_char )
+#endif /* CONFIG_BCM_KF_SYSRQ_AUX_CHAR */
                 goto ignore_char;
         }
-#endif
 #endif
 
         tty_insert_flip_char(tty, ch, flag);

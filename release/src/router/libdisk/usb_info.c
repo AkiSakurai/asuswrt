@@ -104,13 +104,15 @@ int get_device_type_by_device(const char *device_name)
 		return DEVICE_TYPE_PRINTER;
 	}
 #endif
-#ifdef RTCONFIG_USB_MODEM
+#if defined(RTCONFIG_USB_MODEM) || defined(RTCONFIG_USB_CDROM)
 	if(!strncmp(device_name, "sg", 2)){
 		return DEVICE_TYPE_SG;
 	}
-	if(!strncmp(device_name, "sr", 2)){
+	if(isCDROMDevice(device_name)){
 		return DEVICE_TYPE_CD;
 	}
+#endif
+#ifdef RTCONFIG_USB_MODEM
 	if(isTTYNode(device_name)
 			|| !strncmp(device_name, "usb", 3)
 			|| !strncmp(device_name, "wwan", 4)
@@ -119,13 +121,13 @@ int get_device_type_by_device(const char *device_name)
 			){
 		return DEVICE_TYPE_MODEM;
 	}
+#endif
 #ifdef RTCONFIG_USB_BECEEM
 	if(isBeceemNode(device_name)
 			|| !strncmp(device_name, "wimax", 5)
 			){
 		return DEVICE_TYPE_BECEEM;
 	}
-#endif
 #endif
 
 	return DEVICE_TYPE_UNKNOWN;
@@ -570,7 +572,7 @@ char *get_usb_node_by_device(const char *device_name, char *buf, const int buf_s
 	}
 	else
 #endif
-#ifdef RTCONFIG_USB_MODEM
+#if defined(RTCONFIG_USB_MODEM) || defined(RTCONFIG_USB_CDROM)
 	if(device_type == DEVICE_TYPE_SG){
 		snprintf(device_path, sizeof(device_path), "%s/%s/device", SYS_SG, device_name);
 		if(realpath(device_path, usb_path) == NULL){
@@ -587,6 +589,8 @@ char *get_usb_node_by_device(const char *device_name, char *buf, const int buf_s
 		}
 	}
 	else
+#endif
+#ifdef RTCONFIG_USB_MODEM
 	if(device_type == DEVICE_TYPE_MODEM){
 		if(isTTYNode(device_name))
 			snprintf(device_path, sizeof(device_path), "%s/%s/device", SYS_TTY, device_name);
@@ -2296,8 +2300,12 @@ int isM2SSDDevice(const char *device_name)
 	for (p = disk_name + strlen(disk_name) - 1; isdigit(*p) && p > disk_name; p--)
 		*p = '\0';
 
+	/* /sys/block/sda:
+	 * kernel v3.4: sda -> ../devices/platform/soc/29000000.sata/ata1/host0/target0:0:0/0:0:0:0/block/sda
+	 * kernel v4.4: sda -> ../devices/platform/msm_sata.0/ahci.0/ata1/host0/target0:0:0/0:0:0:0/block/sda
+	 */
 	snprintf(disk_path, sizeof(disk_path), "/sys/block/%s", disk_name);
-	if (readlink(disk_path, path, sizeof(path)) <= 0 || !strstr(path, "ahci"))
+	if (readlink(disk_path, path, sizeof(path)) <= 0 || !strstr(path, "sata"))
 		return 0;
 
 	return 1;
@@ -2307,6 +2315,15 @@ int isM2SSDDevice(const char *device_name)
 #ifdef BCM_MMC
 int isMMCDevice(const char *device_name){
 	if(!strncmp(device_name, "mmcblk", 6))
+		return 1;
+
+	return 0;
+}
+#endif
+
+#if defined(RTCONFIG_USB_MODEM) || defined(RTCONFIG_USB_CDROM)
+int isCDROMDevice(const char *device_name){
+	if(!strncmp(device_name, "sr", 2) && isdigit(device_name[2]))
 		return 1;
 
 	return 0;

@@ -1,7 +1,7 @@
 /*
  * Linux OS Independent Layer
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: linux_osl.h 779559 2019-10-02 15:57:28Z $
+ * $Id: linux_osl.h 785668 2020-04-02 14:08:24Z $
  */
 
 #ifndef _linux_osl_h_
@@ -131,6 +131,11 @@ extern uint osl_pci_slot(osl_t *osh);
 extern uint osl_pcie_domain(osl_t *osh);
 extern uint osl_pcie_bus(osl_t *osh);
 extern struct pci_dev *osl_pci_device(osl_t *osh);
+
+#define OSL_PCIE_ASPM_ENABLE(osh, linkcap_offset) osl_pcie_aspm_enable(osh, linkcap_offset, TRUE)
+#define OSL_PCIE_ASPM_DISABLE(osh, linkcap_offset) osl_pcie_aspm_enable(osh, linkcap_offset, FALSE)
+
+extern void osl_pcie_aspm_enable(osl_t *osh, uint linkcap_offset, bool aspm);
 
 #define OSL_PCIE_MPS_LIMIT(osh, devctl_offset, mps)	osl_pcie_mps_limit(osh, devctl_offset, mps)
 extern void osl_pcie_mps_limit(osl_t *osh, uint devctl_offset, uint mps);
@@ -384,7 +389,7 @@ extern void osl_pcie_rreg(osl_t *osh, ulong addr, volatile void *v, uint size);
 extern int osl_error(int bcmerror);
 
 /* the largest reasonable packet buffer driver uses for ethernet MTU in bytes */
-#if defined(WLENT_PER_VAP_AMSDU_DEAGG_HW) || defined(WLENT_AMSDU_CRYPTO_OFFLD)
+#if defined(WL_EAP_AMSDU_CRYPTO_OFFLD)
 /* When this conditional is turned on and run-time configuration is enabled,
  * host can receive frames larger than MTU size. Right now this is set to default size.
  * This should be set to higher value for larger A-MSDU frame sizes.
@@ -392,7 +397,7 @@ extern int osl_error(int bcmerror);
 #define	PKTBUFSZ	2048
 #else
 #define	PKTBUFSZ	2048   /* largest reasonable packet buffer, driver uses for ethernet MTU */
-#endif /* WLENT_PER_VAP_AMSDU_DEAGG_HW */
+#endif // endif
 
 #define OSH_NULL   NULL
 
@@ -962,6 +967,10 @@ extern void bzero(void *b, size_t len);
 	osl_secdma_dd_map((osh), (va), (size), (direction), (p), (dmah))
 #define	SECURE_DMA_MAP_TXMETA(osh, va, size, direction, p, dmah, pcma) \
 	osl_secdma_map_txmeta((osh), (va), (size), (direction), (p), (dmah), (pcma))
+#define	SECURE_DMA_MAP_STS_PHYRX(osh, size, align, tot, pap, dmah) \
+	osl_secdma_map_sts_phyrx((osh), (size), (align), (pap))
+#define	SECURE_DMA_UNMAP_STS_PHYRX(osh, va, size, pa, dmah) \
+	osl_secdma_unmap_sts_phyrx((osh), (void*)(va), (size), (pa))
 #define	SECURE_DMA_UNMAP(osh, pa, size, direction, p, dmah, pcma, offset) \
 	osl_secdma_unmap((osh), (pa), (size), (direction), (p), (dmah), (pcma), (offset))
 #define	SECURE_DMA_UNMAP_ALL(osh, pcma) \
@@ -1035,10 +1044,17 @@ typedef struct sec_cma_info {
  */
 #define SECDMA_MEMBLOCK_SIZE		(20 * MB_1)
 #define SECDMA_DESC_MEMBLOCK_SIZE	(6 * MB_1) /* empirically derived */
+#ifdef STBAP
+/* sizeof(d11phystshdr_t) * STSBUF_MP_N_OBJ(2048) */
+#define SECDMA_STS_PHYRX_MEMBLOCK_SIZE	(160 * 2048)
+#else
+/* sizeof(d11phystshdr_t) * STSBUF_MP_N_OBJ(512) */
+#define SECDMA_STS_PHYRX_MEMBLOCK_SIZE	(160 * 512)
+#endif // endif
 #define SECDMA_NONDESC_MEMBLOCK_SIZE	((SECDMA_MEMBLOCK_SIZE) - (SECDMA_DESC_MEMBLOCK_SIZE))
 #define SECDMA_RXCTRL_MEMBLOCK_SIZE	((SECDMA_RXCTRL_BUF_CNT) * (SECDMA_RXCTRL_BUF_SIZE))
 #define SECDMA_DATA_MEMBLOCK_SIZE	((SECDMA_NONDESC_MEMBLOCK_SIZE) - \
-	(SECDMA_RXCTRL_MEMBLOCK_SIZE))
+	((SECDMA_RXCTRL_MEMBLOCK_SIZE) + (SECDMA_STS_PHYRX_MEMBLOCK_SIZE)))
 
 #define SECDMA_DATA_BUF_CNT		((SECDMA_DATA_MEMBLOCK_SIZE) / (SECDMA_DATA_BUF_SIZE))
 #define SECDMA_TXBUF_CNT		(SECDMA_DATA_BUF_CNT - SECDMA_RXBUF_CNT)
@@ -1047,6 +1063,9 @@ typedef struct sec_cma_info {
 
 /* Keep every Desc addr aligned */
 #define SECDMA_DESC_ADDR_ALIGN	(32)
+
+/* Keep physts 8 byte aligned */
+#define SECDMA_PHYRXSTS_ALIGN	(8)
 
 typedef struct sec_mem_elem {
 	size_t			size;
@@ -1074,6 +1093,8 @@ extern dma_addr_t osl_secdma_map_txmeta(osl_t *osh, void *va, uint size,
   int direction, void *p, hnddma_seg_map_t *dmah, void *ptr_cma_info);
 extern void osl_secdma_unmap(osl_t *osh, dma_addr_t dma_handle, uint size, int direction,
 	void *p, hnddma_seg_map_t *map, void *ptr_cma_info, uint offset);
+extern void *osl_secdma_map_sts_phyrx(osl_t *osh, uint size, uint16 align, dmaaddr_t *pap);
+extern void osl_secdma_unmap_sts_phyrx(osl_t *osh, void *va, uint size, dmaaddr_t pa);
 extern void osl_secdma_unmap_all(osl_t *osh, void *ptr_cma_info);
 #endif /* BCM_SECURE_DMA */
 

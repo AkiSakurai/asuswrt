@@ -78,20 +78,10 @@
 
 #include "pktrunner_wlan_mcast.h"
 
-#if defined(RDP_SIM)
-#define __print(fmt, arg...) printf(fmt, ##arg)
-#define BCM_LOG_ERROR(x, fmt, arg...) __print(fmt, ##arg)
-#define isLogDebug 1
-#define __logDebug(fmt, arg...)     printf(fmt, ##arg)
-#define __logInfo(fmt, arg...)      printf(fmt, ##arg)
-#define __logNotice(fmt, arg...)    printf(fmt, ##arg)
-#define __logError(fmt, arg...)     printf(fmt, ##arg)
-#else
 #define __logDebug(fmt, arg...)   BCM_LOG_DEBUG(BCM_LOG_ID_PKTRUNNER, fmt, ##arg)
 #define __logInfo(fmt, arg...)    BCM_LOG_INFO(BCM_LOG_ID_PKTRUNNER, fmt, ##arg)
 #define __logNotice(fmt, arg...)  BCM_LOG_NOTICE(BCM_LOG_ID_PKTRUNNER, fmt, ##arg)
 #define __logError(fmt, arg...)   BCM_LOG_ERROR(BCM_LOG_ID_PKTRUNNER, fmt, ##arg)
-#endif
 
 static int wlan_mcast_class_created_here = 0;
 static bdmf_object_handle wlan_mcast_class = NULL;
@@ -332,6 +322,16 @@ int pktrunner_wlan_mcast_add(Blog_t *blog_p, bdmf_index *fwd_table_index_p)
 
         if(!blog_p->wfd.mcast.is_wfd)
         {
+            /* test if the requested dhd_station already exists in requested fwd_table. if yes, ignore add request(double add).
+                    ** rdpa_wlan_mcast_fwd_table_set with old "fwd_table.dhd_station_count", indicate just test the existence, but never change fwd_table.
+                    */
+            if ((rdpa_wlan_mcast_dhd_station_find(wlan_mcast_class, &fwd_table.dhd_station_index, &dhd_station) == BDMF_ERR_OK) &&
+               (rdpa_wlan_mcast_fwd_table_set(wlan_mcast_class, *fwd_table_index_p, &fwd_table) == BDMF_ERR_ALREADY))
+            {               
+                __logInfo("Ignore add request. dhd_station[%ld] already exists in fwd_table[%ld]", fwd_table.dhd_station_index, *fwd_table_index_p);
+                return BDMF_ERR_OK;
+            }
+        
             ret = rdpa_wlan_mcast_dhd_station_add(wlan_mcast_class, &fwd_table.dhd_station_index, &dhd_station);
             if (ret)
             {
@@ -413,9 +413,25 @@ int pktrunner_wlan_mcast_delete(Blog_t *blog_p, bdmf_index *fwd_table_index_p)
         ret = rdpa_wlan_mcast_dhd_station_find(wlan_mcast_class, &fwd_table.dhd_station_index, &dhd_station);
         if (ret)
         {
-            __logError("Could not rdpa_wlan_mcast_dhd_station_find");
+            if (ret == BDMF_ERR_NOENT)
+            {
+                __logNotice("dhd_station[%ld] not exist!", fwd_table.dhd_station_index);
+            }
+            else
+            {
+                __logError("Could not rdpa_wlan_mcast_dhd_station_find");
+            }
                 
             return ret;
+        }
+
+        /* test if the requested dhd_station remains in requested fwd_table, if not, ignore del request(double delete).
+             ** rdpa_wlan_mcast_fwd_table_set with old "fwd_table.dhd_station_count", indicate just test the existence, but never change fwd_table.
+             */
+        if (rdpa_wlan_mcast_fwd_table_set(wlan_mcast_class, *fwd_table_index_p, &fwd_table) == BDMF_ERR_NOENT)
+        {               
+            __logInfo("Ignore del request. dhd_station[%ld] doesn't exist in fwd_table[%ld]", fwd_table.dhd_station_index, *fwd_table_index_p);
+            return BDMF_ERR_OK;
         }
 
         ret = rdpa_wlan_mcast_dhd_station_delete(wlan_mcast_class, fwd_table.dhd_station_index);

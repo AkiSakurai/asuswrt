@@ -3,7 +3,7 @@
  *
  * This module contains the external definitions for the NAR transmit module.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -47,7 +47,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_nar.h 780020 2019-10-14 08:36:53Z $
+ * $Id: wlc_nar.h 786927 2020-05-12 05:31:32Z $
  *
  */
 
@@ -68,7 +68,7 @@ extern wlc_nar_info_t *wlc_nar_attach(wlc_info_t *);
 extern void wlc_nar_detach(wlc_nar_info_t *);
 
 extern void wlc_nar_dotxstatus(wlc_nar_info_t *, struct scb *scb, void *sdu, tx_status_t *txs,
-	bool pps_retry);
+	bool pps_retry, uint32 tx_rate_prim);
 
 extern void wlc_nar_release_all_from_queue(wlc_nar_info_t *nit, struct scb *scb, int prec);
 
@@ -87,9 +87,10 @@ extern struct pktq *wlc_nar_prec_pktq(wlc_info_t* wlc, struct scb* scb);
 #endif // endif
 
 #ifdef PROP_TXSTATUS
-extern void wlc_nar_flush_flowid_pkts(wlc_nar_info_t * nit, struct scb *scb, uint16 flowid);
 extern struct pktq *wlc_nar_txq(wlc_nar_info_t * nit, struct scb *scb);
 #endif // endif
 
 extern void wlc_nar_flush_scb_queues(wlc_nar_info_t * nit, struct scb *scb);
+extern uint32 wlc_nar_tx_in_tansit(wlc_nar_info_t *nit);
+extern uint16 wlc_scb_nar_n_pkts(wlc_nar_info_t * nit, struct scb *scb, uint8 prio);
 #endif /* __WLC_NAR_H__ */

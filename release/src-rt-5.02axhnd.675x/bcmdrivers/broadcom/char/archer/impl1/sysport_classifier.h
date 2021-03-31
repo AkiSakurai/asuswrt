@@ -64,6 +64,7 @@
 #define SYSPORT_UCAST_FLOW_HASH_WIDTH    14 // less than, or equal to SYSPORT_TUPLE_HASH_WIDTH
 #define SYSPORT_UCAST_FLOW_HASH_MASK     ((1 << SYSPORT_UCAST_FLOW_HASH_WIDTH) - 1)
 #define SYSPORT_UCAST_FLOW_HASH_SHIFT    (SYSPORT_TUPLE_HASH_WIDTH - SYSPORT_UCAST_FLOW_HASH_WIDTH)
+#define SYSPORT_UCAST_FLOW_HASH_LSB_MASK ((1 << SYSPORT_UCAST_FLOW_HASH_SHIFT) - 1)
 #define SYSPORT_UCAST_FLOW_MAX           (1 << SYSPORT_UCAST_FLOW_HASH_WIDTH)
 #define SYSPORT_UCAST_FLOW_BUCKET_SIZE   4
 #define SYSPORT_UCAST_FLOW_INDEX_MAX     (SYSPORT_UCAST_FLOW_MAX * SYSPORT_UCAST_FLOW_BUCKET_SIZE)
@@ -71,6 +72,7 @@
 #define SYSPORT_MCAST_FLOW_HASH_WIDTH    12 /* SYSPORT_UCAST_FLOW_HASH_WIDTH -
                                                LOG2(SYSPORT_MCAST_FLOW_BUCKET_SIZE / SYSPORT_UCAST_FLOW_BUCKET_SIZE) */
 #define SYSPORT_MCAST_FLOW_HASH_SHIFT    (SYSPORT_TUPLE_HASH_WIDTH - SYSPORT_MCAST_FLOW_HASH_WIDTH)
+#define SYSPORT_MCAST_FLOW_HASH_LSB_MASK ((1 << SYSPORT_MCAST_FLOW_HASH_SHIFT) - 1)
 #define SYSPORT_MCAST_FLOW_MAX           (1 << SYSPORT_MCAST_FLOW_HASH_WIDTH)
 #define SYSPORT_MCAST_FLOW_BUCKET_SIZE   16 // larger than, or equal to SYSPORT_UCAST_FLOW_BUCKET_SIZE
 #define SYSPORT_MCAST_FLOW_INDEX_MAX     (SYSPORT_MCAST_FLOW_MAX * SYSPORT_MCAST_FLOW_BUCKET_SIZE)
@@ -80,8 +82,14 @@
 #define SYSPORT_FLOW_WLAN_PORTS_MAX      2
 #endif
 #if defined(CONFIG_BCM947622)
+#if defined(CONFIG_BCM_HND_EAP)
+/* Some EAP customers have designs w/ 6 LAN ports. */
+#define SYSPORT_FLOW_LAN_PORTS_MAX       6
+#define SYSPORT_FLOW_WLAN_PORTS_MAX      3
+#else
 #define SYSPORT_FLOW_LAN_PORTS_MAX       5
 #define SYSPORT_FLOW_WLAN_PORTS_MAX      3
+#endif
 #endif
 #if defined(CONFIG_BCM963158) || defined(CONFIG_BCM94908)
 #define SYSPORT_FLOW_LAN_PORTS_MAX       5
@@ -90,7 +98,7 @@
 #define SYSPORT_FLOW_WLAN_PORT_0         SYSPORT_FLOW_LAN_PORTS_MAX
 #define SYSPORT_FLOW_EGRESS_QUEUES_MAX   8
 #define SYSPORT_FLOW_CMDLIST_LENGTH_16_MAX  7
-#define SYSPORT_FLOW_WLAN_SSID_MAX       10
+#define SYSPORT_FLOW_WLAN_SSID_MAX       9
 #define SYSPORT_FLOW_WLAN_QUEUES_MAX     2
 
 #if defined(CONFIG_BCM_ARCHER_SIM)
@@ -111,12 +119,15 @@ typedef struct {
     uint32_t bytes;
 } sysport_classifier_pathstat_t;
 
-typedef union {
-    struct {
-        uint32_t ip_src_addr; // Source IPv4 Address / CRC32 of Source IPv6 Address
-        uint32_t ip_dst_addr; // Destination IPv4 Address / CRC32 of Destination IPv6 Address
+typedef struct {
+    union {
+        struct {
+            uint32_t ip_src_addr; // Source IPv4 Address / CRC32 of Source IPv6 Address
+            uint32_t ip_dst_addr; // Destination IPv4 Address / CRC32 of Destination IPv6 Address
+        };
+        uint64_t u64;
     };
-    uint64_t u64;
+    int ref_count;
 } sysport_ip_addr_table_t;
 
 // The System Port SPE requires command lists to be stored back to back in DDR
@@ -161,8 +172,8 @@ typedef union {
     struct {
         struct {
             uint16_t cmdlist_length_16 : 3;  // 0 = 128 bytes, see SYSPORT_FLOW_CMDLIST_LENGTH_16_MAX
-            uint16_t egress_queue      : 3;  // SYSPORT_FLOW_EGRESS_QUEUES_MAX
-            uint16_t wlan_ssid_vector  : 10; // WLAN MCAST Only, see SYSPORT_FLOW_WLAN_SSID_MAX
+            uint16_t egress_queue      : 4;  // SYSPORT_FLOW_EGRESS_QUEUES_MAX
+            uint16_t wlan_ssid_vector  : 9;  // WLAN MCAST Only, see SYSPORT_FLOW_WLAN_SSID_MAX
         };
         uint16_t cmdlist_index;
     };
@@ -176,12 +187,12 @@ typedef struct {
 
     union {
         struct {
-            uint32_t reserved_0          : 5;
+            uint32_t reserved_0          : 18 - SYSPORT_FLOW_PORTS_MAX;
             uint32_t pathstat_index      : 6;  // SYSPORT_CLASSIFIER_PATHSTAT_MAX
-            uint32_t tc                  : 6;  // traffic class from NBuff marker
+            uint32_t drop_profile        : 1;  // Drop Profile Index, ARCHER_DROP_PROFILE_MAX
             uint32_t dpi_queue           : 5;
             uint32_t egress_phy          : 2;  // sysport_rsb_phy_t
-            uint32_t egress_port_or_mask : 8;  // SYSPORT_FLOW_PORTS_MAX, UCAST=Port, MCAST=Port Mask
+            uint32_t egress_port_or_mask : SYSPORT_FLOW_PORTS_MAX;  // UCAST=Port, MCAST=Port Mask
         };
         uint32_t u32_0;
     };

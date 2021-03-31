@@ -83,12 +83,19 @@ written consent.
 #else
 #include "xtmrt_runner.h"
 #endif
+
+#if !defined(CONFIG_BCM_ARCHER)
+static UINT32 bcmxtmrt_pad (pNBuff_t pNBuf, UINT8 **ppData, UINT32 len, UINT32 isAtmCell, UINT32 hdrType, UINT32 ulTrafficType) ;
+#endif
+
 #if (defined(CONFIG_BCM_SPDSVC) || defined(CONFIG_BCM_SPDSVC_MODULE))
 #include <linux/bcm_log.h>
 #include "spdsvc_defs.h"
 static bcmFun_t *xtmrt_spdsvc_transmit = NULL;
 static int speed_service_check (pNBuff_t pNBuf, UINT32 phyOverhead, struct net_device *dev) ;
 #endif
+#include "board.h"
+#include <linux/bcm_colors.h>
 
 /* VLAN TPIDs that need to be checked
    ETH_P_8021Q  0x8100
@@ -172,6 +179,12 @@ static int __init bcmxtmrt_init(void)
 {
    UINT16 usChipId  = (PERF->RevID & CHIP_ID_MASK) >> CHIP_ID_SHIFT;
    UINT16 usChipRev = (PERF->RevID & REV_ID_MASK);
+
+   if (!kerSysGetDslPhyEnable())
+   {
+       printk(CLRyr "bcmxtmrt : DSL PHY disabled, ATM/PTM Network Device not created\n" CLRnl);
+       return -1;
+   }
 
    printk(CARDNAME ": Broadcom BCM%X%X ATM/PTM Network Device ",
           usChipId, usChipRev);
@@ -602,6 +615,47 @@ static int speed_service_check (pNBuff_t pNBuf, UINT32 phyOverhead, struct net_d
 
 #endif
 
+#if !defined(CONFIG_BCM_ARCHER)
+static UINT32 bcmxtmrt_pad (pNBuff_t pNBuf, UINT8 **ppData, UINT32 len, UINT32 isAtmCell, UINT32 hdrType, UINT32 trafficType)
+{
+
+/* Skip padding for 138/148 platforms as a whole except for when the traffic type is PTM bonded.
+** Pad packets for other platforms for shorter packets which are ethernet
+** compatible ones.
+**/
+
+// #if !defined (CONFIG_BCM963158) /* No padding required for 158 onwards platforms due to short packet support. Currently DEFERRED. */
+
+#if !defined (CONFIG_BCM963138) && !defined (CONFIG_BCM963148) /* RDP FW pads for these platform so we save extra CPU cycles for this path */
+   if (len < ETH_ZLEN &&
+       !isAtmCell &&
+       (hdrType == HT_PTM ||
+        hdrType == HT_LLC_SNAP_ETHERNET ||
+        hdrType == HT_VC_MUX_ETHERNET))
+      goto _doPad ;
+   else
+      goto _doNoPad ;
+#else
+      /* PTM bonded fragments cant go less than MinFragSize which is 64 per
+      ** standards. */
+   if ( (trafficType == TRAFFIC_TYPE_PTM_BONDED) &&
+        (len < ETH_ZLEN) )
+      goto _doPad ;
+   else 
+      goto _doNoPad ;
+#endif
+
+_doPad :
+   nbuff_pad(pNBuf, ETH_ZLEN - len) ; /* Pad the buffer at the end, as SAR packet mode can not handle packets of lesser
+                                      * size than the MinSize */
+   nbuff_set_len (pNBuf, ETH_ZLEN) ;
+   nbuff_get_context(pNBuf, ppData, (uint32_t *)&len) ;
+
+_doNoPad :
+   return (len) ;
+}
+#endif
+
 /*---------------------------------------------------------------------------
  * int bcmxtmrt_xmit(pNBuff_t pNBuf, struct net_device *dev)
  * Description:
@@ -753,21 +807,10 @@ int bcmxtmrt_xmit(pNBuff_t pNBuf, struct net_device *dev)
    }
    
    /* pNBuf may have been changed by AddRfc2684Hdr. Update pData and len.  */
-
-//#if !defined (CONFIG_BCM963158) /* No padding required for 158 onwards platforms due to short packet support */
-   if (len < ETH_ZLEN &&
-       !isAtmCell &&
-       (hdrType == HT_PTM ||
-        hdrType == HT_LLC_SNAP_ETHERNET ||
-        hdrType == HT_VC_MUX_ETHERNET))
-   {
-      nbuff_pad(pNBuf, ETH_ZLEN - len); /* Pad the buffer at the end, as SAR packet mode can not handle packets of lesser
-                                         * size than the MinSize */
-      nbuff_set_len (pNBuf, ETH_ZLEN) ;
-      nbuff_get_context(pNBuf, &pData, (uint32_t *)&len);
-   }
-//#endif
-
+   // For Archer platforms its already taken care in its IUDMA driver.
+#if !defined(CONFIG_BCM_ARCHER)
+   len = bcmxtmrt_pad (pNBuf, &pData, len, isAtmCell, hdrType, pDevCtx->ulTrafficType) ;
+#endif
    //if (pData != NULL)
       //DUMP_PKT(pData, len);
 
@@ -1512,7 +1555,7 @@ static int bcm63xx_xtmrt_rx_thread(void *arg)
           * re-enable interrupts (bcmxapi_clear_xtmrxint) and go to top of
           * loop to wait for more work.
           */
-         pGi->rx_work_avail = 0;
+         clear_bit(0, &pGi->rx_work_avail);
          bcmxapi_clear_xtmrxint(mask);
       }
    }

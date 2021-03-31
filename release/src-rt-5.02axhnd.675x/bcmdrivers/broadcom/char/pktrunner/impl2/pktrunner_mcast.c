@@ -797,17 +797,17 @@ int runnerMcast_deactivate(Blog_t *blog_p, int *isDeactivation_p)
         {
             mcastFlow_p->result.wlan_mcast_clients--;
 
-#if defined(XRDP)
-            if (blog_p->wfd.mcast.is_wfd)
-                mcastFlow_p->result.port_mask &= ~(1 << (WLAN_RADIO_IF(blog_p->wfd.mcast.wfd_idx)));
-            else
-                mcastFlow_p->result.port_mask &= ~(1 << (WLAN_RADIO_IF(blog_p->rnr.radio_idx)));
-#else
             if(!mcastFlow_p->result.wlan_mcast_clients)
             {
+#if defined(XRDP)
+                if (blog_p->wfd.mcast.is_wfd)
+                    mcastFlow_p->result.port_mask &= ~(1 << (WLAN_RADIO_IF(blog_p->wfd.mcast.wfd_idx)));
+                else
+                    mcastFlow_p->result.port_mask &= ~(1 << (WLAN_RADIO_IF(blog_p->rnr.radio_idx)));
+#else
                 mcastFlow_p->result.port_mask &= ~(1 << rdpa_if_lan7);
-            }
 #endif
+            }
 
             ret = pktrunner_wlan_mcast_delete(blog_p, &mcastFlow_p->result.wlan_mcast_fwd_table_index);
             if(ret < 0)
@@ -964,7 +964,7 @@ int __init runnerMcast_construct(void *idx_p, void *disp_p)
         mcast_class_created_here = 1;
     }
 
-    __print("Initialized Runner Multicast Layer\n");
+    bcm_print("Initialized Runner Multicast Layer\n");
 #endif
 
     return 0;

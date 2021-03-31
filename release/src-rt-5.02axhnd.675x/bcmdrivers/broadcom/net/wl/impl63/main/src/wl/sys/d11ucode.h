@@ -2,7 +2,7 @@
  * Microcode declarations for Broadcom 802.11abg
  * Networking Adapter Device Driver.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: d11ucode.h 778854 2019-09-11 19:04:46Z $
+ * $Id: d11ucode.h 784581 2020-03-02 23:39:38Z $
  */
 
 #ifndef _D11UCODE_H_
@@ -168,6 +168,11 @@ extern CONST uint d11ucode_btcxmu130sz;
 extern CONST uint32 d11ucodex_btcxmu130[];
 extern CONST uint d11ucodex_btcxmu130sz;
 
+extern CONST uint32 d11ucode_btcx130[]; /* rev130 btcx = 63178a0 */
+extern CONST uint d11ucode_btcx130sz;
+extern CONST uint32 d11ucodex_btcx130[];
+extern CONST uint d11ucodex_btcx130sz;
+
 extern CONST uint32 d11ucode130[]; /* rev130 = 63178a0 */
 extern CONST uint d11ucode130sz;
 extern CONST uint32 d11ucodex130[];
@@ -186,6 +191,11 @@ extern CONST uint32 d11ucode_btcxmu130_1[]; /* rev130.1 btcx = 63178a2 */
 extern CONST uint d11ucode_btcxmu130_1sz;
 extern CONST uint32 d11ucodex_btcxmu130_1[];
 extern CONST uint d11ucodex_btcxmu130_1sz;
+
+extern CONST uint32 d11ucode_btcx130_1[]; /* rev130.1 btcx = 63178a2 */
+extern CONST uint d11ucode_btcx130_1sz;
+extern CONST uint32 d11ucodex_btcx130_1[];
+extern CONST uint d11ucodex_btcx130_1sz;
 
 extern CONST uint32 d11ucode130_1[]; /* rev130.1 = 63178a2 */
 extern CONST uint d11ucode130_1sz;

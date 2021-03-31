@@ -245,9 +245,6 @@ pcap_read_dlpi(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 static int
 pcap_inject_dlpi(pcap_t *p, const void *buf, size_t size)
 {
-#ifdef DL_HP_RAWDLS
-	struct pcap_dlpi *pd = p->priv;
-#endif
 	int ret;
 
 #if defined(DLIOCRAW)
@@ -258,12 +255,12 @@ pcap_inject_dlpi(pcap_t *p, const void *buf, size_t size)
 		return (-1);
 	}
 #elif defined(DL_HP_RAWDLS)
-	if (pd->send_fd < 0) {
+	if (p->send_fd < 0) {
 		snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
 		    "send: Output FD couldn't be opened");
 		return (-1);
 	}
-	ret = dlrawdatareq(pd->send_fd, buf, size);
+	ret = dlrawdatareq(p->send_fd, buf, size);
 	if (ret == -1) {
 		snprintf(p->errbuf, PCAP_ERRBUF_SIZE, "send: %s",
 		    pcap_strerror(errno));
@@ -324,23 +321,16 @@ pcap_inject_dlpi(pcap_t *p, const void *buf, size_t size)
 static void
 pcap_cleanup_dlpi(pcap_t *p)
 {
-#ifdef DL_HP_RAWDLS
-	struct pcap_dlpi *pd = p->priv;
-
-	if (pd->send_fd >= 0) {
-		close(pd->send_fd);
-		pd->send_fd = -1;
+	if (p->send_fd >= 0) {
+		close(p->send_fd);
+		p->send_fd = -1;
 	}
-#endif
 	pcap_cleanup_live_common(p);
 }
 
 static int
 pcap_activate_dlpi(pcap_t *p)
 {
-#ifdef DL_HP_RAWDLS
-	struct pcap_dlpi *pd = p->priv;
-#endif
 	register char *cp;
 	int ppa;
 #ifdef HAVE_SOLARIS
@@ -408,13 +398,13 @@ pcap_activate_dlpi(pcap_t *p)
 	 * receiving packets on the same descriptor - you need separate
 	 * descriptors for sending and receiving, bound to different SAPs.
 	 *
-	 * If the open fails, we just leave -1 in "pd->send_fd" and reject
+	 * If the open fails, we just leave -1 in "p->send_fd" and reject
 	 * attempts to send packets, just as if, in pcap-bpf.c, we fail
 	 * to open the BPF device for reading and writing, we just try
 	 * to open it for reading only and, if that succeeds, just let
 	 * the send attempts fail.
 	 */
-	pd->send_fd = open(cp, O_RDWR);
+	p->send_fd = open(cp, O_RDWR);
 #endif
 
 	/*
@@ -523,8 +513,8 @@ pcap_activate_dlpi(pcap_t *p)
 		if (status < 0)
 			goto bad;
 #ifdef DL_HP_RAWDLS
-		if (pd->send_fd >= 0) {
-			if (dl_doattach(pd->send_fd, ppa, p->errbuf) < 0)
+		if (p->send_fd >= 0) {
+			if (dl_doattach(p->send_fd, ppa, p->errbuf) < 0)
 				goto bad;
 		}
 #endif
@@ -580,13 +570,13 @@ pcap_activate_dlpi(pcap_t *p)
 	*/
 	if (dl_dohpuxbind(p->fd, p->errbuf) < 0)
 		goto bad;
-	if (pd->send_fd >= 0) {
+	if (p->send_fd >= 0) {
 		/*
 		** XXX - if this fails, just close send_fd and
 		** set it to -1, so that you can't send but can
 		** still receive?
 		*/
-		if (dl_dohpuxbind(pd->send_fd, p->errbuf) < 0)
+		if (dl_dohpuxbind(p->send_fd, p->errbuf) < 0)
 			goto bad;
 	}
 #else /* neither AIX nor HP-UX */
@@ -679,13 +669,13 @@ pcap_activate_dlpi(pcap_t *p)
 	** binding it anyway, just to keep the HP-UX 9/10.20 or later
 	** code together.
 	*/
-	if (pd->send_fd >= 0) {
+	if (p->send_fd >= 0) {
 		/*
 		** XXX - if this fails, just close send_fd and
 		** set it to -1, so that you can't send but can
 		** still receive?
 		*/
-		if (dl_dohpuxbind(pd->send_fd, p->errbuf) < 0)
+		if (dl_dohpuxbind(p->send_fd, p->errbuf) < 0)
 			goto bad;
 	}
 #endif
@@ -739,7 +729,7 @@ pcap_activate_dlpi(pcap_t *p)
 #endif
 
 	/* Push and configure bufmod. */
-	if (pcap_conf_bufmod(p, ss) != 0)
+	if (pcap_conf_bufmod(p, ss, p->md.timeout) != 0)
 		goto bad;
 #endif
 
@@ -1706,18 +1696,12 @@ pcap_t *
 pcap_create_interface(const char *device, char *ebuf)
 {
 	pcap_t *p;
-#ifdef DL_HP_RAWDLS
-	struct pcap_dlpi *pd;
-#endif
 
-	p = pcap_create_common(device, ebuf, sizeof (struct pcap_dlpi));
+	p = pcap_create_common(device, ebuf);
 	if (p == NULL)
 		return (NULL);
 
-#ifdef DL_HP_RAWDLS
-	pd = p->priv;
-	pd->send_fd = -1;	/* it hasn't been opened yet */
-#endif
+	p->send_fd = -1;	/* it hasn't been opened yet */
 
 	p->activate_op = pcap_activate_dlpi;
 	return (p);

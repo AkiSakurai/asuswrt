@@ -54,7 +54,11 @@ EXTRA_CFLAGS += -I$(BRCMDRIVERS_DIR)/broadcom/net/wl/bcm9$(BRCM_CHIP)/main/src/i
 EXTRA_CFLAGS += -I$(BRCMDRIVERS_DIR)/broadcom/net/wl/shared/impl1
 EXTRA_CFLAGS += -DDSLCPE -DBCMDRIVER -DPKTC
 ifneq ($(strip $(CONFIG_BCM_PKTFWD)),)
-EXTRA_CFLAGS += -DBCM_PKTFWD
+	EXTRA_CFLAGS += -DBCM_PKTFWD
+    # Enable credit based Host Flow Control
+    ifneq ($(strip $(CONFIG_BCM_PKTFWD_FLCTL)),)
+        EXTRA_CFLAGS += -DBCM_PKTFWD_FLCTL
+    endif
 endif
 EXTRA_INCLUDES  += -I$(INC_BRCMSHARED_PUB_PATH)/bcm963xx -I$(INC_BRCMDRIVER_PUB_PATH)/bcm963xx -I$(BRCMDRIVERS_DIR)/opensource/net/enet/share
 endif

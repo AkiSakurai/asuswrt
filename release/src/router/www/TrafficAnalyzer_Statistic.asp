@@ -25,6 +25,9 @@
 <script type="text/javascript" src="/js/httpApi.js"></script>
 <script language="JavaScript" type="text/javascript" src="/js/asus_eula.js"></script>
 <style>
+*{
+	box-sizing: content-box;
+}
 #holder {
     height: 330px;
     left: 50%;
@@ -129,7 +132,7 @@ function get_client_used_apps_info(client_index, used_data_array, top5_info, typ
 	var description = "";
 
 	if(type == "router"){
-		document.getElementById('top_client_title').innerHTML = "<#Client_Name#>:";
+		document.getElementById('top_client_title').innerHTML = "<#MAC_Address#>:";
 		if(period == "monthly"){
 			description = "<#traffic_analysis_top5client_monthly#>";
 		}
@@ -1507,7 +1510,7 @@ function setUnit(unit){
 }
 </script>
 </head>
-<body onload="initial();" onunload="unload_body();">
+<body onload="initial();" onunload="unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <div id="agreement_panel" class="eula_panel_container"></div>
@@ -1594,7 +1597,7 @@ function setUnit(unit){
 																		<div style="font-size:16px;"><#Statistic_display_type#>:</div>
 																	</td>
 																	<td>
-																		<div id="router" style="width:100px;text-align:center;font-size:14px;border-radius:5px" class="block_filter_pressed" onclick="switch_content(this);">Clients</div>
+																		<div id="router" style="width:100px;text-align:center;font-size:14px;border-radius:5px" class="block_filter_pressed" onclick="switch_content(this);"><#Permission_Management_Devices#></div>
 																	</td>
 																	<td>
 																		<div id="apps" style="width:100px;text-align:center;font-size:14px;border-radius:5px" class="block_filter" onclick="switch_content(this);"><#Apps#></div>
@@ -1680,7 +1683,7 @@ function setUnit(unit){
 													<div id="top5_info_block" style="width:310px;min-height:330px;;background-color:#B3645B;border-bottom-right-radius:10px;border-bottom-left-radius:10px;border-top-right-radius:10px;box-shadow: 3px 5px 5px #2E3537;">
 														<table style="width:99%;padding-top:20px">
 															<tr>
-																<th style="font-size:16px;text-align:left;padding-left:10px;width:140px;color:#ADADAD" id="top_client_title"><#ParentalCtrl_username#>:</th>
+																<th style="font-size:16px;text-align:left;padding-left:10px;width:140px;color:#ADADAD" id="top_client_title"><#MAC_Address#>:</th>
 																<td style="font-size:14px;" id="top_client_name"></td>
 															</tr>
 															<tr>

@@ -93,18 +93,6 @@
 #include "softdsl/AdslCoreDefs.h"
 #include "softdsl/AdslXfaceData.h"
 
-#if defined(_CFE_)
-#include "lib_types.h"
-#include "lib_string.h"
-#ifdef SUPPORT_XDSLDRV_GDB
-void setGdbMboxAddr(void) {}
-void setGdbOn(void){}
-char isGdbOn(void) {return(0);}
-void BcmAdslCoreGdbTask(void){}
-void BcmAdslCoreGdbCmd(void *pCmdData, int len){}
-#endif
-#endif
-
 /* Includes. */
 #ifdef _NOOS
 
@@ -159,6 +147,8 @@ void BcmAdslCoreGdbCmd(void *pCmdData, int len){}
 #include "63158_map.h"
 #elif defined(CONFIG_BCM963178)
 #include "63178_map.h"
+#elif defined(CONFIG_BCM963146)
+#include "63146_map.h"
 #endif
 
 #ifdef VXWORKS
@@ -183,10 +173,13 @@ void BcmAdslCoreGdbCmd(void *pCmdData, int len){}
 #endif
 
 #include "board.h"
+#if defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 16)
+#include <bcm_mem_reserve.h>
+#endif
 
 #if !defined(TARG_OS_RTEMS) && !defined(VXWORKS) && !defined(_NOOS)
 #include "bcm_intr.h"
-#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178)
+#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146)
 #define INTERRUPT_ID_ADSL   INTERRUPT_ID_VDSL
 #else
 #define INTERRUPT_ID_ADSL   INTERRUPT_ID_XDSL
@@ -227,8 +220,12 @@ uint extBondingDbgFlag = 0;	//TO DO: Remove after debugging
 
 #if defined(SUPPORT_PROCESS_STAT_IN_THREAD) || defined(DSL_KTHREAD)
 #ifdef USE_PMC_API
-#include "pmc_drv.h"
 #include "pmc_dsl.h"
+#if defined(PMC_API_VER)
+#include "pmc_core_api.h"
+#else
+#include "pmc_drv.h"
+#endif
 #endif
 extern void BcmXdslThreadWakeup(void);
 #endif
@@ -596,8 +593,8 @@ LOCAL Bool	pBkupImageEnable = FALSE;
 
 LOCAL Bool	phyInExceptionState = FALSE;
 
-#if defined(CONFIG_PHY_PARAM) || defined(CONFIG_ARM64)
 struct device *pXdslDummyDevice = NULL;
+#if defined(CONFIG_PHY_PARAM) || defined(CONFIG_ARM64)
 #ifdef CONFIG_PHY_PARAM
 LOCAL void *pLowMemAddr = NULL;
 uint       lmSize = 0;
@@ -679,7 +676,7 @@ void AdslDrvXtmLinkUp(unsigned char lineId, unsigned char tpsTc);
 void AdslDrvXtmLinkDown(unsigned char lineId);
 #endif
 
-#ifdef ADSLDRV_LITTLE_ENDIAN
+#if defined(__arm) || defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 #define BCM_STATHDR_SWAP32(val)	(val)
 #else
 #define BCM_STATHDR_SWAP32(val)	\
@@ -986,9 +983,9 @@ void BcmXdslCoreSetPreferredPhyType(void)
 	if( !(adslCoreCfgProfile[0].xdslMiscCfgParam & BCM_SAVEPREFERPHY_DISABLED) &&
 		!(adslCoreCfgProfile[0].xdslMiscCfgParam & BCM_PREFERREDPHY_FOUND)) {
 		adslCoreCfgProfile[0].xdslMiscCfgParam &= ~BCM_PHYTYPE_MSK;
-		adslCoreCfgProfile[0].xdslMiscCfgParam |= (BCM_PHYTYPE_NON_GFAST | BCM_PREFERREDPHY_FOUND);
-		DiagWriteString(0, DIAG_DSL_CLIENT, "Set preferred PHY: Non Gfast\n");
-		BCMOS_EVENT_LOG((KERN_CRIT TEXT("Set preferred PHY: Non Gfast\n")));
+		adslCoreCfgProfile[0].xdslMiscCfgParam |= (BCM_PHYTYPE_GFAST | BCM_PREFERREDPHY_FOUND);
+		DiagWriteString(0, DIAG_DSL_CLIENT, "Set preferred PHY: Gfast\n");
+		BCMOS_EVENT_LOG((KERN_CRIT TEXT("Set preferred PHY: Gfast\n")));
 		BcmXdsl_RequestSavePreferredLine();
 	}
 }
@@ -1000,9 +997,9 @@ AC_BOOL BcmXdslCoreClearPreferredPhyType(void)
 	if(adslCoreCfgProfile[0].xdslMiscCfgParam & BCM_PREFERREDPHY_FOUND) {
 		adslCoreCfgProfile[0].xdslMiscCfgParam &= ~BCM_PREFERREDPHY_FOUND;
 		adslCoreCfgProfile[0].xdslMiscCfgParam &= ~BCM_PHYTYPE_MSK;
-		adslCoreCfgProfile[0].xdslMiscCfgParam |= BCM_PHYTYPE_GFAST;
-		DiagWriteString(0, DIAG_DSL_CLIENT, "Clear preferred PHY: Non Gfast\n");
-		BCMOS_EVENT_LOG((KERN_CRIT TEXT("Clear preferred PHY: Non Gfast\n")));
+		adslCoreCfgProfile[0].xdslMiscCfgParam |= BCM_PHYTYPE_NON_GFAST;
+		DiagWriteString(0, DIAG_DSL_CLIENT, "Clear preferred PHY: Gfast\n");
+		BCMOS_EVENT_LOG((KERN_CRIT TEXT("Clear preferred PHY: Gfast\n")));
 		if( !(adslCoreCfgProfile[0].xdslMiscCfgParam & BCM_SAVEPREFERPHY_DISABLED))
 			res = TRUE;
 	}
@@ -1714,15 +1711,50 @@ Bool BcmXdslStatusDataAvail(void)
 #ifdef DSL_KTHREAD
 
 #if defined(USE_PMC_API)
+#ifdef CONFIG_BCM963146
+extern int BcmXdslReadAfePLLChCfg(uchar lineId, uchar chanId, uint32 *pChCfg);
+extern int BcmXdslWriteAfePLLChCfg(uchar lineId, uchar chanId, uint32 chCfg);
+#endif
 extern int BcmXdslReadAfePLLMdiv(uchar lineId,uint32 *pCh01_cfg, uint32 *pCh45_cfg);
 extern void BcmXdslWriteAfePLLMdiv(uchar lineId, uint32 param1, uint32 param2);
 #endif
-void BcmXdslProcessDrvConfigReq(unsigned lineId, volatile drvRegControl *pDrvRegCtrl)
+
+void BcmXdslProcessDrvConfigReq(uchar lineId, volatile drvRegControl *pDrvRegCtrl)
 {
 	uint32 ctrlMsg = ADSL_ENDIAN_CONV_UINT32(*(uint32 *)pDrvRegCtrl) >> 1;
 	
 	switch(ctrlMsg) {
 #if defined(USE_PMC_API)
+#ifdef CONFIG_BCM963146
+		case kDslDrvConfigRdAfePLLChCfg:
+		{
+			int ret;
+			uint32 chCfg;
+			uint32 chanId = ADSL_ENDIAN_CONV_UINT32(pDrvRegCtrl->regAddr);
+			
+			ret = BcmXdslReadAfePLLChCfg(lineId, chanId, &chCfg);
+			if(kPMC_NO_ERROR == ret) {
+				pDrvRegCtrl->regValue = ADSL_ENDIAN_CONV_UINT32(chCfg);
+				BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read chanId %d chCfg=0x%08x\n", chanId, chCfg);
+			}
+			else
+				BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read chanId %d error(%d)\n", chanId, ret);
+			break;
+		}
+		case kDslDrvConfigWrAfePLLChCfg:
+		{
+			int ret;
+			uint32 chCfg = ADSL_ENDIAN_CONV_UINT32(pDrvRegCtrl->regValue);
+			uint32 chanId = ADSL_ENDIAN_CONV_UINT32(pDrvRegCtrl->regAddr);
+			
+			ret = BcmXdslWriteAfePLLChCfg(lineId, chanId, chCfg);
+			if(kPMC_NO_ERROR == ret)
+				BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Write chanId %d chCfg=0x%08x done\n", chanId, chCfg);
+			else
+				BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Write chanId %d chCfg=0x%08x error(%d)\n", chanId, chCfg, ret);
+			break;
+		}
+#endif
 		case kDslDrvConfigRdAfePLLMdiv:
 		{
 			uint32 pllch01_cfg, pllch45_cfg;
@@ -1836,7 +1868,7 @@ BCMADSL_STATUS BcmAdslDiagStatSaveInit(void *pAddr, int len)
 {
 	if((NULL == pAddr) || (len < DIAG_MIN_BUF_SIZE)) {
 #ifdef SAVE_STAT_LOCAL_DBG
-		AdslDrvPrintf(0, "%s: Failed pAddr=%p len=%d\n", __FUNCTION__, pAddr, len);
+		AdslDrvPrintf(0, "%s: Failed pAddr=%px len=%d\n", __FUNCTION__, pAddr, len);
 #endif
 		return BCMADSL_STATUS_ERROR;
 	}
@@ -1929,7 +1961,7 @@ BCMADSL_STATUS BcmAdslDiagStatSaveGet(PADSL_SAVEDSTATUS_INFO pSavedStatInfo)
 	}
 	
 #if 1
-	BcmAdslCoreDiagWriteStatusString(0, "pCurAddr=%p pAddr0=%p len0=%d nStatus0=%d, pAddr1=%p len1=%d nStatus1=%d\n",
+	BcmAdslCoreDiagWriteStatusString(0, "pCurAddr=%px pAddr0=%px len0=%d nStatus0=%d, pAddr1=%px len1=%d nStatus1=%d\n",
 		gSaveStatCtrl.pCurrentSavedStatInfo->pAddr,
 		gSaveStatCtrl.savedStatInfo[0].pAddr,
 		gSaveStatCtrl.savedStatInfo[0].len,
@@ -1937,7 +1969,7 @@ BCMADSL_STATUS BcmAdslDiagStatSaveGet(PADSL_SAVEDSTATUS_INFO pSavedStatInfo)
 		gSaveStatCtrl.savedStatInfo[1].pAddr,
 		gSaveStatCtrl.savedStatInfo[1].len,
 		gSaveStatCtrl.savedStatInfo[1].nStatus);
-	AdslDrvPrintf(TEXT("pCurAddr=%p pAddr0=%p len0=%d nStatus0=%d, pAddr1=%p len1=%d nStatus1=%d\n"),
+	AdslDrvPrintf(TEXT("pCurAddr=%px pAddr0=%px len0=%d nStatus0=%d, pAddr1=%px len1=%d nStatus1=%d\n"),
 		gSaveStatCtrl.pCurrentSavedStatInfo->pAddr,
 		gSaveStatCtrl.savedStatInfo[0].pAddr,
 		gSaveStatCtrl.savedStatInfo[0].len,
@@ -2380,7 +2412,7 @@ int BcmXdslCoreGetAfeBoardId(unsigned int *pAfeIds)
 
 extern void LineMgrSendGfastConfig(unsigned char lineId);
 
-void BcmXdslCoreGetVerInfoForHmi(uint8 *versionString, uint16 *fwMajorVersion, uint8 *fwMinorVersion, uint8 *afeChipId,uint32 *hwChipId)
+void BcmXdslCoreGetVerInfoForHmi(uint8 *versionString, uint16 *fwMajorVersion, uint8 *fwMinorVersion, uint32 *afeId,uint32 *hwChipId)
 {
 	unsigned int		afeIds[2];
 	adslVersionInfo	verInfo;
@@ -2390,7 +2422,7 @@ void BcmXdslCoreGetVerInfoForHmi(uint8 *versionString, uint16 *fwMajorVersion, u
 	strncpy(versionString, verInfo.phyVerStr, 64);	/* 64 == VERSION_STRING_LENGTH */
 	*fwMajorVersion  = verInfo.phyMjVerNum;
 	*fwMinorVersion  = (uint8)verInfo.phyMnVerNum;
-	*afeChipId = (afeIds[0] & AFE_CHIP_MASK) >> AFE_CHIP_SHIFT;
+	*afeId = afeIds[0];
 	*hwChipId = PERF->RevID;
 }
 
@@ -2729,7 +2761,7 @@ void BcmXdslCoreSendAfeInfo(int toPhy)
 #endif /* USE_PINMUX_DSLCTL_API */
 
 #if defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 9) && \
-	(defined(CONFIG_BCM963381) || defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178))
+	(defined(CONFIG_BCM963381) || defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146))
 	afeInfo.afeChidIdConfig1 |= DG_PHY_CONFIG_BYPASS_SHIFT_MASK;
 #endif
 
@@ -2737,6 +2769,8 @@ void BcmXdslCoreSendAfeInfo(int toPhy)
 
 	if( !(adslCoreCfgProfile[0].xdslMiscCfgParam & BCM_SAVEPREFERPHY_DISABLED) &&
 		(adslCoreCfgProfile[0].xdslMiscCfgParam & BCM_PREFERREDPHY_FOUND) )
+		afeInfo.afeChidIdConfig1 &= ~AFECTL1_LAST_MODE_VDSL;
+	else
 		afeInfo.afeChidIdConfig1 |= AFECTL1_LAST_MODE_VDSL;
 #ifdef CONFIG_BCM963138
 	if( toPhy && ((afeIds[0] & AFE_LD_MASK) < AFE_LD_6304_BITMAP)) {
@@ -2749,7 +2783,7 @@ void BcmXdslCoreSendAfeInfo(int toPhy)
 		DiagWriteString(0, DIAG_DSL_CLIENT, "*** Drv: Sending VDSL afeId(0x%08X) to PHY\n", t.cmd.param.value);
 		BcmCoreCommandHandler(&t.cmd);
 	}
-#elif defined(CONFIG_BCM963158) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
+#elif (defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
 	DiagWriteString(0, DIAG_DSL_CLIENT, "*** Drv: Total BP_INTF_TYPE_xDSL = %d\n", BpGetPhyIntfNumByType(BP_INTF_TYPE_xDSL));
 	if( toPhy &&
 #ifndef SUPPORT_DSL_BONDING
@@ -2805,7 +2839,7 @@ void BcmXdslCoreSendAfeInfo(int toPhy)
 #endif /* CONFIG_BCM_DSL_GFASTCOMBO */
 
 #ifdef CONFIG_BCM_DSL_GFAST
-#if defined(CONFIG_BCM963158) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
+#if (defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
 	res = BpGetAFELDRelayGpio(0, &bpGpioAFELDRelay);
 #else
 	res = BpGetAFELDRelayGpio(&bpGpioAFELDRelay);
@@ -2962,6 +2996,12 @@ void BcmXdslCoreDiagSendPhyInfo(void)
 
 }
 
+#ifdef CONFIG_BCM963146
+#define	RESETTING_ADSL_CPU_STR	"Resetting ADSL ARM\n"
+#else
+#define	RESETTING_ADSL_CPU_STR	"Resetting ADSL MIPS\n"
+#endif
+
 #ifndef _NOOS
 void BcmXdslCoreMaintenanceTask(void)
 {
@@ -3023,7 +3063,7 @@ void BcmXdslCoreMaintenanceTask(void)
 
 				if (NULL != pAdslXface)
 					pAdslXface->gfcTable[12] = ADSL_ENDIAN_CONV_INT32(0xDEADBEEF);
-				BcmAdslCoreDiagWriteStatusString(0, "Resetting ADSL MIPS\n");
+				BcmAdslCoreDiagWriteStatusString(0, RESETTING_ADSL_CPU_STR);
 				for(i = 0; i < 20; i++) {
 					BcmAdslCoreDiagWriteStatusString(0, "PC = 0x%08x\n", ADSL_ENDIAN_CONV_INT32(*(volatile uint*)gPhyPCAddr));
 #ifdef CONFIG_BCM963158
@@ -3272,7 +3312,7 @@ void BcmAdslCoreDelay(ulong timeMs)
 #ifndef _NOOS
 void BcmAdslCoreSetWdTimer(uint timeUs)
 {
-#if defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178)
+#if defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146)
 	WDTIMER0->WatchDogDefCount = timeUs * (FPERIPH_WD/1000000);
 	WDTIMER0->WatchDogCtl = 0xFF00;
 	WDTIMER0->WatchDogCtl = 0x00FF;
@@ -3306,7 +3346,10 @@ extern ulong thrRunCnt;
 void BcmXdslCoreNotifyPhyReset(void)
 {
 	OS_TICKS osTime;
-	
+
+	if (!adslCoreInitialized)
+		return;
+
 	BcmXdslCoreSendCmd(0, kDslHostResettingPHYMIPS, 0);
 	bcmOsGetTime(&osTime);
 	while(AdslCoreCommandIsPending() && (BcmAdslCoreOsTimeElapsedMs(osTime) < MAX_DOWNCMD_DELAY_MS))
@@ -3328,6 +3371,11 @@ void BcmAdslCoreStop(void)
 #ifdef CONFIG_BCM963158
 	BcmXdslCoreNotifyPhyReset();
 #endif
+
+#ifdef USE_RESERVE_SHARE_MEM
+	BcmCoreDiagReleaseReserveShareMem();
+#endif
+
 #if defined(USE_PMC_API) && !defined(_NOOS)
 	DiagWriteString(0, DIAG_DSL_CLIENT, "%s: Sending kDslDownCmd\n", __FUNCTION__);
 	sema_init((struct semaphore *)syncPhyMipsSemId, 0);
@@ -3591,6 +3639,12 @@ uint BcmAdslCoreStatusSnooper(dslStatusStruct *status, char *pBuf, int len)
 		}
 		case kDslExceptionStatus:
 			phyInExceptionState = TRUE;
+#ifdef CONFIG_BCM963146
+#define  STACK_COMMON_REG_SIZE	8
+#define  STACK_PC_OFF		STACK_COMMON_REG_SIZE
+#define  STACK_PSR_OFF		(STACK_PC_OFF + 1)
+#define  STACK_BANKED_REG_OFF	(STACK_PC_OFF + 2)
+#endif
 #if 0 || defined(ADSL_SELF_TEST)
 			{
 			uint	*sp, spAddr;
@@ -3602,26 +3656,42 @@ uint BcmAdslCoreStatusSnooper(dslStatusStruct *status, char *pBuf, int len)
 #else
 			sp = (uint*) status->param.dslException.sp;
 #endif
+#ifdef CONFIG_BCM963146
+ 			for (i = 0; i < 8; i += 4)
+				AdslDrvPrintf (TEXT("R%d=0x%08X\tR%d=0x%08X\tR%d=0x%08X\tR%d=0x%08X\n"),
+					i, sp[i], i+1, sp[i+1], i+2, sp[i+2], i+3, sp[i+3]);
+			for (i = 0; i < 8; i += 4)
+				AdslDrvPrintf (TEXT("R%d=0x%08X\tR%d=0x%08X\tR%d=0x%08X\tR%d=0x%08X\n"),
+					i+8,  sp[STACK_BANKED_REG_OFF+i],   i+9,  sp[STACK_BANKED_REG_OFF+i+1], 
+					i+10, sp[STACK_BANKED_REG_OFF+i+2], i+11, sp[STACK_BANKED_REG_OFF+i+3]);
+			AdslDrvPrintf (TEXT("PC=0x%08X   PSR=0x%08X\n"), sp[STACK_PC_OFF], sp[STACK_PSR_OFF]);
+#else
 			for (i = 0; i < 28; i += 4)
-				AdslDrvPrintf (TEXT("R%d=0x%08lX\tR%d=0x%08lX\tR%d=0x%08lX\tR%d=0x%08lX\n"),
-					i+1, sp[i], i+2, sp[i+1], i+3, sp[i+2], i+4, sp[i+3]);
-			AdslDrvPrintf (TEXT("R29=0x%08lX\tR30=0x%08lX\tR31=0x%08lX\n"), sp[28], sp[29], sp[30]);
-
+				AdslDrvPrintf (TEXT("R%d=0x%08X\tR%d=0x%08X\tR%d=0x%08X\tR%d=0x%08X\n"),
+					i+1, ADSL_ENDIAN_CONV_INT32(sp[i]), i+2, ADSL_ENDIAN_CONV_INT32(sp[i+1]), 
+					i+3, ADSL_ENDIAN_CONV_INT32(sp[i+2]), i+4, ADSL_ENDIAN_CONV_INT32(sp[i+3]));
+			AdslDrvPrintf (TEXT("R29=0x%08X\tR30=0x%08X\tR31=0x%08X\n"), ADSL_ENDIAN_CONV_INT32(sp[28]), 
+				ADSL_ENDIAN_CONV_INT32(sp[29]), ADSL_ENDIAN_CONV_INT32(sp[30]));
+#endif
 			sp = (uint*) status->param.dslException.argv;
-			AdslDrvPrintf (TEXT("argv[0] (EPC) = 0x%08lX\n"), sp[0]);
+			AdslDrvPrintf (TEXT("argv[0] (EPC) = 0x%08X\n"), ADSL_ENDIAN_CONV_INT32(sp[0]));
 			for (i = 1; i < status->param.dslException.argc; i++)
-				AdslDrvPrintf (TEXT("argv[%d]=0x%08lX\n"), i, sp[i]);
+				AdslDrvPrintf (TEXT("argv[%d]=0x%08X\n"), i, ADSL_ENDIAN_CONV_INT32(sp[i]));
 			AdslDrvPrintf (TEXT("Exception stack dump:\n"));
 #ifdef CONFIG_ARM64
 			sp = pStackPtr;
 #else
 			sp = (uint*) status->param.dslException.sp;
 #endif
-			spAddr = sp[28];
+#ifdef CONFIG_BCM963146
+			spAddr = sp[STACK_BANKED_REG_OFF + (13 - 8)];
+#else
+			spAddr = ADSL_ENDIAN_CONV_INT32(sp[28]);
+#endif
 #ifdef FLATTEN_ADDR_ADJUST
 			if ((spAddr & 0x50000000) == 0x50000000)
 			  spAddr = spAddr & ~0x40000000;
-			sp = (uint *)ADSL_ADDR_TO_HOST(spAddr);
+			sp = (uint *)(uintptr_t)(ADSL_ADDR_TO_HOST(spAddr));
 			stackSize = 64;
 #else
 			sp = (uint *) status->param.dslException.stackPtr;
@@ -3629,8 +3699,10 @@ uint BcmAdslCoreStatusSnooper(dslStatusStruct *status, char *pBuf, int len)
 #endif
 			for (i = 0; i < stackSize; i += 8)
 				{
-				AdslDrvPrintf (TEXT("%08lX: %08lX %08lX %08lX %08lX %08lX %08lX %08lX %08lX\n"),
-					spAddr + (i*4), sp[0], sp[1], sp[2], sp[3], sp[4], sp[5], sp[6], sp[7]);
+				AdslDrvPrintf (TEXT("%08X: %08X %08X %08X %08X %08X %08X %08X %08X\n"),
+					spAddr + (i*4), ADSL_ENDIAN_CONV_INT32(sp[0]), ADSL_ENDIAN_CONV_INT32(sp[1]), 
+					ADSL_ENDIAN_CONV_INT32(sp[2]), ADSL_ENDIAN_CONV_INT32(sp[3]), ADSL_ENDIAN_CONV_INT32(sp[4]), 
+					ADSL_ENDIAN_CONV_INT32(sp[5]), ADSL_ENDIAN_CONV_INT32(sp[6]), ADSL_ENDIAN_CONV_INT32(sp[7]));
 				sp += 8;
 				}
 			}
@@ -3815,16 +3887,7 @@ uint BcmAdslCoreStatusSnooper(dslStatusStruct *status, char *pBuf, int len)
 				case kDslG992p2RxShowtimeActive:
 				{
 #ifdef CONFIG_BCM_DSL_GFAST
-					int modCfg = adslCoreCfgProfile[0].adslAnnexAParam;
-
-					if((kAdslCfgModAny == (modCfg & kAdslCfgModMask)) && !(adslCoreCfgProfile[0].adsl2Param & kAdsl2CfgAnnexMOnly))
-						modCfg = kAdslCfgModMask;
-					
-					if(!XdslMibIsGfastMod(XdslCoreGetDslVars(lineId))
-#ifndef CONFIG_BCM_DSL_GFASTCOMBO
-						&& (modCfg & kDslCfgModGfastOnly)
-#endif
-						) {
+					if(XdslMibIsGfastMod(XdslCoreGetDslVars(lineId))) {
 							BcmXdslCoreSetPreferredPhyType();
 					}
 					else {
@@ -3894,12 +3957,29 @@ void *BcmCoreAllocLowMem(uint size)
 		if (NULL == pLowMemAddr)
 			return NULL;
 #ifdef CONFIG_BCM963148
+#if defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 16)
+		/* Free the memory allocated using dma_alloc_coherent() */
+		if (pLowMemAddr) {
+			dma_free_coherent(pXdslDummyDevice, size, pLowMemAddr, lmAddrPhys);
+			pLowMemAddr = NULL;
+		}
+		if (size <= DSL_RESERVED_MEM_SIZE) {
+			lmAddrPhys = DSL_RESERVED_MEM_START;
+			lmSize = size;
+		}
+		else {
+			DiagStrPrintf(0,DIAG_DSL_CLIENT, "ERROR: Not enough memory available for xDSL to use\n");
+			lmAddrPhys = NULL;
+			lmSize = 0;
+		}
+#else
 		if ((lmAddrPhys+size) > 0x01000000) {
 			dma_free_coherent(pXdslDummyDevice, size, pLowMemAddr, lmAddrPhys);
 			pLowMemAddr = NULL;
 			DiagStrPrintf(0,DIAG_DSL_CLIENT, "dma_alloc_coherent: physAddr above 16MB: 0x%08lX\n", (uint) lmAddrPhys);
 			return NULL;
 		}
+#endif
 #elif defined(CONFIG_BCM963138)
 #define PAD_BLK_NUM    16
 #define PAD_BLK_SIZE   0x40000
@@ -4603,7 +4683,7 @@ LOCAL void BcmAdslCoreUpdateConnectionParamBasedOnXtmFeatures(unsigned char line
 			BcmXdslCoreSetPhyExtraCfg(lineId, 1, kPhyCfg2TxPafEnabled);
 	}
 #endif
-#elif defined(CONFIG_BCM963158)   /* !SUPPORT_DSL_BONDING */
+#elif defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)   /* !SUPPORT_DSL_BONDING */
 	if((adslCoreCfgProfile[lineId].xdslCfg2Mask & kPhyCfg2TxPafEnabled) && !(adslCoreCfgProfile[lineId].xdslCfg2Value& kPhyCfg2TxPafEnabled))
 		BcmXdslCoreClearPhyExtraCfg(lineId, 1, kPhyCfg2TxPafEnabled);
 	else
@@ -4919,13 +4999,13 @@ LOCAL void BcmAdslCoreSetConnectionParam(unsigned char lineId, dslCommandStruct 
 
 	if (ADSL_PHY_SUPPORT(kAdslPhyVdslG993p2)) {
 		pG993p2Cap = pDslCmd->param.dslModeSpec.capabilities.carrierInfoG993p2AnnexA;
-		if (modCfg & kDslCfgModVdsl2Only)
+		if (modCfg & (kDslCfgModVdsl2Only|kDslCfgModVdsl2LROnly))
 			pDslCmd->param.dslModeSpec.capabilities.modulations |= kG993p2AnnexA;
 		
 		pG993p2Cap->verId = 0;
 		pG993p2Cap->size = sizeof(g993p2DataPumpCapabilities);
 
-		if((NULL != pAdslCfg) && (pAdslCfg->vdslParam & (kVdslUS0Mask | kVdslProfileMask3 | kGfastProfileMask1)) ) {
+		if(NULL != pAdslCfg) {
 			pG993p2Cap->profileSel = pAdslCfg->vdslParam & (ADSL_PHY_SUPPORT(kAdslPhyVdslBrcmPriv2) ? kVdslProfileMask3: ADSL_PHY_SUPPORT(kAdslPhyVdslBrcmPriv1) ? kVdslProfileMask2: ADSL_PHY_SUPPORT(kAdslPhyVdsl30a) ? kVdslProfileMask1 : kVdslProfileMask);
 			pG993p2Cap->maskUS0 = (pAdslCfg->vdslParam & kVdslUS0Mask) >> kVdslUS0MaskShift;
 #ifdef CONFIG_BCM_DSL_GFAST
@@ -5045,7 +5125,7 @@ LOCAL void BcmAdslCoreSetConnectionParam(unsigned char lineId, dslCommandStruct 
 #endif
 		pExtraCfg->phyExtraCfg[1] = 0;
 #ifdef CONFIG_BCM_DSL_GFAST
-#if defined(CONFIG_BCM963158) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
+#if (defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
 		res = BpGetAFELDRelayGpio(lineId, &bpGpioAFELDRelay);
 #else
 		res = BpGetAFELDRelayGpio(&bpGpioAFELDRelay);
@@ -5061,7 +5141,12 @@ LOCAL void BcmAdslCoreSetConnectionParam(unsigned char lineId, dslCommandStruct 
 			  (BCM_IMAGETYPE_BONDING==(adslCoreCfgProfile[0].xdslMiscCfgParam & BCM_IMAGETYPE_MSK))) )
 			pExtraCfg->phyExtraCfg[1] |= kPhyCfg2DisablePtmNonBondingConnection;
 #endif
-		pExtraCfg->phyExtraCfg[2] = 0;
+#ifndef SUPPORT_DSL_BONDING
+		pExtraCfg->phyExtraCfg[1] |= kPhyCfg2DisablePtmNonBondingConnection;
+#endif
+		pExtraCfg->phyExtraCfg[2] = kPhyCfg3MinimizeGfastVDSLtoggle;
+		if (modCfg & kDslCfgModVdsl2LROnly)
+			pExtraCfg->phyExtraCfg[2] |= kPhyCfg3EnableVdslLRmodeByDefault;
 		pExtraCfg->phyExtraCfg[3] = 0;
 		/* assumes xdslCfg?Mask/Value are contiguous in adslCfgProfile */
 		for (i= 0; i < 4; i++) {
@@ -5305,9 +5390,16 @@ void BcmAdslCoreInit(void)
 		pXdslDummyDevice = kzalloc(sizeof(struct device), GFP_KERNEL);
 		if(NULL != pXdslDummyDevice) {
 #ifdef CONFIG_ARM64
-			dma_coerce_mask_and_coherent(pXdslDummyDevice, DMA_BIT_MASK(28));
+			//dma_coerce_mask_and_coherent(pXdslDummyDevice, DMA_BIT_MASK(28));
+			arch_setup_dma_ops(pXdslDummyDevice, 0, 0, NULL, false);
+			dma_set_mask(pXdslDummyDevice, DMA_BIT_MASK(32));
+			dma_set_coherent_mask(pXdslDummyDevice, DMA_BIT_MASK(32));
+#else
+#if defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 16)
+			dma_set_coherent_mask(pXdslDummyDevice, DMA_BIT_MASK(32));
 #else
 			dma_set_coherent_mask(pXdslDummyDevice, DMA_BIT_MASK(24));
+#endif
 #endif
 		}
 		else
@@ -5858,7 +5950,7 @@ void BcmXdslCoreMiscIoCtlFunc(unsigned char lineId)
 #endif
 #define	DG_GLITCH_TO	(100*CYCLE_PER_US)
 
-#if !defined(__KERNEL__) && !defined(_CFE_)
+#if !defined(__KERNEL__)
 #define BpGetDyingGaspExtIntr(pIntrNum)		*(unsigned int *) (pIntrNum) = 0
 #endif
 
@@ -5905,19 +5997,9 @@ void BcmAdslCoreSendDyingGasp(int powerCtl)
     if (kAdslTrainingConnected == AdslCoreLinkStateEx(i)) {
         cmd.command = kDslDyingGaspCmd | (i << DSL_LINE_SHIFT);
         cmd.param.value = powerCtl != 0 ? 1 : 0;
-#if 0
-#ifdef __KERNEL__
-        if (!in_irq())
-#endif
-            BcmCoreDpcSyncEnter();
-#endif
         AdslCoreCommandHandler(&cmd);
+#ifndef CONFIG_BCM963146
         AdslCoreCommandHandler(&cmd);
-#if 0
-#ifdef __KERNEL__
-        if (!in_irq())
-#endif
-            BcmCoreDpcSyncExit();
 #endif
     }
     else {
@@ -6023,7 +6105,7 @@ void BcmAdslCoreDebugCmd(unsigned char lineId, void *pMsg)
 
 			newVal = (pDbgCmd->param1 & PHY_TYPE_MSK1) >> PHY_TYPE_SHIFT1;
 			adslCoreCfgProfile[0].xdslMiscCfgParam = (adslCoreCfgProfile[0].xdslMiscCfgParam & ~BCM_PREFERREDPHY_FOUND) |
-				(!newVal << BCM_PREFERREDTYPE_SHIFT);
+				(newVal << BCM_PREFERREDTYPE_SHIFT);
 			DiagWriteString(lineId, DIAG_DSL_CLIENT, "DIAG_DEBUG_CMD_PHY_TYPE_CFG: xdslMiscCfgParam=0x%X newVal=%d param1=0x%X\n", adslCoreCfgProfile[0].xdslMiscCfgParam, newVal, pDbgCmd->param1);
 			BcmXdslCoreSendAfeInfo(1);	/* Send Afe info to PHY */
 #endif /* CONFIG_BCM_DSL_GFASTCOMBO */
@@ -6037,7 +6119,7 @@ void BcmAdslCoreDebugCmd(unsigned char lineId, void *pMsg)
 			unsigned short bpGpioAFELDRelay;
 			OS_TICKS	osTime0, osTime1;
 			
-#if defined(CONFIG_BCM963158) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
+#if (defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
 			res = BpGetAFELDRelayGpio(lineId, &bpGpioAFELDRelay);
 #else
 			res = BpGetAFELDRelayGpio(&bpGpioAFELDRelay);
@@ -6902,7 +6984,11 @@ void BcmAdslCoreDiagWriteStatus(dslStatusStruct *status, char *pBuf, int len)
 #else
 		sp = (uint*) status->param.dslException.sp;
 #endif
+#ifdef CONFIG_BCM963146
+		sp = (uint *) (uintptr_t) (sp[STACK_BANKED_REG_OFF + (13 - 8)]);
+#else
 		sp = (uint *) (uintptr_t)ADSL_ENDIAN_CONV_UINT32(sp[28]);
+#endif
 #ifdef FLATTEN_ADDR_ADJUST
 		if (((uintptr_t)sp & 0x50000000) == 0x50000000)
 			sp = (uint *) ((uintptr_t)sp & ~0x40000000);
@@ -7473,8 +7559,8 @@ static char * GetSelectedProfileStr(unsigned short vdsl2Profile)
 			res = "Profile 30a";
 			break;
 #ifdef CONFIG_VDSLBRCMPRIV1_SUPPORT
-		case kVdslProfileBrcmPriv1:
-			res = "Profile BrcmPriv1";
+		case kVdslProfile35b:
+			res = "Profile 35b";
 			break;
 #endif
 	}
@@ -7982,7 +8068,7 @@ void BcmAdslCoreDiagStatusSnooper(dslStatusStruct *status, char *pBuf, int len)
 			}
 			break;
 		case kDslExceptionStatus:
-			BcmAdslCoreDiagWriteStatusString(lineId, "Resetting ADSL MIPS\n");
+			BcmAdslCoreDiagWriteStatusString(lineId, RESETTING_ADSL_CPU_STR);
 			break;
 		default:
 			break;
@@ -8235,7 +8321,7 @@ void BcmAdslCoreDiagCmdCommon(unsigned char lineId, int diagCmd, int len, void *
 			if (!ADSL_PHY_SUPPORT(kAdslPhyVdsl30a))
 				pCfg->demodCap &= ~kVdslProfile30a;
 			if (!ADSL_PHY_SUPPORT(kAdslPhyVdslBrcmPriv1))
-				pCfg->demodCap &= ~kVdslProfileBrcmPriv1;
+				pCfg->demodCap &= ~kVdslProfile35b;
 			adslCoreConnectionParam[lineId].param.dslModeSpec.capabilities.carrierInfoG993p2AnnexA->profileSel = 
 				pCfg->demodCap & kVdslProfileMask2;
 			adslCoreConnectionParam[lineId].param.dslModeSpec.capabilities.carrierInfoG993p2AnnexA->maskUS0 =
@@ -8538,7 +8624,7 @@ void BcmAdslCoreIdle(int size)
 {
 	BcmAdslCoreDiagWriteStatusString(0, "ReadFile Done");
 #ifdef PHY_BLOCK_TEST
-	AdslDrvPrintf (TEXT("ReadFile Done: addr=0x%p size=%d\n"), afeParam.pSdram, (int)afeParam.size);
+	AdslDrvPrintf (TEXT("ReadFile Done: addr=0x%px size=%d\n"), afeParam.pSdram, (int)afeParam.size);
 #endif
 }
 void (*bcmLoadBufferCompleteFunc)(int size) = BcmAdslCoreIdle;
@@ -8558,7 +8644,7 @@ void BcmAdslCoreAfeTestInit(afeTestData *pAfe, void *pSdram, uint size)
 #ifdef CONFIG_ARM64
 	if((NULL != pAfe->pSdram) && (NULL != pSdram) && (0 == (0xFFFFFFFF00000000 &(uintptr_t)pSdram)) &&
 		(((uintptr_t)pAfe->pSdram & 0xffffffff) == ((uintptr_t)pSdram & 0xffffffff)))
-		printk("*** %s: Ignore pSdram=%p from Diags and keeping the current pSdram=%p\n", __FUNCTION__, pSdram, pAfe->pSdram);
+		printk("*** %s: Ignore pSdram=%px from Diags and keeping the current pSdram=%px\n", __FUNCTION__, pSdram, pAfe->pSdram);
 	else
 #endif
 	pAfe->pSdram = pSdram;
@@ -8829,7 +8915,7 @@ void BcmAdslCoreAfeTestMsg(void *pMsg)
 				BcmAdslCoreDiagWriteStatusString(0, "LoadImageOnly Done");
 				AdslCoreSetXfaceOffset((void *)HOST_LMEM_BASE, afeParam.size);
 #ifdef PHY_BLOCK_TEST
-				AdslDrvPrintf (TEXT("\nLMEM & SDRAM images load done\nLMEM addr=0x%p size=%d  SDRAM addr=0x%p size=%d\n"),
+				AdslDrvPrintf (TEXT("\nLMEM & SDRAM images load done\nLMEM addr=0x%px size=%d  SDRAM addr=0x%px size=%d\n"),
 					afeParam.pSdram, (int)afeParam.size, afeImage.pSdram, (int)afeImage.size);
 #endif
 				adslCoreAlwaysReset = AC_FALSE;
@@ -9025,7 +9111,7 @@ void BcmAdslCoreDebugCompleteCommand(uint rdSize)
 		pAdslLmem[MEM_MONITOR_PARAM_2] = ADSL_ENDIAN_CONV_INT32(rdSize);
 		if(GLOBAL_EVENT_READ_FILE == monitorId ) {
 			if( rdSize < reqSize ) {
-				DiagWriteString(0, DIAG_DSL_CLIENT, "READ_EOF: fn=%s addr=0x%p size=%d reqSize=%d dstAddr=0x%X\n",
+				DiagWriteString(0, DIAG_DSL_CLIENT, "READ_EOF: fn=%s addr=0x%px size=%d reqSize=%d dstAddr=0x%X\n",
 					(NULL != rdFileName) ? rdFileName: "Unknown",
 					afeParam.pSdram, (int)rdSize, (int)reqSize, (uint)reqAddr);
 				dirFileName = NULL;
@@ -9035,7 +9121,7 @@ void BcmAdslCoreDebugCompleteCommand(uint rdSize)
 			}
 		}
 		else {
-			BcmAdslCoreDiagSaveStatusString("LOAD_DONE: fn=%s addr=0x%p size=%d\n",
+			BcmAdslCoreDiagSaveStatusString("LOAD_DONE: fn=%s addr=0x%px size=%d\n",
 				(NULL != rdFileName) ? rdFileName: "Unknown",
 				afeParam.pSdram, (int)afeParam.size);
 			dirFileName = NULL;
@@ -9126,7 +9212,7 @@ void __BcmAdslCoreDebugReadFile(char *fileName, uint readCmd, uchar *bufPtr, uin
 		offset = dirFileOffset;
 	rdFileName = fileName;
 	
-	BcmAdslCoreDiagSaveStatusString("CMD_REQ: %s fn=%s offset=%d len=%d addr=0x%p\n",
+	BcmAdslCoreDiagSaveStatusString("CMD_REQ: %s fn=%s offset=%d len=%d addr=0x%px\n",
 		(readCmd == DIAG_TEST_CMD_READ) ? "READ": "LOAD",
 		fileName, (int)offset , (int)bufLen, bufPtr);
 	
@@ -9341,10 +9427,10 @@ void BcmAdslCoreProcessTestCommand(void)
 	param3 = ADSL_ENDIAN_CONV_INT32(pAdslLmem[MEM_MONITOR_PARAM_3]);
 	param4 = ADSL_ENDIAN_CONV_INT32(pAdslLmem[MEM_MONITOR_PARAM_4]);
 #if 1
-	BcmAdslCoreDiagSaveStatusString("Drv: cmdId=0x%X param1=0x%X param2=0x%X(0x%p) param3=0x%X param4=0x%X\n",
+	BcmAdslCoreDiagSaveStatusString("Drv: cmdId=0x%X param1=0x%X param2=0x%X(0x%px) param3=0x%X param4=0x%X\n",
 		cmdId, param1, param2, (ADSL_ADDR_TO_HOST(param2)), param3, param4);
 #else
-	DiagWriteString(0, DIAG_DSL_CLIENT,"Drv: cmdId=0x%X\n\t\tparam1=0x%X param2=0x%X(0x%p) param3=0x%X param4=0x%X\n",
+	DiagWriteString(0, DIAG_DSL_CLIENT,"Drv: cmdId=0x%X\n\t\tparam1=0x%X param2=0x%X(0x%px) param3=0x%X param4=0x%X\n",
 		cmdId, param1, param2, (ADSL_ADDR_TO_HOST(param2)), param3, param4);
 #endif
 
@@ -9358,7 +9444,7 @@ void BcmAdslCoreProcessTestCommand(void)
 #endif
 				) {
 				len = sprintf(buf, "Drv: FATAL error on GLOBAL_EVENT_LOAD_IMAGE command! Skipping processing\n");
-				sprintf(buf+len, "cmdId=0x%X param1=0x%X(0x%p) param2=0x%X(0x%p) param3=0x%X param4=0x%X\n",
+				sprintf(buf+len, "cmdId=0x%X param1=0x%X(0x%px) param2=0x%X(0x%px) param3=0x%X param4=0x%X\n",
 					cmdId, param1, pName, param2, pBuf, param3, param4);
 				DiagWriteString(0, DIAG_DSL_CLIENT, buf);
 				BCMOS_EVENT_LOG((KERN_CRIT TEXT("%s"), buf));
@@ -9381,7 +9467,7 @@ void BcmAdslCoreProcessTestCommand(void)
 #endif
 				) {
 				len = sprintf(buf, "Drv: FATAL error on GLOBAL_EVENT_READ_FILE command! Skipping processing\n");
-				sprintf(buf+len, "cmdId=0x%X param1=0x%X(0x%p) param2=0x%X(0x%p) param3=0x%X param4=0x%X\n",
+				sprintf(buf+len, "cmdId=0x%X param1=0x%X(0x%px) param2=0x%X(0x%px) param3=0x%X param4=0x%X\n",
 					cmdId, param1, pName, param2, pBuf, param3, param4);
 				DiagWriteString(0, DIAG_DSL_CLIENT, buf);
 				BCMOS_EVENT_LOG((KERN_CRIT TEXT("%s"), buf));
@@ -9410,7 +9496,7 @@ _write_file:
 #endif
 				) {
 				len = sprintf(buf, "Drv: FATAL error on EVENT_DUMP_IMAGE/GLOBAL_EVENT_PROBE_IMAGE command! Skipping processing\n");
-				sprintf(buf+len, "cmdId=0x%X param1=0x%X(0x%p) param2=0x%X(0x%p) param3=0x%X param4=0x%X\n",
+				sprintf(buf+len, "cmdId=0x%X param1=0x%X(0x%px) param2=0x%X(0x%px) param3=0x%X param4=0x%X\n",
 					cmdId, param1, pName, param2, pBuf, param3, param4);
 				DiagWriteString(0, DIAG_DSL_CLIENT, buf);
 				BCMOS_EVENT_LOG((KERN_CRIT TEXT("%s"), buf));
@@ -9444,7 +9530,7 @@ _write_file:
 				int ctrl = 0, tcMode = kXdslDataAtm;
 				volatile uint	*pAdslEnum = (uint *) XDSL_ENUM_BASE;
 #if defined(CONFIG_BCM963268) || defined(CONFIG_BCM963138) || defined(CONFIG_BCM963381) || defined(CONFIG_BCM963148) || \
-	defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178)
+	defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146)
 #if defined(CONFIG_BCM963158)
 #define	GFAST_CTRL_REG  (0xB00 >> 2)
 #else
@@ -9481,7 +9567,7 @@ _write_file:
 #endif	/* PHY_LOOPBACK */
 			pName = ADSL_ADDR_TO_HOST(param2);
 #ifdef CONFIG_ARM64
-			//DiagStrPrintf(0,DIAG_DSL_CLIENT, "PRx: pStr=%p arg1=%d arg2=%d\n", pName, (uint)param3, (uint)param4);
+			//DiagStrPrintf(0,DIAG_DSL_CLIENT, "PRx: pStr=%px arg1=%d arg2=%d\n", pName, (uint)param3, (uint)param4);
 			if(ADSL_MIPS_LMEM_ADDR(param2)) {
 				int strLen = strlen(pName)+1;
 				if(strLen > sizeof(buf)) {
@@ -9498,7 +9584,7 @@ _write_file:
 #endif
 				) {
 				len = sprintf(buf, "Drv: FATAL error on GLOBAL_EVENT_PR_MSG command! Skipping processing\n");
-				sprintf(buf+len, "cmdId=0x%X param1=0x%X param2=0x%X(0x%p) param3=0x%X param4=0x%X\n",
+				sprintf(buf+len, "cmdId=0x%X param1=0x%X param2=0x%X(0x%px) param3=0x%X param4=0x%X\n",
 					cmdId, param1, param2, pName, param3, param4);
 				DiagWriteString(0, DIAG_DSL_CLIENT, buf);
 				BCMOS_EVENT_LOG((KERN_CRIT TEXT("%s"), buf));
@@ -9576,17 +9662,25 @@ LOCAL uint __random32(uint *seed)	/* FIXME: will get a more sophiscated algorith
 #define PROF_RANDOM32_GEN 		__random32(&profileTimerSeed)
 #endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+LOCAL void BcmAdslCoreProfileTimerFn(struct timer_list *data);
+#else
 LOCAL void BcmAdslCoreProfileTimerFn(uint arg);
+#endif
 
 LOCAL int profileStarted = 0;
 LOCAL struct timer_list profileTimer;
 
 LOCAL void BcmAdslCoreProfilingStart(void)
 {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0))
 	init_timer(&profileTimer);
 	profileTimer.function = (void *)BcmAdslCoreProfileTimerFn;
-	profileTimer.expires = 2;	/* 10ms */
 	profileTimer.data = 0;
+#else
+   timer_setup(&profileTimer, (void *)BcmAdslCoreProfileTimerFn, 0);
+#endif
+	profileTimer.expires = 2;	/* 10ms */
 	PROF_TIMER_SEED_INIT;
 	add_timer(&profileTimer);
 	profileStarted = 1;
@@ -9601,7 +9695,11 @@ void BcmAdslCoreProfilingStop(void)
 }
 
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+LOCAL void BcmAdslCoreProfileTimerFn(struct timer_list *arg)
+#else
 LOCAL void BcmAdslCoreProfileTimerFn(uint arg)
+#endif
 {
 	uint 		cycleCnt0;
 	uint 		randomDelay;

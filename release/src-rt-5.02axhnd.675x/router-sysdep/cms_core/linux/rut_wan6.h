@@ -363,17 +363,12 @@ CmsRet rutCfg_startWanPppConnection6(const InstanceIdStack *iidStack,
 /** After dhcp6c gets the external address/dns/prefix delegation info, setup
  * the services such as dhcp6s, radvd, mld, gateway, dns, and etc..
  *
- * @param  *ifName               (IN)  interface name
- * @param  *addr                  (IN)  IPv6 address assigned to WAN interface
- * @param  firewallEnabled     (IN)  if firewall is enabled
- * @param  pdEnabled            (IN)  if prefix delegation is obtained
- * @param  unnumbered           (IN)  if the interface is unnumbered model
- * @param  mldEnabled          (IN)  if mld is enabled
- *
+ * @param *pObj   (IN) a pointer to _WanPppConnObject/_WanIpConnObject
+ * @UBOOL8 isIpObj (IN)  is it a IpConnObject
  * @return CmsRet enum.
  */
-CmsRet rutCfg_setupWanConnection6(const char *ifName, const char *addr, UBOOL8 firewallEnabled,
-                                   UBOOL8 pdEnabled, UBOOL8 unnumbered, UBOOL8 Dhcp6cIana, UBOOL8 mldEnabled);
+CmsRet rutCfg_setupWanConnection6(const void *pObj __attribute__((unused)),
+								  UBOOL8 isIpObj __attribute__((unused)));
 
 
 /** The actions to disable/delete an IPv6 IPoE connection
@@ -405,6 +400,15 @@ CmsRet rutWan_ipv6PppConnDisable(_WanPppConnObject *newObj, const _WanPppConnObj
  *
  */
 void rutWan_removeZeroLifeGtwy6(const char *gateway, const char *ifName);
+
+
+/** The actions to delete the corresponding ra route while receiving zero lifetime RA or Lflag=0
+ *
+ * @param  *wanPrefix            (IN) 
+ * @param  *ifName             (IN) 
+ *
+ */
+void rutWan_updateRaRoute(const char *wanPrefix, const char *ifName);
 
 #endif
 

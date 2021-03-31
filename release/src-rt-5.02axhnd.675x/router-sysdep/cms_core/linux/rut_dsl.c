@@ -1222,6 +1222,7 @@ CmsRet rutDsl_initPPPoA_igd(const InstanceIdStack *iidStack, void * Obj)
    char atmEncap[BUFLEN_16]={0};   
    CmsRet ret=CMSRET_SUCCESS;
    _WanPppConnObject *newObj = (_WanPppConnObject *) Obj;
+   char idlelimit[BUFLEN_32] = {0};
 
    
    cmsLog_debug("Enter");
@@ -1283,6 +1284,13 @@ CmsRet rutDsl_initPPPoA_igd(const InstanceIdStack *iidStack, void * Obj)
    if (newObj->X_BROADCOM_COM_Enable_Debug)
    {
       strncat(cmdLine, " -d", sizeof(cmdLine)-1);
+   }
+
+   /* enable dial-on-demand if it is selected */
+   if (!cmsUtl_strcmp(newObj->connectionTrigger, MDMVS_ONDEMAND))
+   {
+      snprintf(idlelimit, sizeof(idlelimit), " -D -I %d", newObj->idleDisconnectTime);
+      strncat(cmdLine, idlelimit, sizeof(cmdLine) -1);
    }
 
    /* IP extension */

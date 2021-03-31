@@ -63,7 +63,7 @@
  *
  *
  *****************************************************************************/
-#if defined(__KERNEL__) || defined(TARG_OS_RTEMS) || defined(_CFE_) || defined(_NOOS)
+#if defined(__KERNEL__) || defined(TARG_OS_RTEMS) || defined(_NOOS)
 #include <bcmtypes.h>
 #else
 #include <stdlib.h>

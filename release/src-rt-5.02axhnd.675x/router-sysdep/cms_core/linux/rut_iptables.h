@@ -167,6 +167,7 @@ void rutIpt_removeIpSecPolicy(const char *ifName);
  */
 void rutIpt_setupFirewallForDHCPv6(UBOOL8 unblock, const char *ifName);
 
+void rutIpt_defaultLANSetup6(const char *ifName);
 
 /** Initialize firewall exceptions
  *
@@ -552,6 +553,19 @@ UBOOL8 rutIpt_isDuplicateFirewallException_dev2(const Dev2FirewallExceptionRuleO
  */
  void rutIpt_disassociateOtherBridgesFromWanIntf(char action, SINT32 domain, const char *wanIfcName, const char *localSubnet, const char *localSubnetmask);
 #endif /* DMP_BRIDGING_1   aka SUPPORT_PORT_MAP */
+
+
+#ifdef DMP_DEVICE2_BRIDGE_1 /* aka SUPPORT_PMAP */
+/** Add or delete NAT rule for interface group
+ * @isAdd                  (IN) '1'/'0': Add/Delete.
+ * @param ifName           (IN) Communication domain, either PF_INET or PF_INET6.
+ * @param bridgeIfName     (IN) This is the wan interface name string for which the firewall policies applied to
+ * @param isFullCone       (IN) This is the Subnetaddr of the bridge on which the wan interface FORWARD rules ACCEPT, but DROP other bridges.
+ */
+
+void rutIpt_configNatForIntfGroup_dev2(UBOOL8 isAdd, const char *ifName, const char *bridgeIfName, UBOOL8 isFullCone);
+#endif
+
 
 void rutIpt_BeepSecurityModule(void);
 void rutIpt_BeepPortMappingModule(void);

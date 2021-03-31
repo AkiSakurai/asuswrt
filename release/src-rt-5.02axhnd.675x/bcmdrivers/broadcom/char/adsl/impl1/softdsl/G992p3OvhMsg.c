@@ -118,6 +118,11 @@
 #undef  DEBUG_PRINT_RCV_SEG
 #define CLIP_LARGE_SNR
 #define WORKAROUND_2BYTES_US_ATTNDR_RSP
+//#define EOC_VER_WITH_DRV
+
+#ifdef EOC_VER_WITH_DRV
+#include "../AdslDrvVersion.h"
+#endif
 
 #define globalVar gG992p3OvhMsgVars
 
@@ -363,6 +368,7 @@ union VectorMgrEocBufferResponse
 
 #define RestrictValue(n,l,r)        ((n) < (l) ? (l) : (n) > (r) ? (r) : (n))
 
+uchar inmDriverPhyCompatibility=0;
 char g992p3OvhMsgVendorId[kDslVendorIDRegisterLength+1] = "\xB5""\x00""BDCM""\x00\x00";
 
 
@@ -469,6 +475,10 @@ Private void G992p3OvhMsgCompleteClearEocFrame(void *gDslVars, dslFrame *pFrame)
 Private void G992p3OvhMsgCompleteNonStdFacFrame(void *gDslVars, dslFrame *pFrame);
 Private void G992p3OvhMsgCompleteDatagramFrame(void *gDslVars, dslFrame *pFrame);
 #ifdef SUPPORT_HMI
+extern void XdslCoreG997ClearHlogQlnReceivedFlags(void *pDslVars);
+extern void XdslCoreG997SendHmiEocComplete(void *pDslVars, int cmdId);
+extern void BcmXdslNotifyLinkUp(unsigned char lineId);
+Public int G992p3OvhMsgBrcmCPE(void *gDslVars);
 Private void G992p3OvhMsgCompleteHmiEocFrame(void *gDslVars, dslFrame *pFrame, dslFrame *pRxFrame, ulong timeOut);
 #endif
 
@@ -876,6 +886,8 @@ Private void G992p3OvhMsgInitFirstVectorBlockReadCmdId (void *gDslVars, int cmdI
 	globalVar.pollingSnrBlRdCmd=0;
 }
 
+#define VectorBldRdMaxGroupSize		38
+
 Private void CreateVectorReadCmdSeq(void *gDslVars,VDSLPMDVectorReadCmdToneGrp* CmdGrp, int MaxGrpSize,bandPlanDescriptor *bandplan, int gFactor)
 {
 	unsigned short n=0,bp=0,nextBand=1,MaxInc, bpStartTone, bpEndTone;
@@ -979,6 +991,8 @@ Private void G992p3OvhMsgPollPMDPerTonePollCmdControl(void *gDslVars,int lastRsp
 		{
 			if(lastRspType==0 && globalVar.coVendorBRCM==0)
 			{
+				int gFactors;
+				bandPlanDescriptor *pBandPlan;
 				__SoftDslPrintf(gDslVars, "Disable VectorBlockRead subCmd=%d\n", 0, pCmd->cmd[4]);
 #ifdef CONFIG_BCM_DSL_GFAST
 				if(XdslMibIsGfastMod(gDslVars))
@@ -988,7 +1002,15 @@ Private void G992p3OvhMsgPollPMDPerTonePollCmdControl(void *gDslVars,int lastRsp
 				rdCmdSize = sizeof(PMDBlockReadCmd);
 				/* Create Block Read command sequence for HlogQln */
 				pMib = (void *) AdslMibGetObjectValue (gDslVars, NULL, 0, NULL, &mibLen);
-				CreateVectorReadCmdSeq(gDslVars,pCmdGrp,32,&(pMib->usNegBandPlanDiscovery),pMib->gFactors.Gfactor_SUPPORTERCARRIERSus);
+				if(kVdslLROff != pMib->xdslInfo.vdslLRmode) {
+					gFactors = pMib->gFactors.Gfactor_MEDLEYSETus;
+					pBandPlan = &(pMib->usNegBandPlan);
+				}
+				else {
+					gFactors = pMib->gFactors.Gfactor_SUPPORTERCARRIERSus;
+					pBandPlan = &(pMib->usNegBandPlanDiscovery);
+				}
+				CreateVectorReadCmdSeq(gDslVars,pCmdGrp,32,pBandPlan,gFactors);
 				nxtCmd=0;
 				WriteCnt16((pRdCmd+4),pCmdGrp->toneGroups[nxtCmd].startToneGp);
 				WriteCnt16((pRdCmd+6),pCmdGrp->toneGroups[nxtCmd].stopToneGp);
@@ -1012,7 +1034,7 @@ Private void G992p3OvhMsgPollPMDPerTonePollCmdControl(void *gDslVars,int lastRsp
 						CreateVectorReadCmdSeq(gDslVars,pCmdGrp,248,&(pMib->usNegBandPlan),1);
 					else
 #endif
-					CreateVectorReadCmdSeq(gDslVars,pCmdGrp,38,&(pMib->usNegBandPlan),pMib->gFactors.Gfactor_MEDLEYSETus);
+					CreateVectorReadCmdSeq(gDslVars,pCmdGrp,VectorBldRdMaxGroupSize,&(pMib->usNegBandPlan),pMib->gFactors.Gfactor_MEDLEYSETus);
 					nxtCmd=0;
 					pRdCmd[4]=kG992p3OvhMsgCmdPMDSnr;
 					WriteCnt16((pRdCmd+5),pCmdGrp->toneGroups[nxtCmd].startToneGp);
@@ -1029,8 +1051,18 @@ Private void G992p3OvhMsgPollPMDPerTonePollCmdControl(void *gDslVars,int lastRsp
 					if(pCmdGrp->lastCmdNm==pCmdGrp->numCmds-1)
 					{
 						/* Create Vector Block Read command sequence for QLN */
+						int gFactors;
+						bandPlanDescriptor *pBandPlan;
 						pMib = (void *) AdslMibGetObjectValue (gDslVars, NULL, 0, NULL, &mibLen);
-						CreateVectorReadCmdSeq(gDslVars,pCmdGrp,38,&(pMib->usNegBandPlanDiscovery),pMib->gFactors.Gfactor_SUPPORTERCARRIERSus);
+						if(kVdslLROff != pMib->xdslInfo.vdslLRmode) {
+							gFactors = pMib->gFactors.Gfactor_MEDLEYSETus;
+							pBandPlan = &(pMib->usNegBandPlan);
+						}
+						else {
+							gFactors = pMib->gFactors.Gfactor_SUPPORTERCARRIERSus;
+							pBandPlan = &(pMib->usNegBandPlanDiscovery);
+						}
+						CreateVectorReadCmdSeq(gDslVars,pCmdGrp,VectorBldRdMaxGroupSize,pBandPlan,gFactors);
 						nxtCmd=0;
 						pRdCmd[4]=kG992p3OvhMsgCmdPMDQLineNoise;
 						WriteCnt16((pRdCmd+5),pCmdGrp->toneGroups[nxtCmd].startToneGp);
@@ -1059,7 +1091,7 @@ Private void G992p3OvhMsgPollPMDPerTonePollCmdControl(void *gDslVars,int lastRsp
 							CreateVectorReadCmdSeq(gDslVars,pCmdGrp,248,&(pMib->usNegBandPlan),1);
 						else
 #endif
-						CreateVectorReadCmdSeq(gDslVars,pCmdGrp,38,&(pMib->usNegBandPlan),pMib->gFactors.Gfactor_MEDLEYSETus);
+						CreateVectorReadCmdSeq(gDslVars,pCmdGrp,VectorBldRdMaxGroupSize,&(pMib->usNegBandPlan),pMib->gFactors.Gfactor_MEDLEYSETus);
 						nxtCmd=0;
 						pRdCmd[4]=kG992p3OvhMsgCmdPMDSnr;
 						WriteCnt16((pRdCmd+5),pCmdGrp->toneGroups[nxtCmd].startToneGp);
@@ -1147,6 +1179,19 @@ Public void G992p3OvhMsgReset(void *gDslVars)
 	long	mibLen;
 	
 	pMib = (void *) AdslMibGetObjectValue (gDslVars, NULL, 0, NULL, &mibLen);
+	
+	if((globalVar.lastTxCmdFrame != &globalVar.txCmdFrame) && (globalVar.txFlags & kTxCmdWaitingAck)) {
+#ifdef SUPPORT_HMI
+		if (G992p3FrameIsBitSet(gDslVars, globalVar.lastTxCmdFrame, kFrameHmiEoc))
+			G992p3OvhMsgCompleteHmiEocFrame(gDslVars, globalVar.lastTxCmdFrame, (void *)1, 1);
+		else
+#endif
+		if (G992p3FrameIsBitSet(gDslVars, globalVar.lastTxCmdFrame, kFrameClearEoc))
+			G992p3OvhMsgCompleteClearEocFrame(gDslVars, globalVar.lastTxCmdFrame);
+		else if (G992p3FrameIsBitSet(gDslVars, globalVar.lastTxCmdFrame, kFrameNonStdFac))
+			G992p3OvhMsgCompleteNonStdFacFrame(gDslVars, globalVar.lastTxCmdFrame);
+	}
+	
 #ifdef GFAST_MANAGMENT_COUNTER_WITH_FECS
 	gfastWithFECS = false;
 #endif
@@ -1259,6 +1304,7 @@ Public void G992p3OvhMsgReset(void *gDslVars)
 	}
 
 #ifdef SUPPORT_HMI
+	XdslCoreG997ClearHlogQlnReceivedFlags(gDslVars);
 	while(CircBufferGetReadAvail(&globalVar.txHmiEocFrameCB) > 0) {
 		pFr = CircBufferGetReadPtr(&globalVar.txHmiEocFrameCB);
 		pFrame = *pFr;
@@ -1332,7 +1378,7 @@ Public void G992p3OvhMsgReset(void *gDslVars)
 		if(XdslMibIsGfastMod(gDslVars)) {
 			if(globalVar.coVendorBRCM) {
 				/* Create Vector Block Read command sequence for QLN */
-				CreateVectorReadCmdSeq(gDslVars,&globalVar.VectorBlockRdCmdSeq,38,&(pMib->usNegBandPlanDiscovery),pMib->gFactors.Gfactor_SUPPORTERCARRIERSus);
+				CreateVectorReadCmdSeq(gDslVars,&globalVar.VectorBlockRdCmdSeq,VectorBldRdMaxGroupSize,&(pMib->usNegBandPlanDiscovery),pMib->gFactors.Gfactor_SUPPORTERCARRIERSus);
 				G992p3OvhMsgInitFirstVectorBlockReadCmdId(gDslVars, kG992p3OvhMsgCmdPMDQLineNoise, &globalVar.VectorBlockRdCmdSeq);
 			}
 			else {
@@ -1340,7 +1386,7 @@ Public void G992p3OvhMsgReset(void *gDslVars)
 				if (pMib->gFactors.Gfactor_Gfast_mode)
 					CreateVectorReadCmdSeq(gDslVars,&globalVar.VectorBlockRdCmdSeq,248,&(pMib->usNegBandPlan),1);
 				else
-					CreateVectorReadCmdSeq(gDslVars,&globalVar.VectorBlockRdCmdSeq,38,&(pMib->usNegBandPlan),pMib->gFactors.Gfactor_MEDLEYSETus);
+					CreateVectorReadCmdSeq(gDslVars,&globalVar.VectorBlockRdCmdSeq,VectorBldRdMaxGroupSize,&(pMib->usNegBandPlan),pMib->gFactors.Gfactor_MEDLEYSETus);
 				G992p3OvhMsgInitFirstVectorBlockReadCmdId(gDslVars, kG992p3OvhMsgCmdPMDSnr, &globalVar.VectorBlockRdCmdSeq);
 			}
 		}
@@ -1348,7 +1394,17 @@ Public void G992p3OvhMsgReset(void *gDslVars)
 #endif
 		{
 			/* Create Vector Block Read command sequence for Hlog */
-			CreateVectorReadCmdSeq(gDslVars,&globalVar.VectorBlockRdCmdSeq,19,&(pMib->usNegBandPlanDiscovery),pMib->gFactors.Gfactor_SUPPORTERCARRIERSus);
+			int gFactors;
+			bandPlanDescriptor *pBandPlan;
+			if(kVdslLROff != pMib->xdslInfo.vdslLRmode) {
+				gFactors = pMib->gFactors.Gfactor_MEDLEYSETus;
+				pBandPlan = &(pMib->usNegBandPlan);
+			}
+			else {
+				gFactors = pMib->gFactors.Gfactor_SUPPORTERCARRIERSus;
+				pBandPlan = &(pMib->usNegBandPlanDiscovery);
+			}
+			CreateVectorReadCmdSeq(gDslVars,&globalVar.VectorBlockRdCmdSeq,VectorBldRdMaxGroupSize>>1,pBandPlan,gFactors);
 			G992p3OvhMsgInitFirstVectorBlockReadCmdId(gDslVars, kG992p3OvhMsgCmdPMDChanRspLog, &globalVar.VectorBlockRdCmdSeq);
 		}
 	}
@@ -1573,7 +1629,7 @@ Private void G992p3OvhMsgXmtSendLongFrame(void *gDslVars, dslFrame *pFrame)
   }
 
   if (NULL != globalVar.txSegFrameCtl.segFrame) {
-    __SoftDslPrintf(gDslVars, "G992p3OvhMsgXmtSendLongFrame: txSegFrameCtl BUSY, fr=0x%p\n", 0, pFrame);
+    __SoftDslPrintf(gDslVars, "G992p3OvhMsgXmtSendLongFrame: txSegFrameCtl BUSY, fr=0x%px\n", 0, pFrame);
     return;
   }
 
@@ -1894,6 +1950,162 @@ Private void G992p3OvhMsgSendDatagramCmd(void *gDslVars, dslFrame *pFrame)
   ((  ((messageCommand) == (kG992p3OvhMsgCmdPMDRead))         \
     || ((messageCommand) == (kDslINMControlCommand))          \
     || ((messageCommand) == (kG992p3OvhMsgCmdNonStdFacLow))  ) ? (kG992p3PriorityLow) : (kG992p3PriorityNormal))
+
+Public int G992p3OvhMsgBrcmCPE(void *gDslVars)
+{
+  return globalVar.coVendorBRCM;
+}
+
+Public int G992p3OvhMsgIsCmdQln(unsigned char *pData)
+{
+  return ((kG992p3OvhMsgCmdPMDRead == pData[2]) &&
+          (kG992p3OvhMsgCmdPMDVectorBlockRead == pData[3]) &&
+          (kG992p3OvhMsgCmdPMDQLineNoise == pData[4]));
+}
+
+Public int G992p3OvhMsgIsCmdHlog(unsigned char *pData)
+{
+  return ((kG992p3OvhMsgCmdPMDRead == pData[2]) &&
+          (kG992p3OvhMsgCmdPMDVectorBlockRead == pData[3]) &&
+          (kG992p3OvhMsgCmdPMDChanRspLog == pData[4]));
+}
+
+Public int G992p3OvhMsgIsZeroStartSCG(unsigned char *pData)
+{
+  int startSCG = ReadCnt16(pData+kG992p3CmdSubCode+2);
+  return (0 == startSCG);
+}
+
+Public int G992p3OvhMsgHmiEocProcessCmd(void *gDslVars, unsigned char *pData, unsigned char *pMsg, unsigned short *pMsgLen)
+{
+  long    mibLen;
+  adslMibInfo *pMib;
+  unsigned short rspLen = 0;
+  int            rsp = 0;
+
+  switch (pData[kG992p3CmdCode])
+  {
+    default:
+      break;
+    case kG992p3OvhMsgCmdPMDRead:
+    {
+      pMsg[kG992p3CmdCode] = kG992p3OvhMsgCmdPMDRead;
+      switch(pData[kG992p3CmdSubCode])
+      {
+        default:
+          break;
+        case kG992p3OvhMsgCmdPMDVectorBlockRead:
+        {
+          int startSCG, stopSCG, i, g, j;
+          bandPlanDescriptor *pBandPlan;
+          startSCG = ReadCnt16(pData+kG992p3CmdSubCode+2);
+          stopSCG = ReadCnt16(pData+kG992p3CmdSubCode+4);
+          __SoftDslPrintf(gDslVars, "kG992p3OvhMsgCmdPMDVectorBlockRead cmdId=%x startSCG=%d stopSCG=%d",0,pData[kG992p3CmdId], startSCG, stopSCG);
+          g = 511;
+          if ((startSCG > g) || (stopSCG > g) || (startSCG > stopSCG))
+          {
+            pMsg[kG992p3CmdSubCode] = kG992p3OvhMsgCmdPMDReadNACK;
+            *pMsgLen = 4;
+            rsp = 1;
+            break;
+          }
+          pMib = (void *) AdslMibGetObjectValue (gDslVars, NULL, 0, NULL, &mibLen);
+          pMsg[kG992p3CmdSubCode] = kG992p3OvhMsgCmdPMDVectorBlockReadRsp;
+          rspLen = 4;
+          pMsg += rspLen;
+          WriteCnt16(pMsg, 256);
+          rspLen += 2;
+          pMsg += 2;
+          switch(pData[kG992p3CmdId])
+          {
+            default:
+              break;
+            case kG992p3OvhMsgCmdPMDChanRspLog:
+            {
+              uint hlog;
+              long hlogLen;
+              short *pHlogInfo;
+              uchar hLogOidStr[] = { kOidAdslPrivate, kOidAdslPrivChanCharLog};
+              pHlogInfo = (void*) AdslMibGetObjectValue (gDslVars, hLogOidStr, sizeof(hLogOidStr), NULL, &hlogLen);
+              pHlogInfo += XdslMibGetToneNumGfast(gDslVars) >> 1;
+              g = pMib->gFactors.Gfactor_SUPPORTERCARRIERSds;
+              pBandPlan = &(pMib->dsNegBandPlanDiscovery);
+              i = startSCG;
+              
+              for(j = 0; j < pBandPlan->noOfToneGroups; j++)
+              {
+                for(; i <= stopSCG; i++) {
+                  if(i*g >  pBandPlan->toneGroups[j].endTone )
+                    break;
+                  if(i*g <  pBandPlan->toneGroups[j].startTone )
+                    hlog = 0x3FF;
+                  else
+                  {
+                    hlog = (uint) (((6*16 - pHlogInfo[i*g])*5) >> 3);
+                    if (hlog > 0x3FC)
+                      hlog = 0x3FF;
+                  }
+                  WriteCnt16(pMsg,hlog);
+                  pMsg += 2;
+                }
+              }
+              
+              for(; i <= stopSCG; i++) {
+                WriteCnt16(pMsg,0x3FF);
+                pMsg += 2;
+              }
+              
+              rspLen += 2*(stopSCG - startSCG + 1);
+              *pMsgLen = rspLen;
+              rsp = 1;
+              break;
+            }
+            case kG992p3OvhMsgCmdPMDQLineNoise:
+            {
+              uint qln;
+              long qlnLen;
+              short *pQlnInfo, x;
+              uchar qlnOidStr[] = { kOidAdslPrivate, kOidAdslPrivQuietLineNoise};
+              pQlnInfo = (void*) AdslMibGetObjectValue (gDslVars, qlnOidStr, sizeof(qlnOidStr), NULL, &qlnLen);
+              pQlnInfo += XdslMibGetToneNumGfast(gDslVars) >> 1;
+              g = pMib->gFactors.Gfactor_SUPPORTERCARRIERSds;
+              pBandPlan = &(pMib->dsNegBandPlanDiscovery);
+              i = startSCG;
+              x = 35;
+
+              for(j = 0; j < pBandPlan->noOfToneGroups; j++)
+              {
+                for(; i <= stopSCG; i++) {
+                  if(i*g >  pBandPlan->toneGroups[j].endTone )
+                    break;
+                  if(i*g <  pBandPlan->toneGroups[j].startTone )
+                    pMsg[i-startSCG] = 255;
+                  else
+                  {
+                    qln = (uint) ((-pQlnInfo[i*g] - x*16) >> 3);
+                    pMsg[i-startSCG] = (qln > 254) ? 255 : (uchar)qln;
+                  }
+                }
+              }
+              
+              for(;i <= stopSCG; i++)
+                pMsg[i-startSCG] = 255;
+              
+              rspLen += stopSCG - startSCG + 1;
+              *pMsgLen = rspLen;
+              rsp=1;
+              break;
+            }
+          }
+          break;
+        }  /* case kG992p3OvhMsgCmdPMDVectorBlockRead */
+      }/* switch(pData[kG992p3CmdSubCode]) */
+      break;
+    } /* case kG992p3OvhMsgCmdPMDRead */
+  }/* switch (pData[kG992p3CmdCode]) */
+  
+  return rsp;
+}
 
 Private void G992p3OvhMsgSendHmiEocCmd(void *gDslVars, dslFrame *pFrame)
 {
@@ -2625,7 +2837,7 @@ Private int createVectorReply(void *gDslVars, uchar* buffer, int buffer_length)
                                   &remainingLength, 
                                   (VdslMsgToneGroupDescriptor*) &vectBands,
                                   8,
-                                  (kVdslProfileBrcmPriv1 == pMib->xdslInfo.vdsl2Profile)? 1:0);
+                                  (kVdslProfile35b == pMib->xdslInfo.vdsl2Profile)? 1:0);
         if(vectBands.noOfTonesGroups>4)
         {
             __SoftDslPrintf(gDslVars,"DRV VECT: Too many vectoring bands: %d ",0, vectBands.noOfTonesGroups);
@@ -2641,7 +2853,7 @@ Private int createVectorReply(void *gDslVars, uchar* buffer, int buffer_length)
           {
               /* Sanity check of the bandplan */
               int nTones=0,k,maxTone;
-              maxTone = (kVdslProfileBrcmPriv1 == pMib->xdslInfo.vdsl2Profile)? MAX_VECT_TONES_DS_8KTONE: (MAX_VECT_TONES<<MIN_LOG2_SUB_SYNC_RX);
+              maxTone = (kVdslProfile35b == pMib->xdslInfo.vdsl2Profile)? MAX_VECT_TONES_DS_8KTONE: (MAX_VECT_TONES<<MIN_LOG2_SUB_SYNC_RX);
               for(k=0;k<info->nBands;k++)
                   nTones+=info->infoBand[k].nTonesInBand;
               if(nTones>maxTone)
@@ -2763,8 +2975,8 @@ Private int createVectorReply(void *gDslVars, uchar* buffer, int buffer_length)
         {
           VectorMode *vectorMode    =  (VectorMode*)&buffer[4];
           unsigned char disableRxBitSwap = lineMgr->vectorMode.disableRxBitSwap;
-		  unsigned char disableVN      = lineMgr->vectorMode.disableVN;
-          
+		  unsigned char disableVN        = lineMgr->vectorMode.disableVN;
+
 		  __SoftDslPrintf(gDslVars,"DRV VECT(VECTORMGR_SET_MODE_CMD_ID): disableBS=0x%x disableVN=0x%x, MSG: disableBS=0x%x disableVN=0x%x direction=%d", 0,
 						  disableRxBitSwap, disableVN, vectorMode->disableRxBitSwap, vectorMode->disableVN, vectorMode->direction);       
 
@@ -2864,6 +3076,9 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 				adslPerfCounters		adslTxPerf;
 				atmConnectionDataStat		atmTxData[MAX_LP_NUM];
 				ginpCounters				ginpCounter;
+#ifdef CONFIG_BCM_DSL_GFAST
+				gfastCounters				gfastCounter;
+#endif
 				int				i = 0;
 #if defined(CONFIG_VDSL_SUPPORTED)
 				if ( !XdslMibIsVdsl2Mod(gDslVars) && XdslMibIsAtmConnectionType(gDslVars) && (48 != rspLen) &&
@@ -2884,7 +3099,9 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 				AdslMibByteClear(sizeof(adslTxPerf), (void *)&adslTxPerf);
 				AdslMibByteClear(sizeof(atmTxData), (void *)&atmTxData[0]);
 				AdslMibByteClear(sizeof(ginpCounters), (void *)&ginpCounter);
-				
+#ifdef CONFIG_BCM_DSL_GFAST
+				AdslMibByteClear(sizeof(gfastCounters), (void *)&gfastCounter);
+#endif
 				adslTxData[path0].cntRSCor = ReadCnt32(pMsg+i); i += 4;
 				
 				if(XdslMibIs2lpActive(gDslVars, TX_DIRECTION)) {
@@ -2932,18 +3149,11 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 					ginpCounter.minEFTR = ReadCnt32(pMsg+i); i += 4;
 					ginpCounter.errFreeBits = ReadCnt32(pMsg+i); i += 4;
 					if(XdslMibReportAmd4GfastCounters(gDslVars) && (rspLen >= (i + 24))) {
-						pMib->adslStat.gfastStat.rxANDEFTRmin = ReadCnt32(pMsg+i); i += 4;
-						pMib->adslStat.gfastStat.rxANDEFTRmax = ReadCnt32(pMsg+i); i += 4;
-						pMib->adslStat.gfastStat.rxANDEFTRsum = ReadCnt32(pMsg+i); i += 4;
-						pMib->adslStat.gfastStat.rxANDEFTRDS = ReadCnt32(pMsg+i); i += 4;
-						pMib->adslStat.gfastStat.rxLANDEFTRS = ReadCnt32(pMsg+i); i += 4;
-#if 0
-						pMib->adslStatSincePowerOn.gfastStat.rxANDEFTRmin = pMib->adslStat.gfastStat.rxANDEFTRmin;
-						pMib->adslStatSincePowerOn.gfastStat.rxANDEFTRmax = pMib->adslStat.gfastStat.rxANDEFTRmax;
-						pMib->adslStatSincePowerOn.gfastStat.rxANDEFTRsum = pMib->adslStat.gfastStat.rxANDEFTRsum;
-						pMib->adslStatSincePowerOn.gfastStat.rxANDEFTRDS = pMib->adslStat.gfastStat.rxANDEFTRDS;
-						pMib->adslStatSincePowerOn.gfastStat.rxLANDEFTRS = pMib->adslStat.gfastStat.rxLANDEFTRS;
-#endif
+						gfastCounter.rxANDEFTRmin = ReadCnt32(pMsg+i); i += 4;
+						gfastCounter.rxANDEFTRmax = ReadCnt32(pMsg+i); i += 4;
+						gfastCounter.rxANDEFTRsum = ReadCnt32(pMsg+i); i += 4;
+						gfastCounter.rxANDEFTRDS = ReadCnt32(pMsg+i); i += 4;
+						gfastCounter.rxLANDEFTRS = ReadCnt32(pMsg+i); i += 4;
 					}
 				}
 				else
@@ -2973,7 +3183,11 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 					}
 				}
 				
-				AdslMibUpdateTxStat(gDslVars, &adslTxData[0], &adslTxPerf, &atmTxData[0], &ginpCounter);
+				AdslMibUpdateTxStat(gDslVars, &adslTxData[0], &adslTxPerf, &atmTxData[0], &ginpCounter
+#ifdef CONFIG_BCM_DSL_GFAST
+													,&gfastCounter
+#endif
+													);
 				if( (kG992p3OvhMsgCmdCntReadId1| 0x80) == pData[kG992p3CmdSubCode] ) {
 					pMib->adslStat.fireStat.reXmtRSCodewordsRcvedUS = ReadCnt32(pMsg+i); i += 4;
 					pMib->adslStat.fireStat.reXmtUncorrectedRSCodewordsUS= ReadCnt32(pMsg+i); i += 4;
@@ -3053,22 +3267,30 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 					stopSCG=ReadCnt16(&(pCmd->cmd[6]));
 					if(globalVar.pollingSnrBlRdCmd==0) 
 					{
+					bandPlanDescriptor *pBandPlan;
+					if(kVdslLROff != pMib->xdslInfo.vdslLRmode) {
+						g = pMib->gFactors.Gfactor_MEDLEYSETus;
+						pBandPlan = &(pMib->usNegBandPlan);
+					}
+					else {
+						g = pMib->gFactors.Gfactor_SUPPORTERCARRIERSus;
+						pBandPlan = &(pMib->usNegBandPlanDiscovery);
+					}
 #ifdef DBG_PRINT_PMD_PARAMS
 					__SoftDslPrintf(gDslVars, "Parsing Block Read Rsp Hlog",0);
 #endif
 					pMsg+=2;
 					oidStr[1] = kOidAdslPrivChanCharLog;
-					g=pMib->gFactors.Gfactor_SUPPORTERCARRIERSus;
 					pToneData = (void *) AdslMibGetObjectValue(gDslVars, oidStr,sizeof(oidStr), NULL, &mibLen);
 					pToneData+=startSCG*g;
 					n = ((int) (pMsg[0] & 0x3) << 12) + (pMsg[1] << 4);
 					n = -(n/10) + 6*16;
 					j=0;
-					for(k=0;k<pMib->usNegBandPlanDiscovery.noOfToneGroups;k++)
+					for(k=0;k<pBandPlan->noOfToneGroups;k++)
 					{
-						if(startSCG*g > pMib->usNegBandPlanDiscovery.toneGroups[k].endTone)
+						if(startSCG*g > pBandPlan->toneGroups[k].endTone)
 							continue;
-						diff=pMib->usNegBandPlanDiscovery.toneGroups[k].startTone-startSCG*g;
+						diff=pBandPlan->toneGroups[k].startTone-startSCG*g;
 						if(diff>=0 && diff<g)
 						{
 							j=diff;
@@ -3078,7 +3300,7 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 						
 					}
 #ifdef DBG_PRINT_PMD_PARAMS
-					__SoftDslPrintf(gDslVars, "startSCG=%d j=%d BPstartTone=%d diff=%d",0,startSCG,j,pMib->usNegBandPlanDiscovery.toneGroups[k].startTone,diff);
+					__SoftDslPrintf(gDslVars, "startSCG=%d j=%d BPstartTone=%d diff=%d",0,startSCG,j,pBandPlan->toneGroups[k].startTone,diff);
 #endif
 					for (;j<g;j++)
 						*pToneData++ = n;
@@ -3094,9 +3316,9 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 					if(startSCG!=stopSCG)
 					{
 #ifdef DBG_PRINT_PMD_PARAMS
-						__SoftDslPrintf(gDslVars, "stopSCG=%d endTone=%d ",0,stopSCG,pMib->usNegBandPlanDiscovery.toneGroups[k].endTone);
+						__SoftDslPrintf(gDslVars, "stopSCG=%d endTone=%d ",0,stopSCG,pBandPlan->toneGroups[k].endTone);
 #endif
-						diff=(stopSCG+1)*g-1-pMib->usNegBandPlanDiscovery.toneGroups[k].endTone;
+						diff=(stopSCG+1)*g-1-pBandPlan->toneGroups[k].endTone;
 						if(diff<0)
 							diff=0;
 						n = ((int) (pMsg[0] & 0x3) << 12) + (pMsg[1] << 4);
@@ -3110,7 +3332,7 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 #endif
 					pMsg+=2;
 					oidStr[1] = kOidAdslPrivQuietLineNoise;
-					g=pMib->gFactors.Gfactor_SUPPORTERCARRIERSus;
+					//g=pMib->gFactors.Gfactor_SUPPORTERCARRIERSus;
 					pToneData = (void *) AdslMibGetObjectValue(gDslVars, oidStr,sizeof(oidStr), NULL, &mibLen);
 					pToneData+=startSCG*g;
 					if (*pMsg != 255)
@@ -3118,11 +3340,11 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 					else
 						n = -160*16;
 					j=0;
-					for(k=0;k<pMib->usNegBandPlanDiscovery.noOfToneGroups;k++)
+					for(k=0;k<pBandPlan->noOfToneGroups;k++)
 					{
-						if(startSCG*g > pMib->usNegBandPlanDiscovery.toneGroups[k].endTone)
+						if(startSCG*g > pBandPlan->toneGroups[k].endTone)
 							continue;
-						diff=pMib->usNegBandPlanDiscovery.toneGroups[k].startTone-startSCG*g;
+						diff=pBandPlan->toneGroups[k].startTone-startSCG*g;
 						if(diff>=0 && diff<g)
 						{
 							j=diff;
@@ -3131,7 +3353,7 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 						break;
 					}
 #ifdef DBG_PRINT_PMD_PARAMS
-					__SoftDslPrintf(gDslVars, "startSCG=%d j=%d BPstartTone=%d diff=%d",0,startSCG,j,pMib->usNegBandPlanDiscovery.toneGroups[k].startTone,diff);
+					__SoftDslPrintf(gDslVars, "startSCG=%d j=%d BPstartTone=%d diff=%d",0,startSCG,j,pBandPlan->toneGroups[k].startTone,diff);
 #endif
 					for (;j<g;j++)
 						*pToneData++ = n;
@@ -3149,9 +3371,9 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 					if(startSCG!=stopSCG) 
 					{
 #ifdef DBG_PRINT_PMD_PARAMS
-						__SoftDslPrintf(gDslVars, "stopSCG=%d endTone=%d ",0,stopSCG,pMib->usNegBandPlanDiscovery.toneGroups[k].endTone);
+						__SoftDslPrintf(gDslVars, "stopSCG=%d endTone=%d ",0,stopSCG,pBandPlan->toneGroups[k].endTone);
 #endif
-						diff=(stopSCG+1)*g-1-pMib->usNegBandPlanDiscovery.toneGroups[k].endTone;
+						diff=(stopSCG+1)*g-1-pBandPlan->toneGroups[k].endTone;
 						if(diff<0)
 							diff=0;
 						if (*pMsg != 255)
@@ -3230,6 +3452,7 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 				case kG992p3OvhMsgCmdPMDVectorBlockReadRsp:
 				{
 					int scgIndex,startSCG,stopSCG,i,g,n,j,k,diff=0;
+					bandPlanDescriptor *pBandPlan;
 					CHECK_SUBCMD_RSP(kG992p3OvhMsgCmdPMDVectorBlockRead);
 					startSCG=ReadCnt16(&(pCmd->cmd[5]));
 					stopSCG=ReadCnt16(&(pCmd->cmd[7]));
@@ -3247,17 +3470,25 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 						case kG992p3OvhMsgCmdPMDChanRspLog:
 						{
 							oidStr[1] = kOidAdslPrivChanCharLog;
-							g=pMib->gFactors.Gfactor_SUPPORTERCARRIERSus;
+							if(kVdslLROff != pMib->xdslInfo.vdslLRmode) {
+								g = pMib->gFactors.Gfactor_MEDLEYSETus;
+								pBandPlan = &(pMib->usNegBandPlan);
+							}
+							else {
+								g = pMib->gFactors.Gfactor_SUPPORTERCARRIERSus;
+								pBandPlan = &(pMib->usNegBandPlanDiscovery);
+							}
+
 							pToneData = (void *) AdslMibGetObjectValue(gDslVars, oidStr,sizeof(oidStr), NULL, &mibLen);
 							pToneData+=startSCG*g;
 							n = ((int) (pMsg[0] & 0x3) << 12) + (pMsg[1] << 4);
 							n = -(n/10) + 6*16;
 							j=0;
-							for(k=0;k<pMib->usNegBandPlanDiscovery.noOfToneGroups;k++)
+							for(k=0;k<pBandPlan->noOfToneGroups;k++)
 							{
-								if(startSCG*g > pMib->usNegBandPlanDiscovery.toneGroups[k].endTone)
+								if(startSCG*g > pBandPlan->toneGroups[k].endTone)
 									continue;
-								diff=pMib->usNegBandPlanDiscovery.toneGroups[k].startTone-startSCG*g;
+								diff=pBandPlan->toneGroups[k].startTone-startSCG*g;
 								if(diff>=0 && diff<g)
 								{
 									j=diff;
@@ -3266,7 +3497,7 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 								break;
 							}
 #ifdef DBG_PRINT_PMD_PARAMS
-							__SoftDslPrintf(gDslVars, "startSCG=%d j=%d BPstartTone=%d diff=%d",0,startSCG,j,pMib->usNegBandPlanDiscovery.toneGroups[k].startTone,diff);
+							__SoftDslPrintf(gDslVars, "startSCG=%d j=%d BPstartTone=%d diff=%d",0,startSCG,j,pBandPlan->toneGroups[k].startTone,diff);
 #endif
 							for (;j<g;j++)
 								*pToneData++ = n;
@@ -3282,9 +3513,9 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 							if(startSCG!=stopSCG)
 							{
 #ifdef DBG_PRINT_PMD_PARAMS
-								__SoftDslPrintf(gDslVars, "stopSCG=%d endTone=%d ",0,stopSCG,pMib->usNegBandPlanDiscovery.toneGroups[k].endTone);
+								__SoftDslPrintf(gDslVars, "stopSCG=%d endTone=%d ",0,stopSCG,pBandPlan->toneGroups[k].endTone);
 #endif
-								diff=(stopSCG+1)*g-1-pMib->usNegBandPlanDiscovery.toneGroups[k].endTone;
+								diff=(stopSCG+1)*g-1-pBandPlan->toneGroups[k].endTone;
 								if(diff<0)
 									diff=0;
 								n = ((int) (pMsg[0] & 0x3) << 12) + (pMsg[1] << 4);
@@ -3297,8 +3528,16 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 						break;
 						case kG992p3OvhMsgCmdPMDQLineNoise:
 						{
+							bandPlanDescriptor *pBandPlan;
 							oidStr[1] = kOidAdslPrivQuietLineNoise;
-							g=pMib->gFactors.Gfactor_SUPPORTERCARRIERSus;
+							if(kVdslLROff != pMib->xdslInfo.vdslLRmode) {
+								g = pMib->gFactors.Gfactor_MEDLEYSETus;
+								pBandPlan = &(pMib->usNegBandPlan);
+							}
+							else {
+								g = pMib->gFactors.Gfactor_SUPPORTERCARRIERSus;
+								pBandPlan = &(pMib->usNegBandPlanDiscovery);
+							}
 							pToneData = (void *) AdslMibGetObjectValue(gDslVars, oidStr,sizeof(oidStr), NULL, &mibLen);
 #ifdef CONFIG_BCM_DSL_GFAST
 							if(XdslMibIsGfastMod(gDslVars))
@@ -3311,11 +3550,11 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 							else
 								n = -160*16;
 							j=0;
-							for(k=0;k<pMib->usNegBandPlanDiscovery.noOfToneGroups;k++)
+							for(k=0;k<pBandPlan->noOfToneGroups;k++)
 							{
-								if(scgIndex > pMib->usNegBandPlanDiscovery.toneGroups[k].endTone)
+								if(scgIndex > pBandPlan->toneGroups[k].endTone)
 									continue;
-								diff=pMib->usNegBandPlanDiscovery.toneGroups[k].startTone - scgIndex;
+								diff=pBandPlan->toneGroups[k].startTone - scgIndex;
 								if(diff>=0 && diff<g)
 								{
 									j=diff;
@@ -3324,7 +3563,7 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 								break;
 							}
 #ifdef DBG_PRINT_PMD_PARAMS
-							__SoftDslPrintf(gDslVars, "startSCGindex=%d j=%d BPstartTone=%d diff=%d",0,scgIndex,j,pMib->usNegBandPlanDiscovery.toneGroups[k].startTone,diff);
+							__SoftDslPrintf(gDslVars, "startSCGindex=%d j=%d BPstartTone=%d diff=%d",0,scgIndex,j,pBandPlan->toneGroups[k].startTone,diff);
 #endif
 							for (;j<g;j++)
 								*pToneData++ = n;
@@ -3342,9 +3581,9 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 							if(startSCG!=stopSCG)
 							{
 								scgIndex = (stopSCG+1)*g;
-								diff = scgIndex - 1 - pMib->usNegBandPlanDiscovery.toneGroups[k].endTone;
+								diff = scgIndex - 1 - pBandPlan->toneGroups[k].endTone;
 #ifdef DBG_PRINT_PMD_PARAMS
-								__SoftDslPrintf(gDslVars, "stopSCGindex=%d endTone=%d diff=%d",0,scgIndex,pMib->usNegBandPlanDiscovery.toneGroups[k].endTone, diff);
+								__SoftDslPrintf(gDslVars, "stopSCGindex=%d endTone=%d diff=%d",0,scgIndex,pBandPlan->toneGroups[k].endTone, diff);
 #endif
 								if(diff<0)
 									diff=0;
@@ -3741,17 +3980,19 @@ Private Boolean G992p3OvhMsgRcvProcessRsp(void *gDslVars, dslFrameBuffer *pBuf, 
 	return true;
 }
 
-Private void G992p3CopyOemData(uchar *pDest, uint dstLen, uchar *pSrc, uint srcLen)
+Private int G992p3CopyOemData(uchar *pDest, uint dstLen, uchar *pSrc, uint srcLen)
 {
   if (dstLen <= srcLen)
     AdslMibByteMove (dstLen, pSrc, pDest);
   else {
     AdslMibByteMove (srcLen, pSrc, pDest);
     AdslMibByteClear(dstLen - srcLen, pDest + srcLen);
+    dstLen = srcLen;
   }
+  return dstLen;
 }
 
-void G992p3GetOemData(void *gDslVars, int paramId, uchar *pDest, uint dstLen, uchar *pSrc, uint srcLen)
+int G992p3GetOemData(void *gDslVars, int paramId, uchar *pDest, uint dstLen, uchar *pSrc, uint srcLen)
 {
   dslStatusStruct     status;
   int           len;
@@ -3762,16 +4003,20 @@ void G992p3GetOemData(void *gDslVars, int paramId, uchar *pDest, uint dstLen, uc
   status.param.dslOemParameter.dataLen = 0;
   (*globalVar.statusHandlerPtr)(gDslVars, &status);
   if (NULL != status.param.dslOemParameter.dataPtr)
-    G992p3CopyOemData(pDest, dstLen, status.param.dslOemParameter.dataPtr, status.param.dslOemParameter.dataLen);
-  else if (NULL == pSrc)
+    len = G992p3CopyOemData(pDest, dstLen, status.param.dslOemParameter.dataPtr, status.param.dslOemParameter.dataLen);
+  else if (NULL == pSrc) {
     AdslMibByteClear(dstLen, pDest);
+    len = 0;
+  }
   else if (0 == srcLen) {
     len = AdslMibStrCopy(pSrc, pDest);
     if (len < dstLen)
       AdslMibByteClear(dstLen - len, pDest + len);
   }
   else  // pSrc != NULL, srcLen != 0
-    G992p3CopyOemData(pDest, dstLen, pSrc, srcLen);
+    len = G992p3CopyOemData(pDest, dstLen, pSrc, srcLen);
+
+  return len;
 }
 
 #if defined(CONFIG_VDSL_SUPPORTED)
@@ -3800,6 +4045,7 @@ static void G992p3OvhMsgProcessBlockReadCommand(void *gDslVars,uchar *pData, int
     uint hlog, snr, qln;
     short *pHlogInfo,*pQlnInfo,*pSnrInfo;
     adslMibInfo	*pMib;
+    bandPlanDescriptor *pBandPlan;
     uchar hLogOidStr[] = { kOidAdslPrivate, kOidAdslPrivChanCharLog};
     uchar qlnOidStr[] = { kOidAdslPrivate, kOidAdslPrivQuietLineNoise};
     uchar snrOidStr[] = { kOidAdslPrivate, kOidAdslPrivSNR };
@@ -3820,14 +4066,21 @@ static void G992p3OvhMsgProcessBlockReadCommand(void *gDslVars,uchar *pData, int
     pMsg = &globalVar.txRspBuf[*rLen];
     WriteCnt16(pMsg, 256);
     pMsg+=2;
-    g=pMib->gFactors.Gfactor_SUPPORTERCARRIERSds;
+    if(kVdslLROff != pMib->xdslInfo.vdslLRmode) {
+      g = pMib->gFactors.Gfactor_MEDLEYSETds;
+      pBandPlan = &(pMib->dsNegBandPlan);
+    }
+    else {
+      g = pMib->gFactors.Gfactor_SUPPORTERCARRIERSds;
+      pBandPlan = &(pMib->dsNegBandPlanDiscovery);
+    }
     i=startSCG;
     for (j=0;j<pMib->dsNegBandPlanDiscovery.noOfToneGroups;j++)
     {
         for(;i<=stopSCG;i++) {
-            if(i*g >  pMib->dsNegBandPlanDiscovery.toneGroups[j].endTone )
+            if(i*g >  pBandPlan->toneGroups[j].endTone )
                 break;
-            if(i*g <  pMib->dsNegBandPlanDiscovery.toneGroups[j].startTone )
+            if(i*g <  pBandPlan->toneGroups[j].startTone )
                 hlog=0x3FF;
             else 
             { 
@@ -3847,12 +4100,12 @@ static void G992p3OvhMsgProcessBlockReadCommand(void *gDslVars,uchar *pData, int
     WriteCnt16(pMsg, 256);
     pMsg+=2;
     i=startSCG;
-    for (j=0;j<pMib->dsNegBandPlanDiscovery.noOfToneGroups;j++)
+    for (j=0;j<pBandPlan->noOfToneGroups;j++)
     {   
         for(;i<=stopSCG;i++) {
-            if(i*g >  pMib->dsNegBandPlanDiscovery.toneGroups[j].endTone )
+            if(i*g >  pBandPlan->toneGroups[j].endTone )
                 break;
-            if(i*g <  pMib->dsNegBandPlanDiscovery.toneGroups[j].startTone )
+            if(i*g <  pBandPlan->toneGroups[j].startTone )
                 pMsg[i-startSCG]=255;
             else 
             { 
@@ -3920,6 +4173,8 @@ Private void G992p3OvhMsgUpdateINMBins( void *gDslVars )
 			pPLNDurationBin[i] = i*globalVar.inmConfig.INM_INPEQ_SCALE + 1;
 	}
 }
+
+extern int XdslCoreIsEocIntfOpen(void *gDslVars, int eocMsgType);
 
 Private Boolean G992p3OvhMsgRcvProcessCmd(void *gDslVars, dslFrameBuffer *pBuf, uchar *pData, uint cmdLen, dslFrame *pFrame)
 {
@@ -4214,24 +4469,25 @@ Private Boolean G992p3OvhMsgRcvProcessCmd(void *gDslVars, dslFrameBuffer *pBuf, 
 #ifdef G993_DBG_PRINT
 			__SoftDslPrintf(gDslVars, "kG992p3OvhMsgCmdClearEOC subcode=%x",0,pData[kG992p3CmdSubCode]);
 #endif
-			if (kG992p3OvhMsgCmdClearEOCMsg == pData[kG992p3CmdSubCode]) {
-				globalVar.txRspBuf[kG992p3CmdCode] = kG992p3OvhMsgCmdClearEOC;
-				globalVar.txRspBuf[kG992p3CmdSubCode] = kG992p3OvhMsgCmdClearEOCAck;
-				rspLen = 4;
-				bRsp = true;
-			}
-			else if (kG992p3OvhMsgCmdClearEOCAck == pData[kG992p3CmdSubCode]) { /* workaround for Huawei DSLAM */
+			if (kG992p3OvhMsgCmdClearEOCAck == pData[kG992p3CmdSubCode]) { /* workaround for Huawei DSLAM */
 				globalVar.setup |= kG992p3ClearEocWorkaround;
 				G992p3OvhMsgPollCmdRateChange(gDslVars);
 				G992p3OvhMsgRcvProcessRsp(gDslVars, pBuf, pData, cmdLen);
 				__SoftDslPrintf(gDslVars, "G992p3Ovh using Clear EOC Workaround",0);
+			}
+			else
+			if ( (kG992p3OvhMsgCmdClearEOCMsg == pData[kG992p3CmdSubCode]) && XdslCoreIsEocIntfOpen(gDslVars, kG992p3OvhMsgCmdClearEOC) ) {
+				globalVar.txRspBuf[kG992p3CmdCode] = kG992p3OvhMsgCmdClearEOC;
+				globalVar.txRspBuf[kG992p3CmdSubCode] = kG992p3OvhMsgCmdClearEOCAck;
+				rspLen = 4;
+				bRsp = true;
 			}
 			break;
 		case kG992p3OvhMsgCmdNonStdFac:
 #ifdef G993_DBG_PRINT
 			__SoftDslPrintf(gDslVars, "kG992p3OvhMsgCmdNonStdFac subcode=%x",0,pData[kG992p3CmdSubCode]);
 #endif
-			if(globalVar.setup & kG992p3LowPrioAndNoAckOnNsfCmd)
+			if( (globalVar.setup & kG992p3LowPrioAndNoAckOnNsfCmd) || !XdslCoreIsEocIntfOpen(gDslVars, kG992p3OvhMsgCmdNonStdFac) )
 				break;
 			if (kG992p3OvhMsgCmdNonStdFacMsg == pData[kG992p3CmdSubCode]) {
 				globalVar.txRspBuf[kG992p3CmdCode] = kG992p3OvhMsgCmdNonStdFac;
@@ -4274,7 +4530,15 @@ Private Boolean G992p3OvhMsgRcvProcessCmd(void *gDslVars, dslFrameBuffer *pBuf, 
 					adslPhyInfo   *pPhyInfo = AdslCoreGetPhyInfo();
 
 					G992p3GetOemData(gDslVars, kDslOemEocVendorId, pMsg, 8, g992p3OvhMsgVendorId, kDslVendorIDRegisterLength);
-					G992p3GetOemData(gDslVars, kDslOemEocVersion, pMsg+8, 16, pPhyInfo->pVerStr, 0);
+					n = G992p3GetOemData(gDslVars, kDslOemEocVersion, pMsg+8, 16, pPhyInfo->pVerStr, 0);
+#ifdef EOC_VER_WITH_DRV
+					if ((n != 0) && (0 == *(pMsg + 8 + n)))
+					  n--;
+					if (n < 15) {
+					  *(pMsg + 8 + n) = '.';
+					  G992p3CopyOemData(pMsg + 8 + n + 1, 15 - n, ADSL_DRV_VER_STR, strlen(ADSL_DRV_VER_STR));
+					}
+#endif
 					G992p3GetOemData(gDslVars, kDslOemEocSerNum, pMsg+24, 32, NULL, 0);
 					rspLen = kDslVendorIDRegisterLength + 16 + 32;
 					bRsp = true;
@@ -4386,10 +4650,15 @@ Private Boolean G992p3OvhMsgRcvProcessCmd(void *gDslVars, dslFrameBuffer *pBuf, 
 						globalVar.inmConfig.INM_INPEQ_FORMAT=INM_INPEQ_FORMAT;
 						if (cmdLen >= 9) /* Don't send to PHY if ADSL */
 						{
-						cmd.command=kDslPLNControlCmd;
-						cmd.param.dslPlnSpec.plnCmd=kDslINMConfigInpEqFormat;
-						cmd.param.dslPlnSpec.inmInpEqFormat=INM_INPEQ_FORMAT;
-						(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+							if (inmDriverPhyCompatibility == 0) /* Only send to PHY if older PHY */
+							{
+								if (XdslMibIsGfastMod(gDslVars))
+									__SoftDslPrintf(gDslVars, "SetINMParams: WARNING - Should use newer PHY for Gfast INM",0);
+								cmd.command=kDslPLNControlCmd;
+								cmd.param.dslPlnSpec.plnCmd=kDslINMConfigInpEqFormat;
+								cmd.param.dslPlnSpec.inmInpEqFormat=INM_INPEQ_FORMAT;
+								(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+							}
 						}
 
 						globalVar.txRspBuf[kG992p3CmdSubCode]=kG992p3OvhMsgINMControlACK;
@@ -4432,26 +4701,31 @@ Private Boolean G992p3OvhMsgRcvProcessCmd(void *gDslVars, dslFrameBuffer *pBuf, 
 						globalVar.PLNImpulseDurStatCounter=0;
 						globalVar.PLNImpulseInterArrStatCounter=0;
 						globalVar.PLNElapsedTimeMSec=0;
-						cmd.command=kDslPLNControlCmd;
-						cmd.param.value=kDslPLNControlStop;
-						(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
-						cmd.command=kDslPLNControlCmd;
-						cmd.param.dslPlnSpec.plnCmd=kDslPLNControlDefineInpBinTable;
-						cmd.param.dslPlnSpec.nInpBin= globalVar.PLNnInpBin;
-						cmd.param.dslPlnSpec.inpBinPtr=globalVar.pPLNinpBinIntervalPtr;
-						(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
-					
-						cmd.command=kDslPLNControlCmd;
-						cmd.param.dslPlnSpec.plnCmd=kDslPLNControlDefineItaBinTable;
-						cmd.param.dslPlnSpec.nItaBin=globalVar.PLNnItaBin;
-						cmd.param.dslPlnSpec.itaBinPtr= globalVar.pPLNitaBinIntervalPtr;
-						(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+
+						if (!XdslMibIsVdsl2Mod(gDslVars)) /* ADSL only */
+						{
+							cmd.command=kDslPLNControlCmd;
+							cmd.param.value=kDslPLNControlStop;
+							(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+							cmd.command=kDslPLNControlCmd;
+							cmd.param.dslPlnSpec.plnCmd=kDslPLNControlDefineInpBinTable;
+							cmd.param.dslPlnSpec.nInpBin= globalVar.PLNnInpBin;
+							cmd.param.dslPlnSpec.inpBinPtr=globalVar.pPLNinpBinIntervalPtr;
+							(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
 						
-						cmd.command=kDslPLNControlCmd;
-						cmd.param.dslPlnSpec.plnCmd=kDslINMControlParams;
-						cmd.param.dslPlnSpec.inmContinueConfig=globalVar.inmConfig.INMCC;
-						cmd.param.dslPlnSpec.inmInpEqMode= globalVar.inmConfig.INM_INPEQ_MODE;
-						(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+							cmd.command=kDslPLNControlCmd;
+							cmd.param.dslPlnSpec.plnCmd=kDslPLNControlDefineItaBinTable;
+							cmd.param.dslPlnSpec.nItaBin=globalVar.PLNnItaBin;
+							cmd.param.dslPlnSpec.itaBinPtr= globalVar.pPLNitaBinIntervalPtr;
+							(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+							
+							cmd.command=kDslPLNControlCmd;
+							cmd.param.dslPlnSpec.plnCmd=kDslINMControlParams;
+							cmd.param.dslPlnSpec.inmContinueConfig=globalVar.inmConfig.INMCC;
+							cmd.param.dslPlnSpec.inmInpEqMode= globalVar.inmConfig.INM_INPEQ_MODE;
+							(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+						}
+
 						if (XdslMibIsVdsl2Mod(gDslVars) || ADSL_PHY_SUPPORT(kAdslPhyE14InmAdsl))
 						{
 							cmd.command=kDslPLNControlCmd;
@@ -4462,12 +4736,28 @@ Private Boolean G992p3OvhMsgRcvProcessCmd(void *gDslVars, dslFrameBuffer *pBuf, 
 							cmd.param.dslPlnSpec.inmIATS= globalVar.inmConfig.INMIATS;
 							cmd.param.dslPlnSpec.inmGfastCoCpeSupport = globalVar.inmConfig.INM_GFAST_CO_CPE_SUPPORT;
 							cmd.param.dslPlnSpec.inmBRGN = globalVar.inmConfig.INM_BRGN;
+							if (inmDriverPhyCompatibility & 0x80) /* newer PHY */
+								cmd.param.dslPlnSpec.inmBRGN += 0x80; /* indicates to Flatten.c to send format param */
 							cmd.param.dslPlnSpec.inmIATScale = globalVar.inmConfig.INM_IAT_SCALE;
 							cmd.param.dslPlnSpec.inmInpEqScale = globalVar.inmConfig.INM_INPEQ_SCALE;
+							cmd.param.dslPlnSpec.inmInpEqFormat = globalVar.inmConfig.INM_INPEQ_FORMAT;
 							(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
-							globalVar.txRspMsgNumStored=globalVar.txRspMsgNum^1;
-							globalVar.INMWaitForParamsFlag=1;
-							bRsp=false;
+
+							if (inmDriverPhyCompatibility & 0x80) /* newer PHY */
+							{
+								/* parameters should already be validated above */
+								/* Send ACK to CO - don't wait for PHY */
+								globalVar.txRspBuf[kG992p3CmdSubCode]=0x80;
+								globalVar.txRspBuf[4] = kG992p3OvhMsgINMINPEQModeACC;
+								rspLen=5;
+								bRsp=true;
+							}
+							else /* Wait for PHY response before sending ACK or NACK */
+							{
+								globalVar.txRspMsgNumStored=globalVar.txRspMsgNum^1;
+								globalVar.INMWaitForParamsFlag=1;
+								bRsp=false;
+							}
 							break;
 						}
 						cmd.command=kDslPLNControlCmd;
@@ -4485,18 +4775,27 @@ Private Boolean G992p3OvhMsgRcvProcessCmd(void *gDslVars, dslFrameBuffer *pBuf, 
 					{
 						pMib = (void *) AdslMibGetObjectValue (gDslVars, NULL, 0, NULL, &mibLen);
 						pMib->adslPLNData.PLNUpdateData=0;
-						cmd.command=kDslPLNControlCmd;
-						cmd.param.value=kDslPLNControlPeakNoiseGetPtr;
-						(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
-						 cmd.command=kDslPLNControlCmd;
-						cmd.param.value=kDslPLNControlThldViolationGetPtr;
-						(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
-						cmd.command=kDslPLNControlCmd;
-						cmd.param.value=kDslPLNControlImpulseNoiseEventGetPtr;
-						(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
-						cmd.command=kDslPLNControlCmd; 
-						cmd.param.value= kDslPLNControlGetStatus;
-						(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+						if (!XdslMibIsVdsl2Mod(gDslVars)) /* ADSL only */
+						{
+							cmd.command=kDslPLNControlCmd;
+							cmd.param.value=kDslPLNControlPeakNoiseGetPtr;
+							(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+							cmd.command=kDslPLNControlCmd;
+							cmd.param.value=kDslPLNControlThldViolationGetPtr;
+							(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+							cmd.command=kDslPLNControlCmd;
+							cmd.param.value=kDslPLNControlImpulseNoiseEventGetPtr;
+							(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+							cmd.command=kDslPLNControlCmd; 
+							cmd.param.value= kDslPLNControlGetStatus;
+							(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+						}
+						else
+						{
+							cmd.command=kDslPLNControlCmd;
+							cmd.param.value=kDslPLNControlImpulseNoiseEventGetPtr;
+							(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
+						}
 						cmd.command=kDslPLNControlCmd; 
 						cmd.param.value=kDslPLNControlImpulseNoiseTimeGetPtr;
 						(*globalVar.cmdHandlerPtr)(gDslVars, &cmd);
@@ -4647,6 +4946,7 @@ Private Boolean G992p3OvhMsgRcvProcessCmd(void *gDslVars, dslFrameBuffer *pBuf, 
 					case kG992p3OvhMsgCmdPMDVectorBlockRead:
 					{
 						int startSCG, stopSCG, i, g, j;
+						bandPlanDescriptor *pBandPlan;
 						startSCG = ReadCnt16(pData+kG992p3CmdSubCode+2);
 						stopSCG = ReadCnt16(pData+kG992p3CmdSubCode+4);
 #ifdef DBG_PRINT_PMD_PARAMS
@@ -4694,14 +4994,21 @@ Private Boolean G992p3OvhMsgRcvProcessCmd(void *gDslVars, dslFrameBuffer *pBuf, 
 								}
 #endif
 								pHlogInfo = (void*) AdslMibGetObjectValue (gDslVars, hLogOidStr, sizeof(hLogOidStr), NULL, &hlogLen);
-								g=pMib->gFactors.Gfactor_SUPPORTERCARRIERSds;
+								if(kVdslLROff != pMib->xdslInfo.vdslLRmode) {
+									g = pMib->gFactors.Gfactor_MEDLEYSETds;
+									pBandPlan = &(pMib->dsNegBandPlan);
+								}
+								else {
+									g = pMib->gFactors.Gfactor_SUPPORTERCARRIERSds;
+									pBandPlan = &(pMib->dsNegBandPlanDiscovery);
+								}
 								i=startSCG;
-								for (j=0;j<pMib->dsNegBandPlanDiscovery.noOfToneGroups;j++)
+								for (j=0;j<pBandPlan->noOfToneGroups;j++)
 								{
 									for(;i<=stopSCG;i++) {
-										if(i*g >  pMib->dsNegBandPlanDiscovery.toneGroups[j].endTone )
+										if(i*g >  pBandPlan->toneGroups[j].endTone )
 											break;
-										if(i*g <  pMib->dsNegBandPlanDiscovery.toneGroups[j].startTone )
+										if(i*g <  pBandPlan->toneGroups[j].startTone )
 											hlog=0x3FF;
 										else
 										{
@@ -4728,7 +5035,14 @@ Private Boolean G992p3OvhMsgRcvProcessCmd(void *gDslVars, dslFrameBuffer *pBuf, 
 								short *pQlnInfo, x;
 								uchar qlnOidStr[] = { kOidAdslPrivate, kOidAdslPrivQuietLineNoise};
 								pQlnInfo = (void*) AdslMibGetObjectValue (gDslVars, qlnOidStr, sizeof(qlnOidStr), NULL, &qlnLen);
-								g=pMib->gFactors.Gfactor_SUPPORTERCARRIERSds;
+								if(kVdslLROff != pMib->xdslInfo.vdslLRmode) {
+									g = pMib->gFactors.Gfactor_MEDLEYSETds;
+									pBandPlan = &(pMib->dsNegBandPlan);
+								}
+								else {
+									g = pMib->gFactors.Gfactor_SUPPORTERCARRIERSds;
+									pBandPlan = &(pMib->dsNegBandPlanDiscovery);
+								}
 								i=startSCG;
 #if defined(CONFIG_BCM_DSL_GFAST)
 								if(XdslMibIsGfastMod(gDslVars))
@@ -4736,12 +5050,12 @@ Private Boolean G992p3OvhMsgRcvProcessCmd(void *gDslVars, dslFrameBuffer *pBuf, 
 								else
 #endif
 									x = 23;
-								for (j=0;j<pMib->dsNegBandPlanDiscovery.noOfToneGroups;j++)
+								for (j=0;j<pBandPlan->noOfToneGroups;j++)
 								{
 									for(;i<=stopSCG;i++) {
-										if(i*g >  pMib->dsNegBandPlanDiscovery.toneGroups[j].endTone )
+										if(i*g >  pBandPlan->toneGroups[j].endTone )
 											break;
-										if(i*g <  pMib->dsNegBandPlanDiscovery.toneGroups[j].startTone )
+										if(i*g <  pBandPlan->toneGroups[j].startTone )
 											pMsg[i-startSCG]=255;
 										else
 										{
@@ -6248,6 +6562,7 @@ Public void G992p3OvhMsgStatusSnooper (void *gDslVars, dslStatusStruct *status)
             globalVar.inmConfig.INM_IAT_SCALE = inmParams->interArrivalTimeScale;
             globalVar.inmConfig.INM_INPEQ_SCALE = inmParams->equivalentInpScale;
             globalVar.inmConfig.INM_GFAST_CO_CPE_SUPPORT = inmParams->inmGfastCoCpeSupport;
+            inmDriverPhyCompatibility = inmParams->bridgingEnable & 0x80; /* Mask off indicator from PHY of advanced support */
             __SoftDslPrintf(gDslVars, "Driver/PHY both support INM Gfast: CO support %d",0,inmParams->inmGfastCoCpeSupport);
           }
           else
@@ -6299,8 +6614,12 @@ Public void G992p3OvhMsgStatusSnooper (void *gDslVars, dslStatusStruct *status)
             break;
           }
           
-          if (AdslMibIsLinkActive(gDslVars))
+          if (AdslMibIsLinkActive(gDslVars)) {
             G992p3OvhMsgReset(gDslVars);
+#ifdef SUPPORT_HMI
+            BcmXdslNotifyLinkUp(gLineId(gDslVars));
+#endif
+          }
           break;
         case kDslG992p2RxShowtimeActive:
           globalVar.cmdPollingStamp = globalVar.timeMs;
@@ -6309,8 +6628,12 @@ Public void G992p3OvhMsgStatusSnooper (void *gDslVars, dslStatusStruct *status)
             break;
           }
           
-          if (AdslMibIsLinkActive(gDslVars))
+          if (AdslMibIsLinkActive(gDslVars)) {
             G992p3OvhMsgReset(gDslVars);
+#ifdef SUPPORT_HMI
+            BcmXdslNotifyLinkUp(gLineId(gDslVars));
+#endif
+          }
           break;
         case kG992SetPLNMessageBase:
           globalVar.kG992p3OvhMsgCmdPLN=status->param.dslTrainingInfo.value;
@@ -6324,31 +6647,42 @@ Public void G992p3OvhMsgStatusSnooper (void *gDslVars, dslStatusStruct *status)
       }
       break;
     case kDslReceivedEocCommand:
-        if( (kDslVdslSraReqSnd == status->param.dslClearEocMsg.msgId) ||
-            (kDslVdslSosReqSnd == status->param.dslClearEocMsg.msgId) ){
-            olrCmd[kG992p3AddrField] = kG992p3PriorityHigh;
-            olrCmd[kG992p3CmdCode] = kG992p3OvhMsgCmdOLR;
-            if(kDslVdslSraReqSnd == status->param.dslClearEocMsg.msgId)
-               olrCmd[kG992p3CmdSubCode] = kG992p3OvhMsgCmdOLRReq6;
-            else
-               olrCmd[kG992p3CmdSubCode] = kG992p3OvhMsgCmdOLRReq7;
-            olrLen = kG992p3CmdSubCode+1;
-            if(G992p3OvhMsgXmtSendOLRCmd(gDslVars,
-                                        olrCmd, (uint)olrLen,
-                                        (uchar *)status->param.dslClearEocMsg.dataPtr,
-                                        (uint)status->param.dslClearEocMsg.msgType & kDslClearEocMsgLengthMask,
-                                        true)) {
-                mibLen = sizeof(adslMibInfo);
-                pMib = (void *) AdslMibGetObjectValue (gDslVars, NULL, 0, NULL, &mibLen);
-                pMib->adslStat.bitswapStat.rcvCntReq++;
-                XdslMibNotifyBitSwapReq(gDslVars, RX_DIRECTION);
-                DiagWriteString(gLineId(gDslVars), DIAG_DSL_CLIENT, "Drv: VDSL %s Request sent, msgPtr=%p msgLen=%d",
-                                            (kDslVdslSraReqSnd == status->param.dslClearEocMsg.msgId)? "SRA": "SOS",
-                                            status->param.dslClearEocMsg.dataPtr,
-                                            status->param.dslClearEocMsg.msgType & kDslClearEocMsgLengthMask);
-            }
+      switch(status->param.dslClearEocMsg.msgId) {
+        case kDslVdslSraReqSnd:
+        case kDslVdslSosReqSnd:
+          olrCmd[kG992p3AddrField] = kG992p3PriorityHigh;
+          olrCmd[kG992p3CmdCode] = kG992p3OvhMsgCmdOLR;
+          if(kDslVdslSraReqSnd == status->param.dslClearEocMsg.msgId)
+             olrCmd[kG992p3CmdSubCode] = kG992p3OvhMsgCmdOLRReq6;
+          else
+             olrCmd[kG992p3CmdSubCode] = kG992p3OvhMsgCmdOLRReq7;
+          olrLen = kG992p3CmdSubCode+1;
+          if(G992p3OvhMsgXmtSendOLRCmd(gDslVars,
+                                      olrCmd, (uint)olrLen,
+                                      (uchar *)status->param.dslClearEocMsg.dataPtr,
+                                      (uint)status->param.dslClearEocMsg.msgType & kDslClearEocMsgLengthMask,
+                                      true)) {
+              mibLen = sizeof(adslMibInfo);
+              pMib = (void *) AdslMibGetObjectValue (gDslVars, NULL, 0, NULL, &mibLen);
+              pMib->adslStat.bitswapStat.rcvCntReq++;
+              XdslMibNotifyBitSwapReq(gDslVars, RX_DIRECTION);
+              DiagWriteString(gLineId(gDslVars), DIAG_DSL_CLIENT, "Drv: VDSL %s Request sent, msgPtr=%px msgLen=%d",
+                                          (kDslVdslSraReqSnd == status->param.dslClearEocMsg.msgId)? "SRA": "SOS",
+                                          status->param.dslClearEocMsg.dataPtr,
+                                          status->param.dslClearEocMsg.msgType & kDslClearEocMsgLengthMask);
+          }
+          break;
+#ifdef SUPPORT_HMI
+        case kDsl993p2FeQln:
+        case kDsl993p2FeHlog:
+        {
+          int cmd = (kDsl993p2FeQln == status->param.dslClearEocMsg.msgId) ? kG992p3OvhMsgCmdPMDQLineNoise: kG992p3OvhMsgCmdPMDChanRspLog;
+          XdslCoreG997SendHmiEocComplete(gDslVars, cmd);
         }
-        break;
+          break;
+#endif
+      }
+      break;
     case kDslOLRRequestStatus:
     {
       uchar   *pOlrCmd;

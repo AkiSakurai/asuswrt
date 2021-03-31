@@ -110,10 +110,9 @@ typedef struct xtm_queues_t
 
     int rx_notify_enable;
     int rx_notify_pending_disable;
-    int tx_notify_enable;
 
     /* buffer recycling thread */
-    int recycle_work_avail;
+    volatile unsigned long recycle_work_avail;
     wait_queue_head_t recycle_thread_wqh;
     struct task_struct *recycle_thread;
     bcm_async_queue_t recycleq;
@@ -357,11 +356,14 @@ int bcmxapi_XtmLinkUp (uint32_t devId, uint32_t matchId)
 {
     PBCMXTMRT_GLOBAL_INFO pGi = &g_GlobalInfo;
     PBCMXTMRT_DEV_CONTEXT pDevCtx = pGi->pDevCtxs[devId];
-    uint32_t headerLen = 0, trailerLen = 0;
+    uint32_t headerLen = 0, trailerLen = 0, encap = 0, trafficType = 0;
     UINT16 bufStatus = 0;
 
     /* determine the desc_status required for txdma for accelerated traffic */
     bcmxtmrt_get_bufStatus(pDevCtx, 0, &bufStatus);
+
+    encap = pDevCtx->ulEncapType;
+    trafficType = pDevCtx->ulTrafficType;
 
     if (pDevCtx->ulHdrType == HT_PTM &&
         (pDevCtx->ulFlags & CNI_HW_REMOVE_TRAILER) == 0)
@@ -373,7 +375,7 @@ int bcmxapi_XtmLinkUp (uint32_t devId, uint32_t matchId)
         headerLen = HT_LEN(pDevCtx->ulHdrType);
     
     if (archer_xtm_hooks.deviceDetails)
-        archer_xtm_hooks.deviceDetails(devId, (uint32_t)bufStatus, headerLen, trailerLen);
+        archer_xtm_hooks.deviceDetails(devId, encap, trafficType, (uint32_t)bufStatus, headerLen, trailerLen);
 
 
     if (archer_xtm_hooks.reInitDma)
@@ -467,40 +469,6 @@ void bcmxtmrt_recycle_skb_or_data (struct sk_buff *skb, UINT32 context, UINT32 n
     bcmxtmrt_recycle_handler(skb, context, nFlag);
 }
 
-#define ARCHER_PREFETCH_MAX 4
-
-static inline void archer_cache_prefetch(void *p_pkt, int lines)
-{
-    bcm_prefetch_multiple(p_pkt, lines);
-}
-
-static inline void xtm_cpu_queue_rx_prefetch(bcm_async_queue_t *queue_p)
-{
-    if(unlikely(!queue_p->prefetch.count))
-    {
-        int prefetch_count = bcm_async_queue_prefetch_avail_entries (queue_p);
-
-        if(prefetch_count > ARCHER_PREFETCH_MAX)
-        {
-            prefetch_count = ARCHER_PREFETCH_MAX;
-        }
-
-        queue_p->prefetch.count = prefetch_count;
-
-        while(likely(prefetch_count--))
-        {
-            xtm_queue_rx_info_t *cpu_rxinfo = (xtm_queue_rx_info_t *)
-                bcm_async_queue_prefetch_entry_read (queue_p);
-            uint8_t *pData = READ_ONCE(cpu_rxinfo->pData);
-
-            archer_cache_prefetch ((void *)PDATA_TO_PFKBUFF(pData, BCM_PKT_HEADROOM), 1);
-            archer_cache_prefetch ((void *)pData, 1);
-
-            bcm_async_queue_prefetch_entry_dequeue (queue_p);
-        }
-    }
-}
-
 #if (defined(CONFIG_BCM_SPDSVC) || defined(CONFIG_BCM_SPDSVC_MODULE))
 static inline int xtmrt_spdsvc_receive (PBCMXTMRT_DEV_CONTEXT pDevCtx, pNBuff_t pNBuff, UINT32 len)
 {
@@ -591,18 +559,24 @@ UINT32 bcmxapi_rxtask(UINT32 ulBudget, UINT32 *pulMoreToDo)
         for (i=CPU_RX_HI; i < XTM_NUM_RX_Q; i++)
         {
             queue_p = &xtm_cpu_queues->rxq[i];
-            xtm_cpu_queue_rx_prefetch (queue_p);
 
-            if (likely(queue_p->prefetch.count))
+            if(likely(bcm_async_queue_not_empty(queue_p)))
             {
-                queue_p->prefetch.count--;
-
                 xtm_rxinfo = (xtm_queue_rx_info_t *)bcm_async_queue_entry_read (queue_p);
                 pData = READ_ONCE (xtm_rxinfo->pData);
                 data_len = READ_ONCE (xtm_rxinfo->length);
                 desc_status = READ_ONCE(xtm_rxinfo->desc_status);
 
                 bcm_async_queue_entry_dequeue (&xtm_cpu_queues->rxq[i]);
+
+                if(likely(bcm_async_queue_not_empty(queue_p)))
+                {
+                    xtm_queue_rx_info_t *next_xtm_rxinfo =
+                        (xtm_queue_rx_info_t *)bcm_async_queue_entry_read (queue_p);
+                    uint8_t *next_pData = READ_ONCE (next_xtm_rxinfo->pData);
+
+                    bcm_prefetch(next_pData);
+                }
 
                 XTM_CPU_STATS_UPDATE(xtm_cpu_queues->rxq[i].stats.reads);
 
@@ -974,22 +948,22 @@ int bcmxapi_DoSetTxQueue(PBCMXTMRT_DEV_CONTEXT pDevCtx,
 
     if (archer_xtm_hooks.setTxChanDropAlg)
     {
-        archer_dropalg_config_t config;
+        archer_drop_config_t config;
+        int txQSize = archer_xtm_hooks.txdmaGetQSize();
 
-        config.tx_idx = txdma->ulDmaIndex;
-        config.alg = pTxQId->ucDropAlg;
-        config.thres_lo.minThres = pTxQId->ucLoMinThresh;
-        config.thres_lo.maxThres = pTxQId->ucLoMaxThresh;
-        config.thres_hi.minThres = pTxQId->ucHiMinThresh;
-        config.thres_hi.maxThres = pTxQId->ucHiMaxThresh;
+        config.algorithm = pTxQId->ucDropAlg;
+        config.profile[ARCHER_DROP_PROFILE_LOW].minThres = (pTxQId->ucLoMinThresh * txQSize) / 100;
+        config.profile[ARCHER_DROP_PROFILE_LOW].maxThres = (pTxQId->ucLoMaxThresh * txQSize) / 100;
+        config.profile[ARCHER_DROP_PROFILE_HIGH].minThres = (pTxQId->ucHiMinThresh * txQSize) / 100;
+        config.profile[ARCHER_DROP_PROFILE_HIGH].maxThres = (pTxQId->ucHiMaxThresh * txQSize) / 100;
 
         // the follow setting is configured through userspace application
-        config.thres_lo.dropProb = 100;
-        config.thres_hi.dropProb = 100;
+        config.profile[ARCHER_DROP_PROFILE_LOW].dropProb = 100;
+        config.profile[ARCHER_DROP_PROFILE_HIGH].dropProb = 100;
         config.priorityMask_0 = 0;
         config.priorityMask_1 = 0;
 
-        archer_xtm_hooks.setTxChanDropAlg (&config);
+        archer_xtm_hooks.setTxChanDropAlg (txdma->ulDmaIndex, &config);
     }
 
     /* notify Archer TDMA should be enabled */
@@ -1064,6 +1038,20 @@ void bcmxapi_StartTxQueue(PBCMXTMRT_DEV_CONTEXT pDevCtx,
 }
 
 /*---------------------------------------------------------------------------
+ * int bcmxapi_SetPortShaperInfo (PBCMXTMRT_GLOBAL_INFO pGi)
+ * Description:
+ *    Set/UnSet the global port shaper information.
+ * Returns: void
+ * Notes:
+ *    pDevCtx is not used.
+ *---------------------------------------------------------------------------
+ */
+int bcmxapi_SetTxPortShaperInfo(PBCMXTMRT_GLOBAL_INFO pGi, PXTMRT_PORT_SHAPER_INFO pShaperInfo)
+{
+   return (0) ;
+}  /* bcmxapi_SetTxPortShaperInfo () */
+
+/*---------------------------------------------------------------------------
  * void bcmxapi_SetPtmBondPortMask(UINT32 portMask)
  * Description:
  *    Set the value of portMask in ptmBondInfo data structure.
@@ -1100,18 +1088,10 @@ void bcmxapi_SetPtmBonding(UINT32 bonding)
  */
 void bcmxapi_XtmGetStats(UINT8 vport, UINT32 *rxDropped, UINT32 *txDropped)
 {
-    if (vport < XTM_NUM_RX_Q)
-    {
-        *rxDropped = xtm_cpu_queues->rxq[vport].stats.discards;
-    }
-    else
-    {
-        printk("bcmxapi_XtmGetStats : vport (%d) exceeds number of RX queues %d\n", vport, XTM_NUM_RX_Q);
-    }
-    if (vport == 0)
-    {
-        *txDropped = xtm_cpu_queues->txq.stats.discards;
-    }
+    //FIXME: This Will be fixed in the future releases as this logic needs to
+    //be added to map the netdevice to corresponding queues.
+    *rxDropped = 0;
+    *txDropped = 0;
 
 }  /* bcmxapi_XtmGetStats() */
 
@@ -1203,7 +1183,7 @@ int bcmxapi_xmit_packet(pNBuff_t *ppNBuf, UINT8 **ppData, UINT32 *pLen,
 
         WRITE_ONCE(tx_info->pNBuff, *ppNBuf);
         // Egress queue contains both the TC and the tx DMA queue
-        WRITE_ONCE(tx_info->egress_queue, ((SKBMARK_GET_TC_ID(skbMark) << 8) | txdmaIdx));
+        WRITE_ONCE(tx_info->egress_queue, txdmaIdx);
         WRITE_ONCE(tx_info->desc_status, bufStatus);
 
         bcm_async_queue_entry_enqueue (&xtm_cpu_queues->txq);
@@ -1216,27 +1196,19 @@ int bcmxapi_xmit_packet(pNBuff_t *ppNBuf, UINT8 **ppData, UINT32 *pLen,
         printk("xtm : failed sending packet due to queue full\n");
         XTM_CPU_STATS_UPDATE(xtm_cpu_queues->txq.stats.discards);
     }
-    if (xtm_cpu_queues->tx_notify_enable)
-    {
-        xtm_cpu_queues->tx_notify_enable = 0;
-        xtm_cpu_queues->tx_notifier();
-    }
+
     spin_unlock_bh (&xtm_cpu_queues->tx_lock);
+
+    xtm_cpu_queues->tx_notifier();
 
     return rc;
    
 }  /* bcmxapi_xmit_packet() */
 
 
-int archer_xtm_tx_queue_handler_register (int q_id, TX_NOTIFIER tx_notifier)
+int archer_xtm_tx_queue_notifier_register (int q_id, TX_NOTIFIER tx_notifier)
 {
     xtm_cpu_queues->tx_notifier = tx_notifier;
-    return 0;
-}
-
-int archer_xtm_tx_queue_notify_host (int q_id)
-{
-    xtm_cpu_queues->tx_notify_enable = 1;
     return 0;
 }
 
@@ -1286,27 +1258,26 @@ int archer_xtm_rx_queue_write (int q_id, uint8_t **pData, int data_len, int ingr
         bcm_async_queue_entry_enqueue (&xtm_cpu_queues->rxq[q_id]);
 
         XTM_CPU_STATS_UPDATE(xtm_cpu_queues->rxq[q_id].stats.writes);
-        if (xtm_cpu_queues->rx_notify_enable)
-        {
-            BCMXTMRT_WAKEUP_RXWORKER(&g_GlobalInfo);
-        }
-        else if (xtm_cpu_queues->rx_notify_pending_disable)
-        {
-            xtm_cpu_queues->rx_notify_pending_disable = 0;
-        }
-
     }
     else
     {
         XTM_CPU_STATS_UPDATE(xtm_cpu_queues->rxq[q_id].stats.discards);
         rc = -1;
     }
+    if (xtm_cpu_queues->rx_notify_enable)
+    {
+        BCMXTMRT_WAKEUP_RXWORKER(&g_GlobalInfo);
+    }
+    else if (xtm_cpu_queues->rx_notify_pending_disable)
+    {
+        xtm_cpu_queues->rx_notify_pending_disable = 0;
+    }
     return rc;
 }
 
 #define XTM_CPU_QUEUE_WAKEUP_RECYCLE_WORKER(x) do {                    \
-        if ((x)->recycle_work_avail == 0) {                             \
-            (x)->recycle_work_avail = 1;                                \
+        if ((x)->recycle_work_avail == 0) {                            \
+            set_bit(0, &(x)->recycle_work_avail);                      \
             wake_up_interruptible(&((x)->recycle_thread_wqh)); }} while (0)
 
 void archer_xtm_recycle_queue_write(pNBuff_t pNBuff)
@@ -1319,8 +1290,6 @@ void archer_xtm_recycle_queue_write(pNBuff_t pNBuff)
         bcm_async_queue_entry_enqueue (&xtm_cpu_queues->recycleq);
 
         XTM_CPU_STATS_UPDATE(xtm_cpu_queues->recycleq.stats.writes);
-
-        XTM_CPU_QUEUE_WAKEUP_RECYCLE_WORKER(xtm_cpu_queues);
     }
     else
     {
@@ -1331,6 +1300,7 @@ void archer_xtm_recycle_queue_write(pNBuff_t pNBuff)
 #endif
         XTM_CPU_STATS_UPDATE(xtm_cpu_queues->recycleq.stats.discards);
     }
+    XTM_CPU_QUEUE_WAKEUP_RECYCLE_WORKER(xtm_cpu_queues);
 }
 
 static inline void xtm_cpu_queue_recycle_buffers (bcm_async_queue_t *recycleqp)
@@ -1376,7 +1346,7 @@ static int xtm_recycle_thread (void *arg)
         }
         else
         {
-            cpu_queues->recycle_work_avail = 0;
+            clear_bit(0, &cpu_queues->recycle_work_avail);
         }
     }
     return 0;
@@ -1412,9 +1382,8 @@ void archer_xtm_cpu_queue_stats(void)
 
     xtm_cpu_queue_dump(&xtm_cpu_queues->recycleq, "XTM RCQ", 0);
 
-    printk("Archer XTM rx notify 0x%x (pending %d) tx notify 0x%x\n",
-        xtm_cpu_queues->rx_notify_enable, xtm_cpu_queues->rx_notify_pending_disable,
-        xtm_cpu_queues->tx_notify_enable);
+    printk("Archer XTM rx notify 0x%x (pending %d)\n",
+           xtm_cpu_queues->rx_notify_enable, xtm_cpu_queues->rx_notify_pending_disable);
 }
 
 
@@ -1432,8 +1401,7 @@ static int archer_xtm_host_bind(void)
     }
 
     hooks.host_type = ARCHER_HOST_TYPE_XTMRT;
-    hooks.tx_queue_handler_register = archer_xtm_tx_queue_handler_register;
-    hooks.tx_queue_notify_host = archer_xtm_tx_queue_notify_host;
+    hooks.tx_queue_notifier_register = archer_xtm_tx_queue_notifier_register;
     hooks.tx_queue_read = archer_xtm_tx_queue_read;
     hooks.tx_queue_not_empty = archer_xtm_tx_queue_not_empty;
     hooks.rx_queue_write = archer_xtm_rx_queue_write;

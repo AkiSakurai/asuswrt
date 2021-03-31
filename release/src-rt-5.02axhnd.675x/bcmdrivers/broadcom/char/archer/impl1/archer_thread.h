@@ -96,6 +96,11 @@ int archer_task_schedule(archer_task_t *task,
 
 int archer_task_unschedule(archer_task_t *task);
 
+static inline int archer_task_ref_count(archer_task_t *task)
+{
+    return task->ref_count;
+}
+
 int archer_task_loop(int *work_avail_p);
 
 void __init archer_task_construct(void);

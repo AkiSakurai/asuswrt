@@ -51,6 +51,7 @@
  
 #ifdef DMP_X_BROADCOM_COM_IPV6_1 /* aka SUPPORT_IPV6 */
 #include "rut_wan.h"
+#include "rut_lan.h" 
 #else
 #include "rut_wan6.h"
 #endif
@@ -59,7 +60,7 @@
 #include "rut_ipsec.h"
 #include "rut_upnp.h"
 #include "rut_dhcp6.h"
-
+#include "rut_ebtables.h"
 
 #if defined(BRCM_PKTCBL_SUPPORT)
 /* EMTA */
@@ -69,6 +70,10 @@
 /* EPTA */
 #define DHCP6C_OPTION_REPORT_LIST_EPTA   "17"  /* Pls connect multi codes with "_" */
 #define DHCP6C_OPTION_REQUEST_LIST_EPTA  "17_56"  /* Pls connect multi codes with "_" */
+#endif
+
+#ifdef SUPPORT_IPV6 
+#define NeighTable "/tmp/NeighTable"
 #endif
 
 UBOOL8 rutWan_isIpv6ConnStatusChanged(const void *nObj __attribute__((unused)),
@@ -225,7 +230,6 @@ CmsRet rutCfg_tearDownWanCon6(const void *pObj __attribute__((unused)),
 #ifdef CMS_LOG3
    UBOOL8 pdEnabled;
 #endif /* CMS_LOG3 */
-   UBOOL8 firewallEnabled;
    char intfName[BUFLEN_32];
    _IPv6LanHostCfgObject *IPv6LanCfgObj=NULL;
    InstanceIdStack iidStack = EMPTY_INSTANCE_ID_STACK;
@@ -241,7 +245,6 @@ CmsRet rutCfg_tearDownWanCon6(const void *pObj __attribute__((unused)),
 #ifdef CMS_LOG3
       pdEnabled = currObj->X_BROADCOM_COM_IPv6PrefixDelegationEnabled;
 #endif
-      firewallEnabled = currObj->X_BROADCOM_COM_FirewallEnabled;
       cmsUtl_strncpy(intfName, currObj->X_BROADCOM_COM_IfName, sizeof(intfName));
       wanPrefix = cmsMem_strdup(currObj->X_BROADCOM_COM_IPv6SitePrefix);
    }
@@ -254,7 +257,6 @@ CmsRet rutCfg_tearDownWanCon6(const void *pObj __attribute__((unused)),
 #ifdef CMS_LOG3
       pdEnabled = currObj->X_BROADCOM_COM_IPv6PrefixDelegationEnabled;
 #endif
-      firewallEnabled = currObj->X_BROADCOM_COM_FirewallEnabled;
       cmsUtl_strncpy(intfName, currObj->X_BROADCOM_COM_IfName, sizeof(intfName));
       wanPrefix = cmsMem_strdup(currObj->X_BROADCOM_COM_IPv6SitePrefix);
    }
@@ -303,7 +305,7 @@ CmsRet rutCfg_tearDownWanCon6(const void *pObj __attribute__((unused)),
    }
 
    /* Delete ip6tables rules which verify source addr within the delegated prefixes */
-   if (firewallEnabled && wanPrefix)
+   if (wanPrefix)
    {
       char addr[CMS_IPADDR_LENGTH];
       char prefix[CMS_IPADDR_LENGTH];
@@ -312,6 +314,7 @@ CmsRet rutCfg_tearDownWanCon6(const void *pObj __attribute__((unused)),
       {
          sprintf(prefix, "%s/64", addr);
          rutIpt_configRoutingChain6(prefix, "br0", FALSE);
+		 rutEbt_configICMPv6Reply(prefix, FALSE);
       }
       else
       {
@@ -366,13 +369,63 @@ CmsRet rutCfg_stopWanCon6(const void *pObj __attribute__((unused)),
 
 
 #ifdef DMP_X_BROADCOM_COM_IPV6_1
-CmsRet rutCfg_setupWanConnection6(const char *ifName, const char *addr, UBOOL8 firewallEnabled,
-                                  UBOOL8 pdEnabled, UBOOL8 unnumbered, UBOOL8 Dhcp6cIana, UBOOL8 mldEnabled)
+CmsRet rutCfg_setupWanConnection6(const void *pObj __attribute__((unused)),
+                                           UBOOL8 isIpObj __attribute__((unused)))
 {
-   CmsRet ret = CMSRET_SUCCESS;
+   CmsRet ret             = CMSRET_SUCCESS;
+   const char *ifName     = NULL;
+   const char *addr       = NULL;
+   const char *dnsServers = NULL;
+   const char *domainName = NULL;
+   const char *raPrefix   = NULL;
+   UBOOL8 firewallEnabled = FALSE;
+   UBOOL8 pdEnabled       = FALSE;
+   UBOOL8 unnumbered      = FALSE;
+   UBOOL8 dhcp6cIana      = FALSE;
+   UBOOL8 mldEnabled      = FALSE;
+   UBOOL8 isDnsWan        = FALSE;
+   UBOOL8 MFlag           = FALSE;
+   UBOOL8 LFlag           = FALSE; 
+   
+   if (isIpObj)
+   {
+      _WanIpConnObject *currObj = (_WanIpConnObject *)pObj;
+	  ifName = currObj->X_BROADCOM_COM_IfName;
+      addr = currObj->X_BROADCOM_COM_ExternalIPv6Address;
+      firewallEnabled = currObj->X_BROADCOM_COM_FirewallEnabled;
+      pdEnabled =  currObj->X_BROADCOM_COM_IPv6PrefixDelegationEnabled;
+      unnumbered = currObj->X_BROADCOM_COM_UnnumberedModel;
+      dhcp6cIana = currObj->X_BROADCOM_COM_Dhcp6cForAddress;
+	  domainName = currObj->X_BROADCOM_COM_IPv6DomainName;
+	  dnsServers = currObj->X_BROADCOM_COM_IPv6DNSServers;
+      raPrefix   = currObj->X_BROADCOM_COM_IPv6RaPrefix;
+      MFlag      = currObj->X_BROADCOM_COM_MFlag;
+      LFlag      = currObj->X_BROADCOM_COM_LFlag;
+#ifdef DMP_X_BROADCOM_COM_MLD_1
+      mldEnabled = currObj->X_BROADCOM_COM_MLDEnabled;
+#endif
+   }
+   else
+   {
+      _WanPppConnObject *currObj = (_WanPppConnObject *)pObj;
+      ifName = currObj->X_BROADCOM_COM_IfName;
+      addr = currObj->X_BROADCOM_COM_ExternalIPv6Address;
+      firewallEnabled = currObj->X_BROADCOM_COM_FirewallEnabled;
+      pdEnabled =  currObj->X_BROADCOM_COM_IPv6PrefixDelegationEnabled;
+      unnumbered = currObj->X_BROADCOM_COM_UnnumberedModel;
+      dhcp6cIana = currObj->X_BROADCOM_COM_Dhcp6cForAddress;
+	  domainName = currObj->X_BROADCOM_COM_IPv6DomainName;
+	  dnsServers = currObj->X_BROADCOM_COM_IPv6DNSServers;
+      raPrefix   = currObj->X_BROADCOM_COM_IPv6RaPrefix;
+      MFlag      = currObj->X_BROADCOM_COM_MFlag;
+      LFlag      = currObj->X_BROADCOM_COM_LFlag;
+#ifdef DMP_X_BROADCOM_COM_MLD_1
+      mldEnabled = currObj->X_BROADCOM_COM_MLDEnabled;
+#endif
+   }
 
    cmsLog_debug("Enter: ifname=%s, ipv6Address=%s \n firewall=%d, pdflag=%d, unnumbered=%d, iana=%d, mld=%d", 
-                 ifName, addr, firewallEnabled, pdEnabled, unnumbered, Dhcp6cIana, mldEnabled);
+                 ifName, addr, firewallEnabled, pdEnabled, unnumbered, dhcp6cIana, mldEnabled);
 
    /* TODO: IPv6 over ATM?? */
 //   if (!rutWl2_isIPoA(iidStack))
@@ -384,7 +437,7 @@ CmsRet rutCfg_setupWanConnection6(const char *ifName, const char *addr, UBOOL8 f
          return ret;
       }
    
-      if (!IS_EMPTY_STRING(addr) || unnumbered || !Dhcp6cIana)
+      if (!IS_EMPTY_STRING(addr) || unnumbered || !dhcp6cIana)
       {
          /* set the system default gateway only after the external IPv6 address has been set */
          /* TODO: if want to support multiple WAN connections, REVISIT!! */
@@ -399,8 +452,29 @@ CmsRet rutCfg_setupWanConnection6(const char *ifName, const char *addr, UBOOL8 f
             cmsLog_error("rutWan_activateIPv6StaticRoute returns error. ret=%d", ret);
             return ret;
          }
+ 
+         /*for CERouter.1.6.2b test case */
+         /* if the new IANA is a subnet of the Ra-Prfix which had been advertised as a off-link by RA, del the route*/
+         if (MFlag && !LFlag)
+         {
+            char   prefixAddr[CMS_IPADDR_LENGTH] = {0};
+            char           tmpPrefixAddr[CMS_IPADDR_LENGTH] = {0};
+            char           wanPrefixAddr[CMS_IPADDR_LENGTH] = {0};
+            UINT32  raPrefixLen = 0;
+ 
+            if ((ret = cmsUtl_parsePrefixAddress(raPrefix, prefixAddr, &raPrefixLen))== CMSRET_SUCCESS)
+            {
+               if (cmsNet_subnetIp6SitePrefix(addr, 0, raPrefixLen, tmpPrefixAddr) == CMSRET_SUCCESS)
+               {
+                  sprintf(wanPrefixAddr, "%s/%d", tmpPrefixAddr, raPrefixLen);
+                  if (cmsUtl_strcmp(wanPrefixAddr, raPrefix) == 0)
+                  {
+                     rutWan_updateRaRoute(raPrefix, ifName);
+                  }
+               }
+            }                                  
+         }             
       }
-
 #if defined(SUPPORT_DPI)
       /* with DPI enabled, always insmod conntrack/netlink modules on WAN up */
       rutIpt_insertIpModules6();
@@ -413,7 +487,6 @@ CmsRet rutCfg_setupWanConnection6(const char *ifName, const char *addr, UBOOL8 f
          rutIpt_initFirewall(PF_INET6, ifName);
          rutIpt_initFirewallExceptions(ifName);
          rutIpt_setupFirewallForDHCPv6(TRUE, ifName);
-         rutIpt_createRoutingChain6();
          rutIpt_insertTCPMSSRules(PF_INET6, ifName);
       }
          
@@ -443,7 +516,7 @@ CmsRet rutCfg_setupWanConnection6(const char *ifName, const char *addr, UBOOL8 f
          rutWan_configPDRoute(wanPrefix, TRUE);
 
          /* Create ip6tables rules to verify source addr within the delegated prefixes */
-         if (firewallEnabled && wanPrefix)
+         if (wanPrefix)
          {
             char address[CMS_IPADDR_LENGTH];
             char prefix[CMS_IPADDR_LENGTH];
@@ -452,6 +525,7 @@ CmsRet rutCfg_setupWanConnection6(const char *ifName, const char *addr, UBOOL8 f
             {
                sprintf(prefix, "%s/64", address);
                rutIpt_configRoutingChain6(prefix, "br0", TRUE);
+			   rutEbt_configICMPv6Reply(prefix, TRUE);
             }
             else
             {
@@ -478,6 +552,11 @@ CmsRet rutCfg_setupWanConnection6(const char *ifName, const char *addr, UBOOL8 f
             cmsLog_error("Could not get MDMOID_I_PV6_LAN_HOST_CFG, ret=%d", ret);
             return ret;
          }
+		 
+		 if ((cmsUtl_strcmp(IPv6LanCfgObj->IPv6DNSWANConnection, ifName) == 0))
+		 {
+			 isDnsWan = TRUE;
+		 }	 
 
          if ((ret = cmsObj_set(IPv6LanCfgObj, &iidStacktmp)) != CMSRET_SUCCESS)
          {
@@ -487,6 +566,25 @@ CmsRet rutCfg_setupWanConnection6(const char *ifName, const char *addr, UBOOL8 f
          cmsObj_free((void **) &IPv6LanCfgObj);
       }
 
+	  if (isDnsWan)
+	  {
+		 RadvdOtherInfoObject *radvdOtherObj = NULL;
+   		 InstanceIdStack iidStackRadvdCfg = EMPTY_INSTANCE_ID_STACK;
+
+		 if ((ret = cmsObj_getNextFlags(MDMOID_RADVD_OTHER_INFO, &iidStackRadvdCfg, OGF_NO_VALUE_UPDATE, (void **)&radvdOtherObj)) == CMSRET_SUCCESS)
+		 {
+			CMSMEM_REPLACE_STRING(radvdOtherObj->recursiveDns, dnsServers);
+			CMSMEM_REPLACE_STRING(radvdOtherObj->dnssSearchList, domainName);
+
+			if ((ret = cmsObj_set(radvdOtherObj, &iidStackRadvdCfg)) != CMSRET_SUCCESS)
+			{
+			   cmsLog_error("cmsObj_set <MDMOID_RADVD_OTHER_INFO> returns error. ret=%d", ret);
+			}
+
+			cmsObj_free((void **)&radvdOtherObj);
+		 }
+	  }
+	  
       /* Activate tunnels associated with this connection if the WAN address is available */
       if (cmsUtl_isValidIpAddress(AF_INET6, addr))
       {
@@ -1362,8 +1460,46 @@ CmsRet rutWan_setIPv6Address(const char *newAddr, const char *newIfName,
 
 }  /* End of rutWan_setIPv6Address() */
 
+void rutWan_flushHwByGtwy6(const char *gateway, const char *ifName)
+{  
+   FILE *fs;
+   char buf[BUFLEN_128] = {0};
+   UBOOL8 found = FALSE;
+   char *chPtr = NULL;
+   char macStr[BUFLEN_18] = {0};
+   char cmdLine[BUFLEN_128] = {0};
+   
+   if ((ifName) && (gateway))
+   {
+      snprintf(cmdLine, sizeof(cmdLine), "ip -6 neigh show dev %s | grep %s >%s", ifName, gateway, NeighTable);
+      rut_doSystemAction("rut", cmdLine);
 
-void rutWan_removeZeroLifeGtwy6(const char *gateway __attribute__((unused)), const char *ifName)
+      if ((fs = fopen(NeighTable, "r")) != NULL)
+      {
+         while(fgets(buf, sizeof(buf), fs) != NULL)
+         {
+			if ((chPtr = cmsUtl_strstr(buf, "lladdr")) != NULL)
+			{
+				chPtr = chPtr + strlen("lladdr ");
+				cmsUtl_strncpy(macStr, chPtr, sizeof(macStr));
+				found = TRUE;
+				break;
+			}
+         }
+		 
+		 fclose(fs);
+      }
+	  
+	  if (found && !IS_EMPTY_STRING(macStr))
+	  {
+		  snprintf(cmdLine, sizeof(cmdLine), "fc flush --if %s --dstmac %s >/dev/null", ifName, macStr);
+		  rut_doSystemAction("rut", cmdLine);
+	  }
+   }
+}
+
+
+void rutWan_removeZeroLifeGtwy6(const char *gateway, const char *ifName)
 {
    cmsLog_debug("gateway<%s> ifName<%s>", gateway, ifName);
 
@@ -1373,10 +1509,23 @@ void rutWan_removeZeroLifeGtwy6(const char *gateway __attribute__((unused)), con
 
       snprintf(cmdLine, sizeof(cmdLine), "ip -6 ro del default dev %s 2>/dev/null", ifName);
       rut_doSystemAction("rut", cmdLine);
+
+	  rutWan_flushHwByGtwy6(gateway, ifName);
    }
 }
-
-
+ 
+void rutWan_updateRaRoute(const char *wanPrefix, const char *ifName)
+{
+   cmsLog_debug("wanPrefix<%s> if<%s>", wanPrefix, ifName);
+   
+   if ((wanPrefix) && (ifName))
+   {
+      char cmdLine[BUFLEN_128];
+      snprintf(cmdLine, sizeof(cmdLine), "ip -6 ro del %s dev %s 2>/dev/null", wanPrefix, ifName);
+      rut_doSystemAction("rut", cmdLine);
+   }
+}
+ 
 CmsRet rutWan_configPDRoute(const char *wanPrefix, UBOOL8 add)
 {
    CmsRet ret = CMSRET_SUCCESS;

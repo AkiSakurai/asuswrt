@@ -1,7 +1,7 @@
 /*
  * Single stage Queuing and Scheduling module header file
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -98,11 +98,33 @@ struct wlc_sqs_info {
 	flow_ring_status_cb_info_t flow_ring_status_cb_info; /** Flow ring status CB */
 	uint16			v2r_intransit;	   /** < Outstanding V2R across all flows */
 	uint16			eops_intransit;    /** < Outstanding EoPS Request cnt */
+	int			scb_hdl;	   /** < SCB cubby hdl */
 };
 
+typedef struct sqs_virt_q {
+	uint16 v_pkts;		/* current virtual Packets */
+	uint16 v2r_pkts;	/* Current V2R count */
+	uint16 v_pkts_max;	/* Debug - Max V pkts enqueud at any time */
+	uint32 cum_pkts;	/* Debug - Cummulative pkts processed by SQS */
+} sqs_virt_q_t;
+
+typedef struct scb_sqs {
+	void			*scb;			/**< SCB pointer */
+	struct wlc_sqs_info*	sqs_info;		/**< Back ptr to sqs_info */
+	sqs_virt_q_t		q[NUMPRIO];		/**< Virtual Q counters */
+} scb_sqs_t;
 #define WLC_SQS_SIZE	(sizeof(wlc_sqs_info_t))
+#define SCB_SQS_SIZE	(sizeof(scb_sqs_t))
 
 /* Utility Macros */
+#define SCB_SQS_SCB(hdl)	((hdl)->scb)
+#define SCB_SQS_INFO(hdl)	((hdl)->sqs_info)
+#define SCB_SQS_Q(hdl, prio)	((hdl)->q[(prio)])
+#define SCB_SQS_V_PKTS(hdl, prio)	(SCB_SQS_Q((hdl), (prio)).v_pkts)
+#define SCB_SQS_V_PKTS_MAX(hdl, prio)	(SCB_SQS_Q((hdl), (prio)).v_pkts_max)
+#define SCB_SQS_V2R_PKTS(hdl, prio)	(SCB_SQS_Q((hdl), (prio)).v2r_pkts)
+#define SCB_SQS_CUM_V_PKTS(hdl, prio)	(SCB_SQS_Q((hdl), (prio)).cum_pkts)
+
 #define WLC_SQS_WLC(sqs)      (((wlc_sqs_info_t *)sqs)->wlc)
 #define WLC_SQS_PKTPULL_CB_INFO(sqs)	(((wlc_sqs_info_t *)sqs)->pkt_pull_cb_info)
 #define WLC_SQS_PKTPULL_CB_FN(sqs)	((WLC_SQS_PKTPULL_CB_INFO(sqs)).cb)
@@ -127,12 +149,8 @@ extern int wlc_sqs_sendup(uint16 sqs_flowid, uint8 prio, uint16 pkt_count);
 
 extern uint16 wlc_sqs_vpkts(uint16 sqs_flowid, uint8 prio);
 extern uint16 wlc_sqs_v2r_pkts(uint16 cfp_flowid, uint8 prio);
-extern uint16 wlc_sqs_n_pkts(uint16 cfp_flowid, uint8 prio);
-extern uint16 wlc_sqs_tbr_pkts(uint16 cfp_flowid, uint8 prio);
-extern uint16 wlc_sqs_in_transit_pkts(uint16 cfp_flowid, uint8 prio);
 extern void wlc_sqs_v2r_enqueue(uint16 cfp_flowid, uint8 prio, uint16 pkt_count);
 extern void wlc_sqs_v2r_dequeue(uint16 cfp_flowid, uint8 prio, uint16 pkt_count, bool sqs_force);
-extern void wlc_sqs_v2r_revert(uint16 cfp_flowid, uint8 prio, uint16 v2r_reverts);
 extern void wlc_sqs_vpkts_enqueue(uint16 cfp_flowid, uint8 prio, uint16 v_pkts);
 extern void wlc_sqs_vpkts_rewind(uint16 cfp_flowid, uint8 prio, uint16 count);
 extern void wlc_sqs_vpkts_forward(uint16 cfp_flowid, uint8 prio, uint16 count);
@@ -143,8 +161,6 @@ extern void *wlc_sqs_pktq_release(struct scb* scb, struct pktq *pktq, uint8 prio
 extern bool wlc_sqs_fifo_paused(uint8 prio);
 extern void wlc_sqs_pull_packets_register(pkt_pull_cb_t cb, void* arg);
 extern void wlc_sqs_flowring_status_register(flow_ring_status_cb_t cb, void* arg);
-extern uint16 wlc_sqs_ampdu_pull_packets(wlc_info_t* wlc, struct scb* scb, struct pktq *pktq,
-	uint8 tid, uint16 request_cnt);
 extern void wlc_sqs_taf_txeval_trigger(void);
 extern void wlc_sqs_eops_rqst(void);
 extern void wlc_sqs_eops_response(void);

@@ -17,6 +17,7 @@
 #ifndef MNT_DETACH
 #define MNT_DETACH	0x00000002
 #endif
+#include <limits.h>		//PATH_MAX, LONG_MIN, LONG_MAX
 
 #define UBI_SYSFS_DIR	"/sys/class/ubi"
 
@@ -31,7 +32,7 @@
 #define LEBS		0x1F000		/* 124 KiB */
 #define NUM_OH_LEB	24		/* for ubifs overhead */
 #endif
-#if defined(RTAC68U) || defined(RTAC3200) || defined(RTAC3100)
+#if defined(RTAC68U) || defined(RTAC3200) || defined(RTCONFIG_BCM_7114)
 #define JFFS2_MTD_NAME	"brcmnand"
 #define UBI_DEV_NUM	"0"
 #define UBI_DEV_PATH	"/dev/ubi0"
@@ -149,7 +150,7 @@ void start_ubifs(void)
 	int mtd_part = 0, mtd_size = 0;
 	char dev_mtd[] = "/dev/mtdXXX";
 #endif
-#if defined(RTAC68U) || defined(RTAC3200) || defined(RTAC3100) || defined(HND_ROUTER)
+#if defined(RTCONFIG_BCMARM) || defined(RTCONFIG_HND_ROUTER)
 	int mtd_part = 0, mtd_size = 0;
 	char dev_mtd[] = "/dev/mtdXXX";
 #endif
@@ -210,7 +211,7 @@ void start_ubifs(void)
 		}
 	}
 #endif
-#if defined(RTAC68U) || defined(RTAC3200) || defined(RTAC3100) || defined(HND_ROUTER)
+#if defined(RTCONFIG_BCMARM) || defined(RTCONFIG_HND_ROUTER)
 	if (!mtd_getinfo(JFFS2_MTD_NAME, &mtd_part, &mtd_size)) return;
 	snprintf(dev_mtd, sizeof(dev_mtd), "/dev/mtd%d", mtd_part);
 	_dprintf("*** ubifs: %s (%d, %d)\n", JFFS2_MTD_NAME, mtd_part, mtd_size);
@@ -321,7 +322,7 @@ void start_ubifs(void)
 #if defined(RTCONFIG_ISP_CUSTOMIZE)
 	load_customize_package();
 #endif
-#if defined(RTAC68U) || defined(RTAC3200) || defined(RTAC3100) || defined(HND_ROUTER)
+#if defined(RTCONFIG_BCMARM) || defined(RTCONFIG_HND_ROUTER)
 BRCM_UBI:
 		nvram_unset("ubifs_clean_fs");
 		nvram_commit_x();

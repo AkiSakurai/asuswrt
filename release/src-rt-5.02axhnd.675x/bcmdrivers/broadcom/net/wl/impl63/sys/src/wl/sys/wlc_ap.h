@@ -1,7 +1,7 @@
 /*
  * AP Module Public Interface
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_ap.h 781321 2019-11-18 15:44:35Z $
+ * $Id: wlc_ap.h 782118 2019-12-11 10:49:49Z $
  */
 #ifndef _WLC_AP_H_
 #define _WLC_AP_H_
@@ -177,9 +177,8 @@ extern int wlc_bss_down(wlc_ap_info_t *ap, wlc_bsscfg_t *bsscfg);
 extern uint8 wlc_ap_count(wlc_ap_info_t *ap, bool include_p2p);
 extern bool wlc_ap_on_chan(wlc_ap_info_t *ap, wlc_bsscfg_t *bsscfg);
 
-extern int wlc_ap_sendauth(wlc_ap_info_t *ap, wlc_bsscfg_t *bsscfg,
-	struct scb *scb, int auth_alg, int auth_seq, int status,
-	uint8 *challenge_text, bool short_preamble);
+extern int wlc_ap_sendauth(wlc_ap_info_t *ap, wlc_bsscfg_t *bsscfg, struct scb *scb,
+	int auth_alg, int auth_seq, int status, bool short_preamble);
 
 struct scb *wlc_ap_get_psta_prim(wlc_ap_info_t *ap, struct scb *scb);
 extern void wlc_ap_channel_switch(wlc_ap_info_t *ap, wlc_bsscfg_t *cfg);
@@ -197,7 +196,7 @@ bool wlc_apup_allowed(wlc_info_t *wlc);
 #define wlc_ap_up(a, b) do {} while (0)
 #define wlc_ap_down(a, b) 0
 #define wlc_restart_ap(a) do {} while (0)
-#define wlc_ap_authresp(a, b, c, d, e, f, g, i, j, k) do {} while (0)
+#define wlc_ap_authresp(a, b, c, d, e, f, g, i) do {} while (0)
 
 #define wlc_ap_process_assocreq(a, b, c, d, e) do {} while (0)
 #define wlc_roam_check(a, b, c, d) FALSE
@@ -208,7 +207,7 @@ bool wlc_apup_allowed(wlc_info_t *wlc);
 
 #define wlc_apsta_on_radar_channel(a)     FALSE
 
-#define wlc_ap_sendauth(a, b, c, d, e, f, g, h, i) do {} while (0)
+#define wlc_ap_sendauth(a, b, c, d, e, f, g) 0
 
 #define wlc_ap_get_psta_prim(a, b) NULL
 #define wlc_ap_channel_switch(a, b) do {} while (0)

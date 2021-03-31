@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfg80211.h 781849 2019-12-03 09:16:21Z $
+ * $Id: wl_cfg80211.h 782649 2019-12-30 11:30:09Z $
  */
 
 /**
@@ -623,12 +623,6 @@ struct bss_tm_req {
 	*/
 	u8 variable[];
 };
-
-#ifdef DHD_MAX_IFS
-#define WL_MAX_IFS DHD_MAX_IFS
-#else
-#define WL_MAX_IFS 16
-#endif // endif
 
 #define ESCAN_BUF_SIZE (128 * 1024)
 

@@ -773,7 +773,9 @@ CmsRet rutQos_roLocalClass(const CmsQosClassInfo *cInfo,
       sprintf(cmd, "%s -w -t mangle -D OUTPUT %s %s %s %s %s -j MARK --or-mark 0x%x 2>/dev/null",
               tblStr, egressIfc, proto, sport, dport, dscpCheck, flowId);
    }
+#ifdef SUPPORT_NF_MANGLE
    rut_doSystemAction("rutQos_roLocalClass", cmd);
+#endif // SUPPORT_NF_MANGLE
 
    return ret;
 
@@ -939,7 +941,9 @@ CmsRet rutQos_roIngressClass(const CmsQosClassInfo *cInfo,
       sprintf(cmd, "%s -w -t mangle -D PREROUTING %s %s %s %s %s %s %s %s -j MARK --or-mark 0x%x 2>/dev/null",
               tblStr, proto, ifcStr, smac, src, dst, sport, dport, dscpCheck, flowId);
    }
+#ifdef SUPPORT_NF_MANGLE
    rut_doSystemAction("rutQos_roIngressClass", cmd);
+#endif // SUPPORT_NF_MANGLE
 
    return ret;
 
@@ -1472,6 +1476,8 @@ CmsRet rutQos_roEgressMark(const CmsQosClassInfo *cInfo,
                            UINT32 priority,
                            QosCommandType cmdType)
 {
+   CmsRet ret = CMSRET_SUCCESS;
+#ifdef SUPPORT_NF_MANGLE
    char cmd[BUFLEN_1024];
    char tblStr[BUFLEN_16];
    char egressIfc[BUFLEN_40];
@@ -1479,7 +1485,6 @@ CmsRet rutQos_roEgressMark(const CmsQosClassInfo *cInfo,
    UINT32 clsKey;
    UINT32 flowId = 0;
    UINT32 queueMark = 0;
-   CmsRet ret = CMSRET_SUCCESS;
 
    cmd[0]       = '\0';
    egressIfc[0] = '\0';
@@ -1552,7 +1557,8 @@ CmsRet rutQos_roEgressMark(const CmsQosClassInfo *cInfo,
       sprintf(cmd, "%s -w -t mangle -X rule%d 2>/dev/null", tblStr, clsKey);
       rut_doSystemAction("rutQos_roEgressMark", cmd);
    }
-   
+#endif // SUPPORT_NF_MANGLE
+
    return ret;
 
 }  /* End of rutQos_roEgressMark() */

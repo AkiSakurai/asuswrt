@@ -53,7 +53,6 @@ typedef unsigned int archer_socket_index_t;
 typedef struct {
     int (* tx_queue_read)(void **skb_pp, int *ingress_port_p);
     int (* tx_queue_not_empty)(void);
-    int (* tx_queue_notify)(void);
     void (* free_skb_and_data)(void *skb_p);
     void (* miss_write)(void *skb_p, int ingress_port);
     sysport_rsb_phy_t ingress_phy;

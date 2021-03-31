@@ -84,11 +84,12 @@ CmsImageFormat bcmImg_validateImage(const char *imageBuf, UINT32 imageLen);
 UBOOL8 bcmImg_isBcmTaggedImage(const char *imageBuf, UINT32 *imageSize);
 UINT32 bcmImg_getConfigFlashSize(void);
 
-void bcmImg_ComboImageInit(void);
+imgutil_ret_e bcmImg_ComboImageInit(void);
 imgutil_ret_e bcmImg_ComboImageIdentify(const char *imageBuf, UINT32 imageLen);
 imgutil_ret_e bcmImg_ComboImageParseHeader(char *imageBuf, UINT32 imageLen,
   UINT32 *consumed, UINT32 *image_len, int *parsingState,
-  Comboimg_header_tag *comboTagP, Comboimg_individual_img_tag *indvTagP);
+  Comboimg_header_tag *comboTagP, Comboimg_individual_img_tag *indvTagP,
+  imgutil_accept_range_ctx_t *ar_ctx);
 UBOOL8 bcmImg_ComboImageParsingDone(void);
 UBOOL8 bcmImg_IsValidCombo(void);
 

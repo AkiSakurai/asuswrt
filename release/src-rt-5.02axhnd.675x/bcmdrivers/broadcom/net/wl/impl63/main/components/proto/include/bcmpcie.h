@@ -3,7 +3,7 @@
  * Software-specific definitions shared between device and host side
  * Explains the shared area between host and dongle
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmpcie.h 777797 2019-08-10 00:31:37Z $
+ * $Id: bcmpcie.h 783755 2020-02-07 20:57:50Z $
  */
 
 #ifndef	_bcmpcie_h_
@@ -238,6 +238,7 @@ typedef dma64addr_t haddr64_t; /* No 64bit alignment requirement */
 /** pcie_ipc:dcap1 end of listing ------------------------------------------- */
 
 /** pcie_ipc:dcap2 : Dongle capabilities advertized to host "PCIE_IPC_DCAP2_" */
+#define PCIE_IPC_DCAP2_CSI_MONITOR      0x00000001 /* Ch Status Info support  */
 /** pcie_ipc:dcap2 end of listing ------------------------------------------- */
 
 /** pcie_ipc:hcap1 : Host capabillities acked to dongle "PCIE_IPC_HCAP1_"     */
@@ -265,6 +266,7 @@ typedef dma64addr_t haddr64_t; /* No 64bit alignment requirement */
 /** pcie_ipc:hcap1 end of listing ------------------------------------------- */
 
 /** pcie_ipc:hcap2 : Host capabilities acked to dongle "PCIE_IPC_HCAP2_"      */
+#define PCIE_IPC_HCAP2_CSI_MONITOR      PCIE_IPC_DCAP2_CSI_MONITOR
 /** pcie_ipc:hcap2 end of listing ------------------------------------------- */
 
 /**

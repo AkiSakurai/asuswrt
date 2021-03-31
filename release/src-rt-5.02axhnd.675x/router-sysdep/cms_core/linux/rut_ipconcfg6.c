@@ -248,23 +248,9 @@ CmsRet rutWan_ipv6IpConnProcess(_WanIpConnObject *newObj __attribute__((unused))
       */
       if ((skipWanIpSetup == FALSE) && (ret == CMSRET_SUCCESS))
       {
-         UBOOL8 mldEnable = 0;
-#ifdef DMP_X_BROADCOM_COM_MLD_1
-         mldEnable = newObj->X_BROADCOM_COM_MLDEnabled;
-#endif
-         if ((ret = rutCfg_setupWanConnection6(newObj->X_BROADCOM_COM_IfName, 
-                                               newObj->X_BROADCOM_COM_ExternalIPv6Address, 
-                                               newObj->X_BROADCOM_COM_FirewallEnabled, 
-                                               newObj->X_BROADCOM_COM_IPv6PrefixDelegationEnabled, 
-                                               newObj->X_BROADCOM_COM_UnnumberedModel, 
-                                               newObj->X_BROADCOM_COM_Dhcp6cForAddress, 
-                                               mldEnable)) == CMSRET_SUCCESS)
+         if ((ret = rutCfg_setupWanConnection6(newObj, TRUE)) == CMSRET_SUCCESS)
          {
             cmsLog_debug("rutCfg_setupWanConnection6 ok");
-            /*
-             * IPv6 connection currently do NOT impact the Led!
-             */
-//            cmsLed_setWanConnected();
          }
          else
          {

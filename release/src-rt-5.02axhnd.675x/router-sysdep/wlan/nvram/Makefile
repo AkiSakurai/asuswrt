@@ -140,7 +140,6 @@ ifeq ($(strip $(BUILD_BRCM_UNFWLCFG)),)
 endif
 	install -m 755 ./scripts/hndnvram.sh $(INSTALL_DIR)/rom/rom/etc/init.d
 	install -m 755 ./scripts/hnddm.sh $(INSTALL_DIR)/usr/sbin
-	install -m 755 ./scripts/wifi.sh $(INSTALL_DIR)/rom/rom/etc/init.d
 	sed -e s/KERNEL_NVRAM_FILE_NAME/$(KERNEL_NVRAM_FILE_NAME)/g ./scripts/hndnvram.sh > $(INSTALL_DIR)/rom/rom/etc/init.d/hndnvram.sh
 ifeq ($(strip $(BUILD_BRCM_UNFWLCFG)_$(BUILD_BRCM_CMS)),y_)
 # fill in the content of "user_nvram_file" in hndnvram.sh for UNFWLCFG+NOCMS builds
@@ -183,15 +182,25 @@ install:
 
 dynamic: all
 
+ifeq ($(wildcard ./*.c),)
+libnvram:
+	cp -f ./prebuilt/libnvram.so .
+else
 libnvram: nvram_shared.o brcm_generic_lock.o $(WLCSM_LIB)
 	$(LD) -shared -soname libnvram.so -o libnvram.so nvram_shared.o brcm_generic_lock.o  -L$(LIBDIR) $(WLCSM_LIB) -lc -lpthread
 	install -m 755 libnvram.so $(INSTALL_DIR)/lib
+endif
 
+ifeq ($(wildcard ./*.c),)
+nvram:
+	cp -f ./prebuilt/nvram .
+else
 nvram: libnvram main.o $(WLCSM_LIB)
 ifneq ($(strip $(BUILD_BRCM_CMS)),)
 	$(CC) -o $@ main.o -s -Os -fomit-frame-pointer $(CMS_LIB_PATH) -L$(LIBDIR) -L$(EXTRALIBDIR) -lc -lgcc_s -lpthread $(LIBS)
 else
 	$(CC) -o $@ main.o -s -Os -fomit-frame-pointer -L$(LIBDIR) -L$(EXTRALIBDIR) -lc -lgcc_s -lpthread $(LIBS) $(WLCSM_LIB)
+endif
 endif
 
 clean:

@@ -2,7 +2,7 @@
  * Decode functions which provides decoding of Hotspot2.0 ANQP packets
  * as defined in Hotspot2.0 specification.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

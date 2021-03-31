@@ -4,7 +4,7 @@
  *
  * BMAC driver external interface
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -48,7 +48,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_bmac.h 780490 2019-10-28 17:07:24Z $
+ * $Id: wlc_bmac.h 784253 2020-02-24 19:26:07Z $
  */
 
 /* XXXXX this interface is under wlc.c by design
@@ -490,6 +490,7 @@ extern bool wlc_bmac_get_noreset(wlc_hw_info_t *wlc);
 
 #if defined(WL_PROXDETECT) || defined(WLC_TSYNC)
 extern void wlc_enable_avb_timer(wlc_hw_info_t *wlc_hw, bool enable);
+extern void wlc_enable_avb_timer_war(wlc_hw_info_t *wlc_hw, bool enable);
 extern void wlc_get_avb_timer_reg(wlc_hw_info_t *wlc_hw, uint32 *clkst, uint32 *maccontrol1);
 extern void wlc_get_avb_timestamp(wlc_hw_info_t *wlc_hw, uint32* ptx, uint32* prx);
 #endif // endif
@@ -833,4 +834,11 @@ extern void wlc_rx_invalid_length_handle(wlc_info_t* wlc, void* p, d11rxhdr_t *r
 #endif /* RX_DEBUG_ASSERTS */
 extern void wlc_bmac_hfifo_rdy_get(wlc_hw_info_t *wlc_hw, uint16 fifordy[]);
 extern void wlc_bmac_hfifo_frmcnt_get(wlc_hw_info_t *wlc_hw, uint16 frmcnt[]);
+
+#ifdef DONGLEBUILD
+#define WLC_DEEP_RING_NFIFO	4
+#else
+#define WLC_DEEP_RING_NFIFO	0
+#endif // endif
+
 #endif /* _WLC_BMAC_H_ */

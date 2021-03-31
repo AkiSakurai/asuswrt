@@ -1,7 +1,7 @@
 /*
  * ACPHY Channel Manager module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_chanmgr.h 779474 2019-09-30 22:16:58Z $
+ * $Id: phy_ac_chanmgr.h 788401 2020-06-30 17:05:46Z $
  */
 
 #ifndef _phy_ac_chanmgr_h_
@@ -510,12 +510,15 @@ extern void wlc_phy_ulb_mode(phy_info_t *pi, uint8 ulb_mode);
 
 extern void phy_ac_chanmgr_core2core_sync_setup(phy_ac_chanmgr_info_t *chanmgri, bool enable);
 extern void phy_ac_chanmgr_core2core_sync_dac_clks(phy_ac_chanmgr_info_t *chanmgri, bool enable);
-extern void phy_ac_chanmgr_hwobss(phy_ac_chanmgr_info_t *chanmgri, bool enable_hwobss,
-	bool preemp_enable);
+extern void phy_ac_chanmgr_hwobss(phy_ac_chanmgr_info_t *chanmgri, bool enable_hwobss);
 
 int phy_ac_chanmgr_iovar_get_lowratetssi(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
 int phy_ac_chanmgr_iovar_get_lowratetssi_ovrd(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
 int phy_ac_chanmgr_iovar_set_lowratetssi_ovrd(phy_ac_chanmgr_info_t *chanmgri, int32 set_val);
+int phy_ac_chanmgr_iovar_get_papr_en(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
+int phy_ac_chanmgr_iovar_set_papr_en(phy_ac_chanmgr_info_t *chanmgri, int32 set_val);
+int phy_ac_chanmgr_iovar_get_papr_gamma(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
+int phy_ac_chanmgr_iovar_set_papr_gamma(phy_ac_chanmgr_info_t *chanmgri, int32 set_val);
 
 void phy_ac_chanmgr_cal_init(phy_info_t *pi, uint8 *enULB);
 void phy_ac_chanmgr_cal_reset(phy_info_t *pi);
@@ -541,7 +544,7 @@ extern int phy_ac_chanmgr_get_val_phymode(phy_ac_chanmgr_info_t *chanmgri, int32
 extern int phy_ac_chanmgr_get_val_phy_vcore(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
 extern bool phy_ac_chanmgr_get_val_nonbf_logen_mode(phy_ac_chanmgr_info_t *chanmgri);
 extern void phy_ac_chanmgr_low_rate_tssi_rfseq_fiforst_dly(phy_info_t *pi, bool enable);
-extern void wlc_phy_set_rfseqext_tbl_majrev47(phy_info_t *pi, uint8 mode);
+extern void wlc_phy_set_rfseqext_tbl(phy_info_t *pi, uint8 mode);
 
 /* WAR */
 extern void phy_ac_chanmgr_mutx_war(wlc_phy_t *pih, bool enable);

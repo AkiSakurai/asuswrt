@@ -51,7 +51,7 @@ written consent.
 #ifndef CARDNAME
 #define CARDNAME        "bcmxtmrt"
 #endif
-#define XTMRT_VERSION   "1.0"
+#define XTMRT_VERSION   "2.0"
 
 #define XTM_CACHE_SMARTFLUSH
 
@@ -489,7 +489,7 @@ typedef struct bcmxtmrt_global_info
     /* RX thread support */
     struct task_struct *rx_thread;
     wait_queue_head_t   rx_thread_wqh;
-    int                 rx_work_avail;
+    volatile unsigned long rx_work_avail;
 #define XTMRT_BUDGET   32
 
 #if defined(CONFIG_BCM963268) || defined(CONFIG_BCM963381) || defined(CONFIG_BCM963178)
@@ -519,6 +519,7 @@ typedef struct bcmxtmrt_global_info
 #if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158)
     bdmf_object_handle  bdmfXtm;
     bdmf_object_handle  bdmfWan;
+    bdmf_object_handle  bdmfXtm_Orl_Tm;
     BcmXtm_TxBdmfObj    txBdmfObjs[MAX_TRANSMIT_QUEUES];
 #endif
     
@@ -670,7 +671,7 @@ static inline UINT32 bcmxtmrt_xtmOverhead(UINT32 hdrType, UINT32 len, UINT32 rfc
 
 /* Macro to wake up the RX thread */
 #define BCMXTMRT_WAKEUP_RXWORKER(x) do {                    \
-               (x)->rx_work_avail = 1;                      \
+               set_bit(0, &(x)->rx_work_avail);             \
                wake_up_interruptible(&((x)->rx_thread_wqh)); } while (0)
 
 #ifndef FAP_4KE

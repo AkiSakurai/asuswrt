@@ -56,6 +56,7 @@
 #include "rut_util.h"
 #include "rut_lan.h"
 #include "rut_network.h"
+#include "rut_ebtables.h"
 #include "rut_wan6.h"
 #include "device2/rut2_iptunnel.h"
 #include "device2/rut2_ipv6.h"
@@ -837,6 +838,8 @@ CmsRet rutTunnel_6rdConfig(const char *wanIp, const char *prefix, const char *br
       
       snprintf(cmdStr, sizeof(cmdStr), "ip -6 ro add %s dev sit1", prefix);
       rut_doSystemAction("6rdConfigAdd", cmdStr);
+
+      rutEbt_configICMPv6Reply(prefix, TRUE);
    }
    else
    {
@@ -856,6 +859,8 @@ CmsRet rutTunnel_6rdConfig(const char *wanIp, const char *prefix, const char *br
 
       snprintf(cmdStr, sizeof(cmdStr), "ip tunnel del sit1");
       rut_doSystemAction("6rdConfigDel", cmdStr);
+
+      rutEbt_configICMPv6Reply(prefix, FALSE);
    }
 
    return ret;

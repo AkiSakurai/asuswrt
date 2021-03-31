@@ -262,7 +262,10 @@ CmsRet rcl_wanEponLinkCfgObject( _WanEponLinkCfgObject *newObj,
    }
    else if (DELETE_OR_DISABLE_EXISTING(newObj, currObj))
    {
-      portUninit = TRUE;
+	  if (!strcmp(currObj->linkStatus, MDMVS_UP))
+      {
+		portUninit = TRUE;
+   	  }
    }
 #else /* INIT_WAN_QUEUE_ON_LINKUP */
    if (ENABLE_NEW_OR_ENABLE_EXISTING(newObj, currObj))

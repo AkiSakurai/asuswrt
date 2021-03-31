@@ -829,6 +829,7 @@ int flwStatsCreateQuery(FlwStatsQueryInfo_t *newQuery)
     return ret;
 }
 
+EXPORT_SYMBOL(flwStatsCreateQuery);
 
 /*
  *---------------------------------------------------------------------------
@@ -871,6 +872,7 @@ int flwStatsGetQuery(FlwStatsQueryInfo_t *pQueryInfo)
        valid error code. */	
     return 0;
 }
+EXPORT_SYMBOL(flwStatsGetQuery);
 
 /*
  *----------------------------------------------------------------------------
@@ -904,6 +906,7 @@ int flwStatsDeleteQuery(FlwStatsQueryInfo_t *pQueryInfo)
     /* Return a valid error code. */	
     return ret;
 }
+EXPORT_SYMBOL(flwStatsDeleteQuery);
 
 
 /*
@@ -960,6 +963,7 @@ int flwStatsClearQuery(FlwStatsQueryInfo_t *pQueryInfo)
 
     return 0;
 }
+EXPORT_SYMBOL(flwStatsClearQuery);
 
 int flwStatsGetPollParams(FlwStatsPollParams_t *pollParams)
 {

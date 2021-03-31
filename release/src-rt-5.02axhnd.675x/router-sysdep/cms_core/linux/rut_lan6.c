@@ -81,12 +81,20 @@ CmsRet rutLan_setIPv6Address(char *newAddr, char *newIfName,
 {
    char cmdLine[BUFLEN_128];
    CmsRet ret = CMSRET_SUCCESS;
+   char prefixAddr[BUFLEN_128];
+   char prefix[BUFLEN_256];
+   UINT32 plen;
 
    cmsLog_debug("Addr: new=%s old=%s IfName: new=%s old=%s",
                 newAddr, oldAddr, newIfName, oldIfName);
 
    if (!IS_EMPTY_STRING(oldAddr) && !IS_EMPTY_STRING(oldIfName))
    {
+      cmsUtl_parsePrefixAddress(oldAddr, prefixAddr, &plen);
+	  cmsNet_subnetIp6SitePrefix(oldAddr, 0, plen, prefixAddr);
+	  sprintf(prefix, "%s/%d", prefixAddr, plen);
+	  rutIpt_configRoutingChain6(prefix, oldIfName, FALSE);
+	  
       /* delete the current address for this connection */
       snprintf(cmdLine, sizeof(cmdLine), "ip -6 addr del %s dev %s 2>/dev/null", 
                oldAddr, oldIfName);
@@ -95,6 +103,12 @@ CmsRet rutLan_setIPv6Address(char *newAddr, char *newIfName,
 
    if ( !IS_EMPTY_STRING(newAddr) && !IS_EMPTY_STRING(newIfName) )
    {
+  
+      cmsUtl_parsePrefixAddress(newAddr, prefixAddr, &plen);
+	  cmsNet_subnetIp6SitePrefix(newAddr, 0, plen, prefixAddr);
+	  sprintf(prefix, "%s/%d", prefixAddr, plen);
+	  rutIpt_configRoutingChain6(prefix, newIfName, TRUE);
+	  
       /* add the new address for this connection */
       snprintf(cmdLine, sizeof(cmdLine), "ip -6 addr add %s dev %s 2>/dev/null",
                newAddr, newIfName);
@@ -426,6 +440,22 @@ const char *radvdConf1Ext = "\
   };\n\
 ";
 
+const char *radvdConf2Ext = "\
+  RDNSS %s\n\
+  {\n\
+    AdvRDNSSLifetime 360;\n\
+    FlushRDNSS on;\n\
+  };\n\
+";
+
+const char *radvdConf3Ext = "\
+  DNSSL %s\n\
+  {\n\
+    AdvDNSSLLifetime 360;\n\
+    FlushDNSSL on;\n\
+  };\n\
+";
+
 const char *radvdConf3 = "\
   route %s\n\
   {\n\
@@ -449,13 +479,17 @@ const char *radvdConf2 = "\
    char advManageStr[BUFLEN_8];
    char routerLifetime[BUFLEN_32]="";
    UBOOL8 statefulDhcp;
-   UBOOL8 foundConf0Ext = FALSE;
    _IPv6LanHostCfgObject *ipv6LanCfgObj=NULL;
    InstanceIdStack iidStack = EMPTY_INSTANCE_ID_STACK;
    _PrefixInfoObject *prefixObj = NULL;
    InstanceIdStack iidStackPrefix0 = EMPTY_INSTANCE_ID_STACK;
    InstanceIdStack iidStackPrefix = EMPTY_INSTANCE_ID_STACK;
    _ULAPrefixInfoObject *ulaObj = NULL;
+   _RadvdOtherInfoObject *radvdOtherObj = NULL;
+   InstanceIdStack iidStackOther = EMPTY_INSTANCE_ID_STACK;
+   char recursiveDns[BUFLEN_128];
+   char dnssSearchList[BUFLEN_128];
+   char *separator;
    CmsRet ret;
 
    cmsLog_debug("Enter rut_createRadvdConf()");
@@ -517,6 +551,8 @@ const char *radvdConf2 = "\
    /* write the first part of the conf file */
    fprintf(fp, radvdConf0, advManageStr, routerLifetime);
 
+   fprintf(fp, radvdConf0Ext);
+
    /* ULA Prefix info */
    if ((ret = cmsObj_get(MDMOID_ULA_PREFIX_INFO, &iidStack, 0, (void **) &ulaObj)) != CMSRET_SUCCESS)
    {
@@ -562,6 +598,41 @@ const char *radvdConf2 = "\
       }
       cmsObj_free((void **) &ulaObj);
    }
+
+    /* RFC 7084:
+       The IPv6 CE router MUST support providing DNS information in
+       the Router Advertisement Recursive DNS Server (RDNSS) and DNS
+       Search List options.  Both options are specified in [RFC6106].
+   */
+   if (cmsObj_getNextFlags(MDMOID_RADVD_OTHER_INFO, &iidStackOther, OGF_NO_VALUE_UPDATE, (void **)&radvdOtherObj) == CMSRET_SUCCESS)
+   {
+	   if (!IS_EMPTY_STRING(radvdOtherObj->recursiveDns))
+	   {
+			/* get a local copy since we are going to modify the string. */
+			strncpy(recursiveDns, radvdOtherObj->recursiveDns, sizeof(recursiveDns));
+			
+			/* replace commas in the servers string with spaces */
+			while ((separator = strchr(recursiveDns, ',')))
+			{
+			   *separator = ' ';
+			}
+
+			fprintf(fp, radvdConf2Ext, recursiveDns);
+	   }
+	   
+	   if (!IS_EMPTY_STRING(radvdOtherObj->dnssSearchList))
+	   {
+			strncpy(dnssSearchList, radvdOtherObj->dnssSearchList, sizeof(dnssSearchList));
+			
+			/* replace commas in the servers string with spaces */
+			while ((separator = strchr(dnssSearchList, ',')))
+			{
+			   *separator = ' ';
+			}
+			
+			fprintf(fp, radvdConf3Ext, dnssSearchList);
+	   }
+   	}
 
    /* Write the configuration file with all possible prefixes on br0 */
    while ( cmsObj_getNextFlags(MDMOID_PREFIX_INFO, &iidStackPrefix, OGF_NO_VALUE_UPDATE, (void **)&prefixObj) == CMSRET_SUCCESS )
@@ -646,12 +717,6 @@ const char *radvdConf2 = "\
             else
             {
                strcpy(slaacStr, "on");
-            }
-
-            if (!foundConf0Ext && prefixObj->validLifeTimeOld > 0)
-            {
-               foundConf0Ext = TRUE;
-               fprintf(fp, radvdConf0Ext);
             }
 
             sprintf(address, "%s/64", snPrefix);

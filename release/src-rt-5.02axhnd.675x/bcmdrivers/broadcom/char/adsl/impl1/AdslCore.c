@@ -82,11 +82,6 @@
  *
  ****************************************************************************/
 
-#if defined(_CFE_)
-#include "lib_types.h"
-#include "lib_string.h"
-#endif
-
 #include "AdslCoreMap.h"
 
 #include "softdsl/SoftDsl.h"
@@ -116,13 +111,6 @@
 #include "bcm_rsvmem.h"
 #endif
 
-#elif defined(_CFE_)
-
-#include "bcm_map.h"
-#include "bcm_intr.h"
-#include "boardparms.h"
-#include "board.h"
-
 #elif defined(__ECOS)
 
 #include "bcm_map.h"
@@ -147,13 +135,17 @@
 #include "63158_common.h"
 #elif defined(CONFIG_BCM963178)
 #include "63178_common.h"
+#elif defined(CONFIG_BCM963146)
+#include "63146_common.h"
 #else
 #error	"Unknown 963x8 chip"
 #endif
 
 #endif /* VXWORKS */
 
+#ifndef NO_XTM_MODULE
 #include <bcmxtmcfg.h>
+#endif
 
 #ifdef ADSL_SELF_TEST
 #include "AdslSelfTest.h"
@@ -262,6 +254,15 @@
 #include "adslcore63178/adsl_sdram.h"
 #endif
 
+#elif defined(CONFIG_BCM963146)
+#if defined(ADSL_ANNEXB)
+#include "adslcore63146B/adsl_lmem.h"
+#include "adslcore63146B/adsl_sdram.h"
+#else
+#include "adslcore63146/adsl_lmem.h"
+#include "adslcore63146/adsl_sdram.h"
+#endif
+
 #else   /* 48 platform */
 #ifdef ADSL_ANNEXC
 #include "adslcore6348C/adsl_lmem.h"
@@ -309,7 +310,6 @@
 #include <linux/dma-mapping.h>
 #endif
 #ifdef USE_PMC_API
-#include "pmc_drv.h"
 #include "pmc_dsl.h"
 #endif
 
@@ -394,7 +394,6 @@ typedef ulong (*adslCoreStatusCallback) (dslStatusStruct *status, char *pBuf, in
 /* Local vars */
 
 void * AdslCoreGetOemParameterData (int paramId, int **ppLen, int *pMaxLen);
-static void AdslCoreSetSdramTrueSize(void);
 
 static ulong AdslCoreIdleStatusCallback (dslStatusStruct *status, char *pBuf, int len)
 {
@@ -406,6 +405,9 @@ adslPhyInfo	adslCorePhyDesc = {
 	0, 0, 0, 0,
 	0, {0,0,0,0},
 	ADSL_PHY_SDRAM_PAGE_SIZE,
+#ifdef SDRAM4G_SUPPORT1
+	0xA0000000, 0,
+#endif
 	0xA0000000 | (ADSL_SDRAM_TOTAL_SIZE - ADSL_PHY_SDRAM_PAGE_SIZE), 0, NULL
 };
 
@@ -459,6 +461,14 @@ ulong	adslCoreEcUpdateMask = 0;
 ulong	adslCoreBootFlags   = 0;
 
 Boolean	acCmdWakeup = AC_FALSE;
+#ifdef SUPPORT_MULTI_PHY
+unsigned char acLineReset[2] = { 0, 0 };
+#endif
+
+#ifdef CONFIG_BCM_DSL_GFAST
+unsigned short bpGpioAFEPwrBoost[2] = {0xFFFF, 0xFFFF};
+unsigned char  acPwrBoostLineMask = 0;
+#endif
 
 #ifdef VXWORKS
 int	ejtagEnable = 0;
@@ -487,26 +497,6 @@ void MemLifoInit(MemLifoCtrl *mCtrl, void *p, int size)
 	mCtrl->size = size;
 }
 
-void *MemLifoAlloc(MemLifoCtrl *mCtrl, int size)
-{
-	uchar *p = mCtrl->pCurrent;
-
-	if ((p + size) > (mCtrl->pStart + mCtrl->size))
-	  return NULL;
-	mCtrl->pCurrent += size;
-	return p;
-}
-
-AC_BOOL MemLifoFree(MemLifoCtrl *mCtrl, void *p)
-{
-	if ((p >=  (void*)mCtrl->pStart) && (p <  (void *)(mCtrl->pStart + mCtrl->size))) {
-	  mCtrl->pCurrent  = p;
-	  return AC_TRUE;
-	}
-	else
-	  return AC_FALSE;
-}
-
 int MemLifoAvail(MemLifoCtrl *mCtrl)
 {
 	return (mCtrl->pStart + mCtrl->size - mCtrl->pCurrent);
@@ -514,8 +504,84 @@ int MemLifoAvail(MemLifoCtrl *mCtrl)
 
 void MemLifoPrint(MemLifoCtrl *mCtrl, char *hdr)
 {
-	printk("%s: start=0x%p cur=0x%p, size=%d avail=%d\n", hdr, mCtrl->pStart, mCtrl->pCurrent, mCtrl->size, MemLifoAvail(mCtrl));
+	printk("%s: start=0x%px cur=0x%px, size=%d avail=%d\n", hdr, mCtrl->pStart, mCtrl->pCurrent, mCtrl->size, MemLifoAvail(mCtrl));
 }
+
+void *MemLifoAlloc(MemLifoCtrl *mCtrl, int size)
+{
+	uchar *p = mCtrl->pCurrent;
+
+	size = (size + 3) & ~3;
+	if ((p + size) > (mCtrl->pStart + mCtrl->size))
+	  return NULL;
+	mCtrl->pCurrent += size;
+	MemLifoPrint(mCtrl, "MemAlloc");
+	return p;
+}
+
+AC_BOOL MemLifoFree(MemLifoCtrl *mCtrl, void *p)
+{
+	if ((p >=  (void*)mCtrl->pStart) && (p <=  (void *)mCtrl->pCurrent)) {
+	  mCtrl->pCurrent  = p;
+	  MemLifoPrint(mCtrl, "MemFree");
+	  return AC_TRUE;
+	}
+	else
+	  return AC_FALSE;
+}
+
+/*
+** PHY reserved memory definitions and functions
+*/
+
+#ifdef ADSL_SDRAM_RESERVE_SIZE
+
+char *pResVirt = NULL;
+char *pResPhys = NULL;
+uint resTotalSize = 0;
+uint resAlloc = 0;
+
+void	AdslCoreSystemReservedMemInit(void *p, void *physAddr, unsigned int size)
+{
+	pResVirt = p;
+	pResPhys = physAddr;
+	resTotalSize = size;
+	resAlloc = 0;
+	AdslDrvPrintf(TEXT("%s: VA=0x%px PA=0x%px size=0x%X\n"), __FUNCTION__, p, physAddr, size);
+}
+
+void	*AdslCoreSystemReservedMemAlloc(unsigned int size, void **ppPhysAddr)
+{
+	char *pAlloc = pResVirt;
+
+	if (size > (resTotalSize - resAlloc))
+		return NULL;
+
+	*ppPhysAddr = pResPhys;
+	pResVirt += size;
+	pResPhys += size;
+	resAlloc += size;
+
+	AdslDrvPrintf(TEXT("%s: VA=0x%px PA=0x%px alloc=0x%X\n"), __FUNCTION__, pAlloc, *ppPhysAddr, resAlloc);
+	return pAlloc;
+}
+
+void	AdslCoreSystemReservedMemFree(void *p, void *physAddr, unsigned int size)
+{
+	if (size > resAlloc)
+		return;
+
+	pResVirt = p;
+	pResPhys = physAddr;
+	resAlloc -= size;
+	AdslDrvPrintf(TEXT("%s: VA=0x%px PA=0x%px alloc=0x%X\n"), __FUNCTION__, p, physAddr, resAlloc);
+}
+
+unsigned int AdslCoreSystemReservedMemAvail(void)
+{
+	return (resTotalSize - resAlloc);
+}
+#endif /* ADSL_SDRAM_RESERVE_SIZE */
 
 #ifdef SUPPORT_DSL_BONDING
 static void *XdslCoreSetCurDslVars(uchar lineId)
@@ -564,7 +630,6 @@ unsigned long AdslCoreGetBootFlags(void)
 **		ADSL Core SDRAM memory functions
 **
 */
-#define UNALIGNED_PHY_VIRT_ADDR
 
 void *AdslCoreGetPhyInfo(void)
 {
@@ -589,22 +654,25 @@ uint AdslCoreGetSdramImageSize(void)
 static void AdslCoreSetSdramTrueSize(void)
 {
 	uint data[2];
-#ifdef UNALIGNED_PHY_VIRT_ADDR
-	int	reservedSdramSize = (adslCorePhyDesc.sdramPageAddr + adslCorePhyDesc.sdramPageSize - adslCorePhyDesc.sdramImageAddr);
-#else
-	int	reservedSdramSize = (adslCorePhyDesc.sdramPageSize -(adslCorePhyDesc.sdramImageAddr & (adslCorePhyDesc.sdramPageSize-1)));
-#endif
+	int	reservedSdramSize = (adslCorePhyDesc.sdramPageAddr + ADSL_PHY_SDRAM_PAGE_SIZE - adslCorePhyDesc.sdramImageAddr);
 
 	BlockByteMove(8, (void*)(adslCorePhyDesc.sdramImageAddr+adslCorePhyDesc.sdramImageSize-8), (void*)&data[0]);
-#ifdef ADSLDRV_LITTLE_ENDIAN
-	AdslDrvPrintf(TEXT("*** %s: data[0]=0x%X data[1]=0x%X ***\n"), __FUNCTION__, data[0], data[1]);
-	data[0] = ADSL_ENDIAN_CONV_INT32(data[0]);
-	data[1] = ADSL_ENDIAN_CONV_INT32(data[1]);
+#if defined(__arm) || defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+	data[0] = ADSL_SWAP_UINT32(data[0]);
+	data[1] = ADSL_SWAP_UINT32(data[1]);
 	AdslDrvPrintf(TEXT("*** %s: data[0]=0x%X data[1]=0x%X ***\n"), __FUNCTION__, data[0], data[1]);
 #endif
 	if( ((uint)-1 == (data[0] + data[1])) &&
 		(data[1] > adslCorePhyDesc.sdramImageSize) &&
 		(data[1] < reservedSdramSize)) {
+#if !defined(CONFIG_BCM963146)
+		{
+		volatile uint *pAdslLmem = (void *) HOST_LMEM_BASE;
+		data[0] = ADSL_ENDIAN_CONV_INT32(pAdslLmem[5]);
+		if (0 == (data[0] & 4))
+			data[1] += 4;
+		}
+#endif
 		AdslDrvPrintf(TEXT("*** PhySdramSize got adjusted: 0x%X => 0x%X ***\n"), adslCorePhyDesc.sdramImageSize, data[1]);
 		adslCorePhyDesc.sdramImageSize = data[1];
 	}
@@ -613,15 +681,25 @@ static void AdslCoreSetSdramTrueSize(void)
 
 void	AdslCoreSetXfaceOffset(void *lmemAddr, uint lmemSize)
 {
-	uint	data[2];
+	uint	xfaceAddr;
 	
+#if defined(CONFIG_BCM963146)
+	xfaceAddr = ((uint*)lmemAddr)[4];
+	AdslDrvPrintf(TEXT("*** %s: XfaceAddr=0x%X ***\n"), __FUNCTION__, xfaceAddr);
+#else
+	uint	data[2];
 	BlockByteMove(8, (void*)((uintptr_t)lmemAddr+lmemSize-8), (void*)&data[0]);
-#ifdef ADSLDRV_LITTLE_ENDIAN
 	data[0] = ADSL_ENDIAN_CONV_INT32(data[0]);
 	data[1] = ADSL_ENDIAN_CONV_INT32(data[1]);
 	AdslDrvPrintf(TEXT("*** %s: data[0]=0x%X data[1]=0x%X ***\n"), __FUNCTION__, data[0], data[1]);
+	xfaceAddr = ADSL_ENDIAN_CONV_INT32(((uint*)lmemAddr)[4]);
 #endif
-	if( ((uint)-1 == (data[0] + data[1])) 
+	if (0 != xfaceAddr) {
+		AdslDrvPrintf(TEXT("*** XfaceOffset4: 0x%X => 0x%X ***\n"), adslPhyXfaceOffset, xfaceAddr & 0xFFFFF);
+		adslPhyXfaceOffset = xfaceAddr & 0xFFFFF;
+	}
+#ifndef CONFIG_BCM963146
+	else if( ((uint)-1 == (data[0] + data[1])) 
 #if defined(CONFIG_BCM96362)
 		&& (data[1] <= 0x27F90)
 #elif defined(CONFIG_BCM96328)
@@ -645,7 +723,8 @@ void	AdslCoreSetXfaceOffset(void *lmemAddr, uint lmemSize)
 	{
 		AdslDrvPrintf(TEXT("*** XfaceOffset: 0x%X => 0x%X ***\n"), adslPhyXfaceOffset, data[1]);
 		adslPhyXfaceOffset = data[1];
-	}	
+	}
+#endif
 }
 
 void * AdslCoreSetSdramImageAddr(uint lmem2, uint pgSize, uint sdramSize)
@@ -667,21 +746,13 @@ void * AdslCoreSetSdramImageAddr(uint lmem2, uint pgSize, uint sdramSize)
 	}
 	
 	lmem2 &= (pgSize-1);
-#ifdef UNALIGNED_PHY_VIRT_ADDR
-	{
-	uint pgOff = adslCorePhyDesc.sdramPageAddr0 - (adslCorePhyDesc.sdramPageAddr0 & ~(ADSL_PHY_SDRAM_PAGE_SIZE - 1));
 
-	origSdramAddr = (adslCorePhyDesc.sdramPageAddr - pgOff) + ADSL_PHY_SDRAM_BIAS;
-	newSdramAddr  = (adslCorePhyDesc.sdramPageAddr - pgOff) + ADSL_PHY_SDRAM_PAGE_SIZE - pgSize + lmem2;
-	}
-#else
-	origSdramAddr = (adslCorePhyDesc.sdramPageAddr & ~(ADSL_PHY_SDRAM_PAGE_SIZE-1)) + ADSL_PHY_SDRAM_BIAS;
-	newSdramAddr  = (adslCorePhyDesc.sdramPageAddr & ~(ADSL_PHY_SDRAM_PAGE_SIZE-1)) + ADSL_PHY_SDRAM_PAGE_SIZE - pgSize + lmem2;
-#endif
+	origSdramAddr = adslCorePhyDesc.sdramPageAddr + ADSL_PHY_SDRAM_BIAS;
+	newSdramAddr  = adslCorePhyDesc.sdramPageAddr + ADSL_PHY_SDRAM_PAGE_SIZE - pgSize + lmem2;
 	AdslDrvPrintf(TEXT("%s: lmem2(0x%x) vs ADSL_PHY_SDRAM_BIAS(0x%x); origAddr=0x%lX newAddr=0x%lX\n"), __FUNCTION__, 
 		lmem2, ADSL_PHY_SDRAM_BIAS, origSdramAddr, newSdramAddr);
 
-#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178)
+#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146)
 	if (newSdramAddr < (origSdramAddr & ~0xFFFFF))
 #else
 	if(lmem2 < ADSL_PHY_SDRAM_BIAS)
@@ -692,18 +763,11 @@ void * AdslCoreSetSdramImageAddr(uint lmem2, uint pgSize, uint sdramSize)
 
 	adslCorePhyDesc.sdramPhyImageAddr = sdramPhyImageAddr;
 	adslCorePhyDesc.sdramPageSize = pgSize;
-#ifdef UNALIGNED_PHY_VIRT_ADDR
-	adslCorePhyDesc.sdramPageAddr = newSdramAddr - lmem2;
-	adslCorePhyDesc.sdramPageAddr0 = (adslCorePhyDesc.sdramPageAddr0 & ~(ADSL_PHY_SDRAM_PAGE_SIZE - 1)) + ADSL_PHY_SDRAM_PAGE_SIZE - pgSize;
-#else
-	adslCorePhyDesc.sdramPageAddr = newSdramAddr & ~((uintptr_t)pgSize-1);
-	adslCorePhyDesc.sdramPageAddr0 = (uint)adslCorePhyDesc.sdramPageAddr;
-#endif
-	adslCorePhyDesc.sdramImageAddr = adslCorePhyDesc.sdramPageAddr + lmem2;
-	adslCorePhyDesc.sdramImageAddr0 = adslCorePhyDesc.sdramPageAddr0 + lmem2;
+	adslCorePhyDesc.sdramImageAddr = newSdramAddr;
+	adslCorePhyDesc.sdramImageAddr0 = adslCorePhyDesc.sdramPageAddr0 + ADSL_PHY_SDRAM_PAGE_SIZE - pgSize + lmem2;
 	adslCorePhyDesc.sdramImageSize = sdramSize;
-	pSdramReserved = (void *) (adslCorePhyDesc.sdramPageAddr + adslCorePhyDesc.sdramPageSize - sizeof(sdramReservedAreaStruct));
-	AdslDrvPrintf(TEXT("pSdramPHY=0x%p, 0x%X 0x%X\n"), pSdramReserved, pSdramReserved->timeCnt, pSdramReserved->initMark);
+	pSdramReserved = (void *) (adslCorePhyDesc.sdramPageAddr + ADSL_PHY_SDRAM_PAGE_SIZE - sizeof(sdramReservedAreaStruct));
+	AdslDrvPrintf(TEXT("pSdramPHY=0x%px, 0x%X 0x%X\n"), pSdramReserved, pSdramReserved->timeCnt, pSdramReserved->initMark);
 	
 	adslCoreEcUpdateMask = 0;
 
@@ -740,30 +804,17 @@ static Boolean AdslCoreIsPhySdramAddr(void *ptr)
 #else
 	uintptr_t	addr = ((uintptr_t) ptr) | 0xA0000000;
 #endif
-	return (addr >= adslCorePhyDesc.sdramImageAddr) && (addr < (adslCorePhyDesc.sdramPageAddr + adslCorePhyDesc.sdramPageSize));
+	return (addr >= adslCorePhyDesc.sdramImageAddr) && (addr < (adslCorePhyDesc.sdramPageAddr + ADSL_PHY_SDRAM_PAGE_SIZE));
 }
 
-#if defined(USE_RESERVE_SHARE_MEM)
-static int	reservedPhyShareMemSizeAllow = 0;
-#ifdef SUPPORT_DSL_BONDING
-static void	* pReservedPhyShareMemStart[MAX_DSL_LINE] = { NULL, NULL };
-static void	*pReservedPhySharedMemAlloc[MAX_DSL_LINE] = { NULL, NULL };
-#define RESERVE_SHARE_MEM_SIZE           (22000 << 1)
+#define ADSL_PHY_SDRAM_SHARED_START		(adslCorePhyDesc.sdramPageAddr + ADSL_PHY_SDRAM_PAGE_SIZE - ADSL_SDRAM_RESERVED)
+#if defined(SUPPORT_DSL_BONDING) || defined(PHY_CO)
+/* 2328/2296(ARM/MIPS) bytes worst case: kDslAfeInfoCmd(180*2) + kDslExtraPhyCfgCmd(16*2) + kDslStartPhysicalLayerCmd(968*2) */
+#define SHARE_MEM_REQUIRE			4096
+/* PHY_CO target */
+/* 2014 bytes worst case: kDslAfeInfoCmd(180) + kXDslSetHmiCoreConfig(6) +kXDslSetConfigGfast(452) + kXDslSetRfiConfigGfast(392) + kDslExtraPhyCfgCmd(16) + kDslStartPhysicalLayerCmd(968) */
 #else
-static void	* pReservedPhyShareMemStart[MAX_DSL_LINE] = { NULL };
-static void	*pReservedPhySharedMemAlloc[MAX_DSL_LINE] = { NULL };
-#define RESERVE_SHARE_MEM_SIZE           22000
-#endif
-#else /* !defined(CONFIG_ARM64) */
-#define RESERVE_SHARE_MEM_SIZE           0
-#endif
-
-#define ADSL_PHY_SDRAM_SHARED_START		(adslCorePhyDesc.sdramPageAddr + adslCorePhyDesc.sdramPageSize - ADSL_SDRAM_RESERVED)
-#ifdef SUPPORT_DSL_BONDING
-/* 2328/2296(ARM/MIPS) bytes worst case: kDslAfeInfoCmd(180*2) + kDslStartPhysicalLayerCmd(968*2) + kDslExtraPhyCfgCmd(16*2) */
-#define SHARE_MEM_REQUIRE			(4096 + RESERVE_SHARE_MEM_SIZE)
-#else
-#define SHARE_MEM_REQUIRE			(2048 + RESERVE_SHARE_MEM_SIZE)
+#define SHARE_MEM_REQUIRE			2048
 #endif
 static int	adslPhyShareMemSizeAllow	= 0;
 static void	* adslPhyShareMemStart		= NULL;
@@ -775,11 +826,7 @@ static dma_addr_t	_adslPhyShareMemCalloc	= 0;
 
 void AdslCoreSharedMemInit(void)
 {
-#ifdef UNALIGNED_PHY_VIRT_ADDR
-	int	reservedSdramSize = (adslCorePhyDesc.sdramPageAddr + adslCorePhyDesc.sdramPageSize - adslCorePhyDesc.sdramImageAddr);
-#else
-	int reservedSdramSize = (adslCorePhyDesc.sdramPageSize -(adslCorePhyDesc.sdramImageAddr&(adslCorePhyDesc.sdramPageSize-1)));
-#endif
+	int	reservedSdramSize = (adslCorePhyDesc.sdramPageAddr + ADSL_PHY_SDRAM_PAGE_SIZE - adslCorePhyDesc.sdramImageAddr);
 	int shareMemAvailable = reservedSdramSize - ADSL_SDRAM_RESERVED - AdslCoreGetSdramImageSize();
 	
 	if( NULL == adslPhyShareMemCalloc ) {
@@ -809,76 +856,26 @@ void AdslCoreSharedMemInit(void)
 		adslPhyShareMemSizeAllow = shareMemAvailable & ~0xf;
 	}
 	
-#if defined(USE_RESERVE_SHARE_MEM)
-	pReservedPhyShareMemStart[0] = adslPhyShareMemStart;
-	pReservedPhySharedMemAlloc[0] = pReservedPhyShareMemStart[0];
-#ifdef SUPPORT_DSL_BONDING
-	reservedPhyShareMemSizeAllow = RESERVE_SHARE_MEM_SIZE >> 1;
-	pReservedPhyShareMemStart[1] = (void *)((uintptr_t)pReservedPhyShareMemStart[0]-(uintptr_t)reservedPhyShareMemSizeAllow);
-	pReservedPhySharedMemAlloc[1] = pReservedPhyShareMemStart[1];
-	AdslDrvPrintf(TEXT("%s: reservedMemStart[0/1]=%p/%p reservedMemSize=%d\n"),
-		__FUNCTION__, pReservedPhyShareMemStart[0], pReservedPhyShareMemStart[1], reservedPhyShareMemSizeAllow);
-#else
-	reservedPhyShareMemSizeAllow = RESERVE_SHARE_MEM_SIZE;
-	AdslDrvPrintf(TEXT("%s: reservedMemStart=%p reservedMemSize=%d\n"),
-		__FUNCTION__, pReservedPhyShareMemStart[0], reservedPhyShareMemSizeAllow);
-#endif
-	adslPhyShareMemStart = (void *)((uintptr_t)adslPhyShareMemStart - RESERVE_SHARE_MEM_SIZE);
-	adslPhyShareMemSizeAllow -= RESERVE_SHARE_MEM_SIZE;
-#endif /* defined(CONFIG_ARM64) */
-
-	pAdslSharedMemAlloc = adslPhyShareMemStart;
-	AdslDrvPrintf(TEXT("%s: shareMemStart=%p shareMemSize=%d\n"), __FUNCTION__, adslPhyShareMemStart, adslPhyShareMemSizeAllow);
-
-	MemLifoInit(&memAbovePhy, (void *) (adslCorePhyDesc.sdramImageAddr + adslCorePhyDesc.sdramImageSize), adslPhyShareMemSizeAllow);
+	MemLifoInit(&memAbovePhy, (void *) (adslCorePhyDesc.sdramImageAddr + adslCorePhyDesc.sdramImageSize), adslPhyShareMemSizeAllow - SHARE_MEM_REQUIRE);
 	MemLifoInit(&memBelowPhy, (void *) (adslCorePhyDesc.sdramPageAddr + ADSL_PHY_SDRAM_BIAS), adslCorePhyDesc.sdramImageAddr - (adslCorePhyDesc.sdramPageAddr + ADSL_PHY_SDRAM_BIAS));
+
+	adslPhyShareMemSizeAllow = SHARE_MEM_REQUIRE;
+	pAdslSharedMemAlloc = adslPhyShareMemStart;
+	AdslDrvPrintf(TEXT("%s: shareMemStart=%px shareMemSize=%d\n"), __FUNCTION__, adslPhyShareMemStart, adslPhyShareMemSizeAllow);
+
 	MemLifoPrint(&memAbovePhy, "AbovePHY");
 	MemLifoPrint(&memBelowPhy, "BelowPHY");
 }
 
-#if defined(USE_RESERVE_SHARE_MEM)
 void XdslCoreReservedSharedMemFree(uchar lineId, void *p)
 {
-	pReservedPhySharedMemAlloc[lineId] = pReservedPhyShareMemStart[lineId];
-#if defined(CONFIG_ARM64)
-	BcmAdslCoreDiagWriteStatusString(lineId, "XdslCoreReservedSharedMemFree: ptr=0x%x%08x(0x%x%08x)\n",
-		(uint)((uintptr_t)p >> 32), (uint)(uintptr_t)p,
-		(uint)((uintptr_t)pReservedPhySharedMemAlloc[lineId] >> 32), (uint)(uintptr_t)pReservedPhySharedMemAlloc[lineId]);
-#else
-	BcmAdslCoreDiagWriteStatusString(lineId, "XdslCoreReservedSharedMemFree: ptr=0x%p(0x%p)\n",
-		p, pReservedPhySharedMemAlloc[lineId]);
-#endif
+	AdslCorePhyReservedMemFree(p);
 }
 
 void *XdslCoreReservedSharedMemAlloc(uchar lineId, long size)
 {
-	uintptr_t	addr;
-	
-	BcmCoreDpcSyncEnter(SYNC_SHAREMEM);
-	addr = ((uintptr_t)pReservedPhySharedMemAlloc[lineId] - (uintptr_t)size) & ~0xF;
-	if (addr <= ((uintptr_t)pReservedPhyShareMemStart[lineId] - reservedPhyShareMemSizeAllow)) {
-#if defined(CONFIG_ARM64)
-		BcmAdslCoreDiagWriteStatusString(lineId, "***XdslCoreReservedSharedMemAlloc(%d) failed! ptr=0x%x%08x\n",
-			size, (uint)((uintptr_t)pReservedPhySharedMemAlloc[lineId] >> 32), (uint)(uintptr_t)pReservedPhySharedMemAlloc[lineId]);
-#else
-		BcmAdslCoreDiagWriteStatusString(lineId, "***XdslCoreReservedSharedMemAlloc(%d) failed! ptr=0x%p\n",
-			size, pReservedPhySharedMemAlloc[lineId]);
-#endif
-		BcmCoreDpcSyncExit(SYNC_SHAREMEM);
-		return NULL;
-	}
-	pReservedPhySharedMemAlloc[lineId] = (void *) addr;
-	BcmCoreDpcSyncExit(SYNC_SHAREMEM);
-#if defined(CONFIG_ARM64)
-	BcmAdslCoreDiagWriteStatusString(lineId, "XdslCoreReservedSharedMemAlloc: ptr=0x%x%08x size=%d\n",
-		(uint)(addr >> 32), (uint)addr, (int)size);
-#else
-	BcmAdslCoreDiagWriteStatusString(lineId, "XdslCoreReservedSharedMemAlloc: ptr=0x%p size=%d\n",
-		addr, (int)size);
-#endif
-	return pReservedPhySharedMemAlloc[lineId];
+	return AdslCorePhyReservedMemAlloc(size);
 }
-#endif
 
 void AdslCoreSharedMemFree(void *p)
 {
@@ -894,12 +891,8 @@ void *AdslCoreSharedMemAlloc(long size)
 	BcmCoreDpcSyncEnter(SYNC_SHAREMEM);
 	addr = ((uintptr_t)pAdslSharedMemAlloc - (uintptr_t)size) & ~0xF;
 	if (addr <= ((uintptr_t)adslPhyShareMemStart - adslPhyShareMemSizeAllow)) {
-		BcmAdslCoreDiagWriteStatusString(0, "***No shared SDRAM!!! ptr=0x%p size=%d\n", pAdslSharedMemAlloc, size);
-#if defined(USE_RESERVE_SHARE_MEM)
+		BcmAdslCoreDiagWriteStatusString(0, "***No shared SDRAM!!! ptr=0x%px size=%d\n", pAdslSharedMemAlloc, size);
 		pAdslSharedMemAlloc = adslPhyShareMemStart;
-#else
-		AdslCoreSharedMemInit();
-#endif
 		addr = ((uintptr_t)pAdslSharedMemAlloc - (uintptr_t)size) & ~0xF;
 	}
 
@@ -913,16 +906,16 @@ void *AdslCorePhyReservedMemAlloc(long size)
 {
 	uchar	*p;
 
-	if (NULL != (p = MemLifoAlloc(&memBelowPhy, size)))
+	if (NULL != (p = MemLifoAlloc(&memAbovePhy, size)))
 	  return p;
-	return MemLifoAlloc(&memAbovePhy, size);
+	return MemLifoAlloc(&memBelowPhy, size);
 }
 
 AC_BOOL AdslCorePhyReservedMemFree(void *p)
 {
-	if (MemLifoFree(&memBelowPhy, p))
-	  return AC_TRUE;
 	if (MemLifoFree(&memAbovePhy, p))
+	  return AC_TRUE;
+	if (MemLifoFree(&memBelowPhy, p))
 	  return AC_TRUE;
 
 	return AC_FALSE;
@@ -1008,6 +1001,13 @@ void AdslCoreIndicateLinkPowerState(uchar lineId, int pwrState)
 	AdslMibStatusSnooper(XdslCoreGetDslVars(lineId), &status);
 }
 
+static AC_BOOL AdslCoreIsWakeupCommand(dslCommandStruct *cmdPtr)
+{
+	dslCommandCode  cmd = DSL_COMMAND_CODE(cmdPtr->command);
+
+	return (kDslStartPhysicalLayerCmd == cmd) || (kDslPingCmd == cmd) || (kDslTestCmd == cmd);
+}
+
 AC_BOOL AdslCoreCommandWrite(dslCommandStruct *cmdPtr)
 {
 	int				n;
@@ -1015,7 +1015,7 @@ AC_BOOL AdslCoreCommandWrite(dslCommandStruct *cmdPtr)
 	n = FlattenBufferCommandWrite(pPhySbCmd, cmdPtr);
 	if (n > 0) {
 #if !defined(BCM_CORE_NO_HARDWARE)
-	  if (acCmdWakeup) {
+	  if (acCmdWakeup || AdslCoreIsWakeupCommand(cmdPtr)) {
 		volatile uint	*pAdslEnum;
 
 		pAdslEnum = (uint *) XDSL_ENUM_BASE;
@@ -1199,6 +1199,8 @@ AC_BOOL AdslCoreCommandHandler(void *cmdPtr)
 					if (ADSL_PHY_SUPPORT(kAdslPhyAdsl2p)) {
 #ifdef ADSLDRV_LITTLE_ENDIAN
 						G992p3DataPumpCapabilitiesCopy(pTmpG992p3Cap+1, pG992p5Cap);
+#elif defined(CONFIG_ARM64)
+						BlockByteMoveDstAlign(sizeof(g992p3DataPumpCapabilities),(uchar*)pG992p5Cap, (uchar*)(pTmpG992p3Cap+1));
 #else
 						*(pTmpG992p3Cap+1) = *pG992p5Cap;
 #endif
@@ -1208,6 +1210,8 @@ AC_BOOL AdslCoreCommandHandler(void *cmdPtr)
 					if (ADSL_PHY_SUPPORT(kAdslPhyVdslG993p2)) {
 #ifdef ADSLDRV_LITTLE_ENDIAN
 						G993p2DataPumpCapabilitiesCopy((g993p2DataPumpCapabilities *)(pTmpG992p3Cap+2), pG993p2Cap);
+#elif defined(CONFIG_ARM64)
+						BlockByteMoveDstAlign(sizeof(g993p2DataPumpCapabilities),(uchar*)pG993p2Cap, (uchar*)(pTmpG992p3Cap+2));
 #else
 						*((g993p2DataPumpCapabilities *)(pTmpG992p3Cap+2)) = *pG993p2Cap;
 #endif
@@ -1288,6 +1292,9 @@ AC_BOOL AdslCoreCommandHandler(void *cmdPtr)
 			if(2 != pMibInfo->adslPhys.adslLDCompleted)
 				pMibInfo->adslPhys.adslLDCompleted = 0;	/* Clear the state as Loop Diagnostic is not in successfully completed state */
 			XdslMibCmdSnooper(pDslVars, cmd);
+#ifdef SUPPORT_MULTI_PHY
+			acLineReset[lineId] = 1;
+#endif
 			BcmCoreDpcSyncExit(SYNC_RX);
 			break;
 #endif
@@ -1716,6 +1723,7 @@ static void XdslCoreG997InitEocMsgCtrl(ac997FrameCtrl *g997FrCtrl)
 		p += sizeof(g997FrCtrl->g997TxFrBufPool[0]);
 	}
 }
+
 void AdslCoreG997Init(uchar lineId)
 {
 	dslVarsStruct	*pDslVars = (dslVarsStruct	*)XdslCoreGetDslVars(lineId);
@@ -1755,7 +1763,7 @@ int __AdslCoreG997SendComplete(void *gDslVars, void *userVc, ulong mid, dslFrame
 			len = DslFrameBufferGetLength(gDslVars, pBuf);
 			pData = DslFrameBufferGetAddress(gDslVars, pBuf);
 			if(pRxFrame->totalLength <= pOverHeadClient->responseBufferSize) {
-				if(XdslMibIsGfastMod(gDslVars) && (pData[2] == 0x81)) {
+				if(XdslMibIsGfastMod(gDslVars) && (pData[2] == 0x81) && (pData[3] == 0x86)) {
 					/* kG992p3OvhMsgCmdPMDRead command, remove SC byte */
 					memcpy(pOverHeadClient->bufferPair.buffer2.data, pData, 4);
 					len = FrameDataCopy(gDslVars, pBuf, 5, pRxFrame->totalLength-5, pOverHeadClient->bufferPair.buffer2.data+4);
@@ -1835,6 +1843,13 @@ int TstG997SendFrame (void *gDslV, void *userVc, ulong mid, dslFrame *pFrame)
 }
 #endif
 
+extern int BcmXdslIsEocIntfOpen(unsigned lineId, int eocMsgType);
+
+int XdslCoreIsEocIntfOpen(void *gDslVars, int eocMsgType)
+{
+	return BcmXdslIsEocIntfOpen(gLineId(gDslVars), eocMsgType);
+}
+
 int AdslCoreG997IndicateRecevice (void *gDslVars, void *userVc, ulong mid, dslFrame *pFrame)
 {
 	void	**p;
@@ -1872,6 +1887,7 @@ int AdslCoreG997IndicateRecevice (void *gDslVars, void *userVc, ulong mid, dslFr
 			if(((BCM_XDSL_NSF_EOC_MSG == pData[2]) ||
 				(BCM_XDSL_DATAGRAM_EOC_MSG == pData[2]) ||
 				(BCM_XDSL_CLEAR_EOC_MSG == pData[2])) && (1 == pData[3])) {
+				
 				if(BCM_XDSL_NSF_EOC_MSG == pData[2]) {
 					acEvent = ACEV_G997_NSF_FRAME_RCV;
 					g997FrCtrl = &gG997NsfCtrl(gDslVars);
@@ -1884,9 +1900,17 @@ int AdslCoreG997IndicateRecevice (void *gDslVars, void *userVc, ulong mid, dslFr
 					acEvent = ACEV_G997_FRAME_RCV;
 					g997FrCtrl = &gG997ClEocCtrl(gDslVars);
 				}
-				DslFrameBufferSetLength(gDslVars, pBuf, len-4);
-				DslFrameBufferSetAddress(gDslVars, pBuf, pData+4);
-				*(((ulong*) DslFrameGetLinkFieldAddress(gDslVars,pFrame)) + 2) = 4;
+				
+				if( XdslCoreIsEocIntfOpen(gDslVars, pData[2]) ) {
+					DslFrameBufferSetLength(gDslVars, pBuf, len-4);
+					DslFrameBufferSetAddress(gDslVars, pBuf, pData+4);
+					*(((ulong*) DslFrameGetLinkFieldAddress(gDslVars,pFrame)) + 2) = 4;
+				}
+				else {
+					BcmAdslCoreDiagWriteStatusString (gLineId(gDslVars), "AdslCoreG997IndicateRecevice: Discarding frame, eocIntf(0x%02X) is not opened", pData[2]);
+					G997ReturnFrame(gDslVars, NULL, 0, pFrame);
+					return 1;
+				}
 			}
 			else {
 				BcmAdslCoreDiagWriteStatusString (gLineId(gDslVars), "AdslCoreG997IndicateRecevice: Unknown frame received pData[2]=0x%02X", pData[2]);
@@ -1953,16 +1977,103 @@ AC_BOOL AdslCoreG997ReturnFrame (void *pDslVars, ac997FrameCtrl *g997FrCtrl)
 }
 
 #ifdef SUPPORT_HMI
+#define	FE_HLOG_RCVD_FLAG	1
+#define	FE_QLN_RCVD_FLAG	2
+
+extern int G992p3OvhMsgBrcmCPE(void *gDslVars);
+extern int G992p3OvhMsgIsCmdQln(unsigned char *pData);
+extern int G992p3OvhMsgIsCmdHlog(unsigned char *pData);
+extern int G992p3OvhMsgIsZeroStartSCG(unsigned char *pData);
+extern int G992p3OvhMsgHmiEocProcessCmd(void *gDslVars, unsigned char *pData, unsigned char *pMsg, unsigned short *pMsgLen);
+
+void XdslCoreG997ClearHlogQlnReceivedFlags(void *pDslVars)
+{
+	ac997FrameCtrl *g997FrCtrl = &gG997HmiEocCtrl(pDslVars);
+	
+	if(NULL == g997FrCtrl)
+		return;
+	
+	gG997RxFrBuf(g997FrCtrl)[1] = (void *)0;
+}
+
+void XdslCoreG997SendHmiEocComplete(void *pDslVars, int cmdId)
+{
+	int rsp;
+	unsigned char cmd[9];
+	OverheadClient* pOverHeadClient;
+	unsigned long rcvdFlag;
+	ac997FrameCtrl *g997FrCtrl = &gG997HmiEocCtrl(pDslVars);
+	
+	__SoftDslPrintf(pDslVars, "XdslCoreG997SendHmiEocComplete: cmdId = %d", 0, cmdId);
+	
+	if(NULL == g997FrCtrl)
+		return;
+
+	rcvdFlag = (unsigned long)gG997RxFrBuf(g997FrCtrl)[1];
+	if(1 == cmdId)
+		rcvdFlag |= FE_HLOG_RCVD_FLAG;
+	else
+		rcvdFlag |= FE_QLN_RCVD_FLAG;
+	gG997RxFrBuf(g997FrCtrl)[1] = (void *)rcvdFlag;
+	
+	if(0 == gPendingFrFlag(g997FrCtrl))
+		return;
+
+	pOverHeadClient = (OverheadClient *)(gG997RxFrBuf(g997FrCtrl)[0]);
+	if(cmdId != pOverHeadClient->bufferPair.buffer1.data[4])
+		return;
+	
+	memcpy(cmd, pOverHeadClient->bufferPair.buffer1.data, sizeof(cmd));
+	rsp = G992p3OvhMsgHmiEocProcessCmd(pDslVars, cmd,
+		pOverHeadClient->bufferPair.buffer2.data,
+		&pOverHeadClient->bufferPair.buffer2.length);
+	
+	if(rsp) {
+		__SoftDslPrintf(pDslVars, "XdslCoreG997SendHmiEocComplete: rspLen=%d timeAlapsed=%d ms", 0,
+			pOverHeadClient->bufferPair.buffer2.length, gTimeUpdate(g997FrCtrl));
+		(*pOverHeadClient->messageReceived)(pOverHeadClient, NO_ERROR);
+		gPendingFrFlag(g997FrCtrl) = 0;
+		gTimeUpdate(g997FrCtrl) = 0;
+	}
+}
 
 int XdslCoreG997SendHmiEocData(unsigned char lineId, OverheadClient* pOverHeadClient)
 {
 	ac997FrameCtrl *g997FrCtrl;
 	ac997FramePoolItem	*pFB;
+	unsigned long rcvdFlag;
 	int	 res = 0;
 	void *gDslVars = XdslCoreGetDslVars(lineId);
+	unsigned char *pData = pOverHeadClient->bufferPair.buffer1.data;
+	int dataLen = pOverHeadClient->bufferPair.buffer1.length;
 	
 	if(NULL == (g997FrCtrl = &gG997HmiEocCtrl(gDslVars)))
 		return res;
+	
+	if(XdslMibIsGfastMod(gDslVars) && !G992p3OvhMsgBrcmCPE(gDslVars) &&
+		(G992p3OvhMsgIsCmdHlog(pData) || G992p3OvhMsgIsCmdQln(pData))) {
+		if(gPendingFrFlag(g997FrCtrl)) {
+			__SoftDslPrintf(gDslVars, "XdslCoreG997SendHmiEocData: Abort due to a pending PHY request time alapsed %d ms", 0, gTimeUpdate(g997FrCtrl));
+			return res;
+		}
+		gPendingFrFlag(g997FrCtrl) = 1;
+		gTimeUpdate(g997FrCtrl) = 0;
+		gG997RxFrBuf(g997FrCtrl)[0] = (void *)pOverHeadClient;
+		rcvdFlag = (unsigned long)gG997RxFrBuf(g997FrCtrl)[1];
+		if(G992p3OvhMsgIsCmdHlog(pData)) {
+			if(!G992p3OvhMsgIsZeroStartSCG(pData) || (rcvdFlag & FE_HLOG_RCVD_FLAG))
+				XdslCoreG997SendHmiEocComplete(gDslVars, 1);
+			else
+				BcmXdslCoreSendCmd(lineId, kDslStartHlogComp, 0);
+		}
+		else {
+			if(!G992p3OvhMsgIsZeroStartSCG(pData) || (rcvdFlag & FE_QLN_RCVD_FLAG))
+				XdslCoreG997SendHmiEocComplete(gDslVars, 3);
+			else
+				BcmXdslCoreSendCmd(lineId, kDslStartQlnComp, 0);
+		}
+		return 1;
+	}
 	
 	BcmCoreDpcSyncEnter(SYNC_RX);
 	pFB = BlankListGet(&gG997TxFrList(g997FrCtrl));
@@ -1972,8 +2083,8 @@ int XdslCoreG997SendHmiEocData(unsigned char lineId, OverheadClient* pOverHeadCl
 	}
 
 	DslFrameInit (gDslVars, &pFB->fr);
-	DslFrameBufferSetAddress (gDslVars, &pFB->frBuf, pOverHeadClient->bufferPair.buffer1.data);
-	DslFrameBufferSetLength (gDslVars, &pFB->frBuf, pOverHeadClient->bufferPair.buffer1.length);
+	DslFrameBufferSetAddress (gDslVars, &pFB->frBuf, pData);
+	DslFrameBufferSetLength (gDslVars, &pFB->frBuf, dataLen);
 	DslFrameEnqueBufferAtBack (gDslVars, &pFB->fr, &pFB->frBuf);
 	res = G992p3OvhMsgSendHmiEocFrame(gDslVars, &pFB->fr);
 	
@@ -2147,6 +2258,9 @@ int AdslCoreMibNotify(void *gDslV, uint event)
 		}
 	}
 	else if (event & kXdslEventFastRetrain) {
+#ifdef SUPPORT_HMI
+		BcmXdslNotifyFastRetrain(lineId);
+#endif
 		AdslDrvPrintf(TEXT("Line %d: fast retrain started\n"), lineId);
 	}
 #ifdef SUPPORT_SELT
@@ -2159,10 +2273,25 @@ int AdslCoreMibNotify(void *gDslV, uint event)
 		BcmAdslCoreNotify (lineId, AdslCoreLinkState(lineId) ? ACEV_LINK_UP : ACEV_LINK_DOWN);
 		BcmCoreDpcSyncExit(SYNC_RX);
 	}
+#ifdef SUPPORT_HMI
+	else if(event & (kXdslEvent15MinutesCntrs | kXdslEvent24HoursCntrs)) {
+		BcmXdslNotifyPeriodCounterEvent(lineId, event);
+	}
+#endif
 	BcmCoreDpcSyncEnter(SYNC_RX);
 	
 	return 0;
 }
+
+#ifdef SUPPORT_HMI
+void XdslCoreMibNotifyShowtimeEvent(void *gDslV, ShowtimeEvent event)
+{
+  BcmCoreDpcSyncExit(SYNC_RX);
+  BcmXdslNotifyShowtimeEvent(gLineId(gDslV), event);
+  BcmCoreDpcSyncEnter(SYNC_RX);
+}
+#endif
+
 #endif
 
 /*
@@ -2247,7 +2376,7 @@ static __inline void writeAdslEnum(int offset, int value)
 	
 #elif defined(USE_PMC_API)
 
-#if defined(CONFIG_BCM963158)
+#if defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)	// TO DO: Tony - Double check for 63146
 #define BG_BIAS0_OFFSET (0xf000/4)
 #define AFE_REG0_OFFSET (0xf094/4)
 #elif defined(CONFIG_BCM963178)
@@ -2267,10 +2396,20 @@ extern AC_BOOL load_MIPS_image(unsigned int core_id, unsigned long src, unsigned
 #define DISABLE_ADSL_MIPS		stop_MIPS(get_cpuid())
 #else
 #if defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 9)
-static void XdslCoreReset(void)
+
+#if defined(CONFIG_BRCM_IKOS)
+int kerSysGetResetStatus(void)
 {
+	return 0;
+}
+#endif
+
+static int XdslCoreReset(void)
+{
+	int ret;
+	
 	kerSysDisableDyingGaspInterrupt();
-	pmc_dsl_core_reset();
+	ret = pmc_dsl_core_reset();
 #if (defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178)) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 12)
 	{
 	uint afe_reg0, bg_bias0;
@@ -2284,29 +2423,34 @@ static void XdslCoreReset(void)
 	}
 #endif
 	kerSysEnableDyingGaspInterrupt();
+
+	return ret;
 }
 #define RESET_ADSL_CORE		XdslCoreReset()
 #else
 #define RESET_ADSL_CORE		pmc_dsl_core_reset()
 #endif /* defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 9) */
-#if defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178)
-#define ENABLE_ADSL_CORE
-#define DISABLE_ADSL_CORE
-#else
+#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148)
 #define ENABLE_ADSL_CORE		pmc_dsl_clock_set(1)
 #define DISABLE_ADSL_CORE		pmc_dsl_clock_set(0)
-#endif
+#else
+#define ENABLE_ADSL_CORE
+#define DISABLE_ADSL_CORE
+#endif /* defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) */
 #define ENABLE_ADSL_MIPS		pmc_dsl_mips_enable(1)
 #ifndef CONFIG_BCM963138
 #define DISABLE_ADSL_MIPS		pmc_dsl_mips_enable(0)
 #else
-static void XdslCoreDisableMipsCore(void)
+static int XdslCoreDisableMipsCore(void)
 {
-	pmc_dsl_mips_enable(0);
+	int ret;
+	
+	ret = pmc_dsl_mips_enable(0);
 #if defined(BOARD_H_API_VER) &&  (BOARD_H_API_VER > 8)
 	if(0xb0 == (PERF->RevID & REV_ID_MASK))
-		pmc_dsl_mipscore_enable(0, 1);
+		ret |= pmc_dsl_mipscore_enable(0, 1);
 #endif
+	return ret;
 }
 #define DISABLE_ADSL_MIPS		XdslCoreDisableMipsCore()
 #endif	/* !CONFIG_BCM963138 */
@@ -2346,7 +2490,6 @@ static int curPhyImageIndex =0;
 #endif
 
 #ifdef SUPPORT_MULTI_PHY
-extern AC_BOOL bMediaSearchLine0WakeupCmdPending;
 extern adslCfgProfile adslCoreCfgProfile[];
 #endif
 
@@ -2370,7 +2513,6 @@ static int curPhyImageIndex =0;
 #else
 #define	PHY_IMAGE_NAME	"/etc/adsl/adsl_phy.bin"
 #endif
-extern AC_BOOL bMediaSearchLine0WakeupCmdPending;
 #endif /* CONFIG_BCM963268 */
 extern adslCfgProfile adslCoreCfgProfile[];
 
@@ -2435,36 +2577,33 @@ void XdslCoreProcessPrivateSysMediaCfg(uint mediaSrchCfg)
 		if(BCM_IMAGETYPE_SINGLELINE == newVal) {
 			unsigned char lineId = BcmXdslCoreSelectAndReturnPreferredMedia();
 			if((unsigned char)-1 != lineId) {
+				int  lineReset = 0;  /* 0 - suspend another line; 1 - reset this line */
 #ifndef XTM_SUPPORT_PORT1_NONBONDCONN
-				if(0 == lineId) {
-					if(BcmXdslCoreGetLineActive(1))
-						BcmXdslCoreSendCmd(1, kDslDownCmd, kDslIdleSuspend);
-					bMediaSearchLine0WakeupCmdPending = FALSE;
-				}
-				else {
+				if (0 != lineId) {
 					adslMibInfo	*pMibInfo;
 					long	mibLen;
 					mibLen = sizeof(adslMibInfo);
 					pMibInfo = (void *) AdslCoreGetObjectValue (lineId, NULL, 0, NULL, &mibLen);
-					if(AdslCoreLinkState(lineId) && (0 == pMibInfo->xdslInfo.dirInfo[TX_DIRECTION].lpInfo[0].ahifChanId[0])) {
-						if(BcmXdslCoreGetLineActive(0))
-							BcmXdslCoreSendCmd(0, kDslDownCmd, kDslIdleSuspend);
-						bMediaSearchLine0WakeupCmdPending = FALSE;
-					}
-					else {
-						BcmXdslCoreSendCmd(1, kDslTestCmd, 0);
-						BcmXdslCoreSendCmd(0, kDslDownCmd, 0);
-						bMediaSearchLine0WakeupCmdPending = TRUE;
-						sprintf(str, "XdslMediaSearch: Line0 wakeup cmd pending\n");
-						DiagWriteString(0, DIAG_DSL_CLIENT, str);
-						AdslDrvPrintf(TEXT("%s"), str);
-					}
+					if (!(AdslCoreLinkState(lineId) && (0 == pMibInfo->xdslInfo.dirInfo[TX_DIRECTION].lpInfo[0].ahifChanId[0])))
+						lineReset = 1;
 				}
-#else /* XTM_SUPPORT_PORT1_NONBONDCONN */
-				if(BcmXdslCoreGetLineActive(lineId ^1))
-					BcmXdslCoreSendCmd(lineId ^ 1, kDslDownCmd, kDslIdleSuspend);
-				bMediaSearchLine0WakeupCmdPending = FALSE;
 #endif
+				if ( (adslCoreCfgProfile[0].xdslCfg2Mask & adslCoreCfgProfile[0].xdslCfg2Value & kPhyCfg2PreferBondingOverPhyR) 
+					 && (0 == acLineReset[lineId ^ 1]) )
+					lineReset = 1;
+
+				if (0 == lineReset) {
+					if (BcmXdslCoreGetLineActive(lineId ^ 1))
+						BcmXdslCoreSendCmd(lineId ^ 1, kDslDownCmd, kDslIdleSuspend);
+				}
+				else {
+					sprintf(str, "XdslMediaSearch: Line%d reset with another line down\n", lineId);
+					DiagWriteString(0, DIAG_DSL_CLIENT, str);
+					AdslDrvPrintf(TEXT("%s"), str);
+					BcmXdslCoreSendCmd(lineId, kDslTestCmd, 0);
+					BcmXdslCoreSendCmd(lineId ^ 1, kDslDownCmd, 0);
+					BcmXdslCoreSendCmd(lineId, kDslSetLineResumeDelay, 120); /* resume timeout in seconds */
+				}
 			}
 			else {
 				sprintf(str, "XdslMediaSearch: Failed to select preferred line!\n");
@@ -2637,7 +2776,8 @@ static AC_BOOL AdslCoreLoadImage(void)
 	AC_BOOL	res = TRUE;
 
 	/* Copying ADSL core program to LMEM and SDRAM */
-	AdslDrvPrintf(TEXT("AdslCoreLoadImage: adsl_lmem size = %x adsl_sdram size = %x\n"), (uint)sizeof(adsl_lmem), (uint)sizeof(adsl_sdram));
+	AdslDrvPrintf(TEXT("AdslCoreLoadImage: adsl_lmem(%p) size = 0x%x adsl_sdram(%p) size = 0x%x\n"),
+		adsl_lmem, (uint)sizeof(adsl_lmem), adsl_sdram, (uint)sizeof(adsl_sdram));
 #ifdef _NOOS
 	res = load_MIPS_image(get_cpuid(), (unsigned long)&adsl_lmem[0], (sizeof(adsl_lmem)+0xF) & ~0xF, HOST_LMEM_BASE);
 	if(TRUE != res)
@@ -2647,25 +2787,23 @@ static AC_BOOL AdslCoreLoadImage(void)
 #else
 {
 #ifdef CONFIG_BRCM_IKOS
-	int wordCnt;
-	UINT64 *pSrcAddr;
-	volatile UINT64 *pDstAddr;
+	void *pSrcAddr;
+	volatile void *pDstAddr;
 
-	wordCnt = ((sizeof(adsl_lmem)+0xF) & ~0xF) >> 3;
-	pSrcAddr = (UINT64 *)adsl_lmem;
-	pDstAddr = (volatile UINT64 *)pAdslLMem;
-	printk("%s: Copying LMEM image: pLmemImageAddr = 0x%p, adsl_lmem = 0x%p, wc = %d\n", __FUNCTION__, pDstAddr, pSrcAddr, wordCnt);
-	memcpy((void *)pAdslLMem, (void *)adsl_lmem, (sizeof(adsl_lmem)+0xF) & ~0xF);
+	pSrcAddr = (void *)adsl_lmem;
+	pDstAddr = (volatile void *)pAdslLMem;
+	printk("%s: Copying LMEM image: pLmemImageAddr = 0x%px, adsl_lmem = 0x%px\n", __FUNCTION__, pDstAddr, pSrcAddr);
+	memcpy(pDstAddr, pSrcAddr, sizeof(adsl_lmem));
 #else
 	BlockByteMove ((sizeof(adsl_lmem)+0xF) & ~0xF, (void *)adsl_lmem, (uchar *) pAdslLMem);
 #endif
 	AdslCoreSetSdramImageAddr(ADSL_ENDIAN_CONV_INT32(((uint *) adsl_lmem)[2]), ADSL_ENDIAN_CONV_INT32(((uint *) adsl_lmem)[3]), sizeof(adsl_sdram));
+	AdslCoreSetXfaceOffset(pAdslLMem, sizeof(adsl_lmem));
 #ifdef CONFIG_BRCM_IKOS
-	wordCnt = ((sizeof(adsl_sdram)+0xF) & ~0xF) >> 3;
-	pSrcAddr = (UINT64 *)adsl_sdram;
-	pDstAddr = (volatile UINT64 *)AdslCoreGetSdramImageStart();
-	printk("%s: Copying SDRAM image: pSdramImageAddr = 0x%p, adsl_sdram = 0x%p, wc = %d\n", __FUNCTION__, pDstAddr, pSrcAddr, wordCnt);
-	memcpy((void *)pDstAddr, (void *)adsl_sdram, (sizeof(adsl_sdram)+0xF) & ~0xF);
+	pSrcAddr = (void *)adsl_sdram;
+	pDstAddr = (volatile void *)AdslCoreGetSdramImageStart();
+	printk("%s: Copying SDRAM image: pSdramImageAddr = 0x%px, adsl_sdram = 0x%px\n", __FUNCTION__, pDstAddr, pSrcAddr);
+	memcpy(pDstAddr, pSrcAddr, sizeof(adsl_sdram));
 #else
 	BlockByteMove (AdslCoreGetSdramImageSize(), (void *)adsl_sdram, AdslCoreGetSdramImageStart());
 #endif
@@ -2797,6 +2935,10 @@ static char *AdslCoreParseVersionString(char *sVer, adslPhyInfo *pInfo)
 				pInfo->chipType = kAdslPhyChip63178;
 				pVer++;
 				break;
+			case 'M':
+				pInfo->chipType = kAdslPhyChip63146;
+				pVer++;
+				break;
 			default:
 				pVer++;
 				break;
@@ -2857,6 +2999,9 @@ static char XdslCoreGetVersionChipType(ushort chipType)
 			break;
 		case kAdslPhyChip63178:
 			verChipType = 'L';
+			break;
+		case kAdslPhyChip63146:
+			verChipType = 'M';
 			break;
 		default:
 			verChipType = '?';
@@ -2956,7 +3101,7 @@ void AdslCoreSaveOemData(void)
 	if ((NULL != pAdslOemData) && adslOemDataModified) {
 		BlockByteMove ((sizeof(adslOemDataSave) + 3) & ~0x3, (void *)pAdslOemData, (void *) &adslOemDataSave);
 		adslOemDataSaveFlag = true;
-		AdslDrvPrintf(TEXT("Saving OEM data from 0x%p\n"), pAdslOemData);
+		AdslDrvPrintf(TEXT("Saving OEM data from 0x%px\n"), pAdslOemData);
 	}
 }
 
@@ -2964,7 +3109,7 @@ void AdslCoreRestoreOemData(void)
 {
 	if ((NULL != pAdslOemData) && adslOemDataSaveFlag) {
 		BlockByteMove ((FLD_OFFSET(AdslOemSharedData,g994RcvNonStdInfo) + 3) & ~0x3, (void *) &adslOemDataSave, (void *)pAdslOemData);
-		BcmAdslCoreDiagWriteStatusString(0, "Restoring OEM data from 0x%p\n", pAdslOemData);
+		BcmAdslCoreDiagWriteStatusString(0, "Restoring OEM data from 0x%px\n", pAdslOemData);
 	}
 }
 
@@ -3466,7 +3611,7 @@ void XdslCoreProcessDrvConfigRequest(int lineId, volatile uint	*pDrvConfigAddr)
 		{
 			int res;
 			unsigned short bpGpio;
-#if (defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178)) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
+#if (defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146)) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
 			res = BpGetAFEVR5P3PwrEnGpio(lineId, &bpGpio);
 #else
 			res = BpGetAFEVR5P3PwrEnGpio(&bpGpio);
@@ -3483,6 +3628,10 @@ void XdslCoreProcessDrvConfigRequest(int lineId, volatile uint	*pDrvConfigAddr)
 #if defined(USE_PMC_API) && defined(DSL_KTHREAD)
 		case kDslDrvConfigRdAfePLLMdiv:
 		case kDslDrvConfigWrAfePLLMdiv:
+#ifdef CONFIG_BCM963146
+		case kDslDrvConfigRdAfePLLChCfg:
+		case kDslDrvConfigWrAfePLLChCfg:
+#endif
 			BcmXdslDrvConfigReqEventNotify(lineId, (drvRegControl *)pDrvConfigAddr);
 			return;
 #endif
@@ -3490,18 +3639,24 @@ void XdslCoreProcessDrvConfigRequest(int lineId, volatile uint	*pDrvConfigAddr)
 #if defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 10)
 		case kDslDrvConfigLDPowerMode:
 		{
-			unsigned short bpGpioAFEPwrBoost;
-#if defined(CONFIG_BCM963158) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
-			res = BpGetAFELDPwrBoostGpio(lineId, &bpGpioAFEPwrBoost);
-#else
-			res = BpGetAFELDPwrBoostGpio(&bpGpioAFEPwrBoost);
-#endif
-			if(BP_SUCCESS == res) {
+			if(0xFFFF != bpGpioAFEPwrBoost[lineId]) {
 				volatile drvRegControl *pDrvRegCtrl = (drvRegControl *)pDrvConfigAddr;
 				uint pwrMode = ADSL_ENDIAN_CONV_INT32(pDrvRegCtrl->regValue);
-				
-				kerSysSetGpio(bpGpioAFEPwrBoost, (kDslLDPowerMode15V == pwrMode)? kGpioActive: kGpioInactive);
-				DiagWriteString(lineId, DIAG_DSL_CLIENT, "*** Drv: %s AFE LD power boost (bpGpio 0x%04X)\n", (kDslLDPowerMode15V==pwrMode)? "Activate": "De-activate", bpGpioAFEPwrBoost);
+#ifdef SUPPORT_DSL_BONDING
+				if (bpGpioAFEPwrBoost[0] == bpGpioAFEPwrBoost[1]) {
+					if (kDslLDPowerMode15V == pwrMode)
+					  acPwrBoostLineMask |= 1 << lineId;
+					else
+					  acPwrBoostLineMask &= ~(1 << lineId);
+					kerSysSetGpio(bpGpioAFEPwrBoost[0], acPwrBoostLineMask ? kGpioActive: kGpioInactive);
+					DiagWriteString(lineId, DIAG_DSL_CLIENT, "*** Drv: AFE LD power boost single GPIO state=0x%X (bpGpio 0x%04X)\n", acPwrBoostLineMask, bpGpioAFEPwrBoost[0]);
+				}
+				else
+#endif				
+				{
+					kerSysSetGpio(bpGpioAFEPwrBoost[lineId], (kDslLDPowerMode15V == pwrMode)? kGpioActive: kGpioInactive);
+					DiagWriteString(lineId, DIAG_DSL_CLIENT, "*** Drv: %s AFE LD power boost (bpGpio 0x%04X)\n", (kDslLDPowerMode15V==pwrMode)? "Activate": "De-activate", bpGpioAFEPwrBoost[lineId]);
+				}
 			}
 			else
 				DiagWriteString(lineId, DIAG_DSL_CLIENT, "*** Drv: AFE LD power boost is not configured!\n");
@@ -3509,7 +3664,7 @@ void XdslCoreProcessDrvConfigRequest(int lineId, volatile uint	*pDrvConfigAddr)
 		}
 #endif
 		case kDslDrvConfigAfeRelay:
-#if defined(CONFIG_BCM963158) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
+#if (defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
 			res = BpGetAFELDRelayGpio(lineId, &bpGpioAFELDRelay);
 #else
 			res = BpGetAFELDRelayGpio(&bpGpioAFELDRelay);
@@ -3567,8 +3722,10 @@ static AC_BOOL __AdslCoreHwReset(AC_BOOL bCoreReset)
 	uint				tmp;
 	int			nRet;
 	OS_TICKS	osTime0, osTimePhyInitStart;
-#if defined(PHY_BLOCK_TEST) || defined(_NOOS)
+#if defined(PHY_BLOCK_TEST) || defined(_NOOS) || defined(SDRAM4G_SUPPORT1)
 	volatile uint			*pAdslLmem = (void *) HOST_LMEM_BASE;
+#endif
+#if defined(PHY_BLOCK_TEST) || defined(_NOOS)
 	uint				memMonitorIdIntialVal;
 #ifdef CONFIG_BRCM_IKOS
 	uint				initialLmemVal;
@@ -3599,7 +3756,7 @@ static AC_BOOL __AdslCoreHwReset(AC_BOOL bCoreReset)
 	if(IsLD6303VR5p3Used()) {
 		int res;
 		unsigned short bpGpio;
-#if (defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178)) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
+#if (defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146)) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 11)
 		res = BpGetAFEVR5P3PwrEnGpio(0, &bpGpio);
 #else
 		res = BpGetAFEVR5P3PwrEnGpio(&bpGpio);
@@ -3611,7 +3768,9 @@ static AC_BOOL __AdslCoreHwReset(AC_BOOL bCoreReset)
 
 	if (bCoreReset) {
 		/* take ADSL core out of reset */
-		RESET_ADSL_CORE;
+		nRet = RESET_ADSL_CORE;
+		if(nRet)
+			printk(" *** %s: RESET_ADSL_CORE error(%d)! ***\n", __FUNCTION__, nRet);
 
 #if defined(CONFIG_BCM96328)
 		if (0x632800a0 == PERF->RevID) {
@@ -3647,10 +3806,25 @@ static AC_BOOL __AdslCoreHwReset(AC_BOOL bCoreReset)
 #endif
 	pAdslX = (AdslXfaceData *)(uintptr_t)ADSL_LMEM_XFACE_DATA;
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
-	AdslDrvPrintf(TEXT("%s: pAdslX=0x%p\n"), __FUNCTION__, pAdslX);	//TO DO: Remove after debugging
+	AdslDrvPrintf(TEXT("%s: pAdslX=0x%px\n"), __FUNCTION__, pAdslX);	//TO DO: Remove after debugging
 #endif
 	BlockByteClear (sizeof(AdslXfaceData), (void *)pAdslX);
+#if defined(SDRAM4G_SUPPORT1)
+	tmp = ADSL_ENDIAN_CONV_INT32(pAdslLmem[5]);
+	if (tmp & 1) {
+	  pAdslLmem[5] = ADSL_ENDIAN_CONV_INT32(tmp | 2);
+	  pAdslX->sdramBaseAddr = ADSL_ENDIAN_CONV_UINT32(adslCorePhyDesc.sdramImageAddr0);
+	  adslCorePhyDesc.sdramPhyAddrMaskAny  = 0;
+	  adslCorePhyDesc.sdramPhyConvAddr = adslCorePhyDesc.sdramPhyImageAddr | 0x20000000;
+	}
+	else {
+	  pAdslX->sdramBaseAddr = ADSL_ENDIAN_CONV_UINT32(adslCorePhyDesc.sdramImageAddr0 | 0xA0000000);
+	  adslCorePhyDesc.sdramPhyAddrMaskAny  = 0xA0000000;
+	  adslCorePhyDesc.sdramPhyConvAddr = adslCorePhyDesc.sdramImageAddr0 | 0xA0000000;
+	}
+#else
 	pAdslX->sdramBaseAddr = ADSL_ENDIAN_CONV_UINT32(adslCorePhyDesc.sdramImageAddr0 | 0xA0000000);
+#endif
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 	pAdslX->gfcTable[sizeof(pAdslX->gfcTable)/sizeof(pAdslX->gfcTable[0]) - 1] = ADSL_ENDIAN_CONV_INT32(adslCorePhyDesc.sdramImageAddr);
 #if defined(CONFIG_ARM64)
@@ -3752,8 +3926,10 @@ static AC_BOOL __AdslCoreHwReset(AC_BOOL bCoreReset)
 	do { } while (0 == OsTimeElapsedMs(osTime0));
 	pAdslEnum[(0x50 / 4)] = tmp | 0x7E;
 #endif
-	ENABLE_ADSL_MIPS;
-
+	nRet = ENABLE_ADSL_MIPS;
+	if(nRet)
+		printk(" *** %s: ENABLE_ADSL_MIPS error(%d)! ***\n", __FUNCTION__, nRet);
+	
 #ifdef VXWORKS
 	if (ejtagEnable) {
 		int read(int fd, void *buf, int n);
@@ -3774,9 +3950,9 @@ static AC_BOOL __AdslCoreHwReset(AC_BOOL bCoreReset)
 	AdslDrvPrintf(TEXT("*** %s: osTimePhyInitStart=0x%lX ***\n"), __FUNCTION__, osTimePhyInitStart);
 #endif
 #if defined(PHY_BLOCK_TEST) || defined(_NOOS)
-	AdslDrvPrintf(TEXT("**** BLOCK TEST BUILD, &adslPhyXfaceOffset=0x%p (0x%X) ***\n"), &adslPhyXfaceOffset, (uint)adslPhyXfaceOffset);
+	AdslDrvPrintf(TEXT("**** BLOCK TEST BUILD, &adslPhyXfaceOffset=0x%px (0x%X) ***\n"), &adslPhyXfaceOffset, (uint)adslPhyXfaceOffset);
 #ifdef CONFIG_BRCM_IKOS
-	AdslDrvPrintf(TEXT("*** osTimePhyInitStart=0x%lX &pAdslLmem[51]=%p pAdslLmem[51] = 0x%08x ***\n"),
+	AdslDrvPrintf(TEXT("*** osTimePhyInitStart=0x%lX &pAdslLmem[51]=%px pAdslLmem[51] = 0x%08x ***\n"),
 		osTimePhyInitStart, &pAdslLmem[51], initialLmemVal);
 #endif
 	while (!AdsCoreStatBufAssigned() && ((to = OsTimeElapsedMs(osTime0)) < HW_RESET_DELAY_MS) &&
@@ -3837,7 +4013,7 @@ static AC_BOOL __AdslCoreHwReset(AC_BOOL bCoreReset)
 #else
 	gStatusBackupThreshold = MIN( STAT_BKUP_THRESHOLD, (StretchBufferGetSize(pPhySbSta) >> 1));
 #endif
-	AdslDrvPrintf(TEXT("AdslCoreHwReset:  pLocSbSta=%p bkupThreshold=%d\n"), pLocSbSta, gStatusBackupThreshold);
+	AdslDrvPrintf(TEXT("AdslCoreHwReset:  pLocSbSta=%px bkupThreshold=%d\n"), pLocSbSta, gStatusBackupThreshold);
 #endif
 
 #ifdef PHY_BLOCK_TEST
@@ -3922,23 +4098,34 @@ AC_BOOL AdslCoreHwReset(AC_BOOL bCoreReset)
 	int		cnt = 0;
 #if defined(CONFIG_BCM_DSL_GFAST) && defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 10)
 	int res;
-	unsigned short bpGpioAFEPwrBoost;
-#if defined(CONFIG_BCM963158) && (BOARD_H_API_VER > 11)
-	res = BpGetAFELDPwrBoostGpio(0, &bpGpioAFEPwrBoost);
+#if (defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)) && (BOARD_H_API_VER > 11)
+	res = BpGetAFELDPwrBoostGpio(0, &bpGpioAFEPwrBoost[0]);
 #else
-	res = BpGetAFELDPwrBoostGpio(&bpGpioAFEPwrBoost);
+	res = BpGetAFELDPwrBoostGpio(&bpGpioAFEPwrBoost[0]);
 #endif
+	acPwrBoostLineMask = 0;
 	if(BP_SUCCESS == res) {
-		kerSysSetGpio(bpGpioAFEPwrBoost, kGpioInactive);
-		DiagWriteString(0, DIAG_DSL_CLIENT, "*** Drv: De-activate AFE LD power boost (bpGpio 0x%04X)\n", bpGpioAFEPwrBoost);
+		kerSysSetGpio(bpGpioAFEPwrBoost[0], kGpioInactive);
+		DiagWriteString(0, DIAG_DSL_CLIENT, "*** Drv: De-activate AFE LD power boost (bpGpio 0x%04X)\n", bpGpioAFEPwrBoost[0]);
+#if defined(CONFIG_BCM963158) && (BOARD_H_API_VER > 11) && defined(SUPPORT_DSL_BONDING)
+		res = BpGetAFELDPwrBoostGpio(1, &bpGpioAFEPwrBoost[1]);
+		if(BP_SUCCESS == res) {
+			if (bpGpioAFEPwrBoost[0] != bpGpioAFEPwrBoost[1])
+				kerSysSetGpio(bpGpioAFEPwrBoost[1], kGpioInactive);
+		}
+		else
+			bpGpioAFEPwrBoost[1] = 0xFFFF;
+#endif
 	}
-	else
+	else {
+		bpGpioAFEPwrBoost[0] = 0xFFFF;
 		DiagWriteString(0, DIAG_DSL_CLIENT, "*** Drv: AFE LD power boost GPIO is not configured\n");
+	}
 #endif
 
 	do {
 		if (__AdslCoreHwReset(bCoreReset)) {
-#if defined(CONFIG_BCM963178)
+#if defined(XTM_NOTIFY_CORE_RESET)
 			{
 			XTM_INTERFACE_LINK_INFO	linkInfo;
 
@@ -4087,7 +4274,7 @@ void AdslCoreUninit(void)
 	}
 #endif
 	pAdslXface = NULL;
-#if defined(USE_PMC_API)
+#if defined(USE_PMC_API) && !defined(CONFIG_BCM963178)
 	pmc_dsl_power_down();
 #endif
 }
@@ -4097,7 +4284,7 @@ AC_BOOL AdslCoreSetSDRAMBaseAddr(void *pAddr)
 	if (NULL != pAdslXface)
 		return AC_FALSE;
 #if (defined(CONFIG_ARM) || defined(CONFIG_ARM64)) && !defined(_NOOS)
-	adslCorePhyDesc.sdramPageAddr0 = ((phys_addr_t) pAddr) & ~(adslCorePhyDesc.sdramPageSize-1);
+	adslCorePhyDesc.sdramPageAddr0 = ((phys_addr_t) pAddr) - (ADSL_PHY_SDRAM_BIAS & ~0xFFFFF); /* pAddr is 1MB aligned */
 #if defined(BOARD_H_API_VER) && BOARD_H_API_VER > 14
 	{
 		void* virt_base = NULL;
@@ -4105,13 +4292,24 @@ AC_BOOL AdslCoreSetSDRAMBaseAddr(void *pAddr)
 
 		BcmMemReserveGetByName(ADSL_BASE_ADDR_STR, &virt_base, NULL, NULL);
 		adslCorePhyDesc.sdramPageAddr = (uintptr_t)BcmMemReservePhysToVirt(virt_base, phys_base, adslCorePhyDesc.sdramPageAddr0);
+#ifdef ADSL_SDRAM_RESERVE_SIZE
+		AdslCoreSystemReservedMemInit(virt_base, pAddr, ADSL_SDRAM_RESERVE_SIZE - ADSL_SDRAM_IMAGE_SIZE);
+		AdslDrvPrintf(TEXT("%s: Orig: pAddr=0x%px vBase=0x%px pg0=0x%X pg1=0x%lX\n"), __FUNCTION__, pAddr, virt_base, 
+			adslCorePhyDesc.sdramPageAddr0, adslCorePhyDesc.sdramPageAddr);
+		pAddr = ((char *) pAddr) + ADSL_SDRAM_RESERVE_SIZE - ADSL_SDRAM_IMAGE_SIZE;
+		adslCorePhyDesc.sdramPageAddr0 += ADSL_SDRAM_RESERVE_SIZE - ADSL_SDRAM_IMAGE_SIZE;
+		adslCorePhyDesc.sdramPageAddr  += ADSL_SDRAM_RESERVE_SIZE - ADSL_SDRAM_IMAGE_SIZE;
+		AdslDrvPrintf(TEXT("%s: Res: pAddr=0x%px vBase=0x%px pg0=0x%X pg1=0x%lX\n"), __FUNCTION__, pAddr, virt_base, 
+			adslCorePhyDesc.sdramPageAddr0, adslCorePhyDesc.sdramPageAddr);
+#endif
 	}
 #else
+	adslCorePhyDesc.sdramPageAddr0 = ((phys_addr_t) pAddr) & ~(adslCorePhyDesc.sdramPageSize-1);
 	adslCorePhyDesc.sdramPageAddr = (uintptr_t)phys_to_virt(adslCorePhyDesc.sdramPageAddr0);
 #endif
-	AdslDrvPrintf(TEXT("%s: pAddr=0x%p sdramPageAddr=0x%lX\n"), __FUNCTION__, pAddr, adslCorePhyDesc.sdramPageAddr);
+	AdslDrvPrintf(TEXT("%s: pAddr=0x%px sdramPageAddr=0x%lX\n"), __FUNCTION__, pAddr, adslCorePhyDesc.sdramPageAddr);
 #else
-	adslCorePhyDesc.sdramPageAddr = 0xA0000000 | (((uintptr_t) pAddr) & ~(adslCorePhyDesc.sdramPageSize-1));
+	adslCorePhyDesc.sdramPageAddr = 0xA0000000 | (((uintptr_t) pAddr) & ~(ADSL_PHY_SDRAM_PAGE_SIZE - 1));
 	adslCorePhyDesc.sdramPageAddr0 = (uint)adslCorePhyDesc.sdramPageAddr;
 #endif
 
@@ -4232,6 +4430,15 @@ void XdslCoreFlushAllG997ReceivedFrame(void *gDslVars)
 	g997FrCtrl = XdslCoreG997GetEocMsgCtrl(gDslVars, BCM_XDSL_DATAGRAM_EOC_MSG);
 	if(NULL != g997FrCtrl)
 		XdslCoreG997FrameBufferFlush(gDslVars, g997FrCtrl);
+#ifdef SUPPORT_HMI
+	g997FrCtrl = &gG997HmiEocCtrl(gDslVars);
+	if((NULL != g997FrCtrl) && gPendingFrFlag(g997FrCtrl)) {
+		OverheadClient* pOverHeadClient = (OverheadClient *)(gG997RxFrBuf(g997FrCtrl)[0]);
+		(*pOverHeadClient->messageReceived)(pOverHeadClient, TIMEOUT);
+		gPendingFrFlag(g997FrCtrl) = 0;
+		gTimeUpdate(g997FrCtrl) = 0;
+	}
+#endif
 }
 
 static void XdslCoreFlushExpiredG997ReceivedFrame(void *gDslVars, ulong tMs)
@@ -4255,6 +4462,18 @@ static void XdslCoreFlushExpiredG997ReceivedFrame(void *gDslVars, ulong tMs)
 		if (gTimeUpdate(g997FrCtrl) > 5000)
 			XdslCoreG997FrameBufferFlush(gDslVars, g997FrCtrl);
 	}
+#ifdef SUPPORT_HMI
+	g997FrCtrl = &gG997HmiEocCtrl(gDslVars);
+	if((NULL != g997FrCtrl) && gPendingFrFlag(g997FrCtrl)) {
+		gTimeUpdate(g997FrCtrl) += tMs;
+		if (gTimeUpdate(g997FrCtrl) > 5000) {
+			OverheadClient* pOverHeadClient = (OverheadClient *)(gG997RxFrBuf(g997FrCtrl)[0]);
+			(*pOverHeadClient->messageReceived)(pOverHeadClient, TIMEOUT);
+			gPendingFrFlag(g997FrCtrl) = 0;
+			gTimeUpdate(g997FrCtrl) = 0;
+		}
+	}
+#endif
 }
 
 void AdslCoreTimer (ulong tMs)
@@ -4410,7 +4629,7 @@ extern unsigned int BcmXdslGetVectExtraSkbCnt(void);
 void printLMEMContent(void)
 {
 	stretchBufferStruct *fBuf = pPhySbSta;
-	printk(" pRead=%x pWrite=%x pStretchEnd=%x(%p %p %p)\n",
+	printk(" pRead=%x pWrite=%x pStretchEnd=%x(%px %px %px)\n",
 		ADSL_ENDIAN_CONV_INT32(fBuf->pRead), ADSL_ENDIAN_CONV_INT32(fBuf->pWrite), ADSL_ENDIAN_CONV_INT32(fBuf->pStretchEnd),
 		pCurSbSta, pPhySbSta, pLocSbSta);
 #if 0
@@ -4559,6 +4778,12 @@ int AdslCoreIntTaskHandler(int nMaxStatus)
 						AdslCoreBertStart(gLineId(gDslVars), nBits);
 				}
 				break;
+#ifdef SUPPORT_MULTI_PHY
+			case kDslTrainingStatus:
+				if (kDslStartedG994p1 == status.param.dslTrainingInfo.code)
+					acLineReset[lineId] = 0;
+				break;
+#endif
 		}
 		
 		AdslCoreStatusReadComplete (tmp);
@@ -4636,7 +4861,7 @@ void AdslCoreGetConnectionRates (unsigned char lineId, AdslCoreConnectionRates *
     pAdslRates->intlUpRate = AdslMibGetGetChannelRate (pDslVars, kAdslXmtDir, kAdslIntlChannel);
     pAdslRates->intlDnRate = AdslMibGetGetChannelRate (pDslVars, kAdslRcvDir, kAdslIntlChannel);
 
-#if !defined(__KERNEL__) && !defined(TARG_OS_RTEMS) && !defined(_CFE_)
+#if !defined(__KERNEL__) && !defined(TARG_OS_RTEMS)
     if (0 == pAdslRates->intlDnRate) {
             pAdslRates->intlDnRate = pAdslRates->fastDnRate;
             pAdslRates->fastDnRate = 0;

@@ -99,7 +99,8 @@ void rutQos_reconfigAllClassifications_dev2(const char *intfName)
       return;
    }
 
-   cmsLck_setHoldTimeWarnThresh(8000);
+   /* for more classification rules, the operation may take longer  */
+   cmsLck_setHoldTimeWarnThresh(12000);
    /* make sure that all the required modules for qos support are loaded */
    rutIpt_qosLoadModule();
 

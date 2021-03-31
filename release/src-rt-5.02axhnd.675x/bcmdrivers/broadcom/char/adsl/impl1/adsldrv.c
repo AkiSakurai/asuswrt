@@ -71,6 +71,7 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/fs.h>
+#include <linux/proc_fs.h>
 #include <linux/capability.h>
 #include <linux/slab.h>
 #include <linux/if_arp.h>
@@ -231,12 +232,15 @@ BCMXTM_STATUS BcmXtm_SetInterfaceLinkInfo( uint ulPortId, PXTM_INTERFACE_LINK_IN
 {
 	return XTMSTS_STATE_ERROR;
 }
+
+#ifdef CONFIG_BRCM_IKOS
 void kerSysDisableDyingGaspInterrupt(void)
 {
 }
 void kerSysEnableDyingGaspInterrupt(void)
 {
 }
+#if 0
 void kerSysLedCtrl(BOARD_LED_NAME ledName, BOARD_LED_STATE ledState)
 {
 }
@@ -255,6 +259,8 @@ int BpGetExtAFELDPwrDslCtl( unsigned short *pusValue )
 {
 	return 0;
 }
+#endif
+#endif
 
 #else /* !defined(NO_XTM_MODULE) */
 
@@ -318,6 +324,11 @@ extern void dumpaddr( unsigned char *pAddr, int nLen );
 
 #if defined(XTM_USE_DSL_WAN_NOTIFY)
 static void BcmXdslWanDevNotify(unsigned char bDevUp);  /* 1/0 - up/down */
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+#define ARPHRD_CPCS     28              /* CPCS                         */
+#define ARPHRD_DSL      29              /* ADSL                         */
 #endif
 
 typedef struct
@@ -652,7 +663,15 @@ static int __init adsl_init( void )
 #if defined(CONFIG_BRCM_IKOS) && defined(DSL_KTHREAD)
     OS_STATUS sts = OS_STATUS_OK;
 #endif
+#if defined(BOARD_H_API_VER) && BOARD_H_API_VER > 0 && !defined(CONFIG_BRCM_IKOS)
+    if (kerSysGetDslPhyEnable())
+         printk( "adsl: adsl_init entry\n" );
+    else
+         return( -1 );
+#else
     printk( "adsl: adsl_init entry\n" );
+#endif
+
     BcmXdslDrvInitEocCtrl();
     if ( register_chrdev( ADSLDRV_MAJOR, "adsl", &adsl_fops ) )
     {
@@ -870,7 +889,11 @@ static void DoInitialize( unsigned char lineId, unsigned long arg )
 
     KArg.bvStatus = BcmAdsl_Initialize(lineId, AdslConnectCb, NULL, pAdslCfg);
 #if defined(DYING_GASP_API) && !defined(CONFIG_BRCM_IKOS)
+#if defined(BOARD_H_API_VER) && BOARD_H_API_VER > 15
+    kerSysRegisterDyingGaspHandlerV2(DSL_IFNAME, &BcmAdsl_DyingGaspHandler, 0);
+#else
     kerSysRegisterDyingGaspHandler(DSL_IFNAME, &BcmAdsl_DyingGaspHandler, 0);
+#endif
 #endif
     put_user( KArg.bvStatus, &((PADSLDRV_INITIALIZE) arg)->bvStatus );
 
@@ -1092,6 +1115,12 @@ static void DoGetObjValue( unsigned char lineId, unsigned long arg )
 				break;
 			if( copy_from_user( objId, KArg.objId, KArg.objIdLen ) != 0 )
 				break;
+			if ( objId[0] == kOidAdslDiagdSkb ) {
+				BcmAdslPendingSkbMsgRead(KArg.dataBuf, &KArg.dataBufLen);
+				KArg.bvStatus = BCMADSL_STATUS_SUCCESS;
+				break;
+			}
+			else
 				retObj = BcmAdsl_GetObjectValue (lineId, objId, KArg.objIdLen, NULL, &KArg.dataBufLen);
 		}
 		else
@@ -1525,18 +1554,23 @@ static void DoHmiCommand( unsigned char lineId, unsigned long arg )
 		}
 #endif
 #if 0
-		printk("%s: headerSize %d payloadSize %d replyMaxMessageSize %d\n",
-			__FUNCTION__, KArg.headerSize, KArg.payloadSize, KArg.replyMaxMessageSize);
+		printk("%s: header %p headerSize %d payload %p payloadSize %d replyMessage %p replyMaxMessageSize %d\n",
+			__FUNCTION__, KArg.header, KArg.headerSize,
+			KArg.payload, KArg.payloadSize,
+			KArg.replyMessage, KArg.replyMaxMessageSize);
 #endif
-		if ((NULL != KArg.header) && (NULL != KArg.payload) && (NULL != KArg.replyMessage) &&
+		if ((NULL != KArg.header) && (NULL != KArg.replyMessage) &&
 			(KArg.headerSize) && (KArg.replyMaxMessageSize)) {
 			if ((KArg.headerSize + KArg.payloadSize) > MAX_HMI_PACKET_SIZE)
 				break;
 			if( copy_from_user( hmiMsg, KArg.header, KArg.headerSize ) != 0 )
 				break;
-			if(KArg.payloadSize)
-			if( copy_from_user( hmiMsg+KArg.headerSize, KArg.payload, KArg.payloadSize ) != 0 )
-				break;
+			if(KArg.payloadSize) {
+				if(NULL == KArg.payload)
+					break;
+				else if( copy_from_user( hmiMsg+KArg.headerSize, KArg.payload, KArg.payloadSize ) != 0 )
+					break;
+			}
 			XdslDrvProcessHmiMsg(hmiMsg, KArg.payloadSize);
 			KArg.bvStatus = BCMADSL_STATUS_SUCCESS;
 		}
@@ -1573,6 +1607,9 @@ void AdslDrvXtmLinkDown(unsigned char lineId)
 {
 	ulong	mibLen;
 	adslMibInfo	*pMib;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
+	int	linkState = (int)BCM_ADSL_LINK_DOWN;
+#endif
 
 	printk("AdslDrvXtmLinkDown: lineId %d\n", lineId);
 
@@ -1595,7 +1632,7 @@ void AdslDrvXtmLinkDown(unsigned char lineId)
 #ifdef DYING_GASP_API
 	/* Send Msg to the user mode application that monitors link status. */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
-	kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,NULL,0);
+	kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,(char *)&linkState,sizeof(int));
 #else
 	kerSysWakeupMonitorTask();
 #endif
@@ -1632,7 +1669,10 @@ void AdslDrvXtmLinkUp(unsigned char lineId, unsigned char tpsTc)
 	adslMibInfo	*pMib;
 	XTM_INTERFACE_LINK_INFO	linkInfo;
 	uint		ahifChanId = 0;
-	
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
+	int linkState = (int)BCM_ADSL_LINK_UP;
+#endif
+
 	printk("AdslDrvXtmLinkUp: lineId %d, tpsTc %d\n", lineId, tpsTc);
 	
 	mibLen = sizeof(adslMibInfo);
@@ -1665,7 +1705,7 @@ void AdslDrvXtmLinkUp(unsigned char lineId, unsigned char tpsTc)
 #ifdef DYING_GASP_API
 	/* Send Msg to the user mode application that monitors link status. */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
-	kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,NULL,0);
+	kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,(char *)&linkState,sizeof(int));
 #else
 	kerSysWakeupMonitorTask();
 #endif
@@ -1728,7 +1768,10 @@ static void AdslConnectCb(unsigned char lineId, ADSL_LINK_STATE dslLinkState, AD
 	int				ledType ;
 	int				connectionType, i;
 	xdslFramingInfo *pXdslFramingParam;
-
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
+	int				linkState = (int)dslLinkState;
+#endif
+	
 	adslMib = (void *) BcmAdsl_GetObjectValue (lineId, NULL, 0, NULL, &size);
 	if( NULL == adslMib) {
 		BcmAdslCoreDiagWriteStatusString(lineId, "AdslConnectCb: BcmAdsl_GetObjectValue() failed!!!\n" );
@@ -1805,9 +1848,9 @@ static void AdslConnectCb(unsigned char lineId, ADSL_LINK_STATE dslLinkState, AD
 			break;
 #if defined(BUILD_SNMP_EOC) || defined(BUILD_SNMP_AUTO)
 		case BCM_ADSL_G997_FRAME_RECEIVED:
-#if 0 && defined(DYING_GASP_API)	/* Send Msg to the user mode application that monitors link status. */
+#if defined(NOTIFY_INTERMEDIATE_LINKSTATUS_CHANGE) && defined(DYING_GASP_API)	/* Send Msg to the user mode application that monitors link status. */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
-			kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,NULL,0);
+			kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,(char *)&linkState,sizeof(int));
 #else
 			kerSysWakeupMonitorTask();
 #endif
@@ -1817,9 +1860,9 @@ static void AdslConnectCb(unsigned char lineId, ADSL_LINK_STATE dslLinkState, AD
 #ifdef BUILD_SNMP_TRANSPORT_DEBUG
 			printk("BCM_ADSL_G997_FRAME_SENT \n");
 #endif
-#if 0 && defined(DYING_GASP_API)	/* Send Msg to the user mode application that monitors link status. */
+#if defined(NOTIFY_INTERMEDIATE_LINKSTATUS_CHANGE) && defined(DYING_GASP_API)	/* Send Msg to the user mode application that monitors link status. */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
-			kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,NULL,0);
+			kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,(char *)&linkState,sizeof(int));
 #else
 			kerSysWakeupMonitorTask();
 #endif
@@ -1827,31 +1870,32 @@ static void AdslConnectCb(unsigned char lineId, ADSL_LINK_STATE dslLinkState, AD
 			return;
 #endif /* defined(BUILD_SNMP_EOC) || defined(BUILD_SNMP_AUTO) */
 		default:
-#if 0 && defined(DYING_GASP_API)	/* Send Msg to the user mode application that monitors link status. */
+#if defined(NOTIFY_INTERMEDIATE_LINKSTATUS_CHANGE) && defined(DYING_GASP_API)	/* Send Msg to the user mode application that monitors link status. */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
 #ifdef ADSLDRV_SILENT_MODE
 			if (gXtmNotify)
 #endif
-			kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,NULL,0);
+			kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,(char *)&linkState,sizeof(int));
 #else
 			kerSysWakeupMonitorTask();
 #endif
 #endif
 			return;
 	}
-	
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0))
 	/* record time stamp of link state change (in 1/100ths of a second unit per MIB spec.) */
 	if (g_dslNetDev != NULL) 
 		g_dslNetDev->trans_start = jiffies * 100 / HZ;
+#endif
 	
 	if( ((ADSL_LINK_DOWN == dslLinkState) && (ADSL_LINK_UP != dslPrevLinkState)) ||
 		((ADSL_LINK_UP != dslLinkState) && (ADSL_LINK_DOWN != dslLinkState)) ) {
-#if 0 && defined(DYING_GASP_API)	/* Send Msg to the user mode application that monitors link status. */
+#if defined(NOTIFY_INTERMEDIATE_LINKSTATUS_CHANGE) && defined(DYING_GASP_API)	/* Send Msg to the user mode application that monitors link status. */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
 #ifdef ADSLDRV_SILENT_MODE
 		if (gXtmNotify)
 #endif
-		kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,NULL,0);
+		kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,(char *)&linkState,sizeof(int));
 #else
 		kerSysWakeupMonitorTask();
 #endif
@@ -1901,12 +1945,12 @@ static void AdslConnectCb(unsigned char lineId, ADSL_LINK_STATE dslLinkState, AD
 			/* Skip notifying the XTM driver to prevent unexpected Tx data */
 			if(BcmCoreDiagTeqLogOrPlaybackActive()) {
 				BcmAdslCoreDiagWriteStatusString(lineId, "Line: %d Path: %d  in TEQ data logging mode. Skip notifying XTM driver\n", lineId, i);
-#if 0 && defined(DYING_GASP_API)	/* Send Msg to the user mode application that monitors link status. */
+#if defined(NOTIFY_INTERMEDIATE_LINKSTATUS_CHANGE) && defined(DYING_GASP_API)	/* Send Msg to the user mode application that monitors link status. */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
 #ifdef ADSLDRV_SILENT_MODE
 				if (gXtmNotify)
 #endif
-				kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,NULL,0);
+				kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,(char *)&linkState,sizeof(int));
 #else
 				kerSysWakeupMonitorTask();
 #endif
@@ -1918,12 +1962,12 @@ static void AdslConnectCb(unsigned char lineId, ADSL_LINK_STATE dslLinkState, AD
 #if !defined(XTM_SUPPORT_DSL_SRA) || defined(NO_RATE_CHANGE_SUPPORT_IN_XTM_API)
 			if((ADSL_LINK_UP == dslLinkState) && (dslPrevLinkState == dslLinkState)) {
 				DiagWriteString(lineId, DIAG_DSL_CLIENT, "Line: %d Path: %d  Link Rate Change.  Skip reporting to XTM driver\n", lineId, i);
-#if 0 && defined(DYING_GASP_API)	/* Send Msg to the user mode application that monitors link status. */
+#if defined(NOTIFY_INTERMEDIATE_LINKSTATUS_CHANGE) && defined(DYING_GASP_API)	/* Send Msg to the user mode application that monitors link status. */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
 #ifdef ADSLDRV_SILENT_MODE
 				if (gXtmNotify)
 #endif
-				kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,NULL,0);
+				kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,(char *)&linkState,sizeof(int));
 #else
 				kerSysWakeupMonitorTask();
 #endif
@@ -1959,7 +2003,7 @@ static void AdslConnectCb(unsigned char lineId, ADSL_LINK_STATE dslLinkState, AD
 #ifdef ADSLDRV_SILENT_MODE
 	if (gXtmNotify)
 #endif
-	kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,NULL,0);
+	kerSysSendtoMonitorTask(MSG_NETLINK_BRCM_LINK_STATUS_CHANGED,(char *)&linkState,sizeof(int));
 #else
 	kerSysWakeupMonitorTask();
 #endif
@@ -2150,6 +2194,7 @@ typedef struct {
 EocIfCtrl	nsfEocCtrl[2];
 EocIfCtrl	dataGramEocCtrl[2];
 EocIfCtrl	clearEocCtrl[2];
+EocIfCtrl	skbEocCtrl[2];
 
 static Bool BcmXdslEocXmtReady(EocIfCtrl *pEocIfCtrl)
 {
@@ -2159,7 +2204,7 @@ static Bool BcmXdslEocXmtReady(EocIfCtrl *pEocIfCtrl)
 static EocIfCtrl *BcmXdslGetEocIfCtrl(unsigned char lineId, int eocMsgType)
 {
 	EocIfCtrl *pEocIfCtrl = NULL;
-	
+
 	switch(eocMsgType) {
 		case BCM_XDSL_NSF_EOC_MSG:
 			pEocIfCtrl = &nsfEocCtrl[lineId];
@@ -2169,6 +2214,9 @@ static EocIfCtrl *BcmXdslGetEocIfCtrl(unsigned char lineId, int eocMsgType)
 			break;
 		case BCM_XDSL_CLEAR_EOC_MSG:
 			pEocIfCtrl = &clearEocCtrl[lineId];
+			break;
+		case BCM_XDSL_SKB_EOC_MSG:
+			pEocIfCtrl = &skbEocCtrl[lineId];
 			break;
 		default:
 			break;
@@ -2185,7 +2233,7 @@ static int BcmXdsNsfEocMsgOpen0(struct inode * inode, struct file * file)
 	pEocIfCtrl->eocMsgType = BCM_XDSL_NSF_EOC_MSG;
 	init_waitqueue_head(&pEocIfCtrl->waitQue);
 	file->private_data = pEocIfCtrl;
-	printk("%s: pEocIfCtrl=%p lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
+	printk("%s: pEocIfCtrl=%px lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
 	return 0;
 }
 
@@ -2197,7 +2245,7 @@ static int BcmXdsNsfEocMsgOpen1(struct inode * inode, struct file * file)
 	pEocIfCtrl->eocMsgType = BCM_XDSL_NSF_EOC_MSG;
 	init_waitqueue_head(&pEocIfCtrl->waitQue);
 	file->private_data = pEocIfCtrl;
-	printk("%s: pEocIfCtrl=%p lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
+	printk("%s: pEocIfCtrl=%px lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
 	return 0;
 }
 
@@ -2209,7 +2257,7 @@ static int BcmXdsDatagramEocMsgOpen0(struct inode * inode, struct file * file)
 	pEocIfCtrl->eocMsgType = BCM_XDSL_DATAGRAM_EOC_MSG;
 	init_waitqueue_head(&pEocIfCtrl->waitQue);
 	file->private_data = pEocIfCtrl;
-	printk("%s: pEocIfCtrl=%p lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
+	printk("%s: pEocIfCtrl=%px lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
 	return 0;
 }
 
@@ -2221,7 +2269,33 @@ static int BcmXdslDatagramEocMsgOpen1(struct inode * inode, struct file * file)
 	pEocIfCtrl->eocMsgType = BCM_XDSL_DATAGRAM_EOC_MSG;
 	init_waitqueue_head(&pEocIfCtrl->waitQue);
 	file->private_data = pEocIfCtrl;
-	printk("%s: pEocIfCtrl=%p lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
+	printk("%s: pEocIfCtrl=%px lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
+	return 0;
+}
+
+static int BcmXdsSkbEocMsgOpen0(struct inode * inode, struct file * file)
+{
+	EocIfCtrl *pEocIfCtrl = &skbEocCtrl[0];
+	pEocIfCtrl->lineId = 0;
+	pEocIfCtrl->fileOpened = TRUE;
+	pEocIfCtrl->eocMsgType = BCM_XDSL_SKB_EOC_MSG;
+	init_waitqueue_head(&pEocIfCtrl->waitQue);
+	file->private_data = pEocIfCtrl;
+	BcmAdslPendingSkbMsgQueueEnable(1);
+	printk("%s: pEocIfCtrl=%px lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
+	return 0;
+}
+
+static int BcmXdsSkbEocMsgOpen1(struct inode * inode, struct file * file)
+{
+	EocIfCtrl *pEocIfCtrl = &skbEocCtrl[1];
+	pEocIfCtrl->lineId = 1;
+	pEocIfCtrl->fileOpened = TRUE;
+	pEocIfCtrl->eocMsgType = BCM_XDSL_SKB_EOC_MSG;
+	init_waitqueue_head(&pEocIfCtrl->waitQue);
+	file->private_data = pEocIfCtrl;
+	BcmAdslPendingSkbMsgQueueEnable(1);
+	printk("%s: pEocIfCtrl=%px lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
 	return 0;
 }
 
@@ -2233,7 +2307,7 @@ static int BcmXdsClearEocMsgOpen0(struct inode * inode, struct file * file)
 	pEocIfCtrl->eocMsgType = BCM_XDSL_CLEAR_EOC_MSG;
 	init_waitqueue_head(&pEocIfCtrl->waitQue);
 	file->private_data = pEocIfCtrl;
-	printk("%s: pEocIfCtrl=%p lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
+	printk("%s: pEocIfCtrl=%px lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
 	return 0;
 }
 
@@ -2245,7 +2319,7 @@ static int BcmXdsClearEocMsgOpen1(struct inode * inode, struct file * file)
 	pEocIfCtrl->eocMsgType = BCM_XDSL_CLEAR_EOC_MSG;
 	init_waitqueue_head(&pEocIfCtrl->waitQue);
 	file->private_data = pEocIfCtrl;
-	printk("%s: pEocIfCtrl=%p lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
+	printk("%s: pEocIfCtrl=%px lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
 	return 0;
 }
 
@@ -2253,7 +2327,11 @@ static int BcmXdslEocMsgRelease(struct inode * inode, struct file * file)
 {
 	EocIfCtrl *pEocIfCtrl = (EocIfCtrl *)file->private_data;
 	pEocIfCtrl->fileOpened = FALSE;
-	printk("%s: pEocIfCtrl=%p lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
+	if (pEocIfCtrl->eocMsgType==BCM_XDSL_SKB_EOC_MSG) {
+		BcmAdslPendingSkbMsgQueueEnable(0);
+		BcmAdslPendingSkbMsgQueueClear();
+	}
+	printk("%s: pEocIfCtrl=%px lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, pEocIfCtrl->lineId, pEocIfCtrl->eocMsgType);
 	return 0;
 }
 
@@ -2299,7 +2377,7 @@ static ssize_t BcmXdslEocMsgRead(struct file *file, char __user *buf, size_t cou
 		free(inputBuffer);
 	} /* (p  & len > 0) */
 #ifdef XDSL_EOC_DBG
-	printk("%s: pEocIfCtrl=%p read %d/%d\n", __FUNCTION__, pEocIfCtrl, ret, (int)count);
+	printk("%s: pEocIfCtrl=%px read %d/%d\n", __FUNCTION__, pEocIfCtrl, ret, (int)count);
 #endif
 
 	return( ret );
@@ -2342,7 +2420,7 @@ static ssize_t BcmXdslEocMsgWrite(struct file *file, const char __user *buf, siz
 		BcmAdslCoreDiagWriteStatusString(pEocIfCtrl->lineId, "%s copy_from_user(%d) failed", pEocIfCtrl->ifName, count);
 	}
 #ifdef XDSL_EOC_DBG
-	printk("%s: pEocIfCtrl=%p written %d bytes\n", __FUNCTION__, pEocIfCtrl, (int)ret);
+	printk("%s: pEocIfCtrl=%px written %d bytes\n", __FUNCTION__, pEocIfCtrl, (int)ret);
 #endif
 
 	return ret;
@@ -2364,26 +2442,82 @@ static unsigned int BcmXdslEocMsgPoll(struct file *file, poll_table *wait)
 
 #ifdef XDSL_EOC_DBG
 	if(0 != mask)
-		printk("%s: pEocIfCtrl=%p mask %08x\n", __FUNCTION__, pEocIfCtrl, mask);
+		printk("%s: pEocIfCtrl=%px mask %08x\n", __FUNCTION__, pEocIfCtrl, mask);
 #endif
 
 	return mask;
+}
+
+int BcmXdslIsEocIntfOpen(unsigned lineId, int eocMsgType)
+{
+	int res = 0;
+	EocIfCtrl *pEocIfCtrl = BcmXdslGetEocIfCtrl(lineId,eocMsgType);
+
+	if((NULL != pEocIfCtrl) && pEocIfCtrl->fileOpened)
+		res = 1;
+	
+	return res;
 }
 
 void BcmXdslEocWakeup(unsigned lineId, int eocMsgType)
 {
 	EocIfCtrl *pEocIfCtrl = BcmXdslGetEocIfCtrl(lineId,eocMsgType);
 #ifdef XDSL_EOC_DBG
-	printk("%s: pEocIfCtrl=%p lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, lineId, eocMsgType);
+	printk("%s: pEocIfCtrl=%px lineId %d eocMsgType 0x%X\n", __FUNCTION__, pEocIfCtrl, lineId, eocMsgType);
 #endif
-	if(NULL != pEocIfCtrl) {
-		if(pEocIfCtrl->fileOpened)
-			wake_up(&pEocIfCtrl->waitQue);
-		else {
+	if(NULL != pEocIfCtrl) { 
+		if(pEocIfCtrl->fileOpened) 
+			wake_up_interruptible(&pEocIfCtrl->waitQue);
+		else if(eocMsgType!=BCM_XDSL_SKB_EOC_MSG) {
 			BcmAdsl_G997FrameFinished(lineId, eocMsgType);
 			BcmAdslCoreDiagWriteStatusString(lineId, "BcmXdslEocWakeup: Discarding received data");
 		}
 	}
+}
+
+static ssize_t BcmXdslSkbEocMsgRead(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+{
+	EocIfCtrl *pEocIfCtrl = (EocIfCtrl*)file->private_data;
+	
+	while ( !BcmAdslPendingSkbMsgQueueSize() ) {
+		if (file->f_flags & O_NONBLOCK) {
+			return -EAGAIN;
+		}
+		else if (wait_event_interruptible(pEocIfCtrl->waitQue, BcmAdslPendingSkbMsgQueueSize() )) {
+			return -ERESTARTSYS; /* signal: tell the fs layer to handle it */
+		}
+	}
+
+	BcmAdslPendingSkbMsgRead( buf , (long*)&count );
+
+#ifdef XDSL_EOC_DBG
+	printk("%s: pEocIfCtrl=%px read %d\n", __FUNCTION__, pEocIfCtrl, (int)count);
+#endif
+
+	return count;
+}
+
+static ssize_t BcmXdslSkbEocMsgWrite(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+{
+	return -EFAULT;
+}
+
+static unsigned int BcmXdslSkbEocMsgPoll(struct file *file, poll_table *wait)
+{
+	unsigned int mask = 0;
+	EocIfCtrl *pEocIfCtrl = (EocIfCtrl*)file->private_data;
+
+	poll_wait(file, &pEocIfCtrl->waitQue,  wait);
+	
+	if( BcmAdslPendingSkbMsgQueueSize() )
+		mask |= POLLIN | POLLRDNORM;    /* readable */
+
+#ifdef XDSL_EOC_DBG
+	if(0 != mask)
+		printk("%s: pEocIfCtrl=%px mask %08x\n", __FUNCTION__, pEocIfCtrl, mask);
+#endif
+	
+	return mask;
 }
 
 static struct file_operations BcmXdslNsfEocFileOps0 = {
@@ -2428,12 +2562,28 @@ static struct file_operations BcmXdslClearEocFileOps1 = {
 	.open = BcmXdsClearEocMsgOpen1,
 	.release = BcmXdslEocMsgRelease,
 };
+static struct file_operations BcmXdslSkbEocFileOps0 = {
+    .read = BcmXdslSkbEocMsgRead,
+    .write = BcmXdslSkbEocMsgWrite,
+    .poll = BcmXdslSkbEocMsgPoll,
+    .open = BcmXdsSkbEocMsgOpen0,
+    .release = BcmXdslEocMsgRelease,
+};
+static struct file_operations BcmXdslSkbEocFileOps1 = {
+    .read = BcmXdslSkbEocMsgRead,
+    .write = BcmXdslSkbEocMsgWrite,
+    .poll = BcmXdslSkbEocMsgPoll,
+    .open = BcmXdsSkbEocMsgOpen1,
+    .release = BcmXdslEocMsgRelease,
+};
+
 
 static void BcmXdslDrvInitEocCtrl(void)
 {
 	memset((void*)&nsfEocCtrl[0], 0, sizeof(nsfEocCtrl));
 	memset((void*)&dataGramEocCtrl[0], 0, sizeof(dataGramEocCtrl));
 	memset((void*)&clearEocCtrl[0], 0, sizeof(clearEocCtrl));
+	memset((void*)&skbEocCtrl[0], 0, sizeof(skbEocCtrl));
 }
 
 static BCMADSL_STATUS BcmXdslDrvOpenEocIf(unsigned lineId, int eocMsgType, char *pIfName)
@@ -2468,12 +2618,24 @@ static BCMADSL_STATUS BcmXdslDrvOpenEocIf(unsigned lineId, int eocMsgType, char 
 			strcpy(pEocIfCtrl->ifName, pIfName);
 			pEocIfCtrl->pFileOps = (0==lineId) ? &BcmXdslClearEocFileOps0: &BcmXdslClearEocFileOps1;
 			break;
+		case BCM_XDSL_SKB_EOC_MSG:
+			pEocIfCtrl = &skbEocCtrl[lineId];
+			pEocIfCtrl->eocMsgType = eocMsgType;
+			pEocIfCtrl->lineId = lineId;
+			pEocIfCtrl->fileOpened = FALSE;
+			strcpy(pEocIfCtrl->ifName, pIfName);
+			pEocIfCtrl->pFileOps = (0==lineId) ? &BcmXdslSkbEocFileOps0: &BcmXdslSkbEocFileOps1;
+			break;
 		default:
 			printk("%s: Unkown eocMsgType 0x%X\n", __FUNCTION__, eocMsgType);
 			return BCMADSL_STATUS_ERROR;
 	}
-	
-	pEocIfCtrl->pProcEntry = proc_create(pEocIfCtrl->ifName, S_IRUSR, NULL, pEocIfCtrl->pFileOps);
+
+	if ( pEocIfCtrl->pProcEntry == NULL )
+		pEocIfCtrl->pProcEntry = proc_create(pEocIfCtrl->ifName, S_IRUSR, NULL, pEocIfCtrl->pFileOps);
+	else
+		printk("%s: pointer to struct proc_dir_entry not empty\n", __FUNCTION__);
+
 	if(NULL == pEocIfCtrl->pProcEntry) {
 		ret = BCMADSL_STATUS_ERROR;
 		printk("%s: proc_create(%s} failed!\n", __FUNCTION__, pEocIfCtrl->ifName);
@@ -2499,6 +2661,9 @@ static BCMADSL_STATUS BcmXdslDrvCloseEocIf(unsigned lineId, int eocMsgType, char
 		case BCM_XDSL_CLEAR_EOC_MSG:
 			pEocIfCtrl = &clearEocCtrl[lineId];
 			break;
+		case BCM_XDSL_SKB_EOC_MSG:
+			pEocIfCtrl = &skbEocCtrl[lineId];
+			break;
 		default:
 			printk("%s: Unkown eocMsgType 0x%X\n", __FUNCTION__, eocMsgType);
 			return BCMADSL_STATUS_ERROR;
@@ -2516,7 +2681,6 @@ static BCMADSL_STATUS BcmXdslDrvCloseEocIf(unsigned lineId, int eocMsgType, char
 	
 	return ret;
 }
-
 
 /***************************************************************************
  * MACRO to call driver initialization and cleanup functions.

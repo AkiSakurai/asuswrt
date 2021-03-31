@@ -3,7 +3,7 @@
  *
  * Common headers for receive datapath components
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -47,7 +47,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_rx.h 779978 2019-10-11 11:31:10Z $
+ * $Id: wlc_rx.h 784595 2020-03-03 04:06:37Z $
  *
  */
 #ifndef _wlc_rx_h_
@@ -287,6 +287,8 @@ void BCMFASTPATH
 wlc_sendup_msdus(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct scb *scb, void *pkt);
 
 void wlc_sendup_event(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct scb *scb, void *pkt);
+
+extern int BCMFASTPATH wlc_recvdata_sendpkt(wlc_info_t *wlc, void *p, wlc_if_t *wlcif);
 
 extern uint32 wlc_he_sig_a1_from_plcp(uint8 *plcp);
 extern uint32 wlc_he_sig_a2_from_plcp(uint8 *plcp);

@@ -710,6 +710,32 @@ UBOOL8 rutWl2_isPPPoA(const InstanceIdStack *iidStack __attribute((unused)))
 }
 
 
+UBOOL8 rutWl2_isPPPoL2tp(const InstanceIdStack *iidStack __attribute((unused)))
+{
+   UBOOL8 isL2tp=FALSE;
+#ifdef DMP_X_BROADCOM_COM_L2TPAC_1
+   void *L2LinkCfgObj=NULL;
+   MdmObjectId L2LinkCfgOid;
+   
+   if ((rutWl2_getL2LinkObj(MDMOID_WAN_PPP_CONN, 
+                           iidStack, 
+                           &L2LinkCfgObj)) != CMSRET_SUCCESS)
+   {
+      cmsLog_error("rutWl2_getL2LinkObj faile. wanConnIid = %s", cmsMdm_dumpIidStack((void *) &iidStack));
+   }
+   else
+   {
+      L2LinkCfgOid = GET_MDM_OBJECT_ID(L2LinkCfgObj);
+      isL2tp = (L2LinkCfgOid == MDMOID_L2TP_AC_LINK_CONFIG);
+      cmsObj_free((void **) &L2LinkCfgObj);
+   }
+   cmsLog_debug("Exit. isL2tp=%d", isL2tp);  
+   
+#endif
+
+   return isL2tp;
+}
+
 
 UBOOL8 rutWl2_isIPoA(const InstanceIdStack *iidStack __attribute((unused)))
 {
@@ -1105,44 +1131,43 @@ CmsRet rutWl2_getWanMocaObject(InstanceIdStack *iidStack,
 
 #ifdef DMP_X_BROADCOM_COM_L2TPAC_1
 
-CmsRet rutWl2_getWanL2tpAcObject(InstanceIdStack *iidStack,
-                               _L2tpAcIntfConfigObject **wanL2tpAcIntfObj)
+CmsRet rutWl2_getL2tpWanIidStack(InstanceIdStack *l2tpWanIid)
 {
-   CmsRet ret = CMSRET_SUCCESS;
+   _WanDevObject *wanDev=NULL;
    _WanCommonIntfCfgObject *wanCommIntf = NULL;
-   UINT32 flags = OGF_NO_VALUE_UPDATE;
-   UBOOL8 found = FALSE;
+   UBOOL8 found = FALSE;   
+   CmsRet ret;
 
-   if (iidStack == NULL || wanL2tpAcIntfObj == NULL)
-   {
-      cmsLog_error("iidStack or wanL2tpAcIntfObj is NULL");
-      return CMSRET_INVALID_ARGUMENTS;
-   }
-
-   INIT_INSTANCE_ID_STACK(iidStack);
+   INIT_INSTANCE_ID_STACK(l2tpWanIid);
+   
    while (!found &&
-          ((ret = cmsObj_getNextFlags(MDMOID_WAN_COMMON_INTF_CFG, iidStack, flags, (void **) &wanCommIntf)) == CMSRET_SUCCESS))
+          (ret = cmsObj_getNextFlags(MDMOID_WAN_DEV, l2tpWanIid, OGF_NO_VALUE_UPDATE, (void **)&wanDev)) == CMSRET_SUCCESS)
    {
-      found = (0 == cmsUtl_strcmp(wanCommIntf->WANAccessType, MDMVS_X_BROADCOM_COM_L2TPAC));
-      cmsObj_free((void **) &wanCommIntf);
-   }
+      cmsObj_free((void **)&wanDev);  /* no longer needed */
 
+      if ((ret = cmsObj_get(MDMOID_WAN_COMMON_INTF_CFG, l2tpWanIid, OGF_NO_VALUE_UPDATE, (void **)&wanCommIntf)) != CMSRET_SUCCESS)
+      {
+         cmsLog_error("cmsObj_get <MDMOID_WAN_COMMON_INTF_CFG> returns error. ret=%d", ret);
+         return ret;
+      }  
+      
+      if (!cmsUtl_strcmp(wanCommIntf->WANAccessType, MDMVS_X_BROADCOM_COM_L2TPAC))
+      {
+        found = TRUE;
+        cmsObj_free((void **)&wanCommIntf);
+      }
+   }
+   
    if (!found)
    {
-      cmsLog_error("could not find L2tpAcIntfCfg object");
-      return ret;
+      cmsLog_error("L2tp WanDev does not exist?");
+      ret = CMSRET_INTERNAL_ERROR;
    }
-
-   /*
-    * WanCommonInterfaceConfig is at the same level as WanL2tpAcInterface config,
-    * so once we have found WanCommonInterfaceConfig, we can use the same iidStack
-    * to get the WanL2tpAcInterface.
-    */
-   ret = cmsObj_get(MDMOID_L2TP_AC_INTF_CONFIG, iidStack, 0, (void **) wanL2tpAcIntfObj);
-   if (ret != CMSRET_SUCCESS)
+   else
    {
-      cmsLog_error("could not get L2tpAcIntfCfg object, ret=%d", ret);
-   }
+      cmsLog_debug("Found l2tpWan iidStack");
+      ret = CMSRET_SUCCESS;
+   }      
       
    return ret;
 }

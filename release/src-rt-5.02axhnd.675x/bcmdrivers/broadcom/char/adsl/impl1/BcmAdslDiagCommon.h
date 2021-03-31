@@ -201,6 +201,12 @@ typedef struct {
 	struct net_device	*gdbDev;
 	struct sk_buff		*skbModel;
 	struct sk_buff		*skbGdb;
+
+    // the following two flags have dual role:
+    // indicate that the connection is established,
+    // and the fact that we want skb reroute
+    uint                skbModelReroute; // reroute skb thru ioctl
+    uint                skbGdbReroute;   // reroute skb thru ioctl
 } diagCtrlType;
 
 extern diagCtrlType diagCtrl;
@@ -221,6 +227,10 @@ int BcmCoreDiagZeroCopyStatAvail(void);
 int BcmCoreDiagZeroCopyStatActive(void);
 void BcmCoreDiagZeroCopyStatHandler(void);
 void BcmCoreDiagZeroCopyTxDoneHandler(void);
+#ifdef USE_RESERVE_SHARE_MEM
+void BcmCoreDiagReleaseReserveShareMem(void);
+#endif
+
 #endif	/* !_NOOS */
 
 void DiagUpdateSkbForDmaBlock(diagDmaBlock *db, int len);

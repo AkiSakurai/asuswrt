@@ -4,7 +4,7 @@
  * This feature saves a significant amount of processing time to
  * build a packet's d11 header from scratch.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

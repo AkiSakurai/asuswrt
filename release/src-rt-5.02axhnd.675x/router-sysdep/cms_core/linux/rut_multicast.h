@@ -63,6 +63,14 @@
  */
 CmsRet rutMulti_CreateMcpdCfg(void);
 
+/** reload/restart mcpd with protocol Type
+ *
+ * @param protoType  (IN) ipv4/ipv6/all
+ * @return CmsRet enum.
+ *
+ */
+CmsRet rutMulti_reloadMcpdWithType(int protoType);
+	
 /** reload/restart mcpd
  *
  * @return CmsRet enum.

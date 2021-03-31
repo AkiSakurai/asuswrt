@@ -2,7 +2,7 @@
  * MAC debug and print functions
  * Broadcom 802.11bang Networking Device Driver
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_macdbg.h 780343 2019-10-22 19:17:49Z $
+ * $Id: wlc_macdbg.h 787437 2020-05-29 18:03:28Z $
  */
 #ifndef WLC_MACDBG_H_
 #define WLC_MACDBG_H_
@@ -102,13 +102,10 @@ extern void wlc_psm_watchdog_reason(wlc_info_t *wlc);
 
 /* catch any interrupts from psmx */
 #ifdef WL_PSMX
-bool wlc_bmac_psmx_errors(wlc_info_t *wlc);
 void wlc_dump_psmx_fatal(wlc_info_t *wlc, uint reason);
 #ifdef WLVASIP
 void wlc_dump_vasip_fatal(wlc_info_t *wlc);
 #endif	/* WLVASIP */
-#else
-#define wlc_bmac_psmx_errors(wlc) FALSE
 #endif /* WL_PSMX */
 
 #ifdef WL_PSMR1
@@ -156,11 +153,23 @@ extern void wlc_macdbg_dtrace_log_txr(wlc_macdbg_info_t *macdbg, struct scb *scb
 	uint16 link_idx, d11ratemem_rev128_entry_t  *rate);
 extern void wlc_macdbg_dtrace_log_str(wlc_macdbg_info_t *macdbg, struct scb *scb,
 	const char *format, ...);
-#else
+extern int wlc_macdbg_psmwd_ampdu(wlc_macdbg_info_t *macdbg);
+extern int wlc_macdbg_psmwd_txbcn(wlc_macdbg_info_t *macdbg);
+extern void wlc_macdbg_txs_ppdu_info(wlc_macdbg_info_t *macdbg, tx_status_t* txs);
+extern void wlc_macdbg_dtrace_log_utxs(wlc_macdbg_info_t *macdbg, struct scb *scb,
+	tx_status_t *txs);
+extern void wlc_macdbg_dtrace_log_utxd(wlc_macdbg_info_t *macdbg, struct scb *scb,
+	d11ulmu_txd_t *utxd);
+#else /* BCMDBG */
 #define wlc_macdbg_dtrace_log_txs(a, b, c, d) do {} while (0)
 #define wlc_macdbg_dtrace_log_txd(a, b, c, d) do {} while (0)
 #define wlc_macdbg_dtrace_log_txr(a, b, c, d) do {} while (0)
 #define wlc_macdbg_dtrace_log_str(a, b, c, ...) do {} while (0)
+#define wlc_macdbg_psmwd_ampdu(a) do {} while (0)
+#define wlc_macdbg_psmwd_txbcn(a) do {} while (0)
+#define wlc_macdbg_txs_ppdu_info(a, b)
+#define wlc_macdbg_dtrace_log_utxs(a, b, c) do {} while (0)
+#define wlc_macdbg_dtrace_log_utxd(a, b, c) do {} while (0)
 #endif /* BCMDBG */
 
 #if defined(BCMDBG)

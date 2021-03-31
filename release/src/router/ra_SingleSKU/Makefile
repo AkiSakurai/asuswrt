@@ -84,9 +84,19 @@ endif
 ifneq ($(SKU_5G_AP),)
 	@install DUMMY_SKU $(SKUDIR)/SingleSKU_5G_AP.dat
 endif
-
+ifneq ($(SKU_2G_EAC),)
+	install DUMMY_SKU $(SKUDIR)/SingleSKU_EAC.dat
+endif
+ifneq ($(SKU_5G_EAC),)
+	install DUMMY_SKU $(SKUDIR)/SingleSKU_5G_EAC.dat
+endif
 else	#RA_SKU==y
-
+ifneq ($(SKU_2G_EAC),)
+	install DUMMY_SKU $(SKUDIR)/SingleSKU_EAC.dat
+endif
+ifneq ($(SKU_5G_EAC),)
+	install DUMMY_SKU $(SKUDIR)/SingleSKU_5G_EAC.dat
+endif
 ifneq ($(SKU_2G_FCC),)
 	@install $(BUILD_NAME)/$(SKU_2G_FCC) $(SKUDIR)/SingleSKU_FCC.dat
 endif
@@ -152,6 +162,12 @@ ifneq ($(SKU_2G_AP),)
 endif
 ifneq ($(SKU_5G_AP),)
 	@install $(BUILD_NAME)/$(SKU_5G_AP) $(SKUDIR)/SingleSKU_5G_AP.dat
+endif
+ifneq ($(SKU_2G_EAC),)
+	@install $(BUILD_NAME)/$(SKU_5G_EAC) $(SKUDIR)/SingleSKU_EAC.dat
+endif
+ifneq ($(SKU_5G_EAC),)
+	@install $(BUILD_NAME)/$(SKU_5G_EAC) $(SKUDIR)/SingleSKU_5G_EAC.dat
 endif
 
 ifeq ("$(BUILD_NAME)","RT-AC52U")

@@ -119,6 +119,10 @@ ifeq ("$(CONFIG_BCM_NGPON)" ,"m")
     ngponstack-objs += $(patsubst %.c, %.o, $(NGPON_SRC_FILES)) 
 endif
 
+ifeq ($(CONFIG_BCM_BUILD_NGPON_AMD2),y)
+    EXTRA_CFLAGS += -DG989_3_AMD2
+endif
+
 ifeq ("$(CONFIG_64BIT)" ,"y")
 	EXTRA_CFLAGS += -DPHYS_ADDR_64BIT
 endif
@@ -169,9 +173,6 @@ EXTRA_CFLAGS += -DBDMF_DRIVER_GPL_LAYER
 # EXTRA_CFLAGS += -DGPON_OMCI_DUMP_DATA
 # EXTRA_CFLAGS += -DGPON_OMCI_DUMP_TRACE
 
-
-# Uncomment to enable Rogue ONU behavior detection
-# EXTRA_CFLAGS += -DBCM_ROGUE_ONU_DETECT
 -include $(TOPDIR)/Rules.make
 
 clean:

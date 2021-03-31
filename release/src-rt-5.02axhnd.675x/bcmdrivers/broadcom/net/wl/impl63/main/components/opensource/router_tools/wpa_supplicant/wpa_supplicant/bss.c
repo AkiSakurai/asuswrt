@@ -235,7 +235,9 @@ void wpa_bss_remove(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 	wpa_dbg(wpa_s, MSG_DEBUG, "BSS: Remove id %u BSSID " MACSTR
 		" SSID '%s' due to %s", bss->id, MAC2STR(bss->bssid),
 		wpa_ssid_txt(bss->ssid, bss->ssid_len), reason);
+#ifndef CONFIG_DRIVER_BRCM
 	wpas_notify_bss_removed(wpa_s, bss->bssid, bss->id);
+#endif	/* CONFIG_DRIVER_BRCM */
 	wpa_bss_anqp_free(bss->anqp);
 	os_free(bss);
 }
@@ -449,7 +451,9 @@ static struct wpa_bss * wpa_bss_add(struct wpa_supplicant *wpa_s,
 		" SSID '%s' freq %d%s",
 		bss->id, MAC2STR(bss->bssid), wpa_ssid_txt(ssid, ssid_len),
 		bss->freq, extra);
+#ifndef CONFIG_DRIVER_BRCM
 	wpas_notify_bss_added(wpa_s, bss->bssid, bss->id);
+#endif	/* CONFIG_DRIVER_BRCM */
 	return bss;
 }
 

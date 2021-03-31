@@ -194,11 +194,15 @@ int bcmxapiex_del_proc_files(void)
 }  /* bcmxapi_del_proc_files() */
 
 
-int bcmxapiex_runner_xtm_objects_init(bdmf_object_handle wan)
+int bcmxapiex_runner_xtm_objects_init(bdmf_object_handle wan, bdmf_object_handle *pXtm_orl_tm)
 {
    return (0);
 }
 
+int bcmxapiex_runner_xtm_orl_rl_set(bdmf_object_handle Xtm_orl_tm, PXTMRT_PORT_SHAPER_INFO pPortRateShaperInfo)
+{
+   return (0);
+}
 
 int bcmxapiex_cfg_cpu_ds_queues (rdpa_cpu_reason reason, uint8_t tc, uint8_t queue_id)
 {
@@ -459,15 +463,79 @@ int bcmxapiex_del_proc_files(void)
    return 0;
 }
 
-int bcmxapiex_runner_xtm_objects_init(bdmf_object_handle wan)
+int bcmxapiex_runner_xtm_orl_rl_set(bdmf_object_handle Xtm_orl_tm, PXTMRT_PORT_SHAPER_INFO pPortRateShaperInfo)
+{
+   int rc = 0 ;
+   rdpa_tm_rl_cfg_t rl_cfg ;
+
+   rl_cfg.af_rate    = pPortRateShaperInfo->ulShapingRate ;
+   rl_cfg.be_rate    = pPortRateShaperInfo->ulShapingRate ;
+   rl_cfg.burst_size = pPortRateShaperInfo->usShapingBurstSize ;
+
+   if ((rc = rdpa_egress_tm_rl_set (Xtm_orl_tm, &rl_cfg)) != 0)
+      BCM_XTM_ERROR ("bcmxtmrt: xtm orl rl set failed \n") ;
+   return (rc) ;
+}
+
+int bcmxapiex_runner_xtm_objects_init(bdmf_object_handle wan, bdmf_object_handle *pXtm_orl_tm)
 {
    int rc;
-   bdmf_object_handle   cpu_obj = NULL;
+   bdmf_object_handle cpu_obj = NULL;
+   bdmf_object_handle xtm_orl_tm = NULL;
+   bdmf_object_handle system_obj = NULL;
+   XTMRT_PORT_SHAPER_INFO portRateShaperInfo = {0, 0} ;
+
+   rdpa_filter_ctrl_t filter_ctrl;
+
+   BDMF_MATTR(xtm_orl_tm_attr, rdpa_egress_tm_drv());
+
+   if ((rc = rdpa_system_get(&system_obj)) || (system_obj == NULL)) {
+      printk("rdpa_system_get() failed: rc(%d)", rc);
+      return rc;
+   }
+
+   /* create egress xtm orl tm */
+   //rc = rdpa_egress_tm_index_set(xtm_orl_tm_attr, XTM_ORL_TM_INDEX);
+   rc = rdpa_egress_tm_dir_set(xtm_orl_tm_attr, rdpa_dir_us);
+   rc = rc? rc : rdpa_egress_tm_level_set(xtm_orl_tm_attr, rdpa_tm_level_egress_tm);
+   rc = rc? rc : rdpa_egress_tm_mode_set(xtm_orl_tm_attr, rdpa_tm_sched_disabled);
+   rc = rc? rc : rdpa_egress_tm_rl_rate_mode_set(xtm_orl_tm_attr, rdpa_tm_rl_dual_rate);
+   rc = rc? rc : rdpa_egress_tm_overall_rl_set(xtm_orl_tm_attr, TRUE);
+
+   rc = rc? rc : bdmf_new_and_set(rdpa_egress_tm_drv(), system_obj, xtm_orl_tm_attr, &xtm_orl_tm);
+   rc = rc? rc : bcmxapiex_runner_xtm_orl_rl_set (xtm_orl_tm, &portRateShaperInfo);
+
+   if (rc) {
+      BCM_XTM_ERROR(CARDNAME "Failed to create XTM ORL egress TM globally %d");
+      if (xtm_orl_tm)
+         bdmf_destroy (xtm_orl_tm) ;
+      return rc;
+   }
+   else {
+       bdmf_put(system_obj);
+      *pXtm_orl_tm = xtm_orl_tm ;
+   }
 
    rc = rdpa_cpu_get(XTM_RDPA_CPU_PORT, &cpu_obj);
    rc = rc ? rc : rdpa_port_cpu_obj_set(wan, cpu_obj);
-   if (rc)
-      BCM_LOG_NOTICE(BCM_LOG_ID_XTM, "Failed to set CPU object for port %s, error %d\n", bdmf_object_name(wan), rc);
+   if (rc) {
+      BCM_XTM_ERROR(CARDNAME "Failed to set CPU object for port %s, error %d", bdmf_object_name(wan), rc);
+      bdmf_destroy (xtm_orl_tm) ;
+      *pXtm_orl_tm = NULL ;
+      return rc ;
+   }
+
+   /* adding default entry to always trap IP_FRAG packet */
+   filter_ctrl.enabled = TRUE;
+   filter_ctrl.action = rdpa_forward_action_host;
+   rc = rdpa_port_ingress_filter_set(wan, RDPA_FILTER_IP_FRAG, &filter_ctrl);
+   if (rc) {
+      BCM_LOG_ERROR(BCM_LOG_ID_XTM, "Failed to add filter '%u' for port %s, error %d\n",
+                     RDPA_FILTER_IP_FRAG, bdmf_object_name(wan), rc);
+      bdmf_destroy (xtm_orl_tm) ;
+      *pXtm_orl_tm = NULL ;
+   }
+
    return rc;
 }
 

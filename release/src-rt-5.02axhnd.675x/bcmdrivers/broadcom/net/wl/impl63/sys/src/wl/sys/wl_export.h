@@ -2,7 +2,7 @@
  * Required functions exported by the port-specific (os-dependent) driver
  * to common (os-independent) driver code.
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -19,7 +19,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_export.h 774418 2019-04-24 07:52:25Z $
+ * $Id: wl_export.h 786279 2020-04-22 23:46:13Z $
  */
 
 #ifndef _wl_export_h_
@@ -57,8 +57,8 @@ extern void wl_sched_dtrace(struct wl_info *wl, uint8 *event_data, uint16 datale
 #define wl_sched_macdbg_dump(a)
 #define wl_sched_dtrace(a, b, c)
 #endif /* linux */
-#ifdef WLCFP
-extern void wl_bus_cfp_flow_delink(struct wl_info *wl, uint16 flowid);
+#ifdef BCMPCIEDEV_ENABLED
+extern void wl_scb_bus_flow_delink(struct wl_info *wl, uint16 flowid);
 #endif // endif
 extern bool wl_alloc_dma_resources(struct wl_info *wl, uint dmaddrwidth);
 

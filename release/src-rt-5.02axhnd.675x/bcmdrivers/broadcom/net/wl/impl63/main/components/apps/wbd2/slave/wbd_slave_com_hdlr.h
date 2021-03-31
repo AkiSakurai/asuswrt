@@ -1,7 +1,7 @@
 /*
  * WBD Communication Related Declarations
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_slave_com_hdlr.h 779441 2019-09-27 12:21:49Z $
+ * $Id: wbd_slave_com_hdlr.h 787203 2020-05-21 12:31:33Z $
  */
 
 #ifndef _WBD_SLAVE_COM_HDLR_H_

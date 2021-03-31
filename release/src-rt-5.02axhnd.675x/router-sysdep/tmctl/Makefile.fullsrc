@@ -46,7 +46,7 @@ else ifneq ($(strip $(BUILD_BCMTM)),)
 LIBS += -lbcmtm
 BUILD_TMCTL_APP := 1
 else ifneq ($(strip $(BUILD_ARCHERCTL)),)
-LIBS += -lethswctl
+LIBS += -lethswctl -larcher
 BUILD_TMCTL_APP := 1
 else
 BUILD_TMCTL_APP := 0

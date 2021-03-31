@@ -42,20 +42,19 @@ extern "C" {
 #endif
 
 /* Incldes. */
-#if !defined(_CFE_) && !defined(_NOOS)
+#if !defined(_NOOS)
 #include <linux/version.h>
 #endif
 #include "AdslMibDef.h"
-#if defined(_BCM963158_) || defined(CONFIG_BCM963158)
+   
+#if defined(LINUX_FW_EXTRAVERSION) && (LINUX_FW_EXTRAVERSION >= 50204)
 #include <bcmtypes.h>
-#else
-#undef BCM_IOC_PTR
+#endif
+#ifndef BCM_IOC_PTR
 #define BCM_IOC_PTR(ptr_t, ptr) ptr_t ptr;
 #endif
-
-#ifndef _CFE_
+   
 #define DSL_KTHREAD
-#endif
 
 //**************************************************************************
 // Type Definitions
@@ -65,6 +64,7 @@ extern "C" {
 #define BCM_XDSL_CLEAR_EOC_MSG			0x08
 #define BCM_XDSL_DATAGRAM_EOC_MSG		0x0A
 #define BCM_XDSL_NSF_EOC_MSG			0x3F
+#define BCM_XDSL_SKB_EOC_MSG			0xC0
 
 // Return status values
 typedef enum BcmAdslStatus
@@ -162,9 +162,7 @@ typedef struct AdslConnectionInfo
 #define	BCM_IMAGETYPE_MSK			(1 << BCM_IMAGETYPE_SHIFT)
 #define	BCM_IMAGETYPE_BONDING		(0 << BCM_IMAGETYPE_SHIFT)
 #define	BCM_IMAGETYPE_SINGLELINE	(1 << BCM_IMAGETYPE_SHIFT)
-#ifndef CONFIG_BCM963268
 #define	BCM_XDSLMODE_SINGLELINE		BCM_IMAGETYPE_SINGLELINE   /* 63138/63148 */
-#endif
 #define	BCM_XDSLMODE_SHIFT			1
 #define	BCM_XDSLMODE_MSK			(1 << BCM_XDSLMODE_SHIFT)
 #define	BCM_VDSL_MODE				(0 << BCM_XDSLMODE_SHIFT)
@@ -237,7 +235,7 @@ BCMADSL_STATUS BcmAdsl_Check(void);
 BCMADSL_STATUS BcmAdsl_MapAtmPortIDs(unsigned short usAtmFastPortId, unsigned short usAtmInterleavedPortId);
 #endif
 
-#if defined(__KERNEL__) || defined(_CFE_) || defined(__ECOS) || defined(_NOOS)
+#if defined(__KERNEL__) || defined(__ECOS) || defined(_NOOS)
 BCMADSL_STATUS BcmAdsl_Initialize(unsigned char lineId, ADSL_FN_NOTIFY_CB pFnNotifyCb, void *pParm, adslCfgProfile *pAdslCfg);
 BCMADSL_STATUS BcmAdsl_Uninitialize(unsigned char lineId);
 BCMADSL_STATUS BcmAdsl_ConnectionStart(unsigned char lineId);
@@ -312,7 +310,11 @@ BCMADSL_STATUS BcmAdsl_G997SendData(unsigned char lineId, int eocMsgType, void *
 void *BcmAdsl_G997FrameGet(unsigned char lineId, int eocMsgType, int *pLen);
 void *BcmAdsl_G997FrameGetNext(unsigned char lineId, int eocMsgType, int *pLen);
 void  BcmAdsl_G997FrameFinished(unsigned char lineId, int eocMsgType);
+#if defined(BOARD_H_API_VER) && BOARD_H_API_VER > 15
+void BcmAdsl_DyingGaspHandler(void *context, int event);
+#else
 void BcmAdsl_DyingGaspHandler(void *context);
+#endif
 
 void BcmAdsl_AtmClearVcTable(void);
 void BcmAdsl_AtmAddVc(int vpi, int vci);

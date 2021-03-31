@@ -1,7 +1,7 @@
 /*
  * MU-MIMO transmit module for Broadcom 802.11 Networking Adapter Device Drivers
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -113,9 +113,10 @@ extern uint8 wlc_mutx_get_muclient_nrx(wlc_mutx_info_t *mu_info);
 #define wlc_mutx_state_upd_register(wlc, fn, arg) (0)
 #define wlc_mutx_state_upd_unregister(wlc, fn, arg) (0)
 #endif // endif
-extern bool wlc_mutx_is_hemmu_enab(wlc_mutx_info_t *mu_info);
+extern bool wlc_mutx_is_dlhemmu_enab(wlc_mutx_info_t *mu_info);
 extern void wlc_mutx_update_scb_oper_mode(wlc_mutx_info_t *mu_info, scb_t *scb, uint8 oper_mode);
 extern void wlc_mutx_evict_or_admit_muclient(wlc_mutx_info_t *mu_info, scb_t *scb);
 extern void wlc_mutx_upd_min_dlofdma_users(wlc_mutx_info_t *mu_info);
 extern void wlc_mutx_nrx_policy_upd(wlc_info_t *wlc, int mu_supported_Ntx);
+extern void wlc_mutx_sounding_period_upd(wlc_mutx_info_t *mu_info, uint16 period);
 #endif   /* _wlc_mutx_h_ */

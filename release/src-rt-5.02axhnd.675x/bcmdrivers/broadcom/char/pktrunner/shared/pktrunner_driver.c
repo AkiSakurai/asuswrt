@@ -173,7 +173,7 @@ int __init pktRunner_proc_fs_construct(void)
         entry = proc_create_data(dir_name , S_IRUGO, NULL, &pktRunnerStatsProcfs_proc, &pktRunner_proc_fs_data[accel]);
         if (!entry)
         {
-           bcm_printk( CLRerr "%s Unable to create proc entry %s" CLRnl, __FUNCTION__, dir_name);
+           bcm_print( CLRerr "%s Unable to create proc entry %s" CLRnl, __FUNCTION__, dir_name);
            return -1;
         }
     }
@@ -188,12 +188,14 @@ void __exit pktRunner_proc_fs_destruct(void)
 
     for (accel=0; accel < PKTRNR_MAX_FHW_ACCEL; accel++)
     {
-        /* Create dir per accelerator */
-        pktRunner_proc_fs_build_dir(dir_name, accel, "\0");
-        /* Create dir for stats */
+        /* Remove dir for stats */
         pktRunner_proc_fs_build_dir(dir_name, accel, "/stats");
-        remove_proc_entry( PKT_RUNNER_PROCFS_DIR_PATH "/stats", NULL );
+        remove_proc_entry( dir_name, NULL );
+        pktRunner_proc_fs_build_dir(dir_name, accel, "\0");
+        remove_proc_entry( dir_name, NULL );
     }
+    
+    remove_proc_entry(PKT_RUNNER_PROCFS_DIR_PATH, NULL);
 }
 #else
 int __init pktRunner_proc_fs_construct(void)
@@ -237,7 +239,7 @@ int __init pktRunner_construct(void)
 
     pktRunner_proc_fs_construct();
 
-    bcm_printk(PKT_RUNNER_MODNAME " Char Driver " PKT_RUNNER_VER_STR " Registered <%d>\n", PKT_RUNNER_DRV_MAJOR);
+    bcm_print(PKT_RUNNER_MODNAME " Char Driver " PKT_RUNNER_VER_STR " Registered <%d>\n", PKT_RUNNER_DRV_MAJOR);
 
 out:
     return ret;
@@ -252,12 +254,12 @@ out:
  */
 void __exit pktRunner_destruct(void)
 {
-    printk("\n\n");
-    printk("*********************** WARNING ********************************\n");
-    printk("Removing pktrunner module could lead to inconsistencies\n");
-    printk("between host and Runner, leading to data-path related issues.\n");
-    printk("use \"fcctl config --hw-accel\" to disable flow-acceleration by runner\n");
-    printk("****************************************************************\n\n");
+    bcm_print("\n\n");
+    bcm_print("*********************** WARNING ********************************\n");
+    bcm_print("Removing pktrunner module could lead to inconsistencies\n");
+    bcm_print("between host and Runner, leading to data-path related issues.\n");
+    bcm_print("use \"fcctl config --hw-accel\" to disable flow-acceleration by runner\n");
+    bcm_print("****************************************************************\n\n");
 
     runnerProto_destruct();
 

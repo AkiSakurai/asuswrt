@@ -100,10 +100,10 @@
 			$(this).enableCheckBox($(this).is(":checked"))
 		})
 
-
 	var _chanspecs_5g = (function(){
 		var temp = '<% chanspecs_5g(); %>';
 		return (temp == '') ? [] : JSON.parse(temp);
+
 	})();
 
 	var _chanspecs_5g_2 = (function(){
@@ -130,7 +130,8 @@
 		return ((count1 != 0) || (count2 != 0)) ? true : false;
 	})();
 
-	if (Bcmwifi_support && !bw_160_support){
+	if (Bcmwifi_support && !bw_160_support
+	|| (systemVariable.productid == "GT-AXY16000" || systemVariable.productid == "RT-AX89U" || systemVariable.productid == "PL-AX56_XP4")){
 		$('#dfs_160_desc').hide()
 	}
 

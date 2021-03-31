@@ -356,7 +356,7 @@ int __init runnerL2Ucast_construct(void *idx_p, void *disp_p)
     }
 #endif
 
-    __print("Initialized Runner L2 Unicast Layer\n");
+    bcm_print("Initialized Runner L2 Unicast Layer\n");
 
     return 0;
 }

@@ -104,7 +104,7 @@ struct mcast_hw_channel_key_entry
     DLIST_ENTRY(mcast_hw_channel_key_entry) list;
     uint16_t key;
     uint32_t request_idx; /* Channel index in RDD */
-    int ref_cnt;
+    int ref_cnt[MAX_NUM_VLAN_TAG + 1]; /* ref cnt per tag */
 };
 
 #if !defined(BCM_FCACHE_IP_CLASS_BYPASS)
@@ -263,6 +263,16 @@ uint32_t pktRunnerGetState(struct seq_file *sf, uint32_t accel)
 }
 #endif /* CC_PKTRUNNER_PROCFS */
 
+#define REQUEST_KEY_TAG_NUM_VALIDATE(vtag_num, ret) do      \
+{                                                           \
+    if (vtag_num > MAX_NUM_VLAN_TAG)                        \
+    {                                                       \
+        protoError("vtag_num<%d> out of range!", vtag_num); \
+        return ret;                                         \
+    }                                                       \
+                                                            \
+}while(0)
+
 static inline mcast_hw_channel_key_entry_t *request_key_find(uint16_t key)
 {
     mcast_hw_channel_key_entry_t *entry, *tmp_entry;
@@ -277,7 +287,7 @@ static inline mcast_hw_channel_key_entry_t *request_key_find(uint16_t key)
 }
 
 /* returns request_idx from key */
-static bdmf_index request_key_val_get(uint16_t key, int remove)
+static bdmf_index request_key_val_get(uint16_t key)
 {
     mcast_hw_channel_key_entry_t *entry = request_key_find(key);
     bdmf_index index = BDMF_INDEX_UNASSIGNED;
@@ -285,7 +295,45 @@ static bdmf_index request_key_val_get(uint16_t key, int remove)
     if (entry)
     {
         index = entry->request_idx;
-        if (remove && !--entry->ref_cnt)
+    }
+
+    return index;
+}
+
+static int request_key_refcnt_get(uint16_t key, uint8_t vtag_num)
+{
+    mcast_hw_channel_key_entry_t *entry = request_key_find(key);
+    int ref_cnt = 0;
+
+    REQUEST_KEY_TAG_NUM_VALIDATE(vtag_num, 0);
+    
+    if (entry)
+    {
+        ref_cnt = entry->ref_cnt[vtag_num];
+    }
+
+    return ref_cnt;
+}
+
+static bdmf_index request_key_del(uint16_t key, uint8_t vtag_num)
+{
+    mcast_hw_channel_key_entry_t *entry = request_key_find(key);
+    bdmf_index index = BDMF_INDEX_UNASSIGNED;
+    int i = 0, ref_cnt_total = 0;
+
+    REQUEST_KEY_TAG_NUM_VALIDATE(vtag_num, BDMF_INDEX_UNASSIGNED);
+
+    if (entry)
+    {
+        index = entry->request_idx;
+        entry->ref_cnt[vtag_num]--;
+
+        for (i = 0; i < (MAX_NUM_VLAN_TAG + 1); i++)
+        {            
+            ref_cnt_total += entry->ref_cnt[i];
+        }
+
+        if (ref_cnt_total == 0)
         {
             DLIST_REMOVE(entry, list);
             bdmf_free(entry);
@@ -295,17 +343,19 @@ static bdmf_index request_key_val_get(uint16_t key, int remove)
     return index;
 }
 
-static uint16_t request_key_add(uint32_t request_idx)
+static uint16_t request_key_add(uint32_t request_idx, uint8_t vtag_num)
 {
     mcast_hw_channel_key_entry_t *entry, *tmp_entry;
     uint16_t try_num = 0;
+
+    REQUEST_KEY_TAG_NUM_VALIDATE(vtag_num, BDMF_INDEX_UNASSIGNED);
 
     /* search if request is already recorded, and return its key */
     DLIST_FOREACH_SAFE(entry, &mcast_hw_channel_key_list, list, tmp_entry)
     {
         if (entry->request_idx == request_idx)
         {
-            entry->ref_cnt++;
+            entry->ref_cnt[vtag_num]++;
             return entry->key;
         }
     }
@@ -328,9 +378,10 @@ find_next_free:
     if (!entry)
         return BDMF_INDEX_UNASSIGNED;
 
+    memset(entry, 0, sizeof(mcast_hw_channel_key_entry_t));
     entry->request_idx = request_idx;
     entry->key = key_last_used;
-    entry->ref_cnt = 1;
+    entry->ref_cnt[vtag_num] = 1;
     DLIST_INSERT_HEAD(&mcast_hw_channel_key_list, entry, list);
 
     return key_last_used;
@@ -397,7 +448,7 @@ int runnerResetStats(uint32_t pktrunner_key)
 
     switch (flow_type) {
         case PKTRNR_FLOW_TYPE_MC: 
-            rc = rdpa_iptv_channel_pm_stats_get(iptv, request_key_val_get(PKTRUNNER_RDPA_KEY(accel,idx), 0), &flow_stats.rdpastat);
+            rc = rdpa_iptv_channel_pm_stats_get(iptv, request_key_val_get(PKTRUNNER_RDPA_KEY(accel,idx)), &flow_stats.rdpastat);
             break;
         case PKTRNR_FLOW_TYPE_IP: 
             if (!ip_class)
@@ -495,10 +546,18 @@ static int runner_refresh_mcast(uint32_t pktrunner_key, uint32_t *pktsCnt_p, uin
     pktRunner_flowStat_t flowStat, resetFlowStat;
     uint32_t      accel = __pktRunnerAccelIdx(pktrunner_key);
 
-    rc = rdpa_iptv_channel_pm_stats_get(iptv, request_key_val_get(PKTRUNNER_RDPA_KEY(accel,flowIdx), 0), &flowStat.rdpastat);
+    rc = rdpa_iptv_channel_pm_stats_get(iptv, request_key_val_get(PKTRUNNER_RDPA_KEY(accel,flowIdx)), &flowStat.rdpastat);
     if (rc < 0)
     {
-        protoError("Could not get flowIdx<%d> stats", flowIdx);
+        if (rc == BDMF_ERR_NOENT)
+        {
+            protoNotice("flowIdx<%d>, channel_index<%ld>, not exist!", flowIdx, request_key_val_get(PKTRUNNER_RDPA_KEY(accel,flowIdx)));
+        }
+        else
+        {
+            protoError("Could not get flowIdx<%d> stats", flowIdx);
+        }
+        
         return rc;
     }
 
@@ -721,7 +780,7 @@ static inline int runner_deactivate_mcast(uint32_t pktrunner_key, uint32_t *pkts
     rc = runner_refresh_mcast(pktrunner_key, pktsCnt_p, octetsCnt_p);
     if (rc >= 0)
     {
-        rc = rdpa_iptv_channel_get(iptv, request_key_val_get(PKTRUNNER_RDPA_KEY(accel, flowIdx), 0),
+        rc = rdpa_iptv_channel_get(iptv, request_key_val_get(PKTRUNNER_RDPA_KEY(accel, flowIdx)),
             &channel);
 #ifndef CONFIG_BCM_FTTDP_G9991
         if (rc >= 0)
@@ -743,7 +802,7 @@ static inline int runner_deactivate_mcast(uint32_t pktrunner_key, uint32_t *pkts
         }
 #endif
 #endif        
-        request_key.channel_index = request_key_val_get(PKTRUNNER_RDPA_KEY(accel, flowIdx), 1);
+        request_key.channel_index = request_key_del(PKTRUNNER_RDPA_KEY(accel, flowIdx), blog_p->vtag_num);
         protoDebug("request_key_val_get; key: %d channel_index: %ld\n", flowIdx, request_key.channel_index);
         rc = rdpa_iptv_channel_request_delete(iptv, &request_key);
     }
@@ -751,14 +810,20 @@ static inline int runner_deactivate_mcast(uint32_t pktrunner_key, uint32_t *pkts
     {
         /* XXX: Temporary work-around: It's possible that we got a blog rule with capabilities that we currently
          * don't handle. In this case we didn't actually added the channel, but assumes that it's ok. */
-        if (rc != BDMF_ERR_NOENT)
+        if (rc == BDMF_ERR_NOENT)
+        {
+            /* remove mcast_hw_channel_key_entry */
+            request_key.channel_index = request_key_del(PKTRUNNER_RDPA_KEY(accel, flowIdx), blog_p->vtag_num);
+            protoNotice("flow<%03u>, channel_index<%ld>, not exist!\n", pktrunner_key, request_key.channel_index);
+        }    
+        else
         {
             protoError("Failed to remove flow<%03u>, rc %d\n", pktrunner_key, rc);
             return rc;
         }
     }
 
-    more_ref = request_key_find(PKTRUNNER_RDPA_KEY(accel, flowIdx)) ? 1 : 0;
+    more_ref = request_key_refcnt_get(PKTRUNNER_RDPA_KEY(accel, flowIdx), blog_p->vtag_num) ? 1 : 0;
 
     if (!more_ref)
     {
@@ -1157,7 +1222,7 @@ static int _l2_pppoe_passthrou(Blog_t *blog_p)
 #endif
 }
 
-static void add_l2_commands(rdpa_ip_flow_result_t *ip_flow_result, Blog_t *blog_p)
+static int add_l2_commands(rdpa_ip_flow_result_t *ip_flow_result, Blog_t *blog_p)
 {
     int ix;
     int is_ext_switch_port = 0;
@@ -1211,9 +1276,16 @@ static void add_l2_commands(rdpa_ip_flow_result_t *ip_flow_result, Blog_t *blog_
     {
         BlogGre_t *gre_p = &blog_p->gretx;
 
-        ip_flow_result->l2_header_offset = blog_p->rx.length - gre_p->l2_hlen;
+        ip_flow_result->l2_header_offset = blog_p->rx.length - gre_p->l2_hlen - l2_header_offset;
         ip_flow_result->l2_header_size = gre_p->l2_hlen;
-        memcpy(ip_flow_result->l2_header, gre_p->l2hdr, gre_p->l2_hlen);
+
+        if (ip_flow_result->l2_header_size + l2_header_offset > RDPA_L2_HEADER_SIZE)
+        {
+            protoError("L2 header size %u exceeded the maximum %d\n", ip_flow_result->l2_header_size, RDPA_L2_HEADER_SIZE);
+            return -1;
+        }
+
+        memcpy(&ip_flow_result->l2_header[l2_header_offset], gre_p->l2hdr, gre_p->l2_hlen);
     }
     else
     {
@@ -1229,6 +1301,12 @@ static void add_l2_commands(rdpa_ip_flow_result_t *ip_flow_result, Blog_t *blog_
         ip_flow_result->l2_header_number_of_tags = blog_p->vtag_num;
         ip_flow_result->l2_header_offset = rx_length - tx_length - bcmtaglen - l2_header_offset;
         ip_flow_result->l2_header_size += tx_length + bcmtaglen;
+
+        if (ip_flow_result->l2_header_size + l2_header_offset > RDPA_L2_HEADER_SIZE)
+        {
+            protoError("L2 header size %u exceeded the maximum %d\n", ip_flow_result->l2_header_size, RDPA_L2_HEADER_SIZE);
+            return -1;
+        }
 
         memcpy(&ip_flow_result->l2_header[l2_header_offset], l2hdr, bcmtaglocation);
         memcpy(&ip_flow_result->l2_header[l2_header_offset + bcmtaglocation + bcmtaglen], l2hdr + bcmtaglocation, tx_length - bcmtaglocation);
@@ -1255,6 +1333,11 @@ static void add_l2_commands(rdpa_ip_flow_result_t *ip_flow_result, Blog_t *blog_
     {
         l2_header_insert_llc_snap(ip_flow_result->l2_header, blog_p);
         ip_flow_result->l2_header_size += L2_DOT11_LLC_SNAP_HDR_LEN;
+        if (ip_flow_result->l2_header_size > RDPA_L2_HEADER_SIZE)
+        {
+            protoError("L2 header size %u exceeded the maximum %d\n", ip_flow_result->l2_header_size, RDPA_L2_HEADER_SIZE);
+            return -1;
+        }
     }
 #endif
 
@@ -1328,6 +1411,8 @@ static void add_l2_commands(rdpa_ip_flow_result_t *ip_flow_result, Blog_t *blog_
         ip_flow_result->wl_metadata = 0;
         ip_flow_result->wfd.nic_ucast.is_wfd = 1;
     }
+
+    return 0;
 }
 
 static int add_l3_commands(rdpa_ip_flow_result_t *ip_flow_result, Blog_t *blog_p)
@@ -1481,7 +1566,12 @@ static bdmf_index runner_activate_l3_flow(Blog_t *blog_p)
 
     add_qos_commands(ip_flow.key.dir, &ip_flow.result, blog_p);
 
-    add_l2_commands(&ip_flow.result, blog_p);
+    rc = add_l2_commands(&ip_flow.result, blog_p);
+    if (rc)
+    {
+        protoInfo("Failed to add L2 commands");
+        goto abort_activate;
+    }
 
     rc = add_l3_commands(&ip_flow.result, blog_p);
     if (rc)
@@ -1602,7 +1692,12 @@ static bdmf_index runner_activate_l2_flow(Blog_t *blog_p)
 #endif        
     }
 
-    add_l2_commands(&l2_flow.result, blog_p);
+    rc = add_l2_commands(&l2_flow.result, blog_p);
+    if (rc)
+    {
+        protoInfo("Failed to add L2 commands");
+        goto abort_activate;
+    }
 
     rc = add_l3_commands(&l2_flow.result, blog_p);
     if (rc)
@@ -1962,22 +2057,37 @@ static uint32_t runner_activate_mcast(Blog_t *blog_p, uint32_t key_in)
         }
     }
     request.wlan_mcast_index = wlan_mcast_idx;
-
+#else
+#ifdef XRDP
+    /* Update RX_IF for multi wan */
+    if (blog_p->rx.info.phyHdrType == BLOG_GPONPHY)
+    {
+        protoDebug("source.phy GPON\n");
+        request.key.rx_if = rdpa_wan_type_to_if(rdpa_wan_gpon);
+    }
+    else if (blog_p->rx.info.phyHdrType == BLOG_EPONPHY)
+    {
+        protoDebug("source.phy EPON\n");
+        request.key.rx_if = rdpa_wan_type_to_if(rdpa_wan_epon);
+    }
+    else if (((struct net_device *)blog_p->rx_dev_p)->priv_flags & IFF_WANDEV)
+    {
+        protoDebug("source.phy ETH WAN\n");
+        request.key.rx_if = rdpa_wan_type_to_if(rdpa_wan_gbe);
+    }
+    else
+    {
+        /* LAN */ 
+        protoError("LAN flow is not supported: Rx %u, Tx %u", blog_p->rx.info.phyHdrType, blog_p->tx.info.phyHdrType);
+    }
+#endif
 #endif
     rc = rdpa_iptv_channel_request_add(iptv, &request_key, &request);
 
     if (rc < 0)
-    {
-        /* XXX: Temporary work-around: If already exist, it's possible that we got a blog rule with capabilities
-         * that we currently don't handle. In this case just find the channel for the port. */
-        if (rc != BDMF_ERR_ALREADY)
-            goto exit;
-        /* XXX: It seems fcache expects us to return a valid port here, otherwise it does not record the tuple index
-         * of the valid first blog, so return a valid index: */
-        rc = 0;
-    }
+        return FHW_TUPLE_INVALID;
 
-    channel_map_idx = request_key_add(request_key.channel_index);
+    channel_map_idx = request_key_add(request_key.channel_index, blog_p->vtag_num);
     protoDebug("request_key_add; key: %d channel_index: %ld\n", channel_map_idx, request_key.channel_index);
 
 exit:

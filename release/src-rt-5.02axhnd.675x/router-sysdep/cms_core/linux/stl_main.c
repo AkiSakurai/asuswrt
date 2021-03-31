@@ -989,6 +989,11 @@ CmsRet stl_uLAPrefixInfoObject(_ULAPrefixInfoObject *obj __attribute__((unused))
    return CMSRET_SUCCESS_OBJECT_UNCHANGED;
 }
 
+CmsRet stl_radvdOtherInfoObject(_RadvdOtherInfoObject *obj __attribute__((unused)), const InstanceIdStack *iidStack __attribute__((unused)))
+{
+   return CMSRET_SUCCESS_OBJECT_UNCHANGED;
+}	
+
 CmsRet stl_prefixInfoObject(_PrefixInfoObject *obj __attribute__((unused)), const InstanceIdStack *iidStack __attribute__((unused)))
 {
    return CMSRET_SUCCESS_OBJECT_UNCHANGED;

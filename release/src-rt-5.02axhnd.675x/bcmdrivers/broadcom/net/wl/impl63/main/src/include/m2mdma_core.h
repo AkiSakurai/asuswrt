@@ -1,7 +1,7 @@
 /*
  * BCM43XX M2M DMA core hardware definitions.
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -102,6 +102,7 @@
  * Actual number of channels instantiated is defined per M2MCORE revision.
  */
 #define M2M_CORE_CHANNELS   8
+#define M2M_CORE_CH0_OFFSET (0x200)
 
 /* M2MCORE DMA Engine (pair of transmit and receive DMA Processors) Registers */
 typedef volatile struct m2m_eng_regs {

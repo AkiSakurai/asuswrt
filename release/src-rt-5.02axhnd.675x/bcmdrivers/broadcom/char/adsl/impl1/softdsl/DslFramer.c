@@ -477,6 +477,7 @@ Public void	DslFramerRxDone  (void *gDslVars, dslFramerControl *dfCtrl, dslFrame
 			pBuf = DslFrameGetLastBuffer(gDslVars, dfCtrl->pRxFrame);
 			l = DslFrameBufferGetLength(gDslVars, pBuf);
 			DslFrameBufferSetLength(gDslVars, pBuf, l - n);
+			dfCtrl->pRxFrame->totalLength -= n;
 		}
 
 		DslFramerIndicateRecevice(gDslVars, dfCtrl, dfCtrl->pRxFrame);

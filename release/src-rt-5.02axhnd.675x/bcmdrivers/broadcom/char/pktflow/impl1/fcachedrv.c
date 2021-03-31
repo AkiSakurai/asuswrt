@@ -307,6 +307,7 @@ const char * fcacheDrvIoctlName[] =
     FCACHE_DECL(FCACHE_IOCTL_SET_HW_ACCEL)
     FCACHE_DECL(FCACHE_IOCTL_LOW_PKT_RATE)
     FCACHE_DECL(FCACHE_IOCTL_SET_NOTIFY_PROC_MODE)
+    FCACHE_DECL(FCACHE_IOCTL_4O6_FRAG)
     FCACHE_DECL(FCACHE_IOCTL_INVALID)
 };
 
@@ -692,9 +693,9 @@ static long fcacheDrvIoctl(struct file *filep, unsigned int command,
 
         case FCACHE_IOCTL_MCAST_LEARN:
         {
-#if defined(CONFIG_BCM_OVS_MCAST)
+#if defined(CONFIG_BCM_OVS_MCAST) && !(defined(BCM_PON_XRDP) || defined(BCM_PON_RDP))
             /* When OVS is enabled, multicast learning cannot be disabled
-               since the OVS slow path actions cannot be learnt */
+               since the OVS slow path actions cannot be learnt */            
             if (arg == BLOG_MCAST_LEARN_DISABLE) 
             {
                 printk( CLRerr "ERROR: Cannot disable multicast learning when OVS support is enabled" CLRnl );
@@ -1004,6 +1005,14 @@ static long fcacheDrvIoctl(struct file *filep, unsigned int command,
             break;
         }
  
+        case FCACHE_IOCTL_4O6_FRAG:
+        {
+            blog_lock();
+            blog_support_4o6_frag( arg );
+            blog_unlock();
+            break;
+        }
+
         default :
         {
             fc_error( "Invalid cmd[%u]", command );
@@ -1132,15 +1141,15 @@ extern void fcache_evt_flush_flow_dev(void *dev_p, uint32_t start_ix,
 extern int fcache_evt_flush_params(void *parm_p, uint32_t start_ix, 
         uint32_t flush_quota, uint32_t *done_p);
 extern void fcache_evt_fetch_netif_stats_excl(void *net_p, unsigned long param1, 
-        unsigned long param2, uint32_t start_ix, uint32_t flush_quota, uint32_t *done_p);
+        unsigned long param2, uint32_t start_ix, uint32_t flush_quota);
 extern void fcache_evt_fetch_netif_stats_path(void *net_p, unsigned long param1, 
-        unsigned long param2, uint32_t *done_p);
+        unsigned long param2);
 extern void fcache_evt_fetch_netif_stats_sw(void *net_p, unsigned long param1, 
-        unsigned long param2, uint32_t start_ix, uint32_t flush_quota, uint32_t *done_p);
+        unsigned long param2, uint32_t start_ix, uint32_t flush_quota);
 extern void fcache_evt_fetch_netif_stats_hw(void *net_p, unsigned long param1, 
-        unsigned long param2, uint32_t start_ix, uint32_t flush_quota, uint32_t *done_p);
+        unsigned long param2, uint32_t start_ix, uint32_t flush_quota);
 extern void fcache_evt_clear_netif_stats(void *net_p, unsigned long param1, 
-        unsigned long param2, uint32_t start_ix, uint32_t flush_quota, uint32_t *done_p);
+        unsigned long param2, uint32_t start_ix, uint32_t flush_quota);
 
 /*
  *------------------------------------------------------------------------------
@@ -1241,39 +1250,38 @@ int fcachedrv_notify_evt_enqueue(blog_notify_evt_type_t evt_type, void *net_p,
 static void fcachedrv_evt_fetch_netif_stats(blog_notify_evt_t *evt_p)
 {
     uint32_t flow_ix;
-    uint32_t done = 0;
 
-    for (flow_ix = FLOW_IX_INVALID+1; !done && 
+    for (flow_ix = FLOW_IX_INVALID;
             flow_ix < fcacheDrv_g.max_flow_ent; flow_ix += BLOG_NOTIFY_EVT_FLOW_QUOTA)
     {
         blog_lock();
         fcache_evt_fetch_netif_stats_excl(evt_p->net_p, evt_p->param1, evt_p->param2,
-                flow_ix, BLOG_NOTIFY_EVT_FLOW_QUOTA, &done);
+                flow_ix, BLOG_NOTIFY_EVT_FLOW_QUOTA);
         blog_unlock();
         schedule();
     }
 
     blog_lock();
-    fcache_evt_fetch_netif_stats_path(evt_p->net_p, evt_p->param1, evt_p->param2, &done);
+    fcache_evt_fetch_netif_stats_path(evt_p->net_p, evt_p->param1, evt_p->param2);
     blog_unlock();
     schedule();
 
-    for (flow_ix = FLOW_IX_INVALID+1; !done && 
+    for (flow_ix = FLOW_IX_INVALID;
             flow_ix < fcacheDrv_g.max_flow_ent; flow_ix += BLOG_NOTIFY_EVT_FLOW_QUOTA)
     {
         blog_lock();
         fcache_evt_fetch_netif_stats_sw(evt_p->net_p, evt_p->param1, 
-                evt_p->param2, flow_ix, BLOG_NOTIFY_EVT_FLOW_QUOTA, &done);
+                evt_p->param2, flow_ix, BLOG_NOTIFY_EVT_FLOW_QUOTA);
         blog_unlock();
         schedule();
     }
 
-    for (flow_ix = FLOW_IX_INVALID+1; !done && 
+    for (flow_ix = FLOW_IX_INVALID;
             flow_ix < fcacheDrv_g.max_flow_ent; flow_ix += BLOG_NOTIFY_EVT_FLOW_QUOTA)
     {
         blog_lock();
         fcache_evt_fetch_netif_stats_hw(evt_p->net_p, evt_p->param1, 
-                evt_p->param2, flow_ix, BLOG_NOTIFY_EVT_FLOW_QUOTA, &done);
+                evt_p->param2, flow_ix, BLOG_NOTIFY_EVT_FLOW_QUOTA);
         blog_unlock();
         schedule();
     }
@@ -1348,7 +1356,7 @@ static void fcachedrv_evt_flush_non_lists(blog_notify_evt_t *evt_p)
 
         case BLOG_NOTIFY_EVT_CLEAR_NETIF_STATS:
             fcache_evt_clear_netif_stats(evt_p->net_p, evt_p->param1, 
-                    evt_p->param2, flow_ix, BLOG_NOTIFY_EVT_FLOW_QUOTA, &done);
+                    evt_p->param2, flow_ix, BLOG_NOTIFY_EVT_FLOW_QUOTA);
             break;
 
         default:
@@ -2355,13 +2363,13 @@ static int __init pktflow_construct(void)
      * Initialize fcache state
      * ========================
      */
+    if ( fcache_construct() == FCACHE_ERROR )
+        return FCACHE_ERROR;
+
 #if defined(CONFIG_BCM_OVS)
     if (fcache_options_construct() == FCACHE_ERROR)
         return FCACHE_ERROR;
 #endif
-
-    if ( fcache_construct() == FCACHE_ERROR )
-        return FCACHE_ERROR;
 
     fcacheMonitor(hwFlowMonitor);
 
@@ -3057,12 +3065,16 @@ void fc_bh_enable(void)
 
 int fc_check_wlan_stats_compatibility(void *dev_p, uint8_t phyHdrType)
 {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)) 
+     return 1;
+#else
 #if defined(CONFIG_BCM_WLAN_MODULE) 
     /*back compatible implemenation for wifi counter, if put_stats not set
      *it use new counter implementation, return 1 */
     return  ((phyHdrType != BLOG_WLANPHY)|| !(((struct net_device *)dev_p)->put_stats));
 #else
     return 1;
+#endif
 #endif
 }
 
@@ -3232,6 +3244,65 @@ uint32_t fcachedrv_iqos_prio(Blog_t *blog_p)
 #endif  /* CONFIG_BCM_INGQOS */
 
     return BLOG_IQ_PRIO_LOW;
+}
+
+/*
+ *------------------------------------------------------------------------------
+ * Function Name: fcache_udp/tcp_port_no_accel
+ * Description  : check if given tcp/udp src, dest port pair in the not accelerate list
+ *------------------------------------------------------------------------------
+ */
+typedef enum {
+    MATCH_NONE,
+    MATCH_DEST,
+    MATCH_SRC,
+    MATCH_BOTH,
+    MATCH_EITHER
+} FcMatch_t;
+
+typedef struct {
+    uint16_t    dst;
+    uint16_t    src;
+    FcMatch_t   op;
+} L4PortMatch_t;
+
+L4PortMatch_t udp_port_array[] = 
+    {
+        {htons(BLOG_DHCP_SERVER_PORT), 0, MATCH_DEST},
+        {htons(BLOG_DHCP_CLIENT_PORT), 0, MATCH_DEST},
+        {htons(BLOG_DNS_SERVER_PORT), htons(BLOG_DNS_SERVER_PORT), MATCH_EITHER},
+        {0, 0, MATCH_NONE},                                                             /* last NULL entry */
+    };
+
+L4PortMatch_t tcp_port_array[] = 
+    {
+        {htons(BLOG_DNS_SERVER_PORT), htons(BLOG_DNS_SERVER_PORT), MATCH_EITHER},
+        {0, 0, MATCH_NONE},                                                             /* last NULL entry */
+    };
+
+static int _fcache_l4_port_match(uint16_t dport, uint16_t sport, L4PortMatch_t *entry)
+{
+    for (; entry->op != MATCH_NONE; entry++)
+    {
+        switch (entry->op) {
+        case MATCH_DEST:    if (dport == entry->dst) return 1; break;
+        case MATCH_SRC:     if (sport == entry->src) return 1; break;
+        case MATCH_BOTH:    if ((dport == entry->dst) && (sport == entry->src)) return 1; break;
+        case MATCH_EITHER:  if ((dport == entry->dst) || (sport == entry->src)) return 1; break;
+        default:            break;
+        }
+    }
+    return 0;
+}
+
+int fcache_udp_port_no_accel(uint16_t dport, uint16_t sport)
+{
+    return _fcache_l4_port_match(dport, sport, udp_port_array);
+}
+
+int fcache_tcp_port_no_accel(uint16_t dport, uint16_t sport)
+{
+    return _fcache_l4_port_match(dport, sport, tcp_port_array);
 }
 
 module_init(pktflow_construct);

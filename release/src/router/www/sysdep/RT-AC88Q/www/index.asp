@@ -93,8 +93,8 @@
 <script type="text/javascript" src="/popup.js"></script>
 <script type="text/javascript" src="/help.js"></script>
 <script type="text/javascript" src="/validator.js"></script>
-<script language="JavaScript" type="text/javascript" src="/client_function.js"></script>
 <script language="JavaScript" type="text/javascript" src="/js/jquery.js"></script>
+<script language="JavaScript" type="text/javascript" src="/client_function.js"></script>
 <script language="JavaScript" type="text/javascript" src="/js/httpApi.js"></script>
 <script type="text/javascript" src="/switcherplugin/jquery.iphone-switch.js"></script>
 <script language="JavaScript" type="text/javascript" src="/form.js"></script>
@@ -150,6 +150,8 @@ var MULTIFILTER_ENABLE_orig = decodeURIComponent('<% nvram_char_to_ascii("", "MU
 var MULTIFILTER_MAC_orig = decodeURIComponent('<% nvram_char_to_ascii("", "MULTIFILTER_MAC"); %>').replace(/&#62/g, ">").replace(/&#60/g, "<");
 var MULTIFILTER_DEVICENAME_orig = decodeURIComponent('<% nvram_char_to_ascii("", "MULTIFILTER_DEVICENAME"); %>').replace(/&#62/g, ">").replace(/&#60/g, "<");
 var MULTIFILTER_MACFILTER_DAYTIME_orig = decodeURIComponent('<% nvram_char_to_ascii("", "MULTIFILTER_MACFILTER_DAYTIME"); %>').replace(/&#62/g, ">").replace(/&#60/g, "<");
+if(isSupport("PC_SCHED_V3"))
+	MULTIFILTER_MACFILTER_DAYTIME_orig = decodeURIComponent('<% nvram_char_to_ascii("", "MULTIFILTER_MACFILTER_DAYTIME_V2"); %>').replace(/&#62/g, ">").replace(/&#60/g, "<");
 var MULTIFILTER_num = (MULTIFILTER_MAC_orig == "") ? 0 : MULTIFILTER_ENABLE_orig.split(">").length;
 var wanlink_status = wanlink_statusstr();
 var wanlink_ipaddr = wanlink_ipaddr();
@@ -208,18 +210,11 @@ function initial(){
 		document.getElementById("secondary_pap_concurrent").style.display = "";		
 	}
 
-	if(sw_mode == 4){
-		var wlc_auth_mode = '<% nvram_get("wlc_auth_mode"); %>';
-		if(wlc_auth_mode == "") wlc_auth_mode = '<% nvram_get("wlc0_auth_mode"); %>';
-		if(wlc_auth_mode == "") wlc_auth_mode = '<% nvram_get("wlc1_auth_mode"); %>';
-		if(wlc_auth_mode == "") wlc_auth_mode = 'unknown';
-	}
-
 	//Build Router Wireless and Guestnetwork icon
 	var wirelessHtml = "";
 	var wl_vifnames = '<% nvram_get("wl0_vifnames"); %>';
 	var gn_conut = wl_vifnames.split(" ").length;
-	if(multissid_support != -1 && sw_mode == 1 || sw_mode == 3) {
+	if(multissid_support && (sw_mode == 1 || sw_mode == 3)) {
 		if(gn_conut > 3)
 			wirelessHtml += "<div style='float:left;margin-top:37px;margin-left:10px;'>";
 		else
@@ -261,15 +256,17 @@ function initial(){
 
 	document.getElementById("routerWirelessStateInfo").innerHTML = wirelessHtml;
 
-	if(amesh_support && (isSwMode("rt") || isSwMode("ap"))) {
+	if(amesh_support && (isSwMode("rt") || isSwMode("ap")) && ameshRouter_support) {
 		var html = '<a id="clientStatusLink" href="device-map/amesh.asp" target="statusframe">';
 		html += '<div id="iconAMesh" class="iconAMesh_dis" style="margin-top:20px;" onclick="clickEvent(this);"></div>';
 		html += '</a>';
 		html += '<div class="clients" id="ameshNumber" style="cursor:pointer;"><#AiMesh_Node#>: <span>0</span></div>';
 		$("#ameshContainer").html(html);
 		require(['/require/modules/amesh.js'], function(){
-			updateAMeshCount();
-			setInterval(updateAMeshCount, 5000);
+			if(typeof updateAMeshCount == "function"){
+				updateAMeshCount();
+				setInterval(updateAMeshCount, 5000);
+			}
 		});
 	}
 	else
@@ -392,7 +389,11 @@ function initial(){
 	document.list_form.MULTIFILTER_ENABLE.value = MULTIFILTER_ENABLE_orig;
 	document.list_form.MULTIFILTER_MAC.value = MULTIFILTER_MAC_orig;
 	document.list_form.MULTIFILTER_DEVICENAME.value = MULTIFILTER_DEVICENAME_orig;
-	document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value = MULTIFILTER_MACFILTER_DAYTIME_orig;
+	if(isSupport("PC_SCHED_V3"))
+		document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.value = MULTIFILTER_MACFILTER_DAYTIME_orig;
+	else
+		document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value = MULTIFILTER_MACFILTER_DAYTIME_orig;
+
 	updateClientsCount();
 
 	if(isSwMode("mb")){
@@ -575,55 +576,6 @@ function showMapWANStatus(flag){
 		return 0;
 }
 
-function show_middle_status(auth_mode, wl_wep_x){
-	var security_mode;
-	switch (auth_mode){
-		case "open":
-				security_mode = "Open System";
-				break;
-		case "shared":
-				security_mode = "Shared Key";
-				break;
-		case "psk":
-				security_mode = "WPA-Personal";
-				break;
-		case "psk2":
-				security_mode = "WPA2-Personal";
-				break;
-		case "pskpsk2":
-				security_mode = "WPA-Auto-Personal";
-				document.getElementById("wl_securitylevel_span").style.fontSize = "16px";
-				break;
-		case "wpa":
-				security_mode = "WPA-Enterprise";
-				break;
-		case "wpa2":
-				security_mode = "WPA2-Enterprise";
-				break;
-		case "wpawpa2":
-				security_mode = "WPA-Auto-Enterprise";
-				document.getElementById("wl_securitylevel_span").style.fontSize = "16px";
-				break;
-		case "radius":
-				security_mode = "Radius with 802.1x";
-				document.getElementById("wl_securitylevel_span").style.fontSize = "16px";
-				break;
-		case "unknown":
-				security_mode = "<#CTL_Disconnect#>";
-				break;
-				
-		default:
-				security_mode = "Unknown Auth";	
-	}
-	
-	document.getElementById("wl_securitylevel_span").innerHTML = security_mode;
-
-	if(auth_mode == "open" && wl_wep_x == 0)
-		document.getElementById("iflock").src = "images/New_ui/networkmap/unlock.png";
-	else
-		document.getElementById("iflock").src = "images/New_ui/networkmap/lock.png"
-}
-
 function show_client_status(num){
 	document.getElementById("clientNumber").innerHTML = "<#Full_Clients#>: <span id='_clientNumber'>" + num + "</span>";
 }
@@ -750,9 +702,10 @@ function get_clicked_device_order(){
 
 function clickEvent(obj){
 	cookie.unset("wireless_subunit");
-	if(amesh_support && (isSwMode("rt") || isSwMode("ap"))) {
+	if(amesh_support && (isSwMode("rt") || isSwMode("ap")) && ameshRouter_support) {
 		require(['/require/modules/amesh.js'], function(){
-			initial_amesh_obj();
+			if(typeof initial_amesh_obj == "function")
+				initial_amesh_obj();
 		});	
 	}
 	var icon;
@@ -1294,7 +1247,10 @@ function edit_confirm(){
 			document.list_form.MULTIFILTER_ENABLE.disabled = true;
 			document.list_form.MULTIFILTER_MAC.disabled = true;
 			document.list_form.MULTIFILTER_DEVICENAME.disabled = true;
-			document.list_form.MULTIFILTER_MACFILTER_DAYTIME.disabled = true;
+			if(isSupport("PC_SCHED_V3"))
+				document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.disabled = true;
+			else
+				document.list_form.MULTIFILTER_MACFILTER_DAYTIME.disabled = true;
 		}
 		else {
 			document.list_form.flag.value = "";
@@ -1313,12 +1269,18 @@ function edit_confirm(){
 			document.list_form.MULTIFILTER_ENABLE.disabled = false;
 			document.list_form.MULTIFILTER_MAC.disabled = false;
 			document.list_form.MULTIFILTER_DEVICENAME.disabled = false;
-			document.list_form.MULTIFILTER_MACFILTER_DAYTIME.disabled = false;
+			if(isSupport("PC_SCHED_V3"))
+				document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.disabled = false;
+			else
+				document.list_form.MULTIFILTER_MACFILTER_DAYTIME.disabled = false;
 		}
 		MULTIFILTER_ENABLE_orig = document.list_form.MULTIFILTER_ENABLE.value;
 		MULTIFILTER_MAC_orig = document.list_form.MULTIFILTER_MAC.value;
 		MULTIFILTER_DEVICENAME_orig = document.list_form.MULTIFILTER_DEVICENAME.value;
-		MULTIFILTER_MACFILTER_DAYTIME_orig = document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value;
+		if(isSupport("PC_SCHED_V3"))
+			MULTIFILTER_MACFILTER_DAYTIME_orig = document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.value;
+		else
+			MULTIFILTER_MACFILTER_DAYTIME_orig = document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value;
 
 		// handle user image
 		document.list_form.custom_usericon.disabled = true;
@@ -1341,7 +1303,7 @@ function edit_confirm(){
 			document.getElementById("loadingIcon").style.display = "";
 			setTimeout(function(){
 				if(timeSchedulingFlag && document.getElementById("internetTimeScheduling").style.display == "none") { //if the latest internetMode is not time mode, then redirect to ParentalControl
-					redirectTimeScheduling();
+					redirectTimeScheduling(document.getElementById('macaddr_field').value);
 				}
 				else {
 					document.getElementById("statusframe").contentWindow.refreshpage();
@@ -1352,7 +1314,7 @@ function edit_confirm(){
 			hideEditBlock(); 
 			setTimeout(function(){
 				if(timeSchedulingFlag && document.getElementById("internetTimeScheduling").style.display == "none") { //if the latest internetMode is not time mode, then redirect to ParentalControl
-					redirectTimeScheduling();
+					redirectTimeScheduling(document.getElementById('macaddr_field').value);
 				}
 				else {
 					refreshpage();
@@ -1427,6 +1389,7 @@ function show_custom_image() {
 
 function select_image(type){
 	var sequence = type.substring(4,type.length);
+	$("#client_image").find(".flash").remove();
 	document.getElementById("client_image").style.display = "none";
 	document.getElementById("canvasUserIcon").style.display = "none";
 	var icon_type = type;
@@ -1467,6 +1430,8 @@ function select_image(type){
 	if(!userImageFlag) {
 		userIconBase64 = "NoIcon";
 		document.getElementById("client_image").style.display = "";
+		if(type == "type36")
+			$("#client_image").append($("<div>").addClass("flash"));
 	}
 }
 
@@ -1480,21 +1445,16 @@ function hideEditBlock(){
 
 function oui_query(mac){
 	var queryStr = mac.replace(/\:/g, "").splice(6,6,"");
-	$.ajax({
-	    url: 'https://services11.ieee.org/RST/standards-ra-web/rest/assignments/download/?registry=MA-L&format=html&text='+ queryStr,
-		type: 'GET',
-		success: function(response) {
+
+	$.getJSON("http://nw-dlcdnet.asus.com/plugin/js/ouiDB.json", function(data){
+		if(data != "" && data[queryStr] != undefined){
 			if(document.getElementById("edit_client_block").style.display == "none") return true;
-			if(response.search("Sorry!") == -1) {
-				if(response.search(queryStr) != -1) {
-					var retData = response.split("pre")[1].split("(hex)")[1].split(queryStr)[0].split("<b>");
-					document.getElementById('manufacturer_field').value = retData[0].trim();
-					document.getElementById('manufacturer_field').title = "";
-					if(retData[0].trim().length > 38) {
-						document.getElementById('manufacturer_field').value = retData[0].trim().substring(0, 36) + "..";
-						document.getElementById('manufacturer_field').title = retData[0].trim();
-					}
-				}
+			var vendor_name = data[queryStr].trim();
+			document.getElementById('manufacturer_field').value = vendor_name;
+			document.getElementById('manufacturer_field').title = "";
+			if(vendor_name.length > 38) {
+				document.getElementById('manufacturer_field').value = vendor_name.substring(0, 36) + "..";
+				document.getElementById('manufacturer_field').title = vendor_name;
 			}
 		}
 	});
@@ -1522,7 +1482,10 @@ function popupEditBlock(clientObj){
 		document.list_form.MULTIFILTER_ENABLE.value = MULTIFILTER_ENABLE_orig;
 		document.list_form.MULTIFILTER_MAC.value = MULTIFILTER_MAC_orig;
 		document.list_form.MULTIFILTER_DEVICENAME.value = MULTIFILTER_DEVICENAME_orig;
-		document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value = MULTIFILTER_MACFILTER_DAYTIME_orig;
+		if(isSupport("PC_SCHED_V3"))
+			document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.value = MULTIFILTER_MACFILTER_DAYTIME_orig;
+		else
+			document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value = MULTIFILTER_MACFILTER_DAYTIME_orig;
 		document.getElementById("divDropClientImage").ondrop = null;
 		document.getElementById("internetTimeScheduling").style.display = "none";
 		if(sw_mode == "1" && !clientObj.amesh_isRe) {
@@ -1537,14 +1500,6 @@ function popupEditBlock(clientObj){
 		}
 		document.getElementById("custom_image").style.display = "none";
 		document.getElementById("changeIconTitle").innerHTML = "<#CTL_Change#>";
-		
-		var convRSSI = function(val) {
-			val = parseInt(val);
-			if(val >= -50) return 4;
-			else if(val >= -80)	return Math.ceil((24 + ((val + 80) * 26)/10)/25);
-			else if(val >= -90)	return Math.ceil((((val + 90) * 26)/10)/25);
-			else return 1;
-		};
 
 		var rssi_t = 0;
 		var connectModeTip = "";
@@ -1554,7 +1509,7 @@ function popupEditBlock(clientObj){
 			connectModeTip = "<#tm_wired#>";
 		}
 		else {
-			rssi_t = convRSSI(clientObj.rssi);
+			rssi_t = client_convRSSI(clientObj.rssi);
 			switch (rssi_t) {
 				case 1:
 					connectModeTip = "<#Radio#>: <#PASS_score1#>\n";
@@ -1579,13 +1534,16 @@ function popupEditBlock(clientObj){
 		}
 
 		if(sw_mode != 4){
-			clientIconHtml += '<div class="radioIcon radio_' + rssi_t +'" title="' + connectModeTip + '"></div>';
+			var radioIcon_css = "radioIcon";
+			if(clientObj.isGN != "" && clientObj.isGN != undefined)
+				radioIcon_css += " GN";
+			clientIconHtml += '<div class="' + radioIcon_css + ' radio_' + rssi_t +'" title="' + connectModeTip + '"></div>';
 			if(clientObj.isWL != 0) {
 				var bandClass = "band_txt";
 				if(navigator.userAgent.toUpperCase().match(/CHROME\/([\d.]+)/)){
 					bandClass = "band_txt_chrome";
 				}
-				clientIconHtml += '<div class="band_block"><span class="' + bandClass + '">' + wl_nband_title[clientObj.isWL-1].replace("Hz", "") + '</span></div>';
+				clientIconHtml += '<div class="band_block"><span class="' + bandClass + '">' + isWL_map[clientObj.isWL]["text"] + '</span></div>';
 			}
 			document.getElementById('client_interface').innerHTML = clientIconHtml;
 			document.getElementById('client_interface').title = connectModeTip;
@@ -1799,6 +1757,7 @@ function popupEditBlock(clientObj){
 								var canvas = document.getElementById("canvasUserIcon");
 								var ctx = canvas.getContext("2d");
 								ctx.clearRect(0,0,85,85);
+								$("#client_image").find(".flash").remove();
 								document.getElementById("client_image").style.display = "none";
 								document.getElementById("canvasUserIcon").style.display = "";
 								setTimeout(function() {
@@ -1858,7 +1817,7 @@ function popupEditBlock(clientObj){
 }
 
 function check_usb3(){
-	if(based_modelid == "DSL-AC68U" || based_modelid == "RT-AC3200" || based_modelid == "RT-AC87U" || based_modelid == "RT-AC68U" || based_modelid == "RT-AC68A" || based_modelid == "RT-AC56S" || based_modelid == "RT-AC56U" || based_modelid == "RT-AC55U" || based_modelid == "RT-AC55UHP" || based_modelid == "RT-N18U" || based_modelid == "RT-AC88U" || based_modelid == "RT-AC86U" || based_modelid == "AC2900" || based_modelid == "RT-AC3100" || based_modelid == "RT-AC5300" || based_modelid == "RP-AC68U" || based_modelid == "RT-AC58U"  || based_modelid == "RT-AC82U" || based_modelid == "RT-AC85U" || based_modelid == "RT-AC65U"|| based_modelid == "4G-AC68U" || based_modelid == "BLUECAVE"){
+	if(based_modelid == "DSL-AC68U" || based_modelid == "RT-AC3200" || based_modelid == "RT-AC87U" || based_modelid == "RT-AC68U" || based_modelid == "RT-AC68A" || based_modelid == "RT-AC56S" || based_modelid == "RT-AC56U" || based_modelid == "RT-AC55U" || based_modelid == "RT-AC55UHP" || based_modelid == "RT-N18U" || based_modelid == "RT-AC88U" || based_modelid == "RT-AC86U" || based_modelid == "GT-AC2900" || based_modelid == "RT-AC3100" || based_modelid == "RT-AC5300" || based_modelid == "RP-AC68U" || based_modelid == "RT-AC58U"  || based_modelid == "RT-AC82U" || based_modelid == "RT-AC85U" || based_modelid == "RT-AC65U"|| based_modelid == "4G-AC68U" || based_modelid == "BLUECAVE"){
 		document.getElementById('usb_text_1').innerHTML = "USB 3.0";
 	}
 	else if(based_modelid == "RT-AC88Q" || based_modelid == "RT-AD7200" || based_modelid == "RT-N65U" || based_modelid == "GT-AC5300" || based_modelid == "GT-AC9600"){
@@ -1882,7 +1841,10 @@ function addToBlockMacList(macAddr){
 					document.list_form.MULTIFILTER_ENABLE.value += "2";
 				document.list_form.MULTIFILTER_MAC.value += macAddr;
 				document.list_form.MULTIFILTER_DEVICENAME.value += document.getElementById("client_name").value.trim();
-				document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value += "<";
+				if(isSupport("PC_SCHED_V3"))
+					document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.value += "W03E21000700<W04122000800";
+				else
+					document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value += "<";
 			}
 			else {
 				document.list_form.MULTIFILTER_ENABLE.value += ">";
@@ -1894,7 +1856,10 @@ function addToBlockMacList(macAddr){
 				document.list_form.MULTIFILTER_MAC.value += macAddr;
 				document.list_form.MULTIFILTER_DEVICENAME.value += ">";
 				document.list_form.MULTIFILTER_DEVICENAME.value += document.getElementById("client_name").value.trim();
-				document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value += "><";
+				if(isSupport("PC_SCHED_V3"))
+					document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.value += ">W03E21000700<W04122000800";
+				else
+					document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value += "><";
 			}
 		}
 	}
@@ -2031,6 +1996,7 @@ function previewImage(imageObj) {
 				var canvas = document.getElementById("canvasUserIcon");
 				var ctx = canvas.getContext("2d");
 				ctx.clearRect(0,0,85,85);
+				$("#client_image").find(".flash").remove();
 				document.getElementById("client_image").style.display = "none";
 				document.getElementById("canvasUserIcon").style.display = "";
 				setTimeout(function() {
@@ -2048,10 +2014,6 @@ function previewImage(imageObj) {
 	}
 }
 
-function redirectTimeScheduling() {
-	cookie.set("time_scheduling_mac", document.getElementById('macaddr_field').value, 1);
-	location.href = "ParentalControl.asp" ;
-}
 function updateClientsCount() {
 	//When not click iconClient and not click View Client List need update client count.
 	var viewlist_obj = document.getElementById("clientlist_viewlist_content");
@@ -2139,6 +2101,7 @@ function closeClientDetailView() {
 	<input type="hidden" name="MULTIFILTER_MAC" value="" disabled>
 	<input type="hidden" name="MULTIFILTER_DEVICENAME" value="" disabled>
 	<input type="hidden" name="MULTIFILTER_MACFILTER_DAYTIME" value="" disabled>
+	<input type="hidden" name="MULTIFILTER_MACFILTER_DAYTIME_V2" value="" disabled>
 </form>
 
 <form method="post" name="maclist_form" id="maclist_form" action="/start_apply2.htm" target="hidden_frame">
@@ -2383,7 +2346,7 @@ function closeClientDetailView() {
 							<span id="time_scheduling_title" onmouseover="return overlib('Time Scheduling allows you to set the time limit for a client\'s network usage.');" onmouseout="return nd();"><#Parental_Control#></span>
 						</div>
 						<div align="center" class="left" style="cursor:pointer;float:right;" id="radio_TimeScheduling_enable"></div>
-						<div id="internetTimeScheduling" class="internetTimeEdit" style="float:right;margin-right:10px;" title="<#Time_Scheduling#>" onclick="redirectTimeScheduling();" ></div>
+					<div id="internetTimeScheduling" class="internetTimeEdit" style="float:right;margin-right:10px;" title="<#Time_Scheduling#>" onclick="redirectTimeScheduling(document.getElementById('macaddr_field').value);" ></div>
 						<div style="clear:both;"></div>
 					</div>
 				</div>

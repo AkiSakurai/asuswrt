@@ -60,15 +60,9 @@ static const char rcsid[] _U_ =
 #include "os-proto.h"
 #endif
 
-/*
- * We don't do this on Solaris 11 and later, as it appears there aren't
- * any AF_PACKET addresses on interfaces, so we don't need this, and
- * we end up including both the OS's <net/bpf.h> and our <pcap/bpf.h>,
- * and their definitions of some data structures collide.
- */
-#if (defined(linux) || defined(__Lynx__)) && defined(AF_PACKET)
+#ifdef AF_PACKET
 # ifdef HAVE_NETPACKET_PACKET_H
-/* Linux distributions with newer glibc */
+/* Solaris 11 and later, Linux distributions with newer glibc */
 #  include <netpacket/packet.h>
 # else /* HAVE_NETPACKET_PACKET_H */
 /* LynxOS, Linux distributions with older glibc */
@@ -81,7 +75,7 @@ static const char rcsid[] _U_ =
 #  include <linux/if_packet.h>
 # endif /* __Lynx__ */
 # endif /* HAVE_NETPACKET_PACKET_H */
-#endif /* (defined(linux) || defined(__Lynx__)) && defined(AF_PACKET) */
+#endif /* AF_PACKET */
 
 /*
  * This is fun.
@@ -126,7 +120,7 @@ get_sa_len(struct sockaddr *addr)
 		return (sizeof (struct sockaddr_in6));
 #endif
 
-#if (defined(linux) || defined(__Lynx__)) && defined(AF_PACKET)
+#ifdef AF_PACKET
 	case AF_PACKET:
 		return (sizeof (struct sockaddr_ll));
 #endif

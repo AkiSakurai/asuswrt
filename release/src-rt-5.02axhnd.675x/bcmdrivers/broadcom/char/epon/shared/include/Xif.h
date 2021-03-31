@@ -452,6 +452,10 @@ extern
 void XifXpcsInrpMaskSet(const xpcstx_tx_int_mask *tx_int_mask);
 
 ////////////////////////////////////////////////////////////////////////////////
+extern
+void XifXpcsLbePolaritySet(Polarity polarity);
+
+////////////////////////////////////////////////////////////////////////////////
 /// \brief  Initialize module
 ///
 /// \param  txOffTimeOffset     Delay normal laser Off (in TQ)

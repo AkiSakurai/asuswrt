@@ -2,7 +2,7 @@
  * Wrapper to scb rate selection algorithm of Broadcom
  * algorithm of Broadcom 802.11b DCF-only Networking Adapter.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -47,7 +47,7 @@
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
  *
- * $Id: wlc_scb_ratesel.h 779517 2019-10-01 14:48:46Z $
+ * $Id: wlc_scb_ratesel.h 786099 2020-04-16 14:03:07Z $
  */
 
 #ifndef	_WLC_SCB_RATESEL_H_
@@ -79,6 +79,11 @@ extern bool wlc_scb_ratesel_gettxrate(wlc_ratesel_info_t *wrsi, struct scb *scb,
 	uint16 *frameid, ratesel_txparams_t *cur_rate, uint16 *flags);
 extern ratespec_t wlc_scb_ratesel_get_opstats(wlc_ratesel_info_t *wrsi,
 	struct scb *scb, uint8 ac, uint16 flags);
+
+#ifdef WL_VASIP_MU_INFO
+extern ratespec_t wlc_scb_get_sum_nss_mu_rate(wlc_ratesel_info_t *wrsi, struct scb *scb,
+	uint8 ac, uint8 *mu_clients_count, uint8 *mu_group_count);
+#endif // endif
 
 /* update per-scb state upon received tx status */
 extern void wlc_scb_ratesel_upd_txstatus_normalack(wlc_ratesel_info_t *wrsi, struct scb *scb,
@@ -135,8 +140,8 @@ void wlc_scb_ratesel_get_info(wlc_ratesel_info_t *wrsi, struct scb *scb, uint8 a
 	uint8 rate_stab_thresh, uint32 *new_rate_kbps, bool *rate_stable,
 	rate_lcb_info_t *lcb_info);
 void wlc_scb_ratesel_reset_vals(wlc_ratesel_info_t *wrsi, struct scb *scb, uint8 ac);
-void wlc_scb_ratesel_clr_cache(wlc_ratesel_info_t *wrsi, struct scb *scb,  uint8 ac);
 #endif /* WL_LPC */
+void wlc_scb_ratesel_clr_cache(wlc_ratesel_info_t *wrsi, struct scb *scb,  uint8 ac);
 
 #ifdef WLC_DTPC
 extern uint8 wlc_scb_ratesel_change_epoch(wlc_ratesel_info_t *wrsi, struct scb *scb);

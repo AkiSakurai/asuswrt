@@ -55,7 +55,7 @@
 archer-objs :=  archer_driver.o archer_host.o archer_ucast.o archer_ucast_l2.o 
 archer-objs +=  archer_mcast.o sysport_classifier.o sysport_spe.o sysport_rsb.o 
 archer-objs +=  sysport_crc.o archer_socket.o archer_dpi.o archer_iq.o archer_tm.o
-archer-objs +=  sysport_wol.o
+archer-objs +=  sysport_wol.o archer_drop.o
 
 ifeq ($(strip $(CONFIG_BCM_ARCHER_SIM)),)
 archer-objs += archer_thread.o sysport_driver.o sysport_driver_config.o
@@ -63,6 +63,12 @@ ifneq ($(findstring _$(strip $(BRCM_CHIP))_,_63178_4908_63268_63158_),)
 archer-objs += iudma_driver.o archer_xtmrt.o
 endif
 ifneq ($(strip $(CONFIG_BCM_ARCHER_WLAN)),)
+# Enable flow control
+EXTRA_CFLAGS += -DCC_AWL_FLCTL
+# Enable credit based Host Flow Control
+ifneq ($(strip $(CONFIG_BCM_PKTFWD_FLCTL)),)
+    EXTRA_CFLAGS += -DBCM_PKTFWD_FLCTL
+endif
 archer-objs += archer_wlan.o
 else
 archer-objs += archer_wfd.o

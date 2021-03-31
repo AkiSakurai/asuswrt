@@ -65,17 +65,24 @@ static void ntp_service()
 	if (first_sync) {
 		first_sync = 0;
 
-		nvram_set("reload_svc_radio", "1");
-		nvram_set("svc_ready", "1");
-
 		setup_timezone();
 
+		nvram_set("reload_svc_radio", "1");
+		nvram_set("svc_ready", "1");
+#ifndef RTCONFIG_QCA
+		timecheck();
+#endif
+
+#ifdef RTCONFIG_DNSPRIVACY
+		if (nvram_get_int("dnspriv_enable"))
+			notify_rc("restart_stubby");
+#endif
 #ifdef RTCONFIG_DISK_MONITOR
 		notify_rc("restart_diskmon");
 #endif
 #ifdef RTCONFIG_UUPLUGIN
 		if(nvram_get_int("uu_enable"))
-#if defined(R8000P) || defined(R7900P) || defined(K3) || defined(SBRAC3200P) || defined(RTAC3100) || defined(RTAC3200) || defined(EA6700) || defined(RAX20) || defined(SBRAC1900P)
+#if defined(R8000P) || defined(RTAC3100) || defined(RTAC3200) || defined(EA6700) || defined(RAX20) || defined(SBRAC1900P) || defined(DIR868L) || defined(TY6201_BCM) || defined(TY6201_RTK)
 		exec_uu_merlinr();
 #else
 		exec_uu();
@@ -183,7 +190,7 @@ int ntp_main(int argc, char *argv[])
 		else if ((repeater_mode()
 #if defined(RTCONFIG_BCMWL6) && defined(RTCONFIG_PROXYSTA)
 				|| psr_mode() || mediabridge_mode()
-#elif defined(RTCONFIG_REALTEK)
+#elif defined(RTCONFIG_REALTEK) || defined(RTCONFIG_QCA)
 				|| mediabridge_mode()
 #endif
 #ifdef RTCONFIG_DPSTA

@@ -62,11 +62,7 @@
 
 #define	kG992p3OvhMsgMaxPollCmd			15
 #if defined(CONFIG_VDSL_SUPPORTED)
-#if defined(CONFIG_BCM_DSL_GFAST) || defined(CONFIG_VDSLBRCMPRIV1_SUPPORT)
 #define MAX_NUM_VECTRD_CMDS_SEQ		16
-#else
-#define MAX_NUM_VECTRD_CMDS_SEQ		10
-#endif
 #endif
 
 typedef struct

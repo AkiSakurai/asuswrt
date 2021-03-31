@@ -69,7 +69,7 @@ phy_type_t bp_parse_phy_type(const EMAC_PORT_INFO *port_info)
     intf = phy_id & MAC_IFACE;
 
     // no phy connection
-    if (IsRgmiiDirect(phy_id)) return PHY_TYPE_MAC2MAC;
+    if (IsRgmiiDirect(phy_id)  || IsRgmiiDirect_3P3V(phy_id)) return PHY_TYPE_MAC2MAC;
 
     if (phy_id == BP_PHY_ID_NOT_SPECIFIED) return PHY_TYPE_UNKNOWN;
 
@@ -87,6 +87,25 @@ phy_type_t bp_parse_phy_type(const EMAC_PORT_INFO *port_info)
         case MAC_IF_SERDES:
             phy_type = PHY_TYPE_SF2_SERDES;
             break;
+#if defined(RTAX95Q) || defined(RTAXE95Q)
+		case MAC_IF_SGMII:
+		case MAC_IF_HSGMII:
+		{
+			if (phy_id & PHY_EXTERNAL)
+		            phy_type = PHY_TYPE_EXT3;
+			else
+		            phy_type = PHY_TYPE_RTL8226;
+			break;
+		}
+		case MAC_IF_XFI:
+		{
+			if (phy_id & PHY_EXTERNAL)
+				phy_type = PHY_TYPE_EXT3;
+			else
+				phy_type = PHY_TYPE_RTL8226;
+			break;
+		}
+#endif
     }
 
     return phy_type;

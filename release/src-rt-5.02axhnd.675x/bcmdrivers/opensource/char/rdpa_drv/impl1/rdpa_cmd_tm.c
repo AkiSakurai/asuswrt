@@ -51,6 +51,8 @@
 #include "rdpa_cmd_tm.h"
 #include "bcm_OS_Deps.h"
 #include "rdpa_cmd_misc.h"
+#include "bcm_hwdefs.h"
+
 #if defined (CONFIG_BCM_PON) || defined(CONFIG_BCM_XRDP)
 #include <rdpa_epon.h>
 #include "rdpa_ag_epon.h"
@@ -311,6 +313,22 @@ static uint32_t get_port_tm_caps(rdpa_traffic_dir dir)
     }
 
     return sched_caps;
+}
+
+#define ONE_MB (1024 * 1024)
+extern int BcmMemReserveGetByName(char *name, void **virt_addr, phys_addr_t* phys_addr, unsigned int *size);
+static int get_tm_memory_info(rdpa_drv_ioctl_tm_t *tm_p)
+{
+    void *fpm_pool_addr;
+    uint32_t fpm_pool_size;
+    phys_addr_t fpm_pool_phys_addr;
+    /* fetch the reserved-memory from device tree */
+    if (BcmMemReserveGetByName(FPMPOOL_BASE_ADDR_STR, &fpm_pool_addr, &fpm_pool_phys_addr, &fpm_pool_size))
+    {
+        return RDPA_DRV_ERROR;
+    }
+    tm_p->fpm_pool_memory_size = fpm_pool_size / ONE_MB;
+    return 0;
 }
 
 static int get_port_tm_parms(rdpa_drv_ioctl_tm_t *tm_p)
@@ -3989,6 +4007,15 @@ int rdpa_cmd_tm_ioctl(unsigned long arg)
         bdmf_put(sched);
         break;
     }
+
+    case RDPA_IOCTL_TM_CMD_GET_TM_MEMORY_INFO: {
+        if ((ret = get_tm_memory_info(&tm)))
+        {
+            CMD_TM_LOG_ERROR("get_tm_memory_info() failed: rc(%d)", ret);
+        }
+        break;
+    }
+
     case RDPA_IOCTL_TM_CMD_GET_TM_CAPS: {
         CMD_TM_LOG_INFO("RDPA_IOCTL_TM_CMD_GET_TM_CAPS: dev_id(%d)", tm.dev_id);
 

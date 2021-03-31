@@ -1,7 +1,7 @@
 /*
  * WBD Blanket utility for Slave (Linux)
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_blanket_utility.h 781158 2019-11-13 10:20:20Z $
+ * $Id: wbd_blanket_utility.h 784284 2020-02-25 09:00:32Z $
  */
 
 #ifndef _WBD_BLANKET_UTILITY_H_
@@ -121,4 +121,9 @@ int wbd_blanket_mbo_assoc_disallowed(char *ifname, unsigned char reason);
 
 /* Check if any of the STA interface is connected to upstream AP */
 i5_dm_interface_type *wbd_slave_is_any_bsta_associated();
+
+/* Set all backhaul STA credentials by extracting it from backhaul BSS.
+ * This is helpful if the onboarding was over the Ethernet
+ */
+void wbd_set_bh_sta_cred_from_bh_bss(ieee1905_client_bssinfo_type *bss);
 #endif /* _WBD_BLANKET_UTILITY_H_ */

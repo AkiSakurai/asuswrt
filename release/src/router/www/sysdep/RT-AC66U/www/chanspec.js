@@ -88,7 +88,7 @@ for(i=0;i<_chanspecs_5g.length;i++){
 		}
 	}
 }
-if(wl_info.band5g_2_support){
+if(wl_info.band5g_2_support || isSupport('wifi6e')){
 	var wl2 = {
 		"channel_20m": [],
 		"channel_40m": [],
@@ -115,7 +115,6 @@ if(wl_info.band5g_2_support){
 		return (count != 0) ? true : false;
 	})();
 
-
 	for(i=0;i<_chanspecs_5g_2.length;i++){
 		if(_chanspecs_5g_2[i].indexOf("/80") != -1){
 			wl2.channel_80m.push(_chanspecs_5g_2[i]);
@@ -123,7 +122,7 @@ if(wl_info.band5g_2_support){
 		else if(_chanspecs_5g_2[i].indexOf("/160") != -1){
 			wl2.channel_160m.push(_chanspecs_5g_2[i]);
 		}
-		else if(_chanspecs_5g_2[i].indexOf("u")!= -1 || _chanspecs_5g_2[i].indexOf("l") != -1){
+		else if(_chanspecs_5g_2[i].indexOf("u")!= -1 || _chanspecs_5g_2[i].indexOf("l") != -1 || _chanspecs_5g_2[i].indexOf("/40") != -1){
 			wl2.channel_40m.push(_chanspecs_5g_2[i]);
 		}
 		else{
@@ -131,8 +130,6 @@ if(wl_info.band5g_2_support){
 		}
 	}	
 }
-
-
 
 var mesh_5g = JSON.parse('<% get_wl_channel_list_5g(); %>');
 var mesh_5g2 = JSON.parse('<% get_wl_channel_list_5g_2(); %>');
@@ -265,7 +262,7 @@ function wl_chanspec_list_change(){
 					else{
 						for(i=0;i<wl_channel_list_5g.length; i++){
 							var _cur_channel = parseInt(wl_channel_list_5g[i]);
-							var _reg = new RegExp("^" + _cur_channel);					
+							var _reg = new RegExp("^" + _cur_channel);
 							for(j=0;j<wl1.channel_80m.length;j++){
 								if(wl1.channel_80m[j].match(_reg) != null){
 									_wl_channel.push(_cur_channel+"/80");
@@ -431,7 +428,20 @@ function wl_chanspec_list_change(){
 			}		
 		}
 		else if(band == "2"){	// 5 GHz-2 - high band
-			wl_channel_list_5g_2 = JSON.parse('<% channel_list_5g_2(); %>');					
+			wl_channel_list_5g_2 = JSON.parse('<% channel_list_5g_2(); %>');
+			if(band6g_support){		// due to GT-AXE11000 does not support
+				if(document.getElementById('psc6g_checkbox').checked){
+					wl_channel_list_5g_2 = ['37', '53', '69', '85', '101', '117', '133', '149', '165', '181', '197', '213'];
+				}
+
+				for(var i=wl_channel_list_5g_2.length-1; i>=0; i--){
+					var _channel = parseInt(wl_channel_list_5g_2[i]);
+					if(_channel < 30 || _channel > 221){	// remove 1, 5, 9, 13, 17, 21, 25, 29, 225, 229, 233
+						wl_channel_list_5g_2.splice(i, 1);
+					}
+				}
+			}
+
 			extend_channel = ["<#Auto#>"];		 // for 5GHz, extension channel always displays Auto
 			extend_channel_value = [""];
 
@@ -440,7 +450,18 @@ function wl_chanspec_list_change(){
 				if(amesh_support && httpApi.hasAiMeshNode()){
 					var _wl_channel = new Array();
 					for(j=1; j<mesh_5g2.auto.chanspec.length; j++){
-						_wl_channel.push(mesh_5g2.auto.chanspec[j]);
+						if(band6g_support && document.getElementById('psc6g_checkbox').checked){
+                            for(var k=wl_channel_list_5g_2.length-1; k>=0; k--){
+                                var _str = '6g' + wl_channel_list_5g_2[k];
+                                if(mesh_5g2.auto.chanspec[j].search(_str) != -1){
+                                    _wl_channel.push(mesh_5g2.auto.chanspec[j]);
+                                   break;
+                                }
+                            }             
+                        }
+                        else{
+                            _wl_channel.push(mesh_5g2.auto.chanspec[j]);
+                        }
 					}
 
 					wl_channel_list_5g_2 = _wl_channel;	
@@ -451,7 +472,13 @@ function wl_chanspec_list_change(){
 						if(band5g_11ax_support && document.form.wl_nmode_x.value != 1 && bw_160_support && enable_bw_160){
 							for(j=0;j<wl2.channel_160m.length;j++){
 								if(wl2.channel_160m[j].indexOf(_cur_channel) != -1){
-									wl_channel_list_5g_2[i] = _cur_channel + "/160";
+									if(band6g_support){
+										wl_channel_list_5g_2[i] = "6g" + _cur_channel + "/160";
+									}
+									else{
+										wl_channel_list_5g_2[i] = _cur_channel + "/160";
+									}
+									
 									continue loop_auto;
 								}
 							}
@@ -460,7 +487,13 @@ function wl_chanspec_list_change(){
 						if(band5g_11ac_support && document.form.wl_nmode_x.value != 1){
 							for(j=0;j<wl2.channel_80m.length;j++){
 								if(wl2.channel_80m[j].indexOf(_cur_channel) != -1){
-									wl_channel_list_5g_2[i] = _cur_channel + "/80";
+									if(band6g_support){
+										wl_channel_list_5g_2[i] = "6g" + _cur_channel + "/80";
+									}
+									else{
+										wl_channel_list_5g_2[i] = _cur_channel + "/80";
+									}
+									
 									continue loop_auto;
 								}
 							}
@@ -468,14 +501,26 @@ function wl_chanspec_list_change(){
 	
 						for(j=0;j<wl2.channel_40m.length;j++){
 							if(wl2.channel_40m[j].indexOf(_cur_channel) != -1){
-								wl_channel_list_5g_2[i] = wlextchannel_fourty(_cur_channel);
+								if(band6g_support){
+									wl_channel_list_5g_2[i] = "6g" + _cur_channel + "/40";
+								}
+								else{
+									wl_channel_list_5g_2[i] = wlextchannel_fourty(_cur_channel);
+								}
+								
 								continue loop_auto;
 							}
 						}
 	
 						for(j=0;j<wl2.channel_20m.length;j++){
 							if(wl2.channel_20m[j].indexOf(_cur_channel) != -1){
-								wl_channel_list_5g_2[i] = _cur_channel;
+								if(band6g_support){
+									wl_channel_list_5g_2[i] = "6g" +  _cur_channel;
+								}
+								else{
+									wl_channel_list_5g_2[i] = _cur_channel;
+								}
+								
 								continue loop_auto;
 							}
 						}				
@@ -487,7 +532,18 @@ function wl_chanspec_list_change(){
 				var _wl_channel = new Array();
 				if(amesh_support && httpApi.hasAiMeshNode()){
 					for(j=1; j<mesh_5g2.chan_160m.chanspec.length; j++){
-						_wl_channel.push(mesh_5g2.chan_160m.chanspec[j]);
+						if(band6g_support && document.getElementById('psc6g_checkbox').checked){
+                            for(var k=wl_channel_list_5g_2.length-1; k>=0; k--){
+                                var _str = '6g' + wl_channel_list_5g_2[k];
+                                if(mesh_5g2.chan_160m.chanspec[j].search(_str) != -1){
+                                    _wl_channel.push(mesh_5g2.chan_160m.chanspec[j]);
+                                   break;
+                                }
+                            }             
+                        }
+                        else{
+                            _wl_channel.push(mesh_5g2.chan_160m.chanspec[j]);
+                        }
 					}
 				}
 				else{
@@ -495,9 +551,16 @@ function wl_chanspec_list_change(){
 						var _cur_channel = parseInt(wl_channel_list_5g_2[i]);
 						var _reg = new RegExp("^" + _cur_channel);
 						for(j=0;j<wl2.channel_160m.length;j++){
-							if(wl2.channel_160m[j].match(_reg) != null){
-								_wl_channel.push(_cur_channel+"/160");
+							if(band6g_support){
+								if (wl2.channel_160m[j].includes('6g' + _cur_channel + '/160')) {		
+									_wl_channel.push("6g" + _cur_channel + "/160");										
+								}								
 							}
+							else{
+								if(wl2.channel_160m[j].match(_reg) != null){	
+									_wl_channel.push(_cur_channel + "/160");															
+								}
+							}							
 						}
 					}
 				}
@@ -513,7 +576,18 @@ function wl_chanspec_list_change(){
 				var _wl_channel = new Array();
 				if(amesh_support && httpApi.hasAiMeshNode()){
 					for(j=1; j<mesh_5g2.chan_80m.chanspec.length; j++){
-						_wl_channel.push(mesh_5g2.chan_80m.chanspec[j]);
+						if(band6g_support && document.getElementById('psc6g_checkbox').checked){
+                            for(var k=wl_channel_list_5g_2.length-1; k>=0; k--){
+                                var _str = '6g' + wl_channel_list_5g_2[k];
+                                if(mesh_5g2.chan_80m.chanspec[j].search(_str) != -1){
+                                    _wl_channel.push(mesh_5g2.chan_80m.chanspec[j]);
+                                   break;
+                                }
+                            }             
+                        }
+                        else{
+                            _wl_channel.push(mesh_5g2.chan_80m.chanspec[j]);
+                        }
 					}
 				}
 				else{
@@ -521,9 +595,16 @@ function wl_chanspec_list_change(){
 						var _cur_channel = parseInt(wl_channel_list_5g_2[i]);
 						var _reg = new RegExp("^" + _cur_channel);
 						for(j=0;j<wl2.channel_80m.length;j++){
-							if(wl2.channel_80m[j].match(_reg) != null){
-								_wl_channel.push(_cur_channel+"/80");
+							if(band6g_support){
+								if (wl2.channel_80m[j].includes('6g' + _cur_channel + '/80')) {
+									_wl_channel.push("6g" + _cur_channel + "/80");
+								}								
 							}
+							else{
+								if(wl2.channel_80m[j].match(_reg) != null){
+									_wl_channel.push(_cur_channel+"/80");						
+								}
+							}							
 						}
 					}
 				}
@@ -539,25 +620,43 @@ function wl_chanspec_list_change(){
 				var _wl_channel = new Array();
 				if(amesh_support && httpApi.hasAiMeshNode()){
 					for(j=1; j<mesh_5g2.chan_40m.chanspec.length; j++){
-						_wl_channel.push(mesh_5g2.chan_40m.chanspec[j]);
+						if(band6g_support && document.getElementById('psc6g_checkbox').checked){
+                            for(var k=wl_channel_list_5g_2.length-1; k>=0; k--){
+                                var _str = '6g' + wl_channel_list_5g_2[k];
+                                if(mesh_5g2.chan_40m.chanspec[j].search(_str) != -1){
+                                    _wl_channel.push(mesh_5g2.chan_40m.chanspec[j]);
+                                   break;
+                                }
+                            }             
+                        }
+                        else{
+                            _wl_channel.push(mesh_5g2.chan_40m.chanspec[j]);
+                        }
 					}
 				}
 				else{
 					for(i=0;i<wl_channel_list_5g_2.length; i++){
 						var _cur_channel = parseInt(wl_channel_list_5g_2[i]);
 						for(j=0;j<wl2.channel_40m.length;j++){
-							var _l = wl2.channel_40m[j].split("l");
-							var _u = wl2.channel_40m[j].split("u");
-							if(_l.length > 1){
-								if(_l[0] == _cur_channel){
-									_wl_channel.push(wlextchannel_fourty(_cur_channel));
-								}
+							if(band6g_support){
+								if (wl2.channel_40m[j].includes('6g' + _cur_channel + '/40')) {
+									_wl_channel.push("6g" + _cur_channel + "/40");
+								}								
 							}
 							else{
-								if(_u[0] == _cur_channel){
-									_wl_channel.push(wlextchannel_fourty(_cur_channel));
+								var _l = wl2.channel_40m[j].split("l");
+								var _u = wl2.channel_40m[j].split("u");
+								if(_l.length > 1){
+									if(_l[0] == _cur_channel){
+										_wl_channel.push(wlextchannel_fourty(_cur_channel));
+									}
 								}
-							}
+								else{
+									if(_u[0] == _cur_channel){
+										_wl_channel.push(wlextchannel_fourty(_cur_channel));
+									}
+								}
+							}							
 						}
 					}
 				}
@@ -569,25 +668,52 @@ function wl_chanspec_list_change(){
 				wl_channel_list_5g_2 = _wl_channel;	
 			}
 			else{		//20MHz
-				if(amesh_support && httpApi.hasAiMeshNode()){
-					var _wl_channel = new Array();
+				var _wl_channel = new Array();
+				if(amesh_support && httpApi.hasAiMeshNode()){					
 					for(j=1; j<mesh_5g2.chan_20m.chanspec.length; j++){
-						_wl_channel.push(mesh_5g2.chan_20m.chanspec[j]);
+						if(band6g_support && document.getElementById('psc6g_checkbox').checked){
+                            for(var k=wl_channel_list_5g_2.length-1; k>=0; k--){
+                                var _str = '6g' + wl_channel_list_5g_2[k];
+                                if(mesh_5g2.chan_20m.chanspec[j].search(_str) != -1){
+                                    _wl_channel.push(mesh_5g2.chan_20m.chanspec[j]);
+                                   break;
+                                }
+                            }             
+                        }
+                        else{
+                            _wl_channel.push(mesh_5g2.chan_20m.chanspec[j]);
+                        }
 					}
 
 					wl_channel_list_5g_2 = _wl_channel;
 				}
 				
+				if(band6g_support){
+					for(i=0;i<wl_channel_list_5g_2.length; i++){
+						var _cur_channel = parseInt(wl_channel_list_5g_2[i]);						
+						for(j=0;j<wl2.channel_20m.length;j++){
+							if(band6g_support){
+								var _reg = new RegExp("^6g" + _cur_channel + "$");
+								if(wl2.channel_20m[j].match(_reg) != null){
+									_wl_channel.push("6g" + _cur_channel);
+								}
+							}												
+						}
+					}
+					
+					wl_channel_list_5g_2 = _wl_channel;
+				}
 				
-				document.getElementById('wl_nctrlsb_field').style.display = "none";	
+				document.getElementById('wl_nctrlsb_field').style.display = "none";
+				
 			}
-			
+		
 			/*add "Auto" into the option list*/	
 			if(wl_channel_list_5g_2[0] != "0")
 				wl_channel_list_5g_2.splice(0,0,"0");
 			
 			add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, 1);   //construct extension channel
-			chanspecs = wl_channel_list_5g_2;				
+			chanspecs = wl_channel_list_5g_2;
 		}	//end 5GHz-2 - high band
 	} 
 	else { // b/g mode 
@@ -654,8 +780,8 @@ function wl_chanspec_list_change(){
 					}
 				}
 				else{
-					document.form.wl_channel[i] = new Option(chanspecs[i].toString().replace("/160", "").replace("/80", "").replace("u", "").replace("l", ""), chanspecs[i]);
-				}
+					document.form.wl_channel[i] = new Option(chanspecs[i].toString().replace("/160", "").replace("/80", "").replace("u", "").replace("l", "").replace("/40", "").replace("6g", ""), chanspecs[i]);
+				}			
 			}
 
 			document.form.wl_channel[i].value = chanspecs[i];
@@ -688,8 +814,8 @@ function wl_chanspec_list_change(){
 	else{
 		document.form.acs_dfs_checkbox.disabled = false;
 	}
-  
-        change_channel(document.form.wl_channel);
+
+	change_channel(document.form.wl_channel);
 }
 
 function wlextchannel_fourty(v){
@@ -720,7 +846,6 @@ function change_channel(obj){
 	var smart_connect = document.form.smart_connect_x.value;
 	cur = '<% nvram_get("wl_chanspec"); %>';
 	cur_extend_channel = cur.slice(-1);			//current control channel
-
 	if(document.form.wl_bw.value != 1){   // 20/40 MHz or 40MHz
 		if(channel_length == 12){    // 1 ~ 11
 			if(selected_channel >= 1 && selected_channel <= 4){
@@ -742,7 +867,7 @@ function change_channel(obj){
 				extend_channel = ["<#Auto#>"];
 				extend_channel_value = [""];
 				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, cur_extend_channel);
-			}		
+			}
 		}
 		else{		// 1 ~ 13
 			if(selected_channel >= 1 && selected_channel <= 4){
@@ -764,7 +889,7 @@ function change_channel(obj){
 				extend_channel = ["<#Auto#>"];
 				extend_channel_value = [""];
 				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, cur_extend_channel);
-			}			
+			}
 		}
 	}
 	
@@ -791,7 +916,6 @@ function change_channel(obj){
 						document.getElementById('dfs_checkbox').style.display = "none";
 						document.form.acs_dfs.disabled = true;
 					}
-					
 				}
 			}	
 			else{

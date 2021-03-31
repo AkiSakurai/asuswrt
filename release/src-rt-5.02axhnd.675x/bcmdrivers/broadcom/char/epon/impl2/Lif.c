@@ -67,7 +67,7 @@ U32 volatile __REGISTER_SPACE[MACREGSPACE];
 #define LifLaserOffIdleBefore               0x00000080UL
 #define LifLlidLkup0Msk                     0x0000FFFFUL // [15:0]
 
-#define LifLlidCount                         0x00000020UL
+#define LifLlidCount                        TkOnuNumTotalLlids
 
 
 
@@ -869,6 +869,24 @@ void LifLaserMonClrLaserOnMaxInt(void)
     drv_error += ag_drv_lif_int_status_set(&int_status);
     }
 
+
+////////////////////////////////////////////////////////////////////////////////
+//extern
+void LifLbePolaritySet(Polarity polarity)
+    {
+    bdmf_error_t drv_error = BDMF_ERR_OK;
+    lif_pon_control lif_pon_ctrl = {0};
+    drv_error += ag_drv_lif_pon_control_get(&lif_pon_ctrl);
+    if(polarity == ActiveHi)
+        {
+        lif_pon_ctrl.cftxlaseronacthi = 1;
+        }
+    else
+        {
+        lif_pon_ctrl.cftxlaseronacthi = 0;
+        }
+    drv_error += ag_drv_lif_pon_control_set(&lif_pon_ctrl);
+    }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// \brief  Initialize module

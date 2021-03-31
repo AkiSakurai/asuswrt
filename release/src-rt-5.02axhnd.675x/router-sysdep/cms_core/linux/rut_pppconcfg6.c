@@ -320,20 +320,9 @@ CmsRet rutWan_ipv6PppConnProcess(_WanPppConnObject *newObj __attribute__((unused
       */
       if ( (skipWanIpSetup == FALSE) && (ret == CMSRET_SUCCESS) )
       {
-         UBOOL8 mldEnabled = 0;
-#ifdef DMP_X_BROADCOM_COM_MLD_1
-         mldEnabled = newObj->X_BROADCOM_COM_MLDEnabled;
-#endif
-         if ((ret = rutCfg_setupWanConnection6(newObj->X_BROADCOM_COM_IfName, 
-                                               newObj->X_BROADCOM_COM_ExternalIPv6Address, 
-                                               newObj->X_BROADCOM_COM_FirewallEnabled, 
-                                               newObj->X_BROADCOM_COM_IPv6PrefixDelegationEnabled, 
-                                               newObj->X_BROADCOM_COM_UnnumberedModel, 
-                                               newObj->X_BROADCOM_COM_Dhcp6cForAddress, 
-                                               mldEnabled)) == CMSRET_SUCCESS)
+		 if ((ret = rutCfg_setupWanConnection6(newObj, FALSE)) == CMSRET_SUCCESS)
          {
             cmsLog_debug("rutCfg_setupWanConnection6 ok");
-//            cmsLed_setWanConnected();
          }
          else
          {

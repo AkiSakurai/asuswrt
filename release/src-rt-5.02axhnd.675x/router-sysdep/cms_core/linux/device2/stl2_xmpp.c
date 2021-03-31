@@ -76,6 +76,12 @@ CmsRet stl_dev2XmppConnObject(_Dev2XmppConnObject *obj,
 
         if (rutXmpp_generate_jabber_id(iidStack, jabberID) == CMSRET_SUCCESS)
         {
+            if(obj->jabberID)
+            {
+                cmsMem_free((void*)obj->jabberID);
+                obj->jabberID = NULL;			   
+            }
+			
             obj->jabberID = cmsMem_strdupFlags(jabberID, mdmLibCtx.allocFlags);
             ret = CMSRET_SUCCESS;
         }

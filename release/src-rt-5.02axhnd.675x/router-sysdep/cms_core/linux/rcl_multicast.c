@@ -65,6 +65,7 @@
 #include "rut_multicast.h"
 #include "qdm_multicast.h"
 #include "beep_networking.h"
+#include "bcm_mcast_api.h"
 #ifdef DMP_X_BROADCOM_COM_DCSP_MCAST_REMARK_1
 #include "rdpactl_api.h"
 #endif
@@ -411,7 +412,7 @@ CmsRet rcl_igmpCfgObject(_IgmpCfgObject *newObj,
       cmsLog_error("rut_validateObjects returns error. ret=%d", ret);
       return ret;
    }
-   return rutMulti_reloadMcpd();
+   return rutMulti_reloadMcpdWithType(BCM_MCAST_PROTO_IPV4);
 } /* rcl_IgmpCfgObject */
 #endif /* aka SUPPORT_IGMP */
 
@@ -430,6 +431,6 @@ CmsRet rcl_mldCfgObject(_MldCfgObject *newObj,
       return ret;
    }
 
-   return rutMulti_reloadMcpd();
+   return rutMulti_reloadMcpdWithType(BCM_MCAST_PROTO_IPV6);
 } /* rcl_mldCfgObject */
 #endif /* aka SUPPORT_MLD */

@@ -64,12 +64,6 @@ typedef ULONG (*FN_ISR) (ULONG);
     #define DBG_MSG		0
 #endif
 
-#elif defined(_CFE_)
-
-#include "lib_types.h"
-#include "cfe_timer.h"
-#include "lib_printf.h"
-
 #elif defined(__ECOS)
 
 #elif defined(_NOOS)
@@ -89,7 +83,7 @@ typedef ULONG (*FN_ISR) (ULONG);
 #include <linux/version.h>
 #endif
 
-#endif /* _WIN32_WCE || CFE */
+#endif /* _WIN32_WCE */
 
 #define LOCAL static 
 
@@ -115,16 +109,6 @@ void NKDbgPrintfW(void *pwStr, ...);
 #define HZ					1000
 #define BCMOS_EVENT_LOG(x)	NKDbgPrintfW x
 #define KERN_CRIT
-#define BCMOS_DECLARE_IRQFLAGS(f)
-#define BCMOS_SPIN_LOCK_IRQ(l, f)
-#define BCMOS_SPIN_UNLOCK_IRQ(l, f)
-#elif defined(_CFE_)
-#define HZ					CFE_HZ
-#define TEXT(__str__)		__str__
-#define BCMOS_EVENT_LOG(x)	printf x
-#define KERN_CRIT
-#define printk					printf
-#define AdslDrvPrintf		printf
 #define BCMOS_DECLARE_IRQFLAGS(f)
 #define BCMOS_SPIN_LOCK_IRQ(l, f)
 #define BCMOS_SPIN_UNLOCK_IRQ(l, f)

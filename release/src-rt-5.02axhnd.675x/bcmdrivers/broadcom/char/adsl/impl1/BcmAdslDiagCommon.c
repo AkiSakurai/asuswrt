@@ -76,7 +76,6 @@
 #include "BcmOs.h"
 #include "bcmadsl.h"
 #include "BcmAdslCore.h"
-#include "AdslCore.h"
 
 #if defined(__KERNEL__)
 #include <linux/etherdevice.h>
@@ -96,17 +95,24 @@
 #include "softdsl/SoftDsl.h"
 #include "softdsl/BlockUtil.h"
 
+#include "AdslCore.h"
 #include "BcmAdslDiag.h"
 #include "BcmAdslDiagCommon.h"
 #include "bcm_map.h"
 #if defined(USE_PMC_API)
+#include <pmc_dsl.h>
+#if defined(PMC_API_VER)
+#include <pmc_core_api.h>
+#else
 #include "pmc_drv.h"
 #include "BPCM.h"
+#endif
 #include <linux/dma-mapping.h>
 extern void BcmAdslCoreStop(void);
 extern void BcmAdslCoreStart(int diagDataMap, Bool bRestoreImage);
 #endif
 
+extern struct device *pXdslDummyDevice;
 #if defined(__KERNEL__)
 #if defined(CONFIG_MIPS)
 #define	Cache_Flush_Len(a, l)	cache_flush_len(a, l)
@@ -118,7 +124,6 @@ extern void BcmAdslCoreStart(int diagDataMap, Bool bRestoreImage);
 #elif defined(__arm) || defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 #ifdef CONFIG_ARM64
 #if 0
-extern struct device *pXdslDummyDevice;
 #define	Cache_Flush_Len(a, l)	dma_map_single(pXdslDummyDevice, a, l, DMA_TO_DEVICE)
 #define	Cache_Invalidate_Len(a, l)	dma_map_single(pXdslDummyDevice, a, l, DMA_FROM_DEVICE)
 #endif
@@ -151,8 +156,9 @@ void DiagWriteDataCont(uint cmd, char *buf0, int len0, char *buf1, int len1);
 #endif
 							
 
-diagCtrlType diagCtrl;
+diagCtrlType diagCtrl = {0};
 dumpBufferStruct dumpBuf = { NULL, 0, 0, 0 };
+void             *dbPhysAddr = NULL;
 
 /*
 **
@@ -408,6 +414,7 @@ void DiagWriteStatus(void *stat, char *pBuf, int len)
 	clientType = (status->code & DIAG_TYPE_MASK) >> DIAG_TYPE_SHIFT;
 	cmd = statusInfoData | (clientType << DIAG_TYPE_SHIFT) | (lineId << DIAG_LINE_SHIFT);
 	statusCode = DSL_STATUS_CODE(status->code);
+	
 	switch (statusCode) {
 		case kDslPrintfStatus1:
 		case kDslPrintfStatus:
@@ -508,7 +515,8 @@ void DiagWriteStatus(void *stat, char *pBuf, int len)
 					&&
 					(0 == (status->param.dslClearEocMsg.msgType & kDslClearEocMsgDataVolatileMask)))
 			{
-				n -= 4;
+				dslStatusStruct *status1 = (dslStatusStruct *)statStr;
+				
 				((dslStatusStruct *)statStr)->param.dslClearEocMsg.msgType |= kDslClearEocMsgDataVolatileMask;
 				
 				if(kDsl993p2TestHlin == status->param.dslClearEocMsg.msgId)
@@ -516,6 +524,18 @@ void DiagWriteStatus(void *stat, char *pBuf, int len)
 				else
 					n1 = status->param.dslClearEocMsg.msgType & kDslClearEocMsgLengthMask;
 				p1 = status->param.dslClearEocMsg.dataPtr;
+				if(status != status1) {
+					n -= sizeof(int);
+#if defined(CONFIG_BCM963146)
+					if (status->param.dslClearEocMsg.msgType & kDslClearEocMsgHostAddr) {
+						Cache_Invalidate_Len(p1, n1);
+						p1 = (void *) (((uintptr_t)dumpBuf.pBuf & 0xFFFFFFFF00000000) | (uintptr_t) p1);
+						status->param.dslClearEocMsg.dataPtr = p1;
+					}
+#endif
+				}
+				else
+					n -= sizeof(uintptr_t);
 			}
 #endif
 			break;
@@ -678,37 +698,40 @@ void __DiagStrPrintf(uint lineId, uint clientType, const char *fmt, int fmtLen, 
 #else
 	arg = ap.__ap;
 #endif
-#else
+#else	/* !ARM */
 	arg = ap;
 #endif
-#ifdef ADSLDRV_LITTLE_ENDIAN
+
+#if defined(__arm) || defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 #if defined(CONFIG_ARM64)
 	{
 		int i;
-		uint *pParam64, *pData32 = (uint *)arg;
+		uint *pData32 = (uint *)arg;
+		ulong v;
 
 		/* first 4 are 32bit packed */
-		pData32[0] = ADSL_ENDIAN_CONV_INT32(pData32[0]);
-		pData32[1] = ADSL_ENDIAN_CONV_INT32(pData32[1]);
-		pData32[2] = ADSL_ENDIAN_CONV_INT32(pData32[2]);
-		pData32[3] = ADSL_ENDIAN_CONV_INT32(pData32[3]);
+		v = va_arg(ap, long);
+		pData32[0] = ADSL_ENDIAN_CONV_INT32(v & 0xffffffff);
+		pData32[1] = ADSL_ENDIAN_CONV_INT32(v >> 32);
+		v = va_arg(ap, long);
+		pData32[2] = ADSL_ENDIAN_CONV_INT32(v & 0xffffffff);
+		pData32[3] = ADSL_ENDIAN_CONV_INT32(v >> 32);
 
 		pData32 += 4;
-		pParam64 = pData32;
 		/* pack 64bit arguments to 32bit */
 		for(i = 0; i < (argNum - 4); i++) {
-			pData32[i] = ADSL_ENDIAN_CONV_INT32(*pParam64);
-			pParam64 += 2;
+			v = va_arg(ap, long);
+			pData32[i] = ADSL_ENDIAN_CONV_INT32(v & 0xffffffff);
 		}
-
-		pData32 = arg;
 	}
-#else
+#else /* !CONFIG_ARM64 */
 	{
 		int i;
-		uint *pData32 = (uint *)arg;
-		for(i = 0; i < argNum; i++)
-			pData32[i] = ADSL_ENDIAN_CONV_INT32(pData32[i]);
+		uint *pData32 = (uint *)arg, v;
+		for(i = 0; i < argNum; i++) {
+			v = va_arg(ap, int);
+			pData32[i] = ADSL_ENDIAN_CONV_INT32(v);
+		}
 	}
 #endif
 #endif
@@ -849,14 +872,16 @@ extern Bool	gSharedMemAllocFromUserContext;
 
 void BcmAdslDiagSendHdr(void)
 {
-	if((NULL != diagCtrl.dbgDev) && (NULL != diagCtrl.skbModel)) {
+	//if((NULL != diagCtrl.dbgDev) && (NULL != diagCtrl.skbModel)) {
+    if ( BcmAdslDiagIsConnected() ) {
 		dslCommandStruct	cmd;
 		cmd.command = kDslDiagFrameHdrCmd;
 #ifndef __ECOS
 #ifdef CONFIG_ARM64
 		gSharedMemAllocFromUserContext=1;
 		cmd.param.dslStatusBufSpec.pBuf = AdslCoreSharedMemAlloc(DIAG_FRAME_HEADER_LEN);
-		memcpy(cmd.param.dslStatusBufSpec.pBuf, (void *)diagCtrl.skbModel->data, DIAG_FRAME_HEADER_LEN);
+		//memcpy(cmd.param.dslStatusBufSpec.pBuf, (void *)diagCtrl.skbModel->data, DIAG_FRAME_HEADER_LEN);
+		BlockByteMoveDstAlign(DIAG_FRAME_HEADER_LEN, (void *)diagCtrl.skbModel->data, cmd.param.dslStatusBufSpec.pBuf);
 #else
 		cmd.param.dslStatusBufSpec.pBuf = (void *)diagCtrl.skbModel->data;
 		Cache_Flush_Len((void *)diagCtrl.skbModel->data, DIAG_FRAME_HEADER_LEN);
@@ -923,8 +948,22 @@ extern struct sk_buff *skb_header_alloc(void);
 
 void BcmCoreDiagZeroCopyStatBufRecycle(struct sk_buff *skb, unsigned long context, uint flags)
 {
-	//printk("%s: context=%lx flags=%x\n", __FUNCTION__, context, flags);
+	//printk("%s: skb=%lx context=%lx flags=%x\n", __FUNCTION__, (uintptr_t)skb,context, flags);
 }
+void BcmCoreDiagReleaseReserveShareMem(void)
+{
+	if(NULL != diagCtrl.pEyeDataAppCtrl[0]) {
+		BcmCoreDiagZeroCopyStatAppUnInit(diagCtrl.pEyeDataAppCtrl[0]);
+		diagCtrl.pEyeDataAppCtrl[0] = NULL;
+	}
+#ifdef SUPPORT_DSL_BONDING
+	if(NULL != diagCtrl.pEyeDataAppCtrl[1]) {
+		BcmCoreDiagZeroCopyStatAppUnInit(diagCtrl.pEyeDataAppCtrl[1]);
+		diagCtrl.pEyeDataAppCtrl[1] = NULL;
+	}
+#endif
+}
+
 #endif
 
 diagZeroCopyAppCtrlType * BcmCoreDiagZeroCopyStatAppInit(unsigned char lineId, unsigned char logCmd, struct sk_buff *model, int bufSize, int numOfBuf, int dataAlignMask, int frameHeaderLength)
@@ -968,11 +1007,11 @@ diagZeroCopyAppCtrlType * BcmCoreDiagZeroCopyStatAppInit(unsigned char lineId, u
 		BcmCoreDpcSyncExit(SYNC_RX);
 		return NULL;
 	}
-	bufSize = (bufSize+3) & ~3;
+	
 	bufSize += sizeof(uint);	/* Reserve sizeof(uint) for adslDmaDesc->flags */
 #ifdef USE_RESERVE_SHARE_MEM
-	alignSbkLen = (bufSize + 0xf) & ~0xf;
-	alignSbkLen += sizeof(struct skb_shared_info);
+	bufSize = (bufSize + 0xf) & ~0xf;
+	alignSbkLen = bufSize + 0x10 + sizeof(struct skb_shared_info);
 	alignSbkLen = (alignSbkLen + 0xf) & ~0xf;
 	printk("%s: bufSize=%d alignSbkLen=%d sizeof(struct skb_shared_info)=%u\n", __FUNCTION__, bufSize, alignSbkLen, (uint)sizeof(struct skb_shared_info));
 	pDescRing = XdslCoreReservedSharedMemAlloc(lineId, ((sizeof(adslDmaDesc) + alignSbkLen) * numOfBuf)+0xf);
@@ -999,11 +1038,16 @@ diagZeroCopyAppCtrlType * BcmCoreDiagZeroCopyStatAppInit(unsigned char lineId, u
 			skb->protocol = htons(eth_type_trans (skb, model->dev));
 			skb->data = DIAG_DATA_ALIGN(skb->head, dataAlignMask);
 #if 0
-			printk("%s: skb=%p head=%p data=%p tail=%x end=%x skb_shinfo=%p,pData=%p\n",
-				__FUNCTION__, skb, skb->head, skb->data, skb->tail, skb->end, skb_shinfo(skb), pData);
+			printk("%s: skb=%lx head=%lx data=%lx tail=%lx end=%lx skb_shinfo=%lx,pData=%lx\n",
+				__FUNCTION__, (uintptr_t)skb, (uintptr_t)skb->head, (uintptr_t)skb->data,
+				(uintptr_t)skb->tail, (uintptr_t)skb->end, (uintptr_t)skb_shinfo(skb), (uintptr_t)pData);
 #endif
 			memcpy(skb->data, model->data, frameHeaderLength);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+			refcount_set(&skb->users, DIAG_SKB_USERS-1);
+#else
 			atomic_set(&skb->users, DIAG_SKB_USERS-1);
+#endif
 			ppskb[i] = skb;
 			pData += alignSbkLen;
 		} else {
@@ -1011,6 +1055,7 @@ diagZeroCopyAppCtrlType * BcmCoreDiagZeroCopyStatAppInit(unsigned char lineId, u
 			break;
 		}
 	}
+	pDrvSkbPool->skbModel = model;
 	pDrvSkbPool->numOfSkbs = i;
 	pDrvSkbPool->numOfShortSkbs = 0;
 	pDrvSkbPool->skbLengh = bufSize;
@@ -1022,6 +1067,7 @@ diagZeroCopyAppCtrlType * BcmCoreDiagZeroCopyStatAppInit(unsigned char lineId, u
 	pDrvSkbPool->extraSkb = 0;
 	pDrvSkbPool->skbHeadRoomReserve = 0;
 #else
+	bufSize = (bufSize+3) & ~3;
 	pDrvSkbPool= DevSkbAllocate(model, bufSize, numOfBuf, 0, 0, dataAlignMask, frameHeaderLength, dmaZone, 0);
 	if(NULL == pDrvSkbPool) {
 		printk("%s: Failed to allocate skbPools\n", __FUNCTION__);
@@ -1029,7 +1075,8 @@ diagZeroCopyAppCtrlType * BcmCoreDiagZeroCopyStatAppInit(unsigned char lineId, u
 		return NULL;
 	}
 #endif
-	pDrvSkbPool->skbLengh -= sizeof(uint);
+
+	pDrvSkbPool->skbLengh -= sizeof(uint);	/* Reserved for pFlag */
 #ifdef USE_RESERVE_SHARE_MEM
 	pAppCtrl = (diagZeroCopyAppCtrlType *) kmalloc(sizeof(diagZeroCopyAppCtrlType), GFP_ATOMIC);
 #else
@@ -1077,7 +1124,7 @@ diagZeroCopyAppCtrlType * BcmCoreDiagZeroCopyStatAppInit(unsigned char lineId, u
 	diagCtrl.zeroCopyAppTbl[appIndex] = pAppCtrl;
 	BcmCoreDpcSyncExit(SYNC_RX);
 	
-	printk("%s: lineId=%d pAppCtrl=0x%p pDescRing=0x%p, bufCnt=%d bufLen=%d\n",
+	printk("%s: lineId=%d pAppCtrl=0x%px pDescRing=0x%px, bufCnt=%d bufLen=%d\n",
 		__FUNCTION__, lineId, pAppCtrl, pAppCtrl->pDescRing, DIAG_ZEROCOPY_NBUF_MAX(pAppCtrl), pAppCtrl->pBufPool->skbLengh);
 	
 	return pAppCtrl;
@@ -1095,7 +1142,7 @@ void BcmCoreDiagZeroCopyStatAppUnInit(diagZeroCopyAppCtrlType *pAppCtrl)
 			diagCtrl.nZeroCopyAppsActive--;
 			diagCtrl.zeroCopyAppTbl[i] = NULL;
 			BcmCoreDpcSyncExit(SYNC_RX);
-			printk("%s: lineId=%d pAppCtrl=0x%p bufIndex=%d bufIndexTxDone=%d wrCnt=%u ovrCnt=%u wrErrCnt=%u maxLpCnt=%u\n",
+			printk("%s: lineId=%d pAppCtrl=0x%px bufIndex=%d bufIndexTxDone=%d wrCnt=%u ovrCnt=%u wrErrCnt=%u maxLpCnt=%u\n",
 				__FUNCTION__, lineId, pAppCtrl, pAppCtrl->bufIndex, pAppCtrl->bufIndexTxDone,
 				(uint)pAppCtrl->wrCnt, (uint)pAppCtrl->ovrCnt, (uint)pAppCtrl->wrErrCnt, (uint)pAppCtrl->maxLpCnt);
 			DevSkbFree(pAppCtrl->pBufPool, 1);
@@ -1108,29 +1155,113 @@ void BcmCoreDiagZeroCopyStatAppUnInit(diagZeroCopyAppCtrlType *pAppCtrl)
 	}
 }
 
+static
+void BcmAdslCoreAllocateBlankSkb( struct sk_buff **ppskb  )
+{
+    struct sk_buff *pskb = *ppskb;
+
+    if ( pskb ) {
+#if 1
+        printk("%s: Warning: skb pointer is not null\n",__FUNCTION__);
+#else
+        *ppskb = NULL;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+        refcount_set(&pskb->users, 1);
+#else
+        atomic_set(&pskb->users, 1);
+#endif
+        kfree_skb(pskb);
+#endif
+    }
+
+    pskb = alloc_skb (DIAG_FRAME_HEADER_LEN + 32, GFP_ATOMIC);
+    
+	pskb->data = pskb->head + DIAG_FRAME_PAD_SIZE;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+	refcount_set(&pskb->users, DIAG_SKB_USERS);
+#else
+	atomic_set(&pskb->users, DIAG_SKB_USERS);
+#endif
+
+	*ppskb = pskb;
+}
+
 struct net_device * BcmAdslCoreDiagInit(PADSL_DIAG pAdslDiag)
 {
-	struct net_device	*dev;
-	int	dataAlignMask;
-		dataAlignMask = 3;
+	struct net_device	*dev = NULL;
+	int	dataAlignMask = 0;
+    int allocSkbPool = 0;
+    dataAlignMask = 3;
 
-	dev = BcmAdslCoreInitNetDev(pAdslDiag, LOG_FILE_PORT, &diagCtrl.skbModel, "Diag");
-
+    if ( pAdslDiag->srvIpAddr == 0 ) {
+        diagCtrl.skbModelReroute = 1;
+        if ( ! diagCtrl.skbModel )
+            BcmAdslCoreAllocateBlankSkb(&diagCtrl.skbModel);
+        diagCtrl.skbModel->dev = NULL;
+        // Indicating the corresponding skb pool will be re-routed
+        SKB_REROUTE_FIELD(diagCtrl.skbModel) = 0;
+        // Preserving client's ip, which is expected to be passed in gwIpAddr field
+        SKB_REROUTE_CLIENT_ADDR_FIELD(diagCtrl.skbModel) = pAdslDiag->gwIpAddr;
+        // Indicating the corresponding skb pool is for Diag
+        SKB_REROUTE_DEST_FIELD(diagCtrl.skbModel) = DIAG_SKB_REROUTE_DATA;
+        allocSkbPool = 1 && diagClientsTbl[DIAG_DSL_CLIENT].isRegistered;
+    }
+    else {
+        diagCtrl.skbModelReroute = 0;
+        dev = BcmAdslCoreInitNetDev(pAdslDiag, LOG_FILE_PORT, &diagCtrl.skbModel, "Diag");
+        allocSkbPool = (dev != NULL) && (diagCtrl.skbModel != NULL) && diagClientsTbl[DIAG_DSL_CLIENT].isRegistered;
+    }
+    
 	diagCtrl.diagDataMap[0] = pAdslDiag->diagMap & 0xFFFF;
 	diagCtrl.diagLogTime[0] = pAdslDiag->logTime;
-	if ((dev != NULL) && (diagCtrl.skbModel != NULL) && diagClientsTbl[DIAG_DSL_CLIENT].isRegistered)
-		diagClientsTbl[DIAG_DSL_CLIENT].diagSkbDev = DevSkbAllocate(diagCtrl.skbModel, SKB_PRE_ALLOC_SIZE, NUM_OF_SKBS_IN_POOL,
-				SHORT_SKB_PRE_ALLOC_SIZE, NUM_OF_SHORT_SKBS_IN_POOL,
-				dataAlignMask, DIAG_FRAME_HEADER_LEN, 0, 0);
-	
+
+	if (allocSkbPool) {
+	  diagClientsTbl[DIAG_DSL_CLIENT].diagSkbDev
+	    = DevSkbAllocate(diagCtrl.skbModel, SKB_PRE_ALLOC_SIZE, NUM_OF_SKBS_IN_POOL,
+                             SHORT_SKB_PRE_ALLOC_SIZE, NUM_OF_SHORT_SKBS_IN_POOL,
+                             dataAlignMask, DIAG_FRAME_HEADER_LEN, 0, 0);
+	}
 	return dev;
+}
+
+int is_udp_connection(void)
+{
+#ifdef SUPPORT_XDSLDRV_GDB
+	// Atm. we are assuming that skb reroute is used for TCP connection only
+	// so it's ok to use this flag to determine whether it is udp for the current GDB session.
+	return (diagCtrl.skbGdbReroute==0);
+#else
+	return 1;
+#endif
 }
 
 struct net_device *BcmAdslCoreGdbInit(PADSL_DIAG pAdslDiag)
 {
 #ifdef SUPPORT_XDSLDRV_GDB
+    struct net_device *dev = NULL;
+
+	printk("%s: skb reroute is used = %d\n",__FUNCTION__, (pAdslDiag->srvIpAddr == 0) );
+	
 	GdbStubInit();
-	return BcmAdslCoreInitNetDev(pAdslDiag, GDB_PORT, &diagCtrl.skbGdb, "Gdb");
+
+    if ( pAdslDiag->srvIpAddr == 0 ) {
+        diagCtrl.skbGdbReroute = 1;
+        if ( ! diagCtrl.skbGdb )
+            BcmAdslCoreAllocateBlankSkb(&diagCtrl.skbGdb);
+        diagCtrl.skbGdb->dev = NULL;
+        // Indicating the corresponding skb pool will be re-routed
+        SKB_REROUTE_FIELD(diagCtrl.skbGdb) = 0;
+        // Preserving client's ip, which is expected to be passed in gwIpAddr field
+        SKB_REROUTE_CLIENT_ADDR_FIELD(diagCtrl.skbGdb) = pAdslDiag->gwIpAddr;
+        // Indicating the corresponding skb pool is for GDB
+        SKB_REROUTE_DEST_FIELD(diagCtrl.skbGdb) = GDB_SKB_REROUTE_DATA;
+    }
+    else {
+        diagCtrl.skbGdbReroute = 0;
+        dev = BcmAdslCoreInitNetDev(pAdslDiag, GDB_PORT, &diagCtrl.skbGdb, "Gdb");
+    }
+    
+    return dev;
 #else
 	return NULL;
 #endif
@@ -1186,7 +1317,7 @@ void BcmAdslCoreDiagStartLog_1(unsigned char lineId, uint map, uint time)
 	if(NULL != diagCtrl.pEyeDataAppCtrl[lineId]) {
 		diagZeroCopyAppCtrlType *pAppCtrl = diagCtrl.pEyeDataAppCtrl[lineId];
 		if(0==diagCtrl.diagDataMap[lineId])
-			printk("%s: map=0x%X time=%d pAppCtrl=0x%p bufIndex=%d wrCnt=%u ovrCnt=%u wrErrCnt=%u maxLpCnt=%u\n",
+			printk("%s: map=0x%X time=%d pAppCtrl=0x%px bufIndex=%d wrCnt=%u ovrCnt=%u wrErrCnt=%u maxLpCnt=%u\n",
 				__FUNCTION__, (uint)map, (int)time,
 				pAppCtrl, pAppCtrl->bufIndex, (uint)pAppCtrl->wrCnt,
 				(uint)pAppCtrl->ovrCnt, (uint)pAppCtrl->wrErrCnt, (uint)pAppCtrl->maxLpCnt);
@@ -1264,7 +1395,11 @@ void BcmCoreDiagZeroCopyReturnTxDoneBuffers(diagZeroCopyAppCtrlType *pAppCtrl)
 	pPad = (ushort *)DIAG_ZEROCOPY_PAD_PTR(skb, pAppCtrl);
 	Cache_Invalidate_Len(pPad, DIAG_FRAME_PAD_SIZE);
 	pad = ADSL_ENDIAN_CONV_USHORT(*pPad);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+	while((0 != pad) && (DIAG_SKB_USERS != refcount_read(&skb->users))) {
+#else
 	while((0 != pad) && (DIAG_SKB_USERS != atomic_read(&skb->users))) {
+#endif
 		if(0 == (pad & 1)) {
 			*pPad = 0;
 			Cache_Flush_Len(pPad, DIAG_FRAME_PAD_SIZE);
@@ -1281,11 +1416,15 @@ void BcmCoreDiagZeroCopyReturnTxDoneBuffers(diagZeroCopyAppCtrlType *pAppCtrl)
 	}
 	
 	if(loop > 13) {
-		DiagWriteString(0, DIAG_DSL_CLIENT, "bufIndex=%d bufIndexTxDone=%d wrCnt=%u ovrCnt=%u wrErrCnt=%u retSkbNum=%d\n",
+		DiagWriteString(0, DIAG_DSL_CLIENT, "BcmCoreDiagZeroCopyReturnTxDoneBuffers: bufIndex=%d bufIndexTxDone=%d wrCnt=%u ovrCnt=%u wrErrCnt=%u retSkbNum=%d\n",
 			pAppCtrl->bufIndex, pAppCtrl->bufIndexTxDone, pAppCtrl->wrCnt, pAppCtrl->ovrCnt, pAppCtrl->wrErrCnt, loop);
 	}
 
 }
+
+#ifdef CONFIG_BCM963146
+#define EYE_DATA_WORKAROUND
+#endif
 
 void BcmCoreDiagZeroCopyFrameSend(diagZeroCopyAppCtrlType *pAppCtrl)
 {
@@ -1293,7 +1432,9 @@ void BcmCoreDiagZeroCopyFrameSend(diagZeroCopyAppCtrlType *pAppCtrl)
 	struct sk_buff *skb;
 	int len, n, loop=0;
 	ushort *pPad, pad;
-	
+#ifdef EYE_DATA_WORKAROUND
+	struct sk_buff *newSkb;
+#endif
 	if(NULL == diagCtrl.dbgDev)
 		return;
 	
@@ -1307,21 +1448,48 @@ void BcmCoreDiagZeroCopyFrameSend(diagZeroCopyAppCtrlType *pAppCtrl)
 	
 	while( pad & 1 ) {
 		loop++;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+		if(DIAG_SKB_USERS != refcount_read(&skb->users))
+#else
 		if(DIAG_SKB_USERS != atomic_read(&skb->users))
+#endif
 		{
 			len = pad >> 1;
 			dd = (diagSockFrame *) ((uintptr_t)skb->data-DIAG_FRAME_PAD_SIZE);
+#ifdef EYE_DATA_WORKAROUND
+			newSkb = NULL;
+			BcmCoreDpcSyncEnter(SYNC_DIAGS);
+			if (diagClientsTbl[DIAG_DSL_CLIENT].diagSkbDev != NULL) {
+				newSkb = GetSkb(diagClientsTbl[DIAG_DSL_CLIENT].diagSkbDev, len);
+				if (newSkb != NULL) {
+					diagSockFrame *dd1 = (diagSockFrame *) ((uintptr_t)newSkb->data-DIAG_FRAME_PAD_SIZE);
+					memcpy((void*)&dd1->diagHdr, (void*)&dd->diagHdr, sizeof(LogProtoHeader) + len);
+					DiagUpdateDataLen(dd1, len);
+					newSkb->len = DIAG_FRAME_HEADER_LEN + len;
+					skb_set_tail_pointer(newSkb, newSkb->len);
+					n = DEV_TRANSMIT(newSkb);
+				}
+			}
+			BcmCoreDpcSyncExit(SYNC_DIAGS);
+			*pPad = ADSL_ENDIAN_CONV_USHORT((ushort)len << 1);
+			if(NULL == newSkb)
+				n = 1;
+#else
 			Cache_Invalidate_Len(dd->diagData, len);
 			DiagUpdateDataLen(dd, len);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
+			refcount_set(&skb->users, DIAG_SKB_USERS);
+#else
 			atomic_set(&skb->users, DIAG_SKB_USERS);
+#endif
 			skb->dev = diagCtrl.dbgDev;
 			skb->len = DIAG_FRAME_HEADER_LEN + len;
-			skb->tail = (sk_buff_data_t)((uintptr_t)skb->data + skb->len);
+			skb_set_tail_pointer(skb, skb->len);
 			Cache_Flush_Len(skb->data, DIAG_FRAME_HEADER_LEN);
 			*pPad = ADSL_ENDIAN_CONV_USHORT((ushort)len << 1);
 			Cache_Flush_Len(pPad, DIAG_FRAME_PAD_SIZE);
 			n = DEV_TRANSMIT(skb);
-			
+#endif
 			if ( 0 != n)
 				pAppCtrl->wrErrCnt++;
 			else
@@ -1433,9 +1601,17 @@ void BcmAdslDiagDisconnect(int keepDiagConInfo)
 	for(clientType = 0; clientType < 4; clientType++) {
 		pSkbDev = diagClientsTbl[clientType].diagSkbDev;
 		if (pSkbDev) {
+            struct sk_buff* model = pSkbDev->skbModel;
 			diagClientsTbl[clientType].pCallback(0, LOG_CMD_DISABLE_CLIENT, 0, NULL);
 			diagClientsTbl[clientType].diagSkbDev = NULL;
 			DevSkbFree(pSkbDev, 1);
+
+            if ( model == diagCtrl.skbModel )
+                diagCtrl.skbModelReroute = 0;
+            else if ( model == diagCtrl.skbGdb )
+                diagCtrl.skbGdbReroute = 0;
+            else
+                printk("%s: Warning: unrecognized skb model\n",__FUNCTION__);
 		}
 	}
 	
@@ -1485,47 +1661,357 @@ void BcmAdslCoreDiagPrintStats(unsigned char lineId)
 
 #if defined(USE_PMC_API)
 
-int BcmXdslReadAfePLLMdiv(uchar lineId,uint32 *pCh01_cfg, uint32 *pCh45_cfg)
+#if !defined(PMC_API_VER)
+
+#define CH01_CFG	0
+#define CH23_CFG	1
+#define CH45_CFG	2
+
+typedef struct {
+    uint32 Reg;
+    uint16 mdiv0;
+    uint16 mdiv1;
+    uint8  mdiv_override0; 
+    uint8  mdiv_override1;
+    uint8  mdel0;
+    uint8  mdel1;
+}pll_ch_cfg_t;
+
+static int BcmXdslGetAfePLLChOffset(unsigned int chanId)
 {
-	int ret;
+	int chOffset = -1;
 	
-	if(kPMC_NO_ERROR != (ret =ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset (ch01_cfg), pCh01_cfg))) {
-		BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read ch01_cfg error(%d)\n", ret);
+	switch(chanId)
+	{
+		case CH01_CFG:
+#ifdef CONFIG_BCM963146
+			chOffset = AFEPLLBPCMRegOffset(ch01_cfg);
+#else
+            chOffset = PLLBPCMRegOffset(ch01_cfg);
+#endif
+			break;
+		case CH23_CFG:
+#ifdef CONFIG_BCM963146
+			chOffset = AFEPLLBPCMRegOffset(ch23_cfg);
+#else
+            chOffset = PLLBPCMRegOffset(ch23_cfg);
+#endif
+			break;
+		case CH45_CFG:
+#ifdef CONFIG_BCM963146
+			chOffset = AFEPLLBPCMRegOffset(ch45_cfg);
+#else
+            chOffset = PLLBPCMRegOffset(ch45_cfg);
+#endif
+			break;
+		default:
+			break;
+	}
+	
+	return chOffset;
+}
+
+#ifdef CONFIG_BCM963146
+static int ReadVDSL3PLLChCfg(int chOffset, uint32 *pChCfg)
+{
+    return ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, chOffset, pChCfg);
+}
+
+static int WriteVDSL3PLLChCfg(int chOffset, uint32 chCfg)
+{
+    return WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, chOffset, chCfg);
+}
+#endif
+
+static int ReadVDSL3PLLMdiv(unsigned int chanId, pll_ch_cfg_t *pChCfg)
+{
+    int ret;
+    PLL_CHCFG_REG chCfg;
+    int chOffset = BcmXdslGetAfePLLChOffset(chanId); 
+
+    if (chOffset == -1)
+        return kPMC_INVALID_PARAM;
+
+    ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, chOffset, &chCfg.Reg32);
+    if (ret)
+        return ret;
+
+    pChCfg->Reg = chCfg.Reg32;
+    pChCfg->mdiv0 = chCfg.Bits.mdiv0;
+    pChCfg->mdiv_override0 = chCfg.Bits.mdiv_override0;
+    pChCfg->mdel0 = chCfg.Bits.mdel0;
+    pChCfg->mdiv1 = chCfg.Bits.mdiv1;
+    pChCfg->mdiv_override1 = chCfg.Bits.mdiv_override1;
+    pChCfg->mdel1 = chCfg.Bits.mdel1;
+
+    return ret;
+}
+
+static int ModifyVDSL3PLLMdiv(unsigned int chanId, pll_ch_cfg_t i_chCfg)
+{
+    int ret;
+    PLL_CHCFG_REG chCfg;
+    int chOffset = BcmXdslGetAfePLLChOffset(chanId); 
+
+    if (chOffset == -1)
+        return kPMC_INVALID_PARAM;
+
+    ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, chOffset, &chCfg.Reg32);
+    if (ret)
+        return ret;
+
+    chCfg.Bits.mdiv0 = i_chCfg.mdiv0;
+    chCfg.Bits.mdiv_override0 = i_chCfg.mdiv_override0;
+    chCfg.Bits.mdel0 = i_chCfg.mdel0;
+
+    chCfg.Bits.mdiv1 = i_chCfg.mdiv1;
+    chCfg.Bits.mdiv_override1 = i_chCfg.mdiv_override1;
+    chCfg.Bits.mdel1 = i_chCfg.mdel1;
+    
+    ret = WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, chOffset, chCfg.Reg32);
+    return ret;
+}
+
+static int ResetVDSL3PLL(void)
+{
+    int ret;
+    PLL_CTRL_REG pll_ctrl;
+
+    ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(resets), &pll_ctrl.Reg32);
+    if (ret)
+        return ret;
+
+    pll_ctrl.Bits.resetb = 0;
+    pll_ctrl.Bits.post_resetb = 0;
+    ret = WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(resets), pll_ctrl.Reg32);
+
+    return ret;
+}
+
+static int ReadVDSL3PLLNdiv(uint32 *reg, int *ndiv)
+{
+    int ret;
+    PLL_NDIV_REG pll_ndiv;
+
+    ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(ndiv), &pll_ndiv.Reg32);
+    if (ret)
+        return ret;
+
+    if (reg)
+        *reg = pll_ndiv.Reg32;
+    if (ndiv)
+        *ndiv = pll_ndiv.Bits.ndiv_int;
+    return ret;
+}
+
+static int SetVDSL3Ndiv(int ndiv)
+{
+    int ret;
+    PLL_NDIV_REG pll_ndiv;
+
+    ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(ndiv), &pll_ndiv.Reg32);
+    if (ret)
+        return ret;
+    pll_ndiv.Bits.ndiv_int = ndiv;	/* ndiv_int[9:0] */
+#if defined(BOARD_H_API_VER) && (BOARD_H_API_VER > 17)
+    pll_ndiv.Bits.ndiv_override = 1;					/* Set NDIV Override bit 31*/
+#else
+    pll_ndiv.Bits.reserved0 = 1 << 1;
+#endif
+    ret = WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(ndiv), pll_ndiv.Reg32);
+
+    return ret;
+}
+
+static int ReleaseVDSL3PLLResetb(void)
+{
+    int ret;
+    PLL_CTRL_REG pll_ctrl;
+
+    ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(resets), &pll_ctrl.Reg32);
+    if (ret)
+        return ret;
+    pll_ctrl.Bits.resetb = 1;
+    ret = WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(resets), pll_ctrl.Reg32);
+    
+    return ret;
+}
+
+static int ReleaseVDSL3PLLPostResetb(void)
+{
+    int ret;
+    PLL_CTRL_REG pll_ctrl;
+
+    ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(resets), &pll_ctrl.Reg32);
+    if (ret)
+        return ret;
+    pll_ctrl.Bits.post_resetb = 1;
+    ret = WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(resets), pll_ctrl.Reg32);
+    
+    return ret;
+}
+
+static int WaitForLockVDSL3PLL(void)
+{
+    int ret;
+    PLL_LOOP1_REG pll_loop1;
+    do 
+    {
+        ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE,
+            PLLBPCMRegOffset(loop1), &pll_loop1.Reg32);
+        if (ret)
+            return ret;
+    } while (!(pll_loop1.Bits.ssc_mode));
+
+    return ret;
+}
+
+static int SetVDSL3HoldCh1(unsigned int chanId, int value)
+{
+    int ret;
+    PLL_CHCFG_REG pllch_cfg;
+    int offset =BcmXdslGetAfePLLChOffset(chanId); 
+
+    if (offset == -1)
+        return kPMC_INVALID_PARAM;
+
+    ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, offset, &pllch_cfg.Reg32);
+    if (ret)
+        return ret;
+    pllch_cfg.Bits.hold_ch1 = value;
+    
+    ret = WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, offset, pllch_cfg.Reg32);
+    return ret;
+}
+
+static int SetVDSL3EnablCh1(unsigned int chanId, int value)
+{
+    int ret;
+    int offset =BcmXdslGetAfePLLChOffset(chanId); 
+    PLL_CHCFG_REG pllch_cfg;
+
+    if (offset == -1)
+        return kPMC_INVALID_PARAM;
+
+    ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, offset, &pllch_cfg.Reg32);
+    if (ret)
+        return ret;
+    pllch_cfg.Bits.enableb_ch1 = value;
+    
+    ret = WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, offset, pllch_cfg.Reg32);
+    return ret;
+}
+
+#endif
+
+#ifdef CONFIG_BCM963146
+int BcmXdslReadAfePLLChCfg(uchar lineId, uchar chanId, uint32 *pChCfg)
+{
+	int ret = kPMC_INVALID_PARAM;
+	int chOffset = BcmXdslGetAfePLLChOffset(chanId);
+	
+	if(-1 == chOffset) {
+		BcmAdslCoreDiagWriteStatusString(lineId, "BcmXdslReadAfePLLChCfg: Invalid chanId(%d)\n", chanId);
 		return ret;
 	}
 	
-	if(kPMC_NO_ERROR != (ret =ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset (ch45_cfg), pCh45_cfg)))
-		BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read pllch45_cfg error(%d)\n", ret);
+	ret = ReadVDSL3PLLChCfg(chOffset, pChCfg);
 	
 	return ret;
 }
 
+int BcmXdslWriteAfePLLChCfg(uchar lineId, uchar chanId, uint32 chCfg)
+{
+	int ret = kPMC_INVALID_PARAM;
+	int chOffset = BcmXdslGetAfePLLChOffset(chanId);
+	
+	if(-1 == chOffset) {
+		BcmAdslCoreDiagWriteStatusString(lineId, "BcmXdslWriteAfePLLChCfg: Invalid chanId(%d)\n", chanId);
+		return ret;
+	}
+	
+	ret = WriteVDSL3PLLChCfg(chOffset, chCfg);
+	
+	return ret;
+}
+#endif
+
+int BcmXdslReadAfePLLMdiv(uchar lineId, uint32 *pCh01_cfg, uint32 *pCh45_cfg)
+{
+	int ret;
+    pll_ch_cfg_t Ch01_cfg, Ch45_cfg; 
+	
+	ret = ReadVDSL3PLLMdiv(CH01_CFG, &Ch01_cfg);
+	if(kPMC_NO_ERROR != ret)
+	{
+		BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read ch01_cfg error(%d)\n", ret);
+		return ret;
+	}
+	
+	ret = ReadVDSL3PLLMdiv(CH45_CFG, &Ch45_cfg);
+	if(kPMC_NO_ERROR != ret)
+		BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read pllch45_cfg error(%d)\n", ret);
+
+	if(pCh01_cfg != NULL)
+        *pCh01_cfg = Ch01_cfg.Reg;
+	
+	if(pCh45_cfg != NULL)
+        *pCh45_cfg = Ch45_cfg.Reg;
+
+	return ret;
+}
+
+int BcmXdslReadAfePLLMdiv_extend(uchar lineId, pll_ch_cfg_t *pCh01_cfg, pll_ch_cfg_t *pCh45_cfg)
+{
+	int ret;
+	
+	ret = ReadVDSL3PLLMdiv(CH01_CFG, pCh01_cfg);
+	if(kPMC_NO_ERROR != ret)
+	{
+		BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read ch01_cfg error(%d)\n", ret);
+		return ret;
+	}
+	
+	ret = ReadVDSL3PLLMdiv(CH45_CFG, pCh45_cfg);
+	if(kPMC_NO_ERROR != ret)
+		BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read pllch45_cfg error(%d)\n", ret);
+	
+	return ret;
+}
 void BcmXdslWriteAfePLLMdiv(uchar lineId, uint32 param1, uint32 param2)
 {
 	int ret;
-	PLL_CHCFG_REG pllch01_cfg;
-	PLL_CHCFG_REG pllch45_cfg;
+	pll_ch_cfg_t pllch01_cfg;
+	pll_ch_cfg_t pllch45_cfg;
 	
-	if(kPMC_NO_ERROR != (ret =ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset (ch01_cfg), &pllch01_cfg.Reg32))) {
+	ret = ReadVDSL3PLLMdiv(CH01_CFG, &pllch01_cfg);
+	if(kPMC_NO_ERROR != ret)
+	{
 		BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read ch01_cfg error(%d)\n", ret);
 		return;
 	}
-	if(kPMC_NO_ERROR != (ret =ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset (ch45_cfg), &pllch45_cfg.Reg32))) {
+
+ 	ret = ReadVDSL3PLLMdiv(CH45_CFG, &pllch45_cfg);
+	if(kPMC_NO_ERROR != ret)
+    	{
 		BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read ch45_cfg error(%d)\n", ret);
 		return;
 	}
 
-	pllch01_cfg.Bits.mdiv0 = param1&0xFF;	//This should be the default value anyway from Ch0 Mdiv.  8 bit field to change div value
-	pllch01_cfg.Bits.mdiv_override0 = 1;	//Override bit that allows the mdiv value to be seen by the PLL.
+	pllch01_cfg.mdiv0 = param1&0xFF;	//This should be the default value anyway from Ch0 Mdiv.  8 bit field to change div value
+	pllch01_cfg.mdiv_override0 = 1;	//Override bit that allows the mdiv value to be seen by the PLL.
 
-	pllch45_cfg.Bits.mdiv1 = param2&0xFF;	//This should now change the value of Ch5 of the PLL,  the default value of this should be 0x3.
-	pllch45_cfg.Bits.mdiv_override1 = 1;	//Override bit that allows the mdiv value to be seen by the PLL. 
+	pllch45_cfg.mdiv1 = param2&0xFF;	//This should now change the value of Ch5 of the PLL,  the default value of this should be 0x3.
+	pllch45_cfg.mdiv_override1 = 1;	//Override bit that allows the mdiv value to be seen by the PLL. 
 
-	if(kPMC_NO_ERROR != (ret =WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(ch01_cfg), pllch01_cfg.Reg32))) {
+    	ret = ModifyVDSL3PLLMdiv(CH01_CFG, pllch01_cfg);
+	if(kPMC_NO_ERROR != ret)
+    	{
 		BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Write ch01_cfg error(%d)\n", ret);
 		return;
 	}
-	if(kPMC_NO_ERROR != (ret =WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(ch45_cfg), pllch45_cfg.Reg32)))
+    	ret =ModifyVDSL3PLLMdiv(CH45_CFG, pllch45_cfg);
+	if(kPMC_NO_ERROR != ret)
 		BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Write ch45_cfg error(%d)\n", ret);
 }
 
@@ -1537,7 +2023,7 @@ extern void BcmXdslCorePrintCurrentMedia(void);
 
 static uintptr_t BcmAdslCoreDiagAddrConv(uintptr_t addr)
 {
-#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178)
+#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963146)
 	if(((addr&0xff000000)==0x80000000) || ((addr&0xff000000)==0xff000000)) {
 #if defined(CONFIG_BCM963158)
 		if((addr&0xff000000)==0x80000000)
@@ -1617,23 +2103,48 @@ static void BcmAdslCoreDebugReadMem(unsigned char lineId, DiagDebugData *pDbgCmd
 	}
 }
 
-void *BcmAdslAllocPhyMem(uint size)
+/* Same condition as for pXdslDummyDevice initialization in BcmAdslCore.c; will not be true for 63178  */
+#if defined(CONFIG_ARM64) || defined(CONFIG_PHY_PARAM) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0))
+#define USE_DMA_COHERENT	1
+#endif
+
+void *BcmAdslAllocPhyMem(uint size, void **ppPhysAddr)
 {
 	void		*p;
-
+#ifdef ADSL_SDRAM_RESERVE_SIZE
+	return AdslCoreSystemReservedMemAlloc(size, ppPhysAddr);
+#elif !defined(USE_DMA_COHERENT)
 	if (kerSysGetSdramSize() >= 0x18000000)
 	  p = kmalloc(size, GFP_ATOMIC | GFP_DMA);
 	else
 	  p = calloc (1, size);
+	if (NULL != p)
+	  *ppPhysAddr = (void *) virt_to_phys(p);
+#else
+	dma_addr_t  physAddr;
+
+	p = dma_alloc_coherent(pXdslDummyDevice, size, &physAddr, GFP_KERNEL);
+	*ppPhysAddr = (void *) physAddr;
+	//printk("BcmAdslAllocPhyMem: dev=0x%px p=0x%px phyAddr=0x%llX\n", pXdslDummyDevice, p, physAddr);
+#endif
 	return p;
 }
 
-void  BcmAdslFreePhyMem(void *addr)
+void  BcmAdslFreePhyMem(void *addr, void *physAddr, uint size)
 {
+#ifdef ADSL_SDRAM_RESERVE_SIZE
+	AdslCoreSystemReservedMemFree(addr, physAddr, size);
+#elif !defined(USE_DMA_COHERENT)
 	if (kerSysGetSdramSize() >= 0x18000000)
 	  kfree(addr);
 	else
 	  free(addr);
+#else
+	dma_addr_t phys_addr = (dma_addr_t)physAddr;
+
+	//printk("BcmAdslFreePhyMem: p=0x%px phyAddr=0x%llX size=%u\n", addr, phys_addr, size);
+	dma_free_coherent(pXdslDummyDevice, size, addr, phys_addr); 
+#endif
 }
 
 #ifdef SECONDARY_AFEID_FN
@@ -1667,6 +2178,8 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 				diagConnectInfo.devName);
 			break;
 		case LOG_CMD_CONNECT:
+        {
+            int skb_reroute = (pAdslDiag->srvIpAddr == 0);
 			origDiagMap = diagCtrl.diagDataMap[lineId];
 			printk("CONNECT request from srvIpAddr=%s, dstPort=%d, diagMap=0x%08X\n",
 				ConvertToDottedIpAddr(ADSL_ENDIAN_CONV_INT32(pAdslDiag->srvIpAddr), buf), dstPort, (uint)map);
@@ -1685,7 +2198,7 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 			if (pAdslDiag->diagMap & DIAG_DATA_GDB_ID) {
 				BcmCoreDpcSyncEnter(SYNC_RX);
 				pDev = BcmAdslCoreGdbInit(pAdslDiag);
-				if(NULL != pDev)
+				if( skb_reroute || (NULL != pDev) )
 					diagCtrl.gdbDev = pDev;
 				BcmCoreDpcSyncExit(SYNC_RX);
 				return;
@@ -1708,13 +2221,13 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 					
 					BcmCoreDpcSyncEnter(SYNC_RX);
 					pDev = BcmAdslCoreDiagInit(pAdslDiag);
-					if((NULL != pDev) && (NULL != diagCtrl.skbModel)) {
+					if(skb_reroute || ((NULL != pDev) && (NULL != diagCtrl.skbModel))) {
 						diagLockSession = 1;
 						diagCtrl.dbgDev = pDev;
 					}
 					BcmCoreDpcSyncExit(SYNC_RX);
 					
-					sprintf(tmpStr, "%s: pDev=0x%p diagCtrl.skbModel=0x%p\n", __FUNCTION__, pDev, diagCtrl.skbModel);
+					sprintf(tmpStr, "%s: pDev=0x%px diagCtrl.skbModel=0x%px\n", __FUNCTION__, pDev, diagCtrl.skbModel);
 					printk("%s", tmpStr);
 					DiagWriteString(lineId, DIAG_DSL_CLIENT, tmpStr);
 				}
@@ -1724,7 +2237,10 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 					dslDrvSkbPool *pDrvSkbPoolTmp = diagClientsTbl[DIAG_DSL_CLIENT].diagSkbDev;
 					dslDrvSkbPool *pDrvSkbPoolTmp1 = NULL;
 					pDev = diagCtrl.dbgDev;
-					
+#if 1
+                    if ( skb_reroute )
+                        printk("%s: skb_reroute not handling this yet(reconn)\n",__FUNCTION__);
+#endif
 					sprintf(tmpStr, "Reject connection request from srvIpAddr %s\n", ConvertToDottedIpAddr(ADSL_ENDIAN_CONV_INT32(pAdslDiag->srvIpAddr),buf));
 					printk("%s", tmpStr);
 					DiagWriteString(lineId, DIAG_DSL_CLIENT, tmpStr);
@@ -1763,7 +2279,7 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 				}
 			}
 			
-			if (adslCoreInitialized && (NULL != diagCtrl.dbgDev)) {
+			if ( adslCoreInitialized && ( (NULL != diagCtrl.dbgDev) || (skb_reroute && diagCtrl.skbModel) ) ) {
 				adslVersionInfo		verInfo;
 				adslMibInfo		*pAdslMib;
 				long		mibLen;
@@ -1801,6 +2317,7 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 				BcmXdslCoreSendAfeInfo(0);	/* Send AFE info to DslDiags */
 				BcmAdslDiagSendHdr();
 			}
+        } /* end of case LOG_CMD_CONNECT */
 			break;
 		case LOG_CMD_ENABLE_CLIENT: /* sent after connect command */
 		{
@@ -1876,38 +2393,48 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 		}
 		break;
 		case LOG_CMD_DISCONNECT:
+        {
+            int ip_mismatch = 0;
 			printk ("DISCONNECT Request(%s) from srvIpAddr=%s diagLockSession=%d regressionLock=%d\n",
 				(map & DIAG_FORCE_DISCONNECT) ? "forced": "not-forced",
 				ConvertToDottedIpAddr(ADSL_ENDIAN_CONV_INT32(pAdslDiag->srvIpAddr), buf),
 				diagLockSession, diagRegressionLock);
 			
-			if(NULL == diagCtrl.dbgDev) {
+			if( ! BcmAdslDiagIsConnected() ) {
 				printk ("CPE is already in Diags disconnected state!\n");
 				break;
 			}
 			
-			if(NULL != diagCtrl.skbModel)
+			if(NULL != diagCtrl.skbModel) {
 				dd = (diagSockFrame *) DiagPacketStart(diagCtrl.skbModel);
+                if ( diagCtrl.skbModelReroute )
+                    ip_mismatch = (pAdslDiag->srvIpAddr != SKB_REROUTE_CLIENT_ADDR_FIELD(diagCtrl.skbModel));
+                else
+                    ip_mismatch = (pAdslDiag->srvIpAddr != dd->ipHdr.dstAddr);
+            }
 			else
 				dd = NULL;
 			
-			if( (NULL != dd) && (pAdslDiag->srvIpAddr != dd->ipHdr.dstAddr) )
+			if( (NULL != dd) && ip_mismatch )
 				DiagWriteString(lineId, DIAG_DSL_CLIENT, "DISCONNECT Request(%s) from srvIpAddr = %s diagLockSession=%d regressionLock=%d\n",
 					(map & DIAG_FORCE_DISCONNECT) ? "forced": "not-forced",
 					ConvertToDottedIpAddr(ADSL_ENDIAN_CONV_INT32(pAdslDiag->srvIpAddr), buf), diagLockSession, diagRegressionLock);
 			
 			if( 0 == (map & DIAG_FORCE_DISCONNECT) ) {
 				if( diagLockSession && (NULL != dd) ){
-					if ( pAdslDiag->srvIpAddr != dd->ipHdr.dstAddr )
+					if ( ip_mismatch ) {
 						break;	/* Reject DISCONNECT */
+                    }
 				}
 			}
 			else if( diagRegressionLock && (NULL != dd) ){
-				if(pAdslDiag->srvIpAddr != dd->ipHdr.dstAddr)
+				if( ip_mismatch ) {
 					break;	/* Reject DISCONNECT */
+                }
 			}
 			
 			BcmAdslDiagDisconnect(0);
+        } // end of case LOG_CMD_DISCONNECT
 			break;
 		case LOG_CMD_DEBUG:
 		{
@@ -1930,15 +2457,15 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 				case DIAG_DEBUG_CMD_READ_AFEPLLMDIV:
 				{
 					int ret;
-					PLL_CHCFG_REG pllch01_cfg, pllch45_cfg;
-					ret = BcmXdslReadAfePLLMdiv(lineId, &pllch01_cfg.Reg32, &pllch45_cfg.Reg32);
+					pll_ch_cfg_t pllch01_cfg, pllch45_cfg;
+					ret = BcmXdslReadAfePLLMdiv_extend(lineId, &pllch01_cfg, &pllch45_cfg);
 					
 					if(kPMC_NO_ERROR == ret)
 						BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read ch01_cfg = 0x%08x mdiv0=%d overide0=%d, ch45_cfg = 0x%08x mdiv1=%d overide1=%d\n",
-							(uint)pllch01_cfg.Reg32, pllch01_cfg.Bits.mdiv0, pllch01_cfg.Bits.mdiv_override0,
-							(uint)pllch45_cfg.Reg32, pllch45_cfg.Bits.mdiv1, pllch45_cfg.Bits.mdiv_override1);
-				}
+							(uint)pllch01_cfg.Reg, pllch01_cfg.mdiv0, pllch01_cfg.mdiv_override0,
+							(uint)pllch45_cfg.Reg, pllch45_cfg.mdiv1, pllch45_cfg.mdiv_override1);
 					break;
+				}
 					
 				case DIAG_DEBUG_CMD_WRITE_AFEPLLMDIV:
 					BcmXdslWriteAfePLLMdiv(lineId, pDbgCmd->param1, pDbgCmd->param2);
@@ -1947,76 +2474,49 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 				case DIAG_DEBUG_CMD_READ_AFEPLLNDIV:
 				{
 					int ret;
-					PLL_NDIV_REG pll_ndiv;
-					ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE,
-							PLLBPCMRegOffset(ndiv), &pll_ndiv.Reg32);
+				    	uint32 Reg32;
+                    			int ndiv_int;
+					ret = ReadVDSL3PLLNdiv(&Reg32, &ndiv_int);
 					if (ret) {
 						BcmAdslCoreDiagWriteStatusString(lineId, "Read NDIV error(%d)\n", ret);
 						return;
 					}
-					BcmAdslCoreDiagWriteStatusString(lineId, "Read pll_ndiv = 0x%08x --> ndiv_int = 0x%x\n", pll_ndiv.Reg32, pll_ndiv.Bits.ndiv_int);
+					BcmAdslCoreDiagWriteStatusString(lineId, "Read pll_ndiv = 0x%08x --> ndiv_int = 0x%x\n", Reg32, ndiv_int);
 					break;
 				}
 				case DIAG_DEBUG_CMD_WRITE_AFEPLLNDIV:
 				{
 					int ret;
-					PLL_NDIV_REG pll_ndiv;
-					PLL_CTRL_REG pll_ctrl;
-					PLL_LOOP1_REG pll_loop1;
+                    			int ndiv_int = pDbgCmd->param1 & 0x3FF;
 					
 					/* Stop PHY MIPS */
 					BcmAdslCoreStop();
 					
 					/* Put the PLL in reset */
-					ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE,
-							PLLBPCMRegOffset(resets), &pll_ctrl.Reg32);
-					if (ret)
-						return;
-					pll_ctrl.Bits.resetb = 0;
-					pll_ctrl.Bits.post_resetb = 0;
-					ret = WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE,
-							PLLBPCMRegOffset(resets), pll_ctrl.Reg32);
+                    			ret = ResetVDSL3PLL();
 					if (ret)
 						return;
 					BcmAdslCoreDiagWriteStatusString(lineId, "Put the PLL in reset\n");
 					
 					/* Change NDIV Field */
-					ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE,
-							PLLBPCMRegOffset(ndiv), &pll_ndiv.Reg32);
+					ret = SetVDSL3Ndiv(ndiv_int);
 					if (ret)
 						return;
-					pll_ndiv.Bits.ndiv_int = pDbgCmd->param1 & 0x3FF;	/* ndiv_int[9:0] */
-					pll_ndiv.Bits.reserved0 = 1 << 1;					/* reserved0[31:30], Set NDIV Override bit 31*/
-					ret = WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE,
-							PLLBPCMRegOffset(ndiv), pll_ndiv.Reg32);
-					if (ret)
-						return;
-					BcmAdslCoreDiagWriteStatusString(lineId, "Change NDIV Field to %d\n", pll_ndiv.Bits.ndiv_int);
+					BcmAdslCoreDiagWriteStatusString(lineId, "Change NDIV Field to %d\n", ndiv_int);
 					
 					/* Release resetb */
-					ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE,
-							PLLBPCMRegOffset(resets), &pll_ctrl.Reg32);
-					if (ret)
-						return;
-					pll_ctrl.Bits.resetb = 1;
-					ret = WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE,
-							PLLBPCMRegOffset(resets), pll_ctrl.Reg32);
+                    			ret = ReleaseVDSL3PLLResetb();
 					if (ret)
 						return;
 					BcmAdslCoreDiagWriteStatusString(lineId, "Release resetb\n");
 					
-					do {
-						ret = ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE,
-								PLLBPCMRegOffset(loop1), &pll_loop1.Reg32);
-						if (ret)
-							return;
-					} while (!(pll_loop1.Bits.ssc_mode));
+                    			ret = WaitForLockVDSL3PLL();
+                    			if (ret)
+                        			return;
 					BcmAdslCoreDiagWriteStatusString(lineId, "The PLL is locked\n");
 					
 					/* Release post_resetb */
-					pll_ctrl.Bits.post_resetb = 1;
-					ret = WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE,
-							PLLBPCMRegOffset(resets), pll_ctrl.Reg32);
+					ret = ReleaseVDSL3PLLPostResetb();
 					if (ret)
 						return;
 					BcmAdslCoreDiagWriteStatusString(lineId, "Release post_resetb\n");
@@ -2028,34 +2528,23 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 				case DIAG_DEBUG_CMD_SET_AFEPLLHOLDENABLEBITS:
 				{
 					int ret;
-					PLL_CHCFG_REG pllch45_cfg;
-					
-					if(kPMC_NO_ERROR != (ret =ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset (ch45_cfg), &pllch45_cfg.Reg32))) {
-						BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read ch45_cfg error(%d)\n", ret);
-						return;
-					}
 	
-					//Set Hold of ch[5], setting this bit to 1 will hold the clock low.	 Change to 0 to enable the clock again.  Change should be glitchless. 
-					pllch45_cfg.Bits.hold_ch1 = (0 != pDbgCmd->param1)? 1: 0;
-					
-					if(kPMC_NO_ERROR != (ret =WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(ch45_cfg), pllch45_cfg.Reg32))) {
-						BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Write ch45_cfg error(%d)\n", ret);
+					//Set Hold of ch[5], setting this bit to 1 will hold the clock low.	 
+                    			//Change to 0 to enable the clock again. 
+					ret = SetVDSL3HoldCh1(CH45_CFG, (0 != pDbgCmd->param1)? 1: 0);
+                    			if (ret)
+                    			{
+						BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Set Hold error(%d)\n", ret);
 						return;
 					}
 					
 					//Similarly for enable_ch[5], setting this bit to 1 will disable the PLL Channel. 
 					//Setting this bit to 0 will enable the Channel. 
 					
-					if(kPMC_NO_ERROR != (ret =ReadBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset (ch45_cfg), &pllch45_cfg.Reg32))) {
-						BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read ch45_cfg error(%d)\n", ret);
-						return;
-					}
-					
-					//Set Enable_b of ch[5], setting this bit to 1 will disable the PLL Post divider.	Change to 0 to enable the again. 
-					pllch45_cfg.Bits.enableb_ch1 = (0 != pDbgCmd->param2)? 1: 0;
-					
-					if(kPMC_NO_ERROR != (ret =WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(ch45_cfg), pllch45_cfg.Reg32))) {
-						BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Write ch45_cfg error(%d)\n", ret);
+					ret = SetVDSL3EnablCh1(CH45_CFG, (0 != pDbgCmd->param2)? 1: 0);
+					if(ret) 
+                    			{
+						BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Set Enable error(%d)\n", ret);
 						return;
 					}
 					break;
@@ -2063,87 +2552,123 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 				case DIAG_DEBUG_CMD_READ_AFEPLLMDEL:
 				{
 					int ret;
-					PLL_CHCFG_REG pllch01_cfg, pllch45_cfg;
+					pll_ch_cfg_t pllch01_cfg, pllch45_cfg;
 					
-					ret = BcmXdslReadAfePLLMdiv(lineId, &pllch01_cfg.Reg32, &pllch45_cfg.Reg32);
+					ret = BcmXdslReadAfePLLMdiv_extend(lineId, &pllch01_cfg, &pllch45_cfg);
 					if(kPMC_NO_ERROR == ret)
+                    			{
 						BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read ch01_cfg = 0x%08x mdel0=%d mdel1=%d, ch45_cfg = 0x%08x mddel0=%d mdel1=%d\n",
-							(uint)pllch01_cfg.Reg32, pllch01_cfg.Bits.mdel0, pllch01_cfg.Bits.mdel1,
-							(uint)pllch45_cfg.Reg32, pllch45_cfg.Bits.mdel0, pllch45_cfg.Bits.mdel1);
+							(uint)pllch01_cfg.Reg, pllch01_cfg.mdel0, pllch01_cfg.mdel1,
+							(uint)pllch45_cfg.Reg, pllch45_cfg.mdel0, pllch45_cfg.mdel1);
+                    			}
 				}
 					break;
 				case DIAG_DEBUG_CMD_TOGGLE_AFEPLLMDEL:
 				{
 					int ret;
-					PLL_CHCFG_REG pllch01_cfg;
-					PLL_CHCFG_REG pllch45_cfg;
+					pll_ch_cfg_t pllch01_cfg;
+					pll_ch_cfg_t pllch45_cfg;
 					
-					ret = BcmXdslReadAfePLLMdiv(lineId, &pllch01_cfg.Reg32, &pllch45_cfg.Reg32);
+					ret = BcmXdslReadAfePLLMdiv_extend(lineId, &pllch01_cfg, &pllch45_cfg);
 					if(kPMC_NO_ERROR != ret)
 						return;
 					BcmAdslCoreDiagWriteStatusString(lineId, "Before invert mdiv0/1, ch01_cfg=0x%08x mdel0=%d mdel1=%d, ch45_cfg=0x%08x mddel0=%d mdel1=%d\n",
-						(uint)pllch01_cfg.Reg32, pllch01_cfg.Bits.mdel0, pllch01_cfg.Bits.mdel1,
-						(uint)pllch45_cfg.Reg32, pllch45_cfg.Bits.mdel0, pllch45_cfg.Bits.mdel1);
+						(uint)pllch01_cfg.Reg, pllch01_cfg.mdel0, pllch01_cfg.mdel1,
+						(uint)pllch45_cfg.Reg, pllch45_cfg.mdel0, pllch45_cfg.mdel1);
 					
 					/* Invert mdiv0/1 */
-					if(pDbgCmd->param1&0x3) {
+					if(pDbgCmd->param1&0x3) 
+                    			{
 						if(pDbgCmd->param1&0x1)
-							pllch01_cfg.Bits.mdel0 ^= 1;
+							pllch01_cfg.mdel0 ^= 1;
 						if(pDbgCmd->param1&0x2)
-							pllch01_cfg.Bits.mdel1 ^= 1;
-						if(kPMC_NO_ERROR != (ret =WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(ch01_cfg), pllch01_cfg.Reg32))) {
+							pllch01_cfg.mdel1 ^= 1;
+                        			ret = ModifyVDSL3PLLMdiv(CH01_CFG, pllch01_cfg);
+						if(kPMC_NO_ERROR != ret) 
+                        			{
 							BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Write ch01_cfg error(%d)\n", ret);
 							return;
 						}
 					}
-					if(pDbgCmd->param2&0x3) {
+					if(pDbgCmd->param2&0x3) 
+                    			{
 						if(pDbgCmd->param2&0x1)
-							pllch45_cfg.Bits.mdel0 ^= 1;
+							pllch45_cfg.mdel0 ^= 1;
 						if(pDbgCmd->param2&0x2)
-							pllch45_cfg.Bits.mdel1 ^= 1;
-						if(kPMC_NO_ERROR != (ret =WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(ch45_cfg), pllch45_cfg.Reg32))) {
+							pllch45_cfg.mdel1 ^= 1;
+                        			ret = ModifyVDSL3PLLMdiv(CH45_CFG, pllch45_cfg);
+						if(kPMC_NO_ERROR != ret)
+                        			{
 							BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Write ch45_cfg error(%d)\n", ret);
 							return;
 						}
 					}
 					
-					ret = BcmXdslReadAfePLLMdiv(lineId, &pllch01_cfg.Reg32, &pllch45_cfg.Reg32);
+					ret = BcmXdslReadAfePLLMdiv_extend(lineId, &pllch01_cfg, &pllch45_cfg);
 					if(kPMC_NO_ERROR != ret)
 						return;
 					BcmAdslCoreDiagWriteStatusString(lineId, "After invert mdiv0/1, ch01_cfg=0x%08x mdel0=%d mdel1=%d, ch45_cfg=0x%08x mddel0=%d mdel1=%d\n",
-						(uint)pllch01_cfg.Reg32, pllch01_cfg.Bits.mdel0, pllch01_cfg.Bits.mdel1,
-						(uint)pllch45_cfg.Reg32, pllch45_cfg.Bits.mdel0, pllch45_cfg.Bits.mdel1);
+						(uint)pllch01_cfg.Reg, pllch01_cfg.mdel0, pllch01_cfg.mdel1,
+						(uint)pllch45_cfg.Reg, pllch45_cfg.mdel0, pllch45_cfg.mdel1);
 					
 					/* Restore mdiv0/1 */
-					if(pDbgCmd->param1&0x3) {
+					if(pDbgCmd->param1&0x3) 
+                    			{
 						if(pDbgCmd->param1&0x1)
-							pllch01_cfg.Bits.mdel0 ^= 1;
+							pllch01_cfg.mdel0 ^= 1;
 						if(pDbgCmd->param1&0x2)
-							pllch01_cfg.Bits.mdel1 ^= 1;
-						if(kPMC_NO_ERROR != (ret =WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(ch01_cfg), pllch01_cfg.Reg32))) {
+							pllch01_cfg.mdel1 ^= 1;
+                        			ret = ModifyVDSL3PLLMdiv(CH01_CFG, pllch01_cfg);
+						if(kPMC_NO_ERROR != ret)
+                        			{
 							BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Write ch01_cfg error(%d)\n", ret);
 							return;
 						}
 					}
-					if(pDbgCmd->param2&0x3) {
+					if(pDbgCmd->param2&0x3)
+                    			{
 						if(pDbgCmd->param2&0x1)
-							pllch45_cfg.Bits.mdel0 ^= 1;
+							pllch45_cfg.mdel0 ^= 1;
 						if(pDbgCmd->param2&0x2)
-							pllch45_cfg.Bits.mdel1 ^= 1;
-						if(kPMC_NO_ERROR != (ret =WriteBPCMRegister(AFEPLL_PMB_ADDR_VDSL3_CORE, PLLBPCMRegOffset(ch45_cfg), pllch45_cfg.Reg32))) {
+							pllch45_cfg.mdel1 ^= 1;
+
+                        			ret = ModifyVDSL3PLLMdiv(CH45_CFG, pllch45_cfg);
+						if(kPMC_NO_ERROR != ret )
+                        			{
 							BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Write ch45_cfg error(%d)\n", ret);
 							return;
 						}
 					}
 					
-					ret = BcmXdslReadAfePLLMdiv(lineId, &pllch01_cfg.Reg32, &pllch45_cfg.Reg32);
+					ret = BcmXdslReadAfePLLMdiv_extend(lineId, &pllch01_cfg, &pllch45_cfg);
 					if(kPMC_NO_ERROR != ret)
 						return;
 					BcmAdslCoreDiagWriteStatusString(lineId, "After restore mdiv0/1, ch01_cfg=0x%08x mdel0=%d mdel1=%d, ch45_cfg=0x%08x mddel0=%d mdel1=%d\n",
-						(uint)pllch01_cfg.Reg32, pllch01_cfg.Bits.mdel0, pllch01_cfg.Bits.mdel1,
-						(uint)pllch45_cfg.Reg32, pllch45_cfg.Bits.mdel0, pllch45_cfg.Bits.mdel1);
+						(uint)pllch01_cfg.Reg, pllch01_cfg.mdel0, pllch01_cfg.mdel1,
+						(uint)pllch45_cfg.Reg, pllch45_cfg.mdel0, pllch45_cfg.mdel1);
 				}
 					break;
+#ifdef CONFIG_BCM963146
+				case DIAG_DEBUG_CMD_READ_AFEPLL_ChCfg:
+				{
+					uint32_t ch_cfg;
+					int ret = BcmXdslReadAfePLLChCfg(lineId, pDbgCmd->param1, &ch_cfg);
+					if(kPMC_NO_ERROR == ret)
+						BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read chanId %d chCfg=0x%08x\n", pDbgCmd->param1, ch_cfg);
+					else
+						BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Read chanId %d error(%d)\n", pDbgCmd->param1, ret);
+					break;
+				}
+				case DIAG_DEBUG_CMD_WRITE_AFEPLL_ChCfg:
+				{
+					int ret = BcmXdslWriteAfePLLChCfg(lineId, pDbgCmd->param1, pDbgCmd->param2);
+					if(kPMC_NO_ERROR == ret)
+						BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Write chanId %d chCfg=0x%08x done\n", pDbgCmd->param1, pDbgCmd->param2);
+					else
+						BcmAdslCoreDiagWriteStatusString(lineId, "AFE PLL Write chanId %d chCfg=0x%08x error(%d)\n", pDbgCmd->param1, pDbgCmd->param2, ret);
+					break;
+				}
+#endif
 #endif	/* USE_PMC_API */
 				case DIAG_DEBUG_CMD_STAT_SAVE_LOCAL:
 				{
@@ -2162,7 +2687,7 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 							break;
 						}
 						res = BcmAdsl_DiagStatSaveInit( pMem, 2 * pDbgCmd->param2);
-						printk("%s - %s pMem=0x%p len=%d\n",
+						printk("%s - %s pMem=0x%px len=%d\n",
 								"BcmAdsl_DiagStatSaveInit",
 								( BCMADSL_STATUS_SUCCESS == res ) ? successStr: failStr,
 										pMem, pDbgCmd->param2);
@@ -2188,7 +2713,7 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 						printk("%s", tmpStr);
 						
 						if( BCMADSL_STATUS_SUCCESS == res ) {
-							sprintf(tmpStr, "nStatus=%d pAddr=0x%p len=%d pAddr1=0x%p len1=%d\n",
+							sprintf(tmpStr, "nStatus=%d pAddr=0x%px len=%d pAddr1=0x%px len1=%d\n",
 								savedStatInfo.nStatus, savedStatInfo.pAddr, savedStatInfo.len,
 								savedStatInfo.pAddr1, savedStatInfo.len1);
 							DiagWriteString(lineId, DIAG_DSL_CLIENT, tmpStr);
@@ -2234,7 +2759,7 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 						}
 						res = BcmAdsl_DiagStatSaveInit( pMem, 2 * pDbgCmd->param2);
 						if( BCMADSL_STATUS_SUCCESS != res ) {
-							printk("%s - %s pMem=0x%p len=%u\n",
+							printk("%s - %s pMem=0x%px len=%u\n",
 									"BcmAdsl_DiagStatSaveInit", failStr, pMem, pDbgCmd->param2);
 							break;
 						}
@@ -2267,7 +2792,7 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 						}
 						res = BcmAdsl_DiagStatSaveInit( pMem, 2 * pDbgCmd->param2);
 						if( BCMADSL_STATUS_SUCCESS != res ) {
-							DiagWriteString(lineId, DIAG_DSL_CLIENT, "%s - %s pMem=0x%p len=%d\n",
+							DiagWriteString(lineId, DIAG_DSL_CLIENT, "%s - %s pMem=0x%px len=%d\n",
 									"BcmAdsl_DiagStatSaveInit", failStr, pMem, pDbgCmd->param2);
 							break;
 						}
@@ -2281,10 +2806,10 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 						printk("** Logging paused ** \n");
 						res = BcmAdsl_DiagStatSaveGet(&savedStatInfo);
 						if( BCMADSL_STATUS_SUCCESS == res ) {
-							BcmAdslCoreDiagWriteStatusString(lineId, "	nStatus=%d pAddr=0x%p len=%d pAddr1=0x%p len1=%d\n",
+							BcmAdslCoreDiagWriteStatusString(lineId, "	nStatus=%d pAddr=0x%px len=%d pAddr1=0x%px len1=%d\n",
 									savedStatInfo.nStatus, savedStatInfo.pAddr, savedStatInfo.len,
 									savedStatInfo.pAddr1, savedStatInfo.len1);
-							printk("	nStatus=%d pAddr=0x%p len=%d pAddr1=0x%p len1=%d\n",
+							printk("	nStatus=%d pAddr=0x%px len=%d pAddr1=0x%px len1=%d\n",
 									savedStatInfo.nStatus, savedStatInfo.pAddr, savedStatInfo.len,
 									savedStatInfo.pAddr1, savedStatInfo.len1);
 						}
@@ -2306,7 +2831,7 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 					    dumpBuf.pBuf = NULL;
 					    BcmCoreCommandHandler(&cmd);
 					    if (!AdslCorePhyReservedMemFree(pBufTmp))
-					      BcmAdslFreePhyMem(pBufTmp);
+					      BcmAdslFreePhyMem(pBufTmp, dbPhysAddr, dumpBuf.bufSize);
 					  }
 					}
 					else if (kDumpSaveCmd == pDbgCmd->param1) {
@@ -2321,27 +2846,27 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 
 					  if (NULL != dumpBuf.pBuf) {
 					    if (!AdslCorePhyReservedMemFree(dumpBuf.pBuf))
-						  BcmAdslFreePhyMem(dumpBuf.pBuf);
+						  BcmAdslFreePhyMem(dumpBuf.pBuf, dbPhysAddr, dumpBuf.bufSize);
 					  }
 					  dumpBuf.bufSize = pDbgCmd->param1 << 10;
-					  dumpBuf.pBuf = BcmAdslAllocPhyMem(dumpBuf.bufSize);
+					  dumpBuf.pBuf = BcmAdslAllocPhyMem(dumpBuf.bufSize, &dbPhysAddr);
 					  if (NULL != dumpBuf.pBuf) {
-					   pPhys = (void *) virt_to_phys(dumpBuf.pBuf);
+					   pPhys = dbPhysAddr;
 					   if (ADSL_PHY_SUPPORT(kAdslPhyVmAddrSupport)) {
 						uintptr_t  pa = (uintptr_t) pPhys;
 					    if ( ((pa < 0x19800000) && ((pa + dumpBuf.bufSize) > 0x19000000)) ||
 							 ((pa < 0x20000000) && ((pa + dumpBuf.bufSize) > 0x1FE00000)) ) {
 					      /* in PHY LMEM/RMEM or register space */
-					      printk("DIAG_DEBUG_CMD_DUMPBUF_CFG: Kernel buffer allocated in PHY LMEM or reg address space ptr=0x%p phyAddr=0x%p\n", dumpBuf.pBuf, pPhys);
-					      BcmAdslFreePhyMem(dumpBuf.pBuf);
+					      printk("DIAG_DEBUG_CMD_DUMPBUF_CFG: Kernel buffer allocated in PHY LMEM or reg address space ptr=0x%px phyAddr=0x%px\n", dumpBuf.pBuf, pPhys);
+					      BcmAdslFreePhyMem(dumpBuf.pBuf, dbPhysAddr, dumpBuf.bufSize);
 					      dumpBuf.pBuf = NULL;
 					    }
 					   }
 					   else {
 					    if ((((uintptr_t) pPhys) + dumpBuf.bufSize) > 0x19000000) {
 					      /* too high for PHY to reach; free and try to allocate in reserved memory */
-					      printk("DIAG_DEBUG_CMD_DUMPBUF_CFG: Kernel buffer allocated too high ptr=0x%p phyAddr=0x%p\n", dumpBuf.pBuf, pPhys);
-					      BcmAdslFreePhyMem(dumpBuf.pBuf);
+					      printk("DIAG_DEBUG_CMD_DUMPBUF_CFG: Kernel buffer allocated too high ptr=0x%px phyAddr=0x%px\n", dumpBuf.pBuf, pPhys);
+					      BcmAdslFreePhyMem(dumpBuf.pBuf, dbPhysAddr, dumpBuf.bufSize);
 					      dumpBuf.pBuf = NULL;
 					    }
 					   }
@@ -2351,21 +2876,21 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 					      dumpBuf.pBuf = AdslCorePhyReservedMemAlloc(dumpBuf.bufSize);
 					      if (NULL == dumpBuf.pBuf)
 					        break;
-					      pPhys = (void *) (uintptr_t) RES_SDRAM_ADDR_TO_ADSL(dumpBuf.pBuf);
+					      pPhys = (void *) (uintptr_t) SDRAM_ADDR_TO_PHYS(dumpBuf.pBuf);
 					  }
-					  printk("DIAG_DEBUG_CMD_DUMPBUF_CFG: Buffer allocated ptr=0x%p size=%d phyAddr=0x%p\n", dumpBuf.pBuf, (int)dumpBuf.bufSize, pPhys);
+					  printk("DIAG_DEBUG_CMD_DUMPBUF_CFG: Buffer allocated ptr=0x%px size=%d phyAddr=0x%px\n", dumpBuf.pBuf, (int)dumpBuf.bufSize, pPhys);
 
-#if defined(CONFIG_BCM963158)
+#if defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)	// TO DO: Tony - Double check
 					  dumpBuf.pHostAddr = (void *) ADSL_ENDIAN_CONV_INT64(((uintptr_t)dumpBuf.pBuf));
 #elif defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963178)
 					  dumpBuf.pHostAddr = (void *) ADSL_ENDIAN_CONV_INT32(((uint)dumpBuf.pBuf));
 #endif
 					  dumpBuf.bufSize |= (pDbgCmd->param2 & 7) << 29;
-#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963158)
+#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)
 					  pBufTmp = dumpBuf.pBuf;
 					  if (ADSL_PHY_SUPPORT(kAdslPhyVmAddrSupport))
 					    pPhys = (void *) (((uintptr_t)pPhys) | kDumpCtrlAbsMemAddr);
-#if defined(CONFIG_BCM963158)
+#if defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)	// TO DO: Tony - Double check
 					  dumpBuf.pBuf = (void *) ADSL_ENDIAN_CONV_INT64((uintptr_t)pPhys);
 #else
 					  dumpBuf.pBuf = (void *) ADSL_ENDIAN_CONV_INT32((uint)pPhys);
@@ -2375,7 +2900,7 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 					  BcmCoreCommandHandler(&cmd);
 					  while (AdslCoreCommandIsPending())
 					    bcmOsSleep(1);
-#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963158)
+#if defined(CONFIG_BCM963138) || defined(CONFIG_BCM963148) || defined(CONFIG_BCM963178) || defined(CONFIG_BCM963158) || defined(CONFIG_BCM963146)
 					  dumpBuf.pBuf = pBufTmp;
 #endif
 					  dumpBuf.bufSize = pDbgCmd->param1 << 10;
@@ -2436,7 +2961,7 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 					int res, (*pExecFunc) (uint param) = (void *)(uintptr_t)(pDbgCmd->param1);
 
 					res = (*pExecFunc) (pDbgCmd->param2);
-					BcmAdslCoreDiagWriteStatusString(lineId, "CMD_EXEC_FUNC at 0x%p param=%d: result=%d", pExecFunc, pDbgCmd->param2, res);
+					BcmAdslCoreDiagWriteStatusString(lineId, "CMD_EXEC_FUNC at 0x%px param=%d: result=%d", pExecFunc, pDbgCmd->param2, res);
 				}
 					break;
 #ifdef ADSLDRV_SILENT_MODE
@@ -2478,18 +3003,20 @@ void BcmAdslCoreDiagCmd(unsigned char lineId, PADSL_DIAG pAdslDiag)
 	}
 }
 
+int BcmAdslGdbIsConnected(void)
+{
+	return diagCtrl.skbGdb && ( (diagCtrl.skbGdbReroute) || (NULL != diagCtrl.gdbDev) );
+}
 
-#ifdef SUPPORT_EXT_DSL_BONDING_SLAVE
 int BcmAdslDiagIsConnected(void)
 {
-	return (NULL != diagCtrl.dbgDev);
+	return diagCtrl.skbModel && ( (diagCtrl.skbModelReroute) || (NULL != diagCtrl.dbgDev)  );
 }
-#endif
 
 int BcmAdslDiagIsActive(void)
 {
 #ifndef SUPPORT_EXT_DSL_BONDING_SLAVE
-	return (NULL != diagCtrl.dbgDev);
+	return diagCtrl.skbModel && ( (diagCtrl.skbModelReroute) || (NULL != diagCtrl.dbgDev) );
 #else
 	return AC_TRUE;
 #endif
@@ -2539,8 +3066,14 @@ uint BcmXdslDiagGetSrvIpAddr(void)
 {
 	uint res = 0;
 	if(NULL != diagCtrl.skbModel) {
-		diagSockFrame *dd = (diagSockFrame *) DiagPacketStart(diagCtrl.skbModel);
-		res = htonl(dd->ipHdr.dstAddr);
+        if ( diagCtrl.skbModelReroute ) {
+            res = SKB_REROUTE_CLIENT_ADDR_FIELD(diagCtrl.skbModel);
+        }
+        else {
+            diagSockFrame *dd = (diagSockFrame *) DiagPacketStart(diagCtrl.skbModel);
+            res = dd->ipHdr.dstAddr;
+        }
+        res = htonl(res);
 	}
 	return res;
 }

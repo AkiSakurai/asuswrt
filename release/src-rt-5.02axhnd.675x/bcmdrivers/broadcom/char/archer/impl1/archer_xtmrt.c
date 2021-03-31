@@ -61,11 +61,9 @@
 #include <archer_cpu_queues.h>
 #include "archer_xtmrt.h"
 
-int iudma_driver_tx_queue_notify_host(int q_id);
-
-static int archer_xtm_deviceDetails (uint32_t devId, uint32_t bufStatus, uint32_t headerLen, uint32_t trailerLen)
+static int archer_xtm_deviceDetails (uint32_t devId, uint32_t encap, uint32_t trafficType, uint32_t bufStatus, uint32_t headerLen, uint32_t trailerLen)
 {
-    iudma_update_device_details (devId, bufStatus, headerLen, trailerLen);
+    iudma_update_device_details (devId, encap, trafficType, bufStatus, headerLen, trailerLen);
     return 0;
 }
 
@@ -73,14 +71,14 @@ static int archer_xtm_linkUp (uint32_t devId, uint32_t matchId, uint8_t txVcid)
 {
     if(devId >= ARCHER_XTM_MAX_DEV_CTXS)
     {
-        printk("Invalid Device Context Index: %u", devId);
+        bcm_print("Invalid Device Context Index: %u", devId);
 
         return -1;
     }
 
     if(matchId >= ARCHER_XTM_MAX_MATCH_IDS)
     {
-        printk("Invalid Device Context Index: %u", matchId);
+        bcm_print("Invalid Device Context Index: %u", matchId);
 
         return -1;
     }
@@ -108,14 +106,18 @@ static int archer_txdma_disable (uint32_t dmaIndex)
 static int archer_reinit_iudma (void)
 {
     setup_iudma();
-    iudma_driver_tx_queue_notify_host(LAN_CPU_TX);
     return 0;
 }
 
-static int archer_txdma_setDropAlg (archer_dropalg_config_t *cfg)
+static int archer_txdma_setDropAlg (int queue_id, archer_drop_config_t *cfg)
 {
-    iudma_tx_dropAlg_set (cfg);
+    iudma_tx_dropAlg_set (queue_id, cfg);
     return 0;
+}
+
+static uint32_t archer_txdma_getQSize(void)
+{
+    return iudma_tx_qsize_get();
 }
 
 
@@ -132,6 +134,7 @@ void bindXtmHandlers(void)
     xtmHooks.txdmaEnable = archer_txdma_enable;
     xtmHooks.txdmaDisable = archer_txdma_disable;
     xtmHooks.setTxChanDropAlg = archer_txdma_setDropAlg;
+    xtmHooks.txdmaGetQSize = archer_txdma_getQSize;
 
     /* details for INGQOS and DropAlg can go here */
 #if defined (CONFIG_BCM963268) || defined(CONFIG_BCM963178) 

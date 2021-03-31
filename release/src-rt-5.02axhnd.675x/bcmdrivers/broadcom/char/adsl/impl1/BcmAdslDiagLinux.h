@@ -79,10 +79,37 @@ typedef struct dslDrvSkbPool {
 	int            skbHeadRoomReserve;
 } dslDrvSkbPool;
 
+#ifndef USE_DEV_TRANSMIT   /* In case the definition is coming from outside, we want to use that */
+#define USE_DEV_TRANSMIT 0
+#endif
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
 /* Note: Linux4.04L.02 and older don't have "netdev_ops->ndo_start_xmit" */
-#define	DEV_TRANSMIT(x)	(x)->dev->netdev_ops->ndo_start_xmit (x, (x)->dev)
+#define	DEV_TRANSMIT_(x)	(x)->dev->netdev_ops->ndo_start_xmit (x, (x)->dev)
 #else
-#define	DEV_TRANSMIT(x)	dev_queue_xmit(x)
+#define	DEV_TRANSMIT_(x)	dev_queue_xmit(x)
 #endif
+
+#if defined(USE_DEV_TRANSMIT) && USE_DEV_TRANSMIT
+#define DEV_TRANSMIT(x) DEV_TRANSMIT_(x)
+#else
+#define DEV_TRANSMIT(x) BcmAdslPendingSkbAdd(x)
+#endif
+
+#define PTRDIAGSOCKFRAME(skb) ((diagSockFrame *) ((uintptr_t)skb->data-DIAG_FRAME_PAD_SIZE))
+
+/**
+ * When we rerouting skb's data back to userspace (ie, not using DEV_TRANSMIT_)
+ * we re-use some of skb's fields to pass some information:
+ * SKB_REROUTE_FIELD(skb)              - if equals to 0, means we want to reroute this skb
+ * SKB_REROUTE_CLIENT_ADDR_FIELD(skb)  - placeholder to preserve the client's ip
+ * SKB_REROUTE_DEST_FIELD(skb)         - placeholder to specify where are we sending the data to - diag, gdb, gui.
+ */
+#define SKB_REROUTE_FIELD(skb)                  ( PTRDIAGSOCKFRAME(skb)->ipHdr.dstAddr )
+#define SKB_REROUTE_CLIENT_ADDR_FIELD(skb)      ( PTRDIAGSOCKFRAME(skb)->ipHdr.srcAddr )
+#define SKB_REROUTE_DEST_FIELD(skb)             ( PTRDIAGSOCKFRAME(skb)->udpHdr.dstPort )
+
+int BcmAdslPendingSkbAdd(struct sk_buff* skb);
+// void BcmAdslPendingSkbMsgRead(void* d, long* dlen); this dec moved to BcmAdslDiag.h
+
 #define	DIAG_DATA_ALIGN(x, y)	((unsigned char *)(((unsigned long)(x)+(unsigned long)(y)) & ~(y)))

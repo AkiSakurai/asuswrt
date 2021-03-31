@@ -4,7 +4,7 @@
  *
  * VHT support
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -48,7 +48,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_vht.h 777422 2019-08-01 04:34:31Z $
+ * $Id: wlc_vht.h 782016 2019-12-09 09:33:24Z $
  */
 
 #ifndef _wlc_vht_h_
@@ -82,7 +82,7 @@ extern void wlc_vht_init_defaults(wlc_vht_info_t *vhti);
 /* Update tx and rx mcs maps */
 extern void wlc_vht_update_mcs_cap_ext(wlc_vht_info_t *vhti);
 extern void wlc_vht_update_mcs_cap(wlc_vht_info_t *vhti);
-
+extern void wlc_vht_update_defaults(wlc_vht_info_t *vhti);
 /* IE mgmt */
 extern vht_cap_ie_t * wlc_read_vht_cap_ie(wlc_vht_info_t *vhti, uint8 *tlvs, int tlvs_len,
 	vht_cap_ie_t* cap_ie);

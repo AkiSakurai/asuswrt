@@ -148,6 +148,32 @@ CmsRet rcl_qMgmtObject( _QMgmtObject *newObj,
             cmsLog_error("rclQos_setQueueMgmtObject returns error. ret=%d", ret);
             return ret;
          }
+
+         /* if queue management enable is changed, simply config/unconfig 
+          * all the classification rules here instead of doing that inside 
+          * each of classification object RCL in order to have 
+          * better performance
+          */
+         if (newObj->X_BROADCOM_COM_EnableStateChanged)
+         {
+            /* First unconfig all the class rules. */
+            if ((ret = rclQos_classUnconfig(NULL)) != CMSRET_SUCCESS)
+            {
+               cmsLog_error("rclQos_classUnconfig returns error. ret=%d", ret);
+               return ret;
+            }
+
+            /* Then config all the class rules. */
+            if ((ret = rclQos_classConfig(NULL, TRUE)) != CMSRET_SUCCESS)
+            {
+               cmsLog_error("rclQos_classConfig returns error. ret=%d", ret);
+               return ret;
+            }
+
+            /* set X_BROADCOM_COM_EnableStateChanged to FALSE in the end */
+            newObj->X_BROADCOM_COM_EnableStateChanged = FALSE;
+         }
+
          /* Reconfig QoS port shaping for all Ethernet interfaces */
          rutQos_portShapingConfigAll();
       }
@@ -184,29 +210,29 @@ CmsRet rcl_qMgmtQueueObject( _QMgmtQueueObject *newObj,
    else if (newObj != NULL && currObj != NULL)
    {
       /* edit curr instance or set a new instance */
-      /* if queue management is not enabled, queue can not be enabled. */
-      if (newObj->queueEnable)
-      {
-         InstanceIdStack iidStack2;
-         _QMgmtObject *qMgmtObj = NULL;
+      InstanceIdStack iidStack2;
+      _QMgmtObject *qMgmtObj = NULL;
+      UBOOL8 enableStateChanged = FALSE;
 
-         INIT_INSTANCE_ID_STACK(&iidStack2);
-         if ((ret = cmsObj_get(MDMOID_Q_MGMT, &iidStack2, 0, (void **)&qMgmtObj)) != CMSRET_SUCCESS)
-         {
-            cmsLog_error("cmsObj_get <MDMOID_Q_MGMT> returns error. ret=%d", ret);
-            return ret;
-         }
-         
-         if (strstr(newObj->queueInterface, "WLANConfiguration") == NULL)
-         {
-            /* for non-wlan interface queue, if queue management is not enabled,
-             * queue can not be enabled.
-             */
-            newObj->queueEnable = qMgmtObj->enable;
-         }
-         cmsObj_free((void **)&qMgmtObj); /* no longer needed */
+      INIT_INSTANCE_ID_STACK(&iidStack2);
+      if ((ret = cmsObj_get(MDMOID_Q_MGMT, &iidStack2, 0, (void **)&qMgmtObj)) != CMSRET_SUCCESS)
+      {
+         cmsLog_error("cmsObj_get <MDMOID_Q_MGMT> returns error. ret=%d", ret);
+         return ret;
       }
-	  
+
+      if (newObj->queueEnable && strstr(newObj->queueInterface, "WLANConfiguration") == NULL)
+      {
+         /* for non-wlan interface queue, if queue management is not enabled,
+          * queue can not be enabled.
+          */
+         newObj->queueEnable = qMgmtObj->enable;
+      }
+
+      /* we are in the case of switched on/off QoS from web if X_BROADCOM_COM_EnableStateChanged is set */
+      enableStateChanged = qMgmtObj->X_BROADCOM_COM_EnableStateChanged;
+
+      cmsObj_free((void **)&qMgmtObj); /* no longer needed */
       /* unconfig the curr queue object instance */
       if ((ret = rutQos_qMgmtQueueConfig(QOS_COMMAND_UNCONFIG, currObj)) != CMSRET_SUCCESS)
       {
@@ -221,11 +247,17 @@ CmsRet rcl_qMgmtQueueObject( _QMgmtQueueObject *newObj,
          return ret;
       }
 
-      /* also configure associated classifiers */
-      if ((ret = rclQos_setClassQueueObject(iidStack->instance[0])) != CMSRET_SUCCESS)
+      /* don't configure any classifiers here when enableStateChanged is TRUE,
+       * we will handle it outside this RCL, see rcl_qMgmtObject().
+       */
+      if (!enableStateChanged)
       {
-         cmsLog_error("rclQos_setClassQueueObject returns error. ret=%d", ret);
-         return ret;
+         /* also configure associated classifiers */
+         if ((ret = rclQos_setClassQueueObject(iidStack->instance[0])) != CMSRET_SUCCESS)
+         {
+            cmsLog_error("rclQos_setClassQueueObject returns error. ret=%d", ret);
+            return ret;
+         }
       }
    }
    else

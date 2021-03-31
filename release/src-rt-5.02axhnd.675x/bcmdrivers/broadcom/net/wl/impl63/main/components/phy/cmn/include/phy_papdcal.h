@@ -1,7 +1,7 @@
 /*
  * PAPD CAL module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_papdcal.h 780340 2019-10-22 18:55:57Z $
+ * $Id: phy_papdcal.h 785862 2020-04-08 01:20:21Z $
  */
 
 #ifndef _phy_papdcal_h_
@@ -94,6 +94,8 @@ int phy_papdcal_get_tiagain(phy_info_t *pi, int32* tiagain);
 int phy_papdcal_set_tiagain(phy_info_t *pi, int8 tiagain);
 int phy_papdcal_get_comp_disable(phy_info_t *pi, int32* comp_disable);
 int phy_papdcal_set_comp_disable(phy_info_t *pi, int8 comp_disable);
+int phy_papdcal_get_dump(phy_info_t *pi, int32* papdcal_dump);
+int phy_papdcal_set_dump(phy_info_t *pi, int8 papdcal_dump);
 #endif // endif
 #if defined(WLTEST) || defined(DBG_PHY_IOV) || defined(WFD_PHY_LL_DEBUG)
 #ifndef ATE_BUILD

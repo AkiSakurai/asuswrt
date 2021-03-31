@@ -5,7 +5,7 @@
  * THIS IS A GENERATED FILE - DO NOT EDIT
  * Generated on Tue Aug 16 16:22:54 PDT 2011
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

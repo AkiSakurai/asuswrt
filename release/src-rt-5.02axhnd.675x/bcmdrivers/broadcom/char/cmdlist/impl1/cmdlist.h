@@ -67,19 +67,6 @@
  *
  *******************************************************************************/
 
-#if defined(RDP_SIM)
-#define bcmLog_setLogLevel(arg...)
-#define __print(fmt, arg...) bdmf_trace(fmt, ##arg)
-#define BCM_LOG_ERROR(x, fmt, arg...) __print(fmt, ##arg)
-#define isLogDebug 1
-#define __logDebug(fmt, arg...)     bdmf_trace(fmt, ##arg)
-#define __logInfo(fmt, arg...)      bdmf_trace(fmt, ##arg)
-#define __logNotice(fmt, arg...)    bdmf_trace(fmt, ##arg)
-#define __logError(fmt, arg...)     bdmf_trace(fmt, ##arg)
-#define __debug(fmt, arg...)        bdmf_trace(fmt, ##arg)
-#define __dumpPartialCmdList()      cmdlist_dump_partial(); __print("\n")
-#else
-#define __print(fmt, arg...) bcm_printk(fmt, ##arg)
 #define isLogDebug bcmLog_logIsEnabled(BCM_LOG_ID_CMDLIST, BCM_LOG_LEVEL_DEBUG)
 #define __logDebug(fmt, arg...)   BCM_LOG_DEBUG(BCM_LOG_ID_CMDLIST, fmt, ##arg)
 #define __logInfo(fmt, arg...)    BCM_LOG_INFO(BCM_LOG_ID_CMDLIST, fmt, ##arg)
@@ -89,20 +76,24 @@
 #define __debug(fmt, arg...)                    \
     BCM_LOGCODE(                                \
         if(isLogDebug)                          \
-            __print(fmt, ##arg); )
+            bcm_print(fmt, ##arg); )
 
 #define __dumpPartialCmdList()                  \
     BCM_LOGCODE(                                \
         if(isLogDebug)                          \
         {                                       \
             cmdlist_dump_partial();             \
-            __print("\n");                      \
+            bcm_print("\n");                    \
         } )
-#endif // RDP_SIM
 
 #define CMDLIST_CMD_CHECK(_ret)                         \
     do {                                                \
-        if((_ret) != CMDLIST_RET_OK)                                 \
+        if((_ret) == CMDLIST_RET_ERR_OVERFLOW)          \
+        {                                               \
+            __logInfo("Overflow, Could not Add Command");        \
+            return (_ret);                              \
+        }                                               \
+        else if((_ret) != CMDLIST_RET_OK)               \
         {                                               \
             __logError("Could not Add Command");        \
             return (_ret);                              \

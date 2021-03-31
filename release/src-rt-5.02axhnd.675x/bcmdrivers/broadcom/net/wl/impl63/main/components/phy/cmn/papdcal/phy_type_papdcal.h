@@ -1,7 +1,7 @@
 /*
  * PAPD CAL module internal interface (to PHY specific implementations).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_type_papdcal.h 780340 2019-10-22 18:55:57Z $
+ * $Id: phy_type_papdcal.h 785862 2020-04-08 01:20:21Z $
  */
 
 #ifndef _phy_type_papdcal_h_
@@ -129,6 +129,8 @@ typedef struct {
 	phy_type_papdcal_set_int_fn_t set_tiagain;
 	phy_type_papdcal_get_var_fn_t get_comp_disable;
 	phy_type_papdcal_set_int_fn_t set_comp_disable;
+	phy_type_papdcal_get_var_fn_t get_dump;
+	phy_type_papdcal_set_int_fn_t set_dump;
 	phy_type_papdcal_set_uint_fn_t set_skip;
 	phy_type_papdcal_get_var_fn_t get_skip;
 	phy_type_papdcal_void_fn_t wd_wfd_ll;

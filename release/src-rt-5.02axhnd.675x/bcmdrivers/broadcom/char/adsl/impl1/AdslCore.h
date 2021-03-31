@@ -194,6 +194,11 @@ unsigned int AdslCorePhyReservedMemAvail(void);
 void XdslCoreReservedSharedMemFree(unsigned char lineId, void *p);
 void *XdslCoreReservedSharedMemAlloc(unsigned char lineId, long size);
 #endif
+#ifdef ADSL_SDRAM_RESERVE_SIZE
+void	*AdslCoreSystemReservedMemAlloc(unsigned int size, void **ppPhysAddr);
+void	AdslCoreSystemReservedMemFree(void *p, void *physAddr, unsigned int size);
+unsigned int AdslCoreSystemReservedMemAvail(void);
+#endif
 AC_BOOL AdslCoreInit(void);
 void	AdslCoreUninit(void);
 AC_BOOL AdslCoreHwReset(AC_BOOL bCoreReset);

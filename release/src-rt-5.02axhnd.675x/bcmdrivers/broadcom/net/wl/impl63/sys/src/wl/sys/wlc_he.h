@@ -1,7 +1,7 @@
 /*
  * 802.11ax HE (High Efficiency) STA signaling and d11 h/w manipulation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_he.h 780711 2019-11-01 14:21:08Z $
+ * $Id: wlc_he.h 787816 2020-06-12 11:52:24Z $
  */
 
 #ifndef _wlc_he_h_
@@ -66,24 +66,26 @@ int wlc_he_init_defaults(wlc_he_info_t *hei);
 
 #ifdef WL11AX
 
-/* scb HE flags */
-#define SCB_HE_LDPCCAP			0x0001
-#define SCB_HE_TX_STBCCAP		0x0002
-#define SCB_HE_RX_STBCCAP		0x0004
-#define SCB_HE_HTC_CAP			0x0008
-#define SCB_HE_SU_BFR			0x0010
-#define SCB_HE_SU_MU_BFE		0x0020	/* in HE, MUBFE must be supported if SUBFE is 1 */
-#define SCB_HE_MU_BFR			0x0040
-#define SCB_HE_OMI			0x0080
-#define SCB_HE_OMI_UL_MU_DATA_DIS	0x0100
-#define SCB_HE_DL_QAM1024_LT242		0x0200 /* DL supports 1024 QAM using < 242 tone RU */
-#define SCB_HE_UL_QAM1024_LT242		0x0400 /* UL supports 1024 QAM using < 242 tone RU */
-#define SCB_HE_5G_20MHZ_ONLY		0x0800
-#define SCB_HE_BSR_CAPABLE		0x1000 /* Supports BSR */
-#define SCB_HE_DEVICE_CLASS		0x2000 /* 1: Class A; 0: Class B */
-#define SCB_HE_DL_242TONE		0x4000 /* 242 Tone RU */
-#define SCB_HE_CQI_BFE			0x8000 /* AP can receive triggered cqi feedback */
+/* scb HE flags (note relation to wlioctl_defs.h scb he flags) */
+#define SCB_HE_LDPCCAP			0x00001
+#define SCB_HE_TX_STBCCAP		0x00002
+#define SCB_HE_RX_STBCCAP		0x00004
+#define SCB_HE_HTC_CAP			0x00008
+#define SCB_HE_SU_BFR			0x00010
+#define SCB_HE_SU_MU_BFE		0x00020	/* in HE, MUBFE must be supported if SUBFE is 1 */
+#define SCB_HE_MU_BFR			0x00040
+#define SCB_HE_OMI			0x00080
+#define SCB_HE_OMI_UL_MU_DATA_DIS	0x00100
+#define SCB_HE_DL_QAM1024_LT242		0x00200 /* DL supports 1024 QAM using < 242 tone RU */
+#define SCB_HE_UL_QAM1024_LT242		0x00400 /* UL supports 1024 QAM using < 242 tone RU */
+#define SCB_HE_5G_20MHZ_ONLY		0x00800
+#define SCB_HE_BSR_CAPABLE		0x01000 /* Supports BSR */
+#define SCB_HE_DEVICE_CLASS		0x02000 /* 1: Class A; 0: Class B */
+#define SCB_HE_DL_242TONE		0x04000 /* 242 Tone RU */
+#define SCB_HE_CQI_BFE			0x08000 /* AP can receive triggered cqi feedback */
 #define SCB_HE_DYNFRAG_RXEN		0x10000 /* Enable dynamic frag TX */
+#define SCB_HE_80IN160			0x20000 /* 80 MHz in 160/80+80 MHz HE PPDU */
+#define SCB_HE_UL2x996			0x40000 /* UL 2x996 RU support */
 
 #define SCB_HE_LDPC_CAP(v, a)		(SCB_HE_CAP(a) && \
 	(wlc_he_get_peer_caps(v, a) & SCB_HE_LDPCCAP))
@@ -157,9 +159,10 @@ bool wlc_he_omi_pmq_code(wlc_info_t *wlc, scb_t *scb, uint8 rx_nss, uint8 bw);
 #define HE_242_TONE_RANGE_EXT			2
 
 /* update scb */
-void wlc_he_update_scb_state(wlc_he_info_t *hei, int bandtype, struct scb *scb,
-	he_cap_ie_t *capie, he_op_ie_t *opie);
+void wlc_he_update_scb_state(wlc_he_info_t *hei, scb_t *scb, he_cap_ie_t *capie, he_op_ie_t *opie);
+
 uint32 wlc_he_get_peer_caps(wlc_he_info_t *hei, struct scb *scb);
+void wlc_he_add_peer_caps(wlc_he_info_t *hei, struct scb *scb, uint32 cap);
 uint8 wlc_get_heformat(wlc_info_t *wlc);
 uint8 wlc_get_hebsscolor(wlc_info_t *wlc, wlc_bsscfg_t *cfg);
 
@@ -171,11 +174,12 @@ void wlc_he_update_mcs_cap(wlc_he_info_t *hei);
 void wlc_he_set_rateset_filter(wlc_he_info_t *hei, wlc_rateset_t *rateset);
 void wlc_he_default_rateset(wlc_he_info_t *hei, wlc_rateset_t *rateset);
 
+extern uint8 wlc_he_get_scb_ampdu_max_exp(wlc_he_info_t *hei, struct scb *scb);
+
 extern uint8 wlc_he_get_bfe_ndp_recvstreams(wlc_he_info_t *hei);
 extern uint8 wlc_he_get_bfr_ndp_sts(wlc_he_info_t *hei, bool is_bw160);
 extern uint8 wlc_he_scb_get_bfr_nr(wlc_he_info_t *hei, scb_t *scb);
 extern uint8 wlc_he_get_omi_tx_nsts(wlc_he_info_t *hei, scb_t *scb);
-extern uint16 wlc_he_get_scb_flags(wlc_he_info_t *hei, struct scb *scb);
 extern uint16 wlc_he_get_scb_omi(wlc_he_info_t *hei, struct scb *scb);
 extern bool wlc_he_get_ulmu_allow(wlc_he_info_t *hei, struct scb *scb);
 extern uint8 wlc_he_get_dynfrag(wlc_info_t *wlc);

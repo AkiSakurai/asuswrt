@@ -58,8 +58,7 @@
 #include "rut_util.h"
 #include "rut_iptunnel.h"
 #include "rut_upnp.h"
-
-
+#include "rut_ebtables.h"
 
 #ifdef DMP_X_BROADCOM_COM_IPV6_1
 
@@ -461,6 +460,8 @@ CmsRet rcl_uLAPrefixInfoObject( _ULAPrefixInfoObject *newObj  __attribute__((unu
    if (newObj != NULL && currObj == NULL)
    {
       cmsLog_debug("startup condition");
+      if (cmsUtl_isUlaPrefix(newObj->prefix))
+         rutEbt_configICMPv6Reply(newObj->prefix, TRUE);
       /*br0 MAC may be changed later, skip it*/
       return CMSRET_SUCCESS;
    }
@@ -475,6 +476,8 @@ CmsRet rcl_uLAPrefixInfoObject( _ULAPrefixInfoObject *newObj  __attribute__((unu
              *ULAddress = '\0';
              cmsUtl_getULAddressByPrefix(currObj->prefix, bridgeName, ULAddress, &prefixLen);
              snprintf(cmdLine, sizeof(cmdLine), "ip -6 addr del %s/%u dev %s 2>/dev/null", ULAddress, prefixLen, bridgeName);
+             rutIpt_configRoutingChain6(currObj->prefix, bridgeName, FALSE);
+             rutEbt_configICMPv6Reply(currObj->prefix, FALSE);
              rut_doSystemAction("rut", cmdLine);
          }
 
@@ -484,6 +487,8 @@ CmsRet rcl_uLAPrefixInfoObject( _ULAPrefixInfoObject *newObj  __attribute__((unu
              *ULAddress = '\0';
              cmsUtl_getULAddressByPrefix(newObj->prefix, bridgeName, ULAddress, &prefixLen);
              snprintf(cmdLine, sizeof(cmdLine), "ip -6 addr add %s/%u dev %s 2>/dev/null", ULAddress, prefixLen, bridgeName);
+             rutIpt_configRoutingChain6(newObj->prefix, bridgeName, TRUE);
+             rutEbt_configICMPv6Reply(newObj->prefix, TRUE);
              rut_doSystemAction("rut", cmdLine);
          }
       }
@@ -492,6 +497,34 @@ CmsRet rcl_uLAPrefixInfoObject( _ULAPrefixInfoObject *newObj  __attribute__((unu
    return CMSRET_SUCCESS;
 }
 
+
+CmsRet rcl_radvdOtherInfoObject( _RadvdOtherInfoObject *newObj   __attribute__((unused)),
+                const _RadvdOtherInfoObject *currObj   __attribute__((unused)),
+                const InstanceIdStack *iidStack   __attribute__((unused)),
+                char **errorParam   __attribute__((unused)),
+				CmsRet *errorCode  __attribute__((unused)))
+{
+	_RadvdConfigMgtObject *radvdObj = NULL;
+	InstanceIdStack iidStackRadvdCfg = EMPTY_INSTANCE_ID_STACK;
+	CmsRet ret = CMSRET_SUCCESS;
+   
+	if ((ret = rut_validateObjects(newObj, currObj)) != CMSRET_SUCCESS)
+	{
+	   cmsLog_error("rut_validateObjects returns error. ret=%d", ret);
+	   return ret;
+	}
+    /*other info changed, update radvd conf*/
+	if ((ret = cmsObj_getNextFlags(MDMOID_RADVD_CONFIG_MGT, &iidStackRadvdCfg, OGF_NO_VALUE_UPDATE, (void **)&radvdObj)) == CMSRET_SUCCESS)
+	{
+		if (radvdObj->enable)
+		{
+			rut_createRadvdConf();
+			rut_restartRadvd();
+		}
+	}
+	
+	return ret;
+}
 
 CmsRet rcl_prefixInfoObject( _PrefixInfoObject *newObj  __attribute__((unused)),
                 const _PrefixInfoObject *currObj  __attribute__((unused)),

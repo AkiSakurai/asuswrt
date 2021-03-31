@@ -22,6 +22,7 @@ typedef struct
 #ifdef SUPPORT_TO6
     uint32_t to6_timeout;                             /**< TO6 timer */
 #endif
+    uint32_t dwell_timer_timeout;                     /**< dwell timer */
     uint32_t ber_interval;                            /**< Ber interval */
     uint32_t min_response_time;                       /**< Min response time */
     rdpa_polarity tx_data_polarity;                    /**< Tx data polarity */
@@ -61,6 +62,10 @@ typedef struct
     uint8_t preamble_repeat_counter ;
     uint8_t preamble[PREAMBLE_MAX_LENGTH];
     uint8_t pon_tag[PON_TAG_SIZE];
+#ifdef G989_3_AMD2
+    uint32_t downstream_pon_id;                       /* aligned, host order */
+    uint8_t cross;
+#endif
     uint8_t specific_line_rate;
 }
 XGPON_BURST_PROFILE_INFO;

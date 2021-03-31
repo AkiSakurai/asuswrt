@@ -1,7 +1,7 @@
 /*
  * Dynamic WDS module header file
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_wds.h 769558 2018-11-20 05:07:47Z $
+ * $Id: wlc_wds.h 782660 2019-12-31 04:49:02Z $
 */
 
 #ifndef _wlc_wds_h_
@@ -67,6 +67,8 @@ extern void wlc_scb_wds_free(struct wlc_info *wlc);
 extern bool wlc_wds_lazywds_is_enable(wlc_wds_info_t *mwds);
 extern int wlc_wds_create_link_event(wlc_info_t *wlc, struct scb *scb, bool isup);
 extern bool wlc_wds_is_active(wlc_info_t *wlc);
+int wlc_get_wlif_wdsindex(struct wl_if *wlif);
+int wlc_update_wds_index(wlc_bsscfg_t *cfg, struct wl_if *wlif, bool op);
 #ifdef WLCSA
 extern void wlc_wds_process_csa(wlc_info_t *wlc, wlc_bsscfg_t *cfg, wl_chan_switch_t *csa);
 #endif /* WLCSA */
@@ -102,5 +104,13 @@ extern void wlc_dwds_scb_switch_queue(wlc_info_t *wlc, wlc_bsscfg_t *cfg, wlc_tx
 #define wlc_dwds_dump_sa_list(a, b, c)	do {} while (0)
 #define wlc_dwds_scb_switch_queue(a, b, c) do {} while (0)
 #endif /* !WDS */
+
+#if defined(MAXVSLAVEDEVS) && ((MAXVSLAVEDEVS) <= 32)
+#define WLC_MAX_WDS MAXVSLAVEDEVS
+#else
+#define WLC_MAX_WDS (32u)
+#endif // endif
+/* Bit Map if the maximum interfaces created */
+#define WLC_MAX_WDS_BMP (((1ULL << WLC_MAX_WDS) - 1) & (UINT32_MAX))
 
 #endif /* _wlc_wds_h_ */

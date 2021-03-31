@@ -580,7 +580,9 @@ CmsRet rutQos_policer(QosCommandType cmdType,
             tc = SKBMARK_SET_TC_ID(tc, policerId); 
             sprintf(cmd, "ebtables -t nat -A rule%d -j mark --mark-or 0x%x --mark-target CONTINUE",
                          cInfo->key, tc);
+#ifdef SUPPORT_NF_NAT
             rut_doSystemAction("rutQos_policer", cmd);
+#endif // SUPPORT_NF_NAT
             if (cInfo->etherType == ETH_P_IPV6)
             {
                 strcpy(tblStr, "ip6tables");
@@ -590,7 +592,9 @@ CmsRet rutQos_policer(QosCommandType cmdType,
                 strcpy(tblStr, "iptables");
             }
             sprintf(cmd, "%s -t mangle -I rule%d -j MARK --or-mark 0x%x", tblStr, cInfo->key, tc);
+#ifdef SUPPORT_NF_MANGLE
             rut_doSystemAction("rutQos_policer", cmd);
+#endif // SUPPORT_NF_MANGLE
         }
         else
         {

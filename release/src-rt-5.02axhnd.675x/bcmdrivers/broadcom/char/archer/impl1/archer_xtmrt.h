@@ -60,17 +60,26 @@
 #define ARCHER_XTM_MAX_DEV_CTXS   16    /* up to 256 */
 #define ARCHER_XTM_MAX_MATCH_IDS  128
 
+#define ARCHER_XTM_TRAFFIC_TYPE_ATM 0x1
+#define ARCHER_XTM_TRAFFIC_TYPE_PTM 0x2
+
+#define ARCHER_XTM_FSTAT_CT_MASK 0x000000f0
+#define ARCHER_XTM_FSTAT_CT_AAL5 0x00000070
+
 void bindXtmHandlers(void);
 
-void iudma_update_device_details (uint32_t dev_id, uint32_t bufStatus, uint32_t headerLen, uint32_t trailerLen);
+void iudma_update_device_details (uint32_t dev_id, uint32_t encap, uint32_t trafficType, uint32_t bufStatus, uint32_t headerLen, uint32_t trailerLen);
 void iudma_update_linkup(uint32_t devId, uint32_t matchId, uint8_t txVcid);
 int iudma_txenable(uint32_t dmaIndex, uint32_t txVcid);
 int iudma_txdisable(uint32_t dmaIndex);
 void setup_iudma(void);
-void iudma_tx_dropAlg_set (archer_dropalg_config_t *cfg);
-void iudma_tx_dropAlg_get (archer_dropalg_config_t *cfg);
+int iudma_tx_dropAlg_set (int queue_id, archer_drop_config_t *cfg);
+int iudma_tx_dropAlg_get (int queue_id, archer_drop_config_t *cfg);
+uint32_t iudma_tx_qsize_get (void);
 
 void iudma_driver_stats(void);
+int iudma_txq_stats_get(int queue_id, archer_txq_stats_t *stats_p);
+
 int __init iudma_driver_construct(void);
 
 #endif /* __ARCHER_XTMRT_H__ */

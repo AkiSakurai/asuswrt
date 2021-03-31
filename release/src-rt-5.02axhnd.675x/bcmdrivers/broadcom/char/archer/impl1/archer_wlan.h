@@ -83,6 +83,11 @@ void archer_wlan_stats(void);
 
 int __init archer_wlan_construct(void);
 
+#if defined(CC_AWL_FLCTL)
+int archer_wlan_flctl_config_set (archer_wlflctl_config_t *cfg_p);
+int archer_wlan_flctl_config_get (archer_wlflctl_config_t *cfg_p);
+#endif /* CC_AWL_FLCTL */
+
 #else /* CONFIG_BCM_ARCHER_WLAN */
 
 #include "archer_wfd.h"

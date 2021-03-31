@@ -167,7 +167,7 @@ typedef unsigned char		uchar;
 #endif
 
 #if !defined(_SYS_TYPES_H) || !defined(TARG_OS_RTEMS)
-#if defined(_CFE_) || defined(__ECOS) || defined(_NOOS)
+#if defined(__ECOS) || defined(_NOOS)
  typedef unsigned int		uint;
  typedef unsigned long		ulong;
  typedef unsigned short		ushort;

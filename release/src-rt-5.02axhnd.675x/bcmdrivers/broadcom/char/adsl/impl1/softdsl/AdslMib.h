@@ -95,12 +95,6 @@
 #ifndef	AdslMibHeader
 #define	AdslMibHeader
 
-#if defined(_CFE_)
-#include "lib_types.h"
-#include "lib_string.h"
-#include "lib_printf.h"
-#endif
-
 #include "AdslMibDef.h"
 #include "BlockUtil.h"
 
@@ -147,7 +141,11 @@ extern void		AdslMibUpdateTxStat(
 					adslConnectionDataStat	*adslTxData,
 					adslPerfCounters		*adslTxPerf,
 					atmConnectionDataStat	*atmTxData,
-					ginpCounters			*pGinpCounters);
+					ginpCounters			*pGinpCounters
+#ifdef CONFIG_BCM_DSL_GFAST
+					,gfastCounters			*pGfastCounters
+#endif
+					);
 extern void XdslMibCmdSnooper (void *gDslVars, dslCommandStruct *cmd);
 
 
@@ -195,6 +193,9 @@ extern void XdslMibNotifyBitSwapRej(void *gDslVars, unsigned char dir);
 extern void AdslMibUpdateACTPSD(void *gDslVars, int ACTATP, unsigned char dir);
 extern void XdslMibUpdateAttnEtr(void *gDslVars, int dir);
 #if defined(CONFIG_BCM_DSL_GFAST)
+#ifdef SUPPORT_HMI
+extern Boolean XdslMibIsVendorIdReceived(void *gDslVars);
+#endif
 extern Boolean XdslMibIsFastRetrain(void *gDslVars);
 extern unsigned short XdslMibGetToneNumGfast(void * gDslVars);
 Public Boolean XdslMibReportAmd4GfastCounters(void *gDslVars);

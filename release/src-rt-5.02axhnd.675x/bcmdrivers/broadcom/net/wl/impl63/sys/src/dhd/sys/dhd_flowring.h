@@ -6,7 +6,7 @@
  * Provides type definitions and function prototypes used to create, delete and manage flow rings at
  * high level.
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above

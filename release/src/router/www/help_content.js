@@ -93,9 +93,12 @@ helpcontent[5] = new Array("",
 							 "<#LANHostConfig_x_WINSServer_itemdesc#>",
 							 "<#LANHostConfig_ManualDHCPEnable_itemdesc#>",
 							 "<#LANHostConfig_ManualDHCPMacaddr_itemdesc#>",
-							 "<#LANHostConfig_ManualDHCPMulticast_itemdesc#>",
+							 "<#LANHostConfig_ManualDHCPMulticast_itemdesc#>",	//11
 							 "<#LANHostConfig_ManualDHCPSTB_itemdesc#>",
-							 "<#LANHostConfig_x_DDNSHostNames_itemdesc#>");
+							 "<#LANHostConfig_x_DDNSHostNames_itemdesc#>",
+							 "<#RouterConfig_IGMPver_itemname#>",
+							 "<#RouterConfig_MLDver_itemname#>",
+							 "Enable Fast Leave");
 helpcontent[6] = new Array("",
 						   "<#RHELP_desc4#>",
 						   "<#RHELP_desc5#>",
@@ -171,7 +174,9 @@ helpcontent[11] = new Array("",
 							"<#LANHostConfig_x_TimeZone_DSTEnd_desc#>",
 							"For destination IP address, you can:<br/>(a) enter a specific IP address, such as \"192.168.1.2\"<br/>(b) enter IP addresses within one subnet or within the same IP pool, such as \"192.168.1.0/24\"",	/* untranslated */
 							"<#System_Allow_Specified_IP#>",
-							"<#usb_HDD_Hibernation_Desc#>");
+							"<#usb_HDD_Hibernation_Desc#>",
+							"If there is no client connection for more than 1 minute, the PLC will enter sleep mode (power saving). The PLC will not wake up until the client connects. (It takes about ten seconds to wake up the PLC)", /* untranslated */
+							"Enable Login CAPTCHA is to ensure only human users to pass through and prevent brute force login attack."); /* untranslated */
 //Log
 helpcontent[12] = new Array("",
 							"<#General_x_SystemUpTime_itemdesc#>",
@@ -226,7 +231,6 @@ helpcontent[19] = new Array("",
 							);
 // QoS
 helpcontent[20] = new Array("",
-							"",
 							'<#EzQoS_bandwidth_note1#>',
 							"<#min_bound_desc#>",
 							"<#max_bound_desc#>",
@@ -285,13 +289,14 @@ helpcontent[25] = new Array("",
 							"This item allows you to control whether to Enable/Disable UPBO(Upstream Power Back Off) for VDSL. DSLAM could use UPBO to reduce the Tx Power of your xDSL modem router, in some cases abnormal UPBO control from DSLAM could leads to sync up issue(such as not enough Tx Power to sync with minimum rate). Thus with this feature now you could disable UPBO and will not get affected by DSLAM setting.",
 							"This item configures Profile to be used for VDSL connection, default is 30a multi mode. However in order to work around the non-standard 30a multi mode VDSL DSLAM sync issue, which deployed by some of Germany ISP, set to 17a multi mode might be needed in order for the VDSL line to sync up. For users of other countries, there is no need to change this setting.",
 							"Apply special settings for specific country. With this option, the Stability Adjustment for ADSL is properly set according to the selected country.", 
-							"This item allows system to monitor the DSL line, designed to maintain stability of the line. Based on current line condition necessary changes will be adopted.",
+							"This item allows system to monitor the DSL line, designed to maintain stability of the line. Based on current line condition necessary changes will be adopted.",	//10
 							"This feature allows system to capture diagnostic DSL debug log in the background, duration depends on the \"Diagnostic debug log capture duration\" option, after capture completed debug log would be transmitted automatically to ASUS Support Team for analysis.",
 							"The G.INP stands for Impulse Noise Protection. It works on ADSL2, ADSL2+, and VDSL2 only. It is enabled to provide enhanced protection against impulse noise or to increase the efficiency of providing impulse noise protection. If your DSLAM does not support it, please disable it.",
 							"This item configures Rx AGC(Auto Gain Control) GAIN for ADSL, if tweak the Stability Adjustment (ADSL) setting still could not get desired downstream speed, then could try to set Rx AGC GAIN Adjustment to High Performance mode. However if your ADSL connection is unstable and has some CRC then could set to Stable mode.",
 							"This item supports G.vector. With G.vector crosstalk among the signals in the same cable could be canceled, such as far-end crosstalk (FEXT). Which would significantly improve Signal-to-Noise Ratio (SNR) that leads to higher achievable bit rates. However CO must deploy Vectored VDSL2 DSLAM in order for this feature to work. If you find it doesn't work well or you know the G.vector of your ISP is non-standard, please enable both of this option and Non-standard G.vector.",
 							"This item supports Non-standard G.vector for specific countries. Please note that if your G.vector is standard, please do not enable this option for optimized performance.",
-							"This command is  helpful for some impulse noise environment to enhance line stability."
+							"This command is  helpful for some impulse noise environment to enhance line stability.",
+							"Stability Adjustment specifically for VDSL G.INP mode"
 							);
 							
 //DualWAN
@@ -352,7 +357,7 @@ helpcontent[32] = new Array("",
 							"Add an additional layer of HMAC authentication on top of the TLS control channel to protect against DoS attacks. An OpenVPN static key will be used.",/*untranslated*/	//10
 							"This directive will set up an OpenVPN server which will allocate addresses to clients out of the given network/netmask. The server itself will take the \".1\" address of the given network for use as the server-side end‐point of the local TUN/TAP interface.",/*untranslated*/
 							"The IP address of the local and remote VPN endpoint in p2p mode.",/*untranslated*/
-							"<b>Yes</b>: Use LAN DHCP server to allocate IP address;<br> <b>No</b>: Allocate IP address from the Address Pool",/*untranslated*/
+							"<b><#checkbox_Yes#></b>: Use LAN DHCP server to allocate IP address;<br> <b><#checkbox_No#></b>: Allocate IP address from the Address Pool",/*untranslated*/
 							"The first address and the last address in the pool to be assigned to clients.",/*untranslated*/							
 							"Response the DNS query from clients.",/*untranslated*/
 							"In server mode, provide DNS information to clients.",/*untranslated*/
@@ -372,7 +377,8 @@ helpcontent[32] = new Array("",
 
 //IPSec
 helpcontent[33] = new Array("",
-							"<#vpn_ipsec_Key_Retries_Hint#>"
+							"<#vpn_ipsec_Key_Retries_Hint#>",
+							"<#vpn_ipsec_re_cert_hint#>"
 							);
 
 //Feedback

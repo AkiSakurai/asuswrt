@@ -2,50 +2,50 @@
 #define __PKT_RUNNER_PROTO_H_INCLUDED__
 
 /*
-<:copyright-BRCM:2013:proprietary:standard
+  <:copyright-BRCM:2013:proprietary:standard
 
-   Copyright (c) 2013 Broadcom 
-   All Rights Reserved
+  Copyright (c) 2013 Broadcom 
+  All Rights Reserved
 
- This program is the proprietary software of Broadcom and/or its
- licensors, and may only be used, duplicated, modified or distributed pursuant
- to the terms and conditions of a separate, written license agreement executed
- between you and Broadcom (an "Authorized License").  Except as set forth in
- an Authorized License, Broadcom grants no license (express or implied), right
- to use, or waiver of any kind with respect to the Software, and Broadcom
- expressly reserves all rights in and to the Software and all intellectual
- property rights therein.  IF YOU HAVE NO AUTHORIZED LICENSE, THEN YOU HAVE
- NO RIGHT TO USE THIS SOFTWARE IN ANY WAY, AND SHOULD IMMEDIATELY NOTIFY
- BROADCOM AND DISCONTINUE ALL USE OF THE SOFTWARE.
+  This program is the proprietary software of Broadcom and/or its
+  licensors, and may only be used, duplicated, modified or distributed pursuant
+  to the terms and conditions of a separate, written license agreement executed
+  between you and Broadcom (an "Authorized License").  Except as set forth in
+  an Authorized License, Broadcom grants no license (express or implied), right
+  to use, or waiver of any kind with respect to the Software, and Broadcom
+  expressly reserves all rights in and to the Software and all intellectual
+  property rights therein.  IF YOU HAVE NO AUTHORIZED LICENSE, THEN YOU HAVE
+  NO RIGHT TO USE THIS SOFTWARE IN ANY WAY, AND SHOULD IMMEDIATELY NOTIFY
+  BROADCOM AND DISCONTINUE ALL USE OF THE SOFTWARE.
 
- Except as expressly set forth in the Authorized License,
+  Except as expressly set forth in the Authorized License,
 
- 1. This program, including its structure, sequence and organization,
-    constitutes the valuable trade secrets of Broadcom, and you shall use
-    all reasonable efforts to protect the confidentiality thereof, and to
-    use this information only in connection with your use of Broadcom
-    integrated circuit products.
+  1. This program, including its structure, sequence and organization,
+  constitutes the valuable trade secrets of Broadcom, and you shall use
+  all reasonable efforts to protect the confidentiality thereof, and to
+  use this information only in connection with your use of Broadcom
+  integrated circuit products.
 
- 2. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS"
-    AND WITH ALL FAULTS AND BROADCOM MAKES NO PROMISES, REPRESENTATIONS OR
-    WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, WITH
-    RESPECT TO THE SOFTWARE.  BROADCOM SPECIFICALLY DISCLAIMS ANY AND
-    ALL IMPLIED WARRANTIES OF TITLE, MERCHANTABILITY, NONINFRINGEMENT,
-    FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES, ACCURACY OR
-    COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR CORRESPONDENCE
-    TO DESCRIPTION. YOU ASSUME THE ENTIRE RISK ARISING OUT OF USE OR
-    PERFORMANCE OF THE SOFTWARE.
+  2. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS"
+  AND WITH ALL FAULTS AND BROADCOM MAKES NO PROMISES, REPRESENTATIONS OR
+  WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, WITH
+  RESPECT TO THE SOFTWARE.  BROADCOM SPECIFICALLY DISCLAIMS ANY AND
+  ALL IMPLIED WARRANTIES OF TITLE, MERCHANTABILITY, NONINFRINGEMENT,
+  FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES, ACCURACY OR
+  COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR CORRESPONDENCE
+  TO DESCRIPTION. YOU ASSUME THE ENTIRE RISK ARISING OUT OF USE OR
+  PERFORMANCE OF THE SOFTWARE.
 
- 3. TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL BROADCOM OR
-    ITS LICENSORS BE LIABLE FOR (i) CONSEQUENTIAL, INCIDENTAL, SPECIAL,
-    INDIRECT, OR EXEMPLARY DAMAGES WHATSOEVER ARISING OUT OF OR IN ANY
-    WAY RELATING TO YOUR USE OF OR INABILITY TO USE THE SOFTWARE EVEN
-    IF BROADCOM HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES;
-    OR (ii) ANY AMOUNT IN EXCESS OF THE AMOUNT ACTUALLY PAID FOR THE
-    SOFTWARE ITSELF OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS
-    SHALL APPLY NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY
-    LIMITED REMEDY.
-:> 
+  3. TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL BROADCOM OR
+  ITS LICENSORS BE LIABLE FOR (i) CONSEQUENTIAL, INCIDENTAL, SPECIAL,
+  INDIRECT, OR EXEMPLARY DAMAGES WHATSOEVER ARISING OUT OF OR IN ANY
+  WAY RELATING TO YOUR USE OF OR INABILITY TO USE THE SOFTWARE EVEN
+  IF BROADCOM HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES;
+  OR (ii) ANY AMOUNT IN EXCESS OF THE AMOUNT ACTUALLY PAID FOR THE
+  SOFTWARE ITSELF OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS
+  SHALL APPLY NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY
+  LIMITED REMEDY.
+  :> 
 */
 
 #if !defined(RDP_SIM)
@@ -76,24 +76,7 @@
  * Debugging
  *
  *******************************************************************************/
-#if defined(RDP_SIM)
-#define bcmLog_setLogLevel(arg...)
-#define __print(fmt, arg...) bdmf_trace(fmt, ##arg)
-#define BCM_LOG_ERROR(x, fmt, arg...) __print(fmt, ##arg)
-#define isLogDebug 1
-#define __logDebug(fmt, arg...)     bdmf_trace(fmt, ##arg)
-#define __logInfo(fmt, arg...)      bdmf_trace(fmt, ##arg)
-#define __logNotice(fmt, arg...)    bdmf_trace(fmt, ##arg)
-#define __logError(fmt, arg...)     bdmf_trace(fmt, ##arg)
-#define __debug(fmt, arg...)        bdmf_trace(fmt, ##arg)
-#define __dumpCmdList(_cmdList)     cmdlist_dump((_cmdList), RDPA_CMD_LIST_UCAST_LIST_SIZE_32)
-#define __dumpPartialCmdList()      cmdlist_dump_partial(); __print("\n")
-#define __dumpBlog(_blog_p)         
-#define __dumpBlogRule(_blogRule_p) 
-#else
-#if !defined(__print)
-#define __print(fmt, arg...) bcm_printk(fmt, ##arg)
-#endif
+
 #define isLogDebug bcmLog_logIsEnabled(BCM_LOG_ID_PKTRUNNER, BCM_LOG_LEVEL_DEBUG)
 #define __logDebug(fmt, arg...)   BCM_LOG_DEBUG(BCM_LOG_ID_PKTRUNNER, fmt, ##arg)
 #define __logInfo(fmt, arg...)    BCM_LOG_INFO(BCM_LOG_ID_PKTRUNNER, fmt, ##arg)
@@ -104,7 +87,7 @@
 #define __debug(fmt, arg...)                    \
     BCM_LOGCODE(                                \
         if(isLogDebug)                          \
-            __print(fmt, ##arg); )
+            bcm_print(fmt, ##arg); )
 #endif
 
 #define __dumpCmdList(_cmdList)                                         \
@@ -116,8 +99,8 @@
     BCM_LOGCODE(                                \
         if(isLogDebug)                          \
         {                                       \
-            cmdlist_dump_partial();                 \
-            __print("\n");                      \
+            cmdlist_dump_partial();             \
+            bcm_print("\n");                    \
         } )
 
 #define __dumpBlog(_blog_p)                     \
@@ -125,7 +108,7 @@
         if(isLogDebug)                          \
         {                                       \
             blog_dump((_blog_p));               \
-            __print("\n");                      \
+            bcm_print("\n");                    \
         } )
 
 #define __dumpBlogRule(_blogRule_p)             \
@@ -133,9 +116,8 @@
         if(isLogDebug)                          \
         {                                       \
             blog_rule_dump((_blogRule_p));      \
-            __print("\n");                      \
+            bcm_print("\n");                    \
         } )
-#endif // RDP_SIM
 
 /*******************************************************************************
  *

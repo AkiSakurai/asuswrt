@@ -743,14 +743,17 @@ bdmf_error_t ag_drv_lif_llid_set(uint8_t llid_index, uint32_t cfgllid0)
     }
 #endif
 
-    if (llid_index >= 16)
+    if ((llid_index < 8) || (llid_index >= 16))
     {
-        llid_index -= 8;
+        if (llid_index >= 16)
+        {
+            llid_index -= 8;
+        }
+
+        reg_llid = RU_FIELD_SET(0, LIF, LLID, CFGLLID0, reg_llid, cfgllid0);
+
+        RU_REG_RAM_WRITE(0, llid_index, LIF, LLID, reg_llid);
     }
-
-    reg_llid = RU_FIELD_SET(0, LIF, LLID, CFGLLID0, reg_llid, cfgllid0);
-
-    RU_REG_RAM_WRITE(0, llid_index, LIF, LLID, reg_llid);
 
     return BDMF_ERR_OK;
 }
@@ -772,14 +775,19 @@ bdmf_error_t ag_drv_lif_llid_get(uint8_t llid_index, uint32_t *cfgllid0)
     }
 #endif
 
-    if (llid_index >= 16)
+    if ((llid_index < 8) || (llid_index >= 16))
     {
-        llid_index -= 8;
+        if (llid_index >= 16)
+        {
+            llid_index -= 8;
+        }
+
+        RU_REG_RAM_READ(0, llid_index, LIF, LLID, reg_llid);
+
+        *cfgllid0 = RU_FIELD_GET(0, LIF, LLID, CFGLLID0, reg_llid);
     }
-
-    RU_REG_RAM_READ(0, llid_index, LIF, LLID, reg_llid);
-
-    *cfgllid0 = RU_FIELD_GET(0, LIF, LLID, CFGLLID0, reg_llid);
+    else
+        *cfgllid0 = 0;
 
     return BDMF_ERR_OK;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,7 +16,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wlfc_proto.h 780759 2019-11-01 22:53:23Z $
+ * $Id: wlfc_proto.h 785583 2020-03-31 12:57:41Z $
  *
  */
 
@@ -121,6 +121,11 @@ typedef enum {
 #define WLFC_CTL_VALUE_LEN_MACDESC		8	/** handle, interface, MAC */
 
 #define WLFC_CTL_VALUE_LEN_MAC			1	/** MAC-handle */
+
+#define WLFC_MAC_OPEN_CLOSE_FROM_PS		1
+#define WLFC_MAC_OPEN_CLOSE_NON_PS		0
+#define WLFC_CTL_VALUE_LEN_MAC_FLAGS		2	/** MAC-handle, PS flags */
+
 #define WLFC_CTL_VALUE_LEN_RSSI			1
 
 #define WLFC_CTL_VALUE_LEN_INTERFACE		1
@@ -135,6 +140,7 @@ typedef enum {
 /* Reset the flags set for the corresponding flowring of the SCB which is de-inited */
 /* FLOW_RING_FLAG_LAST_TIM | FLOW_RING_FLAG_INFORM_PKTPEND | FLOW_RING_FLAG_PKT_REQ */
 #define WLFC_RESET_ALL_FLAGS			0
+#define WLFC_SET_FLAG_INFORM_PKTPEND		(1 << 1)
 #define WLFC_CTL_VALUE_LEN_FLAGS		7	/** flags, MAC */
 
 /* free the data stored to be used for suppressed packets in future */

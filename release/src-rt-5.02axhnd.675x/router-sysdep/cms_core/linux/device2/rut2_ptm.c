@@ -101,6 +101,8 @@ CmsRet rutptm_fillL2IfName_dev2(const Layer2IfNameType ifNameType, char **ifName
       cmsLog_debug("This should never happen, Device.PTM object is not found");
       return CMSRET_INTERNAL_ERROR;      
    }
+   // Done with this object.  Free it now.
+   cmsObj_free((void **) &ptmObj);
 
    switch (ifNameType)
    {

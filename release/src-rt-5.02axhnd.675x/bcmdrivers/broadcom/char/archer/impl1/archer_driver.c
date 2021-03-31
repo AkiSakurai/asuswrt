@@ -83,6 +83,7 @@
 #include "bcm_archer_dpi.h"
 
 #include "archer_xtmrt.h"
+#include "board.h"
 
 int iudma_driver_host_bind(archer_host_hooks_t *hooks_p);
 
@@ -112,8 +113,17 @@ static const char *archer_ioctl_cmd_name[] =
     ARCHER_DECL(ARCHER_IOC_MPDCFG)
     ARCHER_DECL(ARCHER_IOC_WOL)
     ARCHER_DECL(ARCHER_IOC_DPI)
+    ARCHER_DECL(ARCHER_IOC_SYSPORT_TM)
+    ARCHER_DECL(ARCHER_IOC_ENETDROPALG_SET)
+    ARCHER_DECL(ARCHER_IOC_ENETDROPALG_GET)
+    ARCHER_DECL(ARCHER_IOC_ENETTXQSIZE_GET)
     ARCHER_DECL(ARCHER_IOC_XTMDROPALG_SET)
     ARCHER_DECL(ARCHER_IOC_XTMDROPALG_GET)
+    ARCHER_DECL(ARCHER_IOC_XTMTXQSIZE_GET)
+    ARCHER_DECL(ARCHER_IOC_ENETTXQSTATS_GET)
+    ARCHER_DECL(ARCHER_IOC_XTMTXQSTATS_GET)
+    ARCHER_DECL(ARCHER_IOC_WLFLCTLCFG_SET)
+    ARCHER_DECL(ARCHER_IOC_WLFLCTLCFG_GET)
     ARCHER_DECL(ARCHER_IOC_MAX)
 };
 
@@ -569,14 +579,14 @@ void archer_fc_bind(void)
 
         blog_unlock();
 
-        __print("Enabled Archer binding to Flow Cache\n");
+        bcm_print("Enabled Archer binding to Flow Cache\n");
     }
     else
     {
-        __print("Already Enabled\n");
+        bcm_print("Already Enabled\n");
     }
 #else
-    __print("Flow Cache is not built\n");
+    bcm_print("Flow Cache is not built\n");
 #endif
 }
 
@@ -615,14 +625,14 @@ void archer_fc_unbind(void)
 
         blog_unlock();
 
-        __print("Disabled Archer binding to Flow Cache\n");
+        bcm_print("Disabled Archer binding to Flow Cache\n");
     }
     else
     {
-        __print("Already Disabled\n");
+        bcm_print("Already Disabled\n");
     }
 #else
-    __print("Flow Cache is not built\n");
+    bcm_print("Flow Cache is not built\n");
 #endif
 }
 
@@ -686,14 +696,29 @@ void archer_coherent_mem_free(int size, void *phys_addr_p, void *p)
                       size, p, phys_addr);
 }
 
-void *archer_mem_alloc(int size)
+void *archer_mem_kzalloc(int size)
+{
+    return kzalloc(size, GFP_KERNEL);
+}
+
+void *archer_mem_kalloc(int size)
 {
     return kmalloc(size, GFP_KERNEL);
 }
 
-void archer_mem_free(void *p)
+void archer_mem_kfree(void *p)
 {
     kfree(p);
+}
+
+void *archer_mem_valloc(int size)
+{
+    return vmalloc(size);
+}
+
+void archer_mem_vfree(void *p)
+{
+    vfree(p);
 }
 
 long archer_driver_get_time_ns(void)
@@ -705,9 +730,14 @@ long archer_driver_get_time_ns(void)
     return ts.tv_nsec;
 }
 
-void archer_driver_nbuff_params(pNBuff_t pNBuff, uint8_t **data_p, uint32_t *length_p)
+void archer_driver_nbuff_params(pNBuff_t pNBuff, uint8_t **data_p, uint32_t *length_p, int *tc_p)
 {
-    nbuff_get_context(pNBuff, data_p, length_p);
+    uint32_t priority;
+    uint32_t mark = 0;
+
+    nbuff_get_params(pNBuff, data_p, length_p, &mark, &priority);
+
+    *tc_p = SKBMARK_GET_TC_ID(mark);
 }
 
 void *archer_driver_skb_params(void *buf_p, uint8_t **data_p, uint32_t *length_p, void **fkbInSkb_p)
@@ -756,12 +786,64 @@ static int archer_driver_host_bind(void *arg_p)
     return ret;
 }
 
+static int archer_driver_host_config(void *arg_p)
+{
+    int ret;
+
+    ret = sysport_driver_host_config(arg_p);
+#if defined(CC_SYSPORT_DRIVER_TM)
+    if(!ret)
+    {
+        sysport_tm_enable(1);
+    }
+#endif
+
+    return ret;
+}
+
 static int archer_driver_tcp_ack_mflows_set(int enable)
 {
     sysport_classifier_tcp_pure_ack_enable(enable);
 
     return 0;
 }
+
+#if defined(CC_SYSPORT_DRIVER_TM)
+static int archer_driver_enet_phy_speed_set(void *arg_p)
+{
+    bcmSysport_PhySpeed_t *phy_speed = (bcmSysport_PhySpeed_t *)arg_p;
+    int kbps = phy_speed->kbps - (phy_speed->kbps / 1000); // ~99.9%
+    int logical_port;
+    int ret;
+
+    ret = sysport_driver_dev_to_logical_port(phy_speed->dev, &logical_port);
+    if(ret)
+    {
+        __logError("Could not sysport_driver_dev_to_logical_port");
+
+        return ret;
+    }
+
+    if(!sysport_tm_phy_set(logical_port, kbps,
+                           archer_packet_length_max_g))
+    {
+        bcm_print("%s: sysport_tm port shaper set to %d kbps (phy speed %d kbps)\n",
+                  phy_speed->dev->name, kbps, phy_speed->kbps);
+    }
+
+    return 0;
+}
+
+void archer_driver_enet_tm_enable(int enable)
+{
+    bcmFun_t *enet_tm_enable_set = bcmFun_get(BCM_FUN_ID_ENET_TM_EN_SET);
+
+    if(enet_tm_enable_set)
+    {
+        enet_tm_enable_set(&enable);
+    }
+}
+#endif /* CC_SYSPORT_DRIVER_TM */
 
 /*******************************************************************
  *
@@ -884,16 +966,266 @@ static void archer_ioctl_flow_dump(archer_ioctl_cmd_t cmd, unsigned long arg)
 
     sysport_classifier_flow_table_dump(&dump);
 
-    __print("---------------------------------------------\n");
+    bcm_print("---------------------------------------------\n");
     for(flow_type=0; flow_type<SYSPORT_RSB_FLOW_TYPE_MAX; ++flow_type)
     {
-        __print("\t%09s: %d out of %d Flows\n",
-                (SYSPORT_RSB_FLOW_TYPE_UNKNOWN == flow_type) ?
-                "TOTAL" : sysport_rsb_flow_type_name[flow_type],
-                dump.stats[flow_type].shown, dump.stats[flow_type].found);
+        bcm_print("\t%09s: %d out of %d Flows\n",
+                  (SYSPORT_RSB_FLOW_TYPE_UNKNOWN == flow_type) ?
+                  "TOTAL" : sysport_rsb_flow_type_name[flow_type],
+                  dump.stats[flow_type].shown, dump.stats[flow_type].found);
     }
-    __print("---------------------------------------------\n\n");
+    bcm_print("---------------------------------------------\n\n");
 }
+
+static int sysport_if_name_to_logical_port(char *if_name, int *logical_port_p)
+{
+    struct net_device *dev;
+    int ret = -1;
+
+    dev = dev_get_by_name(&init_net, if_name);
+    if(dev)
+    {
+        ret = sysport_driver_dev_to_logical_port(dev, logical_port_p);
+        if(ret)
+        {
+            __logError("Could not sysport_driver_dev_to_logical_port");
+        }
+    }
+    else
+    {
+        __logError("Could not dev_get_by_name");
+    }
+
+    return ret;
+}
+
+#if defined(CC_SYSPORT_DRIVER_TM)
+static int sysport_tm_command(unsigned long arg)
+{
+    sysport_tm_arg_t tm_arg;
+    int ret = 0;
+
+    copy_from_user(&tm_arg, (void *)arg, sizeof(sysport_tm_arg_t));
+
+    switch(tm_arg.cmd)
+    {
+        case SYSPORT_TM_CMD_ENABLE:
+            sysport_tm_enable(1);
+            break;
+
+        case SYSPORT_TM_CMD_DISABLE:
+            sysport_tm_enable(0);
+            break;
+
+        case SYSPORT_TM_CMD_STATS:
+            sysport_tm_stats();
+            break;
+
+        case SYSPORT_TM_CMD_STATS_GET:
+        {
+            int logical_port;
+
+            ret = sysport_if_name_to_logical_port(tm_arg.if_name, &logical_port);
+            if(!ret)
+            {
+                __debug("Stats Get: %s, logical_port %d, queue_index %d\n",
+                        tm_arg.if_name, logical_port, tm_arg.queue_index);
+
+                ret = sysport_tm_stats_get(logical_port, tm_arg.queue_index,
+                                           &tm_arg.stats.txPackets, &tm_arg.stats.txBytes,
+                                           &tm_arg.stats.droppedPackets, &tm_arg.stats.droppedBytes);
+
+                copy_to_user((void *)arg, &tm_arg, sizeof(sysport_tm_arg_t));
+            }
+            else
+            {
+                __logError("Could not SYSPORT_TM_CMD_STATS_GET %s", tm_arg.if_name);
+            }
+
+            break;
+        }
+
+        case SYSPORT_TM_CMD_QUEUE_SET:
+        {
+            int logical_port;
+
+            ret = sysport_if_name_to_logical_port(tm_arg.if_name, &logical_port);
+            if(!ret)
+            {
+                __debug("Queue Set: %s, logical_port %d, queue_index %d\n",
+                        tm_arg.if_name, logical_port, tm_arg.queue_index);
+
+                ret = sysport_tm_queue_set(logical_port, tm_arg.queue_index,
+                                           tm_arg.min_kbps, tm_arg.min_mbs,
+                                           tm_arg.max_kbps, tm_arg.max_mbs);
+            }
+            else
+            {
+                __logError("Could not SYSPORT_TM_CMD_QUEUE_SET %s", tm_arg.if_name);
+            }
+
+            break;
+        }
+
+        case SYSPORT_TM_CMD_QUEUE_GET:
+        {
+            int logical_port;
+
+            ret = sysport_if_name_to_logical_port(tm_arg.if_name, &logical_port);
+            if(!ret)
+            {
+                __debug("Queue Get: %s, logical_port %d, queue_index %d\n",
+                        tm_arg.if_name, logical_port, tm_arg.queue_index);
+
+                ret = sysport_tm_queue_get(logical_port, tm_arg.queue_index,
+                                           &tm_arg.min_kbps, &tm_arg.min_mbs,
+                                           &tm_arg.max_kbps, &tm_arg.max_mbs);
+
+                copy_to_user((void *)arg, &tm_arg, sizeof(sysport_tm_arg_t));
+            }
+            else
+            {
+                __logError("Could not SYSPORT_TM_CMD_QUEUE_GET %s", tm_arg.if_name);
+            }
+
+            break;
+        }
+
+        case SYSPORT_TM_CMD_PORT_SET:
+        {
+            int logical_port;
+
+            ret = sysport_if_name_to_logical_port(tm_arg.if_name, &logical_port);
+            if(!ret)
+            {
+                __debug("Port Set: %s, logical_port %d\n", tm_arg.if_name, logical_port);
+
+                ret = sysport_tm_port_set(logical_port, tm_arg.min_kbps, tm_arg.min_mbs);
+            }
+            else
+            {
+                __logError("Could not SYSPORT_TM_CMD_PORT_SET %s", tm_arg.if_name);
+            }
+
+            break;
+        }
+
+        case SYSPORT_TM_CMD_PORT_GET:
+        {
+            int logical_port;
+
+            ret = sysport_if_name_to_logical_port(tm_arg.if_name, &logical_port);
+            if(!ret)
+            {
+                __debug("Port Get: %s, logical_port %d\n", tm_arg.if_name, logical_port);
+
+                ret = sysport_tm_port_get(logical_port, &tm_arg.min_kbps, &tm_arg.min_mbs);
+
+                copy_to_user((void *)arg, &tm_arg, sizeof(sysport_tm_arg_t));
+            }
+            else
+            {
+                __logError("Could not SYSPORT_TM_CMD_PORT_GET %s", tm_arg.if_name);
+            }
+
+            break;
+        }
+
+        case SYSPORT_TM_CMD_ARBITER_SET:
+        {
+            int logical_port;
+
+            ret = sysport_if_name_to_logical_port(tm_arg.if_name, &logical_port);
+            if(!ret)
+            {
+                __debug("Arbiter Set: %s, logical_port %d\n", tm_arg.if_name, logical_port);
+
+                ret = sysport_tm_arbiter_set(logical_port, tm_arg.arbiter);
+            }
+            else
+            {
+                __logError("Could not SYSPORT_TM_CMD_ARBITER_SET %s", tm_arg.if_name);
+            }
+
+            break;
+        }
+
+        case SYSPORT_TM_CMD_ARBITER_GET:
+        {
+            int logical_port;
+
+            ret = sysport_if_name_to_logical_port(tm_arg.if_name, &logical_port);
+            if(!ret)
+            {
+                __debug("Arbiter Get: %s, logical_port %d\n", tm_arg.if_name, logical_port);
+
+                ret = sysport_tm_arbiter_get(logical_port, &tm_arg.arbiter);
+
+                copy_to_user((void *)arg, &tm_arg, sizeof(sysport_tm_arg_t));
+            }
+            else
+            {
+                __logError("Could not SYSPORT_TM_CMD_ARBITER_GET %s", tm_arg.if_name);
+            }
+
+            break;
+        }
+
+        case SYSPORT_TM_CMD_MODE_SET:
+        {
+            int logical_port;
+
+            ret = sysport_if_name_to_logical_port(tm_arg.if_name, &logical_port);
+            if(!ret)
+            {
+                __debug("Mode Set: %s, logical_port %d\n", tm_arg.if_name, logical_port);
+
+                ret = sysport_tm_mode_set(logical_port, tm_arg.mode);
+            }
+            else
+            {
+                __logError("Could not SYSPORT_TM_CMD_MODE_SET %s", tm_arg.if_name);
+            }
+
+            break;
+        }
+
+        case SYSPORT_TM_CMD_MODE_GET:
+        {
+            int logical_port;
+
+            ret = sysport_if_name_to_logical_port(tm_arg.if_name, &logical_port);
+            if(!ret)
+            {
+                __debug("Mode Get: %s, logical_port %d\n", tm_arg.if_name, logical_port);
+
+                ret = sysport_tm_mode_get(logical_port, &tm_arg.mode);
+
+                copy_to_user((void *)arg, &tm_arg, sizeof(sysport_tm_arg_t));
+            }
+            else
+            {
+                __logError("Could not SYSPORT_TM_CMD_MODE_GET %s", tm_arg.if_name);
+            }
+
+            break;
+        }
+
+        default:
+            __logError("Invalid cmd %d", tm_arg.cmd);
+            return -1;
+    }
+
+    return ret;
+}
+#else
+static int sysport_tm_command(unsigned long arg)
+{
+    __logError("Feature Unavailable");
+
+    return -1;
+}
+#endif /* CC_SYSPORT_DRIVER_TM */
 
 /*
  *------------------------------------------------------------------------------
@@ -914,26 +1246,26 @@ static long archer_ioctl(struct file *filep, unsigned int command, unsigned long
     switch(cmd)
     {
         case ARCHER_IOC_STATUS:
-            __print("ARCHER Status:\n"
-                    "\tAcceleration %s, Active <%u>, Max <%u>, IPv6 %s\n"
-                    "\tActivates           : %u\n"
-                    "\tActivate Overflows  : %u\n"
-                    "\tActivate Failures   : %u\n"
-                    "\tDeactivates         : %u\n"
-                    "\tDeactivate Failures : %u\n"
-                    "\tFlushes             : %u\n\n",
-                    (archer_driver_g.status == 1) ?  "Enabled" : "Disabled",
-                    archer_driver_g.active, SYSPORT_UCAST_FLOW_MAX,
+            bcm_print("ARCHER Status:\n"
+                      "\tAcceleration %s, Active <%u>, Max <%u>, IPv6 %s\n"
+                      "\tActivates           : %u\n"
+                      "\tActivate Overflows  : %u\n"
+                      "\tActivate Failures   : %u\n"
+                      "\tDeactivates         : %u\n"
+                      "\tDeactivate Failures : %u\n"
+                      "\tFlushes             : %u\n\n",
+                      (archer_driver_g.status == 1) ?  "Enabled" : "Disabled",
+                      archer_driver_g.active, SYSPORT_UCAST_FLOW_MAX,
 #if defined(CONFIG_BLOG_IPV6)
-                    "Enabled",
+                      "Enabled",
 #else
-                    "Disabled",
+                      "Disabled",
 #endif
-                    archer_driver_g.activates, archer_driver_g.activate_overflows,
-                    archer_driver_g.activate_failures, archer_driver_g.deactivates,
-                    archer_driver_g.deactivate_failures, archer_driver_g.flushes);
+                      archer_driver_g.activates, archer_driver_g.activate_overflows,
+                      archer_driver_g.activate_failures, archer_driver_g.deactivates,
+                      archer_driver_g.deactivate_failures, archer_driver_g.flushes);
             cmdlist_print_stats(NULL);
-            __print("\n");
+            bcm_print("\n");
             break;
 
         case ARCHER_IOC_BIND:
@@ -1016,29 +1348,186 @@ static long archer_ioctl(struct file *filep, unsigned int command, unsigned long
         case ARCHER_IOC_DPI:
             ret = archer_dpi_command(arg);
             break;
+
+        case ARCHER_IOC_SYSPORT_TM:
+            ret = sysport_tm_command(arg);
+            break;
+
+        case ARCHER_IOC_ENETDROPALG_SET:
+        {
+            archer_drop_ioctl_t drop_ioctl;
+            int logical_port;
+
+            copy_from_user(&drop_ioctl, (void *)arg, sizeof(archer_drop_ioctl_t));
+
+            ret = sysport_if_name_to_logical_port(drop_ioctl.if_name, &logical_port);
+            if(!ret)
+            {
+                bcm_print("Drop Profile Set: %s, logical_port %d, queue_id %d\n",
+                          drop_ioctl.if_name, logical_port, drop_ioctl.queue_id);
+
+                ret = sysport_driver_drop_config_set(logical_port, drop_ioctl.queue_id,
+                                                     &drop_ioctl.config);
+            }
+            else
+            {
+                __logError("Could not sysport_if_name_to_logical_port %s", drop_ioctl.if_name);
+            }
+        }
+        break;
+
+        case ARCHER_IOC_ENETDROPALG_GET:
+        {
+            archer_drop_ioctl_t drop_ioctl;
+            struct net_device *dev;
+
+            copy_from_user(&drop_ioctl, (void *)arg, sizeof(archer_drop_ioctl_t));
+
+            dev = dev_get_by_name(&init_net, drop_ioctl.if_name);
+            if(dev)
+            {
+                int logical_port;
+
+                ret = sysport_driver_dev_to_logical_port(dev, &logical_port);
+                if(!ret)
+                {
+                    bcm_print("Drop Profile Get: %s, logical_port %d, queue_id %d\n",
+                              dev->name, logical_port, drop_ioctl.queue_id);
+
+                    ret = sysport_driver_drop_config_get(logical_port, drop_ioctl.queue_id,
+                                                         &drop_ioctl.config);
+                    if(!ret)
+                    {
+                        copy_to_user((void *)arg, &drop_ioctl, sizeof(archer_drop_ioctl_t));
+                    }
+                }
+            }
+            else
+            {
+                __logError("Could not dev_get_by_name %s", drop_ioctl.if_name);
+
+                ret = -1;
+            }
+        }
+        break;
+
+        case ARCHER_IOC_ENETTXQSIZE_GET:
+        {
+            uint32_t qSize = sysport_driver_tx_qsize_get();
+
+            copy_to_user((void *)arg, &qSize, sizeof(uint32_t));
+
+            ret = 0;
+        }
+        break;
+
 #if (defined(CONFIG_BCM_XTMRT) || defined(CONFIG_BCM_XTMRT_MODULE))
         case ARCHER_IOC_XTMDROPALG_SET:
         {
-            archer_dropalg_config_t cfg;
+            archer_drop_ioctl_t drop_ioctl;
 
-            copy_from_user (&cfg, (void *)arg, sizeof(archer_dropalg_config_t));
+            copy_from_user(&drop_ioctl, (void *)arg, sizeof(archer_drop_ioctl_t));
 
-            iudma_tx_dropAlg_set(&cfg);
+            ret = iudma_tx_dropAlg_set(drop_ioctl.queue_id, &drop_ioctl.config);
         }
         break;
 
         case ARCHER_IOC_XTMDROPALG_GET:
         {
-            archer_dropalg_config_t cfg;
+            archer_drop_ioctl_t drop_ioctl;
 
-            copy_from_user (&cfg, (void *)arg, sizeof(archer_dropalg_config_t));
+            copy_from_user(&drop_ioctl, (void *)arg, sizeof(archer_drop_ioctl_t));
 
-            iudma_tx_dropAlg_get(&cfg);
+            ret = iudma_tx_dropAlg_get(drop_ioctl.queue_id, &drop_ioctl.config);
+            if(!ret)
+            {
+                copy_to_user((void *)arg, &drop_ioctl, sizeof(archer_drop_ioctl_t));
+            }
+        }
+        break;
 
-            copy_to_user((void *)arg, &cfg, sizeof(archer_dropalg_config_t));
+        case ARCHER_IOC_XTMTXQSIZE_GET:
+        {
+            uint32_t qSize = iudma_tx_qsize_get();
+
+            copy_to_user((void *)arg, &qSize, sizeof(uint32_t));
+
+            ret = 0;
         }
         break;
 #endif
+
+        case ARCHER_IOC_ENETTXQSTATS_GET:
+        {
+            archer_txq_stats_ioctl_t stats_ioctl;
+            struct net_device *dev;
+
+            copy_from_user(&stats_ioctl, (void *)arg, sizeof(archer_txq_stats_ioctl_t));
+
+            dev = dev_get_by_name(&init_net, stats_ioctl.if_name);
+            if(dev)
+            {
+                int logical_port;
+
+                ret = sysport_driver_dev_to_logical_port(dev, &logical_port);
+                if(!ret)
+                {
+                    ret = sysport_driver_txq_stats_get(logical_port, stats_ioctl.queue_id,
+                                                       &stats_ioctl.stats);
+                    if(!ret)
+                    {
+                        copy_to_user((void *)arg, &stats_ioctl, sizeof(archer_txq_stats_ioctl_t));
+                    }
+                }
+            }
+            else
+            {
+                __logError("Could not dev_get_by_name %s", stats_ioctl.if_name);
+
+                ret = -1;
+            }
+        }
+        break;
+
+#if (defined(CONFIG_BCM_XTMRT) || defined(CONFIG_BCM_XTMRT_MODULE))
+        case ARCHER_IOC_XTMTXQSTATS_GET:
+        {
+            archer_txq_stats_ioctl_t stats_ioctl;
+
+            copy_from_user(&stats_ioctl, (void *)arg, sizeof(archer_txq_stats_ioctl_t));
+
+            ret = iudma_txq_stats_get(stats_ioctl.queue_id, &stats_ioctl.stats);
+            if(!ret)
+            {
+                copy_to_user((void *)arg, &stats_ioctl, sizeof(archer_txq_stats_ioctl_t));
+            }
+        }
+        break;
+#endif
+
+#if defined(CC_AWL_FLCTL)
+        case ARCHER_IOC_WLFLCTLCFG_SET:
+        {
+            archer_wlflctl_config_t cfg;
+
+            copy_from_user (&cfg, (void *)arg, sizeof(archer_wlflctl_config_t));
+
+            ret = archer_wlan_flctl_config_set(&cfg);
+        }
+        break;
+
+        case ARCHER_IOC_WLFLCTLCFG_GET:
+        {
+            archer_wlflctl_config_t cfg;
+
+            copy_from_user (&cfg, (void *)arg, sizeof(archer_wlflctl_config_t));
+
+            ret = archer_wlan_flctl_config_get(&cfg);
+
+            copy_to_user((void *)arg, &cfg, sizeof(archer_wlflctl_config_t));
+        }
+        break;
+#endif /* CC_AWL_FLCTL */
         default:
             __logError("Invalid Command [%u]", command);
             ret = -1;
@@ -1074,7 +1563,7 @@ static struct file_operations archer_fops =
 #if defined(CONFIG_BCM_ARCHER_GSO)
 static int archer_dev_open(struct net_device *dev)
 {
-    __print("Open %s Netdevice\n", dev->name);
+    bcm_print("Open %s Netdevice\n", dev->name);
 
     return 0;
 }
@@ -1113,7 +1602,7 @@ static netdev_tx_t archer_dev_start_xmit(struct sk_buff *skb, struct net_device 
 #endif
     }
 
-//    printk("%s,%d: count %d, max %d\n", __FUNCTION__, __LINE__, gso_p->nbuff_count, gso_p->nbuff_max);
+//    bcm_print("%s,%d: count %d, max %d\n", __FUNCTION__, __LINE__, gso_p->nbuff_count, gso_p->nbuff_max);
 
     return NETDEV_TX_OK;
 }
@@ -1139,7 +1628,7 @@ void archer_gso(pNBuff_t pNBuff, int nbuff_max, pNBuff_t *pNBuff_list, int *nbuf
 
         dev_queue_xmit(skb);
 
-//        printk("%s,%d: count %d\n", __FUNCTION__, __LINE__, gso_p->nbuff_count);
+//        bcm_print("%s,%d: count %d\n", __FUNCTION__, __LINE__, gso_p->nbuff_count);
 
         *nbuff_count_p = gso_p->nbuff_count;
     }
@@ -1236,7 +1725,7 @@ int __init archer_construct(void)
     cmdlist_hooks_t cmdlist_hooks;
     int ret;
 
-    printk(CLRcb "Broadcom Archer Packet Accelerator Intializing" CLRnl);
+    bcm_print(CLRcb "Broadcom Archer Packet Accelerator Intializing" CLRnl);
 
 #if defined(CC_ARCHER_SIM_FC_HOOK)
     bcmLog_setLogLevel(BCM_LOG_ID_ARCHER, BCM_LOG_LEVEL_DEBUG);
@@ -1288,10 +1777,17 @@ int __init archer_construct(void)
 
 #if defined(CONFIG_BCM94908) || defined(CONFIG_BCM963268) || \
     (defined(CONFIG_BCM963178) && (defined(CONFIG_BCM_XTMRT) || defined(CONFIG_BCM_XTMRT_MODULE)))
-    ret = iudma_driver_construct();
-    if(ret)
+    if (kerSysGetDslPhyEnable())
     {
-        return ret;
+        ret = iudma_driver_construct();
+        if(ret)
+        {
+            return ret;
+        }
+    }
+    else
+    {
+        __logError("DSL PHY disabled, iudma driver will not be initialized\n");
     }
 #endif
 #endif
@@ -1333,13 +1829,15 @@ int __init archer_construct(void)
         return ret;
     }
 
-    __print(CLRcb ARCHER_MODNAME " Char Driver " ARCHER_VER_STR " Registered <%d>" CLRnl, ARCHER_DRV_MAJOR);
+    bcm_print(CLRcb ARCHER_MODNAME " Char Driver " ARCHER_VER_STR " Registered <%d>" CLRnl, ARCHER_DRV_MAJOR);
 
     bcmFun_reg(BCM_FUN_ID_ARCHER_HOST_BIND, archer_driver_host_bind);
-    bcmFun_reg(BCM_FUN_ID_ENET_SYSPORT_CONFIG, sysport_driver_host_config);
+    bcmFun_reg(BCM_FUN_ID_ENET_SYSPORT_CONFIG, archer_driver_host_config);
     bcmFun_reg(BCM_FUN_ID_ENET_SYSPORT_QUEUE_MAP, sysport_driver_queue_map);
     bcmFun_reg(BCM_FUN_ID_ENET_BOND_RX_PORT_MAP, sysport_driver_lookup_port_map);
-
+#if defined(CC_SYSPORT_DRIVER_TM)
+    bcmFun_reg(BCM_FUN_ID_ENET_PHY_SPEED_SET, archer_driver_enet_phy_speed_set);
+#endif
     blog_tcp_ack_mflows_set_fn = archer_driver_tcp_ack_mflows_set;
     archer_driver_tcp_ack_mflows_set(blog_support_get_tcp_ack_mflows());
 

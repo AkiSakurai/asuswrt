@@ -51,7 +51,7 @@ extern bdmf_type_handle rdpa_xtmchannel_drv(void);
 
 static void bcmxtmrt_timer(PBCMXTMRT_GLOBAL_INFO pGi);
 static int cfg_xtmflows(UINT32 queueIdx, UINT32 trafficType, UINT32 hdrType, UINT8 vcid, UINT32 ulTxPafEnabled);
-static int add_xtmflow(bdmf_object_handle attrs, UINT32 ctType, UINT32 queueIdx, UINT32 fstat, int ptmBonding);
+static int add_xtmflow(bdmf_object_handle attrs, UINT32 ctType, UINT32 queueIdx, UINT32 hdrType, UINT32 fstat, int ptmBonding);
 static UINT32 calc_xtmflow_fstat(UINT32 ctType, UINT32 hdrType, UINT32 vcid, UINT32 flag);
 static int  runner_xtm_objects_init(void);
 static void runner_xtm_objects_uninit(void);
@@ -97,6 +97,7 @@ static void bcmxtmrt_timer(PBCMXTMRT_GLOBAL_INFO pGi)
  *    Initialize the following runner bdmf objects:
  *    - xtm system object
  *    - wan1 port object owned by xtm
+ *    - egress tm orl object
  *    - 16 xtm transmit queues
  * Returns:
  *    0 or bdmf error code
@@ -107,6 +108,7 @@ static int runner_xtm_objects_init(void)
    int   rc = 0;
    bdmf_object_handle   xtm;
    bdmf_object_handle   wan;
+   bdmf_object_handle   xtm_orl_tm = NULL ;
       
    BDMF_MATTR(xtm_attr,  rdpa_xtm_drv());
    BDMF_MATTR(port_attr, rdpa_port_drv());
@@ -131,7 +133,7 @@ static int runner_xtm_objects_init(void)
       return rc;
    }
 
-   rc = bcmxapiex_runner_xtm_objects_init(wan);
+   rc = bcmxapiex_runner_xtm_objects_init(wan, &xtm_orl_tm);
 
    if (rc)
    {
@@ -142,6 +144,7 @@ static int runner_xtm_objects_init(void)
    /* xtmchannel and egress tm objects for all tx queues will be initialized dynamically at the request time as and when the tx queues are added. */
    g_GlobalInfo.bdmfXtm = xtm;
    g_GlobalInfo.bdmfWan = wan;
+   g_GlobalInfo.bdmfXtm_Orl_Tm = xtm_orl_tm;
       
    return rc;
    
@@ -166,6 +169,11 @@ static void runner_xtm_objects_uninit(void)
    {
       bdmf_destroy(g_GlobalInfo.bdmfXtm);
       g_GlobalInfo.bdmfXtm = NULL;
+   }
+   if (g_GlobalInfo.bdmfXtm_Orl_Tm != NULL)
+   {
+      bdmf_destroy(g_GlobalInfo.bdmfXtm_Orl_Tm);
+      g_GlobalInfo.bdmfXtm_Orl_Tm = NULL;
    }
 }  /* runner_xtm_objects_uninit() */
 
@@ -240,6 +248,25 @@ static int runner_tx_queue_init(bdmf_object_handle xtm, int queueIdx)
       }
    }
 
+   /* Set xtmchannel/ORL priority to low. */
+   rc = rc? rc : rdpa_xtmchannel_orl_prty_set (xtmchannel, rdpa_tm_orl_prty_low);
+
+   if (rc) {
+      BCM_XTM_ERROR( "Failed to set ORL priority for this tx queue with xtm channel %d", queueIdx);
+      if (xtmchannel != NULL) {
+         bdmf_destroy(xtmchannel);
+         pGi->txBdmfObjs[queueIdx].xtmchannel = NULL;
+      }
+      if (tm != NULL) {
+         bdmf_destroy(tm);
+         pGi->txBdmfObjs[queueIdx].egress_tm = NULL;
+      }
+   }
+
+   /* Link xtmchannel & ORL */
+   if (g_GlobalInfo.bdmfXtm_Orl_Tm != NULL)
+      bdmf_link (pGi->bdmfXtm_Orl_Tm, xtmchannel, NULL) ;
+
    return rc;
 }
 
@@ -276,9 +303,15 @@ static void runner_tx_queue_uninit(int queueIdx)
       pGi->txBdmfObjs[queueIdx].egress_tm = NULL;
    }
 
+   /* Unlink xtmchannel & ORL
+   ** Uninitialize xtmchanel
+   **/
    xtmchannel = pGi->txBdmfObjs[queueIdx].xtmchannel;
+
    if (xtmchannel != NULL)
    {
+      if (g_GlobalInfo.bdmfXtm_Orl_Tm != NULL)
+         bdmf_unlink (pGi->bdmfXtm_Orl_Tm, xtmchannel) ;
       bdmf_destroy(xtmchannel);
       pGi->txBdmfObjs[queueIdx].xtmchannel = NULL;
    }
@@ -323,15 +356,15 @@ static int cfg_xtmflows(UINT32 queueIdx, UINT32 trafficType, UINT32 hdrType, UIN
       UINT32 asm_p2_fstat = calc_xtmflow_fstat(XCT_ASM_P2,     0, vcid, flag);
       UINT32 asm_p3_fstat = calc_xtmflow_fstat(XCT_ASM_P3,     0, vcid, flag);
       
-      rc = rc? rc : add_xtmflow(packet_attr, XCT_AAL5,       queueIdx, packet_fstat, BC_PTM_BONDING_DISABLE);
-      rc = rc? rc : add_xtmflow(f4_seg_attr, XCT_OAM_F4_SEG, queueIdx, f4_seg_fstat, BC_PTM_BONDING_DISABLE);
-      rc = rc? rc : add_xtmflow(f4_e2e_attr, XCT_OAM_F4_E2E, queueIdx, f4_e2e_fstat, BC_PTM_BONDING_DISABLE);
-      rc = rc? rc : add_xtmflow(f5_seg_attr, XCT_OAM_F5_SEG, queueIdx, f5_seg_fstat, BC_PTM_BONDING_DISABLE);
-      rc = rc? rc : add_xtmflow(f5_e2e_attr, XCT_OAM_F5_E2E, queueIdx, f5_e2e_fstat, BC_PTM_BONDING_DISABLE);
-      rc = rc? rc : add_xtmflow(asm_p0_attr, XCT_ASM_P0,     queueIdx, asm_p0_fstat, BC_PTM_BONDING_DISABLE);
-      rc = rc? rc : add_xtmflow(asm_p1_attr, XCT_ASM_P1,     queueIdx, asm_p1_fstat, BC_PTM_BONDING_DISABLE);
-      rc = rc? rc : add_xtmflow(asm_p2_attr, XCT_ASM_P2,     queueIdx, asm_p2_fstat, BC_PTM_BONDING_DISABLE);
-      rc = rc? rc : add_xtmflow(asm_p3_attr, XCT_ASM_P3,     queueIdx, asm_p3_fstat, BC_PTM_BONDING_DISABLE);
+      rc = rc? rc : add_xtmflow(packet_attr, XCT_AAL5,       queueIdx, hdrType, packet_fstat, BC_PTM_BONDING_DISABLE);
+      rc = rc? rc : add_xtmflow(f4_seg_attr, XCT_OAM_F4_SEG, queueIdx, hdrType, f4_seg_fstat, BC_PTM_BONDING_DISABLE);
+      rc = rc? rc : add_xtmflow(f4_e2e_attr, XCT_OAM_F4_E2E, queueIdx, hdrType, f4_e2e_fstat, BC_PTM_BONDING_DISABLE);
+      rc = rc? rc : add_xtmflow(f5_seg_attr, XCT_OAM_F5_SEG, queueIdx, hdrType, f5_seg_fstat, BC_PTM_BONDING_DISABLE);
+      rc = rc? rc : add_xtmflow(f5_e2e_attr, XCT_OAM_F5_E2E, queueIdx, hdrType, f5_e2e_fstat, BC_PTM_BONDING_DISABLE);
+      rc = rc? rc : add_xtmflow(asm_p0_attr, XCT_ASM_P0,     queueIdx, hdrType, asm_p0_fstat, BC_PTM_BONDING_DISABLE);
+      rc = rc? rc : add_xtmflow(asm_p1_attr, XCT_ASM_P1,     queueIdx, hdrType, asm_p1_fstat, BC_PTM_BONDING_DISABLE);
+      rc = rc? rc : add_xtmflow(asm_p2_attr, XCT_ASM_P2,     queueIdx, hdrType, asm_p2_fstat, BC_PTM_BONDING_DISABLE);
+      rc = rc? rc : add_xtmflow(asm_p3_attr, XCT_ASM_P3,     queueIdx, hdrType, asm_p3_fstat, BC_PTM_BONDING_DISABLE);
    }
    else
    {
@@ -339,14 +372,15 @@ static int cfg_xtmflows(UINT32 queueIdx, UINT32 trafficType, UINT32 hdrType, UIN
 
       if (trafficType == TRAFFIC_TYPE_PTM_BONDED) {
          printk ("bcmxtmrt: Traffic Type is PTM Bonded.  TxPAF control-%d. \n", (unsigned int) ulTxPafEnabled) ;
-         rc = rc? rc : add_xtmflow(packet_attr, XCT_PTM, queueIdx, packet_fstat, BC_PTM_BONDING_ENABLE) ;
+         rc = rc? rc : add_xtmflow(packet_attr, XCT_PTM, queueIdx, hdrType, packet_fstat, BC_PTM_BONDING_ENABLE) ;
       }
       else {
          printk ("bcmxtmrt: Traffic Type is Non-bonded-%d. \n", (unsigned int) trafficType) ;
-         rc = rc? rc : add_xtmflow(packet_attr, XCT_PTM, queueIdx, packet_fstat, BC_PTM_BONDING_DISABLE) ;
+         rc = rc? rc : add_xtmflow(packet_attr, XCT_PTM, queueIdx, hdrType, packet_fstat, BC_PTM_BONDING_DISABLE) ;
       }
    }
    
+   BCM_XTM_DEBUG ("xtm: hdrType = %x\n", HT_TYPE(hdrType));
    return rc;
    
 }  /* cfg_xtmflows() */
@@ -362,7 +396,7 @@ static int cfg_xtmflows(UINT32 queueIdx, UINT32 trafficType, UINT32 hdrType, UIN
  *---------------------------------------------------------------------------
  */
 static int add_xtmflow(bdmf_object_handle attrs, UINT32 ctType, UINT32 queueIdx,
-                       UINT32 fstat, int ptmBonding)
+                       UINT32 hdrType, UINT32 fstat, int ptmBonding)
 {
    int   rc = 0;
    bdmf_number             index;
@@ -372,6 +406,9 @@ static int add_xtmflow(bdmf_object_handle attrs, UINT32 ctType, UINT32 queueIdx,
    /* set xtmflow index */
    index = (MAX_CIRCUIT_TYPES * queueIdx) + ctType;
    rc = rdpa_xtmflow_index_set(attrs, index);
+   
+   /* set xtmflow hdrType */
+   rc = rc? rc : rdpa_xtmflow_hdr_type_set(attrs, HT_TYPE(hdrType));
    
    /* set xtmflow fstat */
    rc = rc? rc : rdpa_xtmflow_fstat_set(attrs, fstat);
@@ -1313,6 +1350,32 @@ void bcmxapi_StartTxQueue(PBCMXTMRT_DEV_CONTEXT pDevCtx,
 
 }  /* bcmxapi_StartTxQueue() */
 
+/*---------------------------------------------------------------------------
+ * int bcmxapi_SetPortShaperInfo (PBCMXTMRT_GLOBAL_INFO pGi)
+ * Description:
+ *    Set/UnSet the global port shaper information.
+ * Returns: void
+ * Notes:
+ *    pDevCtx is not used.
+ *---------------------------------------------------------------------------
+ */
+int bcmxapi_SetTxPortShaperInfo(PBCMXTMRT_GLOBAL_INFO pGi, PXTMRT_PORT_SHAPER_INFO pShaperInfo)
+{
+   int nRet = -1 ;
+   bdmf_object_handle   Xtm_Orl_tm;
+
+   Xtm_Orl_tm  = pGi->bdmfXtm_Orl_Tm ;
+
+   BCM_XTM_DEBUG("bcmxtmrt: Set TxPortShaper") ;
+   
+   if (Xtm_Orl_tm != NULL)
+   {
+      nRet = bcmxapiex_runner_xtm_orl_rl_set (Xtm_Orl_tm, pShaperInfo) ;
+   }/* Xtm_Orl_tm */
+   
+   return (nRet) ;
+
+}  /* bcmxapi_SetTxPortShaper () */
 
 /*---------------------------------------------------------------------------
  * void bcmxapi_SetPtmBondPortMask(UINT32 portMask)
@@ -1351,27 +1414,29 @@ void bcmxapi_SetPtmBonding(UINT32 bonding)
  */
 void bcmxapi_XtmGetStats(UINT8 vport, UINT32 *rxDropped, UINT32 *txDropped)
 {
+    //FIXME: This Will be fixed in the future releases as this logic needs to
+    //be added to map the netdevice to corresponding queues.
     rdpa_port_stat_t stat = {};
     int rc;
 
     /* rxDiscards not supported */
     *rxDropped = 0;
 
-    /* Only vport 0 is supported on Runner */
-    if (vport != 0) 
+    /* only vport 0 is supported on Runner */
+    if (vport != 0)
     {
        *txDropped = 0;
        return;
     }
-
+    
     bdmf_lock();
 
     /* Read RDPA statistic */
     rc = rdpa_port_stat_get(g_GlobalInfo.bdmfWan, &stat);
-    if (rc)
+    if (rc )
     {
-        printk("rdpa_port_stat_get returned error rc %d\n", rc);
-        goto unlock_exit;
+       printk("rdpa_port_stat_get returned error rc %d\n",rc);
+       goto unlock_exit;
     }
 
     /* Add up the TX discards */

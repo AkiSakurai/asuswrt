@@ -5,7 +5,7 @@
  * Extensive use of anonymous structure/union.
  * Layouts defined to allow BitField(BF), shift/mask and C-Datatype(CD) access.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

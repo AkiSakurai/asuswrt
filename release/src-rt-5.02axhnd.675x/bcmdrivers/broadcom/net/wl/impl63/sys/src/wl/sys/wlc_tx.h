@@ -3,7 +3,7 @@
  *
  * Common headers for transmit datapath components
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -47,7 +47,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_tx.h 780809 2019-11-04 14:36:50Z $
+ * $Id: wlc_tx.h 787001 2020-05-13 14:07:28Z $
  *
  */
 #ifndef _wlc_tx_h_
@@ -116,12 +116,10 @@ typedef void (*defer_free_pkt_fn_t)(void *ctx, void *pkt);
  */
 typedef void (*flush_free_pkt_fn_t)(void *ctx);
 
-#if defined(PROP_TXSTATUS)
 /* this callback will be invoked when in low_txq_scb flush()
  *  two back-to-back pkts has same epoch value.
  */
 typedef void (*flip_epoch_t)(void *ctx, void *pkt, uint8 *flipEpoch, uint8 *lastEpoch);
-#endif /* PROP_TXSTATUS */
 
 /** filter a pktq, using the caller supplied filter/deposition/flush functions */
 extern void  pktq_filter(struct pktq *pq, pktq_filter_t fn, void* arg,
@@ -130,14 +128,9 @@ extern void  pktq_filter(struct pktq *pq, pktq_filter_t fn, void* arg,
 extern void  pktq_pfilter(struct pktq *pq, int prec, pktq_filter_t fn, void* arg,
 	defer_free_pkt_fn_t defer, void *defer_ctx, flush_free_pkt_fn_t flush, void *flush_ctx);
 /** filter a simple non-precedence in spktq, using the caller supplied filter function */
-#if defined(PROP_TXSTATUS)
 extern void spktq_filter(struct spktq *spq, pktq_filter_t fltr, void* fltr_ctx,
 	defer_free_pkt_fn_t defer, void *defer_ctx, flush_free_pkt_fn_t flush, void *flush_ctx,
 	flip_epoch_t flip_epoch_callback);
-#else
-extern void spktq_filter(struct spktq *spq, pktq_filter_t fltr, void* fltr_ctx,
-	defer_free_pkt_fn_t defer, void *defer_ctx, flush_free_pkt_fn_t flush, void *flush_ctx);
-#endif /* PROP_TXSTATUS */
 
 extern chanspec_t wlc_txh_get_chanspec(wlc_info_t* wlc, wlc_txh_info_t* tx_info);
 
@@ -154,6 +147,11 @@ extern void wlc_low_txq_enq(txq_info_t *txqi,
 extern void wlc_low_txq_enq_list(txq_info_t *txqi, txq_t *txq,
 	uint fifo_idx, struct spktq *list, int pkt_cnt);
 
+#ifdef PKTQ_STATUS
+extern int wlc_get_lowtxq_pktcount(wlc_info_t *wlc, struct scb *scb, struct bcmstrbuf *b);
+extern int wlc_hwfifo_pktcount(wlc_info_t *wlc, struct scb *scb, struct bcmstrbuf *b);
+#endif /* PKTQ_STATUS */
+
 /* used in bmac_fifo: acct for pkts that don't go through normal tx path
  * best example is pkteng
 */
@@ -168,6 +166,8 @@ extern void wlc_low_txq_free(txq_info_t *txqi, txq_t* txq);
 extern void wlc_low_txq_flush(txq_info_t *txqi, txq_t* txq);
 
 extern void wlc_tx_fifo_scb_flush(wlc_info_t *wlc, struct scb *remove);
+extern void wlc_tx_fifo_scb_fifo_swap(wlc_info_t *wlc, struct scb *remove,
+	void *fifo_bitmap);
 extern void wlc_txq_fill(txq_info_t *txqi, txq_t *txq);
 extern void wlc_txq_complete(txq_info_t *txqi, txq_t *txq, uint fifo_idx,
                              int complete_pkts);
@@ -323,7 +323,6 @@ extern void wlc_beacon_upddur(wlc_info_t *wlc, ratespec_t bcn_rspec, uint16 len)
 
 uint16 wlc_phytxctl1_calc(wlc_info_t *wlc, ratespec_t rspec, chanspec_t chanspec);
 
-void wlc_txq_scb_free(wlc_info_t *wlc, struct scb *from_scb);
 void wlc_txq_scb_remove_mfp_frames(wlc_info_t *wlc, struct scb *from_scb);
 
 /* generic tx pktq filter */
@@ -338,7 +337,7 @@ void wlc_txq_pktq_cfg_filter(wlc_info_t *wlc, struct pktq *pq, wlc_bsscfg_t *cfg
 void wlc_txq_pktq_scb_filter(wlc_info_t *wlc, struct pktq *pq, struct scb *scb);
 
 /* flush tx pktq */
-void wlc_txq_pktq_pflush(wlc_info_t *wlc, struct pktq *pq, int prec);
+uint32 wlc_txq_pktq_pflush(wlc_info_t *wlc, struct pktq *pq, int prec);
 void wlc_txq_pktq_flush(wlc_info_t *wlc, struct pktq *pq);
 extern void wlc_epoch_upd(wlc_info_t *wlc, void *pkt, uint8 *flipEpoch, uint8 *lastEpoch);
 extern void wlc_epoch_wrapper(void *ctx, void *pkt, uint8 *flipEpoch, uint8 *lastEpoch);
@@ -718,10 +717,10 @@ int wlc_txq_hc_awdl_rcq(wlc_info_t *wlc, wlc_bsscfg_t * cfg, struct scb *scb);
 int wlc_txq_hc_ap_psq(wlc_info_t *wlc, wlc_bsscfg_t * cfg, struct scb *scb);
 int wlc_txq_hc_supr_txq(wlc_info_t *wlc, wlc_bsscfg_t * cfg, struct scb *scb);
 #endif /* WL_TXQ_STALL */
-#ifdef WLATF_DONGLE
+#if defined(WLATF_DONGLE) || defined(WL_MU_TX)
 extern ratespec_t wlc_ravg_get_scb_cur_rspec(wlc_info_t *wlc, struct scb *scb);
 extern uint32 wlc_scb_dot11hdrsize(struct scb *scb);
-#endif /* WLATF_DONGLE */
+#endif /* WLATF_DONGLE  || defined WL_MU_TX */
 
 /**
  * Calculate Length for long format TXD
@@ -781,8 +780,8 @@ void *cpktq_pdeq(struct cpktq *cpktq, int prec);
 void *cpktq_deq_tail(struct cpktq *cpktq, int *prec_out);
 void *cpktq_pdeq_tail(struct cpktq *cpktq, int prec);
 void *cpktq_mdeq(struct cpktq *cpktq, uint prec_bmp, int *prec_out);
-void *cpktq_penq(struct cpktq *cpktq, int prec, void *p);
-void *cpktq_penq_head(struct cpktq *pq, int prec, void *p);
+void *cpktq_penq(wlc_info_t *wlc, struct cpktq *cpktq, int prec, void *p);
+void *cpktq_penq_head(wlc_info_t *wlc, struct cpktq *pq, int prec, void *p);
 bool cpktq_prec_enq(wlc_info_t *wlc, struct cpktq *cpktq, void *p, int prec);
 bool cpktq_prec_enq_head(wlc_info_t *wlc, struct cpktq *q, void *p, int prec, bool head);
 void cpktq_append(struct cpktq *cpktq, int prec, struct spktq *list);

@@ -51,6 +51,7 @@
 #include "rdpa_api.h"
 #include "rdpa_mw_blog_parse.h"
 #include "bcmenet_common.h"
+#include <bdmf_dev.h>
 
 #if defined(CONFIG_EPON_SFU) && defined(CONFIG_BCM_PON_XRDP)
 static char *aggr_br_name_prefix = "br_aggr";
@@ -152,7 +153,7 @@ static bdmf_error_t br_fp_add_or_modify_mac_tbl_entry(struct net_bridge_fdb_entr
         data.da_action = rdpa_forward_action_forward;
 
     rc = rdpa_bridge_mac_set(bridge, &key, &data);
-    if (rc)
+    if ((rc) && (rc != BDMF_ERR_NOT_LINKED))
     {
         bdmf_trace("Failed to add mac entry, src dev name[%s] mac[%pM] (rc=%d)\n", fdb->dst->dev->name,
             fdb->addr.addr, rc);
@@ -241,7 +242,11 @@ static int br_fp_remove_mac_tbl_entry(struct net_bridge_fdb_entry *fdb, int remo
 
     br_fp_rdpa_fdb_key_set(fdb, &key, bridge);
     rc = rdpa_bridge_mac_set(bridge, &key, NULL);
-    if (rc)
+    /* RDPA return code BDMF_ERR_NOENT means the MAC target to be deleted here is NOT in Runner bridge.
+       Hence not an error in br_fp level. Here are some cases:
+       Case 1: Linux Birdge has larger FDB size than Runner bridge;
+       Case 2: The MAC has never been learned in this Runner bridge, eg. HGU bridge WAN case.*/
+    if ((rc) && (rc != BDMF_ERR_NOENT))
     {
         BDMF_TRACE_RET(rc, "Failed to remove mac entry, src dev name[%s] mac[%pM]\n", fdb->dst->dev->name,
             fdb->addr.addr);
@@ -500,6 +505,33 @@ Exit:
     return ret;
 }
 
+/* XRDP supports rdpa_if per radio; should skip linking operation if radio is linked to another bridge */
+static int wlan_radio_link_object_linked_to_any_bridge(bdmf_object_handle link_object)
+{
+#if defined(CONFIG_BCM_PON_XRDP)
+    rdpa_if port;
+    bdmf_link_handle link;
+        
+    if (link_object->drv != rdpa_port_drv())
+        return 0;
+
+    rdpa_port_index_get(link_object, &port);
+
+    if (!rdpa_if_is_wlan(port))
+        return 0;
+
+    while ((link = bdmf_get_next_us_link(link_object, NULL)))
+    {
+        bdmf_object_handle obj = bdmf_us_link_to_object(link);
+
+        if (obj->drv == rdpa_bridge_drv())
+            return 1;
+    }
+#endif
+
+    return 0;
+}
+
 static int br_fp_add_port(struct net_bridge *br, struct net_device *dev)
 {
     bdmf_object_handle bridge_object, link_object = NULL;
@@ -521,6 +553,12 @@ static int br_fp_add_port(struct net_bridge *br, struct net_device *dev)
 
     if (bdmf_is_linked(link_object, bridge_object, &plink))
         goto Exit;
+
+    if (wlan_radio_link_object_linked_to_any_bridge(link_object))
+    {
+        ret = 0;
+        goto Exit;
+    }
 
     if ((ret = bdmf_link(link_object, bridge_object, NULL)))
     {

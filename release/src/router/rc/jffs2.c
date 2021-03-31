@@ -82,10 +82,16 @@ unsigned int get_root_type(void)
 		case MODEL_RTAC1200GA1:
 		case MODEL_RTAC1200GU:
 		case MODEL_RTAC1200:
+		case MODEL_RTAC1200V2:
 		case MODEL_RTN11P_B1:
 		case MODEL_RPAC53:
 		case MODEL_RPAC55:
+		case MODEL_RPAC92:
+		case MODEL_RTN19:
+		case MODEL_RTAC59U:
 		case MODEL_MAPAC1750:
+		case MODEL_RTAC59CD6R:
+		case MODEL_RTAC59CD6N:
 			return 0x73717368;      /* squashfs */
 		case MODEL_GTAC5300:
 		case MODEL_RTAC86U:
@@ -93,11 +99,22 @@ unsigned int get_root_type(void)
 		case MODEL_GTAX11000:
 		case MODEL_RTAX92U:
 		case MODEL_RTAX95Q:
+		case MODEL_RTAXE95Q:
 		case MODEL_RTAX56_XD4:
+		case MODEL_CTAX56_XD4:
 		case MODEL_RTAX58U:
 		case MODEL_RTAX55:
 		case MODEL_RTAX56U:
+		case MODEL_RPAX56:
+		case MODEL_GTAXE11000:
+		
 			return 0x24051905;      /* ubifs */
+		case MODEL_DSLAX82U:
+		{
+			struct statfs sf;
+			statfs("/", &sf);
+			return sf.f_type;
+		}
 	}
 #ifdef HND_ROUTER
 	return 0x24051905;      /* ubifs */
@@ -106,9 +123,34 @@ unsigned int get_root_type(void)
 #endif
 }
 
+static int check_mountpoint(char *mountpoint)
+{
+	FILE *procpt;
+	char line[256], devname[48], mpname[48], system_type[10], mount_mode[128];
+	int dummy1, dummy2;
+
+	if ((procpt = fopen("/proc/mounts", "r")) != NULL)
+	while (fgets(line, sizeof(line), procpt)) {
+		memset(mpname, 0x0, sizeof(mpname));
+		if (sscanf(line, "%s %s %s %s %d %d", devname, mpname, system_type, mount_mode, &dummy1, &dummy2) != 6)
+			continue;
+
+		if (!strcmp(mpname, mountpoint))
+			return 1;
+	}
+
+	if (procpt)
+		fclose(procpt);
+
+	return 0;
+}
+
 int check_in_rootfs(const char *mount_point, const char *msg_title, int format)
 {
 	struct statfs sf;
+
+	if (!check_mountpoint((char *)mount_point)) return 1;
+
 	if (statfs(mount_point, &sf) == 0) {
 		if (sf.f_type != get_root_type()) {
 			// already mounted
@@ -174,6 +216,7 @@ void format_mount_2nd_jffs2(void)
 	int size;
 	int part;
 	const char *p;
+	int model;
 
 	if (!wait_action_idle(10)) return;
 
@@ -190,6 +233,7 @@ void format_mount_2nd_jffs2(void)
 
 	modprobe(JFFS_NAME);
 	sprintf(s, MTD_BLKDEV(%d), part);
+	model = get_model();
 	if (mount(s, SECOND_JFFS2_PATH, JFFS_NAME, MS_NOATIME, "") != 0) {
 		if (mtd_erase(JFFS2_MTD_NAME)){
 			error("formatting");
@@ -235,13 +279,11 @@ void start_jffs2(void)
 	int size;
 	int part;
 	const char *p;
-	int model = 0;
 
 	if (!wait_action_idle(10)) return;
 
 	if (!mtd_getinfo(JFFS2_PARTITION, &part, &size)) return;
 
-	model = get_model();
 	jffs2_fail = 0;
 	_dprintf("start jffs2: %d, %d\n", part, size);
 
@@ -297,6 +339,10 @@ void start_jffs2(void)
 		}
 	}
 
+#if defined(RTCONFIG_ISP_CUSTOMIZE)
+	load_customize_package();
+#endif
+
 	if(jffs2_fail == 1) {
 		nvram_set("jffs2_fail", "1");
 		nvram_commit();
@@ -325,10 +371,16 @@ void start_jffs2(void)
 		return;
 	}
 #endif
+
 	if (nvram_get_int("jffs2_clean_fs")) {
 		if((0 == nvram_get_int("x_Setting")) && (check_if_file_exist("/jffs/remove_hidden_flag")))
 		{
+#ifdef RTCONFIG_ISP_CUSTOMIZE
+			// Remove hidden folder but excluding /jffs/.package.
+			system("find /jffs/ -name '.*' -a ! -name '.package' -a ! -name '.package.tar.gz' -a ! -name 'package.tar.gz' -exec rm -rf {} \\;");
+#else
 			system("rm -rf /jffs/.*");
+#endif
 			_dprintf("Clean /jffs/.*\n");
 		}
 		_dprintf("Clean /jffs/*\n");
@@ -342,7 +394,7 @@ void start_jffs2(void)
 	notice_set("jffs", format ? "Formatted" : "Loaded");
 	jffs2_fail = 0;
 
-#ifdef HND_ROUTER
+#if defined(HND_ROUTER) || defined(DSL_AC68U)
 #ifdef RTCONFIG_JFFS_NVRAM
 	system("rm -rf /jffs/nvram_war");
 	jffs_nvram_init();

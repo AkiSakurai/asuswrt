@@ -1,7 +1,7 @@
 /*
  * PHY module internal interface crossing different PHY types
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -1720,6 +1720,7 @@ typedef struct  {
 
 	} aci;
 	int8 link_rssi; /* update link rssi */
+	bool edcrs_chan_scan;
 } interference_info_t;
 
 typedef struct _nphy_iq_comp {

@@ -122,6 +122,8 @@ extern const struct header_ops bcmVlan_header_ops;
 int bcmVlan_devInit(struct net_device *vlanDev)
 {
     struct net_device *realDev = BCM_VLAN_REAL_DEV(vlanDev);
+    /* VLANCTL driver could add these many additional bytes */
+    int addl_l2_hdr_len = (BCM_VLAN_HEADER_LEN * BCM_VLAN_MAX_TAGS); 
 
     netif_carrier_off(vlanDev);
 
@@ -152,8 +154,7 @@ int bcmVlan_devInit(struct net_device *vlanDev)
     vlanDev->addr_len = realDev->addr_len;
 
     vlanDev->header_ops = &bcmVlan_header_ops;
-    vlanDev->hard_header_len = (realDev->hard_header_len +
-                               (BCM_VLAN_HEADER_LEN * BCM_VLAN_MAX_TAGS));
+    vlanDev->hard_header_len = (realDev->hard_header_len + ((realDev->priv_flags & IFF_BCM_VLAN)? 0 : addl_l2_hdr_len));
     vlanDev->netdev_ops = &bcmVlan_netdev_ops;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 2, 0)
@@ -501,6 +502,8 @@ int bcmVlan_devHardStartXmit(struct sk_buff *skb, struct net_device *vlanDev)
 {
     int ret;
     struct rtnl_link_stats64 *stats;
+    const unsigned char *dest = eth_hdr(skb)->h_dest;
+    uint8_t pkt_type = skb->pkt_type;
 
 #if defined(BCM_VLAN_DATAPATH_ERROR_CHECK)
     BCM_ASSERT(skb);
@@ -511,6 +514,16 @@ int bcmVlan_devHardStartXmit(struct sk_buff *skb, struct net_device *vlanDev)
 
     /******** CRITICAL REGION BEGIN ********/
     BCM_VLAN_TX_LOCK();
+
+
+    if (unlikely(is_broadcast_ether_addr(dest)))
+    {
+        pkt_type = PACKET_BROADCAST;
+    }
+    else if (unlikely(is_multicast_ether_addr(dest)))
+    {
+        pkt_type = PACKET_MULTICAST;
+    }
 
     stats = bcmVlan_devGetStats(vlanDev);
 
@@ -555,7 +568,7 @@ int bcmVlan_devHardStartXmit(struct sk_buff *skb, struct net_device *vlanDev)
     
 #if defined(CONFIG_BLOG)
     /* Gather packet specific packet data using pkt_type calculations from the ethernet driver */
-    switch (skb->pkt_type) {
+    switch (pkt_type) {
 	case PACKET_BROADCAST:
             stats->tx_broadcast_packets ++;
             break;

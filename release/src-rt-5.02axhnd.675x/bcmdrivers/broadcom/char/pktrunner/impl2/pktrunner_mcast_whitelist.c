@@ -220,7 +220,7 @@ int __init runnerMcastWhitelist_construct(void *p)
         }
     }
 
-    __print("Initialized Runner Multicast Layer\n");
+    bcm_print("Initialized Runner Multicast Layer\n");
 #endif
 
     return 0;

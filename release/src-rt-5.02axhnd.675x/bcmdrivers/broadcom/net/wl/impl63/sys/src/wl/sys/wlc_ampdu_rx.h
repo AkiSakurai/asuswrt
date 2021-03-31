@@ -1,7 +1,7 @@
 /*
  * A-MPDU Rx (with extended Block Ack) related header file
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_ampdu_rx.h 780494 2019-10-28 17:46:36Z $
+ * $Id: wlc_ampdu_rx.h 786515 2020-04-29 17:58:37Z $
 */
 
 #ifndef _wlc_ampdu_rx_h_

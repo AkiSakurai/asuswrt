@@ -53,6 +53,7 @@
 				<script>
 					var boostKey_support = httpApi.boostKey_support();
 					var turbo_mode = httpApi.nvramGet(["turbo_mode"]).turbo_mode;
+					var matchFlag = false;
 					turbo_mode = (turbo_mode == "") ? "0" : turbo_mode;
 
 					for(var i in boostKey_support){
@@ -61,7 +62,11 @@
 							.text(boostKey_support[i].text)
         					.val(boostKey_support[i].value)
 						)
+
+						if(turbo_mode == boostKey_support[i].value) matchFlag = true;
 					}
+
+					if(!matchFlag) turbo_mode = $("#boostKeyMode option:first").val();
 
 					$("#boostKeyMode")
 						.val(turbo_mode)

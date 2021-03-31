@@ -2,7 +2,7 @@
  * D11 rate and link memory support module for for Broadcom 802.11
  * Networking Adapter Device Drivers
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -68,6 +68,8 @@ struct wlc_ratelinkmem_info; /* opaque module structure */
 	((((bsscfg) != (wlc)->cfg) && (BSSCFG_BCMC_SCB((bsscfg)) != NULL)) ? \
 		wlc_ratelinkmem_vbss_link_index((wlc), (bsscfg)) : \
 		WLC_RLM_SPECIAL_LINK_IDX)
+
+#define WLC_RLM_FTM_RATE_IDX		AMT_IDX_FTM_RSVD_START
 
 enum wlc_rlm_special_rate_enum {
 	WLC_RLM_SPECIAL_RATE_RSPEC = 0,

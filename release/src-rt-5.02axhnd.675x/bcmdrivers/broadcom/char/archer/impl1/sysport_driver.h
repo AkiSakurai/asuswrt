@@ -54,6 +54,10 @@
 #include <archer_cpu_queues.h>
 #endif
 
+#if defined(CONFIG_BCM947622)
+#define CC_SYSPORT_DRIVER_TM
+#endif
+
 #define SYSPORT_DRIVER_RXQ_INDEX_WAN   0
 #define SYSPORT_DRIVER_RXQ_INDEX_LAN   0
 
@@ -160,12 +164,12 @@ int sysport_driver_spe_cmd(int cmd, uint16_t cmdlist_index);
 
 int sysport_driver_queue_map(void *arg_p);
 
-int sysport_driver_switch_queue_to_txq_index(int switch_queue, int *txq_index_p);
-
-int sysport_driver_txq_index_to_switch_queue(int txq_index, int *switch_queue_p);
+int sysport_driver_switch_queue_to_txq_index(int logical_port, int switch_queue, int *txq_index_p);
 
 int sysport_driver_switch_mode_get(int logical_port, int txq_index,
                                    sysport_driver_switch_t *switch_mode_p);
+
+int sysport_driver_dev_to_logical_port(void *dev, int *logical_port_p);
 
 int sysport_driver_logical_port_to_phys_port(int logical_port, int *intf_index_p, int *phys_port_p);
 
@@ -173,7 +177,56 @@ int sysport_driver_lookup_port_map(void *arg_p);
 
 void sysport_driver_port_dump(void);
 
+#if defined(CC_SYSPORT_DRIVER_TM)
+void sysport_tm_enable(int enable);
+
+int sysport_tm_enabled(void);
+
+void sysport_tm_stats(void);
+
+int sysport_tm_stats_get(int logical_port, int queue_index,
+                         uint32_t *txPackets_p, uint32_t *txBytes_p,
+                         uint32_t *droppedPackets_p, uint32_t *droppedBytes_p);
+
+int sysport_tm_queue_set(int logical_port, int queue_index,
+                         int min_kbps, int min_mbs, int max_kbps, int max_mbs);
+
+int sysport_tm_queue_get(int logical_port, int queue_index,
+                         int *min_kbps_p, int *min_mbs_p, int *max_kbps_p, int *max_mbs_p);
+
+int sysport_tm_port_set(int logical_port, int kbps, int mbs);
+
+int sysport_tm_phy_set(int logical_port, int kbps, int mbs);
+
+int sysport_tm_port_get(int logical_port, int *kbps_p, int *mbs_p);
+
+int sysport_tm_arbiter_set(int logical_port, sysport_tm_arbiter_t sysport_tm_arbiter);
+
+int sysport_tm_arbiter_get(int logical_port, sysport_tm_arbiter_t *sysport_tm_arbiter_p);
+
+int sysport_tm_mode_set(int logical_port, sysport_tm_mode_t mode);
+
+int sysport_tm_mode_get(int logical_port, sysport_tm_mode_t *mode_p);
+
+int sysport_tm_drop_set(int logical_port, int queue_index,
+                        archer_drop_config_t *drop_config_p);
+
+int sysport_tm_drop_get(int logical_port, int queue_index,
+                        archer_drop_config_t *drop_config_p);
+#endif /* CC_SYSPORT_DRIVER_TM */
+
+int sysport_driver_drop_config_set(int logical_port, int switch_queue,
+                                   archer_drop_config_t *drop_config_p);
+
+int sysport_driver_drop_config_get(int logical_port, int switch_queue,
+                                   archer_drop_config_t *drop_config_p);
+
+uint32_t sysport_driver_tx_qsize_get(void);
+
 void sysport_driver_stats(void);
+
+int sysport_driver_txq_stats_get(int logical_port, int switch_queue,
+                                 archer_txq_stats_t *stats_p);
 
 void sysport_driver_reg_dump(void);
 

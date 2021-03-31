@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -31,6 +31,11 @@
 #if defined(WL_CFG80211)
 #include <wl_cfg80211.h>
 #endif // endif
+#if defined(BCMDONGLEHOST)
+#include <dhd.h>
+#else
+#include <wl_linux.h>
+#endif /* BCMDONGLEHOST */
 #define DEFAULT_IOCTL_RESP_TIMEOUT      2000
 #ifndef IOCTL_RESP_TIMEOUT
 #ifdef BCMQT
@@ -40,6 +45,16 @@
 #define IOCTL_RESP_TIMEOUT  DEFAULT_IOCTL_RESP_TIMEOUT
 #endif /* BCMQT */
 #endif /* IOCTL_RESP_TIMEOUT */
+
+#ifndef WL_MAX_IFS
+#ifdef DHD_MAX_IFS
+#define WL_MAX_IFS DHD_MAX_IFS
+#endif /* DHD_MAX_IFS */
+#endif /* WL_MAX_IFS */
+
+#ifndef WL_MAX_IFS
+#error "WL_MAX_IFS not defined!"
+#endif // endif
 
 #ifndef MFG_IOCTL_RESP_TIMEOUT
 #define MFG_IOCTL_RESP_TIMEOUT  20000  /* In milli second default value for MFG FW */

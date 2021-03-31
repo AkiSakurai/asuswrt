@@ -1,7 +1,7 @@
 /*
  * Cached Flow Processing module internal header file
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -78,7 +78,6 @@ typedef struct scb_cfp_stats {
  */
 typedef struct scb_cfp_tcb {
 	uint8	state[NUMPRIO]; /**< Current per prio state of TCB */
-	uint16	ringid[NUMPRIO]; /**< Host flow ring ID from BUS layer */
 	void	*scb_txc_info;  /**< SCB TxCache cubby [scb_txc_info_t] */
 	void	*scb_ampdu_tx;  /**< SCB-AMPDU cubby [scb_ampdu_tx_t] */
 	                            /**< Pointer to Initiators goes here */
@@ -101,7 +100,6 @@ typedef struct scb_cfp {
 	uint8	    iv_len;	    /**< keymgmt iv length */
 	uint8	    icv_len;	    /**< keymgmt icv length */
 	uint8	    cache_gen;	    /**< unique number incremented everytime cache is updated */
-	uint16      flowid;         /**< Unique id for the flow */
 	uint16      flags;          /**< Generic flags */
 	void        *scb;           /**< Cached scb pointer [struct scb ] */
 	void        *cfg;           /**< Store cfg pointer [wlc_bsscfg_t] */
@@ -110,7 +108,6 @@ typedef struct scb_cfp {
 	scb_cfp_tcb_t tcb;          /**< Transmit Control Block in scb-cfp */
 	scb_cfp_rcb_t rcb;          /**< Recieve Control Block in scb-cfp */
 	scb_cfp_stats_t stats;	    /**< stats collection in CFP */
-	uint8       fifo_idx[AC_COUNT]; /**< FIFO indexes array */
 	bool        ps_send;        /**< Transmit permission when PS is on */
 } scb_cfp_t;
 
@@ -119,7 +116,6 @@ typedef struct scb_cfp {
 /** SCB CFP Cubby Utility Macros */
 
 /** SCB CFP Cubby Accessors given a scb_cfp_t handle. Use these Accessors! */
-#define SCB_CFP_FLOWID(hdl)             ((hdl)->flowid)
 #define SCB_CFP_FLAGS(hdl)              ((hdl)->flags)
 #define SCB_CFP_SCB(hdl)                ((hdl)->scb)
 #define SCB_CFP_CFG(hdl)                ((hdl)->cfg)
@@ -150,7 +146,6 @@ typedef struct scb_cfp {
 #define SCB_CFP_AMPDU_TX(hdl)           ((SCB_CFP_TCB(hdl))->scb_ampdu_tx)
 #define SCB_CFP_TXC_INFO(hdl)           ((SCB_CFP_TCB(hdl))->scb_txc_info)
 #define SCB_CFP_TCB_STATE_PTR(hdl)      ((SCB_CFP_TCB(hdl))->state)
-#define SCB_CFP_RINGID(hdl, prio)   	((SCB_CFP_TCB(hdl))->ringid[prio])
 
 /** SCB CFP RCB Accessors */
 #define SCB_CFP_RCB_STATE(hdl, prio)    (_SCB_CFP_STATE(SCB_CFP_RCB(hdl), (prio)))
@@ -263,11 +258,6 @@ typedef enum wlc_cfp_cubby_rcb_state {
 typedef struct wlc_cfp_priv {
 	wlc_info_t      *wlc;       /**< Back pointer to wl */
 	int             scb_hdl;    /**< SCB cubby handle */
-	void            *scb_flowid_allocator; /**< ID allocator [1 .. MAXSCB] */
-	void            *int_flowid_allocator; /**< ID allocator for SCB INTERNAL */
-	scb_cfp_t       **scb_cfp_list; /**< All scb_cfp cubbies */
-	uint16		*amt_lookup; /** lookup table for AMT to CFP flow id */
-	int32		*cq_fifo_cnt; /**< Number of packets in the common queue by fifo */
 } wlc_cfp_priv_t;
 
 /** Cached Flow Processing module */
@@ -291,8 +281,6 @@ typedef struct wlc_cfp {
 /** Cached flow processing module private structures */
 #define WLC_CFP_WLC(cfp)      (WLC_CFP_PRIV(cfp)->wlc)
 
-/* #define WLC_CFP_AMT_LOOKUP(cfp, id)	(WLC_CFP_PRIV(cfp)->amt_lookup[(id)]) */
-
 /** Fetch CFP module pointer from pointer to module's public structure. */
 #define WLC_CFP(cfp_info) \
 	({ \
@@ -301,13 +289,4 @@ typedef struct wlc_cfp {
 		cfp_module; \
 	})
 
-#ifdef WLSQS
-/* Host FLow ringid max values */
-#define SCB_CFP_RINGID_MAX	BCMPCIE_MAX_TX_FLOWS + 1
-#define SCB_CFP_RINGID_INVALID	SCB_CFP_RINGID_MAX
-#define SCB_CFP_RINGID_VALID(id) ((uint16)(id) < SCB_CFP_RINGID_MAX)
-#endif /* WLSQS */
-
-/* Debug Asserts */
-#define ASSERT_CFP_RINGID(id)	ASSERT(SCB_CFP_RINGID_VALID(id))
 #endif /* _WLC_CFP_PRIV_H_ */

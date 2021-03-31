@@ -67,6 +67,8 @@
 
 #include "archer.h"
 #include "archer_driver.h"
+#include "archer_drop.h"
+#include "archer_xtmrt.h"
 #include "bcm_archer_dpi.h"
 
 #include "cmdlist_api.h"
@@ -179,7 +181,7 @@ int archer_ucast_common_flow_set(Blog_t *blog_p, sysport_classifier_flow_t *flow
 
     context_p->pathstat_index = blog_p->hw_pathstat_idx;
 
-    context_p->dpi_queue = ARCHER_DPI_BYPASS_QUEUE;
+    context_p->dpi_queue = min(blog_p->dpi_queue, (u8)ARCHER_DPI_BYPASS_QUEUE);
 
     context_p->tcp_pure_ack = blog_p->key.tcp_pure_ack;
 
@@ -456,9 +458,11 @@ int archer_ucast_common_flow_set(Blog_t *blog_p, sysport_classifier_flow_t *flow
            SYSPORT_RSB_PHY_ETH_LAN == context_p->egress_phy)
         {
             int switch_queue = SKBMARK_GET_Q_PRIO(blog_p->mark);
+            archer_drop_config_t drop_config;
             int txq_index;
 
-            if(sysport_driver_switch_queue_to_txq_index(switch_queue, &txq_index))
+            if(sysport_driver_switch_queue_to_txq_index(context_p->egress_port_or_mask,
+                                                        switch_queue, &txq_index))
             {
                 __logError("Could not sysport_driver_switch_queue_to_txq_index");
 
@@ -466,12 +470,38 @@ int archer_ucast_common_flow_set(Blog_t *blog_p, sysport_classifier_flow_t *flow
             }
 
             port_p->egress_queue = txq_index;
+
+            ret = sysport_driver_drop_config_get(context_p->egress_port_or_mask,
+                                                 switch_queue, &drop_config);
+            if(ret)
+            {
+                __logError("Could not sysport_driver_drop_config_get");
+
+                return SYSPORT_CLASSIFIER_ERROR_INVALID;
+            }
+
+            context_p->drop_profile =
+                archer_drop_profile_by_tc(&drop_config, SKBMARK_GET_TC_ID(blog_p->mark));
         }
+#if !defined(CONFIG_BCM947622)
         else if(SYSPORT_RSB_PHY_DSL == context_p->egress_phy)
         {
+            archer_drop_config_t drop_config;
+
             port_p->egress_queue = blog_p->tx.info.channel;
-            context_p->tc = SKBMARK_GET_TC_ID(blog_p->mark);
+
+            ret = iudma_tx_dropAlg_get(port_p->egress_queue, &drop_config);
+            if(ret)
+            {
+                __logError("Could not iudma_tx_dropAlg_get");
+
+                return SYSPORT_CLASSIFIER_ERROR_INVALID;
+            }
+
+            context_p->drop_profile =
+                archer_drop_profile_by_tc(&drop_config, SKBMARK_GET_TC_ID(blog_p->mark));
         }
+#endif
         else
         {
             BCM_ASSERT(0);
@@ -598,6 +628,13 @@ static int archer_ucast_flow_l3_set(Blog_t *blog_p, sysport_classifier_flow_t *f
                 context_p->is_routed = 1;
             }
         }
+        else if(RX_GRE(blog_p) || TX_GRE(blog_p))
+        {
+            if(blog_p->rx.tuple.ttl != blog_p->tx.tuple.ttl)
+            {
+                context_p->is_routed = 1;
+            }
+        }
         else
         {
             __logError("Unable to determine if the flow is routed or bridged");
@@ -605,8 +642,6 @@ static int archer_ucast_flow_l3_set(Blog_t *blog_p, sysport_classifier_flow_t *f
             return SYSPORT_CLASSIFIER_ERROR_INVALID;
         }
     }
-
-// XXX   ip_flow_p->result.tc = SKBMARK_GET_TC_ID(blog_p->mark);
 
     context_p->mtu = blog_getTxMtu(blog_p);
 
@@ -628,6 +663,8 @@ int archer_ucast_activate(Blog_t *blog_p, sysport_flow_key_t *flow_key_p,
     int cmdlist_length;
     int ret;
 
+    ip_addr_table_index_g = SYSPORT_IP_ADDR_TABLE_INVALID;
+
     if((blog_p->key.protocol != IPPROTO_UDP) &&
        (blog_p->key.protocol != IPPROTO_TCP) &&
        (blog_p->key.protocol != IPPROTO_IPV6) &&
@@ -640,8 +677,6 @@ int archer_ucast_activate(Blog_t *blog_p, sysport_flow_key_t *flow_key_p,
 
         goto abort_activate;
     }
-
-    ip_addr_table_index_g = SYSPORT_IP_ADDR_TABLE_INVALID;
 
     sysport_classifier_rsb_overwrite_init(&rsb_overwrite);
 
@@ -702,8 +737,7 @@ int archer_ucast_activate(Blog_t *blog_p, sysport_flow_key_t *flow_key_p,
 abort_activate:
     if(ip_addr_table_index_g != SYSPORT_IP_ADDR_TABLE_INVALID)
     {
-        ret = sysport_classifier_ip_addr_table_delete(ip_addr_table_index_g);
-        if(ret)
+        if(sysport_classifier_ip_addr_table_delete(ip_addr_table_index_g))
         {
             __logError("Could not sysport_classifier_ip_addr_table_delete (index %d)",
                        ip_addr_table_index_g);

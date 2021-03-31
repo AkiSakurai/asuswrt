@@ -1,6 +1,6 @@
 # Linux Makefile
 #
-# Copyright (C) 2019, Broadcom. All Rights Reserved.
+# Copyright (C) 2020, Broadcom. All Rights Reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -20,7 +20,7 @@
 #test merge
 
 #SRCBASE = ../..
-ifneq ($(wildcard $(PASSPOINT_AP_DIR)/hspotap.c),)
+ifeq ($(wildcard ./prebuilt),)
 WLAN_ComponentsInUse := bcmwifi ppr olpc
 
 ifeq (2_6,$(LINUX_VERSION))
@@ -30,7 +30,7 @@ SRCBASE := $(BASEDIR)/src
 endif
 include $(SRCBASE_SYS)/makefiles/WLAN_Common.mk
 
-include $(SRCBASE_ROUTER)/.config
+include $(TOP)/.config
 
 INCLUDE += -I$(PASSPOINT_DIR)/include -I$(PASSPOINT_DIR)/dsp -I$(PASSPOINT_DIR)/wlan -I$(PASSPOINT_DIR)/pkt
 INCLUDE += -I$(PASSPOINT_DIR)/tcp_srv -I$(PASSPOINT_DIR)/pro -I$(PASSPOINT_ROUTER)/shared -I$(PASSPOINT_DIR)/tmr
@@ -41,7 +41,8 @@ INCLUDE += -I$(SRCBASE_SYS)/../components/awd/include
 INCLUDE += -I$(SRCBASE_SYS)/../components/math/include
 INCLUDE += -I$(SRCBASE_SYS)/wl/exe -I$(SRCBASE_SYS)/security/secfrw/include
 
-INCLUDE += -I$(SRCBASE_ROUTER)/shared
+# INCLUDE += -I$(SRCBASE_ROUTER)/shared
+INCLUDE += -I$(TOP)/shared
 INCLUDE += $(WLAN_ComponentIncPathR)
 
 CFLAGS += $(INCLUDE)
@@ -78,7 +79,8 @@ vpath %.c $(SRCBASE_SYS)/wl/ppr/src
 vpath %.c $(SRCBASE_SYS)/shared
 vpath %.c $(WLAN_ComponentSrcDirsR)
 
-vpath %.o $(SRCBASE_ROUTER)/shared
+# vpath %.o $(SRCBASE_ROUTER)/shared
+vpath %.o $(TOP)/shared
 
 OBJS = trace.o
 OBJS += bcm_encode.o bcm_decode.o
@@ -227,7 +229,7 @@ endif
 
 all: hspotap
 
-ifneq ($(wildcard $(PASSPOINT_AP_DIR)/hspotap.c),)
+ifeq ($(wildcard ./prebuilt),)
 hspotap: $(OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 else

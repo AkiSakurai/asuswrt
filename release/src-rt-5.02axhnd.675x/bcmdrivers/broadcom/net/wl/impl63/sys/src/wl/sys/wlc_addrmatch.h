@@ -4,7 +4,7 @@
  *
  * BMAC driver - AMT/RCMTA interface
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -48,7 +48,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_addrmatch.h 780590 2019-10-30 10:17:40Z $
+ * $Id: wlc_addrmatch.h 786279 2020-04-22 23:46:13Z $
  */
 
 /* This interface provides support for manipulating address match
@@ -123,8 +123,4 @@ void wlc_addrmatch_info_free(wlc_info_t *wlc, int max_entry_num);
 int wlc_addrmatch_attach(wlc_info_t *wlc);
 void wlc_addrmatch_detach(wlc_info_t *wlc);
 
-#if defined(WLCFP)
-extern void wlc_cfp_amt_link_init(wlc_info_t *wlc, uint16 cfp_flowid,
-	const struct ether_addr *scb_ea);
-#endif /* WLCFP */
 #endif /* _wlc_addrmatch_h_ */

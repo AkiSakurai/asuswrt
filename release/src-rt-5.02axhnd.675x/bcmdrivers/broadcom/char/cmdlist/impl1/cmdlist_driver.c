@@ -68,14 +68,14 @@
 cmdlist_hooks_t cmdlist_hooks_g;
 uint32_t cmdlist_err_stats[CMDLIST_MAX_RET_CODES];
 
-#define CMDLIST_RETURN(_ret)                        \
-    do {                                            \
-        int idx = -(_ret);                          \
-        if(idx >= 0 && idx < CMDLIST_MAX_RET_CODES) \
-        {                                           \
-            cmdlist_err_stats[idx]++;               \
-        }                                           \
-        return (_ret);                              \
+#define CMDLIST_RETURN(_ret)                            \
+    do {                                                \
+        int idx = -(_ret);                              \
+        if(idx >= 0 && idx < CMDLIST_MAX_RET_CODES)     \
+        {                                               \
+            cmdlist_err_stats[idx]++;                   \
+        }                                               \
+        return (_ret);                                  \
     } while(0)
 
 #define CMDLIST_RET_CODE_STATS(_ret)  cmdlist_err_stats[-(_ret)]
@@ -83,7 +83,7 @@ uint32_t cmdlist_err_stats[CMDLIST_MAX_RET_CODES];
 #define CMDLIST_STATS_PRINT(sf, bytes, fmt, arg...)     \
     do {                                                \
         if(sf) bytes += seq_printf(sf, fmt, ##arg);     \
-        else bytes += __print(fmt,##arg);               \
+        else bytes += bcm_print(fmt,##arg);             \
     } while(0);
 
 
@@ -150,14 +150,14 @@ int __isEnetWanPort(uint32_t logicalPort)
 #if defined (CONFIG_BCM_ENET_SYSPORT)
     return 0;
 #else
-   bcmFun_t *enetIsWanPortFun = bcmFun_get(BCM_FUN_ID_ENET_IS_WAN_PORT);
-   int isWanPort = 0;
+    bcmFun_t *enetIsWanPortFun = bcmFun_get(BCM_FUN_ID_ENET_IS_WAN_PORT);
+    int isWanPort = 0;
 
-   BCM_ASSERT(enetIsWanPortFun != NULL);
+    BCM_ASSERT(enetIsWanPortFun != NULL);
 
-   isWanPort = enetIsWanPortFun(&logicalPort);
+    isWanPort = enetIsWanPortFun(&logicalPort);
 
-   return (isWanPort);
+    return (isWanPort);
 #endif
 }
 
@@ -427,7 +427,7 @@ int __init cmdlist_construct(void)
 
 #if defined(CONFIG_CMDLIST_GPE)
     {
-#if defined(BCM63158)
+#if defined(BCM63158) && !defined(CONFIG_BCM963146_EMULATION)
         int target_ddr_supported = 0;
 #else
         int target_ddr_supported = 1;
@@ -445,7 +445,7 @@ int __init cmdlist_construct(void)
 
     cmdlist_err_stats_init();
 
-    __print("Broadcom Command List Driver v1.0\n");
+    bcm_print("Broadcom Command List Driver v1.0\n");
 
     return ret;
 }

@@ -1,8 +1,8 @@
 #!/bin/sh
 #
-# WlGetDriverStats.sh <ucast|mcast> <WiFi interface name> <Driver mode nic|dhd> <NrRetries> <enable|disable>
+# WlGetDriverStats.sh <ucast|mcast> <WiFi interface name> <NrRetries> <enable|disable>
 #
-# Copyright (C) 2019, Broadcom. All Rights Reserved.
+# Copyright (C) 2020, Broadcom. All Rights Reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -25,17 +25,17 @@ IFNAME=$1
 DUMPPATH=/tmp
 DUMPDIR=${DUMPPATH}/$(date +"%d:%m:%Y_%H:%M")
 SOCRAMDUMPFILE=${DUMPDIR}/socram_${IFNAME}
-MODE=$2
 LOOP_TIME=10
 NR_RUNS=0
 ENABLEDUMP=0
 HOSTAPD_CONF=/tmp/wlX_hapd.conf
 
 show_help () {
-	echo "Syntax: $0 <WiFi interface name> <Driver mode: nic|dhd> <NrRetries> <SOCRAMDUMP: enable|disable>"
-	echo "Example 1: $0 wl1 nic (for NIC driver; infinite loop)"
+	echo "Syntax: $0 <WiFi interface name> <NrRetries> <SOCRAMDUMP: enable|disable>"
+	echo "  or  : $0 <WiFi interface name> [<Driver mode: auto|nic|dhd>] <NrRetries> <SOCRAMDUMP: enable|disable>"
+	echo "Example 1: $0 wl1 (infinite loop)"
 	echo "Example 2: $0 wl1 dhd (for FD driver; infinite loop)"
-	echo "Example 2: $0 eth5 dhd 12 enable (for FD driver; 12 loops - 5s between loops; dump socram also)"
+	echo "Example 3: $0 eth5 auto 12 enable (for any driver; 12 loops - 5s between loops; dump socram also)"
 	echo "Try \`$0 --help' for more information."
 	exit
 }
@@ -76,10 +76,36 @@ if [ $# -eq 0 ]; then
 	exit 0
 fi
 
-if [ $# -ge 3 ]; then
-    NR_REPEATS=$3
-else
-    NR_REPEATS=0
+MODE="auto"
+ENABLEDUMP="disable"
+NR_REPEATS=0
+if [ $# -eq 4 ]; then
+	MODE=$2
+	NR_REPEATS=$3
+	ENABLEDUMP=$4
+elif [ $# -eq 3 ]; then
+	if [[ $2 != "nic" ]] && [[ $2 != "dhd" ]] && [[ $2 != "auto" ]]; then
+		NR_REPEATS=$2
+		ENABLEDUMP=$3
+	else
+		MODE=$2
+		NR_REPEATS=$3
+	fi
+elif [ $# -eq 2 ]; then
+	if [[ $2 != "nic" ]] && [[ $2 != "dhd" ]] && [[ $2 != "auto" ]]; then
+		NR_REPEATS=$2
+	else
+		MODE=$2
+	fi
+fi
+
+if [ $MODE = "auto" ]; then
+	fwid=$(wl -i $IFNAME ver | grep -c FWID)
+	if [ $fwid = "1" ]; then
+		MODE="dhd"
+	else
+		MODE="nic"
+	fi
 fi
 
 if [[ $MODE != "nic" ]] && [[ $MODE != "dhd" ]]; then
@@ -88,24 +114,13 @@ if [[ $MODE != "nic" ]] && [[ $MODE != "dhd" ]]; then
     exit 0
 fi
 
-if [ $# -eq 4 ]; then
-    if [[ $4 == "enable" ]] && [[ $MODE == "dhd" ]]; then
-	ENABLEDUMP=1
-    else
-	if [ $MODE == "nic" ]; then
-	    echo "SOCRAMDUMP not possible in NIC mode"
-	fi
-	ENABLEDUMP=0
-    fi
-fi
-
 # Overwrite msglevel
 WLMSGLVL=`wl -i $IFNAME msglevel | cut -d ' ' -f1`
 wl -i $IFNAME msglevel 0
 if [[ $MODE == "dhd" ]]; then
-  echo -n $IFNAME DHD version = ; echo $(dhd -i $IFNAME ver)
+  echo -n $IFNAME DHD version = ; echo $($DHDCMD -i $IFNAME version)
   DHDMSGLVL=`dhd -i $IFNAME msglevel | cut -d ' ' -f1`
-  dhd -i $IFNAME msglevel 0
+  $DHDCMD -i $IFNAME msglevel 0
 fi
 
 driver_init () {
@@ -113,8 +128,9 @@ driver_init () {
 	echo -e "Interface $IFNAME is not up"
 	exit 0
     fi
-    $WLCMD -i $IFNAME bs_data > /dev/NULL 2>&1
-    $WLCMD -i $IFNAME pktq_stats > /dev/NULL 2>&1
+    $WLCMD -i $IFNAME bs_data -noreset > /dev/NULL 2>&1
+    $WLCMD -i $IFNAME pktq_stats c:// a: m: p: n: b: > /dev/NULL 2>&1
+    $WLCMD -i $IFNAME rx_report -noidle > /dev/NULL 2>&1
 }
 
 driver_info () {
@@ -149,15 +165,22 @@ wl_stats () {
 	fi
     done
     display_cmd_op "AUTH STA LIST: wl -i $IFNAME authe_sta_list" "$WLCMD -i $IFNAME authe_sta_list"
+    display_cmd_op "SMFSTATS: wl -i $IFNAME smfstats" "$WLCMD -i $IFNAME smfstats"
+    display_cmd_op "6G RATE: wl -i $IFNAME 6g_rate" "$WLCMD -i $IFNAME 6g_rate"
     display_cmd_op "5G RATE: wl -i $IFNAME 5g_rate" "$WLCMD -i $IFNAME 5g_rate"
     display_cmd_op "2G RATE: wl -i $IFNAME 2g_rate" "$WLCMD -i $IFNAME 2g_rate"
     display_cmd_op "NRATE: wl -i $IFNAME nrate" "$WLCMD -i $IFNAME nrate"
+    display_cmd_op "RATE: wl -i $IFNAME rate" "$WLCMD -i $IFNAME rate"
     display_cmd_op "11H SPECT: wl -i $IFNAME spect" "$WLCMD -i $IFNAME spect"
+    display_cmd_op "PHY_ED_THRESH: wl -i $IFNAME phy_ed_thresh" "$WLCMD -i $IFNAME phy_ed_thresh"
     display_cmd_op "CHANIMSTATS: wl -i $IFNAME chanim_stats" "$WLCMD -i $IFNAME chanim_stats"
     display_cmd_op "INTERFERENCE: wl -i $IFNAME interference" "$WLCMD -i $IFNAME interference"
-    display_cmd_op "wl -i $IFNAME interference_override" "$WLCMD -i $IFNAME interference_override"
-    display_cmd_op "BSDATA: wl -i $IFNAME bs_data" "$WLCMD -i $IFNAME bs_data"
-    display_cmd_op "PKTQSTATS: wl -i $IFNAME pktqstats" "$WLCMD -i $IFNAME pktq_stats"
+    display_cmd_op "INTERFERENCE_OVR: wl -i $IFNAME interference_override" "$WLCMD -i $IFNAME interference_override"
+    display_cmd_op "BSDATA: wl -i $IFNAME bs_data -noreset" "$WLCMD -i $IFNAME bs_data -noreset"
+    display_cmd_op "PKTQSTATS: wl -i $IFNAME pktq_stats" "$WLCMD -i $IFNAME pktq_stats c:// a: m: p: n: b:"
+    display_cmd_op "RXREPORT: wl -i $IFNAME rx_report" "$WLCMD -i $IFNAME rx_report -noidle"
+    display_cmd_op "TAF ATOS DUMP: wl -i $IFNAME dump taf -atos" "$WLCMD -i $IFNAME dump taf -atos"
+    display_cmd_op "TXFIFO DUMP: wl -i $IFNAME dump txfifo" "$WLCMD -i $IFNAME dump txfifo"
     display_cmd_op "TXQ DUMP: wl -i $IFNAME dump txq" "$WLCMD -i $IFNAME dump txq"
     display_cmd_op "PERFSTATS DUMP: wl -i $IFNAME dump perf_stats" "$WLCMD -i $IFNAME dump perf_stats"
     display_cmd_op "AMPDU DUMP: wl -i $IFNAME dump ampdu" "$WLCMD -i $IFNAME dump ampdu"
@@ -177,12 +200,16 @@ wl_stats () {
     display_cmd_op "CHANNEL INFO: wl -i $IFNAME chan_info" "$WLCMD -i $IFNAME chan_info"
     display_cmd_op "DFS STATUS: wl -i $IFNAME dfs_status_all" "$WLCMD -i $IFNAME dfs_status_all"
     display_cmd_op "NOISE: wl -i $IFNAME noise" "$WLCMD -i $IFNAME noise"
-    display_cmd_op "RSSI ANTENNA: wl -i $IFNAME phy_rssi_ant" "$WLCMD -i $IFNAME phy_rssi_ant"
     display_cmd_op "TEMPERATURE SENSOR: wl -i $IFNAME phy_tempsense" "$WLCMD -i $IFNAME phy_tempsense"
-    display_cmd_op "RATE: wl -i $IFNAME rate" "$WLCMD -i $IFNAME rate"
     display_cmd_op "BAND: wl -i $IFNAME band" "$WLCMD -i $IFNAME band"
     display_cmd_op "SCAN RESULTS: wl -i $IFNAME scanresults" "$WLCMD -i $IFNAME scanresults"
+    display_cmd_op "MACMODE DUMP: wl -i $IFNAME macmode" "$WLCMD -i $IFNAME macmode"
+    display_cmd_op "MAC DUMP: wl -i $IFNAME mac" "$WLCMD -i $IFNAME mac"
     display_cmd_op "RATELINKMEM: wl -i $IFNAME dump ratelinkmem" "$WLCMD -i $IFNAME dump ratelinkmem"
+    display_cmd_op "LAST ADJ EST POWER: wl -i $IFNAME txpwr_adj_est" "$WLCMD -i $IFNAME txpwr_adj_est"
+    display_cmd_op "CEVENT: ceventc -i $IFNAME dump" "ceventc -i $IFNAME dump"
+    ## Flush ceventc log
+    ceventc -i $IFNAME flush > /dev/NULL 2>&1
 }
 
 dhd_stats () {
@@ -190,7 +217,7 @@ dhd_stats () {
     echo "DHD Statistics for $IFNAME"
     echo "================================="
     display_cmd_op "DHDDUMP: dhd -i $IFNAME DHD dump" "$DHDCMD -i $IFNAME dump"
-    if [ $ENABLEDUMP -ne 0 ] ; then
+    if [ $ENABLEDUMP = "enable" ] ; then
 	mkdir $DUMPDIR
 	display_cmd_op "SOCRAMDUMP: Uploading DUMP to $1" "$DHDCMD -i $IFNAME upload $1"
     fi
@@ -248,6 +275,7 @@ loop_commands () {
     fi
 
     host_side_dump
+    dmesg -c
 }
 
 if [ $MODE == "dhd" ]; then
@@ -268,13 +296,16 @@ fi
 #driver_init
 driver_info
 #display_cmd_op "IFCONFIG: ifconfig -a" "ifconfig -a"
+$WLCMD -i $IFNAME cevent 1 > /dev/NULL 2>&1
 echo "================================="
 echo "Statistics for $IFNAME first run"
 echo "================================="
 
 wl_stats
 if [[ $MODE == "dhd" ]]; then
+    $DHDCMD -i $IFNAME dconpoll 250
     dhd_stats "${SOCRAMDUMPFILE}_${NR_RUNS}"
+    dmesg -c
 fi
 
 if [[ $NR_REPEATS -eq 0 ]]; then

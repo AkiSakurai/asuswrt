@@ -1,7 +1,7 @@
 #
 # Helper makefile for building the Adaptive Voltage Scaling component included in wl.mk
 #
-# Copyright 2019 Broadcom
+# Copyright 2020 Broadcom
 #
 # This program is the proprietary software of Broadcom and/or
 # its licensors, and may only be used, duplicated, modified or distributed
@@ -58,6 +58,9 @@ ifneq ($(SRCBASE),)
     AVS_SRC += $(AVS_TOP_DIR)/src/avs.c
   else
     AVS_OBJECTS += avs.o
+    ifneq ($(strip $(BCA_CPEROUTER)),)
+      AVS_SRC += $(AVS_TOP_DIR)/src/avs.o
+    endif
   endif
 else
   # NIC build

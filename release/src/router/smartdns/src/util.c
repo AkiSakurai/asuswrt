@@ -732,7 +732,7 @@ void SSL_CRYPTO_thread_setup(void)
 		pthread_mutex_init(&(lock_cs[i]), NULL);
 	}
 
-	CRYPTO_set_id_callback(_pthreads_thread_id);
+	//CRYPTO_set_id_callback(_pthreads_thread_id);
 	CRYPTO_set_locking_callback(_pthreads_locking_callback);
 }
 
@@ -985,3 +985,4 @@ int set_sock_lingertime(int fd, int time)
 
 	return 0;
 }
+

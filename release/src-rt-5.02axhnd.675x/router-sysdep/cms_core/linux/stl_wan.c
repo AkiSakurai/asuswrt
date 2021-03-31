@@ -691,6 +691,13 @@ CmsRet stl_l2tpAcLinkConfigObject(_L2tpAcLinkConfigObject *obj __attribute__((un
 {
 return CMSRET_SUCCESS_OBJECT_UNCHANGED;
 }
+
+CmsRet stl_l2tpAcClientCfgObject(_L2tpAcClientCfgObject *obj __attribute__((unused)),
+                              const InstanceIdStack *iidStack __attribute__((unused)))
+{
+return CMSRET_SUCCESS_OBJECT_UNCHANGED;
+}
+
 #endif /* DMP_X_BROADCOM_COM_L2TPAC_1 */
 
 #ifdef DMP_X_BROADCOM_COM_WIFIWAN_1 

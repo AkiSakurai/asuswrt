@@ -1,7 +1,7 @@
 /*
  * BSD shared include file
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -167,6 +167,15 @@ typedef enum {
 /* BSD and WBD enabled flags */
 #define BSD_FLAG_ENABLED	0x0001
 #define BSD_FLAG_WBD_ENABLED	0x0002
+
+/* BSD and WBD enables flags for BSS */
+#define BSD_FLAG_BSS_BSD_ENABLED	0x1
+#define BSD_FLAG_BSS_WBD_ENABLED	0x2
+
+#define BSD_BSS_BSD_ENABLED(bssinfo)	(bssinfo->flags & BSD_FLAG_BSS_BSD_ENABLED)
+#define BSD_BSS_WBD_ENABLED(bssinfo)	(bssinfo->flags & BSD_FLAG_BSS_WBD_ENABLED)
+#define BSD_BSS_BSD_OR_WBD_ENABLED(bssinfo)	\
+	(BSD_BSS_BSD_ENABLED(bssinfo) | BSD_BSS_WBD_ENABLED(bssinfo))
 
 /* Debug Print */
 extern int bsd_msglevel;
@@ -404,6 +413,7 @@ typedef struct bsd_sta_info {
 
 	uint32 flags;	/* sta flags from wl */
 	struct bsd_bssinfo *to_bssinfo;
+	uint32 wnm_cap; /* wnm capability from wl */
 } bsd_sta_info_t;
 
 #define BSD_INIT_ASSOC	(1 << 0)
@@ -524,6 +534,7 @@ struct bsd_bssinfo {
 
 	uint32 bssid_info;	/* BSSID info to be passed for steering */
 	uint8 phytype;		/* BSS's phytype */
+	uint8 flags;		/* Flags to indicate WBD or BSD or both enabled on this bss */
 };
 
 struct bsd_if_bssinfo_list {

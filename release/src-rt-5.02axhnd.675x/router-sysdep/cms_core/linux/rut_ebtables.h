@@ -131,6 +131,25 @@ void rutEbt_addPppIntfToBridge(char *cmdLine, UINT32 cmdLen, const char *baseL3I
 
 void rutEbt_removePppIntfFromBridge(const char *baseL3IfName);
 
+/** Add default rules for IPv6 at LAN sides
+ * 
+ * @param void
+ *
+ * @return  none
+ */
+
+void rutEbt_defaultLANSetup6(void);
+
+
+/** Remove pppoe interface from the bridge for PPPoE pass-through configuration
+ * 
+ * @param *prefix       (IN) IPv6 addr prefix
+ * @param *add          (IN) add or remove rule
+ *
+ * @return  none
+ */
+
+void rutEbt_configICMPv6Reply(const char *prefix, UBOOL8 add);
 
 #endif
 

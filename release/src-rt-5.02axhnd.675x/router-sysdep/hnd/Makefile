@@ -1,7 +1,7 @@
 #
 # Makefile for the Broadcom HND Layer
 #
-# Copyright (C) 2019, Broadcom. All Rights Reserved.
+# Copyright (C) 2020, Broadcom. All Rights Reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -46,6 +46,10 @@ endif
 
 REBUILD_HND_MODULE=$(shell if [ -d "$(src)/$(HND_DIR)" -a "$(REUSE_PREBUILT_HND)" != "1" ]; then echo 1; else echo 0; fi)
 
+ifneq ($(wildcard $(src)/$(HND_DIR)/prebuilt/hnd.o),)
+REBUILD_HND_MODULE=0
+endif
+
 ifeq ($(REBUILD_HND_MODULE),1)
 #Linux-4.1.0: Include the shared object files required for Wl, EMF and IGS modules
 hnd-objs := $(HND_DIR)/hnd_c.o shared_ksyms.o
@@ -76,7 +80,7 @@ ifneq ($(strip $(BUILD_HND_NIC)),)
     EXTRA_CFLAGS += -DBCA_HNDNIC
 endif
     EXTRA_CFLAGS += -I$(COMMON_SHARED_DIR)
-ifneq (,$(filter $(MODEL),RTAX58U TUFAX3000 RTAX82U RTAX55))
+ifneq (,$(filter $(MODEL),RTAX58U TUFAX3000 RTAX82U RTAX82_XD6 RTAX55 RTAX1800))
     EXTRA_CFLAGS += -g -DBCMDBG -DWLMSG_ASSOC
 endif
 
@@ -121,6 +125,11 @@ endif
     ifeq ($(CMWIFI),)
         EXTRA_CFLAGS += -DBULK_PKTLIST
     endif
+
+    ifneq ($(strip $(CONFIG_BCM_PKTFWD)),)
+        EXTRA_CFLAGS += -DBCM_PKTFWD
+    endif
+
     EXTRA_CFLAGS += -DSTS_FIFO_RXEN
 
 	ifeq ($(CONFIG_BCM_HND_EAP), y)
