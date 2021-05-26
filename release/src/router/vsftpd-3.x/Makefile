@@ -17,6 +17,7 @@ IFLAGS  = -idirafter dummyinc
 CFLAGS	+= -O2 -Wall $(EXTRACFLAGS) -ffunction-sections -fdata-sections -W -Wshadow \
 	#-pedantic -Wconversion
 CFLAGS  += -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE=1 -D_LARGEFILE64_SOURCE=1 -D_LARGE_FILES=1
+CFLAGS  += -I$(SRCBASE)/shared/bcmwifi/include -DTYPEDEF_FLOAT_T
 LDFLAGS = -ffunction-sections -fdata-sections -Wl,--gc-sections
 
 LIBS	=	-lcrypt
@@ -24,7 +25,7 @@ LINK	=
 
 CFLAGS	+=	-I../shared
 ifeq ($(RTCONFIG_FTP_SSL),y)
-LIBS	=	-lnsl
+LIBS	=	-lnsl -pthread
 OPENSSLDIR = ../openssl
 OPENSSLINC = $(OPENSSLDIR)/include
 LIBS	+=	-L$(OPENSSLDIR)/ -lssl -lcrypto

@@ -402,6 +402,11 @@ void led_control_normal(void)
 #if defined(RTCONFIG_LOGO_LED) && !defined(GTAX11000) && !defined(GTAXE11000)
 	led_control(LED_LOGO, LED_ON);
 #endif
+#ifdef TUFAX5400
+	led_control(LED_LOGO1, LED_ON);
+	led_control(LED_LOGO2, LED_ON);
+	led_control(LED_LOGO3, LED_ON);
+#endif
 
 #if defined(RTN11P) || defined(RTN300) || defined(RTN11P_B1)
 	led_control(LED_WPS, LED_ON);	//wps led is also 2g led. and NO power led.
@@ -457,6 +462,7 @@ int init_toggle(void)
 		case MODEL_GTAX11000:
 		case MODEL_RTAX92U:
 		case MODEL_RTAX95Q:
+		case MODEL_RTAXE95Q:
 		case MODEL_RTAX56_XD4:
 		case MODEL_CTAX56_XD4:
 		case MODEL_RTAX58U:
@@ -3650,7 +3656,7 @@ void btn_check(void)
 				eval("wl", "-i", "eth6", "ledbh", "15", "7");
 #elif defined(RTAX92U)
 				eval("wl", "-i", "eth5", "ledbh", "10", "7");
-#elif defined(RTAX95Q)
+#elif defined(RTAX95Q) || defined(RTAXE95Q)
 				eval("wl", "-i", "eth4", "ledbh", "10", "7");
 #elif defined(RTAX56_XD4) || defined(CTAX56_XD4)
 				eval("wl", "-i", "wl0", "ledbh", "10", "7");
@@ -3668,7 +3674,7 @@ void btn_check(void)
 #elif defined(RTAX68U)
 				eval("wl", "-i", "eth5", "ledbh", "7", "7");
 #elif defined(RTAC68U_V4)
-				eval("wl", "-i", "eth6", "ledbh", "10", "7");
+				eval("wl", "-i", "eth5", "ledbh", "10", "7");
 #elif defined(RTAX56U)
 				eval("wl", "-i", "eth5", "ledbh", "0", "25");
 #elif defined(RPAX56)
@@ -3690,7 +3696,7 @@ void btn_check(void)
 				eval("wl", "-i", "eth7", "ledbh", "15", "7");
 #elif defined(RTAX92U)
 				eval("wl", "-i", "eth6", "ledbh", "10", "7");
-#elif defined(RTAX95Q)
+#elif defined(RTAX95Q) || defined(RTAXE95Q)
 				eval("wl", "-i", "eth5", "ledbh", "10", "7");
 #elif defined(RTAX56_XD4) || defined(CTAX56_XD4)
 				eval("wl", "-i", "wl1", "ledbh", "10", "7");
@@ -3709,7 +3715,7 @@ void btn_check(void)
 #elif defined(RTAX68U)
 				eval("wl", "-i", "eth6", "ledbh", "7", "7");
 #elif defined(RTAC68U_V4)
-				eval("wl", "-i", "eth5", "ledbh", "10", "7");
+				eval("wl", "-i", "eth6", "ledbh", "10", "7");
 #elif defined(RTAX56U)
 				eval("wl", "-i", "eth6", "ledbh", "0", "25");
 #elif defined(RPAX56)
@@ -3722,7 +3728,7 @@ void btn_check(void)
 				eval("wl", "-i", "eth2", "ledbh", "9", "7");
 #endif
 			}
-#if defined(RTAC3200) || defined(RTAC5300) || defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U) || defined(RTAX95Q) || defined(GTAXE11000)
+#if defined(RTAC3200) || defined(RTAC5300) || defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U) || defined(RTAX95Q) || defined(RTAXE95Q) || defined(GTAXE11000)
 			if (wlonunit == -1 || wlonunit == 2) {
 #if defined(RTAC3200)
 				eval("wl", "-i", "eth3", "ledbh", "10", "7");
@@ -3732,7 +3738,7 @@ void btn_check(void)
 				eval("wl", "-i", "eth8", "ledbh", "15", "7");
 #elif defined(RTAX92U)
 				eval("wl", "-i", "eth7", "ledbh", "15", "7");
-#elif defined(RTAX95Q)
+#elif defined(RTAX95Q) || defined(RTAXE95Q)
 				eval("wl", "-i", "eth6", "ledbh", "15", "7");
 #elif defined(RTAC5300)
 				eval("wl", "-i", "eth3", "ledbh", "9", "7");
@@ -3749,6 +3755,11 @@ void btn_check(void)
 #endif
 #ifdef RTCONFIG_LOGO_LED
 			led_control(LED_LOGO, LED_ON);
+#endif
+#ifdef TUFAX5400
+			led_control(LED_LOGO1, LED_ON);
+			led_control(LED_LOGO2, LED_ON);
+			led_control(LED_LOGO3, LED_ON);
 #endif
 			kill_pidfile_s("/var/run/usbled.pid", SIGTSTP); // inform usbled to reset status
 #if defined(RTAX82U) || defined(GSAX3000) || defined(GSAX5400)
@@ -3810,7 +3821,7 @@ void btn_check(void)
 	if ((psta_exist() || psr_exist())
 		&& !dpsr_mode()
 #ifdef RTCONFIG_DPSTA
-		&& !dpsta_mode()
+		&& !(dpsta_mode()||rp_mode())
 #endif
 	)
 		return;
@@ -4408,7 +4419,7 @@ void timecheck(void)
 	char lan_ifname[16];
 	char wl_vifs[256], nv[40];
 	int expire, need_commit = 0;
-#if defined(RTCONFIG_AMAS) && defined(RTCONFIG_QCA)
+#if !defined(RTCONFIG_WL_SCHED_V2) && defined(RTCONFIG_AMAS) && defined(RTCONFIG_QCA)
        char sctmp[20];
 #endif 
 
@@ -4515,8 +4526,8 @@ void timecheck(void)
 		unit++;
 
 	}
-#endif // ifndef RTCONFIG_WL_SCHED_V2
 end_of_wl_sched:
+#endif // ifndef RTCONFIG_WL_SCHED_V2
 
 	// guest ssid expire check
 	if ((is_router_mode() || access_point_mode()) &&
@@ -4676,12 +4687,13 @@ void timecheck_v2(void)
 	char prefix[]="wlXXXXXX_", tmp[100], tmp2[100];
 	char word[256], *next;
 	int unit = 0, item = 0;
-
+#if defined(RTCONFIG_AMAS) && defined(RTCONFIG_QCA)
+       char sctmp[20];
+#endif 
 	// Check whether conversion needed.
 	convert_wl_sched_v1_to_sched_v2();
 
 	WL_SCHED_DBG("[wifi-scheduler] start to timecheck()...\n");
-
 	item = 0;
 	unit = 0;
 
@@ -4705,7 +4717,9 @@ void timecheck_v2(void)
 	foreach (word, nvram_safe_get("wl_ifnames"), next) {
 		SKIP_ABSENT_BAND_AND_INC_UNIT(unit);
 		snprintf(prefix, sizeof(prefix), "wl%d_", unit);
-
+#if defined(RTCONFIG_AMAS) && defined(RTCONFIG_QCA)
+		snprintf(sctmp, sizeof(sctmp), "wl%d_qca_sched", unit);
+#endif
 		//dbG("[watchdog] timecheck unit=%s radio=%s, timesched=%s\n", prefix, nvram_safe_get(strcat_r(prefix, "radio", tmp)), nvram_safe_get(strcat_r(prefix, "timesched", tmp2))); // radio toggle test
 		if (nvram_match(strcat_r(prefix, "radio", tmp), "0") ||
 			nvram_match(strcat_r(prefix, "timesched", tmp2), "0")) {
@@ -4731,9 +4745,11 @@ void timecheck_v2(void)
 		snprintf(tmp, sizeof(tmp), "%d", unit);
 #endif
 		WL_SCHED_DBG("[wifi-scheduler] 3 uschedTime=%s, unit=%d, activeNow=%d\n", schedTime, unit, activeNow);
-
 		if (svcStatus[item] != activeNow) {
 #ifdef RTCONFIG_QCA
+#if defined(RTCONFIG_AMAS)
+		  	nvram_set_int(sctmp,activeNow);
+#endif
 #if defined(RTCONFIG_LYRA_5G_SWAP)
 			if (match_radio_status(swap_5g_band(unit), activeNow)) {
 #else
@@ -4952,11 +4968,11 @@ unsigned long get_etlan_count()
 	char buf[256];
 	char *ifname, *p;
 	unsigned long counter=0;
-#if defined(GTAC5300) || defined(RTAX88U) || defined(GTAX11000) || defined(RTAX92U) || defined(RTAX95Q) || defined(RTAX56U) || defined(RTAX56_XD4) || defined(CTAX56_XD4) || defined(RTAX86U) || defined(RTAX5700) || defined(RTAX68U) || defined(RTAX55) || defined(RTAX1800) || defined(GTAXE11000)
+#if defined(GTAC5300) || defined(RTAX88U) || defined(GTAX11000) || defined(RTAX92U) || defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56U) || defined(RTAX56_XD4) || defined(CTAX56_XD4) || defined(RTAX86U) || defined(RTAX5700) || defined(RTAX68U) || defined(RTAX55) || defined(RTAX1800) || defined(GTAXE11000)
 	unsigned long tmpcnt=0;
 #endif
 
-#if defined(RTAX95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4)
+#if defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4)
 	return -1;
 #endif
 
@@ -4971,9 +4987,9 @@ unsigned long get_etlan_count()
 		if ((ifname = strrchr(buf, ' ')) == NULL) ifname = buf;
 		else ++ifname;
 
-#if defined(GTAC5300) || defined(RTAX88U) || defined(GTAX11000) || defined(RTAX92U) || defined(RTAX95Q) || defined(RTAX56U) || defined(RTAX68U) || defined(RTAX55) || defined(RTAX1800) || defined(GTAXE11000)
+#if defined(GTAC5300) || defined(RTAX88U) || defined(GTAX11000) || defined(RTAX92U) || defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56U) || defined(RTAX68U) || defined(RTAX55) || defined(RTAX1800) || defined(GTAXE11000)
 		if (strcmp(ifname, "eth1")
-#if defined(GTAC5300) || defined(RTAX88U) || defined(GTAX11000) || defined(RTAX92U) || defined(RTAX95Q) || defined(RTAX56U) || defined(RTAX68U) || defined(GTAXE11000) 
+#if defined(GTAC5300) || defined(RTAX88U) || defined(GTAX11000) || defined(RTAX92U) || defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56U) || defined(RTAX68U) || defined(GTAXE11000) 
 			&& strcmp(ifname, "eth2") && strcmp(ifname, "eth3") && strcmp(ifname, "eth4")
 #endif
 #ifdef RTCONFIG_EXT_BCM53134
@@ -5095,7 +5111,7 @@ void fake_etlan_led(void)
 			(!nvram_get_int("wans_extwan") && !(phystatus & 0x1e)))  // configure 2.5G port as LAN, ignore 2.5G port
 #else
 	if (!phystatus
-#if defined(RTAX92U) || defined(RTAX95Q) || defined(RTAX68U)
+#if defined(RTAX92U) || defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX68U)
 			|| phystatus == 1 // ignore WAN
 #endif
 	)
@@ -5728,6 +5744,7 @@ void led_check(int sig)
 		case MODEL_GTAX11000:
 		case MODEL_RTAX92U:
 		case MODEL_RTAX95Q:
+		case MODEL_RTAXE95Q:
 		case MODEL_RTAX56_XD4:
 		case MODEL_CTAX56_XD4:
 		case MODEL_RTAX58U:
@@ -7530,28 +7547,27 @@ static void bt_turn_off_service()
 	strncpy(buf, nvram_safe_get("bt_turn_off_service"), sizeof(buf));
 
 	if (strlen(buf)) {
+		if (strstr(buf, "ble_qis_done")) {
+			if (nvram_get_int("bt_turn_off") != 2)
+				return;
+			nvram_set("x_Setting", "1");
+			nvram_set("qis_Setting", "1");
+			nvram_commit();
+			stop_bluetooth_service();
+		}
 		nvram_set("w_Setting", "1");
+
 		tmp = strtok(buf, delim);
 		while (tmp!=NULL) {
 			int retry = 20;
-
-			if (!strncmp(tmp, "ble_qis_done", strlen(tmp))) {
-				nvram_set("x_Setting", "1");
-				nvram_set("qis_Setting", "1");
-				nvram_unset("bt_turn_off_service");
-				nvram_commit();
-				stop_bluetooth_service();
-
-				tmp = strtok(NULL, delim);
-				continue;
-			}
 
 			while(retry-- > 0 && strlen(nvram_safe_get("rc_service"))) {
 				_dprintf("\nwaiting for previous service");
 				sleep(1);
 			}
 
-			notify_rc_and_wait(tmp);
+			if (strncmp(tmp, "ble_qis_done", strlen(tmp))) 
+				notify_rc_and_wait(tmp);
 
 			tmp = strtok(NULL, delim);
 		}
@@ -8724,7 +8740,7 @@ void watchdog(int sig)
 	single_led_status();
 #endif
 #if defined(RTCONFIG_BT_CONN)
-#if defined(RTAX95Q) || defined(RTAX56_XD4) || defined(RTAX82_XD6)
+#if defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56_XD4) || defined(RTAX82_XD6)
 	bluetooth_check();
 #endif
 	bt_turn_off_service();

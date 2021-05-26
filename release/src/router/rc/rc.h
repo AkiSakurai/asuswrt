@@ -913,7 +913,9 @@ extern void cled_set(int gpio, uint32_t config0, uint32_t config1, uint32_t conf
 extern void LEDGroupReset(int mode);
 #endif
 extern void activateLANLed();
+#ifndef RTAC68U_V4
 extern int mtd_erase_image_update();
+#endif
 extern int mtd_erase_misc2();
 extern int wait_to_forward_state(char *ifname);
 #endif
@@ -1112,6 +1114,12 @@ enum {
 	VDSL_PROFILE_MAX,
 };
 
+enum {
+	DSL_LINK_DOWN = 0,
+	DSL_LINK_INIT,
+	DSL_LINK_UP,
+};
+
 typedef struct {
 	int mod;
 	int annex;
@@ -1127,6 +1135,7 @@ typedef struct {
 	char mod[16]; //e.g. ADSL2+
 	char type[16]; //e.g. Annex A
 	char profile[16]; //e.g. 30a
+	char vect[20]; // Vectoring state
 	uint8_t vid[8]; //farend vendor id
 	int is_vdsl2_gfast;
 	int tcm_down; //trellis coding modulation
@@ -1149,6 +1158,8 @@ typedef struct {
 	unsigned int es_up;
 	unsigned int ses_down;
 	unsigned int ses_up;
+	int ginp_down;
+	int ginp_up;
 	char inp_down[16]; // INP
 	char inp_up[16];
 	char inp_rein_down[16]; //INP REIN (Repetitive Electrical Impulse Noise)
@@ -1162,6 +1173,15 @@ typedef struct {
 	char satn_pb_down[48]; //Signal Attenuation downstream(VDSL Band Status)
 	char satn_pb_up[48]; //Signal Attenuation upstream(VDSL Band Status)
 } XDSL_INFO;
+
+typedef struct {
+	int link_status;
+	time_t cur_time;
+	float snr_down;
+	int snrm;	//configured snrm/offset
+	unsigned int crc_down;
+	unsigned int crc_up;
+} XDSL_LOG_RECORD;
 
 /* sysdeps/xxx/dsl-*.c */
 #ifdef RTCONFIG_DSL_BCM
@@ -2605,7 +2625,7 @@ static inline int find_brifname_by_wlifname(char __attribute__((__unused__)) *wl
 extern void wgn_init(void);
 extern void wgn_start(void);
 extern void wgn_stop(void);
-extern void wgn_filter_forward(FILE *fp);
+extern void wgn_filter_forward(FILE *fp, char *wan_if);
 extern void wgn_filter_input(FILE *fp);
 extern void wgn_dnsmasq_conf(FILE *fp);
 extern void wgn_check_subnet_conflict(void);

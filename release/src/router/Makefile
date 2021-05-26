@@ -203,7 +203,7 @@ export EX7 :=
 export DHD_MONITOR := debug_monitor
 export LIBNL_PLT := arm
 export LIBNL_BUILD := i386-pc-linux-gnu
-ifeq (67,$(BCM_WLIMPL))
+ifeq ($(RTCONFIG_WIFI6E),y)
 export DONGLE_SRC := main
 else
 export DONGLE_SRC := 43684
@@ -1109,7 +1109,14 @@ obj-$(RTCONFIG_EXT4FS) += e2fsprogs
 obj-y += libdisk
 
 #obj-y += dosfstools
-obj-$(RTCONFIG_FTP) += $(if $(RTCONFIG_QCA),vsftpd-3.x,vsftpd)
+#obj-$(RTCONFIG_FTP) += $(if $(RTCONFIG_QCA),vsftpd-3.x,vsftpd)
+ifeq ($(RTCONFIG_FTP),y)
+ifeq ($(or $(RTCONFIG_FTP_SSL),$(RTCONFIG_QCA)),y)
+obj-y += vsftpd-3.x
+else
+obj-y += vsftpd
+endif
+endif
 
 ifeq ($(CONFIG_LINUX26),y)
 ifeq ($(RTCONFIG_SAMBASRV),y)
@@ -3579,6 +3586,11 @@ vsftpd-install:
 
 vsftpd-3.x: $(ftp_dep)
 	@$(SEP)
+ifeq ($(RTCONFIG_FTP_SSL),y)
+	-cp vsftpd-3.x/builddefs-ssl.h vsftpd-3.x/builddefs.h
+else
+	-cp vsftpd-3.x/builddefs-nossl.h vsftpd-3.x/builddefs.h
+endif
 	$(MAKE) -C $@
 
 vsftpd-3.x-install: vsftpd-3.x
@@ -6085,7 +6097,7 @@ strongswan/Makefile: strongswan/configure
 	--with-ipsecdir=/usr/lib/ipsec \
 	--with-strongswan-conf=/etc/strongswan.conf \
 	--with-user=admin \
-	CFLAGS="-O2 -Wall -Wno-format -Wno-format-security -Wno-pointer-sign -I$(STAGEDIR)/usr/include $(EXTRACFLAGS) \
+	CFLAGS="-O0 -Wall -Wno-format -Wno-format-security -Wno-pointer-sign -I$(STAGEDIR)/usr/include $(EXTRACFLAGS) \
 		$(if $(filter y,$(HND_ROUTER)),$(if $(filter 4908,$(BRCM_CHIP)),-DHND_ROUTER,),)" \
 	LDFLAGS="-L$(STAGEDIR)/usr/lib $(EXTRALDFLAGS)" \
 	LIBS="-lssl -lcrypto -lpthread -ldl -lm"

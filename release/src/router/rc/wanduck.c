@@ -2160,6 +2160,11 @@ _dprintf("nat_rule: start_nat_rules 3.\n");
 	else{ // conn_changed_state[wan_unit] == PHY_RECONN
 		nat_state = stop_nat_rules();
 
+#ifdef RT4GAC86U
+		if(get_dualwan_by_unit(wan_unit) == WANS_DUALWAN_IF_USB)
+			system("/usr/sbin/modem_status.sh init_sms");
+#endif
+
 		_dprintf("\n# wanduck(%d): Try to restart_wan_if.\n", wan_unit);
 		snprintf(cmd, sizeof(cmd), "restart_wan_if %d", wan_unit);
 		notify_rc_and_wait(cmd);

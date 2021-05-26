@@ -459,6 +459,11 @@ chanim_upd_state(acs_chaninfo_t * c_info, uint8 version, uint ticks)
 			}
 		}
 
+		if (acs_check_assoc_scb(c_info)) {
+			ACSD_CHANIM("chanim channel select: no channel switch while associated\n");
+			goto post_act;
+		}
+
 		/* taking action */
 		if (acs_allow_scan(c_info, ACS_SCAN_TYPE_CS, ticks)) {
 			c_info->last_scan_type = ACS_SCAN_TYPE_CS;

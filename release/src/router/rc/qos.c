@@ -578,6 +578,7 @@ static int add_qos_rules(char *pcWANIF)
 		case MODEL_GTAX11000:
 		case MODEL_RTAX92U:
 		case MODEL_RTAX95Q:
+		case MODEL_RTAXE95Q:
 		case MODEL_RTAX56_XD4:
 		case MODEL_CTAX56_XD4:
 		case MODEL_RTAX58U:
@@ -1232,15 +1233,10 @@ static int start_tqos(void)
 
 #ifdef CLS_ACT
 			x = (i + 1) * 10;
-			fprintf(f,
-				"# ingress %d: %u%%\n"
-				"\t$TCADL parent 2:1 classid 2:%d htb rate %ukbit %s prio %d quantum %u\n"
-				"\t$TQADL parent 2:%d handle %d: $SCH\n"
-				"\t$TFADL parent 2: prio %d protocol ip handle %d fw flowid 2:%d\n",
-					i, rate,
-					x, calc(bw, rate), burst_leaf, (i >= 6) ? 7 : (i + 1), mtu,
-					x, x,
-					x, i + 1, x);
+			fprintf(f, "# ingress %d: %u%%\n", i, rate);
+			fprintf(f,"\t$TCADL parent 2:1 classid 2:%d htb rate %ukbit %s prio %d quantum %u\n", x, calc(bw, rate), burst_leaf, (i >= 6) ? 7 : (i + 1), mtu);
+			fprintf(f,"\t$TQADL parent 2:%d handle %d: $SCH\n", x, x);
+			fprintf(f,"\t$TFADL parent 2: prio %d protocol ip u32 match mark %d 0x%x flowid 2:%d\n", x, i + 1, QOS_MASK, x);
 #else
 			x = i + 1;
 			fprintf(f,
@@ -2109,6 +2105,7 @@ static int add_rog_qos_rules(char *pcWANIF)
 		case MODEL_GTAX11000:
 		case MODEL_RTAX92U:
 		case MODEL_RTAX95Q:
+		case MODEL_RTAXE95Q:
 		case MODEL_RTAX56_XD4:
 		case MODEL_CTAX56_XD4:
 		case MODEL_RTAX58U:

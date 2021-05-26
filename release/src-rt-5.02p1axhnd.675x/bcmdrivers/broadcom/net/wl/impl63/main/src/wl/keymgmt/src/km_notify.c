@@ -66,6 +66,7 @@
 #endif /* WL_PWRSTATS */
 #include <wlc_pm.h>
 #include <wlc_ratelinkmem.h>
+#include <wlc_frag.h>
 
 /* Security algos for which key exchange is required */
 #define SEC_ALGO_KEY_EXCH (CRYPTO_ALGO_TKIP | CRYPTO_ALGO_AES_CCM)
@@ -238,6 +239,7 @@ km_handle_key_update(keymgmt_t *km, wlc_key_t *key, wlc_key_info_t *key_info)
 	/* compatibility: sync up scb wsec invalidate txc */
 	if (km_pvt_key->flags & KM_FLAG_SCB_KEY) {
 		scb_t *scb;
+		uint8 prio;
 		enum wlc_bandunit bandunit;
 
 		scb = km_pvt_key->u.scb;
@@ -277,7 +279,10 @@ km_handle_key_update(keymgmt_t *km, wlc_key_t *key, wlc_key_info_t *key_info)
 			wlc_cfp_scb_state_upd(km->wlc->cfp, scb);
 		}
 #endif // endif
-
+		/* free any frame reassembly buffer */
+		for (prio = 0; prio < NUMPRIO; prio++) {
+		       wlc_defrag_prog_reset(km->wlc->frag, scb, prio, 0);
+		}
 	} else {
 		bsscfg = km_pvt_key->u.bsscfg;
 		if (RATELINKMEM_ENAB(km->wlc->pub) && bsscfg) {

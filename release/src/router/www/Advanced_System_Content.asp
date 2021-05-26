@@ -510,9 +510,15 @@ function applyRule(){
 		if(hdspindown_support)
 			action_script_tmp += "restart_usb_idle;";
 		
-		if(restart_httpd_flag)
+		if(restart_httpd_flag) {
 			action_script_tmp += "restart_httpd;";
 			
+			if (('<% nvram_get("enable_ftp"); %>' == "1")
+				&& ('<% nvram_get("ftp_tls"); %>' == "1")) {
+					action_script_tmp += ";restart_ftpd";
+			}
+		}
+
 		if(restart_firewall_flag)
 			action_script_tmp += "restart_firewall;";
 
@@ -685,13 +691,13 @@ function validForm(){
 
 	if (!validator.range(document.form.http_lanport, 1, 65535))
 		/*return false;*/ document.form.http_lanport = 80;
-	if (HTTPS_support && !validator.range(document.form.https_lanport, 1025, 65535) && !tmo_support)
+	if (HTTPS_support && !document.form.https_lanport.disabled && !validator.range(document.form.https_lanport, 1025, 65535) && !tmo_support)
 		return false;
 
 	if (document.form.misc_http_x[0].checked) {
-		if (!validator.range(document.form.misc_httpport_x, 1024, 65535))
+		if (!document.form.misc_httpport_x.disabled && !validator.range(document.form.misc_httpport_x, 1024, 65535))
 			return false;
-		if (HTTPS_support && !validator.range(document.form.misc_httpsport_x, 1024, 65535))
+		if (HTTPS_support && !document.form.misc_httpsport_x.disabled && !validator.range(document.form.misc_httpsport_x, 1024, 65535))
 			return false;
 	}
 	else{
@@ -726,7 +732,7 @@ function validForm(){
 		document.form.misc_httpsport_x.select();
 		return false;
 	}
-	else if(isPortConflict(document.form.https_lanport.value) && HTTPS_support && !tmo_support){
+	else if(!document.form.https_lanport.disabled && isPortConflict(document.form.https_lanport.value) && HTTPS_support && !tmo_support){
 		alert(isPortConflict(document.form.https_lanport.value));
 		document.form.https_lanport.focus();
 		document.form.https_lanport.select();
@@ -1001,6 +1007,7 @@ function hide_https_lanport(_value){
 	if(sw_mode == '1' || sw_mode == '2'){
 		var https_lanport_num = "<% nvram_get("https_lanport"); %>";
 		document.getElementById("https_lanport").style.display = (_value == "0") ? "none" : "";
+		document.form.https_lanport.disabled = (_value == "0") ? true : false;
 		document.form.https_lanport.value = "<% nvram_get("https_lanport"); %>";
 		document.getElementById("https_access_page").innerHTML = "<#https_access_url#> ";
 		document.getElementById("https_access_page").innerHTML += "<a href=\"https://"+theUrl+":"+https_lanport_num+"\" target=\"_blank\" style=\"color:#FC0;text-decoration: underline; font-family:Lucida Console;\">http<span>s</span>://"+theUrl+"<span>:"+https_lanport_num+"</span></a>";
@@ -1206,12 +1213,14 @@ function hideport(flag){
 		var orig_str = document.getElementById("access_port_title").innerHTML;
 		document.getElementById("access_port_title").innerHTML = orig_str.replace(/HTTPS/, "HTTP");
 		document.getElementById("http_port").style.display = (flag == 1) ? "" : "none";
+		document.form.misc_httpport_x.disabled = (flag == 1) ? false: true;
 	}
 	else{
 		document.getElementById("WAN_access_hint").style.display = (flag == 1) ? "" : "none";
 		document.getElementById("wan_access_url").style.display = (flag == 1) ? "" : "none";
 		change_url(document.form.misc_httpsport_x.value, "https_wan");
 		document.getElementById("https_port").style.display = (flag == 1) ? "" : "none";
+		document.form.misc_httpsport_x.disabled = (flag == 1) ? false: true;
 	}
 }
 
@@ -2065,7 +2074,7 @@ function pullNTPList(obj){
 				<tr id="https_lanport">
 					<th><#System_HTTPS_LAN_Port#></th>
 					<td>
-						<input type="text" maxlength="5" class="input_6_table" id="https_lanport_input" name="https_lanport" value="<% nvram_get("https_lanport"); %>" onKeyPress="return validator.isNumber(this,event);" onBlur="change_url(this.value, 'https_lan');" autocorrect="off" autocapitalize="off" onkeydown="reset_portconflict_hint();">
+						<input type="text" maxlength="5" class="input_6_table" id="https_lanport_input" name="https_lanport" value="<% nvram_get("https_lanport"); %>" onKeyPress="return validator.isNumber(this,event);" onBlur="change_url(this.value, 'https_lan');" autocorrect="off" autocapitalize="off" onkeydown="reset_portconflict_hint();" disabled>
 						<span id="port_conflict_httpslanport" style="color: #e68282; display: none;">Port Conflict</span>
 						<div id="https_access_page" style="color: #FFCC00;"></div>
 						<div style="color: #FFCC00;">* <#HttpsLanport_Hint#></div>
@@ -2101,8 +2110,8 @@ function pullNTPList(obj){
 				<tr id="accessfromwan_port">
 					<th align="right"><a id="access_port_title" class="hintstyle" href="javascript:void(0);" onClick="openHint(8,3);">HTTPS <#FirewallConfig_x_WanWebPort_itemname#></a></th>
 					<td>
-						<span style="margin-left:5px; display:none;" id="http_port"><input type="text" maxlength="5" name="misc_httpport_x" class="input_6_table" value="<% nvram_get("misc_httpport_x"); %>" onKeyPress="return validator.isNumber(this,event);" autocorrect="off" autocapitalize="off"/>&nbsp;&nbsp;</span>
-						<span style="margin-left:5px; display:none;" id="https_port"><input type="text" maxlength="5" name="misc_httpsport_x" class="input_6_table" value="<% nvram_get("misc_httpsport_x"); %>" onKeyPress="return validator.isNumber(this,event);" onBlur="change_url(this.value, 'https_wan');" autocorrect="off" autocapitalize="off"/></span>
+						<span style="margin-left:5px; display:none;" id="http_port"><input type="text" maxlength="5" name="misc_httpport_x" class="input_6_table" value="<% nvram_get("misc_httpport_x"); %>" onKeyPress="return validator.isNumber(this,event);" autocorrect="off" autocapitalize="off" disabled/>&nbsp;&nbsp;</span>
+						<span style="margin-left:5px; display:none;" id="https_port"><input type="text" maxlength="5" name="misc_httpsport_x" class="input_6_table" value="<% nvram_get("misc_httpsport_x"); %>" onKeyPress="return validator.isNumber(this,event);" onBlur="change_url(this.value, 'https_wan');" autocorrect="off" autocapitalize="off" disabled/></span>
 						<span id="wan_access_url"></span>
 					</td>
 				</tr>

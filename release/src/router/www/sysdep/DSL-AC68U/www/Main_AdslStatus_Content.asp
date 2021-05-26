@@ -137,11 +137,6 @@ function display_basic_dsl_information(){
 		document.getElementById("th_AdslType").innerHTML = "<#dslsetting_disc2#>";
 		document.getElementById("tr_VDSL_CurrentProfile").style.display = "none";
 	}
-
-	if(based_modelid == "DSL-AX82U")
-	{
-		document.getElementById("tr_dsl_fwver").style.display = "none";
-	}
 }
 
 function display_line_stats(){
@@ -152,14 +147,6 @@ function display_line_stats(){
 	else
 	{
 		document.getElementById("line_stats").style.display = "none";
-	}
-
-	if(based_modelid == "DSL-AX82U")
-	{
-		document.getElementById("tr_inp_shine").style.display = "none";
-		document.getElementById("tr_fec").style.display = "";
-		document.getElementById("tr_es").style.display = "";
-		document.getElementById("tr_ses").style.display = "";
 	}
 }
 
@@ -555,15 +542,6 @@ function showadslbootTime(){
 									<div id="div_INPREINUp"><% nvram_get("dsllog_inpreinup"); %></div>
 								</td>
 							</tr>
-							<tr id="tr_fec" style="display:none">
-								<th>FEC</th>
-								<td>
-									<div id="div_FECDown"><% nvram_get("dsllog_fecdown"); %></div>
-								</td>
-								<td>
-									<div id="div_FECUp"><% nvram_get("dsllog_fecup"); %></div>
-								</td>
-							</tr>
 							<tr>
 								<th>CRC</th>
 								<td>
@@ -571,24 +549,6 @@ function showadslbootTime(){
 								</td>
 								<td>
 									<div id="div_CRCUp"><% nvram_get("dsllog_crcup"); %></div>
-								</td>
-							</tr>
-							<tr id="tr_es" style="display:none">
-								<th>ES</th>
-								<td>
-									<div id="div_ESDown"><% nvram_get("dsllog_esdown"); %></div>
-								</td>
-								<td>
-									<div id="div_ESUp"><% nvram_get("dsllog_esup"); %></div>
-								</td>
-							</tr>
-							<tr id="tr_ses" style="display:none">
-								<th>SES</th>
-								<td>
-									<div id="div_SESDown"><% nvram_get("dsllog_sesdown"); %></div>
-								</td>
-								<td>
-									<div id="div_SESUp"><% nvram_get("dsllog_sesup"); %></div>
 								</td>
 							</tr>
 						</table>

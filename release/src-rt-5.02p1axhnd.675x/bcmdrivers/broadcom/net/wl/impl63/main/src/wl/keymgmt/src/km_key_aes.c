@@ -50,6 +50,7 @@
 #ifdef WL_REUSE_KEY_SEQ
 #include "wlfc_proto.h"
 #endif // endif
+#include <wlc_frag.h>
 /* internal interface */
 
 /* BCMCCMP - s/w decr/encr for ccm */
@@ -442,16 +443,16 @@ key_aes_rx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 	key_seq_id_t ins = 0;
 	uint16 fc;
 	uint16 qc = 0;
+	scb_t *scb;
 
 	KM_DBG_ASSERT(AES_KEY_VALID(key) && pkt_info != NULL);
 
 	aes_key = (aes_key_t *)key->algo_impl.ctx;
+	scb = WLPKTTAGSCBGET(pkt);
 
 	fc =  ltoh16(hdr->fc);
 	if ((FC_TYPE(fc) == FC_TYPE_MNG) && ETHER_ISMULTI(&hdr->a1)) {
 #if defined(MFP)
-		scb_t *scb = WLPKTTAGSCBGET(pkt);
-
 		if (KM_SCB_MFP(scb)) {
 			err = km_key_aes_rx_mmpdu_mcmfp(key, pkt, hdr, body, body_len, pkt_info);
 			goto done;
@@ -499,11 +500,34 @@ key_aes_rx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 	 * later anyway
 	 */
 	if ((pkt_info->flags & KEY_PKT_PKTC_FIRST) && (pkt_info->status == BCME_OK)) {
+		uint8 first_rx_seq[AES_KEY_SEQ_SIZE] = {0};
+		uint8 *first_body = NULL;
+		uint8 frag = ltoh16(hdr->seq) & FRAGNUM_MASK;
+		uint64 first_seq, seq;
+
 		if (km_is_replay(KEY_KM(key), &key->info, ins,
 			AES_KEY_SEQ(key, aes_key, FALSE /* rx */, ins),
 			rx_seq, AES_KEY_SEQ_SIZE)) {
 			err = BCME_REPLAY;
 			goto done;
+		}
+
+		if (frag) {
+		       first_body = wlc_defrag_first_frag_body_get(key->wlc, scb, QOS_PRIO(qc));
+		       if (first_body) {
+			       first_body -= key->info.iv_len;
+			       key_aes_seq_from_body(key, first_rx_seq, first_body);
+			       seq = KM_SEQ_TO_U64(rx_seq);
+			       first_seq = KM_SEQ_TO_U64(first_rx_seq);
+
+			       if (seq != (first_seq + frag)) {
+				       err = BCME_EPERM;
+				       goto done;
+			       }
+		       } else {
+			       err = BCME_EPERM;
+			       goto done;
+		       }
 		}
 	}
 

@@ -1,3 +1,0 @@
-# This enables all CLM modes for NIC drivers and others with no
-# need for filtering. Not customized for any specific product.
---blob_format 12.2 --regrev_remap --ccrev "all/0 ww/all US/all" --txbf

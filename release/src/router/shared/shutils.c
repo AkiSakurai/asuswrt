@@ -119,8 +119,11 @@ void dbgprintf (const char * format, ...)
 			va_end(args);
 			fclose(f);
 		}
+		else
+		{
 		close(nfd);
 	}
+}
 }
 
 void dbg(const char * format, ...)
@@ -136,6 +139,7 @@ void dbg(const char * format, ...)
 		vfprintf(f, format, args);
 		va_end(args);
 		fclose(f);
+		nfd = -1;
 	}
 	else
 	{
@@ -148,6 +152,8 @@ void dbg(const char * format, ...)
 }
 
 /* XXX - this should be in a common file */
+#define MAX_RADIOS 4
+#define MAX_BSS_PER_RADIO 32
 #define WLMBSS_DEV_NAME        "wlmbss"
 #define WL_DEV_NAME "wl"
 #define WDS_DEV_NAME   "wds"
@@ -1454,7 +1460,7 @@ osifname_to_nvifname(const char *osifname, char *nvifname_buf,
 	}
 
 	/* look for interface name on the primary interfaces first */
-	for (pri = 0; pri < MAX_NVPARSE; pri++) {
+	for (pri = 0; pri < MAX_RADIOS; pri++) {
 		snprintf(varname, sizeof(varname),
 					"wl%d_ifname", pri);
 		if (nvram_match(varname, (char *)osifname)) {
@@ -1464,8 +1470,8 @@ osifname_to_nvifname(const char *osifname, char *nvifname_buf,
 	}
 
 	/* look for interface name on the multi-instance interfaces */
-	for (pri = 0; pri < MAX_NVPARSE; pri++)
-		for (sec = 0; sec < MAX_NVPARSE; sec++) {
+	for (pri = 0; pri < MAX_RADIOS; pri++)
+		for (sec = 0; sec < MAX_BSS_PER_RADIO; sec++) {
 			snprintf(varname, sizeof(varname),
 					"wl%d.%d_ifname", pri, sec);
 			if (nvram_match(varname, (char *)osifname)) {

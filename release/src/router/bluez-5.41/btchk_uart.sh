@@ -135,7 +135,11 @@ case "$stage" in
 		c=0
 		while [ 1 ]; do
 			nvram get x_Setting | grep -q 1
-			if [ $? == "0" ]; then
+			x_setting=$?
+			nvram get BTDiag | grep -q 1
+			btdiag=$?
+			
+			if [ $x_setting == "0" ] || [ $btdiag == "0" ]; then
 				echo "BT: workaround byebye~~"
 				break;
 			elif [ ! -f $cmd_timeoutfile ] || [ $(cat ${cmd_timeoutfile}) != 0 ]; then

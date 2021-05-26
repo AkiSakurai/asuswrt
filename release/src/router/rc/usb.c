@@ -745,14 +745,7 @@ void start_usb(int mode)
 #endif
 			modprobe(SD_MOD);
 			modprobe(SG_MOD);
-#if defined(RTCONFIG_HND_ROUTER_AX)
-			static char storage_quirks[] = "0bc2:231a:u";
-
-			snprintf(param, sizeof(param), "quirks=%s", storage_quirks);
-			eval("insmod", USBSTORAGE_MOD, param);
-#else
 			modprobe(USBSTORAGE_MOD);
-#endif
 			MODPROBE__UAS;
 
 			if (nvram_get_int("usb_fs_ext3")) {
@@ -2695,7 +2688,12 @@ void write_ftpd_conf()
 {
 	FILE *fp;
 	char maxuser[16];
-
+	int passive_port;
+#ifdef RTCONFIG_HTTPS
+	unsigned long long sn;
+	char t[32];
+#endif
+		
 	/* write /etc/vsftpd.conf */
 	fp=fopen("/etc/vsftpd.conf", "w");
 	if (fp==NULL) return;
@@ -2724,14 +2722,35 @@ void write_ftpd_conf()
 #if (!defined(LINUX30) && LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36))
 	fprintf(fp, "use_sendfile=NO\n");
 #endif
+#ifndef RTCONFIG_BCMARM
+	fprintf(fp, "isolate=NO\n");	// 3.x: Broken for MIPS
+#endif
 
 #ifdef RTCONFIG_IPV6
-	fprintf(fp, "listen%s=YES\n", ipv6_enabled() ? "_ipv6" : "");
+	if (ipv6_enabled()) {
+		fprintf(fp, "listen_ipv6=YES\n");
+		// vsftpd 3.x can't use both listen at same time.  We don't specify an interface, so
+		// the listen_ipv6 directive will also make vsftpd listen to ipv4 IPs
+		fprintf(fp, "listen=NO\n");
+	} else {
+		fprintf(fp, "listen=YES\n");
+	}
+
 #else
 	fprintf(fp, "listen=YES\n");
 #endif
 	fprintf(fp, "pasv_enable=YES\n");
-	fprintf(fp, "ssl_enable=NO\n");
+	if (nvram_get_int("ftp_wanac"))
+	{
+		passive_port = nvram_get_int("ftp_pasvport");
+		if (passive_port > 0) 
+		{
+			if (passive_port > 65505)
+				nvram_set_int("ftp_pasvport", 65505);
+			fprintf(fp, "pasv_min_port=%d\n", passive_port);
+			fprintf(fp, "pasv_max_port=%d\n", passive_port + 30);
+		}	
+	}
 	fprintf(fp, "tcp_wrappers=NO\n");
 	strcpy(maxuser, nvram_safe_get("st_max_user"));
 	if ((atoi(maxuser)) > 0)
@@ -2763,6 +2782,59 @@ void write_ftpd_conf()
 		fprintf(fp, "xferlog_file=/var/log/vsftpd.log\n");
 	}
 
+#if defined(RTCONFIG_HTTPS) && defined(RTCONFIG_FTP_SSL)
+	if(nvram_get_int("ftp_tls")){
+		fprintf(fp, "ssl_enable=YES\n");
+		fprintf(fp, "rsa_cert_file=%s\n", HTTPD_CERT);
+		fprintf(fp, "rsa_private_key_file=%s\n", HTTPD_KEY);
+
+		if(!f_exists(HTTPD_CERT) || !f_exists(HTTPD_KEY)
+#ifdef RTCONFIG_LETSENCRYPT
+			|| !cert_key_match(HTTPD_CERT, HTTPD_KEY)
+#endif
+			) {
+#ifdef RTCONFIG_LETSENCRYPT
+			if(nvram_match("le_enable", "1")) {
+				cp_le_cert(LE_FULLCHAIN, HTTPD_CERT);
+				cp_le_cert(LE_KEY, HTTPD_KEY);
+			}
+			else if(nvram_match("le_enable", "2")) {
+				unlink(HTTPD_CERT);
+				unlink(HTTPD_KEY);
+				if(f_exists(UPLOAD_CERT) && f_exists(UPLOAD_KEY)) {
+					eval("cp", UPLOAD_CERT, HTTPD_CERT);
+					eval("cp", UPLOAD_KEY, HTTPD_KEY);
+				}
+			}
+#else
+			if(f_exists(UPLOAD_CERT) && f_exists(UPLOAD_KEY)){
+				eval("cp", UPLOAD_CERT, HTTPD_CERT);
+				eval("cp", UPLOAD_KEY, HTTPD_KEY);
+			}
+#endif
+		}
+
+		// Is it valid now?  Otherwise, restore saved cert, or generate one.
+		if(!f_exists(HTTPD_CERT) || !f_exists(HTTPD_KEY)
+#ifdef RTCONFIG_LETSENCRYPT
+                        || !cert_key_match(HTTPD_CERT, HTTPD_KEY)
+#endif
+		) {
+			if (eval("tar", "-xzf", "/jffs/cert.tgz", "-C", "/", "etc/cert.pem", "etc/key.pem") == 0){
+				system("cat /etc/key.pem /etc/cert.pem > /etc/server.pem");
+				system("cp /etc/cert.pem /etc/cert.crt");
+			} else {
+				f_read("/dev/urandom", &sn, sizeof(sn));
+				sprintf(t, "%llu", sn & 0x7FFFFFFFFFFFFFFFULL);
+				eval("gencert.sh", t);
+			}
+		}
+	} else {
+		fprintf(fp, "ssl_enable=NO\n");
+	}
+#else
+	fprintf(fp, "ssl_enable=NO\n");
+#endif	// HTTPS
 	fclose(fp);
 }
 
@@ -2823,7 +2895,7 @@ void stop_ftpd(int force)
 
 	killall_tk("vsftpd");
 	unlink("/tmp/vsftpd.conf");
-	logmessage("FTP Server", "daemon is stoped");
+	logmessage("FTP Server", "daemon is stopped");
 }
 #endif	// RTCONFIG_FTP
 
@@ -3341,11 +3413,8 @@ start_samba(void)
 
 #if defined(SMP)
 #if defined(RTCONFIG_BCMARM) || defined(RTCONFIG_SOC_IPQ8064) || defined(RTCONFIG_SOC_IPQ8074)
-#if defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710) && !defined(DSL_AX82U)
+#if defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)
 	taskset_ret = -1;
-#elif defined(DSL_AX82U)
-	char *smbd_argv[] = { "/usr/sbin/smbd", "-D", "-s", "/etc/smb.conf", NULL };
-	taskset_ret = _cpu_mask_eval(smbd_argv, NULL, 0, NULL, 7);
 #else
 	if(!nvram_match("stop_taskset", "1")){
 		if(cpu_num > 1)

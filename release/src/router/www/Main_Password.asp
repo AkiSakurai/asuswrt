@@ -11,6 +11,9 @@
 <title>ASUS Login</title>
 <script type="text/javascript" src="/require/require.min.js"></script>
 <style>
+body{
+	font-family: Arial, MS UI Gothic, MS P Gothic, Microsoft Yahei UI, sans-serif;
+}
 .content{
 	width:580px;
 	height:526px;
@@ -21,17 +24,14 @@
 	background-size: cover;
 }
 .title_name {
-	font-family:Arial;
 	font-size: 40pt;
 	color:#93d2d9;
 }
 .prod_madelName{
-	font-family: Arial;
 	font-size: 26pt;
 	color:#fff;
 }
 .p1{
-	font-family: Arial;
 	font-size: 16pt;
 	color:#fff;
 }
@@ -42,14 +42,12 @@
 	transition: visibility 0s linear 0.218s,opacity 0.218s,background-color 0.218s;
 	height: 68px;
 	width: 300px;
-	font-family: Arial;
 	font-size: 28pt;
 	color:#fff;
 	text-align:center;
 	vertical-align:center
 }
 .button_text{
-	font-family: Arial;
 	font-size: 28pt;
 	color:#fff;
 	text-align:center;
@@ -67,12 +65,10 @@
 	font-size:28px
 }
 .form_input_text{
-	font-family: Arial;
 	font-size: 28pt;
 	color:#a9a9a9;
 }
 .p2{
-	font-family: Arial;
 	font-size: 18pt;
 	color:#28fff7;
 }

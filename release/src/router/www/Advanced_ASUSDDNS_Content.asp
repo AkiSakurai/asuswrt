@@ -166,6 +166,10 @@ function submitForm(){
 				document.form.action_script.value = "restart_httpd;restart_webdav;restart_ddns_le";
 			else
 				document.form.action_script.value += ";restart_httpd;restart_webdav";
+
+		}
+		if (('<% nvram_get("enable_ftp"); %>' == "1") && ('<% nvram_get("ftp_tls"); %>' == "1")) {
+			document.form.action_script.value += ";restart_ftpd";
 		}
 	}
 
@@ -721,12 +725,12 @@ function check_unregister_result(){
 
 	if(timeout || return_status != ""){
 		if(return_status == "200"){
-			alert("Deregistration is successful.");
+			alert("<#LANHostConfig_x_DDNS_alarm_16#>");
 			refreshpage();
 		}
 		else{
 			hideLoading();
-			alert("Fail to deregister ASUSDDNS hostname.");
+			alert("<#LANHostConfig_x_DDNS_alarm_18#>");
 			deregister_fail = 1;
 			retry_count = 0;
 		}

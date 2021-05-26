@@ -21,6 +21,24 @@
 <script language="JavaScript" type="text/javascript" src="/client_function.js"></script>
 <script type="text/javascript" src="/js/jquery.js"></script>
 <script type="text/javascript" src="/js/httpApi.js"></script>
+<style>
+.sort_border{
+	position: relative;
+	cursor: pointer;
+}
+.sort_border:before{
+	content: "";
+	position: absolute;
+	width: 100%;
+	left: 0;
+	border-top: 1px solid #FC0;
+	top: 0;
+}
+.sort_border.decrease:before{
+	bottom: 0;
+	top: initial;
+}
+</style>
 <script>
 $(function () {
 	if(amesh_support && (isSwMode("rt") || isSwMode("ap")) && ameshRouter_support) {
@@ -60,6 +78,7 @@ if(yadns_support){
 	var yadns_mode = '<% nvram_get("yadns_mode"); %>';
 }
 
+var manually_dhcp_sort_type = 0;//0:increase, 1:decrease
 function initial(){
 	show_menu();
 	//id="faq" href="https://www.asus.com/US/support/FAQ/1036677"
@@ -241,13 +260,22 @@ function showdhcp_staticlist(){
 		//user icon
 		var userIconBase64 = "NoIcon";
 		var clientName, deviceType, deviceVender;
-		Object.keys(manually_dhcp_list_array).forEach(function(key) {
-			var clientMac = manually_dhcp_list_array[key]["mac"].toUpperCase();
-			var clientDNS = manually_dhcp_list_array[key]["dns"];
+		var sortData = Object.keys(manually_dhcp_list_array).sort(
+			function(a, b){
+				if(manually_dhcp_sort_type == 0)
+					return inet_network(a) - inet_network(b);
+				else if(manually_dhcp_sort_type == 1)
+					return inet_network(b) - inet_network(a);
+			}
+		)
+
+		$.each(sortData, function( index, value ) {
+			var clientIP = value;
+			var clientMac = manually_dhcp_list_array[clientIP]["mac"].toUpperCase();
+			var clientDNS = manually_dhcp_list_array[clientIP]["dns"];
 			if(clientDNS == "")
 				clientDNS = "<#Setting_factorydefault_value#>";
 			var clientIconID = "clientIcon_" + clientMac.replace(/\:/g, "");
-			var clientIP = key;
 			if(clientList[clientMac]) {
 				clientName = (clientList[clientMac].nickName == "") ? clientList[clientMac].name : clientList[clientMac].nickName;
 				deviceType = clientList[clientMac].type;
@@ -585,6 +613,19 @@ function parse_vpnc_dev_policy_list(_oriNvram) {
 	}
 	return parseArray;
 }
+function sortClientIP(){
+	manually_dhcp_sort_type
+	if($(".sort_border").hasClass("decrease")){
+		$(".sort_border").removeClass("decrease");
+		manually_dhcp_sort_type = 0;
+	}
+	else{
+		$(".sort_border").addClass("decrease");
+		manually_dhcp_sort_type = 1;
+	}
+
+	showdhcp_staticlist();
+}
 </script>
 </head>
 
@@ -747,7 +788,7 @@ function parse_vpnc_dev_policy_list(_oriNvram) {
 
 				<tr>
 					<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(5,10);"><#Client_Name#> (<#PPPConnection_x_MacAddressForISP_itemname#>)</a></th>
-					<th><#IPConnection_ExternalIPAddress_itemname#></th>
+					<th class="sort_border"  onClick="sortClientIP()"><#IPConnection_ExternalIPAddress_itemname#></th>
 					<th><#LANHostConfig_x_LDNSServer1_itemname#> (Optional)</th>
 					<th><#list_add_delete#></th>
 				</tr>

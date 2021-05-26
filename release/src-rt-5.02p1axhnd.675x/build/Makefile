@@ -869,6 +869,8 @@ $(if $(findstring sy, $(8)), \
        [ ! -f $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.w ] || [ ! -f $(HND_SRC)/../../buildtools/private.pem ] || openssl sha1 -sign $(HND_SRC)/../../buildtools/private.pem -out $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi_rsa.zip $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.w; \
        [ ! -f $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.w ] || rm -rf $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_FS_IMAGE_NAME_$(3))_pureubi*; \
        [ ! -f $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.w ] || rm -rf $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi*; \
+       [ ! -f $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.w ] || rm -rf $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_FS_IMAGE_NAME_$(3))*_squbi*; \
+       [ ! -f $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.w ] || rm -rf $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND__FS_IMAGE_NAME_$(3))*_ubi*; \
   )
 endef
 
@@ -893,7 +895,10 @@ define build_cfeonly_images_unsecure
         $(HOSTTOOLS_DIR)/scripts/bcmImageMaker --cferom $(2) --blocksize $(FLASH_NAND_BLOCK_$(3)KB) --bootofs $(4) --bootsize $(FLASH_NAND_BLOCK_$(3)KB)  --rootfs rootfs$(3)kb.img --image $(FLASH_BASE_IMAGE_NAME)_nand_cfeonly.$(3) $(IMG_DDR_TYPE_OPT) $(6) $(5);\
         $(TARGETS_DIR)/buildUBI -u $(PROFILE_DIR)/ubi_cfe.ini -m $(TARGET_FS)/../metadata.bin -f $(PROFILE_DIR)/filestruct_cfe.bin -t $(TARGET_FS);\
         $(HOSTTOOLS_DIR)/mtd-utils*/ubinize -v -o $(PROFILE_DIR)/ubi_rootfs$(3)kb_cferam_pureubi.img -m 2048 -p $(FLASH_NAND_BLOCK_$(3)KB) $(PROFILE_DIR)/ubi_cfe.ini;\
-        $(HOSTTOOLS_DIR)/scripts/bcmImageMaker --cferom $(2) --blocksize $(FLASH_NAND_BLOCK_$(3)KB) --bootofs $(4) --bootsize $(FLASH_NAND_BLOCK_$(3)KB)  --rootfs ubi_rootfs$(3)kb_cferam_pureubi.img --image $(FLASH_BASE_IMAGE_NAME)_nand_cfeonly_pureubi.$(3) $(IMG_DDR_TYPE_OPT) $(6) $(5);
+$(if $(findstring RT-AC68U_V4, $(BUILD_NAME)),\
+        $(HOSTTOOLS_DIR)/scripts/bcmImageMaker --cferom $(2) --blocksize $(FLASH_NAND_BLOCK_$(3)KB) --bootofs $(4) --bootsize $(FLASH_NAND_BLOCK_$(3)KB)  --rootfs ubi_rootfs$(3)kb_cferam_pureubi.img --image $(FLASH_BASE_IMAGE_NAME)_nand_cfeonly_pureubi.$(3) --fsonly $(FLASH_BASE_IMAGE_NAME)_nand_cferamonly_pureubi.$(3) $(IMG_DDR_TYPE_OPT) $(6) $(5);,\
+        $(HOSTTOOLS_DIR)/scripts/bcmImageMaker --cferom $(2) --blocksize $(FLASH_NAND_BLOCK_$(3)KB) --bootofs $(4) --bootsize $(FLASH_NAND_BLOCK_$(3)KB)  --rootfs ubi_rootfs$(3)kb_cferam_pureubi.img --image $(FLASH_BASE_IMAGE_NAME)_nand_cfeonly_pureubi.$(3) $(IMG_DDR_TYPE_OPT) $(6) $(5);\
+)
 endef
 
 
@@ -902,7 +907,10 @@ define build_cfeonly_images_secure
 	$(HOSTTOOLS_DIR)/scripts/bcmImageMaker --cferom $(2) --cfesecrom $(6) --blocksize $(FLASH_NAND_BLOCK_$(3)KB) --bootofs $(4) --bootsize $(FLASH_NAND_BLOCK_$(3)KB) --rootfs rootfs$(3)kb_secureboot.img --image $(FLASH_BASE_IMAGE_NAME)_nand_cfeonly_secureboot.$(3) $(IMG_DDR_TYPE_OPT) $(5);\
         $(TARGETS_DIR)/buildUBI -u $(PROFILE_DIR)/ubi_cfe.ini -m $(TARGET_FS)/../metadata.bin -f $(PROFILE_DIR)/filestruct_cfe.bin -t $(TARGET_FS);\
         $(HOSTTOOLS_DIR)/mtd-utils*/ubinize -v -o $(PROFILE_DIR)/ubi_rootfs$(3)kb_cferam_pureubi.img -m 2048 -p $(FLASH_NAND_BLOCK_$(3)KB) $(PROFILE_DIR)/ubi_cfe.ini;\
-        $(HOSTTOOLS_DIR)/scripts/bcmImageMaker --cferom $(2) --cfesecrom $(6) --blocksize $(FLASH_NAND_BLOCK_$(3)KB) --bootofs $(4) --bootsize $(FLASH_NAND_BLOCK_$(3)KB)  --rootfs ubi_rootfs$(3)kb_cferam_pureubi.img --image $(FLASH_BASE_IMAGE_NAME)_nand_cfeonly_pureubi_secureboot.$(3) $(IMG_DDR_TYPE_OPT) $(5);
+$(if $(findstring RT-AC68U_V4, $(BUILD_NAME)),\
+        $(HOSTTOOLS_DIR)/scripts/bcmImageMaker --cferom $(2) --cfesecrom $(6) --blocksize $(FLASH_NAND_BLOCK_$(3)KB) --bootofs $(4) --bootsize $(FLASH_NAND_BLOCK_$(3)KB)  --rootfs ubi_rootfs$(3)kb_cferam_pureubi.img --image $(FLASH_BASE_IMAGE_NAME)_nand_cfeonly_pureubi_secureboot.$(3) --fsonly $(FLASH_BASE_IMAGE_NAME)_nand_cferamonly_pureubi_secureboot.$(3) $(IMG_DDR_TYPE_OPT) $(5);,\
+        $(HOSTTOOLS_DIR)/scripts/bcmImageMaker --cferom $(2) --cfesecrom $(6) --blocksize $(FLASH_NAND_BLOCK_$(3)KB) --bootofs $(4) --bootsize $(FLASH_NAND_BLOCK_$(3)KB)  --rootfs ubi_rootfs$(3)kb_cferam_pureubi.img --image $(FLASH_BASE_IMAGE_NAME)_nand_cfeonly_pureubi_secureboot.$(3) $(IMG_DDR_TYPE_OPT) $(5);\
+)
 endef
 
 cfebuild: sanity_check

@@ -844,7 +844,9 @@ get_max_rate(void *wl, wl_bss_info_t *bi, bool ntypefound, int *has_b, int *has_
 	int nbw = 0;
 	int mcs = 0, sgi = 0, isht = 0;
 
-	if (CHSPEC_IS80(bi->chanspec))
+	if (CHSPEC_IS160(bi->chanspec))
+                nbw = 160;
+	else if (CHSPEC_IS80(bi->chanspec))
 		nbw = 80;
 	else if (CHSPEC_IS40(bi->chanspec))
 		nbw = 40;
@@ -989,14 +991,14 @@ dump_bss_info(void *wl, wl_bss_info_t *bi, int idx, networks_list_t *networks_li
 	if (dtoh32(bi->version) != LEGACY_WL_BSS_INFO_VERSION && bi->n_cap) {
 		controlch = bi->ctl_ch;
 		networks_listin->aps[idx].band = CHSPEC_IS2G(bi->chanspec)?2:5;
-		networks_listin->aps[idx].bandwidth = (CHSPEC_IS80(bi->chanspec) ?
+		networks_listin->aps[idx].bandwidth = (CHSPEC_IS160(bi->chanspec) ? 160 : (CHSPEC_IS80(bi->chanspec) ?
 		        80 : (CHSPEC_IS40(bi->chanspec) ?
-		              40 : (CHSPEC_IS20(bi->chanspec) ? 20 : 10)));
+		              40 : (CHSPEC_IS20(bi->chanspec) ? 20 : 10))));
 	} else {
 		controlch = atoi(wf_chspec_ntoa(bi->chanspec, chspec_str));
-		networks_listin->aps[idx].bandwidth = (CHSPEC_IS80(bi->chanspec) ?
+		networks_listin->aps[idx].bandwidth = (CHSPEC_IS160(bi->chanspec) ? 160 : (CHSPEC_IS80(bi->chanspec) ?
 			80 : (CHSPEC_IS40(bi->chanspec) ?
-			40 : (CHSPEC_IS20(bi->chanspec) ? 20 : 10)));
+			40 : (CHSPEC_IS20(bi->chanspec) ? 20 : 10))));
 	}
 
 	if (networks_listin->aps[idx].bandwidth > 20) {
@@ -1120,9 +1122,9 @@ get_dut_info_from_bss(void *wl, wl_bss_info_t *bi, dut_info_t *dut_info)
 		dut_info->band = 2;
 	}
 
-	dut_info->bandwidth = (CHSPEC_IS80(bi->chanspec) ?
+	dut_info->bandwidth = (CHSPEC_IS160(bi->chanspec) ? 160 : (CHSPEC_IS80(bi->chanspec) ?
 		80 : (CHSPEC_IS40(bi->chanspec) ?
-		40 : (CHSPEC_IS20(bi->chanspec) ? 20 : 10)));
+		40 : (CHSPEC_IS20(bi->chanspec) ? 20 : 10))));
 
 	if (dut_info->bandwidth > 20) {
 		dut_info->ctrlch = controlch;

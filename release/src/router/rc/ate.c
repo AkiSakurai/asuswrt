@@ -350,8 +350,9 @@ static int setAllSpecificColorLedOn(enum ate_led_color color)
 		}
 		break;
 #endif
-#if defined(RTAX95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4)
+#if defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4)
 	case MODEL_RTAX95Q:
+	case MODEL_RTAXE95Q:
 	case MODEL_RTAX56_XD4:
 	case MODEL_CTAX56_XD4:
 		{
@@ -384,6 +385,11 @@ static int setAllSpecificColorLedOn(enum ate_led_color color)
 				LED_LAN1, LED_LAN2, LED_LAN3, LED_LAN4,
 #endif
 				LED_WAN_NORMAL,
+#ifdef TUFAX5400
+				LED_LOGO1,
+				LED_LOGO2,
+				LED_LOGO3,
+#endif
 				LED_ID_MAX
 			};
 			static enum led_id red_led[] = {
@@ -633,8 +639,8 @@ static int setAllSpecificColorLedOn(enum ate_led_color color)
 			if(color == LED_COLOR_WHITE) {
 #endif
 #ifdef RTAC68U_V4
-				eval("wl", "-i", "eth5", "ledbh", "10", "1"); // wl 5G
-				eval("wl", "-i", "eth6", "ledbh", "10", "1"); // wl 2.4G
+				eval("wl", "-i", "eth5", "ledbh", "10", "1"); // wl 2.4G
+				eval("wl", "-i", "eth6", "ledbh", "10", "1"); // wl 5G
 #else
 				eval("wl", "-i", "eth6", "ledbh", "7", "1"); // wl 2.4G
 				eval("wl", "-i", "eth7", "ledbh", "15", "1"); // wl 5G
@@ -651,8 +657,8 @@ static int setAllSpecificColorLedOn(enum ate_led_color color)
 			}
 			else {
 #ifdef RTAC68U_V4
-				eval("wl", "-i", "eth5", "ledbh", "10", "0"); // wl 5G
-				eval("wl", "-i", "eth6", "ledbh", "10", "0"); // wl 2.4G
+				eval("wl", "-i", "eth5", "ledbh", "10", "0"); // wl 2.4G
+				eval("wl", "-i", "eth6", "ledbh", "10", "0"); // wl 5G
 #else
 				eval("wl", "-i", "eth6", "ledbh", "7", "0"); // wl 2.4G
 				eval("wl", "-i", "eth7", "ledbh", "15", "0"); // wl 5G
@@ -683,6 +689,13 @@ static int setAllSpecificColorLedOn(enum ate_led_color color)
 				LED_RED,
 				LED_ID_MAX
 			};
+#if defined(RTAC59_CD6R) || defined(RTAC59_CD6N) || defined(PLAX56_XP4)
+			static enum led_id white_led[] = {
+				LED_WHITE,
+				LED_ID_MAX
+			};
+			all_led[LED_COLOR_WHITE] = white_led;
+#endif
 			all_led[LED_COLOR_BLUE] = blue_led;
 			all_led[LED_COLOR_GREEN] = green_led;
 			all_led[LED_COLOR_RED] = red_led;
@@ -1563,7 +1576,7 @@ int asus_ate_command(const char *command, const char *value, const char *value2)
 		}
 		return 0;
 	}
-#if defined(RTAC3200) || defined(RTAC5300)|| defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U)  || defined(RTAX95Q)|| \
+#if defined(RTAC3200) || defined(RTAC5300)|| defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U)  || defined(RTAX95Q)|| defined(RTAXE95Q)|| \
 	(defined(RTCONFIG_QCA) && defined(RTCONFIG_HAS_5G_2))  || defined(RPAC92) || defined(GTAXE11000)
 #if defined(RTCONFIG_WIFI6E)
 	else if (!strcmp(command, "Set_MacAddr_6G")) {
@@ -2222,7 +2235,7 @@ int asus_ate_command(const char *command, const char *value, const char *value2)
 #endif
 		return 0;
 	}
-#if defined(RTAC3200) || defined(RTAC5300) || defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U)  || defined(RTAX95Q)|| \
+#if defined(RTAC3200) || defined(RTAC5300) || defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U)  || defined(RTAX95Q)|| defined(RTAXE95Q)|| \
     (defined(RTCONFIG_QCA) && defined(RTCONFIG_HAS_5G_2)) || defined(RPAC92) || defined(GTAXE11000)
 #if defined(RTCONFIG_WIFI6E)
 	else if (!strcmp(command, "Get_MacAddr_6G")) {
@@ -2378,7 +2391,7 @@ int asus_ate_command(const char *command, const char *value, const char *value2)
 			puts("ATE_ERROR");
 		return 0;
 	}
-#if defined(RTAC3200) || defined(RTAC5300) || defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U) || defined(RTAX95Q) || \
+#if defined(RTAC3200) || defined(RTAC5300) || defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U) || defined(RTAX95Q) || defined(RTAXE95Q) || \
     (defined(RTCONFIG_QCA) && defined(RTCONFIG_HAS_5G_2))  || defined(RPAC92) || defined(GTAXE11000)
 #if defined(RTCONFIG_WIFI6E)
 	else if (!strcmp(command, "Get_ChannelList_6G")) {
@@ -3387,7 +3400,7 @@ int ate_dev_status(void)
 			have_bt_device = 0;
 		}
 #endif
-#if defined(RTCONFIG_LANTIQ) || defined(RTAX95Q) || defined(RTAX56_XD4) || defined(RTAX82_XD6)
+#if defined(RTCONFIG_LANTIQ) || defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56_XD4) || defined(RTAX82_XD6)
 		if(have_bt_device == 1){
 			system("killall bluetoothd");
 			system("hciconfig hci0 down");

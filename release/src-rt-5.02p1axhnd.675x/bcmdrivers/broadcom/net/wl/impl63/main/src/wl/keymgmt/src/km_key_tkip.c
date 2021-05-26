@@ -50,6 +50,7 @@
 #include <rc4.h>
 #include <tkmic.h>
 #include <tkhash.h>
+#include <wlc_frag.h>
 
 #ifdef BCM43684_HDRCONVTD_ETHER_LEN_WAR
 #include <wlc_bmac.h>
@@ -570,6 +571,11 @@ tkip_rx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 	uint8 rx_seq[TKIP_KEY_SEQ_SIZE];
 	key_seq_id_t ins = 0;
 	uint16 fc;
+	scb_t *scb;
+
+	scb = WLPKTTAGSCBGET(pkt);
+
+	KM_ASSERT(scb != NULL);
 
 	KM_ASSERT(TKIP_KEY_VALID(key));
 	KM_DBG_ASSERT(pkt_info != NULL);
@@ -618,11 +624,36 @@ tkip_rx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 
 	TKIP_KEY_SEQ_FROM_BODY(rx_seq, body);
 	if ((pkt_info->flags & KEY_PKT_PKTC_FIRST) && (pkt_info->status == BCME_OK)) {
+		uint8 frag = ltoh16(hdr->seq) & FRAGNUM_MASK;
+		uint8 *first_body = NULL;
+		uint64 first_seq, seq;
+		uint8 first_rx_seq[TKIP_KEY_SEQ_SIZE];
+
 		if (km_is_replay(KEY_KM(key), &key->info, ins,
 				TKIP_KEY_SEQ(tkip_key, FALSE /* rx */, ins),
 				rx_seq, TKIP_KEY_SEQ_SIZE)) {
 			err = BCME_REPLAY;
 			goto done;
+		}
+
+		if (frag) {
+			first_body = wlc_defrag_first_frag_body_get(key->wlc,
+				scb, QOS_PRIO(pkt_info->qc));
+
+			if (first_body) {
+				first_body -= key->info.iv_len;
+				TKIP_KEY_SEQ_FROM_BODY(first_rx_seq, first_body);
+				seq = KM_SEQ_TO_U64(rx_seq);
+				first_seq = KM_SEQ_TO_U64(first_rx_seq);
+
+				if (seq != (first_seq + frag)) {
+					err = BCME_EPERM;
+					goto done;
+				}
+			} else {
+				err = BCME_EPERM;
+				goto done;
+			}
 		}
 	}
 
@@ -636,10 +667,8 @@ tkip_rx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 		((KEY_SEQ_HI32(rx_seq) != KEY_SEQ_HI32(TKIP_KEY_SEQ(tkip_key, FALSE, ins))) &&
 		(ins != tkip_key->rx_state.cur_seq_id))) {
 
-		scb_t *scb;
 		wlc_bsscfg_t *bsscfg;
 
-		scb = WLPKTTAGSCBGET(pkt);
 		KM_ASSERT(scb != NULL);
 
 		bsscfg = SCB_BSSCFG(scb);

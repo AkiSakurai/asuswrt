@@ -242,7 +242,7 @@ int bcm_cled_ctrl(int rgb, int cled_mode)
 		return 0;
 	}
 #endif
-#if defined(RTAX95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4) || defined(RTAX82_XD6) || defined(RPAX56)
+#if defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4) || defined(RTAX82_XD6) || defined(RPAX56)
 	state_changed = _bcm_cled_ctrl(rgb, cled_mode);
 	if(state_changed == 1){
 #ifdef RTAX82_XD6
@@ -343,7 +343,7 @@ uint32_t set_gpio(uint32_t gpio, uint32_t value)
 		return -1;
 	}
 
-#if defined(RTAX95Q)
+#if defined(RTAX95Q) || defined(RTAXE95Q)
 	write(ledfd, active_low?(!value?"0":"255"):(!value?"255":"0"), active_low?(!value?1:3):(!value?3:1));
 #else
 	write(ledfd, active_low?(!value?"255":"0"):(!value?"0":"255"), active_low?(!value?3:1):(!value?1:3));
@@ -556,7 +556,7 @@ int phy_ioctl(int fd, int write, int phy, int reg, uint32_t *value)
 	struct ifreq ifr;
 	int ret, vecarg[2];
 
-#if defined(RTAX95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4) || defined(RTAX55) || defined(RTAX1800)
+#if defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4) || defined(RTAX55) || defined(RTAX1800)
 	return 1;
 #endif
 	memset(&ifr, 0, sizeof(ifr));
@@ -580,7 +580,7 @@ static inline int ethswctl_init(struct ifreq *p_ifr)
 {
     int skfd;
 
-#if defined(RTAX95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4) || defined(RTAX55) || defined(RTAX1800)
+#if defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4) || defined(RTAX55) || defined(RTAX1800)
 	return 1;
 #endif
     /* Open a basic socket */
@@ -717,34 +717,15 @@ static void mdio_write(int skfd, struct ifreq *ifr, int phy_id, int location, in
 int ethctl_get_link_status(char *ifname)
 {
 #ifdef RTCONFIG_HND_ROUTER_AX_6710
-	char *cmd[] = {"ethctl", ifname, "media-type", NULL};
-	char *output = "/tmp/ethctl_get_link_status.txt";
-	char *str;
-	int ret;
-	int lock;
+	char tmp[100], buf[32];
 
-	lock = file_lock("ethctl_link");
+	snprintf(tmp, sizeof(tmp), "/sys/class/net/%s/operstate", ifname);
 
-	unlink(output);
-	_eval(cmd, output, 0, NULL);
-
-	str = file2str(output);
-	//_dprintf("%s", str);
-	if(!strstr(str, "Enabled"))
-		ret = -1;
-	else{
-		if(strstr(str, "Up"))
-			ret = 1;
-		else
-			ret = 0;
-	}
-
-	free(str);
-	unlink(output);
-
-	file_unlock(lock);
-
-	return ret;
+	f_read_string(tmp, buf, sizeof(buf));
+	if(!strncmp(buf, "up", 2))
+		return 1;
+	else
+		return 0;
 #else
 	int skfd=0, err, bmsr;
 	struct ethswctl_data ifdata;
@@ -2001,7 +1982,7 @@ uint32_t set_ex53134_ctrl(uint32_t portmask, int ctrl)
 	int i=0;
 	uint32_t value;
 
-#if defined(RTAX95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4)
+#if defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4)
 	return 1;
 #endif
 	for (i = 0; i < 4 && (portmask >> i); i++) {
@@ -2023,7 +2004,7 @@ uint32_t set_phy_ctrl(uint32_t portmask, int ctrl)
 	int fd, i, model;
 	uint32_t value;
 
-#if defined(RTAX95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4) || defined(RTAX55) || defined(RTAX1800)
+#if defined(RTAX95Q) || defined(RTAXE95Q) || defined(RTAX56_XD4) || defined(CTAX56_XD4) || defined(RTAX55) || defined(RTAX1800)
 	return 1;
 #endif
 	model = get_switch();
@@ -2511,7 +2492,7 @@ int get_bonding_port_status(int port)
 	int ports[lan_ports+1];
 	/* 7 3 2 1 0	W0 L1 L2 L3 L4 */
 	ports[0]=7; ports[1]=3; ports[2]=2; ports[3]=1; ports[4]=0;
-#elif defined(RTAX95Q)
+#elif defined(RTAX95Q) || defined(RTAXE95Q)
 	int lan_ports=4;
 	int ports[lan_ports+1];
 	/* 7 3 2 1 0	W0 L1 L2 L3 L4 */
@@ -2538,7 +2519,7 @@ int get_bonding_port_status(int port)
 	int ports[lan_ports+1];
 	/* 7 3	W0 L1 */
 	ports[0]=7; ports[1]=3;
-#elif defined(RTAX58U) || defined(TUFAX3000) || defined(RTAX82U) || defined(GSAX3000) || defined(GSAX5400)
+#elif defined(RTAX58U) || defined(TUFAX3000) || defined(TUFAX5400) || defined(RTAX82U) || defined(GSAX3000) || defined(GSAX5400)
 	int lan_ports=4;
 	int ports[lan_ports+1];
 	/* 4 3 2 1 0	W0 L1 L2 L3 L4 */
@@ -2648,6 +2629,13 @@ int wl_max_no_vifs(int unit)
 #ifdef RTCONFIG_MSSID_PRELINK
 	base_no_vifs++;
 #endif
+#ifdef RTCONFIG_VIF_ONBOARDING
+	base_no_vifs++;
+#endif
+#ifdef RTCONFIG_FRONTHAUL_DBG
+	if(!unit)
+		base_no_vifs++;
+#endif
 #endif
 
 
@@ -2677,6 +2665,11 @@ int wl_max_no_vifs(int unit)
 				max_no_vifs = 4;
 		}
 	}
+
+#if defined(RTCONFIG_AMAS) && (defined(RTCONFIG_FRONTHAUL_DWB) || defined(RTCONFIG_MSSID_PRELINK) || defined(RTCONFIG_FRONTHAUL_DBG))
+	if (nvram_match("re_mode", "1"))
+		return min(max_no_vifs, base_no_vifs);
+#endif
 
 #ifdef RTCONFIG_PSR_GUEST
 #ifdef RTCONFIG_HND_ROUTER_AX
