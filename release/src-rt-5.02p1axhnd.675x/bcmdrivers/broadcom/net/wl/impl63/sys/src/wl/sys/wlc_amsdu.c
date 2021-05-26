@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_amsdu.c 781150 2019-11-13 07:11:32Z $
+ * $Id: wlc_amsdu.c 788704 2020-07-09 06:51:30Z $
  */
 
 /**
@@ -425,10 +425,13 @@ static bool wlc_amsdu_is_tcp_ack(amsdu_info_t *ami, void *p);
 static void wlc_amsdu_agg(void *ctx, struct scb *scb, void *p, uint prec);
 static void wlc_amsdu_scb_deactive(void *ctx, struct scb *scb);
 static uint wlc_amsdu_txpktcnt(void *ctx);
+static void wlc_amsdu_flush_pkts(amsdu_info_t *ami, struct scb *scb, uint8 tid);
+static void wlc_amsdu_flush_scb_tid(void* ctx, struct scb *scb, uint8 tid);
 
 static txmod_fns_t BCMATTACHDATA(amsdu_txmod_fns) = {
 	wlc_amsdu_agg,
 	wlc_amsdu_txpktcnt,
+	wlc_amsdu_flush_scb_tid,
 	wlc_amsdu_scb_deactive,
 	NULL
 };
@@ -938,23 +941,12 @@ wlc_amsdu_scb_init(void *context, struct scb *scb)
 static void
 wlc_amsdu_scb_deinit(void *context, struct scb *scb)
 {
-	uint i;
 	amsdu_info_t *ami = (amsdu_info_t *)context;
-	scb_amsdu_t *scb_amsdu = SCB_AMSDU_CUBBY(ami, scb);
 
 	WL_AMSDU(("wlc_amsdu_scb_deinit scb %p\n", OSL_OBFUSCATE_BUF(scb)));
 
-	ASSERT(scb_amsdu);
-
 	/* release tx agg pkts */
-	for (i = 0; i < NUMPRIO; i++) {
-		if (scb_amsdu->aggstate[i].amsdu_agg_p) {
-			PKTFREE(ami->wlc->osh, scb_amsdu->aggstate[i].amsdu_agg_p, TRUE);
-			/* needs clearing, so subsequent access to this cubby doesn't ASSERT */
-			/* and/or access bad memory */
-			scb_amsdu->aggstate[i].amsdu_agg_p = NULL;
-		}
-	}
+	wlc_amsdu_scb_deactive(ami, scb);
 }
 
 /* Callback function invoked when a STA's association state changes.
@@ -992,6 +984,10 @@ wlc_amsdu_down(void *hdl)
 	/* Flush the deagg Q, there may be packets there */
 	for (fifo = 0; fifo < RX_FIFO_NUMBER; fifo++)
 		wlc_amsdu_deagg_flush(ami, fifo);
+
+#ifdef WLAMSDU_TX
+	wlc_amsdu_agg_flush(ami);
+#endif /* WLAMSDU_TX */
 
 	return 0;
 }
@@ -1665,7 +1661,6 @@ done:
 #define MAX_AMSDU_AGGSF_RELEASE        8   /**< max num of MSDUs in one A-MSDU */
 /**
  * Dynamic adjust amsdu_aggsf based on STA's bandwidth
- * XXX:Disable it on EAP NIC. EAP will use amsdu_aggsf for all bandwidth.
  */
 static void
 wlc_amsdu_scb_aggsf_upd(amsdu_info_t *ami, struct scb *scb)
@@ -2699,34 +2694,17 @@ amsdu_agg_false:
 void
 wlc_amsdu_agg_flush(amsdu_info_t *ami)
 {
-	wlc_info_t *wlc;
-	uint i;
 	struct scb *scb;
 	struct scb_iter scbiter;
-	scb_amsdu_t *scb_ami;
-	amsdu_txaggstate_t *aggstate;
 
 	if (!AMSDU_TX_SUPPORT(ami->pub))
 		return;
 
 	WL_AMSDU(("wlc_amsdu_agg_flush\n"));
 
-	wlc = ami->wlc;
-	FOREACHSCB(wlc->scbstate, &scbiter, scb) {
-		for (i = 0; i < NUMPRIO; i++) {
-			scb_ami = SCB_AMSDU_CUBBY(ami, scb);
-			aggstate = &scb_ami->aggstate[i];
-
-			if (aggstate->amsdu_agg_p) {
-				PKTFREE(ami->wlc->osh, scb_ami->aggstate[i].amsdu_agg_p, TRUE);
-			}
-
-			aggstate->amsdu_agg_p = NULL;
-			aggstate->amsdu_agg_ptail = NULL;
-			aggstate->amsdu_agg_sframes = 0;
-			aggstate->amsdu_agg_bytes = 0;
-			aggstate->amsdu_agg_padlast = 0;
-			aggstate->headroom_pad_need = 0;
+	FOREACHSCB(ami->wlc->scbstate, &scbiter, scb) {
+		if (SCB_AMSDU(scb)) {
+			wlc_amsdu_scb_deactive(ami, scb);
 		}
 	}
 }
@@ -2851,27 +2829,53 @@ uint wlc_amsdu_bss_txpktcnt(amsdu_info_t *ami, wlc_bsscfg_t *bsscfg)
 		}
 	return pktcnt;
 }
+
+static void
+wlc_amsdu_flush_pkts(amsdu_info_t *ami, struct scb *scb, uint8 tid)
+{
+	scb_amsdu_t *scb_ami = SCB_AMSDU_CUBBY(ami, scb);
+	wlc_info_t *wlc = ami->wlc;
+	amsdu_txaggstate_t *aggstate;
+	void *pkt;
+
+	aggstate = &scb_ami->aggstate[tid];
+	pkt = aggstate->amsdu_agg_p;
+	if (pkt) {
+		PKTFREE(wlc->osh, pkt, TRUE);
+		/* needs clearing, so subsequent access to this cubby doesn't ASSERT
+		 * and/or access bad memory
+		 */
+		aggstate->amsdu_agg_p = NULL;
+
+		WL_ERROR(("wl%d.%d: %s flushing 1 packets for "MACF" AID %d tid %d\n",
+			wlc->pub->unit, WLC_BSSCFG_IDX(SCB_BSSCFG(scb)), __FUNCTION__,
+			ETHER_TO_MACF(scb->ea), SCB_AID(scb), tid));
+	}
+	aggstate->amsdu_agg_ptail = NULL;
+	aggstate->amsdu_agg_sframes = 0;
+	aggstate->amsdu_agg_bytes = 0;
+	aggstate->amsdu_agg_padlast = 0;
+	aggstate->headroom_pad_need = 0;
+}
+
+/* Flush transmit packets held by AMSDU per SCB/TID */
+static void
+wlc_amsdu_flush_scb_tid(void* ctx, struct scb *scb, uint8 tid)
+{
+	amsdu_info_t *ami = (amsdu_info_t *)ctx;
+
+	wlc_amsdu_flush_pkts(ami, scb, tid);
+}
+
 static void
 wlc_amsdu_scb_deactive(void *ctx, struct scb *scb)
 {
-	amsdu_info_t *ami;
-	uint i;
-	scb_amsdu_t *scb_ami;
+	uint8 tid;
+	amsdu_info_t *ami = (amsdu_info_t *)ctx;
 
 	WL_AMSDU(("wlc_amsdu_scb_deactive scb %p\n", OSL_OBFUSCATE_BUF(scb)));
-
-	ami = (amsdu_info_t *)ctx;
-	scb_ami = SCB_AMSDU_CUBBY(ami, scb);
-	for (i = 0; i < NUMPRIO; i++) {
-
-		if (scb_ami->aggstate[i].amsdu_agg_p)
-			PKTFREE(ami->wlc->osh, scb_ami->aggstate[i].amsdu_agg_p, TRUE);
-
-		scb_ami->aggstate[i].amsdu_agg_p = NULL;
-		scb_ami->aggstate[i].amsdu_agg_ptail = NULL;
-		scb_ami->aggstate[i].amsdu_agg_sframes = 0;
-		scb_ami->aggstate[i].amsdu_agg_bytes = 0;
-		scb_ami->aggstate[i].amsdu_agg_padlast = 0;
+	for (tid = 0; tid < NUMPRIO; tid++) {
+		wlc_amsdu_flush_scb_tid(ami, scb, tid);
 	}
 }
 
@@ -3549,7 +3553,6 @@ skip_conv:
 	}
 
 	if (resid != 0) {
-		ASSERT(0);
 		WLCNTINCR(ami->cnt->deagg_badtotlen);
 		toss_reason = WLC_RX_STS_TOSS_BAD_DEAGG_SF_LEN;
 		goto toss;

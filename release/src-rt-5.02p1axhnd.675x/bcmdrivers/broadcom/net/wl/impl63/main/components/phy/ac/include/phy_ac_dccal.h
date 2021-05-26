@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_dccal.h 782606 2019-12-26 22:06:52Z $
+ * $Id: phy_ac_dccal.h 783144 2020-01-15 00:17:24Z $
  */
 
 #ifndef _phy_ac_dccal_h_
@@ -72,18 +72,24 @@ void wlc_dcc_fsm_reset(phy_info_t *pi);
 bool phy_ac_dccal_multiphase_isen(phy_info_t *pi);
 void phy_ac_dccal_multiphase(phy_info_t *pi, uint16 cal_time);
 void phy_ac_dccal(phy_info_t *pi);
-void phy_ac_dccal_papd(phy_info_t *pi, bool three_step_for_papd);
+void phy_ac_dccal_tia_special(phy_info_t *pi);
+void phy_ac_dccal_papd_special(phy_info_t *pi, int8 tia_init, uint8 core);
+void phy_ac_dccal_save(phy_info_t *pi);
+void phy_ac_dccal_restore(phy_info_t *pi);
 void phy_ac_dccal_2steps(phy_info_t *pi);
 void phy_ac_dccal_dcoe_only(phy_info_t *pi);
 void phy_ac_dccal_idacc_only(phy_info_t *pi);
 void phy_ac_dccal_init(phy_info_t *pi);
 void phy_ac_load_gmap_tbl(phy_info_t *pi);
 void phy_ax_dccal_digcorr_bwspecific(phy_info_t *pi);
+void phy_ax_dccal_digcorr_bwspecific_percore(phy_info_t *pi, uint8 core);
 
 /* DCC with digcorr */
 void phy_ax_dccal_digcorr_init(phy_info_t *pi);
 void phy_ax_dccal_digcorr_dcoe(phy_info_t *pi);
 void phy_ax_dccal_digcorr_idacc(phy_info_t *pi);
+void phy_ax_dccal_digcorr_idacc_override(phy_info_t  *pi, uint8 core);
+void phy_ax_dccal_digcorr_init_tiainit(phy_info_t *pi, int8 tia_init, uint8 core);
 
 /* Analog DCC sw-war related functions */
 void acphy_dcc_idac_set(phy_info_t *pi, int16 dac, int ch, int core);

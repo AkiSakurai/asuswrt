@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bsd_wbd.c 780861 2019-11-05 07:14:27Z $
+ * $Id: bsd_wbd.c 788363 2020-06-30 08:06:37Z $
  */
 
 #include "bsd.h"
@@ -68,6 +68,11 @@
 #define	WBD_BAND_LAN_5GL	0x02	/* 2 - 5 Ghz LOW */
 #define	WBD_BAND_LAN_5GH	0x04	/* 4 - 5 Ghz HIGH */
 #define	WBD_BAND_LAN_ALL	(WBD_BAND_LAN_2G | WBD_BAND_LAN_5GL | WBD_BAND_LAN_5GH)
+
+/* MAP Flags */
+#define WBD_MAP_FRONTHAUL 0x01  /* Fronthaul BSS */
+
+#define WBD_IS_BSS_FRONTHAUL(map)      ((map) & WBD_MAP_FRONTHAUL)
 
 #ifndef WBDSTRNCPY
 #define WBDSTRNCPY(dst, src, len)	 \
@@ -419,19 +424,16 @@ bsd_wbd_init_bss(bsd_info_t *info, bsd_wbd_bss_list_t *wbd_bssinfo)
  * WBD if there is no ifnames for BSD.
  */
 int
-bsd_wbd_set_ifnames(bsd_info_t *info)
+bsd_wbd_ifnames_append(bsd_info_t *info, char *bsd_ifnames, int ifname_size)
 {
-	char bsd_ifnames[80] = {0}, wbd_ifnames[80] = {0};
-	char lan_ifnames[100] = {0};
+	char wbd_ifnames[80] = {0};
 	char tmp[10];
 
 	char var_intf[BSD_IFNAME_SIZE], prefix[BSD_IFNAME_SIZE];
 	char *next_intf, *nvval;
-	int idx_intf, idx;
-
-	BSDSTRNCPY(bsd_ifnames, nvram_safe_get(BSD_IFNAMES_NVRAM), sizeof(bsd_ifnames) - 1);
-	BSDSTRNCPY(lan_ifnames, nvram_safe_get(LAN_IFNAMES_NVRAM), sizeof(lan_ifnames) - 1);
-	BSD_INFO("lan_ifnames: [%s]\n", lan_ifnames);
+	int idx_intf, idx, map, ret;
+	bsd_intf_info_t *intf_info;
+	bsd_bssinfo_t *bssinfo;
 
 	/* Read "wbd_ifnames" NVRAM and get actual ifnames */
 	if (wbd_read_actual_ifnames(wbd_ifnames, sizeof(wbd_ifnames), FALSE) != 0) {
@@ -446,19 +448,8 @@ bsd_wbd_set_ifnames(bsd_info_t *info)
 		return BSD_FAIL;
 	}
 
-	if (bsd_ifnames[0] != '\0') {
-		goto end;
-	}
-
 	/* Add only fronthaul interfaces to bsd_ifnames */
 	foreach(var_intf, wbd_ifnames, next_intf) {
-
-		/* Avoid Guest network, because guest steering not supported yet */
-		if (!find_in_list(lan_ifnames, var_intf)) {
-			BSD_INFO("Interface [%s] is missing in lan_ifnames. "
-				"Assuming Guest, not adding to bsd_ifnames\n", var_intf);
-			continue;
-		}
 
 		/* Get prefix of the interface */
 		if (wl_ioctl(var_intf, WLC_GET_INSTANCE, &idx_intf, sizeof(idx_intf))) {
@@ -478,22 +469,27 @@ bsd_wbd_set_ifnames(bsd_info_t *info)
 		}
 		BSD_INFO("Get subunit of %s: %d\n", var_intf, idx);
 
+		intf_info = &(info->intf_info[idx_intf]);
+		bssinfo = &(intf_info->bsd_bssinfo[idx]);
+
 		if (idx == 0) {
 			snprintf(prefix, sizeof(prefix), "wl%d_", idx_intf);
 		} else {
 			snprintf(prefix, sizeof(prefix), "wl%d.%d_", idx_intf, idx);
 		}
 		/* Read map to check if interface is fronthaul */
-		nvval = nvram_get(strcat_r(prefix, "map", tmp));
-		if (nvval && ((strcmp(nvval, "1") == 0) || (strcmp(nvval, "3") == 0))) {
-			add_to_list(var_intf, bsd_ifnames, sizeof(bsd_ifnames));
+		nvval = bsd_wbd_nvram_safe_get(strcat_r(prefix, "map", tmp), &ret);
+		if (ret == BSD_OK) {
+			map = strtoul(nvval, NULL, 0);
+			if (WBD_IS_BSS_FRONTHAUL(map)) {
+				add_to_list(var_intf, bsd_ifnames, ifname_size);
+				bssinfo->flags |= BSD_FLAG_BSS_WBD_ENABLED;
+			}
 		}
 	}
 
-	nvram_set(BSD_IFNAMES_NVRAM, bsd_ifnames);
 	BSD_WBD("Successfully set bsd_ifnames same as %s = %s\n", BSD_WBD_NVRAM_IFNAMES,
 		bsd_ifnames);
-end:
 	return BSD_OK;
 }
 
@@ -536,7 +532,8 @@ bsd_wbd_init(bsd_info_t *info)
 			for (idx = 0; idx < WL_MAXBSSCFG; idx++) {
 				bssinfo = &(intf_info->bsd_bssinfo[idx]);
 				if (bssinfo->valid &&
-					(strncmp(name, bssinfo->ifnames, strlen(name)) == 0)) {
+					(strncmp(name, bssinfo->ifnames, strlen(name)) == 0) &&
+					BSD_BSS_WBD_ENABLED(bssinfo)) {
 					BSD_WBD("Matching name=%s and bssinfo->ifnames=%s. BSSINFO"
 						" ssid=%s BSSID="MACF"\n", name, bssinfo->ifnames,
 						bssinfo->ssid, ETHER_TO_MACF(bssinfo->bssid));

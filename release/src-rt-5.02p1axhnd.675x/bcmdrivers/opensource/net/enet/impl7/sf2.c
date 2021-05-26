@@ -457,7 +457,11 @@ void link_change_handler(enetx_port_t *port, int linkstatus, int speed, int dupl
         /* notify linux after we have finished setting our internal state */
         if (!old_link || old_speed != phy_dev->speed || old_duplex != phy_dev->duplex)
         {
-            if (!old_link && port->p.parent_sw == sf2_sw) 
+	    char link[16];
+	    char *env[] = {link, NULL};
+	    snprintf(link, sizeof(link), "LINK=up");
+            
+	    if (!old_link && port->p.parent_sw == sf2_sw) 
             {
                 if(PORT_ROLE_IS_WAN(port))
                     sf2WanUpPorts_g++;
@@ -466,8 +470,10 @@ void link_change_handler(enetx_port_t *port, int linkstatus, int speed, int dupl
                 _sf2_conf_que_thred();
             }
 
-            if (netif_carrier_ok(port->dev) == 0)
+            if (netif_carrier_ok(port->dev) == 0) {
+                kobject_uevent_env(&port->dev->dev.kobj, KOBJ_CHANGE, env);
                 netif_carrier_on(port->dev);
+            }
 
             _port_sf2_print_status(port, old_link == phy_dev->link);
         }
@@ -498,6 +504,10 @@ void link_change_handler(enetx_port_t *port, int linkstatus, int speed, int dupl
         /* notify linux after we have finished setting our internal state */
         if (netif_carrier_ok(port->dev) != 0)
         {
+            char link[16];
+            char *env[] = {link, NULL};
+            snprintf(link, sizeof(link), "LINK=down");
+
             if (port->p.parent_sw == sf2_sw) 
             {
                 if (PORT_ROLE_IS_WAN(port))
@@ -506,6 +516,7 @@ void link_change_handler(enetx_port_t *port, int linkstatus, int speed, int dupl
                     sf2LanUpPorts_g--;
                 _sf2_conf_que_thred();
             }
+            kobject_uevent_env(&port->dev->dev.kobj, KOBJ_CHANGE, env);
             netif_carrier_off(port->dev);
             port_sf2_print_status(port);
         }
@@ -3351,6 +3362,77 @@ int ioctl_extsw_arl_access(struct ethswctl_data *e)
     return BCM_E_NONE;
 }
 
+// add by Andrew
+int _enet_arl_entry_op_us(struct ethswctl_data *e, int *count, u8 *mac_vid, u32 data)
+{
+    ethsw_mac_entry *me;
+
+    if (*count > MAX_MAC_ENTRY) 
+        return FALSE;
+
+    me = &(e->mac_table.entry[*count]);
+    memcpy(&me->mac, &mac_vid[2], 6);
+
+    me->port = data&0x1ff;
+
+    (*count)++;
+
+    // return TRUE to terminate the loop
+    return FALSE;
+}
+
+int _enet_arl_dump_ext_us(struct ethswctl_data *e)
+{
+    int timeout = 1000, count = 0, hash_ent;
+    uint32_t cur_data;
+    uint8_t v8, mac_vid[8];
+
+    v8 = ARL_SRCH_CTRL_START_DONE;
+    SF2SW_WREG(PAGE_AVTBL_ACCESS, REG_ARL_SRCH_CTRL_531xx, (uint8_t *)&v8, 1);
+    for( SF2SW_RREG(PAGE_AVTBL_ACCESS, REG_ARL_SRCH_CTRL_531xx, (uint8_t *)&v8, 1);
+            (v8 & ARL_SRCH_CTRL_START_DONE);
+            SF2SW_RREG(PAGE_AVTBL_ACCESS, REG_ARL_SRCH_CTRL_531xx, (uint8_t *)&v8, 1))
+    {
+        /* Now read the Search Ctrl Reg Until :
+         * Found Valid ARL Entry --> ARL_SRCH_CTRL_SR_VALID, or
+         * ARL Search done --> ARL_SRCH_CTRL_START_DONE */
+        for(timeout = 1000;
+                (v8 & ARL_SRCH_CTRL_SR_VALID) == 0 && (v8 & ARL_SRCH_CTRL_START_DONE) && timeout-- > 0;
+                mdelay(1),
+                SF2SW_RREG(PAGE_AVTBL_ACCESS, REG_ARL_SRCH_CTRL_531xx, (uint8_t *)&v8, 1));
+
+        if ((v8 & ARL_SRCH_CTRL_SR_VALID) == 0 || timeout <= 0) break;
+
+        /* Found a valid entry */
+        for (hash_ent = 0; hash_ent < REG_ARL_SRCH_HASH_ENTS; hash_ent++)
+        {
+            SF2SW_RREG(PAGE_AVTBL_ACCESS, REG_ARL_SRCH_MAC_LO_ENTRY0_531xx + hash_ent*0x10,&mac_vid[0], 8|DATA_TYPE_VID_MAC);
+            SF2SW_RREG(PAGE_AVTBL_ACCESS, REG_ARL_SRCH_DATA_ENTRY0_531xx + hash_ent*0x10,(uint8_t *)&cur_data, 4);
+
+            if ((cur_data & ARL_DATA_ENTRY_VALID_531xx))
+            {
+                if (_enet_arl_entry_op_us(e, &count, mac_vid, cur_data)) 
+                    return TRUE;
+            }
+        }
+    }
+    e->mac_table.count = count;
+    e->mac_table.len = count*sizeof(ethsw_mac_entry) + 8;
+
+    return TRUE;
+}
+
+int ioctl_extsw_arl_dump(struct ethswctl_data *e)
+{
+    if (e->type != TYPE_DUMP) 
+        return BCM_E_PARAM;
+
+    _enet_arl_dump_ext_us(e); 
+
+    return BCM_E_NONE;
+}
+// end of add
+
 int remove_arl_entry_wrapper(void *ptr)
 {
     int ret = 0;
@@ -5241,6 +5323,60 @@ int port_sf2_port_stp_set(enetx_port_t *self, int mode, int state)
     }
     return 0;
 }
+
+// add by Andrew
+// ----------- SIOCETHSWCTLOPS ETHSWMIBDUMP functions ---
+int port_sf2_mib_dump_us(enetx_port_t *self, void *ethswctl)
+{
+    struct ethswctl_data *e = (struct ethswctl_data *)ethswctl;
+    unsigned int v32;
+    uint8_t data[8] = {0};
+    int port = self->p.mac->mac_id;
+
+    {
+        SF2SW_RREG(PAGE_CONTROL, REG_LOW_POWER_EXP1, &v32, 4);
+        if (v32 & (1<<port)) {
+            enet_err("port=%d is in low power mode - mib counters not accessible!!\n", port);    // SLEEP_SYSCLK_PORT for specified port is set
+            return 0;
+        }
+    }
+
+    /* Calculate Tx statistics */
+    e->port_stats.txPackets = 0;
+    SF2SW_RREG(PAGE_MIB_P0 + (port), SF2_REG_MIB_P0_TXUPKTS, &v32, 4);  // Get TX unicast packet count
+    e->port_stats.txPackets += v32;
+    SF2SW_RREG(PAGE_MIB_P0 + (port), SF2_REG_MIB_P0_TXMPKTS, &v32, 4);  // Get TX multicast packet count
+    e->port_stats.txPackets += v32;
+    SF2SW_RREG(PAGE_MIB_P0 + (port), SF2_REG_MIB_P0_TXBPKTS, &v32, 4);  // Get TX broadcast packet count
+    e->port_stats.txPackets += v32;
+
+    SF2SW_RREG(PAGE_MIB_P0 + (port), SF2_REG_MIB_P0_TXDROPS, &v32, 4);
+    e->port_stats.txDrops = v32;
+
+    SF2SW_RREG(PAGE_MIB_P0 + (port), SF2_REG_MIB_P0_TXOCTETS, data, DATA_TYPE_HOST_ENDIAN|8);
+    e->port_stats.txBytes = *((uint64 *)data);
+
+    /* Calculate Rx statistics */
+    e->port_stats.rxPackets = 0;
+    SF2SW_RREG(PAGE_MIB_P0 + (port), SF2_REG_MIB_P0_RXUPKTS, &v32, 4);  // Get RX unicast packet count
+    e->port_stats.rxPackets += v32;
+    SF2SW_RREG(PAGE_MIB_P0 + (port), SF2_REG_MIB_P0_RXMPKTS, &v32, 4);  // Get RX multicast packet count
+    e->port_stats.rxPackets += v32;
+    SF2SW_RREG(PAGE_MIB_P0 + (port), SF2_REG_MIB_P0_RXBPKTS, &v32, 4);  // Get RX broadcast packet count
+    e->port_stats.rxPackets += v32;
+
+    SF2SW_RREG(PAGE_MIB_P0 + (port), SF2_REG_MIB_P0_RXDROPS, &v32, 4);
+    e->port_stats.rxDrops = v32;
+
+    SF2SW_RREG(PAGE_MIB_P0 + (port), SF2_REG_MIB_P0_RXDISCARD, &v32, 4);
+    e->port_stats.rxDiscards = v32;
+
+    SF2SW_RREG(PAGE_MIB_P0 + (port), SF2_REG_MIB_P0_RXOCTETS, data,  DATA_TYPE_HOST_ENDIAN|8);
+    e->port_stats.rxBytes = *((uint64 *)data);
+
+    return 0;
+}
+// end of add
 
 // ----------- SIOCETHSWCTLOPS ETHSWDUMPMIB functions ---
 

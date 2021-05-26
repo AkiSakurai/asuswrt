@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_info.h 780478 2019-10-26 09:55:49Z $
+ * $Id: phy_ac_info.h 784632 2020-03-03 18:02:45Z $
  */
 
 #ifndef _phy_ac_info_h_
@@ -409,8 +409,8 @@
 #define ACREV0_SUB 0
 #endif /* ACCONF || ACCONF2 */
 
-#define ACPHY_GAIN_VS_TEMP_SLOPE_2G (ACMAJORREV_47((pi)->pubpi->phy_rev) ? 4 : 7) /* dB/100C */
-#define ACPHY_GAIN_VS_TEMP_SLOPE_5G (ACMAJORREV_47((pi)->pubpi->phy_rev) ? 4 : 7) /* dB/100C */
+#define ACPHY_GAIN_VS_TEMP_SLOPE_2G (ACMAJORREV_47_129((pi)->pubpi->phy_rev) ? 4 : 7) /* dB/100C */
+#define ACPHY_GAIN_VS_TEMP_SLOPE_5G (ACMAJORREV_47_129((pi)->pubpi->phy_rev) ? 4 : 7) /* dB/100C */
 #define ACPHY_SWCTRL_NVRAM_PARAMS 5
 #define ACPHY_RSSIOFFSET_NVRAM_PARAMS 4
 #define ACPHY_GAIN_DELTA_2G_PARAMS 2

@@ -296,6 +296,10 @@ static bp_elem_t g_bcm968782gref[] = {
 
 static bp_elem_t g_bcm968782gfm[] = {
   {bp_cpBoardId,               .u.cp = "968782GFM"},
+  {bp_usGpioWlanReserved,      .u.us = BP_GPIO_16_AH},
+  {bp_usGpioWlanReserved,      .u.us = BP_GPIO_17_AH},
+  {bp_usGpioWlanReserved,      .u.us = BP_GPIO_22_AH},
+  {bp_usGpioWlanReserved,      .u.us = BP_GPIO_23_AH},
   {bp_elemTemplate,            .u.bp_elemp = g_bcm968782gref},
   {bp_last}
 };

@@ -28,11 +28,13 @@
 
 /* ANSI headers */
 #include <time.h>
+#ifdef RTCONFIG_HND_ROUTER_AX
 #include <inttypes.h>
+#endif
 
 /* timer ID */
-typedef unsigned int bcm_timer_module_id;
-typedef unsigned int bcm_timer_id;
+typedef unsigned long bcm_timer_module_id;
+typedef unsigned long bcm_timer_id;
 
 /* timer callback */
 typedef void (*bcm_timer_cb)(bcm_timer_id id, unsigned int data);
@@ -45,7 +47,11 @@ int bcm_timer_create(bcm_timer_module_id module_id, bcm_timer_id *timer_id);
 int bcm_timer_delete(bcm_timer_id timer_id);
 int bcm_timer_gettime(bcm_timer_id timer_id, struct itimerspec *value);
 int bcm_timer_settime(bcm_timer_id timer_id, const struct itimerspec *value);
+#ifdef RTCONFIG_HND_ROUTER_AX
 int bcm_timer_connect(bcm_timer_id timer_id, bcm_timer_cb func, uintptr_t data);
+#else
+int bcm_timer_connect(bcm_timer_id timer_id, bcm_timer_cb func, int data);
+#endif
 int bcm_timer_cancel(bcm_timer_id timer_id);
 int bcm_timer_change_expirytime(bcm_timer_id timer_id, const struct itimerspec *timer_spec);
 

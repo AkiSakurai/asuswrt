@@ -89,6 +89,7 @@
 #include <wlc_macdbg.h>
 #include <wlc_macreq.h>
 #include <wlc_musched.h>
+#include <wlc_scan.h>
 
 #if defined(WL_RATELINKMEM) && !defined(WL_RATELINKMEM_DISABLED) && !defined(HNDBME)
 #error "WL_RATELINKMEM requires HNDBME"
@@ -1071,7 +1072,9 @@ uint16
 wlc_ratelinkmem_get_scb_rate_index(wlc_info_t *wlc, scb_t *scb)
 {
 
-	if ((SCB_INTERNAL(scb) || ETHER_ISMULTI(&scb->ea) || ETHER_ISNULLADDR(&scb->ea))) {
+	if (SCB_PROXD(scb)) {
+		return WLC_RLM_FTM_RATE_IDX;
+	} else if ((SCB_INTERNAL(scb) || ETHER_ISMULTI(&scb->ea) || ETHER_ISNULLADDR(&scb->ea))) {
 		/* map all non-SCB traffic to single, 'global' rate entry */
 		return WLC_RLM_SPECIAL_RATE_IDX;
 	} else {
@@ -1336,7 +1339,9 @@ wlc_ratelinkmem_update_rate_entry(wlc_info_t *wlc, scb_t *scb,
 		index = WLC_RLM_SPECIAL_RATE_IDX;
 	}
 
-	if ((SCB_INTERNAL(scb) || ETHER_ISMULTI(&scb->ea) || ETHER_ISNULLADDR(&scb->ea))) {
+	if (SCB_PROXD(scb)) {
+		index = WLC_RLM_FTM_RATE_IDX;
+	} else if ((SCB_INTERNAL(scb) || ETHER_ISMULTI(&scb->ea) || ETHER_ISNULLADDR(&scb->ea))) {
 		/* map all non-SCB traffic to single, 'global' rate entry */
 		ASSERT(scb == WLC_RLM_SPECIAL_RATE_SCB(wlc));
 	}
@@ -1361,6 +1366,16 @@ wlc_ratelinkmem_update_rate_entry(wlc_info_t *wlc, scb_t *scb,
 			scbh, ETHER_TO_MACF(scb->ea)));
 		return BCME_ERROR;
 	}
+
+	if (BSSCFG_AP(scb->bsscfg) &&
+		SCAN_IN_PROGRESS(wlc->scan) &&
+		(scb != WLC_RLM_SPECIAL_RATE_SCB(wlc))) {
+		WL_INFORM(("wl%d: %s, %p, %p, STA: "MACF" Skip updating ratemem"
+			" during scan\n", wlc->pub->unit, __FUNCTION__, scb,
+			scbh, ETHER_TO_MACF(scb->ea)));
+		return BCME_ERROR;
+	}
+
 	if (rlmi->block_in_release) {
 		WL_INFORM(("wl%d: %s, %p, %p, STA: "MACF" Skip updating ratemem"
 			" while in release\n", wlc->pub->unit, __FUNCTION__, scb,
@@ -1564,7 +1579,10 @@ wlc_ratelinkmem_upd_txstatus(wlc_info_t *wlc, uint16 index, uint8 flags)
 uint16
 wlc_ratelinkmem_get_scb_link_index(wlc_info_t *wlc, scb_t *scb)
 {
-	if (SCB_INTERNAL(scb) || ETHER_ISMULTI(&scb->ea) || ETHER_ISNULLADDR(&scb->ea)) {
+	if (SCB_PROXD(scb)) {
+		/* use special link index; rate and link index will be different */
+		return WLC_RLM_SPECIAL_LINK_IDX;
+	} else if (SCB_INTERNAL(scb) || ETHER_ISMULTI(&scb->ea) || ETHER_ISNULLADDR(&scb->ea)) {
 		wlc_bsscfg_t *bsscfg = SCB_BSSCFG(scb);
 		/* map all non-SCB traffic to common link entry */
 		return WLC_RLM_BSSCFG_LINK_IDX(wlc, bsscfg);
@@ -1769,6 +1787,14 @@ wlc_ratelinkmem_update_link_entry_onsize(wlc_info_t *wlc, scb_t *scb, uint16 siz
 			scbh, ETHER_TO_MACF(scb->ea)));
 		return BCME_ERROR;
 	}
+
+	if (wlc->psm_watchdog_debug) {
+		WL_INFORM(("wl%d: %s, %p, %p, STA: "MACF" Skip updating linkmem during"
+			" psmwd\n", wlc->pub->unit, __FUNCTION__, scb,
+			scbh, ETHER_TO_MACF(scb->ea)));
+		return BCME_ERROR;
+	}
+
 	if (rlmi->block_in_release) {
 		WL_INFORM(("wl%d: %s, %p, %p, STA: "MACF" Skip updating linkmem"
 			" while in release\n", wlc->pub->unit, __FUNCTION__, scb,

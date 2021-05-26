@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhdu.c 779167 2019-09-20 10:34:55Z $
+ * $Id: dhdu.c 783797 2020-02-10 20:24:41Z $
  */
 
 /* For backwards compatibility, the absence of the define 'BWL_NO_FILESYSTEM_SUPPORT'
@@ -272,6 +272,7 @@ cmd_t dhd_cmds[] = {
 	"\t-r   output binary to stdout rather hex\n"},
 	{ "buzzz_dump", dhd_varint, DHD_GET_VAR, -1, "buzzz_dump\n"},
 	{ "buzzz_file", dhd_varint, DHD_GET_VAR, -1, "buzzz_file\n"},
+	{ "csimon", dhd_varint, DHD_GET_VAR, -1, "csimon\n"},
 	{ "download", dhd_download, -1, DHD_SET_VAR,
 	"download [-a <address>] [--noreset] [--norun] [--verify] <binfile> [<varsfile>]\n"
 	"\tdownload file to specified dongle ram address and start CPU\n"

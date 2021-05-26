@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bsd_wbd.h 767389 2018-09-10 03:17:33Z $
+ * $Id: bsd_wbd.h 784495 2020-02-28 09:32:51Z $
  */
 
 #ifndef _BSD_WBD_H_
@@ -127,7 +127,7 @@ typedef struct bsd_wbd_info {
 } bsd_wbd_info_t;
 
 /* Extern Declarations */
-extern int bsd_wbd_set_ifnames(bsd_info_t *info);
+extern int bsd_wbd_ifnames_append(bsd_info_t *info, char *bsd_ifnames, int ifname_size);
 extern int bsd_wbd_init(bsd_info_t *info);
 extern void bsd_wbd_reinit(bsd_info_t *info);
 extern void bsd_cleanup_wbd(bsd_wbd_info_t *info);

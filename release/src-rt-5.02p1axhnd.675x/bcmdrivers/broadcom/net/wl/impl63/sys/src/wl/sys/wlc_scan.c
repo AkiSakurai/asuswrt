@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_scan.c 781272 2019-11-15 10:04:05Z $
+ * $Id: wlc_scan.c 787197 2020-05-21 09:32:20Z $
  */
 
 /* XXX
@@ -2573,6 +2573,9 @@ int _wlc_scan(
 	char SSIDbuf[DOT11_MAX_SSID_LEN+1];
 #endif // endif
 	int ret = BCME_OK;
+#ifdef WLCHANIM
+	int err;
+#endif // endif
 	BCM_REFERENCE(wlc);
 	BCM_REFERENCE(home_time);
 	BCM_REFERENCE(away_channels_limit);
@@ -2835,6 +2838,19 @@ int _wlc_scan(
 	ASSERT(SCAN_STAY_AWAKE(scan_info));
 	wlc_scan_set_wake_ctrl(scan_info);
 
+#ifdef WLCHANIM
+	if (WLC_CHANIM_ENAB(wlc->pub) && !BSSCFG_STA(wlc->cfg) && !wlc->cfg->up) {
+		wlc_suspend_mac_and_wait(wlc);
+		wlc_lq_chanim_acc_reset(wlc);
+		if ((err = wlc_lq_chanim_update(wlc, wlc->chanspec, CHANIM_CHANSPEC))
+			!= BCME_OK) {
+			WL_ERROR(("wl%d: %s: CHANIM upd fail %d\n", wlc->pub->unit,
+				__FUNCTION__, err));
+		}
+		wlc_enable_mac(wlc);
+	}
+#endif // endif
+
 #ifdef WLSCAN_PS
 	if (WLSCAN_PS_ENAB(wlc->pub)) {
 		/* Support for MIMO force depends on underlying WLSCAN_PS code */
@@ -3073,7 +3089,7 @@ _wlc_scan_schd_channels(wlc_scan_info_t *wlc_scan_info)
 {
 	scan_info_t *scan_info = (scan_info_t *)wlc_scan_info->scan_priv;
 	uint32 dwell_time = _wlc_get_next_chan_scan_time(wlc_scan_info);
-#ifdef WLRSDB
+#if defined(WLRSDB)
 	wlc_info_t *wlc = SCAN_WLC(scan_info);
 #endif // endif
 
@@ -3961,6 +3977,12 @@ wlc_scantimer(void *arg)
 	wlc_scan_time_upd(wlc, scan_info);
 #endif /* STA */
 	wlc_scan_info->in_progress = FALSE;
+#ifdef WL_SCAN_DFS_HOME
+	/* On scan completion, get into ISM state if home channel is DFS */
+	if (WL11H_AP_ENAB(wlc) && wlc_radar_chanspec(wlc->cmi, wlc->home_chanspec)) {
+		wlc_set_dfs_cacstate(wlc->dfs, ON, scan_info->bsscfg);
+	}
+#endif /* WL_SCAN_DFS_HOME */
 #ifdef HEALTH_CHECK
 	if (WL_HEALTH_CHECK_ENAB(scan_info->wlc->pub->cmn)) {
 		/* Resetting the scan in progress counter as scan finished */
@@ -6701,8 +6723,18 @@ wlc_scan_set_request_ex_cb(wlc_scan_info_t *wlc_scan_info, scancb_fn_t fn)
 
 void wlc_scan_request_ex_cb(void *arg, int status, wlc_bsscfg_t *cfg)
 {
-	wlc_info_t *wlc = (wlc_info_t*)arg;
-	scan_info_t *scan_info = (scan_info_t *) wlc->scan->scan_priv;
+	wlc_info_t *wlc;
+	scan_info_t *scan_info;
+
+	if (cfg)
+		wlc = cfg->wlc;
+	else
+		return;
+
+	if (wlc && wlc->scan)
+		scan_info = (scan_info_t *) wlc->scan->scan_priv;
+	else
+		return;
 
 	if (scan_info->scan_ex_cb != NULL)
 		(scan_info->scan_ex_cb)(arg, status, cfg);

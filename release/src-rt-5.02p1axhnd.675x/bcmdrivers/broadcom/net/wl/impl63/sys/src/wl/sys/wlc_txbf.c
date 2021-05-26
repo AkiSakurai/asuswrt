@@ -48,7 +48,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_txbf.c 783116 2020-01-14 10:38:01Z $
+ * $Id: wlc_txbf.c 787668 2020-06-08 19:48:15Z $
  */
 
 /**
@@ -1255,6 +1255,13 @@ wlc_txbf_up(void *context)
 		wlc_write_shm(wlc, M_BFECAP_HT(wlc), htcap);
 	}
 
+#if	defined(WL_MU_TX) && defined(WL_PSMX)
+	if (PSMX_ENAB(wlc->pub) && (HE_DLMMU_ENAB(wlc->pub) ||
+		MU_TX_ENAB(wlc))) {
+		wlc_mutx_sounding_period_upd(wlc->mutx,
+			txbf->mu_sounding_period);
+	}
+#endif // endif
 	WL_TXBF(("wl%d: %s bfr capable %d bfe capable %d beamforming mode %d\n",
 		pub->unit, __FUNCTION__,
 		(txbf->bfr_capable > TXBF_MU_BFR_CAP) ? TXBF_MU_BFR_CAP : txbf->bfr_capable,
@@ -1643,6 +1650,27 @@ wlc_txbf_mu_link_qualify(wlc_txbf_info_t *txbf, scb_t *scb)
 }
 #ifdef WL_MU_TX
 bool
+wlc_txbf_scb_nsts_check(wlc_txbf_info_t *txbf, scb_t *scb)
+{
+	txbf_scb_info_t *bfi;
+	wlc_info_t *wlc = txbf->wlc;
+
+	bfi = (txbf_scb_info_t *)TXBF_SCB_INFO(txbf, scb);
+	if (!bfi) {
+		return FALSE;
+	}
+
+	if (((bfi->BFIConfig0 & C_LTX_BFRNDPS_BMSK) >> C_LTX_BFRNDPS_NBIT)
+			!= (WLC_BITSCNT(wlc->stf->txchain) - 1)) {
+		WL_TXBF(("wl%d: %s: BFIConfig0:%04x ntx:%x\n",
+			wlc->pub->unit, __FUNCTION__, bfi->BFIConfig0,
+			wlc->stf->txchain));
+		return FALSE;
+	}
+	return TRUE;
+}
+
+bool
 wlc_txbf_is_mu_bfe(wlc_txbf_info_t *txbf, scb_t *scb)
 {
 	txbf_scb_info_t *bfi;
@@ -1660,6 +1688,7 @@ wlc_txbf_is_mu_bfe(wlc_txbf_info_t *txbf, scb_t *scb)
 		!(bfi->bfe_capable & TXBF_MU_BFE_CAP)) {
 		return FALSE;
 	}
+
 	return TRUE;
 }
 
@@ -2818,6 +2847,8 @@ wlc_txbf_bfr_init_ge128(wlc_txbf_info_t *txbf, txbf_scb_info_t *bfi)
 	ASSERT(wlc);
 	BCM_REFERENCE(pub);
 
+	bfe_nr = getbits((uint8*)&bfi->BFIConfig1, sizeof(bfi->BFIConfig1), C_LTX_BFENR_NBIT,
+		NBITSZ(C_LTX_BFENR));
 	if (SCB_HE_CAP(scb)) {
 		uint8 mu_cb, mu_ng;
 		bfi_mode = 2;
@@ -2839,7 +2870,7 @@ wlc_txbf_bfr_init_ge128(wlc_txbf_info_t *txbf, txbf_scb_info_t *bfi)
 
 	if ((bfi->flags & MU_BFE) || ((bfi->flags & HE_MU_BFE) && HE_MMU_ENAB(wlc->pub))) {
 		/* update rate capabilities for this mu user */
-		wlc_svmp_update_ratecap(wlc, scb, bfi->amt_index);
+		wlc_svmp_update_ratecap(wlc, scb, bfi->amt_index, bfe_nr);
 		setbit(&bfrcfg0, C_LTX_MUCAP_NBIT);
 	}
 
@@ -2912,8 +2943,6 @@ wlc_txbf_bfr_init_ge128(wlc_txbf_info_t *txbf, txbf_scb_info_t *bfi)
 
 	bfi->BFIConfig0 = bfrcfg0;
 	wlc_txbf_tbcap_update(wlc->txbf, scb);
-	bfe_nr = getbits((uint8*)&bfi->BFIConfig1, sizeof(bfi->BFIConfig1), C_LTX_BFENR_NBIT,
-		NBITSZ(C_LTX_BFENR));
 	bfi->BFIConfig1 = bfrcfg1;
 	bfi->BFIConfig1 |= bfe_nr << C_LTX_BFENR_NBIT;
 	bfi->BFRStat0 = bfrStats;
@@ -2981,7 +3010,7 @@ wlc_txbf_bfr_init(wlc_txbf_info_t *txbf, txbf_scb_info_t *bfi)
 				bfr_config0 |= (0x1 << 13);
 			}
 		}
-		wlc_svmp_update_ratecap(wlc, scb, bfi->mx_bfiblk_idx);
+		wlc_svmp_update_ratecap(wlc, scb, bfi->mx_bfiblk_idx, 0 /* rev lt128 */);
 	} else {
 		if (CHSPEC_IS40(wlc->chanspec)) {
 			bfr_config0 |= (0x1 << 13);
@@ -4324,13 +4353,13 @@ wlc_txbf_info_dump(wlc_txbf_info_t *txbf, bcmstrbuf_t *b)
 	int i, j, entries = 0, valid;
 	txbf_scb_info_t *bfi;
 	uint16 txvm0 = 0, bfidx = 0, val0, val1;
-	uint16 txvidx, txvm1 = 0, txvm2 = 0;
+	uint16 txvidx, txvm1 = 0, txvm2 = 0, txvm3 = 0;
 	uint16 txvuse_su_bmp, txvfree_bmp;
 	uint32 cqi_txvuse_bmp, txvuse_bmp, txvbmp_blk0, txvbmp_blk1;
 	scb_t *scb;
 	d11linkmem_entry_t lnk;
 	char txvbmp_str[][32] = {"inuse", "active", "new", "rptrdy", "tmout", "ingrp", "m2v", "su",
-				"del", "musndrem"};
+				"del", "rem", "inq"};
 
 	if (D11REV_LT(wlc->pub->corerev, 128)) {
 		return;
@@ -4380,11 +4409,10 @@ wlc_txbf_info_dump(wlc_txbf_info_t *txbf, bcmstrbuf_t *b)
 				txvbmp_blk0, txvbmp_blk1);
 		}
 
-		entries = TXBF_MUTXV_MAX;
 	}
 	if (flags & TXBF_DUMP_FLAG_MU) {
 		bcm_bprintf(b, "MU txv bitmap:\n");
-		for (i = 0; i < 10; i++) {
+		for (i = 0; i < 11; i++) {
 			j = i * 2;
 			txvbmp_blk0 = wlc_read_shmx(wlc, MX_TXVBMP_BLK(wlc) + j*2);
 			txvbmp_blk1 = wlc_read_shmx(wlc, MX_TXVBMP_BLK(wlc) + (j+1)*2);
@@ -4395,7 +4423,7 @@ wlc_txbf_info_dump(wlc_txbf_info_t *txbf, bcmstrbuf_t *b)
 				txvbmp_blk0, txvbmp_blk1);
 		}
 
-		entries += TXBF_MUTXV_MAX;
+		entries = TXBF_MUTXV_MAX;
 	}
 
 	if (flags & TXBF_DUMP_FLAG_SU) {
@@ -4419,6 +4447,7 @@ wlc_txbf_info_dump(wlc_txbf_info_t *txbf, bcmstrbuf_t *b)
 				C_TXVM0_BFIDX_NBIT, NBITSZ(C_TXVM0_BFIDX));
 		txvm1 = wlc_read_shmx(wlc, MX_CQIM_BLK(wlc) + (j+1)*2);
 		txvm2 = wlc_read_shmx(wlc, MX_CQIM_BLK(wlc) + (j+2)*2);
+		txvm3 = wlc_read_shmx(wlc, MX_CQIM_BLK(wlc) + (j+3)*2);
 
 		scb = wlc_ratelinkmem_retrieve_cur_scb(wlc, bfidx);
 		if (!scb) {
@@ -4460,8 +4489,8 @@ wlc_txbf_info_dump(wlc_txbf_info_t *txbf, bcmstrbuf_t *b)
 				lnk.BFIConfig0, lnk.BFIConfig1, lnk.BFRStat0, lnk.BFRStat1,
 				lnk.BFRStat2, val0, val1);
 			if (flags & TXBF_DUMP_FLAG_CQI) {
-				bcm_bprintf(b, "    CQI txvm_info0-2: %04x_%04x_%04x",
-					txvm0, txvm1, txvm2);
+				bcm_bprintf(b, "    CQI txvm_info0-2: %04x_%04x_%04x_%04x",
+					txvm0, txvm1, txvm2, txvm3);
 			}
 			j = i*2;
 			bcm_bprintf(b, " last stored mimoctl: %04x_%04x\n",
@@ -4488,6 +4517,7 @@ wlc_txbf_info_dump(wlc_txbf_info_t *txbf, bcmstrbuf_t *b)
 					C_TXVM0_BFIDX_NBIT, NBITSZ(C_TXVM0_BFIDX));
 			txvm1 = wlc_read_shmx(wlc, MX_TXVM_BLK(wlc) + (j+1)*2);
 			txvm2 = wlc_read_shmx(wlc, MX_TXVM_BLK(wlc) + (j+2)*2);
+			txvm3 = wlc_read_shmx(wlc, MX_TXVM_BLK(wlc) + (j+3)*2);
 		} else if (flags & TXBF_DUMP_FLAG_SU) {
 			txvidx = i;
 			if (i >= (TXBF_MUTXV_MAX)) {
@@ -4512,7 +4542,7 @@ wlc_txbf_info_dump(wlc_txbf_info_t *txbf, bcmstrbuf_t *b)
 			continue;
 		}
 
-		bcm_bprintf(b, "%d: "MACF"(aid 0x%x) %s\n", txvidx,
+		bcm_bprintf(b, "%d: "MACF"(aid 0x%x) %s\n", i,
 			ETHER_TO_MACF(scb->ea), scb->aid,
 			flags & TXBF_DUMP_FLAG_MU ? "MU" : "SU");
 
@@ -4543,12 +4573,12 @@ wlc_txbf_info_dump(wlc_txbf_info_t *txbf, bcmstrbuf_t *b)
 				lnk.BFIConfig0, lnk.BFIConfig1, lnk.BFRStat0, lnk.BFRStat1,
 				lnk.BFRStat2, val0, val1);
 			if (flags & TXBF_DUMP_FLAG_MU) {
-				bcm_bprintf(b, "    MU txvm_info0-2: %04x_%04x_%04x",
-					txvm0, txvm1, txvm2);
+				bcm_bprintf(b, "    MU txvm_info0-3: %04x_%04x_%04x_%04x",
+					txvm0, txvm1, txvm2, txvm3);
 			} else if (flags & TXBF_DUMP_FLAG_SU) {
 				bcm_bprintf(b, "    SU txvm_info: %04x",
-				wlc_read_shm(wlc, M_STXVM_BLK(wlc)+(i*2)));
-				j = TXBF_MUTXV_MAX + i;
+				wlc_read_shm(wlc, M_STXVM_BLK(wlc)+(txvidx*2)));
+				j = i;
 			}
 			j = i*2;
 			bcm_bprintf(b, " last stored mimoctl: %04x_%04x\n",
@@ -4606,8 +4636,9 @@ wlc_txbf_info_dump(wlc_txbf_info_t *txbf, bcmstrbuf_t *b)
 				txvm0 = wlc_read_shmx(wlc, MX_TXVM_BLK(wlc) + txvidx*2);
 				txvm1 = wlc_read_shmx(wlc, MX_TXVM_BLK(wlc) + (txvidx+1)*2);
 				txvm2 = wlc_read_shmx(wlc, MX_TXVM_BLK(wlc) + (txvidx+2)*2);
-				bcm_bprintf(b, "    MU txvm_info0-2: %04x_%04x_%04x",
-					txvm0, txvm1, txvm2);
+				txvm3 = wlc_read_shmx(wlc, MX_TXVM_BLK(wlc) + (txvidx+3)*2);
+				bcm_bprintf(b, "    MU txvm_info0-2: %04x_%04x_%04x_%04x",
+					txvm0, txvm1, txvm2, txvm3);
 			} else if (flags & TXBF_DUMP_FLAG_SU) {
 				bcm_bprintf(b, "    SU txvm_info: %04x",
 				wlc_read_shm(wlc, M_STXVM_BLK(wlc)+((txvidx-TXBF_MUTXV_MAX)*2)));
@@ -5649,6 +5680,7 @@ wlc_txbf_doiovar(void *hdl, uint32 actionid,
 		}
 
 		txbf->mu_sounding_period = uint16_val;
+		wlc_mutx_sounding_period_upd(wlc->mutx, uint16_val);
 		break;
 #endif /* WL_PSMX */
 
@@ -6057,7 +6089,8 @@ wlc_txbf_tbcap_update(wlc_txbf_info_t *txbf, scb_t *scb)
 	bool trig_su_fb;
 
 	bfi = (txbf_scb_info_t *)TXBF_SCB_INFO(txbf, scb);
-	if (!bfi || !(HE_DLMU_ENAB(txbf->pub)) || !SCB_HE_CAP(scb)) {
+	if (!bfi || !(HE_DLMU_ENAB(txbf->pub) || HE_DLMMU_ENAB(txbf->pub)) ||
+		!SCB_HE_CAP(scb)) {
 		return;
 	}
 
@@ -6102,9 +6135,13 @@ wlc_txbf_tbcap_check(wlc_txbf_info_t *txbf, scb_t *scb, uint8 mu_type)
 	txbf_scb_info_t *bfi;
 	int ret = BCME_ERROR;
 
+	if (!(HE_DLMU_ENAB(txbf->pub) && HE_DLMMU_ENAB(txbf->pub))) {
+		return BCME_OK;
+	}
+
 	bfi = (txbf_scb_info_t *)TXBF_SCB_INFO(txbf, scb);
-	if (!bfi || !(HE_DLMU_ENAB(txbf->pub)) || !SCB_HE_CAP(scb)) {
-		return ret;
+	if (!bfi || !SCB_HE_CAP(scb)) {
+		return BCME_OK;
 	}
 
 	/* for hemmu, tbcap and mucap must be set */

@@ -86,6 +86,23 @@ phy_type_t bp_parse_phy_type(const EMAC_PORT_INFO *port_info)
         case MAC_IF_SERDES:
             phy_type = PHY_TYPE_SF2_SERDES;
             break;
+	case MAC_IF_SGMII:
+	case MAC_IF_HSGMII:
+	{
+		if (phy_id & PHY_EXTERNAL)
+	            phy_type = PHY_TYPE_EXT3;
+		else
+	            phy_type = PHY_TYPE_RTL8226;
+		break;
+	}
+	case MAC_IF_XFI:
+	{
+		if (phy_id & PHY_EXTERNAL)
+			phy_type = PHY_TYPE_EXT3;
+		else
+			phy_type = PHY_TYPE_RTL8226;
+		break;
+	}
     }
 
     return phy_type;

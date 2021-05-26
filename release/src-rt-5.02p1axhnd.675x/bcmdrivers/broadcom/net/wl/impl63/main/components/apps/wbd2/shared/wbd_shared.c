@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_shared.c 782227 2019-12-13 04:00:08Z $
+ * $Id: wbd_shared.c 784837 2020-03-06 05:24:13Z $
  */
 
 #include <ctype.h>
@@ -445,6 +445,7 @@ wbd_info_cleanup(wbd_info_t *info)
 
 	if (info) {
 		free(info);
+		info = NULL;
 	}
 
 	WBD_INFO("Info Cleanup Done\n");
@@ -1073,7 +1074,7 @@ wbd_snprintf_i5_bss(i5_dm_bss_type *bss, char *format, char **outdata, int *outl
 		snprintf(tmp, sizeof(tmp), "%s, %d/%d", CHSPEC_IS2G(ifr->chanspec) ? "2G" : "5G",
 			wf_chspec_ctlchan(ifr->chanspec), bw);
 	} else {
-		snprintf(tmp, sizeof(tmp), "Invalid Channel");
+		snprintf(tmp, sizeof(tmp), "Invalid chanspec 0x%x", ifr->chanspec);
 	}
 
 	if (bss->mapFlags > 0) {
@@ -1320,24 +1321,7 @@ end:
 unsigned char
 wbd_get_map_flags(char *prefix)
 {
-	unsigned char map = 0;
-	uint8 nvval;
-
-	/* Get MAP */
-	nvval = (uint8)blanket_get_config_val_uint(prefix, NVRAM_MAP, 0);
-	if (nvval == 1) {
-		map = IEEE1905_MAP_FLAG_FRONTHAUL;
-	} else if (nvval == 2) {
-		map = IEEE1905_MAP_FLAG_BACKHAUL;
-	} else if (nvval == 3) {
-		map = IEEE1905_MAP_FLAG_FRONTHAUL | IEEE1905_MAP_FLAG_BACKHAUL;
-	} else if (nvval == 4) {
-		map = IEEE1905_MAP_FLAG_STA;
-	} else if (nvval == 9) {
-		map = IEEE1905_MAP_FLAG_FRONTHAUL | IEEE1905_MAP_FLAG_GUEST;
-	}
-
-	return map;
+	return blanket_get_config_val_uint(prefix, NVRAM_MAP, 0);
 }
 
 /* Add a Metric Policy item in a Metric Policy List */
@@ -1742,9 +1726,6 @@ ieee1905_module_init(wbd_info_t *info, unsigned int supServiceFlag, int isRegist
 	if (msglevel.module) {
 		free(msglevel.module);
 	}
-
-	/* Set IEEE1905 module init flag */
-	info->flags |= WBD_INFO_FLAGS_IEEE1905_INIT;
 
 	return ret;
 }

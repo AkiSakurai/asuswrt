@@ -61,6 +61,9 @@ ifneq ($(strip $(BUILD_BRCM_HOSTAPD)),)
 CFLAGS += -DCONFIG_HOSTAPD  
 LIBS += -lbcmcrypto -lnv2hapdcfg -L$(INSTALL_DIR)/usr/lib
 endif
+
+ifeq ($(WLTEST),1)
+CFLAGS += -DWLTEST
 endif
 
 ifeq ($(CONFIG_AIRIQ),y)

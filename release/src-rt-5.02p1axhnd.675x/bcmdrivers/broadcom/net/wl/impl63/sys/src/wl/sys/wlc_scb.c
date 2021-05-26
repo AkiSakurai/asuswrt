@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_scb.c 782551 2019-12-23 12:07:35Z $
+ * $Id: wlc_scb.c 788610 2020-07-06 19:05:09Z $
  */
 
 /**
@@ -101,10 +101,24 @@
 #ifdef WLTAF
 #include <wlc_taf.h>
 #endif // endif
+#include <d11_cfg.h>
+#ifdef DONGLEBUILD
+#include <wl_export.h>
+#endif // endif
+#if defined(BCM_PKTFWD)
+#include <wl_pktfwd.h>
+#endif /* BCM_PKTFWD */
+#include <wlc_stamon.h>
 
 #define SCB_MAGIC 0x0505a5a5u
 
 #define SCB_NAME_REG_MAX        4 /* max entries for wlc_scb_cubby_name_register() */
+
+typedef struct scb_lookup {
+	uint8	incarnation;		/**< Current incarnation index */
+	uint16	incarn_mismatch;	/**< incarnation mimsatch counter */
+	struct	scb* scb_ptr;		/**< Stored SCB ptr */
+} scb_lookup_t;
 
 /** structure for storing public and private global scb module state */
 struct scb_module {
@@ -118,7 +132,11 @@ struct scb_module {
 	struct scb      *free_list;		/**< Free list of SCBs */
 #endif // endif
 	int		cfgh;			/**< scb bsscfg cubby handle */
-	bcm_notif_h 	scb_state_notif_hdl;	/**< scb state notifier handle. */
+	bcm_notif_h	scb_state_notif_hdl;	/**< scb state notifier handle. */
+	void		*user_flowid_allocator; /**< user scb flowid allocator */
+	void		*int_flowid_allocator;  /**< internal scb flowid allocator */
+	scb_lookup_t	*scb_lkp;		/**< FLOWID - SCB Lookup table */
+	uint16		*amt_lookup;		/**< AMT - SCB flowid Lookup table */
 #ifdef SCB_MEMDBG
 	uint32		scballoced;		/**< how many scb calls to 'wlc_scb_allocmem' */
 	uint32		scbfreed;		/**< how many scb calls to 'wlc_scb_freemem' */
@@ -140,6 +158,24 @@ struct scb_info {
 #endif // endif
 };
 
+#define SCB_FLOWID_LKP(scbstate, flowid)	((((scbstate)->scb_lkp)[flowid]).scb_ptr)
+
+#define SCB_FLOWID_INCARN_LKP(scbstate, flowid)	(((scbstate)->scb_lkp[flowid]).incarnation)
+#define SCB_FLOWID_INCARN_MISMATCH(scbstate, flowid) \
+	(((scbstate)->scb_lkp[flowid]).incarn_mismatch)
+#define SCB_FLOWID_AMT_LKP(scbstate, amt_id)	((scbstate)->amt_lookup[amt_id])
+
+#define SCB_AMT_LKP(scbstate, amt_id)	\
+	({\
+		uint16 lcl_flowid = SCB_FLOWID_AMT_LKP((scbstate), amt_id); \
+		((SCB_FLOWID_VALID(lcl_flowid)) ? SCB_FLOWID_LKP((scbstate), lcl_flowid) : NULL); \
+	})
+
+#define AMT_IDX_VALID(wlc, idx) \
+	(((idx) >= 0) && ((idx) < AMT_SIZE((wlc)->pub->corerev)))
+
+#define ASSERT_AMT_IDX(wlc, idx)    ASSERT(AMT_IDX_VALID((wlc), (idx)))
+
 static void wlc_scb_hash_add(scb_module_t *scbstate, wlc_bsscfg_t *cfg, enum wlc_bandunit bandunit,
 	struct scb *scb);
 static void wlc_scb_hash_del(scb_module_t *scbstate, wlc_bsscfg_t *cfg,
@@ -160,6 +196,13 @@ static void wlc_scb_freemem(scb_module_t *scbstate, struct scb_info *scbinfo);
 
 static void wlc_scb_init_rates(wlc_info_t *wlc, wlc_bsscfg_t *cfg, enum wlc_bandunit bandunit,
 	struct scb *scb);
+
+static int wlc_scb_flowid_attach(wlc_info_t* wlc, scb_module_t *scbstate);
+static void wlc_scb_flowid_detach(wlc_info_t* wlc, scb_module_t *scbstate);
+static int wlc_scb_flowid_init(wlc_info_t* wlc, scb_module_t *scbstate, struct scb* scb);
+static void wlc_scb_flowid_deinit(wlc_info_t* wlc, scb_module_t *scbstate, struct scb* scb);
+static int wlc_scb_flowid_dump(void * ctx, struct bcmstrbuf *b);
+
 #ifdef WLSCB_HISTO
 static void wlc_scb_histo_mem_free(wlc_info_t *wlc, struct scb *scb);
 #endif /* WLSCB_HISTO */
@@ -473,9 +516,18 @@ BCMATTACHFN(wlc_scb_attach)(wlc_info_t *wlc)
 	}
 #endif /* WL_DATAPATH_LOG_DUMP */
 
+	/* Flowid allocator and lookup table */
+	if (wlc_scb_flowid_attach(wlc, scbstate) != BCME_OK) {
+		WL_ERROR(("wl%d: %s: SCB flowid attach failed.\n",
+			wlc->pub->unit, __FUNCTION__));
+		goto fail;
+	}
+
 #if defined(BCMDBG)
 	wlc_dump_register(wlc->pub, "scb", (dump_fn_t)wlc_scb_dump, (void *)wlc);
 #endif // endif
+
+	wlc_dump_add_fns(wlc->pub, "scb_flows", wlc_scb_flowid_dump, NULL, (void *)wlc);
 
 	/* create notification list for scb state change. */
 	if (bcm_notif_create_list(wlc->notif, &scbstate->scb_state_notif_hdl) != BCME_OK) {
@@ -518,6 +570,9 @@ BCMATTACHFN(wlc_scb_detach)(scb_module_t *scbstate)
 		              SCB_NAME_REG_MAX * sizeof(*scbstate->name_reg));
 	}
 #endif /* WL_DATAPATH_LOG_DUMP */
+
+	/* SCB flowid detach */
+	wlc_scb_flowid_detach(wlc, scbstate);
 
 	MFREE(wlc->osh, scbstate, SCB_CUBBY_REG_SZ);
 }
@@ -987,6 +1042,13 @@ _wlc_internalscb_alloc(wlc_info_t *wlc, wlc_bsscfg_t *cfg,
 	/* used by hwrs and bcmc scbs */
 	scb->flags2 = flags2;
 
+	/* SCB flowid init */
+	if (wlc_scb_flowid_init(wlc, scbstate, scb) != BCME_OK) {
+		WL_ERROR(("wl%d: %s SCB flowid init failed\n",
+			wlc->pub->unit, __FUNCTION__));
+		return NULL;
+	}
+
 	bcmerror = wlc_scbinit(wlc, cfg, band->bandunit, scb);
 	if (bcmerror) {
 		WL_ERROR(("wl%d: %s failed with err %d\n",
@@ -1003,8 +1065,9 @@ _wlc_internalscb_alloc(wlc_info_t *wlc, wlc_bsscfg_t *cfg,
 	scb->mem_bytes = bytes_allocated;
 	if (bytes_allocated > mu.max_scb_alloc) {
 		mu.max_scb_alloc = bytes_allocated;
-		hnd_update_mem_alloc_stats(&mu);
 	}
+	mu.total_scb_alloc += bytes_allocated;
+	hnd_update_mem_alloc_stats(&mu);
 #endif /* MEM_ALLOC_STATS */
 
 	return scb;
@@ -1030,7 +1093,24 @@ wlc_hwrsscb_alloc(wlc_info_t *wlc, struct wlcband *band)
 	return _wlc_internalscb_alloc(wlc, cfg, &ether_local, band, SCB2_HWRS);
 }
 
-/** a 'user' scb as opposed to an 'internal' scb */
+#ifdef WL_PROXDETECT
+/** proximity detection scb contains fixed rate */
+struct scb *
+wlc_proxdscb_alloc(wlc_info_t *wlc, struct wlcband *band)
+{
+	const struct ether_addr ether_local = {{2, 2, 0, 0, 0, 0}};
+	wlc_bsscfg_t *cfg = wlc_bsscfg_primary(wlc);
+	/* TODO: pass NULL as cfg as PROXD scb doesn't belong to
+	 * any bsscfg.
+	 */
+	return _wlc_internalscb_alloc(wlc, cfg, &ether_local, band, SCB2_PROXD);
+}
+#endif /* WL_PROXDETECT */
+
+/**
+ * a 'user' scb as opposed to an 'internal' scb. Does not only allocate, but also initializes the
+ * new scb.
+ */
 static struct scb *
 wlc_userscb_alloc(wlc_info_t *wlc, wlc_bsscfg_t *cfg,
 	const struct ether_addr *ea, struct wlcband *band)
@@ -1091,6 +1171,13 @@ wlc_userscb_alloc(wlc_info_t *wlc, wlc_bsscfg_t *cfg,
 	scb->ea = *ea;
 	scb->multimac_idx = MULTIMAC_ENTRY_INVALID;
 
+	/* SCB flowid init */
+	if (wlc_scb_flowid_init(wlc, scbstate, scb) != BCME_OK) {
+		WL_ERROR(("wl%d: %s SCB flowid init failed\n",
+			wlc->pub->unit, __FUNCTION__));
+		return NULL;
+	}
+
 	bcmerror = wlc_scbinit(wlc, cfg, band->bandunit, scb);
 	if (bcmerror) {
 		WL_ERROR(("wl%d: %s failed with err %d\n", wlc->pub->unit, __FUNCTION__, bcmerror));
@@ -1112,8 +1199,9 @@ wlc_userscb_alloc(wlc_info_t *wlc, wlc_bsscfg_t *cfg,
 	scb->mem_bytes = bytes_allocated;
 	if (bytes_allocated > mu.max_scb_alloc) {
 		mu.max_scb_alloc = bytes_allocated;
-		hnd_update_mem_alloc_stats(&mu);
 	}
+	mu.total_scb_alloc += bytes_allocated;
+	hnd_update_mem_alloc_stats(&mu);
 #endif /* MEM_ALLOC_STATS */
 
 	return scb;
@@ -1125,6 +1213,13 @@ wlc_scb_sec_sz(void *ctx, void *obj)
 {
 	scb_module_t *scbstate = (scb_module_t *)ctx;
 	struct scb *scb = (struct scb *)obj;
+
+#ifdef WL_PROXDETECT
+	/* proxd scbs don't need any secondary cubbies so skip them */
+	if (SCB_PROXD(scb)) {
+		return 0;
+	}
+#endif // endif
 
 	return wlc_cubby_sec_totsize(scbstate->cubby_info, scb);
 }
@@ -1216,6 +1311,10 @@ wlc_scbfree(wlc_info_t *wlc, struct scb *scbd)
 {
 	scb_module_t *scbstate = wlc->scbstate;
 	struct scb_info *remove = SCBINFO(scbstate, scbd);
+#ifdef MEM_ALLOC_STATS
+	memuse_info_t mu;
+	uint32 membytes = scbd->mem_bytes;
+#endif /* MEM_ALLOC_STATS */
 
 	if (scbd->permanent)
 		return FALSE;
@@ -1235,9 +1334,19 @@ wlc_scbfree(wlc_info_t *wlc, struct scb *scbd)
 	wlc_scb_histo_mem_free(wlc, scbd);
 #endif /* WLSCB_HISTO */
 
+#ifdef BCMPCIEDEV_ENABLED
+	/* Remove all flowid reference from bus layer
+	 * Indirect way to block all downstream calls to WL layers [SQS cubby access]
+	 */
+	wl_scb_bus_flow_delink(wlc->wl, SCB_FLOWID(scbd));
+#endif /* BCMPCIEDEV_ENABLED */
+
 	wlc_scbdeinit(wlc, scbd);
 
 	wlc_scb_resetstate(wlc, scbd);
+
+	/* Deinit the SCB flowid, global lookup */
+	wlc_scb_flowid_deinit(wlc, scbstate, scbd);
 
 	if (SCB_INTERNAL(scbd)) {
 		goto free;
@@ -1260,6 +1369,11 @@ free:
 	/* free scb memory */
 	wlc_scb_freemem(scbstate, remove);
 #endif // endif
+#ifdef MEM_ALLOC_STATS
+	hnd_get_heapuse(&mu);
+	mu.total_scb_alloc -= membytes;
+	hnd_update_mem_alloc_stats(&mu);
+#endif /* MEM_ALLOC_STATS */
 
 	return TRUE;
 }
@@ -2141,6 +2255,11 @@ wlc_scb_dump_scb(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct scb *scb, struct bcm
 	if (flagstr3[0] != '\0')
 		bcm_bprintf(b, " (%s)", flagstr3);
 	bcm_bprintf(b, "\n");
+#ifdef BCM_CSIMON
+	bcm_bprintf(b, "     CSIMON M2MXfer:0x%x", scb->csimon->m2mxfer_cnt);
+	bcm_bprintf(b, "     CSIMON AckFail:0x%x", scb->csimon->ack_fail_cnt);
+	bcm_bprintf(b, "     CSIMON RptInvl:0x%x", scb->csimon->rpt_invalid_cnt);
+#endif // endif
 	bcm_bprintf(b, "\n");
 #ifdef WL_HAPD_WDS
 	if (SCB_LEGACY_WDS(scb)) {
@@ -2210,7 +2329,7 @@ wlc_scb_dump_scb(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct scb *scb, struct bcm
 #ifdef MEM_ALLOC_STATS
 	/* display memory usage information */
 	bcm_bprintf(b, "SCB Memory Allocated: %d bytes\n", scb->mem_bytes);
-#endif // endif
+#endif /* MEM_ALLOC_STATS */
 }
 
 static void
@@ -2470,12 +2589,6 @@ wlc_scb_cq_inc(void *p, int prec, uint32 cnt)
 		return;
 	}
 
-#ifdef WLCFP
-	if (CFP_ENAB(SCB_WLC(scb)->pub) == TRUE) {
-		/* Note: Caller is expected to check there is enough space in the queue */
-		wlc_cfp_cq_fifo_inc(SCB_WLC(scb), scb, PKTPRIO(p), cnt);
-	}
-#endif // endif
 	SCB_PKTS_INFLT_CQCNT_ADD(scb, prec, cnt);
 
 }
@@ -2495,37 +2608,7 @@ wlc_scb_cq_dec(void *p, int prec, uint32 cnt)
 		return;
 	}
 
-#ifdef WLCFP
-	if (CFP_ENAB(SCB_WLC(scb)->pub) == TRUE) {
-		wlc_cfp_cq_fifo_dec(SCB_WLC(scb), scb, PKTPRIO(p), cnt);
-	}
-#endif // endif
 	SCB_PKTS_INFLT_CQCNT_SUB(scb, prec, cnt);
-}
-
-/** @param pq   Multi-priority packet queue */
-void
-wlc_scb_cq_flush_queue(wlc_info_t *wlc, struct pktq *pq)
-{
-	void *p;
-	int prec;
-
-	PKTQ_PREC_ITER(pq, prec) {
-		/* assuming single threaded operation,
-		 * otherwise a mutex is needed.
-		 */
-
-		/* start with the head of the list */
-		while ((p = pktq_pdeq(pq, prec)) != NULL) {
-			/* delete this packet */
-			wlc_scb_cq_dec(p, prec, 1);
-#ifdef WLTAF
-			wlc_taf_txpkt_status(wlc->taf_handle, NULL, TAF_PREC(prec), p,
-				TAF_TXPKT_STATUS_PKTFREE_DROP);
-#endif // endif
-			PKTFREE(wlc->osh, p, TRUE);
-		}
-	}
 }
 
 #if defined(BCM_PKTFWD_FLCTL)
@@ -2533,16 +2616,13 @@ wlc_scb_cq_flush_queue(wlc_info_t *wlc, struct pktq *pq)
 /* Get SCB queue lengths of a station. */
 void
 wlc_scb_get_link_credits(wlc_info_t *wlc, wlc_if_t *wlcif, uint8 *addr,
-	uint16 cfp_flowid, int32 *credits)
+	uint16 flowid, int32 *credits)
 {
 	struct scb *scb;
 
-#if defined(WLCFP)
-	if (cfp_flowid != ID16_INVALID) {
-		scb = wlc_cfp_flowid_2_scb(wlc, cfp_flowid);
-	} else
-#endif /* WLCFP */
-	{
+	if (flowid != ID16_INVALID) {
+		scb = wlc_scb_flowid_lookup(wlc, flowid);
+	} else {
 		scb = wlc_scbfind_from_wlcif(wlc, wlcif, addr);
 	}
 
@@ -2560,9 +2640,8 @@ wlc_scb_get_link_credits(wlc_info_t *wlc, wlc_if_t *wlcif, uint8 *addr,
  */
 int
 wlc_scb_link_update(wlc_info_t *wlc, wlc_if_t *wlcif, uint8 *addr,
-	uint16 *cfp_flowid)
+	uint16 *flowid)
 {
-	int ret = BCME_OK;
 	struct scb *scb;
 
 	if (ETHER_ISMULTI(addr) || ETHER_ISNULLADDR(addr)) {
@@ -2577,16 +2656,488 @@ wlc_scb_link_update(wlc_info_t *wlc, wlc_if_t *wlcif, uint8 *addr,
 		return BCME_ERROR;
 	}
 
-	*cfp_flowid = ID16_INVALID;
+	/* Return SCB flowid */
+	wlc_scb_host_ring_link(wlc, 0, 0, scb, flowid);
 
-#if defined(WLCFP)
-	if (CFP_ENAB(wlc->pub)) {
-		/* tcb_state is not linked */
-		ret = wlc_scb_cfp_tcb_link(wlc, 0, 0, scb, NULL, cfp_flowid);
+	if (!SCB_FLOWID_VALID(*flowid)) {
+		*flowid = ID16_INVALID;
 	}
-#endif /* WLCFP */
 
-	return ret;
+	return BCME_OK;
 } /* wlc_scb_link_update() */
 
 #endif /* BCM_PKTFWD_FLCTL */
+static int
+BCMATTACHFN(wlc_scb_flowid_attach)(wlc_info_t* wlc, scb_module_t *scbstate)
+{
+	uint16 idx;
+
+	ASSERT(scbstate);
+
+	/* Construct a 16bit flowid allocator */
+
+	/* user_flowid_allocator is used to allocate flow ids for unicast traffic
+	 * with flowids in the inclusive range [ 1 .. MAXSCB ].
+	 *
+	 * int_flowid_allocator is used to allocate  flow ids for the "internal"
+	 * SCBs (BCM per BSS, HWRS and OLPC), and will have value in the inclusive
+	 * range [ MAXSCB+1 .. SCB_MAX_FLOWS - 1 ],
+	 */
+	scbstate->user_flowid_allocator =
+		id16_map_init(wlc->osh, SCB_USER_FLOWID_TOTAL, SCB_USER_FLOWID_STARTID);
+	if (scbstate->user_flowid_allocator == NULL) {
+		WL_ERROR(("wl%d: %s: user scb flowid allocator init failure\n",
+			wlc->pub->unit, __FUNCTION__));
+		return BCME_NOMEM;
+	}
+
+	/* Internal SCB flowid alloctor */
+	scbstate->int_flowid_allocator =
+		id16_map_init(wlc->osh, SCB_INT_FLOWID_TOTAL, SCB_INT_FLOWID_STARTID);
+	if (scbstate->int_flowid_allocator == NULL) {
+		WL_ERROR(("wl%d: %s: internal scb flowid allocator init failure\n",
+			wlc->pub->unit, __FUNCTION__));
+		return BCME_NOMEM;
+	}
+
+	/* Allocate a lookup table for flowid to scb ptr mapping */
+	scbstate->scb_lkp = MALLOCZ(wlc->osh,
+		((sizeof(scb_lookup_t)) * (SCB_MAX_FLOWS)));
+
+	if (scbstate->scb_lkp == NULL) {
+		WL_ERROR(("wl%d: %s: Failed to allocate %d bytes\n",
+			wlc->pub->unit, __FUNCTION__,
+			(int)((sizeof(scb_lookup_t)) * (SCB_MAX_FLOWS))));
+		return BCME_NOMEM;
+	}
+
+	/* Allocate a lookup table for AMT idx to SCB flow ID lookup */
+	scbstate->amt_lookup = MALLOCZ(wlc->osh,
+		(sizeof(uint16) * AMT_SIZE(wlc->pub->corerev)));
+	if (scbstate->amt_lookup == NULL) {
+		WL_ERROR(("wl%d: %s: AMT lookup table init failed  \n",
+			wlc->pub->unit, __FUNCTION__));
+		return BCME_NOMEM;
+	}
+
+	/* Initialize the table with SCB_FLOWID_INVALID */
+	for (idx = 0; idx < AMT_SIZE(wlc->pub->corerev); idx++) {
+		scbstate->amt_lookup[idx] = SCB_FLOWID_INVALID;
+	}
+
+	return BCME_OK;
+}
+static void
+BCMATTACHFN(wlc_scb_flowid_detach)(wlc_info_t* wlc, scb_module_t *scbstate)
+{
+	/* Remove AMT Lookup table */
+	if (scbstate->amt_lookup) {
+		MFREE(wlc->osh, scbstate->amt_lookup,
+			(sizeof(uint16) * AMT_SIZE(wlc->pub->corerev)));
+	}
+
+	/* Remove SCB Flowid Lookup table */
+	if (scbstate->scb_lkp) {
+		MFREE(wlc->osh, scbstate->scb_lkp,
+			((sizeof(scb_lookup_t)) * (SCB_MAX_FLOWS)));
+	}
+
+	/* Remove Internal scb flowid allocator */
+	if (scbstate->int_flowid_allocator) {
+		id16_map_fini(wlc->osh, scbstate->int_flowid_allocator);
+		scbstate->int_flowid_allocator  = NULL;
+	}
+
+	/* Remove User scb flowid allocator */
+	if (scbstate->user_flowid_allocator) {
+		id16_map_fini(wlc->osh, scbstate->user_flowid_allocator);
+		scbstate->user_flowid_allocator = NULL;
+	}
+}
+
+static int
+wlc_scb_flowid_init(wlc_info_t* wlc, scb_module_t *scbstate, struct scb* scb)
+{
+	uint16 flowid;
+	uint8 incarn;
+
+	/* Allocate a SCB flowid */
+	if (SCB_INTERNAL(scb)) {
+		ASSERT(scbstate->int_flowid_allocator != NULL);
+		flowid = id16_map_alloc(scbstate->int_flowid_allocator);
+	} else {
+		ASSERT(scbstate->user_flowid_allocator != NULL);
+		flowid = id16_map_alloc(scbstate->user_flowid_allocator);
+	}
+
+	if (flowid == ID16_INVALID) {
+		WL_ERROR(("wl%d: %s Failed to allocate flowid for scb %p ea "MACF"\n",
+			wlc->pub->unit, __FUNCTION__, scb, ETHER_TO_MACF(scb->ea)));
+		return BCME_ERROR;
+	}
+
+	/* Increment 2 bit incarnation id for this flow */
+	incarn = (SCB_FLOWID_INCARN_LKP(scbstate, flowid) + 1) &
+		__SCB_UCODE_STS_AMT_INCARN_MASK;
+
+	/* Register the SCB flowid */
+	SCB_FLOWID_GLOBAL(scb) = SCB_FLOWID_GLOBAL_SET(WLC_UNIT(wlc), incarn, flowid);
+
+	/* Fillup the SCB lookup table */
+	SCB_FLOWID_LKP(scbstate, flowid) = scb;
+
+	/* Update incarnation id for this flow */
+	SCB_FLOWID_INCARN_LKP(scbstate, flowid) = incarn;
+
+#ifdef BCMPCIEDEV_ENABLED
+	/* Host ringid valid for only pcie donge builds for now */
+	/* Initialize host ringids */
+	{
+		uint8 idx;
+		for (idx = 0; idx < NUMPRIO; idx++) {
+			SCB_HOST_RINGID(scb, idx) = SCB_HOST_RINGID_INVALID;
+		}
+	}
+#endif // endif
+
+	WL_INFORM(("wl%d %s :  scb %p ea "MACF", id %x  Global id %x \n",
+		WLC_UNIT(wlc), __FUNCTION__,
+		scb, ETHER_TO_MACF(scb->ea), flowid, SCB_FLOWID_GLOBAL(scb)));
+
+	return BCME_OK;
+}
+
+static void
+wlc_scb_flowid_deinit(wlc_info_t* wlc, scb_module_t *scbstate, struct scb* scb)
+{
+	uint16 flowid;
+
+	ASSERT(scb);
+
+	/* SCB flowid */
+	flowid = SCB_FLOWID(scb);
+	ASSERT_SCB_FLOWID(flowid);
+
+	/* Delink SCB flowid from the AMT lookup table */
+	wlc_scb_amt_delink(wlc, AMT_FLOWID_INVALID(wlc->pub->corerev), flowid);
+
+#if defined(BCM_PKTFWD)
+	/* Delete the scb->ea reference from PKTFWD layer */
+	wl_pktfwd_lut_del((uint8 *)(&scb->ea), NULL);
+#endif /* BCM_PKTFWD */
+
+	/* Reset the stored flowid */
+	SCB_FLOWID_GLOBAL(scb) = SCB_FLOWID_INVALID;
+
+	/* Remove the SCB lookup */
+	SCB_FLOWID_LKP(scbstate, flowid) = NULL; /* release from scb cfp list */
+
+	/* Release the flowid */
+	if (SCB_INTERNAL(scb)) {
+		id16_map_free(scbstate->int_flowid_allocator, flowid);
+	} else {
+		id16_map_free(scbstate->user_flowid_allocator, flowid);
+	}
+
+	WL_INFORM(("wl%d %s :  scb %p ea "MACF", id %d \n",
+		wlc->pub->unit, __FUNCTION__,
+		scb, ETHER_TO_MACF(scb->ea), flowid));
+}
+static int
+wlc_scb_flowid_dump(void * ctx, struct bcmstrbuf *b)
+{
+	uint16 radio_i, flowid_i;
+	wlc_info_t* wlc;
+	struct scb* scb;
+
+	for (radio_i = 0; radio_i < WLC_UNIT_MAX; radio_i++) {
+		wlc = WLC_G(radio_i);
+
+		if (wlc == NULL)
+			continue;
+
+		for (flowid_i = 0; flowid_i < SCB_FLOWID_INVALID; flowid_i++) {
+			scb = SCB_FLOWID_LKP(wlc->scbstate, flowid_i);
+
+			if (scb == NULL)
+				continue;
+
+			bcm_bprintf(b, "Radio id %d Flowid %d SCB %p <"MACF"> Internal %d \n",
+				radio_i, flowid_i, scb, ETHERP_TO_MACF(&scb->ea),
+				SCB_INTERNAL(scb));
+		}
+	}
+	return 0;
+}
+
+/**
+ * Link AMT A2[Transmitter] index with SCB flow ID
+ *
+ * Loop through available SCB flows to do address comparison.
+ * Bind SCB and AMT flow ids if address is found.
+ */
+int
+wlc_scb_amt_link(wlc_info_t *wlc, int amt_idx,
+	const struct ether_addr *amt_addr)
+{
+	uint16		flowid;	/* Flowid iterator */
+	struct scb	*scb;		/* SCB */
+	bool found;
+	int ret = BCME_ERROR;
+
+	ASSERT_AMT_IDX(wlc, amt_idx);
+
+	/* Initialize */
+	found = FALSE;
+	BCM_REFERENCE(found);
+
+	/* Skip for stamon reserved amt entry */
+	if (STAMON_ENAB(wlc->pub) && wlc_stamon_is_slot_reserved(wlc, amt_idx)) {
+		return ret;
+	}
+
+	WL_INFORM(("wl%d : %s  amtid %d wlc bandunit %d \n",
+		wlc->pub->unit, __FUNCTION__,  amt_idx, wlc->band->bandunit));
+
+	for (flowid = 0; flowid < SCB_MAX_FLOWS; flowid++) {
+		scb = SCB_FLOWID_LKP(wlc->scbstate, flowid);
+
+		if (scb == NULL)
+			continue;
+
+		/* Internal SCBs seem to end up with BC/MC address
+		 * Dont use them for AMT linkups
+		 */
+		if (SCB_INTERNAL(scb))
+			continue;
+
+		if ((eacmp((const char*)amt_addr, (const char*)&scb->ea) == 0) &&
+			(wlc->band->bandunit == scb->bandunit))
+		{
+			/* Check for unique Transmitter Address.
+			 *
+			 * Assumption is every AMT TA would map to unique scb.
+			 * If there are multiple scbs poitning to same TA,
+			 * whole flow lookup based on AMT fails.
+			 *
+			 */
+			ASSERT(found == FALSE);
+			found = TRUE;
+
+			ASSERT(SCB_FLOWID_AMT_LKP(wlc->scbstate, amt_idx) == SCB_FLOWID_INVALID);
+			SCB_FLOWID_AMT_LKP(wlc->scbstate, amt_idx) = flowid;
+			ret = SCB_FLOWID_INCARN_LKP(wlc->scbstate, flowid);
+		}
+	}
+
+	return ret;
+}
+
+/**
+ * De-Link CFP-AMT
+ *
+ * Reset AMT lookup table entry for given AMT index
+ * For a given cfp flowid loop through amt lookup table and delink
+ */
+void
+wlc_scb_amt_delink(wlc_info_t *wlc, int amt_idx, uint16 flowid)
+{
+	uint16 cur_id;
+
+	WL_INFORM(("wl%d: %s : Delink AMT idx %d Flowid %d\n",
+		wlc->pub->unit, __FUNCTION__, amt_idx, flowid));
+
+	if (amt_idx == AMT_FLOWID_INVALID(wlc->pub->corerev)) {
+		int amt_size;
+		/* Triggered from a CFP cubby deinit */
+		/* Search for the given cfp_flowid and delink */
+		ASSERT_SCB_FLOWID(flowid);
+
+		amt_size = AMT_SIZE(wlc->pub->corerev);
+		for (amt_idx = 0; amt_idx < amt_size; amt_idx++) {
+			cur_id = SCB_FLOWID_AMT_LKP(wlc->scbstate, amt_idx);
+			if (cur_id == flowid) {
+				SCB_FLOWID_AMT_LKP(wlc->scbstate, amt_idx) = SCB_FLOWID_INVALID;
+			}
+		}
+	} else {
+		/* Triggered from AMT delink */
+		ASSERT_AMT_IDX(wlc, amt_idx);
+		ASSERT(flowid == SCB_FLOWID_INVALID);
+		SCB_FLOWID_AMT_LKP(wlc->scbstate, amt_idx) = SCB_FLOWID_INVALID;
+	}
+}
+
+/** Return Linked SCB flowid for given amt idx */
+uint16
+wlc_scb_amt_linkid_get(wlc_info_t *wlc, int amt_idx)
+{
+	if (AMT_IDX_VALID(wlc, amt_idx))
+		return SCB_FLOWID_AMT_LKP(wlc->scbstate, amt_idx);
+	else
+		return SCB_FLOWID_INVALID;
+}
+int
+wlc_scb_amt_incarnation_id_get(wlc_info_t *wlc, int amt_idx)
+{
+	uint16 flowid;
+
+	if (!AMT_IDX_VALID(wlc, amt_idx))
+		return 0;
+
+	flowid = SCB_FLOWID_AMT_LKP(wlc->scbstate, amt_idx);
+
+	if (!SCB_FLOWID_VALID(flowid))
+		return 0;
+
+	return SCB_FLOWID_INCARN_LKP(wlc->scbstate, flowid);
+}
+
+/* Lookup scb for a given amt index */
+struct scb* BCMFASTPATH
+wlc_scb_amt_lookup(wlc_info_t *wlc, uint16 amt_idx)
+{
+	struct scb* scb;
+	uint16 flowid;
+	uint8 frame_incarn;
+
+	/* Check for amt idx validity */
+	if (amt_idx & SCB_UCODE_STS_AMT_INVALID_MASK) {
+		WL_INFORM(("wl%d %s : invalid amt : idx %x \n",
+			wlc->pub->unit, __FUNCTION__, amt_idx));
+		return NULL;
+	}
+
+	frame_incarn = (amt_idx & SCB_UCODE_STS_AMT_INCARN_MASK) >>
+		SCB_UCODE_STS_AMT_INCARN_SHIFT;
+
+	amt_idx = (amt_idx & SCB_UCODE_STS_AMT_IDX_MASK);
+
+	/* AMT to SCB Flowid lookup */
+	flowid = SCB_FLOWID_AMT_LKP(wlc->scbstate, amt_idx);
+
+	/* Do incarnation checks only for valid flowids */
+	if (!SCB_FLOWID_VALID(flowid)) {
+		return NULL;
+	}
+
+	if (frame_incarn != SCB_FLOWID_INCARN_LKP(wlc->scbstate, flowid)) {
+		SCB_FLOWID_INCARN_MISMATCH(wlc->scbstate, flowid)++;
+		WL_INFORM(("wl%d Incarnation mismatch ::: amd itd %d frame incarn %d "
+			"flowid %d scb incarn %d \n",
+			wlc->pub->unit, amt_idx, frame_incarn, flowid,
+			SCB_FLOWID_INCARN_LKP(wlc->scbstate, flowid)));
+		return NULL;
+	}
+
+	/* Finally get to SCB lookup. */
+	scb = SCB_FLOWID_LKP(wlc->scbstate, flowid);
+
+	/* Better be a valid scb */
+	ASSERT(scb);
+
+	return scb;
+}
+
+/* Link host ringid with SCB flowid
+ * Store host ringid inside SCB.
+ * Pass SCB flowid into host layer
+ */
+void
+wlc_scb_host_ring_link(wlc_info_t *wlc, uint16 ringid, uint8 tid,
+        struct scb *scb,  uint16* flowid)
+{
+
+	ASSERT(scb);
+
+#ifdef BCMPCIEDEV_ENABLED
+	/* Host ringid valid for only pcie donge builds for now */
+	/* Store the host ringid inside SCB */
+	SCB_HOST_RINGID(scb, tid) = ringid;
+#endif /* BCMPCIEDEV_ENABLED */
+
+	/* Return SCB flowid */
+	*flowid = SCB_FLOWID(scb);
+
+	WL_INFORM(("wl%d: %s hostringid %d tid %d scb flowid %d\n",
+		wlc->pub->unit, __FUNCTION__, ringid, tid, *flowid));
+}
+
+/* Delink an SCB from the host ringid */
+int
+wlc_scb_host_ring_delink(wlc_info_t *wlc, struct scb *scb, uint8 tid, uint16 ringid)
+{
+	ASSERT(scb);
+
+#ifdef BCMPCIEDEV_ENABLED
+	/* Host ringid valid for only pcie donge builds for now */
+	if (SCB_HOST_RINGID_VALID(SCB_HOST_RINGID(scb, tid))) {
+		/* Check for a valid ringid */
+		ASSERT(SCB_HOST_RINGID(scb, tid) == ringid);
+		SCB_HOST_RINGID(scb, tid) = SCB_HOST_RINGID_INVALID;
+		return BCME_OK;
+	}
+	return BCME_ERROR;
+#endif /* BCMPCIEDEV_ENABLED */
+	return BCME_OK;
+}
+
+/** Lookup scb for a given flowid */
+struct scb* BCMFASTPATH
+wlc_scb_flowid_lookup(wlc_info_t *wlc, uint16 flowid)
+{
+	struct scb* scb;
+
+	/* Currently expect only the current radio local flowid */
+	SCB_FLOWID_LOCAL_ASSERT(flowid);
+
+	if (!SCB_FLOWID_VALID(flowid))
+		return NULL;
+
+	/* Per radio Lookup */
+	scb = SCB_FLOWID_LKP(wlc->scbstate, flowid);
+
+	return scb;
+}
+
+/* Lookup scb for a given global flowid */
+struct scb* BCMFASTPATH
+wlc_scb_flowid_global_lookup(uint16 flowid_g)
+{
+	struct scb* scb = NULL;
+	wlc_info_t* wlc;
+	uint16 flowid_local = SCB_FLOWID_LOCAL(flowid_g);
+
+	if (!SCB_FLOWID_VALID(flowid_local))
+		return NULL;
+
+	/* Audit the radio id for wlc lookup */
+	WLC_AUDIT_G(SCB_FLOWID_RADIO(flowid_g));
+
+	wlc = WLC_G(SCB_FLOWID_RADIO(flowid_g));
+
+	/* Per radio Lookup */
+	scb = SCB_FLOWID_LKP(wlc->scbstate, flowid_local);
+
+	return scb;
+}
+/* DO a SCB flowid lookup for a given mac address */
+uint16
+wlc_scb_flowid_addr_lookup(wlc_info_t *wlc, struct ether_addr *ea)
+{
+	uint16          idx;            /* Flowid iterator */
+	struct scb      *scb;
+
+	for (idx = 0; idx < SCB_MAX_FLOWS; idx++) {
+		/* SCB flowid lookup */
+		scb = wlc_scb_flowid_lookup(wlc, idx);
+
+		if (scb == NULL)
+			continue;
+
+		if (!memcmp(&ea->octet, &scb->ea.octet, ETHER_ADDR_LEN)) {
+			return idx;
+		}
+	}
+	return SCB_FLOWID_INVALID;
+}

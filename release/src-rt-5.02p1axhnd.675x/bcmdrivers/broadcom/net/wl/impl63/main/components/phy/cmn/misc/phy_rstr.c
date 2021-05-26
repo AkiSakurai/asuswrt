@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_rstr.c 778212 2019-08-27 08:22:59Z $
+ * $Id: phy_rstr.c 786173 2020-04-20 13:59:54Z $
  */
 
 #include <typedefs.h>
@@ -89,8 +89,26 @@ const char BCMATTACHDATA(rstr_proxdt_rate80m)[] = "proxdt_rate80m";
 const char BCMATTACHDATA(rstr_proxdt_rate40m)[] = "proxdt_rate40m";
 const char BCMATTACHDATA(rstr_proxdt_rate20m)[] = "proxdt_rate20m";
 const char BCMATTACHDATA(rstr_proxdt_rate2g)[] = "proxdt_rate2g";
+const char BCMATTACHDATA(rstr_proxdi_rate80m_43684)[] = "proxdi_rate80m_43684";
+const char BCMATTACHDATA(rstr_proxdi_rate40m_43684)[] = "proxdi_rate40m_43684";
+const char BCMATTACHDATA(rstr_proxdi_rate20m_43684)[] = "proxdi_rate20m_43684";
+const char BCMATTACHDATA(rstr_proxdi_rate2g_43684)[] = "proxdi_rate2g_43684";
+const char BCMATTACHDATA(rstr_proxdt_rate80m_43684)[] = "proxdt_rate80m_43684";
+const char BCMATTACHDATA(rstr_proxdt_rate40m_43684)[] = "proxdt_rate40m_43684";
+const char BCMATTACHDATA(rstr_proxdt_rate20m_43684)[] = "proxdt_rate20m_43684";
+const char BCMATTACHDATA(rstr_proxdt_rate2g_43684)[] = "proxdt_rate2g_43684";
+const char BCMATTACHDATA(rstr_proxdi_rate80m_47622)[] = "proxdi_rate80m_47622";
+const char BCMATTACHDATA(rstr_proxdi_rate40m_47622)[] = "proxdi_rate40m_47622";
+const char BCMATTACHDATA(rstr_proxdi_rate20m_47622)[] = "proxdi_rate20m_47622";
+const char BCMATTACHDATA(rstr_proxdi_rate2g_47622)[] = "proxdi_rate2g_47622";
+const char BCMATTACHDATA(rstr_proxdt_rate80m_47622)[] = "proxdt_rate80m_47622";
+const char BCMATTACHDATA(rstr_proxdt_rate40m_47622)[] = "proxdt_rate40m_47622";
+const char BCMATTACHDATA(rstr_proxdt_rate20m_47622)[] = "proxdt_rate20m_47622";
+const char BCMATTACHDATA(rstr_proxdt_rate2g_47622)[] = "proxdt_rate2g_47622";
 const char BCMATTACHDATA(rstr_proxdi_ack)[] = "proxdi_ack";
 const char BCMATTACHDATA(rstr_proxdt_ack)[] = "proxdt_ack";
+const char BCMATTACHDATA(rstr_proxdt_ack_43684)[] = "proxdt_ack_43684";
+const char BCMATTACHDATA(rstr_proxdt_ack_47622)[] = "proxdt_ack_47622";
 const char BCMATTACHDATA(rstr_proxd_sub80m40m)[] = "proxd_sub80m40m";
 const char BCMATTACHDATA(rstr_proxd_sub80m20m)[] = "proxd_sub80m20m";
 const char BCMATTACHDATA(rstr_proxd_sub40m20m)[] = "proxd_sub40m20m";
@@ -728,3 +746,7 @@ const char BCMATTACHDATA(rstr_mcsbw20ul5glpo)[] = "mcsbw20ul5glpo";
 const char BCMATTACHDATA(rstr_mcsbw20ul5gmpo)[] = "mcsbw20ul5gmpo";
 const char BCMATTACHDATA(rstr_mcsbw20ul5ghpo)[] = "mcsbw20ul5ghpo";
 const char BCMATTACHDATA(rstr_legofdm40duppo)[] = "legofdm40duppo";
+
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+const char BCMATTACHDATA(rstr_phynoisebiasrxgainerr)[] = "phynoisebiasrxgainerr";
+#endif /* WL_EAP_NOISE_MEASUREMENTS */

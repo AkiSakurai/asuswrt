@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmsn.c 780098 2019-10-15 13:37:23Z $
+ * $Id: pdftmsn.c 788031 2020-06-18 14:10:58Z $
  */
 
 #include "bcmdevs.h"
@@ -1693,12 +1693,14 @@ pdftm_start_session(pdftm_session_t *sn)
 		}
 	}
 
-	/* for target irrespective of bss type it is on on_chan by this time
-	* for initiator
-	* i. legacy bss - on_chan is set in msch call back
-	* ii. slotted_bss - on_chan is set in extsched_callback api
-	*/
-	if (FTM_SESSION_IS_TARGET(sn)) {
+	/* For Target:
+	 * AP/SoftAP - it is on on_chan by this time (always on chan)
+	 * Non-AP - on_chan is set in extsched_callback api
+	 * For Initiator
+	 * i. legacy bss - on_chan is set in msch call back
+	 * ii. slotted_bss - on_chan is set in extsched_callback api
+	 */
+	if (FTM_SESSION_IS_TARGET(sn) && BSSCFG_AP(bsscfg)) {
 		sn->flags |= FTM_SESSION_ON_CHAN;
 	}
 
@@ -1714,6 +1716,7 @@ done:
 	if (err != BCME_OK) {
 		if (sn->ftm_state) {
 			MFREE(FTM_OSH(ftm), sn->ftm_state, sizeof(*sn->ftm_state));
+			sn->ftm_state = NULL;
 		}
 		if (sn->ftm1_tx_timer) {
 			wlc_hrt_free_timeout(sn->ftm1_tx_timer);
@@ -1845,6 +1848,10 @@ pdftm_change_session_state(pdftm_session_t *sn, wl_proxd_status_t status,
 	if (old_state == new_state) /* ignore no state change */
 		goto done;
 
+#ifdef TOF_DEBUG_TIME
+	TOF_PRINTF(("***pdftm_change_session_state: time:%u, old:%d, new:%d\n",
+		OSL_SYSUPTIME_US(), old_state, new_state));
+#endif /* TOF_DEBUG_TIME */
 	handler = ftm_snsi_get_handler(old_state);
 	if (!handler) {
 		err = BCME_UNSUPPORTED;
@@ -2420,6 +2427,29 @@ done:
 	return err;
 }
 
+bool
+wlc_ftm_is_scan_in_progress(wlc_ftm_t *ftm, wlc_bsscfg_t *cfg)
+{
+	int i;
+	pdftm_cmn_t *ftm_cmn = ftm->ftm_cmn;
+	ASSERT(FTM_VALID(ftm));
+	/*
+	 * Loop through all sessions
+	 */
+	for (i = 0; i < ftm_cmn->max_sessions; i++) {
+		pdftm_session_t *sn = ftm_cmn->sessions[i];
+		/*
+		 * If session is real
+		 */
+		if (sn && FTM_VALID_SESSION(sn)) {
+			if ((sn->tsf_scan_state == FTM_TSF_SCAN_STATE_ACTIVE_SCAN) ||
+				(sn->tsf_scan_state == FTM_TSF_SCAN_STATE_PASSIVE_SCAN)) {
+				return TRUE;
+			}
+		}
+	}
+	return FALSE;
+}
 /*
  * Stop FTM sessions with bsscfg
  * Input:
@@ -2460,6 +2490,27 @@ wlc_ftm_stop_sess_inprog(wlc_ftm_t *ftm, wlc_bsscfg_t *cfg)
 		}
 	}
 	return;
+				}
+
+int
+wlc_ftm_num_sessions_inprog(const wlc_ftm_t *ftm)
+{
+	int i;
+	int num_active = 0;
+	pdftm_cmn_t *ftm_cmn = ftm->ftm_cmn;
+	ASSERT(FTM_VALID(ftm));
+
+	/* Loop through all sessions */
+	for (i = 0; i < ftm_cmn->max_sessions; i++) {
+		pdftm_session_t *sn = ftm_cmn->sessions[i];
+		if (sn) {
+			if ((sn->state > WL_PROXD_SESSION_STATE_CONFIGURED) &&
+					(sn->state <= WL_PROXD_SESSION_STATE_BURST)) {
+				num_active++;
+			}
+		}
+	}
+	return num_active;
 }
 
 int

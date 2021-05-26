@@ -55,6 +55,7 @@ ifneq ($(wildcard bsd),)
 	install -d $(INSTALLDIR)/usr/sbin/
 	install bsd $(INSTALLDIR)/usr/sbin/
 	$(STRIP) $(INSTALLDIR)/usr/sbin/bsd
+	ln -sf bsd $(INSTALLDIR)/usr/sbin/bsdcli
 endif
 
 clean:

@@ -717,6 +717,8 @@ function show_vpnc_rulelist(){
 							code +="<td width='10%'><div title='<#vpn_openvpn_conflict#>' class='vpnc_ipconflict_icon'></div></td>";
 						else if(client_errno == 4 || client_errno == 5 || client_errno == 6)
 							code +="<td width='10%'><img title='<#qis_fail_desc1#>' src='/images/button-close2.png' style='width:25px;'></td>";
+						else if(client_errno == 7)
+							code +="<td width='10%'><img title='Certification Authentication / Server certification / Server Key field error! \nPlease check the Keys and Certification contents on the Manual Setting.' src='/images/button-close2.png' style='width:25px;'></td>";
 						else		//Stop connection
 							code +="<td width='10%'><img title='<#ConnectionFailed#>' src='/images/button-close2.png' style='width:25px;'></td>";
 				}
@@ -1571,6 +1573,9 @@ function initialIPSecProfile() {
 	$('input:checkbox[name=ipsec_dh_group_p1]').prop("checked", true);
 	$('input:checkbox[name=ipsec_encryption_p2]').prop("checked", true);
 	$('input:checkbox[name=ipsec_hash_p2]').prop("checked", true);
+	settingRadioItemCheck(document.ipsec_form.ipsec_pfs, "1");
+	changePFS();
+	$('input:checkbox[name=ipsec_pfs_group]').prop("checked", true);
 }
 function editIPSecProfile(mode) {
 	add_profile_flag = false;
@@ -1757,6 +1762,7 @@ function UpdatePSecProfile(array, array_ext) {
 	$('input:checkbox[name=ipsec_dh_group_p1]').prop("checked", false);
 	$('input:checkbox[name=ipsec_encryption_p2]').prop("checked", false);
 	$('input:checkbox[name=ipsec_hash_p2]').prop("checked", false);
+	$('input:checkbox[name=ipsec_pfs_group]').prop("checked", false);
 	var set_checkboxlist = function(_objName, _value) {
 		var binary = parseInt(_value).toString(2);
 		var binary_length = binary.length;
@@ -1773,6 +1779,19 @@ function UpdatePSecProfile(array, array_ext) {
 	set_checkboxlist("ipsec_dh_group_p1", array_ext[2]);
 	set_checkboxlist("ipsec_encryption_p2", array_ext[3]);
 	set_checkboxlist("ipsec_hash_p2", array_ext[4]);
+	if(array_ext[5] == undefined) {
+		settingRadioItemCheck(document.ipsec_form.ipsec_pfs, "1");
+		$('input:checkbox[name=ipsec_pfs_group]').prop("checked", true);
+	}
+	else {
+		if(array_ext[5] == "0")
+			settingRadioItemCheck(document.ipsec_form.ipsec_pfs, "0");
+		else {
+			settingRadioItemCheck(document.ipsec_form.ipsec_pfs, "1");
+			set_checkboxlist("ipsec_pfs_group", array_ext[5]);
+		}
+	}
+	changePFS();
 }
 function getRadioItemCheck(obj) {
 	var checkValue = "";
@@ -2043,6 +2062,13 @@ function save_ipsec_profile_panel() {
 			return false;
 		}
 
+		if(getRadioItemCheck(document.ipsec_form.ipsec_pfs) == "1") {
+			if($('input:checkbox[name=ipsec_pfs_group]:checked').length == 0) {
+				alert("Please choose at least one PFS Groups.");/*untranslated*/
+				return false;
+			}
+		}
+
 		return true;
 	}
 
@@ -2148,7 +2174,7 @@ function save_ipsec_profile_panel() {
 				profile_array[37] + ">" + profile_array[38];
 		
 		/* data structure ext
-		1 encryption_p1, hash_p1, DHGroup, encryption_p2, hash_p2
+		1 encryption_p1, hash_p1, DHGroup, encryption_p2, hash_p2, PFS
 		*/
 		var result_ext = "";
 		var encryption_p1 = 0;
@@ -2156,6 +2182,7 @@ function save_ipsec_profile_panel() {
 		var dh_group = 0;
 		var encryption_p2 = 0;
 		var hash_p2 = 0;
+		var pfs_group = 0;
 		var get_checkboxlist = function(_objName) {
 			var value = 0;
 			$('input:checkbox[name=' + _objName + ']:checked').map(function() {
@@ -2168,7 +2195,9 @@ function save_ipsec_profile_panel() {
 		dh_group = get_checkboxlist("ipsec_dh_group_p1");
 		encryption_p2 = get_checkboxlist("ipsec_encryption_p2");
 		hash_p2 = get_checkboxlist("ipsec_hash_p2");
-		var profile_ext_array = [encryption_p1, hash_p1, dh_group, encryption_p2, hash_p2];
+		if(getRadioItemCheck(document.ipsec_form.ipsec_pfs) == "1")
+			pfs_group = get_checkboxlist("ipsec_pfs_group");
+		var profile_ext_array = [encryption_p1, hash_p1, dh_group, encryption_p2, hash_p2, pfs_group];
 		result_ext = profile_ext_array.join(">");
 
 		document.getElementById(document.ipsec_form.ipsec_profile_item.value).value = result;
@@ -2403,10 +2432,17 @@ function controlSubnetStatus(_ikeVersion, _type) {
 			break;
 	}
 }
+function changePFS() {
+	var clickItem = getRadioItemCheck(document.ipsec_form.ipsec_pfs);
+	if(clickItem == "0")
+		$("#tr_adv_pfs_group").hide();
+	else
+		$("#tr_adv_pfs_group").show();
+}
 </script>
 </head>
 
-<body onload="initial();" onunload="unload_body();">
+<body onload="initial();" onunload="unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <iframe name="hidden_frame" id="hidden_frame" width="0" height="0" frameborder="0"></iframe>
@@ -2877,6 +2913,26 @@ function controlSubnetStatus(_ikeVersion, _type) {
 								<label><input type="checkbox" name="ipsec_hash_p2" value="4">SHA256</label>
 								<!--label><input type="checkbox" name="ipsec_hash_p2" value="8">SHA384</label>
 								<label><input type="checkbox" name="ipsec_hash_p2" value="16">SHA512</label-->
+							</td>
+						</tr>
+						<tr id="tr_adv_pfs">
+							<th>Perfect Forward Secrecy (PFS)</th><!-- untranslated -->
+							<td>
+								<label><input type="radio" name="ipsec_pfs" class="input" value="1" onchange="changePFS();"><#WLANConfig11b_WirelessCtrl_button1name#></label>
+								<label><input type="radio" name="ipsec_pfs" class="input" value="0" onchange="changePFS();"><#WLANConfig11b_WirelessCtrl_buttonname#></label>
+							</td>
+						</tr>
+						<tr id="tr_adv_pfs_group">
+							<th>PFS Groups</th><!-- untranslated -->
+							<td>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="1">1</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="2">2</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="4">5</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="8">14</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="16">15</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="32">16</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="64">17</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="128">18</label>
 							</td>
 						</tr>
 						<tr id="tr_adv_keylife_time_p2">

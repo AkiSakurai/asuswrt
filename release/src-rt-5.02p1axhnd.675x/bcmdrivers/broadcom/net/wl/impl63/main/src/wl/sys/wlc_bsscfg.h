@@ -404,7 +404,7 @@ struct wlc_bsscfg {
 
 	wl_scan_params_t *roam_scan_params; /* customize roam scans */
 
-	uint8 _dwds;	/**< Dynamic WDS */
+	uint8		_dwds;	/**< Dynamic WDS */
 
 	bool		mcast_regen_enable;	/**< Multicast Regeneration is enabled or not */
 	bool		wmf_enable;		/**< WMF is enabled or not */
@@ -627,7 +627,6 @@ struct wlc_bsscfg {
 #define DWDS_GENAB(cfg)	((cfg)->_dwds & GENERAL_DWDS)
 #else
 #define DWDS_ENAB(cfg)	FALSE
-#define DWDS_GENAB(cfg)	FALSE
 #endif // endif
 
 #define SPLIT_ASSOC_REQ(cfg)	((cfg)->flags2 & WLC_BSSCFG_FL2_SPLIT_ASSOC_REQ)

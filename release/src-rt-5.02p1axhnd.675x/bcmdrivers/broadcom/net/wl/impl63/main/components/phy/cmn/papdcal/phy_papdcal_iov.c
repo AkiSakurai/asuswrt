@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_papdcal_iov.c 780340 2019-10-22 18:55:57Z $
+ * $Id: phy_papdcal_iov.c 785862 2020-04-08 01:20:21Z $
  */
 
 #include <phy_papdcal_iov.h>
@@ -72,6 +72,7 @@ static const bcm_iovar_t phy_papdcal_iovars[] = {
 	IOVT_UINT32, 0},
 	{"phy_papdtiagain", IOV_PHY_PAPDTIAGAIN, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_UINT32, 0},
 	{"papdcomp_disable", IOV_PAPDCOMP_DISABLE, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_UINT32, 0},
+	{"phy_papd_dump", IOV_PHY_PAPD_DUMP, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_UINT32, 0},
 #endif // endif
 #if defined(WLTEST) || defined(DBG_PHY_IOV) || defined(WFD_PHY_LL_DEBUG) || \
 	defined(ATE_BUILD)
@@ -175,6 +176,14 @@ phy_papdcal_doiovar(void *ctx, uint32 aid,
 
 		case IOV_SVAL(IOV_PAPDCOMP_DISABLE):
 			err = phy_papdcal_set_comp_disable(pi, (int32)int_val);
+			break;
+
+		case IOV_GVAL(IOV_PHY_PAPD_DUMP):
+			err = phy_papdcal_get_dump(pi, ret_int_ptr);
+			break;
+
+		case IOV_SVAL(IOV_PHY_PAPD_DUMP):
+			err = phy_papdcal_set_dump(pi, (int32)int_val);
 			break;
 #endif // endif
 #if defined(WLTEST) || defined(DBG_PHY_IOV) || defined(WFD_PHY_LL_DEBUG) || \

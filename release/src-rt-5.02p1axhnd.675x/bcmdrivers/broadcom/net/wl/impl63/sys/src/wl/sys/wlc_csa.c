@@ -48,7 +48,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_csa.c 781309 2019-11-18 05:00:41Z $
+ * $Id: wlc_csa.c 788429 2020-07-01 04:31:31Z $
  */
 
 /**
@@ -1297,11 +1297,9 @@ wlc_csa_process_channel_switch(wlc_csa_info_t *csam, wlc_bsscfg_t *cfg)
 	/* If this STA connected to up-stream AP and has an overlaping chanspec
 	 * with a local AP, propagate csa to downstream STA's (for local AP).
 	 */
-	if (
 #ifdef WLMCHAN
-		(!MCHAN_ENAB(wlc->pub) || wlc_mchan_stago_is_disabled(wlc->mchan)) &&
+	if (!MCHAN_ENAB(wlc->pub) || wlc_mchan_stago_is_disabled(wlc->mchan))
 #endif // endif
-		WL11H_AP_ENAB(wlc))
 	{
 		wlc_bsscfg_t *ap_bsscfg;
 		int idx;

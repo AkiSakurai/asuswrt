@@ -134,6 +134,7 @@
 #include <wlc_he.h>
 #include <wlc_musched.h>
 #include <wlc_ampdu_cmn.h>
+#include <bcmdevs.h>
 
 #ifdef WL_MU_TX
 
@@ -180,6 +181,8 @@ enum wlc_mutx_iov {
 	IOV_MU_SNR_CALIB = 9,
 	IOV_MU_FEATURES = 10,
 	IOV_MUPFMON_MUMCS_THRESH = 11,
+	IOV_MUTX_MPDUSZ_MU_ADMIT_THRESH = 12,
+	IOV_MUTX_MPDUSZ_DLOFDMA_ADMIT_THRESH = 13,
 	IOV_MUTX_LAST
 };
 
@@ -211,6 +214,12 @@ static const bcm_iovar_t mutx_iovars[] = {
 	},
 	{"mupfmon_mumcs_thresh", IOV_MUPFMON_MUMCS_THRESH,
 	0, 0, IOVT_UINT32, 0
+	},
+	{"mpdusz_mu_admit_thresh", IOV_MUTX_MPDUSZ_MU_ADMIT_THRESH,
+	0, 0, IOVT_BUFFER, 0
+	},
+	{"mpdusz_dlofdma_admit_thresh", IOV_MUTX_MPDUSZ_DLOFDMA_ADMIT_THRESH,
+	0, 0, IOVT_BUFFER, 0
 	},
 	{NULL, 0, 0, 0, 0, 0 }
 };
@@ -285,15 +294,8 @@ typedef struct mutx_tp {
 	 * empty elements. This happens when a MU client is removed (disassociates
 	 * or loses MU capability).
 	 */
-	bool ac_policy_on;
-	bool client_samebw;
-	bool client_bw160;
 	bool mutx_switch_in_progress;
-	bool pfmon_gpos;
-	bool muclient_pfmon;
 	uint8 txstats_nupd;
-	uint8 muclient_nrx;
-	int rssi_thresh;
 	mutx_scb_list_t *on_hold_list;
 	mutx_scb_list_t *admit_list; /* mu capable stas currenty admitted */
 	mutx_scb_list_t *candidate_list; /* mu capable stas which match all policy. */
@@ -311,7 +313,6 @@ typedef struct mutx_tp {
 	int base_mucidx;
 	/* MU TX policy - AC and BW - different from mu_policy_t */
 	mutx_policy_t *mutx_policy;
-
 } mutx_tp_t;
 
 /* State structure for the MU-MIMO module created by
@@ -339,6 +340,15 @@ struct wlc_mutx_info {
 	bcm_notif_h mutx_state_notif_hdl;	/* mutx state notifier handle. */
 	mutx_tp_t mutx_tp_i[MUTX_TP_MAX];
 	bool _mu_tx[MUTX_TP_MAX];
+	bool muclient_pfmon;
+	bool ac_policy_on;
+	bool client_samebw;
+	bool client_bw160;
+	uint8 muclient_nrx;
+	int rssi_thresh;
+	uint32 mpdusz_mu_admit_thresh[BW_160MHZ + 1];
+	uint32 mpdusz_dlofdma_admit_thresh[BW_160MHZ + 1];
+	uint32 mu_snd_per_sec;
 };
 
 #if defined(BCMDBG) || defined(DUMP_MUTX)
@@ -371,6 +381,9 @@ typedef struct mutx_stats {
 	uint32 txmu_sgi[MUTX_MCS_INDEX_NUM];
 	/* Total mu frame transmissions acked with sgi on */
 	uint32 txmu_sgi_succ[MUTX_MCS_INDEX_NUM];
+	uint32 txassu_reason[C_M2SQ_REASON_MAX];
+	uint32 snd_fail_cnt;
+	bool   snd_epch_prev;
 } mutx_stats_t;
 #endif // endif
 
@@ -387,7 +400,9 @@ typedef struct mutx_pfmon_stats {
 	uint32 txsu[MUTX_MCS_INDEX_NUM];
 	/* Total mu frame transmission attempts at primray mcs */
 	uint32 txmu_primrate[MUTX_MCS_INDEX_NUM];
-
+	uint32 txassu_reason[C_M2SQ_REASON_MAX];
+	uint32 snd_fail_cnt;
+	bool   snd_epch_prev;
 } mutx_pfmon_stats_t;
 
 typedef struct mutx_snr_calib_stats {
@@ -427,7 +442,9 @@ enum {
 	MUTX_REASON_PFMON_PRIMRATE_SUCC_EVICT = 9,
 	MUTX_REASON_PFMON_PRIMRATE_MUMCS_EVICT = 10,
 	MUTX_REASON_PFMON_TXSASMU_EVICT = 11,
-	MUTX_REASON_MAX = 12
+	MUTX_REASON_PFMON_AVG_MPDU_SZ_EVICT = 12,
+	MUTX_REASON_PFMON_AC_VO_ONLY_EVICT = 13,
+	MUTX_REASON_MAX = 14
 };
 
 enum {
@@ -450,7 +467,9 @@ static char* mutx_reason2str[MUTX_REASON_MAX] = {
 	"disassoc_evict",
 	"pfmon_primrate_succ_evict",
 	"pfmon_primrate_mumcs_evict",
-	"pfmon_txasmu_evict"
+	"pfmon_txasmu_evict",
+	"pfmon_avg_mpdu_sz_evict",
+	"pfmon_ac_vo_only_evict"
 };
 
 #define HEURS_CNTMAX 64
@@ -538,6 +557,7 @@ typedef struct mutx_scb {
 	bool mu_link_permit;
 
 	uint32 ac_policy_scores[MUTX_AC_VO+1];
+	wlc_ravg_info_t ravg_info[MUTX_AC_VO+1];
 	int rssi;
 	uint32 nrx;
 	/* the policy evict reason if MU client will be evicted from policy change. */
@@ -548,6 +568,9 @@ typedef struct mutx_scb {
 	uint8 tp;
 	musta_heurs_t musta_heurs;
 	uint8 txstats_nupd;
+	uint32 m2sq_anygrp;
+	uint32 m2sq_snd_fail;
+	uint32 m2sq_rr_lmt;
 } mutx_scb_t;
 
 #define GID_RETRY_DELAY 3
@@ -585,7 +608,7 @@ static int wlc_mutx_sendgid(mutx_tp_t *tx_tp_i);
 static void wlc_mutx_state_upd(wlc_info_t *wlc, uint8 state);
 #endif // endif
 static bool wlc_mutx_sta_nrx_check(mutx_tp_t *tx_tp_i, scb_t *scb);
-static bool wlc_mutx_sta_ac_check(mutx_tp_t *tx_tp_i, struct scb *scb);
+static bool wlc_mutx_sta_ac_check(mutx_tp_t *tx_tp_i, struct scb *scb, uint link_bw);
 /* SCB cubby management */
 static void wlc_mutx_scb_state_upd(void *ctx, scb_state_upd_data_t *notif_data);
 static uint mu_scb_cubby_secsz(void *context, scb_t *scb);
@@ -613,12 +636,12 @@ static bool mu_scb_membership_change_get(wlc_mutx_info_t *mu_info, scb_t *scb);
 static void mu_scb_membership_change_set(mutx_tp_t *tx_tp_i, scb_t *scb, bool pending);
 
 static void mu_candidates_select(wlc_mutx_info_t *mu_info, int *vhtmu_cand_cnt,
-	int *hemmu_cand_cnt, int *dlofdma_cand_cnt);
-static void mu_clients_eviction(wlc_mutx_info_t *mu_info);
+	int *hemmu_cand_cnt, int *dlofdma_cand_cnt, bool sched);
+static void mu_clients_eviction(wlc_mutx_info_t *mu_info, bool sched);
 #ifdef WL_PSMX
 static void wlc_mutx_clr_mubf(wlc_info_t *wlc);
 #endif // endif
-static bool wlc_mutx_client_scheduler(wlc_mutx_info_t * mu_info, bool pfmon);
+static bool wlc_mutx_client_scheduler(wlc_mutx_info_t * mu_info, bool sched);
 
 /* Manage user position, group membership bit arrays */
 static uint8 mu_user_pos_get(uint8 *pos_array, uint16 group_id);
@@ -893,7 +916,7 @@ wlc_mutx_dump_stats(wlc_mutx_info_t *mu_info,
 	mutx_stats_t *mutx_stats, uint8 mu_tp, bcmstrbuf_t *b, uint8 option)
 {
 	uint32 total, tot_txmu = 0, tot_txmu_succ = 0, tot_txmu_sgi = 0, tot_txmu_sgi_succ = 0;
-	uint32 tot_txsu = 0, tot_txsu_succ = 0;
+	uint32 tot_txsu = 0, tot_txsu_succ = 0, tot_txassu_reason = 0, tot_txassu = 0;
 	uint8 i, last, last_mcs_idx_mu = 0, last_mcs_idx_su = 0;
 
 	/* determines highest MCS array *index* on which a transmit took place */
@@ -914,10 +937,24 @@ wlc_mutx_dump_stats(wlc_mutx_info_t *mu_info,
 	total = tot_txmu + tot_txsu;
 	mu_info->tot_cnt += total;
 
+	tot_txassu += mutx_stats->txassu_reason[C_M2SQ_REASON_NONE];
+	for (i = C_M2SQ_NOT_IN_ANYGRP; i < C_M2SQ_REASON_MAX; i++) {
+		tot_txassu += mutx_stats->txassu_reason[i];
+		tot_txassu_reason += mutx_stats->txassu_reason[i];
+	}
 	bcm_bprintf(b, "mutx: tot_tx %u tx_as_mu %u (%u%%)"
 		" ncons %u nlost %u\n",
 		total, tot_txmu, (total ? (tot_txmu * 100 / total) : 0),
 		mutx_stats->mu_ncons, mutx_stats->mu_nlost);
+	if (tot_txassu) {
+		bcm_bprintf(b, "mutx: txassu %u  reason_none %u\n"
+			" reason %u vasip %u snd_fail %u retry_lmt %u snd_fail_cnt %u\n",
+			tot_txassu, mutx_stats->txassu_reason[C_M2SQ_REASON_NONE],
+			tot_txassu_reason, mutx_stats->txassu_reason[C_M2SQ_NOT_IN_ANYGRP],
+			mutx_stats->txassu_reason[C_M2SQ_SOUNDNG_FAIL],
+			mutx_stats->txassu_reason[C_M2SQ_RETRY_LMT_RCHD],
+			mutx_stats->snd_fail_cnt);
+	}
 
 	wlc_mutx_print_txpermcs(mu_info, tot_txmu, tot_txmu_succ, last_mcs_idx_mu,
 		mutx_stats->txmu, mutx_stats->txmu_succ, b, TRUE, FALSE, mu_tp);
@@ -1006,6 +1043,7 @@ wlc_mutx_muinfo(wlc_mutx_info_t *mu_info, bcmstrbuf_t *b, uint8 option)
 	wlc_info_t *wlc = mu_info->wlc;
 	mutx_tp_t *tx_tp_i;
 	mutx_policy_t *mutx_policy;
+	int ac, base_mucidx = 0;
 	//uint8 max_mmu_usrs = wlc_txcfg_max_mmu_clients_get(wlc->txcfg);
 
 	if (!wlc) {
@@ -1026,7 +1064,7 @@ wlc_mutx_muinfo(wlc_mutx_info_t *mu_info, bcmstrbuf_t *b, uint8 option)
 		bcm_bprintf(b, "MU feature is %s, AC policy is %s\n"
 			"BW policy = %u AC policy = %u\n",
 			tx_tp_i->active ? "ON" : "OFF",
-			tx_tp_i->ac_policy_on ? "ON" : "OFF",
+			mu_info->ac_policy_on ? "ON" : "OFF",
 			mutx_policy->bw_policy,
 			mutx_policy->ac_policy);
 
@@ -1084,6 +1122,9 @@ wlc_mutx_muinfo(wlc_mutx_info_t *mu_info, bcmstrbuf_t *b, uint8 option)
 			bcm_bprintf(b, "GID joined: [9]\n");
 		}
 
+		if (tx_tp_i->tp == HEMMU) {
+			base_mucidx = wlc_txcfg_max_clients_get(wlc->txcfg, VHTMU);
+		}
 		/* Dump current MU client set */
 		bcm_bprintf(b, "MU clients:\n");
 		for (i = 0; i < tx_tp_i->max_muclients; i++) {
@@ -1095,10 +1136,16 @@ wlc_mutx_muinfo(wlc_mutx_info_t *mu_info, bcmstrbuf_t *b, uint8 option)
 			}
 
 			bcm_bprintf(b, "[%u] "MACF" rssi %d nrx %u [%s]\n",
-				(tx_tp_i->base_mucidx + i), ETHER_TO_MACF(scb->ea),
+				(base_mucidx + i), ETHER_TO_MACF(scb->ea),
 				mu_info->mutx_client_scheduler ? mu_scb->rssi :
 				wlc_lq_rssi_get(wlc, SCB_BSSCFG(scb), scb),
 				mu_scb->nrx, mutx_reason2str[mu_scb->reason]);
+
+			bcm_bprintf(b, "ac\tavg_mpdu_sz\n");
+			for (ac = MUTX_AC_BEBK; ac < (MUTX_AC_VO + 1); ac++) {
+				bcm_bprintf(b, "%2u\t%4u\n", ac, RAVG_AVG(&mu_scb->ravg_info[ac]));
+			}
+
 			/* Client's BSS info */
 			bcm_bprintf(b, "BSS: wl%u.%u "MACF"\n", wlc->pub->unit,
 				WLC_BSSCFG_IDX(scb->bsscfg),
@@ -1117,7 +1164,7 @@ wlc_mutx_muinfo(wlc_mutx_info_t *mu_info, bcmstrbuf_t *b, uint8 option)
 	}
 
 	if (option) {
-		bcm_bprintf(b, "Total mutx: tot_tx %u tx_as_mu %u (%u%%) ncons %u "
+		bcm_bprintf(b, "Total mutx: tot_tx %u txasmu %u (%u%%) ncons %u "
 			"nlost %u\n", mu_info->tot_cnt, mu_info->mutx_cnt,
 			mu_info->tot_cnt ? (mu_info->mutx_cnt * 100 / mu_info->tot_cnt) : 0,
 			mu_info->mu_ncons, mu_info->mu_nlost);
@@ -1144,7 +1191,9 @@ wlc_mutx_muinfo(wlc_mutx_info_t *mu_info, bcmstrbuf_t *b, uint8 option)
 	bcm_bprintf(b, "\nMU capable STAs:\n");
 	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
 		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
-		if (!tx_tp_i->active) {
+
+		if (((tx_tp_i->tp == VHTMU) && (!tx_tp_i->active)) ||
+			((tx_tp_i->tp == HEMMU) && (!HE_DLMU_ENAB(wlc->pub) && !tx_tp_i->active))) {
 			continue;
 		}
 		FOREACH_LIST_POS(hold_pos, next, tx_tp_i->mu_cap_stas_list) {
@@ -1155,6 +1204,11 @@ wlc_mutx_muinfo(wlc_mutx_info_t *mu_info, bcmstrbuf_t *b, uint8 option)
 				mu_info->mutx_client_scheduler ? mu_scb->rssi :
 				wlc_lq_rssi_get(wlc, SCB_BSSCFG(scb), scb),
 				mu_scb->nrx, mutx_reason2str[mu_scb->reason]);
+
+			bcm_bprintf(b, "ac\tavg_mpdu_sz\n");
+			for (ac = MUTX_AC_BEBK; ac < (MUTX_AC_VO + 1); ac++) {
+				bcm_bprintf(b, "%2u\t%4u\n", ac, RAVG_AVG(&mu_scb->ravg_info[ac]));
+			}
 		}
 	}
 	return BCME_OK;
@@ -1221,6 +1275,7 @@ wlc_mu_doiovar(void *hdl, uint32 actionid,
 	uint8 tp_idx, i;
 	scb_t *scb;
 	mutx_tp_t *tx_tp_i;
+	uint32 bw;
 	wlc_pub_t *pub = wlc->pub;
 
 	BCM_REFERENCE(mu_info);
@@ -1274,23 +1329,19 @@ wlc_mu_doiovar(void *hdl, uint32 actionid,
 #endif /* BCMDBG */
 	case IOV_GVAL(IOV_MU_POLICY): {
 		mu_policy_t *policy = (mu_policy_t *)a;
-		tp_idx = TP_TO_IDX(VHTMU);
 		policy->version = WL_MU_POLICY_PARAMS_VERSION;
 		policy->length = sizeof(mu_policy_t);
 		policy->sched_timer = mu_info->mutx_client_scheduler ?
 			mu_info->mutx_client_scheduler_dur : 0;
-		policy->pfmon = mu_info->mutx_tp_i[tp_idx].muclient_pfmon;
-		policy->pfmon_gpos = mu_info->mutx_tp_i[tp_idx].pfmon_gpos;
-		policy->samebw = mu_info->mutx_tp_i[tp_idx].client_samebw;
-		policy->nrx = mu_info->mutx_tp_i[tp_idx].muclient_nrx;
+		policy->pfmon = mu_info->muclient_pfmon;
+		policy->samebw = mu_info->client_samebw;
+		policy->nrx = mu_info->muclient_nrx;
 		policy->max_muclients = wlc_txcfg_max_clients_get(wlc->txcfg, VHTMU);
 		break;
 	}
 
 	case IOV_SVAL(IOV_MU_POLICY): {
 		mu_policy_t *policy = (mu_policy_t *)a;
-		tp_idx = TP_TO_IDX(VHTMU);
-
 		if (policy->version != WL_MU_POLICY_PARAMS_VERSION) {
 			err = BCME_BADARG;
 			break;
@@ -1299,38 +1350,31 @@ wlc_mu_doiovar(void *hdl, uint32 actionid,
 		if (policy->sched_timer) {
 			mu_info->mutx_client_scheduler = TRUE;
 			mu_info->mutx_client_scheduler_dur = policy->sched_timer;
-			mu_info->mutx_tp_i[tp_idx].ac_policy_on = TRUE;
+			mu_info->ac_policy_on = TRUE;
 			/* Early starting the 1st time scheduler */
 			mu_info->mutx_client_scheduler_cnt = (policy->sched_timer > 3) ?
 				(policy->sched_timer - 3) : policy->sched_timer;
 		} else {
 			mu_info->mutx_client_scheduler = FALSE;
 			mu_info->mutx_client_scheduler_dur = MUCLIENT_SCHEDULER_DUR;
-			mu_info->mutx_tp_i[tp_idx].ac_policy_on = FALSE;
+			mu_info->ac_policy_on = FALSE;
 			wlc_mutx_bw_policy_update(mu_info, 0, FALSE);
 		}
 		/* pfmon */
 		if (policy->pfmon) {
-			mu_info->mutx_tp_i[tp_idx].muclient_pfmon = TRUE;
+			mu_info->muclient_pfmon = TRUE;
 		} else {
-			mu_info->mutx_tp_i[tp_idx].muclient_pfmon = FALSE;
+			mu_info->muclient_pfmon = FALSE;
 		}
-#if defined(BCMDBG) || defined(BCMDBG_MU)
-		/* pfmon_gpos */
-		if (policy->pfmon_gpos) {
-			mu_info->mutx_tp_i[tp_idx].pfmon_gpos = TRUE;
-		} else {
-			mu_info->mutx_tp_i[tp_idx].pfmon_gpos = FALSE;
-		}
-#endif // endif
+
 		/* samebw */
 		if (policy->samebw) {
-			mu_info->mutx_tp_i[tp_idx].client_samebw = TRUE;
+			mu_info->client_samebw = TRUE;
 		} else {
-			mu_info->mutx_tp_i[tp_idx].client_samebw = FALSE;
+			mu_info->client_samebw = FALSE;
 		}
 		/* nrx */
-		if (policy->nrx != mu_info->mutx_tp_i[tp_idx].muclient_nrx) {
+		if (policy->nrx != mu_info->muclient_nrx) {
 			if (pub->up) {
 				WL_ERROR(("wl%d: nrx can't be set with interface up\n",
 					pub->unit));
@@ -1341,7 +1385,7 @@ wlc_mu_doiovar(void *hdl, uint32 actionid,
 				err = BCME_RANGE;
 				break;
 			}
-			mu_info->mutx_tp_i[tp_idx].muclient_nrx = (uint8)policy->nrx;
+			mu_info->muclient_nrx = (uint8)policy->nrx;
 		}
 		/* max_muclients */
 		if (policy->max_muclients != wlc_txcfg_max_clients_get(wlc->txcfg, VHTMU)) {
@@ -1355,6 +1399,7 @@ wlc_mu_doiovar(void *hdl, uint32 actionid,
 
 			err = wlc_txcfg_max_clients_set(wlc->txcfg, VHTMU, policy->max_muclients);
 		}
+
 		break;
 	}
 
@@ -1404,6 +1449,14 @@ wlc_mu_doiovar(void *hdl, uint32 actionid,
 			err = BCME_UNSUPPORTED;
 			break;
 		}
+
+		/* BCM6705 (same chipid as 43692) and 43692 do not support MU */
+		if ((CHIPID(si_chipid(wlc->pub->sih)) == BCM43692_CHIP_ID) &&
+			(int_val & MU_FEATURES_MUTX)) {
+			err = BCME_UNSUPPORTED;
+			break;
+		}
+
 		/* Only MUTX is supported */
 		if ((pub->mu_features & MU_FEATURES_MUTX) ==
 			((uint32)int_val & MU_FEATURES_MUTX)) {
@@ -1442,6 +1495,50 @@ wlc_mu_doiovar(void *hdl, uint32 actionid,
 	case IOV_GVAL(IOV_MUPFMON_MUMCS_THRESH):
 		*ret_uint_ptr = (uint8)mu_info->mupfmon_mumcs_thresh;
 		break;
+
+	case IOV_GVAL(IOV_MUTX_MPDUSZ_MU_ADMIT_THRESH): {
+		wl_mutx_mpdusz_admit_thresh_t *admit_thresh = (wl_mutx_mpdusz_admit_thresh_t *)a;
+		if (int_val < 1 || int_val > 4) {
+			err = BCME_BADARG;
+			break;
+		}
+		bw = int_val;
+		admit_thresh->mpdusz = mu_info->mpdusz_mu_admit_thresh[bw];
+		break;
+	}
+
+	case IOV_SVAL(IOV_MUTX_MPDUSZ_MU_ADMIT_THRESH): {
+		wl_mutx_mpdusz_admit_thresh_t *admit_thresh = (wl_mutx_mpdusz_admit_thresh_t *)a;
+		if (int_val < 1 || int_val > 4) {
+			err = BCME_BADARG;
+			break;
+		}
+		bw = int_val;
+		mu_info->mpdusz_mu_admit_thresh[bw] = admit_thresh->mpdusz;
+		break;
+	}
+
+	case IOV_GVAL(IOV_MUTX_MPDUSZ_DLOFDMA_ADMIT_THRESH): {
+		wl_mutx_mpdusz_admit_thresh_t *admit_thresh = (wl_mutx_mpdusz_admit_thresh_t *)a;
+		if (int_val < 1 || int_val > 4) {
+			err = BCME_BADARG;
+			break;
+		}
+		bw = int_val;
+		admit_thresh->mpdusz = mu_info->mpdusz_dlofdma_admit_thresh[bw];
+		break;
+	}
+
+	case IOV_SVAL(IOV_MUTX_MPDUSZ_DLOFDMA_ADMIT_THRESH): {
+		wl_mutx_mpdusz_admit_thresh_t *admit_thresh = (wl_mutx_mpdusz_admit_thresh_t *)a;
+		if (int_val < 1 || int_val > 4) {
+			err = BCME_BADARG;
+			break;
+		}
+		bw = int_val;
+		mu_info->mpdusz_dlofdma_admit_thresh[bw] = admit_thresh->mpdusz;
+		break;
+	}
 	default:
 		err = BCME_UNSUPPORTED;
 		break;
@@ -1466,8 +1563,6 @@ wlc_mutx_bw_policy_update(wlc_mutx_info_t *mu_info, int tp_idx, bool force)
 	mutx_tp_t *tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
 	mutx_policy_t *mutx_policy;
 
-	return 0;
-
 	mutx_policy = tx_tp_i->mutx_policy;
 	bw_policy_old = mutx_policy->bw_policy;
 	if (!force &&
@@ -1487,7 +1582,7 @@ wlc_mutx_bw_policy_update(wlc_mutx_info_t *mu_info, int tp_idx, bool force)
 			continue;
 		}
 		bw = wlc_scb_ratesel_get_link_bw(wlc, scb);
-		if ((!tx_tp_i->client_bw160) && (bw == BW_160MHZ)) {
+		if ((!mu_info->client_bw160) && (bw == BW_160MHZ)) {
 			continue;
 		}
 		if (bw >= BW_20MHZ && bw <= BW_160MHZ)
@@ -1556,26 +1651,28 @@ wlc_mutx_clr_mubf(wlc_info_t *wlc)
 #endif /* WL_PSMX */
 
 static bool
-wlc_mutx_client_scheduler(wlc_mutx_info_t *mu_info, bool pfmon)
+wlc_mutx_client_scheduler(wlc_mutx_info_t *mu_info, bool sched)
 {
 	int vhtmu_cand_cnt, hemmu_cand_cnt, dlofdma_cand_cnt;
 	bool evictees = FALSE;
 
 	vhtmu_cand_cnt = hemmu_cand_cnt = dlofdma_cand_cnt = 0;
 	mu_candidates_select(mu_info, &vhtmu_cand_cnt, &hemmu_cand_cnt,
-		&dlofdma_cand_cnt);
-	if (pfmon || vhtmu_cand_cnt || hemmu_cand_cnt ||
+		&dlofdma_cand_cnt, sched);
+	if (sched || vhtmu_cand_cnt || hemmu_cand_cnt ||
 		dlofdma_cand_cnt) {
-		mu_clients_eviction(mu_info);
+		mu_clients_eviction(mu_info, sched);
 		if (((mu_info->mutx_tp_i[TP_TO_IDX(VHTMU)].active) &&
 			!LIST_IS_EMPTY(mu_info->mutx_tp_i[TP_TO_IDX(VHTMU)].admit_list)) ||
 			((mu_info->mutx_tp_i[TP_TO_IDX(HEMMU)].active) &&
-			(!LIST_IS_EMPTY(mu_info->mutx_tp_i[TP_TO_IDX(HEMMU)].admit_list) ||
-			!LIST_IS_EMPTY(mu_info->mutx_tp_i[TP_TO_IDX(HEMMU)].admit_ofdma_list)))) {
+			!LIST_IS_EMPTY(mu_info->mutx_tp_i[TP_TO_IDX(HEMMU)].admit_list)) ||
+			dlofdma_cand_cnt) {
 			wlc_mutx_admit_clients(mu_info);
 		}
 	}
-	mu_info->mutx_client_scheduler_cnt = 0;
+	if (sched) {
+		mu_info->mutx_client_scheduler_cnt = 0;
+	}
 	return evictees;
 }
 
@@ -1592,10 +1689,22 @@ uint8 prio2mufifo[NUMPRIO] = {
 
 #define MUTX_PKTRATE_THRESH_HIGH	12500	/* high threshold for admission */
 #define MUTX_PKTRATE_THRESH_MID		2500	/* mid-range threshold for admission */
-#define MUTX_PKTRATE_THRESH_LOW		500	/* low threshold for admission */
+#define MUTX_PKTRATE_THRESH_LOW		50	/* low threshold for admission */
 #define MUTX_PKTRATE_ADMIT_THRESH	MUTX_PKTRATE_THRESH_LOW	/* threshold for admission */
 #define MUTX_PKTRATE_EVICT_THRESH	MUTX_PKTRATE_THRESH_LOW	/* threshold for eviction */
-
+#define MUTX_MPDUSZ_BW160_MU_ADMIT_THRESH 1400
+#define MUTX_MPDUSZ_BW80_MU_ADMIT_THRESH  1400
+#define MUTX_MPDUSZ_BW40_MU_ADMIT_THRESH  700
+#define MUTX_MPDUSZ_BW20_MU_ADMIT_THRESH  350
+#ifdef NOT_YET
+#define MUTX_MPDUSZ_DLOFDMA_ADMIT_THRESH 2560
+#else
+/* Disable DLOFDMA-SU switch across all BW by default */
+#define MUTX_MPDUSZ_DLOFDMA_ADMIT_THRESH 0x7FFF
+#endif /* NOT YET */
+#define MUTX_OFDMA_MCS_THRESH 2
+#define MUTX_SU_MCS_THRESH 8
+#define MUTX_HEMMU_MUCIDX_BASE		8
 static void
 wlc_mutx_ac_update(wlc_mutx_info_t *mu_info)
 {
@@ -1614,16 +1723,20 @@ wlc_mutx_ac_update(wlc_mutx_info_t *mu_info)
 	mutx_tp_t *tx_tp_i;
 	mutx_policy_t *mutx_policy;
 	ratespec_t rspec;
-	uint32 mcs;
+	uint32 mcs, avg_mpdu_len;
 	musta_heurs_t *musta_heurs;
+	bool is_mu_cap;
 
 	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
 		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
-		if ((!tx_tp_i->active) || (tx_tp_i->ac_policy_on == FALSE)) {
+		if (((tx_tp_i->tp == VHTMU) &&
+			((!tx_tp_i->active) || (mu_info->ac_policy_on == FALSE))) ||
+			((tx_tp_i->tp == HEMMU) && (!HE_DLMU_ENAB(wlc->pub) &&
+			((!tx_tp_i->active) || (mu_info->ac_policy_on == FALSE))))) {
 			continue;
 		}
 
-		for (bw = 0; bw <= BW_160MHZ; bw++) {
+		for (bw = 0; (tx_tp_i->active) && (bw <= BW_160MHZ); bw++) {
 			for (ac = MUTX_AC_NONE; ac <= MUTX_AC_VO; ac++) {
 				ac_policy_scores[bw][ac] = 0;
 				num_stas_ac[bw][ac] = 0;
@@ -1633,24 +1746,25 @@ wlc_mutx_ac_update(wlc_mutx_info_t *mu_info)
 			mu_scb = (mutx_scb_t *)pos->data;
 			scb = mu_scb->scb;
 			musta_heurs = &mu_scb->musta_heurs;
-
+			is_mu_cap = TRUE;
 			if (!wlc_mutx_sta_nrx_check(tx_tp_i, scb)) {
 				ASSERT(!mu_in_client_set(tx_tp_i, scb));
-				continue;
+				is_mu_cap = FALSE;
 			}
 
-			if (!mu_in_client_set(tx_tp_i, scb)) {
+			if (mu_info->muclient_pfmon && is_mu_cap &&
+				!mu_in_client_set(tx_tp_i, scb)) {
 				wlc_musta_upd_heurs(tx_tp_i, scb, HEURS_SU_DEC);
 				if (musta_heurs->counter0 > 0) {
-					continue;
+					is_mu_cap = FALSE;
 				}
 				rspec = wlc_scb_ratesel_get_primary(wlc, scb, NULL);
 				mcs = wlc_ratespec_mcs(rspec);
-				if (mcs < mu_info->mutx_admit_mcs_thresh) {
+				if (is_mu_cap && (mcs < mu_info->mutx_admit_mcs_thresh)) {
 					mu_scb->score = 0;
 					bzero(&mu_scb->ac_policy_scores[0],
 						sizeof(mu_scb->ac_policy_scores));
-					continue;
+					is_mu_cap = FALSE;
 				}
 			}
 
@@ -1658,31 +1772,44 @@ wlc_mutx_ac_update(wlc_mutx_info_t *mu_info)
 				continue;
 			}
 			bw = (int)wlc_scb_ratesel_get_link_bw(wlc, scb);
-			if ((!tx_tp_i->client_bw160) && (bw == BW_160MHZ)) {
-				continue;
+			if ((!mu_info->client_bw160) && (bw == BW_160MHZ)) {
+				is_mu_cap = FALSE;
 			}
 			mu_scb->rssi = wlc_lq_rssi_get(wlc, SCB_BSSCFG(scb), scb);
 			for (prio = 0; prio < NUMPRIO; prio++) {
 				pkts_num = ampdu_scb_stats.tx_pkts[prio];
+
 				if (pkts_num == 0)
 					continue;
+
+				avg_mpdu_len = ampdu_scb_stats.tx_bytes[prio] / pkts_num;
 				if (pkts_num < MUTX_PKTRATE_ADMIT_THRESH)
 					continue;
-				WL_INFORM((MACF" prio=%d rssi=%d nrx=%u tx_pkts %u tx_bytes %u"
-					" pkts_sent %u, bytes_sent %u\n",
+
+				WL_MUTX((MACF" prio=%d rssi=%d nrx=%u tx_pkts %u tx_bytes %u "
+					"pkts_sent %u, bytes_sent %u avg_mpdu_len %u\n",
 					ETHER_TO_MACF(scb->ea), prio,
 					mu_scb->rssi, mu_scb->nrx,
 					ampdu_scb_stats.tx_pkts[prio],
 					ampdu_scb_stats.tx_bytes[prio],
 					ampdu_scb_stats.tx_pkts_total[prio],
-					ampdu_scb_stats.tx_bytes_total[prio]));
-				ac = prio2mufifo[prio];
-				score = pkts_num/100;
-				num_stas_ac[bw][ac]++;
-				ac_policy_scores[bw][ac] += score;
-				mu_scb->ac_policy_scores[ac] += score;
-			}
+					ampdu_scb_stats.tx_bytes_total[prio],
+					avg_mpdu_len));
 
+				ac = prio2mufifo[prio];
+				RAVG_ADD(&mu_scb->ravg_info[ac], avg_mpdu_len);
+				score = pkts_num/100;
+				mu_scb->ac_policy_scores[ac] += score;
+				if (is_mu_cap &&
+					(pkts_num >= MUTX_PKTRATE_ADMIT_THRESH) &&
+					(!mu_info->muclient_pfmon || (tx_tp_i->tp == VHTMU) ||
+					((tx_tp_i->tp == HEMMU) &&
+					(RAVG_AVG(&mu_scb->ravg_info[ac]) >
+					mu_info->mpdusz_mu_admit_thresh[bw])))) {
+					num_stas_ac[bw][ac]++;
+					ac_policy_scores[bw][ac] += score;
+				}
+			}
 		}
 		score = 0;
 		mutx_policy = tx_tp_i->mutx_policy;
@@ -1690,7 +1817,7 @@ wlc_mutx_ac_update(wlc_mutx_info_t *mu_info)
 		ac_policy_old = mutx_policy->effective_ac;
 		bw_policy = bw_policy_old;
 		ac_policy = MUTX_AC_NONE;
-		for (bw = BW_80MHZ; bw >= BW_20MHZ; bw--) {
+		for (bw = BW_80MHZ; (tx_tp_i->active) && (bw >= BW_20MHZ); bw--) {
 			for (ac = MUTX_AC_BEBK; ac <= MUTX_AC_VO; ac++) {
 				WL_INFORM(("wl%d: ac_policy_score[%d][%d][%d] = %u\n",
 					mu_info->pub->unit, tp_idx,
@@ -1715,8 +1842,8 @@ wlc_mutx_ac_update(wlc_mutx_info_t *mu_info)
 				ac_policy_old = ac_policy;
 			mutx_policy->effective_ac = ac_policy;
 		}
-		if ((bw_policy != bw_policy_old) ||
-			(mutx_policy->effective_ac != ac_policy_old)) {
+		if ((tx_tp_i->active) && ((bw_policy != bw_policy_old) ||
+			(mutx_policy->effective_ac != ac_policy_old))) {
 			for (bw = BW_80MHZ; bw >= BW_20MHZ; bw--) {
 				for (ac = MUTX_AC_BEBK; ac <= MUTX_AC_VO; ac++) {
 					if (ac_policy_scores[bw][ac]) {
@@ -1748,12 +1875,13 @@ wlc_mutx_ac_update(wlc_mutx_info_t *mu_info)
 				tx_tp_i->muclient_elect_pending = TRUE;
 			}
 		}
-		if ((mutx_policy->bw_policy == 0) || (mutx_policy->ac_policy == 0)) {
+		if ((tx_tp_i->active) &&
+			((mutx_policy->bw_policy == 0) || (mutx_policy->ac_policy == 0))) {
 			/* No suitable BW/AC combination, pick up the default bw */
 			wlc_mutx_bw_policy_update(mu_info, tp_idx, TRUE);
 		}
 
-		if (tx_tp_i->muclient_pfmon) {
+		if (mu_info->muclient_pfmon) {
 			wlc_muclient_pfmon(tx_tp_i);
 		}
 	}
@@ -1794,25 +1922,25 @@ static void
 wlc_ac_policy_scores_reset(wlc_mutx_info_t *mu_info)
 {
 	mutx_scb_t *mu_scb;
-	uint32 ac;
 	mutx_scb_list_t *pos, *next;
 	mutx_tp_t *tx_tp_i;
-	mutx_policy_t *mutx_policy;
 	int tp_idx;
+	wlc_info_t *wlc = mu_info->wlc;
+	BCM_REFERENCE(wlc);
 
 	/* Reset ac_policy_scores after scheduler. */
 	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
 		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
-		if (!tx_tp_i->active) {
+		if (((tx_tp_i->tp == VHTMU) && (!tx_tp_i->active)) ||
+			((tx_tp_i->tp == HEMMU) &&
+			(!HE_DLMU_ENAB(wlc->pub) && !tx_tp_i->active))) {
 			continue;
 		}
-		mutx_policy = tx_tp_i->mutx_policy;
-		ac = mutx_policy->ac_policy;
+
 		FOREACH_LIST_POS(pos, next, tx_tp_i->mu_cap_stas_list) {
 			mu_scb = (mutx_scb_t *)pos->data;
-			if (ac != MUTX_AC_NONE) {
-				mu_scb->ac_policy_scores[ac] = 0;
-			}
+			bzero(&mu_scb->ac_policy_scores, sizeof(mu_scb->ac_policy_scores));
+			RAVG_INIT(&mu_scb->ravg_info[0], 1024, 2);
 		}
 	}
 }
@@ -1846,6 +1974,7 @@ wlc_muclient_clear_pfmon_stats(mutx_tp_t *tx_tp_i, scb_t *scb)
 	wlc_mutx_info_t *mu_info = tx_tp_i->mu_info;
 	mu_scb = MUTX_SCB(mu_info, scb);
 
+	WL_MUTX(("%s+\n", __FUNCTION__));
 	if (mu_scb == NULL)
 		return;
 
@@ -1922,7 +2051,27 @@ wlc_muclients_pfmon_eval_primrate_succ(mutx_tp_t *tx_tp_i, scb_t *scb)
 	return evict;
 }
 
+void
+wlc_mutx_sounding_period_upd(wlc_mutx_info_t *mu_info, uint16 period)
+{
+	if (!mu_info) {
+		return;
+	}
+	mu_info->mu_snd_per_sec = (period ? (1000 / period) : 0);
+	WL_MUTX(("%s mu_snd_per_sec %u period %u\n", __FUNCTION__,
+	mu_info->mu_snd_per_sec, period));
+}
+
 #define MUTX_TXASMU_THRESH 30
+#define MUTX_TXASSU_THRESH 30
+
+static char* txassu_reason2str[C_M2SQ_REASON_MAX] = {
+	"none",
+	"vasip",
+	"snd_fail",
+	"retry_lmt"
+};
+
 static bool
 wlc_muclients_pfmon_eval_tx_as_mu(mutx_tp_t *tx_tp_i, scb_t *scb)
 {
@@ -1932,8 +2081,10 @@ wlc_muclients_pfmon_eval_tx_as_mu(mutx_tp_t *tx_tp_i, scb_t *scb)
 	musta_heurs_t *musta_heurs;
 	uint32 tot_tx = 0, tot_txmu = 0, tot_txsu = 0, txmu_score;
 	bool evict = FALSE;
-	int i;
-
+	int i, reason = 0;
+	uint32 txassu_reason = 0;
+	BCM_REFERENCE(reason);
+	BCM_REFERENCE(txassu_reason2str);
 	mu_info = tx_tp_i->mu_info;
 	mu_scb = MUTX_SCB(mu_info, scb);
 	musta_heurs = &mu_scb->musta_heurs;
@@ -1947,15 +2098,46 @@ wlc_muclients_pfmon_eval_tx_as_mu(mutx_tp_t *tx_tp_i, scb_t *scb)
 	if (tot_tx) {
 		txmu_score = (tot_txmu * 100) / tot_tx;
 		evict = (txmu_score < MUTX_TXASMU_THRESH) ? TRUE: FALSE;
-		WL_MUTX(("evict_client(%s):pfmon_tx_as_mu: "MACF""
-			" nsample %u\n tot_tx %u tx_as_mu %u tot_txsu %u"
-			" score(%u%%) %s thresh(30%%)\n", (evict ? "true" : "false"),
+		WL_MUTX(("evict_client(%s):pfmon_txasmu: "MACF""
+			" nsample %u\n tot_tx %u txasmu %u tot_txsu %u"
+			" score(%u%%) %s thresh(%u%%)\n", (evict ? "true" : "false"),
 			ETHER_TO_MACF(scb->ea), musta_heurs->counter3, tot_tx,
-			tot_txmu, tot_txsu, txmu_score, (evict ? "<" : ">")));
-		if (evict) {
-			mu_scb->policy_evict = MUTX_POLICY_EVICT_PFMON;
-			mu_scb->reason = MUTX_REASON_PFMON_TXSASMU_EVICT;
-
+			tot_txmu, tot_txsu, txmu_score, (evict ? "<" : ">"),
+			MUTX_TXASMU_THRESH));
+		if (!evict) {
+			return FALSE;
+		}
+		evict = FALSE;
+		for (i = C_M2SQ_NOT_IN_ANYGRP; i < C_M2SQ_REASON_MAX; i++) {
+				txassu_reason += pfmon_stats->txassu_reason[i];
+		}
+		if (txassu_reason) {
+			/* evict client if snd_fail_cnt or
+			 * txassu due to not in any group > 50%
+			 */
+			if (pfmon_stats->snd_fail_cnt >
+				(mu_info->mu_snd_per_sec * musta_heurs->counter3) / 2) {
+				evict = TRUE;
+				reason = C_M2SQ_SOUNDNG_FAIL;
+			} else if (pfmon_stats->txassu_reason[C_M2SQ_NOT_IN_ANYGRP] &&
+				(pfmon_stats->txassu_reason[C_M2SQ_NOT_IN_ANYGRP] >
+				(txassu_reason / 2))) {
+				evict = TRUE;
+				reason = C_M2SQ_NOT_IN_ANYGRP;
+			}
+			WL_MUTX(("evict_client(%s):pfmon_txassu_%s: "MACF""
+				" nsample %u\n reason: %u vasip %u snd_fail %u"
+				" retry_lmt %u snd_fail_cnt %u\n",
+				(evict ? "true" : "false"), txassu_reason2str[reason],
+				ETHER_TO_MACF(scb->ea), musta_heurs->counter3, txassu_reason,
+				pfmon_stats->txassu_reason[C_M2SQ_NOT_IN_ANYGRP],
+				pfmon_stats->txassu_reason[C_M2SQ_SOUNDNG_FAIL],
+				pfmon_stats->txassu_reason[C_M2SQ_RETRY_LMT_RCHD],
+				pfmon_stats->snd_fail_cnt));
+			if (evict) {
+				mu_scb->policy_evict = MUTX_POLICY_EVICT_PFMON;
+				mu_scb->reason = MUTX_REASON_PFMON_TXSASMU_EVICT;
+			}
 		}
 	}
 	return evict;
@@ -2018,8 +2200,9 @@ wlc_muclient_pfmon(mutx_tp_t *tx_tp_i)
 	scb_t *scb;
 	mutx_scb_t *mu_scb;
 	musta_heurs_t *musta_heurs;
-	bool evict;
+	bool evict = FALSE;
 	int i, evict_cnt = 0, ac;
+	uint link_bw;
 
 	if (!tx_tp_i->active) {
 		return;
@@ -2032,25 +2215,44 @@ wlc_muclient_pfmon(mutx_tp_t *tx_tp_i)
 		if (scb == NULL) {
 			continue;
 		}
+		evict = FALSE;
 		mu_scb = MUTX_SCB(mu_info, scb);
 		musta_heurs = &mu_scb->musta_heurs;
 		if ((ac == MUTX_AC_NONE) ||
 			(ac != MUTX_AC_NONE &&
 				mu_scb->ac_policy_scores[ac] == MUTX_AC_NONE)) {
 			wlc_muclient_clear_pfmon_stats(tx_tp_i, scb);
-			continue;
 		}
-		if (musta_heurs->counter3 < MUTX_STATS_MIN_NUPD) {
-			continue;
+
+		if (musta_heurs->counter3 >= MUTX_STATS_MIN_NUPD) {
+			evict = wlc_muclients_pfmon_eval_primrate_mcs(tx_tp_i, scb);
+			if (!evict) {
+				evict = wlc_muclients_pfmon_eval_primrate_succ(tx_tp_i, scb);
+			}
+			if (!evict) {
+				wlc_muclients_pfmon_eval_tx_as_mu(tx_tp_i, scb);
+			}
+			wlc_muclient_clear_pfmon_stats(tx_tp_i, scb);
 		}
-		evict = wlc_muclients_pfmon_eval_primrate_mcs(tx_tp_i, scb);
-		if (!evict) {
-			evict = wlc_muclients_pfmon_eval_primrate_succ(tx_tp_i, scb);
+
+		if (!evict && (tx_tp_i->tp == HEMMU)) {
+			link_bw = wlc_scb_ratesel_get_link_bw(mu_info->wlc, scb);
+			if (ac == MUTX_AC_NONE) {
+				ac = tx_tp_i->mutx_policy->effective_ac;
+			}
+			if ((ac != MUTX_AC_NONE) &&
+				(mu_scb->ac_policy_scores[ac] != MUTX_AC_NONE) &&
+				RAVG_AVG(&mu_scb->ravg_info[ac]) <=
+				mu_info->mpdusz_mu_admit_thresh[link_bw]) {
+				mu_scb->policy_evict = MUTX_POLICY_EVICT_PFMON;
+				mu_scb->reason = MUTX_REASON_PFMON_AVG_MPDU_SZ_EVICT;
+				WL_MUTX(("evict_client(true):pfmon_avg_mpdu_sz[%d]=%u"
+					" < threshold(%u)\n", ac,
+					RAVG_AVG(&mu_scb->ravg_info[ac]),
+					mu_info->mpdusz_mu_admit_thresh[link_bw]));
+				evict = TRUE;
+			}
 		}
-		if (!evict) {
-			wlc_muclients_pfmon_eval_tx_as_mu(tx_tp_i, scb);
-		}
-		wlc_muclient_clear_pfmon_stats(tx_tp_i, scb);
 		if (evict) {
 			evict_cnt++;
 		}
@@ -2143,7 +2345,8 @@ wlc_mutx_watchdog(void *mi)
 	mutx_tp_t *tx_tp_i;
 
 	if ((!(mu_info->_mu_tx[TP_TO_IDX(VHTMU)] ||
-		mu_info->_mu_tx[TP_TO_IDX(HEMMU)])) ||
+		mu_info->_mu_tx[TP_TO_IDX(HEMMU)] ||
+		HE_DLMU_ENAB(wlc->pub))) ||
 		(wlc->txfifo_detach_pending) ||
 		(wlc->excursion_active) ||
 	    SCAN_IN_PROGRESS(wlc->scan) ||
@@ -2222,13 +2425,12 @@ wlc_mutx_watchdog(void *mi)
 		mu_info->mutx_client_scheduler_cnt++;
 		if (mu_info->mutx_client_scheduler_cnt >= mu_info->mutx_client_scheduler_dur) {
 			wlc_ac_policy_scores_update(mu_info);
-			(void)wlc_mutx_client_scheduler(mu_info, FALSE);
+			(void)wlc_mutx_client_scheduler(mu_info, TRUE);
 			wlc_ac_policy_scores_reset(mu_info);
 			if (wlc->block_datafifo) {
 				return;
 			}
-		} else if (mu_info->mutx_tp_i[TP_TO_IDX(VHTMU)].muclient_pfmon ||
-				mu_info->mutx_tp_i[TP_TO_IDX(HEMMU)].muclient_pfmon) {
+		} else if (mu_info->muclient_pfmon) {
 				(void)wlc_mutx_client_scheduler(mu_info, FALSE);
 				if (wlc->block_datafifo) {
 					return;
@@ -2353,7 +2555,9 @@ wlc_mutx_up(void *mi)
 		tx_tp_i->max_muclients = wlc_txcfg_max_clients_get(wlc->txcfg, tx_tp_i->tp);
 		tx_tp_i->base_mucidx = 0;
 		if (tx_tp_i->tp == HEMMU) {
-			tx_tp_i->base_mucidx = wlc_txcfg_max_clients_get(wlc->txcfg, VHTMU);
+			// XXX: use the MAX value instead of per-corerev, muboost
+			//tx_tp_i->base_mucidx = wlc_txcfg_max_clients_get(wlc->txcfg, VHTMU);
+			tx_tp_i->base_mucidx = MUTX_HEMMU_MUCIDX_BASE;
 		}
 		WL_MUMIMO(("%s tp_idx %d max_muclients %d\n", __FUNCTION__, tx_tp_i->tp,
 			tx_tp_i->max_muclients));
@@ -2628,7 +2832,10 @@ mu_client_set_add(mutx_tp_t *tx_tp_i, scb_t *scb)
 	wlc_info_t *wlc = mu_info->wlc;
 	mutx_scb_t *mu_scb = MUTX_SCB(mu_info, scb);
 	uint16 i;
-	int err = BCME_OK;
+	int err = BCME_OK, fifo_avail_cnt;
+	uint ac = (tx_tp_i->mutx_policy->ac_policy != MUTX_AC_NONE) ?
+		tx_tp_i->mutx_policy->ac_policy : tx_tp_i->mutx_policy->effective_ac;
+	BCM_REFERENCE(fifo_avail_cnt);
 
 	if (!mu_scb) {
 		return BCME_BADARG;
@@ -2644,9 +2851,27 @@ mu_client_set_add(mutx_tp_t *tx_tp_i, scb_t *scb)
 		}
 		SCB_HEMMU_ENABLE(scb);
 		wlc_txbf_tbcap_update(wlc->txbf, scb);
+		if (mu_info->muclient_pfmon) {
+			fifo_avail_cnt = wlc_fifo_avail_count(wlc->fifo,
+				ac - 1, WL_MU_HEMMU);
+			WL_MUTX(("wl%d: STA "MACF" ac %d fifo_avail_cnt %d tx_type 2\n",
+				wlc->pub->unit, ETHER_TO_MACF(scb->ea), ac, fifo_avail_cnt));
+			ASSERT(ac != MUTX_AC_NONE);
+			(void)wlc_fifo_alloc(wlc->fifo, scb, WL_MU_HEMMU, (ac - 1));
+			ASSERT((wlc_fifo_isMU(wlc->fifo, scb, (ac - 1))));
+		}
 	} else if (SCB_VHT_CAP(scb)) {
 		mu_scb->mu_link_permit = TRUE;
 		wlc_txbf_link_upd(wlc->txbf, scb);
+		if (mu_info->muclient_pfmon) {
+			fifo_avail_cnt = wlc_fifo_avail_count(wlc->fifo,
+				ac - 1, WL_MU_VHTMU);
+			WL_MUTX(("wl%d: STA "MACF" ac %d fifo_avail_cnt %d tx_type 1\n",
+				wlc->pub->unit, ETHER_TO_MACF(scb->ea), ac, fifo_avail_cnt));
+			ASSERT(ac != MUTX_AC_NONE);
+			(void)wlc_fifo_alloc(wlc->fifo, scb, WL_MU_VHTMU, (ac - 1));
+			ASSERT((wlc_fifo_isMU(wlc->fifo, scb, (ac - 1))));
+		}
 	}
 
 	i = wlc_mutx_sta_mucidx_set(tx_tp_i, scb);
@@ -2714,7 +2939,7 @@ mu_client_set_add(mutx_tp_t *tx_tp_i, scb_t *scb)
 			 * bit[5:0]:   interrupt type;
 			 */
 		}
-		WL_ERROR(("wl%d: STA "MACF" selected as MU client at index %u tx type %d.\n",
+		WL_ERROR(("wl%d: STA "MACF" selected as MU client at index %u tx_type %d.\n",
 			mu_info->pub->unit, ETHER_TO_MACF(scb->ea), i, tx_tp_i->tp));
 	}
 	return err;
@@ -2878,6 +3103,28 @@ mu_client_set_new_sta(mutx_tp_t *tx_tp_i, scb_t *scb)
 	(void)mu_client_set_add(tx_tp_i, scb);
 }
 
+/* Returns the number of clients that will be evicted */
+static int
+mu_client_get_evictee_cnt(mutx_tp_t *tx_tp_i)
+{
+	scb_t *evictee;
+	mutx_scb_t *mu_scb_evict;
+	int i, evictee_cnt = 0;
+	wlc_mutx_info_t *mu_info = tx_tp_i->mu_info;
+
+	for (i = 0; i < tx_tp_i->max_muclients; i++) {
+		evictee = tx_tp_i->mu_clients[i];
+		if (evictee) {
+			mu_scb_evict = MUTX_SCB(mu_info, evictee);
+			ASSERT(mu_scb_evict != NULL);
+			ASSERT(mu_scb_evict->item != NULL);
+			if (mu_scb_evict->policy_evict) {
+				evictee_cnt++;
+			}
+		}
+	}
+	return evictee_cnt;
+}
 /* Select the MU-capable STAs that are not currently in the
  * MU client set.
  */
@@ -2885,26 +3132,38 @@ static void
 mu_candidates_select(wlc_mutx_info_t *mu_info,
 	int *vhtmu_cand_cnt,
 	int *hemmu_cand_cnt,
-	int *dlofdma_cand_cnt)
+	int *dlofdma_cand_cnt,
+	bool sched)
 {
 	mutx_tp_t *tx_tp_i;
 	scb_t *scb, *candidate;
 	mutx_scb_t *mu_scb;
 	mutx_scb_list_t *pos, *next;
 	int cnt = 0, i, ofdma_cnt = 0, tp_idx;
+	int evictee_cnt;
 	bool max_limit;
+	wlc_info_t *wlc = mu_info->wlc;
+
+	BCM_REFERENCE(wlc);
 
 	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
 		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
-		if (!tx_tp_i->active) {
+
+		if (((tx_tp_i->tp == VHTMU) && (!tx_tp_i->active)) ||
+			((tx_tp_i->tp == HEMMU) &&
+			(!HE_DLMU_ENAB(wlc->pub) && !tx_tp_i->active))) {
 			continue;
 		}
+
 		max_limit = mu_client_set_full(tx_tp_i);
+		evictee_cnt = mu_client_get_evictee_cnt(tx_tp_i);
+
 		FOREACH_LIST_POS(pos, next, tx_tp_i->mu_cap_stas_list) {
 			mu_scb = (mutx_scb_t *)pos->data;
 			scb = mu_scb->scb;
-			if ((!mu_scb) || (max_limit && (!mu_info->mutx_client_scheduler ||
-				mu_scb->score == 0)) || (mu_scb->on_hold_dur) ||
+			if (!tx_tp_i->active || (!mu_scb) || (max_limit && !evictee_cnt &&
+				(!sched || mu_scb->score == 0)) ||
+				(mu_scb->on_hold_dur) ||
 				(mu_scb->client_index != MU_CLIENT_INDEX_NONE)) {
 				continue;
 			}
@@ -2930,7 +3189,7 @@ mu_candidates_select(wlc_mutx_info_t *mu_info,
 				 * mixed bw MU Client.
 				 * Add policy mismatch MU Client to alternate_list.
 				 */
-				if (!tx_tp_i->client_samebw) {
+				if (!mu_info->client_samebw) {
 					mutx_scb_list_move(tx_tp_i->alternate_list, mu_scb->item);
 				}
 				cnt++;
@@ -2943,9 +3202,7 @@ mu_candidates_select(wlc_mutx_info_t *mu_info,
 			FOREACH_LIST_POS(pos, next, tx_tp_i->mu_cap_stas_list) {
 				mu_scb = (mutx_scb_t *)pos->data;
 				candidate = mu_scb->scb;
-				WL_MUMIMO(("%s: ofdma list\n", __FUNCTION__));
 				if (!SCB_HEMMU(candidate)) {
-					WL_MUMIMO((""MACF"\n", ETHER_TO_MACF(candidate->ea)));
 					ofdma_cnt++;
 				}
 			}
@@ -3004,6 +3261,305 @@ wlc_mutx_evict_or_admit_muclient(wlc_mutx_info_t *mu_info, scb_t *scb)
 }
 
 static void
+wlc_mutx_muclients_reclaim_txfifo(wlc_mutx_info_t *mu_info)
+{
+	mutx_tp_t *tx_tp_i;
+	wlc_info_t *wlc = mu_info->wlc;
+	mutx_scb_t *mu_scb;
+	mutx_scb_list_t *pos, *next;
+	scb_t *mu_client, *candidate, *evictee;
+	uint ac, i;
+	mu_type_t mu_type;
+	int fifo_avail_cnt, fifo_max_cnt;
+	int new_admit_cnt[MUTX_TP_MAX] = {0, 0};
+	int admitted_cnt[MUTX_TP_MAX] = {0, 0};
+	int scb_mufifo_cnt[MUTX_TP_MAX] = {0, 0};
+	int tp_idx;
+	int tot_fifo_avail_cnt;
+	uint16 evictees_bmp[MUTX_TP_MAX] = { 0, 0 };
+	uint16 client_idx = 0;
+
+	BCM_REFERENCE(new_admit_cnt);
+	BCM_REFERENCE(fifo_max_cnt);
+	BCM_REFERENCE(fifo_avail_cnt);
+
+	if (!mu_info->muclient_pfmon) {
+		return;
+	}
+
+	if (LIST_IS_EMPTY(mu_info->mutx_tp_i[TP_TO_IDX(VHTMU)].new_list) &&
+		LIST_IS_EMPTY(mu_info->mutx_tp_i[TP_TO_IDX(HEMMU)].new_list)) {
+		return;
+	}
+
+	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
+		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
+		mu_type = (tx_tp_i->tp == VHTMU) ? WL_MU_VHTMU : WL_MU_HEMMU;
+		if (!tx_tp_i->active || (LIST_IS_EMPTY(tx_tp_i->new_list) &&
+			!wlc_mu_fifo_count(wlc->fifo, mu_type))) {
+			continue;
+		}
+
+		ac = (tx_tp_i->mutx_policy->ac_policy != MUTX_AC_NONE) ?
+			tx_tp_i->mutx_policy->ac_policy : tx_tp_i->mutx_policy->effective_ac;
+			ASSERT(ac != MUTX_AC_NONE);
+		new_admit_cnt[tp_idx] = ITEMS_IN_LIST(tx_tp_i->new_list);
+
+		for (i = 0; i < tx_tp_i->max_muclients; i++) {
+			mu_client = tx_tp_i->mu_clients[i];
+			if (mu_client) {
+				admitted_cnt[tp_idx]++;
+				client_idx = wlc_mutx_sta_client_index(mu_info, mu_client);
+				evictees_bmp[tp_idx] |= (1 << client_idx);
+				/* Free all MU FIFOs allocated to this client */
+				wlc_fifo_free_all(wlc->fifo, mu_client);
+				(void)wlc_fifo_alloc(wlc->fifo, mu_client, mu_type, (ac - 1));
+				ASSERT((wlc_fifo_isMU(wlc->fifo, mu_client, (ac - 1))));
+				scb_mufifo_cnt[tp_idx] +=
+					wlc_scb_mu_fifo_count(wlc->fifo, mu_client);
+			}
+		}
+
+		if (tx_tp_i->tp == HEMMU) {
+			FOREACH_LIST_POS(pos, next, tx_tp_i->new_list) {
+				mu_scb = (mutx_scb_t *)pos->data;
+				candidate = mu_scb->scb;
+				if (candidate && SCB_DLOFDMA(candidate)) {
+					wlc_fifo_free_all(wlc->fifo, candidate);
+				}
+			}
+		}
+	}
+
+	tot_fifo_avail_cnt = wlc_fifo_dlmu_avail_count(wlc->fifo);
+	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
+		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
+		if (!tx_tp_i->active ||
+			LIST_IS_EMPTY(tx_tp_i->new_list)) {
+			continue;
+		}
+		ac = (tx_tp_i->mutx_policy->ac_policy != MUTX_AC_NONE) ?
+			tx_tp_i->mutx_policy->ac_policy : tx_tp_i->mutx_policy->effective_ac;
+		ASSERT(ac != MUTX_AC_NONE);
+		mu_type = (tx_tp_i->tp == VHTMU) ? WL_MU_VHTMU : WL_MU_HEMMU;
+		fifo_max_cnt = wlc_fifo_max_per_ac(wlc->fifo, mu_type);
+		fifo_avail_cnt = MIN(tot_fifo_avail_cnt, new_admit_cnt[tp_idx]);
+		fifo_avail_cnt = MIN(fifo_avail_cnt, fifo_max_cnt);
+		WL_MUTX(("%s+ tx_type %d ac_policy %d fifo_max_cnt %d tot_fifo_avail_cnt %d\n"
+			"fifo_alloc_cnt %d fifo_avail_cnt %d admitted_cnt %d new_admit_cnt %d\n",
+			__FUNCTION__, tx_tp_i->tp, ac, fifo_max_cnt,
+			tot_fifo_avail_cnt, scb_mufifo_cnt[tp_idx], fifo_avail_cnt,
+			admitted_cnt[tp_idx], new_admit_cnt[tp_idx]));
+
+		FOREACH_LIST_POS(pos, next, tx_tp_i->new_list) {
+			mu_scb = (mutx_scb_t *)pos->data;
+			candidate = mu_scb->scb;
+			if (new_admit_cnt[tp_idx] <= fifo_avail_cnt) {
+				break;
+			}
+			mutx_scb_list_move(tx_tp_i->mu_cap_stas_list, pos);
+			WL_MUTX(("prune candidate------->"MACF"\n",
+				ETHER_TO_MACF(candidate->ea)));
+			new_admit_cnt[tp_idx] = ITEMS_IN_LIST(tx_tp_i->new_list);
+		}
+		new_admit_cnt[tp_idx] = ITEMS_IN_LIST(tx_tp_i->new_list);
+
+		WL_MUTX(("%s- tx_type %d ac_policy %d fifo_max_cnt %d tot_fifo_avail_cnt %d\n"
+			"fifo_alloc_cnt %d fifo_avail_cnt %d admitted_cnt %d new_admit_cnt %d\n",
+			 __FUNCTION__, tx_tp_i->tp, ac, fifo_max_cnt,
+			tot_fifo_avail_cnt, scb_mufifo_cnt[tp_idx], fifo_avail_cnt,
+			admitted_cnt[tp_idx], new_admit_cnt[tp_idx]));
+
+		if ((new_admit_cnt[tp_idx] + admitted_cnt[tp_idx]) >= 2) {
+			if (new_admit_cnt[tp_idx]) {
+				tot_fifo_avail_cnt -= new_admit_cnt[tp_idx];
+			}
+		} else {
+			FOREACH_LIST_POS(pos, next, tx_tp_i->new_list) {
+				mu_scb = (mutx_scb_t *)pos->data;
+				candidate = mu_scb->scb;
+				mutx_scb_list_move(tx_tp_i->mu_cap_stas_list, pos);
+				WL_MUTX(("prune candidate------->"MACF"\n",
+					ETHER_TO_MACF(candidate->ea)));
+			}
+			for (i = 0; ((evictees_bmp[tp_idx]) &&
+				(i < tx_tp_i->max_muclients));
+				i++, evictees_bmp[tp_idx] >>= 1) {
+				evictee = tx_tp_i->mu_clients[i];
+				if ((evictees_bmp[tp_idx] & 1U) && evictee) {
+					WL_MUTX((" %s evict------->"MACF"\n", __FUNCTION__,
+						ETHER_TO_MACF(evictee->ea)));
+					mu_client_set_remove(tx_tp_i, evictee);
+				}
+			}
+		}
+	}
+}
+
+static void
+wlc_mutx_admit_prune_new_users(wlc_mutx_info_t *mu_info)
+{
+	mutx_tp_t *tx_tp_i;
+	wlc_info_t *wlc = mu_info->wlc;
+	mutx_scb_t *mu_scb;
+	mutx_scb_list_t *pos, *next;
+	scb_t *mu_client, *candidate, *evictee;
+	uint ac, i, ac_2;
+	mu_type_t mu_type;
+	int admitted_cnt[MUTX_TP_MAX] = {0, 0};
+	int new_admit_cnt[MUTX_TP_MAX];
+	int fifo_avail_cnt, evictee_cnt[MUTX_TP_MAX];
+	int fifo_max_cnt;
+	int scb_mufifo_cnt[MUTX_TP_MAX] = { 0, 0};
+	int tot_fifo_avail_cnt = 0;
+	int tp_idx;
+	uint16 evictees_bmp[MUTX_TP_MAX] = { 0, 0 };
+	uint16 client_idx = 0;
+	BCM_REFERENCE(candidate);
+	BCM_REFERENCE(evictee_cnt);
+	BCM_REFERENCE(ac);
+
+	if (!mu_info->muclient_pfmon) {
+		return;
+	}
+
+	if (LIST_IS_EMPTY(mu_info->mutx_tp_i[TP_TO_IDX(VHTMU)].new_list) &&
+		LIST_IS_EMPTY(mu_info->mutx_tp_i[TP_TO_IDX(HEMMU)].new_list)) {
+		return;
+	}
+
+	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
+		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
+		mu_type = (tx_tp_i->tp == VHTMU) ? WL_MU_VHTMU : WL_MU_HEMMU;
+		if (!tx_tp_i->active || (LIST_IS_EMPTY(tx_tp_i->new_list) &&
+			!wlc_mu_fifo_count(wlc->fifo, mu_type))) {
+			continue;
+		}
+		ac = (tx_tp_i->mutx_policy->ac_policy != MUTX_AC_NONE) ?
+			tx_tp_i->mutx_policy->ac_policy : tx_tp_i->mutx_policy->effective_ac;
+		ASSERT(ac != MUTX_AC_NONE);
+		new_admit_cnt[tp_idx] = ITEMS_IN_LIST(tx_tp_i->new_list);
+		evictee_cnt[tp_idx] = ITEMS_IN_LIST(tx_tp_i->evictee_list);
+
+		FOREACH_LIST_POS(pos, next, tx_tp_i->evictee_list) {
+			mu_scb = (mutx_scb_t *)pos->data;
+			evictee = mu_scb->scb;
+			if (evictee) {
+				scb_mufifo_cnt[tp_idx] += wlc_scb_mu_fifo_count(wlc->fifo, evictee);
+				tot_fifo_avail_cnt += wlc_scb_mu_fifo_count(wlc->fifo, evictee);
+			}
+		}
+
+		for (i = 0; i < tx_tp_i->max_muclients; i++) {
+			mu_client = tx_tp_i->mu_clients[i];
+			if (mu_client) {
+				mu_scb = MUTX_SCB(mu_info, mu_client);
+				if (!mu_scb->policy_evict) {
+					admitted_cnt[tp_idx]++;
+					client_idx = wlc_mutx_sta_client_index(mu_info, mu_client);
+					evictees_bmp[tp_idx] |= (1 << client_idx);
+					scb_mufifo_cnt[tp_idx] +=
+						wlc_scb_mu_fifo_count(wlc->fifo, mu_client);
+					tot_fifo_avail_cnt +=
+						wlc_scb_mu_fifo_count(wlc->fifo, mu_client);
+				}
+			}
+		}
+
+		if (tx_tp_i->tp == HEMMU) {
+			FOREACH_LIST_POS(pos, next, tx_tp_i->new_list) {
+				mu_scb = (mutx_scb_t *)pos->data;
+				candidate = mu_scb->scb;
+				if (candidate && SCB_DLOFDMA(candidate)) {
+					for (ac_2 = 0; ac_2 < AC_COUNT; ac_2++) {
+						if (wlc_fifo_isMU(wlc->fifo, candidate, ac_2) &&
+							(wlc_fifo_user_count(wlc->fifo,
+								candidate, ac_2) == 1)) {
+							tot_fifo_avail_cnt++;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	tot_fifo_avail_cnt -= admitted_cnt[TP_TO_IDX(VHTMU)];
+	tot_fifo_avail_cnt -= admitted_cnt[TP_TO_IDX(HEMMU)];
+	tot_fifo_avail_cnt += wlc_fifo_dlmu_avail_count(wlc->fifo);
+	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
+		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
+		if (!tx_tp_i->active ||
+			LIST_IS_EMPTY(tx_tp_i->new_list)) {
+			continue;
+		}
+
+		ac = (tx_tp_i->mutx_policy->ac_policy != MUTX_AC_NONE) ?
+			tx_tp_i->mutx_policy->ac_policy : tx_tp_i->mutx_policy->effective_ac;
+		ASSERT(ac != MUTX_AC_NONE);
+		mu_type = (tx_tp_i->tp == VHTMU) ? WL_MU_VHTMU : WL_MU_HEMMU;
+		fifo_max_cnt = wlc_fifo_max_per_ac(wlc->fifo, mu_type);
+		fifo_avail_cnt = MIN(tot_fifo_avail_cnt, new_admit_cnt[tp_idx]);
+		fifo_avail_cnt = MIN(fifo_avail_cnt, fifo_max_cnt);
+		WL_MUTX(("%s+ tx_type %d ac_policy %d fifo_max_cnt %d tot_fifo_avail_cnt %d\n"
+			"fifo_alloc_cnt %d fifo_avail_cnt %d admitted_cnt %d new_admit_cnt %d "
+			"evictee_cnt %d\n", __FUNCTION__, tx_tp_i->tp, ac, fifo_max_cnt,
+			tot_fifo_avail_cnt, scb_mufifo_cnt[tp_idx], fifo_avail_cnt,
+			admitted_cnt[tp_idx], new_admit_cnt[tp_idx], evictee_cnt[tp_idx]));
+
+		if ((fifo_avail_cnt != 0) &&
+			((fifo_avail_cnt + admitted_cnt[tp_idx]) >= 2)) {
+			WL_MUTX(("%s- tx_type %d ac_policy %d fifo_max_cnt %d "
+				"tot_fifo_avail_cnt %d\nfifo_alloc_cnt %d fifo_avail_cnt %d "
+				"admitted_cnt %d new_admit_cnt %d evictee_cnt %d\n", __FUNCTION__,
+				tx_tp_i->tp, ac, fifo_max_cnt, tot_fifo_avail_cnt,
+				scb_mufifo_cnt[tp_idx], fifo_avail_cnt, admitted_cnt[tp_idx],
+				new_admit_cnt[tp_idx], evictee_cnt[tp_idx]));
+				continue;
+		}
+		FOREACH_LIST_POS(pos, next, tx_tp_i->new_list) {
+			mu_scb = (mutx_scb_t *)pos->data;
+			candidate = mu_scb->scb;
+			if (new_admit_cnt[tp_idx] <= fifo_avail_cnt) {
+				break;
+			}
+			mutx_scb_list_move(tx_tp_i->mu_cap_stas_list, pos);
+			WL_MUTX(("prune candidate------->"MACF" fifo-%d allocation"
+				" failure\n", ETHER_TO_MACF(candidate->ea), ac));
+			new_admit_cnt[tp_idx] = ITEMS_IN_LIST(tx_tp_i->new_list);
+		}
+		new_admit_cnt[tp_idx] = ITEMS_IN_LIST(tx_tp_i->new_list);
+		WL_MUTX(("%s- tx_type %d ac_policy %d fifo_max_cnt %d tot_fifo_avail_cnt %d\n"
+			"fifo_alloc_cnt %d fifo_avail_cnt %d admitted_cnt %d new_admit_cnt %d "
+			"evictee_cnt %d\n", __FUNCTION__, tx_tp_i->tp, ac, fifo_max_cnt,
+			tot_fifo_avail_cnt, scb_mufifo_cnt[tp_idx], fifo_avail_cnt,
+			admitted_cnt[tp_idx], new_admit_cnt[tp_idx], evictee_cnt[tp_idx]));
+
+		if ((new_admit_cnt[tp_idx] + admitted_cnt[tp_idx]) >= 2) {
+
+		} else {
+			FOREACH_LIST_POS(pos, next, tx_tp_i->new_list) {
+				mu_scb = (mutx_scb_t *)pos->data;
+				candidate = mu_scb->scb;
+				mutx_scb_list_move(tx_tp_i->mu_cap_stas_list, pos);
+				WL_MUTX(("prune candidate------->"MACF"\n",
+					ETHER_TO_MACF(candidate->ea)));
+			}
+			for (i = 0; ((evictees_bmp[tp_idx]) &&
+				(i < tx_tp_i->max_muclients));
+				i++, evictees_bmp[tp_idx] >>= 1) {
+				evictee = tx_tp_i->mu_clients[i];
+				if ((evictees_bmp[tp_idx] & 1U) && evictee) {
+					WL_MUTX((" %s evict------->"MACF"\n", __FUNCTION__,
+						ETHER_TO_MACF(evictee->ea)));
+					mu_scb = MUTX_SCB(mu_info, evictee);
+					mutx_scb_list_move(tx_tp_i->evictee_list, mu_scb->item);
+				}
+			}
+		}
+	}
+}
+
+static void
 wlc_mutx_eval_ofdma_admission(mutx_tp_t *tx_tp_i)
 {
 	scb_t *scb;
@@ -3012,11 +3568,19 @@ wlc_mutx_eval_ofdma_admission(mutx_tp_t *tx_tp_i)
 	uint16 dlofdma_admit_cnt = 0, dlofdma_cand_cnt = 0;
 	uint16 max_dlofdma_users, min_dlofdma_users;
 	uint8 min_bw, max_bw, link_bw;
-	wlc_info_t *wlc = tx_tp_i->mu_info->wlc;
-	bool allow_bw160 = FALSE;
+	wlc_mutx_info_t *mu_info = tx_tp_i->mu_info;
+	wlc_info_t *wlc = mu_info->wlc;
+	bool allow_bw160 = FALSE, is_dlofdma_eligible;
+	uint32 rspec, mcs, avg_mpdusz_thresh[MUTX_AC_VO+1], ac;
+	int tx_type;
 
 	ASSERT(tx_tp_i->tp == HEMMU);
-	if (!tx_tp_i->active) {
+	if (!HE_DLMU_ENAB(wlc->pub)) {
+		return;
+	}
+
+	if (!(mu_info->mutx_client_scheduler ||
+			tx_tp_i->muclient_elect_pending)) {
 		return;
 	}
 
@@ -3038,25 +3602,61 @@ wlc_mutx_eval_ofdma_admission(mutx_tp_t *tx_tp_i)
 			continue;
 		}
 
-		if ((min_dlofdma_users == 0) || SCB_HEMMU(scb) || SCB_DLOFDMA(scb)) {
-			if (SCB_HEMMU(scb)) {
-				continue;
-			}
-			if (SCB_DLOFDMA(scb)) {
-				dlofdma_admit_cnt++;
-				if (min_dlofdma_users == 0) {
-					mutx_scb_list_move(tx_tp_i->admit_ofdma_list, pos);
-				}
-			}
+		if (SCB_HEMMU(scb)) {
 			continue;
 		}
-		mutx_scb_list_move(tx_tp_i->candidate_ofdma_list, pos);
-		dlofdma_cand_cnt++;
-		ASSERT((dlofdma_cand_cnt + dlofdma_admit_cnt) <= max_dlofdma_users);
-	}
+		for (ac = MUTX_AC_BEBK; (mu_info->muclient_pfmon &&
+				(ac < (MUTX_AC_VO + 1))); ac++) {
+			if (mu_scb->ac_policy_scores[ac] == MUTX_AC_NONE) {
+				continue;
+			}
+			avg_mpdusz_thresh[ac] = mu_info->mpdusz_dlofdma_admit_thresh[link_bw];
+			WL_MUTX(("wl%d: "MACF" tx_type %d ac %u score = %u "
+				"avg_mpdu_sz %u avg_mpdusz_thresh %d\n",
+				mu_info->pub->unit, ETHER_TO_MACF(scb->ea),
+				HEMMU, ac, mu_scb->ac_policy_scores[ac],
+				RAVG_AVG(&mu_scb->ravg_info[ac]), avg_mpdusz_thresh[ac]));
+		}
 
-	if (min_dlofdma_users == 0) {
-		return;
+		rspec = wlc_scb_ratesel_get_primary(wlc, scb, NULL);
+		mcs = wlc_ratespec_mcs(rspec);
+		WL_MUTX(("isdlofdma ? %s link_bw %d mcs %d\n",
+			SCB_DLOFDMA(scb) ? "TRUE" : "FALSE", link_bw, mcs));
+
+		tx_type = DLOFDMA;
+		if (mu_info->muclient_pfmon &&
+			!CHSPEC_IS160(wlc->chanspec) &&
+			(mcs >= MUTX_SU_MCS_THRESH)) {
+			if (((mu_scb->ac_policy_scores[MUTX_AC_BEBK] != MUTX_AC_NONE) &&
+				(RAVG_AVG(&mu_scb->ravg_info[MUTX_AC_BEBK]) >=
+					avg_mpdusz_thresh[MUTX_AC_BEBK])) ||
+				((mu_scb->ac_policy_scores[MUTX_AC_VI] != MUTX_AC_NONE) &&
+				(RAVG_AVG(&mu_scb->ravg_info[MUTX_AC_VI]) >=
+					(avg_mpdusz_thresh[MUTX_AC_VI]))) ||
+				((mu_scb->ac_policy_scores[MUTX_AC_VO] != MUTX_AC_NONE) &&
+				(RAVG_AVG(&mu_scb->ravg_info[MUTX_AC_VO]) >=
+					(avg_mpdusz_thresh[MUTX_AC_VO])))) {
+				tx_type = SU;
+			}
+		}
+		is_dlofdma_eligible = wlc_musched_scb_isdlofdma_eligible(wlc->musched, scb);
+		if (SCB_DLOFDMA(scb) && ((tx_type != DLOFDMA) ||
+			(!is_dlofdma_eligible))) {
+			WL_MUTX(("switch from DLOFDMA => SU\n"));
+			dlofdma_admit_cnt++;
+			mutx_scb_list_move(tx_tp_i->admit_ofdma_list, pos);
+		} else if (!SCB_DLOFDMA(scb) && !SCB_IS_UNUSABLE(scb) &&
+			is_dlofdma_eligible && (tx_type == DLOFDMA)) {
+			WL_MUTX(("switch from SU => DLOFDMA\n"));
+			mutx_scb_list_move(tx_tp_i->candidate_ofdma_list, pos);
+			dlofdma_cand_cnt++;
+		} else {
+			if (SCB_DLOFDMA(scb)) {
+				dlofdma_admit_cnt++;
+			}
+			WL_MUTX(("no switch\n"));
+		}
+		ASSERT((dlofdma_cand_cnt + dlofdma_admit_cnt) <= max_dlofdma_users);
 	}
 
 	if ((dlofdma_cand_cnt + dlofdma_admit_cnt) >= min_dlofdma_users) {
@@ -3076,6 +3676,15 @@ wlc_mutx_eval_ofdma_admission(mutx_tp_t *tx_tp_i)
 			WL_MUMIMO(("%s eviction list dlofdma_admit_cnt(%d) < "
 				"min_dlofdma_users(%d)\n",
 				__FUNCTION__, dlofdma_admit_cnt, min_dlofdma_users));
+			FOREACH_LIST_POS(pos, next, tx_tp_i->admit_ofdma_list) {
+				mu_scb = (mutx_scb_t *)pos->data;
+				scb = mu_scb->scb;
+				WL_MUMIMO((""MACF"\n", ETHER_TO_MACF(scb->ea)));
+				if (SCB_DLOFDMA(scb)) {
+					dlofdma_admit_cnt--;
+				}
+			}
+
 			FOREACH_LIST_POS(pos, next, tx_tp_i->mu_cap_stas_list) {
 				mu_scb = (mutx_scb_t *)pos->data;
 				scb = mu_scb->scb;
@@ -3085,6 +3694,7 @@ wlc_mutx_eval_ofdma_admission(mutx_tp_t *tx_tp_i)
 					dlofdma_admit_cnt--;
 				}
 			}
+
 			ASSERT(dlofdma_admit_cnt == 0);
 		}
 		if (dlofdma_cand_cnt) {
@@ -3114,7 +3724,7 @@ wlc_mutx_admit_dlofdma_clients(mutx_tp_t *tx_tp_i)
 	mutx_scb_list_t *pos, *next;
 	bool ofdma_on;
 
-	if (!(tx_tp_i->active) ||
+	if (!HE_DLMU_ENAB(wlc->pub) ||
 		(tx_tp_i->tp != HEMMU)) {
 		return;
 	}
@@ -3148,7 +3758,7 @@ wlc_mutx_upd_min_dlofdma_users(wlc_mutx_info_t *mu_info)
 {
 	mutx_tp_t *tx_tp_i;
 	tx_tp_i = &mu_info->mutx_tp_i[TP_TO_IDX(HEMMU)];
-	if (!tx_tp_i->active) {
+	if (!HE_DLMU_ENAB(mu_info->wlc->pub)) {
 		return;
 	}
 	tx_tp_i->muclient_elect_pending = TRUE;
@@ -3166,6 +3776,10 @@ wlc_musta_upd_heurs(mutx_tp_t * tx_tp_i, scb_t *scb,
 	mu_info = tx_tp_i->mu_info;
 	mu_scb = MUTX_SCB(mu_info, scb);
 	musta_heurs = &mu_scb->musta_heurs;
+
+	if (!mu_info->muclient_pfmon || !tx_tp_i->active) {
+		return;
+	}
 
 	switch (reason)
 	{
@@ -3223,6 +3837,12 @@ wlc_musta_upd_heurs(mutx_tp_t * tx_tp_i, scb_t *scb,
 				mu_scb->ac_policy_scores[ac] == MUTX_AC_NONE)) {
 				wlc_muclient_clear_pfmon_stats(tx_tp_i, scb);
 			}
+			WL_MUTX(("%s admit------->"MACF" counter0 %u counter1 %u"
+				" counter2 %u counter3 %u\n", __FUNCTION__,
+				ETHER_TO_MACF(scb->ea), musta_heurs->counter0,
+				musta_heurs->counter1, musta_heurs->counter2,
+				musta_heurs->counter3));
+
 			break;
 		}
 		case HEURS_SU_DEC:
@@ -3233,6 +3853,12 @@ wlc_musta_upd_heurs(mutx_tp_t * tx_tp_i, scb_t *scb,
 				bzero(&mu_scb->ac_policy_scores,
 					sizeof(mu_scb->ac_policy_scores));
 			}
+			WL_MUTX(("%s dec------->"MACF" counter0 %u counter1 %u"
+				" counter2 %u counter3 %u\n", __FUNCTION__,
+				ETHER_TO_MACF(scb->ea), musta_heurs->counter0,
+				musta_heurs->counter1, musta_heurs->counter2,
+				musta_heurs->counter3));
+
 			break;
 		}
 		default:
@@ -3251,19 +3877,20 @@ wlc_mutx_admit_clients(wlc_mutx_info_t *mu_info)
 	scb_t *candidate, *evictee;
 	mutx_scb_t *mu_scb;
 	mutx_scb_list_t *pos, *next;
-	uint16 muclients_bmp = 0, evictees_bmp = 0, client_idx = 0;
+	uint16 muclients_bmp[MUTX_TP_MAX] = { 0, 0 };
+	uint16 evictees_bmp[MUTX_TP_MAX] = { 0, 0 };
+	uint16 client_idx = 0;
 	int i, tp_idx = 0;
 #ifdef BCMDBG
 	uint8 mu_type = 0;
-#endif // endif
-
-#ifdef BCMDBG
 	WL_MUMIMO(("%s+ TXPKTPENDTOT %d\n", __FUNCTION__, (TXPKTPENDTOT(wlc))));
 	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
 		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
-		if (!tx_tp_i->active) {
+		if (((tx_tp_i->tp == VHTMU) && (!tx_tp_i->active)) ||
+			((tx_tp_i->tp == HEMMU) && (!HE_DLMU_ENAB(wlc->pub) && !tx_tp_i->active))) {
 			continue;
 		}
+
 		WL_MUMIMO(("%s+: mu_admit_list mu_type %s\n", __FUNCTION__,
 			(tx_tp_i->tp == VHTMU ? "VHTMU" : "HEMMU")));
 		FOREACH_LIST_POS(pos, next, tx_tp_i->admit_list) {
@@ -3285,10 +3912,9 @@ wlc_mutx_admit_clients(wlc_mutx_info_t *mu_info)
 
 	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
 		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
-		if (!tx_tp_i->active) {
+		if (!tx_tp_i->active || LIST_IS_EMPTY(tx_tp_i->admit_list)) {
 			continue;
 		}
-
 		if (ITEMS_IN_LIST(tx_tp_i->admit_list) < 2) {
 			FOREACH_LIST_POS(pos, next, tx_tp_i->admit_list) {
 				mu_scb = (mutx_scb_t *)pos->data;
@@ -3300,13 +3926,8 @@ wlc_mutx_admit_clients(wlc_mutx_info_t *mu_info)
 					mutx_scb_list_move(tx_tp_i->mu_cap_stas_list, pos);
 				}
 			}
-
-			if (LIST_IS_EMPTY(tx_tp_i->admit_list)) {
-				continue;
-			}
 		}
-
-		muclients_bmp = 0;
+		muclients_bmp[tp_idx] = 0;
 		client_idx = 0;
 		FOREACH_LIST_POS(pos, next, tx_tp_i->admit_list) {
 			mu_scb = (mutx_scb_t *)pos->data;
@@ -3315,7 +3936,7 @@ wlc_mutx_admit_clients(wlc_mutx_info_t *mu_info)
 			if (mu_in_client_set(tx_tp_i, candidate)) {
 				if	(mu_scb->policy_evict == MUTX_POLICY_EVICT_NONE) {
 					client_idx = wlc_mutx_sta_client_index(mu_info, candidate);
-					muclients_bmp |= (1 << client_idx);
+					muclients_bmp[tp_idx] |= (1 << client_idx);
 					wlc_musta_upd_heurs(tx_tp_i, candidate,
 						HEURS_MU_ADMIT_INC);
 				}
@@ -3323,49 +3944,81 @@ wlc_mutx_admit_clients(wlc_mutx_info_t *mu_info)
 			} else {
 				/* new list: new clients which will be admitted */
 				mutx_scb_list_move(tx_tp_i->new_list, pos);
-				mu_info->block_datafifo = TRUE;
 			}
 		}
 
-		evictees_bmp = ~muclients_bmp & NBITMASK(tx_tp_i->max_muclients);
+		evictees_bmp[tp_idx] = ~muclients_bmp[tp_idx] & NBITMASK(tx_tp_i->max_muclients);
 		/* eviction list: clients which will be evicted */
-		for (i = 0; ((evictees_bmp) &&
+		for (i = 0; ((evictees_bmp[tp_idx]) &&
 			(i < tx_tp_i->max_muclients));
-			i++, evictees_bmp >>= 1) {
+			i++, evictees_bmp[tp_idx] >>= 1) {
 			evictee = tx_tp_i->mu_clients[i];
-			if ((evictees_bmp & 1U) && evictee) {
+			if ((evictees_bmp[tp_idx] & 1U) && evictee) {
 				mu_scb = MUTX_SCB(mu_info, evictee);
 				mutx_scb_list_move(tx_tp_i->evictee_list, mu_scb->item);
-				mu_info->block_datafifo = TRUE;
 			}
 		}
 	}
 
+	if (!wlc->block_datafifo) {
+		wlc_mutx_admit_prune_new_users(mu_info);
+	}
+	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
+		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
+		if (!tx_tp_i->active) {
+			continue;
+		}
+		if (LIST_IS_EMPTY(tx_tp_i->new_list) &&
+			evictees_bmp[tp_idx] && muclients_bmp[tp_idx] &&
+				!(muclients_bmp[tp_idx] & (muclients_bmp[tp_idx] - 1))) {
+			ASSERT(muclients_bmp[tp_idx] == (1 << client_idx));
+			evictee = tx_tp_i->mu_clients[client_idx];
+			mu_scb = MUTX_SCB(mu_info, evictee);
+			mutx_scb_list_move(tx_tp_i->evictee_list, mu_scb->item);
+		}
+	}
+
 	/* block data fifo only if needed */
-	if (mu_info->block_datafifo) {
-		if (TXPKTPENDTOT(wlc)) {
+	if (TXPKTPENDTOT(wlc)) {
+		mu_info->block_datafifo = FALSE;
+		for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
+			tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
+			if (!tx_tp_i->active || (LIST_IS_EMPTY(tx_tp_i->evictee_list) &&
+				LIST_IS_EMPTY(tx_tp_i->new_list))) {
+				continue;
+			}
 			/* rentry through wlc_mutx_txfifo_complete */
 			wlc_block_datafifo(wlc, DATA_BLOCK_MUTX, DATA_BLOCK_MUTX);
 			WL_MUMIMO(("wl%d: %s:  block data fifo %d\n", wlc->pub->unit, __FUNCTION__,
 				(wlc->block_datafifo & DATA_BLOCK_MUTX) != 0));
+			mu_info->block_datafifo = TRUE;
 			return;
 		}
 	}
 
 	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
 		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
-		if (!tx_tp_i->active || (LIST_IS_EMPTY(tx_tp_i->evictee_list) &&
-			LIST_IS_EMPTY(tx_tp_i->new_list))) {
+		if (!tx_tp_i->active ||
+			LIST_IS_EMPTY(tx_tp_i->evictee_list)) {
 			continue;
 		}
 		/* evict clients from current mu client set */
 		FOREACH_LIST_POS(pos, next, tx_tp_i->evictee_list) {
 			mu_scb = (mutx_scb_t *)pos->data;
 			evictee = mu_scb->scb;
-			WL_MUMIMO(("evict------->"MACF"\n", ETHER_TO_MACF(evictee->ea)));
+			WL_MUTX(("evict------->"MACF"\n", ETHER_TO_MACF(evictee->ea)));
 			mutx_scb_list_move(tx_tp_i->mu_cap_stas_list, pos);
 			ASSERT(TXPKTPENDTOT(wlc) == 0);
 			mu_client_set_remove(tx_tp_i, evictee);
+		}
+	}
+
+	wlc_mutx_muclients_reclaim_txfifo(mu_info);
+	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
+		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
+		if (!tx_tp_i->active ||
+			LIST_IS_EMPTY(tx_tp_i->new_list)) {
+			continue;
 		}
 
 		/* newly admitted clients */
@@ -3373,7 +4026,7 @@ wlc_mutx_admit_clients(wlc_mutx_info_t *mu_info)
 			mu_scb = (mutx_scb_t *)pos->data;
 			candidate = mu_scb->scb;
 			mutx_scb_list_move(tx_tp_i->mu_cap_stas_list, pos);
-			WL_MUMIMO(("admit------->"MACF"\n", ETHER_TO_MACF(candidate->ea)));
+			WL_MUTX(("admit------->"MACF"\n", ETHER_TO_MACF(candidate->ea)));
 			ASSERT(!mu_in_client_set(tx_tp_i, candidate));
 			ASSERT(TXPKTPENDTOT(wlc) == 0);
 			mu_sta_mu_enable(tx_tp_i, candidate);
@@ -3383,7 +4036,7 @@ wlc_mutx_admit_clients(wlc_mutx_info_t *mu_info)
 
 	/* Evalute dlofdma admission */
 	tx_tp_i = &mu_info->mutx_tp_i[TP_TO_IDX(HEMMU)];
-	if (tx_tp_i->active) {
+	if (HE_DLMU_ENAB(wlc->pub)) {
 		if (LIST_IS_EMPTY(tx_tp_i->admit_ofdma_list)) {
 			wlc_mutx_eval_ofdma_admission(tx_tp_i);
 		}
@@ -3405,7 +4058,8 @@ wlc_mutx_admit_clients(wlc_mutx_info_t *mu_info)
 #ifdef BCMDBG
 	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
 		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
-		if (!tx_tp_i->active) {
+		if (((tx_tp_i->tp == VHTMU) && (!tx_tp_i->active)) ||
+			((tx_tp_i->tp == HEMMU) && (!HE_DLMU_ENAB(wlc->pub) && !tx_tp_i->active))) {
 			continue;
 		}
 
@@ -3444,7 +4098,7 @@ wlc_mutx_admit_clients(wlc_mutx_info_t *mu_info)
 }
 
 static void
-mu_clients_eviction(wlc_mutx_info_t *mu_info)
+mu_clients_eviction(wlc_mutx_info_t *mu_info, bool sched)
 {
 	wlc_info_t *wlc = mu_info->wlc;
 	scb_t *candidate, *evictee;
@@ -3502,6 +4156,9 @@ mu_clients_eviction(wlc_mutx_info_t *mu_info)
 				mutx_scb_list_move(tx_tp_i->admit_list, cand_entry);
 				mu_scb->reason = MUTX_REASON_NEW_ADMIT;
 				nclients++;
+				if (!sched && (nclients == tx_tp_i->max_muclients)) {
+					break;
+				}
 			} else {
 				evict_entry = mutx_scb_list_min(tx_tp_i->evictee_list);
 				if (evict_entry == NULL) {
@@ -3556,13 +4213,6 @@ mu_clients_eviction(wlc_mutx_info_t *mu_info)
 		}
 		FOREACH_LIST_POS(pos, next, tx_tp_i->alternate_list) {
 			mutx_scb_list_move(tx_tp_i->mu_cap_stas_list, pos);
-		}
-
-		if ((tx_tp_i->tp == HEMMU) && LIST_IS_EMPTY(tx_tp_i->admit_list)) {
-			wlc_mutx_eval_ofdma_admission(tx_tp_i);
-			if (LIST_IS_EMPTY(tx_tp_i->admit_ofdma_list)) {
-				tx_tp_i->muclient_elect_pending = FALSE;
-			}
 		}
 
 		FOREACH_LIST_POS(pos, next, tx_tp_i->evictee_list) {
@@ -3652,8 +4302,9 @@ mu_sta_mu_ready(mutx_tp_t *tx_tp_i, scb_t *scb, bool strict_check)
 
 	ASSERT((tx_tp_i->tp == VHTMU) || (tx_tp_i->tp == HEMMU));
 	mutx_policy = tx_tp_i->mutx_policy;
+	link_bw = wlc_scb_ratesel_get_link_bw(mu_info->wlc, scb);
 	/* Check traffic loads */
-	if (!wlc_mutx_sta_ac_check(tx_tp_i, scb)) {
+	if (mu_info->muclient_pfmon && !wlc_mutx_sta_ac_check(tx_tp_i, scb, link_bw)) {
 		WL_MUTX(("%s "MACF" traffic load != ac_policy\n",
 			__FUNCTION__, ETHER_TO_MACF(scb->ea)));
 		return FALSE;
@@ -3661,16 +4312,15 @@ mu_sta_mu_ready(mutx_tp_t *tx_tp_i, scb_t *scb, bool strict_check)
 
 	/* Check BW policy */
 	bw_policy = mutx_policy->bw_policy;
-	link_bw = wlc_scb_ratesel_get_link_bw(mu_info->wlc, scb);
-	if (((!tx_tp_i->client_bw160) && (link_bw == BW_160MHZ)) ||
-		((strict_check || tx_tp_i->client_samebw) &&
+	if (((!mu_info->client_bw160) && (link_bw == BW_160MHZ)) ||
+		((strict_check || mu_info->client_samebw) &&
 		(link_bw != bw_policy))) {
 		WL_MUTX(("%s "MACF" link_bw != bw_policy\n",
 			__FUNCTION__, ETHER_TO_MACF(scb->ea)));
 		return FALSE;
 	}
 
-	if (!SCB_ASSOCIATED(scb) || !BSSCFG_AP(scb->bsscfg)) {
+	if (SCB_IS_UNUSABLE(scb) || !SCB_ASSOCIATED(scb) || !BSSCFG_AP(scb->bsscfg)) {
 		WL_MUTX(("%s "MACF" !associated\n", __FUNCTION__,
 			ETHER_TO_MACF(scb->ea)));
 		return FALSE;
@@ -3699,15 +4349,22 @@ static bool
 wlc_mutx_sta_nrx_check(mutx_tp_t *tx_tp_i, scb_t *scb)
 {
 	mutx_scb_t *mu_scb;
-
+	wlc_mutx_info_t *mu_info = tx_tp_i->mu_info;
 	ASSERT((tx_tp_i->tp == VHTMU) ||
 		(tx_tp_i->tp == HEMMU));
 
-	mu_scb = MUTX_SCB(tx_tp_i->mu_info, scb);
-	if (mu_scb->nrx > tx_tp_i->muclient_nrx) {
+	if (!tx_tp_i->active) {
+		return FALSE;
+	}
+	mu_scb = MUTX_SCB(mu_info, scb);
+	if (mu_scb->nrx > mu_info->muclient_nrx) {
 		WL_MUTX(("%s "MACF" nrx(%d) != nrx_policy (%d)\n",
 			__FUNCTION__, ETHER_TO_MACF(scb->ea), mu_scb->nrx,
-			tx_tp_i->muclient_nrx));
+			mu_info->muclient_nrx));
+		return FALSE;
+	}
+
+	if (!wlc_txbf_scb_nsts_check(mu_info->wlc->txbf, scb)) {
 		return FALSE;
 	}
 
@@ -3715,14 +4372,16 @@ wlc_mutx_sta_nrx_check(mutx_tp_t *tx_tp_i, scb_t *scb)
 }
 
 bool
-wlc_mutx_sta_ac_check(mutx_tp_t *tx_tp_i, scb_t *scb)
+wlc_mutx_sta_ac_check(mutx_tp_t *tx_tp_i, scb_t *scb, uint link_bw)
 {
+	wlc_mutx_info_t *mu_info = tx_tp_i->mu_info;
 	mutx_scb_t *mu_scb;
 	mutx_policy_t *mutx_policy;
 	uint32 ac;
 	musta_heurs_t *musta_heurs;
 
-	if (!tx_tp_i->active) {
+	if (!tx_tp_i->active ||
+		(mu_info->ac_policy_on == FALSE)) {
 		return TRUE;
 	}
 
@@ -3730,19 +4389,17 @@ wlc_mutx_sta_ac_check(mutx_tp_t *tx_tp_i, scb_t *scb)
 		(tx_tp_i->tp == HEMMU));
 
 	mutx_policy = tx_tp_i->mutx_policy;
-	mu_scb = MUTX_SCB(tx_tp_i->mu_info, scb);
+	mu_scb = MUTX_SCB(mu_info, scb);
 	if (!mu_scb)
 		return FALSE;
 
-	if (tx_tp_i->ac_policy_on == FALSE) {
-		/* AC policy is disabled, return TRUE anyway. */
-		return FALSE;
-	}
-
 	ac = mutx_policy->ac_policy;
 	if ((ac == MUTX_AC_NONE) ||
-		(ac != 0 && mu_scb->ac_policy_scores[ac] == 0))
+		(ac != 0 && mu_scb->ac_policy_scores[ac] == 0) ||
+		(RAVG_AVG(&mu_scb->ravg_info[ac]) <=
+		mu_info->mpdusz_mu_admit_thresh[link_bw])) {
 		return FALSE;
+	}
 
 	musta_heurs = &mu_scb->musta_heurs;
 	if (musta_heurs->counter0 > 0) {
@@ -3983,7 +4640,7 @@ wlc_mutx_switch_in_progress(wlc_info_t *wlc)
 uint8
 wlc_mutx_get_muclient_nrx(wlc_mutx_info_t *mu_info)
 {
-	return mu_info->mutx_tp_i[0].muclient_nrx;
+	return mu_info->muclient_nrx;
 }
 
 /* Report whether a given STA is one of the current MU clients. For this API,
@@ -4049,7 +4706,8 @@ wlc_mutx_scb_state_upd(void *ctx, scb_state_upd_data_t *notif_data)
 	 * Radio has to go down to enable MUTX; so clients will reassociate
 	 * and AP can relearn them then.
 	 */
-	if (!(mu_info->_mu_tx[TP_TO_IDX(VHTMU)] || mu_info->_mu_tx[TP_TO_IDX(HEMMU)])) {
+	if (!(mu_info->_mu_tx[TP_TO_IDX(VHTMU)] || mu_info->_mu_tx[TP_TO_IDX(HEMMU)] ||
+		HE_DLMU_ENAB(wlc->pub))) {
 		return;
 	}
 
@@ -4078,7 +4736,7 @@ wlc_mutx_scb_state_upd(void *ctx, scb_state_upd_data_t *notif_data)
 		}
 
 		if (HE_ENAB(wlc->pub) && SCB_HE_CAP(scb)) {
-			if (!HE_MMU_ENAB(wlc->pub)) {
+			if (!HE_DLMMU_ENAB(wlc->pub) && !HE_DLMU_ENAB(wlc->pub)) {
 				return;
 			}
 		} else if (!MU_TX_ENAB(wlc) || !SCB_VHT_CAP(scb)) {
@@ -4090,12 +4748,15 @@ wlc_mutx_scb_state_upd(void *ctx, scb_state_upd_data_t *notif_data)
 			return;
 		}
 
-		tp_idx = (SCB_HE_CAP(scb) && HE_MMU_ENAB(wlc->pub)) ?
+		tp_idx = (SCB_HE_CAP(scb) &&
+			(HE_DLMMU_ENAB(wlc->pub) || HE_DLMU_ENAB(wlc->pub))) ?
 			TP_TO_IDX(HEMMU) : TP_TO_IDX(VHTMU);
 		tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
 		mu_scb->tp = tx_tp_i->tp;
 		mutx_scb_list_move(tx_tp_i->mu_cap_stas_list, mu_scb->item);
-		wlc_musta_upd_heurs(tx_tp_i, scb, HEURS_INIT);
+		if (mu_info->muclient_pfmon) {
+			wlc_musta_upd_heurs(tx_tp_i, scb, HEURS_INIT);
+		}
 		wlc_mutx_bw_policy_update(mu_info, tp_idx, FALSE);
 		/* MU capable STA now fully ready */
 		WL_ERROR(("wl%d: STA "MACF" has associated tx_type %d\n",
@@ -4163,7 +4824,7 @@ wlc_mutx_update_scb_oper_mode(wlc_mutx_info_t *mu_info,
 }
 
 bool
-wlc_mutx_is_hemmu_enab(wlc_mutx_info_t *mu_info)
+wlc_mutx_is_dlhemmu_enab(wlc_mutx_info_t *mu_info)
 {
 	mutx_tp_t *tx_tp_i = &mu_info->mutx_tp_i[TP_TO_IDX(HEMMU)];
 	return ((tx_tp_i->active == TRUE) ? TRUE : FALSE);
@@ -4204,6 +4865,9 @@ wlc_mutx_hostflags_update(wlc_info_t *wlc)
 	mhf_mask = MHF2_PRELD_GE64;
 
 	if (D11REV_GE(wlc->pub->corerev, 128)) {
+		if (!D11REV_IS(wlc->pub->corerev, 129) && !D11REV_IS(wlc->pub->corerev, 131)) {
+			wlc_mhf(wlc, MXHF1, MXHF1_SUBMVP_DISA, MXHF1_SUBMVP_DISA, WLC_BAND_ALL);
+		}
 		return;
 	}
 
@@ -4233,7 +4897,6 @@ wlc_mutx_hostflags_update(wlc_info_t *wlc)
 void wlc_mutx_nrx_policy_upd(wlc_info_t *wlc, int mu_supported_Ntx)
 {
 	wlc_mutx_info_t *mu_info = wlc->mutx;
-	int tp_idx;
 
 	if (mu_supported_Ntx != 2) {
 		return;
@@ -4244,10 +4907,7 @@ void wlc_mutx_nrx_policy_upd(wlc_info_t *wlc, int mu_supported_Ntx)
 
 	mu_info->mupfmon_mumcs_thresh = MUTX_PRIMRATE_MUMCS_THRESH_2X2;
 	mu_info->mutx_admit_mcs_thresh = MUTX_ADMIT_MCS_THRESH_2x2;
-	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
-		mutx_tp_t *tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
-		tx_tp_i->muclient_nrx = MUCLIENT_NRX_1;
-	}
+	mu_info->muclient_nrx = MUCLIENT_NRX_1;
 }
 /* Evaluate whether current configuration and system state allow MU TX to
  * be active. If there is a change in status, take required actions.
@@ -4288,7 +4948,7 @@ wlc_mutx_active_update(wlc_mutx_info_t *mu_info)
 	}
 
 	/* Check number of transmit streams */
-	txchains = WLC_BITSCNT(wlc->stf->txchain);
+	txchains = wlc->stf->op_txstreams;
 	if (txchains != vasip->mu_supported_Ntx) {
 		WL_MUMIMO(("wl%d: MU TX not active. "
 			"Number of tx chains, %d, not equal to VASIP FW supported Ntx, %u.\n",
@@ -4306,10 +4966,14 @@ wlc_mutx_active_update(wlc_mutx_info_t *mu_info)
 			* immediately in case there are other configuration or state changes
 			* that follow immediately after this one. Give system time to settle.
 			*/
+			WL_MUMIMO(("wl%d: Enabling %s and marking elect_pending\n",
+					wlc->pub->unit, tp_idx ? "HEMMU" : "VHTMU"));
 			mu_info->mutx_tp_i[tp_idx].muclient_elect_pending = TRUE;
 		} else if (mutx_was_active && !mutx_active[tp_idx]) {
 			/* Bring MU TX down */
 			/* Clear MU client set */
+			WL_MUMIMO(("wl%d: Clearing %s client set\n",
+					wlc->pub->unit, tp_idx ? "HEMMU" : "VHTMU"));
 			mu_client_set_clear(&mu_info->mutx_tp_i[tp_idx]);
 		}
 	}
@@ -4563,6 +5227,7 @@ wlc_mutx_gid_complete(wlc_info_t *wlc, uint txstatus, void *arg)
 	mutx_scb_t *mu_scb = (mutx_scb_t *) arg;
 	wlc_mutx_info_t *mu_info = wlc->mutx;
 	scb_t *scb;
+	int tp_idx;
 
 	if (!mu_scb) {
 		WL_ERROR(("wl%d: %s: mu_scb is NULL !!!\n", wlc->pub->unit, __FUNCTION__));
@@ -4581,10 +5246,10 @@ wlc_mutx_gid_complete(wlc_info_t *wlc, uint txstatus, void *arg)
 	}
 
 	ASSERT(mu_scb->tp == VHTMU);
-
+	tp_idx = TP_TO_IDX(mu_scb->tp);
 	if (txstatus & TX_STATUS_ACK_RCV) {
 		/* STA is now prepared to receive MU-PPDUs */
-		mu_scb_membership_change_set(&mu_info->mutx_tp_i[mu_scb->tp], scb, FALSE);
+		mu_scb_membership_change_set(&mu_info->mutx_tp_i[tp_idx], scb, FALSE);
 		WL_MUMIMO(("wl%d: STA "MACF" acknowledged MU-MIMO Group ID message.\n",
 		        wlc->pub->unit, ETHER_TO_MACF(scb->ea)));
 		/* May retx at GID_RETRY_DELAY tick */
@@ -5124,12 +5789,14 @@ wlc_mutx_update_txcounters(wlc_mutx_info_t *mu_info, scb_t *scb,
 	bool txs_mu, tx_status_t *txs, ratesel_txs_t *rs_txs, uint8 rnum)
 {
 	mutx_scb_t *mu_scb;
-	uint8 nss, mcs, i;
+	uint8 nss, mcs, i, txassu_reason;
 #if defined(BCMDBG) || defined(DUMP_MUTX)
 	mutx_stats_t *mutx_stats;
 #endif // endif
 	mutx_pfmon_stats_t *mutx_pfmon_stats;
+	bool snd_epch_cng;
 	mutx_snr_calib_stats_t *mutx_snr_calib_stats;
+	uint rate_index;
 	if (!mu_info || !scb) {
 		return;
 	}
@@ -5157,16 +5824,28 @@ wlc_mutx_update_txcounters(wlc_mutx_info_t *mu_info, scb_t *scb,
 	}
 #endif // endif
 
-	mutx_pfmon_stats->mu_ncons += rs_txs->ncons;
-
 	if (txs_mu) {
 		wlc_mutx_mutxs_update(mu_info, scb, mutx_pfmon_stats,
 				mutx_snr_calib_stats, txs);
 	} else {
 		/* Txed as SU */
+		txassu_reason  = TX_STATUS128_M2SQ(txs->status.s5);
+		snd_epch_cng = (TX_STATUS128_SNDFL_EPCH(txs->status.s5)
+				!= mutx_pfmon_stats->snd_epch_prev);
+		if (snd_epch_cng) {
+#if defined(BCMDBG) || defined(DUMP_MUTX)
+			mutx_stats->snd_fail_cnt++;
+#endif // endif
+			mutx_pfmon_stats->snd_fail_cnt++;
+			mutx_pfmon_stats->snd_epch_prev =
+				TX_STATUS128_SNDFL_EPCH(txs->status.s5);
+#if defined(BCMDBG) || defined(DUMP_MUTX)
+			mutx_stats->snd_epch_prev =
+				TX_STATUS128_SNDFL_EPCH(txs->status.s5);
+#endif // endif
+		}
 		for (i = 0; i < rnum; i++) {
 			ratespec_t rspec = rs_txs->txrspec[i];
-
 			if (RSPEC_ISVHT(rspec)) {
 				mcs = rspec & WL_RSPEC_VHT_MCS_MASK;
 				nss = (rspec & WL_RSPEC_VHT_NSS_MASK) >> WL_RSPEC_VHT_NSS_SHIFT;
@@ -5176,14 +5855,16 @@ wlc_mutx_update_txcounters(wlc_mutx_info_t *mu_info, scb_t *scb,
 					ASSERT(0);
 					continue;
 				}
-
+				rate_index = mcs + ((nss - 1) * MUTX_MCS_NUM);
+				ASSERT(rate_index < MUTX_MCS_INDEX_NUM);
+				mutx_pfmon_stats->txassu_reason[txassu_reason] +=
+						rs_txs->tx_cnt[i];
+				mutx_pfmon_stats->txsu[rate_index] += rs_txs->tx_cnt[i];
 #if defined(BCMDBG) || defined(DUMP_MUTX)
 				/* Update MCS count */
 				if (mutx_stats) {
-					uint rate_index = mcs + ((nss - 1) * MUTX_MCS_NUM);
-					ASSERT(rate_index < MUTX_MCS_INDEX_NUM);
-
-					mutx_pfmon_stats->txsu[rate_index] += rs_txs->tx_cnt[i];
+					mutx_stats->txassu_reason[txassu_reason] +=
+						rs_txs->tx_cnt[i];
 					mutx_stats->txsu[rate_index] += rs_txs->tx_cnt[i];
 					mutx_stats->txsu_succ[rate_index] += rs_txs->txsucc_cnt[i];
 					/* Update group ID count */
@@ -5202,13 +5883,15 @@ wlc_mutx_update_txcounters(wlc_mutx_info_t *mu_info, scb_t *scb,
 					ASSERT(0);
 					continue;
 				}
-
+				rate_index = mcs + ((nss - 1) * MUTX_MCS_NUM);
+				ASSERT(rate_index < MUTX_MCS_INDEX_NUM);
+				mutx_pfmon_stats->txassu_reason[txassu_reason] +=
+						rs_txs->tx_cnt[i];
+				mutx_pfmon_stats->txsu[rate_index] += rs_txs->tx_cnt[i];
 #if defined(BCMDBG) || defined(DUMP_MUTX)
 				if (mutx_stats) {
-					uint rate_index = mcs + ((nss - 1) * MUTX_MCS_NUM);
-					ASSERT(rate_index < MUTX_MCS_INDEX_NUM);
-
-					mutx_pfmon_stats->txsu[rate_index] += rs_txs->tx_cnt[i];
+					mutx_stats->txassu_reason[txassu_reason] +=
+						rs_txs->tx_cnt[i];
 					mutx_stats->txsu[rate_index] += rs_txs->tx_cnt[i];
 					mutx_stats->txsu_succ[rate_index] += rs_txs->txsucc_cnt[i];
 				}
@@ -5295,7 +5978,7 @@ wlc_mutx_info_t*
 BCMATTACHFN(wlc_mutx_attach)(wlc_info_t *wlc)
 {
 	wlc_mutx_info_t *mu_info;
-	int err, tp_idx;
+	int err, tp_idx, bw;
 	scb_cubby_params_t cubby_params;
 
 	/* allocate the main state structure */
@@ -5337,8 +6020,11 @@ BCMATTACHFN(wlc_mutx_attach)(wlc_info_t *wlc)
 	mu_info->mu_snr_calib = FALSE;
 #endif /* CNT */
 
-	if (D11REV_GE(mu_info->pub->corerev, 129) && D11REV_LE(mu_info->pub->corerev, 131)) {
-		/* only 43684b0/b1, 63178/47622 and 6710a0/a1 for now, default MU on */
+	if (D11REV_GE(mu_info->pub->corerev, 129) && D11REV_LE(mu_info->pub->corerev, 131) &&
+		(CHIPID(si_chipid(wlc->pub->sih)) != BCM43692_CHIP_ID)) {
+		/* only 43684b0/b1, 63178/47622 and 6710a0/a1 for now, default MU on
+		 * but 6705 (same chipid as 43692) and 43692 default MU off.
+		 */
 		mu_info->pub->mu_features = MU_FEATURES_MUTX;
 		/* The number of active TX FIFOs may have changed */
 		wlc_hw_update_nfifo(wlc->hw);
@@ -5394,20 +6080,28 @@ BCMATTACHFN(wlc_mutx_attach)(wlc_info_t *wlc)
 	wlc_dump_add_fns(mu_info->pub, "mutx", wlc_mutx_dump, wlc_mutx_dump_clr, mu_info);
 #endif // endif
 
+	mu_info->ac_policy_on = TRUE;
+	mu_info->client_samebw = FALSE;
+	if (D11REV_GE(mu_info->pub->corerev, 132)) {
+		mu_info->client_bw160 = TRUE;
+	} else {
+		mu_info->client_bw160 = FALSE;
+	}
+	mu_info->muclient_pfmon = TRUE;
+	mu_info->rssi_thresh = MUTX_RSSI_MIN;
+	mu_info->muclient_nrx = MUCLIENT_NRX_2;
+
+	for (bw = BW_20MHZ; bw <= BW_160MHZ; bw++) {
+		mu_info->mpdusz_dlofdma_admit_thresh[bw] = MUTX_MPDUSZ_DLOFDMA_ADMIT_THRESH;
+	}
+	mu_info->mpdusz_mu_admit_thresh[BW_20MHZ] = MUTX_MPDUSZ_BW20_MU_ADMIT_THRESH;
+	mu_info->mpdusz_mu_admit_thresh[BW_40MHZ] = MUTX_MPDUSZ_BW40_MU_ADMIT_THRESH;
+	mu_info->mpdusz_mu_admit_thresh[BW_80MHZ] = MUTX_MPDUSZ_BW80_MU_ADMIT_THRESH;
+	mu_info->mpdusz_mu_admit_thresh[BW_160MHZ] = MUTX_MPDUSZ_BW160_MU_ADMIT_THRESH;
+
 	for (tp_idx = 0; tp_idx < MUTX_TP_MAX; tp_idx++) {
 		mutx_tp_t *tx_tp_i = &mu_info->mutx_tp_i[tp_idx];
 		tx_tp_i->mu_info = mu_info;
-		tx_tp_i->ac_policy_on = TRUE;
-		tx_tp_i->client_samebw = FALSE;
-		if (D11REV_GE(mu_info->pub->corerev, 132)) {
-			tx_tp_i->client_bw160 = TRUE;
-		} else {
-			tx_tp_i->client_bw160 = FALSE;
-		}
-		tx_tp_i->pfmon_gpos = FALSE;
-		tx_tp_i->muclient_pfmon = TRUE;
-		tx_tp_i->rssi_thresh = MUTX_RSSI_MIN;
-		tx_tp_i->muclient_nrx = MUCLIENT_NRX_2;
 		tx_tp_i->active = TRUE;
 		tx_tp_i->tp = (VHTMU + tp_idx);
 

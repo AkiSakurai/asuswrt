@@ -75,7 +75,6 @@ static cmd_t wl_tpc_cmds[] = {
 	"Usage: wl tpc_period <secs> "},
 	{ "tpc_lm", wl_tpc_lm, WLC_GET_VAR, -1,
 	"Get current link margins."},
-	//{ "curpower", wl_get_current_power, WLC_CURRENT_PWR, -1,
 	{ "powertable", wl_get_current_power, WLC_CURRENT_PWR, -1,
 	"Return current tx power settings.\n"
 	"\t-v, --verbose: display the power settings for every "

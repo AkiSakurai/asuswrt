@@ -47,7 +47,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_rx.c 782551 2019-12-23 12:07:35Z $
+ * $Id: wlc_rx.c 788799 2020-07-13 05:37:40Z $
  *
  */
 #include <wlc_cfg.h>
@@ -444,9 +444,6 @@ static void wlc_convert_restricted_chanspec(wlc_info_t *wlc, wlc_d11rxhdr_t *wrx
 static int BCMFASTPATH
 wlc_bss_sendup_post_filter(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct scb *scb,
 	void *pkt, bool multi);
-
-static int BCMFASTPATH
-wlc_recvdata_sendpkt(wlc_info_t *wlc, void *p, wlc_if_t *wlcif);
 
 static void
 wlc_recv_bcn(wlc_info_t *wlc, osl_t *osh, wlc_bsscfg_t *bsscfg_current, wlc_bsscfg_t *bsscfg_target,
@@ -1624,7 +1621,8 @@ wlc_recvdata(wlc_info_t *wlc, osl_t *osh, wlc_d11rxhdr_t *wrxh, void *p)
 		 * accept frame if SA is not found in loopback list.
 		 */
 		if (BSSCFG_STA(bsscfg) && SCB_DWDS(scb) && !f.wds) {
-			if (!MAP_ENAB(bsscfg) || !bsscfg->dwds_loopback_filter) {
+			if ((scb->flags & SCB_BRCM) || !MAP_ENAB(bsscfg) ||
+				!bsscfg->dwds_loopback_filter) {
 				goto toss_silently;
 			} else {
 				uint8 *sa = (uint8 *)&(f.h->a3);
@@ -2025,8 +2023,10 @@ wlc_recvdata_ordered(wlc_info_t *wlc, struct scb *scb, struct wlc_frminfo *f)
 					(WLCNTSCBVAL(scb->scb_stats.rx_succ_replay_failures) >=
 					WLC_SCB_REPLAY_LIMIT)) {
 
-					WL_ERROR(("wl%d: deauth %s due to too many replay errors\n",
-						wlc->pub->unit, bcm_ether_ntoa(&scb->ea, eabuf)));
+					WL_ERROR(("wl%d.%d: %s: deauth "MACF" due to too many "
+						"replay errors\n", wlc->pub->unit,
+						WLC_BSSCFG_IDX(bsscfg), __FUNCTION__,
+						ETHER_TO_MACF(scb->ea)));
 
 					wlc_senddeauth(wlc, bsscfg, scb, &scb->ea, &bsscfg->BSSID,
 						&bsscfg->cur_etheraddr, DOT11_RC_UNSPECIFIED);
@@ -2573,10 +2573,9 @@ skip_conv:
 	/* In MultiAP, Non-broadcom AP's might send 3-addr multicast frames.
 	 * accept frame if SA is not found in loopback list.
 	 */
-	if (SCB_A4_DATA(scb) && (scb->flags & SCB_BRCM) && !f->wds &&
-		(ether_type != ETHER_TYPE_802_1X)) {
-		if (MAP_ENAB(bsscfg) && BSSCFG_STA(bsscfg) && bsscfg->dwds_loopback_filter &&
-			SCB_DWDS(scb) && f->ismulti) {
+	if (SCB_A4_DATA(scb) && !f->wds && (ether_type != ETHER_TYPE_802_1X)) {
+		if (!(scb->flags & SCB_BRCM) && MAP_ENAB(bsscfg) && BSSCFG_STA(bsscfg) &&
+			bsscfg->dwds_loopback_filter && SCB_DWDS(scb) && f->ismulti) {
 			uint8 *sa = (uint8 *)&(f->h->a3);
 
 			if (wlc_dwds_findsa(wlc, bsscfg, sa) != NULL) {
@@ -2779,7 +2778,7 @@ wlc_send_fwdpkt(wlc_info_t *wlc, void *p, wlc_if_t *wlcif)
 	return wlc_recvdata_sendpkt(wlc, p, wlcif);
 }
 
-static int BCMFASTPATH
+int BCMFASTPATH
 wlc_recvdata_sendpkt(wlc_info_t *wlc, void *p, wlc_if_t *wlcif)
 {
 	ASSERT(PKTCLINK(p) == NULL);
@@ -2895,7 +2894,9 @@ wlc_recvdata_sendup_msdus(wlc_info_t *wlc, struct scb *scb, struct wlc_frminfo *
 	/* forward */
 	if (BSSCFG_AP(bsscfg)) {
 		void *tmp;
+#if !defined(WL_PKTFWD_INTRABSS)
 		struct scb *dst;
+#endif /* ! WL_PKTFWD_INTRABSS */
 		struct wlc_if *wlcif;
 
 		if (wlc_bss_sendup_pre_filter(wlc, bsscfg, scb, p, multi) != WLC_SENDUP_CONT) {
@@ -2981,6 +2982,7 @@ wlc_recvdata_sendup_msdus(wlc_info_t *wlc, struct scb *scb, struct wlc_frminfo *
 #endif // endif
 			if ((tmp = PKTDUP(osh, p)))
 				wlc_recvdata_sendpkt(wlc, tmp, wlcif);
+#if !defined(WL_PKTFWD_INTRABSS)
 		} else if ((eacmp(ether_dhost, &bsscfg->cur_etheraddr) != 0) &&
 		           (dst = wlc_scbfind(wlc, bsscfg, ether_dhost))) {
 			/* check that the dst is associated to same BSS before
@@ -3016,6 +3018,7 @@ wlc_recvdata_sendup_msdus(wlc_info_t *wlc, struct scb *scb, struct wlc_frminfo *
 					return;
 				}
 			}
+#endif /* ! WL_PKTFWD_INTRABSS */
 		}
 	}
 
@@ -3370,7 +3373,8 @@ wlc_recv_mgmt_ctl(wlc_info_t *wlc, osl_t *osh, wlc_d11rxhdr_t *wrxh, void *p)
 		short_preamble = FALSE; /* pick a default in case we don't know */
 	} else {
 		short_preamble = ((D11PHYSTSBUF_ACCESS_VAL(&wrxh->rxhdr,
-			wlc->pub->corerev, PhyRxStatus_0) & PRXS0_SHORTH) != 0);
+			wlc->pub->corerev, PhyRxStatus_0) &
+			PRXS_SHORTPMBL(wlc->pub->corerev)) != 0);
 	}
 
 	total_frame_len = PKTLEN(osh, p);
@@ -3524,7 +3528,10 @@ wlc_recv_mgmt_ctl(wlc_info_t *wlc, osl_t *osh, wlc_d11rxhdr_t *wrxh, void *p)
 
 	/* Update scb used as we just received a control frame from the STA */
 	if (scb) {
-		SCB_UPDATE_USED(wlc, scb);
+		/* Skip updateing used for SCB_IN_UNUSABLE() in AP mode */
+		if (!(SCB_IS_UNUSABLE(scb) && BSSCFG_AP(scb->bsscfg))) {
+			SCB_UPDATE_USED(wlc, scb);
+		}
 #if defined(STA) && defined(DBG_BCN_LOSS)
 		scb->dbg_bcn.last_tx = wlc->pub->now;
 #endif // endif
@@ -4389,9 +4396,16 @@ wlc_monitor(wlc_info_t *wlc, wlc_d11rxhdr_t *wrxh, void *p, struct wlc_if *wlcif
 
 	if (RSPEC_ISCCK(rspec)) {
 		sts.encoding = WL_RXS_ENCODING_DSSS_CCK;
-		sts.preamble = (physts_valid && D11PHYSTSBUF_ACCESS_VAL(&wrxh->rxhdr,
-			wlc->pub->corerev, PhyRxStatus_0) & PRXS0_SHORTH) ?
-			WL_RXS_PREAMBLE_SHORT : WL_RXS_PREAMBLE_LONG;
+
+		if (D11REV_GE(wlc->pub->corerev, 128) &&
+			!RXS_PHYSTS_VALID_REV128(wlc->pub->corerev, &wrxh->rxhdr)) {
+			sts.preamble = WLC_LONG_PREAMBLE; /* pick a default in case we don't know */
+		} else {
+			sts.preamble = (physts_valid && D11PHYSTSBUF_ACCESS_VAL(&wrxh->rxhdr,
+				wlc->pub->corerev, PhyRxStatus_0) &
+				PRXS_SHORTPMBL(wlc->pub->corerev)) ?
+				WL_RXS_PREAMBLE_SHORT : WL_RXS_PREAMBLE_LONG;
+		}
 	} else if (RSPEC_ISOFDM(rspec)) {
 		sts.encoding = WL_RXS_ENCODING_OFDM;
 		sts.preamble = WL_RXS_PREAMBLE_SHORT;
@@ -4439,15 +4453,7 @@ sendup:
 #else /* DONGLEBUILD */
 {
 	uint8 pad;
-#if defined(WL_MONITOR) && defined(WLTEST) && !defined(WLTEST_DISABLED)
-	/* special rssi sampling without peer address */
-	rx_lq_samp_t sample;
-	wlc_lq_monitor_sample(wlc, wrxh, &sample);
-	BCM_REFERENCE(sample);
-#endif /* WL_MONITOR && WLTEST && !WLTEST_DISABLED */
-
 	pad = RXHDR_GET_PAD_LEN(&wrxh->rxhdr, wlc);
-
 	PKTPUSH(wlc->osh, p, pad);
 
 	wl_monitor(wlc->wl, NULL, p);
@@ -4739,7 +4745,7 @@ wlc_stamon_monitor(wlc_info_t *wlc, wlc_d11rxhdr_t *wrxh, void *p, struct wlc_if
 
 	status = wlc_stamon_stats_update(wlc, &mac_header->a2, sts.signal);
 	if (status != BCME_OK) {
-		WL_ERROR((" STATS update failed in %s\n",
+		WL_INFORM((" STATS update failed in %s\n",
 			__FUNCTION__));
 	}
 }
@@ -4990,13 +4996,8 @@ wlc_recvfilter(wlc_info_t *wlc, wlc_bsscfg_t **pbsscfg, struct dot11_header *h,
 			WLCNTINCR(wlc->pub->_cnt->rxbadproto);
 		}
 		else if (!(SCB_A4_DATA(scb)) &&
-				(DWDS_GENAB(bsscfg) && SCB_AUTHORIZED(scb))) {
-			if (BSSCFG_AP(bsscfg)) {
-			    wlc_wds_create(wlc, scb, WDS_DYNAMIC);
-			}
-			/* make this scb to do 4-addr data frame from now */
-			SCB_A4_DATA_ENABLE(scb);
-			SCB_DWDS_ACTIVATE(scb);
+			(BSSCFG_AP(bsscfg) && DWDS_GENAB(bsscfg) && SCB_ASSOCIATED(scb))) {
+			wlc_wds_create(wlc, scb, WDS_DYNAMIC);
 			wlc_mctrl(wlc, MCTL_PROMISC, 0);
 		}
 		else if (!(SCB_A4_DATA(scb)) &&
@@ -5005,7 +5006,14 @@ wlc_recvfilter(wlc_info_t *wlc, wlc_bsscfg_t **pbsscfg, struct dot11_header *h,
 				wlc->pub->unit, __FUNCTION__, bcm_ether_ntoa(&h->a2, eabuf)));
 			WLCNTINCR(wlc->pub->_cnt->rxbadproto);
 		}
-		else {
+		else if ((SCB_DWDS_CAP(scb) || SCB_MAP_CAP(scb)) && !SCB_ASSOCIATED(scb)) {
+			WL_ASSOC(("wl%d: %s: invalid WDS frame from non-associated station %s\n",
+				wlc->pub->unit, __FUNCTION__, bcm_ether_ntoa(&h->a2, eabuf)));
+			WLCNTINCR(wlc->pub->_cnt->rxbadproto);
+#ifdef WL_BSS_STATS
+			WLCIFCNTINCR(scb, rxbadprotopkts);
+#endif /* WL_BSS_STATS */
+		} else {
 			rc = 0;	/* Accept frame */
 		}
 	}
@@ -5118,6 +5126,9 @@ wlc_recvfilter(wlc_info_t *wlc, wlc_bsscfg_t **pbsscfg, struct dot11_header *h,
 				(BSSCFG_AP(bsscfg) && !wlc_ap_on_chan(wlc->ap, bsscfg)) ||
 				/* Avoid if cfg is down */
 				!bsscfg->up)) {
+				WL_ASSOC(("wl%d.%d: %s: send deauth to "MACF" with reason %d\n",
+					wlc->pub->unit, WLC_BSSCFG_IDX(bsscfg), __FUNCTION__,
+					ETHER_TO_MACF(h->a2), rc));
 				(void)wlc_senddeauth(wlc, bsscfg, scb,
 					&h->a2, bssid, cur_etheraddr, rc);
 
@@ -5278,6 +5289,7 @@ wlc_recv_mgmtact(wlc_info_t *wlc, struct scb *scb, struct dot11_management_heade
 		(action_category == DOT11_ACTION_CAT_PDPA) ||
 		(action_category == DOT11_ACTION_CAT_VS) ||
 		(action_category == DOT11_ACTION_CAT_QOS) ||
+		(action_category == DOT11_ACTION_CAT_RRM) ||
 		((action_category == DOT11_ACTION_CAT_WNM) &&
 #ifdef WLWNM
 		(action_id != DOT11_WNM_ACTION_BSSTRANS_REQ)) ||
@@ -5656,6 +5668,9 @@ wlc_recv_process_beacon(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, wlc_d11rxhdr_t *w
 	bool ibss_coalesce = FALSE;
 	bcn_notif_data_ext_t data_ext;
 #endif /* STA */
+#ifdef WL11AX
+	he_cap_ie_t *he_cap_ie = NULL;
+#endif /* WL11AX */
 
 	BCM_REFERENCE(brcm_ht_ie_len);
 
@@ -5670,7 +5685,8 @@ wlc_recv_process_beacon(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, wlc_d11rxhdr_t *w
 		short_preamble = FALSE; /* pick a default in case we don't know */
 	} else {
 		short_preamble = ((D11PHYSTSBUF_ACCESS_VAL(&wrxh->rxhdr,
-			wlc->pub->corerev, PhyRxStatus_0) & PRXS0_SHORTH) != 0);
+			wlc->pub->corerev, PhyRxStatus_0) &
+			PRXS_SHORTPMBL(wlc->pub->corerev)) != 0);
 	}
 #endif // endif
 	/* When there is no DS channel info, use the channel on which we received the beacon */
@@ -5744,6 +5760,11 @@ wlc_recv_process_beacon(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, wlc_d11rxhdr_t *w
 				&vht_op_ie);
 			break;
 #endif /* WL11AC */
+#ifdef WL11AX
+		case DOT11_MNG_HE_CAP_ID:
+			he_cap_ie = (he_cap_ie_t*) tags;
+			break;
+#endif /* WL11AX */
 		case DOT11_MNG_VS_ID:
 			if (tag_len >= TLV_HDR_LEN + DOT11_OUI_LEN + 1 &&
 			    !bcmp(&tags[TLV_BODY_OFF], BRCM_PROP_OUI"\x33", DOT11_OUI_LEN + 1)) {
@@ -5913,6 +5934,10 @@ wlc_recv_process_beacon(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, wlc_d11rxhdr_t *w
 		/* process the brcm_ie and ht ie in a beacon frame */
 		if (AP_ACTIVE(wlc) &&
 		    scb != NULL && SCB_LEGACY_WDS(scb)) {
+			int scb_vht_cap, scb_he_cap;
+
+			scb_vht_cap = SCB_VHT_CAP(scb);
+			scb_he_cap = SCB_HE_CAP(scb);
 
 			if (N_ENAB(wlc->pub)) {
 				/* Update HT based features (should be smarter than this...) */
@@ -5933,12 +5958,17 @@ wlc_recv_process_beacon(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, wlc_d11rxhdr_t *w
 				}
 			}
 
-			if (!SCB_VHT_CAP(scb) && !(scb->flags & SCB_WDS_LINKUP)) {
-				wlc_vht_update_scb_state(wlc->vhti,
-					beacon_band, scb, NULL, NULL, NULL, 0);
+#endif /* WL11AC */
+#ifdef WL11AX
+			if (HE_ENAB_BAND(wlc->pub, beacon_band)) {
+				wlc_he_update_scb_state(wlc->hei, scb, he_cap_ie, NULL);
+			}
+#endif /* WL11AX */
+
+			if ((scb_vht_cap != SCB_VHT_CAP(scb)) || (scb_he_cap != SCB_HE_CAP(scb))) {
 				wlc_scb_ratesel_init(wlc, scb);
 			}
-#endif /* WL11AC */
+
 #if defined(WLCSA) && defined(WDS)
 			if (WL11H_ENAB(wlc)) {
 				wl_chan_switch_t csa = {0, 0, 0, 0, 0};
@@ -8013,9 +8043,6 @@ done:
 			scb->scb_stats.rx_decrypt_failures);
 		if (err == BCME_REPLAY) {
 			wlc_bsscfg_t *bsscfg;
-#ifdef BCMDBG_ERR
-			char eabuf[ETHER_ADDR_STR_LEN];
-#endif /* BCMDBG_ERR */
 
 			bsscfg = SCB_BSSCFG(scb);
 
@@ -8025,8 +8052,9 @@ done:
 				(WLCNTSCBVAL(scb->scb_stats.rx_succ_replay_failures) >=
 				WLC_SCB_REPLAY_LIMIT)) {
 
-				WL_ERROR(("wl%d: deauth %s due to too many replay errors\n",
-					wlc->pub->unit, bcm_ether_ntoa(&scb->ea, eabuf)));
+				WL_ERROR(("wl%d.%d: %s: deauth "MACF" due to too many replay"
+					" errors\n", wlc->pub->unit, WLC_BSSCFG_IDX(bsscfg),
+					__FUNCTION__, ETHER_TO_MACF(scb->ea)));
 
 				wlc_senddeauth(wlc, bsscfg, scb, &scb->ea, &bsscfg->BSSID,
 						&bsscfg->cur_etheraddr, DOT11_RC_UNSPECIFIED);
@@ -8093,6 +8121,18 @@ wlc_rxframe_chainable(wlc_info_t *wlc, void **pp, uint16 index)
 	}
 
 #ifdef WLAMSDU
+#if defined(WL_EAP_AMSDU_CRYPTO_OFFLD)
+	/* 11ax MACs still show 'amsdu' in its hw-rx-status block when
+	 * the ucode bypasses hw deagg. Treat these as not chainable.
+	 */
+	if (D11REV_GE(wlc->pub->corerev, 128) && amsdu &&
+		(RXS_AMSDU_N_ONE == RXHDR_GET_AGG_TYPE(rxh, wlc))) {
+		WL_AMSDU(("wl%d:%s: N_ONE aggtype not a hw deagg amsdu\n",
+			wlc->pub->unit, __FUNCTION__));
+		return FALSE;
+	}
+#endif // endif
+
 	if (amsdu) {
 		if (!wlc->_rx_amsdu_in_ampdu)
 			return FALSE;
@@ -8313,9 +8353,9 @@ wlc_sendup_chain(wlc_info_t *wlc, void *head)
 	/* XXX - Feature flag to enable Intra BSS PKTC. Defined in customer
 	 * builds.
 	 */
-#ifdef PKTC_INTRABSS
+#if defined(PKTC_INTRABSS) && !defined(WL_PKTFWD_INTRABSS)
 	bool intrabss_fwd = FALSE;
-#endif // endif
+#endif /* PKTC_INTRABSS && !WL_PKTFWD_INTRABSS */
 	int err;
 #if defined(BCMSPLITRX)
 	bool need_pktfetch = FALSE;
@@ -8740,7 +8780,7 @@ skip_conv:
 	/* XXX - Feature flag to enable Intra BSS PKTC. Defined in customer
 	 * builds.
 	 */
-#ifdef PKTC_INTRABSS
+#if defined(PKTC_INTRABSS) && !defined(WL_PKTFWD_INTRABSS)
 	if (BSSCFG_AP(bsscfg) && !bsscfg->ap_isolate) {
 		struct scb *dst;
 		eh = (struct ether_header *)PKTDATA(wlc->osh, head);
@@ -8752,7 +8792,7 @@ skip_conv:
 			}
 		}
 	}
-#endif /* PKTC_INTRABSS */
+#endif /* PKTC_INTRABSS && !WL_PKTFWD_INTRABSS */
 
 #if defined(STA) && defined(PKTC_DONGLE)
 	if (count != 0) {
@@ -8811,7 +8851,8 @@ skip_conv:
 			/* XXX - Feature flag to enable Intra BSS PKTC.
 			 * Defined in customer builds for now.
 			 */
-#ifdef PKTC_INTRABSS
+
+#if defined(PKTC_INTRABSS) && !defined(WL_PKTFWD_INTRABSS)
 			if (intrabss_fwd) {
 				if (WME_ENAB(wlc->pub)) {
 					wl_traffic_stats_t *forward =
@@ -8821,7 +8862,7 @@ skip_conv:
 				}
 				wlc_sendpkt(wlc, head, bsscfg->wlcif);
 			} else
-#endif /* PKTC_INTRABSS */
+#endif /* PKTC_INTRABSS && !WL_PKTFWD_INTRABSS */
 			{
 				f.p = head;
 				f.da = (struct ether_addr *)PKTDATA(wlc->osh, head);

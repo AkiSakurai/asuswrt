@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_addrmatch.c 771393 2019-01-24 05:03:46Z $
+ * $Id: wlc_addrmatch.c 786284 2020-04-23 00:45:34Z $
  */
 
 /**
@@ -82,6 +82,8 @@
 #endif // endif
 #include <wlc_stamon.h>
 #include <wlc_addrmatch.h>
+#include <wlc_scb.h>
+#include <d11_cfg.h>
 
 #define HAS_AMT(wlc) D11REV_GE(wlc->pub->corerev, 40)
 #define IS_PRE_AMT(wlc) D11REV_LT(wlc->pub->corerev, 40)
@@ -212,29 +214,34 @@ wlc_set_addrmatch(wlc_info_t *wlc, int idx, const struct ether_addr *addr,
 		default:
 			ASSERT(idx >= 0);
 			if (idx < (int)wlc->pub->max_addrma_idx) {
+				/* Link AMT A2[Transmitter] index with SCB flow ID */
+				if ((attr & AMT_ATTR_VALID) &&
+					((attr & AMT_ATTR_ADDR_MASK) == AMT_ATTR_A2)) {
+
+					/* Try to link AMT id with SCB */
+					int incarn = wlc_scb_amt_link(wlc, idx, addr);
+
+					/* Ucode support to relay back this AMT index is
+					 * available only in d11 rev >128
+					 */
+					if (D11REV_GE(wlc->pub->corerev, 128) && (incarn >= 0)) {
+						/* Valid incarnation id should be 2 bits */
+						ASSERT(((uint8)incarn &
+							~__AMT_ATTR_INCARN_MASK) == 0);
+
+						attr = attr & ~AMT_ATTR_INCARN_MASK;
+						attr = attr | ((uint8)incarn <<
+							AMT_ATTR_INCARN_SHIFT);
+					}
+				}
+
+				/* Update AMT table */
 				prev_attr = wlc_bmac_write_amt(wlc->hw, idx, addr, attr);
 #ifdef WL_BEAMFORMING
 				if (TXBF_ENAB(wlc->pub) && (D11REV_LT(wlc->pub->corerev, 128))) {
 					wlc_txfbf_update_amt_idx(wlc->txbf, idx, addr);
 				}
 #endif // endif
-
-#if defined(WLCFP)
-				if (CFP_ENAB(wlc->pub) == TRUE) {
-					/* skip for stamon reserved amt entry */
-					if (STAMON_ENAB(wlc->pub) &&
-							wlc_stamon_is_slot_reserved(wlc, idx)) {
-						goto done;
-					}
-					/* Link AMT A2[Transmitter] index with CFP flow ID */
-					if ((attr & AMT_ATTR_VALID) &&
-						((attr & AMT_ATTR_ADDR_MASK) == AMT_ATTR_A2)) {
-						/* Try to link CFP AMT flow Ids */
-						wlc_cfp_amt_link_reinit(wlc, idx, addr);
-					}
-				}
-#endif /* WLCFP */
-
 			}
 			break;
 		}
@@ -276,12 +283,11 @@ done:
 uint16
 wlc_clear_addrmatch(wlc_info_t *wlc, int idx)
 {
-#if defined(WLCFP)
-	/* De-Link AMT-CFP flow ids */
-	if (CFP_ENAB(wlc->pub) && (idx >= 0)) {
-		wlc_cfp_amt_flowid_delink(wlc, idx, CFP_FLOWID_INVALID);
+	/* De-Link AMT-SCB flow ids */
+	if (idx >= 0) {
+		wlc_scb_amt_delink(wlc, idx, SCB_FLOWID_INVALID);
 	}
-#endif /* WLCFP */
+
 	return wlc_set_addrmatch(wlc, idx, &ether_null, 0);
 }
 
@@ -341,70 +347,3 @@ void
 BCMATTACHFN(wlc_addrmatch_detach)(wlc_info_t *wlc)
 {
 }
-
-#if defined(WLCFP)
-/* Initialize the CFP<=>AMT Link Table
- *
- * Each A2[transmitter] entry in the AMT table should have a 1:1 match with CFP cubby.
- * During init, try to establish that link and have the link info stored.
- * While recieving packets ucode will update "flowid" field
- * in the "rxstatus" for every packet.
- * SW should decode the "flowid" and derive the CFP cubby from the saved link info.
- * This should save all the address lookup on packet reception.
- *
- * Go through each AMT entry and find the address match from CFP cubbies
- * Assign a new link table entry and store the link info.
- *
- * XXX Downside: the whole AMT table will be relinked everytime new SCB is added.
- */
-void
-wlc_cfp_amt_link_init(wlc_info_t *wlc, uint16 cfp_flowid, const struct ether_addr *scb_ea)
-{
-	int i;
-	struct ether_addr ea;
-	uint16 attr;
-	uint16 first_reserved_amt_index = 0;
-	uint16 max_reserved_amt_index = 0;
-
-	ASSERT(HAS_AMT(wlc));
-
-	if (!wlc->clk)
-		return;
-
-	WL_TRACE(("%s for  "MACF"  \n", __FUNCTION__, ETHER_TO_MACF(*scb_ea)));
-
-	if (STAMON_ENAB(wlc->pub)) {
-		wlc_stamon_get_reserved_amt_index(wlc, &first_reserved_amt_index,
-			&max_reserved_amt_index);
-	}
-
-	/* Walk through the AMT table */
-	for (i = 0; i < (int)wlc->pub->max_addrma_idx; i++) {
-		wlc_get_addrmatch(wlc, i, &ea, &attr);
-
-		/* Chack for valid AMT entry */
-		if (ETHER_ISNULLADDR(&ea) && !(attr & (AMT_ATTR_VALID)))
-			continue;
-
-		/* Check for A2 [Transmitter] address only */
-		if ((attr & AMT_ATTR_ADDR_MASK) != AMT_ATTR_A2)
-			continue;
-
-		/* reserved amt slots for stamon, no scb cubby init on these entries. Skip */
-		if (STAMON_ENAB(wlc->pub) &&
-			((i >= first_reserved_amt_index) && (i <= max_reserved_amt_index))) {
-			continue;
-		}
-		/* Compare transmitter and scb->ea address */
-		if (eacmp((const char*)scb_ea, (const char*)&ea) == 0) {
-			WL_TRACE(("%s CFP AMT match found:  CFP Flow ID  %d AMT A2 id %d "
-				"addr "MACF" attr %04x \n", __FUNCTION__,
-				cfp_flowid, i, ETHER_TO_MACF(ea), attr));
-
-			/* Link both the flow Ids */
-			wlc_cfp_amt_linkid_set(wlc, i, cfp_flowid);
-
-		}
-	}
-}
-#endif /* WLCFP */

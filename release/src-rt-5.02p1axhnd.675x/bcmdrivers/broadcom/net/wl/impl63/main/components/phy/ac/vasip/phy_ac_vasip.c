@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_vasip.c 780863 2019-11-05 07:52:35Z $
+ * $Id: phy_ac_vasip.c 786238 2020-04-22 04:57:11Z $
  */
 
 #include <phy_cfg.h>
@@ -759,6 +759,13 @@ static void phy_ac_dump_svmp(phy_type_vasip_ctx_t *ctx, struct bcmstrbuf *b)
 		{0x0a500, 0x20},        /* txv_decompressed_report (txvheadr) */
 		{0x17010, 0x20},        /* steering_mcs,recommend_mcs */
 		{0x17080, 0x20},        /* txv_header_addr */
+		{0x1e000, 0x180},       /* ru allocation - ru_alloc_buf & v2m_ru_alloc_buf & ... */
+		{0x1e200, 0x40},        /* ru allocation - cqi_rpt_buf & v2m_buf_cqi */
+		{0x1f380, 0x20},        /* ru allocation - cqi_ready */
+		{0x1e240, 0x400},       /* ru allocation - cqi_thpt_gain */
+		{0x1e800, 0x400},       /* ru allocation - cqi_ru_index */
+		{0x1edc0, 0x400},       /* ru allocation - cqi_ru_mask */
+		{0x1fb00, 0x190},       /* ru allocation - dbg0 */
 		{0xe800,  0x1000},      /* CQI report */
 		{0x10000, 0x2000}       /* BFD compressed report */
 	};
@@ -776,6 +783,13 @@ static void phy_ac_dump_svmp(phy_type_vasip_ctx_t *ctx, struct bcmstrbuf *b)
 		{0xd600,  0x20},        /* txv_decompressed_report (txvheadr) */
 		{0x1c410, 0x20},        /* steering_mcs,recommend_mcs */
 		{0x1c480, 0x20},        /* txv_header_addr */
+		{0x26000, 0x180},       /* ru allocation - ru_alloc_buf & v2m_ru_alloc_buf & ... */
+		{0x26200, 0x40},        /* ru allocation - cqi_rpt_buf & v2m_buf_cqi */
+		{0x27380, 0x20},        /* ru allocation - cqi_ready */
+		{0x26240, 0x400},       /* ru allocation - cqi_thpt_gain */
+		{0x26800, 0x400},       /* ru allocation - cqi_ru_index */
+		{0x26dc0, 0x400},       /* ru allocation - cqi_ru_mask */
+		{0x27b00, 0x190},       /* ru allocation - dbg0 */
 		{0x1e800, 0x1000},      /* CQI report */
 		{0x10000, 0x8000}       /* BFD compressed report */
 	};

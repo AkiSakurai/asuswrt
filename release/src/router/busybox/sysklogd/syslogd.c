@@ -169,6 +169,7 @@
 
 #if ENABLE_FEATURE_REMOTE_LOG
 #include <netinet/in.h>
+#include <resolv.h>
 #endif
 
 #if ENABLE_FEATURE_IPC_SYSLOG
@@ -974,6 +975,17 @@ static NOINLINE int create_socket(void)
 }
 
 #if ENABLE_FEATURE_REMOTE_LOG
+static void reset_dns_wait(int sig UNUSED_PARAM)
+{
+	llist_t *item;
+	unsigned last = monotonic_sec() - DNS_WAIT_SEC - 1;
+
+	for (item = G.remoteHosts; item != NULL; item = item->link) {
+		remoteHost_t *rh = (remoteHost_t *)item->data;
+		rh->last_dns_resolve = last;
+	}
+}
+
 static int try_to_resolve_remote(remoteHost_t *rh)
 {
 	if (!rh->remoteAddr) {
@@ -983,9 +995,19 @@ static int try_to_resolve_remote(remoteHost_t *rh)
 		if ((now - rh->last_dns_resolve) < DNS_WAIT_SEC)
 			return -1;
 		rh->last_dns_resolve = now;
+#if !defined(__UCLIBC__) || UCLIBC_VERSION < KERNEL_VERSION(0, 9, 31)
+		res_init();
+#endif
 		rh->remoteAddr = host2sockaddr(rh->remoteHostname, 514);
 		if (!rh->remoteAddr)
 			return -1;
+
+		if (option_mask32 & OPT_locallog) {
+			char *addr = xmalloc_sockaddr2dotted(&(rh->remoteAddr->u.sa));
+			sprintf(G.parsebuf, "syslogd: using server %s", addr);
+			free(addr);
+			timestamp_and_log_internal(G.parsebuf);
+		}
 	}
 	return xsocket(rh->remoteAddr->u.sa.sa_family, SOCK_DGRAM, 0);
 }
@@ -1090,7 +1112,11 @@ static void do_syslogd(void)
 	signal_no_SA_RESTART_empty_mask(SIGTERM, record_signo);
 	signal_no_SA_RESTART_empty_mask(SIGINT, record_signo);
 	//signal_no_SA_RESTART_empty_mask(SIGQUIT, record_signo);
+#if ENABLE_FEATURE_REMOTE_LOG
+	signal(SIGHUP, reset_dns_wait);
+#else
 	signal(SIGHUP, SIG_IGN);
+#endif
 #ifdef SYSLOGD_MARK
 	signal(SIGALRM, do_mark);
 	alarm(G.markInterval);

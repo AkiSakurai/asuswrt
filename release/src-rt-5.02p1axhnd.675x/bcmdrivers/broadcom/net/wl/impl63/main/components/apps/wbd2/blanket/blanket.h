@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: blanket.h 779441 2019-09-27 12:21:49Z $
+ * $Id: blanket.h 786983 2020-05-13 03:06:28Z $
  *
  *  @author
  *  @bug No known bugs.
@@ -135,6 +135,15 @@ int blanket_get_radio_mac(char* primary_prefix, struct ether_addr *out_mac);
  * @return		status of the call. 0 Success. Non Zero Failure
  */
 int blanket_deauth_sta(char* ifname, struct ether_addr* addr, int reason);
+
+/** @brief Send Disassoc to the sta
+ *
+ * @param ifname	interface name of the BSS
+ * @param addr		MAC address of sta
+ *
+ * @return		status of the call. 0 Success. Non Zero Failure
+ */
+int blanket_disassoc_sta(char* ifname, struct ether_addr* addr);
 
 /** @brief To get the BSS information of Interface
  *
@@ -640,6 +649,15 @@ int blanket_nvram_prefix_unset(const char *prefix, const char *nvram);
 int blanket_nvram_prefix_match_set(const char* prefix, char* nvram, char* new_value,
 	bool matchcase);
 
+/**  @brief Gets the string config val from NVARM, if not found applies the default value
+ * @param prefix	interface prefix of the BSS
+ * @param nvram		Name of the NVRAM
+ * @param def		Default value for the NVRAM, in case NVRAM not already set
+ *
+ * @param value		Either Default value or Fetched value of this NVRAM
+ */
+void
+blanket_get_config_val_str(char* prefix, const char *nvram, char *def, char **val);
 /** @brief Gets the unsigned integer config val from NVARM, if not found applies the default value
  *
  * @param prefix	interface prefix of the BSS
@@ -867,4 +885,14 @@ int blanket_get_dfs_status(char *ifname, wl_dfs_status_t *dfs_status);
 
 /* Get Primary VLAN ID */
 int blanket_get_primary_vlan_id(char *ifname, unsigned short *vlan_id);
+
+/** @brief calculates the txrate from vht mcs, nss and bw
+ *
+ * @param mcs_map	vht mcs map
+ * @param nss		nss
+ * @param bw		bandwidth
+ *
+ * @return		status of the call. 0 Success. Non Zero Failure
+ */
+int blanket_get_txrate(uint16 mcs_map, int nss, int bw, uint32 *out_rate);
 #endif /* __BLANKET_H__ */

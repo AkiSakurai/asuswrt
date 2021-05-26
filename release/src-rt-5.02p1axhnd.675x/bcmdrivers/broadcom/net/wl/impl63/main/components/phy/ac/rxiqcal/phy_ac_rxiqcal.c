@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rxiqcal.c 780478 2019-10-26 09:55:49Z $
+ * $Id: phy_ac_rxiqcal.c 784790 2020-03-05 15:51:45Z $
  */
 
 #include <phy_cfg.h>
@@ -2686,6 +2686,10 @@ wlc_phy_rx_fdiqi_freq_config(phy_ac_rxiqcal_info_t *rxiqcali, int8 *fdiqi_cal_fr
 		fdiqi_en = 1;
 	}
 
+	if (ACMAJORREV_51(pi->pubpi->phy_rev) && CHSPEC_IS80(pi->radio_chanspec)) {
+		fdiqi_en = 1;
+	}
+
 	if (ACMAJORREV_129(pi->pubpi->phy_rev) && (CHSPEC_IS40(pi->radio_chanspec) ||
 		CHSPEC_IS80(pi->radio_chanspec))) {
 		fdiqi_en = 1;
@@ -3487,7 +3491,7 @@ phy_rx_fdiqi_comp_acphy_15tap_2Fs(phy_info_t *pi, bool enable)
 void
 wlc_phy_rx_fdiqi_comp_acphy(phy_info_t *pi, bool enable)
 {
-	if (ACMAJORREV_47_129(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_47_51_129(pi->pubpi->phy_rev)) {
 		phy_rx_fdiqi_comp_acphy_15tap_2Fs(pi, enable); //using 2Fs by default
 	} else {
 		phy_rx_fdiqi_comp_acphy_11tap(pi, enable);
@@ -3703,10 +3707,11 @@ wlc_phy_cal_rx_fdiqi_acphy(phy_info_t *pi)
 	}
 
 	phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, TRUE);
-	if (ACMAJORREV_47_129(pi->pubpi->phy_rev))
+	if (ACMAJORREV_47_51_129(pi->pubpi->phy_rev)) {
 		wlc_phy_resetcca_acphy(pi);
-	else
+	} else {
 		wlc_phy_force_rfseq_acphy(pi, ACPHY_RFSEQ_RESET2RX);
+	}
 
 	if (pi->u.pi_acphy->sromi->srom_low_adc_rate_en &&
 		ACMAJORREV_GE40(pi->pubpi->phy_rev)) {

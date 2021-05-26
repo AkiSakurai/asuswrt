@@ -204,7 +204,7 @@ extern uint16_t wl_pktfwd_get_cfp_flowid(struct wl_info * wl, uint8_t * d3addr);
 
 /** bins packet to domain specific pktqueue */
 extern void   wl_pktfwd_pktqueue_add_pkt(struct wl_info * wl,
-                                         struct net_device * net_device,
+                                         struct net_device * rx_net_device,
                                          void * pkt, uint16_t flowid);
 /* Callback to flush pktqueues */
 extern void   wl_pktfwd_flush_pktqueues(struct wl_info * wl);

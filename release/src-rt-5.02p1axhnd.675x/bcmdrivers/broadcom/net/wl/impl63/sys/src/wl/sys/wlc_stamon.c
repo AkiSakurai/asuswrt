@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_stamon.c 778634 2019-09-06 06:38:51Z $
+ * $Id: wlc_stamon.c 788366 2020-06-30 08:26:38Z $
  */
 
 /**
@@ -82,6 +82,7 @@
 #include <wlc_macfltr.h>
 #include <wlc_keymgmt.h>
 #include <wlc_assoc.h>
+#include <wlc_scb.h>
 
 /* Maximum STAs to monitor */
 #define DFLT_STA_MONITOR_ENRTY 4
@@ -173,7 +174,6 @@ static void wlc_stamon_sta_ucode_sniff_enab(wlc_stamon_info_t *ctxt,
 static int wlc_stamon_sta_get(wlc_stamon_info_t *stamon_ctxt,
 	struct maclist *ml);
 static int wlc_stamon_rcmta_slots_reserve(wlc_stamon_info_t *ctxt);
-static int wlc_stamon_rcmta_slots_free(wlc_stamon_info_t *ctxt);
 static void wlc_stamon_timer_add(wlc_stamon_info_t *ctxt);
 static void wlc_stamon_timer_delete(wlc_stamon_info_t *ctxt);
 static void wlc_stamon_disable_timer(void *arg);
@@ -379,7 +379,7 @@ wlc_stamon_sta_sniff_enab(wlc_stamon_info_t *ctxt,
 
 	/* Searching for corresponding entry in the STAs list. */
 	cfg_idx = wlc_stamon_sta_find(ctxt, ea);
-	if (cfg_idx < 0) {
+	if (cfg_idx < 0 || (ctxt->stacfg[cfg_idx].flags & STA_DELETE_FROM_STAMON)) {
 #if defined(BCMDBG) || defined(WLMSG_ERROR)
 		WL_ERROR(("wl%d: %s: STA %s not found.\n",
 			WLCUNIT(ctxt), __FUNCTION__,
@@ -427,6 +427,8 @@ wlc_stamon_sta_config(wlc_stamon_info_t *ctxt, wlc_stamon_sta_config_t* cfg)
 {
 	int8 cfg_idx;
 	wlc_info_t *wlc;
+	struct scb *scb;
+	wlc_bsscfg_t *dummy_bsscfg;
 
 	if (ctxt == NULL)
 		return BCME_UNSUPPORTED;
@@ -445,6 +447,16 @@ wlc_stamon_sta_config(wlc_stamon_info_t *ctxt, wlc_stamon_sta_config_t* cfg)
 			wlc_stamon_disable_all_stations(ctxt);
 			/* Delete stamon mac entry timer if running */
 			wlc_stamon_delete_timer_update_mac_list(ctxt);
+			/* Remove stamon mac entry marked for deletion */
+			for (cfg_idx = 0; cfg_idx < STACFG_MAX_ENTRY(ctxt); cfg_idx++) {
+				if (ctxt->stacfg[cfg_idx].flags & STA_DELETE_FROM_STAMON) {
+					bcopy(&ether_null, &ctxt->stacfg[cfg_idx].ea,
+						ETHER_ADDR_LEN);
+					ctxt->stacfg[cfg_idx].rssi = 0;
+					ctxt->stacfg_num--;
+					ctxt->stacfg[cfg_idx].flags &= ~STA_DELETE_FROM_STAMON;
+				}
+			}
 			/* Free RCMTA resource */
 			wlc_stamon_rcmta_slots_free(ctxt);
 			/* Disabling the STA monitor feature */
@@ -461,6 +473,12 @@ wlc_stamon_sta_config(wlc_stamon_info_t *ctxt, wlc_stamon_sta_config_t* cfg)
 			for (cfg_idx = 0; cfg_idx < ((int8)STACFG_MAX_ENTRY(ctxt)); cfg_idx++) {
 				if (bcmp(&ether_null, &ctxt->stacfg[cfg_idx].ea,
 					ETHER_ADDR_LEN) == 0) {
+					continue;
+				}
+				ASSERT(!(ctxt->stacfg[cfg_idx].flags & STA_DELETE_FROM_STAMON));
+				scb = wlc_scbapfind(wlc, &ctxt->stacfg[cfg_idx].ea, &dummy_bsscfg);
+				/* Skip sniffing frames for the STA if it is already associated */
+				if (scb && SCB_ASSOCIATED(scb)) {
 					continue;
 				}
 				wlc_stamon_sta_ucode_sniff_enab(ctxt, cfg_idx, TRUE);
@@ -482,6 +500,8 @@ wlc_stamon_sta_config(wlc_stamon_info_t *ctxt, wlc_stamon_sta_config_t* cfg)
 
 		ctxt->monitor_time = cfg->monitor_time;
 	} else if (cfg->cmd == STAMON_CFG_CMD_ADD) {
+		chanspec_t phy_chspec = WLC_BAND_PI_RADIO_CHANSPEC;
+		uint8 phy_chan = wf_chspec_ctlchan(phy_chspec);
 
 		/* Check MAC address validity. The MAC address must be valid unicast. */
 		if (ETHER_ISNULLADDR(&(cfg->ea)) ||
@@ -533,17 +553,21 @@ wlc_stamon_sta_config(wlc_stamon_info_t *ctxt, wlc_stamon_sta_config_t* cfg)
 			ctxt->stacfg[cfg_idx].chanspec = cfg->chanspec;
 			ctxt->stacfg[cfg_idx].offchan_time = cfg->offchan_time;
 		} else {
-			ctxt->stacfg[cfg_idx].chanspec = WLC_BAND_PI_RADIO_CHANSPEC;
+			ctxt->stacfg[cfg_idx].chanspec = phy_chspec;
 			ctxt->stacfg[cfg_idx].offchan_time = 0;
 		}
 
 		if (STAMON_ENAB(WLCPUB(ctxt))) {
-			/* Start sniffing the frames */
-			wlc_stamon_sta_ucode_sniff_enab(ctxt, cfg_idx, TRUE);
+			scb = wlc_scbapfind(wlc, &ctxt->stacfg[cfg_idx].ea, &dummy_bsscfg);
+			/* Start sniffing the frames for the STA only if it is not associated */
+			if (!scb || !SCB_ASSOCIATED(scb)) {
+				wlc_stamon_sta_ucode_sniff_enab(ctxt, cfg_idx, TRUE);
+			}
 		}
 
 		/* start off channel timer, only if the added STA is not in home channel */
-		if (ctxt->stacfg[cfg_idx].chanspec != WLC_BAND_PI_RADIO_CHANSPEC) {
+		if ((ctxt->stacfg[cfg_idx].offchan_time > 0) &&
+			(wf_chspec_ctlchan(ctxt->stacfg[cfg_idx].chanspec) != phy_chan)) {
 			wlc_offchan_timer_start(ctxt, cfg_idx);
 		}
 
@@ -869,6 +893,29 @@ wlc_stamon_sta_ucode_sniff_enab(wlc_stamon_info_t *ctxt,
 	}
 }
 
+/* Delete the station from STA monitor by index */
+static void
+wlc_stamon_delete_station_by_index(wlc_stamon_info_t *ctxt, int8 i)
+{
+	uint32 dongle_time_ms = 0;
+
+	if (ETHER_ISNULLADDR(&(ctxt->stacfg[i].ea)))
+		return;
+
+#if defined(BCMPCIEDEV) && defined(PROP_TXSTATUS)
+	dongle_time_ms = hnd_get_reftime_ms();
+#elif defined(OSL_SYSUPTIME_SUPPORT)
+	dongle_time_ms = OSL_SYSUPTIME();
+#endif /* BCMPCIEDEV && PROP_TXSTATUS */
+	/* Stop STA sniffing */
+	if (STAMON_ENAB(WLCPUB(ctxt))) {
+		wlc_stamon_sta_ucode_sniff_enab(ctxt, i, FALSE);
+	}
+	dongle_time_ms += STAMON_WAIT_TIME_TO_REMOVE_ENTRY;
+	ctxt->stacfg[i].flags |= STA_DELETE_FROM_STAMON;
+	ctxt->stacfg[i].delete_time = dongle_time_ms;
+}
+
 /* Clearing all monitored stations from the list.
  * Disabling STA sniffing if it is active for any
  * of the STAs from the list.
@@ -877,23 +924,32 @@ static void
 wlc_stamon_delete_all_stations(wlc_stamon_info_t *ctxt)
 {
 	int8 i;
-	uint32 dongle_time_ms = 0;
 
 	for (i = 0; i < ((int8)STACFG_MAX_ENTRY(ctxt)); i++) {
-		if (ETHER_ISNULLADDR(&(ctxt->stacfg[i].ea)))
+		wlc_stamon_delete_station_by_index(ctxt, i);
+	}
+	wlc_stamon_add_timer_update_mac_list(ctxt);
+}
+
+/* Delete all the stations which matches the chanspec provided */
+void
+wlc_stamon_delete_stations_matching_chanspec(wlc_info_t *wlc, chanspec_t chanspec)
+{
+	int8 i;
+	wlc_stamon_info_t *ctxt = NULL;
+
+	if (!wlc || !(wlc->stamon_info) || !STAMON_ENAB(wlc->pub)) {
+		return;
+	}
+	ctxt = wlc->stamon_info;
+
+	for (i = 0; i < ((int8)STACFG_MAX_ENTRY(ctxt)); i++) {
+		/* skip stations whose channel is not matching with the chanspec */
+		if (ctxt->stacfg[i].chanspec != chanspec) {
 			continue;
-#if defined(BCMPCIEDEV) && defined(PROP_TXSTATUS)
-		dongle_time_ms = hnd_get_reftime_ms();
-#elif defined(OSL_SYSUPTIME_SUPPORT)
-		dongle_time_ms = OSL_SYSUPTIME();
-#endif /* BCMPCIEDEV && PROP_TXSTATUS */
-		/* Stop STA sniffing */
-		if (STAMON_ENAB(WLCPUB(ctxt))) {
-			wlc_stamon_sta_ucode_sniff_enab(ctxt, i, FALSE);
 		}
-		dongle_time_ms += STAMON_WAIT_TIME_TO_REMOVE_ENTRY;
-		ctxt->stacfg[i].flags |= STA_DELETE_FROM_STAMON;
-		ctxt->stacfg[i].delete_time = dongle_time_ms;
+
+		wlc_stamon_delete_station_by_index(ctxt, i);
 	}
 	wlc_stamon_add_timer_update_mac_list(ctxt);
 }
@@ -945,7 +1001,7 @@ wlc_stamon_rcmta_slots_reserve(wlc_stamon_info_t *ctxt)
 /* Free dummy key slots in wlc->wsec_keys
  * allocated per STA config.
  */
-static int
+int
 wlc_stamon_rcmta_slots_free(wlc_stamon_info_t *ctxt)
 {
 	uint8 cfg_max_idx = (uint8)STACFG_MAX_ENTRY(ctxt);
@@ -1006,8 +1062,10 @@ wlc_stamon_stats_update(wlc_info_t *wlc, const struct ether_addr* ea, int value)
 	int idx;
 	wlc_stamon_info_t *ctxt = wlc->stamon_info;
 	if ((idx = wlc_stamon_sta_find(ctxt, ea)) != -1) {
+		uint8 phy_chan = wf_chspec_ctlchan(WLC_BAND_PI_RADIO_CHANSPEC);
+
 		/* Avoid Ghost Frames RSSI, corrupting valid monitored RSSI */
-		if (ctxt->stacfg[idx].chanspec == WLC_BAND_PI_RADIO_CHANSPEC) {
+		if (phy_chan == wf_chspec_ctlchan(ctxt->stacfg[idx].chanspec)) {
 			/* update the stats at this index */
 			ctxt->stacfg[idx].rssi = value;
 			return BCME_OK;

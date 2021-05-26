@@ -91,7 +91,7 @@ void wlc_ulmu_detach(wlc_ulmu_info_t *ulmu);
 #define ULMU_QOSNULL_LIMIT		6
 #define ULMU_TIMEOUT_LIMIT		7
 #define ULMU_CB_THRESHOLD		100
-#define ULMU_CB_TEST_THRESHOLD	80
+#define ULMU_CB_TEST_THRESHOLD	10
 
 #define ULMU_STATUS_INPROGRESS	0
 #define ULMU_STATUS_THRESHOLD	1
@@ -102,6 +102,7 @@ void wlc_ulmu_detach(wlc_ulmu_info_t *ulmu);
 #define	ULMU_STATUS_WATCHDOG	40
 #define ULMU_STATUS_NOTADMITTED	50
 #define ULMU_STATUS_EVICTED		60
+#define ULMU_STATUS_SUPPRESS	70
 #define ULMU_STATUS_UNKNOWN		((uint32) (-1))
 
 struct packet_trigger_info;
@@ -122,10 +123,12 @@ struct packet_trigger_info {
 	ulmu_cb_t callback_function;
 	void *callback_parameter;
 	uint32 callback_reporting_threshold;
-	bool multi_callback;
 	uint32 qos_null_threshold;
 	uint32 failed_request_threshold;
 	uint32 watchdog_timeout;
+	bool multi_callback;
+	bool post_utxd;
+	void *pkt;
 };
 
 /* Placeholder for TWT trigger data */
@@ -186,16 +189,18 @@ extern void wlc_ulmu_oper_state_upd(wlc_ulmu_info_t* ulmu, scb_t *scb, uint8 sta
 #endif /* defined(WL11AX) && defined(WL_PSMX) */
 extern int wlc_ulmu_reclaim_utxd(wlc_info_t *wlc, tx_status_t *txs);
 extern bool wlc_ulmu_del_usr(wlc_ulmu_info_t *ulmu, scb_t *scb, bool is_bss_up);
-extern uint32 wlc_ulmu_scb_reqbytes_get(wlc_ulmu_info_t *ulmu, scb_t *scb);
 extern void wlc_ulmu_scb_reqbytes_decr(wlc_ulmu_info_t *ulmu, scb_t *scb, uint32 cnt);
 extern int wlc_ulmu_sw_trig_enable(wlc_info_t *wlc, uint32 enable);
 extern void wlc_ulmu_twt_params(wlc_ulmu_info_t *ulmu, bool on);
-#ifdef WLTAF
+extern int wlc_ulmu_post_utxd(wlc_ulmu_info_t *ulmu);
+#ifdef WLTAF_ULMU
 #include <wlc_taf.h>
 extern void * BCMFASTPATH wlc_ulmu_taf_get_scb_info(void *ulmuh, struct scb* scb);
 extern void * BCMFASTPATH wlc_ulmu_taf_get_scb_tid_info(void *scb_h, int tid);
-extern uint16 BCMFASTPATH wlc_ulmu_taf_get_scb_pktlen(void *scbh, void *tidh);
-extern bool wlc_ulmu_taf_release(void* narh, void* scbh, void* tidh, bool force,
+extern uint16 BCMFASTPATH wlc_ulmu_taf_get_pktlen(void *scbh, void *tidh);
+extern bool wlc_ulmu_taf_release(void* ulmuh, void* scbh, void* tidh, bool force,
 	taf_scheduler_public_t* taf);
+extern bool wlc_ulmu_taf_bulk(void* ulmuh, int tid, bool open);
 #endif // endif
+extern bool wlc_ulmu_admit_ready(wlc_info_t *wlc, struct scb *scb);
 #endif /* _wlc_ulmu_h_ */

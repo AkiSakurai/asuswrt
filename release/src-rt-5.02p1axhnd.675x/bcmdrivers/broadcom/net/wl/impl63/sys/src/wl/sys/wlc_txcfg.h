@@ -91,7 +91,7 @@ extern int wlc_txcfg_max_clients_set(wlc_txcfg_info_t *txcfg, uint8 type, uint16
 extern uint16 wlc_txcfg_max_clients_get(wlc_txcfg_info_t *txcfg, uint8 type);
 extern uint16 wlc_txcfg_max_mmu_clients_get(wlc_txcfg_info_t *txcfg);
 extern void wlc_txcfg_dlofdma_maxn_init(wlc_info_t *wlc, uint8 *maxn);
-extern void wlc_txcfg_ulofdma_maxn_init(wlc_info_t *wlc, uint16 *maxn);
+extern void wlc_txcfg_ulofdma_maxn_init(wlc_info_t *wlc, uint8 *maxn);
 extern uint16 wlc_txcfg_ofdma_maxn_upperbound(wlc_info_t *wlc, uint16 bwidx);
 
 typedef struct {

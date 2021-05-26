@@ -1647,8 +1647,6 @@ void i5MessageApAutoconfigurationWscM2Send(i5_socket_type *psock, unsigned char 
     i5TlvDefault8021QSettingsTypeInsert(pmsg, &i5_config.policyConfig);
     i5TlvTrafficSeparationPolicyTypeInsert(pmsg, &i5_config.policyConfig);
   }
-#else
-  i5MessageAddVendorSpecificTlvWithCb(pmsg, NULL, i5MsgMultiAPGuestSsidValue);
 #endif	/* MULTIAPR2 */
   i5TlvEndOfMessageTypeInsert (pmsg);
   i5MessageSend(pmsg, 0);
@@ -2326,7 +2324,6 @@ void i5MessageApAutoconfigurationWscReceive(i5_message_type *pmsg)
   unsigned char *m2 = NULL;
   unsigned int   mxLength = 0;
   int            rc = 0;
-  ieee1905_vendor_data msg_data;
 #ifdef MULTIAP
   unsigned char mac_count = 0;
   unsigned char *mac = NULL;
@@ -2339,7 +2336,6 @@ void i5MessageApAutoconfigurationWscReceive(i5_message_type *pmsg)
   BCM_REFERENCE(m2);
   i5DmM2ListFree();
   memset(&RadioCaps, 0, sizeof(RadioCaps));
-  memset(&msg_data, 0, sizeof(msg_data));
 
   do {
     /* Extract TLV */
@@ -2405,9 +2401,6 @@ void i5MessageApAutoconfigurationWscReceive(i5_message_type *pmsg)
       rc |= i5TlvWscTypeExtract(pmsg, mxMsg, sizeof(mxMsg), &mxLength);
       m2 = &mxMsg[0];
     } else {
-#if !defined(MULTIAPR2)
-      rc |= i5TlvVendorGuestSsidExtract(pmsg, &msg_data);
-#endif /* MULTIAPR2 */
       rc |= i5TlvWscTypeM2Extract(pmsg);
       if (i5_config.m2_count > 0) {
         m2 = ((i5_wsc_m2_type*)i5_config.m2_list.ll.next)->m2;
@@ -2437,7 +2430,7 @@ void i5MessageApAutoconfigurationWscReceive(i5_message_type *pmsg)
         }
         i5WlCfgProcessAPAutoConfigWSCM1(pmsg, pDevice, &mxMsg[0], mxLength, mac, &RadioCaps);
       } else {
-        i5WlCfgProcessAPAutoConfigWSCM2(pmsg, mac, &msg_data, ts_policy_flag);
+        i5WlCfgProcessAPAutoConfigWSCM2(pmsg, mac, ts_policy_flag);
       }
 #else
       i5WlcfgApAutoConfigProcessMessage(pmsg, -1, m2, mxLength, mac);
@@ -5728,8 +5721,7 @@ int i5MessageOperatingChanReportSend(i5_socket_type *psock, unsigned char *dst_m
     i5_config.last_message_identifier);
 
   if (chan_rpt->list) {
-    i5TlvOperatingChannelReportTypeInsert(pmsg, chan_rpt->radio_mac,
-      chan_rpt->list->chan, chan_rpt->list->op_class, chan_rpt->tx_pwr);
+    i5TlvOperatingChannelReportTypeInsert(pmsg, chan_rpt);
 
     i5TlvEndOfMessageTypeInsert(pmsg);
     i5MessageSend(pmsg, 0);

@@ -87,7 +87,6 @@ typedef struct dhd_sta {
 #ifdef BCM_NBUFF_WLMCAST
 	uint32 src_ip;             /* sta's ip address, which is used for emf */
 #endif // endif
-	bool dwds_client;	/* Station is DWDS/MAP capable client. */
 } dhd_sta_t;
 typedef dhd_sta_t dhd_sta_pool_t;
 

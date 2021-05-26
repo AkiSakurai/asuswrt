@@ -91,6 +91,11 @@
 
 #define IS_D11RXHDRSHORT(rxh, rev) ((RXS_SHORT_ENAB(rev) && \
 			        ((D11RXHDR_ACCESS_VAL(rxh, rev, dma_flags)) & RXS_SHORT_MASK)) != 0)
+#define RXHDR_GET_AMSDU(rxh, corerev, corerev_minor) (IS_D11RXHDRSHORT(rxh, corerev) ? \
+	((D11RXHDRSHORT_ACCESS_VAL(rxh, corerev, corerev_minor, \
+	mrxs) & RXSS_AMSDU_MASK) != 0) : D11REV_GE(corerev, 129) ? \
+	((D11RXHDR_GE129_ACCESS_VAL(rxh, mrxs) & RXSS_AMSDU_MASK) != 0) : \
+	((D11RXHDR_LT80_ACCESS_VAL(rxh, RxStatus2) & RXS_AMSDU_MASK) != 0))
 
 #define RXHDR_GET_AGG_TYPE(rxh, corerev, corerev_minor) (IS_D11RXHDRSHORT(rxh, corerev) ? \
 	((D11RXHDRSHORT_ACCESS_VAL(rxh, corerev, corerev_minor, mrxs) & \
@@ -106,8 +111,7 @@
 
 /** For accessing members of d11rxhdr_t by reference (address of members) */
 #define D11PHYSTSBUF_ACCESS_REF_D(rxh, corerev, member) \
-	 (D11REV_GE(corerev, 128) ? D11PHYSTSBUF_GE128_ACCESS_REF(rxh, member) : \
-	 D11PHYSTSBUF_LT80_ACCESS_REF(rxh, member))
+	 D11PHYSTSBUF_LT80_ACCESS_REF(rxh, member)
 
 /** Calculate the rate of a received frame and return it as a ratespec (monitor mode) */
 static ratespec_t BCMFASTPATH
@@ -117,6 +121,8 @@ wlc_recv_mon_compute_rspec(wlc_d11rxhdr_t *wrxh, uint8 *plcp, uint32 corerev)
 	ratespec_t rspec;
 	uint16 phy_ft;
 	uint16 phy_ft_fmt;
+	ASSERT(corerev < 128);
+	plcp += D11_PHY_RXPLCP_OFF(corerev);
 
 	phy_ft = *D11PHYSTSBUF_ACCESS_REF_D(rxh, corerev, PhyRxStatus_0) & PRXS0_FT_MASK;
 
@@ -158,8 +164,18 @@ wlc_recv_mon_compute_rspec(wlc_d11rxhdr_t *wrxh, uint8 *plcp, uint32 corerev)
 			rspec = wf_vht_plcp_to_rspec(plcp);
 			break;
 		case FT_HE:
-			phy_ft_fmt = *D11PHYSTSBUF_ACCESS_REF_D(rxh, corerev, PhyRxStatus_0) &
+			phy_ft_fmt = *D11PHYSTSBUF_ACCESS_REF_D(rxh,
+				corerev, PhyRxStatus_0) &
 				PRXS_FTFMT_MASK(corerev);
+#ifdef WL11AX
+			/* HETB-SIG-A doesn't include rate info pass it using SIG-B */
+			if (phy_ft_fmt == HE_FTFMT_HETB) {
+				uint16 phy_ulrtinfo = HETB_ULRTINFO(rxh, corerev);
+				plcp[6] = phy_ulrtinfo & 0xff;
+				plcp[7] = (phy_ulrtinfo & 0xff00) >> 8;
+			}
+#endif // endif
+
 			rspec = wf_he_plcp_to_rspec(plcp, phy_ft_fmt);
 			break;
 		default:
@@ -335,7 +351,8 @@ wl_rxsts_to_rtap(struct wl_rxsts* rxsts, void *payload, uint16 len, void *pout, 
  */
 static uint16
 wl_d11rx_to_rxsts(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
-	wlc_d11rxhdr_t *wrxh, void *pkt, uint16 len, void *pout, int16 *offset)
+	wlc_d11rxhdr_t *wrxh, void *pkt, uint16 len, void *pout, int16 *offset,
+	wl_phyextract_t  *phy_extract)
 {
 	struct wl_rxsts sts;
 	uint32 rx_tsf_l;
@@ -345,7 +362,7 @@ wl_d11rx_to_rxsts(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
 	uint8 *p = (uint8*)pkt;
 	uint8 hwrxoff = 0;
 	uint32 ts_tsf = 0, corerev = 0;
-	int8 rssi = 0;
+	int8 rssi = 0, noise = 0;
 	struct dot11_header *h;
 	uint16 subtype;
 
@@ -354,9 +371,15 @@ wl_d11rx_to_rxsts(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
 	BCM_REFERENCE(chan_num);
 
 	corerev = info->corerev;
-	rssi = (pkt_info->marker >> 8) & 0xff;
-	hwrxoff = (pkt_info->marker >> 16) & 0xff;
-
+	if (D11REV_GE(corerev, 128)) {
+		hwrxoff = phy_extract->hwrxoff;
+		rssi = phy_extract->rssi;
+		noise = phy_extract->snr;
+	} else {
+		rssi = (pkt_info->marker >> 8) & 0xff;
+		hwrxoff = (pkt_info->marker >> 16) & 0xff;
+		noise = (int8)pkt_info->marker;
+	}
 	plcp = (uint8*)p + hwrxoff;
 
 	plcp += RXHDR_GET_PAD_LEN(&wrxh->rxhdr, corerev, 0);
@@ -367,25 +390,31 @@ wl_d11rx_to_rxsts(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
 	bzero((void *)&sts, sizeof(wl_rxsts_t));
 
 	sts.mactime = rx_tsf_l;
-	sts.antenna = (*D11PHYSTSBUF_ACCESS_REF_D(&wrxh->rxhdr, corerev, PhyRxStatus_0)
-			& PRXS0_RXANT_UPSUBBAND) ? 1 : 0;
+	if (corerev < 128) {
+		sts.antenna = (*D11PHYSTSBUF_ACCESS_REF_D(&wrxh->rxhdr, corerev, PhyRxStatus_0)
+				& PRXS0_RXANT_UPSUBBAND) ? 1 : 0;
+	}
 	sts.signal = rssi;
-	sts.noise = (int8)pkt_info->marker;
+	sts.noise = noise;
 	sts.chanspec = D11RXHDR_ACCESS_VAL(&wrxh->rxhdr, corerev, RxChan);
 
 	if (wf_chspec_malformed(sts.chanspec))
 		return 0;
 
 	chan_num = CHSPEC_CHANNEL(sts.chanspec);
-	rspec = wlc_recv_mon_compute_rspec(wrxh, plcp, info->corerev);
+	if (D11REV_GE(corerev, 128)) {
+		rspec = phy_extract->rspec;
+	} else {
+		rspec = wlc_recv_mon_compute_rspec(wrxh, plcp, info->corerev);
+	}
 
+	plcp += RXHDR_GET_PAD_LEN(&wrxh->rxhdr, corerev, 0);
 	h = (struct dot11_header *)(plcp + D11_PHY_RXPLCP_LEN(info->corerev));
 	subtype = (ltoh16(h->fc) & FC_SUBTYPE_MASK) >> FC_SUBTYPE_SHIFT;
 
 	if ((subtype == FC_SUBTYPE_QOS_DATA) || (subtype == FC_SUBTYPE_QOS_NULL)) {
 		/* A-MPDU parsing */
-			if ((*D11PHYSTSBUF_ACCESS_REF_D(&wrxh->rxhdr, corerev,
-					PhyRxStatus_0) & PRXS0_FT_MASK) == FT_HT) {
+		if (RSPEC_ISHT(rspec)) {
 			if (WLC_IS_MIMO_PLCP_AMPDU(plcp)) {
 				sts.nfrmtype |= WL_RXS_NFRM_AMPDU_FIRST;
 				/* Save the rspec for later */
@@ -396,8 +425,7 @@ wl_d11rx_to_rxsts(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
 				rspec = info->ampdu_rspec;
 			}
 		}
-		else if ((*D11PHYSTSBUF_ACCESS_REF_D(&wrxh->rxhdr, corerev,
-				PhyRxStatus_0) & PRXS0_FT_MASK) == FT_VHT) {
+		else if (RSPEC_ISVHT(rspec)) {
 			if ((plcp[0] | plcp[1] | plcp[2]) &&
 				!(D11RXHDR_ACCESS_VAL(&wrxh->rxhdr, corerev, RxStatus2)
 					& RXS_PHYRXST_VALID)) {
@@ -577,16 +605,23 @@ wl_d11rx_to_rxsts(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
 
 	sts.pktlength = D11RXHDR_ACCESS_VAL(&wrxh->rxhdr, corerev, RxFrameSize)
 		- D11_PHY_RXPLCP_LEN(info->corerev);
-	sts.sq = ((*D11PHYSTSBUF_ACCESS_REF_D(&wrxh->rxhdr, corerev, PhyRxStatus_1)
-				& PRXS1_SQ_MASK) >> PRXS1_SQ_SHIFT);
+	if (corerev < 128) {
+		sts.sq = ((*D11PHYSTSBUF_ACCESS_REF_D(&wrxh->rxhdr, corerev, PhyRxStatus_1)
+					& PRXS1_SQ_MASK) >> PRXS1_SQ_SHIFT);
+	}
 
 	sts.phytype = WL_RXS_PHY_N;
 
 	if (RSPEC_ISCCK(rspec)) {
 		sts.encoding = WL_RXS_ENCODING_DSSS_CCK;
-		sts.preamble = (*D11PHYSTSBUF_ACCESS_REF_D(&wrxh->rxhdr, corerev, PhyRxStatus_0)
-			& PRXS0_SHORTH) ?
-			WL_RXS_PREAMBLE_SHORT : WL_RXS_PREAMBLE_LONG;
+		if (D11REV_GE(corerev, 128)) {
+			sts.preamble = phy_extract->preamble;
+		} else {
+			sts.preamble = (*D11PHYSTSBUF_ACCESS_REF_D(&wrxh->rxhdr,
+				corerev, PhyRxStatus_0)
+				& PRXS0_SHORTH) ?
+				WL_RXS_PREAMBLE_SHORT : WL_RXS_PREAMBLE_LONG;
+		}
 	} else if (RSPEC_ISOFDM(rspec)) {
 		sts.encoding = WL_RXS_ENCODING_OFDM;
 		sts.preamble = WL_RXS_PREAMBLE_SHORT;
@@ -620,14 +655,19 @@ wl_d11rx_to_rxsts(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
 
 static uint16
 wl_monitor_amsdu(monitor_info_t* info, monitor_pkt_info_t* pkt_info, wlc_d11rxhdr_t *wrxh,
-	void *pkt, uint16 len, void *pout, int16* offset, uint16 *pkt_type, uint8 dma_flags)
+		void *pkt, uint16 len, void *pout, int16* offset, uint16 *pkt_type, uint8 dma_flags,
+		wl_phyextract_t  *phy_extract)
 {
 	uint8 *p = pkt;
-	uint8 hwrxoff = (pkt_info->marker >> 16) & 0xff;
-	uint16  aggtype = 0, pad_present;
-	d11rxhdrshort_t *srxh = NULL;   /* short receive header. first and intermediate frags */
+	uint8 hwrxoff;
+	uint16  aggtype = 0;
+	if (D11REV_GE(info->corerev, 128)) {
+		hwrxoff = phy_extract->hwrxoff;
+	} else {
+		hwrxoff = (pkt_info->marker >> 16) & 0xff;
+	}
 
-	aggtype = RXHDR_GET_AGG_TYPE(&wrxh->rxhdr, info->corerev, 0) >> RXS_AGGTYPE_SHIFT;
+	aggtype = RXHDR_GET_AGG_TYPE(&wrxh->rxhdr, info->corerev, 0);
 
 	switch (aggtype) {
 	case RXS_AMSDU_FIRST:
@@ -644,29 +684,14 @@ wl_monitor_amsdu(monitor_info_t* info, monitor_pkt_info_t* pkt_info, wlc_d11rxhd
 		info->amsdu_len = len;
 		info->amsdu_pkt = pkt;
 		info->headroom =  D11_PHY_RXPLCP_LEN(info->corerev) + hwrxoff;
+		info->headroom  += RXHDR_GET_PAD_LEN(&wrxh->rxhdr, info->corerev, 0);
 
-		if (dma_flags & RXS_SHORT_MASK) {
-			srxh = (d11rxhdrshort_t*) &wrxh->rxhdr;
-			pad_present = ((srxh->lt80.mrxs & RXSS_PBPRES) != 0);
-		}
-		else {
-			if (D11REV_GE(info->corerev, 128)) {
-				pad_present = D11RXHDR_GE128_ACCESS_VAL(&wrxh->rxhdr, mrxs)
-					& RXS_PBPRES;
-			} else {
-				pad_present = D11RXHDR_LT80_ACCESS_VAL(&wrxh->rxhdr, RxStatus1)
-					& RXS_PBPRES;
-			}
-
-		}
-		if (pad_present) {
-			 info->headroom += 2;
-		}
 		*pkt_type = MON_PKT_AMSDU_FIRST;
 		if (aggtype == RXS_AMSDU_N_ONE) {
 			/* all-in-one AMSDU subframe */
 			wl_d11rx_to_rxsts(info, pkt_info, wrxh, p,
-					len, (void *)((uint8 *)pout + info->headroom), offset);
+					len, (void *)((uint8 *)pout + info->headroom), offset,
+					phy_extract);
 
 			*pkt_type = MON_PKT_AMSDU_N_ONE;
 			info->amsdu_len = 0;
@@ -681,19 +706,23 @@ wl_monitor_amsdu(monitor_info_t* info, monitor_pkt_info_t* pkt_info, wlc_d11rxhd
 			/* Append next AMSDU subframe */
 			p += hwrxoff;
 			len -= hwrxoff;
-			if (wrxh->rxhdr.lt80.RxStatus1 & RXS_PBPRES) {
-				p += 2;
-				len -= 2;
-			}
+			p += RXHDR_GET_PAD_LEN(&wrxh->rxhdr, info->corerev, 0);
+			len -= RXHDR_GET_PAD_LEN(&wrxh->rxhdr, info->corerev, 0);
 			memcpy(info->amsdu_pkt + info->amsdu_len, p, len);
 			info->amsdu_len += len;
 
 			*pkt_type = MON_PKT_AMSDU_INTERMEDIATE;
+			/* current code can handle only msdu's per amsdu
+			 *  one we want to support multiple msdu's
+			 *  we need to remove next line and allocate bigger buffers
+			 */
+			aggtype = RXS_AMSDU_LAST;
 			/* complete AMSDU frame */
 			if (aggtype == RXS_AMSDU_LAST) {
 				*pkt_type = MON_PKT_AMSDU_LAST;
 				wl_d11rx_to_rxsts(info, pkt_info, wrxh, info->amsdu_pkt,
-					info->amsdu_len, info->amsdu_pkt + info->headroom, offset);
+					info->amsdu_len, info->amsdu_pkt + info->headroom, offset,
+					phy_extract);
 				info->amsdu_len = 0;
 				info->headroom = 0;
 			}
@@ -733,18 +762,19 @@ bcmwifi_monitor_delete(monitor_info_t* info)
 
 uint16
 bcmwifi_monitor(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
-	void *pkt, uint16 len, void *pout, int16* offset, uint16 *pkt_type, uint8 dma_flags)
+	void *pkt, uint16 len, void *pout, int16* offset,
+	uint16 *pkt_type, uint8 dma_flags, void  *phyextract)
 {
 	wlc_d11rxhdr_t *wrxh = (wlc_d11rxhdr_t*)pkt;
-	uint16 hwrxoff, pad_present;
+	uint16 hwrxoff;
+	wl_phyextract_t *phy_extract = (wl_phyextract_t *)phyextract;
 	if (dma_flags != 0)
 		dma_flags = D11RXHDR_ACCESS_VAL(&wrxh->rxhdr,
 				info->corerev, dma_flags);
 
-	if ((dma_flags & RXS_SHORT_MASK) ||
-		(D11RXHDR_ACCESS_VAL(&wrxh->rxhdr, info->corerev, RxStatus1) & RXS_AMSDU_MASK)) {
+	if (RXHDR_GET_AMSDU(&wrxh->rxhdr, info->corerev, 0)) {
 		return wl_monitor_amsdu(info, pkt_info, wrxh, pkt,
-				len, pout, offset, pkt_type, dma_flags);
+				len, pout, offset, pkt_type, dma_flags, phyextract);
 	} else {
 		if (info->amsdu_len) {
 			info->amsdu_len = 0;
@@ -752,23 +782,19 @@ bcmwifi_monitor(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
 			*pkt_type = MON_PKT_AMSDU_ERROR;
 			return 0;
 		}
-		if (D11REV_GE(info->corerev, 128)) {
-			pad_present = D11RXHDR_GE128_ACCESS_VAL(&wrxh->rxhdr, mrxs) & RXS_PBPRES;
-		} else {
-			pad_present = D11RXHDR_LT80_ACCESS_VAL(&wrxh->rxhdr, RxStatus1)
-				& RXS_PBPRES;
-		}
 
-		hwrxoff = (pkt_info->marker >> 16) & 0xff;
+		if (D11REV_GE(info->corerev, 128)) {
+			hwrxoff = phy_extract->hwrxoff;
+		} else {
+			hwrxoff = (pkt_info->marker >> 16) & 0xff;
+		}
 		info->amsdu_len = 0; /* reset amsdu */
 		*pkt_type = MON_PKT_NON_AMSDU;
 		pout = (uint8 *)pout + hwrxoff + D11_PHY_RXPLCP_LEN(info->corerev);
 		info->headroom = D11_PHY_RXPLCP_LEN(info->corerev) + hwrxoff;
-		if (pad_present) {
-			pout = (uint8 *)pout + 2;
-			info->headroom += 2;
-		}
-		wl_d11rx_to_rxsts(info, pkt_info, wrxh, pkt, len, pout, offset);
+		pout = (uint8 *)pout + RXHDR_GET_PAD_LEN(&wrxh->rxhdr, info->corerev, 0);
+		info->headroom += RXHDR_GET_PAD_LEN(&wrxh->rxhdr, info->corerev, 0);
+		wl_d11rx_to_rxsts(info, pkt_info, wrxh, pkt, len, pout, offset, phyextract);
 		info->headroom = 0;
 		return len;
 	}

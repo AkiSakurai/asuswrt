@@ -25,7 +25,7 @@ MFG_NVRAM_DIR=/mnt/nvram
 MFG_NVRAM_TMP_DIR=/var/tmp/nvram
 MFG_NVRAM_FILE=nvram.nvm
 KERNEL_NVRAM_FILE="/data/.KERNEL_NVRAM_FILE_NAME"
-LKM_DRIVERS_FILE=/rom/etc/init.d/bcm-base-drivers.sh
+LKM_DRIVERS_FILE=/etc/init.d/bcm-base-drivers.sh
 #
 # Indicates nvram mfg mode.
 # Created as a result of CFE> kernp mfg_nvram_mode=1
@@ -637,7 +637,7 @@ mfg_load_drivers()
         mfg_insmod "/lib/modules/*/extra/rdpa_cmd.ko"
     fi
 
-    test -e /rom/etc/rdpa_init.sh && /rom/etc/rdpa_init.sh
+    test -e /etc/rdpa_init.sh && /etc/rdpa_init.sh
 
     echo "$0: Loading basic drivers - done"
 
@@ -650,7 +650,7 @@ mfg_setup_network()
     mask=$2
     echo "$0: Bringing up the network ($ip/$mask)"
 
-    /rom/etc/init.d/swmdk.sh start
+    /etc/init.d/swmdk.sh start
 
     brctl addbr br0
     brctl stp br0 off

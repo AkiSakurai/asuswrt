@@ -1961,6 +1961,14 @@ typedef struct d3fwd_ext            d3fwd_ext_t;
 #error "ucast_pktlist supports 8 unicast packet priorities"
 #endif
 
+/* each station structure */
+typedef struct d3lut_sta
+{
+    dll_t       node;
+    uint8_t     mac[6]; /*ETHER_ADDR_LEN*/
+    uint16_t    flag;                   /* flag for this sta */
+    struct d3lut_elem *d3lut_elem;      /* associated d3lut_elem */
+} d3lut_sta_t;
 
 /**
  * -----------------------------------------------------------------------------
@@ -1977,6 +1985,8 @@ typedef struct d3fwd_wlif_stats
     uint32_t   cfp_fwds;    /* xfer count - bypass via WLCFP */
     uint32_t   chn_pkts;    /* pkts count - WLCFP miss use native chain_node */
     uint32_t   chn_fwds;    /* xfer count - WLCFP miss use native chain_node */
+    uint32_t   slow_pkts;   /* xfer count - WLCFP miss, no PKTC, fwd one pkt at
+			     * a time */
     uint32_t   tx_drops;    /* dropped packets */
     uint32_t   schedule;    /* wlan thread: wlif net device dispatch requests */
     uint32_t   complete;    /* wlan thread: wlif net device scheduled */
@@ -2015,6 +2025,7 @@ struct d3fwd_wlif                       /* d3fwd_wlif_t */
     struct osl_info   * osh;
     struct wl_if      * wlif;           /* 1:1 wl_if extension */
     struct net_device * net_device;     /* net_device of wl_if */
+    struct d3lut_elem * wds_d3lut_elem; /* d3lut_elem used for WDS */
 
     uint8_t             wl_schedule;    /* wlan thread schedule state */
     struct {
@@ -2031,6 +2042,13 @@ struct d3fwd_wlif                       /* d3fwd_wlif_t */
     D3FWD_STATS_EXPR(
     d3fwd_wlif_stats_t  stats[D3FWD_PRIO_MAX]; /* wlif stats */
     )
+
+    /* flags for each netdevice/wlif */
+    uint32_t            flags;
+
+    /* sta free list per intf */
+    dll_t               sta_free_list;
+    d3lut_sta_t         *sta_pool;
 
 };
 
@@ -2479,6 +2497,9 @@ struct d3lut_elem                   /* d3lut_elem_t */
      * See d3lut_elem_init() and Element Free Pool Management in d3lut_t.
      */
     d3fwd_ext_t     ext;
+
+    /* station list associated with this d3lut_elem */
+    dll_t           sta_list;
 
 } __attribute__ ((packed));
 

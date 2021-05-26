@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_scan_utils.c 781150 2019-11-13 07:11:32Z $
+ * $Id: wlc_scan_utils.c 788030 2020-06-18 13:16:33Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -411,7 +411,7 @@ wlc_scan_request_ex(
 	if (cb && fn != NULL) {
 		WL_SCAN(("wl%d: %s, can not scan due to error %d\n",
 		          wlc->pub->unit, __FUNCTION__, err));
-		wlc_scan_request_ex_cb(arg, WLC_E_STATUS_ERROR, cfg);
+		(fn)(arg, WLC_E_STATUS_ERROR, cfg);
 	}
 
 	return err;
@@ -430,7 +430,9 @@ wlc_custom_scan_complete(void *arg, int status, wlc_bsscfg_t *cfg)
 	/* This scan is blocked by other existing scan of equal or higher priority */
 	/* Do this at the beginning of this function to avoid sending unnecessary events */
 	if (status == WLC_E_STATUS_ERROR) {
-		WL_ERROR(("wl%d: %s - scan blocked by others\n", wlc->pub->unit, __FUNCTION__));
+		WL_SCAN(("wl%d: %s - scan blocked by others\n", wlc->pub->unit, __FUNCTION__));
+		WL_EAP_TRC_SCAN_DBG(("wl%d: %s - scan blocked by others\n",
+			wlc->pub->unit, __FUNCTION__));
 		return;
 	}
 

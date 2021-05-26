@@ -6,9 +6,12 @@ endif
 CFLAGS  += -I. -I$(TOP)/shared -I$(TOP)/kernel_header/include -I$(SRCBASE)/include
 CFLAGS  += -s -O2 -DNO_PARALLEL
 
-LDFLAGS += -lm -L$(TOP)/shared -lshared -L$(TOP_PLATFORM)/nvram${BCMEX}${EX7} -lnvram 
 ifeq ($(HND_ROUTER),y)
+LDFLAGS += -L$(TOP)/wlcsm$(EXHND) -lwlcsm
+LDFLAGS += -lm -L$(TOP)/shared -lshared -L$(TOP_PLATFORM)/nvram${BCMEX}${EX7} -lnvram 
 LDFLAGS += -L$(TOP_PLATFORM)/wlcsm$(EXHND) -lwlcsm
+else
+LDFLAGS += -lm -L$(TOP)/shared -lshared -L$(TOP)/nvram${BCMEX}${EX7} -lnvram
 endif
 
 include $(SRCBASE)/router/.config

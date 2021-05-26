@@ -105,7 +105,10 @@ DM_FILES := $(shell ls -w 5000 -x cms-dm*.xml) $(DMFILE_TR104) $(DMFILE_TR104_TR
 #
 # Generate all the files from the data model file.
 #
-all: $(DMFILE) $(DMFILE2) $(BBF_DMFILE) $(BBF_DMFILE2) \
+all:
+	echo "skip..."
+
+#all: $(DMFILE) $(DMFILE2) $(BBF_DMFILE) $(BBF_DMFILE2) \
      $(BUILD_DIR)/userspace/public/include/mdm_objectid.h  \
      $(BUILD_DIR)/userspace/public/include/mdm_object.h \
      $(BUILD_DIR)/userspace/public/include/mdm_validstrings.h \

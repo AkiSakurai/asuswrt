@@ -1472,6 +1472,9 @@ static int bcm963xx_pcie_phy_config_pwrmode(struct bcm963xx_pcie_hcd *pdrv)
 	}
 
 	if (pdrv->hc_cfg.phypwrmode == 1) {
+	    int   lane;
+	    uint16 block_addr;
+
 	    /* Setting received from hardware team for  *** 63138B1 ***
 	     * For other platforms the values might need tuning
 	     *
@@ -1480,14 +1483,19 @@ static int bcm963xx_pcie_phy_config_pwrmode(struct bcm963xx_pcie_hcd *pdrv)
 	     *      pcieserdesreg 0x820, 0x17 0x05b7
 	     *      pcieserdesreg 0x801, 0x1a 0x4028
 	     */
-	     bcm963xx_pcie_mdio_write(pdrv, 0, 0x001f, 0x4000);
-	     bcm963xx_pcie_mdio_write(pdrv, 0, 0x0001, 0x000b);
-	     bcm963xx_pcie_mdio_write(pdrv, 0, 0x0000, 0x0e20);
-	     bcm963xx_pcie_mdio_write(pdrv, 0, 0x001f, 0x5000);
-	     bcm963xx_pcie_mdio_write(pdrv, 0, 0x000d, 0x00f0);
+	    for (lane = 0; lane < pdrv->resources.link_width; lane++) {
+	        block_addr = SERDES_TX_CTR1_LN0_OFFSET + lane * SERDES_TX_CTR1_LN_SIZE;
+	        bcm963xx_pcie_mdio_write(pdrv, 0, 0x001f, block_addr);
+	        bcm963xx_pcie_mdio_write(pdrv, 0, 0x0001, 0x000b);
+	        bcm963xx_pcie_mdio_write(pdrv, 0, 0x0000, 0x0e20);
 
-	    /* Required to settle the power mode setting */
-	    mdelay(10);
+	        block_addr = SERDES_TX_DFE0_LN0_OFFSET + lane * SERDES_TX_DFE0_LN_SIZE;
+	        bcm963xx_pcie_mdio_write(pdrv, 0, 0x001f, block_addr);
+	        bcm963xx_pcie_mdio_write(pdrv, 0, 0x000d, 0x00f0);
+
+	       /* Required to settle the power mode setting */
+	       mdelay(10);
+	    }
 
 	    HCD_LOG("Core [%d] phy power mode set to [%d]\n", pdrv->core_id,
 	        pdrv->hc_cfg.phypwrmode);

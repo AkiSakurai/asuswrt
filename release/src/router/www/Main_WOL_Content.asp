@@ -55,7 +55,7 @@ function onSubmitCtrl(o, s) {
 		return false;
 	}
 
-	if(check_hwaddr_flag(document.form.destIP) != 0){
+	if(check_hwaddr_flag(document.form.destIP, 'inner') != 0){
 		alert("<#IPConnection_x_illegal_mac#>");
 		document.form.destIP.focus();
 		return false;
@@ -205,7 +205,7 @@ function addRow_Group(upper){
 		document.form.wollist_macAddr.focus();
 		document.form.wollist_macAddr.select();			
 		return false;
-	}else if(!check_macaddr(document.form.wollist_macAddr, check_hwaddr_flag(document.form.wollist_macAddr))){
+	}else if(!check_macaddr(document.form.wollist_macAddr, check_hwaddr_flag(document.form.wollist_macAddr, 'inner'))){
 		document.form.wollist_macAddr.focus();
 		document.form.wollist_macAddr.select();	
 		return false;	
@@ -304,7 +304,7 @@ function applyRule(){
 }
 </script>
 </head>
-<body onload="initial();">
+<body onload="initial();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <iframe name="hidden_frame" id="hidden_frame" src="" width="0" height="0" frameborder="0"></iframe>

@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmpvt.h 777940 2019-08-15 20:25:56Z $
+ * $Id: pdftmpvt.h 788031 2020-06-18 14:10:58Z $
  */
 
 #ifndef _pdftmpvt_h_
@@ -809,10 +809,16 @@ enum {
 
 /* Default FTM separation in micro seconds */
 #define FTM_SEP_SEQ_EN	3600u
+#define FTM_SEP_CM3	1400u
+#ifdef TOF_DEFAULT_USE_MULTICORE
+#define FTM_SEP_80M	3100u
+#define FTM_SEP_40M	1700u
+#define FTM_SEP_20M	500u
+#else
 #define FTM_SEP_80M	1300u
 #define FTM_SEP_40M	700u
 #define FTM_SEP_20M	200u
-#define FTM_SEP_CM3	1400u
+#endif /* TOF_DEFAULT_SINGLE_CORE_EN */
 
 #define FTM_SESSION_FOR_SID(_ftm, _sid) pdftm_find_session(_ftm, \
 	&(_sid), NULL, WL_PROXD_SESSION_FLAG_NONE, WL_PROXD_SESSION_STATE_NONE)

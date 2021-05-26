@@ -760,7 +760,7 @@
 
   <parameter name="WlAuthMode" type="string" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="open" maxLength="18" nvram="ap_sec.auth_mode" />
 
-  <parameter name="WlAuthAkm" type="string" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="open" maxLength="18" nvram="ap_sec.akm" />
+  <parameter name="WlAuthAkm" type="string" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="open" maxLength="64" nvram="ap_sec.akm" />
 
   <parameter name="X_BROADCOM_COM_WlAuth" type="int" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="0" nvram="ap_sec.auth" />
 

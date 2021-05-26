@@ -373,7 +373,7 @@ bsd_bssinfo_t *bsd_bssinfo_by_ifname(bsd_info_t *info, char *ifname, uint8 remot
 		}
 		for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 			bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
-			if (!(bssinfo->valid))
+			if (!(bssinfo->valid) || !BSD_BSS_BSD_OR_WBD_ENABLED(bssinfo))
 				continue;
 
 			BSD_ALL("idx=%d bssidx=%d ifname=[%s][%s]\n",
@@ -733,7 +733,7 @@ void bsd_dump_config_info(bsd_info_t *info)
 
 		for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 			bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
-			if (bssinfo->valid) {
+			if (bssinfo->valid && BSD_BSS_BSD_OR_WBD_ENABLED(bssinfo)) {
 				fprintf(out, "ifidx=%d bssidx=%d ifnames=%s valid=%d:\n",
 					idx, bssidx, bssinfo->ifnames, bssinfo->valid);
 
@@ -879,7 +879,7 @@ void bsd_dump_info(bsd_info_t *info)
 
 		for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 			bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
-			if (bssinfo->valid) {
+			if (bssinfo->valid && BSD_BSS_BSD_OR_WBD_ENABLED(bssinfo)) {
 				BSD_PRINT("ifidx:%d bssidx:%d ifnames:%s valid:%d prefix:%s "
 					"ssid:%s idx:0x%x bssid:"MACF" rclass:0x%x chanspec:0x%x"
 					"prio:0x%x video_idle:%d\n",
@@ -1487,6 +1487,13 @@ int bsd_info_init(bsd_info_t *info)
 			free(bsd_if);
 
 		BSD_INFO("sorted nvram bsd_ifnames=%s\n", bsd_ifnames_sorted);
+#ifdef BCM_WBD
+		/* if WBD is enabled */
+		if (info->enable_flag & BSD_FLAG_WBD_ENABLED) {
+			bsd_wbd_ifnames_append(info, bsd_ifnames_sorted,
+				sizeof(bsd_ifnames_sorted));
+		}
+#endif /* BCM_WBD */
 	}
 
 	total_intf = 0;
@@ -1553,11 +1560,12 @@ int bsd_info_init(bsd_info_t *info)
 		bssinfo->idx = idx;
 
 		BSD_INFO("nvram %s=%s\n",
-			strcat_r(prefix, "radio", tmp),
-			bsd_nvram_safe_get(rpc, strcat_r(prefix, "radio", tmp), NULL));
+			strcat_r(bssinfo->primary_prefix, "radio", tmp),
+			bsd_nvram_safe_get(rpc, strcat_r(bssinfo->primary_prefix, "radio", tmp),
+				NULL));
 
 		intf_info->enabled = TRUE;
-		if (bsd_nvram_match(rpc, strcat_r(prefix, "radio", tmp), "0")) {
+		if (bsd_nvram_match(rpc, strcat_r(bssinfo->primary_prefix, "radio", tmp), "0")) {
 			BSD_INFO("Skip intf:%s.  radio is off\n", name);
 			memset(intf_info, 0, sizeof(bsd_intf_info_t));
 			continue;
@@ -1743,10 +1751,13 @@ int bsd_info_init(bsd_info_t *info)
 		/* Update BSS capability for this BSS */
 		bsd_update_bss_capability(bssinfo);
 
+		if (find_in_list(bsd_ifnames, var_intf))
 		{
 			bsd_steering_policy_t *steering_cfg = &intf_info->steering_cfg;
 			bsd_if_qualify_policy_t *qualify_cfg = &intf_info->qualify_cfg;
 			num = 0;
+
+			bssinfo->flags |= BSD_FLAG_BSS_BSD_ENABLED;
 
 			str = bsd_nvram_safe_get(rpc,
 				strcat_r(prefix, BSD_STEERING_POLICY_NVRAM, tmp), &ret);
@@ -1806,7 +1817,7 @@ int bsd_info_init(bsd_info_t *info)
 		}
 
 		total_intf++;
-		if (total_intf >= info->max_ifnum) {
+		if (total_intf >= (info->max_ifnum * WL_MAXBSSCFG)) {
 			BSD_ERROR("break, intf max %d reached!\n", info->max_ifnum);
 			break;
 		}
@@ -1834,7 +1845,7 @@ int bsd_info_init(bsd_info_t *info)
 
 		for (idx = 0; idx < WL_MAXBSSCFG; idx++) {
 			bssinfo = &(intf_info->bsd_bssinfo[idx]);
-			if (bssinfo->valid) {
+			if (bssinfo->valid && BSD_BSS_BSD_ENABLED(bssinfo)) {
 				int tifidx, tmp_idx;
 				bsd_intf_info_t *tifinfo;
 				bsd_bssinfo_t *tbssinfo;
@@ -1862,7 +1873,8 @@ int bsd_info_init(bsd_info_t *info)
 							tbssinfo->prefix, tbssinfo->ssid,
 							tifidx, tmp_idx, tbssinfo->valid);
 
-						if (!(tbssinfo->valid))
+						if (!(tbssinfo->valid) ||
+							!BSD_BSS_BSD_ENABLED(tbssinfo))
 							continue;
 						prefix = tbssinfo->prefix;
 						steer_prefix = bssinfo->steer_prefix;
@@ -2501,7 +2513,7 @@ void bsd_update_stainfo(bsd_info_t *info)
 
 		for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 			bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
-			if (!(bssinfo->valid))
+			if (!(bssinfo->valid) || !BSD_BSS_BSD_OR_WBD_ENABLED(bssinfo))
 				continue;
 /*			if (bssinfo->steerflag & BSD_BSSCFG_NOTSTEER)
 				continue;
@@ -2707,6 +2719,8 @@ void bsd_update_stainfo(bsd_info_t *info)
 				sta->rssi = rssi;
 				bsd_log_rssi(info, sta, FALSE);
 
+				sta->wnm_cap = sta_info->wnm_cap;
+
 				BSD_STEER("sta:"MACF" flags:0x%x capability: %s, RSSI:%d "
 					"phyrate:%d tx_rate:%d\n",
 					ETHER_TO_MACF(sta->addr), sta->flags,
@@ -2884,7 +2898,7 @@ void bsd_update_stb_info(bsd_info_t *info)
 		for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 			bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
 
-			if (!(bssinfo->valid))
+			if (!(bssinfo->valid) || !BSD_BSS_BSD_OR_WBD_ENABLED(bssinfo))
 				continue;
 
 			if (bssidx == info->bssidx) {
@@ -2996,7 +3010,7 @@ void bsd_timeout_sta(bsd_info_t *info)
 		for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 			bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
 
-			if (!(bssinfo->valid))
+			if (!(bssinfo->valid) || !BSD_BSS_BSD_OR_WBD_ENABLED(bssinfo))
 				continue;
 			if (bssinfo->steerflag & BSD_BSSCFG_NOTSTEER)
 				continue;
@@ -3183,7 +3197,8 @@ static int bsd_check_sta_assoc_any(bsd_info_t *info, struct ether_addr *addr)
 		bssinfo = bsd_bssinfo_by_ifname(info, var_intf, remote);
 
 		if (bssinfo && bssinfo->valid && bssinfo->intf_info &&
-			(bssinfo->intf_info->enabled == TRUE)) {
+			(bssinfo->intf_info->enabled == TRUE) &&
+			BSD_BSS_BSD_ENABLED(bssinfo)) {
 			if (bsd_add_assoclist(bssinfo, addr, FALSE) != NULL) {
 				BSD_INFO("STA "MACF" found associated on %s\n",
 					ETHERP_TO_MACF(addr), var_intf);
@@ -3215,7 +3230,7 @@ void bsd_timeout_maclist(bsd_info_t *info)
 
 		for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 			bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
-			if (!(bssinfo->valid))
+			if (!(bssinfo->valid) || !BSD_BSS_BSD_ENABLED(bssinfo))
 				continue;
 			if (bssinfo->steerflag & BSD_BSSCFG_NOTSTEER)
 				continue;
@@ -3905,7 +3920,8 @@ void bsd_check_steer_result(bsd_info_t *info, struct ether_addr *addr, bsd_bssin
 			bssinfo = &intf_info->bsd_bssinfo[bssidx];
 			if (!(bssinfo->valid) ||
 				(bssinfo->steerflag & BSD_BSSCFG_NOTSTEER) ||
-				(bssinfo == to_bssinfo))
+				(bssinfo == to_bssinfo) ||
+				!BSD_BSS_BSD_OR_WBD_ENABLED(bssinfo))
 					continue;
 
 			sta = bssinfo->maclist;
@@ -4215,7 +4231,8 @@ bsd_sta_info_t* bsd_check_sta_assoc_other_bss(bsd_info_t *info, bsd_bssinfo_t *e
 			continue;
 
 		if (bssinfo && bssinfo->valid && bssinfo->intf_info &&
-			(bssinfo->intf_info->enabled == TRUE)) {
+			(bssinfo->intf_info->enabled == TRUE) &&
+			BSD_BSS_BSD_OR_WBD_ENABLED(bssinfo)) {
 			if ((sta = bsd_add_assoclist(bssinfo, addr, FALSE)) != NULL) {
 				BSD_INFO("STA "MACF" found associated on %s\n",
 					ETHERP_TO_MACF(addr), var_intf);

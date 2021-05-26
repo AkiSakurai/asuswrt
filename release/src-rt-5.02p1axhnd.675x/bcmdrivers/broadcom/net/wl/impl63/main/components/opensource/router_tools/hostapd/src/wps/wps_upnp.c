@@ -302,7 +302,6 @@ static int local_network_addr(struct upnp_wps_device_sm *sm,
 		(sm->ip_addr & sm->netmask.s_addr);
 }
 
-
 /* subscr_addr_add_url -- add address(es) for one url to subscription */
 static void subscr_addr_add_url(struct subscription *s, const char *url,
 				size_t url_len)
@@ -1018,6 +1017,10 @@ static void upnp_wps_device_stop(struct upnp_wps_device_sm *sm)
  */
 static int upnp_wps_device_start(struct upnp_wps_device_sm *sm, char *net_if)
 {
+#ifdef CONFIG_DRIVER_BRCM
+	int failed = 0;
+#endif	/* CONFIG_DRIVER_BRCM */
+
 	if (!sm || !net_if)
 		return -1;
 
@@ -1038,7 +1041,11 @@ static int upnp_wps_device_start(struct upnp_wps_device_sm *sm, char *net_if)
 			   &sm->netmask, sm->mac_addr)) {
 		wpa_printf(MSG_INFO, "WPS UPnP: Could not get IP/MAC address "
 			   "for %s. Does it have IP address?", net_if);
+#ifdef CONFIG_DRIVER_BRCM
+		failed = 1;
+#else
 		goto fail;
+#endif	/* CONFIG_DRIVER_BRCM */
 	}
 	wpa_printf(MSG_DEBUG, "WPS UPnP: Local IP address %s netmask %s hwaddr "
 		   MACSTR,
@@ -1048,8 +1055,13 @@ static int upnp_wps_device_start(struct upnp_wps_device_sm *sm, char *net_if)
 	/* Listen for incoming TCP connections so that others
 	 * can fetch our "xml files" from us.
 	 */
+#ifdef CONFIG_DRIVER_BRCM
+	if (!failed &&  web_listener_start(sm))
+		goto fail;
+#else
 	if (web_listener_start(sm))
 		goto fail;
+#endif	/* CONFIG_DRIVER_BRCM */
 
 	/* Set up for receiving discovery (UDP) packets */
 	if (ssdp_listener_start(sm))
@@ -1225,3 +1237,37 @@ int upnp_wps_set_ap_pin(struct upnp_wps_device_sm *sm, const char *ap_pin)
 
 	return 0;
 }
+
+#ifdef CONFIG_DRIVER_BRCM
+/**
+ * upnp_wps_web_listener_sock_update - updates web listner socket
+ * @sm: WPS UPnP state machine from upnp_wps_device_init()
+ * @net_if: Selected network interface name
+ * Returns: 0 or -1 on failure
+ */
+int upnp_wps_web_listener_sock_update(struct upnp_wps_device_sm *sm, char *net_if)
+{
+	if (!sm || !net_if)
+		return -1;
+
+	web_listener_stop(sm);
+
+	/* Determine which IP and mac address we're using */
+	if (get_netif_info(net_if, &sm->ip_addr, &sm->ip_addr_text,
+			   &sm->netmask, sm->mac_addr)) {
+		wpa_printf(MSG_INFO, "WPS UPnP: Could not get IP address for %s", net_if);
+		goto fail;
+	}
+
+	/* Listen for incoming TCP connections so that others
+	 * can fetch our "xml files" from us.
+	 */
+	if (web_listener_start(sm))
+		goto fail;
+
+	return 0;
+fail:
+	upnp_wps_device_stop(sm);
+	return -1;
+}
+#endif	/* CONFIG_DRIVER_BRCM */

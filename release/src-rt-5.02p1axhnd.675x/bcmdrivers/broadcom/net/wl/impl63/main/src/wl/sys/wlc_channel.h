@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_channel.h 780070 2019-10-15 06:25:33Z $
+ * $Id: wlc_channel.h 784627 2020-03-03 16:04:53Z $
  */
 
 #ifndef _WLC_CHANNEL_H_

@@ -1,7 +1,7 @@
 #
 # Makefile for the Dualband Proxy STA
 #
-# Copyright (C) 2019, Broadcom. All Rights Reserved.
+# Copyright (C) 2020, Broadcom. All Rights Reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -21,6 +21,12 @@
 #
 include ../../.config
 
+ifeq ($(strip $(USE_WLAN_SHARED)), 1)
+ifneq ($(strip $(WLAN_SHARED_DIR)),)
+-include $(WLAN_SHARED_DIR)/wifi_cfg_common.mk
+endif
+endif
+
 obj-${CONFIG_BCM_WLAN} := dpsta.o
 
 DPSTA_BASE_DIR := $(firstword $(wildcard ../../../../components/router-sysdep/dpsta	\
@@ -36,10 +42,6 @@ COMPONENTSBASE := $(src)/$(COMPONENTSBASE_OFFSET)
 
 # Search for sources under src/router/dpsta
 ifneq (,$(wildcard $(src)/$(DPSTASRC)/*.c))
-  ifeq ($(CONFIG_BUZZZ_FUNC),y)
-  subdir-ccflags-y += -O0 -fno-inline -finstrument-functions
-  endif # CONFIG_BUZZZ_FUNC
-
   EXTRA_CFLAGS += -I$(src)/$(DPSTASRC)/../../router-sysdep/dpsta
   EXTRA_CFLAGS += -I$(SRCBASE)/include -I$(SRCBASE)/common/include
   EXTRA_CFLAGS += -I$(COMPONENTSBASE)/proto/include
@@ -52,9 +54,9 @@ else # DPSTASRC not exist
   # Otherwise, assume prebuilt object module(s) in src/dpsta/linux directory
   prebuilt := dpsta.o
 ifeq ($(HND_ROUTER_AX_6710),y)
-  dpsta-objs := $(SRCBASE_OFFSET)/dpsta/linux.4908/$(prebuilt)
+  dpsta-objs := $(SRCBASE_OFFSET)/dpsta/linux.4908/impl$(BCM_WLIMPL)/$(prebuilt)
   ifeq (,$(wildcard $(src)/$(dpsta-objs)))
-    dpsta-objs := $(DPSTASRC)/linux.4908/$(prebuilt)
+    dpsta-objs := $(DPSTASRC)/linux.4908/impl$(BCM_WLIMPL)/$(prebuilt)
   endif
 else
   dpsta-objs := $(SRCBASE_OFFSET)/dpsta/linux/$(prebuilt)

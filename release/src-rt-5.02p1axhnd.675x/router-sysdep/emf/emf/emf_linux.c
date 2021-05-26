@@ -2,7 +2,7 @@
  * EMFL Linux Port: These functions handle the interface between EMFL
  * and the native OS.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: emf_linux.c 775415 2019-05-29 18:14:36Z $
+ * $Id: emf_linux.c 785735 2020-04-04 13:13:02Z $
  */
 #include <linux/module.h>
 #include <linux/netdevice.h>
@@ -471,7 +471,7 @@ emf_sendup(emf_info_t *emfi, struct sk_buff *skb)
  */
 int32
 emf_forward(emf_info_t *emfi, struct sk_buff *skb, uint32 mgrp_ip,
-            struct net_device *txif, bool rt_port)
+            struct net_device *txif, int rt_port)
 {
 	struct ether_header *eh;
 
@@ -684,13 +684,21 @@ emf_hooks_register(emf_info_t *emfi)
 	 */
 	for (i = 0; i < sizeof(emf_nf_ops)/sizeof(struct nf_hook_ops); i++)
 	{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)
+		ret = nf_register_net_hook(&init_net, &emf_nf_ops[i]);
+#else
 		ret = nf_register_hook(&emf_nf_ops[i]);
+#endif // endif
 
 		if (ret < 0)
 		{
 			EMF_ERROR("Unable to register netfilter hooks\n");
 			for (j = 0; j < i; j++)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)
+				nf_unregister_net_hook(&init_net, &emf_nf_ops[j]);
+#else
 				nf_unregister_hook(&emf_nf_ops[j]);
+#endif // endif
 			return (FAILURE);
 		}
 	}
@@ -716,7 +724,11 @@ emf_hooks_unregister(emf_info_t *emfi)
 	/* Unregister all the hooks */
 	for (i = 0; i < sizeof(emf_nf_ops)/sizeof(struct nf_hook_ops); i++)
 	{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)
+		nf_unregister_net_hook(&init_net, &emf_nf_ops[i]);
+#else
 		nf_unregister_hook(&emf_nf_ops[i]);
+#endif // endif
 	}
 
 	return;
@@ -1455,7 +1467,7 @@ module_exit(emf_module_exit);
 
 int ipv6_type(const struct ipv6_addr *addr)
 {
-	return ipv6_addr_type((const struct ip6_addr *)addr);
+	return ipv6_addr_type((const struct in6_addr *)addr);
 }
 
 void

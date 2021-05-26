@@ -124,6 +124,13 @@ typedef struct dhd_pktfwd_keymap        dhd_pktfwd_keymap_t;
 #define DHD_PKTFWD_DEST_MAX             (DHD_MAX_STA)
 #define DHD_PKTFWD_FLOWIDS_MAX          (PKTFWD_PRIO_MAX * DHD_PKTFWD_DEST_MAX)
 
+/* Toggle pktfwd acceleration in dwds via nvram vars */
+extern char * nvram_get(const char *name);
+#define NVRAM_DWDS_AP_PKTFWD_ACCEL	"dhd_dwds_ap_pktfwd"  /* 0: disable, 1: enable */
+#define NVRAM_DWDS_STA_PKTFWD_ACCEL	"dhd_dwds_sta_pktfwd"  /* 0: disable, 1: enable */
+bool dhd_dwds_ap_pktfwd_accel = false; /* default dwds ap pktfwd accel */
+bool dhd_dwds_sta_pktfwd_accel = false; /* default dwds sta pktfwd accel */
+
 /**
  * =============================================================================
  * Section: PKTFWD Global System Object(s)
@@ -779,29 +786,35 @@ dhd_pktfwd_cache(uint8_t * d3addr, struct net_device * net_device)
 {
     bool is_wlan, cache_eligible;
     d3lut_elem_t * d3lut_elem;
-    dhd_pktfwd_priv_t * dhd_pktfwd_priv;
 
     PKTFWD_PTRACE(D3LUT_SYM_FMT "%s", D3LUT_SYM_VAL(d3addr), net_device->name);
 
-    dhd_pktfwd_priv = dhd_pktfwd_get_priv(net_device);
-    ASSERT(dhd_pktfwd_priv);
-
     is_wlan = is_netdev_wlan(net_device);
-
     if (is_wlan)
     {
+    	dhd_pktfwd_priv_t *dhd_pktfwd_priv;
+
+    	/* check if wlan virtual device */
+    	if (check_virt_wlan(net_device))
+    		goto dhd_pktfwd_cache_failure;
+
+    	dhd_pktfwd_priv = dhd_pktfwd_get_priv(net_device);
+    	ASSERT(dhd_pktfwd_priv);
+
     	cache_eligible = (dhd_pktfwd_priv->ifp &&
     		(dhd_pktfwd_priv->d3fwd_wlif != D3FWD_WLIF_NULL)) ?
     		true : false; /* only WLAN NIC endpoints, exclude DHD endpoints */
-    
-    	if (cache_eligible && (strncmp(net_device->name, "wds", 3) == 0))
-    	    cache_eligible = false; /* exclude WDS endpoints */
-    } else {
-        cache_eligible = true; /* LAN endpoints are always eligible */
 
-        if (net_device->priv_flags & IFF_BONDING)
-            cache_eligible = false; /* exclude bond endpoints */
+    	if ((dhd_dwds_ap_pktfwd_accel == false) && dhd_pktfwd_priv->d3fwd_wlif &&
+    		is_netdev_wlan_dwds_ap(dhd_pktfwd_priv->d3fwd_wlif))
+    			goto dhd_pktfwd_cache_failure;
+    	if ((dhd_dwds_sta_pktfwd_accel == false) && dhd_pktfwd_priv->d3fwd_wlif &&
+    		is_netdev_wlan_dwds_client(dhd_pktfwd_priv->d3fwd_wlif))
+    			goto dhd_pktfwd_cache_failure;
     }
+    else
+	cache_eligible = (net_device->priv_flags & IFF_BONDING) ?
+		false : true; /* LAN endpoints, exclude bonding endpoints */
 
     if (cache_eligible == false)
 	    goto dhd_pktfwd_cache_failure;
@@ -919,6 +932,34 @@ dhd_pktfwd_request_done:
 
 }   /* dhd_pktfwd_request() */
 
+d3lut_elem_t *
+dhd_pktfwd_lut_lkup(struct net_device * net_device, d3lut_t *d3lut, uint8_t *d3_addr, uint32_t pool)
+{
+    d3lut_elem_t * d3lut_elem;
+    d3fwd_wlif_t * d3fwd_wlif;
+    dhd_pktfwd_priv_t * dhd_pktfwd_priv;
+
+    /* check WDS case first */
+    if ((net_device != NULL) && is_netdev_wlan(net_device)) {
+
+        dhd_pktfwd_priv = dhd_pktfwd_get_priv(net_device);
+        d3fwd_wlif = dhd_pktfwd_priv->d3fwd_wlif;
+
+        if (d3fwd_wlif && 
+            ((is_netdev_wlan_dwds_ap(d3fwd_wlif) || is_netdev_wlan_dwds_client(d3fwd_wlif)) && 
+             (d3fwd_wlif->wds_d3lut_elem != NULL))) {
+            d3lut_elem = d3fwd_wlif->wds_d3lut_elem;
+            goto done;
+        }
+    }
+
+    /* for other cases */
+    d3lut_elem = d3lut_lkup(d3lut, d3_addr, pool);
+
+done:
+    return d3lut_elem;
+}
+
 void * /* d3lut_elem_t * */
 dhd_pktfwd_lut_ins(uint8_t * d3addr,
 	struct net_device * net_device, bool is_wlan)
@@ -930,25 +971,24 @@ dhd_pktfwd_lut_ins(uint8_t * d3addr,
     dhd_pktfwd_t   * dhd_pktfwd = &dhd_pktfwd_g;
     uint16_t	     staidx = ID16_INVALID;
     dhd_pub_t	   * dhdp;
+    dhd_pktfwd_priv_t * dhd_pktfwd_priv;
+    d3fwd_wlif_t * d3fwd_wlif;
 
     PKTFWD_ASSERT(d3addr != (uint8_t *) NULL);
     PKTFWD_ASSERT(net_device != (struct net_device *) NULL);
     PKTFWD_ASSERT(dhd_pktfwd->initialized == true);
     PKTFWD_PTRACE(D3LUT_SYM_FMT "%s", D3LUT_SYM_VAL(d3addr), net_device->name);
 
+    dhd_pktfwd_priv = dhd_pktfwd_get_priv(net_device);
+    ASSERT(dhd_pktfwd_priv);
+    d3fwd_wlif = dhd_pktfwd_priv->d3fwd_wlif;
+
     /* WLAN and LAN domain: pool+policy selection and interface handle */
     if (is_wlan)
     {
 	    uint32_t	     radio_idx = -1;
-	    dhd_pktfwd_priv_t * dhd_pktfwd_priv;
-	    d3fwd_wlif_t * d3fwd_wlif;
-
-	    dhd_pktfwd_priv = dhd_pktfwd_get_priv(net_device);
-	    ASSERT(dhd_pktfwd_priv);
-
 	    radio_idx = dhd_pktfwd_priv->radio_unit;
 	    ssid = dhd_pktfwd_priv->ifidx;
-	    d3fwd_wlif = dhd_pktfwd_priv->d3fwd_wlif;
 	    dhdp = g_dhd_info[radio_idx];
 
 	    ASSERT(dhdp);
@@ -961,19 +1001,24 @@ dhd_pktfwd_lut_ins(uint8_t * d3addr,
 	        goto dhd_pktfwd_lut_ins_failure;
 	    }
 
+	    /* if d3lut_elem exists for dwds, just return it */
+	    if ((is_netdev_wlan_dwds_ap(d3fwd_wlif) || is_netdev_wlan_dwds_client(d3fwd_wlif)) && 
+                        (d3fwd_wlif->wds_d3lut_elem != NULL)) {
+	         return (void *) d3fwd_wlif->wds_d3lut_elem;
+	    }
+
 	    d3domain = radio_idx;
 	    if_handle = (void *) d3fwd_wlif; /* wlif extension */
 
 	    /* Cant use flowid here since flowid is 16 bit while d3lut key is 12 bits */
 	    staidx = dhd_if_get_staidx(dhdp, ssid /* ifidx */, d3addr);
 
-		/* staidx will be invalid for WET/WDS mode */
-		if (staidx == ID16_INVALID) {
+	    if (staidx == ID16_INVALID) {
 	        goto dhd_pktfwd_lut_ins_failure;
-		}
+	    }
 
-        d3lut_policy.pool_by_index = DHD_STAIDX2LUTID(staidx);
-        PKTFWD_ASSERT(d3lut_policy.v16 < PKTFWD_ENDPOINTS_MAX);
+	    d3lut_policy.pool_by_index = DHD_STAIDX2LUTID(staidx);
+	    PKTFWD_ASSERT(d3lut_policy.v16 < PKTFWD_ENDPOINTS_MAX);
     }
     else /* ! is_wlan */
     {
@@ -1025,6 +1070,13 @@ dhd_pktfwd_lut_ins(uint8_t * d3addr,
     	    d3lut_elem->ext.flowid  = d3lut_elem->key.v16;
     	    d3lut_elem->ext.ssid    = ssid;
     	}
+
+    	/* keep this d3lut_elem for DWDS */
+    	if (d3fwd_wlif && (is_netdev_wlan_dwds_ap(d3fwd_wlif) || is_netdev_wlan_dwds_client(d3fwd_wlif))) {
+    	    /* save d3lut_elem for wds use */
+    	    d3lut_elem->key.incarn = 0; /* reset incarn as d3lut_elem is deleted due to roaming */
+    	    d3fwd_wlif->wds_d3lut_elem = d3lut_elem;
+    	}
     }
     else /* ! is_wlan */
     {
@@ -1051,19 +1103,18 @@ dhd_pktfwd_lut_ins_failure:
  */
 static inline void /* must be called with d3lut lock and non-null d3lut_elem */
 _dhd_pktfwd_lut_del(uint8_t * d3addr, d3lut_elem_t * d3lut_elem,
-	uint32_t d3domain)
+	uint32_t d3domain, struct net_device * net_device)
 {
+    dhd_pktfwd_priv_t * dhd_pktfwd_priv = dhd_pktfwd_get_priv(net_device);
+    d3fwd_wlif_t * d3fwd_wlif = dhd_pktfwd_priv->d3fwd_wlif;
     dhd_pktfwd_t  * dhd_pktfwd = &dhd_pktfwd_g;
 
+    PKTFWD_ASSERT(d3fwd_wlif != D3FWD_WLIF_NULL);
     PKTFWD_ASSERT(d3lut_elem != D3LUT_ELEM_NULL);
     PKTFWD_ASSERT(dhd_pktfwd->initialized == true);
 
     if (d3lut_elem->ext.wlan && d3lut_elem->ext.assoc)
     {
-    	d3fwd_wlif_t * d3fwd_wlif;
-    	d3fwd_wlif = d3lut_elem->ext.d3fwd_wlif;
-    	PKTFWD_ASSERT(d3fwd_wlif != D3FWD_WLIF_NULL);
-
         d3lut_elem->ext.assoc  = 0; /* tag station as disassociated */
         d3lut_elem->ext.wlan   = 0;
         d3lut_elem->ext.if_handle = (void *) NULL;
@@ -1071,6 +1122,20 @@ _dhd_pktfwd_lut_del(uint8_t * d3addr, d3lut_elem_t * d3lut_elem,
     	if (d3fwd_wlif->stations)
     	    --d3fwd_wlif->stations; /* update d3fwd_wlif station count */
     	/* Do we need to flush packets already in d3fwd_wlif::ucast ? No */
+    }
+
+    if ((net_device != NULL) && 
+        (d3fwd_wlif && (is_netdev_wlan_dwds_ap(d3fwd_wlif) || is_netdev_wlan_dwds_client(d3fwd_wlif))))
+    {
+#if defined(BCM_PKTFWD_DWDS)
+        int ssid = dhd_pktfwd_priv->ifidx;
+        uint32_t radio_idx = dhd_pktfwd_priv->radio_unit;
+        dhd_pub_t *dhdp = g_dhd_info[radio_idx];
+
+        dhd_free_dwds_idx(dhdp, ssid /*ifidx*/);
+#endif /* BCM_PKTFWD_DWDS */
+        d3fwd_wlif->wds_d3lut_elem = NULL;
+        d3addr = d3lut_elem->sym.v8; /* replace d3addr to be able to delete */
     }
 
     (void) d3lut_del(dhd_pktfwd->d3lut, d3addr, d3domain);
@@ -1084,32 +1149,39 @@ dhd_pktfwd_lut_del(uint8_t * d3addr, struct net_device * net_device)
     int            d3domain; /* d3addr in d3domain (by WLAN radio and LAN) */
     d3lut_elem_t * d3lut_elem;
     dhd_pktfwd_t  * dhd_pktfwd = &dhd_pktfwd_g;
-
     PKTFWD_TRACE(D3LUT_SYM_FMT, D3LUT_SYM_VAL(d3addr));
 
     if (net_device != NULL)
     {
     	bool is_wlan, lut_del_eligible;
-    	dhd_pktfwd_priv_t * dhd_pktfwd_priv;
-    
-    	dhd_pktfwd_priv = dhd_pktfwd_get_priv(net_device);
-    	ASSERT(dhd_pktfwd_priv);
     
     	is_wlan = is_netdev_wlan(net_device);
-    
     	if (is_wlan)
     	{
+    	    dhd_pktfwd_priv_t * dhd_pktfwd_priv;
+
+    	    /* check if wlan virtual device */
+    	    if (check_virt_wlan(net_device))
+    	        return;
+
+    	    dhd_pktfwd_priv = dhd_pktfwd_get_priv(net_device);
+    	    ASSERT(dhd_pktfwd_priv);
+
     	    /* only WLAN NIC endpoints, exclude DHD endpoints */
     	    lut_del_eligible = (dhd_pktfwd_priv->ifp &&
     		    (dhd_pktfwd_priv->d3fwd_wlif != D3FWD_WLIF_NULL)) ?
     		true : false;
     
-    	    if (lut_del_eligible && (strncmp(net_device->name, "wds", 3) == 0))
-    		    lut_del_eligible = false; /* exclude WDS endpoints */
-    
     	    if (lut_del_eligible == false)
     		    return;
-    
+
+   	    if ((dhd_dwds_ap_pktfwd_accel == false) && dhd_pktfwd_priv->d3fwd_wlif &&
+ 	       	is_netdev_wlan_dwds_ap(dhd_pktfwd_priv->d3fwd_wlif))
+    		    return;
+   	    if ((dhd_dwds_sta_pktfwd_accel == false) && dhd_pktfwd_priv->d3fwd_wlif &&
+  	       	 is_netdev_wlan_dwds_client(dhd_pktfwd_priv->d3fwd_wlif))
+    		    return;
+
     	    d3domain  = dhd_pktfwd_priv->radio_unit; /* per radio's dedicated pool of d3lut_elem's */
     	}
     	else /* ! is_wlan */
@@ -1125,7 +1197,7 @@ dhd_pktfwd_lut_del(uint8_t * d3addr, struct net_device * net_device)
 
     D3LUT_LOCK(dhd_pktfwd->d3lut); // ++++++++++++++++++++++++++++++++++++++++++
 
-    d3lut_elem = d3lut_lkup(dhd_pktfwd->d3lut, d3addr, d3domain);
+    d3lut_elem = dhd_pktfwd_lut_lkup(net_device, dhd_pktfwd->d3lut, d3addr, d3domain);
 
     if (d3lut_elem != D3LUT_ELEM_NULL)
     {
@@ -1133,7 +1205,7 @@ dhd_pktfwd_lut_del(uint8_t * d3addr, struct net_device * net_device)
             d3domain = d3lut_elem->key.domain;
 
         /* If WLAN and station was associated, update the d3fwd_wlif stats */
-        _dhd_pktfwd_lut_del(d3addr, d3lut_elem, d3domain);
+        _dhd_pktfwd_lut_del(d3addr, d3lut_elem, d3domain, net_device);
     }
 
     D3LUT_UNLK(dhd_pktfwd->d3lut); // ------------------------------------------
@@ -1163,37 +1235,41 @@ dhd_pktfwd_lut_hit(uint8_t * d3addr, struct net_device * net_device)
     d3lut_elem_t * d3lut_elem;
     void         * if_handle;
     dhd_pktfwd_t  * dhd_pktfwd = &dhd_pktfwd_g;
-    dhd_pktfwd_priv_t * dhd_pktfwd_priv;
 
     PKTFWD_ASSERT(dhd_pktfwd->initialized == true);
-
-    dhd_pktfwd_priv = dhd_pktfwd_get_priv(net_device);
-    ASSERT(dhd_pktfwd_priv);
 
     if (net_device != NULL)
     {
     	is_wlan = is_netdev_wlan(net_device);
-    
     	if (is_wlan)
     	{
-    	    d3fwd_wlif_t * d3fwd_wlif;
-    
+    	    d3fwd_wlif_t *d3fwd_wlif;
+    	    dhd_pktfwd_priv_t *dhd_pktfwd_priv;
+
+    	    /* check if wlan virtual device */
+    	    if (check_virt_wlan(net_device))
+    	        return expired;
+
+    	    dhd_pktfwd_priv = dhd_pktfwd_get_priv(net_device);
+    	    ASSERT(dhd_pktfwd_priv);
+
     	    /* only WLAN NIC endpoints, exclude DHD endpoints */
-    
     	    lut_hit_eligible = (dhd_pktfwd_priv->ifp &&
     		    (dhd_pktfwd_priv->d3fwd_wlif != D3FWD_WLIF_NULL)) ?
     		true : false;
-    
-    	    if (lut_hit_eligible && (strncmp(net_device->name, "wds", 3) == 0))
-    		lut_hit_eligible = false; /* exclude WDS endpoints */
-    
+
     	    if (lut_hit_eligible == false)
-    		return expired;
+    		    return expired;
     
     	    d3fwd_wlif = dhd_pktfwd_priv->d3fwd_wlif;
+
+    	    if ((dhd_dwds_ap_pktfwd_accel == false) && d3fwd_wlif && is_netdev_wlan_dwds_ap(d3fwd_wlif))
+    		    return expired;
+    	    if ((dhd_dwds_sta_pktfwd_accel == false) && d3fwd_wlif && is_netdev_wlan_dwds_client(d3fwd_wlif))
+    		    return expired;
     
     	    PKTFWD_ASSERT(net_device->priv_flags & IFF_BCM_WLANDEV);
-    
+
     	    d3domain  = dhd_pktfwd_priv->radio_unit; /* per radio's dedicated pool of d3lut_elem's */
     	    if_handle = (void *) d3fwd_wlif; /* wlif extension */
     	}
@@ -1212,16 +1288,16 @@ dhd_pktfwd_lut_hit(uint8_t * d3addr, struct net_device * net_device)
 
     D3LUT_LOCK(dhd_pktfwd->d3lut); // ++++++++++++++++++++++++++++++++++++++++++
 
-    d3lut_elem = d3lut_lkup(dhd_pktfwd->d3lut, d3addr, d3domain);
+    d3lut_elem = dhd_pktfwd_lut_lkup(net_device, dhd_pktfwd->d3lut, d3addr, d3domain);
 
     if ((d3lut_elem != D3LUT_ELEM_NULL) && (d3lut_elem->ext.inuse))
     {
     	/* Sanity: validate interface */
-    	if (!expired)
-		{
+    	if (expired != 1)
+    	{
     	    if (is_wlan)
     	    {
-        		expired = !((void *)(d3lut_elem->ext.d3fwd_wlif) == if_handle);
+        	expired = !((void *)(d3lut_elem->ext.d3fwd_wlif) == if_handle);
     	    }
     	    else /* !is_wlan */
     	    {
@@ -1232,7 +1308,7 @@ dhd_pktfwd_lut_hit(uint8_t * d3addr, struct net_device * net_device)
     	if (expired || d3lut_elem->ext.hit == 0)
     	{
     	    /* delete d3lut_elem */
-    	    _dhd_pktfwd_lut_del(d3addr, d3lut_elem, d3domain);
+    	    _dhd_pktfwd_lut_del(d3addr, d3lut_elem, d3domain, net_device);
     	    expired = 1;
     	}
     	else
@@ -1273,6 +1349,10 @@ dhd_pktfwd_lut_clr(struct net_device * net_device)
 
     PKTFWD_FUNC();
     PKTFWD_ASSERT(dhd_pktfwd->initialized == true);
+
+    /* check if wlan virtual device */
+    if (check_virt_wlan(net_device))
+        return;
 
     dhd_pktfwd_priv = dhd_pktfwd_get_priv(net_device);
     ASSERT(dhd_pktfwd_priv);
@@ -1383,6 +1463,17 @@ dhd_pktfwd_sys_init(void)
     /* register bridge refresh */
     fdb_check_expired_dhd_hook = (dhd_pktfwd_hit_hook_t) dhd_pktfwd_lut_hit;
 
+    {
+        /* toggle pktfwd acceleration in dwds via nvram */
+        char *var_ap = NULL;
+        char *var_sta = NULL;
+        var_ap = nvram_get(NVRAM_DWDS_AP_PKTFWD_ACCEL);
+        if (var_ap != NULL)
+            dhd_dwds_ap_pktfwd_accel = bcm_strtoul(var_ap, NULL, 0);
+        var_sta = nvram_get(NVRAM_DWDS_STA_PKTFWD_ACCEL);
+        if (var_sta != NULL)
+            dhd_dwds_sta_pktfwd_accel = bcm_strtoul(var_sta, NULL, 0);
+    }
 
     dhd_pktfwd->initialized = true;
 
@@ -1574,9 +1665,9 @@ _dhd_pktfwd_mcasthandler(uint32_t radio_idx, uint16_t ifidx, pNBuff_t * pNBuf)
     dhd_wmf_t * wmf;
 #endif /* DHD_WMF */
 
-    DHD_PERIM_LOCK_ALL(radio_idx % FWDER_MAX_UNIT); //+++++++++++++++++++++++++
-
     dhd_pub = g_dhd_info[radio_idx];
+
+    DHD_LOCK(dhd_pub); //+++++++++++++++++++++++++
 
     if(dhd_idx2net(dhd_pub,ifidx)==NULL)
        goto dhd_pktfwd_mcasthandler_free;
@@ -1658,7 +1749,7 @@ dhd_pktfwd_mcasthandler_drop:
 
 dhd_pktfwd_mcasthandler_success:
 
-    DHD_PERIM_UNLOCK_ALL(radio_idx % FWDER_MAX_UNIT); //-----------------------
+    DHD_UNLOCK(dhd_pub); //-----------------------
 
     return;
 }   /* _dhd_pktfwd_mcasthandler() */
@@ -1920,12 +2011,14 @@ dhd_pktfwd_pktlist_xmit(pktlist_context_t * dhd_pktlist_context,
     dhd_pub     = g_dhd_info[radio_idx];
     dhd_pktfwd_keymap = dhd_pktfwd->dhd_pktfwd_keymap[radio_idx];
 
-    DHD_PERIM_LOCK_ALL(radio_idx % FWDER_MAX_UNIT); //+++++++++++++++++++++++++
+    DHD_LOCK(dhd_pub); //+++++++++++++++++++++++++
 
     flowid = dhd_pktfwd_keymap->pktfwdkey_flowid[pktlist->prio][dest];
 
-    DHD_PERIM_UNLOCK_ALL(radio_idx % FWDER_MAX_UNIT); //-----------------------
+    DHD_UNLOCK(dhd_pub); //-----------------------
 
+    d3lut_elem->ext.hit = 1;
+	
     if (flowid == ID16_INVALID) {
         pktlist_pkt_t     * pkt;
         struct net_device * net_device;
@@ -1955,7 +2048,7 @@ dhd_pktfwd_pktlist_xmit(pktlist_context_t * dhd_pktlist_context,
         return BCME_OK;
     }
 
-    DHD_PERIM_LOCK_ALL(radio_idx % FWDER_MAX_UNIT); //+++++++++++++++++++++++++
+    DHD_LOCK(dhd_pub); //+++++++++++++++++++++++++
 
     flow_ring_node = DHD_FLOW_RING(dhd_pub, flowid);
     if ((flow_ring_node->status != FLOW_RING_STATUS_PENDING) &&
@@ -2001,7 +2094,7 @@ dhd_pktfwd_pktlist_xmit(pktlist_context_t * dhd_pktlist_context,
 
 dhd_pktfwd_pktlist_xmit_done:
 
-    DHD_PERIM_UNLOCK_ALL(radio_idx % FWDER_MAX_UNIT); //-----------------------
+    DHD_UNLOCK(dhd_pub); //-----------------------
 
     return ret;
 } /* dhd_pktfwd_pktlist_xmit */
@@ -2087,6 +2180,9 @@ dhd_pktfwd_pktqueue_add_pkt(dhd_pub_t * dhd_pub, struct net_device * net_device,
     {	/* d3lut hit and Untagged frames */
 
         d3domain = d3lut_elem->key.domain; /* WLAN to WLAN/LAN */
+
+        /* update hit flag */
+        d3lut_elem->ext.hit = 1;
 
         /* Reset dhd FlowInf and set pktfwd FlowInf */
         fkb->wl.u32 = 0U;
@@ -2333,10 +2429,12 @@ _dhd_pktfwd_sys_dump(struct bcmstrbuf *b)
     dhd_pktfwd_t       * dhd_pktfwd = &dhd_pktfwd_g;
     dhd_pktfwd_stats_t * dhd_pktfwd_stats = &dhd_pktfwd_g.stats;
 
-    bcm_bprintf(b, PKTFWD_VRP_FMT " Dump, radios %u wlifs %u tx_accel %s init %s\n",
+    bcm_bprintf(b, PKTFWD_VRP_FMT " Dump, radios %u wlifs %u tx_accel %s dwds_accel(ap/sta) %s/%s init %s\n",
 	    PKTFWD_VRP_VAL(DHD_PKTFWD, DHD_PKTFWD_VERSIONCODE),
 	    dhd_pktfwd->radio_cnt, dhd_pktfwd->wlif_cnt,
 	    (dhd_pktfwd->tx_accel == 0) ? "NO" : "YES",
+	    (dhd_dwds_ap_pktfwd_accel == false) ? "NO" : "YES",
+	    (dhd_dwds_sta_pktfwd_accel == false) ? "NO" : "YES",
 	    (dhd_pktfwd->initialized == false) ? "NO" : "YES");
 
     /* Dump global system statistics */

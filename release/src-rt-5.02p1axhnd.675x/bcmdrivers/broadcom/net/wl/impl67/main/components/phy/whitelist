@@ -1,0 +1,11 @@
+# Whitelist for PHY_TWIG_17_100_157, used with KUDU_TWIG_17_10_157
+# 
+# Please add new items at the bottom.
+#
+# **Gain approval from you manager before editing this file.**
+#
+# <<Broadcom-WL-IPTag/Open:>>
+#
+# format:
+# JIRA:BCAWLAN-xxxxxx <description>
+JIRA:BCAWLAN-220745 Disable unnecessary prints in MONITOR mode

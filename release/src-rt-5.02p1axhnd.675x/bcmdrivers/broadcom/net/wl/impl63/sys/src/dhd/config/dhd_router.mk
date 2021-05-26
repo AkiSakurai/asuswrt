@@ -53,7 +53,7 @@ DHDFLAGS        += -DBCMDONGLEHOST
 ifneq ($(strip $(BCA_HNDROUTER)),)
 DHDFLAGS        += -DDHDAP
 ifneq ($(strip $(CONFIG_BCM_PKTFWD)),)
-    DHDFLAGS    += -DPKTC -DBCM_PKTFWD
+    DHDFLAGS    += -DPKTC -DBCM_PKTFWD -DBCM_PKTFWD_DWDS
 endif
 
 ifneq ($(strip $(CONFIG_BCM_CPEPKTC)),)

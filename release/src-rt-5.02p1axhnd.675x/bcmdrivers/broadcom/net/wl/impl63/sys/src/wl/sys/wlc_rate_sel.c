@@ -48,7 +48,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_rate_sel.c 780843 2019-11-05 02:01:23Z $
+ * $Id: wlc_rate_sel.c 787916 2020-06-16 09:38:41Z $
  */
 
 /**
@@ -102,6 +102,8 @@
 #ifdef WLC_DTPC
 #include <wlc_dtpc.h>
 #endif /* WLC_dtpc */
+
+#include <wlc_txs.h>
 
 #if defined(WLPROPRIETARY_11N_RATES)
 #define WL11N_256QAM     /* 11n proprietary rates: mcs8/9 for each stream */
@@ -340,6 +342,12 @@ typedef struct ratesel_dlstats {
 	uint32 avg_su100kbps;  /* avg su rate in 100kbps */
 	uint32 avg_mu100kbps;  /* avg mu rate in 100kbps */
 	uint32 avg_rt100kbps;  /* avg any rate */
+#ifdef WL_VASIP_MU_INFO
+	uint8	epoch;		/* Epoch bit will toggle 50ms roughly */
+	ratespec_t sum_nss_rspec; /* Rate spec with avg mcs and sum nss */
+	uint8 global_group_count; /* Total number of global groups */
+	uint8 global_client_count;	/* Total number of clients/users */
+#endif // endif
 } ratesel_dlstats_t;
 
 #define IS_20BW(state)	((state)->bwcap == BW_20MHZ)
@@ -5921,6 +5929,11 @@ wlc_ratesel_init_opstats(rcb_t *state)
 	/* init un-zero ones */
 	dlstats->last_rspec = CUR_RATESPEC(state);
 	dlstats->last_su = CUR_RATESPEC(state);
+#ifdef WL_VASIP_MU_INFO
+	dlstats->sum_nss_rspec = CUR_RATESPEC(state);
+	dlstats->global_group_count = 1;
+	dlstats->global_client_count = 1;
+#endif // endif
 }
 
 /*
@@ -6000,7 +6013,7 @@ wlc_ratesel_updinfo_mutxs(rcb_t *state, tx_status_t *txs,
 {
 	uint8 txs_mutype;
 	uint8 mutxcnt; /* frame retry_txcnt */
-	uint8 mcs, nss, he_gi, bw;
+	uint8 mcs, nss, he_gi = 0, bw;
 	bool is_sgi;
 	ratespec_t mu_rspec;
 	uint32 rate100kbps;
@@ -6014,19 +6027,17 @@ wlc_ratesel_updinfo_mutxs(rcb_t *state, tx_status_t *txs,
 	mcs = TX_STATUS64_MU_MCS(txs->status.s4);
 	nss = TX_STATUS64_MU_NSS(txs->status.s4) + 1;
 	bw = state->link_bw;
+	is_sgi = TX_STATUS64_MU_SGI(txs->status.s3);
 
 	if (txs_mutype == TX_STATUS_MUTP_VHTMU) {
 		mu_rspec = VHT_RSPEC(mcs, nss) | (bw << WL_RSPEC_BW_SHIFT);
-		is_sgi = TX_STATUS64_MU_SGI(txs->status.s3);
 		if (is_sgi) {
 			mu_rspec |= WL_RSPEC_SGI;
 		}
 	} else { /* is he */
+		he_gi = TX_STATUS128_HEOM_CPLTF(txs->status.s4);
 		mu_rspec = HE_RSPEC(mcs, nss) | (bw << WL_RSPEC_BW_SHIFT);
-		if (txs_mutype == TX_STATUS_MUTP_HEOM) {
-			he_gi = TX_STATUS128_HEOM_CPLTF(txs->status.s4);
-		} else {
-			is_sgi = TX_STATUS64_MU_SGI(txs->status.s3);
+		if (txs_mutype != TX_STATUS_MUTP_HEOM) {
 			he_gi = is_sgi ? WL_RSPEC_HE_2x_LTF_GI_0_8us : WL_RSPEC_HE_2x_LTF_GI_1_6us;
 		}
 		mu_rspec |= (HE_GI_TO_RSPEC(he_gi));
@@ -6049,6 +6060,82 @@ wlc_ratesel_updinfo_mutxs(rcb_t *state, tx_status_t *txs,
 	RL_STAT(("%s: aid %d sumu %d mu_rspec 0x%x avg_mu/rt_100kbps %d %d\n", __FUNCTION__,
 		state->aid, dlstats->last_type, dlstats->last_mu,
 		dlstats->avg_mu100kbps, dlstats->avg_rt100kbps));
+
+	// mu-boost is not applicable for heomu, return
+	if (txs_mutype == TX_STATUS_MUTP_HEOM) {
+		return mu_rspec;
+	}
+
+#ifdef WL_VASIP_MU_INFO
+	/* Parse MU group and client data */
+	if (TX_STATUS64_MU_EPCH(txs->status.s3) != dlstats->epoch) {
+		uint8 agg_mcs = TX_STATUS64_MU_TOTMCS(txs->status.s4);
+		uint8 agg_nss = TX_STATUS64_MU_TOTNSS(txs->status.s4);
+		uint8 cl_grp_count = TX_STATUS64_MU_NGCNT(txs->status.s4);
+		uint8 avg_mcs = 0;
+		uint8 mod_mcs = 0;
+
+		if ((cl_grp_count > 0) && (agg_nss != 0)) {
+
+			if (agg_nss > 8) {
+				/* cap NSS to 8 */
+				WL_INFORM(("wl%d: %s: (%u) agg_nss %u > 8\n",
+					state->rsi->wlc->pub->unit, __FUNCTION__,
+					txs_mutype, agg_nss));
+				agg_nss = 8;
+			}
+
+			avg_mcs = agg_mcs / cl_grp_count;
+			mod_mcs = agg_mcs % cl_grp_count;
+
+			if ((2 * mod_mcs) >= cl_grp_count) {
+				avg_mcs += 1;
+			}
+			if (avg_mcs > MAX(WLC_MAX_VHT_MCS, WLC_MAX_HE_MCS)) {
+				WL_ERROR(("wl%d: %s: (%s) avg_mcs %u > %d\n",
+					state->rsi->wlc->pub->unit, __FUNCTION__,
+					txs_mutype == TX_STATUS_MUTP_VHTMU ? "vht" : "he", avg_mcs,
+					MAX(WLC_MAX_VHT_MCS, WLC_MAX_HE_MCS)));
+				goto gone_wrong;
+			}
+		} else {
+			WL_ERROR(("wl%d: %s: cl_grp_count %u, agg_nss %u\n",
+				state->rsi->wlc->pub->unit, __FUNCTION__, cl_grp_count, agg_nss));
+			goto gone_wrong;
+		}
+
+		if (txs_mutype == TX_STATUS_MUTP_VHTMU) {
+			dlstats->sum_nss_rspec = VHT_RSPEC(avg_mcs, agg_nss) |
+				(bw << WL_RSPEC_BW_SHIFT);
+			if (is_sgi) {
+				dlstats->sum_nss_rspec |= WL_RSPEC_SGI;
+			}
+		} else { /* is he */
+			dlstats->sum_nss_rspec = HE_RSPEC(avg_mcs, agg_nss) |
+				(bw << WL_RSPEC_BW_SHIFT);
+			dlstats->sum_nss_rspec |= (HE_GI_TO_RSPEC(he_gi));
+		}
+
+		dlstats->global_group_count = 1 + TX_STATUS64_MU_NGRP(txs->status.s3);
+		dlstats->global_client_count = 1 + TX_STATUS64_MU_NUSR(txs->status.s3);
+		dlstats->epoch = TX_STATUS64_MU_EPCH(txs->status.s3);
+
+		RL_STAT(("\ta_mcs %d a_nss %d cl_gr %d a_rspec 0x%x g_user %d g_grp %d\n",
+			agg_mcs, agg_nss, cl_grp_count, dlstats->sum_nss_rspec,
+			dlstats->global_client_count, dlstats->global_group_count));
+
+		return mu_rspec;
+gone_wrong:
+#ifdef BCMDBG
+		wlc_print_txstatus(state->rsi->wlc, txs);
+#endif // endif
+		ASSERT(0);
+		dlstats->global_group_count = 1;
+		dlstats->global_client_count = 1;
+		dlstats->sum_nss_rspec = mu_rspec;
+	}
+#endif /* WL_VASIP_MU_INFO */
+
 	return mu_rspec;
 }
 
@@ -6106,6 +6193,18 @@ wlc_ratesel_get_opstats(rcb_t *state, uint16 flags)
 
 	return 0;
 }
+
+#ifdef WL_VASIP_MU_INFO
+ratespec_t
+wlc_ratesel_get_sum_nss_mu_rate(rcb_t *state, uint8 *mu_client_count, uint8 *mu_group_count)
+{
+	ratesel_dlstats_t *dlstats = &state->dlstats;
+	*mu_client_count = dlstats->global_client_count;
+	*mu_group_count = dlstats->global_group_count;
+
+	return dlstats->sum_nss_rspec;
+}
+#endif // endif
 
 #ifdef WL_LPC
 /** Power selection algo specific internal functions */
@@ -6172,16 +6271,14 @@ wlc_ratesel_get_info(rcb_t *state, uint8 rate_stab_thresh, uint32 *new_rate_kbps
 	*rate_stable = ((state->gotpkts == GOTPKTS_ALL) && (state->nupd > rate_stab_thresh));
 	bcopy(&state->lcb_info, lcb_info, sizeof(rate_lcb_info_t));
 }
+#endif /* WL_LPC */
 
 void
 wlc_ratesel_clr_cache(rcb_t *state)
 {
 	RL_MORE(("%s: scb %p state %p\n", __FUNCTION__, state->scb, state));
-	/* don't use the internal invalidate_txh_cache */
-	wlc_txc_inv(state->txc, state->scb);
-	state->txc_inv_reqd = FALSE;
+	INVALIDATE_TXH_CACHE(state);
 }
-#endif /* WL_LPC */
 
 #ifdef WLATF
 ratespec_t BCMFASTPATH

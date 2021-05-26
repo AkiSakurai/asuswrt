@@ -100,7 +100,7 @@ static const char *version = "Wifi Forwarding Driver";
 #define WFD_BRIDGED_OBJECT_IDX 2
 #define WFD_BRIDGED_QUEUE_IDX 2
 
-#if defined(BCM_PKTFWD) && (defined(CONFIG_BCM94908) || defined(XRDP))
+#if defined(BCM_PKTFWD)
 #define WFD_FLCTL /* BPM PktPool Availability based WFD Ingress throttle */
 #define WFD_FLCTL_PKT_PRIO_FAVOR         4  /* Favor Pkt Prio >= 4 : VI,VO */
 #define WFD_FLCTL_DROP_CREDITS           32
@@ -1852,27 +1852,39 @@ wfd_swqueue_skb_xmit(wfd_object_t * wfd_p, uint32_t budget)
     uint16_t pktfwd_key;
     uint16_t pktlist_prio, pktlist_dest;
     uint32_t            rx_pktcnt;
+    pktqueue_t          temp_pktqueue; /* Declared on stack */
     struct sk_buff    * skb;
     pktqueue_pkt_t    * pkt;
     pktqueue_t        * pktqueue;
     wfd_swqueue_t     * wfd_swqueue = wfd_p->wfd_swqueue;
     pktlist_context_t * pktlist_context = wfd_p->pktlist_context_p;
 
+    pktqueue    = &wfd_swqueue->pktqueue;
 
     WFD_SWQUEUE_LOCK(wfd_swqueue); // +++++++++++++++++++++++++++++++++++++++++
 
-    pktqueue    = &wfd_swqueue->pktqueue;
+    /* Transfer packets to a local pktqueue */
+    temp_pktqueue.head   = pktqueue->head;
+    temp_pktqueue.tail   = pktqueue->tail;
+    temp_pktqueue.len    = pktqueue->len;
+
+    PKTQUEUE_RESET(pktqueue); /* head,tail, not reset */
+
+    WFD_SWQUEUE_UNLK(wfd_swqueue); // -----------------------------------------
+
+    /* Now lock-less; transmit packets from local pktqueue */
+
     pktfwd_key  = 0; /* 2b-radio, 2b-incarn, 12b-dest */
     rx_pktcnt   = 0;
 
     while (budget)
     {
-        if (pktqueue->len != 0U)
+        if (temp_pktqueue.len != 0U)
         {
-            pkt             = pktqueue->head;
-            pktqueue->head  = PKTQUEUE_PKT_SLL(pkt, SKBUFF_PTR);
+            pkt             = temp_pktqueue.head;
+            temp_pktqueue.head  = PKTQUEUE_PKT_SLL(pkt, SKBUFF_PTR);
             PKTQUEUE_PKT_SET_SLL(pkt, PKTQUEUE_PKT_NULL, SKBUFF_PTR);
-            pktqueue->len--;
+            temp_pktqueue.len--;
 
             skb = (struct sk_buff *)pkt;
 
@@ -1925,7 +1937,7 @@ wfd_swqueue_skb_xmit(wfd_object_t * wfd_p, uint32_t budget)
             ++rx_pktcnt;
 
         }
-        else /* pktqueue->len == 0 : No more packets to read */
+        else /* temp_pktqueue.len == 0 : No more packets to read */
         {
             break;
         }
@@ -1933,7 +1945,25 @@ wfd_swqueue_skb_xmit(wfd_object_t * wfd_p, uint32_t budget)
         --budget;
     } /* while (budget) */
 
-    WFD_SWQUEUE_UNLK(wfd_swqueue); // -----------------------------------------
+    if (temp_pktqueue.len != 0U) {
+        /* Out of budget, prepend left-over packets to ENET SWq */
+
+        WFD_SWQUEUE_LOCK(wfd_swqueue); // +++++++++++++++++++++++++++++++++++++
+
+        if (pktqueue->len == 0) {
+            pktqueue->tail = temp_pktqueue.tail;
+        } else {
+            PKTQUEUE_PKT_SET_SLL(temp_pktqueue.tail, pktqueue->head, SKBUFF_PTR);
+        }
+
+        pktqueue->head = temp_pktqueue.head;
+        pktqueue->len += temp_pktqueue.len;
+
+        WFD_SWQUEUE_UNLK(wfd_swqueue); // -------------------------------------
+
+        PKTQUEUE_RESET(&temp_pktqueue); /* head,tail, not reset */
+
+    }
 
     if (likely(rx_pktcnt))
     {
@@ -1969,6 +1999,7 @@ wfd_swqueue_fkb_xmit(wfd_object_t * wfd_p, uint32_t budget)
     uint16_t pktlist_prio, pktlist_dest;
     uint32_t ssid;
     uint32_t            rx_pktcnt;
+    pktqueue_t          temp_pktqueue; /* Declared on stack */
     FkBuff_t          * fkb;
     pktqueue_pkt_t    * pkt;
     pktqueue_t        * pktqueue;
@@ -1978,20 +2009,32 @@ wfd_swqueue_fkb_xmit(wfd_object_t * wfd_p, uint32_t budget)
 
     ASSERT(peer_pktlist_context->keymap_fn);
 
+    pktqueue    = &wfd_swqueue->pktqueue;
+
     WFD_SWQUEUE_LOCK(wfd_swqueue); // +++++++++++++++++++++++++++++++++++++++++
 
-    pktqueue    = &wfd_swqueue->pktqueue;
+    /* Transfer packets to a local pktqueue */
+    temp_pktqueue.head   = pktqueue->head;
+    temp_pktqueue.tail   = pktqueue->tail;
+    temp_pktqueue.len    = pktqueue->len;
+
+    PKTQUEUE_RESET(pktqueue); /* head,tail, not reset */
+
+    WFD_SWQUEUE_UNLK(wfd_swqueue); // -----------------------------------------
+
+    /* Now lock-less; transmit packets from local pktqueue */
+
     pktfwd_key  = 0; /* 2b-radio, 2b-incarn, 12b-dest */
     rx_pktcnt   = 0;
 
     while (budget)
     {
-        if (pktqueue->len != 0U)
+        if (temp_pktqueue.len != 0U)
         {
-            pkt             = pktqueue->head;
-            pktqueue->head  = PKTQUEUE_PKT_SLL(pkt, FKBUFF_PTR);
+            pkt             = temp_pktqueue.head;
+            temp_pktqueue.head  = PKTQUEUE_PKT_SLL(pkt, FKBUFF_PTR);
             PKTQUEUE_PKT_SET_SLL(pkt, PKTQUEUE_PKT_NULL, FKBUFF_PTR);
-            pktqueue->len--;
+            temp_pktqueue.len--;
 
             fkb = PNBUFF_2_FKBUFF(pkt);
 
@@ -2031,7 +2074,7 @@ wfd_swqueue_fkb_xmit(wfd_object_t * wfd_p, uint32_t budget)
             ++rx_pktcnt;
 
         }
-        else /* pktqueue->len == 0 : No more packets to read */
+        else /* temp_pktqueue.len == 0 : No more packets to read */
         {
             break;
         }
@@ -2039,7 +2082,25 @@ wfd_swqueue_fkb_xmit(wfd_object_t * wfd_p, uint32_t budget)
         --budget;
     } /* while (budget) */
 
-    WFD_SWQUEUE_UNLK(wfd_swqueue); // -----------------------------------------
+    if (temp_pktqueue.len != 0U) {
+        /* Out of budget, prepend left-over packets to ENET SWq */
+
+        WFD_SWQUEUE_LOCK(wfd_swqueue); // +++++++++++++++++++++++++++++++++++++
+
+        if (pktqueue->len == 0) {
+            pktqueue->tail = temp_pktqueue.tail;
+        } else {
+            PKTQUEUE_PKT_SET_SLL(temp_pktqueue.tail, pktqueue->head, FKBUFF_PTR);
+        }
+
+        pktqueue->head = temp_pktqueue.head;
+        pktqueue->len += temp_pktqueue.len;
+
+        WFD_SWQUEUE_UNLK(wfd_swqueue); // -------------------------------------
+
+        PKTQUEUE_RESET(&temp_pktqueue); /* head,tail, not reset */
+
+    }
 
     if (likely(rx_pktcnt))
     {

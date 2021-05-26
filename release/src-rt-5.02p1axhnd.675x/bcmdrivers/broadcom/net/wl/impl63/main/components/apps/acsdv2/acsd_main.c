@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acsd_main.c 782671 2019-12-31 08:45:27Z $
+ * $Id: acsd_main.c 785391 2020-03-24 03:49:37Z $
  */
 
 #include <ethernet.h>
@@ -66,12 +66,13 @@
 #define ACS_ZDFS_BLANKING_THRESHOLD_PERCENT_NONADJACENT_ETSI	(30)	/* non-adjacent in ETSI */
 #define ACS_ZDFS_BLANKING_THRESHOLD_PERCENT_WEATHER_ETSI	(5)	/* EU weather channel */
 
-char chanspecbuf[32];
-
 static int acs_chspec_to_bw_mhz(chanspec_t ch);
 static bool acs_are_channels_5g_adjacent(chanspec_t ch0, chanspec_t ch1);
 static int acs_get_blanking_threshold();
 static bool acs_is_2g_blanked_by_5g();
+
+char chanspecbuf[32];
+extern void dump_bss_info(wl_bss_info_t *bi);
 
 acsd_wksp_t *d_info;
 static bool acsd_running = TRUE;
@@ -130,6 +131,9 @@ acsd_svr_socket_init(unsigned int port)
 {
 	int reuse = 1;
 	struct sockaddr_in s_sock;
+
+	if (!nvram_match("debug_wl", "1"))
+		return ACSD_OK;
 
 	d_info->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (d_info->listen_fd < 0) {
@@ -553,14 +557,15 @@ acs_channel_trigger(acs_chaninfo_t *c_info, char *ifname, unsigned char *addr)
 		return ret;
 	}
 
-	ACSD_PRINT("%s received event: MAC tx failures (exhaustion of 802.11 retries) exceeding threshold(s)\n", c_info->name);
-
 	if (c_info->cur_is_dfs) {
 		acs_get_best_dfs_forced_chspec(c_info);
 		c_info->selected_chspec = acs_adjust_ctrl_chan(
 			c_info,	c_info->dfs_forced_chspec);
-		ACSD_5G("%s: Select 0x%x\n", c_info->name,
-			c_info->selected_chspec);
+		if (!acs_channel_compare(c_info, c_info->cur_chspec, c_info->selected_chspec)) {
+			return FALSE;
+		}
+		ACSD_5G("%s: Select 0x%4x (%s)\n", c_info->name,
+			c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
 	} else {
 		c_info->switch_reason = APCS_TXFAIL;
 		acs_select_chspec(c_info);
@@ -589,13 +594,15 @@ acs_channel_trigger(acs_chaninfo_t *c_info, char *ifname, unsigned char *addr)
 
 		if (c_info->fallback_to_primary && CHSPEC_CHANNEL(c_info->selected_chspec) ==
 				CHSPEC_CHANNEL(c_info->cur_chspec)) {
-			ACSD_INFO("%s: Seleted = cur 0x%x avoid CSA\n",
-					c_info->name, c_info->cur_chspec);
+			ACSD_INFO("%s: Seleted = cur 0x%4x (%s) avoid CSA\n",
+					c_info->name, c_info->cur_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
 			return ret;
 		}
 
-		ACSD_INFO("%s Performing CSA on chspec 0x%x\n",
-				c_info->name, c_info->selected_chspec);
+		ACSD_PRINT("%s received event: MAC tx failures (exhaustion of 802.11 retries) exceeding threshold(s)\n", c_info->name);
+
+		ACSD_INFO("%s Performing CSA on chspec 0x%4x (%s)\n",
+				c_info->name, c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
 		if (!(ret = acs_csa_handle_request(c_info))) {
 			c_info->recent_prev_chspec = c_info->cur_chspec;
 			c_info->acs_prev_chan_at = uptime();
@@ -661,13 +668,12 @@ acsd_main_loop(struct timeval *tv)
 
 	if (test_cswitch_ifname[0]) {
 		if ((idx = acs_idx_from_map(test_cswitch_ifname)) < 0) {
-			ACSD_WARNING("cannot find the mapped entry for ifname: %s\n",
-				test_cswitch_ifname);
+			ACSD_INFO("cannot find the mapped entry for ifname: %s\n", test_cswitch_ifname);
 			return;
 		}
 		c_info = d_info->acs_info->chan_info[idx];
 
-		ACSD_5G("trigger Fake cswitch from:0x%x:...\n", c_info->cur_chspec);
+		ACSD_5G("trigger Fake cswitch from: 0x%4x (%s):...\n", c_info->cur_chspec, wf_chspec_ntoa(c_info->cur_chspec, chanspecbuf));
 
 		if (acsd_trigger_dfsr_check(c_info)) {
 			ACSD_DFSR("trigger DFS reentry...\n");
@@ -678,7 +684,7 @@ acsd_main_loop(struct timeval *tv)
 				acs_get_best_dfs_forced_chspec(c_info);
 				c_info->selected_chspec = acs_adjust_ctrl_chan(c_info,
 					c_info->dfs_forced_chspec);
-				ACSD_5G("Select 0x%x:...\n", c_info->selected_chspec);
+				ACSD_5G("Select 0x%4x (%s):...\n", c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
 			}
 			else {
 				c_info->switch_reason = APCS_TXFAIL;
@@ -776,7 +782,7 @@ acsd_main_loop(struct timeval *tv)
 		acs_check_ifname_is_virtual(&ifname);
 
 		if ((idx = acs_idx_from_map(ifname)) < 0) {
-			ACSD_WARNING("cannot find the mapped entry for ifname: %s\n", ifname);
+			ACSD_INFO("cannot find the mapped entry for ifname: %s\n", ifname);
 			return;
 		}
 
@@ -910,6 +916,7 @@ acsd_main_loop(struct timeval *tv)
 				/* stay in current channel more than acs_chan_dwell_time */
 				chan_least_dwell = chanim_record_chan_dwell(c_info,
 						c_info->chanim_info);
+
 				if (chan_least_dwell &&
 						(pktdelay.chanim_stats.chan_idle <
 						 c_info->acs_ci_scan_chanim_stats)) {
@@ -1133,6 +1140,11 @@ acsd_main_loop(struct timeval *tv)
 				}
 				break;
 			}
+			/* This is used only by bw_switch_160 IOVar by FW to upgrade to 160Mhz
+			 * with same primary channel Eg: Upgrade from 36/80 to 36/160.
+			 * Note that prior to this, BW is downgraded to 80Mhz due to
+			 * bw_switch_160 IOVar.
+			 */
 			case WLC_E_REQ_BW_CHANGE:
 			{
 				wl_event_req_bw_upgd_t *data;
@@ -1147,13 +1159,19 @@ acsd_main_loop(struct timeval *tv)
 					break;
 				}
 				upgrd_chspec = data->upgrd_chspec;
+				if (!CHSPEC_IS160(upgrd_chspec)) {
+					ACSD_ERROR("%s: Not 160Mhz chanspec 0x%x in BW UPGD REQ\n",
+						c_info->name, upgrd_chspec);
+					break;
+				}
+				c_info->acs_req_bw_upgrd = TRUE;
 				ACSD_INFO("%s Received REQ_BW_UPGRADE event %d for chanspec 0x%x\n",
 					c_info->name, WLC_E_REQ_BW_CHANGE, upgrd_chspec);
-				/* Trigger BGDFS */
-				if (AUTOCHANNEL(c_info) &&
-					acs_bgdfs_attempt(c_info, upgrd_chspec, FALSE) != BCME_OK) {
+				/* Trigger BGDFS even when ACSD is not configured in Auto. */
+				if (acs_bgdfs_attempt(c_info, upgrd_chspec, FALSE) != BCME_OK) {
 					ACSD_ERROR("%s dfs_ap_move Failed\n", c_info->name);
 				}
+				c_info->acs_req_bw_upgrd = FALSE;
 				break;
 			}
 			case WLC_E_RADAR_DETECTED:
@@ -1201,8 +1219,8 @@ acs_upgrade_downgrade_opermode(acs_chaninfo_t * c_info)
 	}
 
 	if (ACS_CHINFO_IS_UNCLEAR(acs_get_chanspec_info(c_info, c_info->cur_chspec))) {
-		ACSD_DEBUG("%s Chanspec 0x%x NOT cleared or CAC in Progress\n",
-			c_info->name, c_info->cur_chspec);
+		ACSD_DEBUG("%s Chanspec 0x%4x (%s) NOT cleared or CAC in Progress\n",
+			c_info->name, c_info->cur_chspec, wf_chspec_ntoa(c_info->cur_chspec, chanspecbuf));
 		return;
 	}
 
@@ -1216,8 +1234,8 @@ acs_upgrade_downgrade_opermode(acs_chaninfo_t * c_info)
 
 		if (CHSPEC_IS160(upgrade_chspc) && !wf_chspec_malformed(upgrade_chspc) &&
 			ACS_CHINFO_IS_CLEARED(acs_get_chanspec_info(c_info, upgrade_chspc))) {
-			ACSD_INFO("%s Upgrading to 160 Mhz chanspec 0x%x by oper_mode \n",
-				c_info->name, upgrade_chspc);
+			ACSD_INFO("%s Upgrading to 160 Mhz chanspec 0x%4x (%s) by oper_mode \n",
+				c_info->name, upgrade_chspc, wf_chspec_ntoa(upgrade_chspc, chanspecbuf));
 			/* Upgrade to 160Mhz done in two steps, 0x112 and then to 0x116 */
 			if (c_info->oper_mode == ACS_OP_4NSS_80) {
 				if (acs_set_oper_mode(c_info, ACS_OP_2NSS_80) != BCME_OK) {
@@ -1312,7 +1330,7 @@ acsd_watchdog(uint ticks)
 	for (i = 0; i < ACS_MAX_IF_NUM; i++) {
 		c_info = d_info->acs_info->chan_info[i];
 
-		if ((!c_info) || (c_info->mode == ACS_MODE_DISABLE)) {
+		if ((!c_info) || (c_info->mode == ACS_MODE_DISABLE) || !AUTOCHANNEL(c_info)) {
 			continue;
 		}
 		bgdfs = c_info->acs_bgdfs;
@@ -1361,7 +1379,7 @@ acsd_watchdog(uint ticks)
 						ACSD_ERROR("%s: Failed to clear the chanspec"
 							"0x%02x \n", c_info->name,
 							bgdfs->next_scan_chan);
-						return;
+						continue;
 					}
 					ACSD_INFO("%s:2g last cleared channel is 0x%x\n",
 						c_info->name, bgdfs->next_scan_chan);
@@ -1391,6 +1409,7 @@ acsd_watchdog(uint ticks)
 								ci_5g->cur_chspec;
 							ci_5g->acs_prev_chan_at =
 								uptime();
+							acs_update_status(c_info->ci_5g);
 						}
 					}
 					/* Clear 5G radio's channel to be scanced next.
@@ -1407,6 +1426,21 @@ acsd_watchdog(uint ticks)
 						!acs_bgdfs_radar_detect(c_info) &&
 						c_info->acs_bgdfs->acs_bgdfs_on_txfail) {
 					acs_chaninfo_t *ci_5g = c_info->ci_5g;
+					if (ci_5g->txop_score > ci_5g->acs_txop_limit_hi) {
+						ACSD_INFO("ifname: %s Not initiating fallback"
+						" due to txop thresh being high %d compared to"
+						"thresh: %d\n", ci_5g->name, ci_5g->txop_score,
+						c_info->acs_txop_limit_hi);
+						continue;
+					}
+					if (!acs_channel_compare_before_fallback(ci_5g,
+							ci_5g->cur_chspec,
+							bgdfs->next_scan_chan))
+					{
+						ACSD_INFO("ifname: %s Not initiating fallback"
+						" due to thresh being low\n", ci_5g->name);
+						continue;
+					}
 					wl_bcmdcs_data_t dcs_data;
 					int err;
 					ACSD_INFO("ifname: %s BGDFS Failed. Do Full MIMO CAC \n",
@@ -1423,8 +1457,15 @@ acsd_watchdog(uint ticks)
 							ACSD_ERROR("%s Error dcs_handle_request:"
 								"%d\n", ci_5g->name, err);
 							}
+						ci_5g->selected_chspec = bgdfs->next_scan_chan;
+						if (!(ci_5g->switch_reason_type ==
+							APCS_DFS_REENTRY)) {
+						chanim_upd_acs_record(ci_5g->chanim_info,
+								ci_5g->selected_chspec, APCS_ZDFS);
 						ci_5g->recent_prev_chspec = ci_5g->cur_chspec;
 						ci_5g->acs_prev_chan_at = uptime();
+						acs_update_status(ci_5g);
+						}
 					}
 					c_info->acs_bgdfs->acs_bgdfs_on_txfail = FALSE;
 					ci_5g->acs_bgdfs->next_scan_chan = 0;
@@ -1464,17 +1505,38 @@ acsd_watchdog(uint ticks)
 						bgdfs->acs_bgdfs_on_txfail &&
 						((ret = acs_bgdfs_check_status(c_info, TRUE))
 						 != BCME_OK)) {
-						ACSD_INFO("ifname:%s BGDFS Failed. Do Full MIMO"
+					if (c_info->txop_score >
+							c_info->acs_txop_limit_hi) {
+						ACSD_INFO("ifname: %s Not initiating "
+								"fallback due to txop "
+								"thresh being high %d "
+								"when compared to thresh: %d\n",
+								c_info->name, c_info->txop_score,
+								c_info->acs_txop_limit_hi);
+						continue;
+					}
+					if (!acs_channel_compare_before_fallback(c_info,
+							c_info->cur_chspec,
+							bgdfs->next_scan_chan))
+					{
+						ACSD_INFO("ifname: %s Not initiating"
+								" fallback due to thresh"
+								"being low\n",
+								c_info->name);
+						continue;
+					}
+					ACSD_INFO("ifname:%s BGDFS Failed. Do Full MIMO"
 							"CAC\n", c_info->name);
-						ACSD_PRINT("%s: DCS request for failed BGDFS. Do full MIMO CAC\n", c_info->name);
-						acs_csa_handle_request(c_info);
-						bgdfs->acs_bgdfs_on_txfail = FALSE;
+					ACSD_PRINT("%s: DCS request for failed BGDFS. Do full MIMO CAC\n", c_info->name);
+					acs_csa_handle_request(c_info);
+					bgdfs->acs_bgdfs_on_txfail = FALSE;
+					bgdfs->next_scan_chan = 0;
 					} else if (bgdfs->next_scan_chan != 0) {
 						if ((ret = acs_bgdfs_check_status(c_info, FALSE))
 							== BCME_OK) {
-							ACSD_INFO("ifname:%s acs bgdfs ch 0x%x is"
-								"radar free\n", c_info->name,
-								bgdfs->next_scan_chan);
+							ACSD_INFO("ifname:%s acs bgdfs ch 0x%4x (%s) is radar free\n",
+								c_info->name, bgdfs->next_scan_chan, wf_chspec_ntoa(bgdfs->next_scan_chan, chanspecbuf));
+
 							/* Updating the selected chanspec with bgdfs
 							 * scan core chanspec
 							 */
@@ -1490,10 +1552,10 @@ acsd_watchdog(uint ticks)
 									uptime();
 							}
 						} else if (bgdfs->next_scan_chan != 0) {
-							ACSD_INFO("ifname:%s acs bgdfs chan 0x%x"
+							ACSD_INFO("ifname:%s acs bgdfs chan 0x%4x (%s) "
 								"is not radar free (err: %d)\n",
 								c_info->name,
-								bgdfs->next_scan_chan, ret);
+								bgdfs->next_scan_chan, wf_chspec_ntoa(bgdfs->next_scan_chan, chanspecbuf), ret);
 						}
 						/* reset for next try; let it recompute channel */
 						bgdfs->next_scan_chan = 0;
@@ -1534,8 +1596,7 @@ acsd_watchdog(uint ticks)
 					if (acs_upgrade_to160(c_info) == BCME_OK) {
 						ACSD_INFO("%s acs_upgrade_to160 picked 0x%4x (%s)\n",
 								c_info->name,
-								c_info->selected_chspec,
-								wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
+								c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
 						ACSD_PRINT("%s: DCS request for successful upgrading to 160Mhz %s by full MIMO CAC\n", c_info->name, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
 						acs_csa_handle_request(c_info);
 					} else {
@@ -1578,16 +1639,20 @@ acsd_watchdog(uint ticks)
 		if ((c_info->txop_channel_select && (-- c_info->txop_channel_select == 0)) ||
 				(c_info->bw_upgradable && c_info->selected_chspec &&
 				c_info->selected_chspec != c_info->cur_chspec)) {
-			chanim_info_t * ch_info = c_info->chanim_info;
-			uint8 cur_idx = chanim_mark(ch_info).record_idx;
-			uint8 start_idx;
+			if (acs_is_dfs_chanspec(c_info, c_info->selected_chspec)) {
+				ACSD_DEBUG("%s: Moving to DFS channel 0x%04x is not allowed using"
+					       "CSA\n", c_info->name, c_info->selected_chspec);
+				continue;
+			}
 			uint8 scan_type;
-			chanim_acs_record_t *start_record;
 			time_t now = uptime();
 
-			start_idx = MODSUB(cur_idx, 1, ACS_CHANIM_ACS_RECORD);
-			start_record = &ch_info->record[start_idx];
-			ACSD_INFO("%s: prev timestamp1 %d cur time stamp1 %d score %d\n",
+			if (acs_check_assoc_scb(c_info)) {
+				ACSD_INFO("txop channel select: no channel switch while associated\n");
+				continue;
+			}
+
+			ACSD_DEBUG("%s: prev timestamp1 %d cur time stamp1 %d score %d\n",
 				c_info->name,
 				c_info->timestamp, c_info->cur_timestamp, c_info->txop_score);
 			scan_type = ((c_info->switch_reason_type == ACS_SCAN_TYPE_CI) ?
@@ -1598,14 +1663,13 @@ acsd_watchdog(uint ticks)
 					CHSPEC_CHANNEL(c_info->recent_prev_chspec)) {
 				if (now - c_info->acs_prev_chan_at <
 						2 * c_info->acs_chan_dwell_time) {
-					ACSD_INFO("%s: staying on same channel because of "
+					ACSD_DEBUG("%s: staying on same channel because of "
 							"prev_chspec dwell time restrictions\n",
 							c_info->name);
-					return;
+					continue;
 				}
 			}
-
-			ACSD_INFO("%s timestamp:%us, cur_timestamp:%us, scan_type:%d, "
+			ACSD_DEBUG("%s timestamp:%us, cur_timestamp:%us, scan_type:%d, "
 					"bw_upgradable:%d, selected_chspec:0x%04x, "
 					"cur_chspec:0x%04x, switch_reason_type:%d\n",
 					c_info->name, c_info->timestamp,
@@ -1627,20 +1691,17 @@ acsd_watchdog(uint ticks)
 					if (c_info->fallback_to_primary &&
 							CHSPEC_CHANNEL(c_info->selected_chspec) ==
 							CHSPEC_CHANNEL(c_info->cur_chspec)) {
-						ACSD_INFO("%s selected 0x%04x & cur_chspec 0x%04x "
+						ACSD_INFO("%s selected 0x%4x & cur_chspec 0x%4x "
 							"are using the same control channel\n",
 							c_info->name, c_info->selected_chspec,
 							c_info->cur_chspec);
 						c_info->switch_reason_type = 0;
-						return;
+						continue;
 					}
-					ACSD_INFO("%s Performing CSA on chspec 0x%04x\n",
+					ACSD_PRINT("%s: txop channel select: Performing CSA on chspec 0x%04x\n",
 							c_info->name, c_info->selected_chspec);
 					if ((ret = acs_csa_handle_request(c_info))) {
-						return;
-					}
-					if (start_record->trigger == APCS_TXDLY) {
-						chanim_mark(ch_info).record_idx = start_idx;
+						continue;
 					}
 					if (c_info->switch_reason_type == APCS_CSTIMER) {
 						chanim_upd_acs_record(c_info->chanim_info,
@@ -1652,6 +1713,7 @@ acsd_watchdog(uint ticks)
 					}
 					c_info->recent_prev_chspec = c_info->cur_chspec;
 					c_info->acs_prev_chan_at = uptime();
+					acs_update_status(c_info);
 				}
 			} else {
 				c_info->selected_chspec = c_info->cur_chspec;
@@ -1696,11 +1758,13 @@ main(int argc, char *argv[])
 	ACSD_INFO("acsd start...\n");
 
 	if (argc > 1) {
-	    if (strcmp(argv[1], "-F") == 0) {
 #if !defined(DEBUG)
+	    if (strcmp(argv[1], "-F") == 0) {
 		daemonize = 0;
-#endif // endif
-	    } else {
+	    }
+	    else
+#endif
+	    {
 		ACSD_ERROR("Unknown argument\n");
 		goto cleanup;
 	    }

@@ -47,7 +47,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_act_frame.c 776221 2019-06-21 10:14:53Z $
+ * $Id: wlc_act_frame.c 785847 2020-04-07 18:45:21Z $
  */
 
 #include <wlc_cfg.h>
@@ -370,6 +370,15 @@ wlc_act_frame_doiovar(void *ctx, uint32 actionid,
 					af->channel =
 						wf_chspec_ctlchan(WLC_BAND_PI_RADIO_CHANSPEC);
 				}
+				else {
+					/* skip if the off-channel not in the radio band */
+					if (!wlc_valid_chanspec_db(wlc->cmi,
+						CH20MHZ_CHSPEC(af->channel))) {
+						err = BCME_BADCHAN;
+						break;
+					}
+				}
+
 				/* Don`t process another action frame request
 				 * till previous one is completed
 				 */

@@ -9,12 +9,26 @@
 # $Id$
 #
 
-uniq = $(if $1,$(firstword $1) $(call uniq,$(filter-out $(firstword $1),$1)))
+# Example values of Makefile variables used in this Makefile:
+# src:               ../../bcmdrivers/broadcom/net/wl/bcm963178/main/components/router/hnd_wl/
+# SRCBASE_OFFSET:    ../../../../main/src
+# ROUTERBASE_OFFSET: ../../router
+# WLCONF_O:          wlconf.o
+# obj                ../../bcmdrivers/broadcom/net/wl/bcm963178/main/components/router/hnd_wl/
+# TARGET             wl
 
+# The CWD is the linux kernel root dir, e.g. kernel/linux-4.19
+
+uniq = $(if $1,$(firstword $1) $(call uniq,$(filter-out $(firstword $1),$1)))
+    DPSTASRC := ../dpsta
+
+# abspath removes any '..' in the path as well
 #WLSRC_BASE := $(abspath $(src)/$(SRCBASE_OFFSET))
 #ROUTER_BASE := $(abspath $(src)/$(ROUTERBASE_OFFSET))
 WLSRC_BASE := $(src)/$(SRCBASE_OFFSET)
 ROUTER_BASE := $(src)/$(ROUTERBASE_OFFSET)
+CLM_FILE_SUFFIX := _nic
+CLM_FILE_SUFFIX_NIC = _nic
 
 ifeq ($(PREBUILT_EXTRAMOD),1)
 REBUILD_WL_MODULE=0
@@ -40,13 +54,22 @@ ifeq ($(REBUILD_WL_MODULE),1)
     # include $(WLSRC_BASE)/makefiles/WLAN_Common.mk
 
     # include router config to source MFP, HSPOT & WNM settings
-    include $(ROUTER_BASE)/.config
+    include $(ROUTER_BASE)/../router/.config
 
-    KBUILD_CFLAGS += -I../../router-sysdep/bcmdrv/include
+    KBUILD_CFLAGS += -I$(ROUTER_BASE)/bcmdrv/include
     KBUILD_CFLAGS += -DBCMDRIVER -Dlinux
     KBUILD_CFLAGS += -DBCA_HNDROUTER
 ifeq ($(CMWIFI),)
     KBUILD_CFLAGS += -Wno-error=date-time
+else ifneq ($(CMWIFI_RDKB),)
+    # RDK toolchain supports date-time, but OpenBFC stbgcc-4.8-1.5 does not.
+    KBUILD_CFLAGS += -Wno-error=date-time
+endif
+
+ifneq ($(CMWIFI),)
+# BCMINTERNAL and BCMDBG are getting enabled by default. Disabling here till actual fix is found.
+    NO_BCMINTERNAL := 1
+    NO_BCMDBG := 1
 endif
 
     # define OS flag to pick up wl osl file from wl.mk
@@ -81,15 +104,19 @@ endif
         # Include makefile to build d11 shm files
         D11SHM_SRCBASE := $(src)/$(SRCBASE_OFFSET)
         D11SHM_TEMPDIR := $(D11SHM_SRCBASE)/wl
-        D11SHM_TEMPDIR2 := $(src)/$(SRCBASE_OFFSET)/wl
+        D11SHM_TEMPDIR2 := $(SRCBASE_OFFSET)/wl
         EXTRA_CFLAGS += -I$(D11SHM_TEMPDIR)
         IFLAGS += -I$(D11SHM_TEMPDIR)
         D11SHM_IFLAGS := $(IFLAGS)
+        ifneq ($(CMWIFI),)
+           D11SHM_IFLAGS += -I$(src)
+        endif
         D11SHM_CFLAGS := $(DFLAGS) $(IFLAGS) $(WFLAGS)
         D11SHM_CFGFILE := $(D11SHM_SRCBASE)/wl/sys/wlc_cfg.h
         D11SHMCDIR := src/wl
         include $(D11SHM_SRCBASE)/makefiles/d11shm.mk
         D11SHM_TARGET := $(D11SHM_HEADER)
+	D11SHM_CFLAGS += $(CMWIFI_RDK_CFLAGS)
     endif
 
     ifeq ($(WLAUTOD11REGS),1)
@@ -99,11 +126,15 @@ endif
         EXTRA_CFLAGS += -I$(AUTOREGS_TEMPDIR)
         IFLAGS += -I$(AUTOREGS_TEMPDIR)
         AUTOREGS_IFLAGS := $(IFLAGS)
+        ifneq ($(CMWIFI),)
+           AUTOREGS_IFLAGS += -I$(src)
+        endif
         AUTOREGS_CFLAGS := $(DFLAGS) $(IFLAGS) $(WFLAGS)
         D11REGS_CFGFILE := $(AUTOREGS_SRCBASE)/wl/sys/wlc_cfg.h
         AUTOREGSCDIR := src/wl
         include $(AUTOREGS_SRCBASE)/makefiles/autoregs.mk
 	AUTOREGS_TARGET := $(AUTOREGS_TEMPDIR)/d11regsoffs.h
+	AUTOREGS_CFLAGS += $(CMWIFI_RDK_CFLAGS)
     endif
 
     include $(WLCFGDIR)/wl.mk
@@ -116,6 +147,11 @@ endif
     ifeq ($(WL_MBO),1)
       ifeq ($(MBO_AP),1)
         WLAN_ComponentsInUse += encode gas mbo_oce
+      endif
+    endif
+    ifeq ($(WL_OCE),1)
+      ifeq ($(OCE_AP),1)
+        WLAN_ComponentsInUse += mbo_oce
       endif
     endif
 
@@ -174,15 +210,8 @@ endif
          EXTRA_CFLAGS += -finline-limit=2048
     endif
 
-    ifdef RTCONFIG_DPSTA
-ifneq ($(wildcard ../../router-sysdep/dpsta),)
-    DPSTASRC := ../dpsta
-else
-    DPSTASRC := ../dpsta
-endif
     # include path for dpsta.h
     EXTRA_CFLAGS += -I$(src)/$(DPSTASRC)
-    endif
 
     # Build the phy source files iff -DPHY_HAL is present, handling either old (src) or new (components) phy location.
     ifneq ($(findstring PHY_HAL,$(WLFLAGS)),)
@@ -206,12 +235,11 @@ endif
 
     # wl shared directory
     ifeq ($(strip $(USE_WLAN_SHARED)), 1)
-         EXTRA_CFLAGS += -I$(WLSRC_BASE)/../../../shared/impl1
-    endif
-
-    ifeq ($(strip $(WL_NIC_RUNNER)), 1)
         ifneq ($(strip $(CONFIG_BCM_WIFI_FORWARDING_DRV)),)
             WLWFD := 1
+        endif
+        ifneq ($(strip $(CONFIG_BCM_HND_EAP)),)
+            WLEAPBLD := 1
         endif
         ifneq ($(strip $(CONFIG_BCM_ARCHER_WLAN)),)
             # Archer WLAN (implements WiFi Forwarding Driver)
@@ -220,31 +248,69 @@ endif
             WLFILES_SRC += ../../shared/impl1/wl_awl.c
         endif
 
+        # Settings that apply only to WFD
         ifeq ($(strip $(WLWFD)), 1)
 		EXTRA_CFLAGS += -DBCM_WFD
-		EXTRA_CFLAGS += -DPKTC -DPKTC_TBL
-        ifneq ($(strip $(CONFIG_BCM_PKTFWD)),)
-			EXTRA_CFLAGS += -DBCM_PKTFWD -DWL_PKTQUEUE_RXCHAIN
-			WLFILES_SRC += ../../shared/impl1/wl_pktfwd.c
-        else
-			WLFILES_SRC += ../../shared/impl1/wl_pktc.c
-        endif
-        ifneq ($(strip $(CONFIG_BCM_EAPFWD)),)
-			EXTRA_CFLAGS += -DBCM_EAPFWD
-        endif
+
+		# Enable Fcache based WFD for 47189
+		ifeq ($(BRCM_CHIP),47189)
+			ifneq ($(strip $(BCA_CPEROUTER)),)
+				EXTRA_CFLAGS += -DCONFIG_BCM_FC_BASED_WFD
+			endif
+		endif
+
 		WLFILES_SRC += ../../shared/impl1/wl_wfd.c
-		WLFILES_SRC += ../../shared/impl1/wl_thread.c
+    	endif
+
+	# WFD or EAP, but one build currently build, enable and run
+	# PKTFWD while not really using it. There is no way to detect that in a
+	# Makefile. Will be fixed later when that one build enables WFD.
+        ifneq ($(filter 1,$(WLWFD) $(WLEAPBLD)),)
+		ifneq ($(strip $(CONFIG_BCM_PKTFWD)),)
+			EXTRA_CFLAGS += -DBCM_PKTFWD -DWL_PKTQUEUE_RXCHAIN
+			EXTRA_CFLAGS += -DWL_PKTFWD_INTRABSS
+
+			# Enable credit based Host Flow Control
+			ifneq ($(strip $(CONFIG_BCM_PKTFWD_FLCTL)),)
+				EXTRA_CFLAGS += -DBCM_PKTFWD_FLCTL
+			endif
+
+			WLFILES_SRC += ../../shared/impl1/wl_pktfwd.c
+		else
+			WLFILES_SRC += ../../shared/impl1/wl_pktc.c
+		endif
+
+		ifneq ($(strip $(CONFIG_BCM_EAPFWD)),)
+			EXTRA_CFLAGS += -DBCM_EAPFWD
+		endif
+		 EXTRA_CFLAGS += -I$(WLSRC_BASE)/../../../shared/impl1
+		 EXTRA_CFLAGS += -DPKTC -DPKTC_TBL
+		 WLFILES_SRC += ../../shared/impl1/wl_thread.c
+	 endif
+
+    	ifneq ($(strip $(CONFIG_BLOG)),)
+		EXTRA_CFLAGS += -DBCM_BLOG
+		WLFILES_SRC += ../../shared/impl1/wl_blog.c
+    	endif
+
+	ifneq ($(strip $(CONFIG_BCM_BPM_BULK_FREE)),)
+		EXTRA_CFLAGS += -DBPM_BULK_FREE
+	endif
     endif
 
-    ifneq ($(strip $(CONFIG_BLOG)),)
-	EXTRA_CFLAGS += -DBCM_BLOG
-	WLFILES_SRC += ../../shared/impl1/wl_blog.c
+    #Enable to use PCIe MSI interrupts if enabled by BSP
+    ifeq ($(CONFIG_PCI_MSI),y)
+        EXTRA_CFLAGS += -DBCM_WLAN_PCIE_MSI
     endif
+
+    ifneq ($(strip $(CONFIG_BCM_WLAN_64BITPHYSADDR)),)
+        EXTRA_CFLAGS += -DBCMDMA64OSL
     endif
 
     ifneq ($(strip $(CONFIG_BCM_KF_NBUFF)),)
-	EXTRA_CFLAGS += -DBCM_NBUFF -DBCM_NBUFF_PKT
-	WLFILES_SRC += ../../shared/impl1/wl_nbuff.c
+        EXTRA_CFLAGS += -DBCM_NBUFF -DBCM_NBUFF_PKT
+        EXTRA_CFLAGS += $(INC_RDP_FLAGS)
+        WLFILES_SRC += ../../shared/impl1/wl_nbuff.c
     endif
 
     # packet chaining 16-bit chain index support
@@ -268,7 +334,8 @@ endif
         EXTRA_CFLAGS += -DWLLED_CLED
     endif
 
-    # Write the EXTRA_CFLAGS to a file.
+    # Save the $(EXTRA_CFLAGS) into a file and use gcc's @file option to include WL flags for C
+    # compilation to avoid "execvp Argument too long" issue.
     $(info ### EXTRA_CFLAGS is $(EXTRA_CFLAGS))
     $(info ### Writing EXTRA_CFLAGS to $(obj)/wlflags.tmp ###)
     $(shell echo $(EXTRA_CFLAGS) > $(obj)/wlflags.tmp)
@@ -281,12 +348,6 @@ endif
     $(TARGET)-objs := $(WLCONF_O) $(WL_OBJS)
     obj-$(CONFIG_BCM_WLAN) := $(TARGET).o
 
-ifeq ($(CONFIG_ARM64),)
-# 32 bits NIC driver size reduction, makes use of gcc/ld unused symbol collect capability
-KBUILD_CFLAGS += -fdata-sections -ffunction-sections
-LDFLAGS += --gc-sections --print-gc-sections --entry=fake_main --script=$(WLSRC_BASE)/shared/linux.module.arm.lds
-endif
-
 else # SRCBASE/wl/sys doesn't exist
 
     # Otherwise, assume prebuilt object module(s) in src/wl/linux directory
@@ -295,7 +356,7 @@ else # SRCBASE/wl/sys doesn't exist
     else
 	prebuilt := wl.o
     endif
-    $(TARGET)-objs := prebuilt/$(prebuilt)
+    $(TARGET)-objs := $(SRCBASE_OFFSET)/wl/linux/prebuilt/$(prebuilt)
     obj-$(CONFIG_BCM_WLAN) := $(TARGET).o
 
 endif
@@ -351,4 +412,4 @@ $(obj)/$(WLCONF_H): $(WLCFGDIR)/$(WLTUNEFILE) FORCE
 
 FORCE:
 
-clean-files += $(SRCBASE_OFFSET)/wl/sys/*.o $(SRCBASE_OFFSET)/../components/phy/old/*.o $(SRCBASE_OFFSET)/wl/phy/*.o $(SRCBASE_OFFSET)/wl/ppr/src/*.o $(SRCBASE_OFFSET)/wl/sys/.*.*.cmd $(SRCBASE_OFFSET)/../components/phy/old/.*.*.cmd $(SRCBASE_OFFSET)/wl/phy/.*.*.cmd $(SRCBASE_OFFSET)/bcmcrypto/.*.*.cmd $(SRCBASE_OFFSET)/wl/clm/src/*.o $(SRCBASE_OFFSET)/wl/clm/src/.*.*.cmd $(SRCBASE_OFFSET)/shared/bcmwifi/src/*.o $(SRCBASE_OFFSET)/shared/bcmwifi/src/.*.*.cmd $(WLCONF_H) $(WLCONF_O)
+clean-files += $(SRCBASE_OFFSET)/wl/sys/*.o $(SRCBASE_OFFSET)/../components/phy/old/*.o $(SRCBASE_OFFSET)/wl/phy/*.o $(SRCBASE_OFFSET)/wl/ppr/src/*.o $(SRCBASE_OFFSET)/wl/sys/.*.*.cmd $(SRCBASE_OFFSET)/../components/phy/old/.*.*.cmd $(SRCBASE_OFFSET)/wl/phy/.*.*.cmd $(SRCBASE_OFFSET)/bcmcrypto/.*.*.cmd $(SRCBASE_OFFSET)/wl/clm/src/*.o $(SRCBASE_OFFSET)/wl/clm/src/.*.*.cmd $(SRCBASE_OFFSET)/shared/bcmwifi/src/*.o $(SRCBASE_OFFSET)/shared/bcmwifi/src/.*.*.cmd ./$(WLCONF_H) $(WLCONF_O) ./$(D11SHM_TEMPDIR)/d11regs* ./$(D11SHM_TEMPDIR)/d11shm* ./autoregs*

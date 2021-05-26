@@ -1,0 +1,6 @@
+--max_chains 4 --txbf --max_bandwidth 160 --1024_qam
+# Select region
+--region "#a/0"
+--region "DE/7"
+--region "EU/13"
+--region "GB/7"

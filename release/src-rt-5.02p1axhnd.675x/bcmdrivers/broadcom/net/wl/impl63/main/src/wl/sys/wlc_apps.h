@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_apps.h 779747 2019-10-07 01:06:31Z $
+ * $Id: wlc_apps.h 786474 2020-04-28 15:58:13Z $
 */
 
 #ifndef _wlc_apps_h_
@@ -83,6 +83,9 @@ extern void wlc_apps_send_psp_response(wlc_info_t *wlc, struct scb *scb, uint16 
 
 extern int wlc_apps_attach(wlc_info_t *wlc);
 extern void wlc_apps_detach(wlc_info_t *wlc);
+#if defined(BCMDBG)
+extern void wlc_apps_wlc_down(wlc_info_t *wlc);
+#endif /* BCMDBG */
 
 extern void wlc_apps_psq_ageing(wlc_info_t *wlc);
 extern bool wlc_apps_psq(wlc_info_t *wlc, void *pkt, int prec);
@@ -131,7 +134,6 @@ void wlc_apps_set_listen_prd(wlc_info_t *wlc, struct scb *scb, uint16 listen);
 uint16 wlc_apps_get_listen_prd(wlc_info_t *wlc, struct scb *scb);
 
 extern uint32 wlc_apps_release_count(wlc_info_t *wlc, struct scb *scb, int prec);
-extern uint32 wlc_apps_scb_fifocnt(wlc_info_t *wlc, scb_t *scb);
 extern void wlc_apps_trigger_on_complete(wlc_info_t *wlc, scb_t *scb);
 
 #ifdef WLTWT
@@ -187,7 +189,6 @@ extern void wlc_apps_twt_sp_release_ps(wlc_info_t *wlc, scb_t *scb);
 #endif // endif
 
 #define wlc_apps_release_count(a, b, c) FALSE
-#define wlc_apps_scb_fifocnt(a, b) 0
 #define wlc_apps_trigger_on_complete(a, b)
 
 #define wlc_apps_scb_in_ps_time(a, b) 0
@@ -214,9 +215,7 @@ extern void wlc_apps_print_scb_psinfo_txstuck(wlc_info_t *wlc, struct bcmstrbuf 
 void wlc_apps_dbg_dump(wlc_info_t *wlc, int hi, int lo);
 
 extern uint wlc_apps_scb_txpktcnt(wlc_info_t *wlc, struct scb *scb);
-extern void wlc_apps_ps_flush_by_prio(wlc_info_t *wlc, struct scb *scb, int prec);
 struct pktq * wlc_apps_get_psq(wlc_info_t * wlc, struct scb * scb);
-extern void wlc_apps_ps_flush_flowid(wlc_info_t *wlc, struct scb *scb, uint16 flowid);
 extern void wlc_apps_map_pkts(wlc_info_t *wlc, struct scb *scb, map_pkts_cb_fn cb, void *ctx);
 extern void wlc_apps_set_change_scb_state(wlc_info_t *wlc, struct scb *scb, bool reset);
 

@@ -70,6 +70,7 @@
 #include <bcmiov.h>
 #include "wlu_common.h"
 #include "wlu.h"
+#include "wlu_rates_matrix.h"
 
 #define HELP_STR1	"help"
 #define HELP_STR2	"-h"
@@ -105,12 +106,16 @@ static subcmd_handler_t wl_dtpc_sub_cmd_txsthres;
 static subcmd_handler_t wl_dtpc_sub_cmd_prb_step;
 static subcmd_handler_t wl_dtpc_sub_cmd_alpha;
 static subcmd_handler_t wl_dtpc_sub_cmd_trigint;
+static subcmd_handler_t wl_dtpc_sub_cmd_headroom;
+static subcmd_handler_t wl_dtpc_sub_cmd_clmovr;
 
 static help_handler_t wl_dtpc_sub_cmd_en_help;
 static help_handler_t wl_dtpc_sub_cmd_txsthres_help;
 static help_handler_t wl_dtpc_sub_cmd_prb_step_help;
 static help_handler_t wl_dtpc_sub_cmd_alpha_help;
 static help_handler_t wl_dtpc_sub_cmd_trigint_help;
+static help_handler_t wl_dtpc_sub_cmd_headroom_help;
+static help_handler_t wl_dtpc_sub_cmd_clmovr_help;
 
 /* internal prototypes */
 
@@ -142,6 +147,16 @@ static const wl_dtpc_sub_cmd_t dtpc_sub_cmd_list[] =
 		IOVT_BUFFER,
 		wl_dtpc_sub_cmd_trigint,
 		wl_dtpc_sub_cmd_trigint_help},
+	{"headroom",
+		WL_DTPC_CMD_HEADROOM,
+		IOVT_BUFFER,
+		wl_dtpc_sub_cmd_headroom,
+		wl_dtpc_sub_cmd_headroom_help},
+	{"clmovr",
+		WL_DTPC_CMD_CLMOVR,
+		IOVT_BUFFER,
+		wl_dtpc_sub_cmd_clmovr,
+		wl_dtpc_sub_cmd_clmovr_help},
 	{NULL, 0, 0, NULL, NULL}
 };
 
@@ -253,6 +268,25 @@ wl_dtpc_sub_cmd_trigint_help(const wl_dtpc_sub_cmd_t *cmd)
 	PRINT("\tSET: wl dtpc %s\n", cmd->name);
 }
 
+static void
+wl_dtpc_sub_cmd_headroom_help(const wl_dtpc_sub_cmd_t *cmd)
+{
+	PRINT("subcmd: %s\n", cmd->name);
+	PRINT("\tprint out DTPC headrooms\n");
+	PRINT("\tGET: headroom <rspec>\n");
+	PRINT("\t   get dtpc headroom for ratespec <rspec>\n");
+	PRINT("\tGET: headroom all\n");
+	PRINT("\t   get dtpc headroom for all known ratespecs\n");
+}
+
+static void
+wl_dtpc_sub_cmd_clmovr_help(const wl_dtpc_sub_cmd_t *cmd)
+{
+	PRINT("subcmd: %s\n", cmd->name);
+	PRINT("\tclmlimit overriding (qdB)\n");
+	PRINT("\tSET: wl dtpc %s [0 ~ 40]\n", cmd->name);
+}
+
 /* simple input query type and set case handling function */
 static int
 wl_dtpc_sub_cmd_cmn_val(void *wl, const wl_dtpc_sub_cmd_t *cmd, char **argv, bool signval)
@@ -327,6 +361,59 @@ finish:
 
 }
 
+int
+wl_dtpc_get_headroom(void *wl, uint32 rspec, uint8 *headroom)
+{
+	int ret = BCME_OK;
+	uint8 buf[WLC_IOCTL_SMLEN];
+
+	if ((ret = wlu_iovar_getbuf(wl, "dtpc_headroom",
+		(void*)&rspec, sizeof(uint32), buf, WLC_IOCTL_SMLEN)) < 0) {
+		PR_ERR("dtpc_get_headroom: wlu_iovar_getbuf error: %d\n", ret);
+		return ret;
+	}
+
+	*headroom = (uint8)buf[0];
+	return ret;
+}
+
+int
+wl_dtpc_get_headroom_all(void *wl)
+{
+	int i, bw, len, max_nss, max_bw, ret = BCME_OK;
+	wl_dtpc_cfg_headroom_t dtpc_headroom;
+	char *bw_str[] = {"20", "40", "80", "160"};
+
+	if ((ret = wlu_iovar_getbuf(wl, "dtpc_headroom_all", NULL, 0,
+		(void*)&dtpc_headroom, sizeof(wl_dtpc_cfg_headroom_t))) < 0) {
+		PR_ERR("dtpc_get_headroom_all: wlu_iovar_getbuf error: %d\n", ret);
+		return ret;
+	}
+
+	len = dtpc_headroom.len;
+	max_bw = dtpc_headroom.max_bw;
+	max_nss = dtpc_headroom.max_nss;
+
+	if (max_bw < 1 || max_bw > 4)
+		return BCME_ERROR;
+
+	PRINT("Rate                  Chains");
+	for (bw = 0; bw < max_bw; bw++) {
+		PRINT(" %sin%s", bw_str[bw], bw_str[max_bw-1]);
+	}
+	PRINT("\n");
+
+	for (i = 0; i < len; i += max_bw) {
+		PRINT("%-24s%-5d", get_reg_rate_string_from_ratespec(dtpc_headroom.rspec[i]),
+			max_nss);
+		for (bw = 0; bw < max_bw; bw++) {
+			PRINT(" %-7.2f", (float)dtpc_headroom.headroom[i]/4);
+		}
+		PRINT("\n");
+	}
+	return ret;
+}
+
 static int
 wl_dtpc_sub_cmd_en(void *wl, const wl_dtpc_sub_cmd_t *cmd, char **argv)
 {
@@ -364,5 +451,38 @@ wl_dtpc_sub_cmd_trigint(void *wl, const wl_dtpc_sub_cmd_t *cmd, char **argv)
 {
 	int ret = BCME_OK;
 	ret = wl_dtpc_sub_cmd_cmn_val(wl, cmd, argv, 0);
+	return ret;
+}
+
+static int
+wl_dtpc_sub_cmd_headroom(void *wl, const wl_dtpc_sub_cmd_t *cmd, char **argv)
+{
+	int ret = BCME_OK;
+	uint32 rspec;
+	uint8 headroom;
+
+	if (*argv == NULL) {
+		wl_dtpc_sub_cmd_headroom_help(cmd);
+		return BCME_BADARG;
+	}
+
+	if (!strncmp(*argv, "all", strlen("all"))) {
+		ret = wl_dtpc_get_headroom_all(wl);
+	} else {
+		rspec = (int)strtol(*argv, NULL, 0);
+		if ((ret = wl_dtpc_get_headroom(wl, rspec, &headroom)) < 0) {
+			PR_ERR("wl_dtpc_get_headroom failed\n");
+			return ret;
+		}
+		PRINT("%s %d\n", get_reg_rate_string_from_ratespec(rspec), headroom);
+	}
+	return ret;
+}
+
+static int
+wl_dtpc_sub_cmd_clmovr(void *wl, const wl_dtpc_sub_cmd_t *cmd, char **argv)
+{
+	int ret = BCME_OK;
+	ret = wl_dtpc_sub_cmd_cmn_val(wl, cmd, argv, 1);
 	return ret;
 }

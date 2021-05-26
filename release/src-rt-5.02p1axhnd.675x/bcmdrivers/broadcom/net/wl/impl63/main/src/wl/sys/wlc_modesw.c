@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_modesw.c 781856 2019-12-03 11:14:11Z $
+ * $Id: wlc_modesw.c 786917 2020-05-12 04:38:30Z $
  */
 
 #include <wlc_cfg.h>
@@ -1207,8 +1207,8 @@ wlc_modesw_process_ap_backoff_expiry(wlc_modesw_info_t *modesw, wlc_bsscfg_t *bs
 	wlc_info_t *wlc = (wlc_info_t *)modesw->wlc;
 	modesw_bsscfg_cubby_t *pmodesw_bsscfg = NULL;
 
-	WL_MODE_SWITCH(("wl%d: AP downgrade timer expired...Perform the downgrade of AP.\n",
-		WLCWLUNIT(wlc)));
+	WL_MODE_SWITCH(("%s wl%d: AP downgrade timer expired...Perform the downgrade of AP.\n",
+		__FUNCTION__, WLCWLUNIT(wlc)));
 
 	pmodesw_bsscfg = MODESW_BSSCFG_CUBBY(wlc->modesw, bsscfg);
 
@@ -1228,11 +1228,16 @@ wlc_modesw_process_ap_backoff_expiry(wlc_modesw_info_t *modesw, wlc_bsscfg_t *bs
 		}
 	} else
 #endif /* WLMCHAN */
-	if (pmodesw_bsscfg->action_sendout_counter == 0) {
-		WL_MODE_SWITCH(("wl%d: All acks received.... starting downgrade\n",
-			WLCWLUNIT(wlc)));
-		wlc_modesw_time_measure(wlc->modesw, pmodesw_bsscfg->ctrl_flags,
-			MODESW_TM_PM1);
+	{
+		if (pmodesw_bsscfg->action_sendout_counter == 0) {
+			WL_MODE_SWITCH(("wl%d: All acks received.... starting downgrade\n",
+				WLCWLUNIT(wlc)));
+			wlc_modesw_time_measure(wlc->modesw, pmodesw_bsscfg->ctrl_flags,
+				MODESW_TM_PM1);
+		} else {
+			WL_MODE_SWITCH(("wl%d: Acks pending, but downgrading as timer expired\n",
+				WLCWLUNIT(wlc)));
+		}
 		/* For prot obss we drain beforehand */
 		if (CTRL_FLAGS_HAS(pmodesw_bsscfg->ctrl_flags,
 			MODESW_CTRL_AP_ACT_FRAMES)) {
@@ -1259,8 +1264,8 @@ wlc_modesw_complete_downgrade_callback(wlc_modesw_info_t *modesw, wlc_bsscfg_t *
 	wlc_info_t *wlc = (wlc_info_t *)modesw->wlc;
 	modesw_bsscfg_cubby_t *pmodesw_bsscfg = NULL;
 
-	WL_MODE_SWITCH(("wl%d: AP downgrade timer expired...Perform the downgrade of AP.\n",
-		WLCWLUNIT(wlc)));
+	WL_MODE_SWITCH(("%s wl%d: AP downgrade timer expired...Perform the downgrade of AP.\n",
+		__FUNCTION__, WLCWLUNIT(wlc)));
 
 	pmodesw_bsscfg = MODESW_BSSCFG_CUBBY(wlc->modesw, bsscfg);
 	if ((BSSCFG_STA(bsscfg) || BSSCFG_PSTA(bsscfg)) &&
@@ -1279,7 +1284,7 @@ wlc_modesw_complete_downgrade_callback(wlc_modesw_info_t *modesw, wlc_bsscfg_t *
 			 * to downgrade_pending after drain
 			 */
 			wlc_modesw_change_state(modesw, bsscfg,
-			MSW_DOWNGRADE_PENDING);
+				MSW_DOWNGRADE_PENDING);
 			wlc_modesw_change_ap_oper_mode(modesw, bsscfg,
 				pmodesw_bsscfg->oper_mode_new, TRUE);
 		} else {
@@ -1662,9 +1667,9 @@ wlc_modesw_opmode_be_disabled(wlc_info_t *wlc, wlc_bsscfg_t *cfg)
 	max_nss = VHT_MAX_SS_SUPPORTED(cap_mcsmap);
 
 	/* Unless operating at 160Mhz with Half NSS, disable OMN */
-	if (!ch160_halfnss &&
-		max_nss == cur_nss &&
-		CHSPEC_BW(max_oper_chspec) == CHSPEC_BW(cur_chspec)) {
+	if (!ch160_halfnss && (max_nss == cur_nss) &&
+		CHSPEC_BW(max_oper_chspec) == CHSPEC_BW(cur_chspec) &&
+		(pmodesw_bsscfg->state == MSW_NOT_PENDING)) {
 #ifdef BCMDBG
 		WL_MODE_SWITCH(("wl%d: max_oper_chspec 0x%x cur_chspec 0x%x cap_mcsmap 0x%x "
 				"cur_nss %d max nss %d ch160_halfnss %d\n", WLCWLUNIT(wlc),
@@ -1709,7 +1714,7 @@ wlc_modesw_bss_tbtt(wlc_modesw_info_t *modesw_info, wlc_bsscfg_t *cfg)
 			} else
 #endif /* WLMCHAN */
 			{
-			WL_MODE_SWITCH(("TBTT Timer set....\n"));
+				WL_MODE_SWITCH(("TBTT Timer set....\n"));
 				WL_MODE_SWITCH(("DTIM Tbtt..Start timer for 5 msec \n"));
 				ASSERT(pmodesw_bsscfg->timer_ctx->notif == 0);
 				pmodesw_bsscfg->timer_ctx->notif = MODESW_TIMER_AP_BACKOFF_EXP;
@@ -1924,7 +1929,6 @@ wlc_modesw_perform_upgrade_downgrade(wlc_modesw_info_t *modesw_info,
 			return;
 		}
 		/* update HT mcs rates based on number of chains */
-		wlc_default_rateset(wlc, &bsscfg->current_bss->rateset);
 		/* we need to take care of wlc_rate_init for every scb here */
 		wlc_scb_ratesel_init_all(wlc);
 		wlc_modesw_time_measure(wlc->modesw, pmodesw_bsscfg->ctrl_flags,
@@ -2889,24 +2893,38 @@ wlc_modesw_change_ap_oper_mode(wlc_modesw_info_t *modesw_info, wlc_bsscfg_t *bss
 			WLCWLUNIT(wlc),
 			pmodesw_bsscfg->new_chanspec,
 			CHSPEC_BW(pmodesw_bsscfg->new_chanspec)));
-		if (pmodesw_bsscfg->state == MSW_DOWNGRADE_PENDING)
-			WL_MODE_SWITCH(("wl%d: Entering %s again \n",
-				WLCWLUNIT(wlc), __FUNCTION__));
-
-		wlc_modesw_change_state(modesw_info, bsscfg, MSW_DOWNGRADE_PENDING);
-
-		if (CTRL_FLAGS_HAS(pmodesw_bsscfg->ctrl_flags,
-			MODESW_CTRL_AP_ACT_FRAMES) &&
-			(new_rxnss == old_rxnss)) {
-			/* For prot obss we do the drain before sending out action frames */
+		if (pmodesw_bsscfg->state == MSW_DOWNGRADE_PENDING) {
+			/*
+			 * For OBSS_DBS we wait for packets to drain and comeback here
+			 * due to drain complete or after 2 secs due to Watchdog.
+			 * In either case we UNBLOCK TX and just go ahead with BW_switch.
+			 */
+			WL_MODE_SWITCH(("wl%d:Entering %s again\n", WLCWLUNIT(wlc), __FUNCTION__));
 			if (TXPKTPENDTOT(wlc) != 0) {
-				WLC_BLOCK_DATAFIFO_SET(wlc, DATA_BLOCK_TXCHAIN);
-				wlc_modesw_change_state(wlc->modesw, bsscfg, MSW_WAIT_DRAIN);
-				return TRUE;
+				WL_MODE_SWITCH(("wl%d:%s Drain not successful, Interference HIGH\n",
+					WLCWLUNIT(wlc), __FUNCTION__));
 			}
 			if (wlc->block_datafifo & DATA_BLOCK_TXCHAIN) {
 				/* Unblock and measure time at drain end */
 				WLC_BLOCK_DATAFIFO_CLEAR(wlc, DATA_BLOCK_TXCHAIN);
+			}
+		} else {
+			wlc_modesw_change_state(modesw_info, bsscfg, MSW_DOWNGRADE_PENDING);
+
+			if (CTRL_FLAGS_HAS(pmodesw_bsscfg->ctrl_flags,
+					MODESW_CTRL_AP_ACT_FRAMES) &&
+					(new_rxnss == old_rxnss)) {
+				/* For prot obss we do the drain before sending out action frames */
+				if (TXPKTPENDTOT(wlc) != 0) {
+					WLC_BLOCK_DATAFIFO_SET(wlc, DATA_BLOCK_TXCHAIN);
+					wlc_modesw_change_state(wlc->modesw,
+						bsscfg, MSW_WAIT_DRAIN);
+					return TRUE;
+				}
+				if (wlc->block_datafifo & DATA_BLOCK_TXCHAIN) {
+					/* Unblock and measure time at drain end */
+					WLC_BLOCK_DATAFIFO_CLEAR(wlc, DATA_BLOCK_TXCHAIN);
+				}
 			}
 		}
 		/* Update current oper mode to reflect downgraded bw */

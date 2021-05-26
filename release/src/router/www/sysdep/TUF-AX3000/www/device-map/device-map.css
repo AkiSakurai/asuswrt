@@ -385,54 +385,73 @@ Windows laptop  35
 	width: 28px;
 	position: relative;
 }
+.radioIcon.GN{
+	background-position: 0% 80%;
+	background-size: 100%;
+}
 .radio_1{
-  background-position: 0% 2px;
-}	
+	background-position: 0% 1px;
+}
+.radioIcon.GN.radio_1{
+	background-image:url('/images/New_ui/amesh/radio_gn_1.svg');
+}
 .radio_2{
-  background-position: 0% -20px;
-}	
+	background-position: 0% -20px;
+}
+.radioIcon.GN.radio_2{
+	background-image:url('/images/New_ui/amesh/radio_gn_2.svg');
+}
 .radio_3{
-  background-position: 0% -42px;
-}	
+	background-position: 0% -42px;
+}
+.radioIcon.GN.radio_3{
+	background-image:url('/images/New_ui/amesh/radio_gn_3.svg');
+}
 .radio_4{
-  background-position: 0% -64px;
+	background-position: 0% -64px;
+}
+.radioIcon.GN.radio_4{
+	background-image:url('/images/New_ui/amesh/radio_gn_4.svg');
 }
 .band_block {
 	background-color: #06CCDE;
 	height: 11px;
 	width: 28px;
+	border-radius: 2px;
 }
 .band_txt_chrome {
 	font-size: 9px;
 	-webkit-transform : scale(0.75); 
-	font-family: Arial;
+	font-family: Verdana;
 	color: #000000;
-	font-weight: bolder;
-	letter-spacing: 1px;
 	display : inline-block;
 	white-space: nowrap;
 	width: 30px;
 	height: 11px;
-	line-height: 12px;
+	line-height: 11px;
 	margin-left: -2px;
 	text-align: center;
 }
 .band_txt {
 	font-size: 9px;
-	font-family: Arial;
+	font-family: Verdana;
 	color: #000000;
-	font-weight: bolder;
 	display : inline-block;
 	white-space: nowrap;
 	width: 28px;
 	height: 11px;
-	line-height: 12px;
+	line-height: 11px;
 	text-align: center;
 }
 .radio_wired{
 	height: 28px;
 	width: 28px;
 	background-image:url('/images/New_ui/networkmap/wiredIcon.png') !important;
+}
+.radio_plc{
+	height: 28px;
+	width: 28px;
+	background-image:url('/images/New_ui/networkmap/power.png') !important;
 }
 .clientlist_content{
 	position: absolute;
@@ -529,6 +548,21 @@ Windows laptop  35
 	height: 95px;
 	padding-top: 10px;
 	cursor:pointer;
+	position: relative;
+}
+.client_bind_icon:before{
+	position: absolute;
+	content: "";
+	width: 24px;
+	height: 24px;
+	background-image: url(/images/New_ui/amesh/client_control.svg);
+	background-size: 400px;
+	background-repeat: no-repeat;
+	top: -6px;
+	right: -12px;
+	border-radius: 50%;
+	background-color: #475a5f;
+	background-position: -304px 1px;
 }
 .clientlist_viewlist {
 	position: absolute;

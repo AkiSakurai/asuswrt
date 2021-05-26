@@ -6,19 +6,23 @@ VISSHARED=../shared
 SRCDIR = $(BASEDIR)/src
 
 CFLAGS=-Wall -Werror -I$(SRCDIR)/common/include/ -I$(SRCDIR)/include/ -I../include/ \
-		-I$(SRCDIR)/../components/opensource/jsonc/ \
-		-I$(SRCDIR)/../components/opensource/libxml2/include/ \
-		-I$(SRCDIR)/../components/opensource/sqlite3/ \
+		-I$(SRCBASE_ROUTER)/json-c/ \
+		-I$(SRCBASE_ROUTER)/libxml2/include/ \
+		-I$(SQLITE3_DIR) \
 		-I$(SRCDIR)/../components/shared/ \
 	  -I$(SRCDIR)/../components/proto/include/ \
 	  -I$(SRCDIR)/../components/wlioctl/include/ \
 		-DVERSION=\"$(VERSION)\" -DPROG="\"$(PACKAGE)\""
 
-LDFLAGS=-L$(SRCDIR)/../components/opensource/sqlite3/installbin/lib \
-		-L$(SRCDIR)/../components/opensource/jsonc/installbin/lib \
-		-L$(SRCDIR)/../components/opensource/libxml2/installbin/lib \
-		-lsqlite3 -lpthread -lxml2 -ljson-c -L$(SRCBASE_ROUTER)/nvram -L$(INSTALLDIR)/nvram/usr/lib -lnvram
+LDFLAGS=-L$(SRCBASE_ROUTER)/json-c/.libs \
+		-L$(SRCBASE_ROUTER)/libxml2/.libs \
+		-lpthread -lxml2 -ljson-c -L$(TOP_PLATFORM)/nvram \
+		-L$(INSTALLDIR)/nvram/usr/lib -lnvram \
+		-L$(SRCBASE_ROUTER)/shared -lshared
+LDFLAGS += -L$(TOP_PLATFORM)/wlcsm -lwlcsm
 LDFLAGS	+= $(EXTRA_LDFLAGS)
+LIBS += $(SQLITE3_DIR)/.libs/libsqlite3.a
+
 if ISBCMINTERNAL
 CFLAGS  += -DBCMINTERNAL
 endif

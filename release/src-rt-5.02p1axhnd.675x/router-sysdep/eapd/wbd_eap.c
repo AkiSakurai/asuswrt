@@ -96,24 +96,20 @@ wbd_app_set_eventmask(eapd_app_t *app)
 	setbit(app->bitvec, WLC_E_AP_CHAN_CHANGE);
 	setbit(app->bitvec, WLC_E_ASSOC);
 	setbit(app->bitvec, WLC_E_REASSOC);
-	setbit(app->bitvec, WLC_E_PROBREQ_MSG);
 	setbit(app->bitvec, WLC_E_ASSOC_REASSOC_IND_EXT);
 	setbit(app->bitvec, WLC_E_LINK);
 	setbit(app->bitvec, WLC_E_CAC_STATE_CHANGE);
+	setbit(app->bitvec, WLC_E_ASSOC_FAIL);
+	setbit(app->bitvec, WLC_E_REASSOC_FAIL);
+	setbit(app->bitvec, WLC_E_AUTH_FAIL);
+	/* Register MAP-MBO-R2 events */
+	setbit(app->bitvec, WLC_E_MBO_CAPABILITY_STATUS);
+	setbit(app->bitvec, WLC_E_WNM_NOTIFICATION_REQ);
+	setbit(app->bitvec, WLC_E_WNM_BSSTRANS_QUERY);
+	setbit(app->bitvec, WLC_E_GAS_RQST_ANQP_QUERY);
+	setbit(app->bitvec, WLC_E_ESCAN_RESULT);
+	setbit(app->bitvec, WLC_E_BSSTRANS_QUERY);
 
-	/* Register only for MultiAP R2 or greater */
-	if (strtoul(nvram_safe_get("map_profile"), NULL, 0) >= 2) {
-		setbit(app->bitvec, WLC_E_ASSOC_FAIL);
-		setbit(app->bitvec, WLC_E_REASSOC_FAIL);
-		setbit(app->bitvec, WLC_E_AUTH_FAIL);
-		/* Register MAP-MBO-R2 events */
-		setbit(app->bitvec, WLC_E_MBO_CAPABILITY_STATUS);
-		setbit(app->bitvec, WLC_E_WNM_NOTIFICATION_REQ);
-		setbit(app->bitvec, WLC_E_WNM_BSSTRANS_QUERY);
-		setbit(app->bitvec, WLC_E_GAS_RQST_ANQP_QUERY);
-		setbit(app->bitvec, WLC_E_ESCAN_RESULT);
-		setbit(app->bitvec, WLC_E_BSSTRANS_QUERY);
-	}
 	return;
 }
 
@@ -217,7 +213,7 @@ wbd_app_deinit(eapd_wksp_t *nwksp)
  *	0 : send all other events via the old socket.
  */
 int
-wbd_app_sendup(eapd_wksp_t *nwksp, uint8 *pData, int pLen, char *from, int bss)
+wbd_app_sendup(eapd_wksp_t *nwksp, uint8 *pData, int pLen, char *from)
 {
 	eapd_wbd_t *wbd;
 
@@ -234,20 +230,13 @@ wbd_app_sendup(eapd_wksp_t *nwksp, uint8 *pData, int pLen, char *from, int bss)
 
 		to.sin_addr.s_addr = inet_addr(EAPD_WKSP_UDP_ADDR);
 		to.sin_family = AF_INET;
-
-		if (bss)
-			to.sin_port = htons(EAPD_WKSP_WBD_UDP_MPORT);
-		else
-			to.sin_port = htons(EAPD_WKSP_WBD_UDP_SPORT);
+		to.sin_port = htons(EAPD_WKSP_WBD_UDP_SPORT);
 
 		sentBytes = sendto(wbd->appSocket, pData, pLen, 0,
 			(struct sockaddr *)&to, sizeof(struct sockaddr_in));
 
 		if (sentBytes != pLen) {
 			EAPD_ERROR("WBD: UDP send failed; sentBytes = %d\n", sentBytes);
-		}
-		else {
-			/* EAPD_ERROR("WBD: Send %d bytes to wbd\n", sentBytes); */
 		}
 	}
 	else {
@@ -318,10 +307,7 @@ wbd_app_handle_event(eapd_wksp_t *nwksp, uint8 *pData, int Len, char *from)
 			memcpy(pData, event->ifname, IFNAMSIZ);
 
 			/* send to wbd use cb->ifname */
-			if (type == WLC_E_BSSTRANS_RESP)
-				wbd_app_sendup(nwksp, pData, Len, cb->ifname, 1);
-			else
-				wbd_app_sendup(nwksp, pData, Len, cb->ifname, 0);
+			wbd_app_sendup(nwksp, pData, Len, cb->ifname);
 			break;
 		}
 		cb = cb->next;

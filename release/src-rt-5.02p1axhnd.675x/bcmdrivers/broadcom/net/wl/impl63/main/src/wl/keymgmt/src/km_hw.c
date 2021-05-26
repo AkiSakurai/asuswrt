@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_hw.c 780020 2019-10-14 08:36:53Z $
+ * $Id: km_hw.c 783821 2020-02-11 06:00:35Z $
  */
 
 /* This file implements the wlc keymgmt functionality. It provides
@@ -710,10 +710,17 @@ const uint8 *
 km_hw_fixup_null_hw_key(km_hw_t *hw, const uint8 *data, size_t data_len)
 {
 	uint32 i;
+	char line[2*sizeof(hw->rand_def_key) + 1] = {0};
+
 	for (i = 0; i < data_len; i++) {
 		if (data[i]) {
 			return data;
 		}
 	}
+
+	wlc_getrand(hw->wlc, hw->rand_def_key, sizeof(hw->rand_def_key));
+	bcm_format_hex(line, hw->rand_def_key, sizeof(hw->rand_def_key));
+	KM_HW_PRINT(("wl%d: random key value: %s\n", KM_HW_UNIT(hw), line));
+
 	return hw->rand_def_key;
 }

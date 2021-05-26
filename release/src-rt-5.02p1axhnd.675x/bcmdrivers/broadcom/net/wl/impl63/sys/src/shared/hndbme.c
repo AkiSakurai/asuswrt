@@ -99,14 +99,20 @@
  *
  * BME is part of M2MDMA Core (Id 0x844)
  *
- * Rev  CHIPID       ENGINES  DMA CHANNELS      COMMENT
- * 3    43684 Bx, Cx 2        2, 3
- * 4?   63178/6750   1        2                 MAC uses Ch #3 [Tx/Rx Status]
- * 4?   47622/6755   1        2                 MAC uses Ch #3 [Tx/Rx Status]
- * 4?   6710         1        2                 MAC uses Ch #3 [Tx/Rx Status]
- * 5?   6715         4        2, 4, 5, 6        MAC uses Ch #3 [Tx/Rx Status]
+ * Reference: [Twiki: M2MDmaRev0, CurrentDmaProgGuide]
+ *            CRBCAM2MDMA-54 "Request for non descriptor based DMA"
  *
- * Traditional M2M (descriptor based): Ch #0, #1 [H2D, D2H, iDMA?]
+ * Rev  CHIPID       BME_ENG  DMA CHANNELS      COMMENT
+ *   3  43684 Bx     2        2, 3
+ * 128  63178/6750   1        2                 MAC uses Ch #3 [Tx/Rx Status]
+ * 128  47622/6755   1        2                 MAC uses Ch #3 [Tx/Rx Status]
+ * 129  6710         1        2                 MAC uses Ch #3 [Tx/Rx Status]
+ * 130  43684 C0     2        2, 3              CRWLDMA-168 WC 1b15 per desc
+ * 131  6715         4        2, 4, 5, 6        MAC uses Ch #3 [Tx/Rx Status]
+ *                                              CRBCAM2MDMA-73 Support 8 channel
+ *                                              CRBCAM2MDMA-75 Ch#7 PSMx to Host
+ *
+ * Traditional M2M (descriptor based): Ch #0, #1 (in all M2MCORE revisions)
  * Simple M2M (non descriptor based) : Ch #2, (3*), #4, #5, #6
  *
  * When Ch #3 is re-pruposed by MAC, it must be excluded from BME pool of engines
@@ -668,6 +674,9 @@ BCMATTACHFN(bme_init)(si_t * sih, osl_t * osh)
 			bme_eng->bme_ctx_prev = &bme->bme_ctx[BME_USR_SYS]; /* SYS default */
 			bme_eng->m2m_eng_regs = &m2m_core_regs->eng_regs[sm2m_ch];
 
+			/* Disable all Interrupts from this channel */
+			W_REG(osh, &m2m_core_regs->int_regs[sm2m_ch].intmask, 0U);
+
 			/* Invalidate cached register values */
 			bme_eng->bme_reg_cached.xmt_ptr      = BME_REG_INV;
 			bme_eng->bme_reg_cached.rcv_ptr      = BME_REG_INV;
@@ -679,21 +688,22 @@ BCMATTACHFN(bme_init)(si_t * sih, osl_t * osh)
 			 */
 			/* Enable the transmit and receive channels of this engine */
 			v32 = R_REG(osh, &bme_eng->m2m_eng_regs->tx.control);
-			v32 = BCM_CBF(v32, XC_BL);
-			v32 |= (XC_XE /* transmit channel control transmit enable */
-				| BCM_SBF(BME_BURSTLEN, XC_BL));
+			v32 = BCM_CBF(v32, D64_XC_BL);
+			v32 |= (D64_XC_XE /* transmit channel control transmit enable */
+				| BCM_SBF(BME_BURSTLEN, D64_XC_BL));
 			W_REG(osh, &bme_eng->m2m_eng_regs->tx.control, v32);
 
 			v32 = R_REG(osh, &bme_eng->m2m_eng_regs->rx.control);
-			v32 = BCM_CBF(v32, RC_BL);
-			v32 |= (RC_RE /* receive channel control receive enable */
-				| BCM_SBF(BME_BURSTLEN, RC_BL));
+			v32 = BCM_CBF(v32, D64_RC_BL);
+			v32 |= (D64_RC_RE /* receive channel control receive enable */
+				| BCM_SBF(BME_BURSTLEN, D64_RC_BL));
 			W_REG(osh, &bme_eng->m2m_eng_regs->rx.control, v32);
 
 			bme_set.map |= BME_SET(eng_idx); /* enlist engine into bme_set */
 
 			BME_STATS(bme_eng->xfers = 0U);
 			BME_STATS(bme_eng->loops = 0U);
+
 		}
 
 	}   /* Prepare each BME Engine: bme_eng[] */
@@ -813,8 +823,8 @@ BCMATTACHFN(bme_deinit)(si_t * sih, osl_t * osh)
 			bme_eng = &bme->bme_eng[idx];
 
 			/* Enable the transmit and receive channels of this engine */
-			AND_REG(osh, &bme_eng->m2m_eng_regs->tx.control, ~XC_XE);
-			AND_REG(osh, &bme_eng->m2m_eng_regs->rx.control, ~RC_RE);
+			AND_REG(osh, &bme_eng->m2m_eng_regs->tx.control, ~D64_XC_XE);
+			AND_REG(osh, &bme_eng->m2m_eng_regs->rx.control, ~D64_RC_RE);
 		}
 		BME_RESTORECORE(sih, saved_core_id, saved_intr_val);
 

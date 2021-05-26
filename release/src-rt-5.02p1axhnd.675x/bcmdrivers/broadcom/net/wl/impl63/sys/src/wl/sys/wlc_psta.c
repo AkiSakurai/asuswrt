@@ -48,7 +48,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_psta.c 781150 2019-11-13 07:11:32Z $
+ * $Id: wlc_psta.c 784761 2020-03-05 05:54:19Z $
  */
 
 /**
@@ -573,6 +573,9 @@ wlc_psta_deauth_client(wlc_psta_info_t *psta, const struct ether_addr *addr)
 
 	/* Send deauth to our AP with unspecified reason code */
 	scb = wlc_scbfind(psta->wlc, cfg, &cfg->BSSID);
+	WL_ASSOC(("wl%d.%d: %s: send deauth to "MACF" with reason %d\n", psta->pub->unit,
+		WLC_BSSCFG_IDX(cfg), __FUNCTION__, ETHER_TO_MACF(cfg->BSSID),
+		DOT11_RC_UNSPECIFIED));
 	(void)wlc_senddeauth(psta->wlc, cfg, scb, &cfg->BSSID, &cfg->BSSID,
 	                     &cfg->cur_etheraddr, DOT11_RC_UNSPECIFIED);
 
@@ -812,6 +815,9 @@ wlc_psta_watchdog(void *arg)
 
 		/* Send deauth to our AP with unspecified reason code */
 		scb = wlc_scbfind(psta->wlc, cfg, &cfg->BSSID);
+		WL_ASSOC(("wl%d.%d: %s: send deauth to "MACF" with reason %d\n", psta->pub->unit,
+			WLC_BSSCFG_IDX(cfg), __FUNCTION__, ETHER_TO_MACF(cfg->BSSID),
+			DOT11_RC_UNSPECIFIED));
 		(void)wlc_senddeauth(psta->wlc, cfg, scb, &cfg->BSSID, &cfg->BSSID,
 		                     &cfg->cur_etheraddr, DOT11_RC_UNSPECIFIED);
 

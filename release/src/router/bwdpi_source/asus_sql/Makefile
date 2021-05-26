@@ -1,5 +1,10 @@
 include ../../common.mak
 
+ifeq ($(TOP_PLATFORM),)
+TOP_PLATFORM=$(TOP)
+endif
+
+
 CFLAGS += -Os -Wall $(EXTRACFLAGS) -fPIC
 CFLAGS += -I. -I$(TOP)/shared -I$(SRCBASE)/include -I$(TOP)/sqlite -I$(TOP)/rc -I$(TOP)/httpd
 CFLAGS += -I$(TOP)/bwdpi_source/src/tdts_udb_sample
@@ -46,36 +51,38 @@ endif
 
 # add rule for ProgControl3 new mechanism
 ifeq ($(RTCONFIG_SOC_IPQ8064),y)
-else ifeq ($(RTCONFIG_SOC_IPQ8074),y)
 	# ipq806x
+else ifeq ($(RTCONFIG_SOC_IPQ8074),y)
+CFLAGS += -DPGCONTROL3
 else ifeq ($(RTCONFIG_SOC_IPQ40XX),y)
-	# ipq807x
-else ifeq ($(RTCONFIG_QCA956X),y)
-	# qca956x
+	# ipq40xx
+CFLAGS += -DPGCONTROL3
+else ifeq ($(or $(RTCONFIG_QCA956X),$(RTCONFIG_QCN550X)),y)
+	# qca956x / qcn550x
+else ifeq ($(RTCONFIG_SOC_IPQ60XX),y)
+CFLAGS += -DPGCONTROL3
 else ifeq ($(RTCONFIG_RALINK),y)
+ifeq ($(RTCONFIG_RALINK_MT7622),y)
+	# mtk7622
+CFLAGS += -DPGCONTROL3
+else
 	# mtk
+endif
 else ifeq ($(RTCONFIG_LANTIQ),y)
 	# lantiq
 else ifeq ($(RTCONFIG_BCMARM),y)
 ifeq ($(RTCONFIG_BCM7),y)
 	# bcm7
 else ifeq ($(HND_ROUTER),y)
-ifeq ($(HND_ROUTER_AX),y)
-ifeq ($(or $(RTCONFIG_HND_ROUTER_AX_675X),$(RTCONFIG_HND_ROUTER_AX_6710)),y)
+	# hnd / axhnd
 CFLAGS += -DPGCONTROL3
-else
-CFLAGS += -DPGCONTROL3
-endif # RTCONFIG_HND_ROUTER_AX_675X
-else
-	# hnd
-endif # HND_ROUTER_AX
 else ifeq ($(RTCONFIG_BCM_7114),y)
 	# bcm7114
+CFLAGS += -DPGCONTROL3
 else
 ifeq ($(RTCONFIG_BCMSMP),y)
 	# bcm6_smp
-else
-	# bcm6_up
+CFLAGS += -DPGCONTROL3
 endif
 endif
 endif
@@ -94,6 +101,9 @@ LD2 += $(LDFLAGS) $(EXTRALD)
 
 # ASUSWRT
 OBJS += bwdpi_sqlite.o traffic_analyzer.o sqlite_stat.o web_history.o AiProtectionMonitor.o
+ifeq ($(RT4GAC86U),y)
+OBJS += $(LIBDIR)/libc_nonshared.a
+endif
 
 ifeq ($(RTCONFIG_BCMARM),y)
 vpath %.c $(SRCBASE)/shared

@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_dbg.c 781787 2019-11-28 14:31:43Z $
+ * $Id: wlc_dbg.c 787654 2020-06-08 10:00:27Z $
  */
 
 #include <wlc_cfg.h>
@@ -852,7 +852,7 @@ wlc_recv_print_rxh(wlc_info_t *wlc, wlc_d11rxhdr_t *wrxh)
 
 	snprintf(lenbuf, sizeof(lenbuf), "0x%x", len);
 	printf("RxFrameSize:   %6s (%d)%s\n", lenbuf, len,
-		(D11PHYSTSBUF_ACCESS_VAL(rxh, corerev, PhyRxStatus_0) & PRXS0_SHORTH) ?
+		(D11PHYSTSBUF_ACCESS_VAL(rxh, corerev, PhyRxStatus_0) & PRXS_SHORTPMBL(corerev)) ?
 		" short preamble" : "");
 	printf("dma_flags:     %#x\n", D11RXHDR_ACCESS_VAL(rxh, corerev, dma_flags));
 	printf("fifo:          %u\n", D11RXHDR_ACCESS_VAL(rxh, corerev, fifo));
@@ -1404,8 +1404,15 @@ wlc_print_dump_table(struct bcmstrbuf *b, char* title,
 	if (table_val == NULL)
 		return;
 
-	if (max_idx > MAX_SIZE)
+	if (max_idx > MAX_SIZE) {
+		ASSERT(max_idx <= MAX_SIZE);
 		return;
+	}
+
+	if (nbr_colums > MAX_COLUM) {
+		ASSERT(nbr_colums <= MAX_COLUM);
+		return;
+	}
 
 	/* Calculate sum of all values in the table */
 	for (i = 0, sum = 0, last = 0; i < max_idx; i++) {
@@ -1432,7 +1439,7 @@ wlc_print_dump_table(struct bcmstrbuf *b, char* title,
 		table_val_pcent[i] = pcent;
 		if (value > table_colum[col])
 			table_colum[col] = value;
-		if ((pcent == 100) && (col != last))
+		if ((pcent == 100) && ((col + 1) != nbr_colums))
 			table_width[col + 1] = 2;
 
 		if (tsuccess) {
@@ -1445,7 +1452,7 @@ wlc_print_dump_table(struct bcmstrbuf *b, char* title,
 			table_per_pcent[i] = pcent;
 			if (unacked > table_colum[col])
 				table_colum[col] = unacked;
-			if ((pcent == 100) && (col != last))
+			if ((pcent == 100) && ((col + 1) != nbr_colums))
 				table_width[col + 1] = 2;
 		}
 	}

@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_dfs.c 781726 2019-11-27 08:57:12Z $
+ * $Id: wlc_dfs.c 788369 2020-06-30 09:05:24Z $
  */
 
 /**
@@ -1157,6 +1157,14 @@ wlc_dfs_doiovar(void *ctx, uint32 actionid,
 			wlc_channel_send_chan_event(wlc, WL_CHAN_REASON_DFS_AP_MOVE_STUNT,
 				WLC_BAND_PI_RADIO_CHANSPEC);
 #endif /* WL_AP_CHAN_CHANGE_EVENT */
+			break;
+		}
+
+		/* Reject if DFS state machine is already in CAC state */
+		if (dfs->dfs_cac.status.state == WL_DFS_CACSTATE_PREISM_CAC) {
+			WL_DFS(("wl%d: DFS state machine already in PREISM_CAC\n",
+					wlc->pub->unit));
+			err = BCME_BUSY;
 			break;
 		}
 
@@ -3404,13 +3412,10 @@ wlc_dfs_cacstate_cac(wlc_dfs_info_t *dfs)
 			return;
 		}
 #if defined(SLAVE_RADAR)
-		if (wlc->keep_ap_up) {
-			return;
-		}
 		if (WL11H_STA_ENAB(wlc) && wlc_dfs_get_radar(wlc->dfs)) {
 			/* ISM started, lets prepare for join */
 			wlc_assoc_change_state(wlc->cfg, AS_DFS_ISM_INIT);
-			wlc_join_bss_prep(wlc->cfg);
+			wlc_join_attempt_select(wlc->cfg);
 		}
 #endif /* SLAVE_RADAR */
 	}
@@ -3836,30 +3841,32 @@ wlc_dfs_cacstate_init(wlc_dfs_info_t *dfs)
 #endif /* RSDB_DFS_SCAN || BGDFS */
 		/* unit of cactime is WLC_DFS_RADAR_CHECK_INTERVAL */
 		dfs->dfs_cac.cactime = wlc_dfs_ism_cactime(wlc, dfs->dfs_cac.cactime_pre_ism);
-		if ((!WLC_APSTA_ON_RADAR_CHANNEL(wlc) && dfs->dfs_cac.cactime && !skip_pre_ism) &&
-			(!(APSTA_ENAB(wlc->pub) && AP_ENAB(wlc->pub) && !wlc->keep_ap_up) ||
+
+		WL_REGULATORY(("wl%d: CAC or ISM state for cactime[%d] skip_pre_ism[%d]"
+			" APSTA_ENAB[%d] AP_ENAB[%x] cac_clr[%d] for CHANSPEC[%x]\n",
+			wlc->pub->unit,	dfs->dfs_cac.cactime, skip_pre_ism, APSTA_ENAB(wlc->pub),
+			AP_ENAB(wlc->pub),
+			wlc_cac_is_clr_chanspec(dfs, WLC_BAND_PI_RADIO_CHANSPEC),
+			WLC_BAND_PI_RADIO_CHANSPEC));
+
+		/* With cactime && !skip_pre_ism
+		 * AP_ONLY: do cac.
+		 * APSTA || 11H_STA: do CAC if cac pending on chanspec.
+		 */
+		if ((dfs->dfs_cac.cactime && !skip_pre_ism) &&
+			((!APSTA_ENAB(wlc->pub) && AP_ENAB(wlc->pub)) ||
 #ifdef SLAVE_RADAR
 			!wlc_cac_is_clr_chanspec(dfs, WLC_BAND_PI_RADIO_CHANSPEC) ||
 #endif /* SLAVE_RADAR */
 			FALSE)) {
-
-			/* With below steps, dfs_slave_present flag does not get set and
-			 * hence while going into CAC state machine on switching to DFS
-			 * radar channel, APSTA configuration goes to CAC instead to ISM:
-			 * Steps:
-			 * 1: Boot Upstream AP boots into Non DFS channel say 149/80
-			 * 2: Reboot Repeater, and associate to Upstream AP
-			 * 3: Issue dfs_ap_move to DFS radar channel
-			 * 4: At end of 60 sec, Repeater starts CAC on receiving CSA from
-			 *    Upstream AP, though it is beaconing.
-			 * To prevent this: APSTA_ENAB and AP_ENAB check
-			 */
-			/* preism cac is enabled */
-			wlc_dfs_cac_state_change(dfs, WL_DFS_CACSTATE_PREISM_CAC);
-			dfs->dfs_cac.duration = dfs->dfs_cac.cactime;
-			wlc_mute(wlc, ON, PHY_MUTE_FOR_PREISM);
+				/* preism cac is enabled */
+				WL_REGULATORY(("wl%d: switch to CAC state\n", wlc->pub->unit));
+				wlc_dfs_cac_state_change(dfs, WL_DFS_CACSTATE_PREISM_CAC);
+				dfs->dfs_cac.duration = dfs->dfs_cac.cactime;
+				wlc_mute(wlc, ON, PHY_MUTE_FOR_PREISM);
 		} else {
 			/* preism cac is disabled */
+			WL_REGULATORY(("wl%d: switch to ISM state\n", wlc->pub->unit));
 			wlc_dfs_cacstate_ism_set(dfs);
 		}
 
@@ -3875,7 +3882,7 @@ wlc_dfs_cacstate_init(wlc_dfs_info_t *dfs)
 		wf_chspec_ntoa_ex(chspec, chanbuf)));
 }
 
-void
+int
 wlc_set_dfs_cacstate(wlc_dfs_info_t *dfs, int state, wlc_bsscfg_t *cfg)
 {
 	wlc_info_t *wlc = dfs->wlc;
@@ -3889,7 +3896,7 @@ wlc_set_dfs_cacstate(wlc_dfs_info_t *dfs, int state, wlc_bsscfg_t *cfg)
 
 	/* avoid entering DFS during scan, it may give false radar */
 	if (SCAN_IN_PROGRESS(wlc->scan)) {
-		return;
+		return BCME_BUSY;
 	}
 
 	ASSERT(dfs->cfg);
@@ -3917,7 +3924,7 @@ wlc_set_dfs_cacstate(wlc_dfs_info_t *dfs, int state, wlc_bsscfg_t *cfg)
 	} else {
 		/* If chanspec is not valid or if chanspec is in 5G and non-radar return */
 		if (!wlc_valid_chanspec_db(wlc->cmi, chspec)) {
-			return;
+			return BCME_BADCHAN;
 		}
 		/* start CAC unless the chanspec isn't valid now (eg. when marked inactive) */
 		if (!wlc_dfs_valid_ap_chanspec(wlc, chspec) &&
@@ -3928,8 +3935,10 @@ wlc_set_dfs_cacstate(wlc_dfs_info_t *dfs, int state, wlc_bsscfg_t *cfg)
 			wlc_dfs_to_backup_channel(dfs, FALSE, cfg);
 		} else {
 			wlc_dfs_cacstate_init(dfs);
+			return BCME_OK;
 		}
 	}
+	return BCME_OK;
 }
 
 bool

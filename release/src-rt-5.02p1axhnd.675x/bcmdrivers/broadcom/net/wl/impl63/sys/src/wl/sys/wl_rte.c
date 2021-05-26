@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wl_rte.c 782660 2019-12-31 04:49:02Z $
+ * $Id: wl_rte.c 787796 2020-06-11 23:04:24Z $
  */
 
 /**
@@ -82,6 +82,7 @@
 #include <bcmsrom_fmt.h>
 #include <bcmsrom.h>
 #include <wlc_rx.h>
+#include <wlc_lq.h>
 
 #ifdef MSGTRACE
 #include <dngl_msgtrace.h>
@@ -626,21 +627,60 @@ wl_monitor(wl_info_t *wl, wl_rxsts_t *rxsts, void *p)
 	mon_pkt = (struct lbuf *)p;
 #ifdef BCMPCIEDEV
 	wlc_d11rxhdr_t *wrxh;
-	wlc_pkttag_t * pkttag = WLPKTTAG(mon_pkt);
+	rx_lq_samp_t sample;
+	wl_phyextract_t phyextract;
+	void *phy_extract;
+
 	PKTPUSH(wlc->osh, mon_pkt, wlc->hwrxoff);
 
 	wrxh = (wlc_d11rxhdr_t *)PKTDATA(wlc->osh, mon_pkt);
 
+#if  defined(WLTEST) && !defined(WLTEST_DISABLED)
+	/* special rssi sampling without peer address */
+	wlc_lq_monitor_sample(wlc, wrxh, &sample);
+#else
+	sample.rssi = wrxh->rssi;
+#endif /* WLTEST && !WLTEST_DISABLED */
+	phyextract.rssi = sample.rssi;
+	phyextract.snr = phy_noise_avg(wlc->pi);
+
+	phyextract.hwrxoff = wlc->hwrxoff;
+	phyextract.rspec =  wlc_recv_compute_rspec(wlc->pub->corerev, &wrxh->rxhdr,
+			((uint8 *)wrxh + wlc->hwrxoff));
+
+	if (RSPEC_ISCCK(phyextract.rspec)) {
+		if (D11REV_GE(wlc->pub->corerev, 128) &&
+				!RXS_PHYSTS_VALID_REV128(wlc->pub->corerev, &wrxh->rxhdr)) {
+			/* pick a default in case we don't know */
+			phyextract.preamble = WLC_LONG_PREAMBLE;
+		} else {
+			phyextract.preamble =  D11PHYSTSBUF_ACCESS_VAL(&wrxh->rxhdr,
+					wlc->pub->corerev, PhyRxStatus_0) &
+				PRXS_SHORTPMBL(wlc->pub->corerev) ?
+				WL_RXS_PREAMBLE_SHORT : WL_RXS_PREAMBLE_LONG;
+		}
+	} else  {
+		phyextract.preamble = WL_RXS_PREAMBLE_SHORT;
+	}
+
 	if (RXFIFO_SPLIT() && !PKT_CLASSIFY_EN(D11RXHDR_ACCESS_VAL(&wrxh->rxhdr,
 		wlc->pub->corerev, fifo)))
 		PKTPULL(wlc->osh, mon_pkt, wlc->hwrxoff);
-	pkttag->pktinfo.misc.snr = phy_noise_avg((wlc_phy_t *)
-		WLC_PI_BANDUNIT(wlc, CHSPEC_BANDUNIT(D11RXHDR_ACCESS_VAL(&wrxh->rxhdr,
-		wlc->pub->corerev, RxChan))));
-	pkttag->pktinfo.misc.rssi = wrxh->rssi;
 
 	PKTSET80211(mon_pkt);
 	PKTSETMON(mon_pkt);
+
+	if (D11REV_GE(wlc->pub->corerev, 128)) {
+		if (PKTHEADROOM(wlc->osh, p) > sizeof(wl_phyextract_t)) {
+			PKTPUSH(wlc->osh, mon_pkt, sizeof(wl_phyextract_t));
+			phy_extract = PKTDATA(wlc->osh, mon_pkt);
+			memcpy(phy_extract, &phyextract, sizeof(wl_phyextract_t));
+		} else {
+			PKTFREE(wl->pub->osh, p, FALSE);
+			return;
+		}
+	}
+
 #else
 	wlc_pkttag_t * pkttag = WLPKTTAG(p);
 	wlc_pkttag_t * mon_pkttag;
@@ -3924,9 +3964,9 @@ int wl_if_event_send_cb_fn_unregister(struct wl_info *wl, wl_send_if_event_cb_fn
 	}
 	return ret;
 }
-#ifdef WLCFP
+#ifdef BCMPCIEDEV_ENABLED
 void
-wl_bus_cfp_flow_delink(struct wl_info *wl, uint16 flowid)
+wl_scb_bus_flow_delink(struct wl_info *wl, uint16 flowid)
 {
 	int err;
 	uint16 buf;
@@ -3940,7 +3980,7 @@ wl_bus_cfp_flow_delink(struct wl_info *wl, uint16 flowid)
 		WL_ERROR((IOCTL_DBG_STR, wl->unit, __FUNCTION__, BUS_CFP_FLOW_DELINK, err));
 	}
 }
-#endif /* WLCFP */
+#endif /* BCMPCIEDEV_ENABLED */
 /* Start the sbtopcie access: BUS ioctl  */
 void
 wl_bus_sbtopcie_access_start(struct wl_info *wl, uint32 len, uint64 haddr64,

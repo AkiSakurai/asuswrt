@@ -19,7 +19,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_linux.c 783033 2020-01-13 04:39:52Z $
+ * $Id: wl_linux.c 789026 2020-07-16 18:08:38Z $
  */
 
 /**
@@ -1332,7 +1332,9 @@ wl_attach(uint16 vendor, uint16 device, ulong regs,
 	else if (ctdma)
 		iomode = IOMODE_TYPE_CTDMA;
 #endif // endif
-
+#if (defined(STB) || defined(STBAP))
+	OSL_PCIE_ASPM_DISABLE(osh, PCIECFGREG_LINK_STATUS_CTRL);
+#endif	/* defined(STB) || defined(STBAP) */
 	/* common load-time initialization */
 	if (!(wl->wlc = wlc_attach((void *) wl, vendor, device, unit, iomode,
 		osh, wl->regsva, wl->bcm_bustype, btparam, wl->objr, &err))) {
@@ -1773,14 +1775,12 @@ wl_attach(uint16 vendor, uint16 device, ulong regs,
 			dev->name, device);
 
 #ifdef BCMDBG
-#if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == \
-	4 && __GNUC_MINOR__ > 9))
+#if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ > 9))
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdate-time"
 #endif // endif
 	printf(" (Compiled in " SRCBASE " at " __TIME__ " on " __DATE__ ")");
-#if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == \
-	4 && __GNUC_MINOR__ >= 6))
+#if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 9))
 #pragma GCC diagnostic pop
 #endif // endif
 #endif /* BCMDBG */
@@ -2718,6 +2718,19 @@ wl_open(struct net_device *dev)
 		return -1;
 	}
 #endif // endif
+#if defined(BCM_PKTFWD)
+{
+	wl_if_t *wlif;
+	wlc_bsscfg_t *bsscfg;
+
+	wlif = WL_DEV_IF(dev);
+	bsscfg = wl_bsscfg_find(wlif);
+	if (BSSCFG_STA(bsscfg) && bsscfg->BSS) {
+		netdev_wlan_set_dwds_client(wlif->d3fwd_wlif);
+	}
+}
+#endif /* BCM_PKTFWD */
+
 	return (error? -ENODEV : 0);
 } /* wl_open */
 
@@ -3223,7 +3236,13 @@ wl_alloc_linux_if(wl_if_t *wlif)
 	/* BCM_PKTFWD: wl_pktfwd_wlif_ins(wlif) to insert wlif into pktfwd */
 	if (wl_pktc_init(wlif, dev) != 0)
 		return NULL;
-#endif // endif
+
+#if defined(BCM_PKTFWD)
+	if (wlif->if_type == WL_IFTYPE_WDS) {
+		netdev_wlan_set_dwds_ap(wlif->d3fwd_wlif);
+	}
+#endif /* BCM_PKTFWD */
+#endif /* PKTC_TBL */
 
 	return dev;
 } /* wl_alloc_linux_if */
@@ -5018,6 +5037,9 @@ wl_cfp_sendup(wl_info_t * wl, wl_if_t * wlif, void * pkt, uint16 flowid)
 		/* Convert the packet, mainly detach the pkttag */
 		pkt = PKTTONATIVE(wl->osh, pkt);
 
+		/** Intrass for CFP packets is handled in
+		 * wl_pktfwd_pktqueue_add_pkt()/wl_awl_upstream_add_pkt().
+		 */
 		wl_pktfwd_pktqueue_add_pkt(wl, net_device, pkt, flowid);
 
 #else /* ! BCM_PKTFWD */
@@ -5026,13 +5048,22 @@ wl_cfp_sendup(wl_info_t * wl, wl_if_t * wlif, void * pkt, uint16 flowid)
 			wl_sendup(wl, wlif, pkt, 1);
 		}
 #endif /* ! BCM_PKTFWD */
-
 	}
 
 } /* wl_cfp_sendup() */
 
 #endif /* WLCFP */
 
+/**
+ * Function	: wl_intrabss_forward()
+ * Description	: Handles Intrabss fowarding.
+ *		  If bsscfg->ap_isolate is set, all packets will be sent up
+ *		  else forward the packet to WLAN tx if destination is associated to same BSS.
+ *
+ *		  If PROMISC_ENAB is set, a copy of intrabss packet will sent to Network stack.
+ *
+ * RETURN	: TRUE - Intrabss packet and caller should forget the packet.
+ */
 bool BCMFASTPATH
 wl_intrabss_forward(wl_info_t *wl, struct net_device *net_device, void *pkt)
 {
@@ -5043,20 +5074,25 @@ wl_intrabss_forward(wl_info_t *wl, struct net_device *net_device, void *pkt)
 
 	da = (struct ether_addr *)PKTDATA(wl->osh, pkt);
 
-	/* TODO: For BCMC packet, a copy should be sent to stack.
-	 * This API is used only for CFP packets so no action required now.
+	/* Intrabss forwarding for BCMC packets is taken care in wlc_recvdata_sendup_msdus()
+	 * This API is used only for unicast packets.
 	 */
 	ASSERT(ETHER_ISUCAST(da));
 
 	wlcif = WL_DEV_IF(net_device)->wlcif;
 	bsscfg = wlc_bsscfg_find_by_wlcif(wl->wlc, wlcif);
 
+	if (wlcif->type == WLC_IFTYPE_WDS) {
+		/* WDS packets has to be sent to Network stack */
+		return intrabss_fwd;
+	}
+
 	/* Forward packets destined within the BSS */
 	if (BSSCFG_AP(bsscfg) && !bsscfg->ap_isolate) {
 		struct scb * dst;
 
 		if ((eacmp(da, wl->pub->cur_etheraddr.octet) != 0) &&
-				(dst = wlc_scbfind(wl->wlc, bsscfg, da))) {
+			(dst = wlc_scbfind(wl->wlc, bsscfg, da))) {
 			/* Check that the dst is associated to same BSS
 			 * before forwarding within the BSS
 			 */
@@ -5078,21 +5114,25 @@ wl_intrabss_forward(wl_info_t *wl, struct net_device *net_device, void *pkt)
 		}
 #endif /* WLCNT */
 
-#if defined(STS_FIFO_RXEN) || defined(WLC_OFFLOADS_RXSTS)
-	if (STS_RX_ENAB(wl->wlc->pub) || STS_RX_OFFLOAD_ENAB(wl->wlc->pub)) {
-		wlc_stsbuff_free(wl->wlc, pkt);
-	}
-#endif /* STS_FIFO_RXEN || WLC_OFFLOADS_RXSTS */
-
 #if defined(BCM_PKTFWD)
 		/* keep the accounting correct */
-		PKTFRMNATIVE(wl->osh, pkt);
-#else
-		/* Clear pkttag information saved in recv path */
-		WLPKTTAGCLEAR(pkt);
-
+		PKTACCOUNT(wl->osh, 1, TRUE);
 #endif /* BCM_PKTFWD */
-		wlc_sendpkt(wl->wlc, pkt, bsscfg->wlcif);
+
+#if !defined(BCM47XX_CA9) && !defined(BCA_HNDROUTER)
+		if (PROMISC_ENAB(wl->wlc->pub)) {
+			void *pktdup;
+
+			/* both forward and send up stack */
+			intrabss_fwd = FALSE;
+			if ((pktdup = PKTDUP(wl->osh, pkt)) != NULL) {
+				wlc_recvdata_sendpkt(wl->wlc, pktdup, wlcif);
+			}
+		} else
+#endif /* !BCM47XX_CA9 && !BCA_HNDROUTER */
+		{
+			wlc_recvdata_sendpkt(wl->wlc, pkt, wlcif);
+		}
 	}
 
 	return intrabss_fwd;
@@ -5543,15 +5583,13 @@ wl_osl_pcie_rc(struct wl_info *wl, uint op, int param)
 void
 wl_dump_ver(wl_info_t *wl, struct bcmstrbuf *b)
 {
-#if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == \
-	4 && __GNUC_MINOR__ > 9))
+#if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ > 9))
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdate-time"
 #endif // endif
 	bcm_bprintf(b, "wl%d: %s %s version %s\n", wl->pub->unit,
 		__DATE__, __TIME__, EPI_VERSION_STR);
-#if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == \
-	4 && __GNUC_MINOR__ >= 6))
+#if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 9))
 #pragma GCC diagnostic pop
 #endif // endif
 }
@@ -7496,7 +7534,10 @@ static int wl_get_free_ifidx(wl_info_t * wl, int iftype, int index)
 		WL_ERROR(("%s: Max interface count Exceeded\n", __FUNCTION__));
 		return BCME_RANGE;
 	}
-	if (iftype == WL_IFTYPE_WDS) {
+	if (iftype == WL_IFTYPE_MON) {
+		ifidx = index;
+		goto done;
+	} else if (iftype == WL_IFTYPE_WDS) {
 		while (isset((void *)&wl->ifidx_bitmap, ifidx))
 			ifidx++;
 	} else if ((index < WL_MAX_IFACE) &&
@@ -7518,7 +7559,7 @@ static int wl_get_free_ifidx(wl_info_t * wl, int iftype, int index)
 			return BCME_BADARG;
 		}
 	}
-
+done:
 	return (ifidx);
 }
 

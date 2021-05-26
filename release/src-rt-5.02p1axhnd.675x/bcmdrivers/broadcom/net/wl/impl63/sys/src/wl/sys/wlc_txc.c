@@ -50,7 +50,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_txc.c 781150 2019-11-13 07:11:32Z $
+ * $Id: wlc_txc.c 786279 2020-04-22 23:46:13Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -446,8 +446,17 @@ wlc_txc_cp(wlc_txc_info_t *txc_info, struct scb *scb, void *pkt, uint *flags)
 	}
 
 	/* basic sanity check the tx cache */
-	ASSERT(txhlen >= (D11_TXH_SHORT_LEN(wlc) + DOT11_A3_HDR_LEN) && txhlen < wlc->txhroff);
-
+	{
+		if (!(txhlen >= (D11_TXH_SHORT_LEN(wlc) + DOT11_A3_HDR_LEN) &&
+			txhlen < wlc->txhroff)) {
+			WL_ERROR(("wl%d: %s: txhlen=%d should be >= %d && < %d from txc of SCB "
+			MACF"\n", wlc->pub->unit, __FUNCTION__, txhlen,
+			(int)((D11_TXH_SHORT_LEN(wlc) + DOT11_A3_HDR_LEN)),
+			wlc->txhroff, ETHER_TO_MACF(scb->ea)));
+		}
+		ASSERT(txhlen >= (D11_TXH_SHORT_LEN(wlc) + DOT11_A3_HDR_LEN) &&
+		txhlen < wlc->txhroff);
+	}
 	txh = SCB_TXC_TXH_NO_OFFST(sti);
 	cp = PKTPUSH(wlc->osh, pkt, txhlen);
 	bcopy((uint8 *)txh, cp, txhlen);
@@ -761,7 +770,7 @@ wlc_txc_inv_all(wlc_txc_info_t *txc_info)
 	if (CFP_ENAB(priv->wlc->pub) == TRUE) {
 		/* Invalidate all cubbies in CFP module too */
 		/* Update the state */
-		wlc_cfp_tcb_cache_invalidate(priv->wlc, CFP_ALL_FLOWS);
+		wlc_cfp_tcb_cache_invalidate(priv->wlc, SCB_ALL_FLOWS);
 	}
 #endif // endif
 }

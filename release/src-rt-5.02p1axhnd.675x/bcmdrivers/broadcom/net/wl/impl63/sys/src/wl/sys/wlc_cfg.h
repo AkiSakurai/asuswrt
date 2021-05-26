@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_cfg.h 783004 2020-01-10 18:24:47Z $
+ * $Id: wlc_cfg.h 784470 2020-02-27 20:11:47Z $
  */
 
 #ifndef _wlc_cfg_h_
@@ -932,7 +932,7 @@ static const int acphy_hecap_rev[] = {
 #endif // endif
 
 #ifndef WLC_MAXMODULES
-#define WLC_MAXMODULES		89	/* max #  wlc_module_register() calls */
+#define WLC_MAXMODULES		90	/* max #  wlc_module_register() calls */
 #endif // endif
 
 #ifndef MAXSCB				/* station control blocks in cache */
@@ -1400,6 +1400,28 @@ static const int acphy_hecap_rev[] = {
 #define DTPC_NOTIF_CLNT_OBJ  0
 #endif /* WLC_DTPC */
 
+#if defined(WL_MBO) && defined(MBO_AP)
+#define MBO_NOTIF_CLNT_OBJ  1
+#else
+#define MBO_NOTIF_CLNT_OBJ  0
+#endif /* WL_MBO */
+
+#ifdef WL_PWRSTATS
+#define PWRSTATS_NOTIF_CLNT_OBJ  1
+#else
+#define PWRSTATS_NOTIF_CLNT_OBJ  0
+#endif /* WL_PWRSTATS */
+
+#ifdef BCM_CSIMON
+#define CSIMON_NOTIF_CLNT_OBJ  1
+#else
+#define CSIMON_NOTIF_CLNT_OBJ  0
+#endif /* BCM_CSIMON */
+
+/* The following is added for EAP only as insurance against */
+/* further client object allocation issues */
+#define EAP_NOTIF_CLNT_OBJ  0
+
 /* Maximum number of notification servers. */
 #ifndef MAX_NOTIF_SERVERS
 #define MAX_NOTIF_SERVERS	(24 + \
@@ -1426,8 +1448,12 @@ static const int acphy_hecap_rev[] = {
 	CSA_NOTIF_CLNT_OBJS + \
 	SCB_NOTIF_CLNT_OBJ + \
 	WNM_NOTIF_CLNT_OBJ + \
+	EAP_NOTIF_CLNT_OBJ + \
+	MBO_NOTIF_CLNT_OBJ + \
+	PWRSTATS_NOTIF_CLNT_OBJ + \
+	CSIMON_NOTIF_CLNT_OBJ + \
 	DTPC_NOTIF_CLNT_OBJ)
-#endif // endif
+#endif /* MAX_NOTIF_CLIENTS */
 
 /* Maximum number of memory pools. */
 #ifndef MAX_MEMPOOLS

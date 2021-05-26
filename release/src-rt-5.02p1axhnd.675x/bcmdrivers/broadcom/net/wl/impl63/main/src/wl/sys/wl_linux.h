@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_linux.h 782660 2019-12-31 04:49:02Z $
+ * $Id: wl_linux.h 789025 2020-07-16 17:54:34Z $
  */
 
 #ifndef _wl_linux_h_
@@ -443,6 +443,18 @@ extern void wl_sendup_ex(wl_info_t *wl, void *pkt);
 
 #if defined(WDS)
 int wlc_get_wlif_wdsindex(struct wl_if *wlif);
+#endif // endif
+
+#if !defined(FLAG_DWDS_AP)
+#define netdev_wlan_set_dwds_ap(wlif)    ({ BCM_REFERENCE(wlif); })
+#define netdev_wlan_unset_dwds_ap(wlif)  ({ BCM_REFERENCE(wlif); })
+#define is_netdev_wlan_dwds_ap(wlif)     (0)
+#endif // endif
+
+#if !defined(FLAG_DWDS_CLIENT)
+#define netdev_wlan_set_dwds_client(wlif)    ({ BCM_REFERENCE(wlif); })
+#define netdev_wlan_unset_dwds_client(wlif)  ({ BCM_REFERENCE(wlif); })
+#define is_netdev_wlan_dwds_client(wlif)     (0)
 #endif // endif
 
 #endif /* _wl_linux_h_ */

@@ -47,7 +47,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_perf_utils.c 782185 2019-12-12 14:26:59Z $
+ * $Id: wlc_perf_utils.c 787035 2020-05-14 14:04:33Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -66,6 +66,7 @@
 #include <wlc.h>
 #include <wlc_apps.h>
 #include <wlc_scb.h>
+#include <wlc_tx.h>
 #ifdef WLNAR
 #include <wlc_nar.h>
 #endif // endif
@@ -78,6 +79,7 @@
 #include <wlc_event_utils.h>
 #include <wlc_perf_utils.h>
 #include <wlc_dump.h>
+#include <hnd_pktq.h>
 
 #if defined(BCMPCIEDEV) && defined(BUS_TPUT)
 #include <hnddma.h>
@@ -100,6 +102,7 @@ enum {
 	IOV_DLYSTATS_CLEAR = 3,
 	IOV_BMAC_PCIE_BUS_TPUT,
 	IOV_DP_STATS,
+	IOV_PKTQ_STATUS,
 	IOV_LAST
 };
 
@@ -122,6 +125,9 @@ static const bcm_iovar_t perf_utils_iovars[] = {
 #endif /* BCMPCIEDEV && BUS_TPUT */
 	{"dpstats", IOV_DP_STATS, (IOVF_GET_UP), 0, IOVT_BUFFER,
 	MAX(sizeof(wl_iov_mac_params_t), sizeof(wl_iov_pktq_log_t))},
+#ifdef PKTQ_STATUS
+	{"pktq_status", IOV_PKTQ_STATUS, 0, 0, IOVT_BUFFER, WLC_IOCTL_MEDLEN },
+#endif /* PKTQ_STATUS */
 	{NULL, 0, 0, 0, 0, 0}
 };
 
@@ -145,6 +151,9 @@ static void wlc_delay_stats_timer(void *arg);
 static int wlc_pktq_stats(wl_iov_mac_full_params_t* full_params, uint8 params_version,
 	wl_iov_pktq_log_t* iov_pktq, wlc_info_t* wlc, wlc_bsscfg_t *cfg);
 #endif /* PKTQ_LOG */
+#ifdef PKTQ_STATUS
+static int wlc_pktq_curstatus(struct pktq *pktq, int prec, struct bcmstrbuf *b);
+#endif /* PKTQ_STATUS */
 
 static int wlc_perf_utils_doiovar(void *hdl, uint32 actionid,
 	void *params, uint p_len, void *arg, uint len, uint val_size, struct wlc_if *wlcif);
@@ -512,7 +521,7 @@ wlc_txq_prec_log_enable(wlc_info_t* wlc, struct pktq* q, uint32 i, bool en_pair)
 
 		new->max_used = pktqprec_n_pkts(q, i);
 #ifdef WLSQS
-		new->sqsv_max_used = q->q[i].v_pkts;
+		new->sqsv_max_used = 0;
 #endif // endif
 
 		q->pktqlog->_prec_cnt[i] = new;
@@ -687,7 +696,7 @@ wlc_txq_prec_dump(wlc_info_t* wlc, struct pktq* q, wl_iov_pktq_log_t* pktq_log, 
 				bzero(pktq_count, sizeof(*pktq_count));
 				pktq_count->max_used = pktqprec_n_pkts(q, i);
 #ifdef WLSQS
-				pktq_count->sqsv_max_used = q->q[i].v_pkts;
+				pktq_count->sqsv_max_used = 0;
 #endif // endif
 				pktq_count->_logtimelo = timelo;
 				pktq_count->_logtimehi = timehi;
@@ -695,12 +704,7 @@ wlc_txq_prec_dump(wlc_info_t* wlc, struct pktq* q, wl_iov_pktq_log_t* pktq_log, 
 		}
 		/* else check pktq stats data was requested but not yet allocated */
 		else if (((prec_mask & (1 << i)) && !(q->pktqlog->_prec_log & (1 << i))) ||
-			((prec_mask & PKTQ_LOG_AUTO) && (
-#ifdef WLSQS
-			(q->q[i].v_pkts > 0) ||
-#endif // endif
-			!pktqprec_empty(q, i)))) {
-
+			((prec_mask & PKTQ_LOG_AUTO) && (!pktqprec_empty(q, i)))) {
 			pktq_counters_t* prec_cnt =
 				wlc_txq_prec_log_enable(wlc, q, i, (q->num_prec > NUMPRIO));
 			if (prec_cnt) {
@@ -742,6 +746,12 @@ wlc_pktq_stats(wl_iov_mac_full_params_t* full_params, uint8 params_version,
 
 	uint32 tsf_timelo;
 	uint32 tsf_timehi;
+
+#ifdef WLTAF
+	const char* taf_status = wlc_taf_in_use(wlc->taf_handle) ? "" : " (taf 0)";
+#else
+	const char* taf_status = "";
+#endif // endif
 
 	if (wl_msg_level2 & WL_TIMESTAMP_VAL) {
 		iov_pktq->pktq_log.v06.timestamp = wlc_bmac_read_usec_timer(wlc->hw);
@@ -795,7 +805,7 @@ wlc_pktq_stats(wl_iov_mac_full_params_t* full_params, uint8 params_version,
 		switch (params->addr_type[index] & 0x7F) {
 			case 'C':
 			{
-				bcm_bprintf(b, "common queue");
+				bcm_bprintf(b, "common queue%s", taf_status);
 				wlc_txq_prec_dump(wlc, WLC_GET_CQ(qi),
 					iov_pktq, index, resetstats, tsf_timelo, tsf_timehi,
 					prec_mask, (uint32)-1, flags);
@@ -858,7 +868,7 @@ wlc_pktq_stats(wl_iov_mac_full_params_t* full_params, uint8 params_version,
 				if (scb) {
 					flags |= PKTQ_LOG_PS_QUEUE;
 
-					bcm_bprintf(b, "broadcast queue");
+					bcm_bprintf(b, "broadcast queue%s", taf_status);
 					wlc_txq_prec_dump(wlc, wlc_apps_get_psq(wlc, scb),
 						iov_pktq, index, resetstats, tsf_timelo, tsf_timehi,
 						prec_mask, (uint32)-1, flags);
@@ -961,7 +971,8 @@ wlc_pktq_stats(wl_iov_mac_full_params_t* full_params, uint8 params_version,
 
 				flags |= PKTQ_LOG_DISPLAY_ETHERADDR;
 
-				bcm_bprintf(b, "%s queue",  queue_type);
+				bcm_bprintf(b, "%s%s queue%s", queue_type,
+					SCB_DWDS(scb) ? " (dwds)":"", taf_status);
 
 #if defined(BCMDBG) && defined(PSPRETEND)
 				if (SCB_PS_PRETEND_ENABLED(cfg, scb) &&
@@ -973,7 +984,9 @@ wlc_pktq_stats(wl_iov_mac_full_params_t* full_params, uint8 params_version,
 				        resetstats, tsf_timelo, tsf_timehi, prec_mask,
 					pps_time, flags);
 
-				if ((params->addr_type[index] & 0x7F) == 'A') {
+				if ((params->addr_type[index] & 0x7F) == 'A' &&
+					(prec_mask & PKTQ_LOG_AUTO)) {
+
 					/* scan active ampdu contexts and auto-enable logging */
 					wlc_ampdu_pktqlog_enable(wlc, scb);
 				}
@@ -988,6 +1001,23 @@ wlc_pktq_stats(wl_iov_mac_full_params_t* full_params, uint8 params_version,
 	return BCME_OK;
 } /* wlc_pktq_stats */
 #endif /* PKTQ_LOG */
+
+#ifdef PKTQ_STATUS
+int wlc_pktq_curstatus(struct pktq *pktq, int prec, struct bcmstrbuf *b)
+{
+	struct pktq_prec *q;
+	int i;
+
+	for (i = 0; i < prec; i++) {
+		q = &pktq->q[i];
+		if (q && q->n_pkts) {
+			bcm_bprintf(b, "\t %d\t %d\t %d\t %d\n", i,
+			            q->n_pkts, q->max_pkts, q->stall_count);
+		}
+	}
+	return BCME_OK;
+}
+#endif /* PKTQ_STATUS */
 
 /* wlc up/down */
 static int
@@ -1084,6 +1114,54 @@ wlc_perf_utils_doiovar(void *hdl, uint32 actionid,
 		break;
 	}
 #endif /* PKTQ_LOG */
+#ifdef PKTQ_STATUS
+	case IOV_GVAL(IOV_PKTQ_STATUS):	{
+		scb_pktq_status_t *p = (scb_pktq_status_t *)params;
+		struct ether_addr ea;
+		struct scb *scb = NULL;
+		struct pktq *pktq = NULL;
+		struct bcmstrbuf b;
+		wlc_txq_info_t* qi = wlc->active_queue;
+		bool addr_OK;
+
+		if (p->ver != WL_PKTQ_STATUS_VERSION) {
+			err = BCME_VERSION;
+			break;
+		}
+
+		memcpy(&ea, &p->ea, sizeof(ea));
+		addr_OK = (!ETHER_ISMULTI(&ea) && (scb = wlc_scbfind(wlc, bsscfg, &ea)));
+
+		bcm_binit(&b, (char*)arg, len);
+		bcm_bprintf(&b, "QUEUE\t Prec\t Qued\t Max\t Stalls\n");
+		bcm_bprintf(&b, "-----\t ----\t ----\t ---\t ------\n");
+		if (addr_OK) {
+			pktq = scb_ampdu_prec_pktq(wlc, scb);
+			bcm_bprintf(&b, "AMPDU:\n");
+			wlc_pktq_curstatus(pktq, WLC_PREC_COUNT >> 1, &b);
+#ifdef WLNAR
+			pktq = wlc_nar_prec_pktq(wlc, scb);
+			bcm_bprintf(&b, "NAR:\n");
+			wlc_pktq_curstatus(pktq, WLC_PREC_COUNT, &b);
+#endif // endif
+			pktq = wlc_apps_get_psq(wlc, scb);
+			bcm_bprintf(&b, "PS:\n");
+			wlc_pktq_curstatus(pktq, WLC_PREC_COUNT, &b);
+
+			pktq = WLC_GET_CQ(qi);
+			bcm_bprintf(&b, "Common:\n");
+			wlc_pktq_curstatus(pktq, WLC_PREC_COUNT, &b);
+
+			bcm_bprintf(&b, "-------------------------------\nLowTxQ:\n");
+			wlc_get_lowtxq_pktcount(wlc, scb, &b);
+#ifdef BULK_PKTLIST
+			bcm_bprintf(&b, "HWFifo:\n");
+			wlc_hwfifo_pktcount(wlc, scb, &b);
+#endif // endif
+		}
+		break;
+	}
+#endif /* PKTQ_STATUS */
 #ifdef WLPKTDLYSTAT
 #ifdef WLPKTDLYSTAT_IND
 	case IOV_GVAL(IOV_TXDELAY_PARAMS): {

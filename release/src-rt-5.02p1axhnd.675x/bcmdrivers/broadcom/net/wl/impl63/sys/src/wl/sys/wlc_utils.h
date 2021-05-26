@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wlc_utils.h 779888 2019-10-09 12:35:35Z $
+ * $Id: wlc_utils.h 786522 2020-04-29 20:31:58Z $
  */
 
 #ifndef _wlc_utils_h_
@@ -26,6 +26,36 @@
 
 #include <typedefs.h>
 #include <ethernet.h>
+
+typedef struct _ravg {
+	uint32 sum;
+	uint8 exp;
+} wlc_ravg_info_t;
+
+#define RAVG_EXP(_obj_) ((_obj_)->exp)
+#define RAVG_SUM(_obj_) ((_obj_)->sum)
+#define RAVG_AVG(_obj_) ((_obj_)->sum >> (_obj_)->exp)
+
+/* Basic running average algorithm:
+ * Keep a running buffer of the last N values, and a running SUM of all the
+ * values in the buffer. Each time a new sample comes in, subtract the oldest
+ * value in the buffer from SUM, replace it with the new sample, add the new
+ * sample to SUM, and output SUM/N.
+ */
+#define RAVG_ADD(_obj_, _sample_) \
+{ \
+	uint8 _exp_ = RAVG_EXP((_obj_)); \
+	uint32 _sum_ = RAVG_SUM((_obj_)); \
+	RAVG_SUM((_obj_)) = ((_sum_ << _exp_) - _sum_) >> _exp_; \
+	RAVG_SUM((_obj_)) += (_sample_); \
+}
+
+/* Initializing running buffer with value (_sample_) */
+#define RAVG_INIT(_obj_, _sample_, _exp_) \
+{ \
+	RAVG_SUM((_obj_)) = (_sample_) << (_exp_); \
+	RAVG_EXP((_obj_)) = (_exp_); \
+}
 
 /* Calculate delta between 'a' and 'b'.
  * 'a' is a 32-bit counter value taken at t1 and 'b' is a 32-bit counter value taken at t2,
@@ -37,6 +67,7 @@
 extern void wlc_uint64_add(uint32* high, uint32* low, uint32 inc_high, uint32 inc_low);
 extern void wlc_uint64_sub(uint32* a_high, uint32* a_low, uint32 b_high, uint32 b_low);
 extern bool wlc_uint64_lt(uint32 a_high, uint32 a_low, uint32 b_high, uint32 b_low);
+extern uint32 wlc_uint64_div(uint64 a, uint64 b);
 extern uint32 wlc_calc_tbtt_offset(uint32 bi, uint32 tsf_h, uint32 tsf_l);
 extern void wlc_tsf64_to_next_tbtt64(uint32 bcn_int, uint32 *tsf_h, uint32 *tsf_l);
 

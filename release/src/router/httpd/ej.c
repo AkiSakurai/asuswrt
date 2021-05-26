@@ -40,12 +40,22 @@
 
 struct REPLACE_PRODUCTID_S replace_productid_t[] =
 {
-	{"LYRA_VOICE", "LYRA VOICE"},
-	{"RT-AC57U_V2", "RT-AC57U V2"},
-	{"RT-AC58U_V2", "RT-AC58U V2"},
-	{"RT-AC1300G_PLUS_V2", "RT-AC1300G PLUS V2"},
-	{"RT-AC1500G_PLUS", "RT-AC1500G PLUS"},
-	{NULL, NULL}
+	{"LYRA_VOICE", "LYRA VOICE", "global"},
+	{"RT-AC57U_V2", "RT-AC57U V2", "global"},
+	{"RT-AC58U_V2", "RT-AC58U V2", "global"},
+	{"RT-AC1300G_PLUS_V2", "RT-AC1300G PLUS V2", "global"},
+	{"RT-AC1500G_PLUS", "RT-AC1500G PLUS", "global"},
+	{"ZenWiFi_CT8", "ZenWiFi AC", "global"},
+	{"ZenWiFi_CT8", "灵耀AC3000", "CN"},
+	{"ZenWiFi_XT8", "ZenWiFi AX", "global"},
+	{"ZenWiFi_XT8", "灵耀AX6600", "CN"},
+	{"ZenWiFi_XD4", "ZenWiFi AX Mini", "global"},
+	{"ZenWiFi_XD4", "灵耀AX魔方", "CN"},
+	{"ZenWiFi_CD6R", "ZenWiFi AC Mini", "global"},
+	{"ZenWiFi_CD6N", "ZenWiFi AC Mini", "global"},
+	{"ZenWiFi_XP4", "ZenWiFi AX Hybrid", "global"},
+	{"ZenWiFi_CV4", "ZenWiFi Voice", "global"},
+	{NULL, NULL, NULL}
 };
 
 static char * get_arg(char *args, char **next);
@@ -53,18 +63,18 @@ static void call(char *func, FILE *stream);
 
 /* Look for unquoted character within a string */
 static char *
-unqstrstr(char *haystack, char *needle)
+unqstrstr(const char *haystack, const char *needle)
 {
 	char *cur;
 	int q;
 
 	for (cur = haystack, q = 0;
-	     cur < &haystack[strlen(haystack)] && !(!q && !strncmp(needle, cur, strlen(needle)));
+	     cur < (haystack + strlen(haystack)) && !(!q && !strncmp(needle, cur, strlen(needle)));
 	     cur++) {
 		if (*cur == '"')
 			q ? q-- : q++;
 	}
-	return (cur < &haystack[strlen(haystack)]) ? cur : NULL;
+	return (cur < (haystack + strlen(haystack))) ? cur : NULL;
 }
 
 static char *
@@ -152,10 +162,16 @@ extern void replace_productid(char *GET_PID_STR, char *RP_PID_STR, int len){
 
 	for(p = &replace_productid_t[0]; p->org_name; p++){
 		if(!strcmp(GET_PID_STR, p->org_name)){
-			strlcpy(RP_PID_STR, p->replace_name, len);
-			return;
+			if(!strncmp(nvram_safe_get("preferred_lang"), p->p_lang, 2))
+				strlcpy(RP_PID_STR, p->replace_name, len);
+
+			if(!strcmp("global", p->p_lang) && !strlen(RP_PID_STR))
+				strlcpy(RP_PID_STR, p->replace_name, len);
 		}
 	}
+
+	if(strlen(RP_PID_STR))
+		return;
 
 	/* general  replace underscore with space */
 	strlcpy(RP_PID_STR, GET_PID_STR, len);
@@ -291,10 +307,12 @@ do_ej(char *path, FILE *stream)
 		if (((pattern + pattern_size) - end_pat) < frag_size)
 		{
 			len = end_pat - start_pat;
-			memcpy (pattern, start_pat, len);
-			start_pat = pattern;
-			end_pat = start_pat + len;
-			*end_pat = '\0';
+			if(len < pattern_size){
+				memcpy (pattern, start_pat, len);
+				start_pat = pattern;
+				end_pat = start_pat + len;
+				*end_pat = '\0';
+			}
 		}
 
 		read_len = (pattern + pattern_size) - end_pat;

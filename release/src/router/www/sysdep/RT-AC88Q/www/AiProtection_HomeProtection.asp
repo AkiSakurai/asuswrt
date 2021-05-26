@@ -104,9 +104,6 @@ window.onresize = function() {
 		cal_panel_block("alert_preference", 0.25);
 	}
 }
-<% get_AiDisk_status(); %>
-var AM_to_cifs = get_share_management_status("cifs");  // Account Management for Network-Neighborhood
-var AM_to_ftp = get_share_management_status("ftp");  // Account Management for FTP
 
 var ctf_disable = '<% nvram_get("ctf_disable"); %>';
 var ctf_fa_mode = '<% nvram_get("ctf_fa_mode"); %>';
@@ -848,7 +845,7 @@ function shadeHandle(flag){
 </script>
 </head>
 
-<body onload="initial();" onunload="unload_body();">
+<body onload="initial();" onunload="unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <div id="hiddenMask" class="popup_bg" style="z-index:999;">
@@ -1025,15 +1022,15 @@ function shadeHandle(flag){
 						<td>
 							<div>
 								<div>
-									<input type="checkbox" class="" id="mal_website_item" value="">
+									<input type="checkbox" id="mal_website_item">
 									<span style="color: #FFF;"><#AiProtection_sites_blocking#></span>
 								</div>
 								<div>
-									<input type="checkbox" class="" id="vp_item" value="">
+									<input type="checkbox" id="vp_item">
 									<span style="color: #FFF;"><#AiProtection_two-way_IPS#></span>
 								</div>
 								<div>
-									<input type="checkbox" class="" id="cc_item" value="">
+									<input type="checkbox" id="cc_item">
 									<span style="color: #FFF;"><#AiProtection_detection_blocking#></span>
 								</div>	
 							</div>

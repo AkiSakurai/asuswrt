@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_test.c 783116 2020-01-14 10:38:01Z $
+ * $Id: wlc_test.c 786588 2020-05-01 00:33:30Z $
  */
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
  * get their feature flags thru this file.
@@ -3745,8 +3745,8 @@ wlc_test_pkteng_addsta(wlc_test_info_t *test, int usridx)
 	}
 	SCB_BSSCFG(scb)->AID = usr->aid;
 #ifdef WL11AX
-	wlc_he_update_scb_state(wlc->hei, wlc->band->bandtype,
-		scb, &he_cap, 0);
+	wlc_he_update_scb_state(wlc->hei, scb, &he_cap, NULL);
+	wlc_he_add_peer_caps(wlc->hei, scb, SCB_HE_DL_242TONE);
 	SCB_SET_HE_CAP(scb);
 #endif /* WL11AX */
 	wlc_scb_setstatebit(wlc, scb, AUTHENTICATED);
@@ -4621,6 +4621,12 @@ wlc_test_pkteng_cmd_setkey(wlc_test_info_t *test,
 	} else if (!strncmp(keystr, "mode", strlen("mode"))) {
 		val16 = bcm_strtoul(valstr, NULL, 0);
 		info->mode = val16;
+	} else if (!strncmp(keystr, "numheltf", strlen("numheltf"))) {
+		val16 = bcm_strtoul(valstr, NULL, 0);
+		info->ul_numheltf = val16;
+	} else if (!strncmp(keystr, "ap_txpwr", strlen("ap_txpwr"))) {
+		val16 = bcm_strtoul(valstr, NULL, 0);
+		info->ul_ap_txpwr = val16;
 	} else if (!strncmp(keystr, "txtrig_", strlen("txtrig_"))) {
 		if (!strncmp(keystr, "txtrig_rate", strlen("txtrig_rate"))) {
 			uint16 phy_rate;

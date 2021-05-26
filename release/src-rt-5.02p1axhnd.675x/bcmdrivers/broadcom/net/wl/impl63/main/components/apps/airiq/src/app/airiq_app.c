@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: airiq_app.c 779916 2019-10-09 22:25:43Z $
+ * $Id: airiq_app.c 787181 2020-05-21 00:11:13Z $
  */
 
 /* bsa_service.c: Starts manager service and SIRP server */
@@ -167,7 +167,7 @@ typedef struct {
 	int        band;
 	int        aband;
 	int        bband;
-	int        scan_channel;
+	int        scan_chanspec;
 	int        core;
 	int        phy_mode;
 	int        bw;
@@ -187,7 +187,7 @@ typedef struct {
 	int            aband;
 	int            bband;
 	int            capture_time;
-	int            scan_channel;
+	int            scan_chanspec;
 	int            homescan;
 	int            core;
 	int            phy_mode;
@@ -225,7 +225,7 @@ typedef struct {
 #define BW40(channel)  CHBW_CHSPEC(WL_CHANSPEC_BW_40, (channel))
 #define BW80(channel)  CHBW_CHSPEC(WL_CHANSPEC_BW_80, (channel))
 
-const scan_chan_t chan_lut_24GHz_40MHz_rev65[] = {
+scan_chan_t chan_lut_24GHz_40MHz_rev65[] = {
 	{
 		/* 3/40 = 1L/5U */
 		.count = 3,
@@ -290,7 +290,7 @@ const scan_chan_t chan_lut_24GHz_40MHz_rev65[] = {
 
 /*43684 supports different bw on +1 chain and 3x3 chain
 To prevent jamming the 3x3 fc should not be inside bandwidth of +1*/
-const scan_chan_t chan_lut_24GHz_40MHz_rev128[] = {
+scan_chan_t chan_lut_24GHz_40MHz_rev128[] = {
 	{
 		/* 3/40 = 1L/5U */
 		.count = 2,
@@ -353,7 +353,7 @@ const scan_chan_t chan_lut_24GHz_40MHz_rev128[] = {
 	}
 };
 
-const scan_chan_t chan_lut_24GHz_20MHz_rev65[] = {
+scan_chan_t chan_lut_24GHz_20MHz_rev65[] = {
 	{
 		/* 1/20  */
 		.count = 12,
@@ -466,7 +466,7 @@ const scan_chan_t chan_lut_24GHz_20MHz_rev65[] = {
 
 /*43684 supports different bw on +1 chain and 3x3 chain
 To prevent jamming the 3x3 fc should not be inside bandwidth of +1*/
-const scan_chan_t chan_lut_24GHz_20MHz_rev128[] = {
+scan_chan_t chan_lut_24GHz_20MHz_rev128[] = {
 	{
 		/* 1/20  */
 		.count = 2,
@@ -1546,7 +1546,7 @@ void ConfigureSWSAScanParam3p1(airiq_config_t *pParam, airiq_scan_specs_t *scans
 	BSA_UINT16 shortfftcnt      = scanspec->shortfftcnt;
 	int        aband            = scanspec->aband;
 	int        bband            = scanspec->bband;
-	int        scan_channel     = scanspec->scan_channel;
+	int        scan_chanspec    = scanspec->scan_chanspec;
 	int        core             = scanspec->core;
 	int        phy_mode         = scanspec->phy_mode;
 	int        bw               = scanspec->bw;
@@ -1562,8 +1562,8 @@ void ConfigureSWSAScanParam3p1(airiq_config_t *pParam, airiq_scan_specs_t *scans
 	chan3x3 = CHSPEC_CHANNEL(chanspec3x3);
 
 	if (aband) {
-		if (scan_channel) {
-			pParam->chanspec_list[cnt]       = scan_channel  | WL_CHANSPEC_BW_80 | WL_CHANSPEC_BAND_5G;
+		if (scan_chanspec) {
+			pParam->chanspec_list[cnt]       = scan_chanspec;
 			pParam->dwell_interval_ms[cnt]   = longdwell;
 			pParam->capture_interval_us[cnt] = capture_interval;
 			pParam->capture_count[cnt]       = longfftcnt;
@@ -1712,7 +1712,14 @@ void ConfigureSWSAScanParam3p1(airiq_config_t *pParam, airiq_scan_specs_t *scans
 	}
 
 	if (bband) {
-		if (bw == WL_CHANSPEC_BW_20) {
+		if (scan_chanspec) {
+			pParam->chanspec_list[cnt]       = scan_chanspec;
+			pParam->dwell_interval_ms[cnt]   = longdwell;
+			pParam->capture_interval_us[cnt] = capture_interval;
+			pParam->capture_count[cnt]       = longfftcnt;
+			pParam->core_config[cnt]         = core;
+			cnt++;
+		} else  if (bw == WL_CHANSPEC_BW_20) {
 			if (phy_mode == PHYMODE_3x3_1x1 ) {
 				/*setup scan channels so that the 3x3 is not getting jammed from +1 chain*/
 				const scan_chan_t *s = lookup_24GHz_scan(chan3x3, scanspec->revinfo.corerev,bw);
@@ -1814,7 +1821,7 @@ void ConfigureSWSAScanParam(airiq_config_t *pParam, airiq_scan_specs_t *scanspec
 	BSA_UINT16 shortfftcnt      = scanspec->shortfftcnt;
 	int        aband            = scanspec->aband;
 	int        bband            = scanspec->bband;
-	int        scan_channel     = scanspec->scan_channel;
+	int        scan_chanspec    = scanspec->scan_chanspec;
 	int        core             = scanspec->core;
 	int        phy_mode         = scanspec->phy_mode;
 	int        bw               = scanspec->bw;
@@ -1826,8 +1833,8 @@ void ConfigureSWSAScanParam(airiq_config_t *pParam, airiq_scan_specs_t *scanspec
 	pParam->start     = 1;
 
 	if (aband) {
-		if (scan_channel) {
-			pParam->chanspec_list[cnt]       = scan_channel  | WL_CHANSPEC_BW_80 | WL_CHANSPEC_BAND_5G;
+		if (scan_chanspec) {
+			pParam->chanspec_list[cnt]       = scan_chanspec;
 			pParam->dwell_interval_ms[cnt]   = longdwell;
 			pParam->capture_interval_us[cnt] = capture_interval;
 			pParam->capture_count[cnt]       = longfftcnt;
@@ -1887,7 +1894,14 @@ void ConfigureSWSAScanParam(airiq_config_t *pParam, airiq_scan_specs_t *scanspec
 	}
 
 	if (bband) {
-		if (bw == WL_CHANSPEC_BW_20) {
+		if (scan_chanspec) {
+			pParam->chanspec_list[cnt]       = scan_chanspec;
+			pParam->dwell_interval_ms[cnt]   = longdwell;
+			pParam->capture_interval_us[cnt] = capture_interval;
+			pParam->capture_count[cnt]       = longfftcnt;
+			pParam->core_config[cnt]         = core;
+			cnt++;
+		} else  if (bw == WL_CHANSPEC_BW_20) {
 			for (i = 1; i < 15; i++) {
 				pParam->chanspec_list[cnt]       = i   | WL_CHANSPEC_BW_20 | WL_CHANSPEC_BAND_2G;
 				pParam->dwell_interval_ms[cnt]   = shortdwell;
@@ -1928,6 +1942,7 @@ void ConfigureSWSAScanParam(airiq_config_t *pParam, airiq_scan_specs_t *scanspec
 			printf("%s: Unknown bandwidth bw = 0x%x\n", __FUNCTION__, bw);
 		}
 	}
+
 	pParam->chanspec_cnt = cnt;
 	pParam->phy_mode     = phy_mode;
 
@@ -2113,7 +2128,7 @@ void ComputeScanSpecs(airiq_scan_req_t *scanreq, airiq_scan_specs_t *scanspecs)
 	scanspecs->band             = scanreq->wlband;
 	scanspecs->aband            = scanreq->aband;
 	scanspecs->bband            = scanreq->bband;
-	scanspecs->scan_channel     = scanreq->scan_channel;
+	scanspecs->scan_chanspec    = scanreq->scan_chanspec;
 	scanspecs->core             = scanreq->core;
 	scanspecs->phy_mode         = scanreq->phy_mode;
 	scanspecs->capture_interval = scanreq->capture_interval;
@@ -2146,7 +2161,9 @@ void ComputeScanSpecs(airiq_scan_req_t *scanreq, airiq_scan_specs_t *scanspecs)
 		scanspecs->bw = CHSPEC_BW((chanspec_t)chanspec_int);
 		scanspecs->chanspec3x3 = (chanspec_t)chanspec_int;
 	} else if (scanreq->phy_mode == 0) {
-		if (scanspecs->bband){
+		if(scanspecs->scan_chanspec) {
+			scanspecs->bw = CHSPEC_BW(scanspecs->scan_chanspec);
+		}else if (scanspecs->bband){
 			switch (scanreq->revinfo.corerev) {
 				case (128):
 				case (129):
@@ -2185,7 +2202,7 @@ void DumpScanReq(airiq_scan_req_t *scanreq)
 	printf("aband:           %d\n", scanreq->aband);
 	printf("bband:           %d\n", scanreq->bband);
 	printf("capture_time:    %d\n", scanreq->capture_time);
-	printf("scan_channel     %d\n", scanreq->scan_channel);
+	printf("scan_chanspec    0x%x\n", scanreq->scan_chanspec);
 	printf("homescan:        %d\n", scanreq->homescan);
 	printf("core:            %d\n", scanreq->core);
 	printf("phy_mode:        %d\n", scanreq->phy_mode);
@@ -2606,13 +2623,17 @@ int main(int argc, char*argv[])
 		if (strcmp(argv[i], "-ch") == 0) {
 			if ((i + 1) < argc) {
 				if (argv[i + 1][0] != '-') {
+					int chanspec;
 					PRINTF_VERBOSE("CLI: argv[%d] = %s val=%s\n", i, argv[i], argv[i + 1]);
 					i++;
-					scanreqs[ifidx].scan_channel = atoi(argv[i]);
-					if (scanreqs[ifidx].scan_channel < 0) {
-						fprintf(stderr, "Illegal scan channel number specified: %s. Must be greater than 0.\n", argv[i]);
+					chanspec = wf_chspec_aton(argv[i]);
+					if (chanspec == 0 && !strncmp(argv[i], "7/80", 4)) {
+						chanspec = 7 + WL_CHANSPEC_BW_80 | WL_CHANSPEC_BAND_2G;
+					} else if (chanspec != 0 && chanspec == INVCHANSPEC) {
+						fprintf(stderr, "Illegal channel: %s. (0x%x)\n", argv[i], chanspec);
 						exit(-1);
 					}
+					scanreqs[ifidx].scan_chanspec = chanspec;
 				}
 			}
 			continue;
@@ -2789,13 +2810,13 @@ int main(int argc, char*argv[])
 		exit(-1);
 	} else if (cfg_ifcount == 1) {
 		/* the default is dual-band scan, if no args */
-		if (scanreqs[0].scan_channel + scanreqs[0].aband + scanreqs[0].bband == 0) {
+		if (scanreqs[0].scan_chanspec + scanreqs[0].aband + scanreqs[0].bband == 0) {
 			scanreqs[0].aband = scanreqs[0].bband = 1;
 		}
-		printf("One radio interface: %s (%s) bband:%d aband:%d scan_channel:%d\n",
+		printf("One radio interface: %s (%s) bband:%d aband:%d scan_chanspec:0x%x\n",
 		       scanreqs[0].ifname,
 		       (scanreqs[0].offloads & 0x100) ? "OFFLOADED" : "NOT OFFLOADED",
-		       scanreqs[0].bband, scanreqs[0].aband, scanreqs[0].scan_channel);
+		       scanreqs[0].bband, scanreqs[0].aband, scanreqs[0].scan_chanspec);
 	} else if (cfg_ifcount == 2) {
 		scanreqs[0].wlband = GetInterfaceBand(scanreqs[0].ifname);
 		scanreqs[1].wlband = GetInterfaceBand(scanreqs[1].ifname);
@@ -3041,7 +3062,6 @@ int main(int argc, char*argv[])
 			*/
 		}
 
-		/* StartUserControlledSWSAScanning(dwell_time,bband,aband,capture_time,scan_channel,homescan,core,phy_mode,capture_interval); */
 		StartUserControlledSWSAScanning(cfg_ifcount, scanreqs);
 
 		/* Initialize scan mutex/condition var */

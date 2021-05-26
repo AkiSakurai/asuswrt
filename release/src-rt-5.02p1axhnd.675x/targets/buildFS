@@ -414,8 +414,15 @@ $BUSYBOX_DIR/examples/depmod.pl -k $LINUXDIR/vmlinux -b $INSTALL_DIR/../modules/
 $BUSYBOX_DIR/examples/depmod.pl -k $LINUXDIR/vmlinux -b $INSTALL_DIR/../fs/lib/modules/$LINUX_VER_STR
 
 # put rtecdc.bin to file system
+if [ -f ${HND_SRC}/bcmdrivers/broadcom/net/wl/impl${BCM_WLIMPL}/sys/src/dongle/bin/43684b0/rtecdc.bin ]; then
 mkdir -p ${TARGET_FS}/rom/etc/wlan/dhd/43684b0
 cp ${HND_SRC}/bcmdrivers/broadcom/net/wl/impl${BCM_WLIMPL}/sys/src/dongle/bin/43684b0/rtecdc.bin ${TARGET_FS}/rom/etc/wlan/dhd/43684b0
+fi
+
+if [ -f ${HND_SRC}/bcmdrivers/broadcom/net/wl/impl${BCM_WLIMPL}/sys/src/dongle/bin/43684c0/rtecdc.bin ]; then
+mkdir -p ${TARGET_FS}/rom/etc/wlan/dhd/43684c0
+cp ${HND_SRC}/bcmdrivers/broadcom/net/wl/impl${BCM_WLIMPL}/sys/src/dongle/bin/43684c0/rtecdc.bin ${TARGET_FS}/rom/etc/wlan/dhd/43684c0
+fi
 
 # strip userspace binaries is sstrip is "enabled"
 # sstrip is set to /bin/touch if BUILD_GDBSERVER=y

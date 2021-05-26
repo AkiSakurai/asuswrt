@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_wnm.c 782551 2019-12-23 12:07:35Z $
+ * $Id: wlc_wnm.c 786928 2020-05-12 05:33:58Z $
  */
 
 /**
@@ -2670,6 +2670,10 @@ wlc_wnm_get_btq_nbr_list(wlc_wnm_info_t *wnm, wlc_bsscfg_t *bsscfg,
 			btq_nbr->nbr_elt.bss_trans_preference;
 		memcpy(&wl_btq_nbr_list->btq_nbt_elem[count].bssid,
 				&btq_nbr->nbr_elt.bssid, ETHER_ADDR_LEN);
+		wl_btq_nbr_list->btq_nbt_elem[count].bssid_info =
+			btq_nbr->nbr_elt.bssid_info;
+		wl_btq_nbr_list->btq_nbt_elem[count].phytype =
+			btq_nbr->nbr_elt.phytype;
 		btq_nbr = btq_nbr->next;
 		buflen -= sizeof(nbr_rpt_elem_t);
 		count++;

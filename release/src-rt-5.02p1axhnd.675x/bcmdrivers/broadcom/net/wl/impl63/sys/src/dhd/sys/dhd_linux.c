@@ -19,7 +19,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_linux.c 782660 2019-12-31 04:49:02Z $
+ * $Id: dhd_linux.c 789035 2020-07-16 21:37:17Z $
  */
 
 #include <typedefs.h>
@@ -435,7 +435,7 @@ static void dhd_hang_process(void *dhd_info, void *event_data, enum dhd_wq_event
 MODULE_LICENSE("GPL and additional rights");
 #endif /* LinuxVer */
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)) && !defined(WL_CFG80211) && 0
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)) && 0
 static struct device_type wlan_type = {
 	.name   = "wlan",
 };
@@ -695,10 +695,9 @@ typedef struct dhd_if {
 #if defined(BCM_PKTFWD)
 	struct d3fwd_wlif   *d3fwd_wlif;
 #endif /* BCM_PKTFWD */
-#if defined(WL_CFG80211) && defined(WL_HAPD_WDS)
 	uint8	peer_wds_mac_addr[ETHER_ADDR_LEN];	/* peer WDS MAC address */
-	uint8	wds_role; /* Legacy WDS 0x2 others NULL */
-#endif /* WL_CFG80211 && WL_HAPD_WDS */
+	uint8	wds_role;		/* WDS interface role; Authenticator(AP)/Supplicant(STA) */
+	uint8	wdsidx;			/* WDS index for the interface */
 } dhd_if_t;
 
 #ifdef WLMEDIA_HTSF
@@ -2096,7 +2095,8 @@ dhd_perim_lock_all(int processor_id)
 #if defined(CONFIG_SMP)
 	int fwder_unit;
 	for (fwder_unit = 0; fwder_unit < DHD_MAX_RADIO; fwder_unit++) {
-		if (dhd_radio_g.fwder_unit[fwder_unit].processor_id == processor_id) {
+		if ((dhd_radio_g.fwder_unit[fwder_unit].processor_id == processor_id) &&
+			(dhd_radio_g.fwder_unit[fwder_unit].dhdp != NULL)) {
 			dhd_perim_lock_try(fwder_unit, DHD_PERIM_LOCK_NOTTAKEN);
 		}
 	}
@@ -2110,8 +2110,9 @@ dhd_perim_unlock_all(int processor_id)
 {
 #if defined(CONFIG_SMP)
 	int fwder_unit;
-	for (fwder_unit = 0; fwder_unit < DHD_MAX_RADIO; fwder_unit++) {
-		if (dhd_radio_g.fwder_unit[fwder_unit].processor_id == processor_id) {
+	for (fwder_unit = DHD_MAX_RADIO-1; fwder_unit >= 0; fwder_unit--) {
+		if ((dhd_radio_g.fwder_unit[fwder_unit].processor_id == processor_id) &&
+			(dhd_radio_g.fwder_unit[fwder_unit].dhdp != NULL)) {
 			dhd_perim_unlock_try(fwder_unit, DHD_PERIM_LOCK_NOTTAKEN);
 		}
 	}
@@ -2539,7 +2540,7 @@ dhd_get_ifp_by_mac(dhd_pub_t *dhdp, uint8 *mac)
 }
 #endif /* DHD_PSTA */
 
-#if defined(WL_CFG80211) && defined(WL_HAPD_WDS)
+/* Given a WDS peer MAC addr, get interface pointer of corresponding WDS interface */
 static dhd_if_t *
 dhd_get_wds_ifp_by_mac(dhd_pub_t *dhdp, uint8 *mac)
 {
@@ -2549,7 +2550,7 @@ dhd_get_wds_ifp_by_mac(dhd_pub_t *dhdp, uint8 *mac)
 	for (i = 0; i < DHD_MAX_IFS; i++)
 	{
 		ifp = dhdp->info->iflist[i];
-		if (ifp && ifp->wds_role == WLC_E_IF_FLAGS_LEGACY_WDS_AP &&
+		if (ifp && ifp->wds_role == WLC_E_IF_FLAGS_WDS_AP &&
 			!memcmp(ifp->peer_wds_mac_addr, mac, ETHER_ADDR_LEN)) {
 			return ifp;
 		}
@@ -2557,7 +2558,6 @@ dhd_get_wds_ifp_by_mac(dhd_pub_t *dhdp, uint8 *mac)
 
 	return NULL;
 }
-#endif /* WL_CFG80211 && WL_HAPD_WDS */
 
 /** Reset a dhd_sta object and free into the dhd pool. */
 static void
@@ -2613,7 +2613,6 @@ dhd_sta_free(dhd_pub_t * dhdp, dhd_sta_t * sta)
 	bzero(sta->ea.octet, ETHER_ADDR_LEN);
 	INIT_LIST_HEAD(&sta->list);
 	sta->idx = ID16_INVALID; /* implying free */
-	sta->dwds_client = FALSE;
 }
 
 /** Allocate a dhd_sta object from the dhd pool. */
@@ -2874,7 +2873,6 @@ dhd_add_sta(void *pub, int ifidx, void *ea)
 #ifdef DHD_WMF
 	sta->psta_prim = NULL;
 #endif // endif
-	sta->dwds_client = FALSE;
 
 	INIT_LIST_HEAD(&sta->list);
 
@@ -2895,15 +2893,23 @@ dhd_add_sta(void *pub, int ifidx, void *ea)
 	return sta;
 }
 
-/* For DWDS interface, find client in corresponding AP sta list and update WDS info.
- * Not applicable for Legacy WDS clients, no assoc events and station in added to ifp->sta_list.
+/*
+ * This function will do following:
+ * 1. Remove DWDS station's DA from AP's sta list.
+ * 2. Remove all flowring created earlier. New flowrings will be created in the interface
+ *	index associated with wds0.0.1. All future communication to DWDS repeater will be done
+ *	through wds0.0.1 interface.
+ * 3. Destroy all flows associated with DWDS STA in Flowcache/PKTFWD.
  */
-static void
-dhd_update_dwds_sta_info(dhd_pub_t *dhd_pub, uint8 ifidx, bool intf_add)
+inline static void
+dhd_update_dwds_sta_record(dhd_pub_t *dhd_pub, uint8 ifidx)
 {
 	int idx, ret;
 	dhd_sta_t *sta = NULL;
 	struct ether_addr ea;
+#ifdef BCM_BLOG
+	wl_event_msg_t msg;
+#endif /* BCM_BLOG */
 
 	ret = dhd_wl_ioctl_cmd(dhd_pub, WLC_WDS_GET_REMOTE_HWADDR, (void *)&ea,
 			ETHER_ADDR_LEN, FALSE, ifidx);
@@ -2914,11 +2920,62 @@ dhd_update_dwds_sta_info(dhd_pub_t *dhd_pub, uint8 ifidx, bool intf_add)
 
 	for (idx = 0; idx < DHD_MAX_IFS; idx++) {
 		if ((sta = dhd_find_sta(dhd_pub, idx, &ea))) {
-			sta->dwds_client = intf_add;
+			dhd_flow_rings_delete_for_peer(dhd_pub, idx, (char *)&ea);
+			dhd_del_sta(dhd_pub, idx, &ea);
+
+#ifdef BCM_BLOG
+			bzero(&msg, sizeof(wl_event_msg_t));
+			msg.event_type = -1;	/* Dummy event */
+			memcpy(&msg.addr, &ea, sizeof(struct ether_addr));
+			memcpy(msg.ifname, dhd_ifname(dhd_pub, idx), BCM_MSG_IFNAME_MAX);
+			dhd_handle_blog_disconnect_event(dhd_pub, &msg);
+#endif /* BCM_BLOG */
 			break;
 		}
 	}
-} /* dhd_update_dwds_sta_info() */
+} /* dhd_update_dwds_sta_record() */
+
+#ifdef BCM_PKTFWD_DWDS
+/*
+ * To save wds peer sta idx when wds interface is created.
+ */
+void
+dhd_alloc_dwds_idx(void *dhdp, int ifidx)
+{
+	uint16 idx;
+	dhd_if_t *ifp;
+
+	ASSERT(((dhd_pub_t *)dhdp)->staid_allocator != NULL);
+
+	/* steal one idx from common allocator for wds use */
+	idx = id16_map_alloc(((dhd_pub_t *)dhdp)->staid_allocator);
+	if (idx == ID16_INVALID) {
+		DHD_ERROR(("%s: cannot get free staid\n", __FUNCTION__));
+		return;
+	}
+
+	/* save sta idx of wds peer to ifp for wds use */
+	ifp = dhd_get_ifp((dhd_pub_t *)dhdp, ifidx);
+	if (ifp != NULL)
+		ifp->wdsidx = idx;
+}
+
+/*
+ * To free wds idx when wds interface is disconnected.
+ */
+void
+dhd_free_dwds_idx(void *dhdp, int ifidx)
+{
+	dhd_if_t *ifp;
+
+	ASSERT(((dhd_pub_t *)dhdp)->staid_allocator != NULL);
+
+	/* free idx used by wds */
+	ifp = dhd_get_ifp((dhd_pub_t *)dhdp, ifidx);
+	if (ifp != NULL)
+		id16_map_free(((dhd_pub_t *)dhdp)->staid_allocator, ifp->wdsidx);
+}
+#endif /* BCM_PKTFWD_DWDS */
 
 #if defined(BCM_GMAC3) && !defined(BCA_HNDROUTER)
 /* We added sa based WOFA entry for forwarding packet from non AP
@@ -3093,6 +3150,11 @@ dhd_if_get_staidx(void *pub, int ifidx, void *ea)
 	ifp = dhd_get_ifp((dhd_pub_t *)pub, ifidx);
 	if (ifp == NULL)
 	    return ID16_INVALID;
+
+	if (DHD_IF_ROLE_WDS((dhd_pub_t *)pub, ifidx) || DHD_IF_ROLE_STA((dhd_pub_t *)pub, ifidx)) {
+		/* always return the WDS peer for the sta idx */
+		return ifp->wdsidx;
+	}
 
 	DHD_IF_STA_LIST_LOCK(ifp, flags);
 
@@ -4128,27 +4190,32 @@ dhd_ifname2idx(dhd_info_t *dhd, char *name)
 	return i;	/* default - the primary interface */
 }
 
-#if defined(WL_CFG80211) && defined(WL_HAPD_WDS)
-/*
- * The wds peer mac address is update in the ifp structure. This is
- * used to check the tx path since packet is received on primary interface
- */
-void
-dhd_wl_check_wds_update_peer(dhd_pub_t *dhdp, int ifidx, uint8 *peer_mac)
+/* Update WDS interface info */
+static void
+dhd_update_wds_interface_info(dhd_pub_t *dhdp, int ifidx, wl_event_data_if_t *ifevent)
 {
 	dhd_info_t *dhd = (dhd_info_t *)dhdp->info;
 	dhd_if_t *ifp;
 
 	ASSERT(ifidx < DHD_MAX_IFS);
 
+	if (!DHD_IF_ROLE_WDS(dhdp, ifidx)) {
+		return;
+	}
+
 	ifp = dhd->iflist[ifidx];
 
-	if (ifp->wds_role == WLC_E_IF_FLAGS_LEGACY_WDS_AP)
-		memcpy(ifp->peer_wds_mac_addr, peer_mac, ETHER_ADDR_LEN);
+	if (ifevent->reserved & WLC_E_IF_FLAGS_WDS_STA) {
+		ifp->wds_role = WLC_E_IF_FLAGS_WDS_STA;
+	} else if (ifevent->reserved & WLC_E_IF_FLAGS_WDS_AP) {
+		ifp->wds_role = WLC_E_IF_FLAGS_WDS_AP;
+		memcpy(ifp->peer_wds_mac_addr, ifevent->peer_addr.octet, ETHER_ADDR_LEN);
+	}
 
+	DHD_INFO(("%s: ifidx %d wds_role %d Peer MAC["MACDBG"]\n", __FUNCTION__,
+		ifidx, ifp->wds_role, MAC2STRDBG(ifevent->peer_addr.octet)));
 	return;
 }
-#endif /* WL_CFG80211 && WL_HAPD_WDS */
 
 #ifdef BCM_ROUTER_DHD
 /* Set bss_up for a particular ifp
@@ -5019,6 +5086,7 @@ dhd_ifadd_event_handler(void *handle, void *event_info, enum dhd_wq_event event)
 	dhd_info_t *dhd = handle;
 	dhd_if_event_t *if_event = event_info;
 	struct net_device *ndev;
+	dhd_if_t *ifp;
 	int ifidx, bssidx;
 	int ret;
 #if defined(WL_CFG80211) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0))
@@ -5027,8 +5095,9 @@ dhd_ifadd_event_handler(void *handle, void *event_info, enum dhd_wq_event event)
 #endif /* WL_CFG80211 && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) */
 #if defined(WL_CFG80211) && defined(WL_HAPD_WDS)
 	bool cfg_iface = FALSE;
-	dhd_if_t *ifp;
 #endif /* WL_CFG80211 && WL_HAPD_WDS */
+
+	BCM_REFERENCE(ifp);
 
 	if (event != DHD_WQ_WORK_IF_ADD) {
 		DHD_ERROR(("%s: unexpected event \n", __FUNCTION__));
@@ -5051,30 +5120,33 @@ dhd_ifadd_event_handler(void *handle, void *event_info, enum dhd_wq_event event)
 
 	ifidx = if_event->event.ifidx;
 	bssidx = if_event->event.bssidx;
+
 #if defined(WL_CFG80211) && defined(WL_HAPD_WDS)
 	if (if_event->event.role == WLC_E_IF_ROLE_WDS) {
 		if_name = if_event->name;
-		if (if_event->event.reserved & WLC_E_IF_FLAGS_LEGACY_WDS_STA) {
+		if (if_event->event.reserved & WLC_E_IF_FLAGS_WDS_STA) {
 			cfg_iface = TRUE;
 		}
 	}
 	else
 		cfg_iface = TRUE;
 #endif /* WL_CFG80211 && WL_HAPD_WDS */
+
 	DHD_TRACE(("%s: registering if with ifidx %d\n", __FUNCTION__, ifidx));
 
 #if defined(PCIE_FULL_DONGLE)
 	if (DHD_IF_ROLE_WDS(&dhd->pub, ifidx)) {
-		dhd_update_dwds_sta_info(&dhd->pub, ifidx, TRUE);
+		dhd_update_dwds_sta_record(&dhd->pub, ifidx);
 	}
 #endif /* PCIE_FULL_DONGLE */
 
 #if defined(WL_CFG80211) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0))
 	if ((dhd->dhd_state & DHD_ATTACH_STATE_CFG80211) &&
-#if defined(WL_CFG80211) && defined(WL_HAPD_WDS)
-			cfg_iface &&
-#endif // endif
-	(TRUE)) {
+#if defined(WL_HAPD_WDS)
+		cfg_iface &&
+#endif /* WL_HAPD_WDS */
+		(TRUE)) {
+
 		if (if_event->event.ifidx > 0) {
 			bzero(&info, sizeof(info));
 			info.ifidx = if_event->event.ifidx;
@@ -5087,13 +5159,23 @@ dhd_ifadd_event_handler(void *handle, void *event_info, enum dhd_wq_event event)
 					&info, if_event->mac, if_name, true) != NULL) {
 				/* Do the post interface create ops */
 				DHD_ERROR(("Post ifcreate ops done. Returning \n"));
-#if defined(WL_CFG80211) && defined(WL_HAPD_WDS)
-				if (if_event->event.reserved & WLC_E_IF_FLAGS_LEGACY_WDS_STA) {
-					ifp = dhd->iflist[ifidx];
-					ifp->wds_role = WLC_E_IF_FLAGS_LEGACY_WDS_STA;
-				}
-#endif /* WL_CFG80211 && WL_HAPD_WDS */
+
+				dhd_update_wds_interface_info(&dhd->pub, ifidx, &if_event->event);
+
 				DHD_PERIM_LOCK(&dhd->pub);
+#if defined(PCIE_FULL_DONGLE) && defined(BCM_PKTFWD)
+				/* update dwds info */
+				if (DHD_IF_ROLE_WDS(&dhd->pub, ifidx)) {
+					dhd_pktfwd_priv_t *pktfwd_priv;
+					ifp = dhd->iflist[ifidx];
+#if defined(BCM_PKTFWD_DWDS)
+					dhd_alloc_dwds_idx(&dhd->pub, ifidx);
+#endif /* BCM_PKTFWD_DWDS */
+					pktfwd_priv = dhd_pktfwd_get_priv(ifp->net);
+					/* set net device as dwds */
+					netdev_wlan_set_dwds_ap(pktfwd_priv->d3fwd_wlif);
+				}
+#endif /* PCIE_FULL_DONGLE && BCM_PKTFWD */
 				goto done;
 			}
 			DHD_PERIM_LOCK(&dhd->pub);
@@ -5112,15 +5194,7 @@ dhd_ifadd_event_handler(void *handle, void *event_info, enum dhd_wq_event event)
 		goto done;
 	}
 
-#if defined(WL_CFG80211) && defined(WL_HAPD_WDS)
-	ifp = dhd->iflist[ifidx];
-	if (if_event->event.reserved & WLC_E_IF_FLAGS_LEGACY_WDS_STA) {
-		ifp->wds_role = WLC_E_IF_FLAGS_LEGACY_WDS_STA;
-	} else if (if_event->event.reserved & WLC_E_IF_FLAGS_LEGACY_WDS_AP) {
-		ifp->wds_role = WLC_E_IF_FLAGS_LEGACY_WDS_AP;
-	}
-
-#endif /* WL_CFG80211 && WL_HAPD_WDS */
+	dhd_update_wds_interface_info(&dhd->pub, ifidx, &if_event->event);
 
 	DHD_PERIM_UNLOCK(&dhd->pub);
 	ret = dhd_register_if(&dhd->pub, ifidx, TRUE);
@@ -5130,6 +5204,21 @@ dhd_ifadd_event_handler(void *handle, void *event_info, enum dhd_wq_event event)
 		dhd_remove_if(&dhd->pub, ifidx, TRUE);
 		goto done;
 	}
+
+#if defined(PCIE_FULL_DONGLE) && defined(BCM_PKTFWD)
+	/* update dwds info has to be after dhd_allocate_if to get ifp */
+	if (DHD_IF_ROLE_WDS(&dhd->pub, ifidx)) {
+		dhd_pktfwd_priv_t *pktfwd_priv;
+#if defined(BCM_PKTFWD_DWDS)
+		dhd_alloc_dwds_idx(&dhd->pub, ifidx);
+#endif /* BCM_PKTFWD_DWDS */
+		/* set net device as dwds */
+		ifp = dhd->iflist[ifidx];
+		pktfwd_priv = dhd_pktfwd_get_priv(ifp->net);
+		netdev_wlan_set_dwds_ap(pktfwd_priv->d3fwd_wlif);
+	}
+#endif /* PCIE_FULL_DONGLE && BCM_PKTFWD */
+
 #ifdef PCIE_FULL_DONGLE
 	/* Turn on AP isolation in the firmware for interfaces operating in AP mode */
 	if (FW_SUPPORTED((&dhd->pub)->wlcore, ap) && (if_event->event.role != WLC_E_IF_ROLE_STA)) {
@@ -5181,12 +5270,6 @@ dhd_ifdel_event_handler(void *handle, void *event_info, enum dhd_wq_event event)
 
 	ifidx = if_event->event.ifidx;
 	DHD_TRACE(("Removing interface with idx %d\n", ifidx));
-
-#if defined(PCIE_FULL_DONGLE)
-	if (DHD_IF_ROLE_WDS(&dhd->pub, ifidx)) {
-		dhd_update_dwds_sta_info(&dhd->pub, ifidx, FALSE);
-	}
-#endif /* PCIE_FULL_DONGLE */
 
 #if defined(WL_CFG80211) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0))
 	if (if_event->event.ifidx > 0) {
@@ -5762,10 +5845,12 @@ dhd_sendpkt(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 	return ret;
 }
 
-#if defined(WL_CFG80211) && defined(WL_HAPD_WDS)
+/* With HOSTAPD, 802.1X (EAPOL) frames of WDS/DWDS client received on AP interface will be
+ * directed to corresponding WDS interface.
+ */
 static int
 dhd_wl_check_wds_destn(dhd_info_t *dhd, int *wds_ifidx,
-		struct net_device **wds_net, void *pktbuf)
+	struct net_device **wds_net, void *pktbuf)
 {
 	struct ether_header *eh;
 	dhd_if_t *ifp;
@@ -5774,16 +5859,19 @@ dhd_wl_check_wds_destn(dhd_info_t *dhd, int *wds_ifidx,
 
 	if ((eh->ether_type == hton16(ETHER_TYPE_802_1X)) &&
 		!ETHER_ISMULTI(eh->ether_dhost)) {
+
 		ifp = dhd_get_wds_ifp_by_mac(&dhd->pub, eh->ether_dhost);
-		if ((ifp) && (ifp->wds_role == WLC_E_IF_FLAGS_LEGACY_WDS_AP)) {
+
+		if ((ifp) && (ifp->wds_role == WLC_E_IF_FLAGS_WDS_AP) && (ifp->net)) {
 			*wds_net = ifp->net;
 			*wds_ifidx = DHD_DEV_IFIDX(ifp->net);
+			DHD_INFO(("%s: Switched interface index %d for MAC["MACDBG"]\n",
+				__FUNCTION__, *wds_ifidx, MAC2STRDBG(eh->ether_dhost)));
 			return BCME_OK;
 		}
 	}
 	return BCME_ERROR;
 }
-#endif /* WL_CFG80211 && WL_HAPD_WDS */
 
 #if defined(BCM_ROUTER_DHD) && defined(BCM_GMAC3)
 static int BCMFASTPATH
@@ -6011,15 +6099,14 @@ dhd_start_xmit(struct sk_buff *skb, struct net_device *net)
 		goto done;
 	}
 #endif /* BCM_NBUFF */
-#if defined(WL_CFG80211) && defined(WL_HAPD_WDS)
-/* Check EAPOL, role WDS */
+
+	/* Check EAPOL, role WDS */
 #if defined(BCM_NBUFF)
-		if (IS_SKBUFF_PTR(pktbuf))
+	if (IS_SKBUFF_PTR(pktbuf))
 #endif /* BCM_NBUFF */
-		{
-			ret = dhd_wl_check_wds_destn(dhd, &ifidx, &net, pktbuf);
-		}
-#endif /* WL_CFG80211 && WL_HAPD_WDS */
+	{
+		ret = dhd_wl_check_wds_destn(dhd, &ifidx, &net, pktbuf);
+	}
 
 #if defined(BCM_DHDHDR) && defined(PCIE_FULL_DONGLE)
 	/* Multicast packets from CPU may share the same data, we need to make a copy
@@ -6194,10 +6281,8 @@ dhd_start_xmit(struct sk_buff *skb, struct net_device *net)
 				 * - Proxy interfaces of proxySTA
 				 * - Clients with WDS interface
 				 */
-				if ((sta->psta_prim != NULL && !ifp->wmf_psta_disable) ||
-					(sta->dwds_client)) {
+				if (sta->psta_prim != NULL && !ifp->wmf_psta_disable)
 					continue;
-				}
 
 				sdu_clone = PKTDUP_CPY(dhd->pub.osh, pktbuf);
 				if (sdu_clone == NULL) {
@@ -8049,6 +8134,8 @@ dhd_watchdog_thread(void *data)
 {
 	tsk_ctl_t *tsk = (tsk_ctl_t *)data;
 	dhd_info_t *dhd = (dhd_info_t *)tsk->parent;
+	int csimon_ret = BCME_OK;
+
 	/* This thread doesn't need any user-level access,
 	 * so get rid of all our resources
 	 */
@@ -8088,10 +8175,14 @@ dhd_watchdog_thread(void *data)
 #ifdef DHD_L2_FILTER
 				dhd_l2_filter_watchdog(&dhd->pub);
 #endif /* DHD_L2_FILTER */
+
+				csimon_ret = dhd_csimon_watchdog(&dhd->pub);
+
 				time_lapse = jiffies - jiffies_at_start;
 
 				/* Reschedule the watchdog */
-				if (dhd->wd_timer_valid) {
+				if (dhd->wd_timer_valid &&
+				    (csimon_ret != BCME_NODEVICE)) {
 					mod_timer(&dhd->timer,
 					    jiffies +
 					    msecs_to_jiffies(dhd_watchdog_ms) -
@@ -9673,6 +9764,16 @@ dhd_open(struct net_device *net)
 #endif /* NUM_SCB_MAX_PROBE */
 #endif /* WL_CFG80211 */
 	}
+
+#if defined(BCM_PKTFWD)
+	if (DHD_IF_ROLE_STA(&dhd->pub, ifidx)) {
+		dhd_pktfwd_priv_t  *pktfwd_priv;
+
+		/* mark net device as dwds client */
+		pktfwd_priv = dhd_pktfwd_get_priv(net);
+		netdev_wlan_set_dwds_client(pktfwd_priv->d3fwd_wlif);
+	}
+#endif // endif
 
 	/* Allow transmit calls */
 	netif_start_queue(net);
@@ -13808,7 +13909,7 @@ dhd_register_if(dhd_pub_t *dhdp, int ifidx, bool need_rtnl_lock)
 #endif // endif
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 31) */
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)) && !defined(WL_CFG80211) && 0
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)) && 0
 	{
 		struct device *parent_dev;
 
@@ -14517,14 +14618,11 @@ dhd_module_cleanup(void)
 	dhd_wifi_platform_unregister_drv();
 }
 
-static void __exit
-dhd_module_exit(void)
+static void
+dhd_platform_cleanup(void)
 {
-	dhd_buzzz_detach();
-#if defined(WL_CFG80211)
-	wl_cfg80211_unregister_notifier();
-#endif /* WL_CFG80211 */
-	dhd_module_cleanup();
+	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
+
 #if defined(BCM_PKTFWD)
 	dhd_pktfwd_sys_fini(); /* Destruct the singleton wl_pktfwd global */
 #else /* !BCM_PKTFWD */
@@ -14535,10 +14633,24 @@ dhd_module_exit(void)
 #if defined(BCM_NBUFF_WLMCAST)
 	dhd_nbuff_detach();
 #endif /* BCM_NBUFF_WLMCAST */
-	unregister_reboot_notifier(&dhd_reboot_notifier);
+
 #if defined(BCM_BLOG) && defined(CONFIG_BCM_DPI_WLAN_QOS)
 	blog_dhd_flow_update_fn = NULL;
-#endif // endif
+#endif
+
+}
+
+static void __exit
+dhd_module_exit(void)
+{
+	dhd_buzzz_detach();
+#if defined(WL_CFG80211)
+	wl_cfg80211_unregister_notifier();
+#endif /* WL_CFG80211 */
+	dhd_module_cleanup();
+	dhd_platform_cleanup();
+
+	unregister_reboot_notifier(&dhd_reboot_notifier);
 }
 
 #if defined(BCM_BLOG) && defined(CONFIG_BCM_DPI_WLAN_QOS)
@@ -14640,11 +14752,9 @@ dhd_module_init(void)
 		wl_cfg80211_register_notifier();
 #endif /* WL_CFG80211 */
 
-#ifdef BCM_NBUFF_WLMCAST
 	if ((!dhd_found) || (err)) {
-		dhd_nbuff_detach();
+		dhd_platform_cleanup();
 	}
-#endif /* BCM_NBUFF_WLMCAST */
 
 	return err;
 }
@@ -15270,7 +15380,7 @@ dhd_wl_host_event(dhd_info_t *dhd, int *ifidx, void *pktdata, uint16 pktlen,
 	ASSERT(dhd->iflist[*ifidx]->net != NULL);
 #ifdef WL_HAPD_WDS
 	if (dhd->iflist[*ifidx]->net &&
-		dhd->iflist[*ifidx]->wds_role == WLC_E_IF_FLAGS_LEGACY_WDS_AP) {
+		dhd->iflist[*ifidx]->wds_role == WLC_E_IF_FLAGS_WDS_AP) {
 			wl_cfg80211_event(dhd_linux_get_primary_netdev(&dhd->pub), event, *data);
 		}
 		else
@@ -19364,7 +19474,8 @@ dhd_rx_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 	monitor_pkt_info_t pkt_info;
 	uint16 pkt_type;
 	int16 offset = 0;
-	uint8 dma_flags = 0xff, *temp = 0;
+	uint8 dma_flags = 0xff;
+	wl_phyextract_t *phyextract = NULL;
 	if (!dhd->monitor_info || (skb_headroom(pkt) < sizeof(wl_radiotap_vht_t))) {
 		PKTFREE(dhdp->osh, pkt, FALSE);
 		return;
@@ -19386,18 +19497,21 @@ dhd_rx_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 		return;
 	}
 
-	if (BCM43684_CHIP(dhd_bus_chip_id(dhdp))) {
-		temp = (uint8 *)PKTDATA(dhdp->osh, pkt);
-		memcpy(&pkt_info.marker, temp, 4);
-		skb_pull(pkt, 4);
-	}
 	/* Handling different wlc_d11rxhdr_t for 4366 and 43602 */
 	if (BCM43602_CHIP(dhd_bus_chip_id(dhdp))) {
 		dma_flags = 0;
 	}
+	/* currently phyextract is only added to the packet in corev >= 128
+	 * TODO: for corev < 128
+	*/
+	if (dhd->monitor_info->corerev >= 128) {
+		phyextract  = (wl_phyextract_t *)PKTDATA(dhdp->osh, pkt);
+		skb_pull(pkt, sizeof(wl_phyextract_t));
+	}
+
 	len = bcmwifi_monitor(dhd->monitor_info, &pkt_info, PKTDATA(dhdp->osh, pkt),
 			PKTLEN(dhdp->osh, pkt),  PKTDATA(dhdp->osh, dhd->monitor_skb),
-			&offset, &pkt_type, dma_flags);
+			&offset, &pkt_type, dma_flags, phyextract);
 	if (pkt_type == MON_PKT_AMSDU_ERROR)
 	{
 		if (dhd->monitor_skb != pkt) {
@@ -19405,7 +19519,7 @@ dhd_rx_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 			dhd->monitor_skb = pkt;
 			len = bcmwifi_monitor(dhd->monitor_info, &pkt_info, PKTDATA(dhdp->osh, pkt),
 				PKTLEN(dhdp->osh, pkt),	PKTDATA(dhdp->osh, dhd->monitor_skb),
-				&offset, &pkt_type, dma_flags);
+				&offset, &pkt_type, dma_flags, (void *)phyextract);
 			if (pkt_type == MON_PKT_AMSDU_ERROR) {
 				PKTFREE(dhdp->osh, pkt, FALSE);
 				dhd->monitor_skb = NULL;

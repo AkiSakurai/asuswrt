@@ -1173,6 +1173,10 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		}
 	}
 #endif /* CONFIG_WPS */
+#ifdef CONFIG_DRIVER_BRCM_MAP
+	if (config->map_bh_sta)
+		fprintf(f, "map_bh_sta=%d\n", config->map_bh_sta);
+#endif  /* CONFIG_DRIVER_BRCM_MAP */
 #ifdef CONFIG_P2P
 	{
 		int i;

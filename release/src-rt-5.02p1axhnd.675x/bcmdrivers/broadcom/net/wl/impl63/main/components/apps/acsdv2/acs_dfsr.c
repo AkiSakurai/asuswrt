@@ -160,7 +160,7 @@ static dfsr_window_params_t default_params[W_COUNT] = {
 	{ seconds:5*60, threshold:3, interval:1 },	/* Immed: > 3 switches in last 5 minutes */
 	{ seconds:7*60*60*24, threshold:20, interval:1 }, /* Defer: > 20 switches in last 7 days */
 	{ seconds:30, threshold:0, interval:1 },	/* ch idle if< 100kB of RX/TX in last 30s */
-	{ seconds:3600, threshold:36000, interval:30 }	/* idle interval, idle frames thld,
+	{ seconds:600, threshold:36000, interval:30 }	/* idle interval, idle frames thld,
 							 * slot update interval
 							 */
 };
@@ -340,12 +340,12 @@ acs_dfsr_chanspec_update(dfsr_context_t *ctx, chanspec_t channel, const char *ca
 {
 	if (!acs_dfsr_enabled(ctx)) return DFS_REENTRY_NONE;
 
-	ACSD_DFSR("Switch to channel 0x%x requested by %s\n", channel, caller);
+	ACSD_DFSR("Switch to channel 0x%4x (%s) requested by %s\n", channel, wf_chspec_ntoa(channel, chanspecbuf), caller);
 
 	if (channel != ctx->channel && (ctx->channel != 0)) {
 		time_t now = uptime();
 
-		ACSD_DFSR("Switching to chanspec 0x%x, switch count so far %u.\n", channel,
+		ACSD_DFSR("Switching to chanspec 0x%4x (%s), switch count so far %u.\n", channel, wf_chspec_ntoa(channel, chanspecbuf),
 			ctx->switch_count);
 
 		ctx->switch_count++;
@@ -386,7 +386,7 @@ acs_dfsr_set(dfsr_context_t *ctx, chanspec_t channel, const char *caller)
 {
 	 if (!acs_dfsr_enabled(ctx)) return DFS_REENTRY_NONE;
 
-	ACSD_DFSR("Set Reentry to channel 0x%x requested by %s\n", channel, caller);
+	ACSD_DFSR("Set Reentry to channel 0x%4x (%s) requested by %s\n", channel, wf_chspec_ntoa(channel, chanspecbuf), caller);
 
 	ctx->reentry_type = DFS_REENTRY_IMMEDIATE;
 	ctx->channel = channel;
@@ -558,34 +558,52 @@ acs_dfsr_dump(dfsr_context_t *ctx, char *buf, unsigned buflen)
 	if (acs_dfsr_enabled(ctx)) {
 		int i;
 
+		if (retlen >= (buflen - 1)) {
+			buf[buflen - 1] = '\0';
+			return buflen;
+		}
 		retlen += acs_snprintf(buf+retlen, buflen-retlen,
 			"Channel switches      : %5u\n"
 			"DFS Re-Entry count    : %5u\n"
-			"Selected chanspec     : 0x%x (Channel %d)\n"
+			"Selected chanspec     : 0x%4x (%s) (Channel %d)\n"
 			"Last Channel TX count : %u bytes\n"
 			"Last Channel RX count : %u bytes\n"
 			"Re-Entry request type : %s\n",
 			ctx->switch_count,
 			ctx->reentry_count,
 			ctx->channel,
+			wf_chspec_ntoa(ctx->channel, chanspecbuf),
 			CHSPEC_CHANNEL(ctx->channel),
 			ctx->prev_bytes_tx,
 			ctx->prev_bytes_rx,
 			(ctx->reentry_type == DFS_REENTRY_IMMEDIATE) ? "IMMEDIATE" :
 			(ctx->reentry_type == DFS_REENTRY_DEFERRED) ? "DEFERRED" : "NONE");
 
+		if (retlen >= (buflen - 1)) {
+			buf[buflen - 1] = '\0';
+			return buflen;
+		}
 		retlen += acs_snprintf(buf+retlen, buflen-retlen, "%20s %10s %10s %10s\n",
 			"Window", "Seconds", "Threshold", "Actual");
 
 		for (i = 0; i < W_COUNT; ++i) {
 			dfsr_window_t *w = &ctx->window[i];
 
+			if (retlen >= (buflen - 1)) {
+				buf[buflen - 1] = '\0';
+				return buflen;
+			}
 			retlen += acs_snprintf(buf+retlen, buflen-retlen,
 				"%20s %10u %10u %10u\n",
 				dfsr_window_name(i), w->p.seconds, w->p.threshold, dfsr_sw_sum(w));
 		}
 	}
-	return retlen + 1;
+	if (retlen >= (buflen - 1)) {
+		buf[buflen - 1] = '\0';
+		return buflen;
+	} else {
+		return retlen + 1;
+	}
 }
 
 /* acs_bgdfs_sw_add() - add frame count to sliding window */

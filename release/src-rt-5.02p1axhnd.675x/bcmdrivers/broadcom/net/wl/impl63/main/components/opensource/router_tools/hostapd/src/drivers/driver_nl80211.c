@@ -1244,6 +1244,46 @@ static void wpa_driver_nl80211_event_rtm_dellink(void *ctx,
 						 ifname);
 }
 
+#ifdef CONFIG_DRIVER_BRCM
+static void wpa_driver_nl80211_event_rtm_newaddr(void *ctx,
+						 struct ifaddrmsg *ifa,
+						 u8 *buf, size_t len)
+{
+	struct nl80211_global *global = ctx;
+	struct wpa_driver_nl80211_data *drv;
+	int attrlen;
+	struct rtattr *attr;
+	char ifname[IFNAMSIZ + 1];
+	char ip_addr[INET_ADDRSTRLEN];
+	union wpa_event_data event;
+
+	attrlen = len;
+	attr = (struct rtattr *) buf;
+	while (RTA_OK(attr, attrlen)) {
+		switch (attr->rta_type) {
+		case IFA_LOCAL:
+			if_indextoname(ifa->ifa_index, ifname);
+			inet_ntop(AF_INET, RTA_DATA(attr), ip_addr, sizeof(ip_addr));
+			wpa_printf(MSG_DEBUG, "nl80211: Ip address change is detected in "
+				"interface %s new ip %s ", ifname, ip_addr);
+			break;
+		}
+		attr = RTA_NEXT(attr, attrlen);
+	}
+
+	drv = nl80211_find_drv(global, ifa->ifa_index, buf, len, NULL);
+	if (drv) {
+		os_memset(&event, 0, sizeof(event));
+		event.interface_status.ifindex = ifa->ifa_index;
+		os_strlcpy(event.interface_status.ifname, ifname,
+				sizeof(event.interface_status.ifname));
+		wpa_printf(MSG_DEBUG, "nl80211: Ip address change detected for "
+				"interface %s raise EVENT_INTERFACE_IP_ADDR_CHANGED", ifname);
+		wpa_supplicant_event(drv->ctx, EVENT_INTERFACE_IP_ADDR_CHANGED, &event);
+	}
+}
+#endif /* CONFIG_DRIVER_BRCM */
+
 struct nl80211_get_assoc_freq_arg {
 	struct wpa_driver_nl80211_data *drv;
 	unsigned int assoc_freq;
@@ -7757,6 +7797,9 @@ static void * nl80211_global_init(void *ctx)
 	cfg->ctx = global;
 	cfg->newlink_cb = wpa_driver_nl80211_event_rtm_newlink;
 	cfg->dellink_cb = wpa_driver_nl80211_event_rtm_dellink;
+#ifdef CONFIG_DRIVER_BRCM
+	cfg->newaddr_cb = wpa_driver_nl80211_event_rtm_newaddr;
+#endif	/* CONFIG_DRIVER_BRCM */
 	global->netlink = netlink_init(cfg);
 	if (global->netlink == NULL) {
 		os_free(cfg);

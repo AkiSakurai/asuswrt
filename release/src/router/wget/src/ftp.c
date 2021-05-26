@@ -1565,16 +1565,6 @@ Error in server response, closing control connection.\n"));
     }
 #endif
 
-#ifdef HAVE_PIPEFW
-  if (opt.pipefw)
-    {
-      int size = (int)expected_bytes;
-      DEBUGP (("Prepend file size %d\n", size));
-      if (fp)
-        fwrite (&size, 1, sizeof(size), fp);
-    }
-#endif
-
   /* Get the contents of the document.  */
   flags = 0;
   if (restval && rest_failed)

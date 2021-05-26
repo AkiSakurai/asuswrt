@@ -486,9 +486,8 @@ phy_ac_hecap_get_phycap_info(phy_type_hecap_ctx_t *ctx, he_phy_cap_t *phycap)
 		/* b0: Support 40 MHz channel width in 2.4 GHz */
 		bwcap |= HE_PHY_CH_WIDTH_2G_40;
 
-		/* if b0=0, reserved. else
-		 * b4: Support for 242/106/52/26-tone RU mapping in 40 MHz
-		 */
+		/* b4: Support for 242/106/52/26-tone RU mapping in 40 MHz */
+		bwcap |= HE_PHY_CH_WIDTH_2G_242TONE;
 	}
 
 	if (sflags & (SISF_5G_PHY | SISF_DB_PHY)) {
@@ -512,7 +511,10 @@ phy_ac_hecap_get_phycap_info(phy_type_hecap_ctx_t *ctx, he_phy_cap_t *phycap)
 		if (phyaccap & PHY_CAP_8080MHZ)
 			bwcap |= HE_PHY_CH_WIDTH_5G_80P80;
 
-		/* b4: only relates to 80p80 support, not relevant at this point */
+		/* b4: reserved */
+
+		/* b5: indicates support of 242-tone RUs */
+		bwcap |= HE_PHY_CH_WIDTH_5G_242TONE;
 	}
 
 	/* b1-b7: Channel width support */

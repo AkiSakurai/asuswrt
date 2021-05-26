@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_sta.c 782179 2019-12-12 11:32:03Z $
+ * $Id: wlc_sta.c 785991 2020-04-13 22:17:10Z $
  */
 
 /* Define wlc_cfg.h to be the first header file included as some builds
@@ -200,6 +200,20 @@ wlc_sta_doiovar(void *hdl, uint32 actionid,
 	return err;
 } /* wlc_sta_doiovar */
 
+static int
+wlc_sta_down(void *ctx)
+{
+	wlc_sta_info_t *sta_info = (wlc_sta_info_t *)ctx;
+	wlc_info_t *wlc = sta_info->wlc;
+	wlc_bsscfg_t *cfg;
+	int idx;
+
+	FOREACH_STA(wlc, idx, cfg) {
+		wlc_sta_timeslot_unregister(cfg);
+	}
+	return BCME_OK;
+}
+
 wlc_sta_info_t *
 BCMATTACHFN(wlc_sta_attach)(wlc_info_t *wlc)
 {
@@ -244,7 +258,7 @@ BCMATTACHFN(wlc_sta_attach)(wlc_info_t *wlc)
 	}
 
 	if (wlc_module_register(wlc->pub, sta_iovars, "sta", sta_info, wlc_sta_doiovar,
-			NULL, NULL, NULL)) {
+			NULL, NULL, wlc_sta_down)) {
 		WL_ERROR(("wl%d: %s wlc_module_register() failed\n",
 		          wlc->pub->unit, __FUNCTION__));
 		goto fail;
@@ -624,9 +638,7 @@ wlc_sta_timeslot_unregister(wlc_bsscfg_t *bsscfg)
 		wf_chspec_ntoa(bsscfg->current_bss->chanspec, chanbuf)));
 
 	sta_cfg_cubby = BSSCFG_STA_CUBBY(wlc->sta_info, bsscfg);
-	ASSERT(sta_cfg_cubby != NULL);
-
-	if (sta_cfg_cubby->msch_req_hdl) {
+	if ((sta_cfg_cubby != NULL) && (sta_cfg_cubby->msch_req_hdl != NULL)) {
 		/* If we were in the middle of transitioning to PM state because of this
 		 * BSS, then cancel it
 		 */
@@ -952,7 +964,8 @@ wlc_sta_prepare_pm_mode(wlc_bsscfg_t *cfg)
 #endif /* WLMCHAN & WLP2P */
 			mboolset(cfg->pm->PMblocked, WLC_PM_BLOCK_CHANSW);
 
-		if (cfg->associated && !cfg->pm->PMenabled) {
+		if (cfg->associated && !cfg->pm->PMenabled &&
+			BSSCFG_STA(cfg) && cfg->BSS) {
 			WL_PS(("wl%d.%d %s: wlc_infra_sta_prepare_pm_mode: "
 				"entering PM mode\n",
 				wlc->pub->unit, WLC_BSSCFG_IDX(cfg), __FUNCTION__));

@@ -101,16 +101,31 @@
 #include <linux/ethtool.h>
 #endif	/* MULTIAP */
 
-#define WPS_1905_SOCKET_MAX_RECV_BUFFER_SIZE 4096
-#define WPS_1905_RECEIVE_TIMEOUT_MS          3000
-#define WPS_1905_RESTART_TIMEOUT_MS          15000
-
 #define I5_TRACE_MODULE i5TraceWlcfg
 
 #ifdef MULTIAP
 #define BUF_SIZE_1536_BITS	192
 #define txt  "Wi-Fi Easy and Secure Key Derivation"
 #define KDF_KEY_BITS            640
+
+/* Flags for Broadcom specific MultiAP Vendor extension subelement */
+#define WLCFG_WPS_MAP_BSS_GUEST   0x80
+#define WLCFG_WPS_MAP_BSS_CLOSED  0x40
+
+#define WLCFG_WPS_MAP_BCM_VENDOR_EXT_ID         "\x00\x10\x18"
+#define WLCFG_WPS_MAP_SUBID_BCM_VENDOR_EXT_ATTR 0x01
+#define WLCFG_WPS_VER_SUBID_BCM_VENDOR_EXT_ATTR 0x02  /* For sending version */
+
+/* These flags are sent in broadcoms vendor extension attribute
+ * version(WLCFG_WPS_VER_SUBID_BCM_VENDOR_EXT_ATTR). This flags indicate the features(bug fixes)
+ * it supports
+ */
+#define WLCFG_VNDR_VERSION_FLAGS_OUI_PARSE_IN_M2  0x0001  /* Includes Vendor OUI parse */
+
+/* Vendor specific information in the M1 */
+typedef struct {
+  unsigned short version_flags; /* Of type WLCFG_VNDR_VERSION_FLAGS_XXX */
+} wlcfg_m1_brcm_vndr_data;
 
 static uint8 DH_P_VALUE[BUF_SIZE_1536_BITS] =
 {
@@ -153,10 +168,6 @@ extern void RAND_bytes(unsigned char *buf, int num);
 #endif	/* MULTIAP */
 
 #ifndef MULTIAP
-static int wps1905ProcessUnsolicited(i5_socket_type *psock, WPS_1905_MESSAGE *pMsg);
-#endif /* MULTIAP */
-
-#ifndef MULTIAP
 /*
  * ===  FUNCTION  ======================================================================
  *         Name:  wps1905ControlSocketReady
@@ -166,543 +177,6 @@ static int wps1905ProcessUnsolicited(i5_socket_type *psock, WPS_1905_MESSAGE *pM
 static int wps1905ControlSocketReady( void )
 {
     return (i5_config.wl_control_socket.ptmr ? 0 : 1);
-}
-#endif /* MULTIAP */
-
-/*
- * ===  FUNCTION  ======================================================================
- *         Name:  wps1905InitMessage
- *  Description:  Init a WPS_1905_Message structure with data of len appended
- *   return:  WPS_1905_MESSAGE structure or NULL
- * =====================================================================================
- */
-static WPS_1905_MESSAGE *wps1905InitMessage(char const *ifname,WPS_1905_CTL_CMD cmd,int len)
-{
-    WPS_1905_MESSAGE * pmsg=(WPS_1905_MESSAGE *)malloc(len+sizeof(WPS_1905_MESSAGE));
-    if(pmsg)
-    {
-        if ( ifname )
-        {
-            strncpy(pmsg->ifName, ifname, I5_MAX_IFNAME-1);
-            pmsg->ifName[I5_MAX_IFNAME-1] = '\0';
-        }
-        else
-        {
-            pmsg->ifName[0] = '\0';
-        }
-        pmsg->cmd=cmd;
-        pmsg->len=len;
-    }
-    return pmsg;
-}
-
-static int wps1905SendMsg( i5_socket_type *psock, WPS_1905_MESSAGE *pMsg )
-{
-    struct sockaddr_in sockAddr;
-    int                sendLen;
-    int                uiLen;
-
-    /* kernel address */
-    memset(&sockAddr, 0, sizeof(sockAddr));
-    sockAddr.sin_family      = AF_INET;
-    sockAddr.sin_addr.s_addr = inet_addr(WPS_1905_ADDR);
-    sockAddr.sin_port        = htons(WPS_1905_PORT);
-
-    uiLen   = pMsg->len+sizeof(WPS_1905_MESSAGE);
-    sendLen = sendto(psock->sd, pMsg, uiLen, 0, (struct sockaddr *)&sockAddr, sizeof(sockAddr));
-    if (uiLen != sendLen)
-    {
-        printf("%s: sendto failed", __FUNCTION__);
-        return -1;
-    }
-
-    return 0;
-}
-
-#ifndef MULTIAP
-
-/* ===  FUNCTION  ======================================================================
-*         Name:  wps1905Register
-*  Description:  register with the wps monitor. Retry interval is
-*                WPS_1905_RECEIVE_TIMEOUT_MS
-*       return:
-* =====================================================================================
-*/
-static void wps1905Register( void *arg )
-{
-    WPS_1905_MESSAGE   *pMsg;
-    controlSockStruct  *pctrlsock = (controlSockStruct*)arg;
-    struct sockaddr_in  sockAddr;
-    socklen_t           addrLen = sizeof(sockAddr);
-
-    i5TimerFree(pctrlsock->ptmr);
-    pctrlsock->ptmr = NULL;
-
-    memset(&sockAddr, 0, sizeof(sockAddr));
-    if ( getsockname(pctrlsock->psock->sd, (struct sockaddr *)&sockAddr, &addrLen) < 0)
-    {
-        i5TraceError("getsockname failed\n");
-    }
-    else
-    {
-        unsigned short portNo = ntohs(sockAddr.sin_port);
-        i5Trace("Registering UDP port %d with WPS\n", portNo);
-        pMsg = wps1905InitMessage(NULL, WPS_1905_CTL_CLIENT_REGISTER, sizeof(unsigned short));
-        if(pMsg!=NULL)
-        {
-            memcpy(WPS1905MSG_DATAPTR(pMsg),&portNo, sizeof(unsigned short));
-            wps1905SendMsg(pctrlsock->psock, pMsg);
-            free(pMsg);
-        }
-    }
-
-    pctrlsock->ptmr = i5TimerNew(WPS_1905_RECEIVE_TIMEOUT_MS, wps1905Register, pctrlsock);
-}
-
-static WPS_1905_MESSAGE *wps1905ReceiveMsg(i5_socket_type *psock, unsigned char *pBuf, unsigned int maxLen)
-{
-    int                  recvlen;
-    struct sockaddr      src;
-    unsigned int         addrlen = sizeof(struct sockaddr);
-
-    recvlen = recvfrom(psock->sd, pBuf, maxLen, 0, &src, &addrlen);
-    if (recvlen < 0)
-    {
-        i5TraceInfo("wps1905ReceiveMsg: receive error (errno=%d, %s)\n", errno, strerror(errno));
-        /* likely error is a timeout - try to register with kernel again */
-        if ( i5_config.wl_control_socket.ptmr != NULL ) {
-          i5TimerFree(i5_config.wl_control_socket.ptmr);
-        }
-        i5_config.wl_control_socket.ptmr = i5TimerNew(0, wps1905Register, &i5_config.wl_control_socket);
-        return NULL;
-    }
-    else if (recvlen < sizeof(WPS_1905_MESSAGE))
-    {
-        printf("wps1905ReceiveMsg: invalid receive length\n");
-        return NULL;
-    }
-    return (WPS_1905_MESSAGE *)pBuf;
-}
-
-static int wps1905ProcessUnsolicited(i5_socket_type *psock, WPS_1905_MESSAGE *pMsg)
-{
-    int messageProcessed = 0;
-
-    switch ( pMsg->cmd ) {
-        case WPS_1905_CTL_CLIENT_REGISTER:
-        {
-            i5_dm_device_type *pdevice;
-
-            if ( i5_config.wl_control_socket.ptmr ) {
-              i5TimerFree(i5_config.wl_control_socket.ptmr);
-              i5_config.wl_control_socket.ptmr = NULL;
-            }
-
-            i5Trace("WPS_1905_CTL_CLIENT_REGISTER received\n");
-
-            pdevice = i5DmGetSelfDevice();
-            if ( pdevice != NULL )
-            {
-                i5_dm_interface_type *pinterface = pdevice->interface_list.ll.next;
-                while (pinterface != NULL)
-                {
-                    if ( i5DmIsInterfaceWireless(pinterface->MediaType) )
-                    {
-                        i5Trace("wlparent %s, Renew %d, registrar %d, wsc %d, change %d, mediaType %x\n",
-                               pinterface->wlParentName, pinterface->isRenewPending, I5_IS_REGISTRAR(i5_config.flags),
-                               pinterface->confStatus, pinterface->credChanged, pinterface->MediaType);
-
-                        if ( (1 == pinterface->isRenewPending) &&
-                             (WPS_1905_CONF_NOCHANGE_CONFIGURED == pinterface->confStatus) &&
-                             I5_IS_REGISTRAR(i5_config.flags) &&
-                             (1 == pinterface->credChanged) )
-                        {
-                            unsigned int freqBand = i5TlvGetFreqBandFromMediaType(pinterface->MediaType);
-                            i5Trace("sending AP renew - band %d\n", freqBand);
-                            i5MessageApAutoconfigurationRenewSend(NULL, NULL, freqBand);
-                        }
-                        pinterface->isRenewPending = 0;
-                    }
-                    pinterface = pinterface->ll.next;
-                }
-            }
-
-            /* check to see if any interfaces need configuration */
-            i5WlcfgApAutoconfigurationStart( NULL );
-            messageProcessed = 1;
-            break;
-        }
-
-        case WPS_1905_NOTIFY_CLIENT_RESTART:
-        {
-            WPS_1905_NOTIFY_MESSAGE *msg=(WPS_1905_NOTIFY_MESSAGE *)(pMsg+1);
-            i5_dm_device_type *pdevice;
-            i5_dm_interface_type *pinterface;
-
-            i5Trace("WPS_1905_NOTIFY_CLIENT_RESTART received\n");
-
-            pdevice = i5DmGetSelfDevice();
-            if ( pdevice != NULL )
-            {
-                pinterface = pdevice->interface_list.ll.next;
-                while (pinterface != NULL)
-                {
-                    if ( i5DmIsInterfaceWireless(pinterface->MediaType) &&
-                         (0 == strcmp(msg->ifName, pinterface->wlParentName)) )
-                    {
-                        pinterface->isRenewPending = 1;
-                        pinterface->credChanged    = msg->credentialChanged;
-                        pinterface->confStatus     = msg->confStatus;
-                        if ( i5_config.wl_control_socket.ptmr != NULL ) {
-                            i5TimerFree(i5_config.wl_control_socket.ptmr);
-                        }
-
-                        i5_config.wl_control_socket.ptmr = i5TimerNew(WPS_1905_RESTART_TIMEOUT_MS, wps1905Register, &i5_config.wl_control_socket);
-                    }
-                    pinterface = pinterface->ll.next;
-                }
-            }
-            messageProcessed = 1;
-            break;
-        }
-
-        default:
-            break;
-    }
-    return messageProcessed;
-}
-#endif /* MULTIAP */
-
-static void wps1905ProcessSocket(i5_socket_type *psock)
-{
-    /* No need to process for MULTIAP as we are not using WPS. The WPS socket is only used for
-     * Push button request. Which doesnt send any reply back
-     */
-#ifndef MULTIAP
-    unsigned char     buffer[WPS_1905_SOCKET_MAX_RECV_BUFFER_SIZE];
-    WPS_1905_MESSAGE *pMsg=NULL;
-    int               ret;
-
-    memset(buffer, 0, WPS_1905_SOCKET_MAX_RECV_BUFFER_SIZE);
-    pMsg = wps1905ReceiveMsg(psock, buffer, WPS_1905_SOCKET_MAX_RECV_BUFFER_SIZE );
-
-    if (pMsg == NULL) {
-        i5TraceInfo("wps1905ReceiveMsg returned NULL\n");
-        return;
-    }
-
-    ret  = wps1905ProcessUnsolicited(psock, pMsg);
-    if ( 0 == ret )
-    {
-        i5TraceInfo("Unexpected unsolicited wl message received: cmd %d\n", (int)pMsg->cmd);
-    }
-    else
-    {
-        i5TraceInfo("Message cmd %d, len %d, status %d\n", (int)pMsg->cmd, (int)pMsg->len, (int)pMsg->status);
-    }
-#endif /* MULTIAP */
-}
-
-#ifndef MULTIAP
-static WPS_1905_MESSAGE *wps1905GetResponse(i5_socket_type *psock, int cmdExpected, unsigned char *pBuf, int maxLen)
-{
-    WPS_1905_MESSAGE *pMsg=NULL;
-    int               ret;
-    struct timespec   ts;
-    struct timeval    end_tv;
-    struct timeval    now_tv;
-
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    end_tv.tv_sec  = ts.tv_sec + (WPS_1905_RECEIVE_TIMEOUT_MS / 1000);
-    end_tv.tv_usec = ts.tv_nsec/1000 + ((WPS_1905_RECEIVE_TIMEOUT_MS % 1000) * 1000);
-
-    while ( 1 )
-    {
-        pMsg = wps1905ReceiveMsg(psock, pBuf, maxLen );
-        if ( NULL == pMsg )
-        {
-            return NULL;
-        }
-        ret  = wps1905ProcessUnsolicited(psock, pMsg);
-        if ( 0 == ret )
-        {
-            if ( (cmdExpected == pMsg->cmd) ||
-                    ((cmdExpected == WPS_1905_CTL_WSCPROCESS) && (WPS_1905_CTL_GETM2 == pMsg->cmd)) ||
-                    ((cmdExpected == WPS_1905_CTL_WSCPROCESS) && (WPS_1905_CTL_CONFIGUREAP == pMsg->cmd)) )
-            {
-                break;
-            }
-            else
-            {
-                i5Trace("Unexpected wl message received: cmd %d, exp %d\n", (int)pMsg->cmd, cmdExpected);
-            }
-        }
-
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        now_tv.tv_sec  = ts.tv_sec;
-        now_tv.tv_usec = ts.tv_nsec/1000;
-        if (timercmp(&end_tv, &now_tv, <))
-        {
-            i5TraceInfo("Timeout waiting for response\n");
-            if ( i5_config.wl_control_socket.ptmr != NULL ) {
-              i5TimerFree(i5_config.wl_control_socket.ptmr);
-            }
-
-            i5_config.wl_control_socket.ptmr = i5TimerNew(WPS_1905_RECEIVE_TIMEOUT_MS, wps1905Register, &i5_config.wl_control_socket);
-            return NULL;
-        }
-    }
-
-    i5Trace("Message cmd %d, len %d, status %d\n", (int)pMsg->cmd, (int)pMsg->len, (int)pMsg->status);
-    return pMsg;
-}
-
-/*
- * ===  FUNCTION  ======================================================================
- *         Name:  wps1905SendRequest
- *  Description:  Send specific request to WPS daemon with content.
- *   Parameters:  ifname- wirelss interface name
- *         cmd-   command of request
- *         rmsg-   content of the requst
- *         len-   the length of content.
- * =====================================================================================
- */
-static int wps1905SendRequest(i5_socket_type *psock,char const *ifname,WPS_1905_CTL_CMD cmd, unsigned char *rmsg,unsigned int len)
-{
-    WPS_1905_MESSAGE *pMsg=NULL;
-
-    i5Trace("sending request - cmd %d\n", cmd);
-
-    /* if command has no message, can use NULL as rmsg,len is ignored then */
-    if(wps1905ControlSocketReady())
-    {
-        if(rmsg==NULL)
-            pMsg=wps1905InitMessage(ifname,cmd,0);
-        else
-        {
-            pMsg=wps1905InitMessage(ifname,cmd,len);
-            if(pMsg!=NULL)
-            {
-                memcpy(WPS1905MSG_DATAPTR(pMsg),rmsg,len);
-            }
-            else
-            {
-                return -1;
-            }
-        }
-        wps1905SendMsg(psock, pMsg);
-        free(pMsg);
-    }
-    else
-    {
-        return -1;
-    }
-    return 0;
-}
-
-/*
- * ===  FUNCTION  ======================================================================
- *         Name:  wps1905Commander
- *  Description:  sending WPS request and expect matching repsonse.
- *   Parameters:  ifname- wireles interface name
- *         cmd-   command of request
- *         msg-   content of the requst
- *         len-   the length of content.
- *         respmsg- the response content
- *         len-   the length of the return content
- *       return:  return command execution status
- * =====================================================================================
- */
-static int wps1905Commander(char const *ifname,WPS_1905_CTL_CMD cmd,unsigned char *msg, int len,unsigned char **respmsg,int *rlen)
-{
-    WPS_1905_MESSAGE *pRespMsg=NULL;
-    int status=-1;
-
-    *rlen = 0;
-    if ( 0 == wps1905ControlSocketReady() )
-    {
-        return status;
-    }
-
-    if(0 == wps1905SendRequest(i5_config.wl_control_socket.psock, ifname, cmd, msg, len))
-    {
-        unsigned char  buffer[WPS_1905_SOCKET_MAX_RECV_BUFFER_SIZE];
-
-        memset(buffer, 0, WPS_1905_SOCKET_MAX_RECV_BUFFER_SIZE);
-        pRespMsg = wps1905GetResponse(i5_config.wl_control_socket.psock, cmd, buffer, WPS_1905_SOCKET_MAX_RECV_BUFFER_SIZE);
-        if ( NULL == pRespMsg )
-        {
-            return status;
-        }
-        if ( pRespMsg->len > 0 )
-        {
-            unsigned char *retmsg=malloc(pRespMsg->len);
-            if (retmsg)
-            {
-                memcpy(retmsg,(void *)(pRespMsg+1),pRespMsg->len);
-                *respmsg=retmsg;
-                *rlen=pRespMsg->len;
-            }
-        }
-        status = pRespMsg->status;
-    }
-    else
-    {
-        printf("%s: %d  error sending message to WPS \n",__FUNCTION__,__LINE__ );
-    }
-    return status;
-}
-
-/*-----------------------------------------------------------------------------
- *
- *  The following functions are Wireless Autoconfiguraiton APIs which should be
- *  called in 1905 process. For Unit testing, i5ctl commands are developed to
- *  use these functions for verification
- *-----------------------------------------------------------------------------*/
-/*
- * ===  FUNCTION  ======================================================================
- *         Name:  wps1905WlInstance
- *  Description:  get numbers of wirelesss interfaces on board
- *       return:  <0 error, likely WPS is not running or did not get response from WPS in 10 seconds
- *           >=0 number of wireless interfaces.
- * =====================================================================================
- */
-static int wps1905WlInstance()
-{
-    unsigned char* retmsg=NULL;
-    int length=0;
-
-    int status=wps1905Commander(NULL,WPS_1905_CTL_WLINSTANCE,NULL,0,&retmsg,&length);
-    if(retmsg)
-        free(retmsg);
-    return status;
-}
-
-/*
- * ===  FUNCTION  ======================================================================
- *         Name:  wps1905WscStatus
- *  Description:  tell what is current WSC s/atus
- *       return:  <0 error, likely WPS is not running or did not get response from WPS in 10 seconds
- *           WPS_1905_WSCAP_CONFIGURED: WPS enabled, WSC AP is configured by either M2
- *                      manually set.
- *           WPS_1905_WSCAP_UNCONFIGURED: WPS enabled, WSC AP is not configured.
- *           WPS_1905_WSCAP_SESSIONONGOING: There is WPS session is on going
- * =====================================================================================
- */
-static int wps1905WscStatus( )
-{
-    unsigned char* retmsg=NULL;
-    int length=0;
-    int status=wps1905Commander(NULL,WPS_1905_CTL_WSCSTATUS,NULL,0,&retmsg,&length);
-    if(retmsg)
-        free(retmsg);
-    return status;
-}
-
-/*
- * ===  FUNCTION  ======================================================================
- *         Name:  wps1905WscEnabled
- *  Description:  check if WSC is enabled for the given inteface
- *       return:  <0 error, likely WPS is not running or time out occurred
- *           WPS_1905_WSCAP_ENABLED
- *           WPS_1905_WSCAP_DISABLED
- * =====================================================================================
- */
-static int wps1905WscEnabled(char const *ifname)
-{
-    unsigned char* retmsg=NULL;
-    int length=0;
-    int status=wps1905Commander(ifname,WPS_1905_CTL_WSCENABLED,NULL,0,&retmsg,&length);
-    if(retmsg)
-        free(retmsg);
-    return status;
-}
-
-/* ===  FUNCTION  ======================================================================
-*         Name:  wps1905StopApAutoConf
-*  Description:  action to stop AP autoconfiguration
-*       return:  <0 error, likely WPS is not running or did not get response from WPS in 10 seconds
-*           1: successful
-*           0: failure
-* =====================================================================================
-*/
-static int wps1905StopApAutoConf( )
-{
-    unsigned char* retmsg=NULL;
-    int length=0;
-
-    int status=wps1905Commander(NULL,WPS_1905_CTL_WSCCANCEL,NULL,0,&retmsg,&length);
-    if(retmsg)
-        free(retmsg);
-    return status;
-}
-
-/*
- * ===  FUNCTION  ======================================================================
- *         Name:  wps1905GetMessageInfo
- *  Description:  This function is used to get the message type of a received WSC message
- *   Parameters:
- *         msg-    incoming 1905 WSC message
- *         len-    incoming message length
- *
- *       return:  error or message type
-
- * =====================================================================================
- */
-static int wps1905GetMessageInfo(unsigned char *msg, unsigned int len, int *pmtype, int *prfband)
-{
-    WPS_1905_M_MESSAGE_INFO *pminfo=NULL;
-    int length=0;
-
-    int status=wps1905Commander(NULL, WPS_1905_CTL_GETMINFO, msg, len, (unsigned char **)&pminfo, &length);
-
-    if ( (pminfo == NULL ) || (length != sizeof(WPS_1905_M_MESSAGE_INFO)) || (status != 0) )
-    {
-        return -1;
-    }
-
-    *pmtype  = pminfo->mtype;
-    *prfband = pminfo->rfband;
-    free(pminfo);
-    return 0;
-}
-
-/*
- * ===  FUNCTION  ======================================================================
- *         Name:  wps1905WscProcess
- *  Description:  This function is used to handle all 1905 WSC messages,now we expect
- *        this message to be either M1 or M2 message,in standard, it is not clear
- *        it is in EAP format or not, but for now,we will handle only bare M1/M2
- *        message without EAP header(which is generated from other APIs).We can
- *        change it later with clarification for this.
- *   Parameters:  ifname-   wireless interface name
- *         msg-    incoming 1905 WSC message
- *         len-    incoming message length
- *         retmsg-  pointer to a possible returned message [remember to release
- *             if it is not NULL in your caller]
- *         length-   returned message length
- *
- *       return:  <0 error, likely WPS is not running or did not get response from WPS in 10 seconds
- *         For M2 mesage:
- *           WPS_1905_M2SET_DONE:    Successfully set AP.
- *           WPS_1905_M2SET_NOMATCHING:  M2 information does not match to M1
- *           WPS_1905_M2SET_NOSESSION:   There is no session to use this M2 information
- *           WPS_1905_M2SET_NOAUTHENTICATOR:  M2 message does not have Authentication info
- *
- *           For M1 Message:
- *             WPS_1905_M1HANDLE_M2DATA:   successful get M2 information
- *           WPS_1905_M1HANDLE_NOTREGISRAR : CPE can not act as Registrar.
- *
- *           For UNKNOW Message:
- *             1)WPS_1905_UNKNOWNWSCMESSAGE.
- *
- *         other: error happen in WPS.
- * =====================================================================================
- */
-static int wps1905WscProcess(char const *ifname,int cmd,unsigned char *msg,unsigned int len,unsigned char **retmsg, int *length)
-{
-    int status=wps1905Commander(ifname,cmd,msg,len,retmsg,length);
-    return status;
 }
 #endif /* MULTIAP */
 
@@ -1284,10 +758,12 @@ int i5WlCfgProcessAPAutoConfigSearch(i5_message_type *pmsg, unsigned int freqban
           i5Trace("Bakchaul interface %s ["I5_MAC_DELIM_FMT"] is wireless."
             "Enable Backhaul STA roaming\n", pdmif->ifname, I5_MAC_PRM(pdmif->InterfaceId));
           i5_config.cbs.set_bh_sta_params(IEEE1905_BH_STA_ROAM_ENAB_VAP_FOLLOW, pdmif);
+          nvram_set(I5_WLCFG_NVRAM_AGENT_ACTIVE_BH_TYPE, "wireless");
         } else {
           i5Trace("Bakchaul interface %s ["I5_MAC_DELIM_FMT"] is not wireless."
           "Disable Backhaul STA roaming\n", pdmif->ifname, I5_MAC_PRM(pdmif->InterfaceId));
           i5_config.cbs.set_bh_sta_params(IEEE1905_BH_STA_ROAM_DISB_VAP_UP, NULL);
+          nvram_set(I5_WLCFG_NVRAM_AGENT_ACTIVE_BH_TYPE, "wire");
         }
       }
     }
@@ -1341,7 +817,8 @@ void i5WlCfgMultiApWSCTimeout(void *arg)
 
 /* Generate all M2 from BSS info table based on the radio capability supported */
 static int i5WlCfgGenerateAllM2s(unsigned char *almac, ieee1905_radio_caps_type *RadioCaps,
-  unsigned int wcs_band, unsigned char *m1, int m1_len, int *if_band, unsigned char *ifrMapFlags)
+  unsigned int wcs_band, unsigned char *m1, int m1_len, int *if_band, unsigned char *ifrMapFlags,
+  i5_dm_device_type *pdevice)
 {
   dll_t *item_p, *next_p;
   ieee1905_client_bssinfo_type *list;
@@ -1396,6 +873,10 @@ static int i5WlCfgGenerateAllM2s(unsigned char *almac, ieee1905_radio_caps_type 
     if (!(band_in_use & list->band_flag)) {
       continue;
     }
+    /* Configure 'RootAP only' bss, only on controller agent */
+    if (I5_IS_BSS_ROOTAP_ONLY(list->map_flag) && !I5_IS_CTRLAGENT(pdevice->flags)) {
+      continue;
+    }
 
     /* If the MAX BSS supported exceeds stop it */
     if (i5_config.m2_count >= RadioCaps->maxBSSSupported) {
@@ -1405,17 +886,15 @@ static int i5WlCfgGenerateAllM2s(unsigned char *almac, ieee1905_radio_caps_type 
     if (memcmp(list->ALID, tmpALMac, sizeof(list->ALID)) == 0) {
 
       i5Trace("M2 For ALID["I5_MAC_DELIM_FMT"] band_flag[0x%x] ssid_len[%d] ssid[%s] auth[0x%x] "
-        "encr[0x%x] pwd_len[%d] Password[%s] bkhaul[%d] frnthaul[%d]\n",
+        "encr[0x%x] pwd_len[%d] Password[%s] map_flag[0x%x]\n",
         I5_MAC_PRM(list->ALID), list->band_flag, list->ssid.SSID_len,
         list->ssid.SSID, list->AuthType, list->EncryptType,
-        list->NetworkKey.key_len, list->NetworkKey.key, list->BackHaulBSS, list->FrontHaulBSS);
+        list->NetworkKey.key_len, list->NetworkKey.key, list->map_flag);
       found = 1;
       if (Wlcfg_proto_create_m2(wcs_band, m1, m1_len, list, &m2, &m2_len) == 1) {
         i5DmM2New(m2, m2_len);
-        (*ifrMapFlags) |= (list->BackHaulBSS ? IEEE1905_MAP_FLAG_BACKHAUL : 0);
-        (*ifrMapFlags) |= (list->FrontHaulBSS ? IEEE1905_MAP_FLAG_FRONTHAUL : 0);
-        (*ifrMapFlags) |= (list->Guest ? IEEE1905_MAP_FLAG_GUEST : 0);
-        i5Trace("band[%d] M2 Created Total[%d] ifrMapFlags[%x]\n", list->band_flag,
+        *ifrMapFlags |= list->map_flag;
+        i5Trace("band[%d] M2 Created Total[%d] ifrMapFlags[0x%x]\n", list->band_flag,
           i5_config.m2_count, *ifrMapFlags);
       }
     }
@@ -1468,7 +947,7 @@ int i5WlCfgProcessAPAutoConfigWSCM1(i5_message_type *pmsg, i5_dm_device_type *pd
   i5DmM2ListFree();
 
   if (i5WlCfgGenerateAllM2s(i5MessageSrcMacAddressGet(pmsg), RadioCaps,
-    wscDetails.rf_band, pWscData, wscDataLen, &if_band, &ifrMapFlags) > 0) {
+    wscDetails.rf_band, pWscData, wscDataLen, &if_band, &ifrMapFlags, pdevice) > 0) {
     i5Trace("Total M2s[%d] For ["I5_MAC_DELIM_FMT"] ifrMapFlags[%x]\n", i5_config.m2_count,
       I5_MAC_PRM(radioMac), ifrMapFlags);
     i5MessageApAutoconfigurationWscM2Send(pmsg->psock, i5MessageSrcMacAddressGet(pmsg), radioMac);
@@ -1492,7 +971,7 @@ int i5WlCfgProcessAPAutoConfigWSCM1(i5_message_type *pmsg, i5_dm_device_type *pd
 
 /* Process the Ap autoconfiguration WSC M2 message */
 int i5WlCfgProcessAPAutoConfigWSCM2(i5_message_type *pmsg, unsigned char *radioMac,
-  ieee1905_vendor_data *msg_data, unsigned char ts_policy_flag)
+  unsigned char ts_policy_flag)
 {
   i5_wsc_m2_type *m2s;
   ieee1905_client_bssinfo_type *bssinfo;
@@ -1570,8 +1049,7 @@ int i5WlCfgProcessAPAutoConfigWSCM2(i5_message_type *pmsg, unsigned char *radioM
       goto end;
     }
 
-    i5TraceInfo("vendor msg: %s len: %d ssid len: %d ssid: %s \n", msg_data->vendorSpec_msg,
-      msg_data->vendorSpec_len, bssinfo->ssid.SSID_len, bssinfo->ssid.SSID);
+    i5TraceInfo("ssid len: %d ssid: %s \n", bssinfo->ssid.SSID_len, bssinfo->ssid.SSID);
 
 #if defined(MULTIAPR2)
     /* If the traffic separation policy has SSID whose VLAN ID is not primary label it as Guest */
@@ -1580,29 +1058,7 @@ int i5WlCfgProcessAPAutoConfigWSCM2(i5_message_type *pmsg, unsigned char *radioM
     i5TraceInfo("SSID[%s] VLAN ID[%d] Primary VLAN ID[%d]. SSID %s\n", bssinfo->ssid.SSID,
       vlan_id, i5_config.policyConfig.prim_vlan_id, ssid_type ? "Present" : "Not Present");
     if (ssid_type && vlan_id != i5_config.policyConfig.prim_vlan_id) {
-      bssinfo->Guest = 1;
-    }
-
-#else /* MULTIAPR2 */
-
-    if (msg_data->vendorSpec_msg && bssinfo->ssid.SSID) {
-      int i, count, ssid_len;
-      unsigned char *pbuf = msg_data->vendorSpec_msg;
-
-      count = *pbuf++;
-      for (i = 0; i < count; i++) {
-        ssid_len = *pbuf++;
-
-        if (ssid_len != bssinfo->ssid.SSID_len) {
-          pbuf += ssid_len;
-          continue;
-        }
-        if (memcmp(pbuf, bssinfo->ssid.SSID, ssid_len) == 0 ) {
-          i5Trace("Guest bss found\n");
-          bssinfo->Guest = 1;
-        }
-        pbuf += ssid_len;
-      }
+      bssinfo->map_flag |= IEEE1905_MAP_FLAG_GUEST;
     }
 #endif /* MULTIAPR2 */
 
@@ -1961,6 +1417,9 @@ void i5WlCfgMultiApControllerSearch(void *arg)
 
     /* make it as cotroller not found */
     i5_config.flags &= ~I5_CONFIG_FLAG_CONTROLLER_FOUND;
+
+    /* reset active backhaul type */
+    nvram_set(I5_WLCFG_NVRAM_AGENT_ACTIVE_BH_TYPE, "unknown");
 
     /* If the MAC is provided, change it to unconfigured */
     if (ifr_mac != NULL) {
@@ -2334,45 +1793,6 @@ int i5ctlWlcfgHandler(i5_socket_type *psock, t_I5_API_WLCFG_MSG *pMsg)
 
 void i5WlCfgInit( void )
 {
-    int                sd;
-    struct timeval     tv;
-
-    sd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if ( sd < 0 )
-    {
-        printf("i5WlCfgInit: failed to create udp socket\n");
-        return;
-    }
-
-    tv.tv_sec  = WPS_1905_RECEIVE_TIMEOUT_MS / 1000;
-    tv.tv_usec = (WPS_1905_RECEIVE_TIMEOUT_MS % 1000) * 1000;
-    if (setsockopt(sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval)) < 0)
-    {
-        printf("could not set receive timeout socket option: errno %d\n", errno);
-    }
-
-    i5_config.wl_control_socket.psock = i5SocketNew(sd, i5_socket_type_udp, wps1905ProcessSocket);
-    if ( NULL == i5_config.wl_control_socket.psock )
-    {
-        printf("i5WlCfgInit: failed to create i5_socket_type_udp\n");
-        close(sd);
-        return;
-    }
-
-    /* userspace address*/
-    i5_config.wl_control_socket.psock->u.sinl.sa.sin_family      = AF_INET;
-    i5_config.wl_control_socket.psock->u.sinl.sa.sin_addr.s_addr = htonl(INADDR_ANY);
-    if (bind(i5_config.wl_control_socket.psock->sd, (struct sockaddr *)&(i5_config.wl_control_socket.psock->u.sinl.sa), sizeof(struct sockaddr_in)) < 0)
-    {
-        printf("Failed to bind to udp receive socket: errno %d\n", errno);
-        i5SocketClose(i5_config.wl_control_socket.psock);
-        return;
-    }
-
-#ifndef MULTIAP
-    i5_config.wl_control_socket.ptmr = i5TimerNew(WPS_1905_RECEIVE_TIMEOUT_MS, wps1905Register, &i5_config.wl_control_socket);
-#endif /* MULTIAP */
-
 #if defined(DSLCPE_WLCSM_EXT)
     wlcsm_register_event_generic_hook(wlcsm_event_handler);
     wlcsm_set_trace(3);
@@ -2676,11 +2096,6 @@ int i5WlCfgIsInterfaceEnabled(char *ifname)
 void
 i5WlCfgHandleWPSPBC(char *rfband, int mode)
 {
-  WPS_1905_MESSAGE   *pMsg = NULL;
-  controlSockStruct  *pctrlsock = &i5_config.wl_control_socket;
-  struct sockaddr_in  sockAddr;
-  socklen_t           addrLen = sizeof(sockAddr);
-
   i5_dm_device_type *pdmdev;
   i5_dm_interface_type *pdmif = NULL, *pdmif_bh = NULL;
   i5_dm_bss_type *item, *pbss = NULL, *pbss_fh = NULL;
@@ -2774,41 +2189,19 @@ next:
 	    i5GlueWpsPbc(pbss_fh->ifname, pbss->ifname);
     }
 #endif	/* CONFIG_HOSTAPD */
-    nvram_set(I5_WLCFG_NVRAM_WPS_BH_BSS, pbss->ifname);
-    nvram_set(I5_WLCFG_NVRAM_WPS_FH_IFNAME, pbss_fh->ifname);
   } else {
 #ifdef CONFIG_HOSTAPD
       if (i5GlueIsHapdEnabled()) {
 	    i5GlueWpsPbc(pdmif->ifname, NULL);
       }
 #endif	/* CONFIG_HOSTAPD */
-      nvram_set(I5_WLCFG_NVRAM_WPS_FH_IFNAME, pdmif->ifname);
   }
 
 #ifdef CONFIG_HOSTAPD
-  if (i5GlueIsHapdEnabled()) {
-     // do nothing
-     return;
+  if (!i5GlueIsHapdEnabled()) {
+     i5TraceDirPrint("Hostapd is not enabled\n");
   }
 #endif	/* CONFIG_HOSTAPD */
-
-  memset(&sockAddr, 0, sizeof(sockAddr));
-  if ( getsockname(pctrlsock->psock->sd, (struct sockaddr *)&sockAddr, &addrLen) < 0)
-  {
-    i5TraceDirPrint("getsockname failed\n");
-  }
-  else
-  {
-    unsigned short portNo = ntohs(sockAddr.sin_port);
-    i5Trace("Registering UDP port %d with WPS\n", portNo);
-    pMsg = wps1905InitMessage(pdmif->ifname, WPS_1905_CTL_PBC, sizeof(unsigned short));
-    if(pMsg!=NULL)
-    {
-      memcpy(WPS1905MSG_DATAPTR(pMsg),&portNo, sizeof(unsigned short));
-      wps1905SendMsg(pctrlsock->psock, pMsg);
-      free(pMsg);
-    }
-  }
 }
 
 static int
@@ -3131,6 +2524,43 @@ wlcfg_derivekey(unsigned char *KDK,  unsigned char *prsnlString,
         i5TraceInfo("End Deriving a key of %d bits\n", digest_len/8);
 }
 
+/* Insert broadcom vendor extension subelement in M1 */
+static int
+wlcfg_wps_insert_brcm_vndr_ext_m1_attr_elem(unsigned char *buf, int bufIdx)
+{
+   unsigned short aux16;
+   int len = 0, len_idx;
+
+   /* Vendor Extension */
+   aux16 = WPS_ID_VENDOR_EXT;
+   *((unsigned short *)&buf[bufIdx + len]) = htons(aux16);
+   len += 2;
+
+   /* Save the index to store length in the end */
+   len_idx = (bufIdx + len);
+   len += 2;
+
+   memcpy(&buf[bufIdx + len], WLCFG_WPS_MAP_BCM_VENDOR_EXT_ID, SIZE_3_BYTES);
+   len += SIZE_3_BYTES;
+
+   /* Vendor attribute version flags */
+   buf[bufIdx + len] = WLCFG_WPS_VER_SUBID_BCM_VENDOR_EXT_ATTR;
+   len++;
+   buf[bufIdx + len] = SIZE_2_BYTES;
+   len++;
+
+   aux16 = 0;
+   aux16 |= WLCFG_VNDR_VERSION_FLAGS_OUI_PARSE_IN_M2;
+   *((unsigned short *)&buf[bufIdx + len]) = htons(aux16);
+   len += 2;
+
+   /* Add the length field here */
+   aux16 = (unsigned short)(len - 4); /* Exclude header of 2 bytes id and 2 bytes of length */
+   *((unsigned short *)&buf[len_idx]) = htons(aux16);
+
+   return len;
+}
+
 int
 Wlcfg_proto_create_m1(unsigned char band, unsigned char **m1, int *m1_size, i5_wps_wscKey **m1_keys)
 {
@@ -3283,6 +2713,9 @@ Wlcfg_proto_create_m1(unsigned char band, unsigned char **m1, int *m1_size, i5_w
    buf[len] = 0x20;     /* WPS Version - 2 */
    len++;
 
+   /* Add broadcom vendor specific attribute */
+   len += wlcfg_wps_insert_brcm_vndr_ext_m1_attr_elem(buf, len);
+
    *m1 = (unsigned char*)malloc(len);
    if (!(*m1)) {
     i5TraceDirPrint("malloc error\n");
@@ -3317,12 +2750,36 @@ end:
    return ret;
 }
 
-/* Insert vendor extension subelement */
-static int
-wlcfg_wps_insert_vndr_ext_elem(unsigned char *buf, int bufIdx, ieee1905_client_bssinfo_type *bssinfo)
+/* Get the MAP attribute from client BSS info for M2 message */
+static unsigned char
+wlcfg_get_map_attr(ieee1905_client_bssinfo_type *bssinfo)
 {
-   unsigned char aux8;
-   unsigned short aux16;
+  unsigned char aux8 = 0;
+
+  if (I5_IS_BSS_FRONTHAUL(bssinfo->map_flag))
+    aux8 |= IEEE1905_FRONTHAUL_BSS;
+
+  if (I5_IS_BSS_BACKHAUL(bssinfo->map_flag))
+    aux8 |= IEEE1905_BACKHAUL_BSS;
+
+  if (bssinfo->TearDown)
+    aux8 |= IEEE1905_TEAR_DOWN;
+
+  if (I5_IS_BSS_PROF1_DISALLOWED(bssinfo->map_flag))
+    aux8 |= IEEE1905_PROFILE1_BHSTA_DIS;
+
+  if (I5_IS_BSS_PROF2_DISALLOWED(bssinfo->map_flag))
+    aux8 |= IEEE1905_PROFILE2_BHSTA_DIS;
+
+  return aux8;
+}
+
+/* Insert vendor extension MAP attribute subelement */
+static int
+wlcfg_wps_insert_vndr_ext_map_attr_elem(unsigned char *buf, int bufIdx,
+  ieee1905_client_bssinfo_type *bssinfo)
+{
+   unsigned short aux16, len_idx;
    int len = 0;
 
    /* Vendor Extension */
@@ -3330,8 +2787,8 @@ wlcfg_wps_insert_vndr_ext_elem(unsigned char *buf, int bufIdx, ieee1905_client_b
    *((unsigned short *)&buf[bufIdx + len]) = htons(aux16);
    len += 2;
 
-   aux16 = 9;
-   *((unsigned short *)&buf[bufIdx + len]) = htons(aux16);
+   /* Save the index to store length in the end */
+   len_idx = (bufIdx + len);
    len += 2;
 
    memcpy(&buf[bufIdx + len], WFA_VENDOR_EXT_ID, SIZE_3_BYTES);
@@ -3350,27 +2807,97 @@ wlcfg_wps_insert_vndr_ext_elem(unsigned char *buf, int bufIdx, ieee1905_client_b
    buf[bufIdx + len] = SIZE_1_BYTE;
    len++;
 
+   buf[bufIdx + len] = wlcfg_get_map_attr(bssinfo);
+   len++;
+
+   /* Add the length field here */
+   aux16 = (unsigned short)(len - 4); /* Exclude header of 2 bytes id and 2 bytes of length */
+   *((unsigned short *)&buf[len_idx]) = htons(aux16);
+
+   return len;
+}
+
+/* Insert broadcom vendor extension subelement */
+static int
+wlcfg_wps_insert_brcm_vndr_ext_map_attr_elem(unsigned char *buf, int bufIdx,
+  ieee1905_client_bssinfo_type *bssinfo)
+{
+   unsigned char aux8;
+   unsigned short aux16;
+   int len = 0, len_idx;
+
+   /* Vendor Extension */
+   aux16 = WPS_ID_VENDOR_EXT;
+   *((unsigned short *)&buf[bufIdx + len]) = htons(aux16);
+   len += 2;
+
+   /* Save the index to store length in the end */
+   len_idx = (bufIdx + len);
+   len += 2;
+
+   memcpy(&buf[bufIdx + len], WLCFG_WPS_MAP_BCM_VENDOR_EXT_ID, SIZE_3_BYTES);
+   len += SIZE_3_BYTES;
+
+   /* Multiap attributes */
+   buf[bufIdx + len] = WLCFG_WPS_MAP_SUBID_BCM_VENDOR_EXT_ATTR;
+   len++;
+   buf[bufIdx + len] = SIZE_1_BYTE;
+   len++;
+
    aux8 = 0;
 
-   if (bssinfo->FrontHaulBSS)
-      aux8 |= IEEE1905_FRONTHAUL_BSS;
+  if (I5_IS_BSS_GUEST(bssinfo->map_flag))
+      aux8 |= WLCFG_WPS_MAP_BSS_GUEST;
 
-   if (bssinfo->BackHaulBSS)
-      aux8 |= IEEE1905_BACKHAUL_BSS;
-
-   if (bssinfo->TearDown)
-      aux8 |= IEEE1905_TEAR_DOWN;
-
-  if (bssinfo->profile1_bhsta_disallowed)
-    aux8 |= IEEE1905_PROFILE1_BHSTA_DIS;
-
-  if (bssinfo->profile2_bhsta_disallowed)
-    aux8 |= IEEE1905_PROFILE2_BHSTA_DIS;
+   if (bssinfo->Closed)
+      aux8 |= WLCFG_WPS_MAP_BSS_CLOSED;
 
    buf[bufIdx + len] = aux8;
    len++;
 
+   /* Add the length field here */
+   aux16 = (unsigned short)(len - 4); /* Exclude header of 2 bytes id and 2 bytes of length */
+   *((unsigned short *)&buf[len_idx]) = htons(aux16);
+
    return len;
+}
+
+/* Parse broadcom specific vendor extension attribute subelement from M1 */
+static int
+Wlcfg_parse_m1_brcm_vndr_data(unsigned char *p, unsigned short vndr_data_len,
+		  wlcfg_m1_brcm_vndr_data *m1_vndr_data)
+{
+  bool present = FALSE;
+  int ret = -1;
+  unsigned char id, len;
+  unsigned char *q = p;
+
+  while ((q - p) < (vndr_data_len - 2)) {
+    id = *q;
+    q++;
+    len = *q;
+    q++;
+    if (id == WLCFG_WPS_VER_SUBID_BCM_VENDOR_EXT_ATTR) {
+      if (len < SIZE_2_BYTES) {
+        i5TraceDirPrint("Invalid length for M1 multiap broadcom vendor extension attr %d \n", len);
+        goto end;
+      }
+      m1_vndr_data->version_flags = ntohs(*((unsigned short *)q));
+      present = TRUE;
+      break;
+    }
+    q += len;
+  }
+
+  if (!present) {
+    i5TraceInfo("MultiAp extension M1 broadcom vendor attribute is not present\n");
+    goto end;
+  }
+  ret = 0;
+  i5TraceInfo("version is 0x%02x\n\n", m1_vndr_data->version_flags);
+
+end:
+  return ret;
 }
 
 int
@@ -3387,6 +2914,7 @@ Wlcfg_proto_create_m2(unsigned char band, unsigned char *m1, int m1_len,
   unsigned char oui[4] = {0x00, 0x50, 0xf2, 0x00};
   int m1_pubkey_len=0, len=0, num, ret = 0, os_version = 0x80000000;
   i5_wps_wscKey *keys = NULL;
+  wlcfg_m1_brcm_vndr_data m1_vndr_data;
 
   if (!bssinfo || !m1) {
     i5TraceDirPrint("Invalid data \n");
@@ -3395,6 +2923,7 @@ Wlcfg_proto_create_m2(unsigned char band, unsigned char *m1, int m1_len,
 
   m1_mac_present = m1_nonce_present = m1_pubkey_present = FALSE;
   p = m1;
+  memset(&m1_vndr_data, 0, sizeof(m1_vndr_data));
 
   while((p - m1) < m1_len) {
     unsigned short attr_type, attr_len;
@@ -3429,6 +2958,13 @@ Wlcfg_proto_create_m2(unsigned char band, unsigned char *m1, int m1_len,
       memcpy(m1_pubkey, p, attr_len);
       p += attr_len;
       m1_pubkey_present = TRUE;
+    } else if (attr_type == WPS_ID_VENDOR_EXT) {
+      unsigned char *q = p;
+
+      if (memcmp(q, WLCFG_WPS_MAP_BCM_VENDOR_EXT_ID, SIZE_3_BYTES) == 0) {
+        Wlcfg_parse_m1_brcm_vndr_data(q + 3, attr_len - 3, &m1_vndr_data);
+      }
+      p += attr_len;
     } else {
       p += attr_len;
     }
@@ -3616,7 +3152,12 @@ Wlcfg_proto_create_m2(unsigned char band, unsigned char *m1, int m1_len,
       settings_len, m1_mac);
 
     /* Vendor  Extension elements */
-    settings_len += wlcfg_wps_insert_vndr_ext_elem(settings, settings_len, bssinfo);
+    settings_len += wlcfg_wps_insert_vndr_ext_map_attr_elem(settings, settings_len, bssinfo);
+
+    /* If the sending device supports BRCM vendor OUI parse, send it */
+    if (m1_vndr_data.version_flags & WLCFG_VNDR_VERSION_FLAGS_OUI_PARSE_IN_M2) {
+      settings_len += wlcfg_wps_insert_brcm_vndr_ext_map_attr_elem(settings, settings_len, bssinfo);
+    }
 
     i5TraceInfo("AP Configuration settings \n");
     i5TraceInfo("SSID => %s\n", bssinfo->ssid.SSID);
@@ -3701,7 +3242,97 @@ end:
     m1_pubkey = NULL;
   }
 
-  return ret;
+   return ret;
+}
+
+/* Parse vendor extension MAP attribute subelement */
+static int
+Wlcfg_parse_map_ext_attribute(unsigned char *p, unsigned short vndr_data_len,
+		  ieee1905_client_bssinfo_type *bssinfo)
+{
+	bool present = FALSE;
+	int ret = -1;
+	unsigned char id, len, map_attr = 0;
+	unsigned char *q = p;
+
+	while ((q - p) < (vndr_data_len - 2)) {
+		id = *q;
+		q++;
+		len = *q;
+		q++;
+		if (id == WPS_WFA_SUBID_MAP_EXT_ATTR) {
+			if (len < SIZE_1_BYTE) {
+				i5TraceDirPrint("Invalid length for multiap extension attr %d \n", len);
+				goto end;
+			}
+			map_attr = *q;
+			present = TRUE;
+			break;
+		}
+		q += len;
+	}
+	if (!present) {
+		i5TraceDirPrint("MultiAp extension attribute is not present\n");
+		goto end;
+	}
+	if (map_attr & IEEE1905_BACKHAUL_BSS) {
+		bssinfo->map_flag |= IEEE1905_MAP_FLAG_BACKHAUL;
+	}
+	if (map_attr & IEEE1905_FRONTHAUL_BSS) {
+		bssinfo->map_flag |= IEEE1905_MAP_FLAG_FRONTHAUL;
+	}
+	bssinfo->TearDown = (unsigned char)(map_attr & IEEE1905_TEAR_DOWN ? 1 : 0);
+	if (map_attr & IEEE1905_PROFILE1_BHSTA_DIS) {
+		bssinfo->map_flag |= IEEE1905_MAP_FLAG_PROF1_DISALLOWED;
+	}
+	if (map_attr & IEEE1905_PROFILE2_BHSTA_DIS) {
+		bssinfo->map_flag |= IEEE1905_MAP_FLAG_PROF2_DISALLOWED;
+	}
+	ret = 0;
+
+end:
+	return ret;
+}
+
+/* Parse broadcom specific vendor extension MAP attribute subelement */
+static int
+Wlcfg_parse_map_brcm_vndr_data(unsigned char *p, unsigned short vndr_data_len,
+		  ieee1905_client_bssinfo_type *bssinfo)
+{
+	bool present = FALSE;
+	int ret = -1;
+	unsigned char id, len, map_attr = 0;
+	unsigned char *q = p;
+
+	while ((q - p) < (vndr_data_len - 2)) {
+		id = *q;
+		q++;
+		len = *q;
+		q++;
+		if (id == WLCFG_WPS_MAP_SUBID_BCM_VENDOR_EXT_ATTR) {
+			if (len < SIZE_1_BYTE) {
+				i5TraceDirPrint("Invalid length for multiap broadcom vendor extension attr %d \n", len);
+				goto end;
+			}
+			map_attr = *q;
+			present = TRUE;
+			break;
+		}
+		q += len;
+	}
+
+	if (!present) {
+		i5TraceInfo("MultiAp extension broadcom vendor attribute is not present\n");
+		goto end;
+	}
+	bssinfo->Closed = (unsigned char)(map_attr & WLCFG_WPS_MAP_BSS_CLOSED ? 1 : 0);
+	if(map_attr & WLCFG_WPS_MAP_BSS_GUEST) {
+		bssinfo->map_flag |= IEEE1905_MAP_FLAG_GUEST;
+	}
+	ret = 0;
+
+end:
+	return ret;
 }
 
 int
@@ -3711,7 +3342,7 @@ Wlcfg_proto_process_m2(i5_wps_wscKey *key, unsigned char *m1, int m1_len,
   int ret = -1;
   unsigned char *p;
   /* Data from m1 and m2 */
-  unsigned char *plain_txt = NULL, map_attr = 0;
+  unsigned char *plain_txt = NULL;
   unsigned char authKey[SIZE_256_BITS], keyWrapKey[SIZE_128_BITS], emsk[SIZE_256_BITS];
   unsigned char m2_nonce[SIZE_128_BITS] = {0}, *m2_pubkey = NULL, *m2_encrypted_settings = NULL, m2_authenticator[SIZE_8_BYTES];
   unsigned char m2_nonce_present, m2_pubkey_present, m2_encrypted_settings_present, m2_authenticator_present;
@@ -3936,50 +3567,33 @@ Wlcfg_proto_process_m2(i5_wps_wscKey *key, unsigned char *m1, int m1_len,
       memcpy(bssinfo->ALID, p, attr_len);
       p += attr_len;
     } else if (attr_type == WPS_ID_VENDOR_EXT) {
-      bool present = FALSE;
       unsigned char *q = p;
 
-      while ((q - p) < attr_len) {
-        if (*q == WPS_WFA_SUBID_MAP_EXT_ATTR) {
-          q++;
-          if (*q < SIZE_1_BYTE) {
-            i5TraceDirPrint("Invalid length for multiap extension attr %d \n", *q);
-            goto end;
-          }
-          q++;
-          map_attr = *q;
-          present = TRUE;
-          break;
+      if (memcmp(q, WFA_VENDOR_EXT_ID, SIZE_3_BYTES) == 0) {
+        if (Wlcfg_parse_map_ext_attribute(q + 3, attr_len - 3, bssinfo) != 0) {
+          goto end;
         }
-        q++;
+      } else if (memcmp(q, WLCFG_WPS_MAP_BCM_VENDOR_EXT_ID, SIZE_3_BYTES) == 0) {
+        Wlcfg_parse_map_brcm_vndr_data(q + 3, attr_len - 3, bssinfo);
       }
-
-      if (!present) {
-        i5TraceDirPrint("MultiAp extension attribute is not present\n");
-        goto end;
-      }
-
       p += attr_len;
     } else {
       p += attr_len;
     }
   }
-  bssinfo->BackHaulBSS = (unsigned char)(map_attr & IEEE1905_BACKHAUL_BSS ? 1 : 0);
-  bssinfo->FrontHaulBSS = (unsigned char)(map_attr & IEEE1905_FRONTHAUL_BSS ? 1 : 0);
-  bssinfo->TearDown = (unsigned char)(map_attr & IEEE1905_TEAR_DOWN ? 1 : 0);
-  bssinfo->profile1_bhsta_disallowed = (unsigned char)(map_attr & IEEE1905_PROFILE1_BHSTA_DIS ? 1 : 0);
-  bssinfo->profile2_bhsta_disallowed = (unsigned char)(map_attr & IEEE1905_PROFILE2_BHSTA_DIS ? 1 : 0);
 
   i5TraceInfo("Retrieved AP Configuration settings from wsc M2 \n");
   i5TraceInfo("SSID => %s\n", bssinfo->ssid.SSID);
   i5TraceInfo("PWD  => %s\n", bssinfo->NetworkKey.key);
   i5TraceInfo("Auth Type => %x\n", bssinfo->AuthType);
   i5TraceInfo("Encr Type => %x\n", bssinfo->EncryptType);
-  i5TraceInfo("Backhaul BSS => %d\n", bssinfo->BackHaulBSS);
-  i5TraceInfo("Fronthaul BSS => %d\n", bssinfo->FrontHaulBSS);
+  i5TraceInfo("Backhaul BSS => %d\n", I5_IS_BSS_BACKHAUL(bssinfo->map_flag));
+  i5TraceInfo("Fronthaul BSS => %d\n", I5_IS_BSS_FRONTHAUL(bssinfo->map_flag));
   i5TraceInfo("Tear Down => %d\n", bssinfo->TearDown);
-  i5TraceInfo("Profile1 Backhaul STA Disallowed => %d\n", bssinfo->profile1_bhsta_disallowed);
-  i5TraceInfo("Profile2 Backhaul STA Disallowed => %d\n", bssinfo->profile2_bhsta_disallowed);
+  i5TraceInfo("Profile1 Backhaul STA Disallowed => %d\n", I5_IS_BSS_PROF1_DISALLOWED(bssinfo->map_flag));
+  i5TraceInfo("Profile2 Backhaul STA Disallowed => %d\n", I5_IS_BSS_PROF2_DISALLOWED(bssinfo->map_flag));
+  i5TraceInfo("Guest => %d\n", I5_IS_BSS_GUEST(bssinfo->map_flag));
+  i5TraceInfo("Closed => %d\n", bssinfo->Closed);
   }
 
   /* Successfull */

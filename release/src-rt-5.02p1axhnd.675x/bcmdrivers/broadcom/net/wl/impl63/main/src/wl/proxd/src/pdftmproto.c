@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmproto.c 778924 2019-09-13 19:33:40Z $
+ * $Id: pdftmproto.c 788031 2020-06-18 14:10:58Z $
  */
 
 #include "pdftmpvt.h"
@@ -940,6 +940,7 @@ ftm_proto_session_config_from_params(pdftm_t *ftm, wlc_bsscfg_t *rx_bsscfg,
 	uint32 dur_usec, req_dur;
 	uint8 burst_tmo;
 	int ret_err = BCME_OK;
+	scb_t *scb = NULL;
 
 	sncfg = sn->config;
 	ASSERT(!(sncfg->flags & WL_PROXD_SESSION_FLAG_INITIATOR));
@@ -986,10 +987,23 @@ ftm_proto_session_config_from_params(pdftm_t *ftm, wlc_bsscfg_t *rx_bsscfg,
 			break;
 
 		sn->config->burst_config->ratespec = ratespec;
+		sn_chaninfo = ftm_proto_get_chaninfo(ftm, sn);
+
+		/* for AP and associated case, update ratespec in case of b/w downgrade */
+		scb = wlc_scbfindband(ftm->wlc, sn->bsscfg, &sn->config->burst_config->peer_mac,
+			CHSPEC_BANDUNIT(rx_cspec));
+		if ((BSSCFG_AP(sn->bsscfg) && sn->bsscfg->up) ||
+			(scb != NULL && SCB_ASSOCIATED(scb))) {
+			err = ftm_proto_resolve_ratespec(ftm, chanspec, sn_chaninfo,
+				rx_rspec, &ratespec);
+			if (err != BCME_OK)
+				break;
+			sn->config->burst_config->ratespec = ratespec;
+		}
 		err = pdftm_validate_ratespec(ftm, sn);
 		if (err != BCME_OK)
 			break;
-		sn_chaninfo = ftm_proto_get_chaninfo(ftm, sn);
+
 		if (chaninfo != sn_chaninfo) {
 			sn->flags |= FTM_SESSION_PARAM_OVERRIDE;
 			FTM_LOGPROTO(ftm, (("wl%d: %s: status %d, ret %d, "
@@ -1760,7 +1774,11 @@ ftm_proto_process_meas_tlvs(pdftm_t *ftm, pdftm_session_t *sn,
 		tsf_si = (dot11_ftm_sync_info_t *)tlv;
 		err = pdftm_session_trig_tsf_update(sn, tsf_si);
 		if (err != BCME_OK) {
-			goto done;
+			if (FTM_SESSION_IS_ASAP(sn)) {
+				err = BCME_OK;
+			} else {
+				goto done;
+			}
 		}
 
 		/* don't adjust body/body_len if we found the tlv before the body */
@@ -1935,6 +1953,11 @@ ftm_proto_handle_meas(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, dot11_management_heade
 		err = pdftm_setup_burst(ftm, sn, body, body_len, wrxh, rspec);
 		if (err != BCME_OK)
 			goto done;
+
+		if (!asap) {
+			/* set burst deferred parameter for current burst of session */
+			pdftm_set_burst_deferred(ftm, sn);
+		}
 
 		/* restart the burst for non-asap, so a fresh trigger will be sent.
 		 * if the session is in delay state, burst will be restarted on

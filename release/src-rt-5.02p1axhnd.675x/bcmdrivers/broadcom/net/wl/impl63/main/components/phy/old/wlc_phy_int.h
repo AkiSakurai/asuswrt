@@ -1720,6 +1720,7 @@ typedef struct  {
 
 	} aci;
 	int8 link_rssi; /* update link rssi */
+	bool edcrs_chan_scan;
 } interference_info_t;
 
 typedef struct _nphy_iq_comp {

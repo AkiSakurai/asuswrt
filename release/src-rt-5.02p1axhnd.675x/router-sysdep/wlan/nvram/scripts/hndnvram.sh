@@ -5,7 +5,7 @@ DEFAULTS_MNT_DIR=/mnt/defaults
 DEFAULTS_DIR_MFG_NVRAM=$DEFAULTS_MNT_DIR/wl
 DIR_MFG_NVRAM=/mnt/nvram
 FILE_MFG_NVRAM=nvram.nvm
-original_kernel_nvram_file="/rom/etc/wlan/KERNEL_NVRAM_FILE_NAME"
+original_kernel_nvram_file="/etc/wlan/KERNEL_NVRAM_FILE_NAME"
 kernel_nvram_file="/data/.KERNEL_NVRAM_FILE_NAME"
 HNDROUTER_ALONE=n
 
@@ -364,7 +364,7 @@ case "$1" in
 	    umount_mfg_nvram_fs
 	fi
 	fi
-	image_default_nvram_file="/rom/etc/wlan/nvram/"`cat /proc/nvram/boardid`".nvm"
+	image_default_nvram_file="/etc/wlan/nvram/"`cat /proc/nvram/boardid`".nvm"
 	if  [ -n "$STILLNOK" ] && [ -f $image_default_nvram_file ]; then
 	   echo  "*** Using Board NVRAM file from image ***"
            mkdir -p $DIR_MFG_NVRAM

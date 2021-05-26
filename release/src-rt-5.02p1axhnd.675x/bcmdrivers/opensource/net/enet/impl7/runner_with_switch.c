@@ -551,6 +551,7 @@ port_ops_t port_runner_port =
     .mib_dump = port_runner_mib_dump,
     .print_status = port_sf2_print_status,
     .print_priv = port_runner_print_priv,
+    .mib_dump_us = port_runner_mib_dump_us, // add by Andrew
 };
 
 // =========== sf2 port ops =============================
@@ -753,6 +754,7 @@ port_ops_t port_sf2_port =
         .switchdev_port_attr_set = sf2_switchdev_port_attr_set, 
     }
 #endif
+    .mib_dump_us = port_sf2_mib_dump_us,  // add by Andrew
 };
 
 port_ops_t port_sf2_port_mac =
@@ -764,6 +766,7 @@ port_ops_t port_sf2_port_mac =
     .mtu_set = port_generic_mtu_set,
     .mib_dump = port_sf2_mib_dump,
     .print_status = port_sf2_print_status,
+    .mib_dump_us = port_sf2_mib_dump_us,  // add by Andrew
 };
 
 port_ops_t port_sf2_port_imp =
@@ -785,6 +788,7 @@ port_ops_t port_sf2_port_imp =
     .role_set = port_sf2_port_role_set,
     .stp_set = port_sf2_port_stp_set,
     .fast_age = port_sf2_fast_age,
+    .mib_dump_us = port_sf2_mib_dump_us,  // add by Andrew
 };
 
 

@@ -345,10 +345,6 @@ struct options
 
   const char *homedir;          /* the homedir of the running process */
   const char *wgetrcfile;       /* the wgetrc file to be loaded */
-
-#ifdef HAVE_PIPEFW
-  bool pipefw;                  /* pipefw */
-#endif
 };
 
 extern struct options opt;

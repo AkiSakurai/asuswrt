@@ -45,13 +45,14 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tof_api.h 777045 2019-07-17 16:52:35Z $
+ * $Id: phy_tof_api.h 784256 2020-02-24 20:32:21Z $
  */
 #ifndef _phy_tof_api_h_
 #define _phy_tof_api_h_
 
 #include <typedefs.h>
 #include <phy_api.h>
+#include <bcm_math.h>
 
 /* forward declaration */
 typedef struct phy_tof_info phy_tof_info_t;
@@ -170,5 +171,9 @@ int wlc_phy_chan_mag_sqr_impulse_response(wlc_phy_t *ppi, int frame_type,
 int wlc_phy_seq_ts(wlc_phy_t *ppi, int n, void* p_buffer, int tx, int cfo, int adj,
 	void* pparams, int32* p_ts, int32* p_seq_len, uint32* p_raw, uint8* ri_rr,
 	const uint8 smooth_win_en);
+
+#ifdef WL_PROXD_GDCOMP
+void phy_tof_gdcomp(cint32* H, int32 theta, int nfft, int delay_imp);
+#endif /* WL_PROXD_GDCOMP */
 
 #endif /* _phy_tof_api_h_ */

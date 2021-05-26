@@ -167,17 +167,24 @@ wlc_if_event(wlc_info_t *wlc, uint8 what, struct wlc_if *wlcif)
 				r = WLC_E_IF_ROLE_STA;
 		}
 	} else {
+		struct scb *scb = wlcif->u.scb;
+
 		r = WLC_E_IF_ROLE_WDS;
-#ifdef WL_HAPD_WDS
-		if (SCB_LEGACY_WDS(wlcif->u.scb)) {
+		/* Copy WDS/DWDS client address */
+		bcopy(scb->ea.octet, d->peer_addr.octet, ETHER_ADDR_LEN);
+
+		if (SCB_DWDS_CAP(wlcif->u.scb) || SCB_MAP_CAP(wlcif->u.scb)) {
+			d->reserved |= WLC_E_IF_FLAGS_WDS_AP;
+		} else { /* SCB_LEGACY_WDS() */
+			ASSERT(SCB_WDS(wlcif->u.scb));
+
 			if (wlcif->u.scb->flags & SCB_WPA_SUP) {
-				d->reserved |= WLC_E_IF_FLAGS_LEGACY_WDS_AP;
+				d->reserved |= WLC_E_IF_FLAGS_WDS_AP;
 			}
 			else {
-				d->reserved |= WLC_E_IF_FLAGS_LEGACY_WDS_STA;
+				d->reserved |= WLC_E_IF_FLAGS_WDS_STA;
 			}
 		}
-#endif /* WL_HAPD_WDS */
 	}
 
 	d->role = r;

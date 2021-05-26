@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_slave.c 782699 2020-01-02 05:56:20Z $
+ * $Id: wbd_slave.c 787203 2020-05-21 12:31:33Z $
  */
 
 #include <getopt.h>
@@ -130,16 +130,33 @@ wbd_slave_retrieve_nvram_config(wbd_slave_item_t *slave)
 		slave->parent->parent->flags |= WBD_INFO_FLAGS_PER_CHAN_BCN_REQ;
 	}
 
+	/* Read weak sta policy and steer flags nvram */
+	str = blanket_nvram_prefix_safe_get(slave->wbd_ifr.primary_prefix, WBD_NVRAM_WEAK_STA_CFG);
+	if (str[0] != '\0') {
+		num = sscanf(str, "%d %d %d %d %d %x", &slave->weak_sta_policy.t_idle_rate,
+			&slave->weak_sta_policy.t_rssi, &slave->weak_sta_policy.t_hysterisis,
+			&slave->weak_sta_policy.t_tx_rate, &slave->weak_sta_policy.t_tx_failures,
+			&slave->weak_sta_policy.flags);
+	}
+	if (num != 6) {
+		/* In case of failure set default value */
+		slave->weak_sta_policy.t_idle_rate = WBD_STA_METRICS_REPORTING_IDLE_RATE_THLD;
+		slave->weak_sta_policy.t_rssi = WBD_STA_METRICS_REPORTING_RSSI_THLD;
+		slave->weak_sta_policy.t_hysterisis =
+			WBD_STA_METRICS_REPORTING_RSSI_HYSTERISIS_MARGIN;
+		slave->weak_sta_policy.t_tx_rate = WBD_STA_METRICS_REPORTING_TX_RATE_THLD;
+		slave->weak_sta_policy.t_tx_failures = WBD_STA_METRICS_REPORTING_TX_FAIL_THLD;
+		slave->weak_sta_policy.flags = WBD_WEAK_STA_POLICY_FLAG_RSSI;
+	}
+	slave->steer_flags = blanket_get_config_val_int(NULL,
+		WLIFU_NVRAM_STEER_FLAGS, WLIFU_DEF_STEER_FLAGS);
+
 	WBD_DEBUG("ifname[%s] prefix[%s] weak_sta_algo[%d] weak_sta_threshold[%d] %s rssi[%d] "
-		"tx_rate[%f] flags[0x%X] slave_flags[0x%X] BSSID_Info[0x%x]\n",
-		slave->wbd_ifr.ifr.ifr_name, prefix,
-		slave->wc_info.wc_algo,
-		slave->wc_info.wc_thld,
-		WBD_NVRAM_WC_THLD,
-		slave->wc_info.wc_thld_cfg.t_rssi,
-		slave->wc_info.wc_thld_cfg.tx_rate,
-		slave->wc_info.wc_thld_cfg.flags,
-		slave->flags, slave->wbd_ifr.bssid_info);
+		"tx_rate[%f] flags[0x%X] slave_flags[0x%X] BSSID_Info[0x%x] steer_flags[0x%x]\n",
+		slave->wbd_ifr.ifr.ifr_name, prefix, slave->wc_info.wc_algo,
+		slave->wc_info.wc_thld, WBD_NVRAM_WC_THLD, slave->wc_info.wc_thld_cfg.t_rssi,
+		slave->wc_info.wc_thld_cfg.tx_rate, slave->wc_info.wc_thld_cfg.flags,
+		slave->flags, slave->wbd_ifr.bssid_info, slave->steer_flags);
 
 	WBD_EXIT();
 	return ret;
@@ -449,11 +466,7 @@ wbd_slave_get_interface_info_cb(char *ifname, ieee1905_ifr_info *info)
 
 	/* If its STA interface get the BSSID to fill in the media specific info */
 	if (I5_IS_BSS_STA(info->mapFlags)) {
-		if (blanket_get_bssid(ifname, (struct ether_addr*)info->bssid) == WBDE_OK) {
-			if (!(ETHER_ISNULLADDR((struct ether_addr*)info->bssid))) {
-				wbd_slave_store_bssid_nvram(prefix, info->bssid, 0);
-			}
-		}
+		blanket_get_bssid(ifname, (struct ether_addr*)info->bssid);
 	}
 
 	/* Get BSS Info */
@@ -490,24 +503,22 @@ wbd_exit_slave(wbd_info_t *info)
 	WBD_ENTER();
 
 	BCM_REFERENCE(ret);
-	WBD_ASSERT_ARG(info, WBDE_INV_ARG);
+
+	ieee1905_deinit();
 
 	/* Set agent configured NVRAM to 0 */
 	blanket_nvram_prefix_set(NULL, NVRAM_MAP_AGENT_CONFIGURED, "0");
 
+	WBD_ASSERT_ARG(info, WBDE_INV_ARG);
+
 	/* Set flag to mark it as application is closing */
 	info->flags |= WBD_INFO_FLAGS_CLOSING_APP;
 
-	/* Deinit IEEE1905 module only if it is initialized. Because, if the WBD is disabled,
-	 * it will not get initialized
-	 */
-	if (WBD_IEEE1905_INIT(info->flags)) {
-		ieee1905_deinit();
-	}
 	wbd_ds_blanket_slave_cleanup(info);
 	wbd_com_deinit(info->com_cli_hdl);
 	wbd_com_deinit(info->com_serv_hdl);
 	wbd_info_cleanup(info);
+	g_wbdinfo = NULL;
 
 end:
 	WBD_EXIT();
@@ -859,6 +870,9 @@ wbd_ieee1905_ap_auto_config_resp_cb(i5_dm_device_type *i5_device)
 	int ret = WBDE_OK;
 	wbd_blanket_slave_t *wbd_slave;
 	i5_dm_device_type *self_device = i5DmGetSelfDevice();
+	i5_dm_interface_type *i5_ifr;
+	struct ether_addr bssid;
+	char prefix[IFNAMSIZ];
 	WBD_ENTER();
 
 	/* Enable all the backhaul BSS as controller is detected */
@@ -877,6 +891,25 @@ wbd_ieee1905_ap_auto_config_resp_cb(i5_dm_device_type *i5_device)
 			wbd_slave_block_unblock_backhaul_sta_assoc(1);
 	}
 	wbd_slave->n_ap_auto_config_search = 0;
+
+	/* Go thorugh each interface to find a STA interface to store the BSSID */
+	foreach_i5glist_item(i5_ifr, i5_dm_interface_type, self_device->interface_list) {
+		if (!i5DmIsInterfaceWireless(i5_ifr->MediaType) ||
+			!I5_IS_BSS_STA(i5_ifr->mapFlags)) {
+			continue;
+		}
+
+		memset(&bssid, 0, sizeof(bssid));
+		if (blanket_get_bssid(i5_ifr->ifname, &bssid) == WBDE_OK) {
+			/* If the BSSID is not NULL store it in NVRAM */
+			if (!(ETHER_ISNULLADDR(&bssid))) {
+				/* Get Prefix from OS specific interface name */
+				blanket_get_interface_prefix(i5_ifr->ifname, prefix,
+					sizeof(prefix));
+				wbd_slave_store_bssid_nvram(prefix, (unsigned char*)&bssid, 0);
+			}
+		}
+	}
 
 end:
 	WBD_EXIT();
@@ -1046,8 +1079,16 @@ int
 main(int argc, char *argv[])
 {
 	int ret = WBDE_OK;
+	int map_mode;
 	ieee1905_call_bks_t cbs;
 	i5_dm_interface_type *i5_ifr;
+
+	map_mode = blanket_get_config_val_int(NULL, WBD_NVRAM_MULTIAP_MODE, MAP_MODE_FLAG_DISABLED);
+	/* If agent is not supported exit the slave */
+	if (!MAP_IS_AGENT(map_mode)) {
+		WBD_WARNING("Multi-AP mode (%d) not configured as Agent...\n", map_mode);
+		goto end;
+	}
 
 	memset(&cbs, 0, sizeof(cbs));
 
@@ -1059,22 +1100,14 @@ main(int argc, char *argv[])
 
 	WBD_INFO("WBD MAIN START...\n");
 
-	signal(SIGTERM, wbd_signal_hdlr);
-	signal(SIGINT, wbd_signal_hdlr);
-	signal(SIGPWR, wbd_slave_tty_hdlr);
+	/* Provide necessary info to debug_monitor for service restart */
+	dm_register_app_restart_info(getpid(), argc, argv, NULL);
 
 	wbd_slave_init_blanket_module();
 
 	/* Allocate & Initialize the info structure */
 	g_wbdinfo = wbd_info_init(&ret);
 	WBD_ASSERT();
-
-	/* If agent is not supported exit the slave */
-	if (!MAP_IS_AGENT(g_wbdinfo->map_mode)) {
-		WBD_WARNING("Multi-AP mode (%d) not configured as Agent...\n",
-			g_wbdinfo->map_mode);
-		goto end;
-	}
 
 	/* Allocate & Initialize Blanket Slave structure object */
 	ret = wbd_ds_blanket_slave_init(g_wbdinfo);
@@ -1112,10 +1145,13 @@ main(int argc, char *argv[])
 	ret = wbd_init_slave(g_wbdinfo);
 	WBD_ASSERT();
 
+	/* WBD & 1905 are initialized properly. Now enable signal handlers */
+	signal(SIGTERM, wbd_signal_hdlr);
+	signal(SIGINT, wbd_signal_hdlr);
+	signal(SIGPWR, wbd_slave_tty_hdlr);
+
 	blanket_start_multiap_messaging();
 
-	/* Provide necessary info to debug_monitor for service restart */
-	dm_register_app_restart_info(getpid(), argc, argv, NULL);
 	/* Main loop which keeps on checking for the timers and fd's */
 	wbd_run(g_wbdinfo->hdl);
 

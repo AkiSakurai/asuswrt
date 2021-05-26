@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_ds.c 782305 2019-12-17 04:58:40Z $
+ * $Id: wbd_ds.c 784498 2020-02-28 09:40:05Z $
  */
 
 #include "wbd.h"
@@ -1161,7 +1161,7 @@ end:
  */
 int
 wbd_ds_add_sta_in_peer_devices_monitorlist(wbd_master_info_t *master_info,
-	i5_dm_clients_type *i5_assoc_sta, uint8 map_flags)
+	i5_dm_clients_type *i5_assoc_sta)
 {
 	int ret = WBDE_NO_SLAVE_TO_STEER;
 	i5_dm_network_topology_type *i5_topology;
@@ -1189,17 +1189,6 @@ wbd_ds_add_sta_in_peer_devices_monitorlist(wbd_master_info_t *master_info,
 			/* For all the BSS in this Interface */
 			foreach_i5glist_item(i5_iter_bss, i5_dm_bss_type, i5_iter_ifr->bss_list) {
 
-				if (I5_IS_BSS_GUEST(i5_iter_bss->mapFlags)) {
-					continue;
-				}
-				/* Only use BSS which has matching map Flags. This is to add STA to
-				 * to Fronthaul BSS if the weak STA is connected to Fronthaul BSS
-				 * or to Backhaul BSS if the weak STA is connected to Backhaul
-				 */
-				if (!(i5_iter_bss->mapFlags & map_flags)) {
-					continue;
-				}
-
 				/* BSS Checking Condition */
 				if (eacmp(&i5_bss->BSSID, i5_iter_bss->BSSID) == 0) {
 					/* don't add in current BSS Monitor List */
@@ -1207,9 +1196,7 @@ wbd_ds_add_sta_in_peer_devices_monitorlist(wbd_master_info_t *master_info,
 				}
 
 				/* Don't add if the SSIDs are not matching */
-				if ((i5_iter_bss->ssid.SSID_len != i5_bss->ssid.SSID_len) ||
-					memcmp((char*)i5_iter_bss->ssid.SSID,
-					(char*)i5_bss->ssid.SSID, i5_bss->ssid.SSID_len) != 0) {
+				if (!WBD_SSIDS_MATCH(i5_bss->ssid, i5_iter_bss->ssid)) {
 					continue;
 				}
 
@@ -1264,7 +1251,6 @@ wbd_ds_add_monitorlist_fm_peer_bss_assoclist(i5_dm_bss_type *i5_dst_bss, i5_dm_b
 	int ret = WBDE_OK;
 	i5_dm_clients_type *i5_sta;
 	wbd_assoc_sta_item_t* sta_item = NULL;
-	uint8 map_flags;
 	WBD_ENTER();
 
 	/* Travese STA items in the BSS */
@@ -1280,21 +1266,8 @@ wbd_ds_add_monitorlist_fm_peer_bss_assoclist(i5_dm_bss_type *i5_dst_bss, i5_dm_b
 		if (sta_item->status != WBD_STA_STATUS_WEAK)
 			continue;
 
-		if (I5_CLIENT_IS_BSTA(i5_sta)) {
-			map_flags = IEEE1905_MAP_FLAG_BACKHAUL;
-		} else {
-			map_flags = IEEE1905_MAP_FLAG_FRONTHAUL;
-		}
-
-		/* Add it to matching Fronthaul or Backhaul BSS based on the STA */
-		if (!(map_flags & i5_dst_bss->mapFlags)) {
-			continue;
-		}
-
 		/* Don't add if the SSIDs are not matching */
-		if ((i5_dst_bss->ssid.SSID_len != i5_src_bss->ssid.SSID_len) ||
-			memcmp((char*)i5_dst_bss->ssid.SSID, (char*)i5_src_bss->ssid.SSID,
-			i5_dst_bss->ssid.SSID_len) != 0) {
+		if (!WBD_SSIDS_MATCH(i5_dst_bss->ssid, i5_src_bss->ssid)) {
 			continue;
 		}
 
@@ -1348,9 +1321,6 @@ wbd_ds_add_monitorlist_fm_peer_devices_assoclist(i5_dm_bss_type *i5_bss)
 					continue;
 				}
 
-				if (I5_IS_BSS_GUEST(i5_bss->mapFlags)) {
-					continue;
-				}
 				ret = wbd_ds_add_monitorlist_fm_peer_bss_assoclist(i5_bss,
 					i5_peer_bss);
 			}
@@ -1534,7 +1504,7 @@ end:
 /* Remove a STA item from all peer BSS' Monitor STA List */
 int
 wbd_ds_remove_sta_fm_peer_devices_monitorlist(struct ether_addr * parent_slave_bssid,
-	struct ether_addr *sta_mac, uint8 mapFlags)
+	struct ether_addr *sta_mac, ieee1905_ssid_type *ssid)
 {
 	int ret = WBDE_OK;
 	i5_dm_network_topology_type *i5_topology;
@@ -1552,13 +1522,11 @@ wbd_ds_remove_sta_fm_peer_devices_monitorlist(struct ether_addr * parent_slave_b
 		}
 		foreach_i5glist_item(i5_ifr, i5_dm_interface_type, i5_device->interface_list) {
 			foreach_i5glist_item(i5_bss, i5_dm_bss_type, i5_ifr->bss_list) {
-				if (I5_IS_BSS_GUEST(i5_bss->mapFlags)) {
+				/* Don't add if the SSIDs are not matching */
+				if (!WBD_SSIDS_MATCH(i5_bss->ssid, *ssid)) {
 					continue;
 				}
-				/* Only if the mapFlags matches */
-				if (!(i5_bss->mapFlags & mapFlags)) {
-					continue;
-				}
+
 				/* BSS Checking Condition */
 				if (eacmp(parent_slave_bssid, i5_bss->BSSID) == 0) {
 					/* BSS is Parent BSS, don't remove fm its Monitor List */
@@ -2061,8 +2029,8 @@ end:
 
 /* Find Fronthaul BSS using Device and band */
 i5_dm_bss_type*
-wbd_ds_get_i5_bss_in_device_for_band_and_mapflag(i5_dm_device_type *i5_device, int in_band,
-	uint8 map, int *error)
+wbd_ds_get_i5_bss_in_device_for_band_and_ssid(i5_dm_device_type *i5_device, int in_band,
+	ieee1905_ssid_type *ssid, int *error)
 {
 	int ret = WBDE_DS_UN_BSS;
 	i5_dm_interface_type *i5_iter_ifr;
@@ -2080,14 +2048,13 @@ wbd_ds_get_i5_bss_in_device_for_band_and_mapflag(i5_dm_device_type *i5_device, i
 		if (i5_iter_ifr->band & in_band) {
 			/* For all the BSS in this devices */
 			foreach_i5glist_item(i5_iter_bss, i5_dm_bss_type, i5_iter_ifr->bss_list) {
-				if (I5_IS_BSS_GUEST(i5_iter_bss->mapFlags)) {
+				if (ssid && !WBD_SSIDS_MATCH(i5_iter_bss->ssid, *ssid)) {
 					continue;
 				}
-				if (map & i5_iter_bss->mapFlags) {
-					i5_bss = i5_iter_bss;
-					ret = WBDE_OK;
-					goto end;
-				}
+
+				i5_bss = i5_iter_bss;
+				ret = WBDE_OK;
+				goto end;
 			}
 		}
 	}
@@ -2405,7 +2372,7 @@ wbd_ds_bss_deinit(i5_dm_bss_type *i5_bss)
 		/* Remove a STA item from all peer BSS' Monitor STA List */
 		ret = wbd_ds_remove_sta_fm_peer_devices_monitorlist(
 			(struct ether_addr*)&i5_bss->BSSID, (struct ether_addr*)&i5_sta->mac,
-			i5_bss->mapFlags);
+			&i5_bss->ssid);
 	}
 
 	if (bss_vndr_data) {

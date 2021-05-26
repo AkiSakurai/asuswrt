@@ -65,94 +65,94 @@
 #include <phy_ac_tof.h>
 #include <phy_stf.h>
 
-static const  uint16 BCMATTACHDATA(proxd_4345_80m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4345_80m_k_values)[] =
 { 0x0, 0xee12, 0xe201, 0xe4fc, 0xe6f8, 0xe6f7 /* 42, 58, 106, 122, 138, 155 */ };
 
-static const  uint16 BCMATTACHDATA(proxd_4345_40m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4345_40m_k_values)[] =
 { 0x7b7b, 0x757c, 0x7378, 0x7074, 0x9a9a, 0x9898, /* 38, 46, 54, 62, 102,110 */
 0x9898, 0x9898, 0x9393, 0x9494, 0x9191, 0x8484 /* 118, 126, 134, 142,151,159 */ };
 
-static const  uint16 BCMATTACHDATA(proxd_4345_20m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4345_20m_k_values)[] =
 { 0x0f0f, 0x0101, 0x0101, 0x1313, 0x0f0f, 0x0101, 0x0f0f, 0x0505, /* 36 -64 */
 0xe9e9, 0xe8e8, 0xe6e6, 0xe4e4, 0xcbcb, 0xcbcb, 0xcbcb, 0xcbcb, /* 100 -128 */
 0xcbcb, 0xd5d5, 0xdada, 0xcbcb, /* 132 -144 */
 0xcbcb, 0xbfbf, 0xd5d5, 0xbfbf, 0xcbcb /* 149 - 165 */
 };
 
-static const  uint16 BCMATTACHDATA(proxd_4345_2g_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4345_2g_k_values)[] =
 { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, /* 1 -7 */
 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 /* 8 -14 */
 };
 
-static const  uint16 BCMATTACHDATA(proxd_4350_80m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4350_80m_k_values)[] =
 { 0x0, 0xef02, 0xf404, 0xf704, 0xfc04, 0xf3f9 /* 42, 58, 106, 122, 138, 155 */ };
 
-static const  uint16 BCMATTACHDATA(proxd_4350_40m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4350_40m_k_values)[] =
 { 0x0, 0xfdfd, 0xf6f6, 0x1414, 0xebeb, 0xebeb, /* 38, 46, 54, 62, 102,110 */
 0xeeee, 0xeeee, 0xe2e2, 0xe5e5, 0xfdfa, 0xe5e5 /* 118, 126, 134, 142,151,159 */ };
 
-static const  uint16 BCMATTACHDATA(proxd_4350_20m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4350_20m_k_values)[] =
 { 0x0, 0xfdfd, 0xfdfd, 0xf8f8, 0xf8f8, 0xf5f5, 0xf5f5, 0xf5f5, /* 36 -64 */
 0xe9e9, 0xe6e6, 0xe3e3, 0xe3e3, 0xe6e6, 0xe6e6, 0xe6e6, 0xe6e6, /* 100 - 128 */
 0xe6e6, 0xe6e6, 0xd6d6, 0xe9e9, /* 132 -144 */
 0xe9e9, 0x0808, 0xd4d4, 0xd4d4, 0xd4d4 /* 149 - 165 */
 };
 
-static const  uint16 BCMATTACHDATA(proxd_4350_2g_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4350_2g_k_values)[] =
 { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, /* 1 -7 */
 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 /* 8 -14 */
 };
 
-static const  uint16 BCMATTACHDATA(proxd_4354_80m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4354_80m_k_values)[] =
 { 0, 0xF0F3, 0xFCFE, 0, 0xFEFE, 0xF0F4 /* 42, 58, 106, 122, 138, 155 */ };
 
-static const  uint16 BCMATTACHDATA(proxd_4354_40m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4354_40m_k_values)[] =
 { 0, 0xFC04, 0xFA00, 0x0d1D, 0xF1FB, 0xF0FB, /* 38, 46, 54, 62, 102 */
 0, 0, 0xE9F5, 0xE5F4, 0xFE0B, 0xE0EF /* 110, 118, 126, 134, 142,151,159 */ };
 
-static const  uint16 BCMATTACHDATA(proxd_4354_20m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4354_20m_k_values)[] =
 { 0, 0xFFFE, 0xFAFB, 0xFBFA, 0xF9F8, 0xFAF7, 0xF4F4, 0xFDEC, /* 36 -64 */
 0xEEE1, 0xE3E3, 0xE2E0, 0xE2E2, 0, 0, 0, 0, 0xD9DB, 0xDEDD, 0xD7D7, 0xD9D6, /* 100 -144 */
 0x0BFD, 0x0209, 0xD6D1, 0xE1C6, 0xE1C6 /* 149 - 165 */
 };
 
-static const  uint16 BCMATTACHDATA(proxd_4354_2g_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4354_2g_k_values)[] =
 { 0xbbbb, 0xf1f1, 0xebeb, 0xe5e5, 0xe6e6, 0xe6e6, 0xe3e3, /* 1 -7 */
 0xe6e6, 0xe3e3, 0xe3e3, 0xe6e6, 0xb5b5, 0xf0f0, 0x0c0c /* 8 -14 */
 };
 
-static const  uint16 BCMATTACHDATA(proxd_4349_80m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4349_80m_k_values)[] =
 { 0, 0xFFFE, 0xF2F2, 0xF2F2, 0xF0EF, 0xE8E7 /* 42, 58, 106, 122, 138, 155 */ };
 
-static const  uint16 BCMATTACHDATA(proxd_4349_40m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4349_40m_k_values)[] =
 { 0, 0x00FF, 0x00FF, 0xFFFF, 0xFAFB, 0xF2F3, /* 38, 46, 54, 62, 102 110 */
 0xF2F3, 0xF2F3, 0xE7E8, 0xE7E8, 0xE5E6, 0xE5E6 /* 118, 126, 134, 142,151,159 */ };
 
-static const  uint16 BCMATTACHDATA(proxd_4349_20m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4349_20m_k_values)[] =
 { 0, 0x0, 0x0300, 0x0300, 0xFCFF, 0xFAFC, 0xF9F9, 0xF9F7, /* 36 -64 */
 0xEFEE, 0xE8EC, 0xE9E9, 0xE6E8, 0xCDCE, 0xCDCE, 0xCDCE, 0xCDCE, 0xCCCF, 0xCCCF,  /* 100 -136 */
 0xC8CC, 0xC6CA, 0xC6CA, 0xC5C8, 0xC6C7, 0xC5C6, 0xC5C6 /* 140 - 165 */
 };
 
-static const  uint16 BCMATTACHDATA(proxd_4349_2g_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4349_2g_k_values)[] =
 { 0x2222, 0x1e1e, 0x1919, 0x1313, 0x0f0f, 0x0e0e, 0x0f0f, /* 1 -7 */
 0x1111, 0x1313, 0x1313, 0x1515, 0x1818, 0x1d1d, 0x3939 /* 8 -14 */
 };
 
-static const  uint16 BCMATTACHDATA(proxd_43602_80m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_43602_80m_k_values)[] =
 { 0x0000, 0x0000, 0x0000, 0, 0x0000, 0x0000 /* 42, 58, 106, 122, 138, 155 */ };
 
-static const  uint16 BCMATTACHDATA(proxd_43602_40m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_43602_40m_k_values)[] =
 { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, /* 38, 46, 54, 62, 102 110 */
 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 /* 118, 126, 134, 142,151,159 */ };
 
-static const  uint16 BCMATTACHDATA(proxd_43602_20m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_43602_20m_k_values)[] =
 { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, /* 36 -64 */
 0x0, 0x0, 0x0, 0x0, 0, 0, 0, 0, 0x0, 0x0, 0x0, 0x0, /* 100 -144 */
 0x0, 0x0, 0x0, 0x0, 0x0 /* 149 - 165 */
 };
 
-static const  uint16 BCMATTACHDATA(proxd_43602_2g_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_43602_2g_k_values)[] =
 { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, /* 1 -7 */
 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 /* 8 -14 */
 };
@@ -170,44 +170,132 @@ static const  uint16 BCMATTACHDATA(proxd_43602_2g_k_values)[] =
 #define TOF_INITIATOR_K_4361_2G       37492 /* initiator K value for 2G */
 #define TOF_TARGET_K_4361_2G          37492 /* target K value for 2G */
 
-static const  uint16 BCMATTACHDATA(proxd_4361_80m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4361_80m_k_values)[] =
 {0x1818, 0, 0, 0, 0, 0 /* 42, 58, 106, 122, 138, 155 */};
 
-static const  uint16 BCMATTACHDATA(proxd_4361_40m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4361_40m_k_values)[] =
 {0x2020, 0x1a1a, 0, 0, 0, 0, /* 38, 46, 54, 62, 102 110 */
 0, 0, 0, 0, 0x0000, 0x0000 /* 118, 126, 134, 142,151,159 */};
 
-static const  uint16 BCMATTACHDATA(proxd_4361_20m_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4361_20m_k_values)[] =
 {0x3838, 0x3838, 0x3030, 0x3030, 0x0, 0x0, 0x0, 0x0, /* 36 -64 */
 0x0, 0x0, 0x0, 0x0, 0, 0, 0, 0, 0x0, 0x0, 0x0, 0x0, /* 100 -144 */
 0x0505, 0x0000, 0x0000, 0x0a0a, 0x0a0a /* 149 - 165 */
 };
 
-static const  uint16 BCMATTACHDATA(proxd_4361_2g_k_values)[] =
+static const  uint32 BCMATTACHDATA(proxd_4361_2g_k_values)[] =
 {0x0606, 0x0606, 0x0606, 0x0606, 0x0, 0x0, 0x0, /* 1 -7 */
 0x0, 0x00303, 0x00303, 0x00303, 0x00303, 0x0303, 0x0303 /* 8 -14 */
 };
 
+/* uncomment the below define when doing calibration */
+/* #define CALIBRATION */
+
+/* 43684 k values */
+#define TOF_INITIATOR_K_43684_80M      33890 /* initiator K value for 80M */
+#define TOF_TARGET_K_43684_80M         33890 /* target K value for 80M */
+
+#define TOF_INITIATOR_K_43684_40M      35490 /* initiator K value for 40M */
+#define TOF_TARGET_K_43684_40M         35490 /* target K value for 40M */
+
+#define TOF_INITIATOR_K_43684_20M      37412 /* initiator K value for 20M */
+#define TOF_TARGET_K_43684_20M         37416 /* target K value for 20M */
+
+#define TOF_INITIATOR_K_43684_2G       37492 /* initiator K value for 2G */
+#define TOF_TARGET_K_43684_2G          37492 /* target K value for 2G */
+
+static const  uint32 BCMATTACHDATA(proxd_43684_80m_k_values)[] =
+{0x1818, 0, 0, 0, 0, 0 /* 42, 58, 106, 122, 138, 155 */};
+
+static const  uint32 BCMATTACHDATA(proxd_43684_40m_k_values)[] =
+{0x2020, 0x1a1a, 0, 0, 0, 0, /* 38, 46, 54, 62, 102 110 */
+0, 0, 0, 0, 0x0000, 0x0000 /* 118, 126, 134, 142,151,159 */};
+
+static const  uint32 BCMATTACHDATA(proxd_43684_20m_k_values)[] =
+{0x3838, 0x3838, 0x3030, 0x3030, 0x0, 0x0, 0x0, 0x0, /* 36 -64 */
+0x0, 0x0, 0x0, 0x0, 0, 0, 0, 0, 0x0, 0x0, 0x0, 0x0, /* 100 -144 */
+0x0505, 0x0000, 0x0000, 0x0a0a, 0x0a0a /* 149 - 165 */
+};
+
+static const  uint32 BCMATTACHDATA(proxd_43684_2g_k_values)[] =
+{0x0606, 0x0606, 0x0606, 0x0606, 0x0, 0x0, 0x0, /* 1 -7 */
+0x0, 0x00303, 0x00303, 0x00303, 0x00303, 0x0303, 0x0303 /* 8 -14 */
+};
+
+/* 47622 k values */
+#define TOF_INITIATOR_K_47622_80M      34103 /* 33896 */ /* initiator K value for 80M */
+#define TOF_TARGET_K_47622_80M         34103 /* 34310 */ /* target K value for 80M */
+
+#define TOF_INITIATOR_K_47622_40M      35190 /* initiator K value for 40M */
+#define TOF_TARGET_K_47622_40M         35190 /* target K value for 40M */
+
+#define TOF_INITIATOR_K_47622_20M      36079 /* initiator K value for 20M */
+#define TOF_TARGET_K_47622_20M         36079 /* target K value for 20M */
+
+#define TOF_INITIATOR_K_47622_2G       37492 /* initiator K value for 2G */
+#define TOF_TARGET_K_47622_2G          37492 /* target K value for 2G */
+
+static const  uint32 BCMATTACHDATA(proxd_47622_80m_k_values)[] =
+{0x00000000,0,0,0,0, 0x5800580 /* 42, 58, 106, 122, 138, 155 */};
+
+static const  uint32 BCMATTACHDATA(proxd_47622_40m_k_values)[] =
+{0x0000,0x5940594,0,0,0,0, /* 38, 46, 54, 62, 102 110 */
+0,0,0,0,0x5660566,0x5610561 /* 118, 126, 134, 142,151,159 */};
+
+static const  uint32 BCMATTACHDATA(proxd_47622_20m_k_values)[] =
+{0xd700d7,0x130013,0x0000,0x5b705b7,0,0,0,0, /* 36 -64 */
+0x0, 0x0, 0x0, 0x0, 0, 0, 0, 0, 0x0, 0x0, 0x0, 0x0, /* 100 -144 */
+0x57b057b,0x5670567,0x56f056f,0x5820582,0xb600b6 /* 149 - 165 */
+};
+
+static const  uint32 BCMATTACHDATA(proxd_47622_2g_k_values)[] =
+{0x060006, 0x060006, 0x060006, 0x060006, 0x0, 0x0, 0x0, /* 1 -7 */
+0x0, 0x0030003, 0x0030003, 0x0030003, 0x0030003, 0x030003, 0x030003 /* 8 -14 */
+};
+
 /* ratespec related k offset table for initiator <legacy 6M, legacy non-6M, HT-MCS0, HT-MCS(1-7)> */
-static const  int16 BCMATTACHDATA(proxdi_rate_offset_2g)[] = { 0, 0, 0, 0 };
-static const  int16 BCMATTACHDATA(proxdi_rate_offset_20m)[] = { 0, 0, 0, 0 };
-static const  int16 BCMATTACHDATA(proxdi_rate_offset_40m)[] = { 0, 0, 0, 0 };
-static const  int16 BCMATTACHDATA(proxdi_rate_offset_80m)[] = { 0, 0, 0, 0 };
+static const  int32 BCMATTACHDATA(proxdi_rate_offset_2g)[] = { 0, 0, 0, 0 };
+static const  int32 BCMATTACHDATA(proxdi_rate_offset_20m)[] = { 0, 0, 0, 0 };
+static const  int32 BCMATTACHDATA(proxdi_rate_offset_40m)[] = { 0, 0, 0, 0 };
+static const  int32 BCMATTACHDATA(proxdi_rate_offset_80m)[] = { 0, 0, 0, 0 };
 
 /* ratespec related k offset table for target <legacy 6M, legacy non-6M, HT-MCS0, HT-MCS(1-7)> */
-static const  int16 BCMATTACHDATA(proxdt_rate_offset_2g)[] = { 0, 13731, 61, 5743 };
-static const  int16 BCMATTACHDATA(proxdt_rate_offset_20m)[] = { 0, 13768, 236, 5776 };
-static const  int16 BCMATTACHDATA(proxdt_rate_offset_40m)[] = { 0, 14779, 7, 6333 };
-static const int16 BCMATTACHDATA(proxdt_rate_offset_80m)[] = { 0, 13400, -2804, -2804 };
+static const  int32 BCMATTACHDATA(proxdt_rate_offset_2g)[] = { 0, 13731, 61, 5743 };
+static const  int32 BCMATTACHDATA(proxdt_rate_offset_20m)[] = { 0, 13768, 236, 5776 };
+static const  int32 BCMATTACHDATA(proxdt_rate_offset_40m)[] = { 0, 14779, 7, 6333 };
+static const  int32 BCMATTACHDATA(proxdt_rate_offset_80m)[] = { 0, 13400, -2804, -2804 };
+
+static const  int32 BCMATTACHDATA(proxdi_rate_offset_2g_43684)[] = { 0, 13731, 61, 5743 };
+static const  int32 BCMATTACHDATA(proxdi_rate_offset_20m_43684)[] = { 0, 2657, 236, 5776 };
+static const  int32 BCMATTACHDATA(proxdi_rate_offset_40m_43684)[] = { 0, 2742, 7, 6333 };
+static const  int32 BCMATTACHDATA(proxdi_rate_offset_80m_43684)[] = { 0, 1587, 1746, -2804 };
+
+static const  int32 BCMATTACHDATA(proxdt_rate_offset_2g_43684)[] = { 0, 13731, 61, 5743 };
+static const  int32 BCMATTACHDATA(proxdt_rate_offset_20m_43684)[] = { 0, 2657, 236, 5776 };
+static const  int32 BCMATTACHDATA(proxdt_rate_offset_40m_43684)[] = { 0, 2742, 7, 6333 };
+static const  int32 BCMATTACHDATA(proxdt_rate_offset_80m_43684)[] = { 0, 1587, 1746, -2804 };
+
+static const  int32 BCMATTACHDATA(proxdi_rate_offset_2g_47622)[] = { 0, 13731, 61, 5743 };
+static const  int32 BCMATTACHDATA(proxdi_rate_offset_20m_47622)[] = { 971, 7390, 41, -6380 };
+static const  int32 BCMATTACHDATA(proxdi_rate_offset_40m_47622)[] = { 70380, 70380, 0, 0 };
+static const  int32 BCMATTACHDATA(proxdi_rate_offset_80m_47622)[] = { 1385, 7126, 0, 0 };
+
+static const  int32 BCMATTACHDATA(proxdt_rate_offset_2g_47622)[] = { 0, 13731, 61, 5743 };
+static const  int32 BCMATTACHDATA(proxdt_rate_offset_20m_47622)[] = { 971, 7390, 41, -6380 };
+static const  int32 BCMATTACHDATA(proxdt_rate_offset_40m_47622)[] = { 70380, 70380, 0, 0 };
+static const  int32 BCMATTACHDATA(proxdt_rate_offset_80m_47622)[] = { 1385, 7126, 0, 0 };
+/* pixel 1755 */
 
 /* legacy ack offset table for initiator  <80M, 40M, 20M, 2g> */
 static const int16 BCMATTACHDATA(proxdi_ack_offset)[] = { -2, -3, 2360, 2333 };
 
-/* legacy ack offset table for initiator  <80M, 40M, 20M, 2g> */
+/* legacy ack offset table for target  <80M, 40M, 20M, 2g> */
 static const int16 BCMATTACHDATA(proxdt_ack_offset)[] = { 2728, 2031, 0, 0 };
+static const int16 BCMATTACHDATA(proxdt_ack_offset_43684)[] = { 0, 0, 0, 0 };
+static const int16 BCMATTACHDATA(proxdt_ack_offset_47622)[] = { 0, 0, 0, 0 };
 
 /* different bandwidth  k offset table <VHT legacy 6M, legacy non-6M, HT-MCS0, HT-MCS(1-7)> */
-static const int16 BCMATTACHDATA(proxd_subbw_offset)[3][5] = {
+static const int32 BCMATTACHDATA(proxd_subbw_offset)[3][5] = {
 	/* 80M-40M */
 	{ 1036, 325, 1366, 2094, 5273 },
 	/* 80M -20M */
@@ -216,6 +304,22 @@ static const int16 BCMATTACHDATA(proxd_subbw_offset)[3][5] = {
 	{ 200, -714, -216, -800, 20 }
 };
 
+static const int32 BCMATTACHDATA(proxd_subbw_offset_43684)[3][5] = {
+	/* 80M-40M */
+	{ 1036, 325, 1366, 2094, 5273 },
+	/* 80M -20M */
+	{ 1470, -170, 1400, 1412, 5507 },
+	/* 40M - 20M */
+	{ 200, -714, -216, -800, 20 }
+};
+static const int32 BCMATTACHDATA(proxd_subbw_offset_47622)[3][5] = {
+	/* 80M-40M */
+	{ 342, 66479, 60738, 0, 0 },
+	/* 80M -20M */
+	{ 415, 66406, 60665, 0, 0 },
+	/* 40M - 20M */
+	{ 297, -297, -297, 297, 297 }
+};
 #ifdef WL_PROXD_SEQ
 
 static const uint16 k_tof_seq_tiny_tbls[] = {
@@ -599,21 +703,21 @@ struct phy_ac_tof_info {
 	phy_info_t *pi;
 	phy_ac_info_t *aci;
 	phy_tof_info_t *ti;
-	uint16 proxd_80m_k_values[6];
-	uint16 proxd_40m_k_values[12];
-	uint16 proxd_20m_k_values[25];
-	uint16 proxd_2g_k_values[14];
-	int16 proxdi_rate_offset_80m[4];
-	int16 proxdi_rate_offset_40m[4];
-	int16 proxdi_rate_offset_20m[4];
-	int16 proxdi_rate_offset_2g[4];
-	int16 proxdt_rate_offset_80m[4];
-	int16 proxdt_rate_offset_40m[4];
-	int16 proxdt_rate_offset_20m[4];
-	int16 proxdt_rate_offset_2g[4];
+	uint32 proxd_80m_k_values[6];
+	uint32 proxd_40m_k_values[12];
+	uint32 proxd_20m_k_values[25];
+	uint32 proxd_2g_k_values[14];
+	int32 proxdi_rate_offset_80m[4];
+	int32 proxdi_rate_offset_40m[4];
+	int32 proxdi_rate_offset_20m[4];
+	int32 proxdi_rate_offset_2g[4];
+	int32 proxdt_rate_offset_80m[4];
+	int32 proxdt_rate_offset_40m[4];
+	int32 proxdt_rate_offset_20m[4];
+	int32 proxdt_rate_offset_2g[4];
 	int16 proxdi_ack_offset[4];
 	int16 proxdt_ack_offset[4];
-	int16 proxd_subbw_offset[3][5];
+	int32 proxd_subbw_offset[3][5];
 	int32 rssi[PHY_CORE_MAX];
 	uint16 proxd_ki[4];
 	uint16 proxd_kt[4];
@@ -655,6 +759,7 @@ struct phy_ac_tof_info {
 	uint16 bundle_offs_39[3];
 	uint16 start_seq_time;
 	uint16 delta_time_tx2rx;
+	int32 tof_lesi_saved;
 };
 
 /* Local functions */
@@ -2487,6 +2592,7 @@ static int phy_ac_tof(phy_type_tof_ctx_t *ctx, bool enter, bool tx, bool hw_adj,
 	bool  suspend = !(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC);
 	int retval = BCME_OK;
 	bool loadSPB;
+	phy_ac_rxgcrs_info_t *rxgcrsi = pi->u.pi_acphy->rxgcrsi;
 
 	tofi->emu_delay = emu_delay;
 	if (change) {
@@ -2529,6 +2635,13 @@ static int phy_ac_tof(phy_type_tof_ctx_t *ctx, bool enter, bool tx, bool hw_adj,
 				wlapi_suspend_mac_and_wait(pi->sh->physhim);
 			}
 			if (enter) {
+				phy_watchdog_suspend(pi);
+
+				if (phy_ac_rxgcrs_get_cap_lesi(pi)) {
+					phy_ac_rxgcrs_iovar_get_lesi_ovrd(rxgcrsi,
+						&tofi->tof_lesi_saved);
+					phy_ac_rxgcrs_iovar_set_lesi_ovrd(rxgcrsi, FALSE);
+				}
 				/* Disable BT coex */
 				phy_btcx_disable_arbiter(pi->btcxi);
 				phy_ac_tof_fdiqcomp_save_disable(tofi);
@@ -2553,6 +2666,12 @@ static int phy_ac_tof(phy_type_tof_ctx_t *ctx, bool enter, bool tx, bool hw_adj,
 					wlc_phy_smth(pi, tofi->tof_smth_enable,
 						tofi->tof_smth_dump_mode);
 				}
+
+				if (phy_ac_rxgcrs_get_cap_lesi(pi)) {
+					phy_ac_rxgcrs_iovar_set_lesi_ovrd(rxgcrsi,
+						tofi->tof_lesi_saved);
+				}
+				phy_watchdog_resume(pi);
 			}
 
 			wlc_phy_resetcca_acphy(pi);
@@ -2650,7 +2769,10 @@ int fmt, int nman, int nexp, int nfft, uint32* H, cint32* Hout, int32* h)
 	int8 He[256];
 	int32 vi, vq, *pOut;
 	uint32 x, iq_mask, e_mask, sgnr_mask, sgni_mask;
+	int err = BCME_OK;
 
+	if (nfft > 256)
+		return BCME_RANGE;
 	/* when fmt is TRUE, the size nman include its sign bit */
 	/* so need to minus one to get value mask */
 	if (fmt)
@@ -2770,7 +2892,7 @@ int fmt, int nman, int nexp, int nfft, uint32* H, cint32* Hout, int32* h)
 		*pOut++ = (int32)sgn*vi;
 	}
 
-	return shft;
+	return err;
 }
 
 static void
@@ -2980,6 +3102,10 @@ phy_ac_tof_chan_freq_response(phy_type_tof_ctx_t *ctx, int len, int nbits, bool 
 	uint32 *pTmp, *pIn;
 	int i, i_l, i_r, n1, n2, n3, nfft, nfft_over_2;
 	uint32 table_idx, table_width, t_core, t_offset;
+	int err = BCME_OK;
+	uint8 classifier_ctrl;
+
+	bool  suspend = !(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC);
 
 	t_core = single_core ? tofi->tof_core : core;
 	t_offset = single_core ? 0 : sts_offset;
@@ -3005,13 +3131,19 @@ phy_ac_tof_chan_freq_response(phy_type_tof_ctx_t *ctx, int len, int nbits, bool 
 		ASSERT(H != NULL);
 	}
 
+	if (!suspend) {
+		wlapi_suspend_mac_and_wait(pi->sh->physhim);
+	}
 	pTmp = (uint32*)H;
 	pIn = (uint32*)H + len;
 	table_idx = ACPHY_TBL_ID_CHANEST(t_core);
 	table_width = CORE0CHANESTTBL_TABLE_WIDTH;
 
 	wlc_phy_table_read_acphy(pi, table_idx, len, t_offset, table_width, pTmp);
-	printf("ClassifierCtrl : 0x%x\n", READ_PHYREG(pi, ClassifierCtrl));
+	classifier_ctrl = READ_PHYREG(pi, ClassifierCtrl) & 0x3;
+	if (classifier_ctrl != 0) {
+		PHY_INFORM(("ClassifierCtrl[1:0] : 0x%x\n", classifier_ctrl));
+	}
 #ifdef TOF_DBG
 #if defined(K_TOF_COLLECT_HRAW_SIZE_20MHZ) && defined(K_TOF_COLLECT_HRAW_SIZE_80MHZ)
 	if (Hraw && (len <= collect_hraw_size)) {
@@ -3072,19 +3204,24 @@ phy_ac_tof_chan_freq_response(phy_type_tof_ctx_t *ctx, int len, int nbits, bool 
 	} else if (ACMAJORREV_2(pi->pubpi->phy_rev) ||
 		ACMAJORREV_4(pi->pubpi->phy_rev) ||
 		ACMAJORREV_40(pi->pubpi->phy_rev)) {
-		wlc_unpack_float_acphy(nbits, UNPACK_FLOAT_AUTO_SCALE, 0,
+		err = wlc_unpack_float_acphy(nbits, UNPACK_FLOAT_AUTO_SCALE, 0,
 			CORE0CHANESTTBL_FLOAT_FORMAT, CORE0CHANESTTBL_REV2_DATA_SIZE,
 			CORE0CHANESTTBL_REV2_EXP_SIZE, len, pIn, H, NULL);
 	} else if (ACMAJORREV_0(pi->pubpi->phy_rev) || ACMAJORREV_5(pi->pubpi->phy_rev) ||
 		ACMAJORREV_33(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
-		wlc_unpack_float_acphy(nbits, UNPACK_FLOAT_AUTO_SCALE, 0,
+		err = wlc_unpack_float_acphy(nbits, UNPACK_FLOAT_AUTO_SCALE, 0,
 			CORE0CHANESTTBL_FLOAT_FORMAT, CORE0CHANESTTBL_REV0_DATA_SIZE,
 			CORE0CHANESTTBL_REV0_EXP_SIZE, len, pIn, H, NULL);
 	} else {
+		if (!suspend) {
+			wlapi_enable_mac(pi->sh->physhim);
+		}
 		return BCME_UNSUPPORTED;
 	}
-
-	return BCME_OK;
+	if (!suspend) {
+		wlapi_enable_mac(pi->sh->physhim);
+	}
+	return err;
 }
 
 /* Get mag sqrd channel impulse response(from channel smoothing hw) to derive 11v rx timestamp */
@@ -3359,10 +3496,10 @@ static void phy_ac_tof_cmd(phy_type_tof_ctx_t *ctx, bool seq, int emu_delay)
 
 /* get K value for initiator or target  */
 static
-const uint16 *phy_ac_tof_kvalue_tables(phy_info_t *pi, phy_ac_tof_info_t *tofi,
+const uint32 *phy_ac_tof_kvalue_tables(phy_info_t *pi, phy_ac_tof_info_t *tofi,
 chanspec_t chanspec, int32* ki, int32* kt, int32* kseq)
 {
-	uint16 const *kvalueptr = NULL;
+	uint32 const *kvalueptr = NULL;
 	int channel = CHSPEC_CHANNEL(chanspec);
 
 	/* Base K value (VHT FTM, VHT ACK) */
@@ -3464,7 +3601,7 @@ chanspec_t chanspec, int32* ki, int32* kt, int32* kseq)
 			kvalueptr = NULL;
 			*kseq = TOF_SEQ_K_43602_2G;
 		}
-	} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
+	} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		if (CHSPEC_IS80(chanspec)) {
 			kvalueptr = proxd_4361_80m_k_values;
 		} else if (CHSPEC_IS40(chanspec)) {
@@ -3474,6 +3611,26 @@ chanspec_t chanspec, int32* ki, int32* kt, int32* kseq)
 		} else {
 			kvalueptr = proxd_4361_2g_k_values;
 		}
+	} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+		if (CHSPEC_IS80(chanspec)) {
+			kvalueptr = proxd_43684_80m_k_values;
+		} else if (CHSPEC_IS40(chanspec)) {
+			kvalueptr = proxd_43684_40m_k_values;
+		} else if (channel >= 36) {
+			kvalueptr = proxd_43684_20m_k_values;
+		} else {
+			kvalueptr = proxd_43684_2g_k_values;
+		}
+	} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+		if (CHSPEC_IS80(chanspec)) {
+			kvalueptr = proxd_47622_80m_k_values;
+		} else if (CHSPEC_IS40(chanspec)) {
+			kvalueptr = proxd_47622_40m_k_values;
+		} else if (channel >= 36) {
+			kvalueptr = proxd_47622_20m_k_values;
+		} else {
+			kvalueptr = proxd_47622_2g_k_values;
+		}
 	}
 
 	return kvalueptr;
@@ -3482,7 +3639,7 @@ chanspec_t chanspec, int32* ki, int32* kt, int32* kseq)
 static int phy_ac_tof_kvalue(phy_type_tof_ctx_t *ctx, chanspec_t chanspec, uint32 rspecidx,
 	uint32 *kip, uint32 *ktp, uint8 flag)
 {
-	uint16 const *kvaluep = NULL;
+	uint32 const *kvaluep = NULL;
 	int idx = 0, channel = CHSPEC_CHANNEL(chanspec);
 	int32 ki = 0, kt = 0, kseq = 0;
 	int rtt_adj = 0, rtt_adj_ts, irate_adj = 0, iack_adj = 0, trate_adj = 0, tack_adj = 0;
@@ -3492,6 +3649,17 @@ static int phy_ac_tof_kvalue(phy_type_tof_ctx_t *ctx, chanspec_t chanspec, uint3
 
 	phy_ac_tof_info_t *tofi = (phy_ac_tof_info_t *)ctx;
 	phy_info_t *pi = tofi->pi;
+
+#ifdef CALIBRATION
+	if (kip) {
+		*kip = 0;
+		return BCME_OK;
+	}
+	if (ktp) {
+		*ktp = 0;
+		return BCME_OK;
+	}
+#endif /* CALIBRATION */
 
 	suspend = !(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC);
 
@@ -3641,8 +3809,10 @@ static int phy_ac_tof_kvalue(phy_type_tof_ctx_t *ctx, chanspec_t chanspec, uint3
 			}
 		}
 		rtt_adj = (rtt_adj_ts * rtt_adj) >> K_TOF_K_RTT_ADJ_Q;
+		PHY_TRACE(("init kt %d, ki %d\n", kt, ki));
 		ki += ((int32)rtt_adj + (int32)rtt_adj_papd - irate_adj - iack_adj);
 		kt += ((int32)rtt_adj + (int32)rtt_adj_papd - trate_adj - tack_adj);
+		PHY_TRACE(("pre-bwidx kt %d, ki %d\n", kt, ki));
 		if (bwidx) {
 			if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
 				kt -= tofi->proxd_subbw_offset[bwidx - 1][ackidx + 1];
@@ -3651,12 +3821,18 @@ static int phy_ac_tof_kvalue(phy_type_tof_ctx_t *ctx, chanspec_t chanspec, uint3
 				kt -= tofi->proxd_subbw_offset[bwidx - 1][rateidx + 1];
 			}
 		}
+		PHY_TRACE(("rtt_adj %d, rtt_adj_papd %d, ackidx %d, rateidx %d, bwidx %d\n",
+			rtt_adj, rtt_adj_papd, ackidx, rateidx, bwidx));
+		PHY_TRACE(("ki %d, irate_adj %d, iack_adj %d\n", ki, irate_adj, iack_adj));
+		PHY_TRACE(("kt %d, trate_adj %d, tack_adj %d\n", kt, trate_adj, tack_adj));
+		PHY_TRACE(("kvaluep[%d] 0x%04x\n", idx, kvaluep[idx]));
 		if (kip) {
-			*kip = (uint32)(ki + (int8)(kvaluep[idx] & 0xff));
+			*kip = (uint32)(ki + (int16)(kvaluep[idx] & 0xffff));
 		}
 		if (ktp) {
-			*ktp = (uint32)(kt + (int8)(kvaluep[idx] >> 8));
+			*ktp = (uint32)(kt + (int16)(kvaluep[idx] >> 16));
 		}
+
 		return BCME_OK;
 	}
 
@@ -4095,11 +4271,21 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 			tofi->proxd_ki[1] = TOF_INITIATOR_K_43602_40M;
 			tofi->proxd_ki[2] = TOF_INITIATOR_K_43602_20M;
 			tofi->proxd_ki[3] = TOF_INITIATOR_K_43602_2G;
-		} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 			tofi->proxd_ki[0] = TOF_INITIATOR_K_4361_80M;
 			tofi->proxd_ki[1] = TOF_INITIATOR_K_4361_40M;
 			tofi->proxd_ki[2] = TOF_INITIATOR_K_4361_20M;
 			tofi->proxd_ki[3] = TOF_INITIATOR_K_4361_2G;
+		} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxd_ki[0] = TOF_INITIATOR_K_43684_80M;
+			tofi->proxd_ki[1] = TOF_INITIATOR_K_43684_40M;
+			tofi->proxd_ki[2] = TOF_INITIATOR_K_43684_20M;
+			tofi->proxd_ki[3] = TOF_INITIATOR_K_43684_2G;
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxd_ki[0] = TOF_INITIATOR_K_47622_80M;
+			tofi->proxd_ki[1] = TOF_INITIATOR_K_47622_40M;
+			tofi->proxd_ki[2] = TOF_INITIATOR_K_47622_20M;
+			tofi->proxd_ki[3] = TOF_INITIATOR_K_47622_2G;
 		}
 	}
 
@@ -4141,21 +4327,31 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 			tofi->proxd_kt[1] = TOF_TARGET_K_43602_40M;
 			tofi->proxd_kt[2] = TOF_TARGET_K_43602_20M;
 			tofi->proxd_kt[3] = TOF_TARGET_K_43602_2G;
-		} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 			tofi->proxd_kt[0] = TOF_TARGET_K_4361_80M;
 			tofi->proxd_kt[1] = TOF_TARGET_K_4361_40M;
 			tofi->proxd_kt[2] = TOF_TARGET_K_4361_20M;
 			tofi->proxd_kt[3] = TOF_TARGET_K_4361_2G;
+		} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxd_kt[0] = TOF_TARGET_K_43684_80M;
+			tofi->proxd_kt[1] = TOF_TARGET_K_43684_40M;
+			tofi->proxd_kt[2] = TOF_TARGET_K_43684_20M;
+			tofi->proxd_kt[3] = TOF_TARGET_K_43684_2G;
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxd_kt[0] = TOF_TARGET_K_47622_80M;
+			tofi->proxd_kt[1] = TOF_TARGET_K_47622_40M;
+			tofi->proxd_kt[2] = TOF_TARGET_K_47622_20M;
+			tofi->proxd_kt[3] = TOF_TARGET_K_47622_2G;
 		}
 	}
 
 	if (PHY_GETVAR(pi, rstr_proxd_80mkval)) {
 		for (i = 0; i < 6; i++) {
-			tofi->proxd_80m_k_values[i] = (uint16)PHY_GETINTVAR_ARRAY(pi,
+			tofi->proxd_80m_k_values[i] = PHY_GETINTVAR_ARRAY(pi,
 				rstr_proxd_80mkval, i);
 		}
 	} else {
-		uint16 const *kvalueptr;
+		uint32 const *kvalueptr;
 
 		if (ACMAJORREV_3(pi->pubpi->phy_rev)) {
 			/* For 4345 B0/B1 */
@@ -4174,8 +4370,12 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 		} else if (ACMAJORREV_0(pi->pubpi->phy_rev) || ACMAJORREV_5(pi->pubpi->phy_rev)) {
 			/* For 43602 */
 			kvalueptr = proxd_43602_80m_k_values;
-		} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 			kvalueptr = proxd_4361_80m_k_values;
+		} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			kvalueptr = proxd_43684_80m_k_values;
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			kvalueptr = proxd_47622_80m_k_values;
 		} else {
 			return;
 		}
@@ -4186,11 +4386,11 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 
 	if (PHY_GETVAR(pi, rstr_proxd_40mkval)) {
 		for (i = 0; i < 12; i++) {
-			tofi->proxd_40m_k_values[i] = (uint16)PHY_GETINTVAR_ARRAY(pi,
+			tofi->proxd_40m_k_values[i] = PHY_GETINTVAR_ARRAY(pi,
 				rstr_proxd_40mkval, i);
 		}
 	} else {
-		uint16 const *kvalueptr;
+		uint32 const *kvalueptr;
 
 		if (ACMAJORREV_3(pi->pubpi->phy_rev)) {
 			/* For 4345 B0/B1 */
@@ -4209,8 +4409,12 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 		} else if (ACMAJORREV_0(pi->pubpi->phy_rev) || ACMAJORREV_5(pi->pubpi->phy_rev)) {
 			/* For 43602 */
 			kvalueptr = proxd_43602_40m_k_values;
-		} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 			kvalueptr = proxd_4361_40m_k_values;
+		} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			kvalueptr = proxd_43684_40m_k_values;
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			kvalueptr = proxd_47622_40m_k_values;
 		} else {
 			return;
 		}
@@ -4221,11 +4425,11 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 
 	if (PHY_GETVAR(pi, rstr_proxd_20mkval)) {
 		for (i = 0; i < 25; i++) {
-			tofi->proxd_20m_k_values[i] = (uint16)PHY_GETINTVAR_ARRAY(pi,
+			tofi->proxd_20m_k_values[i] = PHY_GETINTVAR_ARRAY(pi,
 				rstr_proxd_20mkval, i);
 		}
 	} else {
-		uint16 const *kvalueptr;
+		uint32 const *kvalueptr;
 
 		if (ACMAJORREV_3(pi->pubpi->phy_rev)) {
 			/* For 4345 B0/B1 */
@@ -4244,8 +4448,12 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 		} else if (ACMAJORREV_0(pi->pubpi->phy_rev) || ACMAJORREV_5(pi->pubpi->phy_rev)) {
 			/* For 43602 */
 			kvalueptr = proxd_43602_20m_k_values;
-		} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 			kvalueptr = proxd_4361_20m_k_values;
+		} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			kvalueptr = proxd_43684_20m_k_values;
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			kvalueptr = proxd_47622_20m_k_values;
 		} else {
 			return;
 		}
@@ -4256,11 +4464,11 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 
 	if (PHY_GETVAR(pi, rstr_proxd_2gkval)) {
 		for (i = 0; i < 14; i++) {
-			tofi->proxd_2g_k_values[i] = (uint16)PHY_GETINTVAR_ARRAY(pi,
+			tofi->proxd_2g_k_values[i] = PHY_GETINTVAR_ARRAY(pi,
 				rstr_proxd_2gkval, i);
 		}
 	} else {
-		uint16 const *kvalueptr;
+		uint32 const *kvalueptr;
 		if (ACMAJORREV_3(pi->pubpi->phy_rev)) {
 			/* For 4345 B0/B1 */
 			kvalueptr = proxd_4345_2g_k_values;
@@ -4278,8 +4486,12 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 		} else if (ACMAJORREV_0(pi->pubpi->phy_rev) || ACMAJORREV_5(pi->pubpi->phy_rev)) {
 			/* For 43602 */
 			kvalueptr = proxd_43602_2g_k_values;
-		} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 			kvalueptr = proxd_4361_2g_k_values;
+		} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			kvalueptr = proxd_43684_2g_k_values;
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			kvalueptr = proxd_47622_2g_k_values;
 		} else {
 			return;
 		}
@@ -4288,44 +4500,108 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 		}
 	}
 
-	for (i = 0; i < sizeof(proxdi_rate_offset_80m) / sizeof(int16); i++) {
-		tofi->proxdi_rate_offset_80m[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
-			rstr_proxdi_rate80m, i, proxdi_rate_offset_80m[i]);
+	for (i = 0; i < sizeof(proxdi_rate_offset_80m) / sizeof(int32); i++) {
+		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxdi_rate_offset_80m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdi_rate80m_43684, i, proxdi_rate_offset_80m_43684[i]);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxdi_rate_offset_80m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdi_rate80m_47622, i, proxdi_rate_offset_80m_47622[i]);
+		} else {
+			tofi->proxdi_rate_offset_80m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdi_rate80m, i, proxdi_rate_offset_80m[i]);
+		}
 	}
 
-	for (i = 0; i < sizeof(proxdi_rate_offset_40m) / sizeof(int16); i++) {
-		tofi->proxdi_rate_offset_40m[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
-			rstr_proxdi_rate40m, i, proxdi_rate_offset_40m[i]);
+	for (i = 0; i < sizeof(proxdi_rate_offset_40m) / sizeof(int32); i++) {
+		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxdi_rate_offset_40m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdi_rate40m_43684, i, proxdi_rate_offset_40m_43684[i]);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxdi_rate_offset_40m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdi_rate40m_47622, i, proxdi_rate_offset_40m_47622[i]);
+		} else {
+			tofi->proxdi_rate_offset_40m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdi_rate40m, i, proxdi_rate_offset_40m[i]);
+		}
 	}
 
-	for (i = 0; i < sizeof(proxdi_rate_offset_20m) / sizeof(int16); i++) {
-		tofi->proxdi_rate_offset_20m[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
-			rstr_proxdi_rate20m, i, proxdi_rate_offset_20m[i]);
+	for (i = 0; i < sizeof(proxdi_rate_offset_20m) / sizeof(int32); i++) {
+		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxdi_rate_offset_20m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdi_rate20m_43684, i, proxdi_rate_offset_20m_43684[i]);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxdi_rate_offset_20m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdi_rate20m_47622, i, proxdi_rate_offset_20m_47622[i]);
+		} else {
+			tofi->proxdi_rate_offset_20m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdi_rate20m, i, proxdi_rate_offset_20m[i]);
+		}
 	}
 
-	for (i = 0; i < sizeof(proxdi_rate_offset_2g) / sizeof(int16); i++) {
-		tofi->proxdi_rate_offset_2g[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
-			rstr_proxdi_rate2g, i, proxdi_rate_offset_2g[i]);
+	for (i = 0; i < sizeof(proxdi_rate_offset_2g) / sizeof(int32); i++) {
+		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxdi_rate_offset_2g[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdi_rate2g_43684, i, proxdi_rate_offset_2g_43684[i]);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxdi_rate_offset_2g[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdi_rate2g_47622, i, proxdi_rate_offset_2g_47622[i]);
+		} else {
+			tofi->proxdi_rate_offset_2g[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdi_rate2g, i, proxdi_rate_offset_2g[i]);
+		}
 	}
 
-	for (i = 0; i < sizeof(proxdt_rate_offset_80m) / sizeof(int16); i++) {
-		tofi->proxdt_rate_offset_80m[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
-			rstr_proxdt_rate80m, i, proxdt_rate_offset_80m[i]);
+	for (i = 0; i < sizeof(proxdt_rate_offset_80m) / sizeof(int32); i++) {
+		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxdt_rate_offset_80m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_rate80m_43684, i, proxdt_rate_offset_80m_43684[i]);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxdt_rate_offset_80m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_rate80m_47622, i, proxdt_rate_offset_80m_47622[i]);
+		} else {
+			tofi->proxdt_rate_offset_80m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_rate80m, i, proxdt_rate_offset_80m[i]);
+		}
 	}
 
-	for (i = 0; i < sizeof(proxdt_rate_offset_40m) / sizeof(int16); i++) {
-		tofi->proxdt_rate_offset_40m[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
-			rstr_proxdt_rate40m, i, proxdt_rate_offset_40m[i]);
+	for (i = 0; i < sizeof(proxdt_rate_offset_40m) / sizeof(int32); i++) {
+		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxdt_rate_offset_40m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_rate40m_43684, i, proxdt_rate_offset_40m_43684[i]);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxdt_rate_offset_40m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_rate40m_47622, i, proxdt_rate_offset_40m_47622[i]);
+		} else {
+			tofi->proxdt_rate_offset_40m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_rate40m, i, proxdt_rate_offset_40m[i]);
+		}
 	}
 
-	for (i = 0; i < sizeof(proxdt_rate_offset_20m) / sizeof(int16); i++) {
-		tofi->proxdt_rate_offset_20m[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
-			rstr_proxdt_rate20m, i, proxdt_rate_offset_20m[i]);
+	for (i = 0; i < sizeof(proxdt_rate_offset_20m) / sizeof(int32); i++) {
+		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxdt_rate_offset_20m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_rate20m_43684, i, proxdt_rate_offset_20m_43684[i]);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxdt_rate_offset_20m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_rate20m_47622, i, proxdt_rate_offset_20m_47622[i]);
+		} else {
+			tofi->proxdt_rate_offset_20m[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_rate20m, i, proxdt_rate_offset_20m[i]);
+		}
 	}
 
-	for (i = 0; i < sizeof(proxdt_rate_offset_2g) / sizeof(int16); i++) {
-		tofi->proxdt_rate_offset_2g[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
-			rstr_proxdt_rate2g, i, proxdt_rate_offset_2g[i]);
+	for (i = 0; i < sizeof(proxdt_rate_offset_2g) / sizeof(int32); i++) {
+		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxdt_rate_offset_2g[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_rate2g_43684, i, proxdt_rate_offset_2g_43684[i]);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxdt_rate_offset_2g[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_rate2g_47622, i, proxdt_rate_offset_2g_47622[i]);
+		} else {
+			tofi->proxdt_rate_offset_2g[i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_rate2g, i, proxdt_rate_offset_2g[i]);
+		}
 	}
 
 	for (i = 0; i < sizeof(proxdi_ack_offset) / sizeof(int16); i++) {
@@ -4334,23 +4610,55 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 	}
 
 	for (i = 0; i < sizeof(proxdt_ack_offset) / sizeof(int16); i++) {
-		tofi->proxdt_ack_offset[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
-			rstr_proxdt_ack, i, proxdt_ack_offset[i]);
+		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxdt_ack_offset[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_ack_43684, i, proxdt_ack_offset_43684[i]);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxdt_ack_offset[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_ack_47622, i, proxdt_ack_offset_47622[i]);
+		} else {
+			tofi->proxdt_ack_offset[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxdt_ack, i, proxdt_ack_offset[i]);
+		}
 	}
 
 	for (i = 0; i < 5; i++) {
-		tofi->proxd_subbw_offset[0][i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
-			rstr_proxd_sub80m40m, i, proxd_subbw_offset[0][i]);
+		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxd_subbw_offset[0][i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxd_sub80m40m, i, proxd_subbw_offset_43684[0][i]);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxd_subbw_offset[0][i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxd_sub80m40m, i, proxd_subbw_offset_47622[0][i]);
+		} else {
+			tofi->proxd_subbw_offset[0][i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxd_sub80m40m, i, proxd_subbw_offset[0][i]);
+		}
 	}
 
 	for (i = 0; i < 5; i++) {
-		tofi->proxd_subbw_offset[1][i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
-			rstr_proxd_sub80m20m, i, proxd_subbw_offset[1][i]);
+		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxd_subbw_offset[1][i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxd_sub80m20m, i, proxd_subbw_offset_43684[1][i]);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxd_subbw_offset[1][i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxd_sub80m20m, i, proxd_subbw_offset_47622[1][i]);
+		} else {
+			tofi->proxd_subbw_offset[1][i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxd_sub80m20m, i, proxd_subbw_offset[1][i]);
+		}
 	}
 
 	for (i = 0; i < 5; i++) {
-		tofi->proxd_subbw_offset[2][i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT(pi,
-			rstr_proxd_sub40m20m, i, proxd_subbw_offset[2][i]);
+		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			tofi->proxd_subbw_offset[2][i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxd_sub40m20m, i, proxd_subbw_offset_43684[2][i]);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			tofi->proxd_subbw_offset[2][i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxd_sub40m20m, i, proxd_subbw_offset_47622[2][i]);
+		} else {
+			tofi->proxd_subbw_offset[2][i] = PHY_GETINTVAR_ARRAY_DEFAULT(pi,
+				rstr_proxd_sub40m20m, i, proxd_subbw_offset[2][i]);
+		}
 	}
 
 #ifdef TOF_TUNE_KVAL

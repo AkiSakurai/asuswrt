@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_stamon.h 767827 2018-09-27 03:11:47Z $
+ * $Id: wlc_stamon.h 788129 2020-06-22 11:35:16Z $
  */
 
 /** This is an AP/router specific feature. Twiki: [STASniffingModeOnAP] */
@@ -80,4 +80,7 @@ extern int wlc_stamon_stats_update(wlc_info_t *wlc, const struct ether_addr* ea,
 extern void wlc_stamon_rxcounters_update(wlc_info_t *wlc, void *p, bool reset);
 extern void wlc_stamon_get_reserved_amt_index(wlc_info_t *wlc, uint16 *amt_start_idx,
 	uint16 *max_amt_idx);
+extern int wlc_stamon_rcmta_slots_free(wlc_stamon_info_t *ctxt);
+/* Delete all the stations which matches the chanspec provided */
+extern void wlc_stamon_delete_stations_matching_chanspec(wlc_info_t *wlc, chanspec_t chanspec);
 #endif /* _WLC_STAMON_H_ */

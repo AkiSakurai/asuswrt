@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_json_utility.c 779112 2019-09-19 10:14:55Z $
+ * $Id: wbd_json_utility.c 784032 2020-02-17 09:11:31Z $
  */
 
 #include "wbd_json_utility.h"
@@ -63,7 +63,7 @@
 		do { \
 			object_main = json_tokener_parse(data); \
 			if (object_main == NULL) { \
-				WBD_WARNING("Main %s\n", wbderrorstr(ERR)); \
+				WBD_JSON("Main %s\n", wbderrorstr(ERR)); \
 				return ret_val; \
 			} \
 		} while (0)
@@ -72,7 +72,7 @@
 		do { \
 			object_data = json_object_object_get(object_main, TAG); \
 			if (object_data == NULL) { \
-				WBD_WARNING("For Tag %s : Data %s\n", TAG, wbderrorstr(ERR)); \
+				WBD_JSON("For Tag %s : Data %s\n", TAG, wbderrorstr(ERR)); \
 				ret = ERR; \
 				goto end; \
 			} \

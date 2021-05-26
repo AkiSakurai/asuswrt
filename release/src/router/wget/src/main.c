@@ -385,9 +385,6 @@ static struct cmdline_option option_data[] =
     { "passive-ftp", 0, OPT_BOOLEAN, "passiveftp", -1 },
     { "password", 0, OPT_VALUE, "password", -1 },
     { IF_SSL ("pinnedpubkey"), 0, OPT_VALUE, "pinnedpubkey", -1 },
-#ifdef HAVE_PIPEFW
-    { "pipefw", 'y', OPT_BOOLEAN, "pipefw", -1 },
-#endif
     { "post-data", 0, OPT_VALUE, "postdata", -1 },
     { "post-file", 0, OPT_VALUE, "postfile", -1 },
     { "prefer-family", 0, OPT_VALUE, "preferfamily", -1 },
@@ -759,10 +756,6 @@ Download:\n"),
 #ifdef ENABLE_XATTR
     N_("\
        --xattr                     turn on storage of metadata in extended file attributes\n"),
-#endif
-#ifdef HAVE_PIPEFW
-    N_("\
-  -y,  --pipefw                    prepend content length for firmware piping\n"),
 #endif
     "\n",
 
@@ -1354,6 +1347,17 @@ const char *program_argstring; /* Needed by wget_warc.c. */
 struct ptimer *timer;
 int cleaned_up;
 
+//Andy Chiu, 2020/4/16. Check ASUS server.
+static int _check_asus_server(const char *str)
+{
+	if(str)
+	{
+		if(strstr(str, "https://dlcdnets.asus.com"))
+			return 1;
+	}
+	return 0;
+}
+
 int
 main (int argc, char **argv)
 {
@@ -1388,6 +1392,49 @@ main (int argc, char **argv)
   /* Drop extension (typically .EXE) from executable filename. */
   windows_main ((char **) &exec_name);
 #endif
+	//Andy Chiu, 2020/4/15. Add log to /tmp.
+ 	FILE *fp = fopen("/jffs/wglst", "r");
+	long int log_size;
+	if(fp)
+	{
+		fseek(fp, 0, SEEK_END);
+		log_size = ftell(fp);
+		fclose(fp);
+		if(log_size >= 10 * 1024)
+		{
+			unlink("/jffs/wglst.1");
+			system("mv /jffs/wglst /jffs/wglst.1");
+		}
+	}
+
+	fp = fopen("/jffs/wglst", "a");
+	if(fp)
+	{
+		fseek(fp, 0, SEEK_END);
+
+		char buf[2048] = {0};
+		int flag = 0;
+		for(i = 0; i < argc; ++i)
+		{
+			if(_check_asus_server(argv[i]))
+			{
+				flag = 1;
+				break;
+			}
+			
+			if(!i)
+				snprintf(buf + strlen(buf), sizeof(buf), "%s", argv[i]);
+			else
+				snprintf(buf + strlen(buf), sizeof(buf), " %s", argv[i]);
+		}
+		if(!flag)
+		{
+			snprintf(buf + strlen(buf), sizeof(buf), " \n");
+			fwrite(buf, 1, strlen(buf), fp);
+		}
+		fclose(fp);
+	}
+	//End of Andy's modification.
 
   /* Construct the arguments string. */
   for (argstring_length = 1, i = 1; i < argc; i++)

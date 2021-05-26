@@ -932,6 +932,14 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 #endif /* IEEE8021X_EAPOL */
 		sme_sched_obss_scan(wpa_s, 0);
 	}
+#ifdef CONFIG_DRIVER_BRCM
+	/* For re assoc by driver , only 4 way handshake will be
+	 * handled by wpa_supplicant. For that case, need to do
+	 * explicit port authorize call to driver */
+	else if (state == WPA_COMPLETED && !wpa_s->new_connection) {
+		wpa_drv_set_supp_port(wpa_s, 1);
+	}
+#endif // endif
 	wpa_s->wpa_state = state;
 
 #ifdef CONFIG_BGSCAN
@@ -6942,6 +6950,13 @@ void wpas_auth_failed(struct wpa_supplicant *wpa_s, char *reason)
 	if (ssid->auth_failures > 1 &&
 	    wpa_key_mgmt_wpa_ieee8021x(ssid->key_mgmt))
 		dur += os_random() % (ssid->auth_failures * 10);
+
+#ifdef CONFIG_DRIVER_BRCM_MAP
+	if (wpa_s->conf->map_bh_sta)
+		dur = 5;
+#endif /* CONFIG_DRIVER_BRCM_MAP */
+
+	dur = 5;
 
 	os_get_reltime(&now);
 	if (now.sec + dur <= ssid->disabled_until.sec)

@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_radio.c 783070 2020-01-13 15:29:34Z $
+ * $Id: phy_ac_radio.c 787995 2020-06-17 21:35:47Z $
  */
 
 #include <typedefs.h>
@@ -589,7 +589,7 @@ static void
 wlc_phy_radio20694_pll_tune(phy_info_t *pi, uint32 chan_freq, uint8 core);
 static void wlc_phy_radio20694_rffe_tune(phy_info_t *pi,
 		const chan_info_radio20694_rffe_t *chan_info_rffe, uint8 core);
-static void wlc_phy_radio20698_rffe_tune(phy_info_t *pi,
+static void wlc_phy_radio20698_rffe_tune(phy_info_t *pi, chanspec_t chanspec,
 		const chan_info_radio20698_rffe_t *chan_info_rffe, uint8 core);
 static void wlc_phy_radio20704_rffe_tune(phy_info_t *pi,
 		const chan_info_radio20704_rffe_t *chan_info_rffe, uint8 core);
@@ -2258,8 +2258,8 @@ wlc_phy_init_radio_prefregs_allbands(phy_info_t *pi, const radio_20xx_prefregs_t
 }
 
 void
-wlc_phy_chanspec_radio20698_setup(phy_info_t *pi, uint8 ch, uint8 toggle_logen_reset,
-	uint8 logen_mode)
+wlc_phy_chanspec_radio20698_setup(phy_info_t *pi, chanspec_t chanspec,
+	uint8 toggle_logen_reset, uint8 logen_mode)
 {
 	/* 20698_procs.tcl r708059: 20698_fc */
 
@@ -2270,7 +2270,7 @@ wlc_phy_chanspec_radio20698_setup(phy_info_t *pi, uint8 ch, uint8 toggle_logen_r
 
 	PHY_TRACE(("wl%d: %s\n", pi->sh->unit, __FUNCTION__));
 
-	if (wlc_phy_chan2freq_20698(pi, ch, &chan_info) < 0)
+	if (wlc_phy_chan2freq_20698(pi, CHSPEC_CHANNEL(chanspec), &chan_info) < 0)
 		return;
 
 	/* logen_reset needs to be toggled whenever bandsel bit if changed */
@@ -2285,13 +2285,13 @@ wlc_phy_chanspec_radio20698_setup(phy_info_t *pi, uint8 ch, uint8 toggle_logen_r
 
 	phy_ac_chanmgr_get_data(chanmgri)->vco_pll_adjust_state = TRUE;
 	if (logen_mode == 4) {
-		wlc_phy_radio20698_rffe_tune(pi, chan_info, 3);
+		wlc_phy_radio20698_rffe_tune(pi, chanspec, chan_info, 3);
 		wlc_phy_radio20698_upd_band_related_reg(pi, chan_info->freq, logen_mode);
 		wlc_phy_radio20698_pll_tune(pi, pi->u.pi_acphy->radioi->pll_conf_20698,
 		                            chan_info->freq, logen_mode);
 	} else {
 		/* rffe tuning */
-		wlc_phy_radio20698_rffe_tune(pi, chan_info, 0);
+		wlc_phy_radio20698_rffe_tune(pi, chanspec, chan_info, 0);
 
 		/* band related settings */
 		wlc_phy_radio20698_upd_band_related_reg(pi, chan_info->freq, 0);
@@ -3791,13 +3791,13 @@ wlc_phy_radio20694_rffe_tune(phy_info_t *pi, const chan_info_radio20694_rffe_t *
 	}
 }
 
-static void wlc_phy_radio20698_rffe_tune(phy_info_t *pi,
+static void wlc_phy_radio20698_rffe_tune(phy_info_t *pi, chanspec_t chanspec,
 	const chan_info_radio20698_rffe_t *chan_info_rffe, uint8 core)
 {
 	/* 20698_procs.tcl r708059: 20698_upd_tuning_tbl */
 	/* 20698_tuning.tcl r708059: defines registers and fields */
 
-	if (CHSPEC_IS6G(pi->radio_chanspec)) {
+	if (CHSPEC_IS6G(chanspec)) {
 		/* 6G front end */
 		ASSERT((RADIOREV(pi->pubpi->radiorev) >= 3));
 		if (core != 3) {
@@ -3876,7 +3876,7 @@ static void wlc_phy_radio20698_rffe_tune(phy_info_t *pi,
 			chan_info_rffe->u.val_6G.RFP0_pll_refdoubler3_RefDoublerbuf_fstrg);
 		MOD_RADIO_PLLREG_20698(pi, XTAL1, 0, xtal_LDO_Vctrl,
 			chan_info_rffe->u.val_6G.RFP0_xtal1_xtal_LDO_Vctrl);
-	} else if (CHSPEC_IS5G(pi->radio_chanspec)) {
+	} else if (CHSPEC_IS5G(chanspec)) {
 		/* 5G front end */
 		if (core != 3) {
 			MOD_RADIO_PLLREG_20698(pi, LOGEN_REG1, 0, logen_mix_ctune,
@@ -14074,15 +14074,12 @@ chanspec_setup_radio_20694(phy_info_t *pi)
 static void
 chanspec_setup_radio_20698(phy_info_t *pi)
 {
-	uint8 ch_num;
-
 	phy_info_acphy_t *pi_ac = pi->u.pi_acphy;
-	ch_num =  CHSPEC_CHANNEL(pi->radio_chanspec);
 
 	/* Do resetcca to send out band_sel signal */
 	wlc_phy_resetcca_acphy(pi);
 
-	wlc_phy_chanspec_radio20698_setup(pi, ch_num,
+	wlc_phy_chanspec_radio20698_setup(pi, pi->radio_chanspec,
 		CCT_BAND_CHG(pi_ac) | CCT_BW_CHG(pi_ac), 0);
 }
 
@@ -16252,7 +16249,20 @@ wlc_phy_radio20698_afecal(phy_info_t *pi)
 {
 	/* 20698_procs.tcl r708059: 20698_afe_cal */
 
+	uint8 core;
+	uint8 restore_ext_5g_papu[PHY_CORE_MAX];
+	uint8 restore_override_ext_pa[PHY_CORE_MAX];
+
 	ASSERT(RADIOID(pi->pubpi->radioid) == BCM20698_ID);
+	/* Disable PA during rfseq setting */
+	FOREACH_CORE(pi, core) {
+		restore_ext_5g_papu[core] = READ_PHYREGFLDCE(pi, RfctrlIntc,
+				core, ext_5g_papu);
+		restore_override_ext_pa[core] = READ_PHYREGFLDCE(pi, RfctrlIntc,
+				core, override_ext_pa);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, override_ext_pa, 1);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, ext_5g_papu, 0);
+	}
 
 	wlc_phy_radio20698_adc_cap_cal(pi, 0);
 	//for 160(TI-ADC) calibrate rail 1 too.
@@ -16262,6 +16272,13 @@ wlc_phy_radio20698_afecal(phy_info_t *pi)
 
 	wlc_phy_radio20698_txdac_bw_setup(pi);
 	wlc_phy_radio20698_adc_offset_gain_cal(pi);
+	/* Restore PA reg value after reseq setting */
+	FOREACH_CORE(pi, core) {
+		MOD_PHYREGCE(pi, RfctrlIntc,
+				core, ext_5g_papu, restore_ext_5g_papu[core]);
+		MOD_PHYREGCE(pi, RfctrlIntc,
+				core, override_ext_pa, restore_override_ext_pa[core]);
+	}
 }
 
 static void
@@ -17595,27 +17612,67 @@ wlc_phy_radio20698_afe_div_ratio(phy_info_t *pi, uint8 use_ovr,
 void
 wlc_phy_radio20704_afe_div_ratio(phy_info_t *pi, uint8 use_ovr)
 {
-	/* 20704_procs.tcl r751329: 20704_afe_div_ratio */
+	/* 20704_procs.tcl : 20704_afe_div_ratio */
 
-	uint16 nad;
-	uint16 nda;
 	uint8 core;
 	uint16 overrides;
-	uint16 adc_div2 = 2;
-	uint16 dac_div2 = 2;
+	uint16 save_ReadOverrides;
+	uint16 adc_div1, adc_div2;
+	uint16 dac_div1, dac_div2;
+	chanspec_t chanspec = pi->radio_chanspec;
+	const uint16 afediv_overrides =
+		RF_20704_AFEDIV_CFG1_OVR_ovr_afediv_adc_div1_MASK(pi->pubpi->radiorev) |
+		RF_20704_AFEDIV_CFG1_OVR_ovr_afediv_adc_div2_MASK(pi->pubpi->radiorev) |
+		RF_20704_AFEDIV_CFG1_OVR_ovr_afediv_dac_div1_MASK(pi->pubpi->radiorev) |
+		RF_20704_AFEDIV_CFG1_OVR_ovr_afediv_dac_div2_MASK(pi->pubpi->radiorev);
 
-	if (CHSPEC_IS80(pi->radio_chanspec)) {
-		nda = 8;
-		nad = 8;
-	} else if (CHSPEC_IS40(pi->radio_chanspec)) {
-		nda = 12;
-		nad = 12;
-	} else if (CHSPEC_IS2G(pi->radio_chanspec) && pi->sromi->dacdiv10_2g) {
-		nda = 20;
-		nad = 24;
+	uint32 fc = wf_channel2mhz(CHSPEC_CHANNEL(chanspec),
+	                           CHSPEC_IS6G(chanspec) ? WF_CHAN_FACTOR_6_G
+	                         : CHSPEC_IS5G(chanspec) ? WF_CHAN_FACTOR_5_G
+	                                                :  WF_CHAN_FACTOR_2_4_G);
+
+	if (fc >= 6535) {
+		dac_div2 = 1;
+		adc_div2 = 1;
+		if (CHSPEC_IS80(pi->radio_chanspec)) {
+			dac_div1 = 9;
+			adc_div1 = 20;
+		} else if (CHSPEC_IS40(pi->radio_chanspec)) {
+			dac_div1 = 15;
+			adc_div1 = 30;
+		} else {
+			dac_div1 = 30;
+			adc_div1 = 60;
+		}
+	} else if (fc >= 5900) {
+		dac_div2 = 1;
+		adc_div2 = 1;
+		if (CHSPEC_IS80(pi->radio_chanspec)) {
+			dac_div1 = 9;
+			adc_div1 = 18;
+		} else if (CHSPEC_IS40(pi->radio_chanspec)) {
+			dac_div1 = 15;
+			adc_div1 = 27;
+		} else {
+			dac_div1 = 30;
+			adc_div1 = 54;
+		}
 	} else {
-		nda = 24;
-		nad = 24;
+		dac_div2 = 2;
+		adc_div2 = 1;
+		if (CHSPEC_IS80(pi->radio_chanspec)) {
+			dac_div1 = 4;
+			adc_div1 = 16;
+		} else if (CHSPEC_IS40(pi->radio_chanspec)) {
+			dac_div1 = 6;
+			adc_div1 = 24;
+		} else if (CHSPEC_IS2G(pi->radio_chanspec) && pi->sromi->dacdiv10_2g) {
+			dac_div1 = 10;
+			adc_div1 = 48;
+		} else {
+			dac_div1 = 12;
+			adc_div1 = 48;
+		}
 	}
 
 	/* VELOCE AFE-DIV Settings */
@@ -17623,39 +17680,39 @@ wlc_phy_radio20704_afe_div_ratio(phy_info_t *pi, uint8 use_ovr)
 		dac_div2 = 1;
 		if (CHSPEC_IS2G(pi->radio_chanspec)) {
 			if (CHSPEC_IS20(pi->radio_chanspec)) {
-				nda = 4; nad = 8; adc_div2 = 0;
+				/* adc_div2 needs to be 0 */
+				dac_div1 = 4; adc_div1 = 8; adc_div2 = 0;
 			} else if (CHSPEC_IS40(pi->radio_chanspec)) {
-				nda = 2; nad = 4; adc_div2 = 1;
+				dac_div1 = 2; adc_div1 = 4; adc_div2 = 1;
 			} else {
 				ASSERT(0);
 			}
 		} else {
 			/* There is no radio model in veloce */
-			nad *= adc_div2;
+			adc_div1 *= adc_div2;
 			adc_div2 = 1;
 		}
 	}
 
-	if (use_ovr) {
-		FOREACH_CORE(pi, core) {
-			/* Set AFEDIV overrides:
-				ovr_afediv_adc_div1 = 1 * 0x40
-				ovr_afediv_adc_div2 = 1 * 0x20
-				ovr_afediv_dac_div1 = 1 * 0x10
-				ovr_afediv_dac_div2 = 1 * 0x08
-			*/
+	FOREACH_CORE(pi, core) {
+		if (use_ovr) {
 			overrides = READ_RADIO_REG_20704(pi, AFEDIV_CFG1_OVR, core);
-			overrides |= 0x0078;
-			WRITE_RADIO_REG_20704(pi, AFEDIV_CFG1_OVR, core, overrides);
+			overrides |= afediv_overrides;
+			save_ReadOverrides = READ_RADIO_REG_20704(pi, READOVERRIDES, core);
+			// Read override values i.s.o direct control values, otherwise
+			// a sequence of MOD_RADIO_REG will give incorrect result
+			MOD_RADIO_REG_20704(pi, READOVERRIDES, core, ReadOverrides_reg, 0);
 			MOD_RADIO_REG_20704(pi, AFEDIV_REG1, core, afediv_dac_div2, dac_div2);
-			MOD_RADIO_REG_20704(pi, AFEDIV_REG1, core, afediv_dac_div1, nda/dac_div2);
+			MOD_RADIO_REG_20704(pi, AFEDIV_REG1, core, afediv_dac_div1, dac_div1);
 			MOD_RADIO_REG_20704(pi, AFEDIV_REG2, core, afediv_adc_div2, adc_div2);
-			MOD_RADIO_REG_20704(pi, AFEDIV_REG2, core, afediv_adc_div1, nad);
-		}
-	} else {
-		/* remove override mode */
-		FOREACH_CORE(pi, core) {
-			WRITE_RADIO_REG_20704(pi, AFEDIV_CFG1_OVR, core, 0);
+			MOD_RADIO_REG_20704(pi, AFEDIV_REG2, core, afediv_adc_div1, adc_div1);
+			WRITE_RADIO_REG_20704(pi, AFEDIV_CFG1_OVR, core, overrides);
+			WRITE_RADIO_REG_20704(pi, READOVERRIDES, core, save_ReadOverrides);
+		} else {
+			/* back to direct control of dividers */
+			overrides = READ_RADIO_REG_20704(pi, AFEDIV_CFG1_OVR, core);
+			overrides &= ~afediv_overrides;
+			WRITE_RADIO_REG_20704(pi, AFEDIV_CFG1_OVR, core, overrides);
 		}
 	}
 }
@@ -17669,6 +17726,12 @@ wlc_phy_radio20707_afe_div_ratio(phy_info_t *pi, uint8 use_ovr)
 	uint16 overrides;
 	uint16 adc_div2 = 2;
 	uint16 dac_div2 = 2;
+	uint16 save_ReadOverrides;
+	const uint16 afediv_overrides =
+		RF_20704_AFEDIV_CFG1_OVR_ovr_afediv_adc_div1_MASK(pi->pubpi->radiorev) |
+		RF_20704_AFEDIV_CFG1_OVR_ovr_afediv_adc_div2_MASK(pi->pubpi->radiorev) |
+		RF_20704_AFEDIV_CFG1_OVR_ovr_afediv_dac_div1_MASK(pi->pubpi->radiorev) |
+		RF_20704_AFEDIV_CFG1_OVR_ovr_afediv_dac_div2_MASK(pi->pubpi->radiorev);
 
 	if (CHSPEC_IS80(pi->radio_chanspec)) {
 		nda = 8;
@@ -17699,26 +17762,25 @@ wlc_phy_radio20707_afe_div_ratio(phy_info_t *pi, uint8 use_ovr)
 		}
 	}
 
-	if (use_ovr) {
-		FOREACH_CORE(pi, core) {
-				/* Set AFEDIV overrides:
-				ovr_afediv_adc_div1 = 1 * 0x40
-				ovr_afediv_adc_div2 = 1 * 0x20
-				ovr_afediv_dac_div1 = 1 * 0x10
-				ovr_afediv_dac_div2 = 1 * 0x08
-			*/
+	FOREACH_CORE(pi, core) {
+		if (use_ovr) {
 			overrides = READ_RADIO_REG_20707(pi, AFEDIV_CFG1_OVR, core);
-			overrides |= 0x0078;
-			WRITE_RADIO_REG_20707(pi, AFEDIV_CFG1_OVR, core, overrides);
+			overrides |= afediv_overrides;
+			save_ReadOverrides = READ_RADIO_REG_20707(pi, READOVERRIDES, core);
+			// Read override values i.s.o direct control values, otherwise
+			// a sequence of MOD_RADIO_REG will give incorrect result
+			MOD_RADIO_REG_20707(pi, READOVERRIDES, core, ReadOverrides_reg, 0);
 			MOD_RADIO_REG_20707(pi, AFEDIV_REG1, core, afediv_dac_div2, dac_div2);
 			MOD_RADIO_REG_20707(pi, AFEDIV_REG1, core, afediv_dac_div1, nda/dac_div2);
 			MOD_RADIO_REG_20707(pi, AFEDIV_REG2, core, afediv_adc_div2, adc_div2);
 			MOD_RADIO_REG_20707(pi, AFEDIV_REG2, core, afediv_adc_div1, nad);
-		}
-	} else {
-		/* remove override mode */
-		FOREACH_CORE(pi, core) {
-			WRITE_RADIO_REG_20707(pi, AFEDIV_CFG1_OVR, core, 0);
+			WRITE_RADIO_REG_20707(pi, AFEDIV_CFG1_OVR, core, overrides);
+			WRITE_RADIO_REG_20707(pi, READOVERRIDES, core, save_ReadOverrides);
+		} else {
+			/* back to direct control of dividers */
+			overrides = READ_RADIO_REG_20707(pi, AFEDIV_CFG1_OVR, core);
+			overrides &= ~afediv_overrides;
+			WRITE_RADIO_REG_20707(pi, AFEDIV_CFG1_OVR, core, overrides);
 		}
 	}
 }
@@ -18330,6 +18392,9 @@ wlc_phy_radio20698_pu_rx_core(phy_info_t *pi, uint core, uint ch, bool restore)
 					ovr_lna2g_lna1_Rout, 0x1)
 				MOD_RADIO_REG_20698_ENTRY(pi, LNA2G_REG1, core,
 					lna2g_lna1_Rout, 0x0)
+				MOD_RADIO_REG_20698_ENTRY(pi, RX2G_REG1, core, rx2g_lo_en, 0x1)
+				MOD_RADIO_REG_20698_ENTRY(pi, RX2G_CFG1_OVR, core,
+					ovr_rx2g_lo_en, 0x1)
 
 				/* ----- turn off rx5g core${core} only ----- */
 				MOD_RADIO_REG_20698_ENTRY(pi, RX5G_CFG1_OVR, core,
@@ -18402,6 +18467,11 @@ wlc_phy_radio20698_pu_rx_core(phy_info_t *pi, uint core, uint ch, bool restore)
 		}
 	} else {
 		RADIO_REG_LIST_START
+			MOD_RADIO_REG_20698_ENTRY(pi, LNA2G_REG1, core, lna2g_lna1_pu, 0x0)
+			MOD_RADIO_REG_20698_ENTRY(pi, LNA2G_REG1, core, lna2g_tr_rx_en, 0x0)
+			MOD_RADIO_REG_20698_ENTRY(pi, RX2G_REG3, core, rx2g_gm_en, 0x0)
+			MOD_RADIO_REG_20698_ENTRY(pi, LOGEN_CORE_REG0, core, logen_buf_rccr_pu, 0x0)
+
 			MOD_RADIO_REG_20698_ENTRY(pi, LPF_OVR1, core, ovr_lpf_bq_pu, 0x0)
 			MOD_RADIO_REG_20698_ENTRY(pi, LPF_OVR1, core, ovr_lpf_bias_pu, 0x0)
 
@@ -18435,6 +18505,8 @@ wlc_phy_radio20698_pu_rx_core(phy_info_t *pi, uint core, uint ch, bool restore)
 			MOD_RADIO_REG_20698_ENTRY(pi, RX5G_CFG1_OVR, core, ovr_rx5g_lna_rout, 0x0)
 			MOD_RADIO_REG_20698_ENTRY(pi, LOGEN_CORE_OVR0, core,
 				ovr_logen_rx_rccr_pu, 0x0)
+			MOD_RADIO_REG_20698_ENTRY(pi, RX2G_CFG1_OVR, core, ovr_rx2g_lo_en, 0x0)
+
 		RADIO_REG_LIST_EXECUTE(pi, core);
 	}
 }

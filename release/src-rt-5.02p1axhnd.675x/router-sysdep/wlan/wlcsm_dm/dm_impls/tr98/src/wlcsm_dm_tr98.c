@@ -529,6 +529,13 @@ int _wlcsm_dm_tr98_getbridge_info(char *buf)
                         if (rutPMap_availableInterfaceReferenceToIfName(pIf->interfaceReference, lan_ifname) == CMSRET_SUCCESS) {
                             strcat(buf,":");
                             strcat(buf,lan_ifname);
+#ifdef SUPPORT_LANVLAN
+                            if(!strstr(lan_ifname,".") && strstr(lan_ifname,ETH_IFC_STR)) {
+                                char lanIfName2[BUFLEN_8]={0};
+                                snprintf(lanIfName2, sizeof(lanIfName2), ".%d", pFtr->X_BROADCOM_COM_VLANIDFilter);
+                                strcat(buf,lanIfName2);
+                            }
+#endif
                         }
                     }
                     cmsObj_free((void **) &pIf);

@@ -2,7 +2,7 @@
  * Application-specific portion of EAPD
  * (bsd)
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -191,7 +191,7 @@ bsd_app_deinit(eapd_wksp_t *nwksp)
 }
 
 int
-bsd_app_sendup(eapd_wksp_t *nwksp, uint8 *pData, int pLen, char *from, int bss)
+bsd_app_sendup(eapd_wksp_t *nwksp, uint8 *pData, int pLen, char *from)
 {
 	eapd_bsd_t *bsd;
 
@@ -208,20 +208,13 @@ bsd_app_sendup(eapd_wksp_t *nwksp, uint8 *pData, int pLen, char *from, int bss)
 
 		to.sin_addr.s_addr = inet_addr(EAPD_WKSP_UDP_ADDR);
 		to.sin_family = AF_INET;
-
-		if (bss)
-			to.sin_port = htons(EAPD_WKSP_BSD_UDP_MPORT);
-		else
-			to.sin_port = htons(EAPD_WKSP_BSD_UDP_SPORT);
+		to.sin_port = htons(EAPD_WKSP_BSD_UDP_SPORT);
 
 		sentBytes = sendto(bsd->appSocket, pData, pLen, 0,
 			(struct sockaddr *)&to, sizeof(struct sockaddr_in));
 
 		if (sentBytes != pLen) {
 			EAPD_ERROR("UDP send failed; sentBytes = %d\n", sentBytes);
-		}
-		else {
-			/* EAPD_ERROR("Send %d bytes to bsd\n", sentBytes); */
 		}
 	}
 	else {
@@ -291,10 +284,7 @@ bsd_app_handle_event(eapd_wksp_t *nwksp, uint8 *pData, int Len, char *from)
 			memcpy(pData, event->ifname, IFNAMSIZ);
 
 			/* send to bsd use cb->ifname */
-			if (type == WLC_E_BSSTRANS_RESP)
-				bsd_app_sendup(nwksp, pData, Len, cb->ifname, 1);
-			else
-				bsd_app_sendup(nwksp, pData, Len, cb->ifname, 0);
+			bsd_app_sendup(nwksp, pData, Len, cb->ifname);
 			break;
 		}
 		cb = cb->next;

@@ -146,7 +146,7 @@ li span {
 	font-weight: bolder;
 }
 .main_field_gap{
-	margin:100px auto 0;
+	margin: 100px auto 0;
 }
 ul{
 	margin: 0;
@@ -212,13 +212,10 @@ ul{
 	}
 	.button{
 		height: 50px;
-		width: 100%;
+		width: 50%;
 		font-size: 14pt;
-		text-align: center;
-		float:right;
-		margin: 25px -30px 0 0;
-		line-height:50px;
-		padding: 0 10px;
+		line-height: 50px;
+		margin: 35px 25% 0px 25%;
 	}
 	.nologin{
 		margin-left:10px;
@@ -231,9 +228,8 @@ ul{
 		margin-left:10px;
 	}
 	.main_field_gap{
-		width:80%;
-		margin:30px 0 0 0px;
-		/*margin:30px auto 0;*/
+		width: 60%;
+		margin-top: 30px;
 	}
 	.title_gap{
 		margin-left:15px;
@@ -449,7 +445,7 @@ function initial(){
 			html_code += "<li><span><#web_redirect_case6_desc2#></span></li>";
 			html_code += "</ul>";
 
-		$("#wanLink").html("<#CTL_next#>");
+		$("#wanLink").html("<#CTL_next#>").show();
 		$("#wanLink").click(function(){
 			change_lan_subnet();
 		});
@@ -680,7 +676,7 @@ function detect_ppp_connect(){
 		</div>
 		<div>
 		<div style="text-align: center;">
-		<div id="wanLink" class='button' style="display:none"><#btn_go#></div>
+		<div id="wanLink" class='button'><#btn_go#></div>
 			<div id="submitBtn" class='button button_background' style="color:#27D1A4; display:none;">
 				<span><#CTL_reconnection#>&nbsp</span><img src="/images/InternetScan.gif">
 			</div>

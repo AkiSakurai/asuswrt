@@ -48,7 +48,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_bmac.h 782511 2019-12-20 19:25:57Z $
+ * $Id: wlc_bmac.h 784253 2020-02-24 19:26:07Z $
  */
 
 /* XXXXX this interface is under wlc.c by design
@@ -490,6 +490,7 @@ extern bool wlc_bmac_get_noreset(wlc_hw_info_t *wlc);
 
 #if defined(WL_PROXDETECT) || defined(WLC_TSYNC)
 extern void wlc_enable_avb_timer(wlc_hw_info_t *wlc_hw, bool enable);
+extern void wlc_enable_avb_timer_war(wlc_hw_info_t *wlc_hw, bool enable);
 extern void wlc_get_avb_timer_reg(wlc_hw_info_t *wlc_hw, uint32 *clkst, uint32 *maccontrol1);
 extern void wlc_get_avb_timestamp(wlc_hw_info_t *wlc_hw, uint32* ptx, uint32* prx);
 #endif // endif

@@ -84,21 +84,21 @@
 /* Configuration table for max users that can be admitted per Tx technology (Max Users) */
 static const int maxusers_table[][8] = {
 	/* Max Users config table :
-	* D11 Rev:  SU: VHT-MUMIMO: HE-MUMIMO: DLOFDMA: ULOFDMA: TWT: HW limit
+	* D11 Rev:  SU: VHT-MUMIMO: HE-MUMIMO: DLOFDMA: ULOFDMA: TWT: MU-MIMO limit
 	*/
 	{64, MAXSCB, 8, 0, 0, 0, 0, 8},	/* 4365/66 <=B1 */
 	{65, MAXSCB, 8, 0, 0, 0, 0, 8},	/* 4365/66 C0 */
-	{129, MAXSCB, 8, 8, MAXSCB, 8, 16, 16},	/* 43684B/Cx */
-	{130, MAXSCB, 2, 2, MAXSCB, 4, 4, 8},	/* 63178, 675x (retail/operator) */
-	{131, MAXSCB, 3, 3, MAXSCB, 4, 4, 4},	/* 6710 */
-	{132, MAXSCB, 8, 4, MAXSCB, 8, 16, 12},	/* 6715A0 */
+	{129, MAXSCB, 8, 8, MAXSCB, 8, 16, 8},	/* 43684B/Cx */
+	{130, MAXSCB, 4, 4, MAXSCB, 8, 4, 8},	/* 63178, 675x (retail/operator) */
+	{131, MAXSCB, 6, 6, MAXSCB, 8, 4, 8},	/* 6710 */
+	{132, MAXSCB, 8, 4, MAXSCB, 8, 16, 8},	/* 6715A0 */
 	{0, MAXSCB, 0, 0, 0, 0, 0, 0}	/* default */
 };
 
 /* macros for indexes into maxusers table */
 #define MAXUSERS_TBL_D11REV_IDX		0	/* idx of D11 Rev */
 #define MAXUSERS_TBL_TXTYPE_START_IDX	1	/* start idx of max users for different tx tech */
-#define MAXUSERS_TBL_HWLIMIT_IDX	7	/* idx of HW limit for max users (VHT,HE)  */
+#define MAXUSERS_TBL_MUMIMOLIMIT_IDX	7	/* idx of max users for each: VHT & HE MU-MIMO */
 
 /* Configuration table for maximum users per PPDU (MaxN) */
 static const int maxn_table[][10] = {
@@ -108,11 +108,11 @@ static const int maxn_table[][10] = {
 	 */
 	{64, 0, 0, 0, 0, 0, 0, 0, 0, 0}, /* 4365/66 <=B1 */
 	{65, 0, 0, 0, 0, 0, 0, 0, 0, 0}, /* 4365/66 C0 */
-	{128, 4, 4, 8, 8, 4, 4, 8, 8, 16}, /* 43684A0 */
-	{129, 4, 4, 4, 8, 4, 4, 8, 8, 16}, /* 43684B/Cx */
+	{128, 4, 4, 4, 4, 4, 4, 4, 4, 16}, /* 43684A0 */
+	{129, 4, 4, 4, 4, 4, 4, 4, 4, 16}, /* 43684B/Cx */
 	{130, 4, 4, 4, 4, 4, 4, 4, 4, 4}, /* 63178, 675x */
 	{131, 4, 4, 4, 4, 4, 4, 4, 4, 8}, /* 6710 */
-	{132, 4, 4, 8, 8, 4, 4, 8, 8, 16}, /* 6715A0 */
+	{132, 4, 4, 4, 4, 4, 4, 4, 4, 16}, /* 6715A0 */
 	{0, 0, 0, 0, 0, 0, 0, 0, 0} /* default */
 };
 
@@ -382,7 +382,7 @@ int wlc_txcfg_max_clients_set(wlc_txcfg_info_t *txcfg, uint8 type, uint16 val)
 {
 	int err = BCME_OK;
 	uint8 idx = txcfg->maxusers_table_idx;
-	uint32 hwlimit = maxusers_table[idx][MAXUSERS_TBL_HWLIMIT_IDX];
+	uint32 hwlimit = maxusers_table[idx][MAXUSERS_TBL_MUMIMOLIMIT_IDX];
 
 	if (!txcfg) {
 		err = BCME_BADARG;
@@ -398,16 +398,14 @@ int wlc_txcfg_max_clients_set(wlc_txcfg_info_t *txcfg, uint8 type, uint16 val)
 
 	case VHTMU:
 		if ((val && val < VHTMU_USRCNT_MIN) ||
-			val > hwlimit ||
-			(val + txcfg->max_clients[HEMMU] > hwlimit)) {
+			(val > hwlimit)) {
 			err = BCME_RANGE;
 		}
 		break;
 
 	case HEMMU:
 		if ((val && val < HEMU_USRCNT_MIN) ||
-			val > hwlimit ||
-			(txcfg->max_clients[VHTMU] + val > hwlimit)) {
+			(val > hwlimit)) {
 			err = BCME_RANGE;
 		}
 		break;
@@ -589,7 +587,7 @@ wlc_txcfg_dlofdma_maxn_init(wlc_info_t *wlc, uint8 *maxn)
 }
 
 void
-wlc_txcfg_ulofdma_maxn_init(wlc_info_t *wlc, uint16 *maxn)
+wlc_txcfg_ulofdma_maxn_init(wlc_info_t *wlc, uint8 *maxn)
 {
 	uint8 i = 0;
 	wlc_txcfg_info_t *txcfg = wlc->txcfg;

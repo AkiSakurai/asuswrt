@@ -668,6 +668,9 @@ struct key_parse {
 	int idx;
 	int type;
 	bool def, defmgmt;
+#ifdef CONFIG_BCM_KF_CFG80211_BACKPORT
+	bool defbeacon;
+#endif /* CONFIG_BCM_KF_CFG80211_BACKPORT */
 	bool def_uni, def_multi;
 };
 
@@ -681,13 +684,21 @@ static int nl80211_parse_key_new(struct nlattr *key, struct key_parse *k)
 
 	k->def = !!tb[NL80211_KEY_DEFAULT];
 	k->defmgmt = !!tb[NL80211_KEY_DEFAULT_MGMT];
+#ifdef CONFIG_BCM_KF_CFG80211_BACKPORT
+	k->defbeacon = !!tb[NL80211_KEY_DEFAULT_BEACON];
+#endif /* CONFIG_BCM_KF_CFG80211_BACKPORT */
 
 	if (k->def) {
 		k->def_uni = true;
 		k->def_multi = true;
 	}
+#ifndef CONFIG_BCM_KF_CFG80211_BACKPORT
 	if (k->defmgmt)
 		k->def_multi = true;
+#else
+	if (k->defmgmt || k->defbeacon)
+		k->def_multi = true;
+#endif /* CONFIG_BCM_KF_CFG80211_BACKPORT */
 
 	if (tb[NL80211_KEY_IDX])
 		k->idx = nla_get_u8(tb[NL80211_KEY_IDX]);
@@ -792,6 +803,7 @@ static int nl80211_parse_key(struct genl_info *info, struct key_parse *k)
 	if (err)
 		return err;
 
+#ifndef CONFIG_BCM_KF_CFG80211_BACKPORT
 	if (k->def && k->defmgmt)
 		return -EINVAL;
 
@@ -799,16 +811,35 @@ static int nl80211_parse_key(struct genl_info *info, struct key_parse *k)
 		if (k->def_uni || !k->def_multi)
 			return -EINVAL;
 	}
+#else
+	if ((k->def ? 1 : 0) + (k->defmgmt ? 1 : 0) +
+		(k->defbeacon ? 1 : 0) > 1)
+		return -EINVAL;
+
+	if (k->defmgmt || k->defbeacon) {
+		if (k->def_uni || !k->def_multi)
+			return -EINVAL;
+	}
+#endif /* CONFIG_BCM_KF_CFG80211_BACKPORT */
 
 	if (k->idx != -1) {
 		if (k->defmgmt) {
 			if (k->idx < 4 || k->idx > 5)
 				return -EINVAL;
+#ifdef CONFIG_BCM_KF_CFG80211_BACKPORT
+		} else if (k->defbeacon) {
+			if (k->idx < 6 || k->idx > 7)
+				return -EINVAL;
+#endif /* CONFIG_BCM_KF_CFG80211_BACKPORT */
 		} else if (k->def) {
 			if (k->idx < 0 || k->idx > 3)
 				return -EINVAL;
 		} else {
+#ifndef CONFIG_BCM_KF_CFG80211_BACKPORT
 			if (k->idx < 0 || k->idx > 5)
+#else
+			if (k->idx < 0 || k->idx > 7)
+#endif /* CONFIG_BCM_KF_CFG80211_BACKPORT */
 				return -EINVAL;
 		}
 	}
@@ -2940,7 +2971,11 @@ static int nl80211_set_key(struct sk_buff *skb, struct genl_info *info)
 		return -EINVAL;
 
 	/* only support setting default key */
+#ifndef CONFIG_BCM_KF_CFG80211_BACKPORT
 	if (!key.def && !key.defmgmt)
+#else
+	if (!key.def && !key.defmgmt && !key.defbeacon)
+#endif /* CONFIG_BCM_KF_CFG80211_BACKPORT */
 		return -EINVAL;
 
 	wdev_lock(dev->ieee80211_ptr);

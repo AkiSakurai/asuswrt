@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_macdbg.c 782374 2019-12-18 00:32:31Z $
+ * $Id: wlc_macdbg.c 788958 2020-07-15 09:17:23Z $
  */
 
 /*
@@ -112,6 +112,7 @@
 #include <d11vasip_code.h>
 #define SVMP_ACCESS_VIA_PHYTBL
 #endif	/* WLVASIP */
+#include <wlc_twt.h>
 
 /* per user dump */
 #define MPDUS_DUMP_NUM		0x8
@@ -163,6 +164,8 @@ typedef enum {
 	DTRACE_ID_TXD	= 1,	/* tx descriptor */
 	DTRACE_ID_TXR	= 2,	/* tx rate */
 	DTRACE_ID_STR	= 3,	/* string */
+	DTRACE_ID_UTXS	= 4,	/* ulmu txstatus */
+	DTRACE_ID_UTXD	= 5,	/* ulmu tx descriptor */
 	DTRACE_ID_LAST	= 16,	/* max valid type number is 15 */
 } dtrace_record_type_t;
 
@@ -179,6 +182,7 @@ typedef struct _dtrace_txs_t {
 	uint32 ack_map1;
 	uint32 ack_map2;
 } dtrace_txs_t;
+typedef struct dtrace_txs_t dtrace_utxs_t;
 
 typedef struct _dtrace_txd_t {
 	uint32 time_in_ms;
@@ -218,6 +222,24 @@ typedef struct _dtrace_str_t {
 #endif /* BCMDBG */
 
 /* Module private states */
+typedef struct wlc_macdbg_perusr_info {
+	uint8 fifo;
+	uint8 mcs;
+	uint8 nss;
+	int8 ruidx;
+} wlc_macdbg_perusr_info_t;
+
+typedef struct wlc_macdbg_ppdu_stats {
+	int8 epoch;
+	uint8 nusrs;
+	uint8 ntxs_recv;	/* track num txs received for MUtx case */
+	uint8 pktBw;
+	bool ismu;
+	uint8 mutype;
+	uint16 txtime;
+	wlc_macdbg_perusr_info_t usr_info[16];
+} wlc_macdbg_ppdu_stats_t;
+
 struct wlc_macdbg_info {
 	wlc_info_t *wlc;
 	uint16 smpl_ctrl;	/* Sample Capture / Play Contrl */
@@ -254,6 +276,10 @@ struct wlc_macdbg_info {
 	uint8 *dtrace_buf;		/* dtrace buffer pointer */
 	struct ether_addr dtrace_ea;	/* if not null, whitelist filter for scb->ea */
 	uint8 *dmadump_buf;		/* dmadump buffer pointer */
+	bool psmwd_ampdu;		/* flag to trigger a PSMWD upon ampdu watchdog fired */
+	bool psmwd_txbcn;		/* flag to trigger a PSMWD upon txbn inactivity */
+	bool ppdutxs;			/* flag to enable ppdu txs */
+	wlc_macdbg_ppdu_stats_t ppdu_info;	/* ppdu info */
 };
 
 /* ucode dump constant */
@@ -338,9 +364,12 @@ static int wlc_macdbg_smpl_capture_get(wlc_info_t *wlc,
 
 #if defined(BCMDBG) || defined(DUMP_D11CNTS)
 static int wlc_macdbg_init_printlist(wlc_macdbg_info_t *macdbg);
+#ifdef WL_PSMX
+static int wlc_macdbg_init_psmx_printlist(wlc_macdbg_info_t *macdbg);
+#endif /* WL_PSMX */
 static int wlc_dump_d11cnts(wlc_info_t *wlc, struct bcmstrbuf * b);
 static int wlc_dump_clear_d11cnts(wlc_info_t *wlc);
-#endif // endif
+#endif /* BCMDBG */
 
 #ifdef WLC_MACDBG_FRAMEID_TRACE
 static int wlc_macdbg_frameid_trace_attach(wlc_macdbg_info_t *macdbg, wlc_info_t *wlc);
@@ -518,6 +547,9 @@ enum {
 	IOV_PSMWD_AFTER    = 14, /* manual cause psm wd */
 	IOV_PSMXWD_AFTER   = 15, /* manual cause psmx wd */
 	IOV_PSMWD_PHYTXERR = 16, /* manual cause psm wd on tx phy error */
+	IOV_PSMWD_AMPDUWD  = 17, /* trigger a PSMWD upon ampdu watchdog */
+	IOV_MACDBG_PPDUTXS = 18, /* parse PPDU txs */
+	IOV_PSMWD_TXBCN    = 19, /* trigger a PSMWD upon txbcn inactivity */
 	IOV_LAST
 };
 
@@ -548,6 +580,9 @@ static const bcm_iovar_t macdbg_iovars[] = {
 	{"dtrace_ea", IOV_DTRACE_EA, (0), 0, IOVT_BUFFER, 0},
 	{"psmwd_phytxerr", IOV_PSMWD_PHYTXERR, (IOVF_SET_UP), 0, IOVT_UINT16, 0},
 	{"psmwd_txerr", IOV_PSMWD_PHYTXERR, (IOVF_SET_UP), 0, IOVT_UINT16, 0},
+	{"psmwd_ampduwd", IOV_PSMWD_AMPDUWD, (IOVF_SET_UP), 0, IOVT_UINT16, 0},
+	{"ppdutxs", IOV_MACDBG_PPDUTXS, (IOVF_SET_UP), 0, IOVT_UINT16, 0},
+	{"psmwd_txbcn", IOV_PSMWD_TXBCN, (IOVF_SET_UP), 0, IOVT_UINT16, 0},
 	{NULL, 0, 0, 0, 0, 0}
 };
 /* This includes the auto generated ROM IOCTL/IOVAR patch handler C source file (if auto patching is
@@ -689,6 +724,11 @@ BCMATTACHFN(wlc_macdbg_attach)(wlc_info_t *wlc)
 	if (wlc_macdbg_init_printlist(macdbg) != BCME_OK) {
 		goto fail;
 	}
+#ifdef WL_PSMX
+	if (wlc_macdbg_init_psmx_printlist(macdbg) != BCME_OK) {
+		goto fail;
+	}
+#endif /* WL_PSMX */
 #endif // endif
 #if defined(BCMDBG) || defined(DUMP_D11CNTS) || defined(WL_MACDBG)
 	if ((macdbg->smpl_info = MALLOCZ(wlc->osh, sizeof(wl_maccapture_params_t))) == NULL) {
@@ -1165,6 +1205,18 @@ wlc_macdbg_doiovar(void *hdl, uint32 actionid,
 		*ret_int_ptr = (wlc_mhf_get(wlc, MHF5, WLC_BAND_AUTO) & MHF5_TXERR_SPIN);
 		err = BCME_OK;
 		break;
+	case IOV_SVAL(IOV_PSMWD_AMPDUWD):
+		macdbg->psmwd_ampdu = (bool) int_val;
+		break;
+	case IOV_GVAL(IOV_PSMWD_AMPDUWD):
+		*ret_int_ptr = macdbg->psmwd_ampdu;
+		break;
+	case IOV_SVAL(IOV_PSMWD_TXBCN):
+		macdbg->psmwd_txbcn = (bool) int_val;
+		break;
+	case IOV_GVAL(IOV_PSMWD_TXBCN):
+		*ret_int_ptr = macdbg->psmwd_txbcn;
+		break;
 	case IOV_GVAL(IOV_DTRACE_EA):
 		memcpy(arg, &macdbg->dtrace_ea, ETHER_ADDR_LEN);
 		err = BCME_OK;
@@ -1172,6 +1224,16 @@ wlc_macdbg_doiovar(void *hdl, uint32 actionid,
 	case IOV_SVAL(IOV_DTRACE_EA):
 		memcpy(&macdbg->dtrace_ea, params, ETHER_ADDR_LEN);
 		err = BCME_OK;
+		break;
+	case IOV_SVAL(IOV_MACDBG_PPDUTXS):
+		if (!macdbg->ppdutxs && (bool) int_val) {
+			// turning on the feature
+			macdbg->ppdu_info.epoch = -1;
+		}
+		macdbg->ppdutxs = (bool) int_val;
+		break;
+	case IOV_GVAL(IOV_MACDBG_PPDUTXS):
+		*ret_int_ptr = macdbg->ppdutxs;
 		break;
 #endif /* BCMDBG */
 	default:
@@ -1416,6 +1478,8 @@ wlc_macdbg_up(void *hdl)
 	wlc_macdbg_info_t *macdbg = (wlc_macdbg_info_t *)hdl;
 	wlc_info_t *wlc = macdbg->wlc;
 	BCM_REFERENCE(wlc);
+
+	macdbg->ppdu_info.epoch = -1;
 
 #if defined(BCMDBG)
 	/* Sample Capture conflicts with SW-controlled GPIO coex - if so, don't enable by default */
@@ -3840,27 +3904,8 @@ BCMATTACHFN(wlc_macdbg_init_printlist)(wlc_macdbg_info_t *macdbg)
 		{"rxmydtinrsp", M_RXMYDTINRSP(wlc)},
 		{"rxexit", M_RXEXIT_CNT(wlc)},
 		{"txampdu_cnt", M_TXAMPDU_CNT(wlc)},
+		{"txmurts_cnt", M_TXMURTS_CNT(wlc)},
 	};
-	/* SHMx counter */
-	d11print_list_t d11printx_tbl[] = {
-		{"m2vmsg", MX_M2VMSG_CNT(wlc)},
-		{"v2mmsg", MX_V2MMSG_CNT(wlc)},
-		{"sfb2v", MX_SFB2V_CNT(wlc)},
-		{"v2mgrp", MX_V2GRP_CNT(wlc)},
-		{"mvp2v", MX_MVP2V_CNT(wlc)},
-		{"v2mvp", MX_V2MVP_CNT(wlc)},
-		{"m2vcqi", MX_M2VCQI_CNT(wlc)},
-		{"v2mcqi", MX_V2MCQI_CNT(wlc)},
-		{"ffqadd", MX_FFQADD_CNT(wlc)},
-		{"mfqadd", MX_MFQADD_CNT(wlc)},
-		{"mfoqadd", MX_MFOQADD_CNT(wlc)},
-		{"ofqadd", MX_OFQADD_CNT(wlc)},
-		{"rucfg", MX_RUCFG_CNT(wlc)},
-		{"m2vru", MX_M2VRU_CNT(wlc)},
-		{"v2mru", MX_V2MRU_CNT(wlc)},
-		{"ofqagg0", MX_OFQAGG0_CNT(wlc)},
-	};
-
 	/* count the number of valid entries */
 	macdbg->d11print_sz = 0;
 	for (i = 0; i < ARRAYSIZE(d11print_tbl); i++) {
@@ -3914,7 +3959,63 @@ BCMATTACHFN(wlc_macdbg_init_printlist)(wlc_macdbg_info_t *macdbg)
 		}
 	}
 
+exit:
+	return err;
+
+} /* wlc_macdbg_init_printlist */
+
 #ifdef WL_PSMX
+static int
+BCMATTACHFN(wlc_macdbg_init_psmx_printlist)(wlc_macdbg_info_t *macdbg)
+{
+	wlc_info_t *wlc = macdbg->wlc;
+	int err = BCME_OK, i, j;
+
+	/* print list definition. no corerev dependency to define the table.
+	 * anything not supported by this corerev will be filtered out.
+	 */
+	/* SHMx counter */
+	d11print_list_t d11printx_tbl[] = {
+		{"m2vmsg", MX_M2VMSG_CNT(wlc)},
+		{"v2mmsg", MX_V2MMSG_CNT(wlc)},
+		{"sfb2v", MX_SFB2V_CNT(wlc)},
+		{"v2mgrp", MX_V2GRP_CNT(wlc)},
+		{"mvp2v", MX_MVP2V_CNT(wlc)},
+		{"submvp2v", MX_SUBMVP2V_CNT(wlc)},
+		{"v2mvp", MX_V2MVP_CNT(wlc)},
+		{"m2vcqi", MX_M2VCQI_CNT(wlc)},
+		{"v2mcqi", MX_V2MCQI_CNT(wlc)},
+		{"ffqadd", MX_FFQADD_CNT(wlc)},
+		{"ffqdel", MX_FFQDEL_CNT(wlc)},
+		{"mfqadd", MX_MFQADD_CNT(wlc)},
+		{"mfqdel", MX_MFQDEL_CNT(wlc)},
+		{"mfoqadd", MX_MFOQADD_CNT(wlc)},
+		{"mfoqdel", MX_MFOQDEL_CNT(wlc)},
+		{"ofqadd", MX_OFQADD_CNT(wlc)},
+		{"ofqdel", MX_OFQDEL_CNT(wlc)},
+		{"rucfg", MX_RUCFG_CNT(wlc)},
+		{"m2vru", MX_M2VRU_CNT(wlc)},
+		{"v2mru", MX_V2MRU_CNT(wlc)},
+		{"ofqagg0", MX_OFQAGG0_CNT(wlc)},
+		{"m2sq0", MX_M2SQ0_CNT(wlc)},
+		{"m2sq1", MX_M2SQ1_CNT(wlc)},
+		{"m2sq2", MX_M2SQ2_CNT(wlc)},
+		{"m2sq3", MX_M2SQ3_CNT(wlc)},
+		{"m2sq4", MX_M2SQ4_CNT(wlc)},
+		{"m2sq5", MX_M2SQ5_CNT(wlc)},
+		{"m2sq6", MX_M2SQ6_CNT(wlc)},
+		{"m2sq7", MX_M2SQ7_CNT(wlc)},
+		{"sndfl", MX_SNDFL_CNT(wlc)},
+		{"om2sq0", MX_OM2SQ0_CNT(wlc)},
+		{"om2sq1", MX_OM2SQ1_CNT(wlc)},
+		{"om2sq2", MX_OM2SQ2_CNT(wlc)},
+		{"om2sq3", MX_OM2SQ3_CNT(wlc)},
+		{"om2sq4", MX_OM2SQ4_CNT(wlc)},
+		{"om2sq5", MX_OM2SQ5_CNT(wlc)},
+		{"omtxd", MX_OMUTXDLMEMTCH_CNT(wlc)},
+	};
+
+		/* count the number of valid entries */
 	macdbg->d11printx_sz = 0;
 	for (i = 0; i < ARRAYSIZE(d11printx_tbl); i++) {
 		if (d11printx_tbl[i].addr == (uint16)(-1)) {
@@ -3963,11 +4064,12 @@ BCMATTACHFN(wlc_macdbg_init_printlist)(wlc_macdbg_info_t *macdbg)
 			j++;
 		}
 	}
-#endif /* WL_PSMX */
 
 exit:
 	return err;
-} /* wlc_macdbg_init_printlist */
+
+} /* wlc_macdbg_init_psmx_printlist */
+#endif /* WL_PSMX */
 
 void
 wlc_macdbg_upd_d11cnts(wlc_info_t *wlc)
@@ -4539,15 +4641,20 @@ wlc_dump_ucode_fatal(wlc_info_t *wlc, uint reason)
 		wlc_dump_aggfifo(wlc, NULL);
 
 	WL_PRINT(("PC :\n"));
+	if (D11REV_GE(pub->corerev, 128)) {
+		val32[0] = wlc_read_shm(wlc, M_PSMWDS_PC(wlc));
+		WL_PRINT(("R0: 0x%-8x 0x%-8x 0x%-8x 0x%-8x\n",
+			val32[0], val32[0], val32[0], val32[0]));
+	}
 	for (k = 0; k < 64; k += 4) {
 		val32[0] = R_REG(osh, D11_PSM_DEBUG(wlc));
 		val32[1] = R_REG(osh, D11_PSM_DEBUG(wlc));
 		val32[2] = R_REG(osh, D11_PSM_DEBUG(wlc));
 		val32[3] = R_REG(osh, D11_PSM_DEBUG(wlc));
-
-		WL_PRINT(("R0: 0x%-8x 0x%-8x 0x%-8x 0x%-8x\n",
-			val32[0], val32[1], val32[2], val32[3]));
-
+		if (D11REV_LT(pub->corerev, 128)) {
+			WL_PRINT(("R0: 0x%-8x 0x%-8x 0x%-8x 0x%-8x\n",
+				val32[0], val32[1], val32[2], val32[3]));
+		}
 #if defined(WL_PSMR1)
 		if (PSMR1_ENAB(wlc->hw)) {
 			val132[0] = R_REG(osh, D11_PSM_DEBUG_R1(wlc));
@@ -4585,33 +4692,11 @@ wlc_dump_ucode_fatal(wlc_info_t *wlc, uint reason)
 	wlc_macdbg_dump_dma(wlc);
 	wlc->psm_watchdog_debug = FALSE;
 #endif // endif
+
+	wlc_twt_dump_schedblk(wlc);
 } /* wlc_dump_ucode_fatal */
 
 #if defined(WL_PSMX)
-bool
-wlc_bmac_psmx_errors(wlc_info_t *wlc)
-{
-	uint32 macintstatus;
-	osl_t *osh;
-	bool err = FALSE;
-
-	osh = wlc->osh;
-
-	macintstatus = R_REG(osh, D11_MACINTSTATUS_psmx(wlc));
-
-	/* PSMx watchdog fired */
-	if (macintstatus & MI_GP0) {
-		W_REG(osh, D11_MACINTMASK_psmx(wlc), MI_GP0);
-		wlc_dump_psmx_fatal(wlc, PSMX_FATAL_PSMWD);
-		ASSERT(!"PSMx Watchdog");
-
-		WLCNTINCR(wlc->pub->_cnt->psmxwds);
-		wlc_check_assert_type(wlc, WL_REINIT_RC_PSM_WD);
-		err = TRUE;
-	}
-	return err;
-}
-
 #ifdef WLVASIP
 void
 wlc_dump_vasip_fatal(wlc_info_t *wlc)
@@ -4707,7 +4792,9 @@ wlc_dump_psmx_fatal(wlc_info_t *wlc, uint reason)
 	osl_t *osh;
 	wlc_pub_t *pub;
 	uint32 val32[4];
+#ifdef WLVASIP
 	uint16 val16;
+#endif // endif
 	uint16 k;
 	const char reason_str[][20] = {
 		"any failure",
@@ -4740,28 +4827,34 @@ wlc_dump_psmx_fatal(wlc_info_t *wlc, uint reason)
 
 	wlc_mac_event(wlc, WLC_E_PSM_WATCHDOG, NULL, R_REG(osh, D11_PSM_DEBUG_psmx(wlc)),
 		0, wlc_read_macregx(wlc, 0x490), NULL, 0);
-	WL_PRINT(("psmxdebug 0x%08x macctl 0x%x maccmd 0x%x\n"
-		 "psm_brc 0x%04x psm_brc_1 0x%04x M_UCODE_DBGST 0x%x\n",
-		  R_REG(osh, D11_PSM_DEBUG_psmx(wlc)),
-		  R_REG(osh, D11_MACCONTROL_psmx(wlc)),
-		  R_REG(osh, D11_MACCOMMAND_psmx(wlc)),
-		  wlc_read_macregx(wlc, 0x490),
-		  wlc_read_macregx(wlc, 0x4d8),
-		  wlc_read_shmx(wlc, M_UCODE_DBGST(wlc))));
+	WL_PRINT(("psmxdebug 0x%08x macctl_x 0x%x maccmd_x 0x%x\n"
+		"psmx_brc 0x%04x psmx_brc_1 0x%04x MX_UCODE_DBGST 0x%x\n",
+		R_REG(osh, D11_PSM_DEBUG_psmx(wlc)),
+		R_REG(osh, D11_MACCONTROL_psmx(wlc)),
+		R_REG(osh, D11_MACCOMMAND_psmx(wlc)),
+		wlc_read_macregx(wlc, 0x490),
+		wlc_read_macregx(wlc, 0x4d8),
+		wlc_read_shmx(wlc, MX_UCODE_DBGST(wlc))));
 
-	if ((wlc->macdbg->log_done & (1 << PSM_FATAL_PSMXWD)) != 0) {
+	if ((wlc->macdbg->log_done) != 0) {
 		WL_PRINT(("%s: log_done %#x\n", __FUNCTION__, wlc->macdbg->log_done));
 		return;
 	}
 	wlc->macdbg->log_done |= (1 << PSM_FATAL_PSMXWD);
 	WL_PRINT(("PC (psmdebug_x):\n"));
-	for (k = 0; k < 64; k += 4) {
-		val32[0] = R_REG(osh, D11_PSM_DEBUG_psmx(wlc));
-		val32[1] = R_REG(osh, D11_PSM_DEBUG_psmx(wlc));
-		val32[2] = R_REG(osh, D11_PSM_DEBUG_psmx(wlc));
-		val32[3] = R_REG(osh, D11_PSM_DEBUG_psmx(wlc));
+	if (D11REV_GE(pub->corerev, 128)) {
+		val32[0] = wlc_read_shmx(wlc, MX_PSMWDS_PC(wlc));
 		WL_PRINT(("0x%-8x 0x%-8x 0x%-8x 0x%-8x\n",
-			val32[0], val32[1], val32[2], val32[3]));
+			val32[0], val32[0], val32[0], val32[0]));
+	} else {
+		for (k = 0; k < 64; k += 4) {
+			val32[0] = R_REG(osh, D11_PSM_DEBUG_psmx(wlc));
+			val32[1] = R_REG(osh, D11_PSM_DEBUG_psmx(wlc));
+			val32[2] = R_REG(osh, D11_PSM_DEBUG_psmx(wlc));
+			val32[3] = R_REG(osh, D11_PSM_DEBUG_psmx(wlc));
+			WL_PRINT(("0x%-8x 0x%-8x 0x%-8x 0x%-8x\n",
+				val32[0], val32[1], val32[2], val32[3]));
+		}
 	}
 	WL_PRINT(("PC (psmdebug):\n"));
 	for (k = 0; k < 8; k += 4) {
@@ -4772,13 +4865,13 @@ wlc_dump_psmx_fatal(wlc_info_t *wlc, uint reason)
 		WL_PRINT(("0x%-8x 0x%-8x 0x%-8x 0x%-8x\n",
 			val32[0], val32[1], val32[2], val32[3]));
 	}
-	val16 = wlc_read_macregx(wlc, 0x4d0); /* psm_srs_status */
-	WL_PRINT(("psmx stack_status : 0x%x\n", val16));
-	WL_PRINT(("psmx stack_entries:\n"));
+	WL_PRINT(("PSMX_STACK_STATUS : 0x%x\n",
+		wlc_read_macregx(wlc, ((uint16) (long) D11_SubrStkStatus(wlc)))));
+	WL_PRINT(("PSMX_STACK_ENTRIES:\n"));
 	for (k = 0; k < 8; k++) {
-		wlc_write_macregx(wlc, 0x4d2, k); /* psm_srs_ptr */
-		val16 = wlc_read_macregx(wlc, 0x4d4); /* psm_srs_entry */
-		WL_PRINT(("0x%04x\n", val16));
+		wlc_write_macregx(wlc, ((uint16) (long) D11_SubrStkRdPtr(wlc)), k);
+		WL_PRINT(("0x%04x\n",
+			wlc_read_macregx(wlc, ((uint16) (long) D11_SubrStkRdData(wlc)))));
 	}
 
 #ifdef WLVASIP
@@ -4844,7 +4937,7 @@ wlc_dump_psmr1_fatal(wlc_info_t *wlc, uint reason)
 		  wlc_read_macreg1(wlc, 0x4d8),
 		  wlc_read_shm1(wlc, M_UCODE_DBGST(wlc))));
 
-	if ((wlc->macdbg->log_done & (1 << PSM_FATAL_PSMXWD)) != 0) {
+	if ((wlc->macdbg->log_done) != 0) {
 		WL_PRINT(("%s: log_done %#x\n", __FUNCTION__, wlc->macdbg->log_done));
 		return;
 	}
@@ -5250,7 +5343,7 @@ struct pkt_hist {
 	void *scb;
 };
 
-/* tx pkt history size */
+/* tx pkt history size need power of 2 for mod2 operation */
 #define PKT_HIST_NUM_ENT 2048
 
 void
@@ -5258,9 +5351,6 @@ wlc_macdbg_frameid_trace_pkt(wlc_macdbg_info_t *macdbg, void *pkt, d11txhdr_t *t
 	uint8 fifo, uint16 txFrameID, uint8 epoch, void *scb)
 {
 	wlc_info_t *wlc = macdbg->wlc;
-
-	if (macdbg->pkt_hist_cnt == PKT_HIST_NUM_ENT)
-		macdbg->pkt_hist_cnt = 0;
 
 	macdbg->pkt_hist[macdbg->pkt_hist_cnt].pkt = pkt;
 #ifdef DONGLEBUILD
@@ -5285,7 +5375,7 @@ wlc_macdbg_frameid_trace_pkt(wlc_macdbg_info_t *macdbg, void *pkt, d11txhdr_t *t
 	macdbg->pkt_hist[macdbg->pkt_hist_cnt].fifo = fifo;
 	macdbg->pkt_hist[macdbg->pkt_hist_cnt].scb = scb;
 
-	macdbg->pkt_hist_cnt++;
+	macdbg->pkt_hist_cnt = MODINC_POW2(macdbg->pkt_hist_cnt, PKT_HIST_NUM_ENT);
 }
 
 /* tx status history entry */
@@ -5305,16 +5395,13 @@ struct txs_hist {
 	uint32 s8;
 };
 
-/* tx status history size */
+/* tx status history size need power of 2 for mod2 operation */
 #define TXS_HIST_NUM_ENT 256
 
 void
 wlc_macdbg_frameid_trace_txs(wlc_macdbg_info_t *macdbg, void *pkt, tx_status_t *txs)
 {
 	wlc_info_t *wlc = macdbg->wlc;
-
-	if (macdbg->txs_hist_cnt == TXS_HIST_NUM_ENT)
-		macdbg->txs_hist_cnt = 0;
 
 	macdbg->txs_hist[macdbg->txs_hist_cnt].pkt = pkt;
 	macdbg->txs_hist[macdbg->txs_hist_cnt].frameid = txs->frameid;
@@ -5334,7 +5421,7 @@ wlc_macdbg_frameid_trace_txs(wlc_macdbg_info_t *macdbg, void *pkt, tx_status_t *
 		macdbg->txs_hist[macdbg->txs_hist_cnt].s8 = txs->status.s8;
 	}
 
-	macdbg->txs_hist_cnt++;
+	macdbg->txs_hist_cnt = MODINC_POW2(macdbg->txs_hist_cnt, TXS_HIST_NUM_ENT);
 
 	/* fifo sync'd packets */
 	if (D11REV_GE(wlc->pub->corerev, 40) &&
@@ -5381,9 +5468,13 @@ wlc_macdbg_frameid_trace_dump(wlc_macdbg_info_t *macdbg, uint fifo)
 
 	printf("pkt_hist_cnt:%d \n", macdbg->pkt_hist_cnt);
 	printf("pkt hist:\n");
-	for (k = 0; k < PKT_HIST_NUM_ENT; k++) {
+	/* start from last valid index */
+	k = MODDEC_POW2(macdbg->pkt_hist_cnt, PKT_HIST_NUM_ENT);
+
+	while (k != macdbg->pkt_hist_cnt) {
 		if (macdbg->pkt_hist[k].pkt == NULL) {
 			j++;
+			k = MODDEC_POW2(k, PKT_HIST_NUM_ENT);
 			continue;
 		}
 		printf("h %04d pkt:%p data:%p scb:%p flgs:0x%08x flgs3:0x%08x frmid:0x%04x"
@@ -5398,15 +5489,21 @@ wlc_macdbg_frameid_trace_dump(wlc_macdbg_info_t *macdbg, uint fifo)
 			macdbg->pkt_hist[k].seq,
 			macdbg->pkt_hist[k].epoch, macdbg->pkt_hist[k].fifo,
 			macdbg->pkt_hist[k].macctl_0);
+		k = MODDEC_POW2(k, PKT_HIST_NUM_ENT);
 	}
 	printf("pkt hist: %d are null\n", j);
 	j = 0;
 
 	printf("txs_hist_cnt:%d \n", macdbg->txs_hist_cnt);
 	printf("txs hist:\n");
-	for (k = 0; k < TXS_HIST_NUM_ENT; k++) {
+
+	/* start from last valid index */
+	k = MODDEC_POW2(macdbg->txs_hist_cnt, TXS_HIST_NUM_ENT);
+
+	while (k != macdbg->txs_hist_cnt) {
 		if ((macdbg->txs_hist[k].pkt) == NULL) {
 			j++;
+			k = MODDEC_POW2(k, TXS_HIST_NUM_ENT);
 			continue;
 		}
 
@@ -5430,6 +5527,8 @@ wlc_macdbg_frameid_trace_dump(wlc_macdbg_info_t *macdbg, uint fifo)
 		} else {
 			printf("\n");
 		}
+
+		k = MODDEC_POW2(k, TXS_HIST_NUM_ENT);
 	}
 	printf("txs hist: %d are null\n", j);
 	j = 0;
@@ -5506,10 +5605,15 @@ wlc_dump_pkt_hist(wlc_info_t *wlc, struct bcmstrbuf *b)
 
 	bcm_bprintf(b, "pkt_hist_cnt:%d \n", macdbg->pkt_hist_cnt);
 	bcm_bprintf(b, "pkt hist:\n");
-	for (i = 0; i < PKT_HIST_NUM_ENT; i++) {
+	/* start from last valid index */
+	i = MODDEC_POW2(macdbg->pkt_hist_cnt, PKT_HIST_NUM_ENT);
+
+	while (i != macdbg->pkt_hist_cnt) {
 		pkt_hist = &macdbg->pkt_hist[i];
 
 		if (pkt_hist->pkt == NULL || PKTDATA(wlc->osh, pkt_hist->pkt) == NULL) {
+			/* to prev idx */
+			i = MODDEC_POW2(i, PKT_HIST_NUM_ENT);
 			continue;
 		}
 		bcm_bprintf(b, "idx %04d pkt:%p data:%p frmid:0x%04x"
@@ -5522,6 +5626,9 @@ wlc_dump_pkt_hist(wlc_info_t *wlc, struct bcmstrbuf *b)
 			D11_TXFID_GET_FIFO(wlc, pkt_hist->frameid),
 			pkt_hist->seq, pkt_hist->macctl_0,
 			pkt_hist->macctl_1, pkt_hist->macctl_2, pkt_hist->txchanspec);
+
+		/* to prev idx */
+		i = MODDEC_POW2(i, PKT_HIST_NUM_ENT);
 	}
 
 	return BCME_OK;
@@ -5748,6 +5855,28 @@ wlc_macdbg_dtrace_log_txs(wlc_macdbg_info_t *macdbg, struct scb *scb,
 }
 
 INLINE void
+wlc_macdbg_dtrace_log_utxs(wlc_macdbg_info_t *macdbg, struct scb *scb,
+	tx_status_t *txs)
+{
+	dtrace_txs_t *dtrace_data = _wlc_macdbg_dtrace_log_prep(macdbg, scb,
+		DTRACE_ID_UTXS, sizeof(*dtrace_data));
+
+	if (dtrace_data == NULL) {
+		return; /* this ID not enabled. */
+	}
+
+	/* Keep little endian format */
+	dtrace_data->time_in_ms = OSL_SYSUPTIME();
+	dtrace_data->raw_bits = txs->status.raw_bits;
+	dtrace_data->s8 = txs->status.s8;
+	dtrace_data->s3 = txs->status.s3;
+	dtrace_data->s4 = txs->status.s4;
+	dtrace_data->s5 = txs->status.s5;
+	dtrace_data->ack_map1 = txs->status.ack_map1;
+	dtrace_data->ack_map2 = txs->status.ack_map2;
+}
+
+INLINE void
 wlc_macdbg_dtrace_log_txd(wlc_macdbg_info_t *macdbg, struct scb *scb,
 	ratespec_t *txrspec, d11txh_rev128_t *txh)
 {
@@ -5772,6 +5901,21 @@ wlc_macdbg_dtrace_log_txd(wlc_macdbg_info_t *macdbg, struct scb *scb,
 	dtrace_data->Lifetime = txh->Lifetime_hi;
 	dtrace_data->LinkMemIdxTID = txh->LinkMemIdxTID;
 	dtrace_data->RateMemIdxRateIdx = txh->RateMemIdxRateIdx;
+}
+
+INLINE void
+wlc_macdbg_dtrace_log_utxd(wlc_macdbg_info_t *macdbg, struct scb *scb,
+	d11ulmu_txd_t *utxd)
+{
+	d11ulmu_txd_t *dtrace_data = _wlc_macdbg_dtrace_log_prep(macdbg, scb,
+		DTRACE_ID_UTXD, sizeof(*dtrace_data));
+
+	if (dtrace_data == NULL) {
+		return; /* this ID not enabled. */
+	}
+
+	/* Keep little endian format */
+	bcopy(utxd, dtrace_data, sizeof(uint16)*32);
 }
 
 INLINE void
@@ -5847,6 +5991,28 @@ wlc_macdbg_gen_psmwd(wlc_macdbg_info_t *macdbg, uint16 after)
 	return BCME_OK;
 }
 
+/* trigger a PSMWD if 'psmwd_ampdu' iovar is set */
+int
+wlc_macdbg_psmwd_ampdu(wlc_macdbg_info_t *macdbg)
+{
+	if (!macdbg->psmwd_ampdu) {
+		return BCME_OK;
+	}
+
+	return wlc_macdbg_gen_psmwd(macdbg, 1 /* delay in usec */);
+}
+
+/* trigger a PSMWD if 'psmwd_txbcn' iovar is set */
+int
+wlc_macdbg_psmwd_txbcn(wlc_macdbg_info_t *macdbg)
+{
+	if (!macdbg->psmwd_txbcn) {
+		return BCME_OK;
+	}
+
+	return wlc_macdbg_gen_psmwd(macdbg, 1 /* delay in usec */);
+}
+
 #ifdef WL_PSMX
 static int
 wlc_macdbg_gen_psmxwd(wlc_macdbg_info_t *macdbg, uint16 after)
@@ -5864,4 +6030,88 @@ wlc_macdbg_gen_psmxwd(wlc_macdbg_info_t *macdbg, uint16 after)
 	return BCME_OK;
 }
 #endif /* WL_PSMX */
+
+void
+wlc_macdbg_txs_ppdu_info(wlc_macdbg_info_t *macdbg, tx_status_t* txs)
+{
+	wlc_info_t *wlc = macdbg->wlc;
+	wlc_macdbg_ppdu_stats_t* p_ppdu = (wlc_macdbg_ppdu_stats_t*) &macdbg->ppdu_info;
+	int8 epoch, i;
+	bool ismu;
+	uint8 usr_idx, gbmp;
+
+	if (!macdbg->ppdutxs) {
+		return;
+	}
+
+	WL_INFORM(("wl%d: %s: txs\n"
+		"  %04X %04X | %04X %04X %08X | %08X %08X || %08X %08X | %08X %08X\n",
+		wlc->pub->unit, __FUNCTION__,
+		txs->status.raw_bits, txs->frameid, txs->sequence, txs->phyerr,
+		txs->status.s2,
+		txs->status.s3, txs->status.s4, txs->status.s5,
+		txs->status.ack_map1, txs->status.ack_map2, txs->status.s8));
+
+	ismu = txs->status.s5 & TX_STATUS64_MUTX;
+	epoch = TX_STATUS128_EPOCH(txs->status.s5);
+	if (!ismu || p_ppdu->epoch == -1 || epoch != p_ppdu->epoch) {
+		// this is a new PPDU
+		p_ppdu->epoch = epoch;
+		p_ppdu->ismu = ismu;
+		p_ppdu->pktBw = TX_STATUS64_MU_BW(txs->status.s3);
+		p_ppdu->mutype = TX_STATUS128_MUTYP(txs->status.s5);
+		p_ppdu->txtime = TX_STATUS128_TXDUR(txs->status.s2);
+		p_ppdu->ntxs_recv = 0;
+		if (ismu) {
+			if (p_ppdu->mutype == TX_STATUS_MUTP_HEOM) {
+				p_ppdu->nusrs = TX_STATUS128_HEOM_NUSRS(txs->status.s3);
+			} else {
+				gbmp = TX_STATUS64_MU_GBMP(txs->status.s4);
+				p_ppdu->nusrs = bcm_bitcount(&gbmp, 1);
+			}
+		} else {
+			p_ppdu->nusrs = 1;
+		}
+	} else {
+		// this txs and prev txs belong to the same PPDU
+		p_ppdu->ntxs_recv++;
+	}
+
+	usr_idx = p_ppdu->ntxs_recv;
+	if (usr_idx >= p_ppdu->nusrs) {
+		// this is an invalid txs, skip it
+		return;
+	}
+
+	p_ppdu->usr_info[usr_idx].fifo = D11_TXFID_GET_FIFO(wlc, txs->frameid);
+
+	if (!ismu) {
+		/* SU case */
+		/* make a call back function to update stats in some TBD module if needed */
+		WL_MAC(("wl%d: %s: SU PPDU txtime %d (usec) fifo %d\n",
+			wlc->pub->unit, __FUNCTION__, p_ppdu->txtime, p_ppdu->usr_info[0].fifo));
+	} else {
+		if (p_ppdu->mutype == TX_STATUS_MUTP_HEOM ||
+			p_ppdu->mutype == TX_STATUS_MUTP_HEMOM) {
+			p_ppdu->usr_info[usr_idx].ruidx = TX_STATUS128_HEOM_RUIDX(txs->status.s4);
+		} else {
+			p_ppdu->usr_info[usr_idx].ruidx = -1;
+		}
+		p_ppdu->usr_info[usr_idx].mcs = TX_STATUS64_MU_MCS(txs->status.s4);
+		p_ppdu->usr_info[usr_idx].nss =	TX_STATUS64_MU_NSS(txs->status.s4) + 1;
+		if (usr_idx + 1 == p_ppdu->nusrs) {
+			/* make a call back function to update stats in some TBD module if needed */
+			WL_MAC(("wl%d: %s: MU PPDU txtime %d (usec) mutype %d "
+				"pktBW %d num users %d:\n",
+				wlc->pub->unit, __FUNCTION__, p_ppdu->txtime,
+				p_ppdu->mutype, p_ppdu->pktBw, p_ppdu->nusrs));
+			for (i = 0; i < p_ppdu->nusrs; i++) {
+				WL_MAC(("u%d fifo %d mcs %d nss %d ruidx %d\n", i,
+				p_ppdu->usr_info[i].fifo, p_ppdu->usr_info[i].mcs,
+				p_ppdu->usr_info[i].nss, p_ppdu->usr_info[i].ruidx));
+			}
+		}
+	}
+}
+
 #endif /* BCMDBG */

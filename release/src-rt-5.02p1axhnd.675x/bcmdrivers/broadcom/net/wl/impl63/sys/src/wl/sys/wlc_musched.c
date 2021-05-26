@@ -173,7 +173,7 @@ struct wlc_muscheduler_info {
 	uint8	rucfg[D11_REV128_BW_SZ][MUSCHED_RUCFG_ROW][MUSCHED_RUCFG_COL];
 	uint8	rucfg_ack[D11_REV128_BW_SZ][MUSCHED_RUCFG_ROW][MUSCHED_RUCFG_COL];
 	bool	rucfg_fixed; /* = TRUE: fixed/set by iovar */
-	bool	use_murts;   /* = TRUE: use murts; FALSE: use regular rts */
+	uint8	use_murts;
 	uint16	tmout;
 	int8	num_scb_stats;
 	musched_ru_stats_t ru_stats;
@@ -199,7 +199,7 @@ struct wlc_muscheduler_info {
 
 #define MUSCHED_HEMSCH_SCHIDX_MASK	0x0003
 #define MUSCHED_HEMSCH_STP_MASK		0x001C
-#define MUSCHED_HEMSCH_MURTS_MASK	0x0020
+#define MUSCHED_HEMSCH_MURTS_MASK	0x0060
 #define MUSCHED_HEMSCH_SCHIDX_SHIFT	0
 #define MUSCHED_HEMSCH_STP_SHIFT	2
 #define MUSCHED_HEMSCH_MURTS_SHIFT	5
@@ -212,7 +212,11 @@ struct wlc_muscheduler_info {
 #define MUSCHED_ACKPOLICY_MUBAR		2
 #define MUSCHED_ACKPOLICY_MAX		(MUSCHED_ACKPOLICY_MUBAR)
 
-#define MUSCHED_MURTS_DFLT		FALSE
+#define MUSCHED_MURTS_DISABLE		0 // disable mu-rts
+#define MUSCHED_MURTS_STATIC		1 // turn on mu-rts statically
+#define MUSCHED_MURTS_DYNAMIC		2 // turn on mu-rts dynamically if a client is in dyn-SMPS
+#define MUSCHED_MURTS_RSVD		3 // reserved
+#define MUSCHED_MURTS_DFLT		(MUSCHED_MURTS_DYNAMIC)
 #define MUSCHED_TRVLSCH_TMOUT_DFLT		128
 
 #define MUSCHED_TRVLSCH_LOWAT_DFLT		4
@@ -496,7 +500,7 @@ BCMATTACHFN(wlc_muscheduler_attach)(wlc_info_t *wlc)
 	musched->ack_policy = MUSCHED_ACKPOLICY_TRIGINAMP;
 	musched->mix_ackp = TRUE;
 	musched->use_murts = MUSCHED_MURTS_DFLT;
-	musched->dsmps_war = TRUE;
+	musched->dsmps_war = FALSE;
 	musched->wfa20in80 = FALSE;
 
 	if (D11REV_IS(wlc->pub->corerev, 130) ||
@@ -806,11 +810,9 @@ wlc_musched_write_use_murts(wlc_muscheduler_info_t *musched)
 	}
 
 	uval16 = wlc_read_shmx(wlc, offset);
-	if (musched->use_murts) {
-		uval16 |= MUSCHED_HEMSCH_MURTS_MASK;
-	} else {
-		uval16 &= ~MUSCHED_HEMSCH_MURTS_MASK;
-	}
+	uval16 &= ~MUSCHED_HEMSCH_MURTS_MASK;
+	uval16 |= ((musched->use_murts << MUSCHED_HEMSCH_MURTS_SHIFT)
+		& MUSCHED_HEMSCH_MURTS_MASK);
 	wlc_write_shmx(wlc, offset, uval16);
 #endif /* defined(WL_PSMX) */
 	return BCME_OK;
@@ -1032,7 +1034,10 @@ wlc_musched_cmd_set_dispatch(wlc_muscheduler_info_t *musched, wl_musched_cmd_par
 		musched->mix_ackp = params->vals[0] == 0 ? FALSE : TRUE;
 		wlc_musched_config_mix_ackp(musched);
 	} else if (!strncmp(params->keystr, "murts", strlen("murts"))) {
-		musched->use_murts = params->vals[0] != 0 ? TRUE : FALSE;
+		if (params->vals[0] >= MUSCHED_MURTS_RSVD) {
+			return BCME_RANGE;
+		}
+		musched->use_murts = params->vals[0];
 		wlc_musched_write_use_murts(musched);
 	} else if (!strncmp(params->keystr, "dsmps_war", strlen("dsmps_war"))) {
 		musched->dsmps_war = params->vals[0] != 0 ? TRUE : FALSE;
@@ -1076,7 +1081,7 @@ wlc_musched_cmd_set_dispatch(wlc_muscheduler_info_t *musched, wl_musched_cmd_par
 		}
 
 		if (wlc->pub->up) {
-			if (wlc_mutx_is_hemmu_enab(wlc->mutx)) {
+			if (wlc_mutx_is_dlhemmu_enab(wlc->mutx) || HE_DLMU_ENAB(wlc->pub)) {
 				wlc_mutx_upd_min_dlofdma_users(wlc->mutx);
 			} else {
 				wlc_musched_admit_dlclients(musched);
@@ -1242,6 +1247,9 @@ static void wlc_musched_admit_users_reinit(wlc_muscheduler_info_t *musched, wlc_
 
 		FOREACH_BSS_SCB(wlc->scbstate, &scbiter, bsscfg, scb) {
 			musched_scb = SCB_MUSCHED(musched, scb);
+			if (!musched_scb) {
+				continue;
+			}
 			if (!wlc_musched_scb_isdlofdma_eligible(musched, scb)) {
 				continue;
 			}
@@ -1493,6 +1501,9 @@ wlc_musched_upd_ru_stats(wlc_muscheduler_info_t *musched, scb_t *scb, tx_status_
 	WLCNTADD(musched->ru_stats.tx_cnt[ru_type], tx_cnt);
 	WLCNTADD(musched->ru_stats.txsucc_cnt[ru_type], txsucc_cnt);
 
+	/* should not get RU stats for non-OFDMA SCB */
+	ASSERT(musched_scb != NULL);
+
 	if (musched_scb->scb_ru_stats) {
 		musched_scb->scb_ru_stats->ru_idx_use_bmap[upper][ruidx / 8] |= 1 << (ruidx % 8);
 		WLCNTADD(musched_scb->scb_ru_stats->tx_cnt[ru_type], tx_cnt);
@@ -1543,10 +1554,13 @@ void wlc_musched_update_dlofdma(wlc_muscheduler_info_t *musched, scb_t* scb)
 	wlc_info_t *wlc = musched->wlc;
 	scb_musched_t* musched_scb = SCB_MUSCHED(musched, scb);
 
+	if (!musched_scb) {
+		return;
+	}
+
 	if (!musched->dsmps_war)
 	{
-
-		WL_ERROR(("wl%d: %s:Dyn  SMPS WAR disabled \n", wlc->pub->unit, __FUNCTION__));
+		WL_MUTX(("wl%d: %s:Dyn  SMPS WAR disabled \n", wlc->pub->unit, __FUNCTION__));
 		return;
 	}
 	if (!dlmu_on && wlc_scbmusched_is_dlofdma(musched, scb)) {
@@ -1597,7 +1611,11 @@ wlc_musched_admit_dlclients(wlc_muscheduler_info_t *musched)
 	FOREACHSCB(wlc->scbstate, &scbiter, scb) {
 		scb_musched_t *musched_scb = SCB_MUSCHED(musched, scb);
 		bool dlmu_on;
-		BCM_REFERENCE(musched_scb);
+
+		/* check scb_musched validity in case of pending scb deinit */
+		if (!musched_scb) {
+			continue;
+		}
 
 		dlmu_on = wlc_musched_scb_isdlofdma_eligible(musched, scb);
 
@@ -1637,7 +1655,7 @@ wlc_musched_admit_users_reset(wlc_muscheduler_info_t *musched, wlc_bsscfg_t *cfg
 	int i;
 
 	/* skip, handled through wlc_mutx.c  */
-	if (wlc_mutx_is_hemmu_enab(wlc->mutx)) {
+	if (wlc_mutx_is_dlhemmu_enab(wlc->mutx) || HE_DLMU_ENAB(wlc->pub)) {
 		return;
 	}
 
@@ -1654,7 +1672,7 @@ wlc_musched_admit_users_reset(wlc_muscheduler_info_t *musched, wlc_bsscfg_t *cfg
 			/* Reset should release all FIFOs allocated to this client */
 			wlc_fifo_free_all(wlc->fifo, scb);
 
-			if (!musched_scb->dlul_assoc) {
+			if (!musched_scb || !musched_scb->dlul_assoc) {
 				continue;
 			}
 
@@ -1712,12 +1730,11 @@ wlc_musched_scb_state_upd(void *ctx, scb_state_upd_data_t *notif_data)
 		/* force to return if WL11AX compilation flag is off */
 		TRUE ||
 #endif /* WL11AX */
-		SCB_INTERNAL(scb) || !musched_scb) {
+		SCB_INTERNAL(scb) || !musched_scb || SCB_A4_DATA(scb)) {
 		return;
 	}
 
-	/* skip admitting as dlofdma sta, if hemmu is yet to be enabled */
-	if (wlc_mutx_is_hemmu_enab(wlc->mutx)) {
+	if (wlc_mutx_is_dlhemmu_enab(wlc->mutx) || HE_DLMU_ENAB(wlc->pub)) {
 		return;
 	}
 
@@ -1937,6 +1954,7 @@ static void
 wlc_musched_scb_rustats_init(wlc_muscheduler_info_t *musched, scb_t *scb)
 {
 	scb_musched_t *musched_scb;
+	int max_scb_stats;
 
 	if (PIO_ENAB_HW(musched->wlc->wlc_hw)) {
 		return;
@@ -1947,8 +1965,16 @@ wlc_musched_scb_rustats_init(wlc_muscheduler_info_t *musched, scb_t *scb)
 	}
 
 	musched_scb = SCB_MUSCHED(musched, scb);
+	if (!musched_scb) {
+		return;
+	}
 
-	if (musched_scb && musched->num_scb_stats < MUSCHED_RU_SCB_STATS_NUM) {
+#if defined(DONGLEBUILD)
+	max_scb_stats = MUSCHED_RU_SCB_STATS_NUM;
+#else
+	max_scb_stats = wlc_txcfg_max_clients_get(musched->wlc->txcfg, DLOFDMA);
+#endif // endif
+	if (musched->num_scb_stats < max_scb_stats) {
 		if ((musched_scb->scb_ru_stats =
 			MALLOCZ(musched->wlc->osh, sizeof(musched_ru_stats_t))) != NULL) {
 			++musched->num_scb_stats;
@@ -1999,8 +2025,8 @@ wlc_musched_scb_isdlofdma_eligible(wlc_muscheduler_info_t *musched, scb_t* scb)
 	scb_musched_t *musched_scb = SCB_MUSCHED(musched, scb);
 
 	if (musched_scb && SCB_HE_CAP(scb) && HE_DLMU_ENAB(musched->wlc->pub) &&
-			!wlc_is_scb_dynamic_smps(musched->wlc->hti, scb) &&
-			BSSCFG_AP(SCB_BSSCFG(scb)) && !SCB_HEMMU(scb)) {
+		!(musched->dsmps_war && wlc_is_scb_dynamic_smps(musched->wlc->hti, scb)) &&
+		BSSCFG_AP(SCB_BSSCFG(scb)) && !SCB_HEMMU(scb) && !SCB_A4_DATA(scb)) {
 		ret = TRUE;
 	}
 	return ret;
@@ -2030,14 +2056,15 @@ wlc_scbmusched_set_dlofdma(wlc_muscheduler_info_t *musched, scb_t* scb, bool ena
 		return;
 	}
 
+	/* apply setting to scb_cubby dlul_assoc */
 	if (enable) {
 		SCB_DLOFDMA_ENABLE(scb);
-		if (wlc_mutx_is_hemmu_enab(wlc->mutx)) {
+		if (wlc_mutx_is_dlhemmu_enab(wlc->mutx) || HE_DLMU_ENAB(wlc->pub)) {
 			SCB_MUSCHED_SET_DLUL_ASSOC(wlc, musched_scb, TRUE);
 		}
 	} else {
 		SCB_DLOFDMA_DISABLE(scb);
-		if (wlc_mutx_is_hemmu_enab(wlc->mutx)) {
+		if (wlc_mutx_is_dlhemmu_enab(wlc->mutx) || HE_DLMU_ENAB(wlc->pub)) {
 			SCB_MUSCHED_SET_DLUL_ASSOC(wlc, musched_scb, FALSE);
 		}
 	}
@@ -2274,7 +2301,9 @@ wlc_musched_minru_update(wlc_muscheduler_info_t *musched, scb_t *scb, uint8 minr
 		return BCME_UNSUPPORTED;
 
 	musched_scb = SCB_MUSCHED(musched, scb);
-	musched_scb->min_ru = minru;
+	if (musched_scb) {
+		musched_scb->min_ru = minru;
+	}
 
 	return wlc_ratelinkmem_update_link_entry(wlc, scb);
 }

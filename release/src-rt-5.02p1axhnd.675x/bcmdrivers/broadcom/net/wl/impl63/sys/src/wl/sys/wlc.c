@@ -47,7 +47,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc.c 783116 2020-01-14 10:38:01Z $
+ * $Id: wlc.c 789184 2020-07-21 19:39:50Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -551,6 +551,8 @@
 #include <wlc_dtpc.h>
 #endif /* WLC_DTPC */
 
+#include <phy_tssical_api.h>
+
 /*
  * buffer length needed for wlc_format_ssid
  * 32 SSID chars, max of 4 chars for each SSID char "\xFF", plus NULL.
@@ -600,6 +602,9 @@
 #define PRETBTT_ACPHY_4364_US		256             /* 4364 pre-btt */
 /* ??? */
 #define PRETBTT_ACPHY_AP_US		2		/* ac phy pretbtt time in us - for AP */
+
+/**  WLC Global object. Access wlc ptr for given radio unit id */
+wlc_info_t* wlc_global[WLC_UNIT_MAX] = { WLC_G_INIT };
 
 /*
  * driver maintains internal 'tick'(wlc->pub->now) which increments in 1s OS timer(soft
@@ -826,6 +831,8 @@ enum wlc_iov {
 	IOV_FIPS_LOOPBACK_TEST = 168,
 	IOV_BLOCK_HE = 169,     /* block HE probe req, auth req, assoc req */
 	IOV_FIPS_MUTE = 170,
+	IOV_FIPS_CMVP_TEST = 171,
+	IOV_ATF_PERC_RESET = 172,
 	IOV_LAST		/* In case of a need to check max ID number */
 };
 
@@ -964,6 +971,9 @@ static const bcm_iovar_t wlc_iovars[] = {
 	},
 #ifdef WLATF
 	{"atf", IOV_ATF, IOVF_RSDB_SET, 0, IOVT_UINT32, 0 },
+#endif // endif
+#if defined(WLATF) && defined(WLATF_PERC)
+	{"atf_perc_reset", IOV_ATF_PERC_RESET, 0, 0, IOVT_VOID, 0 },
 #endif // endif
 #if defined(WLTEST)
 	{"boardflags", IOV_BOARDFLAGS,
@@ -1682,11 +1692,14 @@ static void wlc_apsta_restart_ap(wlc_info_t* wlc);
 static void wlc_atm_update_perc(wlc_info_t *wlc);
 static uint8 wlc_atm_cal_perc(wlc_info_t * wlc, uint8 perc_sum, uint8 num,
 	uint8 auto_num, uint8 perc);
+static void wlc_reset_atf_perc(wlc_info_t *wlc);
 #endif /* WLATF && WLATF_PERC */
 
 static void wlc_disable_prop_vht_features(wlc_info_t *wlc);
 static wlcband_t* wlc_get_band_by_chanspec(wlc_info_t *wlc, chanspec_t chanspec);
 static wlcband_t* wlc_get_band_by_bandtype(wlc_info_t *wlc, int bandtype);
+
+extern void wlc_phy_bypass_idletssi_init(wlc_phy_t *ppi, bool force);
 
 static wlcband_t*
 wlc_get_band_by_chanspec(wlc_info_t *wlc, chanspec_t chanspec)
@@ -1920,6 +1933,22 @@ wlc_dump_bcmlog(wlc_info_t *wlc, struct bcmstrbuf *b)
 }
 #endif // endif
 
+void
+wlc_scb_close_link(wlc_info_t *wlc, struct scb *scb)
+{
+	if (!SCB_LEGACY_WDS(scb)) {
+#ifdef PROP_TXSTATUS
+		/* close flowring for this scb */
+		if (PROP_TXSTATUS_ENAB(wlc->pub)) {
+			wlc_update_scb_bus_flctl(wlc, scb, WLFC_CTL_TYPE_MAC_CLOSE);
+		}
+#endif /* PROP_TXSTATUS */
+#ifdef WLAMPDU
+		wlc_ampdu_scb_close_link(wlc, scb);
+#endif /* WLAMPDU */
+	}
+}
+
 static void
 wlc_scb_flush_queues(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, struct scb *scb)
 {
@@ -1930,14 +1959,7 @@ wlc_scb_flush_queues(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, struct scb *scb)
 	}
 #endif	/* PROP_TXSTATUS */
 
-	/* Deactivate ampdu */
-	if (SCB_AMPDU(scb)) {
-		scb_ampdu_tx_flush(wlc->ampdu_tx, scb);
-	}
-
-#ifdef WLNAR
-	wlc_nar_flush_scb_queues(wlc->nar_handle, scb);
-#endif /* WLNAR */
+	wlc_txmod_flush_pkts(wlc->txmodi, scb, TXMOD_TID_FLUSH_ALL_TID);
 
 	/* Clean up lowtxq, common q, and fifos */
 	wlc_tx_fifo_scb_flush(wlc, scb);
@@ -2331,6 +2353,11 @@ BCMINITFN(wlc_reset)(wlc_info_t *wlc)
 	}
 
 	wlc_bmac_reset(wlc->hw);
+
+	if (STAMON_ENAB(wlc->pub)) {
+		/* Free RCMTA resource */
+		wlc_stamon_rcmta_slots_free(wlc->stamon_info);
+	}
 
 	/* keep phypll off by default and let ucode take control of it.
 	 * turn off phypll here that was turned on in wlc_reset.
@@ -2784,6 +2811,7 @@ void BCMINITFN(wlc_init)(wlc_info_t *wlc)
 			wlc_quiet_chanspec(wlc->cmi, chanspec)) {
 		mute = TRUE;
 	}
+	wlc_phy_bypass_idletssi_init(WLC_PI(wlc), mute);
 #ifdef WL_SARLIMIT
 	/* initialize SAR limit per SROM */
 	wlc_channel_sar_init(wlc->cmi);
@@ -2950,7 +2978,8 @@ void BCMINITFN(wlc_init)(wlc_info_t *wlc)
 	 * being unblocked and have the responsible module unblock itself.
 	 */
 
-	wlc->block_datafifo &= DATA_BLOCK_QUIET;
+	/* clear ALL data block state but put back DATA_BLOCK_QUIET if it was set */
+	wlc_block_datafifo(wlc, DATA_BLOCK_MASK_ALL, wlc->block_datafifo & DATA_BLOCK_QUIET);
 
 	/* Cleanup assoc in progress in case of reinit */
 	wlc_reinit(wlc);
@@ -2975,6 +3004,12 @@ void BCMINITFN(wlc_init)(wlc_info_t *wlc)
 	wlc->active_udpv6 = FALSE;
 	wlc->active_udpv4 = FALSE;
 	wlc->active_tcp = FALSE;
+
+#ifdef BCM_CSIMON
+	/* Initialize Channel State Info (CSI) Monitor */
+	wlc_csimon_init(wlc, wlc_csimon_m2m_dd_done_cb);
+#endif // endif
+
 	if (D11REV_IS(wlc->pub->corerev, 129)) {
 		wlc->dyntxc->enable = TRUE;
 		wlc_txs_dyntxc_set(wlc->dyntxc);
@@ -3660,11 +3695,24 @@ wlc_set_home_chanspec(wlc_info_t *wlc, chanspec_t chanspec)
 		WL_INFORM(("wl%d: change shared chanspec wlc->home_chanspec from "
 		           "0x%04x to 0x%04x\n", wlc->pub->unit, wlc->home_chanspec, chanspec));
 
+		/* Delete all the stations which matches the current chanspec from sta monitor
+		 * because, no point in keeping those STAs as we are not sure about the
+		 * chanspec of the STA. Checking the chanspec because, no need to remove offchan
+		 * STAs as the offchan STA monitor will take care of sniffing from different
+		 * channel
+		 */
+		wlc_stamon_delete_stations_matching_chanspec(wlc, wlc->home_chanspec);
+
 		wlc->home_chanspec = chanspec;
 		if (BSSCFG_STA(wlc->cfg)) {
 			wlc->cfg->target_bss->chanspec = chanspec;
 			wlc_bsscfg_set_current_bss_chan(wlc->cfg, chanspec);
 		}
+
+		if ((wlc->stas_associated != 0) && (CHSPEC_IS160(chanspec)))
+			wlc->any_sta_in_160mhz = TRUE;
+		else
+			wlc->any_sta_in_160mhz = FALSE;
 
 		FOREACH_UP_AP(wlc, idx, cfg) {
 
@@ -3786,6 +3834,11 @@ wlc_set_chanspec(wlc_info_t *wlc, chanspec_t chanspec, int reason_bitmap)
 
 	WL_TSLOG(wlc, "wlc_set_chanspec from => to", wlc->chanspec, chanspec);
 	WL_TSLOG(wlc, __FUNCTION__, TS_ENTER, 0);
+	if (wlc->psm_watchdog_debug) {
+		WL_INFORM(("wl%d: %s skip updating chanspec 0x%04x during psmwd\n",
+			wlc->pub->unit, __FUNCTION__, chanspec));
+		return;
+	}
 #if defined(BGDFS) || defined(WL_AIR_IQ)
 	/* always ensure that phymode is reset (scan core is disabled) before chspec change */
 	if ((PHYMODE(wlc) == PHYMODE_BGDFS)) {
@@ -4148,11 +4201,6 @@ void
 wlc_scb_disassoc_cleanup(wlc_info_t *wlc, struct scb *scb)
 {
 	wlc_bsscfg_t *bsscfg;
-#if defined(BCMDBG) || defined(WLMSG_WSEC)
-	char eabuf[ETHER_ADDR_STR_LEN];
-
-	bcm_ether_ntoa(&scb->ea, eabuf);
-#endif // endif
 
 	if (SCB_MFP(scb)) {
 		/* flush all outstanding MFP packets for this SCB before deleting keys */
@@ -4179,7 +4227,8 @@ wlc_scb_disassoc_cleanup(wlc_info_t *wlc, struct scb *scb)
 #ifdef WLAMPDU
 		/* cleanup ampdu at end of association */
 		if (SCB_AMPDU(scb)) {
-			WL_AMPDU(("wl%d: scb ampdu cleanup for %s\n", wlc->pub->unit, eabuf));
+			WL_AMPDU(("wl%d: "MACF": scb ampdu cleanup\n",
+				wlc->pub->unit, ETHER_TO_MACF(scb->ea)));
 			scb_ampdu_cleanup(wlc, scb);
 		}
 #endif // endif
@@ -6394,6 +6443,9 @@ BCMATTACHFN(wlc_attach_module)(wlc_info_t *wlc)
 #if defined WLDFS && !defined(WLDFS_DISABLED)
 	MODULE_ATTACH(dfs, wlc_dfs_attach, 214);
 #endif // endif
+#ifdef BCM_CSIMON
+	MODULE_ATTACH(csimon_info, wlc_csimon_attach, 215);
+#endif // endif
 	return BCME_OK;
 
 fail:
@@ -6455,6 +6507,47 @@ wlc_hwrsscbs_free(wlc_info_t *wlc)
 	}
 }
 
+#ifdef WL_PROXDETECT
+/* allocate the proxd scbs */
+int
+wlc_proxdscbs_alloc(wlc_info_t *wlc)
+{
+	enum wlc_bandunit bandunit;
+
+	FOREACH_WLC_BAND(wlc, bandunit) {
+		wlcband_t *band;
+
+		band = wlc->bandstate[bandunit];
+		if (band->proxd_scb == NULL) {
+			band->proxd_scb = wlc_proxdscb_alloc(wlc, band);
+		}
+		if (!band->proxd_scb) {
+			WL_ERROR(("wl%d: %s: wlc_proxdscbs_alloc failed\n",
+			          wlc->pub->unit, __FUNCTION__));
+			return BCME_NOMEM;
+		}
+	}
+
+	return BCME_OK;
+}
+
+/* free the proxd scbs */
+void
+wlc_proxdscbs_free(wlc_info_t *wlc)
+{
+	enum wlc_bandunit bandunit;
+
+	FOREACH_WLC_BAND_UNORDERED(wlc, bandunit) {
+		wlcband_t *bandstate = wlc->bandstate[bandunit];
+
+		if (bandstate->proxd_scb) {
+			wlc_proxdscb_free(wlc, bandstate->proxd_scb);
+			bandstate->proxd_scb = NULL;
+		}
+	}
+}
+#endif /* WL_PROXDETECT */
+
 #define CHIP_SUPPORTS_11AC(sih) TRUE
 
 static const char BCMATTACHDATA(rstr_devid)[] = "devid";
@@ -6475,6 +6568,8 @@ static const char BCMATTACHDATA(rstr_aga1)[] = "aga1";
 static const char BCMATTACHDATA(rstr_agbg1)[] = "agbg1";
 static const char BCMATTACHDATA(rstr_aga2)[] = "aga2";
 static const char BCMATTACHDATA(rstr_agbg2)[] = "agbg2";
+static const char BCMATTACHDATA(rstr_aga3)[] = "aga3";
+static const char BCMATTACHDATA(rstr_agbg3)[] = "agbg3";
 static const char BCMATTACHDATA(rstr_aa0)[] = "aa0";     /**< number of 2g antenna's */
 static const char BCMATTACHDATA(rstr_aa1)[] = "aa1";     /**< number of 5g/6g antenna's */
 static const char BCMATTACHDATA(rstr_ag0)[] = "ag0";     /**< 2ghz antenna gain */
@@ -6975,10 +7070,6 @@ BCMATTACHFN(wlc_attach)(void *wl, uint16 vendor, uint16 device, uint unit, uint 
 	}
 
 	wlc->fabid = si_fabid(wlc->hw->sih);
-	FOREACH_WLC_BAND_UNORDERED(wlc, bandunit) {
-		wlc_pi_band_update(wlc, bandunit); // park on default band, being the lowest fq one
-		break;
-	}
 
 	/* PULL BMAC states
 	 * for some states, due to different info pointer(e,g, wlc, wlc_hw) or master/slave split,
@@ -7217,7 +7308,6 @@ BCMATTACHFN(wlc_attach)(void *wl, uint16 vendor, uint16 device, uint unit, uint 
 		WL_ERROR(("wl%d: %s: wlc_attach_module failed\n", unit, __FUNCTION__));
 		goto fail;
 	}
-
 	wlc_prot_n_cfg_set(wlc->prot_n, WLC_PROT_N_PAM_OVR, (int8)state_bmac.preamble_ovr);
 	/* TODO: VSDB/P2P/MCNX bmac update ? */
 
@@ -7241,6 +7331,11 @@ BCMATTACHFN(wlc_attach)(void *wl, uint16 vendor, uint16 device, uint unit, uint 
 #if defined(OCL) && !defined(OCL_DISABLED)
 	wlc->pub->_ocl = TRUE;
 #endif /* OCL && NOT OCL_DISABLED */
+
+	FOREACH_WLC_BAND_UNORDERED(wlc, bandunit) {
+		wlc_pi_band_update(wlc, bandunit); // park on default band, being the lowest fq one
+		break;
+	}
 
 	/* init default when all parameters are ready, i.e. ->rateset */
 	wlc_bss_default_init(wlc);
@@ -7336,6 +7431,13 @@ BCMATTACHFN(wlc_attach)(void *wl, uint16 vendor, uint16 device, uint unit, uint 
 		goto fail;
 	}
 
+#ifdef WL_PROXDETECT
+	if (wlc_proxdscbs_alloc(wlc) != BCME_OK) {
+		err = 1103;
+		goto fail;
+	}
+#endif // endif
+
 	if ((wlc->ebd = MALLOCZ(wlc->osh,
 		sizeof(wlc_early_bcn_detect_t))) == NULL) {
 		WL_ERROR(("wl%d: wlc_early_bcn_detect_t alloc failed\n", unit));
@@ -7356,12 +7458,10 @@ BCMATTACHFN(wlc_attach)(void *wl, uint16 vendor, uint16 device, uint unit, uint 
 	pub->wlfeatureflag |= WL_SWFL_FLOWCONTROL;
 #endif // endif
 
-#ifdef DONGLEBUILD
 	/* Disable HW radio monitor if feature is not supported */
 	if (!(wlc->pub->boardflags & BFL_AIRLINEMODE)) {
 		pub->wlfeatureflag |= WL_SWFL_NOHWRADIO;
 	}
-#endif /* DONGLEBUILD */
 
 	/* fixup mpc */
 	wlc->mpc = wlc_mpccap(wlc);
@@ -7480,6 +7580,9 @@ BCMATTACHFN(wlc_attach)(void *wl, uint16 vendor, uint16 device, uint unit, uint 
 
 	wlc->defrateset_override = FALSE;
 
+	/* Setup a global pointer to WLC across radios */
+	WLC_G(WLC_UNIT(wlc)) = wlc;
+
 	return ((void*)wlc);
 
 fail:
@@ -7571,7 +7674,7 @@ BCMATTACHFN(wlc_attach_antgain_init)(wlc_info_t *wlc)
 	} else if (wlc->pub->sromrev >= 11) {
 		char *vars = wlc->pub->vars;
 		int bandtype = wlc->band->bandtype;
-		int8 ag[3], max_ag = 0;
+		int8 ag[WLC_TXCORE_MAX], max_ag = 0;
 		uint i;
 
 		ag[0] = (int8)getintvar_slicespecific(wlc->hw,
@@ -7580,6 +7683,8 @@ BCMATTACHFN(wlc_attach_antgain_init)(wlc_info_t *wlc)
 				vars, (BAND_5G6G(bandtype) ? rstr_aga1 : rstr_agbg1));
 		ag[2] = (int8)getintvar_slicespecific(wlc->hw, vars,
 				(BAND_5G6G(bandtype) ? rstr_aga2 : rstr_agbg2));
+		ag[3] = (int8)getintvar_slicespecific(wlc->hw, vars,
+				(BAND_5G6G(bandtype) ? rstr_aga3 : rstr_agbg3));
 #ifdef WL_ANTGAIN
 		/* XXX check the board type with the pre defined table boardtype
 		* same module with different Subsystem ID SROM Cannot be used
@@ -7596,7 +7701,7 @@ BCMATTACHFN(wlc_attach_antgain_init)(wlc_info_t *wlc)
 			}
 		}
 #endif // endif
-		for (i = 0; i < 3; i++) {
+		for (i = 0; i < WLC_TXCORE_MAX; i++) {
 			ag[i] = wlc_antgain_calc(ag[i]);
 			max_ag = MAX(ag[i], max_ag);
 		}
@@ -8230,6 +8335,9 @@ BCMATTACHFN(wlc_detach_module)(wlc_info_t *wlc)
 	MODULE_DETACH(wlc->rx_report_handle, wlc_rx_report_detach);
 #endif // endif
 	MODULE_DETACH(wlc->dyntxc, wlc_txs_dyntxc_detach);
+#ifdef BCM_CSIMON
+	MODULE_DETACH(wlc->csimon_info, wlc_csimon_detach);
+#endif // endif
 } /* wlc_detach_module */
 
 /** detach infra. modules that must be done the last after all other modules */
@@ -8339,6 +8447,10 @@ BCMATTACHFN(wlc_detach)(wlc_info_t *wlc)
 	}
 #endif // endif
 
+#ifdef WL_PROXDETECT
+	wlc_proxdscbs_free(wlc);
+#endif // endif
+
 	/* free the internal scbs */
 	wlc_hwrsscbs_free(wlc);
 
@@ -8414,6 +8526,9 @@ BCMATTACHFN(wlc_detach)(wlc_info_t *wlc)
 			ASSERT(wlc->modulecb[i].name[0] == '\0');
 		}
 	}
+
+	/* Reset the global lookup table */
+	WLC_G(WLC_UNIT(wlc)) = NULL;
 
 	WL_MPC(("wl%d: DETACHED, callbacks %d\n", wlc->pub->unit, callbacks));
 
@@ -9145,7 +9260,16 @@ wlc_watchdog(void *arg)
 		}
 	}
 	/* Validate the pre-calculated txpktpendtot */
+#if defined(WL_TXPKTPEND_SYNC)
+	if (txpktpendtot != TXPKTPENDTOT(wlc)) {
+		wlc->pktpend_sync |= TXPKTPEND_SYNC_EN;
+		WL_ERROR(("wl%d:%s txpktpendtot %d != TXPKTPENDTOT(wlc) %d",
+			wlc->pub->unit, __FUNCTION__, txpktpendtot,
+			TXPKTPENDTOT(wlc)));
+	}
+#else
 	ASSERT(txpktpendtot == TXPKTPENDTOT(wlc));
+#endif /* WL_TXPKTPEND_SYNC */
 
 	if (wlc->watchdog_disable) {
 		return;
@@ -10166,7 +10290,10 @@ BCMUNINITFN(wlc_down)(wlc_info_t *wlc)
 		ASSERT(PKTALLOCED(wlc->osh) == 0);
 #endif // endif
 	}
-
+#ifdef WLTAF
+	/* Reset TAF scheduler state machine */
+	wlc_taf_reset_scheduling(wlc->taf_handle, ALLPRIO, TRUE);
+#endif // endif
 	WL_MPC(("wl%d: DOWN  callbacks %d\n", wlc->pub->unit, callbacks));
 	wlc->state = WLC_STATE_DOWN;
 	if (WLC_IS_SWITCH_TO_OLD_CHANSPEC_AFTER_CAC(wlc)) {
@@ -10452,6 +10579,8 @@ wlc_bandlock(wlc_info_t *wlc, int val)
 	bool move;
 	uint j;
 	enum wlc_bandunit bandunit;
+	int i, idx;
+	wlc_bsscfg_t *bsscfg;
 
 	WL_TRACE(("wl%d: wlc_bandlock: wlc %p val %d\n",
 		wlc->pub->unit, wlc, OSL_OBFUSCATE_BUF(val)));
@@ -10537,7 +10666,6 @@ wlc_bandlock(wlc_info_t *wlc, int val)
 		if (move) {
 #ifdef STA
 			if (wlc->pub->up) {
-				int idx;
 				wlc_bsscfg_t *cfg;
 				FOREACH_BSS(wlc, idx, cfg) {
 					if (BSSCFG_STA(cfg) && cfg->enable) {
@@ -10585,6 +10713,20 @@ wlc_bandlock(wlc_info_t *wlc, int val)
 
 		/* Update bss rates to the band specific default rate set */
 		wlc_default_rateset(wlc, &wlc->default_bss->rateset);
+
+		if (move && (val == WLC_BAND_2G)) {
+			/* Need to add b-band rates back in if just switched from a-band.
+			 * These get killed in wlc_rate_hwrs_filter_sort_validate() when
+			 * switching to band a.
+			 */
+			FOREACH_BSS(wlc, idx, bsscfg) {
+				for (i = 0; i < wlc->band->hw_rateset.count; i++) {
+					bsscfg->current_bss->rateset.rates[i] =
+						wlc->band->hw_rateset.rates[i];
+				}
+				bsscfg->current_bss->rateset.count = wlc->band->hw_rateset.count;
+			}
+		}
 
 		wlc->bandlocked = TRUE;
 		break;
@@ -11285,13 +11427,13 @@ wlc_doioctl(void *ctx, uint cmd, void *arg, uint len, struct wlc_if *wlcif)
 		break;
 
 	case WLC_SET_PWROUT_PERCENTAGE:
-		if ((uint)val > 100) {
+		if ((uint)val > 100 || (uint)val == 0 || (uint)val%10 != 0) {
+			/* min unit is 10% */
+			/* input cannot be 0 or > 100 */
 			bcmerror = BCME_RANGE;
 			break;
 		}
 
-		wlc->txpwr_percent = (uint8)val;
-		wlc_bmac_set_txpwr_percent(wlc->hw, (uint8)val);
 		if (wlc->pub->up) {
 			uint8 constraint;
 
@@ -11300,6 +11442,17 @@ wlc_doioctl(void *ctx, uint cmd, void *arg, uint len, struct wlc_if *wlcif)
 					wlc->pub->unit));
 				break;
 			}
+			if (wlc_phy_tssivisible_thresh(pi) < 0 ||
+				(ACREV_LT(wlc->band->phyrev, 47))) {
+				/* OLPC th has to be set for this feature
+				* threshold is always positive value
+				 * even under lower power board
+				 */
+				bcmerror = BCME_EPERM;
+				break;
+			}
+			wlc->txpwr_percent = (uint8)val;
+			wlc_bmac_set_txpwr_percent(wlc->hw, (uint8)val);
 
 			wlc_suspend_mac_and_wait(wlc);
 
@@ -11869,9 +12022,13 @@ wlc_doioctl(void *ctx, uint cmd, void *arg, uint len, struct wlc_if *wlcif)
 				wlc_scb_resetstate(wlc, scb);
 			if (bsscfg->BSS) {
 				wlc_disassociate_client(bsscfg, FALSE);
-				if (scb)
+				if (scb) {
+					WL_ASSOC(("wl%d.%d: %s: send deauth to "MACF" with reason"
+						" %d\n", wlc->pub->unit, WLC_BSSCFG_IDX(bsscfg),
+						__FUNCTION__, ETHERP_TO_MACF(apmac), val));
 					(void)wlc_senddeauth(wlc, bsscfg, scb, apmac, apmac,
 					                     &bsscfg->cur_etheraddr, (uint16)val);
+				}
 				WL_APSTA_UPDN(("wl%d: SCB DEAUTH: wlc_bsscfg_disable()\n",
 				            wlc->pub->unit));
 				wlc_bsscfg_disable(wlc, bsscfg);
@@ -13465,6 +13622,9 @@ wlc_doiovar(void *hdl, uint32 actionid,
 		{
 			wlc_ampdu_atf_set_default_mode(wlc->ampdu_tx, wlc->scbstate,
 				(uint32)int_val);
+#if defined(WLATF) && defined(WLATF_PERC)
+			wlc_reset_atf_perc(wlc);
+#endif /* defined(WLATF) && defined(WLATF_PERC) */
 		}
 		wlc->atf = int_val;
 #if defined(WLATF) && defined(WLATF_PERC)
@@ -13473,6 +13633,11 @@ wlc_doiovar(void *hdl, uint32 actionid,
 		break;
 
 #if defined(WLATF) && defined(WLATF_PERC)
+	case IOV_SVAL(IOV_ATF_PERC_RESET):
+		err = BCME_OK;
+		wlc_reset_atf_perc(wlc);
+		break;
+
 	case IOV_GVAL(IOV_ATM_STAPERC):
 	{
 		wl_atm_staperc_t *staperc;
@@ -14064,6 +14229,7 @@ wlc_doiovar(void *hdl, uint32 actionid,
 		break;
 #endif /* BCMPKTPOOL */
 
+	/* This IOVar is used for getting the current rateset */
 	case IOV_GVAL(IOV_CURR_RATESET): {
 		wl_rateset_args_t *ret_rs = (wl_rateset_args_t *)arg;
 		wlc_rateset_t *rs;
@@ -14170,6 +14336,7 @@ wlc_doiovar(void *hdl, uint32 actionid,
 		break;
 	}
 
+	/* This IOVar is used to get the default rateset */
 	case IOV_GVAL(IOV_RATESET): {
 		wlc_rateset_t rs;
 		wl_rateset_args_t *ret_rs = (wl_rateset_args_t *)arg;
@@ -14221,6 +14388,7 @@ wlc_doiovar(void *hdl, uint32 actionid,
 		break;
 	}
 
+	/* This IOVar is used to set the given input rateset. Alters current rateset */
 	case IOV_SVAL(IOV_RATESET): {
 		wlc_rateset_t rs;
 		wl_rateset_args_t *in_rs = (wl_rateset_args_t *)arg;
@@ -15143,6 +15311,7 @@ wlc_doiovar(void *hdl, uint32 actionid,
 		}
 		break;
 #endif /* WL11AX */
+
 	default:
 		err = BCME_UNSUPPORTED;
 		break;
@@ -15444,6 +15613,9 @@ wlc_dump_wlc(wlc_info_t *wlc, struct bcmstrbuf *b)
 
 	bcm_bprintf(b, "promisc %d monitor %d piomode %d gmode %d\n",
 	            wlc->pub->promisc, wlc->monitor, PIO_ENAB(wlc->pub), wlc->band->gmode);
+#ifdef BCM_CSIMON
+	bcm_bprintf(b, "csimon %d\n", CSIMON_ENAB(wlc->pub));
+#endif // endif
 
 	bcm_bprintf(b, "ap %d apsta %d wet %d wet_dongle %d wme %d mac_spoof %d"
 	            " per-ac maxrate %d\n",
@@ -15482,8 +15654,14 @@ wlc_dump_wlc(wlc_info_t *wlc, struct bcmstrbuf *b)
 	bcm_bprintf(b, "shortslot %d shortslot_ovrrd %d ignore_bcns %d\n",
 	            wlc->shortslot, wlc->shortslot_override, wlc->ignore_bcns);
 
-	bcm_bprintf(b, "\nblock_datafifo 0x%x tx_suspended %d\n",
+	bcm_bprintf(b, "\nblock_datafifo 0x%x tx_suspended %d",
 	            wlc->block_datafifo, wlc->tx_suspended);
+
+#if defined(WL_TXPKTPEND_SYNC)
+	bcm_bprintf(b, "pktpend_sync %d\n", wlc->pktpend_sync_cnt);
+#else
+	bcm_bprintf(b, "\n");
+#endif /* WL_TXPKTPEND_SYNC */
 
 	bcm_bprintf(b, "bandunit %d bandlocked %d \n", wlc->band->bandunit, wlc->bandlocked);
 	bcm_bprintf(b, "radio_disabled 0x%x down_override %d\n", wlc->pub->radio_disabled,
@@ -16317,10 +16495,14 @@ wlc_prec_enq_head_ex(wlc_info_t *wlc, struct pktq *q, void *pkt,
 		/* check for auto enabled logging */
 		if (prec_cnt == NULL && (q->pktqlog->_prec_log & PKTQ_LOG_AUTO)) {
 			prec_cnt = wlc_txq_prec_log_enable(wlc, q, (uint32)prec, TRUE);
+
+			if (prec_cnt) {
+				wlc_read_tsf(wlc, &prec_cnt->_logtimelo, &prec_cnt->_logtimehi);
+			}
 		}
 	}
 	WLCNTCONDINCR(prec_cnt, prec_cnt->requested);
-#endif // endif
+#endif /* PKTQ_LOG */
 
 	/* Determine precedence from which to evict packet, if any */
 	if (pktqprec_full(q, prec)) {
@@ -16544,7 +16726,7 @@ wlc_pkttag_info_move(wlc_info_t *wlc, void *pkt_from, void *pkt_to)
 	WLPKTTAG(pkt_to)->callbackidx = WLPKTTAG(pkt_from)->callbackidx;
 	WLPKTTAG(pkt_from)->callbackidx = 0;
 	WLPKTTAG(pkt_to)->_bsscfgidx = WLPKTTAG(pkt_from)->_bsscfgidx;
-	WLPKTTAG(pkt_to)->_scb = WLPKTTAG(pkt_from)->_scb;
+	WLPKTTAGSCBSET(pkt_to, WLPKTTAGSCBGET(pkt_from));
 	WLPKTTAG(pkt_to)->rspec = WLPKTTAG(pkt_from)->rspec;
 	WLPKTTAG(pkt_to)->seq = WLPKTTAG(pkt_from)->seq;
 	WLPKTTAG(pkt_to)->u.exptime = WLPKTTAG(pkt_from)->u.exptime;
@@ -16571,7 +16753,7 @@ wlc_pkttag_info_frag_cpy(wlc_info_t *wlc, void *pkt_from, void *pkt_to)
 	ASSERT(pkt_from != pkt_to);
 
 	WLPKTTAG(pkt_to)->_bsscfgidx = WLPKTTAG(pkt_from)->_bsscfgidx;
-	WLPKTTAG(pkt_to)->_scb = WLPKTTAG(pkt_from)->_scb;
+	WLPKTTAGSCBSET(pkt_to, WLPKTTAGSCBGET(pkt_from));
 	WLPKTTAG(pkt_to)->rspec = WLPKTTAG(pkt_from)->rspec;
 	WLPKTTAG(pkt_to)->seq = WLPKTTAG(pkt_from)->seq;
 	WLPKTTAG(pkt_to)->u.exptime = WLPKTTAG(pkt_from)->u.exptime;
@@ -18182,6 +18364,9 @@ BCMRAMFN(wlc_cap_bcmstrbuf)(wlc_info_t *wlc, struct bcmstrbuf *b)
 #ifdef WL_STA_MONITOR
 	bcm_bprintf(b, "stamon ");
 #endif /* WL_STA_MONITOR */
+#ifdef BCM_CSIMON
+	bcm_bprintf(b, "csimon ");
+#endif // endif
 #ifdef WLCFP
 	if (CFP_ENAB(wlc->pub) == TRUE) {
 		bcm_bprintf(b, "cfp ");
@@ -19382,6 +19567,7 @@ wlc_do_chanswitch(wlc_bsscfg_t *cfg, chanspec_t newchspec)
 		 * with new chanspec
 		 */
 		if (BSSCFG_STA(wlc->cfg)) { /* checking primary cfg */
+			wlc_sync_txfifo_all(wlc, wlc->active_queue, SUPPRESS_FLUSH_FIFO);
 			wlc_sta_timeslot_register(wlc->cfg); /* checking primary cfg */
 			/* before doing bsscfg up operation, enable sta cfg
 			 * if down
@@ -19440,6 +19626,14 @@ wlc_do_chanswitch(wlc_bsscfg_t *cfg, chanspec_t newchspec)
 	else
 		/* reset the rate sel state to init state */
 		wlc_scb_ratesel_rfbr_bss(wlc, cfg);
+
+	if (bw_chg) {
+		if (!wlc->any_sta_in_160mhz && !wlc->num_160mhz_assocs)
+			phy_chanmgr_tdcs_enable_160m((phy_info_t*) wlc->pi, TRUE);
+		else
+			phy_chanmgr_tdcs_enable_160m((phy_info_t*) wlc->pi, FALSE);
+	}
+
 #ifdef SLAVE_RADAR
 	if (WLDFS_ENAB(wlc->pub) && (to_radar)) {
 		if (WL11H_STA_ENAB(wlc) && wlc_dfs_get_radar(wlc->dfs)) {
@@ -21800,6 +21994,7 @@ wlc_queue_80211_frag(wlc_info_t *wlc, void *p, wlc_txq_info_t *qi, struct scb *s
 	}
 	if (SCB_DEL_IN_PROGRESS(scb)|| SCB_MARKED_DEL(scb)) {
 		WL_TX_STS_UPDATE(toss_reason, WLC_TX_STS_TOSS_SCB_DELETED)
+		WLPKTTAGBSSCFGSET(p, WLC_BSSCFG_IDX(bsscfg));
 		goto toss;
 	}
 	WLPKTTAGSCBSET(p, scb);
@@ -22886,6 +23081,7 @@ wlc_senddeauth(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct scb *scb,
 	uint8 *pbody;
 	uint body_len;
 	uint16 *reason;
+	wlc_key_t *key = NULL;
 
 	ASSERT(cfg != NULL);
 
@@ -22933,7 +23129,23 @@ wlc_senddeauth(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct scb *scb,
 	}
 #endif /* BCM_CEVENT */
 
-	if (wlc_sendmgmt(wlc, pkt, cfg->wlcif->qi, scb)) {
+#ifdef MFP
+	/* setup key for MFP */
+	if (scb && WLC_MFP_ENAB(wlc->pub) && (WLPKTTAG(pkt)->flags & WLF_MFP)) {
+		if (SCB_ISMULTI(scb) && BSSCFG_AP(cfg))
+			key = wlc_keymgmt_get_bss_tx_key(wlc->keymgmt, cfg, TRUE, NULL);
+		else if (!SCB_ISMULTI(scb) && SCB_MFP(scb))
+			key = wlc_keymgmt_get_scb_key(wlc->keymgmt, scb, WLC_KEY_ID_PAIRWISE,
+				WLC_KEY_FLAG_NONE, NULL);
+	}
+#endif /* MFP */
+
+	/* Explicitly passing scb pointer as NULL, so that deauth will be sent even if scb is
+	 * being (or going to be) deleted. In order not to break MFP, passing the key from the scb.
+	 */
+	if (wlc_queue_80211_frag(wlc, pkt, cfg->wlcif->qi, NULL,
+		NULL, FALSE, key,
+		(scb ? WLC_LOWEST_SCB_RSPEC(scb) : WLC_LOWEST_BAND_RSPEC(wlc->band)))) {
 		if (BSS_SMFS_ENAB(wlc, cfg)) {
 			(void)wlc_smfs_update(wlc->smfs, cfg, SMFS_TYPE_DEAUTH_TX, reason_code);
 		}
@@ -23648,8 +23860,8 @@ BCMATTACHFN(wlc_bss_default_init)(wlc_info_t *wlc)
 	} else
 #endif // endif
 	{
-		/* fill the default channel for 2G */
-		chanspec = wlc_default_chanspec_by_band(wlc->cmi, BAND_2G_INDEX);
+		/* determine the default chanspec for current band */
+		chanspec = wlc_default_chanspec_by_band(wlc->cmi, wlc->band->bandunit);
 	}
 
 	/* if there are no valid channels, use the first phy supported channel
@@ -25837,7 +26049,7 @@ wlc_scb_set_auth(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, struct scb *scb, bool en
 				if (rc == DOT11_RC_DEAUTH_LEAVING) {
 					/* Clear states and mark the scb for deletion. SCB free
 					 * will happen from the inactivity timeout context in
-					 * wlc_ap_stastimeout()
+					 * wlc_ap_stas_timeout()
 					 * Mark the scb for deletion first as some scb state change
 					 * notify callback functions need to be informed that the
 					 * scb is about to be deleted.
@@ -25859,6 +26071,8 @@ wlc_scb_set_auth(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, struct scb *scb, bool en
 					wlc_scb_flush_queues(wlc, bsscfg, scb);
 					wlc_send_deauth(wlc, bsscfg, scb, &scb->ea, &bsscfg->BSSID,
 							&bsscfg->cur_etheraddr, (uint16)rc);
+					wlc_scb_clearstatebit(wlc, scb, AUTHENTICATED | ASSOCIATED
+							| AUTHORIZED);
 				}
 				wlc_bss_mac_event(wlc, bsscfg, WLC_E_AUTH_FAIL, &scb->ea,
 					WLC_E_STATUS_SUCCESS, DOT11_SC_AUTH_MISMATCH, 0, 0, 0);
@@ -26978,3 +27192,25 @@ void wlc_get_bands_str(struct wlc_info *wlc, char *buf, int bufsize)
 			bcm_bprintf(&b, "/%s", wlc_bandunit_name(bandunit));
 	}
 }
+
+#if defined(WLATF) && defined(WLATF_PERC)
+/* This function is called to reset sta percentage of air time usage */
+static void
+wlc_reset_atf_perc(wlc_info_t *wlc)
+{
+	struct scb *scb;
+	struct scb_iter scbiter;
+	wlc_bsscfg_t *bsscfg;
+	int idx;
+
+	scb_module_t *scbstate = wlc->scbstate;
+	FOREACHSCB(scbstate, &scbiter, scb) {
+		scb->staperc = 0;
+		scb->sched_staperc = 0;
+	}
+	FOREACH_BSS(wlc, idx, bsscfg) {
+		bsscfg->bssperc = 0;
+		bsscfg->sched_bssperc = 0;
+	}
+}
+#endif /* defined(WLATF) && defined(WLATF_PERC) */

@@ -1232,7 +1232,8 @@ pciedev_crwlpciegen2_180(void *pch)
 	osl_t *osh = si_osh(sih);
 	sbpcieregs_t *pcieregs = pi->regs.pcieregs;
 
-	if (PCIE_GEN2(pi->sih) && sih->buscorerev >= 2) {
+	/* XXX This WAR is not needed for 43684 (corerev 24), 6710 and future devices. */
+	if (PCIE_GEN2(pi->sih) && sih->buscorerev >= 2 && sih->buscorerev < 24) {
 		W_REG(osh, &pcieregs->configaddr, PCI_PMCR_REFUP);
 		OR_REG(osh, &pcieregs->configdata, 0x1f);
 		PCI_ERROR(("%s:Reg:0x%x ::0x%x\n", __FUNCTION__,

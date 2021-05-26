@@ -243,7 +243,8 @@ bsd_sta_info_t *bsd_sta_select_5g(bsd_info_t *info, int ifidx, int to_ifidx)
 			intf_info = &(info->intf_info[idx]);
 			for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 				bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
-				if (!(bssinfo->valid))
+				if (!(bssinfo->valid) ||
+					!BSD_BSS_BSD_ENABLED(bssinfo))
 					continue;
 
 				idle |= bssinfo->video_idle;
@@ -267,7 +268,8 @@ bsd_sta_info_t *bsd_sta_select_5g(bsd_info_t *info, int ifidx, int to_ifidx)
 		intf_info = &(info->intf_info[idx]);
 		for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 			bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
-			if (!(bssinfo->valid))
+			if (!(bssinfo->valid) ||
+				!BSD_BSS_BSD_ENABLED(bssinfo))
 				continue;
 
 			if ((idx != score_idx) || (bssidx != score_bssidx)) {
@@ -582,7 +584,12 @@ static bool bsd_if_qualify_sta(bsd_info_t *info, int to_ifidx, bsd_sta_info_t *s
 	}
 
 	if (band_detect) {
-		if (sta->band_detect_cnt > BSD_BAND_DETECT_MAX_TRY) {
+		/* if band detect count exceed limit or
+		 * STA is NOT 11v capable, then
+		 * just skip this STA and disqualify
+		 */
+		if ((sta->band_detect_cnt > BSD_BAND_DETECT_MAX_TRY) ||
+			!(sta->wnm_cap & WL_WNM_BSSTRANS)) {
 			BSD_STEER("Skip STA "MACF" reason: mutli-band detect fail\n",
 				ETHER_TO_MACF(sta->addr));
 			return FALSE;
@@ -781,7 +788,8 @@ static void bsd_update_sta_triggering_policy(bsd_info_t *info, int ifidx)
 	/* Parse assoc list and read all sta_info */
 	for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 		bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
-		if (!(bssinfo->valid))
+		if (!(bssinfo->valid) ||
+			!BSD_BSS_BSD_ENABLED(bssinfo))
 			continue;
 
 		BSD_STEER("ifidx:%d bssidx:%d intf:%s steering_cfg flags:0x%x assoclist count:%d\n",
@@ -1528,7 +1536,8 @@ int bsd_get_steerable_bss(bsd_info_t *info, bsd_intf_info_t *intf_info)
 
 	for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 		bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
-		if (bssinfo->valid && bssinfo->steerflag != BSD_BSSCFG_NOTSTEER) {
+		if (bssinfo->valid && (bssinfo->steerflag != BSD_BSSCFG_NOTSTEER) &&
+			BSD_BSS_BSD_ENABLED(bssinfo)) {
 			if (CHSPEC_IS2G(bssinfo->chanspec)) {
 				found = TRUE;
 				break;

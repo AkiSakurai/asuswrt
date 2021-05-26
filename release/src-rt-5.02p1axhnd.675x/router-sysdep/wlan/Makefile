@@ -69,6 +69,11 @@ endif
 #-include $(BUILD_DIR)/bcmdrivers/broadcom/net/wl/impl$(IMPL)/$(DHD_EXE)/dhd/config/dhdconfig_lx_dhd_dslcpe
 -include $(BUILD_DIR)/bcmdrivers/broadcom/net/wl/impl$(IMPL)$(WL_SRC_BASE)/dslcpe_wlan_minor_version
 
+ifneq ($(BUILD_HND_MFG),)
+export BUILD_MFG := 1
+export WLTEST := 1
+endif
+
 ifeq ($(EXT_DONGLE),y)
 export EXT_DONGLE
 endif
@@ -267,7 +272,7 @@ wlctl:
 	fi
 else
 wlctl:
-	echo "skipping $@ (not configured)"
+	@echo "skipping $@ (not configured)"
 endif
 
 #
@@ -286,7 +291,7 @@ dhdctl:
 	fi
 else
 dhdctl:
-	echo "skipping $@ (not configured)"
+	@echo "skipping $@ (not configured)"
 endif
 
 #	

@@ -96,6 +96,7 @@ port_ops_t port_sysp_port =
     .mib_dump = port_sysp_mib_dump,
     .print_status = port_sf2_print_status,
     .role_set = port_sysp_port_role_set,
+    .mib_dump_us = port_sysp_mib_dump_us,  // add by Andrew
 };
 
 // =========== sf2 port ops =============================

@@ -2317,9 +2317,31 @@ void i5DmDeviceDone(bool idle_check)
     i5Trace("device["I5_MAC_FMT"]: idle time[%ld] device active time [%ld] device state [%d]\n",
       I5_MAC_PRM(device->DeviceId), idle_time, device->active_time, device->state);
 
-    if ((device->state == i5DmStatePending) && ((idle_check == FALSE) ? 1 :
-      (idle_time > I5_SEC_WAIT_TO_REMOVE_UNREACHABLE_DEVICE))) {
-      i5DmDeviceFree(device);
+    /* If the device state is pending, that means its not reachable and its safe to remove. But
+     * in some cases we are not removing because neighbor entry may not be added at that time. So
+     * depending on the idle_check variable its removed. If "idle_check" is TRUE, then start
+     * sending topology query to device multiple times till it gets topology response or
+     * number of retry exceeds. Once the retry count exceeds, it will remove the device
+     */
+    if (device->state == i5DmStatePending) {
+      if (idle_check && device->psock) {
+        i5Trace("Send topology query to device "I5_MAC_DELIM_FMT" before removing it. Number of "
+          "Topology Query Failures %d Is device validated %d\n",
+          I5_MAC_PRM(device->DeviceId), device->numTopQueryFailures, device->validated);
+        /* Send only if the device validated is 1. Else already the topology query process is being
+         * happening
+         */
+        if (device->validated) {
+          /* Send multiple topology queries to the device before removing it */
+          device->validated = 0;
+          i5MessageRawTopologyQuerySend(device->psock, device->DeviceId, 1,
+            i5MessageTopologyQueryValue);
+        }
+      } else {
+        i5Trace("Free device "I5_MAC_DELIM_FMT" because its not reachable\n",
+          I5_MAC_PRM(device->DeviceId));
+        i5DmDeviceFree(device);
+      }
     }
     device = next;
   }
@@ -2449,6 +2471,29 @@ void i5DmDeviceFreeUnreachableNeighbors(unsigned char *device_id, int ifindex, u
     item = next;
   }
   i5DmTopologyFreeUnreachableDevices(TRUE);
+}
+
+/* Remove neighbor entry based on the local interface ID */
+void i5DmFreeNeibhorsFromInterfaceId(i5_dm_device_type *pDevice, unsigned char *interface_id)
+{
+  i5_dm_1905_neighbor_type *item;
+  i5_dm_1905_neighbor_type *next;
+
+  item = (i5_dm_1905_neighbor_type *)pDevice->neighbor1905_list.ll.next;
+  while (item != NULL) {
+    next = item->ll.next;
+    if (memcmp(item->LocalInterfaceId, interface_id, MAC_ADDR_LEN) == 0) {
+      i5Trace("Removing Neighbor Entry: LcIf "I5_MAC_DELIM_FMT", NbAL "I5_MAC_DELIM_FMT
+        " NbIf "I5_MAC_DELIM_FMT"",
+        I5_MAC_PRM (item->LocalInterfaceId), I5_MAC_PRM (item->Ieee1905Id),
+        I5_MAC_PRM(item->NeighborInterfaceId));
+      i5Dm1905NeighborFree(pDevice, item);
+    }
+    item = next;
+  }
+
+  /* Safe to remove the unreachable device immediately as the backhaul connection is not present */
+  i5DmTopologyFreeUnreachableDevices(FALSE);
 }
 
 void i5DmDeviceRemoveStaleNeighborsTimer(void *arg)
@@ -2877,9 +2922,7 @@ i5_dm_bss_type *i5DmBSSNew(i5_dm_interface_type *parent, unsigned char *bssid, u
     } else {
       bss_table = i5DmFindSSIDInBSSTable(&newBSS->ssid);
       if (bss_table) {
-        newBSS->mapFlags |= (bss_table->BackHaulBSS ? IEEE1905_MAP_FLAG_BACKHAUL : 0);
-        newBSS->mapFlags |= (bss_table->FrontHaulBSS ? IEEE1905_MAP_FLAG_FRONTHAUL : 0);
-        newBSS->mapFlags |= (bss_table->Guest ? IEEE1905_MAP_FLAG_GUEST : 0);
+        newBSS->mapFlags = bss_table->map_flag;
         i5Trace("New BSSID["I5_MAC_DELIM_FMT"] SSID[%s] mapFlags %x\n", I5_MAC_PRM(bssid),
           ssid, newBSS->mapFlags);
       }
@@ -4025,12 +4068,7 @@ ieee1905_client_bssinfo_type *i5DmAddSSIDToBSSTable(ieee1905_ssid_type *ssid,
   memset(bss, 0, sizeof(*bss));
 
   memcpy(&bss->ssid, ssid, sizeof(*ssid));
-  if (I5_IS_BSS_BACKHAUL(mapFlags)) {
-    bss->BackHaulBSS = 1;
-  }
-  if (I5_IS_BSS_FRONTHAUL(mapFlags)) {
-    bss->FrontHaulBSS = 1;
-  }
+  bss->map_flag = mapFlags;
   ieee1905_glist_append(&i5_config.client_bssinfo_list, (dll_t*)bss);
 
 end:
@@ -4134,9 +4172,7 @@ void i5DmUpdateMAPFlagsFromControllerBSSTable(i5_dm_device_type *pdevice,
 
       /* Validate the band as well */
       if (pdmif->band & list->band_flag) {
-        pbss->mapFlags |= (list->BackHaulBSS ? IEEE1905_MAP_FLAG_BACKHAUL : 0);
-        pbss->mapFlags |= (list->FrontHaulBSS ? IEEE1905_MAP_FLAG_FRONTHAUL : 0);
-        pbss->mapFlags |= (list->Guest ? IEEE1905_MAP_FLAG_GUEST : 0);
+        pbss->mapFlags = list->map_flag;
         ifrMapFlags |= pbss->mapFlags;
         i5Trace("Device["I5_MAC_DELIM_FMT"] BSS["I5_MAC_DELIM_FMT"] band[0x%x] list->band[0x%x] "
           "Update MAPFLAGS[0x%x] ifrMapFlags[0x%x]\n", I5_MAC_PRM(pdevice->DeviceId),

@@ -178,6 +178,30 @@ const airiq_gain_table_t airiq_gaintbl_rev128_5ghz = {
 	.elna		= 0,
 };
 
+const airiq_gain_table_t airiq_gaintbl_rev130_24ghz = {
+	.valid = TRUE,
+	.lna1 = { 0, 1, 3, 8, 13, 18, 23, 29 },
+	.lna2 = { 0, 5, 10, 15, 0, 5, 10, 15 },
+	.mixtia	= { 0, 3, 7, 10, 13, 16, 19, 22, 25, 28},
+	.lna_rout = { 0, 0, -1, -2, -2, -3, -4, -6, -7, -9},
+	.lna_rout_lut = { 0x00, 0x22, 0x33, 0x55, 0x66, 0x77, 0x77 },
+	.offset	= 0,
+	.rxloss	= 2,
+	.elna = 0,
+};
+
+const airiq_gain_table_t airiq_gaintbl_rev130_5ghz = {
+	.valid		= TRUE,
+	.lna1		= { 0, 0, 2, 5, 8, 14, 20, 32},
+	.lna2		= { 0, 4, 10, 15, 0, 4, 10, 15},
+	.mixtia		= { 0, 3, 6, 9, 12, 15, 18, 21, 24, 26},
+	.lna_rout	= { 0, 0, -1, -1, -1, -2, -2, -3, -4, -5, -7, -8, -8},
+	.lna_rout_lut	= { 0x00, 0x33, 0x55, 0x77, 0x88, 0x99, 0xaa },
+	.offset		= 0,
+	.rxloss		= 3,
+	.elna		= 0,
+};
+
 /* Skyworks 85806 dual-band FEM on 43465MC */
 const int8 airiq_sky58506_elna_24ghz = 15;
 const int8 airiq_sky58506_elna_5ghz  = 16;
@@ -192,6 +216,7 @@ const int8 airiq_sky85337_elna_24ghz = 15;
 const int8 airiq_sky85755_elna_5ghz  = 16;
 const int8 airiq_sky85331_elna_24ghz = 15;
 const int8 airiq_sky85743_elna_5ghz  = 16;
+const int8 airiq_qpf4506b_elna_5ghz  = 14;
 
 /* Femctrl override mappings */
 const uint8 airiq_43465mc2h_femctrl_lut[4][2] =
@@ -214,9 +239,15 @@ const uint8 airiq_43465mc_femctrl_lut_5ghz[4][2] =
 /* Scale factors {20MHz, 40MHz, 80MHz} */
 const int8 lte_u_rev64_scale_3plus1[3] = {50, 52, 50};
 
-/* FFT Scale factors {20MHz, 40MHz, 80MHz} */
+/* FFT Scale/calibration factors {20MHz, 40MHz, 80MHz} */
 const int8 airiq_rev65_scale_hwfft[3] = { 65, 68, 71 };
 const int8 airiq_rev65_scale_3plus1[3] = { 50, 52, 50 };
+const int8 airiq_rev128_scale_2g_hwfft[3] = { 69, 74, 69 };
+const int8 airiq_rev128_scale_5g_hwfft[3] = { 72, 75, 78 };
+const int8 airiq_rev128_scale_2g_3p1[3] = { 69, 69, 69 };
+const int8 airiq_rev128_scale_5g_3p1[3] = { 62, 62, 62 };
+const int8 airiq_rev130_scale_2g_hwfft[3] = { 69, 74, 77 };
+const int8 airiq_rev130_scale_5g_hwfft[3] = { 82, 85, 88 };
 
 #define lte_u_gaincode(lna1, lna2, mixtia, biq1, biq2, lnarout, elna) \
 	(((lna1)  & 0x7)           | \
@@ -242,7 +273,7 @@ void
 wlc_airiq_phy_ack_vasip_fft(airiq_info_t *airiqh)
 {
 	//handshake - we have completed reading fft.
-	phy_utils_write_phyreg((phy_info_t*)WLC_PI(airiqh->wlc),
+	phy_utils_write_phyreg((phy_info_t *)WLC_PI(airiqh->wlc),
 		ACPHY_v2m_msg(64), (1 << 15) | (1 << 5));
 }
 
@@ -257,7 +288,7 @@ wlc_airiq_phy_init_overrides(airiq_info_t *airiqh)
 {
 	/* Initialize override PHY regs to a default (known) state.
 	 */
-	phy_info_t *pi = (phy_info_t*)WLC_PI(airiqh->wlc);
+	phy_info_t *pi = (phy_info_t *)WLC_PI(airiqh->wlc);
 	int core;
 
 	if (D11REV_IS(airiqh->wlc->pub->corerev, 64) ||
@@ -287,7 +318,43 @@ wlc_airiq_build_desens_lut(airiq_info_t *airiqh, airiq_gain_table_t *gt,
 	uint8 elna;
 	bool force_elna = FALSE;
 
-	if (D11REV_GE(airiqh->wlc->pub->corerev, 64)) {
+	if (D11REV_GE(airiqh->wlc->pub->corerev, 130)) {
+		elna = (gt->elna > 0); /* If ELNA present */
+		lna1 = 6;
+		lna2 = 3;
+		tia  = 3;
+		biq0 = 0;
+		biq1 = 0;
+		maxgain = gt->elna + gt->lna1[lna1] + gt->lna2[lna2] +
+		    gt->mixtia[tia];
+
+		/*43684MCM has one band select for all four cores. In mixed
+		  2g/5g operation, +1 femctl output cannot be set as usual.
+		  eLNA is always enabled and cannot be bypassed. */
+		if ((SI_CHIPID(airiqh->wlc->pub->sih) == BCM43684_CHIP_ID) &&
+			(IS_43694MC(airiqh->wlc->deviceid)))
+		{
+			force_elna = TRUE;
+		}
+	} else if (D11REV_GE(airiqh->wlc->pub->corerev, 128)) {
+		elna = (gt->elna > 0); /* If ELNA present */
+		lna1 = 7;
+		lna2 = 3;
+		tia  = 3;
+		biq0 = 0;
+		biq1 = 0;
+		maxgain = gt->elna + gt->lna1[lna1] + gt->lna2[lna2] +
+		    gt->mixtia[tia];
+
+		/*43684MCM has one band select for all four cores. In mixed
+		  2g/5g operation, +1 femctl output cannot be set as usual.
+		  eLNA is always enabled and cannot be bypassed. */
+		if ((SI_CHIPID(airiqh->wlc->pub->sih) == BCM43684_CHIP_ID) &&
+			(IS_43694MC(airiqh->wlc->deviceid)))
+		{
+			force_elna = TRUE;
+		}
+	} else if (D11REV_GE(airiqh->wlc->pub->corerev, 64)) {
 		elna = (gt->elna > 0); /* If ELNA present */
 		lna1 = 7;
 		lna2 = 3;
@@ -296,14 +363,6 @@ wlc_airiq_build_desens_lut(airiq_info_t *airiqh, airiq_gain_table_t *gt,
 		biq1 = 3;
 		maxgain = gt->elna + gt->lna1[lna1] + gt->lna2[lna2] +
 		    gt->mixtia[tia] + 3 * biq0 + 3 * biq1;
-		/*43684MCM has one band select for all four cores. In mixed
-		  2g/5g operation, +1 femctl output cannot be set as usual.
-		  eLNA is always enabled and cannot be bypassed. */
-		if ((SI_CHIPID(airiqh->wlc->pub->sih) == BCM43684_CHIP_ID) &&
-			(IS_43694MC(airiqh->wlc->deviceid)) )
-		{
-			force_elna = TRUE;
-		}
 	} else if (D11REV_IS(airiqh->wlc->pub->corerev, 42)) {
 		elna = (gt->elna > 0); /* If ELNA present */
 		lna1 = 5;
@@ -390,6 +449,7 @@ void
 wlc_airiq_phy_init(airiq_info_t *airiqh)
 {
 	int corerev = airiqh->wlc->pub->corerev;
+	phy_info_t *pi = (phy_info_t *)WLC_PI(airiqh->wlc);
 
 	switch (corerev) {
 	case 65:
@@ -399,7 +459,6 @@ wlc_airiq_phy_init(airiq_info_t *airiqh)
 		memcpy(&airiqh->gaintbl_5ghz, &airiq_gaintbl_rev65_5ghz,
 		       sizeof(airiqh->gaintbl_5ghz));
 		/* Now determine ELNA */
-		//TODO:check boardflags/srom
 		if (IS_WAVE2_2G(airiqh->wlc->deviceid)) {
 			airiqh->gaintbl_24ghz.elna = airiq_sky85201_elna_24ghz;
 			airiqh->gaintbl_24ghz.offset = 2;
@@ -441,13 +500,11 @@ wlc_airiq_phy_init(airiq_info_t *airiqh)
 		break;
 	case 128:
 	case 129:
-		// This will set the 'valid' field to true.
 		memcpy(&airiqh->gaintbl_24ghz, &airiq_gaintbl_rev128_24ghz,
 		       sizeof(airiqh->gaintbl_24ghz));
 		memcpy(&airiqh->gaintbl_5ghz, &airiq_gaintbl_rev128_5ghz,
 		       sizeof(airiqh->gaintbl_5ghz));
 		/* Now determine ELNA */
-		//TODO:check boardflags/srom
 		if (IS_43694MC2(airiqh->wlc->deviceid)) {
 			airiqh->gaintbl_24ghz.elna = airiq_sky85331_elna_24ghz;
 			airiqh->gaintbl_24ghz.offset = 2;
@@ -459,7 +516,6 @@ wlc_airiq_phy_init(airiq_info_t *airiqh)
 		} else {
 			airiqh->gaintbl_24ghz.elna = airiq_sky85337_elna_24ghz;
 			airiqh->gaintbl_5ghz.elna  = airiq_sky85755_elna_5ghz;
-			airiqh->gaintbl_5ghz.offset = 4;
 		}
 		/*init vasip addresses*/
 		airiqh->svmp_fft_data_addr= SVMP_AX_FFT_DATA_ADDR;
@@ -479,6 +535,21 @@ wlc_airiq_phy_init(airiq_info_t *airiqh)
 		airiqh->svmp_smpl_chanspec_addr= SVMP_AX_SMPL_CHANSPEC_ADDR;
 		airiqh->svmp_smpl_chanspec_3x3_addr= SVMP_AX_SMPL_CHANSPEC_3X3_ADDR;
 		airiqh->svmp_smpl_coex_gpio_mask_addr= SVMP_AX_SMPL_COEX_GPIO_MASK_ADDR;
+		break;
+	case 130:
+	case 131:
+		memcpy(&airiqh->gaintbl_24ghz, &airiq_gaintbl_rev130_24ghz,
+		       sizeof(airiqh->gaintbl_24ghz));
+		memcpy(&airiqh->gaintbl_5ghz, &airiq_gaintbl_rev130_5ghz,
+		       sizeof(airiqh->gaintbl_5ghz));
+		/* Now determine ELNA */
+		if (BF_ELNA_2G(pi->u.pi_acphy)) {
+			airiqh->gaintbl_24ghz.elna = airiq_sky85331_elna_24ghz;
+		} else {
+			/* No ELNA, but disable setting causes RX bypass inducing 5 dB loss */
+			airiqh->gaintbl_24ghz.elna = 5;
+		}
+		airiqh->gaintbl_5ghz.elna  = airiq_qpf4506b_elna_5ghz;
 		break;
 	default:
 		memcpy(&airiqh->gaintbl_24ghz, &airiq_gaintbl_rev65_24ghz,
@@ -501,21 +572,90 @@ wlc_airiq_phy_init(airiq_info_t *airiqh)
 }
 
 static uint32
-wlc_airiq_get_gaincode(uint32 gaincode_lut[],
-		int16 gain_lut[],
-		uint16 desens,
-		int16 *gain)
+wlc_airiq_get_gaincode(airiq_info_t *airiqh, chanspec_t chanspec, uint16 desens, int16 *gain)
 {
 	uint16 ix;
+	uint32 *gaincode_lut;
+	int16 *gain_lut;
+	uint32 gaincode;
+	const int8 *bw_scale;
+
+	if (CHSPEC_IS5G(chanspec)) {
+		gaincode_lut = airiqh->desens_lut_5ghz;
+		gain_lut = airiqh->gain_lut_5ghz;
+	} else {
+		gaincode_lut = airiqh->desens_lut_24ghz;
+		gain_lut = airiqh->gain_lut_24ghz;
+	}
 
 	ix = desens >> 1;
 	if (desens < AIRIQ_DESENS_CNT) {
 		*gain = gain_lut[ix];
-		return gaincode_lut[ix];
+		gaincode = gaincode_lut[ix];
 	} else {
 		*gain = gain_lut[AIRIQ_DESENS_CNT - 1];
-		return gaincode_lut[AIRIQ_DESENS_CNT - 1];
+		gaincode = gaincode_lut[AIRIQ_DESENS_CNT - 1];
 	}
+
+	/* Apply calibration settings */
+	switch (airiqh->wlc->pub->corerev) {
+	case 131:
+	case 130:
+		if (CHSPEC_IS5G(chanspec)) {
+			bw_scale = airiq_rev130_scale_5g_hwfft;
+		} else { /* 2.4G */
+			bw_scale = airiq_rev130_scale_2g_hwfft;
+		}
+		break;
+	case 129:
+		if (CHSPEC_IS5G(chanspec)) {
+			if (airiqh->phy_mode == PHYMODE_3x3_1x1) {
+				bw_scale = airiq_rev128_scale_5g_3p1;
+			} else {
+				bw_scale = airiq_rev128_scale_5g_hwfft;
+			}
+		} else { /* 2.4G */
+			if (airiqh->phy_mode == PHYMODE_3x3_1x1) {
+				bw_scale = airiq_rev128_scale_2g_3p1;
+			} else {
+				bw_scale = airiq_rev128_scale_2g_hwfft;
+			}
+		}
+		break;
+	case 65:
+		if (airiqh->phy_mode == PHYMODE_3x3_1x1) {
+			bw_scale = airiq_rev65_scale_3plus1;
+		} else {
+			bw_scale = airiq_rev65_scale_hwfft;
+		}
+		break;
+	default:
+		WL_ERROR(("wl%d: %s: Air-IQ unsupported rev < 65: this chip: %d\n", WLCWLUNIT(airiqh->wlc),
+			__FUNCTION__, airiqh->wlc->pub->corerev));
+		bw_scale = airiq_rev128_scale_5g_3p1;
+		ASSERT(0);
+	}
+
+	switch (CHSPEC_BW(chanspec)) {
+		case WL_CHANSPEC_BW_20:
+			*gain += bw_scale[0];
+			break;
+		case WL_CHANSPEC_BW_40:
+			*gain += bw_scale[1];
+			break;
+		case WL_CHANSPEC_BW_80:
+			*gain += bw_scale[2];
+			break;
+		default:
+			WL_ERROR(("wl%d: %s: chanspec 0x%x unknown bw 0x%x\n", WLCWLUNIT(airiqh->wlc), __FUNCTION__, chanspec,
+				CHSPEC_BW(chanspec)));
+			break;
+	}
+
+	// encode the requested desens and calculated gain.
+	*gain = AIRIQ_GAINCODE(*gain, desens);
+
+	return gaincode;
 }
 
 int
@@ -784,63 +924,22 @@ wlc_airiq_phy_enable_fft_capture(airiq_info_t* airiqh,
 	int16 gaindb;
 	uint16 lnarout;
 	uint8 elna;
-	uint16 bw;
-	const int8 *bw_scale;
 	int32 radio_chanspec_sc;
 
-	pi = (phy_info_t*)WLC_PI(wlc);
+	pi = (phy_info_t *)WLC_PI(wlc);
 	if (airiqh->mangain != 0) {
 		/* override */
 		gaincode = airiqh->mangain;
-		gaindb = 80; /* nominal */
-	} else if (CHSPEC_IS5G(chanspec)) {
-		gaincode = wlc_airiq_get_gaincode(airiqh->desens_lut_5ghz,
-				airiqh->gain_lut_5ghz,
-				desens, &gaindb);
+		gaindb = 120; /* nominal */
 	} else {
-		gaincode = wlc_airiq_get_gaincode(airiqh->desens_lut_24ghz,
-				airiqh->gain_lut_24ghz,
-				desens, &gaindb);
+		gaincode = wlc_airiq_get_gaincode(airiqh, chanspec, desens, &gaindb);
 	}
-
-	// Adjust calibration settings
-	if (airiqh->phy_mode == PHYMODE_3x3_1x1) {
-		bw_scale = airiq_rev65_scale_3plus1;
-	} else if (D11REV_GE(airiqh->wlc->pub->corerev, 65)) {
-		//TODO need to add rev128 > bw scale
-		bw_scale = airiq_rev65_scale_hwfft;
-	} else {
-		WL_ERROR(("wl%d: %s: Air-IQ needs rev >= 65: %d\n", WLCWLUNIT(airiqh->wlc),
-			__FUNCTION__, airiqh->wlc->pub->corerev));
-		ASSERT(0);
-		return;
-	}
-
-	bw = CHSPEC_BW(chanspec);
-
-	switch (bw) {
-	case WL_CHANSPEC_BW_20:
-		gaindb += bw_scale[0];
-		break;
-	case WL_CHANSPEC_BW_40:
-		gaindb += bw_scale[1];
-		break;
-	case WL_CHANSPEC_BW_80:
-		gaindb += bw_scale[2];
-		break;
-	default:
-		WL_ERROR(("wl%d: %s: chanspec 0x%x unknown bw 0x%x\n", WLCWLUNIT(airiqh->wlc), __FUNCTION__, chanspec, bw));
-		break;
-	}
-
-	// encode the requested desens and calculated gain.
-	gaindb = AIRIQ_GAINCODE(gaindb, desens);
 
 	/* Disable interference mitigation mode during FFT capture
 	 * since it can desense the radio and corrupt spectral data
 	 */
 	for (k = 0; k < PHY_CORE_MAX; k++) {
-		rxgain[k].dvga = 3;
+		rxgain[k].dvga = 0;
 		rxgain[k].mix  = airiq_gaincode_mix(gaincode);
 		rxgain[k].lna2 = airiq_gaincode_lna2(gaincode);
 		rxgain[k].lna1 = airiq_gaincode_lna1(gaincode);
@@ -894,11 +993,9 @@ wlc_airiq_phy_enable_fft_capture(airiq_info_t* airiqh,
 		wlc_write_shm(wlc, M_FFT_SMPL_INTERVAL(wlc), fft_interval);
 		wlc_write_shm(wlc, M_FFT_SMPL_TS(wlc), 0);
 		// hardcode core to 0
-		wlc_write_shm(wlc, M_FFT_SMPL_RX_CHAIN(wlc), 0);
+		wlc_write_shm(wlc, M_FFT_SMPL_RX_CHAIN(wlc), airiqh->core);
 		wlc_write_shm(wlc, M_FFT_SMPL_SEQUENCE_NUM(wlc), 0x0);
 		wlc_write_shm(wlc, M_FFT_SMPL_FFT_GAIN_RX0(wlc), gaindb );
-		wlc_write_shm(wlc, M_FFT_SMPL_CHANNEL(wlc), pi->radio_chanspec);
-
 		// ctrl holds # of FFT to capture.  enable kicks off the capturing
 		wlc_write_shm(wlc, M_FFT_SMPL_CTRL(wlc), fft_count);
 		wlc_write_shm(wlc, M_FFT_SMPL_ENABLE(wlc), 1);
@@ -915,7 +1012,7 @@ void
 wlc_airiq_phy_disable_fft_capture(airiq_info_t *airiqh)
 {
 	wlc_info_t *wlc = airiqh->wlc;
-	phy_info_t *pi = (phy_info_t*)WLC_PI(wlc);
+	phy_info_t *pi = (phy_info_t *)WLC_PI(wlc);
 
 	if (airiqh->phy_mode == PHYMODE_3x3_1x1) {
 		wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_ctrl_addr, 1, 0);
@@ -1063,7 +1160,7 @@ wlc_lte_u_phy_enable_iq_capture_shm(airiq_info_t* airiqh,
 	uint16 NshiftInputHigh = 0;
     int32 radio_chanspec_sc;
 
-	pi = (phy_info_t*)WLC_PI(wlc);
+	pi = (phy_info_t *)WLC_PI(wlc);
 	bw = CHSPEC_BW(chanspec);
 	channel = CHSPEC_CHANNEL(chanspec);
 	phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi), &radio_chanspec_sc);
@@ -1577,7 +1674,7 @@ wlc_lte_u_phy_disable_iq_capture_shm(airiq_info_t *airiqh)
 	if ((airiqh->phy_mode == PHYMODE_3x3_1x1) && D11REV_IS(airiqh->wlc->pub->corerev, 65)) {
 		wlc_svmp_mem_read_axi(airiqh->wlc->hw, &svmp_enable, SVMP_LTE_U_INFO_ENABLE_ADDR, 1);
 		if (svmp_enable) {
-			pi = (phy_info_t*)WLC_PI(wlc);
+			pi = (phy_info_t *)WLC_PI(wlc);
 			wlc_svmp_mem_set_axi(airiqh->wlc->hw, SVMP_LTE_U_INFO_CTRL_ADDR, 1, 0);
 			wlc_svmp_mem_set_axi(airiqh->wlc->hw, SVMP_LTE_U_INFO_ENABLE_ADDR, 1, 0);
 			airiqh->iq_capture_enable = FALSE;

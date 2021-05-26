@@ -363,7 +363,7 @@ static int bsd_proc_event(bsd_info_t*info, uint8 remote, char *pkt, int bytes)
 					BSD_EVENT("bssinfo->ifnames:%s bssidx=%d\n",
 						bssinfo->ifnames, bssidx);
 
-					if (bssinfo->valid) {
+					if (bssinfo->valid && BSD_BSS_BSD_ENABLED(bssinfo)) {
 						bsd_add_prbsta(info, bssinfo->ifnames,
 								remote, addr);
 						break;

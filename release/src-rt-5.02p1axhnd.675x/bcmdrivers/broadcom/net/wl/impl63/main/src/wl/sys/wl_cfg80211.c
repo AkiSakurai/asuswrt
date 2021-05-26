@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfg80211.c 782398 2019-12-18 11:07:00Z $
+ * $Id: wl_cfg80211.c 788257 2020-06-25 20:52:03Z $
  */
 
 /** XXX
@@ -8859,9 +8859,9 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	if (cfg != NULL && wl_get_mode_by_netdev(cfg, dev) == WL_MODE_AP) {
 		/* Update AP/GO operating channel */
 		cfg->ap_oper_channel = _chan;
-#ifdef BCA_HNDROUTER
+#if defined(BCA_HNDROUTER) || defined(STBAP)
 		return err;
-#endif /* BCA_HNDROUTER */
+#endif /* BCA_HNDROUTER || STBAP */
 	}
 
 #ifdef NOT_YET
@@ -10744,7 +10744,7 @@ wl_cfg80211_bcn_bringup_ap(
 #if defined(BCMDONGLEHOST)
 	s32 is_rsdb_supported = BCME_ERROR;
 #endif // endif
-	//u32 timeout;
+	s32 keep_ap_up = 1;
 #if defined(DHD_DEBUG) && defined(BCMPCIE) && defined(DHD_FW_COREDUMP)
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 #endif /* DHD_DEBUG && BCMPCIE && DHD_FW_COREDUMP */
@@ -10874,17 +10874,15 @@ wl_cfg80211_bcn_bringup_ap(
 		}
 
 #ifdef MFP
-		if (cfg->mfp_mode) {
-			/* This needs to go after wsec otherwise the wsec command will
-			 * overwrite the values set by MFP
-			 */
-			err = wldev_iovar_setint_bsscfg(dev, "mfp", cfg->mfp_mode, bssidx);
-			if (err < 0) {
-				WL_ERR(("MFP Setting failed. ret = %d \n", err));
-				/* If fw doesn't support mfp, Ignore the error */
-				if (err != BCME_UNSUPPORTED) {
-					goto exit;
-				}
+		/* This needs to go after wsec otherwise the wsec command will
+		 * overwrite the values set by MFP
+		 */
+		err = wldev_iovar_setint_bsscfg(dev, "mfp", cfg->mfp_mode, bssidx);
+		if (err < 0) {
+			WL_ERR(("MFP Setting failed. ret = %d \n", err));
+			/* If fw doesn't support mfp, Ignore the error */
+			if (err != BCME_UNSUPPORTED) {
+				goto exit;
 			}
 		}
 #endif /* MFP */
@@ -10901,20 +10899,27 @@ wl_cfg80211_bcn_bringup_ap(
 		/* create softap */
 		if ((err = wldev_ioctl_set(dev, WLC_SET_SSID, &join_params,
 			join_params_size)) != 0) {
-			WL_ERR(("SoftAP/GO set ssid failed! \n"));
-			goto exit;
+			/* For keep_ap_up being set to 0, continue to run hostapd for
+			 * WLC_SET_SSID iovar failure case.
+			 */
+			wldev_iovar_getint_bsscfg(dev, "keep_ap_up", &keep_ap_up, bssidx);
+			if (keep_ap_up) {
+				WL_ERR(("SoftAP/GO set ssid failed! for bssidx %d keep_ap_up %d\n",
+					bssidx, keep_ap_up));
+				goto exit;
+			} else {
+				err = BCME_OK;
+			}
 		} else {
 			WL_DBG((" SoftAP SSID \"%s\" \n", join_params.ssid.SSID));
 		}
 
 		if (bssidx != 0) {
 			/* AP on Virtual Interface */
-			if ((err = wl_cfg80211_bss_up(cfg, dev, bssidx, 1)) < 0) {
-				WL_ERR(("AP Bring up error %d\n", err));
-				goto exit;
+			if (wl_cfg80211_bss_up(cfg, dev, bssidx, 1) < 0) {
+				WL_ERR(("AP Bring up failed for bssidx %d\n", bssidx));
 			}
 		}
-
 	}
 
 exit:
@@ -11648,6 +11653,7 @@ wl_cfg80211_stop_ap(
 
 	if (dev->ieee80211_ptr->iftype == NL80211_IFTYPE_AP) {
 		dev_role = NL80211_IFTYPE_AP;
+		wl_add_remove_eventmsg(dev, WLC_E_PROBREQ_MSG, false);
 		WL_DBG(("stopping AP operation\n"));
 	} else if (dev->ieee80211_ptr->iftype == NL80211_IFTYPE_P2P_GO) {
 		dev_role = NL80211_IFTYPE_P2P_GO;
@@ -18243,6 +18249,7 @@ wl_config_ifmode(struct bcm_cfg80211 *cfg, struct net_device *ndev, s32 iftype)
 		return err;
 	case NL80211_IFTYPE_WDS:
 		mode = WL_MODE_WDS;
+		infra = 1;
 		break;
 	case NL80211_IFTYPE_ADHOC:
 		mode = WL_MODE_IBSS;
@@ -18297,34 +18304,53 @@ wl_cfg80211_apply_eventbuffer(
 	struct bcm_cfg80211 *cfg,
 	wl_eventmsg_buf_t *ev)
 {
-	char eventmask[CFG80211_WL_EVENTING_MASK_LEN];
+	eventmsgs_ext_t *eventmask;
 	int i, ret = 0;
-	s8 iovbuf[CFG80211_WL_EVENTING_MASK_LEN + 12];
+	u8 *buf_param, buf[WLC_IOCTL_SMLEN];
+	u8 bitvec[CFG80211_WL_EVENTING_MASK_LEN];
 
 	if (!ev || (!ev->num))
 		return -EINVAL;
 
 	mutex_lock(&cfg->event_sync);
 
-	/* Read event_msgs mask */
-	ret = wldev_iovar_getbuf(ndev, "event_msgs", NULL, 0, iovbuf, sizeof(iovbuf), NULL);
-	if (unlikely(ret)) {
+	/* get current bitvec value */
+	buf_param = cfg->ioctl_buf;
+	memset(buf_param, 0, WLC_IOCTL_MAXLEN);
+	eventmask = (eventmsgs_ext_t *)buf_param;
+	eventmask->ver = EVENTMSGS_VER;
+	eventmask->command = EVENTMSGS_NONE;
+	eventmask->len = CFG80211_WL_EVENTING_MASK_LEN;
+
+	ret = wldev_iovar_getbuf(ndev, "event_msgs_ext",
+			(void *)buf_param, EVENTMSGS_EXT_STRUCT_SIZE,
+			(void *)buf, sizeof(buf), NULL);
+	if (ret) {
 		WL_ERR(("Get event_msgs error (%d)\n", ret));
 		goto exit;
 	}
-	memcpy(eventmask, iovbuf, CFG80211_WL_EVENTING_MASK_LEN);
+
+	eventmask = (eventmsgs_ext_t *)buf;
+	memcpy(bitvec, eventmask->mask, eventmask->len);
 
 	/* apply the set bits */
 	for (i = 0; i < ev->num; i++) {
 		if (ev->event[i].set)
-			setbit(eventmask, ev->event[i].type);
+			setbit(bitvec, ev->event[i].type);
 		else
-			clrbit(eventmask, ev->event[i].type);
+			clrbit(bitvec, ev->event[i].type);
 	}
 
-	/* Write updated Event mask */
-	ret = wldev_iovar_setbuf(ndev, "event_msgs", eventmask, sizeof(eventmask), iovbuf,
-			sizeof(iovbuf), NULL);
+	memset(buf_param, 0, WLC_IOCTL_MAXLEN);
+	eventmask = (eventmsgs_ext_t*)buf_param;
+	eventmask->ver = EVENTMSGS_VER;
+	eventmask->command = EVENTMSGS_SET_MASK;
+	eventmask->len = CFG80211_WL_EVENTING_MASK_LEN;
+	memcpy(eventmask->mask, bitvec, sizeof(bitvec));
+	ret = wldev_iovar_setbuf(ndev, "event_msgs_ext",
+		(void *)buf_param, sizeof(bitvec) + EVENTMSGS_EXT_STRUCT_SIZE,
+		(void *)buf, sizeof(buf), NULL);
+
 	if (unlikely(ret)) {
 		WL_ERR(("Set event_msgs error (%d)\n", ret));
 	}

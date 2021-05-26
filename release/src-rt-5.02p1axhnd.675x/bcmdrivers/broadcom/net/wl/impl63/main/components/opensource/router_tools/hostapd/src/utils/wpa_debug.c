@@ -101,7 +101,6 @@ void wpa_debug_close_syslog(void)
 
 static int syslog_priority(int level)
 {
-#if 0
 	switch (level) {
 	case MSG_MSGDUMP:
 	case MSG_DEBUG:
@@ -114,18 +113,6 @@ static int syslog_priority(int level)
 		return LOG_ERR;
 	}
 	return LOG_INFO;
-#else
-	switch (wpa_debug_syslog) {
-		case 2:
-			return LOG_NOTICE;
-		case 3:
-			return LOG_WARNING;
-		default:
-			return LOG_ERR;
-	}
-
-	return LOG_DEBUG;
-#endif
 }
 #endif /* CONFIG_DEBUG_SYSLOG */
 
@@ -215,11 +202,7 @@ void wpa_printf(int level, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-#ifdef CONFIG_DEBUG_SYSLOG
-	if (wpa_debug_syslog) {
-#else
 	if (level >= wpa_debug_level) {
-#endif
 #ifdef CONFIG_ANDROID_LOG
 		__android_log_vprint(wpa_to_android_level(level),
 				     ANDROID_LOG_NAME, fmt, ap);

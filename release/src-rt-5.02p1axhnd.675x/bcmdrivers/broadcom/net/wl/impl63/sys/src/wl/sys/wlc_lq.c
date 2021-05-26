@@ -47,7 +47,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_lq.c 782878 2020-01-08 09:11:30Z $
+ * $Id: wlc_lq.c 788038 2020-06-18 15:56:20Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -2116,6 +2116,10 @@ wlc_lq_rssi_last_get(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct scb *scb)
 	scb_lq_info_t *slqi = SCB_LQ_INFO(lqi, scb);
 	uint i;
 
+	if (!slqi || !blqi) {
+		return WLC_RSSI_INVALID;
+	}
+
 	i = MODDEC_POW2(slqi->rssi_index, MA_WIN_SZ(blqi->rssi_window_sz));
 
 	return slqi->rssi_window[i];
@@ -4074,8 +4078,8 @@ wlc_lq_chanim_update(wlc_info_t *wlc, chanspec_t chanspec, uint32 flags)
 		} else {
 			if_info = wlc_lq_chanim_if_info_find(ifaces, chanspec);
 			if (if_info != NULL) {
-				wlc_lq_chanim_accum(wlc, chanspec, &if_info->accum,
-					&if_info->acc_us);
+				wlc_lq_chanim_if_switch_channels(wlc, if_info, chanspec,
+						if_info->chanspec);
 			} else {
 				if_info = ifaces->next;
 				wlc_lq_chanim_if_switch_channels(wlc, if_info, chanspec,

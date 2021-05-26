@@ -1762,20 +1762,23 @@ static void i5ControlProcessFile(unsigned char *data, unsigned int len)
       I5STRNCPY((char *)clientbss->NetworkKey.key, pch, clientbss->NetworkKey.key_len + 1);
     } else if (index == 6) {
       /* Backhaul */
-      clientbss->BackHaulBSS = (unsigned char)strtoul(pch, NULL, 10);
+      if (strtoul(pch, NULL, 10)) {
+	      clientbss->map_flag |= IEEE1905_MAP_FLAG_BACKHAUL;
+      }
     } else if (index == 7) {
       /* Fronthaul */
-      clientbss->FrontHaulBSS = (unsigned char)strtoul(pch, NULL, 10);
+      if (strtoul(pch, NULL, 10)) {
+	      clientbss->map_flag |= IEEE1905_MAP_FLAG_FRONTHAUL;
+      }
     }
 
     index++;
     if (index == 8) {
       i5TraceDirPrint("ALID["I5_MAC_DELIM_FMT"] band[0x%x] ssid_len[%d] ssid[%s] auth[0x%x] "
-        "encr[0x%x] pwd_len[%d] Password[%s] bkhaul[%d] frnthaul[%d]\n",
+        "encr[0x%x] pwd_len[%d] Password[%s] map_flag[0x%x]\n",
         I5_MAC_PRM(clientbss->ALID), clientbss->band_flag, clientbss->ssid.SSID_len,
         clientbss->ssid.SSID, clientbss->AuthType, clientbss->EncryptType,
-        clientbss->NetworkKey.key_len, clientbss->NetworkKey.key, clientbss->BackHaulBSS,
-        clientbss->FrontHaulBSS);
+        clientbss->NetworkKey.key_len, clientbss->NetworkKey.key, clientbss->map_flag);
       ieee1905_glist_append(&i5_config.client_bssinfo_list, (dll_t*)clientbss);
       index = 0;
     }
@@ -1854,26 +1857,31 @@ static void i5ControlProcessR2File(unsigned char *data, unsigned int len)
       I5STRNCPY((char *)clientbss->NetworkKey.key, pch, clientbss->NetworkKey.key_len + 1);
     } else if (index == 6) {
       /* Backhaul */
-      clientbss->BackHaulBSS = (unsigned char)strtoul(pch, NULL, 10);
+      if (strtoul(pch, NULL, 10)) {
+	      clientbss->map_flag |= IEEE1905_MAP_FLAG_BACKHAUL;
+      }
     } else if (index == 7) {
       /* Fronthaul */
-      clientbss->FrontHaulBSS = (unsigned char)strtoul(pch, NULL, 10);
+      if (strtoul(pch, NULL, 10)) {
+	      clientbss->map_flag |= IEEE1905_MAP_FLAG_FRONTHAUL;
+      }
     } else if (index == 8) {
-      clientbss->profile1_bhsta_disallowed = (unsigned char)strtoul(pch, NULL, 10);
+      if (strtoul(pch, NULL, 10)) {
+	      clientbss->map_flag |= IEEE1905_MAP_FLAG_PROF1_DISALLOWED;
+      }
     } else if (index == 9) {
-        clientbss->profile2_bhsta_disallowed = (unsigned char)strtoul(pch, NULL, 10);
+      if (strtoul(pch, NULL, 10)) {
+	      clientbss->map_flag |= IEEE1905_MAP_FLAG_PROF2_DISALLOWED;
+      }
     }
 
     index++;
     if ((strcmp(pch, "</END>") == 0) && (index >= 8)) {
       i5TraceDirPrint("ALID["I5_MAC_DELIM_FMT"] band[0x%x] ssid_len[%d] ssid[%s] auth[0x%x] "
-        "encr[0x%x] pwd_len[%d] Password[%s] bkhaul[%d] frnthaul[%d] profile1_bhsta_disallowed[%d] "
-        "profile2_bhsta_disallowed[%d]\n",
+        "encr[0x%x] pwd_len[%d] Password[%s] map_flag[0x%x]\n",
         I5_MAC_PRM(clientbss->ALID), clientbss->band_flag, clientbss->ssid.SSID_len,
         clientbss->ssid.SSID, clientbss->AuthType, clientbss->EncryptType,
-        clientbss->NetworkKey.key_len, clientbss->NetworkKey.key, clientbss->BackHaulBSS,
-        clientbss->FrontHaulBSS, clientbss->profile1_bhsta_disallowed,
-        clientbss->profile2_bhsta_disallowed);
+        clientbss->NetworkKey.key_len, clientbss->NetworkKey.key, clientbss->map_flag);
       ieee1905_glist_append(&i5_config.client_bssinfo_list, (dll_t*)clientbss);
       index = 0;
     }

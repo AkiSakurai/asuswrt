@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_txmod.h 774070 2019-04-09 08:16:27Z $
+ * $Id: wlc_txmod.h 785580 2020-03-31 11:58:31Z $
  */
 
 #ifndef _wlc_txmod_h_
@@ -86,6 +86,9 @@ typedef void (*txmod_activate_fn_t)(void *ctx, struct scb *scb);
 /* Callback for txmod to return packets held by this txmod */
 typedef uint (*txmod_pktcnt_fn_t)(void *ctx);
 
+/* Callback for txmod to flush all packets held for an scb/prec by this txmod */
+typedef void (*txmod_pkt_flush_fn_t)(void *ctx, struct scb *scb, uint8 tid);
+
 /* Function vector to make it easy to initialize txmod
  * Note: txmod_info itself is not modified to avoid adding one more level of indirection
  * during transmit of a packet
@@ -93,6 +96,7 @@ typedef uint (*txmod_pktcnt_fn_t)(void *ctx);
 typedef struct txmod_fns {
 	txmod_tx_fn_t		tx_fn;			/* Process the packet */
 	txmod_pktcnt_fn_t	pktcnt_fn;		/* Return the packet count */
+	txmod_pkt_flush_fn_t	pktflush_fn;		/* Flush packets for scb/prec */
 	txmod_deactivate_fn_t	deactivate_notify_fn;	/* Handle the deactivation of the feature */
 	txmod_activate_fn_t	activate_notify_fn;	/* Handle the activation of the feature */
 } txmod_fns_t;
@@ -120,6 +124,7 @@ struct tx_path_node {
 
 /* utilities */
 uint wlc_txmod_txpktcnt(wlc_txmod_info_t *txmodi);
+void wlc_txmod_flush_pkts(wlc_txmod_info_t *txmodi, struct scb *scb, uint8 txmod_tid);
 
 /* KEEP THE FOLLOWING FOR NOW. THE REFERENCE TO THESE SHOULD BE ELIMINATED FIRST
  * AND THEN THESE SHOULD BE MOVED BACK TO THE .c FILE SINCE NO ONE SHOULD PEEK INTO
@@ -132,4 +137,13 @@ uint wlc_txmod_txpktcnt(wlc_txmod_info_t *txmodi);
 /* Is the feature configured? */
 #define SCB_TXMOD_CONFIGURED(scb, fid) (scb->tx_path[fid].configured)
 
+#define TXMOD_TID_FLUSH_ALL_TID		0x80
+#define TXMOD_TID_FLUSH_ALL_SCB		0x40
+#define TXMOD_TID_FLUSH_SUPPRESS	0x20
+#define TXMOD_TID_MASK			0x0F
+
+#define TXMOD_FLUSH_ALL_TIDS(tid)	(tid & TXMOD_TID_FLUSH_ALL_TID)
+#define TXMOD_FLUSH_ALL_SCBS(tid)	(tid & TXMOD_TID_FLUSH_ALL_SCB)
+#define TXMOD_FLUSH_SUPPRESS(tid)	(tid & TXMOD_TID_FLUSH_SUPPRESS)
+#define TXMOD_TID_GET(tid)		(tid & TXMOD_TID_MASK)
 #endif /* _wlc_txmod_h_ */

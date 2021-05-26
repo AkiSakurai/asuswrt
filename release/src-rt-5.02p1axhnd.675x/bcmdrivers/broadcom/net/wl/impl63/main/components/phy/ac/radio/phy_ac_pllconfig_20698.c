@@ -1078,16 +1078,17 @@ phy_ac_radio20698_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 
 	/* Special settings for spur affected channels */
 	if (lo_freq == 5510) {
+		if (adj_state) loop_band = 740;
+		else loop_band = 560;
 		if (RADIOREV(pi->pubpi->radiorev) >= 2) {
-			if (!adj_state) loop_band = 560;
 			rfpll_vco_cvar_dec = 7;
 		} else {
-			if (!adj_state) loop_band = 340;
 			rfpll_vco_cvar_dec = 8;
 		}
 	}
 	else if (lo_freq == 5590) {
-		if (!adj_state) loop_band = 450;
+		if (adj_state) loop_band = 740;
+		else loop_band = 560;
 		if (RADIOREV(pi->pubpi->radiorev) >= 2) {
 			rfpll_vco_cvar_dec = 7;
 		} else {

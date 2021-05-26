@@ -44,7 +44,7 @@
  *	OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  *	NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- *	$Id: acs_iov.c 777825 2019-08-13 04:23:47Z $
+ *	$Id: acs_iov.c 788365 2020-06-30 08:18:29Z $
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -168,9 +168,9 @@ int acs_set_escan_params(acs_chaninfo_t *c_info, wl_escan_params_t *params, int 
 	return wl_iovar_set(c_info->name, "escan", params, params_size);
 }
 
-int acs_get_chanspec(acs_chaninfo_t *c_info, chanspec_t *chanspec)
+int acs_get_chanspec(acs_chaninfo_t *c_info, int *chanspec)
 {
-	return wl_iovar_get(c_info->name, "chanspec", chanspec, sizeof(chanspec_t));
+	return wl_iovar_getint(c_info->name, "chanspec", chanspec);
 }
 
 int acs_set_chanspec(acs_chaninfo_t *c_info, chanspec_t chspec)
@@ -254,7 +254,7 @@ acs_bgdfs_get(acs_chaninfo_t * c_info)
 		return BCME_ERROR;
 	}
 
-	ret = wl_iovar_get(c_info->name, "dfs_ap_move", &acs_bgdfs->status,
+	ret = wl_iovar_get(c_info->name, "dfs_ap_move", (void *)&acs_bgdfs->status,
 		sizeof(acs_bgdfs->status) + sizeof(acs_bgdfs->pad));
 	if (ret != BCME_OK) {
 		ACSD_INFO("%s: get dfs_ap_move returned %d.\n", c_info->name, ret);
@@ -277,22 +277,6 @@ acs_bgdfs_set(acs_chaninfo_t * c_info, int arg)
 	if (ret != BCME_OK) {
 		ACSD_ERROR("%s: set dfs_ap_move %d returned %d.\n", c_info->name, arg, ret);
 	}
-	return ret;
-}
-
-/* acs_update_oper_mode read the current oper_mode and update */
-int
-acs_update_oper_mode(acs_chaninfo_t * c_info)
-{
-	int ret = BCME_ERROR, oper_mode = 0;
-
-	if ((ret = wl_iovar_getint(c_info->name, "oper_mode", &oper_mode)) != BCME_OK) {
-		ACSD_ERROR("%s read oper_mode failed with %d\n", c_info->name, ret);
-		return ret;
-	}
-	c_info->oper_mode = (uint16) oper_mode;
-	ACSD_DEBUG("%s read oper_mode succeeded 0x%02x\n", c_info->name, oper_mode);
-
 	return ret;
 }
 
@@ -462,8 +446,8 @@ int dcs_handle_request(char* ifname, wl_bcmdcs_data_t *dcs_data,
 	wl_chan_switch_t csa;
 	int err = ACSD_OK;
 
-	ACSD_INFO("ifname: %s, reason: %d, chanspec: 0x%x, csa:%x\n",
-		ifname, dcs_data->reason, dcs_data->chspec, csa_mode);
+	ACSD_INFO("ifname: %s, reason: %d, chanspec: 0x%4x (%s), csa:%x\n",
+		ifname, dcs_data->reason, dcs_data->chspec, wf_chspec_ntoa(dcs_data->chspec, chanspecbuf), csa_mode);
 
 	csa.mode = mode;
 	csa.count = count;

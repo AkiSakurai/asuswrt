@@ -10,7 +10,11 @@ all dynamic install: conditional_build
 clean: generic_clean
 	rm -f $(INSTALL_DIR)/lib/public/$(LIB)
 
-
+ifneq ($(wildcard prebuilt/libbdmf.so),)
+REBUILD_MODULE=0
+else
+REBUILD_MODULE=1
+endif
 
 #
 # Set our CommEngine directory (by splitting the pwd into two words
@@ -53,8 +57,13 @@ CFLAGS += -Werror
 # Implicit rule is $(CC) -c $(CPPFLAGS) $(CFLAGS)
 # See Section 10.2 of Gnu Make manual
 # 
+ifeq ($(REBUILD_MODULE),1)
 $(LIB): $(OBJS)
 	$(CC) -shared $(BCM_LD_FLAGS) -Wl,--whole-archive,-soname,$(notdir $@) -o $@ $(OBJS) -Wl,--no-whole-archive $(LOCAL_LDFLAGS)
+else
+$(LIB):
+	cp -f prebuilt/libbdmf.so .
+endif
 
 
 

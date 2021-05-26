@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_akm_ie.c 781849 2019-12-03 09:16:21Z $
+ * $Id: wlc_akm_ie.c 783893 2020-02-12 07:42:32Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -1696,18 +1696,21 @@ wlc_check_wpa2ie(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, bcm_tlv_t *wpa2ie, struc
 	}
 	if ((mgmt->list[0].type == RSN_AKM_SHA256_1X) ||
 #ifdef WL_SAE
-	    /* If pure SAE, MFP should be required */
-		((mgmt->list[0].type == RSN_AKM_SAE_PSK) && ((WPA_auth == WPA3_AUTH_SAE_PSK) ||
-			(WPA_auth == (WPA3_AUTH_SAE_PSK | WPA3_AUTH_SAE_FBT)))) ||
-		((mgmt->list[0].type == RSN_AKM_SAE_FBT) && ((WPA_auth == WPA3_AUTH_SAE_FBT) ||
-			(WPA_auth == (WPA3_AUTH_SAE_PSK | WPA3_AUTH_SAE_FBT)))) ||
+		/* STA has chosen RSN_AKM_SAE_PSK. */
+		((mgmt->list[0].type == RSN_AKM_SAE_PSK) && (WPA_auth & WPA3_AUTH_SAE_PSK)) ||
+		/* STA has chosen RSN_AKM_SAE_FBT. */
+		((mgmt->list[0].type == RSN_AKM_SAE_FBT) && (WPA_auth & WPA3_AUTH_SAE_FBT)) ||
 #endif /* WL_SAE */
 #ifdef WL_DPP
 		((mgmt->list[0].type == RSN_AKM_DPP) && (WPA_auth == WPA3_AUTH_DPP)) ||
 #endif  /* WL_DPP */
 		(mgmt->list[0].type == RSN_AKM_SHA256_PSK)) {
 		if ((BSSCFG_IS_MFP_REQUIRED(bsscfg)) ||
-		    (WPA_auth & (WPA2_AUTH_PSK_SHA256 | WPA2_AUTH_1X_SHA256))) {
+		    (WPA_auth & (WPA2_AUTH_PSK_SHA256 | WPA2_AUTH_1X_SHA256)) ||
+		    /* STA has chosen RSN_AKM_SAE_PSK in transition mode. Other cases
+		     * will be covered by MFP required check.
+		     */
+		    (WPA_auth & WPA3_AUTH_SAE_PSK)) {
 			scb->flags2 |= SCB2_SHA256;
 		} else {
 			WL_ERROR(("wl%d: bad AKM: AP has no SHA256 but STA does.\n",

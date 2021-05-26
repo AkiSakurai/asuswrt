@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tpc.c 783056 2020-01-13 12:27:30Z $
+ * $Id: phy_ac_tpc.c 788081 2020-06-19 10:20:34Z $
  */
 #include <phy_cfg.h>
 #include <typedefs.h>
@@ -216,6 +216,7 @@ static void phy_ac_tpc_std_params_attach(phy_ac_tpc_info_t *info);
 static void wlc_phy_txpwrctrl_pwr_setup_acphy(phy_info_t *pi);
 static void wlc_phy_txpwrctrl_pwr_setup_srom12_acphy(phy_info_t *pi);
 int8 wlc_phy_fittype_srom12_acphy(phy_info_t *pi);
+static uint8 wlc_phy_percent_to_qdb(uint8 percent);
 #ifdef WL11AX
 static uint16 wlc_phy_ten_log_ten(uint16 n_sc_clm, uint16 n_sc_dl);
 static uint16 wlc_phy_64bit_shift_parse(uint64 input, uint8 shift, uint32 bitmap);
@@ -643,8 +644,14 @@ WLBANDINITFN(phy_ac_tpc_init)(phy_type_tpc_ctx_t *ctx)
 	uint8 core;
 
 	FOREACH_CORE(tpci->pi, core) {
-		tpci->ti->data->base_index_init[core] = 20;
-		tpci->ti->data->base_index_cck_init[core] = 20;
+		if (ACMAJORREV_51(tpci->pi->pubpi->phy_rev)) {
+			tpci->ti->data->base_index_init[core] = 50;
+			tpci->ti->data->base_index_cck_init[core] =
+				tpci->ti->data->base_index_init[core];
+		} else {
+			tpci->ti->data->base_index_init[core] = 20;
+			tpci->ti->data->base_index_cck_init[core] = 20;
+		}
 #ifdef PREASSOC_PWRCTRL
 		tpci->pwr_ctrl_save->status_idx_carry_2g[core] = FALSE;
 		tpci->pwr_ctrl_save->status_idx_carry_5g[core] = FALSE;
@@ -901,10 +908,24 @@ wlc_phy_txpower_recalc_target_ac_big(phy_type_tpc_ctx_t *ctx, ppr_t *tx_pwr_targ
 
 			/* Board specific fix reduction */
 
-			/* Apply power output percentage */
-			if (pi->tpci->data->txpwr_percent < 100)
-				ppr_multiply_percentage(tx_pwr_target,
-					pi->tpci->data->txpwr_percent);
+			/* Apply max power percentage cap */
+			if (ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
+				phy_info_acphy_t *pi_ac =
+					(phy_info_acphy_t *)pi->u.pi_acphy;
+				if (pi->tpci->data->txpwr_percent < 100) {
+				/* apply pwr_percent to max pwr and cap each rate */
+					uint8 qdb_cap;
+					qdb_cap = ppr_get_max(tx_pwr_target) -
+					wlc_phy_percent_to_qdb(pi->tpci->data->txpwr_percent);
+					if (qdb_cap < wlc_phy_tssivisible_thresh_acphy(pi)) {
+						qdb_cap = wlc_phy_tssivisible_thresh_acphy(pi);
+					}
+					pi_ac->tpci->txpwr_cap[core] = qdb_cap;
+					wlc_phy_txpwr_cap_enable(pi, ENABLE);
+				} else {
+					pi_ac->tpci->txpwr_cap[core] = 127;
+				}
+			}
 
 			/* Apply power output degrade */
 			if (pi->tpci->data->txpwr_degrade != 0)
@@ -3305,6 +3326,8 @@ wlc_phy_txpwrctrl_pwr_setup_srom12_acphy(phy_info_t *pi)
 		       (RADIOREV(pi->pubpi->radiorev) == 8) ||
 		       (ACMAJORREV_5(pi->pubpi->phy_rev))) {
 			iidx = 20;
+		    } else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			iidx = ti->data->base_index_init[core];
 		    } else {
 			iidx = 50;
 		    }
@@ -5230,13 +5253,7 @@ wlc_phy_txpwr_idx_get_acphy(phy_info_t *pi)
 	BCM_REFERENCE(stf_shdata);
 
 	BCM_REFERENCE(rx_coremask);
-	if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-		(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
-		rx_coremask = stf_shdata->hw_phyrxchain;
-	} else {
-		rx_coremask = stf_shdata->phyrxchain;
-	}
+	rx_coremask = stf_shdata->hw_phyrxchain;
 
 	/* Suspend MAC if haven't done so */
 	wlc_phy_conditional_suspend(pi, &suspend);
@@ -5289,20 +5306,18 @@ wlc_phy_txpwrctrl_enable_acphy(phy_info_t *pi, uint8 ctrl_type)
 	}
 
 	BCM_REFERENCE(rx_coremask);
-	if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-		(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
-		rx_coremask = stf_shdata->hw_phyrxchain;
-	} else {
-		rx_coremask = stf_shdata->phyrxchain;
-	}
+	rx_coremask = stf_shdata->hw_phyrxchain;
 
 	if (ctrl_type == PHY_TPC_HW_OFF) {
 		/* save previous txpwr index if txpwrctl was enabled */
 		if (wlc_phy_txpwrctrl_ison_acphy(pi)) {
 			FOREACH_ACTV_CORE(pi, rx_coremask, core) {
 				tpci->txpwrindex_hw_save[core] =
-					READ_PHYREGFLDCE(pi, TxPwrCtrlStatus_path, core, baseIndex);
+					((ACMAJORREV_51(pi->pubpi->phy_rev) &&
+					tpci->txpwrindex_hw_save[core] == 128) ?
+					tpci->ti->data->base_index_init[core] :
+					READ_PHYREGFLDCE(pi, TxPwrCtrlStatus_path, core,
+					baseIndex));
 				PHY_TXPWR(("wl%d: %s PWRCTRL: %d Cache Baseindex: %d Core: %d\n",
 					pi->sh->unit, __FUNCTION__, ctrl_type,
 					tpci->txpwrindex_hw_save[core], core));
@@ -5582,12 +5597,7 @@ wlc_phy_txpwr_fixpower_acphy(phy_info_t *pi)
 	PHY_CHANLOG(pi, __FUNCTION__, TS_ENTER, 0);
 
 	BCM_REFERENCE(rx_coremask);
-	if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-	    (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev))) {
-		rx_coremask = stf_shdata->hw_phyrxchain;
-	} else {
-		rx_coremask = stf_shdata->phyrxchain;
-	}
+	rx_coremask = stf_shdata->hw_phyrxchain;
 
 	FOREACH_ACTV_CORE(pi, rx_coremask, core) {
 		wlc_phy_txpwr_by_index_acphy(pi, (1 << core), pi->u.pi_acphy->txpwrindex[core]);
@@ -7218,13 +7228,7 @@ wlc_phy_txpwr_est_pwr_acphy(phy_info_t *pi, uint8 *Pout, uint8 *Pout_adj)
 		val = 1;
 
 	BCM_REFERENCE(rx_coremask);
-	if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-		(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
-		rx_coremask = stf_shdata->hw_phyrxchain;
-	} else {
-		rx_coremask = stf_shdata->phyrxchain;
-	}
+	rx_coremask = stf_shdata->hw_phyrxchain;
 
 	FOREACH_ACTV_CORE(pi, rx_coremask, core) {
 		if (!val_ignore) {
@@ -7440,13 +7444,7 @@ wlc_phy_store_tx_pwrctrl_setting_acphy(phy_type_tpc_ctx_t *ctx, chanspec_t previ
 	}
 
 	BCM_REFERENCE(rx_coremask);
-	if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-		(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
-		rx_coremask = stf_shdata->hw_phyrxchain;
-	} else {
-		rx_coremask = stf_shdata->phyrxchain;
-	}
+	rx_coremask = stf_shdata->hw_phyrxchain;
 
 	FOREACH_ACTV_CORE(pi, rx_coremask, core) {
 		iidx = READ_PHYREGFLDCE(pi, TxPwrCtrlStatus_path, core, baseIndex);
@@ -10008,6 +10006,33 @@ phy_ac_tpc_get_est_pout(phy_type_tpc_ctx_t *ctx,
 	wlapi_enable_mac(pi->sh->physhim);
 
 	return BCME_OK;
+}
+
+static uint8 wlc_phy_percent_to_qdb(uint8 percent)
+{
+	uint8 qdb;
+	if (percent > 90) {
+		qdb = 0;
+	} else if (percent > 80) {
+		qdb = 2;
+	} else if (percent > 70) {
+		qdb = 4;
+	} else if (percent > 60) {
+		qdb = 6;
+	} else if (percent > 50) {
+		qdb = 9;
+	} else if (percent > 40) {
+		qdb = 12;
+	} else if (percent > 30) {
+		qdb = 16;
+	} else if (percent > 20) {
+		qdb = 21;
+	} else if (percent > 10) {
+		qdb = 28;
+	} else {
+		qdb = 40;
+	}
+	return qdb;
 }
 
 #ifdef WL11AX

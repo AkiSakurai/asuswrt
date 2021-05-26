@@ -212,92 +212,6 @@ static uint8 rcb_paused[8] = {[0 ... 7]		= SCB_CFP_RCB_PAUSE};
 
 #define SCB_CFP(cfp, scb)     (*SCB_CFP_CUBBY_LOC((cfp), (scb)))
 
-/** File scoped CFP Global object: Fast access to CFP module and CFP Cubbies. */
-struct wlc_cfp_global {
-	wlc_cfp_t  *wlc_cfp;
-	scb_cfp_t **scb_cfp_list;
-	uint16	   *amt_lookup;
-} __attribute__ ((__aligned__(64)));
-
-typedef struct wlc_cfp_global wlc_cfp_global_t;
-
-#define CFP_G_INIT { \
-	.wlc_cfp = (wlc_cfp_t*)NULL, \
-	.scb_cfp_list = (scb_cfp_t **)NULL, \
-	.amt_lookup = (uint16 *)NULL \
-}
-
-/**
- * In full dongle, a single global CFP instance manages the radio.
- * In NIC mode, upto 4 global instances exist allowing 3 radios (atlas config)
- */
-#if defined(DONGLEBUILD)
-#define WLC_CFP_UNIT_MAX    1 /* Single radio global CFP instance */
-#define _CFP_UNIT(cfp_unit) 0 /* Ignore unit number, default to 0 */
-#define WLC_CFP_G_INIT      CFP_G_INIT
-#else /* ! DONGLEBUILD */
-#define WLC_CFP_UNIT_MAX    4 /* Max 4 global CFP instances for 4 radios */
-#define _CFP_UNIT(cfp_unit) (cfp_unit)
-#define WLC_CFP_G_INIT      CFP_G_INIT, CFP_G_INIT, CFP_G_INIT, CFP_G_INIT
-#endif /* DONGLEBUILD */
-
-/** Unit number used to index the global, defaults to 0 in FullDongle */
-#define WLC_UNIT(wlc)               _CFP_UNIT((wlc)->pub->unit)
-#define WLC_CFP_UNIT(wlc_cfp_info)  _CFP_UNIT((wlc_cfp_info)->unit)
-
-wlc_cfp_global_t wlc_cfp_global[WLC_CFP_UNIT_MAX] = { WLC_CFP_G_INIT };
-
-/** File scoped CFP Module Global Pointer. */
-#define WLC_CFP_G(cfp_unit) \
-	wlc_cfp_global[_CFP_UNIT(cfp_unit)].wlc_cfp
-
-/** File scoped CFP list of pointers to all SCB cubbies. */
-#define SCB_CFP_LIST_G(cfp_unit) \
-	wlc_cfp_global[_CFP_UNIT(cfp_unit)].scb_cfp_list
-
-/** File scoped fetching of a SCB CFP cubby given a CFP flowid. */
-#define SCB_CFP_ID_TO_PTR_G(cfp_unit, cfp_flowid) \
-	wlc_cfp_global[_CFP_UNIT(cfp_unit)].scb_cfp_list[cfp_flowid]
-
-/** File scoped AMT-CFP lookup table global Pointer */
-#define WLC_CFP_AMT_LOOKUP_G(cfp_unit) \
-	wlc_cfp_global[_CFP_UNIT(cfp_unit)].amt_lookup
-
-/** File scoped : AMT ID to CFP ID */
-#define WLC_CFP_AMT_FLOWID_G(cfp_unit, amt_idx) \
-	wlc_cfp_global[_CFP_UNIT(cfp_unit)].amt_lookup[(amt_idx)]
-
-/** File scoped: AMT ID to CFP pointer */
-#define WLC_AMT_ID_TO_CFP_PTR_G(cfp_unit, cfp_flowid) \
-	SCB_CFP_ID_TO_PTR_G((cfp_unit), (WLC_CFP_AMT_FLOWID_G((cfp_unit), (amt_idx))))
-
-/** Audit CFP globals before accessing. */
-#ifdef BCMDBG
-#define CFP_AUDIT_G(cfp_unit) \
-	({ \
-		ASSERT(WLC_CFP_G(cfp_unit) != (wlc_cfp_t *)NULL); \
-		ASSERT(SCB_CFP_LIST_G(cfp_unit) != (scb_cfp_t **)NULL); \
-		ASSERT(SCB_CFP_LIST_G(cfp_unit) == WLC_CFP_G(cfp_unit)->priv.scb_cfp_list); \
-	})
-#else   /* ! BCMDBG */
-#define CFP_AUDIT_G(cfp_unit)   WLC_CFP_NOOP
-#endif  /* ! BCMDBG */
-
-#define FOREACH_CFP_FLOWID_G(cfp_unit, cfp_flowid, cubby) \
-	for (cfp_flowid = 0, cubby = SCB_CFP_ID_TO_PTR_G((cfp_unit), (cfp_flowid)); \
-		cfp_flowid < CFP_FLOWS_MAX; \
-		cfp_flowid++, cubby = SCB_CFP_ID_TO_PTR_G((cfp_unit), (cfp_flowid)))
-
-#define FOREACH_AMT_IDX_G(cfp_unit, amt_size, amt_idx, cfp_flowid) \
-	for (amt_idx = 0, cfp_flowid = WLC_CFP_AMT_FLOWID_G((cfp_unit), (amt_idx)); \
-		amt_idx < amt_size; \
-		amt_idx++, cfp_flowid = WLC_CFP_AMT_FLOWID_G((cfp_unit), (amt_idx)))
-
-#define AMT_IDX_VALID(wlc, idx) \
-	(((idx) >= 0) && ((idx) < AMT_SIZE((wlc)->pub->corerev)))
-
-#define ASSERT_AMT_IDX(wlc, idx)    ASSERT(AMT_IDX_VALID((wlc), (idx)))
-
 /** IOVAR table */
 enum {
 	IOV_CFP_TCB         = 0,
@@ -321,9 +235,6 @@ static int wlc_cfp_scb_init(void *ctx, struct scb *scb);
 static void wlc_cfp_scb_deinit(void *ctx, struct scb *scb);
 static void wlc_cfp_scb_dump(void *ctx, struct scb *scb, struct bcmstrbuf *b);
 static void wlc_cfp_scb_rcb_node_init(scb_cfp_t * scb_cfp);
-#ifdef WLSQS
-static void wlc_scb_cfp_ringid_init(scb_cfp_t * scb_cfp);
-#endif /* WLSQS */
 #if defined(BCMDBG)
 static int wlc_cfp_dump(void *ctx, struct bcmstrbuf *b);
 static int wlc_cfp_dump_clr(void *ctx);
@@ -331,12 +242,11 @@ static int wlc_cfp_dump_clr(void *ctx);
 static int wlc_cfp_scb_qstats_dump(void *ctx, struct bcmstrbuf *b);
 #endif /* WLSQS */
 #endif // endif
-static int wlc_get_cfp_flowid(wlc_info_t *wlc, struct ether_addr *ea);
 
 /** CFP util functions */
 static int wlc_cfp_scb_dump_id(wlc_cfp_t *cfp, uint16 flowid, struct bcmstrbuf *b);
 #if defined(BCMDBG)
-static int wlc_cfp_scb_clear_stats_id(wlc_cfp_t *cfp, uint16 flowid);
+static void wlc_cfp_scb_clear_stats_id(wlc_cfp_t *cfp, scb_cfp_t *scb_cfp);
 #endif // endif
 
 /** SCB CFP Cubby callback to be invoked on SCB state update. */
@@ -385,12 +295,9 @@ BCMATTACHFN(wlc_cfp_attach)(wlc_info_t *wlc)
 	wlc_cfp_t *cfp; /* CFP module */
 	wlc_cfp_info_t *cfp_info; /* CFP module public */
 	wlc_cfp_priv_t *cfp_priv; /* CFP module private */
-	uint16 idx;
-	int cfp_unit;
 	scb_cubby_params_t cfp_scb_cubby_params;
 
 	cfp_info = NULL;
-	cfp_unit = WLC_UNIT(wlc);
 
 	/* Allocate the CFP module */
 	if ((cfp = MALLOCZ(wlc->osh, WLC_CFP_SIZE)) == NULL) {
@@ -399,13 +306,9 @@ BCMATTACHFN(wlc_cfp_attach)(wlc_info_t *wlc)
 		goto fail;
 	}
 
-	/* Setup a global pointer to CFP module */
-	WLC_CFP_G(cfp_unit) = cfp;
-
 	cfp_info = WLC_CFP_INFO(cfp);
 	cfp_priv = WLC_CFP_PRIV(cfp);
 
-	cfp_info->unit = cfp_unit;
 	/* Fill up private structure */
 	cfp_priv->wlc = wlc;
 
@@ -441,21 +344,6 @@ BCMATTACHFN(wlc_cfp_attach)(wlc_info_t *wlc)
 	}
 #endif /* ! CFP_REVLT80_UCODE_WAR */
 
-	/* Allocate a global table for CFP ID to Cubby ptr Lookup */
-	cfp_priv->scb_cfp_list = MALLOCZ(wlc->osh,
-		((sizeof(scb_cfp_t*)) * (CFP_FLOWS_MAX + 1)));
-
-	if (cfp_priv->scb_cfp_list == NULL) {
-		WL_ERROR(("wl%d: %s: Failed to allocate %d bytes\n",
-		         wlc->pub->unit, __FUNCTION__,
-			(int)((sizeof(scb_cfp_t*)) * (CFP_FLOWS_MAX + 1))));
-
-		goto fail;
-	}
-
-	/* Setup a global pointer to scb cfp list */
-	SCB_CFP_LIST_G(cfp_unit) = cfp_priv->scb_cfp_list;
-
 	 /* Reserve a CFP cubby in the SCB, for the CFP module */
 	bzero(&cfp_scb_cubby_params, sizeof(cfp_scb_cubby_params));
 	cfp_scb_cubby_params.context = cfp;
@@ -488,57 +376,8 @@ BCMATTACHFN(wlc_cfp_attach)(wlc_info_t *wlc)
 		goto fail;
 	}
 
-	/* Construct a 16bit flowid allocator */
-
-	/* scb_flowid_allocator is used to allocate CFP flow ids for unicast traffic
-	 * with flowids in the inclusive range [ 1 .. MAXSCB ].
-	 *
-	 * int_flowid_allocator is used to allocate CFP flow ids for the "internal"
-	 * SCBs (BCM per BSS, HWRS and OLPC), and will have value in the inclusive
-	 * range [ MAXSCB+1 .. CFP_FLOWS_MAX-1 ], for CFP_FLOWID_INT_TOTAL values
-	 */
-
-	cfp_priv->scb_flowid_allocator =
-		id16_map_init(wlc->osh, CFP_FLOWID_SCB_TOTAL, CFP_FLOWID_SCB_STARTID);
-	if (cfp_priv->scb_flowid_allocator == NULL) {
-		WL_ERROR(("wl%d: %s: scb_flowid allocator init failure\n",
-			wlc->pub->unit, __FUNCTION__));
-		goto fail;
-	}
-
-	cfp_priv->int_flowid_allocator =
-		id16_map_init(wlc->osh, CFP_FLOWID_INT_TOTAL, CFP_FLOWID_INT_STARTID);
-	if (cfp_priv->int_flowid_allocator == NULL) {
-		WL_ERROR(("wl%d: %s: int_flowid allocator init failure\n",
-			wlc->pub->unit, __FUNCTION__));
-		goto fail;
-	}
-
-	/* Allocate a lookup table for AMT idx to CFP flow ID convertor */
-	cfp_priv->amt_lookup = MALLOCZ(wlc->osh, (sizeof(uint16) * AMT_SIZE(wlc->pub->corerev)));
-	if (cfp_priv->amt_lookup == NULL) {
-		WL_ERROR(("wl%d: %s: AMT lookup table init failed  \n",
-			wlc->pub->unit, __FUNCTION__));
-		goto fail;
-	}
-
-	/* Initialize the table with CFP_FLOWID_INVALID */
-	for (idx = 0; idx < AMT_SIZE(wlc->pub->corerev); idx++) {
-		cfp_priv->amt_lookup[idx] = CFP_FLOWID_INVALID;
-	}
-
-	cfp_priv->cq_fifo_cnt = MALLOCZ(wlc->osh, (sizeof(int32) * WLC_HW_NFIFO_TOTAL(wlc)));
-	if (cfp_priv->cq_fifo_cnt == NULL) {
-		WL_ERROR(("wl%d: %s: common queue fifo cnt init failed\n",
-			wlc->pub->unit, __FUNCTION__));
-		goto fail;
-	}
-
 	WLC_CFP_DEBUG(("%s: CFP module %p CFP info %p CFP private %p ",
 		__FUNCTION__, cfp, cfp_info, cfp_priv));
-
-	/* Setup a global pointer to AMT-CFP lookup table */
-	WLC_CFP_AMT_LOOKUP_G(cfp_unit) = cfp_priv->amt_lookup;
 
 #if defined(BCMDBG)
 	/* Register dump and dump_clr routine for cfp */
@@ -564,7 +403,6 @@ BCMATTACHFN(wlc_cfp_detach)(wlc_cfp_info_t *cfp_info)
 	wlc_info_t *wlc;
 	wlc_cfp_t *cfp; /* CFP module */
 	wlc_cfp_priv_t *cfp_priv; /* CFP module private */
-	int cfp_unit;
 
 	if (cfp_info == NULL)
 		return;
@@ -573,37 +411,6 @@ BCMATTACHFN(wlc_cfp_detach)(wlc_cfp_info_t *cfp_info)
 	cfp_priv = WLC_CFP_PRIV(cfp);
 
 	wlc = cfp_priv->wlc;
-	cfp_unit = WLC_UNIT(wlc);
-	BCM_REFERENCE(cfp_unit);
-
-	/* Remove common queue fifo cnt */
-	if (cfp_priv->cq_fifo_cnt) {
-		MFREE(wlc->osh, cfp_priv->cq_fifo_cnt,
-			(sizeof(int32) * WLC_HW_NFIFO_TOTAL(wlc)));
-	}
-
-	/* Remove AMT Lookup table */
-	if (cfp_priv->amt_lookup) {
-		MFREE(wlc->osh, cfp_priv->amt_lookup,
-			(sizeof(uint16) * AMT_SIZE(wlc->pub->corerev)));
-	}
-
-	/* Remove CFP flowid allocator */
-	if (cfp_priv->scb_flowid_allocator) {
-		id16_map_fini(wlc->osh, cfp_priv->scb_flowid_allocator);
-		cfp_priv->scb_flowid_allocator = NULL;
-	}
-	if (cfp_priv->int_flowid_allocator) {
-		id16_map_fini(wlc->osh, cfp_priv->int_flowid_allocator);
-		cfp_priv->int_flowid_allocator  = NULL;
-	}
-
-	/* Remove CFP flowid to cubby ptr Lookup table */
-	if (cfp_priv->scb_cfp_list) {
-		MFREE(wlc->osh, cfp_priv->scb_cfp_list,
-			((sizeof(scb_cfp_t*)) * (CFP_FLOWS_MAX + 1)));
-	}
-
 	wlc->pub->_cfp = FALSE;
 
 	/* Unregister the module */
@@ -611,11 +418,6 @@ BCMATTACHFN(wlc_cfp_detach)(wlc_cfp_info_t *cfp_info)
 
 	/* Free up the CFP module memory */
 	MFREE(wlc->osh, cfp, WLC_CFP_SIZE);
-
-	/* Reset the global CFP module */
-	WLC_CFP_AMT_LOOKUP_G(cfp_unit) = (uint16 *)NULL;
-	SCB_CFP_LIST_G(cfp_unit)       = (scb_cfp_t**)NULL;
-	WLC_CFP_G(cfp_unit)            = (wlc_cfp_t*)NULL;
 }
 
 static uint
@@ -632,20 +434,14 @@ wlc_cfp_scb_secsz(void *ctx, scb_t *scb)
 static int
 wlc_cfp_scb_init(void *ctx, struct scb *scb)
 {
-	uint16 flowid;
 	wlc_info_t *wlc;
 	wlc_cfp_t *cfp; /* CFP module */
 	wlc_cfp_priv_t *cfp_priv; /* CFP module private */
-	int cfp_unit;
-	uint8 i;
 
 	ASSERT(ctx != NULL);
 	cfp = (wlc_cfp_t *)ctx;
 	cfp_priv = WLC_CFP_PRIV(cfp);
 	wlc = cfp_priv->wlc;
-
-	cfp_unit = WLC_CFP_UNIT(WLC_CFP_INFO(cfp));
-	BCM_REFERENCE(cfp_unit);
 
 	/* Local storage for SCB CFP cubby */
 	scb_cfp_t **scb_cfp_ptr = SCB_CFP_CUBBY_LOC(cfp, scb);
@@ -659,38 +455,12 @@ wlc_cfp_scb_init(void *ctx, struct scb *scb)
 	/* Store SCB CFP cubby pointer */
 	*scb_cfp_ptr = scb_cfp;
 
-	/* Assign a flowid to the SCB CFP cubby */
-	/* this ID will be used for all fast path lookup */
-	if (SCB_INTERNAL(scb)) {
-		ASSERT(cfp_priv->int_flowid_allocator != NULL);
-		flowid = id16_map_alloc(cfp_priv->int_flowid_allocator);
-	} else {
-		ASSERT(cfp_priv->scb_flowid_allocator != NULL);
-		flowid = id16_map_alloc(cfp_priv->scb_flowid_allocator);
-	}
-
-	if (flowid == ID16_INVALID) {
-		WL_ERROR(("wl%d: %s Failed to allocate internal=%d flowid for CFP cubby\n",
-			wlc->pub->unit, __FUNCTION__, SCB_INTERNAL(scb) ? 1 : 0));
-		goto fail;
-	}
-
-	/* Store flowid in SCB CFP cubby */
-	SCB_CFP_FLOWID(scb_cfp) = flowid;
-
 	/* Store scb back pointer in SCB CFP cubby */
 	SCB_CFP_SCB(scb_cfp) = scb;
-
-	/* Add SCB CFP cubby to list of fast flows */
-	SCB_CFP_ID_TO_PTR_G(cfp_unit, flowid) = scb_cfp;
 
 	/* Initialize per prio state */
 	SCB_CFP_TCB_INIT_STATE(scb_cfp);
 	SCB_CFP_RCB_INIT_STATE(scb_cfp);
-#ifdef WLSQS
-	/* Initialze Host flowringds */
-	wlc_scb_cfp_ringid_init(scb_cfp);
-#endif /* WLSQS */
 
 	/* Initialize RCB chained packet queues */
 	pktq_init(SCB_CFP_RCB_CHAINEDQ(scb_cfp), NUMPRIO, PKTQ_LEN_MAX);
@@ -698,43 +468,13 @@ wlc_cfp_scb_init(void *ctx, struct scb *scb)
 	/* Initialize RCB nodes */
 	wlc_cfp_scb_rcb_node_init(scb_cfp);
 
-	/* Link CFP & AMT Flow IDs
-	 *
-	 * Internal SCBs seem to end up with BC/MC address
-	 * Dont use them for AMT linkups
-	 */
-	if (!SCB_INTERNAL(scb)) {
-		wlc_cfp_amt_link_init(wlc, flowid, &(scb->ea));
-	}
-
-	for (i = 0; i < AC_COUNT; i++) {
-		scb_cfp->fifo_idx[i] = wme_ac2fifo[i];
-	}
-
-	WLC_CFP_DEBUG(("CUBBY Init for CFP %p size %d scb %p flowid %d  "
+	WLC_CFP_DEBUG(("CUBBY Init for CFP %p size %d scb %p "
 		"EA "MACF" \n", scb_cfp, (int) SCB_CFP_SIZE, scb,
-		flowid, ETHER_TO_MACF(scb->ea)));
+		 ETHER_TO_MACF(scb->ea)));
 
 done:
 	return BCME_OK;
-
-fail:
-	wlc_cfp_scb_deinit(ctx, scb);
-	return BCME_NOMEM;
 }
-#ifdef WLSQS
-/** Initialize host flow ringids */
-static void
-wlc_scb_cfp_ringid_init(scb_cfp_t * scb_cfp)
-{
-	uint8 idx;
-
-	/* Iterate through priorities */
-	for (idx = 0; idx < NUMPRIO; idx++) {
-		SCB_CFP_RINGID(scb_cfp, idx) = SCB_CFP_RINGID_INVALID;
-	}
-}
-#endif /* WLSQS */
 
 /** Initialize RCB node with scb_cfp and prio info */
 static void
@@ -757,8 +497,6 @@ wlc_cfp_scb_rcb_node_init(scb_cfp_t * scb_cfp)
 static void
 wlc_cfp_scb_deinit(void *ctx, struct scb *scb)
 {
-	int cfp_unit;
-	uint16 flowid;
 	wlc_info_t *wlc;
 	wlc_cfp_t *cfp; /* CFP module */
 	wlc_cfp_priv_t *cfp_priv; /* CFP module private */
@@ -768,9 +506,6 @@ wlc_cfp_scb_deinit(void *ctx, struct scb *scb)
 	cfp_priv = WLC_CFP_PRIV(cfp);
 	wlc = cfp_priv->wlc;
 
-	cfp_unit = WLC_CFP_UNIT(WLC_CFP_INFO(cfp));
-	BCM_REFERENCE(cfp_unit);
-
 	/* SCB CFP cubby pointer */
 	scb_cfp_t **scb_cfp_ptr = SCB_CFP_CUBBY_LOC(cfp, scb);
 	scb_cfp_t *scb_cfp = *scb_cfp_ptr;
@@ -778,28 +513,8 @@ wlc_cfp_scb_deinit(void *ctx, struct scb *scb)
 	if (scb_cfp == NULL)
 		return;
 
-	/* Release the flow id */
-	flowid = scb_cfp->flowid;
-
-#if defined(DONGLEBUILD)
-	/* Remove all CFP reference from bus layer */
-	wl_bus_cfp_flow_delink(wlc->wl, flowid);
-#endif /* DONGLEBUILD */
-
-	/* Remove all CFP reference from amt lookup tbl */
-	wlc_cfp_amt_flowid_delink(wlc, AMT_FLOWID_INVALID(wlc->pub->corerev), flowid);
-
-	if (CFP_FLOWID_VALID(flowid)) {
-		SCB_CFP_ID_TO_PTR_G(cfp_unit, flowid) = NULL; /* release from scb cfp list */
-		if (SCB_INTERNAL(scb)) {
-			id16_map_free(cfp_priv->int_flowid_allocator, flowid);
-		} else {
-			id16_map_free(cfp_priv->scb_flowid_allocator, flowid);
-		}
-	}
-
-	WLC_CFP_DEBUG(("CUBBY deinit for CFP %p size %d scb %p flowid %d\n",
-		scb_cfp, (int) SCB_CFP_SIZE, scb, flowid));
+	WLC_CFP_DEBUG(("CUBBY deinit for CFP %p size %d scb %p\n",
+		scb_cfp, (int) SCB_CFP_SIZE, scb));
 
 	/* Zero out the SCB CFP cubby contents */
 	memset(scb_cfp, 0, sizeof(scb_cfp_t));
@@ -821,20 +536,28 @@ wlc_cfp_state_update(wlc_cfp_info_t * cfp_info)
 	scb_cfp_t	*scb_cfp; /* SCB CFP Cubby */
 	struct scb	*scb;
 	wlc_info_t	*wlc;
+	wlc_cfp_t	*cfp;		/* Module */
 
-	wlc = WLC_CFP_PRIV(WLC_CFP_G(WLC_CFP_UNIT(cfp_info)))->wlc;
-	BCM_REFERENCE(wlc);
+	cfp = WLC_CFP(cfp_info);
+	wlc = WLC_CFP_PRIV(cfp)->wlc;
 
 	if (!CFP_ENAB(wlc->pub)) {
 		return;
 	}
 
 	/* Loop through all flowids */
-	FOREACH_CFP_FLOWID_G(WLC_CFP_UNIT(cfp_info), idx, scb_cfp) {
+	for (idx = 0; idx < SCB_MAX_FLOWS; idx++) {
+		/* SCB flowid lookup */
+		scb = wlc_scb_flowid_lookup(wlc, idx);
+
+		if (scb == NULL)
+			continue;
+
+		/* Extract cubby pointer */
+		scb_cfp = SCB_CFP(cfp, scb);
+
 		/* Update the state */
 		if (scb_cfp) {
-			scb = SCB_CFP_SCB(scb_cfp);
-
 			/* Update per scb cfp state */
 			wlc_cfp_scb_state_upd(cfp_info, scb);
 		}
@@ -869,7 +592,9 @@ wlc_cfp_scb_state_upd(wlc_cfp_info_t* cfp_info, struct scb *scb)
 	scb_cfp_t	*scb_cfp;	/* Cubby */
 	wlc_info_t	*wlc;
 
-	wlc = WLC_CFP_PRIV(WLC_CFP_G(WLC_CFP_UNIT(cfp_info)))->wlc;
+	cfp = WLC_CFP(cfp_info);
+	wlc = WLC_CFP_PRIV(cfp)->wlc;
+
 	BCM_REFERENCE(wlc);
 	if (!CFP_ENAB(wlc->pub)) {
 		return;
@@ -882,7 +607,6 @@ wlc_cfp_scb_state_upd(wlc_cfp_info_t* cfp_info, struct scb *scb)
 	ASSERT(scb);
 
 	/* Initialize */
-	cfp = WLC_CFP(cfp_info);
 	scb_cfp = SCB_CFP(cfp, scb);
 
 	/* check if cubby exists. It could have been
@@ -1199,7 +923,7 @@ wlc_scb_cfp_rx_enable(wlc_cfp_info_t* cfp_info, struct scb *scb)
 	SCB_CFP_RX_ENABLE(scb_cfp);
 
 	WLC_CFP_DEBUG(("%s: Enable CFP RX for scb  %p : ID  %d\n",
-		__FUNCTION__, scb, SCB_CFP_FLOWID(scb_cfp)));
+		__FUNCTION__, scb, SCB_FLOWID(scb)));
 }
 
 /** CFP TX capable scb.
@@ -1232,7 +956,7 @@ wlc_scb_cfp_tx_enable(wlc_cfp_info_t* cfp_info, struct scb *scb)
 	SCB_CFP_TX_ENABLE(scb_cfp);
 
 	WLC_CFP_DEBUG(("---------------%s: Enable CFP TX for scb  %p : ID  %d  ------\n",
-		__FUNCTION__, scb, SCB_CFP_FLOWID(scb_cfp)));
+		__FUNCTION__, scb, SCB_FLOWID(scb)));
 }
 
 /** Fillup CFP area shared by TCB and RCB */
@@ -1389,7 +1113,7 @@ wlc_cfp_doiovar(void *ctx, uint32 actionid,
 		break;
 	case IOV_GVAL(IOV_CFP_DUMP_ID):
 	{
-		uint16 cfp_flowid;
+		uint16 flowid;
 		scb_val_t *val_tmp = (scb_val_t *)p;
 
 		if (plen < (int)sizeof(scb_val_t)) {
@@ -1397,11 +1121,11 @@ wlc_cfp_doiovar(void *ctx, uint32 actionid,
 			break;
 		}
 
-		cfp_flowid = wlc_get_cfp_flowid(wlc, &val_tmp->ea);
+		flowid = wlc_scb_flowid_addr_lookup(wlc, &val_tmp->ea);
 		bcm_binit(&b, a, alen);
 
 		/* Dump cubby state for ID */
-		err = wlc_cfp_scb_dump_id(cfp, cfp_flowid, &b);
+		err = wlc_cfp_scb_dump_id(cfp, flowid, &b);
 		break;
 	}
 	case IOV_SVAL(IOV_CFP_TCB_INV):
@@ -1441,7 +1165,7 @@ wlc_cfp_scb_dump(void *ctx, struct scb *scb, struct bcmstrbuf *b)
 
 	/* Dump cubby info */
 	bcm_bprintf(b, "\tFlowID	:: %d -  User ctrl :: TCB(%d)  RCB(%d) \n",
-		SCB_CFP_FLOWID(scb_cfp), CFP_TCB_ENAB(cfp_info),
+		SCB_FLOWID(scb), CFP_TCB_ENAB(cfp_info),
 		CFP_RCB_ENAB(cfp_info));
 
 	bcm_bprintf(b, "\tTX Enable :: %d  RX Enable  :: %d \n",
@@ -1457,8 +1181,8 @@ wlc_cfp_scb_dump(void *ctx, struct scb *scb, struct bcmstrbuf *b)
 	bcm_bprintf(b, "\tFlow Ring IDs :: ");
 	for (prio = 0; prio < NUMPRIO; prio++) {
 		bcm_bprintf(b, "%d ",
-			(SCB_CFP_RINGID(scb_cfp, prio) == SCB_CFP_RINGID_INVALID) ? -1 :
-			SCB_CFP_RINGID(scb_cfp, prio));
+			(SCB_HOST_RINGID(scb, prio) == SCB_HOST_RINGID_INVALID) ? -1 :
+			SCB_HOST_RINGID(scb, prio));
 	}
 	bcm_bprintf(b, "\n");
 #endif /* WLSQS */
@@ -1529,27 +1253,30 @@ wlc_cfp_scb_dump(void *ctx, struct scb *scb, struct bcmstrbuf *b)
 static int
 wlc_cfp_dump(void *ctx, struct bcmstrbuf *b)
 {
+	wlc_info_t	*wlc;
+	struct scb	*scb;
 	scb_cfp_t	*scb_cfp;	/* Cubby pointer */
 	uint16		idx;		/* Flowid iterator */
 	int prio;
 	wlc_cfp_t *wlc_cfp = (wlc_cfp_t *)ctx;
+
 	BCM_REFERENCE(wlc_cfp);
 
-	for (idx = 0; idx < WLC_HW_NFIFO_TOTAL(wlc_cfp->priv.wlc); idx++) {
-		if (wlc_cfp->priv.cq_fifo_cnt[idx]) {
-			bcm_bprintf(b, "common queue pkts for fifo[%d] = %d\n",
-				idx, wlc_cfp->priv.cq_fifo_cnt[idx]);
-		}
-	}
+	/* Initiallize */
+	wlc = WLC_CFP_WLC(wlc_cfp);
 
-	FOREACH_CFP_FLOWID_G(WLC_CFP_UNIT(WLC_CFP_INFO(wlc_cfp)), idx, scb_cfp) {
+	for (idx = 0; idx < SCB_MAX_FLOWS; idx++) {
+		/* SCB flowid lookup */
+		scb = wlc_scb_flowid_lookup(wlc, idx);
 
-		struct scb *scb;
+		if (scb == NULL)
+			continue;
+
+		/* Extract cubby pointer */
+		scb_cfp = SCB_CFP(wlc_cfp, scb);
 
 		if (!scb_cfp)
 			continue;
-
-		scb = SCB_CFP_SCB(scb_cfp);
 
 		if (SCB_INTERNAL(scb))
 			continue;
@@ -1595,13 +1322,27 @@ wlc_cfp_dump(void *ctx, struct bcmstrbuf *b)
 static int
 wlc_cfp_dump_clr(void *ctx)
 {
+	wlc_info_t	*wlc;
+	struct scb	*scb;
 	scb_cfp_t	*scb_cfp;	/* Cubby pointer */
 	uint16		idx;		/* Flowid iterator */
 	wlc_cfp_t *wlc_cfp = (wlc_cfp_t *)ctx;
 
-	FOREACH_CFP_FLOWID_G(WLC_CFP_UNIT(WLC_CFP_INFO(wlc_cfp)), idx, scb_cfp) {
+	/* Initiallize */
+	wlc = WLC_CFP_WLC(wlc_cfp);
+
+	for (idx = 0; idx < SCB_MAX_FLOWS; idx++) {
+		/* SCB flowid lookup */
+		scb = wlc_scb_flowid_lookup(wlc, idx);
+
+		if (scb == NULL)
+			continue;
+
+		/* Extract cubby pointer */
+		scb_cfp = SCB_CFP(wlc_cfp, scb);
+
 		if (scb_cfp)
-			wlc_cfp_scb_clear_stats_id(wlc_cfp, idx);
+			wlc_cfp_scb_clear_stats_id(wlc_cfp, scb_cfp);
 	}
 
 	return 0;
@@ -1615,17 +1356,28 @@ wlc_cfp_scb_qstats_dump(void *ctx, struct bcmstrbuf *b)
 	uint16		idx;		/* Flowid iterator */
 	int prio;
 	wlc_cfp_t *wlc_cfp = (wlc_cfp_t *)ctx;
+	wlc_cfp_priv_t *cfp_priv; /* CFP module private */
+	wlc_info_t *wlc;
+	struct scb* scb;
 	BCM_REFERENCE(wlc_cfp);
 
-	/* Loop through each available flowid */
-	FOREACH_CFP_FLOWID_G(WLC_CFP_UNIT(WLC_CFP_INFO(wlc_cfp)), idx, scb_cfp) {
+	/* Initialize */
+	cfp_priv = WLC_CFP_PRIV(wlc_cfp);
+	wlc = cfp_priv->wlc;
 
-		struct scb *scb;
+	/* Loop through each available flowid */
+	for (idx = 0; idx < SCB_MAX_FLOWS; idx++) {
+		/* SCB flowid lookup */
+		scb = wlc_scb_flowid_lookup(wlc, idx);
+
+		if (scb == NULL)
+			continue;
+
+		/* Extract cubby pointer */
+		scb_cfp = SCB_CFP(wlc_cfp, scb);
 
 		if (!scb_cfp)
 			continue;
-
-		scb = SCB_CFP_SCB(scb_cfp);
 
 		/* Skip internal SCBs for the dump */
 		if (SCB_INTERNAL(scb))
@@ -1646,17 +1398,17 @@ wlc_cfp_scb_qstats_dump(void *ctx, struct bcmstrbuf *b)
 		bcm_bprintf(b, "\n");
 		bcm_bprintf(b, "\tSCB Q Tbr Packets \t\t ::");
 		for (prio = 0; prio < NUMPRIO; prio++) {
-			bcm_bprintf(b, "%u ", wlc_sqs_tbr_pkts(idx, prio));
+			bcm_bprintf(b, "%u ", wlc_scb_ampdu_tbr_pkts(wlc, scb, prio));
 		}
 		bcm_bprintf(b, "\n");
 		bcm_bprintf(b, "\tSCB Q Real Packets \t\t ::");
 		for (prio = 0; prio < NUMPRIO; prio++) {
-			bcm_bprintf(b, "%u ", wlc_sqs_n_pkts(idx, prio));
+			bcm_bprintf(b, "%u ", wlc_scb_ampdu_n_pkts(wlc, scb, prio));
 		}
 		bcm_bprintf(b, "\n");
 		bcm_bprintf(b, "\tSCB In transit \t\t\t ::");
 		for (prio = 0; prio < NUMPRIO; prio++) {
-			bcm_bprintf(b, "%u ", wlc_sqs_in_transit_pkts(idx, prio));
+			bcm_bprintf(b, "%u ", wlc_scb_ampdu_in_transit_pkts(wlc, scb, prio));
 		}
 		bcm_bprintf(b, "\n");
 	}
@@ -1676,49 +1428,23 @@ wlc_cfp_incr_legacy_tx_cnt(wlc_info_t *wlc, struct scb *scb, uint8 tid)
 		SCB_CFP_TX_LEGACYPKT_CNT(scb_cfp, tid)++;
 }
 
-/** Get CFP flowid for a matching ea */
-static int
-wlc_get_cfp_flowid(wlc_info_t *wlc, struct ether_addr *ea)
-{
-	scb_cfp_t	*scb_cfp;	/* Cubby pointer */
-	uint16		idx;		/* Flowid iterator */
-
-	FOREACH_CFP_FLOWID_G(WLC_UNIT(wlc), idx, scb_cfp) {
-		if (scb_cfp) {
-			struct scb *scb = SCB_CFP_SCB(scb_cfp);
-			if (!memcmp(&ea->octet, &scb->ea.octet, ETHER_ADDR_LEN)) {
-				return idx;
-			}
-		}
-	}
-
-	return -1;
-}
-
 /** Dump scb cubby given an CFP flowid. Strictly Debug only */
 static int
 wlc_cfp_scb_dump_id(wlc_cfp_t *cfp, uint16 flowid, struct bcmstrbuf *b)
 {
-	scb_cfp_t *scb_cfp;
-	int cfp_unit;
+	wlc_info_t	* wlc;
+	struct scb	*scb;
 
 	ASSERT(cfp != NULL);
 
-	cfp_unit = WLC_CFP_UNIT(WLC_CFP_INFO(cfp));
-	BCM_REFERENCE(cfp_unit);
+	wlc = WLC_CFP_WLC(cfp);
 
-	/* Check if valid flow id */
-	if (!CFP_FLOWID_VALID(flowid)) {
-		WLC_CFP_ERROR(("CFP flowid %d : Out of range\n", flowid));
-		return BCME_RANGE;
-	}
+	/* SCB flowid lookup */
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
 
-	/* Extract cubby pointer */
-	scb_cfp = SCB_CFP_ID_TO_PTR_G(cfp_unit, flowid);
-
-	if (scb_cfp) {
+	if (scb) {
 		/* dump the state */
-		wlc_cfp_scb_dump(cfp, SCB_CFP_SCB(scb_cfp), b);
+		wlc_cfp_scb_dump(cfp, scb, b);
 	} else {
 		WLC_CFP_ERROR(("CFP flowid %d : Not yet alloced\n", flowid));
 	}
@@ -1728,36 +1454,17 @@ wlc_cfp_scb_dump_id(wlc_cfp_t *cfp, uint16 flowid, struct bcmstrbuf *b)
 
 #if defined(BCMDBG)
 /** Given a CFP flowid, clear packet stats */
-static int
-wlc_cfp_scb_clear_stats_id(wlc_cfp_t *cfp, uint16 flowid)
+static void
+wlc_cfp_scb_clear_stats_id(wlc_cfp_t *cfp, scb_cfp_t *scb_cfp)
 {
-	scb_cfp_t *scb_cfp;
 	scb_cfp_stats_t *stats;
-	int cfp_unit;
 
 	ASSERT(cfp != NULL);
+	ASSERT(scb_cfp);
 
-	cfp_unit = WLC_CFP_UNIT(WLC_CFP_INFO(cfp));
-	BCM_REFERENCE(cfp_unit);
-
-	/* Check if valid flow id */
-	if (!CFP_FLOWID_VALID(flowid)) {
-		WLC_CFP_ERROR(("CFP flowid %d : Out of range\n", flowid));
-		return BCME_RANGE;
-	}
-
-	/* Extract cubby pointer */
-	scb_cfp = SCB_CFP_ID_TO_PTR_G(cfp_unit, flowid);
-
-	if (scb_cfp) {
-		/* clear the packet stats */
-		stats = &SCB_CFP_STATS(scb_cfp);
-		memset((void*)stats, 0, sizeof(scb_cfp_stats_t));
-	} else {
-		WLC_CFP_ERROR(("CFP flowid %d : Not yet alloced\n", flowid));
-	}
-
-	return BCME_OK;
+	/* clear the packet stats */
+	stats = &SCB_CFP_STATS(scb_cfp);
+	memset((void*)stats, 0, sizeof(scb_cfp_stats_t));
 }
 #endif // endif
 
@@ -1966,32 +1673,42 @@ wlc_cfp_tcb_upd_pause_state(wlc_info_t *wlc, struct scb *scb, bool valid)
 int
 wlc_cfp_tcb_cache_invalidate(wlc_info_t *wlc, int16 flowid)
 {
-	scb_cfp_t 	*scb_cfp;	/* Cubby pointer */
-	uint16 		idx;		/* Flowid iterator */
-	int			cfp_unit;
+	scb_cfp_t	*scb_cfp;	/* Cubby pointer */
+	uint16		idx;		/* Flowid iterator */
+	wlc_cfp_t	*cfp;		/* Module */
+	struct scb	*scb;
 
-	cfp_unit = WLC_UNIT(wlc);
-	BCM_REFERENCE(cfp_unit);
+	cfp = WLC_CFP(wlc->cfp);
 
-	if (flowid == CFP_ALL_FLOWS) {
+	if (flowid == SCB_ALL_FLOWS) {
 		WLC_CFP_DEBUG(("%s : Invalidate ALL TCB flows\n", __FUNCTION__));
 
 		/* Invalidate all flows */
-		FOREACH_CFP_FLOWID_G(cfp_unit, idx, scb_cfp) {
+		for (idx = 0; idx < SCB_MAX_FLOWS; idx++) {
+			/* SCB flowid lookup */
+			scb = wlc_scb_flowid_lookup(wlc, idx);
+
+			if (scb == NULL)
+				continue;
+
+			/* Extract cubby pointer */
+			scb_cfp = SCB_CFP(cfp, scb);
+
 			/* Update the state */
 			if (scb_cfp) {
 				SCB_CFP_TCB_SET_CACHE_INVALID(scb_cfp);
 			}
 		}
 	} else {
-		/* Check if valid flow id */
-		if (!CFP_FLOWID_VALID(flowid)) {
+		/* SCB flowid lookup */
+		scb = wlc_scb_flowid_lookup(wlc, flowid);
+
+		if (scb == NULL) {
 			WLC_CFP_ERROR(("CFP flowid %d : Out of range\n", flowid));
 			return BCME_RANGE;
 		}
-
 		/* Extract cubby pointer */
-		scb_cfp = SCB_CFP_ID_TO_PTR_G(cfp_unit, flowid);
+		scb_cfp = SCB_CFP(cfp, scb);
 
 		/* Invalidate the cubby */
 		if (scb_cfp) {
@@ -2104,53 +1821,13 @@ wlc_cfp_rcb_is_EST(wlc_info_t *wlc, struct scb *scb, uint8 prio,
 	return (SCB_CFP_RX_ENABLED(scb_cfp) ?
 		(SCB_CFP_RCB_IS_EST(scb_cfp, prio)) : FALSE);
 }
-
-/**
- * De Link a bus layer flow with CFP flow.
- * Called during flow ring delete
- */
-int
-wlc_scb_cfp_delink(wlc_info_t *wlc, struct scb *scb, uint8 tid, uint16 ringid)
-{
-	wlc_cfp_info_t *cfp_info; /* CFP public info */
-	scb_cfp_t *scb_cfp; /* SCB CFP cubby */
-	wlc_cfp_t *cfp; /* CFP Module */
-
-	ASSERT(scb);
-	ASSERT(wlc);
-	BCM_REFERENCE(scb_cfp);
-
-	/* Initialilze */
-	cfp_info = wlc->cfp;
-	cfp = WLC_CFP(cfp_info);
-
-	ASSERT(cfp);
-
-	/* continue Initialization */
-	scb_cfp = SCB_CFP(cfp, scb);
-
-#ifdef WLSQS
-	/* Reset the ringid */
-	if (scb_cfp && SCB_CFP_RINGID_VALID(SCB_CFP_RINGID(scb_cfp, tid))) {
-		WLC_CFP_DEBUG(("SCB CFP Delink :: scb %p scb_cfp %p Cur Ringid %d New Ringid %d \n",
-			scb, scb_cfp, SCB_CFP_RINGID(scb_cfp, tid), ringid));
-		/* Check for a valid ringid */
-		ASSERT(SCB_CFP_RINGID(scb_cfp, tid) == ringid);
-		SCB_CFP_RINGID(scb_cfp, tid) = SCB_CFP_RINGID_INVALID;
-		return BCME_OK;
-	}
-#endif /* WLSQS */
-
-	return BCME_ERROR;
-}
 /**
  * Link a bus layer flow with CFP flow. Return
  * 1. cfp flow ID
  * 2. Pointer to TCB state
  */
 int
-wlc_scb_cfp_tcb_link(wlc_info_t *wlc, uint16 ringid, uint8 tid,
-	struct scb *scb, uint8** tcb_state, uint16* cfp_flowid)
+wlc_scb_cfp_tcb_link(wlc_info_t *wlc, struct scb *scb, uint8** tcb_state)
 {
 	wlc_cfp_info_t *cfp_info; /* CFP public info */
 	scb_cfp_t *scb_cfp; /* SCB CFP cubby */
@@ -2170,15 +1847,9 @@ wlc_scb_cfp_tcb_link(wlc_info_t *wlc, uint16 ringid, uint8 tid,
 
 	/* Return the flow id */
 	if (scb_cfp) {
-		*cfp_flowid = SCB_CFP_FLOWID(scb_cfp);
 		if (tcb_state)
 			*tcb_state = SCB_CFP_TCB_STATE_PTR(scb_cfp);
 
-		WLC_CFP_DEBUG(("CFP Linkup with Bus layer : scb %p scb_cfp %p CFP flowid %d\n",
-			scb, scb_cfp, *cfp_flowid));
-#ifdef WLSQS
-		SCB_CFP_RINGID(scb_cfp, tid) = ringid;
-#endif /* WLSQS */
 		return BCME_OK;
 	}
 
@@ -2195,17 +1866,11 @@ wlc_scb_cfp_tcb_link(wlc_info_t *wlc, uint16 ringid, uint8 tid,
  */
 int
 wlc_cfp_link_update(wlc_info_t *wlc, wlc_if_t *wlcif, uint8 *addr,
-	uint16 *cfp_flowid)
+	uint16 *flowid)
 {
 	struct scb *scb;
 
-	if (!CFP_ENAB(wlc->pub)) {
-		return BCME_ERROR;
-	}
-
-	ASSERT(WLC_CFP_UNIT(wlc->cfp) == WLC_UNIT(wlc));
-
-	*cfp_flowid = CFP_FLOWID_INVALID;
+	*flowid = SCB_FLOWID_INVALID;
 
 	if (ETHER_ISMULTI(addr) || ETHER_ISNULLADDR(addr)) {
 		WLC_CFP_DEBUG(("CFP Linkup multi or NULL addr\n"));
@@ -2219,134 +1884,26 @@ wlc_cfp_link_update(wlc_info_t *wlc, wlc_if_t *wlcif, uint8 *addr,
 		return BCME_ERROR;
 	}
 
-	/* tcb_state is not linked */
-	return wlc_scb_cfp_tcb_link(wlc, 0, 0, scb, NULL, cfp_flowid);
+	/* Return SCB flowid */
+	wlc_scb_host_ring_link(wlc, 0, 0, scb, flowid);
+
+	return BCME_OK;
 }
 #endif /* BCA_HNDROUTER && PKTC_TBL */
 
 int32 BCMFASTPATH
 wlc_cfp_cq_fifo_cnt(wlc_info_t *wlc, struct scb *scb, uint8 prio)
 {
-	wlc_cfp_priv_t *cfp_priv; /* CFP private info */
-	uint fifo;
+	uint32 cnt;
 
 	ASSERT(prio < NUMPRIO);
 	ASSERT(scb);
 	ASSERT(wlc);
 
-	/* Initialize */
-	cfp_priv = WLC_CFP_PRIV(WLC_CFP(wlc->cfp));
+	cnt = SCB_PKTS_INFLT_CQCNT_VAL(scb, WLC_PRIO_TO_PREC(prio));
+	cnt += SCB_PKTS_INFLT_CQCNT_VAL(scb, WLC_PRIO_TO_HI_PREC(prio));
 
-	fifo = wlc_fifo_index_get(wlc->fifo, scb, prio);
-
-	return cfp_priv->cq_fifo_cnt[fifo];
-}
-
-void BCMFASTPATH
-wlc_cfp_cq_fifo_inc(wlc_info_t *wlc, struct scb *scb, uint8 prio, uint32 cnt)
-{
-	wlc_cfp_priv_t *cfp_priv; /* CFP private info */
-	uint fifo;
-
-	ASSERT(prio < NUMPRIO);
-	ASSERT(scb);
-	ASSERT(wlc);
-
-	/* Initialize */
-	cfp_priv = WLC_CFP_PRIV(WLC_CFP(wlc->cfp));
-
-	fifo = wlc_fifo_index_peek(wlc->fifo, scb, WME_PRIO2AC(prio));
-
-	cfp_priv->cq_fifo_cnt[fifo] += cnt;
-}
-
-void BCMFASTPATH
-wlc_cfp_cq_fifo_dec(wlc_info_t *wlc, struct scb *scb, uint8 prio, uint32 cnt)
-{
-	wlc_cfp_priv_t *cfp_priv; /* CFP private info */
-	uint fifo;
-
-	ASSERT(scb);
-	ASSERT(wlc);
-
-	/* Initialize */
-	cfp_priv = WLC_CFP_PRIV(WLC_CFP(wlc->cfp));
-
-	fifo = wlc_fifo_index_peek(wlc->fifo, scb, WME_PRIO2AC(prio));
-
-	ASSERT(cfp_priv->cq_fifo_cnt[fifo] >= cnt);
-	cfp_priv->cq_fifo_cnt[fifo] -= cnt;
-}
-
-void BCMFASTPATH
-wlc_cfp_cq_fifo_upd(wlc_info_t *wlc, struct scb *scb, uint8 ac)
-{
-	wlc_cfp_priv_t *cfp_priv; /* CFP private info */
-	scb_cfp_t *scb_cfp; /* SCB's CFP cubby */
-	wlc_cfp_t *cfp; /* CFP Module */
-	uint8 fifo_old, fifo_new, i;
-	uint32 precbitmap, cnt;
-
-	ASSERT(scb);
-	ASSERT(wlc);
-
-	/* Initialize */
-	cfp = WLC_CFP(wlc->cfp);
-	cfp_priv = WLC_CFP_PRIV(cfp);
-
-	ASSERT(cfp);
-
-	/* Continue initialization */
-	scb_cfp = SCB_CFP(cfp, scb);
-
-	/* check if cubby exists. It could have been
-	 * already freed as part of scb deinit
-	 */
-	if (!scb_cfp) {
-		WLC_CFP_DEBUG(("%s CFP CUBBY already freed up for scb %p\n",
-			__FUNCTION__, scb));
-		return;
-	}
-
-	/* Adjust cq_fifo_cnt if fifo index change */
-	fifo_old = scb_cfp->fifo_idx[ac];
-	fifo_new = wlc_fifo_index_peek(wlc->fifo, scb, ac);
-	if (fifo_old != fifo_new) {
-		switch (ac) {
-		case AC_BE:
-			precbitmap = WLC_PREC_BMP_AC_BE;
-			break;
-		case AC_BK:
-			precbitmap = WLC_PREC_BMP_AC_BK;
-			break;
-		case AC_VI:
-			precbitmap = WLC_PREC_BMP_AC_VI;
-			break;
-		case AC_VO:
-			precbitmap = WLC_PREC_BMP_AC_VO;
-			break;
-		default:
-			precbitmap = 0;
-			ASSERT(0);
-			break;
-		}
-
-		cnt = 0;
-		for (i = 0; i <= 15; i++) {
-			if (precbitmap & (1 << i)) {
-				cnt += SCB_PKTS_INFLT_CQCNT_VAL(scb, i);
-			}
-		}
-
-		WLC_CFP_DEBUG(("%s : adjust cq_fifo_cnt[%d] for scb %p fifo [%d]->[%d]\n",
-			__FUNCTION__, cfp_priv->cq_fifo_cnt[fifo_old], scb, fifo_old, fifo_new));
-
-		ASSERT(cfp_priv->cq_fifo_cnt[fifo_old] >= cnt);
-		cfp_priv->cq_fifo_cnt[fifo_old] -= cnt;
-		cfp_priv->cq_fifo_cnt[fifo_new] += cnt;
-
-		scb_cfp->fifo_idx[ac] = fifo_new;
-	}
+	return cnt;
 }
 
 /** Miscellaneous Wireless CFP helper functions for ingress device|bus layer. */
@@ -2388,16 +1945,21 @@ wlc_cfp_pktlist_free(wlc_info_t *wlc, void *p)
 
 bool /* Fetch wireless tx packet exptime. */
 #if defined(DONGLEBUILD)
-wlc_cfp_tx_enabled(int cfp_unit, uint16 cfp_flowid, uint32* cfp_exptime)
+wlc_cfp_tx_enabled(int cfp_unit, uint16 flowid, uint32* cfp_exptime)
 #else
-wlc_cfp_tx_enabled(int cfp_unit, uint16 cfp_flowid, uint32 prio)
+wlc_cfp_tx_enabled(int cfp_unit, uint16 flowid, uint32 prio)
 #endif // endif
 {
 	wlc_info_t	*wlc;
 	wlc_hw_info_t	*wlc_hw;
+	struct scb	*scb;
 	scb_cfp_t	*scb_cfp;	/* Cubby */
+	wlc_cfp_t	*cfp;		/* Module */
 
-	wlc = WLC_CFP_PRIV(WLC_CFP_G(cfp_unit))->wlc;
+	WLC_AUDIT_G(cfp_unit);
+
+	wlc = WLC_G(cfp_unit);
+	cfp = WLC_CFP(wlc->cfp);
 	wlc_hw = wlc->hw;
 
 	if (!CFP_ENAB(wlc->pub)) {
@@ -2409,15 +1971,14 @@ wlc_cfp_tx_enabled(int cfp_unit, uint16 cfp_flowid, uint32 prio)
 		return FALSE;
 	}
 
-	CFP_AUDIT_G(cfp_unit);
+	/* SCB flowid lookup */
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
 
-	/* Check if valid flow id */
-	if (!CFP_FLOWID_VALID(cfp_flowid)) {
+	if (scb == NULL)
 		return FALSE;
-	}
 
 	/* Extract cubby pointer */
-	scb_cfp = SCB_CFP_ID_TO_PTR_G(cfp_unit, cfp_flowid);
+	scb_cfp = SCB_CFP(cfp, scb);
 
 #if defined(DONGLEBUILD)
 	ASSERT(scb_cfp);
@@ -2445,30 +2006,27 @@ wlc_cfp_tx_enabled(int cfp_unit, uint16 cfp_flowid, uint32 prio)
 }
 
 void /** Prepare a CFP capable packet. */
-wlc_cfp_pkt_prepare(int cfp_unit, uint16 cfp_flowid, uint8 prio,
+wlc_cfp_pkt_prepare(int cfp_unit, uint16 flowid, uint8 prio,
 	void *pkt, uint32 cfp_exptime)
 {
 	wlc_info_t *wlc;
 	struct scb *scb;
-	scb_cfp_t  *scb_cfp; /* SCB's CFP cubby */
 
-	BCM_REFERENCE(wlc);
-	ASSERT_CFP_FLOWID(cfp_flowid);
-	CFP_AUDIT_G(cfp_unit);
+	ASSERT_SCB_FLOWID(flowid);
+	WLC_AUDIT_G(cfp_unit);
 
-	/* Fetch contexts from cfp_flowid */
-	wlc = WLC_CFP_PRIV(WLC_CFP_G(cfp_unit))->wlc;
+	/* Fetch contexts from flowid */
+	wlc = WLC_G(cfp_unit);
 	ASSERT(wlc != NULL);
 
-	scb_cfp = SCB_CFP_ID_TO_PTR_G(cfp_unit, cfp_flowid);
-	ASSERT(scb_cfp != NULL);
+	/* SCB flowid lookup */
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
 
-	scb = SCB_CFP_SCB(scb_cfp);
 	ASSERT(scb != NULL);
 	ASSERT(WLPKTTAG(pkt)->flags == 0);
 
 	/* OSL To/From NATIVE packet accounting must be performed by caller... */
-	WLPKTTAG(pkt)->_scb = scb;
+	WLPKTTAGSCBSET(pkt, scb);
 	WLPKTTAGBSSCFGSET(pkt, WLC_BSSCFG_IDX(scb->bsscfg));
 	WLPKTTAG(pkt)->flags |= (WLF_DATA | WLF_NON8023);
 
@@ -2493,35 +2051,42 @@ wlc_cfp_pkt_prepare(int cfp_unit, uint16 cfp_flowid, uint8 prio,
 }
 
 void /* Wireless CFP capable Transmit fastpath entry point. */
-wlc_cfp_tx_sendup(int cfp_unit, uint16 cfp_flowid, uint8 prio,
+wlc_cfp_tx_sendup(int cfp_unit, uint16 flowid, uint8 prio,
 	void *pktlist_head, void *pktlist_tail, uint16 pkt_count)
 {
 	wlc_info_t *wlc;
 	scb_cfp_t *scb_cfp; /* SCB CFP cubby */
 	struct scb* scb;
+	wlc_cfp_t	*cfp;		/* Module */
 
-	ASSERT_CFP_FLOWID(cfp_flowid);
-	CFP_AUDIT_G(cfp_unit);
+	ASSERT_SCB_FLOWID(flowid);
+	WLC_AUDIT_G(cfp_unit);
 
-	wlc = WLC_CFP_WLC(WLC_CFP_G(cfp_unit));
+	wlc = WLC_G(cfp_unit);
+	cfp = WLC_CFP(wlc->cfp);
 
-	/* Fetch contexts from cfp_flowid */
-	scb_cfp = SCB_CFP_ID_TO_PTR_G(cfp_unit, cfp_flowid);
+	/* SCB flowid lookup */
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
+
+	ASSERT(scb);
+
+	/* Extract cubby pointer */
+	scb_cfp = SCB_CFP(cfp, scb);
+
 #if defined(DONGLEBUILD)
 	ASSERT(scb_cfp);
 #else /* !DONGLEBUILD */
 	/* BCM_PKTFWD: Station might be disassociated after incarnation check. */
 	if (scb_cfp == NULL) {
 #if defined(BCM_PKTFWD_FLCTL)
-		/* SCB is invalid; Credits will be adjusted using cfp_flowid */
-		wl_pktfwd_update_link_credits(wlc->wl, cfp_flowid, NULL, prio,
+		/* SCB is invalid; Credits will be adjusted using flowid */
+		wl_pktfwd_update_link_credits(wlc->wl, flowid, NULL, prio,
 			(int32)pkt_count, TRUE);
 #endif /* BCM_PKTFWD_FLCTL */
 		wlc_cfp_pktlist_free(wlc, pktlist_head);
 		return;
 	}
 #endif /* DONGLEBUILD */
-	scb = (struct scb*)SCB_CFP_SCB(scb_cfp);
 	BCM_REFERENCE(scb);
 	ASSERT(!SCB_DEL_IN_PROGRESS(scb) && !SCB_MARKED_DEL(scb));
 	ASSERT(SCB_CFP_TCB_IS_INI_VALID(scb_cfp, prio));
@@ -2535,187 +2100,6 @@ wlc_cfp_tx_sendup(int cfp_unit, uint16 cfp_flowid, uint8 prio,
 	/* Enqueue entire packet list into SCB's ampdu queue, procceed to release */
 	wlc_cfp_ampdu_entry(wlc, prio, pktlist_head, pktlist_tail, pkt_count, scb_cfp);
 #endif // endif
-}
-
-/**
- * Link AMT A2[Transmitter] index with CFP flow ID
- *
- * Loop through available CFP flows to do address comparison.
- * Bind CFP and AMT flow ids if address is found.
- */
-void
-wlc_cfp_amt_link_reinit(wlc_info_t *wlc, int amt_idx,
-	const struct ether_addr *amt_addr)
-{
-	scb_cfp_t	*scb_cfp;	/* Cubby pointer */
-	uint16		cfp_flowid;	/* Flowid iterator */
-	struct scb	*scb;		/* SCB */
-	bool found;
-#ifdef CFP_DEBUG
-	char addr_str[ETHER_ADDR_STR_LEN];
-#endif /* BCMDBG */
-	int cfp_unit;
-
-	ASSERT_AMT_IDX(wlc, amt_idx);
-
-	/* Initialize */
-	found = FALSE;
-	BCM_REFERENCE(found);
-
-	WLC_CFP_DEBUG(("CFP AMT LINKUP :: amtid %d wlc bandunit %d \n",
-		amt_idx, wlc->band->bandunit));
-
-	cfp_unit = WLC_UNIT(wlc);
-	BCM_REFERENCE(cfp_unit);
-
-	FOREACH_CFP_FLOWID_G(cfp_unit, cfp_flowid, scb_cfp) {
-		if (!scb_cfp)
-			continue;
-
-		scb = (struct scb*)SCB_CFP_SCB(scb_cfp);
-
-		/* Internal SCBs seem to end up with BC/MC address
-		 * Dont use them for AMT linkups
-		 */
-		if (SCB_INTERNAL(scb))
-			continue;
-
-		WLC_CFP_DEBUG(("idx %d scb_cfp %p scb %p  AMT ea %s scb ea %s  scb band unit %d \n",
-			cfp_flowid, scb_cfp, scb,
-			bcm_ether_ntoa(amt_addr, addr_str),
-			bcm_ether_ntoa(&scb->ea, addr_str), scb->bandunit));
-
-		if ((eacmp((const char*)amt_addr, (const char*)&scb->ea) == 0) &&
-			(wlc->band->bandunit == scb->bandunit))
-		{
-			/* Check for unique Transmitter Address.
-			 *
-			 * Assumption is every AMT TA would map to unique scb.
-			 * If there are multiple scbs poitning to same TA,
-			 * whole flow lookup based on AMT fails.
-			 *
-			 */
-			ASSERT(found == FALSE);
-			found = TRUE;
-
-			WLC_CFP_DEBUG(("%s : Found CFP entry ::::: amt idx %d cfp flow id %d "
-				"addr %s current tbl entry %d \n", __FUNCTION__,
-				amt_idx, cfp_flowid, bcm_ether_ntoa(amt_addr, addr_str),
-				WLC_CFP_AMT_FLOWID_G(cfp_unit, amt_idx)));
-
-			ASSERT(WLC_CFP_AMT_FLOWID_G(cfp_unit, amt_idx) == CFP_FLOWID_INVALID);
-			WLC_CFP_AMT_FLOWID_G(cfp_unit, amt_idx) = cfp_flowid;
-		}
-	}
-}
-
-/**
- * De-Link CFP-AMT
- *
- * Reset AMT lookup table entry for given AMT index
- * For a given cfp flowid loop through amt lookup table and delink
- */
-void
-wlc_cfp_amt_flowid_delink(wlc_info_t *wlc, int amt_idx, uint16 cfp_flowid)
-{
-	uint16 cfp_id;
-	int cfp_unit;
-
-	WLC_CFP_DEBUG(("%s : Delink AMT idx %d \n",
-		__FUNCTION__, amt_idx));
-
-	cfp_unit = WLC_UNIT(wlc);
-	BCM_REFERENCE(cfp_unit);
-
-	if (amt_idx == AMT_FLOWID_INVALID(wlc->pub->corerev)) {
-		int amt_size;
-		/* Triggered from a CFP cubby deinit */
-		/* Search for the given cfp_flowid and delink */
-		ASSERT_CFP_FLOWID(cfp_flowid);
-
-		amt_size = AMT_SIZE(wlc->pub->corerev);
-		FOREACH_AMT_IDX_G(cfp_unit, amt_size, amt_idx, cfp_id) {
-			if (cfp_id == cfp_flowid) {
-				WLC_CFP_AMT_FLOWID_G(cfp_unit, amt_idx) = CFP_FLOWID_INVALID;
-			}
-		}
-	} else {
-		/* Triggered from AMT delink */
-		ASSERT_AMT_IDX(wlc, amt_idx);
-		ASSERT(cfp_flowid == CFP_FLOWID_INVALID);
-		WLC_CFP_AMT_FLOWID_G(cfp_unit, amt_idx) = CFP_FLOWID_INVALID;
-	}
-}
-
-/** Return Linked CFP flowid for given amt idx */
-uint16
-wlc_cfp_amt_linkid_get(wlc_info_t *wlc, int amt_idx)
-{
-	if (AMT_IDX_VALID(wlc, amt_idx))
-		return WLC_CFP_AMT_FLOWID_G(WLC_UNIT(wlc), amt_idx);
-	else
-		return CFP_FLOWID_INVALID;
-}
-
-/** Link CFP & AMT flow IDs. */
-void
-wlc_cfp_amt_linkid_set(wlc_info_t *wlc, int amt_idx, uint16 cfp_flowid)
-{
-	int cfp_unit;
-	uint16 cur_amt_idx_cfp_flowid;
-
-	/* Sanity Checks */
-	ASSERT(AMT_IDX_VALID(wlc, amt_idx));
-	ASSERT_CFP_FLOWID(cfp_flowid);
-
-	cfp_unit = WLC_UNIT(wlc);
-	BCM_REFERENCE(cfp_unit);
-
-	cur_amt_idx_cfp_flowid = WLC_CFP_AMT_FLOWID_G(cfp_unit, amt_idx);
-
-	if (cur_amt_idx_cfp_flowid != CFP_FLOWID_INVALID) {
-		/* AMT Link already present
-		 *
-		 * This should be a case of roaming across bands.
-		 * While roaming across the bands, previous SCB/AMT is retained
-		 * unitl new link is up. So atleast for a brief amount of time
-		 * there are two SCBS with same ethernet address.
-		 *
-		 * Make sure the new link corresponds to a different band/CFP flow.
-		 */
-
-		scb_cfp_t * scb_cfp;
-		struct scb	*scb;		/* SCB */
-
-		BCM_REFERENCE(scb);
-		scb_cfp = WLC_AMT_ID_TO_CFP_PTR_G(cfp_unit, amt_idx);
-		scb = (struct scb*)SCB_CFP_SCB(scb_cfp);
-
-		ASSERT(scb->bandunit != wlc->band->bandunit);
-		ASSERT(cur_amt_idx_cfp_flowid != cfp_flowid);
-
-		WLC_CFP_DEBUG(("%s : Roaming case. Previous flowid %d SCB %p band unit %d \n",
-			__FUNCTION__, cur_amt_idx_cfp_flowid, scb, scb->bandunit));
-
-		return;
-	}
-
-	/* Setup the link */
-	WLC_CFP_AMT_FLOWID_G(cfp_unit, amt_idx) = cfp_flowid;
-}
-
-/** Lookup scb_cfp for a given amt index */
-static scb_cfp_t *
-wlc_cfp_amt_id_lookup(wlc_info_t *wlc, uint16 amt_idx)
-{
-	scb_cfp_t * scb_cfp;
-	if (amt_idx >=  AMT_SIZE(wlc->pub->corerev))
-		return NULL;
-
-	scb_cfp = WLC_AMT_ID_TO_CFP_PTR_G(WLC_UNIT(wlc), amt_idx);
-
-	return (SCB_CFP_RX_ENABLED(scb_cfp) ?
-		scb_cfp : NULL);
 }
 
 /*
@@ -2733,6 +2117,10 @@ wlc_cfp_rxframe_hdr_chainable(wlc_info_t *wlc, scb_cfp_t *scb_cfp, struct dot11_
 	uint8 *da;
 	uint16 fc;
 	bool chainable;
+
+	ASSERT(scb_cfp);
+	ASSERT(SCB_CFP_RX_ENABLED(scb_cfp));
+	ASSERT(SCB_CFP_CFG(scb_cfp));
 
 	/* Initialize */
 	bsscfg = SCB_CFP_CFG(scb_cfp);
@@ -3179,7 +2567,7 @@ wlc_cfp_scb_chain_sendup(wlc_info_t *wlc, scb_cfp_t * scb_cfp, uint8 prio)
 		wl_cfp_rxcmpl_fast(wlc->wl, p, bsscfg->wlcif->index, &pkt_cnt);
 		PKTFREE(wlc->osh, p, FALSE);
 #else /* ! DONGLEBUILD */
-		wl_cfp_sendup(wlc->wl, wlif, p, scb_cfp->flowid);
+		wl_cfp_sendup(wlc->wl, wlif, p, SCB_FLOWID(scb));
 #endif /* ! DONGLEBUILD */
 
 		continue;
@@ -3268,6 +2656,7 @@ wlc_cfp_rx_sendup(wlc_info_t *wlc, void *p)
 	scb_cfp_rcb_node_t * rcb_node;
 	uint8 prio;
 #ifdef BCMDBG
+	wlc_cfp_t	*cfp;		/* Module */
 	wlc_cfp_info_t	*cfp_info;	/* Public Info */
 	uint16 idx;
 #endif /* BCMDBG */
@@ -3291,9 +2680,20 @@ wlc_cfp_rx_sendup(wlc_info_t *wlc, void *p)
 
 #ifdef BCMDBG
 	cfp_info = wlc->cfp;
+	cfp = WLC_CFP(wlc->cfp);
 	BCM_REFERENCE(cfp_info);
 	/* Audit for CFP RX Qs in Debug builds */
-	FOREACH_CFP_FLOWID_G(WLC_CFP_UNIT(cfp_info), idx, scb_cfp) {
+	for (idx = 0; idx < SCB_MAX_FLOWS; idx++) {
+		/* SCB flowid lookup */
+		struct scb* scb;
+		scb = wlc_scb_flowid_lookup(wlc, idx);
+
+		if (scb == NULL)
+			continue;
+
+		/* Extract cubby pointer */
+		scb_cfp = SCB_CFP(cfp, scb);
+
 		if (scb_cfp) {
 			if (pktq_n_pkts_tot(SCB_CFP_RCB_CHAINEDQ(scb_cfp)) != 0) {
 				WLC_CFP_ERROR(("ERROR:: Packets pending in CFP RX Q:"
@@ -3336,6 +2736,7 @@ wlc_cfp_rx_sendup(wlc_info_t *wlc, void *p)
 INLINE void BCMFASTPATH
 wlc_cfp_rxframe(wlc_info_t *wlc, void* p)
 {
+	wlc_cfp_t	*cfp;		/* Module */
 	uint16 flowid, pktclass;
 	uint16 filtermap;
 	wlc_d11rxhdr_t	*wrxh;
@@ -3380,6 +2781,7 @@ wlc_cfp_rxframe(wlc_info_t *wlc, void* p)
 #endif /* DONGLEBUILD */
 
 	/* Initialilze */
+	cfp = WLC_CFP(wlc->cfp);
 	h = NULL;
 	sf_chainabale = chainable = TRUE;
 	wrxh = (wlc_d11rxhdr_t *)PKTDATA(wlc->osh, p);
@@ -3419,9 +2821,9 @@ wlc_cfp_rxframe(wlc_info_t *wlc, void* p)
 		RxStatus1 = D11RXHDR_GE128_ACCESS_VAL(rxh, RxStatus1);
 
 		/* Lookup CFP cubby from the AMT index */
-		scb_cfp = wlc_cfp_amt_id_lookup(wlc, flowid);
+		scb = wlc_scb_amt_lookup(wlc, flowid);
 
-		if (!scb_cfp) {
+		if (!scb) {
 			/* Packet not enqueud; SCB not found.
 			 * Release all chained packets and recv current packet.
 			 */
@@ -3429,7 +2831,8 @@ wlc_cfp_rxframe(wlc_info_t *wlc, void* p)
 			return;
 		}
 
-		scb = SCB_CFP_SCB(scb_cfp);
+		ASSERT(scb);
+		scb_cfp = SCB_CFP(cfp, scb);
 	}
 
 	/* AMSDU RX state management */
@@ -3502,25 +2905,23 @@ wlc_cfp_rxframe(wlc_info_t *wlc, void* p)
 
 #if defined(CFP_REVLT80_UCODE_WAR)
 	if (D11REV_LT(wlc->pub->corerev, 128)) {
-		uint16 cfp_flowid;
+		uint16 flowid;
 
 		/* Flowid from PKTFWD Lookup Table */
-		cfp_flowid = wl_pktfwd_get_cfp_flowid(wlc->wl, (uint8 *)(&h->a2));
+		flowid = wl_pktfwd_get_cfp_flowid(wlc->wl, (uint8 *)(&h->a2));
 
 		/* Fetch contexts from cfp_flowid */
-		if (cfp_flowid != ID16_INVALID)
-			scb_cfp = SCB_CFP_ID_TO_PTR_G(WLC_UNIT(wlc), cfp_flowid);
+		if (flowid != ID16_INVALID) {
+			/* SCB flowid lookup */
+			scb = wlc_scb_flowid_lookup(wlc, flowid);
 
-		if (!scb_cfp || !SCB_CFP_RX_ENABLED(scb_cfp)) {
-			/* Packet not enqueud; SCB not found.
-			 * Release all chained packets and recv current packet.
-			 */
-			wlc_cfp_rx_sendup(wlc, p);
-			return;
+			ASSERT(scb);
+
+			/* Extract cubby pointer */
+			scb_cfp = SCB_CFP(cfp, scb);
 		}
 
 #ifdef WLSCB_HISTO
-		scb = SCB_CFP_SCB(scb_cfp);
 		if (amsdu)
 			WLSCB_HISTO_RX(scb, (WLPKTTAG(p))->rspec, RXHDR_GET_MSDU_COUNT(rxh, wlc));
 #endif /* WLSCB_HISTO */
@@ -3532,6 +2933,12 @@ wlc_cfp_rxframe(wlc_info_t *wlc, void* p)
 	ASSERT(D11REV_GE(wlc->pub->corerev, 128));
 
 #endif /* ! CFP_REVLT80_UCODE_WAR */
+
+	/* CFP Fast path Enable check */
+	if (!scb_cfp || !SCB_CFP_RX_ENABLED(scb_cfp)) {
+		wlc_cfp_rx_sendup(wlc, p);
+		return;
+	}
 
 	/* Dump the address and Frame control */
 #ifdef BCMDBG
@@ -3911,14 +3318,28 @@ void
 wlc_cfp_rx_hwa_pkt_audit(wlc_info_t* wlc, void* p)
 {
 	scb_cfp_t * scb_cfp;
+	wlc_cfp_t	*cfp;		/* Module */
 	struct pktq  *chained_q;	/* Per SCB- prio Chained Q */
 	void* cur_pkt = NULL;
 	void* next_pkt = NULL;
 	uint16 idx = 0;
 	uint8 prio = 0;
+	struct scb* scb;
+
+	/* Initialize */
+	cfp = WLC_CFP(wlc->cfp);
 
 	/* Loop through each cfp cubby */
-	FOREACH_CFP_FLOWID_G(WLC_CFP_UNIT(cfp_info), idx, scb_cfp) {
+	for (idx = 0; idx < SCB_MAX_FLOWS; idx++) {
+		/* SCB flowid lookup */
+		scb = wlc_scb_flowid_lookup(wlc, idx);
+
+		if (scb == NULL)
+			continue;
+
+		/* Extract cubby pointer */
+		scb_cfp = SCB_CFP(cfp, scb);
+
 		if (scb_cfp == NULL)
 			continue;
 
@@ -3973,47 +3394,24 @@ wlc_cfp_rx_hwa_pkt_audit(wlc_info_t* wlc, void* p)
 }
 #endif /* DONGLEBUILD */
 
-#ifdef DONGLEBUILD
 /** Exported functions to SQS uses cfp_unit = 0 in full dongle */
 scb_cfp_t *
-wlc_scb_cfp_id2ptr(uint16 cfp_flowid)
+wlc_scb_cfp_id2ptr(wlc_info_t* wlc, uint16 flowid)
 {
 	scb_cfp_t *scb_cfp;
+	wlc_cfp_t	*cfp;		/* Module */
+	cfp = WLC_CFP(wlc->cfp);
+	struct scb* scb;
 
-	ASSERT(CFP_FLOWID_VALID(cfp_flowid));
-	scb_cfp = SCB_CFP_ID_TO_PTR_G(0, cfp_flowid);
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
+
+	ASSERT(scb);
+
+	/* Extract cubby pointer */
+	scb_cfp = SCB_CFP(cfp, scb);
 
 	return scb_cfp;
 }
-
-#else /* ! DONGLEBUILD */
-
-/** Get SCB given a CFP flowid */
-struct scb *
-wlc_cfp_flowid_2_scb(wlc_info_t * wlc, uint16 cfp_flowid)
-{
-	scb_cfp_t *scb_cfp;
-
-	ASSERT(CFP_FLOWID_VALID(cfp_flowid));
-
-	scb_cfp = SCB_CFP_ID_TO_PTR_G(WLC_UNIT(wlc), cfp_flowid);
-
-	return SCB_CFP_SCB(scb_cfp);
-}
-
-/** Get CFP flowid from an SCB */
-uint16
-wlc_scb_get_cfp_flowid(wlc_info_t *wlc, struct scb *scb)
-{
-	scb_cfp_t	*scb_cfp;	/* Cubby pointer */
-
-	scb_cfp = SCB_CFP(WLC_CFP(wlc->cfp), scb);
-	ASSERT(scb_cfp != NULL);
-
-	return SCB_CFP_FLOWID(scb_cfp);
-}
-
-#endif /* ! DONGLEBUILD */
 
 /** Return the scb cfp cubby given the scb ptr */
 void*

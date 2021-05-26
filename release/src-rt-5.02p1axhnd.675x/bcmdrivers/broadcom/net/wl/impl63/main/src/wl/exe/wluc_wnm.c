@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wluc_wnm.c 782706 2020-01-02 07:22:17Z $
+ * $Id: wluc_wnm.c 786928 2020-05-12 05:33:58Z $
  */
 
 #include <wlioctl.h>
@@ -748,18 +748,22 @@ wl_wnm_btq_add_nbr(void *wl, cmd_t *cmd, char **argv)
 				printf(" ERROR: no valid src ether addr provided\n");
 				return BCME_USAGE_ERROR;
 			}
+		} else if (strcmp(param, "-i") == 0) {
+			btq_nbr.bssid_info = htod32(strtoul(val_p, NULL, 0));
 		} else if (strcmp(param, "-c") == 0) {
-			if ((btq_nbr.channel = atoi(val_p)) == 0) {
+			if ((btq_nbr.channel = strtoul(val_p, NULL, 0)) == 0) {
 				printf("ERROR : Couldn't parse neighbor channel.\n");
 				return BCME_USAGE_ERROR;
 			}
 		} else if (strcmp(param, "-o") == 0) {
-			if ((btq_nbr.reg = atoi(val_p)) == 0) {
+			if ((btq_nbr.reg = strtoul(val_p, NULL, 0)) == 0) {
 				printf("ERROR : Couldn't parse neighbor opclass.\n");
 				return BCME_USAGE_ERROR;
 			}
+		} else if (strcmp(param, "-t") == 0) {
+			btq_nbr.phytype = strtoul(val_p, NULL, 0);
 		} else if (strcmp(param, "-p") == 0) {
-			btq_nbr.bss_trans_preference = atoi(val_p);
+			btq_nbr.bss_trans_preference = strtoul(val_p, NULL, 0);
 		} else {
 			printf("%s:Unsupported Parameter for wnm_btq_add_nbr\n", __FUNCTION__);
 		}
@@ -827,11 +831,14 @@ wl_wnm_btq_list_nbr(void *wl, cmd_t *cmd, char **argv)
 	printf("Total No. of NBRs in BTQ list is : %d\n", btq_nbr_list->count);
 	while (btq_nbr_list->count--) {
 		printf("NBR : %d\t", (1 + i));
-		printf("BSSID : %s  channel : %d    OpClass: %d   BTM pref: %d\n",
+		printf("BSSID : %s  BSSID info: %d channel : %d    OpClass: %d "
+				"BTM pref: %d phy type: %d \n",
 				wl_ether_etoa(&btq_nbr_list->btq_nbt_elem[i].bssid),
+				btq_nbr_list->btq_nbt_elem[i].bssid_info,
 				btq_nbr_list->btq_nbt_elem[i].channel,
 				btq_nbr_list->btq_nbt_elem[i].reg,
-				btq_nbr_list->btq_nbt_elem[i].bss_trans_preference);
+				btq_nbr_list->btq_nbt_elem[i].bss_trans_preference,
+				btq_nbr_list->btq_nbt_elem[i].phytype);
 		i++;
 	}
 	return ret;

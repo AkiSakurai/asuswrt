@@ -8,6 +8,7 @@
 #include <errno.h>
 
 #include <rtconfig.h>
+#include <shared.h>
 #include <bcmnvram.h>
 #if defined(RTCONFIG_QCA)
 #include <mtd/mtd-user.h>
@@ -15,14 +16,18 @@
 #include <mtd/mtd-user.h>
 #elif defined(RTCONFIG_LANTIQ)
 #include <mtd/mtd-user.h>
+#elif defined(RTCONFIG_REALTEK)
+#include <mtd/mtd-user.h>
+#include <mtd/mtd-abi.h>
 #elif defined(LINUX26)
 #include <linux/compiler.h>
 #include <mtd/mtd-user.h>
 #else
 #include <linux/mtd/mtd.h>
 #endif
-
+#ifndef RTCONFIG_REALTEK
 #include "mtd-abi.h"
+#endif
 #include "flash_mtd.h"
 
 #if defined(RTCONFIG_RALINK)
@@ -33,6 +38,8 @@
 #include "alpine.h"
 #elif defined(RTCONFIG_LANTIQ)
 #include "lantiq.h"
+#elif defined(RTCONFIG_REALTEK)
+#include "sysdeps/realtek/realtek.h"
 #else
 #error unknown platform
 #endif
@@ -278,7 +285,7 @@ int MTDPartitionRead(const char *mtd_name, const unsigned char *buf, int offset,
 	return 0;
 }
 
-#if defined(RTCONFIG_QCA) && ( defined(RTCONFIG_WIFI_QCA9557_QCA9882) || defined(RTCONFIG_QCA953X) || defined(RTCONFIG_QCA956X))
+#if defined(RTCONFIG_QCA) && ( defined(RTCONFIG_WIFI_QCA9557_QCA9882) || defined(RTCONFIG_QCA953X) || defined(RTCONFIG_QCA956X) || defined(RTCONFIG_QCN550X))
 int VVPartitionRead(const char *mtd_name, const unsigned char *buf, int offset, int count)
 {
 	int cnt, fd, ret;
@@ -328,7 +335,7 @@ int CalRead(const unsigned char *buf, int offset, int count)
 	/// TBD. MTDPartitionRead will fail...
 	return VVPartitionRead(CALDATA_MTD_NAME, buf, offset, count);
 }
-#endif	/* RTCONFIG_QCA && (RTCONFIG_WIFI_QCA9557_QCA9882 || RTCONFIG_QCA953X || RTCONFIG_QCA956X) */
+#endif	/* RTCONFIG_QCA && (RTCONFIG_WIFI_QCA9557_QCA9882 || RTCONFIG_QCA953X || RTCONFIG_QCA956X || RTCONFIG_QCN550X) */
 
 /**
  * Read data from Factory partition.
@@ -349,10 +356,15 @@ int FactoryRead(const unsigned char *buf, int offset, int count)
  */
 int linuxRead(const unsigned char *buf, int offset, int count)
 {
+	char *mtd_name = LINUX_MTD_NAME;
+#if defined(RTCONFIG_DUAL_TRX2)
+	if (get_active_fw_num() == 1)
+		mtd_name = LINUX2_MTD_NAME;
+#endif
 #if defined(RTCONFIG_ALPINE) || defined(BLUECAVE)
 	return -1;
 #endif
-	return MTDPartitionRead(LINUX_MTD_NAME, buf, offset, count);
+	return MTDPartitionRead(mtd_name, buf, offset, count);
 }
 
 /**

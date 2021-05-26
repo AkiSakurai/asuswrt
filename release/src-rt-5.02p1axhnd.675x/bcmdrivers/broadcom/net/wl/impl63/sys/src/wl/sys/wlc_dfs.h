@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_dfs.h 778496 2019-09-04 04:48:42Z $
+ * $Id: wlc_dfs.h 788369 2020-06-30 09:05:24Z $
  */
 
 #ifndef _wlc_dfs_h_
@@ -66,19 +66,21 @@ extern wlc_dfs_info_t *wlc_dfs_attach(wlc_info_t *wlc);
 extern void wlc_dfs_detach(wlc_dfs_info_t *dfs);
 
 /* others */
-extern void wlc_set_dfs_cacstate(wlc_dfs_info_t *dfs, int state, wlc_bsscfg_t *cfg);
+extern int wlc_set_dfs_cacstate(wlc_dfs_info_t *dfs, int state, wlc_bsscfg_t *cfg);
 extern chanspec_t wlc_dfs_sel_chspec(wlc_dfs_info_t *dfs, bool force, wlc_bsscfg_t *cfg);
 extern void wlc_dfs_csa_received(wlc_dfs_info_t *dfs);
 extern void wlc_dfs_reset_all(wlc_dfs_info_t *dfs);
 extern int wlc_dfs_set_radar(wlc_dfs_info_t *dfs, int radar, uint subband);
 extern uint wlc_dfs_get_cactime_ms(wlc_dfs_info_t *dfs);
-extern bool wlc_cac_is_clr_chanspec(wlc_dfs_info_t *dfs, chanspec_t chspec);
 extern bool wlc_dfs_valid_ap_chanspec(wlc_info_t *wlc, chanspec_t chspec);
 extern bool wlc_dfs_monitor_mode(wlc_dfs_info_t *dfs);
 extern uint32 wlc_set_dfs_chan_info(wlc_info_t *wlc, wl_set_chan_info_t *chan_info);
 #ifdef SLAVE_RADAR
 extern void wlc_dfs_send_action_frame_complete(wlc_info_t *wlc, uint txstauts, void *arg);
+extern bool wlc_cac_is_clr_chanspec(wlc_dfs_info_t *dfs, chanspec_t chspec);
 extern void wlc_dfs_start_radar_report_timer(wlc_info_t *wlc);
+#else
+#define wlc_cac_is_clr_chanspec(dfs, chspec) TRUE
 #endif /* SLAVE_RADAR */
 extern void wlc_dfs_save_old_chanspec(wlc_dfs_info_t *dfs, chanspec_t chanspec);
 extern void wlc_dfs_reset_old_chanspec(wlc_dfs_info_t *dfs);
@@ -117,6 +119,7 @@ extern bool wlc_dfs_isbgdfs_active(wlc_dfs_info_t *dfs);
 #define wlc_dfs_send_action_frame_complete(wlc, txstauts, arg) do {} while (0)
 #define wlc_dfs_start_radar_report_timer(wlc_info_t *wlc) do {} while (0)
 #endif /* SLAVE_RADAR */
+#define wlc_cac_is_clr_chanspec(dfs, chspec) TRUE
 #define wlc_dfs_save_old_chanspec(dfs, chspec) ({BCM_REFERENCE(dfs); BCM_REFERENCE(chspec);})
 #define wlc_dfs_reset_old_chanspec(dfs) ({BCM_REFERENCE(dfs);})
 #endif /* !WLDFS */

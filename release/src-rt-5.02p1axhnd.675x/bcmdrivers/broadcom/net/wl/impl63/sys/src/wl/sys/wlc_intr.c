@@ -51,7 +51,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_intr.c 778924 2019-09-13 19:33:40Z $
+ * $Id: wlc_intr.c 785998 2020-04-14 01:57:58Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -187,24 +187,26 @@ bool BCMFASTPATH
 wlc_dpc(wlc_info_t *wlc, bool bounded, wlc_dpc_info_t *dpc)
 {
 	uint32 macintstatus;
-#if defined(WL_PSMX) && defined(WL_AIR_IQ)
-	uint32 macintstatus_x;
+#if defined(WL_PSMX)
+	uint32 macintstatus_x = 0;
 #endif // endif
 	wlc_hw_info_t *wlc_hw = wlc->hw;
 	d11regs_t *regs = wlc->regs;
 	bool fatal = FALSE;
 
-#if defined(WL_PSMX) && defined(WL_AIR_IQ)
+#if defined(WL_PSMX)
 	macintstatus = wlc_hw->macintstatus;
 	if ((macintstatus & MI_PSMX) && (D11REV_GE(wlc_hw->corerev, 65))) {
 		macintstatus_x = GET_MACINTSTATUS_X(wlc->osh, wlc_hw);
+#if defined(WL_AIR_IQ)
 		if (macintstatus_x & MIX_AIRIQ) {
 			SET_MACINTSTATUS_X(wlc->osh, wlc_hw, MIX_AIRIQ);
 			/* Air-IQ data to handle */
 			wlc_airiq_vasip_fft_dpc(wlc);
 		}
+#endif /* WL_AIR_IQ */
 	}
-#else /* WL_PSMX && WL_AIR_IQ */
+#else /* WL_PSMX */
 	if (wlc_hw->macintstatus & MI_BUS_ERROR) {
 		WL_ERROR(("%s: MI_BUS_ERROR\n",
 				__FUNCTION__));
@@ -217,7 +219,7 @@ wlc_dpc(wlc_info_t *wlc, bool bounded, wlc_dpc_info_t *dpc)
 			return FALSE;
 		}
 	}
-#endif /* WL_PSMX && WL_AIR_IQ */
+#endif /* WL_PSMX */
 
 	if (DEVICEREMOVED(wlc)) {
 		WL_ERROR(("wl%d: %s: dead chip\n", wlc->pub->unit, __FUNCTION__));
@@ -446,6 +448,24 @@ wlc_dpc(wlc_info_t *wlc, bool bounded, wlc_dpc_info_t *dpc)
 			}
 		}
 	}
+
+#if defined(WL_PSMX)
+	if (macintstatus_x & MI_GP0) {
+		wlc_dump_psmx_fatal(wlc, PSMX_FATAL_PSMWD);
+
+#ifndef DONGLEBUILD
+		/* wlc_iovar_dump(wlc, "ucode_fatal", strlen("ucode_fatal"), NULL, 2000); */
+#endif /* DONGLEBUILD */
+		ASSERT(!"PSMX Watchdog");
+		WLCNTINCR(wlc->pub->_cnt->psmxwds);
+		if (wlc_check_assert_type(wlc, WL_REINIT_RC_PSM_WD) == TRUE) {
+			goto out;
+		} else {
+			goto exit;
+		}
+	}
+#endif /* WL_PSMX */
+
 #ifdef WAR4360_UCODE
 	if (wlc_hw->need_reinit) {
 		/* big hammer */

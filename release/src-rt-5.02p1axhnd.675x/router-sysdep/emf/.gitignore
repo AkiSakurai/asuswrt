@@ -1,7 +1,0 @@
-*.o
-*.ko
-*.depend
-emfconf/emf
-igsconf/igs
-emfconf/prebuilt/emf
-igsconf/prebuilt/igs

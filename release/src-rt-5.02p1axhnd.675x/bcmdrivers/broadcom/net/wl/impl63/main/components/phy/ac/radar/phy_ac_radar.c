@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_radar.c 781576 2019-11-25 09:27:30Z $
+ * $Id: phy_ac_radar.c 785212 2020-03-17 07:31:09Z $
  */
 
 #include <typedefs.h>
@@ -323,7 +323,9 @@ BCMATTACHFN(phy_radar_init_st)(phy_info_t *pi, phy_radar_st_t *st)
 	st->rparams.radar_args.thresh0_sc = st->rparams.radar_thrs2.thresh0_sc_20_lo;
 	st->rparams.radar_args.thresh1_sc = st->rparams.radar_thrs2.thresh1_sc_20_lo;
 	st->rparams.radar_args.fmdemodcfg = 0x7f09;
-	st->rparams.radar_args.autocorr = 0x1e;
+	/* autocorr[0] = ON/OFF 6878 EXT_PW_TOL_SET; autocorr[4:1] = mode for 6878 EXT_PW_TOL_SET */
+	/* autocorr[15:5] = PRI var check for stagger radar */
+	st->rparams.radar_args.autocorr = 0x191e;
 	/* it is used to check pw for acphy. if pw > 30us, then check fm */
 	st->rparams.radar_args.st_level_time = 0x8258;
 	st->rparams.radar_args.min_pw = 0;

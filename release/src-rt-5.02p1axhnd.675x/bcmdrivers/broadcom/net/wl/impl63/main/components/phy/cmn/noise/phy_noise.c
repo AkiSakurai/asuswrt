@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_noise.c 779349 2019-09-25 19:58:57Z $
+ * $Id: phy_noise.c 786441 2020-04-27 22:50:58Z $
  */
 
 #include <phy_cfg.h>

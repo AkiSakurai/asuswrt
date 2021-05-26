@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_calmgr.c 782606 2019-12-26 22:06:52Z $
+ * $Id: phy_ac_calmgr.c 785365 2020-03-23 14:11:48Z $
  */
 
 #include <phy_cfg.h>
@@ -682,14 +682,7 @@ phy_ac_calmgr_singleshot(phy_info_t *pi, uint8 searchmode, acphy_cal_result_t *a
 			wlc_phy_do_papd_cal_acphy(pi, -1);
 		}
 	}
-	if (PHY_PAPDEN(pi) && ACMAJORREV_129(pi->pubpi->phy_rev) &&
-		CHSPEC_IS5G(pi->radio_chanspec)) {
-		/* running 2step dccal before PAPD */
-		phy_ac_dccal_papd(pi, FALSE);
-		wlc_phy_do_papd_cal_acphy(pi, -1);
-		pi->skip_wdpapd = FALSE;
-		phy_ac_dccal_papd(pi, TRUE);
-	} else if (PHY_PAPDEN(pi) && ACMAJORREV_51_129(pi->pubpi->phy_rev)) {
+	if (PHY_PAPDEN(pi) && ACMAJORREV_51_129(pi->pubpi->phy_rev)) {
 		wlc_phy_do_papd_cal_acphy(pi, -1);
 		pi->skip_wdpapd = FALSE;
 	}
@@ -968,6 +961,13 @@ wlc_phy_cals_acphy(phy_type_calmgr_ctx_t *ctx, uint8 legacy_caltype, uint8 searc
 	 */
 	phy_ac_calmgr_clean(pi);
 
+	if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+		/* After cal cleanup, with final radio config and with c2c_sync re-enabled,
+		 * re-calibrate DC (BCAWLAN-214876)
+		 */
+		phy_ac_dccal(pi);
+	}
+
 	if (pi->pubpi->phy_rev >= 47) {
 		phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, FALSE);
 	}
@@ -1022,7 +1022,7 @@ wlc_phy_low_rate_adc_enable_acphy(phy_info_t *pi, bool enable)
 	if (ACMAJORREV_129(pi->pubpi->phy_rev) && 0) {
 		mode = enable ? pi->u.pi_acphy->sromi->srom_low_adc_rate_en : 0;
 	    phy_ac_chanmgr_low_rate_tssi_rfseq_fiforst_dly(pi, enable);
-		wlc_phy_set_rfseqext_tbl_majrev47(pi, mode);
+		wlc_phy_set_rfseqext_tbl(pi, mode);
 	}
 }
 

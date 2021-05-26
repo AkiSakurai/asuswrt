@@ -335,7 +335,7 @@ void bsd_dump_sta_info(bsd_info_t *info)
 		intf_info = &(info->intf_info[idx]);
 		for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 			bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
-			if (bssinfo->valid) {
+			if ((bssinfo->valid) && BSD_BSS_BSD_OR_WBD_ENABLED(bssinfo)) {
 				/* assoclist */
 				assoclist = bssinfo->assoclist;
 				while (assoclist) {
@@ -695,7 +695,7 @@ bool bsd_check_if_oversub(bsd_info_t *info, bsd_intf_info_t *intf_info)
 
 	for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 		bssinfo = &(intf_info->bsd_bssinfo[bssidx]);
-		if (!(bssinfo->valid))
+		if (!(bssinfo->valid) && !BSD_BSS_BSD_ENABLED(bssinfo))
 			continue;
 
 		BSD_AT("bssidx=%d intf:%s\n", bssidx, bssinfo->ifnames);
@@ -900,7 +900,8 @@ bsd_process_bss_trans_resp(void *data, int response)
 			for (bssidx = 0; bssidx < WL_MAXBSSCFG; bssidx++) {
 				tmp_bssinfo = &tmp_intf_info->bsd_bssinfo[bssidx];
 				if (!(tmp_bssinfo->valid) ||
-					(tmp_bssinfo->steerflag & BSD_BSSCFG_NOTSTEER)) {
+					(tmp_bssinfo->steerflag & BSD_BSSCFG_NOTSTEER) ||
+					!BSD_BSS_BSD_ENABLED(bssinfo)) {
 					continue;
 				}
 

@@ -391,7 +391,7 @@ wl_sta_info_print(void *wl, void *buf)
 		printf("\n\t crypto: %s\n",   bcm_crypto_algo_name(algo));
 	}
 
-	printf("\t flags 0x%x:%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
+	printf("\t flags 0x%x:%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
 	       sta->flags,
 	       (sta->flags & WL_STA_BRCM) ? " BRCM" : "",
 	       (sta->flags & WL_STA_WME) ? " WME" : "",
@@ -413,10 +413,7 @@ wl_sta_info_print(void *wl, void *buf)
 	       (sta->flags & WL_STA_GBL_RCLASS) ? " GBL_RCLASS" : "",
 	       (sta->flags & WL_STA_DWDS_CAP) ? " DWDS_CAP": "",
 	       (sta->flags & WL_STA_DWDS) ? " DWDS_ACTIVE" : "",
-	       (sta->flags & WL_STA_WDS) ? " WDS" : "",
-	       (sta->flags & WL_STA_WDS_LINKUP) ? " WDS_LINKUP" : "",
-	       (sta->flags & WL_STA_RRM_CAP) ? " RRM" : "",
-	       (sta->flags & WL_STA_RRM_BCN_PASSIVE_CAP) ? " RRM_BCN_PASS" : "");
+	       (sta->flags & WL_STA_WDS) ? " WDS" : "");
 
 	printf("\t HT caps 0x%x:%s%s%s%s%s%s%s%s%s\n",
 		sta->ht_capabilities,

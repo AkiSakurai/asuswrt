@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc.h 782016 2019-12-09 09:33:24Z $
+ * $Id: wlc.h 787909 2020-06-16 08:17:03Z $
  */
 
 #ifndef _wlc_h_
@@ -138,6 +138,9 @@
 	                                 * and flush internal packets
 	                                 */
 #define FLUSHFIFO_FLUSHSCB		(4)
+#define MOVEFIFO_FLUSHSCB		(5) /* Move packets that belong to the scb
+					     * to a different fifo
+					     */
 
 #define BCNMISC_IBSS		(1<<0)	/* bcns promisc mode override for IBSS */
 #define BCNMISC_SCAN		(1<<1)	/* bcns promisc mode override for scan */
@@ -473,6 +476,7 @@ extern const uint8 prio2ac[];
 #define DATA_BLOCK_SPATIAL	(1 << 6)
 #define DATA_BLOCK_DFSP		(1 << 7)
 #define DATA_BLOCK_MUTX		(1 << 8)
+#define DATA_BLOCK_MASK_ALL	0xFFFF
 
 /* Ucode MCTL_WAKE override bits */
 #define WLC_WAKE_OVERRIDE_CLKCTL	0x01
@@ -505,9 +509,7 @@ extern const uint8 prio2ac[];
 #define MAXTXPKTS_AMPDUAQM	2048		/* max # pkts pending for AQM */
 #endif // endif
 /* default value of max # pkts pending for AQM */
-#define MAXTXPKTS_AMPDUAQM_DFT_GE128	(MAXTXPKTS_AMPDUAQM >> 1)
-#define MAXTXPKTS_AMPDUAQM_DFT_GE65	(MAXTXPKTS_AMPDUAQM >> 2)
-#define MAXTXPKTS_AMPDUAQM_DFT_GE40	(MAXTXPKTS_AMPDUAQM >> 3)
+#define MAXTXPKTS_AMPDUAQM_DFT		(MAXTXPKTS_AMPDUAQM >> 1)
 
 /* frameburst */
 #define	MAXTXFRAMEBURST_MAX	8		/* vanilla xpress mode: max frames/burst */
@@ -924,6 +926,8 @@ struct wlcband {
 	wlc_rateset_t	hw_rateset;		/**< rates supported by chip (phy-specific) */
 	uint8		basic_rate[WLC_MAXRATE + 1]; /**< basic rates indexed by rate */
 
+	struct scb	*proxd_scb;		/**< permanent scb for proxd ratespec */
+
 	uint8		bw_cap;			/**< Bandwidth bitmask on this band */
 	int		roam_trigger;		/**< "good enough" threshold for current AP */
 	uint		roam_delta;		/**< "signif better" thresh for new AP candidates */
@@ -1071,6 +1075,10 @@ struct sa_seqctl {
  */
 struct cpktq {
 	struct pktq             cq;
+	bool			flush_in_progress;	/* Boolean used to prevent pktfree callback
+							 * functions to enq new packets when flush
+							 * is in progress.
+							 */
 };
 
 /**
@@ -1463,6 +1471,10 @@ struct wlc_info {
 	uint		block_time;		/**< stall start time */
 	int		block_timeout;		/**< stall detection time */
 	uint32		txs_fifo_cnts[NFIFO_EXT_MAX]; /**< counters of tx status */
+	uint		block_timeout_psmwd;	/**< Stall detection timeout to dump MAC logs */
+	uint		block_timeout_fatal;	/**< Stall detection timeout to re-init radio */
+	uint		block_timeout_stats;	/**< Num CCASTATs prior to forcing PSM WD */
+	uint		block_timeout_once;		/**< Dump mac logs once */
 #endif /* BCMDBG_TXSTALL */
 	bool		bcmcfifo_drain;		/**< TX_BCMC_FIFO is set to drain */
 
@@ -1996,6 +2008,10 @@ struct wlc_info {
 	uint32 pktpend_max;
 	uint32 pktpend_avg;
 #endif /* WL_PS_STATS */
+#ifdef WL_TXPKTPEND_SYNC
+	uint32 pktpend_sync;		/* Flags to enable txpktpend counter sync */
+	uint32 pktpend_sync_cnt;	/* Counter for txpktpend sync */
+#endif /* WL_TXPKTPEND_SYNC */
 
 	/* ====== !!! ADD NEW FIELDS ABOVE HERE !!! ====== */
 
@@ -2014,6 +2030,9 @@ struct wlc_info {
 						 * via 'rateset' IOVAR.
 						 *
 						 */
+#ifdef BCM_CSIMON
+	wlc_csimon_info_t *csimon_info;	/* CSIMON info */
+#endif // endif
 #if defined(BCMDBG)
 	/* ========== KEEP all BCMDBG fields at the end =========== */
 #ifdef DEBUG_TBTT
@@ -2035,6 +2054,11 @@ struct wlc_hc_ctx {
 };
 int wlc_hc_unpack_idlist(bcm_xtlv_t *id_list, uint16 *ids, uint *count);
 #endif /* WL_DD_HANDLER */
+
+#ifdef WL_TXPKTPEND_SYNC
+#define TXPKTPEND_SYNC_EN		0x1	/* Enable txpktpend counter sync */
+#define TXPKTPEND_SYNC_PEND		0x2
+#endif /* WL_TXPKTPEND_SYNC */
 
 #define DMA_CT_PRECONFIGURED		(1 << 0)
 #define DMA_CT_IOCTL_OVERRIDE		(1 << 1)
@@ -2256,6 +2280,17 @@ do {									\
 		wlc->core->txpktpendtot += val;				\
 	wlc->core->txpktpend[fifo] += val;				\
 } while (0)
+#ifdef WL_TXPKTPEND_SYNC
+#define TXPKTPENDDEC(wlc, fifo, val)					\
+do {									\
+	if (fifo < TX_BCMC_FIFO ||					\
+		(BCM_DMA_CT_ENAB(wlc) && fifo >= TX_FIFO_EXT_START))	\
+		wlc->core->txpktpendtot -= val;				\
+	wlc->core->txpktpend[fifo] -= val;				\
+	if (wlc->core->txpktpend[fifo] < 0)				\
+		wlc->pktpend_sync |= TXPKTPEND_SYNC_EN;			\
+} while (0)
+#else
 #define TXPKTPENDDEC(wlc, fifo, val)					\
 do {									\
 	if (fifo < TX_BCMC_FIFO ||					\
@@ -2263,6 +2298,7 @@ do {									\
 		wlc->core->txpktpendtot -= val;				\
 	wlc->core->txpktpend[fifo] -= val;				\
 } while (0)
+#endif /* WL_TXPKTPEND_SYNC */
 #define TXPKTPENDCLR(wlc, fifo)	TXPKTPENDDEC(wlc, fifo, wlc->core->txpktpend[fifo])
 
 /* ul ofdma trigger pending counts */
@@ -2377,6 +2413,7 @@ extern void *wlc_sendauth(wlc_bsscfg_t *cfg, struct ether_addr *ea, struct ether
 	uint8 *challenge_text, bool short_preamble,
 	void (*tx_cplt_fn)(wlc_info_t *wlc, uint txstatus, void *arg), void *arg);
 
+extern void wlc_scb_close_link(wlc_info_t *wlc, struct scb *scb);
 extern void wlc_scb_disassoc_cleanup(wlc_info_t *wlc, struct scb *scb);
 extern void wlc_cwmin_gphy_update(wlc_info_t *wlc, wlc_rateset_t *rs, bool associated);
 extern uint16 wlc_assocscb_getcnt(wlc_info_t *wlc);
@@ -2890,6 +2927,11 @@ void wlc_stf_nap_rssi_thresh_handling(wlc_info_t* wlc);
 int wlc_hwrsscbs_alloc(wlc_info_t *wlc);
 void wlc_hwrsscbs_free(wlc_info_t *wlc);
 
+#ifdef WL_PROXDETECT
+int wlc_proxdscbs_alloc(wlc_info_t *wlc);
+void wlc_proxdscbs_free(wlc_info_t *wlc);
+#endif /* WL_PROXDETECT */
+
 #ifdef PHYCAL_CACHING
 /* Set current operating channel */
 int wlc_set_operchan(wlc_info_t *wlc, chanspec_t chanspec);
@@ -2936,4 +2978,35 @@ uint wlc_bandunit2chspecband(enum wlc_bandunit bu);
 const char *wlc_bandunit_name(enum wlc_bandunit bu);
 void wlc_get_bands_str(struct wlc_info *wlc, char *buf, int bufsize);
 
+/* Global lookup table to access wlc ptr given radio unit */
+/**
+ * In full dongle, a single global WLC instance manages the radio.
+ * In NIC mode, upto 4 global instances exist allowing 3 radios (atlas config)
+ */
+#if defined(DONGLEBUILD)
+#define WLC_UNIT_MAX		1 /* Single radio global WLC instance */
+#define _WLC_UNIT(wlc_unit)	0 /* Ignore unit number, default to 0 */
+#define WLC_G_INIT		NULL
+#else /* ! DONGLEBUILD */
+#define WLC_UNIT_MAX		4 /* Max 4 global WLC instances for 4 radios */
+#define _WLC_UNIT(wlc_unit)	(wlc_unit)
+#define WLC_G_INIT		NULL, NULL, NULL, NULL
+#endif /* DONGLEBUILD */
+
+/** Unit number used to index the global, defaults to 0 in FullDongle */
+#define WLC_UNIT(wlc)               _WLC_UNIT((wlc)->pub->unit)
+
+extern wlc_info_t* wlc_global[WLC_UNIT_MAX];
+#define WLC_G(wlc_unit) \
+	wlc_global[_WLC_UNIT(wlc_unit)]
+/** Audit WLC globals before accessing. */
+#ifdef BCMDBG
+#define WLC_AUDIT_G(wlc_unit) \
+	({ \
+		ASSERT(_WLC_UNIT(wlc_unit) < WLC_UNIT_MAX); \
+		ASSERT(WLC_G(wlc_unit) != (wlc_info_t *)NULL); \
+	})
+#else   /* ! BCMDBG */
+#define WLC_AUDIT_G(wlc_unit)		do { /* noop */ } while (0)
+#endif  /* ! BCMDBG */
 #endif	/* _wlc_h_ */

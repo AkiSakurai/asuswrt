@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_ampdu.h 782185 2019-12-12 14:26:59Z $
+ * $Id: wlc_ampdu.h 786143 2020-04-17 20:29:02Z $
 */
 
 #ifndef _wlc_ampdu_tx_h_
@@ -55,6 +55,10 @@
 #include <wlc_linkstats.h>
 #endif // endif
 #include <wlc_tx.h>
+
+#if defined(WL_MU_TX)
+#include <wlc_wlfc.h>
+#endif // endif
 
 #if defined(BCMDBG) || defined(WLTEST) || defined(BCMDBG_AMPDU)
 #define WLC_AMPDU_DUMP
@@ -155,6 +159,12 @@ extern void wlc_ampdu_mupkteng_fill_percache_info(ampdu_tx_info_t *ampdu_tx, str
 extern void wlc_sidechannel_init(wlc_info_t *wlc);
 #endif /* WLAMPDU_UCODE */
 
+#if defined(WLTAF) || defined(WLCFP)
+extern void wlc_ampdu_scb_close_link(wlc_info_t *wlc, struct scb *scb);
+#else /* !WLTAF && !WLCFP */
+#define wlc_ampdu_scb_close_link(a, b)	do {} while (0)
+#endif /* WLTAF || WLCFP */
+
 extern void ampdu_cleanup_tid_ini(ampdu_tx_info_t *ampdu_tx, struct scb *scb,
 	uint8 tid, bool force);
 
@@ -229,7 +239,6 @@ extern void wlc_ampdu_dpstats_free(wlc_info_t* wlc, struct scb* scb);
 #ifdef PROP_TXSTATUS
 extern void wlc_ampdu_send_bar_cfg(ampdu_tx_info_t * ampdu, struct scb *scb);
 extern void wlc_ampdu_flush_ampdu_q(ampdu_tx_info_t *ampdu, wlc_bsscfg_t *cfg);
-extern void wlc_ampdu_flush_pkts(wlc_info_t *wlc, struct scb *scb, uint8 tid);
 extern void wlc_ampdu_flush_flowid_pkts(wlc_info_t *wlc, struct scb *scb, uint16 flowid);
 
 #endif /* PROP_TXSTATUS */
@@ -321,45 +330,29 @@ extern bool wlc_cfp_ampdu_ps_send(wlc_info_t *wlc, struct scb *scb, uint32 tid_b
 
 #ifdef WLSQS
 /** Single stage Queuing and Scheduling module */
-extern bool wlc_sqs_ampdu_capable(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio);
-extern uint16 wlc_sqs_ampdu_vpkts(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio);
-extern uint16 wlc_sqs_ampdu_v2r_pkts(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio);
-extern uint16 wlc_sqs_ampdu_n_pkts(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio);
-extern uint16 wlc_sqs_ampdu_tbr_pkts(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio);
-extern uint16 wlc_sqs_ampdu_in_transit_pkts(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio);
-extern void wlc_sqs_pktq_v2r_revert(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio,
-	uint16 v2r_reverts);
-extern void wlc_sqs_pktq_vpkts_enqueue(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio,
-	uint16 v_pkts);
-extern void wlc_sqs_pktq_vpkts_rewind(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio,
-	uint16 count);
-extern void wlc_sqs_pktq_vpkts_forward(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio,
-	uint16 count);
+extern bool wlc_sqs_ampdu_capable(wlc_info_t *wlc, struct scb* scb, uint8 prio);
+extern uint16 wlc_scb_ampdu_n_pkts(wlc_info_t *wlc, struct scb* scb, uint8 prio);
+extern uint16 wlc_scb_ampdu_tbr_pkts(wlc_info_t *wlc, struct scb* scb, uint8 prio);
+extern uint16 wlc_scb_ampdu_in_transit_pkts(wlc_info_t *wlc, struct scb* scb, uint8 prio);
 extern int wlc_sqs_ampdu_evaluate(ampdu_tx_info_t *ampdu_tx, scb_ampdu_tx_t *scb_ampdu,
 		uint8 prio, bool force, taf_scheduler_public_t* taf);
-extern int wlc_sqs_ampdu_admit(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio, uint16 v_pkts);
+extern int wlc_sqs_ampdu_admit(wlc_info_t *wlc, uint16 flowid, uint8 prio, uint16 v_pkts);
 #ifdef WLTAF
-extern int wlc_sqs_taf_admit(wlc_info_t *wlc, struct scb *scb, uint8 prio, uint16 v_pkts);
 extern void* wlc_ampdu_taf_sqs_link_init(wlc_info_t *wlc, struct scb *scb, uint8 prio);
 #endif // endif
 extern void wlc_sqs_v2r_ampdu_sendup(wlc_info_t *wlc, uint8 prio,
 	void *pktlist_head, void *pktlist_tail, uint16 pkt_count, scb_cfp_t *scb_cfp);
-extern void wlc_sqs_ampdu_v2r_enqueue(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio,
-	uint16 v2r_count);
-extern void wlc_sqs_ampdu_v2r_dequeue(wlc_info_t *wlc, scb_cfp_t *scb_cfp, uint8 prio,
-	uint16 pkt_count);
-#ifdef WLATF
-extern int wlc_ampdu_tx_intransit_get(wlc_info_t *wlc);
-#endif // endif
-#define SQS_AMPDU_V_PKTS(pktq, prio) ((pktq)->q[(prio)].v_pkts)
-#define SQS_AMPDU_V2R_PKTS(pktq, prio) ((pktq)->q[(prio)].v2r_pkts)
+#ifdef PKTQ_LOG
+extern void wlc_ampdu_sqs_pktq_log(wlc_info_t *wlc, struct scb* scb, uint8 prio, bool rewind,
+	uint16 v_pkts_tot, uint16 v_pkts);
+#endif /* PKTQ_LOG */
 #define SQS_AMPDU_R_PKTS(pktq, prio) ((pktq)->q[(prio)].n_pkts)
 
-#define SQS_AMPDU_PKTLEN(pktq, prio) \
-	(SQS_AMPDU_V_PKTS((pktq), (prio)) + (SQS_AMPDU_V2R_PKTS((pktq), (prio)) ? 0 : \
+#define SQS_AMPDU_PKTLEN(flowid, pktq, prio) \
+	(wlc_sqs_vpkts(flowid, prio) + (wlc_sqs_v2r_pkts(flowid, prio) ? 0 : \
 		SQS_AMPDU_R_PKTS((pktq), (prio))))
-#define SQS_AMPDU_RELEASE_LEN(pktq, prio, release) \
-	((release) - (SQS_AMPDU_V2R_PKTS(pktq, prio) ? 0 : SQS_AMPDU_R_PKTS(pktq, prio)))
+#define SQS_AMPDU_RELEASE_LEN(flowid, pktq, prio, release) \
+	((release) - (wlc_sqs_v2r_pkts(flowid, prio) ? 0 : SQS_AMPDU_R_PKTS(pktq, prio)))
 
 #endif /* WLSQS */
 
@@ -389,11 +382,6 @@ extern int wlc_ampdu_tx_intransit_get(wlc_info_t *wlc);
 		PKTS_TO_MPDUS(aggsf, pkt_cnt); \
 	})
 
-#if defined(WLSQS) && defined(WLTAF)
-extern uint16 wlc_ampdu_pull_packets(wlc_info_t* wlc, struct scb* scb,
-	uint8 tid, uint16 request_cnt, taf_scheduler_public_t* taf);
-#endif /* WLSQS && WLTAF */
-
 /* AMPDU precedence queue functions exposed outside */
 extern void *wlc_ampdu_pktq_pdeq(wlc_info_t *wlc, struct scb *scb, uint8 tid);
 extern bool wlc_ampdu_pktq_penq(wlc_info_t *wlc, struct scb *scb, uint8 tid, void *pkt);
@@ -402,5 +390,6 @@ extern void *wlc_ampdu_pktq_penq_head(wlc_info_t *wlc, struct scb *scb, uint8 ti
 #if defined(BCM_PKTFWD_FLCTL)
 extern void wlc_ampdu_get_link_credits(wlc_info_t *wlc, struct scb *scb, int32 *credits);
 #endif /* BCM_PKTFWD_FLCTL */
+extern int wlc_ampdu_tx_intransit_get(wlc_info_t *wlc);
 
 #endif /* _wlc_ampdu_tx_h_ */

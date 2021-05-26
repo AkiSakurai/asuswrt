@@ -1,6 +1,7 @@
 ﻿@font-face{
 	font-family: rog;
-	src: url(/fonts/ROG_Fonts-Regular.otf) format("opentype");
+	src: url(/fonts/ROG_Fonts-Regular.woff) format("woff"),
+	     url(/fonts/ROG_Fonts-Regular.otf) format("opentype");
 }
 #welcomeTitle{
 	font-family: rog;
@@ -35,6 +36,10 @@ body{
 }
 a{
 	color: #CF0A2C !important;
+}
+.navigation li dd:hover{
+	text-decoration:underline;
+	background-color: rgba(207,10,44,1);
 }
 /*
 .nonROG{

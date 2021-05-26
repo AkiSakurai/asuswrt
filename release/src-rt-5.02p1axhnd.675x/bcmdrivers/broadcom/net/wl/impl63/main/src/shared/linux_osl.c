@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: linux_osl.c 778301 2019-08-29 01:08:49Z $
+ * $Id: linux_osl.c 785666 2020-04-02 13:56:26Z $
  */
 
 #define LINUX_PORT
@@ -187,7 +187,7 @@ static int16 linuxbcmerrormap[] =
 	-ENODEV,		/* BCME_NODEVICE */
 	-EINVAL,		/* BCME_NMODE_DISABLED */
 	-ENODATA,		/* BCME_NONRESIDENT */
-	-EINVAL,		/* BCME_SCANREJECT */
+	-EBUSY,			/* BCME_SCANREJECT */
 	-EINVAL,		/* BCME_USAGE_ERROR */
 	-EIO,     		/* BCME_IOCTL_ERROR */
 	-EIO,			/* BCME_SERIAL_PORT_ERR */
@@ -448,6 +448,20 @@ osl_attach(void *pdev, uint bustype, bool pkttag)
 	osh->sec_list_base_rxbuf = osh->sec_list_rxbuf;
 	printk("%s No of buffers for RXCTL:%d, TX:%d, RX:%d\n", __FUNCTION__,
 		(uint)SECDMA_RXCTRL_BUF_CNT, (uint)SECDMA_TXBUF_CNT, (uint)SECDMA_RXBUF_CNT);
+
+	/* Setup the PHY STS RX buffers */
+	osh->contig_base_sts_phyrx_pa = osh->contig_base_alloc;
+	osh->contig_base_sts_phyrx_va = osl_secdma_ioremap(osh,
+		phys_to_page((u32)osh->contig_base_alloc),
+		(uint)SECDMA_STS_PHYRX_MEMBLOCK_SIZE, TRUE, FALSE);
+
+	printk("%s: PHY RX STS va:0x%p, pa:0x%llx \n", __FUNCTION__, osh->contig_base_sts_phyrx_va,
+	  osh->contig_base_sts_phyrx_pa);
+
+	if (osh->contig_base_sts_phyrx_va == NULL) {
+		printk(" PHY RX STS buffer IOREMAP failed\n");
+		goto error;
+	}
 
 #endif /* BCM_SECURE_DMA */
 
@@ -797,6 +811,25 @@ osl_pcie_bus(osl_t *osh)
 	ASSERT(osh && (osh->magic == OS_HANDLE_MAGIC) && osh->pdev);
 
 	return ((struct pci_dev *)osh->pdev)->bus->number;
+}
+
+void
+osl_pcie_aspm_enable(osl_t *osh, uint linkcap_offset, bool aspm)
+{
+	struct pci_dev *dev;
+	uint val;
+	ASSERT(osh && (osh->magic == OS_HANDLE_MAGIC) && osh->pdev);
+
+	dev = (struct pci_dev *)(osh->pdev);
+	pci_read_config_dword(dev, linkcap_offset, &val);
+
+	if (aspm == FALSE) {
+		val &= ~(PCIE_ASPM_ENAB | PCIE_CLKREQ_ENAB);
+	}
+	else {
+		val |= (PCIE_ASPM_ENAB | PCIE_CLKREQ_ENAB);
+	}
+	pci_write_config_dword(dev, linkcap_offset, val);
 }
 
 void
@@ -2024,6 +2057,8 @@ osl_secdma_allocator_cleanup(osl_t *osh)
 	osl_secdma_iounmap(osh, osh->contig_base_coherent_va, SECDMA_DESC_MEMBLOCK_SIZE);
 	osl_secdma_iounmap(osh, osh->contig_base_txbuf_va, (uint)SECDMA_TXBUF_MEMBLOCK_SIZE);
 	osl_secdma_iounmap(osh, osh->contig_base_rxbuf_va, (uint)SECDMA_RXBUF_MEMBLOCK_SIZE);
+	osl_secdma_iounmap(osh,
+		osh->contig_base_sts_phyrx_va, (uint)SECDMA_STS_PHYRX_MEMBLOCK_SIZE);
 #ifdef BCMDONGLEHOST
 	osl_secdma_deinit_elem_mem_block(osh,
 		SECDMA_RXCTRL_BUF_SIZE, SECDMA_RXCTRL_BUF_CNT, osh->sec_list_base_rxbufctl);
@@ -2534,6 +2569,45 @@ osl_secdma_free_consistent(osl_t *osh, void *va, uint size, dmaaddr_t pdma)
 	dma_unmap_page(&pdev->dev, paddr, size_align, DMA_BIDIRECTIONAL);
 } /* osl_secdma_free_consistent */
 
+void *
+osl_secdma_map_sts_phyrx(osl_t *osh, uint size, uint16 align_bits, dmaaddr_t *pap)
+{
+	dma_addr_t dma_handle = 0;
+	struct pci_dev * pdev;
+	uint size_align;
+
+	pdev = osh->pdev;
+	ASSERT(size);
+	size_align = ROUNDUP(size, 8);
+
+	dma_handle = dma_map_page(&pdev->dev, phys_to_page(osh->contig_base_sts_phyrx_pa),
+		0, size_align, DMA_FROM_DEVICE);
+
+#ifdef BCMDMA64OSL
+	PHYSADDRLOSET(*pap, dma_handle & 0xffffffff);
+	PHYSADDRHISET(*pap, (dma_handle >> 32) & 0xffffffff);
+#else
+	*pap = dma_handle;
+#endif // endif
+	return (osh->contig_base_sts_phyrx_va);
+}
+
+void
+osl_secdma_unmap_sts_phyrx(osl_t *osh, void *va, uint size, dmaaddr_t pdma)
+{
+	struct pci_dev * pdev;
+	uint size_align;
+	dma_addr_t paddr;
+#ifdef BCMDMA64OSL
+	PHYSADDRTOULONG(pdma, paddr);
+#else
+	paddr = pdma;
+#endif // endif
+	size_align = ROUNDUP(size, SECDMA_PHYRXSTS_ALIGN);
+	/* printk("Free DD: dma addr 0x%llx, size:%d\n", paddr, size_align); */
+	pdev = osh->pdev;
+	dma_unmap_page(&pdev->dev, paddr, size_align, DMA_FROM_DEVICE);
+} /* osl_secdma_free_consistent */
 #endif /* BCM_SECURE_DMA */
 
 #if defined(BCA_HNDROUTER)

@@ -83,6 +83,15 @@ typedef struct BWL_PRE_PACKED_STRUCT wl_rxsts {
     uint32  sig_a1;			/* HE  SIG-A1 field */
     uint32  sig_a2;			/* HE  SIG-A2 field */
 } BWL_POST_PACKED_STRUCT wl_rxsts_t, wl_mon_rxsts_t;
+
+typedef struct BWL_PRE_PACKED_STRUCT wl_phyextract {
+	int8        rssi;
+	int8        snr;
+	uint8       preamble;
+	uint16      hwrxoff;
+	uint32      rspec;
+} BWL_POST_PACKED_STRUCT wl_phyextract_t;
+
 #include <packed_section_end.h>
 
 #define WLMONRXSTS_SIZE	sizeof(wl_rxsts_t)

@@ -20,12 +20,7 @@ default:
 $(MAKECMDGOALS):
 	$(MAKE) -f build/Makefile -j$(ACTUAL_MAX_JOBS) $(MAKEOVERRIDES) $(MAKECMDGOALS)
 
-PREBUILT_EXTRAMOD=$(shell if [ ! -f "$(HND_SRC)/upb.mak" -o "$(PRBM)" = "1" ]; then echo 1; else echo 0; fi)
-export PREBUILT_EXTRAMOD
-export PRBM_EXT=_preb
-PREBUILT_BCMBIN=$(PREBUILT_EXTRAMOD)
-export PREBUILT_BCMBIN
-export PRBM_DIR=prebuilt
+
 
 .PHONY: $(MAKECMDGOALS)
 

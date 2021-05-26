@@ -273,9 +273,6 @@ static const struct {
 #ifdef HAVE_SSL
   { "pinnedpubkey",     &opt.pinnedpubkey,      cmd_string },
 #endif
-#ifdef HAVE_PIPEFW
-  { "pipefw",           &opt.pipefw,            cmd_boolean },
-#endif
   { "postdata",         &opt.post_data,         cmd_string },
   { "postfile",         &opt.post_file_name,    cmd_file },
   { "preferfamily",     NULL,                   cmd_spec_prefer_family },
@@ -511,10 +508,6 @@ defaults (void)
 #endif
 
   opt.enable_xattr = false;
-
-#ifdef HAVE_PIPEFW
-  opt.pipefw = false;
-#endif
 }
 
 /* Return the user's home directory (strdup-ed), or NULL if none is

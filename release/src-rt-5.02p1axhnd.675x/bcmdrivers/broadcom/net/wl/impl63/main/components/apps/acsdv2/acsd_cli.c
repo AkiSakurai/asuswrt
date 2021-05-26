@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acsd_cli.c 781115 2019-11-12 05:40:05Z $
+ * $Id: acsd_cli.c 784556 2020-03-02 10:22:00Z $
  */
 
 #include <stdio.h>
@@ -51,6 +51,8 @@
 #include <netdb.h>
 
 #include "acsd.h"
+
+char chanspecbuf[32];
 
 enum {
 	CMDARG_COMMAND = 0,	/* cmdarg[] array indices. */
@@ -157,9 +159,11 @@ acsd_variables[] = {	/* Sorted alphabetically for nicer help display */
 	"zdfs_2g_preclear",	/* use ZDFS_2G but not move - ETSI only */
 	"bw_upgradable",
 	"fallback_to_primary",
-	"switch_score_thresh",	/* channel switch score threshold */
+	"acs_switch_score_thresh",	/* channel switch score threshold */
 	"ci_scan_txop_limit",   /* ci scan txop limit */
 	"acs_txop_limit",	/* txop limit */
+	"acs_switch_score_thresh_hi", /* TOTAL SCORE thresh comparsion before fallback */
+	"acs_txop_limit_hi",	/* txop limit threshold before fall back to regular CAC */
 	NULL
 };
 
@@ -192,23 +196,23 @@ show_command_list(void)
 {
 	int i;
 
-	printf("Available commands:\n");
+	acsddbg("Available commands:\n");
 	for (i = 0; acsd_commands[i]; ++i) {
-		printf("%12s%c", acsd_commands[i], ((i+1) % 6) ? ' ':'\n');
+		acsddbg("%12s%c", acsd_commands[i], ((i+1) % 6) ? ' ':'\n');
 	}
-	printf("\n");
+	acsddbg("\n");
 
-	printf("Dump options:\n");
+	acsddbg("Dump options:\n");
 	for (i = 0; dump_table[i].help_text; ++i) {
-		printf("%12s    %s\n", dump_table[i].option, dump_table[i].help_text);
+		acsddbg("%12s    %s\n", dump_table[i].option, dump_table[i].help_text);
 	}
-	printf("\n");
+	acsddbg("\n");
 
-	printf("Available variables (more may exist in the daemon):\n");
+	acsddbg("Available variables (more may exist in the daemon):\n");
 	for (i = 0; acsd_variables[i]; ++i) {
-		printf("%24s%c", acsd_variables[i], ((i+1) % 3) ? ' ':'\n');
+		acsddbg("%24s%c", acsd_variables[i], ((i+1) % 3) ? ' ':'\n');
 	}
-	printf("\n");
+	acsddbg("\n");
 
 	return BCME_OK;
 }
@@ -223,10 +227,10 @@ acs_dump_ch_score_head(ch_score_t * scores, bool dump_all)
 
 	for (i = 0; i < CH_SCORE_MAX; ++i) {
 		if (dump_all || scores[i].weight) {
-			printf("%8.8s ", acs_ch_score_name(i));
+			acsddbg("%8.8s ", acs_ch_score_name(i));
 		}
 	}
-	printf("\n");
+	acsddbg("\n");
 }
 
 static void
@@ -237,16 +241,16 @@ acs_dump_ch_score_body(ch_score_t * scores, bool dump_all)
 	for (i = 0; i < CH_SCORE_MAX; ++i) {
 		ch_score_t *score = &scores[i];
 		if (dump_all || score->weight) {
-			printf("%8d ", score->score * score->weight);
+			acsddbg("%8d ", score->score * score->weight);
 		}
 	}
-	printf("\n");
+	acsddbg("\n");
 }
 
 static void
 acs_dump_reason(ch_candidate_t * candi)
 {
-	printf("%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
+	acsddbg("%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
 		(candi->reason & ACS_INVALID_COEX)? "COEX " : "",
 		(candi->reason & ACS_INVALID_INTF_CCA)? "INTF_CCA " : "",
 		(candi->reason & ACS_INVALID_INTF_BGN)? "INTF_BGN " : "",
@@ -268,7 +272,7 @@ acs_dump_reason(ch_candidate_t * candi)
 static void
 acs_dump_cscore_head(ch_candidate_t *cscore)
 {
-	printf("%7s %8s %3s %3s ", "Channel", "(Chspec)", "Use", "DFS");
+	acsddbg("%7s %8s %3s %3s ", "Channel", "(Chspec)", "Use", "DFS");
 	acs_dump_ch_score_head(cscore->chscore, TRUE);
 }
 
@@ -277,7 +281,7 @@ acs_dump_cscore_body(ch_candidate_t * candi)
 {
 	char buf[CHANSPEC_STR_LEN];
 
-	printf("%7s (0x%04x)  %3s %s", wf_chspec_ntoa(candi->chspec, buf), candi->chspec,
+	acsddbg("%7s (0x%04x)  %3s %s", wf_chspec_ntoa(candi->chspec, buf), candi->chspec,
 		(candi->is_dfs) ? "dfs" : " - ",
 		(candi->valid) ? "" : " Invalid:");
 
@@ -291,13 +295,13 @@ acs_dump_cscore_body(ch_candidate_t * candi)
 static void
 acs_dump_candi(ch_candidate_t * candi)
 {
-	printf("Candidate channel spec: 0x%x\n", candi->chspec);
-	printf(" Valid: %s\n", (candi->valid)? "TRUE" : "FALSE");
+	acsddbg("Candidate channel spec: 0x%4x (%s)\n", candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf));
+	acsddbg(" Valid: %s\n", (candi->valid)? "TRUE" : "FALSE");
 
 	if (candi->valid) {
 		acs_dump_score(candi->chscore);
 	} else {
-		printf(" Reason: ");
+		acsddbg(" Reason: ");
 		acs_dump_reason(candi);
 	}
 }
@@ -310,9 +314,9 @@ do_dump_bss(acs_cli_info_t *ctx, int rcount)
 	int i;
 	ncis = rcount / sizeof(acs_chan_bssinfo_t);
 
-	printf("channel nCtrl nExt20 nExt40 nExt80\n");
+	acsddbg("channel nCtrl nExt20 nExt40 nExt80\n");
 	for (i = 0; i < ncis; i++) {
-		printf("%3d  %5d%6d%7d%7d\n", cur->channel, cur->nCtrl,
+		acsddbg("%3d  %5d%6d%7d%7d\n", cur->channel, cur->nCtrl,
 			cur->nExt20, cur->nExt40, cur->nExt80);
 		cur++;
 	}
@@ -331,46 +335,46 @@ do_dump_chanim(acs_cli_info_t *ctx, int rcount)
 
 	if (!((chanim_stats->version == WL_CHANIM_STATS_VERSION) ||
 		(chanim_stats->version == WL_CHANIM_STATS_V2))) {
-		printf("Version Mismatch\n");
+		acsddbg("Version Mismatch\n");
 		return BCME_VERSION;
 	}
 
-	printf("Chanim Stats: version: %d, count: %d\n",
+	acsddbg("Chanim Stats: version: %d, count: %d\n",
 		chanim_stats->version, chanim_stats->count);
 	if (chanim_stats->version == WL_CHANIM_STATS_V2) {
 		chanim_stats_v2_t *statsv2 = (chanim_stats_v2_t *)chanim_stats->stats;
-		printf("chanspec tx   inbss   obss   nocat   nopkt   doze   txop   "
+		acsddbg("chanspec tx   inbss   obss   nocat   nopkt   doze   txop   "
 				"goodtx  badtx  glitch   badplcp  knoise  timestamp\n");
 
 		for (i = 0; i < chanim_stats->count; i++) {
 			statsv2->chanspec = ntohs(statsv2->chanspec);
-			printf("0x%4x\t", statsv2->chanspec);
+			acsddbg("0x%4x (%s)\t", statsv2->chanspec, wf_chspec_ntoa(statsv2->chanspec, chanspecbuf));
 
 			for (j = 0; j < CCASTATS_V2_MAX; j++)
-				printf("%d\t", statsv2->ccastats[j]);
+				acsddbg("%d\t", statsv2->ccastats[j]);
 
-			printf("%d\t%d\t%d\t%d", ntohl(statsv2->glitchcnt),
+			acsddbg("%d\t%d\t%d\t%d", ntohl(statsv2->glitchcnt),
 					ntohl(statsv2->badplcp), statsv2->bgnoise,
 					ntohl(statsv2->timestamp));
-			printf("\n");
+			acsddbg("\n");
 			statsv2 ++;
 		}
 	} else if (chanim_stats->version == WL_CHANIM_STATS_VERSION) {
 		chanim_stats_t *statsv3 = (chanim_stats_t *)chanim_stats->stats;
-		printf("chanspec tx   inbss   obss   nocat   nopkt   doze   txop   "
+		acsddbg("chanspec tx   inbss   obss   nocat   nopkt   doze   txop   "
 				"goodtx  badtx  glitch   badplcp  knoise  timestamp\n");
 
 		for (i = 0; i < chanim_stats->count; i++) {
 			statsv3->chanspec = ntohs(statsv3->chanspec);
-			printf("0x%4x\t", statsv3->chanspec);
+			acsddbg("0x%4x (%s)\t", statsv3->chanspec, wf_chspec_ntoa(statsv3->chanspec, chanspecbuf));
 
 			for (j = 0; j < CCASTATS_MAX; j++)
-				printf("%d\t", statsv3->ccastats[j]);
+				acsddbg("%d\t", statsv3->ccastats[j]);
 
-			printf("%d\t%d\t%d\t%d", ntohl(statsv3->glitchcnt),
+			acsddbg("%d\t%d\t%d\t%d", ntohl(statsv3->glitchcnt),
 					ntohl(statsv3->badplcp), statsv3->bgnoise,
 					ntohl(statsv3->timestamp));
-			printf("\n");
+			acsddbg("\n");
 			statsv3 ++;
 		}
 	}
@@ -400,7 +404,7 @@ do_dump_candidate_int(acs_cli_info_t *ctx, int rcount, bool pretty_display)
 
 		if (cscore == CSCORE_HEAD) {
 			/* Display header line first time around. */
-			printf("ACSD Candidate Scores for next Channel Switch:\n");
+			acsddbg("ACSD Candidate Scores for next Channel Switch:\n");
 			acs_dump_cscore_head(candi);
 			cscore = CSCORE_BODY;
 		}
@@ -447,14 +451,14 @@ do_dump_acs_record(acs_cli_info_t *ctx, int rcount)
 	count = rcount / sizeof(chanim_acs_record_t);
 
 	if (!result || (!count)) {
-		printf("There is no ACS recorded\n");
+		acsddbg("There is no ACS recorded\n");
 		return BCME_OK;
 	}
 
 	printf("Timestamp(s) ACS-Trigger  ChanSpec  BG-Noise  CCA-Count Idle\n");
 	for (i = 0; i < count; i++) {
 		time_t ltime = ntohl(result->timestamp);
-		printf("%8u \t%s \t%13s \t%d \t%d \t%d\n",
+		acsddbg("%8u \t%s \t%13s \t%d \t%d \t%d\n",
 			(uint32)ltime,
 			acs_trigger_name(result->trigger),
 			wf_chspec_ntoa_ex(ntohs(result->selected_chspc), buf),
@@ -474,7 +478,7 @@ static int
 acsdc_check_resp_err(acs_cli_info_t *context)
 {
 	if (strstr(context->cmd_buf, "ERR:")) {
-		printf("%s\n", context->cmd_buf);
+		acsddbg("%s\n", context->cmd_buf);
 		return BCME_ERROR;
 	}
 	return BCME_OK;
@@ -502,7 +506,7 @@ process_response(acs_cli_info_t *ctx, int rcount)
 	}
 
 	/* Display the generic response text message. */
-	if (ctx->cmd_buf[0]) printf("%s\n", ctx->cmd_buf);
+	if (ctx->cmd_buf[0]) acsddbg("%s\n", ctx->cmd_buf);
 
 	return BCME_OK;
 }
@@ -733,12 +737,12 @@ report_all_variables(acs_cli_info_t *ctx)
 
 	ctx->cmdarg[CMDARG_COMMAND] = "get";
 
-	printf("[ %s: acsd variables ]\n", ctx->wl_ifname);
+	acsddbg("[ %s: acsd variables ]\n", ctx->wl_ifname);
 
 	for (i = 0; (acsd_variables[i] && (rc == BCME_OK)); ++i) {
 		rc = connect_to_server(ctx);
 		if (rc == BCME_OK) {
-			printf("%25s = ", acsd_variables[i]);
+			acsddbg("%25s = ", acsd_variables[i]);
 			fflush(stdout);
 			ctx->cmdarg[CMDARG_PARAMETER] = acsd_variables[i];
 			rc = do_command_response(ctx);
@@ -759,7 +763,7 @@ report_all_dumps(acs_cli_info_t *ctx)
 	for (i = 0; (dump_table[i].option && (rc == 0)); ++i) {
 		rc = connect_to_server(ctx);
 		if (rc == BCME_OK) {
-			printf("[ %s: dump %s ]\n", ctx->wl_ifname, dump_table[i].option);
+			acsddbg("[ %s: dump %s ]\n", ctx->wl_ifname, dump_table[i].option);
 			ctx->cmdarg[CMDARG_PARAMETER] = dump_table[i].option;
 			rc = do_command_response(ctx);
 			disconnect_from_server(ctx);
@@ -775,7 +779,7 @@ report_everything(acs_cli_info_t *ctx)
 
 	rc = connect_to_server(ctx);
 	if (rc == BCME_OK) {
-		printf("[ info ]\n");
+		acsddbg("[ info ]\n");
 		ctx->cmdarg[CMDARG_COMMAND] = "info";
 		rc = do_command_response(ctx);
 		disconnect_from_server(ctx);

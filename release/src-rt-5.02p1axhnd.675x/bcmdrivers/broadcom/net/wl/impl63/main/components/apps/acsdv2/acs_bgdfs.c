@@ -46,7 +46,7 @@
  *      OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  *      NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- *	$Id: acs_bgdfs.c 782671 2019-12-31 08:45:27Z $
+ *	$Id: acs_bgdfs.c 786918 2020-05-12 04:39:27Z $
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -154,7 +154,7 @@ acs_bgdfs_attempt_2g(acs_chaninfo_t * ci_2g, acs_chaninfo_t * ci_5g,
 		chspec = acs_adjust_ctrl_chan(ci_5g, chspec);
 	}
 
-	if (!stunt && CHSPEC_CHANNEL(chspec) ==
+	if (!ci_5g->bw_upgradable && !stunt && CHSPEC_CHANNEL(chspec) ==
 			CHSPEC_CHANNEL(ci_5g->recent_prev_chspec)) {
 		if (now - ci_5g->acs_prev_chan_at <
 				2 * ci_5g->acs_chan_dwell_time) {
@@ -176,7 +176,12 @@ acs_bgdfs_attempt_2g(acs_chaninfo_t * ci_2g, acs_chaninfo_t * ci_5g,
 			BGDFS_POST_CCA_WAIT;
 		acs_bgdfs->next_scan_chan = chspec;
 		acs_bgdfs->bgdfs_stunted = stunt;
-
+		acs_bgdfs->acs_bgdfs_on_txfail = TRUE;
+		if (acs_is_dfs_chanspec(ci_5g, ci_5g->cur_chspec)) {
+			/* Fall back is not allowed from DFS to another DFS channel */
+			acs_bgdfs->acs_bgdfs_on_txfail = FALSE;
+			ci_5g->bw_upgradable_timeout = now + ACS_BW_UPGRADABLE_TIMEOUT;
+		}
 		acs_update_tx_dur_secs_start();
 		/* let the 2g iface remember which 5g iface requested this bgdfs task */
 		ci_2g->ci_5g = ci_5g; /* Null this on completion of this ZDFS_2G attempt */
@@ -215,7 +220,7 @@ acs_bgdfs_attempt(acs_chaninfo_t * c_info, chanspec_t chspec, bool stunt)
 	 */
 	if (FIXCHSPEC(c_info) || (c_info->wet_enabled && acs_check_assoc_scb(c_info))) {
 		if (!c_info->country_is_edcrs_eu) {
-			ACSD_INFO("%s BGDFS ch:0x%04x not allowed in ACS_MODE_FIXCHSPEC or WET mode\n",
+			ACSD_INFO("%s BGDFS ch:0x%04x not allowed in ACS_MODE_FIXCHSPEC\n",
 				c_info->name, chspec);
 			return BCME_USAGE_ERROR;
 		}
@@ -260,7 +265,9 @@ acs_bgdfs_attempt(acs_chaninfo_t * c_info, chanspec_t chspec, bool stunt)
 	}
 
 	/* In case of Far Stas, 3+1 DFS is not allowed */
-	if (acs_bgdfs->bgdfs_avoid_on_far_sta && (c_info->sta_status & ACS_STA_EXIST_FAR)) {
+	if (!acsd_is_lp_chan(c_info, c_info->cur_chspec) &&
+			acs_bgdfs->bgdfs_avoid_on_far_sta &&
+			(c_info->sta_status & ACS_STA_EXIST_FAR)) {
 		ACSD_INFO("%s BGDFS ch:0x%04x rejected - far STA present\n", c_info->name, chspec);
 		return BCME_OK;
 	}
@@ -286,7 +293,9 @@ acs_bgdfs_attempt(acs_chaninfo_t * c_info, chanspec_t chspec, bool stunt)
 		c_info->selected_chspec = chspec;
 	}
 
-	if (!stunt && CHSPEC_CHANNEL(c_info->selected_chspec) ==
+	/* Overide channel dwell restrictions for acs_req_bw_upgrd */
+	if (!c_info->bw_upgradable && !c_info->acs_req_bw_upgrd && !stunt &&
+			CHSPEC_CHANNEL(c_info->selected_chspec) ==
 			CHSPEC_CHANNEL(c_info->recent_prev_chspec)) {
 		if (now - c_info->acs_prev_chan_at <
 				2 * c_info->acs_chan_dwell_time) {
@@ -305,6 +314,12 @@ acs_bgdfs_attempt(acs_chaninfo_t * c_info, chanspec_t chspec, bool stunt)
 		acs_bgdfs->timeout = now +
 			(is_dfs_weather ? BGDFS_CCA_EU_WEATHER : BGDFS_CCA_FCC) +
 			BGDFS_POST_CCA_WAIT;
+		acs_bgdfs->acs_bgdfs_on_txfail = TRUE;
+		if (acs_is_dfs_chanspec(c_info, c_info->cur_chspec)) {
+			/* Fall back is not allowed from DFS to another DFS channel */
+			acs_bgdfs->acs_bgdfs_on_txfail = FALSE;
+			c_info->bw_upgradable_timeout = now + ACS_BW_UPGRADABLE_TIMEOUT;
+		}
 		if (stunt && (ret = acs_bgdfs_set(c_info, DFS_AP_MOVE_STUNT)) != BCME_OK) {
 			ACSD_ERROR("%s: Failed to stunt dfs_ap_move", c_info->name);
 		}
@@ -365,6 +380,8 @@ static int acs_bgdfs_build_candidates(acs_chaninfo_t *c_info, int bw)
 	for (i = 0; i < count; i++) {
 		c = (chanspec_t)dtoh32(list->element[i]);
 		bgdfs_candi[i].chspec = c;
+		bgdfs_candi[i].valid = TRUE;
+		bgdfs_candi[i].is_dfs = acs_is_dfs_chanspec(c_info, bgdfs_candi[i].chspec);
 	}
 	c_info->c_count[bw] = count;
 
@@ -406,6 +423,7 @@ acs_bgdfs_choose_channel(acs_chaninfo_t * c_info, bool include_unclear,	bool pic
 	bool cand_is_weather = FALSE, best_is_weather = FALSE;
 	bool cand_attempted = FALSE, best_attempted = FALSE;
 	uint64 cand_ts = 0, best_ts = 0; /* recent time stamp in acs record */
+	acs_conf_chspec_t *excl_chans;
 	uint32 cand_chinfo;
 	uint32 requisite = WL_CHAN_VALID_HW | WL_CHAN_VALID_SW | WL_CHAN_BAND_5G | WL_CHAN_RADAR;
 	uint64 now = (uint64)(uptime());
@@ -451,6 +469,9 @@ reduce_bw:
 		ACSD_ERROR("%s: %s could not get list of candidates\n", c_info->name, __FUNCTION__);
 		return BCME_ERROR;
 	}
+	excl_chans = &(c_info->excl_chans);
+	acs_invalidate_exclusion_channels(c_info->bgdfs_candidate[bw],
+			c_info->c_count[bw], excl_chans);
 	cand_arr = c_info->bgdfs_candidate[bw];
 
 	if (!c_info->rs_info.reg_11h || !c_info->acs_dfs) {
@@ -465,6 +486,14 @@ reduce_bw:
 
 	for (i = 0; i < count; i++) {
 		cand_ch = cand_arr[i].chspec;
+		if (!cand_ch || !cand_arr[i].valid) {
+			ACSD_DEBUG("%s:invalidating exclude channels 0x%04x\n", c_info->name,
+				cand_ch);
+			continue;
+		}
+		if (!cand_arr[i].is_dfs) {
+			continue;
+		}
 		cand_ts = acs_get_recent_timestamp(c_info, cand_ch);
 
 		cand_chinfo = acs_get_chanspec_info(c_info, cand_ch);
@@ -473,9 +502,9 @@ reduce_bw:
 			(((~WL_CHANSPEC_CTL_SB_MASK) & cand_ch) ==
 			((~WL_CHANSPEC_CTL_SB_MASK) & c_info->acs_bgdfs->last_attempted));
 
-		ACSD_INFO("%s: %s Candidate %d: 0x%x, chinfo: 0x%x, weather:%d, attempted:%d\n",
+		ACSD_INFO("%s: %s Candidate %d: 0x%4x (%s), chinfo: 0x%x, weather:%d, attempted:%d\n",
 			c_info->name, __FUNCTION__,
-			i, cand_ch, cand_chinfo, cand_is_weather, cand_attempted);
+			i, cand_ch, wf_chspec_ntoa(cand_ch, chanspecbuf), cand_chinfo, cand_is_weather, cand_attempted);
 
 		/* reject if already the current channel */
 		if (c_info->cur_chspec == cand_ch) {
@@ -515,7 +544,7 @@ reduce_bw:
 			continue;
 		}
 
-		ACSD_DEBUG("%s: %s Considered %d: 0x%x\n", c_info->name, __FUNCTION__, i, cand_ch);
+		ACSD_DEBUG("%s: %s Considered %d: 0x%4x (%s)\n", c_info->name, __FUNCTION__, i, cand_ch, wf_chspec_ntoa(cand_ch, chanspecbuf));
 
 		/* passed all checks above; now it may be considered for rating best */
 		considered ++;
@@ -561,7 +590,7 @@ reduce_bw:
 
 	if (considered > 0) {
 		best_ch = acs_adjust_ctrl_chan(c_info, best_ch);
-		ACSD_INFO("%s: %s best_ch: 0x%x\n", c_info->name, __FUNCTION__, best_ch);
+		ACSD_INFO("%s: %s best_ch: 0x%4x (%s)\n", c_info->name, __FUNCTION__, best_ch, wf_chspec_ntoa(best_ch, chanspecbuf));
 		c_info->acs_bgdfs->next_scan_chan = best_ch;
 		if (pick_160) {
 			c_info->selected_chspec = best_ch;
@@ -619,9 +648,9 @@ acs_bgdfs_check_status(acs_chaninfo_t * c_info, bool bgdfs_on_txfail)
 		BGDFS_SUB_LAST(status, BGDFS_SUB_MAIN_CORE) != scan_ch &&
 		BGDFS_SUB_CHAN(status, BGDFS_SUB_SCAN_CORE) != scan_ch &&
 		BGDFS_SUB_LAST(status, BGDFS_SUB_SCAN_CORE) != scan_ch) {
-		ACSD_ERROR("%s: background scan channel 0x%x mismatch [0x%x, 0x%x, 0x%x, 0x%x]\n",
+		ACSD_ERROR("%s: background scan channel 0x%4x (%s) mismatch [0x%x, 0x%x, 0x%x, 0x%x]\n",
 			c_info->name,
-			scan_ch,
+			scan_ch, wf_chspec_ntoa(scan_ch, chanspecbuf),
 			BGDFS_SUB_CHAN(status, BGDFS_SUB_MAIN_CORE),
 			BGDFS_SUB_LAST(status, BGDFS_SUB_MAIN_CORE),
 			BGDFS_SUB_CHAN(status, BGDFS_SUB_MAIN_CORE),
@@ -664,12 +693,14 @@ acs_bgdfs_ahead_trigger_scan(acs_chaninfo_t * c_info)
 	}
 
 	/* In FCC, and already on a DFS channel return silently */
-	if (!is_etsi && is_dfs) {
+	if (!is_etsi && is_dfs && (!c_info->bw_upgradable ||
+			c_info->bw_upgradable_timeout > uptime())) {
 		return BCME_OK;
 	}
 
 	/* Allow for pre-clearance when operating on etsi country codes and dfs channel */
-	if (!is_etsi || !is_dfs) {
+	if ((!c_info->bw_upgradable || c_info->bw_upgradable_timeout > uptime()) &&
+			(!is_etsi || !is_dfs)) {
 		chan_least_dwell = chanim_record_chan_dwell(c_info,
 				c_info->chanim_info);
 
@@ -708,17 +739,21 @@ acs_bgdfs_ahead_trigger_scan(acs_chaninfo_t * c_info)
 		return BCME_OK;
 	}
 
-	if ((!is_etsi || !is_dfs) &&
-			!acs_channel_compare(c_info, c_info->cur_chspec, chosen_chspec)) {
+	if (((!c_info->bw_upgradable || c_info->bw_upgradable_timeout > uptime()) &&
+		(!is_etsi || !is_dfs)) &&
+		!acs_channel_compare(c_info, c_info->cur_chspec, chosen_chspec)) {
 		acs_bgdfs->next_scan_chan = 0;
 		return BCME_OK;
 	}
 
 	/* In FCC/ETSI, if on a low power Non-DFS, attempt a DFS 3+1 move */
 	if (!(FIXCHSPEC(c_info) || (c_info->wet_enabled && acs_check_assoc_scb(c_info)) || MONITORCHECK(c_info)) &&
-			!acs_is_dfs_chanspec(c_info, c_info->cur_chspec) &&
+			!(acs_is_dfs_chanspec(c_info, c_info->cur_chspec) &&
+			(c_info->bw_upgradable_timeout > uptime() ||
+			!c_info->bw_upgradable)) &&
 			((c_info->acs_enable_dfsr_on_highpwr &&
-			(c_info->acs_dfs == ACS_DFS_REENTRY)) ||
+			(c_info->acs_dfs == ACS_DFS_REENTRY) &&
+			!(c_info->sta_status & ACS_STA_EXIST_FAR)) ||
 			acsd_is_lp_chan(c_info, c_info->cur_chspec))) {
 		ACSD_INFO("%s: moving to DFS channel 0x%0x\n", c_info->name, chosen_chspec);
 		if ((ret = acs_bgdfs_attempt(c_info, chosen_chspec, FALSE)) != BCME_OK) {

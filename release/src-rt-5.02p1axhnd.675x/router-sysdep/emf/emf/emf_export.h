@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -40,7 +40,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: emf_export.h 241182 2011-02-17 21:50:03Z $
+ * $Id: emf_export.h 780195 2019-10-17 19:00:17Z $
  */
 
 #ifndef _EMF_EXPORT_H_
@@ -89,7 +89,7 @@ extern void emf_hooks_unregister(struct emf_info *emfi);
  * Return:      SUCCESS or FAILURE.
  */
 extern int32 emf_forward(struct emf_info *emfi, void *sdu, uint32 mgrp_ip,
-                         void *txif, bool rt_port);
+                         void *txif, int rt_port);
 
 /*
  * Description: This function is called to send the packet buffer up

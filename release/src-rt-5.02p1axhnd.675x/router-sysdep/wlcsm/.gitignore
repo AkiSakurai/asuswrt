@@ -1,7 +1,0 @@
-*.o
-*.a
-*.d
-*.d.*
-*.so
-include/wl_common_defs.h
-include/wlcsm_linux.h

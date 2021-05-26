@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: _wbd_ds.c 772457 2019-02-25 10:27:32Z $
+ * $Id: _wbd_ds.c 788800 2020-07-13 05:51:27Z $
  */
 
 #include "wbd.h"
@@ -263,7 +263,7 @@ hle_recv_hld(int evt_port, unsigned char *out_src_al_mac_str, unsigned char *out
 
 	memset(&sockaddr, 0, sizeof(sockaddr));
 	sockaddr.sin_family = AF_INET;
-	sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	sockaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	sockaddr.sin_port = htons(evt_port);
 
 	/* Open a TCP Socket */

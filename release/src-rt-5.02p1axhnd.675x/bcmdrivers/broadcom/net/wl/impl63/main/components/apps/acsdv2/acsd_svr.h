@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acsd_svr.h 782671 2019-12-31 08:45:27Z $
+ * $Id: acsd_svr.h 788365 2020-06-30 08:18:29Z $
  */
 
 #ifndef _acsd_srv_h_
@@ -218,8 +218,12 @@ typedef enum {
 #define CHANIM_FLAGS_RELATIVE_THRES		0x1
 #define CHANIM_FLAGS_USE_CRSGLITCH		0x2
 
-#define ACS_MAX_VECTOR_LEN			(ACS_NUMCHANNELS * 6) /* hex format */
-#define ACS_MAX_LIST_LEN			ACS_NUMCHANNELS
+#ifdef RTCONFIG_WIFI6E
+#define ACS_MAX_VECTOR_LEN			WLC_IOCTL_MAXLEN
+#else
+#define ACS_MAX_VECTOR_LEN			WLC_IOCTL_MEDLEN
+#endif
+#define ACS_MAX_LIST_LEN			(ACS_NUMCHANNELS * 4)
 
 #define ACS_TXDELAY_PERIOD			1
 #define ACS_TXDELAY_CNT				1
@@ -248,6 +252,7 @@ typedef enum {
 #define ACS_BOOT_ONLY_DEFAULT		0
 #define ACS_FALLBACK_TO_PRIMARY		1
 #define ACS_CHAN_FLOP_PERIOD		300 /* least time gap to dcs same chan */
+#define ACS_BW_UPGRADABLE_TIMEOUT	1865 /* Bw upgrdable timeout */
 
 #define ACS_INTFER_SAMPLE_PERIOD		1
 #define ACS_INTFER_SAMPLE_COUNT			1
@@ -262,6 +267,9 @@ typedef enum {
 
 /* switch channels only if the candidate's score is better by these many units than the current */
 #define ACS_SWITCH_SCORE_THRESHOLD_DEFAULT		150
+#define ACS_SWITCH_SCORE_THRESHOLD_DEFAULT_HI		300
+#define ACS_TXOP_LIMIT_HI	20
+#define ACS_IGNORE_CHANNEL_CHANGE_FROM_HP_ON_FARSTA	1
 
 #define ACS_AP_CFG		1
 #define ACS_STA_CFG		2
@@ -299,7 +307,7 @@ typedef enum {
 /* default values that nvram might override */
 #define ACS_BGDFS_ENAB				1
 #define ACS_BGDFS_AHEAD				1
-#define ACS_BGDFS_IDLE_INTERVAL			3600	/* in seconds */
+#define ACS_BGDFS_IDLE_INTERVAL			600	/* in seconds */
 #define ACS_BGDFS_IDLE_FRAMES_THLD		36000	/* number of frames */
 #define ACS_BGDFS_AVOID_ON_FAR_STA		1
 #define ACS_BGDFS_FALLBACK_BLOCKING_CAC		1	/* if ZDFS fails, use blocking/full CAC */
@@ -362,7 +370,6 @@ extern wl_dfs_sub_status_t * acs_bgdfs_sub_at(wl_dfs_ap_move_status_v2_t *st, ui
 #define ACS_CAP_STRING_BGDFS160			"bgdfs160 "	/* bgdfs160 in `wl cap` */
 #define ACS_CAP_STRING_TRAFFIC_THRESH		"traffic_thresh " /* traffic_thresh in `wl cap` */
 
-#define ACS_OP_IS_ENABLED(op) (((op) & 0x100) != 0)
 #define ACS_OP_BW(op) ((op) & 0xf)
 #define ACS_OP_BW_IS_160_80p80(op)	(ACS_OP_BW(op) == ACS_BW_160_OP)
 #define ACS_OP_BW_IS_80(op)		(ACS_OP_BW(op) == ACS_BW_80)
@@ -774,8 +781,14 @@ struct acs_chaninfo {
 	uint8 acs_enable_dfsr_on_highpwr; /* Allow dfsr when operating on highpwr non-dfschan */
 	uint8 acs_txop_limit; /* txop limit check before channel change */
 	uint8 acs_pref_max_bw;	/* Prefer max bw */
-	int switch_score_thresh;	/* see ACS_SWITCH_SCORE_THRESHOLD_DEFAULT */
+	int acs_switch_score_thresh;	/* see ACS_SWITCH_SCORE_THRESHOLD_DEFAULT */
 	uint32 txfail_event_timeout; /* To avoid back to back txfail events till timeout */
+	bool acs_req_bw_upgrd;	/* Used for bw_switch_160 cases for 160Mhz upgrade */
+	int acs_switch_score_thresh_hi;	/* see ACS_SWITCH_SCORE_THRESHOLD_DEFAULT_HI */
+	int acs_txop_limit_hi; /* txop limit threshold before fall back to regular CAC */
+	uint32 bw_upgradable_timeout;
+	uint8 acs_ignore_channel_change_from_hp_on_farsta;
+	uint32 acs_ac_flag;
 	bool wet_enabled;
 	int unit;
 };
@@ -932,7 +945,7 @@ extern int acs_get_chanim_stats(acs_chaninfo_t *c_info, wl_chanim_stats_t *param
 extern int acs_get_dfsr_counters(char *ifname, char cntbuf[]);
 extern int acs_get_dyn160_status(char *name, int *dyn160_status);
 extern int acs_get_phydyn_switch_status(char *name, int *phy_dyn_switch);
-extern int acs_get_chanspec(acs_chaninfo_t *c_info, chanspec_t *chanspec);
+extern int acs_get_chanspec(acs_chaninfo_t *c_info, int *chanspec);
 extern int acs_set_intfer_params(char *name, wl_intfer_params_t *params, int size);
 extern int acs_set_intfer_traffic_thresh(char *name, wl_traffic_thresh_t *params, int size);
 extern int acs_get_stainfo(char *name, struct ether_addr *ea, int ether_len, char *stabuf,
@@ -956,7 +969,7 @@ extern void acs_check_ifname_is_virtual(char **ifname);
 extern int acs_set_far_sta_rssi(acs_chaninfo_t *c_info, int far_sta);
 extern int acs_update_rssi(acs_chaninfo_t *c_info, unsigned char *addr);
 extern bool chanim_record_chan_dwell(acs_chaninfo_t *c_info, chanim_info_t *ch_info);
-/*extern bool acs_is_mode_check(char *osifname);*/
+extern bool acs_is_mode_check(char *osifname);
 extern bool acs_nondfs_chan_check_for_bgdfs_or_dfsr_trigger(acs_chaninfo_t *c_info, int bw);
 extern bool acs_low_power_nondfs_chan_check(acs_chaninfo_t *c_info, int bw);
 extern int acs_bgdfs_check_candidates(acs_chaninfo_t *c_info, int bw);
@@ -974,6 +987,8 @@ extern int acs_get_tx_dur_secs(acs_chaninfo_t *c_info);
 extern bool chanim_chk_lockout(chanim_info_t *ch_info);
 extern int acs_allow_scan(acs_chaninfo_t *c_info, uint8 type, uint ticks);
 extern bool acs_channel_compare(acs_chaninfo_t *c_info, chanspec_t cur_ch, chanspec_t sel_ch);
+extern bool acs_channel_compare_before_fallback(acs_chaninfo_t *c_info, chanspec_t cur_ch,
+		chanspec_t sel_ch);
 extern int acs_csa_handle_request(acs_chaninfo_t *c_info);
 extern bool acs_is_initial_selection(acs_chaninfo_t* c_info);
 extern int acsd_segmentize_chanim(acs_chaninfo_t * c_info);
@@ -985,4 +1000,6 @@ void acs_dump_config_extra(acs_chaninfo_t *c_info);
 #endif // endif
 
 extern int acs_csa_mode_handle_request(acs_chaninfo_t *c_info, wl_chan_switch_t *csa);
+extern void acs_invalidate_exclusion_channels(ch_candidate_t *candi, int count,
+	acs_conf_chspec_t *excl_chans);
 #endif  /* _acsd_srv_h_ */

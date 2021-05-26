@@ -44,7 +44,7 @@
  *	OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  *	NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- *	$Id: acs_channels.c 782671 2019-12-31 08:45:27Z $
+ *	$Id: acs_channels.c 786918 2020-05-12 04:39:27Z $
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -100,15 +100,15 @@ acs_pick_best_possible_channel(acs_chaninfo_t *c_info, ch_candidate_t *current,
 {
 	int current_normalized_score, candidate_normalized_score;
 
-	ACSD_INFO("%s: Current: %sDFS channel #%d (0x%x) score[%d] %d,"
-			" candidate: %sDFS channel #%d (0x%x) score %d.\n",
+	ACSD_INFO("%s: Current: %sDFS channel #%d (0x%4x %s) score[%d] %d,"
+			" candidate: %sDFS channel #%d (0x%4x %s) score %d.\n",
 			c_info->name,
 			current->is_dfs ? "" : "non-",
-			CHSPEC_CHANNEL(current->chspec), current->chspec,
+			CHSPEC_CHANNEL(current->chspec), current->chspec, wf_chspec_ntoa(current->chspec, chanspecbuf),
 			score_type,
 			current->chscore[score_type].score,
 			candidate->is_dfs ? "" : "non-",
-			CHSPEC_CHANNEL(candidate->chspec), candidate->chspec,
+			CHSPEC_CHANNEL(candidate->chspec), candidate->chspec, wf_chspec_ntoa(candidate->chspec, chanspecbuf),
 			candidate->chscore[score_type].score);
 
 	/* Pick the channel having the better score */
@@ -182,6 +182,9 @@ acs_remove_noisy_cns(ch_candidate_t *candi, int c_count, int distance)
 	ch_score_t *best_score_p = NULL;
 	int i;
 
+	if (!candi) {
+		return BCME_OK;
+	}
 	/* Determine candidate with the best (lowest) CNS score */
 	for (i = 0; i < c_count; i++) {
 		if (!candi[i].valid)
@@ -198,14 +201,20 @@ acs_remove_noisy_cns(ch_candidate_t *candi, int c_count, int distance)
 
 	/* ban chanspec that are too far away from best figure */
 	for (i = 0; i < c_count; i++) {
+		if (!best_score_p) {
+			return BCME_OK;
+		}
 		if (candi[i].valid &&
 			(candi[i].chscore[CH_SCORE_CNS].score >=
 			(best_score_p[CH_SCORE_CNS].score + distance))) {
-			ACSD_INFO("banning chanspec %x because of interference \n",
-				candi[i].chspec);
+			ACSD_INFO("banning chanspec 0x%4x (%s) because of interference \n",
+				candi[i].chspec, wf_chspec_ntoa(candi[i].chspec, chanspecbuf));
 			candi[i].valid = FALSE;
 			candi[i].reason |= ACS_INVALID_NOISE;
 		}
+	}
+	if (!best_score_p) {
+		return BCME_OK;
 	}
 	return best_score_p[CH_SCORE_CNS].score;
 }
@@ -295,47 +304,6 @@ acs_check_for_txop_on_curchan(acs_chaninfo_t *c_info)
 	}
 }
 
-/* Add all customer specfic channel selection criteria here
- */
-static int
-acs_pick_customer_prioritization(acs_chaninfo_t *c_info, ch_candidate_t *current,
-	ch_candidate_t *candidate)
-{
-	/* Customer specific selection criteria #1
-	 * DFS Channel Preference
-	*/
-	if (c_info->acs_cs_dfs_pref) {
-		if (candidate->is_dfs && !current->is_dfs) {
-			ACSD_INFO("%s: -- selecting candidate: DFS channel. \n", c_info->name);
-			return PICK_CANDIDATE;
-		} else if (current->is_dfs && !candidate->is_dfs) {
-			ACSD_INFO("%s: -- keeping current: DFS channel. \n", c_info->name);
-			return PICK_CURRENT;
-		}
-	}
-
-	/* Customer specific selection criteria #2
-	 * Channel Power Preference
-	*/
-#if 0
-	if (c_info->acs_cs_high_pwr_pref) {
-		if (acsd_is_lp_chan(c_info, current->chspec) &&
-			!acsd_is_lp_chan(c_info, candidate->chspec)) {
-			ACSD_INFO("%s: -- selecting candidate: High power channel. \n",
-				c_info->name);
-			return PICK_CANDIDATE;
-		} else if (!acsd_is_lp_chan(c_info, current->chspec) &&
-			acsd_is_lp_chan(c_info, candidate->chspec)) {
-			ACSD_INFO("%s: -- keeping current: High power channel. \n",
-				c_info->name);
-			return PICK_CURRENT;
-		}
-	}
-#endif
-
-	return PICK_NONE;
-}
-
 /* For EU region, prefer weather over non-weather channels
  */
 static int
@@ -356,9 +324,9 @@ acs_pick_eu_weather(acs_chaninfo_t *c_info, ch_candidate_t *current,
 	candidate_is_weather = acs_is_dfs_weather_chanspec(c_info,
 			(candidate->chspec));
 
-	ACSD_INFO("%s: channel and weather:: current: 0x%x %d, candidate: 0x%x %d\n",
-			c_info->name, current->chspec, current_is_weather,
-			candidate->chspec, candidate_is_weather);
+	ACSD_INFO("%s: channel and weather:: current: 0x%4x (%s ) %d, candidate: 0x%4x (%s) %d\n",
+			c_info->name, current->chspec, wf_chspec_ntoa(current->chspec, chanspecbuf), current_is_weather,
+			candidate->chspec, wf_chspec_ntoa(candidate->chspec, chanspecbuf), candidate_is_weather);
 
 	/* Both DFS, same score - non weather wins. */
 	if (!candidate_is_weather && current_is_weather) {
@@ -449,7 +417,16 @@ acs_pick_chanspec_common(acs_chaninfo_t *c_info, int bw, int score_type)
 		statsv2 = (chanim_stats_v2_t *)&chstats->stats;
 	}
 
-	acs_update_bw_status(c_info); /* ensure latest bw_upgradable status is available */
+	if ((c_info->acs_dfs == ACS_DFS_DISABLED) && c_info->is160_bwcap) {
+		ACSD_DEBUG("%s: Don't upgrade the bw when acs_dfs is %s and "
+				" upgradable bw is 160MHz: %d\n", c_info->name,
+				c_info->acs_dfs ? "Enabled" : "Disabled",
+				c_info->is160_bwcap);
+		c_info->bw_upgradable = 0;
+	} else {
+		/* ensure latest bw_upgradable status is available */
+		acs_update_bw_status(c_info);
+	}
 
 	if (!acs_is_initial_selection(c_info) && !c_info->bw_upgradable &&
 		!c_info->autochannel_through_cli &&
@@ -530,18 +507,18 @@ acs_pick_chanspec_common(acs_chaninfo_t *c_info, int bw, int score_type)
 
 		if (index < 0) { /* No previous candi, avoid comparing against random memory */
 			index = i; /* Select first valid candidate as a starting point */
-			ACSD_INFO("%s: [%d] Default: %s channel #%d (0x%x) with score %d\n",
+			ACSD_INFO("%s: [%d] Default: %s channel #%d (0x%4x %s) with score %d\n",
 				c_info->name,
 				i, (candi[i].is_dfs) ? "DFS" : "non-DFS",
-				CHSPEC_CHANNEL(candi[i].chspec), candi[i].chspec,
+				CHSPEC_CHANNEL(candi[i].chspec), candi[i].chspec, wf_chspec_ntoa(candi[i].chspec, chanspecbuf),
 				candi[i].chscore[score_type].score);
 			continue;
 		}
 
-		ACSD_INFO("%s: [%d] Checking %s channel #%d (0x%x) with score %d\n",
+		ACSD_INFO("%s: [%d] Checking %s channel #%d (0x%4x %s) with score %d\n",
 			c_info->name,
 			i, (candi[i].is_dfs) ? "DFS" : "non-DFS",
-			CHSPEC_CHANNEL(candi[i].chspec), candi[i].chspec,
+			CHSPEC_CHANNEL(candi[i].chspec), candi[i].chspec, wf_chspec_ntoa(candi[i].chspec, chanspecbuf),
 			candi[i].chscore[score_type].score);
 
 		/*
@@ -551,8 +528,6 @@ acs_pick_chanspec_common(acs_chaninfo_t *c_info, int bw, int score_type)
 		choice = PICK_NONE;
 		current = &candi[index];
 		candidate = &candi[i];
-
-		choice = acs_pick_customer_prioritization(c_info, current, candidate);
 
 		if (choice == PICK_NONE) {
 			choice = acs_pick_best_possible_channel(c_info, current, candidate,
@@ -581,8 +556,8 @@ acs_pick_chanspec_common(acs_chaninfo_t *c_info, int bw, int score_type)
 
 	if (index >= 0) {
 		chspec = candi[index].chspec;
-		ACSD_INFO("%s: Selected Channel #%d (0x%x)\n",
-			c_info->name, CHSPEC_CHANNEL(chspec), chspec);
+		ACSD_INFO("%s: Selected Channel #%d (0x%4x %s)\n",
+			c_info->name, CHSPEC_CHANNEL(chspec), chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 	}
 	return chspec;
 }
@@ -609,18 +584,18 @@ acs_pick_chanspec(acs_chaninfo_t* c_info, int bw)
 
 		if (index < 0) { /* No previous candi, avoid comparing against random memory */
 			index = i; /* Select first valid candidate as a starting point */
-			ACSD_INFO("%s: [%d] Default: %s channel #%d (0x%x) with score %d\n",
+			ACSD_INFO("%s: [%d] Default: %s channel #%d (0x%4x %s) with score %d\n",
 				c_info->name,
 				i, (candi[i].is_dfs) ? "DFS" : "non-DFS",
-				CHSPEC_CHANNEL(candi[i].chspec), candi[i].chspec,
+				CHSPEC_CHANNEL(candi[i].chspec), candi[i].chspec, wf_chspec_ntoa(candi[i].chspec, chanspecbuf),
 				candi[i].chscore[score_type].score);
 			continue;
 		}
 
-		ACSD_INFO("%s: [%d] Checking %s channel #%d (0x%x) with score %d\n",
+		ACSD_INFO("%s: [%d] Checking %s channel #%d (0x%4x %s) with score %d\n",
 			c_info->name,
 			i, (candi[i].is_dfs) ? "DFS" : "non-DFS",
-			CHSPEC_CHANNEL(candi[i].chspec), candi[i].chspec,
+			CHSPEC_CHANNEL(candi[i].chspec), candi[i].chspec, wf_chspec_ntoa(candi[i].chspec, chanspecbuf),
 			candi[i].chscore[score_type].score);
 
 		if (candi[i].chscore[score_type].score >
@@ -635,10 +610,10 @@ acs_pick_chanspec(acs_chaninfo_t* c_info, int bw)
 		ACSD_ERROR("%s: No valid chanspec found\n", c_info->name);
 	} else {
 		chspec = candi[index].chspec;
-		ACSD_INFO("%s: The highest score: %d, chspec: 0x%x\n",
+		ACSD_INFO("%s: The highest score: %d, chspec: 0x%4x (%s)\n",
 			c_info->name,
 			candi[index].chscore[score_type].score,
-			chspec);
+			chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 	}
 	return chspec;
 }
@@ -737,9 +712,9 @@ acs_build_candidates(acs_chaninfo_t *c_info, int bw)
 		/* assign weight based on config */
 		for (j = 0; j < CH_SCORE_MAX; j++) {
 			candi[i].chscore[j].weight = c_info->acs_policy.acs_weight[j];
-			ACSD_DEBUG("%s: chanspec: (0x%04x) score: %d, weight: %d\n",
+			ACSD_DEBUG("%s: chanspec: (0x%04x %s) score: %d, weight: %d\n",
 				c_info->name,
-				c, candi[i].chscore[j].score, candi[i].chscore[j].weight);
+				c, wf_chspec_ntoa(c, chanspecbuf), candi[i].chscore[j].score, candi[i].chscore[j].weight);
 		}
 	}
 	c_info->c_count[bw] = count;
@@ -827,14 +802,12 @@ acs_has_valid_candidate(acs_chaninfo_t* c_info, int bw)
 
 /* Invalidate all channels from selection present in Exclusion list,
  */
-static void
-acs_invalidate_exclusion_channels(acs_chaninfo_t *c_info,
-	int bw, acs_conf_chspec_t *excl_chans)
+void
+acs_invalidate_exclusion_channels(ch_candidate_t *candi,
+	int count, acs_conf_chspec_t *excl_chans)
 {
 	int i, j;
-	ch_candidate_t* candi;
-	candi = c_info->candidate[bw];
-	for (i = 0; i < c_info->c_count[bw]; i++) {
+	for (i = 0; i < count; i++) {
 		/* Exclude channels build candidate */
 		if (excl_chans && excl_chans->count) {
 			for (j = 0; j < excl_chans->count; j++) {
@@ -876,6 +849,7 @@ acs_chan_score_bss(ch_candidate_t* candi, acs_chan_bssinfo_t* bss_info, int ncis
 	int score = 0, tmp_score = 0;
 	int i, min, max;
 	int ch;
+	bool hit;
 
 	acs_parse_chanspec(candi->chspec, &chan);
 
@@ -890,11 +864,13 @@ acs_chan_score_bss(ch_candidate_t* candi, acs_chan_bssinfo_t* bss_info, int ncis
 				bss_info[i].nCtrl, bss_info[i].nExt20, bss_info[i].nExt40,
 				bss_info[i].nExt80);
 
-		if (ch == min || ch == max) {
+		hit = CHSPEC_IS2G(candi->chspec) ? (ch >= min && ch <= max) : (ch == min || ch == max);
+
+		if (hit) {
 			tmp_score = bss_info[i].nExt20 + bss_info[i].nExt40;
 			if (tmp_score > 0) {
 				if ((!CHSPEC_IS20(candi->chspec)) &&
-						(!nvram_match("acs_no_restrict_align", "1"))) {
+						(nvram_match("acs_no_restrict_align", "0"))) {
 					/* mark this candidate invalid if it is not used
 					   or is 80MHz
 					   */
@@ -907,7 +883,7 @@ acs_chan_score_bss(ch_candidate_t* candi, acs_chan_bssinfo_t* bss_info, int ncis
 				bss_info[i].nExt80;
 		}
 	}
-	ACSD_INFO("candidate: %x, score_bss: %d\n", candi->chspec, score);
+	ACSD_INFO("candidate: 0x%4x (%s), score_bss: %d\n", candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf), score);
 	return score;
 }
 
@@ -964,14 +940,14 @@ acs_candidate_score_busy(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		}
 	}
 	if (!done) {
-		ACSD_ERROR("%s: busy check failed for chanspec: 0x%x\n", c_info->name, chspec);
+		ACSD_ERROR("%s: busy check failed for chanspec: 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 		return;
 	}
 
 	if (hits) {
 		candi->chscore[CH_SCORE_BUSY].score = score/hits;
 	}
-	ACSD_DEBUG("%s: busy score: %d for chanspec 0x%x\n", c_info->name, score, chspec);
+	ACSD_DEBUG("%s: busy score: %d for chanspec 0x%4x (%s)\n", c_info->name, score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
 static void
@@ -1016,14 +992,14 @@ acs_candidate_score_intf(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		}
 	}
 	if (!done) {
-		ACSD_ERROR("%s: intf check failed for chanspec: 0x%x\n", c_info->name, chspec);
+		ACSD_ERROR("%s: intf check failed for chanspec: 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 		return;
 	}
 
 	if (hits) {
 		candi->chscore[CH_SCORE_INTF].score = score/hits;
 	}
-	ACSD_DEBUG("%s: intf score: %d for chanspec 0x%x\n", c_info->name, score, chspec);
+	ACSD_DEBUG("%s: intf score: %d for chanspec 0x%4x (%s)\n", c_info->name, score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
 static void
@@ -1089,7 +1065,7 @@ acs_candidate_score_intfadj(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 	}
 
 	candi->chscore[CH_SCORE_INTFADJ].score = score / d_weight;
-	ACSD_DEBUG("%s: intf_adj score: %d for chanspec 0x%x\n", c_info->name, score, chspec);
+	ACSD_DEBUG("%s: intf_adj score: %d for chanspec 0x%4x (%s)\n", c_info->name, score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
 static void
@@ -1133,16 +1109,25 @@ acs_candidate_score_fcs(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		}
 	}
 	if (!done) {
-		ACSD_ERROR("%s: fcs check failed for chanspec: 0x%x\n", c_info->name, chspec);
+		ACSD_ERROR("%s: fcs check failed for chanspec: 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 		return;
 	}
 
 	if (hits) {
 		candi->chscore[CH_SCORE_FCS].score = score/hits;
 	}
-	ACSD_DEBUG("%s: fcs score: %d for chanspec 0x%x\n", c_info->name, score, chspec);
+	ACSD_DEBUG("%s: fcs score: %d for chanspec 0x%4x (%s)\n", c_info->name, score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
+#ifdef RTAC68U_V4
+#define CHANNEL_5G_BAND_GROUP(c) \
+	(((c) < 52) ? 1 : (((c) < 100) ? 2 : (((c) < 149) ? 3 : 4)))
+
+int txpwr_score_5g_1[] = { 1, 0, 0, 2 };	// US, CA, TW, SG, KR, AU (FCC)
+int txpwr_score_5g_2[] = { 1, 1, 2, 0 };	// EU, JP
+int txpwr_score_5g_3[] = { 2, 3, 1, 0 };	// UA
+int txpwr_score_5g_4[] = { 0, 0, 1, 2 };	// AU (FCC +CE)
+#else
 #define BAND_5G_NUM		6
 #define TXPWR_POLICY_NUM	3
 #define CHANNEL_5G_BAND_GROUP(c) \
@@ -1208,7 +1193,56 @@ int get_tc_index(void)
 
 	return index;
 }
+#endif
 
+static void
+acs_candidate_score_dfs(ch_candidate_t *candi, acs_chaninfo_t* c_info)
+{
+	bool is_eu = c_info->country_is_edcrs_eu;	/* is in EDCRS_EU */
+	bool is_dfs = acs_is_dfs_chanspec(c_info, candi->chspec);	/* is DFS/radar ch */
+	int score = 0;
+
+	if (is_eu) { /* ETSI/EDCRS_EU/Europe */
+		bool is_we = FALSE; /* is TDWR (weather radar channel) */
+		if (is_dfs) {
+			is_we = acs_is_dfs_weather_chanspec(c_info, candi->chspec);
+		}
+		score = 3 - (1 + is_dfs - 3 * is_we);
+	} else { /* FCC/US */
+		score = 2 - (is_dfs);
+	}
+	candi->chscore[CH_SCORE_DFS].score = score;
+	ACSD_INFO("%s: DFS score is %d chanspec %d\n", c_info->name, score, candi->chspec);
+}
+
+#ifdef RTAC68U_V4
+static void
+acs_candidate_score_txpwr(ch_candidate_t *candi, acs_chaninfo_t* c_info)
+{
+	chanspec_t chspec = candi->chspec;
+	acs_channel_t chan;
+	int score = 0;
+
+	if (BAND_5G(c_info->rs_info.band_type)) {
+		acs_parse_chanspec(chspec, &chan);
+		if (nvram_match("wl1_band5grp", "7")) {         // EU, JP, UA
+			if (!strncmp(nvram_safe_get("territory_code"), "UA", 2))
+				score += txpwr_score_5g_3[CHANNEL_5G_BAND_GROUP(chan.control) - 1];
+			else
+				score += txpwr_score_5g_2[CHANNEL_5G_BAND_GROUP(chan.control) - 1];
+		} else if (nvram_match("wl1_band5grp", "9")) {  // US, CA, TW, SG, KR, AU (FCC)
+			score += txpwr_score_5g_1[CHANNEL_5G_BAND_GROUP(chan.control) - 1];
+		} else if (nvram_match("wl1_band5grp", "f")) {  // AU (FCC + CE)
+			score += txpwr_score_5g_4[CHANNEL_5G_BAND_GROUP(chan.control) - 1];
+		}
+	}
+
+	candi->chscore[CH_SCORE_TXPWR].score = score;
+
+	ACSD_INFO("txpwr score: %d for chanspec 0x%4x (%s)\n", score, chspec,
+		wf_chspec_ntoa(chspec, chanspecbuf));
+}
+#else
 static void
 acs_candidate_score_txpwr(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 {
@@ -1235,27 +1269,23 @@ acs_candidate_score_txpwr(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		score = -(power + dfs + bw160m);
 	}
 #else
-	bool is_eu = c_info->country_is_edcrs_eu;	/* is in EDCRS_EU */
+	bool is_eu = c_info->country_is_edcrs_eu;       /* is in EDCRS_EU */
 	bool is_hp = !ACS_IS_LOW_POW_CH(wf_chspec_ctlchan(candi->chspec),
 			is_eu);		/* is high power ch */
-	bool is_dfs = acs_is_dfs_chanspec(c_info, candi->chspec);	/* is DFS/radar ch */
 	int score = 0;
 
 	if (is_eu) { /* ETSI/EDCRS_EU/Europe */
-		bool is_we = FALSE; /* is TDWR (weather radar channel) */
-		if (is_dfs) {
-			is_we = acs_is_dfs_weather_chanspec(c_info, candi->chspec);
-		}
 		/* Order of preference DFS high power, DFS low power, low power channel, weather */
-		score = 3 - (1 + is_hp + is_dfs - 3 * is_we);
+		score = 3 - (1 + is_hp);
 	} else { /* FCC/US */
 		/* order of preference High power (DFS/non), DFS, low power non-DFS channels */
-		score = 2 - (2 * is_hp + is_dfs);
+		score = 2 - (2 * is_hp);
 	}
 #endif
 	candi->chscore[CH_SCORE_TXPWR].score = score;
-	ACSD_INFO("%s: txpower score is %d chanspec %d\n", c_info->name, score, candi->chspec);
+	ACSD_INFO("%s: txpower score is %d chanspec 0x%4x (%s)\n", c_info->name, score, candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf));
 }
+#endif
 
 static void
 acs_candidate_score_bgnoise(ch_candidate_t *candi, acs_chaninfo_t* c_info)
@@ -1301,13 +1331,13 @@ acs_candidate_score_bgnoise(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		}
 	}
 	if (!done) {
-		ACSD_ERROR("%s: bgnoise check failed for chanspec: 0x%x\n", c_info->name, chspec);
+		ACSD_ERROR("%s: bgnoise check failed for chanspec: 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 		return;
 	}
 	if (hits) {
 		candi->chscore[CH_SCORE_BGNOISE].score = score/hits;
 	}
-	ACSD_DEBUG("%s: bgnoise score: %d for chanspec 0x%x\n", c_info->name, score, chspec);
+	ACSD_DEBUG("%s: bgnoise score: %d for chanspec 0x%4x (%s)\n", c_info->name, score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
 static void
@@ -1326,6 +1356,10 @@ acs_candidate_score_total(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		total += score_p[CH_SCORE_TXOP].score * c_info->txop_weight;
 	} else {
 		total += score_p[CH_SCORE_TXOP].score * score_p[CH_SCORE_TXOP].weight;
+	}
+	/* Calculate DFS score seperately */
+	if (BAND_5G(c_info->rs_info.band_type) && score_p[CH_SCORE_DFS].weight) {
+		total += score_p[CH_SCORE_DFS].score * score_p[CH_SCORE_DFS].weight;
 	}
 	score_p[CH_SCORE_TOTAL].score = total;
 }
@@ -1388,12 +1422,12 @@ acs_candidate_score_cns(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 	 * the channel. Only set CNS=0 if all the 20MHz subchannels are excluded.
 	 */
 	if (!hits) {
-		ACSD_ERROR("%s: knoise check failed for chanspec: 0x%x\n", c_info->name, chspec);
+		ACSD_ERROR("%s: knoise check failed for chanspec: 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 		return;
 	}
 	candi->chscore[CH_SCORE_CNS].score = max_score;
-	ACSD_INFO("%s: Composite Noise Score (CNS): %d for chanspec 0x%x\n", c_info->name,
-		max_score, chspec);
+	ACSD_INFO("%s: Composite Noise Score (CNS): %d for chanspec 0x%4x (%s)\n", c_info->name,
+		max_score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
 /* This function is used to determine whether the current channel is an adjacent channel
@@ -1479,8 +1513,8 @@ acs_candidate_adjacent_bss(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 	}
 
 	candi->chscore[CH_SCORE_ADJ].score = adjbss;
-	ACSD_5G("%s: adjacent bss score: %d for chanspec 0x%x\n", c_info->name,
-		adjbss, candi->chspec);
+	ACSD_5G("%s: adjacent bss score: %d for chanspec 0x%4x (%s)\n", c_info->name,
+		adjbss, candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf));
 }
 
 static void
@@ -1548,12 +1582,12 @@ acs_candidate_score_txop(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 	if (done) {
 		candi->chscore[CH_SCORE_TXOP].score = score;
 	} else {
-		ACSD_ERROR("%s: txop check failed for chanspec: 0x%x\n", c_info->name, chspec);
+		ACSD_ERROR("%s: txop check failed for chanspec: 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 		return;
 	}
 
-	ACSD_DEBUG("%s: txop score: %d for chanspec 0x%x\n", c_info->name,
-		candi->chscore[CH_SCORE_TXOP].score, chspec);
+	ACSD_DEBUG("%s: txop score: %d for chanspec 0x%4x (%s)\n", c_info->name,
+		candi->chscore[CH_SCORE_TXOP].score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 static void
 acs_fill_score(acs_chaninfo_t* c_info, ch_candidate_t* candi)
@@ -1600,6 +1634,10 @@ acs_fill_score(acs_chaninfo_t* c_info, ch_candidate_t* candi)
 		acs_candidate_adjacent_bss(candi, c_info);
 	}
 
+	if (score_p[CH_SCORE_DFS].weight) {
+		acs_candidate_score_dfs(candi, c_info);
+	}
+
 	acs_candidate_score_total(candi, c_info);
 }
 
@@ -1634,8 +1672,8 @@ acs_candidate_score(acs_chaninfo_t* c_info, int bw)
 		if (!candi->valid)
 			continue;
 
-		ACSD_DEBUG("%s: calc score for candidate chanspec: 0x%x\n",
-			c_info->name, candi->chspec);
+		ACSD_DEBUG("%s: calc score for candidate chanspec: 0x%4x (%s)\n",
+			c_info->name, candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf));
 
 		/* calculate the score for each factor */
 		acs_fill_score(c_info, candi);
@@ -1716,7 +1754,7 @@ acs_candidate_check_intf(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		}
 	}
 	if (!done) {
-		ACSD_ERROR("%s: intf check failed for chanspec: 0x%x\n", c_info->name, chspec);
+		ACSD_ERROR("%s: intf check failed for chanspec: 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 		return;
 	}
 }
@@ -1850,12 +1888,12 @@ acs_coex_check(acs_chaninfo_t* c_info, chanspec_t input_chspec)
 	if (conflict) {
 		chspec_out = CH20MHZ_CHSPEC(ctrl_ch);
 		if (c_info->rs_info.pref_chspec)
-			ACSD_PRINT("%s: COEX: downgraded chanspec 0x%x to 0x%x: %s\n",
-				c_info->name, input_chspec, chspec_out, err_msg);
+			ACSD_PRINT("%s: COEX: downgraded chanspec 0x%4x (%s) to 0x%4x (%s): %s\n",
+				c_info->name, input_chspec, wf_chspec_ntoa(input_chspec, chanspecbuf), chspec_out, wf_chspec_ntoa(chspec_out, chanspecbuf), err_msg);
 	} else {
 		chspec_out = input_chspec;
-		ACSD_DEBUG("%s: No conflict found, returning 40MHz chanspec 0x%x\n",
-		          c_info->name, chspec_out);
+		ACSD_DEBUG("%s: No conflict found, returning 40MHz chanspec 0x%4x (%s)\n",
+		          c_info->name, chspec_out, wf_chspec_ntoa(chspec_out, chanspecbuf));
 	}
 	return chspec_out;
 }
@@ -1894,22 +1932,25 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 	time_t now = uptime();
 	acs_conf_chspec_t *excl_chans;
 	chanspec_t cur_chspec = 0;
-	int i, j;
-	chanspec_t tmp_chspec, in_chspec = 0, out_chspec = 0;
+	int tmp_chspec, i, j;
+	chanspec_t in_chspec = 0, out_chspec = 0;
 
 	excl_chans = &(c_info->excl_chans);
-	acs_invalidate_exclusion_channels(c_info, bw, excl_chans);
+	acs_invalidate_exclusion_channels(c_info->candidate[bw], c_info->c_count[bw],
+		excl_chans);
 
 	if (acs_get_chanspec(c_info, &tmp_chspec) < 0) {
 		cur_chspec = c_info->selected_chspec;
 	} else {
-		cur_chspec = tmp_chspec;
+		cur_chspec = (chanspec_t)tmp_chspec;
 	}
+
 #if 0
 	if (c_info->acs_start_on_nondfs && BAND_5G(rsi->band_type)) {
 		non_dfs_present = acs_check_for_nondfs_chan(c_info, bw);
 	}
 #endif
+
 	for (i = 0; i < c_info->c_count[bw]; i++) {
 		/* going through the  coex check if needed */
 		if ((bw == ACS_BW_40) && need_coex_check) {
@@ -1961,8 +2002,8 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 			/* Invalidate Unusable DFS channels */
 			if (candi[i].is_dfs &&
 					!acs_dfs_channel_is_usable(c_info, candi[i].chspec)) {
-				ACSD_DEBUG("%s: Invalidating %x - unusable DFS channel\n",
-					c_info->name, candi[i].chspec);
+				ACSD_DEBUG("%s: Invalidating 0x%4x (%s) - unusable DFS channel\n",
+					c_info->name, candi[i].chspec, wf_chspec_ntoa(candi[i].chspec, chanspecbuf));
 
 				candi[i].valid = FALSE;
 				candi[i].reason |= ACS_INVALID_DFS;
@@ -1988,7 +2029,9 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 
 			is_initial = acs_is_initial_selection(c_info);
 
-			if (!is_initial && !c_info->bw_upgradable) { /* not boot up ch selection */
+			/* not boot up ch selection */
+			if (!is_initial && (!c_info->bw_upgradable ||
+					c_info->acs_dfs == ACS_DFS_DISABLED)) {
 
 				/* Don't invalidate channels when already on 160MHz
 				 */
@@ -2000,8 +2043,8 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 				if (acs_check_for_overlap(cur_chspec, candi[i].chspec) &&
 						(c_info->switch_reason != APCS_CSTIMER) &&
 						(c_info->txop_weight == 0)) {
-					ACSD_5G("%s: Skipping cur chan 0x%x\n",
-						c_info->name, cur_chspec);
+					ACSD_5G("%s: Skipping cur chan 0x%4x (%s)\n",
+						c_info->name, cur_chspec, wf_chspec_ntoa(cur_chspec, chanspecbuf));
 					candi[i].reason |= ACS_INVALID_SAMECHAN;
 				}
 
@@ -2012,8 +2055,8 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 						candi[i].chspec == c_info->recent_prev_chspec &&
 						(now - c_info->acs_prev_chan_at <
 						 ACS_RECENT_CHANSWITCH_TIME)) {
-					ACSD_5G("%s Skipping recent chan 0x%x\n", c_info->name,
-							c_info->recent_prev_chspec);
+					ACSD_5G("%s Skipping recent chan 0x%4x (%s)\n", c_info->name,
+							c_info->recent_prev_chspec, wf_chspec_ntoa(c_info->recent_prev_chspec, chanspecbuf));
 					candi[i].reason |= ACS_INVALID_AVOID_PREV;
 				}
 
@@ -2051,7 +2094,7 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 						(c_info->rs_info.reg_11h &&
 						c_info->country_is_edcrs_eu &&
 						acs_is_dfs_weather_chanspec(c_info,
-						candi[i].chspec)))) {
+						candi[i].chspec) && !nvram_get_int("acs_dfs_weather")))) {
 					/* invalidate the candidate for the current trial */
 					candi[i].reason |= ACS_INVALID_DFS;
 				}
@@ -2059,16 +2102,17 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 				if (c_info->country_is_edcrs_eu) {
 					/* Invalidate weather radar channel on bootup in ETSI region
 					*/
-					if (acs_is_dfs_weather_chanspec(c_info, candi[i].chspec)) {
+					if (acs_is_dfs_weather_chanspec(c_info, candi[i].chspec) && !nvram_get_int("acs_dfs_weather")) {
 						candi[i].reason |= ACS_INVALID_DFS;
 					}
 				}
+
 #if 0
 				if (non_dfs_present && candi[i].is_dfs &&
 						c_info->acs_start_on_nondfs) {
 					candi[i].reason |= ACS_INVALID_DFS;
 				}
-#endif
+
 				if (!c_info->acs_pref_max_bw && !candi[i].is_dfs &&
 						c_info->acs_dfs != ACS_DFS_DISABLED &&
 						!c_info->acs_start_on_nondfs) {
@@ -2077,7 +2121,7 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 					 */
 					candi[i].reason |= ACS_INVALID_NONDFS;
 				}
-
+#endif
 			}
 		}
 		candi[i].valid = (candi[i].reason == 0);
@@ -2112,13 +2156,32 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 bool
 acs_channel_compare(acs_chaninfo_t *c_info, chanspec_t cur_ch, chanspec_t sel_ch)
 {
+	if (!c_info->chanim_stats) {
+		ACSD_DEBUG("%s: Don't calculate scores when chanim_stats are empty\n", c_info->name);
+		return FALSE;
+	}
+
 	int cur_score = acs_get_ch_score(c_info, cur_ch);
 	int sel_score = acs_get_ch_score(c_info, sel_ch);
-	bool better = ((sel_score + c_info->switch_score_thresh) < cur_score);
+	bool better = ((sel_score + c_info->acs_switch_score_thresh) < cur_score);
 
 	ACSD_INFO("%s: cur:0x%04X score:%d, sel:0x%04X score:%d, sw_sc_th:%d, %s\n",
 			c_info->name, cur_ch, cur_score, sel_ch, sel_score,
-			c_info->switch_score_thresh, (better ? "Better" : "Avoid"));
+			c_info->acs_switch_score_thresh, (better ? "Better" : "Avoid"));
+
+	return better;
+}
+
+bool
+acs_channel_compare_before_fallback(acs_chaninfo_t *c_info, chanspec_t cur_ch, chanspec_t sel_ch)
+{
+	int cur_score = acs_get_ch_score(c_info, cur_ch);
+	int sel_score = acs_get_ch_score(c_info, sel_ch);
+	bool better = ((sel_score + c_info->acs_switch_score_thresh_hi) < cur_score);
+
+	ACSD_INFO("%s: cur:0x%04X score:%d, sel:0x%04X score:%d, sw_sc_th:%d, %s\n",
+			c_info->name, cur_ch, cur_score, sel_ch, sel_score,
+			c_info->acs_switch_score_thresh_hi, (better ? "Better" : "Avoid"));
 
 	return better;
 }
@@ -2257,10 +2320,22 @@ reduce_bw:
 done:
 	if (acs_is_initial_selection(c_info) || ((c_info->switch_reason == APCS_TXFAIL) &&
 			(selected != c_info->cur_chspec))) {
-		ACSD_PRINT("%s: selected channel spec: 0x%4x (%s)\n", c_info->name, selected, wf_chspec_ntoa(selected, chanspecbuf));
+#if 0
+		ACSD_PRINT("%s: selected channel spec: 0x%4x\n", c_info->name, selected);
+#else
+		ACSD_PRINT("%s: selected channel spec: 0x%4x (%s)\n", c_info->name, selected,
+			wf_chspec_ntoa(selected, chanspecbuf));
+#endif
 		selected = acs_adjust_ctrl_chan(c_info, selected);
-		ACSD_PRINT("%s: Adjusted channel spec: 0x%4x (%s)\n", c_info->name, selected, wf_chspec_ntoa(selected, chanspecbuf));
-		ACSD_PRINT("%s: selected channel spec: 0x%4x (%s)\n", c_info->name, selected, wf_chspec_ntoa(selected, chanspecbuf));
+#if 0
+		ACSD_PRINT("%s: Adjusted channel spec: 0x%4x\n", c_info->name, selected);
+		ACSD_PRINT("%s: selected channel spec: 0x%4x\n", c_info->name, selected);
+#else
+		ACSD_PRINT("%s: Adjusted channel spec: 0x%4x (%s)\n", c_info->name, selected,
+			wf_chspec_ntoa(selected, chanspecbuf));
+		ACSD_PRINT("%s: selected channel spec: 0x%4x (%s)\n", c_info->name, selected,
+			wf_chspec_ntoa(selected, chanspecbuf));
+#endif
 	}
 
 	if (c_info->fallback_to_primary && CHSPEC_CHANNEL(selected) ==
@@ -2305,7 +2380,6 @@ static struct {
 		{ APCS_NONACSD, "APCS_NONACSD" },
 		{ APCS_DFS_REENTRY, "APCS_DFS_REENTRY" },
 		{ APCS_TXFAIL, "APCS_TXFAIL" },
-		{ APCS_ZDFS, "APCS_ZDFS" }
         };
 
 const char *reason_string(int rc)
@@ -2330,7 +2404,6 @@ acs_set_chspec(acs_chaninfo_t * c_info, bool update_dfs_params, int ch_chng_reas
 	acs_bgdfs_info_t *acs_bgdfs = c_info->acs_bgdfs;
 	wl_chan_change_reason_t reason;
 	reason = (wl_chan_change_reason_t)ch_chng_reason;
-	int unit = -1;
 	char tmp[32], prefix[32];
 
 	if (c_info->wet_enabled && acs_check_assoc_scb(c_info)) {
@@ -2416,12 +2489,10 @@ acs_set_chspec(acs_chaninfo_t * c_info, bool update_dfs_params, int ch_chng_reas
 				}
 			}
 			else if (ret != 0 && ACS_11H_AND_BGDFS(c_info)) {
-				ACSD_PRINT("%s: set chanspec 0x%4x (%s) failed!\n",
-					c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+				ACSD_PRINT("%s: set chanspec 0x%4x (%s) failed!\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 			}
 		} else {
-			wl_ioctl(c_info->name, WLC_GET_INSTANCE, &unit, sizeof(unit));
-			snprintf(prefix, sizeof(prefix), "wl%d_", unit);
+			snprintf(prefix, sizeof(prefix), "wl%d_", c_info->unit);
 
 			if (BAND_5G(c_info->rs_info.band_type) &&
 				nvram_match(strcat_r(prefix, "mode", tmp), "ap") &&

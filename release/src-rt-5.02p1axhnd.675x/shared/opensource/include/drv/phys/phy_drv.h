@@ -107,6 +107,7 @@ typedef enum
     PHY_TYPE_CROSSBAR,
     PHY_TYPE_MAC2MAC,
     PHY_TYPE_G9991,
+    PHY_TYPE_RTL8226,
     PHY_TYPE_MAX,
 } phy_type_t;
 

@@ -34,7 +34,8 @@
   <parameter name="X_BROADCOM_COM_WlNvram" type="string" specSource="TR181" profile="Device2_WiFiRadio:1" requirements="W" supportLevel="ReadWrite" />
     <description source="TRx">NVRAM extra information</description>
 
-
+  <parameter name="X_BROADCOM_COM_WlUnsetNvram" type="string" specSource="TR181" profile="Device2_WiFiRadio:1" requirements="W" supportLevel="Re    adWrite" />
+    <description source="TRx">Unset NVRAM extra information</description>
 
 
 <object name="InternetGatewayDevice.Device.WiFi.X_BROADCOM_COM_BsdCfg." shortObjectName="Dev2WifiBsdCfgObject" specSource="Broadcom" profile="Device2_WiFiRadio:1" supportLevel="Present" />

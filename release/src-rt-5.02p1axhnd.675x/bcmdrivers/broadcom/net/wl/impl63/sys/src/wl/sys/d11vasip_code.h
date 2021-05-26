@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: d11vasip_code.h 782135 2019-12-11 18:59:14Z $
+ * $Id: d11vasip_code.h 786123 2020-04-17 01:19:02Z $
  */
 
 /* vasip code and inits */
@@ -57,9 +57,9 @@
 #include <typedefs.h>
 #include <bcmdefs.h>
 
-/* VASIP FW Version 6.28 */
+/* VASIP FW Version 6.34 */
 #define VASIP_FW_VER_MAJOR 6
-#define VASIP_FW_VER_MINOR 28
+#define VASIP_FW_VER_MINOR 34
 
 extern CONST uint32 d11vasipcode_major;
 extern CONST uint32 d11vasipcode_minor;
@@ -152,5 +152,7 @@ extern CONST vasip_fw_t vasip_airiq_11ac_fw;
 extern CONST vasip_fw_t vasip_11ax_2x2_fw;
 
 extern CONST vasip_fw_t vasip_11ax_3x3_fw;
+
+extern CONST vasip_fw_t vasip_11ax_4x4_wav2_fw;
 
 #endif /* __D11VASIP_CODE_H__ */

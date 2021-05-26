@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlu.c 780975 2019-11-07 07:37:49Z $
+ * $Id: wlu.c 788982 2020-07-16 00:55:05Z $
  */
 
 #include <typedefs.h>
@@ -366,6 +366,7 @@ static cmd_func_t wl_stamon_sta_config;
 static cmd_func_t wl_monitor_promisc_level;
 static cmd_func_t wl_monitor_config;
 static cmd_func_t wl_bcnlenhist;
+static cmd_func_t wl_csimon;
 
 #ifdef SR_DEBUG
 static cmd_func_t wl_dump_pmu;
@@ -527,9 +528,12 @@ static cmd_func_t wl_cca_raw_stats;
 static cmd_func_t wl_cca_delta_stats;
 #endif // endif
 
+static cmd_func_t wl_mutx_mpdusz_mu_admit_thresh;
+static cmd_func_t wl_mutx_mpdusz_dlofdma_admit_thresh;
 static void dlystat_dump(txdelay_stats_t *txdelay_stats);
 static int wl_dlystats(void *wl, cmd_t *cmd, char **argv);
 static int wl_dlystats_clear(void *wl, cmd_t *cmd, char **argv);
+static int wl_pktqstatus(void *wl, cmd_t *cmd, char **argv);
 
 static int wl_get_tcmstbl_entry(void *wl, cmd_t *cmd, char **argv);
 
@@ -1333,7 +1337,7 @@ cmd_t wl_cmds[] = {
 	"Get/clear sc radar detection status"},
 	{ "radar_subband_status", wl_radar_subband_status, WLC_GET_VAR, WLC_SET_VAR,
 	"Get/clear subband radar detection status"},
-	{ "pwr_percent", wl_int, WLC_GET_PWROUT_PERCENTAGE, WLC_SET_PWROUT_PERCENTAGE,
+	{ "txpwr_percent", wl_int, WLC_GET_PWROUT_PERCENTAGE, WLC_SET_PWROUT_PERCENTAGE,
 	"Get/Set power output percentage"},
 	{ "toe", wl_varint, WLC_GET_VAR, WLC_SET_VAR,
 	"Enable/Disable tcpip offload feature"},
@@ -1710,6 +1714,12 @@ cmd_t wl_cmds[] = {
 	"clear delay stats \n"
 	"\t Usage: wl dlystats_clear"
 	},
+	{"pktq_status", wl_pktqstatus, WLC_GET_VAR, -1,
+	"Get number of queued packets, max queable, and stall count in each queue per STA\n"
+	"\tOnly Queues with non-zero queued pkt counts are printed\n"
+	"\tUsage: wl pktq_status <STA mac address>\n"
+	"\t(STA MAC address e.g. 00:11:20:11:33:33)\n"
+	},
 	{ "dngl_wd", wl_varint, WLC_GET_VAR, WLC_SET_VAR,
 	"enable or disable dongle keep alive watchdog timer\n"
 	"\tUsage: wl dngl_wd 0\\1 (to turn off\\on)"},
@@ -1820,6 +1830,10 @@ cmd_t wl_cmds[] = {
 	"wl sta_monitor [<add> <xx:xx:xx:xx:xx:xx>[<chanspec> <off-channel time>]] "
 	"[<del|stats> <xx:xx:xx:xx:xx:xx>] [<monitor_time> <timer value in ms>]"
 	" [<enable|disable|counters|reset_cnts>]"},
+	{ "csimon", wl_csimon, WLC_GET_VAR, WLC_SET_VAR,
+	"wl csimon [<add> <xx:xx:xx:xx:xx:xx>[<timer value in ms>]] "
+	"[<del> <xx:xx:xx:xx:xx:xx>]"
+	" [<enable|disable>]"},
 	{ "monitor_promisc_level", wl_monitor_promisc_level, WLC_GET_VAR, WLC_SET_VAR,
 	"Set a bitmap of different MAC promiscuous level of monitor mode.\n\n"
 	MONITOR_PROMISC_LEVEL_USAGE},
@@ -1943,7 +1957,7 @@ cmd_t wl_cmds[] = {
 	"  wl msched ackpolicy val - set/get ackpolicy 0:serial 1:trig_in_amp 2:mu_bar\n"
 	"  wl msched mindlusers - set/get min dlofdma capable users required to enable dlofdma\n"
 	"  wl msched maxofdmausers - set/get max dl ofdma users\n"
-	"  wl msched murts - set/get if use MU-RTS\n"
+	"  wl msched murts - 0: disable; 1: static mu-rts; 2: dynamic mu-rts (for SMPS)\n"
 	"  wl msched minru <val> [-u <addr>]   - get/set minRU for a given user\n"
 	"  wl msched mixackp <val> - turn on/off mixackp. Invalid if ackpolicy is 0\n"
 	"  wl msched mixbw [0|1] - schedule users from multi BWs in DL ofdma. 0:disable 1: enale\n"
@@ -1968,6 +1982,9 @@ cmd_t wl_cmds[] = {
 	"  wl umsched maxclients <val>        - max number of admitted ul ofdma clients.\n"
 	"  wl umsched fb <val>                - 1: turn on ul ofdma frameburst; 0: turn off\n"
 	"  wl umsched mode <val>              - 1: use utxd mode; 0: use legacy mode\n"
+	"  wl umsched ravg_exp <val>          - sample cnt for running avg.\n"
+	"  wl umsched evict_thrsh <val>       - # of consecutive qos null before eviction\n"
+	"  wl umsched trig_wait_thrsh <val>   - starting trigger wait time in ms\n"
 	"  wl umsched enable <val> [-u <addr>]- turn on/off a user. Valid for utxd mode\n"
 	"  wl msched help - print this help message"},
 	{"txbfcfg", wl_txbfcfg_cmd, WLC_GET_VAR, WLC_SET_VAR,
@@ -2341,12 +2358,25 @@ cmd_t wl_cmds[] = {
 	"wl fifo perac [mutype] [value]\n"
 	"\t[mu_type] : any one of the following\n"
 	"\t\tvhtmu hemmu ofdma\n"
-	"\t[value] Number of per AC FIFO\n"},
+	"\t[value] Number of per AC FIFO\n"
+	"wl fifo maxtx [mutype] [value]\n"
+	"\t[mu_type] : any one of the following\n"
+	"\t\tvhtmu hemmu ofdma\n"
+	"\t[value] Number of max FIFOs for TX type\n"},
 	{ "block_he", wl_varint, WLC_GET_VAR, WLC_SET_VAR,
 	"block he clients\n"
 	"\t0 - disable\n"
 	"\t1 - enable blocking he clients based on he field in the request\n"
 	"\t2 - enable blocking he clients based on he field in the request and block mac list\n" },
+	{ "atf_perc_reset", wl_var_void, -1, WLC_SET_VAR,
+	"clear atf sta/bss usage percentage"},
+	{ "mpdusz_mu_admit_thresh", wl_mutx_mpdusz_mu_admit_thresh, WLC_GET_VAR, WLC_SET_VAR,
+	"Set mu mpdusz admit threshold (Bytes) for each bw.\n"
+	"wl mpdusz_mu_admit_thresh bw160|bw80|bw40|bw20 [<value>]"},
+	{ "mpdusz_dlofdma_admit_thresh", wl_mutx_mpdusz_dlofdma_admit_thresh,
+	WLC_GET_VAR, WLC_SET_VAR,
+	"Set dlofdma mpdusz admit threshold (Bytes) for each bw.\n"
+	"wl mpdusz_dlofdma_admit_thresh bw160|bw80|bw40|bw20 [<value>]"},
 	{ NULL, NULL, 0, 0, NULL }
 };
 
@@ -4328,6 +4358,51 @@ wlu_dump_phytbls(void *wl, char *dump_buf)
 }
 
 static int
+wlu_dump_umsched(void *wl, char *dump_buf)
+{
+	int ret = BCME_OK;
+	uint8 maclist_buf[WLC_IOCTL_MAXLEN];
+	struct ether_addr *ea;
+	uint i, max = (WLC_IOCTL_MAXLEN - sizeof(int)) / ETHER_ADDR_LEN;
+	struct maclist *maclist = (struct maclist *)&maclist_buf;
+
+	memset(dump_buf, 0, WL_DUMP_BUF_LEN);
+	strcat(dump_buf, " umsched");
+	ret = wlu_iovar_getbuf(wl, "dump", dump_buf, (int)strlen(dump_buf),
+			dump_buf, WL_DUMP_BUF_LEN);
+	fputs(dump_buf, stdout);
+	printf("\n");
+
+	/* Find all destinations of this interface */
+	maclist->count = htod32(max);
+	if (wlu_get(wl, WLC_GET_ASSOCLIST, maclist, WLC_IOCTL_MAXLEN) < 0) {
+		return BCME_OK;
+	} else {
+		maclist->count = dtoh32(maclist->count);
+	}
+
+	if (maclist->count == 0) {
+		return BCME_OK;
+	}
+
+	for (i = 0, ea = maclist->ea; i < maclist->count && i < max; i++, ea++) {
+		memset(dump_buf, 0, WL_DUMP_BUF_LEN);
+		strcat(dump_buf, " umsched -m ");
+		strcat(dump_buf, wl_ether_etoa(ea));
+		ret = wlu_iovar_getbuf(wl, "dump", dump_buf, (int)strlen(dump_buf),
+				dump_buf, WL_DUMP_BUF_LEN);
+		if ((ret != BCME_OK) || (dump_buf[0] == 'U')) {
+			/* wl dump umsched -m <addr> not supported, terminate */
+			break;
+		}
+		fputs(dump_buf, stdout);
+		printf("\n");
+	}
+
+	return BCME_OK;
+}
+
+static int
 wlu_dump(void *wl, cmd_t *cmd, char **argv)
 {
 	int ret, err, bcmerr;
@@ -4377,6 +4452,11 @@ wlu_dump(void *wl, cmd_t *cmd, char **argv)
 		}
 	} else if (!strncmp(*argv, str_phytbls, sizeof(str_phytbls))) {
 		ret = wlu_dump_phytbls(wl, dump_buf);
+	} else if (!strncmp(*argv, "umsched", sizeof("umsched")) &&
+			*(argv + 1) == '\0') {
+		ret = wlu_dump_umsched(wl, dump_buf);
+		free(dump_buf);
+		return ret;
 	} else {
 		/* create the dump section name list */
 		while (*argv) {
@@ -5796,6 +5876,7 @@ static dbg_msg_t wl_msgs[] = {
 	{WL_PFN_VAL,		"pfn"},
 	{WL_REGULATORY_VAL,	"regulatory"},
 	{WL_TAF_VAL,		"taf"},
+	{WL_ULMU_VAL,		"ulmu"},
 	{WL_MPC_VAL,		"mpc"},
 	{WL_APSTA_VAL,		"apsta"},
 	{WL_DFS_VAL,		"dfs"},
@@ -14734,6 +14815,110 @@ wl_lifetime(void *wl, cmd_t *cmd, char **argv)
 	return err;
 }
 
+/*
+ * Get or Set MUMIMO mpdusz admit threshold
+ *	"wl mpdusz_mu_admit_thresh bw160|bw80|bw40|bw20 [<value>]"},
+ *  with no args, print current values
+ */
+static int
+wl_mutx_mpdusz_mu_admit_thresh(void *wl, cmd_t *cmd, char **argv)
+{
+	int err;
+	uint32 bw;
+	char *param, *val;
+	const char *cmdname = "mpdusz_mu_admit_thresh";
+	wl_mutx_mpdusz_admit_thresh_t mpdusz_thresh, *reply;
+	void *ptr = NULL;
+
+	UNUSED_PARAMETER(cmd);
+
+	if ((param = *++argv) == NULL)
+		return BCME_USAGE_ERROR;
+	bzero(&mpdusz_thresh, sizeof(mpdusz_thresh));
+	if (strcmp(param, "bw160") == 0)
+		bw = 4;
+	else if (strcmp(param, "bw80") == 0)
+		 bw = 3;
+	else if (strcmp(param, "bw40") == 0)
+		bw = 2;
+	else if (strcmp(param, "bw20") == 0)
+		bw = 1;
+	else {
+		fprintf(stderr, "unexpected param %s\n", param);
+		return BCME_USAGE_ERROR;
+	}
+
+	if ((val = *++argv) == NULL) {
+		mpdusz_thresh.bw = htod32(bw);
+		if ((err = wlu_var_getbuf(wl, cmdname, &mpdusz_thresh, sizeof(mpdusz_thresh),
+		                         &ptr)) < 0)
+			return err;
+		reply = (wl_mutx_mpdusz_admit_thresh_t *) ptr;
+		reply->bw = dtoh32(reply->bw);
+		reply->mpdusz = dtoh32(reply->mpdusz);
+		printf("mpdusz_mu_admit_thresh for '%s' is %u Bytes\n", param, reply->mpdusz);
+	}
+	else {
+		mpdusz_thresh.bw = htod32(bw);
+		mpdusz_thresh.mpdusz = htod32((uint)strtol(val, 0, 0));
+		err = wlu_var_setbuf(wl, cmdname, &mpdusz_thresh, sizeof(mpdusz_thresh));
+	}
+
+	return err;
+}
+
+/*
+ * Get or Set DLOFDMA mpdusz admit threshold
+ *	"wl mpdusz_dlofdma_admit_thresh bw160|bw80|bw40|bw20 [<value>]"},
+ *  with no args, print current values
+ */
+static int
+wl_mutx_mpdusz_dlofdma_admit_thresh(void *wl, cmd_t *cmd, char **argv)
+{
+	int err;
+	uint8 bw;
+	char *param, *val;
+	const char *cmdname = "mpdusz_dlofdma_admit_thresh";
+	wl_mutx_mpdusz_admit_thresh_t mpdusz_thresh, *reply;
+	void *ptr = NULL;
+
+	UNUSED_PARAMETER(cmd);
+
+	if ((param = *++argv) == NULL)
+		return BCME_USAGE_ERROR;
+
+	if (strcmp(param, "bw160") == 0)
+		bw = 4;
+	else if (strcmp(param, "bw80") == 0)
+		 bw = 3;
+	else if (strcmp(param, "bw40") == 0)
+		bw = 2;
+	else if (strcmp(param, "bw20") == 0)
+		bw = 1;
+	else {
+		fprintf(stderr, "unexpected param %s\n", param);
+		return BCME_USAGE_ERROR;
+	}
+
+	if ((val = *++argv) == NULL) {
+		mpdusz_thresh.bw = htod32(bw);
+		if ((err = wlu_var_getbuf(wl, cmdname, &mpdusz_thresh, sizeof(mpdusz_thresh),
+		                         &ptr)) < 0)
+			return err;
+		reply = (wl_mutx_mpdusz_admit_thresh_t *) ptr;
+		reply->bw = dtoh32(reply->bw);
+		reply->mpdusz = dtoh32(reply->mpdusz);
+		printf("mpdusz_dlofdma_admit_thresh for '%s' is %u Bytes\n", param, reply->mpdusz);
+	}
+	else {
+		mpdusz_thresh.bw = htod32(bw);
+		mpdusz_thresh.mpdusz = htod32((uint)strtol(val, 0, 0));
+		err = wlu_var_setbuf(wl, cmdname, &mpdusz_thresh, sizeof(mpdusz_thresh));
+	}
+
+	return err;
+}
+
 #define VNDR_IE_OK_FLAGS \
 	(VNDR_IE_BEACON_FLAG | VNDR_IE_PRBRSP_FLAG | VNDR_IE_ASSOCRSP_FLAG | \
 	 VNDR_IE_AUTHRSP_FLAG | VNDR_IE_PRBREQ_FLAG | VNDR_IE_ASSOCREQ_FLAG | \
@@ -18444,6 +18629,41 @@ dlystat_dump(txdelay_stats_t *txdelay_stats)
 		printf("\n");
 	}
 }
+static int
+wl_pktqstatus(void *wl, cmd_t *cmd, char **argv)
+{
+	int ret = 0;
+	scb_pktq_status_t *pktq_status_param;
+	char pktq_buf[WLC_IOCTL_MEDLEN];
+
+	pktq_status_param = (scb_pktq_status_t *)malloc(sizeof(*pktq_status_param));
+
+	if (pktq_status_param == NULL) {
+		return BCME_NOMEM;
+	}
+
+	memset(pktq_status_param, 0, sizeof(*pktq_status_param));
+	pktq_status_param->ver = WL_PKTQ_STATUS_VERSION;
+
+	if (*++argv) {
+		if (!wl_ether_atoe(*argv, &pktq_status_param->ea)) {
+			ret = BCME_USAGE_ERROR;
+			printf("%s Usage error %d\n", __FUNCTION__, ret);
+			goto EXIT;
+		}
+	}
+
+	ret = wlu_iovar_getbuf(wl, cmd->name, pktq_status_param, sizeof(*pktq_status_param),
+			pktq_buf, WLC_IOCTL_MEDLEN);
+	if (ret) {
+		printf("%s Test failure %d\n", __FUNCTION__, ret);
+		goto EXIT;
+	}
+	fputs(pktq_buf, stdout);
+EXIT:
+	free(pktq_status_param);
+	return ret;
+}
 
 static int
 wl_dlystats(void *wl, cmd_t *cmd, char **argv)
@@ -19986,6 +20206,93 @@ static int wl_stamon_sta_config(void *wl, cmd_t *cmd, char **argv)
 			err = wlu_iovar_set(wl, cmd->name,
 				&stamon_cfg, sizeof(wlc_stamon_sta_config_t));
 
+	}
+
+	return err;
+}
+
+static int // CSI Monitor get/set iovar
+wl_csimon(void *wl, cmd_t *cmd, char **argv)
+{
+	int err = 0;
+	wlc_csimon_sta_config_t csimon_cfg;
+	struct maclist *maclist = (struct maclist *) buf;
+	uint i, max = (WLC_IOCTL_MAXLEN - sizeof(int)) / ETHER_ADDR_LEN;
+	struct ether_addr *ea;
+	int monitor_interval;
+	char *endptr;
+
+	memset(&csimon_cfg, 0, sizeof(wlc_csimon_sta_config_t));
+	if (!*++argv) {
+		maclist->count = htod32(max);
+		err = wlu_iovar_get(wl, cmd->name, maclist, WLC_IOCTL_MAXLEN);
+		maclist->count = dtoh32(maclist->count);
+		if (!err) {
+			for (i = 0, ea = maclist->ea; i < maclist->count && i < max; i++, ea++)
+				printf("%s\n", wl_ether_etoa(ea));
+		}
+	} else {
+		csimon_cfg.version = htod16(CSIMON_STACONFIG_VER);
+		csimon_cfg.length = htod16(CSIMON_STACONFIG_LENGTH);
+
+		if (!stricmp(*argv, "add")) {
+			csimon_cfg.cmd = htodenum(CSIMON_CFG_CMD_ADD);
+			if (!*++argv || !wl_ether_atoe(*argv, &csimon_cfg.ea)) {
+				printf(" ERROR: no valid ethernet address provided\n");
+				return BCME_BADARG;
+			}
+			argv++;
+			if (*argv) {
+				monitor_interval = strtoul(*argv, &endptr, 0);
+				/* Minimum monitor interval allowed is 33 ms => 30 rec/sec */
+				if ((monitor_interval < 33) || (*endptr != '\0')) {
+					printf(" ERROR: Invalid monitor interval provided\n");
+					err = BCME_BADARG;
+				} else {
+					csimon_cfg.monitor_interval =
+					                     htod32((uint32)monitor_interval);
+				}
+			}
+		} else if (!stricmp(*argv, "del")) {
+			csimon_cfg.cmd = htodenum(CSIMON_CFG_CMD_DEL);
+			if (!*++argv || !wl_ether_atoe(*argv, &csimon_cfg.ea)) {
+				printf(" ERROR: no valid ethernet address provided\n");
+				err = BCME_BADARG;
+			}
+		} else if (!stricmp(*argv, "enable")) {
+			csimon_cfg.cmd = htodenum(CSIMON_CFG_CMD_ENB);
+		} else if (!stricmp(*argv, "disable")) {
+			csimon_cfg.cmd = htodenum(CSIMON_CFG_CMD_DSB);
+		} else if (!stricmp(*argv, "state")) {
+			const char *cmdname = "csimon_state";
+			void *ptr = NULL;
+			csimon_state_t *state = NULL;
+
+			if ((err = wlu_var_getbuf_sm(wl, cmdname, NULL, 0, &ptr))) {
+				return err;
+			}
+			state = (csimon_state_t *)ptr;
+			if (dtoh16(state->version) == CSIMON_CNTR_VER) {
+				printf("CSI Monitor: Enabled: %u\n"
+					   "CSI record transfer (to DDR) count: %u\n"
+					   "Ack fail count: %u\nCSI record overflow count: %u\n",
+					   state->enabled,
+					   dtoh32(state->m2mxfer_cnt), dtoh32(state->ack_fail_cnt),
+					   dtoh32(state->rec_ovfl_cnt));
+			} else {
+				err = BCME_VERSION;
+			}
+			return err;
+		} else if (!stricmp(*argv, "reset_cnts"))
+			csimon_cfg.cmd = htodenum(CSIMON_CFG_CMD_RSTCNT);
+		else {
+			printf("ERROR: unknown operation option %s\n", *argv);
+			err = BCME_BADARG;
+		}
+
+		if (!err)
+			err = wlu_iovar_set(wl, cmd->name,
+				&csimon_cfg, sizeof(wlc_csimon_sta_config_t));
 	}
 
 	return err;

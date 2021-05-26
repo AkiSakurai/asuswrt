@@ -675,6 +675,7 @@ d3fwd_wlif_stats_dump(d3fwd_wlif_stats_t * d3fwd_wlif_stats, bool clear_on_read)
     printk("\t\t %4s %10s %10s", "prio", "tot_pkts", "tx_drops");
     printk(" %10s %10s", "cfp_pkts", "cfp_fwds");
     printk(" %10s %10s", "chn_pkts", "chn_fwds");
+    printk(" %10s", "slow_pkts");
     printk(" %10s %10s\n", "schedule", "complete");
 
     for (prio = 0U; prio < D3FWD_PRIO_MAX; ++prio)
@@ -683,6 +684,7 @@ d3fwd_wlif_stats_dump(d3fwd_wlif_stats_t * d3fwd_wlif_stats, bool clear_on_read)
         printk("\t\t %4u %10u %10u", prio, stats->tot_pkts, stats->tx_drops);
         printk(" %10u %10u", stats->cfp_pkts, stats->cfp_fwds);
         printk(" %10u %10u", stats->chn_pkts, stats->chn_fwds);
+	printk(" %10u", stats->slow_pkts);
         printk(" %10u %10u\n", stats->schedule, stats->complete);
     }
 
@@ -1110,6 +1112,8 @@ d3lut_pool_init(d3lut_pool_t * d3lut_pool, uint32_t d3lut_elem_tot)
         d3lut_elem->key.index  = index;         /* index set at init time */
         d3lut_elem->key.incarn = 0x0;           /* incarn incremented per put */
         d3lut_elem->key.domain = pool;          /* pool aka domain */
+
+	dll_init(&d3lut_elem->sta_list);        /* initialize sta list */
 
         D3FWD_EXT_PUT(d3lut_elem->ext);         /* clobber the elem extension */
 
@@ -1599,6 +1603,30 @@ d3lut_fini(d3lut_t * d3lut)
  */
 
 void
+d3fwd_sta_dump(dll_t *sta_list)
+{
+    int i = 0;
+    dll_t *item;
+    d3lut_sta_t *sta;
+
+    if (dll_empty(sta_list))
+	return;
+
+    printk("\t STAs: [addr] \t\t\t[d3lut_elem] \t\t[flag]\n");
+    dll_for_each(item, sta_list)
+    {
+	sta = (d3lut_sta_t *)item;
+	printk("\t\t[%02x:%02x:%02x:%02x:%02x:%02x] \t[%px] \t[0x%x]\n",
+		sta->mac[0], sta->mac[1], sta->mac[2], sta->mac[3], sta->mac[4], sta->mac[5],
+		sta->d3lut_elem, sta->flag);
+	if (i++ > PKTFWD_ENDPOINTS_MAX) {
+	    printk("%s: ERROR sta num is greater than %d!\n", __FUNCTION__, PKTFWD_ENDPOINTS_MAX);
+	    break;
+	}
+    }
+}
+
+void
 d3fwd_elem_dump(d3lut_elem_t * d3lut_elem)
 {
     printk("\t Elem %p pool %u " D3LUT_ELEM_FMT "\n",
@@ -1607,6 +1635,7 @@ d3fwd_elem_dump(d3lut_elem_t * d3lut_elem)
 #if defined(BCM_D3FWD)
     d3fwd_ext_dump(&d3lut_elem->ext);
 #endif
+    d3fwd_sta_dump(&d3lut_elem->sta_list);
 }   /* d3fwd_elem_dump() */
 
 

@@ -21,7 +21,6 @@
 #
 
 HND_DIR        :=  ../hnd
-# router-sysdep is symbolic link,  router-sysdep/hnd/../../ will jump to src-rt-5.02.axhnd.675x/
 SRCBASE_OFFSET := ../../bcmdrivers/broadcom/net/wl/bcm9$(BCM_CHIP)/main/src
 HNDFILES_SRC   := $(SRCBASE_OFFSET)/shared
 SRCBASE        := $(src)/$(SRCBASE_OFFSET)
@@ -32,7 +31,7 @@ WLCFGDIR       := $(WLSRC_BASE)/wl/config
 COMMON_SHARED_DIR := ../../../../../shared/impl1
 COMPONENTSBASE_OFFSET := ../../bcmdrivers/broadcom/net/wl/bcm9$(BCM_CHIP)/main/components
 COMPONENTSBASE := $(src)/$(COMPONENTSBASE_OFFSET)
-SRCBASE_ROUTER := $(COMPONENTSBASE)/router
+SRCBASE_ROUTER := $(COMPONENTSBASE)/router-sysdep
 
 ifneq ($(BUILD_HND_MFG),)
 export BUILD_MFG := 1
@@ -46,6 +45,10 @@ endif
 
 REBUILD_HND_MODULE=$(shell if [ -d "$(src)/$(HND_DIR)" -a "$(REUSE_PREBUILT_HND)" != "1" ]; then echo 1; else echo 0; fi)
 
+ifneq ($(wildcard $(src)/$(HND_DIR)/prebuilt/hnd.o),)
+REBUILD_HND_MODULE=0
+endif
+
 ifeq ($(REBUILD_HND_MODULE),1)
 #Linux-4.1.0: Include the shared object files required for Wl, EMF and IGS modules
 hnd-objs := $(HND_DIR)/hnd_c.o shared_ksyms.o
@@ -54,10 +57,6 @@ HND_OBJS := $(addprefix $(src)/$(HNDFILES_SRC)/, $(sort $(WLFILES:.c=.o)))
 
 HND_OBJS += $(src)/$(HNDFILES_SRC)/nvram_ext.o
 HND_OBJS += $(COMPONENTSBASE)/math/src/bcm_math.o
-
-ifeq ($(CONFIG_BUZZZ_FUNC),y)
-subdir-ccflags-y += -O0 -fno-inline -finstrument-functions
-endif # CONFIG_BUZZZ_FUNC
 
 # Search for sources under src/router/hnd/
 ifneq ($(wildcard $(src)/$(HND_DIR)),)
@@ -123,11 +122,20 @@ endif
         EXTRA_CFLAGS += -DBCM_PKTFWD
     endif
 
+    ifneq ($(strip $(CONFIG_BCM_WLAN_64BITPHYSADDR)),)
+        EXTRA_CFLAGS += -DBCMDMA64OSL
+    endif
+
     EXTRA_CFLAGS += -DSTS_FIFO_RXEN
 
-	ifeq ($(CONFIG_BCM_HND_EAP), y)
-		EXTRA_CFLAGS += -DBCM_SKB_FREE_OFFLOAD
-	endif
+    ifneq ($(strip $(CONFIG_BCM_BPM_BULK_FREE)),)
+        EXTRA_CFLAGS += -DBPM_BULK_FREE
+        EXTRA_CFLAGS += -DBCM_SKB_FREE_OFFLOAD
+    endif
+
+    ifeq ($(CONFIG_BCM_HND_EAP), y)
+        EXTRA_CFLAGS += -DBCM_SKB_FREE_OFFLOAD
+    endif
 
     hnd-objs += $(subst $(src)/,,$(HND_OBJS))
 
@@ -154,7 +162,7 @@ else # HND_DIR doesn't exist
 
     # Otherwise, assume prebuilt object module(s) in src/hnd/linux directory
     prebuilt := hnd.o
-    hnd-objs := $(SRCBASE_OFFSET)/router-sysdep/hnd/prebuilt/$(prebuilt)
+    hnd-objs := prebuilt/$(prebuilt)
     obj-$(CONFIG_BCM_WLAN) := hnd.o
 endif
 

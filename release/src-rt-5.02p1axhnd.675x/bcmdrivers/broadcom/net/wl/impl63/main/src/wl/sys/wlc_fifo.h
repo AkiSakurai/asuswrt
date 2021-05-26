@@ -71,7 +71,14 @@ extern void wlc_fifo_sta_bitmap(wlc_fifo_info_t *fifo_info, struct scb *scb,
 	void *fifo_bitmap);
 extern bool wlc_fifo_isMU(wlc_fifo_info_t *fifo_info, struct scb *scb, uint ac);
 extern bool wlc_check_fifo_type(wlc_fifo_info_t *fifo_info, struct scb *scb, uint ac, mu_type_t mu);
+extern uint8 wlc_fifo_get_ac(wlc_fifo_info_t *fifo_info, uint fifo_index);
 
 extern void wlc_fifo_mutx_ac_release(wlc_fifo_info_t *fifo_info, wl_mutx_ac_mg_t *mutx_ac_mask);
-
+extern int wlc_fifo_avail_count(wlc_fifo_info_t *fifo_info, uint ac, mu_type_t mu);
+extern int wlc_fifo_max_per_ac(wlc_fifo_info_t *fifo_info, mu_type_t mu);
+extern int wlc_scb_mu_fifo_count(wlc_fifo_info_t *fifo_info, struct scb *scb);
+extern int wlc_fifo_user_count(wlc_fifo_info_t *fifo_info, struct scb *scb, uint ac);
+extern int wlc_fifo_remaining_mu(wlc_fifo_info_t *fifo_info, mu_type_t mu);
+extern int wlc_mu_fifo_count(wlc_fifo_info_t *fifo_info, mu_type_t mu);
+extern int wlc_fifo_dlmu_avail_count(wlc_fifo_info_t *fifo_info);
 #endif   /* _wlc_fifo_h_ */

@@ -2,48 +2,21 @@
  * Broadcom Full Dongle Host Memory Extension (HME)
  *  Interface to manage Host Memory Extensions.
  *
- * Copyright 2020 Broadcom
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
- * This program is the proprietary software of Broadcom and/or
- * its licensors, and may only be used, duplicated, modified or distributed
- * pursuant to the terms and conditions of a separate, written license
- * agreement executed between you and Broadcom (an "Authorized License").
- * Except as set forth in an Authorized License, Broadcom grants no license
- * (express or implied), right to use, or waiver of any kind with respect to
- * the Software, and Broadcom expressly reserves all rights in and to the
- * Software and all intellectual property rights therein.  IF YOU HAVE NO
- * AUTHORIZED LICENSE, THEN YOU HAVE NO RIGHT TO USE THIS SOFTWARE IN ANY
- * WAY, AND SHOULD IMMEDIATELY NOTIFY BROADCOM AND DISCONTINUE ALL USE OF
- * THE SOFTWARE.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
  *
- * Except as expressly set forth in the Authorized License,
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+ * SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
+ * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * 1. This program, including its structure, sequence and organization,
- * constitutes the valuable trade secrets of Broadcom, and you shall use
- * all reasonable efforts to protect the confidentiality thereof, and to
- * use this information only in connection with your use of Broadcom
- * integrated circuit products.
- *
- * 2. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED
- * "AS IS" AND WITH ALL FAULTS AND BROADCOM MAKES NO PROMISES,
- * REPRESENTATIONS OR WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR
- * OTHERWISE, WITH RESPECT TO THE SOFTWARE.  BROADCOM SPECIFICALLY
- * DISCLAIMS ANY AND ALL IMPLIED WARRANTIES OF TITLE, MERCHANTABILITY,
- * NONINFRINGEMENT, FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES,
- * ACCURACY OR COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR
- * CORRESPONDENCE TO DESCRIPTION. YOU ASSUME THE ENTIRE RISK ARISING
- * OUT OF USE OR PERFORMANCE OF THE SOFTWARE.
- *
- * 3. TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL
- * BROADCOM OR ITS LICENSORS BE LIABLE FOR (i) CONSEQUENTIAL, INCIDENTAL,
- * SPECIAL, INDIRECT, OR EXEMPLARY DAMAGES WHATSOEVER ARISING OUT OF OR
- * IN ANY WAY RELATING TO YOUR USE OF OR INABILITY TO USE THE SOFTWARE EVEN
- * IF BROADCOM HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES; OR (ii)
- * ANY AMOUNT IN EXCESS OF THE AMOUNT ACTUALLY PAID FOR THE SOFTWARE ITSELF
- * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
- * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
- *
- * <<Broadcom-WL-IPTag/Proprietary:>>
+ * <<Broadcom-WL-IPTag/Open:>>
  *
  * $Id$
  *
@@ -60,36 +33,6 @@
 
 struct osl_info;    // forward decl: osl_decl.h
 struct pcie_ipc;    // forward decl: bcmpcie.h
-
-#define HME_NOOP                    do { /* no-op */ } while(0)
-#define HME_PRINT                   printf
-
-/** Conditional Compile: Designer builds for extended debug and statistics */
-#define HME_DEBUG_BUILD
-#define HME_STATS_BUILD
-
-#define HME_CTRS_RDZERO             /* Clear On Read */
-#if defined(HME_CTRS_RDZERO)
-#define HME_CTR_ZERO(ctr)           (ctr) = 0U
-#else
-#define HME_CTR_ZERO(ctr)           HME_NOOP
-#endif // endif
-
-#if defined(HME_DEBUG_BUILD)
-#define HME_ASSERT(expr)            ASSERT(expr)
-#define HME_DEBUG(expr)             expr
-#else  /* ! HME_DEBUG_BUILD */
-#define HME_ASSERT(expr)            HME_NOOP
-#define HME_DEBUG(expr)             HME_NOOP
-#endif /* ! HME_DEBUG_BUILD */
-
-#if defined(HME_STATS_BUILD)
-#define HME_STATS(expr)             expr
-#define HME_STATS_ZERO(ctr)         HME_CTR_ZERO(ctr)
-#else  /* ! HME_STATS_BUILD */
-#define HME_STATS(expr)             HME_NOOP
-#define HME_STATS_ZERO(expr)        HME_NOOP
-#endif /* ! HME_STATS_BUILD */
 
 /**
  * HME: Memory Management policy.
@@ -123,7 +66,7 @@ typedef void * hme_mgr_t;       // HME User Memory Manager opaque handle
 #define HME_USER_MACIFS    2    // MACIFs: Tx + Rx FIFO offload
 #define HME_USER_LCLPKT    3    // LCLPKT: heap allocated data buffer offload
 #define HME_USER_PSQPKT    4    // PSQPKt: PS queue of packets offload
-#define HME_USER_UNDEF5    5    // Future use
+#define HME_USER_CSIMON    5    // Channel State Information Monitor
 #define HME_USER_UNDEF6    6    // Future use
 #define HME_USER_UNDEF7    7    // Future use
 

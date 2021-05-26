@@ -26,9 +26,6 @@ $(KERNEL_DIR)/.pre_kernelbuild: $(BCM_KF_KCONFIG_FILE)
 		(tar xkfpj $(LINUX_ZIP_FILE) 2> /dev/null || true); \
 		touch $(KERNEL_DIR)/.untar_complete; \
 	fi && \
-	#$(GENDEFCONFIG_CMD) $(PROFILE_PATH) ${MAKEFLAGS} && \
-	#cp -f $(KERNEL_DIR)/arch/$(ARCH)/defconfig $(KERNEL_DIR)/.config && \
-	#$(if $(strip $(BRCM_ANDROID)), $(call android_kernel_merge_cfg), true) && \
 	$(MAKE) -C $(BUILD_DIR)/build -f Bcmkernel.mk olddefconfig && \
 	$(if $(BCM_KF), true, $(call kernel_cfg_rm_bcm_kf)) && \
 	touch $(KERNEL_DIR)/.pre_kernelbuild; 

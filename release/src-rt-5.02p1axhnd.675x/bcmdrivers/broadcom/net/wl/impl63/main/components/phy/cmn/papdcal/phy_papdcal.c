@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_papdcal.c 780340 2019-10-22 18:55:57Z $
+ * $Id: phy_papdcal.c 785862 2020-04-08 01:20:21Z $
  */
 
 #include <phy_cfg.h>
@@ -422,6 +422,30 @@ phy_papdcal_set_comp_disable(phy_info_t *pi, int8 comp_disable)
 
 	if (fns->set_comp_disable != NULL) {
 		return (fns->set_comp_disable)(fns->ctx, comp_disable);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_papdcal_get_dump(phy_info_t *pi, int32* papdcal_dump)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->get_dump != NULL) {
+		return (fns->get_dump)(fns->ctx, papdcal_dump);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_papdcal_set_dump(phy_info_t *pi, int8 papdcal_dump)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->set_dump != NULL) {
+		return (fns->set_dump)(fns->ctx, papdcal_dump);
 	} else {
 		return BCME_UNSUPPORTED;
 	}

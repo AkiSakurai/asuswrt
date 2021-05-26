@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_slave_com_hdlr.c 782305 2019-12-17 04:58:40Z $
+ * $Id: wbd_slave_com_hdlr.c 788367 2020-06-30 08:42:37Z $
  */
 
 #include "wbd.h"
@@ -130,6 +130,7 @@ typedef struct wbd_bcn_req_arg {
 	uint8 chan_count;	/* Count of channels on which beacon request to be sent */
 	uint8 curr_chan_idx;	/* Index of current channel */
 	uint8 *chan;		/* Array of channels */
+	uint8 *opclass;         /* Array of op classes matching channels */
 	uint8 subelement[WBD_MAX_BUF_64];	/* subelements array */
 	uint8 subelem_len;	/* length of subelements */
 } wbd_bcn_req_arg_t;
@@ -327,14 +328,6 @@ wbd_slave_send_operating_chan_report(i5_dm_interface_type *sifr);
 /* Processes BSS capability query message */
 static void wbd_slave_process_bss_capability_query_cmd(unsigned char *neighbor_al_mac,
 	unsigned char *tlv_data, unsigned short tlv_data_len);
-/* Send BSS capability report message */
-static void wbd_slave_send_bss_capability_report_cmd(unsigned char *neighbor_al_mac,
-	unsigned char *radio_mac);
-/* Processes BSS metrics query message */
-static void wbd_slave_process_bss_metrics_query_cmd(unsigned char *neighbor_al_mac,
-	unsigned char *tlv_data, unsigned short tlv_data_len);
-/* Send BSS metrics report message */
-static void wbd_slave_send_bss_metrics_report_cmd(unsigned char *neighbor_al_mac);
 /* Handle zero wait dfs message from controller */
 static int wbd_slave_process_zwdfs_msg(unsigned char* neighbor_al_mac, unsigned char *tlv_data,
 	unsigned short tlv_data_len);
@@ -1090,10 +1083,11 @@ wbd_slave_bcn_req_timer_cb(bcm_usched_handle *hdl, void *arg)
 
 	if (bcn_arg->curr_chan_idx < bcn_arg->chan_count) {
 		bcnreq->channel = bcn_arg->chan[bcn_arg->curr_chan_idx];
-		bcnreq_extn.opclass = 0;
+		bcnreq_extn.opclass = bcn_arg->opclass[bcn_arg->curr_chan_idx];
 		bcn_arg->curr_chan_idx++;
-		WBD_DEBUG("Beacon request for channel %d curr_chan_idx[%d] total[%d]\n",
-			bcnreq->channel, bcn_arg->curr_chan_idx, bcn_arg->chan_count);
+		WBD_DEBUG("Beacon request for channel %d curr_chan_idx[%d] opclass %d total[%d]\n",
+			bcnreq->channel, bcn_arg->curr_chan_idx, bcnreq_extn.opclass,
+			bcn_arg->chan_count);
 	}
 
 	ret = blanket_send_beacon_request(bcn_arg->ifname, &bcnreq_extn, bcn_arg->subelement,
@@ -1113,6 +1107,10 @@ wbd_slave_bcn_req_timer_cb(bcm_usched_handle *hdl, void *arg)
 		*/
 		if (bcn_arg && bcn_arg->chan) {
 			free(bcn_arg->chan);
+		}
+
+		if (bcn_arg && bcn_arg->opclass) {
+			free(bcn_arg->opclass);
 		}
 
 		if (bcn_arg) {
@@ -1139,6 +1137,10 @@ end:
 			free(bcn_arg->chan);
 		}
 
+		if (bcn_arg && bcn_arg->opclass) {
+			free(bcn_arg->opclass);
+		}
+
 		if (bcn_arg) {
 			free(bcn_arg);
 		}
@@ -1155,8 +1157,7 @@ wbd_slave_is_backhaul_sta_associated(char *ifname, struct ether_addr *out_bssid)
 	sta_info_t sta_info;
 	struct ether_addr cur_bssid;
 
-	err = blanket_try_get_bssid(ifname, WBD_MAX_GET_BSSID_TRY,
-		WBD_GET_BSSID_USECOND_GAP, &cur_bssid);
+	err = blanket_get_bssid(ifname, &cur_bssid);
 	if (err == WBDE_OK) {
 		memset(&sta_info, 0, sizeof(sta_info));
 		err = blanket_get_sta_info(ifname, &cur_bssid, &sta_info);
@@ -1521,7 +1522,6 @@ wbd_slave_process_event_msg(wbd_info_t* info, char* pkt, int len)
 		multiap_ie_t *map_ie = NULL;
 		uint8 ie_type = MAP_IE_TYPE;
 #endif /* MULTIAPR2 */
-		i5_dm_device_type *self_dev = NULL;
 		i5_dm_interface_type *ifr = NULL;
 		unsigned short prim_vlan_id = 0;
 		int is_8021q_present = 0;
@@ -1568,10 +1568,7 @@ wbd_slave_process_event_msg(wbd_info_t* info, char* pkt, int len)
 		}
 #endif /* MULTIAPR2 */
 
-		/* Find the interface for matching ifname */
-		WBD_SAFE_GET_I5_SELF_DEVICE(self_dev, &ret);
-
-		foreach_i5glist_item(ifr, i5_dm_interface_type, self_dev->interface_list) {
+		foreach_i5glist_item(ifr, i5_dm_interface_type, selfdevice->interface_list) {
 			if (strcmp(ifr->ifname, ifname) == 0) {
 				break;
 			}
@@ -1808,55 +1805,36 @@ wbd_slave_process_event_msg(wbd_info_t* info, char* pkt, int len)
 
 		case WLC_E_RADAR_DETECTED:
 		{
-			i5_dm_device_type *self_dev = NULL;
-			i5_dm_interface_type *ifr = NULL;
-			i5_dm_bss_type *bss = NULL;
 			wl_event_radar_detect_data_t *radar_data = NULL;
-			int ret = WBDE_OK;
-
-			WBD_SAFE_GET_I5_SELF_DEVICE(self_dev, &ret);
 
 			radar_data = (wl_event_radar_detect_data_t*)data;
 			if (!radar_data) {
 				WBD_DEBUG(" Invalid event data passed at radar, exit\n");
 				goto end;
 			}
-			foreach_i5glist_item(ifr, i5_dm_interface_type, self_dev->interface_list) {
-				if (!i5DmIsInterfaceWireless(ifr->MediaType) ||
-					!ifr->BSSNumberOfEntries) {
-					continue;
-				}
 
-				/* Loop for all the BSSs in Interface */
-				foreach_i5glist_item(bss, i5_dm_bss_type, ifr->bss_list) {
-					if (!strncmp(bss->ifname, ifname, strlen(bss->ifname))) {
-						WBD_INFO(" RADAR event for %s on chanspec 0x%x\n",
-							bss->ifname, ifr->chanspec);
-						ifr->chanspec = radar_data->target_chanspec;
-						break;
-					}
-				}
-				if (bss) {
-					break;
+			if (!evt_ifr) {
+				evt_ifr = i5DmInterfaceFind(selfdevice,
+					(unsigned char*)&slave->wbd_ifr.radio_mac);
+				if (!evt_ifr) {
+					WBD_DEBUG("Interface["MACF"] not present in IFR List\n",
+						ETHER_TO_MACF(slave->wbd_ifr.radio_mac));
+					goto end;
 				}
 			}
-			if (!bss) {
-				WBD_DEBUG(" skip RADAR event, interface not found \n");
-				goto end;
-			}
+			evt_ifr->chanspec = radar_data->target_chanspec;
 
-			WBD_DEBUG("Band[%d] Slave["MACF"] Ifname[%s] RADAR DETECTED, current "
-				"chanspec[0x%x], target chanspec[0x%x]\n", in_band,
-				ETHER_TO_MACF(slave->wbd_ifr.mac), ifname,
+			WBD_DEBUG("Band[%d] Ifname[%s] RADAR DETECTED, current "
+				"chanspec[0x%x], target chanspec[0x%x]\n", in_band, ifname,
 				radar_data->current_chanspec, radar_data->target_chanspec);
 
 			/* Send channel pref report with current radar channel as inoperable */
 			ieee1905_send_chan_preference_report();
-			wbd_slave_send_operating_chan_report(ifr);
-			ieee1905_notify_channel_change(ifr);
-			wbd_slave_add_ifr_nbr(ifr, TRUE);
+			wbd_slave_send_operating_chan_report(evt_ifr);
+			ieee1905_notify_channel_change(evt_ifr);
+			wbd_slave_add_ifr_nbr(evt_ifr, TRUE);
 			/* check and send chan info to controller */
-			wbd_slave_chk_and_send_chan_config_info(ifr, FALSE);
+			wbd_slave_chk_and_send_chan_config_info(evt_ifr, FALSE);
 		}
 		break;
 		case WLC_E_RRM:
@@ -1914,7 +1892,6 @@ wbd_slave_process_event_msg(wbd_info_t* info, char* pkt, int len)
 			wl_chan_change_reason_t reason;
 			wbd_cmd_vndr_zwdfs_msg_t zwdfs_msg;
 			i5_dm_interface_type *pdmif;
-			i5_dm_device_type *i5_self_device = NULL;
 			wbd_ifr_item_t *ifr_vndr_data = NULL;
 
 			if (!slave) {
@@ -1935,8 +1912,7 @@ wbd_slave_process_event_msg(wbd_info_t* info, char* pkt, int len)
 			}
 			reason = evt_data->reason;
 
-			WBD_SAFE_GET_I5_SELF_DEVICE(i5_self_device, &ret);
-			pdmif = wbd_ds_get_i5_interface((uchar*)i5_self_device->DeviceId,
+			pdmif = wbd_ds_get_i5_interface((uchar*)selfdevice->DeviceId,
 					(uchar*)&slave->wbd_ifr.mac, &ret);
 
 			if (!pdmif) {
@@ -2043,13 +2019,10 @@ wbd_slave_process_event_msg(wbd_info_t* info, char* pkt, int len)
 #if defined(MULTIAPR2)
 		case WLC_E_MBO_CAPABILITY_STATUS:
 		{
-			i5_dm_device_type *self_dev = NULL;
 			i5_dm_interface_type *ifr = NULL;
 			i5_dm_bss_type *bss = NULL;
 			wlc_mbo_bss_status_t *mbo_status = NULL;
 			wbd_bss_item_t *wbd_bss = NULL;
-
-			WBD_SAFE_GET_I5_SELF_DEVICE(self_dev, &ret);
 
 			mbo_status = (wlc_mbo_bss_status_t *)data;
 			if (!mbo_status) {
@@ -2057,7 +2030,8 @@ wbd_slave_process_event_msg(wbd_info_t* info, char* pkt, int len)
 				goto end;
 			}
 
-			foreach_i5glist_item(ifr, i5_dm_interface_type, self_dev->interface_list) {
+			foreach_i5glist_item(ifr, i5_dm_interface_type,
+				selfdevice->interface_list) {
 				if (!i5DmIsInterfaceWireless(ifr->MediaType) ||
 					!ifr->BSSNumberOfEntries) {
 					continue;
@@ -2150,11 +2124,10 @@ wbd_slave_process_event_msg(wbd_info_t* info, char* pkt, int len)
 					ret = blanket_sta_assoc_failed_connection(sta_mac, (uint16)reason);
 
 					if (ret != 0) {
-						WBD_WARNING("Band[%d] Slave["MACF"] Ifname[%s] "
+						WBD_WARNING("Band[%d] Ifname[%s] "
 							"Unsuccessful Association Event[0x%x] "
 							"for STA["MACF"]. Failed to Add to "
-							"MultiAP Error : %d\n", in_band,
-							ETHER_TO_MACF(slave->wbd_ifr.mac), ifname,
+							"MultiAP Error : %d\n", in_band, ifname,
 							evt_type, ETHERP_TO_MACF(sta_mac), ret);
 					} else {
 						info->wbd_slave->unsuccessful_assoc_config.count++;
@@ -2162,6 +2135,7 @@ wbd_slave_process_event_msg(wbd_info_t* info, char* pkt, int len)
 				}
 			}
 		}
+		break;
 
 		/* To Send Channel Scan Results */
 		case WLC_E_ESCAN_RESULT:
@@ -2240,8 +2214,8 @@ wbd_slave_process_event_msg(wbd_info_t* info, char* pkt, int len)
 		}
 
 		default:
-			WBD_INFO("Band[%d] Slave["MACF"] Ifname[%s] Event[0x%x] UnKnown Event\n",
-				in_band, ETHER_TO_MACF(slave->wbd_ifr.mac), ifname, evt_type);
+			WBD_INFO("Band[%d] Ifname[%s] Event[0x%x] UnKnown Event\n",
+				in_band, ifname, evt_type);
 			break;
 	}
 
@@ -2605,7 +2579,17 @@ wbd_slave_set_chanspec_through_acsd(wbd_slave_item_t *slave_item, chanspec_t chs
 	wbd_com_handle *com_hndl = NULL;
 	int sock_options = 0x0000;
 	wbd_chan_change_reason_t reason, arg;
+	chanspec_t fw_chanspec = 0;
 	WBD_ENTER();
+
+	/* Get chanspec from firmware */
+	blanket_get_chanspec(interface->ifname, &fw_chanspec);
+
+	/* If Current Chanspec is same as New Chanspec, skip setting again */
+	if (fw_chanspec == chspec) {
+		ret = WBDE_OK;
+		goto end;
+	}
 
 	/* Fetch nvram param */
 	nvval = blanket_nvram_prefix_safe_get(slave_item->wbd_ifr.primary_prefix, "ifname");
@@ -2675,11 +2659,11 @@ wbd_slave_set_chanspec_through_acsd(wbd_slave_item_t *slave_item, chanspec_t chs
 	WBD_CHECK_MSG("Band[%d] Slave["MACF"] Failed to send change Chanspec[0x%x] to ACSD. "
 		"Error : %s\n", slave_item->band, ETHER_TO_MACF(slave_item->wbd_ifr.mac),
 		chspec, wbderrorstr(ret));
+
+end:
 	if (ret == WBDE_OK) {
 		wbd_slave_wait_set_chanspec(slave_item, interface, chspec);
 	}
-
-end:
 	if (com_hndl) {
 		wbd_com_deinit(com_hndl);
 	}
@@ -3709,15 +3693,6 @@ wbd_slave_process_vendor_specific_msg(wbd_info_t *info, ieee1905_vendor_data *ms
 					msg_data->neighbor_al_mac, tlv_data, tlv_data_len);
 				break;
 
-			case WBD_TLV_BSS_METRICS_QUERY_TYPE:
-				WBD_INFO("Processing %s vendorSpec_len[%d]\n",
-					wbd_tlv_get_type_str(ptlv->type),
-					msg_data->vendorSpec_len);
-				/* Process 1905 Vendor Specific BSS Metrics Query Message */
-				wbd_slave_process_bss_metrics_query_cmd(
-					msg_data->neighbor_al_mac, tlv_data, tlv_data_len);
-				break;
-
 			case WBD_TLV_ZWDFS_TYPE:
 				WBD_INFO("Processing %s vendorSpec_len[%d]\n",
 					wbd_tlv_get_type_str(ptlv->type),
@@ -3869,13 +3844,6 @@ wbd_slave_process_weak_client_data(i5_dm_bss_type *i5_bss, struct ether_addr *st
 	WBD_ASSERT_MSG("Slave["MACDBG"] STA["MACF"]. %s\n", MAC2STRDBG(i5_bss->BSSID),
 			ETHERP_TO_MACF(sta_mac), wbderrorstr(ret));
 
-	/* No monitoring/steering on guest bss */
-	if (I5_IS_BSS_GUEST(i5_bss->mapFlags)) {
-		WBD_WARNING("Slave["MACDBG"] STA["MACF"] in Guest network\n",
-			MAC2STRDBG(i5_bss->BSSID), ETHERP_TO_MACF(sta_mac));
-		ret = WBDE_IGNORE_STA;
-		goto end;
-	}
 	/* If its in ignore list */
 	if (assoc_sta->status == WBD_STA_STATUS_IGNORE) {
 		WBD_WARNING("Slave["MACDBG"] STA["MACF"] In Ignore list\n",
@@ -5302,10 +5270,10 @@ wbd_slave_process_get_unassoc_sta_metric_cb(wbd_info_t *info,
 		/* start for each element */
 		nextidx = 0;
 		for (count = 0; count < n_sta; count++) {
-			uint8 map_flags = IEEE1905_MAP_FLAG_FRONTHAUL;
 			wbd_assoc_sta_item_t* assoc_sta = NULL;
 			i5_dm_device_type *i5_assoc_dev = NULL;
 			i5_dm_interface_type *i5_assoc_ifr = NULL;
+			ieee1905_ssid_type *ssid = NULL;
 
 			/* Find the STA in the topology */
 			i5_assoc_sta = wbd_ds_find_sta_in_topology((unsigned char*)&mac_addr[count],
@@ -5315,6 +5283,7 @@ wbd_slave_process_get_unassoc_sta_metric_cb(wbd_info_t *info,
 				i5_assoc_bss = (i5_dm_bss_type*)WBD_I5LL_PARENT(i5_assoc_sta);
 				i5_assoc_ifr = (i5_dm_interface_type*)WBD_I5LL_PARENT(i5_assoc_bss);
 				i5_assoc_dev = (i5_dm_device_type*)WBD_I5LL_PARENT(i5_assoc_ifr);
+				ssid = &i5_assoc_bss->ssid;
 			} else {
 				WBD_INFO("STA["MACF"] not found in topology\n",
 					ETHER_TO_MACF(mac_addr[count]));
@@ -5325,7 +5294,6 @@ wbd_slave_process_get_unassoc_sta_metric_cb(wbd_info_t *info,
 			 */
 			band = WBD_BAND_FROM_CHANNEL(channel);
 			if (i5_assoc_sta && I5_CLIENT_IS_BSTA(i5_assoc_sta)) {
-				map_flags = IEEE1905_MAP_FLAG_BACKHAUL;
 				/* If the STA is backhaul STA, dont monitor if the STA MAC address
 				 * is in self device
 				 */
@@ -5343,8 +5311,8 @@ wbd_slave_process_get_unassoc_sta_metric_cb(wbd_info_t *info,
 			 * not able to find the backhaul BSS, it will still use the fronthaul BSS
 			 * with matching band
 			 */
-			WBD_DS_FIND_I5_BSS_IN_DEVICE_FOR_BAND_AND_MAPFLAG(self_dev, band, i5_bss,
-				map_flags, &ret);
+			WBD_DS_FIND_I5_BSS_IN_DEVICE_FOR_BAND_AND_SSID(self_dev, band, i5_bss,
+				ssid, &ret);
 			if ((ret != WBDE_OK) || !i5_bss) {
 				WBD_INFO("Device["MACDBG"] Band[%d] : %s\n",
 					MAC2STRDBG(self_dev->DeviceId), band, wbderrorstr(ret));
@@ -5354,7 +5322,14 @@ wbd_slave_process_get_unassoc_sta_metric_cb(wbd_info_t *info,
 				MAC2STRDBG(self_dev->DeviceId), band, MAC2STRDBG(i5_bss->BSSID));
 			i5_ifr = (i5_dm_interface_type*)WBD_I5LL_PARENT(i5_bss);
 			if (chspec != i5_ifr->chanspec) {
-				cbfn = wbd_slave_offchan_sta_cb;
+				if (self_dev->BasicCaps &
+					IEEE1905_AP_CAPS_FLAGS_UNASSOC_RPT_NON_CH) {
+					cbfn = wbd_slave_offchan_sta_cb;
+				} else {
+					WBD_DEBUG("Device["MACDBG"] offchannel sta monitor is "
+						"not enabled\n", MAC2STRDBG(self_dev->DeviceId));
+					continue;
+				}
 			}
 
 			slave = wbd_ds_find_slave_addr_in_blanket_slave(info->wbd_slave,
@@ -5615,6 +5590,8 @@ int wbd_slave_process_per_chan_beacon_metrics_query_cb(wbd_info_t *info, char *i
 	uint8 len = 0, idx, k = 0;
 	uint8 subelement[WBD_MAX_BUF_64];
 	uint8 chan[WBD_MAX_BUF_64];
+	uint8 opclass[WBD_MAX_BUF_64];
+	int idx2;
 	uint8 chan_count = 0, tmp_chan_count = 0;
 	wbd_beacon_reports_t *report = NULL;
 	wbd_slave_map_beacon_report_arg_t *param = NULL;
@@ -5705,6 +5682,9 @@ int wbd_slave_process_per_chan_beacon_metrics_query_cb(wbd_info_t *info, char *i
 			 * corresponding to single rclass and second byte is rclass.
 			*/
 			tmp_chan_count = query->ap_chan_report[k] - 1;
+			for (idx2 = 0; idx2 < tmp_chan_count; idx2++) {
+				opclass[chan_count + idx2] = query->ap_chan_report[k + 1];
+			}
 			k += 2;
 			memcpy(&chan[chan_count], &query->ap_chan_report[k], tmp_chan_count);
 			k += tmp_chan_count;
@@ -5718,6 +5698,11 @@ int wbd_slave_process_per_chan_beacon_metrics_query_cb(wbd_info_t *info, char *i
 
 			memset(bcn_arg->chan, 0, chan_count);
 			memcpy(bcn_arg->chan, chan, chan_count);
+			bcn_arg->opclass = (uint8 *) wbd_malloc(chan_count, &ret);
+			WBD_ASSERT_MSG("Ifname[%s] STA["MACDBG"] Beacon report malloc failed\n",
+				ifname, MAC2STRDBG(query->sta_mac));
+			memset(bcn_arg->opclass, 0, chan_count);
+			memcpy(bcn_arg->opclass, opclass, chan_count);
 			bcn_arg->chan_count = chan_count;
 		} else {
 			bcn_arg->chan = NULL;
@@ -5785,6 +5770,10 @@ end:
 
 		if (bcn_arg && bcn_arg->chan) {
 			free(bcn_arg->chan);
+		}
+
+		if (bcn_arg && bcn_arg->opclass) {
+			free(bcn_arg->opclass);
 		}
 
 		if (bcn_arg) {
@@ -6500,24 +6489,59 @@ wbd_slave_send_operating_chan_report(i5_dm_interface_type *sifr)
 {
 	ieee1905_operating_chan_report chan_rpt;
 	uint8 opclass;
+	uint8 channel;
 	int tx_pwr;
 	int ret = WBDE_OK;
-
+	i5_dm_chan_rc_map_type *g_chan_rc_map;
+	uint32 g_chan_rc_map_count = 0;
+	int i, j, idx = 0;
 	WBD_ENTER();
 
 	memset(&chan_rpt, 0, sizeof(chan_rpt));
 	chan_rpt.list =	(operating_rpt_opclass_chan_list *)wbd_malloc(
-			sizeof(operating_rpt_opclass_chan_list), &ret);
+			sizeof(operating_rpt_opclass_chan_list) * I5_MAX_CHANRCS, &ret);
 	WBD_ASSERT();
 
 	memcpy(&chan_rpt.radio_mac, &sifr->InterfaceId, sizeof(chan_rpt.radio_mac));
-	/* update with single chan in case of radar */
-	chan_rpt.n_op_class = 1;
-	blanket_get_global_rclass(sifr->chanspec, &opclass);
-	chan_rpt.list->op_class = opclass;
-	chan_rpt.list->chan = wf_chspec_ctlchan(sifr->chanspec);
 	blanket_get_txpwr_target_max(sifr->ifname, &tx_pwr);
 	chan_rpt.tx_pwr = (uint8)tx_pwr;
+	blanket_get_global_rclass(sifr->chanspec, &opclass);
+	channel = wf_chspec_ctlchan(sifr->chanspec);
+
+	if (opclass == 84) {
+		chan_rpt.list[1].op_class = 81;
+		chan_rpt.list[0].op_class = 84;
+		chan_rpt.list[1].chan = chan_rpt.list[0].chan = channel;
+		chan_rpt.n_op_class = 2;
+		goto send;
+	}
+
+	g_chan_rc_map = i5DmGetChannelRCMap(&g_chan_rc_map_count);
+	for (i = 0; i < g_chan_rc_map_count; i++) {
+		if (g_chan_rc_map[i].channel == channel) {
+			break;
+		}
+	}
+	if (i == g_chan_rc_map_count) {
+		WBD_ERROR("channel [%d] not supported. "
+			"Skip sending operating channel report", channel);
+		goto end;
+	}
+
+	for (j = (g_chan_rc_map[i].count - 1); j >= 0; j--) {
+		if (g_chan_rc_map[i].regclass[j] > opclass) {
+			continue;
+		}
+		chan_rpt.list[idx].op_class = g_chan_rc_map[i].regclass[j];
+		if (chan_rpt.list[idx].op_class > REGCLASS_40MHZ_LAST) {
+			chan_rpt.list[idx].chan = CHSPEC_CHANNEL(sifr->chanspec);
+		} else {
+			chan_rpt.list[idx].chan = channel;
+		}
+		idx++;
+	}
+	chan_rpt.n_op_class = idx;
+send:
 	/* Send operating chan report to 1905 to Controller */
 	ieee1905_send_operating_chan_report(&chan_rpt);
 end:
@@ -6816,112 +6840,6 @@ wbd_slave_process_bss_capability_query_cmd(unsigned char *neighbor_al_mac,
 	wbd_slave_send_bss_capability_report_cmd(neighbor_al_mac, radio_mac);
 
 end:
-	WBD_EXIT();
-}
-
-/* Calculate the Average tx_rate of all the BSS w.r.t all associated sta */
-static void
-wbd_device_calculate_avg_tx_rate(i5_dm_device_type *i5_device)
-{
-	int max_rate = 0;
-	wbd_bss_item_t *bss_vndr_data;
-	i5_dm_interface_type *i5_ifr;
-	i5_dm_bss_type *i5_bss;
-	WBD_ENTER();
-
-	foreach_i5glist_item(i5_ifr, i5_dm_interface_type, i5_device->interface_list) {
-		foreach_i5glist_item(i5_bss, i5_dm_bss_type, i5_ifr->bss_list) {
-
-			bss_vndr_data = (wbd_bss_item_t*)i5_bss->vndr_data;
-			if (bss_vndr_data == NULL) {
-				WBD_WARNING("BSS["MACDBG"] NULL Vendor Data\n",
-					MAC2STRDBG(i5_bss->BSSID));
-				continue;
-			}
-
-			blanket_get_max_rate(i5_bss->ifname, NULL, &max_rate);
-			bss_vndr_data->max_tx_rate = (uint32)max_rate;
-			bss_vndr_data->avg_tx_rate = bss_vndr_data->max_tx_rate;
-
-			WBD_DEBUG("Slave["MACDBG"] max_rate[%d]\n",
-				MAC2STRDBG(i5_bss->BSSID), bss_vndr_data->max_tx_rate);
-		}
-	}
-
-	WBD_EXIT();
-}
-
-/* Processes BSS metrics query message */
-static void
-wbd_slave_process_bss_metrics_query_cmd(unsigned char *neighbor_al_mac,
-	unsigned char *tlv_data, unsigned short tlv_data_len)
-{
-	int ret = WBDE_OK;
-	unsigned char radio_mac[ETHER_ADDR_LEN];
-	WBD_ENTER();
-
-	memset(radio_mac, 0, sizeof(radio_mac));
-
-	/* Validate Message data */
-	WBD_ASSERT_MSGDATA(tlv_data, "BSS metrics Query");
-
-	/* Decode Vendor Specific TLV for Message : BSS metrics query on receive */
-	ret = wbd_tlv_decode_bss_metrics_query(NULL, tlv_data, tlv_data_len);
-	WBD_ASSERT_MSG("Failed to decode the BSS metrics query TLV From Device["MACDBG"]\n",
-		MAC2STRDBG(neighbor_al_mac));
-
-	/* Send BSS metrics report */
-	wbd_slave_send_bss_metrics_report_cmd(neighbor_al_mac);
-
-end:
-	WBD_EXIT();
-}
-
-/* Send BSS metrics report message */
-static void
-wbd_slave_send_bss_metrics_report_cmd(unsigned char *neighbor_al_mac)
-{
-	int ret = WBDE_OK;
-	i5_dm_device_type *i5_device;
-	ieee1905_vendor_data vndr_msg_data;
-	WBD_ENTER();
-
-	/* Fill vndr_msg_data struct object to send Vendor Message */
-	memset(&vndr_msg_data, 0x00, sizeof(vndr_msg_data));
-	memcpy(vndr_msg_data.neighbor_al_mac, neighbor_al_mac, IEEE1905_MAC_ADDR_LEN);
-
-	/* Allocate Dynamic mem for Vendor data from App */
-	vndr_msg_data.vendorSpec_msg =
-		(unsigned char *)wbd_malloc(IEEE1905_MAX_VNDR_DATA_BUF, &ret);
-	WBD_ASSERT();
-
-	WBD_INFO("Send BSS metrics report from Device["MACDBG"] to Device["MACDBG"]\n",
-		MAC2STRDBG(ieee1905_get_al_mac()), MAC2STRDBG(vndr_msg_data.neighbor_al_mac));
-
-	WBD_SAFE_GET_I5_SELF_DEVICE(i5_device, &ret);
-
-	wbd_device_calculate_avg_tx_rate(i5_device);
-
-	/* Encode Vendor Specific TLV for Message : BSS metrics report to send */
-	ret = wbd_tlv_encode_bss_metrics_report((void *)i5_device,
-		vndr_msg_data.vendorSpec_msg, &vndr_msg_data.vendorSpec_len);
-	WBD_ASSERT_MSG("Failed to encode BSS metrics Report which needs to be sent "
-		"from Device["MACDBG"] to Device["MACDBG"]\n",
-		MAC2STRDBG(ieee1905_get_al_mac()), MAC2STRDBG(vndr_msg_data.neighbor_al_mac));
-
-	/* Send Vendor Specific Message : BSS metrics report */
-	ret = ieee1905_send_vendor_specific_msg(&vndr_msg_data);
-
-	WBD_CHECK_ERR_MSG(WBDE_DS_1905_ERR, "Failed to send "
-		"BSS metrics Report from Device["MACDBG"] to Device["MACDBG"], Error : %s\n",
-		MAC2STRDBG(ieee1905_get_al_mac()), MAC2STRDBG(vndr_msg_data.neighbor_al_mac),
-		wbderrorstr(ret));
-
-end:
-
-	if (vndr_msg_data.vendorSpec_msg) {
-		free(vndr_msg_data.vendorSpec_msg);
-	}
 	WBD_EXIT();
 }
 

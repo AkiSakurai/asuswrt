@@ -1,0 +1,11 @@
+prefix=
+exec_prefix=
+libdir=/home/sam/BRCM/bcm963xx_5.02L.07p1/dslax82u/bcmdrivers/broadcom/net/wl/impl61/main/components/opensource/jsonc
+includedir=/home/sam/BRCM/bcm963xx_5.02L.07p1/dslax82u/bcmdrivers/broadcom/net/wl/impl61/main/components/opensource/jsonc
+
+Name: json
+Description: JSON implementation in C
+Version: 0.11
+Requires:
+Libs:  -L/home/sam/BRCM/bcm963xx_5.02L.07p1/dslax82u/bcmdrivers/broadcom/net/wl/impl61/main/components/opensource/jsonc -ljson-c
+Cflags: -I/home/sam/BRCM/bcm963xx_5.02L.07p1/dslax82u/bcmdrivers/broadcom/net/wl/impl61/main/components/opensource/jsonc

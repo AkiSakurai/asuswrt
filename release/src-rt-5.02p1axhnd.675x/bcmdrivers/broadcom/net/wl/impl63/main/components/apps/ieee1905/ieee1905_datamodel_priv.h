@@ -119,6 +119,8 @@ int i5DmDeviceTopologyChangeProcess(unsigned char *device_id);
 void i5DmDeviceNewIfNew(unsigned char *neighbor_al_mac_address);
 void i5DmTopologyFreeUnreachableDevices(bool idle_check);
 void i5DmDeviceFreeUnreachableNeighbors(unsigned char *device_id, int ifindex, unsigned char *neighbor_interface_list, unsigned int length);
+/* Remove neighbor entry based on the local interface ID */
+void i5DmFreeNeibhorsFromInterfaceId(i5_dm_device_type *pDevice, unsigned char *interface_id);
 void i5DmDeviceRemoveStaleNeighborsTimer(void *arg);
 int i5DmIsWifiBandSupported(char *ifname, unsigned int freqBand);
 /* Get the local ifname from the neibhors ALID and MAC address based on the media specific info */

@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_blanket_utility.c 781158 2019-11-13 10:20:20Z $
+ * $Id: wbd_blanket_utility.c 785706 2020-04-03 08:26:53Z $
  */
 
 #include <errno.h>
@@ -121,7 +121,7 @@ int wbd_slave_process_get_assoc_sta_metric(char *ifname, unsigned char *bssid,
 	metric->last_data_uplink_rate = (unsigned int)(sta_info.rx_rate / 1000);
 	metric->last_data_downlink_rate = (unsigned int)(sta_info.tx_rate / 1000);
 	metric->utilization_recv = (unsigned int)(sta_info.in * 1000);
-	metric->utilization_tx =(unsigned int)(sta_info.in * 1000);
+	metric->utilization_tx = (unsigned int)(sta_info.in * 1000);
 #endif /* MULTIAPR2 */
 
 	/* Fill Traffic stats */
@@ -461,7 +461,8 @@ wbd_slave_block_unblock_backhaul_sta_assoc(int unblock)
 				mac_filter = 1;
 			}
 
-			ret = wl_ioctl(iter_bss->ifname, WLC_SET_MACMODE, &macmode, sizeof(macmode));
+			ret = wl_ioctl(iter_bss->ifname, WLC_SET_MACMODE,
+				&macmode, sizeof(macmode));
 			WBD_INFO("Ifname[%s] %s BSS["MACDBG"] MACMODE[%d] Flags[%x] ret[%d]\n",
 				iter_bss->ifname, unblock ? "Unblocking" : "Blocking",
 				MAC2STRDBG(iter_bss->BSSID), macmode, bss_vndr_data->flags, ret);
@@ -471,14 +472,14 @@ wbd_slave_block_unblock_backhaul_sta_assoc(int unblock)
 				"ret[%d]\n", iter_bss->ifname, unblock ? "UnBlocking" : "Blocking",
 				MAC2STRDBG(iter_bss->BSSID), mac_filter, bss_vndr_data->flags, ret);
 
-			/* Deauthenticate all STAs if we are blocking the bh BSS */
+			/* Disassociate all STAs if we are blocking the bh BSS */
 			if (!unblock) {
 				/* Loop for all the backhaul Clients in BSS */
 				foreach_i5glist_item(iter_sta, i5_dm_clients_type,
 					iter_bss->client_list) {
-					/* Deauth the STA from current BSS */
-					blanket_deauth_sta(iter_bss->ifname,
-						(struct ether_addr*)iter_sta->mac, 0);
+					/* Disassoc the STA from current BSS */
+					blanket_disassoc_sta(iter_bss->ifname,
+						(struct ether_addr*)iter_sta->mac);
 					WBD_INFO("Ifname[%s] BSS["MACDBG"] Disassociate "
 						"STA["MACDBG"]\n", iter_bss->ifname,
 						MAC2STRDBG(iter_bss->BSSID),
@@ -747,4 +748,35 @@ wbd_slave_is_any_bsta_associated()
 
 end:
 	return NULL;
+}
+
+/* Set all backhaul STA credentials by extracting it from backhaul BSS.
+ * This is helpful if the onboarding was over the Ethernet
+ */
+void wbd_set_bh_sta_cred_from_bh_bss(ieee1905_client_bssinfo_type *bss)
+{
+	wlif_wps_nw_creds_t creds;
+
+	if (!bss) {
+		return;
+	}
+
+	memset(&creds, 0, sizeof(creds));
+	memcpy(creds.ssid, bss->ssid.SSID, bss->ssid.SSID_len);
+	memcpy(creds.nw_key, bss->NetworkKey.key, bss->NetworkKey.key_len);
+
+	if (bss->AuthType & IEEE1905_AUTH_WPAPSK) {
+		creds.akm |= WLIF_WPA_AKM_PSK;
+	}
+	if ((bss->AuthType & IEEE1905_AUTH_WPA2PSK) ||
+		(bss->AuthType & IEEE1905_AUTH_SAE)) {
+		creds.akm |= WLIF_WPA_AKM_PSK2;
+	}
+
+	if (bss->EncryptType == IEEE1905_ENCR_TKIP) {
+		creds.encr |= WLIF_WPA_ENCR_TKIP;
+	} else if (bss->EncryptType == IEEE1905_ENCR_AES) {
+		creds.encr |= WLIF_WPA_ENCR_AES;
+	}
+	wl_wlif_map_configure_backhaul_sta_interface(NULL, &creds);
 }

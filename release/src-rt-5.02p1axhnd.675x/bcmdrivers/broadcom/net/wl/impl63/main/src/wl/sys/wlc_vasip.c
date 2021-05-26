@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_vasip.c 781256 2019-11-15 00:40:08Z $
+ * $Id: wlc_vasip.c 785555 2020-03-31 02:22:56Z $
  */
 
 #include <wlc_cfg.h>
@@ -106,15 +106,9 @@ static int wlc_vasip_counters_clear(wlc_hw_info_t *wlc_hw);
 /* clear vasip error */
 static int wlc_vasip_error_clear(wlc_hw_info_t *wlc_hw);
 
-/* copy svmp memory to a buffer starting from offset of length 'len', len is count of uint16's */
-static int
-wlc_svmp_mem_read(wlc_hw_info_t *wlc_hw, uint16 *ret_svmp_addr, uint32 offset, uint16 len);
-
 /* set svmp memory with a value from offset of length 'len', len is count of uint16's */
 static int wlc_svmp_mem_set(wlc_hw_info_t *wlc_hw, uint32 offset, uint16 len, uint16 val);
 #endif // endif
-
-static uint32 *wlc_vasip_addr(wlc_hw_info_t *wlc_hw, uint32 offset);
 
 static void wlc_vasip_download(wlc_hw_info_t *wlc_hw, const vasip_fw_t *fw,
 	uint32 vasipver, bool nopi);
@@ -881,7 +875,7 @@ wlc_vasip_doiovar(void *context, uint32 actionid,
  * Returns the virtual address where the VASIP window starts
  * @param offset[in]    Word count
  */
-static uint32 *
+uint32 *
 wlc_vasip_addr(wlc_hw_info_t *wlc_hw, uint32 offset)
 {
 	return (uint32 *)(wlc_hw->vasip_addr + offset);
@@ -1633,43 +1627,6 @@ wlc_vasip_counters_clear(wlc_hw_info_t *wlc_hw)
 	return BCME_OK;
 }
 
-/* copy svmp memory to a buffer starting from offset of length 'len', len is count of uint16's */
-int
-wlc_svmp_mem_read(wlc_hw_info_t *wlc_hw, uint16 *ret_svmp_addr, uint32 offset, uint16 len)
-{
-#ifndef SVMP_ACCESS_VIA_PHYTBL
-	uint16 * svmp_addr;
-#endif // endif
-	uint16 i;
-	uint32 svmp_mem_offset_max;
-
-	if (!VASIP_PRESENT(wlc_hw)) {
-		return BCME_UNSUPPORTED;
-	}
-
-	if (!wlc_hw->clk) {
-		return BCME_NOCLK;
-	}
-
-	svmp_mem_offset_max = wlc_svmp_mem_offset_max(wlc_hw);
-	if ((offset + len) >= svmp_mem_offset_max) {
-		return BCME_RANGE;
-	}
-
-#ifndef SVMP_ACCESS_VIA_PHYTBL
-	svmp_addr = (uint16 *)wlc_vasip_addr(wlc_hw, offset);
-#endif // endif
-
-	for (i = 0; i < len; i++) {
-#ifdef SVMP_ACCESS_VIA_PHYTBL
-		phy_vasip_read_svmp((phy_info_t *)wlc_hw->band->pi, offset+i, &ret_svmp_addr[i]);
-#else
-		ret_svmp_addr[i] = svmp_addr[i];
-#endif // endif
-	}
-	return BCME_OK;
-}
-
 /* set svmp memory with a value from offset of length 'len', len is count of uint16's */
 int
 wlc_svmp_mem_set(wlc_hw_info_t *wlc_hw, uint32 offset, uint16 len, uint16 val)
@@ -1707,6 +1664,43 @@ wlc_svmp_mem_set(wlc_hw_info_t *wlc_hw, uint32 offset, uint16 len, uint16 val)
 	return BCME_OK;
 }
 #endif // endif
+
+/* copy svmp memory to a buffer starting from offset of length 'len', len is count of uint16's */
+int
+wlc_svmp_mem_read(wlc_hw_info_t *wlc_hw, uint16 *ret_svmp_addr, uint32 offset, uint16 len)
+{
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	uint16 * svmp_addr;
+#endif // endif
+	uint16 i;
+	uint32 svmp_mem_offset_max;
+
+	if (!VASIP_PRESENT(wlc_hw)) {
+		return BCME_UNSUPPORTED;
+	}
+
+	if (!wlc_hw->clk) {
+		return BCME_NOCLK;
+	}
+
+	svmp_mem_offset_max = wlc_svmp_mem_offset_max(wlc_hw);
+	if ((offset + len) >= svmp_mem_offset_max) {
+		return BCME_RANGE;
+	}
+
+#ifndef SVMP_ACCESS_VIA_PHYTBL
+	svmp_addr = (uint16 *)wlc_vasip_addr(wlc_hw, offset);
+#endif // endif
+
+	for (i = 0; i < len; i++) {
+#ifdef SVMP_ACCESS_VIA_PHYTBL
+		phy_vasip_read_svmp((phy_info_t *)wlc_hw->band->pi, offset+i, &ret_svmp_addr[i]);
+#else
+		ret_svmp_addr[i] = svmp_addr[i];
+#endif // endif
+	}
+	return BCME_OK;
+}
 
 /* set svmp memory with a value from offset of length 'len', len is count of uint16's */
 int
@@ -1942,7 +1936,7 @@ uint32 vasip_shared_size(wlc_hw_info_t *wlc_hw, unsigned int sym)
 
 /* Update rate capabilites in svmp for MU user indexed by bfm index */
 void
-wlc_svmp_update_ratecap(wlc_info_t *wlc, scb_t *scb, uint8 bfm_index)
+wlc_svmp_update_ratecap(wlc_info_t *wlc, scb_t *scb, uint8 bfm_index, uint8 bfe_nr)
 {
 	uint16 mcs_bitmap[MCSSET_LEN];
 	uint16 rate_cap = 0, mcscap_sz, mcscap_offset;
@@ -1951,7 +1945,7 @@ wlc_svmp_update_ratecap(wlc_info_t *wlc, scb_t *scb, uint8 bfm_index)
 
 	wlc_scb_ratesel_get_ratecap(wlc->wrsi, scb, &sgi, mcs_bitmap, 0 /* AC_BE */);
 
-	/* unused(10) | brcmSTA(1) | ldpc(1) | sgi(2) | bw(2) |
+	/* unused(8) | nrx(2) | brcmSTA(1) | ldpc(1) | sgi(2) | bw(2) |
 	 * mcs_nss0(16) | mcs_nss1(16) | mcs_nss2(16) | mcs_nss3(16)
 	 */
 	rate_cap = (wlc_scb_ratesel_get_link_bw(wlc, scb) - 1);
@@ -1962,6 +1956,7 @@ wlc_svmp_update_ratecap(wlc_info_t *wlc, scb_t *scb, uint8 bfm_index)
 	if (scb->flags & SCB_BRCM) {
 		rate_cap |= 1 << VASIP_RTCAP_BCMSTA_NBIT;
 	}
+	rate_cap |= bfe_nr << VASIP_RTCAP_NRX_NBIT;
 
 	offset = VASIP_SHARED_OFFSET(wlc->hw, mcs_map);
 	if (IS_V2M_FORMAT_V3(wlc->hw->corerev)) {

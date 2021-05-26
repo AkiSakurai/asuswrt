@@ -47,7 +47,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_probresp.c 780534 2019-10-29 08:34:39Z $
+ * $Id: wlc_probresp.c 788568 2020-07-03 11:37:43Z $
  */
 
 #include <wlc_cfg.h>
@@ -326,8 +326,8 @@ wlc_probresp_send_probe_resp(wlc_probresp_info_t *mprobresp, wlc_bsscfg_t *bsscf
 		/* Ensure that pkt is not re-enqueued to FIFO after suppress */
 		WLPKTTAG(p)->flags3 |= WLF3_TXQ_SHORT_LIFETIME;
 
-		wlc_queue_80211_frag(wlc, p, bsscfg->wlcif->qi, NULL, bsscfg, FALSE, NULL,
-			rate_override);
+		wlc_queue_80211_frag(wlc, p, bsscfg->wlcif->qi, wlc->band->hwrs_scb, bsscfg,
+			FALSE, NULL, rate_override);
 	}
 }
 
@@ -358,8 +358,11 @@ wlc_probresp_filter_and_reply(wlc_probresp_info_t *mprobresp, wlc_bsscfg_t *cfg,
 	 *
 	 * The use of dot11acphy register drop20sCtrl1 and obss_param_extra to abort packets
 	 * received on secondary sub-bands will make this SW-filter obsolete.
+	 *
+	 * WAR BCAWLAN-214668: BCM43217 CoreRev 30 falsely marks Probe Request received on primary,
+	 * as being received on secondary sub-band.
 	 */
-	if (PROBRESP_BLOCK_SEC_ENABLED(mprobresp)) {
+	if (PROBRESP_BLOCK_SEC_ENABLED(mprobresp) && D11REV_GT(cfg->wlc->pub->corerev, 30)) {
 		/* compare sub-band of received frame against primary channel */
 		chanspec_t chspec_prb = wlc_recv_mgmt_rx_chspec_get(cfg->wlc, wrxh);
 		chanspec_t chspec_pri = wf_ctlchspec20_from_chspec(cfg->current_bss->chanspec);

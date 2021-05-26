@@ -1116,6 +1116,7 @@ int i5Tlv1905NeighborDeviceTypeExtract(i5_message_type *pmsg, unsigned char *pde
     }
   }
   i5Dm1905NeighborDone(pdevid);
+  /* Do not remove the unreachable neighbors immediately */
   i5DmTopologyFreeUnreachableDevices(TRUE);
 
   return rc;
@@ -1316,22 +1317,6 @@ int i5TlvWscTypeM2Extract(i5_message_type *pmsg)
   return 0;
 }
 
-int i5TlvVendorGuestSsidExtract(i5_message_type *pmsg, ieee1905_vendor_data *msg_data)
-{
-  int rc = 0;
-
-    rc = i5TlvVendorSpecificTypeExtract(pmsg, i5MessageTlvExtractWithReset,
-      &msg_data->vendorSpec_msg, &msg_data->vendorSpec_len);
-    if ((rc == 0) && (msg_data->vendorSpec_msg != NULL)) {
-      i5Trace("Received Vendor Specific TLV in M2 Message on %s\n",
-        pmsg->psock->u.sll.ifname);
-      /* Skip tlv header */
-      msg_data->vendorSpec_msg += sizeof(i5_tlv_t);
-      msg_data->vendorSpec_len -= sizeof(i5_tlv_t);
-    }
-
-    return 0;
-}
 int i5TlvPushButtonEventNotificationTypeInsert(i5_message_type *pmsg, unsigned char* genericPhyIncluded)
 {
   unsigned char *pBuf;
@@ -2123,7 +2108,7 @@ int i5TlvLldpTypeInsert(i5_message_type *pmsg, const unsigned char *chassis_mac,
   /* End of LLDP */
   buf[len] = 0;                /* end of lldp type is 0 */
   len++;
-  buf[len] = 0;                /* end of lldp lenght is 0 */
+  buf[len] = 0;                /* end of lldp length is 0 */
   len++;
 
   return (i5MessageInsertTlv(pmsg, buf, len));
@@ -5260,30 +5245,36 @@ end:
   return rc;
 }
 /* Insert Operating Channel report TLV */
-int i5TlvOperatingChannelReportTypeInsert(i5_message_type *pmsg, unsigned char *mac,
-  uint8 channel, uint8 rclass, int8 tx_pwr)
+int i5TlvOperatingChannelReportTypeInsert(i5_message_type *pmsg,
+	ieee1905_operating_chan_report *chan_rpt)
 {
   unsigned char *pbuf, *pmem;
   i5_tlv_t *ptlv;
   int rc = 0;
+  int i;
 
+  if (!chan_rpt || !chan_rpt->list) {
+    i5TraceError("NULL Operating Channel report Data\n");
+    return -1;
+  }
   if ((pmem = (unsigned char *)malloc(I5_PACKET_BUF_LEN)) == NULL) {
-    printf("malloc error\n");
+    i5TraceDirPrint("malloc error\n");
     return -1;
   }
 
   pbuf = pmem + sizeof(i5_tlv_t); // Header filled at the end
-  memcpy(pbuf, mac, MAC_ADDR_LEN);
+  memcpy(pbuf, chan_rpt->radio_mac, MAC_ADDR_LEN);
   pbuf += MAC_ADDR_LEN;
 
-  /* Only one current operating class and channel */
-  *pbuf = 1;
+  *pbuf = chan_rpt->n_op_class;
   pbuf++;
-  *pbuf = rclass;
-  pbuf++;
-  *pbuf = channel;
-  pbuf++;
-  *pbuf = tx_pwr;
+  for (i = 0; i < chan_rpt->n_op_class; i++) {
+    *pbuf = chan_rpt->list[i].op_class;
+    pbuf++;
+    *pbuf = chan_rpt->list[i].chan;
+    pbuf++;
+  }
+  *pbuf = chan_rpt->tx_pwr;
   pbuf++;
 
   ptlv = (i5_tlv_t *)pmem;
@@ -5305,7 +5296,8 @@ int i5TlvOperatingChannelReportTypeExtract(i5_message_type *pmsg)
   i5_dm_device_type *pdevice;
   i5_dm_interface_type *pdmif;
   ieee1905_operating_chan_report chan_report;
-  int n_op_class;
+  int i;
+  unsigned int tlvLengthReqd;
 
   pdevice = i5DmDeviceFind(i5MessageSrcMacAddressGet(pmsg));
   if (pdevice == NULL) {
@@ -5336,8 +5328,15 @@ int i5TlvOperatingChannelReportTypeExtract(i5_message_type *pmsg)
       goto end;
     }
 
-    n_op_class = *pvalue++; /* skip count of regulatory classes as we support only 1 */
-    chan_report.n_op_class = 1;
+    chan_report.n_op_class = *pvalue++;
+
+    tlvLengthReqd = i5TlvOperatingChannelReport_Min_Length + ((chan_report.n_op_class - 1) * 2);
+    if (length != tlvLengthReqd) {
+      i5TraceError("Operating channel report TLV Length %d not correct for %d operating classes. "
+        "Required length is %d\n", length, chan_report.n_op_class, tlvLengthReqd);
+      rc = -1;
+      goto end;
+    }
 
     chan_report.list = (operating_rpt_opclass_chan_list *)malloc(
       sizeof(operating_rpt_opclass_chan_list) * chan_report.n_op_class);
@@ -5346,14 +5345,14 @@ int i5TlvOperatingChannelReportTypeExtract(i5_message_type *pmsg)
       rc = -1;
       goto end;
     }
-    chan_report.list->op_class = *pvalue;
-    chan_report.list->chan = *(pvalue + 1);
-    pvalue += (n_op_class * 2);
-    chan_report.tx_pwr = *pvalue;
+    for (i = 0; i < chan_report.n_op_class; i++) {
+      chan_report.list[i].op_class = *pvalue++;
+      chan_report.list[i].chan = *pvalue++;
+    }
+      chan_report.tx_pwr = *pvalue;
 
-    i5TraceInfo("Neighbor Interface"I5_MAC_DELIM_FMT" OpClass: %d Channel: %d Tx pwr: %d\n",
-      I5_MAC_PRM(chan_report.radio_mac), chan_report.list->op_class,
-      chan_report.list->chan, chan_report.tx_pwr);
+    i5TraceInfo("Neighbor Interface"I5_MAC_DELIM_FMT" Tx pwr: %d Number of opclasses: %d\n",
+      I5_MAC_PRM(chan_report.radio_mac), chan_report.tx_pwr, chan_report.n_op_class);
     if (i5_config.cbs.operating_chan_report) {
       i5_config.cbs.operating_chan_report(i5MessageSrcMacAddressGet(pmsg), &chan_report);
     }

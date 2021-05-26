@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_type_chanmgr.h 782112 2019-12-11 06:55:26Z $
+ * $Id: phy_type_chanmgr.h 787172 2020-05-20 20:25:54Z $
  */
 
 #ifndef _phy_type_chanmgr_h_
@@ -74,10 +74,12 @@ typedef void (*phy_type_chanmgr_upd_interf_mode_fn_t)(phy_type_chanmgr_ctx_t *ct
 typedef uint8 (*phy_type_set_chanspec_sr_vsdb_fn_t) (phy_type_chanmgr_ctx_t *ctx,
 		chanspec_t chanspec, uint8 *last_chan_saved);
 typedef void (*phy_type_chanmgr_tdcs_enable_160m_fn_t)(phy_info_t *pi, bool set_val);
-typedef void (*phy_type_chanmgr_pad_online_enable_fn_t)(phy_info_t *pi, bool set_val);
+typedef void (*phy_type_chanmgr_pad_online_enable_fn_t)(phy_info_t *pi, bool set_val,
+	bool up_check);
 typedef void (*phy_type_chanmgr_dccal_t)(phy_info_t *pi);
 typedef int (*phy_type_chanmgr_get_fn_t)(phy_type_chanmgr_ctx_t *ctx, int32 *ret_int_ptr);
 typedef int (*phy_type_chanmgr_set_fn_t)(phy_type_chanmgr_ctx_t *ctx, int8 int_val);
+typedef void (*phy_type_chanmgr_bypass_itssi_fn_t)(phy_type_chanmgr_ctx_t *ctx, bool force);
 typedef int (*phy_type_chanmgr_dump_fn_t)(phy_type_chanmgr_ctx_t *ctx, struct bcmstrbuf *b);
 typedef int (*phy_type_chanmgr_bsinit_fn_t)(phy_type_chanmgr_ctx_t *ctx, chanspec_t chanspec,
 	bool forced);
@@ -112,6 +114,8 @@ typedef struct {
 	phy_type_chanmgr_get_fn_t get_smth;
 	/* set smth */
 	phy_type_chanmgr_set_fn_t set_smth;
+	/* bypass idle tssi cal */
+	phy_type_chanmgr_bypass_itssi_fn_t bypass_itssi;
 	/* context */
 	phy_type_chanmgr_ctx_t *ctx;
 } phy_type_chanmgr_fns_t;

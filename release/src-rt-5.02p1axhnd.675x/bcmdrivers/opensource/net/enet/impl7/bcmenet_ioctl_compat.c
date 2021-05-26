@@ -1984,6 +1984,25 @@ int enet_ioctl_compat_ethswctl(struct net_device *dev, struct ifreq *rq, int cmd
             if (!ret && copy_to_user(rq->ifr_data , ethswctl, sizeof(struct ethswctl_data)))
                 return -EFAULT;
             return ret;
+
+// add by Andrew
+        case ETHSWARLDUMP:
+            if (!sf2_sw) return -(EOPNOTSUPP);
+            ret = ioctl_extsw_arl_dump(ethswctl);
+            if (!ret && copy_to_user(rq->ifr_data , ethswctl, sizeof(struct ethswctl_data)))
+                return -EFAULT;
+            return ret;
+
+      case ETHSWMIBDUMP:
+            if (!sf2_sw) return -(EOPNOTSUPP);
+            if (!(port = _compat_port_object_from_unit_port(ethswctl->unit, ethswctl->port)))
+                return -EFAULT;
+            ret = port_mib_dump_us(port, ethswctl);
+            if (!ret && copy_to_user(rq->ifr_data , ethswctl, sizeof(struct ethswctl_data))) 
+                return -EFAULT;
+            return ret;
+// end of add
+
         case ETHSWCOSPRIORITYMETHOD:
             if (ethswctl->unit != SF2_ETHSWCTL_UNIT  || !sf2_sw) {
                 enet_err("runner COS priority method config not supported yet.\n");    //TODO_DSL?

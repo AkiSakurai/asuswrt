@@ -48,7 +48,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_stf.c 783011 2020-01-11 02:00:22Z $
+ * $Id: wlc_stf.c 787040 2020-05-14 15:51:43Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -4649,10 +4649,6 @@ wlc_stf_tempsense_upd(wlc_info_t *wlc)
 		wlc->stf->throttle_state &= ~WLC_TEMPTHROTTLE_ON;
 	}
 
-	ASSERT(wlc->pub->up);
-	if (!wlc->pub->up)
-		return;
-
 	wlc_txduty_upd(wlc);
 
 	if (wlc->stf->thermal_throttle_features & THERMAL_THROTTLE_BYPASS_TXCHAIN)
@@ -4795,7 +4791,7 @@ wlc_stf_enter_rxchain_pwrsave(wlc_info_t *wlc)
 
 	/* If no STA associated then to disable PAD after enter rxchain_pwrsave mode */
 	if (!wlc_ap_stas_associated(wlc->ap))
-		phy_chanmgr_pad_online_enable((phy_info_t*) wlc->pi, FALSE);
+		phy_chanmgr_pad_online_enable((phy_info_t*) wlc->pi, FALSE, TRUE);
 
 	return ht_cap_rx_stbc;
 }
@@ -4812,7 +4808,7 @@ wlc_stf_exit_rxchain_pwrsave(wlc_info_t *wlc, uint8 ht_cap_rx_stbc)
 	}
 
 	/* Enable PAD after exit rxchain_pwrsave mode */
-	phy_chanmgr_pad_online_enable((phy_info_t*) wlc->pi, TRUE);
+	phy_chanmgr_pad_online_enable((phy_info_t*) wlc->pi, TRUE, TRUE);
 }
 
 int
@@ -5681,6 +5677,9 @@ wlc_stf_spatialpolicy_set_complete(wlc_info_t *wlc)
 	uint8 idx, Nsts;
 	uint8 core_mask = 0;
 	uint8 txcore[MAX_CORE_IDX];
+	struct scb_iter scbiter;
+	struct scb *scb;
+	uint8 ac = 0;
 
 	wlc->stf->spatialpolicy = wlc->stf->spatialpolicy_pending;
 	wlc->stf->spatialpolicy_pending = 0;
@@ -5738,7 +5737,14 @@ wlc_stf_spatialpolicy_set_complete(wlc_info_t *wlc)
 	    (wlc->scbstate != NULL)) {
 		wlc_ratelinkmem_update_rate_entry(wlc, WLC_RLM_SPECIAL_RATE_SCB(wlc), NULL, 0);
 	}
-}
+
+	/* In case we are here because the tx power level has been changed, clear txh cache */
+	if (wlc->scbstate && wlc->wrsi) {
+		FOREACHSCB(wlc->scbstate, &scbiter, scb) {
+			wlc_scb_ratesel_clr_cache(wlc->wrsi, scb, ac);
+		}
+	}
+} /* wlc_stf_spatialpolicy_set_complete */
 
 int
 wlc_stf_spatial_policy_set(wlc_info_t *wlc, int val)
@@ -6461,7 +6467,7 @@ wlc_stf_watchdog(void *ctx)
 {
 	wlc_info_t *wlc = (wlc_info_t *)ctx;
 
-	if (!TVPM_ENAB(wlc->pub)) {
+	if (wlc->pub->up && !TVPM_ENAB(wlc->pub)) {
 		wlc_stf_pwrthrottle_upd(wlc);
 
 		if (!wlc->lpas) {
@@ -6924,7 +6930,7 @@ BCMATTACHFN(wlc_stf_phy_chain_calc)(wlc_info_t *wlc)
 	wlc->stf->sr13_en_sw_txrxchain_mask =
 		((wlc->pub->boardflags4 & BFL4_SROM13_EN_SW_TXRXCHAIN_MASK) != 0);
 
-	if (si_chipid(wlc->pub->sih) == BCM43692_CHIP_ID) {
+	if (CHIPID(si_chipid(wlc->pub->sih)) == BCM43692_CHIP_ID) {
 		wlc->stf->hw_txchain_cap = 3;
 		wlc->stf->hw_rxchain_cap = 3;
 	}
@@ -8360,10 +8366,6 @@ wlc_stf_pwrthrottle_upd(wlc_info_t *wlc)
 	if (pwr_throttle_req)
 		wlc->stf->throttle_state |= pwr_throttle_req;
 
-	ASSERT(wlc->pub->up);
-	if (!wlc->pub->up)
-		return;
-
 	if (wlc->stf->throttle_state & WLC_PWRTHROTTLE_ON) {
 	        bool isj28;
 		if (wlc->stf->pwrthrottle_config & PWRTHROTTLE_DUTY_CYCLE)
@@ -9168,6 +9170,12 @@ wlc_stf_op_txrxstreams_complete(wlc_info_t *wlc)
 		wlc->stf->pending_opstreams = 0;
 		WL_MODE_SWITCH(("wl%d: %s: op_txstrms set to %d op_rxstrms %d\n", WLCWLUNIT(wlc),
 			__FUNCTION__, wlc->stf->op_txstreams, wlc->stf->op_rxstreams));
+
+#ifdef WL_MU_TX
+		if (MU_TX_ENAB(wlc) || HE_MMU_ENAB(wlc->pub)) {
+			wlc_mutx_active_update(wlc->mutx);
+		}
+#endif  /* WL_MU_TX */
 	}
 }
 

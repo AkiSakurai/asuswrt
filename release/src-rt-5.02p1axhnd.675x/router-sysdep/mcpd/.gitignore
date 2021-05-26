@@ -1,7 +1,0 @@
-*.o
-*.d*
-tags
-ref*
-mcpctl
-autodetect
-mcpd

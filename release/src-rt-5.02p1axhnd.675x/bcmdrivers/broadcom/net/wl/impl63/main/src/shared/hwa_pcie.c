@@ -3241,7 +3241,7 @@ hwa_txpost_sendup(void *context, uintptr arg1, uint32 arg2, uint32 pkt_count, ui
 			pciedev_hwa_process_pending_flring_resp(dev->pciedev, flowid);
 		} else {
 			/* At this point CFP flowid should be valid */
-			ASSERT_CFP_FLOWID(hwa_cfp_tx_info.cfp_flowid);
+			ASSERT_SCB_FLOWID(hwa_cfp_tx_info.cfp_flowid);
 
 			/* Forward the tx packets to the wireless subsystem */
 #ifdef WLCFP

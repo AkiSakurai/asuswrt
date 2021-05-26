@@ -27,11 +27,11 @@
 #include <linux/blog.h>
 #endif
 #if defined(CONFIG_BCM_KF_WL)
-#if defined(PKTC)
+#if defined(PKTC) || defined(PKTC_TBL)
 #include <osl.h>
 #include <wl_pktc.h>
 extern unsigned long (*wl_pktc_req_hook)(int req_id, unsigned long param0, unsigned long param1, unsigned long param2);
-#endif /* PKTC */
+#endif /* PKTC || PKTC_TBL */
 #include <linux/bcm_skb_defines.h>
 #endif
 
@@ -146,7 +146,7 @@ netdev_tx_t br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 		blog_link(BRIDGEFDB, blog_ptr(skb), (void*)dst, BLOG_PARAM1_DSTFDB, 0);
 		blog_unlock();
 #if defined(CONFIG_BCM_KF_WL)
-#if defined(PKTC)
+#if defined(PKTC) || defined(PKTC_TBL)
 		if (wl_pktc_req_hook && (dst->dst != NULL) &&
 			(BLOG_GET_PHYTYPE(dst->dst->dev->path.hw_port_type) == BLOG_WLANPHY) && 
 			wl_pktc_req_hook(PKTC_TBL_GET_TX_MODE, 0, 0, 0))
@@ -177,8 +177,8 @@ netdev_tx_t br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 				}
 			}
 		}
-#endif
-#endif
+#endif /* defined(PKTC) || defined(PKTC_TBL) */
+#endif /* defined(CONFIG_BCM_KF_WL) */
 		if (BROADSTREAM_IQOS_ENABLE()) {
 			if (blog_ptr(skb) && DEV_ISWAN(((struct net_device *)(blog_ptr(skb)->rx_dev_p)))) {
 	       		blog_emit(skb, dev, TYPE_ETH, 0, BLOG_ENETPHY); /* CONFIG_BLOG */

@@ -25,14 +25,14 @@
 #include <linux/blog.h>
 #endif
 #if defined(CONFIG_BCM_KF_WL)
-#if defined(PKTC)
+#if defined(PKTC) || defined(PKTC_TBL)
 #include <osl.h>
 #include <wl_pktc.h>
 unsigned long (*wl_pktc_req_hook)(int req_id, unsigned long param0, unsigned long param1, unsigned long param2) = NULL;
 EXPORT_SYMBOL(wl_pktc_req_hook);
 unsigned long (*dhd_pktc_req_hook)(int req_id, unsigned long param0, unsigned long param1, unsigned long param2) = NULL;
 EXPORT_SYMBOL(dhd_pktc_req_hook);
-#endif /* PKTC */
+#endif /* defined(PKTC)  || defined(PKTC_TBL) */
 #include <linux/bcm_skb_defines.h>
 #endif
 
@@ -248,8 +248,8 @@ int br_handle_frame_finish(struct sock *sk, struct sk_buff *skb)
 		unicast = false;
 		br->dev->stats.multicast++;
 #if !(defined(CONFIG_BCM_KF_BLOG) && defined(CONFIG_BLOG))
-	} else if ((dst = __br_fdb_get(br, dest, vid)) &&
-			dst->is_local) {
+	} else if ((p->flags & BR_ISOLATE_MODE) ||
+			((dst = __br_fdb_get(br, dest, vid)) && dst->is_local)) {
 		skb2 = skb;
 		/* Do not forward the packet since it's local. */
 		skb = NULL;
@@ -269,7 +269,7 @@ int br_handle_frame_finish(struct sock *sk, struct sk_buff *skb)
 
 		blog_unlock();
 
-#if defined(PKTC)
+#if defined(PKTC) || defined(PKTC_TBL)
 		/* wlan pktc */
 		if ((dst != NULL) && (dst->dst != NULL) && (!dst->is_local)) {
 #if defined(CONFIG_BCM_KF_WL)
@@ -394,8 +394,8 @@ int br_handle_frame_finish(struct sock *sk, struct sk_buff *skb)
 #endif
 		}
 next:
-#endif /* PKTC */
-		if ((dst != NULL) && dst->is_local) {
+#endif /* defined(PKTC)  || defined(PKTC_TBL) */
+		if ((p->flags & BR_ISOLATE_MODE) || ((dst != NULL) && dst->is_local)) {
 			skb2 = skb;
 			/* Do not forward the packet since it's local. */
 			skb = NULL;

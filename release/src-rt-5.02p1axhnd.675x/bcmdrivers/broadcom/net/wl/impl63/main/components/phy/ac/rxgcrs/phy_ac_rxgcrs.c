@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rxgcrs.c 782044 2019-12-09 18:23:42Z $
+ * $Id: phy_ac_rxgcrs.c 786622 2020-05-03 07:14:49Z $
  */
 
 #include <phy_cfg.h>
@@ -969,6 +969,12 @@ phy_ac_rxgcrs_populate_rxg_params_band_specific(phy_ac_rxgcrs_info_t *rxgcrsi)
 			}
 		} else {
 			rxg_params->lna1_max_indx = 4;
+		}
+	} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		if (CHSPEC_IS2G(pi->radio_chanspec)) {
+			rxg_params->lna1_max_indx = BF_ELNA_2G(pi_ac) ? 4 : 5;
+		} else {
+			rxg_params->lna1_max_indx = BF_ELNA_5G(pi_ac) ? 4 : 5;
 		}
 	} else {
 		rxg_params->lna1_max_indx = 5;
@@ -9475,7 +9481,7 @@ wlc_phy_apply_edcrs_acphy(phy_info_t *pi)
 	phy_info_acphy_t *pi_ac = pi->u.pi_acphy;
 	acphy_desense_values_t *desense = NULL;
 	int32 edcrs_desense, edcrs = 0;
-	int32 final_edcrs, prev_edcrs;
+	int32 final_edcrs, prev_init_edcrs, current_edcrs;
 
 	if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		//empty function
@@ -9508,14 +9514,27 @@ wlc_phy_apply_edcrs_acphy(phy_info_t *pi)
 
 	// check static edcrs threshold change
 	if (!SCAN_RM_IN_PROGRESS(pi)) {
-		prev_edcrs = phy_ac_noise_get_dynamic_ed_thresh(pi, FALSE);
-		if (prev_edcrs != final_edcrs) {
+		prev_init_edcrs = phy_ac_noise_get_dynamic_ed_thresh(pi, FALSE);
+		current_edcrs = phy_ac_noise_get_dynamic_ed_thresh(pi, TRUE);
+		if (prev_init_edcrs != final_edcrs) {
 			// Use the new static edcrs threshold for dynamic edcrs
 			phy_ac_noise_set_dynamic_ed_thresh(pi, final_edcrs, TRUE);
 			phy_ac_noise_set_dynamic_ed_thresh(pi, final_edcrs, FALSE);
+		} else if (current_edcrs != final_edcrs) {
+			if (pi->interf->edcrs_chan_scan) {
+				phy_ac_noise_set_dynamic_ed_thresh(pi, current_edcrs, TRUE);
+				wlc_phy_adjust_ed_thres_acphy(pi_ac->rxgcrsi, &current_edcrs, TRUE);
+			} else {
+				/* wl down/up and reinit case, reset phy_ed_thresh to default value */
+				phy_ac_noise_set_dynamic_ed_thresh(pi, final_edcrs, TRUE);
+			}
+			pi->interf->edcrs_chan_scan = FALSE;
+		}
+	} else {
+		if (!pi->interf->edcrs_chan_scan) {
+			pi->interf->edcrs_chan_scan = TRUE;
 		}
 	}
-
 }
 
 static void wlc_phy_adjust_ed_thres_acphy(phy_type_rxgcrs_ctx_t *ctx, int32 *assert_thresh_dbm,
@@ -10013,9 +10032,9 @@ phy_ac_rxgcrs_lesi(phy_ac_rxgcrs_info_t *rxgcrsi, bool on, uint8 delta_halfdB)
 			WRITE_PHYREG(pi, lesiP20FstrModeSwitchHiPower, 0x2a1);
 			WRITE_PHYREG(pi, lesiP20FstrModeSwitchLoPower, 0x134);
 			MOD_PHYREG(pi, lesiFstrModeSwitchLoPower, fstrSwitchPwrLo1c, chspec_is20 ?
-				0x134 : chspec_is40 ? 0x359 : chspec_is80 ? 0x640 : 0x134);
+				0x134 : chspec_is40 ? 0x2e0 : chspec_is80 ? 0x640 : 0x134);
 			MOD_PHYREG(pi, lesiFstrModeSwitchHiPower, fstrSwitchPwrHi1c, chspec_is20 ?
-				0x2a1 : chspec_is40 ? 0x50c : chspec_is80 ? 0x960 : 0x2a1);
+				0x2a1 : chspec_is40 ? 0x380 : chspec_is80 ? 0x960 : 0x2a1);
 
 			MOD_PHYREG(pi, lesiFstrControl0, winmf_1stPeak_Scl, 0x8);
 
@@ -10049,7 +10068,9 @@ phy_ac_rxgcrs_lesi(phy_ac_rxgcrs_info_t *rxgcrsi, bool on, uint8 delta_halfdB)
 			MOD_PHYREG(pi, lesiFstrClassifyThreshold0, MaxScaleHighValue, 0x5a);
 			MOD_PHYREG(pi, lesiFstrClassifyThreshold0, MaxScaleLowValue, 0x3);
 
-			MOD_PHYREG(pi, lesiFstrControl5, lesi_sgi_hw_adj, 0x9);
+			if (!ACMAJORREV_129(pi->pubpi->phy_rev))
+				MOD_PHYREG(pi, lesiFstrControl5, lesi_sgi_hw_adj, 0x9);
+
 			MOD_PHYREG(pi, lesiFstrControl5, lCrsFftInpAdj, chspec_is20 ?
 				9: chspec_is40 ? 0x13 : chspec_is80 ? 0x28 : 0x51);
 			WRITE_PHYREG(pi, dc_fix_filter_config_lesi, chspec_is20 ?

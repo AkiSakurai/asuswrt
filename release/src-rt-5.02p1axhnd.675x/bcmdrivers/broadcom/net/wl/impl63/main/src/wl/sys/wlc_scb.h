@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_scb.h 782551 2019-12-23 12:07:35Z $
+ * $Id: wlc_scb.h 787001 2020-05-13 14:07:28Z $
  */
 
 #ifndef _wlc_scb_h_
@@ -57,10 +57,12 @@
 #include <wlc_rate.h>
 #include <wlioctl.h>
 #include <wlc_bsscfg.h>
+#ifdef BCM_CSIMON
+#include <wlc_csimon.h>
+#endif // endif
+#include <d11_cfg.h>
 
 #define WLC_SCB_REPLAY_LIMIT 64	/* Maximal successive reply failure */
-#define WLC_SCB_MAX_TX_RETRY_FAIL_CNT 64 /* Maximal successive tx retry failure */
-#define WLC_SCB_MAX_TX_RETRY_FAIL_DUR 120 /* Maximal duration (sec) of tx retry failure */
 
 typedef struct wlc_scb_stats {
 	uint32 tx_pkts;			/**< # of packets transmitted (ucast) */
@@ -87,8 +89,6 @@ typedef struct wlc_scb_stats {
 	uint32 tx_pkts_fw_retries;
 	uint32 tx_pkts_fw_retry_exhausted;
 	uint32 rx_succ_replay_failures;	/**< # of successive replay failure  */
-	uint32 tx_succ_retry_failures;	/**< # of successive tx retry failure */
-	uint32 tx_retry_fail_dur;	/**< # of tx retry failure duration in second */
 	uint32 dyn_coremask_thpt[DYNTXC_MAX_COEFNUM];
 	uint32 dyn_coremask_pkt[DYNTXC_MAX_COEFNUM];
 	uint16 dyn_coremask_count;
@@ -121,21 +121,36 @@ extern void scb_sanitycheck(scb_module_t *scbstate, scb_t* scb);
 	scb_sanitycheck((wlc)->scbstate, (scb));						\
 })
 
-#ifdef WLCNTSCB
 #define SCB_PKTS_INFLT_FIFOCNT_INCR(scb, prio) \
 		((scb)->pkts_inflt_fifocnt[(prio)]++)	/**< Increment by 1 */
+#define SCB_PKTS_INFLT_FIFOCNT_ADD(scb, prio, delta) \
+		((scb)->pkts_inflt_fifocnt[(prio)] += (delta))	/**< Increment by specified value */
+
+#ifdef WL_TXPKTPEND_SYNC
+#define SCB_PKTS_INFLT_FIFOCNT_DECR(scb, prio) \
+	do { \
+		((scb)->pkts_inflt_fifocnt[(prio)]--); /**< Decrement by 1 */ \
+		if ((scb)->pkts_inflt_fifocnt[(prio)] < 0)			\
+			(scb)->bsscfg->wlc->pktpend_sync |= TXPKTPEND_SYNC_EN;	\
+	} while (0);
+#define SCB_PKTS_INFLT_FIFOCNT_SUB(scb, prio, delta) \
+	do { \
+		((scb)->pkts_inflt_fifocnt[(prio)] -= (delta));	/* Decrement by specified value */ \
+		if ((scb)->pkts_inflt_fifocnt[(prio)] < 0)				\
+			(scb)->bsscfg->wlc->pktpend_sync |= TXPKTPEND_SYNC_EN;		\
+	} while (0);
+#else
 #define SCB_PKTS_INFLT_FIFOCNT_DECR(scb, prio) \
 	do { \
 		((scb)->pkts_inflt_fifocnt[(prio)]--); /**< Decrement by 1 */ \
 		ASSERT((scb)->pkts_inflt_fifocnt[(prio)] >= 0); \
 	} while (0);
-#define SCB_PKTS_INFLT_FIFOCNT_ADD(scb, prio, delta) \
-		((scb)->pkts_inflt_fifocnt[(prio)] += (delta))	/**< Increment by specified value */
 #define SCB_PKTS_INFLT_FIFOCNT_SUB(scb, prio, delta) \
 	do { \
 		((scb)->pkts_inflt_fifocnt[(prio)] -= (delta));	/* Decrement by specified value */ \
 		ASSERT((scb)->pkts_inflt_fifocnt[(prio)] >= 0); \
 	} while (0);
+#endif /* WL_TXPKTPEND_SYNC */
 
 #define SCB_PKTS_INFLT_FIFOCNT_VAL(scb, prio) \
 		((scb)->pkts_inflt_fifocnt[(prio)])	/**< Return value */
@@ -185,20 +200,6 @@ extern void scb_sanitycheck(scb_module_t *scbstate, scb_t* scb);
 	 (scb)->pkts_inflt_cqcnt[14] + \
 	 (scb)->pkts_inflt_cqcnt[15])
 
-#else /* WLCNTSCB */
-#define SCB_PKTS_INFLT_FIFOCNT_INCR(scb, prio)
-#define SCB_PKTS_INFLT_FIFOCNT_DECR(scb, prio)
-#define SCB_PKTS_INFLT_FIFOCNT_ADD(scb, prio, delta)
-#define SCB_PKTS_INFLT_FIFOCNT_SUB(scb, prio, delta)
-#define SCB_PKTS_INFLT_FIFOCNT_VAL(scb, prio)
-
-#define SCB_PKTS_INFLT_CQCNT_INCR(scb, prec)
-#define SCB_PKTS_INFLT_CQCNT_DECR(scb, prec)
-#define SCB_PKTS_INFLT_CQCNT_ADD(scb, prec, delta)
-#define SCB_PKTS_INFLT_CQCNT_SUB(scb, prec, delta)
-#define SCB_PKTS_INFLT_CQCNT_VAL(scb, prec)
-#endif /* WLCNTSCB */
-
 /**
  * Information about a specific remote entity, and the relation between the local and that remote
  * entity. Station Control Block.
@@ -237,6 +238,8 @@ struct scb {
 	} apsd;
 
 	uint16		aid;		/**< association ID */
+	uint16		flowid;		/**< SW flowid per scb */
+	uint16		host_ringid[NUMPRIO];	/**< Host ring id [flowringid /pktfwd tbl id */
 	uint16		cap;		/**< sta's advertized capability field */
 	uint8		auth_alg;	/**< 802.11 authentication mode */
 	uint8		ps_pretend;	/**< AP pretending STA is in PS mode */
@@ -283,10 +286,9 @@ struct scb {
 	uint16		sched_staperc;	/* Schedule context ATF percentage of sta */
 	uint32		last_active_usec;
 #endif /* WLATF && WLATF_PERC */
-#ifdef WLCNTSCB
+
 	int16 pkts_inflt_fifocnt[NUMPRIO];
 	int16 pkts_inflt_cqcnt[NUMPRIO * 2];
-#endif /* WLCNTSCB */
 
 	uint32 mem_bytes; /* bytes of memory allocated for this scb */
 	uint16 dyn_coremask;
@@ -302,6 +304,9 @@ struct scb {
 	uint32 ps_maxtime;
 	uint32 ps_avgtime;
 #endif /* WL_PS_STATS */
+#ifdef BCM_CSIMON
+	wlc_csimon_sta_t *csimon; /* CSI Monitor info for this SCB */
+#endif // endif
 };
 
 /** Iterator for scb list */
@@ -310,6 +315,19 @@ struct scb_iter {
 	wlc_bsscfg_t	*next_bss;		/**< next bss pointer */
 	bool		all;			/**< walk all bss or not */
 };
+
+static INLINE uint32
+wlc_scb_tot_inflt_fifocnt(wlc_info_t *wlc, struct scb *scb)
+{
+	uint32 fifocnt, i;
+
+	fifocnt = 0;
+	for (i = 0; i < NUMPRIO; i++) {
+		fifocnt += SCB_PKTS_INFLT_FIFOCNT_VAL(scb, i);
+	}
+
+	return fifocnt;
+}
 
 #define SCB_BSSCFG(a)           ((a)->bsscfg)
 #define SCB_WLC(a)              ((a)->bsscfg->wlc)
@@ -451,6 +469,10 @@ struct scb *wlc_bcmcscb_alloc(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct wlcband
 #define wlc_bcmcscb_free(wlc, scb) wlc_scbfree(wlc, scb)
 struct scb *wlc_hwrsscb_alloc(wlc_info_t *wlc, struct wlcband *band);
 #define wlc_hwrsscb_free(wlc, scb) wlc_scbfree(wlc, scb)
+#ifdef WL_PROXDETECT
+struct scb *wlc_proxdscb_alloc(wlc_info_t *wlc, struct wlcband *band);
+#define wlc_proxdscb_free(wlc, scb) wlc_scbfree(wlc, scb)
+#endif // endif
 
 bool wlc_scbfree(wlc_info_t *wlc, struct scb *remove);
 
@@ -526,6 +548,7 @@ void wlc_scblist_validaterates(wlc_info_t *wlc);
 #define SCB2_VHTCAP		0x00000800	/**< VHT (11ac) capable device */
 #define SCB2_HECAP		0x00001000	/**< HE (11ax) capable device */
 #define SCB2_XXX		0x00002000
+#define SCB2_PROXD		0x00004000	/**< scb is used to support proximity detection */
 #define SCB2_IGN_SMPS		0x08000000	/**< ignore SM PS update */
 #define SCB2_IS80		0x10000000	/**< 80MHz capable */
 #define SCB2_AMSDU_IN_AMPDU_CAP	0x20000000	/**< AMSDU over AMPDU */
@@ -542,7 +565,6 @@ void wlc_scblist_validaterates(wlc_info_t *wlc);
 #define SCB3_MAP_CAP		0x00000040	/**< MultiAp capable */
 #define SCB3_ECSA_SUPPORT	0x00000080	/* ECSA supported STA */
 #define SCB3_MAP_P2_CAP		0x00000100	/**< Multiap profile-2 */
-#define SCB3_RRM_BCN_PASSIVE   0x00000200  /* RRM Beacon Passive Measurement CAP */
 #define SCB3_XXXX		0x00000200
 #define SCB3_XXXXX		0x00000400
 #ifdef WL_RELMCAST
@@ -603,16 +625,22 @@ void wlc_scblist_validaterates(wlc_info_t *wlc);
 /* scb marking bitfield helpers */
 #define SCB_DEL_IN_PROGRESS(a)	((a)->mark & SCB_DEL_IN_PROG)
 #define SCB_MARKED_DEL(a)	((a)->mark & SCB_MARK_TO_DEL)
-#define SCB_MARK_DEL(a)		((a)->mark |= SCB_MARK_TO_DEL)
+#define SCB_MARK_DEL(a)	do { \
+	(a)->mark |= SCB_MARK_TO_DEL; \
+	wlc_scb_close_link(SCB_WLC((a)), (a)); \
+} while (0)
 #define SCB_MARKED_DEAUTH(a)	((a)->mark & SCB_MARK_TO_DEAUTH)
 #define SCB_MARK_DEAUTH(a)	((a)->mark |= SCB_MARK_TO_DEAUTH)
+
+#define SCB_IS_UNUSABLE(scb)	(!(scb) || SCB_MARKED_DEL(scb) || SCB_DEL_IN_PROGRESS(scb))
 
 /* flag access */
 #define SCB_ISMYAP(a)           ((a)->flags & SCB_MYAP)
 #define SCB_ISPERMANENT(a)      ((a)->permanent)
-#define	SCB_INTERNAL(a)		((a)->flags2 & (SCB2_BCMC | SCB2_HWRS))
+#define	SCB_INTERNAL(a)		((a)->flags2 & (SCB2_BCMC | SCB2_HWRS | SCB2_PROXD))
 #define	SCB_BCMC(a)		((a)->flags2 & SCB2_BCMC)
 #define	SCB_HWRS(a)		((a)->flags2 & SCB2_HWRS)
+#define	SCB_PROXD(a)		((a)->flags2 & SCB2_PROXD)
 #define SCB_IS_BRCM(a)		((a)->flags & SCB_BRCM)
 #define SCB_ISMULTI(a)		SCB_BCMC(a)
 
@@ -640,7 +668,33 @@ void wlc_scblist_validaterates(wlc_info_t *wlc);
 #define WLC_BCMC_PSMODE(wlc, bsscfg) (FALSE)
 #endif /* AP */
 
-#define SCB_AID(a)		((a)->aid)
+#define SCB_FLOWID_LOCAL_MASK		(0xFFF)				 /* Local Flowid Mask */
+#define SCB_FLOWID_INCARN_SHIFT		12
+#define SCB_FLOWID_INCARN_MASK		(0x3 << SCB_FLOWID_INCARN_SHIFT) /* Incarnation ID Mask */
+#define SCB_FLOWID_RADIO_SHIFT		14
+#define SCB_FLOWID_RADIO_MASK		(0x3 << SCB_FLOWID_RADIO_SHIFT)	 /* Radio ID mask */
+
+#define SCB_FLOWID_LOCAL(flowid)	((flowid) & SCB_FLOWID_LOCAL_MASK)
+#define SCB_FLOWID_RADIO(flowid)	(((flowid) & SCB_FLOWID_RADIO_MASK) >> \
+	SCB_FLOWID_RADIO_SHIFT)
+#define SCB_FLOWID_INCARN(flowid)	(((flowid) & SCB_FLOWID_INCARN_MASK) >> \
+	SCB_FLOWID_INCARN_SHIFT)
+
+#define SCB_FLOWID_LOCAL_ASSERT(flowid)	\
+	ASSERT(((flowid) & ~SCB_FLOWID_LOCAL_MASK) == 0)
+
+/* Global ID across radios */
+#define SCB_FLOWID_GLOBAL_SET(radio, incarn, flowid) \
+	(((radio) << SCB_FLOWID_RADIO_SHIFT) | \
+	((incarn) << SCB_FLOWID_INCARN_SHIFT) | \
+	(flowid))
+
+#define SCB_AID(a)			((a)->aid)
+/* Special purpose API to access gloabl ID */
+#define SCB_FLOWID_GLOBAL(a)		((a)->flowid)
+/* Genral USE API for scb to ID mapping */
+#define SCB_FLOWID(a)			(SCB_FLOWID_GLOBAL(a) & SCB_FLOWID_LOCAL_MASK)
+#define SCB_HOST_RINGID(a, prio)	((a)->host_ringid[(prio)])
 
 #ifdef WME
 #define SCB_WME(a)		((a)->flags & SCB_WMECAP)	/* Also implies WME_ENAB(wlc) */
@@ -971,7 +1025,6 @@ extern void wlc_scb_update_multmac_idx(wlc_bsscfg_t *cfg, struct scb *scb);
 
 extern void wlc_scb_cq_inc(void *p, int prec, uint32 cnt);
 extern void wlc_scb_cq_dec(void *p, int prec, uint32 cnt);
-extern void wlc_scb_cq_flush_queue(wlc_info_t *wlc, struct pktq *pq);
 
 #if defined(BCM_PKTFWD_FLCTL)
 extern void wlc_scb_get_link_credits(wlc_info_t *wlc, wlc_if_t *wlcif, uint8 *addr,
@@ -979,4 +1032,16 @@ extern void wlc_scb_get_link_credits(wlc_info_t *wlc, wlc_if_t *wlcif, uint8 *ad
 extern int wlc_scb_link_update(wlc_info_t *wlc, wlc_if_t *wlcif, uint8 *addr, uint16 *cfp_flowid);
 #endif /* BCM_PKTFWD_FLCTL */
 
+extern void wlc_scb_amt_delink(wlc_info_t *wlc, int amt_idx, uint16 flowid);
+extern int wlc_scb_amt_link(wlc_info_t *wlc, int amt_idx, const struct ether_addr *amt_addr);
+extern uint16 wlc_scb_amt_linkid_get(wlc_info_t *wlc, int amt_idx);
+extern struct scb* BCMFASTPATH wlc_scb_amt_lookup(wlc_info_t *wlc, uint16 amt_idx);
+extern void wlc_scb_host_ring_link(wlc_info_t *wlc, uint16 ringid, uint8 tid,
+	struct scb *scb,  uint16* flowid);
+extern int wlc_scb_host_ring_delink(wlc_info_t *wlc,
+	struct scb *scb, uint8 tid, uint16 ringid);
+extern struct scb* BCMFASTPATH wlc_scb_flowid_global_lookup(uint16 flowid_global);
+extern struct scb* BCMFASTPATH wlc_scb_flowid_lookup(wlc_info_t *wlc, uint16 flowid);
+extern uint16 wlc_scb_flowid_addr_lookup(wlc_info_t *wlc, struct ether_addr *ea);
+extern int wlc_scb_amt_incarnation_id_get(wlc_info_t *wlc, int amt_idx);
 #endif /* _wlc_scb_h_ */

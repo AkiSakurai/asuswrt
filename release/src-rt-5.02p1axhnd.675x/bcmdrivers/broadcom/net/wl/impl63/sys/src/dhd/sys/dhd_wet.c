@@ -48,7 +48,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_wet.c 778175 2019-08-26 07:06:04Z $
+ * $Id: dhd_wet.c 784705 2020-03-04 12:32:16Z $
  */
 
 /**
@@ -63,6 +63,7 @@
 #include <vlan.h>
 #include <802.3.h>
 #include <bcmip.h>
+#include <bcmipv6.h>
 #include <bcmarp.h>
 #include <bcmudp.h>
 #include <bcmdhcp.h>
@@ -996,18 +997,25 @@ replace_smac:
 	/* no action for received bcast/mcast ethernet frame */
 	else if (!ETHER_ISMULTI(eh)) {
 		iaddr = iph + IPV6_DEST_IP_OFFSET;
-		if (wet_sta_find_ip(weth, IPVER_6, iaddr, &sta) < 0) {
-			DHD_ERROR(("wet_ipv6_proc: unable to find STA "
-			"%x%x:%x%x:%x%x:%x%x:%x%x:%x%x:%x%x:%x%x %s\n",
-				iaddr[0], iaddr[1], iaddr[2], iaddr[3],
-				iaddr[4], iaddr[5], iaddr[6], iaddr[7],
-				iaddr[8], iaddr[9], iaddr[10], iaddr[11],
-				iaddr[12], iaddr[13], iaddr[14], iaddr[15],
-				bcm_ether_ntoa(
-					(struct ether_addr*)(eh + ETHER_SRC_OFFSET), eabuf)));
-			return -1;
+		if (IPV6_ISMULTI(iaddr)) {
+			struct ether_addr ea;
+			IPV6_MCAST_TO_ETHER_MCAST(iaddr, ea.octet);
+			bcopy(&ea, eh + ETHER_DEST_OFFSET, ETHER_ADDR_LEN);
 		}
-		bcopy(&sta->mac, eh + ETHER_DEST_OFFSET, ETHER_ADDR_LEN);
+		else {
+			if (wet_sta_find_ip(weth, IPVER_6, iaddr, &sta) < 0) {
+				DHD_ERROR(("wet_ipv6_proc: unable to find STA "
+				"%x%x:%x%x:%x%x:%x%x:%x%x:%x%x:%x%x:%x%x %s\n",
+					iaddr[0], iaddr[1], iaddr[2], iaddr[3],
+					iaddr[4], iaddr[5], iaddr[6], iaddr[7],
+					iaddr[8], iaddr[9], iaddr[10], iaddr[11],
+					iaddr[12], iaddr[13], iaddr[14], iaddr[15],
+					bcm_ether_ntoa(
+						(struct ether_addr*)(eh + ETHER_SRC_OFFSET), eabuf)));
+				return -1;
+			}
+			bcopy(&sta->mac, eh + ETHER_DEST_OFFSET, ETHER_ADDR_LEN);
+		}
 	}
 
 	return 0;

@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_papdcal.h 782240 2019-12-13 07:49:01Z $
+ * $Id: phy_ac_papdcal.h 783292 2020-01-21 18:48:30Z $
  */
 
 #ifndef _phy_ac_papdcal_h_
@@ -133,7 +133,7 @@ extern int phy_ac_papd_cal_run(phy_info_t *pi);
 extern void wlc_phy_papd_set_rfpwrlut(phy_info_t *pi);
 extern void wlc_phy_papd_set_rfpwrlut_tiny(phy_info_t *pi);
 extern void wlc_phy_papd_set_rfpwrlut_phymaj_rev36(phy_info_t *pi);
-#if defined(BCMDBG) || defined(WLTEST)
+#if defined(BCMDBG)
 extern void wlc_phy_papd_dump_eps_trace_acphy(phy_info_t *pi, struct bcmstrbuf *b);
 #endif // endif
 extern void wlc_phy_do_papd_cal_acphy(phy_info_t *pi, int8 cal_core);

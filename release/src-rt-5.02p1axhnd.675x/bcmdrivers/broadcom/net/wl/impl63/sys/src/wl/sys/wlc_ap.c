@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_ap.c 782645 2019-12-30 10:09:52Z $
+ * $Id: wlc_ap.c 788567 2020-07-03 11:18:07Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -199,6 +199,10 @@
 #endif /* WL_MBO && MBO_AP */
 #include <wlc_ulmu.h>
 #include <wlc_hw_priv.h>
+#ifdef BCM_CSIMON
+#include <wlc_csimon.h>
+#endif // endif
+#include <wlc_macdbg.h>
 
 /* Default pre tbtt time for non mbss case */
 #define	PRE_TBTT_DEFAULT_us		2
@@ -660,12 +664,14 @@ static const bcm_iovar_t wlc_ap_iovars[] = {
 /* Local Prototypes */
 static void wlc_ap_watchdog(void *arg);
 static int wlc_ap_wlc_up(void *ctx);
+static int wlc_ap_wlc_down(void *ctx);
 static void wlc_assoc_notify(wlc_ap_info_t *ap, struct ether_addr *sta, wlc_bsscfg_t *cfg);
 static void wlc_reassoc_notify(wlc_ap_info_t *ap, struct ether_addr *sta, wlc_bsscfg_t *cfg);
 static void wlc_ap_sta_probe(wlc_ap_info_t *ap, struct scb *scb);
 static void wlc_ap_sta_probe_complete(wlc_info_t *wlc, uint txstatus, struct scb *scb, void *pkt);
 static void wlc_ap_stas_timeout(wlc_ap_info_t *ap);
 static void wlc_ap_wsec_stas_timeout(wlc_ap_info_t *ap);
+static void wlc_ap_scb_unusable_stas_timeout(wlc_ap_info_t *ap);
 static int wlc_authenticated_sta_check_cb(struct scb *scb);
 static int wlc_authorized_sta_check_cb(struct scb *scb);
 static int wlc_wme_sta_check_cb(struct scb *scb);
@@ -1321,7 +1327,7 @@ BCMATTACHFN(wlc_ap_attach)(wlc_info_t *wlc)
 	}
 
 	err = wlc_module_register(pub, wlc_ap_iovars, "ap", appvt, wlc_ap_doiovar,
-	                          wlc_ap_watchdog, wlc_ap_wlc_up, NULL);
+	                          wlc_ap_watchdog, wlc_ap_wlc_up, wlc_ap_wlc_down);
 	if (err) {
 		WL_ERROR(("%s: wlc_module_register failed\n", __FUNCTION__));
 		goto fail;
@@ -1543,6 +1549,26 @@ wlc_ap_wlc_up(void *ctx)
 #ifdef RADIO_PWRSAVE
 	wlc_reset_radio_pwrsave_mode(ap);
 #endif // endif
+
+	return BCME_OK;
+}
+
+static int
+wlc_ap_wlc_down(void *ctx)
+{
+	wlc_ap_info_pvt_t *appvt = (wlc_ap_info_pvt_t *)ctx;
+	wlc_info_t *wlc = appvt->wlc;
+	wlc_bsscfg_t *cfg;
+	int idx;
+
+	FOREACH_AP(wlc, idx, cfg) {
+		/* Unregister the requested MSCH operating channel */
+		wlc_ap_timeslot_unregister(cfg);
+	}
+
+#if defined(BCMDBG)
+	wlc_apps_wlc_down(wlc);
+#endif /* BCMDBG */
 
 	return BCME_OK;
 }
@@ -1914,6 +1940,51 @@ wlc_ap_wsec_stas_timeout(wlc_ap_info_t *ap)
 	}
 }
 
+/* age out STA w/ marked_del and not-connect */
+static void
+wlc_ap_scb_unusable_stas_timeout(wlc_ap_info_t *ap)
+{
+	wlc_ap_info_pvt_t *appvt = (wlc_ap_info_pvt_t *) ap;
+	wlc_info_t *wlc = appvt->wlc;
+	struct scb *scb;
+	struct scb_iter scbiter;
+
+	FOREACHSCB(wlc->scbstate, &scbiter, scb) {
+		wlc_bsscfg_t *cfg = SCB_BSSCFG(scb);
+
+		/* Filter out the permanent SCB, AP SCB */
+		if (scb->permanent ||
+		    cfg == NULL || !BSSCFG_AP(cfg))
+			continue;
+
+		if (SCB_IS_UNUSABLE(scb)) {
+			if (SCB_AUTHENTICATED(scb)) {
+				/* If SCB is in authenticated state then
+				 * notify the station that we are deauthenticating it,
+				 * then clear the ASSOCIATED, AUTHENTICATED and
+				 * AUTHORIZED bits in the flag before freeing the SCB
+				 */
+				WL_ASSOC(("wl%d.%d: %s: send deauth to "MACF" with"
+					" reason %d\n", wlc->pub->unit,	WLC_BSSCFG_IDX(cfg),
+					__FUNCTION__, ETHER_TO_MACF(scb->ea),
+					DOT11_RC_INACTIVITY));
+				(void)wlc_senddeauth(wlc, cfg, scb, &scb->ea, &cfg->BSSID,
+					&cfg->cur_etheraddr, DOT11_RC_INACTIVITY);
+				wlc_scb_clearstatebit(wlc, scb,
+					ASSOCIATED | AUTHENTICATED | AUTHORIZED);
+				wlc_deauth_complete(wlc, cfg, WLC_E_STATUS_SUCCESS, &scb->ea,
+					DOT11_RC_INACTIVITY, 0);
+			}
+
+			if (((wlc->pub->now - scb->used) >= appvt->scb_mark_del_timeout)) {
+				WL_ASSOC(("wl%d.%d: Timeout Free scb:"MACF" \n", wlc->pub->unit,
+					WLC_BSSCFG_IDX(cfg), ETHER_TO_MACF(scb->ea)));
+				wlc_scbfree(wlc, scb);
+			}
+		}
+	}
+}
+
 static void
 wlc_ap_stas_timeout(wlc_ap_info_t *ap)
 {
@@ -1938,12 +2009,6 @@ wlc_ap_stas_timeout(wlc_ap_info_t *ap)
 		    !MCHAN_ENAB(wlc->pub) &&
 #endif // endif
 		    wlc_scbband(wlc, scb) != wlc->band) {
-			wlc_scbfree(wlc, scb);
-			continue;
-		}
-
-		if ((SCB_MARKED_DEL(scb)) &&
-			((wlc->pub->now - scb->used) >= appvt->scb_mark_del_timeout)) {
 			wlc_scbfree(wlc, scb);
 			continue;
 		}
@@ -2618,7 +2683,7 @@ wlc_ap_assreq_verify_rates(wlc_assoc_req_t *param, wlc_iem_ft_pparm_t *ftpparm,
 #endif /* WL11AC */
 #ifdef WL11AX
 		if (HE_ENAB_BAND(wlc->pub, wlc->band->bandtype)) {
-			wlc_he_update_scb_state(wlc->hei, wlc->band->bandtype, scb,
+			wlc_he_update_scb_state(wlc->hei, scb,
 				(he_cap_ie_t *)	ftpparm->assocreq.he_cap_ie, NULL);
 		}
 			if (SCB_HE_CAP(scb))
@@ -3171,7 +3236,7 @@ done:
 
 	if (free_scb) {
 		/* Clear states and mark the scb for deletion. SCB free will happen
-		 * from the inactivity timeout context in wlc_ap_stastimeout()
+		 * from the inactivity timeout context in wlc_ap_stas_timeout()
 		 * Mark the scb for deletion first as some scb state change notify callback
 		 * functions need to be informed that the scb is about to be deleted.
 		 * (For example wlc_cfp_scb_state_upd)
@@ -3299,8 +3364,7 @@ void wlc_ap_process_assocreq_decision(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, ass
 #endif /* WL11AC */
 #ifdef WL11AX
 			if (HE_ENAB_BAND(wlc->pub, wlc->band->bandtype) && SCB_HE_CAP(scb))
-				wlc_he_update_scb_state(wlc->hei, wlc->band->bandtype, scb,
-					NULL, NULL);
+				wlc_he_update_scb_state(wlc->hei, scb, NULL, NULL);
 #endif // endif
 		}
 	}
@@ -4129,7 +4193,7 @@ wlc_restart_ap(wlc_ap_info_t *ap)
 		 * this defer operation enabled by roam_complete routine once STA
 		 * interface losses the number of beacons greater than threshold
 		 */
-		return;
+		goto bring_down_aps;
 	}
 
 #if defined(STA) && defined(AP)
@@ -4137,7 +4201,7 @@ wlc_restart_ap(wlc_ap_info_t *ap)
 	* bringup the AP.
 	*/
 	if (!wlc_apup_allowed(wlc)) {
-		return;
+		goto bring_down_aps;
 	}
 #endif /* STA && AP */
 
@@ -4194,6 +4258,15 @@ wlc_restart_ap(wlc_ap_info_t *ap)
 
 	BCM_REFERENCE(ap);
 	BCM_REFERENCE(bsscfg);
+	return;
+
+bring_down_aps:
+	FOREACH_UP_AP(wlc, i, bsscfg) {
+		wlc_bsscfg_down(wlc, bsscfg);
+		WL_ASSOC(("wl%d.%d : %s: bring down bsscfg %d .\n", wlc->pub->unit,
+			WLC_BSSCFG_IDX(bsscfg), __FUNCTION__, i));
+	}
+	wlc->aps_associated = 0;
 }
 
 int
@@ -4617,12 +4690,19 @@ wlc_ap_sta_probe_complete(wlc_info_t *wlc, uint txstatus, struct scb *scb, void 
 	ASSERT(scb != NULL);
 	cfg = SCB_BSSCFG(scb);
 
+	BCM_REFERENCE(cfg);
+
 	ap_scb = AP_SCB_CUBBY(appvt, scb);
 	if (!ap_scb) {
 		return;
 	}
 
-	scb->flags &= ~SCB_PENDING_PROBE;
+	/* Return if SCB is already being deleted (pcb path) */
+	if (SCB_DEL_IN_PROGRESS(scb)) {
+		return;
+	}
+
+	scb->flags &= ~(SCB_PENDING_PROBE | SCB_PSPRETEND_PROBE);
 
 	/* Reprobe if the pkt is freed in the middle of fifo flush.
 	 * SCB shouldn't be deleted then.
@@ -4641,7 +4721,6 @@ wlc_ap_sta_probe_complete(wlc_info_t *wlc, uint txstatus, struct scb *scb, void 
 
 #ifdef PSPRETEND
 	if (SCB_PS_PRETEND_PROBING(scb)) {
-		scb->flags &= ~SCB_PSPRETEND_PROBE;
 		if ((txstatus & TX_STATUS_MASK) == TX_STATUS_ACK_RCV) {
 			/* probe response OK - exit PS Pretend state */
 			WL_PS(("wl%d.%d: received ACK to ps pretend probe "MACF" (count %d)\n",
@@ -4699,22 +4778,10 @@ wlc_ap_sta_probe_complete(wlc_info_t *wlc, uint txstatus, struct scb *scb, void 
 	WL_ASSOC(("wl%d: %s: no ACK from "MACF" for Null Data\n", wlc->pub->unit,
 		__FUNCTION__, ETHER_TO_MACF(scb->ea)));
 
-	if (SCB_AUTHENTICATED(scb)) {
-		/* If SCB is in authenticated state then
-		 * notify the station that we are deauthenticating it,
-		 * then clear the ASSOCIATED, AUTHENTICATED and
-		 * AUTHORIZED bits in the flag before freeing the SCB
-		 */
-		(void)wlc_senddeauth(wlc, cfg, scb, &scb->ea, &cfg->BSSID,
-			&cfg->cur_etheraddr, DOT11_RC_INACTIVITY);
-		wlc_scb_clearstatebit(wlc, scb, ASSOCIATED | AUTHENTICATED | AUTHORIZED);
-		wlc_deauth_complete(wlc, cfg, WLC_E_STATUS_SUCCESS, &scb->ea,
-			DOT11_RC_INACTIVITY, 0);
-	}
-
-	/* free the scb */
-	wlc_scbfree(wlc, scb);
-	WLPKTTAGSCBSET(pkt, NULL);
+	/* Mark the scb for deletion. Sending deauth and SCB free will happen
+	 * from the inactivity timeout context in wlc_ap_stas_timeout()
+	 */
+	SCB_MARK_DEL(scb);
 }
 
 int
@@ -5050,6 +5117,7 @@ wlc_ap_watchdog(void *arg)
 					          appvt->txbcn_timeout,
 					          appvt->txbcn_edcrs_timeout,
 					          R_REG(wlc->osh, D11_MACCONTROL(wlc))));
+					wlc_macdbg_psmwd_txbcn(wlc->macdbg);
 					appvt->txbcn_inactivity = 0;
 					appvt->txbcn_snapshot = 0;
 #if !defined(DONGLEBUILD) || !(defined(BCMDBG) || defined(WL_MACDBG))
@@ -5132,6 +5200,9 @@ wlc_ap_watchdog(void *arg)
 				appvt->reprobe_scb = TRUE;
 			}
 			wlc->pub->pending_now = 0;
+
+			/* ageout unusable STAs */
+			wlc_ap_scb_unusable_stas_timeout(ap);
 
 			/* age out stas */
 			if ((appvt->scb_timeout &&
@@ -6459,37 +6530,72 @@ wlc_ap_doiovar(void *hdl, uint32 actionid,
 
 	case IOV_GVAL(IOV_BCNPRS_TXPWR_OFFSET): {
 		/* Return db unit */
-		*ret_int_ptr = wlc->stf->bcnprs_txpwr_offset;
+		if (BSSCFG_AP(bsscfg) && bsscfg->up) {
+#if defined(MBSS)
+		if (D11REV_GE(wlc->pub->corerev, 128) && MBSS_ENAB(wlc->pub)) {
+			uint8 ucidx = ((bsscfg->cur_etheraddr).octet[5] &
+				(WLC_MAX_AP_BSS(wlc->pub->corerev)-1)) & 0x7;
+			/* Read the lower byte of shmem since the offset is set */
+			/*  in 2 bytes duplicated for 43684. */
+			*ret_int_ptr = (wlc_read_shm(wlc,
+				M_BSS_BCNPRS_PWR_BLK(wlc) + 2 * ucidx) & 0xff) >> 2;
+		}
+		else
+#endif // endif
+			*ret_int_ptr = wlc->stf->bcnprs_txpwr_offset;
+		}
+		else {
+			*ret_int_ptr = 0;
+			err = BCME_NOTUP;
+		}
 	break;
 	}
 
 	case IOV_SVAL(IOV_BCNPRS_TXPWR_OFFSET): {
-		uint8	offset = (uint8)(int_val & 0xff);
-		uint8	limit_offset = 0xF;
+		uint8   offset = (uint8)(int_val & 0xff);
+		uint8   limit_offset = 0xF;
 
-		/* limitation of supported backoff range: 31.5 vs 15.5dB */
-		limit_offset = (D11REV_GE(wlc->pub->corerev, 64)) ? 0x1F : 0xF;
-		offset = (offset >= limit_offset)? limit_offset : offset;
+		if (BSSCFG_AP(bsscfg) && bsscfg->up && wlc->clk) {
+#if defined(MBSS)
+		if (D11REV_GE(wlc->pub->corerev, 128) && MBSS_ENAB(wlc->pub)) {
+			/* Use last 3 bits fo ucode index */
+			uint8 ucidx = ((bsscfg->cur_etheraddr).octet[5] &
+			(WLC_MAX_AP_BSS(wlc->pub->corerev)-1)) & 0x7;
+			/* Limit the maximum offset power to 15 dB to match with BCM4360 */
+			offset = (int_val >= limit_offset) ? limit_offset : int_val;
+			/* Write the offset in two bytes in shmem */
+			/* since one byte only control two cores in 43684 */
+			/* e.g.: offset 5 => 43684 uses quarter dB backoff:20 => shmem:0x1414 */
+			wlc_write_shm(wlc, M_BSS_BCNPRS_PWR_BLK(wlc) + 2 * ucidx,
+				(uint16)((offset << 2) + (offset << 10)));
+			wlc_mhf(wlc, MHF1, MHF1_PERBSSTXPWR_EN, MHF1_PERBSSTXPWR_EN, WLC_BAND_ALL);
+		}
+		else
+#endif // endif
+		{
+			/* limitation of supported backoff range: 31.5 vs 15.5dB */
+			limit_offset = (D11REV_GE(wlc->pub->corerev, 64)) ? 0x1F : 0xF;
+			offset = (offset >= limit_offset)? limit_offset : offset;
 
-		wlc->stf->bcnprs_txpwr_offset = offset;
+			wlc->stf->bcnprs_txpwr_offset = offset;
 
-		if (!BSSCFG_AP(bsscfg) || !bsscfg->up || !wlc->clk) {
+			if (D11REV_IS(wlc->pub->corerev, 30)) {
+				/* limitation. Mimophy rev7, Lcnxnphy rev0 uses 4.1 format */
+				wlc_write_shm(wlc, M_BCN_POWER_ADJUST(wlc),
+					((uint8)((offset << 1) & 0xf)));
+				wlc_write_shm(wlc, M_PRS_POWER_ADJUST(wlc),
+					((uint8)((offset << 1) & 0xf)));
+			} else if (D11REV_GE(wlc->pub->corerev, 40)) {
+				wlc_suspend_mac_and_wait(wlc);
+				wlc_beacon_phytxctl(wlc, wlc->bcn_rspec, wlc->chanspec);
+				wlc_enable_mac(wlc);
+			} else {
+				err = BCME_UNSUPPORTED;
+			}
+		}
+		}
+		else
 			err = BCME_NOTUP;
-			goto exit;
-		}
-
-		if (D11REV_IS(wlc->pub->corerev, 30)) {
-			/* Mimophy rev7, Lcnxnphy rev0 uses 4.1 format */
-			wlc_write_shm(wlc, M_BCN_POWER_ADJUST(wlc), ((uint8)((offset << 1) & 0xf)));
-			wlc_write_shm(wlc, M_PRS_POWER_ADJUST(wlc), ((uint8)((offset << 1) & 0xf)));
-		} else if (D11REV_GE(wlc->pub->corerev, 40)) {
-			wlc_suspend_mac_and_wait(wlc);
-			wlc_beacon_phytxctl(wlc, wlc->bcn_rspec, wlc->chanspec);
-			wlc_enable_mac(wlc);
-		} else {
-			err = BCME_UNSUPPORTED;
-		}
-
 		break;
 	}
 
@@ -6855,8 +6961,16 @@ wlc_ap_scb_init(void *context, struct scb *scb)
 		if (scb->aid == 0) {
 			return BCME_NORESOURCE;
 		}
+#ifdef BCM_CSIMON
+		{
+			int retval;
+			/* CSIMON SCB Initialization */
+			if ((retval = wlc_csimon_scb_init(wlc, scb)) != BCME_OK) {
+				return retval;
+			}
+		}
+#endif /* BCM_CSIMON */
 	}
-
 	return BCME_OK;
 }
 
@@ -6932,12 +7046,24 @@ wlc_ap_scb_deinit(void *context, struct scb *scb)
 	scb_t* other_scb;
 	struct scb_iter scbiter;
 
+#ifdef BCM_CSIMON
+	if ((BSSCFG_AP(bsscfg)) && (wlc_csimon_enabled(scb)) &&
+		(scb->csimon->timer != NULL)) {
+		/* Stop and free the CSIMON timer */
+		wl_del_timer(wlc->wl, scb->csimon->timer);
+		wl_free_timer(wlc->wl, scb->csimon->timer);
+		scb->csimon->timer = NULL;
+		CSIMON_DEBUG("wl%d: stopped/freed CSI timer for SCB DA "MACF"\n",
+		             wlc->pub->unit, ETHER_TO_MACF(scb->ea));
+	}
+#endif /* BCM_CSIMON */
+
 	/* notify the station that we are deauthenticating it */
 	if (BSSCFG_AP(bsscfg) && SCB_MARKED_DEAUTH(scb)) {
 		(void)wlc_senddeauth(wlc, bsscfg, scb, &scb->ea, &bsscfg->BSSID,
-		                     &bsscfg->cur_etheraddr, DOT11_RC_INACTIVITY);
+		                     &bsscfg->cur_etheraddr, DOT11_RC_UNSPECIFIED);
 		wlc_deauth_complete(wlc, bsscfg, WLC_E_STATUS_SUCCESS, &scb->ea,
-		              DOT11_RC_INACTIVITY, 0);
+		              DOT11_RC_UNSPECIFIED, 0);
 	}
 
 	if (BSSCFG_AP(bsscfg) && SCB_AUTHENTICATED(scb)) {
@@ -8335,9 +8461,8 @@ wlc_ap_timeslot_unregister(wlc_bsscfg_t *bsscfg)
 
 	appvt = (wlc_ap_info_pvt_t *)wlc->ap;
 	ap_cfg = AP_BSSCFG_CUBBY(appvt, bsscfg);
-	ASSERT(ap_cfg != NULL);
 
-	if (ap_cfg->msch_req_hdl) {
+	if ((ap_cfg != NULL) && (ap_cfg->msch_req_hdl)) {
 		wlc_msch_timeslot_unregister(wlc->msch_info, &ap_cfg->msch_req_hdl);
 		ap_cfg->msch_req_hdl = NULL;
 #ifdef WL_DTS
@@ -8406,7 +8531,7 @@ wlc_ap_timeslot_update(wlc_bsscfg_t *bsscfg, uint32 start_tsf, uint32 interval)
 	req->interval = interval;
 
 	wlc_msch_timeslot_update(wlc->msch_info, ap_cfg->msch_req_hdl, req, update_mask);
-}
+} /* wlc_ap_timeslot_update */
 
 /** Called back by the multichannel scheduler (msch) */
 static int
@@ -8873,6 +8998,23 @@ static void wlc_ap_auth_tx_complete(wlc_info_t *wlc, uint txstatus, void *arg)
 	}
 	WL_ASSOC(("wl%d %s: "MACF" AUTH txstatus 0x%04x\n", wlc->pub->unit, __FUNCTION__,
 		ETHER_TO_MACF(scb->ea), txstatus));
+
+#ifdef BCM_CSIMON
+	if (wlc_csimon_enabled(scb)) {
+		uint32 tsf_l;
+
+		/* association timestamp as a reference - using TSF register */
+		wlc_read_tsf(wlc, &tsf_l, NULL);
+		scb->csimon->assoc_ts = tsf_l;
+
+		/* Start CSI timer */
+		wl_add_timer(wlc->wl, scb->csimon->timer, scb->csimon->timeout,
+		             TRUE);
+		CSIMON_DEBUG("wl%d: started CSI timer for SCB DA "MACF" assocTS %u\n",
+		             wlc->pub->unit, ETHER_TO_MACF(scb->ea), tsf_l);
+}
+#endif /* BCM_CSIMON */
+
 }
 
 static void

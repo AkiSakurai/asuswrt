@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmdbg.c 777082 2019-07-18 14:48:21Z $
+ * $Id: pdftmdbg.c 784258 2020-02-24 22:00:37Z $
  */
 
 #include "pdftmpvt.h"
@@ -318,6 +318,9 @@ pdftm_dump(const pdftm_t *ftm, struct bcmstrbuf *b)
 
 	bcm_bprintf(b, "\tmax sessions: %d\n",	ftm_cmn->max_sessions);
 	bcm_bprintf(b, "\tnum sessions: %d\n",	ftm_cmn->num_sessions);
+
+	bcm_bprintf(b, "\tactive sessions: %d\n",
+		wlc_ftm_num_sessions_inprog((const wlc_ftm_t *)ftm));
 
 	for (i = 0; i < ftm_cmn->max_sessions; ++i) {
 		pdftm_dump_session(ftm, ftm_cmn->sessions[i], b);

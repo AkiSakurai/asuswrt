@@ -701,13 +701,6 @@ int main(int argc, char *argv[])
 	/* Initialize the flag */
 	bsd_info->enable_flag = flag;
 
-/* If WBD is Enabled, and BSD is not, & if there is no ifnames for BSD, WBD sets it */
-#ifdef BCM_WBD
-	if (((flag & BSD_FLAG_ENABLED) == 0) &&
-		(flag & BSD_FLAG_WBD_ENABLED)) {
-		bsd_wbd_set_ifnames(bsd_info);
-	}
-#endif /* BCM_WBD */
 	if (bsd_init(bsd_info) != BSD_OK) {
 		printf("BSD Aborting...\n");
 		goto done;

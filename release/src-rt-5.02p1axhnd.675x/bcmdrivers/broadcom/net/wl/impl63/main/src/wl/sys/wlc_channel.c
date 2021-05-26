@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_channel.c 782437 2019-12-19 02:00:37Z $
+ * $Id: wlc_channel.c 784454 2020-02-27 14:55:04Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -5185,7 +5185,7 @@ wlc_get_regclass(wlc_cm_info_t *wlc_cmi, chanspec_t chanspec)
 			return (rcinfo->rctbl[i].rclass);
 	}
 
-	WL_ERROR(("wl%d: No regulatory class assigned for %s chanspec 0x%x\n",
+	WL_REGULATORY(("wl%d: No regulatory class assigned for %s chanspec 0x%x\n",
 		WLCWLUNIT(wlc_cmi->wlc), wlc_cm->country_abbrev, chanspec));
 
 	return 0;
@@ -7527,7 +7527,7 @@ wlc_get_valid_chanspecs(wlc_cm_info_t *wlc_cmi, wl_uint32_list_t *list, enum wlc
 	clm_result_t flag_result = CLM_RESULT_ERR;
 	uint16 flags;
 	clm_country_locales_t locale;
-	chanvec_t saved_valid_channels[MAXBANDS], unused;
+	chanvec_t saved_valid_channels[MAXBANDS], locale_channels, unused;
 	uint16 saved_locale_flags[MAXBANDS];
 	uint8 saved_bwcap[MAXBANDS];
 #ifdef WL11AC
@@ -7535,6 +7535,7 @@ wlc_get_valid_chanspecs(wlc_cm_info_t *wlc_cmi, wl_uint32_list_t *list, enum wlc
 #endif /* WL11AC */
 	enum wlc_bandunit bandunit;
 	wlcband_t *band;
+	bool bandlocked = wlc->bandlocked;
 
 	/* Check if request band is valid for this card */
 	if (!BAND_ENABLED(wlc, bu_req))
@@ -7569,20 +7570,18 @@ wlc_get_valid_chanspecs(wlc_cm_info_t *wlc_cmi, wl_uint32_list_t *list, enum wlc
 
 	/* Save current locales */
 	if (result == CLM_RESULT_OK) {
-		clm_band_t tmp_band = wlc_bandunit2clmband(bu_req);
+		wlc_locale_get_channels(&locale, wlc_bandunit2clmband(bu_req),
+			&locale_channels, &unused);
 		FOREACH_WLC_BAND(wlc, bandunit) {
 			bcopy(&wlc_cm->bandstate[bandunit].valid_channels,
 				&saved_valid_channels[bandunit], sizeof(chanvec_t));
-			wlc_locale_get_channels(&locale, tmp_band,
-				&wlc_cm->bandstate[bandunit].valid_channels, &unused);
-		}
-	}
-
-	if (result == CLM_RESULT_OK) {
-		FOREACH_WLC_BAND(wlc, bandunit) {
+			bcopy(&locale_channels, &wlc_cm->bandstate[bandunit].valid_channels,
+				sizeof(chanvec_t));
 			saved_locale_flags[bandunit] = wlc_cm->bandstate[bandunit].locale_flags;
 			wlc_cm->bandstate[bandunit].locale_flags = flags;
 		}
+		/* for specific locale ignore bandlock */
+		wlc->bandlocked = FALSE;
 	}
 
 	FOREACH_WLC_BAND(wlc, bandunit) {
@@ -7731,6 +7730,9 @@ wlc_get_valid_chanspecs(wlc_cm_info_t *wlc_cmi, wl_uint32_list_t *list, enum wlc
 			&wlc_cm->bandstate[bandunit].valid_channels,
 			sizeof(chanvec_t));
 	}
+	/* bandlock only need to be restored when locale changed */
+	if (result == CLM_RESULT_OK)
+		wlc->bandlocked = bandlocked;
 }
 
 /*

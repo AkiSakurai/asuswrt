@@ -1971,6 +1971,13 @@ int hostapd_wps_config_map_bh(struct hostapd_data *hapd, const char *ssid,
 }
 #endif /* CONFIG_DRIVER_BRCM_MAP */
 
+#if defined(CONFIG_DRIVER_BRCM) && defined(CONFIG_WPS_UPNP)
+int hostapd_wps_upnp_ifcae_ip_changed(struct hostapd_data *hapd)
+{
+	return upnp_wps_web_listener_sock_update(hapd->wps_upnp, hapd->conf->upnp_iface);
+}
+#endif	/* CONFIG_DRIVER_BRCM && CONFIG_WPS_UPNP */
+
 #ifdef CONFIG_WPS_NFC
 
 struct wps_nfc_password_token_data {

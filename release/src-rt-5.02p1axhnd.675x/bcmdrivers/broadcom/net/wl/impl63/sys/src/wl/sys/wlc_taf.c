@@ -68,8 +68,6 @@ bool taf_attach_complete = FALSE;
 const char* taf_assert_fail = "TAF ASSERT fail";
 #endif /* BCMDBG */
 
-const char* wlc_taf_ordering_name[TAF_ORDER_NUM_OPTIONS] = {"TID order by SCB unified",
-							    "SCB order with TID parallel"};
 #ifdef HOSTDPI
 const uint8 wlc_taf_prec2prio[WLC_PREC_COUNT] = {
 	0,	/* 0 */		0,
@@ -109,47 +107,75 @@ static taf_list_t* taf_list_ea_find(taf_list_t** head, const struct ether_addr* 
 static void taf_list_demote_item(taf_method_info_t* method, uint32 prio);
 static void taf_move_list_item(taf_scb_cubby_t* scb_taf, taf_method_info_t* dest_method);
 
-typedef struct {
-	void *  (*attach_fn) (wlc_taf_info_t *, taf_scheduler_kind);
-	int     (*detach_fn) (void *);
-} taf_scheduler_def_t;
-
-static const taf_scheduler_def_t  taf_scheduler_definitions[NUM_TAF_SCHEDULERS] = {
+static const taf_scheduler_def_t * taf_scheduler_definitions[NUM_TAF_SCHEDULERS] = {
 #if TAF_ENABLE_SQS_PULL && defined(WLTAF_IAS)
-	{
-		/* TAF_VIRTUAL_MARKUP, */
-		wlc_taf_ias_method_attach,
-		wlc_taf_ias_method_detach
-	},
+	/* TAF_VIRTUAL_MARKUP, */
+	&taf_ias_scheduler,
 #endif // endif
 #ifdef WLTAF_IAS
-	{
-		/* TAF_EBOS, */
-		wlc_taf_ias_method_attach,
-		wlc_taf_ias_method_detach
-	},
+	/* TAF_EBOS, */
+	&taf_ias_scheduler,
 
-	{
-		/* TAF_PSEUDO_RR, */
-		wlc_taf_ias_method_attach,
-		wlc_taf_ias_method_detach
-	},
+	/* TAF_PSEUDO_RR, */
+	&taf_ias_scheduler,
 
-	{
-		/* TAF_ATOS, */
-		wlc_taf_ias_method_attach,
-		wlc_taf_ias_method_detach
-	},
+	/* TAF_ATOS, */
+	&taf_ias_scheduler,
 
-	{
-		/* TAF_ATOS2, */
-		wlc_taf_ias_method_attach,
-		wlc_taf_ias_method_detach
-	},
+	/* TAF_ATOS2, */
+	&taf_ias_scheduler,
 #endif /* WLTAF_IAS */
 };
 
 const char* taf_undefined_string = "(undefined)";
+
+/* this maps d11_rev128_txs_mutype_enum (+1) to TAF taf_tech_type_t */
+static const taf_tech_type_t tech_idx_map[] = {
+	TAF_TECH_DL_SU,
+#if TAF_ENABLE_MU_TX
+	TAF_TECH_DL_VHMUMIMO, /* TX_STATUS_MUTP_VHTMU */
+	TAF_TECH_DL_HEMUMIMO, /* TX_STATUS_MUTP_HEMM */
+	TAF_TECH_DL_OFDMA     /* TX_STATUS_MUTP_HEOM */
+#endif // endif
+};
+
+static const int8 tech_idx_rmap[TAF_NUM_TECH_TYPES] = {
+#if TAF_ENABLE_MU_TX
+	TAF_REL_TYPE_HEMUMIMO,  /* TAF_TECH_DL_HEMUMIMO */
+	TAF_REL_TYPE_VHMUMIMO,  /* TAF_TECH_DL_VHMUMIMO */
+	TAF_REL_TYPE_OFDMA,     /* TAF_TECH_DL_OFDMA */
+#if TAF_ENABLE_UL
+	TAF_REL_TYPE_ULOFDMA,   /* TAF_TECH_UL_OFDMA */
+#endif /* TAF_ENABLE_UL */
+#endif /* TAF_ENABLE_MU_TX */
+	TAF_REL_TYPE_SU         /* TAF_TECH_DL_SU */
+};
+
+/* converts d11_rev128_txs_mutype_enum to a TAF taf_tech_type_t; assumes negative number is SU */
+taf_tech_type_t taf_mutype_to_tech(int idx)
+{
+	TAF_ASSERT(idx <= TX_STATUS_MUTP_HEOM);
+
+	if (idx < 0 || ++idx >= ARRAYSIZE(tech_idx_map)) {
+		return TAF_TECH_DL_SU;
+	}
+	return tech_idx_map[idx];
+}
+
+/* converts TAF taf_tech_type_t to d11_rev128_txs_mutype_enum */
+int8 taf_tech_to_mutype(taf_tech_type_t tech)
+{
+	if (tech < TAF_NUM_TECH_TYPES) {
+		return tech_idx_rmap[tech];
+	}
+	return TAF_REL_TYPE_NOT_ASSIGNED;
+}
+
+#if TAF_ENABLE_UL
+const char* taf_type_name[TAF_NUM_LIST_TYPES] = {" [DL]", " [UL]"};
+#else
+const char* taf_type_name[TAF_NUM_LIST_TYPES] = { "" };
+#endif // endif
 
 const char* taf_tx_sources[TAF_NUM_SCHED_SOURCES + 1] = {
 #if TAF_ENABLE_UL
@@ -170,6 +196,7 @@ const char* taf_tx_sources[TAF_NUM_SCHED_SOURCES + 1] = {
 #if (defined(TAF_DBG) || defined(BCMDBG)) && defined(TAF_DEBUG_VERBOSE)
 static char* taf_trace_buf = NULL;
 static uint32 taf_trace_buf_len = 0;
+static uint32 taf_trace_output_len = 0;
 static int taf_trace_index = 0;
 
 uint32 taf_dbg_idx(wlc_info_t* wlc)
@@ -182,107 +209,79 @@ uint32 taf_dbg_idx(wlc_info_t* wlc)
 
 #ifdef DONGLEBUILD
 #include <bcmstdlib.h>
-#define tputc(c)    putc(c)
-#else
-#define tputc(c)    printf("%c", (c))
-#endif /* DONGLEBUILD */
+#endif // endif
 
 #ifndef PRINTF_BUFLEN
 #define PRINTF_BUFLEN 256
 #endif /* PRINTF_BUFLEN */
 
-void wlc_taf_mem_log(wlc_info_t* wlc, const char* func, const char* format, ...)
+static void tputc(char c)
 {
+	static uint16 count = 0;
+#ifdef DONGLEBUILD
+	putc(c);
+#else
+	printf("%c", c);
+#endif // endif
+	/* this is for (usually fatal) debug output, try to avoid overloading serial console by
+	 * inserting some delay into output
+	 */
+	if (c == '\n' || ++count >= PRINTF_BUFLEN) {
+		count = 0;
+		OSL_DELAY(100);
+	}
+}
+
+void wlc_taf_mem_log(wlc_info_t* wlc, const char* fn, const char* format, ...)
+{
+	wlc_taf_info_t* taf_info = wlc->taf_handle;
 	char* dst;
+	int remain;
+	int local_len;
+	int local_len_part;
 
 	if (taf_trace_buf == NULL || taf_trace_buf_len == 0) {
 		return;
 	}
 
 	dst = taf_trace_buf + taf_trace_index;
+	remain = taf_trace_buf_len - taf_trace_index;
 
-	/* if output will not wrap buffer, write output directly */
-	if (taf_trace_buf_len - taf_trace_index > PRINTF_BUFLEN) {
-		int remain = PRINTF_BUFLEN;
-		int local_len;
+	TAF_ASSERT(remain >= PRINTF_BUFLEN);
 
-		local_len = snprintf(dst, remain, "%d,%x,%s: ", WLCWLUNIT(wlc),
-			taf_dbg_idx(wlc), func);
+	local_len = snprintf(dst, remain, "%x,%s: ", taf_info->scheduler_index, fn);
 
-		local_len = MIN(local_len + 1, remain);
+	local_len = MIN(local_len + 1, remain);
+	remain -= local_len;
 
-		dst += local_len;
-		remain -= local_len;
+	if (remain > 0) {
+		va_list ap;
 
-		if (remain > 0) {
-			va_list ap;
+		/* adjust backwards to overwrite terminating zero in previous write */
+		--local_len;
+		++remain;
 
-			/* adjust backwards to overwrite terminating zero in previous write */
-			--dst;
-			++remain;
+		va_start(ap, format);
+		local_len_part = vsnprintf(dst + local_len, remain, format, ap);
+		va_end(ap);
 
-			va_start(ap, format);
-			local_len = vsnprintf(dst, remain, format, ap);
-			va_end(ap);
-
-			dst += MIN(local_len + 1, remain);
-		}
-	}
-	/* trace buf might wrap, write output to local buffer and handle it */
-	else {
-		char locallog[PRINTF_BUFLEN];
-		int remain = PRINTF_BUFLEN;
-		int local_len;
-		int local_len_part;
-
-		local_len = snprintf(locallog, remain, "%d,%x,%s; ", WLCWLUNIT(wlc),
-			taf_dbg_idx(wlc), func);
-
-		local_len = MIN(local_len + 1, remain);
-		remain -= local_len;
-
-		if (remain > 0) {
-			va_list ap;
-
-			/* adjust backwards to overwrite terminating zero in previous write */
-			--local_len;
-			++remain;
-
-			va_start(ap, format);
-			local_len_part = vsnprintf(locallog + local_len, remain, format, ap);
-			va_end(ap);
-
-			local_len += MIN(local_len_part + 1, remain);
-		}
-
-		local_len_part = MIN(local_len, taf_trace_buf_len - taf_trace_index);
-
-		memcpy(dst, locallog, local_len_part);
-
-		local_len -= local_len_part;
-
-		if (local_len > 0) {
-			/* buffer wrapped; copy remaining message to start of buffer */
-			memcpy(taf_trace_buf, locallog + local_len_part,  local_len);
-			dst = taf_trace_buf + local_len;
-		} else {
-			/* buffer did not wrap eventually */
-			dst += local_len_part;
-		}
+		local_len += MIN(local_len_part + 1, remain);
 	}
 
-	/* minus 1 so next write overlaps terminating 0 due to current write */
-	taf_trace_index = dst - taf_trace_buf - 1;
-
-	if (taf_trace_index < 0) {
-		taf_trace_index += taf_trace_buf_len;
+	if (local_len + taf_trace_index > taf_trace_buf_len - PRINTF_BUFLEN) {
+		taf_trace_output_len = local_len + taf_trace_index - 1;
+		taf_trace_index = 0;
+	} else {
+		taf_trace_index += (local_len - 1);
 	}
 }
 
 void taf_memtrace_dump(wlc_taf_info_t* taf_info)
 {
-	if (taf_trace_buf && ((taf_trace_index > 0) || taf_trace_buf[0] != 0))
-	{
+	const uint32 buf_len = taf_trace_output_len;
+	const int unit = (taf_info != NULL) ? WLCWLUNIT(TAF_WLCT(taf_info)) : -1;
+
+	if (taf_trace_buf && ((taf_trace_index > 0) || taf_trace_buf[0] != 0)) {
 		int index = taf_trace_index;
 
 		if (taf_info != NULL) {
@@ -293,51 +292,32 @@ void taf_memtrace_dump(wlc_taf_info_t* taf_info)
 			if (taf_memtrace_prev_dump != 0 &&
 				(now_time - taf_memtrace_prev_dump) < 100000) {
 
-				WL_PRINT(("%s interval too short %u\n", __FUNCTION__,
-					(now_time - taf_memtrace_prev_dump)));
 				return;
 			}
 			taf_memtrace_prev_dump = now_time;
 		}
 
-		OSL_DELAY(200);
-		WL_PRINT(("==========================TAF TRACE DUMP==========================\n"));
+		OSL_DELAY(500);
+		WL_PRINT(("\n========================wl%d: TAF TRACE DUMP=======================\n",
+			unit));
 		OSL_DELAY(200);
 
 		taf_trace_buf[index++] = 0;
-		if (index == taf_trace_buf_len) {
+		if (index == buf_len) {
 			index = 0;
 		}
 		if (taf_trace_buf[index] == 0) {
 			index = 0;
 		}
-		while (index < taf_trace_buf_len && taf_trace_buf[index]) {
-			while (index < taf_trace_buf_len && taf_trace_buf[index] &&
-					taf_trace_buf[index] != '\n') {
-				tputc(taf_trace_buf[index++]);
-			}
-			if (index < taf_trace_buf_len &&
-					taf_trace_buf[index] == '\n') {
-				tputc(taf_trace_buf[index++]);
-				OSL_DELAY(100);
+		while (taf_trace_buf[index]) {
+			tputc(taf_trace_buf[index++]);
+			if (index == buf_len) {
+				index = 0;
 			}
 		}
-		if (index == taf_trace_buf_len) {
-			index = 0;
-			while (index < taf_trace_index && taf_trace_buf[index]) {
-				while (index < taf_trace_index &&
-						taf_trace_buf[index] &&
-						taf_trace_buf[index] != '\n') {
-					tputc(taf_trace_buf[index++]);
-				}
-				if (index < taf_trace_index &&
-						taf_trace_buf[index] == '\n') {
-					tputc(taf_trace_buf[index++]);
-					OSL_DELAY(100);
-				}
-			}
-		}
-		WL_PRINT(("==================================================================\n"));
+		OSL_DELAY(500);
+		WL_PRINT(("=================================================================\n\n"));
+		OSL_DELAY(500);
 	}
 }
 #else /* (TAF_DBG ||  BCMDBG) && TAF_DEBUG_VERBOSE */
@@ -354,6 +334,7 @@ const char* taf_rel_complete_text[NUM_TAF_REL_COMPLETE_TYPES] = {
 	"null",
 	"nothing to send",
 	"nothing waiting aggregation",
+	"partial",
 	"src emptied",
 	"ps mode src emptied",
 	"output full",
@@ -411,6 +392,7 @@ const char* taf_txpkt_status_text[TAF_NUM_TXPKT_STATUS_TYPES] = {
 	"update packets",
 	"update rate",
 	"suppressed",
+	"ul suppressed",
 	"suppressed free",
 	"suppressed queued",
 	"ul trigger complete"
@@ -473,6 +455,53 @@ static INLINE BCMFASTPATH taf_list_t* taf_list_find(taf_scb_cubby_t *scb_taf, ta
 	return NULL;
 }
 
+uint32 wlc_taf_uladmit_count(wlc_taf_info_t* taf_info, bool ps_exclude)
+{
+	uint32 count = 0;
+#if TAF_ENABLE_UL
+	taf_scb_cubby_t *scb_taf = taf_info->head;
+
+	while (scb_taf) {
+		taf_list_t* item = taf_list_find(scb_taf, TAF_TYPE_UL);
+
+		if (item != NULL && (!ps_exclude || !scb_taf->info.ps_mode)) {
+			++count;
+		}
+		scb_taf = scb_taf->next;
+	}
+	WL_TAFT3(taf_info, "count %u\n", count);
+#endif // endif
+	return count;
+}
+
+static int taf_bypass(wlc_taf_info_t * taf_info, bool set)
+{
+	bool prev_bypass = taf_info->bypass;
+	uint32 ulcount;
+
+	if (set && wlc_taf_scheduler_blocked(taf_info)) {
+		return BCME_BUSY;
+	}
+
+	if (set && taf_ul_enabled(taf_info) &&
+			((ulcount = wlc_taf_uladmit_count(taf_info, FALSE)) > 0)) {
+		WL_TAFT2(taf_info, "unable to bypass due to %u ul stations\n", ulcount);
+		return BCME_DISABLED;
+	}
+	taf_info->bypass = set;
+	WL_TAFT1(taf_info, "is %u\n", set);
+
+#if TAF_ENABLE_SQS_PULL
+	/* Configure BUS side scheduler based on TAF state */
+	wl_bus_taf_scheduler_config(TAF_WLCT(taf_info)->wl, taf_info->enabled && !taf_info->bypass);
+#endif /* TAF_ENABLE_SQS_PULL */
+
+	if (prev_bypass && !set) {
+		wlc_taf_reset_scheduling(taf_info, ALLPRIO, TRUE);
+	}
+	return BCME_OK;
+}
+
 static int
 taf_set_cubby_method(taf_scb_cubby_t *scb_taf, taf_method_info_t *dst_method, uint32 prio)
 {
@@ -522,6 +551,18 @@ taf_set_cubby_method(taf_scb_cubby_t *scb_taf, taf_method_info_t *dst_method, ui
 		TAF_SCBSTATE_SOURCE_ENABLE);
 #endif // endif
 	return BCME_OK;
+}
+
+static uint32 taf_total_traffic_pending(wlc_taf_info_t* taf_info)
+{
+	uint32 total_packets = 0;
+	taf_scb_cubby_t *scb_taf = taf_info->head;
+
+	while (scb_taf) {
+		total_packets += wlc_taf_traffic_active(taf_info, scb_taf->scb);
+		scb_taf = scb_taf->next;
+	}
+	return total_packets;
 }
 
 static int taf_dump_list(taf_method_info_t* method, struct bcmstrbuf* b)
@@ -589,15 +630,13 @@ int wlc_taf_param(const char** cmd, uint32* param, uint32 min, uint32 max, struc
 }
 
 static int taf_method_iovar(wlc_taf_info_t* taf_info, taf_scheduler_kind type, const char* cmd,
-	wl_taf_define_t* result, struct bcmstrbuf* b)
+	wl_taf_define_t* result, struct bcmstrbuf* b, taf_scb_cubby_t* scb_taf)
 {
 	taf_method_info_t* method = taf_get_method_info(taf_info, type);
 	int err = BCME_UNSUPPORTED;
 
 	if (method && method->funcs.iovar_fn) {
-		err = method->funcs.iovar_fn(method, *cmd ? cmd : NULL, result, b);
-	} else {
-		WL_TAFM(method, "TO DO\n");
+		err = method->funcs.iovar_fn(method, scb_taf, *cmd ? cmd : NULL, result, b);
 	}
 	return err;
 }
@@ -612,6 +651,7 @@ static int taf_set_trace_buf(wlc_taf_info_t* taf_info, uint32 len)
 		      taf_trace_buf_len);
 		taf_trace_buf = NULL;
 		taf_trace_buf_len = 0;
+		taf_trace_output_len = 0;
 	}
 	if (len > 0) {
 		taf_trace_buf_len = len * 1024;
@@ -620,6 +660,7 @@ static int taf_set_trace_buf(wlc_taf_info_t* taf_info, uint32 len)
 			taf_trace_buf_len = 0;
 			return BCME_NOMEM;
 		}
+		taf_trace_output_len = taf_trace_buf_len;
 	}
 	taf_trace_index = 0;
 
@@ -638,6 +679,15 @@ static int taf_do_enable(wlc_taf_info_t* taf_info, bool enable)
 	TAF_ASSERT(NUM_TAF_SCHEDULERS != 0);
 
 	taf_info->enabled = enable;
+
+#if TAF_ENABLE_UL
+	/* disable TAF UL scheduling if TAF feature is disabled */
+	if (!taf_info->enabled) {
+		taf_info->ul_enabled = FALSE;
+		/* disable ucode for ul scheduling */
+		wlc_ulmu_sw_trig_enable(wlc, FALSE);
+	}
+#endif // endif
 
 #if TAF_ENABLE_SQS_PULL
 	/* Configure BUS side scheduler based on TAF state */
@@ -661,6 +711,11 @@ static void taf_init(wlc_taf_info_t* taf_info)
 #ifdef TAF_DEBUG_VERBOSE
 	/* enable this next line for debug of stalls and crashes */
 	//taf_set_trace_buf(taf_info, 16);
+#endif // endif
+
+#if TAF_ENABLE_UL
+	/* config ucode for ul scheduling */
+	wlc_ulmu_sw_trig_enable(TAF_WLCT(taf_info), taf_ul_enabled(taf_info));
 #endif // endif
 }
 
@@ -771,49 +826,26 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 			return err;
 		}
 #endif /* TAF_ENABLE_UL */
-		if (!wlc->pub->up) {
-			return BCME_NOTUP;
-		}
 		if (!strcmp(cmd, "order")) {
-#if TAF_ENABLE_SQS_PULL
-			const int err = BCME_OK;
-#else
-			int err = wlc_taf_param(&cmd, &taf_info->pending_ordering,
-				TAF_ORDER_TID_SCB, TAF_ORDER_TID_PARALLEL, b);
-
-			if (taf_info->ordering != taf_info->pending_ordering) {
-				result->misc = taf_info->pending_ordering;
-				bcm_bprintf(b, "taf order will change to be");
+			result->misc = TAF_ORDER_TID_SCB;
+			bcm_bprintf(b, "taf order is %d: TID order then SCB (unalterable)\n",
+				result->misc);
+			cmd += strlen(cmd) + 1;
+			if (cmd[0]) {
+				/* no longer support changing this setting */
+				return BCME_UNSUPPORTED;
 			}
-			else
-#endif /* TAF_ENABLE_SQS_PULL */
-			{
-				result->misc = taf_info->ordering;
-				bcm_bprintf(b, "taf order is");
-			}
-			bcm_bprintf(b, " %d: %s\n", result->misc,
-				wlc_taf_ordering_name[result->misc]);
-
-			return err;
+			return BCME_OK;
 		}
+
 		if (!strcmp(cmd, "bypass")) {
 			uint32 state = taf_info->bypass;
-			bool   prev_bypass = taf_info->bypass;
 			int err = wlc_taf_param(&cmd, &state, FALSE, TRUE, b);
 
 			if (err == TAF_IOVAR_OK_SET) {
-				taf_info->bypass = state;
+				err = taf_bypass(taf_info, state);
 			}
 			result->misc = taf_info->bypass;
-
-			if (prev_bypass && !taf_info->bypass) {
-				wlc_taf_reset_scheduling(taf_info, ALLPRIO, TRUE);
-			}
-#if TAF_ENABLE_SQS_PULL
-			/* Configure BUS side scheduler based on TAF state */
-			wl_bus_taf_scheduler_config(wlc->wl, taf_info->enabled &&
-				!taf_info->bypass);
-#endif /* TAF_ENABLE_SQS_PULL */
 			return err;
 		}
 		if (!strcmp(cmd, "ratesel")) {
@@ -823,23 +855,50 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 			result->misc = taf_info->use_sampled_rate_sel;
 
 			taf_define_tech_out(b, taf_info->use_sampled_rate_sel);
+			return err;
+		}
+#if TAF_ENABLE_MU_BOOST
+		if (!strcmp(cmd, "mu_boost")) {
+			uint32 boost = taf_info->mu_boost;
+			int err = wlc_taf_param(&cmd, &boost, TAF_MUBOOST_OFF,
+				TAF_NUM_MUBOOST_CONFIGS - 1, b);
 
+			if (err == TAF_IOVAR_OK_SET) {
+				taf_info->mu_boost = boost;
+			}
+			WL_TAFT1(taf_info, "mu_boost %u\n", taf_info->mu_boost);
+			result->misc = taf_info->mu_boost;
+			return err;
+		}
+#endif /* TAF_ENABLE_MU_BOOST */
+		if (!strcmp(cmd, "bulk_commit")) {
+			uint32 bulk_commit = taf_info->bulk_commit;
+			int err = wlc_taf_param(&cmd, &bulk_commit, FALSE, TRUE, b);
+
+			if (err == TAF_IOVAR_OK_SET) {
+				if (taf_info->bulk_commit && !bulk_commit) {
+					taf_close_all_sources(taf_info, ALLPRIO);
+				}
+				taf_info->bulk_commit = bulk_commit;
+			}
+			WL_TAFT1(taf_info, "bulk_commit %u\n", taf_info->bulk_commit);
+			result->misc = taf_info->bulk_commit;
 			return err;
 		}
 		if (!strcmp(cmd, "super")) {
 			uint32 super = taf_info->super;
-			int err = wlc_taf_param(&cmd, &super, FALSE, TRUE, b);
+			int err = wlc_taf_param(&cmd, &super, 0, (1 << TAF_NUM_TECH_TYPES) - 1, b);
 
 			if (err == TAF_IOVAR_OK_SET) {
 				taf_info->super = super;
 			}
-			WL_TAFT(taf_info, "super %u\n", taf_info->super);
+			taf_define_tech_out(b, taf_info->super);
+			WL_TAFT1(taf_info, "super %u\n", taf_info->super);
 			result->misc = taf_info->super;
 			return err;
 		}
 		if (!strcmp(cmd, "tech")) {
 			taf_define_tech_out(b, ~0);
-
 			return BCME_OK;
 		}
 #ifdef TAF_DBG
@@ -849,22 +908,22 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 			return err;
 		}
 #endif // endif
-		if (!strcmp(cmd, "mu")) {
 #if TAF_ENABLE_MU_TX
-			int err = wlc_taf_param(&cmd, &taf_info->mu, 0,
-				(1 << TAF_NUM_MU_TECH_TYPES) - 1, b);
+		if (!strcmp(cmd, "mu")) {
+			uint32 mu = taf_info->mu;
+			int err = wlc_taf_param(&cmd, &mu, 0,
+				(TAF_NUM_MU_TECH_TYPES > 0) ?
+				(1 << TAF_NUM_MU_TECH_TYPES) - 1 : 1, b);
+
+			if (err == TAF_IOVAR_OK_SET) {
+				taf_info->mu = mu;
+			}
 			result->misc = taf_info->mu;
 			taf_define_tech_out(b, taf_info->mu);
-#else
-			uint32 dummy = 0;
-			int err = wlc_taf_param(&cmd, &dummy, 0, 1, b);
-			result->misc = 0;
-			if (err == TAF_IOVAR_OK_SET) {
-				return BCME_UNSUPPORTED;
-			}
-#endif /* TAF_ENABLE_MU_TX */
+			WL_TAFT1(taf_info, "mu %u\n", taf_info->mu);
 			return err;
 		}
+#endif /* TAF_ENABLE_MU_TX */
 #ifdef WLTAF_IAS
 		/* all of these are here for backwards compatibility with previous version where
 		 * EBOS/ATOS/ATOS2 where inside TAF and had direct level iovar control
@@ -873,7 +932,7 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 			taf_scheduler_kind etype;
 			int eresult;
 			for (etype = FIRST_IAS_SCHEDULER; etype <= LAST_IAS_SCHEDULER; etype ++) {
-				eresult = taf_method_iovar(taf_info, etype, cmd, result, b);
+				eresult = taf_method_iovar(taf_info, etype, cmd, result, b, NULL);
 				if (eresult == TAF_IOVAR_OK_GET || eresult < BCME_OK) {
 					return eresult;
 				}
@@ -883,17 +942,18 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 		/* all of these are here for backwards compatibility with previous version TAF */
 		if (!strcmp(cmd, "fallback") || !strcmp(cmd, "adapt") ||
 				!strcmp(cmd, "high_max") || !strcmp(cmd, "low_max")) {
-			return taf_method_iovar(taf_info, TAF_SCHEDULER_START, cmd, result, b);
+			return taf_method_iovar(taf_info, TAF_SCHEDULER_START, cmd, result, b,
+				NULL);
 		}
 		/* all of these are here for backwards compatibility with previous version TAF */
 		if (!strcmp(cmd, "atos_high") || !strcmp(cmd, "atos_low")) {
 			return taf_method_iovar(taf_info, TAF_ATOS, cmd + sizeof("atos"),
-				result, b);
+				result, b, NULL);
 		}
 		/* all of these are here for backwards compatibility with previous version TAF */
 		if (!strcmp(cmd, "atos2_high") || !strcmp(cmd, "atos2_low")) {
 			return taf_method_iovar(taf_info, TAF_ATOS2, cmd + sizeof("atos2"),
-				result, b);
+				result, b, NULL);
 		}
 #endif /* WLTAF_IAS */
 		if (!strcmp(cmd, "force")) {
@@ -901,14 +961,6 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 				TAF_WINDOW_MAX, b);
 			result->misc = taf_info->force_time;
 			return err;
-		}
-		if (!strcmp(cmd, "list")) {
-			for (type = TAF_SCHEDULER_START; type < TAF_SCHED_LAST_INDEX; type++) {
-				method = taf_get_method_info(taf_info, type);
-				bcm_bprintf(b, "%u: %s%s\n", type, TAF_SCHED_NAME(method),
-					type == taf_info->default_scheduler ? " (default)":"");
-			}
-			return BCME_OK;
 		}
 		if (!strcmp(cmd, "default")) {
 			cmd += strlen(cmd) + 1;
@@ -934,12 +986,42 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 			result->misc = taf_info->watchdog_data_stall_limit;
 			return err;
 		}
+		if (!strcmp(cmd, "list")) {
+			for (type = TAF_SCHEDULER_START; type < TAF_SCHED_LAST_INDEX; type++) {
+				method = taf_get_method_info(taf_info, type);
+				bcm_bprintf(b, "%u: %s%s\n", type, TAF_SCHED_NAME(method),
+					type == taf_info->default_scheduler ? " (default)":"");
+			}
+			return BCME_OK;
+		}
+		if (!strcmp(cmd, "reset")) {
+			result->misc = taf_total_traffic_pending(taf_info);
+#ifdef TAF_DEBUG_VERBOSE
+			cmd += strlen(cmd) + 1;
+			if (*cmd && !strcmp(cmd, "logdump")) {
+				taf_memtrace_dump(taf_info);
+			}
+#endif // endif
+			WL_ERROR(("wl%u %s: reset hard (total traffic %u)\n",
+				WLCWLUNIT(TAF_WLCT(taf_info)), __FUNCTION__, result->misc));
+			wlc_taf_reset_scheduling(taf_info, ALLPRIO, TRUE);
+			return BCME_OK;
+		}
+#ifdef TAF_DEBUG_VERBOSE
+		if (!strcmp(cmd, "logdump")) {
+			taf_memtrace_dump(taf_info);
+			return BCME_OK;
+		}
+#endif // endif
 		if ((method = taf_get_method_by_name(taf_info, cmd))) {
 			int err;
 			cmd += strlen(cmd) + 1;
 
 			if (*cmd) {
 				if (!strcmp(cmd, "list")) {
+					if (!wlc->pub->up) {
+						return BCME_NOTUP;
+					}
 					return taf_dump_list(method, b);
 				}
 				if (!strcmp(cmd, "default")) {
@@ -948,12 +1030,15 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 					return BCME_OK;
 				}
 				if (!strcmp(cmd, "dump")) {
+					if (!wlc->pub->up) {
+						return BCME_NOTUP;
+					}
 					if (method->funcs.dump_fn) {
 						return method->funcs.dump_fn(method, b);
 					}
 				}
 			}
-			err = taf_method_iovar(taf_info, method->type, cmd, result, b);
+			err = taf_method_iovar(taf_info, method->type, cmd, result, b, NULL);
 			if (*cmd || (err != BCME_UNSUPPORTED)) {
 				return err;
 			}
@@ -986,7 +1071,7 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 			int tid;
 			taf_source_type_t s_idx;
 
-			WL_TAFM(scb_taf->method, MACF" iovar reset\n", CONST_ETHERP_TO_MACF(ea));
+			WL_TAFM1(scb_taf->method, MACF" iovar reset\n", CONST_ETHERP_TO_MACF(ea));
 
 			for (s_idx = 0; s_idx < TAF_NUM_SCHED_SOURCES; s_idx++) {
 				for (tid = 0; tid < TAF_NUMPRIO(s_idx); tid++) {
@@ -998,8 +1083,7 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 				TAF_SCBSTATE_RESET);
 			return BCME_OK;
 		}
-
-		if (!set) {
+		if (!set && cmd[0] == 0) {
 			/* this is 'get' */
 			result->ea = *ea;
 			result->sch = type;
@@ -1010,6 +1094,7 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 		}
 
 		/* this is a 'set' */
+
 		/* was a valid (numeric) scheduler given? */
 
 		if (input->sch != (uint32)(~0)) {
@@ -1020,6 +1105,10 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 		}
 
 		if (!dst) {
+			if (scb_taf && scb_taf->method && cmd[0] != 0) {
+				return taf_method_iovar(taf_info, scb_taf->method->type, cmd,
+					result, b, scb_taf);
+			}
 			return BCME_NOTFOUND;
 		}
 
@@ -1040,6 +1129,10 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 			uint32 new_score = 0;
 			int res;
 
+			if (wlc_taf_scheduler_blocked(taf_info)) {
+				return BCME_BUSY;
+			}
+
 			if (fixed_scoring) {
 				new_score = input->prio;
 
@@ -1058,7 +1151,7 @@ static int taf_define(wlc_taf_info_t* taf_info, const struct ether_addr* ea,
 				return res;
 			}
 		} else {
-			WL_TAFT(taf_info, MACF" is unchanged (%s prio %u)\n",
+			WL_TAFT2(taf_info, MACF" is unchanged (%s prio %u)\n",
 				CONST_ETHERP_TO_MACF(ea), TAF_SCHED_NAME(dst),
 				fixed_scoring ? scb_taf->score[found->type] : 0);
 		}
@@ -1214,7 +1307,7 @@ static void taf_list_demote_item(taf_method_info_t* method, uint32 prio)
 	TAF_ASSERT(method->ordering == TAF_LIST_SCORE_MINIMUM ||
 		method->ordering == TAF_LIST_SCORE_FIXED_INIT_MINIMUM);
 
-	WL_TAFM(method, "checking to demote item prio %u\n", prio);
+	WL_TAFM2(method, "checking to demote item prio %u\n", prio);
 
 	do {
 		taf_list_t* iter = method->list;
@@ -1237,8 +1330,8 @@ static void taf_list_demote_item(taf_method_info_t* method, uint32 prio)
 		}
 		if (found) {
 			found->scb_taf->score[found->type] = highest + 1;
-			WL_TAFM(method, "demoted item "MACF" with prio %u to prio %u\n",
-				TAF_ETHERC(found->scb_taf), prio,
+			WL_TAFM1(method, "demoted item "MACF"%s with prio %u to prio %u\n",
+				TAF_ETHERC(found->scb_taf), TAF_TYPE(found->type), prio,
 				found->scb_taf->score[found->type]);
 		}
 	} while (found);
@@ -1271,10 +1364,18 @@ static INLINE uint32 BCMFASTPATH taf_item_score(taf_list_t* item, bool *override
 static INLINE taf_list_t* BCMFASTPATH taf_list_equal(taf_list_t *item, taf_list_t *prev,
 	uint32 now_time)
 {
-	uint32 item_elapsed = now_time - item->scb_taf->timestamp;
-	uint32 prev_elapsed = now_time - prev->scb_taf->timestamp;
+	uint32 item_elapsed = now_time - item->scb_taf->timestamp[item->type];
+	uint32 prev_elapsed = now_time - prev->scb_taf->timestamp[prev->type];
 
-	return item_elapsed > prev_elapsed ? item : prev;
+	if (item_elapsed > prev_elapsed) {
+		return item;
+	} else if (prev_elapsed > item_elapsed) {
+		return prev;
+	} else {
+		/* totally equal! */
+		++item->scb_taf->timestamp[item->type];
+	}
+	return item;
 }
 
 static taf_list_t* BCMFASTPATH taf_list_maximum(taf_list_t *head, uint32 now_time)
@@ -1388,19 +1489,19 @@ static void taf_move_list_item(taf_scb_cubby_t* scb_taf, taf_method_info_t* dest
 			item = taf_list_find(scb_taf, type);
 
 			if (item == NULL) {
-				WL_TAFT(dest_method->taf_info, "item "MACF"%s NOT found\n",
+				WL_TAFT2(dest_method->taf_info, "item "MACF"%s NOT found\n",
 					TAF_ETHERC(scb_taf), TAF_TYPE(type));
 				continue;
 			}
-			WL_TAFT(dest_method->taf_info, "item "MACF"%s found\n",
+			WL_TAFT2(dest_method->taf_info, "item "MACF"%s found\n",
 				TAF_ETHERC(scb_taf), TAF_TYPE(type));
 		} else {
 			item = taf_list_new(scb_taf, type);
-			WL_TAFT(dest_method->taf_info, "item "MACF"%s NEW\n",
+			WL_TAFT2(dest_method->taf_info, "item "MACF"%s NEW\n",
 				TAF_ETHERC(scb_taf), TAF_TYPE(type));
 		}
 
-		WL_TAFT(dest_method->taf_info,
+		WL_TAFT1(dest_method->taf_info,
 			"removing "MACF"%s from %s and add to %s prio %d\n",
 		        TAF_ETHERC(scb_taf), TAF_TYPE(type), TAF_SCHED_NAME(source_method),
 		        TAF_SCHED_NAME(dest_method), scb_taf->score[type]);
@@ -1449,18 +1550,6 @@ static void taf_move_list_item(taf_scb_cubby_t* scb_taf, taf_method_info_t* dest
 	}
 }
 
-static uint32 taf_total_traffic_pending(wlc_taf_info_t* taf_info)
-{
-	uint32 total_packets = 0;
-	taf_scb_cubby_t *scb_taf = taf_info->head;
-
-	while (scb_taf) {
-		total_packets += wlc_taf_traffic_active(taf_info, scb_taf->scb);
-		scb_taf = scb_taf->next;
-	}
-	return total_packets;
-}
-
 /*
  * Watchdog timer. Called approximatively once a second.
  */
@@ -1480,23 +1569,29 @@ taf_watchdog(void *handle)
 		return;
 	}
 
+	/* check for deferred reset, before anything else */
+	if (taf_info->deferred_reset != TAF_DEFER_RESET_NONE) {
+		bool hard_reset = taf_info->deferred_reset == TAF_DEFER_RESET_HARD;
+
+		WL_TAFT1(taf_info, "deferred %s reset request (total traffic %u)\n",
+			hard_reset ? "hard" : "soft", taf_total_traffic_pending(taf_info));
+
+		wlc_taf_reset_scheduling(taf_info, ALLPRIO, hard_reset);
+		if (hard_reset) {
+			return;
+		}
+	}
+
 	if (taf_info->release_count == 0) {
 		taf_info->watchdog_data_stall++;
-		WL_TAFT(taf_info, "count (%u)\n", taf_info->watchdog_data_stall);
+		WL_TAFT3(taf_info, "count (%u)\n", taf_info->watchdog_data_stall);
 	} else {
 		taf_info->watchdog_data_stall = 0;
 	}
 
-	if ((taf_info->watchdog_data_stall > 1) &&
-#if TAF_ENABLE_SQS_PULL
-			(taf_info->op_state == TAF_SCHEDULE_VIRTUAL_PACKETS) &&
-#endif // endif
-			TRUE) {
-		int tid = 0;
+	if ((taf_info->watchdog_data_stall > 1) && !wlc_taf_scheduler_blocked(taf_info)) {
 
-		do {
-			wlc_taf_schedule(taf_info, TAF_TID(tid, taf_info), NULL, FALSE);
-		} while (TAF_PARALLEL_ORDER(taf_info) && ++tid < NUMPRIO);
+		wlc_taf_schedule(taf_info, TAF_DEFAULT_UNIFIED_TID, NULL, FALSE);
 
 		if (taf_info->release_count > 0) {
 #ifdef TAF_DEBUG_VERBOSE
@@ -1514,17 +1609,6 @@ taf_watchdog(void *handle)
 		reset_hard = (total_traffic = taf_total_traffic_pending(taf_info)) > 0;
 		taf_info->watchdog_data_stall = 0;
 	}
-
-#if !TAF_ENABLE_SQS_PULL
-	/* did we change TAF ordering ? */
-	if (taf_info->ordering != taf_info->pending_ordering && taf_info->release_count == 0) {
-		WL_TAFT(taf_info, "changing TAF ordering from %u to %u\n",
-			taf_info->ordering, taf_info->pending_ordering);
-		taf_info->ordering = taf_info->pending_ordering;
-		reset = TRUE;
-		reset_hard = TRUE;
-	}
-#endif /* !TAF_ENABLE_SQS_PULL */
 
 	if (reset) {
 		if (reset_hard) {
@@ -1582,6 +1666,11 @@ bool BCMFASTPATH wlc_taf_ul_enabled(wlc_taf_info_t* taf_info)
 	return taf_ul_enabled(taf_info);
 }
 
+bool BCMFASTPATH wlc_taf_scheduler_running(wlc_taf_info_t* taf_info)
+{
+	return taf_scheduler_running(taf_info);
+}
+
 bool BCMFASTPATH wlc_taf_nar_in_use(wlc_taf_info_t* taf_info, bool * enabled)
 {
 #if TAF_ENABLE_NAR
@@ -1604,17 +1693,16 @@ bool BCMFASTPATH wlc_taf_nar_in_use(wlc_taf_info_t* taf_info, bool * enabled)
 #endif /* TAF_ENABLE_NAR */
 }
 
-#ifdef WLSQS
 bool BCMFASTPATH wlc_taf_scheduler_blocked(wlc_taf_info_t* taf_info)
 {
+	bool blocked = taf_scheduler_running(taf_info);
+
 #if TAF_ENABLE_SQS_PULL
-	TAF_ASSERT(taf_info);
-	return taf_info->op_state == TAF_MARKUP_REAL_PACKETS;
-#else
-	return FALSE;
+	blocked = blocked || (taf_info->op_state != TAF_SCHEDULE_VIRTUAL_PACKETS);
 #endif /* TAF_ENABLE_SQS_PULL */
+
+	return blocked;
 }
-#endif /* WLSQS */
 
 static INLINE uint32 BCMFASTPATH
 taf_set_force(wlc_taf_info_t* taf_info, struct scb* scb, int tid)
@@ -1623,10 +1711,9 @@ taf_set_force(wlc_taf_info_t* taf_info, struct scb* scb, int tid)
 
 	if (taf_info->force_time > 0) {
 		scb_taf->force |= (1 << tid);
-#if TAF_LOGL3
-		WL_TAFM(scb_taf->method, "setting force option to "MACF" tid %u\n",
+
+		WL_TAFM4(scb_taf->method, "setting force option to "MACF" tid %u\n",
 			TAF_ETHERC(scb_taf), tid);
-#endif // endif
 	}
 
 	return scb_taf->force;
@@ -1647,11 +1734,8 @@ static INLINE bool BCMFASTPATH
 taf_schedule(taf_method_info_t* method, taf_release_context_t * context)
 {
 	wlc_taf_info_t* taf_info = method->taf_info;
-	taf_scheduler_kind type = method->type;
 	bool finished = FALSE;
 	bool  (*scheduler_fn) (wlc_taf_info_t *, taf_release_context_t *, void *);
-
-	context->type = type;
 
 	scheduler_fn = method->funcs.scheduler_fn;
 
@@ -1674,15 +1758,15 @@ taf_push_schedule(wlc_taf_info_t *taf_info, bool force, taf_release_context_t* c
 	taf_method_info_t* method;
 
 	if (!scb_taf) {
-		goto taf_push_schedule_end;
+		return FALSE;
 	}
-	TAF_ASSERT(tid >= 0);
+	TAF_ASSERT(tid >= 0 && tid < NUMPRIO;
 	method = scb_taf->method;
 	TAF_ASSERT(method);
 
 	if (force) {
 		*method->ready_to_schedule |= (1 << tid);
-		WL_TAFM(method, "force r_t_s 0x%x\n", *method->ready_to_schedule);
+		WL_TAFM2(method, "force r_t_s 0x%x\n", *method->ready_to_schedule);
 	}
 	if (method->scheme == TAF_SINGLE_PUSH_SCHEDULING) {
 		/* this is packet push scheduling */
@@ -1705,45 +1789,51 @@ wlc_taf_schedule(wlc_taf_info_t *taf_info, int tid, struct scb *scb, bool force)
 	taf_method_info_t* method;
 	taf_scheduler_kind type;
 	bool did_schedule = FALSE;
+	wlc_info_t* wlc = TAF_WLCT(taf_info);
 #ifdef TAF_DBG
 	char* trig_msg = NULL;
 #endif /* TAF_DBG */
-	wlc_info_t* wlc = TAF_WLCT(taf_info);
 
 	if (taf_is_bypass(taf_info)) {
 		return FALSE;
 	}
 
-	if (!TAF_WLCT(taf_info)->pub->up) {
-		WL_ERROR(("wl%u %s: not up\n", WLCWLUNIT(TAF_WLCT(taf_info)), __FUNCTION__));
+	/* check for deferred reset, before TAF scheduler actually starts */
+	if (taf_info->deferred_reset != TAF_DEFER_RESET_NONE) {
+		bool hard_reset = taf_info->deferred_reset == TAF_DEFER_RESET_HARD;
+
+		WL_TAFT1(taf_info, "deferred %s reset request (total traffic %u)\n",
+			hard_reset ? "hard" : "soft", taf_total_traffic_pending(taf_info));
+
+		wlc_taf_reset_scheduling(taf_info, ALLPRIO, hard_reset);
+	}
+
+	if (!wlc->pub->up) {
+		WL_ERROR(("wl%u %s: not up\n", WLCWLUNIT(wlc), __FUNCTION__));
+		return FALSE;
 	}
 
 #if TAF_ENABLE_SQS_PULL
 	/* for normal trigger cases, handle exceptions */
 	if ((tid >= 0) && (tid < TAF_MAXPRIO)) {
 		if ((scb == NULL) && (taf_info->op_state == TAF_MARKUP_REAL_PACKETS)) {
-			WL_TAFT(taf_info, "skipping NULL scb tid %u in markup phase\n", tid);
+			WL_TAFT2(taf_info, "skipping NULL scb tid %u in markup phase\n", tid);
 			return TRUE;
 		}
 	}
 
-	if (scb && SCB_DWDS(scb)) {
-		WL_TAFT(taf_info, MACF" tid %d is DWDS, bypass TAF\n",
-				TAF_ETHERS(scb), tid);
-		return FALSE;
-	}
 #ifdef TAF_DBG
 	if (taf_info->sqs_state_fault > taf_info->sqs_state_fault_prev) {
 		taf_info->sqs_state_fault_prev = taf_info->sqs_state_fault;
 		WL_ERROR(("wl%u %s: sqs_state_fault count %u\n",
-			WLCWLUNIT(TAF_WLCT(taf_info)), __FUNCTION__, taf_info->sqs_state_fault));
+			WLCWLUNIT(wlc), __FUNCTION__, taf_info->sqs_state_fault));
 	}
 #endif /* TAF_DBG */
 #endif /* TAF_ENABLE_SQS_PULL */
 	TAF_ASSERT(taf_info->scheduler_nest == 0);
 
 	if (taf_info->scheduler_nest != 0) {
-		return FALSE;
+		return TRUE;
 	}
 	taf_info->scheduler_nest ++;
 
@@ -1753,16 +1843,18 @@ wlc_taf_schedule(wlc_taf_info_t *taf_info, int tid, struct scb *scb, bool force)
 		taf_set_force(taf_info, scb, tid);
 	}
 
+	context.now_time = taf_timestamp(wlc);
+
 #if TAF_ENABLE_SQS_PULL
 	if (tid == TAF_SQS_TRIGGER_TID && taf_info->op_state != TAF_SCHEDULE_VIRTUAL_PACKETS) {
 #ifdef TAF_DBG
 		uint32 pull_complete_elapsed = taf_info->virtual_complete_time ?
-			taf_timestamp(TAF_WLCT(taf_info)) - taf_info->virtual_complete_time : 0;
+			context.now_time - taf_info->virtual_complete_time : 0;
 
 		if (pull_complete_elapsed > 50000) {
-			WL_ERROR(("wl%u %s: pkt pull duration %u\n", WLCWLUNIT(TAF_WLCT(taf_info)),
+			WL_ERROR(("wl%u %s: pkt pull duration %u\n", WLCWLUNIT(wlc),
 				__FUNCTION__, pull_complete_elapsed));
-			taf_info->virtual_complete_time = taf_timestamp(TAF_WLCT(taf_info));
+			taf_info->virtual_complete_time = context.now_time;
 		}
 #endif /* TAF_DBG */
 		goto taf_schedule_end;
@@ -1816,7 +1908,6 @@ wlc_taf_schedule(wlc_taf_info_t *taf_info, int tid, struct scb *scb, bool force)
 	if (tid == ALLPRIO) {
 		tid = 0;
 	}
-
 	context.tid = tid;
 	context.op_state = TAF_SCHEDULE_REAL_PACKETS;
 #endif /* TAF_ENABLE_SQS_PULL */
@@ -1831,8 +1922,8 @@ wlc_taf_schedule(wlc_taf_info_t *taf_info, int tid, struct scb *scb, bool force)
 		if (*method->ready_to_schedule & (1 << tid)) {
 #ifdef TAF_DBG
 			if (trig_msg) {
-				WL_TAFT(taf_info, "%s (tid %d, in transit %u)\n", trig_msg, tid,
-					TXPKTPENDTOT(TAF_WLCT(taf_info)));
+				WL_TAFT1(taf_info, "%s (tid %d, in transit %u)\n", trig_msg, tid,
+					TXPKTPENDTOT(wlc));
 				trig_msg = NULL;
 			}
 #endif /* TAF_DBG */
@@ -1849,51 +1940,52 @@ taf_schedule_end:
 	if (context.virtual_release) {
 		taf_info->op_state = TAF_MARKUP_REAL_PACKETS;
 #ifdef TAF_DBG
-		taf_info->virtual_complete_time = taf_timestamp(TAF_WLCT(taf_info));
+		taf_info->virtual_complete_time = context.now_time;
 #endif // endif
 		wlc_sqs_eops_rqst();
 		taf_info->eops_rqst++;
 	}
-#else
-	taf_info->scheduler_index ++;
-#endif /* TAF_ENABLE_SQS_PULL */
-
-	if (context.status == TAF_CYCLE_COMPLETE) {
+	if (did_schedule && taf_info->op_state == TAF_SCHEDULE_VIRTUAL_PACKETS) {
 		taf_info->scheduler_index ++;
 	}
+#else
+	if (did_schedule) {
+		taf_info->scheduler_index ++;
+	}
+#endif /* TAF_ENABLE_SQS_PULL */
 
 	/* check elapsed time since last scheduler for stall debugging */
 	if (did_schedule) {
-		taf_info->last_scheduler_run = taf_timestamp(TAF_WLCT(taf_info));
+		taf_info->last_scheduler_run = context.now_time;
 	}
 	else {
-		uint32 now_time = taf_timestamp(TAF_WLCT(taf_info));
 		uint32 scheduler_elapsed = taf_info->last_scheduler_run ?
-			now_time - taf_info->last_scheduler_run : 0;
+			context.now_time - taf_info->last_scheduler_run : 0;
 
 		/* STALL recovery */
 		if (scheduler_elapsed > 500000) {
 			if (taf_info->watchdog_data_stall < taf_info->watchdog_data_stall_limit) {
 
 				WL_INFORM(("wl%u %s: no TAF scheduler ran since %u ms\n",
-					WLCWLUNIT(TAF_WLCT(taf_info)),
-					__FUNCTION__, scheduler_elapsed / 1000));
-				taf_info->last_scheduler_run = now_time;
+					WLCWLUNIT(wlc), __FUNCTION__, scheduler_elapsed / 1000));
+				taf_info->last_scheduler_run = context.now_time;
 			}
 		}
 	}
 	if (context.status == TAF_CYCLE_LEGACY) {
 		TAF_ASSERT(tid >= 0 && tid < NUMPRIO && scb != NULL);
-		WL_TAFT(taf_info, MACF" tid %u revert to fallback default data path\n",
+		WL_TAFT2(taf_info, MACF" tid %u revert to fallback default data path\n",
 			TAF_ETHERS(scb), tid);
 	}
-
-	taf_info->scheduler_nest --;
 
 	/* Drain the TXQs after the scheduler run */
 	if (did_schedule && wlc->active_queue != NULL && WLC_TXQ_OCCUPIED(wlc)) {
 		wlc_send_q(wlc, wlc->active_queue);
 	}
+
+	TAF_ASSERT(taf_info->scheduler_nest == 1);
+
+	taf_info->scheduler_nest --;
 
 	return (context.status != TAF_CYCLE_LEGACY);
 }
@@ -1926,7 +2018,7 @@ taf_scbcubby_init(void *handle, struct scb *scb)
 	*SCB_TAF_CUBBY_PTR(taf_info, scb) = scb_taf;
 
 	if (scb_taf != NULL) {
-		WL_TAFT(taf_info, "TAF cby "MACF" allocated\n", TAF_ETHERS(scb));
+		WL_TAFT2(taf_info, "TAF cby "MACF" allocated\n", TAF_ETHERS(scb));
 		scb_taf->scb = scb;
 		scb_taf->method = NULL;
 
@@ -1959,7 +2051,7 @@ taf_scbcubby_exit(void *handle, struct scb *scb)
 		taf_scb_cubby_t *prev, *curr;
 		taf_source_type_t s_idx;
 
-		WL_TAFT(taf_info, MACF" cubby exit\n", TAF_ETHERC(scb_taf));
+		WL_TAFT2(taf_info, MACF" cubby exit\n", TAF_ETHERC(scb_taf));
 #ifdef TAF_PKTQ_LOG
 		wlc_taf_dpstats_free(TAF_WLCT(taf_info), scb);
 #endif // endif
@@ -1989,7 +2081,7 @@ taf_scbcubby_exit(void *handle, struct scb *scb)
 		}
 		TAF_ASSERT(curr);
 
-		wlc_scb_sec_cubby_free(taf_info->wlc, scb, scb_taf);
+		wlc_scb_sec_cubby_free(TAF_WLCT(taf_info), scb, scb_taf);
 		*SCB_TAF_CUBBY_PTR(taf_info, scb) = NULL;
 	}
 }
@@ -1997,13 +2089,24 @@ taf_scbcubby_exit(void *handle, struct scb *scb)
 /* do not call multiple times for every tid - rather use tid=ALLPRIO to reset all tid */
 bool BCMFASTPATH wlc_taf_reset_scheduling(wlc_taf_info_t *taf_info, int tid, bool hardreset)
 {
-	taf_scb_cubby_t *scb_taf = taf_info->head;
+	taf_scb_cubby_t *scb_taf;
+	bool taf_running;
 
 	if (!taf_info || !taf_info->enabled) {
 		return FALSE;
 	}
+	taf_running = taf_scheduler_running(taf_info);
 
-	WL_TAFT(taf_info, "tid %d %s\n", tid, hardreset ? "hard" : "soft");
+	WL_TAFT1(taf_info, "tid %d %s%s\n", tid, hardreset ? "hard" : "soft",
+	       taf_running ? ", TAF running":"");
+
+	if (taf_running && taf_info->deferred_reset != TAF_DEFER_RESET_HARD) {
+		/* TAF is running, defer reset */
+		taf_info->deferred_reset = hardreset ? TAF_DEFER_RESET_HARD : TAF_DEFER_RESET_SOFT;
+		return FALSE;
+	}
+	scb_taf = taf_info->head;
+	taf_info->deferred_reset = TAF_DEFER_RESET_NONE;
 
 	while (scb_taf) {
 		taf_source_type_t s_idx;
@@ -2024,8 +2127,6 @@ bool BCMFASTPATH wlc_taf_reset_scheduling(wlc_taf_info_t *taf_info, int tid, boo
 		scb_taf = scb_taf->next;
 	}
 	if (hardreset) {
-		int ltid = (tid == ALLPRIO) ? 0 : tid;
-
 		WL_ERROR(("wl%u %s: hard reset\n", WLCWLUNIT(TAF_WLCT(taf_info)), __FUNCTION__));
 #if TAF_ENABLE_SQS_PULL
 		WL_ERROR(("wl%u %s: total pull requests %u, eops request %u, op state %d\n",
@@ -2036,11 +2137,8 @@ bool BCMFASTPATH wlc_taf_reset_scheduling(wlc_taf_info_t *taf_info, int tid, boo
 		wlc_taf_sched_state(taf_info, NULL, tid, 0, NULL, TAF_SCHED_STATE_RESET);
 		taf_info->watchdog_data_stall = 0;
 
-		if (taf_info->scheduler_nest == 0) {
-			do {
-				wlc_taf_schedule(taf_info, TAF_TID(ltid, taf_info), NULL, FALSE);
-			} while (TAF_PARALLEL_ORDER(taf_info) && (tid == ALLPRIO) &&
-				++ltid < TAF_MAXPRIO);
+		if (!taf_scheduler_running(taf_info)) {
+			wlc_taf_schedule(taf_info, TAF_DEFAULT_UNIFIED_TID, NULL, FALSE);
 		}
 	}
 	return TRUE;
@@ -2050,31 +2148,42 @@ bool BCMFASTPATH wlc_taf_reset_scheduling(wlc_taf_info_t *taf_info, int tid, boo
 static int
 taf_dump(void *handle, struct bcmstrbuf *b)
 {
-	wlc_taf_info_t	*taf_info = handle;
+	wlc_taf_info_t *taf_info = handle;
 	taf_scheduler_kind type = TAF_SCHEDULER_START;
 	char *args = TAF_WLCT(taf_info)->dump_args;
+	bool quiet = FALSE;
 
 	if (taf_info->enabled && args != NULL) {
 		taf_method_info_t* method = NULL;
 		char* p = bcmstrtok(&args, " ", 0);
 
+#ifdef TAF_DEBUG_VERBOSE
+		if (p && p[0] == '-' && p[1] == 'q' && p[2] == 0) {
+			quiet = TRUE;
+		} else
+#endif // endif
 		if (p && p[0] == '-' && (method = taf_get_method_by_name(taf_info, p+1)) &&
 			method->funcs.dump_fn) {
 			return method->funcs.dump_fn(method, b);
 		}
-		if (method == NULL) {
+		if (!quiet && method == NULL) {
 			return BCME_BADARG;
 		}
 	}
 
-	bcm_bprintf(b, "taf is %sabled%s\n", taf_info->enabled ? "en" : "dis",
-		taf_info->bypass ? " BUT BYPASSED (not in use)" : "");
+	if (!quiet) {
+		bcm_bprintf(b, "taf is %sabled%s\n", taf_info->enabled ? "en" : "dis",
+			taf_info->bypass ? " BUT BYPASSED (not in use)" : "");
+#if TAF_ENABLE_UL
+		bcm_bprintf(b, "taf UL is %sabled\n", taf_info->ul_enabled ? "en" : "dis");
+#endif // endif
+	}
 
 	if (!taf_info->enabled) {
 		return BCME_OK;
 	}
 
-	while (type < TAF_SCHED_LAST_INDEX) {
+	while (!quiet && type < TAF_SCHED_LAST_INDEX) {
 		taf_method_info_t* method = taf_get_method_info(taf_info, type);
 		bcm_bprintf(b, "\nmethod '%s' is available (scheduler index %u)",
 			TAF_SCHED_NAME(method), type);
@@ -2091,33 +2200,36 @@ taf_dump(void *handle, struct bcmstrbuf *b)
 		type++;
 	}
 #ifdef TAF_DEBUG_VERBOSE
-	if (taf_trace_buf)
+	if (taf_trace_buf && b->size > PRINTF_BUFLEN)
 	{
+		const uint32 buf_len = taf_trace_output_len;
 		int index = taf_trace_index;
 		char end;
-
-		bcm_bprintf(b, "Log (%u)\n", index);
 
 		taf_trace_buf[index++] = 0;
 
 		/* handle limited length ioctl buffer for dump */
-		if (taf_trace_buf_len > 7200) {
-			index += (taf_trace_buf_len - 7200);
+		if (buf_len > (b->size - 4)) {
+			bcm_bprintf(b, "...");
+			index += (buf_len - (b->size - 1));
 		}
-		if (index >= taf_trace_buf_len) {
-			index -= taf_trace_buf_len;
+		if (index >= buf_len) {
+			index -= buf_len;
 		}
 		if (taf_trace_buf[index] == 0) {
 			index = 0;
 		}
-		end = taf_trace_buf[taf_trace_buf_len - 1];
+		end = taf_trace_buf[buf_len - 1];
 
 		if (end) {
-			taf_trace_buf[taf_trace_buf_len - 1] = 0;
+			taf_trace_buf[buf_len - 1] = 0;
 			bcm_bprintf(b, "%s%c", taf_trace_buf + index, end);
-			taf_trace_buf[taf_trace_buf_len - 1] = end;
+			taf_trace_buf[buf_len - 1] = end;
 		}
-		bcm_bprintf(b, "%s\n", taf_trace_buf);
+
+		bcm_bprintf(b, "%s", taf_trace_buf);
+		taf_trace_index = 0;
+		memset(taf_trace_buf, 0, taf_trace_buf_len);
 	}
 #endif /* TAF_DEBUG_VERBOSE */
 	return BCME_OK;
@@ -2131,8 +2243,21 @@ static int
 taf_up(void *handle)
 {
 	wlc_taf_info_t *taf_info = handle;
+	taf_scheduler_kind type;
 
 	taf_init(taf_info);
+
+	for (type = TAF_SCHED_FIRST_INDEX; type < TAF_SCHED_LAST_INDEX; type++) {
+		int index = TAF_SCHED_INDEX(type);
+
+		if (taf_scheduler_definitions[index]->up_fn) {
+			void* sch_context = taf_get_method_info(taf_info, type);
+
+			if (sch_context) {
+				taf_scheduler_definitions[index]->up_fn(sch_context);
+			}
+		}
+	}
 
 	return BCME_OK;
 }
@@ -2143,19 +2268,24 @@ taf_up(void *handle)
 static int
 taf_down(void *handle)
 {
-	/* wlc_taf_info_t *taf_info = handle; */
+	wlc_taf_info_t *taf_info = handle;
+	taf_scheduler_kind type;
+	int callbacks = 0;
 
-	return BCME_OK;
-}
+	for (type = TAF_SCHED_FIRST_INDEX; type < TAF_SCHED_LAST_INDEX; type++) {
+		int index = TAF_SCHED_INDEX(type);
 
-#if TAF_ENABLE_MU_TX
-/* interworking function */
-static void * taf_mutx_sta_mucidx_get(void * handle, struct scb * scb)
-{
-	wlc_mutx_info_t *mu_info = (wlc_mutx_info_t *)handle;
-	return TAF_PARAM(wlc_mutx_sta_mucidx_get(mu_info, scb));
+		if (taf_scheduler_definitions[index]->down_fn) {
+			void* sch_context = taf_get_method_info(taf_info, type);
+
+			if (sch_context) {
+				callbacks += taf_scheduler_definitions[index]->down_fn(sch_context);
+			}
+		}
+	}
+
+	return callbacks;
 }
-#endif // endif
 
 /*
  * wlc_taf_attach() - attach function, called from wlc_attach_module().
@@ -2202,13 +2332,10 @@ BCMATTACHFN(wlc_taf_attach)(wlc_info_t * wlc)
 		return taf_info;
 	}
 
-	taf_info->ordering = TAF_ORDER_TID_SCB;
 #if TAF_ENABLE_SQS_PULL
-	TAF_ASSERT(TAF_UNITED_ORDER(taf_info));
 	taf_info->op_state = TAF_SCHEDULE_VIRTUAL_PACKETS;
 #else
 	taf_info->op_state = TAF_SCHEDULE_REAL_PACKETS;
-	taf_info->pending_ordering = taf_info->ordering;
 #endif /* TAF_ENABLE_SQS_PULL */
 
 	taf_info->watchdog_data_stall_limit = TAF_WD_STALL_RESET_LIMIT;
@@ -2251,6 +2378,7 @@ BCMATTACHFN(wlc_taf_attach)(wlc_info_t * wlc)
 	taf_info->funcs[TAF_SOURCE_AMPDU].tid_h_fn = wlc_ampdu_get_taf_scb_tid_info;
 	taf_info->funcs[TAF_SOURCE_AMPDU].pktqlen_fn = wlc_ampdu_get_taf_scb_tid_pktlen;
 	taf_info->funcs[TAF_SOURCE_AMPDU].release_fn = wlc_ampdu_taf_release;
+	taf_info->funcs[TAF_SOURCE_AMPDU].open_close_fn = NULL;
 #endif /* TAF_ENABLE_AMPDU */
 #if TAF_ENABLE_NAR
 	taf_info->source_handle_p[TAF_SOURCE_NAR] = (void*)&wlc->nar_handle;
@@ -2258,6 +2386,7 @@ BCMATTACHFN(wlc_taf_attach)(wlc_info_t * wlc)
 	taf_info->funcs[TAF_SOURCE_NAR].tid_h_fn = wlc_nar_get_taf_scb_prec_info;
 	taf_info->funcs[TAF_SOURCE_NAR].pktqlen_fn = wlc_nar_get_taf_scb_prec_pktlen;
 	taf_info->funcs[TAF_SOURCE_NAR].release_fn = wlc_nar_taf_release;
+	taf_info->funcs[TAF_SOURCE_NAR].open_close_fn = NULL;
 #endif /* TAF_ENABLE_NAR */
 #if TAF_ENABLE_SQS_PULL
 	taf_info->source_handle_p[TAF_SOURCE_HOST_SQS] = wlc_sqs_taf_get_handle(wlc);
@@ -2265,42 +2394,41 @@ BCMATTACHFN(wlc_taf_attach)(wlc_info_t * wlc)
 	taf_info->funcs[TAF_SOURCE_HOST_SQS].tid_h_fn = wlc_sqs_taf_get_scb_tid_info;
 	taf_info->funcs[TAF_SOURCE_HOST_SQS].pktqlen_fn = wlc_sqs_taf_get_scb_tid_pkts;
 	taf_info->funcs[TAF_SOURCE_HOST_SQS].release_fn = wlc_sqs_taf_release;
+	taf_info->funcs[TAF_SOURCE_HOST_SQS].open_close_fn = NULL;
 #endif /* TAF_ENABLE_SQS_PULL */
 #if TAF_ENABLE_UL
-	taf_info->ul_enabled = FALSE; /* disabled by default for now */
+	taf_info->ul_enabled = FALSE; /* disabled by default */
 	taf_info->source_handle_p[TAF_SOURCE_UL] = (void*)&wlc->ulmu;
 	taf_info->funcs[TAF_SOURCE_UL].scb_h_fn = wlc_ulmu_taf_get_scb_info;
 	taf_info->funcs[TAF_SOURCE_UL].tid_h_fn = wlc_ulmu_taf_get_scb_tid_info;
-	taf_info->funcs[TAF_SOURCE_UL].pktqlen_fn = wlc_ulmu_taf_get_scb_pktlen;
+	taf_info->funcs[TAF_SOURCE_UL].pktqlen_fn = wlc_ulmu_taf_get_pktlen;
 	taf_info->funcs[TAF_SOURCE_UL].release_fn = wlc_ulmu_taf_release;
+	taf_info->funcs[TAF_SOURCE_UL].open_close_fn = wlc_ulmu_taf_bulk;
 #endif /* TAF_ENABLE_UL */
+
+	taf_info->bulk_commit = TRUE;
+	taf_info->super = 0;
 
 #if TAF_ENABLE_MU_TX
 	/* enable super-scheduling by default for MU */
-	taf_info->super = TRUE;
+	taf_info->super |= TAF_TECH_DL_MU_MASK;
 
 	taf_info->use_sampled_rate_sel = TAF_TECH_DL_VHMUMIMO_MASK | TAF_TECH_DL_HEMUMIMO_MASK;
 
 	taf_info->mu = TAF_TECH_DL_OFDMA_MASK | TAF_TECH_DL_VHMUMIMO_MASK |
 		TAF_TECH_DL_HEMUMIMO_MASK;
 
-	taf_info->tech_handle_p[TAF_TECH_DL_VHMUMIMO] = (void*)&wlc->mutx;
-	taf_info->tech_fn[TAF_TECH_DL_VHMUMIMO].scb_h_fn = taf_mutx_sta_mucidx_get;
 	taf_info->mu_g_enable_mask[TAF_TECH_DL_VHMUMIMO] = ~0;
-
-	taf_info->tech_handle_p[TAF_TECH_DL_HEMUMIMO] = (void*)&wlc->mutx;
-	taf_info->tech_fn[TAF_TECH_DL_HEMUMIMO].scb_h_fn = taf_mutx_sta_mucidx_get;
 	taf_info->mu_g_enable_mask[TAF_TECH_DL_HEMUMIMO] = ~0;
-
-	taf_info->tech_handle_p[TAF_TECH_DL_OFDMA] = NULL;
-	taf_info->tech_fn[TAF_TECH_DL_OFDMA].scb_h_fn = NULL;
 	taf_info->mu_g_enable_mask[TAF_TECH_DL_OFDMA] = ~0;
 
-#if TAF_ENABLE_UL
-	taf_info->mu |= TAF_TECH_UL_OFDMA_MASK;
+#if TAF_ENABLE_MU_BOOST
+	taf_info->mu_boost = TAF_MUBOOST_RATE_FACTOR;
+#endif // endif
 
-	taf_info->tech_handle_p[TAF_TECH_UL_OFDMA] = NULL;
-	taf_info->tech_fn[TAF_TECH_UL_OFDMA].scb_h_fn = NULL;
+#if TAF_ENABLE_UL
+	taf_info->super |= TAF_TECH_UL_OFDMA_MASK;
+	taf_info->mu |= TAF_TECH_UL_OFDMA_MASK;
 	taf_info->mu_g_enable_mask[TAF_TECH_UL_OFDMA] = ~0;
 #endif /* TAF_ENABLE_UL */
 #else
@@ -2309,10 +2437,10 @@ BCMATTACHFN(wlc_taf_attach)(wlc_info_t * wlc)
 
 	for (type = TAF_SCHED_FIRST_INDEX; type < TAF_SCHED_LAST_INDEX; type++) {
 		taf_method_info_t* method = NULL;
-		int index = (int)type - (int)TAF_SCHED_FIRST_INDEX;
+		int index = TAF_SCHED_INDEX(type);
 
-		if (taf_scheduler_definitions[index].attach_fn) {
-			method = taf_scheduler_definitions[index].attach_fn(taf_info, type);
+		if (taf_scheduler_definitions[index]->attach_fn) {
+			method = taf_scheduler_definitions[index]->attach_fn(taf_info, type);
 		}
 
 		if ((taf_info->scheduler_context[index] = method) == NULL) {
@@ -2353,13 +2481,14 @@ BCMATTACHFN(wlc_taf_detach) (wlc_taf_info_t *taf_info)
 		taf_scheduler_kind type;
 
 		for (type = TAF_SCHED_FIRST_INDEX; type < TAF_SCHED_LAST_INDEX; type++) {
-			int index = (int)type - (int)TAF_SCHED_FIRST_INDEX;
+			int index = TAF_SCHED_INDEX(type);
 
-			if (taf_scheduler_definitions[index].detach_fn) {
+			if (taf_scheduler_definitions[index]->detach_fn) {
 				void* sch_context = taf_get_method_info(taf_info, type);
 
-				if (sch_context)
-					taf_scheduler_definitions[index].detach_fn(sch_context);
+				if (sch_context) {
+					taf_scheduler_definitions[index]->detach_fn(sch_context);
+				}
 			}
 			taf_info->scheduler_context[index] = NULL;
 		}
@@ -2392,26 +2521,13 @@ void wlc_taf_link_state(wlc_taf_info_t* taf_info, struct scb* scb, int tid, cons
 	scb_taf = *SCB_TAF_CUBBY_PTR(taf_info, scb);
 
 	if (scb_taf) {
+		taf_source_type_t s_idx = wlc_taf_get_source_index(data);
+
 		TAF_ASSERT(tid >= 0 && tid < TAF_MAXPRIO);
-
-		if (state != TAF_LINKSTATE_AMSDU_AGG) {
-			taf_source_type_t s_idx = wlc_taf_get_source_index(data);
-
-			if (s_idx != TAF_SOURCE_UNDEFINED) {
-				TAF_ASSERT(tid < TAF_MAXPRIO);
-				taf_link_state_method_update(scb_taf->method, scb, tid, s_idx,
-					state);
-			} else {
-				WL_TAFM(scb_taf->method, MACF" tid %u - %s - TO DO\n",
-					TAF_ETHERS(scb), tid, (const char*)data);
-			}
-		} else {
-			WL_TAFM(scb_taf->method, MACF" TAF_LINKSTATE_AMSDU_AGG *TO DO* tid %u\n",
-				TAF_ETHERS(scb), tid);
+		if (s_idx != TAF_SOURCE_UNDEFINED) {
+			taf_link_state_method_update(scb_taf->method, scb, tid, s_idx,
+				state);
 		}
-	} else {
-		WL_TAFT(taf_info, MACF" tid %u, has no cubby (%s/%s)\n", TAF_ETHERS(scb), tid,
-		       taf_link_states_text[state], (const char*) data);
 	}
 }
 
@@ -2423,8 +2539,6 @@ taf_scb_state_method_update(taf_method_info_t* method, struct scb* scb, void* up
 
 	if (method->funcs.scbstate_fn) {
 		ret = method->funcs.scbstate_fn(method, scb, update, state);
-	} else {
-		WL_TAFM(method, "TO DO\n");
 	}
 	return ret;
 }
@@ -2448,25 +2562,16 @@ static INLINE int taf_scb_power_save(wlc_taf_info_t* taf_info, taf_scb_cubby_t* 
 		/* nothing to do */
 	}
 
-#if TAF_ENABLE_SQS_PULL
-	if (!on && taf_info->op_state == TAF_SCHEDULE_VIRTUAL_PACKETS)
-#else
-	if (!on)
-#endif // endif
-	{
+	if (!on && !wlc_taf_scheduler_blocked(taf_info)) {
 		/* this is PS off - need to kick the scheduler */
-		int tid = 0;
 
-		do {
-			WL_TAFT(taf_info, MACF" PS mode OFF - kick tid %d\n",
-				TAF_ETHERC(scb_taf), TAF_TID(tid, taf_info));
-
-			wlc_taf_schedule(taf_info, TAF_TID(tid, taf_info), scb_taf->scb, FALSE);
-		} while (TAF_PARALLEL_ORDER(taf_info) && ++tid < NUMPRIO);
+		WL_TAFT1(taf_info, MACF" PS mode OFF - kick scheduler\n", TAF_ETHERC(scb_taf));
+		wlc_taf_schedule(taf_info, TAF_DEFAULT_UNIFIED_TID, scb_taf->scb, FALSE);
 	}
 	return result;
 
 }
+
 int wlc_taf_scb_state_update(wlc_taf_info_t* taf_info, struct scb* scb, void* update,
 	taf_scb_state_t state)
 {
@@ -2505,14 +2610,20 @@ int wlc_taf_scb_state_update(wlc_taf_info_t* taf_info, struct scb* scb, void* up
 #if TAF_ENABLE_UL
 void wlc_taf_handle_ul_transition(taf_scb_cubby_t* scb_taf, bool ul_enable)
 {
+	TAF_ASSERT(!taf_scheduler_running(scb_taf->method->taf_info));
+
 	if (ul_enable) {
 		taf_method_info_t* method = scb_taf->method;
 		/* add list entry */
 		taf_list_t* item = taf_list_new(scb_taf, TAF_TYPE_UL);
 		taf_list_scoring_order_t ordering = method->ordering;
 
-		WL_TAFM(method, MACF" adding list entry for UL\n", TAF_ETHERC(scb_taf));
+		WL_TAFM1(method, MACF" adding list entry for UL\n", TAF_ETHERC(scb_taf));
+
 		wlc_taf_list_append(&method->list, item);
+
+		/* cannot be in bypass mode when UL has been admitted */
+		taf_bypass(method->taf_info, FALSE);
 
 		if (ordering != TAF_LIST_DO_NOT_SCORE) {
 			if (ordering == TAF_LIST_SCORE_FIXED_INIT_MINIMUM) {
@@ -2523,14 +2634,15 @@ void wlc_taf_handle_ul_transition(taf_scb_cubby_t* scb_taf, bool ul_enable)
 				scb_taf->score[TAF_TYPE_UL] = TAF_ULPRIO(prio);
 
 			} else if (ordering == TAF_LIST_SCORE_MINIMUM) {
-				scb_taf->score[TAF_TYPE_UL] = TAF_SCORE_MIN;
+				/* pre-init score for UL to be half of current DL score */
+				scb_taf->score[TAF_TYPE_UL] = scb_taf->score[TAF_TYPE_DL] >> 1;
 			} else {
 				TAF_ASSERT(0);
 			}
 			wlc_taf_sort_list(&method->list, ordering, taf_timestamp(TAF_WLCM(method)));
 		}
 	} else {
-		WL_TAFM(scb_taf->method, MACF" removing list entry for UL\n", TAF_ETHERC(scb_taf));
+		WL_TAFM1(scb_taf->method, MACF" removing list entry for UL\n", TAF_ETHERC(scb_taf));
 		/* remove list entry */
 		wlc_taf_list_delete(scb_taf, TAF_TYPE_UL);
 	}
@@ -2545,8 +2657,6 @@ taf_method_rate_override(wlc_taf_info_t* taf_info, taf_scheduler_kind type,
 
 	if (method->funcs.rateoverride_fn) {
 		method->funcs.rateoverride_fn(method, rspec, band);
-	} else {
-		WL_TAFM(method, "TO DO\n");
 	}
 }
 
@@ -2584,11 +2694,11 @@ bool wlc_taf_txpkt_status(wlc_taf_info_t* taf_info, struct scb* scb, int tid, vo
 		}
 	}
 	if (scb == NULL) {
-		WL_TAFT(taf_info, "scb is null\n");
+		WL_TAFT4(taf_info, "scb is null\n");
 		return FALSE;
 	}
 	if ((scb_taf = *SCB_TAF_CUBBY_PTR(taf_info, scb)) == NULL) {
-		WL_TAFT(taf_info, MACF" has no TAF cubby\n", TAF_ETHERS(scb));
+		WL_TAFT4(taf_info, MACF" has no TAF cubby\n", TAF_ETHERS(scb));
 		return FALSE;
 	}
 	method = scb_taf->method;
@@ -2599,7 +2709,7 @@ bool wlc_taf_txpkt_status(wlc_taf_info_t* taf_info, struct scb* scb, int tid, vo
 		ret = wlc_taf_reset_scheduling(taf_info, tid, FALSE);
 	}
 	if (!ret) {
-		WL_TAFM(method, MACF" unhandled, %s\n", TAF_ETHERC(scb_taf),
+		WL_TAFM4(method, MACF" unhandled, %s\n", TAF_ETHERC(scb_taf),
 			taf_txpkt_status_text[status]);
 	}
 	return ret;
@@ -2613,8 +2723,6 @@ taf_method_bss_state_update(wlc_taf_info_t* taf_info, taf_scheduler_kind type, w
 
 	if (method->funcs.bssstate_fn) {
 		method->funcs.bssstate_fn(method, bsscfg, update, state);
-	} else {
-		WL_TAFM(method, "TO DO\n");
 	}
 }
 
@@ -2637,26 +2745,22 @@ static INLINE void taf_sqs_link_init(wlc_taf_info_t* taf_info, taf_scb_cubby_t* 
 {
 	struct scb * scb = scb_taf->scb;
 
-	if (!SCB_AMPDU(scb)) {
-		return;
-	}
 	if (scb_taf->info.linkstate[TAF_SOURCE_HOST_SQS][tid] == TAF_LINKSTATE_NONE &&
 		TAF_WLCT(taf_info)->pub->up) {
 
 		/* XXX this is a workaround in case AMPDU ini (which is required by SQS)
 		* does not exist, it has to be created on demand
 		*/
-		void * handle = wlc_ampdu_taf_sqs_link_init(TAF_WLCT(taf_info), scb, tid);
+		if (SCB_AMPDU(scb)) {
+			void* handle = wlc_ampdu_taf_sqs_link_init(TAF_WLCT(taf_info), scb, tid);
+			BCM_REFERENCE(handle);
 
-		WL_TAFT(taf_info, MACF" tid %u %s\n", TAF_ETHERS(scb), tid,
-			handle ? " AMPDU":"");
+			WL_TAFT1(taf_info, MACF" tid %u %s\n", TAF_ETHERS(scb), tid,
+				handle ? " AMPDU":"");
 
-		if (handle) {
-			taf_link_state_method_update(scb_taf->method, scb, tid,
-				TAF_SOURCE_HOST_SQS, TAF_LINKSTATE_ACTIVE);
-		} else {
-			WL_TAFT(taf_info, "no SQS AMPDU context\n");
 		}
+		taf_link_state_method_update(scb_taf->method, scb, tid,
+			TAF_SOURCE_HOST_SQS, TAF_LINKSTATE_ACTIVE);
 	}
 }
 #endif /* TAF_ENABLE_SQS_PULL */
@@ -2675,6 +2779,56 @@ wlc_taf_pkts_enqueue(wlc_taf_info_t* taf_info, struct scb* scb, int tid, const v
 		scb_taf->info.traffic.map[TAF_SOURCE_HOST_SQS] |= (1 << tid);
 	}
 #endif /* TAF_ENABLE_SQS_PULL */
+}
+
+void BCMFASTPATH taf_close_all_sources(wlc_taf_info_t* taf_info, int in_tid)
+{
+	int tid = (in_tid == ALLPRIO) ? 0 : in_tid;
+
+	do {
+		taf_source_type_t s_idx;
+
+		for (s_idx = TAF_FIRST_REAL_SOURCE; s_idx < TAF_NUM_SCHED_SOURCES; s_idx++) {
+			if (taf_info->opened[s_idx] & (1 << tid)) {
+				void * arg = *taf_info->source_handle_p[s_idx];
+
+				taf_info->funcs[s_idx].open_close_fn(arg, tid, FALSE);
+				taf_info->opened[s_idx] &= ~(1 << tid);
+
+				WL_TAFT3(taf_info, "closed %s tid %u\n",
+					TAF_SOURCE_NAME(s_idx), tid);
+			}
+		}
+	} while ((in_tid == ALLPRIO) && (++tid < NUMPRIO));
+}
+
+void BCMFASTPATH taf_open_all_sources(wlc_taf_info_t* taf_info, int in_tid)
+{
+	int tid;
+
+	TAF_ASSERT(taf_info->bulk_commit);
+	tid = (in_tid == ALLPRIO) ? 0 : in_tid;
+
+	do {
+		taf_source_type_t s_idx;
+
+		/* open scheduling window for each source with this TID */
+		for (s_idx = TAF_FIRST_REAL_SOURCE; s_idx < TAF_NUM_SCHED_SOURCES; s_idx++) {
+			if (!taf_info->funcs[s_idx].open_close_fn) {
+				continue;
+			}
+			if ((taf_info->opened[s_idx] & (1 << tid)) == 0) {
+				void * arg = *taf_info->source_handle_p[s_idx];
+
+				if (taf_info->funcs[s_idx].open_close_fn(arg, tid, TRUE)) {
+
+					WL_TAFT3(taf_info, "opened %s tid %u\n",
+						TAF_SOURCE_NAME(s_idx), tid);
+					taf_info->opened[s_idx] |= (1 << tid);
+				}
+			}
+		}
+	} while ((in_tid == ALLPRIO) && (++tid < NUMPRIO));
 }
 
 static INLINE void
@@ -2713,28 +2867,21 @@ void wlc_taf_sched_state(wlc_taf_info_t* taf_info, struct scb* scb, int tid, int
 		case TAF_SCHED_STATE_RESET:
 			taf_info->release_count = 0;
 			taf_info->last_scheduler_run = 0;
+			taf_info->super_active = FALSE;
 #if TAF_ENABLE_SQS_PULL
 			taf_info->op_state = TAF_SCHEDULE_VIRTUAL_PACKETS;
 			taf_info->total_pull_requests = 0;
 			taf_info->eops_rqst = 0;
-			WL_TAFT(taf_info, "reset to virtual phase\n");
+			WL_TAFT1(taf_info, "reset to virtual phase\n");
 #ifdef TAF_DBG
 			taf_info->virtual_complete_time = 0;
 #endif /* TAF_DBG */
 #endif /* TAF_ENABLE_SQS_PULL */
+			taf_close_all_sources(taf_info, ALLPRIO);
 			break;
 		case TAF_SCHED_STATE_DATA_BLOCK_FIFO:
-			if ((count == 0) &&
-#if TAF_ENABLE_SQS_PULL
-				(taf_info->op_state == TAF_SCHEDULE_VIRTUAL_PACKETS) &&
-#endif /* TAF_ENABLE_SQS_PULL */
-				TRUE)
-			{
-				tid = 0;
-				do {
-					wlc_taf_schedule(taf_info, TAF_TID(tid, taf_info), NULL,
-						FALSE);
-				} while (TAF_PARALLEL_ORDER(taf_info) && ++tid < NUMPRIO);
+			if ((count == 0) && !wlc_taf_scheduler_blocked(taf_info)) {
+				wlc_taf_schedule(taf_info, TAF_DEFAULT_UNIFIED_TID, NULL, FALSE);
 			}
 			break;
 #if TAF_ENABLE_MU_TX
@@ -2766,13 +2913,27 @@ void wlc_taf_sched_state(wlc_taf_info_t* taf_info, struct scb* scb, int tid, int
 }
 
 #if TAF_ENABLE_SQS_PULL
+void wlc_taf_reset_sqs(wlc_taf_info_t *taf_info)
+{
+	/* less heavy than a full scheduler reset */
+	taf_scb_cubby_t *scb_taf = taf_info->head;
+
+	while (scb_taf) {
+		taf_scb_state_method_update(scb_taf->method, scb_taf->scb, NULL,
+			TAF_SCBSTATE_RESET);
+
+		scb_taf = scb_taf->next;
+	}
+}
+
 bool wlc_taf_marked_up(wlc_taf_info_t *taf_info)
 {
 	if (taf_info->eops_rqst == 0) {
 		taf_info->op_state = TAF_SCHEDULE_VIRTUAL_PACKETS;
-		WL_TAFT(taf_info, "TAF_SCHEDULE_VIRTUAL_PACKETS (%u outstanding pull requests%s)\n",
+
+		WL_TAFT3(taf_info, "TAF_SCHEDULE_VIRTUAL_PACKETS (%u pull req%s)\n",
 			taf_info->total_pull_requests,
-			taf_info->total_pull_requests > 0 ? " will be set to 0" : "");
+			taf_info->total_pull_requests > 0 ? ", will be set to 0" : "");
 
 		if (taf_info->total_pull_requests > 0) {
 			WL_ERROR(("wl%u %s: total_pull_requests (%d) should be 0\n",
@@ -2780,10 +2941,10 @@ bool wlc_taf_marked_up(wlc_taf_info_t *taf_info)
 				taf_info->total_pull_requests));
 			taf_info->total_pull_requests = 0;
 			taf_info->sqs_state_fault++;
-
 #ifdef TAF_DEBUG_VERBOSE
 			taf_memtrace_dump(taf_info);
 #endif // endif
+			wlc_taf_reset_sqs(taf_info);
 		}
 		else if (taf_info->sqs_state_fault) {
 			WL_ERROR(("wl%u %s: clearing sqs_state_fault (%u)\n",
@@ -2806,24 +2967,23 @@ void wlc_taf_pkts_dequeue(wlc_taf_info_t* taf_info, struct scb* scb, int tid, in
 	taf_scb_cubby_t* scb_taf;
 
 	if (!scb) {
-		WL_TAFT(taf_info, "scb null\n");
+		WL_TAFT3(taf_info, "scb null\n");
 		return;
 	}
 
 	scb_taf = *SCB_TAF_CUBBY_PTR(taf_info, scb);
 
 	if (scb_taf == NULL) {
-		WL_TAFT(taf_info, MACF" has no TAF cubby\n", TAF_ETHERS(scb));
+		WL_TAFT4(taf_info, MACF" has no TAF cubby\n", TAF_ETHERS(scb));
 		return;
 	}
 
 	if (taf_info->op_state != TAF_MARKUP_REAL_PACKETS) {
-		/* XXX NAR only traffic and DWDS traffic does not pass via sqs virtual pull
+		/* XXX NAR only traffic traffic does not pass via sqs virtual pull
 		* (it is pushed direct) so it causes unexpected dequeue; hence guard this sqs fault
-		* condition by checking that this is AMPDU and not DWDS
+		* condition by checking that this is AMPDU.
 		*/
-		if ((scb_taf->info.linkstate[TAF_SOURCE_AMPDU][tid] != TAF_LINKSTATE_NONE) &&
-			!SCB_DWDS(scb)) {
+		if ((scb_taf->info.linkstate[TAF_SOURCE_AMPDU][tid] != TAF_LINKSTATE_NONE)) {
 
 			taf_info->sqs_state_fault++;
 			WL_ERROR(("wl%u %s: unexpected op_state (%d) "MACF" tid %u, pkts %u, "
@@ -2841,6 +3001,27 @@ void wlc_taf_pkts_dequeue(wlc_taf_info_t* taf_info, struct scb* scb, int tid, in
 
 	if (scb_taf->info.pkt_pull_request[tid] >= pkts) {
 		scb_taf->info.pkt_pull_request[tid] -= pkts;
+
+		if ((scb_taf->info.pkt_pull_request[tid] == 0) &&
+			(scb_taf->info.pkt_pull_map & (1 << tid))) {
+
+			scb_taf->info.pkt_pull_map &= ~(1 << tid);
+
+			if (taf_info->total_pull_requests > 0) {
+				taf_info->total_pull_requests--;
+			} else {
+				WL_ERROR(("wl%u %s: tid %u total_pull_requests overflow 0! "
+					"(0x%x/0x%x/%u/%u)\n",
+					WLCWLUNIT(TAF_WLCT(taf_info)), __FUNCTION__,
+					tid, scb_taf->info.tid_enabled,
+					scb_taf->info.pkt_pull_map,
+					scb_taf->info.pkt_pull_dequeue,
+					scb_taf->info.ps_mode));
+#ifdef TAF_DEBUG_VERBOSE
+					taf_memtrace_dump(taf_info);
+#endif // endif
+			}
+		}
 	} else {
 		uint16 prev_pull = scb_taf->info.pkt_pull_request[tid];
 
@@ -2894,12 +3075,40 @@ wlc_taf_set_dlofdma_maxn(wlc_info_t *wlc, uint8 (*maxn)[D11_REV128_BW_SZ])
 
 		BCM_REFERENCE(bw);
 		for (bw = 0; bw < D11_REV128_BW_SZ; bw++) {
-			WL_TAFT(taf_info, "maxn[%d]=%d\n", bw, taf_info->dlofdma_maxn[bw]);
+			WL_TAFT1(taf_info, "maxn[%d]=%d\n", bw, taf_info->dlofdma_maxn[bw]);
 		}
-		WL_TAFT(taf_info, "DLOFDMA maxn updated.\n");
+		WL_TAFT2(taf_info, "DLOFDMA maxn updated.\n");
 	}
 #endif /* TAF_DBG */
 #endif /* TAF_ENABLE_MU_TX */
+}
+
+void
+wlc_taf_set_ulofdma_maxn(wlc_info_t *wlc, uint8 (*maxn)[D11_REV128_BW_SZ])
+{
+#if TAF_ENABLE_MU_TX && TAF_ENABLE_UL
+	wlc_taf_info_t *taf_info = wlc->taf_handle;
+
+	if (!taf_info || !maxn) {
+		TAF_ASSERT(taf_info && maxn);
+		return;
+	}
+
+	STATIC_ASSERT(sizeof(taf_info->ulofdma_maxn) == sizeof(*maxn));
+	memcpy(taf_info->ulofdma_maxn, maxn, sizeof(taf_info->ulofdma_maxn));
+
+#ifdef TAF_DBG
+	{
+		int bw = 0;
+
+		BCM_REFERENCE(bw);
+		for (bw = 0; bw < D11_REV128_BW_SZ; bw++) {
+			WL_TAFT1(taf_info, "maxn[%d]=%d\n", bw, taf_info->ulofdma_maxn[bw]);
+		}
+		WL_TAFT2(taf_info, "ULOFDMA maxn updated.\n");
+	}
+#endif /* TAF_DBG */
+#endif /* TAF_ENABLE_MU_TX && TAF_ENABLE_UL */
 }
 
 #ifdef TAF_PKTQ_LOG

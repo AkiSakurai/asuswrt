@@ -116,6 +116,7 @@ ifeq ($(wildcard $(SRCBASE)/router/networkmap/*.c),)
 all: 
 	-cp -f prebuild/networkmap networkmap
 	-cp -f prebuild/asusdiscovery asusdiscovery
+	-cp -f prebuild/arpstorm arpstorm
 else
 all: $(EXEC) asusdiscovery arpstorm
 endif
@@ -145,7 +146,7 @@ install:
 ifneq ($(AC2900),y)
 	install -D asusdiscovery $(INSTALLDIR)/usr/sbin/asusdiscovery
 	$(STRIP) $(INSTALLDIR)/usr/sbin/asusdiscovery
-ifneq ($(wildcard $(SRCBASE)/router/networkmap/*.c),)
+ifneq ($(wildcard $(SRCBASE)/router/networkmap/arpstorm),)
 	install -D arpstorm $(INSTALLDIR)/usr/sbin/arpstorm
 	$(STRIP) $(INSTALLDIR)/usr/sbin/arpstorm
 endif

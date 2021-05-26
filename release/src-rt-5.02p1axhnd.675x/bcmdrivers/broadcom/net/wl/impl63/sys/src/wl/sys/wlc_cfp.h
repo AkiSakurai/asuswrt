@@ -84,7 +84,6 @@
 
 /** CFP public module states */
 struct wlc_cfp_info {
-	int  unit;	/**< radio id */
 	bool _tcb;	/**< runtime enable check for Transmit Control Block */
 	bool _rcb;	/**< runtime enable check for Recieve Control Block */
 
@@ -119,10 +118,7 @@ extern bool wlc_cfp_tcb_is_ini_valid(wlc_info_t *wlc, struct scb *scb, uint8 pri
 	scb_cfp_t **scb_cfp);
 
 /** Link cfp with bus layer flow */
-extern int wlc_scb_cfp_tcb_link(wlc_info_t *wlc, uint16 ringid, uint8 tid,
-	struct scb *scb, uint8** tcb_state, uint16* cfp_flowid);
-extern int wlc_scb_cfp_delink(wlc_info_t *wlc, struct scb *scb,
-	uint8 tid, uint16 ringid);
+extern int wlc_scb_cfp_tcb_link(wlc_info_t *wlc, struct scb *scb, uint8** tcb_state);
 
 /* update legacy TX counters */
 extern void wlc_cfp_incr_legacy_tx_cnt(wlc_info_t *wlc, struct scb *scb, uint8 tid);
@@ -157,16 +153,6 @@ extern void wlc_cfp_cq_fifo_inc(wlc_info_t *wlc, struct scb *scb, uint8 prio, ui
 extern void wlc_cfp_cq_fifo_dec(wlc_info_t *wlc, struct scb *scb, uint8 prio, uint32 cnt);
 extern void wlc_cfp_cq_fifo_upd(wlc_info_t *wlc, struct scb *scb, uint8 ac);
 
-/** Link AMT A2[Transmitter] index with CFP flow ID */
-extern void wlc_cfp_amt_link_reinit(wlc_info_t *wlc, int idx,
-	const struct ether_addr *addr);
-
-/** De-Link AMT - CFP flowids */
-extern void wlc_cfp_amt_flowid_delink(wlc_info_t *wlc, int amt_idx, uint16 cfp_flowid);
-/** Return Linked CFP flow ID */
-extern uint16 wlc_cfp_amt_linkid_get(wlc_info_t *wlc, int amt_idx);
-extern void wlc_cfp_amt_linkid_set(wlc_info_t *wlc, int amt_idx, uint16 cfp_flowid);
-
 /** CFP RX  processing */
 extern bool wlc_cfp_bmac_recv(wlc_hw_info_t *wlc_hw, uint fifo, wlc_dpc_info_t *dpc);
 
@@ -181,13 +167,8 @@ extern int wlc_cfp_scb_rx_queue_count(wlc_info_t* wlc, struct scb *scb);
 extern void wlc_cfp_rx_hwa_pkt_audit(wlc_info_t* wlc, void* p);
 #endif /* DONGLEBUILD */
 
-#if defined(DONGLEBUILD)
 /* Exported functions to SQS */
-extern scb_cfp_t *wlc_scb_cfp_id2ptr(uint16 cfp_flowid);
-#else /* ! DONGLEBUILD */
-extern struct scb *wlc_cfp_flowid_2_scb(wlc_info_t * wlc, uint16 cfp_flowid);
-extern uint16 wlc_scb_get_cfp_flowid(wlc_info_t *wlc, struct scb *scb);
-#endif /* ! DONGLEBUILD */
+extern scb_cfp_t *wlc_scb_cfp_id2ptr(wlc_info_t* wlc, uint16 cfp_flowid);
 
 extern void* wlc_scb_cfp_cubby(wlc_info_t *wlc, struct scb *scb);
 

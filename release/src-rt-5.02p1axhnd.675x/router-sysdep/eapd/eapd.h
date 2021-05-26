@@ -1,7 +1,7 @@
 /*
  * Broadcom EAP dispatcher (EAPD) module include file
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: eapd.h 779585 2019-10-03 00:10:31Z $
+ * $Id: eapd.h 789955 2020-08-12 10:21:09Z $
  */
 
 #ifndef _EAPD_H_
@@ -131,7 +131,7 @@ typedef struct eapd_app {
 	eapd_cb_t	*cb; /* for each interface which running application */
 } eapd_app_t, eapd_wps_t, eapd_nas_t, eapd_wai_t, eapd_dcs_t, eapd_mevent_t, eapd_bsd_t,
 eapd_ssd_t, eapd_eventd_t, eapd_drsdbd_t, eapd_aspm_t, eapd_visdcoll_t, eapd_cevent_t, eapd_wlevent_t,
-eapd_wlceventd_t, eapd_wbd_t, eapd_evt_t, eapd_ecbd_t;
+eapd_wlceventd_t, eapd_wbd_t, eapd_evt_t, eapd_ecbd_t, eapd_rgd_t;
 
 typedef struct eapd_wksp {
 	uchar			packet[EAPD_WKSP_RECV_DATA_MAX_LEN];
@@ -154,6 +154,7 @@ typedef struct eapd_wksp {
 	eapd_cevent_t		cevent;
 	eapd_wbd_t		wbd;
 	eapd_evt_t		evt;
+	eapd_rgd_t		rgd;
 	eapd_wlevent_t          wlevent;
 	eapd_wlceventd_t	wlceventd;
 	int			flags;
@@ -196,6 +197,7 @@ typedef enum {
 	EAPD_APP_CEVENT,
 	EAPD_APP_EVT,
 	EAPD_APP_ECBD,
+	EAPD_APP_RGD,
 	EAPD_APP_WLEVENT,
 	EAPD_APP_WLCEVENTD
 } eapd_app_mode_t;
@@ -222,7 +224,8 @@ typedef enum {
 #define EAPD_CAP_EVENTD	0x1000
 #define EAPD_CAP_ECBD   0x2000
 #define EAPD_CAP_WBD	0x10000
-#define EAPD_CAP_WLEVENT 0x20000
+#define EAPD_CAP_RGD	0x20000
+#define EAPD_CAP_WLEVENT 0x40000
 /* Apps */
 int wps_app_init(eapd_wksp_t *nwksp);
 int wps_app_deinit(eapd_wksp_t *nwksp);
@@ -300,7 +303,7 @@ void wlevent_app_recv_handler(eapd_wksp_t *nwksp, eapd_cb_t *from,
 #ifdef BCM_BSD
 int bsd_app_init(eapd_wksp_t *nwksp);
 int bsd_app_deinit(eapd_wksp_t *nwksp);
-int bsd_app_sendup(eapd_wksp_t *nwksp, uint8 *pData, int pLen, char *fromlan, int bss);
+int bsd_app_sendup(eapd_wksp_t *nwksp, uint8 *pData, int pLen, char *fromlan);
 #if EAPD_WKSP_AUTO_CONFIG
 int bsd_app_enabled(char *name);
 #endif // endif
@@ -395,7 +398,7 @@ void cevent_copy_eapol_and_forward(eapd_wksp_t *nwksp, char *ifname,
 #ifdef BCM_WBD
 int wbd_app_init(eapd_wksp_t *nwksp);
 int wbd_app_deinit(eapd_wksp_t *nwksp);
-int wbd_app_sendup(eapd_wksp_t *nwksp, uint8 *pData, int pLen, char *fromlan, int bss);
+int wbd_app_sendup(eapd_wksp_t *nwksp, uint8 *pData, int pLen, char *fromlan);
 #if EAPD_WKSP_AUTO_CONFIG
 int wbd_app_enabled(char *name);
 #endif // endif
@@ -427,6 +430,19 @@ int ecbd_app_handle_event(eapd_wksp_t *nwksp, uint8 *pData, int Len, char *from)
 void ecbd_app_recv_handler(eapd_wksp_t *nwksp, eapd_cb_t *from,
 	uint8 *pData, int *pLen);
 #endif /* BCM_ECBD */
+
+#ifdef BCM_RGD
+int rgd_app_init(eapd_wksp_t *nwksp);
+int rgd_app_deinit(eapd_wksp_t *nwksp);
+int rgd_app_sendup(eapd_wksp_t *nwksp, uint8 *pData, int pLen, char *from);
+#if EAPD_WKSP_AUTO_CONFIG
+int rgd_app_enabled(char *name);
+#endif // endif
+void rgd_app_set_eventmask(eapd_app_t *app);
+int rgd_app_handle_event(eapd_wksp_t *nwksp, uint8 *pData, int Len, char *from);
+void rgd_app_recv_handler(eapd_wksp_t *nwksp, eapd_cb_t *from,
+	uint8 *pData, int *pLen);
+#endif /* BCM_RGD */
 
 #ifdef BCM_WLCEVENTD
 int wlceventd_app_init(eapd_wksp_t *nwksp);

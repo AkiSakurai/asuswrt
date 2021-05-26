@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_txmod.c 774070 2019-04-09 08:16:27Z $
+ * $Id: wlc_txmod.c 785580 2020-03-31 11:58:31Z $
  */
 
 #include <wlc_cfg.h>
@@ -199,6 +199,32 @@ wlc_txmod_txpktcnt(wlc_txmod_info_t *txmodi)
 	}
 
 	return pktcnt;
+}
+
+/** flush packets for scb/tid in all txmodules */
+void
+wlc_txmod_flush_pkts(wlc_txmod_info_t *txmodi, struct scb *scb, uint8 txmod_tid)
+{
+	int fid;
+	uint8 tid;
+	txmod_info_t mod_info;
+
+	/* Call any flush handlers of registered modules only */
+	for (fid = TXMOD_START; fid < (int)txmodi->txmod_last; fid++) {
+		mod_info = txmodi->txmod[fid];
+		if (mod_info.fns.pktflush_fn) {
+			if (TXMOD_FLUSH_ALL_TIDS(txmod_tid)) {
+				for (tid = 0; tid < NUMPRIO; tid++) {
+					mod_info.fns.pktflush_fn(mod_info.ctx, scb, tid);
+				}
+			} else {
+				tid = TXMOD_TID_GET(txmod_tid);
+				mod_info.fns.pktflush_fn(mod_info.ctx, scb, tid);
+			}
+		}
+	}
+
+	return;
 }
 
 /* Dump the active txpath for the current SCB */

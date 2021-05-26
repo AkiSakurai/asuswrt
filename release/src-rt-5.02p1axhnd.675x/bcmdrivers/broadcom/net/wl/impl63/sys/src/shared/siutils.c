@@ -19,7 +19,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: siutils.c 781829 2019-12-02 14:52:28Z $
+ * $Id: siutils.c 787019 2020-05-14 03:53:09Z $
  */
 
 #include <bcm_cfg.h>
@@ -2262,7 +2262,7 @@ BCMATTACHFN(si_chipid_fixup)(si_t *sih)
 			sii->chipnew = sih->chip; /* save it */
 			sii->pub.chip = BCM43602_CHIP_ID; /* chip class */
 		break;
-		case BCM43692_CHIP_ID:
+		case BCM43692_CHIP_ID: /* also for BCM6705 */
 		case BCM43693_CHIP_ID:
 			sii->chipnew = sih->chip; /* save it */
 			sii->pub.chip = BCM6710_CHIP_ID; /* chip class */
@@ -4971,6 +4971,9 @@ BCMNMIATTACHFN(si_devpath)(si_t *sih, char *path, int size)
 		} else if (EMBEDDED_2x2AX_CORE(sih->chip)) {
 			idx = (sih->enum_base == BCM47622_DEV_B_PHYS_ADDR) ? BCM47622_WLAN_DEV_B :
 			                                                     BCM47622_WLAN_DEV_A;
+		} else if (BCM6878_CHIP(sih->chip)) {
+			/* Single core SoC. Index should be 0 here */
+			idx = 0;
 		} else {
 			idx = si_coreidx(sih);
 		}
@@ -7698,7 +7701,6 @@ si_pmu_avb_clk_set(si_t *sih, osl_t *osh, bool set_flag)
 		case BCM4360_CHIP_ID:
 		case BCM4366_CHIP_ID:
 		case BCM43684_CHIP_ID:
-		case BCM63178_CHIP_ID:
 			si_pmu_avbtimer_enable(sih, osh, set_flag);
 			break;
 		default:

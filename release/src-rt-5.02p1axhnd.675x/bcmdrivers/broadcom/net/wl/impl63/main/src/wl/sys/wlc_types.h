@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wlc_types.h 781541 2019-11-22 23:30:46Z $
+ * $Id: wlc_types.h 784470 2020-02-27 20:11:47Z $
  */
 
 #ifndef _wlc_types_h_
@@ -198,6 +198,8 @@ typedef struct wlc_txh_info wlc_txh_info_t;
 typedef struct wlc_staprio_info wlc_staprio_info_t;
 typedef struct wlc_stamon_info wlc_stamon_info_t;
 typedef struct wlc_monitor_info wlc_monitor_info_t;
+
+typedef struct wlc_csimon_info wlc_csimon_info_t;
 
 typedef struct wlc_debug_crash_info wlc_debug_crash_info_t;
 

@@ -267,7 +267,7 @@ acs_set_dfs_forced_chspec(acs_chaninfo_t * c_info)
 	wl_dfs_forced_t *dfs_frcd;
 	char smbuf[WLC_IOCTL_SMLEN];
 
-	ACSD_INFO("%s: Setting forced chanspec: 0x%x!\n", c_info->name, chspec);
+	ACSD_INFO("%s: Setting forced chanspec: 0x%4x (%s)!\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 
 	if (BAND_2G(rsi->band_type) || !rsi->reg_11h ||
 		((BAND_5G(rsi->band_type)) && (c_info->acs_dfs == ACS_DFS_DISABLED))) {
@@ -305,8 +305,8 @@ acs_set_dfs_forced_chspec(acs_chaninfo_t * c_info)
 	}
 	ret = acs_set_dfs_chan_forced(c_info, dfs_frcd, WL_DFS_FORCED_PARAMS_FIXED_SIZE +
 		(dfs_frcd->chspec_list.num * sizeof(chanspec_t)));
-	ACSD_INFO("%s: set dfs forced chanspec 0x%x %s!\n",
-		c_info->name, chspec, ret? "Fail" : "Succ");
+	ACSD_INFO("%s: set dfs forced chanspec 0x%4x (%s) %s!\n",
+		c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf), ret? "Fail" : "Succ");
 
 exit:
 	ACS_FREE(dfs_frcd);
@@ -325,9 +325,9 @@ acsd_trigger_dfsr_check(acs_chaninfo_t *c_info)
 	bool is_dfs = c_info->cur_is_dfs;
 	int bw = CHSPEC_BW(c_info->cur_chspec);
 
-	ACSD_5G("%s: sta_status:0x%x chanspec:0x%x acs_dfs:%d acs_assoclist:%p is_dfs:%d\n",
+	ACSD_5G("%s: sta_status:0x%x chanspec:0x%4x (%s) acs_dfs:%d acs_assoclist:%p is_dfs:%d\n",
 		c_info->name,
-		c_info->sta_status, c_info->cur_chspec,
+		c_info->sta_status, c_info->cur_chspec, wf_chspec_ntoa(c_info->cur_chspec, chanspecbuf),
 		c_info->acs_dfs, c_info->acs_assoclist, is_dfs);
 
 	if ((bw > WL_CHANSPEC_BW_40) &&

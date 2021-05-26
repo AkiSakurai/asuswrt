@@ -2529,7 +2529,7 @@
 
   <parameter name="WlWpa" type="string" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="tkip" maxLength="16" />
 
-  <parameter name="WlAuthMode" type="string" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="open" maxLength="18" />
+  <parameter name="WlAuthMode" type="string" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="open" maxLength="64" />
 
   <parameter name="WlWpaGTKRekey" type="int" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="0" />
 

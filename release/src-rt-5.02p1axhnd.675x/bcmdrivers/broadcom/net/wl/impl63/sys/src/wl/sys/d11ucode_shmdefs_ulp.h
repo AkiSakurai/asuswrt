@@ -5,7 +5,7 @@
  * FILE-CSTYLED
  *
  * Ucode directory: ../
- * Derived from major_rev = 1570, minor_rev = 112
+ * Derived from major_rev = 1570, minor_rev = 159
  *
  * Copyright 2020 Broadcom
  *
@@ -51,7 +51,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: /tmp/ucrelease_FJfRe6/ucode_checkout/build/d11ucode_shmdefs_ulp.h Jan. 09, 2020 02:38:29 PM <sw932222> $
+ * $Id: /tmp/ucrelease_ytyZVJ/ucode_checkout/build/d11ucode_shmdefs_ulp.h Jul. 20, 2020 10:09:54 AM <ag924155> $
  */
 // COMMON SHMS
 #define	M_PSM_SOFT_REGS	(0x0*2)

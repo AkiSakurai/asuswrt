@@ -19,7 +19,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: hndpmu.c 781821 2019-12-02 13:19:11Z $
+ * $Id: hndpmu.c 788587 2020-07-06 01:46:22Z $
  */
 
 /**
@@ -1616,10 +1616,12 @@ void si_pmu_avbtimer_enable(si_t *sih, osl_t *osh, bool set_flag)
 		clock uses GPIOs for input, and 10 means AVB clock uses GPIOs for output
 		*/
 
-		pmu_corereg(sih, SI_CC_IDX, chipcontrol_addr,
-		           0xffffffff, 0);
-		pmu_corereg(sih, SI_CC_IDX, chipcontrol_data,
-		           0x3000, 0x2000);
+		if (set_flag) {
+			pmu_corereg(sih, SI_CC_IDX, chipcontrol_addr,
+				0xffffffff, 0);
+			pmu_corereg(sih, SI_CC_IDX, chipcontrol_data,
+				0x3000, 0x2000);
+		}
 	}
 
 	/* Return to original core */
@@ -6516,6 +6518,15 @@ BCMATTACHFN(si_pmu_chip_init)(si_t *sih, osl_t *osh)
 		/* Set internal/external LPO */
 		si_pmu_set_lpoclk(sih, osh);
 		break;
+	CASE_BCM6710_CHIP:
+#ifdef BCA_HNDROUTER
+		/* XXX try to WAR BCAWLAN-217960 with the way below
+		 * change the reset option to Reset the backplane, PMU to Power Up state.
+		 */
+		si_pmu_set_resetcontrol(sih, PCTL_RESETCTL_PU);
+#endif /* BCA_HNDROUTER */
+		break;
+
 	default:
 		break;
 	}
@@ -7168,6 +7179,21 @@ void si_pmu_chipcontrol_xtal_settings_4369(si_t *sih)
 
 	si_pmu_chipcontrol(sih, PMU_CHIPCTL3, u32Mask, u32Val);
 
+}
+
+/*
+ * si_pmu_set_resetcontrol
+ * Set the PMU's reset behavior for NIC-mode devices
+ */
+void
+si_pmu_set_resetcontrol(si_t *sih, uint32 value)
+{
+	if (PMUREV(sih->pmurev) >= 35) {
+		value &= PCTL_RESETCTL_MASK;
+		pmu_corereg(sih, SI_CC_IDX, pmucontrol, PCTL_RESETCTL_MASK, value);
+	} else {
+		PMU_ERROR(("%s not set due to version %d\n", __FUNCTION__, PMUREV(sih->pmurev)));
+	}
 }
 #endif /* !BCMDONGLEHOST */
 

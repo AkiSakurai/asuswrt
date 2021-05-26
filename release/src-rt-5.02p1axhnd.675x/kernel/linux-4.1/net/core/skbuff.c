@@ -246,6 +246,15 @@ void skb_shinforeset(struct skb_shared_info *skb_shinfo)
 }
 EXPORT_SYMBOL(skb_shinforeset);
 
+static inline void bcm_skb_set_end_pointer(struct sk_buff *skb, const int end_offset)
+{
+#ifdef NET_SKBUFF_DATA_USES_OFFSET
+	skb->end = end_offset; 
+#else
+	skb->end = skb->head + end_offset;
+#endif
+}
+
 /**
  *
  *	skb_headerinit  -   initialize a socket buffer header
@@ -275,7 +284,9 @@ void skb_headerinit(unsigned int headroom, unsigned int datalen,
 	skb_set_tail_pointer(skb, datalen);
 	/* FIXME!! check if this alignment is to ensure cache line aligned?
 	 * make sure skb buf ends at 16 bytes boudary */
-	skb->end = skb->tail + (0x10 - (((uintptr_t)skb_tail_pointer(skb)) & 0xf));
+
+	bcm_skb_set_end_pointer(skb, SKB_DATA_ALIGN(headroom + datalen));
+
 	skb->len = datalen;
 
 #if defined (CONFIG_BCM_KF_BPM_BUF_TRACKING)
@@ -1161,7 +1172,9 @@ struct sk_buff *skb_xlate_dp(struct fkbuff * fkb_p, uint8_t *dirty_p)
 	skb_set_tail_pointer(skb_p, fkb_p->len);
 	/* FIXME!! check whether this has to do with the cache line size
 	 * make sure skb buf ends at 16 bytes boudary */
-	skb_p->end = skb_p->tail + (0x10 - (((uintptr_t)skb_tail_pointer(skb_p)) & 0xf)); 
+
+	bcm_skb_set_end_pointer(skb_p, SKB_DATA_ALIGN((skb_p->data -skb_p->head) +
+		fkb_p->len + BCM_SKB_TAILROOM));
 
 #if defined (CONFIG_BCM_KF_BPM_BUF_TRACKING)
 	GBPM_INC_REF(skb_p->data);

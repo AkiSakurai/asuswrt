@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_cache.c 781825 2019-12-02 14:01:45Z $
+ * $Id: phy_ac_cache.c 783144 2020-01-15 00:17:24Z $
  */
 
 #include <phy_ac.h>
@@ -2413,7 +2413,8 @@ wlc_phy_cal_dump_acphy(phy_type_cache_ctx_t * cache_ctx, struct bcmstrbuf *b)
 					ii = ii - 1024;
 				}
 				bcm_bprintf(b, "[%2d] %4d, %4d ", tia_idx, rr, ii);
-				if (((tia_idx & 7) == 7) && (tia_idx != dcoe_size - 1)) {
+				if (((tia_idx  == 8) || (tia_idx  == 17) || (tia_idx  == 26)) &&
+					(tia_idx != dcoe_size - 1)) {
 					bcm_bprintf(b, "\n   ");
 				}
 			}

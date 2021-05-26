@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -90,7 +90,7 @@
 #endif /* EMFDBG */
 
 /* Function pointer declarations */
-typedef int32   (*forward_fn_ptr)(void *, void *, uint32, void *, bool);
+typedef int32   (*forward_fn_ptr)(void *, void *, uint32, void *, int);
 typedef void (*sendup_fn_ptr)(void *, void *);
 typedef int32   (*hooks_register_fn_ptr)(void *);
 typedef int32   (*hooks_unregister_fn_ptr)(void *);
@@ -130,13 +130,9 @@ typedef struct emfc_wrapper
 	void  *(*hooks_get_fn)(int cmd, void *p, void *p1, void *p2);
 	int32   (*stall_sta_check_fn)(void *wrapper, void *p, uint32 mgrp_ip);
 	/* Function called to forward frames on a specific interface */
+#endif // endif
 	int32   (*forward_fn)(void *wrapper, void *p, uint32 mgrp_ip,
 	                    void *txif, int rt_port);
-#else
-	/* Function called to forward frames on a specific interface */
-	int32   (*forward_fn)(void *wrapper, void *p, uint32 mgrp_ip,
-	                    void *txif, bool rt_port);
-#endif // endif
 	/* Function called to send packet up the stack */
 	void (*sendup_fn)(void *wrapper, void *p);
 

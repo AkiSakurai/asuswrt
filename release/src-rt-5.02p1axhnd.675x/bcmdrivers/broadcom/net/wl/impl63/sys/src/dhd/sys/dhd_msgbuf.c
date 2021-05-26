@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_msgbuf.c 781569 2019-11-25 07:10:22Z $
+ * $Id: dhd_msgbuf.c 786445 2020-04-28 02:46:59Z $
  */
 
 #include <typedefs.h>
@@ -50,7 +50,10 @@
 
 #include <pcie_core.h>
 #include <bcmpcie.h>
+#include <bcmhme.h>
 #include <dhd_pcie.h>
+#include <bcm_ring.h>
+#include <linux/netlink.h>
 
 #if defined(DHD_LB)
 #include <linux/cpu.h>
@@ -145,7 +148,7 @@
 #endif // endif
 #endif /* BCM_HOST_MEM_SCB */
 
-#define DHD_FLOWRING_IOCTL_BUFPOST_PKTSZ		8192
+#define DHD_FLOWRING_IOCTL_BUFPOST_PKTSZ		16384
 
 #define DHD_FLOWRING_MAX_EVENTBUF_POST			8
 #define DHD_FLOWRING_MAX_IOCTLRESPBUF_POST		8
@@ -169,6 +172,35 @@
 /* Unused item_misc field in a msgbuf_ring */
 #define DHD_MSGBUF_RING_ITEM_MISC   (~0)
 struct msgbuf_ring; /* ring context for common and flow rings */
+
+/**
+ * +--------------------------------------------------------------------------+
+ * CSI Monitor handling
+ * +--------------------------------------------------------------------------+
+ */
+#include <bcm_csimon.h>
+
+typedef struct dhd_csimon
+{
+	uint32                * wr_ptr;
+	uint32                * rd_ptr;
+	csimon_ring_elem_t    * table;
+	bcm_ring_t              ring;
+	struct sock           * nl_sock;
+	uint32                  num_records;
+	uint32                  drops;		/* example: CSIMON_FILESIZE ovfl */
+	uint32			fopen_fails;	/* Failures to open CSIMON file */
+
+	csimon_ipc_hme_t      * ipc_hme;
+} dhd_csimon_t;
+
+/* netlink subsystem for CSI Monitor */
+#if !defined(NETLINK_CSIMON)
+#define NETLINK_CSIMON
+#define NETLINK_CSIMON0 23	/* still unused in /uapi/linux/netlink.h in 4.1 */
+#define NETLINK_CSIMON1 22	/* still unused in /uapi/linux/netlink.h in 4.1 */
+#endif // endif
+#define CSIMON_GRP_BIT 2	/* Multicast group bit for CSI record transfer */
 
 /**
  * RxPost, TxPost, RxCmpl and TxCmpl datapath ring handlers
@@ -485,6 +517,7 @@ typedef struct dhd_prot {
 
 	/* Host Memory Extension service in PCIE IPC Rev 0x82 */
 	dhd_hme_t	hme;
+	dhd_csimon_t csimon;
 
 	uint16		ioctl_seq_no;
 	uint16		data_seq_no;
@@ -983,9 +1016,15 @@ dhd_prot_h2d_sync_init(dhd_pub_t *dhd)
  *
  *  See dhd_prot_init() where the pcie_ipc::host_mem_len and host_mem_haddr64
  *  get populated.
+ *
+ *  During Host-Dongle PCIE IPC training stage, DHD bus layer explicitly resets
+ *  HME (to free any previously allocated DMA bufs, from a previous incarnation
+ *  of a dongle firmware download/handshake. Subsequently, if the new dongle
+ *  firmware explicitly specifies HME segments, the Bus layer will invoke
+ *  dhd_prot_hme_init().
+ *  dhd_prot_hme_reset() is also invoked during the Proto layer reset.
  * +---------------------------------------------------------------------------+
  */
-static void dhd_prot_hme_fini(dhd_pub_t *dhd);
 
 int
 dhd_prot_hme_init(dhd_pub_t *dhd, uint16 *hme_page_req_table)
@@ -1030,7 +1069,7 @@ dhd_prot_hme_init(dhd_pub_t *dhd, uint16 *hme_page_req_table)
 		ret = dhd_dma_buf_alloc(dhd, &hme->user_dma_buf[id], bytes);
 		if (ret != BCME_OK) {
 			DHD_ERROR(("HME: User alloc %u bytes failure\n", bytes));
-			goto hme_free;
+			goto hme_reset;
 		}
 
 		DHD_ERROR(("HME: User #%d len %5u,%7u PhysAddr lo 0x%08x hi 0x%08x\n",
@@ -1048,7 +1087,7 @@ dhd_prot_hme_init(dhd_pub_t *dhd, uint16 *hme_page_req_table)
 	/* Successfully allocated all requested users HME extensions */
 
 	if (hme->tot_bytes == 0U) { /* Oddly no request ... but yet dcap1 set? */
-		goto hme_free; /* free hme->user_haddr64_dma_buf */
+		goto hme_reset; /* free hme->user_haddr64_dma_buf */
 	}
 
 	OSL_CACHE_FLUSH((void *)hme->user_haddr64_dma_buf.va,
@@ -1062,26 +1101,391 @@ dhd_prot_hme_init(dhd_pub_t *dhd, uint16 *hme_page_req_table)
 
 	return ret;
 
-hme_free:
-	dhd_prot_hme_fini(dhd);
+hme_reset:
+	dhd_prot_hme_reset(dhd); /* Free any/all HME dma bufs */
 
 	return ret;
 
 }   /* dhd_prot_hme_init() */
 
-static void
-dhd_prot_hme_fini(dhd_pub_t *dhd)
+int /* Free any/all dma_buf(s) that may have been allocated for HME */
+dhd_prot_hme_reset(dhd_pub_t *dhd)
 {
 	int id;
 	dhd_hme_t *hme = &dhd->prot->hme;
 
-	dhd_dma_buf_free(dhd, &hme->user_haddr64_dma_buf);
+	DHD_ERROR(("HME: Reset\n"));
 
+	/* Free the DMA Bufs as new HME request may not match previous */
+	dhd_dma_buf_free(dhd, &hme->user_haddr64_dma_buf);
 	for (id = 0; id < PCIE_IPC_HME_USERS_MAX; id++) {
 		dhd_dma_buf_free(dhd, &hme->user_dma_buf[id]);
 	}
+	return BCME_OK;
 
-}   /* dhd_prot_hme_fini() */
+}	/* dhd_prot_hme_reset() */
+
+/**
+ * +--------------------------------------------------------------------------+
+ * CSI Monitor handling
+ * +--------------------------------------------------------------------------+
+ */
+
+/**
+ * Theory of operation:
+ * ====================
+ *
+ * The DHD side of the Channel State Information Monitor (CSIMON) includes
+ * reading or consuming the CSI records/structures from the circular ring in
+ * the host memory and making them available to the user. DHD
+ * CSIMON watchdog is invoked periodically to consume the record
+ * and send over a netlink socket or write to a file.
+ *
+ * The circular ring of CSI records consists of a preamble in addition to the
+ * records. The preamble mantains the read index, the write index, and pointer
+ * to the start of the records besides the version and the ring item size.
+ *
+ * In case of a netlink socket, DHD multicasts each record over
+ * to a multicast group. The user application needs to become a
+ * member of that group to receive the CSI record.
+ *
+ * In case of a file output, DHD writes the CSI records in a
+ * file /var/csimon sequentially as they are read/consumed from
+ * the circular ring. The file has a size limit. Once the limit
+ * is reached, the next records are not copied and they are
+ * essentially dropped. So it is user's responsibility to copy
+ * the file out of the AP and remove it. DHD will then create a
+ * new file of the same name and start populating the next CSI
+ * records.
+ *
+ * CSI record generation:
+ * The dongle sends a null QoS frame to each client in the CSIMON client list
+ * periodically. When a client responds with an ACK, the PHY layer computes
+ * the CSI based on the PHY preamble. It is stored in SVMP memory. During
+ * TxStatus processing, the dongle recognizes the Null frame's ACK and copies
+ * the CSI report from the SVMP memory to the host memory in the HME (Host
+ * Memory Extension) region in the circular ring of the CSI records. In addition
+ * to the CSI report, it also copies additional information like RSSI, MAC
+ * address, as a part of the overall CSI record.
+ *
+ * DHD side statistics:
+ * num_records	: Total records read from the circular ring
+ * drops	: DHD drops a record if multicasting over netlink
+ * fails or the destination file is full
+ *
+ */
+
+static inline uint32 // Fetch dongle posted WR index
+__dhd_csimon_pull_wr(dhd_csimon_t *csimon)
+{
+	OSL_CACHE_INV((void*)(csimon->wr_ptr), sizeof(uint32));
+	return *(csimon->wr_ptr);
+} // __dhd_csimon_pull_wr()
+
+static inline uint32 // Fetch rd index in preamble shared with dongle
+__dhd_csimon_pull_rd(dhd_csimon_t *csimon)
+{
+	OSL_CACHE_INV((void*)(csimon->rd_ptr), sizeof(uint32));
+	return *(csimon->rd_ptr);
+} // __dhd_csimon_pull_wr()
+
+static inline void // Commit rd pointer and push dongle via preamble
+__dhd_csimon_push_rd(dhd_csimon_t *csimon)
+{
+	*(csimon->rd_ptr) = (uint32)csimon->ring.read;
+	OSL_CACHE_FLUSH((void*)(csimon->rd_ptr), sizeof(uint32));
+} // __dhd_csimon_push_rd()
+
+#ifdef CSIMON_FILE_BUILD
+#include <linux/fs.h>
+
+static int
+dhd_csimon_write(dhd_csimon_t *csimon, void * csi_buf, ssize_t csi_buf_len)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0))
+	ssize_t         ret;
+	mm_segment_t    old_fs;
+	struct file     *file;
+	loff_t          offset;
+	int             flags       = O_RDWR | O_CREAT | O_LARGEFILE | O_SYNC;
+	const char      *filename   = CSIMON_FILENAME;
+
+	ASSERT(csimon != NULL);
+	ASSERT(csi_buf != NULL);
+
+	old_fs = get_fs(); /* current addr_limit: user|kernel space */
+	set_fs(KERNEL_DS); /* change to "kernel data segment" address limit */
+
+	file = filp_open(filename, flags, 0600);
+	if (IS_ERR(file)) {
+		DHD_ERROR(("%s filp_open(%s) failed\n", __FUNCTION__, filename));
+		ret = PTR_ERR(file);
+		csimon->fopen_fails++;
+		goto exit2;
+	}
+
+	offset = default_llseek(file, 0, SEEK_END); /* seek to EOF */
+	if (offset < 0) {
+		ret = (ssize_t)offset;
+		goto exit1;
+	}
+
+	if (offset >= CSIMON_FILESIZE) {    /* csimon file is bounded, drop */
+		ret = BCME_NORESOURCE;
+		goto exit1;
+	}
+
+	ret = kernel_write(file, csi_buf, csi_buf_len, &offset);
+	if (ret != csi_buf_len) {
+		DHD_ERROR(("%s kernel_write %s failed: %zd\n",
+			__FUNCTION__, filename, ret));
+		if (ret > 0)
+			ret = -EIO;
+		goto exit1;
+	}
+
+	ret = BCME_OK;
+
+exit1:
+	filp_close(file, NULL);
+
+exit2:
+	set_fs(old_fs); // restore saved address limit
+
+	return ret;
+
+#else   /* LINUX_VERSION_CODE < 4 */
+	return BCME_OK;
+#endif	/* LINUX_VERSION_CODE < 4 */
+
+} // dhd_csimon_write()
+
+#else /* ! CSIMON_FILE_BUILD */
+
+static int /* send the CSI record over netlink socket to the user application */
+dhd_csimon_netlink_send(dhd_csimon_t *csimon, void * csi_buf, ssize_t csi_buf_len)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0))
+	struct sk_buff *skb = NULL;
+	struct nlmsghdr *nlmh = NULL;
+	int ret;
+
+	/* Allocate an SKB and its data area */
+	skb = alloc_skb(NLMSG_SPACE(csi_buf_len), GFP_KERNEL);
+	if (skb == NULL) {
+		DHD_ERROR(("Allocation failure!\n"));
+		return BCME_NORESOURCE;
+	}
+	skb_put(skb, NLMSG_SPACE(csi_buf_len));
+
+	/* Fill in the netlink msg header that is at skb->data */
+	nlmh = (struct nlmsghdr *)skb->data;
+	nlmh->nlmsg_len = NLMSG_SPACE(csi_buf_len);
+	nlmh->nlmsg_pid = 0; /* kernel */
+	nlmh->nlmsg_flags = 0;
+
+	/* Copy the CSI record into the netlink SKB structure */
+	/* XXX Can we avoid this copy inside kernel space? Apparently mmap netlink
+	 * could do but not sure if we can use it in this case where we have the
+	 * CSI records in HME. Also the mmap netlink support has been removed from
+	 * the latest Linux kernels.
+	 */
+	memcpy(NLMSG_DATA(nlmh), csi_buf, csi_buf_len);
+	{
+		struct timespec ts;
+		getnstimeofday(&ts);
+		DHD_INFO(("%s: nl multicast at %lu.%lu for skb %p nlmh %p \n",
+		          __FUNCTION__, ts.tv_sec, ts.tv_nsec/1000, skb, nlmh));
+	}
+
+	/* Send the CSI record over netlink multicast */
+	if (csimon->nl_sock == NULL) {
+		DHD_ERROR(("%s: nl mcast not done as nl_sock is NULL\n", __FUNCTION__));
+		return BCME_NORESOURCE;
+	}
+	ret = netlink_broadcast(csimon->nl_sock, skb, 0, CSIMON_GRP_BIT, GFP_KERNEL);
+	if (ret < 0) {
+		DHD_ERROR(("%s: nl mcast failed %d sock %p skb %p\n", __FUNCTION__,
+		           ret, csimon->nl_sock, skb));
+		return ret;
+	}
+	else {
+		DHD_INFO(("%s: nl mcast successful ret %d socket %p skb %p\n",
+		           __FUNCTION__, ret, csimon->nl_sock, skb));
+	}
+
+	return BCME_OK;
+
+#else   /* LINUX_VERSION_CODE < 4 */
+	return BCME_OK;
+#endif	/* LINUX_VERSION_CODE < 4 */
+}
+
+#endif /* ! CSIMON_FILE_BUILD */
+
+static inline void
+dhd_csimon_console_print(uint16 *csi_rec)
+{
+#ifdef CSIMON_PRINT_BUILD
+	uint16 mem_len = 256 + 32; // 256 words = 512B for report and 64B for header
+	uint num_col = 16;
+	int i, j;
+
+	DHD_ERROR(("CSI record for elem idx %d at %p:\n", elem_idx, elem));
+	/* Dump the CSI record to the console */
+	for (i = 0; i < (mem_len / num_col); i++) {
+		for (j = 0; j < num_col; j++) {
+			DHD_ERROR(("0x%04x\t", csi_rec[i * num_col + j]));
+		}
+		DHD_ERROR(("\n"));
+	}
+#endif /* CSIMON_PRINT_BUILD */
+	return;
+}
+
+int //
+dhd_csimon_watchdog(dhd_pub_t *dhd)
+{
+	dhd_prot_t   * prot     = dhd->prot;
+	dhd_csimon_t * csimon   = &prot->csimon;
+	csimon_ring_elem_t * elem;
+	int elem_idx;
+
+	if (csimon->ipc_hme == NULL) return BCME_UNSUPPORTED;
+
+	if ((dhd->tickcnt % CSIMON_POLL_10MSEC_TICKS) != 0) return BCME_OK;
+
+	if (csimon->fopen_fails >= CSIMON_FILE_OPEN_FAIL_LIMIT) return BCME_NODEVICE;
+
+	/* Check whether dongle has completed the configuration of the preamble */
+	if (csimon->ipc_hme->preamble.table_daddr32 == 0U) {
+		OSL_CACHE_INV(&(csimon->ipc_hme->preamble), sizeof(csimon_preamble_t));
+		if (csimon->ipc_hme->preamble.table_daddr32 == 0U) return BCME_OK;
+	}
+
+	/* Refresh the ring's write index */
+	csimon->ring.write = (int)__dhd_csimon_pull_wr(csimon);
+
+	/* Transfer the CSI records present in the host memory ring to a file */
+	while ((elem_idx = bcm_ring_cons(&csimon->ring, CSIMON_RING_ITEMS_MAX))
+	            != BCM_RING_EMPTY)
+	{
+		elem = CSIMON_TABLE_IDX2ELEM(csimon->table, elem_idx);
+		OSL_CACHE_INV((void*)(elem), CSIMON_RING_ITEM_SIZE);
+
+		/* print on console if enabled */
+		dhd_csimon_console_print((uint16 *)(elem->data));
+
+#ifdef CSIMON_FILE_BUILD
+		if (dhd_csimon_write(csimon, elem->data, CSIMON_RING_ITEM_SIZE) != BCME_OK) {
+			csimon->drops++;
+		}
+#else /* ! CSIMON_FILE_BUILD */
+		/* transfer the CSI records over netlink socket */
+		if (dhd_csimon_netlink_send(csimon, elem->data, CSIMON_RING_ITEM_SIZE)) {
+			csimon->drops++;
+			DHD_ERROR(("%s: CSIMON drops with nl send %d\n", __FUNCTION__,
+			           csimon->drops));
+		}
+#endif /* ! CSIMON_FILE_BUILD */
+
+		csimon->num_records++;
+	}
+
+	__dhd_csimon_push_rd(csimon);
+
+	return BCME_OK;
+
+}  // dhd_csimon_watchdog()
+
+int
+dhd_csimon_dump(dhd_pub_t *dhd)
+{
+	dhd_prot_t * prot = dhd->prot;
+	dhd_csimon_t * csimon = &prot->csimon;
+
+	if (csimon->ipc_hme == NULL) {
+		DHD_ERROR(("CSIMON not supported\n"));
+		return BCME_UNSUPPORTED;
+	}
+	OSL_CACHE_INV(&(csimon->ipc_hme->preamble), sizeof(csimon_preamble_t));
+	DHD_ERROR(("CSIMON: HOST" CSIMON_VRP_FMT " DNGL" CSIMON_VRP_FMT "\n",
+		CSIMON_VRP_VAL(CSIMON_VERSIONCODE),
+		CSIMON_VRP_VAL(csimon->ipc_hme->preamble.version_code)));
+
+#ifndef CSIMON_FILE_BUILD
+	DHD_ERROR(("Netlink subsystem for CSIMON: %d\n",
+	           dhd->unit == 0 ? NETLINK_CSIMON0 : NETLINK_CSIMON1));
+#endif // endif
+
+	DHD_ERROR(("\ttable %p == daddr32 %08x, elem sz %u == %u\n",
+		csimon->table, csimon->ipc_hme->preamble.table_daddr32,
+		CSIMON_RING_ITEM_SIZE, csimon->ipc_hme->preamble.elem_size));
+	DHD_ERROR(("\t<wr,rd> ring<%02u,%02u> preamble<%02u,%02u> "
+		"#record xfers %u drops %u\n",
+		csimon->ring.write, csimon->ring.read,
+		__dhd_csimon_pull_wr(csimon), __dhd_csimon_pull_rd(csimon),
+		csimon->num_records, csimon->drops));
+
+	return BCME_OK;
+
+} // dhd_csimon_dump()
+
+int
+dhd_csimon_init(dhd_pub_t *dhd)
+{
+	dhd_prot_t   *prot   = dhd->prot;
+	dhd_csimon_t *csimon = &prot->csimon;
+	csimon_ipc_hme_t *ipc_hme;
+
+	memset(csimon, 0, sizeof(dhd_csimon_t));
+
+	ipc_hme = (csimon_ipc_hme_t *)prot->hme.user_dma_buf[HME_USER_CSIMON].va;
+
+	if (ipc_hme == NULL) {
+		DHD_ERROR(("CSIMON not supported\n"));
+		return BCME_UNSUPPORTED;
+	}
+	csimon->ipc_hme = ipc_hme;
+	csimon->wr_ptr  = &ipc_hme->preamble.write_idx.u32;
+	csimon->rd_ptr  = &ipc_hme->preamble.read_idx.u32;
+	csimon->table   = &ipc_hme->table[0];
+	bcm_ring_init(&csimon->ring);
+
+#ifndef CSIMON_FILE_BUILD
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0))
+	/* There is a netlink socket per radio */
+	if (dhd->unit == 0) {
+		csimon->nl_sock =
+		  netlink_kernel_create(&init_net, NETLINK_CSIMON0, NULL);
+	} else {
+		/* For the third radio, netlink socket creation would fail */
+		csimon->nl_sock =
+		  netlink_kernel_create(&init_net, NETLINK_CSIMON1, NULL);
+	}
+	if (csimon->nl_sock == NULL) {
+		DHD_ERROR(("Failed creating netlink: radio unit idx %d\n", dhd->unit));
+	}
+	else {
+		DHD_ERROR(("Created netlink: radio unit idx %d\n", dhd->unit));
+	}
+#endif	/* LINUX_VERSION_CODE < 4 */
+#endif /* ! CSIMON_FILE_BUILD */
+	DHD_ERROR(("CSIMON: HOST" CSIMON_VRP_FMT "\n",
+		CSIMON_VRP_VAL(CSIMON_VERSIONCODE)));
+
+	return BCME_OK;
+
+}  // dhd_csimon_init()
+
+int
+dhd_csimon_fini(dhd_csimon_t *csimon)
+{
+#ifndef CSIMON_FILE_BUILD
+	netlink_kernel_release(csimon->nl_sock);
+#endif // endif
+	return BCME_OK;
+} // dhd_csimon_fini()
 
 /*
  * +---------------------------------------------------------------------------+
@@ -3193,6 +3597,8 @@ dhd_prot_init(dhd_pub_t *dhd)
 	dhd_bcm_buzzz_init(dhd);
 #endif /* BCM_BUZZZ_STREAMING_BUILD */
 
+	dhd_csimon_init(dhd);
+
 	return BCME_OK;
 } /* dhd_prot_init */
 
@@ -3222,7 +3628,7 @@ dhd_prot_detach(dhd_pub_t *dhd)
 		dhd_dma_buf_free(dhd, &prot->host_bus_throughput_buf);
 
 		/* free all HME user dma_buf, including user pa table */
-		dhd_prot_hme_fini(dhd);
+		dhd_prot_hme_reset(dhd);
 
 #if defined(BCM_DHD_RUNNER)
 		/* free up the buffers allocated for h2dring_rxp_subm */
@@ -3303,7 +3709,7 @@ dhd_prot_detach(dhd_pub_t *dhd)
 } /* dhd_prot_detach */
 
 /**
- * dhd_prot_reset - Reset the protocol layer without freeing any objects. This
+ * dhd_prot_reset - Reset the protocol layer without freeing all objects. This
  * may be invoked to soft reboot the dongle, without having to detach and attach
  * the entire protocol layer.
  *
@@ -3333,6 +3739,8 @@ dhd_prot_reset(dhd_pub_t *dhd)
 	FOREACH_RING_IN_D2HRING_RX_CPLN(prot, rx_cpln, i) {
 		dhd_prot_ring_reset(dhd, rx_cpln);
 	}
+
+	dhd_prot_hme_reset(dhd);
 
 	dhd_dma_buf_reset(dhd, &prot->retbuf);
 	dhd_dma_buf_reset(dhd, &prot->ioctbuf);
@@ -3377,6 +3785,9 @@ dhd_prot_reset(dhd_pub_t *dhd)
 		prot->pktid_map_handle_ioctl = NULL;
 	}
 #endif /* IOCTLRESP_USE_CONSTMEM */
+
+	dhd_csimon_fini(&prot->csimon);
+
 } /* dhd_prot_reset */
 
 /* Watchdog timer function */
@@ -6705,7 +7116,7 @@ int dhd_prot_ioctl(dhd_pub_t *dhd, int ifidx, wl_ioctl_t *ioc, void *buf, int le
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
-	if (!getintvar(NULL, "debug_wl") && ioc->cmd==WLC_CURRENT_PWR) {
+	if(!getintvar(NULL, "debug_wl") && ioc->cmd==WLC_CURRENT_PWR) {
 		DHD_ERROR(("%s: unexpected wl cmd\n", __FUNCTION__));
 		return BCME_ERROR;
 	}

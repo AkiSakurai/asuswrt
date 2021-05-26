@@ -432,8 +432,9 @@ _wlc_macreq_add_del_lmem(wlc_info_t *wlc, wl_macreq_params_t *mreq, bool blockin
 		}
 	}
 
-	WL_MUTX(("wl%d val:%04x type:%04x flag:%04x len:%04x ",
-		wlc->pub->unit, val, mreq->type, mreq->flag, mreq->len));
+	WL_MUTX(("wl%d val:%04x type:%04x flag:%04x len:%04x cnt:%04x ",
+		wlc->pub->unit, val, mreq->type, mreq->flag, mreq->len,
+		wlc_read_shmx(wlc, MX_MACREQ_CNT(wlc))));
 	WL_MUTX(("msg:"));
 	for (i = 0; i < mreq->len; i++) {
 		WL_MUTX(("%04x ", mreq->lidx_list[i]));

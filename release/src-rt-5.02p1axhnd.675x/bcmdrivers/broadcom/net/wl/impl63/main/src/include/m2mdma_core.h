@@ -102,6 +102,7 @@
  * Actual number of channels instantiated is defined per M2MCORE revision.
  */
 #define M2M_CORE_CHANNELS   8
+#define M2M_CORE_CH0_OFFSET (0x200)
 
 /* M2MCORE DMA Engine (pair of transmit and receive DMA Processors) Registers */
 typedef volatile struct m2m_eng_regs {

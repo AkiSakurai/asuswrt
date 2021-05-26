@@ -1,4 +1,4 @@
-# Toploevel makefile to build hnd dongle
+# Toplevel makefile to build hnd dongle
 #
 #
 #
@@ -15,12 +15,16 @@ export LINUXDIR = $(KERNEL_DIR)
 export 	KBUILD_VERBOSE := 1
 SUBMAKE_SETTINGS = SRCBASE=$(SRCBASE) BASEDIR=$(BASEDIR)
 DONGLE_FW_PATH = $(ALLSRCBASE)/sys/src/dongle
-ENVRAM_PATH = $(ALLSRCBASE)/main/components/router/envram
+ENVRAM_PATH = $(ALLSRCBASE)/main/components/router-sysdep/envram_bin/envram
 
 -include $(KERNEL_DIR)/.config
+include $(PROFILE_FILE)
+
 EXT_CPU_ARCH_NAME := $(subst \",,$(CONFIG_BCM_CPU_ARCH_NAME))
 export EXT_CPU_ARCH_NAME
 prebuilt_files = $(shell find . -name *$(BRCM_CHIP)-$(ORIG_PROFILE_ARCH) -print)
+
+export BUILD_WLAN_TESTBED_AP
 
 .PHONY: oldconfig version pciefd clean version_info loadscript bcm_headers_install
 
@@ -37,11 +41,11 @@ check_prebuilt:
 		cp -f $(ENVRAM_PATH)/envram $(INSTALL_DIR)/usr/sbin; \
 		cp -f $(ENVRAM_PATH)/envrams $(INSTALL_DIR)/usr/sbin; \
 	fi ;
-	if [ "$(BUILD_BCM_WLAN_NO_MFGBIN)" != "y" ] && [ -f $(ALLSRCBASE)/main/components/router/hnd_wl/wl_mfgtest.ko ]; then \
+	if [ "$(BUILD_BCM_WLAN_NO_MFGBIN)" != "y" ] && [ -f $(ALLSRCBASE)/main/components/router-sysdep/hnd_wl/wl_mfgtest.ko ]; then \
 		mkdir -p $(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra; \
-		cp -f $(ALLSRCBASE)/main/components/router/hnd_wl/wl_mfgtest.ko \
+		cp -f $(ALLSRCBASE)/main/components/router-sysdep/hnd_wl/wl_mfgtest.ko \
 			$(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra; \
-		cp -f $(ALLSRCBASE)/main/components/router/hnd/hnd_mfgtest.ko \
+		cp -f $(ALLSRCBASE)/main/components/router-sysdep/hnd/hnd_mfgtest.ko \
 			$(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra; \
 	fi ;
 	if [ "$(WLTEST)" == "1" ] || [ "$(BUILD_HND_MFG)" == "y" ]; then \
@@ -64,35 +68,35 @@ bcm_headers_install:
 	@echo "impl5x/Makefile: bcm_headers_install"
 	@echo "WLTEST=$(WLTEST)  BUILD_HND_MFG=$(BUILD_HND_MFG)  BUILD_BCM_WLAN_NO_MFGBIN=$(BUILD_BCM_WLAN_NO_MFGBIN)"
 	if [ "$(WLTEST)" == "1" ] || [ "$(BUILD_HND_MFG)" == "y" ]; then \
-		if [ -f $(ALLSRCBASE)/main/components/router/hnd_wl/wl.ko ] && [ -d $(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra ]; then \
+		if [ -f $(ALLSRCBASE)/main/components/router-sysdep/hnd_wl/wl.ko ] && [ -d $(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra ]; then \
 			echo "linking wl_mfgtest.ko to generated wl.ko in fs as well as copying prebuilt."; \
 			rm -fv $(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra/wl_mfgtest.ko; \
-			cp -vf $(ALLSRCBASE)/main/components/router/hnd_wl/wl.ko \
+			cp -vf $(ALLSRCBASE)/main/components/router-sysdep/hnd_wl/wl.ko \
 				$(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra/wl.ko; \
 			ln -sv ./wl.ko $(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra/wl_mfgtest.ko; \
 			cp -vf $(ALLSRCBASE)/main/src/wl/linux/prebuilt/wl.o \
 				$(ALLSRCBASE)/main/src/wl/linux/prebuilt/wl_mfgtest.o_saved-$(BRCM_CHIP)-$(ORIG_PROFILE_ARCH); \
-			cp -vf $(ALLSRCBASE)/main/components/router/hnd_wl/wl.ko \
-				$(ALLSRCBASE)/main/components/router/hnd_wl/wl_mfgtest.ko_saved-$(BRCM_CHIP)-$(ORIG_PROFILE_ARCH); \
+			cp -vf $(ALLSRCBASE)/main/components/router-sysdep/hnd_wl/wl.ko \
+				$(ALLSRCBASE)/main/components/router-sysdep/hnd_wl/wl_mfgtest.ko_saved-$(BRCM_CHIP)-$(ORIG_PROFILE_ARCH); \
 		fi ; \
-		if [ -f $(ALLSRCBASE)/main/components/router/hnd/hnd.ko ] && [ -d $(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra ]; then \
+		if [ -f $(ALLSRCBASE)/main/components/router-sysdep/hnd/hnd.ko ] && [ -d $(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra ]; then \
 			echo "linking hnd_mfgtest.ko to generated hnd.ko in fs as well as copying prebuilt."; \
 			rm -fv $(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra/hnd_mfgtest.ko; \
-			cp -vf $(ALLSRCBASE)/main/components/router/hnd/hnd.ko \
+			cp -vf $(ALLSRCBASE)/main/components/router-sysdep/hnd/hnd.ko \
 				$(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra/hnd.ko; \
 			ln -sv ./hnd.ko $(INSTALL_DIR)/lib/modules/$(LINUX_VER_STR)/extra/hnd_mfgtest.ko; \
-			cp -vf $(ALLSRCBASE)/main/components/router/hnd/hnd.ko \
-				$(ALLSRCBASE)/main/components/router/hnd/hnd_mfgtest.ko_saved-$(BRCM_CHIP)-$(ORIG_PROFILE_ARCH); \
+			cp -vf $(ALLSRCBASE)/main/components/router-sysdep/hnd/hnd.ko \
+				$(ALLSRCBASE)/main/components/router-sysdep/hnd/hnd_mfgtest.ko_saved-$(BRCM_CHIP)-$(ORIG_PROFILE_ARCH); \
 		fi ; \
 		if ls $(ALLSRCBASE)/sys/src/dongle/bin/*/rtecdc.bin >& /dev/null; then \
-			if [ -d $(ALLSRCBASE)/43684 ] && [ -d $(INSTALL_DIR)/etc/wlan/dhd/mfg ]; then \
+			if ([ -d $(ALLSRCBASE)/43684 ] || [ -d $(ALLSRCBASE)/main/src/dongle ]) && [ -d $(INSTALL_DIR)/etc/wlan/dhd/mfg ]; then \
 				echo "with dongle src, copying generated rtecdc.bin to mfg/rtecdc.bin in fs as well as prebuilt."; \
 				cp -vrf $(ALLSRCBASE)/sys/src/dongle/bin/* \
 					$(INSTALL_DIR)/etc/wlan/dhd/mfg/; \
 				cp -vrf $(ALLSRCBASE)/sys/src/dongle/bin/* \
 					$(ALLSRCBASE)/sys/src/dongle/mfg/; \
 			fi ; \
-			if test ! -d $(ALLSRCBASE)/43684; then \
+			if [ ! -d $(ALLSRCBASE)/43684 ] && [ ! -d $(ALLSRCBASE)/main/src/dongle ]; then \
 				echo "no dongle src, copying prebuilt mfgtest rtecdc.bin to fs."; \
 				mkdir -p $(INSTALL_DIR)/etc/wlan/dhd; \
 				cp -vrf $(ALLSRCBASE)/sys/src/dongle/mfg/* \

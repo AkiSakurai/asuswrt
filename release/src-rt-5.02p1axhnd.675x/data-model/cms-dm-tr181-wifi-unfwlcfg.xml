@@ -34,7 +34,8 @@
   <parameter name="X_BROADCOM_COM_WlNvram" type="string" specSource="TR181" profile="Device2_WiFiRadio:1" requirements="W" supportLevel="ReadWrite" />
     <description source="TRx">NVRAM extra information</description>
 
-
+  <parameter name="X_BROADCOM_COM_WlUnsetNvram" type="string" specSource="TR181" profile="Device2_WiFiRadio:1" requirements="W" supportLevel="Re    adWrite" />
+    <description source="TRx">Unset NVRAM extra information</description>
 
 
 <object name="InternetGatewayDevice.Device.WiFi.X_BROADCOM_COM_BsdCfg." shortObjectName="Dev2WifiBsdCfgObject" specSource="Broadcom" profile="Device2_WiFiRadio:1" supportLevel="Present" />
@@ -244,7 +245,7 @@
   <parameter name="CurrentOperatingChannelBandwidth" type="string" specSource="TR181" profile="Unspecified" requirements="R" supportLevel="ReadOnly" />
     <description source="TRx">The channel bandwidth currently in use. </description>
  
-  <parameter name="ExtensionChannel" type="string" specSource="TR181" profile="Device2_WiFiRadio:1" requirements="W" supportLevel="ReadWrite" defaultValue="BelowControlChannel" validValuesArray="WiFiExtensionControlValues" />
+  <parameter name="ExtensionChannel" type="string" specSource="TR181" profile="Device2_WiFiRadio:1" requirements="W" supportLevel="ReadWrite" defaultValue="Auto" validValuesArray="WiFiExtensionControlValues" />
     <description source="TRx">The secondary extension channel position, applicable when operating in wide channel mode (i.e. when {{param|OperatingChannelBandwidth}} is set to {{enum|40MHz|OperatingChannelBandwidth}} or {{enum|Auto|OperatingChannelBandwidth}}).</description>
 
   <parameter name="GuardInterval" type="string" specSource="TR181" profile="Device2_WiFiRadio:1" requirements="W" supportLevel="ReadWrite" defaultValue="Auto" validValuesArray="WiFiGuardIntervalValues" />
@@ -1005,7 +1006,7 @@
 
   <parameter name="WlAuthMode" type="string" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="open" maxLength="18" />
 
-  <parameter name="WlAuthAkm" type="string" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="open" maxLength="18" validValuesArray="WlAuthAkmValues"/>
+  <parameter name="WlAuthAkm" type="string" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="open" maxLength="64" />
 
   <parameter name="X_BROADCOM_COM_WlAuth" type="int" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="0" />
 
@@ -1458,19 +1459,12 @@
   <element>WEP-128</element>
   <element>WPA-Personal</element>
   <element>WPA2-Personal</element>
+  <element>WPA3-Personal</element>
   <element>WPA-WPA2-Personal</element>
+  <element>WPA3-Personal-Transition</element>
   <element>WPA-Enterprise</element>
   <element>WPA2-Enterprise</element>
   <element>WPA-WPA2-Enterprise</element>
-
-<validstringarray name="WlAuthAkmValues" />
-  <element>open</element>
-  <element>psk</element>
-  <element>psk2</element>
-  <element>psk psk2</element>
-  <element>wpa</element>
-  <element>wpa2</element>
-  <element>wpa wpa2</element>
 
 <validstringarray name="ifOperStatusValues" />
   <element>Up</element>

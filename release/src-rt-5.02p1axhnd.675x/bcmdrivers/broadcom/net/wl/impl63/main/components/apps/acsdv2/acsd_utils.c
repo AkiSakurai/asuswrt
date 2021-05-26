@@ -41,7 +41,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acsd_utils.c 756552 2018-04-09 20:06:37Z $
+ * $Id: acsd_utils.c 784556 2020-03-02 10:22:00Z $
  */
 
 #include <stdio.h>
@@ -64,9 +64,14 @@
 #include <wlutils.h>
 #include <ctype.h> /* isprint() */
 #include "acsd.h"
+#include "acsd_svr.h"
 
 bool acsd_swap = FALSE;
+#ifdef ACS_DEBUG
+int acsd_debug_level = ACSD_DEBUG_ERROR | ACSD_DEBUG_INFO | ACSD_DEBUG_SYSLOG;
+#else
 int acsd_debug_level = ACSD_DEBUG_ERROR | ACSD_DEBUG_SYSLOG;
+#endif
 
 static const char *
 capmode2str(uint16 capability)
@@ -127,18 +132,18 @@ dump_rateset(uint8 *rates, uint count)
 	uint r;
 	bool b;
 
-	printf("[ ");
+	acsddbg("[ ");
 	for (i = 0; i < count; i++) {
 		r = rates[i] & 0x7f;
 		b = rates[i] & 0x80;
 		if (r == 0)
 			break;
-		printf("%d%s%s ", (r / 2), (r % 2)?".5":"", b?"(b)":"");
+		acsddbg("%d%s%s ", (r / 2), (r % 2)?".5":"", b?"(b)":"");
 	}
-	printf("]");
+	acsddbg("]");
 }
 
-static void
+void
 dump_bss_info(wl_bss_info_t *bi)
 {
 	char ssidbuf[SSID_FMT_BUF_LEN];
@@ -155,75 +160,75 @@ dump_bss_info(wl_bss_info_t *bi)
 
 	wl_format_ssid(ssidbuf, bi->SSID, bi->SSID_len);
 
-	printf("SSID: \"%s\"\n", ssidbuf);
+	acsddbg("SSID: \"%s\"\n", ssidbuf);
 
-	printf("Mode: %s\t", capmode2str(dtoh16(bi->capability)));
-	printf("RSSI: %d dBm\t", (int16)(dtoh16(bi->RSSI)));
+	acsddbg("Mode: %s\t", capmode2str(dtoh16(bi->capability)));
+	acsddbg("RSSI: %d dBm\t", (int16)(dtoh16(bi->RSSI)));
 
 	/*
 	 * SNR has valid value in only 109 version.
 	 * So print SNR for 109 version only.
 	 */
 	if (dtoh32(bi->version) == WL_BSS_INFO_VERSION) {
-		printf("SNR: %d dB\t", (int16)(dtoh16(bi->SNR)));
+		acsddbg("SNR: %d dB\t", (int16)(dtoh16(bi->SNR)));
 	}
 
-	printf("noise: %d dBm\t", bi->phy_noise);
+	acsddbg("noise: %d dBm\t", bi->phy_noise);
 	if (bi->flags) {
 		bi->flags = dtoh16(bi->flags);
-		printf("Flags: ");
-		if (bi->flags & WL_BSS_FLAGS_FROM_BEACON) printf("FromBcn ");
-		if (bi->flags & WL_BSS_FLAGS_FROM_CACHE) printf("Cached ");
-		if (bi->flags & WL_BSS_FLAGS_RSSI_ONCHANNEL) printf("RSSI on-channel ");
-		printf("\t");
+		acsddbg("Flags: ");
+		if (bi->flags & WL_BSS_FLAGS_FROM_BEACON) acsddbg("FromBcn ");
+		if (bi->flags & WL_BSS_FLAGS_FROM_CACHE) acsddbg("Cached ");
+		if (bi->flags & WL_BSS_FLAGS_RSSI_ONCHANNEL) acsddbg("RSSI on-channel ");
+		acsddbg("\t");
 	}
-	printf("chanspec: %x\n", dtohchanspec(bi->chanspec));
+	acsddbg("chanspec: 0x%4x (%s)\n", dtohchanspec(bi->chanspec), wf_chspec_ntoa(bi->chanspec, chanspecbuf));
 
-	printf("BSSID: %s\t", wl_ether_etoa(&bi->BSSID));
+	acsddbg("BSSID: %s\t", wl_ether_etoa(&bi->BSSID));
 
-	printf("Capability: ");
+	acsddbg("Capability: ");
 	bi->capability = dtoh16(bi->capability);
-	if (bi->capability & DOT11_CAP_ESS) printf("ESS ");
-	if (bi->capability & DOT11_CAP_IBSS) printf("IBSS ");
-	if (bi->capability & DOT11_CAP_POLLABLE) printf("Pollable ");
-	if (bi->capability & DOT11_CAP_POLL_RQ) printf("PollReq ");
-	if (bi->capability & DOT11_CAP_PRIVACY) printf("WEP ");
-	if (bi->capability & DOT11_CAP_SHORT) printf("ShortPre ");
-	if (bi->capability & DOT11_CAP_PBCC) printf("PBCC ");
-	if (bi->capability & DOT11_CAP_AGILITY) printf("Agility ");
-	if (bi->capability & DOT11_CAP_SHORTSLOT) printf("ShortSlot ");
-	if (bi->capability & DOT11_CAP_CCK_OFDM) printf("CCK-OFDM ");
-	printf("\n");
+	if (bi->capability & DOT11_CAP_ESS) acsddbg("ESS ");
+	if (bi->capability & DOT11_CAP_IBSS) acsddbg("IBSS ");
+	if (bi->capability & DOT11_CAP_POLLABLE) acsddbg("Pollable ");
+	if (bi->capability & DOT11_CAP_POLL_RQ) acsddbg("PollReq ");
+	if (bi->capability & DOT11_CAP_PRIVACY) acsddbg("WEP ");
+	if (bi->capability & DOT11_CAP_SHORT) acsddbg("ShortPre ");
+	if (bi->capability & DOT11_CAP_PBCC) acsddbg("PBCC ");
+	if (bi->capability & DOT11_CAP_AGILITY) acsddbg("Agility ");
+	if (bi->capability & DOT11_CAP_SHORTSLOT) acsddbg("ShortSlot ");
+	if (bi->capability & DOT11_CAP_CCK_OFDM) acsddbg("CCK-OFDM ");
+	acsddbg("\n");
 
-	printf("Supported Rates: ");
+	acsddbg("Supported Rates: ");
 	dump_rateset(bi->rateset.rates, dtoh32(bi->rateset.count));
-	printf("\n");
+	acsddbg("\n");
 
 	if (dtoh32(bi->version) != LEGACY_WL_BSS_INFO_VERSION && bi->n_cap) {
-		printf("802.11N Capable:\n");
+		acsddbg("802.11N Capable:\n");
 		bi->chanspec = dtohchanspec(bi->chanspec);
-		printf("\tChanspec: %sGHz channel %d %dMHz (0x%x)\n",
+		acsddbg("\tChanspec: %sGHz channel %d %dMHz (0x%4x %s)\n",
 			CHSPEC_IS2G(bi->chanspec)?"2.4":"5", CHSPEC_CHANNEL(bi->chanspec),
 			CHSPEC_IS40(bi->chanspec) ? 40 : (CHSPEC_IS20(bi->chanspec) ? 20 : 10),
-			bi->chanspec);
-		printf("\tControl channel: %d\n", bi->ctl_ch);
-		printf("\t802.11N Capabilities: ");
+			bi->chanspec, wf_chspec_ntoa(bi->chanspec, chanspecbuf));
+		acsddbg("\tControl channel: %d\n", bi->ctl_ch);
+		acsddbg("\t802.11N Capabilities: ");
 		if (dtoh32(bi->nbss_cap) & HT_CAP_40MHZ)
-			printf("40Mhz ");
+			acsddbg("40Mhz ");
 		if (dtoh32(bi->nbss_cap) & HT_CAP_SHORT_GI_20)
-			printf("SGI20 ");
+			acsddbg("SGI20 ");
 		if (dtoh32(bi->nbss_cap) & HT_CAP_SHORT_GI_40)
-			printf("SGI40 ");
+			acsddbg("SGI40 ");
 		if (dtoh32(bi->nbss_cap) & VHT_BI_SGI_80MHZ)
-			printf("SGI80 ");
-		printf("\n\tSupported MCS : [ ");
+			acsddbg("SGI80 ");
+		acsddbg("\n\tSupported MCS : [ ");
 		for (mcs_idx = 0; mcs_idx < (MCSSET_LEN * 8); mcs_idx++)
 			if (isset(bi->basic_mcs, mcs_idx))
-				printf("%d ", mcs_idx);
-		printf("]\n");
+				acsddbg("%d ", mcs_idx);
+		acsddbg("]\n");
 	}
 
-	printf("\n");
+	acsddbg("\n");
 }
 
 void
@@ -378,7 +383,7 @@ acs_ch_score_name(const int ch_score_index)
 	static const char *score_names[CH_SCORE_MAX] = {
 		"BSS", "busy", "interf.", "itf_adj",
 		"fcs", "txpower", "bgnoise", "TOTAL",
-		"CNS", "ADJ", "TXOP"
+		"CNS", "ADJ", "TXOP", "DFS"
 	};
 
 	return (ch_score_index < CH_SCORE_MAX) ? score_names[ch_score_index] : "?range";
@@ -390,8 +395,8 @@ acs_dump_score(ch_score_t * score_p)
 	int i;
 	int score, weight, subtotal;
 
-	printf("Channel Score Breakdown:\n");
-	printf("Fact\t Score   \t Weight  \t SubTotal\t\n");
+	acsddbg("Channel Score Breakdown:\n");
+	acsddbg("Fact\t Score   \t Weight  \t SubTotal\t\n");
 
 	for (i = 0; i < CH_SCORE_MAX; i++) {
 		if (!score_p[i].score)
@@ -399,7 +404,7 @@ acs_dump_score(ch_score_t * score_p)
 		score = score_p[i].score;
 		weight = score_p[i].weight;
 		subtotal = score * weight;
-		printf("%s\t %8d\t %8d\t %8d\t\n", acs_ch_score_name(i), score, weight, subtotal);
+		acsddbg("%s\t %8d\t %8d\t %8d\t\n", acs_ch_score_name(i), score, weight, subtotal);
 	}
 }
 
@@ -409,24 +414,24 @@ acs_dump_score_csv(chanspec_t chspec, ch_score_t * score_p)
 	int i;
 	int score, weight, subtotal;
 
-	printf("CSV DATA: 0x%4x\nTYPE,  ", chspec);
+	acsddbg("CSV DATA: 0x%4x\nTYPE,  ", chspec);
 	for (i = 0; i < CH_SCORE_MAX; i++) {
-		printf("%8s, ", acs_ch_score_name(i));
+		acsddbg("%8s, ", acs_ch_score_name(i));
 	}
-	printf("\nSCORE, ");
+	acsddbg("\nSCORE, ");
 	for (i = 0; i < CH_SCORE_MAX; i++) {
-		printf("%8d, ",score_p[i].score);
+		acsddbg("%8d, ", score_p[i].score);
 	}
-	printf("\nWEIGHT,");
+	acsddbg("\nWEIGHT,");
 	for (i = 0; i < CH_SCORE_MAX; i++) {
-		printf("%8d, ",score_p[i].weight);
+		acsddbg("%8d, ", score_p[i].weight);
 	}
-	printf("\nSUBTOT,");
+	acsddbg("\nSUBTOT,");
 	for (i = 0; i < CH_SCORE_MAX; i++) {
 		score = score_p[i].score;
 		weight = score_p[i].weight;
 		subtotal = score * weight;
-		printf("%8d, ", subtotal);
+		acsddbg("%8d, ", subtotal);
 	}
-	printf("\n");
+	acsddbg("\n");
 }

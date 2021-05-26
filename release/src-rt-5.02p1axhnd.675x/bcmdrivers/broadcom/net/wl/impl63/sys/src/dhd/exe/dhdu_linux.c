@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhdu_linux.c 694863 2017-04-17 16:38:12Z $
+ * $Id: dhdu_linux.c 785752 2020-04-06 09:51:47Z $
  */
 
 #include <stdio.h>
@@ -675,7 +675,7 @@ process_args(struct ifreq* ifr, char **argv)
 
 			/* use default interface */
 			if (!ifr->ifr_name[0])
-				dhd_find(ifr, "dhd");
+				dhd_find(ifr, "wl");
 			/* validate the interface */
 			if (!ifr->ifr_name[0]) {
 				if (strcmp("dldn", *argv) != 0) {

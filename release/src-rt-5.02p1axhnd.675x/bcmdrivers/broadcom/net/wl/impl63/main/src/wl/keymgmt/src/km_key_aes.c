@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_key_aes.c 782567 2019-12-24 06:43:32Z $
+ * $Id: km_key_aes.c 787653 2020-06-08 09:59:53Z $
  */
 
 #include "km_key_aes_pvt.h"
@@ -283,7 +283,7 @@ key_aes_set_data(wlc_key_t *key, const uint8 *data,
 #ifdef BCMCCMP
 static uint8
 key_aes_ccm_nonce_flags(wlc_key_t *key, void *pkt,
-	const struct dot11_header *hdr, uint8 *body, bool htc)
+	const struct dot11_header *hdr, uint8 *body, bool htc, bool tx)
 {
 	uint16 fc;
 	uint8 nonce_flags = 0;
@@ -292,10 +292,15 @@ key_aes_ccm_nonce_flags(wlc_key_t *key, void *pkt,
 
 #if defined(MFP)
 	if (FC_TYPE(fc) == FC_TYPE_MNG) {
-		scb_t *scb = WLPKTTAGSCBGET(pkt);
-		KM_ASSERT(scb != NULL);
-		if (KM_SCB_MFP(scb))
+		if (!tx) {
+			scb_t *scb = WLPKTTAGSCBGET(pkt);
+			KM_ASSERT(scb != NULL);
+			if (KM_SCB_MFP(scb)) {
+				nonce_flags = AES_CCMP_NF_MANAGEMENT;
+			}
+		} else if (WLPKTFLAG_PMF(WLPKTTAG(pkt))) {
 			nonce_flags = AES_CCMP_NF_MANAGEMENT;
+		}
 	} else
 #endif /* MFP */
 	if (KM_KEY_FC_TYPE_QOS_DATA(fc) &&
@@ -325,7 +330,7 @@ key_aes_rx_ccm(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 	pkt_len = (body + body_len) - (uint8 *)hdr;
 	do {
 		uint8 nonce_flags = key_aes_ccm_nonce_flags(key, pkt, hdr, body,
-			(pkt_info->flags & KEY_PKT_HTC_PRESENT) != 0);
+			(pkt_info->flags & KEY_PKT_HTC_PRESENT) != 0, FALSE);
 		{
 			uint32 rk[4*(AES_MAXROUNDS+1)];
 			int st;
@@ -592,7 +597,7 @@ key_aes_tx_ccm(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 			rijndaelKeySetupEnc(rk, aes_key->key, key->info.key_len << 3);
 			st = aes_ccmp_encrypt(rk, key->info.key_len, pkt_len, (uint8 *)hdr,
 				(key->info.flags & WLC_KEY_FLAG_AES_MODE_LEGACY),
-				key_aes_ccm_nonce_flags(key, pkt, hdr, body, FALSE),
+				key_aes_ccm_nonce_flags(key, pkt, hdr, body, FALSE, TRUE),
 				key->info.icv_len);
 
 			if (st != AES_CCMP_ENCRYPT_SUCCESS)

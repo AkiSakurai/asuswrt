@@ -4119,16 +4119,6 @@ gethttp (const struct url *u, struct url *original_url, struct http_stat *hs,
     }
 #endif
 
-#ifdef HAVE_PIPEFW
-  if (opt.pipefw)
-    {
-      int size = (int)contlen;
-      DEBUGP (("Prepend file size %d\n", size));
-      if (fp)
-        fwrite (&size, 1, sizeof(size), fp);
-    }
-#endif
-
   err = read_response_body (hs, sock, fp, contlen, contrange,
                             chunked_transfer_encoding,
                             u->url, warc_timestamp_str,

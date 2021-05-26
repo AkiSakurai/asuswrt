@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_rate.c 782016 2019-12-09 09:33:24Z $
+ * $Id: wlc_rate.c 786917 2020-05-12 04:38:30Z $
  */
 
 /**
@@ -760,10 +760,6 @@ wlc_rateset_default(wlc_info_t *wlc, wlc_rateset_t *rs_tgt, const wlc_rateset_t 
 		WL_ERROR(("Unknown PHY type %d\n", phy_type));
 		ASSERT(0); /* should not happen */
 		rs_dflt = &cck_rates; /* force cck */
-	}
-
-	if (wlc->defrateset_override) {
-		rs_dflt = &wlc->default_bss->rateset;
 	}
 
 	/* if hw rateset is not supplied, assign selected rateset to it */

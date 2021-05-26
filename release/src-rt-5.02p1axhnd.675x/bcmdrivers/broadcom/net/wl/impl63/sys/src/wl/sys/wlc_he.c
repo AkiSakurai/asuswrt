@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_he.c 783116 2020-01-14 10:38:01Z $
+ * $Id: wlc_he.c 787816 2020-06-12 11:52:24Z $
  */
 
 #ifdef WL11AX
@@ -85,6 +85,7 @@
 #include <wlc_ratelinkmem.h>
 #include <wlc_pcb.h>
 #include <wlc_txbf.h>
+#include <wlc_ht.h>
 #include <wlc_vht.h>
 #include <wlc_scb_ratesel.h>
 #include <wlc_apps.h>
@@ -93,6 +94,7 @@
 #include <wlc_test.h>
 #endif /* TESTBED_AP_11AX */
 #include <wlc_mutx.h>
+#include <bcmdevs.h>
 
 #define HE_PPET_MAX_RUCOUNT	3	/* 242, 484 and 996. 2x996 is not supported */
 #define HE_PPET_MAX_RUBITMAP	0x7	/* 0111 = 0x7 => 242, 484 and 996. 2x996 is not supported */
@@ -312,7 +314,7 @@ static int wlc_he_doiovar(void *context, uint32 actionid,
 #if defined(BCMDBG)
 static int wlc_he_dump(void *ctx, struct bcmstrbuf *b);
 #endif // endif
-static void BCMFASTPATH wlc_he_htc_pkt_freed(wlc_info_t *wlc, void *pkt, uint txs);
+static void BCMFASTPATH wlc_he_htc_pkt_freed(wlc_info_t *wlc, uint txs, void* arg);
 
 /* bsscfg module */
 static int wlc_he_bss_init(void *ctx, wlc_bsscfg_t *cfg);
@@ -693,12 +695,6 @@ BCMATTACHFN(wlc_he_attach)(wlc_info_t *wlc)
 		goto fail;
 	}
 
-	/* register packet class callback, used by HTC+ */
-	if (wlc_pcb_fn_set(wlc->pcb, 0, WLF2_PCB1_HTC, wlc_he_htc_pkt_freed) != BCME_OK) {
-		WL_ERROR(("wl%d: %s: wlc_pcb_fn_set() failed\n", wlc->pub->unit, __FUNCTION__));
-		goto fail;
-	}
-
 	/* reserve space for bss data */
 	bzero(&cfg_cubby_params, sizeof(cfg_cubby_params));
 
@@ -745,6 +741,11 @@ BCMATTACHFN(wlc_he_attach)(wlc_info_t *wlc)
 	wlc->pub->_he_enab = TRUE;
 
 	WLC_HE_FEATURES_SET(wlc->pub, WL_HE_FEATURES_DEFAULT);
+
+	/* 6705 (same chipid as 43692) and 43692 do not support MU */
+	if (CHIPID(si_chipid(wlc->pub->sih)) == BCM43692_CHIP_ID) {
+		WLC_HE_FEATURES_CLR(wlc->pub, WL_HE_FEATURES_DLMMU);
+	}
 
 	/* update FIFOs because we enable MU */
 	wlc_hw_update_nfifo(wlc->hw);
@@ -878,6 +879,28 @@ wlc_he_intersect_txrxmcsmaps(wlc_he_info_t *hei, scb_t *scb, bool bw_160,
 		rxmcsmap160 = HE_CAP_MAX_MCS_NONE_ALL;
 		txmcsmap80p80 = HE_CAP_MAX_MCS_NONE_ALL;
 		rxmcsmap80p80 = HE_CAP_MAX_MCS_NONE_ALL;
+	}
+
+	/*
+	 * Update mcs maps again based on intersection of previous result and
+	 * default rateset if band default rateset had changed by user.
+	 */
+	if (hei->wlc->defrateset_override) {
+		enum wlc_bandunit bandunit = hei->wlc->band->bandunit;
+		wlc_rateset_t *def_rs = &hei->wlc->bandstate[bandunit]->defrateset;
+
+		txmcsmap80 = wlc_he_rateset_intersection(txmcsmap80, def_rs->he_bw80_tx_mcs_nss);
+		rxmcsmap80 = wlc_he_rateset_intersection(rxmcsmap80, def_rs->he_bw80_rx_mcs_nss);
+		if (bw_160) {
+			txmcsmap160 = wlc_he_rateset_intersection(txmcsmap160,
+				def_rs->he_bw160_tx_mcs_nss);
+			rxmcsmap160 = wlc_he_rateset_intersection(rxmcsmap160,
+				def_rs->he_bw160_rx_mcs_nss);
+			txmcsmap80p80 = wlc_he_rateset_intersection(txmcsmap80p80,
+				def_rs->he_bw80p80_tx_mcs_nss);
+			rxmcsmap80p80 = wlc_he_rateset_intersection(rxmcsmap80p80,
+				def_rs->he_bw80p80_rx_mcs_nss);
+		}
 	}
 
 	/* Now apply NSS txlimit to get final tx rateset */
@@ -1533,6 +1556,13 @@ wlc_he_cmd_features(void *ctx, uint8 *params, uint16 plen, uint8 *result, uint16
 			return BCME_EPERM; /* not a valid combination */
 		}
 #endif // endif
+
+		/* BCM6705 (same chipid as 43692) and 43692 do not support MU */
+		if ((CHIPID(si_chipid(wlc->pub->sih)) == BCM43692_CHIP_ID) &&
+			((features & WL_HE_FEATURES_DLMMU) != 0)) {
+			return BCME_UNSUPPORTED;
+		}
+
 		update_fifos = ((features & WL_HE_FEATURES_DLOMU) !=
 			(wlc->pub->he_features & WL_HE_FEATURES_DLOMU));
 		wlc->pub->he_features = features;
@@ -2086,7 +2116,8 @@ static const bcm_bit_desc_t scb_mac_cap[] =
 	{HE_MAC_TWT_REQ_SUPPORT_IDX, "TWTReq"},
 	{HE_MAC_TWT_RESP_SUPPORT_IDX, "TWTResp"},
 	{HE_MAC_UL_MU_RESP_SCHED_IDX, "UL-MU-Resp"},
-	{HE_MAC_A_BSR_IDX, "A-BSR"}
+	{HE_MAC_A_BSR_IDX, "A-BSR"},
+	{HE_MAC_UL_2X996_TONE_RU_IDX, "UL-2x996"}
 };
 
 static const bcm_bit_desc_t scb_phy_cap[] =
@@ -2627,6 +2658,12 @@ wlc_he_parse_cap_ie(wlc_he_info_t *hei, scb_t *scb, he_cap_ie_t *cap)
 			HE_MAC_HTC_HE_SUPPORT_FSZ)) {
 			sh->flags |= SCB_HE_HTC_CAP;
 		}
+	}
+
+	/* UL 2x996 RU support */
+	if (getbits((uint8 *)&sh->mac_cap, sizeof(sh->mac_cap), HE_MAC_UL_2X996_TONE_RU_IDX,
+		HE_MAC_UL_2X996_TONE_RU_FSZ)) {
+		sh->flags |= SCB_HE_UL2x996;
 	}
 
 	if (TWT_ENAB(wlc->pub)) {
@@ -3307,11 +3344,13 @@ wlc_he_hw_cap(wlc_info_t *wlc)
 	return WLC_HE_CAP_PHY(wlc);
 }
 
-/* update scb using the cap and op contents */
-/* Note - capie and opie are in raw format i.e. LSB. */
+/**
+ * update scb using the cap and op contents
+ * @param[in] capie   HE capability element in network endianness
+ * @param[in] opie    HE operations element in network endianness
+ */
 void
-wlc_he_update_scb_state(wlc_he_info_t *hei, int bandtype, scb_t *scb,
-	he_cap_ie_t *capie, he_op_ie_t *opie)
+wlc_he_update_scb_state(wlc_he_info_t *hei, scb_t *scb, he_cap_ie_t *capie, he_op_ie_t *opie)
 {
 	wlc_he_parse_cap_ie(hei, scb, capie);
 }
@@ -3325,12 +3364,25 @@ wlc_he_get_dynfrag(wlc_info_t *wlc)
 uint32
 wlc_he_get_peer_caps(wlc_he_info_t *hei, scb_t *scb)
 {
-	scb_he_t *sh =
-		(scb_he_t *)SCB_HE(hei, scb);
+	scb_he_t *sh = (scb_he_t *)SCB_HE(hei, scb);
+
 	if (!sh) {
 		return 0;
 	} else {
 		return sh->flags;
+	}
+}
+
+/**
+ * Update capabilities with additional caps, only to be used by packet engine.
+ */
+void
+wlc_he_add_peer_caps(wlc_he_info_t *hei, struct scb *scb, uint32 cap)
+{
+	scb_he_t *sh = (scb_he_t *)SCB_HE(hei, scb);
+
+	if (sh) {
+		sh->flags |= cap;
 	}
 }
 
@@ -3851,6 +3903,8 @@ wlc_he_fill_link_entry(wlc_he_info_t *hei, wlc_bsscfg_t *cfg, scb_t *scb,
 		((HTC_OM_CONTROL_CHANNEL_WIDTH(sh->omi_lm) == DOT11_OPER_MODE_80MHZ) &&
 		(sh->flags & SCB_HE_80IN160))) ? 1: 0;
 	link_entry->BFIConfig1 |= heppdu160 << C_LTX_PPDU160_NBIT;
+	link_entry->BFIConfig1 |= wlc_is_scb_dynamic_smps(hei->wlc->hti, scb) << C_LTX_DYSMPS_NBIT;
+	link_entry->BFIConfig1 |= ((sh->flags & SCB_HE_UL2x996) ? 1 : 0) << C_LTX_UL2x996_NBIT;
 }
 
 #ifdef HERTDBG
@@ -4240,6 +4294,13 @@ wlc_he_htc_tx(wlc_info_t* wlc, scb_t *scb, void *pkt, uint32 *htc_code)
 		return FALSE;
 	}
 
+	/* Register the callback function for TXSTATUS processing */
+	if (wlc_pcb_fn_register(wlc->pcb, wlc_he_htc_pkt_freed, scb, pkt)) {
+		WL_ERROR(("wl%d: %s : HTC pcb registartion failed\n",
+			wlc->pub->unit, __FUNCTION__));
+		return FALSE;
+	}
+
 	data = (uint8 *)htc_code;
 	data[0] = (htc->codes[htc->rd_idx] | HTC_IDENTITY_HE) & 0xff;
 	data[1] = (htc->codes[htc->rd_idx] >> 8) & 0xff;
@@ -4247,7 +4308,6 @@ wlc_he_htc_tx(wlc_info_t* wlc, scb_t *scb, void *pkt, uint32 *htc_code)
 	data[3] = (htc->codes[htc->rd_idx] >> 24) & 0xff;
 
 	htc->outstanding++;
-	WLF2_PCB1_REG(pkt, WLF2_PCB1_HTC);
 
 	return TRUE;
 }
@@ -4258,19 +4318,15 @@ wlc_he_htc_tx(wlc_info_t* wlc, scb_t *scb, void *pkt, uint32 *htc_code)
  * next packet.
  */
 static void BCMFASTPATH
-wlc_he_htc_pkt_freed(wlc_info_t *wlc, void *pkt, uint txs)
+wlc_he_htc_pkt_freed(wlc_info_t *wlc, uint txs, void* arg)
 {
-	struct scb *scb;
+	struct scb *scb = (struct scb*) arg;
 	scb_he_t *he_scb;
 	scb_he_htc_t *htc;
 
 	ASSERT(HE_ENAB(wlc->pub));
 
-	/* no packet */
-	if (!pkt)
-		return;
-
-	if ((scb = WLPKTTAGSCBGET(pkt)) == NULL)
+	if (scb == NULL)
 		return;
 
 	he_scb = SCB_HE(wlc->hei, scb);
@@ -4639,6 +4695,19 @@ wlc_he_is_nonbrcm_160sta(wlc_he_info_t *hei, scb_t *scb)
 	}
 
 	return FALSE;
+}
+
+uint8
+wlc_he_get_scb_ampdu_max_exp(wlc_he_info_t *hei, struct scb *scb)
+{
+	scb_he_t *sh = SCB_HE(hei, scb);
+
+	if (sh == NULL) {
+		return 0;
+	} else {
+		return getbits((uint8*)&sh->mac_cap, sizeof(sh->mac_cap),
+			HE_MAC_MAX_AMPDU_LEN_EXP_IDX, HE_MAC_MAX_AMPDU_LEN_EXP_FSZ);
+	}
 }
 
 #endif /* WL11AX */

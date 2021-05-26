@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_dump.c 714281 2017-08-03 22:00:04Z $
+ * $Id: km_dump.c 783707 2020-02-06 13:20:07Z $
  */
 
 #include "km_pvt.h"
@@ -157,7 +157,7 @@ km_dump(keymgmt_t *km, struct bcmstrbuf *b)
 #ifdef WOWL
 	km_hw_dump(km->wowl_hw, b, KM_KEY_DUMP_ALL);
 #endif // endif
-#ifdef BCMAPIVTW
+#ifdef BRCMAPIVTW
 	km_ivtw_dump(km->ivtw, b);
 #endif // endif
 

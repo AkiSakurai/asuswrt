@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdburst.h 777082 2019-07-18 14:48:21Z $
+ * $Id: pdburst.h 788031 2020-06-18 14:10:58Z $
  */
 
 #ifndef _pdburst_h_
@@ -234,6 +234,8 @@ struct pdburst_callbacks {
 typedef struct pdburst_callbacks pdburst_callbacks_t;
 
 extern uint8 ftm_vs_get_tof_txcnt(void *pdburstp);
+
+void pdftm_set_burst_deferred(pdftm_t *ftm, pdftm_session_t *sn);
 
 /* create a burst */
 pdburst_t* pdburst_create(wlc_info_t *wlc, void *ctx, const pdburst_callbacks_t *callbacks);

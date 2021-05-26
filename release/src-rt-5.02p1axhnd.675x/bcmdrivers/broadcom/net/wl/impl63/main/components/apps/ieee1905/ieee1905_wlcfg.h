@@ -60,12 +60,11 @@
 #define I5_WLCFG_NVRAM_AL_MAC "multiap_almac"
 #define I5_WLCFG_NVRAM_CTL_AL_MAC "multiap_ctl_almac"
 #define I5_WLCFG_NVRAM_LAN_HWADDR "lan_hwaddr"
-#define I5_WLCFG_NVRAM_WPS_BH_BSS "wps_backhaul_ifnames"
-#define I5_WLCFG_NVRAM_WPS_FH_IFNAME "wps_custom_ifnames"
 #define I5_WLCFG_NVRAM_BACKHAUL_TYPE  "multiap_backhaultype"
 #define I5_WLCFG_NVRAM_AGENT_CONFIGURED "map_agent_configured"
 #define I5_WLCFG_NVRAM_LOOPBACK       "map_lo_listen"
 #define I5_WLCFG_NVRAM_MAP_TS_ADD_FH_RULE "map_ts_add_fh_rule"
+#define I5_WLCFG_NVRAM_AGENT_ACTIVE_BH_TYPE "map_agent_active_bh_type"
 
 #define I5_WLCFG_BRIDGE_PREFIX  "br"
 
@@ -132,7 +131,7 @@ int i5WlCfgProcessAPAutoConfigWSCM1(i5_message_type *pmsg, i5_dm_device_type *pd
   ieee1905_radio_caps_type *RadioCaps);
 /* Process the Ap autoconfiguration WSC M2 message */
 int i5WlCfgProcessAPAutoConfigWSCM2(i5_message_type *pmsg, unsigned char *radioMac,
-  ieee1905_vendor_data *msg_data, unsigned char ts_policy_flag);
+  unsigned char ts_policy_flag);
 /* Create mediaspecific info */
 void i5WlCfgCreateMediaInfo(unsigned char *InterfaceId, unsigned char *bssid,
   unsigned short chanspec, unsigned char mapflags, unsigned char *MediaSpecificInfo);

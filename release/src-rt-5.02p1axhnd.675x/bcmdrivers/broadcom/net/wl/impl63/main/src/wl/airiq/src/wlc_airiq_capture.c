@@ -456,7 +456,11 @@ void wlc_lte_u_vasipiqcapture(airiq_info_t *airiqh)
 		eventlen = VASIP_IQ_SIZE / 2 + sizeof(lte_u_iqdata_header_t);
 		datalen = eventlen;
 		/* Allocate MAC event */
-		lte_u_event = MALLOC(airiqh->wlc->osh, sizeof(lte_u_event_t) + eventlen);
+		if ((lte_u_event = MALLOC(airiqh->wlc->osh, sizeof(lte_u_event_t) + eventlen)) == NULL) {
+			WL_ERROR(("wl%d: %s: MALLOC failed, malloced %d bytes\n",
+				WLCWLUNIT(airiqh->wlc), __FUNCTION__, MALLOCED(airiqh->wlc->osh)));
+			return;
+		}
 		lte_u_event->lte_u_event_type = LTE_U_EVENT_IQ_CAPTURE;
 		lte_u_event->data_len = sizeof(lte_u_event_t) + eventlen;
 		/* Event header */

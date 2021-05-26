@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: wlc_pdsvc.c 779785 2019-10-07 16:45:33Z $
+ * $Id: wlc_pdsvc.c 788034 2020-06-18 14:32:28Z $
  */
 
 #include <typedefs.h>
@@ -94,6 +94,7 @@
 #include<wlc_rsdb.h>
 #endif /* WLRSDB && WL_RANGE_SEQ */
 #include <wlc_ratelinkmem.h>
+#include <wlc_rate_sel.h>
 
 #define PROXD_NAME "proxd"
 
@@ -609,8 +610,9 @@ wlc_proxd_doiovar(void *ctx, uint32 actionid,
 		WL_ERROR(("%s clkst 0x%x,  macctrl1 0x%x, machwcap1 0x%x \n",
 			__FUNCTION__, clkst, macctrl1, wlc_hw->machwcap1));
 		wlc_enable_avb_timer(wlc->hw, TRUE);
+		wlc_enable_avb_timer_war(wlc->hw, TRUE);
 		wlc_get_avb_timestamp(wlc->hw, &tx, &rx);
-		WL_ERROR(("%s AVBTxTimeStamp 0x%x,  AVBRxTimeStamp 0x%x \n", __FUNCTION__, tx, rx));
+		WL_ERROR(("%s AVBTxTimeStamp %u   AVBRxTimeStamp %u \n", __FUNCTION__, tx, rx));
 
 		((uint32 *)arg)[0] = tx;
 		break;
@@ -646,9 +648,10 @@ wlc_proxd_AVB_clock_factor(wlc_pdsvc_info_t* pdsvc, uint8 shift, uint32 *ki, uin
 		/* Integer = i_ndiv_int [9:0] of PLL Control 2 = 58 */
 		/* Fractional = i_ndiv_frac[19:0] hex2dec('23DD4')/2^20 = 0.14009476 */
 		/* FVCO = 50 * 58.14009476 / 1 = 2907.00474MHz */
-		/* factor = (1000/2907.00474)ns =  0.343996687 << 15 (TOF_SHIFT) */
-		/** AVB Clock =  */
-		factor = 136533;
+		/* mdiv = 12; 2907.005/12 = 242.2504 */
+		/* factor = 1000*2^15/242.2504 */
+		/** AVB Clock = 242.2504 */
+		factor = 135265;
 	} else if ((BCM43684_CHIP(pdsvc->wlc->pub->sih->chip))) {
 		/* Considering the default settings for 43684 avoidance mode */
 		/* i_pdiv (pre-divider) = 1 */
@@ -656,9 +659,10 @@ wlc_proxd_AVB_clock_factor(wlc_pdsvc_info_t* pdsvc, uint8 shift, uint32 *ki, uin
 		/* Integer = i_ndiv_int [9:0] of PLL Control 2 = 53 */
 		/* Fractional = i_ndiv_frac[19:0] hex2dec('D55AC')/2^20 = 0.833415985 */
 		/* FVCO = 54 * 53.833415985 / 1 = 2907.004463MHz */
-		/* factor = (1000/2907.004463)ns =  0.34399672 << 15 (TOF_SHIFT) */
-		/** AVB Clock =  */
-		factor = 136533;
+		/* mdiv = 12; 2907.005/12 = 242.2504 */
+		/* factor = 1000*2^15/242.2504 */
+		/** AVB Clock = 242.2504 */
+		factor = 135265;
 	} else
 	if ((CHIPID(pdsvc->wlc->pub->sih->chip)) == BCM4360_CHIP_ID ||
 		(CHIPID(pdsvc->wlc->pub->sih->chip)) == BCM4352_CHIP_ID ||
@@ -877,6 +881,18 @@ done:
 	return BCME_OK;
 }
 
+void wlc_proxd_set_pkttag_flags(wlc_info_t *wlc, wlc_pkttag_t *pkttag)
+{
+	wlc_pdsvc_info_t* pdsvc;
+	ASSERT(wlc != NULL);
+	pdsvc = wlc->pdsvc_info;
+
+	if (pdsvc && pkttag) {
+		pkttag->shared.packetid |= (PROXD_FTM_PACKET_TAG | PROXD_MEASUREMENT_PKTID);
+		pkttag->flags |= WLF_USERTS;
+	}
+}
+
 bool wlc_proxd_frame(wlc_info_t *wlc, wlc_pkttag_t *pkttag)
 {
 	wlc_pdsvc_info_t* pdsvc;
@@ -922,7 +938,7 @@ void wlc_proxd_tx_conf(wlc_info_t *wlc, uint16 *phyctl, uint16 *mch, wlc_pkttag_
 	}
 }
 
-static uint16 wlc_proxd_get_tx_subband(wlc_info_t * wlc, chanspec_t chanspec)
+uint16 wlc_proxd_get_tx_subband(wlc_info_t * wlc, chanspec_t chanspec)
 {
 	uint16 subband = WL_CHANSPEC_CTL_SB_LLL;
 	uint16 ichan, tchan;
@@ -1281,7 +1297,8 @@ proxd_tx(pdsvc_t *pdsvc, void *pkt, wlc_bsscfg_t *bsscfg, ratespec_t rspec, int 
 	struct scb *scb;
 	wlc_pkttag_t *pkttag;
 	bool ret;
-	ratespec_t temp_rspec = pdsvc->wlc->band->rspec_override;
+	int err;
+	ratesel_txparams_t ftm_rate;
 
 	ASSERT(pdsvc != NULL);
 	ASSERT(pkt != NULL);
@@ -1298,19 +1315,25 @@ proxd_tx(pdsvc_t *pdsvc, void *pkt, wlc_bsscfg_t *bsscfg, ratespec_t rspec, int 
 		qi = pdsvc->wlc->active_queue;
 
 	if (rspec && RATELINKMEM_ENAB(pdsvc->wlc->pub)) {
-		pdsvc->wlc->band->rspec_override = rspec;
-		wlc_ratelinkmem_update_rate_entry(pdsvc->wlc,
-			WLC_RLM_SPECIAL_RATE_SCB(pdsvc->wlc), NULL, 0);
+		/* one rate, no ACK, therefore no fallback rates */
+		memset(&ftm_rate, 0, sizeof(ftm_rate));
+		ftm_rate.num = 1;
+		ftm_rate.rspec[0] = rspec;
+		ftm_rate.antselid[0] = 1;
+
+		scb = pdsvc->wlc->band->proxd_scb;
+		scb->aid = pkttag->shared.packetid & 0xffff; /* save chanspec */
+
+		err = wlc_ratelinkmem_update_rate_entry(pdsvc->wlc, scb, &ftm_rate, 0);
+		if (err != BCME_OK) {
+			WL_ERROR(("%s: ratelinkmem_update failed ret %d\n", __FUNCTION__, err));
+			PKTFREE(pdsvc->wlc->osh, pkt, TRUE);
+			return FALSE;
+		}
 	}
 
 	ret = wlc_queue_80211_frag(pdsvc->wlc, pkt, qi, scb,
-		bsscfg, FALSE, NULL, rspec);
-
-	if (rspec && RATELINKMEM_ENAB(pdsvc->wlc->pub)) {
-		pdsvc->wlc->band->rspec_override = temp_rspec;
-		wlc_ratelinkmem_update_rate_entry(pdsvc->wlc,
-			WLC_RLM_SPECIAL_RATE_SCB(pdsvc->wlc), NULL, 0);
-	}
+		bsscfg, FALSE, NULL, RATELINKMEM_ENAB(pdsvc->wlc->pub) ? 0 : rspec);
 
 	return ret;
 }
@@ -1425,6 +1448,14 @@ void proxd_enable(wlc_info_t *wlc, bool enable)
 		WL_TRACE(("proxd_enable: set _proxd to %d\n", enable));
 		wlc->pub->_proxd = enable;
 
+		if (!wlc_isup(wlc) || wlc->state == WLC_STATE_GOING_DOWN) {
+			/*
+			If the interface is down or going down, when it comes back up,
+			it will automatically take care of the below functions
+			*/
+			return;
+		}
+
 		/* For supported AX corerevs that are < 129.2, a new ucode needs to be
 		 * loaded to use PROXD
 		 */
@@ -1448,6 +1479,11 @@ void proxd_enable(wlc_info_t *wlc, bool enable)
 			if (gptime)
 				wlc_hrt_gptimer_set(wlc, gptime);
 		} else {
+			/*
+			If the ucode doesn't need to change and wl_init does not need to be done
+			again, check the capability here (normally done at interface init time)
+			*/
+
 			if (D11REV_GE(wlc->pub->corerev, 129)) {
 				avb_cap = wlc_read_shm(wlc, M_UCODE_CAP_H(wlc->hw)) & EAP_FTM_CAP;
 			}
@@ -1464,7 +1500,7 @@ void proxd_enable(wlc_info_t *wlc, bool enable)
 			}
 		}
 
-		wlc_enable_avb_timer(wlc->hw, enable);
+		wlc_enable_avb_timer_war(wlc->hw, enable);
 	}
 }
 
@@ -1613,9 +1649,9 @@ void proxd_undeaf_phy(wlc_info_t *wlc, bool acked)
 static int
 wlc_proxd_wlc_up(void *context)
 {
-#ifdef WL_PROXD_UCODE_TSYNC
 	wlc_pdsvc_info_t *pdsvc = (wlc_pdsvc_info_t *)context;
 	wlc_info_t *wlc = pdsvc->wlc;
+#ifdef WL_PROXD_UCODE_TSYNC
 	uint16 val;
 	uint16 avb_cap = 0;
 	uint16 chip_id = CHIPID(wlc->pub->sih->chip);
@@ -1632,6 +1668,7 @@ wlc_proxd_wlc_up(void *context)
 		wlc_write_shm(wlc, M_HOST_FLAGS6(wlc->hw), val | MHF6_TSYNC_EN);
 	}
 #endif /* WL_PROXD_UCODE_TSYNC */
+	wlc_enable_avb_timer_war(wlc->hw, wlc->pub->_proxd);
 	return BCME_OK;
 }
 

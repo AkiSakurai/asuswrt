@@ -147,8 +147,10 @@ airiq_update_scan_config(airiq_info_t *airiqh, airiq_config_t *sc)
 		return BCME_UNSUPPORTED;
 	}
 
-	if (sc->phy_mode == PHYMODE_3x3_1x1 && D11REV_LT(airiqh->wlc->pub->corerev, 65)) {
-		WL_ERROR(("wl%d: %s: Requested 3+1 mode scan on core rev %d\n",
+	if (sc->phy_mode == PHYMODE_3x3_1x1 && !D11REV_IS(airiqh->wlc->pub->corerev, 65)
+			&& !D11REV_IS(airiqh->wlc->pub->corerev, 129)
+			&& !D11REV_IS(airiqh->wlc->pub->corerev, 132)) {
+		WL_ERROR(("wl%d: %s: Requested 3+1 mode scan on unsupported core rev %d\n",
 			WLCWLUNIT(airiqh->wlc), __FUNCTION__, airiqh->wlc->pub->corerev));
 		return BCME_UNSUPPORTED;
 	}
@@ -788,14 +790,11 @@ void wlc_airiq_scantimer(void *arg)
 	airiqh->wlc->scan->state |= SCAN_STATE_PROHIBIT | SCAN_STATE_PASSIVE;
 	wlc_suspend_mac_and_wait(airiqh->wlc);
 
-	/* Add block to suppress tx packets */
-	WLC_BLOCK_DATAFIFO_SET(airiqh->wlc, DATA_BLOCK_TXCHAIN);
-
-	/* mute AP - suspend FIFO's */
-	wlc_ap_mute(airiqh->wlc, TRUE, NULL, WLC_AP_MUTE_SCAN);
-
 	wlc_set_chanspec(airiqh->wlc, chanspec,CHANSW_REASON(CHANSW_IOVAR));
-	wlc_phy_set_deaf(WLC_PI(airiqh->wlc),TRUE);
+
+	/* wlc_set_chanspec automatically clears deaf mode. Set it here */
+	wlc_phy_set_deaf(WLC_PI(airiqh->wlc), TRUE);
+
 	wlc_enable_mac(airiqh->wlc);
 
 	wlc_airiq_phy_enable_fft_capture(airiqh,
@@ -850,9 +849,7 @@ int wlc_airiq_start_scan_phase2(airiq_info_t *airiqh)
 		/* mute AP */
 		wlc_ap_mute(airiqh->wlc, TRUE, NULL, WLC_AP_MUTE_SCAN);
 		/* suspend tx fifos */
-
-		wlc_tx_suspend(airiqh->wlc);
-		airiqh->tx_suspending = TRUE;
+		wlc_mute(airiqh->wlc, ON, 0);
 	}
 
 	return 0;
@@ -1017,10 +1014,11 @@ int wlc_airiq_scan_abort(airiq_info_t *airiqh, bool upgrade)
 
 	wlc_suspend_mac_and_wait(airiqh->wlc);
 
+	wlc_phy_clear_deaf(WLC_PI(airiqh->wlc), TRUE);
+
 	/* set channel */
 	wlc_set_chanspec(airiqh->wlc, airiqh->wlc->home_chanspec, CHANSW_REASON(CHANSW_IOVAR));
-	// deaf mode is cleared automatically wlc_set_chanspec
-	// wlc_phy_clear_deaf(WLC_PI(airiqh->wlc), TRUE);
+
 	if (restore_bandlock) {
 		/* restore bandlocked status */
 		airiqh->wlc->bandlocked = airiqh->scan.bandlocked_save;
@@ -1029,6 +1027,7 @@ int wlc_airiq_scan_abort(airiq_info_t *airiqh, bool upgrade)
 
 	/* unmute AP */
 	wlc_ap_mute(airiqh->wlc, FALSE, NULL, WLC_AP_MUTE_SCAN);
+	wlc_mute(airiqh->wlc, OFF, 0);
 
 #ifdef STA
 	/* enable CFP and TSF update */
@@ -1038,9 +1037,6 @@ int wlc_airiq_scan_abort(airiq_info_t *airiqh, bool upgrade)
 
 	wlc_enable_mac(airiqh->wlc);
 
-	//TODO pere wlc_phy_clear_tssi(WLC_PI(airiqh->wlc));
-	/* Remove fifo suspend for tx data */
-	wlc_tx_resume(airiqh->wlc);
 	/* Remove block for tx data */
 	WLC_BLOCK_DATAFIFO_CLEAR(airiqh->wlc, DATA_BLOCK_TXCHAIN);
 	/* run txq if not empty */

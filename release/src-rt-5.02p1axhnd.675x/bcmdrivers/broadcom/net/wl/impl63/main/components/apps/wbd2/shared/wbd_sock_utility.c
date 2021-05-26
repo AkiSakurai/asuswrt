@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_sock_utility.c 777679 2019-08-07 05:56:25Z $
+ * $Id: wbd_sock_utility.c 788800 2020-07-13 05:51:27Z $
  */
 #include <fcntl.h>
 
@@ -341,7 +341,7 @@ wbd_open_server_fd(int portno)
 
 	memset(&sockaddr, 0, sizeof(sockaddr));
 	sockaddr.sin_family = AF_INET;
-	sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	sockaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	sockaddr.sin_port = htons(portno);
 
 	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {

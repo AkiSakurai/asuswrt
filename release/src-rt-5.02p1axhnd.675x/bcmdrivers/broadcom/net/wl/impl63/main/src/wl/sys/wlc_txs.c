@@ -47,7 +47,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_txs.c 782645 2019-12-30 10:09:52Z $
+ * $Id: wlc_txs.c 788610 2020-07-06 19:05:09Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -128,6 +128,9 @@
 
 #ifdef WLTAF
 #include <wlc_taf.h>
+#endif // endif
+#ifdef BCM_CSIMON
+#include <wlc_csimon.h>
 #endif // endif
 
 #define TXS_DYNTXC_COEF_OMIT_CORE0	0xe
@@ -338,18 +341,26 @@ wlc_print_txstatus(wlc_info_t* wlc, tx_status_t* txs)
 		wlc_print_txs_status_aqm_raw(txs);
 		if ((txs->status.s5 & TX_STATUS64_MUTX)) {
 			if (txs_mutype == TX_STATUS_MUTP_VHTMU) {
-				printf("MUTX VHTMU: c%ds%d sgi %d bw %d txpwr %d\n"
-					"gid %d gpos %d gbmp 0x%x mutxcnt %d snr %d\n",
+				printf("MUTX VHTMU: c%ds%d sgi %d bw %d txpwr %d, nusr %d ngrp %d "
+				        "epch %d\n"
+					"gid %d gpos %d gbmp 0x%x mutxcnt %d snr %d ngcnt %d "
+					"totmcs %d totnss %d\n",
 					TX_STATUS64_MU_MCS(txs->status.s4),
 					TX_STATUS64_MU_NSS(txs->status.s4)+1,
 					TX_STATUS64_MU_SGI(txs->status.s3),
 					TX_STATUS64_MU_BW(txs->status.s3),
 					TX_STATUS64_MU_TXPWR(txs->status.s3),
+					TX_STATUS64_MU_NUSR(txs->status.s3),
+					TX_STATUS64_MU_NGRP(txs->status.s3),
+					TX_STATUS64_MU_EPCH(txs->status.s3),
 					TX_STATUS64_MU_GID(txs->status.s3),
 					TX_STATUS64_MU_GPOS(txs->status.s4),
 					TX_STATUS64_MU_GBMP(txs->status.s4),
 					TX_STATUS64_MU_TXCNT(txs->status.s4),
-					TX_STATUS64_MU_SNR(txs->status.s4));
+					TX_STATUS64_MU_SNR(txs->status.s4),
+					TX_STATUS64_MU_NGCNT(txs->status.s4),
+					TX_STATUS64_MU_TOTMCS(txs->status.s4),
+					TX_STATUS64_MU_TOTNSS(txs->status.s4));
 			} else if (txs_mutype == TX_STATUS_MUTP_HEOM) {
 				printf("MUTX HEOM: x%ds%d ru %d rtidx %d\n",
 					TX_STATUS64_MU_MCS(txs->status.s4),
@@ -488,8 +499,14 @@ wlc_trf_mgmt_scb_txfail_detect(struct scb *scb, wlc_bsscfg_t *bsscfg,
 	uint32 tot_txfail = 0;
 	wlc_traffic_thresh_event_t data;
 
-	if (!(scb->trf_enable_flag & (1 << queue)))
+	/* Treat all EBOS client traffic as voice */
+	if (queue != WL_TRF_TO && SCB_TS_EBOS(scb)) {
+		queue = WL_TRF_VO; /* override traffic type */
+	}
+
+	if (!(scb->trf_enable_flag & (1 << queue))) {
 		return;
+	}
 	intfer_params = &bsscfg->trf_scb_params[queue];
 	scb_intfer_stats = &scb->scb_trf_data[queue];
 	cnt = intfer_params->num_secs;
@@ -659,7 +676,7 @@ wlc_print_trigtxstatus(wlc_info_t *wlc, tx_status_t *txs, ratesel_tgtxs_t *tgtxs
 			"lfifo gfcs qnull agglen qosctl | ruidx rate rssi uph rtidx txcnt | "
 			"tgsts tbcnt trcnt isLast\n");
 	}
-	printf("wl%d: tgtxs %d %d / %d %d %04x %01x | rxs: %2d %2d %d %6d 0x%04x "
+	printf("wl%d: tgtxs %d %d / %d %d %04x %02x | rxs: %2d %2d %d %6d 0x%04x "
 	       "| rate: %3d 0x%02x %s 0x%02x %d %d | sts: %d %d %d%s\n",
 	       /* section: group */
 	       wlc->pub->unit, txsid, uidx,
@@ -727,8 +744,8 @@ static void BCMFASTPATH
 wlc_dotrigtxstatus(wlc_info_t *wlc, tx_status_t *txs)
 {
 	struct scb *scb = NULL;
-	struct scb_iter scbiter;
 	uint8 nss, mcs;
+	uint16	amt_idx;
 	ratesel_tgtxs_t tgtxs;
 
 	mcs = TGTXS_MCS(txs->status.s4);
@@ -740,6 +757,7 @@ wlc_dotrigtxstatus(wlc_info_t *wlc, tx_status_t *txs)
 
 	tgtxs.gdelim = TGTXS_LCNT(txs->status.s5);
 	tgtxs.gfcs = TGTXS_GDFCSCNT(txs->status.s5);
+	amt_idx = TGTXS_AID(txs->status.s4);
 
 #ifdef WLC_MACDBG_TRIGBSR
 	if (D11TRIGCI_TYPE(TGTXS_CMNINFOP1(txs->status.s2)) == HE_TRIG_TYPE_BSR_FRM) {
@@ -747,21 +765,29 @@ wlc_dotrigtxstatus(wlc_info_t *wlc, tx_status_t *txs)
 	}
 #endif /* WLC_MACDBG_TRIGBSR */
 
-	FOREACHSCB(wlc->scbstate, &scbiter, scb) {
-		if (scb->aid == TGTXS_AID(txs->status.s4)) {
-			wlc_ulmu_stats_upd(wlc->ulmu, scb, txs);
-#if defined(BCMDBG) || defined(UL_RU_STATS_DUMP)
-			wlc_ulmu_rustats_upd(wlc->ulmu, scb, txs);
-#endif // endif
-			wlc_scb_ratesel_upd_txs_trig(wlc->wrsi, scb, &tgtxs, txs);
-		}
+	/* Lookup scb fom amt idx */
+	scb = wlc_scb_amt_lookup(wlc, amt_idx);
+
+	if (scb == NULL) {
+		WL_ERROR(("wl%d %s : SCB lookup failed for amt_id %d\n",
+			wlc->pub->unit, __FUNCTION__, amt_idx));
+		return;
 	}
+
+	wlc_ulmu_stats_upd(wlc->ulmu, scb, txs);
+#if defined(BCMDBG) || defined(UL_RU_STATS_DUMP)
+	wlc_ulmu_rustats_upd(wlc->ulmu, scb, txs);
+#endif // endif
+	wlc_scb_ratesel_upd_txs_trig(wlc->wrsi, scb, &tgtxs, txs);
+
 #ifdef WLC_MACDBG_TRIGBSR
 done:
 #endif /* WLC_MACDBG_TRIGBSR */
 	if (WL_PRHDRS_ON() || WL_MAC_ON()) {
 		wlc_print_trigtxstatus(wlc, txs, &tgtxs);
 	}
+
+	wlc_macdbg_dtrace_log_utxs(wlc->macdbg, scb, txs);
 	return;
 }
 #endif /* defined(WL_MU_TX) && defined(WL11AX) */
@@ -795,8 +821,11 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 	uint tr;
 	scb_delay_stats_t *delay_stats;
 #endif // endif
-#ifdef PKTQ_LOG
+	uint32 tx_rate_prim = 0;
+#if defined(PKTQ_LOG) || defined(SCB_BS_DATA)
 	uint32 prec_pktlen;
+#endif /* PKTQ_LOG || SCB_BS_DATA */
+#ifdef PKTQ_LOG
 	pktq_counters_t *actq_cnt = 0;
 #endif // endif
 	uint8 ac;
@@ -828,10 +857,14 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 	bool update_histo = FALSE;
 #endif /* WLSCB_HISTO */
 	const wlc_rlm_rate_store_t *rstore = NULL;
+#ifdef SCB_BS_DATA
+	wlc_bs_data_counters_t *bs_data_counters = NULL;
+#endif /* SCB_BS_DATA */
 
 	BCM_REFERENCE(from_host);
 	BCM_REFERENCE(frm_tx2);
 	BCM_REFERENCE(rstore);
+	BCM_REFERENCE(tx_rate_prim);
 
 	if (WL_PRHDRS_ON()) {
 		wlc_print_txstatus(wlc, txs);
@@ -883,6 +916,13 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 		wlc_print_txstatus(wlc, txs);
 		goto fatal;
 	}
+
+#ifdef BCMDBG
+	// handling per PPDU txs
+	if (D11REV_GE(wlc->pub->corerev, 128)) {
+		wlc_macdbg_txs_ppdu_info(wlc->macdbg, txs);
+	}
+#endif /* BCMDBG */
 
 #ifdef BCMDBG_TXSTALL
 	wlc->txs_fifo_cnts[queue]++;
@@ -1083,6 +1123,19 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 
 	scb_orig = WLPKTTAGSCBGET(p);
 	wlc_pkttag_scb_restore_ex(wlc, p, &txh_info, &bsscfg, &scb);
+	/* For SCBs in DEL in Progress, dont handle suppression indication from ucode.
+	 * Make sure packets are freed up immediately
+	 */
+	if ((scb) && SCB_DEL_IN_PROGRESS(scb)) {
+		WL_TRACE(("%s : SCB FLow ID 0x%x  DELETE in PROGRESS; Ignore suppress Ind %x \n",
+			__FUNCTION__, SCB_FLOWID_GLOBAL(scb), txs->status.suppr_ind));
+		txs->status.suppr_ind = TX_STATUS_SUPR_NONE;
+		if (!ETHER_ISMULTI(txh_info.TxFrameRA)) {
+			txs->status.was_acked = TRUE;
+		}
+		supr_status = TX_STATUS_SUPR_NONE;
+	}
+
 	if (!WLPKTFLAG_AMPDU(pkttag)) {
 		if (scb_orig != NULL && SCB_INTERNAL(scb_orig)) {
 			SCB_PKTS_INFLT_FIFOCNT_DECR(scb_orig, PKTPRIO(p));
@@ -1090,6 +1143,8 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 			SCB_PKTS_INFLT_FIFOCNT_DECR(scb, PKTPRIO(p));
 		}
 	}
+
+	SCB_BS_DATA_CONDFIND(bs_data_counters, wlc, scb);
 
 	if (ETHER_ISMULTI(txh_info.TxFrameRA)) {
 		/* XXX The posted packet should not be freed before txstatus is
@@ -1105,12 +1160,13 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 #endif /* MBSS */
 	} else {
 #ifdef PKTQ_LOG
-		if (D11REV_GE(wlc->pub->corerev, 40)) {
-#if defined(SCB_BS_DATA)
-			wlc_bs_data_counters_t *bs_data_counters = NULL;
-#endif /* SCB_BS_DATA */
-			SCB_BS_DATA_CONDFIND(bs_data_counters, wlc, scb);
+		if (D11REV_GE(wlc->pub->corerev, 128)) {
+			WLCNTCONDADD(actq_cnt, actq_cnt->airtime,
+				(uint64)TX_STATUS128_TXDUR(txs->status.s2));
+			SCB_BS_DATA_CONDADD(bs_data_counters, airtime,
+				(uint64)TX_STATUS128_TXDUR(txs->status.s2));
 
+		} else if (D11REV_GE(wlc->pub->corerev, 40)) {
 			WLCNTCONDADD(actq_cnt, actq_cnt->airtime,
 				(uint64)TX_STATUS40_TX_MEDIUM_DELAY(txs));
 			SCB_BS_DATA_CONDADD(bs_data_counters, airtime,
@@ -1196,8 +1252,20 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 	}
 #endif /* PSPRETEND */
 
+#if defined(PKTQ_LOG)
+	tx_rate_prim = D11REV_GE(wlc->pub->corerev, 128)?
+		wf_rspec_to_rate(pri_rspec) / PKTQ_LOG_RATE_SCALE_FACTOR :
+		D11REV_GE(wlc->pub->corerev, 64)? txh_info.hdrPtr->rev40.rev64.RateInfo[0].TxRate :
+		D11REV_GE(wlc->pub->corerev, 40)? txh_info.hdrPtr->rev40.rev40.RateInfo[0].TxRate :
+		txh_info.hdrPtr->pre40.MainRates;
+#endif /* PKTQ_LOG */
+
 #if defined(WLNAR)
-	wlc_nar_dotxstatus(wlc->nar_handle, scb, p, txs, pps_retry);
+	/* 1. XXX Insert here as ampdu can return and leave us stranded.
+	 * 2. XXX For simplicity passing tx_rate_prim (primary tx rate) instead
+	 * of txrate_success, at which frame is successfully acknowledged
+	 */
+	wlc_nar_dotxstatus(wlc->nar_handle, scb, p, txs, pps_retry, tx_rate_prim);
 #endif // endif
 
 #ifdef WL_BEAMFORMING
@@ -1338,6 +1406,10 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 
 	totlen = pkttotlen(osh, p);
 	BCM_REFERENCE(totlen);
+#if defined(PKTQ_LOG) || defined(SCB_BS_DATA)
+	prec_pktlen = totlen - D11_TXH_LEN_EX(wlc) -
+		DOT11_LLC_SNAP_HDR_LEN - DOT11_MAC_HDR_LEN - DOT11_QOS_LEN;
+#endif /* PKTQ_LOG || SCB_BS_DATA */
 
 	/* plan for success */
 	update_rate = (pkttag->flags & WLF_RATE_AUTO) ? TRUE : FALSE;
@@ -1384,7 +1456,6 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 		wl_event_log_tlv_hdr_t tlv_log = {{0, 0}};
 		wl_event_log_eapol_tx_t eapol_sts = {{0, 0, 0}};
 		uint32 tlv_log_tmp = 0;
-		uint16 tx_rate = 0;
 
 		eapol_sts.status = txs->status.was_acked ? 1 : 0;
 		eapol_sts.frag_tx_cnt = txs->status.frag_tx_cnt;
@@ -1396,16 +1467,9 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 		tlv_log.tag = TRACE_TAG_RATE_MBPS;
 		tlv_log.length = sizeof(uint16);
 
-		if (D11REV_GE(wlc->pub->corerev, 128)) {
-			tx_rate = wf_rspec_to_rate(pri_rspec)/500;
-		} else if (D11REV_GE(wlc->pub->corerev, 65)) {
-			tx_rate = txh_info.hdrPtr->rev40.rev64.RateInfo[0].TxRate;
-		} else {
-			tx_rate = txh_info.hdrPtr->rev40.rev40.RateInfo[0].TxRate;
-		}
 		WL_EVENT_LOG((EVENT_LOG_TAG_TRACE_WL_INFO, TRACE_FW_EAPOL_FRAME_TRANSMIT_STOP,
 			tlv_log_tmp, eapol_sts.t,
-			tlv_log.t, tx_rate));
+			tlv_log.t, tx_rate_prim));
 	}
 #endif /* WL_EVENT_LOG_COMPILE */
 
@@ -1413,7 +1477,12 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 	if (!was_acked && supr_status) {
 		WLCNTCONDINCR(actq_cnt, actq_cnt->suppress);
 	}
+
+	WLCNTCONDADD(actq_cnt, actq_cnt->txrate_main,
+		(uint64)(tx_rate_prim * (tx_frame_count ?: 1)));
 #endif /* PKTQ_LOG */
+	SCB_BS_DATA_CONDADD(bs_data_counters, txrate_main,
+		(uint64)(tx_rate_prim * (tx_frame_count ?: 1)));
 
 	/* process txstatus info */
 	if (was_acked) {
@@ -1430,11 +1499,16 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 		WLCNTADD(wlc->pub->_cnt->txnoack, (tx_frame_count - 1));
 		WLCIFCNTINCR(scb, txfrag);
 #ifdef PKTQ_LOG
+		WLCNTCONDADD(actq_cnt, actq_cnt->txrate_succ, (uint64)tx_rate_prim);
 		WLCNTCONDINCR(actq_cnt, actq_cnt->acked);
 		WLCNTCONDADD(actq_cnt, actq_cnt->retry, (tx_frame_count - 1));
-		prec_pktlen = pkttotlen(wlc->osh, p);
 		WLCNTCONDADD(actq_cnt, actq_cnt->throughput, (uint64)prec_pktlen);
 #endif // endif
+		SCB_BS_DATA_CONDINCR(bs_data_counters, acked);
+		SCB_BS_DATA_CONDADD(bs_data_counters, retry, (tx_frame_count - 1));
+		SCB_BS_DATA_CONDADD(bs_data_counters, throughput, (uint64)prec_pktlen);
+		SCB_BS_DATA_CONDADD(bs_data_counters, txrate_succ, (uint64)tx_rate_prim);
+
 		if (tx_frame_count > 1) {
 			/* counting number of retries for all data frames. */
 			wlc->txretried += tx_frame_count - 1;
@@ -1506,6 +1580,20 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 		}
 
 		pkt_sent = TRUE;
+
+#ifdef BCM_CSIMON
+		/* Check if this SCB has CSI monitoring enabled */
+		if (!ETHER_ISMULTI(&scb->ea) && (wlc_csimon_enabled(scb))) {
+		/* Check if this txstatus is for the null frame sent with CSI bit set */
+			if (pkttag->flags & WLF_CSI_NULL_PKT) {
+				uint16 mch = ltoh16(txh_info.hdrPtr->rev128.MacControl_1);
+				if (mch & D11REV128_TXC_CSI) {
+					CSIMON_DEBUG("wl%d:CSI Null frame txs\n", wlc->pub->unit);
+					wlc_csimon_record_copy(wlc, scb);
+				}
+			}
+		}
+#endif /* BCM_CSIMON */
 
 #ifdef PSPRETEND
 	} else if (pps_retry) {
@@ -1776,6 +1864,7 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 #ifdef PKTQ_LOG
 		WLCNTCONDADD(actq_cnt, actq_cnt->retry, tx_frame_count);
 #endif // endif
+		SCB_BS_DATA_CONDADD(bs_data_counters, retry, tx_frame_count);
 
 		/* ucast failure */
 		if (lastframe) {
@@ -1809,6 +1898,15 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 			}
 #endif /* WL_TRAFFIC_THRESH */
 			WLCNTINCR(wlc->pub->_cnt->txfail);
+
+#ifdef BCM_CSIMON
+			if ((wlc_csimon_enabled(scb)) &&
+			    (pkttag->flags & WLF_CSI_NULL_PKT)) {
+			/* It's a CSIMON null frame, increment failure counter */
+				wlc_csimon_ack_failure_process(wlc, scb);
+			}
+#endif /* BCM_CSIMON */
+
 #ifdef WLC_SW_DIVERSITY
 			if (WLSWDIV_ENAB(wlc) && WLSWDIV_BSSCFG_SUPPORT(bsscfg)) {
 				wlc_swdiv_txfail(wlc->swdiv, scb);
@@ -1828,6 +1926,7 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 #ifdef PKTQ_LOG
 			WLCNTCONDINCR(actq_cnt, actq_cnt->retry_drop);
 #endif // endif
+			SCB_BS_DATA_CONDINCR(bs_data_counters, retry_drop);
 			if (from_host) {
 				if (WL_INFORM_ON() | WL_MAC_ON()) {
 					WL_PRINT(("wl%d: %s, ucastfail ;", wlc->pub->unit,
@@ -1873,6 +1972,8 @@ wlc_dotxstatus(wlc_info_t *wlc, tx_status_t *txs, uint32 frm_tx2)
 	}
 #ifdef PROP_TXSTATUS
 	if (PROP_TXSTATUS_ENAB(wlc->pub)) {
+		/* Protect this call with free_pdu check if below assert hits */
+		ASSERT(lb_sane(p));
 		wlc_wlfc_dotxstatus(wlc, bsscfg, scb, p, txs, pps_retry);
 	}
 #endif /* PROP_TXSTATUS */

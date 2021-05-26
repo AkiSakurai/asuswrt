@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_twt.h 783116 2020-01-14 10:38:01Z $
+ * $Id: wlc_twt.h 788958 2020-07-15 09:17:23Z $
  */
 
 #ifndef _wlc_twt_h_
@@ -60,6 +60,7 @@
 extern wlc_twt_info_t *wlc_twt_attach(wlc_info_t *wlc);
 extern void wlc_twt_detach(wlc_twt_info_t *twti);
 extern void wlc_twt_disable(wlc_info_t *wlc);
+extern void wlc_twt_dump_schedblk(wlc_info_t *wlc);
 extern bool wlc_twt_req_cap(wlc_info_t *wlc, wlc_bsscfg_t *cfg);
 extern bool wlc_twt_resp_cap(wlc_info_t *wlc, wlc_bsscfg_t *cfg);
 extern bool wlc_twt_bcast_cap(wlc_info_t *wlc, wlc_bsscfg_t *cfg);
@@ -81,6 +82,7 @@ extern bool wlc_twt_scb_is_trig_enab(wlc_twt_info_t *twti, scb_t *scb);
 #else
 
 #define wlc_twt_disable(a)
+#define wlc_twt_dump_schedblk(a)
 #define wlc_twt_req_cap(a, b)			FALSE
 #define wlc_twt_resp_cap(a, b)			FALSE
 #define wlc_twt_bcast_cap(a, b)			FALSE

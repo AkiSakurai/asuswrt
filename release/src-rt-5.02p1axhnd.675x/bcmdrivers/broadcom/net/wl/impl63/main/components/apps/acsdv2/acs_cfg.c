@@ -45,7 +45,7 @@
  *      OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  *      NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- *	$Id: acs_cfg.c 781115 2019-11-12 05:40:05Z $
+ *	$Id: acs_cfg.c 785769 2020-04-06 13:37:23Z $
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -64,6 +64,11 @@ static const char *station_key_fmtstr = "toa-sta-%d";	/* format string, passed t
 #define ACS_DFLT_FLAGS ACS_FLAGS_LASTUSED_CHK
 
 extern int bcm_ether_atoe(const char *p, struct ether_addr *ea);
+
+#ifdef DEBUG
+extern void acs_dump_policy(acs_policy_t *a_pol);
+extern void acs_dump_config_extra(acs_chaninfo_t *c_info);
+#endif
 
 /*
  * Function to set a channel table by parsing a list consisting
@@ -553,9 +558,31 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 
 	if (((str = nvram_get(strcat_r(prefix, "acs_switch_score_thresh", tmp))) == NULL) ||
 		!str[0] || str[0] < '0' || str[0] > '9') {
-		c_info->switch_score_thresh = ACS_SWITCH_SCORE_THRESHOLD_DEFAULT;
+		c_info->acs_switch_score_thresh = ACS_SWITCH_SCORE_THRESHOLD_DEFAULT;
 	} else {
-		c_info->switch_score_thresh = atoi(str);
+		c_info->acs_switch_score_thresh = atoi(str);
+	}
+
+	if (((str = nvram_get(strcat_r(prefix, "acs_ignore_channel_change_from_hp_on_farsta",
+		tmp))) == NULL) || !str[0] || str[0] < '0' || str[0] > '9') {
+		c_info->acs_ignore_channel_change_from_hp_on_farsta =
+			ACS_IGNORE_CHANNEL_CHANGE_FROM_HP_ON_FARSTA;
+	} else {
+		c_info->acs_ignore_channel_change_from_hp_on_farsta = atoi(str);
+	}
+
+	if (((str = nvram_get(strcat_r(prefix, "acs_switch_score_thresh_hi", tmp))) == NULL) ||
+		!str[0] || str[0] < '0' || str[0] > '9') {
+		c_info->acs_switch_score_thresh_hi = ACS_SWITCH_SCORE_THRESHOLD_DEFAULT_HI;
+	} else {
+		c_info->acs_switch_score_thresh_hi = atoi(str);
+	}
+
+	if (((str = nvram_get(strcat_r(prefix, "acs_txop_limit_hi", tmp))) == NULL) ||
+		!str[0] || str[0] < '0' || str[0] > '9') {
+		c_info->acs_txop_limit_hi = ACS_TXOP_LIMIT_HI;
+	} else {
+		c_info->acs_txop_limit_hi = atoi(str);
 	}
 
 	if ((str = nvram_get(strcat_r(prefix, "acs_chan_flop_period", tmp))) == NULL)
@@ -802,41 +829,26 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 			c_info->name);
 	}
 
-	/* Customer Knob #1
-	 * Preference for DFS and Non-DFS channels
-	 */
 	acs_safe_get_conf(conf_word, sizeof(conf_word),
-			strcat_r(prefix, "acs_cs_dfs_pref", tmp));
+			strcat_r(prefix, "acs_access_category_en", tmp));
 
 	if (!strcmp(conf_word, "")) {
-		ACSD_INFO("%s: No acs_cs_dfs_pref set. Use val of acs_dfs instead\n",
+		ACSD_INFO("No acs_start_on_nondfs set,Retrieve default.ifname:%s\n", c_info->name);
+		c_info->acs_ac_flag = 1 << ACS_AC_VI | 1 << ACS_AC_VO;
+		ACSD_DEBUG("acs_ac_flag is: 0x%x ifname: %s\n", c_info->acs_ac_flag,
 			c_info->name);
-		c_info->acs_cs_dfs_pref = c_info->acs_dfs;
-	}
-	else {
-		char *endptr = NULL;
-		c_info->acs_cs_dfs_pref = strtoul(conf_word, &endptr, 0);
-		ACSD_DEBUG("%s: acs_cs_dfs_pref: 0x%x\n", c_info->name, c_info->acs_cs_dfs_pref);
-	}
-
-	/* Customer Knob #2
-	 * Preference for channel power
-	 */
-	acs_safe_get_conf(conf_word, sizeof(conf_word),
-			strcat_r(prefix, "acs_cs_high_pwr_pref", tmp));
-
-	if (!strcmp(conf_word, "")) {
-		ACSD_INFO("%s: No acs_cs_high_pwr_pref set. Disabled by default.\n",
+	} else {
+		char *token = NULL;
+		uint8 temp;
+		token = strtok(conf_word, " ");
+		while (token != NULL) {
+			temp = strtoul(token, NULL, 0);
+			c_info->acs_ac_flag  = c_info->acs_ac_flag | 1 << temp;
+			token = strtok(NULL, " ");
+		}
+		ACSD_DEBUG("acs_ac_flag is: 0x%x ifname: %s\n", c_info->acs_ac_flag,
 			c_info->name);
-		c_info->acs_cs_high_pwr_pref = 0;
 	}
-	else {
-		char *endptr = NULL;
-		c_info->acs_cs_high_pwr_pref = strtoul(conf_word, &endptr, 0);
-		ACSD_DEBUG("%s: acs_cs_high_pwr_pref: 0x%x\n", c_info->name,
-			c_info->acs_cs_high_pwr_pref);
-	}
-
 	/* allocate core data structure for escan */
 	c_info->acs_escan =
 		(acs_escaninfo_t *)acsd_malloc(sizeof(*(c_info->acs_escan)));

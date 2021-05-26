@@ -69,6 +69,8 @@ struct wlc_ratelinkmem_info; /* opaque module structure */
 		wlc_ratelinkmem_vbss_link_index((wlc), (bsscfg)) : \
 		WLC_RLM_SPECIAL_LINK_IDX)
 
+#define WLC_RLM_FTM_RATE_IDX		AMT_IDX_FTM_RSVD_START
+
 enum wlc_rlm_special_rate_enum {
 	WLC_RLM_SPECIAL_RATE_RSPEC = 0,
 	WLC_RLM_SPECIAL_RATE_MRSPEC = 1,

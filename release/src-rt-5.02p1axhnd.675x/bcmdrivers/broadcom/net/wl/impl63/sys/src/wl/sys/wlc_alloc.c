@@ -47,7 +47,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_alloc.c 780032 2019-10-14 14:43:14Z $
+ * $Id: wlc_alloc.c 787796 2020-06-11 23:04:24Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -614,6 +614,10 @@ BCMATTACHFN(wlc_attach_malloc)(osl_t *osh, uint unit, uint *err, uint devid, voi
 
 #ifdef BCMRXFRAGPOOL
 	wlc->pub->pktpool_rxlfrag = SHARED_RXFRAG_POOL;
+#endif /* BCMRXFRAGPOOL */
+
+#ifdef UTXD_POOL
+	wlc->pub->pktpool_utxd = SHARED_UTXD_POOL;
 #endif /* BCMRXFRAGPOOL */
 
 #ifdef BCMFRWDPOOLREORG

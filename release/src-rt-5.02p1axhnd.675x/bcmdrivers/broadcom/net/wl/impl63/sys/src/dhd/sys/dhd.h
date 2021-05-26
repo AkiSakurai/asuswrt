@@ -21,7 +21,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd.h 782649 2019-12-30 11:30:09Z $
+ * $Id: dhd.h 789024 2020-07-16 17:40:14Z $
  */
 
 /****************
@@ -600,6 +600,7 @@ typedef struct dhd_pub {
 	bool dhdhdr_support;        /* Dongle requests SFH and TxHdr support */
 #endif // endif
 	bool fast_delete_ring_support;		/* fast delete ring supported */
+	bool csi_monitor;			/* CSI monitoring supported */
 #ifdef DHD_WMF
 	bool wmf_ucast_igmp;
 #ifdef DHD_IGMP_UCQUERY
@@ -1237,9 +1238,7 @@ extern void dhd_timeout_start(dhd_timeout_t *tmo, uint usec);
 extern int dhd_timeout_expired(dhd_timeout_t *tmo);
 
 extern int dhd_ifname2idx(struct dhd_info *dhd, char *name);
-#if defined(WL_CFG80211) && defined(WL_HAPD_WDS)
-extern void dhd_wl_check_wds_update_peer(dhd_pub_t *dhdp, int ifidx, uint8 *peer_mac);
-#endif /* WL_CFG80211 && WL_HAPD_WDS */
+
 #ifdef BCM_ROUTER_DHD
 extern void dhd_update_bsscfg_state(dhd_pub_t *dhdp, int ifindex, bool state);
 #endif // endif
@@ -1331,6 +1330,10 @@ extern struct dhd_sta *dhd_findadd_sta(void *pub, int ifidx, void *ea, bool flus
 extern uint32 dhd_if_get_staidx(void *pub, int ifidx, void *ea);
 extern void dhd_del_sta(void *pub, int ifidx, void *ea);
 extern void dhd_del_allsta(void *pub, int ifidx);
+#ifdef BCM_PKTFWD_DWDS
+extern void dhd_alloc_dwds_idx(void *pub, int ifidx);
+extern void dhd_free_dwds_idx(void *pub, int ifidx);
+#endif /* BCM_PKTFWD_DWDS */
 extern void dhd_update_wofa_learning(dhd_pub_t *dhdp, uint8 ifidx);
 extern int dhd_get_ap_isolate(dhd_pub_t *dhdp, uint32 idx);
 extern int dhd_set_ap_isolate(dhd_pub_t *dhdp, uint32 idx, int val);
@@ -1904,4 +1907,17 @@ extern bool dhd_psta_authorized(void *dhd, dhd_pub_t *dhdp);
 
 extern uint32 dhd_get_macdbg_dump_level(struct dhd_info *dhd);
 extern void dhd_set_macdbg_dump_level(struct dhd_info *dhd, uint32 macdbg_dump_level);
+
+#if !defined(FLAG_DWDS_AP)
+#define netdev_wlan_set_dwds_ap(wlif)    ({ BCM_REFERENCE(wlif); })
+#define netdev_wlan_unset_dwds_ap(wlif)  ({ BCM_REFERENCE(wlif); })
+#define is_netdev_wlan_dwds_ap(wlif)     (0)
+#endif // endif
+
+#if !defined(FLAG_DWDS_CLIENT)
+#define netdev_wlan_set_dwds_client(wlif)    ({ BCM_REFERENCE(wlif); })
+#define netdev_wlan_unset_dwds_client(wlif)  ({ BCM_REFERENCE(wlif); })
+#define is_netdev_wlan_dwds_client(wlif)     (0)
+#endif // endif
+
 #endif /* _dhd_h_ */

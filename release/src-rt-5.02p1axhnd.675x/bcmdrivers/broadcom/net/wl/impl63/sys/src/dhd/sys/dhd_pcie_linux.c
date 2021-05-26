@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_pcie_linux.c 776467 2019-07-01 04:13:42Z $
+ * $Id: dhd_pcie_linux.c 786248 2020-04-22 09:24:19Z $
  */
 
 /* include files */
@@ -800,7 +800,7 @@ int dhdpcie_init(struct pci_dev *pdev)
 		if (!(osh = osl_attach(pdev, PCI_BUS, TRUE))) {
 #else
 		if (!(osh = osl_attach(pdev, PCI_BUS, FALSE))) {
-#endif
+#endif // endif
 			DHD_ERROR(("%s: osl_attach failed\n", __FUNCTION__));
 			break;
 		}

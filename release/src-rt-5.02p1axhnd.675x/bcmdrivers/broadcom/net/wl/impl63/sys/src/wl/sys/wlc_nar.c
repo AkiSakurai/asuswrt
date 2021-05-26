@@ -51,7 +51,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_nar.c 782402 2019-12-18 14:47:45Z $
+ * $Id: wlc_nar.c 787035 2020-05-14 14:04:33Z $
  *
  */
 
@@ -84,9 +84,6 @@
 #include <wlc_prot_n.h>
 #endif /* WLATF */
 #include <wlc_txmod.h>
-#if defined(SCB_BS_DATA)
-#include <wlc_bs_data.h>
-#endif /* SCB_BS_DATA */
 #include <wlc_perf_utils.h>
 #include <wlc_dump.h>
 #include <wlc_tx.h>
@@ -216,10 +213,16 @@ nar_stats_dump(nar_stats_t * stats, struct bcmstrbuf *b)
 	(scb)->nit->stats.counter[NAR_COUNTER_##ctr]++; \
 } while (0)
 
+#define NAR_STATS_N_INC(scb, ctr, count) do { \
+	(scb)->stats.counter[NAR_COUNTER_##ctr] += (count); \
+	(scb)->nit->stats.counter[NAR_COUNTER_##ctr] += (count); \
+} while (0)
+
 #else /* not NAR_STATS */
 
 #define NAR_STATS_DUMP(sptr, b)	/* nada */
 #define NAR_STATS_INC(scb, ctr)	/* nada */
+#define NAR_STATS_N_INC(scb, ctr, count)  /* nada */
 #define NAR_STATS_GET(ctx, ctr)	/* nada */
 #define NAR_STATS_PEAK(ctx, ctr, val)	/* nada */
 
@@ -331,6 +334,16 @@ static int BCMFASTPATH wlc_nar_release_from_queue(nar_scb_cubby_t * cubby, int p
 static bool BCMFASTPATH wlc_nar_fair_share_reached(nar_scb_cubby_t * cubby, int prec);
 static void BCMFASTPATH wlc_nar_pkt_freed(wlc_info_t *wlc, void *pkt, uint txs);
 static void wlc_nar_scbcubby_exit(void *handle, struct scb *scb);
+static void BCMFASTPATH wlc_nar_transmit_packet(void *handle, struct scb *, void *pkt, uint prec);
+static void wlc_nar_flush_scb_tid(void *handle, struct scb *scb, uint8 tid);
+static uint BCMFASTPATH wlc_nar_count_queued_packets(void *handle);
+
+static const txmod_fns_t nar_txmod_fns = {
+	wlc_nar_transmit_packet,
+	wlc_nar_count_queued_packets,
+	wlc_nar_flush_scb_tid,
+	NULL, NULL
+};
 
 #if defined(PKTQ_LOG)
 /**
@@ -533,29 +546,11 @@ wlc_nar_reset_release_state(nar_scb_cubby_t *cubby)
 void
 wlc_nar_flush_scb_queues(wlc_nar_info_t * nit, struct scb *scb)
 {
-	nar_scb_cubby_t *cubby;
-#ifdef WLTAF
-	int prec;
-#endif // endif
+	uint8 tid;
 
-	if (!(cubby = SCB_NAR_CUBBY(nit, scb))) {
-		return;
+	for (tid = 0; tid < NUMPRIO; tid++) {
+		wlc_nar_flush_scb_tid(nit, scb, tid);
 	}
-#ifdef WLTAF
-	WL_TAFF(nit->wlc, "soft reset "MACF"\n", ETHER_TO_MACF(scb->ea));
-	for (prec = 0; prec < WLC_PREC_COUNT; prec ++) {
-		if (cubby->taf_prec_active & (1 << prec)) {
-			wlc_taf_link_state(nit->wlc->taf_handle, scb, TAF_PREC(prec), TAF_NAR,
-				TAF_LINKSTATE_SOFT_RESET);
-		}
-	}
-#endif /* WLTAF */
-	/* Flush queue */
-	wlc_txq_pktq_flush(nit->wlc, &cubby->tx_queue);
-
-	/* Reset counters */
-	nit->packets_in_transit -= cubby->packets_in_transit;
-	wlc_nar_reset_release_state(cubby);
 }
 
 static void
@@ -775,16 +770,6 @@ wlc_nar_scbcubby_exit(void *handle, struct scb *scb)
 /*
  * Module initialisation and cleanup.
  */
-
-static void BCMFASTPATH wlc_nar_transmit_packet(void *handle, struct scb *, void *pkt, uint prec);
-static uint BCMFASTPATH wlc_nar_count_queued_packets(void *handle);
-
-static const txmod_fns_t nar_txmod_fns = {
-	wlc_nar_transmit_packet,
-	wlc_nar_count_queued_packets,
-	NULL, NULL
-};
-
 wlc_nar_info_t *
 BCMATTACHFN(wlc_nar_attach) (wlc_info_t * wlc)
 {
@@ -1162,6 +1147,10 @@ wlc_nar_pkt_freed(wlc_info_t *wlc, void *pkt, uint txs)
 	struct scb *scb;
 	nar_scb_cubby_t *cubby;
 	uint prec;
+#ifdef WLTAF
+	void* head_pkt = pkt;
+	bool taf_in_use = nit ? wlc_taf_nar_in_use(nit->wlc->taf_handle, NULL) : FALSE;
+#endif // endif
 
 	/* no packet */
 	if (!pkt)
@@ -1186,21 +1175,36 @@ wlc_nar_pkt_freed(wlc_info_t *wlc, void *pkt, uint txs)
 		__FUNCTION__, txs, cubby->packets_in_transit));
 
 	prec = WLC_PRIO_TO_PREC(PKTPRIO(pkt));
+
+	for (; pkt; pkt = PKTNEXT(nit->wlc->osh, pkt)) {
 #ifdef WLTAF
-	if (!wlc_taf_txpkt_status(wlc->taf_handle, scb, TAF_PREC(prec), pkt,
-		TAF_TXPKT_STATUS_PKTFREE))
+		if (!wlc_taf_txpkt_status(wlc->taf_handle, scb, TAF_PREC(prec), pkt,
+			TAF_TXPKT_STATUS_PKTFREE))
 #endif // endif
-	{
+		{
 #ifdef WLATF
 		wlc_nar_dec_packet_airtime(cubby, pkt);
 #endif // endif
-	};
+		};
 
-	if (cubby->packets_in_transit) {
-		NAR_STATS_INC(cubby, PACKETS_TRANSMITTED);
-		NAR_COUNTER_DEC(cubby, packets_in_transit);
-		cubby->pkts_intransit_prec[prec] --;
+		if (cubby->packets_in_transit) {
+			NAR_STATS_INC(cubby, PACKETS_TRANSMITTED);
+			NAR_COUNTER_DEC(cubby, packets_in_transit);
+			cubby->pkts_intransit_prec[prec] --;
+		}
 	}
+#ifdef WLTAF
+	if (taf_in_use) {
+		if (SCB_PS(scb) || wlc_taf_scheduler_blocked(nit->wlc->taf_handle) ||
+			(WLPKTTAG(head_pkt)->flags & WLF_CTLMGMT)) {
+			/* avoid triggering TAF when not necessary */
+			return;
+		}
+
+		/* Trigger a new TAF schedule cycle */
+		wlc_taf_schedule(nit->wlc->taf_handle, TAF_PREC(prec), scb, FALSE);
+	}
+#endif // endif
 }
 
 /*
@@ -1498,30 +1502,37 @@ wlc_nar_payload_length(wlc_info_t * wlc, struct scb *scb, void *pkt)
  */
 void BCMFASTPATH
 wlc_nar_dotxstatus(wlc_nar_info_t *nit, struct scb *scb, void *pkt, tx_status_t * txs,
-	bool pps_retry)
+	bool pps_retry, uint32 tx_rate_prim)
 {
 	nar_scb_cubby_t *cubby;
 	int             prec;
 	int             prec_count;
 	uint32          pcount;		/* number of packets for which we get tx status */
 	uint32          pcounted;
+	wlc_info_t*     wlc;
 
 #if defined(PKTQ_LOG)
 	pktq_counters_t *pq_counters = NULL;
 
 #ifdef PSPRETEND
-	uint supr_status = txs->status.suppr_ind;
+	uint supr_status;
 #endif /* PSPRETEND */
 #endif /* PKTQ_LOG */
-#if defined(SCB_BS_DATA)
-	wlc_bs_data_counters_t *bs_data_counters = NULL;
+#ifdef WLTAF
+	bool taf_in_use;
+#endif // endif
+	if (nit == NULL || txs == NULL) {
+		ASSERT(FALSE);
+		return;
+	}
+
+	wlc = nit->wlc;
+#if defined(PSPRETEND) && defined(PKTQ_LOG)
+	supr_status = txs->status.suppr_ind;
 #endif // endif
 #ifdef WLTAF
-	bool taf_in_use = nit ? wlc_taf_nar_in_use(nit->wlc->taf_handle, NULL) : FALSE;
+	taf_in_use = wlc_taf_nar_in_use(wlc->taf_handle, NULL);
 #endif // endif
-
-	ASSERT(nit != NULL);
-	ASSERT(txs != NULL);
 
 	/*
 	 * Return if we are not set up to handle the tx status for this scb.
@@ -1532,8 +1543,6 @@ wlc_nar_dotxstatus(wlc_nar_info_t *nit, struct scb *scb, void *pkt, tx_status_t 
 
 		return;
 	}
-
-	SCB_BS_DATA_CONDFIND(bs_data_counters, nit->wlc, scb);
 
 	cubby = SCB_NAR_CUBBY(nit, scb);
 	if (!cubby) {
@@ -1560,7 +1569,7 @@ wlc_nar_dotxstatus(wlc_nar_info_t *nit, struct scb *scb, void *pkt, tx_status_t 
 	 * AQM can interrupt once for a number of packets sent - handle that.
 	 */
 
-	if (D11REV_LT(nit->wlc->pub->corerev, 40)) {
+	if (D11REV_LT(wlc->pub->corerev, 40)) {
 		pcount = 1;
 	} else {
 		pcount = ((txs->status.raw_bits & TX_STATUS40_NCONS) >> TX_STATUS40_NCONS_SHIFT);
@@ -1586,7 +1595,7 @@ wlc_nar_dotxstatus(wlc_nar_info_t *nit, struct scb *scb, void *pkt, tx_status_t 
 		 * Update pktq_stats counters
 		 */
 
-		pktlen = wlc_nar_payload_length(nit->wlc, scb, pkt);
+		pktlen = wlc_nar_payload_length(wlc, scb, pkt);
 
 		WL_NAR_MSG(("%30s: pkt %d/%d, len %d\n", __FUNCTION__, pcounted, pcount, pktlen));
 		if (pcount == 1) {
@@ -1599,21 +1608,30 @@ wlc_nar_dotxstatus(wlc_nar_info_t *nit, struct scb *scb, void *pkt, tx_status_t 
 			pq_counters = cubby->tx_queue.pktqlog->_prec_cnt[prec];
 			if (pq_counters == NULL &&
 					(cubby->tx_queue.pktqlog->_prec_log & PKTQ_LOG_AUTO)) {
-				pq_counters = wlc_txq_prec_log_enable(nit->wlc, &cubby->tx_queue,
+				pq_counters = wlc_txq_prec_log_enable(wlc, &cubby->tx_queue,
 					(uint32)prec, TRUE);
+
+				if (pq_counters) {
+					wlc_read_tsf(wlc, &pq_counters->_logtimelo,
+						&pq_counters->_logtimehi);
+				}
 			}
 		}
 
 		tx_frame_count = txs->status.frag_tx_cnt;
 
-		if (D11REV_GE(nit->wlc->pub->corerev, 40)) {
+		if (D11REV_GE(wlc->pub->corerev, 128)) {
 			WLCNTCONDADD(pq_counters, pq_counters->airtime,
-			             (uint64)TX_STATUS40_TX_MEDIUM_DELAY(txs));
+				(uint64)TX_STATUS128_TXDUR(txs->status.s2));
+		} else if (D11REV_GE(wlc->pub->corerev, 40)) {
+			WLCNTCONDADD(pq_counters, pq_counters->airtime,
+				(uint64)TX_STATUS40_TX_MEDIUM_DELAY(txs));
 		}
 
+		WLCNTCONDADD(pq_counters, pq_counters->txrate_main,
+			tx_rate_prim * (tx_frame_count ?: 1));
 #ifdef PSPRETEND
 		if (pps_retry) {
-
 			if (!supr_status) {
 				WLCNTCONDINCR(pq_counters, pq_counters->ps_retry);
 			}
@@ -1621,21 +1639,17 @@ wlc_nar_dotxstatus(wlc_nar_info_t *nit, struct scb *scb, void *pkt, tx_status_t 
 #else
 		if (acked) {
 #endif /* PSPRETEND */
+			WLCNTCONDADD(pq_counters, pq_counters->txrate_succ, tx_rate_prim);
 			WLCNTCONDINCR(pq_counters, pq_counters->acked);
-			SCB_BS_DATA_CONDINCR(bs_data_counters, acked);
 			WLCNTCONDADD(pq_counters, pq_counters->throughput, (uint64)pktlen);
-			SCB_BS_DATA_CONDADD(bs_data_counters, throughput, pktlen);
 			if (tx_frame_count) {
 				WLCNTCONDADD(pq_counters, pq_counters->retry, (tx_frame_count - 1));
-				SCB_BS_DATA_CONDADD(bs_data_counters, retry, (tx_frame_count - 1));
 			}
 			NAR_STATS_INC(cubby, ACKED);
 
 		} else {
 			WLCNTCONDINCR(pq_counters, pq_counters->retry_drop);
-			SCB_BS_DATA_CONDINCR(bs_data_counters, retry_drop);
 			WLCNTCONDADD(pq_counters, pq_counters->retry, tx_frame_count);
-			SCB_BS_DATA_CONDADD(bs_data_counters, retry, tx_frame_count);
 
 			NAR_STATS_INC(cubby, NOT_ACKED);
 
@@ -1645,15 +1659,7 @@ wlc_nar_dotxstatus(wlc_nar_info_t *nit, struct scb *scb, void *pkt, tx_status_t 
 
 #ifdef WLTAF
 	if (taf_in_use) {
-		if (SCB_PS(scb) || wlc_taf_scheduler_blocked(nit->wlc->taf_handle) ||
-			((pcount == 1) && (WLPKTTAG(pkt)->flags & WLF_CTLMGMT))) {
-			/* avoid triggering TAF when not necessary */
-			return;
-		}
-		if (wlc_taf_schedule(nit->wlc->taf_handle, TAF_PREC(prec), scb, FALSE)) {
-			return;
-		}
-		/* fall through here */
+		return;
 	}
 #endif // endif
 	for (prec_count = (WLC_PREC_COUNT - 1); prec_count >= 0; prec_count --) {
@@ -1676,7 +1682,7 @@ wlc_nar_transmit_packet(void *handle, struct scb *scb, void *pkt, uint prec)
 {
 	wlc_nar_info_t *nit = handle;
 	nar_scb_cubby_t *cubby;
-	bool prio_is_aggregating;
+	bool prio_is_aggregating = FALSE;
 #if defined(PKTC) || defined(PKTC_TX_DONGLE)
 	void *pkt1 = NULL;
 	uint32 lifetime = 0;
@@ -1867,45 +1873,57 @@ wlc_nar_release_all_from_queue(wlc_nar_info_t *nit, struct scb *scb, int prec)
 	}
 }
 
-#ifdef PROP_TXSTATUS
 /* When a flowring is deleted or scb is removed, the packets related to that flowring or scb have
  * to be flushed.
  */
-void
-wlc_nar_flush_flowid_pkts(wlc_nar_info_t * nit, struct scb *scb, uint16 flowid)
+static void
+wlc_nar_flush_scb_tid(void *handle, struct scb *scb, uint8 tid)
 {
+	wlc_nar_info_t *nit = (wlc_nar_info_t *)handle;
+	nar_scb_cubby_t *scb_narinfo;
+	wlc_info_t *wlc = nit->wlc;
+	struct pktq *pq;			/**< multi-priority packet queue */
 	int prec;
-	void *p = NULL;
-	struct pktq *q;			/**< multi-priority packet queue */
-	nar_scb_cubby_t *cubby = SCB_NAR_CUBBY(nit, scb);
+	uint32 n_pkts_flushed;
 
-	if (cubby == NULL)
+	ASSERT(scb);
+
+	scb_narinfo = SCB_NAR_CUBBY(nit, scb);
+
+	if (scb_narinfo == NULL) {
 		return;
+	}
 
-	q = &cubby->tx_queue;
-	PKTQ_PREC_ITER(q, prec) {
-		if (pktqprec_empty(q, prec))
-			continue;
+	pq = &scb_narinfo->tx_queue;
 
-		p = pktqprec_peek(q, prec);
-		if (p == NULL || flowid != PKTFRAGFLOWRINGID(cubby->osh, p))
-			continue;
+	prec = WLC_PRIO_TO_PREC(tid);
 
-		p = pktq_pdeq(q, prec);
-		while (p) {
-			PKTFREE(cubby->osh, p, TRUE);
-			NAR_STATS_INC(cubby, PACKETS_DEQUEUED);
-			p = pktq_pdeq(q, prec);
-		}
+	if (pktqprec_empty(pq, prec)) {
+		return;
+	}
+
+	n_pkts_flushed = wlc_txq_pktq_pflush(wlc, pq, prec);
 #ifdef WLTAF
-		if (cubby->taf_prec_active & (1 << prec)) {
-			wlc_taf_link_state(nit->wlc->taf_handle, scb, TAF_PREC(prec), TAF_NAR,
-				TAF_LINKSTATE_SOFT_RESET);
-		}
-#endif // endif
+	if (scb_narinfo->taf_prec_active & (1 << prec)) {
+		wlc_taf_link_state(wlc->taf_handle, scb, TAF_PREC(prec), TAF_NAR,
+			TAF_LINKSTATE_SOFT_RESET);
+	}
+#endif /* WLTAF */
+
+	BCM_REFERENCE(n_pkts_flushed);
+	WL_ERROR(("wl%d.%d: %s flushing %d packets for "MACF" AID %d tid %d\n", wlc->pub->unit,
+		WLC_BSSCFG_IDX(SCB_BSSCFG(scb)), __FUNCTION__, n_pkts_flushed,
+		ETHER_TO_MACF(scb->ea), SCB_AID(scb), tid));
+
+	NAR_STATS_N_INC(scb_narinfo, PACKETS_DEQUEUED, n_pkts_flushed);
+
+	if (pktq_empty(pq)) {
+		/* Reset counters */
+		wlc_nar_reset_release_state(scb_narinfo);
 	}
 }
 
+#ifdef PROP_TXSTATUS
 /** returns (multi prio) tx queue to use for a caller supplied scb (= one remote party) */
 struct pktq *
 wlc_nar_txq(wlc_nar_info_t * nit, struct scb *scb)
@@ -1926,3 +1944,32 @@ wlc_nar_txq(wlc_nar_info_t * nit, struct scb *scb)
 
 }
 #endif /* PROP_TXSTATUS */
+
+/* Return total intransit NAR packets across SCBs */
+uint32
+wlc_nar_tx_in_tansit(wlc_nar_info_t *nit)
+{
+	if (nit) {
+		return nit->packets_in_transit;
+	}
+
+	return 0;
+}
+/* Get queued up packets for a given scb */
+uint16 BCMFASTPATH
+wlc_scb_nar_n_pkts(wlc_nar_info_t * nit, struct scb *scb, uint8 prio)
+{
+	nar_scb_cubby_t *cubby;
+
+	if (!nit->nar_enabled) {
+		return 0;
+	}
+
+	cubby = SCB_NAR_CUBBY(nit, scb);
+
+	if (!cubby) {
+		return 0;
+	}
+
+	return pktqprec_n_pkts(&cubby->tx_queue, prio);
+}

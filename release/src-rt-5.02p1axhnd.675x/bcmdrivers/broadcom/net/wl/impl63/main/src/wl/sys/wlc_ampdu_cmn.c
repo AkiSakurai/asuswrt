@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_ampdu_cmn.c 779875 2019-10-09 10:31:01Z $
+ * $Id: wlc_ampdu_cmn.c 788985 2020-07-16 02:20:55Z $
  */
 
 /**
@@ -920,6 +920,11 @@ wlc_ampdu_recv_delba(wlc_info_t *wlc, struct scb *scb, uint8 *body, int body_len
 	reason = ltoh16(delba->reason);
 
 	tid = (param_set & DOT11_DELBA_PARAM_TID_MASK) >> DOT11_DELBA_PARAM_TID_SHIFT;
+	if (tid >= AMPDU_MAX_SCB_TID) {
+		WL_ERROR(("wl%d: wlc_ampdu_recv_delbas: invalid tid %d\n", wlc->pub->unit, tid));
+		return;
+	}
+
 	initiator = (param_set & DOT11_DELBA_PARAM_INIT_MASK) >> DOT11_DELBA_PARAM_INIT_SHIFT;
 
 	if (initiator)

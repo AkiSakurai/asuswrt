@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd.h 782056 2019-12-10 04:12:21Z $
+ * $Id: wbd.h 786983 2020-05-13 03:06:28Z $
  */
 
 #ifndef _WBD_H_
@@ -135,7 +135,6 @@ extern bool gg_swap;
 #define WBD_INFO_FLAGS_REMOVE_CLIENT	0x0080	/* remove_client required ? */
 #define WBD_INFO_FLAGS_UAP		0x0100	/* Upstream AP */
 #define WBD_INFO_FLAGS_PER_CHAN_BCN_REQ	0x0200	/* Beacon request should be sent on each channel */
-#define WBD_INFO_FLAGS_IEEE1905_INIT	0x0400	/* IEEE1905 Module initialized or not */
 #define WBD_INFO_FLAGS_CLOSING_APP	0x0800	/* Closing the application */
 #define WBD_INFO_FLAGS_IS_HAPD_ENABLED	0x1000	/* Whether hostapd is enabled or not */
 
@@ -163,8 +162,6 @@ extern bool gg_swap;
 #define WBD_UAP_ENAB(flags)		((flags) & (WBD_INFO_FLAGS_UAP))
 /* Check if beacon request should be sent per channel */
 #define WBD_PER_CHAN_BCN_REQ(flags)	((flags) & (WBD_INFO_FLAGS_PER_CHAN_BCN_REQ))
-/* Check whether IEEE1905 module is initialized or not */
-#define WBD_IEEE1905_INIT(flags)	((flags) & (WBD_INFO_FLAGS_IEEE1905_INIT))
 /* Check whether application is marked to be closed */
 #define WBD_CLOSING_APP(flags)		((flags) & (WBD_INFO_FLAGS_CLOSING_APP))
 /* Check whether hostapd is enabled or not */
@@ -248,6 +245,11 @@ extern bool gg_swap;
 #define WBD_DEF_SEC_VLAN_ID		20	/* Default Secondary VLAN ID */
 #define WBD_DEF_VLAN_ETHER_TYPE		0x8100	/* Default VLAN ether type */
 #define WBD_DEF_TS_SUPPORTED		1	/* Default for Traffic Separation supported */
+#define WBD_WL_CHSPEC_DEF_5G_L		"36/80"  /* Default 5GL chanspec on channel 36/80 */
+#define WBD_WL_CHSPEC_DEF_5G_H_FCC	"149/80"  /* Default 5GH_FCC  chanspec on channel 149/80 */
+#define WBD_WL_CHSPEC_DEF_5G_H_EU	"100/80"  /* Default 5GH chanspec on channel 100/80
+						   * for edcrs_eu country
+						   */
 #if defined(MULTIAPR2)
 #define WBD_DEF_MAP_PROFILE		2	/* Default MultiAP Profile */
 #else /* MULTIAPR2 */
@@ -369,6 +371,8 @@ typedef enum wbd_wc_resp_reason_code {
 #define NVRAM_MAP_WNM_NO_BTQ_RESP	"map_wnm_no_btq_resp"
 #define NVRAM_MAP_PROFILE		"map_profile"
 #define NVRAM_MAP_TS_IPTABLES		"map_ts_iptables"
+#define NVRAM_MAP_DEFAULT_5GL_CHANSPEC	"map_default_5GL_chanspec"
+#define NVRAM_MAP_DEFAULT_5GH_CHANSPEC	"map_default_5GH_chanspec"
 
 /* General NVRAMs */
 #define NVRAM_SSID			"ssid"

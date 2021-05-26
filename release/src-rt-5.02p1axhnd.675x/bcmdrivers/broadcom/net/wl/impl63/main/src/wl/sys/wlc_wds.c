@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_wds.c 782660 2019-12-31 04:49:02Z $
+ * $Id: wlc_wds.c 789378 2020-07-27 15:49:44Z $
  */
 
 /**
@@ -920,6 +920,7 @@ wlc_ap_wds_timeout(wlc_wds_info_t *mwds)
 	wlc_info_t *wlc = mwds->wlc;
 	struct scb *scb;
 	struct scb_iter scbiter;
+	wlc_bsscfg_t *cfg = NULL;
 
 	/* check wds link connectivity */
 	if ((mwds->wdsactive && mwds->wds_timeout &&
@@ -931,6 +932,13 @@ wlc_ap_wds_timeout(wlc_wds_info_t *mwds)
 
 		if (!SCB_LEGACY_WDS(scb))
 			continue;
+
+		cfg = SCB_BSSCFG(scb);
+		if (!cfg->up) {
+			/* Skip wds probe if the bsscfg is down */
+			continue;
+		}
+
 		/* mark the WDS link up if we have had recent traffic,
 		 * or probe the WDS link if we have not.
 		 */
@@ -965,11 +973,12 @@ wlc_ap_wds_probe(wlc_wds_info_t *mwds, struct scb *scb)
 	if (!wlc_sendnulldata(wlc, scb->bsscfg, &scb->ea, rate_override,
 		SCB_PS_PRETEND(scb) ? WLF_PSDONTQ : 0,
 		SCB_PS_PRETEND(scb) ? PRIO_8021D_VO : PRIO_8021D_BE,
-		wlc_ap_sendnulldata_cb, NULL))
+		wlc_ap_sendnulldata_cb, NULL)) {
 		WL_ERROR(("wl%d: %s: wlc_sendnulldata failed\n",
 		          wlc->pub->unit, __FUNCTION__));
-
-	scb->flags |= SCB_PENDING_PROBE;
+	} else {
+		scb->flags |= SCB_PENDING_PROBE;
+	}
 }
 
 /*  Check for ack, if there is no ack, reset the rssi value */
@@ -983,7 +992,7 @@ wlc_ap_wds_probe_complete(wlc_info_t *wlc, uint txstatus, struct scb *scb)
 
 	ASSERT(scb != NULL);
 
-	scb->flags &= ~SCB_PENDING_PROBE;
+	scb->flags &= ~(SCB_PENDING_PROBE | SCB_PSPRETEND_PROBE);
 
 #ifdef PSPRETEND
 	if (SCB_PS_PRETEND_PROBING(scb)) {

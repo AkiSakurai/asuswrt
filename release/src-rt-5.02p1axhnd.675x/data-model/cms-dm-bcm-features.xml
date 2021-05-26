@@ -380,6 +380,8 @@
   <parameter name="WlanNvram" type="string" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="" />
     <description source="BROADCOM">nvram string: format:name=string|name=string|...</description>
 
+ <parameter name="WlanUnsetNvram" type="string" specSource="Broadcom" profile="Unspecified" supportLevel="ReadWrite" defaultValue="" />
+    <description source="BROADCOM">nvram string: format:name=string|name=string|...</description>
 
 <vsaInfo>
 

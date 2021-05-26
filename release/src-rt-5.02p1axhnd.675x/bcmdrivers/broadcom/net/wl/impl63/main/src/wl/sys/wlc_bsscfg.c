@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_bsscfg.c 781032 2019-11-08 09:05:12Z $
+ * $Id: wlc_bsscfg.c 785669 2020-04-02 14:31:50Z $
  */
 
 /* XXX: Define wlc_cfg.h to be the first header file included as some builds
@@ -305,8 +305,8 @@ wlc_bsscfg_traffic_thresh_set_defaults(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg)
 	}
 	bsscfg->trf_cfg_params[WL_TRF_TO].num_secs = WL_TRAFFIC_THRESH_BSS_TO_NS;
 	bsscfg->trf_cfg_params[WL_TRF_TO].thresh = WL_TRAFFIC_THRESH_BSS_TO_TH;
-	bsscfg->trf_scb_enable = ((1 << WL_TRF_VI) | (1 << WL_TRF_VO) | (1 << WL_TRF_TO));
-	bsscfg->trf_cfg_enable = ((1 << WL_TRF_VI) | (1 << WL_TRF_VO) | (1 << WL_TRF_TO));
+	bsscfg->trf_scb_enable = ((1 << WL_TRF_VI) | (1 << WL_TRF_VO));
+	bsscfg->trf_cfg_enable = ((1 << WL_TRF_VI) | (1 << WL_TRF_VO));
 }
 int
 wlc_bsscfg_traffic_thresh_init(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg)
@@ -2047,6 +2047,13 @@ wlc_bsscfg_alloc(wlc_info_t *wlc, int idx, wlc_bsscfg_type_t *type,
 {
 	wlc_bsscfg_t *bsscfg;
 	int err;
+#ifdef MEM_ALLOC_STATS
+	memuse_info_t mu;
+	uint32 freemem_before, bytes_allocated;
+
+	hnd_get_heapuse(&mu);
+	freemem_before = mu.arena_free;
+#endif /* MEM_ALLOC_STATS */
 
 	WL_APSTA_UPDN(("wl%d.%d: wlc_bsscfg_alloc: flags 0x%08x type %s subtype %s\n",
 	               wlc->pub->unit, idx, flags,
@@ -2071,6 +2078,17 @@ wlc_bsscfg_alloc(wlc_info_t *wlc, int idx, wlc_bsscfg_type_t *type,
 
 	/* Initialize invalid iface_type */
 	bsscfg->wlcif->iface_type = wlc->bcmh->iface_info_max;
+
+#ifdef MEM_ALLOC_STATS
+	hnd_get_heapuse(&mu);
+	bytes_allocated = freemem_before - mu.arena_free;
+	bsscfg->mem_bytes += bytes_allocated;
+	if (bytes_allocated > mu.max_bsscfg_alloc) {
+		mu.max_bsscfg_alloc = bytes_allocated;
+	}
+	mu.total_bsscfg_alloc += bytes_allocated;
+	hnd_update_mem_alloc_stats(&mu);
+#endif /* MEM_ALLOC_STATS */
 
 	return bsscfg;
 
@@ -2197,6 +2215,10 @@ void
 wlc_bsscfg_free(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg)
 {
 	int idx;
+#ifdef MEM_ALLOC_STATS
+	memuse_info_t mu;
+	uint32 membytes = bsscfg->mem_bytes;
+#endif /* MEM_ALLOC_STATS */
 
 	WL_APSTA_UPDN(("wl%d.%d: wlc_bsscfg_free: flags = 0x%x\n",
 	               wlc->pub->unit, WLC_BSSCFG_IDX(bsscfg), bsscfg->flags));
@@ -2220,6 +2242,12 @@ wlc_bsscfg_free(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg)
 	if (bsscfg == wlc_bsscfg_primary(wlc)) {
 		wlc->cfg = NULL;
 	}
+#ifdef MEM_ALLOC_STATS
+	hnd_get_heapuse(&mu);
+	mu.total_bsscfg_alloc -= membytes;
+	hnd_update_mem_alloc_stats(&mu);
+#endif /* MEM_ALLOC_STATS */
+
 }
 
 int
@@ -2421,12 +2449,14 @@ BCMATTACHFN(wlc_bsscfg_primary_init)(wlc_info_t *wlc)
 	wlc_bsscfg_t *bsscfg = NULL;
 	int err;
 	int idx;
+	wlc_bsscfg_type_t type = {BSSCFG_TYPE_GENERIC, BSSCFG_SUBTYPE_NONE};
 #ifdef MEM_ALLOC_STATS
 	memuse_info_t mu;
 	uint32 freemem_before, bytes_allocated;
-#endif /* MEM_ALLOC_STATS */
 
-	wlc_bsscfg_type_t type = {BSSCFG_TYPE_GENERIC, BSSCFG_SUBTYPE_NONE};
+	hnd_get_heapuse(&mu);
+	freemem_before = mu.arena_free;
+#endif /* MEM_ALLOC_STATS */
 
 	idx = wlc_bsscfg_get_free_idx(wlc);
 	if (idx == BCME_ERROR) {
@@ -2434,11 +2464,6 @@ BCMATTACHFN(wlc_bsscfg_primary_init)(wlc_info_t *wlc)
 		err = BCME_NORESOURCE;
 		goto fail;
 	}
-
-#ifdef MEM_ALLOC_STATS
-	hnd_get_heapuse(&mu);
-	freemem_before = mu.arena_free;
-#endif /* MEM_ALLOC_STATS */
 
 	if ((bsscfg = wlc_bsscfg_malloc(wlc)) == NULL) {
 		WL_ERROR(("wl%d: %s: out of memory, malloced %d bytes\n",
@@ -2475,13 +2500,12 @@ BCMATTACHFN(wlc_bsscfg_primary_init)(wlc_info_t *wlc)
 #ifdef MEM_ALLOC_STATS
 	hnd_get_heapuse(&mu);
 	bytes_allocated = freemem_before - mu.arena_free;
-#if defined(BCMDBG)
 	bsscfg->mem_bytes += bytes_allocated;
-#endif // endif
 	if (bytes_allocated > mu.max_bsscfg_alloc) {
 		mu.max_bsscfg_alloc = bytes_allocated;
-		hnd_update_mem_alloc_stats(&mu);
 	}
+	mu.total_bsscfg_alloc += bytes_allocated;
+	hnd_update_mem_alloc_stats(&mu);
 #endif /* MEM_ALLOC_STATS */
 
 	return BCME_OK;
@@ -4002,8 +4026,9 @@ wlc_iface_create_generic_bsscfg(wlc_info_t *wlc, wl_interface_create_t *if_buf,
 	cfg->mem_bytes += bytes_allocated;
 	if (bytes_allocated > mu.max_bsscfg_alloc) {
 		mu.max_bsscfg_alloc = bytes_allocated;
-		hnd_update_mem_alloc_stats(&mu);
 	}
+	mu.total_bsscfg_alloc += bytes_allocated;
+	hnd_update_mem_alloc_stats(&mu);
 #endif /* MEM_ALLOC_STATS */
 
 	return (cfg);

@@ -355,8 +355,8 @@ wbd_do_legacy_sta_steer(wbd_slave_item_t *slave, ieee1905_steer_req *steer_req,
 		wl_wlif_block_mac(slave->wlif_hdl, sta_mac, blk_time);
 	}
 
-	/* Deauth the STA from current BSS */
-	blanket_deauth_sta(slave->wbd_ifr.ifr.ifr_name, &sta_mac, 0);
+	/* Disassoc the STA from current BSS */
+	blanket_disassoc_sta(slave->wbd_ifr.ifr.ifr_name, &sta_mac);
 
 	WBD_EXIT();
 }
@@ -442,8 +442,9 @@ wbd_do_map_steer(wbd_slave_item_t *slave, ieee1905_steer_req *steer_req,
 	assoc_sta = (wbd_assoc_sta_item_t*)sta->vndr_data;
 	assoc_sta->status = WBD_STA_STATUS_WEAK_STEERING;
 
-	/* If the BTM not supported, do legacy steering */
-	if (!btm_supported) {
+	/* If the BTM not supported and sta is not active client, do legacy steering */
+	if (!btm_supported && (!IS_LEGACY_ACT_STA_BRUTEFORCE_OFF(slave->steer_flags) &&
+		(assoc_sta->stats.idle_rate < slave->weak_sta_policy.t_idle_rate))) {
 		wbd_do_legacy_sta_steer(slave, steer_req, sta_info, bss_info);
 		goto end;
 	}
@@ -497,13 +498,22 @@ wbd_do_map_steer(wbd_slave_item_t *slave, ieee1905_steer_req *steer_req,
 		/* If the beacon period is 0, set it to 100 */
 		if (bcn_prd == 0) {
 			bcn_prd = 100;
-			WBD_WARNING("In Slave["MACF"] Beacon period returned 0. Set it to default 100\n",
-				ETHER_TO_MACF(slave->wbd_ifr.bssid));
+			WBD_WARNING("In Slave["MACF"] Beacon period returned 0."
+				"Set it to default 100\n", ETHER_TO_MACF(slave->wbd_ifr.bssid));
 		}
 		ioctl_data.disassoc_timer = (uint16)(steer_req->dissassociation_timer / bcn_prd);
 	} else {
 		ioctl_data.flags |= WLIFU_BSS_TRANS_FLAGS_BTM_ABRIDGED;
 		ioctl_data.disassoc_timer = 0x0000;
+	}
+
+	/* For legacy sta which is actively running traffic. Set the legacy active sta flag
+	 * so the the steering lib does not use the brute force method to steer it.
+	 */
+	if (!blanket_is_bss_trans_supported(slave->wbd_ifr.ifr.ifr_name,
+		(struct ether_addr*)sta_info->mac) &&
+		(assoc_sta->stats.idle_rate >= slave->weak_sta_policy.t_idle_rate)) {
+		ioctl_data.flags |= WLIFU_BSS_TRANS_FLAGS_LEGACY_ACTIVE_STA;
 	}
 
 	/* Steer the client */
@@ -1063,7 +1073,7 @@ setchannel:
 		uint8 rclass;
 		int invalid = 1;
 
-		if (CHSPEC_IS80(pdmif->chanspec) || CHSPEC_IS160(pdmif->chanspec)) {
+		if (CHSPEC_IS80(chlist->element[i]) || CHSPEC_IS160(chlist->element[i])) {
 			channel = CHSPEC_CHANNEL(chlist->element[i]);
 		} else {
 			channel = wf_chspec_ctlchan(chlist->element[i]);
@@ -1433,7 +1443,8 @@ static int wbd_slave_erase_bss(char *vif_name, int is_primary)
 		blanket_nvram_prefix_set(prefix, NVRAM_BSS_ENABLED, "0");
 	}
 
-	if (blanket_get_config_val_int(prefix, NVRAM_RADIO, 0) != 0) {
+	/* Set RADIO NVRAM only for primary */
+	if (is_primary && blanket_get_config_val_int(prefix, NVRAM_RADIO, 0) != 0) {
 		ret = 0;
 		blanket_nvram_prefix_set(prefix, NVRAM_RADIO, "0");
 	}
@@ -1585,41 +1596,21 @@ static void wbd_slave_1905EncrToWEP(unsigned short EncryptType, char *wep, uint8
 	}
 }
 
-/* Make dedicated backhaul bss hidden */
-static int
-wbd_slave_make_bh_bss_hidden(char *prefix, ieee1905_client_bssinfo_type *bss)
-{
-	int ret = -1;
-
-	/* For dedicated backhaul interface n/w type should be closed.
-	 * Which makes sure AP does not advertise its ssid in beacon and
-	 * Only directed prob resp will be having the actual ssid.
-	 */
-	if (bss->BackHaulBSS == 1 && bss->FrontHaulBSS != 1) {
-		if (blanket_get_config_val_int(NULL, NVRAM_MAP_BH_OPEN, 0) == 0 &&
-			blanket_get_config_val_int(prefix, NVRAM_CLOSED, 0) == 0) {
-			blanket_nvram_prefix_set(prefix, NVRAM_CLOSED, "1");
-			ret = 0;
-		} else if (blanket_get_config_val_int(NULL, NVRAM_MAP_BH_OPEN, 0) == 1 &&
-			blanket_get_config_val_int(prefix, NVRAM_CLOSED, 0) == 1) {
-			blanket_nvram_prefix_set(prefix, NVRAM_CLOSED, "0");
-			ret = 0;
-		}
-	}
-
-	return ret;
-}
-
 /* Aplly the default settings needed like ssid, key etc... */
-static void wbd_slave_apply_default_ap_nvrams(char *prefix, ieee1905_client_bssinfo_type *bss)
+static void wbd_slave_apply_default_ap_nvrams(char *prefix, ieee1905_client_bssinfo_type *bss,
+	int is_primary)
 {
 	char akm[WBD_MAX_BUF_32], crypto[WBD_MAX_BUF_16], strmap[WBD_MAX_BUF_16];
 	char wep[WBD_MAX_BUF_16], auth[WBD_MAX_BUF_16];
-	uint8 map = 0;
+	char strclosed[WBD_MAX_BUF_16] = {0};
 
 	blanket_nvram_prefix_set(prefix, NVRAM_WPS_MODE, "enabled");
 	blanket_nvram_prefix_set(prefix, NVRAM_MODE, "ap");
-	blanket_nvram_prefix_set(prefix, NVRAM_RADIO, "1");
+
+	/* Set RADIO NVRAM only for primary */
+	if (is_primary) {
+		blanket_nvram_prefix_set(prefix, NVRAM_RADIO, "1");
+	}
 	blanket_nvram_prefix_set(prefix, NVRAM_BSS_ENABLED, "1");
 	blanket_nvram_prefix_set(prefix, NVRAM_SSID, (const char*)bss->ssid.SSID);
 	blanket_nvram_prefix_set(prefix, NVRAM_WPA_PSK, (const char*)bss->NetworkKey.key);
@@ -1637,18 +1628,11 @@ static void wbd_slave_apply_default_ap_nvrams(char *prefix, ieee1905_client_bssi
 	wbd_slave_1905EncrToWEP(bss->EncryptType, wep, sizeof(wep));
 	blanket_nvram_prefix_set(prefix, NVRAM_WEP, wep);
 
-	if (bss->BackHaulBSS == 1 && bss->FrontHaulBSS == 1) {
-		map = 3;
-	} else if (bss->BackHaulBSS == 1) {
-		map = 2;
-	} else if (bss->FrontHaulBSS == 1) {
-		map = 1;
-	}
-	snprintf(strmap, sizeof(strmap), "%d", map);
+	snprintf(strmap, sizeof(strmap), "%d", bss->map_flag);
 	blanket_nvram_prefix_set(prefix, NVRAM_MAP, strmap);
 
-	/* Make dedicated backhaul hidden  */
-	(void)wbd_slave_make_bh_bss_hidden(prefix, bss);
+	snprintf(strclosed, sizeof(strclosed), "%d", bss->Closed);
+	blanket_nvram_prefix_set(prefix, NVRAM_CLOSED, strclosed);
 
 	WBD_INFO("prefix[%s] ssid[%s] key[%s] AuthType[%x] akm[%s] EncryptType[%x] crypto[%s] "
 		"map[%s]\n",
@@ -1657,13 +1641,14 @@ static void wbd_slave_apply_default_ap_nvrams(char *prefix, ieee1905_client_bssi
 }
 
 /* Return TRUE if the settings are already there */
-static int wbd_slave_same_bss_setting(char *ifname, char *prefix, ieee1905_client_bssinfo_type *bss)
+static int wbd_slave_same_bss_setting(char *ifname, char *prefix, ieee1905_client_bssinfo_type *bss,
+	int is_primary)
 {
 	int ret = 0;
 	char tmp[NVRAM_MAX_VALUE_LEN];
 	char akm[WBD_MAX_BUF_32] = {0}, crypto[WBD_MAX_BUF_16] = {0}, strmap[WBD_MAX_BUF_16] = {0};
 	char wep[WBD_MAX_BUF_16], auth[WBD_MAX_BUF_16];
-	uint8 map = 0;
+	char strclosed[WBD_MAX_BUF_16] = {0};
 
 	if (!nvram_match(strcat_r(prefix, NVRAM_SSID, tmp), (char*)bss->ssid.SSID)) {
 		WBD_INFO("%s not matching %s != %s\n", NVRAM_SSID,
@@ -1677,7 +1662,7 @@ static int wbd_slave_same_bss_setting(char *ifname, char *prefix, ieee1905_clien
 	}
 
 	wbd_slave_1905AuthTypeToAKM(prefix, bss->AuthType, akm, sizeof(akm));
-	if (!nvram_match(strcat_r(prefix, NVRAM_AKM, tmp), akm)) {
+	if (compare_lists(blanket_nvram_prefix_safe_get(prefix, NVRAM_AKM), akm)) {
 		WBD_INFO("%s not matching %s != %s\n", NVRAM_AKM,
 			blanket_nvram_prefix_safe_get(prefix, NVRAM_AKM), akm);
 		goto no_match;
@@ -1704,14 +1689,7 @@ static int wbd_slave_same_bss_setting(char *ifname, char *prefix, ieee1905_clien
 		goto no_match;
 	}
 
-	if (bss->BackHaulBSS == 1 && bss->FrontHaulBSS == 1) {
-		map = 3;
-	} else if (bss->BackHaulBSS == 1) {
-		map = 2;
-	} else if (bss->FrontHaulBSS == 1) {
-		map = 1;
-	}
-	snprintf(strmap, sizeof(strmap), "%d", map);
+	snprintf(strmap, sizeof(strmap), "%d", bss->map_flag);
 	if (!nvram_match(strcat_r(prefix, NVRAM_MAP, tmp), strmap)) {
 		WBD_INFO("%s not matching %s != %s\n", NVRAM_MAP,
 			blanket_nvram_prefix_safe_get(prefix, NVRAM_MAP), strmap);
@@ -1724,32 +1702,42 @@ static int wbd_slave_same_bss_setting(char *ifname, char *prefix, ieee1905_clien
 		goto no_match;
 	}
 
-	if (!(blanket_get_config_val_int(prefix, NVRAM_RADIO, 0))) {
+	/* Check RADIO NVRAM only on primary */
+	if (is_primary && !(blanket_get_config_val_int(prefix, NVRAM_RADIO, 0))) {
 		WBD_INFO("%s not matching %s != %d\n", NVRAM_RADIO,
 			blanket_nvram_prefix_safe_get(prefix, NVRAM_RADIO), 1);
 		goto no_match;
 	}
 
-	if (bss->Guest == 0 && !find_in_list(blanket_nvram_safe_get(NVRAM_LAN_IFNAMES), ifname)) {
+	if (!I5_IS_BSS_GUEST(bss->map_flag) &&
+		!find_in_list(blanket_nvram_safe_get(NVRAM_LAN_IFNAMES), ifname)) {
 		WBD_INFO("%s not in %s(%s)\n", ifname, NVRAM_LAN_IFNAMES,
 			blanket_nvram_safe_get(NVRAM_LAN_IFNAMES));
 		goto no_match;
 	}
 
-	if (bss->Guest == 1 && !find_in_list(blanket_nvram_safe_get(NVRAM_LAN1_IFNAMES), ifname)) {
+	if (I5_IS_BSS_GUEST(bss->map_flag) &&
+		!find_in_list(blanket_nvram_safe_get(NVRAM_LAN1_IFNAMES), ifname)) {
 		WBD_INFO("%s not in %s(%s)\n", ifname, NVRAM_LAN1_IFNAMES,
 			blanket_nvram_safe_get(NVRAM_LAN1_IFNAMES));
 		goto no_match;
 	}
 
+	snprintf(strclosed, sizeof(strclosed), "%d", bss->Closed);
+	if (!nvram_match(strcat_r(prefix, NVRAM_CLOSED, tmp), strclosed)) {
+		WBD_INFO("%s not matching %s != %s\n", NVRAM_CLOSED,
+			blanket_nvram_prefix_safe_get(prefix, NVRAM_CLOSED), strclosed);
+		goto no_match;
+	}
 	/* All the required settings are matching */
 	ret = 1;
 
 no_match:
 	WBD_INFO("prefix[%s] ssid[%s] key[%s] AuthType[%x] akm[%s] EncryptType[%x] crypto[%s] "
-		"map[%s] isGuest[%d] ret[%d]. %s\n",
+		"map_flag[0x%x] isClosed[%d] ret[%d]. %s\n",
 		prefix, bss->ssid.SSID, bss->NetworkKey.key, bss->AuthType, akm,
-		bss->EncryptType, crypto, strmap, bss->Guest, ret, ret ? "Matching" : "No Match");
+		bss->EncryptType, crypto, bss->map_flag, bss->Closed, ret,
+		ret ? "Matching" : "No Match");
 
 	return ret;
 }
@@ -1775,18 +1763,6 @@ static void wbd_slave_update_mapflags_from_bss_info(i5_dm_interface_type *i5_ifr
 	ieee1905_client_bssinfo_type *bss)
 {
 	i5_dm_bss_type *i5_bss;
-	unsigned char map_flags = 0;
-
-	/* Get MAP Flags from BSS info */
-	if (bss->BackHaulBSS == 1) {
-		map_flags |= IEEE1905_MAP_FLAG_BACKHAUL;
-	}
-	if (bss->FrontHaulBSS == 1) {
-		map_flags |= IEEE1905_MAP_FLAG_FRONTHAUL;
-	}
-	if (bss->Guest == 1) {
-		map_flags |= IEEE1905_MAP_FLAG_GUEST;
-	}
 
 	/* Search the BSS from interface list based on the SSID */
 	foreach_i5glist_item(i5_bss, i5_dm_bss_type, i5_ifr->bss_list) {
@@ -1795,8 +1771,7 @@ static void wbd_slave_update_mapflags_from_bss_info(i5_dm_interface_type *i5_ifr
 			bss->ssid.SSID_len) != 0) {
 			continue;
 		}
-
-		i5_bss->mapFlags |= map_flags;
+		i5_bss->mapFlags = bss->map_flag;
 	}
 }
 
@@ -1809,6 +1784,7 @@ int wbd_slave_create_bss_on_ifr(wbd_info_t *info, char *ifname,
 	char tmp[NVRAM_MAX_VALUE_LEN], lan_ifnames[NVRAM_MAX_VALUE_LEN] = {0};
 	char lan1_ifnames[NVRAM_MAX_VALUE_LEN] = {0};
 	int idx, unit, ret = -1, iter_bss_match;
+	bool backhaul_bss_found = FALSE;
 	i5_dm_interface_type *i5_ifr;
 	WBD_ENTER();
 
@@ -1864,9 +1840,8 @@ int wbd_slave_create_bss_on_ifr(wbd_info_t *info, char *ifname,
 		if (iter_bss == prim_bss) {
 
 			/* Check if the settings is already applied or not */
-			if (wbd_slave_same_bss_setting(ifname, prefix, iter_bss)) {
-				if (wbd_slave_add_ifname_to_list(ifname, WBD_NVRAM_IFNAMES) == 0 ||
-					wbd_slave_make_bh_bss_hidden(prefix, iter_bss) == 0) {
+			if (wbd_slave_same_bss_setting(ifname, prefix, iter_bss, 1)) {
+				if (wbd_slave_add_ifname_to_list(ifname, WBD_NVRAM_IFNAMES) == 0) {
 					ret = 0;
 				}
 				WBD_INFO("ifname[%s] Prefix[%s] Same setting ret[%d]\n", ifname, prefix, ret);
@@ -1879,9 +1854,8 @@ int wbd_slave_create_bss_on_ifr(wbd_info_t *info, char *ifname,
 		for (idx = 1; idx < WBD_MAX_POSSIBLE_VIRTUAL_BSS; idx++) {
 			snprintf(tmpvif, sizeof(tmpvif), "wl%d.%d", unit, idx);
 			snprintf(vif_prefix, sizeof(vif_prefix), "wl%d.%d_", unit, idx);
-			if (wbd_slave_same_bss_setting(tmpvif, vif_prefix, iter_bss)) {
-				if (wbd_slave_add_ifname_to_list(tmpvif, WBD_NVRAM_IFNAMES) == 0 ||
-					wbd_slave_make_bh_bss_hidden(vif_prefix, iter_bss) == 0) {
+			if (wbd_slave_same_bss_setting(tmpvif, vif_prefix, iter_bss, 0)) {
+				if (wbd_slave_add_ifname_to_list(tmpvif, WBD_NVRAM_IFNAMES) == 0) {
 					ret = 0;
 				}
 				WBD_INFO("ifname[%s] vif[%s] Prefix[%s] Same setting ret[%d]\n", ifname,
@@ -1912,24 +1886,35 @@ erase :
 	/* Erase all the BSS on this interface */
 	ret = wbd_slave_erase_all_bss(ifname);
 
+	foreach_iglist_item(iter_bss, ieee1905_client_bssinfo_type, *bssinfo_list) {
+		if (I5_IS_BSS_BACKHAUL(iter_bss->map_flag)) {
+			backhaul_bss_found = TRUE;
+			break;
+		}
+	}
+	if (!backhaul_bss_found) {
+		/* If the interface is not going have backhaul BSS, configure primary as AP */
+		blanket_nvram_prefix_unset(prefix, NVRAM_MAP);
+		blanket_nvram_prefix_set(prefix, NVRAM_MODE, "ap");
+	} else {
+		/* If the interface going to have a backhaul BSS, unset onborded to ensure that
+		 * any change in backhaul credential is applied to the backhaul STA
+		 */
+		blanket_nvram_prefix_set(NULL, NVRAM_MAP_ONBOARDED, "0");
+	}
+
 	/* Apply Settings for Primary BSS & all Virtual BSS */
-	for (iter_bss = ((ieee1905_client_bssinfo_type *)dll_head_p(&((*bssinfo_list).head)));
-		! dll_end(&((*bssinfo_list).head), (dll_t*)iter_bss);
-		iter_bss = ((ieee1905_client_bssinfo_type *)dll_next_p((dll_t*)iter_bss))) {
+	foreach_iglist_item(iter_bss, ieee1905_client_bssinfo_type, *bssinfo_list) {
 
 		iter_bss_match = 0;
 
 		/* First interface apply settings on primary interface if its not STA */
 		if (iter_bss == prim_bss) {
-			if (atoi(blanket_nvram_safe_get(NVRAM_MAP_ONBOARDED)) == 0) {
-				blanket_nvram_prefix_unset(prefix, NVRAM_MAP);
-				blanket_nvram_prefix_set(prefix, NVRAM_MODE, "ap");
-			}
 			/* Check if, Primary Interface Mode is STA */
 			if (nvram_match(strcat_r(prefix, NVRAM_MODE, tmp), "sta") != 1) {
-				wbd_slave_apply_default_ap_nvrams(prefix, iter_bss);
+				wbd_slave_apply_default_ap_nvrams(prefix, iter_bss, 1);
 				wbd_slave_add_ifname_to_list(ifname, WBD_NVRAM_IFNAMES);
-				if (iter_bss->Guest == 1) {
+				if (I5_IS_BSS_GUEST(iter_bss->map_flag)) {
 					wbd_slave_move_ifname_to_list(ifname,
 						NVRAM_LAN_IFNAMES, NVRAM_LAN1_IFNAMES);
 				}
@@ -1951,13 +1936,21 @@ erase :
 				(!find_in_list(lan1_ifnames, tmpvif))) {
 				wbd_slave_erase_bss(tmpvif, 0);
 				wbd_create_vif(unit, idx);
-				if (iter_bss->Guest == 1) {
+				/* If repeater is Ethernet onboarded and the current BSS is
+				 * backhaul extract backhaul STA credentials from it and apply
+				 * it on all the backhaul STAs
+				 */
+				if (I5_IS_BSS_BACKHAUL(iter_bss->map_flag) &&
+					!atoi(blanket_nvram_safe_get(NVRAM_MAP_ONBOARDED))) {
+					wbd_set_bh_sta_cred_from_bh_bss(iter_bss);
+				}
+				if (I5_IS_BSS_GUEST(iter_bss->map_flag)) {
 					WBD_INFO("tmpvif %s is GUEST\n", tmpvif);
 					wbd_slave_move_ifname_to_list(tmpvif,
 						NVRAM_LAN_IFNAMES, NVRAM_LAN1_IFNAMES);
 				}
 				snprintf(vif_prefix, sizeof(vif_prefix), "%s_", tmpvif);
-				wbd_slave_apply_default_ap_nvrams(vif_prefix, iter_bss);
+				wbd_slave_apply_default_ap_nvrams(vif_prefix, iter_bss, 0);
 				wbd_slave_add_ifname_to_list(tmpvif, WBD_NVRAM_IFNAMES);
 				ret = 0;
 				WBD_INFO("ifname[%s] Prefix[%s] Applied Settings\n", ifname, vif_prefix);

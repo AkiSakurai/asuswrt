@@ -106,9 +106,6 @@ window.onresize = function() {
 		cal_panel_block("erase_confirm", 0.25);
 	}
 }
-<% get_AiDisk_status(); %>
-var AM_to_cifs = get_share_management_status("cifs");  // Account Management for Network-Neighborhood
-var AM_to_ftp = get_share_management_status("ftp");  // Account Management for FTP
 
 var ctf_disable = '<% nvram_get("ctf_disable"); %>';
 var ctf_fa_mode = '<% nvram_get("ctf_fa_mode"); %>';
@@ -143,6 +140,13 @@ function initial(){
 			}
 		}
 	});
+
+	var malware = cookie.get("malware");
+	if(malware){
+		showWhitelistField();
+		$("#newDomain").val(malware);
+		cookie.unset("malware");
+	}
 }
 
 function getEventTime(){
@@ -529,6 +533,12 @@ function recountHover(flag){
 function eraseDatabase(){
 	document.form.action_script.value = 'reset_mals_db';
 	document.form.action_wait.value = "1";
+
+	/* update current timestamp when delete database */
+	var t = new Date();
+	var timestamp = t.getTime();
+	document.form.wrs_mals_t.value = timestamp.toString().substring(0, 10);
+
 	applyRule();
 }
 
@@ -642,11 +652,11 @@ function genWhitelist(list){
 
 function showWhitelistField(){
 	getWhitelist();
-	$('#whitelistField').show();
+	$('#whitelistField').fadeIn(300);
 }
 
 function hideWhitelistField(){
-	$('#whitelistField').hide();
+	$('#whitelistField').fadeOut(300);
 }
 
 var download = function(content, fileName, mimeType) {

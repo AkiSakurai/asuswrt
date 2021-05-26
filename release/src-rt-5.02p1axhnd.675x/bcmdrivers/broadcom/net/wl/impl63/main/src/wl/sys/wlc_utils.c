@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_utils.c 779888 2019-10-09 12:35:35Z $
+ * $Id: wlc_utils.c 786823 2020-05-10 08:13:02Z $
  */
 
 #include <wlc_cfg.h>
@@ -59,6 +59,7 @@
 #include <wlioctl_defs.h>
 #include <wlc_utils.h>
 #include <wlioctl_utils.h>
+#include <wlc.h>
 
 const uint8 wlc_802_1x_hdr[] = {0xAA, 0xAA, 0x03, 0x00, 0x00, 0x00, 0x88, 0x8e};
 
@@ -94,6 +95,21 @@ wlc_uint64_lt(uint32 a_high, uint32 a_low, uint32 b_high, uint32 b_low)
 {
 	return (a_high < b_high ||
 		(a_high == b_high && a_low < b_low));
+}
+
+uint32
+wlc_uint64_div(uint64 a, uint64 b)
+{
+	while ((a > UINT32_MAX) || (b > UINT32_MAX)) {
+		a >>= 1;
+		b >>= 1;
+	}
+	if (b > 0) {
+		return ((uint32)a) / ((uint32)b);
+	}
+	else {
+		return 0;
+	}
 }
 
 /* Given the beacon interval in kus, and a 64 bit TSF in us,

@@ -62,6 +62,7 @@
 #include <wlc_keymgmt.h>
 #include <wlc_scb.h>
 #include <wlc_ampdu.h>
+#include <wlc_nar.h>
 #include <wlc_amsdu.h>
 #include <wlc_cfp.h>
 #include <wlc_cfp_priv.h>
@@ -80,6 +81,10 @@
 
 #if defined(BCMDBG)
 static int wlc_sqs_dump(void *ctx, struct bcmstrbuf *b);
+static int wlc_sqs_dump_clear(void* ctx);
+static void __wlc_sqs_scb_dump(wlc_info_t* wlc, struct scb* scb,
+	scb_sqs_t *scb_sqs, struct bcmstrbuf *b);
+static void wlc_sqs_scb_dump(void *ctx, struct scb *scb, struct bcmstrbuf *b);
 #endif // endif
 
 /** File scoped SQS Global object: Fast acecss to SQS module and SQS Cubbies. */
@@ -92,10 +97,26 @@ static struct wlc_sqs_global {
 /** File scoped SQS Module Global Pointer. */
 #define WLC_SQS_G		((wlc_sqs_info_t*)(wlc_sqs_global.wlc_sqs))
 
+/* SQS scb cubby */
+#define SCB_SQS_CUBBY_LOC(sqs, scb) \
+	((scb_sqs_t**) SCB_CUBBY((scb), (sqs)->scb_hdl))
+
+#define SCB_SQS(sqs, scb)     (*SCB_SQS_CUBBY_LOC((sqs), (scb)))
+
 static inline uint16 wlc_sqs_pull_packets_cb(uint16 ringid, uint16 request_cnt);
 
 static inline bool wlc_sqs_flow_ring_status_cb(uint16 ringid);
-#define SQS_FLRING_ACTIVE(ringid)	wlc_sqs_flow_ring_status_cb((ringid))
+#define SQS_FLRING_ACTIVE(scb, prio)	\
+	({\
+		wlc_sqs_flow_ring_status_cb(SCB_HOST_RINGID((scb), (prio))); \
+	})
+
+static int  wlc_sqs_scb_init(void *ctx, struct scb *scb);
+static void wlc_sqs_scb_deinit(void *ctx, struct scb *scb);
+static uint wlc_sqs_scb_secsz(void *ctx, scb_t *scb);
+static uint16 wlc_sqs_pull_packets(wlc_info_t* wlc, scb_sqs_t * scb_sqs, struct scb* scb,
+	uint8 tid, uint16 request_cnt);
+static uint16 wlc_sqs_real_pkt_cnt(wlc_info_t* wlc, struct scb* scb, int prio);
 
 #ifdef WLTAF
 void * wlc_sqs_taf_get_handle(wlc_info_t* wlc)
@@ -106,8 +127,13 @@ void * wlc_sqs_taf_get_handle(wlc_info_t* wlc)
 void * wlc_sqs_taf_get_scb_info(void *sqsh, struct scb* scb)
 {
 	wlc_sqs_info_t *sqs_info = (wlc_sqs_info_t *)sqsh;
+	scb_sqs_t * scb_sqs;
 
-	return (scb && sqs_info) ? (void*)wlc_scb_cfp_cubby(WLC_SQS_WLC(sqs_info), scb) : NULL;
+	ASSERT(scb);
+	ASSERT(sqs_info);
+
+	scb_sqs = SCB_SQS(sqs_info, scb);
+	return (scb && scb_sqs) ? (void*)scb_sqs : NULL;
 }
 
 void * wlc_sqs_taf_get_scb_tid_info(void *scb_h, int tid)
@@ -119,28 +145,30 @@ bool wlc_sqs_taf_release(void* sqsh, void* scbh, void* tidh, bool force,
 	taf_scheduler_public_t* taf)
 {
 	wlc_sqs_info_t *sqs_info = (wlc_sqs_info_t *)sqsh;
-	scb_cfp_t * scb_cfp = (scb_cfp_t *)scbh;
+	scb_sqs_t * scb_sqs = (scb_sqs_t*)scbh;
+	struct scb* scb;
 	int prio = (int)tidh;
 	wlc_info_t *wlc = WLC_SQS_WLC(sqs_info);
 	int32 taf_pkt_time_units;
 	int32 taf_pkt_units_to_fill;
 	uint32 virtual_release = 0;
 	int32 max_virtual_release;
-	int32 real_pkts;
+	int32 real_pkts = 0;
 	uint16 pktbytes;
 	int32 margin;
 
 	TAF_ASSERT(taf->how == TAF_RELEASE_LIKE_IAS);
 	TAF_ASSERT(prio >= 0 && prio < NUMPRIO);
-	TAF_ASSERT(scb_cfp);
-	TAF_ASSERT(!SCB_DWDS((struct scb*)SCB_CFP_SCB(scb_cfp)));
+	TAF_ASSERT(scb_sqs);
+
+	/* Initialize */
+	scb = SCB_SQS_SCB(scb_sqs);
 
 	if (taf->ias.is_ps_mode) {
 		/* regardless set emptied flag as the available traffic (ie in PS) is none
 		 * so this is effectively empty
 		 */
 		taf->ias.was_emptied = TRUE;
-
 		taf->complete = TAF_REL_COMPLETE_PS;
 
 		/* do not do virtal scheduling in ps state so return */
@@ -173,7 +201,8 @@ bool wlc_sqs_taf_release(void* sqsh, void* scbh, void* tidh, bool force,
 
 	pktbytes = taf->ias.estimated_pkt_size_mean;
 
-	taf_pkt_time_units = TAF_PKTBYTES_TO_UNITS(pktbytes, taf->ias.pkt_rate,
+	taf_pkt_time_units = TAF_PKTBYTES_TO_UNITS(pktbytes,
+		(taf->ias.aggsf > 1) ? (taf->ias.pkt_rate / taf->ias.aggsf) : taf->ias.pkt_rate,
 		taf->ias.byte_rate);
 
 	if (taf_pkt_time_units == 0) {
@@ -194,7 +223,7 @@ bool wlc_sqs_taf_release(void* sqsh, void* scbh, void* tidh, bool force,
 
 	margin = 1 + ((max_virtual_release * taf->ias.margin) >> 8);
 
-	real_pkts = wlc_sqs_ampdu_n_pkts(wlc, scb_cfp, prio);
+	real_pkts = wlc_sqs_real_pkt_cnt(wlc, scb, prio);
 
 	if (max_virtual_release + margin - real_pkts > 0) {
 		max_virtual_release -= real_pkts;
@@ -209,13 +238,13 @@ bool wlc_sqs_taf_release(void* sqsh, void* scbh, void* tidh, bool force,
 	}
 
 	if (max_virtual_release + margin > 0) {
-		virtual_release = wlc_ampdu_pull_packets(wlc, SCB_CFP_SCB(scb_cfp), prio,
-			(uint16)(margin + max_virtual_release), taf);
+		virtual_release = wlc_sqs_pull_packets(wlc, scb_sqs, scb, prio,
+			(uint16)(margin + max_virtual_release));
 
 	} else {
 		/* pull a single packet to keep state machine moving */
 		taf->ias.virtual.release +=
-			wlc_ampdu_pull_packets(wlc, SCB_CFP_SCB(scb_cfp), prio, 1, taf);
+			wlc_sqs_pull_packets(wlc, scb_sqs, scb, prio, 1);
 	}
 
 	if (virtual_release) {
@@ -265,7 +294,6 @@ bool wlc_sqs_taf_release(void* sqsh, void* scbh, void* tidh, bool force,
 			 * treated as if "emptied" because we can't get more
 			 */
 			taf->ias.was_emptied = TRUE;
-
 			taf->complete = TAF_REL_COMPLETE_RESTRICTED;
 		}
 	} else if (max_virtual_release + margin > 0) {
@@ -284,23 +312,22 @@ bool wlc_sqs_taf_release(void* sqsh, void* scbh, void* tidh, bool force,
 
 uint16 wlc_sqs_taf_get_scb_tid_pkts(void *scbh, void *tidh)
 {
-	scb_cfp_t * scb_cfp = (scb_cfp_t *)scbh;
+	scb_sqs_t * scb_sqs = (scb_sqs_t*)scbh;
+	struct scb* scb;
 	int prio = (int)tidh;
 	int tot_pkts = 0;
-	struct scb* scb;
 
-	if (scb_cfp) {
-		/* Get Host flowring id */
-		uint16 ringid = SCB_CFP_RINGID(scb_cfp, prio);
+	ASSERT(scb_sqs);
+	ASSERT((prio >= 0) && (prio < NUMPRIO));
 
-		/* DWDS flows not supported in TAF Scheduler */
-		scb = SCB_CFP_SCB(scb_cfp);
-		if (scb && SCB_DWDS(scb)) {
-			return 0;
-		}
+	scb = SCB_SQS_SCB(scb_sqs);
 
-		if (SQS_FLRING_ACTIVE(ringid)) {
-			tot_pkts = wlc_sqs_ampdu_vpkts(WLC_SQS_WLC(WLC_SQS_G), scb_cfp, prio);
+	ASSERT(scb);
+
+	if (scb_sqs) {
+		/* Return virtual count if flow ring is active */
+		if (SQS_FLRING_ACTIVE(scb, prio)) {
+			tot_pkts = SCB_SQS_V_PKTS(scb_sqs, prio);
 		}
 	}
 	return tot_pkts;
@@ -312,6 +339,7 @@ wlc_sqs_info_t *
 BCMATTACHFN(wlc_sqs_attach)(wlc_info_t *wlc)
 {
 	wlc_sqs_info_t *sqs_info = NULL;
+	scb_cubby_params_t sqs_scb_cubby_params;
 
 	if ((sqs_info = MALLOCZ(wlc->osh, sizeof(wlc_sqs_info_t))) == NULL) {
 		WL_ERROR(("wl%d: %s: out of mem, malloced %d bytes\n",
@@ -334,8 +362,26 @@ BCMATTACHFN(wlc_sqs_attach)(wlc_info_t *wlc)
 	}
 #if defined(BCMDBG)
 	/* Register a Dump utility for SQS */
-	wlc_dump_add_fns(wlc->pub, "sqs", wlc_sqs_dump, NULL, (void *)sqs_info);
+	wlc_dump_add_fns(wlc->pub, "sqs", wlc_sqs_dump, wlc_sqs_dump_clear, (void *)sqs_info);
 #endif // endif
+
+	/* Reserve a SQS cubby in the SCB */
+	bzero(&sqs_scb_cubby_params, sizeof(sqs_scb_cubby_params));
+	sqs_scb_cubby_params.context = sqs_info;
+	sqs_scb_cubby_params.fn_init = wlc_sqs_scb_init;
+	sqs_scb_cubby_params.fn_deinit = wlc_sqs_scb_deinit;
+	sqs_scb_cubby_params.fn_secsz = wlc_sqs_scb_secsz;
+#if defined(BCMDBG)
+	sqs_scb_cubby_params.fn_dump = wlc_sqs_scb_dump;
+#endif // endif
+	sqs_info->scb_hdl = wlc_scb_cubby_reserve_ext(wlc, sizeof(scb_sqs_t *),
+		&sqs_scb_cubby_params);
+
+	if (sqs_info->scb_hdl < 0) {
+		WL_ERROR(("wl%d: %s: wlc_scb_cubby_reserve failed\n",
+			wlc->pub->unit, __FUNCTION__));
+		goto fail;
+	}
 
 	return sqs_info;
 
@@ -364,17 +410,201 @@ BCMATTACHFN(wlc_sqs_detach)(wlc_sqs_info_t *sqs_info)
 	/* Reset the global SQS module */
 	wlc_sqs_global.wlc_sqs = NULL; /* WLC_SQS_G */
 }
+/* SCB sqs init handler */
+static int
+wlc_sqs_scb_init(void *ctx, struct scb *scb)
+{
+	wlc_sqs_info_t *sqs_info;
+	wlc_info_t *wlc;
+	scb_sqs_t **scb_sqs_ptr;
+	scb_sqs_t *scb_sqs;
+
+	/* Initialize */
+	sqs_info = (wlc_sqs_info_t*)ctx;
+	wlc = WLC_SQS_WLC(sqs_info);
+
+	/* Allocate the SCB cubby */
+	scb_sqs_ptr = SCB_SQS_CUBBY_LOC(sqs_info, scb);
+	scb_sqs = wlc_scb_sec_cubby_alloc(wlc, scb,
+		wlc_sqs_scb_secsz(ctx, scb));
+
+	/* Alloc the SCB CFP cubby */
+	if (scb_sqs == NULL) {
+		goto done;
+	}
+
+	 /* Store SCB CFP cubby pointer */
+	*scb_sqs_ptr = scb_sqs;
+
+	SCB_SQS_SCB(scb_sqs) = scb;
+	SCB_SQS_INFO(scb_sqs) = sqs_info;
+
+	WLC_SQS_DEBUG(("%s  : SQS cubby %p size %d scb %p "
+		"EA "MACF" \n", __FUNCTION__, scb_sqs, (int) SCB_SQS_SIZE, scb,
+		 ETHER_TO_MACF(scb->ea)));
+done:
+	return BCME_OK;
+}
+/* SCB sqs deinit handler */
+static void
+wlc_sqs_scb_deinit(void *ctx, struct scb *scb)
+{
+	wlc_sqs_info_t *sqs_info = (wlc_sqs_info_t*)ctx;
+	scb_sqs_t** scb_sqs_ptr = SCB_SQS_CUBBY_LOC(sqs_info, scb);
+	scb_sqs_t *scb_sqs = *scb_sqs_ptr;
+	wlc_info_t * wlc;
+	uint8 prio;
+	uint16 v2r_pkts;
+
+	/* Initialize */
+	wlc = WLC_SQS_WLC(sqs_info);
+
+	if (scb_sqs == NULL)
+		return;
+
+	/* Decrement the global V2R count if SCB is getting deleted */
+	for (prio = 0; prio < NUMPRIO; prio++) {
+		v2r_pkts = SCB_SQS_V2R_PKTS(scb_sqs, prio);
+
+		if (v2r_pkts) {
+			ASSERT(WLC_SQS_V2R_INTRANSIT(sqs_info) >= v2r_pkts);
+			WLC_SQS_V2R_INTRANSIT(sqs_info) -= v2r_pkts;
+		}
+	}
+
+	/* Zero out the SCB SQS cubby contents */
+	memset(scb_sqs, 0, sizeof(scb_sqs_t));
+
+	/* Release the SCB CFP cubby memory */
+	wlc_scb_sec_cubby_free(wlc, scb, scb_sqs);
+
+	/* Set the SCB CFP cubby pointer to NULL */
+	*scb_sqs_ptr = NULL;
+}
+
+static uint
+wlc_sqs_scb_secsz(void *ctx, scb_t *scb)
+{
+	if (scb && !SCB_HWRS(scb)) {
+		return SCB_SQS_SIZE;
+	} else {
+		return 0;
+	}
+}
+
 #if defined(BCMDBG)
+/** SCB CFP cubby dump utility */
+static void
+wlc_sqs_scb_dump(void *ctx, struct scb *scb, struct bcmstrbuf *b)
+{
+	wlc_sqs_info_t *sqs_info;
+	scb_sqs_t * scb_sqs;
+	wlc_info_t* wlc;
+
+	ASSERT(scb);
+
+	 /* Initialization */
+	sqs_info = (wlc_sqs_info_t*)ctx;
+	scb_sqs  = SCB_SQS(sqs_info, scb);
+	wlc = WLC_SQS_WLC(WLC_SQS_G);
+
+	if (scb_sqs == NULL) {
+		return;
+	}
+
+	/* Dump per client info */
+	__wlc_sqs_scb_dump(wlc, scb, scb_sqs, b);
+
+	return;
+
+}
+/* SQS dump clear utility */
+static int
+wlc_sqs_dump_clear(void* ctx)
+{
+	wlc_sqs_info_t *sqs_info = (wlc_sqs_info_t*)ctx;
+	struct scb_iter scbiter;
+	struct scb *scb;
+	scb_sqs_t * scb_sqs;
+	wlc_info_t* wlc;
+	uint8 prio;
+
+	/* Initialize */
+	wlc = WLC_SQS_WLC(WLC_SQS_G);
+
+	/* Iterate the SCBs */
+	FOREACHSCB(wlc->scbstate, &scbiter, scb) {
+		scb_sqs = SCB_SQS(sqs_info, scb);
+		ASSERT(scb_sqs);
+
+		/* Max V packets */
+		for (prio = 0; prio < NUMPRIO; prio++) {
+			SCB_SQS_V_PKTS_MAX(scb_sqs, prio) = SCB_SQS_V_PKTS(scb_sqs, prio);
+		}
+
+		/* Cumulative counter */
+		for (prio = 0; prio < NUMPRIO; prio++) {
+			SCB_SQS_CUM_V_PKTS(scb_sqs, prio) = SCB_SQS_V_PKTS(scb_sqs, prio);
+		}
+	}
+	return 0;
+}
 /* SQS dump utility */
 static int
 wlc_sqs_dump(void *ctx, struct bcmstrbuf *b)
 {
 	wlc_sqs_info_t *sqs_info = (wlc_sqs_info_t*)ctx;
+	struct scb_iter scbiter;
+	struct scb *scb;
+	scb_sqs_t * scb_sqs;
+	wlc_info_t* wlc;
 
-	bcm_bprintf(b, "V2R Inransit \t%d \n", WLC_SQS_V2R_INTRANSIT(sqs_info));
-	bcm_bprintf(b, "EoPS Intransit \t%d \n", WLC_SQS_EOPS_INTRANSIT(sqs_info));
+	/* Initialize */
+	wlc = WLC_SQS_WLC(WLC_SQS_G);
 
+	FOREACHSCB(wlc->scbstate, &scbiter, scb) {
+		scb_sqs  = SCB_SQS(sqs_info, scb);
+
+		if (scb_sqs == NULL)
+			continue;
+
+		/* Dump per client info */
+		__wlc_sqs_scb_dump(wlc, scb, scb_sqs, b);
+	}
 	return 0;
+}
+static void
+__wlc_sqs_scb_dump(wlc_info_t* wlc, struct scb* scb,
+	scb_sqs_t *scb_sqs, struct bcmstrbuf *b)
+{
+	uint8 prio;
+
+	ASSERT(scb_sqs);
+
+	bcm_bprintf(b, "Link "MACF" [flowid: %d]:\n", ETHERP_TO_MACF(&scb->ea),
+		SCB_FLOWID(scb));
+	bcm_bprintf(b, "\tV Pkts \t\t\t ::");
+	for (prio = 0; prio < NUMPRIO; prio++) {
+		bcm_bprintf(b, "%u ", SCB_SQS_V_PKTS(scb_sqs, prio));
+	}
+	bcm_bprintf(b, "\n");
+	bcm_bprintf(b, "\tMax V Pkts \t\t ::");
+	for (prio = 0; prio < NUMPRIO; prio++) {
+		bcm_bprintf(b, "%u ", SCB_SQS_V_PKTS_MAX(scb_sqs, prio));
+	}
+
+	bcm_bprintf(b, "\n");
+	bcm_bprintf(b, "\tCumulative  V Pkts \t ::");
+	for (prio = 0; prio < NUMPRIO; prio++) {
+		bcm_bprintf(b, "%u ", SCB_SQS_CUM_V_PKTS(scb_sqs, prio));
+	}
+
+	bcm_bprintf(b, "\n");
+	bcm_bprintf(b, "\tV2R Pkts \t\t ::");
+	for (prio = 0; prio < NUMPRIO; prio++) {
+		bcm_bprintf(b, "%u ", SCB_SQS_V2R_PKTS(scb_sqs, prio));
+	}
+	bcm_bprintf(b, "\n");
 }
 #endif // endif
 
@@ -460,169 +690,186 @@ wlc_sqs_flow_ring_status_cb(uint16 ringid)
 	ASSERT(WLC_SQS_FLRING_STS_CB_FN(sqs_info));
 	ASSERT(WLC_SQS_FLRING_STS_CB_ARG(sqs_info));
 
-	if (ringid == SCB_CFP_RINGID_INVALID)
+	if (ringid == SCB_HOST_RINGID_INVALID)
 		return FALSE;
 
 	/* Call back */
 	return ((WLC_SQS_FLRING_STS_CB_FN(sqs_info))((WLC_SQS_FLRING_STS_CB_ARG(sqs_info)),
 		ringid));
 }
+/* Check for ASSOC && AUTH flags in unicast SCBs in AP interface */
 bool
-wlc_sqs_capable(uint16 cfp_flowid, uint8 prio)
+wlc_sqs_scb_data_open(uint16 flowid)
 {
-	scb_cfp_t *scb_cfp;
+	struct scb *scb;
 	wlc_info_t *wlc;
 
+	/* Initialize */
 	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
+
+	ASSERT(scb);
+	ASSERT(scb->bsscfg);
+
+	/* Check for ASSOC && AUTH flags in unicast SCBs in AP interface */
+	if (BSSCFG_AP(scb->bsscfg) && !SCB_INTERNAL(scb) && !SCB_ISMULTI(scb) &&
+		!SCB_LEGACY_WDS(scb) && (!SCB_ASSOCIATED(scb) || !SCB_AUTHENTICATED(scb))) {
+		return FALSE;
+	}
+
+	return TRUE;
+}
+bool
+wlc_sqs_capable(uint16 flowid, uint8 prio)
+{
+	wlc_info_t *wlc;
+	struct scb* scb;
+
+	ASSERT(prio < NUMPRIO);
+
+	wlc = WLC_SQS_WLC(WLC_SQS_G);
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
+	ASSERT(!wlc_taf_in_use(wlc->taf_handle));
 
 	/* Can we get the answer from CFP tcb instead? */
-	return wlc_sqs_ampdu_capable(wlc, scb_cfp, prio);
+	return wlc_sqs_ampdu_capable(wlc, scb, prio);
 }
-
 uint16
-wlc_sqs_vpkts(uint16 cfp_flowid, uint8 prio)
+wlc_sqs_vpkts(uint16 flowid, uint8 prio)
 {
-	scb_cfp_t *scb_cfp;
 	wlc_info_t *wlc;
+	wlc_sqs_info_t *sqs_info;
+	scb_sqs_t * scb_sqs;
+	struct scb* scb;
 
+	/* Initialize */
 	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
+	sqs_info = wlc->sqs;
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
+	scb_sqs = SCB_SQS(sqs_info, scb);
 
-	return wlc_sqs_ampdu_vpkts(wlc, scb_cfp, prio);
+	ASSERT(scb_sqs);
+	ASSERT(prio < NUMPRIO);
+
+	return SCB_SQS_V_PKTS(scb_sqs, prio);
 }
-
 uint16
-wlc_sqs_v2r_pkts(uint16 cfp_flowid, uint8 prio)
+wlc_sqs_v2r_pkts(uint16 flowid, uint8 prio)
 {
-	scb_cfp_t *scb_cfp;
 	wlc_info_t *wlc;
+	wlc_sqs_info_t *sqs_info;
+	scb_sqs_t * scb_sqs;
+	struct scb* scb;
 
+	/* Initialize */
 	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
+	sqs_info = wlc->sqs;
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
 
-	return wlc_sqs_ampdu_v2r_pkts(wlc, scb_cfp, prio);
+	scb_sqs = SCB_SQS(sqs_info, scb);
+
+	ASSERT(scb_sqs);
+	ASSERT(prio < NUMPRIO);
+
+	return SCB_SQS_V2R_PKTS(scb_sqs, prio);
 }
-/* Return scb ampdu in transit packets */
-uint16
-wlc_sqs_in_transit_pkts(uint16 cfp_flowid, uint8 prio)
-{
-	scb_cfp_t *scb_cfp;
-	wlc_info_t *wlc;
 
-	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
-
-	return wlc_sqs_ampdu_in_transit_pkts(wlc, scb_cfp, prio);
-}
-/* SCB ampdu real packets */
-uint16
-wlc_sqs_n_pkts(uint16 cfp_flowid, uint8 prio)
-{
-	scb_cfp_t *scb_cfp;
-	wlc_info_t *wlc;
-
-	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
-
-	return wlc_sqs_ampdu_n_pkts(wlc, scb_cfp, prio);
-}
-/* SCB ampdu to be released peackets [waiting for real packets] */
-uint16
-wlc_sqs_tbr_pkts(uint16 cfp_flowid, uint8 prio)
-{
-	scb_cfp_t *scb_cfp;
-	wlc_info_t *wlc;
-
-	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
-
-	return wlc_sqs_ampdu_tbr_pkts(wlc, scb_cfp, prio);
-}
 #ifdef HWA_TXPOST_BUILD
 void
-wlc_sqs_v2r_enqueue(uint16 cfp_flowid, uint8 prio, uint16 v2r_count)
+wlc_sqs_v2r_enqueue(uint16 flowid, uint8 prio, uint16 v2r_count)
 {
-	wlc_sqs_info_t *sqs_info = WLC_SQS_G;
-	scb_cfp_t *scb_cfp;
 	wlc_info_t *wlc;
 	struct scb *scb;
+	wlc_sqs_info_t *sqs_info;
+	scb_sqs_t * scb_sqs;
 
-	ASSERT(sqs_info);
+	ASSERT_SCB_FLOWID(flowid);
+	ASSERT(WLC_SQS_G);
 
 	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
-	ASSERT(scb_cfp);
+	sqs_info = wlc->sqs;
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
 
-	scb = SCB_CFP_SCB(scb_cfp);
+	ASSERT(scb);
+	ASSERT(prio < NUMPRIO);
 
-	if (SCB_INTERNAL(scb)) {
-		return;
-	}
+	scb_sqs = SCB_SQS(sqs_info, scb);
+
+	/* Sanity check for the virtual packets */
+	ASSERT(SCB_SQS_V_PKTS(scb_sqs, prio) >= v2r_count);
+	SCB_SQS_V_PKTS(scb_sqs, prio) -= v2r_count;
+
+	/* V2R per scb-tid */
+	SCB_SQS_V2R_PKTS(scb_sqs, prio) += v2r_count;
+
 	/* Increment total outstanding V2R request in system */
 	WLC_SQS_V2R_INTRANSIT(sqs_info) += v2r_count;
 
-	return wlc_sqs_ampdu_v2r_enqueue(wlc, scb_cfp, prio, v2r_count);
+	/* Catch any overflow errors */
+	ASSERT(WLC_SQS_V2R_INTRANSIT(sqs_info) >=
+		SCB_SQS_V2R_PKTS(scb_sqs, prio));
+
+	WLC_SQS_DEBUG(("%s : Cur flowid %d v2r %d  V pkts %d \n",
+		__FUNCTION__, flowid, SCB_SQS_V2R_PKTS(scb_sqs, prio),
+		SCB_SQS_V_PKTS(scb_sqs, prio)));
 }
 
 void
-wlc_sqs_v2r_dequeue(uint16 cfp_flowid, uint8 prio, uint16 pkt_count, bool sqs_force)
+wlc_sqs_v2r_dequeue(uint16 flowid, uint8 prio, uint16 pkt_count, bool sqs_force)
 {
-	wlc_sqs_info_t *sqs_info = WLC_SQS_G;
-	scb_cfp_t *scb_cfp;
+
 	wlc_info_t *wlc;
-	struct scb *scb;
+	wlc_sqs_info_t *sqs_info;
+	scb_sqs_t * scb_sqs;
+	struct scb* scb;
 
-	ASSERT(sqs_info);
+	ASSERT_SCB_FLOWID(flowid);
+	ASSERT(WLC_SQS_G);
+	ASSERT(prio < NUMPRIO);
 
+	/* Initialize */
 	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
+	sqs_info = wlc->sqs;
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
+	scb_sqs = SCB_SQS(sqs_info, scb);
 
-	ASSERT(scb_cfp);
+	ASSERT(scb);
 
-	scb = SCB_CFP_SCB(scb_cfp);
-
-	if (SCB_INTERNAL(scb)) {
-		return;
-	}
 	/* Decrement total outstanding V2R request in system */
 	ASSERT(WLC_SQS_V2R_INTRANSIT(sqs_info) >= pkt_count);
+	ASSERT(SCB_SQS_V2R_PKTS(scb_sqs, prio) >= pkt_count);
 
+	SCB_SQS_V2R_PKTS(scb_sqs, prio) -= pkt_count;
 	WLC_SQS_V2R_INTRANSIT(sqs_info) -= pkt_count;
 
 #ifdef WLTAF
 	/* check if TAF is enabled and not in bypass state */
-	if (wlc_taf_in_use(wlc->taf_handle) && !sqs_force) {
-		wlc_taf_pkts_dequeue(wlc->taf_handle, SCB_CFP_SCB(scb_cfp),
+	if ((!SCB_INTERNAL(scb)) && wlc_taf_in_use(wlc->taf_handle) && !sqs_force) {
+		wlc_taf_pkts_dequeue(wlc->taf_handle, scb,
 			prio, pkt_count);
 	}
 #endif /* WLTAF */
-	return wlc_sqs_ampdu_v2r_dequeue(wlc, scb_cfp, prio, pkt_count);
+
+	WLC_SQS_DEBUG(("%s : cur flowid %d v2r %d \n",
+		__FUNCTION__, flowid, SCB_SQS_V2R_PKTS(scb_sqs, prio)));
 }
 #endif /* HWA_TXPOST_BUILD */
 
 /** Wireless SQS entry point. */
 int
-wlc_sqs_sendup(uint16 cfp_flowid, uint8 prio, uint16 v_pkts)
+wlc_sqs_sendup(uint16 flowid, uint8 prio, uint16 v_pkts)
 {
-	scb_cfp_t *scb_cfp;
 	wlc_info_t *wlc;
-	struct scb *scb;
 	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
-	scb = SCB_CFP_SCB(scb_cfp);
 
-	BCM_REFERENCE(scb);
+	ASSERT(prio < NUMPRIO);
 
-	ASSERT(!ETHER_ISBCAST(&scb->ea));
 #ifdef WLTAF
-	/* check if TAF is enabled and not in bypass state */
-	if (wlc_taf_in_use(wlc->taf_handle)) {
-		return wlc_sqs_taf_admit(wlc, scb, prio, v_pkts);
-	}
+	/* This function is used only for TAF disabled case */
+	ASSERT(!wlc_taf_in_use(wlc->taf_handle));
 #endif /* WLTAF */
 	/* admit virtual offered load into WL layer */
-	return wlc_sqs_ampdu_admit(wlc, scb_cfp, prio, v_pkts);
+	return wlc_sqs_ampdu_admit(wlc, flowid, prio, v_pkts);
 }
 
 /**
@@ -646,13 +893,24 @@ void *
 wlc_sqs_pktq_release(struct scb *scb, struct pktq *pktq, uint8 prio, int pkts_release,
 	int *v2r_request, bool amsdu_in_ampdu, int max_pdu)
 {
-	struct pktq_prec *pktqp = &pktq->q[prio];	/**< single precedence packet queue */
+	wlc_sqs_info_t *sqs_info;
+	scb_sqs_t * scb_sqs;
+	struct pktq_prec *pktqp;
 	wlc_info_t *wlc;
 	int release;
+	uint16 v_pkts;
+	uint16 flowid;
 
 	ASSERT(pkts_release > 0);
+	ASSERT(prio < NUMPRIO);
 
+	/* Initialize */
+	pktqp = &pktq->q[prio];
 	wlc = WLC_SQS_WLC(WLC_SQS_G);
+	sqs_info = wlc->sqs;
+	scb_sqs = SCB_SQS(sqs_info, scb);
+	v_pkts = SCB_SQS_V_PKTS(scb_sqs, prio);
+	flowid = SCB_FLOWID(scb);
 
 	/* Check whether there are sufficient real packets to release */
 	if (pktqp->n_pkts >= pkts_release) {
@@ -662,17 +920,17 @@ wlc_sqs_pktq_release(struct scb *scb, struct pktq *pktq, uint8 prio, int pkts_re
 	}
 
 	/* Account for the real packets if required */
-	pkts_release = SQS_AMPDU_RELEASE_LEN(pktq, prio, pkts_release);
+	pkts_release = SQS_AMPDU_RELEASE_LEN(flowid, pktq, prio, pkts_release);
 
 	/* Caller may request more than available virtual packets */
-	release = MIN(pktqp->v_pkts, pkts_release);
+	release = MIN(v_pkts, pkts_release);
 
 	/* Lazy fetching to accumulate more packets for aggregation */
 	if (
 #if defined(WLATF)
 		(wlc_ampdu_tx_intransit_get(wlc) > SQS_LAZY_FETCH_WATERMARK) &&
 #endif // endif
-		(release == pktqp->v_pkts) && (release < max_pdu) &&
+		(release == v_pkts) && (release < max_pdu) &&
 		(pktqp->skip_cnt < SQS_LAZY_FETCH_DELAYCNT)) {
 		pktqp->skip_cnt++;
 		release = 0;
@@ -685,11 +943,11 @@ wlc_sqs_pktq_release(struct scb *scb, struct pktq *pktq, uint8 prio, int pkts_re
 			/* Use logical operations instead of multiplication/division
 			 * that really hurt performance per the test results.
 			 */
-			release += ((pktqp->v_pkts - release) & ~(max_pdu - 1));
+			release += ((v_pkts - release) & ~(max_pdu - 1));
 		}
 	}
 	WL_TRACE(("wlc_sqs_pktq_release: v_pkts<%d> n_pkts<%d> release<%d>\n",
-		pktqp->v_pkts, pktqp->n_pkts, release));
+		v_pkts, pktqp->n_pkts, release));
 
 	*v2r_request = release;
 	ASSERT(*v2r_request >= 0);
@@ -699,52 +957,82 @@ wlc_sqs_pktq_release(struct scb *scb, struct pktq *pktq, uint8 prio, int pkts_re
 }
 
 /**
- * wlc_sqs_v2r_revert() - Revert a v2r_request.
- */
-void
-wlc_sqs_v2r_revert(uint16 cfp_flowid, uint8 prio, uint16 v2r_reverts)
-{
-	scb_cfp_t *scb_cfp;
-	wlc_info_t *wlc;
-
-	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
-
-	wlc_sqs_pktq_v2r_revert(wlc, scb_cfp, prio, v2r_reverts);
-}
-
-/**
  * wlc_sqs_vpkts_rewind() - Rewind the fetch_ptr and revert/increase the vpkts.
  */
 void
-wlc_sqs_vpkts_rewind(uint16 cfp_flowid, uint8 prio, uint16 count)
+wlc_sqs_vpkts_rewind(uint16 flowid, uint8 prio, uint16 count)
 {
-	scb_cfp_t *scb_cfp;
 	wlc_info_t *wlc;
+	struct scb *scb;
+	wlc_sqs_info_t *sqs_info;
+	scb_sqs_t * scb_sqs;
 
+	ASSERT_SCB_FLOWID(flowid);
+	ASSERT(WLC_SQS_G);
+	ASSERT(prio < NUMPRIO);
+
+	/* Initialilze */
 	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
+	sqs_info = wlc->sqs;
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
 
-	wlc_sqs_pktq_vpkts_rewind(wlc, scb_cfp, prio, count);
+	ASSERT(scb);
+
+	scb_sqs = SCB_SQS(sqs_info, scb);
+
+	if (!scb_sqs)
+		return;
+
+	/* Increment virtual counters */
+	SCB_SQS_V_PKTS(scb_sqs, prio) += count;
+
+	/* Store the max stats */
+	SCB_SQS_V_PKTS_MAX(scb_sqs, prio) = MAX(SCB_SQS_V_PKTS_MAX(scb_sqs, prio),
+		SCB_SQS_V_PKTS(scb_sqs, prio));
+
 #ifdef WLTAF
-	wlc_taf_sched_state(wlc->taf_handle, (struct scb*)SCB_CFP_SCB(scb_cfp), prio, count,
-		TAF_SQSHOST, TAF_SCHED_STATE_REWIND);
+	if ((!SCB_INTERNAL(scb)) && wlc_taf_in_use(wlc->taf_handle)) {
+		wlc_taf_sched_state(wlc->taf_handle, scb, prio, count,
+			TAF_SQSHOST, TAF_SCHED_STATE_REWIND);
+	}
 #endif // endif
+
+#ifdef PKTQ_LOG
+#ifdef WLAMPDU
+	wlc_ampdu_sqs_pktq_log(wlc, scb, prio, TRUE,
+		SCB_SQS_V_PKTS(scb_sqs, prio), count);
+#endif // endif
+#ifdef WLNAR
+#endif /* WLNAR */
+#endif /* PKTQ_LOG */
+
 }
 
 /**
  * wlc_sqs_vpkts_forward() - Forward the fetch_ptr and decrease the vpkts.
  */
 void
-wlc_sqs_vpkts_forward(uint16 cfp_flowid, uint8 prio, uint16 count)
+wlc_sqs_vpkts_forward(uint16 flowid, uint8 prio, uint16 count)
 {
-	scb_cfp_t *scb_cfp;
 	wlc_info_t *wlc;
+	struct scb *scb;
+	wlc_sqs_info_t *sqs_info;
+	scb_sqs_t * scb_sqs;
+
+	ASSERT_SCB_FLOWID(flowid);
+	ASSERT(WLC_SQS_G);
+	ASSERT(prio < NUMPRIO);
 
 	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
+	sqs_info = wlc->sqs;
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
 
-	wlc_sqs_pktq_vpkts_forward(wlc, scb_cfp, prio, count);
+	ASSERT(scb);
+
+	scb_sqs = SCB_SQS(sqs_info, scb);
+	ASSERT(SCB_SQS_V_PKTS(scb_sqs, prio) >= count);
+
+	SCB_SQS_V_PKTS(scb_sqs, prio) -= count;
 }
 
 /**
@@ -757,26 +1045,53 @@ wlc_sqs_vpkts_forward(uint16 cfp_flowid, uint8 prio, uint16 count)
  * @paarm v_pkts	Virtual packets added in current iteration
  */
 void
-wlc_sqs_vpkts_enqueue(uint16 cfp_flowid, uint8 prio, uint16 v_pkts)
+wlc_sqs_vpkts_enqueue(uint16 flowid, uint8 prio, uint16 v_pkts)
 {
-	scb_cfp_t *scb_cfp;
 	wlc_info_t *wlc;
+	struct scb *scb;
+	wlc_sqs_info_t *sqs_info;
+	scb_sqs_t * scb_sqs;
 
-	ASSERT_CFP_FLOWID(cfp_flowid);
+	ASSERT_SCB_FLOWID(flowid);
 	ASSERT(WLC_SQS_G);
 
 	wlc = WLC_SQS_WLC(WLC_SQS_G);
-	scb_cfp = wlc_scb_cfp_id2ptr(cfp_flowid);
+	sqs_info = wlc->sqs;
+	scb = wlc_scb_flowid_lookup(wlc, flowid);
 
-	ASSERT(scb_cfp);
-	wlc_sqs_pktq_vpkts_enqueue(wlc, scb_cfp, prio, v_pkts);
+	ASSERT(scb);
+	ASSERT(prio < NUMPRIO);
+
+	scb_sqs = SCB_SQS(sqs_info, scb);
+
+	ASSERT(scb_sqs);
+
+	SCB_SQS_V_PKTS(scb_sqs, prio) += v_pkts;
+	SCB_SQS_CUM_V_PKTS(scb_sqs, prio) += v_pkts;
+
+	/* Store the max stats */
+	SCB_SQS_V_PKTS_MAX(scb_sqs, prio) = MAX(SCB_SQS_V_PKTS_MAX(scb_sqs, prio),
+		SCB_SQS_V_PKTS(scb_sqs, prio));
+
+	WLC_SQS_DEBUG(("%s : cur flowid %d V %d \n",
+		__FUNCTION__, flowid, SCB_SQS_V_PKTS(scb_sqs, prio)));
 #ifdef WLTAF
 	/* check if TAF is enabled and not in bypass state */
-	if (wlc_taf_in_use(wlc->taf_handle)) {
-		wlc_taf_pkts_enqueue(wlc->taf_handle, scb_cfp->scb,
+	if ((!SCB_INTERNAL(scb)) && wlc_taf_in_use(wlc->taf_handle)) {
+		wlc_taf_pkts_enqueue(wlc->taf_handle, scb,
 			prio, TAF_SQSHOST, v_pkts);
 	}
 #endif // endif
+
+#ifdef PKTQ_LOG
+#ifdef WLAMPDU
+	wlc_ampdu_sqs_pktq_log(wlc, scb, prio, FALSE,
+		SCB_SQS_V_PKTS(scb_sqs, prio), v_pkts);
+#endif // endif
+#ifdef WLNAR
+#endif /* WLNAR */
+#endif /* PKTQ_LOG */
+
 }
 
 /* check if stride should be paused */
@@ -786,6 +1101,7 @@ wlc_sqs_fifo_paused(uint8 prio)
 	wlc_info_t *wlc;
 	uint8 fifo;
 
+	ASSERT(prio < NUMPRIO);
 	wlc = WLC_SQS_WLC(WLC_SQS_G);
 	fifo = prio2fifo[prio];
 
@@ -795,45 +1111,34 @@ wlc_sqs_fifo_paused(uint8 prio)
 	return FALSE;
 }
 /* Submit request to convert virtual to real packets */
-uint16
-wlc_sqs_ampdu_pull_packets(wlc_info_t* wlc, struct scb* scb, struct pktq *pktq,
+static uint16
+wlc_sqs_pull_packets(wlc_info_t* wlc, scb_sqs_t * scb_sqs,  struct scb* scb,
 	uint8 tid, uint16 request_cnt)
 {
-	scb_cfp_t *scb_cfp;
 	uint16 ringid;
 	int v2r_request = request_cnt;
 	uint16 ret;
 
 	ASSERT(scb);
-	ASSERT(pktq);
 
-	/* Account for the real packets if required */
+	ASSERT(scb_sqs);
+	ASSERT(!SCB_INTERNAL(scb));
 #ifdef WLTAF
-	if (!wlc_taf_in_use(wlc->taf_handle))
+	ASSERT(wlc_taf_in_use(wlc->taf_handle));
 #endif /* WLTAF */
-	{
-		v2r_request = SQS_AMPDU_RELEASE_LEN(pktq, tid, v2r_request);
-	}
 
-	v2r_request = MIN(pktq->q[tid].v_pkts, v2r_request);
+	v2r_request = MIN(SCB_SQS_V_PKTS(scb_sqs, tid), v2r_request);
 
 	ASSERT(v2r_request >= 0);
 
-	scb_cfp = wlc_scb_cfp_cubby(wlc, scb);
-
-	/* Check for valid scb cfp cubby */
-	if (scb_cfp == NULL) {
-		ASSERT(0);
-		return 0;
-	}
-
 	/* Get Host flowring id */
-	ringid = SCB_CFP_RINGID(scb_cfp, tid);
+	ringid = SCB_HOST_RINGID(scb, tid);
 
-	ASSERT_CFP_RINGID(ringid);
+	ASSERT_SCB_HOST_RINGID(ringid);
 
 	WLC_SQS_DEBUG(("%s : SQS V2R submit : flowid %d cnt %d \n",
-		__FUNCTION__, SCB_CFP_FLOWID(scb_cfp), v2r_request));
+		__FUNCTION__, SCB_FLOWID(scb),
+		v2r_request));
 
 	/* V2R request from BUS Layer [sqs_v2r_request]  */
 	ret = wlc_sqs_pull_packets_cb(ringid, v2r_request);
@@ -913,4 +1218,21 @@ wlc_sqs_eops_response(void)
 		wlc_taf_v2r_complete(WLC_SQS_WLC(sqs_info)->taf_handle);
 	}
 #endif /* WLTAF */
+}
+/* Return the real packets enqueued for a given SCB in AMPDU & NAR Qs. */
+static
+uint16 wlc_sqs_real_pkt_cnt(wlc_info_t* wlc, struct scb* scb, int prio)
+{
+	uint16 real_pkts = 0;
+
+	ASSERT(prio < NUMPRIO);
+
+#ifdef WLAMPDU
+	real_pkts += wlc_scb_ampdu_n_pkts(wlc, scb, prio);
+#endif // endif
+#ifdef WLNAR
+	real_pkts += wlc_scb_nar_n_pkts(wlc->nar_handle, scb, prio);
+#endif // endif
+
+	return real_pkts;
 }

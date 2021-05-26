@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_rrm.c 781790 2019-11-28 15:18:39Z $
+ * $Id: wlc_rrm.c 784052 2020-02-18 08:58:27Z $
  */
 
 /**
@@ -2668,7 +2668,7 @@ wlc_rrm_send_event(wlc_rrm_info_t *rrm_info, struct scb *scb, char *ie, int len,
 	evt->cat = cat;
 	evt->subevent = subevent;
 	memcpy(evt->payload, ie, len);
-	wlc_bss_mac_event(rrm_info->wlc, rrm_info->cur_cfg, WLC_E_RRM,
+	wlc_bss_mac_event(rrm_info->wlc, scb->bsscfg, WLC_E_RRM,
 		&scb->ea, 0, 0, 0, buf, sizeof(buf));
 	WL_RRM(("%s: <0x%x> trigger event [DONE]\n", __FUNCTION__, subevent));
 }
@@ -4998,8 +4998,9 @@ wlc_rrm_nbr_scancb(void *arg, int status, wlc_bsscfg_t *cfg)
 	ncnt = wlc_rrm_get_neighbor_count(wlc, cfg, NBR_ADD_DYNAMIC);
 	BCM_REFERENCE(ncnt);  /* needed for internal builds */
 	WL_RRM(("%s: auto learned Neighbor Count = %d - call send report \n ", __FUNCTION__, ncnt));
-	scb = wlc_scbfind(wlc, cfg, &rrm_cfg->da);
-	wlc_rrm_send_nbrrep(rrm_info, cfg, scb, NULL, 0, NBR_ADD_DYNAMIC);
+	if ((scb = wlc_scbfind(wlc, cfg, &rrm_cfg->da))) {
+		wlc_rrm_send_nbrrep(rrm_info, cfg, scb, NULL, 0, NBR_ADD_DYNAMIC);
+	}
 }
 
 static void
@@ -10257,9 +10258,6 @@ wlc_assoc_parse_rrm_ie(void *ctx, wlc_iem_parse_data_t *data)
 		if ((rrmie->len == DOT11_RRM_CAP_LEN) &&
 			(rrm_scb != NULL)) {
 			bcopy(rrmie->data, rrm_scb->rrm_capabilities, DOT11_RRM_CAP_LEN);
-			scb->flags3 &= ~SCB3_RRM_BCN_PASSIVE;
-			if (isset(rrm_scb->rrm_capabilities, DOT11_RRM_CAP_BCN_PASSIVE))
-				scb->flags3 |= SCB3_RRM_BCN_PASSIVE;
 		}
 	}
 

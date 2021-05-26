@@ -1,0 +1,2878 @@
+#
+# RTE Common Dongle Configuration
+#
+# This is shared between ROM and RAM builds.
+#
+# Copyright 2020 Broadcom
+#
+# This program is the proprietary software of Broadcom and/or
+# its licensors, and may only be used, duplicated, modified or distributed
+# pursuant to the terms and conditions of a separate, written license
+# agreement executed between you and Broadcom (an "Authorized License").
+# Except as set forth in an Authorized License, Broadcom grants no license
+# (express or implied), right to use, or waiver of any kind with respect to
+# the Software, and Broadcom expressly reserves all rights in and to the
+# Software and all intellectual property rights therein.  IF YOU HAVE NO
+# AUTHORIZED LICENSE, THEN YOU HAVE NO RIGHT TO USE THIS SOFTWARE IN ANY
+# WAY, AND SHOULD IMMEDIATELY NOTIFY BROADCOM AND DISCONTINUE ALL USE OF
+# THE SOFTWARE.
+#
+# Except as expressly set forth in the Authorized License,
+#
+# 1. This program, including its structure, sequence and organization,
+# constitutes the valuable trade secrets of Broadcom, and you shall use
+# all reasonable efforts to protect the confidentiality thereof, and to
+# use this information only in connection with your use of Broadcom
+# integrated circuit products.
+#
+# 2. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED
+# "AS IS" AND WITH ALL FAULTS AND BROADCOM MAKES NO PROMISES,
+# REPRESENTATIONS OR WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR
+# OTHERWISE, WITH RESPECT TO THE SOFTWARE.  BROADCOM SPECIFICALLY
+# DISCLAIMS ANY AND ALL IMPLIED WARRANTIES OF TITLE, MERCHANTABILITY,
+# NONINFRINGEMENT, FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES,
+# ACCURACY OR COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR
+# CORRESPONDENCE TO DESCRIPTION. YOU ASSUME THE ENTIRE RISK ARISING
+# OUT OF USE OR PERFORMANCE OF THE SOFTWARE.
+#
+# 3. TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL
+# BROADCOM OR ITS LICENSORS BE LIABLE FOR (i) CONSEQUENTIAL, INCIDENTAL,
+# SPECIAL, INDIRECT, OR EXEMPLARY DAMAGES WHATSOEVER ARISING OUT OF OR
+# IN ANY WAY RELATING TO YOUR USE OF OR INABILITY TO USE THE SOFTWARE EVEN
+# IF BROADCOM HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES; OR (ii)
+# ANY AMOUNT IN EXCESS OF THE AMOUNT ACTUALLY PAID FOR THE SOFTWARE ITSELF
+# OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
+# NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
+#
+# $Id: Makeconf 788023 2020-06-18 09:52:36Z $
+#
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#+++++++++++++++++++++++++ global default configurations +++++++++++++++++++++++
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+#ifdef UNRELEASEDCHIP
+# include things under UNRELEASEDCHIP conditional (for local built targets only)
+# removed by mogrifier
+EXTRA_DFLAGS += -DUNRELEASEDCHIP
+#endif // endif
+
+#wlpwrstats
+ifeq ($(WL_PWRSTATS),1)
+        ifeq ($(WL_PWRSTATS_DISABLED),1)
+                EXTRA_DFLAGS += -DWL_PWRSTATS_DISABLED
+        endif
+else
+        ifneq ($(GENROMTBL),1)
+                EXTRA_DFLAGS += -DWL_PWRSTATS_DISABLED
+        endif
+endif
+
+# Enable MPU RAM protection by default for cr4
+ifeq ($(TARGET_CPU),cr4)
+	MPU_RAM_PROTECT  ?= 1
+	MAX_MPU_REGION  ?= 8
+	ifeq ($(MPU_RAM_PROTECT),1)
+		EXTRA_DFLAGS    += -DMPU_RAM_PROTECT_ENABLED
+		EXTRA_DFLAGS    += -DMAX_MPU_REGION=$(MAX_MPU_REGION)
+	endif
+endif
+
+# distinguish between boot loader and dongle build
+ifeq ($(BOOTLOADER),1)
+EXTRA_DFLAGS += -DBCM_BOOTLOADER
+else
+FULLDNGLBLD ?= 1
+BCMHOSTVARS ?= 1
+endif
+
+# XXX need a better distinction between a dongle build with host bus (sdio/usb...) and
+# a dongle build without (aka wl only).
+ifeq ($(FULLDNGLBLD),1)
+EXTRA_DFLAGS += -DDONGLEBUILD
+BCM_RECLAIM ?= 1
+BCM_RECLAIM_ATTACH_FN_DATA ?= 1
+endif	# FULLDNGLBLD
+
+# reclaim Related macro defines
+ifeq ($(BCM_RECLAIM),1)
+EXTRA_DFLAGS += -DBCM_RECLAIM
+endif
+
+#enable WLC BCM DMA ERRORS to generate interrupts for all dongle builds
+#default make them interrupts rather than polling for the DMA errors
+WLC_BCMDMA_ERRORS ?= 1
+ifeq ($(WLC_BCMDMA_ERRORS),1)
+EXTRA_DFLAGS += -DWLC_BCMDMA_ERRORS
+endif
+
+ifeq ($(BCM_RECLAIM_ATTACH_FN_DATA),1)
+EXTRA_DFLAGS += -DBCM_RECLAIM_ATTACH_FN_DATA
+endif
+
+ifneq ($(CMWIFI),)
+EXTRA_DFLAGS += -DCMWIFI
+endif
+
+# support host-supplied nvram variables
+ifeq ($(BCMHOSTVARS),1)
+EXTRA_DFLAGS += -DBCMHOSTVARS
+ifneq ($(CMWIFI),)
+# Host downloaded nvram vars will override existing SROM
+EXTRA_DFLAGS += -DBCMHOSTVARS_OVERRIDE_SROM
+endif
+endif
+
+# dongle does not need a delay before MPC starts
+EXTRA_DFLAGS += -DWLC_MPC_MAX_DELAYCNT=1
+
+# size optimization to exclude code except for one specific chip
+ifneq ($(CHIP),43xx)
+EXTRA_DFLAGS += $(CHIP:%=-DBCMCHIPID=BCM%_CHIP_ID)
+endif
+
+ifneq ($(REVID),)
+# size optimization to exclude code except for one specific chip rev (especially for ROMmed code)
+EXTRA_DFLAGS += -DBCMCHIPREV=$(REVID)
+endif
+
+ifneq ($(PCIEREVID),)
+# size optimization to exclude code except for one specific chip rev (especially for ROMmed code)
+EXTRA_DFLAGS += -DBCMPCIEREV=$(PCIEREVID)
+endif
+
+ifneq ($(PMUREV),)
+EXTRA_DFLAGS += -DBCMPMUREV=$(PMUREV)
+endif
+
+ifneq ($(CCREV),)
+EXTRA_DFLAGS += -DBCMCCREV=$(CCREV)
+endif
+
+ifneq ($(GCIREV),)
+EXTRA_DFLAGS += -DBCMGCIREV=$(GCIREV)
+endif
+
+ifneq ($(AOBENAB),)
+EXTRA_DFLAGS += -DBCMAOBENAB=$(AOBENAB)
+endif
+
+ifneq ($(OTPWRTYPE),)
+EXTRA_DFLAGS += -DBCMOTPWRTYPE=$(OTPWRTYPE)
+endif
+
+ifneq ($(BUSCORETYPE),)
+EXTRA_DFLAGS += -DBCMBUSCORETYPE=$(BUSCORETYPE)
+endif
+
+# Define BCM43xx and BCM43xxrx - for ROM patch emergency use only (do not abuse in regular code!)
+ifneq ($(CHIP),43xx)
+ifneq ($(CHIP),)
+EXTRA_DFLAGS += -DBCM$(CHIP)
+ifneq ($(REV),)
+EXTRA_DFLAGS += -D$(shell echo BCM$(CHIP)$(REV) | tr a-z A-Z)
+endif
+endif
+endif
+
+# Memory optimization
+ifneq ($(BCMSROMREV),)
+   EXTRA_DFLAGS    += -DBCMSROMREV=$(BCMSROMREV)
+endif
+ifneq ($(BCMRADIOID),)
+   EXTRA_DFLAGS    += -DBCMRADIOID=$(BCMRADIOID)
+endif
+ifneq ($(BCMRADIOREV),)
+   EXTRA_DFLAGS    += -DBCMRADIOREV=$(BCMRADIOREV)
+endif
+ifneq ($(BCMRADIOREV_AUX),)
+   EXTRA_DFLAGS    += -DBCMRADIOREV_AUX=$(BCMRADIOREV_AUX)
+endif
+ifneq ($(BCMRADIOVER),)
+   EXTRA_DFLAGS    += -DBCMRADIOVER=$(BCMRADIOVER)
+endif
+ifneq ($(BCMRADIOMAJORREV),)
+   EXTRA_DFLAGS    += -DBCMRADIOMAJORREV=$(BCMRADIOMAJORREV)
+endif
+ifneq ($(BCMPHYACMINORREV),)
+   EXTRA_DFLAGS    += -DBCMPHYACMINORREV=$(BCMPHYACMINORREV)
+endif
+
+ifneq ($(CR4REV),)
+EXTRA_DFLAGS += -DBCMCR4REV=$(CR4REV)
+endif
+
+# include only IPX OTP for all chips
+EXTRA_DFLAGS += -DBCMIPXOTP
+
+# build small dongle images
+SMALL ?= 1
+# support serial console
+CONSOLE ?= 1
+UART ?= 1
+CC_UART ?= 1
+SECI_UART ?= 1
+# support flash memory access and nvram variables read in flash
+FLASH ?= 0
+# support nvram variables read in SPROM/OTP
+NVRAM ?= 1
+# support trace messages (sent over HBUS)
+MSGTRACE ?= 0
+# number of rx buffers to post for pktpool feature
+BUS_POST ?= 6
+
+# size of shared pool for pktpool feature
+POOL_LEN ?= 24
+POOL_LEN_MAX ?= 40
+
+#SDTEST pktgen code in dongle
+SDTEST	?= 1
+TRX_FLAGS ?= 0x0020
+TCAM ?= 0
+# Default TCAM patch count
+TCAM_PCNT ?= 0
+# Default TCAM entries
+TCAM_SIZE ?= 64
+
+#AMPDU rx packets host reorder
+AMPDU_HOSTREORDER ?= 0
+
+#STA_KEEP_ALIVE set to 0 by default
+STA_KEEP_ALIVE ?= 0
+
+# pktpool
+BCMPKTPOOL ?= 1
+# size of shared pool
+POOL_LEN ?= 24
+POOL_LEN_MAX ?= 40
+
+# specify common source files search paths
+vpath %.S $(SRCBASE)/shared
+vpath %.lds.in $(SRCBASE)/shared
+
+WLC_DISABLE_DFS_RADAR_SUPPORT ?= 0
+
+WLMCNX_DISABLED ?= 1
+
+# only used when standalone test
+BCMSTANDALONE_TEST ?= 0
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++ mandatory attributes +++++++++++++++++++++++++++++++
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+ifneq ($(findstring usb,$(TARGET_HBUS)),)
+	vpath %.c $(SRCBASE)/usbdev/dongle $(SRCBASE)/usbdev/dongle/usb30d
+	USBBULK_RXBUFS ?= 4
+        USBBULK_RXBUF_GIANT ?= 0
+	USBCTL_RXBUFS ?= 4
+	USB_NRXD ?= 16
+	USB_NTXD ?= 16
+	USB_RXBND ?= 4
+	USB_TXQ_DATAHIWAT ?= 2
+	USB_TXQ_DATALOWAT ?= 1
+# Specify the Bootloader PID to be used by the post boot image
+	BCM_DNGL_BL_PID ?= 0xbdc
+	HBUS_OBJECTS += usbdev_rte.o usbdev_sb.o usbdev_cdc.o
+	HBUS_OBJECTS += xdc_rte.o xdc_cmd.o xdc_core.o xdc_dbg.o xdc_ep.o xdc_mem.o xdc_ring.o
+	EXTRA_IFLAGS += -I$(SRCBASE)/usbdev/dongle
+	EXTRA_DFLAGS += -DBCMUSBDEV
+	EXTRA_DFLAGS += -DUSBBULK_RXBUFS=$(USBBULK_RXBUFS) -DUSBCTL_RXBUFS=$(USBCTL_RXBUFS)
+	EXTRA_DFLAGS += -DUSB_NRXD=$(USB_NRXD) -DUSB_NTXD=$(USB_NTXD)
+	EXTRA_DFLAGS += -DUSB_RXBND=$(USB_RXBND)
+	EXTRA_DFLAGS += -DUSB_TXQ_DATAHIWAT=$(USB_TXQ_DATAHIWAT)
+	EXTRA_DFLAGS += -DUSB_TXQ_DATALOWAT=$(USB_TXQ_DATALOWAT)
+endif	# usb
+
+# HWA: Hardware Assist Library
+ifeq ($(HWA),1)
+	# All hwa source files in top level include and shared folders
+	# Except hwa_mac.o, hwa_lib.o and hwa_pktpgr.o, they will be included by wl.mk
+
+	COMMON_OBJECTS += hwa_rte.o
+	PCIEDEV_OBJECTS += hwa_pcie.o
+	EXTRA_IFLAGS += -I$(SRCBASE)/pciedev
+endif
+
+# HME: Host Memory Extension service
+ifeq ($(HME),1)
+	EXTRA_DFLAGS += -DBCMHME
+	COMMON_OBJECTS += bcmhme.o
+endif
+
+# PQP: Packet Queue Pager service for offloading Power Save Queues to Host
+ifneq ($(HNDPQP),)
+	EXTRA_DFLAGS += -DHNDPQP -DPQP_REQ_MAX=$(HNDPQP)
+	COMMON_OBJECTS += hnd_pqp.o
+endif
+
+# CSI: Channel State Information
+ifeq ($(BCM_CSIMON),1)
+	EXTRA_DFLAGS += -DBCM_CSIMON
+endif
+
+# pcie full dongle
+ifneq ($(findstring pcie,$(TARGET_HBUS)),)
+	vpath %.c $(SRCBASE)/pciedev
+	PCIE_TXFLOWS ?= 40
+	PCIE_H2D_NTXD ?= 256
+	PCIE_H2D_NRXD ?= 256
+	PCIE_D2H_NTXD ?= 256
+	PCIE_D2H_NRXD ?= 256
+	H2D_DMAQ_LEN ?= 64
+	D2H_DMAQ_LEN ?= 128
+	PCIEDEV_OBJECTS += pciedev_rte.o pciedev.o pciedev_data.o pciedev_ob_ds.o
+	PCIEDEV_OBJECTS += pcie_core.o
+	HBUS_OBJECTS += $(PCIEDEV_OBJECTS)
+	EXTRA_IFLAGS += -I$(SRCBASE)/pciedev
+	EXTRA_DFLAGS += -DBCMPCIEDEV
+	EXTRA_DFLAGS += -DPD_H2D_NTXD=$(PCIE_H2D_NTXD) -DPD_H2D_NRXD=$(PCIE_H2D_NRXD)
+	EXTRA_DFLAGS += -DPD_D2H_NTXD=$(PCIE_D2H_NTXD) -DPD_D2H_NRXD=$(PCIE_D2H_NRXD)
+	EXTRA_DFLAGS += -DMAX_DMA_QUEUE_LEN_H2D=$(H2D_DMAQ_LEN) -DMAX_DMA_QUEUE_LEN_D2H=$(D2H_DMAQ_LEN)
+	ifneq ($(PCIE_TXFLOWS),)
+		EXTRA_DFLAGS += -DBCMPCIE_MAX_TX_FLOWS=$(PCIE_TXFLOWS)
+	endif
+	ifneq ($(PCIEDEV_MAX_LOCALBUF_PKT_COUNT),)
+		EXTRA_DFLAGS    += -DPCIEDEV_MAX_LOCALBUF_PKT_COUNT=$(PCIEDEV_MAX_LOCALBUF_PKT_COUNT)
+	endif
+	ifneq ($(PCIEDEV_MAX_PACKETFETCH_COUNT),)
+		EXTRA_DFLAGS    += -DPCIEDEV_MAX_PACKETFETCH_COUNT=$(PCIEDEV_MAX_PACKETFETCH_COUNT)
+	endif
+
+        ifneq ($(NAR_MAX_TRANSIT_PACKETS),)
+                EXTRA_DFLAGS    += -DNAR_MAX_TRANSIT_PACKETS=$(NAR_MAX_TRANSIT_PACKETS)
+        endif
+
+	ifneq ($(WL_NTXD_LFRAG),)
+		EXTRA_DFLAGS += -DWL_NTXD_LFRAG=$(WL_NTXD_LFRAG)
+	endif
+
+	ifneq ($(MAX_HOST_RXBUFS),)
+		EXTRA_DFLAGS += -DMAX_HOST_RXBUFS=$(MAX_HOST_RXBUFS)
+	endif
+
+	ifeq ($(BCM_BUZZZ),1)
+		HBUS_OBJECTS += bcm_buzzz.o
+		EXTRA_DFLAGS += -DBCM_BUZZZ
+		ifeq ($(BCM_BUZZZ_KPI),1)
+			EXTRA_DFLAGS += -DBCM_BUZZZ_KPI
+		endif
+		ifeq ($(BCM_BUZZZ_FUNC),1)
+			EXTRA_DFLAGS += -DBCM_BUZZZ_FUNC
+		endif
+	endif
+		ifeq ($(IOCTL_RESP_LARGE),1)
+			EXTRA_DFLAGS    += -DPCIEDEV_USE_EXT_BUF_FOR_IOCTL
+		endif
+		ifneq ($(PCIEDEV_MAX_IOCTLRSP_BUF_SIZE),)
+			EXTRA_DFLAGS    += -DPCIEDEV_MAX_IOCTLRSP_BUF_SIZE=$(PCIEDEV_MAX_IOCTLRSP_BUF_SIZE)
+		endif
+	ifeq ($(MFGTEST),1)
+	EXTRA_DFLAGS += -DPCIE_DELAYED_HOSTWAKE
+	EXTRA_DFLAGS += -DPCIE_DMAXFER_LOOPBACK
+	endif
+
+	ifeq ($(BUSTPUT),1)
+	EXTRA_DFLAGS += -DBUS_TPUT
+	endif
+
+	ifneq ($(FRAG_HEADROOM),)
+		EXTRA_DFLAGS += -DFRAG_HEADROOM=$(FRAG_HEADROOM)
+	endif
+
+	ifeq ($(BCM_PCIEDEV_INBAND_DW),1)
+		HBUS_OBJECTS += pciedev_ib_ds.o
+		EXTRA_DFLAGS += -DPCIEDEV_INBAND_DW
+	endif
+endif	# pcie
+
+ifneq ($(findstring sdio,$(TARGET_HBUS)),)
+	vpath %.c $(SRCBASE)/sdpcmdev
+	BUS_NRXD ?= 32
+	BUS_NTXD ?= 64
+	BUS_RXBND ?= 10
+	SDPCMD_RXBUFS ?= $(BUS_POST)
+	SDPCMD_NRXD		?= $(BUS_NRXD)
+	SDPCMD_NTXD		?= $(BUS_NTXD)
+	SDPCMD_RXBND	?= $(BUS_RXBND)
+	SDPCMD_READAHEAD ?= TRUE
+	SDPCMD_TXGLOM ?= 7
+	HBUS_OBJECTS += sdpcmdev_rte.o sdpcmdev.o
+	EXTRA_IFLAGS += -I$(SRCBASE)/sdpcmdev
+	EXTRA_DFLAGS += -DBCMSDIODEV
+	ifeq ($(SDTEST),1)
+		EXTRA_DFLAGS += -DSDTEST
+	endif
+	EXTRA_DFLAGS += -DSDPCMD_RXBUFS=$(SDPCMD_RXBUFS) -DSDPCMD_READAHEAD=$(SDPCMD_READAHEAD) -DSDPCMD_TXGLOM=$(SDPCMD_TXGLOM)
+	EXTRA_DFLAGS += -DSDPCMD_NRXD=$(SDPCMD_NRXD) -DSDPCMD_NTXD=$(SDPCMD_NTXD)
+	EXTRA_DFLAGS += -DSDPCMD_RXBND=$(SDPCMD_RXBND)
+endif	# sdio
+
+ifeq ($(HBUS_ENAB),usb)
+	EXTRA_DFLAGS += -DBCMUSBDEV_ENABLED
+endif
+ifeq ($(HBUS_ENAB),sdio)
+	EXTRA_DFLAGS += -DBCMSDIODEV_ENABLED
+endif
+ifeq ($(HBUS_ENAB),pcie)
+	EXTRA_DFLAGS += -DBCMPCIEDEV_ENABLED
+endif
+
+ifndef HBUS_ENAB
+# it's likely something fancy is being built so enable whatever needed
+ifeq ($(GENROMTBL),1)
+ifneq ($(findstring usb,$(TARGET_HBUSCFG)),)
+	EXTRA_DFLAGS += -DBCMUSBDEV_ENABLED
+endif
+ifneq ($(findstring sdio,$(TARGET_HBUSCFG)),)
+	EXTRA_DFLAGS += -DBCMSDIODEV_ENABLED
+endif
+ifneq ($(findstring pcie,$(TARGET_HBUSCFG)),)
+	EXTRA_DFLAGS += -DBCMPCIEDEV_ENABLED
+endif
+endif
+endif	# !HBUS_ENAB
+
+# CRC32BIN may be set to an empty value
+$(call cond_set_var,CRC32BIN,1)
+ifeq ($(CRC32BIN),1)
+	EXTRA_DFLAGS += -DRTE_CRC32_BIN
+endif
+
+ifeq ($(TARGET_ARCH),arm)
+	BOOT_OBJECTS ?= bootarm.o
+	RUN_OBJECTS ?= headarm.o bcmlibarm.o
+	ARCH_OBJECTS ?= hndarm.o hndarm_gt.o
+	RTOS_OBJECTS ?= rte_arm.o
+	TARGET_CPU ?= 7s
+	EXTRA_DFLAGS += -DBCMPMUCTL=1
+
+	ifeq ($(TARGET_CPU),cm3)
+		THUMB := 1
+	endif
+	ifeq ($(TARGET_CPU),cr4)
+		ifneq ($(BOOTLOADER),1)
+			FIQMODE ?= 1
+			FIQ_USE_COMMON_TRAP_HDLR ?= 1
+		endif
+		THUMB := 1
+	endif
+	ifeq ($(TARGET_CPU),ca7)
+		ifneq ($(BOOTLOADER),1)
+			FIQMODE ?= 1
+			FIQ_USE_COMMON_TRAP_HDLR ?= 0
+		endif
+		THUMB := 1
+
+		# MMU settings.
+		PAGETABLE_SIZE ?= 0x4000
+		PAGE_SIZE ?= 4096
+		EXTRA_DFLAGS += -DPAGETABLE_SIZE=$(PAGETABLE_SIZE)
+		EXTRA_DFLAGS += -DPAGE_SIZE=$(PAGE_SIZE)
+	endif
+
+	PAGETABLE_SIZE ?= 0
+	PAGE_SIZE ?= 0
+endif
+
+# Host BUS protocol
+ifeq ($(findstring cdc,$(HBUS_PROTO)), cdc)
+	PROJECT := rtecdc
+	PROTO_OBJECTS += dngl_rte.o bcmcdc.o
+	EXTRA_DFLAGS += -DBCMCDC
+endif
+ifeq ($(findstring msgbuf,$(HBUS_PROTO)), msgbuf)
+	PROJECT := rtecdc
+	PROTO_OBJECTS += dngl_rte.o bcmmsgbuf.o
+	EXTRA_DFLAGS += -DBCMMSGBUF
+endif
+
+STRING_HBUSPROTO := $(findstring cdc,$(HBUS_PROTO))+$(findstring msgbuf,$(HBUS_PROTO))
+
+#Multiple HBUS_PROTO is not allowed in case of ROML
+ifneq ($(GENROMTBL),1)
+ifeq ($(filter $(STRING_HBUSPROTO),cdc+ +msgbuf +),)
+$(error Multiple buses are enabled $(STRING_HBUSPROTO))
+endif
+endif
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++ optional attributes ++++++++++++++++++++++++++++++
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#LFRAG
+ifeq ($(BCMLFRAG),1)
+	EXTRA_DFLAGS += -DBCMLFRAG
+
+	ifeq ($(BCMLFRAG_DISABLED),1)
+		EXTRA_DFLAGS += -DBCMLFRAG_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DBCMLFRAG_DISABLED
+	endif
+endif # BCMLFRAG
+
+ifeq ($(GSCAN),1)
+#gscan
+	ifeq ($(WL_GSCAN_DISABLED), 1)
+		EXTRA_DFLAGS += -DWL_GSCAN_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_GSCAN_DISABLED
+	endif
+endif #GSCAN
+
+# NRXD & NTXD & NTXD_BCMC from chipspecif mk file
+ifneq ($(WL_NRXD),)
+        EXTRA_DFLAGS += -DWL_NRXD=$(WL_NRXD)
+endif
+ifneq ($(WL_NTXD),)
+        EXTRA_DFLAGS += -DWL_NTXD=$(WL_NTXD)
+endif
+ifneq ($(WL_NTXD_BCMC),)
+        EXTRA_DFLAGS += -DWL_NTXD_BCMC=$(WL_NTXD_BCMC)
+endif
+
+# WL_XXBND
+ifneq ($(WL_RXBND),)
+	EXTRA_DFLAGS += -DWL_RXBND=$(WL_RXBND)
+endif
+
+# Stacks
+HND_STACK_SIZE ?= 8192
+EXTRA_DFLAGS	+= -DHND_STACK_SIZE=$(HND_STACK_SIZE)
+IDLE_STACK_SIZE ?= 256
+EXTRA_DFLAGS	+= -DIDLE_STACK_SIZE=$(IDLE_STACK_SIZE)
+
+ifneq ($(SW_PAGING),)
+	ABRT_STACK_SIZE ?= 512
+	EXTRA_DFLAGS += -DABRT_STACK_SIZE=$(ABRT_STACK_SIZE)
+endif
+
+#LFRAGPOOL
+ifeq ($(BCMFRAGPOOL),1)
+	EXTRA_DFLAGS += -DBCMFRAGPOOL
+
+	ifeq ($(BCMFRAGPOOL_DISABLED),1)
+		EXTRA_DFLAGS += -DBCMFRAGPOOL_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DBCMFRAGPOOL_DISABLED
+	endif
+endif # BCMFRAGPOOL
+
+#RESVFRAGPOOL
+ifeq ($(BCMRESVFRAGPOOL),1)
+	EXTRA_DFLAGS += -DBCMRESVFRAGPOOL
+	EXTRA_DFLAGS += -DBCMRESVFRAGPOOL_ENABLED
+	EXTRA_DFLAGS += -DRESV_FRAG_POOL_LEN=$(RESV_FRAG_POOL_LEN)
+	COMMON_OBJECTS += hnd_resvpool.o
+	ifeq ($(BCMRESVFRAGPOOL_DISABLED),1)
+		EXTRA_DFLAGS += -DBCMRESVFRAGPOOL_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DBCMRESVFRAGPOOL_DISABLED
+	endif
+endif # BCMRESVFRAGPOOL
+
+# split RX
+COPY_CNT_BYTES ?= 32
+#for splitrx below values will be default
+#it can be override in chip specific make file
+WL_SPLITRX_MODE ?= 2
+WL_CLASSIFY_FIFO ?= 1
+BCMRXFRAGPOOL ?= 1
+ifeq ($(BCMSPLITRX),1)
+	EXTRA_DFLAGS += -DBCMSPLITRX
+	ifeq ($(BCMRXFRAGPOOL),1)
+		EXTRA_DFLAGS += -DBCMRXFRAGPOOL
+	else
+		EXTRA_DFLAGS += -DBCMRXFRAGPOOL_DISABLED
+	endif
+
+	ifeq ($(BCMSPLITRX_DISABLED),1)
+		EXTRA_DFLAGS += -DBCMSPLITRX_DISABLED
+		EXTRA_DFLAGS += -DBCMRXFRAGPOOL_DISABLED
+	else
+		EXTRA_DFLAGS += -DSHARED_RXFRAG_POOL_LEN=$(RXFRAG_POOL_LEN)
+	endif
+	# TODO: remove the following and move NRXBUFPOST_FIFO1 to wltunable
+	ifneq ($(WL_POST_FIFO1),)
+		EXTRA_DFLAGS += -DNRXBUFPOST_FIFO1=$(WL_POST_FIFO1)
+	endif
+	# TODO: remove the following and move NRXBUFPOST_CLASSIFIED_FIFO to wltunable
+        ifneq ($(WL_POST_CLASSIFIED_FIFO),)
+            EXTRA_DFLAGS += -DNRXBUFPOST_CLASSIFIED_FIFO=$(WL_POST_CLASSIFIED_FIFO)
+        endif
+        ifneq ($(WL_SPLITRX_MODE),)
+                EXTRA_DFLAGS += -DSPLIT_RXMODE=$(WL_SPLITRX_MODE)
+        else
+                EXTRA_DFLAGS += -DSPLIT_RXMODE=0
+        endif
+	# TODO: remove the following and move PKT_CLASSIFY_FIFO to wltunable
+        ifneq ($(WL_CLASSIFY_FIFO),)
+            EXTRA_DFLAGS += -DPKT_CLASSIFY_FIFO=$(WL_CLASSIFY_FIFO)
+        endif
+	# TODO: remove the following and move COPY_CNT_BYTES to wltunable
+        ifneq ($(COPY_CNT_BYTES),)
+            EXTRA_DFLAGS += -DCOPY_CNT_BYTES=$(COPY_CNT_BYTES)
+        endif
+	ifeq ($(WL_SPLITRX_MODE),4)
+	    EXTRA_DFLAGS += -DHW_HDR_CONVERSION
+	endif
+
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DBCMSPLITRX_DISABLED
+		EXTRA_DFLAGS += -DBCMRXFRAGPOOL_DISABLED
+	endif
+endif # BCMSPLITRX
+
+ifeq ($(STA_KEEP_ALIVE),1)
+        EXTRA_DFLAGS += -DWLSTA_KEEP_ALIVE
+endif
+
+# KEEP_ALIVE
+ifeq ($(KEEP_ALIVE),1)
+	ifeq ($(KEEP_ALIVE_DISABLED),1)
+		EXTRA_DFLAGS += -DKEEP_ALIVE_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DKEEP_ALIVE_DISABLED
+	endif
+endif
+
+#RSDB_PM_MODESW
+ifeq ($(RSDB_PM_MODESW),1)
+	ifeq ($(RSDB_PM_MODESW_DISABLED),1)
+		EXTRA_DFLAGS += -DRSDB_PM_MODESW_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DRSDB_PM_MODESW_DISABLED
+	endif
+endif # RSDB_PM_MODESW
+
+ifeq ($(BCMFRWDPOOLREORG),1)
+	EXTRA_DFLAGS += -DBCMFRWDPOOLREORG
+
+	ifeq ($(BCMFRWDPOOLREORG_DISABLED),1)
+		EXTRA_DFLAGS += -DBCMFRWDPOOLREORG_DISABLED
+	endif
+
+        ifneq ($(WL_POST_CLASSIFIED_FIFO_FRWD),)
+            EXTRA_DFLAGS += -DNRXBUFPOST_CLASSIFIED_FIFO_FRWD=$(WL_POST_CLASSIFIED_FIFO_FRWD)
+        endif
+        ifneq ($(WL_NRXD_CLASSIFIED_FIFO),)
+            EXTRA_DFLAGS += -DNRXD_CLASSIFIED_FIFO=$(WL_NRXD_CLASSIFIED_FIFO)
+        endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DBCMFRWDPOOLREORG_DISABLED
+	endif
+endif # BCMFRWDPOOLREORG
+
+ifeq ($(BCMPOOLRECLAIM),1)
+	EXTRA_DFLAGS += -DBCMPOOLRECLAIM
+
+	ifeq ($(BCMPOOLRECLAIM_DISABLED),1)
+		EXTRA_DFLAGS += -DBCMPOOLRECLAIM_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DBCMPOOLRECLAIM_DISABLED
+	endif
+endif # BCMPOOLRECLAIM
+
+ifeq ($(DBG_AMPDU),1)
+	# Debug for: wl dump ampdu; wl ampdu_clear_dump
+	EXTRA_DFLAGS += -DBCMDBG_AMPDU
+ifeq ($(DBG_AMPDU_NO_DUMP_IOVAR),1)
+	EXTRA_DFLAGS += -DBCMDBG_AMPDU_NO_DUMP_IOVAR
+endif
+endif
+
+ifeq ($(WL_LINKSTAT),1)
+	# link layer staistics
+	EXTRA_DFLAGS += -DWL_LINKSTAT
+
+	ifeq ($(WL_LINKSTAT_DISABLED), 1)
+	EXTRA_DFLAGS += -DWL_LINKSTAT_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_LINKSTAT_DISABLED
+	endif
+endif
+
+ifeq ($(WL_SARLIMIT),1)
+	ifeq ($(WL_SARLIMIT_DISABLED), 1)
+		EXTRA_DFLAGS += -DWL_SARLIMIT_DISABLED
+	else
+		EXTRA_DFLAGS += -DWL_SARLIMIT
+	endif
+else
+	EXTRA_DFLAGS += -DWL_SARLIMIT_DISABLED
+endif
+
+ifeq ($(DBG_AMSDU),1)
+	# Debug for: wl dump amsdu
+	EXTRA_DFLAGS += -DBCMDBG_AMSDU
+endif
+
+ifeq ($(DBG_PHYBU),1)
+	# Debug for illegal phy register accesses during phy bringup
+	# Phy register trace adds ~26KB
+	EXTRA_DFLAGS += -DBCMDBG_PHYREGS_TRACE
+endif
+
+ifeq ($(WLOVERTHRUSTER),1)
+	ifeq ($(WLOVERTHRUSTER_DISABLED), 1)
+		EXTRA_DFLAGS += -DWLOVERTHRUSTER_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLOVERTHRUSTER_DISABLED
+	endif
+endif
+
+# interconnect/backplane specific objects and flags
+TARGET_IBUS ?= si
+ifeq ($(TARGET_IBUS),pci)
+	IBUS_OBJECTS += hndpci.o
+	EXTRA_DFLAGS += -DHNDPCI
+	EXTRA_DFLAGS += -DSDTEST
+endif
+ifeq ($(TARGET_IBUS),si)
+	SIBUS := 1
+endif
+
+STARTUP ?= run
+ifeq ($(STARTUP),boot)
+	STARTUP_OBJECTS := $(BOOT_OBJECTS)
+endif
+ifeq ($(STARTUP),run)
+	STARTUP_OBJECTS := $(RUN_OBJECTS)
+endif
+
+# mfgtest is in rom
+ifeq ($(ROMMFG),1)
+	EXTRA_DFLAGS += -DBCMROMMFG
+	ifeq ($(MFGTEST),)
+		EXTRA_DFLAGS += -DBCMROMMFG_DISABLE
+	endif
+endif
+
+# Flag that defines global pointers for FULL Software Romming
+ifeq ($(FULLSW_IS_ROMMED),1)
+	ROM_AUTO_IOCTL_PATCH_GLOBAL_PTRS := 1
+endif
+
+ifeq ($(ROM_AUTO_IOCTL_PATCH_GLOBAL_PTRS),1)
+	EXTRA_DFLAGS += -DROM_AUTO_IOCTL_PATCH_GLOBAL_PTRS
+endif
+
+ifeq ($(ROMOFFLOAD),1)
+	EXTRA_DFLAGS += -DBCMROMOFFLOAD
+        # Other chips might need long_call, but only these have dongle roml makefiles
+	ifneq ($(findstring $(CHIP),43236),)
+		EXTRA_DFLAGS += -DBCMROMOFFLOAD_LONGCALL
+	endif
+endif
+
+ifeq ($(INTERNAL),1)
+	EXTRA_DFLAGS += -DBCMINTERNAL
+	WLDIAG ?= 1
+endif
+
+ifeq ($(UPGRADE),1)
+	EXTRA_DFLAGS += -DFLASH_UPGRADE
+endif
+
+ifeq ($(FLASH),1)
+	EXTRA_DFLAGS += -DFLASH
+endif
+
+ifneq ($(MEMBASE),)
+	EXTRA_DFLAGS += -DMEMBASE=$(MEMBASE)
+endif
+
+ifneq ($(MEMSIZE),)
+	EXTRA_DFLAGS += -DMEMSIZE=$(MEMSIZE)
+endif
+
+ifeq ($(RECLAIM),1)
+	EXTRA_DFLAGS += -DBCM_RECLAIM_INIT_FN_DATA -DBCMNODOWN
+endif
+
+ifeq ($(CONSOLE),1)
+	EXTRA_DFLAGS += -DRTE_CONS
+else
+	EXTRA_DFLAGS += -DBCM_STDLIB_NO_PUTC
+endif
+ifeq ($(UART),1)
+	EXTRA_DFLAGS += -DRTE_UART
+	ifeq ($(UART_DISABLED),1)
+		EXTRA_DFLAGS += -DUART_DISABLED
+	endif
+	ifeq ($(CC_UART),1)
+		EXTRA_DFLAGS += -DCC_UART
+		ifeq ($(RTE_CONSOLE_UART_CC),1)
+			EXTRA_DFLAGS += -DRTE_CONSOLE_UART_CC
+		endif
+	endif
+	ifeq ($(SECI_UART),1)
+		EXTRA_DFLAGS += -DSECI_UART
+		ifeq ($(RTE_CONSOLE_UART_SECI),1)
+			EXTRA_DFLAGS += -DRTE_CONSOLE_UART_SECI
+		endif
+	endif
+	ifeq ($(GCI_UART),1)
+		EXTRA_DFLAGS += -DGCI_UART
+	endif
+	ifeq ($(RTE_DEBUG_UART),1)
+		EXTRA_DFLAGS += -DRTE_DEBUG_UART
+		EXTRA_DFLAGS += -DCC_UART
+		EXTRA_DFLAGS += -DRTE_CONSOLE_UART_CC
+	endif
+endif
+
+ifeq ($(SMALL),1)
+	EXTRA_DFLAGS += -DBCMSMALL
+endif
+
+ifeq ($(POLL),1)
+	EXTRA_DFLAGS += -DRTE_POLL
+endif
+
+ifeq ($(RWL_WIFI),1)
+	EXTRA_DFLAGS += -DRWL_WIFI
+endif
+
+ifeq ($(RWL_DONGLE),1)
+	EXTRA_DFLAGS += -DRWL_DONGLE -DCHIPC_UART_ALWAYS_ON
+endif
+
+ifeq ($(WIFI_REFLECTOR),1)
+	EXTRA_DFLAGS += -DWIFI_REFLECTOR
+endif
+
+ifeq ($(UART_REFLECTOR),1)
+	EXTRA_DFLAGS += -DUART_REFLECTOR -DCHIPC_UART_ALWAYS_ON
+endif
+
+ifeq ($(SPROMBUS),pcmcia)
+	EXTRA_DFLAGS += -DSI_PCMCIA_SROM
+endif
+
+ifeq ($(NVRAM),1)
+	EXTRA_DFLAGS += -DBCM_DONGLEVARS
+endif
+
+ifeq ($(DNG_DBGDMP),1)
+	EXTRA_DFLAGS += -DBCM_DNGDMP
+endif
+
+ifeq ($(SDR),1)
+	EXTRA_DFLAGS += -DBCM_SDRBL -DBCMTRXV2 -DLTC_NO_WCHAR
+	ARFLAGS = rv
+	LIBDIR = ../..
+	LIBNAME = libtcm.a
+	ifeq ($(findstring $(LIBNAME),$(wildcard $(LIBDIR)/$(LIBNAME))),)
+		LIB_NAME = $(LIBDIR)$(LIBNAME)
+	endif
+	LIB = -L$(LIBDIR) -ltcm
+endif
+
+ifeq ($(TCAM),1)
+	EXTRA_DFLAGS += -DBCMTCAM
+ifeq ($(BOOTLOADER),1)
+	EXTRA_DFLAGS += -DTCAM_MAX=$(TCAM_SIZE)
+endif
+	# Patch count: 0 - 4
+	#       - consecutive locations (CPC) = 2 ** PCNT
+	ifneq ($(TCAM_PCNT),)
+		EXTRA_DFLAGS += -DPATCHCOUNT=$(TCAM_PCNT)
+	endif
+endif
+
+ifeq ($(WLSCAN_PS),1)
+   ifeq ($(WLSCAN_PS_DISABLED),1)
+      EXTRA_DFLAGS += -DWLSCAN_PS_DISABLED
+   endif
+else
+   ifneq ($(GENROMTBL),1)
+      EXTRA_DFLAGS += -DWLSCAN_PS_DISABLED
+   endif
+endif
+
+ifeq ($(WLPM_BCNRX),1)
+   ifeq ($(WLPM_BCNRX_DISABLED),1)
+      EXTRA_DFLAGS += -DWLPM_BCNRX_DISABLED
+   endif
+else
+   ifneq ($(GENROMTBL),1)
+      EXTRA_DFLAGS += -DWLPM_BCNRX_DISABLED
+   endif
+endif
+
+ifeq ($(WLOSEN),1)
+   ifeq ($(WLOSEN_DISABLED),1)
+      EXTRA_DFLAGS += -DWLOSEN_DISABLED
+   endif
+else
+   ifneq ($(GENROMTBL),1)
+      EXTRA_DFLAGS += -DWLOSEN_DISABLED
+   endif
+endif
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++ optional attributes depending on others  +++++++++++++++++++
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+# TRX_OPTIONS: download & jumpto locations for image downloaded to bootloader
+# BIN_TRX_OPTIONS: jumpto locations and flag to indicate uncompressed image to bootloader
+
+ifneq ($(findstring usb,$(TARGET_HBUS)),)
+	ifeq ($(TARGET_ARCH),arm)
+		ifeq ($(TARGET_CPU),cm3)
+			ifeq ($(THUMB),1)
+				TRX_OPTIONS += -x 0x60000000 -x 0x00000081
+			else
+				TRX_OPTIONS += -x 0x60000000 -x 0x00000080
+			endif
+			TRX_OFFSET1	?= 0x00000081
+		else ifeq ($(TARGET_CPU),cr4)
+			EXTRA_DFLAGS += -DBCMTRXV2
+			ifeq ($(FLOPS_SUPPORT),1)
+				TRX_OFFSET1	?= 0x00180881
+			else
+				TRX_OFFSET1	?= 0x00000001
+			endif
+		else ifeq ($(TARGET_CPU),ca7)
+			EXTRA_DFLAGS += -DBCMTRXV2
+			ifeq ($(FLOPS_SUPPORT),1)
+				TRX_OFFSET1	?= 0x00200881
+			else
+				TRX_OFFSET1	?= 0x00000001
+			endif
+		else
+			TRX_OPTIONS += -x 0x80000000 -x 0x00000000
+			TRX_OFFSET1	?= 0x00000000
+		endif
+	endif
+endif
+
+TRX_OFFSET1 ?= 0x0
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++ optional attributes for debugging  +++++++++++++++++++++
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+ifeq ($(BCMDBG),1)
+	EXTRA_DFLAGS += -DBCMDBG
+endif
+
+ifeq ($(DBG_ASSERT),1)
+	EXTRA_DFLAGS += -DBCMDBG_ASSERT
+	# DBG_ASSERT_TRAP causes a trap/exception when an ASSERT fails, instead of calling an assert
+	# handler to log the file and line number. This is a memory optimization that eliminates
+	# the strings associated with the file/line and the function call overhead associated with
+	# invoking the assert handler. The assert location can be determined based upon the program
+	# counter displayed by the trap handler.
+	ifeq ($(DBG_ASSERT_TRAP),1)
+		EXTRA_DFLAGS += -DBCMDBG_ASSERT_TRAP
+	endif
+endif
+
+ifeq ($(DBG_ERROR),1)
+	EXTRA_DFLAGS += -DBCMDBG_ERR
+endif
+
+ifeq ($(DBG_MEM),1)
+	EXTRA_DFLAGS += -DBCMDBG_MEM
+endif
+
+ifeq ($(DBG_SDLAT),1)
+	EXTRA_DFLAGS += -DBCMDBG_SD_LATENCY
+endif
+
+ifeq ($(DBG_MEMFAIL),1)
+	EXTRA_DFLAGS += -DBCMDBG_MEMFAIL
+endif
+
+ifeq ($(PRHDRS),1)
+	EXTRA_DFLAGS += -DWLMSG_PRHDRS
+endif
+
+ifeq ($(PRPKT),1)
+	EXTRA_DFLAGS += -DWLMSG_PRPKT
+endif
+
+ifeq ($(INFORM),1)
+	EXTRA_DFLAGS += -DWLMSG_INFORM
+endif
+
+ifeq ($(ASSOC),1)
+	EXTRA_DFLAGS += -DWLMSG_ASSOC
+endif
+
+ifeq ($(ASSOC_LT),1)
+	EXTRA_DFLAGS += -DWLMSG_ASSOC_LT
+endif
+
+ifeq ($(PS),1)
+	EXTRA_DFLAGS += -DWLMSG_PS
+endif
+
+ifeq ($(WSEC),1)
+	EXTRA_DFLAGS += -DWLMSG_WSEC
+endif
+
+ifeq ($(MPC),1)
+	EXTRA_DFLAGS += -DWLMSG_MPC
+endif
+
+ifeq ($(SCAN),1)
+	EXTRA_DFLAGS += -DWLMSG_SCAN
+endif
+
+ifeq ($(DBG_NATOE),1)
+	EXTRA_DFLAGS += -DWLMSG_NATOE
+endif
+
+ifeq ($(DBG_NAN),1)
+	EXTRA_DFLAGS += -DNAN_DEBUG
+endif
+
+ifeq ($(OID),1)
+	EXTRA_DFLAGS += -DWLMSG_OID
+endif
+
+ifeq ($(BTA),1)
+	EXTRA_DFLAGS += -DWLMSG_BTA
+endif
+
+ifeq ($(DUMP),1)
+	EXTRA_DFLAGS += -DBCMDBG_DUMP
+endif
+
+ifeq ($(PHYDUMP),1)
+	EXTRA_DFLAGS += -DBCMDBG_PHYDUMP
+endif
+
+ifeq ($(CCA_STATS),1)
+	EXTRA_DFLAGS += -DCCA_STATS
+endif
+
+ifeq ($(ROAM),1)
+	EXTRA_DFLAGS += -DWLMSG_ROAM
+endif
+
+ifeq ($(MSGMCNX),1)
+	EXTRA_DFLAGS += -DWLMSG_MCNX
+endif
+
+ifeq ($(PHY_EPAPD),1)
+	EXTRA_DFLAGS += -DEPAPD_SUPPORT=1
+endif
+
+ifeq ($(REDUX),1)
+	EXTRA_DFLAGS += -DREDUX
+	EXTRA_DFLAGS += -D__FUNCTION__=\"FUNCNAME\"
+endif
+
+ifeq ($(DBG_MBO),1)
+	EXTRA_DFLAGS += -DWLMSG_MBO
+endif
+
+ifeq ($(DBG_BAM),1)
+	EXTRA_DFLAGS += -DWLMSG_BAM
+endif
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++ config/tunable options  ++++++++++++++++++++++++++++
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+# interconnect support
+ifeq ($(SIBUS),1)
+	BCMSIBUS := 1
+endif
+
+# mac/phy support
+ifeq ($(BAND5G),1)
+	WL11H ?= 1
+	WL11D ?= 1
+endif
+
+# mfgtest support
+ifeq ($(MFGTEST),1)
+ifeq ($(ATE),1)
+ifeq ($(RSDB), 1)
+ifneq ($(WL_RSDB_DISABLED), 1)
+	RSDB_DVT := 1
+endif
+endif
+	EXTRA_DFLAGS += -DWLPKTENG
+else
+	WLTEST ?= 1
+	WLTINYDUMP ?= 1
+endif
+
+	SAMPLE_COLLECT ?= 1
+	ifneq ($(findstring sdio,$(TARGET_HBUS)),)
+		EXTRA_DFLAGS := $(filter-out -DSDPCMD_RXBUFS=% -DSDPCMD_NRXD=% -DSDPCMD_NTXD=%,\
+			$(EXTRA_DFLAGS))
+		EXTRA_DFLAGS += -DSDPCMD_RXBUFS=7 -DSDPCMD_NRXD=8 -DSDPCMD_NTXD=8
+	endif
+ifeq ($(ATE),1)
+	WL_STATS_DISABLED ?= 1
+else
+	WL_STATS ?= 1
+	WL_STATS_DISABLED ?= 0
+endif
+else
+	WL_STATS_DISABLED ?= 1
+endif
+
+# LMTPC (lpc) support
+ifeq ($(LPC),1)
+	WL_LPC := 1
+endif
+
+ifeq ($(LPC_DEBUG),1)
+        WL_LPC_DEBUG := 1
+endif
+
+ifeq ($(WL_RELMCAST),1)
+	ifeq ($(WL_RELMCAST_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_RELMCAST_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_RELMCAST_DISABLED
+	endif
+endif
+
+ifeq ($(WL_BTCDYN), 1)
+	ifeq ($WL_BTCDYN_DISABLED), 1)
+		EXTRA_DFLAGS += -DWL_BTCDYN_DISABLED
+	else
+		DWL_BTCDYN_DISABLED := 0
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_BTCDYN_DISABLED
+	endif
+endif
+ifeq ($(PSPRETEND), 1)
+	ifeq ($PSPRETEND_DISABLED), 1)
+		EXTRA_DFLAGS += -DPSPRETEND_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DPSPRETEND_DISABLED
+	endif
+endif
+
+ifeq ($(BCMEXTSUP),1)
+	EXTRA_DFLAGS += -DBCMEXTSUP
+endif
+
+ifeq ($(WLRM),1)
+	ifeq ($(WLRM_DISABLED),1)
+		EXTRA_DFLAGS += -DWLRM_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLRM_DISABLED
+	endif
+endif # WLRM
+
+ifeq ($(IDSUP),1)
+	BCMSUP_PSK := 1
+	ifeq ($(IDSUP_DISABLED),1)
+		EXTRA_DFLAGS += -DBCMSUP_PSK_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DBCMSUP_PSK_DISABLED
+	endif
+endif
+
+ifeq ($(IDAUTH),1)
+	BCMAUTH_PSK := 1
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DBCMAUTH_PSK_DISABLED
+	endif
+endif
+
+ifeq ($(LED),1)
+	WLLED := 1
+	ifeq ($(DEFAULT_GPIOTIMERVAL),)
+		DEFAULT_GPIOTIMERVAL := 0x640000
+	endif
+	EXTRA_DFLAGS += -DDEFAULT_GPIOTIMERVAL=$(DEFAULT_GPIOTIMERVAL)
+endif
+
+ifeq ($(ANQPO),1)
+	ifeq ($(ANQPO_DISABLED),1)
+		EXTRA_DFLAGS += -DANQPO_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DANQPO_DISABLED
+	endif
+endif
+
+ifeq ($(ICMP),1)
+	ifeq ($(ICMP_DISABLED),1)
+		EXTRA_DFLAGS += -DICMP_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DICMP_DISABLED
+	endif
+endif
+
+# p2po
+ifeq ($(P2PO),1)
+	ifeq ($(P2PO_DISABLED),1)
+		EXTRA_DFLAGS += -DP2PO_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DP2PO_DISABLED
+	endif
+endif
+
+# USB+nodis+dis: turn on GIANT rx buffer and Partition management
+ifneq ($(findstring usb,$(TARGET_HBUS)),)
+	EXTRA_DFLAGS += -DUSBBULK_RXBUF_GIANT=$(USBBULK_RXBUF_GIANT)
+	ifneq ($(USBBULK_RXBUF_GIANT),0)
+		PT_GIANT := 1
+		EXTRA_DFLAGS += -DHND_PT_GIANT
+	endif
+endif
+
+ifeq ($(NODIS),1)
+	NODIS := 1
+# enable DTMTEST(required by WHQL) for all -nodis- image(enabled on NDIS builds)
+	EXTRA_DFLAGS += -DDTMTEST
+
+	ifneq ($(findstring usb,$(TARGET_HBUS)),)
+		EXTRA_DFLAGS += -DBCMUSB_NODISCONNECT
+		EXTRA_DFLAGS += -DBCM_DNGL_BL_PID=$(BCM_DNGL_BL_PID)
+	endif
+else
+	ifneq ($(findstring usb,$(TARGET_HBUS)),)
+		EXTRA_DFLAGS += -DBCM_DNGL_BL_PID=0xbdc
+	endif
+endif
+
+ifeq ($(NDISFW),1)
+	NODIS := 1
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DEXT_STA_DISABLED
+		EXTRA_DFLAGS += -DIBSS_PEER_DISCOVERY_EVENT_DISABLED
+		EXTRA_DFLAGS += -DIBSS_PEER_GROUP_KEY_DISABLED
+		EXTRA_DFLAGS += -DIBSS_PEER_MGMT_DISABLED
+	endif
+endif
+
+ifeq ($(PNO),1)
+	WLPFN := 1
+	# for PFN_SCANRESULTS_VERSION 2
+	EXTRA_DFLAGS += -DPFN_SCANRESULT_2
+endif
+
+ifeq ($(WLPFN),1)
+	ifeq ($(WLPFN_DISABLED),1)
+		EXTRA_DFLAGS += -DWLPFN_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLPFN_DISABLED
+	endif
+endif
+
+ifeq ($(AOE),1)
+	ARPOE := 1
+	ifeq ($(ARPOE_DISABLED),1)
+		EXTRA_DFLAGS += -DARPOE_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DARPOE_DISABLED
+	endif
+endif
+
+ifeq ($(GTKOE),1)
+	ifeq ($(GTKOE_DISABLED),1)
+		EXTRA_DFLAGS += -DGTKOE_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DGTKOE_DISABLED
+	endif
+endif
+
+ifeq ($(D0_COALESCING),1)
+	ifeq ($(D0_FILTER_DISABLED),1)
+		EXTRA_DFLAGS += -DD0_FILTER_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DD0_FILTER_DISABLED
+	endif
+endif
+
+ifeq ($(MSCH_PROFILER),1)
+	ifeq ($(MSCH_PROFILER_DISABLED), 1)
+		EXTRA_DFLAGS += -DMSCH_PROFILER_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DMSCH_PROFILER_DISABLED
+	endif
+endif
+
+ifeq ($(WL_BWTE),1)
+	ifeq ($(WL_BWTE_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_BWTE_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_BWTE_DISABLED
+	endif
+endif
+
+ifeq ($(WL_TBOW),1)
+   ifeq ($(WL_TBOW_DISABLED),1)
+      EXTRA_DFLAGS += -DWL_TBOW_DISABLED
+   endif
+else
+   ifneq ($(GENROMTBL),1)
+      EXTRA_DFLAGS += -DWL_TBOW_DISABLED
+   endif
+endif
+
+ifeq ($(TOE),1)
+	ifeq ($(TOE_DISABLED),1)
+		EXTRA_DFLAGS += -DTOE_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DTOE_DISABLED
+	endif
+endif
+
+ifeq ($(WL_OKC),1)
+	ifeq ($(WL_OKC_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_OKC_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_OKC_DISABLED
+	endif
+endif
+
+ifeq ($(PACKET_FILTER),1)
+	ifeq ($(PKT_FLT_DISABLED),1)
+		EXTRA_DFLAGS += -DPKT_FLT_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DPKT_FLT_DISABLED
+	endif
+endif
+
+ifeq ($(PACKET_FILTER2),1)
+	ifeq ($(PKT_FLT2_DISABLED),1)
+		EXTRA_DFLAGS += -DPKT_FLT2_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DPKT_FLT2_DISABLED
+	endif
+endif
+
+#APF packet filter
+ifeq ($(APF),1)
+	ifeq ($(APF_DISABLED),1)
+		EXTRA_DFLAGS += -DAPF_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DAPF_DISABLED
+	endif
+endif
+
+ifeq ($(PACKET_FILTER6),1)
+	ifeq ($(PKT_FLT6_DISABLED),1)
+		EXTRA_DFLAGS += -DPKT_FLT6_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DPKT_FLT6_DISABLED
+	endif
+endif
+
+ifeq ($(PLT),1)
+	WLPLT := 1
+	EXTRA_DFLAGS += -DWLPLT_ENABLED
+endif
+
+ifeq ($(SRSCAN), 1)
+	ifeq ($(SRSCAN_DISABLED),1)
+		EXTRA_DFLAGS += -DWLMSG_SRSCAN_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLMSG_SRSCAN_DISABLED
+	endif
+endif
+
+ifeq ($(BASIC_APSTA),1)
+	APSTA := 1
+	VDEV ?= 1
+endif
+
+ifeq ($(P2P),1)
+	APSTA := 1
+	WME := 1
+	WLP2P := 1
+	ifeq ($(EXTSTA),1)
+		# biggest value should be last place VDEV is modified
+		VDEV := 6
+	else
+		VDEV ?= 1
+	endif
+	WLMCHAN := 1
+	WIFI_ACT_FRAME := 1
+	WLMCNX := 1
+	WLMCNX_DISABLED := 0
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLP2P_DISABLED
+		WLMCHAN_DISABLED := 1
+		EXTRA_DFLAGS += -DWLMCHAN_DISABLED
+	endif
+endif	# P2P
+
+#RSDB
+ifeq ($(RSDB), 1)
+	WLRSDB := 1
+	WL_ASSOC_RECREATE := 1
+endif
+
+ifeq ($(WLRSDB), 1)
+	ifeq ($(WL_RSDB_DISABLED), 1)
+		EXTRA_DFLAGS += -DWLRSDB_DISABLED
+        else
+		EXTRA_DFLAGS += -DBCMDBG_RSDB
+                ifeq ($(WLTEST), 1)
+#For DVT sharing has to be selectively avoided on certain obj reg entries and iovars
+                    RSDB_DVT := 1
+                endif
+	endif
+	ifneq ($(WL_RSDB_AUX_BUFPOST),)
+		ifneq ($(WL_NRXD_AUX),)
+			EXTRA_DFLAGS += -DWL_NRXD_AUX=$(WL_NRXD_AUX)
+		endif
+		ifneq ($(WL_POST_AUX),)
+			EXTRA_DFLAGS += -DNRXBUFPOST_AUX=$(WL_POST_AUX)
+		endif
+		ifneq ($(WL_RXBND_AUX),)
+			EXTRA_DFLAGS += -DWL_RXBND_AUX=$(WL_RXBND_AUX)
+		endif
+		ifneq ($(WL_NTXD_LFRAG_AUX),)
+			EXTRA_DFLAGS += -DNTXD_LFRAG_AUX=$(WL_NTXD_LFRAG_AUX)
+		endif
+		EXTRA_DFLAGS += -DUSE_RSDBAUXCORE_TUNE
+	endif
+else
+   ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLRSDB_DISABLED
+	endif
+endif
+
+#BGDFS
+ifeq ($(BGDFS),1)
+	ifeq ($(BGDFS_DISABLED),1)
+		EXTRA_DFLAGS += -DBGDFS_DISABLED
+	endif
+else
+        ifneq ($(GENROMTBL),1)
+                EXTRA_DFLAGS += -DBGDFS_DISABLED
+        endif
+endif   # BGDFS
+
+ifeq ($(SLAVE_RADAR),1)
+	EXTRA_DFLAGS += -DSLAVE_RADAR
+endif
+#BCM_CEVENT
+ifeq ($(BCM_CEVENT),1)
+	ifeq ($(BCM_CEVENT_DISABLED),1)
+		EXTRA_DFLAGS += -DBCM_CEVENT_DISABLED
+	endif
+else
+        ifneq ($(GENROMTBL),1)
+                EXTRA_DFLAGS += -DBCM_CEVENT_DISABLED
+        endif
+endif   # BCM_CEVENT
+
+ifeq ($(WLC_DISABLE_DFS_RADAR_SUPPORT),1)
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DRADAR_DISABLED
+	endif
+endif # WLC_DISABLE_DFS_RADAR_SUPPORT
+ifeq ($(WLRSDB_DFS_SCAN),1)
+	ifeq ($(WLRSDB_DFS_SCAN_DISABLED),1)
+		EXTRA_DFLAGS += -DWLRSDB_DFS_SCAN_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLRSDB_DFS_SCAN_DISABLED
+	endif
+endif # WLRSDB_DFS_SCAN
+
+ifeq ($(RSSI_MONITOR),1)
+	ifeq ($(RSSI_MONITOR_DISABLED), 1)
+		EXTRA_DFLAGS += -DRSSI_MONITOR_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DRSSI_MONITOR_DISABLED
+	endif
+endif #RSSI_MONITOR
+
+#MFP
+ifeq ($(MFP),1)
+	ifeq ($(MFP_DISABLED),1)
+		EXTRA_DFLAGS += -DMFP_DISABLED
+	endif
+else
+        ifneq ($(GENROMTBL),1)
+                EXTRA_DFLAGS += -DMFP_DISABLED
+        endif
+endif   # MFP
+
+#LTECX
+ifeq ($(BCMLTECOEX), 1)
+	ifeq ($(BCMLTECOEX_DISABLED), 1)
+		EXTRA_DFLAGS += -DBCMLTECOEX_DISABLED
+	endif
+else
+        ifneq ($(GENROMTBL),1)
+                EXTRA_DFLAGS += -DBCMLTECOEX_DISABLED
+        endif
+endif   # LTECX
+
+#COEXNOA
+ifeq ($(BCMCOEXNOA), 1)
+    ifeq ($(BCMCOEXNOA_DISABLED), 1)
+        EXTRA_DFLAGS += -DBCMCOEXNOA_DISABLED
+    endif
+else
+    ifneq ($(GENROMTBL),1)
+        EXTRA_DFLAGS += -DBCMCOEXNOA_DISABLED
+    endif
+endif   # COEXNOA
+
+#RADIONOA_PWRSAVE
+ifeq ($(RADIONOA_PWRSAVE), 1)
+    ifeq ($(RADIONOA_PWRSAVE_DISABLED), 1)
+        EXTRA_DFLAGS += -DRADIONOA_PWRSAVE_DISABLED
+    endif
+else
+    ifneq ($(GENROMTBL),1)
+        EXTRA_DFLAGS += -DRADIONOA_PWRSAVE_DISABLED
+    endif
+endif   # RADIONOA_PWRSAVE
+
+ifeq ($(AMPDU_HOSTREORDER),1)
+   ifeq ($(AMPDU_HOSTREORDER_DISABLED),1)
+      EXTRA_DFLAGS += -DWLAMPDU_HOSTREORDER_DISABLED
+   endif
+else
+   ifneq ($(GENROMTBL),1)
+      EXTRA_DFLAGS += -DWLAMPDU_HOSTREORDER_DISABLED
+   endif
+endif
+
+#AMPDU default rx ba window size (in pdu)
+ifneq ($(AMPDU_RX_BA_DEF_WSIZE),)
+   EXTRA_DFLAGS += -DAMPDU_RX_BA_DEF_WSIZE=$(AMPDU_RX_BA_DEF_WSIZE)
+endif
+
+ifneq ($(AMPDU_RX_BA_DEF_WSIZE_AUX),)
+   EXTRA_DFLAGS += -DAMPDU_RX_BA_DEF_WSIZE_AUX=$(AMPDU_RX_BA_DEF_WSIZE_AUX)
+endif
+
+ifneq ($(AMPDU_SCB_MAX_RELEASE_AQM),)
+   EXTRA_DFLAGS += -DAMPDU_SCB_MAX_RELEASE_AQM=$(AMPDU_SCB_MAX_RELEASE_AQM)
+endif
+
+ifneq ($(AMPDU_SCB_MAX_RELEASE_AQM_AUX),)
+   EXTRA_DFLAGS += -DAMPDU_SCB_MAX_RELEASE_AQM_AUX=$(AMPDU_SCB_MAX_RELEASE_AQM_AUX)
+endif
+
+ifneq ($(LOG_BUF_LEN),)
+   EXTRA_DFLAGS += -DLOG_BUF_LEN=$(LOG_BUF_LEN)
+endif
+
+ifeq ($(SRHWVSDB),1)
+   ifeq ($(SRHWVSDB_DISABLED),1)
+      EXTRA_DFLAGS += -DSRHWVSDB_DISABLED
+   endif
+else
+   ifneq ($(GENROMTBL),1)
+      EXTRA_DFLAGS += -DSRHWVSDB_DISABLED
+   endif
+endif
+
+ifeq ($(PROP_TXSTATUS),1)
+	METADATA_TO_HOST := 1
+	CREDIT_INFO_UPDATE := 1
+	ifeq ($(PROP_TXSTATUS_ENABLED),1)
+		EXTRA_DFLAGS += -DPROP_TXSTATUS_ENABLED
+	endif
+	# for message buf protocol proptx status shouldn't be enabled
+	ifneq ($(MSGBUF),1)
+		ifneq ($(ROMOFFLOAD),1)
+			EXTRA_DFLAGS += -DPROP_TXSTATUS_ENABLED
+		endif
+	endif
+endif	# PROP_TXSTATUS
+
+ifeq ($(METADATA_TO_HOST), 1)
+	EXTRA_DFLAGS += -DMETADATA_TO_HOST
+	ifeq ($(METADATA_TO_HOST_DISABLED),1)
+		EXTRA_DFLAGS += -DMETADATA_TO_HOST_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DMETADATA_TO_HOST_DISABLED
+	endif
+endif
+
+ifeq ($(CREDIT_INFO_UPDATE), 1)
+	EXTRA_DFLAGS += -DCREDIT_INFO_UPDATE
+	ifeq ($(CREDIT_INFO_UPDATE_DISABLED),1)
+		EXTRA_DFLAGS += -DCREDIT_INFO_UPDATE_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DCREDIT_INFO_UPDATE_DISABLED
+	endif
+endif
+
+ifeq ($(APSTA),1)
+	AP := 1
+	STA := 1
+endif
+
+ifeq ($(APONLY),1)
+	AP := 1
+	STA := 0
+endif
+
+#wlchanim
+ifeq ($(WLCHANIM),1)
+        ifeq ($(WLCHANIM_DISABLED),1)
+                EXTRA_DFLAGS += -DWLCHANIM_DISABLED
+        endif
+else
+        ifneq ($(GENROMTBL),1)
+                EXTRA_DFLAGS += -DWLCHANIM_DISABLED
+        endif
+endif
+
+#cca_stats
+ifeq ($(CCA_STATS),1)
+        ifeq ($(CCA_STATS_DISABLED),1)
+                EXTRA_DFLAGS += -DCCA_STATS_DISABLED
+        endif
+else
+        ifneq ($(GENROMTBL),1)
+                EXTRA_DFLAGS += -DCCA_STATS_DISABLED
+        endif
+endif
+
+#deltastats
+ifeq ($(DELTASTATS),1)
+        ifeq ($(DELTASTATS_DISABLED),1)
+                EXTRA_DFLAGS += -DDELTASTATS_DISABLED
+        endif
+else
+        ifneq ($(GENROMTBL),1)
+                EXTRA_DFLAGS += -DDELTASTATS_DISABLED
+        endif
+endif
+
+# randomize probe req seq
+ifeq ($(WL_PRQ_RAND_SEQ),1)
+	ifeq ($(WL_PRQ_RAND_SEQ_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_PRQ_RAND_SEQ_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_PRQ_RAND_SEQ_DISABLED
+	endif
+endif
+
+# AP has limited AP features/capabilities
+ifeq ($(AP),1)
+	EXTRA_DFLAGS += -DPSQ_PKTS_LO=0 -DPSQ_PKTS_HI=8 -DPSQ_LEN=8
+	ifeq ($(EXTSTA), 1)
+		EXTRA_DFLAGS += -DEXT_AP=1
+	endif
+endif
+
+# for MBSS currently support 8 IF's.
+ifeq ($(MBSS),1)
+	EXTRA_DFLAGS += -DMAXVSLAVEDEVS=$(MBSS_MAXSLAVES)
+else
+# Virtual device
+ifneq ($(VDEV),)
+	EXTRA_DFLAGS += -DMAXVSLAVEDEVS=$(VDEV)
+endif
+endif
+
+# pktptr to pktid mapping for memory reduction
+BCMPKTIDMAP ?= 0
+PKT_MAXIMUM_ID ?= 400
+
+# Packet pointer to packet ID suppression: using PKTID mapping to PKTPTR
+# BCMPKTIDMAP and PKT_MAXIMUM_ID, defined on a per chip basis.
+ifeq ($(BCMPKTIDMAP),1)
+
+	ifneq ($(PKT_MAXIMUM_ID),)
+		PKTID_TOTAL := $(PKT_MAXIMUM_ID)
+	else
+		PKTID_TOTAL := 256
+	endif
+
+	EXTRA_DFLAGS += -DBCMPKTIDMAP -DPKT_MAXIMUM_ID=$(PKTID_TOTAL)
+endif
+ifeq ($(WLOCL),1)
+   ifeq ($(WLOCL_DISABLED),1)
+      EXTRA_DFLAGS += -DOCL_DISABLED
+   endif
+else
+   ifneq ($(GENROMTBL),1)
+      EXTRA_DFLAGS += -DOCL_DISABLED
+   endif
+endif
+
+# BCMPKTIDAUDIT: Audit the DHD packet Id
+BCMPKTIDAUDIT ?= 0
+ifeq ($(BCMPKTIDAUDIT),1)
+	EXTRA_DFLAGS += -DPCIEDEV_HOST_PKTID_AUDIT_ENABLED
+endif
+
+# BCMH2DCHECKSEQNUM: Check for sequence number sanity for H2D msgs
+BCMH2DCHECKSEQNUM ?= 0
+ifeq ($(BCMH2DCHECKSEQNUM),1)
+	EXTRA_DFLAGS += -DH2D_CHECK_SEQNUM
+endif
+
+# BCMCHKD2HDMA: places a modulo-253 sequence number marker on every D2H msg
+BCMCHKD2HDMA ?= 0
+ifeq ($(BCMCHKD2HDMA),1)
+	ifneq ($(PCIE_DMA_INDEX),1)
+		EXTRA_DFLAGS += -DPCIE_M2M_D2H_SYNC_SEQNUM
+	endif
+endif
+
+# BCMXORCSUM: places an xor checksum on every D2H msg
+BCMXORCSUM ?= 0
+ifeq ($(BCMXORCSUM),1)
+	ifneq ($(PCIE_DMA_INDEX),1)
+		EXTRA_DFLAGS += -DPCIE_M2M_D2H_SYNC_XORCSUM
+	endif
+endif
+
+# BCMD2HMSI: support MSI for d2h interrupts
+BCMD2HMSI ?= 0
+ifeq ($(BCMD2HMSI),1)
+	EXTRA_DFLAGS += -DBCMPCIE_D2H_MSI
+endif
+
+# BCMDMAINDEX: Dongle DMAs WRITE and READ indices to/from Host Support
+# Indices maintained in 16bit or 32bit indices arrays.
+ifeq ($(BCMDMAINDEX16),1)
+	EXTRA_DFLAGS += -DPCIE_DMAINDEX16
+endif
+ifeq ($(BCMDMAINDEX32),1)
+	EXTRA_DFLAGS += -DPCIE_DMAINDEX32
+endif
+
+# parameterized M2M DMA from Gen2 Rev19
+PCIE_DMACHANNUM ?= 1
+# dma channel 1
+BCMDMACH1 ?= 0
+ifeq ($(BCMDMACH1),1)
+	ifeq ($(PCIE_DMACHANNUM),1)
+		$(error Bad configuration - no DMA1 available.)
+	else
+		EXTRA_DFLAGS += -DBCMPCIE_DMA_CH1
+	endif
+endif
+# dma channel 2
+BCMDMACH2 ?= 0
+ifeq ($(BCMDMACH2),1)
+	ifeq ($(PCIE_DMACHANNUM),1)
+		$(error Bad configuration - no DMA2 available.)
+	else
+		ifeq ($(PCIE_DMACHANNUM),2)
+			$(error Bad configuration - no DMA2 available.)
+		else
+			EXTRA_DFLAGS += -DBCMPCIE_DMA_CH2
+		endif
+	endif
+endif
+# implicit dma
+BCMIMPLICITDMA ?= 0
+ifeq ($(BCMIMPLICITDMA),1)
+	ifeq ($(PCIE_DMACHANNUM),1)
+		$(error Bad configuration - no Implicit DMA available.)
+	else
+		ifeq ($(PCIE_DMACHANNUM),2)
+			$(error Bad configuration - no Implicit DMA available.)
+		else
+			EXTRA_DFLAGS += -DBCMPCIE_IDMA
+			ifeq ($(BCMPCIE_IDMA_DISABLED),1)
+				EXTRA_DFLAGS += -DBCMPCIE_IDMA_DISABLED
+			endif
+		endif
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DBCMPCIE_IDMA_DISABLED
+	endif
+endif
+
+EXTRA_DFLAGS += -DBCMPCIE_DMACHNUM=$(PCIE_DMACHANNUM)
+
+# BCMPCIEDAR - host doorbell to dongle through DAR registers
+# instead of enum registers.
+ifeq ($(BCMPCIE_DAR),1)
+	EXTRA_DFLAGS += -DBCMPCIE_DAR
+	ifeq ($(BCMPCIE_DAR_DISABLED),1)
+		EXTRA_DFLAGS += -DBCMPCIE_DAR_DISABLED
+	endif
+endif
+
+# BCMHOSTRINGER enables a soft doorbell, wherein dongle will write a value into
+# a host address to wakeup a thread for D2H PCIE FD rings
+ifeq ($(BCMHOSTRINGER),1)
+	EXTRA_DFLAGS += -DPCIE_D2H_DOORBELL_RINGER
+endif
+
+# BCMPMUSTATS - PMU Statistic Timer
+BCMPMUSTATS ?= 0
+ifeq ($(BCMPMUSTATS),1)
+	EXTRA_DFLAGS += -DBCMPMU_STATS
+	ifeq ($(BCMPMUSTATS_DISABLED),1)
+		EXTRA_DFLAGS += -DBCMPMU_STATS_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DBCMPMU_STATS_DISABLED
+	endif
+endif
+
+# Packet Pool
+ifeq ($(BCMPKTPOOL),1)
+	EXTRA_DFLAGS += -DBCMPKTPOOL
+	ifneq ($(ROMOFFLOAD),1)
+		EXTRA_DFLAGS += -DBCMPKTPOOL_ENABLED
+	endif
+
+	ifeq ($(MFGTEST),1)
+		ifneq ($(MFGTESTPOOL_LEN),)
+			POOL_LEN := $(MFGTESTPOOL_LEN)
+		else
+			POOL_LEN := 14
+		endif
+	endif
+
+	EXTRA_DFLAGS += -DSHARED_POOL_LEN=$(POOL_LEN)
+	EXTRA_DFLAGS += -DSHARED_FRAG_POOL_LEN=$(FRAG_POOL_LEN)
+	EXTRA_DFLAGS += -DPKTPOOL_LEN_MAX=$(POOL_LEN_MAX)
+
+	ifneq ($(WL_POST),)
+		EXTRA_DFLAGS += -DNRXBUFPOST=$(WL_POST)
+	endif
+endif	# BCMPKTPOOL
+
+ifeq ($(TINY_PKTJOIN),1)
+	EXTRA_DFLAGS += -DTINY_PKTJOIN
+	ifeq ($(TINY_PKTJOIN_DISABLED),1)
+		EXTRA_DFLAGS += -DTINY_PKTJOIN_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DTINY_PKTJOIN_DISABLED
+	endif
+endif
+
+ifeq ($(WL_RXEARLYRC),1)
+	EXTRA_DFLAGS += -DWL_RXEARLYRC
+	ifeq ($(WL_RXEARLYRC_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_RXEARLYRC_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_RXEARLYRC_DISABLED
+	endif
+endif
+
+# rxfifo overflow handler
+ifeq ($(WLRXOV),1)
+	EXTRA_DFLAGS += -DWLRXOV
+	ifeq ($(WLRXOV_DISABLED),1)
+		EXTRA_DFLAGS += -DWLRXOV_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLRXOV_DISABLED
+	endif
+endif
+
+ifeq ($(WLFBT),1)
+	ifeq ($(WLFBT_DISABLED),1)
+		EXTRA_DFLAGS += -DWLFBT_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLFBT_DISABLED
+	endif
+endif
+
+# MBSS
+ifeq ($(MBSS),1)
+	ifeq ($(MBSS_DISABLED),1)
+		EXTRA_DFLAGS += -DMBSS_DISABLED
+	else
+		WLMCNX_DISABLED := 1
+	endif
+ifeq ($(WL_MBSSID),1)
+	EXTRA_DFLAGS += -DWL_MBSSID
+endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DMBSS_DISABLED
+	endif
+endif
+
+# TDLS
+ifeq ($(WLTDLS),1)
+	ifeq ($(WLTDLS_DISABLED),1)
+		EXTRA_DFLAGS += -DWLTDLS_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLTDLS_DISABLED
+	endif
+endif
+
+# BE_TDLS
+ifeq ($(BE_TDLS),1)
+	ifeq ($(BE_TDLS_DISABLED),1)
+		EXTRA_DFLAGS += -DBE_TDLS_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DBE_TDLS_DISABLED
+	endif
+endif
+
+# NDOE
+ifeq ($(WLNDOE),1)
+    ifeq ($(WLNDOE_DISABLED),1)
+        EXTRA_DFLAGS += -DWLNDOE_DISABLED
+    endif
+else
+    ifneq ($(GENROMTBL),1)
+        EXTRA_DFLAGS += -DWLNDOE_DISABLED
+    endif
+endif
+
+# WL11K
+ifeq ($(WL11K),1)
+	ifeq ($(WL11K_DISABLED),1)
+		EXTRA_DFLAGS += -DWL11K_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL11K_DISABLED
+	endif
+endif
+
+# WLWNM_BRCM
+ifeq ($(WLWNM_BRCM),1)
+	ifeq ($(WLWNM_BRCM_DISABLED),1)
+		EXTRA_DFLAGS += -DWLWNM_BRCM_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLWNM_BRCM_DISABLED
+	endif
+endif
+
+# WLWNM
+ifeq ($(WLWNM),1)
+	ifeq ($(WLWNM_DISABLED),1)
+		EXTRA_DFLAGS += -DWLWNM_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLWNM_DISABLED
+	endif
+endif
+
+# WNM_BSSTRANS_EXT
+ifeq ($(WNM_BSSTRANS_EXT),1)
+	ifeq ($(WNM_BSSTRANS_EXT_DISABLED),1)
+		EXTRA_DFLAGS += -DWNM_BSSTRANS_EXT_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWNM_BSSTRANS_EXT_DISABLED
+	endif
+endif
+
+# WLSCANCACHE
+ifeq ($(WLSCANCACHE),1)
+	ifeq ($(WLSCANCACHE_DISABLED),1)
+		EXTRA_DFLAGS += -DWLSCANCACHE_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLSCANCACHE_DISABLED
+	endif
+endif
+
+# WL11U
+L2_FILTER_STA ?= 1
+ifeq ($(WL11U),1)
+	ifeq ($(WL11U_DISABLED),1)
+		EXTRA_DFLAGS += -DWL11U_DISABLED
+		EXTRA_DFLAGS += -DL2_FILTER_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL11U_DISABLED
+		EXTRA_DFLAGS += -DL2_FILTER_DISABLED
+	endif
+endif
+
+# WLPROBRESP_SW
+ifeq ($(WLPROBRESP_SW),1)
+	ifeq ($(WLPROBRESP_SW_DISABLED),1)
+		EXTRA_DFLAGS += -DWLPROBRESP_SW_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLPROBRESP_SW_DISABLED
+	endif
+endif
+
+ifeq ($(WLFMC),1)
+	ifeq ($(WLFMC_DISABLED),1)
+		EXTRA_DFLAGS += -DWLFMC_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLFMC_DISABLED
+	endif
+endif
+
+ifeq ($(WLRCC),1)
+	ifeq ($(WLRCC_DISABLED),1)
+		EXTRA_DFLAGS += -DWLRCC_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLRCC_DISABLED
+	endif
+endif
+
+ifeq ($(WLABT),1)
+	ifeq ($(WLABT_DISABLED),1)
+		EXTRA_DFLAGS += -DWLABT_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLABT_DISABLED
+	endif
+endif
+
+ifeq ($(WL_AUTH_SHARED_OPEN),1)
+	ifeq ($(WL_AUTH_SHARED_OPEN_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_AUTH_SHARED_OPEN_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_AUTH_SHARED_OPEN_DISABLED
+	endif
+endif
+
+# HW Overlay
+ifeq ($(BCMOVLHW),1)
+	EXTRA_DFLAGS += -DBCMOVLHW
+endif
+
+ifeq ($(DEVRAM_REMAP),1)
+	EXTRA_DFLAGS += -DDEVRAM_REMAP
+endif
+
+ifeq ($(CAC_DISABLED),1)
+	EXTRA_DFLAGS += -DWLCAC_DISABLED
+endif
+
+# ucode download
+ifeq ($(UCDOWNLOAD),1)
+	EXTRA_DFLAGS += -DBCMUCDOWNLOAD
+ifeq ($(WLP2P),1)
+	P2PUCODE = 1
+else
+	P2PUCODE = 0
+endif
+else	# !UCDOWNLOAD
+	TRX_FLAGS ?= 0x0024
+endif	# !UCDOWNLOAD
+
+# ECI
+ifeq ($(ECICOEX),1)
+	EXTRA_DFLAGS += -DBCMECICOEX
+	BT_FLAG = 1
+else
+	BT_FLAG = 0
+endif
+
+ifeq ($(SR_ESSENTIALS_DISABLED),1)
+	EXTRA_DFLAGS += -DSR_ESSENTIALS_DISABLED
+endif
+
+# save-restore feature enabled
+SR_MEMSIZE ?= 0
+EXTRA_DFLAGS += -DSR_MEMSIZE=$(SR_MEMSIZE)
+
+ifneq ($(SR_ASMSIZE),)
+	EXTRA_DFLAGS += -DSR_ASMSIZE=$(SR_ASMSIZE)
+else
+	EXTRA_DFLAGS += -DSR_ASMSIZE=0
+endif
+
+ifeq ($(SAVERESTORE),1)
+	ifeq ($(SRFAST),1)
+		EXTRA_DFLAGS += -DSRFAST
+	endif
+
+	ifeq ($(SR_FAST_DISABLED),1)
+		EXTRA_DFLAGS += -DSR_FAST_DISABLED
+	endif
+
+	ifeq ($(SAVERESTORE_DISABLED),1)
+		EXTRA_DFLAGS += -DSAVERESTORE_DISABLED
+	endif
+
+	ifeq ($(SR_DEBUG),1)
+		EXTRA_DFLAGS += -DSR_DEBUG
+	endif
+
+	ifeq ($(DBG_SR),1)
+		EXTRA_DFLAGS += -DBCMDBG_SR
+	endif
+
+	ifeq ($(SR_ATTACH_MOVE),1)
+		ifeq ($(SR_MEM_START),)
+			$(error "SR_MEM_START not defined!")
+		endif
+
+		ifeq ($(SR_MEMSIZE),)
+			$(error "SR_MEMSIZE not defined!")
+		endif
+
+		ifeq ($(SR_ASMSIZE),)
+			$(error "SR_ASMSIZE not defined!")
+		endif
+
+		ifeq ($(MAXSZ_NVRAM_VARS),)
+			$(error "MAXSZ_NVRAM_VARS not defined!")
+		endif
+
+		EXTRA_DFLAGS += -DSR_ATTACH_MOVE
+	endif
+
+	ifeq ($(SRMEM),1)
+		ifeq ($(SRMEM_DISABLED),1)
+			EXTRA_DFLAGS += -DSRMEM_DISABLED
+		endif
+
+		ifeq ($(SR_MEMSIZE),)
+			EXTRA_DFLAGS += -DSRMEM_DISABLED
+		endif
+	else
+		ifneq ($(GENROMTBL),1)
+			EXTRA_DFLAGS += -DSRMEM_DISABLED
+		endif
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DSAVERESTORE_DISABLED
+		EXTRA_DFLAGS += -DSRMEM_DISABLED
+		EXTRA_DFLAGS += -DSR_FAST_DISABLED
+	endif
+endif
+
+ifeq ($(BCMSRPWR_DISABLED),1)
+	EXTRA_DFLAGS += -DBCMSRPWR_DISABLED
+endif
+
+# Max nvram variable table size
+ifneq ($(MAXSZ_NVRAM_VARS),)
+	EXTRA_DFLAGS += -DMAXSZ_NVRAM_VARS=$(MAXSZ_NVRAM_VARS)
+endif
+
+# ARM (CR4) clock switching, firmware switches between performance and power save mode
+ifeq ($(CPU_CLK_SWITCHING),1)
+	EXTRA_DFLAGS += -DCPU_CLK_SWITCHING
+endif
+
+# if MAXASSOC_LIMIT is set, use it for maxassoc; otherwise use MAXSCB
+ifneq ($(MAXASSOC_LIMIT),)
+	EXTRA_DFLAGS += -DMAXASSOC_LIMIT=$(MAXASSOC_LIMIT)
+endif
+
+# wowlpf specific flags
+ifeq ($(call opt,wowlpf),1)
+    WOWLPF := 1
+endif
+
+# secwowl specific flags
+ifeq ($(call opt,secwowl),1)
+    SECURE_WOWL := 1
+endif
+
+# debug facility. Adds non-golden-flow counters to bus layer.
+ifeq ($(call opt,dbgb),1)
+    DBG_BUS := 1
+endif
+
+DBG_BUS ?= 0
+
+ifeq ($(DBG_BUS),1)
+    EXTRA_DFLAGS += -DDBG_BUS
+endif
+
+ifeq ($(USBDEV_COMPOSITE),1)
+	EXTRA_DFLAGS	+= -DBCMUSBDEV_COMPOSITE
+endif
+
+# TXBF
+ifeq ($(WLTXBF),1)
+        ifeq ($(WLTXBF_DISABLED),1)
+                EXTRA_DFLAGS += -DWLTXBF_DISABLED
+        endif
+else
+        ifneq ($(GENROMTBL),1)
+                EXTRA_DFLAGS += -DWLTXBF_DISABLED
+        endif
+endif
+
+# Enable ROM auto abandon by default for ROM offload builds.
+ifeq ($(ROMOFFLOAD),1)
+	BCM_ROM_AUTO_ABANDON := 1
+endif
+
+# ROM auto abandon feature.
+ifeq ($(BCM_ROM_AUTO_ABANDON),1)
+	# Disable compiler optimizations that might rename functions. All functions need to
+	# maintain their original names in case they are abandoned.
+	NOFNRENAME := 1
+
+	# ROM auto IOCTL/IOVAR patching is enabled by default.
+	BCM_ROM_AUTO_IOCTL_PATCH ?= 1
+endif
+
+# To enable common usb feature
+ifeq ($(call opt,vusb),1)
+	BCM_VUSB := 1
+endif
+
+ifeq ($(BCM_VUSB),1)
+        HBUS_OBJECTS += vusbd.o
+        EXTRA_DFLAGS    += -DBCMUSBDEV_COMPOSITE -DBCM_VUSBD
+        BCM_USBF := 0
+#       EXTRA_DFLAGS    += -DBCMDBG_ASSERT -DBCMDBG_SD_LATENCY
+        EXTRA_DFLAGS    += -DVUSBD_DBG
+        EXTRA_DFLAGS    += -DVUSBD_EXPT
+        EXTRA_DFLAGS    += -DXDC_INT_XFER
+endif
+
+ifeq ($(HNDLBUF_USE_MACROS), 1)
+	EXTRA_DFLAGS   += -DHNDLBUF_USE_MACROS
+endif
+
+# ROM auto IOCTL/IOVAR patching feature.
+ifeq ($(BCM_ROM_AUTO_IOCTL_PATCH),1)
+	WLC_PATCH_IOCTL := 1
+endif
+
+# proximity detection
+ifeq ($(WL_PROXDETECT),1)
+	ifeq ($(WL_PROXDETECT_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_PROXDETECT_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_PROXDETECT_DISABLED
+	endif
+endif
+
+# NAN
+ifeq ($(WL_NAN),1)
+	ifeq ($(WL_NAN_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_NAN_DISABLED
+	endif
+	WLMCNX := 1
+	WLMULTIQUEUE := 1
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_NAN_DISABLED
+	endif
+endif
+
+# Country Default
+ifeq ($(BCM_CNTRY_DEFAULT),1)
+	EXTRA_DFLAGS += -DCNTRY_DEFAULT
+endif
+# Locale Prioritization
+ifeq ($(BCM_LOCALE_PRIO_2G),1)
+	EXTRA_DFLAGS += -DLOCALE_PRIORITIZATION_2G
+endif
+
+# Health check
+ifeq ($(BCM_HEALTH_CHECK),1)
+	EXTRA_DFLAGS += -DHEALTH_CHECK
+
+	ifeq ($(HEALTH_CHECK_DISABLED),1)
+		EXTRA_DFLAGS += -DHEALTH_CHECK_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DHEALTH_CHECK_DISABLED
+	endif
+endif
+
+# HMAP TEST
+ifeq ($(BCM_HMAPTEST),1)
+	EXTRA_DFLAGS += -DHMAPTEST
+endif
+
+# MSGTRACE
+ifeq ($(MSGTRACE),1)
+	EXTRA_DFLAGS += -DMSGTRACE
+endif
+
+# In Olympic dongle builds, this feature is turned on based on value of ROMLIB
+# See DINGO2 branches
+ifeq ($(BCM_BUILD_SIGNATURE_IN_SOCRAM),1)
+EXTRA_DFLAGS += -DINCLUDE_BUILD_SIGNATURE_IN_SOCRAM
+endif
+
+# WFDS support
+ifeq ($(WLWFDS),1)
+        ifeq ($(WLWFDS_DISABLED),1)
+                EXTRA_DFLAGS += -DWLWFDS_DISABLED
+        endif
+else
+        ifneq ($(GENROMTBL),1)
+                EXTRA_DFLAGS += -DWLWFDS_DISABLED
+        endif
+endif
+
+ifeq ($(FIQMODE),1)
+	EXTRA_DFLAGS += -DFIQMODE
+endif
+
+ifeq ($(FIQ_USE_COMMON_TRAP_HDLR),1)
+	EXTRA_DFLAGS += -DFIQ_USE_COMMON_TRAP_HDLR
+endif
+
+# Stack underflow protection
+STACK_PROT	?= 0
+ifeq ($(STACK_PROT),1)
+EXTRA_DFLAGS	+= -DSTACK_PROT_TRAP
+endif
+
+# Add bss_info_t to selected events
+ifeq ($(EVDATA_BSSINFO), 1)
+	ifeq ($(EVDATA_BSSINFO_DISABLED), 1)
+		EXTRA_DFLAGS += -DWL_EVDATA_BSSINFO_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_EVDATA_BSSINFO_DISABLED
+	endif
+endif
+
+ifeq ($(WLMCNX), 1)
+	ifeq ($(WLMCNX_DISABLED),1)
+		EXTRA_DFLAGS += -DWLMCNX_DISABLED
+	else
+		# force P2P UCODE for MCNX on dongle
+		WLP2P_UCODE_ONLY := 1
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLMCNX_DISABLED
+	endif
+endif
+
+# STA BSS Load reporting
+ifeq ($(WLBSSLOAD_REPORT),1)
+	ifeq ($(WLBSSLOAD_REPORT_DISABLED),1)
+		EXTRA_DFLAGS += -DWLBSSLOAD_REPORT_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLBSSLOAD_REPORT_DISABLED
+	endif
+endif
+
+ifeq ($(WL_STATS),1)
+	ifeq ($(WL_STATS_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_STATS_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_STATS_DISABLED
+	endif
+endif
+
+AXI_TO ?= 19
+# AXI backplane timout exponent value; set to 0 to disable timeouts
+ifneq ($(AXI_TO),0)
+	EXTRA_DFLAGS += -DAXI_TIMEOUTS -DAXI_TO_VAL=$(AXI_TO)
+endif
+
+ifeq ($(DSI),1)
+	ifeq ($(DSI_DISABLED),1)
+		EXTRA_DFLAGS += -DDSI_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DDSI_DISABLED
+	endif
+endif
+
+ifeq ($(PCIE_ERR_ATTN_CHECK), 1)
+   EXTRA_DFLAGS   += -DPCIE_ERR_ATTN_CHECK
+endif
+
+ifeq ($(PCIDMA_WAIT_CMPLT_ON), 1)
+   EXTRA_DFLAGS   += -DPCIDMA_WAIT_CMPLT_ON
+endif
+
+ifeq ($(SROM_PARSE), 1)
+	EXTRA_DFLAGS   += -DBCMPCIEDEV_SROM_FORMAT
+	EXTRA_DFLAGS   += -DSPROM_AS_NVRAM_STORAGE
+endif
+
+ifeq ($(NVSRCX), 1)
+	EXTRA_DFLAGS   += -DNVSRCX
+endif
+
+# 11n proprietary rates support, default disable
+PROPRIETARY_11N_RATES ?= 0
+ifeq ($(PROPRIETARY_11N_RATES),1)
+	ifeq ($(PROPRIETARY_11N_RATES_DISABLED),1)
+		EXTRA_DFLAGS += -DWLPROPRIETARY_11N_RATES_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWLPROPRIETARY_11N_RATES_DISABLED
+	endif
+endif
+
+ifeq ($(POINT5_DB_TX_GAIN_STEP), 1)
+    EXTRA_DFLAGS += -DWLC_POINT5_DB_TX_GAIN_STEP
+endif
+
+ifeq ($(WLSWDIV),1)
+   ifeq ($(WL_SW_DIVERSITY_DISABLED),1)
+      EXTRA_DFLAGS += -DWLC_SW_DIVERSITY_DISABLED
+   endif
+else
+   ifneq ($(GENROMTBL),1)
+      EXTRA_DFLAGS += -DWLC_SW_DIVERSITY_DISABLED
+   endif
+endif
+
+ifeq ($(WLC_TXPWRCAP),1)
+   ifeq ($(WLC_TXPWRCAP_DISABLED),1)
+      EXTRA_DFLAGS += -DWLC_TXPWRCAP_DISABLED
+   endif
+else
+   ifneq ($(GENROMTBL),1)
+      EXTRA_DFLAGS += -DWLC_TXPWRCAP_DISABLED
+   endif
+endif
+
+ifeq ($(WLGPIOHLR),1)
+	EXTRA_DFLAGS += -DWLGPIOHLR
+endif
+
+ifeq ($(DS_PROT),1)
+	EXTRA_DFLAGS += -DDS_PROT -DDS_PROT_LOG -DDS_PROT_IOV_DBG
+	ifeq ($(DS_PROT_DISABLED),1)
+		EXTRA_DFLAGS += -DDS_PROT_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DDS_PROT_DISABLED
+	endif
+endif
+
+#vasip
+ifeq ($(WLVASIP),1)
+        ifeq ($(WLVASIP_DISABLED),1)
+                EXTRA_DFLAGS += -DWLVASIP_DISABLED
+        endif
+else
+        ifneq ($(GENROMTBL),1)
+                EXTRA_DFLAGS += -DWLVASIP_DISABLED
+        endif
+endif
+
+#smc
+ifeq ($(WLSMC),1)
+        ifeq ($(WLSMC_DISABLED),1)
+                EXTRA_DFLAGS += -DWLSMC_DISABLED
+        endif
+endif
+
+#WAR-engine
+ifeq ($(WLWARENG),1)
+        ifeq ($(WLWARENG_DISABLED),1)
+                EXTRA_DFLAGS += -DWLWARENG_DISABLED
+        endif
+endif
+
+#NATOE
+ifeq ($(WL_NATOE),1)
+	ifeq ($(WL_NATOE_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_NATOE_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_NATOE_DISABLED
+	endif
+endif
+
+#mimops
+ifeq ($(WL_MIMOPS), 1)
+	ifeq ($(WL_MIMOPS_DISABLED), 1)
+		EXTRA_DFLAGS += -DWL_MIMOPS_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_MIMOPS_DISABLED
+	endif
+endif
+
+#STF Arbitrator
+ifeq ($(WL_STF_ARBITRATOR), 1)
+       ifeq ($(WL_STF_ARBITRATOR_DISABLED), 1)
+               EXTRA_DFLAGS += -DWL_STF_ARBITRATOR_DISABLED
+       endif
+else
+       ifneq ($(GENROMTBL),1)
+               EXTRA_DFLAGS += -DWL_STF_ARBITRATOR_DISABLED
+       endif
+endif
+
+#BCNTRIM
+ifeq ($(WL_BCNTRIM), 1)
+       ifeq ($(WL_BCNTRIM_DISABLED), 1)
+               EXTRA_DFLAGS += -DWL_BCNTRIM_DISABLED
+       endif
+else
+       ifneq ($(GENROMTBL),1)
+               EXTRA_DFLAGS += -DWL_BCNTRIM_DISABLED
+       endif
+endif
+
+#ops
+ifeq ($(WL_OPS), 1)
+	ifeq ($(WL_OPS_DISABLED), 1)
+		EXTRA_DFLAGS += -DWL_OPS_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_OPS_DISABLED
+	endif
+endif
+
+# dynamic tx power control
+ifeq ($(WL_DTPC),1)
+	ifeq ($(WL_DTPC_DISABLED),1)
+		EXTRA_DFLAGS += -DWLC_DTPC_DISABLED
+	endif
+endif
+
+# 6GHz band support
+ifeq ($(BAND6G),1)
+	ifeq ($(BAND6G_DISABLED),1)
+		EXTRA_DFLAGS += -DBAND6G_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DBAND6G_DISABLED
+	endif
+endif
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++ default RTE features +++++++++++++++++++++++++++++
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+WL ?= 1
+WLWSEC ?= 1
+WLRTE := 1
+OSLRTE := 1
+STA ?= 1
+AP ?= 0
+BCMNVRAMR ?= 1
+BCMUTILS := 1
+BCMSROM := 1
+HNDDMA := 1
+SIUTILS ?= 1
+BCMMATH := 1
+
+# Memory optimization. Use functions instead of macros for bit operations.
+BCMUTILS_BIT_MACROS_USE_FUNCS ?= 1
+
+CLM_TYPE ?= 43xx
+
+include $(SRCBASE)/dongle/make/threadx.mk
+
+ifeq ($(AVS),1)
+	include $(SRCBASE)/wl/config/avs.mk
+endif
+
+ifeq ($(WL_NETX),1)
+	include $(SRCBASE)/dongle/make/netx.mk
+endif
+
+# NETX run time handling
+ifeq ($(WL_NETX),1)
+   ifeq ($(WL_NETX_DISABLED),1)
+      EXTRA_DFLAGS += -DWL_NETX_DISABLED
+   endif
+else
+   ifneq ($(GENROMTBL),1)
+      EXTRA_DFLAGS += -DWL_NETX_DISABLED
+   endif
+endif
+
+# FCC power limit control on ch12/13.
+ifeq ($(FCC_PWR_LIMIT_2G),1)
+   ifeq ($(FCC_PWR_LIMIT_2G_DISABLED),1)
+      EXTRA_DFLAGS += -DFCC_PWR_LIMIT_2G_DISABLED
+   endif
+else
+   ifneq ($(GENROMTBL),1)
+      EXTRA_DFLAGS += -DFCC_PWR_LIMIT_2G_DISABLED
+   endif
+endif
+
+# WL_SHIF
+ifeq ($(WL_SHIF),1)
+        ifeq ($(WL_SHIF_DISABLED),1)
+                EXTRA_DFLAGS += -DWL_SHIF_DISABLED
+        endif
+else
+        ifneq ($(GENROMTBL),1)
+                EXTRA_DFLAGS += -DWL_SHIF_DISABLED
+        endif
+endif
+
+# debug mode for SHIF
+ifeq ($(SHIFDBG), 1)
+	EXTRA_DFLAGS += -DSHUB_DBG
+	EXTRA_DFLAGS += -DRTESHIF_DBG
+endif
+
+# MU MIMO TX
+ifeq ($(WL_MU_TX),1)
+	ifeq ($(WL_MU_TX_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_MU_TX_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_MU_TX_DISABLED
+	endif
+endif
+
+# MU MIMO RX
+ifeq ($(WL_MU_RX),1)
+	ifeq ($(WL_MU_RX_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_MU_RX_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_MU_RX_DISABLED
+	endif
+endif
+
+ifeq ($(DBG_MU),1)
+	EXTRA_DFLAGS += -DBCMDBG_MU
+endif
+
+# SmartAmpdu (DTS)
+ifeq ($(WL_DTS),1)
+	ifeq ($(WL_DTS_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_DTS_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_DTS_DISABLED
+	endif
+endif
+
+# FILS Authentication
+ifeq ($(WL_FILSAUTH),1)
+    ifeq ($(WL_FILSAUTH_DISABLED),1)
+        EXTRA_DFLAGS += -DWL_FILSAUTH_DISABLED
+    endif
+else
+    ifneq ($(GENROMTBL),1)
+        EXTRA_DFLAGS += -DWL_FILSAUTH_DISABLED
+    endif
+endif
+
+# UCM
+ifeq ($(WL_UCM),1)
+	ifeq ($(WL_UCM_DISABLED),1)
+		EXTRA_DFLAGS += -DWL_UCM_DISABLED
+	endif
+else
+	ifneq ($(GENROMTBL),1)
+		EXTRA_DFLAGS += -DWL_UCM_DISABLED
+	endif
+endif
+
+# control cisdump routines non-reclaimable
+BCM_CISDUMP_NO_RECLAIM ?= 0
+ifeq ($(BCM_CISDUMP_NO_RECLAIM),1)
+	EXTRA_DFLAGS += -DBCM_CISDUMP_NO_RECLAIM
+endif
+
+ifeq ($(TVPM_DEBUG),1)
+	EXTRA_DFLAGS   += -DTEMPSENSE_OVERRIDE
+	EXTRA_DFLAGS   += -DTVPM_DEBUG
+endif
+
+ifeq ($(SW_PAGING),1)
+    EXTRA_DFLAGS += -DSW_PAGING
+endif
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++++++++ objects ++++++++++++++++++++++++++++++++++++
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+ifeq ($(OBJECTS),)
+# common object files and flags for all targets
+ifeq ($(HWAPP),1)
+COMMON_OBJECTS  += bcmstdlib.o hndchipc.o hnd_pktid.o hnd_pp_lbuf.o hnd_pp_pkt.o hnd_pt.o hnd_cplt.o
+else
+COMMON_OBJECTS  += bcmstdlib.o hndchipc.o hnd_pktid.o hnd_lbuf.o hnd_pkt.o hnd_pt.o hnd_cplt.o
+endif
+COMMON_OBJECTS  += rte_isr.o rte_isr_stats.o rte_dev.o rte_heap.o rte_mem.o rte_pktpool.o
+COMMON_OBJECTS  += rte_scheduler.o
+COMMON_OBJECTS  += rte_fetch.o rte_pktfetch.o
+COMMON_OBJECTS  += rte.o rte_cfg.o rte_chipc.o rte_pmu.o
+COMMON_OBJECTS  += rte_cons.o
+COMMON_OBJECTS  += rte_gpio.o
+COMMON_OBJECTS  += hnd_gci.o
+COMMON_OBJECTS  += hnd_event.o
+ifeq ($(UART),1)
+	COMMON_OBJECTS	+= rte_uart.o
+	ifeq ($(SECI_UART),1)
+		COMMON_OBJECTS	+= seci_uart.o
+	endif
+	ifeq ($(CC_UART),1)
+		COMMON_OBJECTS	+= cc_uart.o
+	endif
+	ifeq ($(GCI_UART),1)
+		COMMON_OBJECTS  += gci_uart.o
+	endif
+	ifeq ($(RTE_DEBUG_UART),1)
+		COMMON_OBJECTS += rte_debug.o
+	endif
+endif
+# Order dependency issue: HNDSHIF=1 is set in wlconfig but
+# this file, Makeconf, is included before wlconfig in Makefile.top
+# so not enabling it.  Just include it and let compiler optimize out
+#ifeq ($(HNDSHIF),1)
+	COMMON_OBJECTS	+= rte_shif.o
+#endif // endif
+ifeq ($(TCAM),1)
+	COMMON_OBJECTS += hndtcam.o rte_tcam.o
+endif
+ifeq ($(MSGTRACE),1)
+	COMMON_OBJECTS += dngl_msgtrace.o
+endif
+
+ifeq ($(BCM_HEALTH_CHECK),1)
+	COMMON_OBJECTS += hnd_hchk.o hnd_ds.o
+endif
+
+# Enable IPC Debug logs, On by default
+PCIE_IPC_LOGS  ?= 1
+ifeq ($(PCIE_IPC_LOGS),1)
+	EXTRA_DFLAGS += -DDBG_IPC_LOGS
+endif
+
+# Enable bus:h2dindx_w_d2hdma IOVAR
+ifeq ($(PCIE_BUS_ENABLE_FETCH_INDEX),1)
+	EXTRA_DFLAGS += -DPCIE_BUS_ENABLE_FETCH_INDEX
+endif
+
+ifeq ($(BUS_IOVAR_DISABLED),1)
+	EXTRA_DFLAGS += -DBUS_IOVAR_DISABLED
+endif
+
+ifeq ($(SW_PAGING), 1)
+  SW_PAGING_OBJECTS := swpaging.o
+endif
+
+# OBJECTS variable lists all object files we need for the target
+OBJECTS := $(STARTUP_OBJECTS) $(COMMON_OBJECTS) $(ARCH_OBJECTS) $(IBUS_OBJECTS)
+OBJECTS += $(HBUS_OBJECTS) $(PROTO_OBJECTS) $(EXTERN_OBJECTS) $(RTOS_OBJECTS) $(AVS_OBJECTS)
+OBJECTS += $(SW_PAGING_OBJECTS)
+ifdef PROJECT
+OBJECTS += $(PROJECT).o
+endif
+ifdef PROGRAM
+OBJECTS += $(PROGRAM).o
+endif
+endif # OBJECTS
+OBJECTS := $(sort $(OBJECTS))
+
+# Tell emacs to use Makefile mode since it does not know from the filename:
+#       Local Variables:
+#       mode: makefile
+#       End:

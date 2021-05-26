@@ -19,7 +19,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: hnddma.c 780343 2019-10-22 19:17:49Z $
+ * $Id: hnddma.c 784528 2020-02-28 22:23:04Z $
  */
 
 /**
@@ -3017,44 +3017,47 @@ bogus:
 	return;
 }
 
+/* Given a M2M request, configure the Rx and Tx descriptors of the M2M channels
+ * in the PCIE core. Does not apply to M2MCORE
+ */
 int BCMFASTPATH
-dma_m2m_submit(hnddma_t *dmah, m2m_desc_t *desc, bool implicit)
+pcie_m2m_req_submit(hnddma_t *dmah, pcie_m2m_req_t *m2m_req, bool implicit)
 {
 	uint16 rxout, txout, num_avail;
 	uint32 save_rxd, save_txd;
-	m2m_vec_t *vec;
+	pcie_m2m_vec_t *vec;
 	uint8 num_vec, offset;
 	uint32 flags;
 
 	dma_info_t *di = DI_INFO(dmah);
 
 	num_avail = di->ntxd - NTXDACTIVE(di->txin, di->txout) - 1;
-	if (num_avail < desc->num_tx_vec) {
+	if (num_avail < m2m_req->num_tx_vec) {
 		goto outoftxd;
 	}
 
 	num_avail = di->nrxd - NRXDACTIVE(di->rxin, di->rxout) - 1;
-	if (num_avail < desc->num_rx_vec) {
+	if (num_avail < m2m_req->num_rx_vec) {
 		goto outofrxd;
 	}
 
 	rxout = di->rxout;
 
-	for (num_vec = 0; num_vec < desc->num_rx_vec; num_vec++) {
-		vec = &desc->vec[num_vec];
-		save_rxd = vec->addr.loaddr;
+	for (num_vec = 0; num_vec < m2m_req->num_rx_vec; num_vec++) {
+		vec = &m2m_req->vec[num_vec];
+		save_rxd = vec->addr64.loaddr;
 		flags = 0;
 
 		if (rxout == (di->nrxd - 1))
 			flags = D64_CTRL1_EOT;
 
-		if (desc->flags & XFER_TO_LBUF) {
-			vec->addr.loaddr = (uint32)(uintptr)PKTDATA(di->osh,
-					(void *)(uintptr)(vec->addr.loaddr));
+		if (m2m_req->flags & XFER_TO_LBUF) {
+			vec->addr64.loaddr = (uint32)(uintptr)PKTDATA(di->osh,
+					(void *)(uintptr)(vec->addr64.loaddr));
 		}
 
 		ASSERT(vec->len);
-		dma64_dd_upd_64_from_params(di, di->rxd64, vec->addr,
+		dma64_dd_upd_64_from_params(di, di->rxd64, vec->addr64,
 				rxout, &flags, vec->len);
 
 		ASSERT(di->rxp[rxout] == NULL);
@@ -3067,18 +3070,18 @@ dma_m2m_submit(hnddma_t *dmah, m2m_desc_t *desc, bool implicit)
 	W_REG(di->osh, &di->d64rxregs->ptr, (uint32)(di->rcvptrbase + I2B(rxout, dma64dd_t)));
 
 	txout = di->txout;
-	offset = desc->num_rx_vec;
+	offset = m2m_req->num_rx_vec;
 
-	for (num_vec = 0; num_vec < desc->num_tx_vec; num_vec++) {
-		vec = &desc->vec[num_vec + offset];
-		save_txd = vec->addr.loaddr;
+	for (num_vec = 0; num_vec < m2m_req->num_tx_vec; num_vec++) {
+		vec = &m2m_req->vec[num_vec + offset];
+		save_txd = vec->addr64.loaddr;
 		flags = 0;
 
 		if ((num_vec == 0) || implicit) {
 			flags |= D64_CTRL1_SOF;
 		}
 
-		if ((num_vec == (desc->num_tx_vec - 1)) || implicit) {
+		if ((num_vec == (m2m_req->num_tx_vec - 1)) || implicit) {
 			flags |= D64_CTRL1_EOF | D64_CTRL1_IOC;
 		}
 
@@ -3086,17 +3089,17 @@ dma_m2m_submit(hnddma_t *dmah, m2m_desc_t *desc, bool implicit)
 			flags |= D64_CTRL1_EOT;
 		}
 
-		if (desc->flags & XFER_FROM_LBUF) {
-			vec->addr.loaddr = (uint32)(uintptr)PKTDATA(di->osh,
-					(void *)(uintptr)(vec->addr.loaddr));
+		if (m2m_req->flags & XFER_FROM_LBUF) {
+			vec->addr64.loaddr = (uint32)(uintptr)PKTDATA(di->osh,
+					(void *)(uintptr)(vec->addr64.loaddr));
 		}
 
-		if (desc->flags & XFER_INJ_ERR) {
+		if (m2m_req->flags & XFER_INJ_ERR) {
 			flags &= ~(D64_CTRL1_EOF | D64_CTRL1_SOF);
 		}
 
 		ASSERT(vec->len);
-		dma64_dd_upd_64_from_params(di, di->txd64, vec->addr,
+		dma64_dd_upd_64_from_params(di, di->txd64, vec->addr64,
 			txout, &flags, vec->len);
 
 		ASSERT(di->txp[txout] == NULL);
@@ -3107,21 +3110,21 @@ dma_m2m_submit(hnddma_t *dmah, m2m_desc_t *desc, bool implicit)
 	di->txout = txout;
 	di->hnddma.txavail = di->ntxd - NTXDACTIVE(di->txin, di->txout) - 1;
 
-	if (desc->commit) {
+	if (m2m_req->commit) {
 		dma64_txcommit_local(di);
 	}
 
-	DMA_TRACE(("dma_m2m_submit: di:0x%p desc:0x%p\n", di, desc));
+	DMA_TRACE(("pcie_m2m_req_submit: di:0x%p m2m_req:0x%p\n", di, m2m_req));
 
 	return 0;
 
 outofrxd:
-	DMA_ERROR(("%s: dma_m2m_submit: out of rxds\n", di->name));
+	DMA_ERROR(("%s: pcie_m2m_req_submit: out of rxds\n", di->name));
 	di->rxavail = 0;
 	return -1;
 
 outoftxd:
-	DMA_ERROR(("%s: dma_m2m_submit: out of txds\n", di->name));
+	DMA_ERROR(("%s: pcie_m2m_req_submit: out of txds\n", di->name));
 	di->hnddma.txavail = 0;
 	di->hnddma.txnobuf++;
 	return -1;
@@ -3245,3 +3248,20 @@ dmatx_map_pkts(hnddma_t *dmah, map_pkts_cb_fn cb, void *ctx)
 	}
 	return BCME_OK;
 }
+
+#if defined(PKTQ_STATUS) && defined(BULK_PKTLIST)
+/* Utility function to walk the DMA ring */
+void *
+dma_get_nextpkt(hnddma_t *dmah, void *pkt)
+{
+	dma_info_t *di = DI_INFO(dmah);
+	if (pkt == NULL) {
+		pkt = DMA_GET_LISTHEAD(di);
+	} else if (pkt == DMA_GET_LISTTAIL(di)) {
+		pkt = NULL;
+	} else {
+		pkt = DMA_GET_NEXTPKT(pkt);
+	}
+	return pkt;
+}
+#endif // endif

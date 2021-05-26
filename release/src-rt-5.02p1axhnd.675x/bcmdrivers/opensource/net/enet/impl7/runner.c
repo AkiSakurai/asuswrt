@@ -1260,6 +1260,35 @@ int port_runner_mib_dump(enetx_port_t *self, int all)
     return 0;
 }
 
+// add by Andrew
+/* mib dump for ports on internal runner switch */
+int port_runner_mib_dump_us(enetx_port_t *self, void *ethswctl)
+{
+    /* based on impl5\bcmsw_runner.c bcmeapi_ethsw_dump_mib() */
+    mac_stats_t         mac_stats;
+    struct ethswctl_data *e = (struct ethswctl_data *)ethswctl;
+
+    mac_dev_stats_get(self->p.mac, &mac_stats);
+
+    /* Calculate Tx statistics */
+    e->port_stats.txPackets = mac_stats.tx_unicast_packet + 
+                              mac_stats.tx_multicast_packet + 
+                              mac_stats.tx_broadcast_packet;
+    e->port_stats.txDrops = mac_stats.tx_error;
+    e->port_stats.txBytes = mac_stats.tx_byte;
+
+    /* Calculate Rx statistics */
+    e->port_stats.rxPackets = mac_stats.rx_unicast_packet + 
+                              mac_stats.rx_multicast_packet + 
+                              mac_stats.rx_broadcast_packet;
+    e->port_stats.rxBytes = mac_stats.rx_byte;
+    e->port_stats.rxDrops = 0;
+    e->port_stats.rxDiscards = 0;
+
+    return 0;
+}
+// end of add
+
 int port_runner_sw_port_id_on_sw(port_info_t *port_info, int *port_id, port_type_t *port_type)
 {
     int rc;
@@ -1588,6 +1617,7 @@ port_ops_t port_runner_gpon =
     .mib_dump = port_runner_mib_dump,
     .print_status = port_runner_print_status,
     .print_priv = port_runner_print_priv,
+    .mib_dump_us = port_runner_mib_dump_us,
 };
 #endif /* GPON */
 
@@ -1599,6 +1629,7 @@ port_ops_t port_runner_port_mac =
     .pause_set = port_generic_pause_set,
     .mtu_set = port_runner_mtu_set,
     .mib_dump = port_runner_mib_dump,
+    .mib_dump_us = port_runner_mib_dump_us,
 };
 
 #ifdef EPON
@@ -1800,6 +1831,7 @@ port_ops_t port_runner_epon =
     .print_status = port_runner_print_status,
     .print_priv = port_runner_print_priv,
     .link_change = port_runner_link_change,
+    .mib_dump_us = port_runner_mib_dump_us, // add by Andrew
 };
 #endif /* EPON */
 

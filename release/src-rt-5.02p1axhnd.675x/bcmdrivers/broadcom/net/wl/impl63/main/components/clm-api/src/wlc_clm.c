@@ -43,9 +43,11 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- *
- * $Id: wlc_clm.c 823386 2019-06-04 00:14:32Z $
  */
+
+#ifdef _MSC_VER
+	#pragma warning(push, 3)
+#endif /* _MSC_VER */
 
 /* Define wlc_cfg.h to be the first header file included as some builds
  * get their feature flags through this file.
@@ -62,6 +64,9 @@
 #include <bcmendian.h>
 #include "wlc_clm.h"
 #include "wlc_clm_data.h"
+#ifdef _MSC_VER
+	#pragma warning(pop)
+#endif /* _MSC_VER */
 
 /******************************
 * MODULE MACROS AND CONSTANTS *
@@ -72,7 +77,7 @@
 #define FORMAT_VERSION_MAJOR 24
 
 /* BLOB format version minor number */
-#define FORMAT_VERSION_MINOR 0
+#define FORMAT_VERSION_MINOR 3
 
 /* Minimum supported binary BLOB format's major version */
 #define FORMAT_MIN_COMPAT_MAJOR 7
@@ -502,6 +507,39 @@ typedef struct loc_type_dsc {
 	unsigned int loc_def_field_offset;
 } loc_type_dsc_t;
 
+/** Descriptor of single bit flag translation */
+typedef struct flag_translation {
+	/** Source bitmask */
+	unsigned int from;
+
+	/** Resulting bitmask */
+	unsigned int to;
+} flag_translation_t;
+
+/** Flag translation set descriptor */
+typedef struct flag_translation_set {
+	/** Set (vector of flag translation descriptors */
+	const flag_translation_t *set;
+
+	/** Number of descriptors in set */
+	unsigned int num;
+} flag_translation_set_t;
+
+/** Identifiers of flag translation sets */
+typedef enum flag_translation_set_id {
+	/** Base locale flags */
+	FTS_BASE,
+
+	/** Country (region) flags, first byte */
+	FTS_COUNTRY_FLAG_1,
+
+	/** Country (region) flags, second byte */
+	FTS_COUNTRY_FLAG_2,
+
+	/** Number of IDs */
+	FTS_NUM
+} flag_translation_set_id_t;
+
 /** Descriptors of main and incremental data sources */
 static data_dsc_t data_sources[] = {
 	{ NULL, 0, {{{0, 0}}}, 0, 0, 0, NULL, 0, {NULL}, {{NULL}}, 0, 0, 0,
@@ -752,6 +790,35 @@ static const unsigned int compose_loc_type[CLM_BAND_NUM][BH_NUM] = {
 #ifdef WL_BAND6G
 	{CLM_LOC_IDX_BASE_6G, CLM_LOC_IDX_HT_6G},
 #endif /* WL_BAND6G */
+};
+
+/** Flag translation for base locale flags */
+static const flag_translation_t base_flag_translations[] = {
+	{CLM_DATA_FLAG_FILTWAR1, CLM_FLAG_FILTWAR1},
+	{CLM_DATA_FLAG_PSD_LIMITS, CLM_FLAG_PSD}
+};
+
+/** Flag translations for first country (region) flag byte */
+static const flag_translation_t country_flag_1_translations[] = {
+	{CLM_DATA_FLAG_REG_TXBF, CLM_FLAG_TXBF},
+	{CLM_DATA_FLAG_REG_EDCRS_EU, CLM_FLAG_EDCRS_EU},
+	{CLM_DATA_FLAG_REG_RED_EU, CLM_FLAG_RED_EU}
+};
+
+/** Flag translations for second country (region) flag byte */
+static const flag_translation_t country_flag_2_translations [] = {
+	{CLM_DATA_FLAG_2_REG_LO_GAIN_NBCAL, CLM_FLAG_LO_GAIN_NBCAL},
+	{CLM_DATA_FLAG_2_REG_CHSPRWAR2, CLM_FLAG_CHSPRWAR2},
+	{CLM_DATA_FLAG_2_REG_DSA, CLM_FLAG_DSA}
+};
+
+/** Flag translation sets. Must follow the order, specified in
+ * flag_translation_set_id_t enum
+ */
+static const flag_translation_set_t flag_translation_sets [] = {
+	{base_flag_translations, ARRAYSIZE(base_flag_translations)},
+	{country_flag_1_translations, ARRAYSIZE(country_flag_1_translations)},
+	{country_flag_2_translations, ARRAYSIZE(country_flag_2_translations)},
 };
 
 /****************************
@@ -2268,7 +2335,10 @@ loc_idx(data_source_id_t ds_id,
 	const clm_country_rev_definition_cd10_t *country_definition,
 	int loc_type)
 {
-	int ret = country_definition->locales[loc_type];
+	/* Actually this is 'int ret = country_definition->locales[loc_type];' */
+	int ret = ((const unsigned char *)country_definition)
+		[OFFSETOF(clm_country_rev_definition_cd10_t, locales) + loc_type];
+
 	data_dsc_t *ds = get_data_sources(ds_id);
 #ifdef WL_BAND6G
 	if (loc_type_dscs[loc_type].band == CLM_BAND_6G) {
@@ -2430,6 +2500,29 @@ static clm_bandwidth_t active_channel_bandwidth(const clm_limits_params_t *param
 		(params->bw == CLM_BW_80_80) ? CLM_BW_80 :
 #endif /* WL11AC */
 		params->bw;
+}
+
+/** Translates given flags according to given flag translation descriptor set
+ * \param[in] flags Flags to translate
+ * \param[in] flag_set_id ID of flag translation set
+ * \return Logical OR if 'to' flags, corespondent to 'from' flags set in 'flags'
+ */
+static unsigned int
+BCMRAMFN(translate_flags)(unsigned int flags, flag_translation_set_id_t flag_set_id)
+{
+	unsigned int ret = 0;
+	const flag_translation_set_t *ftr_set = flag_translation_sets + flag_set_id;
+	const flag_translation_t *p, *end;
+	ASSERT(((unsigned int)flag_set_id < (unsigned int)FTS_NUM) &&
+		((unsigned int)ARRAYSIZE(flag_translation_sets) == (unsigned int)FTS_NUM));
+	p = flag_translation_sets[flag_set_id].set;
+	end = p + flag_translation_sets[flag_set_id].num;
+	for (p = ftr_set->set, end = p + ftr_set->num; p < end; ++p) {
+		if (flags & p->from) {
+			ret |= p->to;
+		}
+	}
+	return ret;
 }
 
 clm_result_t clm_init(const struct clm_data_header *header)
@@ -2678,11 +2771,14 @@ clm_result_t clm_country_flags(const clm_country_locales_t *locales, clm_band_t 
 	int base_ht_idx;
 	locale_data_t base_ht_loc_data[BH_NUM];
 	unsigned char base_flags;
+	data_dsc_t *ds;
 	if (!locales || !ret_flags || ((unsigned)band >= (unsigned)CLM_BAND_NUM)) {
 		return CLM_RESULT_ERR;
 	}
 	*ret_flags = (unsigned long)(CLM_FLAG_DFS_NONE | CLM_FLAG_NO_40MHZ | CLM_FLAG_NO_80MHZ |
-		CLM_FLAG_NO_80_80MHZ | CLM_FLAG_NO_160MHZ | CLM_FLAG_NO_MIMO);
+		CLM_FLAG_NO_80_80MHZ | CLM_FLAG_NO_160MHZ | CLM_FLAG_NO_MIMO |
+		CLM_FLAG_NO_240MHZ | CLM_FLAG_NO_320MHZ | CLM_FLAG_NO_160_160MHZ);
+	ds = get_data_sources((data_source_id_t)(locales->computed_flags & COUNTRY_FLAGS_DS_MASK));
 	if (!fill_base_ht_loc_data(locales, band, base_ht_loc_data, &base_flags)) {
 		return CLM_RESULT_ERR;
 	}
@@ -2705,9 +2801,6 @@ clm_result_t clm_country_flags(const clm_country_locales_t *locales, clm_band_t 
 	case CLM_DATA_FLAG_DFS_JP:
 		*ret_flags |= CLM_FLAG_DFS_JP;
 		break;
-	}
-	if (base_flags & CLM_DATA_FLAG_FILTWAR1) {
-		*ret_flags |= CLM_FLAG_FILTWAR1;
 	}
 	for (base_ht_idx = 0; base_ht_idx < (int)ARRAYSIZE(base_ht_loc_data); ++base_ht_idx) {
 		unsigned char flags, flags2;
@@ -2826,26 +2919,13 @@ clm_result_t clm_country_flags(const clm_country_locales_t *locales, clm_band_t 
 			}
 		} while (flags & CLM_DATA_FLAG_MORE);
 	}
-	if (locales->country_flags & CLM_DATA_FLAG_REG_TXBF) {
-		*ret_flags |= CLM_FLAG_TXBF;
-	}
-	if (locales->country_flags & CLM_DATA_FLAG_REG_DEF_FOR_CC) {
-		*ret_flags |= CLM_FLAG_DEFAULT_FOR_CC;
-	}
-	if (locales->country_flags & CLM_DATA_FLAG_REG_EDCRS_EU) {
-		*ret_flags |= CLM_FLAG_EDCRS_EU;
-	}
-	if (locales->country_flags_2 & CLM_DATA_FLAG_2_REG_LO_GAIN_NBCAL) {
-		*ret_flags |= CLM_FLAG_LO_GAIN_NBCAL;
-	}
-	if (locales->country_flags_2 & CLM_DATA_FLAG_2_REG_CHSPRWAR2) {
-		*ret_flags |= CLM_FLAG_CHSPRWAR2;
-	}
-	if (base_flags & CLM_DATA_FLAG_PSD_LIMITS) {
-		*ret_flags |= CLM_FLAG_PSD;
-	}
-	if (locales->country_flags & CLM_DATA_FLAG_REG_RED_EU) {
-		*ret_flags |= CLM_FLAG_RED_EU;
+	*ret_flags |= translate_flags(base_flags, FTS_BASE) |
+		translate_flags(locales->country_flags, FTS_COUNTRY_FLAG_1) |
+		translate_flags(locales->country_flags_2, FTS_COUNTRY_FLAG_2);
+	if ((locales->country_flags & CLM_DATA_FLAG_REG_DSA_2) &&
+		(ds->registry_flags2 & CLM_REGISTRY_FLAG2_DSA_2))
+	{
+		*ret_flags |= CLM_FLAG_DSA_2;
 	}
 	return CLM_RESULT_OK;
 }
@@ -4659,6 +4739,52 @@ clm_result_t clm_channels_params_init(clm_channels_params_t *params)
 	return CLM_RESULT_OK;
 }
 
+/** Adds to given buffer globally valid channels (i.e. channels used in some
+ * region) - implementation of clm_valid_channels() for locales == NULL
+ * \param[in] band Band of channels
+ * \param[in] params Other parameters (bandwidth, etc)
+ * \param[in,out] channels Bit vector of channels. This function only adds bits
+ * to buffer, caller expected to clear it if needed
+ * Returns CLM_RESULT_NOT_FOUND if no channels were found, CLM_RESULT_ERR if
+ * something is wrong (e.g. if params->this_80_80 not defined), CLM_OK
+ * otherwise
+ */
+static clm_result_t
+get_all_valid_channels(clm_band_t band, const clm_channels_params_t *params,
+	clm_channels_t *channels)
+{
+	data_source_id_t ds_id;
+	clm_result_t ret = CLM_RESULT_NOT_FOUND;
+	MY_BOOL invalid_pair = (params->bw == CLM_BW_80_80);
+	for (ds_id = (data_source_id_t)0; ds_id < DS_NUM; ++ds_id) {
+		const clm_channel_comb_t *comb;
+		const clm_channel_comb_set_t *comb_set =
+			&get_data_sources(ds_id)->valid_channel_combs[band]
+			[(params->bw == CLM_BW_80_80) ? CLM_BW_80 : params->bw];
+		for (comb = comb_set->set; comb < comb_set->set + comb_set->num; ++comb) {
+			uint chan;
+			ret = CLM_RESULT_OK;
+			for (chan = comb->first_channel; chan <= comb->last_channel;
+				chan += comb->stride)
+			{
+				if (params->bw == CLM_BW_80_80) {
+					if (chan == params->this_80_80) {
+						invalid_pair = FALSE;
+					}
+					if ((chan >= (params->this_80_80 - comb->stride)) &&
+						(chan <= (params->this_80_80 + comb->stride)))
+					{
+						continue;
+					}
+				}
+				channels->bitvec[chan / 8] |= (unsigned char) (1 << (chan % 8));
+			}
+		}
+	}
+	return invalid_pair ? CLM_RESULT_ERR : ret;
+}
+
+
 clm_result_t clm_valid_channels(const clm_country_locales_t *locales, clm_band_t band,
 	const clm_channels_params_t *params, clm_channels_t *channels)
 {
@@ -4670,7 +4796,7 @@ clm_result_t clm_valid_channels(const clm_country_locales_t *locales, clm_band_t
 	clm_result_t ret = CLM_RESULT_NOT_FOUND;
 
 	/* Check parameters' validity */
-	if (!locales || !channels || !params ||
+	if (!channels || !params ||
 		((unsigned int)band >= (unsigned int)CLM_BAND_NUM) ||
 #ifdef WL11AC
 		((unsigned)params->bw >= (unsigned int)CLM_BW_NUM) ||
@@ -4683,6 +4809,10 @@ clm_result_t clm_valid_channels(const clm_country_locales_t *locales, clm_band_t
 	}
 	/* Clearing output parameters */
 	bzero(channels, sizeof(*channels));
+
+	if (!locales) {
+		return get_all_valid_channels(band, params, channels);
+	}
 
 	/* Computing helper information on locales */
 	if (!fill_base_ht_loc_data(locales, band, base_ht_loc_data, NULL)) {

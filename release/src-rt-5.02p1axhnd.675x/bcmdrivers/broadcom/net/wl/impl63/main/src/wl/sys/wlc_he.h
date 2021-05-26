@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_he.h 783116 2020-01-14 10:38:01Z $
+ * $Id: wlc_he.h 787816 2020-06-12 11:52:24Z $
  */
 
 #ifndef _wlc_he_h_
@@ -85,6 +85,7 @@ int wlc_he_init_defaults(wlc_he_info_t *hei);
 #define SCB_HE_CQI_BFE			0x08000 /* AP can receive triggered cqi feedback */
 #define SCB_HE_DYNFRAG_RXEN		0x10000 /* Enable dynamic frag TX */
 #define SCB_HE_80IN160			0x20000 /* 80 MHz in 160/80+80 MHz HE PPDU */
+#define SCB_HE_UL2x996			0x40000 /* UL 2x996 RU support */
 
 #define SCB_HE_LDPC_CAP(v, a)		(SCB_HE_CAP(a) && \
 	(wlc_he_get_peer_caps(v, a) & SCB_HE_LDPCCAP))
@@ -158,9 +159,10 @@ bool wlc_he_omi_pmq_code(wlc_info_t *wlc, scb_t *scb, uint8 rx_nss, uint8 bw);
 #define HE_242_TONE_RANGE_EXT			2
 
 /* update scb */
-void wlc_he_update_scb_state(wlc_he_info_t *hei, int bandtype, struct scb *scb,
-	he_cap_ie_t *capie, he_op_ie_t *opie);
+void wlc_he_update_scb_state(wlc_he_info_t *hei, scb_t *scb, he_cap_ie_t *capie, he_op_ie_t *opie);
+
 uint32 wlc_he_get_peer_caps(wlc_he_info_t *hei, struct scb *scb);
+void wlc_he_add_peer_caps(wlc_he_info_t *hei, struct scb *scb, uint32 cap);
 uint8 wlc_get_heformat(wlc_info_t *wlc);
 uint8 wlc_get_hebsscolor(wlc_info_t *wlc, wlc_bsscfg_t *cfg);
 
@@ -171,6 +173,8 @@ void wlc_he_fill_link_entry(wlc_he_info_t *hei, wlc_bsscfg_t *cfg, struct scb *s
 void wlc_he_update_mcs_cap(wlc_he_info_t *hei);
 void wlc_he_set_rateset_filter(wlc_he_info_t *hei, wlc_rateset_t *rateset);
 void wlc_he_default_rateset(wlc_he_info_t *hei, wlc_rateset_t *rateset);
+
+extern uint8 wlc_he_get_scb_ampdu_max_exp(wlc_he_info_t *hei, struct scb *scb);
 
 extern uint8 wlc_he_get_bfe_ndp_recvstreams(wlc_he_info_t *hei);
 extern uint8 wlc_he_get_bfr_ndp_sts(wlc_he_info_t *hei, bool is_bw160);

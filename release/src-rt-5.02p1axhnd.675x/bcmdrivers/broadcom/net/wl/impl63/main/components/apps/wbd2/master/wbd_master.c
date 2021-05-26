@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_master.c 781797 2019-11-29 05:13:50Z $
+ * $Id: wbd_master.c 784837 2020-03-06 05:24:13Z $
  */
 
 #include <signal.h>
@@ -234,21 +234,19 @@ wbd_exit_master(wbd_info_t *info)
 	WBD_ENTER();
 
 	BCM_REFERENCE(ret);
-	WBD_ASSERT_ARG(info, WBDE_INV_ARG);
+
+	ieee1905_deinit();
 
 	/* Reset backhaul optimization complete flag */
 	blanket_nvram_prefix_set(NULL, WBD_NVRAM_BH_OPT_COMPLETE, "0");
 
-	/* Deinit IEEE1905 module only if it is initialized. Because, if the WBD is disabled,
-	 * it will not get initialized
-	 */
-	if (WBD_IEEE1905_INIT(info->flags)) {
-		ieee1905_deinit();
-	}
+	WBD_ASSERT_ARG(info, WBDE_INV_ARG);
+
 	wbd_ds_blanket_master_cleanup(info);
 	wbd_com_deinit(info->com_cli_hdl);
 	wbd_com_deinit(info->com_serv_hdl);
 	wbd_info_cleanup(info);
+	g_wbdinfo = NULL;
 
 end:
 	WBD_EXIT();
@@ -338,29 +336,22 @@ wbd_master_add_bssinfo_to_controller()
 		bss.NetworkKey.key_len = strlen(nvval);
 		snprintf((char*)bss.NetworkKey.key, sizeof(bss.NetworkKey.key), "%s", nvval);
 
-		nvval = blanket_nvram_prefix_safe_get(prefix, NVRAM_MAP);
-		if (strcmp(nvval, "1") == 0) {
-			bss.FrontHaulBSS = 1;
-		} else if (strcmp(nvval, "2") == 0) {
-			bss.BackHaulBSS = 1;
-		} else if (strcmp(nvval, "3") == 0) {
-			bss.FrontHaulBSS = 1;
-			bss.BackHaulBSS = 1;
-		} else if (strcmp(nvval, "9") == 0) {
-			bss.FrontHaulBSS = 1;
-			bss.Guest = 1;
-		}
+		bss.map_flag = (uint8)blanket_get_config_val_uint(prefix, NVRAM_MAP, 0);
+
+		nvval = blanket_nvram_prefix_safe_get(prefix, NVRAM_CLOSED);
+		if (strcmp(nvval, "1") == 0)
+			bss.Closed = 1;
 
 		WBD_INFO("prefix: [%s] band: [0x%x] SSID: [%s] AuthType [%d] EncryptType: [%d] "
-			"key [%s] fh_bss [%d] bh_bss [%d] guest [%d]\n",
+			"key [%s] map_flag [0x%x] closed [%d]\n",
 			prefix, bss.band_flag, bss.ssid.SSID,
 			bss.AuthType, bss.EncryptType, bss.NetworkKey.key,
-			bss.FrontHaulBSS, bss.BackHaulBSS, bss.Guest);
+			bss.map_flag, bss.Closed);
 
 		ieee1905_add_bssto_controller_table(&bss);
 
 		/* If it supports fronthaul BSS, then create a blanket out of that */
-		if (bss.FrontHaulBSS) {
+		if (I5_IS_BSS_FRONTHAUL(bss.map_flag)) {
 			bkt_id = WBD_BKT_ID_BR0; /* Default Blanket ID for now */
 			wbd_master_create_master_info(g_wbdinfo, bkt_id, bss_name);
 		}
@@ -516,7 +507,6 @@ wbd_ieee1905_sta_removed_cb(i5_dm_clients_type *i5_assoc_sta)
 	wbd_master_info_t *master_info;
 	i5_dm_bss_type *i5_bss;
 	char logmsg[WBD_LOGS_BUF_128] = {0}, timestamp[WBD_MAX_BUF_32] = {0};
-	uint8 map_flags = IEEE1905_MAP_FLAG_FRONTHAUL;
 	WBD_ENTER();
 
 	WBD_DEBUG("Received callback: STA got Removed\n");
@@ -528,12 +518,10 @@ wbd_ieee1905_sta_removed_cb(i5_dm_clients_type *i5_assoc_sta)
 
 	wbd_ds_remove_beacon_report(g_wbdinfo, (struct ether_addr*)&(i5_assoc_sta->mac));
 
-	/* Remove a STA item from all peer BSS' Monitor STA List based on mapFlags */
-	if (I5_CLIENT_IS_BSTA(i5_assoc_sta)) {
-		map_flags = IEEE1905_MAP_FLAG_BACKHAUL;
-	}
+	/* Remove a STA item from all peer BSS' Monitor STA List based on ssid */
+
 	wbd_ds_remove_sta_fm_peer_devices_monitorlist((struct ether_addr*)i5_bss->BSSID,
-		(struct ether_addr*)i5_assoc_sta->mac, map_flags);
+		(struct ether_addr*)i5_assoc_sta->mac, &i5_bss->ssid);
 
 	/* Create and store log message for disassoc. */
 	snprintf(logmsg, sizeof(logmsg), CLI_CMD_LOGS_DISASSOC,
@@ -746,7 +734,16 @@ main(int argc, char *argv[])
 {
 	int ret = WBDE_OK;
 	char wbd_ifnames[NVRAM_MAX_VALUE_LEN] = {0};
+	int map_mode;
 	ieee1905_call_bks_t cbs;
+
+	map_mode = blanket_get_config_val_int(NULL, WBD_NVRAM_MULTIAP_MODE, MAP_MODE_FLAG_DISABLED);
+
+	/* If the mode is not controller, the master exe should exit */
+	if (!MAP_IS_CONTROLLER(map_mode)) {
+		WBD_WARNING("Multi-AP Mode (%d) not configured as controller..\n", map_mode);
+		goto end;
+	}
 
 	memset(&cbs, 0, sizeof(cbs));
 
@@ -757,9 +754,8 @@ main(int argc, char *argv[])
 	/* Parse common cli arguments */
 	wbd_parse_cli_args(argc, argv);
 
-	signal(SIGTERM, wbd_signal_hdlr);
-	signal(SIGINT, wbd_signal_hdlr);
-	signal(SIGPWR, wbd_master_tty_hdlr);
+	/* Provide necessary info to debug_monitor for service restart */
+	dm_register_app_restart_info(getpid(), argc, argv, NULL);
 
 	wbd_master_init_blanket_module();
 
@@ -770,13 +766,6 @@ main(int argc, char *argv[])
 	/* Allocate & Initialize the info structure */
 	g_wbdinfo = wbd_info_init(&ret);
 	WBD_ASSERT_MSG("wbd_info_init failed: %d (%s)\n", ret, wbderrorstr(ret));
-
-	/* If the mode is not controller, the master exe should exit */
-	if (!MAP_IS_CONTROLLER(g_wbdinfo->map_mode)) {
-		WBD_WARNING("Multi-AP Mode (%d) not configured as controller..\n",
-			g_wbdinfo->map_mode);
-		goto end;
-	}
 
 	/* Allocate & Initialize Blanket Master structure object */
 	ret = wbd_ds_blanket_master_init(g_wbdinfo);
@@ -794,10 +783,13 @@ main(int argc, char *argv[])
 	ret = wbd_init_master(g_wbdinfo);
 	WBD_ASSERT_MSG("wbd_init_master failed: %d (%s)\n", ret, wbderrorstr(ret));
 
+	/* WBD & 1905 are initialized properly. Now enable signal handlers */
+	signal(SIGTERM, wbd_signal_hdlr);
+	signal(SIGINT, wbd_signal_hdlr);
+	signal(SIGPWR, wbd_master_tty_hdlr);
+
 	blanket_start_multiap_messaging();
 
-	/* Provide necessary info to debug_monitor for service restart */
-	dm_register_app_restart_info(getpid(), argc, argv, NULL);
 	/* Main loop which keeps on checking for the timers and fd's */
 	wbd_run(g_wbdinfo->hdl);
 

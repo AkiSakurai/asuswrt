@@ -20,7 +20,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: blanket.c 782264 2019-12-16 03:41:13Z $
+ * $Id: blanket.c 788360 2020-06-30 08:02:03Z $
  *
  *  @author
  *  @bug No known bugs.
@@ -100,11 +100,10 @@
 #define DEF_MAX_BSS_SUPPORTED		4	/* Maximum BSS Supported per radio */
 
 /* Default AP Capability.
- * 6 Support unassociated STA link matrix on channels its BSS are not operating - Supported
+ * 6 Support unassociated STA link matrix on channels its BSS are not operating - Not Supported
  * 7 Support unassociated STA link matrix on channels its BSS are operating - Supported
  */
-#define DEF_MAP_AP_CAPS			(IEEE1905_AP_CAPS_FLAGS_UNASSOC_RPT | \
-						IEEE1905_AP_CAPS_FLAGS_UNASSOC_RPT_NON_CH)
+#define DEF_MAP_AP_CAPS			IEEE1905_AP_CAPS_FLAGS_UNASSOC_RPT
 
 /* Channel Scan NVRAMs default values */
 #define DEF_MAP_CHSCAN_ONBOOT_SCAN	0	/* Agent can perform Requested scans */
@@ -374,6 +373,25 @@ blanket_deauth_sta(char* ifname, struct ether_addr* addr, int reason)
 	}
 
 	BKT_IOVAR_ASSERT(ifname, "Deauth", ret);
+
+end:
+	BKT_EXIT();
+	return ret;
+}
+
+/* Send Disassoc to the sta */
+int
+blanket_disassoc_sta(char* ifname, struct ether_addr* addr)
+{
+	int ret = BKTE_OK;
+	BKT_ENTER();
+
+	/* Validate arg */
+	BKT_ASSERT_ARG(addr, BKTE_INV_ARG);
+
+	ret = wl_ioctl(ifname, WLC_DISASSOC, addr, ETHER_ADDR_LEN);
+
+	BKT_IOVAR_ASSERT(ifname, "WLC_DISASSOC", ret);
 
 end:
 	BKT_EXIT();
@@ -2275,6 +2293,11 @@ blanket_set_pwr_percent(char *ifname, int pwr_percent)
 		BKT_WARNING("ifname[%s] power percent %d out of range\n", ifname, pwr_percent);
 		return BKTE_INV_ARG;
 	}
+
+	/* Round off pwr_percent to multiple of 10 */
+	pwr_percent = (((pwr_percent + 5) / 10) *10);
+	BKT_INFO("ifname: %s Setting txpwr_percent = %d\n", ifname, pwr_percent);
+
 	ret = wl_ioctl(ifname, WLC_SET_PWROUT_PERCENTAGE, &pwr_percent, sizeof(pwr_percent));
 	BKT_IOVAR_ASSERT(ifname, "set pwr_percent", ret);
 
@@ -2656,6 +2679,29 @@ blanket_nvram_prefix_match_set(const char* prefix, char* nvram, char* new_value,
 		return 1;
 	}
 	return 0;
+}
+/* Gets the string config val from NVARM, if not found applies the default value */
+void
+blanket_get_config_val_str(char* prefix, const char *nvram, char *def, char **val)
+{
+	BKT_ENTER();
+	char *str = NULL;
+
+	if (prefix) {
+		str = blanket_nvram_prefix_safe_get(prefix, nvram);
+	} else {
+		str = blanket_nvram_safe_get(nvram);
+	}
+
+	if (str && (str[0] != '\0')) {
+		*val = str;
+	} else {
+		BKT_DEBUG("NVRAM is not defined: %s%s \n", (prefix ? prefix : ""), nvram);
+		*val = def;
+	}
+
+	BKT_EXIT();
+	return;
 }
 
 /* Gets the unsigned integer config val from NVARM, if not found applies the default value */
@@ -3803,6 +3849,38 @@ int blanket_get_primary_vlan_id(char *ifname, unsigned short *vlan_id)
 
 	*vlan_id = (unsigned short)tmp_vlan_id;
 	BKT_DEBUG("ifname[%s] vlanID[%d]\n", ifname, tmp_vlan_id);
+
+end:
+	BKT_EXIT();
+	return ret;
+}
+
+/* get the txrate from vht mcs, nss and bw */
+int
+blanket_get_txrate(uint16 mcs_map, int nss, int bw, uint32 *out_rate)
+{
+	int ret = BKTE_OK;
+	int mcs = 0, mcs_cap;
+	uint32 rate;
+
+	BKT_ENTER();
+	BKT_ASSERT_ARG(out_rate, BKTE_INV_ARG);
+
+	/* If mcs map is not provided default mcs 7 is assumed */
+	mcs_cap	= mcs_map ? VHT_MCS_MAP_GET_MCS_PER_SS(1, mcs_map) : VHT_CAP_MCS_MAP_0_7;
+
+	if (mcs_cap == VHT_CAP_MCS_MAP_0_7)
+		mcs = VHT_CAP_MCS_MAP_0_7_MAX_IDX - 1;
+	else if (mcs_cap == VHT_CAP_MCS_MAP_0_8)
+		mcs = VHT_CAP_MCS_MAP_0_8_MAX_IDX - 1;
+	else if (mcs_cap == VHT_CAP_MCS_MAP_0_9)
+		mcs = VHT_CAP_MCS_MAP_0_9_MAX_IDX - 1;
+
+	rate = wl_mcs2rate(mcs, nss, bw, 1);
+	rate /= 1000;
+	*out_rate = rate;
+
+	BKT_DEBUG("mcs map[0x%x] nss[%d] bw[%d] rate[%d]\n", mcs_map, nss, bw, rate);
 
 end:
 	BKT_EXIT();

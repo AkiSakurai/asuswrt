@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_ht.c 782016 2019-12-09 09:33:24Z $
+ * $Id: wlc_ht.c 784891 2020-03-07 02:25:08Z $
  */
 
 /** 802.11n (High Throughput) */
@@ -112,12 +112,14 @@
 #include <wlc_he.h>
 #include <wlc_musched.h>
 #include <wlc_ulmu.h>
+#include <wlc_ratelinkmem.h>
 #ifdef WL11AX
 #include <wlc_musched.h>
 #endif // endif
 #if defined(PKTC) || defined(PKTC_DONGLE)
 #include <wlc_pktc.h>
 #endif /* PKTC || PKTC_DONGLE */
+#include <wlc_hw_priv.h>
 
 /* IE mgmt */
 static uint wlc_ht_calc_cap_ie_len(void *ctx, wlc_iem_calc_data_t *data);
@@ -168,7 +170,7 @@ static uint16 wlc_ht_phy_get_rate(wlc_ht_info_t *pub, uint8 htflags, uint8 mcs);
 static void wlc_frameburst_size(wlc_info_t *wlc);
 static void wlc_ht_frameburst_txop_set(wlc_ht_info_t *pub, uint16 val);
 static uint16 wlc_ht_frameburst_txop_get(wlc_ht_info_t *pub);
-static void *
+static int
 wlc_send_action_ht_mimops(wlc_ht_info_t *hti, wlc_bsscfg_t *bsscfg, uint8 mimops_mode);
 
 static int
@@ -2155,7 +2157,7 @@ wlc_ch_width_action_ht_complete(wlc_info_t *wlc, uint txstatus, void *arg)
 }
 #endif /* WL_MIMOPS_CFG */
 
-static void *
+static int
 wlc_send_action_ht_mimops(wlc_ht_info_t *pub, wlc_bsscfg_t *bsscfg, uint8 mimops_mode)
 {
 	void *p;
@@ -2176,16 +2178,23 @@ wlc_send_action_ht_mimops(wlc_ht_info_t *pub, wlc_bsscfg_t *bsscfg, uint8 mimops
 	if (BSSCFG_STA(bsscfg)) {
 		ea = &bsscfg->BSSID;
 		scb = wlc_scbfindband(wlc, bsscfg, ea,
-		                      CHSPEC_BANDUNIT(bsscfg->current_bss->chanspec));
+			CHSPEC_BANDUNIT(bsscfg->current_bss->chanspec));
 	} else {
 		ea = &ether_bcast;
 		scb = WLC_BCMCSCB_GET(wlc, bsscfg);
 	}
-	ASSERT(scb != NULL);
+
+	if (scb == NULL) {
+		WL_ERROR(("wl%d.%d: %s: ea was "MACF", sta %d \n",
+			wlc->pub->unit, WLC_BSSCFG_IDX(bsscfg), __FUNCTION__,
+			CONST_ETHERP_TO_MACF(ea), BSSCFG_STA(bsscfg)));
+			ASSERT(scb != NULL);
+		return BCME_NOTASSOCIATED;
+	}
 
 	if ((p = wlc_frame_get_action(wlc, ea, &bsscfg->cur_etheraddr,
 			&bsscfg->BSSID, body_len, &pbody, DOT11_ACTION_CAT_HT)) == NULL) {
-		return NULL;
+		return BCME_NOMEM;
 	}
 
 	action_hdr = (struct dot11_action_ht_mimops *)pbody;
@@ -2215,9 +2224,9 @@ wlc_send_action_ht_mimops(wlc_ht_info_t *pub, wlc_bsscfg_t *bsscfg, uint8 mimops
 	 * sending failed.
 	 */
 	if (wlc_sendmgmt(wlc, p, bsscfg->wlcif->qi, scb) == FALSE)
-		return NULL;
+		return BCME_NOMEM;
 
-	return p;
+	return BCME_OK;
 }
 
 void
@@ -2225,7 +2234,7 @@ wlc_mimops_action_ht_send(wlc_ht_info_t *pub, wlc_bsscfg_t *bsscfg, uint8 mimops
 {
 	wlc_ht_priv_info_t *hti;
 	wlc_info_t *wlc;
-	void *p;
+	int err;
 	wlc_ht_bss_info_priv_t *cubby;
 
 	hti = WLC_HT_INFO_PRIV(pub);
@@ -2241,11 +2250,11 @@ wlc_mimops_action_ht_send(wlc_ht_info_t *pub, wlc_bsscfg_t *bsscfg, uint8 mimops
 	    !(cubby->mimops_ActionRetry & WLC_MIMOPS_RETRY_NOACK))
 		return;
 
-	p = wlc_send_action_ht_mimops(wlc->hti, bsscfg, mimops_mode);
+	err = wlc_send_action_ht_mimops(wlc->hti, bsscfg, mimops_mode);
 
 	if (BSSCFG_AP(bsscfg))
 		return;
-	if (!p)
+	if (err == BCME_NOMEM)
 		cubby->mimops_ActionRetry |= WLC_MIMOPS_RETRY_SEND;
 	else {
 		cubby->mimops_ActionRetry &= ~WLC_MIMOPS_RETRY_SEND;
@@ -2614,10 +2623,15 @@ wlc_frameaction_ht(wlc_ht_info_t *pub, uint action_id, struct scb *scb,
 				scb_pub->ht_mimops_enabled = mimops_enabled;
 				scb_pub->ht_mimops_rtsmode = mimops_rtsmode;
 				wlc_scb_ratesel_init(wlc, scb);
-				/*
-				 *WAR: dynamic SMPS OFDMA update
-				 */
 #ifdef WL11AX
+				/* dynamic SMPS linkmem update */
+				if (RATELINKMEM_ENAB(wlc->pub)) {
+					wlc_ratelinkmem_update_link_entry(wlc, scb);
+				}
+				/* WAR: Check if we exclude a dynamic SMPS client from
+				 * DL OFDMA groups as a WAR XXX: revisit and can remove
+				 * it if dynamic murts solution works well
+				 */
 				wlc_musched_update_dlofdma(wlc->musched, scb);
 #endif // endif
 			}
@@ -3283,7 +3297,7 @@ wlc_ht_frameburst_txop_set(wlc_ht_info_t *pub, uint16 val)
 	wlc_ht_priv_info_t *hti = WLC_HT_INFO_PRIV(pub);
 	wlc_info_t *wlc = hti->wlc;
 
-	if (!wlc->clk) {
+	if (!wlc->hw->clk) {
 		return;
 	}
 
@@ -4064,7 +4078,7 @@ wlc_ht_mimops_get(wlc_ht_info_t *pub)
 static bool
 wlc_ht_mimops_set(wlc_ht_info_t *pub, wlc_bsscfg_t *cfg, int32 int_val)
 {
-	void *p;
+	int err;
 
 	if ((int_val < 0) || (int_val > HT_CAP_MIMO_PS_OFF) || (int_val == 2)) {
 		return FALSE;
@@ -4077,8 +4091,8 @@ wlc_ht_mimops_set(wlc_ht_info_t *pub, wlc_bsscfg_t *cfg, int32 int_val)
 	 * complete.
 	 */
 	if (cfg && cfg->associated) {
-		p = wlc_send_action_ht_mimops(pub, cfg, (uint8)int_val);
-		if (p == NULL) {
+		err = wlc_send_action_ht_mimops(pub, cfg, (uint8)int_val);
+		if (err != BCME_OK) {
 			return FALSE;
 		}
 	}

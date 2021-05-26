@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_chanctxt.c 778405 2019-08-30 07:04:52Z $
+ * $Id: wlc_chanctxt.c 787001 2020-05-13 14:07:28Z $
  */
 
 /* Define wlc_cfg.h to be the first header file included as some builds
@@ -700,7 +700,7 @@ wlc_txqueue_start(wlc_info_t *wlc, wlc_bsscfg_t *cfg, chanspec_t chanspec,
 		int prec;
 		while ((pkt = restore_fn(cfg, &prec))) {
 			WL_MQ(("Enq: pkt %p, prec %d\n", OSL_OBFUSCATE_BUF(pkt), prec));
-			cpktq_penq(&qi->cpktq, prec, pkt);
+			cpktq_penq(wlc, &qi->cpktq, prec, pkt);
 		}
 	}
 
@@ -1232,13 +1232,19 @@ wlc_chanctxt_free(wlc_chanctxt_info_t *chanctxt_info, wlc_chanctxt_t *chanctxt)
 	/* save the qi pointer, delete from context list and free context */
 	oldqi = chanctxt->qi;
 
+	/* remove target from list and chain context list to next one */
 	prev = (wlc_chanctxt_t *)&chanctxt_info->chanctxt_list;
-	while ((next = prev->next)) {
-		if (next == chanctxt) {
-			prev->next = chanctxt->next;
-			break;
+
+	if (prev == chanctxt) {
+		chanctxt_info->chanctxt_list = prev->next;
+	} else {
+		while ((next = prev->next)) {
+			if (next == chanctxt) {
+				prev->next = chanctxt->next;
+				break;
+			}
+			prev = next;
 		}
-		prev = next;
 	}
 	MFREE(osh, chanctxt, sizeof(wlc_chanctxt_t));
 
@@ -1259,6 +1265,8 @@ wlc_chanctxt_free(wlc_chanctxt_info_t *chanctxt_info, wlc_chanctxt_t *chanctxt)
 		WL_MQ(("wl%d: %s: our queue is only context queue, don't delete, "
 			"simply flush the queue, qi 0x%p len %d\n", wlc->pub->unit,
 			__FUNCTION__, OSL_OBFUSCATE_BUF(oldqi), (WLC_GET_CQ(oldqi))->n_pkts_tot));
+		/* flush lowtxq first to prevent ampdu bar packet enqueue to common queue */
+		wlc_low_txq_flush(wlc->txqi, oldqi->low_txq);
 		cpktq_flush(wlc, &oldqi->cpktq);
 		ASSERT(pktq_empty(WLC_GET_CQ(oldqi)));
 		return;
@@ -1529,8 +1537,6 @@ wlc_chanctxt_create_txqueue(wlc_info_t *wlc, wlc_bsscfg_t *cfg, chanspec_t chans
 
 	/* check to see if a context for this chanspec already exist */
 	if (new_chanctxt == NULL) {
-		wlc_lq_chanim_create_bss_chan_context(wlc, chanspec, 0);
-
 		/* context for this chanspec doesn't exist, create a new one */
 		WL_MQ(("wl%d.%d: %s: allocate new context\n",
 			wlc->pub->unit, WLC_BSSCFG_IDX(cfg), __FUNCTION__));
@@ -1544,6 +1550,7 @@ wlc_chanctxt_create_txqueue(wlc_info_t *wlc, wlc_bsscfg_t *cfg, chanspec_t chans
 	ASSERT(new_chanctxt != NULL);
 	if (new_chanctxt == NULL)
 		return NULL;
+	wlc_lq_chanim_create_bss_chan_context(wlc, chanspec, new_chanctxt->chanspec);
 
 	/* assign context to cfg */
 	wlc_chanctxt_switch_queue(wlc, cfg, new_chanctxt, oldqi_stopped_flag);

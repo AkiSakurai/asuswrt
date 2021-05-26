@@ -18,14 +18,11 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcm_stamon.h 776562 2019-07-02 10:32:53Z $
+ * $Id: bcm_stamon.h 788014 2020-06-18 04:18:18Z $
  */
 
 #ifndef _BCM_STAMON_H_
 #define _BCM_STAMON_H_
-
-#include "typedefs.h"
-#include "bcmutils.h"
 
 #define BCM_STAMON_VERSION			1
 #define STAMON_DEFAULT_MONITOR_TIMEOUT_2G	200  /* In milliseconds for 2G */

@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_assoc.c 782718 2020-01-02 18:57:45Z $
+ * $Id: wlc_assoc.c 789378 2020-07-27 15:49:44Z $
  */
 
 /**
@@ -4936,12 +4936,10 @@ wlc_join_BSS_select(wlc_bsscfg_t *cfg,
 		                     as->type == AS_ROAM ? FC_ASSOC_RESP : FC_REASSOC_RESP,
 		                     parse, len, &parsp);
 
-		wlc_he_update_scb_state(wlc->hei, CHSPEC_BANDTYPE(chanspec), scb,
-		                        he_cap_ie, he_op_ie);
+		wlc_he_update_scb_state(wlc->hei, scb, he_cap_ie, he_op_ie);
 	} else if (SCB_HE_CAP(scb) &&
 	           ((target_bss->flags3 & WLC_BSS3_HE) != WLC_BSS3_HE)) {
-		wlc_he_update_scb_state(wlc->hei, CHSPEC_BANDTYPE(chanspec), scb,
-		                        NULL, NULL);
+		wlc_he_update_scb_state(wlc->hei, scb, NULL, NULL);
 	}
 #endif /* WL11AX */
 	}
@@ -11808,6 +11806,8 @@ wlc_send_deauth(wlc_info_t *wlc, wlc_bsscfg_t *cfg, struct scb *scb,
 		return;
 	}
 
+	WL_ASSOC(("wl%d.%d: %s: send deauth for "MACF" with reason %d\n", wlc->pub->unit,
+		WLC_BSSCFG_IDX(cfg), __FUNCTION__, ETHER_TO_MACF(scb->ea), reason_code));
 	pkt = wlc_senddeauth(wlc, cfg, scb, &scb->ea, &cfg->BSSID, &cfg->cur_etheraddr,
 		reason_code);
 	if (pkt != NULL) {
@@ -11852,52 +11852,57 @@ wlc_deauth_sendcomplete(wlc_info_t *wlc, uint txstatus, void *arg)
 		return;
 	}
 
+	if ((scb->sent_deauth == NULL) || (scb->sent_deauth != cbarg)) {
+		WL_ASSOC(("wl%d: %s: deauth complete for scb "MACF", but scb does not match"
+			" (deauth sent: %p)\n",
+			wlc->pub->unit, __FUNCTION__, ETHERP_TO_MACF(&scb->ea), scb->sent_deauth));
+		/* This can happen when scb is already freed and a new scb has been created
+		 * during (re)association of the same station.
+		 */
+		return;
+	}
+
+	scb->sent_deauth = NULL;
+	WL_ASSOC(("wl%d: %s: deauth complete\n", wlc->pub->unit, __FUNCTION__));
+
 #ifdef AP
 	/* Reset PS state if needed */
 	if (SCB_PS(scb))
 		wlc_apps_scb_ps_off(wlc, scb, TRUE);
 #endif /* AP */
 
-	if (scb->sent_deauth != NULL) {
-		ASSERT(scb->sent_deauth == cbarg);
-	} else {
-		WL_ERROR(("wl%d: %s: deauth complete for scb "MACF", but struct freed (%p)\n",
-			wlc->pub->unit, __FUNCTION__, ETHERP_TO_MACF(&scb->ea), cbarg));
-		/* this shouldn't happen but will allow for TXQ cleanup @ SCB free */
-		ASSERT(SCB_DEL_IN_PROGRESS(scb)); /* SCB being removed */
-		return;
-	}
-
-	WL_ASSOC(("wl%d: %s: deauth complete\n", wlc->pub->unit, __FUNCTION__));
 	wlc_bss_mac_event(wlc, SCB_BSSCFG(scb), WLC_E_DEAUTH, (struct ether_addr *)arg,
 	              WLC_E_STATUS_SUCCESS, DOT11_RC_DEAUTH_LEAVING, 0, 0, 0);
-
-	if (cbarg->pkt) {
-		WLPKTTAGSCBSET(cbarg->pkt, NULL);
-	}
-	scb->sent_deauth = NULL;
 
 	MFREE(wlc->osh, arg, sizeof(wlc_deauth_send_cbargs_t));
 
 	if (BSSCFG_STA(bsscfg)) {
+		if (cbarg->pkt) {
+			WLPKTTAGSCBSET(cbarg->pkt, NULL);
+		}
 		/* Do this last: ea_arg points inside scb */
 		wlc_scbfree(wlc, scb);
 	} else {
-		/* Clear states and mark the scb for deletion. SCB free will happen
-		 * from the inactivity timeout context in wlc_ap_stastimeout()
-		 * Mark the scb for deletion first as some scb state change notify callback
-		 * functions need to be informed that the scb is about to be deleted.
-		 * (For example wlc_cfp_scb_state_upd)
+		/* Mark the scb for deletion. SCB free will happen
+		 * from the inactivity timeout context in wlc_ap_stas_timeout()
+		 * Scb state change will happen from wlc_ap_stas_timeout()
 		 */
 #ifdef WL_HAPD_WDS
 		if (!SCB_LEGACY_WDS(scb))
 #endif /* WL_HAPD_WDS */
 		{
+			/* Don't call wlc_scb_clearstatebit from callback context as
+			 * notify callback can lead to wlc_tx_fifo_scb_flush().
+			 * If scb is still authorized wlc_scb_clearstatebit() will be
+			 * called from wlc_ap_stas_timeout().
+			 */
 			SCB_MARK_DEL(scb);
 		}
-		wlc_scb_disassoc_cleanup(wlc, scb);
-		wlc_scb_clearstatebit(wlc, scb, AUTHENTICATED | ASSOCIATED | AUTHORIZED);
-
+#ifdef WL_HAPD_WDS
+		else {
+			wlc_scb_disassoc_cleanup(wlc, scb);
+		}
+#endif /* WL_HAPD_WDS */
 	}
 } /* wlc_deauth_sendcomplete */
 
@@ -14186,6 +14191,7 @@ wlc_assoc_doioctl(void *ctx, uint32 cmd, void *arg, uint len, struct wlc_if *wlc
 
 					wlc_bss_mac_event(wlc, bsscfg, WLC_E_DISASSOC_IND, &scb->ea,
 						WLC_E_STATUS_SUCCESS, DOT11_RC_BUSY, 0, NULL, 0);
+					SCB_MARK_DEL(scb);
 				} else {
 					wlc_apps_set_change_scb_state(wlc, scb, TRUE);
 				}
@@ -15692,6 +15698,7 @@ wlc_assoc_do_dfs_reentry_cac_if_required(wlc_bsscfg_t *cfg, wlc_bss_info_t *bi)
 	wlc_info_t *wlc = cfg->wlc;
 	wlc_assoc_t *as = cfg->assoc;
 	bool dfs_cac_started = FALSE;
+	int ret;
 
 	if ((wlc_radar_chanspec(wlc->cmi, bi->chanspec)) &&
 		!(wlc_cac_is_clr_chanspec(wlc->dfs, bi->chanspec))) {
@@ -15704,8 +15711,22 @@ wlc_assoc_do_dfs_reentry_cac_if_required(wlc_bsscfg_t *cfg, wlc_bss_info_t *bi)
 		wl_add_timer(wlc->wl, as->timer,
 			(wlc_dfs_get_cactime_ms(wlc->dfs) + DELAY_10MS), FALSE);
 		wlc_assoc_change_state(cfg, AS_DFS_CAC_START);
-		wlc_set_dfs_cacstate(wlc->dfs, ON, wlc->cfg);
-		dfs_cac_started = TRUE;
+		ret = wlc_set_dfs_cacstate(wlc->dfs, ON, wlc->cfg);
+		if (ret == BCME_OK) {
+			/* On Repeaters, while STA interface has started CAC, AP interfaces
+			 * should be brought down. The AP interfaces will be up after
+			 * STA completes CAC
+			 */
+			if (AP_ACTIVE(wlc)) {
+				int idx;
+				wlc_bsscfg_t *apcfg;
+
+				FOREACH_UP_AP(wlc, idx, apcfg) {
+					wlc_bsscfg_down(wlc, apcfg);
+				}
+			}
+			dfs_cac_started = TRUE;
+		}
 	}
 	return dfs_cac_started;
 }

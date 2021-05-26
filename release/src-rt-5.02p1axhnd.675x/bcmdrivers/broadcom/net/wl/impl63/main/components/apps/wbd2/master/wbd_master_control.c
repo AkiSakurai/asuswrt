@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_master_control.c 782703 2020-01-02 06:23:34Z $
+ * $Id: wbd_master_control.c 789006 2020-07-16 08:15:32Z $
  */
 
 #define TYPEDEF_FLOAT_T
@@ -85,7 +85,7 @@ typedef struct wbd_get_score_param {
 static wbd_tbss_wght_t predefined_tbss_wght[] = {
 	/* w_rssi w_hops w_sta_cnt w_phyrate w_nss w_tx_rate flags */
 	/* 0 : All weightage */
-	{7, 8, 4, 6, 4, 4, 0x3F},
+	{7, 7, 4, 6, 4, 7, 0x3F},
 	/* 1 : High RSSI */
 	{1, 0, 0, 0, 0, 0, 0x01},
 	/* End */
@@ -106,7 +106,7 @@ static wbd_tbss_wght_t predefined_tbss_wght_bh[] = {
 static wbd_tbss_thld_t predefined_tbss_thld_2g[] = {
 	/* t_rssi t_hops t_sta_cnt t_uplinkrate flags sof_algos */
 	/* 0 : All Threshold and WBD_SOF_ALGO_BEST_NWS */
-	{-62, 1, 10, 36, 0x7F, 0},
+	{-62, 1, 30, 36, 0x7F, 0},
 	/* 1 : All Threshold and WBD_SOF_ALGO_BEST_RSSI */
 	{-62, 1, 10, 36, 0x7F, 1},
 	/* End */
@@ -116,7 +116,7 @@ static wbd_tbss_thld_t predefined_tbss_thld_2g[] = {
 static wbd_tbss_thld_t predefined_tbss_thld_5g[] = {
 	/* t_rssi t_hops t_sta_cnt t_uplinkrate flags sof_algos */
 	/* 0 : All Threshold and WBD_SOF_ALGO_BEST_NWS */
-	{-65, 1, 10, 36, 0x7F, 0},
+	{-65, 1, 30, 36, 0x7F, 0},
 	/* 1 : All Threshold and WBD_SOF_ALGO_BEST_RSSI */
 	{-65, 1, 10, 36, 0x7F, 1},
 	/* End */
@@ -303,14 +303,28 @@ wbd_get_nss_from_radio_caps(i5_dm_interface_type *i5_ifr)
 	return cur_nss;
 }
 
-/* get max NSS in all the interfaces of all devices in the topology */
+/* get max NSS and max average Tx rate for the given SSID
+ * in all the interfaces of all devices in the topology
+ */
 static int
-wbd_get_max_nss_in_topology()
+wbd_get_max_nss_and_txrate_for_ssid(ieee1905_ssid_type *ssid,
+	int *max_nss, uint32 *max_avg_tx_rate)
 {
-	int max_nss = 0, cur_nss = 0;
+	int cur_nss = 0;
 	i5_dm_network_topology_type *i5_topology;
 	i5_dm_device_type *i5_device;
 	i5_dm_interface_type *i5_ifr;
+	i5_dm_bss_type *bss;
+	uint16 mcs_map;
+	int bw;
+
+	if (!ssid || !max_nss || !max_avg_tx_rate) {
+		WBD_WARNING("NULL Data pointer(s)\n");
+		return -1;
+	}
+	/* Reset the max values */
+	*max_nss = 0;
+	*max_avg_tx_rate = 0;
 
 	i5_topology = ieee1905_get_datamodel();
 	/* For each device and interface */
@@ -322,25 +336,50 @@ wbd_get_max_nss_in_topology()
 		}
 
 		foreach_i5glist_item(i5_ifr, i5_dm_interface_type, i5_device->interface_list) {
-			/* Only for wireless interfaces get NSS */
+			/* Consider only for wireless interfaces */
 			if (!i5DmIsInterfaceWireless(i5_ifr->MediaType)) {
 				continue;
 			}
 
+			/* Consider only the interfaces which has bss with matching ssid */
+			foreach_i5glist_item(bss, i5_dm_bss_type, i5_ifr->bss_list) {
+				if (WBD_SSIDS_MATCH(bss->ssid, *ssid)) {
+					break;
+				}
+			}
+			if (!bss) {
+				continue;
+			}
+
 			cur_nss = wbd_get_nss_from_radio_caps(i5_ifr);
-			if (cur_nss > max_nss) {
-				max_nss = cur_nss;
+			if (cur_nss > *max_nss) {
+				*max_nss = cur_nss;
+			}
+
+			/* Update tx rate of the bss based on the mcs received from
+			 * Ap capabilities report.
+			 */
+			mcs_map	= i5_ifr->ApCaps.VHTCaps.Valid ?
+				i5_ifr->ApCaps.VHTCaps.TxMCSMap : 0;
+			bw = CHSPEC_IS160(i5_ifr->chanspec) ? 160 :
+				CHSPEC_IS80(i5_ifr->chanspec) ? 80 :
+				CHSPEC_IS40(i5_ifr->chanspec) ? 40 :
+				CHSPEC_IS20(i5_ifr->chanspec) ? 20 : 0;
+			blanket_get_txrate(mcs_map, cur_nss, bw, &bss->avg_tx_rate);
+
+			if (bss->avg_tx_rate > *max_avg_tx_rate) {
+				*max_avg_tx_rate = bss->avg_tx_rate;
 			}
 		}
 	}
 
-	return max_nss;
+	return 0;
 }
 
 /* Find the monitored STA in any of the BSS with valid RSSI in this device */
 static wbd_monitor_sta_item_t*
 wbd_tbss_get_monitor_sta_on_device(i5_dm_device_type *i5_device, unsigned char *mac,
-	i5_dm_bss_type **i5_parent_bss, uint8 map_flags)
+	i5_dm_bss_type **i5_parent_bss, ieee1905_ssid_type *ssid)
 {
 	int ret = WBDE_OK;
 	i5_dm_interface_type *iter_ifr;
@@ -353,12 +392,8 @@ wbd_tbss_get_monitor_sta_on_device(i5_dm_device_type *i5_device, unsigned char *
 		/* Loop for all the BSSs in Interface */
 		foreach_i5glist_item(iter_bss, i5_dm_bss_type, iter_ifr->bss_list) {
 
-			if (I5_IS_BSS_GUEST(iter_bss->mapFlags)) {
-				WBD_DEBUG("Skip Guest BSS\n");
-				continue;
-			}
-			/* Only use matching BSS(Fronthaul or Backhaul) */
-			if (!(map_flags & iter_bss->mapFlags)) {
+			/* Only use matching SSID */
+			if (!WBD_SSIDS_MATCH(iter_bss->ssid, *ssid)) {
 				continue;
 			}
 
@@ -382,7 +417,7 @@ wbd_tbss_get_monitor_sta_on_device(i5_dm_device_type *i5_device, unsigned char *
 /* Find the valid beacon RSSI in any of the BSS in this device */
 static wbd_monitor_sta_item_t*
 wbd_tbss_get_beacon_rssi_on_device(i5_dm_device_type *i5_device, unsigned char *mac,
-	i5_dm_bss_type **i5_parent_bss, uint8 map_flags)
+	i5_dm_bss_type **i5_parent_bss, ieee1905_ssid_type *ssid)
 {
 	int ret = WBDE_OK;
 	i5_dm_interface_type *iter_ifr;
@@ -395,13 +430,8 @@ wbd_tbss_get_beacon_rssi_on_device(i5_dm_device_type *i5_device, unsigned char *
 		/* Loop for all the BSSs in Interface */
 		foreach_i5glist_item(iter_bss, i5_dm_bss_type, iter_ifr->bss_list) {
 
-			if (I5_IS_BSS_GUEST(iter_bss->mapFlags)) {
-				WBD_DEBUG("Skip Guest BSS\n");
-				continue;
-			}
-
-			/* Only use fronthaul BSS */
-			if (!(map_flags & iter_bss->mapFlags)) {
+			/* Only use matching SSID */
+			if (!WBD_SSIDS_MATCH(iter_bss->ssid, *ssid)) {
 				continue;
 			}
 
@@ -632,16 +662,24 @@ wbd_master_update_device_tbss_value(i5_dm_device_type *i5_self_device, i5_dm_dev
 
 /* Update the phyrate to controller and normalized hop values for all the devices */
 static void
-wbd_master_update_all_devices_tbss_values()
+wbd_master_update_all_devices_tbss_values(wbd_master_info_t *master_info,
+	i5_dm_clients_type *weak_sta)
 {
 	i5_dm_network_topology_type *i5_topology;
 	i5_dm_device_type *i5_device;
 	wbd_device_item_t *device_vndr_data; /* 1905 device item vendor data */
+	i5_dm_bss_type *parent_bss;
 	WBD_ENTER();
 
 	if ((i5_topology = ieee1905_get_datamodel()) == NULL) {
 		goto end;
 	}
+
+	parent_bss = (i5_dm_bss_type*)WBD_I5LL_PARENT(weak_sta);
+
+	/* Reset the max NSS and max average tx rate in topology for current SSID */
+	wbd_get_max_nss_and_txrate_for_ssid(&parent_bss->ssid,
+		&master_info->tbss_info.max_nss, &master_info->max_avg_tx_rate);
 
 	foreach_i5glist_item(i5_device, i5_dm_device_type, i5_topology->device_list) {
 
@@ -673,6 +711,22 @@ end:
 	WBD_EXIT();
 }
 
+/* To find number of STAs associated to an interface */
+static int
+wbd_get_assoc_sta_count_intf(i5_dm_interface_type *i5_ifr)
+{
+	i5_dm_bss_type *i5_bss;
+	int assoc_cnt = 0;
+
+	if (!i5_ifr) {
+		return 0;
+	}
+	foreach_i5glist_item(i5_bss, i5_dm_bss_type, i5_ifr->bss_list) {
+		assoc_cnt += i5_bss->ClientsNumberOfEntries;
+	}
+	return assoc_cnt;
+}
+
 /* Algorithm to get score of a node for a give STA */
 static uint
 wbd_master_get_score(wbd_master_info_t *master_info, i5_dm_bss_type *i5_bss,
@@ -688,15 +742,9 @@ wbd_master_get_score(wbd_master_info_t *master_info, i5_dm_bss_type *i5_bss,
 	int node_score = 0;
 	i5_dm_interface_type *i5_ifr;
 	i5_dm_device_type *i5_device;
-	wbd_bss_item_t *bss_item = (wbd_bss_item_t*)i5_bss->vndr_data;
 	wbd_device_item_t *device_vndr_data;
 
 	WBD_ENTER();
-
-	if (bss_item == NULL) {
-		WBD_WARNING("BSS["MACDBG"] NULL Vendor Data\n", MAC2STRDBG(i5_bss->BSSID));
-		goto scoring;
-	}
 
 	i5_ifr = (i5_dm_interface_type*)WBD_I5LL_PARENT(i5_bss);
 	i5_device = (i5_dm_device_type*)WBD_I5LL_PARENT(i5_ifr);
@@ -742,7 +790,7 @@ wbd_master_get_score(wbd_master_info_t *master_info, i5_dm_bss_type *i5_bss,
 		 * This is the percentage of STAs this AP is holding out of all STAs in the blanket
 		 */
 		total_sta_cnt = master_info->blanket_client_count;
-		assoc_cnt = i5_bss->ClientsNumberOfEntries;
+		assoc_cnt = wbd_get_assoc_sta_count_intf(i5_ifr);
 		if (assoc_cnt <= master_info->tbss_info.tbss_stacnt_thld)
 			n_sta_cnt = 100;
 		else
@@ -778,11 +826,11 @@ wbd_master_get_score(wbd_master_info_t *master_info, i5_dm_bss_type *i5_bss,
 			n_nss = ((bss_nss * 100) / (master_info->tbss_info.max_nss));
 	}
 
-	if ((wght_cfg->flags & WBD_WGHT_FLAG_TX_RATE) &&
-		(master_info->max_avg_tx_rate)) {
+	if (wght_cfg->flags & WBD_WGHT_FLAG_TX_RATE) {
+		if (master_info->max_avg_tx_rate) {
 			/* Find the normalized number of txrate of BSS to serve the clients */
-			n_tx_rate = ((bss_item->avg_tx_rate * 100)/
-				(master_info->max_avg_tx_rate));
+			n_tx_rate = i5_bss->avg_tx_rate * 100 / master_info->max_avg_tx_rate;
+		}
 	}
 
 scoring:
@@ -800,7 +848,7 @@ scoring:
 		MAC2STRDBG(i5_bss->BSSID), wght_cfg->flags,
 		rssi, n_rssi, n_hops, total_sta_cnt, assoc_cnt, n_sta_cnt, phyrate,
 		n_phyrate, bss_nss, master_info->tbss_info.max_nss,
-		n_nss, bss_item->avg_tx_rate, master_info->max_avg_tx_rate,
+		n_nss, i5_bss->avg_tx_rate, master_info->max_avg_tx_rate,
 		n_tx_rate, node_score);
 	if (node_score > tbss_param->node_score) {
 		tbss_param->rssi = rssi;
@@ -813,7 +861,7 @@ scoring:
 		tbss_param->n_phyrate = n_phyrate;
 		tbss_param->bss_nss = bss_nss;
 		tbss_param->n_nss = n_nss;
-		tbss_param->avg_tx_rate = bss_item->avg_tx_rate;
+		tbss_param->avg_tx_rate = i5_bss->avg_tx_rate;
 		tbss_param->n_tx_rate = n_tx_rate;
 		tbss_param->node_score = node_score;
 	}
@@ -827,7 +875,7 @@ scoring:
 i5_dm_bss_type*
 wbd_tbss_algo_nws(wbd_master_info_t *master_info, i5_dm_clients_type *weak_sta, bool is_dual_band)
 {
-	uint8 cur_band, parent_band, band_steer, map_flags = IEEE1905_MAP_FLAG_FRONTHAUL;
+	uint8 cur_band, parent_band, band_steer;
 	i5_dm_network_topology_type *i5_topology;
 	i5_dm_device_type *i5_device, *parent_device;
 	i5_dm_interface_type *i5_ifr, *parent_ifr;
@@ -861,8 +909,6 @@ wbd_tbss_algo_nws(wbd_master_info_t *master_info, i5_dm_clients_type *weak_sta, 
 	WBD_ASSERT_MSG("STA["MACDBG"] Failed to allocate memory for tbss_scores\n",
 		MAC2STRDBG(weak_sta->mac));
 	tbss_scores->size = bss_count;
-	/* Reset the nss */
-	master_info->tbss_info.max_nss = wbd_get_max_nss_in_topology();
 
 	i5_topology = ieee1905_get_datamodel();
 
@@ -882,7 +928,6 @@ wbd_tbss_algo_nws(wbd_master_info_t *master_info, i5_dm_clients_type *weak_sta, 
 	 * STA type
 	 */
 	if (I5_CLIENT_IS_BSTA(weak_sta)) {
-		map_flags = IEEE1905_MAP_FLAG_BACKHAUL;
 		wght_cfg = &master_info->tbss_info.wght_cfg_bh;
 	} else {
 		wght_cfg = &master_info->tbss_info.wght_cfg;
@@ -891,8 +936,9 @@ wbd_tbss_algo_nws(wbd_master_info_t *master_info, i5_dm_clients_type *weak_sta, 
 	/* Get which rules are selected */
 	check_rule_mask = ((wght_cfg->flags) & (WBD_WGHT_FLAG_ALL));
 
-	WBD_TBSS("START NWS bss_count[%d] Max_NSS[%d] check_rule_mask[%x]\n", bss_count,
-		master_info->tbss_info.max_nss, check_rule_mask);
+	WBD_TBSS("START NWS for SSID[%s]. bss_count[%d] Max_NSS[%d] Max_AVG_TX_Rate[%d] "
+		"check_rule_mask[%x]\n", parent_bss->ssid.SSID, bss_count,
+		master_info->tbss_info.max_nss, master_info->max_avg_tx_rate, check_rule_mask);
 
 	/* Reset the target bsss parameter */
 	memset(&tbss_param, 0, sizeof(tbss_param));
@@ -933,9 +979,9 @@ wbd_tbss_algo_nws(wbd_master_info_t *master_info, i5_dm_clients_type *weak_sta, 
 			bcn_monitor_bss = parent_bss;
 		} else {
 			sta = wbd_tbss_get_monitor_sta_on_device(i5_device, weak_sta->mac,
-				&parent_monitor_bss, map_flags);
+				&parent_monitor_bss, &parent_bss->ssid);
 			bcn_sta = wbd_tbss_get_beacon_rssi_on_device(i5_device, weak_sta->mac,
-				&bcn_monitor_bss, map_flags);
+				&bcn_monitor_bss, &parent_bss->ssid);
 			if (sta || bcn_sta) {
 				if (sta) {
 					est_rssi = sta->rssi;
@@ -990,11 +1036,8 @@ wbd_tbss_algo_nws(wbd_master_info_t *master_info, i5_dm_clients_type *weak_sta, 
 			foreach_i5glist_item(i5_bss, i5_dm_bss_type, i5_ifr->bss_list) {
 				int score = 0;
 
-				if (I5_IS_BSS_GUEST(i5_bss->mapFlags)) {
-					continue;
-				}
-				/* Only use matching BSS(Fronthaul or Backhaul) */
-				if (!(map_flags & i5_bss->mapFlags)) {
+				/* Only use matching SSID */
+				if (!WBD_SSIDS_MATCH(parent_bss->ssid, i5_bss->ssid)) {
 					continue;
 				}
 #if defined(MULTIAPR2)
@@ -1126,7 +1169,6 @@ wbd_master_get_threshold_fail_count(wbd_master_info_t *master_info, i5_dm_bss_ty
 	int txrate = 0;
 	i5_dm_interface_type *i5_ifr;
 	i5_dm_device_type *i5_device;
-	wbd_bss_item_t *bss_item = (wbd_bss_item_t*)i5_bss->vndr_data;
 	wbd_tbss_thld_t *thld_cfg = NULL;
 	wbd_device_item_t *device_vndr_data;
 	uint32 tx_failures = 0;
@@ -1135,12 +1177,6 @@ wbd_master_get_threshold_fail_count(wbd_master_info_t *master_info, i5_dm_bss_ty
 	UNUSED_PARAMETER(phyrate);
 
 	WBD_ENTER();
-
-	if (bss_item == NULL) {
-		WBD_WARNING("BSS["MACDBG"] NULL Vendor Data\n", MAC2STRDBG(i5_bss->BSSID));
-		fail_cnt = 1;
-		goto end;
-	}
 
 	i5_ifr = (i5_dm_interface_type*)WBD_I5LL_PARENT(i5_bss);
 	i5_device = (i5_dm_device_type*)WBD_I5LL_PARENT(i5_ifr);
@@ -1186,13 +1222,10 @@ wbd_master_get_threshold_fail_count(wbd_master_info_t *master_info, i5_dm_bss_ty
 	}
 
 	if (thld_cfg->flags & WBD_THLD_FLAG_MAX_TXRATE) {
-		/* slave's max tx_rate can change dynamically, gets update in STA_REPORT
-		 * from slave at every STA_REPORT interval, It may be possible we are
-		 * here before STA_REPORT from any slave in response to Subscribe
-		 * command. In case of Invalid tx_rate i.e. Zero, better to exit and
-		 * retry in next timer callback
+		/* slave's tx_rate calculated based on the mcs, nss, and bw received in
+		 * ap capability reports message.
 		 */
-		txrate = bss_item->max_tx_rate;
+		txrate = i5_bss->avg_tx_rate;
 		if (txrate < master_info->tbss_info.thld_sta.t_tx_rate)
 			fail_cnt++;
 	}
@@ -1258,7 +1291,7 @@ i5_dm_bss_type*
 wbd_master_find_target_slave_with_best_rssi(wbd_master_info_t *master_info,
 	i5_dm_clients_type *weak_sta, bool is_dual_band)
 {
-	uint8 cur_band, parent_band, band_steer, map_flags = IEEE1905_MAP_FLAG_FRONTHAUL;
+	uint8 cur_band, parent_band, band_steer;
 	i5_dm_network_topology_type *i5_topology;
 	i5_dm_device_type *i5_device, *parent_device;
 	i5_dm_interface_type *i5_ifr, *parent_ifr;
@@ -1291,10 +1324,6 @@ wbd_master_find_target_slave_with_best_rssi(wbd_master_info_t *master_info,
 		best_rssi = assoc_sta->stats.bcn_rpt_rssi;
 	} else {
 		best_rssi = WBD_RCPI_TO_RSSI(weak_sta->link_metric.rcpi);
-	}
-
-	if (I5_CLIENT_IS_BSTA(weak_sta)) {
-		map_flags = IEEE1905_MAP_FLAG_BACKHAUL;
 	}
 
 	i5_topology = ieee1905_get_datamodel();
@@ -1337,9 +1366,9 @@ wbd_master_find_target_slave_with_best_rssi(wbd_master_info_t *master_info,
 
 		/* Get monitored RSSI from the other device */
 		sta = wbd_tbss_get_monitor_sta_on_device(i5_device, weak_sta->mac,
-			&parent_monitor_bss, map_flags);
+			&parent_monitor_bss, &parent_bss->ssid);
 		bcn_sta = wbd_tbss_get_beacon_rssi_on_device(i5_device, weak_sta->mac,
-			&bcn_monitor_bss, map_flags);
+			&bcn_monitor_bss, &parent_bss->ssid);
 		if (sta || bcn_sta) {
 			if (sta) {
 				est_rssi = sta->rssi;
@@ -1377,11 +1406,8 @@ wbd_master_find_target_slave_with_best_rssi(wbd_master_info_t *master_info,
 
 			foreach_i5glist_item(i5_bss, i5_dm_bss_type, i5_ifr->bss_list) {
 
-				if (I5_IS_BSS_GUEST(i5_bss->mapFlags)) {
-					continue;
-				}
-				/* Only use fronthaul BSS */
-				if (!(map_flags & i5_bss->mapFlags)) {
+				/* Only use matching SSID */
+				if (!WBD_SSIDS_MATCH(parent_bss->ssid, i5_bss->ssid)) {
 					continue;
 				}
 
@@ -1432,7 +1458,7 @@ end:
 i5_dm_bss_type*
 wbd_tbss_algo_sof(wbd_master_info_t *master_info, i5_dm_clients_type *weak_sta, bool is_dual_band)
 {
-	uint8 cur_band, parent_band, band_steer, map_flags = IEEE1905_MAP_FLAG_FRONTHAUL;
+	uint8 cur_band, parent_band, band_steer;
 	uint8 is_bsta = 0;
 	int ret = WBDE_NO_SLAVE_TO_STEER;
 	i5_dm_network_topology_type *i5_topology;
@@ -1467,9 +1493,6 @@ wbd_tbss_algo_sof(wbd_master_info_t *master_info, i5_dm_clients_type *weak_sta, 
 
 	assoc_sta = (wbd_assoc_sta_item_t*)weak_sta->vndr_data;
 	is_bsta = I5_CLIENT_IS_BSTA(weak_sta) ? 1 : 0;
-	if (I5_CLIENT_IS_BSTA(weak_sta)) {
-		map_flags = IEEE1905_MAP_FLAG_BACKHAUL;
-	}
 
 	/* Find tbss with best rssi. */
 	foreach_i5glist_item(device, i5_dm_device_type, i5_topology->device_list) {
@@ -1507,9 +1530,9 @@ wbd_tbss_algo_sof(wbd_master_info_t *master_info, i5_dm_clients_type *weak_sta, 
 			bcn_monitor_bss = parent_bss;
 		} else {
 			monitor_sta = wbd_tbss_get_monitor_sta_on_device(device, weak_sta->mac,
-				&parent_monitor_bss, map_flags);
+				&parent_monitor_bss, &parent_bss->ssid);
 			bcn_sta = wbd_tbss_get_beacon_rssi_on_device(device, weak_sta->mac,
-				&bcn_monitor_bss, map_flags);
+				&bcn_monitor_bss, &parent_bss->ssid);
 			if (monitor_sta || bcn_sta) {
 				if (monitor_sta) {
 					est_rssi = monitor_sta->rssi;
@@ -1564,11 +1587,8 @@ wbd_tbss_algo_sof(wbd_master_info_t *master_info, i5_dm_clients_type *weak_sta, 
 			foreach_i5glist_item(bss, i5_dm_bss_type, ifr->bss_list) {
 				int fail_cnt = 1;
 
-				if (I5_IS_BSS_GUEST(bss->mapFlags)) {
-					continue;
-				}
-				/* Only use matching BSS(Fronthaul or Backhaul) */
-				if (!(map_flags & bss->mapFlags)) {
+				/* Only use matching SSID */
+				if (!WBD_SSIDS_MATCH(parent_bss->ssid, bss->ssid)) {
 					continue;
 				}
 
@@ -1697,7 +1717,7 @@ wbd_master_find_target_bss(wbd_master_info_t *master_info, i5_dm_clients_type *w
 	uint8 tbss_algo;
 
 	/* Update the values required for TBSS calculation */
-	wbd_master_update_all_devices_tbss_values();
+	wbd_master_update_all_devices_tbss_values(master_info, weak_sta);
 
 	/* Choose the TBSS alogorithm to use based on the STA type */
 	if (I5_CLIENT_IS_BSTA(weak_sta)) {
@@ -1828,7 +1848,7 @@ static void
 wbd_master_identify_target_bss_timer_cb(bcm_usched_handle *hdl, void *arg)
 {
 	bool is_dual_band = FALSE;
-	uint8 parent_band, map_flags = IEEE1905_MAP_FLAG_FRONTHAUL, is_backhaul = 0;
+	uint8 parent_band, is_backhaul = 0;
 	uint8 bounce_sta_flag = 0x00;
 	int ret = WBDE_OK, free_timer = 1;
 	wbd_tbss_timer_args_t *args = (wbd_tbss_timer_args_t*)arg;
@@ -1870,11 +1890,10 @@ wbd_master_identify_target_bss_timer_cb(bcm_usched_handle *hdl, void *arg)
 
 	/* For backhaul STA is_dual_band should be FALSE so that it wont steer across the bands */
 	if (I5_CLIENT_IS_BSTA(sta)) {
-		map_flags = IEEE1905_MAP_FLAG_BACKHAUL;
 		if (!WBD_BKT_BH_OPT_ENAB(master_info->parent->flags)) {
 			wbd_ds_remove_sta_fm_peer_devices_monitorlist(
 				(struct ether_addr*)&sbss->BSSID,
-				(struct ether_addr*)&sta->mac, map_flags);
+				(struct ether_addr*)&sta->mac, &sbss->ssid);
 			WBD_INFO("Backhaul Optimization is disabled. Flags[0x%08x]. Skipping "
 				"backhaul optimization\n", master_info->parent->flags);
 			goto end;
@@ -1904,21 +1923,21 @@ wbd_master_identify_target_bss_timer_cb(bcm_usched_handle *hdl, void *arg)
 	tbss = wbd_master_find_target_bss(master_info, sta, is_dual_band);
 	/* if no valid target BSS, or source & target BSS same, go for next try */
 	if (tbss == NULL || tbss == sbss) {
-		/* If the backhaul optimization is running for this STA, then increment the counter */
+		/* If the bh optimization is running for this STA, then increment the counter */
 		if (WBD_ASSOC_ITEM_IS_BH_OPT(assoc_sta->flags)) {
 			assoc_sta->bh_opt_count++;
 			WBD_TBSS("For BHSTA["MACDBG"]. There Is no tbss in backhaul optimization. "
 				"TotalTry[%d] MaxTry[%d]\n",
 				MAC2STRDBG(sta->mac), assoc_sta->bh_opt_count,
 				master_info->parent->max_bh_opt_try);
-			/* If the backhaul optimization retry exceeds the limit, stop for that STA */
+			/* If the bh optimization retry exceeds the limit, stop for that STA */
 			if (assoc_sta->bh_opt_count >= master_info->parent->max_bh_opt_try) {
 				/* Just go to end, and in the end it will take care of starting for
 				 * other STA
 				 */
 				wbd_ds_remove_sta_fm_peer_devices_monitorlist(
 					(struct ether_addr*)&sbss->BSSID,
-					(struct ether_addr*)&sta->mac, map_flags);
+					(struct ether_addr*)&sta->mac, &sbss->ssid);
 				goto end;
 			}
 		}
@@ -1953,7 +1972,7 @@ wbd_master_identify_target_bss_timer_cb(bcm_usched_handle *hdl, void *arg)
 #endif /* BCM_APPEVENTD */
 		/* Remove STA from all BSS' Monitor STA List */
 		if (wbd_ds_remove_sta_fm_peer_devices_monitorlist((struct ether_addr*)&sbss->BSSID,
-				(struct ether_addr*)&sta->mac, map_flags) != WBDE_OK) {
+				(struct ether_addr*)&sta->mac, &sbss->ssid) != WBDE_OK) {
 			WBD_INFO("BKTID[%d] STA["MACDBG"]. Failed to remove STA "
 				"from peer slaves monitorlist\n", master_info->bkt_id,
 				MAC2STRDBG(sta->mac));
@@ -2001,7 +2020,14 @@ end:
 			if (WBD_MINFO_IS_BH_OPT_RUNNING(master_info->flags)) {
 				WBD_TBSS("Backhaul STA optimization is running mflag %x aflag %x\n",
 					master_info->flags, assoc_sta ? assoc_sta->flags : 0x00);
-				if (assoc_sta) {
+				/* Set the backhaul optimization done flag for this STA if the
+				 * backhaul optimization is running for this STA. Sometimes, if the
+				 * STA disconnects and connects back while doing backhaul
+				 * optimization the flags will become 0. So to start the backhaul
+				 * optimization again, checking the flag here so that we should not
+				 * set it to done blindly
+				 */
+				if (assoc_sta && (WBD_ASSOC_ITEM_IS_BH_OPT(assoc_sta->flags))) {
 					assoc_sta->flags &= ~WBD_FLAGS_ASSOC_ITEM_BH_OPT;
 					assoc_sta->flags |= WBD_FLAGS_ASSOC_ITEM_BH_OPT_DONE;
 				}
@@ -2185,8 +2211,8 @@ wbd_master_is_bsta_steering_possible(i5_dm_clients_type *i5_sta)
 		if (!I5_IS_MULTIAP_AGENT(i5_device->flags) || !I5_HAS_BH_BSS(i5_device->flags) ||
 			i5_self_device == i5_device) {
 			WBD_DEBUG("Device "MACDBG" is %san agent. It %sbackhaul BSS. bSTA "MACDBG
-				" is %sassociated to it. Hence not a candidate for TBSS. Skipping\n"
-				, MAC2STRDBG(i5_device->DeviceId),
+				" is %sassociated to it. So not a candidate for TBSS. Skipping\n",
+				MAC2STRDBG(i5_device->DeviceId),
 				I5_IS_MULTIAP_AGENT(i5_device->flags) ? "" : "not ",
 				I5_HAS_BH_BSS(i5_device->flags) ? "has " : "does not have ",
 				MAC2STRDBG(i5_sta->mac),
@@ -2342,8 +2368,9 @@ find_next_sta:
 	}
 
 	if (b_bss_count <= 1) {
-		WBD_INFO("Number of backhaul BSS where bSTA "MACDBG" can be connected is %d. Cannot"
-			" do further optimization. Skip it\n", MAC2STRDBG(i5_sta->mac), b_bss_count);
+		WBD_INFO("Number of backhaul BSS where bSTA "MACDBG" can be connected is %d."
+			"Cannot do further optimization. Skip it\n",
+			MAC2STRDBG(i5_sta->mac), b_bss_count);
 		goto end;
 	}
 
@@ -2417,7 +2444,7 @@ wbd_master_create_bh_opt_timer(i5_dm_clients_type *i5_sta)
 		WBD_INFO("Backhaul Optimization timer is already%s%s%s. Not creating timer\n",
 			WBD_MINFO_IS_BH_OPT_TIMER(master_info->flags) ? " created" : "",
 			WBD_MINFO_IS_BH_OPT_RUNNING(master_info->flags) ? " running" : "",
-			WBD_MINFO_IS_BH_OPT_PENDING(master_info->flags) ? " marked as pending" : "");
+			WBD_MINFO_IS_BH_OPT_PENDING(master_info->flags) ? " marked pending" : "");
 		goto end;
 	}
 
@@ -2440,7 +2467,7 @@ wbd_master_create_bh_opt_timer(i5_dm_clients_type *i5_sta)
 		wbd_master_start_bh_opt_timeout, 0);
 
 	if (ret != WBDE_OK) {
-		WBD_WARNING("BKTNAME[%s] Interval[%d] Failed to create Backhaul Optimization timer\n",
+		WBD_WARNING("BKTNAME[%s] Interval[%d] Failed to create BH Optimization timer\n",
 			master_info->bkt_name, WBD_TM_BH_OPT);
 		blanket_nvram_prefix_set(NULL, WBD_NVRAM_BH_OPT_COMPLETE, "1");
 	} else {

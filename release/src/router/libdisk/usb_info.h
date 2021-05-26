@@ -38,10 +38,11 @@
 #define SYS_BLOCK "/sys/block"
 #define SYS_TTY "/sys/class/tty"
 #define SYS_NET "/sys/class/net"
-#if !defined(HND_ROUTER) && !defined(RTCONFIG_LANTIQ)
-#define SYS_USB "/sys/class/usb"
-#else
+#if (LINUX_KERNEL_VERSION >= KERNEL_VERSION(3,6,0)) || \
+    defined(HND_ROUTER) || defined(RTCONFIG_LANTIQ)
 #define SYS_USB "/sys/class/usbmisc"
+#else
+#define SYS_USB "/sys/class/usb"
 #endif
 #define SYS_SG "/sys/class/scsi_generic"
 #define USB_DEVICE_PATH "/sys/bus/usb/devices"
@@ -151,6 +152,9 @@ extern int isPrinterInterface(const char *interface_name);
 #endif
 extern int isStorageInterface(const char *interface_name);
 extern int isStorageDevice(const char *device_name);
+#if defined(RTCONFIG_USB_MODEM) || defined(RTCONFIG_USB_CDROM)
+extern int isCDROMDevice(const char *device_name);
+#endif
 #if defined(RTCONFIG_M2_SSD)
 extern int isM2SSDDevice(const char *device_name);
 #else

@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_scb_ratesel.c 780732 2019-11-01 17:07:12Z $
+ * $Id: wlc_scb_ratesel.c 789389 2020-07-27 23:27:12Z $
  */
 
 /**
@@ -791,6 +791,22 @@ wlc_scb_ratesel_get_opstats(wlc_ratesel_info_t *wrsi, struct scb *scb, uint8 ac,
 	return wlc_ratesel_get_opstats(state, flags);
 }
 
+#ifdef WL_VASIP_MU_INFO
+ratespec_t
+wlc_scb_get_sum_nss_mu_rate(wlc_ratesel_info_t *wrsi, struct scb *scb, uint8 ac,
+	uint8 *mu_clients_count, uint8 *mu_group_count)
+{
+	rcb_t *state;
+	state = wlc_scb_ratesel_get_cubby(wrsi, scb, ac);
+	if (state == NULL) {
+		WL_ERROR(("%s: null state wrsi = %p scb = %p ac = %d\n",
+		__FUNCTION__, OSL_OBFUSCATE_BUF(wrsi), OSL_OBFUSCATE_BUF(scb), ac));
+		return 0;
+	}
+	return wlc_ratesel_get_sum_nss_mu_rate(state, mu_clients_count, mu_group_count);
+}
+#endif // endif
+
 void
 wlc_scb_ratesel_probe_ready(wlc_ratesel_info_t *wrsi, struct scb *scb, uint16 frameid,
 	bool is_ampdu, uint8 ampdu_txretry, uint8 ac)
@@ -819,6 +835,11 @@ wlc_scb_ratesel_upd_txstatus_normalack(wlc_ratesel_info_t *wrsi, struct scb *scb
 	bool sgi, uint8 antselid, bool fbr, uint8 ac)
 {
 	rcb_t *state;
+
+	/* Skip ratesel update for scbs going through delete */
+	if (scb && SCB_DEL_IN_PROGRESS(scb)) {
+		return;
+	}
 
 	state = wlc_scb_ratesel_get_cubby(wrsi, scb, ac);
 	if (state == NULL) {
@@ -860,6 +881,11 @@ wlc_scb_ratesel_upd_txs_ampdu(wlc_ratesel_info_t *wrsi, struct scb *scb,
 	rcb_t *state;
 	rcb_itxs_t *rcb_itxs = NULL;
 
+	/* Skip ratesel update for scbs going through delete */
+	if (scb && SCB_DEL_IN_PROGRESS(scb)) {
+		return;
+	}
+
 	state = wlc_scb_ratesel_get_cubby(wrsi, scb, rs_txs->ac);
 	ASSERT(state);
 #if defined(WL_MU_TX)
@@ -886,6 +912,11 @@ wlc_scb_ratesel_upd_itxs(wlc_ratesel_info_t *wrsi, struct scb *scb,
 	rcb_t *state;
 	rcb_itxs_t *rcb_itxs = SCB_RATESEL_ITXS_CUBBY(wrsi, scb, rs_txs->ac);
 
+	/* Skip ratesel update for scbs going through delete */
+	if (scb && SCB_DEL_IN_PROGRESS(scb)) {
+		return;
+	}
+
 	state = wlc_scb_ratesel_get_cubby(wrsi, scb, rs_txs->ac);
 	ASSERT(state);
 
@@ -900,6 +931,11 @@ wlc_scb_ratesel_upd_txs_trig(wlc_ratesel_info_t *wrsi, struct scb *scb,
 	rcb_t *state;
 
 	BCM_REFERENCE(state);
+
+	/* Skip ratesel update for scbs going through delete */
+	if (scb && SCB_DEL_IN_PROGRESS(scb)) {
+		return;
+	}
 
 	state = wlc_scb_ratesel_get_cubby(wrsi, scb, 0);
 	ASSERT(state);
@@ -942,6 +978,10 @@ wlc_scb_ratesel_upd_txs_blockack(wlc_ratesel_info_t *wrsi, struct scb *scb, tx_s
 {
 	rcb_t *state;
 
+	/* Skip ratesel update for scbs going through delete */
+	if (scb && SCB_DEL_IN_PROGRESS(scb)) {
+		return;
+	}
 	state = wlc_scb_ratesel_get_cubby(wrsi, scb, ac);
 	ASSERT(state);
 
@@ -1452,6 +1492,7 @@ wlc_scb_ratesel_reset_vals(wlc_ratesel_info_t *wrsi, struct scb *scb, uint8 ac)
 	wlc_ratesel_lpc_init(state);
 	return;
 }
+#endif /* WL_LPC */
 
 void
 wlc_scb_ratesel_clr_cache(wlc_ratesel_info_t *wrsi, struct scb *scb, uint8 ac)
@@ -1460,7 +1501,6 @@ wlc_scb_ratesel_clr_cache(wlc_ratesel_info_t *wrsi, struct scb *scb, uint8 ac)
 	wlc_ratesel_clr_cache(state);
 	return;
 }
-#endif /* WL_LPC */
 
 /* Get current CLM enabled rates bitmap */
 static ppr_rateset_t *
@@ -1581,7 +1621,7 @@ wlc_scb_ratesel_ppr_upd(wlc_info_t *wlc)
 	wlc->wrsi->ppr_rates->txstreams = wlc->stf->txstreams;
 }
 
-#ifdef WLATF
+#if defined(WLATF) || defined(WLC_DTPC)
 /* Get the rate selection control block pointer from ratesel cubby */
 rcb_t *
 wlc_scb_ratesel_getrcb(wlc_info_t *wlc, struct scb *scb, uint ac)
@@ -1597,7 +1637,7 @@ wlc_scb_ratesel_getrcb(wlc_info_t *wlc, struct scb *scb, uint ac)
 	return (SCB_RATESEL_CUBBY(wrsi, scb, ac));
 }
 
-#endif /* WLATF */
+#endif /* WLATF || WLC_DTPC */
 
 static wl_tx_bw_t rspecbw_to_bcmbw(uint8 bw)
 {

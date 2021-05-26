@@ -96,9 +96,10 @@
 #include <wlc_mutx.h>
 #include <wlc_fifo.h>
 #include <wlc_musched.h>
-#ifdef WLTAF
+#ifdef WLTAF_ULMU
 #include <wlc_taf.h>
 #endif // endif
+#include <wlc_macdbg.h>
 
 /* forward declaration */
 #define ULMU_TRIG_USRCNT_MAX	8
@@ -112,6 +113,26 @@
 #define ULMU_RMEMIDX_LAST	(ULMU_RMEMIDX_FIRST + (AMT_IDX_ULOFDMA_RSVD_SIZE - 1))
 #define ULMU_USRCNT_MIN		2
 #define ULMU_MAX_ULC_SZ		32 /* max number of ULC resources */
+
+#define ULMU_TRIGGER_SF		6 /* 64 byte trigger unit */
+#define ULMU_TRIGGER_INT_1US	(1)	/* 1 us disables trigger delay by ucode */
+#define ULMU_TRIGGER_INT_AUTO	((uint16) -1) /* auto trigger interval scheme */
+
+#define ULSTS_FRAMEID_SHIFT		7
+#define ULSTS_UTXD_PAD			4
+
+#define ULMU_ACC_BUFSZ_MIN	(1 << ULMU_TRIGGER_SF) /* 64 byte trigger unit */
+#define ULMU_ACC_BUFSZ_MAX	(16 * 1024 * 1024) /* 16MB */
+#define ULMU_DRV_DEFAULT_BUFSZ	(2 * 1024 * 1024) /* 2MB */
+
+#define ULMU_RXMON_BYTECNT_INIT_TIME (50) /* 50 ms worth of bytes */
+#define ULMU_RXMON_FILL_THRSH (115) /* fill threshold, 90 % of 128 */
+#define ULMU_RXMON_RAVG_EXP (8)
+#define ULMU_RXMON_EVICT_THRSH (20)
+#define ULMU_RXMON_RATE_MULTIPLIER (1)
+#define ULMU_TRIG_WAIT_START_THRSH (1)
+#define ULMU_TRIG_WAIT_THRSH (2) /* 1x, 2x, 3x ... ms before sending next trigger */
+#define ULMU_ZERO_BYTES_THRSH (1)
 
 /* utxd commands for global update */
 #define ULMU_UTXD_GLBUPD	((D11_UCTX_CMD_GLBUPD << D11_UCTX_CMD_TYPE_SHIFT) & \
@@ -134,6 +155,23 @@
 #define ULMU_UTXD_USRDEL_SOFT	(ULMU_UTXD_USRDEL | D11_UCTXCMD_USRDEL_SOFT_MASK)
 
 #define ULMU_UTXDQ_PKTS_MAX	64
+
+/* pkt pool macros */
+#define ULMU_UTXD_POOL_PTR(ulmu)	(ulmu->wlc->pub->pktpool_utxd)
+#define ULMU_UTXD_POOL_SIZE		ULMU_UTXDQ_PKTS_MAX
+#define ULMU_UTXD_BUF_SIZE		160
+#define ULMU_UTXD_MAX_REF_CNT	2
+#ifdef WLTAF_ULMU
+#define ULMU_UTXD_FREE(osh, tag, p) \
+	({ \
+		ASSERT(tag->ref_cnt); \
+		tag->ref_cnt--; \
+		if (tag->ref_cnt == 0) \
+			PKTFREE(osh, p, TRUE); \
+	})
+#define ULMU_GET_TAG_FROM_UTXD_PKT(osh, p) \
+	(wlc_ulpkttag_t*) ((uint8 *)PKTDATA(osh, p) - WLULPKTTAGLEN)
+#endif // endif
 
 #define ULMU_NUM_MPDU_DLFT		128
 #define ULMU_NUM_MPDU_THRSH		64
@@ -251,10 +289,89 @@ typedef struct ulmu_drv_counters {
 	uint32 stop_byte_limit;		/* request terminated, bytelimit reached */
 	uint32 stop_qos_null;		/* request terminated, QoS NULL recvd */
 	uint32 stop_timeout;		/* request terminated, rxtimeout */
+	uint32 stop_suppress;		/* request terminated, suppressed */
 	uint32 stop_trigcnt;		/* request terminated, trig count exceeded */
 	uint32 stop_watchdog;		/* request terminated, watchdog fired */
 	uint32 stop_evicted;		/* request terminated, peer evicted */
 } ulmu_drv_counters_t;
+
+#ifdef WLTAF_ULMU
+/* TAF UL stats */
+typedef struct ulmu_taf_stats {
+	/* counters */
+	uint32 ntrig; /* number of trigger req sent */
+	uint32 nupd; /* number of trigger req sent */
+	uint32 nqosnull; /* number of qos null */
+	uint32 ntimeout; /* number of timeouts */
+	uint32 nsuppress; /* number of supress */
+
+	/* Byte counts */
+	uint64 bytes_rel;	/* total bytes released */
+	uint64 bytes_trigd;	/* total bytes triggered */
+	uint64 bytes_recvd; /* total bytes recvd */
+	uint32 rxmon_min; /* min byte cnt reported by rxmon */
+	uint32 rxmon_max; /* max byte cnt reported by rxmon */
+
+	/* duration */
+	uint64 usec_trigd; /*  total duration triggered */
+	uint64 usec_txdur; /*  total actual tx duration */
+	uint32 usec_qosnull; /* total qosnull duration */
+	uint32 usec_timeout; /* total timeout duration */
+	uint32 usec_suppress; /* total suppress duration */
+
+	/* evaluated stats */
+	/* trigger cnt */
+	uint32 trig_cnt; /* (# of trigger req sent by TAF */
+	/* nupd cnt */
+	uint32 upd_cnt; /* (# of trigger status recvd */
+
+	/* rxmon byte cnt */
+	uint32 rxmon_min_bytes; /* min byte cnt reported by rxmon */
+	uint32 rxmon_max_bytes; /* max byte cnt reported by rxmon */
+
+	/* averages */
+	/* avg bytes released by TAF per trigger req */
+	uint32 relbytes_per_trig;
+	/* avg duration released by TAF per trigger req */
+	uint32 reldur_per_trig;
+	/* avg. bytes actually recvd per trigger req sent by TAF */
+	uint32 rxbytes_per_trig;
+	/* avg. padded bytes per trigger req sent by TAF */
+	uint32 padded_bytes_per_trig;
+	/* avg. duration actually scheduled by ucode per trigger req by TAF */
+	uint32 txdur_per_trig;
+	/* number of qos null recvd out of total triggers */
+	uint32 qosnull_per_trig;
+	/* number of timeout recvd out of total triggers */
+	uint32 timeout_per_trig;
+	/* number of suppress recvd out of total triggers */
+	uint32 suppress_per_trig;
+
+	/* efficiency */
+	/* what % out of total bytes actually recvd is released by TAF */
+	uint64 relbytes;
+	/* what % out of total duration actually scheduled by ucode is released by TAF */
+	uint32 reldur;
+	/* % airtime unused due to qos nulls out of total airtime scheduled by ucode */
+	uint32 qosnull_airtime;
+	/* % airtime unused due to suppress out of total airtime scheduled by ucode */
+	uint32 suppress_airtime;
+	/* % airtime unused due to timeouts out of total airtime scheduled by ucode */
+	uint32 timeout_airtime;
+	/* % airtime padded out of total airtime scheduled by ucode */
+	uint32 padded_airtime;
+	/* % airtime unused , including due to qos nulls, out of total airtime scheduled by ucode */
+	uint32 unused_airtime;
+} ulmu_taf_stats_t;
+
+#define ULMU_TAF_SCB_STATS(ulmu_scb) (&(ulmu_scb)->scb_stats->taf_stats)
+
+#if defined(BCMDBG) || defined(UL_RU_STATS_DUMP)
+static int wlc_ulmu_taf_stats_upd(wlc_ulmu_info_t *ulmu, scb_t *scb);
+static int wlc_ulmu_taf_stats_reset(wlc_ulmu_info_t *ulmu, scb_t *scb);
+static void wlc_ulmu_taf_print_scb_stats(wlc_ulmu_info_t *ulmu, struct scb *scb, bcmstrbuf_t *b);
+#endif // endif
+#endif /* WLTAF_ULMU */
 
 typedef struct ulmu_rssi_stats {
 	int16 min_rssi; /* min rssi */
@@ -267,6 +384,8 @@ typedef struct ulmu_stats {
 	uint32 agglen;				/* sum mpdu len */
 	uint32 nupd;				/* total txstatus upd */
 	uint32 nfail;				/* counter for lcnt = 0 */
+	uint32 nadmit;				/* admission counter */
+	uint32 admit_dur;			/* total admission time */
 	uint32 nbadfcs;				/* counter for badfcs > 0 */
 	uint32 nvldrssi;			/* counter for rssi being valid */
 	uint32 txop;				/* avg TXOP */
@@ -281,6 +400,9 @@ typedef struct ulmu_stats {
 	uint16 mlen;
 #ifdef ULMU_DRV
 	ulmu_drv_counters_t	drv_counters;	/* Driver interface counterblock */
+#endif // endif
+#ifdef WLTAF_ULMU
+	ulmu_taf_stats_t	taf_stats;	/* Driver interface counterblock */
 #endif // endif
 } ulmu_stats_t;
 
@@ -298,7 +420,7 @@ typedef struct wlc_ulmu_info {
 	uint16	flags;
 	int	scbh;
 	int16	policy;
-	uint16	maxn[D11_REV128_BW_SZ];	/* maximum number of users triggered for ul ofdma tx */
+	uint8	maxn[D11_REV128_BW_SZ];	/* maximum number of users triggered for ul ofdma tx */
 	uint16	num_usrs;		/* number of users admitted to ul ofdma scheduler */
 	uint16	txlmt;
 	scb_t	*scb_list[ULMU_USRCNT_MAX];
@@ -308,7 +430,7 @@ typedef struct wlc_ulmu_info {
 	uint8	ulc_sz;
 	d11ulo_trig_txcfg_t txd;
 	ulmu_gstats_t gstats;
-	int8	num_scb_ulstats;
+	int16	num_scb_ulstats;
 	uint8	min_ulofdma_usrs;	/* minimum number of users to start ul ofdma */
 	uint16	csthr0;			/* min lsig len to not clear CS for basic/brp trig */
 	uint16	csthr1;			/* min lsig len to not clear CS for all other trig */
@@ -331,6 +453,15 @@ typedef struct wlc_ulmu_info {
 	uint16	g_ucfg;			/* global ucfg info */
 	/* driver UTXD trigger global configuration */
 	ulmu_drv_config_t drv_gconfig;
+#ifdef WLTAF_ULMU
+	uint8	bulk_commit;
+	uint8	ravg_exp;
+	uint8	evict_thrsh;
+	uint8	rate_mult;
+	uint8	zero_bytes_thrsh;
+	uint8	trig_wait_start_thrsh;
+	uint32	trig_wait_thrsh;
+#endif /* WLTAF_ULMU */
 } wlc_ulmu_info_t;
 
 #define ULMU_DRV_REQUEST_LISTSZ	8
@@ -427,6 +558,8 @@ typedef struct scb_ulmu {
 	uint16 bufsize;		/* expect size, i.e., number of KB to trigger */
 
 	/* admit / evict params */
+	bool	try_admit; /* flag to check if the admission attempt is in progress */
+	uint32	start_ts; /* timestamp of start of SU bytes rx */
 	uint32	last_rx_pkts;
 	uint8	idle_cnt;
 	uint8	qnullonly_cnt; /* consective number of qosnull only */
@@ -444,6 +577,7 @@ typedef struct scb_ulmu {
 	/* bytes tgs_recv_bytes */
 	uint32 tgs_recv_bytes;
 	uint32 su_recv_bytes;
+	uint32 su_recv_dur; /* time duration in us during which the su_recv_bytes was captured */
 	uint32 acc_bufsz; /* accumulated bytes */
 	uint32 mlenma;		/* sum mpdu len */
 	uint32 aggnma;		/* sum mpdu len */
@@ -454,10 +588,19 @@ typedef struct scb_ulmu {
 	/* reserved for future use */
 	uint32 reserved[2];
 
-#ifdef WLTAF
-	uint32 trig_bytes; /* trigger bytes */
-	uint32 trig_units; /* trigger bytes in time units */
-	uint32 bytes_recvd;
+#ifdef WLTAF_ULMU
+	uint32 last_trigd_bytes;
+	uint32 last_recvd_bytes;
+	uint32 pend_trig_cnt; /* pending trigger cnt */
+	uint32 rate; /* rate at which bytes are being received */
+	bool rate_init; /* flag to indicate if rate init is pending */
+	wlc_ravg_info_t rxmon_ravg_info;
+	uint32 prev_read_ts; /* timestamp of last time byte cnt was read */
+	uint8 rxmon_idle_cnt;
+	uint8 trig_wait_start_cnt;
+	bool trig_wait;
+	uint32 trig_wait_ts;
+	uint8 zero_bytes_cnt;
 #endif // endif
 } scb_ulmu_t;
 
@@ -513,8 +656,7 @@ static void wlc_ulmu_scb_dump(void *ctx, scb_t *scb, bcmstrbuf_t *b);
 #endif // endif
 static void wlc_ulmu_scb_sched_init(wlc_ulmu_info_t *ulmu, scb_t *scb);
 static bool wlc_ulmu_scb_eligible(wlc_ulmu_info_t *ulmu, scb_t* scb);
-static uint32 wlc_ulmu_prep_utxd(wlc_ulmu_info_t *ulmu, scb_t *scb, uint16 cmd);
-static int wlc_ulmu_post_utxd(wlc_ulmu_info_t *ulmu);
+static uint32 wlc_ulmu_prep_utxd(wlc_ulmu_info_t *ulmu, scb_t *scb, uint16 cmd, void *pkt);
 
 /* ul ofdma scb cubby */
 static int8 wlc_ulmu_scb_lkup(wlc_ulmu_info_t *ulmu, scb_t *scb);
@@ -559,7 +701,10 @@ static int wlc_ulmu_release_bytes(wlc_ulmu_info_t *ulmu, scb_t *scb, uint16 bufs
 #endif /* ULMU_DRV */
 static bool wlc_ulmu_drv_ucautotrigger(wlc_ulmu_info_t *ulmu, struct scb *scb);
 static void wlc_ulmu_scb_reqbytes_eval(wlc_ulmu_info_t *ulmu, scb_t *scb);
-
+#ifdef WLTAF_ULMU
+static uint32 wlc_ulmu_scb_reqbytes_get(wlc_ulmu_info_t *ulmu, scb_t *scb, bool eval);
+static void wlc_ulmu_taf_enable(wlc_ulmu_info_t *ulmu, scb_t *scb, bool enable);
+#endif // endif
 /* iovar table */
 enum {
 	IOV_UMUSCHEDULER	= 0,
@@ -650,6 +795,26 @@ wlc_ulmu_cmd_get_dispatch(wlc_ulmu_info_t *ulmu, wl_musched_cmd_params_t *params
 			ulmu->ul_weight = wlc_read_shm(wlc, M_TXTRIGWT1_VAL(wlc));
 		}
 		bcm_bprintf(&bstr, "%d\n", ulmu->ul_weight);
+#ifdef WLTAF_ULMU
+	} else if (!strncmp(params->keystr, "ravg_exp",
+		sizeof("ravg_exp") - 1)) {
+		bcm_bprintf(&bstr, "%d\n", ulmu->ravg_exp);
+	} else if (!strncmp(params->keystr, "wait_cnt",
+		sizeof("wait_cnt") - 1)) {
+		bcm_bprintf(&bstr, "%d\n", ulmu->trig_wait_start_thrsh);
+	} else if (!strncmp(params->keystr, "evict_thrsh",
+		sizeof("evict_thrsh") - 1)) {
+		bcm_bprintf(&bstr, "%d\n", ulmu->evict_thrsh);
+	} else if (!strncmp(params->keystr, "zero_bytes_thrsh",
+		sizeof("zero_bytes_thrsh") - 1)) {
+		bcm_bprintf(&bstr, "%d\n", ulmu->zero_bytes_thrsh);
+	} else if (!strncmp(params->keystr, "rate_mult",
+		sizeof("rate_mult") - 1)) {
+		bcm_bprintf(&bstr, "%d\n", ulmu->rate_mult);
+	} else if (!strncmp(params->keystr, "trig_wait_thrsh",
+		sizeof("trig_wait_thrsh") - 1)) {
+		bcm_bprintf(&bstr, "%d\n", ulmu->trig_wait_thrsh >> 10);
+#endif /* WLTAF_ULMU */
 	} else {
 		wlc_ulmu_dump_ulofdma(ulmu, &bstr, WL_MUSCHED_FLAGS_VERBOSE(params));
 	}
@@ -967,14 +1132,14 @@ wlc_ulmu_cmd_set_dispatch(wlc_ulmu_info_t *ulmu, wl_musched_cmd_params_t *params
 	} else if (!strncmp(params->keystr, "post", strlen("post"))) {
 		upd = FALSE;
 		for (i = 0; i < val16; i++) {
-			wlc_ulmu_prep_utxd(ulmu, NULL, ULMU_UTXD_USRADD_ALL);
+			wlc_ulmu_prep_utxd(ulmu, NULL, ULMU_UTXD_USRADD_ALL, NULL);
 		}
 		err = wlc_ulmu_post_utxd(ulmu);
 	} else if (!strncmp(params->keystr, "enable", strlen("enable"))) {
 		upd = FALSE;
 		if (WL_MUSCHED_FLAGS_MACADDR(params) && (ULMU_SCHPOS_INVLD !=
 			wlc_ulmu_scb_onaddr_lkup(ulmu, &params->ea, &scb))) {
-			wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRADD_ALL);
+			wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRADD_ALL, NULL);
 			err = wlc_ulmu_post_utxd(ulmu);
 		}
 	} else if (!strncmp(params->keystr, "pos", strlen("pos"))) {
@@ -984,7 +1149,7 @@ wlc_ulmu_cmd_set_dispatch(wlc_ulmu_info_t *ulmu, wl_musched_cmd_params_t *params
 			wlc_ulmu_scb_onaddr_lkup(ulmu, &params->ea, &scb)) && scb) {
 			ulmu_scb = SCB_ULMU(ulmu, scb);
 			ulmu_scb->rmemidx = ULMU_RMEMIDX_FIRST + val16;
-			wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRADD_ALL);
+			wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRADD_ALL, NULL);
 			err = wlc_ulmu_post_utxd(ulmu);
 		}
 	} else if (!strncmp(params->keystr, "test", strlen("test"))) {
@@ -993,7 +1158,7 @@ wlc_ulmu_cmd_set_dispatch(wlc_ulmu_info_t *ulmu, wl_musched_cmd_params_t *params
 			if ((scb = ulmu->scb_list[schpos]) != NULL) {
 				ulmu_scb = SCB_ULMU(ulmu, scb);
 				ulmu_scb->bufsize = ULMU_BUFSZ_DFLT;
-				wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRADD_ALL);
+				wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRADD_ALL, NULL);
 			}
 		}
 		wlc_ulmu_post_utxd(ulmu);
@@ -1060,6 +1225,44 @@ wlc_ulmu_cmd_set_dispatch(wlc_ulmu_info_t *ulmu, wl_musched_cmd_params_t *params
 		} else {
 			err = BCME_NOCLK;
 		}
+#ifdef WLTAF_ULMU
+	} else if (!strncmp(params->keystr, "ravg_exp", sizeof("ravg_exp") - 1)) {
+		if (val16 >= 0 && (val16 <= (uint8) -1)) {
+			ulmu->ravg_exp = val16;
+		} else {
+			return BCME_RANGE;
+		}
+	} else if (!strncmp(params->keystr, "evict_thrsh", sizeof("evict_thrsh") - 1)) {
+		if (val16 >= 0 && (val16 <= (uint8) -1)) {
+			ulmu->evict_thrsh = val16;
+		} else {
+			return BCME_RANGE;
+		}
+	} else if (!strncmp(params->keystr, "wait_cnt", sizeof("wait_cnt") - 1)) {
+		if (val16 >= 0 && (val16 <= (uint8) -1)) {
+			ulmu->trig_wait_start_thrsh = val16;
+		} else {
+			return BCME_RANGE;
+		}
+	} else if (!strncmp(params->keystr, "zero_bytes_thrsh", sizeof("zero_bytes_thrsh") - 1)) {
+		if (val16 >= 0 && (val16 <= (uint8) -1)) {
+			ulmu->zero_bytes_thrsh = val16;
+		} else {
+			return BCME_RANGE;
+		}
+	} else if (!strncmp(params->keystr, "rate_mult", sizeof("rate_mult") - 1)) {
+		if (val16 >= 0 && (val16 <= (uint8) -1)) {
+			ulmu->rate_mult = val16;
+		} else {
+			return BCME_RANGE;
+		}
+	} else if (!strncmp(params->keystr, "trig_wait_thrsh", sizeof("trig_wait_thrsh") - 1)) {
+		if (val16 >= 0 && (val16 <= (uint8) -1)) {
+			ulmu->trig_wait_thrsh = val16 << 10; /* convert to us */
+		} else {
+			return BCME_RANGE;
+		}
+#endif /* WLTAF_ULMU */
 	} else {
 		upd = FALSE;
 		err = BCME_BADARG;
@@ -1138,9 +1341,14 @@ wlc_ulmu_wlc_init(void *ctx)
 	wlc->ulmu->txd.chanspec = wlc->home_chanspec;
 	wlc_ulmu_cfg_commit(ulmu);
 	wlc_ulmu_csreq_commit(ulmu);
+	wlc_ulmu_maxn_set(ulmu);
 
 	wlc_write_shm(wlc, M_TXTRIGWT0_VAL(wlc), ulmu->dl_weight);
 	wlc_write_shm(wlc, M_TXTRIGWT1_VAL(wlc), ulmu->ul_weight);
+
+#ifdef WLTAF_ULMU
+	wlc_taf_set_ulofdma_maxn(wlc, &ulmu->maxn);
+#endif // endif
 
 	return err;
 }
@@ -1180,7 +1388,7 @@ wlc_ulmu_watchdog(void *mi)
 	wlc_info_t *wlc = ulmu->wlc;
 	scb_t *scb;
 	scb_iter_t scbiter;
-	int rssi, admit_cnt = 0;
+	int admit_cnt = 0;
 	scb_ulmu_t* ulmu_scb;
 	uint32 last_rx_pkts;
 
@@ -1201,9 +1409,18 @@ wlc_ulmu_watchdog(void *mi)
 
 		last_rx_pkts = ulmu_scb->last_rx_pkts;
 		ulmu_scb->last_rx_pkts = scb->scb_stats.rx_ucast_pkts;
-		ulmu_scb->su_recv_bytes = wlc_ampdu_ulmu_reqbytes_get(wlc->ampdu_rx, scb);
-		ulmu_scb->rx_data = ((uint32)scb->scb_stats.rx_ucast_pkts - (uint32)last_rx_pkts >=
+		ulmu_scb->rx_data =
+			(((uint32)scb->scb_stats.rx_ucast_pkts - (uint32)last_rx_pkts) >=
 			ulmu->rx_pktcnt_thrsh);
+
+#ifdef WLTAF_ULMU
+		/* evict if rate, byte cnt are 0 and no utxd in flight */
+		if (wlc_taf_ul_enabled(wlc->taf_handle) &&
+			!ulmu_scb->acc_bufsz && !ulmu_scb->rate && !ulmu_scb->pend_trig_cnt &&
+			(ulmu_scb->rxmon_idle_cnt > ulmu->evict_thrsh)) {
+			ulmu_scb->rx_data = FALSE;
+		}
+#endif // endif
 		/* unconditionally admit if always_admit == 1 or trigger-enabled twt user */
 		if ((ulmu->always_admit != ULMU_ADMIT_ALWAYS) &&
 			!wlc_twt_scb_is_trig_enab(wlc->twti, scb) &&
@@ -1219,9 +1436,9 @@ wlc_ulmu_watchdog(void *mi)
 			if (!ulmu_scb) {
 				continue;
 			}
+
 			wlc_ulmu_admit_clients(wlc, scb, FALSE);
 		}
-
 		return;
 	}
 
@@ -1259,46 +1476,17 @@ wlc_ulmu_watchdog(void *mi)
 			/* if always_admit == 2, admit TWT users only */
 			if (ulmu_scb->idle_cnt >= ulmu->idle_prd ||
 				ulmu->always_admit == ULMU_ADMIT_TWT_ONLY) {
+#ifdef WLTAF_ULMU
+				WL_TAFF(ulmu->wlc,
+				MACF" trig_wait_start_cnt %d trig_wait %d zero_bytes_cnt %d "
+					"rxmon_idle_cnt %d idle_cnt %d\n",
+					ETHER_TO_MACF(scb->ea), ulmu_scb->trig_wait_start_cnt,
+					ulmu_scb->trig_wait, ulmu_scb->zero_bytes_cnt,
+					ulmu_scb->rxmon_idle_cnt, ulmu_scb->idle_cnt);
+#endif // endif
 				if (!wlc_ulmu_admit_clients(wlc, scb, FALSE)) {
 					wlc_ulmu_oper_state_upd(wlc->ulmu, scb, ULMU_SCB_INIT);
 				}
-			}
-		}
-	}
-	/* admission */
-	FOREACHSCB(wlc->scbstate, &scbiter, scb) {
-		if (!scb || !SCB_ASSOCIATED(scb) || !SCB_HE_CAP(scb) || SCB_INTERNAL(scb)) {
-			continue;
-		}
-
-		ulmu_scb = SCB_ULMU(ulmu, scb);
-		if (!ulmu_scb) {
-			continue;
-		}
-
-		if (SCB_ULOFDMA(scb)) {
-			continue;
-		}
-
-		if (ulmu->always_admit != ULMU_ADMIT_ALWAYS &&
-			!wlc_twt_scb_is_trig_enab(wlc->twti, scb) &&
-			!wlc_scb_ampdurx_on(scb) && ulmu->rx_pktcnt_thrsh) {
-			wlc_ulmu_oper_state_upd(wlc->ulmu, scb, ULMU_SCB_INIT);
-			continue;
-		}
-
-		rssi = wlc_lq_rssi_get(wlc, SCB_BSSCFG(scb), scb);
-		/* let's admit if not admitted yet */
-		/* admit criteria */
-		/* 1) a-mpdu traffic meets certain threshold
-		   2) rssi > min_rssi
-		   3) trigger-enabled twt user
-		*/
-		if ((ulmu->always_admit == ULMU_ADMIT_ALWAYS) ||
-			(ulmu_scb->rx_data && rssi > ulmu->min_rssi) ||
-			wlc_twt_scb_is_trig_enab(wlc->twti, scb)) {
-			if (!wlc_ulmu_admit_clients(wlc, scb, TRUE)) {
-				wlc_ulmu_oper_state_upd(wlc->ulmu, scb, ULMU_SCB_INIT);
 			}
 		}
 	}
@@ -1460,17 +1648,6 @@ wlc_ulmu_dump_ul_stats(wlc_ulmu_info_t *ulmu, bcmstrbuf_t *b)
 				(scb_bw == BW_160MHZ));
 		}
 	}
-
-	/* 3. dump per user PER info */
-	FOREACHSCB(wlc->scbstate, &scbiter, scb) {
-		if (!scb || !SCB_ASSOCIATED(scb) || !SCB_HE_CAP(scb)) {
-			continue;
-		}
-		ulmu_scb = SCB_ULMU(ulmu, scb);
-		if (ulmu_scb && ulmu_scb->scb_stats) {
-			wlc_ulmu_print_stats(ulmu_scb, scb, b);
-		}
-	}
 }
 
 int
@@ -1592,6 +1769,7 @@ wlc_ulmu_print_stats(scb_ulmu_t* ulmu_scb, scb_t *scb, bcmstrbuf_t *b)
 	uint32 total = 0, tmp_aggnum, tmp_agglen, tmp_txop;
 	uint32 ngoodfcs, nposlcnt;
 	int32 tmp;
+	uint32 avg_admit_dur;
 
 	if (!ul_stats) {
 		return;
@@ -1644,7 +1822,8 @@ wlc_ulmu_print_stats(scb_ulmu_t* ulmu_scb, scb_t *scb, bcmstrbuf_t *b)
 	bcm_bprintf(b, "  total: qosnull %d ", ul_stats->qncnt);
 	bcm_bprintf(b, "lcnt %d ", ul_stats->sum_lcnt);
 	bcm_bprintf(b, "nfail %d ", ul_stats->nfail);
-	bcm_bprintf(b, "nupd %d\n", ul_stats->nupd);
+	bcm_bprintf(b, "nupd %d ", ul_stats->nupd);
+	bcm_bprintf(b, "nadmit %d\n", ul_stats->nadmit);
 	if (nposlcnt) {
 		tmp_aggnum = ul_stats->sum_lcnt / nposlcnt;
 	} else {
@@ -1657,10 +1836,14 @@ wlc_ulmu_print_stats(scb_ulmu_t* ulmu_scb, scb_t *scb, bcmstrbuf_t *b)
 		tmp_agglen = 0;
 		tmp_txop = 0;
 	}
-	bcm_bprintf(b, "  avg  : aggnum %d agglen %d txdur %d\n",
-		tmp_aggnum, tmp_agglen, tmp_txop);
+	avg_admit_dur = ul_stats->nadmit ? ul_stats->admit_dur / ul_stats->nadmit : 0;
+	bcm_bprintf(b, "  avg  : aggnum %d agglen %d txdur %d admit_dur %d ms\n",
+		tmp_aggnum, tmp_agglen, tmp_txop, avg_admit_dur);
 
 	wlc_ulmu_drv_print_scb_stats(ulmu_scb, scb, b);
+#ifdef WLTAF_ULMU
+	wlc_ulmu_taf_print_scb_stats(ulmu_scb->ulmu, scb, b);
+#endif // endif
 	bcm_bprintf(b, "  avg rxmpduperampdu %d rxmpdulen %d\n",
 		ulmu_scb->aggnma >> ULMU_NF_AGGN,
 		ulmu_scb->mlenma >> ULMU_NF_AGGLEN);
@@ -1712,6 +1895,54 @@ static int
 wlc_ulmu_dump(void *ctx, bcmstrbuf_t *b)
 {
 	wlc_ulmu_info_t *ulmu = ctx;
+	wlc_info_t *wlc = ulmu->wlc;
+	scb_iter_t scbiter;
+	scb_t *scb;
+	scb_ulmu_t* ulmu_scb;
+	char *args = ulmu->wlc->dump_args;
+
+	if (args) {
+		char* p = bcmstrtok(&args, " ", 0);
+
+		if (p && (p[0] == '-') && (p[1] == 'm')) {
+			struct ether_addr ea;
+
+			p = bcmstrtok(&args, " ", 0);
+			bcm_ether_atoe(p, &ea);
+			scb = wlc_scbfind(wlc, wlc->cfg, &ea);
+
+			if (!scb || !SCB_ASSOCIATED(scb) || !SCB_HE_CAP(scb)) {
+				return BCME_OK;
+			}
+			ulmu_scb = SCB_ULMU(ulmu, scb);
+			if (ulmu_scb && ulmu_scb->scb_stats) {
+				wlc_ulmu_print_stats(ulmu_scb, scb, b);
+			}
+			return BCME_OK;
+		} else if (p && (p[0] == '-') && (p[1] == 'a')) {
+
+			/* dump per user PER info */
+			FOREACHSCB(wlc->scbstate, &scbiter, scb) {
+				if (!scb || !SCB_ASSOCIATED(scb) || !SCB_HE_CAP(scb)) {
+					continue;
+				}
+				ulmu_scb = SCB_ULMU(ulmu, scb);
+				if (ulmu_scb && ulmu_scb->scb_stats) {
+					wlc_ulmu_print_stats(ulmu_scb, scb, b);
+				}
+			}
+			return BCME_OK;
+		} else if (p && (p[0] == '-') && (p[1] == 'h')) {
+
+			bcm_bprintf(b, "dump umsched optional params (space separated): ");
+			bcm_bprintf(b, "[-h -m -a]\n");
+			bcm_bprintf(b, "-h\t(this) help output\n");
+			bcm_bprintf(b, "-m <addr>\tStats dump for <addr>\n");
+			bcm_bprintf(b, "-a\tStats dump for all admitted STAs excluding the "
+				"common info\n");
+			return BCME_OK;
+		}
+	}
 
 	if (HE_ULMU_ENAB(ulmu->wlc->pub)) {
 		wlc_ulmu_dump_ulofdma(ulmu, b, TRUE);
@@ -1748,25 +1979,27 @@ wlc_ulmu_dump_clr(void *ctx)
 				PHYRSSI_2SCOMPLEMENT << OPERAND_SHIFT;
 			ulmu_scb->scb_stats->rssi_stats.max_rssi =
 				-PHYRSSI_2SCOMPLEMENT << OPERAND_SHIFT;
+#ifdef WLTAF_ULMU
+			wlc_ulmu_taf_stats_reset(ulmu, scb);
+#endif // endif
 		}
 	}
 	return BCME_OK;
 }
 #endif // endif
 
-#define ULSTS_FRAMEID_SHIFT		7
-#define ULSTS_UTXD_PAD			4
-
 #ifdef ULMU_DRV
 #define ULSTS_STOP_BYTECOUNT	0x004
 #define ULSTS_STOP_QOSNULL		0x002
 #define ULSTS_STOP_TIMEOUT		0x001
 #define ULSTS_STOP_TRIGCNT		0x008
+#define ULSTS_STOP_SUPP			0x010
 
 /* Driver ULMU UTXD STOP reason macros */
 #define ULMU_DRV_STOP_BYTES(s)		((s) & ULSTS_STOP_BYTECOUNT)
 #define ULMU_DRV_STOP_QOSNULL(s)	((s) & ULSTS_STOP_QOSNULL)
 #define ULMU_DRV_STOP_TIMEOUT(s)	((s) & ULSTS_STOP_TIMEOUT)
+#define ULMU_DRV_STOP_SUPPRESS(s)	((s) & ULSTS_STOP_SUPP)
 #define ULMU_DRV_STOP_TRIGCNT(s)	((s) & ULSTS_STOP_TRIGCNT)
 #define ULMU_DRV_STOP(s)			((s) >= ULMU_STATUS_COMPLETE)
 
@@ -1781,10 +2014,6 @@ wlc_ulmu_dump_clr(void *ctx)
 #define DRV_CTX_TI(ctx) (&(ctx)->info)
 #define DRV_CTX_ACCMULATOR(ctx) (&(ctx)->accmulator)
 #define DRV_CTX_FID(ctx) ((ctx)->frameid)
-
-#define ULMU_ACC_BUFSZ_MIN	(64)
-#define ULMU_ACC_BUFSZ_MAX	(16 * 1024 * 1024) /* 16MB */
-#define ULMU_DRV_DEFAULT_BUFSZ	(2 * 1024 * 1024) /* 2MB */
 
 /* Driver uplink module attach init */
 static void
@@ -1852,7 +2081,7 @@ wlc_ulmu_drv_req_list_init(wlc_info_t *wlc, ulmu_drv_scbinfo *ulinfo, uint32 nen
 	cur--;
 	cur->next = list->head;
 
-	WL_MUTX(("%s: SCB:"MACF" List head=0x%p List tail=0x%p\n\n",
+	WL_ULO(("%s: SCB:"MACF" List head=0x%p List tail=0x%p\n\n",
 		__FUNCTION__, ETHER_TO_MACF(ulinfo->scb->ea),
 		list->head, list->tail));
 	DRV_CTX_LIST(ulinfo) = list;
@@ -1904,7 +2133,7 @@ wlc_ulmu_drv_save_trigger_context(ulmu_drv_scbinfo *ulinfo,
 	list->next_sequence_number++;
 	list->len++;
 
-	WL_MUTX(("%s: SCB:"MACF" olen=%d nlen=%d seq=%d slot=%d\n",
+	WL_ULO(("%s: SCB:"MACF" olen=%d nlen=%d seq=%d slot=%d\n",
 		__FUNCTION__, ETHER_TO_MACF(ulinfo->scb->ea),
 		olen, list->len, list->head->sequence_number, list->head->slot_number));
 
@@ -1929,7 +2158,7 @@ wlc_ulmu_drv_get_next_trigger(ulmu_drv_scbinfo *ulinfo)
 
 	entry = list->tail;
 
-	WL_MUTX(("%s: SCB:"MACF" len=%d seq=%d slot=%d\n",
+	WL_ULO(("%s: SCB:"MACF" len=%d seq=%d slot=%d\n",
 		__FUNCTION__, ETHER_TO_MACF(ulinfo->scb->ea),
 		list->len, entry->sequence_number, entry->slot_number));
 
@@ -1967,7 +2196,7 @@ wlc_ulmu_drv_free_trigger(ulmu_drv_scbinfo *ulinfo)
 		list->tail = list->tail->next;
 	}
 
-	WL_MUTX(("%s: SCB:"MACF" seq=%d len=%d->%d slot=%d->%d\n",
+	WL_ULO(("%s: SCB:"MACF" seq=%d len=%d->%d slot=%d->%d\n",
 		__FUNCTION__, ETHER_TO_MACF(ulinfo->scb->ea),
 		entry->sequence_number, olen, list->len,
 		entry->slot_number, list->tail->slot_number));
@@ -1995,7 +2224,7 @@ wlc_ulmu_drv_scb_deinit(wlc_ulmu_info_t *ulmu, struct scb *scb)
 	wlc_ulmu_drv_req_list_deinit(ulmu->wlc, ulinfo);
 
 	MFREE(ulmu->wlc->osh, ulinfo, sizeof(*ulinfo));
-	WL_MUTX(("%s: SCB:"MACF" \n", __FUNCTION__, ETHER_TO_MACF(ulinfo->scb->ea)));
+	WL_ULO(("%s: SCB:"MACF" \n", __FUNCTION__, ETHER_TO_MACF(ulinfo->scb->ea)));
 }
 
 /* Initialize scb uplink context */
@@ -2022,7 +2251,7 @@ wlc_ulmu_drv_scb_init(wlc_ulmu_info_t *ulmu, struct scb *scb)
 
 	ulinfo = MALLOCZ(ulmu->wlc->osh, sizeof(*ulinfo));
 	if (ulinfo == NULL) {
-		WL_MUTX(("%s: SCB:"MACF" Failed to allocate %d bytes for ulinfo\n",
+		WL_ULO(("%s: SCB:"MACF" Failed to allocate %d bytes for ulinfo\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea), (int)sizeof(*ulinfo)));
 		return BCME_NOMEM;
 	}
@@ -2039,7 +2268,7 @@ wlc_ulmu_drv_scb_init(wlc_ulmu_info_t *ulmu, struct scb *scb)
 		DRV_SCB_ULINFO(ulmu_scb) = ulinfo;
 	}
 
-	WL_MUTX(("%s: SCB:"MACF" \n", __FUNCTION__, ETHER_TO_MACF(scb->ea)));
+	WL_ULO(("%s: SCB:"MACF" \n", __FUNCTION__, ETHER_TO_MACF(scb->ea)));
 
 	return ret;
 }
@@ -2092,7 +2321,7 @@ wlc_ulmu_drv_next_bytecount(uint32 maxcount, uint32 curr_count, uint32 delta)
 	 */
 	newcount = (1 + (curr_count/delta)) * delta;
 	newcount = (newcount < maxcount) ? newcount : maxcount;
-	WL_MUTX(("%s: max:%d cur:%d new:%d delta:%d\n",
+	WL_ULO(("%s: max:%d cur:%d new:%d delta:%d\n",
 		__FUNCTION__, maxcount, curr_count, newcount, delta));
 
 	return (newcount);
@@ -2212,7 +2441,7 @@ wlc_ulmu_drv_del_usr(wlc_info_t *wlc, struct scb *scb, scb_ulmu_t *ulmu_scb)
 	/* Reset start sequence number for UTXD requests */
 	DRV_CTX_LIST(ulinfo)->next_sequence_number = 1;
 
-	WL_MUTX(("%s: SCB:"MACF"\n", __FUNCTION__, ETHER_TO_MACF(scb->ea)));
+	WL_ULO(("%s: SCB:"MACF"\n", __FUNCTION__, ETHER_TO_MACF(scb->ea)));
 }
 
 static void
@@ -2258,16 +2487,17 @@ wlc_ulmu_drv_queue_utxd(wlc_ulmu_info_t *ulmu,
 		DRV_CTX_TI(entry)->trigger_bytes);
 
 	/* Queue the UTXD to ucode, using run to complete mode */
-	ulmu_scb->bufsize = (DRV_CTX_TI(entry)->trigger_bytes >> 10);
-	DRV_CTX_FID(entry) = wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRUPD_R2C);
+	ulmu_scb->bufsize = (DRV_CTX_TI(entry)->trigger_bytes >> ULMU_TRIGGER_SF);
+	DRV_CTX_FID(entry) = wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRUPD_R2C, ti_data->pkt);
 
-	WL_MUTX(("%s: SCB:"MACF" fid=0x%x request_bytes=%d seqno=%d slot=%d\n",
+	WL_ULO(("%s: SCB:"MACF" fid=0x%x request_bytes=%d seqno=%d slot=%d post=%d\n",
 			__FUNCTION__, ETHER_TO_MACF(scb->ea),
 			DRV_CTX_FID(entry),
 			DRV_CTX_TI(entry)->trigger_bytes, DRV_CTX_SEQNO(entry),
-			DRV_CTX_SLOTNO(entry)));
+			DRV_CTX_SLOTNO(entry),
+			ti_data->post_utxd));
 
-	return wlc_ulmu_post_utxd(ulmu);
+	return ((ti_data->post_utxd) ? wlc_ulmu_post_utxd(ulmu) : BCME_OK);
 }
 
 static int
@@ -2288,14 +2518,14 @@ wlc_ulmu_drv_packet_trigger_request(wlc_info_t *wlc, struct scb *scb,
 	ASSERT(ulmu_scb);
 
 	if (!ULMU_IS_UTXD(ulmu->mode)) {
-		WL_MUTX(("%s: SCB:"MACF" UTXD mode not enabled\n",
+		WL_ULO(("%s: SCB:"MACF" UTXD mode not enabled\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea)));
 		return BCME_DISABLED;
 	}
 
 	/* RXMONITOR admits the user, do not proceed unless client is already admitted */
 	if (ulmu_scb->state != ULMU_SCB_ADMT) {
-		WL_MUTX(("%s: SCB:"MACF" not admitted for uplink\n",
+		WL_ULO(("%s: SCB:"MACF" not admitted for uplink\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea)));
 		return BCME_NOT_ADMITTED;
 	}
@@ -2385,7 +2615,7 @@ wlc_ulmu_drv_process_utxd_status(wlc_ulmu_info_t *ulmu, ulmu_drv_utxd_status_t *
 	if (ulinfo->current_req == NULL) {
 		WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->no_request);
 		/* No more saved uplink requests */
-		WL_MUTX(("%s: SCB:"MACF" Missing trigger, rc=0x%x qn=%d "
+		WL_ERROR(("%s: SCB:"MACF" Missing trigger, rc=0x%x qn=%d "
 			"fid=0x%x cp=%d pkts=%d rate=(%d/%d)\n",
 			__FUNCTION__, ETHER_TO_MACF(scb->ea),
 			status->return_status, status->qn_count,
@@ -2400,12 +2630,13 @@ wlc_ulmu_drv_process_utxd_status(wlc_ulmu_info_t *ulmu, ulmu_drv_utxd_status_t *
 	if (ti == NULL) {
 		WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->spurious_callback);
 		/* No more saved uplink requests */
-		WL_MUTX(("%s: SCB:"MACF" Spurious request, missing trigger info\n",
+		WL_ULO(("%s: SCB:"MACF" Spurious request, missing trigger info\n",
 			__FUNCTION__, ETHER_TO_MACF(scb->ea)));
 		return;
 	}
 
 	doCallback = (ti->callback_function != NULL);
+	ASSERT(doCallback);
 
 	accum = DRV_CTX_ACCMULATOR(entry);
 	ASSERT(accum);
@@ -2420,6 +2651,8 @@ wlc_ulmu_drv_process_utxd_status(wlc_ulmu_info_t *ulmu, ulmu_drv_utxd_status_t *
 
 	if (status->frameid != DRV_CTX_FID(entry)) {
 		WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->fid_mismatch);
+		WL_ERROR(("SCB: "MACF" fid mismatch %d\n",
+			ETHER_TO_MACF(scb->ea), DRV_SCB_COUNTERS(ulmu_scb)->fid_mismatch));
 		fm = TRUE;
 	}
 
@@ -2433,6 +2666,21 @@ wlc_ulmu_drv_process_utxd_status(wlc_ulmu_info_t *ulmu, ulmu_drv_utxd_status_t *
 	} else if (ulmu_scb->state != ULMU_SCB_ADMT) {
 		WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->stop_evicted);
 		return_code = ULMU_STATUS_NOTADMITTED;
+	} else if (ULMU_DRV_STOP_QOSNULL(status_code)) {
+	/* uCode terminates the UTXD request and
+	 * indicates status 0x2
+	 */
+		WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->stop_qos_null);
+		return_code = ULMU_STATUS_QOSNULL;
+	} else if (ULMU_DRV_STOP_TIMEOUT(status_code)) {
+		WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->stop_timeout);
+		return_code = ULMU_STATUS_TIMEOUT;
+	} else if (ULMU_DRV_STOP_SUPPRESS(status_code)) {
+		WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->stop_suppress);
+		return_code = ULMU_STATUS_SUPPRESS;
+	} else if (ULMU_DRV_STOP_TRIGCNT(status_code)) {
+		WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->stop_trigcnt);
+		return_code = ULMU_STATUS_TRIGCNT;
 	} else if (accum->bytes_completed >= accum->next_bytecount) {
 		/* Calculate next threshold if multi-callback */
 		if (ti->multi_callback) {
@@ -2448,18 +2696,6 @@ wlc_ulmu_drv_process_utxd_status(wlc_ulmu_info_t *ulmu, ulmu_drv_utxd_status_t *
 			/* Set next threshold to above requested in trigger */
 			accum->next_bytecount = (uint32)(-1);
 		}
-	} else if (ULMU_DRV_STOP_QOSNULL(status_code)) {
-	/* uCode terminates the UTXD request and
-	 * indicates status 0x2
-	 */
-		WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->stop_qos_null);
-		return_code = ULMU_STATUS_QOSNULL;
-	} else if (ULMU_DRV_STOP_TIMEOUT(status_code)) {
-		WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->stop_timeout);
-		return_code = ULMU_STATUS_TIMEOUT;
-	} else if (ULMU_DRV_STOP_TRIGCNT(status_code)) {
-		WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->stop_trigcnt);
-		return_code = ULMU_STATUS_TRIGCNT;
 	} else {
 		doCallback = FALSE;
 		if (accum->bytes_completed >= ti->trigger_bytes) {
@@ -2476,7 +2712,7 @@ wlc_ulmu_drv_process_utxd_status(wlc_ulmu_info_t *ulmu, ulmu_drv_utxd_status_t *
 		uint32 avglen = (accum->npkts) ?
 			(accum->bytes_completed/accum->npkts) : 0;
 
-		WL_MUTX(("%s: SCB:"MACF" Invoke callback cb:0x%p\n",
+		WL_ULO(("%s: SCB:"MACF" Invoke callback cb:0x%p\n",
 			__FUNCTION__, ETHER_TO_MACF(scb->ea),
 			ti->callback_function));
 
@@ -2489,7 +2725,7 @@ wlc_ulmu_drv_process_utxd_status(wlc_ulmu_info_t *ulmu, ulmu_drv_utxd_status_t *
 		WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->no_callback);
 	}
 
-	WL_MUTX(("%s: SCB:"MACF" fid(u/t)=(0x%x/0x%x) fm:%d seq=%d slot=%d rc=%d(0x%x) rate=(%d/%d)"
+	WL_ULO(("%s: SCB:"MACF" fid(u/t)=(0x%x/0x%x) fm:%d seq=%d slot=%d rc=%d(0x%x) rate=(%d/%d)"
 			" bytes(rq=%d cp=%d  ac=%d nx=%d) qn=%d cb(%d/%d)\n",
 			__FUNCTION__, ETHER_TO_MACF(scb->ea),
 			DRV_CTX_FID(entry), status->frameid, fm, DRV_CTX_SEQNO(entry),
@@ -2503,7 +2739,7 @@ wlc_ulmu_drv_process_utxd_status(wlc_ulmu_info_t *ulmu, ulmu_drv_utxd_status_t *
 		if (accum->overrun) {
 			WLCNTINCR(DRV_SCB_COUNTERS(ulmu_scb)->byte_overrun);
 		}
-		WL_MUTX(("%s: SCB:"MACF" UTXD complete. fid(u/t)=(0x%x/0x%x) "
+		WL_ULO(("%s: SCB:"MACF" UTXD complete. fid(u/t)=(0x%x/0x%x) "
 			"Seqno=%d  Overruns=%d (%d bytes)\n",
 			__FUNCTION__, ETHER_TO_MACF(scb->ea),
 			DRV_CTX_FID(entry), status->frameid, DRV_CTX_SEQNO(entry),
@@ -2561,7 +2797,7 @@ wlc_ulmu_drv_watchdog(wlc_ulmu_info_t *ulmu)
 				continue;
 			}
 
-			WL_MUTX(("%s: SCB:"MACF" watchdog_count=%d. curr_utxd=%d prev_utxd=%d\n",
+			WL_ULO(("%s: SCB:"MACF" watchdog_count=%d. curr_utxd=%d prev_utxd=%d\n",
 					__FUNCTION__, ETHER_TO_MACF(scb->ea),
 					ulinfo->watchdog_count,
 					ulinfo->nutxd_status, ulinfo->prev_nutxd_status));
@@ -2569,7 +2805,7 @@ wlc_ulmu_drv_watchdog(wlc_ulmu_info_t *ulmu)
 			if (ulinfo->nutxd_status == ulinfo->prev_nutxd_status) {
 				ulinfo->watchdog_count++;
 				clear_watchdog = FALSE;
-				WL_MUTX(("%s: SCB:"MACF" watchdog_count=%d.\n",
+				WL_ULO(("%s: SCB:"MACF" watchdog_count=%d.\n",
 					__FUNCTION__, ETHER_TO_MACF(scb->ea),
 					ulinfo->watchdog_count));
 			} else {
@@ -2594,7 +2830,7 @@ wlc_ulmu_drv_watchdog(wlc_ulmu_info_t *ulmu)
 						ULMU_STATUS_WATCHDOG, accum->bytes_completed,
 						avglen, accum->duration);
 
-					WL_MUTX(("%s: SCB:"MACF" Terminating UTXD request,"
+					WL_ULO(("%s: SCB:"MACF" Terminating UTXD request,"
 						"watchdog_count=%d.\n",
 						__FUNCTION__, ETHER_TO_MACF(scb->ea),
 						ulinfo->watchdog_count));
@@ -2690,68 +2926,68 @@ wlc_ulmu_drv_trigger_callback(wlc_info_t *wlc, struct scb *scb,
 	ulmu = wlc->ulmu;
 
 	if (ti == NULL) {
-			WL_MUTX(("%s: SCB:"MACF". ti is NULL\n",
+			WL_ULO(("%s: SCB:"MACF". ti is NULL\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea)));
 			return BCME_ERROR;
 	}
 
 	switch (status_code) {
 		case ULMU_STATUS_INPROGRESS:
-			WL_MUTX(("%s: SCB:"MACF" Inprog. %d%% bytes=%d avglen=%d dur=%d\n",
+			WL_ULO(("%s: SCB:"MACF" Inprog. %d%% bytes=%d avglen=%d dur=%d\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea),
 				ti->callback_reporting_threshold,
 				bytes_consumed, avg_pktsz, duration));
 			break;
 		case ULMU_STATUS_THRESHOLD:
-			WL_MUTX(("%s: SCB:"MACF" Thres. %d%% bytes=%d avglen=%d dur=%d\n",
+			WL_ULO(("%s: SCB:"MACF" Thres. %d%% bytes=%d avglen=%d dur=%d\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea),
 				ti->callback_reporting_threshold,
 				bytes_consumed, avg_pktsz, duration));
 			break;
 		case ULMU_STATUS_COMPLETE:
-			WL_MUTX(("%s: SCB:"MACF" Done. bytes=%d avglen=%d dur=%d\n",
+			WL_ULO(("%s: SCB:"MACF" Done. bytes=%d avglen=%d dur=%d\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea),
 				bytes_consumed, avg_pktsz, duration));
 			newTrigger = TRUE;
 			break;
 		case ULMU_STATUS_QOSNULL:
-			WL_MUTX(("%s: SCB:"MACF" ABRT:QN. bytes=%d avglen=%d dur=%d\n",
+			WL_ULO(("%s: SCB:"MACF" ABRT:QN. bytes=%d avglen=%d dur=%d\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea),
 				bytes_consumed, avg_pktsz, duration));
 			newTrigger = TRUE;
 			break;
 		case ULMU_STATUS_TIMEOUT:
-			WL_MUTX(("%s: SCB:"MACF" ABRT:TO. bytes=%d avglen=%d dur=%d\n",
+			WL_ULO(("%s: SCB:"MACF" ABRT:TO. bytes=%d avglen=%d dur=%d\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea),
 				bytes_consumed, avg_pktsz, duration));
 			newTrigger = TRUE;
 			break;
 		case ULMU_STATUS_TRIGCNT:
-			WL_MUTX(("%s: SCB:"MACF" ABRT:TC. bytes=%d avglen=%d dur=%d\n",
+			WL_ULO(("%s: SCB:"MACF" ABRT:TC. bytes=%d avglen=%d dur=%d\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea),
 				bytes_consumed, avg_pktsz, duration));
 			newTrigger = TRUE;
 			break;
 		case ULMU_STATUS_WATCHDOG:
-			WL_MUTX(("%s: SCB:"MACF" ABRT:WD. bytes=%d avglen=%d dur=%d\n",
+			WL_ULO(("%s: SCB:"MACF" ABRT:WD. bytes=%d avglen=%d dur=%d\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea),
 				bytes_consumed, avg_pktsz, duration));
 			newTrigger = TRUE;
 			break;
 		case ULMU_STATUS_EVICTED:
-			WL_MUTX(("%s: SCB:"MACF" ABRT:EV. bytes=%d avglen=%d dur=%d\n",
+			WL_ULO(("%s: SCB:"MACF" ABRT:EV. bytes=%d avglen=%d dur=%d\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea),
 				bytes_consumed, avg_pktsz, duration));
 			/* User got kicked out of UL schedule , no new trigger */
 			break;
 		case ULMU_STATUS_NOTADMITTED:
-			WL_MUTX(("%s: SCB:"MACF" ABRT:NA. bytes=%d avglen=%d dur=%d\n",
+			WL_ULO(("%s: SCB:"MACF" ABRT:NA. bytes=%d avglen=%d dur=%d\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea),
 				bytes_consumed, avg_pktsz, duration));
 			/* User got kicked out of UL schedule , no new trigger */
 			break;
 		default:
-			WL_MUTX(("%s: SCB:"MACF" UNK:%d. bytes=%d avglen=%d dur=%d\n",
+			WL_ULO(("%s: SCB:"MACF" UNK:%d. bytes=%d avglen=%d dur=%d\n",
 				__FUNCTION__, ETHER_TO_MACF(scb->ea), status_code,
 				bytes_consumed, avg_pktsz, duration));
 			break;
@@ -2775,10 +3011,10 @@ wlc_ulmu_drv_trigger_callback(wlc_info_t *wlc, struct scb *scb,
 					ULMU_PACKET_TRIGGER, &trigger_info);
 
 			if (rc == BCME_OK) {
-				WL_MUTX(("%s: SCB:"MACF" triggered.\n",
+				WL_ULO(("%s: SCB:"MACF" triggered.\n",
 					__FUNCTION__, ETHER_TO_MACF(scb->ea)));
 			} else {
-				WL_MUTX(("%s: SCB:"MACF" error rc=0x%x.\n",
+				WL_ULO(("%s: SCB:"MACF" error rc=0x%x.\n",
 					__FUNCTION__, ETHER_TO_MACF(scb->ea), rc));
 				break;
 			}
@@ -2818,7 +3054,7 @@ wlc_ulmu_drv_trigger_scb(wlc_ulmu_info_t *ulmu, uint16 niter)
 			if (scb) {
 				rc = wlc_ulmu_drv_trigger_request(ulmu->wlc, scb,
 					ULMU_PACKET_TRIGGER, &trigger_info);
-				WL_MUTX(("%s: SCB:"MACF" triggered.\n",
+				WL_ULO(("%s: SCB:"MACF" triggered.\n",
 					__FUNCTION__, ETHER_TO_MACF(scb->ea)));
 				if (rc != BCME_OK) {
 						break;
@@ -2928,9 +3164,10 @@ wlc_ulmu_drv_print_scb_stats(scb_ulmu_t *ulmu_scb, struct scb *scb, bcmstrbuf_t 
 		counters->nbytes_triggered, counters->nbytes_received,
 		counters->zero_bytes, counters->byte_overrun);
 	bcm_bprintf(b, "Driver UTXD completion reasons:\n");
-	bcm_bprintf(b, "  bytelimit=%d qosnull=%d timeout=%d"
+	bcm_bprintf(b, "  bytelimit=%d qosnull=%d timeout=%d suppress=%d"
 		" trigcnt=%d watchdog=%d evicted=%d\n",
-		counters->stop_byte_limit, counters->stop_qos_null, counters->stop_timeout,
+		counters->stop_byte_limit, counters->stop_qos_null,
+		counters->stop_timeout, counters->stop_suppress,
 		counters->stop_trigcnt, counters->stop_watchdog, counters->stop_evicted);
 	bcm_bprintf(b, "Driver Callback counts:\n");
 	bcm_bprintf(b, "  thres=%d mult=%d spur=%d nocb=%d noreq=%d\n",
@@ -2966,7 +3203,7 @@ wlc_ulmu_release_bytes(wlc_ulmu_info_t *ulmu, scb_t *scb, uint16 bufsize)
 
 	ulmu_scb->bufsize = bufsize; // in KB unit
 
-	wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRUPD_TRFC);
+	wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRUPD_TRFC, NULL);
 	ret = wlc_ulmu_post_utxd(ulmu);
 
 	return ret;
@@ -2982,9 +3219,9 @@ wlc_ulmu_drv_ucautotrigger(wlc_ulmu_info_t *ulmu, struct scb *scb)
 
 	SCB_ULMU(ulmu, scb)->bufsize = ULMU_BUFSZ_DFLT;
 	if (ULMU_FLAGS_DSCHED_GET(ulmu->flags) == ULMU_ON) {
-		wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRUPD_RATE);
+		wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRUPD_RATE, NULL);
 	} else {
-		wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRADD_ALL);
+		wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRADD_ALL, NULL);
 	}
 	if ((err = wlc_ulmu_post_utxd(ulmu)) != BCME_OK) {
 		ret = FALSE;
@@ -2993,7 +3230,7 @@ wlc_ulmu_drv_ucautotrigger(wlc_ulmu_info_t *ulmu, struct scb *scb)
 			ulmu->wlc->pub->unit, __FUNCTION__, ETHER_TO_MACF(scb->ea), err,
 			SCB_ULMU(ulmu, scb)->schpos, scb->state, SCB_ULMU(ulmu, scb)->state));
 	} else {
-		WL_MUTX(("wl%d: %s: add sta "MACF" schpos %d state 0x%x "
+		WL_ULO(("wl%d: %s: add sta "MACF" schpos %d state 0x%x "
 			"into ul ofdma list ulmu_state:%d\n",
 			ulmu->wlc->pub->unit, __FUNCTION__, ETHER_TO_MACF(scb->ea),
 			SCB_ULMU(ulmu, scb)->schpos, scb->state, SCB_ULMU(ulmu, scb)->state));
@@ -3013,6 +3250,14 @@ wlc_ulmu_stats_upd(wlc_ulmu_info_t *ulmu, scb_t *scb, tx_status_t *txs)
 	uint32 cur_mlen = 0;
 	ru_type_t ru_type;
 	ratespec_t rspec;
+	uint32 triggered_bytes;
+	uint32 cmi01, cmi12;
+#ifdef WLTAF_ULMU
+	uint32 usec_txdur;
+#endif // endif
+
+	BCM_REFERENCE(triggered_bytes);
+
 	ulmu_scb = SCB_ULMU(ulmu, scb);
 
 	if (ulmu_scb == NULL) {
@@ -3023,6 +3268,10 @@ wlc_ulmu_stats_upd(wlc_ulmu_info_t *ulmu, scb_t *scb, tx_status_t *txs)
 		return BCME_ERROR;
 	}
 
+	wlc_macdbg_dtrace_log_utxs(ulmu->wlc->macdbg, scb, txs);
+	cmi01 = TGTXS_CMNINFOP1(txs->status.s2);
+	cmi12 = TGTXS_CMNINFOP2(txs->status.s3);
+	cmi01 = (cmi12 << 16) | cmi01;
 	/* 3*txop = ((lsig + 5) << 2) + 51 */
 	txop = (((TGTXS_LSIG(txs->status.s2) + 5) << 2) + 51) << OPERAND_SHIFT;
 	mcs = TGTXS_MCS(txs->status.s4);
@@ -3096,6 +3345,21 @@ wlc_ulmu_stats_upd(wlc_ulmu_info_t *ulmu, scb_t *scb, tx_status_t *txs)
 		ulstats->mlen = ulstats->agglen / ulstats->sum_lcnt;
 	}
 
+	rspec = HE_RSPEC(mcs, nss+1);
+	rspec |= HE_GI_TO_RSPEC(WL_RSPEC_HE_2x_LTF_GI_1_6us);
+	ru_type = wf_he_ruidx_to_ru_type(TGTXS_RUIDX(txs->status.s4));
+	triggered_bytes = (wf_he_rspec_ru_type_to_rate(rspec, ru_type) *
+			TGTXS_LSIG(txs->status.s2)) / (1000 * 6);
+
+	WL_INFORM((""MACF" tgsts dur %d %dx%d qncnt %d agglen %d rx_cnt %d"
+		" rxsucc_cnt %d frameid %d ru %d bw %d kbps %d triggerd_bytes %d\n",
+		ETHER_TO_MACF(scb->ea), (txop / 3) >> OPERAND_SHIFT, mcs, nss,
+		qncnt, agglen, rx_cnt, rxsucc_cnt,
+		TGTXS_REMKB(txs->status.ack_map2) >> ULSTS_FRAMEID_SHIFT,
+		ru_type, D11TRIGCI_BW(cmi01),
+		wf_he_rspec_ru_type_to_rate(rspec, ru_type),
+		triggered_bytes));
+
 #ifdef ULMU_DRV
 	reason = TGTXS_REASON(txs->status.s1);
 	if ((ulmu->mode == ULMU_UTXD_MODE) &&
@@ -3105,7 +3369,9 @@ wlc_ulmu_stats_upd(wlc_ulmu_info_t *ulmu, scb_t *scb, tx_status_t *txs)
 		status.scb = scb;
 		status.triggered_bytes = agglen;
 		status.npkts = rxsucc_cnt;
-		status.duration = (txop / 3) >> OPERAND_SHIFT;
+		status.duration =
+			(((txop / 3) >> OPERAND_SHIFT) * (1 << ru_type)) >>
+			(D11TRIGCI_BW(cmi01) + 3);
 		status.frameid =
 			TGTXS_REMKB(txs->status.ack_map2) >> ULSTS_FRAMEID_SHIFT;
 		status.ru_idx = TGTXS_RUIDX(txs->status.s4);
@@ -3128,7 +3394,7 @@ wlc_ulmu_stats_upd(wlc_ulmu_info_t *ulmu, scb_t *scb, tx_status_t *txs)
 
 	if (ULMU_IS_UTXD(ulmu->mode) && ULMU_FLAGS_DSCHED_GET(ulmu->flags) == ULMU_ON) {
 		if (TGTXS_REMKB(txs->status.ack_map2) < ULMU_BUFSZ_THRSH) {
-			WL_MUTX(("wl%d: %s:  "MACF" remaining %d \n", ulmu->wlc->pub->unit,
+			WL_ULO(("wl%d: %s:  "MACF" remaining %d \n", ulmu->wlc->pub->unit,
 				__FUNCTION__, ETHER_TO_MACF(scb->ea),
 				TGTXS_REMKB(txs->status.ack_map2)));
 			wlc_ulmu_release_bytes(ulmu, scb, ULMU_BUFSZ_DFLT);
@@ -3156,9 +3422,6 @@ wlc_ulmu_stats_upd(wlc_ulmu_info_t *ulmu, scb_t *scb, tx_status_t *txs)
 		}
 	}
 
-	rspec = HE_RSPEC(mcs, nss+1);
-	ru_type = wf_he_ruidx_to_ru_type(TGTXS_RUIDX(txs->status.s4));
-
 	ulmu_scb->tgs_exprecv_bytes = wf_he_rspec_ru_type_to_rate(rspec, ru_type);
 	/* compute expected bytes in trigger status based on lsig
 	 * i.e., exp_bytes = (phy_rate * ((lsig * 8) / 6)) / (1000 * 8)
@@ -3171,6 +3434,32 @@ wlc_ulmu_stats_upd(wlc_ulmu_info_t *ulmu, scb_t *scb, tx_status_t *txs)
 		wlc_ulmu_scb_reqbytes_eval(ulmu, scb);
 	}
 
+#ifdef WLTAF_ULMU
+	ulmu_scb->last_trigd_bytes += triggered_bytes;
+	ulmu_scb->last_recvd_bytes += agglen;
+	/* update stats */
+	WLCNTINCR(ULMU_TAF_SCB_STATS(ulmu_scb)->nupd);
+
+	WLCNTADD(ULMU_TAF_SCB_STATS(ulmu_scb)->bytes_trigd, triggered_bytes);
+	WLCNTADD(ULMU_TAF_SCB_STATS(ulmu_scb)->bytes_recvd, agglen);
+	usec_txdur =
+		(((txop / 3) >> OPERAND_SHIFT) * (1 << ru_type)) >> (D11TRIGCI_BW(cmi01) + 3);
+	WLCNTADD(ULMU_TAF_SCB_STATS(ulmu_scb)->usec_txdur, usec_txdur);
+
+	if (ULMU_DRV_STOP_QOSNULL(TGTXS_REASON(txs->status.s1))) {
+		WLCNTINCR(ULMU_TAF_SCB_STATS(ulmu_scb)->nqosnull);
+		WLCNTADD(ULMU_TAF_SCB_STATS(ulmu_scb)->usec_qosnull, usec_txdur);
+	}
+
+	if (ULMU_DRV_STOP_TIMEOUT(TGTXS_REASON(txs->status.s1))) {
+		WLCNTINCR(ULMU_TAF_SCB_STATS(ulmu_scb)->ntimeout);
+		WLCNTADD(ULMU_TAF_SCB_STATS(ulmu_scb)->usec_timeout, usec_txdur);
+	}
+	if (ULMU_DRV_STOP_SUPPRESS(TGTXS_REASON(txs->status.s1))) {
+		WLCNTINCR(ULMU_TAF_SCB_STATS(ulmu_scb)->nsuppress);
+		WLCNTADD(ULMU_TAF_SCB_STATS(ulmu_scb)->usec_suppress, usec_txdur);
+	}
+#endif /* WLTAF_ULMU */
 	return BCME_OK;
 }
 
@@ -3209,7 +3498,11 @@ wlc_ulmu_scb_state_upd(void *ctx, scb_state_upd_data_t *notif_data)
 		SCB_AUTHENTICATED(scb) && SCB_ASSOCIATED(scb)) ||
 		(WSEC_ENABLED(bsscfg->wsec) && SCB_AUTHENTICATED(scb) &&
 		SCB_ASSOCIATED(scb) && SCB_AUTHORIZED(scb) && !(oldstate & AUTHORIZED))) {
-		/* Let the rx monitoring trigger the UL MU admission */
+		/* if always_admit then try admit else let the rx status trigger the admission */
+		if (ulmu->always_admit && wlc_ulmu_admit_ready(wlc, scb)) {
+			WL_ULO(("%s: admitting "MACF"\n", __FUNCTION__,
+				ETHER_TO_MACF(scb->ea)));
+		}
 	} else if ((oldstate & ASSOCIATED) && !(SCB_ASSOCIATED(scb) && SCB_AUTHENTICATED(scb))) {
 		// Associated -> disassoc or deauth
 		wlc_ulmu_admit_clients(wlc, scb, FALSE);
@@ -3303,7 +3596,6 @@ wlc_ulmu_scb_deinit(void *ctx, scb_t *scb)
 		MFREE(wlc->osh, sh->ul_rmem, sizeof(d11ulmu_rmem_t));
 		sh->ul_rmem = NULL;
 	}
-
 	wlc_scb_sec_cubby_free(wlc, scb, sh);
 	*psh = NULL;
 }
@@ -3393,8 +3685,10 @@ wlc_ulmu_scb_sched_init(wlc_ulmu_info_t *ulmu, scb_t *scb)
 	ulmu_scb->trigcnt = ulmu->txd.txcnt;
 	ulmu_scb->scb_bl = scb;	/* save the scb back link */
 	ulmu_scb->ulmu = ulmu;	/* save the ulmu back link */
+	ulmu_scb->acc_bufsz = ULMU_ACC_BUFSZ_MIN;
 	ulmu_scb->aggnma = wlc_ampdu_rx_get_ba_max_rx_wsize(ulmu->wlc->ampdu_rx);
 	ulmu_scb->mlenma = ULMU_MLEN_INIT;
+	ulmu_scb->try_admit = FALSE;
 }
 
 /* Function to get empty slot in ul_usr_list
@@ -3460,7 +3754,7 @@ wlc_ulmu_scb_onaddr_lkup(wlc_ulmu_info_t *ulmu, struct ether_addr *ea,
 	}
 	*pp_scb = scb;
 
-	WL_MUTX(("wl%d: %s: addr %s schpos %d scb %p\n",
+	WL_ULO(("wl%d: %s: addr %s schpos %d scb %p\n",
 		wlc->pub->unit, __FUNCTION__,
 		scb ? bcm_ether_ntoa(&scb->ea, eabuf) : "null", schpos, scb));
 	return schpos;
@@ -3471,13 +3765,13 @@ static bool
 wlc_ulmu_ulofdma_add_usr(wlc_ulmu_info_t *ulmu, scb_t *scb)
 {
 	scb_ulmu_t *ulmu_scb;
-
 	wlc_info_t *wlc = ulmu->wlc;
 	bool ret = FALSE;
 	d11ulmu_rmem_t *rmem;
 	int i;
 	uint8 nss;
 	int8 schpos;
+	ulmu_stats_t *ulstats;
 
 	STATIC_ASSERT((ULMU_RMEMIDX_FIRST >= AMT_IDX_RLM_RSVD_SIZE) &&
 		(ULMU_RMEMIDX_FIRST < AMT_IDX_SIZE_11AX));
@@ -3487,14 +3781,14 @@ wlc_ulmu_ulofdma_add_usr(wlc_ulmu_info_t *ulmu, scb_t *scb)
 	STATIC_ASSERT(ULMU_RMEMIDX_LAST < AMT_IDX_DLOFDMA_RSVD_START);
 
 	if (ulmu->num_usrs >= wlc_txcfg_max_clients_get(wlc->txcfg, ULOFDMA)) {
-			WL_MUTX(("wl%d: %s: num_usrs exceeded(%d) STA "MACF"\n",
+			WL_ULO(("wl%d: %s: num_usrs exceeded(%d) STA "MACF"\n",
 			wlc->pub->unit, __FUNCTION__, ulmu->num_usrs,
 			ETHER_TO_MACF(scb->ea)));
 		return ret;
 	}
 
 	if ((ulmu_scb = SCB_ULMU(ulmu, scb)) == NULL) {
-		WL_MUTX(("wl%d: %s: Fail to get ulmu scb cubby STA "MACF"\n",
+		WL_ULO(("wl%d: %s: Fail to get ulmu scb cubby STA "MACF"\n",
 			wlc->pub->unit, __FUNCTION__,
 			ETHER_TO_MACF(scb->ea)));
 		return ret;
@@ -3503,7 +3797,7 @@ wlc_ulmu_ulofdma_add_usr(wlc_ulmu_info_t *ulmu, scb_t *scb)
 	ASSERT(ulmu_scb->ul_rmem == NULL);
 	schpos = wlc_ulmu_ulofdma_get_empty_schpos(ulmu);
 	if (schpos == ULMU_SCHPOS_INVLD) {
-		WL_MUTX(("wl%d: %s: Invalid schpos STA "MACF"\n",
+		WL_ULO(("wl%d: %s: Invalid schpos STA "MACF"\n",
 			wlc->pub->unit, __FUNCTION__,
 			ETHER_TO_MACF(scb->ea)));
 		return ret;
@@ -3513,6 +3807,10 @@ wlc_ulmu_ulofdma_add_usr(wlc_ulmu_info_t *ulmu, scb_t *scb)
 		WL_ERROR(("wl%d: %s: out of memory, malloced %d bytes\n", wlc->pub->unit,
 			__FUNCTION__, MALLOCED(wlc->osh)));
 		ASSERT(1);
+		return ret;
+	}
+
+	if ((ulstats = ulmu_scb->scb_stats) == NULL) {
 		return ret;
 	}
 
@@ -3546,7 +3844,7 @@ wlc_ulmu_ulofdma_add_usr(wlc_ulmu_info_t *ulmu, scb_t *scb)
 	D11_ULORMEM_RTCTL_SET_MCS(rmem->rtctl,
 		HE_MAX_MCS_TO_INDEX(HE_MCS_MAP_TO_MAX_MCS(rmem->mcsbmp[0])));
 	D11_ULORMEM_RTCTL_SET_NSS(rmem->rtctl, nss == 0 ? 0 : nss-1);
-	WL_MUTX(("wl%d: %s: rtctl 0x%x mcsmap 0x%x sta addr "MACF"\n",
+	WL_ULO(("wl%d: %s: rtctl 0x%x mcsmap 0x%x sta addr "MACF"\n",
 		wlc->pub->unit, __FUNCTION__,
 		rmem->rtctl, scb->rateset.he_bw80_tx_mcs_nss,
 		ETHER_TO_MACF(scb->ea)));
@@ -3559,27 +3857,45 @@ wlc_ulmu_ulofdma_add_usr(wlc_ulmu_info_t *ulmu, scb_t *scb)
 	ulmu_scb->rmem_upd = TRUE;
 	ulmu->num_usrs++;
 	ret = TRUE;
+	WLCNTINCR(ulstats->nadmit);
 
 	if (ULMU_IS_UTXD(ulmu->mode)) {
 		ret = wlc_ulmu_drv_ucautotrigger(ulmu, scb);
 	}
 
 	ulmu_scb->state = ULMU_SCB_ADMT;
+#ifdef WLTAF_ULMU
+	/* start with higher byte rate (2x) than what is observed, and let it settle */
+	ulmu_scb->rate = 2 * wlc_uint64_div(((uint64)ulmu_scb->su_recv_bytes) << 10,
+		(uint64)ulmu_scb->su_recv_dur); /* bytes/ms */
+	ulmu_scb->rate = ulmu_scb->rate ? ulmu_scb->rate : 1; /* roundup to 1 if 0 */
+	WL_TAFF(wlc, " SCB:"MACF" admitted: rate %d\n", ETHER_TO_MACF(scb->ea), ulmu_scb->rate);
+	ulmu_scb->prev_read_ts = wlc_read_usec_timer(ulmu->wlc);
+	/* init the rx mon byte cnt to su recv byte rate x 50 ms  */
+	ulmu_scb->acc_bufsz = ulmu_scb->rate * ULMU_RXMON_BYTECNT_INIT_TIME;
+	ulmu_scb->acc_bufsz =
+		LIMIT_TO_RANGE(ulmu_scb->acc_bufsz, ULMU_ACC_BUFSZ_MIN, ULMU_ACC_BUFSZ_MAX);
 
+	RAVG_INIT(&ulmu_scb->rxmon_ravg_info, ulmu_scb->rate, ulmu->ravg_exp);
+	ulmu_scb->rate_init = TRUE;
+	ulmu_scb->last_trigd_bytes = 0;
+	ulmu_scb->last_recvd_bytes = 0;
+	ulmu_scb->rxmon_idle_cnt = 0;
+	ulmu_scb->zero_bytes_cnt = 0;
+	ulmu_scb->trig_wait = FALSE;
+	ulmu_scb->trig_wait_start_cnt = 0;
+#else
+	ulmu_scb->acc_bufsz = ulmu_scb->su_recv_bytes;
+#endif /* WLTAF_ULMU */
 	wlc_ulmu_drv_add_usr(ulmu_scb);
 
-#if defined WLTAF && defined ULMU_DRV
+#if defined WLTAF_ULMU && defined ULMU_DRV
 	if (wlc_taf_ul_enabled(wlc->taf_handle)) {
-		WL_TAFF(ulmu->wlc, " called\n");
-		wlc_taf_scb_state_update(wlc->taf_handle, scb, TAF_PARAM(TRUE),
-			TAF_SCBSTATE_MU_UL_OFDMA);
+		WL_TAFF(ulmu->wlc, " SCB:"MACF" recv_bytes %d dur %d rxmon cnt %d\n",
+			ETHER_TO_MACF(scb->ea), ulmu_scb->su_recv_bytes,
+			ulmu_scb->su_recv_dur, ulmu_scb->acc_bufsz);
 
-		wlc_taf_scb_state_update(wlc->taf_handle, scb, TAF_UL, TAF_SCBSTATE_SOURCE_ENABLE);
-
-		wlc_taf_link_state(ulmu->wlc->taf_handle, scb, PRIO_8021D_BE, TAF_UL,
-			TAF_LINKSTATE_ACTIVE);
-
-		wlc_taf_schedule(wlc->taf_handle, PRIO_8021D_BE, scb, FALSE);
+		wlc_ulmu_taf_enable(ulmu, scb, TRUE);
 	}
 #endif // endif
 	return ret;
@@ -3599,7 +3915,7 @@ wlc_ulmu_del_usr(wlc_ulmu_info_t *ulmu, scb_t *scb, bool is_bss_up)
 	}
 
 	if ((ulmu_scb = SCB_ULMU(ulmu, scb)) == NULL) {
-		WL_MUTX(("wl%d: %s: Fail to get ulmu scb cubby STA "MACF"\n",
+		WL_ULO(("wl%d: %s: Fail to get ulmu scb cubby STA "MACF"\n",
 			wlc->pub->unit, __FUNCTION__,
 			ETHER_TO_MACF(scb->ea)));
 		return ret;
@@ -3612,7 +3928,7 @@ wlc_ulmu_del_usr(wlc_ulmu_info_t *ulmu, scb_t *scb, bool is_bss_up)
 
 	ulmu_scb->state = ULMU_SCB_EVCT;
 	if (is_bss_up && ULMU_IS_UTXD(ulmu->mode)) {
-		wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRDEL);
+		wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRDEL, NULL);
 		wlc_ulmu_post_utxd(ulmu);
 	}
 	SCB_ULOFDMA_DISABLE(scb);
@@ -3624,25 +3940,33 @@ wlc_ulmu_del_usr(wlc_ulmu_info_t *ulmu, scb_t *scb, bool is_bss_up)
 		MFREE(wlc->osh, ulmu_scb->ul_rmem, sizeof(d11ulmu_rmem_t));
 		ulmu_scb->ul_rmem = NULL;
 	}
-	WL_MUTX(("wl%d: %s: Remove sta "MACF" schpos %d state %x from ul ofdma list\n",
+	WL_ULO(("wl%d: %s: Remove sta "MACF" schpos %d state %x from ul ofdma list\n",
 		wlc->pub->unit, __FUNCTION__,
 		ETHER_TO_MACF(scb->ea), schpos, scb->state));
 	ret = TRUE;
 
+	/* clear the rx byte cnt  */
+	ulmu_scb->acc_bufsz = 0;
+	ulmu_scb->try_admit = FALSE;
+#ifdef WLTAF_ULMU
+	ulmu_scb->rate = 0;
+#endif // endif
+
 	wlc_ulmu_drv_del_usr(ulmu->wlc, scb, ulmu_scb);
 
-#if defined WLTAF && defined ULMU_DRV
+#if defined WLTAF_ULMU && defined ULMU_DRV
 	if (wlc_taf_ul_enabled(wlc->taf_handle)) {
-		WL_TAFF(ulmu->wlc, " called\n");
-		wlc_taf_link_state(ulmu->wlc->taf_handle, scb, PRIO_8021D_BE, TAF_UL,
-			TAF_LINKSTATE_NOT_ACTIVE);
+		WL_TAFF(ulmu->wlc,
+			"Evicting "MACF" trig_wait_start_cnt %d trig_wait %d "
+			"zero_bytes_cnt %d rxmon_idle_cnt %d\n",
+			ETHER_TO_MACF(scb->ea), ulmu_scb->trig_wait_start_cnt,
+			ulmu_scb->trig_wait, ulmu_scb->zero_bytes_cnt,
+			ulmu_scb->rxmon_idle_cnt);
 
-		wlc_taf_scb_state_update(wlc->taf_handle, scb, TAF_UL, TAF_SCBSTATE_SOURCE_DISABLE);
+		wlc_ulmu_taf_enable(ulmu, scb, FALSE);
 
-		wlc_taf_scb_state_update(wlc->taf_handle, scb, TAF_PARAM(FALSE),
-			TAF_SCBSTATE_MU_UL_OFDMA);
 	}
-#endif // endif
+#endif /* defined WLTAF_ULMU && defined ULMU_DRV */
 	return ret;
 }
 
@@ -3652,7 +3976,7 @@ wlc_ulmu_scb_eligible(wlc_ulmu_info_t *ulmu, scb_t* scb)
 {
 	bool ret;
 	wlc_info_t* wlc = ulmu->wlc;
-	ret = (HE_ULMU_ENAB(wlc->pub) && scb && !SCB_INTERNAL(scb) &&
+	ret = (HE_ULMU_ENAB(wlc->pub) && !SCB_IS_UNUSABLE(scb) && !SCB_INTERNAL(scb) &&
 		SCB_HE_CAP(scb) && SCB_AUTHENTICATED(scb) && SCB_ASSOCIATED(scb) &&
 		(SCB_IS_BRCM(scb) || (!ulmu->brcm_only)) &&
 		(!ulmu->ban_nonbrcm_160sta || !wlc_he_is_nonbrcm_160sta(wlc->hei, scb)) &&
@@ -3694,13 +4018,13 @@ wlc_scbulmu_set_ulofdma(wlc_ulmu_info_t *ulmu, scb_t* scb, bool ulofdma)
 	}
 
 	if ((ulmu_scb = SCB_ULMU(ulmu, scb)) == NULL) {
-		WL_MUTX(("wl%d: %s: Fail to get ulmu scb cubby STA "MACF"\n",
+		WL_ULO(("wl%d: %s: Fail to get ulmu scb cubby STA "MACF"\n",
 			wlc->pub->unit, __FUNCTION__, ETHER_TO_MACF(scb->ea)));
 		return ret;
 	}
 
 	if (wlc_ulmu_scb_is_ulofdma(ulmu, scb) == ulofdma) {
-		WL_MUTX(("wl%d: %s: SCB is OFDMA STA "MACF", ulofdma %d\n",
+		WL_ULO(("wl%d: %s: SCB is OFDMA STA "MACF", ulofdma %d\n",
 			wlc->pub->unit, __FUNCTION__, ETHER_TO_MACF(scb->ea), ulofdma));
 		/* no change */
 		return ret;
@@ -3712,7 +4036,7 @@ wlc_scbulmu_set_ulofdma(wlc_ulmu_info_t *ulmu, scb_t* scb, bool ulofdma)
 			ret = wlc_ulmu_ulofdma_add_usr(ulmu, scb);
 		} else if (SCB_HE_CAP(scb) && HE_ULMU_ENAB(wlc->pub) &&
 			BSSCFG_AP(SCB_BSSCFG(scb))) {
-			WL_MUTX(("wl%d: %s: Fail to enable ul ofdma STA "MACF" "
+			WL_ULO(("wl%d: %s: Fail to enable ul ofdma STA "MACF" "
 				"max clients %d num clients %d txnss %d ulmu_disabled %d\n",
 				wlc->pub->unit, __FUNCTION__, ETHER_TO_MACF(scb->ea),
 				wlc_txcfg_max_clients_get(wlc->txcfg, ULOFDMA),
@@ -3726,7 +4050,7 @@ wlc_scbulmu_set_ulofdma(wlc_ulmu_info_t *ulmu, scb_t* scb, bool ulofdma)
 		}
 	} else {
 		ret = wlc_ulmu_del_usr(ulmu, scb, TRUE);
-		WL_MUTX(("wl%d: %s: Disable ul ofdma STA "MACF" state 0x%x ret:%d\n",
+		WL_ULO(("wl%d: %s: Disable ul ofdma STA "MACF" state 0x%x ret:%d\n",
 			wlc->pub->unit, __FUNCTION__, ETHER_TO_MACF(scb->ea), scb->state, ret));
 	}
 	return ret;
@@ -3780,7 +4104,7 @@ wlc_ulmu_utxd_reinit(wlc_ulmu_info_t* ulmu)
 			continue;
 		}
 		num_usrs++;
-		wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRADD_ALL);
+		wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRADD_ALL, NULL);
 	}
 
 	if ((err = wlc_ulmu_post_utxd(ulmu)) != BCME_OK) {
@@ -3789,7 +4113,7 @@ wlc_ulmu_utxd_reinit(wlc_ulmu_info_t* ulmu)
 			wlc->pub->unit, __FUNCTION__));
 	}
 	if (num_usrs) {
-		wlc_ulmu_prep_utxd(ulmu, NULL, ULMU_UTXD_GLBUPD);
+		wlc_ulmu_prep_utxd(ulmu, NULL, ULMU_UTXD_GLBUPD, NULL);
 		if ((err = wlc_ulmu_post_utxd(ulmu)) != BCME_OK) {
 			err = BCME_ERROR;
 			WL_ERROR(("wl%d: %s: fail to post global config utxd\n",
@@ -3965,7 +4289,7 @@ wlc_ulmu_admit_clients(wlc_info_t *wlc, scb_t *scb, bool admit)
 	bool ret = FALSE;
 
 	if (!HE_ULMU_ENAB(wlc->pub)) {
-		WL_MUTX(("wl%d: %s: UL OFDMA feature is not enabled\n",
+		WL_ULO(("wl%d: %s: UL OFDMA feature is not enabled\n",
 			wlc->pub->unit, __FUNCTION__));
 		return ret;
 	}
@@ -3973,7 +4297,7 @@ wlc_ulmu_admit_clients(wlc_info_t *wlc, scb_t *scb, bool admit)
 	if ((ret = wlc_scbulmu_set_ulofdma(ulmu, scb, admit)) == TRUE) {
 		/* if a user has been added or deleted, update the scheduler block */
 		if (ULMU_IS_UTXD(ulmu->mode)) {
-			wlc_ulmu_prep_utxd(ulmu, NULL, ULMU_UTXD_GLBUPD);
+			wlc_ulmu_prep_utxd(ulmu, NULL, ULMU_UTXD_GLBUPD, NULL);
 			wlc_ulmu_post_utxd(ulmu);
 		}
 		wlc_ulmu_cfg_commit(ulmu);
@@ -4007,7 +4331,7 @@ wlc_ulmu_ul_nss_upd(wlc_ulmu_info_t *ulmu, scb_t* scb, uint8 tx_nss)
 	D11_ULOTXD_UCFG_SET_NSS(ulmu_scb->ucfg, tx_nss);
 
 	if (ULMU_IS_UTXD(ulmu->mode)) {
-		wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRUPD_RATE);
+		wlc_ulmu_prep_utxd(ulmu, scb, ULMU_UTXD_USRUPD_RATE, NULL);
 		wlc_ulmu_post_utxd(ulmu);
 	} else {
 		wlc_ulmu_cfg_commit(ulmu);
@@ -4058,7 +4382,7 @@ wlc_ulmu_fill_utxd(wlc_ulmu_info_t *ulmu, d11ulmu_txd_t *utxd,
 		mcs = RSPEC_HE_MCS(rspec);
 		nss = RSPEC_HE_NSS(rspec);
 		if (nss != omi_nss) {
-			WL_MUTX(("wl%d: %s: txnss %d omi txnss %d mismatch\n",
+			WL_ULO(("wl%d: %s: txnss %d omi txnss %d mismatch\n",
 				wlc->pub->unit, __FUNCTION__, nss, omi_nss));
 			nss = omi_nss;
 		}
@@ -4076,14 +4400,14 @@ wlc_ulmu_fill_utxd(wlc_ulmu_info_t *ulmu, d11ulmu_txd_t *utxd,
 		aggnum = wlc_ampdu_rx_get_ba_max_rx_wsize(wlc->ampdu_rx);
 		mlen = ULMU_MLEN_INIT;
 	} else if (ulmu_scb->state == ULMU_SCB_ADMT || ulmu_scb->state == ULMU_SCB_INIT) {
-		aggnum = MIN(ulmu_scb->aggnma + ULMU_AGGN_HEADROOM,
+		aggnum = MIN((ulmu_scb->aggnma >> ULMU_NF_AGGN) + ULMU_AGGN_HEADROOM,
 			wlc_ampdu_rx_get_ba_max_rx_wsize(wlc->ampdu_rx));
 		mlen = ulmu_scb->mlenma;
 	} else {
 		ASSERT(0);
 	}
 	ulmu_scb->ucfg = ucfg;
-	WL_MUTX(("wl%d: %s: lmem %d rspec 0x%x mcs %d nss %d aggn %d mlen %d bufsz %d"
+	WL_ULO(("wl%d: %s: lmem %d rspec 0x%x mcs %d nss %d aggn %d mlen %d bufsz %d"
 		" ucfg 0x%x rssi %d state %d rtctl 0x%x\n",
 		wlc->pub->unit, __FUNCTION__, utxd->glmem,
 		rspec, mcs, nss, aggnum, mlen, utxd->bufsize, ucfg,
@@ -4094,32 +4418,46 @@ wlc_ulmu_fill_utxd(wlc_ulmu_info_t *ulmu, d11ulmu_txd_t *utxd,
 }
 
 static uint32
-wlc_ulmu_prep_utxd(wlc_ulmu_info_t *ulmu, scb_t *scb, uint16 cmd)
+wlc_ulmu_prep_utxd(wlc_ulmu_info_t *ulmu, scb_t *scb, uint16 cmd, void *pkt)
 {
 	wlc_info_t *wlc = ulmu->wlc;
 	void *p;
 	osl_t *osh;
-	int buflen, body_len;
 	d11ulmu_txd_t *utxd;
 	uint32 ts;
 	int pad_sz = 4;
 
 	osh = wlc->osh;
-	body_len = sizeof(d11ulmu_txd_t) + pad_sz;
-	buflen = wlc->txhroff + body_len;
-	p = PKTGET(osh, buflen, TRUE);
-	if (!p) {
-		WL_ERROR(("wl%d: %s: pktget error for len %d \n",
-			wlc->pub->unit, __FUNCTION__, buflen));
-		return 0;
+
+	if (!pkt) {
+#ifdef UTXD_POOL
+		p = pktpool_get(ULMU_UTXD_POOL_PTR(ulmu));
+
+#else
+		p = PKTGET(osh, ULMU_UTXD_BUF_SIZE, TRUE);
+#endif /* UTXD_POOL */
+		if (!p) {
+			WL_ERROR(("wl%d: %s: pktget error\n",
+				wlc->pub->unit, __FUNCTION__));
+			return 0;
+		}
+		ASSERT(ISALIGNED((uintptr)PKTDATA(osh, p), sizeof(uint32)));
+
+#if defined(BCMHWA) && defined(HWA_PKT_MACRO)
+		PKTSETHWAPKT(osh, p);
+		PKTSETMGMTTXPKT(osh, p);
+#endif /* BCMHWA && HWA_PKT_MACRO */
+
+#ifdef WLTAF_ULMU
+		/* reserve tx headroom offset */
+		PKTPULL(osh, p, WLULPKTTAGLEN);
+#endif // endif
+	} else {
+		p = pkt;
 	}
-	ASSERT(ISALIGNED((uintptr)PKTDATA(osh, p), sizeof(uint32)));
 
-	/* reserve tx headroom offset */
-	PKTPULL(osh, p, wlc->txhroff);
-	PKTSETLEN(osh, p, buflen - wlc->txhroff);
-	memset(PKTDATA(osh, p), 0, pad_sz + sizeof(d11ulmu_txd_t));
-
+	PKTSETLEN(osh, p, pad_sz + sizeof(d11ulmu_txd_t));
+	memset((uint8 *)PKTDATA(osh, p), 0, pad_sz + sizeof(d11ulmu_txd_t));
 	/* construct the utxd packet */
 	utxd = (d11ulmu_txd_t*) ((uint8 *)PKTDATA(osh, p) + pad_sz);
 	utxd->frameid = ((ulmu->frameid++ << D11_REV128_TXFID_SEQ_SHIFT) &
@@ -4136,6 +4474,9 @@ wlc_ulmu_prep_utxd(wlc_ulmu_info_t *ulmu, scb_t *scb, uint16 cmd)
 	utxd->mctl0 = ulmu->txd.mctl0;
 	/* populate per user info */
 	wlc_ulmu_fill_utxd(ulmu, utxd, scb, cmd);
+
+	wlc_macdbg_dtrace_log_utxd(wlc->macdbg, scb, utxd);
+
 	if (WL_MUTX_ON()) {
 		prhex("utxd", PKTDATA(osh, p), 40);
 	}
@@ -4144,7 +4485,7 @@ wlc_ulmu_prep_utxd(wlc_ulmu_info_t *ulmu, scb_t *scb, uint16 cmd)
 	return (utxd->frameid >> 7);
 }
 
-static int
+int
 wlc_ulmu_post_utxd(wlc_ulmu_info_t *ulmu)
 {
 	wlc_info_t *wlc = ulmu->wlc;
@@ -4200,19 +4541,31 @@ wlc_ulmu_reclaim_utxd(wlc_info_t *wlc, tx_status_t *txs)
 		/* reclaim all utxd in hwfifo */
 		ncons = -1;
 	}
+
 	while (((cnt < ncons) || (ncons == -1)) && (txp = GETNEXTTXP(wlc, ULMU_TRIG_FIFO))) {
 		d11ulmu_txd_t *utxd =
 			(d11ulmu_txd_t*) ((uint8 *)PKTDATA(wlc->osh, txp) + ULSTS_UTXD_PAD);
 
 		BCM_REFERENCE(utxd);
-		WL_MUTX(("wl%d: %s: UL OFDMA freeing idx %d txp %p fid 0x%x\n",
+		WL_ULO(("wl%d: %s: UL OFDMA try freeing idx %d txp %p fid 0x%x cmd %d\n",
 			wlc->pub->unit, __FUNCTION__,  cnt, txp,
-			(utxd->frameid >> ULSTS_FRAMEID_SHIFT)));
-		PKTFREE(wlc_hw->osh, txp, TRUE);
+			(utxd->frameid >> ULSTS_FRAMEID_SHIFT), utxd->utxdcmd));
+
+#ifdef WLTAF_ULMU
+		if (utxd->utxdcmd == ULMU_UTXD_USRUPD_R2C) {
+			wlc_ulpkttag_t *tag = ULMU_GET_TAG_FROM_UTXD_PKT(ulmu->wlc->osh, txp);
+
+			ULMU_UTXD_FREE(wlc_hw->osh, tag, txp);
+		} else
+#endif /* WLTAF_ULMU */
+		{
+			PKTFREE(wlc_hw->osh, txp, TRUE);
+		}
+
 		cnt++;
 	}
 
-	WL_MUTX(("wl%d: %s: UL OFDMA freed cnt %d expect ncons %d\n",
+	WL_ULO(("wl%d: %s: UL OFDMA freed cnt %d expect ncons %d\n",
 		wlc->pub->unit, __FUNCTION__, cnt, ncons));
 	return cnt;
 }
@@ -4256,6 +4609,11 @@ wlc_ulmu_maxn_set(wlc_ulmu_info_t *ulmu)
 		wlc_write_shmx(wlc, offset+(bw*2), ulmu->maxn[bw]);
 	}
 #endif /* defined(WL_PSMX) */
+
+#ifdef WLTAF_ULMU
+	wlc_taf_set_ulofdma_maxn(wlc, &ulmu->maxn);
+#endif // endif
+
 	return BCME_OK;
 }
 
@@ -4288,6 +4646,11 @@ wlc_ulmu_oper_state_upd(wlc_ulmu_info_t* ulmu, scb_t *scb, uint8 state)
 		default:
 			break;
 	}
+#ifdef WLTAF_ULMU
+	if (wlc_taf_ul_enabled(ulmu->wlc->taf_handle)) {
+		wlc_ulmu_taf_enable(ulmu, scb, (state == ULMU_SCB_ADMT));
+	}
+#endif // endif
 }
 
 static void
@@ -4317,12 +4680,9 @@ wlc_ulmu_scb_reqbytes_eval(wlc_ulmu_info_t *ulmu, scb_t *scb)
 	} else {
 		ulmu_scb->lowwm = FALSE;
 	}
-
-	ulmu_scb->acc_bufsz += ulmu_scb->tgs_recv_bytes;
-	ulmu_scb->acc_bufsz = LIMIT_TO_MAX(ulmu_scb->acc_bufsz,
-		ULMU_ACC_BUFSZ_MAX);
 }
 
+#ifdef WLTAF_ULMU
 /* Get the predicted bytes that can be requested
  * Inputs:
  *   mu_info  - ulmu info pointer
@@ -4330,20 +4690,43 @@ wlc_ulmu_scb_reqbytes_eval(wlc_ulmu_info_t *ulmu, scb_t *scb)
  * Returns:
  *   non-zero value in bytes that can be requested to post utxd
  */
-uint32
-wlc_ulmu_scb_reqbytes_get(wlc_ulmu_info_t *ulmu, scb_t *scb)
+static uint32
+wlc_ulmu_scb_reqbytes_get(wlc_ulmu_info_t *ulmu, scb_t *scb, bool eval)
 {
 	scb_ulmu_t* ulmu_scb;
+	uint32 cur_ts;
+	uint32 delta;
+	uint32 byte_cnt = 0;
 
 	if (scb == NULL || ulmu == NULL ||
 		((ulmu_scb = SCB_ULMU(ulmu, scb)) == NULL)) {
 		return 0;
 	}
 
-	if (ulmu_scb->state == ULMU_SCB_INIT || !ulmu_scb->scb_stats->nupd) {
-		return ulmu_scb->su_recv_bytes;
+	byte_cnt = ulmu_scb->acc_bufsz;
+
+	if (eval) {
+		cur_ts = wlc_read_usec_timer(ulmu->wlc);
+
+		if (ulmu_scb->trig_wait &&
+			((cur_ts - ulmu_scb->trig_wait_ts) <
+			(ulmu->trig_wait_thrsh * ulmu_scb->zero_bytes_cnt))) {
+			byte_cnt = 0;
+		} else {
+			/* delta time in ms */
+			delta = (cur_ts - ulmu_scb->prev_read_ts) >> 10;
+			delta = delta > 0 ? delta : 1; /* round to 1 if 0 */
+			ulmu_scb->acc_bufsz += delta * ulmu_scb->rate;
+			ulmu_scb->acc_bufsz = LIMIT_TO_MAX(ulmu_scb->acc_bufsz,
+				ULMU_ACC_BUFSZ_MAX);
+			ulmu_scb->prev_read_ts = cur_ts;
+			byte_cnt = ulmu_scb->acc_bufsz;
+			WL_ULO(("wl%d: %s: "MACF" rate %d byte cnt %d\n", ulmu->wlc->pub->unit,
+				__FUNCTION__, ETHER_TO_MACF(scb->ea), ulmu_scb->rate,
+				ulmu_scb->acc_bufsz));
+		}
 	}
-	return ulmu_scb->acc_bufsz;
+	return byte_cnt;
 }
 
 void
@@ -4356,14 +4739,10 @@ wlc_ulmu_scb_reqbytes_decr(wlc_ulmu_info_t *ulmu, scb_t *scb, uint32 cnt)
 		return;
 	}
 
-	if (ulmu_scb->state == ULMU_SCB_INIT || !ulmu_scb->scb_stats->nupd) {
-		ulmu_scb->su_recv_bytes = (ulmu_scb->su_recv_bytes > cnt) ?
-			(ulmu_scb->su_recv_bytes - cnt) : ULMU_ACC_BUFSZ_MIN;
-		return;
-	}
 	ulmu_scb->acc_bufsz = (ulmu_scb->acc_bufsz > cnt) ?
-		(ulmu_scb->acc_bufsz - cnt) : ULMU_ACC_BUFSZ_MIN;
+		(ulmu_scb->acc_bufsz - cnt) : 0;
 }
+#endif /* WLTAF_ULMU */
 
 /* ======== attach/detach ======== */
 
@@ -4428,7 +4807,14 @@ BCMATTACHFN(wlc_ulmu_attach)(wlc_info_t *wlc)
 	ulmu->idle_prd = ULMU_SCB_IDLEPRD;
 	ulmu->min_rssi = ULMU_SCB_MINRSSI;
 	ulmu->always_admit = ULMU_ADMIT_AUTO;
-
+#ifdef WLTAF_ULMU
+	ulmu->ravg_exp = ULMU_RXMON_RAVG_EXP;
+	ulmu->evict_thrsh = ULMU_RXMON_EVICT_THRSH;
+	ulmu->trig_wait_start_thrsh = ULMU_TRIG_WAIT_START_THRSH;
+	ulmu->rate_mult = ULMU_RXMON_RATE_MULTIPLIER;
+	ulmu->trig_wait_thrsh = ULMU_TRIG_WAIT_THRSH << 10;
+	ulmu->zero_bytes_thrsh = ULMU_ZERO_BYTES_THRSH;
+#endif // endif
 	wlc_ulmu_drv_ulmu_attach(ulmu);
 
 	spktq_init(&ulmu->utxdq, ULMU_UTXDQ_PKTS_MAX);
@@ -4492,6 +4878,7 @@ void
 BCMATTACHFN(wlc_ulmu_detach)(wlc_ulmu_info_t *ulmu)
 {
 	wlc_info_t *wlc;
+	void *p;
 
 	if (ulmu == NULL) {
 		return;
@@ -4505,21 +4892,16 @@ BCMATTACHFN(wlc_ulmu_detach)(wlc_ulmu_info_t *ulmu)
 
 	wlc_bsscfg_state_upd_unregister(wlc, wlc_ulmu_bsscfg_state_upd, ulmu);
 
-	wlc->ulmu = NULL;
-
 	wlc_module_unregister(wlc->pub, "ulmu", ulmu);
 
-	if (ulmu != NULL) {
-		void *p;
-		while ((p = spktdeq(&ulmu->utxdq))) {
-			PKTFREE(wlc->osh, p, TRUE);
-		}
-		spktqdeinit(&ulmu->utxdq);
-		MFREE(wlc->osh, ulmu, sizeof(wlc_ulmu_info_t));
+	while ((p = spktdeq(&ulmu->utxdq))) {
+		PKTFREE(wlc->osh, p, TRUE);
 	}
+	spktqdeinit(&ulmu->utxdq);
 
-	ulmu = NULL;
-	MFREE(wlc->osh, ulmu, sizeof(*ulmu));
+	MFREE(wlc->osh, ulmu, sizeof(wlc_ulmu_info_t));
+
+	wlc->ulmu = NULL;
 }
 
 int wlc_ulmu_sw_trig_enable(wlc_info_t *wlc, uint32 enable)
@@ -4532,6 +4914,9 @@ int wlc_ulmu_sw_trig_enable(wlc_info_t *wlc, uint32 enable)
 	}
 
 	if (enable == 1) {
+		/* disabling TAF UL 1 mode */
+		return BCME_UNSUPPORTED;
+
 		/* check if UL OFDMA is enabled */
 		if (!HE_ULMU_ENAB(wlc->pub)) {
 			printf("wl%d: %s: HE UL-OFDMA not enabled\n",
@@ -4553,8 +4938,13 @@ int wlc_ulmu_sw_trig_enable(wlc_info_t *wlc, uint32 enable)
 		ULMU_FLAGS_HBRNT_SET(ulmu->flags, ULMU_OFF);
 		txd->macctl1 &= ~D11_ULOTXD_MACTL1_HBRNT_MASK;
 		txd->macctl1 |= (ULMU_OFF << D11_ULOTXD_MACTL1_HBRNT_SHIFT);
-	}
-	else if (enable == 0) {
+
+		/* disable pairing by ucode */
+		txd->macctl &= ~D11_ULOTXD_MACTL_DURCFG_MASK;
+		txd->macctl |= ULMU_MCTL_DURCFG_MAX << D11_ULOTXD_MACTL_DURCFG_SHIFT;
+		/* disable trigger delay by ucode */
+		txd->interval = ULMU_TRIGGER_INT_1US;
+	} else if (enable == 0) {
 
 		/* umsched usched 1 */
 		ULMU_FLAGS_USCHED_SET(ulmu->flags, ULMU_ON);
@@ -4570,14 +4960,198 @@ int wlc_ulmu_sw_trig_enable(wlc_info_t *wlc, uint32 enable)
 		ULMU_FLAGS_HBRNT_SET(ulmu->flags, ULMU_ON);
 		txd->macctl1 &= ~D11_ULOTXD_MACTL1_HBRNT_MASK;
 		txd->macctl1 |= (ULMU_ON << D11_ULOTXD_MACTL1_HBRNT_SHIFT);
-	}
-	else {
+
+		/* enable pairing by ucode, use avg policy */
+		txd->macctl &= ~D11_ULOTXD_MACTL_DURCFG_MASK;
+		txd->macctl |= ULMU_MCTL_DURCFG_AVG << D11_ULOTXD_MACTL_DURCFG_SHIFT;
+		/* Turn on auto trigger interval scheme */
+		txd->interval = ULMU_TRIGGER_INT_AUTO;
+	} else {
 		return BCME_RANGE;
 	}
 	return BCME_OK;
 }
 
-#ifdef WLTAF
+#ifdef WLTAF_ULMU
+#if defined(BCMDBG) || defined(UL_RU_STATS_DUMP)
+static int
+wlc_ulmu_taf_stats_upd(wlc_ulmu_info_t *ulmu, scb_t *scb)
+{
+	scb_ulmu_t *ulmu_scb = SCB_ULMU(ulmu, scb);
+	ulmu_taf_stats_t *stats;
+	uint32 relbytes_per_trig, rxbytes_per_trig, padded_per_trig, reldur_per_trig,
+		txdur_per_trig, padding, relbytes, reldur, unused;
+
+	if (!ulmu_scb)
+		return BCME_ERROR;
+
+	stats = ULMU_TAF_SCB_STATS(ulmu_scb);
+	ASSERT(stats);
+
+	if (stats->ntrig) {
+		/* rxmon min bytes */
+		WLCNTSET(stats->rxmon_min_bytes, stats->rxmon_min);
+
+		/* rxmon max bytes */
+		WLCNTSET(stats->rxmon_max_bytes, stats->rxmon_max);
+
+		/* avg release bytes */
+		relbytes_per_trig = wlc_uint64_div((uint64)stats->bytes_rel, (uint64)stats->ntrig);
+		WLCNTSET(stats->relbytes_per_trig, relbytes_per_trig);
+
+		/* avg recvd bytes per trigger */
+		rxbytes_per_trig = wlc_uint64_div((uint64)stats->bytes_recvd, (uint64)stats->ntrig);
+		WLCNTSET(stats->rxbytes_per_trig, rxbytes_per_trig);
+
+		/* avg padded bytes per trigger */
+		padded_per_trig =
+			wlc_uint64_div((uint64)stats->bytes_trigd - (uint64)stats->bytes_recvd,
+				(uint64)stats->ntrig);
+		WLCNTSET(stats->padded_bytes_per_trig, padded_per_trig);
+
+		/* avg released duration per trigger */
+		reldur_per_trig = wlc_uint64_div((uint64)stats->usec_trigd, (uint64)stats->ntrig);
+		WLCNTSET(stats->reldur_per_trig, reldur_per_trig);
+
+		/* avg tx duration per trigger */
+		txdur_per_trig = wlc_uint64_div((uint64)stats->usec_txdur, (uint64)stats->ntrig);
+		WLCNTSET(stats->txdur_per_trig, txdur_per_trig);
+
+		/* update qos null and timeout related stats */
+		WLCNTSET(stats->qosnull_per_trig, (stats->nqosnull * 100) / stats->ntrig);
+		WLCNTSET(stats->timeout_per_trig, (stats->ntimeout * 100) / stats->ntrig);
+		WLCNTSET(stats->suppress_per_trig, (stats->nsuppress * 100) / stats->ntrig);
+	}
+
+	if (stats->bytes_recvd) {
+		relbytes = wlc_uint64_div((uint64)stats->bytes_rel * 100,
+			(uint64)stats->bytes_recvd);
+		WLCNTSET(stats->relbytes, relbytes);
+	}
+
+	if (stats->usec_txdur) {
+		reldur = wlc_uint64_div((uint64)stats->usec_trigd  * 100,
+			(uint64)stats->usec_txdur);
+		WLCNTSET(stats->reldur, reldur);
+	}
+
+	if (stats->usec_trigd) {
+		/* update qos null and timeout related stats */
+		WLCNTSET(stats->qosnull_airtime,
+			wlc_uint64_div((uint64)stats->usec_qosnull * 100,
+				(uint64)stats->usec_trigd));
+		WLCNTSET(stats->timeout_airtime,
+			wlc_uint64_div((uint64)stats->usec_timeout * 100,
+				(uint64)stats->usec_trigd));
+		WLCNTSET(stats->suppress_airtime,
+			wlc_uint64_div((uint64)stats->usec_suppress * 100,
+				(uint64)stats->usec_trigd));
+	}
+
+	if (stats->bytes_trigd) {
+		/* padded airtime */
+		padding =
+			wlc_uint64_div(((uint64)stats->bytes_trigd -
+				(uint64)stats->bytes_recvd) * 100,
+				(uint64)stats->bytes_trigd);
+		padding -= stats->qosnull_airtime - stats->timeout_airtime -
+			stats->suppress_airtime;
+		WLCNTSET(stats->padded_airtime, padding);
+
+		/* unused airtime */
+		unused = padding + stats->qosnull_airtime;
+		WLCNTSET(stats->unused_airtime, unused);
+	}
+
+	WLCNTSET(stats->trig_cnt, stats->ntrig);
+	WLCNTSET(stats->upd_cnt, stats->nupd);
+
+#ifdef TAF_UL_STATS_CLEAR_ON_READ
+	WLCNTSET(stats->rxmon_min, UINT32_MAX);
+	WLCNTSET(stats->rxmon_max, 0);
+	WLCNTSET(stats->bytes_rel, 0);
+	WLCNTSET(stats->usec_trigd, 0);
+	WLCNTSET(stats->usec_txdur, 0);
+	WLCNTSET(stats->bytes_trigd, 0);
+	WLCNTSET(stats->bytes_recvd, 0);
+	WLCNTSET(stats->nqosnull, 0);
+	WLCNTSET(stats->ntimeout, 0);
+	WLCNTSET(stats->nsuppress, 0);
+	WLCNTSET(stats->usec_qosnull, 0);
+	WLCNTSET(stats->usec_timeout, 0);
+	WLCNTSET(stats->usec_suppress, 0);
+	WLCNTSET(stats->ntrig, 0);
+	WLCNTSET(stats->nupd, 0);
+#endif /* TAF_UL_STATS_CLEAR_ON_READ */
+
+	return BCME_OK;
+}
+
+static int
+wlc_ulmu_taf_stats_reset(wlc_ulmu_info_t *ulmu, scb_t *scb)
+{
+	scb_ulmu_t *ulmu_scb = SCB_ULMU(ulmu, scb);
+	ulmu_taf_stats_t *stats;
+
+	if (!ulmu_scb)
+		return BCME_ERROR;
+
+	stats = ULMU_TAF_SCB_STATS(ulmu_scb);
+	ASSERT(stats);
+
+	/* clear TAF UL stats */
+	memset(stats, 0, sizeof(ulmu_taf_stats_t));
+	WLCNTSET(stats->rxmon_min, UINT32_MAX);
+
+	return BCME_OK;
+}
+
+static void
+wlc_ulmu_taf_print_scb_stats(wlc_ulmu_info_t *ulmu, struct scb *scb, bcmstrbuf_t *b)
+{
+	scb_ulmu_t *ulmu_scb = SCB_ULMU(ulmu, scb);
+	ulmu_taf_stats_t *stats;
+
+	ASSERT(ulmu_scb);
+	ASSERT(scb);
+	ASSERT(b);
+	ASSERT(ulmu_scb->scb_stats);
+
+	stats = ULMU_TAF_SCB_STATS(ulmu_scb);
+	ASSERT(stats);
+
+	/* update stats */
+	wlc_ulmu_taf_stats_upd(ulmu, scb);
+
+	bcm_bprintf(b, "\nTAF trigger stats summary:\n");
+	bcm_bprintf(b, " taf_trig_cnt=%d nupd_cnt=%d\n",
+		stats->trig_cnt, stats->upd_cnt);
+	bcm_bprintf(b, " taf_avg_bytes_per_trig=%d taf_avg_dur_per_trig=%d\n",
+		stats->relbytes_per_trig, stats->reldur_per_trig);
+	bcm_bprintf(b, " actual_rxbytes_per_trig=%d actual_txdur_per_trig=%d"
+		" padded_bytes_per_trig=%d\n",
+		stats->rxbytes_per_trig, stats->txdur_per_trig, stats->padded_bytes_per_trig);
+	bcm_bprintf(b, " qosnull_cnt=%d(%d%%) timeout_cnt=%d(%d%%) suppress_cnt=%d(%d%%)\n",
+		stats->nqosnull, stats->qosnull_per_trig, stats->ntimeout, stats->timeout_per_trig,
+		stats->nsuppress, stats->suppress_per_trig);
+
+	bcm_bprintf(b, "TAF trigger accuracy:\n");
+	bcm_bprintf(b, " taf_released_bytes(requested/recvd)=%d%%\n", stats->relbytes);
+	bcm_bprintf(b, " taf_released_dur(requested/recvd)=%d%%\n", stats->reldur);
+	bcm_bprintf(b, " qosnull_airtime=%d%% padded_airtime=%d%% total_unused=%d%%\n",
+		stats->qosnull_airtime, stats->padded_airtime, stats->unused_airtime);
+	bcm_bprintf(b, " timeout_airtime=%d%% suppress_airtime=%d%%\n",
+		stats->timeout_airtime, stats->suppress_airtime);
+
+	bcm_bprintf(b, "RX monitor byte count:\n");
+	bcm_bprintf(b, " rxmon_min_bytes=%d rxmon_max_bytes=%d _rate=%d pend_trig_cnt %d\n",
+		stats->rxmon_min_bytes, stats->rxmon_max_bytes,
+		ulmu_scb->rate, ulmu_scb->pend_trig_cnt);
+
+	bcm_bprintf(b, "\n");
+}
+#endif // endif
+
 #ifdef TAF_INF_UL_TRIGGER /* define it for infinite triggering */
 static uint32 BCMFASTPATH
 wlc_ulmu_rxbyte_cnt(scb_ulmu_t * ulmu_scb)
@@ -4599,7 +5173,7 @@ void * BCMFASTPATH wlc_ulmu_taf_get_scb_tid_info(void *scb_h, int tid)
 	return 0;
 }
 
-uint16 BCMFASTPATH wlc_ulmu_taf_get_scb_pktlen(void *scbh, void *tidh)
+uint16 BCMFASTPATH wlc_ulmu_taf_get_pktlen(void *scbh, void *tidh)
 {
 	scb_ulmu_t * ulmu_scb = (scb_ulmu_t *)scbh;
 	uint32 byte_cnt;
@@ -4607,19 +5181,148 @@ uint16 BCMFASTPATH wlc_ulmu_taf_get_scb_pktlen(void *scbh, void *tidh)
 #ifdef TAF_INF_UL_TRIGGER
 	byte_cnt = wlc_ulmu_rxbyte_cnt(ulmu_scb);
 #else
-	byte_cnt = wlc_ulmu_scb_reqbytes_get(ulmu_scb->ulmu, ulmu_scb->scb_bl);
+	byte_cnt = wlc_ulmu_scb_reqbytes_get(ulmu_scb->ulmu, ulmu_scb->scb_bl, TRUE);
+		WL_TAFF(ulmu_scb->ulmu->wlc, MACF" rxmon byte cnt %d\n",
+		ETHER_TO_MACF(ulmu_scb->scb_bl->ea), byte_cnt);
 #endif /* TAF_INF_UL_TRIGGER */
 
-	return (ulmu_scb) ? (byte_cnt / TAF_PKT_SIZE_DEFAULT): 0;
+	return (ulmu_scb) ?
+		(ROUNDUP(byte_cnt, TAF_PKT_SIZE_DEFAULT_UL) / TAF_PKT_SIZE_DEFAULT_UL): 0;
 }
 
-static int wlc_ulmu_trigger_request_callback(wlc_info_t * wlc, struct scb *scb,
-	packet_trigger_info_t *ti, void *arg, uint32 status_code, uint32 bytes_consumed,
+static void
+wlc_ulmu_scb_rxmon_rate_eval(wlc_ulmu_info_t *ulmu, scb_t *scb, uint32 bytes_recvd,
+	uint32 bytes_req, uint32 dur, uint32 trig_ts)
+{
+	scb_ulmu_t* ulmu_scb;
+	uint32 cur_rate;
+	uint32 cur_ts;
+	uint32 delta;
+	uint8 fill = 0;
+
+	if (scb == NULL || ulmu == NULL ||
+		((ulmu_scb = SCB_ULMU(ulmu, scb)) == NULL)) {
+		return;
+	}
+
+	ulmu_scb->trig_wait = FALSE;
+
+	if (ulmu_scb->last_recvd_bytes && ulmu_scb->last_trigd_bytes) {
+		/* calculate the fill % , out of 128 not 100 */
+		fill = (ulmu_scb->last_recvd_bytes << 7) / ulmu_scb->last_trigd_bytes;
+	}
+
+	cur_ts = wlc_read_usec_timer(ulmu->wlc);
+	delta = cur_ts - trig_ts;
+
+	/* rate in bytes/ms */
+	cur_rate = wlc_uint64_div((uint64)bytes_recvd << 10, (uint64)delta);
+
+	if (ulmu_scb->rate_init && bytes_recvd) {
+		ulmu_scb->rate_init = FALSE;
+		/* start with higher byte rate (2x) than what is observed, and let it settle */
+		cur_rate <<= 1;
+		ulmu_scb->rate = cur_rate;
+		RAVG_INIT(&ulmu_scb->rxmon_ravg_info, cur_rate, ulmu->ravg_exp);
+		ulmu_scb->acc_bufsz = cur_rate * ULMU_RXMON_BYTECNT_INIT_TIME;
+
+		WL_ULO((""MACF" bytes_recvd %d delta %d rate %d bytecnt %d"
+			" fill %d recvd %d trigd %d\n",
+			ETHER_TO_MACF(scb->ea), bytes_recvd, delta, cur_rate,
+			ulmu_scb->acc_bufsz, fill, ulmu_scb->last_recvd_bytes,
+			ulmu_scb->last_trigd_bytes));
+	}
+
+	if (!ulmu_scb->rate_init && ulmu_scb->last_recvd_bytes &&
+		ulmu_scb->last_trigd_bytes) {
+		if (fill >= ULMU_RXMON_FILL_THRSH) {
+			/* if fill % is above 90%, we may be underschedling,
+			* bump up the rate by 2x
+			*/
+			cur_rate <<= ulmu->rate_mult;
+		} else {
+			/* we are not under scheduling most likely,
+			* but keep the rate little higher than observed
+			*/
+			cur_rate += (cur_rate >> 2);
+		}
+	}
+
+	/* adjust rxmon byte cnt based on actual bytes rx */
+	if (bytes_recvd) {
+		ulmu_scb->zero_bytes_cnt = 0;
+		ulmu_scb->trig_wait_start_cnt = 0;
+		/* if more bytes recvd than requested,
+		 * need to reduce the byte cnt by that difference, and vice versa
+		 */
+		if (bytes_recvd > bytes_req) {
+			wlc_ulmu_scb_reqbytes_decr(ulmu, scb, bytes_recvd - bytes_req);
+		} else {
+			ulmu_scb->acc_bufsz += bytes_req - bytes_recvd;
+		}
+	} else {
+		ulmu_scb->zero_bytes_cnt++;
+		if (ulmu_scb->zero_bytes_cnt < ulmu->zero_bytes_thrsh) {
+			ulmu_scb->acc_bufsz += bytes_req;
+		}
+		if (ulmu_scb->acc_bufsz || ulmu_scb->rate) {
+			ulmu_scb->trig_wait_start_cnt++;
+			if (ulmu_scb->trig_wait_start_cnt >= ulmu->trig_wait_start_thrsh) {
+				ulmu_scb->trig_wait = TRUE;
+				ulmu_scb->trig_wait_ts = cur_ts;
+			}
+		} else {
+			ulmu_scb->trig_wait_start_cnt = 0;
+		}
+	}
+	ulmu_scb->last_trigd_bytes = 0;
+	ulmu_scb->last_recvd_bytes = 0;
+
+	if (!ulmu_scb->rate_init &&
+		(bytes_recvd || ulmu_scb->trig_wait)) {
+		RAVG_ADD(&ulmu_scb->rxmon_ravg_info, cur_rate);
+		ulmu_scb->rate = RAVG_AVG(&ulmu_scb->rxmon_ravg_info);
+	}
+
+	WL_ULO((""MACF" rx bytes %d delta time %d rate %d avg_rate %d byte_cnt %d\n",
+		ETHER_TO_MACF(scb->ea),
+		bytes_recvd, delta, cur_rate, ulmu_scb->rate, ulmu_scb->acc_bufsz));
+
+	/* evict if rate, byte cnt are 0 and no utxd in flight */
+	if (!ulmu_scb->acc_bufsz && !ulmu_scb->rate && !ulmu_scb->pend_trig_cnt) {
+		ulmu_scb->rxmon_idle_cnt++;
+		if (ulmu_scb->rxmon_idle_cnt > ulmu->evict_thrsh) {
+			WL_ULO((
+				"Evicting "MACF" trig_wait_start_cnt %d trig_wait %d "
+				"zero_bytes_cnt %d rxmon_idle_cnt %d\n",
+				ETHER_TO_MACF(scb->ea), ulmu_scb->trig_wait_start_cnt,
+				ulmu_scb->trig_wait, ulmu_scb->zero_bytes_cnt,
+				ulmu_scb->rxmon_idle_cnt));
+
+			wlc_ulmu_admit_clients(ulmu->wlc, scb, FALSE);
+		} else {
+			ulmu_scb->acc_bufsz = ULMU_ACC_BUFSZ_MIN;
+			ulmu_scb->trig_wait = TRUE;
+			ulmu_scb->trig_wait_ts = cur_ts;
+		}
+	} else {
+		ulmu_scb->rxmon_idle_cnt = 0;
+	}
+
+	WL_ULO((""MACF" trig_wait_start_cnt %d trig_wait %d "
+		"zero_bytes_cnt %d rxmon_idle_cnt %d\n",
+		ETHER_TO_MACF(scb->ea), ulmu_scb->trig_wait_start_cnt,
+		ulmu_scb->trig_wait, ulmu_scb->zero_bytes_cnt,
+		ulmu_scb->rxmon_idle_cnt));
+}
+
+static int wlc_ulmu_trig_req_cb(wlc_info_t * wlc, struct scb *scb,
+	packet_trigger_info_t *ti, void *p, uint32 status_code, uint32 bytes_consumed,
 	uint32 avg_pktsz, uint32 duration)
 {
 	wlc_ulmu_info_t *ulmu = wlc->ulmu;
 	scb_ulmu_t *ulmu_scb;
-	wlc_ulpkttag_t *tag = (wlc_ulpkttag_t *)arg;
+	wlc_ulpkttag_t *tag = ULMU_GET_TAG_FROM_UTXD_PKT(ulmu->wlc->osh, p);
 
 	BCM_REFERENCE(tag);
 	TAF_ASSERT(tag->index <= TAF_MAX_PKT_INDEX);
@@ -4627,29 +5330,36 @@ static int wlc_ulmu_trigger_request_callback(wlc_info_t * wlc, struct scb *scb,
 	/*
 	 * Return if we are not set up to handle the tx status for this scb.
 	 */
-	if (!scb) { /* Feature is not enabled */
+	if (!scb) { /* SCB check */
 		WL_ERROR(("wl%d: %s: null scb \n",
 				WLCWLUNIT(wlc), __FUNCTION__));
 		TAF_ASSERT(0);
 		return BCME_ERROR;
 	}
 
-	if (!SCB_ULOFDMA(scb)) { /* Feature is not enabled */
-		WL_ERROR(("wl%d: %s: ul ofdma feature not enabled\n",
-				WLCWLUNIT(wlc), __FUNCTION__));
+	/* check for feature not enabled */
+	if (!SCB_ULOFDMA(scb) && (status_code != ULMU_STATUS_EVICTED)) {
+		WL_ERROR(("wl%d: SCB:"MACF" %s: ul ofdma feature not enabled status: %d\n",
+				WLCWLUNIT(wlc), ETHER_TO_MACF(scb->ea), __FUNCTION__, status_code));
 	}
 
 	ulmu_scb = SCB_ULMU(ulmu, scb);
 	if (!ulmu_scb) {
-		WL_ERROR(("wl%d: %s: null ulmu_scb\n",
-				WLCWLUNIT(wlc), __FUNCTION__));
+		WL_ERROR(("wl%d: SCB:"MACF" %s: null ulmu_scb\n",
+				WLCWLUNIT(wlc), ETHER_TO_MACF(scb->ea), __FUNCTION__));
 		TAF_ASSERT(0);
 		return BCME_ERROR;
 	}
 
-	if (ulmu_scb->state != ULMU_SCB_ADMT) { /* not admitted */
-		WL_ERROR(("wl%d: %s: not admitted\n",
-				WLCWLUNIT(wlc), __FUNCTION__));
+	if (!WLCNTVAL(ulmu_scb->pend_trig_cnt)) {
+		return BCME_ERROR;
+	}
+
+	/* check for admission */
+	if ((ulmu_scb->state != ULMU_SCB_ADMT) && (status_code != ULMU_STATUS_EVICTED)) {
+		WL_ERROR(("wl%d: SCB:"MACF" %s: not admitted state %d status: %d\n",
+				WLCWLUNIT(wlc), ETHER_TO_MACF(scb->ea), __FUNCTION__,
+				ulmu_scb->state, status_code));
 	}
 
 	WL_TAFF(wlc, MACF" index %d status %d bytes consumed %d avg_pktsz %d dur %d"
@@ -4659,65 +5369,180 @@ static int wlc_ulmu_trigger_request_callback(wlc_info_t * wlc, struct scb *scb,
 
 	if ((status_code == ULMU_STATUS_INPROGRESS) ||
 		(status_code == ULMU_STATUS_THRESHOLD)) {
-		/* wait for COMPLETE */
+		uint32 units, completed_units;
+		/* update partial completes */
+		completed_units = wlc_uint64_div((uint64)tag->req_trig_units *
+			(uint64)bytes_consumed,
+			(uint64)tag->req_trig_bytes);
+		completed_units = LIMIT_TO_MAX(completed_units, tag->req_trig_units);
+		units = completed_units - tag->compl_trig_units;
+		tag->units = units;
+		tag->compl_trig_units = completed_units;
+
+		WL_TAFF(wlc, MACF" index %d status %d bytes consumed %d avg_pktsz %d dur %d"
+			" req units %d flag %d units %d completed_units %d\n",
+			ETHER_TO_MACF(scb->ea), tag->index, status_code, bytes_consumed, avg_pktsz,
+			duration, tag->req_trig_units, tag->flags3, tag->units, completed_units);
+
+		wlc_taf_txpkt_status(wlc->taf_handle, scb, TAF_UL_PRIO, tag,
+			TAF_TXPKT_STATUS_TRIGGER_COMPLETE);
+
+		if (!wlc_taf_scheduler_blocked(wlc->taf_handle)) {
+			wlc_taf_schedule(wlc->taf_handle, TAF_UL_PRIO, scb, FALSE);
+		}
+
 		return BCME_OK;
 	}
 
-	ulmu_scb->bytes_recvd += bytes_consumed;
+	tag->units = tag->req_trig_units - tag->compl_trig_units;
 
-	wlc_taf_txpkt_status(wlc->taf_handle, scb, PRIO_8021D_BE, arg,
-		TAF_TXPKT_STATUS_TRIGGER_COMPLETE);
+	WL_TAFF(wlc, MACF" index %d status %d bytes consumed %d avg_pktsz %d dur %d"
+		" req units %d flag %d units %d\n",
+		ETHER_TO_MACF(scb->ea), tag->index, status_code, bytes_consumed, avg_pktsz,
+		duration, tag->req_trig_units, tag->flags3, tag->units);
 
-	wlc_taf_schedule(wlc->taf_handle, PRIO_8021D_BE, scb, FALSE);
+	if (status_code == ULMU_STATUS_SUPPRESS) {
+		wlc_taf_txpkt_status(wlc->taf_handle, scb, TAF_UL_PRIO, tag,
+			TAF_TXPKT_STATUS_UL_SUPPRESSED);
+	} else {
+		wlc_taf_txpkt_status(wlc->taf_handle, scb, TAF_UL_PRIO, tag,
+			TAF_TXPKT_STATUS_TRIGGER_COMPLETE);
+	}
 
+	WLCNTDECR(ulmu_scb->pend_trig_cnt);
 	ULTRIGPENDDEC(wlc);
 
-	MFREE(wlc->osh, arg, sizeof(wlc_ulpkttag_t));
+	if ((status_code == ULMU_STATUS_COMPLETE) || (status_code == ULMU_STATUS_QOSNULL)) {
+		wlc_ulmu_scb_rxmon_rate_eval(ulmu, scb, bytes_consumed, tag->req_trig_bytes,
+			duration, tag->trig_ts);
+	}
+
+	ULMU_UTXD_FREE(wlc->osh, tag, p);
+
+	WL_TAFF(wlc, MACF" trig_pend_total %d trig_pend_this %d\n",
+		ETHER_TO_MACF(scb->ea), ULTRIGPENDTOT(wlc), WLCNTVAL(ulmu_scb->pend_trig_cnt));
+
+	if (!wlc_taf_scheduler_blocked(wlc->taf_handle)) {
+		wlc_taf_schedule(wlc->taf_handle, TAF_UL_PRIO, scb, FALSE);
+	}
 
 	return BCME_OK;
 }
 
-static void BCMFASTPATH
-wlc_ulmu_send_trigger(wlc_ulmu_info_t* ulmu, struct scb *scb, int bytes, wlc_ulpkttag_t *tag)
+static int BCMFASTPATH
+wlc_ulmu_send_trigger(wlc_ulmu_info_t* ulmu, struct scb *scb, int bytes,
+	void *p, bool bulk_commit)
 {
 	wlc_ulmu_trigger_info_t trig_info;
+	scb_ulmu_t* ulmu_scb;
+	int ret = BCME_OK;
+	wlc_ulpkttag_t *tag;
 
 	BCM_REFERENCE(trig_info);
+	if (scb == NULL || ulmu == NULL ||
+		((ulmu_scb = SCB_ULMU(ulmu, scb)) == NULL)) {
+		return BCME_BADARG;
+	}
+
+	tag = ULMU_GET_TAG_FROM_UTXD_PKT(ulmu->wlc->osh, p);
 
 	if (tag->index > TAF_MAX_PKT_INDEX) {
-		WL_ERROR(("wl%d: %s: SCB:"MACF" index %d units %d flag %d\n",
+		WL_ERROR(("wl%d: %s: "MACF" index %d units %d flag %d\n",
 			WLCWLUNIT(ulmu->wlc), __FUNCTION__,
 			ETHER_TO_MACF(scb->ea), tag->index, tag->units,
 			tag->flags3));
 		TAF_ASSERT(tag->index <= TAF_MAX_PKT_INDEX);
 	}
 
-	WL_TAFF(ulmu->wlc, " SCB:"MACF" index %d units %d flag %d\n",
-		ETHER_TO_MACF(scb->ea), tag->index, tag->units, tag->flags3);
+	WL_TAFF(ulmu->wlc, MACF" index %d units %d flag %d bulk_commit %d\n",
+		ETHER_TO_MACF(scb->ea), tag->index, tag->units, tag->flags3, bulk_commit);
 
 	if (bytes) {
 		TAF_ASSERT(tag != NULL);
 
 		trig_info.trigger_type.packet_trigger.trigger_bytes = bytes;
 		trig_info.trigger_type.packet_trigger.callback_function =
-			wlc_ulmu_trigger_request_callback;
+			wlc_ulmu_trig_req_cb;
 		trig_info.trigger_type.packet_trigger.callback_parameter =
-			(void *)tag;
+			(void *)p;
 		trig_info.trigger_type.packet_trigger.callback_reporting_threshold =
-			ULMU_CB_THRESHOLD;
-		trig_info.trigger_type.packet_trigger.multi_callback = FALSE;
+			ULMU_CB_TEST_THRESHOLD;
+		trig_info.trigger_type.packet_trigger.multi_callback = TRUE;
 		trig_info.trigger_type.packet_trigger.qos_null_threshold =
 			ULMU_QOSNULL_LIMIT;
 		trig_info.trigger_type.packet_trigger.failed_request_threshold =
 			ULMU_TIMEOUT_LIMIT;
-#ifdef ULMU_DRV
-		wlc_ulmu_drv_trigger_request(ulmu->wlc, scb, ULMU_PACKET_TRIGGER, &trig_info);
-#endif // endif
+		if (bulk_commit) {
+			trig_info.trigger_type.packet_trigger.post_utxd = FALSE;
+		} else {
+			trig_info.trigger_type.packet_trigger.post_utxd = TRUE;
+		}
+		trig_info.trigger_type.packet_trigger.pkt = p;
 
+#ifdef ULMU_DRV
+		ret = wlc_ulmu_drv_trigger_request(ulmu->wlc, scb, ULMU_PACKET_TRIGGER, &trig_info);
+		if (ret != BCME_OK)
+			return ret;
+#endif // endif
+		WLCNTINCR(ulmu_scb->pend_trig_cnt);
 		ULTRIGPENDINC(ulmu->wlc);
 
+		WL_TAFF(ulmu->wlc, MACF" pend_trig_cnt %d\n",
+			ETHER_TO_MACF(scb->ea), ulmu_scb->pend_trig_cnt);
+
 		wlc_ulmu_scb_reqbytes_decr(ulmu, scb, bytes);
+		return ret;
+	} else {
+		return BCME_BADLEN;
 	}
+}
+
+bool wlc_ulmu_taf_bulk(void* ulmuh, int tid, bool open)
+{
+	wlc_ulmu_info_t *ulmu = (wlc_ulmu_info_t *)ulmuh;
+
+	BCM_REFERENCE(ulmu);
+
+	if (!ulmu->num_usrs) {
+		return FALSE;
+	}
+
+	if (open && tid == TAF_UL_PRIO) {
+		/* open window for TAF_UL_PRIO only */
+		WL_TAFF(ulmu->wlc, "opened scheduling\n");
+
+		/*
+		 * everything released from now, that scheduling is opened,
+		 * should be held pending
+		 */
+		ulmu->bulk_commit = 1;
+		/* return TRUE to indicate we accepted the open request */
+		return TRUE;
+	} else if (open) {
+		/* TID other than TAF_UL_PRIO are not supported */
+		return FALSE;
+	}
+
+	/* Up to this point in the code, the open request was handled.
+	 * From here on, this means the request is to close scheduling when this function
+	 * is called a second time at the end of the release window.
+	 */
+
+	/* should not get here with TID we did not accept to open */
+	TAF_ASSERT(tid == TAF_UL_PRIO);
+
+	/*
+	 * everything that was pending can now be finally committed
+	 */
+	if (ulmu->bulk_commit > 1) {
+		wlc_ulmu_post_utxd(ulmu);
+	}
+	ulmu->bulk_commit = 0;
+
+	WL_TAFF(ulmu->wlc, "closed scheduling\n");
+
+	/* return TRUE to indicate we did close the session */
+	return TRUE;
 }
 
 bool wlc_ulmu_taf_release(void* ulmuh, void* scbh, void* tidh, bool force,
@@ -4726,11 +5551,19 @@ bool wlc_ulmu_taf_release(void* ulmuh, void* scbh, void* tidh, bool force,
 	wlc_ulmu_info_t *ulmu = (wlc_ulmu_info_t *)ulmuh;
 	int nreleased = 0;
 	scb_ulmu_t * ulmu_scb = (scb_ulmu_t *)scbh;
-	bool finished = FALSE;
 	struct scb * scb;
-	uint32 taf_cum_units = 0;
 	uint32 rx_byte_cnt = 0;
 	wlc_ulpkttag_t *tag = NULL;
+	int ret = BCME_OK;
+	uint32 rel_bytes = 0;
+	uint32 taf_pkt_time_units;
+	uint32 taf_units_to_fill;
+	uint32 taf_units_to_rel;
+	uint32 taf_units_avail_to_rel;
+	void *p;
+	osl_t *osh;
+
+	osh = ulmu->wlc->osh;
 
 	if (!ulmu_scb) {
 		WL_ERROR(("wl%d: %s: no cubby!\n",  WLCWLUNIT(ulmu->wlc), __FUNCTION__));
@@ -4739,7 +5572,7 @@ bool wlc_ulmu_taf_release(void* ulmuh, void* scbh, void* tidh, bool force,
 
 	if (taf->how != TAF_RELEASE_LIKE_IAS) {
 		WL_TAFF(ulmu->wlc, "release != TAF_RELEASE_LIKE_IAS\n");
-		ASSERT(0);
+		TAF_ASSERT(0);
 		taf->complete = TAF_REL_COMPLETE_ERR;
 		return FALSE;
 	}
@@ -4750,15 +5583,25 @@ bool wlc_ulmu_taf_release(void* ulmuh, void* scbh, void* tidh, bool force,
 		TAF_ASSERT(0);
 	}
 
-	if (!SCB_ULOFDMA(scb) || ulmu_scb->state != ULMU_SCB_ADMT) {
+	if (!SCB_ULOFDMA(scb) || (ulmu_scb->state != ULMU_SCB_ADMT)) {
 		WL_ERROR(("wl%d: %s: SCB:"MACF" not admitted for uplink, scb state %d\n",
 				WLCWLUNIT(ulmu->wlc), __FUNCTION__, ETHER_TO_MACF(scb->ea),
 				ulmu_scb->state));
+		taf->ias.was_emptied = TRUE;
+		taf->complete = TAF_REL_COMPLETE_EMPTIED;
+		TAF_ASSERT(0);
 		return FALSE;
 	}
 
-	if (taf->how == TAF_RELEASE_LIKE_IAS && taf->ias.is_ps_mode) {
-		/* TODO:  terminate the request for now */
+	if (taf->ias.is_ps_mode) {
+		/* regardless set emptied flag as the available traffic (ie in PS) is none
+		 * so this is effectively empty
+		 */
+		taf->ias.was_emptied = TRUE;
+
+		taf->complete = TAF_REL_COMPLETE_PS;
+
+		/* need to cancel UTXDs??  */
 		return FALSE;
 	}
 
@@ -4767,82 +5610,85 @@ bool wlc_ulmu_taf_release(void* ulmuh, void* scbh, void* tidh, bool force,
 	rx_byte_cnt = wlc_ulmu_rxbyte_cnt(ulmu_scb);
 #else
 	/* Rx monitor API */
-	rx_byte_cnt = wlc_ulmu_scb_reqbytes_get(ulmu, scb);
+	rx_byte_cnt = wlc_ulmu_scb_reqbytes_get(ulmu, scb, TRUE);
 #endif /* TAF_INF_UL_TRIGGER */
 
 	if (rx_byte_cnt == 0)
 		return FALSE;
 
-	while (!finished) {
-		uint32 qlen;
-		qlen = rx_byte_cnt > TAF_PKT_SIZE_DEFAULT ?
-			TAF_PKT_SIZE_DEFAULT : rx_byte_cnt;
-		if (!qlen) {
-			finished = TRUE;
-			if (taf->how == TAF_RELEASE_LIKE_IAS) {
-				taf->ias.was_emptied = TRUE;
-			}
-			if (taf->how == TAF_RELEASE_LIKE_DEFAULT) {
-				taf->def.was_emptied = TRUE;
-			}
-			taf->complete = TAF_REL_COMPLETE_EMPTIED;
-			WL_TAFF(ulmu->wlc, MACF" 0 qlen\n", ETHER_TO_MACF(scb->ea));
-			break;
-		}
-		rx_byte_cnt -= qlen;
-		++nreleased;
+	/* update rxmon stats */
+	WLCNTSET(ULMU_TAF_SCB_STATS(ulmu_scb)->rxmon_min,
+		MIN(ULMU_TAF_SCB_STATS(ulmu_scb)->rxmon_min, rx_byte_cnt));
 
-		if (taf->how == TAF_RELEASE_LIKE_IAS) {
+	WLCNTSET(ULMU_TAF_SCB_STATS(ulmu_scb)->rxmon_max,
+		MAX(ULMU_TAF_SCB_STATS(ulmu_scb)->rxmon_max, rx_byte_cnt));
 
-			if (!taf->ias.is_ps_mode)  {
-				uint32 pktbytes = qlen;
-				uint32 taf_pkt_time_units =
-					TAF_PKTBYTES_TO_UNITS((uint16)pktbytes,
-					taf->ias.pkt_rate, taf->ias.byte_rate);
+	WL_TAFF(ulmu->wlc,
+		MACF" rate: pkt %d byte %d release units: actual %d"
+		" total %d rel_limit %d time_limit %d\n",
+		ETHER_TO_MACF(scb->ea), taf->ias.pkt_rate, taf->ias.byte_rate,
+		taf->ias.actual.released_units, taf->ias.total.released_units,
+		taf->ias.released_units_limit, taf->ias.time_limit_units);
 
-				if (taf_pkt_time_units == 0) {
-					taf_pkt_time_units = 1;
-				}
+	taf_pkt_time_units =
+		TAF_PKTBYTES_TO_UNITS((uint16)(TAF_PKT_SIZE_DEFAULT_UL),
+		taf->ias.pkt_rate, taf->ias.byte_rate);
 
-				taf->ias.actual.released_bytes += (uint16)pktbytes;
-
-				taf_cum_units += taf_pkt_time_units;
-
-				if ((taf_cum_units +
-					taf->ias.total.released_units) >=
-					taf->ias.time_limit_units) {
-
-					WL_TAFF(ulmu->wlc, "time_limit_units reached\n");
-					finished = TRUE;
-
-					taf->complete = TAF_REL_COMPLETE_TIME_LIMIT;
-				}
-				if ((taf->ias.released_units_limit > 0) &&
-					((taf_cum_units + taf->ias.actual.released_units) >=
-					taf->ias.released_units_limit)) {
-
-					WL_TAFF(ulmu->wlc, "released_units_limit reached\n");
-					finished = TRUE;
-
-					taf->complete = TAF_REL_COMPLETE_REL_LIMIT;
-
-				}
-			} else {
-				/* terminate this release ?? Add support for PS mode later */
-				TAF_ASSERT(0);
-				//taf_pkt_tag = TAF_PKTTAG_PS;
-			}
-			taf->ias.actual.release++;
-		}
-		else if (taf->how == TAF_RELEASE_LIKE_DEFAULT) {
-			taf->def.actual.release++;
-		}
+	if (taf_pkt_time_units == 0) {
+		WL_INFORM(("%s: taf_pkt_time_units = %d, pktbytes = %u, pkt_rate = %u, "
+			  "byte_rate = %u \n", __FUNCTION__, taf_pkt_time_units,
+			  TAF_PKT_SIZE_DEFAULT_UL, taf->ias.pkt_rate, taf->ias.byte_rate));
+		taf_pkt_time_units = 1;
 	}
 
+	taf_units_to_fill = taf->ias.time_limit_units - taf->ias.total.released_units;
+
+	if ((taf->ias.released_units_limit > 0) &&
+		(taf_units_to_fill >
+		(taf->ias.released_units_limit - taf->ias.actual.released_units))) {
+
+		taf_units_to_fill = taf->ias.released_units_limit - taf->ias.actual.released_units;
+	}
+
+	if (taf_units_to_fill <= 0) {
+		WL_ERROR(("%s: taf_pkt_units_to_fill = %d, actual.released_units = %u, "
+			"total.released_units %u, time_limit_units %u\n",
+			__FUNCTION__, taf_units_to_fill, taf->ias.actual.released_units,
+			taf->ias.total.released_units, taf->ias.time_limit_units));
+		TAF_ASSERT(!(taf_units_to_fill <= 0));
+
+		taf->complete = TAF_REL_COMPLETE_ERR;
+
+		return FALSE;
+	}
+
+	taf_units_avail_to_rel = (rx_byte_cnt * taf_pkt_time_units) >> TAF_PKT_SIZE_DEFAULT_UL_SF;
+	taf_units_avail_to_rel = (taf_units_avail_to_rel == 0) ? 1 : taf_units_avail_to_rel;
+
+	if (taf_units_avail_to_rel >= taf_units_to_fill) {
+		taf_units_to_rel = taf_units_to_fill;
+
+		taf->ias.was_emptied = FALSE;
+
+		taf->complete = (taf_units_to_rel == taf->ias.released_units_limit) ?
+			TAF_REL_COMPLETE_REL_LIMIT : TAF_REL_COMPLETE_TIME_LIMIT;
+	} else {
+		taf_units_to_rel = taf_units_avail_to_rel;
+		taf->ias.was_emptied = TRUE;
+	}
+
+	nreleased = (taf_units_to_rel / taf_pkt_time_units);
+
+	if (nreleased * taf_pkt_time_units < taf_units_to_rel) {
+		/* round up */
+		nreleased++;
+	}
+	taf->ias.actual.release += nreleased;
+	taf->ias.actual.released_units += taf_units_to_rel;
+	rel_bytes = MIN(nreleased << TAF_PKT_SIZE_DEFAULT_UL_SF, rx_byte_cnt);
+	taf->ias.actual.released_bytes += rel_bytes;
+
 	if (nreleased) {
-
-		taf->ias.actual.released_units += taf_cum_units;
-
 		WL_TAFF(ulmu->wlc,
 			MACF" rate: pkt %d byte %d release units: actual %d"
 			" total %d limit %d\n",
@@ -4850,41 +5696,115 @@ bool wlc_ulmu_taf_release(void* ulmuh, void* scbh, void* tidh, bool force,
 			taf->ias.actual.released_units, taf->ias.total.released_units,
 			taf->ias.released_units_limit);
 
-		if ((tag = MALLOCZ(ulmu->wlc->osh, sizeof(wlc_ulpkttag_t))) == NULL) {
-			WL_ERROR(("wl%d: %s: out of memory, malloced %d bytes\n",
-				WLCWLUNIT(ulmu->wlc), __FUNCTION__, MALLOCED(ulmu->wlc->osh)));
-			TAF_ASSERT(0);
+#ifdef UTXD_POOL
+		p = pktpool_get(ULMU_UTXD_POOL_PTR(ulmu));
+#else
+		p = PKTGET(osh, ULMU_UTXD_BUF_SIZE, TRUE);
+#endif // endif
+		if (!p) {
+			WL_ERROR(("wl%d: %s: pktget error\n",
+				ulmu->wlc->pub->unit, __FUNCTION__));
+			return 0;
 		}
+		ASSERT(ISALIGNED((uintptr)PKTDATA(osh, p), sizeof(uint32)));
+
+#if defined(BCMHWA) && defined(HWA_PKT_MACRO)
+		PKTSETHWAPKT(osh, p);
+		PKTSETMGMTTXPKT(osh, p);
+#endif /* BCMHWA && HWA_PKT_MACRO */
+
+		memset((uint8 *)PKTDATA(osh, p), 0, WLULPKTTAGLEN);
+
+		/* construct the tag */
+		tag = (wlc_ulpkttag_t*)PKTDATA(ulmu->wlc->osh, p);
+		tag->ref_cnt = ULMU_UTXD_MAX_REF_CNT;
+
 		tag->index = taf->ias.index;
-		tag->units = taf_cum_units;
+		tag->units = taf_units_to_rel;
 		tag->flags3 = WLF3_TAF_TAGGED;
+		tag->req_trig_bytes = ROUNDUP(rel_bytes, TAF_PKT_SIZE_DEFAULT_UL);
+		tag->req_trig_units = taf_units_to_rel;
+		tag->compl_trig_units = 0;
+		tag->trig_ts = wlc_read_usec_timer(ulmu->wlc);
 
-		ulmu_scb->bytes_recvd = 0;
-		ulmu_scb->trig_bytes = nreleased * TAF_PKT_SIZE_DEFAULT;
-		ulmu_scb->trig_units = taf_cum_units;
+		PKTPULL(osh, p, WLULPKTTAGLEN);
 
-		wlc_ulmu_send_trigger(ulmu, scb, ulmu_scb->trig_bytes, tag);
+		if (ulmu->bulk_commit) {
+			ret = wlc_ulmu_send_trigger(ulmu, scb, tag->req_trig_bytes, p, TRUE);
+			if (ret == BCME_OK) {
+				ulmu->bulk_commit++;
+			}
+		} else {
+			ret = wlc_ulmu_send_trigger(ulmu, scb, tag->req_trig_bytes, p, FALSE);
+		}
+
+		if (ret != BCME_OK) {
+			PKTFREE(osh, p, TRUE);
+			taf->ias.was_emptied = TRUE;
+			taf->complete = TAF_REL_COMPLETE_EMPTIED;
+			WL_TAFF(ulmu->wlc, MACF" trigger request failed with error %d\n",
+					ETHER_TO_MACF(scb->ea),
+					ret);
+
+			return FALSE;
+		}
+
+		/* update stats */
+		WLCNTINCR(ULMU_TAF_SCB_STATS(ulmu_scb)->ntrig);
+		WLCNTADD(ULMU_TAF_SCB_STATS(ulmu_scb)->bytes_rel,
+			tag->req_trig_bytes);
+		WLCNTADD(ULMU_TAF_SCB_STATS(ulmu_scb)->usec_trigd,
+			TAF_UNITS_TO_MICROSEC(taf_units_to_rel));
 
 		WL_TAFF(ulmu->wlc, MACF" released %u bytes %d index %d"
-			" units %d dur %d pend %d\n",
-			ETHER_TO_MACF(scb->ea), nreleased, ulmu_scb->trig_bytes,
-			taf->ias.index, taf_cum_units, TAF_UNITS_TO_MICROSEC(taf_cum_units),
-			ULTRIGPENDTOT(ulmu->wlc));
-	}
-	else {
+			" units %d dur %d total_pend_trig %d pend_trig_cnt %d\n",
+			ETHER_TO_MACF(scb->ea), nreleased, tag->req_trig_bytes,
+			taf->ias.index, taf_units_to_rel, TAF_UNITS_TO_MICROSEC(taf_units_to_rel),
+			ULTRIGPENDTOT(ulmu->wlc), WLCNTVAL(ulmu_scb->pend_trig_cnt));
+	} else {
 		WL_TAFF(ulmu->wlc, MACF" nreleased %d\n",
 			ETHER_TO_MACF(scb->ea), nreleased);
 	}
 	return nreleased > 0;
 }
-#endif /* WLTAF */
+
+static void wlc_ulmu_taf_enable(wlc_ulmu_info_t *ulmu, scb_t *scb, bool enable)
+{
+	wlc_info_t * wlc;
+
+	if (!scb || !ulmu) {
+		return;
+	}
+
+	wlc = ulmu->wlc;
+
+	if (enable) {
+		wlc_taf_scb_state_update(wlc->taf_handle, scb, TAF_PARAM(TRUE),
+			TAF_SCBSTATE_MU_UL_OFDMA);
+
+		wlc_taf_scb_state_update(wlc->taf_handle, scb, TAF_UL, TAF_SCBSTATE_SOURCE_ENABLE);
+
+		wlc_taf_link_state(ulmu->wlc->taf_handle, scb, TAF_UL_PRIO, TAF_UL,
+			TAF_LINKSTATE_ACTIVE);
+
+	} else {
+		wlc_taf_link_state(wlc->taf_handle, scb, TAF_UL_PRIO, TAF_UL,
+			TAF_LINKSTATE_NOT_ACTIVE);
+
+		wlc_taf_scb_state_update(wlc->taf_handle, scb, TAF_UL, TAF_SCBSTATE_SOURCE_DISABLE);
+
+		wlc_taf_scb_state_update(wlc->taf_handle, scb, TAF_PARAM(FALSE),
+			TAF_SCBSTATE_MU_UL_OFDMA);
+	}
+}
+#endif /* WLTAF_ULMU */
 
 /* set ul ofdma admission params for TWT setting */
 void
 wlc_ulmu_twt_params(wlc_ulmu_info_t *ulmu, bool on)
 {
 
-	WL_MUTX(("wl%d: %s: on is %d\n",
+	WL_ULO(("wl%d: %s: on is %d\n",
 		ulmu->wlc->pub->unit, __FUNCTION__, on));
 	if (on) {
 		/* For TWT
@@ -4901,6 +5821,167 @@ wlc_ulmu_twt_params(wlc_ulmu_info_t *ulmu, bool on)
 	if (ulmu->wlc->pub->up) {
 		wlc_ulmu_cfg_commit(ulmu);
 	}
+}
+
+bool wlc_ulmu_admit_ready(wlc_info_t *wlc, struct scb *scb)
+{
+	wlc_ulmu_info_t *ulmu = wlc->ulmu;
+	struct scb *tmpscb;
+	scb_iter_t scbiter;
+	int admit_cnt = 0;
+	scb_ulmu_t *ulmu_scb, *tmp_ulmu_scb;
+	ulmu_stats_t *ul_stats;
+	uint32 ts;
+
+	ulmu_scb = SCB_ULMU(ulmu, scb);
+
+	if (!wlc_ulmu_scb_eligible(ulmu, scb)) {
+		WL_INFORM(("%s: SCB:"MACF" admit fail: not eligible\n",
+			__FUNCTION__, ETHER_TO_MACF(scb->ea)));
+		return FALSE;
+	}
+
+	if (ulmu->num_usrs >= wlc_txcfg_max_clients_get(wlc->txcfg, ULOFDMA)) {
+		/* reset admit check flag */
+		ulmu_scb->try_admit = FALSE;
+		WL_INFORM(("%s: SCB:"MACF" admit fail: max users %d already admitted\n",
+			__FUNCTION__, ETHER_TO_MACF(scb->ea), ulmu->num_usrs));
+		return FALSE;
+	}
+
+	ts = wlc_read_usec_timer(ulmu->wlc);
+
+	if (wlc_twt_scb_is_trig_enab(wlc->twti, scb) || ulmu->always_admit) {
+		/* If not yet admitted then continue, otherwise no update */
+		if (ulmu_scb->state != ULMU_SCB_ADMT) {
+			goto skip_time_pkt_check;
+		}
+		return FALSE;
+	}
+
+	if (!ulmu_scb->try_admit) {
+		ulmu_scb->start_ts = wlc_read_usec_timer(ulmu->wlc);
+		ulmu_scb->try_admit = TRUE;
+		wlc_ampdu_ulmu_reqbytes_get(wlc->ampdu_rx, scb); /* reset recv_bytes */
+		ulmu_scb->last_rx_pkts = scb->scb_stats.rx_ucast_pkts; /* refresh pkt counter */
+		WL_INFORM(("%s: SCB:"MACF" admit check start ts %d\n", __FUNCTION__,
+			ETHER_TO_MACF(scb->ea), ulmu_scb->start_ts));
+		return FALSE;
+	}
+
+	if ((scb->scb_stats.rx_ucast_pkts - ulmu_scb->last_rx_pkts) <
+		ulmu->rx_pktcnt_thrsh) {
+		WL_INFORM(("%s: SCB:"MACF" rx pkt cnt %d not above threshold\n", __FUNCTION__,
+			ETHER_TO_MACF(scb->ea),
+			scb->scb_stats.rx_ucast_pkts - ulmu_scb->last_rx_pkts));
+		return FALSE;
+	}
+
+	/* reset admit check if last pkt arrived more than 1 second earlier */
+	if (ts - ulmu_scb->start_ts > US_PER_SECOND) {
+		 ulmu_scb->start_ts = ts;
+		/* reset admit check flag */
+		ulmu_scb->try_admit = FALSE;
+		WL_INFORM(("%s: SCB:"MACF" admit fail: time expired %d\n",
+			__FUNCTION__, ETHER_TO_MACF(scb->ea), admit_cnt));
+		return FALSE;
+	}
+
+skip_time_pkt_check:
+	/* count total users that can be admitted or are already admitted */
+	FOREACHSCB(wlc->scbstate, &scbiter, tmpscb) {
+		tmp_ulmu_scb = SCB_ULMU(ulmu, tmpscb);
+		if (!tmp_ulmu_scb) {
+			continue;
+		}
+		if (!wlc_ulmu_scb_eligible(ulmu, tmpscb)) {
+			continue;
+		}
+		/* All TWT trigger enabled SCBs should be admitted */
+		if (wlc_twt_scb_is_trig_enab(wlc->twti, tmpscb)) {
+			admit_cnt++;
+			continue;
+		}
+
+		/* skip if > 1sec has elapsed for this STA */
+		if (tmp_ulmu_scb->try_admit && ((ts - tmp_ulmu_scb->start_ts) > US_PER_SECOND)) {
+			tmp_ulmu_scb->try_admit = FALSE;
+			continue;
+		}
+
+		tmp_ulmu_scb->rx_data =
+			((tmpscb->scb_stats.rx_ucast_pkts - tmp_ulmu_scb->last_rx_pkts) >=
+			ulmu->rx_pktcnt_thrsh);
+		WL_INFORM(("%s: SCB:"MACF" rx pkt cnt %d\n", __FUNCTION__,
+			ETHER_TO_MACF(tmpscb->ea),
+			tmpscb->scb_stats.rx_ucast_pkts - tmp_ulmu_scb->last_rx_pkts));
+		/* unconditionally admit if always_admit == 1 or trigger-enabled twt user */
+		if ((ulmu->always_admit != ULMU_ADMIT_ALWAYS) && !tmp_ulmu_scb->rx_data) {
+			continue;
+		}
+		admit_cnt++;
+	}
+
+	if (admit_cnt < ulmu->min_ulofdma_usrs) {
+		/* reset admit check flag */
+		ulmu_scb->try_admit = FALSE;
+		WL_INFORM(("%s: SCB:"MACF" admit fail: low admit cnt %d\n",
+			__FUNCTION__, ETHER_TO_MACF(scb->ea), admit_cnt));
+		return FALSE;
+	}
+
+	/* admission */
+	FOREACHSCB(wlc->scbstate, &scbiter, tmpscb) {
+		if (!tmpscb || !SCB_ASSOCIATED(tmpscb) ||
+			!SCB_HE_CAP(tmpscb) || SCB_INTERNAL(tmpscb)) {
+			continue;
+		}
+
+		tmp_ulmu_scb = SCB_ULMU(ulmu, tmpscb);
+		if (!tmp_ulmu_scb) {
+			continue;
+		}
+
+		if (SCB_ULOFDMA(tmpscb)) {
+			continue;
+		}
+
+		if (ulmu->always_admit != ULMU_ADMIT_ALWAYS &&
+			!wlc_twt_scb_is_trig_enab(wlc->twti, tmpscb) &&
+			!wlc_scb_ampdurx_on(tmpscb) && ulmu->rx_pktcnt_thrsh) {
+			wlc_ulmu_oper_state_upd(wlc->ulmu, tmpscb, ULMU_SCB_INIT);
+			continue;
+		}
+
+		tmp_ulmu_scb->su_recv_dur = (ts - tmp_ulmu_scb->start_ts);
+		tmp_ulmu_scb->su_recv_bytes = wlc_ampdu_ulmu_reqbytes_get(wlc->ampdu_rx, tmpscb);
+		tmp_ulmu_scb->try_admit = FALSE;
+		WL_INFORM(("%s: SCB:"MACF" ready for admit, start %d end %d dur %d\n",
+			__FUNCTION__, ETHER_TO_MACF(tmpscb->ea), tmp_ulmu_scb->start_ts, ts,
+			tmp_ulmu_scb->su_recv_dur));
+
+		/* let's admit if not admitted yet */
+		/* admit criteria */
+		/* 1) a-mpdu traffic meets certain threshold
+		   2) trigger-enabled twt user
+		*/
+		if ((ulmu->always_admit == ULMU_ADMIT_ALWAYS) ||
+			(tmp_ulmu_scb->rx_data) ||
+			wlc_twt_scb_is_trig_enab(wlc->twti, tmpscb)) {
+			if (!wlc_ulmu_admit_clients(wlc, tmpscb, TRUE)) {
+				WL_ERROR(("%s: SCB:"MACF" admission failed\n",
+					__FUNCTION__, ETHER_TO_MACF(tmpscb->ea)));
+				wlc_ulmu_oper_state_upd(wlc->ulmu, tmpscb, ULMU_SCB_INIT);
+			} else {
+				/* update admission time stats */
+				ul_stats = tmp_ulmu_scb->scb_stats;
+				WLCNTADD(ul_stats->admit_dur,
+					ROUNDUP(tmp_ulmu_scb->su_recv_dur, 1000) / 1000);
+			}
+		}
+	}
+
+	return TRUE;
 }
 
 #endif /* WL_ULMU */

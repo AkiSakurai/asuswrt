@@ -142,34 +142,34 @@ acsd_dump_chanim(wl_chanim_stats_t* chanim_stats)
 	if (chanim_stats->version == WL_CHANIM_STATS_VERSION) {
 		chanim_stats_t *stats;
 
-		printf("Chanim Stats Dump: count: %d\n", count);
-		printf("chanspec tx   inbss   obss   nocat   nopkt   doze     txop     "
+		acsddbg("Chanim Stats Dump: count: %d\n", count);
+		acsddbg("chanspec tx   inbss   obss   nocat   nopkt   doze     txop     "
 				"goodtx  badtx   glitch   badplcp  knoise  timestamp\n");
 
 		for (i = 0; i < count; i++) {
 			stats = (chanim_stats_t *)&chanim_stats->stats[i];
-			printf("0x%4x\t", stats->chanspec);
+			acsddbg("0x%4x (%s)\t", stats->chanspec, wf_chspec_ntoa(stats->chanspec, chanspecbuf));
 			for (j = 0; j < CCASTATS_MAX; j++)
-				printf("%d\t", stats->ccastats[j]);
-			printf("%d\t%d\t%d\t%d", dtoh32(stats->glitchcnt), dtoh32(stats->badplcp),
+				acsddbg("%d\t", stats->ccastats[j]);
+			acsddbg("%d\t%d\t%d\t%d", dtoh32(stats->glitchcnt), dtoh32(stats->badplcp),
 					stats->bgnoise, dtoh32(stats->timestamp));
-			printf("\n");
+			acsddbg("\n");
 		}
 	} else if (chanim_stats->version == WL_CHANIM_STATS_V2) {
 		chanim_stats_v2_t *stats;
 
-		printf("Chanim Stats Dump: count: %d\n", count);
-		printf("chanspec tx   inbss   obss   nocat   nopkt   doze     txop     "
+		acsddbg("Chanim Stats Dump: count: %d\n", count);
+		acsddbg("chanspec tx   inbss   obss   nocat   nopkt   doze     txop     "
 				"goodtx  badtx   glitch   badplcp  knoise  timestamp\n");
 
 		stats = (chanim_stats_v2_t *)chanim_stats->stats;
 		for (i = 0; i < count; i++) {
-			printf("0x%4x\t", stats->chanspec);
+			acsddbg("0x%4x (%s)\t", stats->chanspec, wf_chspec_ntoa(stats->chanspec, chanspecbuf));
 			for (j = 0; j < CCASTATS_V2_MAX; j++)
-				printf("%d\t", stats->ccastats[j]);
-			printf("%d\t%d\t%d\t%d", dtoh32(stats->glitchcnt), dtoh32(stats->badplcp),
+				acsddbg("%d\t", stats->ccastats[j]);
+			acsddbg("%d\t%d\t%d\t%d", dtoh32(stats->glitchcnt), dtoh32(stats->badplcp),
 					stats->bgnoise, dtoh32(stats->timestamp));
-			printf("\n");
+			acsddbg("\n");
 			stats++;
 		}
 	}
@@ -182,24 +182,24 @@ acsd_display_chanim(wl_chanim_stats_t* chanim_stats)
 	int j;
 	if (chanim_stats->version == WL_CHANIM_STATS_VERSION) {
 		chanim_stats_t *stats = (chanim_stats_t *)chanim_stats->stats;
-		printf("chanspec tx   inbss   obss   nocat   nopkt   doze     txop     "
+		acsddbg("chanspec tx   inbss   obss   nocat   nopkt   doze     txop     "
 				"goodtx  badtx   glitch   badplcp  knoise  timestamp\n");
-		printf("0x%4x\t", stats->chanspec);
+		acsddbg("0x%4x (%s)\t", stats->chanspec, wf_chspec_ntoa(stats->chanspec, chanspecbuf));
 		for (j = 0; j < CCASTATS_MAX; j++)
-			printf("%d\t", stats->ccastats[j]);
-		printf("%d\t%d\t%d\t%d", dtoh32(stats->glitchcnt), dtoh32(stats->badplcp),
+			acsddbg("%d\t", stats->ccastats[j]);
+		acsddbg("%d\t%d\t%d\t%d", dtoh32(stats->glitchcnt), dtoh32(stats->badplcp),
 				stats->bgnoise, dtoh32(stats->timestamp));
-		printf("\n");
+		acsddbg("\n");
 	} else if (chanim_stats->version == WL_CHANIM_STATS_V2) {
 		chanim_stats_v2_t *stats = (chanim_stats_v2_t *)chanim_stats->stats;
-		printf("chanspec tx   inbss   obss   nocat   nopkt   doze     txop     "
+		acsddbg("chanspec tx   inbss   obss   nocat   nopkt   doze     txop     "
 				"goodtx  badtx   glitch   badplcp  knoise  timestamp\n");
-		printf("0x%4x\t", stats->chanspec);
+		acsddbg("0x%4x (%s)\t", stats->chanspec, wf_chspec_ntoa(stats->chanspec, chanspecbuf));
 		for (j = 0; j < CCASTATS_V2_MAX; j++)
-			printf("%d\t", stats->ccastats[j]);
-		printf("%d\t%d\t%d\t%d", dtoh32(stats->glitchcnt), dtoh32(stats->badplcp),
+			acsddbg("%d\t", stats->ccastats[j]);
+		acsddbg("%d\t%d\t%d\t%d", dtoh32(stats->glitchcnt), dtoh32(stats->badplcp),
 				stats->bgnoise, dtoh32(stats->timestamp));
-		printf("\n");
+		acsddbg("\n");
 	}
 }
 
@@ -237,7 +237,7 @@ chanim_intf_detected(chanim_info_t *ch_info, uint8 version)
 		chanim_mark(ch_info).best_score = score;
 
 	if (acsd_debug_level & ACSD_DEBUG_CHANIM)
-		printf("acs monitor: score = %d (ref %d)\n",
+		acsddbg("acs monitor: score = %d (ref %d)\n",
 			score, chanim_mark(ch_info).best_score);
 
 	if ((score - chanim_mark(ch_info).best_score) >= config->acs_trigger_var)
@@ -463,8 +463,7 @@ chanim_upd_state(acs_chaninfo_t * c_info, uint8 version, uint ticks)
 		if (acs_allow_scan(c_info, ACS_SCAN_TYPE_CS, ticks)) {
 			c_info->last_scan_type = ACS_SCAN_TYPE_CS;
 			ret = acs_run_cs_scan(c_info);
-			if (ret < 0)
-			ACSD_WARNING("%s: cs scan failed\n", c_info->name);
+			ACS_ERR(ret, "cs scan failed\n");
 
 			ret = acs_request_data(c_info);
 			ACS_ERR(ret, "request data failed\n");
@@ -669,7 +668,7 @@ acsd_update_chanim(acs_chaninfo_t * c_info, wl_chanim_stats_t * chanim_stats, ui
 	int i; \
 	ACSD_INFO("\nPrinting array: %s of len %d\n", (header), (len)); \
 	for (i = 0; i < (len); i++) { \
-		printf("%4d%c", (arr)[i], ((!((i + 1) % 25) || (i + 1) == (len)) ? '\n' : '\t')); \
+		acsddbg("%4d%c", (arr)[i], ((!((i + 1) % 25) || (i + 1) == (len)) ? '\n' : '\t')); \
 	} \
 } } while (0)
 

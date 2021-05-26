@@ -45,7 +45,7 @@
  *	OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  *	NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- *	$Id: acs_scan.c 782671 2019-12-31 08:45:27Z $
+ *	$Id: acs_scan.c 785768 2020-04-06 13:33:31Z $
  */
 
 #include <stdio.h>
@@ -215,8 +215,8 @@ acs_build_scanlist(acs_chaninfo_t *c_info)
 				}
 			}
 		}
-		ACSD_INFO("%s: chanspec: (0x%04x), chspec_info: 0x%x  pref_chan: 0x%x\n",
-			c_info->name, c, ch_list[i].chspec_info, ch_list[i].flags);
+		ACSD_INFO("%s: chanspec: 0x%04x (%s), chspec_info: 0x%x  pref_chan: 0x%x\n",
+			c_info->name, c, wf_chspec_ntoa(c, chanspecbuf), ch_list[i].chspec_info, ch_list[i].flags);
 	}
 	acs_ci_scan_update_idx(&c_info->scan_chspec_list, 0);
 
@@ -301,9 +301,9 @@ acs_expire_scan_entry(acs_chaninfo_t *c_info, time_t limit)
 	while (curptr) {
 		time_t diff = now - curptr->timestamp;
 		if (diff > limit) {
-			ACSD_5G("%s: Scan expire: diff %dsec chanspec 0x%x, SSID %s\n",
+			ACSD_5G("%s: Scan expire: diff %dsec chanspec 0x%4x (%s), SSID %s\n",
 				c_info->name,
-				(int)diff, curptr->binfo_local.chanspec, curptr->binfo_local.SSID);
+				(int)diff, curptr->binfo_local.chanspec, wf_chspec_ntoa(curptr->binfo_local.chanspec, chanspecbuf), curptr->binfo_local.SSID);
 			if (previous == NULL)
 				*rootp = curptr->next;
 			else
@@ -352,7 +352,16 @@ int acs_allow_scan(acs_chaninfo_t *c_info, uint8 type, uint ticks)
 		 */
 		bool is_good_ch = ((tx_score + c_info->channel_free) > c_info->acs_chanim_tx_avail);
 
-		acs_update_bw_status(c_info);
+		if ((c_info->acs_dfs == ACS_DFS_DISABLED) && c_info->is160_bwcap) {
+			ACSD_DEBUG("%s: Don't upgrade the bw when acs_dfs is %s and "
+					" upgradable bw is 160MHz: %d\n", c_info->name,
+					c_info->acs_dfs ? "Enabled" : "Disabled",
+					c_info->is160_bwcap);
+			c_info->bw_upgradable = 0;
+		} else {
+			/* ensure latest bw_upgradable status is available */
+			acs_update_bw_status(c_info);
+		}
 		if (!c_info->bw_upgradable && is_good_ch) {
 			c_info->ci_scan_postponed_to_ticks = ticks + ACS_SCAN_POSTPONE_TICKS;
 			ACSD_DEBUG("%s: Don't initiate CI scan if tx_score %d + channel free is %d "
@@ -370,7 +379,16 @@ int acs_allow_scan(acs_chaninfo_t *c_info, uint8 type, uint ticks)
 	}
 
 	if (type == ACS_SCAN_TYPE_CS) {
-		acs_update_bw_status(c_info);
+		if ((c_info->acs_dfs == ACS_DFS_DISABLED) && c_info->is160_bwcap) {
+			ACSD_DEBUG("%s: Don't upgrade the bw when acs_dfs is %s and "
+					" upgradable bw is 160MHz: %d\n", c_info->name,
+					c_info->acs_dfs ? "Enabled" : "Disabled",
+					c_info->is160_bwcap);
+			c_info->bw_upgradable = 0;
+		} else {
+			/* ensure latest bw_upgradable status is available */
+			acs_update_bw_status(c_info);
+		}
 		if (c_info->cur_is_dfs) {
 			c_info->cs_scan_postponed_to_ticks = ticks + ACS_SCAN_POSTPONE_TICKS;
 			ACSD_DEBUG("%s: Don't allow CS scan when operating on dfs channel"
@@ -378,8 +396,8 @@ int acs_allow_scan(acs_chaninfo_t *c_info, uint8 type, uint ticks)
 					c_info->name, ticks, c_info->cs_scan_postponed_to_ticks);
 			return FALSE;
 		}
-		/* Allow cs scan when acsd is on non-dfs channel and there are no associations */
-		if (!c_info->cur_is_dfs && !acs_check_assoc_scb(c_info)) {
+		/* Allow cs scan when acsd is on non-dfs channel and last scan type is CI scan */
+		if (!c_info->cur_is_dfs && c_info->last_scan_type != ACS_SCAN_TYPE_CS) {
 			return TRUE;
 		}
 	}
@@ -517,6 +535,16 @@ acs_do_ci_update(uint ticks, acs_chaninfo_t * c_info)
 	if (!(c_info->scan_chspec_list.ci_scan_running))
 		return ret;
 
+	if ((c_info->acs_dfs == ACS_DFS_DISABLED) && c_info->is160_bwcap) {
+		ACSD_DEBUG("%s: Don't upgrade the bw when acs_dfs is %s and "
+				" upgradable bw is 160MHz: %d\n", c_info->name,
+				c_info->acs_dfs ? "Enabled" : "Disabled",
+				c_info->is160_bwcap);
+		c_info->bw_upgradable = 0;
+	} else {
+		/* ensure latest bw_upgradable status is available */
+		acs_update_bw_status(c_info);
+	}
 	if (chanim_chk_lockout(c_info->chanim_info) && c_info->acs_lockout_enable) {
 		ACSD_DEBUG("%s: Don't initiate CI scan while in lockout period\n", c_info->name);
 		return ret;
@@ -540,7 +568,7 @@ acs_do_ci_update(uint ticks, acs_chaninfo_t * c_info)
 	}
 	ret = acs_run_ci_scan(c_info);
 	if (ret < 0)
-	ACSD_WARNING("%s: cs scan failed\n", c_info->name);
+	ACSD_INFO("ci scan failed\n");
 
 	ret = acs_request_data(c_info);
 	ACS_ERR(ret, "request data failed\n");
@@ -549,6 +577,17 @@ acs_do_ci_update(uint ticks, acs_chaninfo_t * c_info)
 
 	if (!(c_info->scan_chspec_list.ci_scan_running)) {
 		acs_normalize_chanim_stats_after_ci_scan(c_info);
+		if (c_info->acs_ignore_channel_change_from_hp_on_farsta) {
+			if ((CHSPEC_BW(c_info->cur_chspec) > WL_CHANSPEC_BW_40) &&
+					(c_info->sta_status & ACS_STA_EXIST_FAR) &&
+					!ACS_IS_LOW_POW_CH(wf_chspec_ctlchan(c_info->cur_chspec),
+					c_info->country_is_edcrs_eu)) {
+				ACSD_INFO("%s: Don't change channel when Far Sta is present"
+						"and operating on high pwr channel %x\n",
+						c_info->name, wf_chspec_ctlchan(c_info->cur_chspec));
+				return ret;
+			}
+		}
 		if (c_info->bw_upgradable || c_info->txop_score < c_info->ci_scan_txop_limit) {
 			acs_select_chspec(c_info);
 			c_info->switch_reason_type = ACS_SCAN_TYPE_CI;
@@ -759,7 +798,7 @@ acs_run_escan(acs_chaninfo_t *c_info, uint8 scan_type)
 	wl_escan_params_t *params;
 	int err;
 	struct timeval tv, tv_tmp;
-	time_t escan_timeout;
+	time_t escan_timeout = 0;
 
 	params = (wl_escan_params_t*)acsd_malloc(params_size);
 	if (params == NULL) {
@@ -773,15 +812,18 @@ acs_run_escan(acs_chaninfo_t *c_info, uint8 scan_type)
 		tv.tv_usec = 0;
 		tv.tv_sec = 1;
 		err = acs_escan_prep_cs(c_info, &params->params, &params_size);
+		if (err != BCME_OK) {
+			goto exit2;
+		}
 		escan_timeout = uptime() + WL_CS_SCAN_TIMEOUT;
 	} else if (scan_type == ACS_SCAN_TYPE_CI) {
 		tv.tv_sec = 0;
 		tv.tv_usec = WL_CI_SCAN_TIMEOUT;
 		err = acs_escan_prep_ci(c_info, &params->params, &params_size);
+		if (err != BCME_OK) {
+			goto exit2;
+		}
 		escan_timeout = uptime() + 1;
-	} else {
-		ACSD_ERROR("%s Unknown scan type %d\n", c_info->name, scan_type);
-		return BCME_ERROR;
 	}
 
 	params->version = htod32(ESCAN_REQ_VERSION);
@@ -849,7 +891,7 @@ acs_escan_prep_ci(acs_chaninfo_t *c_info, wl_scan_params_t *params, int *params_
 	c_info->timestamp_acs_scan = uptime();
 
 	*params_size = WL_SCAN_PARAMS_FIXED_SIZE + params->channel_num * sizeof(uint16);
-	ACSD_INFO("%s: ci scan on chspec: 0x%x\n", c_info->name, scan_elemt->chspec);
+	ACSD_INFO("%s: ci scan on chspec: 0x%4x (%s)\n", c_info->name, scan_elemt->chspec, wf_chspec_ntoa(scan_elemt->chspec, chanspecbuf));
 
 	return ret;
 }
@@ -922,13 +964,13 @@ display_scan_entry_local(acs_bss_info_sm_t * bsm)
 	char ssidbuf[SSID_FMT_BUF_LEN];
 	wl_format_ssid(ssidbuf, bsm->SSID, bsm->SSID_len);
 
-	printf("SSID: \"%s\"\n", ssidbuf);
-	printf("BSSID: %s\t", wl_ether_etoa(&bsm->BSSID));
-	printf("chanspec: 0x%x\n", bsm->chanspec);
-	printf("RSSI: %d dBm\t", (int16)bsm->RSSI);
-	printf("Type: %s", ((bsm->type == ACS_BSS_TYPE_11A) ? "802.11A" :
+	acsddbg("SSID: \"%s\"\n", ssidbuf);
+	acsddbg("BSSID: %s\t", wl_ether_etoa(&bsm->BSSID));
+	acsddbg("chanspec: 0x%4x (%s)\n", bsm->chanspec, wf_chspec_ntoa(bsm->chanspec, chanspecbuf));
+	acsddbg("RSSI: %d dBm\t", (int16)bsm->RSSI);
+	acsddbg("Type: %s", ((bsm->type == ACS_BSS_TYPE_11A) ? "802.11A" :
 		((bsm->type == ACS_BSS_TYPE_11G) ? "802.11G" : "802.11B")));
-	printf("\n");
+	acsddbg("\n");
 }
 
 void
@@ -938,7 +980,7 @@ acs_dump_scan_entry(acs_chaninfo_t *c_info)
 
 	while (curptr) {
 		display_scan_entry_local(&curptr->binfo_local);
-		printf("timestamp: %u\n", (uint32)curptr->timestamp);
+		acsddbg("timestamp: %u\n", (uint32)curptr->timestamp);
 		curptr = curptr->next;
 	}
 }
@@ -994,8 +1036,8 @@ acs_update_escanresult_queue(acs_chaninfo_t *c_info)
 		memcpy(&new_entry->binfo_local.BSSID, &bi->BSSID, sizeof(struct ether_addr));
 		new_entry->timestamp = uptime();
 		acs_parse_chanspec(cur_chspec, &chan);
-		ACSD_INFO("%s: Scan: chanspec 0x%x, control %x SSID %s\n",
-			c_info->name, cur_chspec,
+		ACSD_INFO("%s: Scan: chanspec 0x%4x (%s), control %x SSID %s\n",
+			c_info->name, cur_chspec, wf_chspec_ntoa(cur_chspec, chanspecbuf),
 			chan.control, new_entry->binfo_local.SSID);
 		/* BSS type in 2.4G band */
 		if (chan.control <= ACS_CS_MAX_2G_CHAN) {
@@ -1033,8 +1075,8 @@ acs_update_scanresult_queue(acs_chaninfo_t *c_info)
 		memcpy(&new_entry->binfo_local.BSSID, &bi->BSSID, sizeof(struct ether_addr));
 		new_entry->timestamp = uptime();
 		acs_parse_chanspec(cur_chspec, &chan);
-		ACSD_INFO("%s: Scan: chanspec 0x%x, control %x SSID %s\n", c_info->name,
-			cur_chspec, chan.control, new_entry->binfo_local.SSID);
+		ACSD_INFO("%s: Scan: chanspec 0x%4x (%s), control %x SSID %s\n", c_info->name,
+			cur_chspec, wf_chspec_ntoa(cur_chspec, chanspecbuf), chan.control, new_entry->binfo_local.SSID);
 		/* BSS type in 2.4G band */
 		if (chan.control <= ACS_CS_MAX_2G_CHAN) {
 			if (acs_bss_is_11b(bi))
@@ -1056,10 +1098,10 @@ acs_dump_chan_bss(acs_chan_bssinfo_t* bssinfo, int ncis)
 	int c;
 	acs_chan_bssinfo_t *cur;
 
-	printf("channel nCtrl nExt20 nExt40 nExt80\n");
+	acsddbg("channel nCtrl nExt20 nExt40 nExt80\n");
 	for (c = 0; c < ncis; c++) {
 		cur = &bssinfo[c];
-		printf("%3d  %5d%6d%7d%7d\n", cur->channel, cur->nCtrl,
+		acsddbg("%3d  %5d%6d%7d%7d\n", cur->channel, cur->nCtrl,
 			cur->nExt20, cur->nExt40, cur->nExt80);
 	}
 }
@@ -1276,8 +1318,8 @@ acs_scan_timer_or_dfsr_check(acs_chaninfo_t * c_info, uint ticks)
 			if (acs_tx_idle_check(c_info) ||
 				((passed > cs_scan_timer) && (!acs_check_assoc_scb(c_info)))) {
 				switch_reason = APCS_CSTIMER;
+				c_info->last_scan_type = ACS_SCAN_TYPE_CS;
 			}
-			c_info->last_scan_type = ACS_SCAN_TYPE_CS;
 		}
 	}
 
@@ -1303,12 +1345,22 @@ acs_scan_timer_or_dfsr_check(acs_chaninfo_t * c_info, uint ticks)
 					"change if needed\n", c_info->name);
 		}
 		ret = acs_run_cs_scan(c_info);
-		if (ret < 0)
-		ACSD_WARNING("%s: cs scan failed\n", c_info->name);
+		ACS_ERR(ret, "cs scan failed\n");
 		acs_cleanup_scan_entry(c_info);
 
 		ret = acs_request_data(c_info);
 		ACS_ERR(ret, "request data failed\n");
+		if (c_info->acs_ignore_channel_change_from_hp_on_farsta) {
+			if ((CHSPEC_BW(c_info->cur_chspec) > WL_CHANSPEC_BW_40) &&
+					(c_info->sta_status & ACS_STA_EXIST_FAR) &&
+					!ACS_IS_LOW_POW_CH(wf_chspec_ctlchan(c_info->cur_chspec),
+					c_info->country_is_edcrs_eu)) {
+				ACSD_INFO("%s: Don't change channel when Far Sta is present"
+						"and operating on hp channel %d\n", c_info->name,
+						wf_chspec_ctlchan(c_info->cur_chspec));
+				break;
+			}
+		}
 
 		/* Fall through to common case */
 
@@ -1389,13 +1441,12 @@ select_chanspec:
 			c_info->switch_reason_type = APCS_CSTIMER;
 		}
 		else {
-			c_info->last_scanned_time = uptime();
+		    c_info->last_scanned_time = uptime();
 		}
 		break;
 	case APCS_CHANIM:
 		ret = acs_run_cs_scan(c_info);
-		if (ret < 0)
-		ACSD_WARNING("%s: cs scan failed\n", c_info->name);
+		ACS_ERR(ret, "cs scan failed\n");
 		acs_cleanup_scan_entry(c_info);
 
 		ret = acs_request_data(c_info);

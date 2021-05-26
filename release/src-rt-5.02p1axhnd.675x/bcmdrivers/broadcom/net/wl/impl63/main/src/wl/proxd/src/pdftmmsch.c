@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmmsch.c 777082 2019-07-18 14:48:21Z $
+ * $Id: pdftmmsch.c 788031 2020-06-18 14:10:58Z $
  */
 
 #include "wlc.h"
@@ -85,6 +85,9 @@ pdftm_msch_cb(void *handler_ctx, wlc_msch_cb_info_t *cb_info)
 	}
 	else if ((cb_info->type & MSCH_CT_ON_CHAN) ||
 			(cb_info->type & MSCH_CT_SLOT_START)) {
+		/* Attempt mpc up, in case pre onChan got missed due to slot piggyback */
+		proxd_power(ftm->wlc, PROXD_PWR_ID_BURST, TRUE);
+
 		/* Dont start queue if STA and chancpec is same as sta chanspec */
 		/* if (!wlc_sta_timeslot_onchannel(sn->bsscfg)) */ {
 			wlc_txqueue_start(ftm->wlc, sn->bsscfg, cb_info->chanspec, NULL);
@@ -169,6 +172,7 @@ pdftm_msch_end(pdftm_t *ftm, pdftm_session_t *sn)
 
 					wlc_msch_timeslot_unregister(ftm->wlc->msch_info,
 						(wlc_msch_req_handle_t **)&sn->ext_sched->req_hdl);
+					sst->flags &= ~FTM_SESSION_STATE_BURST_REQ;
 				}
 			}
 		}
@@ -186,14 +190,19 @@ pdftm_msch_end(pdftm_t *ftm, pdftm_session_t *sn)
 
 					wlc_msch_timeslot_unregister(ftm->wlc->msch_info,
 						(wlc_msch_req_handle_t **)&sn->ext_sched->req_hdl);
+					sst->flags &= ~FTM_SESSION_STATE_BURST_REQ;
 				}
 			}
 		}
 	}
 
+#ifdef TOF_DEBUG_TIME
+	TOF_PRINTF(("***pdftm_msch_end: time:%u\n", OSL_SYSUPTIME_US()));
+#endif /* TOF_DEBUG_TIME */
+
 done:
-	FTM_LOG_STATUS(ftm, err, (("wl%d: %s[%d]: status %d, time:%llu\n",
-		FTM_UNIT(ftm), __FUNCTION__, __LINE__, err, OSL_SYSUPTIME_US())));
+	FTM_LOG_STATUS(ftm, err, (("wl%d: %s[%d]: status %d\n",
+		FTM_UNIT(ftm), __FUNCTION__, __LINE__, err)));
 	return err;
 }
 
@@ -267,11 +276,13 @@ pdftm_msch_begin(pdftm_t *ftm, pdftm_session_t *sn)
 		wlc_msch_set_chansw_reason(ftm->wlc->msch_info,
 			(wlc_msch_req_handle_t *)sn->ext_sched->req_hdl,
 			CHANSW_PROXD);
-		wlc_user_wake_upd(sn->ftm->wlc, WLC_USER_WAKE_REQ_FTM, TRUE);
 		sst->flags |= FTM_SESSION_STATE_BURST_REQ;
 	}
 	FTM_LOGSCHED(ftm, (("wl%d: %s timeslot requested now %u.%u start %u.%u\n",
 		FTM_UNIT(ftm), __FUNCTION__, FTM_LOG_TSF_ARG(now),
 		FTM_LOG_TSF_ARG(sst->burst_start))));
+#ifdef TOF_DEBUG_TIME
+	TOF_PRINTF(("***pdftm_msch_begin: time:%u\n", OSL_SYSUPTIME_US()));
+#endif /* TOF_DEBUG_TIME */
 	return err;
 }

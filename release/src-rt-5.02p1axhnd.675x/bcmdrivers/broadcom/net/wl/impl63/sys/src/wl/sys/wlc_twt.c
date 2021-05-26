@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_twt.c 783116 2020-01-14 10:38:01Z $
+ * $Id: wlc_twt.c 788958 2020-07-15 09:17:23Z $
  */
 
 #ifdef WLTWT
@@ -131,6 +131,8 @@
 #define WLC_TSFL_TO_SCHEDID(tsfl)	(uint16)((tsfl) >> WLC_SCHEDID_TSF_SHIFT)
 #define WLC_SCHEDID_TO_TSFL(schedid)	((schedid) << WLC_SCHEDID_TSF_SHIFT)
 
+#define WLC_PRETWT_TIME			2048	/* Ucode time of interrupt ahead of schedule */
+
 #define WLC_TWT_MAX_RLM_USR		16
 
 /* Ratelinkmem structure */
@@ -207,6 +209,25 @@ typedef struct twt_indv_desc {
 	wlc_hrt_to_t	*tx_close_timer;	/* Used for announced traffic */
 	scb_t		*scb;			/* Timer needs to be able to map back to SCB */
 	uint8		teardown_retry_cnt;	/* How many times to retry teardown */
+	uint32		cnt_sp;			/* Counter; in/out of SP */
+	uint32		cnt_rx_trig;		/* Counter; rx trigggers (for announced) */
+	uint32		cnt_paused;		/* Counter; TWT link paused */
+	uint32		cnt_tx_pkt;		/* Counter; Tx packets scheduled for this link */
+	uint32		cnt_sp_missed;		/* Counter; Missed SP completely (late timer int) */
+	uint32		cnt_sp_missed_by1;	/* Counter; Missed SP by 1 (late timer int) */
+	uint32		cnt_pretwt_late_sp_closed; /* Counter; Missed SP by late pre TWT */
+#if defined(BCMDBG) || defined(DUMP_TWT)
+	uint32		cnt_pretwt;
+	int32		cnt_avg_pretwt;
+	int32		cnt_min_pretwt;
+	int32		cnt_max_pretwt;
+	uint32		cnt_tx_open_tsf_l;
+	uint32		cnt_tx_open_tsf_h;
+	uint32		cnt_tx_latency;
+	int32		cnt_avg_tx_latency;
+	int32		cnt_min_tx_latency;
+	int32		cnt_max_tx_latency;
+#endif // endif
 } twt_indv_desc_t;
 
 /** per SCB TWT specific info */
@@ -223,7 +244,6 @@ typedef struct twt_scb {
 	struct twt_scb	*next;		/* Linked list of active twt_scb's */
 	uint16		rlm_id;		/* Ratelink mem index */
 	uint16		cur_sp_start;	/* current sched ID of SP start to program to txd */
-	uint16		next_sp_start;	/* next sched ID of SP start to set to cur on pretwt */
 	bool		sp_started;	/* Has the first SP for this link been put in RLM */
 	bool		apps_prepared;	/* Has APPS been prepared for TWT. */
 } twt_scb_t;
@@ -251,6 +271,9 @@ struct wlc_twt_info {
 #ifdef DEBUG_TWT_PS
 	wlc_hrt_to_t	*test_timer;
 #endif /* DEBUG_TWT_PS */
+	uint32		cnt_engine_started;	/* Counter; UCODE engine started */
+	uint32		cnt_sp_missed_almost;	/* Counter; Missed SP almost, late by 1 schedid */
+	uint32		cnt_pretwt_late;	/* Counter; intr handler is very delayed */
 };
 
 /* macros to access bsscfg cubby & data */
@@ -268,6 +291,7 @@ static int wlc_twt_doiovar(void *ctx, uint32 actionid, void *params, uint plen,
 	void *arg, uint alen, uint vsize, struct wlc_if *wlcif);
 #if defined(BCMDBG) || defined(DUMP_TWT)
 static int wlc_twt_dump(void *ctx, struct bcmstrbuf *b);
+static int wlc_twt_dump_clr(void *ctx);
 #endif // endif
 static int wlc_twt_wlc_up(void *ctx);
 
@@ -285,6 +309,7 @@ static uint wlc_twt_scb_secsz(void *ctx, scb_t *scb);
 static int wlc_twt_scb_init(void *ctx, scb_t *scb);
 static void wlc_twt_scb_deinit(void *ctx, scb_t *scb);
 static void wlc_twt_scb_dump(void *ctx, scb_t *scb, struct bcmstrbuf *b);
+static void wlc_twt_scb_state_upd_cb(void *ctx, scb_state_upd_data_t *notif_data);
 
 /* Beacone IE mgmt hooks */
 #ifdef AP
@@ -317,7 +342,7 @@ static int wlc_twt_teardown_itwt(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc
 static int wlc_twt_itwt_start(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc_t *indv);
 static int wlc_twt_itwt_stop(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc_t *indv,
 	bool enter_pm);
-static void wlc_twt_prepare_for_first_sp(wlc_twt_info_t *twti, scb_t *scb);
+static void wlc_twt_prepare_for_first_sp(wlc_twt_info_t *twti, twt_indv_desc_t *indv);
 static void wlc_twt_sp_resume(wlc_twt_info_t *twti, twt_indv_desc_t *indv);
 static void wlc_twt_sp_pause(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc_t *indv, uint16 fc);
 static void wlc_twt_itwt_end_sp(void *arg);
@@ -391,7 +416,7 @@ BCMATTACHFN(wlc_twt_attach)(wlc_info_t *wlc)
 
 #if defined(BCMDBG) || defined(DUMP_TWT)
 	/* debug dump */
-	wlc_dump_register(wlc->pub, "twt", wlc_twt_dump, twti);
+	wlc_dump_add_fns(wlc->pub, "twt", wlc_twt_dump, wlc_twt_dump_clr, twti);
 #endif // endif
 
 	/* reserve some space in bsscfg for private data */
@@ -425,6 +450,11 @@ BCMATTACHFN(wlc_twt_attach)(wlc_info_t *wlc)
 			wlc_twt_calc_bcast_ie_len, wlc_twt_write_bcast_ie, twti) != BCME_OK) {
 		WL_ERROR(("wl%d: %s: wlc_iem_add_build_fn failed, twt bcast ie\n", wlc->pub->unit,
 			__FUNCTION__));
+		goto fail;
+	}
+	/* Add client callback to the scb state notification list */
+	if (wlc_scb_state_upd_register(wlc, wlc_twt_scb_state_upd_cb, wlc) != BCME_OK) {
+		WL_ERROR(("wl%d: %s: unable to register callback\n", wlc->pub->unit, __FUNCTION__));
 		goto fail;
 	}
 #endif /* AP */
@@ -466,6 +496,7 @@ BCMATTACHFN(wlc_twt_detach)(wlc_twt_info_t *twti)
 		wlc_hrt_free_timeout(twti->rlm_scheduler_timer);
 	}
 
+	wlc_scb_state_upd_unregister(wlc, wlc_twt_scb_state_upd_cb, wlc);
 	wlc_module_unregister(wlc->pub, "twt", twti);
 
 	MFREE(wlc->osh, twti, sizeof(*twti));
@@ -488,6 +519,12 @@ wlc_twt_dump(void *ctx, struct bcmstrbuf *b)
 	if (!TWT_ENAB(wlc->pub)) {
 		return BCME_OK;
 	}
+	bcm_bprintf(b, "UCODE engine enabled: %d, start count: %d\n",
+		twti->rlm_scheduler_active, twti->cnt_engine_started);
+	bcm_bprintf(b, "Almost missed SP scheduleding=%d (interrupt delayed by 1 schedid)\n",
+		twti->cnt_sp_missed_almost);
+	bcm_bprintf(b, "Pre TWT interrupt very delayed count=%d\n",
+		twti->cnt_pretwt_late);
 
 	if (twti->itwt_count) {
 		bcm_bprintf(b, "\nNumber of active individual TWT sessions: %d\n",
@@ -501,9 +538,12 @@ wlc_twt_dump(void *ctx, struct bcmstrbuf *b)
 				}
 				indv = &scb_twt->indv[i];
 				bcm_bprintf(b, "------------------------\n");
-				bcm_bprintf(b, "Individual TWT for SCB %p, AID %d, MAC " MACF "\n",
+				bcm_bprintf(b, "Individual TWT for SCB %p, AID %d, MAC " MACF
+					" RLM Id %d\n",
 					indv->scb, SCB_AID(indv->scb),
-					ETHERP_TO_MACF(&indv->scb->ea));
+					ETHERP_TO_MACF(&indv->scb->ea), scb_twt->rlm_id);
+				bcm_bprintf(b, "TWT=%08x:%08x (hex), next schedid=%x\n",
+					indv->twt_h, indv->twt_l, WLC_TSFL_TO_SCHEDID(indv->twt_l));
 				bcm_bprintf(b, "ID=%d Interval=%d/%d (m/e) =%d (usec) Duration=%d "
 					"(usec) Unannounced=%d Trigger=%d\n",
 					indv->desc.id, indv->desc.wake_interval_mantissa,
@@ -514,6 +554,45 @@ wlc_twt_dump(void *ctx, struct bcmstrbuf *b)
 					(indv->desc.flow_flags & WL_TWT_FLOW_FLAG_UNANNOUNCED) ?
 					1 : 0,
 					(indv->desc.flow_flags & WL_TWT_FLOW_FLAG_TRIGGER) ? 1 : 0);
+				bcm_bprintf(b, "Count SP=%d Rx trig=%d Paused=%d Tx pkt=%d\n",
+					indv->cnt_sp, indv->cnt_rx_trig, indv->cnt_paused,
+					indv->cnt_tx_pkt);
+				bcm_bprintf(b, "      SP missed=%d missed by 1=%d "
+					"(late interrupt)\n",
+					indv->cnt_sp_missed, indv->cnt_sp_missed_by1);
+				bcm_bprintf(b, "      SP missed by late pre TWT interrupt count=%d"
+					"\n", indv->cnt_pretwt_late_sp_closed);
+				if (indv->cnt_pretwt) {
+					if (indv->desc.flow_flags & WL_TWT_FLOW_FLAG_UNANNOUNCED) {
+						bcm_bprintf(b, "      PreTWT avg(last 16)=%d min/"
+							"max=%d/%d count=%d\n",
+							(indv->cnt_pretwt > 16) ?
+							indv->cnt_avg_pretwt / 16 :
+							indv->cnt_avg_pretwt /
+								(int32)indv->cnt_pretwt,
+							indv->cnt_min_pretwt, indv->cnt_max_pretwt,
+							indv->cnt_pretwt);
+					} else {
+						bcm_bprintf(b, "      Rx avg(last 16)=%d min/"
+							"max=%d/%d count=%d\n",
+							(indv->cnt_pretwt > 16) ?
+							indv->cnt_avg_pretwt / 16 :
+							indv->cnt_avg_pretwt /
+								(int32)indv->cnt_pretwt,
+							indv->cnt_min_pretwt, indv->cnt_max_pretwt,
+							indv->cnt_pretwt);
+					}
+				}
+				if (indv->cnt_tx_latency) {
+					bcm_bprintf(b, "      Tx latency(last 16)=%d min/"
+						"max=%d/%d count=%d\n",
+						(indv->cnt_tx_latency > 16) ?
+						indv->cnt_avg_tx_latency / 16 :
+						indv->cnt_avg_tx_latency /
+							(int32)indv->cnt_tx_latency,
+						indv->cnt_min_tx_latency, indv->cnt_max_tx_latency,
+						indv->cnt_tx_latency);
+				}
 			}
 			scb_twt = scb_twt->next;
 		}
@@ -529,7 +608,70 @@ wlc_twt_dump(void *ctx, struct bcmstrbuf *b)
 
 	return BCME_OK;
 }
+
+static int
+wlc_twt_dump_clr(void *ctx)
+{
+	wlc_twt_info_t *twti = (wlc_twt_info_t *)ctx;
+	twt_scb_t *scb_twt;
+	twt_indv_desc_t *indv;
+	int i;
+
+	if (twti->itwt_count) {
+		scb_twt = twti->scb_twt_list;
+		ASSERT(scb_twt);
+		while (scb_twt) {
+			for (i = 0; i < ARRAYSIZE(scb_twt->indv); i++) {
+				if (scb_twt->indv[i].state != WLC_TWT_STATE_ACTIVE) {
+					continue;
+				}
+				indv = &scb_twt->indv[i];
+				indv->cnt_avg_pretwt = 0;
+				indv->cnt_min_pretwt = 0;
+				indv->cnt_max_pretwt = 0;
+				indv->cnt_pretwt = 0;
+				indv->cnt_sp = 0;
+				indv->cnt_tx_latency = 0;
+				indv->cnt_avg_tx_latency = 0;
+				indv->cnt_min_tx_latency = 0;
+				indv->cnt_max_tx_latency = 0;
+				indv->cnt_rx_trig = 0;
+				indv->cnt_paused = 0;
+				indv->cnt_tx_pkt = 0;
+				indv->cnt_sp_missed = 0;
+				indv->cnt_sp_missed_by1 = 0;
+				indv->cnt_pretwt_late_sp_closed = 0;
+			}
+			scb_twt = scb_twt->next;
+		}
+	}
+	return BCME_OK;
+}
+
 #endif // endif
+
+void
+wlc_twt_dump_schedblk(wlc_info_t *wlc)
+{
+	wlc_twt_info_t *twti = wlc->twti;
+	int i, j;
+
+	if (!TWT_ENAB(wlc->pub)) {
+		return;
+	}
+	for (j = 0; j < ARRAYSIZE(twti->twtschedblk); j++) {
+		WL_PRINT(("%d) usr_count = %d, schedid = %d\n", j,
+			twti->twtschedblk[j].usr_count,
+			twti->twtschedblk[j].schedid));
+		for (i = 0; i < twti->twtschedblk[j].usr_count; i++) {
+			WL_PRINT(("	[%d].id = %d dur = %d\n", i,
+				(twti->twtschedblk[j].usr_info[i] & TSB_USR_IDX_MASK)
+				>> TSB_USR_IDX_SHIFT,
+				((twti->twtschedblk[j].usr_info[i] & TSB_USR_SPDUR_MASK)
+				>> TSB_USR_SPDUR_SHIFT) + 1));
+		}
+	}
+}
 
 /**
  * This function returns TRUE if all requirements are met to turn on TWT, otherwise FALSE
@@ -746,6 +888,35 @@ wlc_twt_scb_set_cap(wlc_twt_info_t *twti, scb_t *scb, uint8 cap_idx, bool set)
 		setbit((uint8 *)&scb_twt->cap, cap_idx);
 	} else {
 		clrbit((uint8 *)&scb_twt->cap, cap_idx);
+	}
+}
+
+static void wlc_twt_scb_state_upd_cb(void *ctx, scb_state_upd_data_t *notif_data)
+{
+	wlc_info_t *wlc = (wlc_info_t *)ctx;
+	wlc_twt_info_t *twti = wlc->twti;
+	struct scb *scb;
+	uint8 oldstate;
+	twt_scb_t *scb_twt;
+	uint8 i;
+
+	ASSERT(notif_data != NULL);
+
+	scb = notif_data->scb;
+	ASSERT(scb != NULL);
+	oldstate = notif_data->oldstate;
+
+	if (BSSCFG_AP(scb->bsscfg) && (oldstate & ASSOCIATED) && !SCB_ASSOCIATED(scb)) {
+		WL_TWT(("%s: TWT update needed as SCB is disassociated\n", __FUNCTION__));
+
+		if ((scb_twt = TWT_SCB(twti, scb)) == NULL) {
+			return;
+		}
+		for (i = 0; i < ARRAYSIZE(scb_twt->indv); i++) {
+			if (scb_twt->indv[i].state != WLC_TWT_STATE_INACTIVE) {
+				wlc_twt_teardown_itwt(twti, scb, &scb_twt->indv[i], FALSE);
+			}
+		}
 	}
 }
 
@@ -1715,7 +1886,6 @@ wlc_twt_setup_itwt_complete(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc_t *i
 		WL_TWT(("%s added scb_twt %p to list, twti->scb_twt_list = %p\n",
 			__FUNCTION__, scb_twt, twti->scb_twt_list));
 		scb_twt->cur_sp_start = WLC_TSFL_TO_SCHEDID(indv->twt_l);
-		scb_twt->next_sp_start = scb_twt->cur_sp_start;
 	}
 
 	WL_TWT(("%s id=%d iTWT count = %d\n", __FUNCTION__, indv->desc.id, twti->itwt_count));
@@ -3359,8 +3529,8 @@ wlc_twt_scb_timeout_cnt(wlc_info_t *wlc, scb_t *scb)
  */
 #define WLC_TWTS_TIMER_MARGIN		WLC_SCHEDID_TO_TSFL(WLC_TWTS_MAX_PRESCHEDULES + 1)
 
-/* There is an error in HRT. It is roughly timeout / 165, correct calculated timeout */
-#define WLC_TWT_HRT_ERROR_CORRECTION	165
+/* There is an error in HRT. It is roughly timeout / 200, correct calculated timeout */
+#define WLC_TWT_HRT_ERROR_CORRECTION	200
 
 /* Approach of this scheduler: it can be called anytime, but the purpose is that it gets called
  * just before a schedule should be programmed in RLM, though it may also be so that this is not
@@ -3415,9 +3585,7 @@ wlc_twt_itwt_rlm_scheduler_update_trigger(void *arg)
 						__FUNCTION__, delta_h, delta_l));
 					continue;
 				}
-				WL_TWT(("Missed SP schedule, jumping ahead,"
-					" delta (%08x:%08x) tsf (%08x:%08x) wake_int %08x\n",
-					delta_h, delta_l, tsf_h, tsf_l, indv->wake_interval));
+				indv->cnt_sp_missed++;
 				/* Keep adding interval till we delta_h is 0 */
 				while (delta_h) {
 					wlc_uint64_add(&delta_h, &delta_l, 0,
@@ -3431,13 +3599,13 @@ wlc_twt_itwt_rlm_scheduler_update_trigger(void *arg)
 			 * that it should already have been programmed. So skip the SP
 			 * for that destination. It should not occur...
 			 */
-			if (WLC_TSFL_TO_SCHEDID(delta_l) == 0) {
-				WL_TWT(("Missed SP schedule by 1, jumping ahead\n"));
+			if (WLC_TSFL_TO_SCHEDID(delta_l - 1) == 0) {
+				indv->cnt_sp_missed_by1++;
 				wlc_uint64_add(&delta_h, &delta_l, 0, indv->wake_interval);
 				/* for assertion check in the next if body */
 				wlc_uint64_add(&indv->twt_h, &indv->twt_l, 0, indv->wake_interval);
 			}
-			if (WLC_TSFL_TO_SCHEDID(delta_l) <= WLC_TWTS_MAX_PRESCHEDULES) {
+			if (WLC_TSFL_TO_SCHEDID(delta_l - 1) <= WLC_TWTS_MAX_PRESCHEDULES) {
 				if (indv->paused) {
 					if (indv->resuming) {
 						wlc_twt_sp_resume(twti, indv);
@@ -3446,8 +3614,9 @@ wlc_twt_itwt_rlm_scheduler_update_trigger(void *arg)
 						goto skip_rlm_programming;
 					}
 				}
+				indv->cnt_sp++;
 				/* put it into RLM schedule */
-				idx = WLC_TSFL_TO_SCHEDID(delta_l) - 1;
+				idx = WLC_TSFL_TO_SCHEDID(delta_l - 1) - 1;
 				twt_rlm = &twt_rlm_arr[idx];
 				twt_rlm->schedid = WLC_TSFL_TO_SCHEDID(tsf_l) + idx + 2;
 				if (twt_rlm->schedid != WLC_TSFL_TO_SCHEDID(indv->twt_l)) {
@@ -3456,17 +3625,10 @@ wlc_twt_itwt_rlm_scheduler_update_trigger(void *arg)
 						WLC_TSFL_TO_SCHEDID(indv->twt_l)));
 					ASSERT(0);
 				}
-				scb_twt->next_sp_start = twt_rlm->schedid;
 				if (!scb_twt->apps_prepared) {
-					scb_twt->cur_sp_start = scb_twt->next_sp_start;
-					wlc_twt_prepare_for_first_sp(twti, indv->scb);
+					scb_twt->cur_sp_start = twt_rlm->schedid;
+					wlc_twt_prepare_for_first_sp(twti, indv);
 				}
-				wlc_hrt_add_timeout(indv->tx_close_timer,
-					delta_l +
-					WLC_SCHEDID_TO_TSFL(indv->wake_duration),
-					wlc_twt_itwt_end_sp,
-					indv);
-
 				twt_rlm->usr_info[twt_rlm->usr_count] =
 					(scb_twt->rlm_id << TSB_USR_IDX_SHIFT) |
 					((indv->wake_duration - 1) << TSB_USR_SPDUR_SHIFT) |
@@ -3506,8 +3668,7 @@ skip_rlm_programming:
 		if (twt_rlm_arr[i].usr_count) {
 			uint16 usrnum;
 			if (i == 0) {
-				WL_TWT(("%s Not expected!! Latency of interrupt must be high\n",
-					__FUNCTION__));
+				twti->cnt_sp_missed_almost++;
 			}
 			usrnum = (wlc_ratelinkmem_lmem_read_word(wlc,
 				(AMT_IDX_TWT_RSVD_START + twti->rlm_prog_idx), 0) >> 16);
@@ -3533,17 +3694,19 @@ skip_rlm_programming:
 			programmed = TRUE;
 		}
 	}
-	if ((!twti->rlm_scheduler_active) && (programmed)) {
-		twti->rlm_scheduler_active = TRUE;
-		WL_TWT(("TWT Ucode engine started...\n"));
-		wlc_write_shm(wlc, M_TWTCMD(wlc), 1);
-		W_REG(wlc->osh, D11_MACCOMMAND(wlc->hw),
-			(R_REG(wlc->osh, D11_MACCOMMAND(wlc->hw)) | MCMD_TWT));
-	}
-
 	new_timeout -= (new_timeout / WLC_TWT_HRT_ERROR_CORRECTION);
 	wlc_hrt_add_timeout(twti->rlm_scheduler_timer,
 		new_timeout, wlc_twt_itwt_rlm_scheduler_update_trigger, twti);
+
+	if ((!twti->rlm_scheduler_active) && (programmed)) {
+		twti->rlm_scheduler_active = TRUE;
+		twti->cnt_engine_started++;
+		wlc_write_shm(wlc, M_TWTCMD(wlc), 1);
+		W_REG(wlc->osh, D11_MACCOMMAND(wlc->hw),
+			(R_REG(wlc->osh, D11_MACCOMMAND(wlc->hw)) | MCMD_TWT));
+		WL_TWT(("TWT Ucode engine started...\n"));
+	}
+
 #ifdef DEBUG_TWT_PS
 	if (!twti->rlm_scheduler_active) {
 		if (!twti->test_timer) {
@@ -3594,7 +3757,7 @@ wlc_twt_itwt_end_sp(void *arg)
 	/* if there is nothing left on LO/HW queue then release fifos now, otherwise have
 	 * APPS do this once suppress is complete
 	 */
-	if (wlc_apps_scb_fifocnt(wlc, scb) == 0) {
+	if (wlc_scb_tot_inflt_fifocnt(wlc, scb) == 0) {
 		wlc_twt_ps_suppress_done(wlc->twti, scb);
 	}
 }
@@ -3636,6 +3799,9 @@ wlc_twt_apps_ready_for_twt(wlc_twt_info_t *twti, scb_t *scb)
 
 	/* Trigger MUTX to re-evaluate admission */
 	wlc_mutx_evict_or_admit_muclient(wlc->mutx, scb);
+
+	/* Make sure that triggering starts if the TWT link is trigger based. */
+	wlc_ulmu_admit_ready(wlc, scb);
 }
 
 /*
@@ -3644,17 +3810,19 @@ wlc_twt_apps_ready_for_twt(wlc_twt_info_t *twti, scb_t *scb)
  * wlc_twt_apps_ready_for_twt
  */
 static void
-wlc_twt_prepare_for_first_sp(wlc_twt_info_t *twti, scb_t *scb)
+wlc_twt_prepare_for_first_sp(wlc_twt_info_t *twti, twt_indv_desc_t *indv)
 {
 	twt_scb_t *scb_twt;
 
-	WL_TWT(("%s Enter AID %d\n", __FUNCTION__, SCB_AID(scb)));
+	WL_TWT(("%s Enter AID %d\n", __FUNCTION__, SCB_AID(indv->scb)));
 
-	scb_twt = TWT_SCB(twti, scb);
+	scb_twt = TWT_SCB(twti, indv->scb);
 	scb_twt->apps_prepared = TRUE;
 	scb_twt->sp_started = FALSE;
 
-	wlc_apps_twt_enter(twti->wlc, scb);
+	indv->tx_closed = TRUE;
+
+	wlc_apps_twt_enter(twti->wlc, indv->scb);
 }
 
 /*
@@ -3682,7 +3850,7 @@ wlc_twt_sp_resume(wlc_twt_info_t *twti, twt_indv_desc_t *indv)
 		scb_twt->indv_paused_cnt--;
 
 		if ((scb_twt->indv_active_cnt - 1) == scb_twt->indv_paused_cnt) {
-			wlc_twt_prepare_for_first_sp(twti, scb);
+			wlc_twt_prepare_for_first_sp(twti, indv);
 		}
 	}
 }
@@ -3699,12 +3867,17 @@ wlc_twt_sp_pause(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc_t *indv, uint16
 	WL_TWT(("%s Enter AID %d\n", __FUNCTION__, SCB_AID(scb)));
 
 	indv->paused = TRUE;
+	indv->cnt_paused++;
 	scb_twt->indv_paused_cnt++;
 
 	if (scb_twt->indv_active_cnt == scb_twt->indv_paused_cnt) {
-		wlc_fifo_free_all(wlc->fifo, scb);
 		wlc_apps_twt_exit(wlc, scb, fc & FC_PM ? TRUE : FALSE);
+		wlc_fifo_free_all(wlc->fifo, scb);
 		wlc_ratelinkmem_update_link_entry(wlc, scb);
+		if (!indv->tx_closed) {
+			wlc_hrt_del_timeout(indv->tx_close_timer);
+			indv->tx_closed = TRUE;
+		}
 	}
 }
 
@@ -3719,7 +3892,8 @@ wlc_twt_itwt_start(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc_t *indv)
 	uint32 wake_duration;
 	uint8 i;
 
-	WL_TWT(("%s Enter, AID %d\n", __FUNCTION__, SCB_AID(scb)));
+	WL_TWT(("%s Enter, AID %d MAC " MACF "\n", __FUNCTION__, SCB_AID(scb),
+		ETHERP_TO_MACF(&scb->ea)));
 
 	wlc_twt_get_tsf(wlc, SCB_BSSCFG(scb), &tsf_l, &tsf_h);
 	WL_TWT(("%s twt = %08x:%08x (hex), TSF = %08x:%08x (hex)\n",
@@ -3749,6 +3923,11 @@ wlc_twt_itwt_start(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc_t *indv)
 	WL_TWT(("%s SP interval is %d (usec), wake_duration is %d (usec),"
 		" trigger=%d trig count=%d\n",
 		__FUNCTION__, wake_interval, wake_duration, indv->trigger, twti->itwt_trig_count));
+
+	/* XXX Important: If logging on BUPC then tsf is "late" by 10 msec by now. Fix timing by
+	 * rereading TSF here and make sure no more logging till we have started scheduler
+	 */
+	wlc_twt_get_tsf(wlc, SCB_BSSCFG(scb), &tsf_l, &tsf_h);
 
 	indv->wake_interval = WLC_SCHEDID_TO_TSFL(WLC_TSFL_TO_SCHEDID(wake_interval));
 	indv->wake_duration = WLC_TSFL_TO_SCHEDID(wake_duration);
@@ -3796,9 +3975,6 @@ wlc_twt_itwt_start(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc_t *indv)
 	if (delta_l < WLC_TWT_FIRST_SP_MIN_TIME) {
 		wlc_uint64_add(&delta_h, &delta_l, 0, wake_interval);
 	}
-
-	WL_TWT(("%s Next SP is in delta %08x (hex), delta schedid=%d\n", __FUNCTION__, delta_l,
-		WLC_TSFL_TO_SCHEDID(delta_l)));
 
 	if (scb_twt->indv_active_cnt == 1) {
 		scb_twt->sp_started = FALSE;
@@ -3848,6 +4024,9 @@ wlc_twt_itwt_start(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc_t *indv)
 
 	wlc_twt_itwt_rlm_scheduler_update_trigger(twti);
 
+	WL_TWT(("%s Next SP is in delta %08x (hex), delta schedid=%d\n", __FUNCTION__, delta_l,
+		WLC_TSFL_TO_SCHEDID(delta_l)));
+
 	return BCME_OK;
 }
 
@@ -3876,7 +4055,6 @@ wlc_twt_itwt_stop(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc_t *indv, bool 
 
 	/* Deactivate the scheduler */
 	if ((twti->rlm_scheduler_active) && (twti->itwt_count == 0)) {
-		WL_TWT(("%s Stopping ucode TWT engine\n", __FUNCTION__));
 		wlc_write_shm(wlc, M_TWTCMD(wlc), 0);
 		W_REG(wlc->osh, D11_MACCOMMAND(wlc->hw),
 			(R_REG(wlc->osh, D11_MACCOMMAND(wlc->hw)) | MCMD_TWT));
@@ -3884,6 +4062,7 @@ wlc_twt_itwt_stop(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc_t *indv, bool 
 		/* Reset the rlm programming index */
 		twti->rlm_prog_idx = 0;
 		twti->rlm_read_idx = 0;
+		WL_TWT(("%s Stopping ucode TWT engine\n", __FUNCTION__));
 	}
 	if ((twti->rlm_scheduler_timer) && (twti->itwt_count == 0)) {
 		wlc_hrt_free_timeout(twti->rlm_scheduler_timer);
@@ -3893,6 +4072,121 @@ wlc_twt_itwt_stop(wlc_twt_info_t *twti, scb_t *scb, twt_indv_desc_t *indv, bool 
 	return BCME_OK;
 }
 
+/* This function checks if SP can be opened for Tx. This is based of TSF and TWT of indv. This
+ * function can be called from two places depending on the mode (announced). If unannounced then
+ * this function gets called from pretwt interrupt. This interrupt is generated 2048 usec ahead of
+ * actual scheduling, take this time in account when validating the TSF being inside SP.
+ * returns TRUE if SP was released for data.
+ */
+static bool
+wlc_twt_check_for_release_sp(wlc_twt_info_t *twti, twt_indv_desc_t *indv,
+	uint32 tsf_h, uint32 tsf_l, bool pretwt_int)
+{
+	wlc_twt_rlm_t *twt_rlm;
+	int i, usr_idx;
+	uint16 sp_find, sp_start, sp_offset, sp_dur;
+	uint16 usr_info;
+	twt_scb_t *scb_twt;
+	uint32 timeout;
+
+	if (!indv->tx_closed) {
+		return FALSE;
+	}
+
+	/* XXX: Adjust the time SP schedid we search for by WLC_PRETWT_TIME. This solves a couple
+	 * of issues. If it is pretwt then interrupt can be WLC_PRETWT_TIME earlier, but we
+	 * should open for that SP. It also generates a safety margin at the end of the SP. If the
+	 * SP is almost at its end: < WLC_PRETWT_TIME, then by adding WLC_PRETWT_TIME it wont be
+	 * found anymore, which is good since there is no use to open up tx if the SP is almost
+	 * at its end.
+	 */
+	sp_find = WLC_TSFL_TO_SCHEDID(tsf_l + WLC_PRETWT_TIME);
+
+	scb_twt = TWT_SCB(twti, indv->scb);
+
+	/* Find out if the TSF with USR rlm_id can be found in twtschedblk (as is programmed
+	 * towards ucode) within valid schedid. The TSF can be mapped back to schedid. Every
+	 * schedule in RLM has a startschedid with duration schedid per rlm_id. The SW can only
+	 * use schedid (and open tx) with schedid which is actually programmed in HW
+	 */
+	for (i = 0; i < ARRAYSIZE(twti->twtschedblk); i++) {
+		twt_rlm = &twti->twtschedblk[i];
+		sp_start = twt_rlm->schedid;
+		for (usr_idx = 0; usr_idx < twt_rlm->usr_count; usr_idx++) {
+			usr_info = twt_rlm->usr_info[usr_idx];
+			if (((usr_info & TSB_USR_IDX_MASK) >> TSB_USR_IDX_SHIFT) != scb_twt->rlm_id)
+				continue;
+			sp_offset = sp_find - sp_start;
+			sp_dur = ((usr_info & TSB_USR_SPDUR_MASK) >> TSB_USR_SPDUR_SHIFT) + 1;
+			if (sp_offset < sp_dur) {
+				/* Valid: sp_find is withing range of sp_start and sp_start +
+				 * duration
+				 */
+				scb_twt->cur_sp_start = sp_start;
+				indv->tx_closed = FALSE;
+				/* Determine time till end of window to be set for close timer */
+				timeout = WLC_SCHEDID_TO_TSFL(sp_dur - sp_offset);
+				timeout -= ((tsf_l + WLC_PRETWT_TIME) & WLC_TSFL_SCHEDID_MASK_INV);
+				timeout += WLC_PRETWT_TIME;
+				goto found;
+			}
+		}
+	}
+	return FALSE;
+found:
+
+#if defined(BCMDBG) || defined(DUMP_TWT)
+	/* Statistics; Calculate pre twt interrupt time or Rx packet time (vs SP start time), track
+	 * min/avg/max. Cleared by dump routine.
+	 */
+	{
+		int32 pretwt;
+		uint32 tmp_tsf_l;
+		uint32 twt_h, twt_l;
+
+		indv->cnt_tx_open_tsf_l = tsf_l;
+		indv->cnt_tx_open_tsf_h = tsf_h;
+
+		twt_l = tsf_l;
+		twt_h = tsf_h;
+		wlc_uint64_add(&twt_h, &twt_l, 0, WLC_PRETWT_TIME);
+		twt_l &= WLC_TSFL_SCHEDID_MASK;
+		if (sp_offset) {
+			wlc_uint64_sub(&twt_h, &twt_l, 0, WLC_SCHEDID_TO_TSFL(sp_offset));
+		}
+
+		tmp_tsf_l = tsf_l;
+		wlc_uint64_sub(&tsf_h, &tmp_tsf_l, twt_h, twt_l);
+
+		pretwt = (int32)tmp_tsf_l;
+		if (pretwt == 0) {
+			pretwt = 1;
+		}
+
+		indv->cnt_pretwt++;
+		/* Average over last 16 */
+		if (indv->cnt_pretwt > 16) {
+			indv->cnt_avg_pretwt *= 15;
+			indv->cnt_avg_pretwt /= 16;
+		}
+		indv->cnt_avg_pretwt += pretwt;
+		if ((pretwt < indv->cnt_min_pretwt) ||
+			(indv->cnt_min_pretwt == 0)) {
+			indv->cnt_min_pretwt = pretwt;
+		}
+		if ((pretwt > indv->cnt_max_pretwt) ||
+			(indv->cnt_max_pretwt == 0)) {
+			indv->cnt_max_pretwt = pretwt;
+		}
+	}
+#endif // endif
+
+	wlc_apps_twt_sp_release_ps(twti->wlc, indv->scb);
+	wlc_hrt_add_timeout(indv->tx_close_timer, (uint)timeout, wlc_twt_itwt_end_sp, indv);
+
+	return TRUE;
+}
+
 void
 wlc_twt_intr(wlc_twt_info_t *twti)
 {
@@ -3900,7 +4194,7 @@ wlc_twt_intr(wlc_twt_info_t *twti)
 	twt_indv_desc_t *indv;
 	twt_scb_t *scb_twt;
 	uint32 tsf_h, tsf_l;
-	uint16 schedid, usr_count, schedid_read, usr_info, sp_end;
+	uint16 schedid, usr_count, schedid_read, usr_info;
 	uint8 i, j;
 	uint8 tsbidx = wlc_read_shm(wlc, M_TWTINT_DATA(wlc));
 
@@ -3923,8 +4217,7 @@ wlc_twt_intr(wlc_twt_info_t *twti)
 			twti->rlm_prog_idx, twti->rlm_read_idx, tsf_l, schedid, usr_count));
 
 		if (twti->rlm_read_idx != tsbidx) {
-			WL_ERROR(("%s: intr handler is very delayed."
-				"cur_tsf 0x%x exp schedid 0x%x\n", __FUNCTION__, tsf_l, schedid));
+			twti->cnt_pretwt_late++;
 		}
 
 		if (schedid != schedid_read) {
@@ -3953,24 +4246,11 @@ wlc_twt_intr(wlc_twt_info_t *twti)
 				}
 			}
 			ASSERT(j < ARRAYSIZE(scb_twt->indv));
-			/* one user can have multi TSBs programmed if wake interval is short.
-			 * cur_sp_start should be updated to the current interrupt's schedid
-			 * rather than scb_twt->next_sp_start that is of the last TSB programmed.
-			 */
-			scb_twt->cur_sp_start = schedid;
+
 			if (indv->desc.flow_flags & WL_TWT_FLOW_FLAG_UNANNOUNCED) {
-				sp_end = schedid + TSB_USR_SPDUR(usr_info) + 1;
-				/* check if still within SP. 16 bit modulo comparison */
-				if ((uint16)(sp_end - WLC_TSFL_TO_SCHEDID(tsf_l)) > 0) {
-					wlc_apps_twt_sp_release_ps(wlc, indv->scb);
-					indv->tx_closed = FALSE;
-				} else {
-					WL_ERROR(("%s: intr handler is very late that SP is over."
-						"cur_tsf 0x%x sp_strt 0x%x sp_end 0x%x\n",
-						__FUNCTION__, tsf_l, schedid, sp_end));
+				if (!wlc_twt_check_for_release_sp(twti, indv, tsf_h, tsf_l, TRUE)) {
+					indv->cnt_pretwt_late_sp_closed++;
 				}
-			} else {
-				/* The stat of APPS is supposed to be closed now */
 			}
 		}
 		twti->rlm_read_idx = MODINC_POW2(twti->rlm_read_idx, AMT_IDX_TWT_RSVD_SIZE);
@@ -3991,6 +4271,50 @@ wlc_twt_scb_get_schedid(wlc_twt_info_t *twti, scb_t *scb, uint16 *schedid)
 		return FALSE;
 	}
 	*schedid = scb_twt->cur_sp_start;
+	scb_twt->indv[0].cnt_tx_pkt++;
+
+#if defined(BCMDBG) || defined(DUMP_TWT)
+	/* Statistics; Track time from pre twt interrupt or Rx packet (depending on mode Announced)(
+	 * till the first tx packet. This function is called just before the tx packet is to be put
+	 * on lo queue so it gives good information on packet latency of system.
+	 */
+	{
+		wlc_info_t *wlc = twti->wlc;
+		twt_indv_desc_t *indv;
+		uint32 tsf_h;
+		uint32 tsf_l;
+
+		indv = &scb_twt->indv[0];
+		if ((indv->cnt_tx_open_tsf_h) || (indv->cnt_tx_open_tsf_l)) {
+
+			wlc_twt_get_tsf(wlc, wlc_bsscfg_primary(wlc), &tsf_l, &tsf_h);
+			wlc_uint64_sub(&tsf_h, &tsf_l, indv->cnt_tx_open_tsf_h,
+				indv->cnt_tx_open_tsf_l);
+			if (tsf_l == 0) {
+				tsf_l = 1;
+			}
+
+			indv->cnt_tx_latency++;
+			/* Average over last 16 */
+			if (indv->cnt_tx_latency > 16) {
+				indv->cnt_avg_tx_latency *= 15;
+				indv->cnt_avg_tx_latency /= 16;
+			}
+			indv->cnt_avg_tx_latency += tsf_l;
+			if ((tsf_l < indv->cnt_min_tx_latency) ||
+				(indv->cnt_min_tx_latency == 0)) {
+				indv->cnt_min_tx_latency = tsf_l;
+			}
+			if ((tsf_l > indv->cnt_max_tx_latency) ||
+				(indv->cnt_max_tx_latency == 0)) {
+				indv->cnt_max_tx_latency = tsf_l;
+			}
+
+			indv->cnt_tx_open_tsf_l = 0;
+			indv->cnt_tx_open_tsf_h = 0;
+		}
+	}
+#endif // endif
 
 	return TRUE;
 }
@@ -4012,7 +4336,6 @@ wlc_twt_rx_pkt_trigger(wlc_twt_info_t *twti, scb_t *scb)
 	twt_scb_t *scb_twt;
 	twt_indv_desc_t *indv;
 	uint32 tsf_h, tsf_l;
-	uint16 schedid;
 	uint8 i;
 
 	if (twti == NULL) {
@@ -4027,24 +4350,21 @@ wlc_twt_rx_pkt_trigger(wlc_twt_info_t *twti, scb_t *scb)
 	}
 
 	wlc_twt_get_tsf(wlc, wlc_bsscfg_primary(wlc), &tsf_l, &tsf_h);
-	schedid = WLC_TSFL_TO_SCHEDID(tsf_l);
 
 	for (i = 0; i < ARRAYSIZE(scb_twt->indv); i++) {
 		indv = &scb_twt->indv[i];
-		if ((indv->state == WLC_TWT_STATE_ACTIVE) && (indv->tx_closed)) {
-			/* Again this only works for one individual schedule. A lot of
-			 * redesign is needed to make this work with overlapping multiple
-			 * schedules on single SCB..
-			 */
-			if (indv->desc.flow_flags & WL_TWT_FLOW_FLAG_UNANNOUNCED) {
-				continue;
-			}
-			if ((schedid >= scb_twt->cur_sp_start) &&
-				(schedid < scb_twt->cur_sp_start +
-					WLC_TSFL_TO_SCHEDID(indv->wake_interval))) {
-				wlc_apps_twt_sp_release_ps(wlc, indv->scb);
-				indv->tx_closed = FALSE;
-			}
+		if (indv->state != WLC_TWT_STATE_ACTIVE) {
+			continue;
+		}
+		/* Again this only works for one individual schedule. A lot of
+		 * redesign is needed to make this work with overlapping multiple
+		 * schedules on single SCB..
+		 */
+		if (indv->desc.flow_flags & WL_TWT_FLOW_FLAG_UNANNOUNCED) {
+			continue;
+		}
+		if (wlc_twt_check_for_release_sp(twti, indv, tsf_h, tsf_l, FALSE)) {
+			indv->cnt_rx_trig++;
 		}
 	}
 }
@@ -4062,7 +4382,6 @@ wlc_twt_fill_link_entry(wlc_twt_info_t *twti, scb_t *scb, d11linkmem_entry_t *li
 	if ((scb_twt == NULL) || (scb_twt->indv_active_cnt == scb_twt->indv_paused_cnt)) {
 		return;
 	}
-	WL_TWT(("%s TWT active for this SCB %p AID %d\n", __FUNCTION__, scb, SCB_AID(scb)));
 	link_entry->BFIConfig1 |= (1 << C_LTX_TWTACT_NBIT); /* indicate this is TWT user */
 }
 
@@ -4104,6 +4423,8 @@ wlc_twt_wlc_up(void *ctx)
 {
 	wlc_twt_info_t *twti = ctx;
 	wlc_info_t *wlc = twti->wlc;
+	twt_scb_t *scb_twt;
+	twt_indv_desc_t *indv;
 	uint8 i;
 
 	WL_TWT(("%s Enter\n", __FUNCTION__));
@@ -4118,6 +4439,24 @@ wlc_twt_wlc_up(void *ctx)
 		for (i = 0; i < AMT_IDX_TWT_RSVD_SIZE; i++) {
 			wlc_ratelinkmem_update_link_twtschedblk(wlc, i,
 				(uint8 *)&twti->twtschedblk[i], sizeof(twti->twtschedblk[i]));
+		}
+
+		/* Reinit all TWT links */
+		scb_twt = twti->scb_twt_list;
+		while (scb_twt) {
+			for (i = 0; i < ARRAYSIZE(scb_twt->indv); i++) {
+				if (scb_twt->indv[i].state != WLC_TWT_STATE_ACTIVE) {
+					continue;
+				}
+				indv = &scb_twt->indv[i];
+				wlc_apps_twt_exit(wlc, indv->scb, TRUE);
+				if (!indv->tx_closed) {
+					wlc_hrt_del_timeout(indv->tx_close_timer);
+					indv->tx_closed = TRUE;
+				}
+			}
+			scb_twt->apps_prepared = FALSE;
+			scb_twt = scb_twt->next;
 		}
 	}
 

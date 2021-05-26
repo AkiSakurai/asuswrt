@@ -88,6 +88,8 @@
 #include <wlc_stf.h>   /* for get_pwr_from_targets API */
 #include <wlc_tpc.h>   /* for wlc_tpc_get_target_offset API */
 #include <wlc_rate_sel.h>
+#include <wlc_phy_hal.h>
+#include <wlc_phy_int.h>
 
 /** private scope definitions and macros */
 #define DTPC_ACTIVE_DEFAULT     (1)    /**< dtpc active */
@@ -96,7 +98,6 @@
 #define DTPC_PROBE_STEP_DEFAULT (1u)    /**< qdB steps */
 #define DTPC_PSR_THRESH         (4096u) /**< psr threshold to skip probing */
 #define DTPC_PKTS_THRESH        (100u)  /**< number of pkts required along with psr threshold */
-#define EXTRA_BACKOFF_FACTOR	(6u)    /**< an extra backoff added for safety */
 #define POSITIVE_PROBING	(0u)    /**< positive probing direction */
 #define NEGATIVE_PROBING	(1u)    /**< negative probing direction */
 #define DTPC_MOVING_AVG_ALPHA   (2u)    /**< alpha used in psr moving average */
@@ -123,7 +124,9 @@
 
 /** iovar enum definition. */
 enum {
-	IOV_DTPC =     0x0,
+	IOV_DTPC = 0x0,
+	IOV_DTPC_HEADROOM = 0x1,
+	IOV_DTPC_HEADROOM_ALL = 0x2,
 	IOV_DTPC_LAST
 };
 
@@ -151,6 +154,8 @@ struct wlc_dtpc_info {
     uint8  active_override;                   /**< 0: use default, 1: set active, 2: unset active */
     uint32  trig_intval;                      /**< pwr probing trigger interval - ms */
     dtpc_txpwr_ctxt_t  *pwrctxt;              /**< PPR copy for board limit and CLM limit */
+    uint8  extra_backoff_factor;              /**< an extra backoff added for safety */
+    int8  clmlimit_ovr;                       /**< CLM limit overriding - test only */
 };
 
 #define DTPC_SAMPLE_WINDOW    (20u)
@@ -254,6 +259,8 @@ static void dtpc_scb_init_state(dtpc_scb_cubby_t *cubby);
 static int dtpc_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 	void *a, uint alen, uint vsize, struct wlc_if *wlcif);
 static void dtpc_chansw_notif_cb(void *arg, wlc_chansw_notif_data_t *data);
+static void dtpc_bsscfg_updown_cb(void *ctx, bsscfg_up_down_event_data_t *evt_data);
+static void dtpc_power_context_cleanup(wlc_dtpc_info_t *dtpci);
 
 /* power context control APIs */
 static dtpc_txpwr_ctxt_t *dtpc_power_context_create(wlc_info_t *wlc);
@@ -310,9 +317,19 @@ static int dtpc_iov_get_trigint(const bcm_iov_cmd_digest_t *dig,
 	const uint8 *ibuf, size_t ilen, uint8 *obuf, size_t *olen);
 static int dtpc_iov_set_trigint(const bcm_iov_cmd_digest_t *dig,
 	const uint8 *ibuf, size_t ilen, uint8 *obuf, size_t *olen);
+static int dtpc_iov_get_headroom(wlc_dtpc_info_t *dtpci,
+	int chanspec_bw, uint num_txchains, int32 rspec, uint8 *output);
+static int dtpc_iov_get_headroom_all(wlc_dtpc_info_t *dtpci,
+	int chanspec_bw, uint num_txchains, void *output);
+static int dtpc_iov_get_clmovr(const bcm_iov_cmd_digest_t *dig,
+	const uint8 *ibuf, size_t ilen, uint8 *obuf, size_t *olen);
+static int dtpc_iov_set_clmovr(const bcm_iov_cmd_digest_t *dig,
+	const uint8 *ibuf, size_t ilen, uint8 *obuf, size_t *olen);
 
 static const bcm_iovar_t dtpc_iovars[] = {
 	{"dtpc", IOV_DTPC, (IOVF_SET_DOWN), 0, IOVT_BUFFER, 0},
+	{"dtpc_headroom", IOV_DTPC_HEADROOM, (IOVF_GET_UP), 0, IOVT_UINT32, 0},
+	{"dtpc_headroom_all", IOV_DTPC_HEADROOM_ALL, (IOVF_GET_UP), 0, IOVT_BUFFER, 0},
 	{NULL, 0, 0, 0, 0, 0}
 };
 
@@ -368,6 +385,17 @@ static const bcm_iov_cmd_info_t dtpc_sub_cmds[] = {
 	dtpc_iov_validate_cmds,
 	dtpc_iov_get_trigint,
 	dtpc_iov_set_trigint,
+	0, 0,
+	WLC_IOCTL_SMLEN, 0, WLC_IOCTL_SMLEN
+	},
+
+	{ WL_DTPC_CMD_CLMOVR,
+	BCM_IOV_CMD_FLAG_XTLV_DATA,
+	0,
+	BCM_XTLV_OPTION_ALIGN32,
+	dtpc_iov_validate_cmds,
+	dtpc_iov_get_clmovr,
+	dtpc_iov_set_clmovr,
 	0, 0,
 	WLC_IOCTL_SMLEN, 0, WLC_IOCTL_SMLEN
 	}
@@ -558,6 +586,7 @@ BCMATTACHFN(wlc_dtpc_attach)(wlc_info_t *wlc)
 	dtpci->alpha = DTPC_MOVING_AVG_ALPHA;
 	dtpci->trig_intval = DTPC_TRIG_PERIOD;
 	dtpci->active_override = 0;
+	dtpci->clmlimit_ovr = -1;  // disable by default
 
 	/* module registration */
 	dtpci->wlc = wlc;
@@ -580,6 +609,14 @@ BCMATTACHFN(wlc_dtpc_attach)(wlc_info_t *wlc)
 		goto fail;
 	}
 	dtpci->iov_parse_ctx = parse_ctx;
+
+	/* register bsscfg up/down callbacks */
+	if ((ret = wlc_bsscfg_updown_register(wlc, dtpc_bsscfg_updown_cb, dtpci)) != BCME_OK) {
+		WL_ERROR(("wl%d: wlc_dtpc_bsscfg_updown_cb reg fails, err=%d\n",
+			WLCWLUNIT(wlc), ret));
+		goto fail;
+	}
+
 	/* bcm iovar sub-commands registration */
 	if ((ret = bcm_iov_register_commands(dtpci->iov_parse_ctx, (void *)dtpci, &dtpc_sub_cmds[0],
 		(size_t)ARRAYSIZE(dtpc_sub_cmds), NULL, 0)) != BCME_OK) {
@@ -647,6 +684,9 @@ BCMATTACHFN(wlc_dtpc_detach)(wlc_dtpc_info_t *dtpci)
 		bcm_iov_free_parse_context(&dtpci->iov_parse_ctx,
 			(bcm_iov_free_t)dtpc_iov_free_ctxt);
 	}
+	/* un-subscribe bsscfg event callback */
+	wlc_bsscfg_updown_unregister(wlc, dtpc_bsscfg_updown_cb, dtpci);
+
 	/* pwr context de-allocation */
 	if (dtpci->pwrctxt) {
 		dtpc_power_context_delete(dtpci);
@@ -814,6 +854,13 @@ dtpc_get_headroom(wlc_dtpc_info_t *dtpci, scb_t *scb, ratespec_t rspec)
 	int32 err = BCME_OK;
 	dtpc_scb_cubby_t *cubby = DTPC_SCB_CUBBY(dtpci, scb);
 	if (cubby) {
+#if defined(BCMDBG) || defined(WLTEST)
+		if (dtpci->clmlimit_ovr >= 0) {
+			/* override max headroom - test only */
+			pwroff = dtpci->clmlimit_ovr + dtpci->extra_backoff_factor;
+		} else
+#endif // endif
+		{
 		err = dtpc_power_context_get_limits(dtpci, scb, rspec);
 		if (err == BCME_OK) {
 			/* pick the valid headroom from active phychain.
@@ -832,6 +879,7 @@ dtpc_get_headroom(wlc_dtpc_info_t *dtpci, scb_t *scb, ratespec_t rspec)
 				WLCWLUNIT(dtpci->wlc)));
 			dtpci->active = 0;
 		}
+	}
 	}
 	return pwroff;
 }
@@ -984,6 +1032,7 @@ dtpc_select_pwr(wlc_dtpc_info_t *dtpci, scb_t *scb, ratespec_t rspec,
 	uint8 epoch, uint32 psr, uint32 pktcnt, bool highest_mcs)
 {
 	dtpc_scb_cubby_t *cubby = DTPC_SCB_CUBBY(dtpci, scb);
+	uint8 extra_backoff_factor = dtpci->extra_backoff_factor;
 	if (cubby) {
 		uint8 max_txpwroff = 0;
 		if ((pktcnt >= DTPC_PKTS_THRESH) && (psr >= DTPC_PSR_THRESH) && highest_mcs) {
@@ -998,8 +1047,8 @@ dtpc_select_pwr(wlc_dtpc_info_t *dtpci, scb_t *scb, ratespec_t rspec,
 			/* cur_backoff is already updated corresponding ratespec from here */
 			max_txpwroff = MIN(max_txpwroff, DTPC_MAX_HEADROOM);
 			max_txpwroff = MIN(max_txpwroff, cubby->cur_backoff);
-			max_txpwroff = (max_txpwroff > EXTRA_BACKOFF_FACTOR) ?
-				max_txpwroff - EXTRA_BACKOFF_FACTOR : 0;
+			max_txpwroff = (max_txpwroff > extra_backoff_factor) ?
+				max_txpwroff - extra_backoff_factor : 0;
 			RL_DTPC_DBG(("[DTPC-PWRLIMIT] backoff offset=%d, max_offset=%d\n",
 				cubby->cur_backoff, max_txpwroff));
 
@@ -1088,7 +1137,7 @@ dtpc_start_pwr_prb(wlc_dtpc_info_t *dtpci, scb_t *scb, uint32 pktcnt,
 				&cubby->cur_backoff) != BCME_OK) {
 				ASSERT(0);
 			}
-			if (cubby->cur_backoff < EXTRA_BACKOFF_FACTOR) {
+			if (cubby->cur_backoff < dtpci->extra_backoff_factor) {
 				ret = FALSE;
 			} else if ((cubby->last_prb_time + dtpci->trig_intval) <= OSL_SYSUPTIME()) {
 				/* trigger aging case */
@@ -1213,14 +1262,15 @@ dtpc_monitor(wlc_dtpc_info_t *dtpci, scb_t *scb, ratespec_t rspec,
 				up_tbl = &cubby->ptbl[mcs + 1u][nss];
 			}
 			if (tbl->qdb == 0 && up_tbl) {
+				uint8 extra_backoff_factor = dtpci->extra_backoff_factor;
 				if (wlc_tpc_get_target_offset(dtpci->wlc, rspec,
 					&cubby->cur_backoff) != BCME_OK) {
 					ASSERT(0);
 				}
 				/* regulatory limit boundary check */
 				max_txpwroff = dtpc_get_headroom(dtpci, scb, rspec);
-				max_txpwroff = (max_txpwroff > EXTRA_BACKOFF_FACTOR) ?
-					max_txpwroff - EXTRA_BACKOFF_FACTOR : 0;
+				max_txpwroff = (max_txpwroff > extra_backoff_factor) ?
+					max_txpwroff - extra_backoff_factor : 0;
 				temp_pwr = VALIDATE_PWR(up_tbl->qdb, MIN(cubby->cur_backoff,
 					max_txpwroff));
 				if (temp_pwr != INVALID_PWR) {
@@ -1246,6 +1296,7 @@ dtpc_recalc_txpwroff(wlc_dtpc_info_t *dtpci, scb_t *scb, uint8 backoff, ratespec
 	uint16 txpwroff = 0;
 	uint8 temp_pwr = 0;
 	uint8 dtpc_mcs, dtpc_nss, mcs, nss;
+	uint8 extra_backoff_factor = dtpci->extra_backoff_factor;
 
 	if (cubby) {
 #ifdef WL11AC
@@ -1263,14 +1314,14 @@ dtpc_recalc_txpwroff(wlc_dtpc_info_t *dtpci, scb_t *scb, uint8 backoff, ratespec
 			txpwroff = cubby->prb_txpwroff;
 		} else {
 			dtpc_prb_pwr_tbl_t *txpwroff_cache = &cubby->ptbl[mcs][nss];
-			if (backoff < EXTRA_BACKOFF_FACTOR) {
+			if (backoff < extra_backoff_factor) {
 				txpwroff = 0;
 			} else if (txpwroff_cache->qdb != DTPC_BLKLISTED && txpwroff_cache->qdb) {
 				/* regulatory limit boundary check */
 				temp_pwr = MIN(backoff, dtpc_get_headroom(dtpci, scb, rspec));
 				if (txpwroff_cache->qdb > temp_pwr) {
-					if (temp_pwr > EXTRA_BACKOFF_FACTOR) {
-						temp_pwr -= EXTRA_BACKOFF_FACTOR;
+					if (temp_pwr > extra_backoff_factor) {
+						temp_pwr -= extra_backoff_factor;
 					}
 					txpwroff = temp_pwr;
 #if defined(BCMDBG) || defined(WLTEST)
@@ -1360,6 +1411,34 @@ dtpc_cleanup_stat(wlc_dtpc_info_t *dtpci, scb_t *scb)
 	memset(&cubby->headroom, 0, sizeof(phy_tx_targets_per_core_t));
 	memset(&cubby->minpwr, 0, sizeof(phy_tx_targets_per_core_t));
 	return;
+}
+
+/* bsscfg event update notification callback */
+static void
+dtpc_bsscfg_updown_cb(void *ctx, bsscfg_up_down_event_data_t *evt_data)
+{
+	wlc_dtpc_info_t *dtpci = (wlc_dtpc_info_t *)ctx;
+	wlc_info_t *wlc = dtpci->wlc;
+
+	if (!evt_data->up) {
+		/* bsscfg down */
+		dtpc_power_context_cleanup(dtpci);
+	} else {
+		/* bsscfg is up */
+		if (!dtpci->pwrctxt) {
+			dtpci->pwrctxt = dtpc_power_context_create(wlc);
+		}
+		if (dtpci->pwrctxt) {
+			if (!dtpc_power_context_set_channel(dtpci,
+				evt_data->bsscfg->current_bss->chanspec)) {
+				dtpci->active = FALSE;
+				WL_ERROR(("wl%d: dtpc_power_context ppr creation failed\n",
+					WLCWLUNIT(wlc)));
+			}
+		}
+
+		dtpci->extra_backoff_factor = ((phy_info_t*)wlc->pi)->tx_pwr_backoff;
+	}
 }
 
 /* channel switch notification callback */
@@ -1478,14 +1557,10 @@ dtpc_power_context_create(wlc_info_t *wlc)
 static void
 dtpc_power_context_delete(wlc_dtpc_info_t *dtpci)
 {
+	dtpc_power_context_cleanup(dtpci);
 	if (dtpci->pwrctxt) {
-		if (dtpci->pwrctxt->board_min) {
-			ppr_delete(dtpci->wlc->osh, dtpci->pwrctxt->board_min);
-		}
-		if (dtpci->pwrctxt->clm_max) {
-			ppr_delete(dtpci->wlc->osh, dtpci->pwrctxt->clm_max);
-		}
 		MFREE(dtpci->wlc->osh, dtpci->pwrctxt, sizeof(*dtpci->pwrctxt));
+		dtpci->pwrctxt = NULL;
 	}
 }
 
@@ -1493,27 +1568,37 @@ static bool
 dtpc_power_context_set_channel(wlc_dtpc_info_t *dtpci, chanspec_t chanspec)
 {
 	dtpc_txpwr_ctxt_t *power_context = dtpci->pwrctxt;
-	ppr_t **pprs[] = {&(power_context->board_min), &(power_context->clm_max)};
-	ppr_t ***ppr_pp;
+	ppr_t *ppr_new;
 	wl_tx_bw_t new_ppr_bw = PPR_CHSPEC_BW(chanspec);
 
 	if (power_context == NULL) {
 		ASSERT(power_context != NULL);
 		return FALSE;
 	}
-	for (ppr_pp = pprs; ppr_pp < (pprs + ARRAYSIZE(pprs)); ++ppr_pp) {
-		if (**ppr_pp != NULL) {
-			if (power_context->ppr_bw != new_ppr_bw) {
-				ppr_delete(dtpci->wlc->osh, **ppr_pp);
-				**ppr_pp = NULL;
-			}
+
+	if (power_context->board_min != NULL) {
+		if (power_context->ppr_bw != new_ppr_bw) {
+			ppr_delete(dtpci->wlc->osh, power_context->board_min);
+			power_context->board_min = NULL;
 		}
-		if (**ppr_pp == NULL) {
-			**ppr_pp = ppr_create(dtpci->wlc->osh, new_ppr_bw);
-			if (**ppr_pp == NULL) {
-				goto fail;
-			}
+	}
+	if (power_context->board_min == NULL) {
+		if ((ppr_new = ppr_create(dtpci->wlc->osh, new_ppr_bw)) == NULL) {
+			goto fail;
 		}
+		power_context->board_min = ppr_new;
+	}
+	if (power_context->clm_max != NULL) {
+		if (power_context->ppr_bw != new_ppr_bw) {
+			ppr_delete(dtpci->wlc->osh, power_context->clm_max);
+			power_context->clm_max = NULL;
+		}
+	}
+	if (power_context->clm_max == NULL) {
+		if ((ppr_new = ppr_create(dtpci->wlc->osh, new_ppr_bw)) == NULL) {
+			goto fail;
+		}
+		power_context->clm_max = ppr_new;
 	}
 	power_context->ppr_bw = new_ppr_bw;
 	/* CLM limit */
@@ -1525,13 +1610,25 @@ dtpc_power_context_set_channel(wlc_dtpc_info_t *dtpci, chanspec_t chanspec)
 	return TRUE;
 
 fail:
-	for (ppr_pp = pprs; ppr_pp < (pprs + ARRAYSIZE(pprs)); ++ppr_pp) {
-		if (**ppr_pp != NULL) {
-			ppr_delete(dtpci->wlc->osh, **ppr_pp);
-			**ppr_pp = NULL;
+	dtpc_power_context_cleanup(dtpci);
+	return FALSE;
+}
+
+static void
+dtpc_power_context_cleanup(wlc_dtpc_info_t *dtpci)
+{
+	dtpc_txpwr_ctxt_t *power_context = dtpci->pwrctxt;
+
+	if (power_context) {
+		if (power_context->board_min) {
+			ppr_delete(dtpci->wlc->osh, power_context->board_min);
+			power_context->board_min = NULL;
+		}
+		if (power_context->clm_max) {
+			ppr_delete(dtpci->wlc->osh, power_context->clm_max);
+			power_context->clm_max = NULL;
 		}
 	}
-	return FALSE;
 }
 
 static int32
@@ -1851,17 +1948,63 @@ dtpc_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 {
 	wlc_dtpc_info_t *dtpci = (wlc_dtpc_info_t *)hdl;
 	int32 int_val = 0;
+	uint8 *ret_uint8_val;
 	int ret = BCME_OK;
+	wlc_bsscfg_t *bsscfg;
+	chanspec_t chanspec;
+	int chanspec_bw;
+	int iov_headroom_all = 0;
+	uint num_txchains = 0;
 
+	ret_uint8_val = (uint8 *)a;
 	if (plen >= (int)sizeof(int_val)) {
 		bcopy(p, &int_val, sizeof(int_val));
 	}
+
 	switch (actionid) {
 		case IOV_GVAL(IOV_DTPC):
 		case IOV_SVAL(IOV_DTPC):
 		{
 			ret = bcm_iov_doiovar(dtpci->iov_parse_ctx, actionid, p, plen, a, alen,
 				vsize, wlcif);
+			break;
+		}
+		case IOV_GVAL(IOV_DTPC_HEADROOM_ALL):
+			if (alen < sizeof(wl_dtpc_cfg_headroom_t)) {
+				return BCME_NOMEM;
+			}
+			iov_headroom_all = 1;
+			/* fall through */
+		case IOV_GVAL(IOV_DTPC_HEADROOM):
+		{
+			bsscfg = wlc_bsscfg_find_by_wlcif(dtpci->wlc, wlcif);
+			chanspec = bsscfg->current_bss->chanspec;
+			switch (CHSPEC_BW(chanspec)) {
+				case WL_CHANSPEC_BW_20:
+					chanspec_bw = BW_20MHZ;
+					break;
+				case WL_CHANSPEC_BW_40:
+					chanspec_bw = BW_40MHZ;
+					break;
+				case WL_CHANSPEC_BW_80:
+					chanspec_bw = BW_80MHZ;
+					break;
+				case WL_CHANSPEC_BW_160:
+					chanspec_bw = BW_160MHZ;
+					break;
+				default:
+					WL_ERROR(("unknown chanspec bandwidth\n"));
+					return BCME_UNSUPPORTED;
+			}
+			num_txchains = WLC_BITSCNT(dtpci->wlc->stf->txchain);
+
+			if (iov_headroom_all) {
+				ret = dtpc_iov_get_headroom_all(dtpci, chanspec_bw,
+					num_txchains, a);
+			} else {
+				ret = dtpc_iov_get_headroom(dtpci, chanspec_bw,
+					num_txchains, int_val, ret_uint8_val);
+			}
 			break;
 		}
 		default:
@@ -2082,6 +2225,130 @@ dtpc_iov_set_trigint(const bcm_iov_cmd_digest_t *dig,
 	return ret;
 }
 
+static int
+dtpc_iov_get_headroom(wlc_dtpc_info_t *dtpci, int chanspec_bw, uint num_txchains,
+	int32 input, uint8 *output)
+{
+	dtpc_txpwr_ctxt_t *pwr;
+	int ret = BCME_OK;
+	ratespec_t rspec;
+	uint8 max_txpwroff;
+	int8 clm_max_pwr, headroom_pwr;
+	phy_tx_targets_per_core_t target_per_core;
+	int rspec_bw, rspec_nss, rspec_txexp;
+	uint8 extra_backoff_factor;
+
+#if defined(BCMDBG) || defined(WLTEST)
+	UNUSED_PARAMETER(extra_backoff_factor);
+	UNUSED_PARAMETER(target_per_core);
+	UNUSED_PARAMETER(max_txpwroff);
+	UNUSED_PARAMETER(headroom_pwr);
+#endif // endif
+	ASSERT(dtpci != NULL);
+	pwr = dtpci->pwrctxt;
+	if (pwr == NULL || pwr->clm_max == NULL) {
+		WL_ERROR(("wl%d: DTPC power context null\n", WLCWLUNIT(dtpci->wlc)));
+		return BCME_ERROR;
+	}
+
+	rspec = (ratespec_t)input;
+	if (RSPEC_ISHE(rspec) || RSPEC_ISVHT(rspec)) {
+		rspec_bw = (rspec & WL_RSPEC_BW_MASK) >> WL_RSPEC_BW_SHIFT;
+		rspec_nss = (rspec & WL_RSPEC_HE_NSS_MASK) >> WL_RSPEC_HE_NSS_SHIFT;
+		rspec_txexp = (rspec & WL_RSPEC_TXEXP_MASK) >> WL_RSPEC_TXEXP_SHIFT;
+
+		if (rspec_bw > chanspec_bw ||
+			num_txchains != (rspec_nss + rspec_txexp)) {
+			return BCME_BADARG;
+		}
+	}
+
+	if ((clm_max_pwr = (int8)get_pwr_from_targets(dtpci->wlc,
+		rspec, pwr->clm_max)) == BCME_BADARG) {
+		return BCME_BADARG;
+	}
+#if defined(BCMDBG) || defined(WLTEST)
+	if (dtpci->clmlimit_ovr >= 0) {
+		/* override max headroom - DVT test script specific */
+		*output = dtpci->clmlimit_ovr;
+	} else
+#endif // endif
+	{
+	wlc_tpc_get_tx_target_per_core(dtpci->wlc, rspec, &target_per_core);
+	/* TODO: Find a correct target_per_core.pwr when txchain != 15 */
+	if (clm_max_pwr > target_per_core.pwr[0]) {
+		headroom_pwr = clm_max_pwr - target_per_core.pwr[0];
+	} else {
+		headroom_pwr = 0;
+	}
+
+	max_txpwroff = headroom_pwr;
+	extra_backoff_factor = dtpci->extra_backoff_factor;
+	max_txpwroff = (max_txpwroff > extra_backoff_factor) ?
+		max_txpwroff - extra_backoff_factor : 0;
+	*output = max_txpwroff;
+	}
+
+	return ret;
+}
+
+static int
+dtpc_iov_get_headroom_all(wlc_dtpc_info_t *dtpci, int chanspec_bw,
+	uint num_txchains, void *a)
+{
+	wl_dtpc_cfg_headroom_t *dtpc_headroom = a;
+	int nss, mcs, bw, len, ret;
+	ratespec_t rspec;
+	uint8 headroom;
+
+	if (num_txchains * 12 * chanspec_bw * 2 > MAX_NUM_KNOWN_RATES) {
+		return BCME_NOMEM;
+	}
+
+	len = dtpc_headroom->len = 0;
+	dtpc_headroom->max_bw = chanspec_bw;
+	dtpc_headroom->max_nss = num_txchains;
+
+	/* HE */
+	for (nss = 1; nss <= num_txchains; nss++) {
+		for (mcs = 0; mcs <= 11; mcs++) {
+			for (bw = 1; bw <= chanspec_bw; bw++) {
+				rspec = HE_RSPEC(mcs, nss);
+				rspec |= WL_RSPEC_TXBF;
+				rspec |= (bw << WL_RSPEC_BW_SHIFT);
+				rspec |= ((num_txchains-nss) << WL_RSPEC_TXEXP_SHIFT);
+				if ((ret = dtpc_iov_get_headroom(dtpci, chanspec_bw,
+					num_txchains, rspec, &headroom)) != BCME_OK) {
+					return ret;
+				}
+				dtpc_headroom->rspec[len] = rspec;
+				dtpc_headroom->headroom[len++] = headroom;
+			}
+		}
+	}
+
+	/* VHT */
+	for (nss = 1; nss <= num_txchains; nss++) {
+		for (mcs = 0; mcs <= 11; mcs++) {
+			for (bw = 1; bw <= chanspec_bw; bw++) {
+				rspec = VHT_RSPEC(mcs, nss);
+				rspec |= WL_RSPEC_TXBF;
+				rspec |= (bw << WL_RSPEC_BW_SHIFT);
+				rspec |= ((num_txchains-nss) << WL_RSPEC_TXEXP_SHIFT);
+				if ((ret = dtpc_iov_get_headroom(dtpci, chanspec_bw,
+					num_txchains, rspec, &headroom)) != BCME_OK) {
+					return ret;
+				}
+				dtpc_headroom->rspec[len] = rspec;
+				dtpc_headroom->headroom[len++] = headroom;
+			}
+		}
+	}
+	dtpc_headroom->len = len;
+	/* TODO: HT */
+	return BCME_OK;
+}
+
 /* This function provides immediate power offset update during power probing based on scb input */
 static int
 dtpc_upd_pwroffset(wlc_info_t *wlc, struct scb *scb,
@@ -2103,6 +2370,40 @@ dtpc_upd_pwroffset(wlc_info_t *wlc, struct scb *scb,
 	}
 
 exit:
+	return ret;
+}
+static int
+dtpc_iov_get_clmovr(const bcm_iov_cmd_digest_t *dig,
+	const uint8 *ibuf, size_t ilen, uint8 *obuf, size_t *olen)
+{
+	int ret = BCME_OK;
+#if defined(BCMDBG) || defined(WLTEST)
+	wlc_dtpc_info_t *dtpci = (wlc_dtpc_info_t *)dig->cmd_ctx;
+	int32 *outval = (int32 *)obuf;
+	*outval = dtpci->clmlimit_ovr;
+#else
+	ret = BCME_UNSUPPORTED;
+#endif // endif
+	return ret;
+}
+
+static int
+dtpc_iov_set_clmovr(const bcm_iov_cmd_digest_t *dig,
+	const uint8 *ibuf, size_t ilen, uint8 *obuf, size_t *olen)
+{
+	int ret = BCME_OK;
+#if defined(BCMDBG) || defined(WLTEST)
+	wlc_dtpc_info_t *dtpci = (wlc_dtpc_info_t *)dig->cmd_ctx;
+	int8 *input_buf = (int8 *)obuf;
+	if (*input_buf <= 40 && *input_buf >= -1) {
+		dtpci->clmlimit_ovr = *input_buf;
+		ret = BCME_OK;
+	} else {
+		ret = BCME_RANGE;
+	}
+#else
+	ret = BCME_UNSUPPORTED;
+#endif // endif
 	return ret;
 }
 #endif /* WLC_DTPC */

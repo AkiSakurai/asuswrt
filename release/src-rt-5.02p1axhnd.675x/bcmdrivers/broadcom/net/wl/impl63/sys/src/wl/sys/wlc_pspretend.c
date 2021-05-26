@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_pspretend.c 781043 2019-11-08 13:50:24Z $
+ * $Id: wlc_pspretend.c 785517 2020-03-30 11:38:58Z $
  */
 
 /* Define wlc_cfg.h to be the first header file included as some builds
@@ -617,6 +617,10 @@ wlc_pspretend_doprobe(wlc_pps_info_t *pps, struct scb *scb, uint32 elapsed_time)
 
 	/* If a probe is still pending, don't send another one */
 	if (scb->flags & SCB_PSPRETEND_PROBE) {
+		WL_PS(("wl%d.%d: "MACF": Postponing probe, already pending,"
+			" time since pps is %dms\n",
+			wlc->pub->unit, WLC_BSSCFG_IDX(SCB_BSSCFG(scb)),
+			ETHER_TO_MACF(scb->ea), elapsed_time));
 		return FALSE;
 	}
 
@@ -660,7 +664,9 @@ wlc_pspretend_doprobe(wlc_pps_info_t *pps, struct scb *scb, uint32 elapsed_time)
 	}
 	/* else we probe each time (10ms) */
 
-	WL_PS(("time since pps is %dms\n", elapsed_time));
+	WL_PS(("wl%d.%d: "MACF": Probing now, time since pps is %dms\n",
+		wlc->pub->unit, WLC_BSSCFG_IDX(SCB_BSSCFG(scb)),
+		ETHER_TO_MACF(scb->ea), elapsed_time));
 #ifdef AP
 	return wlc_ap_sendnulldata(wlc->ap, cfg, scb);
 #else
@@ -733,7 +739,11 @@ wlc_pspretend_pkt_retry(wlc_pps_info_t *pps, wlc_bsscfg_t *cfg, struct scb *scb,
 	 * previously blocked data path or delayed PMQ interrupt
 	 */
 	if (!SCB_PS(scb)) {
-		wlc_pspretend_on(pps, scb, 0);
+		if (wlc_pspretend_on(pps, scb, 0) == FALSE) {
+			ASSERT(SCB_LEGACY_WDS(scb));
+			/* pspretend not set. free pkt */
+			return TRUE;
+		}
 	}
 	ASSERT(SCB_PS(scb));
 
@@ -905,8 +915,9 @@ wlc_pspretend_scb_time_upd(wlc_pps_info_t *pps, struct scb *scb)
 	time_in_pretend = R_REG(wlc->osh, D11_TSFTimerLow(wlc)) - pps_scb->ps_pretend_start;
 	pps_scb->ps_pretend_total_time_in_pps += time_in_pretend;
 
-	WL_PS(("wl%d.%d: ps pretend state about to exit, %d ms in pretend state\n",
-	       wlc->pub->unit, WLC_BSSCFG_IDX(SCB_BSSCFG(scb)), (time_in_pretend + 500)/1000));
+	WL_PS(("wl%d.%d: "MACF": ps pretend state about to exit, %d ms in pretend state\n",
+	       wlc->pub->unit, WLC_BSSCFG_IDX(SCB_BSSCFG(scb)),
+	       ETHER_TO_MACF(scb->ea), (time_in_pretend + 500)/1000));
 }
 
 uint

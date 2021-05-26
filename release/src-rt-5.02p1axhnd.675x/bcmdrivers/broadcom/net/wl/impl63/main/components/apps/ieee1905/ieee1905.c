@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: ieee1905.c 782765 2020-01-06 05:29:03Z $
+ * $Id: ieee1905.c 787204 2020-05-21 12:32:37Z $
  */
 
 #include <stdio.h>
@@ -95,14 +95,26 @@ static int copy_ts_policy_config(ieee1905_config *config)
   return 0;
 }
 
+/* Initialize the global object i5_config & its glists by 1905 library before anything else */
+static void ieee1905_startup(void) __attribute__((constructor));
+static void ieee1905_startup(void)
+{
+  memset(&i5_config, 0, sizeof(i5_config_type));
+  ieee1905_glist_init(&i5_config.vlan_ifr_list);
+  ieee1905_glist_init(&(i5_config.policyConfig.no_steer_sta_list));
+  ieee1905_glist_init(&i5_config.policyConfig.no_btm_steer_sta_list);
+  ieee1905_glist_init(&i5_config.policyConfig.steercfg_bss_list);
+  ieee1905_glist_init(&i5_config.policyConfig.metricrpt_config.ifr_list);
+  ieee1905_glist_init(&i5_config.policyConfig.ts_policy_list);
+  ieee1905_glist_init(&i5_config.client_bssinfo_list);
+}
+
 /* Initialize the IEEE1905 */
 int ieee1905_init(void *usched_hdl, unsigned int supServiceFlag, int isRegistrar,
   ieee1905_msglevel_t *msglevel, ieee1905_config *config)
 {
   int rc = -1, idx;
   i5_dm_device_type *pdmdev;
-
-  memset(&i5_config, 0, sizeof(i5_config_type));
 
   if (config->flags & I5_INIT_FLAG_MCHAN) {
     i5_config.flags |= I5_CONFIG_FLAG_MCHAN;
@@ -741,25 +753,23 @@ int ieee1905_add_bssto_controller_table(ieee1905_client_bssinfo_type *bss)
   clientbss->AuthType = bss->AuthType;
   clientbss->EncryptType = bss->EncryptType;
   memcpy(&clientbss->NetworkKey, &bss->NetworkKey, sizeof(clientbss->NetworkKey));
-  clientbss->BackHaulBSS = bss->BackHaulBSS;
-  clientbss->FrontHaulBSS = bss->FrontHaulBSS;
-  clientbss->Guest = bss->Guest;
-
+  clientbss->Closed = bss->Closed;
+  clientbss->map_flag = bss->map_flag;
   /* If the traffic separation policy has SSID whose VLAN ID is not primary label it as Guest */
   ssid_type = i5DmTSPolicyFindSSID(&i5_config.policyConfig.ts_policy_list, bss->ssid.SSID,
     &vlan_id);
   if (ssid_type && vlan_id != i5_config.policyConfig.prim_vlan_id) {
-    bss->Guest = 1;
+    clientbss->map_flag |= IEEE1905_MAP_FLAG_GUEST;
   }
 
   ieee1905_glist_append(&i5_config.client_bssinfo_list, (dll_t*)clientbss);
 
   i5TraceInfo("ALID["I5_MAC_DELIM_FMT"] band_flag[0x%x] ssid_len[%d] ssid[%s] auth[0x%x] "
-        "encr[0x%x] pwd_len[%d] Password[%s] bkhaul[%d] frnthaul[%d] Guest[%d]\n",
+        "encr[0x%x] pwd_len[%d] Password[%s] map_flag [0x%x] Closed[%d]\n",
         I5_MAC_PRM(clientbss->ALID), clientbss->band_flag, clientbss->ssid.SSID_len,
         clientbss->ssid.SSID, clientbss->AuthType, clientbss->EncryptType,
-        clientbss->NetworkKey.key_len, clientbss->NetworkKey.key, clientbss->BackHaulBSS,
-        clientbss->FrontHaulBSS, clientbss->Guest);
+        clientbss->NetworkKey.key_len, clientbss->NetworkKey.key, clientbss->map_flag,
+        clientbss->Closed);
 
   return IEEE1905_OK;
 }
@@ -1213,6 +1223,7 @@ int ieee1905_bSTA_associated_to_backhaul_ap(unsigned char *InterfaceId, char *if
 {
   i5_dm_device_type *pdevice = i5DmGetSelfDevice();
   i5_dm_interface_type *pdmif;
+  i5_socket_type *pif;
   int do_renew = 0;
 
   /* Start the auto configuration process again */
@@ -1238,6 +1249,17 @@ int ieee1905_bSTA_associated_to_backhaul_ap(unsigned char *InterfaceId, char *if
       i5Trace("For Ifname[%s] Create VLANs with the primary VLAN ID[%d] given by AP\n",
         ifname, prim_vlan_id);
       i5GlueCreateVLAN(ifname, 1);
+    }
+  } else {
+    /* Send topology discovery on this interface as soon as its connected to the upstream AP as
+     * it will help in neighbor to identify this device as its neighbor.
+     * If we create VLAN then its not required because, after the VLAN interface is created,
+     * it will send the topology discovery
+     */
+    pif = i5SocketFindDevSocketByAddr(InterfaceId, NULL);
+    if (pif)  {
+      pif->u.sll.discoveryRetryPeriod = 0;
+      i5MessageTopologyDiscoveryTimeout(pif);
     }
   }
 
@@ -1489,6 +1511,9 @@ int ieee1905_bSTA_disassociated_from_backhaul_ap(unsigned char *InterfaceId)
 
   /* Set the Media specific info to NULL as the STA got disconnected and BSSID will not be there */
   memset(pdmif->MediaSpecificInfo, 0x00, MAC_ADDR_LEN);
+
+  /* Remove all the neighbor entry which is connected via this STA interface */
+  i5DmFreeNeibhorsFromInterfaceId(pdmdev, InterfaceId);
 
   return 1;
 }

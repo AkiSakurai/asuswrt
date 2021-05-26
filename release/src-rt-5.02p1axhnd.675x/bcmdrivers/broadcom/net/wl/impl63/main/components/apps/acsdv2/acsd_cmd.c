@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acsd_cmd.c 781115 2019-11-12 05:40:05Z $
+ * $Id: acsd_cmd.c 784556 2020-03-02 10:22:00Z $
  */
 
 #include "acsd_svr.h"
@@ -137,7 +137,7 @@ acsd_pass_candi(ch_candidate_t * candi, int count, char** buf, uint* r_size)
 
 	for (i = 0; i < count; i++) {
 
-		ACSD_DEBUG("candi->chspec: 0x%x\n", candi->chspec);
+		ACSD_DEBUG("candi->chspec: 0x%4x (%s)\n", candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf));
 
 		cptr = (ch_candidate_t *)*buf;
 
@@ -264,7 +264,7 @@ acsd_proc_cmd(acsd_wksp_t* d_info, char* buf, uint rcount, uint* r_size)
 		       "fixchspec"};
 		d_info->stats.valid_cmds++;
 
-		time(&ltime);
+		ltime = uptime();
 		*r_size = sprintf(buf, "time: %s \n", ctime(&ltime));
 		*r_size += sprintf(buf+ *r_size, "acsd version: %d\n", d_info->version);
 		*r_size += sprintf(buf+ *r_size, "acsd ticks: %d\n", d_info->ticks);
@@ -395,7 +395,7 @@ acsd_proc_cmd(acsd_wksp_t* d_info, char* buf, uint rcount, uint* r_size)
 		}
 		else if (!strcmp(param, "chanim")) {
 			wl_chanim_stats_t * chanim_stats = c_info->chanim_stats;
-			wl_chanim_stats_t tmp_stats;
+			wl_chanim_stats_t tmp_stats = {0};
 			int count;
 			int i;
 			chanim_stats_t *stats;
@@ -707,8 +707,18 @@ acsd_proc_cmd(acsd_wksp_t* d_info, char* buf, uint rcount, uint* r_size)
 			goto done;
 		}
 
-		if (!strcmp(param, "switch_score_thresh")) {
-			*r_size = sprintf(buf, "%d", c_info->switch_score_thresh);
+		if (!strcmp(param, "acs_switch_score_thresh")) {
+			*r_size = sprintf(buf, "%d", c_info->acs_switch_score_thresh);
+			goto done;
+		}
+
+		if (!strcmp(param, "acs_switch_score_thresh_hi")) {
+			*r_size = sprintf(buf, "%d", c_info->acs_switch_score_thresh_hi);
+			goto done;
+		}
+
+		if (!strcmp(param, "acs_txop_limit_hi")) {
+			*r_size = sprintf(buf, "%d", c_info->acs_txop_limit_hi);
 			goto done;
 		}
 
@@ -951,6 +961,24 @@ acsd_proc_cmd(acsd_wksp_t* d_info, char* buf, uint rcount, uint* r_size)
 		if (!strcmp(param, "acs_txop_limit")) {
 			c_info->acs_txop_limit = setval;
 			*r_size = sprintf(buf, "%d", c_info->acs_txop_limit);
+			goto done;
+		}
+
+		if (!strcmp(param, "acs_switch_score_thresh")) {
+			c_info->acs_switch_score_thresh = setval;
+			*r_size = sprintf(buf, "%d", c_info->acs_switch_score_thresh);
+			goto done;
+		}
+
+		if (!strcmp(param, "acs_switch_score_thresh_hi")) {
+			c_info->acs_switch_score_thresh_hi = setval;
+			*r_size = sprintf(buf, "%d", c_info->acs_switch_score_thresh_hi);
+			goto done;
+		}
+
+		if (!strcmp(param, "acs_txop_limit_hi")) {
+			c_info->acs_txop_limit_hi = setval;
+			*r_size = sprintf(buf, "%d", c_info->acs_txop_limit_hi);
 			goto done;
 		}
 

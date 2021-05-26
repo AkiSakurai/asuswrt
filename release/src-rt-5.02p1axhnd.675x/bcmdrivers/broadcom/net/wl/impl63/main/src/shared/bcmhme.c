@@ -57,73 +57,49 @@
 #include <bcmutils.h>
 #include <bcmendian.h>
 
-#define HME_TEST_BUILD
-#ifdef  HME_TEST_BUILD
-/**
- * XXX FIXME
- *
- * Makefile target string: "hme"
- * Makefile variable     : HME
- * C DFLAG               : -DBCMHME
- *
- * dongle/make/Makeconf:
- *   EXTRA_DFLAGS       += -DBCMHME
- *   COMMON_OBJECTS     += bcmhme.o
- *
- * Move feature compile flags and offload attributes into appropriate chipset.mk
- */
-#define BCMHWAPP
-#define PSQPKT_OFFLD
-
-#ifdef  BCMHWAPP
-#define HME_PKTPGR_BUILD
-#define HME_MACIFS_BUILD
-#define HME_LCLPKT_BUILD
+#ifdef  BCM_CSIMON
+#define HME_CSIMON_BUILD
 #endif // endif
-
-#ifdef  PSQPKT_OFFLD
-#define HME_PSQPKT_BUILD
-#endif // endif
-
-#endif /* HME_TEST_BUILD */
 
 /** Scratch Memory: always present */
 #ifndef HME_USER_SCRMEM_BYTES
 #define HME_USER_SCRMEM_BYTES       PCIE_IPC_HME_PAGE_SIZE // default 4 KBytes
 #endif // endif
 
-/** BCMHWAPP: PacketPager BM of 8K items. Each pkt (context+buf) is 256 Bytes */
-#ifndef HME_USER_PKTPGR_BYTES
-#define HME_USER_PKTPGR_ITEM_SIZE   (256)       // Lfrag+DataBuffer is 256Bytes
-#define HME_USER_PKTPGR_ITEMS_MAX   (8 * 1024)  // PktPgr Host BM supports 8K
-#define HME_USER_PKTPGR_BYTES \
-	((uint32)(HME_USER_PKTPGR_ITEM_SIZE * HME_USER_PKTPGR_ITEMS_MAX))
-#endif /* HME_USER_PKTPGR_BYTES */
+#ifdef HME_CSIMON_BUILD
+#include <bcm_csimon.h>     /** CSIMON: Channel State Information Monitor */
+#define HME_USER_CSIMON_BYTES       CSIMON_IPC_HME_BYTES
+#endif /* HME_CSIMON_BUILD */
 
-/** BCMHWAPP: (37 Users) 154 AQM+TxDMA TxFIFOs + 3 RxFIFOs */
-#ifndef HME_USER_MACIFS_BYTES
-#define HME_USER_MACIFS_BYTES       (2 * 1024 * 1024)
+#define HME_NOOP                    do { /* no-op */ } while(0)
+#define HME_PRINT                   printf
+
+/** Conditional Compile: Designer builds for extended debug and statistics */
+// #define HME_DEBUG_BUILD
+#define HME_STATS_BUILD
+
+#define HME_CTRS_RDZERO             /* Clear On Read */
+#if defined(HME_CTRS_RDZERO)
+#define HME_CTR_ZERO(ctr)           (ctr) = 0U
+#else
+#define HME_CTR_ZERO(ctr)           HME_NOOP
 #endif // endif
 
-/** BCMHWAPP: Local heap data packets offload */
-#ifndef HME_USER_LCLPKT_BYTES
-#define HME_USER_LCLPKT_ITEM_SIZE   (2 * 1024)  // 2 KBytes data buffer
-#define HME_USER_LCLPKT_ITEMS_MAX   (1 * 1024)  // 1 K total data buffers
-#define HME_USER_LCLPKT_BYTES \
-	(HME_USER_LCLPKT_ITEM_SIZE * HME_USER_LCLPKT_ITEMS_MAX)
-#endif /* HME_USER_LCLPKT_BYTES */
+#if defined(HME_DEBUG_BUILD)
+#define HME_ASSERT(expr)            ASSERT(expr)
+#define HME_DEBUG(expr)             expr
+#else  /* ! HME_DEBUG_BUILD */
+#define HME_ASSERT(expr)            HME_NOOP
+#define HME_DEBUG(expr)             HME_NOOP
+#endif /* ! HME_DEBUG_BUILD */
 
-/**
- * PSQPKT_OFFLD: Suppression queue offload:
- * FIXME: merge LCLPKT and PSQPKT?
- *        Latter involves data buffer and TxLfrag context
- */
-#ifndef HME_USER_PSQPKT_BYTES
-#define HME_USER_PSQPKT_ITEM_SIZE   (2 * 1024)  // revisit?
-#define HME_USER_PSQPKT_ITEMS_MAX   (1 * 1024)  // revisit?
-#define HME_USER_PSQPKT_BYTES \
-	(HME_USER_PSQPKT_ITEM_SIZE * HME_USER_PSQPKT_ITEMS_MAX)
-#endif /* HME_USER_PSQPKT_BYTES */
+#if defined(HME_STATS_BUILD)
+#define HME_STATS(expr)             expr
+#define HME_STATS_ZERO(ctr)         HME_CTR_ZERO(ctr)
+#else  /* ! HME_STATS_BUILD */
+#define HME_STATS(expr)             HME_NOOP
+#define HME_STATS_ZERO(expr)        HME_NOOP
+#endif /* ! HME_STATS_BUILD */
 
 // +--- HME typedefs and data structures -------------------------------------+
 struct hme_user;
@@ -206,12 +182,11 @@ hme_t hme_g; // To support RSDB, if needed, instantiate users per core domain
 static const char * hme_user_str[] =
 {
 	"SCRMEM", "PKTPGR", "MACIFS", "LCLPKT", "PSQPKT",
-    "UNDEF5", "UNDEF6", "UNDEF7"
+    "CSIMON", "UNDEF6", "UNDEF7"
 };
 
 // pciedev_priv.h: Backplane memcpy using sbtopcie 0. 4Byte unit len.
-void pciedev_sbcopy(void *dev,
-         uint64 haddr64, daddr32_t daddr32, int len_4B, bool h2d_dir);
+void pciedev_sbcopy(uint64 haddr64, daddr32_t daddr32, int len_4B, bool h2d_dir);
 
 // +--- File scoped helper macros and routines -------------------------------+
 
@@ -233,7 +208,7 @@ HME_MGR_DECL(pool)      // Pool of Fixed Sized Blocks
 static INLINE hme_user_t * __hme_user(int user_id);
 
 // Backplane copy table of user HME addresses from host memory to dongle memory
-static void _hme_table_copy(void *dev, haddr64_t haddr64, daddr32_t daddr32);
+static void _hme_table_copy(haddr64_t haddr64, daddr32_t daddr32);
 
 // +--------------------------------------------------------------------------+
 // Section: Default NONE Memory Manager
@@ -252,16 +227,9 @@ static void _hme_table_copy(void *dev, haddr64_t haddr64, daddr32_t daddr32);
 static haddr64_t // default allocator
 _hme_mgr_none_get(hme_user_t *hme_user, size_t bytes)
 {
-	haddr64_t haddr64;
-
 	HME_STATS(hme_user->err_stat++);
 
-	ASSERT(0);
-
-	HADDR64_LO_SET(haddr64, 0U);
-	HADDR64_HI_SET(haddr64, 0U);
-	return haddr64;
-
+	return hme_user->haddr64;
 }   // _hme_mgr_none_get()
 
 static int // default deallocator
@@ -470,13 +438,13 @@ __hme_user(int user_id)
 }   // __hme_user()
 
 static void // Read the table of User HME addresses, from host into dongle local
-_hme_table_copy(void *dev, haddr64_t from_haddr64, daddr32_t to_daddr32)
+_hme_table_copy(haddr64_t from_haddr64, daddr32_t to_daddr32)
 {
 	bool   h2d_dir = TRUE;
 	int    len_4B  = (PCIE_IPC_HME_HADDR64_TBLSZ / sizeof(int)); // 4 Byte unit
 	uint64 from_haddr_u64;
 	HADDR64_TO_U64(from_haddr64, from_haddr_u64); // convert haddr64_t to uint64
-	pciedev_sbcopy(dev, from_haddr_u64, to_daddr32, len_4B, h2d_dir);
+	pciedev_sbcopy(from_haddr_u64, to_daddr32, len_4B, h2d_dir);
 
 }   // _hme_table_copy()
 
@@ -721,34 +689,12 @@ BCMATTACHFN(hme_bind_pcie_ipc)(void *pciedev, pcie_ipc_t *pcie_ipc)
 				hme_user->pages  = PCIE_IPC_HME_PAGES(HME_USER_SCRMEM_BYTES);
 				hme_user->policy = HME_MGR_SGMT;
 				break;
-#ifdef HME_PKTPGR_BUILD
-			case HME_USER_PKTPGR:
-				hme_user->pages  = PCIE_IPC_HME_PAGES(HME_USER_PKTPGR_BYTES);
+#ifdef HME_CSIMON_BUILD
+			case HME_USER_CSIMON:
+				hme_user->pages  = PCIE_IPC_HME_PAGES(HME_USER_CSIMON_BYTES);
 				hme_user->policy = HME_MGR_NONE;
 				break;
-#endif /* HME_PKTPGR_BUILD */
-#ifdef HME_MACIFS_BUILD
-			case HME_USER_MACIFS:
-				hme_user->pages  = PCIE_IPC_HME_PAGES(HME_USER_MACIFS_BYTES);
-				hme_user->policy = HME_MGR_SGMT;
-				break;
-#endif /* HME_MACIFS_BUILD */
-#ifdef HME_LCLPKT_BUILD
-			case HME_USER_LCLPKT:
-				hme_user->pages  = PCIE_IPC_HME_PAGES(HME_USER_LCLPKT_BYTES);
-				hme_user->policy = HME_MGR_POOL;
-				hme_user->mgr.pool.item_size = HME_USER_LCLPKT_ITEM_SIZE;
-				hme_user->mgr.pool.items_max = HME_USER_LCLPKT_ITEMS_MAX;
-				break;
-#endif /* HME_LCLPKT_BUILD */
-#ifdef HME_PSQPKT_BUILD
-			case HME_USER_PSQPKT:
-				hme_user->pages  = PCIE_IPC_HME_PAGES(HME_USER_PSQPKT_BYTES);
-				hme_user->policy = HME_MGR_POOL;
-				hme_user->mgr.pool.item_size = HME_USER_PSQPKT_ITEM_SIZE;
-				hme_user->mgr.pool.items_max = HME_USER_PSQPKT_ITEMS_MAX;
-				break;
-#endif /* HME_PSQPKT_BUILD */
+#endif /* HME_CSIMON_BUILD */
 			default: // undef users or feature is disabled
 				break;
 		} // switch user id
@@ -789,6 +735,7 @@ hme_link_pcie_ipc(void *pciedev, pcie_ipc_t *pcie_ipc)
 	uint32 id, hme_dcap, hme_hcap, hme_pages;
 	haddr64_t pcie_ipc_hme_haddr64[PCIE_IPC_HME_USERS_MAX];
 	hme_user_t *hme_user;
+	uint16 pcie_ipc_hme_pages;
 
 	HME_DEBUG(HME_PRINT("PCIE IPC LINK HME"));
 	HME_DEBUG(hme_dump_pcie_ipc(pciedev, pcie_ipc));
@@ -823,7 +770,7 @@ hme_link_pcie_ipc(void *pciedev, pcie_ipc_t *pcie_ipc)
 
 	// Fetch the entire HME table from host memory to dongle local
 	ASSERT(!HADDR64_IS_ZERO(pcie_ipc->host_mem_haddr64));
-	_hme_table_copy(pciedev, pcie_ipc->host_mem_haddr64,
+	_hme_table_copy(pcie_ipc->host_mem_haddr64,
 	                (daddr32_t)pcie_ipc_hme_haddr64);
 
 	// Compute total HME pages requested using hme_g and audit against DHD
@@ -831,7 +778,7 @@ hme_link_pcie_ipc(void *pciedev, pcie_ipc_t *pcie_ipc)
 	for (id = 0; id < PCIE_IPC_HME_USERS_MAX; id++)
 	{
 		hme_user = &hme_g.user[id];
-		uint16 pcie_ipc_hme_pages = pcie_ipc->hme_pages[id];
+		pcie_ipc_hme_pages = pcie_ipc->hme_pages[id];
 
 		if (hme_user->pages == 0) {
 			ASSERT(pcie_ipc_hme_pages == 0);
@@ -939,7 +886,7 @@ hme_dump_pcie_ipc(void *pciedev, pcie_ipc_t *pcie_ipc)
 
 	// Read the HME table from host memory to dongle local
 	if ((hme_dcap & hme_hcap) && pcie_ipc->host_mem_len) {
-		_hme_table_copy(pciedev, pcie_ipc->host_mem_haddr64,
+		_hme_table_copy(pcie_ipc->host_mem_haddr64,
 		                (daddr32_t)pcie_ipc_hme_haddr64);
 	}
 
@@ -1016,7 +963,13 @@ hme_d2h_xfer(const void *src_daddr32, haddr64_t *dst_haddr64, uint16 len,
 	}
 
 #ifdef HOST_DMA_ADDR64
-#error "hme_d2h_xfer needs bme_copy64"
+	{
+		uint64 src_daddr_u64, dst_haddr_u64;
+		src_daddr_u64 = (((uint64)0U) << 32) | (uint32)src_daddr32;
+		HADDR64_TO_U64((*dst_haddr64), dst_haddr_u64);
+		cpy_key = bme_copy64(hme_g.osh, hme_g.bme_key[BME_USR_D2H],
+		                     src_daddr_u64, dst_haddr_u64, len);
+	}
 #else
 	{
 		void *dst_haddr32 = (void *)HADDR64_LO(*dst_haddr64);
@@ -1050,7 +1003,13 @@ hme_h2d_xfer(haddr64_t *src_haddr64, void *dst_daddr32, uint16 len,
 	HME_ASSERT(hme_g.bme_key[BME_USR_H2D] != BCME_ERROR);
 
 #ifdef HOST_DMA_ADDR64
-#error "hme_h2d_xfer needs bme_copy64"
+	{
+		uint64 src_haddr_u64, dst_daddr_u64;
+		HADDR64_TO_U64((*src_haddr64), src_haddr_u64);
+		dst_daddr_u64 = (((uint64)0U) << 32) | (uint32)dst_daddr32;
+		cpy_key = bme_copy64(hme_g.osh, hme_g.bme_key[BME_USR_H2D],
+		                     src_haddr_u64, dst_daddr_u64, len);
+}
 #else
 	{
 		void *src_haddr32 = (void*)HADDR64_LO(*src_haddr64);

@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_tkip.c 774257 2019-04-17 10:08:19Z $
+ * $Id: km_tkip.c 784761 2020-03-05 05:54:19Z $
  */
 
 #include "km_pvt.h"
@@ -63,6 +63,9 @@ km_tkip_deauth(keymgmt_t *km, wlc_bsscfg_t *bsscfg, scb_t *scb)
 	if (!BSSCFG_STA(bsscfg))
 		return;
 
+	KM_ASSOC(("wl%d.%d: %s: send deauth to "MACF" with reason %d\n",
+		wlc->pub->unit, WLC_BSSCFG_IDX(bsscfg), __FUNCTION__,
+		ETHER_TO_MACF(bsscfg->BSSID), DOT11_RC_MIC_FAILURE));
 	wlc_senddeauth(wlc, bsscfg, scb, &bsscfg->BSSID, &bsscfg->BSSID,
 		&bsscfg->cur_etheraddr, DOT11_RC_MIC_FAILURE);
 	wlc_scb_disassoc_cleanup(wlc, scb);

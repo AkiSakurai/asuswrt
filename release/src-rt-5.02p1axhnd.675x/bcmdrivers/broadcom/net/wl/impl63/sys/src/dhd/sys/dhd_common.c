@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_common.c 778210 2019-08-27 07:33:52Z $
+ * $Id: dhd_common.c 789024 2020-07-16 17:40:14Z $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -3123,6 +3123,11 @@ wl_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint16 pktlen,
 		if (type != WLC_E_AUTH_IND)
 			dhd_pktfwd_request(dhd_pktfwd_req_assoc_sta_e,
 				(unsigned long)&event->addr.octet, 1, event->event_type);
+#if defined(BCM_PKTFWD_DWDS)
+		if (DHD_IF_ROLE_STA(dhd_pub, dhd_ifname2idx(dhd_pub->info, event->ifname))) {
+			dhd_alloc_dwds_idx(dhd_pub, dhd_ifname2idx(dhd_pub->info, event->ifname));
+		}
+#endif /* BCM_PKTFWD_DWDS */
 #endif /* BCM_PKTFWD */
 		break;
 
@@ -3173,47 +3178,10 @@ wl_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint16 pktlen,
 			dhd_prot_rxpost_upd(dhd_pub);
 #endif // endif
 		}
-#if defined(WL_CFG80211) && defined(WL_HAPD_WDS)
-		dhd_wl_check_wds_update_peer(dhd_pub, dhd_ifname2idx(dhd_pub->info,
-				event->ifname),  event->addr.octet);
-#endif /* WL_CFG80211 && WL_HAPD_WDS */
+
 		/* fall through */
+
 #endif /* PCIE_FULL_DONGLE */
-
-#if defined(BCM_BLOG) && defined(DHD_DPSTA) && defined(DHD_WET)
-		if (dhd_get_wet_mode(dhd_pub) && DHD_IF_ROLE_STA(dhd_pub, *ifidx)) {
-			BlogFlushParams_t params = {};
-			struct net_device *dev;
-
-			dev = dhd_idx2net(dhd_pub, *ifidx);
-
-			if (dev) {
-				DHD_ERROR(("dhd %s: dpsta notify blog for %s link %s.\n",
-					dhd_ifname(dhd_pub, *ifidx), dev->name,
-					flags & WLC_EVENT_MSG_LINK ? "up" : "down"));
-
-				if (flags & WLC_EVENT_MSG_LINK) {
-					/* When upstream link up, do flush_all to prevent
-					 * upstream kept at other link up radio.
-					 */
-					params.flush_all = 1;
-					blog_lock();
-					blog_notify(FLUSH, dev, (unsigned long)&params, 0);
-					blog_unlock();
-				} else {
-					/* When upstream link down, do flush_dev to prevent
-					 * upstream kept at current link down radio.
-					 */
-					params.flush_dev = 1;
-					params.devid = dev->ifindex;
-					blog_lock();
-					blog_notify(FLUSH, dev, (unsigned long)&params, 0);
-					blog_unlock();
-				}
-			}
-		}
-		/* fall through */
-#endif /* BCM_BLOG && DHD_DPSTA && DHD_WET */
 	case WLC_E_DEAUTH:
 	case WLC_E_DEAUTH_IND:
 	case WLC_E_DISASSOC:

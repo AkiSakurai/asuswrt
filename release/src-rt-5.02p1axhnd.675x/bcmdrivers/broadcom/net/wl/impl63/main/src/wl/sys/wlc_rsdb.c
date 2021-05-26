@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_rsdb.c 780883 2019-11-05 14:19:22Z $
+ * $Id: wlc_rsdb.c 785580 2020-03-31 11:58:31Z $
  */
 
 /**
@@ -4139,7 +4139,7 @@ wlc_rsdb_bsscfg_pre_assoc_clone(wlc_info_t *from_wlc, wlc_info_t *to_wlc, wlc_bs
 
 	/* Free up the remaining packets in old wlc. */
 	if (from_scb) {
-		wlc_txq_scb_free(from_wlc, from_scb);
+		wlc_tx_fifo_scb_flush(from_wlc, from_scb);
 	}
 }
 
@@ -4531,7 +4531,7 @@ wlc_rsdb_move_scb(wlc_bsscfg_t * from_cfg, wlc_bsscfg_t * to_cfg, struct scb *sc
 	}
 
 	/* Free up the remaining packets in old wlc. */
-	wlc_txq_scb_free(from_cfg->wlc, scb);
+	wlc_tx_fifo_scb_flush(from_cfg->wlc, scb);
 
 	ret = wlc_rsdb_scb_update(from_cfg->wlc, to_cfg->wlc, to_cfg, scb);
 

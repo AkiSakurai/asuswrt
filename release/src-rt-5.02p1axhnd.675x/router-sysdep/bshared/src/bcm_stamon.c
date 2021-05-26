@@ -45,22 +45,18 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcm_stamon.c 776562 2019-07-02 10:32:53Z $
+ * $Id: bcm_stamon.c 788014 2020-06-18 04:18:18Z $
  */
 
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-
-#include <wlioctl.h>
-#include <wlioctl_utils.h>
 #include <wlutils.h>
 #include <shutils.h>
 #include <bcmendian.h>
-#include <ethernet.h>
 #include <bcmnvram.h>
 
+#include "bcmutils.h"
 #include "bcm_stamon.h"
 #include "bcm_usched.h"
 
@@ -161,13 +157,14 @@ stamon_print_all_stas(stamon_handle_t *hndl)
 	dll_t *item_p;
 	int i = 1;
 
-	STAMON_DEBUG("Number of STA's : %d\n", hndl->cur_sta_cnt);
+	STAMON_DEBUG("%s: Total Monitored STAs=%d\n", hndl->ifname, hndl->cur_sta_cnt);
 
 	for (item_p = dll_head_p(&hndl->stalist_head); !dll_end(&hndl->stalist_head, item_p);
 		item_p = dll_next_p(item_p)) {
 		stamon_sta_list_t *tmp = (stamon_sta_list_t*)item_p;
-		STAMON_DEBUG("STA%d MAC - "MACF" Priority - %d and RSSI - "RSSIF"\n", i++,
-			ETHER_TO_MACF(tmp->ea), tmp->priority, RSSI_TO_RSSIF(tmp->rssi));
+		STAMON_DEBUG("%s: STA%d: "MACF" chanspec=0x%x Priority=%d RSSI="RSSIF"\n",
+			hndl->ifname, i++, ETHER_TO_MACF(tmp->ea), tmp->chspec, tmp->priority,
+			RSSI_TO_RSSIF(tmp->rssi));
 	}
 }
 
@@ -211,11 +208,13 @@ bcm_stamon_update_mode_to_not_processed(stamon_handle_t* hndl)
 
 	for (item_p = dll_head_p(&hndl->stalist_head); !dll_end(&hndl->stalist_head, item_p);
 		item_p = dll_next_p(item_p)) {
-		if (((stamon_sta_list_t*)item_p)->mode != MODE_PROCESSING) {
-			((stamon_sta_list_t*)item_p)->mode = MODE_NOT_PROCESSED;
+		stamon_sta_list_t *entry = (stamon_sta_list_t*)item_p;
+		if (entry->mode != MODE_PROCESSING) {
+			entry->mode = MODE_NOT_PROCESSED;
+			STAMON_DEBUG("%s: For STA "MACF" Setting mode to MODE_NOT_PROCESSED(%d)\n",
+				hndl->ifname, ETHER_TO_MACF(entry->ea), MODE_NOT_PROCESSED);
 		}
 	}
-	STAMON_DEBUG("%s - Updated the status to not processed\n", hndl->ifname);
 }
 
 /* Add STA's to driver for monitoring */
@@ -252,39 +251,56 @@ bcm_stamon_add_stas_to_driver(stamon_handle_t* hndl)
 		!dll_end(&hndl->stalist_head, item_p); item_p = dll_next_p(item_p)) {
 		stamon_sta_list_t *tmp = (stamon_sta_list_t*)item_p;
 
-		if (tmp->mode != MODE_NOT_PROCESSED)
+		STAMON_DEBUG("%s: Trying to add offchan STA "MACF" to driver for monitoring\n",
+			hndl->ifname, ETHER_TO_MACF(tmp->ea));
+		if (tmp->mode != MODE_NOT_PROCESSED) {
+			STAMON_DEBUG("%s: Skip "MACF" as mode(%d) != MODE_NOT_PROCESSED(%d)\n",
+				hndl->ifname, ETHER_TO_MACF(tmp->ea), tmp->mode,
+				MODE_NOT_PROCESSED);
 			continue;
+		}
 
-		if (!tmp->offchancbfn)
+		if (!tmp->offchancbfn) {
+			STAMON_DEBUG("%s: Skip "MACF" as it is not offchan STA\n", hndl->ifname,
+				ETHER_TO_MACF(tmp->ea));
 			continue;
+		}
 
-		if (tmp->stamon_count >= hndl->stamon_config.max_offchan_count)
+		if (tmp->stamon_count >= hndl->stamon_config.max_offchan_count) {
+			STAMON_DEBUG("%s: Skip "MACF" as stamon_count(%d) >= max_offchan_count"
+				"(%d)\n", hndl->ifname, ETHER_TO_MACF(tmp->ea), tmp->stamon_count,
+				hndl->stamon_config.max_offchan_count);
 			continue;
+		}
 
 		/* last_chspec holds chanspec of the offchannel STA last added to driver */
-		if (last_chspec && last_chspec !=  tmp->chspec)
+		if (last_chspec && last_chspec !=  tmp->chspec) {
+			STAMON_DEBUG("%s: Skip "MACF" as last_chspec(0x%x) != STA chanspec(0x%x)\n",
+				hndl->ifname, ETHER_TO_MACF(tmp->ea), last_chspec, tmp->chspec);
 			continue;
+		}
 
 		last_chspec = stamon_cfg.chanspec = tmp->chspec;
 		stamon_cfg.chanspec = htod32(stamon_cfg.chanspec);
 		stamon_cfg.offchan_time = htod32(hndl->stamon_config.offchan_time);
 		memcpy(&stamon_cfg.ea, &tmp->ea, sizeof(stamon_cfg.ea));
-		STAMON_DEBUG("%s - Adding STA :"MACF" to driver\n", hndl->ifname,
-			ETHER_TO_MACF(tmp->ea));
+		STAMON_INFO("%s: Adding offchan STA "MACF" to driver. chspec=0x%x "
+			"offchan_time=%d\n", hndl->ifname, ETHER_TO_MACF(tmp->ea),
+			stamon_cfg.chanspec, stamon_cfg.offchan_time);
 
-		STAMON_DEBUG("%s : Off channel STA callback\n", hndl->ifname);
 		tmp->offchancbfn(tmp->arg, &tmp->ea);
-
 		tmp->stamon_count++;
 		status = wl_iovar_set(hndl->ifname, STAMON_IOVAR_NAME, &stamon_cfg,
 			sizeof(stamon_cfg));
 		if (status) {
-			STAMON_ERROR("%s : Failed to add "MACF" address wl error : %d\n",
+			STAMON_ERROR("%s: Failed to add "MACF" to driver. wl error: %d\n",
 				hndl->ifname, ETHER_TO_MACF(stamon_cfg.ea), status);
 			status = BCM_STAMONE_WL;
 			tmp->status = BCM_STAMONE_WL_ADD;
 			return status;
 		}
+		STAMON_DEBUG("%s: For STA "MACF" Setting mode to MODE_PROCESSING(%d)\n",
+			hndl->ifname, ETHER_TO_MACF(tmp->ea), MODE_PROCESSING);
 		tmp->mode = MODE_PROCESSING;
 		ncount++;
 	}
@@ -295,26 +311,37 @@ start:
 		!dll_end(&hndl->stalist_head, item_p); item_p = dll_next_p(item_p)) {
 		stamon_sta_list_t *tmp = (stamon_sta_list_t*)item_p;
 
-		if (tmp->mode != MODE_NOT_PROCESSED)
+		STAMON_DEBUG("%s: Trying to add onchan STA "MACF" to driver for monitoring\n",
+			hndl->ifname, ETHER_TO_MACF(tmp->ea));
+		if (tmp->mode != MODE_NOT_PROCESSED) {
+			STAMON_DEBUG("%s: Skip "MACF" as mode(%d) != MODE_NOT_PROCESSED(%d)\n",
+				hndl->ifname, ETHER_TO_MACF(tmp->ea), tmp->mode,
+				MODE_NOT_PROCESSED);
 			continue;
+		}
 
-		if (tmp->offchancbfn)
+		if (tmp->offchancbfn) {
+			STAMON_DEBUG("%s: Skip "MACF" as it is offchan STA\n", hndl->ifname,
+				ETHER_TO_MACF(tmp->ea));
 			continue;
+		}
 
 		tmp->stamon_count++;
 		stamon_cfg.chanspec = htod32(tmp->chspec);
 		memcpy(&stamon_cfg.ea, &tmp->ea, sizeof(stamon_cfg.ea));
-		STAMON_DEBUG("%s - Adding STA :"MACF" to driver\n", hndl->ifname,
-			ETHER_TO_MACF(tmp->ea));
+		STAMON_INFO("%s: Adding onchannel STA "MACF" to driver. chspec=0x%x\n",
+			hndl->ifname, ETHER_TO_MACF(tmp->ea), stamon_cfg.chanspec);
 		status = wl_iovar_set(hndl->ifname, STAMON_IOVAR_NAME, &stamon_cfg,
 			sizeof(stamon_cfg));
 		if (status) {
-			STAMON_ERROR("%s : Failed to add "MACF" address wl error : %d\n",
+			STAMON_ERROR("%s: Failed to add "MACF" to driver. wl error: %d\n",
 				hndl->ifname, ETHER_TO_MACF(stamon_cfg.ea), status);
 			status = BCM_STAMONE_WL;
 			tmp->status = BCM_STAMONE_WL_ADD;
 			return status;
 		}
+		STAMON_DEBUG("%s: For STA "MACF" Setting mode to MODE_PROCESSING(%d)\n",
+			hndl->ifname, ETHER_TO_MACF(tmp->ea), MODE_PROCESSING);
 		tmp->mode = MODE_PROCESSING;
 		ncount++;
 	}
@@ -357,7 +384,8 @@ bcm_stamon_get_all_stamon_stats(stamon_handle_t* hndl)
 	buflen = sizeof(bcm_stamon_list_info_t) + (sizeof(bcm_stamon_info_t) * hndl->cur_sta_cnt);
 	infobuf = (bcm_stamon_list_info_t*)malloc(buflen);
 	if (!infobuf) {
-		STAMON_ERROR("%s - Failed to allocate memory\n", hndl->ifname);
+		STAMON_ERROR("%s: Failed to allocate memory for bcm_stamon_list_info_t\n",
+			hndl->ifname);
 		return NULL;
 	}
 
@@ -406,9 +434,11 @@ bcm_stamon_delete_from_driver(stamon_handle_t *hndl, struct ether_addr *ea)
 	stamon_cfg.length = htod16(STAMON_STACONFIG_LENGTH);
 	memcpy(&stamon_cfg.ea, ea, sizeof(stamon_cfg.ea));
 
+	STAMON_DEBUG("%s: Deleting STA "MACF" from driver.\n", hndl->ifname,
+		ETHER_TO_MACF(stamon_cfg.ea));
 	status = wl_iovar_set(hndl->ifname, STAMON_IOVAR_NAME, &stamon_cfg, sizeof(stamon_cfg));
 	if (status) {
-		STAMON_ERROR("%s : Failed to delete "MACF" address wl error : %d\n",
+		STAMON_ERROR("%s: Failed to delete "MACF" from driver. wl error : %d\n",
 			hndl->ifname, ETHER_TO_MACF(stamon_cfg.ea), status);
 		status = BCM_STAMONE_WL;
 	}
@@ -433,7 +463,8 @@ bcm_stamon_find_and_delete_entry(stamon_handle_t* hndl, bcm_stamon_macinfo_t *ma
 			}
 			dll_delete((dll_t*)item_p);
 			free(item_p);
-			STAMON_DEBUG("Deleted "MACF" STA\n", ETHER_TO_MACF(macinfo->ea));
+			STAMON_DEBUG("%s: Deleted STA "MACF" from stamonlib\n", hndl->ifname,
+				ETHER_TO_MACF(macinfo->ea));
 			hndl->cur_sta_cnt--;
 			return BCM_STAMONE_OK;
 		}
@@ -453,7 +484,7 @@ bcm_stamon_del_stas_from_driver(stamon_handle_t* hndl)
 			bcm_stamon_delete_from_driver(hndl, &((stamon_sta_list_t*)item_p)->ea);
 		}
 	}
-	STAMON_DEBUG("%s - Deleted current stas from driver\n", hndl->ifname);
+	STAMON_DEBUG("%s: Deleted all processed STAs from driver\n", hndl->ifname);
 }
 
 /* Adds the STA into local list in a sorted manner(based on priority */
@@ -475,6 +506,8 @@ bcm_stamon_add_sorted_entry(stamon_handle_t *hndl, stamon_sta_list_t *sta_info)
 	} else {
 		dll_insert((dll_t*)sta_info, prev);
 	}
+	STAMON_INFO("%s: Added STA "MACF" chspec=0x%x priority=%d to stamonlib.\n",
+		hndl->ifname, ETHER_TO_MACF(sta_info->ea), sta_info->chspec, sta_info->priority);
 
 	return BCM_STAMONE_OK;
 }
@@ -486,14 +519,14 @@ bcm_stamon_find_and_add_entry(stamon_handle_t* hndl, bcm_stamon_macinfo_t *macin
 	stamon_sta_list_t *sta_info;
 
 	if (bcm_stamon_sta_already_exists(hndl, &macinfo->ea)) {
-		STAMON_DEBUG("%s - STA "MACF" Already exists\n", hndl->ifname,
+		STAMON_DEBUG("%s: STA "MACF" already exists\n", hndl->ifname,
 			ETHER_TO_MACF(macinfo->ea));
 		return BCM_STAMONE_OK;
 	}
 
 	sta_info = (stamon_sta_list_t*)malloc(sizeof(*sta_info));
 	if (!sta_info) {
-		STAMON_ERROR("%s - Failed to allocate memory for STA : "MACF"\n", hndl->ifname,
+		STAMON_ERROR("%s: Failed to allocate memory for STA : "MACF"\n", hndl->ifname,
 			ETHER_TO_MACF(macinfo->ea));
 		return BCM_STAMONE_MEMORY;
 	}
@@ -525,6 +558,7 @@ bcm_stamon_delete_all_from_driver(stamon_handle_t *hndl, stamon_info_t *info)
 	for (i = 0; i < info->count; i++) {
 		status = bcm_stamon_delete_from_driver(hndl, &info->sta_data[i].ea);
 	}
+	STAMON_DEBUG("%s: Deleted all STAs from driver\n", hndl->ifname);
 
 	return status;
 }
@@ -542,7 +576,7 @@ bcm_stamon_delete_all_stamon_stas(stamon_handle_t *hndl)
 	buflen = sizeof(stamon_info_t) + (sizeof(stamon_data_t) * STAMON_MAX_STA_MONITORED);
 	info = (stamon_info_t*)malloc(buflen);
 	if (!info) {
-		STAMON_ERROR("%s - Failed to allocate memory\n", hndl->ifname);
+		STAMON_ERROR("%s: Failed to allocate memory for stamon_info_t\n", hndl->ifname);
 		return BCM_STAMONE_MEMORY;
 	}
 	memset(info, 0, sizeof(*info));
@@ -565,10 +599,9 @@ bcm_stamon_delete_all_stamon_stas(stamon_handle_t *hndl)
 	status = bcm_stamon_delete_all_from_driver(hndl, info);
 	if (info)
 		free(info);
-	STAMON_DEBUG("%s - Deleted All STA's\n", hndl->ifname);
 
 	if (hndl->is_timer_created) {
-		STAMON_DEBUG("%s - No STA's so delete the timer\n", hndl->ifname);
+		STAMON_DEBUG("%s: No STA's to monitor. Delete the timer\n", hndl->ifname);
 		bcm_usched_remove_timer(hndl->usched_hndl, bcm_stamon_timer_cb, hndl);
 		hndl->is_timer_created = 0;
 	}
@@ -578,7 +611,7 @@ bcm_stamon_delete_all_stamon_stas(stamon_handle_t *hndl)
 
 /* gets one stats from driver, updates the local structure and deletes STA from driver */
 static BCM_STAMON_STATUS
-bcm_stamon_get_stats_from_driver_and_update(stamon_handle_t *hndl, stamon_sta_list_t *tmp,
+bcm_stamon_get_stats_from_driver_and_update(stamon_handle_t *hndl, stamon_sta_list_t *entry,
 	stamon_info_t *info, int buflen)
 {
 	int status;
@@ -592,10 +625,12 @@ bcm_stamon_get_stats_from_driver_and_update(stamon_handle_t *hndl, stamon_sta_li
 	stamon_cfg.length = htod16(STAMON_STACONFIG_LENGTH);
 
 	memset(info, 0, sizeof(*info));
-	memcpy(&stamon_cfg.ea, &tmp->ea, sizeof(stamon_cfg.ea));
+	memcpy(&stamon_cfg.ea, &entry->ea, sizeof(stamon_cfg.ea));
 
 	status = wl_iovar_getbuf(hndl->ifname, STAMON_IOVAR_NAME, &stamon_cfg,
 		sizeof(stamon_cfg), info, buflen);
+	STAMON_DEBUG("%s: Collected stats from driver for "MACF". Possible RSSI=%d status=%d\n",
+		hndl->ifname, ETHER_TO_MACF(entry->ea), info->sta_data[0].rssi, status);
 
 	if (!status) {
 		int idx = 0;
@@ -613,33 +648,34 @@ bcm_stamon_get_stats_from_driver_and_update(stamon_handle_t *hndl, stamon_sta_li
 	}
 
 	if (status) {
-		STAMON_ERROR("%s : Failed to get status wl error : %d\n",
-			hndl->ifname, status);
 		status = BCM_STAMONE_WL;
 	}
 	else if (info->count <= 0) {
-		STAMON_ERROR("%s : Empty list from driver\n", hndl->ifname);
+		STAMON_ERROR("%s: Empty list from driver\n", hndl->ifname);
 		status = BCM_STAMONE_WL;
 	}
 	else if (ETHER_ISNULLADDR(&info->sta_data[0].ea)) {
-		STAMON_ERROR("%s : NULL address from driver\n", hndl->ifname);
+		STAMON_ERROR("%s: NULL STA address from driver\n", hndl->ifname);
 		status = BCM_STAMONE_WL;
 	} else if (STAMON_RSSI_VALID(info->sta_data[0].rssi)) {
-		tmp->rssi[tmp->rssi_idx++] = info->sta_data[0].rssi;
-		STAMON_DEBUG("For STA : "MACF" RSSI is : %d\n",
-		ETHER_TO_MACF(info->sta_data[0].ea), info->sta_data[0].rssi);
+		entry->rssi[entry->rssi_idx++] = info->sta_data[0].rssi;
+		STAMON_DEBUG("%s: For STA "MACF" RSSI=%d\n", hndl->ifname,
+			ETHER_TO_MACF(info->sta_data[0].ea), info->sta_data[0].rssi);
 		/* Update rssi_idx */
-		tmp->rssi_idx =
-			(tmp->rssi_idx >= STAMON_MAX_RSSI_LEN) ? 0 :
-			tmp->rssi_idx;
+		entry->rssi_idx = (entry->rssi_idx >= STAMON_MAX_RSSI_LEN) ? 0 : entry->rssi_idx;
 		status = BCM_STAMONE_OK;
-	} else
+	} else {
+		STAMON_DEBUG("%s: For STA "MACF" RSSI=0\n", hndl->ifname,
+			ETHER_TO_MACF(info->sta_data[0].ea));
 		status = BCM_STAMONE_INV_RSSI;
+	}
 
-	tmp->status = status;
+	entry->status = status;
 
-	if (!(tmp->stamon_count % hndl->stamon_config.sta_load_freq)) {
-		tmp->mode = MODE_PROCESSED;
+	if (!(entry->stamon_count % hndl->stamon_config.sta_load_freq)) {
+		STAMON_DEBUG("%s: For STA "MACF" Setting mode to MODE_PROCESSED(%d)\n",
+			hndl->ifname, ETHER_TO_MACF(info->sta_data[0].ea), MODE_PROCESSED);
+		entry->mode = MODE_PROCESSED;
 	}
 
 	return status;
@@ -660,7 +696,7 @@ bcm_stamon_get_stats_from_driver(stamon_handle_t *hndl)
 		buflen = STAMON_MIN_DRIVER_BUFLEN;
 	info = (stamon_info_t*)malloc(buflen);
 	if (!info) {
-		STAMON_ERROR("%s : Failed to allocate memory\n", hndl->ifname);
+		STAMON_ERROR("%s : Failed to allocate memory for stamon_info_t\n", hndl->ifname);
 		return BCM_STAMONE_MEMORY;
 	}
 
@@ -705,13 +741,15 @@ bcm_stamon_timer_cb(bcm_usched_handle *usched_hndl, void *arg)
 
 /* Add timers to micro scheduler */
 static int
-bcm_stamon_add_timers(stamon_handle_t *hndl, unsigned long long timeout, bcm_usched_timerscbfn *cbfn)
+bcm_stamon_add_timers(stamon_handle_t *hndl, unsigned long long timeout,
+	bcm_usched_timerscbfn *cbfn)
 {
 	BCM_USCHED_STATUS ret = 0;
 
 	ret = bcm_usched_add_timer(hndl->usched_hndl, timeout, 1, cbfn, hndl);
 	if (ret != BCM_USCHEDE_OK) {
-		STAMON_ERROR("Failed to add timer. Error : %s\n", bcm_usched_strerror(ret));
+		STAMON_ERROR("%s: Failed to add timer. Error: %s\n", hndl->ifname,
+			bcm_usched_strerror(ret));
 		return BCM_STAMONE_USCHED;
 	}
 
@@ -734,8 +772,7 @@ bcm_stamon_cmd_enable(stamon_handle_t *hndl)
 	status = wl_iovar_set(hndl->ifname, STAMON_IOVAR_NAME, &stamon_cfg, sizeof(stamon_cfg));
 
 	if (status) {
-		STAMON_ERROR("%s : Failed to ENABLE stamon wl error : %d\n",
-			hndl->ifname, status);
+		STAMON_ERROR("%s: Failed to enable stamon. wl error %d\n", hndl->ifname, status);
 		status = BCM_STAMONE_WL;
 	}
 
@@ -758,8 +795,7 @@ bcm_stamon_cmd_disable(stamon_handle_t *hndl)
 	status = wl_iovar_set(hndl->ifname, STAMON_IOVAR_NAME, &stamon_cfg, sizeof(stamon_cfg));
 
 	if (status) {
-		STAMON_ERROR("%s : Failed to Disable stamon wl error : %d\n",
-			hndl->ifname, status);
+		STAMON_ERROR("%s: Failed to disable stamon. wl error %d\n", hndl->ifname, status);
 		status = BCM_STAMONE_WL;
 	}
 
@@ -776,14 +812,15 @@ bcm_stamon_cmd_add(stamon_handle_t* hndl, void *param)
 
 	/* Check for input param */
 	if (maclist == NULL || maclist->count == 0) {
-		STAMON_ERROR("%s - Empty MAC list sent\n", hndl->ifname);
+		STAMON_ERROR("%s: Empty MAC list sent\n", hndl->ifname);
 		return BCM_STAMONE_NULL_PARAM;
 	}
 
 	/* From the input param add the STA's to local list */
 	for (i = 0; i < maclist->count; i ++) {
-		STAMON_DEBUG("%s - Adding "MACF" MAC with %d priority\n", hndl->ifname,
-			ETHER_TO_MACF(maclist->macinfo[i].ea), maclist->macinfo[i].priority);
+		STAMON_DEBUG("%s: Adding "MACF" with priority=%d chanspec=0x%x\n", hndl->ifname,
+			ETHER_TO_MACF(maclist->macinfo[i].ea), maclist->macinfo[i].priority,
+			maclist->macinfo[i].chspec);
 		status = bcm_stamon_find_and_add_entry(hndl, &maclist->macinfo[i]);
 		if (status != BCM_STAMONE_OK)
 			return status;
@@ -791,7 +828,7 @@ bcm_stamon_cmd_add(stamon_handle_t* hndl, void *param)
 
 	/* Check if the Timer created for station monitoring, if not create it */
 	if (!hndl->is_timer_created) {
-		STAMON_DEBUG("%s - Creating the timer\n", hndl->ifname);
+		STAMON_DEBUG("%s: Creating the timer\n", hndl->ifname);
 		if (bcm_stamon_add_timers(hndl,
 			STAMON_MSEC_USEC((unsigned long long)hndl->stamon_config.interval),
 			bcm_stamon_timer_cb) != BCM_STAMONE_OK) {
@@ -818,7 +855,7 @@ bcm_stamon_cmd_delete(stamon_handle_t* hndl, void *param)
 
 	/* Else delete only the STA list passed in param */
 	for (i = 0; i < maclist->count; i ++) {
-		STAMON_DEBUG("%s - Deleting "MACF" MAC\n", hndl->ifname,
+		STAMON_DEBUG("%s: Deleting "MACF"\n", hndl->ifname,
 			ETHER_TO_MACF(maclist->macinfo[i].ea));
 		status = bcm_stamon_find_and_delete_entry(hndl, &maclist->macinfo[i]);
 		if (status != BCM_STAMONE_OK)
@@ -827,7 +864,7 @@ bcm_stamon_cmd_delete(stamon_handle_t* hndl, void *param)
 
 	/* If there are no STA's present after delete remove the timer created */
 	if (hndl->cur_sta_cnt <= 0 && hndl->is_timer_created) {
-		STAMON_DEBUG("%s - No STA's so delete the timer\n", hndl->ifname);
+		STAMON_DEBUG("%s: No STAs to monitor. Delete the timer\n", hndl->ifname);
 		bcm_usched_remove_timer(hndl->usched_hndl, bcm_stamon_timer_cb, hndl);
 		hndl->is_timer_created = 0;
 	}
@@ -847,7 +884,7 @@ bcm_stamon_cmd_get(stamon_handle_t* hndl, void *param, void **outbuf)
 
 	/* If the param is empty get all stamon stats */
 	if (maclist == NULL || maclist->count == 0) {
-		STAMON_DEBUG("Empty MAC List, so Get All\n");
+		STAMON_DEBUG("Empty MAC List. Getting stats for all STAs\n");
 		infobuf = bcm_stamon_get_all_stamon_stats(hndl);
 		if (!infobuf)
 			status = BCM_STAMONE_MEMORY;
@@ -858,23 +895,26 @@ bcm_stamon_cmd_get(stamon_handle_t* hndl, void *param, void **outbuf)
 	buflen = sizeof(bcm_stamon_list_info_t) + (sizeof(bcm_stamon_info_t) * maclist->count);
 	infobuf = (bcm_stamon_list_info_t*)malloc(buflen);
 	if (!infobuf) {
-		STAMON_ERROR("%s - Failed to allocate memory\n", hndl->ifname);
+		STAMON_ERROR("%s: Failed to allocate memory for bcm_stamon_list_info_t\n",
+			hndl->ifname);
 		*outbuf = NULL;
 		return BCM_STAMONE_MEMORY;
 	}
 
 	/* Copy the stats to output buffer */
 	for (i = 0; i < maclist->count; i++) {
-		STAMON_DEBUG("%s - Getting "MACF" MAC\n", hndl->ifname,
-			ETHER_TO_MACF(maclist->macinfo[i].ea));
 		memcpy(&infobuf->info[i].ea, &maclist->macinfo[i].ea,
 			sizeof(infobuf->info[i].ea));
 		tmp = bcm_stamon_find_and_get_stainfo(hndl, &maclist->macinfo[i]);
 		if (tmp) {
 			infobuf->info[i].status = tmp->status;
 			infobuf->info[i].rssi = bcm_stamon_get_average_rssi(tmp->rssi);
-		} else
+		} else {
 			infobuf->info[i].status = BCM_STAMONE_NOT_FOUND;
+		}
+		STAMON_INFO("%s: For "MACF" RSSI=%d chspec=0x%x status=%d\n", hndl->ifname,
+			ETHER_TO_MACF(maclist->macinfo[i].ea), infobuf->info[i].rssi, tmp->chspec,
+			infobuf->info[i].status);
 	}
 	infobuf->list_info_len = i;
 
@@ -895,38 +935,38 @@ bcm_stamon_command(bcm_stamon_handle *handle, bcm_stamon_cmd_t cmd, void *param,
 
 	/* Check for handle */
 	if (!hndl) {
-		STAMON_ERROR("Invalid Handle\n");
+		STAMON_ERROR("Invalid Handle (null)\n");
 		return BCM_STAMONE_INV_HDL;
 	}
 
 	switch (cmd) {
 		case BCM_STAMON_CMD_ENB:
-			STAMON_INFO("%s : Command Enable Stamon\n", hndl->ifname);
+			STAMON_INFO("%s: Running command Enable stamon\n", hndl->ifname);
 			status = bcm_stamon_cmd_enable(hndl);
 			break;
 
 		case BCM_STAMON_CMD_DSB:
-			STAMON_INFO("%s : Command Disable Stamon\n", hndl->ifname);
+			STAMON_INFO("%s: Running command Disable stamon\n", hndl->ifname);
 			status = bcm_stamon_cmd_disable(hndl);
 			break;
 
 		case BCM_STAMON_CMD_ADD:
-			STAMON_INFO("%s : Command Add to Stamon\n", hndl->ifname);
+			STAMON_INFO("%s: Running command Add to stamon\n", hndl->ifname);
 			status = bcm_stamon_cmd_add(hndl, param);
 			break;
 
 		case BCM_STAMON_CMD_DEL:
-			STAMON_INFO("%s : Command Delete from Stamon\n", hndl->ifname);
+			STAMON_INFO("%s: Running command Delete from stamon\n", hndl->ifname);
 			status = bcm_stamon_cmd_delete(hndl, param);
 			break;
 
 		case BCM_STAMON_CMD_GET:
-			STAMON_INFO("%s : Command Get Stamon Stats\n", hndl->ifname);
+			STAMON_INFO("%s: Running command Get stamon stats\n", hndl->ifname);
 			status = bcm_stamon_cmd_get(hndl, param, outbuf);
 			break;
 
 		default:
-			STAMON_ERROR("Command Not Found\n");
+			STAMON_ERROR("Invalid command %d\n", cmd);
 			status = BCM_STAMONE_INV_CMD;
 			break;
 	}
@@ -948,6 +988,9 @@ bcm_stamon_init(char *ifname)
 	int bandtype;
 	int ret;
 
+	g_stamon_debug_level = bcm_stamon_get_config_val_int("bcm_stamon_debug_level",
+		STAMON_DEFAULT_DEBUG_LEVEL);
+
 	/* Allocate handle */
 	hndl = (stamon_handle_t*)malloc(sizeof(*hndl));
 	if (!hndl) {
@@ -961,14 +1004,14 @@ bcm_stamon_init(char *ifname)
 
 	ret = osifname_to_nvifname(ifname, wl_name, sizeof(wl_name));
 	if (ret != 0) {
-		STAMON_ERROR("%s not a wireless interface. ret = %d\n", ifname, ret);
+		STAMON_ERROR("%s: Not a wireless interface. ret=%d\n", ifname, ret);
 		return NULL;
 	}
 	make_wl_prefix(prefix, sizeof(prefix), 1, wl_name);
 
 	/* read stamon configuration from NVRAM for this interface */
 	str = nvram_safe_get(strcat_r(prefix, BCM_NVRAM_STAMON_CONFIG, tmp));
-	if (str) {
+	if (str[0] != '\0') {
 		num = sscanf(str, "%u %u %u %u",
 			&temp.interval,
 			&temp.max_offchan_count,
@@ -978,7 +1021,7 @@ bcm_stamon_init(char *ifname)
 			memcpy(&hndl->stamon_config, &temp,
 				sizeof(hndl->stamon_config));
 		} else {
-			STAMON_WARNING("Invalid NVRAM : %s = %s\n",
+			STAMON_WARNING("Invalid NVRAM : %s=[%s]\n",
 				BCM_NVRAM_STAMON_CONFIG, str);
 		}
 	}
@@ -997,21 +1040,22 @@ bcm_stamon_init(char *ifname)
 			hndl->stamon_config.offchan_time = STAMON_DEFAULT_OFFCHAN_TIME_2G;
 		}
 	}
-
-	g_stamon_debug_level = bcm_stamon_get_config_val_int("bcm_stamon_debug_level",
-		STAMON_DEFAULT_DEBUG_LEVEL);
+	STAMON_DEBUG("%s: Stamon config. interval=%d max_offchan_count=%d sta_load_freq=%d "
+		"offchan_time=%d\n", hndl->ifname, hndl->stamon_config.interval,
+		hndl->stamon_config.max_offchan_count, hndl->stamon_config.sta_load_freq,
+		hndl->stamon_config.offchan_time);
 
 	/* Initialize the stalist head */
 	dll_init(&hndl->stalist_head);
 
 	/* Get micro scheduler handle for timer operation */
 	if ((hndl->usched_hndl = bcm_usched_init()) == NULL) {
-		STAMON_ERROR("%s - Failed to get BCM_USCHED handle\n", ifname);
+		STAMON_ERROR("%s: Failed to get BCM_USCHED handle\n", ifname);
 		free(hndl);
 		return NULL;
 	}
 
-	STAMON_DEBUG("Initialized successfully\n");
+	STAMON_DEBUG("%s: Initialized successfully\n", hndl->ifname);
 
 	return (bcm_stamon_handle*)hndl;
 }
@@ -1028,12 +1072,12 @@ bcm_stamon_deinit(bcm_stamon_handle *handle)
 		return BCM_STAMONE_INV_HDL;
 	}
 
+	STAMON_DEBUG("%s: Deinitializing\n", hndl->ifname);
 	bcm_stamon_delete_all_stamon_stas(hndl);
 	bcm_usched_stop(hndl->usched_hndl);
 	bcm_usched_deinit(hndl->usched_hndl);
 	free(hndl);
 	hndl = NULL;
-	STAMON_DEBUG("Deinitialized successfully\n");
 
 	return BCM_STAMONE_OK;
 }

@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tssical.c 780478 2019-10-26 09:55:49Z $
+ * $Id: phy_ac_tssical.c 788383 2020-06-30 12:28:15Z $
  */
 
 #include <phy_cfg.h>
@@ -326,9 +326,13 @@ wlc_phy_txpwrctrl_idle_tssi_meas_acphy(phy_info_t *pi)
 		wlc_phy_btcx_override_enable(pi);
 	}
 
-	if ((SCAN_RM_IN_PROGRESS(pi) || PLT_INPROG_PHY(pi) || PHY_MUTED(pi)) && !TINY_RADIO(pi))
+	/* For EAP build We need to pass the idle tssi cal
+	 * only in SCAN_INPROG_PHY, not RM (Radio Measure)
+	 */
+	if ((SCAN_RM_IN_PROGRESS(pi) || PLT_INPROG_PHY(pi) || PHY_MUTED(pi)) && !TINY_RADIO(pi)) {
 		/* skip idle tssi cal */
 		return;
+	}
 
 #ifdef ATE_BUILD
 	if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
@@ -415,13 +419,6 @@ wlc_phy_txpwrctrl_idle_tssi_meas_acphy(phy_info_t *pi)
 		} else {
 			wlc_phy_poll_samps_WAR_acphy(pi, idle_tssi, TRUE, TRUE, NULL,
 				FALSE, TRUE, core, 0);
-			if (idle_tssi[core] == 0 && ACMAJORREV_47(pi->pubpi->phy_rev)) {
-				/* 43684 BW80 comes with settling issue
-				 * at first time toggling. redo tssi can solve the issue
-				 */
-				wlc_phy_poll_samps_WAR_acphy(pi, idle_tssi, TRUE, TRUE,
-					NULL, FALSE, TRUE, core, 0);
-			}
 		}
 		tssicali->idle_tssi[core] = idle_tssi[core];
 		wlc_phy_txpwrctrl_set_idle_tssi_acphy(pi, idle_tssi[core], core);

@@ -22,13 +22,12 @@ $(call show_vars,MY_DEFAULT_ANY_FIRST_RUN MY_MKENV_FIRST_RECURSION)
 
 default: mkenv prebuild_checks all_postcheck1
 
-#all: cfebuild
 all:
 	$(MAKE) -f build/Makefile default
 
 all_postcheck1: profile_saved_check sanity_check rdp_link\
      create_install pinmuxcheck dynamic_cfe kernelbuild modbuild\
-     parallel_targets #gdbserver buildimage
+     parallel_targets
 
 # Order-only rules
 #----------------------------------------------------------------------------
@@ -236,7 +235,7 @@ export WLBUS
 # trying to make these targets.
 #
 ############################################################################
-.PHONY: userspace unittests data-model hostTools kernellinks kernelbuild pre_kernelbuild
+.PHONY: userspace unittests hostTools kernellinks kernelbuild pre_kernelbuild
 
 #
 # create a bcm_relversion.h which has our release version number, e.g.
@@ -295,7 +294,7 @@ endif
 
 
 
-prepare_userspace: sanity_check create_install data-model $(BCM_SWVERSION_FILE) kernellinks rdp_link hosttools 
+prepare_userspace: sanity_check create_install $(BCM_SWVERSION_FILE) kernellinks rdp_link hosttools 
 	$(MAKE) -C userspace public-include
 
 .PHONY: prepare_userspace
@@ -344,6 +343,7 @@ create_install:
 		mkdir -p $(INSTALL_DIR)/lib
 		mkdir -p $(INSTALL_DIR)/etc/snmp
 		mkdir -p $(INSTALL_DIR)/etc/iproute2
+		rm -rf $(INSTALL_DIR)/opt
 		mkdir -p $(INSTALL_DIR)/opt/bin
 		mkdir -p $(INSTALL_DIR)/opt/modules
 		mkdir -p $(INSTALL_DIR)/opt/scripts
@@ -847,9 +847,28 @@ $(if $(findstring L_y, $(1)), \
 $(if $(findstring uy, $(7)), \
        $(HOSTTOOLS_DIR)/scripts/bcmImageMaker --cferom $(2) --blocksize $(FLASH_NAND_BLOCK_$(3)KB) --bootofs $(4) --bootsize $(FLASH_NAND_BLOCK_$(3)KB)  --rootfs ubi_rootfs$(3)kb_pureubi.img --image $(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi --fsonly $(FLASH_NAND_FS_IMAGE_NAME_$(3))_pureubi --ubionlyimage $(IMG_DDR_TYPE_OPT) $(6) $(5);)\
        md5sum $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi.w > $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi.md5; \
-       [ ! -f $(HND_SRC)/../../buildtools/private.pem ] || openssl sha1 -sign $(HND_SRC)/../../buildtools/private.pem -out $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi_rsa.zip $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi.w; \
+$(if $(LIVE_UPDATE_RSA_VER), \
+$(if $(wildcard $(KEY_PATH)/private*.pem), \
+       for f in $(KEY_PATH)/private*.pem; do \
+              rsa_idx=$$(echo $${f} | sed "s/.*\///" | sed "s/private//" | sed "s/.pem//"); \
+              $$(openssl sha1 -sign $(KEY_PATH)/private$${rsa_idx}.pem -out $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi_rsa$${rsa_idx}.zip $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi.w); \
+       done \
+, \
+       if [ -f $(HND_SRC)/../../buildtools/private.pem ] ; then \
+       openssl sha1 -sign $(HND_SRC)/../../buildtools/private.pem -out $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi_rsa.zip $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi.w; \
+       fi \
+)
+, \
+       if [ -f $(HND_SRC)/../../buildtools/private.pem ] ; then \
+       openssl sha1 -sign $(HND_SRC)/../../buildtools/private.pem -out $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi_rsa.zip $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi.w; \
+       fi \
+)
 $(if $(findstring sy, $(8)), \
        $(HOSTTOOLS_DIR)/scripts/bcmImageMaker --cferom $(2) --blocksize $(FLASH_NAND_BLOCK_$(3)KB) --bootofs $(4) --bootsize $(FLASH_NAND_BLOCK_$(3)KB)  --rootfs squbi_rootfs$(3)kb_pureubi.img --image $(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi --fsonly $(FLASH_NAND_FS_IMAGE_NAME_$(3))_puresqubi --ubionlyimage $(IMG_DDR_TYPE_OPT) $(6) $(5);)\
+       [ ! -f $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.w ] || md5sum $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.w > $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.md5; \
+       [ ! -f $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.w ] || [ ! -f $(HND_SRC)/../../buildtools/private.pem ] || openssl sha1 -sign $(HND_SRC)/../../buildtools/private.pem -out $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi_rsa.zip $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.w; \
+       [ ! -f $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.w ] || rm -rf $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_FS_IMAGE_NAME_$(3))_pureubi*; \
+       [ ! -f $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_puresqubi.w ] || rm -rf $(HND_SRC)/targets/$(PROFILE)/$(FLASH_NAND_CFEROM_FS_IMAGE_NAME_$(3))_pureubi*; \
   )
 endef
 

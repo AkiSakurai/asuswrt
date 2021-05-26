@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tof.c 778919 2019-09-13 18:05:37Z $
+ * $Id: phy_tof.c 784256 2020-02-24 20:32:21Z $
  */
 
 #ifdef WL_PROXDETECT
@@ -568,5 +568,55 @@ int phy_tof_dbg(wlc_phy_t *ppi, int arg)
 	}
 }
 #endif /* TOF_DBG */
+
+#ifdef WL_PROXD_GDCOMP
+/* Group delay compensation */
+/* theta is in 19bits format. Hence 3.1416 - > 2^19 -> 524288 */
+/* It uses 20 bits to represent (-PI to PI) */
+#define CORDIC32_PI 19u
+/* PI(deg) s(15,16) 180 << 16 */
+#define PI_DEG 11796480u
+#define FIXED_PHASE(DELAY, N) (2u * PI_DEG * DELAY/(N))
+#define SIGN(X) (X < 0) ? (1) : (0)
+#define ADJUST_PHASE(X) ((X >> 28u) == 0x7)
+void
+phy_tof_gdcomp(cint32* H, int32 theta, int nfft, int delay_imp)
+{
+	math_fixed theta_k = 0;
+	math_cint32 exp_val, tmp;
+	int k;
+
+	if (theta == 0)
+		return;
+
+	/* Convert theta (pi->1<<19) to degs s(15,16) -> pi(deg)(s(15,16))/2^19 */
+	theta = (int32)(((int64) theta * PI_DEG) >> (CORDIC32_PI));
+	/* Apply a fixed integer group delay equal to FIXED_DELAY no. of samples */
+	/* to avoid wrapping of channel taps in time domain */
+	/* Effective group delay to be compensated is as follow */
+	/* theta - (2*pi*FIXED_DELAY/N) s(15,16) */
+	theta = theta - FIXED_PHASE(delay_imp, nfft);
+	/* Generate a phase ramp (-N/2 : N/2-1)*theta and compensate */
+	theta_k = (-nfft >> 1) * theta;
+	for (k = 0; k < nfft; k++) {
+		if (ADJUST_PHASE(ABS(theta_k))) {
+			if (SIGN(theta_k)) {
+				theta_k += (2u * PI_DEG);
+			} else {
+				theta_k -= (2u * PI_DEG);
+			}
+			PHY_INFORM(("Adjusting phase to avoid overflow\n"));
+		}
+		/* theta is in degrees and should be in s15.16 fixed-point */
+		math_cmplx_cordic(theta_k, &exp_val);
+		tmp.i = FLOAT(H->i * exp_val.i) - FLOAT(H->q * exp_val.q);
+		tmp.q = FLOAT(H->i * exp_val.q) + FLOAT(H->q * exp_val.i);
+		H->i = (int32)tmp.i;
+		H->q = (int32)tmp.q;
+		H++;
+		theta_k += theta;
+	}
+}
+#endif /* WL_PROXD_GDCOMP */
 
 #endif /* WL_PROXDETECT */

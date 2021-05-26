@@ -75,7 +75,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_wet.c 781150 2019-11-13 07:11:32Z $
+ * $Id: wlc_wet.c 784705 2020-03-04 12:32:16Z $
  */
 
 /**
@@ -1835,7 +1835,7 @@ wlc_wet_send_proc(wlc_wet_info_t *weth, wlc_bsscfg_t *cfg, void *sdu, void **new
 	*new = pkt;
 
 	/* process frame */
-	return wet_eth_proc(weth, cfg, sdu, frame, length, 1) < 0 ? -1 : 0;
+	return wet_eth_proc(weth, cfg, pkt, frame, length, 1) < 0 ? -1 : 0;
 }
 
 /*

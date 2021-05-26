@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_radio.h 781193 2019-11-14 00:43:23Z $
+ * $Id: phy_ac_radio.h 783205 2020-01-17 08:21:16Z $
  */
 
 #ifndef _phy_ac_radio_h_
@@ -248,8 +248,8 @@ extern void chanspec_setup_radio(phy_info_t *pi);
 extern void chanspec_tune_radio(phy_info_t *pi);
 
 extern void wlc_phy_radio20698_sel_logen_mode(phy_info_t *pi, uint8 mode);
-extern void wlc_phy_chanspec_radio20698_setup(phy_info_t *pi, uint8 ch, uint8 toggle_logen_reset,
-	uint8 logen_mode);
+extern void wlc_phy_chanspec_radio20698_setup(phy_info_t *pi, chanspec_t chanspec,
+	uint8 toggle_logen_reset, uint8 logen_mode);
 extern void wlc_phy_radio20698_pu_rx_core(phy_info_t *pi, uint core, uint fc, bool restore);
 extern void wlc_phy_radio20698_powerup_RFP1(phy_info_t *pi, bool pwrup);
 

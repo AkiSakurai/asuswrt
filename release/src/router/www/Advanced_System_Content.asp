@@ -56,12 +56,59 @@
 	background: #78535b;
     border: 1px solid #f06767;
 }
+#NTPList_Block_PC{
+	border:1px outset #999;
+	background-color:#576D73;
+	position:absolute;
+	*margin-top:26px;	
+	margin-left:2px;
+	*margin-left:-353px;
+	width:346px;
+	text-align:left;	
+	height:auto;
+	overflow-y:auto;
+	z-index:200;
+	padding: 1px;
+	display:none;
+}
+#NTPList_Block_PC div{
+	background-color:#576D73;
+	height:auto;
+	*height:20px;
+	line-height:20px;
+	text-decoration:none;
+	font-family: Lucida Console;
+	padding-left:2px;
+}
+
+#NTPList_Block_PC a{
+	background-color:#EFEFEF;
+	color:#FFF;
+	font-size:12px;
+	font-family:Arial, Helvetica, sans-serif;
+	text-decoration:none;	
+}
+#NTPList_Block_PC div:hover{
+	background-color:#3366FF;
+	color:#FFFFFF;
+	cursor:default;
+}
+#ntp_pull_arrow{
+        float:left;
+        cursor:pointer;
+        border:2px outset #EFEFEF;
+        background-color:#CCC;
+        padding:3px 2px 4px 0px;
+}
 </style>
 <script>
 time_day = uptimeStr.substring(5,7);//Mon, 01 Aug 2011 16:25:44 +0800(1467 secs since boot....
 time_mon = uptimeStr.substring(9,12);
 time_time = uptimeStr.substring(18,20);
 dstoffset = '<% nvram_get("time_zone_dstoff"); %>';
+cfg_master = '<% nvram_get("cfg_master"); %>';
+ncb_enable = '<% nvram_get("ncb_enable"); %>';
+wifison = '<% nvram_get("wifison_ready"); %>';
 
 var orig_shell_timeout_x = Math.floor(parseInt("<% nvram_get("shell_timeout"); %>")/60);
 var orig_enable_acc_restriction = '<% nvram_get("enable_acc_restriction"); %>';
@@ -94,6 +141,10 @@ else
 
 var le_enable = '<% nvram_get("le_enable"); %>';
 var orig_http_enable = '<% nvram_get("http_enable"); %>';
+var captcha_support = isSupport("captcha");
+
+var tz_table = {}
+$.getJSON("http://nw-dlcdnet.asus.com/plugin/js/tz_db.json", function(data){tz_table = data;})
 
 function initial(){	
 	//parse nvram to array
@@ -119,6 +170,7 @@ function initial(){
 	httpApi.faqURL("1034294", function(url){document.getElementById("faq").href=url;});
 	httpApi.faqURL("1037370", function(url){document.getElementById("ntp_faq").href=url;});
 	show_http_clientlist();
+	showNTPList();
 	display_spec_IP(document.form.http_client.value);
 
 	if(reboot_schedule_support){
@@ -142,12 +194,17 @@ function initial(){
 
 	setInterval("corrected_timezone();", 5000);
 	load_timezones();
-	parse_dstoffset();
+	parse_dstoffset(dstoffset);
 	document.form.http_passwd2.value = "";
 	
 	if(svc_ready == "0")
 		document.getElementById('svc_hint_div').style.display = "";
 
+	if(!dualWAN_support) {
+		$("#network_monitor_tr").hide();
+		document.form.dns_probe_chk.checked = false;
+		document.form.wandog_enable_chk.checked = false;
+	}
 	show_network_monitoring();
 
 	if(!HTTPS_support){
@@ -184,6 +241,14 @@ function initial(){
 			document.form.btn_ez_radiotoggle[0].checked = true;
 		}
 	}
+
+	/* MODELDEP */
+	if(wifison == 1){
+		if(sw_mode == 1 || (sw_mode == 3 && cfg_master == 1))
+			document.getElementById("sw_mode_radio_tr").style.display = "";
+		if(based_modelid == "MAP-AC2200")
+			document.getElementById("ncb_enable_option_tr").style.display = "";
+	}
 	
 	if(sw_mode != 1){
 		document.getElementById('misc_http_x_tr').style.display = "none";
@@ -209,17 +274,26 @@ function initial(){
 	}
 
 	/* MODELDEP */
-	if(tmo_support || based_modelid == "AC2900"){	//MODELDEP: AC2900(RT-AC86U)
-		document.getElementById("telnet_tr").style.display = "none";
+	if(isSupport("is_ax5400_i1")){
+		document.getElementById("ntp_pull_arrow").style.display = "";
+	}
+
+	if(isSupport("is_ax5400_i1") || tmo_support){
+		document.getElementById("telnetd_sshd_table").style.display = "none";
 		document.form.telnetd_enable[0].disabled = true;
 		document.form.telnetd_enable[1].disabled = true;
+		document.form.sshd_enable.disabled = true;
 	}
 	else{
-		document.getElementById("telnet_tr").style.display = "";
+		document.getElementById("telnetd_sshd_table").style.display = "";
 		document.form.telnetd_enable[0].disabled = false;
 		document.form.telnetd_enable[1].disabled = false;
 		telnet_enable(httpApi.nvramGet(["telnetd_enable"]).telnetd_enable);
 	}
+
+	if(powerline_support)
+		document.getElementById("plc_sleep_tr").style.display = "";
+
 	// load shell_timeout_x
 	document.form.shell_timeout_x.value = orig_shell_timeout_x;
 
@@ -241,7 +315,9 @@ function initial(){
 		$('input[name="usb_idle_timeout"]').prop("disabled", false);
 	}
 
-	$("#https_download_cert").css("display", (le_enable == "0" && orig_http_enable != "0")? "": "none");
+	$("#https_download_cert").css("display", (le_enable != "1" && orig_http_enable != "0")? "": "none");
+
+	$("#login_captcha_tr").css("display", captcha_support? "": "none");
 }
 
 var time_zone_tmp="";
@@ -267,6 +343,8 @@ function applyRule(){
 
 		var restart_firewall_flag = false;
 		var restart_httpd_flag = false;
+		var ncb_enable_option_flag = false;
+		var sw_mode_radio_flag = false;
 	
 		//parse array to nvram
 		var old_fw_tmp_value = ""; //for old version fw
@@ -381,7 +459,20 @@ function applyRule(){
 				}
 			}
 		}
-		
+
+		if(ncb_enable != "" && document.form.ncb_enable_option.value != ncb_enable){
+			document.form.ncb_enable.value = document.form.ncb_enable_option.value;
+			ncb_enable_option_flag = true;
+		}
+
+		if((document.form.sw_mode_radio.value==1 && sw_mode!=3) ||
+			(document.form.sw_mode_radio.value==0 && sw_mode==3) ){
+			if (sw_mode == 1) document.form.sw_mode.value = 3;
+			else if (sw_mode == 3) document.form.sw_mode.value = 1;
+
+			sw_mode_radio_flag = true;
+		}
+
 		if(document.form.btn_ez_radiotoggle[1].checked){	// WiFi
 			document.form.btn_ez_radiotoggle.value = 1;
 			document.form.btn_ez_mode.value = 0;
@@ -394,7 +485,7 @@ function applyRule(){
 			document.form.btn_ez_radiotoggle.value = 0;
 			document.form.btn_ez_mode.value = 0;
 		}
-
+		
 		if(reboot_schedule_support){
 			updateDateTime();
 		}
@@ -424,7 +515,15 @@ function applyRule(){
 			
 		if(restart_firewall_flag)
 			action_script_tmp += "restart_firewall;";
-		
+
+		if(ncb_enable_option_flag)
+			action_script_tmp += "restart_bhblock;";
+
+		if(sw_mode_radio_flag) {
+			action_script_tmp += "restart_chg_swmode;";
+			document.form.action_wait.value = 210;
+		}
+
 		if(pwrsave_support)
 			action_script_tmp += "pwrsave;";
 
@@ -572,16 +671,12 @@ function validForm(){
 	}
 
 	if(document.form.sshd_enable.value != 0){
-		if (!validator.range(document.form.sshd_port_x, 1, 65535))
+		if (!validator.range(document.form.sshd_port, 1, 65535))
 			return false;
 		else if(isPortConflict(document.form.sshd_port.value, "ssh")){
 			alert(isPortConflict(document.form.sshd_port.value, "ssh"));
 			document.form.sshd_port.focus();
 			return false;
-		}
-		else{
-			document.form.sshd_port.value = document.form.sshd_port_x.value;
-			document.form.sshd_port.disabled = false;
 		}
 	}
 	else{
@@ -604,13 +699,13 @@ function validForm(){
 		document.form.misc_httpsport_x.value = '<% nvram_get("misc_httpsport_x"); %>';
 	}
 
-	if(document.form.sshd_port_x.value == document.form.https_lanport.value){
+	if(document.form.sshd_port.value == document.form.https_lanport.value){
 		alert("<#SSH_HttpsLanPort_Conflict_Hint#>");
-		$("#sshd_port_x").addClass("highlight");
+		$("#sshd_port").addClass("highlight");
 		$("#port_conflict_sshdport").show();
 		$("#https_lanport_input").addClass("highlight");
 		$("#port_conflict_httpslanport").show();
-		document.form.sshd_port_x.focus();
+		document.form.sshd_port.focus();
 		return false;
 	}
 
@@ -778,10 +873,10 @@ var timezones = [
 	["UTC-5.45",	"(GMT+05:45) <#TZ57#>"],
 	["RFT-6",	"(GMT+06:00) <#TZ60#>"],
 	["UTC-6",	"(GMT+06:00) <#TZ58#>"],
-	["UTC-6_2",	"(GMT+06:00) <#TZ62_1#>"],
 	["UTC-6.30",	"(GMT+06:30) <#TZ61#>"],
 	["UTC-7",	"(GMT+07:00) <#TZ62#>"],
 	["UTC-7_2",	"(GMT+07:00) <#TZ63#>"],
+	["UTC-7_3",     "(GMT+07:00) <#TZ62_1#>"],      //UTC-6_2
 	["CST-8",	"(GMT+08:00) <#TZ64#>"],
 	["CST-8_1",	"(GMT+08:00) <#TZ65#>"],
 	["SST-8",	"(GMT+08:00) <#TZ66#>"],
@@ -826,9 +921,9 @@ var dst_hour = new Array("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
 var dstoff_start_m,dstoff_start_w,dstoff_start_d,dstoff_start_h;
 var dstoff_end_m,dstoff_end_w,dstoff_end_d,dstoff_end_h;
 
-function parse_dstoffset(){     //Mm.w.d/h,Mm.w.d/h
-	if(dstoffset){
-		var dstoffset_startend = dstoffset.split(",");
+function parse_dstoffset(_dstoffset){     //Mm.w.d/h,Mm.w.d/h
+	if(_dstoffset){
+		var dstoffset_startend = _dstoffset.split(",");
     			
 		if(dstoffset_startend[0] != "" && dstoffset_startend[0] != undefined){
 			var dstoffset_start = trim(dstoffset_startend[0]);
@@ -916,7 +1011,7 @@ function hide_https_lanport(_value){
 	}
 
 
-	if(le_enable == "0" && _value != "0"){
+	if(le_enable != "1" && _value != "0"){
 		$("#https_download_cert").css("display", "");
 		if(orig_http_enable == "0"){
 			$("#download_cert_btn").css("display", "none");
@@ -1173,7 +1268,7 @@ function change_url(num, flag){
 	else if(flag == 'https_wan'){
 		var https_wanport = num;
 		var host_addr = "";
-		if(ddns_enable_x == "1" && ddns_hostname_x_t.length != 0)
+		if(check_ddns_status())
 				host_addr = ddns_hostname_x_t;
 		else
 			host_addr = wan_ipaddr;
@@ -1205,6 +1300,13 @@ function select_time_zone(){
 			document.getElementById("dst_start").style.display="none";
 			document.getElementById("dst_end").style.display="none";
 	}
+
+	var getTimeZoneOffset = function(tz){
+		return tz_table[tz] ? tz_table[tz] : "M3.2.0/2,M11.1.0/2";
+	}
+
+	var dstOffset = getTimeZoneOffset(document.form.time_zone_select.value)
+	parse_dstoffset(dstOffset);
 }
 
 function clean_scorebar(obj){
@@ -1408,8 +1510,7 @@ function appendMonitorOption(obj){
 
 var isPingListOpen = 0;
 function showPingTargetList(){
-	var ttc = httpApi.nvramGet(["territory_code"]).territory_code;
-	if(ttc.search("CN") >= 0 || ttc.search("GD") >= 0 || ttc.search("CT") >= 0){
+	if(is_CN){
 		var APPListArray = [
 			["Baidu", "www.baidu.com"], ["QQ", "www.qq.com"], ["Taobao", "www.taobao.com"]
 		];
@@ -1455,8 +1556,8 @@ function pullPingTargetList(obj){
 }
 
 function reset_portconflict_hint(){
-	if($("#sshd_port_x").hasClass("highlight"))
-		$("#sshd_port_x").removeClass("highlight");
+	if($("#sshd_port").hasClass("highlight"))
+		$("#sshd_port").removeClass("highlight");
 	if($("#https_lanport_input").hasClass("highlight"))
 		$("#https_lanport_input").removeClass("highlight");
 	$("#port_conflict_sshdport").hide();
@@ -1466,10 +1567,50 @@ function reset_portconflict_hint(){
 function save_cert_key(){
 	location.href = "cert.tar";
 }
+
+var NTPListArray = [
+		["time01.syd.optusnet.com.au", "time01.syd.optusnet.com.au"], ["time01.mel.optusnet.com.au", "time01.mel.optusnet.com.au"], 
+		["time02.mel.optusnet.com.au", "time02.mel.optusnet.com.au"], ["au.pool.ntp.org", "au.pool.ntp.org"],	["time.nist.gov", "time.nist.gov"],
+		["pool.ntp.org","pool.ntp.org"]
+	];
+
+function showNTPList(){
+	var code = "";
+	for(var i = 0; i < NTPListArray.length; i++){
+		code += '<a><div onmouseover="over_var=1;" onmouseout="over_var=0;" onclick="setNTP(\''+NTPListArray[i][1]+'\');"><strong>'+NTPListArray[i][0]+'</strong></div></a>';
+	}
+	code +='<!--[if lte IE 6.5]><iframe class="hackiframe2"></iframe><![endif]-->';	
+	document.getElementById("NTPList_Block_PC").innerHTML = code;
+}
+
+function setNTP(ntp_url){
+	document.form.ntp_server0.value = ntp_url;
+	hideNTP_Block();
+	over_var = 0;
+}
+
+var over_var = 0;
+var isMenuopen = 0;
+function hideNTP_Block(){
+	document.getElementById("ntp_pull_arrow").src = "/images/arrow-down.gif";
+	document.getElementById('NTPList_Block_PC').style.display='none';
+	isMenuopen = 0;
+}
+
+function pullNTPList(obj){
+	if(isMenuopen == 0){		
+		obj.src = "/images/arrow-top.gif"
+		document.getElementById("NTPList_Block_PC").style.display = 'block';		
+		document.form.ntp_server0.focus();		
+		isMenuopen = 1;
+	}
+	else
+		hideNTP_Block();
+}
 </script>
 </head>
 
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 
 <div id="Loading" class="popup_bg"></div>
@@ -1500,9 +1641,10 @@ function save_cert_key(){
 <input type="hidden" name="reboot_schedule_enable" value="<% nvram_get("reboot_schedule_enable"); %>">
 <input type="hidden" name="shell_timeout" value="<% nvram_get("shell_timeout"); %>">
 <input type="hidden" name="http_lanport" value="<% nvram_get("http_lanport"); %>">
+<input type="hidden" name="sw_mode" value="<% nvram_get("sw_mode"); %>">
+<input type="hidden" name="ncb_enable" value="<% nvram_get("ncb_enable"); %>">
 <input type="hidden" name="dns_probe" value="<% nvram_get("dns_probe"); %>">
 <input type="hidden" name="wandog_enable" value="<% nvram_get("wandog_enable"); %>">
-<input type="hidden" name="sshd_port" value="<% nvram_get("sshd_port"); %>" disabled>
 
 <table class="content" align="center" cellpadding="0" cellspacing="0">
   <tr>
@@ -1562,6 +1704,13 @@ function save_cert_key(){
 					
 					</td>
 				</tr>
+				<tr id="login_captcha_tr" style="display:none">
+					<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(11,13)">Enable Login Captcha</a></th>
+					<td>
+						<input type="radio" value="1" name="captcha_enable" <% nvram_match("captcha_enable", "1", "checked"); %>><#checkbox_Yes#>
+						<input type="radio" value="0" name="captcha_enable" <% nvram_match("captcha_enable", "0", "checked"); %>><#checkbox_No#>
+					</td>
+				</tr>
 			</table>
 
 			<table id="hdd_spindown_table" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable" style="margin-top:8px;display:none;">
@@ -1587,7 +1736,7 @@ function save_cert_key(){
 					</td>
 				</tr>
 				<tr id="reduce_usb3_tr" style="display:none">
-					<th width="40%"><a class="hintstyle" href="javascript:void(0);" onclick="openHint(3, 29)">USB Mode</a></th>
+					<th width="40%"><a class="hintstyle" href="javascript:void(0);" onclick="openHint(3, 29)"><#select_usb_mode#></a></th>
 					<td>
 						<select class="input_option" name="usb_usb3" onchange="enableUsbMode(this.value);">
 							<option value="0" <% nvram_match("usb_usb3", "0", "selected"); %>>USB 2.0</option>
@@ -1596,23 +1745,8 @@ function save_cert_key(){
 						<script>
 							var needReboot = false;
 
-							if( based_modelid == "DSL-AC68U" 
-							 || based_modelid == "RT-AC3200" || based_modelid == "RT-AC87U" 
-							 || based_modelid == "RT-AC68U" || based_modelid == "RT-AC68A" 
-							 || based_modelid == "RT-AC56S" || based_modelid == "RT-AC56U" 
-							 || based_modelid == "RT-AC55U" || based_modelid == "RT-AC55UHP" 
-							 || based_modelid == "RT-N18U" 
-							 || based_modelid == "RT-AC88U" || based_modelid == "RT-AC3100" || based_modelid == "RT-AC5300" 
-							 || based_modelid == "RT-AC86U" || based_modelid == "GT-AC2900" 
-							 || based_modelid == "RP-AC68U" || based_modelid == "RT-AC58U" || based_modelid == "RT-AC82U" 
-							 || based_modelid == "MAP-AC3000" || based_modelid == "RT-AC85U" || based_modelid == "RT-AC65U" 
-							 || based_modelid == "4G-AC68U" || based_modelid == "BLUECAVE" 
-							 || based_modelid == "RT-AC88Q" || based_modelid == "RT-AD7200" 
-							 || based_modelid == "RT-N65U" || based_modelid == "BRT-AC828" 
-							 || based_modelid == "RT-AX88U" || based_modelid == "RT-AX92U" || based_modelid == "RT-AX95Q" || based_modelid == "RT-AX58U" || based_modelid == "TUF-AX3000" || based_modelid == "RT-AX82U" || based_modelid == "RT-AX56U"
-							 || based_modelid == "GT-AC5300"  || based_modelid == "GT-AX11000" || based_modelid == "GX-AX6000" || based_modelid == "GX-AC5400"
-							 || based_modelid == "RT-AX86U" || based_modelid == "RT-AX5700" || based_modelid == "RT-AX68U"
-							){
+
+							if (isSupport("usb3")) {
 								$("#reduce_usb3_tr").show();
 							}
 
@@ -1702,6 +1836,9 @@ function save_cert_key(){
 					<th><a class="hintstyle"  href="javascript:void(0);" onClick="openHint(11,3)"><#LANHostConfig_x_NTPServer_itemname#></a></th>
 					<td>
 						<input type="text" maxlength="256" class="input_32_table" name="ntp_server0" value="<% nvram_get("ntp_server0"); %>" onKeyPress="return validator.isString(this, event);" autocorrect="off" autocapitalize="off">
+						<img id="ntp_pull_arrow" height="14px;" src="/images/arrow-down.gif" style="position:absolute;*margin-left:-3px;*margin-top:1px;display:none;" onclick="pullNTPList(this);" title="<#LANHostConfig_x_NTPServer_itemname#>" onmouseover="over_var=1;" onmouseout="over_var=0;">
+						<div id="NTPList_Block_PC" class="NTPList_Block_PC"></div>
+						<br>
 						<a href="javascript:openLink('x_NTPServer1')"  name="x_NTPServer1_link" style=" margin-left:5px; text-decoration: underline;"><#LANHostConfig_x_NTPServer1_linkname#></a>
 						<div id="svc_hint_div" style="display:none;">
 							<span style="color:#FFCC00;"><#General_x_SystemTime_syncNTP#></span>
@@ -1746,8 +1883,8 @@ function save_cert_key(){
 				<tr id="nat_redirect_enable_tr">
 					<th align="right"><a class="hintstyle" href="javascript:void(0);" onClick="openHint(11,6);"><#Enable_redirect_notice#></a></th>
 					<td>
-						<input type="radio" name="nat_redirect_enable" class="input" value="1" <% nvram_match_x("","nat_redirect_enable","1", "checked"); %> ><#checkbox_Yes#>
-						<input type="radio" name="nat_redirect_enable" class="input" value="0" <% nvram_match_x("","nat_redirect_enable","0", "checked"); %> ><#checkbox_No#>
+						<input type="radio" name="nat_redirect_enable" value="1" <% nvram_match_x("","nat_redirect_enable","1", "checked"); %> ><#checkbox_Yes#>
+						<input type="radio" name="nat_redirect_enable" value="0" <% nvram_match_x("","nat_redirect_enable","0", "checked"); %> ><#checkbox_No#>
 					</td>
 				</tr>
 				<tr id="btn_ez_radiotoggle_tr" style="display: none;">
@@ -1820,13 +1957,13 @@ function save_cert_key(){
 				</tr>
 			</table>
 
-			<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable" style="margin-top:8px;">
+			<table id="telnetd_sshd_table" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable" style="margin-top:8px;">
 				<thead>
 					<tr>
 					  <td colspan="2"><#qis_service#></td>
 					</tr>
 				</thead>
-				<tr id="telnet_tr">
+				<tr>
 					<th><#Enable_Telnet#></th>
 					<td>
 						<input type="radio" name="telnetd_enable" value="1" onchange="telnet_enable(this.value);" <% nvram_match_x("LANHostConfig", "telnetd_enable", "1", "checked"); %>><#checkbox_Yes#>
@@ -1847,7 +1984,7 @@ function save_cert_key(){
 				<tr id="sshd_port_tr">
 					<th width="40%"><#Port_SSH#></th>
 					<td>
-						<input type="text" class="input_6_table" maxlength="5" id="sshd_port_x" name="sshd_port_x" onKeyPress="return validator.isNumber(this,event);" autocorrect="off" autocapitalize="off" value='<% nvram_get("sshd_port_x"); %>' onkeydown="reset_portconflict_hint();">
+						<input type="text" class="input_6_table" maxlength="5" id="sshd_port" name="sshd_port" onKeyPress="return validator.isNumber(this,event);" autocorrect="off" autocapitalize="off" value='<% nvram_get("sshd_port"); %>' onkeydown="reset_portconflict_hint();">
 						<span id="port_conflict_sshdport" style="color: #e68282; display: none;">Port Conflict</span>
 						<div style="color: #FFCC00;">* <#SSH_Port_Suggestion#></div>
 						<div style="color: #FFCC00;display:none;" id="SSH_Port_Suggestion1">* <#SSH_Port_Suggestion1#></div>
@@ -1856,8 +1993,8 @@ function save_cert_key(){
 				<!--tr id="remote_access_tr" style="display:none">
 					<th>Remote Access</th>
 					<td>
-						<input type="radio" name="sshd_remote" class="input" value="1" onclick="sshd_remote_access(this.value);" <% nvram_match("sshd_remote", "1", "checked"); %>><#checkbox_Yes#>
-						<input type="radio" name="sshd_remote" class="input" value="0" onclick="sshd_remote_access(this.value);" <% nvram_match("sshd_remote", "0", "checked"); %>><#checkbox_No#>
+						<input type="radio" name="sshd_remote" value="1" onclick="sshd_remote_access(this.value);" <% nvram_match("sshd_remote", "1", "checked"); %>><#checkbox_Yes#>
+						<input type="radio" name="sshd_remote" value="0" onclick="sshd_remote_access(this.value);" <% nvram_match("sshd_remote", "0", "checked"); %>><#checkbox_No#>
 					</td>
 				</tr-->
 				<!--tr id="remote_access_port_tr" style="display:none">
@@ -1869,8 +2006,8 @@ function save_cert_key(){
 				<!--tr id="remote_forwarding_tr" style="display:none">
 					<th>Remote Forwarding</th>
 					<td>
-						<input type="radio" name="sshd_forwarding" class="input" value="1" onclick="sshd_forward(this.value);" <% nvram_match("sshd_forwarding", "1", "checked"); %>><#checkbox_Yes#>
-						<input type="radio" name="sshd_forwarding" class="input" value="0" onclick="sshd_forward(this.value);" <% nvram_match("sshd_forwarding", "0", "checked"); %>><#checkbox_No#>
+						<input type="radio" name="sshd_forwarding" value="1" onclick="sshd_forward(this.value);" <% nvram_match("sshd_forwarding", "1", "checked"); %>><#checkbox_Yes#>
+						<input type="radio" name="sshd_forwarding" value="0" onclick="sshd_forward(this.value);" <% nvram_match("sshd_forwarding", "0", "checked"); %>><#checkbox_No#>
 					</td>
 				</tr-->
 				<!--tr id="remote_forwarding_port_tr" style="display:none">
@@ -1882,14 +2019,21 @@ function save_cert_key(){
 				<tr id="sshd_password_tr">
 					<th><#Allow_PWLogin#></th>
 					<td>
-						<input type="radio" name="sshd_pass" class="input" value="1" <% nvram_match("sshd_pass", "1", "checked"); %>><#checkbox_Yes#>
-						<input type="radio" name="sshd_pass" class="input" value="0" <% nvram_match("sshd_pass", "0", "checked"); %>><#checkbox_No#>
+						<input type="radio" name="sshd_pass" value="1" <% nvram_match("sshd_pass", "1", "checked"); %>><#checkbox_Yes#>
+						<input type="radio" name="sshd_pass" value="0" <% nvram_match("sshd_pass", "0", "checked"); %>><#checkbox_No#>
 					</td>
 				</tr>
 				<tr id="auth_keys_tr">
 					<th><#Authorized_Keys#></th>
 					<td>
 						<textarea rows="5" class="textarea_ssh_table" style="width:98%; overflow:auto; word-break:break-all;" name="sshd_authkeys" maxlength="2999"><% nvram_get("sshd_authkeys"); %></textarea>
+					</td>
+				</tr>
+				<tr id="plc_sleep_tr" style="display:none;">
+					<th align="right"><a class="hintstyle" href="javascript:void(0);" onClick="openHint(11,12);">Enable PLC sleep automatically<!--untranslated--></a></th>
+					<td>
+						<input type="radio" name="plc_sleep_enabled" value="1" <% nvram_match_x("","plc_sleep_enabled","1", "checked"); %> ><#checkbox_Yes#>
+						<input type="radio" name="plc_sleep_enabled" value="0" <% nvram_match_x("","plc_sleep_enabled","0", "checked"); %> ><#checkbox_No#>
 					</td>
 				</tr>
 				<tr>
@@ -1929,10 +2073,10 @@ function save_cert_key(){
 				</tr>
 
 				<tr id="https_download_cert" style="display: none;">
-					<th>Download Certificate</th>
+					<th><#Local_access_certificate_download#></th>
 					<td>
 						<input id="download_cert_btn" class="button_gen" onclick="save_cert_key();" type="button" value="<#btn_Export#>" />
-						<span id="download_cert_desc">Download and install SSL certificate on your browser to trust accessing your local domain “router.asus.com” with HTTPS protocol. To export certificate after applying setting.</span><a href="https://www.asus.com/support/FAQ/1034294" style="font-family:Lucida Console;text-decoration:underline;color:#FFCC00; margin-left: 5px;" target="_blank">FAQ</a>
+						<span id="download_cert_desc"><#Local_access_certificate_desc#></span><a href="https://www.asus.com/support/FAQ/1034294" style="font-family:Lucida Console;text-decoration:underline;color:#FFCC00; margin-left: 5px;" target="_blank">FAQ</a>
 					</td>
 				</tr>
 			</table>
@@ -1946,8 +2090,8 @@ function save_cert_key(){
 				<tr id="misc_http_x_tr">
 					<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(8,2);"><#FirewallConfig_x_WanWebEnable_itemname#></a></th>
 					<td>
-						<input type="radio" value="1" name="misc_http_x" class="input" onClick="hideport(1);enable_wan_access(1);" <% nvram_match("misc_http_x", "1", "checked"); %>><#checkbox_Yes#>
-						<input type="radio" value="0" name="misc_http_x" class="input" onClick="hideport(0);enable_wan_access(0);" <% nvram_match("misc_http_x", "0", "checked"); %>><#checkbox_No#><br>
+						<input type="radio" value="1" name="misc_http_x" onClick="hideport(1);enable_wan_access(1);" <% nvram_match("misc_http_x", "1", "checked"); %>><#checkbox_Yes#>
+						<input type="radio" value="0" name="misc_http_x" onClick="hideport(0);enable_wan_access(0);" <% nvram_match("misc_http_x", "0", "checked"); %>><#checkbox_No#><br>
 						<span class="formfontdesc" id="WAN_access_hint" style="color:#FFCC00; display:none;"><#FirewallConfig_x_WanWebEnable_HTTPS_only#> 
 							<a id="faq" href="" target="_blank" style="margin-left: 5px; color:#FFCC00; text-decoration: underline;">FAQ</a>
 						</span>
@@ -1980,7 +2124,7 @@ function save_cert_key(){
 				
 				<tr>
 					<th width="10%"><div id="selAll" class="all_disable" style="margin: auto;width:40px;" onclick="control_all_rule_status(this);"><#All#></div></th>
-					<th width="40%"><a class="hintstyle" href="javascript:void(0);" onClick="openHint(11,9);"><#FirewallConfig_LanWanDstIP_itemname#></a></th>
+					<th width="40%"><a class="hintstyle" href="javascript:void(0);" onClick="openHint(6,1);"><#RouterConfig_GWStaticIP_itemname#></a></th>
 					<th width="40%"><#Access_Type#></th>
 					<th width="10%"><#list_add_delete#></th>
 				</tr>

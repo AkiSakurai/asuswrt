@@ -353,7 +353,7 @@ function show_account_state(){
 
 	var RetDDNSstatus = function(){
 
-		if(AccLinkStatus.RemoteStatus.ddns_enable_x == '0' || AccLinkStatus.RemoteStatus.ddns_hostname_x == '' || AccLinkStatus.RemoteStatus.misc_http_x == '0')
+		if(!check_ddns_status() || AccLinkStatus.RemoteStatus.misc_http_x == '0')
 			return false;
 		else
 			return true;
@@ -389,7 +389,7 @@ function show_account_state(){
 }
 </script>
 </head>
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 

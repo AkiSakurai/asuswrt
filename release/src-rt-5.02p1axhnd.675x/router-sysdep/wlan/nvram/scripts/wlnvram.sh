@@ -10,7 +10,7 @@ to_mount=$(cat /proc/nvram/wl_nand_manufacturer)
 is_nand=$(($to_mount & 1))
 is_manufacturer=$(($to_mount & 2))
 nand_hassize=$(($to_mount & 4))
-original_kernel_nvram_file="/rom/etc/wlan/KERNEL_NVRAM_FILE_NAME"
+original_kernel_nvram_file="/etc/wlan/KERNEL_NVRAM_FILE_NAME"
 kernel_nvram_file="/data/.KERNEL_NVRAM_FILE_NAME"
 
 case "$1" in

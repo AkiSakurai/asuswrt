@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmsched.c 779785 2019-10-07 16:45:33Z $
+ * $Id: pdftmsched.c 788031 2020-06-18 14:10:58Z $
  */
 
 #include "pdftmpvt.h"
@@ -448,18 +448,15 @@ pdftm_sched(void *arg)
 				new_state = WL_PROXD_SESSION_STATE_STARTED;
 				err = pdftm_start_session_tsf_scan(sn);
 				if (err != BCME_OK) {
-					if (FTM_SESSION_IS_ASAP(sn) &&
-						(err == WL_PROXD_E_SCANFAIL)) {
-						err = BCME_OK;
-						new_state = WL_PROXD_SESSION_STATE_DELAY;
-					}
-					else if (err != BCME_BUSY ||
-							FTM_SESSION_SCAN_RETRIES_DONE
-							(sn->scan_retry_attempt)) {
-						sn->status = err;
-						new_state = WL_PROXD_SESSION_STATE_STOPPING;
-					}
-					else {
+					if (FTM_SESSION_SCAN_RETRIES_DONE(sn->scan_retry_attempt)) {
+						if (FTM_SESSION_IS_ASAP(sn)) {
+							err = BCME_OK;
+							new_state = WL_PROXD_SESSION_STATE_DELAY;
+						} else {
+							sn->status = err;
+							new_state = WL_PROXD_SESSION_STATE_STOPPING;
+						}
+					} else {
 						retry_scan = TRUE;
 						sn->scan_retry_attempt++;
 					}
@@ -504,8 +501,9 @@ pdftm_sched(void *arg)
 			if (!(sn->config->flags & WL_PROXD_SESSION_FLAG_ASAP) &&
 				FTM_SESSION_IS_INITIATOR(sn)) {
 				err = pdftm_get_session_tsf(sn, NULL);
-				if (err != BCME_OK)
+				if (err != BCME_OK) {
 					new_state = WL_PROXD_SESSION_STATE_STOPPING;
+				}
 			}
 
 			/* note: after this point re-run the scheduler to reclaim session
@@ -548,9 +546,11 @@ pdftm_sched(void *arg)
 	if (retry_scan)
 		min_delay_ms = MIN(min_delay_ms, FTM_SESSION_TSF_SCAN_RETRY_MS);
 
-	FTM_LOGSCHED(ftm, (("wl%d: %s: rescheduling with delay %ums for session idx %d\n",
-		FTM_UNIT(ftm), __FUNCTION__, min_delay_ms, sn ? sn->idx : -1)));
-	ftm_sched_add_timer(sched, min_delay_ms);
+	if (sn) {
+		FTM_LOGSCHED(ftm, (("wl%d: %s: rescheduling with delay %ums for session idx %d\n",
+			FTM_UNIT(ftm), __FUNCTION__, min_delay_ms, sn ? sn->idx : -1)));
+		ftm_sched_add_timer(sched, min_delay_ms);
+	}
 
 done:
 	ftm->ftm_cmn->flags &= ~FTM_FLAG_SCHED_ACTIVE;

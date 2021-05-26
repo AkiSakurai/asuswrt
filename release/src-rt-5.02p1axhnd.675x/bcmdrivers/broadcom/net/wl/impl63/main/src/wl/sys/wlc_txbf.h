@@ -48,7 +48,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_txbf.h 778680 2019-09-06 20:55:37Z $
+ * $Id: wlc_txbf.h 785870 2020-04-08 02:40:30Z $
  */
 
 #ifndef _wlc_txbf_h_
@@ -188,6 +188,7 @@ extern void wlc_txbf_scb_ps_notify(wlc_txbf_info_t *txbf, scb_t *scb, bool ps_on
 #endif // endif
 #ifdef WL_MU_TX
 extern bool wlc_txbf_is_mu_bfe(wlc_txbf_info_t *txbf, scb_t *scb);
+extern bool wlc_txbf_scb_nsts_check(wlc_txbf_info_t *txbf, scb_t *scb);
 extern uint8 wlc_txbf_get_free_su_bfr_links(wlc_txbf_info_t *txbf);
 #endif /* WL_MU_TX */
 extern void wlc_txbf_scb_state_upd(wlc_txbf_info_t *txbf, scb_t *scb,

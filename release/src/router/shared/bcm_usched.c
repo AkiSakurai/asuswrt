@@ -1,7 +1,7 @@
 /*
  * Broadcom micro scheduler library definitions
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcm_usched.c 776550 2019-07-02 09:45:39Z $
+ * $Id: bcm_usched.c 783930 2020-02-13 03:19:33Z $
  */
 
 #include <stdio.h>
@@ -576,11 +576,10 @@ bcm_usched_process_fds_and_timers(usched_handle_t *hdl)
 }
 
 /* Initializes the library */
+static usched_handle_t *usched_new_hdl = NULL;
 bcm_usched_handle*
 bcm_usched_init()
 {
-	static usched_handle_t *usched_new_hdl = NULL;
-
 	if (usched_new_hdl != NULL) {
 		usched_new_hdl->ref_count++;
 		USCHED_DEBUG("USCHED is already initialized. Increasing the reference count[%d]\n",
@@ -636,7 +635,7 @@ bcm_usched_deinit(bcm_usched_handle *handle)
 	/* Free handle */
 	free(hdl);
 	hdl = NULL;
-
+	usched_new_hdl = NULL;
 	USCHED_DEBUG("Deinitialized successfully\n");
 
 	return BCM_USCHEDE_OK;

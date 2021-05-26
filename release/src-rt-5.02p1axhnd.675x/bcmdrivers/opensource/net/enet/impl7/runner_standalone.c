@@ -316,6 +316,7 @@ port_ops_t port_runner_port =
     .print_status = port_runner_print_status,
     .print_priv = port_runner_print_priv,
     .link_change = port_runner_link_change,
+    .mib_dump_us = port_runner_mib_dump_us, // add by Andrew
 };
 
 port_ops_t port_runner_port_wan_gbe =
@@ -332,5 +333,6 @@ port_ops_t port_runner_port_wan_gbe =
     .print_status = port_runner_print_status,
     .print_priv = port_runner_print_priv,
     .link_change = port_runner_link_change,
+    .mib_dump_us = port_runner_mib_dump_us, // add by Andrew
 };
 

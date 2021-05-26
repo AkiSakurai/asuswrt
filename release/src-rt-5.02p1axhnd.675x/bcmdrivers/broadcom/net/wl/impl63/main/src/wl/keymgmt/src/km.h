@@ -44,7 +44,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km.h 774257 2019-04-17 10:08:19Z $
+ * $Id: km.h 784761 2020-03-05 05:54:19Z $
  */
 
 #ifndef _km_h_
@@ -102,6 +102,7 @@
 #define KM_LOG(args) WL_WSEC(args)	/* use WSEC for logging */
 #define KM_NONE(args) WL_NONE(args)
 #define KM_TRACE(args) WL_TRACE(args)
+#define KM_ASSOC(args) WL_ASSOC(args)
 #define KM_PRINTF(args) printf args
 #if defined(BCMDBG) || defined(WLMSG_WSEC)
 #define KM_LOG_DECL(stmt) stmt

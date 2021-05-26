@@ -44,15 +44,19 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- *
- * $Id: wlc_clm.h 821810 2019-05-25 02:05:05Z $
  */
 
 #ifndef _WLC_CLM_H_
 #define _WLC_CLM_H_
 
+#ifdef _MSC_VER
+	#pragma warning(push, 3)
+#endif /* _MSC_VER */
 #include <bcmwifi_rates.h>
 #include <bcmwifi_channels.h>
+#ifdef _MSC_VER
+	#pragma warning(pop)
+#endif /* _MSC_VER */
 
 #ifdef __cplusplus
 extern "C" {
@@ -106,6 +110,16 @@ typedef enum clm_bandwidth {
 	/** 80+80MHz channel */
 	CLM_BW_80_80,
 #endif // endif
+#ifdef WL11BE
+	/** 240MHz channel */
+	CLM_BW_240,
+
+	/** 320MHz channel */
+	CLM_BW_320,
+
+	/** 160+160MHz channel */
+	CLM_BW_160_160,
+#endif
 	/** Number of channel bandwidth identifiers */
 	CLM_BW_NUM
 } clm_bandwidth_t;
@@ -169,9 +183,6 @@ typedef enum clm_flags {
 	/** Region has per-antenna power targets */
 	CLM_FLAG_PER_ANTENNA	= 0x00000010,
 
-	/** Region is default for its CC */
-	CLM_FLAG_DEFAULT_FOR_CC	= 0x00000020,
-
 	/** Region is EDCRS-EU-compliant */
 	CLM_FLAG_EDCRS_EU	= 0x00000040,
 
@@ -187,10 +198,23 @@ typedef enum clm_flags {
 	/** Region is compliant with 2018 RED (Radio Equipment Directive), that
 	 * limits frame burst duration and maybe something else
 	 */
-	CLM_FLAG_RED_EU	= 0x00000800,
+	CLM_FLAG_RED_EU		= 0x00000800,
 
 	/** HE limits present */
-	CLM_FLAG_HE = 0x00001000,
+	CLM_FLAG_HE		= 0x00001000,
+
+	/** Dynamic SAR Averaging with normal averaging window (60 seconds).
+	 * Dynamic SAR Averaging allows SAR to be above threshold sometimes, if
+	 * in average it is below threshold
+	 */
+	CLM_FLAG_DSA		= 0x00002000,
+
+	/** Dynamic SAR Averaging with longer averaging window (360 seconds,
+	 * used in Canada). Dynamic SAR Averaging allows SAR to be above
+	 * threshold sometimes, if in average it is below threshold
+	 */
+	CLM_FLAG_DSA_2		= 0x00004000,
+
 
 	/* DEBUGGING FLAGS (ALLOCATED AS TOP BITS) */
 
@@ -200,12 +224,6 @@ typedef enum clm_flags {
 	/** No 40MHz channels */
 	CLM_FLAG_NO_40MHZ	= 0x40000000,
 
-	/** No 160MHz channels */
-	CLM_FLAG_NO_160MHZ	= 0x04000000,
-
-	/** No 80+80MHz channels */
-	CLM_FLAG_NO_80_80MHZ	= 0x02000000,
-
 	/** No MCS rates */
 	CLM_FLAG_NO_MIMO	= 0x20000000,
 
@@ -213,7 +231,22 @@ typedef enum clm_flags {
 	CLM_FLAG_HAS_DSSS_EIRP	= 0x10000000,
 
 	/* HAS OFDM RATES THAT USE EIRP LIMITS */
-	CLM_FLAG_HAS_OFDM_EIRP	= 0x08000000
+	CLM_FLAG_HAS_OFDM_EIRP	= 0x08000000,
+
+	/** No 160MHz channels */
+	CLM_FLAG_NO_160MHZ	= 0x04000000,
+
+	/** No 80+80MHz channels */
+	CLM_FLAG_NO_80_80MHZ	= 0x02000000,
+
+	/** No 240MHz channels */
+	CLM_FLAG_NO_240MHZ	= 0x01000000u,
+
+	/** No 320MHz channels */
+	CLM_FLAG_NO_320MHZ	= 0x00800000u,
+
+	/** No 160+160MHz channels */
+	CLM_FLAG_NO_160_160MHZ	= 0x00400000u
 } clm_flags_t;
 
 /** Type of limits to output in clm_limits() */
@@ -679,7 +712,8 @@ clm_channels_params_init(clm_channels_params_t *params);
 
 /** Retrieves information about certain channels with valid power limits for
  * locales of some region
- * \param[in] locales Country (region) locales' information
+ * \param[in] locales Country (region) locales' information. NULL means that
+ * all channels from all countries should be retrieved
  * \param[in] band Band of channels being requested
  * \param[in] params Other parameters of channels being requested
  * \param[out] channels Country's (region's) channels that match given criteria

@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: ieee1905.h 782702 2020-01-02 06:22:12Z $
+ * $Id: ieee1905.h 787204 2020-05-21 12:32:37Z $
  */
 
 #ifndef __IEEE1905_H__
@@ -282,11 +282,17 @@ typedef struct ieee1905_msglevel {
 #define IEEE1905_MAP_FLAG_BACKHAUL  0x02  /* Backhaul BSS */
 #define IEEE1905_MAP_FLAG_STA       0x04  /* bSTA */
 #define IEEE1905_MAP_FLAG_GUEST     0x08  /* Guest BSS */
+#define IEEE1905_MAP_FLAG_ROOTP_ONLY            0x10  /* RootAP only BSS */
+#define IEEE1905_MAP_FLAG_PROF1_DISALLOWED      0x20
+#define IEEE1905_MAP_FLAG_PROF2_DISALLOWED      0x40
 
 #define I5_IS_BSS_FRONTHAUL(flags)	((flags) & IEEE1905_MAP_FLAG_FRONTHAUL)
 #define I5_IS_BSS_BACKHAUL(flags)	((flags) & IEEE1905_MAP_FLAG_BACKHAUL)
 #define I5_IS_BSS_STA(flags)		((flags) & IEEE1905_MAP_FLAG_STA)
 #define I5_IS_BSS_GUEST(flags)		((flags) & IEEE1905_MAP_FLAG_GUEST)
+#define I5_IS_BSS_ROOTAP_ONLY(flags)		((flags) & IEEE1905_MAP_FLAG_ROOTP_ONLY)
+#define I5_IS_BSS_PROF1_DISALLOWED(flags)	((flags) & IEEE1905_MAP_FLAG_PROF1_DISALLOWED)
+#define I5_IS_BSS_PROF2_DISALLOWED(flags)	((flags) & IEEE1905_MAP_FLAG_PROF2_DISALLOWED)
 
 /* MAP policy Type flags */
 #define MAP_POLICY_TYPE_FLAG_STEER          0x01  /* Steering Policy */
@@ -690,7 +696,7 @@ typedef struct ieee1905_cac_status {
 /* Network Key Type */
 typedef struct {
   unsigned char	key_len;
-  unsigned char	key[IEEE1905_MAX_KEY_LEN];
+  unsigned char	key[IEEE1905_MAX_KEY_LEN + 1]; /* +1 to take care of NULL termination */
 } ieee1905_network_key_type;
 
 /* BSS Info of M2 WSC Message */
@@ -702,12 +708,9 @@ typedef struct {
   unsigned short            AuthType; /* Of Type IEEE1905_AUTH_XXX */
   unsigned short            EncryptType;  /* Of Type IEEE1905_ENCR_XXX */
   ieee1905_network_key_type NetworkKey;
-  unsigned char             BackHaulBSS;
-  unsigned char             FrontHaulBSS;
   unsigned char		    TearDown;
-  unsigned char		    Guest;
-  unsigned char       profile1_bhsta_disallowed;
-  unsigned char       profile2_bhsta_disallowed;
+  unsigned char             map_flag;
+  unsigned char       Closed;
 } ieee1905_client_bssinfo_type;
 
 /* Interface Info */

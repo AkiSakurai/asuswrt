@@ -120,7 +120,6 @@ static const bcm_iovar_t wlc_tpc_iovars[] = {
 #endif // endif
 	{"constraint", IOV_CONSTRAINT, (0), 0, IOVT_UINT8, 0},
 #if defined(WL_EXPORT_CURPOWER)
-	//{"curpower", IOV_CURPOWER, (IOVF_GET_UP), IOVF2_RSDB_CORE_OVERRIDE, IOVT_UINT8, 0},
 	{"powertable", IOV_CURPOWER, (IOVF_GET_UP), IOVF2_RSDB_CORE_OVERRIDE, IOVT_UINT8, 0},
 	{"curtxctrl", IOV_CURTXCTRL, (IOVF_GET_UP), IOVF2_RSDB_CORE_OVERRIDE, IOVT_UINT8, 0},
 #endif // endif

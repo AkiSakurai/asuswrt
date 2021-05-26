@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acsd.h 766308 2018-07-30 09:35:53Z $
+ * $Id: acsd.h 785200 2020-03-17 05:25:59Z $
  */
 
 #ifndef _acsd_h_
@@ -75,7 +75,6 @@
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
 #include <sys/ioctl.h>
-#include <shared.h>
 
 typedef struct acs_bgdfs_info acs_bgdfs_info_t;
 
@@ -86,7 +85,7 @@ typedef enum {
 	ACS_SCAN_TYPE_CI
 } acs_scan_type;
 
-#define SW_NUM_SLOTS		10
+#define SW_NUM_SLOTS		3
 
 #define ACSD_DEBUG_ERROR	0x0001
 #define ACSD_DEBUG_WARNING	0x0002
@@ -97,7 +96,7 @@ typedef enum {
 #define ACSD_DEBUG_DFSR		0x0040
 #define ACSD_DEBUG_SYSLOG	0x0080
 
-#define ACSD_VERSION 1
+#define ACSD_VERSION		2
 #define ACSD_DFLT_FD			-1
 #define ACSD_DFLT_CLI_PORT	  ACSD_DEFAULT_CLI_PORT
 
@@ -156,27 +155,27 @@ extern int acsd_debug_level;
 #define ACSD_CHANIM(fmt, arg...) \
 		do { \
 			if (acsd_debug_level & ACSD_DEBUG_CHANIM) { \
-				acsddbg("ACSD CHANIM >>%s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
+				acsddbg("ACSD >>%s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
 				if (acsd_debug_level & ACSD_DEBUG_SYSLOG) \
-					logmessage("acsd chanim", "%s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
+					logmessage("acsd", "%s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
 			} \
 		} while (0)
 
 #define ACSD_5G(fmt, arg...) \
 		do { \
 			if (acsd_debug_level & ACSD_DEBUG_5G) { \
-				acsddbg("ACSD 5G >>%s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
+				acsddbg("ACSD >>%s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
 				if (acsd_debug_level & ACSD_DEBUG_SYSLOG) \
-					logmessage("acsd 5g", "%s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
+					logmessage("acsd", "%s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
 			} \
 		} while (0)
 
 #define ACSD_DFSR(fmt, arg...) \
 		do { \
 			if (acsd_debug_level & ACSD_DEBUG_DFSR) { \
-				acsddbg("ACSD DFSR >>%s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
+				acsddbg("ACSD >>%s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
 				if (acsd_debug_level & ACSD_DEBUG_SYSLOG) \
-					logmessage("acsd dfsr", "%s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
+					logmessage("acsd", "%s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
 			} \
 		} while (0)
 
@@ -253,7 +252,8 @@ typedef struct cns_score {
 /* adjacent channel score(number of bss's using the adjacent channel spec) */
 #define CH_SCORE_ADJ		9
 #define CH_SCORE_TXOP		10
-#define CH_SCORE_MAX		11
+#define CH_SCORE_DFS		11	/* DFS consideration */
+#define CH_SCORE_MAX		12
 
 #define ACS_INVALID_COEX	0x1
 #define ACS_INVALID_INTF_CCA	0x2
@@ -300,5 +300,4 @@ extern void acs_dump_score_csv(chanspec_t chspec, ch_score_t * score_p);
 extern int wl_format_ssid(char* ssid_buf, uint8* ssid, int ssid_len);
 extern char *wl_ether_etoa(const struct ether_addr *n);
 extern int acs_snprintf(char *str, size_t size, const char *format, ...);
-extern long uptime(void);
 #endif /*  _acsd_h_ */

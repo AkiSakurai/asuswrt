@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_pcie.c 782338 2019-12-17 13:22:49Z $
+ * $Id: dhd_pcie.c 783797 2020-02-10 20:24:41Z $
  */
 
 /* include files */
@@ -237,6 +237,7 @@ enum {
 	IOV_TXP_THRESHOLD,
 	IOV_BUZZZ_DUMP,
 	IOV_BUZZZ_FILE,
+	IOV_CSIMON,
 	IOV_DUMP_RINGUPD_BLOCK,
 	IOV_DMA_RINGINDICES,
 	IOV_FORCE_FW_TRAP,
@@ -298,6 +299,7 @@ const bcm_iovar_t dhdpcie_iovars[] = {
 	{"txp_thresh", IOV_TXP_THRESHOLD,	0,	0,  IOVT_UINT32,	0 },
 	{"buzzz_dump", IOV_BUZZZ_DUMP,		0,	0,  IOVT_UINT32,	0 },
 	{"buzzz_file", IOV_BUZZZ_FILE,		0,	0,  IOVT_UINT32,	0 },
+	{"csimon", IOV_CSIMON,		0,	0,  IOVT_UINT32,	0 },
 	{"flow_prio_map", IOV_FLOW_PRIO_MAP,	0,	0,  IOVT_UINT32,	0 },
 	{"rxbound",     IOV_RXBOUND,    0,      0,  IOVT_UINT32,    0 },
 	{"txbound",     IOV_TXBOUND,    0,      0,  IOVT_UINT32,    0 },
@@ -2622,7 +2624,6 @@ dhdpcie_bus_readconsole(dhd_bus_t *bus)
 			if (line[n - 1] == '\r')
 				n--;
 			line[n] = 0;
-			if (dhd_msg_level & DHD_ERROR_VAL)
 			printf(CONSOLE_MSG, line);
 		}
 	}
@@ -2841,7 +2842,6 @@ dhdpcie_checkdied(dhd_bus_t *bus, char *data, uint size, uint32 *tr_type)
 				 * will truncate a lot of the printfs
 				 */
 
-				if (dhd_msg_level & DHD_ERROR_VAL)
 				printf("CONSOLE: %s\n", line);
 			}
 		}
@@ -5099,6 +5099,10 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 		break;
 #endif /* BCM_BUZZZ */
 
+	case IOV_GVAL(IOV_CSIMON):
+		bcmerror = dhd_csimon_dump(bus->dhd);
+		break;
+
 	case IOV_SVAL(IOV_SET_DOWNLOAD_STATE):
 		bcmerror = dhdpcie_bus_download_state(bus, bool_val);
 		break;
@@ -7103,6 +7107,17 @@ dhdpcie_bus_init_pcie_ipc(dhd_bus_t *bus)
 	DHD_ERROR(("PCIe IPC: DHD HDR %u\n", bus->dhd->dhdhdr_support));
 #endif /* BCM_ROUTER_DHD && BCM_DHDHDR */
 
+	/* Does the firmware support csi monitor? */
+	if (pcie_ipc->dcap2 & PCIE_IPC_DCAP2_CSI_MONITOR) {
+		DHD_ERROR(("%s: Firmware supports CSI Monitor\n", __FUNCTION__));
+		bus->dhd->csi_monitor = TRUE;
+		/* Enable CSI monitor support in firmware if supported */
+		pcie_ipc->hcap2 |= PCIE_IPC_HCAP2_CSI_MONITOR;
+	} else {
+		DHD_ERROR(("%s: Firmware does not support CSI Monitor\n", __FUNCTION__));
+		bus->dhd->csi_monitor = FALSE;
+	}
+
 	/* Does the firmware support fast delete ring? */
 	if (pcie_ipc->dcap1 & PCIE_IPC_DCAP1_FAST_DELETE_RING) {
 		DHD_INFO(("%s: Firmware supports fast delete ring\n", __FUNCTION__));
@@ -7242,6 +7257,7 @@ dhdpcie_bus_init_pcie_ipc(dhd_bus_t *bus)
 		pcie_ipc_rings->rxpost_data_buf_len, pcie_ipc->host_physaddrhi));
 
 	/* Initialize Host Memory Extension service */
+	dhd_prot_hme_reset(bus->dhd);
 	if (pcie_ipc->dcap1 & PCIE_IPC_DCAP1_HOST_MEM_EXTN) {
 		/**
 		 * dhd_prot_hme_init() allocates all HME segments and records their

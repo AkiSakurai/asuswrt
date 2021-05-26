@@ -20,8 +20,8 @@
 # $Id: Makefile 693762 2017-04-05 02:06:54Z $
 #
 
-SRCBASE_OFFSET := ../../bcmdrivers/broadcom/net/wl/bcm9$(BCM_CHIP)/main/src
-ROUTERBASE_OFFSET := ../../bcmdrivers/broadcom/net/wl/bcm9$(BCM_CHIP)/main/components/router
+SRCBASE_OFFSET := ../../../bcmdrivers/broadcom/net/wl/bcm9$(BCM_CHIP)/main/src
+ROUTERBASE_OFFSET := ../../../bcmdrivers/broadcom/net/wl/bcm9$(BCM_CHIP)/main/components/router-sysdep
 
 ifeq ($(CONFIG_WL_AP),)
 CONFIG_WL_AP := "wlconfig_lx_router_ap"

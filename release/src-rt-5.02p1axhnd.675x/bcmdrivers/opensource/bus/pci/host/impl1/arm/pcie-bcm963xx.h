@@ -304,6 +304,19 @@ extern "C" {
 #define G3_PLL_PLL_SSC_STEP_VCOGAIN_SSC_STEP_MASK  (0xFFFF)
 #define G3_PLL_PLL_SSC_STEP_VCOGAIN_SSC_STEP(s)    ((s) & 0xFFFF)
 
+/*
+ * +-----------------------------------------------------
+ * SERDES: GEN2 Registers
+ * +-----------------------------------------------------
+ */
+#define SERDES_TX_AFE_BLOCK_OFFSET                 (0x4000)
+#define SERDES_TX_CTR1_LN0_OFFSET                  (SERDES_TX_AFE_BLOCK_OFFSET + 0x0000)
+#define SERDES_TX_CTR1_LN_SIZE                     0x0010
+#define SERDES_TX_DFE_BLOCK_OFFSET                 (0x5000)
+#define SERDES_TX_DFE0_LN0_OFFSET                  (SERDES_TX_DFE_BLOCK_OFFSET + 0x0000)
+#define SERDES_TX_DFE0_LN_SIZE                     0x0010
+
+
 #if defined(PCIE0_PHYS_BASE) && defined(PCIE1_PHYS_BASE) && defined(PCIE2_PHYS_BASE) && \
 	defined(PCIE3_PHYS_BASE)
 #define NUM_CORE                    4

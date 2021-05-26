@@ -48,7 +48,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_bmac.c 783004 2020-01-10 18:24:47Z $
+ * $Id: wlc_bmac.c 788955 2020-07-15 08:17:47Z $
  */
 
 /**
@@ -1628,6 +1628,7 @@ wlc_bmac_recv_append_rx_list(rx_list_t *list1, rx_list_t *list2)
 void BCMFASTPATH
 wlc_bmac_recv_append_sts_list(wlc_info_t *wlc, rx_list_t *sts_list1, rx_list_t *sts_list2)
 {
+	wlc_hw_info_t *wlc_hw = wlc->hw;
 #if defined(WLC_OFFLOADS_RXSTS)
 	if (STS_RX_OFFLOAD_ENAB(wlc->pub)) {
 		sts_buff_t *rxsts;
@@ -1656,19 +1657,65 @@ wlc_bmac_recv_append_sts_list(wlc_info_t *wlc, rx_list_t *sts_list1, rx_list_t *
 		sts_list1->rx_head = sts_list2->rx_head;
 	}
 	 sts_list1->rx_tail = sts_list2->rx_tail;
+
+	wlc_hw->prxs_wr_idx = MODINC_POW2((STSBUF_SEQ((sts_buff_t *)sts_list1->rx_tail)),
+		(STS_SEQNUM_MAX));
+
 }
 
 /* pop prxs a.k.a sts_buff matching rxh seq num */
 static sts_buff_t *BCMFASTPATH
-wlc_bmac_recv_pop_sts(rx_list_t *rx_sts_list, uint16 rxh_seq)
+wlc_bmac_recv_pop_sts(wlc_hw_info_t *wlc_hw, rx_list_t *rx_sts_list, uint16 rxh_seq)
 {
+#ifdef BCMDBG
+	rxh_seq_dbg_t *rxh_seq_dbg = wlc_hw->rxh_seq_dbg;
+#endif // endif
 	sts_buff_t *curr, *prev = NULL, *next;
+	prxs_stats_t *prxs_stats = &wlc_hw->prxs_stats;
 	curr = rx_sts_list->rx_head;
+
+	while (curr != NULL) {
+#if defined(BCMPCIEDEV)
+		if ((MODSUB_POW2(wlc_hw->prxs_wr_idx,
+			wlc_hw->prxs_rd_idx, STS_SEQNUM_MAX) < 256)) {
+			break;
+		}
+#else
+		if ((STSBUF_SEQ(curr) == rxh_seq) ||
+			(IS_STSSEQ_ADVANCED(STSBUF_SEQ(curr), rxh_seq))) {
+			break;
+		}
+#endif /* BCMPCIEDEV */
+		prev = curr;
+		curr = STSBUF_LINK(curr);
+		if (curr != NULL) {
+			wlc_hw->prxs_rd_idx = STSBUF_SEQ(curr);
+		}
+#ifdef BCMDBG
+		ASSERT((rxh_seq_dbg->seq[STSBUF_SEQ(prev)] == (uint16)~0));
+		rxh_seq_dbg->seq[STSBUF_SEQ(prev)] = STSBUF_SEQ(prev);
+#endif // endif
+		STSBUF_SETLINK(prev, NULL);
+		PRXSSTATSINCR(prxs_stats, n_miss);
+		STSBUF_FREE(prev, &wlc_hw->sts_mempool);
+	}
+
+	rx_sts_list->rx_head = curr;
+	prev = next = NULL;
+	if (rx_sts_list->rx_head == NULL) {
+		rx_sts_list->rx_tail = NULL;
+	}
+
+	if (curr != NULL) {
+		wlc_hw->prxs_rd_idx = STSBUF_SEQ(curr);
+	}
 	/* advance to next sts (advances the sts head ptr by one status) */
 	while (curr != NULL) {
 		if (rxh_seq == STSBUF_SEQ(curr)) {
 			if (rx_sts_list->rx_head == curr) {
 				rx_sts_list->rx_head = STSBUF_LINK(curr);
+				wlc_hw->prxs_rd_idx = MODINC_POW2((STSBUF_SEQ(curr)),
+					(STS_SEQNUM_MAX));
 			} else {
 				next = STSBUF_LINK(curr);
 				STSBUF_SETLINK(prev, next);
@@ -1699,6 +1746,9 @@ wlc_bmac_recv_sts_cons(wlc_hw_info_t *wlc_hw, uint8 idx, void *p,
 	d11rxhdr_t *rxh;
 	uint16 rxh_seq;
 	prxs_stats_t *prxs_stats = &wlc_hw->prxs_stats;
+#ifdef BCMDBG
+	rxh_seq_dbg_t *rxh_seq_dbg = wlc_hw->rxh_seq_dbg;
+#endif // endif
 	/* XXX:
 	 *  sts seq  matches the current MPDU, do the following:
 	 *********************Attach a phystatus to lbuf/skb,..****************
@@ -1715,10 +1765,11 @@ wlc_bmac_recv_sts_cons(wlc_hw_info_t *wlc_hw, uint8 idx, void *p,
 	ASSERT(!IS_D11RXHDRSHORT(rxh, wlc->pub->corerev));
 	ASSERT(rxh_seq == STSBUF_SEQ(sts_buff));
 
-	wlc_hw->cons_seq[idx].seq = rxh_seq;
-	wlc_hw->cons_seq[idx].sssn = wlc_hw->sssn;
+	wlc_hw->cons_seq[idx] = rxh_seq;
 	PRXSSTATSINCR(prxs_stats, n_rcvd);
-
+#ifdef BCMDBG
+	ASSERT((rxh_seq_dbg->seq[rxh_seq] == rxh_seq));
+#endif // endif
 	if (wlc_hw->sts_fifo_intr) {
 		wlc_hw->sts_fifo_intr = FALSE;
 		PRXSSTATSINCR(prxs_stats, n_cons_intr);
@@ -1824,19 +1875,19 @@ wlc_bmac_prxs_stats_dump(void *ctx, struct bcmstrbuf *b)
 				(prxs_stats->n_miss * 100) / prxs_stats->n_rcvd);
 				bcm_bprintf(b, "\n");
 	}
-
-	bcm_bprintf(b, "curr_sssn:  %d sssn_seq_cnt:  %d\n", wlc_hw->sssn,
-			wlc_hw->seqcnt);
-	bcm_bprintf(b, "fifo-%d cons_sssn:  %d cons_seq:  %d\n", RXPEN_LIST_IDX0,
-			wlc_hw->cons_seq[RXPEN_LIST_IDX0].sssn,
-			wlc_hw->cons_seq[RXPEN_LIST_IDX0].seq);
+	bcm_bprintf(b, "fifo-%d cons_seq:  %d curr_seq:  %d\n", RXPEN_LIST_IDX0,
+			wlc_hw->cons_seq[RXPEN_LIST_IDX0],
+			wlc_hw->curr_seq[RXPEN_LIST_IDX0]);
 #if defined(BCMPCIEDEV)
 	if (BCMPCIEDEV_ENAB()) {
-		bcm_bprintf(b, "fifo-%d cons_sssn:  %d cons_seq:  %d\n", RXPEN_LIST_IDX1,
-			wlc_hw->cons_seq[RXPEN_LIST_IDX1].sssn,
-			wlc_hw->cons_seq[RXPEN_LIST_IDX1].seq);
+		bcm_bprintf(b, "fifo-%d cons_seq:  %d curr_seq:  %d\n", RXPEN_LIST_IDX1,
+			wlc_hw->cons_seq[RXPEN_LIST_IDX1],
+			wlc_hw->curr_seq[RXPEN_LIST_IDX1]);
 	}
 #endif /* BCMPCIEDEV */
+
+	bcm_bprintf(b, "rd_idx %d wr_idx %d\n", wlc_hw->prxs_rd_idx,
+			wlc_hw->prxs_wr_idx);
 
 	if (wlc_hw->rx_sts_list.rx_head) {
 		cnt = 0;
@@ -1919,6 +1970,9 @@ wlc_bmac_sts_reset(wlc_hw_info_t * wlc_hw)
 	sts_buff_t *sts_curr, *sts_free;
 	void *curr, *free;
 	int idx;
+#ifdef BCMDBG
+	rxh_seq_dbg_t *rxh_seq_dbg = wlc_hw->rxh_seq_dbg;
+#endif // endif
 
 	for (idx = 0; idx < MAX_RXPEN_LIST; idx++) {
 		curr = wlc_hw->rxpen_list[idx].rx_head;
@@ -1943,122 +1997,21 @@ wlc_bmac_sts_reset(wlc_hw_info_t * wlc_hw)
 	wlc_hw->rx_sts_list.rx_tail = NULL;
 
 	memset(&wlc_hw->prxs_stats, 0, sizeof(prxs_stats_t));
-	wlc_hw->seqcnt = wlc_hw->sssn = 0;
-#if defined(BCMPCIEDEV)
-	memset(&wlc_hw->curr_seq[RXPEN_LIST_IDX], 0,
-		sizeof(curr_seq_t) * MAX_RXPEN_LIST);
-	wlc_hw->curr_seq[RXPEN_LIST_IDX0].seq = STS_SEQNUM_INVALID;
-	wlc_hw->curr_seq[RXPEN_LIST_IDX1].seq = STS_SEQNUM_INVALID;
-	memset(&wlc_hw->cons_seq[RXPEN_LIST_IDX], 0,
-		sizeof(cons_seq_t) * MAX_RXPEN_LIST);
-	wlc_hw->cons_seq[RXPEN_LIST_IDX0].seq = STS_SEQNUM_INVALID;
-	wlc_hw->cons_seq[RXPEN_LIST_IDX1].seq = STS_SEQNUM_INVALID;
-#else /* ! BCMPCIEDEV */
-	wlc_hw->curr_seq[RXPEN_LIST_IDX].seq = STS_SEQNUM_INVALID;
-	wlc_hw->curr_seq[RXPEN_LIST_IDX].sssn = 0;
-	wlc_hw->cons_seq[RXPEN_LIST_IDX].seq = STS_SEQNUM_INVALID;
-	wlc_hw->cons_seq[RXPEN_LIST_IDX].sssn = 0;
-#endif /* ! BCMPCIEDEV */
-}
-
-static bool BCMFASTPATH
-wlc_bmac_recv_process_seq_switch(wlc_hw_info_t *wlc_hw, uint16 rxh_seq, uint8 idx)
-{
-#if defined(BCMPCIEDEV)
-#ifdef PRXS_DBG
-	uint16 rxswrst_cnt, prxsfull_cnt;
-	struct bcmstrbuf b;
-	const int DUMP_SIZE = 8192;
-	char *buf;
-#endif /* PRXS_DBG */
-	uint8 other_idx = (idx == RXPEN_LIST_IDX1) ?
-			RXPEN_LIST_IDX0 : RXPEN_LIST_IDX1;
-#endif /* BCMPCIEDEV */
-	sts_buff_t *curr, *prev = NULL;
-	rx_list_t *rx_sts_list = &wlc_hw->rx_sts_list;
-
-	curr = rx_sts_list->rx_head;
-
-#if defined(BCMPCIEDEV)
-	if (BCMPCIEDEV_ENAB()) {
-		if ((wlc_hw->rxpen_list[other_idx].rx_head != NULL) &&
-			(rxh_seq == wlc_hw->curr_seq[other_idx].seq)) {
-			return FALSE;
-		}
-
-		if (((wlc_hw->cons_seq[other_idx].sssn == wlc_hw->sssn) ||
-			(wlc_hw->cons_seq[other_idx].sssn == STS_PREV_SSSN(wlc_hw->sssn))) &&
-			((wlc_hw->cons_seq[other_idx].seq == rxh_seq) ||
-			(!IS_STSSEQ_ADVANCED(rxh_seq, wlc_hw->cons_seq[other_idx].seq)))) {
-
-			while (curr != NULL) {
-				if (IS_STSSEQ_ADVANCED(STSBUF_SEQ(curr), rxh_seq)) {
-					break;
-				}
-				prev = curr;
-				curr = STSBUF_LINK(curr);
-				STSBUF_SETLINK(prev, NULL);
-				STSBUF_FREE(prev, &wlc_hw->sts_mempool);
-				++wlc_hw->seqcnt;
-			}
-			rx_sts_list->rx_head = curr;
-			if (rx_sts_list->rx_head == NULL) {
-				rx_sts_list->rx_tail = NULL;
-			}
-
-			if ((curr == NULL) || (STSBUF_SEQ(curr) != rxh_seq)) {
-#ifdef PRXS_DBG
-				buf = MALLOC(wlc_hw->osh, DUMP_SIZE);
-				rxswrst_cnt = wlc_read_shm(wlc_hw->wlc, M_RXSWRST_CNT(wlc_hw->wlc));
-				prxsfull_cnt = wlc_read_shm(wlc_hw->wlc,
-					M_PHYRXSFULL_CNT(wlc_hw->wlc));
-				WL_ERROR(("%s: fifo-idx %d Duplicate seq %u curr_sssn %u\n"
-				"stsfifofull_cnt %u rxswrst_cnt %u rxactive %d\n",
-				__FUNCTION__, idx, rxh_seq, wlc_hw->sssn,
-				prxsfull_cnt, rxswrst_cnt,
-				dma_rxactive(wlc_hw->di[STS_FIFO])));
-				if (buf != NULL) {
-					bcm_binit((void *)&b, buf, DUMP_SIZE);
-					wlc_bmac_prxs_stats_dump(wlc_hw, &b);
-					WL_ERROR(("%s\n", b.origbuf));
-#if defined(WLC_OFFLOADS_RXSTS) && defined(BCMDBG)
-					if (STS_RX_OFFLOAD_ENAB(wlc->pub)) {
-						bcm_binit(&b, buf, DUMP_SIZE);
-						wlc_offload_wl_dump(wlc_hw->wlc->offl, &b);
-						WL_PRINT(("%s", buf));
-					}
+#ifdef BCMDBG
+	memset(rxh_seq_dbg, ~0, sizeof(rxh_seq_dbg_t));
+	rxh_seq_dbg->rd_idx = rxh_seq_dbg->wr_idx = 0;
 #endif // endif
-					MFREE(wlc_hw->osh, buf, DUMP_SIZE);
-				}
-#endif /* PRXS_DBG */
-				return FALSE;
-			}
-		}
-	} else
-#endif /* BCMPCIEDEV */
-	{
-		while (curr != NULL) {
-			if (IS_STSSEQ_ADVANCED(STSBUF_SEQ(curr), rxh_seq)) {
-				break;
-			}
-			prev = curr;
-			curr = STSBUF_LINK(curr);
-			STSBUF_SETLINK(prev, NULL);
-			STSBUF_FREE(prev, &wlc_hw->sts_mempool);
-			++wlc_hw->seqcnt;
-		}
-		rx_sts_list->rx_head = curr;
-		if (rx_sts_list->rx_head == NULL) {
-			rx_sts_list->rx_tail = NULL;
-		}
-	}
-
-	if (++wlc_hw->seqcnt > (STS_SEQNUM_MAX >> 2)) {
-		wlc_hw->sssn = STS_NEXT_SSSN(wlc_hw->sssn);
-		wlc_hw->seqcnt = wlc_hw->seqcnt - (STS_SEQNUM_MAX >> 2);
-	}
-
-	return TRUE;
+#if defined(BCMPCIEDEV)
+	wlc_hw->curr_seq[RXPEN_LIST_IDX0] = STS_SEQNUM_INVALID;
+	wlc_hw->curr_seq[RXPEN_LIST_IDX1] = STS_SEQNUM_INVALID;
+	wlc_hw->cons_seq[RXPEN_LIST_IDX0] = STS_SEQNUM_INVALID;
+	wlc_hw->cons_seq[RXPEN_LIST_IDX1] = STS_SEQNUM_INVALID;
+#else /* ! BCMPCIEDEV */
+	wlc_hw->curr_seq[RXPEN_LIST_IDX] = STS_SEQNUM_INVALID;
+	wlc_hw->cons_seq[RXPEN_LIST_IDX] = STS_SEQNUM_INVALID;
+#endif /* ! BCMPCIEDEV */
+	wlc_hw->prxs_rd_idx = 0;
+	wlc_hw->prxs_wr_idx = 0;
 }
 
 /**
@@ -2087,7 +2040,6 @@ wlc_bmac_recv_process_seq_switch(wlc_hw_info_t *wlc_hw, uint16 rxh_seq, uint8 id
  * WL BMAC layer processing: "rx_list", set of packets carrying same or different sequence number.
  * - "pops head of "sts_buffer" if matching seq_num.
  */
-
 void BCMFASTPATH
 wlc_bmac_recv_process_sts(wlc_hw_info_t *wlc_hw, uint fifo,
 		rx_list_t *rx_list, rx_list_t *rx_sts_list,
@@ -2095,12 +2047,12 @@ wlc_bmac_recv_process_sts(wlc_hw_info_t *wlc_hw, uint fifo,
 {
 	wlc_info_t *wlc = wlc_hw->wlc;
 	d11rxhdr_t *rxh;
-	uint16 rxh_seq;	/**< this is *not* a dot11 sequence number */
+	uint16 rxh_seq, curr_seq;	/**< this is *not* a dot11 sequence number */
 	void *curr_p, *head = NULL, *tail = NULL; /**< pointer to a received MPDU */
 	void *head0, *tail0;
 	sts_buff_t *sts_buff;
 	void *rxpen_list; /**< list of 'pending' rx packets */
-	bool seq_switch = FALSE, new_seq = FALSE;
+	bool seq_switch = FALSE;
 	uint16 rxswrst_cnt, prxsfull_cnt;
 	prxs_stats_t *prxs_stats = &wlc_hw->prxs_stats;
 #if defined(BCMPCIEDEV)
@@ -2113,11 +2065,17 @@ wlc_bmac_recv_process_sts(wlc_hw_info_t *wlc_hw, uint fifo,
 	uint8 idx = RXPEN_LIST_IDX;
 #endif /* ! BCMPCIEDEV */
 
+#ifdef BCMDBG
+	int n_cnt = 0;
+	rxh_seq_dbg_t *rxh_seq_dbg = wlc_hw->rxh_seq_dbg;
+#endif // endif
+
 #if defined(BCMHWA) && defined(HWA_RXFILL_BUILD)
 	rxh_offset = ((fifo == RX_FIFO2) ? 0 : WLC_RXHDR_LEN);
 #endif // endif
 	BCM_REFERENCE(rxswrst_cnt);
 	BCM_REFERENCE(prxsfull_cnt);
+	BCM_REFERENCE(curr_seq);
 	wlc_bmac_recv_append_rx_list(&wlc_hw->rxpen_list[idx],
 		rx_list);
 	rx_list->rx_head = rx_list->rx_tail = NULL;
@@ -2128,56 +2086,69 @@ wlc_bmac_recv_process_sts(wlc_hw_info_t *wlc_hw, uint fifo,
 	 * list.
 	 */
 	rxpen_list = wlc_hw->rxpen_list[idx].rx_head;
+
+	curr_p = rxpen_list;
+#ifdef BCMDBG
+	while (curr_p != NULL) {
+		rxh = (d11rxhdr_t *)(PKTDATA(wlc_hw->osh, curr_p) + rxh_offset);
+		curr_seq = rxh_seq = D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, MuRate) & 0xfff;
+		if (!IS_D11RXHDRSHORT(rxh, wlc->pub->corerev)) {
+			ASSERT(rxh_seq < STS_SEQNUM_MAX);
+			rxh_seq_dbg->seq[rxh_seq] = rxh_seq;
+			if (IS_STSSEQ_ADVANCED(rxh_seq, rxh_seq_dbg->wr_idx) ||
+				(rxh_seq == rxh_seq_dbg->wr_idx)) {
+				rxh_seq_dbg->wr_idx = MODINC_POW2(rxh_seq, STS_SEQNUM_MAX);
+			}
+		}
+		curr_p  = PKTLINK(curr_p);
+	}
+
+	if (IS_STSSEQ_ADVANCED(rxh_seq_dbg->rd_idx, rxh_seq_dbg->wr_idx)) {
+		n_cnt = 0;
+		while (rxh_seq_dbg->rd_idx != rxh_seq_dbg->wr_idx)
+		{
+			ASSERT(rxh_seq_dbg->seq[rxh_seq_dbg->rd_idx] != (uint16)~0);
+			rxh_seq_dbg->seq[rxh_seq_dbg->rd_idx] = ~0;
+			rxh_seq_dbg->rd_idx = MODINC_POW2(rxh_seq_dbg->rd_idx, STS_SEQNUM_MAX);
+			n_cnt++;
+			if (n_cnt >= (STS_SEQNUM_MAX >> 2)) {
+				break;
+			}
+		}
+	}
+#endif /* BCMDBG */
 	while (rxpen_list != NULL) {
 		curr_p = rxpen_list;
 		rxpen_list  = PKTLINK(rxpen_list);
 		PKTSETLINK(curr_p, NULL);
-
 		rxh = (d11rxhdr_t *)(PKTDATA(wlc_hw->osh, curr_p) + rxh_offset);
-		rxh_seq = D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, MuRate) & 0xfff;
-
-		if (!IS_D11RXHDRSHORT(rxh, wlc->pub->corerev) &&
-			!((wlc_hw->cons_seq[idx].seq == rxh_seq) &&
-			((wlc_hw->cons_seq[idx].sssn == wlc_hw->sssn) ||
-			(wlc_hw->cons_seq[idx].sssn == STS_PREV_SSSN(wlc_hw->sssn))))) {
-
+		curr_seq = rxh_seq = D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, MuRate) & 0xfff;
+		if (!IS_D11RXHDRSHORT(rxh, wlc->pub->corerev)) {
 			ASSERT(rxh_seq < STS_SEQNUM_MAX);
 			seq_switch = FALSE;
 			head0 = tail0 = NULL;
+			if (wlc->hw->curr_seq[idx] != rxh_seq) {
+				wlc_hw->curr_seq[idx] = rxh_seq;
+			}
 			PKTSETLINK(curr_p, rxpen_list);
 			rxpen_list = curr_p;
 			curr_p = wlc_bmac_recv_find_last(wlc_hw, &rxpen_list,
 				&head, &tail, &head0, &tail0, rxh_offset, &seq_switch);
 			ASSERT(curr_p != NULL);
-
-			/* process arrival of new seq */
-			if (!((rxh_seq == wlc_hw->curr_seq[idx].seq) &&
-				((wlc_hw->curr_seq[idx].sssn == wlc_hw->sssn) ||
-				(wlc_hw->curr_seq[idx].sssn == STS_PREV_SSSN(wlc_hw->sssn))))) {
-				new_seq = wlc_bmac_recv_process_seq_switch(wlc_hw, rxh_seq, idx);
-				if (new_seq) {
-					wlc_hw->curr_seq[idx].seq = rxh_seq;
-					wlc_hw->curr_seq[idx].sssn = wlc_hw->sssn;
-				} else {
-					/* update release list */
-					if (!head) {
-						head = head0;
-					} else {
-						PKTSETLINK(tail, head0);
-						PKTSETLINK(tail0, NULL);
-					}
-					tail = tail0;
-					continue;
-				}
-			}
-
+			ASSERT((curr_seq == rxh_seq));
 			/* pop prxs a.k.a sts_buff matching rxh seq */
-			sts_buff = wlc_bmac_recv_pop_sts(&wlc_hw->rx_sts_list, rxh_seq);
+			sts_buff = wlc_bmac_recv_pop_sts(wlc_hw, &wlc_hw->rx_sts_list, rxh_seq);
 			/* consume prxs a.k.a. sts_buff */
-			if ((sts_buff != NULL) || seq_switch) {
-				if (sts_buff != NULL) {
-					wlc_bmac_recv_sts_cons(wlc_hw, idx, head0, sts_buff,
-						rxh_offset);
+			if ((sts_buff != NULL) || seq_switch ||
+				IS_STSSEQ_ADVANCED(wlc_hw->prxs_rd_idx, rxh_seq) ||
+				IS_STSSEQ_ADVANCED(wlc_hw->prxs_wr_idx, rxh_seq)) {
+				if ((sts_buff != NULL) ||
+					IS_STSSEQ_ADVANCED(wlc_hw->prxs_rd_idx, rxh_seq) ||
+					IS_STSSEQ_ADVANCED(wlc_hw->prxs_wr_idx, rxh_seq)) {
+					if (sts_buff != NULL) {
+						wlc_bmac_recv_sts_cons(wlc_hw, idx, head0, sts_buff,
+							rxh_offset);
+					}
 				} else {
 					struct bcmstrbuf b;
 					const int DUMP_SIZE = 8192;
@@ -2186,11 +2157,10 @@ wlc_bmac_recv_process_sts(wlc_hw_info_t *wlc_hw, uint fifo,
 					PRXSSTATSINCR(prxs_stats, n_miss);
 					rxswrst_cnt = wlc_read_shm(wlc, M_RXSWRST_CNT(wlc));
 					prxsfull_cnt = wlc_read_shm(wlc, M_PHYRXSFULL_CNT(wlc));
-					WL_ERROR(("%s: fifo-idx %d Missed seq %u curr_sssn %u\n"
+					WL_ERROR(("%s: fifo-idx %d Missed seq %u\n"
 						"stsfifofull_cnt %u rxswrst_cnt %u rxactive %d\n",
-						__FUNCTION__, idx, rxh_seq, wlc_hw->sssn,
-						prxsfull_cnt, rxswrst_cnt,
-						dma_rxactive(wlc_hw->di[STS_FIFO])));
+						__FUNCTION__, idx, rxh_seq, prxsfull_cnt,
+						rxswrst_cnt, dma_rxactive(wlc_hw->di[STS_FIFO])));
 					if (buf != NULL) {
 						bcm_binit((void *)&b, buf, DUMP_SIZE);
 						wlc_bmac_prxs_stats_dump(wlc_hw, &b);
@@ -2238,6 +2208,38 @@ wlc_bmac_recv_process_sts(wlc_hw_info_t *wlc_hw, uint fifo,
 		wlc_hw->rxpen_list[idx].rx_tail = NULL;
 	}
 
+#ifdef BCMDBG
+#if defined(BCMPCIEDEV)
+	if ((MODSUB_POW2(wlc_hw->prxs_wr_idx, wlc_hw->prxs_rd_idx, STS_SEQNUM_MAX) > 256)) {
+#else
+	if ((MODSUB_POW2(wlc_hw->prxs_wr_idx, wlc_hw->prxs_rd_idx, STS_SEQNUM_MAX) > 2048)) {
+#endif /* BCMPCIEDEV */
+		struct bcmstrbuf b;
+		const int DUMP_SIZE = 8192;
+		char *buf = MALLOC(wlc_hw->osh, DUMP_SIZE);
+		PRXSSTATSINCR(prxs_stats, n_miss);
+		rxswrst_cnt = wlc_read_shm(wlc, M_RXSWRST_CNT(wlc));
+		prxsfull_cnt = wlc_read_shm(wlc, M_PHYRXSFULL_CNT(wlc));
+		WL_ERROR(("%s: stsfifofull_cnt %u rxswrst_cnt %u rxactive %d\n",
+			__FUNCTION__, prxsfull_cnt, rxswrst_cnt,
+			dma_rxactive(wlc_hw->di[STS_FIFO])));
+			if (buf != NULL) {
+				bcm_binit((void *)&b, buf, DUMP_SIZE);
+				wlc_bmac_prxs_stats_dump(wlc_hw, &b);
+				WL_ERROR(("%s", b.origbuf));
+#if defined(WLC_OFFLOADS_RXSTS) && defined(BCMDBG)
+				if (STS_RX_OFFLOAD_ENAB(wlc->pub)) {
+					bcm_binit(&b, buf, DUMP_SIZE);
+					wlc_offload_wl_dump(wlc_hw->wlc->offl, &b);
+					WL_PRINT(("%s", buf));
+				}
+#endif // endif
+				MFREE(wlc_hw->osh, buf, DUMP_SIZE);
+			}
+		ASSERT(0);
+	}
+#endif /* BCMDBG */
+
 #if defined(BCMPCIEDEV)
 	if (BCMPCIEDEV_ENAB() && (fifo == RX_FIFO2)) {
 		prev = NULL;
@@ -2271,6 +2273,44 @@ wlc_bmac_recv_process_sts(wlc_hw_info_t *wlc_hw, uint fifo,
 
 	rx_list->rx_head = head;
 	rx_list->rx_tail = tail;
+
+#ifdef BCMDBG
+	curr_seq = STS_SEQNUM_MAX;
+	curr_p = wlc_hw->rxpen_list[idx].rx_head;
+	while (curr_p != NULL) {
+		rxh = (d11rxhdr_t *)(PKTDATA(wlc_hw->osh, curr_p) + rxh_offset);
+		if (!IS_D11RXHDRSHORT(rxh, wlc->pub->corerev)) {
+			curr_seq = D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, MuRate) & 0xfff;
+		}
+		curr_p  = PKTLINK(curr_p);
+	}
+	curr_p = rx_list->rx_head;
+	rxh_seq = STS_SEQNUM_MAX;
+	while (curr_p != NULL) {
+		rxh = (d11rxhdr_t *)(PKTDATA(wlc_hw->osh, curr_p) + rxh_offset);
+		if (!IS_D11RXHDRSHORT(rxh, wlc->pub->corerev)) {
+			rxh_seq = D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, MuRate) & 0xfff;
+			ASSERT(rxh_seq < STS_SEQNUM_MAX);
+			ASSERT(rxh_seq_dbg->seq[rxh_seq] == rxh_seq);
+		}
+		curr_p  = PKTLINK(curr_p);
+	}
+
+	if ((curr_seq == STS_SEQNUM_MAX) && (rxh_seq != STS_SEQNUM_MAX)) {
+		ASSERT(((IS_STSSEQ_ADVANCED(wlc_hw->prxs_rd_idx, rxh_seq)) ||
+			(IS_STSSEQ_ADVANCED(wlc_hw->prxs_wr_idx, rxh_seq))));
+	} else if ((curr_seq != STS_SEQNUM_MAX) && (rxh_seq != STS_SEQNUM_MAX)) {
+		if (curr_seq != rxh_seq) {
+			ASSERT(((IS_STSSEQ_ADVANCED(wlc_hw->prxs_rd_idx, rxh_seq)) ||
+				(IS_STSSEQ_ADVANCED(wlc_hw->prxs_wr_idx, rxh_seq))));
+			ASSERT((((wlc_hw->prxs_rd_idx == curr_seq)) ||
+				(wlc_hw->prxs_wr_idx == curr_seq)));
+		} else {
+			ASSERT((((wlc_hw->prxs_rd_idx == curr_seq)) ||
+			(wlc_hw->prxs_wr_idx == curr_seq)));
+		}
+	}
+#endif /* BCMDBG */
 } /* wlc_bmac_recv_process_sts */
 #endif /* STS_FIFO_RXEN || WLC_OFFLOADS_RXSTS */
 
@@ -2404,9 +2444,16 @@ wlc_bmac_recv(wlc_hw_info_t *wlc_hw, uint fifo, bool bound, wlc_dpc_info_t *dpc)
 		if (BCMPCIEDEV_ENAB() && RXFIFO_SPLIT() && PKTISRXFRAG(wlc_hw->osh, p)) {
 #ifdef BULKRX_PKTLIST
 			wlc_bmac_process_split_fifo_pkt(wlc_hw, p, 0);
-#else
-			if (!wlc_bmac_process_split_fifo_pkt(wlc_hw, fifo, p))
+
+			if (PKTISRXCORRUPTED(wlc->osh, p)) {
+				PKTFREE(wlc->osh, p, FALSE);
 				continue;
+			}
+#else
+			if (!wlc_bmac_process_split_fifo_pkt(wlc_hw, fifo, p)) {
+				PKTFREE(wlc->osh, p, FALSE);
+				continue;
+			}
 #endif /* BULKRX_PKTLIST */
 			/* In mode4 it's known that non-converted copy count data will
 			 * arrive in fif0-1 so setting split_fifo to RX_FIFO1
@@ -3159,13 +3206,6 @@ wlc_bmac_watchdog(void *arg)
 
 	/* Check for FIFO error interrupts */
 	wlc_bmac_fifoerrors(wlc_hw);
-
-	/* Check whether PSMx watchdog triggered */
-	if (PSMX_ENAB(wlc->pub)) {
-		/* psmx error and mac is down. Skip subsequent checks */
-		if (wlc_bmac_psmx_errors(wlc) == TRUE)
-			return;
-	}
 
 	/* make sure RX dma has buffers */
 	if (!PIO_ENAB_HW(wlc_hw)) {
@@ -4228,6 +4268,15 @@ wlc_bmac_phyrxsts_alloc(wlc_hw_info_t *wlc_hw)
 #ifdef BCM_SECURE_DMA
 	int dma_align = 8; /* 8 byte */
 #endif /* BCM_SECURE_DMA */
+#ifdef BCMDBG
+	rxh_seq_dbg_t *rxh_seq_dbg = wlc_hw->rxh_seq_dbg;
+	/* The phyrx array is write-only by DMA hardware and read-only by software */
+	if ((wlc_hw->rxh_seq_dbg = MALLOC(osh, sizeof(rxh_seq_dbg_t))) == NULL) {
+		return FALSE;
+	}
+	rxh_seq_dbg = wlc_hw->rxh_seq_dbg;
+#endif // endif
+
 	rxphysts_objsz = sizeof(d11phystshdr_t);
 	if (STS_RX_ENAB(wlc_hw->wlc->pub)) {
 		/* size calculation for d11phystshdr_t array (alignment requirement for eg 684b0) */
@@ -4236,11 +4285,12 @@ wlc_bmac_phyrxsts_alloc(wlc_hw_info_t *wlc_hw)
 
 	wlc_hw->sts_phyrx_alloc_sz = rxphysts_size = (rxphysts_objsz * STSBUF_MP_N_OBJ);
 #ifdef BCM_SECURE_DMA
-	wlc_hw->sts_phyrx_va_non_aligned = DMA_ALLOC_CONSISTENT(osh,
+	wlc_hw->sts_phyrx_va_non_aligned = SECURE_DMA_MAP_STS_PHYRX(osh,
 		wlc_hw->sts_phyrx_alloc_sz, dma_align, &wlc_hw->_alloced, &wlc_hw->pap, NULL);
 #else
 	/* The phyrx array is write-only by DMA hardware and read-only by software */
 	if ((wlc_hw->sts_phyrx_va_non_aligned = MALLOC(osh, wlc_hw->sts_phyrx_alloc_sz)) == NULL) {
+		MFREE(osh, wlc_hw->rxh_seq_dbg, sizeof(rxh_seq_dbg_t));
 		return FALSE;
 	}
 #endif // endif
@@ -4249,6 +4299,7 @@ wlc_bmac_phyrxsts_alloc(wlc_hw_info_t *wlc_hw)
 	/* The sts_buff_t array is not accessed by DMA hardware */
 	if ((wlc_hw->sts_buff_t_array = MALLOCZ(osh, wlc_hw->sts_buff_t_alloc_sz)) == NULL) {
 		MFREE(osh, wlc_hw->sts_phyrx_va_non_aligned, wlc_hw->sts_phyrx_alloc_sz);
+		MFREE(osh, wlc_hw->rxh_seq_dbg, sizeof(rxh_seq_dbg_t));
 		wlc_hw->sts_phyrx_va_non_aligned = NULL;
 		return FALSE;
 	}
@@ -4299,22 +4350,21 @@ wlc_bmac_phyrxsts_alloc(wlc_hw_info_t *wlc_hw)
 		dma_sts_mp_set(wlc_hw->di[STS_FIFO], (void*)&wlc_hw->sts_mempool);
 	}
 
-	wlc_hw->seqcnt = wlc_hw->sssn = 0;
 #if defined(BCMPCIEDEV)
-	memset(&wlc_hw->curr_seq[RXPEN_LIST_IDX], 0,
-		sizeof(curr_seq_t) * MAX_RXPEN_LIST);
-	wlc_hw->curr_seq[RXPEN_LIST_IDX0].seq = STS_SEQNUM_INVALID;
-	wlc_hw->curr_seq[RXPEN_LIST_IDX1].seq = STS_SEQNUM_INVALID;
-	memset(&wlc_hw->cons_seq[RXPEN_LIST_IDX], 0,
-		sizeof(cons_seq_t) * MAX_RXPEN_LIST);
-	wlc_hw->cons_seq[RXPEN_LIST_IDX0].seq = STS_SEQNUM_INVALID;
-	wlc_hw->cons_seq[RXPEN_LIST_IDX1].seq = STS_SEQNUM_INVALID;
+	wlc_hw->curr_seq[RXPEN_LIST_IDX0] = STS_SEQNUM_INVALID;
+	wlc_hw->curr_seq[RXPEN_LIST_IDX1] = STS_SEQNUM_INVALID;
+	wlc_hw->cons_seq[RXPEN_LIST_IDX0] = STS_SEQNUM_INVALID;
+	wlc_hw->cons_seq[RXPEN_LIST_IDX1] = STS_SEQNUM_INVALID;
 #else /* ! BCMPCIEDEV */
-	wlc_hw->curr_seq[RXPEN_LIST_IDX].seq = STS_SEQNUM_INVALID;
-	wlc_hw->curr_seq[RXPEN_LIST_IDX].sssn = 0;
-	wlc_hw->cons_seq[RXPEN_LIST_IDX].seq = STS_SEQNUM_INVALID;
-	wlc_hw->cons_seq[RXPEN_LIST_IDX].sssn = 0;
+	wlc_hw->curr_seq[RXPEN_LIST_IDX] = STS_SEQNUM_INVALID;
+	wlc_hw->cons_seq[RXPEN_LIST_IDX] = STS_SEQNUM_INVALID;
 #endif /* ! BCMPCIEDEV */
+#ifdef BCMDBG
+	memset(rxh_seq_dbg, ~0, sizeof(rxh_seq_dbg_t));
+	rxh_seq_dbg->rd_idx = rxh_seq_dbg->wr_idx = 0;
+#endif // endif
+	wlc_hw->prxs_rd_idx = 0;
+	wlc_hw->prxs_wr_idx = 0;
 	return TRUE;
 } /* wlc_bmac_phyrxsts_alloc */
 #endif /* STS_FIFO_RXEN || WLC_OFFLOADS_RXSTS */
@@ -5739,7 +5789,8 @@ wlc_bmac_corerev_minor(wlc_hw_info_t *wlc_hw)
 			>> D11AX_COREVMINOR_SHIFT;
 		wlc_hw->corerev_minor = minor;
 		if (D11REV_IS(wlc_hw->corerev, 129)) {
-			wlc_hw->corerev_minor += ((minor > 0) ? 1 : (wlc_hw->sih->otpflag ? 1 : 0));
+			wlc_hw->corerev_minor += ((minor > 0) ? 1 :
+			((wlc_hw->sih->otpflag & 0x1) ? 1 : 0));
 		}
 	}
 }
@@ -7073,11 +7124,14 @@ BCMATTACHFN(wlc_bmac_detach)(wlc_info_t *wlc)
 #if defined(STS_FIFO_RXEN) || defined(WLC_OFFLOADS_RXSTS)
 	if (STS_RX_ENAB(wlc_hw->wlc->pub) || STS_RX_OFFLOAD_ENAB(wlc_hw->wlc->pub)) {
 #ifdef BCM_SECURE_DMA
-		DMA_FREE_CONSISTENT(wlc->osh, wlc_hw->sts_phyrx_va_non_aligned,
+		SECURE_DMA_UNMAP_STS_PHYRX(wlc->osh, wlc_hw->sts_phyrx_va_non_aligned,
 		                    wlc_hw->sts_phyrx_alloc_sz, wlc_hw->pap, NULL);
 #else
 		MFREE(wlc->osh, wlc_hw->sts_phyrx_va_non_aligned, wlc_hw->sts_phyrx_alloc_sz);
 #endif /* BCM_SECURE_DMA */
+#ifdef BCMDBG
+		MFREE(wlc->osh, wlc_hw->rxh_seq_dbg, sizeof(rxh_seq_dbg_t));
+#endif // endif
 		MFREE(wlc->osh, wlc_hw->sts_buff_t_array, wlc_hw->sts_buff_t_alloc_sz);
 	}
 #else
@@ -7208,12 +7262,12 @@ BCMINITFN(wlc_bmac_init)(wlc_hw_info_t *wlc_hw, chanspec_t chanspec)
 #if defined(WL_PSMX)
 	wlc_hw->macx_suspend_depth = 1;
 #endif /* WL_PSMX */
-#if defined(WL_PSMX) && defined(WL_AIR_IQ)
+#if defined(WL_PSMX)
 	if (D11REV_GE(wlc_hw->corerev, 65)) {
 		/* setup PSMX interrupt mask */
 		SET_MACINTMASK_X(wlc_hw->osh, wlc_hw, DEF_MACINTMASK_X);
 	}
-#endif /* WL_PSMX && WL_AIR_IQ */
+#endif /* WL_PSMX */
 
 	/* seed wake_override with WLC_WAKE_OVERRIDE_MACSUSPEND since the mac
 	 * is suspended and wlc_bmac_enable_mac() will clear this override bit.
@@ -7795,7 +7849,7 @@ BCMUCODEFN(wlc_mhfdef)(wlc_hw_info_t *wlc_hw, uint16 *mhfs)
 	}
 #endif /* BCM_DMA_CT */
 
-	if (D11REV_GE(wlc_hw->corerev, 128) && D11REV_LE(wlc_hw->corerev, 130)) {
+	if (D11REV_GE(wlc_hw->corerev, 128) && D11REV_LE(wlc_hw->corerev, 131)) {
 		mhfs[MHF2] |= MHF2_RXWDT;
 	}
 
@@ -8049,7 +8103,14 @@ void wlc_enable_avb_timer(wlc_hw_info_t *wlc_hw, bool enable)
 		AND_REG(osh, D11_MacControl1(wlc_hw), ~MCTL1_AVB_ENABLE);
 	}
 
-	/* enable/disable the avb timer */
+	/* try not to touch the pmu regs during burst */
+}
+
+void wlc_enable_avb_timer_war(wlc_hw_info_t *wlc_hw, bool enable)
+{
+	osl_t *osh = wlc_hw->osh;
+
+	/* try not to touch the pmu regs during burst */
 	si_pmu_avb_clk_set(wlc_hw->sih, osh, enable);
 }
 
@@ -8575,6 +8636,8 @@ wlc_bmac_write_amt(wlc_hw_info_t *wlc_hw, int idx, const struct ether_addr *addr
 	/* Read/Modify/Write unless entry is being disabled */
 	wlc_bmac_read_amt(wlc_hw, idx, &prev_addr, &prev_attr);
 	if (attr & AMT_ATTR_VALID) {
+		/* Take the updated incarn idx from attr */
+		prev_attr = prev_attr & ~AMT_ATTR_INCARN_MASK;
 		attr |= prev_attr;
 	} else {
 		attr = 0;
@@ -11008,9 +11071,13 @@ wlc_bmac_switch_macfreq(wlc_hw_info_t *wlc_hw, uint8 spurmode)
 
 	osh = wlc_hw->osh;
 
-	/* ??? better keying, corerev, phyrev ??? */
-	if (EMBEDDED_2x2AX_CORE(wlc_hw->sih->chip) ||
-		BCM6878_CHIP(wlc_hw->sih->chip)) {
+	if (EMBEDDED_2x2AX_CORE(wlc_hw->sih->chip)) {
+		/* despite spur parameter, spur setting will always be enabled in PHY
+		 * so use MAC 240.0431MHz
+		 */
+		W_REG(osh, D11_TSF_CLK_FRAC_L(wlc_hw), (uint16)0x4412);
+		W_REG(osh, D11_TSF_CLK_FRAC_H(wlc_hw), (uint16)0x4);
+	} else if (BCM6878_CHIP(wlc_hw->sih->chip)) {
 		/* TSF = 2^26 / MAC clock (in MHz) */
 		if (spurmode == 1) {
 			/* MAC 240.0431MHz */
@@ -12244,9 +12311,16 @@ wlc_bmac_mute(wlc_hw_info_t *wlc_hw, bool on, mbool flags)
 #endif /* AP */
 #ifdef MBSS
 		wlc_bmac_tx_fifo_suspend(wlc_hw, TX_ATIM_FIFO);
-#endif /* MBSS */
+		/* if a virtual AP interface is present, zero the MBSSID base address on mute */
+		if (MBSS_ENAB(wlc_hw->wlc->pub)) {
+			wlc_info_t *wlc = wlc_hw->wlc;
 
-		/* clear the address match register so we do not send ACKs */
+			wlc_write_shm(wlc, M_MBS_BSSID0(wlc), 0x0000u);
+			wlc_write_shm(wlc, M_MBS_BSSID1(wlc), 0x0000u);
+			wlc_write_shm(wlc, M_MBS_BSSID2(wlc), 0x0000u);
+		}
+#endif /* MBSS */
+		/* clear the address match register so we do not send ACKs for primary iface */
 		wlc_bmac_clear_match_mac(wlc_hw);
 	} else {
 		/* resume tx fifos */
@@ -12263,9 +12337,20 @@ wlc_bmac_mute(wlc_hw_info_t *wlc_hw, bool on, mbool flags)
 #endif /* AP */
 #ifdef MBSS
 		wlc_bmac_tx_fifo_resume(wlc_hw, TX_ATIM_FIFO);
+		if (MBSS_ENAB(wlc_hw->wlc->pub)) {
+			/* set MBSSID base address on unmute if a virtual AP interface is present */
+			int idx;
+			wlc_bsscfg_t *cfg;
+			wlc_info_t *wlc = wlc_hw->wlc;
+
+			FOREACH_UP_AP(wlc, idx, cfg) {
+				wlc_mbss_set_mac(wlc, cfg);
+				break;
+			}
+		}
 #endif /* MBSS */
 
-		/* Restore address */
+		/* Restore address for primary interface */
 		wlc_bmac_set_match_mac(wlc_hw, &wlc_hw->etheraddr);
 	}
 
@@ -13775,7 +13860,7 @@ wlc_bmac_txstatus(wlc_hw_info_t *wlc_hw, bool bound, bool *fatal)
 			        ((s1 & TX_STATUS_FRM_RTX_MASK) >> TX_STATUS_FRM_RTX_SHIFT);
 			txs.frameid = (s1 & TXS_FID_MASK) >> TXS_FID_SHIFT;
 			txs.sequence = s2 & TXS_SEQ_MASK;
-			txs.phyerr = (s2 & TXS_PTX_MASK) >> TXS_PTX_SHIFT;
+			txs.phyerr = TXS_PTX(s2, wlc->pub->corerev);
 			txs.lasttxtime = tsf_time;
 			txs.procflags = 0;
 
@@ -13849,7 +13934,7 @@ wlc_bmac_txstatus(wlc_hw_info_t *wlc_hw, bool bound, bool *fatal)
 				((v_s1 & 0x4) != 0)));
 			txs.frameid = (v_s1 & TXS_FID_MASK) >> TXS_FID_SHIFT;
 			txs.sequence = v_s2 & TXS_SEQ_MASK;
-			txs.phyerr = (v_s2 & TXS_PTX_MASK) >> TXS_PTX_SHIFT;
+			txs.phyerr = TXS_PTX(v_s2, wlc->pub->corerev);
 			txs.lasttxtime = R_REG(osh, D11_TSFTimerLow(wlc_hw));
 			status_bits = v_s1 & TXS_STATUS_MASK;
 			txs.status.raw_bits = status_bits;
@@ -19541,11 +19626,17 @@ BCMINITFN(wlc_bmac_bmc_init)(wlc_hw_info_t *wlc_hw)
 		}
 
 		if (D11REV_GE(wlc_hw->corerev, 128)) {
-			uint q_index;
+			uint q_index, q_enable = 1;
 			wlc_bmac_bmc_get_qinfo(wlc_hw, fifo, &q_index, &bqseltype);
-			/* Enable this fifo */
+#ifndef DONGLEBUILD
+			/* Disable rxfifo-1 for NIC */
+			if (fifo == rxq1_idx) {
+				q_enable = 0;
+			}
+#endif // endif
+			/* Enable or disable this fifo */
 			W_REG(osh, D11_BMCCmd_ALTBASE(regs, wlc_hw->regoffsets), (uint16)(q_index |
-				(1 << BMCCmd_Enable_SHIFT_rev128) |
+				(q_enable << BMCCmd_Enable_SHIFT_rev128) |
 				(bqseltype << BMCCmd_BQSelType_SHIFT_Rev128)));
 		} else {
 			/* Enable this fifo */

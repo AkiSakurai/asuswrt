@@ -219,6 +219,9 @@ info.group = new Array();
 
 function initial(){
 	show_menu();
+	if(hnd_support || based_modelid == "RT-AC1200" || based_modelid == "RT-AC1200_V2" || based_modelid == "RT-AC1200GU" || based_modelid == "RT-N19"){
+		$("#nat_desc").hide();
+	}
 	if(bwdpi_support){
 		//show_inner_tab();
 		document.getElementById('guest_image').style.background = "url(images/New_ui/TimeLimits.png)";
@@ -258,8 +261,10 @@ function initial(){
 	var mac = cookie.get("time_scheduling_mac");
 	if(mac != "" && mac != null) {
 		var idx = MULTIFILTER_MAC_row.indexOf(mac);
-		gen_lantowanTable(idx);
-		window.location.hash = "edit_time_anchor";                   
+		if(idx != -1){
+			gen_lantowanTable(idx);
+			window.location.hash = "edit_time_anchor";
+		}
 		cookie.unset("time_scheduling_mac");
 	}
 }
@@ -1116,7 +1121,7 @@ function setGroup(name){
 						<span id="desc_note" style="color:#FC0;"><#ADSL_FW_note#></span>
 						<ol style="color:#FC0;margin:-5px 0px 3px -18px;*margin-left:18px;">
 							<li><#ParentalCtrl_default#></li>
-							<li><#ParentalCtrl_disable_NAT#></li>
+							<li id="nat_desc"><#ParentalCtrl_disable_NAT#></li>
 						</ol>	
 					</td>
 				</tr>

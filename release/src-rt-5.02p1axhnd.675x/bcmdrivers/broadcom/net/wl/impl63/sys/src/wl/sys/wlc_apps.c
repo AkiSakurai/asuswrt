@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_apps.c 781523 2019-11-22 13:16:25Z $
+ * $Id: wlc_apps.c 787083 2020-05-18 09:46:29Z $
  */
 
 /**
@@ -141,6 +141,10 @@
 #include <wlc_dump.h>
 #endif /* WL_PS_STATS */
 
+#ifdef PKTQ_LOG
+#include <wlc_perf_utils.h>
+#endif // endif
+
 // Forward declarations
 static void wlc_apps_ps_timedout(wlc_info_t *wlc, struct scb *scb);
 static bool wlc_apps_ps_send(wlc_info_t *wlc, struct scb *scb, uint prec_bmp, uint32 flags);
@@ -233,7 +237,9 @@ void wlc_apps_upd_pstime(struct scb *scb);
 #define	PSQ_PKTS_HI		500
 #endif /* PSQ_PKTS_HI */
 
-#define FLUSH_ALL_PKTS		0xFFFF
+/* flags of apps_scb_psinfo */
+#define SCB_PS_FIRST_SUPPR_HANDLED	0x01
+#define SCB_PS_FLUSH_IN_PROGR		0x02
 
 struct apps_scb_psinfo {
 	int		suppressed_pkts;	/* Count of suppressed pkts in the
@@ -247,7 +253,7 @@ struct apps_scb_psinfo {
 #endif // endif
 	bool		psp_pending;	/* whether uncompleted PS-POLL response is pending */
 	uint8		psp_flags;	/* various ps mode bit flags defined below */
-	bool		first_suppr_handled;	/* have we handled first supr'd frames ? */
+	uint8		flags;		/* a.o. have we handled first supr'd frames ? */
 	bool		in_pvb;		/* This STA already set in partial virtual bitmap */
 	bool		apsd_usp;	/* APSD Unscheduled Service Period in progress */
 	int		apsd_cnt;	/* Frames left in this service period */
@@ -281,8 +287,8 @@ struct apps_scb_psinfo {
 	uint32		last_in_ps_tsf;
 	uint32		last_in_pvb_tsf;
 	bool		twt_active;	/**< TWT is active on SCB (twt_enter was called) */
-	bool		twt_wait4drain_complete;
-	bool		delayed_pstwt_release;
+	bool		twt_wait4drain_enter;
+	bool		twt_wait4drain_exit;
 };
 
 typedef struct apps_scb_psinfo apps_scb_psinfo_t;
@@ -341,6 +347,7 @@ static int wlc_apps_scb_psinfo_init(void *context, struct scb *scb);
 static void wlc_apps_scb_psinfo_deinit(void *context, struct scb *scb);
 static uint wlc_apps_scb_psinfo_secsz(void *context, struct scb *scb);
 static uint wlc_apps_txpktcnt(void *context);
+static void wlc_apps_ps_flush_tid(void *context, struct scb *scb, uint8 tid);
 #ifdef PROP_TXSTATUS
 static INLINE void _wlc_apps_pvb_dec_in_transit(wlc_info_t *wlc, struct scb *scb);
 static INLINE void _wlc_apps_scb_psq_resp(wlc_info_t *wlc, struct scb *scb,
@@ -364,6 +371,7 @@ static uint *BCMRAMFN(wlc_apps_ac2precbmp_info)(void)
 static txmod_fns_t BCMATTACHDATA(apps_txmod_fns) = {
 	wlc_apps_ps_enq,
 	wlc_apps_txpktcnt,
+	wlc_apps_ps_flush_tid,
 	NULL,
 	NULL
 };
@@ -764,6 +772,28 @@ wlc_apps_cubby_set(void *ctx, wlc_bsscfg_t *cfg, const uint8 *data, int len)
 }
 #endif /* WLRSDB */
 
+#if defined(BCMDBG)
+/* Verify that all ps packets have been flushed.
+ * This is called after bsscfg down notify callbacks were processed.
+ * So wlc_apps_bss_updn has been called for each bsscfg and all packets should have been flushed.
+ */
+void
+wlc_apps_wlc_down(wlc_info_t *wlc)
+{
+	apps_wlc_psinfo_t *wlc_psinfo;
+
+	ASSERT(wlc);
+
+	wlc_psinfo = wlc->psinfo;
+
+	if (!wlc_psinfo)
+		return;
+
+	/* All PS packets have been flushed */
+	ASSERT(wlc_psinfo->ps_deferred == 0);
+}
+#endif /* BCMDBG */
+
 /* bsscfg cubby */
 static int
 wlc_apps_bss_init(void *ctx, wlc_bsscfg_t *cfg)
@@ -922,6 +952,12 @@ wlc_apps_scb_psinfo_deinit(void *context, struct scb *remove)
 				spktq_deinit(&(*cubby_info)->supr_psq[prec]);
 		}
 #endif /* WL_USE_SUPR_PSQ */
+
+		/* Now clear the pktq_log allocated buffer */
+#ifdef PKTQ_LOG
+		wlc_pktq_stats_free(wlc, &(*cubby_info)->psq);
+#endif // endif
+		pktq_deinit(&(*cubby_info)->psq);
 
 		wlc_scb_sec_cubby_free(wlc, remove, *cubby_info);
 		*cubby_info = NULL;
@@ -1159,7 +1195,7 @@ wlc_apps_scb_ps_off(wlc_info_t *wlc, struct scb *scb, bool discard)
 	}
 
 	scb_psinfo->psp_pending = FALSE;
-	scb_psinfo->first_suppr_handled = FALSE;
+	scb_psinfo->flags &= ~SCB_PS_FIRST_SUPPR_HANDLED;
 	wlc_apps_apsd_usp_end(wlc, scb);
 	scb_psinfo->apsd_cnt = 0;
 
@@ -1327,7 +1363,7 @@ wlc_apps_scb_ps_on(wlc_info_t *wlc, struct scb *scb)
 		wlc->pub->unit, WLC_BSSCFG_IDX(bsscfg), __FUNCTION__, ETHER_TO_MACF(scb->ea),
 		SCB_AID(scb), scb_psinfo->in_pvb, TXPKTPENDTOT(wlc)));
 
-	scb_psinfo->first_suppr_handled = FALSE;
+	scb_psinfo->flags &= ~SCB_PS_FIRST_SUPPR_HANDLED;
 
 	/* update PS state info */
 	bss_info->ps_nodes++;
@@ -1478,7 +1514,7 @@ cpktq_supr_norm(wlc_info_t *wlc, struct cpktq *cpktq)
 static void
 wlc_apps_dequeue_scb_supr_psq(wlc_info_t *wlc, struct scb *scb)
 {
-	int prec, psqlen, discards;
+	int prec, discards;
 	struct apps_scb_psinfo *scb_psinfo;
 	void *pkt;
 
@@ -1489,11 +1525,11 @@ wlc_apps_dequeue_scb_supr_psq(wlc_info_t *wlc, struct scb *scb)
 	if (scb_psinfo->suppressed_pkts > pktq_avail(&scb_psinfo->psq)) {
 		/* SCB PSQ has no room for supr_psq. Discard the packets from the lowest prec psq */
 		discards = scb_psinfo->suppressed_pkts - pktq_avail(&scb_psinfo->psq);
-		psqlen = pktq_n_pkts_tot(&scb_psinfo->psq);
 
 		WL_PS((" %s: "MACF" PSQ discard %d suprs %d psqlen %d psq_avail %d\n", __FUNCTION__,
 			ETHER_TO_MACF(scb->ea),
-			discards, scb_psinfo->suppressed_pkts, psqlen,
+			discards, scb_psinfo->suppressed_pkts,
+			pktq_n_pkts_tot(&scb_psinfo->psq),
 			pktq_avail(&scb_psinfo->psq)));
 
 		for (prec = 0; (prec < WLC_PREC_COUNT) && (discards > 0); prec++) {
@@ -1504,20 +1540,22 @@ wlc_apps_dequeue_scb_supr_psq(wlc_info_t *wlc, struct scb *scb)
 
 				discards--;
 				wlc->psinfo->ps_discard++;
-				wlc->psinfo->ps_deferred--;
 				scb_psinfo->ps_discard++;
+				if (!SCB_ISMULTI(scb)) {
+					wlc->psinfo->ps_deferred--;
+				}
 				PKTFREE(wlc->osh, pkt, TRUE);
 			}
 		}
 	}
 
-	psqlen = pktq_n_pkts_tot(&scb_psinfo->psq);
 	for (prec = (WLC_PREC_COUNT-1); prec >= 0; prec--) {
 		if (spktq_n_pkts(&scb_psinfo->supr_psq[prec]) == 0) {
 			continue;
 		}
 		WL_PS((" %s: (Norm) prec %d suplen %d psqlen %d\n", __FUNCTION__,
-			prec, spktq_n_pkts(&scb_psinfo->supr_psq[prec]), psqlen));
+			prec, spktq_n_pkts(&scb_psinfo->supr_psq[prec]),
+			pktq_n_pkts_tot(&scb_psinfo->psq)));
 
 		pktq_prepend(&scb_psinfo->psq, prec, &scb_psinfo->supr_psq[prec]);
 	}
@@ -1551,6 +1589,7 @@ wlc_apps_scb_psq_norm(wlc_info_t *wlc, struct scb *scb)
 	struct apps_scb_psinfo *scb_psinfo;
 	struct pktq *pktq;		/**< multi-priority packet queue */
 
+	BCM_REFERENCE(pktq);
 	wlc_psinfo = wlc->psinfo;
 	scb_psinfo = SCB_PSINFO(wlc_psinfo, scb);
 	ASSERT(scb_psinfo);
@@ -1652,9 +1691,9 @@ wlc_apps_process_pend_ps(wlc_info_t *wlc)
 			 * this work.
 			 */
 			wlc_apps_scb_psq_norm(wlc, scb);
-			if (scb_psinfo->twt_wait4drain_complete) {
+			if (scb_psinfo->twt_wait4drain_enter) {
 				wlc_apps_twt_enter_ready(wlc, scb);
-				scb_psinfo->twt_wait4drain_complete = FALSE;
+				scb_psinfo->twt_wait4drain_enter = FALSE;
 			} else if ((scb_psinfo->ps_trans_status & SCB_PS_TRANS_OFF_PEND)) {
 				/* we may get here as result of SCB deletion, so avoid
 				 * re-enqueueing frames in that case by discarding them
@@ -1710,24 +1749,31 @@ wlc_apps_process_pend_ps(wlc_info_t *wlc)
 void
 wlc_apps_ps_flush(wlc_info_t *wlc, struct scb *scb)
 {
-	wlc_apps_ps_flush_flowid(wlc, scb, FLUSH_ALL_PKTS);
+	uint8 tid;
+
+	for (tid = 0; tid < NUMPRIO; tid++) {
+		wlc_apps_ps_flush_tid(wlc, scb, tid);
+	}
+#if defined(BCMDBG)
+	{
+		struct apps_scb_psinfo *scb_psinfo = SCB_PSINFO(wlc->psinfo, scb);
+		ASSERT(scb_psinfo == NULL || pktq_empty(&scb_psinfo->psq));
+	}
+#endif // endif
 }
 
 /* When a flowring is deleted or scb is removed, the packets related to that flowring or scb have
  * to be flushed.
  */
-void
-wlc_apps_ps_flush_flowid(wlc_info_t *wlc, struct scb *scb, uint16 flowid)
+static void
+wlc_apps_ps_flush_tid(void *context, struct scb *scb, uint8 tid)
 {
-#if defined(BCMDBG) || defined(WLMSG_PS)
-	char eabuf[ETHER_ADDR_STR_LEN];
-#endif // endif
-	void *pkt;
+	wlc_info_t *wlc = (wlc_info_t *)context;
 	int prec;
+	uint32 n_pkts_flushed = 0;
 	struct apps_scb_psinfo *scb_psinfo;
 	apps_wlc_psinfo_t *wlc_psinfo;
-	struct pktq tmp_q;		/**< multi-priority packet queue */
-	struct pktq *q;
+	struct pktq *pq;
 
 	ASSERT(scb);
 	ASSERT(wlc);
@@ -1737,10 +1783,6 @@ wlc_apps_ps_flush_flowid(wlc_info_t *wlc, struct scb *scb, uint16 flowid)
 	if (scb_psinfo == NULL)
 		return;
 
-	WL_PS(("wl%d.%d: %s flushing %d packets for %s AID %d flowid %d\n", wlc->pub->unit,
-		WLC_BSSCFG_IDX(scb->bsscfg), __FUNCTION__, pktq_n_pkts_tot(&scb_psinfo->psq),
-		bcm_ether_ntoa(&scb->ea, eabuf), SCB_AID(scb), flowid));
-
 #ifdef WL_USE_SUPR_PSQ
 	/* Checking PS suppress queue and moving ps suppressed frames accordingly */
 	if (scb_psinfo->suppressed_pkts > 0) {
@@ -1748,83 +1790,36 @@ wlc_apps_ps_flush_flowid(wlc_info_t *wlc, struct scb *scb, uint16 flowid)
 	}
 #endif /* WL_USE_SUPR_PSQ */
 
-	pktq_init(&tmp_q, 1, PKTQ_LEN_MAX);
+	pq = &scb_psinfo->psq;
 
-	/* Move packets belonging to flowid in SCB PS queue to tmp_q. This is being done to ensure
-	 * we don`t run into a race condition where SCB free happens as part of Packet Free
-	 * callback
-	 * Don't care about dequeue precedence
-	 */
-	q = &scb_psinfo->psq;
-	PKTQ_PREC_ITER(q, prec) {
-		if (pktqprec_n_pkts(q, prec) == 0)
-			continue;
+	scb_psinfo->flags |= SCB_PS_FLUSH_IN_PROGR;
+	prec = WLC_PRIO_TO_PREC(tid);
+	if (!pktqprec_empty(pq, prec)) {
+		n_pkts_flushed += wlc_txq_pktq_pflush(wlc, pq, prec);
+	}
 
-		pkt = pktqprec_peek(q, prec);
-		if (pkt == NULL ||
-#ifdef BCMPCIEDEV
-			((flowid != FLUSH_ALL_PKTS) &&
-			(flowid != PKTFRAGFLOWRINGID(wlc->osh, pkt))) ||
-#endif /* BCMPCIEDEV */
-			FALSE)
-			continue;
+	prec = WLC_PRIO_TO_HI_PREC(tid);
+	if (!pktqprec_empty(pq, prec)) {
+		n_pkts_flushed += wlc_txq_pktq_pflush(wlc, pq, prec);
+	}
+	scb_psinfo->flags &= ~SCB_PS_FLUSH_IN_PROGR;
 
-		pkt = pktq_pdeq(q, prec);
-		while (pkt) {
-			if (!SCB_ISMULTI(scb))
-				wlc_psinfo->ps_deferred--;
-			WLPKTTAG(pkt)->flags &= ~WLF_PSMARK; /* clear the timestamp */
-			pktq_penq(&tmp_q, 0, pkt);
-			pkt = pktq_pdeq(q, prec);
+	if (n_pkts_flushed > 0) {
+		WL_PS(("wl%d.%d: %s flushing %d packets for "MACF" AID %d tid %d\n",
+			wlc->pub->unit,	WLC_BSSCFG_IDX(scb->bsscfg), __FUNCTION__,
+			n_pkts_flushed,	ETHER_TO_MACF(scb->ea), SCB_AID(scb), tid));
+
+		if (!SCB_ISMULTI(scb)) {
+			ASSERT(wlc_psinfo->ps_deferred >= n_pkts_flushed);
+			wlc_psinfo->ps_deferred -= n_pkts_flushed;
 		}
 	}
 
-	ASSERT((flowid != FLUSH_ALL_PKTS) || pktq_empty(&scb_psinfo->psq));
-
 	/* If there is a valid aid (the bcmc scb wont have one) then ensure
-	 * the PVB is cleared.
+	 * the PVB is updated.
 	 */
 	if (scb->aid && scb_psinfo->in_pvb)
 		wlc_apps_pvb_update(wlc, scb);
-
-	while ((pkt = pktq_deq(&tmp_q, NULL))) {
-		/* reclaim callbacks and free */
-		PKTFREE(wlc->osh, pkt, TRUE);
-	}
-}
-
-void
-wlc_apps_ps_flush_by_prio(wlc_info_t *wlc, struct scb *scb, int prec)
-{
-	struct apps_scb_psinfo *scb_psinfo;
-	struct pktq *pktq;		/**< multi-priority packet queue */
-	void *pkt;
-#if defined(BCMDBG) || defined(WLMSG_PS)
-	char eabuf[ETHER_ADDR_STR_LEN];
-#endif // endif
-	wlc_bsscfg_t *bsscfg;
-
-	ASSERT(scb);
-	bsscfg = scb->bsscfg;
-	scb_psinfo = SCB_PSINFO(wlc->psinfo, scb);
-	pktq = &scb_psinfo->psq;
-
-	while ((pkt = pktq_pdeq_tail(pktq, prec)) != NULL) {
-		if (!SCB_ISMULTI(scb)) {
-			wlc->psinfo->ps_deferred--;
-		}
-		WLPKTTAG(pkt)->flags &= ~WLF_PSMARK; /* clear the timestamp */
-		/* reclaim callbacks and free */
-		PKTFREE(wlc->osh, pkt, TRUE);
-
-		/* callback may have freed scb */
-		if (!ETHER_ISMULTI(&scb->ea) && (wlc_scbfind(wlc, bsscfg, &scb->ea) == NULL)) {
-			WL_PS(("wl%d.%d: %s exiting, scb for %s was freed",
-				wlc->pub->unit, WLC_BSSCFG_IDX(bsscfg), __FUNCTION__,
-				bcm_ether_ntoa(&scb->ea, eabuf)));
-			return;
-		}
-	}
 }
 
 #ifdef PROP_TXSTATUS
@@ -1880,7 +1875,9 @@ wlc_apps_ps_flush_mchan(wlc_info_t *wlc, struct scb *scb)
 #endif // endif
 		{
 			pktq_penq(&scb_psinfo->psq, prec, pkt);
-			wlc_psinfo->ps_deferred++;
+			if (!SCB_ISMULTI(scb)) {
+				wlc_psinfo->ps_deferred++;
+			}
 		}
 	}
 
@@ -1901,11 +1898,11 @@ wlc_apps_psq(wlc_info_t *wlc, void *pkt, int prec)
 	apps_wlc_psinfo_t *wlc_psinfo;
 	struct apps_scb_psinfo *scb_psinfo;
 	struct scb *scb;
-	int psq_len;
-	int psq_len_diff;
+	uint psq_len;
+	uint psq_len_diff;
 
 	scb = WLPKTTAGSCBGET(pkt);
-	ASSERT(SCB_PS(scb) || wlc_twt_scb_active(wlc->twti, scb));
+	ASSERT(SCB_PS(scb) || SCB_TWTPS(scb) || wlc_twt_scb_active(wlc->twti, scb));
 	ASSERT(wlc);
 
 	/* Do not enq bcmc pkts on a psq, also
@@ -1921,6 +1918,12 @@ wlc_apps_psq(wlc_info_t *wlc, void *pkt, int prec)
 	wlc_psinfo = wlc->psinfo;
 	scb_psinfo = SCB_PSINFO(wlc_psinfo, scb);
 	ASSERT(scb_psinfo);
+
+	if (scb_psinfo->flags & SCB_PS_FLUSH_IN_PROGR) {
+		WL_PS(("wl%d.%d: %s flush in progress\n", wlc->pub->unit,
+			WLC_BSSCFG_IDX(SCB_BSSCFG(scb)), __FUNCTION__));
+		return FALSE;
+	}
 
 #if defined(PROP_TXSTATUS)
 	if (PROP_TXSTATUS_ENAB(wlc->pub)) {
@@ -1955,7 +1958,7 @@ wlc_apps_psq(wlc_info_t *wlc, void *pkt, int prec)
 		FALSE)
 #endif /* PROP_TXSTATUS */
 	{
-		if (psq_len > (int)wlc_psinfo->psq_pkts_lo &&
+		if (psq_len > wlc_psinfo->psq_pkts_lo &&
 		    wlc_psinfo->ps_deferred > wlc_psinfo->psq_pkts_hi) {
 			WL_PS(("wl%d.%d: %s can't buffer packet for "MACF" AID %d, %d queued for "
 				"scb, %d for WL\n", wlc->pub->unit, WLC_BSSCFG_IDX(SCB_BSSCFG(scb)),
@@ -2026,6 +2029,7 @@ wlc_apps_psq(wlc_info_t *wlc, void *pkt, int prec)
 #else
 	psq_len_diff = pktq_n_pkts_tot(&scb_psinfo->psq) - psq_len;
 #endif /* ! WL_USE_SUPR_PSQ */
+	ASSERT(psq_len_diff < 2);
 	if (psq_len_diff == 1)
 		wlc_psinfo->ps_deferred++;
 	else if (psq_len_diff == 0)
@@ -2094,6 +2098,10 @@ wlc_apps_ps_send(wlc_info_t *wlc, struct scb *scb, uint prec_bmp, uint32 extra_f
 		return FALSE;		/* no traffic to send */
 	}
 
+	/* Decrement the global ps pkt cnt */
+	if (!SCB_ISMULTI(scb))
+		wlc_psinfo->ps_deferred--;
+
 	WL_PS(("wl%d.%d: %s AID %d, prec %x dequed pkt %p\n", wlc->pub->unit,
 		WLC_BSSCFG_IDX(scb->bsscfg), __FUNCTION__, SCB_AID(scb), prec_bmp, pkt));
 	/*
@@ -2157,6 +2165,10 @@ wlc_apps_ps_send(wlc_info_t *wlc, struct scb *scb, uint prec_bmp, uint32 extra_f
 				/* Dequeue the peeked packet */
 				pkt = pktq_pdeq(psq, prec);
 				ASSERT(pkt == next_pkt);
+
+				/* Decrement the global ps pkt cnt */
+				if (!SCB_ISMULTI(scb))
+					wlc_psinfo->ps_deferred--;
 			}
 		}
 	}
@@ -2193,14 +2205,7 @@ wlc_apps_ps_send(wlc_info_t *wlc, struct scb *scb, uint prec_bmp, uint32 extra_f
 static bool
 wlc_apps_ps_enq_resp(wlc_info_t *wlc, struct scb *scb, void *pkt, int prec)
 {
-	apps_wlc_psinfo_t *wlc_psinfo;
 	wlc_txq_info_t *qi = SCB_WLCIFP(scb)->qi;
-
-	wlc_psinfo = wlc->psinfo;
-
-	/* Decrement the global ps pkt cnt */
-	if (!SCB_ISMULTI(scb))
-		wlc_psinfo->ps_deferred--;
 
 	/* register WLF2_PCB2_PSP_RSP for pkt */
 	WLF2_PCB2_REG(pkt, WLF2_PCB2_PSP_RSP);
@@ -2358,7 +2363,11 @@ wlc_apps_ps_timedout(wlc_info_t *wlc, struct scb *scb)
 		WLC_BSSCFG_IDX(bsscfg), __FUNCTION__, info.count, ETHERP_TO_MACF(&ea),
 		SCB_AID(scb), pktq_n_pkts_tot(psq)));
 
-	wlc_psinfo->ps_deferred -= info.count;
+	/* Decrement the global ps pkt cnt */
+	if (!SCB_ISMULTI(scb)) {
+		ASSERT(wlc_psinfo->ps_deferred >= info.count);
+		wlc_psinfo->ps_deferred -= info.count;
+	}
 	wlc_psinfo->ps_aged += info.count;
 
 	/* callback may have freed scb, exit early if so */
@@ -2635,7 +2644,7 @@ wlc_apps_move_cpktq_to_psq(wlc_info_t *wlc, struct cpktq *cpktq, struct scb* scb
 			if (scb != WLPKTTAGSCBGET(pkt)) {
 				if (!head_pkt)
 					head_pkt = pkt;
-				cpktq_penq(cpktq, prec, pkt);
+				cpktq_penq(wlc, cpktq, prec, pkt);
 				continue;
 			}
 			/* Enqueueing at the same prec may create a remote
@@ -2926,33 +2935,29 @@ wlc_apps_pvb_update(wlc_info_t *wlc, struct scb *scb)
 		/* clear the bit in the pvb */
 		clrbit(bss_info->pvb, aid);
 
-		if (bss_info->ps_nodes == 0) {
-			bss_info->aid_lo = bss_info->aid_hi = 0;
-		} else {
-			/* reset the aid range */
-			if (aid == bss_info->aid_hi) {
-				/* find the next lowest aid value with PS pkts pending */
-				for (aid = aid - 1; aid; aid--) {
-					if (isset(bss_info->pvb, aid)) {
-						bss_info->aid_hi = aid;
-						break;
-					}
+		/* reset the aid range */
+		if (aid == bss_info->aid_hi) {
+			/* find the next lowest aid value with PS pkts pending */
+			for (aid = aid - 1; aid; aid--) {
+				if (isset(bss_info->pvb, aid)) {
+					bss_info->aid_hi = aid;
+					break;
 				}
-				/* no STAs with pending traffic ? */
-				if (aid == 0) {
-					bss_info->aid_hi = bss_info->aid_lo = 0;
-				}
-			} else if (aid == bss_info->aid_lo) {
-				uint16 max_aid = wlc_ap_aid_max(wlc->ap);
-				/* find the next highest aid value with PS pkts pending */
-				for (aid = aid + 1; aid < max_aid; aid++) {
-					if (isset(bss_info->pvb, aid)) {
-						bss_info->aid_lo = aid;
-						break;
-					}
-				}
-				ASSERT(aid != max_aid);
 			}
+			/* no STAs with pending traffic ? */
+			if (aid == 0) {
+				bss_info->aid_hi = bss_info->aid_lo = 0;
+			}
+		} else if (aid == bss_info->aid_lo) {
+			uint16 max_aid = wlc_ap_aid_max(wlc->ap);
+			/* find the next highest aid value with PS pkts pending */
+			for (aid = aid + 1; aid < max_aid; aid++) {
+				if (isset(bss_info->pvb, aid)) {
+					bss_info->aid_lo = aid;
+					break;
+				}
+			}
+			ASSERT(aid != max_aid);
 		}
 
 		scb_psinfo->in_pvb = FALSE;
@@ -3669,6 +3674,13 @@ wlc_apps_scb_supr_enq(wlc_info_t *wlc, struct scb *scb, void *pkt)
 	WL_PS(("wl%d.%d: %s SUPPRESSED packet %p "MACF" PS:%d \n",
 	       wlc->pub->unit, WLC_BSSCFG_IDX(SCB_BSSCFG(scb)), __FUNCTION__,
 	       pkt, ETHER_TO_MACF(scb->ea), SCB_PS(scb)));
+#ifdef WLTAF
+	/* Attempting re-enque into psq due to suppress indication.
+	 * Adjust TAF scores.
+	 */
+	wlc_taf_txpkt_status(wlc->taf_handle, scb, PKTPRIO(pkt), pkt,
+		TAF_TXPKT_STATUS_SUPPRESSED);
+#endif // endif
 
 	/* If enqueue to psq successfully, return FALSE so that PDU is not freed */
 	/* Enqueue at higher precedence as these are suppressed packets */
@@ -3741,7 +3753,7 @@ wlc_apps_suppr_frame_enq(wlc_info_t *wlc, void *pkt, tx_status_t *txs, bool last
 	if (scb_psinfo == NULL)
 		return TRUE;
 
-	if (!scb_psinfo->first_suppr_handled) {
+	if (!(scb_psinfo->flags & SCB_PS_FIRST_SUPPR_HANDLED)) {
 		/* Is this the first suppressed frame, and either is partial
 		 * MSDU or has been retried at least once, driver needs to
 		 * preserve the retry count and sequence number in the PDU so that
@@ -3808,7 +3820,7 @@ wlc_apps_suppr_frame_enq(wlc_info_t *wlc, void *pkt, tx_status_t *txs, bool last
 		 * same seq_num. This is a case when first fragment was retried
 		 */
 		if (last_frag || !(frag || txcnt))
-			scb_psinfo->first_suppr_handled = TRUE;
+			scb_psinfo->flags |= SCB_PS_FIRST_SUPPR_HANDLED;
 	}
 
 	WL_PS(("wl%d.%d: %s SUPPRESSED packet %p - "MACF" PS:%d\n",
@@ -3835,6 +3847,13 @@ wlc_apps_suppr_frame_enq(wlc_info_t *wlc, void *pkt, tx_status_t *txs, bool last
 		{
 			/* If enqueue to psq successfully, return FALSE so that PDU is not freed */
 			/* Enqueue at higher precedence as these are suppressed packets */
+#ifdef WLTAF
+			/* Attempting re-enque into psq due to suppress indication.
+			 * Adjust TAF scores.
+			 */
+			wlc_taf_txpkt_status(wlc->taf_handle, scb, PKTPRIO(pkt), pkt,
+				TAF_TXPKT_STATUS_SUPPRESSED);
+#endif // endif
 			if (wlc_apps_psq(wlc, pkt, WLC_PRIO_TO_HI_PREC(PKTPRIO(pkt))))
 				return FALSE;
 			WL_PS(("wl%d.%d: %s "MACF" ps suppr pkt discarded\n", wlc->pub->unit,
@@ -3877,19 +3896,6 @@ wlc_apps_suppr_frame_enq(wlc_info_t *wlc, void *pkt, tx_status_t *txs, bool last
 
 	/* error exit, return TRUE to have caller free packet */
 	return TRUE;
-}
-
-uint32
-wlc_apps_scb_fifocnt(wlc_info_t *wlc, scb_t *scb)
-{
-	uint32 fifocnt, i;
-
-	fifocnt = 0;
-	for (i = 0; i < NUMPRIO; i++) {
-		fifocnt += SCB_PKTS_INFLT_FIFOCNT_VAL(scb, i);
-	}
-
-	return fifocnt;
 }
 
 #ifdef WLTWT
@@ -3951,11 +3957,11 @@ wlc_apps_twt_sp_enter_ps(wlc_info_t *wlc, scb_t *scb)
 		WLC_BSSCFG_IDX(SCB_BSSCFG(scb)), __FUNCTION__, SCB_AID(scb)));
 
 	scb->PS_TWT = TRUE;
-	/* NOTE: set first_suppr_handled to TRUE then this function does not have to
+	/* NOTE: set flags to SCB_PS_FIRST_SUPPR_HANDLED then this function does not have to
 	 * use txstatus towards wlc_apps_suppr_frame_enq. So if suppport for
 	 * first_suppr_handled is needed then txstatus has to be passed on this fuction !!
 	 */
-	scb_psinfo->first_suppr_handled = TRUE;
+	scb_psinfo->flags |= SCB_PS_FIRST_SUPPR_HANDLED;
 	/* Add the APPS to the txpath for this SCB */
 	wlc_txmod_config(wlc->txmodi, scb, TXMOD_APPS);
 
@@ -4000,8 +4006,15 @@ wlc_apps_suppr_twt_frame_enq(wlc_info_t *wlc, void *pkt)
 	}
 
 	if (!wlc_apps_twt_sp_enter_ps(wlc, scb)) {
-		wlc_apps_ps_enq_resp(wlc, scb, pkt, WLC_PRIO_TO_HI_PREC(PKTPRIO(pkt)));
-		return FALSE;
+		/* On exit TWT the packet arrives here. The SCB should be in PS, use normal
+		 * wlc_apps_suppr_frame_enq to handle the packet.
+		 */
+		if (SCB_PS(scb)) {
+			ret_value = wlc_apps_suppr_frame_enq(wlc, pkt, NULL, TRUE);
+		} else {
+			ret_value = TRUE;
+		}
+		return ret_value;
 	}
 
 	/* Simulate PS to be able to call suppr_frame_enq */
@@ -4026,19 +4039,19 @@ wlc_apps_twt_sp_release_ps(wlc_info_t *wlc, scb_t *scb)
 		return;
 	}
 
-	if (wlc_apps_scb_fifocnt(wlc, scb)) {
+	if (wlc_scb_tot_inflt_fifocnt(wlc, scb)) {
 		/* We cant release the PS yet, we are still waiting for more suppress */
 		WL_PS(("wl%d.%d: %s PS_TWT active AID %d, delaying release, fifocnt %d\n",
 			wlc->pub->unit, WLC_BSSCFG_IDX(SCB_BSSCFG(scb)), __FUNCTION__,
-			SCB_AID(scb), wlc_apps_scb_fifocnt(wlc, scb)));
-		scb_psinfo->delayed_pstwt_release = TRUE;
+			SCB_AID(scb), wlc_scb_tot_inflt_fifocnt(wlc, scb)));
+		scb_psinfo->twt_wait4drain_exit = TRUE;
 		return;
 	}
 
 	WL_PS(("wl%d.%d: %s PS_TWT active, releasing AID %d\n", wlc->pub->unit,
 		WLC_BSSCFG_IDX(SCB_BSSCFG(scb)), __FUNCTION__, SCB_AID(scb)));
 	scb->PS_TWT = FALSE;
-	scb_psinfo->delayed_pstwt_release = FALSE;
+	scb_psinfo->twt_wait4drain_exit = FALSE;
 
 	/* clear the PVB entry since we are leaving PM mode */
 	if (scb_psinfo->in_pvb) {
@@ -4065,7 +4078,7 @@ wlc_apps_twt_sp_release_ps(wlc_info_t *wlc, scb_t *scb)
 
 /*
  * This function is to be called when fifo (LO/HW) is empty and twt was to be entered. The SCB will
- * get PS state clearead and switched to TWT_PS mode. PS mode shuuld be active, as it is expected
+ * get PS state clearead and switched to TWT_PS mode. PS mode should be active, as it is expected
  * that data for this SCB is blocked to drain (LO/HW) queue allowing it to switch it over to TWT
  */
 static void
@@ -4122,6 +4135,11 @@ wlc_apps_twt_enter(wlc_info_t *wlc, scb_t *scb)
 	ASSERT(!scb_psinfo->twt_active);
 	scb_psinfo->twt_active = TRUE;
 
+	/* Clear twt_wait4drain_exit as we may have set this and it will cause (delayed)
+	 * exiting TWT even though we already got (re-)entered here.
+	 */
+	scb_psinfo->twt_wait4drain_exit = FALSE;
+
 	/* Force enter of PS when it is not active */
 	if (SCB_PS(scb)) {
 		WL_TWT(("%s SCB already in PS\n", __FUNCTION__));
@@ -4131,10 +4149,9 @@ wlc_apps_twt_enter(wlc_info_t *wlc, scb_t *scb)
 		/* Remove the wait for PMQ block */
 		scb_psinfo->ps_trans_status &= ~SCB_PS_TRANS_OFF_BLOCKED;
 	}
-	if (wlc_apps_scb_fifocnt(wlc, scb)) {
-		ASSERT(wlc->block_datafifo & DATA_BLOCK_PS);
+	if ((wlc_scb_tot_inflt_fifocnt(wlc, scb)) && (wlc->block_datafifo & DATA_BLOCK_PS)) {
 		/* Set flag to identify the wait for drainage complete */
-		scb_psinfo->twt_wait4drain_complete = TRUE;
+		scb_psinfo->twt_wait4drain_enter = TRUE;
 	} else {
 		/* APPS is ready, queus ar empty link can be put in TWT mode */
 		wlc_apps_twt_enter_ready(wlc, scb);
@@ -4162,26 +4179,36 @@ wlc_apps_twt_exit(wlc_info_t *wlc, scb_t *scb, bool enter_pm)
 	scb_t *scb_tst;
 	uint total;
 
-	WL_TWT(("%s Enter AID %d new PM %d\n", __FUNCTION__, SCB_AID(scb), enter_pm));
-
 	scb_psinfo = SCB_PSINFO(wlc->psinfo, scb);
 	if (scb_psinfo == NULL) {
 		return;
 	}
+
+	WL_TWT(("%s Enter AID %d new PM %d (%d/%d/%d/%d/%d)\n", __FUNCTION__, SCB_AID(scb),
+		enter_pm, scb_psinfo->twt_active, SCB_PS(scb), SCB_TWTPS(scb),
+		scb_psinfo->twt_wait4drain_enter, wlc_scb_tot_inflt_fifocnt(wlc, scb)));
 
 	if (!scb_psinfo->twt_active) {
 		return;
 	}
 	scb_psinfo->twt_active = FALSE;
 
-	if (enter_pm) {
+	/* Clear twt_wait4drain_enter as we may have set this and it will cause (delayed)
+	 * entering TWT even though we already got exited here.
+	 */
+	scb_psinfo->twt_wait4drain_enter = FALSE;
+
+	/* Force enter of PS when it is not active, even if PM mode indicates PM off then PM
+	 * has to be initiated first if there are packets in flight. This is needed so the TWT
+	 * flags get removed from the packets. Also if current mode is PS_TWT then switch to
+	 * regular PM mode.
+	 */
+	if (SCB_TWTPS(scb) || (enter_pm) || (wlc_scb_tot_inflt_fifocnt(wlc, scb))) {
 		WL_TWT(("%s Forcing SCB in PS\n", __FUNCTION__));
 		wlc_apps_process_ps_switch(wlc, scb, PS_SWITCH_PMQ_SUPPR_PKT);
-		/* Remove the wait for PMQ block */
+		/* Remove the wait for PMQ block, as the packet is 'simulated' */
 		scb_psinfo->ps_trans_status &= ~SCB_PS_TRANS_OFF_BLOCKED;
-
-	} else {
-		wlc_apps_twt_sp_release_ps(wlc, scb);
+		scb->PS_TWT = FALSE;
 	}
 
 	/* Check if we should take BCMC for BSSCFG out of PS. If this is last SCB to exit TWT for
@@ -4195,6 +4222,11 @@ wlc_apps_twt_exit(wlc_info_t *wlc, scb_t *scb, bool enter_pm)
 	}
 	if (total == 0) {
 		wlc_apps_bcmc_force_ps_by_twt(wlc, SCB_BSSCFG(scb), FALSE);
+	}
+
+	/* If PM off then start releasing packets. Use PM routines to leave the PM mode. */
+	if (!enter_pm) {
+		wlc_apps_process_ps_switch(wlc, scb, PS_SWITCH_OFF);
 	}
 }
 
@@ -4227,8 +4259,8 @@ wlc_apps_trigger_on_complete(wlc_info_t *wlc, scb_t *scb)
 	}
 
 	/* When this was the last packet outstanding in LO/HW queue then..... */
-	if (wlc_apps_scb_fifocnt(wlc, scb) == 0) {
-		if (scb_psinfo->delayed_pstwt_release) {
+	if (wlc_scb_tot_inflt_fifocnt(wlc, scb) == 0) {
+		if (scb_psinfo->twt_wait4drain_exit) {
 			wlc_apps_twt_sp_release_ps(wlc, scb);
 		} else {
 			wlc_twt_ps_suppress_done(wlc->twti, scb);
@@ -4840,10 +4872,14 @@ wlc_apps_bcmc_ps_enqueue(wlc_info_t *wlc, struct scb *bcmc_scb, void *pkt)
 		/* check for auto enabled logging */
 		if (prec_cnt == NULL && (q->pktqlog->_prec_log & PKTQ_LOG_AUTO)) {
 			prec_cnt = wlc_txq_prec_log_enable(wlc, q, (uint32)(MAXPRIO), FALSE);
+
+			if (prec_cnt) {
+				wlc_read_tsf(wlc, &prec_cnt->_logtimelo, &prec_cnt->_logtimehi);
+			}
 		}
 	}
 	WLCNTCONDINCR(prec_cnt, prec_cnt->requested);
-#endif // endif
+#endif /* PKTQ_LOG */
 
 	/* Check that packet queue length is not exceeded */
 	if (pktq_full(&scb_psinfo->psq) || pktqprec_full(&scb_psinfo->psq, MAXPRIO)) {

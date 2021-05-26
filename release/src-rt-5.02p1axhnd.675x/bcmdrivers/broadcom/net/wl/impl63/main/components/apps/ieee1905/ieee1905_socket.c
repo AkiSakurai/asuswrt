@@ -296,6 +296,7 @@ int i5SocketClose(i5_socket_type *psock)
 {
   i5_dm_device_type *item = (i5_dm_device_type *)i5_dm_network_topology.device_list.ll.next;
   char real_ifname[I5_MAX_IFNAME];
+  i5_socket_type *pif;
 
   i5_config.socketRemovedFlag = 1;
   i5Trace("%d -> %p(), type %d\n", psock->sd, psock->process, psock->type);
@@ -314,6 +315,19 @@ int i5SocketClose(i5_socket_type *psock)
     }
   }
 
+  /* Check if this socket is pointed to LL socket. If pointed, set it to NULL or else there will
+   * be double free because, these two socket's closing is done while closing the LL socket.
+   */
+  pif = (i5_socket_type *)i5_config.i5_socket_list.ll.next;
+  while (pif != NULL) {
+    if ((pif->type == i5_socket_type_ll) && (pif->u.sll.pMetricSock == psock)) {
+      pif->u.sll.pMetricSock = NULL;
+    } else if ((pif->type == i5_socket_type_ll) && (pif->u.sll.pLldpProtoSock == psock)) {
+      pif->u.sll.pLldpProtoSock = NULL;
+    }
+    pif = pif->ll.next;
+  }
+
   if (psock->ptmr != NULL) {
     i5TimerFree(psock->ptmr);
     psock->ptmr = NULL;
@@ -324,8 +338,14 @@ int i5SocketClose(i5_socket_type *psock)
       psock->u.sll.pnltmr = NULL;
     }
 
-    psock->u.sll.pMetricSock = NULL;
-    psock->u.sll.pLldpProtoSock = NULL;
+    if (psock->u.sll.pMetricSock) {
+      i5SocketClose(psock->u.sll.pMetricSock);
+      psock->u.sll.pMetricSock = NULL;
+    }
+    if (psock->u.sll.pLldpProtoSock) {
+      i5SocketClose(psock->u.sll.pLldpProtoSock);
+      psock->u.sll.pLldpProtoSock = NULL;
+    }
 
     if ( psock->u.sll.pInterfaceCtx != NULL ) {
       i5EthStatFreeCtx(psock->u.sll.pInterfaceCtx);

@@ -22,7 +22,7 @@ suspend)
 	done
 	;;
 resume)
-	grep -e${mod// /.ko -e}KERNELVER= /rom/etc/init.d/bcm-base-drivers.sh | while read i f; do
+	grep -e${mod// /.ko -e}KERNELVER= /etc/init.d/bcm-base-drivers.sh | while read i f; do
 		m=${f##*/} && m=${m%.ko} && m=${m//-/_};
 		if grep -e"^\<$m\>" /proc/modules; then
 			echo $m already loaded;

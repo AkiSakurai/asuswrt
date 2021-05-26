@@ -18,5 +18,13 @@
  *
  * Generated file - Do not modify manually'
  */
+#include <rtecdc_43602a3.h>
+#define DLIMAGE_43602a3
 #include <rtecdc_43684b0.h>
 #define DLIMAGE_43684b0
+#include <rtecdc_4363c0.h>
+#define DLIMAGE_4363c0
+#include <rtecdc_4366c0.h>
+#define DLIMAGE_4366c0
+#include <rtecdc_43684c0.h>
+#define DLIMAGE_43684c0

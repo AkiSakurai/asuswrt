@@ -1,7 +1,7 @@
 /*
  * Broadcom EAP dispatcher (EAPD) module main loop
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: eapd.c 771327 2019-01-22 18:46:08Z $
+ * $Id: eapd.c 785069 2020-03-12 06:34:37Z $
  */
 
 #include <stdio.h>
@@ -110,7 +110,8 @@ static bool eapd_add_interface(eapd_wksp_t *nwksp, char *ifname, eapd_app_mode_t
 static bool _eapd_add_interface(eapd_wksp_t *nwksp, char *ifname, eapd_app_mode_t mode,
 	eapd_cb_t **cbp, bool bridge_interface);
 static bool eapd_valid_eapol_start(eapd_wksp_t *nwksp, eapd_brcm_socket_t *from, char *ifname);
-static eapd_cb_t * eapd_add_app_cb(eapd_app_t *app, void (*app_set_eventmask)(eapd_app_t *app), char *lanifname);
+static eapd_cb_t * eapd_add_app_cb(eapd_app_t *app, void (*app_set_eventmask)(eapd_app_t *app),
+		char *lanifname);
 static bool eapd_intf_bridged(char *wlifname, char *lanifname);
 
 #ifdef BCM_NETXL
@@ -183,6 +184,9 @@ eapd_dump(eapd_wksp_t *nwksp)
 	eapd_preauth_socket_t	*preauthSocket;
 	eapd_wps_t		*wps;
 	eapd_nas_t		*nas;
+#ifdef BCMWAPI_WAI
+	eapd_wai_t		*wai;
+#endif /* BCMWAPI_WAI */
 #ifdef BCM_DCS
 	eapd_dcs_t		*dcs;
 #endif // endif
@@ -306,6 +310,54 @@ eapd_dump(eapd_wksp_t *nwksp)
 			EAPD_PRINT("         ----\n");
 	}
 	EAPD_PRINT("\n");
+
+#ifdef BCMWAPI_WAI
+	EAPD_PRINT("WAI:\n");
+	wai = &nwksp->wai;
+	cb = wai->cb;
+	if (cb) {
+		EAPD_PRINT("	 wai appSocket %d for %s", wai->appSocket, cb->ifname);
+		/* print each cb ifname */
+		cb = cb->next;
+		while (cb) {
+			EAPD_PRINT(" %s", cb->ifname);
+			cb = cb->next;
+		}
+		EAPD_PRINT("\n");
+
+		EAPD_PRINT("	   interested wireless interfaces [%s]\n", wai->ifnames);
+
+		/* bitvec for brcmevent */
+		flag = 1;
+		for (i = 0; i < EAPD_WL_EVENTING_MASK_LEN; i++) {
+		for (j = 0; j < 8; j++) {
+			if (isset(&wai->bitvec[i], j)) {
+				if (flag) {
+					EAPD_PRINT("	   interested event message id [%d",
+						(i*8+j));
+					flag = 0;
+				}
+				else {
+					EAPD_PRINT(" %d", (i*8+j));
+				}
+			}
+		}
+		}
+		EAPD_PRINT("]\n");
+	}
+	cb = wai->cb;
+	while (cb) {
+		if (cb->brcmSocket) {
+			brcmSocket = cb->brcmSocket;
+			EAPD_PRINT("	     [rfp=0x%x] drvSocket %d on %s for brcm event packet\n",
+				(uint) brcmSocket, brcmSocket->drvSocket, brcmSocket->ifname);
+		}
+		cb = cb->next;
+		if (cb)
+			EAPD_PRINT("	     ----\n");
+	}
+	EAPD_PRINT("\n");
+#endif /* BCMWAPI_WAI */
 
 #ifdef BCM_DCS
 	EAPD_PRINT("DCS:\n");
@@ -578,6 +630,9 @@ eapd_wksp_display_usage(void)
 	EAPD_PRINT("\nUsage: eapd [options]\n\n");
 	EAPD_PRINT("\n-wps ifname(s)\n");
 	EAPD_PRINT("\n-nas ifname(s)\n");
+#ifdef BCMWAPI_WAI
+	EAPD_PRINT("\n-wai ifname(s)\n");
+#endif /* BCMWAPI_WAI */
 #ifdef BCM_DCS
 	EAPD_PRINT("\n-dcs ifname(s)\n");
 #endif /* BCM_DCS */
@@ -651,6 +706,10 @@ eapd_wksp_auto_config(eapd_wksp_t *nwksp)
 #endif // endif
 				needStart |= eapd_add_interface(nwksp, name, EAPD_APP_NAS, &cb);
 			}
+#ifdef BCMWAPI_WAI
+			if (wai_app_enabled(name))
+				needStart |= eapd_add_interface(nwksp, name, EAPD_APP_WAI, &cb);
+#endif /* BCMWAPI_WAI */
 
 #ifdef BCM_DCS
 			if (dcs_app_enabled(name))
@@ -717,6 +776,12 @@ eapd_wksp_auto_config(eapd_wksp_t *nwksp)
 			if (cevent_app_enabled(name))
 				needStart |= eapd_add_interface(nwksp, name, EAPD_APP_CEVENT, &cb);
 #endif /* BCM_CEVENT */
+
+#ifdef BCM_RGD
+			if (rgd_app_enabled(name))
+				needStart |= eapd_add_interface(nwksp, name, EAPD_APP_RGD, &cb);
+#endif /* BCM_RGD */
+
 #ifdef BCM_WBD
 			if (wbd_app_enabled(name)) {
 				needStart |= eapd_add_interface(nwksp, name, EAPD_APP_WBD, &cb);
@@ -734,6 +799,10 @@ eapd_wksp_auto_config(eapd_wksp_t *nwksp)
 			needStart |= eapd_add_interface(nwksp, name, EAPD_APP_WPS, &cb);
 		if (nas_app_enabled(name))
 			needStart |= eapd_add_interface(nwksp, name, EAPD_APP_NAS, &cb);
+#ifdef BCMWAPI_WAI
+		if (wai_app_enabled(name))
+			needStart |= eapd_add_interface(nwksp, name, EAPD_APP_WAI, &cb);
+#endif /* BCMWAPI_WAI */
 #ifdef BCM_DCS
 		if (dcs_app_enabled(name))
 			needStart |= eapd_add_interface(nwksp, name, EAPD_APP_DCS, &cb);
@@ -792,8 +861,12 @@ eapd_wksp_auto_config(eapd_wksp_t *nwksp)
 		if (wlceventd_app_enabled(name))
 			needStart |= eapd_add_interface(nwksp, name, EAPD_APP_WLCEVENTD, &cb);
 #endif /* BCM_WLCEVENTD */
-	}
 
+#ifdef BCM_RGD
+		if (rgd_app_enabled(name))
+			needStart |= eapd_add_interface(nwksp, name, EAPD_APP_RGD, &cb);
+#endif /* BCM_RGD */
+	}
 	return ((needStart == TRUE) ? 0 : -1);
 }
 #endif	/* EAPD_WKSP_AUTO_CONFIG */
@@ -863,6 +936,12 @@ _eapd_add_interface(eapd_wksp_t *nwksp, char *ifname, eapd_app_mode_t mode, eapd
 			app = &nwksp->wps;
 			app_set_eventmask = (void*) wps_app_set_eventmask;
 			break;
+#ifdef BCMWAPI_WAI
+		case EAPD_APP_WAI:
+			app = &nwksp->wai;
+			app_set_eventmask = (void*) wai_app_set_eventmask;
+			break;
+#endif /* BCMWAPI_WAI */
 #ifdef BCM_CUSTOM_EVENT
 		case EAPD_APP_EVT:
 			EAPD_INFO("Set evt eventmask...\n");
@@ -935,6 +1014,14 @@ _eapd_add_interface(eapd_wksp_t *nwksp, char *ifname, eapd_app_mode_t mode, eapd
 			app_set_eventmask = (void*) cevent_app_set_eventmask;
 			break;
 #endif /* BCM_CEVENT */
+
+#ifdef BCM_RGD
+		case EAPD_APP_RGD:
+			app = &nwksp->rgd;
+			app_set_eventmask = (void*) rgd_app_set_eventmask;
+			break;
+#endif /* BCM_RGD */
+
 #ifdef BCM_WBD
 		case EAPD_APP_WBD:
 			app = &nwksp->wbd;
@@ -1122,6 +1209,11 @@ eapd_wksp_parse_cmd(int argc, char *argv[], eapd_wksp_t *nwksp)
 		else if (!strncmp(argv[i], "-nas", 4)) {
 			current_mode = EAPD_APP_NAS;
 		}
+#ifdef BCMWAPI_WAI
+		else if (!strncmp(argv[i], "-wai", 4)) {
+			current_mode = EAPD_APP_WAI;
+		}
+#endif /* BCMWAPI_WAI */
 #ifdef BCM_DCS
 		else if (!strncmp(argv[i], "-dcs", 4)) {
 			current_mode = EAPD_APP_DCS;
@@ -1177,6 +1269,11 @@ eapd_wksp_parse_cmd(int argc, char *argv[], eapd_wksp_t *nwksp)
 			current_mode = EAPD_APP_CEVENT;
 		}
 #endif /* BCM_CEVENT */
+#ifdef BCM_RGD
+		else if (!strncmp(argv[i], "-rgd", 4)) {
+			current_mode = EAPD_APP_RGD;
+		}
+#endif /* BCM_RGD */
 #ifdef BCM_WBD
 		else if (!strncmp(argv[i], "-wbd", 4)) {
 			current_mode = EAPD_APP_WBD;
@@ -1332,6 +1429,9 @@ eapd_wksp_alloc_workspace(void)
 	nwksp->fdmax = -1;
 	nwksp->wps.appSocket = -1;
 	nwksp->nas.appSocket = -1;
+#ifdef BCMWAPI_WAI
+	nwksp->wai.appSocket = -1;
+#endif /* BCMWAPI_WAI */
 #ifdef BCM_DCS
 	nwksp->dcs.appSocket = -1;
 #endif /* BCM_DCS */
@@ -1362,6 +1462,9 @@ eapd_wksp_alloc_workspace(void)
 #ifdef BCM_CEVENT
 	nwksp->cevent.appSocket = -1;
 #endif /* BCM_CEVENT */
+#ifdef BCM_RGD
+	nwksp->rgd.appSocket = -1;
+#endif /* BCM_RGD */
 #ifdef BCM_WBD
 	nwksp->wbd.appSocket = -1;
 #endif /* BCM_WBD */
@@ -1424,6 +1527,14 @@ eapd_wksp_init(eapd_wksp_t *nwksp)
 		EAPD_ERROR("nas_app_init fail...\n");
 		return -1;
 	}
+
+#ifdef BCMWAPI_WAI
+	/* initial wai */
+	if (wai_app_init(nwksp)) {
+		EAPD_ERROR("wai_app_init fail...\n");
+		return -1;
+	}
+#endif /* BCMWAPI_WAI */
 
 #ifdef BCM_DCS
 	/* initial dcs */
@@ -1505,6 +1616,14 @@ eapd_wksp_init(eapd_wksp_t *nwksp)
 	}
 #endif /* BCM_CEVENT */
 
+#ifdef BCM_RGD
+	/* initial rgd */
+	if (rgd_app_init(nwksp)) {
+		EAPD_ERROR("rgd_app_init fail...\n");
+		return -1;
+	}
+#endif /* BCM_RGD */
+
 #ifdef BCM_WBD
 	/* init WBD */
 	if (wbd_app_init(nwksp)) {
@@ -1578,6 +1697,9 @@ eapd_wksp_deinit(eapd_wksp_t *nwksp)
 	evt_app_deinit(nwksp);
 #endif // endif
 	nas_app_deinit(nwksp);
+#ifdef BCMWAPI_WAI
+	wai_app_deinit(nwksp);
+#endif /* BCMWAPI_WAI */
 #ifdef BCM_DCS
 	dcs_app_deinit(nwksp);
 #endif /* BCM_DCS */
@@ -1608,6 +1730,9 @@ eapd_wksp_deinit(eapd_wksp_t *nwksp)
 #ifdef BCM_CEVENT
 	cevent_app_deinit(nwksp);
 #endif /* BCM_CEVENT */
+#ifdef BCM_RGD
+	rgd_app_deinit(nwksp);
+#endif /* BCM_RGD */
 #ifdef BCM_WBD
 	wbd_app_deinit(nwksp);
 #endif /* BCM_WBD */
@@ -1711,6 +1836,9 @@ eapd_wksp_dispatch(eapd_wksp_t *nwksp)
 	bcm_event_t *dpkt;
 #endif // endif
 
+#ifdef BCMWAPI_WAI
+	eapd_wai_t *wai;
+#endif /* BCMWAPI_WAI */
 #ifdef BCM_DCS
 	eapd_dcs_t *dcs;
 #endif /* BCM_DCS */
@@ -1741,6 +1869,9 @@ eapd_wksp_dispatch(eapd_wksp_t *nwksp)
 #ifdef BCM_CEVENT
 	eapd_cevent_t *cevent;
 #endif /* BCM_CEVENT */
+#ifdef BCM_RGD
+	eapd_rgd_t *rgd;
+#endif /* BCM_RGD */
 #ifdef BCM_WBD
 	eapd_wbd_t *wbd;
 #endif /* BCM_WBD */
@@ -1804,6 +1935,16 @@ eapd_wksp_dispatch(eapd_wksp_t *nwksp)
 		}
 		cb = cb->next;
 	}
+
+#ifdef BCMWAPI_WAI
+	/* add wai appSocket */
+	wai = &nwksp->wai;
+	if (wai->appSocket >= 0) {
+		FD_SET(wai->appSocket, &nwksp->fdset);
+		if (wai->appSocket > nwksp->fdmax)
+			nwksp->fdmax = wai->appSocket;
+	}
+#endif /* BCMWAPI_WAI */
 
 #ifdef BCM_DCS
 	/* add dcs appSocket */
@@ -1904,6 +2045,16 @@ eapd_wksp_dispatch(eapd_wksp_t *nwksp)
 			nwksp->fdmax = cevent->appSocket;
 	}
 #endif /* BCM_CEVENT */
+
+#ifdef BCM_RGD
+	/* add rgd appSocket */
+	rgd = &nwksp->rgd;
+	if (rgd->appSocket >= 0) {
+		FD_SET(rgd->appSocket, &nwksp->fdset);
+		if (rgd->appSocket > nwksp->fdmax)
+			nwksp->fdmax = rgd->appSocket;
+	}
+#endif /* BCM_RGD */
 
 #ifdef BCM_WBD
 	/* add wbd appSocket */
@@ -2110,6 +2261,29 @@ eapd_wksp_dispatch(eapd_wksp_t *nwksp)
 
 			cb = cb->next;
 		}
+
+#ifdef BCMWAPI_WAI
+		/* check wai appSocket */
+		if (wai->appSocket >= 0 &&
+		     FD_ISSET(wai->appSocket, &fdset)) {
+			bytes = recv(wai->appSocket, pkt, len, 0);
+			if (bytes > ETHER_HDR_LEN) {
+				char *ifname = (char *) pkt;
+				struct ether_header *eth;
+#ifdef BCMDBG
+				HEXDUMP_ASCII("EAPD:: data from WAI app", pkt, bytes);
+#endif // endif
+				/* ether header */
+				eth = (struct ether_header*)(ifname + IFNAMSIZ);
+				bytes -= IFNAMSIZ;
+
+				cb = eapd_wksp_find_cb(nwksp, wai, ifname, eth->ether_shost);
+				/* send message data out. */
+				if (cb)
+					wai_app_recv_handler(nwksp, cb, (uint8 *)eth, &bytes);
+			}
+		}
+#endif /* BCMWAPI_WAI */
 
 #ifdef BCM_DCS
 		/* check dcs appSocket */
@@ -2348,6 +2522,30 @@ eapd_wksp_dispatch(eapd_wksp_t *nwksp)
 		}
 #endif /* BCM_CEVENT */
 
+#ifdef BCM_RGD
+		/* check rgd appSocket */
+		if (rgd->appSocket >= 0 &&
+		     FD_ISSET(rgd->appSocket, &fdset)) {
+			bytes = recv(rgd->appSocket, pkt, len, 0);
+			if (bytes > ETHER_HDR_LEN) {
+				char *ifname = (char *) pkt;
+				struct ether_header *eth;
+#ifdef BCMDBG
+				HEXDUMP_ASCII("EAPD:: data from rgd app", pkt, bytes);
+#endif // endif
+				/* ether header */
+				eth = (struct ether_header*)(ifname + IFNAMSIZ);
+				bytes -= IFNAMSIZ;
+
+				cb = eapd_wksp_find_cb(nwksp, rgd, ifname, eth->ether_shost);
+				/* send message data out. */
+				if (cb) {
+				  rgd_app_recv_handler(nwksp, cb, (uint8 *)eth, &bytes);
+				}
+			}
+		}
+#endif /* BCM_RGD */
+
 #ifdef BCM_WBD
 		/* check wbd appSocket */
 		if (wbd->appSocket >= 0 &&
@@ -2489,6 +2687,11 @@ eapd_brcm_dispatch(eapd_wksp_t *nwksp, eapd_brcm_socket_t *from, uint8 *pData, i
 	/* check wps application */
 	wps_app_handle_event(nwksp, pData, Len, from->ifname);
 
+#ifdef BCMWAPI_WAI
+	/* check wai application */
+	wai_app_handle_event(nwksp, pData, Len, from->ifname);
+#endif /* BCMWAPI_WAI */
+
 #ifdef BCM_CUSTOM_EVENT
 	evt_app_handle_event(nwksp, pData, Len, from->ifname);
 #endif // endif
@@ -2544,6 +2747,11 @@ eapd_brcm_dispatch(eapd_wksp_t *nwksp, eapd_brcm_socket_t *from, uint8 *pData, i
 	 */
 	cevent_app_handle_event(nwksp, pData, Len, from->ifname, TRUE, CEVENT_ANY);
 #endif /* BCM_CEVENT */
+
+#ifdef BCM_RGD
+	/* check RGD application */
+	rgd_app_handle_event(nwksp, pData, Len, from->ifname);
+#endif /* BCM_RGD */
 
 #ifdef BCM_WBD
 	/* check WBD application */
@@ -2976,6 +3184,57 @@ eapd_eapol_dispatch(eapd_wksp_t *nwksp, eapd_brcm_socket_t *from, uint8 *pData, 
 	return;
 }
 
+#ifdef BCMWAPI_WAI
+/* dispatch WAI packet from brcmevent. Just pass to wai application */
+static void
+eapd_wai_dispatch(eapd_wksp_t *nwksp, eapd_brcm_socket_t *from, uint8 *pData, int *pLen)
+{
+	eapd_sta_t *sta;
+	struct ether_header *eth;
+	char *ifname = pData;
+#ifdef BCM_CEVENT
+	eapd_cb_t *cb = NULL;
+#endif /* BCM_CEVENT */
+
+	if (!nwksp || !from || !pData) {
+		EAPD_ERROR("Wrong argument...\n");
+		return;
+	}
+
+#ifdef BCM_CEVENT
+	if ((nwksp->cevent.cb) == NULL) {
+		EAPD_ERROR("cevent cb NULL...\n");
+		return;
+	}
+	cb = nwksp->cevent.cb;
+#endif /* BCM_CEVENT */
+
+#ifdef BCMDBG
+	HEXDUMP_ASCII("EAPD:: wai(+eth header) data from BRCM driver", pData, *pLen);
+#endif // endif
+
+	/* Ether header */
+	eth = (struct ether_header *)(ifname + IFNAMSIZ);
+
+	sta = sta_lookup(nwksp, (struct ether_addr *)eth->ether_shost,
+		(struct ether_addr *)eth->ether_dhost, ifname, EAPD_SEARCH_ENTER);
+	if (!sta) {
+		EAPD_ERROR("no STA struct available\n");
+		return;
+	}
+
+	EAPD_INFO("sta->mode=%d\n", sta->mode);
+
+	/* Send to WAI module. */
+	wai_app_sendup(nwksp, pData, *pLen, from->ifname);
+
+#ifdef BCM_CEVENT
+	cevent_generic_hub(nwksp, from->ifname, cb, (uint8 *)eapol, len, TRUE, CEVENT_WAI);
+#endif /* BCM_CEVENT */
+	return;
+}
+#endif /* BCMWAPI_WAI */
+
 /* Handle brcmevent type packet from any interface */
 void
 eapd_brcm_recv_handler(eapd_wksp_t *nwksp, eapd_brcm_socket_t *from, uint8 *pData, int *pLen)
@@ -2984,6 +3243,10 @@ eapd_brcm_recv_handler(eapd_wksp_t *nwksp, eapd_brcm_socket_t *from, uint8 *pDat
 	bcm_event_t *dpkt = (bcm_event_t *)pData;
 	unsigned int len;
 	char *ifname, ifname_tmp[BCM_MSG_IFNAME_MAX];
+
+#ifdef BCMWAPI_WAI
+	struct ether_header *eth;
+#endif /* BCMWAPI_WAI */
 
 	if (nwksp == NULL || from == NULL || dpkt == NULL) {
 		EAPD_ERROR("Wrong argument...\n");
@@ -3030,6 +3293,39 @@ eapd_brcm_recv_handler(eapd_wksp_t *nwksp, eapd_brcm_socket_t *from, uint8 *pDat
 			len = len + ETHER_HDR_LEN + BCM_MSG_IFNAME_MAX;
 			eapd_eapol_dispatch(nwksp, from, (void *)ifname, (int *)&len);
 			return;
+#ifdef BCMWAPI_WAI
+		case WLC_E_WAI_MSG:
+			EAPD_INFO("%s: recved wl wai packet in brcmevent bytes: %d\n",
+			       dpkt->event.ifname, *pLen);
+
+			len = ntohl(dpkt->event.datalen);
+
+			eth = (struct ether_header*)((char *)(dpkt + 1) - ETHER_HDR_LEN);
+			ifname = (char *)eth - BCM_MSG_IFNAME_MAX;
+
+			/* Save incoming interface name to temp_ifname */
+			bcopy(dpkt->event.ifname, ifname_tmp, BCM_MSG_IFNAME_MAX);
+
+			/* Move the received packet's ethernet header to the append header */
+			memmove((char *)eth, (char *)pData, ETHER_HDR_LEN);
+
+			/* Set the WAI packet type correctly */
+			eth->ether_type = htons(ETHER_TYPE_WAI);
+
+			/*
+			 * The correct shost address was encapsulated to the event struct by the
+			 * driver, copy it to the packet's ethernet header
+			 */
+			bcopy(dpkt->event.addr.octet, eth->ether_shost, ETHER_ADDR_LEN);
+
+			/* Save incoming interface name */
+			bcopy(ifname_tmp, ifname, BCM_MSG_IFNAME_MAX);
+
+			len = len + ETHER_HDR_LEN + BCM_MSG_IFNAME_MAX;
+			/* pass (ifname) + (ether header) + (WAI) */
+			eapd_wai_dispatch(nwksp, from, (void *)ifname, &len);
+			return;
+#endif /* BCMWAPI_WAI */
 
 		default:
 			/* dispatch brcnevent to wps, nas, wapid */
@@ -3271,6 +3567,9 @@ event_init(eapd_wksp_t *nwksp)
 #ifdef BCM_CUSTOM_EVENT
 	eapd_evt_t *evt;
 #endif // endif
+#ifdef BCMWAPI_WAI
+	eapd_wai_t *wai;
+#endif /* BCMWAPI_WAI */
 #ifdef BCM_DCS
 	eapd_dcs_t *dcs;
 #endif /* BCM_DCS */
@@ -3301,6 +3600,9 @@ event_init(eapd_wksp_t *nwksp)
 #ifdef BCM_CEVENT
 	eapd_cevent_t *cevent;
 #endif /* BCM_CEVENT */
+#ifdef BCM_RGD
+	eapd_wbd_t *rgd;
+#endif /* BCM_RGD */
 #ifdef BCM_WBD
 	eapd_wbd_t *wbd;
 #endif /* BCM_WBD */
@@ -3325,6 +3627,9 @@ event_init(eapd_wksp_t *nwksp)
 #ifdef BCM_CUSTOM_EVENT
 	evt = &nwksp->evt;
 #endif // endif
+#ifdef BCMWAPI_WAI
+	wai = &nwksp->wai;
+#endif /* BCMWAPI_WAI */
 #ifdef BCM_DCS
 	dcs = &nwksp->dcs;
 #endif /* BCM_DCS */
@@ -3355,6 +3660,9 @@ event_init(eapd_wksp_t *nwksp)
 #ifdef BCM_CEVENT
 	cevent = &nwksp->cevent;
 #endif /* BCM_CEVENT */
+#ifdef BCM_RGD
+	rgd = &nwksp->rgd;
+#endif /* BCM_RGD */
 #ifdef BCM_WBD
 	wbd = &nwksp->wbd;
 #endif /* BCM_WBD */
@@ -3377,6 +3685,12 @@ event_init(eapd_wksp_t *nwksp)
 	foreach(name, nas->ifnames, next) {
 		add_to_list(name, all_ifnames, sizeof(all_ifnames));
 	}
+#ifdef BCMWAPI_WAI
+	memset(name, 0, sizeof(name));
+	foreach(name, wai->ifnames, next) {
+		add_to_list(name, all_ifnames, sizeof(all_ifnames));
+	}
+#endif /* BCMWAPI_WAI */
 #ifdef BCM_DCS
 	memset(name, 0, sizeof(name));
 	foreach(name, dcs->ifnames, next) {
@@ -3440,6 +3754,14 @@ event_init(eapd_wksp_t *nwksp)
 		add_to_list(name, all_ifnames, sizeof(all_ifnames));
 	}
 #endif /* BCM_CEVENT */
+
+#ifdef BCM_RGD
+	memset(name, 0, sizeof(name));
+	foreach(name, rgd->ifnames, next) {
+		add_to_list(name, all_ifnames, sizeof(all_ifnames));
+	}
+#endif /* BCM_RGD */
+
 #ifdef BCM_WBD
 	memset(name, 0, sizeof(name));
 	foreach(name, wbd->ifnames, next) {
@@ -3501,6 +3823,14 @@ event_init(eapd_wksp_t *nwksp)
 				bitvec[i] |= nas->bitvec[i];
 			}
 		}
+#ifdef BCMWAPI_WAI
+		/* is wai have this name */
+		if (find_in_list(wai->ifnames, name)) {
+			for (i = 0; i < EAPD_WL_EVENTING_MASK_LEN; i++) {
+				bitvec[i] |= wai->bitvec[i];
+			}
+		}
+#endif /* BCMWAPI_WAI */
 
 #ifdef BCM_DCS
 		/* is dcs have this name */
@@ -3603,6 +3933,15 @@ event_init(eapd_wksp_t *nwksp)
 			}
 		}
 #endif /* BCM_CEVENT */
+
+#ifdef BCM_RGD
+		/* is rgd have this name */
+		if (find_in_list(rgd->ifnames, name)) {
+			for (i = 0; i < EAPD_WL_EVENTING_MASK_LEN; i++) {
+				bitvec[i] |= rgd->bitvec[i];
+			}
+		}
+#endif /* BCM_RGD */
 
 #ifdef BCM_WBD
 		/* is wbd have this name */

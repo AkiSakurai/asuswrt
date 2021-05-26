@@ -76,8 +76,10 @@ extern void wlc_taf_mem_log(wlc_info_t* wlc, const char* func, const char* forma
 
 #define WL_TAFF(w, format, ...)		do {\
 						if (wl_msg_level & WL_TAF_VAL) { \
-							WL_PRINT(("wl%d: %21s: "format, \
+							WL_PRINT(("wl%d:%02x %21s: "format, \
 								WLCWLUNIT(((wlc_info_t*)(w))), \
+							        taf_dbg_idx((wlc_info_t*)(w)) & \
+								0xFF, \
 								__FUNCTION__, ##__VA_ARGS__)); \
 						} else { \
 							WL_TAFLOG(w, format, ##__VA_ARGS__); \
@@ -105,31 +107,38 @@ extern bool taf_attach_complete;
 				if (taf_attach_complete) { ASSERT(exp); }
 
 #else
-#define WL_TAFF(w, format, ...)			do {} while (0)
-#define TAF_ASSERT(exp)				ASSERT(exp)
+#define WL_TAFF(w, format, ...)		WL_TAF(("wl%d: %21s: "format, \
+						WLCWLUNIT(((wlc_info_t*)(w))), \
+						__FUNCTION__, ##__VA_ARGS__))
+
+#define TAF_ASSERT(exp)              ASSERT(exp)
 #endif /* BCMDBG */
 
 #define TAF_MAX_PKT_INDEX            7
-#define TAF_PKT_SIZE_DEFAULT         (1024)  /* used in case there is no previous packet known */
+#define TAF_MAX_NUM_WINDOWS          (TAF_MAX_PKT_INDEX + 1)
 
-#define TAF_PKTTAG_NUM_BITS			13
-#define TAF_PKTTAG_MAX				((1 << TAF_PKTTAG_NUM_BITS) - 1)
+#define TAF_PKT_SIZE_DEFAULT_DL         (1024)  /* used in case there is no previous packet known */
+#define TAF_PKT_SIZE_DEFAULT_UL_SF      (10)
+#define TAF_PKT_SIZE_DEFAULT_UL         (1 << TAF_PKT_SIZE_DEFAULT_UL_SF)  /* UL rel quantum  */
 
-#define TAF_PKTTAG_RESERVED			(TAF_PKTTAG_MAX - 4)
-#define TAF_PKTTAG_DEFAULT			(TAF_PKTTAG_RESERVED + 1)
-#define TAF_PKTTAG_PS				(TAF_PKTTAG_RESERVED + 2)
-#define TAF_PKTTAG_PROCESSED			(TAF_PKTTAG_RESERVED + 3)
+#define TAF_PKTTAG_NUM_BITS          13
+#define TAF_PKTTAG_MAX               ((1 << TAF_PKTTAG_NUM_BITS) - 1)
 
-#define TAF_WINDOW_MAX				(65535)
-#define TAF_MICROSEC_MAX			(TAF_PKTTAG_TO_MICROSEC(TAF_PKTTAG_RESERVED))
+#define TAF_PKTTAG_RESERVED          (TAF_PKTTAG_MAX - 4)
+#define TAF_PKTTAG_DEFAULT           (TAF_PKTTAG_RESERVED + 1)
+#define TAF_PKTTAG_PS                (TAF_PKTTAG_RESERVED + 2)
+#define TAF_PKTTAG_PROCESSED         (TAF_PKTTAG_RESERVED + 3)
 
-#define TAF_UNITS_TO_MICROSEC(a)		(((a) + 4) >> 3)
-#define TAF_MICROSEC_TO_UNITS(a)		((a) << 3)
+#define TAF_WINDOW_MAX               (65535)
+#define TAF_MICROSEC_MAX             (TAF_PKTTAG_TO_MICROSEC(TAF_PKTTAG_RESERVED))
 
-#define TAF_MICROSEC_TO_PKTTAG(a)		(((a) * 3) / 2)
-#define TAF_PKTTAG_TO_MICROSEC(a)		(((a) * 2) / 3)
+#define TAF_UNITS_TO_MICROSEC(a)     (((a) + 4) >> 3)
+#define TAF_MICROSEC_TO_UNITS(a)     ((a) << 3)
 
-#define TAF_PKTTAG_TO_UNITS(a)			(TAF_PKTTAG_TO_MICROSEC(TAF_MICROSEC_TO_UNITS(a)))
+#define TAF_MICROSEC_TO_PKTTAG(a)    (((a) * 3) >> 1)
+#define TAF_PKTTAG_TO_MICROSEC(a)    TAF_UNITS_TO_MICROSEC(TAF_PKTTAG_TO_UNITS((a)))
+
+#define TAF_PKTTAG_TO_UNITS(a)       ((((a) * 349525UL) + (1 << 15)) >> 16)
 
 static INLINE uint32 taf_units_to_pkttag(uint32 a, uint32* e)
 {
@@ -149,29 +158,12 @@ static INLINE uint32 taf_units_to_pkttag(uint32 a, uint32* e)
 	}
 	return value;
 }
-#define TAF_UNITS_TO_PKTTAG(a, e)		taf_units_to_pkttag((a), (e))
+#define TAF_UNITS_TO_PKTTAG(a, e)     taf_units_to_pkttag((a), (e))
 
-static INLINE uint32 taf_ul_units_to_pkttag(uint32 a, uint32* e)
-{
-	uint32 value;
-
-	if (e) {
-		a += *e;
-	}
-	value = TAF_UNITS_TO_MICROSEC(TAF_MICROSEC_TO_PKTTAG(a));
-
-	if (e) {
-		*e = a - TAF_PKTTAG_TO_UNITS(value);
-	}
-	return value;
-}
-#define TAF_UL_UNITS_TO_PKTTAG(a, e)		taf_ul_units_to_pkttag((a), (e))
-
-#define TAF_PKTBYTES_COEFF			16384
-#define TAF_PKTBYTES_TO_TIME(len, p, b) \
-	(((p) + ((len) * (b)) + (TAF_PKTBYTES_COEFF / 2)) / TAF_PKTBYTES_COEFF)
+#define TAF_PKTBYTES_COEFF_BITS       14
+#define TAF_PKTBYTES_COEFF            (1 << TAF_PKTBYTES_COEFF_BITS)
 #define TAF_PKTBYTES_TO_UNITS(len, p, b) \
-	(TAF_PKTBYTES_TO_TIME(len, TAF_MICROSEC_TO_UNITS(p), TAF_MICROSEC_TO_UNITS(b)))
+	(((p) + ((len) * (b)) + (1 << (TAF_PKTBYTES_COEFF_BITS - 1))) >> TAF_PKTBYTES_COEFF_BITS)
 
 typedef enum {
 	TAF_RELEASE_LIKE_IAS = 0x1A5,
@@ -193,6 +185,7 @@ typedef enum {
 	TAF_REL_COMPLETE_NULL,
 	TAF_REL_COMPLETE_NOTHING,
 	TAF_REL_COMPLETE_NOTHING_AGG,
+	TAF_REL_COMPLETE_PARTIAL,
 	TAF_REL_COMPLETE_EMPTIED,
 	TAF_REL_COMPLETE_EMPTIED_PS,
 	TAF_REL_COMPLETE_FULL,
@@ -211,7 +204,6 @@ typedef struct taf_ias_public {
 	uint8   was_emptied;
 	uint8   is_ps_mode;
 	uint8   index;
-	uint8   margin;
 	uint8   opt_aggs;
 	uint8   opt_aggp;
 	uint16  opt_aggp_limit;
@@ -221,9 +213,12 @@ typedef struct taf_ias_public {
 	uint32  released_units_limit;
 	uint32  byte_rate;
 	uint32  pkt_rate;
-#ifdef WLSQS
+	uint32  timestamp;
 	uint16  estimated_pkt_size_mean;
 	uint16  traffic_count_available;
+#ifdef WLSQS
+	uint8   margin;
+	uint8   aggsf;
 	struct {
 		uint32 release;
 		uint32 released_units;
@@ -247,7 +242,6 @@ typedef struct taf_ias_public {
 		uint32 released_units;
 		uint32 released_bytes;
 	} total;
-
 } taf_ias_public_t;
 
 typedef struct taf_def_public {
@@ -260,19 +254,20 @@ typedef struct taf_def_public {
 	} actual;
 } taf_def_public_t;
 
+/* extended 'mutype' used by TAF to notify release traffic technology */
 typedef enum {
-	TAF_REL_TYPE_SU,
-	TAF_REL_TYPE_VHMUMIMO,
-	TAF_REL_TYPE_HEMUMIMO,
-	TAF_REL_TYPE_OFDMA,
-	TAF_REL_TYPE_ULOFDMA
+	TAF_REL_TYPE_NOT_ASSIGNED = -3,               /* -3 */
+	TAF_REL_TYPE_ULOFDMA  = -TX_STATUS_MUTP_HEOM, /* -2 */
+	TAF_REL_TYPE_SU       = -1,                   /* -1 */
+	TAF_REL_TYPE_VHMUMIMO = TX_STATUS_MUTP_VHTMU, /* 0 */
+	TAF_REL_TYPE_HEMUMIMO = TX_STATUS_MUTP_HEMM,  /* 1 */
+	TAF_REL_TYPE_OFDMA    = TX_STATUS_MUTP_HEOM   /* 2 */
 } taf_release_type_t;
 
 typedef struct  taf_scheduler_public {
 	taf_release_like_t  how;
 	taf_release_mode_t  mode;
 	taf_release_type_t  type;
-	uint16              release_type_present;
 	taf_release_complete_t complete;
 	union {
 		taf_ias_public_t  ias;
@@ -282,15 +277,15 @@ typedef struct  taf_scheduler_public {
 
 #define TAF_AMPDU                 "ampdu"
 #define TAF_NAR                   "nar"
-#define TAF_SQSHOST               "sqs_host"
+#define TAF_SQSHOST               "sqs"
 #define TAF_UL                    "ul"
 #define TAF_SQS_TRIGGER_TID       (-2)
 #define TAF_SQS_V2R_COMPLETE_TID  (-3)
 
-#define TAF_SET_TAG(tag)      (tag)->flags3 |= WLF3_TAF_TAGGED
-#define TAF_IS_TAGGED(tag)    (((tag)->flags3 & WLF3_TAF_TAGGED) ? TRUE : FALSE)
+#define TAF_SET_TAG(tag)          (tag)->flags3 |= WLF3_TAF_TAGGED
+#define TAF_IS_TAGGED(tag)        (((tag)->flags3 & WLF3_TAF_TAGGED) ? TRUE : FALSE)
 
-#define TAF_PARAM(p)	(void*)(size_t)(p)
+#define TAF_PARAM(p)              (void*)(size_t)(p)
 
 typedef enum {
 	TAF_LINKSTATE_NONE,
@@ -349,6 +344,7 @@ typedef enum {
 	TAF_TXPKT_STATUS_UPDATE_PACKET_COUNT,
 	TAF_TXPKT_STATUS_UPDATE_RATE,
 	TAF_TXPKT_STATUS_SUPPRESSED,
+	TAF_TXPKT_STATUS_UL_SUPPRESSED,
 	TAF_TXPKT_STATUS_SUPPRESSED_FREE,
 	TAF_TXPKT_STATUS_SUPPRESSED_QUEUED,
 	TAF_TXPKT_STATUS_TRIGGER_COMPLETE, /* ULMU trigger completion */
@@ -371,15 +367,14 @@ extern const uint8 wlc_taf_prec2prio[WLC_PREC_COUNT];
 
 #define TAF_PREC(prec)       wlc_taf_prec2prio[(prec)]
 
+#define TAF_UL_PRIO          PRIO_8021D_BE
+
 extern bool wlc_taf_enabled(wlc_taf_info_t* taf_info);
 extern bool wlc_taf_in_use(wlc_taf_info_t* taf_info);
 extern bool wlc_taf_ul_enabled(wlc_taf_info_t* taf_info);
+extern bool wlc_taf_scheduler_running(wlc_taf_info_t* taf_info);
 extern bool wlc_taf_nar_in_use(wlc_taf_info_t* taf_info, bool * enabled);
-#ifdef WLSQS
 extern bool wlc_taf_scheduler_blocked(wlc_taf_info_t* taf_info);
-#else
-#define wlc_taf_scheduler_blocked(t)   FALSE
-#endif // endif
 
 extern void wlc_taf_pkts_enqueue(wlc_taf_info_t* taf_info, struct scb* scb, int tid,
 	const void* data, int pkts);
@@ -410,6 +405,8 @@ extern void wlc_taf_v2r_complete(wlc_taf_info_t* taf_info);
 
 extern bool wlc_taf_reset_scheduling(wlc_taf_info_t* taf_info, int tid, bool hardreset);
 
+extern uint32 wlc_taf_uladmit_count(wlc_taf_info_t* taf_info, bool ps_exclude);
+
 #ifdef PKTQ_LOG
 extern int wlc_taf_dpstats_dump(wlc_info_t* wlc, struct scb* scb, wl_iov_pktq_log_t* iov_pktq,
 	uint8 index, bool clear, uint32 timelo, uint32 timehi, uint32 prec_mask, uint32 flags,
@@ -418,6 +415,7 @@ extern void wlc_taf_dpstats_free(wlc_info_t* wlc, struct scb* scb);
 #endif /* PKTQ_LOG */
 
 extern void wlc_taf_set_dlofdma_maxn(wlc_info_t *wlc, uint8 (*maxn)[D11_REV128_BW_SZ]);
+extern void wlc_taf_set_ulofdma_maxn(wlc_info_t *wlc, uint8 (*maxn)[D11_REV128_BW_SZ]);
 #endif /* WLTAF */
 
 #endif /* __wlc_taf_h__ */

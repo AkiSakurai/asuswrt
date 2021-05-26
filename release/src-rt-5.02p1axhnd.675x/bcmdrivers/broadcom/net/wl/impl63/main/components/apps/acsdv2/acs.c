@@ -41,7 +41,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acs.c 782671 2019-12-31 08:45:27Z $
+ * $Id: acs.c 788365 2020-06-30 08:18:29Z $
  */
 
 #include <stdio.h>
@@ -83,11 +83,11 @@
 
 acs_policy_t predefined_policy[ACS_POLICY_MAX] = {
 /* threshld    Channel score weigths values                                      chan */
-/* bgn  itf  {  BSS  BUSY  INTF I-ADJ   FCS TXPWR NOISE TOTAL   CNS   ADJ TXOP}  pick */
-/* --- ----   ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----   func */
-{ -65,  40, {   10,    1,    1,    0,    0,    0,    1,    1,    1,    0,  10}, NULL}, /* 0=DEF2G */
-{   0, 100, {   10,    0,    1,    1,    0,   10,    1,    1,    1,    1,  10}, NULL}, /* 1=DEF5G */
-{ -55,  45, { -200,    0, -100,  -50,    0,    0,  -50,    0,    1,    0,  -1}, NULL}, /* 2=CUST */
+/* bgn  itf  {  BSS  BUSY  INTF I-ADJ   FCS TXPWR NOISE TOTAL   CNS   ADJ TXOP  DFS}  pick */
+/* --- ----   ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----  ---  func */
+{ -65,  40, {   10,    1,    1,    0,    0,    0,    1,    1,    1,    0,  10,	 0}, NULL}, /* 2G */
+{   0, 100, {   10,    0,    1,    1,    0,   10,    1,    1,    1,    1,  10,   5}, NULL}, /* 5G */
+{ -55,  45, { -200,    0, -100,  -50,    0,    0,  -50,    0,    1,    0,  -1,   0}, NULL}, /* CUST */
 };
 
 acs_info_t *acs_info;
@@ -192,7 +192,7 @@ acs_idx_from_map(char *name)
 			return cur_map->idx;
 		}
 	}
-	ACSD_WARNING("cannot find the mapped entry for ifname: %s\n", name);
+	ACSD_INFO("cannot find the mapped entry for ifname: %s\n", name);
 	return -1;
 }
 
@@ -202,8 +202,7 @@ acs_get_rs_info(acs_chaninfo_t * c_info, char* prefix)
 {
 	int ret = 0;
 	char tmp[100];
-	chanspec_t pref_chspec = 0;
-	int band, coex;
+	int band, pref_chspec = 0, coex;
 	acs_rsi_t *rsi = &c_info->rs_info;
 	char *str;
 	char data_buf[100];
@@ -300,19 +299,19 @@ acs_default_policy(acs_policy_t *a_pol, acs_policy_index index)
 void
 acs_dump_policy(acs_policy_t *a_pol)
 {
-	printf("ACS Policy:\n");
-	printf("Bg Noise threshold: %d\n", a_pol->bgnoise_thres);
-	printf("Interference threshold: %d\n", a_pol->intf_threshold);
-	printf("Channel Scoring Weights: \n");
-	printf("\t BSS: %d\n", a_pol->acs_weight[CH_SCORE_BSS]);
-	printf("\t BUSY: %d\n", a_pol->acs_weight[CH_SCORE_BUSY]);
-	printf("\t INTF: %d\n", a_pol->acs_weight[CH_SCORE_INTF]);
-	printf("\t INTFADJ: %d\n", a_pol->acs_weight[CH_SCORE_INTFADJ]);
-	printf("\t FCS: %d\n", a_pol->acs_weight[CH_SCORE_FCS]);
-	printf("\t TXPWR: %d\n", a_pol->acs_weight[CH_SCORE_TXPWR]);
-	printf("\t BGNOISE: %d\n", a_pol->acs_weight[CH_SCORE_BGNOISE]);
-	printf("\t CNS: %d\n", a_pol->acs_weight[CH_SCORE_CNS]);
-	printf("\t TXOP: %d\n", a_pol->acs_weight[CH_SCORE_TXOP]);
+	acsddbg("ACS Policy:\n");
+	acsddbg("Bg Noise threshold: %d\n", a_pol->bgnoise_thres);
+	acsddbg("Interference threshold: %d\n", a_pol->intf_threshold);
+	acsddbg("Channel Scoring Weights: \n");
+	acsddbg("\t BSS: %d\n", a_pol->acs_weight[CH_SCORE_BSS]);
+	acsddbg("\t BUSY: %d\n", a_pol->acs_weight[CH_SCORE_BUSY]);
+	acsddbg("\t INTF: %d\n", a_pol->acs_weight[CH_SCORE_INTF]);
+	acsddbg("\t INTFADJ: %d\n", a_pol->acs_weight[CH_SCORE_INTFADJ]);
+	acsddbg("\t FCS: %d\n", a_pol->acs_weight[CH_SCORE_FCS]);
+	acsddbg("\t TXPWR: %d\n", a_pol->acs_weight[CH_SCORE_TXPWR]);
+	acsddbg("\t BGNOISE: %d\n", a_pol->acs_weight[CH_SCORE_BGNOISE]);
+	acsddbg("\t CNS: %d\n", a_pol->acs_weight[CH_SCORE_CNS]);
+	acsddbg("\t TXOP: %d\n", a_pol->acs_weight[CH_SCORE_TXOP]);
 
 }
 #endif /* DEBUG */
@@ -350,13 +349,11 @@ static bool init_ch[3] = { FALSE, FALSE, FALSE };
 
 void acs_set_initial_chanspec(acs_chaninfo_t *c_info)
 {
-	int32 dis_ch_grp = 0;
 	chanspec_t chanspec = WL_CHSPEC_DEF_5G_H;
 	char prefix[PREFIX_LEN], tmp[100];
 	int band5grp;
 
 	if (c_info->rs_info.pref_chspec == 0) {
-		wl_iovar_getint(c_info->name, "dis_ch_grp", &dis_ch_grp);
 		if (c_info->rs_info.band_type == WLC_BAND_5G) {
 			int ret = 0;
 
@@ -375,7 +372,6 @@ void acs_set_initial_chanspec(acs_chaninfo_t *c_info)
 				else if (band5grp & WL_5G_BAND_3)
 					chanspec = wf_chspec_aton("100");
 			}
-
 			acs_set_chanspec(c_info, chanspec);
 			ret = acs_update_driver(c_info);
 			if (ret) {
@@ -479,10 +475,10 @@ acs_start(char *name, acs_chaninfo_t *c_info, int skip_init_acs)
 		acs_update_dyn160_status(c_info);
 	}
 
-	if (!(c_info->wet_enabled && acs_check_assoc_scb(c_info))) {
+	if (acs_is_mode_check(c_info->name)) {
 		ret = acs_run_cs_scan(c_info);
-		if (ret < 0)
-		ACSD_WARNING("%s: cs scan failed\n", c_info->name);
+		if (acs_allow_scan(c_info, ACS_SCAN_TYPE_CS, 0))
+			ACS_ERR(ret, "cs scan failed\n");
 	}
 
 	ACS_FREE(c_info->acs_bss_info_q);
@@ -598,6 +594,13 @@ bool acs_high_power_nondfs_chan_check(acs_chaninfo_t *c_info, int bw)
 	ch_candidate_t* candi;
 	bool ret = FALSE;
 	candi = c_info->candidate[bw];
+#if 0
+	acs_rsi_t *rsi = &c_info->rs_info;
+
+	if (WL_BW_CAP_160MHZ(rsi->bw_cap))
+#endif
+		return FALSE;
+
 	for (i = 0; i < c_info->c_count[bw]; i++) {
 		if ((!candi[i].valid) || (candi[i].is_dfs)) {
 			continue;
@@ -741,7 +744,7 @@ acs_adjust_ctrl_chan(acs_chaninfo_t *c_info, chanspec_t chspec)
 }
 /* return TRUE if ACSD is in AP mode else return FALSE
  */
-/*bool
+bool
 acs_is_mode_check(char *osifname)
 {
 	char tmp[32], prefix[PREFIX_LEN];
@@ -750,7 +753,7 @@ acs_is_mode_check(char *osifname)
 		osifname_to_nvifname(osifname, prefix, sizeof(prefix));
 		strcat(prefix, "_");
 	} else {
-		make_wl_prefix(prefix, sizeof(prefix), 0, osifname);
+		make_wl_prefix(prefix, sizeof(prefix), 1, osifname);
 	}
 
 	nvram_safe_get(strcat_r(prefix, "mode", tmp));
@@ -760,7 +763,7 @@ acs_is_mode_check(char *osifname)
 		return FALSE;
 	}
 	return TRUE;
-}*/
+}
 
 /*
  * acs_get_txduration - get the overall tx duration
@@ -833,11 +836,17 @@ acs_store_vifnames(void)
 	char prefix[8], *ifnames[16] = {0};
 	char *token, *delim = ",";
 	char *vifname;
-	int i, j = 0;
+	int i, j = 0, ret = BCME_OK;
 	for (i = 0; i < ACS_MAX_IF_NUM; i++) {
+		if (!acs_info->chan_info[i]) {
+			continue;
+		}
 		cur_map = &acs_info->acs_ifmap[i];
 		memset(prefix, 0, sizeof(prefix));
-		osifname_to_nvifname(cur_map->name, prefix, sizeof(prefix));
+		if ((ret = osifname_to_nvifname(cur_map->name, prefix,
+				sizeof(prefix))) != BCME_OK) {
+			return;
+		}
 		strcat(prefix, "_vifs");
 		vifname = nvram_safe_get(prefix);
 		token = strtok(vifname, delim);
@@ -851,6 +860,7 @@ acs_store_vifnames(void)
 		}
 		j = 0;
 	}
+	return;
 }
 
 /* This function will get available exclude_ifname list by using nvram
@@ -885,43 +895,70 @@ acs_init_run(acs_info_t ** acs_info_p)
 	bool acs_zdfs_2g = nvram_match("acs_zdfs_2g", "1");
 	bool radar_ignore = nvram_match("acs_zdfs_2g_ignore_radar", "1");
 	bool avail_5g = FALSE;
-#endif /* ZDSF_2G */
+#endif /* ZDFS_2G */
 	int skip_init_acs = 0;
 
 	acs_init_info(acs_info_p);
+	int if_count = 0, loop_count;
+	int finished = 0, loop_ret = 0;
+	char acs_ifnames[32];
 
 #ifdef ZDFS_2G
 	(*acs_info_p)->ci_zdfs_2g  = NULL;
-#endif /* ZDSF_2G */
+#endif /* ZDFS_2G */
+
+	snprintf(acs_ifnames, sizeof(acs_ifnames), "%s", nvram_safe_get("acs_ifnames"));
 
 	if (nvram_get_int("acs_skip_init_acs")) {
 		skip_init_acs = 1;
 		nvram_set_int("acs_skip_init_acs", 0);
 	}
 
-	foreach(name, nvram_safe_get("acs_ifnames"), next) {
+	foreach(name, acs_ifnames, next){
+		++if_count;
+		finished += 1<<if_count;
+	}
+ACSD_INFO("if_count=%d, finished=%d\n", if_count, finished);
+
+LOOP_AGAIN:
+	loop_count = 0;
+
+	foreach(name, acs_ifnames, next) {
+		++loop_count;
+ACSD_INFO("loop head: loop_count=%d, loop_ret=%d\n", loop_count, loop_ret);
+		if((loop_ret>>loop_count)&0x1){
+ACSD_INFO("%d interface had been done\n", loop_count);
+			continue;
+		}
+
 		c_info = NULL;
 		osifname_to_nvifname(name, prefix, sizeof(prefix));
 		if (acs_check_bss_is_enabled(name, &c_info, prefix) != BCME_OK) {
 			strcat(prefix, "_vifs");
 			vifname = nvram_safe_get(prefix);
 			foreach(name_enab_if, vifname, vif_next) {
-				if (acs_check_bss_is_enabled(name_enab_if,
-					&c_info, NULL) == BCME_OK) {
+				if (acs_check_bss_is_enabled(name_enab_if, &c_info, NULL) == BCME_OK) {
+ACSD_INFO("sub bss(%s) is enabled\n", name_enab_if);
 					break;
 				}
 			}
 		}
+		else
+ACSD_INFO("bss(%s) is enabled\n", name);
+
 		memset(name, 0, sizeof(name));
 		if (c_info != NULL) {
 			memcpy(name, c_info->name, strlen(c_info->name) + 1);
 		} else {
+ACSD_INFO("the gotten acs_chaninfo_t was NULL\n");
 			continue;
 		}
-		ret = acs_start(name, c_info, skip_init_acs);
 
+ACSD_INFO("sitesurvey %s\n", name);
+		ret = acs_start(name, c_info, skip_init_acs);
 		if (ret) {
-			ACSD_ERROR("acs_start failed for ifname: %s\n", name);
+			if (acs_allow_scan(c_info, ACS_SCAN_TYPE_CS, 0))
+				ACSD_ERROR("acs_start failed for ifname: %s\n", name);
 			continue;
 		}
 
@@ -930,26 +967,28 @@ acs_init_run(acs_info_t ** acs_info_p)
 			/* Set if there is atleast one 5G interface */
 			avail_5g = TRUE;
 		}
-#endif /* ZDSF_2G */
+#endif /* ZDFS_2G */
 
-		if ((AUTOCHANNEL(c_info) || COEXCHECK(c_info)) &&
+		if ((AUTOCHANNEL(c_info) || COEXCHECK(c_info)) && 
 			!(c_info->wet_enabled && acs_check_assoc_scb(c_info))) {
 
+ACSD_INFO("%s select channel...\n", name);
 			/* First call to pick the chanspec for exit DFS chan */
 			c_info->switch_reason = APCS_INIT;
 
 			/* call to pick up init cahnspec */
 			acs_select_chspec(c_info);
-
-			if (skip_init_acs) {
-				ACSD_INFO("%s: skip init ACS for linkage with AVBLCHAN\n", c_info->name);
-				continue;
-			}
-
 			/* Other APP can request to change the channel via acsd, in that
 			 * case proper reason will be provided by requesting APP, For ACSD
 			 * USE_ACSD_DEF_METHOD: ACSD's own default method to set channel
 			 */
+
+			if (skip_init_acs) {
+				loop_ret += 1<<loop_count;
+				ACSD_INFO("%s: skip init ACS for linkage with AVBLCHAN\n", c_info->name);
+				continue;
+			}
+
 			acs_set_chspec(c_info, TRUE, ACSD_USE_DEF_METHOD);
 
 			ret = acs_update_driver(c_info);
@@ -968,7 +1007,22 @@ acs_init_run(acs_info_t ** acs_info_p)
 		if (c_info->acs_boot_only) {
 			c_info->mode = ACS_MODE_DISABLE;
 		}
+
+		loop_ret += 1<<loop_count;
+ACSD_INFO("loop tail: loop_count=%d, loop_ret=%d\n", loop_count, loop_ret);
 	}
+
+	if(loop_ret != finished){
+ACSD_INFO("wait 2 seconds for next loop...\n");
+		int i;
+		// cannot use sleep(2) directly, or acsd2 won't sleep
+		for(i = 0; i <= 2; ++i)
+			sleep_ms(1000);
+		goto LOOP_AGAIN;
+	}
+	else
+ACSD_INFO("finish loop\n");
+
 #ifdef ZDFS_2G
 	/* Iterate through the 2G interface and enable zdfs_2g
 	 * only if atleast one 5G interface is available
@@ -999,7 +1053,8 @@ acs_init_run(acs_info_t ** acs_info_p)
 			}
 		}
 	}
-#endif /* ZDSF_2G */
+#endif /* ZDFS_2G */
+
 	acs_store_vifnames();
 	acs_get_exclude_interface_list();
 }
@@ -1033,10 +1088,14 @@ acs_update_status(acs_chaninfo_t * c_info)
 		ACSD_INFO("%s selected_chspec: 0x%04x != 0x%04x :cur_chspec\n", c_info->name,
 				c_info->selected_chspec, c_info->cur_chspec);
 		chanim_upd_acs_record(c_info->chanim_info, c_info->cur_chspec, APCS_NONACSD);
+		c_info->bw_upgradable_timeout = uptime() + ACS_BW_UPGRADABLE_TIMEOUT;
+		ACSD_INFO("bw upgradable timeout is: %u\n", c_info->bw_upgradable_timeout);
 		acs_update_bw_status(c_info);
 		c_info->recent_prev_chspec = c_info->selected_chspec;
 		c_info->selected_chspec = c_info->cur_chspec;
 		c_info->acs_prev_chan_at = uptime();
+		ACSD_PRINT("%s: NONACSD channel switching to channel spec: 0x%4x (%s)\n",
+			c_info->name, c_info->cur_chspec, wf_chspec_ntoa(c_info->cur_chspec, chanspecbuf));
 	}
 
 	start_idx = MODSUB(cur_idx, 1, ACS_CHANIM_ACS_RECORD);
@@ -1089,8 +1148,6 @@ acs_update_dyn160_status(acs_chaninfo_t * c_info)
 
 	c_info->phy_dyn_switch = (uint8) (phy_dyn_switch & 0xFFu);
 
-	(void) acs_update_oper_mode(c_info);
-
 	c_info->is160_upgradable = c_info->is160_bwcap && !CHSPEC_IS160(c_info->cur_chspec) &&
 		!c_info->is_mu_active && c_info->phy_dyn_switch != 1;
 	c_info->is160_downgradable = c_info->is160_bwcap && CHSPEC_IS160(c_info->cur_chspec) &&
@@ -1110,6 +1167,7 @@ acs_update_dyn160_status(acs_chaninfo_t * c_info)
 int
 acs_update_bw_status(acs_chaninfo_t * c_info)
 {
+	acs_chaninfo_t *zdfs_2g_ci = NULL;
 	bool maxed_bwcap = ACS_CHSPEC_MAXED_BWCAP(c_info->cur_chspec, c_info->rs_info.bw_cap);
 
 	c_info->bw_upgradable = FALSE;
@@ -1118,33 +1176,26 @@ acs_update_bw_status(acs_chaninfo_t * c_info)
 		return BCME_OK;
 	}
 
+	/* Don't allow bw_upgrade when bgdfs is in progress */
+	if (ACS_11H_AND_BGDFS(c_info) && c_info->acs_bgdfs->state != BGDFS_STATE_IDLE) {
+		return BCME_OK;
+	}
+
+	/* Don't allow bw_upgrade when zdfs_2g is in progress */
+	if ((zdfs_2g_ci = acs_get_zdfs_2g_ci()) != NULL && zdfs_2g_ci->acs_bgdfs &&
+			zdfs_2g_ci->acs_bgdfs->state != BGDFS_STATE_IDLE) {
+		return BCME_OK;
+	}
+
 	if (maxed_bwcap) {
 		ACSD_DEBUG("%s maxed_bwcap:%d, cur_chspec:0x%04x, bw_cap:0x%02x\n", c_info->name,
 				maxed_bwcap, c_info->cur_chspec, c_info->rs_info.bw_cap);
 		return BCME_OK;
 	}
-	/* if dyn160 capable, do not upgrade BW here */
-	if (c_info->dyn160_cap && c_info->is160_bwcap) {
-		ACSD_DEBUG("%s dyn160_cap:%d, is160_bwcap:%d\n", c_info->name,
-				c_info->dyn160_cap, c_info->is160_bwcap);
-		return BCME_OK;
-	}
-
-	/* if oper_mode fetch fails, do not allow BW upgrade */
-	if (acs_update_oper_mode(c_info) != BCME_OK) {
-		ACSD_INFO("%s could not update oper_mode\n", c_info->name);
-		return BCME_ERROR;
-	}
-
-	/* if oper_mode is enabled (in progress), do not allow BW upgrade */
-	if (ACS_OP_IS_ENABLED(c_info->oper_mode)) {
-		ACSD_INFO("%s oper_mode is enabled 0x%04x\n", c_info->name, c_info->oper_mode);
-		return BCME_OK;
-	}
 
 	c_info->bw_upgradable = !ACS_CHSPEC_MAXED_BWCAP(c_info->cur_chspec, c_info->rs_info.bw_cap);
 
-	ACSD_INFO("%s bw_upgradable:%d\n", c_info->name, c_info->bw_upgradable);
+	ACSD_DEBUG("%s bw_upgradable:%d\n", c_info->name, c_info->bw_upgradable);
 
 	return BCME_OK;
 }
@@ -1360,7 +1411,7 @@ int acs_intfer_config_txfail(acs_chaninfo_t *c_info)
 int acs_intfer_config_traffic_thresh(acs_chaninfo_t *c_info, char *prefix)
 {
 	wl_traffic_thresh_t trfdata;
-	int err = 0;
+	int err = 0, i;
 
 	ACSD_INFO("%s: %s@%d\n", c_info->name, __FUNCTION__, __LINE__);
 	memset(&trfdata, 0, sizeof(wl_traffic_thresh_t));
@@ -1372,6 +1423,17 @@ int acs_intfer_config_traffic_thresh(acs_chaninfo_t *c_info, char *prefix)
 	err = acs_set_intfer_traffic_thresh(c_info->name, &trfdata,
 			sizeof(wl_traffic_thresh_t));
 	ACS_ERR(err, "intferface config error! ret code\n");
+
+	trfdata.mode = ACS_AP_CFG;
+	for (i = 0; i < WL_TRF_MAX_QUEUE; i++) {
+		trfdata.type = i | ACS_TRF_AE;
+		trfdata.enable = 0;
+		if (isset((uint8 *)&c_info->acs_ac_flag, i)) {
+			trfdata.enable = 1;
+		}
+		err = acs_set_intfer_traffic_thresh(c_info->name, &trfdata,
+				sizeof(wl_traffic_thresh_t));
+	}
 	return err;
 }
 

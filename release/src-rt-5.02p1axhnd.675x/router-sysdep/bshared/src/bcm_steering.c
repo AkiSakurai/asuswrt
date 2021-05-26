@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcm_steering.c 782701 2020-01-02 06:15:48Z $
+ * $Id: bcm_steering.c 789955 2020-08-12 10:21:09Z $
  */
 
 #include <typedefs.h>
@@ -98,44 +98,16 @@
 
 /* NVRAM names */
 #define WLIFU_NVRAM_STEERING_MSGLEVEL	"steering_msglevel"
-#define WLIFU_NVRAM_STEER_FLAGS		"steer_flags" /* NVRAM for steering flags */
 #define WLIFU_NVRAM_TM_DEFIANT_WD	"steer_tm_defiant_wd" /* NVRAM for Dafiant WD Timer Tick */
 #define WLIFU_NVRAM_STEER_RESP_TIMEOUT	"steer_resp_timeout"	/* BSS Trans Response timoeut */
 #define WLIFU_NVRAM_NOBCNSSID_TIMEOUT	"nobcnssid_timeout"	/* Nobcnssid timoeut */
 #define WLIFU_NVRAM_FAKE_CHAN_UTIL	"fake_chan_util"	/* Fake channel utilization */
 
-/* Default Value of NVRAM for Steer Flags */
-#define WLIFU_DEF_STEER_FLAGS		0x0
 #define WLIFU_DEF_TM_DEFIANT_WD		5	/* NVRAM Default value of Dafiant WD Timer Tick */
 #define WLIFU_DEF_STEER_RESP_TIMEOUT	5	/* NVRAM Default value of Steer Response */
 #define WLIFU_DEF_NOBCNSSID_TIMEOUT	10	/* NVRAM Default value for nobcnssid timeout */
 #define WLIFU_DEF_FAKE_CHAN_UTIL	205	/* NVRAM Default value for fake */
 						/* channel utilization(80%) */
-
-/* NVRAM for Steer Flags, Mask Values */		/* Bit	Purpose */
-#define STEER_FLAGS_MASK_BTR_UNWN	0x0001	/* 1 BSSTrans Resp UNKNOWN, Block Brute Force */
-#define STEER_FLAGS_MASK_BTR_RJCT	0x0002	/* 2 BSSTrans Resp REJECT, Apply Brute Force */
-#define STEER_FLAGS_MASK_BTR_ACPT	0x0004	/* 3 BSSTrans Resp ACCEPT, Enbl Defiant Watchdog */
-#define STEER_FLAGS_DISABLE_NOBCNSSID	0x0008	/* 4 Disable nobcnssid default is enabled */
-#define STEER_FLAGS_5GTO5G_BRUTE_FORCE	0x0010	/* Apply Brute Force for 5G to 5G steering */
-#define STEER_FLAGS_5GTO2G_BRUTE_FORCE	0x0020	/* Apply Brute Force for 5G to 2G steering */
-#define STEER_FLAGS_2GTO5G_BRUTE_FORCE	0x0040	/* Apply Brute Force for 2G to 2G steering */
-#define STEER_FLAGS_2GTO2G_BRUTE_FORCE	0x0080	/* Apply Brute Force for 2G to 5G steering */
-
-/* For Individual BSS Transition Response types, Get Brute Force Steer Behavior */
-#define BTR_UNWN_BRUTFORCE_BLK(steer_flags) ((steer_flags) & STEER_FLAGS_MASK_BTR_UNWN)
-#define BTR_RJCT_BRUTFORCE(steer_flags) ((steer_flags) & STEER_FLAGS_MASK_BTR_RJCT)
-#define BTR_5GTO5G_BRUTEFORCE(steer_flags)	((steer_flags) & STEER_FLAGS_5GTO5G_BRUTE_FORCE)
-#define BTR_5GTO2G_BRUTEFORCE(steer_flags)	((steer_flags) & STEER_FLAGS_5GTO2G_BRUTE_FORCE)
-#define BTR_2GTO5G_BRUTEFORCE(steer_flags)	((steer_flags) & STEER_FLAGS_2GTO5G_BRUTE_FORCE)
-#define BTR_2GTO2G_BRUTEFORCE(steer_flags)	((steer_flags) & STEER_FLAGS_2GTO2G_BRUTE_FORCE)
-
-/* For BSS Transition Response ACCEPT, Check if Dafiant STA Watchdog is required or not */
-#define BTR_ACPT_DEFIANT_WD_ON(steer_flags) ((steer_flags) & STEER_FLAGS_MASK_BTR_ACPT)
-
-/* Check whether nobcnssid is enabled or not */
-#define IS_NOBCNSSID_ENABLED(steer_flags) (!((steer_flags) & STEER_FLAGS_DISABLE_NOBCNSSID))
-
 /* Steering Band Digit */
 #define WLIFU_BAND_DIGIT_UNWN	0
 #define WLIFU_BAND_DIGIT_5GTO5G	1
@@ -173,6 +145,7 @@ extern bool gg_swap; /* Swap variable set by wl_endian_probe */
 #define oui_cmp(a, b) ((((const uint8 *)(a))[0] ^ ((const uint8 *)(b))[0]) | \
 		(((const uint8 *)(a))[1] ^ ((const uint8 *)(b))[1]) | \
 		(((const uint8 *)(a))[2] ^ ((const uint8 *)(b))[2]))
+#define OUI_GENERAL "ff:ff:ff"
 
 /*
  * Convert OUI  address string representation to binary data
@@ -196,7 +169,7 @@ oui_atoe(const char *a, unsigned char *e)
 }
 
 typedef int (* wnm_action_t) (wl_wlif_hdl *hdl,
-	wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd);
+	wl_wlif_bss_trans_data_t *ioctl_hndlr_data);
 
 typedef struct sta_oui_wnm_act {
 	uint8 oui[3];			/* Vendor OUI */
@@ -207,13 +180,11 @@ typedef struct sta_oui_wnm_act {
 } sta_oui_wnm_act_t;
 
 static int wl_wlif_set_fake_chan_util_for_sta(wl_wlif_hdl *hdl,
-	wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd);
+	wl_wlif_bss_trans_data_t *ioctl_hndlr_data);
 static int wl_wlif_clear_fake_chan_util_for_sta(wl_wlif_hdl *hdl,
-	wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd);
-static int wl_wlif_do_block_mac(wl_wlif_hdl *hdl,
-	wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd);
-static int wl_wlif_do_unblock_mac(wl_wlif_hdl *hdl,
-	wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd);
+	wl_wlif_bss_trans_data_t *ioctl_hndlr_data);
+static int wl_wlif_do_block_mac(wl_wlif_hdl *hdl, wl_wlif_bss_trans_data_t *ioctl_hndlr_data);
+static int wl_wlif_do_unblock_mac(wl_wlif_hdl *hdl, wl_wlif_bss_trans_data_t *ioctl_hndlr_data);
 static void wl_retrieve_wnm_oui_action_config(void);
 
 /* Order of the function in array and ACTION position should match  */
@@ -234,6 +205,9 @@ static sta_oui_wnm_act_t *oui_action = NULL;
 #define OUI_ACT_STRLEN  14
 #define WNM_ACTION_SIZE  sizeof(wnm_actions)/sizeof(wnm_action_t)
 
+/* Forward declaration */
+typedef struct static_maclist_ static_maclist_t;
+
 /*
  * Struct for wlif handle data.
  * and app specific data.
@@ -246,7 +220,19 @@ typedef struct wl_wlif_hdl_data {
 	bcm_timer_module_id timer_hdl;	/* Linux timer handle. */
 	char appname[IFNAMSIZ];		/* Application that uses this library */
 	void *data;			/* App specific data. */
+	static_maclist_t *timer_data;	/* Last MAC block timer data */
+	uint32 steer_flags;		/* Steering flags of type STEER_FLAGS_XXX */
+	dll_t steer_req_list;		/* Head node of All active steering requests */
 } wl_wlif_hdl_data_t;
+
+/* Structure to hold active steering request for handling the steering response */
+typedef struct wl_wlif_steer_req {
+	dll_t node;				/* dll_t struct node for doubly linked list */
+	uint8 token;				/* Dialog token of the request */
+	bcm_timer_id timer_id;			/* BCM timer's ID in case of bcm timer */
+	wl_wlif_bss_trans_data_t bt_data;	/* BSS transition request data sent from app */
+	wl_wlif_hdl_data_t *hdl_data;		/* wlif handle data */
+} wl_wlif_steer_req_t;
 
 /* Struct to read from file data. */
 typedef struct maclist_entry {
@@ -264,12 +250,13 @@ typedef struct maclist_entry {
  * 4-7	: Reserved
  * 8-15 : Static mac list count
  */
-typedef struct static_maclist_ {
+struct static_maclist_ {
 	wl_wlif_hdl_data_t *hdl_data;
 	short flag;
 	struct ether_addr addr;		/* Sta addr. */
 	int timeout;			/* Timeout to clear mac from maclist. */
-} static_maclist_t;
+	bcm_timer_id timer_id;		/* BCM timer's ID in case of bcm timer */
+};
 
 typedef struct disassoc_ {
 	wl_wlif_hdl_data_t *hdl_data;
@@ -281,7 +268,6 @@ typedef struct static_hdl_post_bt {
 	wl_wlif_hdl_data_t *hdl_data;
 	struct ether_addr addr;			/* STA MAC */
 	uint8 action;				/* Post bt action */
-	int event_fd;
 	int timeout;				/* Timeout to clear mac from maclist. */
 } wl_wlif_hdl_post_bt_t;
 
@@ -313,6 +299,8 @@ static uint8 bss_token = 0;
 /* Create Unblock MAC Timer */
 static int wl_wlif_create_unblock_mac_timer(wl_wlif_hdl_data_t *hdl_data,
 	struct ether_addr addr, int timeout, int flag);
+/* Remove unblock MAC timer */
+static void wl_wlif_remove_unblock_timer(wl_wlif_hdl_data_t *hdl_data);
 /* Create Defiant STA Watchdog Timer */
 static int wl_wlif_create_defiant_sta_watchdog_timer(wl_wlif_hdl_data_t *hdl_data,
 	struct ether_addr addr, int timeout);
@@ -326,15 +314,29 @@ static void wl_wlif_unset_nobcnssid_usched_cb(bcm_usched_handle *hdl, void *arg)
 static int wl_wlif_create_nobcnssid_timer(wl_wlif_hdl_data_t *hdl_data, int timeout);
 /* Create Timer */
 static int wl_wlif_create_timer(void *uschd_hdl, bcm_timer_module_id timer_hdl,
-	void* cbfn, void *data, int timeout, int repeat);
+	void* cbfn, void *data, int timeout, int repeat, bcm_timer_id *out_timer_id);
 /* Callback handlers for disassoc mac */
 static void wl_wlif_disassoc_mac_cb(bcm_timer_id timer_id, void* arg);
 static void wl_wlif_disassoc_mac_usched_cb(bcm_usched_handle* hdl, void* arg);
 /* Create post bss transreq handler Timer */
 static int wl_wlif_create_post_bss_transreq_timer(wl_wlif_hdl_data_t  *hdl_data,
-		wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd);
+		wl_wlif_bss_trans_data_t *ioctl_hndlr_data);
 static void wl_wlif_post_bss_transreq_usched_cb(bcm_usched_handle* hdl, void* arg);
 static void wl_wlif_post_bss_transreq_cb(bcm_timer_id timer_id, void* arg);
+/* Traverse Maclist to find MAC address exists or not */
+static bool wl_wlif_find_sta_in_assoclist(wl_wlif_hdl_data_t *hdl_data,
+	struct ether_addr *find_mac);
+/* Processing after getting BTM response from STA or if there is no response from the
+ * STA(timeout)
+ */
+static void wl_wlif_post_bss_transresp_process(wl_wlif_hdl_data_t *hdl_data,
+	wl_wlif_steer_req_t *steer_req, wl_wlif_bss_trans_resp_t *btm_resp, int bsstrans_ret);
+/*
+ * If BSS-Trans response is not ACCEPT, or if it is ACCEPT but still persists in Assoclist
+ *  invokes Block MAC and Disassociates STA from current BSS
+ */
+static int wl_wlif_block_mac_and_disassoc(wl_wlif_hdl *hdl, struct ether_addr addr,
+	int timeout, int disassoc);
 
 #ifndef BCM_EVENT_HEADER_LEN
 #define BCM_EVENT_HEADER_LEN   (sizeof(bcm_event_t))
@@ -381,154 +383,414 @@ wl_wlif_get_steering_band_digit(chanspec_t from_chanspec, chanspec_t to_chanspec
 	return WLIFU_BAND_DIGIT_UNWN;
 }
 
-/* listen to sockets for bss response event */
-static int
-wl_wlif_proc_event_socket(int event_fd, struct timeval *tv, char *ifreq, uint8 token,
-	struct ether_addr *bssid, wl_wlif_bss_trans_resp_t *out_resp)
+/* Find steer request from the list */
+static wl_wlif_steer_req_t*
+wl_wlif_find_steer_req(wl_wlif_hdl_data_t *hdl_data, uint8 token, struct ether_addr *sta_mac)
 {
-	fd_set fdset;
-	int fdmax;
-	int width, status = 0, bytes;
-	char buf_ptr[WL_WLIF_BUFSIZE_1K], *pkt;
-	char ifname[IFNAMSIZ+1];
-	int pdata_len;
-	dot11_bsstrans_resp_t *bsstrans_resp;
-	dot11_neighbor_rep_ie_t *neighbor;
-	bcm_event_t *dpkt;
-	uint32 event_id;
-	struct ether_addr *addr;
+	dll_t *item_p;
 
-	if (bssid == NULL) {
-		WLIF_BSSTRANS("bssid is NULL\n");
-		return WLIFU_BSS_TRANS_RESP_UNKNOWN;
+	for (item_p = dll_head_p(&hdl_data->steer_req_list);
+		!dll_end(&hdl_data->steer_req_list, item_p); item_p = dll_next_p(item_p)) {
+
+		wl_wlif_steer_req_t *tmp = (wl_wlif_steer_req_t*)item_p;
+
+		if (token == tmp->token && (eacmp(&tmp->bt_data.addr, sta_mac) == 0)) {
+			return tmp;
+		}
 	}
 
-	while (1) {
-		pkt = buf_ptr;
-
-		/* init file descriptor set */
-		FD_ZERO(&fdset);
-		fdmax = -1;
-
-		/* build file descriptor set now to save time later */
-		if (event_fd != -1) {
-			FD_SET(event_fd, &fdset);
-			fdmax = event_fd;
-		}
-
-		width = fdmax + 1;
-
-		WLIF_BSSTRANS("%s: Waiting %d sec for event. event_fd=%d token=%d bssid "MACF"\n",
-			ifreq, (int) tv->tv_sec, event_fd, token, ETHERP_TO_MACF(bssid));
-		/* listen to data availible on all sockets */
-		status = select(width, &fdset, NULL, NULL, tv);
-
-		if ((status == -1 && errno == EINTR) || (status == 0)) {
-			WLIF_BSSTRANS("%s: Error from select. status=%d errno=%d (%s)\n", ifreq,
-				status, errno, strerror(errno));
-			return WLIFU_BSS_TRANS_RESP_UNKNOWN;
-		}
-
-		if (status <= 0) {
-			WLIF_BSSTRANS("%s: Error from select. status=%d errno=%d (%s)\n", ifreq,
-				status, errno, strerror(errno));
-			return WLIFU_BSS_TRANS_RESP_UNKNOWN;
-		}
-
-		/* handle brcm event */
-		if (event_fd !=  -1 && FD_ISSET(event_fd, &fdset)) {
-			memset(pkt, 0, sizeof(buf_ptr));
-			if ((bytes = recv(event_fd, pkt, sizeof(buf_ptr), 0)) <= IFNAMSIZ) {
-				WLIF_BSSTRANS("%s: Error from recv. bytes=%d errno=%d (%s)\n",
-					ifreq, bytes, errno, strerror(errno));
-				return WLIFU_BSS_TRANS_RESP_UNKNOWN;
-			}
-
-			strncpy(ifname, pkt, IFNAMSIZ);
-			ifname[IFNAMSIZ] = '\0';
-
-			pkt = pkt + IFNAMSIZ;
-			pdata_len = bytes - IFNAMSIZ;
-
-			if (pdata_len <= BCM_EVENT_HEADER_LEN) {
-				WLIF_BSSTRANS("%s: BTM Response: data_len %d too small\n", ifreq,
-					pdata_len);
-				continue;
-			}
-
-			dpkt = (bcm_event_t *)pkt;
-			event_id = ntohl(dpkt->event.event_type);
-			if (event_id != WLC_E_BSSTRANS_RESP) {
-				WLIF_BSSTRANS("%s: BTM Response: wrong event_id %d. Expected %d\n",
-					ifreq, event_id, WLC_E_BSSTRANS_RESP);
-				continue;
-			}
-
-			pkt += BCM_EVENT_HEADER_LEN; /* payload (bss response) */
-			pdata_len -= BCM_EVENT_HEADER_LEN;
-
-			bsstrans_resp = (dot11_bsstrans_resp_t *)pkt;
-			addr = (struct ether_addr *)(bsstrans_resp->data);
-			neighbor = (dot11_neighbor_rep_ie_t *)bsstrans_resp->data;
-
-			WLIF_BSSTRANS("%s: BTM Response: ifname=%s event=%d token=%d status=%d "
-				"ToBSS="MACF"\n", ifreq, ifname, event_id, bsstrans_resp->token,
-				bsstrans_resp->status, ETHERP_TO_MACF(addr));
-
-			/* check interface */
-			if (strncmp(ifname, ifreq, strlen(ifreq)) != 0) {
-				/* not for the requested interface */
-				WLIF_BSSTRANS("%s: BTM Response: wrong interface %s. Expected %s\n",
-					ifreq, ifname, ifreq);
-				continue;
-			}
-
-			/* check token */
-			if (bsstrans_resp->token != token) {
-				/* not for the requested interface */
-				WLIF_BSSTRANS("%s: BTM Response: wrong token %x. Expected %x\n",
-					ifreq, bsstrans_resp->token, token);
-				continue;
-			}
-
-			/* Store all the values in the out_resp field */
-			if (out_resp) {
-				out_resp->response_valid = 1;
-				out_resp->status = bsstrans_resp->status;
-				/* If success then only BSSID field exists */
-				if (out_resp->status == 0) {
-					memcpy(&out_resp->trgt_bssid, addr,
-						sizeof(out_resp->trgt_bssid));
-				}
-			}
-
-			/* If there is some neigbor report */
-			if (bsstrans_resp->status == 6) {
-				WLIF_BSSTRANS("%s: BTM Response is %d : id=%d len=%d bssid["MACF"] "
-					"bssid_info=0x%X Operatin class=%d channel=%d phytype=%d\n",
-					ifreq, bsstrans_resp->status, neighbor->id, neighbor->len,
-					ETHER_TO_MACF(neighbor->bssid), neighbor->bssid_info,
-					neighbor->reg, neighbor->channel, neighbor->phytype);
-			}
-			/* reject */
-			if (bsstrans_resp->status) {
-				return WLIFU_BSS_TRANS_RESP_REJECT;
-			}
-
-			/* accept, but use another target bssid */
-			if (eacmp(bssid, addr) != 0) {
-				WLIF_BSSTRANS("%s: BTM Response: Different Target bssid. BTM "
-					"Request was for "MACF". STA responded with "MACF"\n",
-					ifreq, ETHERP_TO_MACF(bssid), ETHERP_TO_MACF(addr));
-				return WLIFU_BSS_TRANS_RESP_REJECT;
-			}
-
-			return WLIFU_BSS_TRANS_RESP_ACCEPT;
-		}
-	} /* While  */
-
-	return WLIFU_BSS_TRANS_RESP_UNKNOWN;
+	return NULL;
 }
+
+/* Delete steer request from list */
+static void
+wl_wlif_delete_steer_req(wl_wlif_hdl_data_t *hdl_data, uint8 token, struct ether_addr *sta_mac)
+{
+	dll_t *item_p;
+
+	for (item_p = dll_head_p(&hdl_data->steer_req_list);
+		!dll_end(&hdl_data->steer_req_list, item_p); item_p = dll_next_p(item_p)) {
+
+		wl_wlif_steer_req_t *tmp = (wl_wlif_steer_req_t*)item_p;
+
+		if (token == tmp->token && (eacmp(&tmp->bt_data.addr, sta_mac) == 0)) {
+			dll_delete(item_p);
+			free(tmp);
+			return;
+		}
+	}
+}
+
+/* Process the steer response timeout */
+static void
+wl_wlif_handle_steer_resp_wait_timeout(wl_wlif_steer_req_t *steer_req)
+{
+	wl_wlif_bss_trans_resp_t btm_resp;
+
+	if (!steer_req) {
+		WLIF_BSSTRANS("Err: Invalid STEER request handle\n");
+		return;
+	}
+
+	WLIF_BSSTRANS("STEER response timeout for token[%d] and STA["MACF"]\n",
+			steer_req->token, ETHER_TO_MACF(steer_req->bt_data.addr));
+	memset(&btm_resp, 0, sizeof(btm_resp));
+	wl_wlif_post_bss_transresp_process(steer_req->hdl_data, steer_req, &btm_resp,
+		WLIFU_BSS_TRANS_RESP_UNKNOWN);
+
+	wl_wlif_delete_steer_req(steer_req->hdl_data, steer_req->token, &steer_req->bt_data.addr);
+}
+
+/* BCM Timer Callback handler to inform steer response timeout. Library has sent the steer request
+ * but there is no response from the STA
+ */
+static void
+wl_wlif_steer_resp_wait_tiemout_cb(bcm_timer_id timer_id, void* arg)
+{
+	wl_wlif_handle_steer_resp_wait_timeout((wl_wlif_steer_req_t*)arg);
+	bcm_timer_delete(timer_id);
+}
+
+/* BCMUSCHED Timer Callback handler to inform steer response timeout. Library has sent the steer
+ * request but there is no response from the STA
+ */
+static void
+wl_wlif_steer_resp_wait_tiemout_usched_cb(bcm_usched_handle* hdl, void* arg)
+{
+	wl_wlif_handle_steer_resp_wait_timeout((wl_wlif_steer_req_t*)arg);
+}
+
+/* Remove steer response wait timer */
+static void
+wl_wlif_remove_bss_trans_resp_wait_timer(wl_wlif_hdl_data_t *hdl_data,
+	wl_wlif_steer_req_t *steer_req)
+{
+	if (!hdl_data || !steer_req) {
+		WLIF_BSSTRANS("Err: Invalid wlif handle \n");
+		return;
+	}
+
+	/* remove the timer */
+	if (hdl_data->uschd_hdl == NULL) {
+		bcm_timer_delete(steer_req->timer_id);
+	} else {
+		bcm_usched_remove_timer(hdl_data->uschd_hdl,
+			wl_wlif_steer_resp_wait_tiemout_usched_cb, steer_req);
+	}
+}
+
+/* Remove all the active steer requests */
+static void
+wl_wlif_cleanup_steer_req_list(wl_wlif_hdl_data_t *hdl_data)
+{
+	dll_t *item_p, *next_p;
+
+	for (item_p = dll_head_p(&hdl_data->steer_req_list);
+		!dll_end(&hdl_data->steer_req_list, item_p); item_p = next_p) {
+		next_p = dll_next_p(item_p);
+
+		wl_wlif_steer_req_t *tmp = (wl_wlif_steer_req_t*)item_p;
+
+		WLIF_BSSTRANS("Removing steer request entry for token[%d] and STA["MACF"]\n",
+			tmp->token, ETHER_TO_MACF(tmp->bt_data.addr));
+		wl_wlif_remove_bss_trans_resp_wait_timer(hdl_data, tmp);
+		dll_delete(item_p);
+		free(tmp);
+	}
+}
+
+/* Add steer request to list to keep track of all the active steer requests. This is required to
+ * process the steer response from the STA which is received in the application and pass it to the
+ * library using function "wl_wlif_process_bss_trans_resp_event"
+ */
+static int
+wl_wlif_add_steer_req_to_list(wl_wlif_hdl_data_t *hdl_data, uint8 token,
+	wl_wlif_bss_trans_data_t *ioctl_data)
+{
+	int ret;
+	wl_wlif_steer_req_t *new = NULL;
+	bcm_timer_id timer_id;
+
+	/* Check the handle */
+	if (!hdl_data) {
+		WLIF_BSSTRANS("Err: Invalid wlif handle \n");
+		return -1;
+	}
+
+	/* If exists do not add. Actually it should not happen */
+	if (wl_wlif_find_steer_req(hdl_data, token, &ioctl_data->addr)) {
+		WLIF_BSSTRANS("For token[%d] and STA["MACF"] entry already exists\n",
+			token, ETHER_TO_MACF(ioctl_data->addr));
+		return 1;
+	}
+
+	/* Allocate for steer request item */
+	new = (wl_wlif_steer_req_t*)calloc(1, sizeof(*new));
+	if (new == NULL) {
+		WLIF_BSSTRANS("Failed to allocate memory\n");
+		return -1;
+	}
+
+	new->hdl_data = hdl_data;
+	new->token = token;
+	memcpy(&new->bt_data, ioctl_data, sizeof(new->bt_data));
+
+	/* Create an Appropriate Timer, to send response if there is no BTM response from STA */
+	ret = wl_wlif_create_timer(hdl_data->uschd_hdl, hdl_data->timer_hdl,
+		(hdl_data->uschd_hdl ? (void*)wl_wlif_steer_resp_wait_tiemout_usched_cb :
+		(void*)wl_wlif_steer_resp_wait_tiemout_cb), (void*)new, hdl_data->resp_timeout,
+		FALSE, &timer_id);
+	if (!ret) {
+		WLIF_BSSTRANS("%s: Error creating timer for token[%d] and STA "MACF" to send "
+			"response. ret=%d\n",
+			hdl_data->ifname, token, ETHER_TO_MACF(ioctl_data->addr), ret);
+		free(new);
+		return -1;
+	}
+	new->timer_id = timer_id;
+
+	dll_append(&hdl_data->steer_req_list, (dll_t*)new);
+
+	return 0;
+}
+
+/* Perform post BTM response operation if "bss_trans_resp_hndlr" callback is not registered */
+static void
+wl_wlif_post_bss_transresp_process(wl_wlif_hdl_data_t *hdl_data, wl_wlif_steer_req_t *steer_req,
+	wl_wlif_bss_trans_resp_t *btm_resp, int bsstrans_ret)
+{
+	int brute_force = 0, steer_band_digit;
+	wl_wlif_bss_trans_data_t *ioctl_hndlr_data;
+	chanspec_t chanspec = 0;
+
+	/* Check the handle */
+	if (!hdl_data || !steer_req) {
+		WLIF_BSSTRANS("Err: Invalid wlif handle \n");
+		return;
+	}
+
+	ioctl_hndlr_data = &steer_req->bt_data;
+
+	WLIF_BSSTRANS("%s-%s: BSS Transition Resp from STA "MACF" to BSSID "MACF" is : %s\n",
+		hdl_data->appname, hdl_data->ifname, ETHER_TO_MACF(ioctl_hndlr_data->addr),
+		ETHER_TO_MACF(ioctl_hndlr_data->bssid),
+		((bsstrans_ret == WLIFU_BSS_TRANS_RESP_REJECT) ? "REJECT" :
+		((bsstrans_ret == WLIFU_BSS_TRANS_RESP_UNKNOWN) ? "NO RESPONSE" :"ACCEPT")));
+
+	/* If bss-trans resp handler is provided invoke it. */
+	if ((ioctl_hndlr_data->resp_hndlr != NULL) &&
+		ioctl_hndlr_data->resp_hndlr(ioctl_hndlr_data->resp_hndlr_data, bsstrans_ret)) {
+		goto end;
+	}
+
+	/* If disassoc imminent bit is set then no need to check for defiant STA
+	 * and brute force steering
+	*/
+	if (ioctl_hndlr_data->flags & WLIFU_BSS_TRANS_FLAGS_DISASSOC_IMNT) {
+		goto end;
+	}
+
+	/* Get the chanspec of current interface */
+	wl_wlif_get_chanspec(hdl_data->ifname, &chanspec);
+	steer_band_digit = wl_wlif_get_steering_band_digit(chanspec, ioctl_hndlr_data->chanspec);
+
+	/* Check if Brute Force Steer is applicable for each steer response type */
+	if (bsstrans_ret == WLIFU_BSS_TRANS_RESP_REJECT) {
+		/* By default no brute force for reject response */
+		brute_force = 0;
+		if (BTR_RJCT_BRUTFORCE_ON(hdl_data->steer_flags)) {
+			/* Brute force enabled for reject response */
+			brute_force = 1;
+		}
+	}
+
+	if (bsstrans_ret == WLIFU_BSS_TRANS_RESP_UNKNOWN) {
+		/* By default do brute force for unknown response (legacy STAs) */
+		brute_force = 1;
+		if (BTR_UNWN_BRUTFORCE_OFF(hdl_data->steer_flags)) {
+			/* No brute force for unknows response */
+			brute_force = 0;
+		}
+
+		if (IS_LEGACY_ACT_STA_BRUTEFORCE_OFF(hdl_data->steer_flags)) {
+			/* No brute force for active legacy STAs flag set */
+			if (ioctl_hndlr_data->flags & WLIFU_BSS_TRANS_FLAGS_LEGACY_ACTIVE_STA) {
+				brute_force = 0;
+			}
+		}
+	}
+
+	/* Check if brute force steer is applicable based on band digits */
+	if (bsstrans_ret != WLIFU_BSS_TRANS_RESP_ACCEPT) {
+		brute_force |=
+			(((steer_band_digit == WLIFU_BAND_DIGIT_5GTO5G) &&
+			(BTR_5GTO5G_BRUTEFORCE_ON(hdl_data->steer_flags))) ||
+			((steer_band_digit == WLIFU_BAND_DIGIT_5GTO2G) &&
+			(BTR_5GTO2G_BRUTEFORCE_ON(hdl_data->steer_flags))) ||
+			((steer_band_digit == WLIFU_BAND_DIGIT_2GTO5G) &&
+			(BTR_2GTO5G_BRUTEFORCE_ON(hdl_data->steer_flags))) ||
+			((steer_band_digit == WLIFU_BAND_DIGIT_2GTO2G) &&
+			(BTR_2GTO2G_BRUTEFORCE_ON(hdl_data->steer_flags))));
+	}
+
+	WLIF_BSSTRANS("%s:%s brute force disassoc of STA "MACF" after %d sec. NVRAM %s=0x%x "
+		"steer_band_digit=%d\n",
+		hdl_data->ifname, brute_force ? "" : " No", ETHER_TO_MACF(ioctl_hndlr_data->addr),
+		ioctl_hndlr_data->timeout, WLIFU_NVRAM_STEER_FLAGS, hdl_data->steer_flags,
+		steer_band_digit);
+	/* If Brute Force Steer is not applicable, for this Response Type, Leave */
+	if (!brute_force) {
+		/* If the response is not accept, unblock the MAC from current interface and
+		 * remove unblock timer
+		 */
+		if (bsstrans_ret != WLIFU_BSS_TRANS_RESP_ACCEPT) {
+			wl_wlif_remove_unblock_timer(hdl_data);
+		}
+		goto end;
+	}
+#ifdef BCM_CEVENT
+	/* cevent sent with STA MAC address for BTM Brute Force from app */
+	send_cevent(hdl_data->ifname, NULL, &ioctl_hndlr_data->addr,
+		0, ioctl_hndlr_data->reason, 0, CEVENT_TYPE_A2C, CEVENT_A2C_ST_BTM_BRUTE_FORCE,
+		CEVENT_FRAME_DIR_TX, NULL, 0);
+#endif /* BCM_CEVENT */
+
+	/* If Brute Force is applicable, for this Response Type, Do Brute Force way */
+	wl_wlif_block_mac_and_disassoc(hdl_data, ioctl_hndlr_data->addr,
+		ioctl_hndlr_data->timeout, brute_force);
+
+end:
+	/* For BSS Transition Response ACCEPT, Check if Dafiant STA Watchdog is required or not */
+	if (hdl_data && (bsstrans_ret == WLIFU_BSS_TRANS_RESP_ACCEPT) &&
+		BTR_ACPT_DEFIANT_WD_ON(hdl_data->steer_flags)) {
+
+		/* Create Defiant STA Watchdog Timer */
+		WLIF_BSSTRANS("%s: Creating timer for %d sec to check if the STA "MACF" actually "
+			"moved\n", hdl_data->ifname, ioctl_hndlr_data->timeout,
+			ETHER_TO_MACF(ioctl_hndlr_data->addr));
+		wl_wlif_create_defiant_sta_watchdog_timer(hdl_data,
+			ioctl_hndlr_data->addr, ioctl_hndlr_data->timeout);
+	}
+
+	if (steer_req->bt_data.post_resp_cb) {
+		steer_req->bt_data.post_resp_cb(hdl_data->ifname,
+			steer_req->bt_data.post_resp_cb_data, bsstrans_ret, btm_resp);
+	}
+}
+
+/* Routine for processing the "WLC_E_BSSTRANS_RESP" event. Application listening to this event
+ * should pass the event data after "wl_wlif_do_bss_trans" for getting the response data from
+ * event data. If application doesn't pass the event data, library will call the
+ * "bss_trans_resp_hndlr" or "post_bss_trans_resp_cb" to inform that there is no
+ * response(steer_resp type is WLIFU_BSS_TRANS_RESP_UNKNOWN).
+ */
+void
+wl_wlif_process_bss_trans_resp_event(wl_wlif_hdl *hdl, char *pkt, int len)
+{
+	int pdata_len, steer_resp = WLIFU_BSS_TRANS_RESP_UNKNOWN;
+	dot11_bsstrans_resp_t *bsstrans_resp;
+	dot11_neighbor_rep_ie_t *neighbor = NULL;
+	bcm_event_t *dpkt;
+	struct ether_addr *addr;
+	struct ether_addr *sta_mac;
+	wl_wlif_hdl_data_t *hdl_data;
+	wl_wlif_steer_req_t *steer_req = NULL;
+	wl_wlif_bss_trans_resp_t btm_resp;
+
+	/* Check the handle */
+	if (!hdl) {
+		WLIF_BSSTRANS("Err: Invalid wlif handle \n");
+		return;
+	}
+
+	if (!pkt) {
+		WLIF_BSSTRANS("Err: Event Data is NULL\n");
+		return;
+	}
+
+	hdl_data = (wl_wlif_hdl_data_t*)hdl;
+	memset(&btm_resp, 0, sizeof(btm_resp));
+
+	pkt = pkt + IFNAMSIZ;
+	pdata_len = len - IFNAMSIZ;
+
+	if (pdata_len <= BCM_EVENT_HEADER_LEN) {
+		WLIF_BSSTRANS("%s: BTM Response: data_len %d too small\n", hdl_data->ifname,
+			pdata_len);
+		goto end;
+	}
+
+	dpkt = (bcm_event_t *)pkt;
+	pkt += BCM_EVENT_HEADER_LEN; /* payload (bss response) */
+	pdata_len -= BCM_EVENT_HEADER_LEN;
+	sta_mac = (struct ether_addr *)(&(dpkt->event.addr));
+	bsstrans_resp = (dot11_bsstrans_resp_t *)pkt;
+	/* data will have the BSSID if the response is accept(i.e. 0) */
+	addr = (struct ether_addr *)(bsstrans_resp->data);
+
+	steer_req = wl_wlif_find_steer_req(hdl_data, bsstrans_resp->token, sta_mac);
+	if (!steer_req) {
+		WLIF_BSSTRANS("%s-%s: BTM Response: For STA["MACF"] token=%d status=%d "
+			"ToBSS="MACF" Steer request entry not present. Do not process.\n",
+			hdl_data->appname, hdl_data->ifname, ETHERP_TO_MACF(sta_mac),
+			bsstrans_resp->token, bsstrans_resp->status, ETHERP_TO_MACF(addr));
+		goto end;
+	}
+
+	/* If the BSS transition response response is 6, then BSSID field will
+	 * be in neighbor report.
+	 */
+	if (bsstrans_resp->status == 6) {
+		neighbor = (dot11_neighbor_rep_ie_t *)bsstrans_resp->data;
+		addr = &neighbor->bssid;
+	}
+
+	WLIF_BSSTRANS("%s-%s: BTM Response: STA["MACF"] token=%d status=%d "
+		"ToBSS="MACF"\n", hdl_data->appname, hdl_data->ifname, ETHERP_TO_MACF(sta_mac),
+		bsstrans_resp->token, bsstrans_resp->status, ETHERP_TO_MACF(addr));
+
+	/* Store all the values in the out_resp field */
+	btm_resp.response_valid = 1;
+	btm_resp.status = bsstrans_resp->status;
+	/* If success then only BSSID field exists */
+	if (btm_resp.status == 0) {
+		eacopy(addr, &btm_resp.trgt_bssid);
+	}
+
+	/* If there is some neigbor report */
+	if ((bsstrans_resp->status == 6) && neighbor) {
+		WLIF_BSSTRANS("%s: BTM Response is %d : id=%d len=%d bssid["MACF"] "
+			"bssid_info=0x%X Operatin class=%d channel=%d phytype=%d\n",
+			hdl_data->ifname, bsstrans_resp->status, neighbor->id, neighbor->len,
+			ETHER_TO_MACF(neighbor->bssid), neighbor->bssid_info,
+			neighbor->reg, neighbor->channel, neighbor->phytype);
+	}
+	/* reject */
+	if (bsstrans_resp->status) {
+		steer_resp = WLIFU_BSS_TRANS_RESP_REJECT;
+		goto end;
+	}
+
+	/* accept, but use another target bssid */
+	if (eacmp(&steer_req->bt_data.bssid, addr) != 0) {
+		WLIF_BSSTRANS("%s: BTM Response: Different Target bssid. BTM "
+			"Request was for "MACF". STA responded with "MACF"\n",
+			hdl_data->ifname, ETHER_TO_MACF(steer_req->bt_data.bssid),
+			ETHERP_TO_MACF(addr));
+		steer_resp = WLIFU_BSS_TRANS_RESP_REJECT;
+		goto end;
+	}
+
+	steer_resp = WLIFU_BSS_TRANS_RESP_ACCEPT;
+
+end:
+	if (steer_req) {
+		wl_wlif_post_bss_transresp_process(hdl_data, steer_req, &btm_resp, steer_resp);
+		wl_wlif_remove_bss_trans_resp_wait_timer(hdl_data, steer_req);
+		wl_wlif_delete_steer_req(hdl_data, steer_req->token, sta_mac);
+	}
+}
+
 static void
 wl_wlif_get_maclist_filename(wl_wlif_hdl_data_t *hdl, char *fname)
 {
@@ -597,6 +859,13 @@ wl_wlif_init(void *uschd_hdl, char *ifname, callback_hndlr ioctl_hndlr,
 	hdl->uschd_hdl = uschd_hdl;
 	strncpy(hdl->ifname, ifname, IFNAMSIZ-1);
 	hdl->ifname[IFNAMSIZ -1] = '\0';
+	hdl->steer_flags = WLIFU_DEF_STEER_FLAGS;
+	dll_init(&hdl->steer_req_list);
+
+	value = nvram_safe_get(WLIFU_NVRAM_STEER_FLAGS);
+	if (value[0] != '\0') {
+		hdl->steer_flags = (uint32)strtoul(value, NULL, 0);
+	}
 
 	/* Read the OUI vendor and action value from the NVRAM */
 	wl_retrieve_wnm_oui_action_config();
@@ -625,8 +894,9 @@ wl_wlif_init(void *uschd_hdl, char *ifname, callback_hndlr ioctl_hndlr,
 	hdl->data = data;
 	strncpy(hdl->appname, appname, sizeof(hdl->appname));
 	hdl->appname[sizeof(hdl->appname) - 1] = '\0';
-	WLIF_BSSTRANS("%s: BSS Transition Initialized Ifname[%s] Msglevel[%d] resp_timeout[%d]\n",
-		appname, hdl->ifname, g_steering_msglevel, hdl->resp_timeout);
+	WLIF_BSSTRANS("%s: BSS Transition Initialized Ifname[%s] Msglevel[%d] resp_timeout[%d] "
+		"steer_flags[0x%x]\n",
+		appname, hdl->ifname, g_steering_msglevel, hdl->resp_timeout, hdl->steer_flags);
 	wl_wlif_restore_old_maclist_timer(hdl);
 
 	return hdl;
@@ -646,6 +916,12 @@ wl_wlif_deinit(wl_wlif_hdl *hdl)
 	}
 
 	hdldata = (wl_wlif_hdl_data_t*)hdl;
+
+	WLIF_BSSTRANS("%s: BSS Transition DeInitializing Ifname[%s]\n",
+		hdldata->appname, hdldata->ifname);
+
+	/* Remove all the active steer requests */
+	wl_wlif_cleanup_steer_req_list(hdldata);
 
 	/* If uschd library is not used, and Linux Timer Module Handle is valid */
 	if ((hdldata->uschd_hdl == NULL) && (hdldata->timer_hdl)) {
@@ -719,11 +995,10 @@ wl_get_wb_ie_from_chanspec(dot11_wide_bw_chan_ie_t *wbc_ie,
  */
 static int
 wl_wlif_send_bss_transreq_actframe(wl_wlif_hdl_data_t *hdl_data,
-	wl_wlif_bss_trans_data_t *ioctl_data, int event_fd, wl_wlif_bss_trans_resp_t *out_resp)
+	wl_wlif_bss_trans_data_t *ioctl_data)
 {
 	int ret, buflen;
 	char *param, ioctl_buf[WLC_IOCTL_MAXLEN];
-	struct timeval tv; /* timed out for bss response */
 	dot11_bsstrans_req_t *transreq;
 	dot11_neighbor_rep_ie_t *nbr_ie;
 	dot11_wide_bw_chan_ie_t *wbc_ie;
@@ -821,7 +1096,8 @@ wl_wlif_send_bss_transreq_actframe(wl_wlif_hdl_data_t *hdl_data,
 
 		ret = wl_wlif_create_timer(hdl_data->uschd_hdl, hdl_data->timer_hdl,
 			(hdl_data->uschd_hdl ? (void*)wl_wlif_disassoc_mac_usched_cb :
-			(void*)wl_wlif_disassoc_mac_cb), (void*)disassoc_data, timeout, FALSE);
+			(void*)wl_wlif_disassoc_mac_cb), (void*)disassoc_data, timeout, FALSE,
+			NULL);
 		if (!ret) {
 			WLIF_BSSTRANS("Error: Failed to create disassoc timer. ret=%d\n", ret);
 			free(disassoc_data);
@@ -841,26 +1117,14 @@ done:
 
 	if (ret < 0) {
 		printf("%s: Error sending BTM Req actframe: ret=%d\n", hdl_data->ifname, ret);
-	} else if (event_fd != -1) {
-		/* Find OUI ,vendor and do post bsstransreq after send BTM request */
-		wl_wlif_create_post_bss_transreq_timer(hdl_data, ioctl_data, event_fd);
-		/* read the BSS transition response only if event_fd is valid */
-		usleep(1000*500);
-		tv.tv_sec = hdl_data->resp_timeout;
-		tv.tv_usec = 0;
-
-		if (ioctl_data->flags & WLIFU_BSS_TRANS_FLAGS_DISASSOC_IMNT) {
-			tv.tv_sec = MIN(hdl_data->resp_timeout,
-				MILISEC_TO_SEC(ioctl_data->disassoc_timer * bcn_period));
-		}
-
-		/* wait for bss response and compare token/ifname/status/bssid etc  */
-		return (wl_wlif_proc_event_socket(event_fd, &tv, hdl_data->ifname,
-			bss_token, &(ioctl_data->bssid), out_resp));
+	} else {
+		/* Add steer request to list to handle response */
+		ret = wl_wlif_add_steer_req_to_list(hdl_data, bss_token, ioctl_data);
 	}
+
 	/* Find OUI ,vendor and do post bsstransreq after send BTM request */
-	wl_wlif_create_post_bss_transreq_timer(hdl_data, ioctl_data, event_fd);
-	return WLIFU_BSS_TRANS_RESP_UNKNOWN;
+	wl_wlif_create_post_bss_transreq_timer(hdl_data, ioctl_data);
+	return ret;
 }
 
 /*
@@ -869,13 +1133,10 @@ done:
  * Returns the BSS-Trans response.
  */
 static int
-wl_wlif_send_bss_transreq(wl_wlif_hdl_data_t *hdl_data,
-	wl_wlif_bss_trans_data_t *ioctl_data, int event_fd,
-	wl_wlif_bss_trans_resp_t *out_resp)
+wl_wlif_send_bss_transreq(wl_wlif_hdl_data_t *hdl_data, wl_wlif_bss_trans_data_t *ioctl_data)
 {
 	int ret, buflen;
 	char ioctl_buf[WLC_IOCTL_SMLEN];
-	struct timeval tv; /* timed out for bss response */
 	nbr_rpt_elem_t btq_nbr;
 	wl_bsstrans_req_t bsstrans_req;
 
@@ -984,24 +1245,15 @@ wl_wlif_send_bss_transreq(wl_wlif_hdl_data_t *hdl_data,
 		ETHER_TO_MACF(bsstrans_req.sta_mac),
 		bsstrans_req.token, bsstrans_req.reqmode, bsstrans_req.tbtt);
 
-	if (event_fd != -1) {
-		/* Find OUI ,vendor and do post bsstransreq after send BTM request */
-		wl_wlif_create_post_bss_transreq_timer(hdl_data, ioctl_data, event_fd);
-		/* read the BSS transition response only if event_fd is valid */
-		usleep(1000*500);
-		tv.tv_sec = hdl_data->resp_timeout;
-		tv.tv_usec = 0;
+	/* Add steer request to list to handle response */
+	ret = wl_wlif_add_steer_req_to_list(hdl_data, bss_token, ioctl_data);
 
-		/* wait for bss response and compare token/ifname/status/bssid etc  */
-		return (wl_wlif_proc_event_socket(event_fd, &tv, hdl_data->ifname,
-			bss_token, &(ioctl_data->bssid), out_resp));
-	}
 	/* Find OUI ,vendor and do post bsstransreq after send BTM request */
-	wl_wlif_create_post_bss_transreq_timer(hdl_data, ioctl_data, event_fd);
-	return WLIFU_BSS_TRANS_RESP_UNKNOWN;
+	wl_wlif_create_post_bss_transreq_timer(hdl_data, ioctl_data);
+	return ret;
 
 actframe:
-	return wl_wlif_send_bss_transreq_actframe(hdl_data, ioctl_data, event_fd, out_resp);
+	return wl_wlif_send_bss_transreq_actframe(hdl_data, ioctl_data);
 }
 
 /* create blocking list of macs. Return 1 if there is any change to the MAC list, else return 0.
@@ -1081,7 +1333,7 @@ wl_update_block_mac_list(maclist_t *static_maclist, maclist_t *maclist,
 /* Create a Timer */
 static int
 wl_wlif_create_timer(void *uschd_hdl, bcm_timer_module_id timer_hdl,
-	void* cbfn, void *data, int timeout, int repeat)
+	void* cbfn, void *data, int timeout, int repeat, bcm_timer_id *out_timer_id)
 {
 	int ret = -1;
 	bcm_timer_id timer_id;
@@ -1113,6 +1365,10 @@ wl_wlif_create_timer(void *uschd_hdl, bcm_timer_module_id timer_hdl,
 		ret = bcm_timer_settime(timer_id, &its);
 		if (ret) {
 			return FALSE;
+		}
+
+		if (out_timer_id) {
+			*out_timer_id = timer_id;
 		}
 
 	/* If uschd library is used, Create uschd timer */
@@ -1230,9 +1486,9 @@ wl_wlif_remove_macblock_from_file(wl_wlif_hdl_data_t *hdl, struct ether_addr add
 int
 wl_wlif_block_mac(wl_wlif_hdl *hdl, struct ether_addr addr, int timeout)
 {
-	char maclist_buf[WLC_IOCTL_MAXLEN], *val = NULL;
+	char maclist_buf[WLC_IOCTL_MAXLEN];
 	char smaclist_buf[WLC_IOCTL_MAXLEN];
-	int macmode, ret, macprobresp, closed = 0, steer_flags = WLIFU_DEF_STEER_FLAGS;
+	int macmode, ret, macprobresp, closed = 0;
 	maclist_t *s_maclist = (maclist_t *)smaclist_buf;
 	maclist_t *maclist = (maclist_t *)maclist_buf;
 	static short flag;
@@ -1330,12 +1586,7 @@ wl_wlif_block_mac(wl_wlif_hdl *hdl, struct ether_addr addr, int timeout)
 		WLIF_BSSTRANS("%s: Error in WLC_GET_CLOSED. ret=%d\n", hdl_data->ifname, ret);
 	}
 	if (!closed) {
-		val = nvram_safe_get(WLIFU_NVRAM_STEER_FLAGS);
-		if (val[0] != '\0') {
-			steer_flags = (int)strtoul(val, NULL, 0);
-		}
-
-		if (IS_NOBCNSSID_ENABLED(steer_flags) && !wl_wlif_set_nobcnssid(hdl)) {
+		if (IS_NOBCNSSID_ENABLED(hdl_data->steer_flags) && !wl_wlif_set_nobcnssid(hdl)) {
 			WLIF_BSSTRANS("%s: Error in setting nobcnssid\n", hdl_data->ifname);
 		}
 	}
@@ -1420,8 +1671,7 @@ wl_set_channel_util(wl_wlif_hdl *hdl, uint8 chan_util)
 
 /* Set the Channel utilization value  in Bss load element */
 static int
-wl_wlif_set_fake_chan_util_for_sta(wl_wlif_hdl *hdl,
-	wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd)
+wl_wlif_set_fake_chan_util_for_sta(wl_wlif_hdl *hdl, wl_wlif_bss_trans_data_t *ioctl_hndlr_data)
 {
 	char *value;
 	uint8 fake_chan_util = WLIFU_DEF_FAKE_CHAN_UTIL;
@@ -1437,15 +1687,13 @@ wl_wlif_set_fake_chan_util_for_sta(wl_wlif_hdl *hdl,
 
 /* Clear the Channel utilization value  in Bss load element */
 static int
-wl_wlif_clear_fake_chan_util_for_sta(wl_wlif_hdl *hdl,
-	wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd)
+wl_wlif_clear_fake_chan_util_for_sta(wl_wlif_hdl *hdl, wl_wlif_bss_trans_data_t *ioctl_hndlr_data)
 {
 	return wl_set_channel_util(hdl, 0);
 }
 
 static int
-wl_wlif_do_block_mac(wl_wlif_hdl *hdl,
-	wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd)
+wl_wlif_do_block_mac(wl_wlif_hdl *hdl, wl_wlif_bss_trans_data_t *ioctl_hndlr_data)
 {
 	wl_wlif_hdl_data_t *hdl_data;
 
@@ -1460,8 +1708,7 @@ wl_wlif_do_block_mac(wl_wlif_hdl *hdl,
 }
 
 static int
-wl_wlif_do_unblock_mac(wl_wlif_hdl *hdl,
-	wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd)
+wl_wlif_do_unblock_mac(wl_wlif_hdl *hdl, wl_wlif_bss_trans_data_t *ioctl_hndlr_data)
 {
 	wl_wlif_hdl_data_t *hdl_data;
 	if (!hdl) {
@@ -1547,22 +1794,24 @@ wl_retrieve_wnm_oui_action_config(void)
  *   do the procees further
  */
 static int
-wl_wlif_pre_bss_transreq(wl_wlif_hdl *hdl,
-		wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd)
+wl_wlif_pre_bss_transreq(wl_wlif_hdl *hdl, wl_wlif_bss_trans_data_t *ioctl_hndlr_data)
 {
 	uint8 action;
 	sta_oui_wnm_act_t *ptr = oui_action;
+	unsigned char generic_oui[OUI_ADDR_LEN];	/* Generic OUI */
 
 	if (!ptr) {
 		return  0;
 	}
+	oui_atoe(OUI_GENERAL, generic_oui);
 	while (ptr) {
-		if (!oui_cmp(ptr->oui, &ioctl_hndlr_data->addr)) {
+		if ((!oui_cmp(ptr->oui, &ioctl_hndlr_data->addr)) ||
+			(!oui_cmp(ptr->oui, generic_oui))) {
 			action = ptr->pre_bt_action;
 			WLIF_BSSTRANS("oui_action = %d , oui_address =%02x:%02x:%02x \n",
 				ptr->pre_bt_action, ptr->oui[0], ptr->oui[1], ptr->oui[2]);
 			if (wnm_actions[action] != NULL) {
-				wnm_actions[action](hdl, ioctl_hndlr_data, event_fd);
+				wnm_actions[action](hdl, ioctl_hndlr_data);
 			}
 		}
 		ptr = ptr->next;
@@ -1574,17 +1823,18 @@ wl_wlif_pre_bss_transreq(wl_wlif_hdl *hdl,
  *   clean the IOVAR variable
  */
 static int
-wl_wlif_post_bss_transreq(wl_wlif_hdl *hdl,
-		struct ether_addr *addr, int event_fd)
+wl_wlif_post_bss_transreq(wl_wlif_hdl *hdl, struct ether_addr *addr)
 {
 	uint8 action;
 	wl_wlif_bss_trans_data_t ioctl_hndlr_data;
 	sta_oui_wnm_act_t *ptr = oui_action;
 	wl_wlif_hdl_post_bt_t *data;
+	unsigned char generic_oui[OUI_ADDR_LEN];	/* Generic OUI */
 
 	if (!ptr) {
 		return 0;
 	}
+	oui_atoe(OUI_GENERAL, generic_oui);
 	if (!hdl) {
 		WLIF_BSSTRANS("Err: Invalid wlif handle \n");
 		return -1;
@@ -1593,13 +1843,14 @@ wl_wlif_post_bss_transreq(wl_wlif_hdl *hdl,
 	memset(&ioctl_hndlr_data, 0, sizeof(ioctl_hndlr_data));
 	eacopy(addr, &(ioctl_hndlr_data.addr));
 	while (ptr) {
-		if ((!oui_cmp(ptr->oui, &ioctl_hndlr_data.addr)) &&
+		if (((!oui_cmp(ptr->oui, &ioctl_hndlr_data.addr)) ||
+				(!oui_cmp(ptr->oui, generic_oui))) &&
 				(data->action == ptr->post_bt_action)) {
 			action = ptr->post_bt_action;
 			WLIF_BSSTRANS("oui_action = %d , oui_address =%02x:%02x:%02x \n",
 				ptr->post_bt_action, ptr->oui[0], ptr->oui[1], ptr->oui[2]);
 			if (wnm_actions[action] != NULL) {
-				wnm_actions[action](data->hdl_data, &ioctl_hndlr_data, event_fd);
+				wnm_actions[action](data->hdl_data, &ioctl_hndlr_data);
 			}
 		}
 		ptr = ptr->next;
@@ -1607,111 +1858,55 @@ wl_wlif_post_bss_transreq(wl_wlif_hdl *hdl,
 	return 0;
 }
 
-/*
- * Send BSS Transition Request Action Frame and check the Response.
- * If BSS-Trans response is not ACCEPT, or if it is ACCEPT but still persists in Assoclist
- * invokes Block MAC and Disassociates STA from current BSS
+/* BSS-Trans routine for sending BTM request to the STA. This routine will return immediately
+ * after sending the request. Applications should pass "post_bss_trans_resp_cb" or
+ * "bss_trans_resp_hndlr" callback in "wl_wlif_bss_trans_data_t" structure to get the response.
+ * Applications should listen for "WLC_E_BSSTRANS_RESP" event and pass the event data to library to
+ * get the BTM response. Else, the library will call those above registered callbacks to inform
+ * that there is no response(steer_resp type is WLIFU_BSS_TRANS_RESP_UNKNOWN).
  */
 int
-wl_wlif_do_bss_trans(wl_wlif_hdl *hdl,
-	wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd,
-	wl_wlif_bss_trans_resp_t *out_resp)
+wl_wlif_do_bss_trans(wl_wlif_hdl *hdl, wl_wlif_bss_trans_data_t *ioctl_hndlr_data)
 {
-	int bsstrans_ret = -1, steer_flags = WLIFU_DEF_STEER_FLAGS, brute_force = 0;
-	int steer_band_digit;
-	char *value = NULL;
+	int bsstrans_ret = -1;
 	wl_wlif_hdl_data_t *hdl_data = NULL;
-	chanspec_t chanspec = 0;
 
 	if (!hdl) {
 		WLIF_BSSTRANS("Err: Invalid wlif handle \n");
 		goto end;
 	}
 
-	/* Read NVRAM for Steering Flags, to customize steering behavior */
-	value = nvram_safe_get(WLIFU_NVRAM_STEER_FLAGS);
-	if (value[0] != '\0') {
-		steer_flags = (int)strtoul(value, NULL, 0);
-	}
-
 	hdl_data = (wl_wlif_hdl_data_t*)hdl;
+
+	/* Check if Steering STA exists in ASSOCLIST */
+	if (wl_wlif_find_sta_in_assoclist(hdl_data, &ioctl_hndlr_data->addr) == FALSE) {
+		WLIF_BSSTRANS("%s: STA "MACF" not associated\n",
+			hdl_data->ifname, ETHER_TO_MACF(ioctl_hndlr_data->addr));
+		bsstrans_ret = WLIFU_BSS_TRANS_RESP_UNKNOWN;
+		goto end;
+	}
 
 	/* Block mac in curr interface. */
 	wl_wlif_block_mac(hdl_data, ioctl_hndlr_data->addr, ioctl_hndlr_data->timeout);
 
 	/* Find OUI, vendor and set IOVAR before send BTM request */
-	wl_wlif_pre_bss_transreq(hdl_data, ioctl_hndlr_data, event_fd);
+	wl_wlif_pre_bss_transreq(hdl_data, ioctl_hndlr_data);
+
+#ifdef BCM_CEVENT
+	/* cevent sent with target bssid for BTM Request from app */
+	send_cevent(hdl_data->ifname, NULL, &ioctl_hndlr_data->bssid,
+		0, ioctl_hndlr_data->reason, 0, CEVENT_TYPE_A2C, CEVENT_A2C_ST_BTM_REQ,
+		CEVENT_FRAME_DIR_TX, NULL, 0);
+#endif /* BCM_CEVENT */
 
 	/* Create & Send BSS Transition Action Frame & Return the Response */
-	bsstrans_ret = wl_wlif_send_bss_transreq(hdl_data, ioctl_hndlr_data, event_fd, out_resp);
-	WLIF_BSSTRANS("%s: BSS Transition Resp from STA "MACF" to BSSID "MACF" is : %s\n",
-		hdl_data->ifname, ETHER_TO_MACF(ioctl_hndlr_data->addr),
+	bsstrans_ret = wl_wlif_send_bss_transreq(hdl_data, ioctl_hndlr_data);
+	WLIF_BSSTRANS("%s-%s: BSS Transition Req to STA "MACF" Target BSSID "MACF" %ssent\n",
+		hdl_data->appname, hdl_data->ifname, ETHER_TO_MACF(ioctl_hndlr_data->addr),
 		ETHER_TO_MACF(ioctl_hndlr_data->bssid),
-		((bsstrans_ret == WLIFU_BSS_TRANS_RESP_REJECT) ? "REJECT" :
-		((bsstrans_ret == WLIFU_BSS_TRANS_RESP_UNKNOWN) ? "UNKNOWN" :"ACCEPT")));
-
-	/* If bss-trans resp handler is provided invoke it. */
-	if ((ioctl_hndlr_data->resp_hndlr != NULL) &&
-		ioctl_hndlr_data->resp_hndlr(ioctl_hndlr_data->resp_hndlr_data, bsstrans_ret)) {
-		goto end;
-	}
-
-	/* If disassoc Disassoc imminent bit is set then no need to check for defiant STA
-	 * and brute force steering
-	*/
-	if (ioctl_hndlr_data->flags & WLIFU_BSS_TRANS_FLAGS_DISASSOC_IMNT) {
-		goto end;
-	}
-
-	/* Get the chanspec of current interface */
-	wl_wlif_get_chanspec(hdl_data->ifname, &chanspec);
-	steer_band_digit = wl_wlif_get_steering_band_digit(chanspec, ioctl_hndlr_data->chanspec);
-
-	/* Check if Brute Force Steer is applicable, for this Response Type */
-	brute_force =
-		(((bsstrans_ret == WLIFU_BSS_TRANS_RESP_REJECT) &&
-		(BTR_RJCT_BRUTFORCE(steer_flags))) ||
-		((bsstrans_ret == WLIFU_BSS_TRANS_RESP_UNKNOWN) &&
-		(!BTR_UNWN_BRUTFORCE_BLK(steer_flags))));
-
-	/* Check if brute force steer is applicable based on band digits */
-	if (bsstrans_ret != WLIFU_BSS_TRANS_RESP_ACCEPT) {
-		brute_force =
-			(((steer_band_digit == WLIFU_BAND_DIGIT_5GTO5G) &&
-			(BTR_5GTO5G_BRUTEFORCE(steer_flags))) ||
-			((steer_band_digit == WLIFU_BAND_DIGIT_5GTO2G) &&
-			(BTR_5GTO2G_BRUTEFORCE(steer_flags))) ||
-			((steer_band_digit == WLIFU_BAND_DIGIT_2GTO5G) &&
-			(BTR_2GTO5G_BRUTEFORCE(steer_flags))) ||
-			((steer_band_digit == WLIFU_BAND_DIGIT_2GTO2G) &&
-			(BTR_2GTO2G_BRUTEFORCE(steer_flags))));
-	}
-
-	WLIF_BSSTRANS("%s:%s brute force disassoc of STA "MACF" after %d sec. NVRAM %s=%d "
-		"steer_band_digit=%d\n",
-		hdl_data->ifname, brute_force ? "" : " No", ETHER_TO_MACF(ioctl_hndlr_data->addr),
-		ioctl_hndlr_data->timeout, WLIFU_NVRAM_STEER_FLAGS, steer_flags, steer_band_digit);
-	/* If Brute Force Steer is not applicable, for this Response Type, Leave */
-	if (!brute_force) {
-		goto end;
-	}
-
-	/* If Brute Force is applicable, for this Response Type, Do Brute Force way */
-	wl_wlif_block_mac_and_disassoc(hdl, ioctl_hndlr_data->addr,
-		ioctl_hndlr_data->timeout, brute_force);
+		((bsstrans_ret != BCME_OK) ? "Not " :""));
 
 end:
-	/* For BSS Transition Response ACCEPT, Check if Dafiant STA Watchdog is required or not */
-	if (hdl_data && (bsstrans_ret == WLIFU_BSS_TRANS_RESP_ACCEPT) &&
-		BTR_ACPT_DEFIANT_WD_ON(steer_flags)) {
-
-		/* Create Defiant STA Watchdog Timer */
-		WLIF_BSSTRANS("%s: Creating timer for %d sec to check if the STA "MACF" actually "
-			"moved\n", hdl_data->ifname, ioctl_hndlr_data->timeout,
-			ETHER_TO_MACF(ioctl_hndlr_data->addr));
-		wl_wlif_create_defiant_sta_watchdog_timer(hdl_data,
-			ioctl_hndlr_data->addr, ioctl_hndlr_data->timeout);
-	}
 	return bsstrans_ret;
 }
 
@@ -1820,6 +2015,7 @@ wl_wlif_create_unblock_mac_timer(wl_wlif_hdl_data_t *hdl_data,
 {
 	int ret = FALSE;
 	static_maclist_t *tmr_data = NULL;
+	bcm_timer_id timer_id;
 
 	/* Allocate Timer Arg Struct Object */
 	tmr_data = (static_maclist_t *) calloc(1, sizeof(*tmr_data));
@@ -1836,15 +2032,47 @@ wl_wlif_create_unblock_mac_timer(wl_wlif_hdl_data_t *hdl_data,
 	/* Create an Appropriate Timer, to Unblock a MAC */
 	ret = wl_wlif_create_timer(hdl_data->uschd_hdl, hdl_data->timer_hdl,
 		(hdl_data->uschd_hdl ? (void*)wl_wlif_unblock_mac_usched_cb :
-		(void*)wl_wlif_unblock_mac_cb), (void*)tmr_data, timeout, FALSE);
+		(void*)wl_wlif_unblock_mac_cb), (void*)tmr_data, timeout, FALSE, &timer_id);
 	if (!ret) {
 		WLIF_BSSTRANS("%s: Error creating timer to unblock STA "MACF". ret=%d\n",
 			hdl_data->ifname, ETHER_TO_MACF(addr), ret);
 		free(tmr_data);
 		return FALSE;
 	}
+	tmr_data->timer_id = timer_id;
+	hdl_data->timer_data = tmr_data;
 
 	return TRUE;
+}
+
+/* Remove unblock MAC timer */
+static void
+wl_wlif_remove_unblock_timer(wl_wlif_hdl_data_t *hdl_data)
+{
+	static_maclist_t *data;
+
+	if (!hdl_data || !hdl_data->timer_data) {
+		return;
+	}
+
+	data = (static_maclist_t*)hdl_data->timer_data;
+	WLIF_BSSTRANS("%s: Remove unblock MAC timer for STA "MACF"\n",
+		hdl_data->ifname, ETHER_TO_MACF(data->addr));
+
+	/* Unblock the MAC */
+	wl_wlif_unblock_mac(hdl_data, data->addr, data->flag);
+
+	/* remove the timer */
+	if (hdl_data->uschd_hdl == NULL) {
+		bcm_timer_delete(data->timer_id);
+	} else {
+		bcm_usched_remove_timer(hdl_data->uschd_hdl, wl_wlif_unblock_mac_usched_cb, data);
+	}
+
+	/* Free the argument */
+	free(data);
+
+	hdl_data->timer_data = NULL;
 }
 
 /* Traverse Maclist to find MAC address exists or not */
@@ -1858,7 +2086,6 @@ wl_wlif_find_sta_in_assoclist(wl_wlif_hdl_data_t *hdl_data, struct ether_addr *f
 	wl_endian_probe(hdl_data->ifname);
 
 	/* Prepare Assoclist IOCTL Structure Object */
-	WLIF_BSSTRANS("WLC_GET_ASSOCLIST\n");
 	list = (struct maclist *)calloc(1, WL_WLIF_BUFSIZE_4K);
 	if (!list) {
 		WLIF_BSSTRANS("Err: calloc Assoclist IOCTL buff Failed \n");
@@ -1969,7 +2196,8 @@ wl_wlif_create_defiant_sta_watchdog_timer(wl_wlif_hdl_data_t *hdl_data,
 	/* Create an Appropriate Timer, For Defiant STA Watchdog */
 	ret = wl_wlif_create_timer(hdl_data->uschd_hdl, hdl_data->timer_hdl,
 		(hdl_data->uschd_hdl ? (void*)wl_wlif_defiant_sta_wd_usched_cb :
-		(void*)wl_wlif_defiant_sta_wd_cb), (void*)defiant_tmr_data, tm_defiant_wd, FALSE);
+		(void*)wl_wlif_defiant_sta_wd_cb), (void*)defiant_tmr_data, tm_defiant_wd, FALSE,
+		NULL);
 	if (!ret) {
 		WLIF_BSSTRANS("%s: Error creating timer for defiant STA "MACF". ret=%d\n",
 			hdl_data->ifname, ETHER_TO_MACF(addr), ret);
@@ -1985,7 +2213,13 @@ static bool
 wl_wlif_unset_nobcnssid(wl_wlif_hdl *hdl)
 {
 	wl_wlif_hdl_data_t *hdl_data = (wl_wlif_hdl_data_t*)hdl;
-	int ret = 0;
+	int ret;
+
+	if (IS_FAKE_CHAN_UTIL_ENABLED(hdl_data->steer_flags) &&
+		!(ret = wl_wlif_clear_fake_chan_util_for_sta(hdl, NULL)))
+	{
+		WLIF_BSSTRANS("%s: fake chan util clear failed. ret=%d\n", hdl_data->ifname, ret);
+	}
 
 	ret = wl_iovar_setint(hdl_data->ifname, "nobcnssid", 0);
 	if (ret != 0) {
@@ -2035,7 +2269,7 @@ wl_wlif_create_nobcnssid_timer(wl_wlif_hdl_data_t *hdl_data, int timeout)
 	/* Create timer, either ushed or linux based on handle */
 	ret = wl_wlif_create_timer(hdl_data->uschd_hdl, hdl_data->timer_hdl,
 		(hdl_data->uschd_hdl ? (void*)wl_wlif_unset_nobcnssid_usched_cb :
-		(void*)wl_wlif_unset_nobcnssid_cb), tm_data, timeout, FALSE);
+		(void*)wl_wlif_unset_nobcnssid_cb), tm_data, timeout, FALSE, NULL);
 	if (!ret) {
 		WLIF_BSSTRANS("%s: Error creating nobcnssid timer. ret=%d\n", hdl_data->ifname,
 			ret);
@@ -2055,7 +2289,7 @@ wl_wlif_set_nobcnssid(wl_wlif_hdl *hdl)
 {
 	wl_wlif_hdl_data_t *hdl_data;
 	int timeout = atoi(nvram_safe_get(WLIFU_NVRAM_NOBCNSSID_TIMEOUT));
-	int ret = 0;
+	int ret;
 
 	if (!hdl) {
 		WLIF_BSSTRANS("Err: Invalid wlif handle\n");
@@ -2066,9 +2300,18 @@ wl_wlif_set_nobcnssid(wl_wlif_hdl *hdl)
 
 	wl_endian_probe(hdl_data->ifname);
 
+	if (IS_FAKE_CHAN_UTIL_ENABLED(hdl_data->steer_flags) &&
+		!(ret = wl_wlif_set_fake_chan_util_for_sta(hdl, NULL)))
+	{
+		WLIF_BSSTRANS("%s: fake chan util set failed. ret=%d\n", hdl_data->ifname, ret);
+	}
+
 	ret = wl_iovar_setint(hdl_data->ifname, "nobcnssid", 1);
 	if (ret != 0) {
 		WLIF_BSSTRANS("%s: nobcnssid set failed. ret=%d\n", hdl_data->ifname, ret);
+		if (IS_FAKE_CHAN_UTIL_ENABLED(hdl_data->steer_flags)) {
+			wl_wlif_clear_fake_chan_util_for_sta(hdl, NULL);
+		}
 		return FALSE;
 	}
 
@@ -2078,6 +2321,9 @@ wl_wlif_set_nobcnssid(wl_wlif_hdl *hdl)
 
 	/* In case of timer creation failure unset the nobcnssid iovar */
 	if (!wl_wlif_create_nobcnssid_timer(hdl_data, timeout)) {
+		if (IS_FAKE_CHAN_UTIL_ENABLED(hdl_data->steer_flags)) {
+			wl_wlif_clear_fake_chan_util_for_sta(hdl, NULL);
+		}
 		if (!wl_wlif_unset_nobcnssid(hdl)) {
 			return FALSE;
 		}
@@ -2129,7 +2375,7 @@ wl_wlif_post_bss_transreq_cb(bcm_timer_id timer_id, void* arg)
 {
 	/* Trigger the Post bss transreq function */
 	wl_wlif_hdl_post_bt_t *data = (wl_wlif_hdl_post_bt_t *)arg;
-	wl_wlif_post_bss_transreq(data, &(data->addr), data->event_fd);
+	wl_wlif_post_bss_transreq(data, &(data->addr));
 
 	free(data);
 	bcm_timer_delete(timer_id);
@@ -2141,26 +2387,29 @@ wl_wlif_post_bss_transreq_usched_cb(bcm_usched_handle* hdl, void* arg)
 {
 	/* Trigger the Post bss transreq function */
 	wl_wlif_hdl_post_bt_t *data = (wl_wlif_hdl_post_bt_t *)arg;
-	wl_wlif_post_bss_transreq(data, &(data->addr), data->event_fd);
+	wl_wlif_post_bss_transreq(data, &(data->addr));
 	free(data);
 }
 
 /* Create post bss transreq handler Timer */
 static int
 wl_wlif_create_post_bss_transreq_timer(wl_wlif_hdl_data_t  *hdl_data,
-		wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd)
+		wl_wlif_bss_trans_data_t *ioctl_hndlr_data)
 {
 	int ret = FALSE;
 	wl_wlif_hdl_post_bt_t *tmr_data = NULL;
 	int  timeout;
 	sta_oui_wnm_act_t *ptr;
+	unsigned char generic_oui[OUI_ADDR_LEN];	/* Generic OUI */
 
 	if (!oui_action) {
 		return ret;
 	}
+	oui_atoe(OUI_GENERAL, generic_oui);
 	ptr = oui_action;
 	while (ptr) {
-		if (!oui_cmp(ptr->oui, &ioctl_hndlr_data->addr)) {
+		if ((!oui_cmp(ptr->oui, &ioctl_hndlr_data->addr)) ||
+			(!oui_cmp(ptr->oui, generic_oui))) {
 			timeout = ptr->post_bt_timeout;
 			/* Allocate Timer Arg Struct Object */
 			tmr_data = (wl_wlif_hdl_post_bt_t *) calloc(1, sizeof(*tmr_data));
@@ -2170,14 +2419,14 @@ wl_wlif_create_post_bss_transreq_timer(wl_wlif_hdl_data_t  *hdl_data,
 			}
 			/* Initialize Timer Arg Struct Object */
 			tmr_data->hdl_data = hdl_data;
-			tmr_data->event_fd = event_fd;
 			tmr_data->action = ptr->post_bt_action;
 			memcpy(&tmr_data->addr, (char *)&(ioctl_hndlr_data->addr), ETHER_ADDR_LEN);
 
 			/* Create an Appropriate Timer, For Defiant STA Watchdog */
 			ret = wl_wlif_create_timer(hdl_data->uschd_hdl, hdl_data->timer_hdl,
-			(hdl_data->uschd_hdl ? (void*)wl_wlif_post_bss_transreq_usched_cb :
-			(void*)wl_wlif_post_bss_transreq_cb), (void*)tmr_data, timeout, FALSE);
+				(hdl_data->uschd_hdl ? (void*)wl_wlif_post_bss_transreq_usched_cb :
+				(void*)wl_wlif_post_bss_transreq_cb), (void*)tmr_data, timeout,
+				FALSE, NULL);
 			if (!ret) {
 				free(tmr_data);
 				return FALSE;

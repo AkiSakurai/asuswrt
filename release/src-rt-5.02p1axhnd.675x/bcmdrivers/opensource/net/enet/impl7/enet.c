@@ -253,6 +253,7 @@ extern phy_drv_t phy_drv_pon;
 static int dg_in_context=0;
 
 fwdcb_t enet_fwdcb = NULL;
+
 int enetx_weight_budget = 0;
 static enetx_channel *enetx_channels;
 /* Number of Linux interfaces currently opened */
@@ -312,14 +313,14 @@ enet_kthread_handler(void *context)
         /* Dispatch packets from SW queues bounded by ENET_SWQ_BOUND */
         if (enet_swqueue->swq_schedule)
         {
-            /* Transmit packets from SW queue */
+            /* Transmit packets from SKB based SW queue */
             if (enet_swqueue->skb_pktqueue.len != 0U)
             {
                 enet_swqueue->pkts_count += enet_swqueue_xmit(enet_swqueue,
                     &enet_swqueue->skb_pktqueue, enet_swq_bound, SKBUFF_PTR);
             }
 
-            /* Transmit packets from SW queue */
+            /* Transmit packets from FKB based SW queue */
             if (enet_swqueue->fkb_pktqueue.len != 0U)
             {
                 enet_swqueue->pkts_count += enet_swqueue_xmit(enet_swqueue,
@@ -875,7 +876,6 @@ EXPORT_SYMBOL(enet_fwdcb_register);
 
 #define DEV_ISWAN(dev) (dev ? \
     (((struct net_device *)dev)->priv_flags & IFF_WANDEV) : 0)
-
 // based on impl5\bcmenet.c:bcm63xx_enet_xmit()
 static inline netdev_tx_t __enet_xmit(pNBuff_t pNBuff, struct net_device *dev)
 {
@@ -1069,10 +1069,26 @@ normal_path:
 
         if (unlikely(len < ETH_ZLEN))
         {                
-            nbuff_pad(pNBuff, ETH_ZLEN - len);
+            ret = nbuff_pad(pNBuff, ETH_ZLEN - len);
+            if (unlikely(ret))
+            {
+                /* if skb can't pad, skb is freed on error */
+                INC_STAT_TX_DROP(port->p.parent_sw,tx_dropped_no_skb);
+                return 0;
+            }
             if (IS_SKBUFF_PTR(pNBuff))
                 (PNBUFF_2_SKBUFF(pNBuff))->len = ETH_ZLEN;
-            len = ETH_ZLEN;
+            /*
+             * nbuff_pad might call pskb_expand_head() which can
+             * create an identical copy of the sk_buff. &sk_buff itself is not
+             * changed but any pointers pointing to the skb header may change
+             * and must be reloaded after the call. So we do that here.
+             */
+            if (nbuff_get_params_ext(pNBuff, &data, &len, &mark, &priority, &rflags) == NULL)
+            {
+                INC_STAT_TX_DROP(port,tx_dropped_bad_nbuff);
+                return 0;
+            }
         }
 
         dispatch_info.drop_eligible = 0;
@@ -2509,6 +2525,11 @@ enet_swqueue_fini(void)
 
     enet_info->enet_swqueue = ENET_SWQUEUE_NULL;
 
+    if (ENET_SWQUEUE_NULL == enet_swqueue) {
+        printk("%s: enet swqueue is null\n", __FUNCTION__);
+        return;
+    }
+
     ENET_ASSERT(enet_swqueue != ENET_SWQUEUE_NULL);
 
     pktqueue_context_p = enet_swqueue->pktqueue_context_p;
@@ -2699,22 +2720,34 @@ enet_swqueue_xmit(enet_swqueue_t  * enet_swqueue,
 {
     uint32_t            rx_pktcnt;
     d3lut_key_t         d3lut_key;
+    pktqueue_t          temp_pktqueue;  /* Declared on stack */
     d3lut_elem_t      * d3lut_elem;
     pktqueue_pkt_t    * pkt;
 
     ENET_SWQUEUE_LOCK(enet_swqueue); // +++++++++++++++++++++++++++++++++++++++
+
+    /* Transfer packets to a local pktqueue */
+    temp_pktqueue.head   = pktqueue->head;
+    temp_pktqueue.tail   = pktqueue->tail;
+    temp_pktqueue.len    = pktqueue->len;
+
+    PKTQUEUE_RESET(pktqueue); /* head,tail, not reset */
+
+    ENET_SWQUEUE_UNLK(enet_swqueue); // ---------------------------------------
+
+    /* Now lock-less; transmit packets from local pktqueue */
 
     d3lut_key.v16 = 0; /* 2b-radio, 2b-incarn, 12b-dest */
     rx_pktcnt = 0;
 
     while (budget)
     {
-        if (pktqueue->len != 0U)
+        if (temp_pktqueue.len != 0U)
         {
-            pkt             = pktqueue->head;
-            pktqueue->head  = PKTQUEUE_PKT_SLL(pkt, NBuffPtrType);
+            pkt             = temp_pktqueue.head;
+            temp_pktqueue.head  = PKTQUEUE_PKT_SLL(pkt, NBuffPtrType);
             PKTQUEUE_PKT_SET_SLL(pkt, PKTQUEUE_PKT_NULL, NBuffPtrType);
-            pktqueue->len--;
+            temp_pktqueue.len--;
 
             d3lut_key.v16 = PKTQUEUE_PKT_KEY(pkt, NBuffPtrType);
 
@@ -2730,7 +2763,7 @@ enet_swqueue_xmit(enet_swqueue_t  * enet_swqueue,
                 enet_swqueue->pkts_dropped++;
             }
         }
-        else /* pktqueue->len == 0 : No more packets to read */
+        else /* temp_pktqueue.len == 0 : No more packets to read */
         {
             break;
         }
@@ -2738,7 +2771,26 @@ enet_swqueue_xmit(enet_swqueue_t  * enet_swqueue,
         --budget;
     } /* while (budget) */
 
-    ENET_SWQUEUE_UNLK(enet_swqueue); // ---------------------------------------
+    if (temp_pktqueue.len != 0U) {
+        /* Out of budget, prepend left-over packets to ENET SWq */
+
+        ENET_SWQUEUE_LOCK(enet_swqueue); // +++++++++++++++++++++++++++++++++++
+
+        if (pktqueue->len == 0) {
+            pktqueue->tail = temp_pktqueue.tail;
+        } else {
+            PKTQUEUE_PKT_SET_SLL(temp_pktqueue.tail, pktqueue->head,
+                                    NBuffPtrType);
+        }
+
+        pktqueue->head = temp_pktqueue.head;
+        pktqueue->len += temp_pktqueue.len;
+
+        ENET_SWQUEUE_UNLK(enet_swqueue); // -----------------------------------
+
+        PKTQUEUE_RESET(&temp_pktqueue); /* head,tail, not reset */
+
+    }
 
     return rx_pktcnt;
 

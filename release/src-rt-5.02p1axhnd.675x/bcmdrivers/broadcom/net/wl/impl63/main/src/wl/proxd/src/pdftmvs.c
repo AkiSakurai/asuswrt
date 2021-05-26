@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmvs.c 778924 2019-09-13 19:33:40Z $
+ * $Id: pdftmvs.c 788031 2020-06-18 14:10:58Z $
  */
 
 #include "pdftmpvt.h"
@@ -1315,7 +1315,9 @@ pdftm_vs_rx(pdburst_method_ctx_t ctx, pdburst_frame_type_t type,
 					(type != PDBURST_FRAME_TYPE_MEAS_END)) {
 					break;
 				}
-
+				if (bsi->vs_meas_info == NULL) {
+					break;
+				}
 				err = ftm_vs_unpack_meas_info(sn,
 					tlv->data, tlv->len, bsi);
 				if (err) {

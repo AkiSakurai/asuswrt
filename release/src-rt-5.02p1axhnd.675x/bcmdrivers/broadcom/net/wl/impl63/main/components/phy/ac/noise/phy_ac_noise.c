@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_noise.c 783118 2020-01-14 12:31:34Z $
+ * $Id: phy_ac_noise.c 788401 2020-06-30 17:05:46Z $
  */
 
 #include <phy_cfg.h>
@@ -386,6 +386,12 @@ BCMATTACHFN(phy_ac_noise_attach_params)(phy_ac_noise_info_t *noisei)
 	bzero(noisei->aci_list5g, ACPHY_ACI_CHAN_LIST_SZ * sizeof(acphy_aci_params_t));
 	noisei->LTEJ_WAR_en = (bool)PHY_GETINTVAR_DEFAULT(pi, rstr_LTEJ_WAR_en, 1);
 	noisei->aci = NULL;
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+	/* EAP Noise Biasing optionally includes compensation from rx-gain-error.
+	 * Enable with IOVAR phynoisebiasrxgainerr = 1, or set in nvram
+	 */
+	pi->phynoise_bias_rxgainerr = (bool)PHY_GETINTVAR(pi, rstr_phynoisebiasrxgainerr);
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 }
 
 static void
@@ -833,9 +839,9 @@ phy_ac_noise_set_mode(phy_type_noise_ctx_t *ctx, int wanted_mode, bool init)
 
 		/* Only enable hwobss for phybw 40MHz and 80MHz */
 		if (CHSPEC_IS40(pi->radio_chanspec) || CHSPEC_IS80(pi->radio_chanspec)) {
-			phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, hwobss_en, prempt_en);
+			phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, hwobss_en);
 		} else {
-			phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, FALSE, prempt_en);
+			phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, FALSE);
 		}
 		wlc_phy_elnabypass_on_w0_setup_acphy(pi, elnabyp_w0_en);
 
@@ -859,7 +865,7 @@ phy_ac_noise_set_mode(phy_type_noise_ctx_t *ctx, int wanted_mode, bool init)
 #endif // endif
 			wlc_phy_aci_w2nb_setup_acphy(pi, FALSE);
 			phy_ac_noise_preempt(noise_info, FALSE, FALSE);
-			phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, FALSE, FALSE);
+			phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, FALSE);
 		}
 
 		/* Nothing needs to be done for ACPHY_ACI_GLITCHBASED_DESENSE */
@@ -899,7 +905,7 @@ phy_ac_noise_set_mode(phy_type_noise_ctx_t *ctx, int wanted_mode, bool init)
 			/* Configured in Pre-Filter Processing mode */
 			phy_ac_noise_preempt(noise_info, TRUE, FALSE);
 		if ((wanted_mode & ACPHY_HWOBSS_MITIGATION) != 0) {
-			phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, TRUE, FALSE);
+			phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, TRUE);
 		}
 		if (ACMAJORREV_128(pi->pubpi->phy_rev)) {
 			wlc_phy_mclip_aci_mitigation(pi, mclip_aci_en);
@@ -4666,10 +4672,13 @@ wlc_phy_hwaci_engine_acphy_28nm(phy_info_t *pi)
 	}
 
 	if (aci->hwaci_noaci_timer > 0) {
-		if ((aci->weakest_rssi == 0) || (aci->weakest_rssi < -75))
-			desense_state = 1;
-		else
-			desense_state = 2;
+		if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+			desense_state = (aci->weakest_rssi == 0) || (aci->weakest_rssi < -75) ?
+			    0 : (aci->weakest_rssi < -65) ? 1 : 2;
+		} else {
+			desense_state =
+			    (aci->weakest_rssi == 0) || (aci->weakest_rssi < -75) ? 1 : 2;
+		}
 	} else {
 		desense_state = 0;
 	}
@@ -5579,9 +5588,9 @@ static void phy_ac_noise_preempt_postfilter_reg_tbl(phy_ac_noise_info_t *ni, boo
 		/* maximize clip detect thresholds for hi RSSI region to eliminate self-aborts */
 		{ACPHY_PREMPT_ofdm_nominal_clip_th_hipwr0(pi->pubpi->phy_rev), 0xffff},
 		{ACPHY_PREMPT_cck_nominal_clip_th_hipwr0(pi->pubpi->phy_rev), 0xffff},
-		{ACPHY_PREMPT_ofdm_nominal_clip_th0(pi->pubpi->phy_rev), 0x3400},
+		{ACPHY_PREMPT_ofdm_nominal_clip_th0(pi->pubpi->phy_rev), 0x647a},
 		{ACPHY_PREMPT_cck_nominal_clip_th0(pi->pubpi->phy_rev), 0x6000},
-		{ACPHY_PREMPT_ofdm_max_gain_mismatch_pkt_rcv_th0(pi->pubpi->phy_rev), 0xc},
+		{ACPHY_PREMPT_ofdm_max_gain_mismatch_pkt_rcv_th0(pi->pubpi->phy_rev), 0x12},
 		{ACPHY_PREMPT_cck_max_gain_mismatch_pkt_rcv_th0(pi->pubpi->phy_rev), 0xe}};
 
 	if (pi_ac->noisei->aci == NULL) {
@@ -6056,10 +6065,15 @@ phy_ac_noise_preempt(phy_ac_noise_info_t *ni, bool enable_preempt, bool EnablePo
 		/* 43684 PREEMPTiON SETTINGs */
 		if (enable_preempt) {
 			WRITE_PHYREG(pi, PktAbortCtrl, 0xf041);
-			FOREACH_CORE(pi, core) {
-				MOD_PHYREGC(pi, _BPHY_TargetVar_log2_pt8us,
-					core, bphy_targetVar_log2_pt8us, 479);
+
+			if (!(ACMAJORREV_129(pi->pubpi->phy_rev) ||
+			      ACMAJORREV_130(pi->pubpi->phy_rev))) {
+				FOREACH_CORE(pi, core) {
+					MOD_PHYREGC(pi, _BPHY_TargetVar_log2_pt8us,
+					            core, bphy_targetVar_log2_pt8us, 479);
+				}
 			}
+
 			WRITE_PHYREG(pi, RxMacifMode, 0x0a00);
 			WRITE_PHYREG(pi, PktAbortSupportedStates, 0x2fff);
 			WRITE_PHYREG(pi, BphyAbortExitCtrl, 0x3840);

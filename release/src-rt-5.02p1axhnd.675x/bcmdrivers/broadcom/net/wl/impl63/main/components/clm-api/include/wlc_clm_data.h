@@ -43,14 +43,18 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- *
- * $Id: wlc_clm_data.h 821810 2019-05-25 02:05:05Z $
  */
 
 #ifndef _WLC_CLM_DATA_H_
 #define _WLC_CLM_DATA_H_
 
+#ifdef _MSC_VER
+	#pragma warning(push, 3)
+#endif /* _MSC_VER */
 #include <bcmwifi_rates.h>
+#ifdef _MSC_VER
+	#pragma warning(pop)
+#endif /* _MSC_VER */
 
 #define CLMATTACHDATA(_data) __attribute__ ((__section__ (".clmdataini2." #_data))) _data
 
@@ -360,6 +364,12 @@ enum clm_data_const {
 	/** Channel ranges specified per band and bandwidth */
 	CLM_REGISTRY_FLAG2_PER_BAND_BW_RANGES = 0x00080000,
 
+	/** DSA_2 flag is supported. Used for disambiguation of region flag
+	 * bit, used by both CLM_DATA_FLAG_REG_DEF_FOR_CC and
+	 * CLM_DATA_FLAG_REG_DSA_2
+	 */
+	CLM_REGISTRY_FLAG2_DSA_2 = 0x00100000,
+
 	/** All known registry flags (second flags field) */
 	CLM_REGISTRY_FLAG2_ALL = CLM_REGISTRY_FLAG2_PSD_LIMITS
 	| CLM_REGISTRY_FLAG2_MULTIBANDWIDTH_PSD
@@ -374,13 +384,14 @@ enum clm_data_const {
 	| CLM_REGISTRY_FLAG2_RATE_SET_INDEX
 	| CLM_REGISTRY_FLAG2_6GHZ
 	| CLM_REGISTRY_FLAG2_PER_BAND_BW_RANGES
+	| CLM_REGISTRY_FLAG2_DSA_2
 };
 
 /** Major version number of CLM data format */
 #define CLM_FORMAT_VERSION_MAJOR 24
 
 /* Minor version number of CLM data format */
-#define CLM_FORMAT_VERSION_MINOR 0
+#define CLM_FORMAT_VERSION_MINOR 3
 
 /** Flags and flag masks used in BLOB's byte fields */
 enum clm_data_flags {
@@ -538,8 +549,17 @@ enum clm_data_flags {
 	/** Beamforming enabled */
 	CLM_DATA_FLAG_REG_TXBF = 0x08,
 
-	/** Region is default for its CC */
+	/** Region is default for its CC. This flag is obsoleted, it is left
+	 * here in name for compatibility with older ClmCompiler versions, but
+	 * its value is reused for DSA_2 flag in newer BLOB formats
+	 */
 	CLM_DATA_FLAG_REG_DEF_FOR_CC = 0x10,
+
+	/** Same as DSA, but for averaging window of 6 minutes (used in
+	 * Canada). This flag reuses value of DEF_FOR_CC, distinction is made
+	 * based on CLM_REGISTRY_FLAG2_DSA_2 flag
+	 */
+	CLM_DATA_FLAG_REG_DSA_2 = 0x10,
 
 	/** Region is EDCRS-EU compliant */
 	CLM_DATA_FLAG_REG_EDCRS_EU = 0x20,
@@ -559,6 +579,13 @@ enum clm_data_flags {
 
 	/** China Spur WAR2 flag from CLM XML */
 	CLM_DATA_FLAG_2_REG_CHSPRWAR2 = 0x40,
+
+	/** Dynamic SAR Averaging. Dynamic SAR Averaging allows SAR to be above
+	 * threshold sometimes, if in average it is below threshold. This flag
+	 * corresponds to 1-minute averaging window, DSA_2 flag corresponds to
+	 * 6-minute averaging window
+	 */
+	CLM_DATA_FLAG_2_REG_DSA = 0x80,
 
 	/* SUBCHANNEL RULES BANDWIDTH FLAGS */
 

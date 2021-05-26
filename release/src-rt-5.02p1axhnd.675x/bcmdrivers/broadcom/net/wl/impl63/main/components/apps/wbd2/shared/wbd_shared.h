@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wbd_shared.h 781159 2019-11-13 10:20:54Z $
+ * $Id: wbd_shared.h 784032 2020-02-17 09:11:31Z $
  */
 
 #ifndef _WBD_SHARED_H_
@@ -103,11 +103,11 @@
 #define CLI_CMD_LOGS_STEER_NO_RESP "%s Steer: No response form STA "MACDBG"\n"
 #define CLI_CMD_LOGS_MAP_INIT_START "%s MAP Init Start: DeviceID "MACDBG"\n"
 #define CLI_CMD_LOGS_MAP_INIT_END "%s MAP Init End: DeviceID "MACDBG"\n"
-#define CLI_CMD_LOGS_FOUND_TBSS_ALGO_SOF "%s For WEEK_STA "MACDBG" Found Target TBSS "MACDBG" \
+#define CLI_CMD_LOGS_FOUND_TBSS_ALGO_SOF "%s For WEAK_STA "MACDBG" Found Target TBSS "MACDBG" \
 	by using SOF algorithm \n"
-#define CLI_CMD_LOGS_FOUND_TBSS_ALGO_BEST_RSSI "%s For WEEK_STA "MACDBG" Found Target TBSS "MACDBG"\
+#define CLI_CMD_LOGS_FOUND_TBSS_ALGO_BEST_RSSI "%s For WEAK_STA "MACDBG" Found Target TBSS "MACDBG"\
 	RSSI:[%d] by using Best RSSI algorithm\n"
-#define CLI_CMD_LOGS_FOUND_TBSS_ALGO_NWS "%s WBD_TBSS: For WEEK STA["MACDBG"] on Node["MACDBG"]: by\
+#define CLI_CMD_LOGS_FOUND_TBSS_ALGO_NWS "%s WBD_TBSS: For WEAK STA["MACDBG"] on Node["MACDBG"]: by\
 	using NWS algorithm : weight_flags = 0x%x, rssi = %d, n_rssi = %d, n_hops = %d, \
 	tot_sta = %d, assoc_cnt = %d, n_sta_cnt = %d, phyrate = %d, n_phyrate = %d, bss_nss = %d, \
 	max_nss = %d, n_nss = %d, slave_txrate = %d, max_txrate = %d, n_tx_rate = %d, score = %d\n"
