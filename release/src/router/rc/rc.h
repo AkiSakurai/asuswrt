@@ -545,6 +545,9 @@ extern void qca_wif_up(const char* wif);
 #ifdef RTCONFIG_WIFI_SON
 extern void hyfi_process(void);
 #endif
+#if defined(RTCONFIG_SOC_IPQ8074)
+extern void beacon_counter_monitor(void);
+#endif
 extern void gen_qca_wifi_cfgs(void);
 extern void set_wlpara_qca(const char* wif, int band);
 extern int wlconf_qca(const char* wif);
@@ -951,7 +954,7 @@ extern int dpdt_ant_main(int argc, char *argv[]);
 extern int thermal_txpwr_main(int argc, char *argv[]);
 extern void start_wan(void);
 extern void stop_wan(void);
-extern int add_multi_routes(void);
+extern int add_multi_routes(int check_link);
 extern int add_routes(char *prefix, char *var, char *ifname);
 extern int del_routes(char *prefix, char *var, char *ifname);
 extern void start_wan_if(int unit);
@@ -2354,7 +2357,8 @@ extern int netool_main(int argc, char **argv);
 #endif
 
 // erp_monitor.c
-#if !(defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_REALTEK))
+#if !(defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_REALTEK)) \
+ ||  (defined(RTCONFIG_SOC_IPQ8074))
 extern int erp_monitor_main(int argc, char **argv);
 extern void stop_erp_monitor();
 extern void start_erp_monitor();

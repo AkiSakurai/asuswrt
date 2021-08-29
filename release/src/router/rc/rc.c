@@ -1232,7 +1232,8 @@ static const applets_t applets[] = {
 #ifdef RTCONFIG_LETSENCRYPT
 	{ "le_acme",				le_acme_main			},
 #endif
-#if !(defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_REALTEK))
+#if !(defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_REALTEK)) \
+ ||  (defined(RTCONFIG_SOC_IPQ8074))
 	{ "erp_monitor",		erp_monitor_main		},
 #endif
 #if defined(MAPAC2200)
@@ -2101,7 +2102,7 @@ int main(int argc, char **argv)
 	}
 #endif
 	else if (!strcmp(base, "add_multi_routes")) {
-		return add_multi_routes();
+		return add_multi_routes(0);
 	}
 	else if (!strcmp(base, "led_ctrl")) {
 		return do_led_ctrl(atoi(argv[1]), atoi(argv[2]));

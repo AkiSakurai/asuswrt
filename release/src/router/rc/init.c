@@ -1664,6 +1664,7 @@ misc_defaults(int restore_defaults)
 	nvram_set("aae_support", "1");
 #define AAE_ENABLE_AIHOME 2
 #define AAE_EANBLE_AICLOUD 4
+	nvram_set("aae_enable", "0");
 #ifdef RTCONFIG_AIHOME_TUNNEL
 	nvram_set_int("aae_enable", (nvram_get_int("aae_enable") | AAE_ENABLE_AIHOME));
 #endif
@@ -2508,6 +2509,11 @@ static int set_basic_ifname_vars(char *wan_ifaces[MAX_WAN_IFACE_ID], char *lan, 
 		for (w = WAN_IFACE_ID; w < MAX_WAN_IFACE_ID; ++w) {
 			if (wan_ifaces[w]) {
 				add_lan_phy(wan_ifaces[w]);
+#if defined(RTCONFIG_AMAS) || defined(RTCONFIG_CFGSYNC)
+				if (__aimesh_re_node(sw_mode) && w != WAN_IFACE_ID) {
+					add_nv_val("wired_ifnames", ' ', wan_ifaces[w]);
+				}
+#endif
 			}
 		}
 		set_wan_phy("");

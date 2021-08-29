@@ -369,7 +369,7 @@ int get_channf(int band, const char *ifname)
  *  Current Operating class      : 0
  *  Supported Rates              : 12  18  24  36  48  72  96  108
  */
-int __get_qca_sta_info_by_ifname(const char *ifname, char subunit_id, int (*handler)(const WLANCONFIG_LIST *rptr, void *arg), void *arg)
+static int __get_QCA_sta_info_by_ifname(const char *ifname, char subunit_id, int (*handler)(const WLANCONFIG_LIST *rptr, void *arg), void *arg)
 {
 #if defined(RTCONFIG_SOC_IPQ8074)
 	const int l2_offset = 91;
@@ -483,6 +483,140 @@ leave:
 	return ret;
 }
 
+#if defined(RTCONFIG_WIGIG)
+/* Parsing "iw wlan0 station dump" result, fill WLANCONFIG_LIST, and then pass it to @handler() with @arg which is provided by caller.
+ * @ifname:	VAP interface name that is used to execute "iw @ifname station dump" command.
+ * @subunit_id:	if non-zero, copied to WLANCONFIG_LIST.subunit
+ * @handler:	handler function that will be execute for each client.
+ * return:
+ * 	0:	success
+ *  otherwise:	error
+ *
+ * ILQ1.3.7 Example: iw wlan0 station dump
+ * Station 04:ce:14:0a:21:17 (on wlan0)
+ *       rx bytes:       0
+ *       rx packets:     0
+ *       tx bytes:       0
+ *       tx packets:     0
+ *       tx failed:      0
+ *       tx bitrate:     27.5 MBit/s MCS 0
+ *       rx bitrate:     27.5 MBit/s MCS 0
+ *       connected time: 292 seconds
+ * SPF10.0 FC Example: iw wlan0 station dump
+ *  Station 04:ce:14:0b:46:12 (on wlan0)
+ *        rx bytes:       0
+ *        rx packets:     0
+ *        tx bytes:       0
+ *        tx packets:     0
+ *        tx failed:      0
+ *        rx drop misc:   0
+ *        signal:         -55 dBm
+ *        tx bitrate:     27.5 MBit/s MCS 0
+ *        rx bitrate:     27.5 MBit/s MCS 0
+ */
+static int __get_IW_sta_info_by_ifname(const char *ifname, char subunit_id, int (*handler)(const WLANCONFIG_LIST *rptr, void *arg), void *arg)
+{
+	FILE *fp;
+	int c, time_val, hr, min, sec, rssi;
+	char rate[6], line_buf[300];
+	char cmd[sizeof("iw wlan0 station dump XXXXXX")];
+	WLANCONFIG_LIST result, *r = &result;
+
+	if (!ifname || !handler)
+		return -1;
+
+	snprintf(cmd, sizeof(cmd), "iw %s station dump", get_wififname(WL_60G_BAND));
+	fp = popen(cmd, "r");
+	if (!fp)
+		return -2;
+
+	/* /sys/kernel/debug/ieee80211/phy0/wil6210/stations has client list too.
+	 * But I guess none of any another attributes exist, e.g., connection time, exist.
+	 * Thus, parsing result of "iw wlan0 station dump" instead.
+	 */
+	while (fgets(line_buf, sizeof(line_buf), fp)) {
+		if (strncmp(line_buf, "Station", 7)) {
+			continue;
+		}
+
+next_sta:
+		memset(r, 0, sizeof(*r));
+		c = sscanf(line_buf, "Station %17[0-9a-f:] %*[^\n]", r->addr);
+		if (c != 1) {
+			continue;
+		}
+		convert_mac_string(r->addr);
+		if (subunit_id)
+			r->subunit_id = subunit_id;
+		strlcpy(r->mode, "11ad", sizeof(r->mode));	/* FIXME */
+		while (fgets(line_buf, sizeof(line_buf), fp)) {
+			if (!strncmp(line_buf, "Station", 7)) {
+
+#if 0
+				dbg("[%s][%u][%u][%s][%s][%u][%s]\n",
+					r->addr, r->aid, r->chan, r->txrate, r->rxrate, r->rssi, r->mode);
+#endif
+				handler(r, arg);
+				goto next_sta;
+			} else if (strstr(line_buf, "tx bitrate:")) {
+				c = sscanf(line_buf, "%*[ \t]tx bitrate:%*[ \t]%6[0-9.]", rate);
+				if (c != 1) {
+					continue;
+				}
+				snprintf(r->txrate, sizeof(r->txrate), "%sM", rate);
+			} else if (strstr(line_buf, "rx bitrate:")) {
+				c = sscanf(line_buf, "%*[ \t]rx bitrate:%*[ \t]%6[0-9.]", rate);
+				if (c != 1) {
+					continue;
+				}
+				snprintf(r->rxrate, sizeof(r->rxrate), "%sM", rate);
+			} else if (strstr(line_buf, "connected time:")) {
+				c = sscanf(line_buf, "%*[ \t]connected time:%*[ \t]%d seconds", &time_val);
+				if (c != 1) {
+					continue;
+				}
+				hr = time_val / 3600;
+				time_val %= 3600;
+				min = time_val / 60;
+				sec = time_val % 60;
+				snprintf(r->conn_time, sizeof(r->conn_time), "%02d:%02d:%02d", hr, min, sec);
+			} else if (strstr(line_buf, "signal:")) {
+				c = sscanf(line_buf, "%*[ \t]signal:%*[ \t]%d dBm", &rssi);
+				r->rssi = rssi;
+			} else {
+				//dbg("%s: skip [%s]\n", __func__, line_buf);
+			}
+		}
+	}
+	pclose(fp);
+
+	return 0;
+}
+#endif	/* RTCONFIG_WIGIG */
+
+/* Wrapper function of QCA/IW Wireless client list parser.
+ * @ifname:	VAP interface name
+ * @subunit_id:
+ * @sta_info:	pointer to WIFI_STA_TABLE
+ * @return:
+ * 	0:	success
+ *  otherwise:	error
+ */
+int __get_qca_sta_info_by_ifname(const char *ifname, char subunit_id, int (*handler)(const WLANCONFIG_LIST *rptr, void *arg), void *arg)
+{
+#if defined(RTCONFIG_WIGIG)
+	char *vap_60g = get_wififname(WL_60G_BAND);
+
+	if (!ifname)
+		return -1;
+
+	if (!strncmp(ifname, vap_60g, strlen(vap_60g))) {
+		return __get_IW_sta_info_by_ifname(ifname, subunit_id, handler, arg);
+	} else
+#endif
+		return __get_QCA_sta_info_by_ifname(ifname, subunit_id, handler, arg);
+}
+
 /* Wrapper function of QCA Wireless client list parser.
  * @ifname:	VAP interface name
  * @subunit_id:
@@ -493,10 +627,17 @@ leave:
  */
 int get_qca_sta_info_by_ifname(const char *ifname, char subunit_id, WIFI_STA_TABLE *sta_info)
 {
-	if (!ifname || !sta_info)
+#if defined(RTCONFIG_WIGIG)
+	char *vap_60g = get_wififname(WL_60G_BAND);
+
+	if (!ifname)
 		return -1;
 
-	return __get_qca_sta_info_by_ifname(ifname, subunit_id, handler_qca_sta_info, sta_info);
+	if (!strncmp(ifname, vap_60g, strlen(vap_60g))) {
+		return __get_IW_sta_info_by_ifname(ifname, subunit_id, handler_qca_sta_info, sta_info);
+	} else
+#endif
+		return __get_QCA_sta_info_by_ifname(ifname, subunit_id, handler_qca_sta_info, sta_info);
 }
 
 #ifdef RTCONFIG_AMAS

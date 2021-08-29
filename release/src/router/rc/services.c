@@ -4356,7 +4356,8 @@ stop_misc(void)
 #ifdef RTCONFIG_MDNS
 	stop_mdns();
 #endif
-#if !(defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_REALTEK))
+#if !(defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_REALTEK)) \
+ ||  (defined(RTCONFIG_SOC_IPQ8074))
 	stop_erp_monitor();
 #endif
 #ifdef RTCONFIG_CROND
@@ -8366,7 +8367,8 @@ start_services(void)
 #endif
 #endif
 
-#if !(defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_REALTEK))
+#if !(defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_REALTEK)) \
+ ||  (defined(RTCONFIG_SOC_IPQ8074))
 	start_erp_monitor();
 #endif
 #ifdef RTCONFIG_HD_SPINDOWN
@@ -8416,7 +8418,8 @@ stop_services(void)
 #ifdef RTCONFIG_ADTBW
 	stop_adtbw();
 #endif
-#if !(defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_REALTEK))
+#if !(defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_REALTEK)) \
+ ||  (defined(RTCONFIG_SOC_IPQ8074))
 	stop_erp_monitor();
 #endif
 #ifdef RTCONFIG_INTERNAL_GOBI
@@ -8798,7 +8801,8 @@ stop_services_mfg(void)
 #ifdef RTCONFIG_PROTECTION_SERVER
 	stop_ptcsrv();
 #endif
-#if !(defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_REALTEK))
+#if !(defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK) || defined(RTCONFIG_REALTEK)) \
+ ||  (defined(RTCONFIG_SOC_IPQ8074))
 	stop_erp_monitor();
 #endif
 #ifdef RTCONFIG_NOTIFICATION_CENTER

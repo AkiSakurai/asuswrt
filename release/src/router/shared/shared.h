@@ -1737,6 +1737,9 @@ extern int is_vap_ifname(const char *ifname);
 extern int is_sta_ifname(const char *ifname);
 extern int is_vphy_ifname(const char *ifname);
 extern const char *get_5ghigh_ifname(int *band);
+#ifdef RTCONFIG_POWER_SAVE
+extern void set_cpufreq_attr(char *attr, char *val);
+#endif
 #ifdef IWLIB_H
 extern int get_ap_mac(const char *ifname, struct iwreq *pwrq);
 #endif

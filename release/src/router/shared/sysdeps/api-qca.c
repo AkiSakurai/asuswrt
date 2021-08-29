@@ -1490,11 +1490,9 @@ char *get_vphyifname(int band)
 }
 
 #ifdef RTCONFIG_HAS_5G_2
-const char *get_5ghigh_ifname(int *unit)
+const char *get_5ghigh_ifname(int unit)
 {
-	if(unit != NULL)
-		*unit = 1;
-	return WIF_5G;
+	return get_wififname(swap_5g_band(unit));
 }
 #endif
 

@@ -8095,6 +8095,9 @@ wdp:
 #endif
 #endif
 
+#if defined(RTCONFIG_SOC_IPQ8074)
+	beacon_counter_monitor();
+#endif
 }
 
 #if ! (defined(RTCONFIG_QCA) || defined(RTCONFIG_RALINK))
