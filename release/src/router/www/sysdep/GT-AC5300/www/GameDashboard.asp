@@ -1341,43 +1341,43 @@ function hideEventTriggerDesc(){
 											</div>
 											<div class="aura-scheme">
 												<div id="_static" class="aura-icon aura-icon-static" onclick="changeRgbMode(this);"></div>
-												<div class="aura-desc">Static</div>
+												<div class="aura-desc"><#BoostKey_AURA_state_static#></div>
 											</div>
 											<div class="aura-scheme">
 												<div id="_breathing" class="aura-icon aura-icon-breathing" onclick="changeRgbMode(this);"></div>
-												<div class="aura-desc">Breathing</div>
+												<div class="aura-desc"><#BoostKey_AURA_state_breathing#></div>
 											</div>
 											<div class="aura-scheme">
 												<div id="_rainbow" class="aura-icon aura-icon-rainbow" onclick="changeRgbMode(this);"></div>
-												<div class="aura-desc">Rainbow</div>
+												<div class="aura-desc"><#BoostKey_AURA_state_rainbow#></div>
 											</div>
 											<div class="aura-scheme">
 												<div id="_comet" class="aura-icon aura-icon-comet" onclick="changeRgbMode(this);"></div>
-												<div class="aura-desc">Comet</div>
+												<div class="aura-desc"><#BoostKey_AURA_state_comet#></div>
 											</div>
 											<div class="aura-scheme">
 												<div id="_flash" class="aura-icon aura-icon-flash" onclick="changeRgbMode(this);"></div>
-												<div class="aura-desc">Flash</div>
+												<div class="aura-desc"><#BoostKey_AURA_state_flash#></div>
 											</div>
 											<div class="aura-scheme">
 												<div id="_yoyo" class="aura-icon aura-icon-yoyo" onclick="changeRgbMode(this);"></div>
-												<div class="aura-desc">Glowing Yoyo</div>
+												<div class="aura-desc"><#BoostKey_AURA_state_glowing#></div>
 											</div>
 											<div class="aura-scheme">
 												<div id="_ccycle" class="aura-icon aura-icon-ccycle" onclick="changeRgbMode(this);"></div>
-												<div class="aura-desc">Color Cycle</div>
+												<div class="aura-desc"><#BoostKey_AURA_state_cycle#></div>
 											</div>
 											<div class="aura-scheme">
 												<div id="_snight" class="aura-icon aura-icon-snight" onclick="changeRgbMode(this);"></div>
-												<div class="aura-desc">Starry-Night</div>
+												<div class="aura-desc"><#BoostKey_AURA_state_star#></div>
 											</div>
 											<div class="aura-scheme">
 												<div id="_strobing" class="aura-icon aura-icon-strobing" onclick="changeRgbMode(this);"></div>
-												<div class="aura-desc">Strobing</div>
+												<div class="aura-desc"><#BoostKey_AURA_state_strobing#></div>
 											</div>
 											<div class="aura-scheme">
 												<div id="_wave" class="aura-icon aura-icon-wave" onclick="changeRgbMode(this);"></div>
-												<div class="aura-desc">Wave</div>
+												<div class="aura-desc"><#BoostKey_AURA_state_wave#></div>
 											</div>
 										</div>
 									</div>

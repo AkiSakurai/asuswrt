@@ -415,9 +415,6 @@ static int build_temp_rootfs(const char *newroot)
 	const char *bin = "ash busybox cat cp dd df echo grep iwpriv kill ls ps mkdir mount nvram ping sh tar umount uname rm";
 	const char *sbin = "init rc hotplug2 insmod lsmod modprobe reboot rmmod rtkswitch";
 	const char *lib = "librt*.so* libnsl* libdl* libm* ld-* libiw* libgcc* libpthread* libdisk* libc*"
-#if defined(RTCONFIG_PUSH_EMAIL)
-			     " libws* libpush_log*"
-#endif
 #if defined(RTCONFIG_LIBASUSLOG)
 			     " libasuslog.so"
 #endif
@@ -438,9 +435,9 @@ static int build_temp_rootfs(const char *newroot)
 #ifdef RTCONFIG_USB_SMS_MODEM
 			     " libsmspdu.so"
 #endif
-#if defined(RTCONFIG_HTTPS) || defined(RTCONFIG_PUSH_EMAIL)
+#if defined(RTCONFIG_HTTPS) || defined(RTCONFIG_PUSH_EMAIL) || defined(RTCONFIG_FRS_FEEDBACK)
 			     " libssl* libmssl*"
-#if defined(RTCONFIG_PUSH_EMAIL)
+#if defined(RTCONFIG_FRS_FEEDBACK)
 			     " libcurl* libxml2*"
 #endif
 #endif
@@ -868,30 +865,6 @@ int get_dhcpd_lmax()
 	return dhlease_size;
 }
 #endif
-
-void stop_hour_monitor_service()
-{
-	//logmessage("hour monitor", "stop_hour_monitor_service");
-	killall("hour_monitor", SIGTERM);
-}
-
-void start_hour_monitor_service()
-{
-	char *cmd[] = {"hour_monitor", NULL};
-	int pid;
-
-	if (!is_router_mode())
-		return;
-
-	if (!pids("hour_monitor")) {
-		_eval(cmd, NULL, 0, &pid);
-	}
-}
-
-void check_hour_monitor_service()
-{
-	if(hour_monitor_function_check()) start_hour_monitor_service();
-}
 
 #ifdef RTCONFIG_CONNTRACK
 void stop_pctime_service()
@@ -4187,7 +4160,6 @@ stop_misc(void)
 #ifdef RTCONFIG_CONNDIAG
 	stop_conn_diag();
 #endif
-	stop_cfgsync();
 #endif
 #ifdef RTCONFIG_AMAS
 	stop_amas_bhctrl();
@@ -7924,8 +7896,7 @@ start_services(void)
 #endif
 
 #ifdef RTCONFIG_USB
-//	_dprintf("restart_nas_services(%d): test 8.\n", getpid());
-	//restart_nas_services(0, 1);
+	//restart_nas_services(0, 1, 0);
 #ifdef RTCONFIG_DISK_MONITOR
 	start_diskmon();
 #endif
@@ -7952,8 +7923,8 @@ start_services(void)
 
 #if defined(RTCONFIG_BWDPI)
 	start_bwdpi_check();
-#endif
 	start_hour_monitor_service();
+#endif
 #ifdef RTCONFIG_CONNTRACK
 	start_pctime_service();
 #endif
@@ -8058,11 +8029,11 @@ start_services(void)
 	start_amas_lldpd();
 #endif
 
-#ifdef RTCONFIG_PUSH_EMAIL
+#ifdef RTCONFIG_FRS_FEEDBACK
 #ifdef RTCONFIG_DBLOG
 	start_dblog(0);
 #endif /* RTCONFIG_DBLOG */
-#endif /* RTCONFIG_PUSH_EMAIL */
+#endif /* RTCONFIG_FRS_FEEDBACK */
 
 #if defined(RTCONFIG_AMAS)
 	start_amas_lib();
@@ -8088,11 +8059,11 @@ stop_services(void)
 #ifdef RTCONFIG_INTERNAL_GOBI
 	stop_lteled();
 #endif
-	stop_hour_monitor_service();
 #ifdef RTCONFIG_CONNTRACK
 	stop_pctime_service();
 #endif
 #if defined(RTCONFIG_BWDPI)
+	stop_hour_monitor_service();
 	stop_bwdpi_wred_alive();
 	stop_bwdpi_check();
 	stop_dpi_engine_service(2); // reboot case
@@ -8120,8 +8091,7 @@ stop_services(void)
 	stop_mastiff();
 #endif
 #ifdef RTCONFIG_USB
-//_dprintf("restart_nas_services(%d): test 9.\n", getpid());
-	restart_nas_services(1, 0);
+	restart_nas_services(1, 0, 0);
 #ifdef RTCONFIG_DISK_MONITOR
 	stop_diskmon();
 #endif
@@ -9525,7 +9495,9 @@ again:
 				stop_wlcconnect();
 #endif
 
+#ifdef RTCONFIG_BWDPI
 			stop_hour_monitor_service();
+#endif
 
 			// what process need to stop to free memory or
 			// to avoid affecting upgrade
@@ -9784,7 +9756,9 @@ again:
 			stop_wlcconnect();
 #endif
 
+#ifdef RTCONFIG_BWDPI
 			stop_hour_monitor_service();
+#endif
 #if defined(RTCONFIG_USB_MODEM) && (defined(RTCONFIG_JFFS2) || defined(RTCONFIG_BRCM_NAND_JFFS2) || defined(RTCONFIG_UBIFS))
 			_dprintf("modem data: save the data during upgrading\n");
 			eval("/usr/sbin/modem_status.sh", "bytes+");
@@ -10478,11 +10452,11 @@ script_allnet:
 #endif
 #ifdef RTCONFIG_MEDIA_SERVER
 			force_stop_dms();
-			stop_mt_daapd();
+			stop_mt_daapd(0);
 #endif
 #if defined(RTCONFIG_SAMBASRV) && defined(RTCONFIG_FTP)
-			stop_ftpd();
-			stop_samba();
+			stop_ftpd(0);
+			stop_samba(0);
 #endif
 #ifdef RTCONFIG_LANTIQ
 #ifdef RTCONFIG_WIRELESSREPEATER
@@ -11174,14 +11148,14 @@ check_ddr_done:
 	}
 #endif
 #endif
-#ifdef RTCONFIG_PUSH_EMAIL
+#ifdef RTCONFIG_FRS_FEEDBACK
 #ifdef RTCONFIG_DBLOG
 	else if (strcmp(script, "dblog") == 0) {
 		if(action & RC_SERVICE_STOP) stop_dblog();
 		if(action & RC_SERVICE_START) start_dblog(1);
 	}
 #endif /* RTCONFIG_DBLOG */
-#endif /* RTCONFIG_PUSH_EMAIL */
+#endif /* RTCONFIG_FRS_FEEDBACK */
 	else if (strcmp(script, "wan_line") == 0) {
 		_dprintf("%s: restart_wan_line: %s.\n", __FUNCTION__, cmd[1]);
 		if(cmd[1]) {
@@ -11243,13 +11217,11 @@ check_ddr_done:
 	else if (strcmp(script, "nasapps") == 0)
 	{
 		if(action&RC_SERVICE_STOP){
-//_dprintf("restart_nas_services(%d): test 10.\n", getpid());
-			restart_nas_services(1, 0);
+			restart_nas_services(1, 0, 0);
 		}
 		if(action&RC_SERVICE_START){
 			stop_upnp();
-//_dprintf("restart_nas_services(%d): test 11.\n", getpid());
-			restart_nas_services(0, 1);
+			restart_nas_services(0, 1, 0);
 			start_upnp();
 		}
 	}
@@ -11257,8 +11229,8 @@ check_ddr_done:
 	else if (strcmp(script, "ftpsamba") == 0)
 	{
 		if(action & RC_SERVICE_STOP) {
-			stop_ftpd();
-			stop_samba();
+			stop_ftpd(0);
+			stop_samba(0);
 		}
 		if(action & RC_SERVICE_START) {
 			start_dnsmasq();	// this includes stop_dnsmasq
@@ -11273,8 +11245,8 @@ check_ddr_done:
 	{
 		if(action & RC_SERVICE_STOP) {
 #if defined(RTCONFIG_SAMBASRV) && defined(RTCONFIG_FTP)
-			stop_ftpd();
-			stop_samba();
+			stop_ftpd(0);
+			stop_samba(0);
 #endif
 		}
 		if(action & RC_SERVICE_START) {
@@ -11317,7 +11289,7 @@ check_ddr_done:
 #ifdef RTCONFIG_FTP
 	else if (strcmp(script, "ftpd") == 0)
 	{
-		if(action & RC_SERVICE_STOP) stop_ftpd();
+		if(action & RC_SERVICE_STOP) stop_ftpd(0);
 		if(action & RC_SERVICE_START) start_ftpd();
 
 		/* for security concern, even if you stop ftp daemon, it is better to restart firewall to clean FTP port: 21. */
@@ -11328,7 +11300,7 @@ check_ddr_done:
 		nvram_set("st_ftp_force_mode", nvram_safe_get("st_ftp_mode"));
 		nvram_commit();
 
-		if(action & RC_SERVICE_STOP) stop_ftpd();
+		if(action & RC_SERVICE_STOP) stop_ftpd(0);
 		if(action & RC_SERVICE_START) start_ftpd();
 
 		/* for security concern, even if you stop ftp daemon, it is better to restart firewall to clean FTP port: 21. */
@@ -11338,14 +11310,14 @@ check_ddr_done:
 #ifdef RTCONFIG_TFTP_SERVER
 	else if (strcmp(script, "tftpd") == 0)
 	{
-		if(action & RC_SERVICE_STOP) stop_tftpd();
+		if(action & RC_SERVICE_STOP) stop_tftpd(0);
 		if(action & RC_SERVICE_START) start_tftpd();
 	}
 #endif
 #ifdef RTCONFIG_SAMBASRV
 	else if (strcmp(script, "samba") == 0)
 	{
-		if(action & RC_SERVICE_STOP) stop_samba();
+		if(action & RC_SERVICE_STOP) stop_samba(0);
 		if(action & RC_SERVICE_START) {
 			start_dnsmasq();	// this includes stop_dnsmasq
 			start_samba();
@@ -11356,7 +11328,7 @@ check_ddr_done:
 		nvram_set("st_samba_force_mode", nvram_safe_get("st_samba_mode"));
 		nvram_commit();
 
-		if(action & RC_SERVICE_STOP) stop_samba();
+		if(action & RC_SERVICE_STOP) stop_samba(0);
 		if(action & RC_SERVICE_START) {
 			start_dnsmasq();	// this includes stop_dnsmasq
 			start_samba();
@@ -11498,7 +11470,7 @@ check_ddr_done:
 	{
 		if(action & RC_SERVICE_STOP) {
 			force_stop_dms();
-			stop_mt_daapd();
+			stop_mt_daapd(0);
 		}
 		if(action & RC_SERVICE_START) {
 			start_dms();
@@ -11512,7 +11484,7 @@ check_ddr_done:
 	}
 	else if (strcmp(script, "mt_daapd") == 0)
 	{
-		if(action & RC_SERVICE_STOP) stop_mt_daapd();
+		if(action & RC_SERVICE_STOP) stop_mt_daapd(0);
 		if(action & RC_SERVICE_START) start_mt_daapd();
 	}
 #endif
@@ -12186,12 +12158,12 @@ check_ddr_done:
 	{
 		eval("AiProtectionMonitor", "-z", "-t", "3");
 	}
-#endif
 	else if (strcmp(script, "traffic_analyzer") == 0)
 	{
 		// only stop service need to save database
 		if(action & RC_SERVICE_STOP) hm_traffic_analyzer_save();
 	}
+#endif
 #ifdef RTCONFIG_TRAFFIC_LIMITER
 	else if (strcmp(script, "reset_traffic_limiter") == 0)
 	{
@@ -12320,7 +12292,9 @@ check_ddr_done:
 	else if (strcmp(script, "time") == 0)
 	{
 		if(action & RC_SERVICE_STOP) {
+#ifdef RTCONFIG_BWDPI
 			stop_hour_monitor_service();
+#endif
 			stop_telnetd();
 #ifdef RTCONFIG_SSH
 			stop_sshd();
@@ -12338,7 +12312,9 @@ check_ddr_done:
 #endif
 			//start_httpd();
 			start_firewall(wan_primary_ifunit(), 0);
+#ifdef RTCONFIG_BWDPI
 			start_hour_monitor_service();
+#endif
 		}
 	}
 	else if (strcmp(script, "wps_method")==0)
@@ -12469,8 +12445,8 @@ retry_wps_enr:
 			}
 
 #if defined(RTCONFIG_SAMBASRV) && defined(RTCONFIG_FTP)
-			stop_ftpd();
-			stop_samba();
+			stop_ftpd(0);
+			stop_samba(0);
 #endif
 #if defined(RTCONFIG_USB) && defined(RTCONFIG_USB_PRINTER)
 			stop_lpd();
@@ -12632,17 +12608,17 @@ retry_wps_enr:
 #ifdef RTCONFIG_TIMEMACHINE
 	else if (strcmp(script, "timemachine") == 0)
 	{
-		if(action & RC_SERVICE_STOP) stop_timemachine();
+		if(action & RC_SERVICE_STOP) stop_timemachine(0);
 		if(action & RC_SERVICE_START) start_timemachine();
 	}
 	else if (strcmp(script, "afpd") == 0)
 	{
-		if(action & RC_SERVICE_STOP) stop_afpd();
+		if(action & RC_SERVICE_STOP) stop_afpd(0);
 		if(action & RC_SERVICE_START) start_afpd();
 	}
 	else if (strcmp(script, "cnid_metad") == 0)
 	{
-		if(action & RC_SERVICE_STOP) stop_cnid_metad();
+		if(action & RC_SERVICE_STOP) stop_cnid_metad(0);
 		if(action & RC_SERVICE_START) start_cnid_metad();
 	}
 #endif
@@ -12654,10 +12630,10 @@ retry_wps_enr:
 	}
 #endif
 
-#ifdef RTCONFIG_PUSH_EMAIL
-	else if (strcmp(script, "sendmail") == 0)
+#ifdef RTCONFIG_FRS_FEEDBACK
+	else if (strcmp(script, "sendfeedback") == 0)
 	{
-		start_DSLsendmail();
+		start_sendfeedback();
 	}
 #ifdef RTCONFIG_DBLOG
 	else if (strcmp(script, "senddblog") == 0)
@@ -12675,7 +12651,7 @@ retry_wps_enr:
 #ifdef RTCONFIG_DSL_TCLINUX
 	else if (strcmp(script, "DSLsenddiagmail") == 0)
 	{
-		start_DSLsenddiagmail();
+		start_sendDSLdiag();
 	}
 #endif
 #endif
@@ -13504,21 +13480,29 @@ void gen_lldpd_if(char *bind_ifnames)
 
 	if (nvram_get_int("x_Setting") == 0)
 	{
-		if(wan_ifname != NULL) {
-			if (i == 0){
+		if(strcmp(wan_ifname, ""))
+		{
+			if (i == 0)
+			{
 				bind_ifnames += sprintf(bind_ifnames, "%s", wan_ifname);
 				i = 1;
-			}else{
+			}
+			else
+			{
 				bind_ifnames += sprintf(bind_ifnames, ",%s", wan_ifname);
 			}
-		}
-		if (wan_ifname != NULL && eth_ifnames != NULL && strcmp(wan_ifname, eth_ifnames)) {
-			if (i == 0){
-				bind_ifnames += sprintf(bind_ifnames, "%s", eth_ifnames);
-				i = 1;
-			}
-			else{
-				bind_ifnames += sprintf(bind_ifnames, ",%s", eth_ifnames);
+
+			if (strcmp(eth_ifnames, "") && strcmp(wan_ifname, eth_ifnames))
+			{
+				if (i == 0)
+				{
+					bind_ifnames += sprintf(bind_ifnames, "%s", eth_ifnames);
+					i = 1;
+				}
+				else
+				{
+					bind_ifnames += sprintf(bind_ifnames, ",%s", eth_ifnames);
+				}
 			}
 		}
 	}
@@ -14220,6 +14204,30 @@ rsasign_sig_check_main(int argc, char *argv[])
 		nvram_set("bwdpi_rsa_check", "0");
 	}
 	return 0;
+}
+
+void stop_hour_monitor_service()
+{
+	//logmessage("hour monitor", "stop_hour_monitor_service");
+	killall("hour_monitor", SIGTERM);
+}
+
+void start_hour_monitor_service()
+{
+	char *cmd[] = {"hour_monitor", NULL};
+	int pid;
+
+	if (!is_router_mode())
+		return;
+
+	if (!pids("hour_monitor")) {
+		_eval(cmd, NULL, 0, &pid);
+	}
+}
+
+void check_hour_monitor_service()
+{
+	if(hour_monitor_function_check()) start_hour_monitor_service();
 }
 #endif
 

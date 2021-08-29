@@ -2882,8 +2882,11 @@ int init_nvram(void)
 	nvram_set("dsllog_vdslcurrentprofile", "");//VDSL current profile
 #endif
 
-#ifdef RTCONFIG_PUSH_EMAIL
+#ifdef RTCONFIG_FRS_FEEDBACK
 	nvram_set("fb_state", "");
+#endif
+#ifdef RTCONFIG_PUSH_EMAIL
+       nvram_set("PM_state", "");
 #endif
 	nvram_unset("usb_buildin");
 
@@ -7115,6 +7118,9 @@ int init_nvram(void)
 #if defined(GTAX11000)
 	case MODEL_GTAX11000:
 		update_43684_tempthresh();
+#ifdef RTCONFIG_EXTPHY_BCM84880
+		get_ext_phy_id();
+#endif
 		nvram_set("lan_ifname", "br0");
 		if (is_router_mode()) {
 			nvram_set("lan_ifnames", "eth1 eth2 eth3 eth4 eth5 eth6 eth7 eth8");
@@ -7172,12 +7178,26 @@ int init_nvram(void)
 #ifdef RTCONFIG_LOGO_LED
 		nvram_set_int("led_logo_gpio", 15|GPIO_ACTIVE_LOW);
 #endif
+
+#if 0
 		if(nvram_get_int("usb_usb3") == 1)
 			nvram_set("xhci_ports", "2-2 2-1");
 		else
 			nvram_unset("xhci_ports");
 		nvram_set("ehci_ports", "3-2 3-1");
 		nvram_set("ohci_ports", "4-2 4-1");
+#else
+		if(nvram_get_int("usb_usb3") == 1){
+			nvram_set("xhci_ports", "2-2 2-1");
+			nvram_set("ehci_ports", "3-2 3-1");
+			nvram_set("ohci_ports", "4-2 4-1");
+		}
+		else{
+			nvram_unset("xhci_ports");
+			nvram_set("ehci_ports", "1-2 1-1");
+			nvram_set("ohci_ports", "2-2 2-1");
+		}
+#endif
 
 #ifdef RTCONFIG_DUALWAN
 		if (is_router_mode()) {
@@ -7335,6 +7355,7 @@ int init_nvram(void)
 		nvram_set_int("btn_rst_gpio", 4|GPIO_ACTIVE_LOW);
 		nvram_set_int("btn_led_gpio", 31|GPIO_ACTIVE_LOW);
 
+#if 0
 #ifdef RTCONFIG_XHCIMODE
                 nvram_set("xhci_ports", "2-1 2-2");
                 nvram_set("ehci_ports", "3-1 3-2");
@@ -7346,6 +7367,18 @@ int init_nvram(void)
 			nvram_unset("xhci_ports");
 		nvram_set("ehci_ports", "3-1 3-2");
 		nvram_set("ohci_ports", "4-1 4-2");
+#endif
+#else
+		if(nvram_get_int("usb_usb3") == 1){
+			nvram_set("xhci_ports", "2-1 2-2");
+			nvram_set("ehci_ports", "3-1 3-2");
+			nvram_set("ohci_ports", "4-1 4-2");
+		}
+		else{
+			nvram_unset("xhci_ports");
+			nvram_set("ehci_ports", "1-1 1-2");
+			nvram_set("ohci_ports", "2-1 2-2");
+		}
 #endif
 
 #ifdef RTCONFIG_DUALWAN
@@ -7483,6 +7516,8 @@ int init_nvram(void)
 		nvram_set_int("led_lan_gpio", 16);
 		nvram_set_int("btn_wps_gpio", 22|GPIO_ACTIVE_LOW);
 		nvram_set_int("btn_rst_gpio", 23|GPIO_ACTIVE_LOW);
+
+#if 0
 #ifdef RTCONFIG_XHCIMODE
                 nvram_set("xhci_ports", "2-1 2-2");
                 nvram_set("ehci_ports", "3-1 3-2");
@@ -7494,6 +7529,18 @@ int init_nvram(void)
 			nvram_unset("xhci_ports");
 		nvram_set("ehci_ports", "3-2 3-1");
 		nvram_set("ohci_ports", "4-2 4-1");
+#endif
+#else
+		if(nvram_get_int("usb_usb3") == 1){
+			nvram_set("xhci_ports", "2-2");
+			nvram_set("ehci_ports", "3-2 3-1");
+			nvram_set("ohci_ports", "4-2 4-1");
+		}
+		else{
+			nvram_unset("xhci_ports");
+			nvram_set("ehci_ports", "1-2 1-1");
+			nvram_set("ohci_ports", "2-2 2-1");
+		}
 #endif
 
 #ifdef RTCONFIG_DUALWAN
@@ -9234,14 +9281,15 @@ NO_USB_CAP:
 #endif
 #endif // RTCONFIG_USB
 
-#ifdef RTCONFIG_PUSH_EMAIL
-	add_rc_support("feedback");
-	add_rc_support("email");
+#ifdef RTCONFIG_FRS_FEEDBACK
+	add_rc_support("frs_feedback");
 #ifdef RTCONFIG_DBLOG
 	add_rc_support("dblog");
 #endif /* RTCONFIG_DBLOG */
 #endif
-
+#ifdef RTCONFIG_PUSH_EMAIL
+       add_rc_support("email");
+#endif
 #ifdef RTCONFIG_ISP_METER
 	add_rc_support("ispmeter");
 #endif
@@ -9700,7 +9748,7 @@ int init_nvram2(void)
 #ifdef RTCONFIG_DWB
 	dwb_init_settings();
 #endif
-	
+	nvram_set("label_mac", get_label_mac());
 	return 0;
 }
 
@@ -11201,9 +11249,21 @@ dbg("boot/continue fail= %d/%d\n", nvram_get_int("Ate_boot_fail"),nvram_get_int(
 
 #ifdef RTCONFIG_HND_ROUTER_AX
 			char word[64], *next;
-			foreach(word, nvram_safe_get("wan_ifnames"), next)
-			{
-				eth_phypower(word, 1);
+_dprintf("%s %d turnning on power on ethernet here\n", __func__, __LINE__);
+
+			if(is_router_mode()){
+				int unit = WAN_UNIT_FIRST;
+
+				foreach(word, nvram_safe_get("wan_ifnames"), next){
+					if(dualwan_unit__nonusbif(unit))
+						eth_phypower(word, 1);
+
+					++unit;
+				}
+			}
+			else{
+				foreach(word, nvram_safe_get("eth_ifnames"), next)
+					eth_phypower(word, 1);
 			}
 #endif
 

@@ -89,14 +89,40 @@ function initial(){
 		$(".dblog_support_class").remove();
 	}
 
-	var fb_email_provider = '<% nvram_get("fb_email_provider"); %>';
-	if(fb_email_provider=="" && default_provider!=""){
-		document.form.fb_email_provider.value = default_provider;	
+	if(false){
+		$("#fb_email_provider_field").show();
+		var fb_email_provider = '<% nvram_get("fb_email_provider"); %>';
+		if(fb_email_provider=="" && default_provider!=""){
+			document.form.fb_email_provider.value = default_provider;	
+		}
+		else{
+			document.form.fb_email_provider.value = fb_email_provider;
+		}
+		change_fb_email_provider();
+
+		$("#oauth_google_btn").click(
+			function() {
+				oauth.google(onGoogleLogin);
+			}
+		);
+
+		//init check google token_status
+		if(document.form.fb_email_provider.value == "google") {
+			$(".oauth_google_status").hide();
+			if(httpApi.nvramGet(["oauth_google_refresh_token"], true).oauth_google_refresh_token != "") {
+				$("#oauth_google_loading").show();
+				document.form.fb_email.value = "";
+				check_refresh_token_valid(
+					function(_callBackValue) {
+						$("#oauth_google_loading").hide();
+						show_google_auth_status(_callBackValue);
+					}
+				);
+			}
+			else
+				show_google_auth_status();
+		}
 	}
-	else{
-		document.form.fb_email_provider.value = fb_email_provider;
-	}
-	change_fb_email_provider();
 
 	if(reload_data==1){
 		document.form.fb_country.value = decodeURIComponent('<% nvram_char_to_ascii("", "fb_country"); %>');
@@ -105,13 +131,6 @@ function initial(){
 		document.form.fb_pdesc.value = decodeURIComponent('<% nvram_char_to_ascii("", "fb_pdesc"); %>');
 		document.form.fb_comment.value = decodeURIComponent('<% nvram_char_to_ascii("", "fb_comment"); %>');
 	}
-
-	$("#oauth_google_btn").click(
-		function() {
-			oauth.google(onGoogleLogin);
-		}
-	);
-
 
 	httpApi.nvramGetAsync({
 		data: ["preferred_lang"],
@@ -139,23 +158,6 @@ function initial(){
 			})
 		}
 	})
-
-	//init check google token_status
-	if(document.form.fb_email_provider.value == "google") {
-		$(".oauth_google_status").hide();
-		if(httpApi.nvramGet(["oauth_google_refresh_token"], true).oauth_google_refresh_token != "") {
-			$("#oauth_google_loading").show();
-			document.form.fb_email.value = "";
-			check_refresh_token_valid(
-				function(_callBackValue) {
-					$("#oauth_google_loading").hide();
-					show_google_auth_status(_callBackValue);
-				}
-			);
-		}
-		else
-			show_google_auth_status();
-	}
 }
 
 function check_wan_state(){
@@ -399,26 +401,26 @@ function applyRule(){
 				return false;
 		}*/
 		if(document.form.attach_syslog.checked == true)
-			document.form.PM_attach_syslog.value = 1;
+			document.form.fb_attach_syslog.value = 1;
 		else
-			document.form.PM_attach_syslog.value = 0;
+			document.form.fb_attach_syslog.value = 0;
 		if(document.form.attach_cfgfile.checked == true)
-			document.form.PM_attach_cfgfile.value = 1;
+			document.form.fb_attach_cfgfile.value = 1;
 		else
-			document.form.PM_attach_cfgfile.value = 0;
+			document.form.fb_attach_cfgfile.value = 0;
 		if(document.form.attach_modemlog.checked == true)
-			document.form.PM_attach_modemlog.value = 1;
+			document.form.fb_attach_modemlog.value = 1;
 		else
-			document.form.PM_attach_modemlog.value = 0;
+			document.form.fb_attach_modemlog.value = 0;
 		if(document.form.attach_wlanlog.checked == true)
-			document.form.PM_attach_wlanlog.value = 1;
+			document.form.fb_attach_wlanlog.value = 1;
 		else
-			document.form.PM_attach_wlanlog.value = 0;
+			document.form.fb_attach_wlanlog.value = 0;
 		if(dsl_support){
 			if(document.form.attach_iptables.checked == true)
-				document.form.PM_attach_iptables.value = 1;
+				document.form.fb_attach_iptables.value = 1;
 			else
-				document.form.PM_attach_iptables.value = 0;
+				document.form.fb_attach_iptables.value = 0;
 		}	
                 
 		if(document.form.fb_email.value == ""){
@@ -487,20 +489,13 @@ function applyRule(){
 			}
 		}
 
-		if(document.form.PM_attach_wlanlog.value == "1")
+		if(document.form.fb_attach_wlanlog.value == "1")
 			httpApi.update_wlanlog();
 
 		document.form.fb_browserInfo.value = navigator.userAgent;
-		if(dsl_support){
-			if(document.form.dslx_diag_enable[0].checked == true){
-				document.form.action_wait.value="120";
-				showLoading(120);
-			}else	
-				showLoading(60);
-		}
-		else{
-			startLogPrep();
-		}
+
+		startLogPrep();
+
 		document.form.submit();
 }
 
@@ -730,7 +725,7 @@ function diag_tune_service_option() {
 
 		return $labelHtml;
 	};
-	if(amesh_support && (isSwMode("rt") || isSwMode("ap"))) {
+	if(amesh_support && (isSwMode("rt") || isSwMode("ap")) && ameshRouter_support) {
 		if($(".dblog_service_item.AiMesh").length == 0)
 			$(".dblog_service_item.all").after(gen_service_option(8, "AiMesh", "AiMesh"));
 	}
@@ -840,12 +835,10 @@ function show_google_auth_status(_status) {
 }
 
 function startLogPrep(){
-	disableCheckChangedStatus();
 	dr_advise();
 }
 
 var redirect_info = 0;
-var showLoading_sec;
 function CheckFBSize(){
 	$.ajax({
 		url: '/ajax_fb_size.asp',
@@ -862,18 +855,16 @@ function CheckFBSize(){
 				}
 		},
 		success: function(){
-				showLoading_sec = Number(fb_total_size)/1024/1024/8;	/* 1MB for 1min */
-				showLoading_sec = showLoading_sec.toFixed(1);
-				showLoading_sec = showLoading_sec>1? showLoading_sec:1;
-				showLoading_sec = showLoading_sec*60;   //min -> sec
-				showLoading(showLoading_sec);
-				setTimeout("redirect()", showLoading_sec*1000);
+				if(fb_state == 0)
+					setTimeout("CheckFBSize()", 3000);
+				else
+					setTimeout("redirect()", 1000);
 		}
 	});
 }
 </script>
 </head>
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="hiddenMask" class="popup_bg">
 <table cellpadding="5" cellspacing="0" id="dr_sweet_advise" class="dr_sweet_advise" align="center">
@@ -901,13 +892,13 @@ function CheckFBSize(){
 <input type="hidden" name="preferred_lang" id="preferred_lang" value="<% nvram_get("preferred_lang"); %>">
 <input type="hidden" name="current_page" value="Advanced_Feedback.asp">
 <input type="hidden" name="action_mode" value="apply">
-<input type="hidden" name="action_script" value="restart_sendmail">
+<input type="hidden" name="action_script" value="restart_sendfeedback">
 <input type="hidden" name="action_wait" value="60">
-<input type="hidden" name="PM_attach_syslog" value="">
-<input type="hidden" name="PM_attach_cfgfile" value="">
-<input type="hidden" name="PM_attach_iptables" value="">	
-<input type="hidden" name="PM_attach_modemlog" value="">
-<input type="hidden" name="PM_attach_wlanlog" value="">
+<input type="hidden" name="fb_attach_syslog" value="">
+<input type="hidden" name="fb_attach_cfgfile" value="">
+<input type="hidden" name="fb_attach_iptables" value="">	
+<input type="hidden" name="fb_attach_modemlog" value="">
+<input type="hidden" name="fb_attach_wlanlog" value="">
 <input type="hidden" name="feedbackresponse" value="<% nvram_get("feedbackresponse"); %>">
 <input type="hidden" name="fb_experience" value="<% nvram_get("fb_experience"); %>">
 <input type="hidden" name="fb_browserInfo" value="">
@@ -957,7 +948,7 @@ function CheckFBSize(){
 	<input type="text" name="fb_Subscribed_Info" maxlength="50" class="input_25_table" value="" autocorrect="off" autocapitalize="off">
 </td>
 </tr>
-<tr>
+<tr id="fb_email_provider_field" style="display: none;">
 	<th><#Provider#></th>
 	<td>
 		<div style="float:left;">
@@ -981,7 +972,7 @@ function CheckFBSize(){
 </tr>
 
 <tr>
-<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(34,2);">ASUS Service No./Case#</a></th>
+<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(34,2);"><#ASUS_Service_No#></a></th>
 <td>
 	<input type="text" name="fb_serviceno" maxlength="11" class="input_15_table" value="" autocorrect="off" autocapitalize="off">
 </td>
@@ -1012,7 +1003,7 @@ function CheckFBSize(){
 <tr id="dslx_diag_duration">
 	<th><#feedback_capturing_duration#> *</th>
 	<td>
-		<select id="" class="input_option" name="dslx_diag_duration">
+		<select class="input_option" name="dslx_diag_duration">
 			<option value="0" selected><#Auto#></option>
 			<option value="3600">1 <#Hour#></option>
 			<option value="18000">5 <#Hour#></option>

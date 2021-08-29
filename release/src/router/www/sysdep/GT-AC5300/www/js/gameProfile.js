@@ -1,8 +1,8 @@
 ﻿var gameProfile = 
 {"profile":[
-    {"title":"Battlefield V","port":"3659,5222,9988,14000:14016,17052,20000:20100,22990:23006,25200:25300,42127","protocol":"BOTH","platform":"PC","class":"battlefield5","id":"battlefield5"},
-    {"title":"Battlefield V","port":"1935,3074,3478:3480,3659,9988,10000:10100,14000:14016,17502,42127","protocol":"BOTH","platform":"PS4","class":"battlefield5","id":"battlefield5"},
-    {"title":"Battlefield V","port":"88,500,3074,3544,4500","protocol":"BOTH","platform":"XBOXONE","class":"battlefield5","id":"battlefield5"},
+{"title":"Battlefield V","port":"3659,5222,9988,14000:14016,17052,20000:20100,22990:23006,25200:25300,42127","protocol":"BOTH","platform":"PC","class":"battlefield5","id":"battlefield5"},
+{"title":"Battlefield V","port":"1935,3074,3478:3480,3659,9988,10000:10100,14000:14016,17502,42127","protocol":"BOTH","platform":"PS4","class":"battlefield5","id":"battlefield5"},
+{"title":"Battlefield V","port":"88,500,3074,3544,4500","protocol":"BOTH","platform":"XBOXONE","class":"battlefield5","id":"battlefield5"},
 {"title":"Call of Duty 4 AW","port":"3478,4379:4380","protocol":"BOTH","platform":"PC","class":"cod4aw","id":"cod4aw"},
 {"title":"Call of Duty 4 AW","port":"80,443,1935,3478:3480","protocol":"BOTH","platform":"PS4","class":"cod4aw","id":"cod4aw"},
 {"title":"Call of Duty 4 AW","port":"3074","protocol":"BOTH","platform":"XBOX360","class":"cod4aw","id":"cod4aw"},
@@ -71,6 +71,9 @@
 {"title":"Mass Effect Andromeda","port":"1935,3074,3478:3480,3659,10000:19999,42130,42210,42230","protocol":"BOTH","platform":"PS4","class":"masseffectandromeda","id":"masseffectandromeda"},
 {"title":"Mass Effect Andromeda","port":"88,500,3074,3544,3659,4500,10000:19999,42130,42210,42230","protocol":"BOTH","platform":"XBOXONE","class":"masseffectandromeda","id":"masseffectandromeda"},
 {"title":"Mario Kart 8 Deluxe","port":"6667,12400,28910,29900,29901,29920","protocol":"BOTH","platform":"SWITCH","class":"marioKart8Deluxe","id":"marioKart8Deluxe"},
+{"title":"Monster Hunter: World","port":"1935,3074,3478:3480","protocol":"BOTH","platform":"PS4","class":"monsterHunterWorld","id":"monsterHunterWorld"},
+{"title":"Monster Hunter: World","port":"4380,27000:27031,27036:27037","protocol":"BOTH","platform":"STEAM","class":"monsterHunterWorld","id":"monsterHunterWorld"},
+{"title":"Monster Hunter: World","port":"88,500,3074,3544,4500","protocol":"BOTH","platform":"XBOXONE","class":"monsterHunterWorld","id":"monsterHunterWorld"},
 {"title":"Pokemon: Let's Go, Pikachu","port":"6667,12400,28910,29900,29901,29920","protocol":"BOTH","platform":"SWITCH","class":"pokemonPikachu","id":"pokemonPikachu"},
 {"title":"Rocket League","port":"7000:9000","protocol":"UDP","platform":"PC","class":"rocketLeague","id":"rocketLeague"},
 {"title":"Rocket League","port":"1935,3074,3478:3480,7000:9000","protocol":"BOTH","platform":"PS4","class":"rocketLeague","id":"rocketLeague"},

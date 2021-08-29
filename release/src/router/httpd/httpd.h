@@ -72,13 +72,12 @@ struct useful_redirect_list {
 
 extern struct useful_redirect_list useful_redirect_lists[];
 
-#ifdef RTCONFIG_AMAS
-struct AiMesh_whitelist {
+struct www_whitelist {
 	char *pattern;
-	char *mime_type;
-};
-extern struct AiMesh_whitelist AiMesh_whitelists[];
-#endif
+	int flag;
+ };
+
+extern struct www_whitelist www_whitelists[];
 
 struct stb_port {
         char *value;
@@ -132,6 +131,9 @@ struct REPLACE_ODMPID_S {
 #define MIME_EXCEPTION_NORESETTIME	1<<2
 #define MIME_EXCEPTION_MAINPAGE 	1<<3
 #define CHECK_REFERER	1
+
+#define WHITELIST_AMAS       1<<0
+#define WHITELIST_FW_JUMP     1<<1
 
 #define SERVER_NAME "httpd/2.0"
 #define SERVER_PORT 80
@@ -376,9 +378,7 @@ extern int check_xss_blacklist(char* para, int check_www);
 extern int check_cmd_whitelist(char* para);
 extern int useful_redirect_page(char *next_page);
 extern char* reverse_str( char *str );
-#ifdef RTCONFIG_AMAS
-extern int check_AiMesh_whitelist(char *page);
-#endif
+extern int check_www_whitelist(char *page, int flag);
 
 /* web-*.c */
 extern int ej_wl_status(int eid, webs_t wp, int argc, char_t **argv, int unit);
@@ -449,5 +449,7 @@ extern int change_location(char *lang);
 #endif
 extern void update_wlan_log(int sig);
 extern void system_cmd_test(char *system_cmd, char *SystemCmd, int len);
+extern void do_feedback_mail_cgi(char *url, FILE *stream);
+extern void do_dfb_log_file(char *url, FILE *stream);
 extern int is_amas_support(void);
 #endif /* _httpd_h_ */

@@ -438,7 +438,7 @@ function do_show_confirm(flag){
 										}
 										else{
 											document.start_update.action_mode.value="apply";
-											document.start_update.action_script.value="start_webs_upgrade";
+											document.start_update.action_script.value="stop_upgrade;start_webs_upgrade";
 											document.start_update.submit();
 										}
 									},

@@ -617,7 +617,7 @@ function validForm(){
 		}
 		else{		//Bandwidth Limiter
 			if(document.form.PC_devicename.value != ""){
-				alert("You must press add icon to add a new rule first.");	//untranslated
+				alert("<#JS_add_rule#>");
 				return false;
 			}
 
@@ -1497,8 +1497,8 @@ function setGroup(name){
 																document.getElementById('qos_type_tr').style.display = "";
 																if(bwdpi_support){
 																	document.getElementById('qos_enable_hint').style.display = "";
-																	change_qos_type(document.form.qos_type_orig.value);
 																}
+																change_qos_type(document.form.qos_type_orig.value);
 															 },
 															 function() {
 																document.form.qos_enable.value = 0;

@@ -825,6 +825,7 @@ obj-y += hostapd-2.6
 obj-y += libfapi-0.1
 obj-y += taskset
 else
+obj-y += libbcmcrypto
 obj-y += utils$(BCMEX)$(EX7)
 obj-$(RTCONFIG_EMF) += emf$(BCMEX)$(EX7)
 obj-$(RTCONFIG_EMF) += igs$(BCMEX)$(EX7)
@@ -862,9 +863,6 @@ obj-$(RTCONFIG_BCMASPMD) += aspmd
 obj-$(RTCONFIG_WBD) += json-c wbd
 obj-$(RTCONFIG_WLCLMLOAD) += clmb
 
-ifneq ($(RTCONFIG_REALTEK),y)
-obj-y += libbcmcrypto
-endif
 #obj-y += cyassl
 obj-$(RTCONFIG_HTTPS) += mssl
 obj-$(RTCONFIG_TFTP) += tftp
@@ -1028,9 +1026,9 @@ ifneq ($(RTCONFIG_8M_SFP),y)
 #ifeq ($(HND_ROUTER),y)
 #obj-$(NEED_SAMBA3) += brcmssp_util
 #endif
-obj-$(NEED_SAMBA3) += $(if $(RTCONFIG_SAMBA36X),samba-3.6.x,samba-3.0.33)
+obj-$(NEED_SAMBA3) += $(if $(RTCONFIG_SAMBA36X),samba-3.6.x_opwrt,samba-3.0.33)
 else
-obj-$(NEED_SAMBA3) += $(if $(RTCONFIG_SAMBA36X),samba-3.6.x,samba3)
+obj-$(NEED_SAMBA3) += $(if $(RTCONFIG_SAMBA36X),samba-3.6.x_opwrt,samba3)
 endif
 else
 obj-$(NEED_SAMBA3) += samba3
@@ -1156,6 +1154,7 @@ obj-$(RTCONFIG_EAPOL) += wpa_supplicant
 obj-$(RTCONFIG_HTTPS) += openssl
 obj-$(RTCONFIG_HTTPS) += wget
 obj-$(RTCONFIG_HTTPS) += zlib
+obj-$(RTCONFIG_HTTPS) += curl-7.21.7
 obj-$(RTCONFIG_SSH) += dropbear
 obj-$(RTCONFIG_WTFAST) += wtfast
 #obj-$(RTCONFIG_ZEBRA) += zebra
@@ -1239,9 +1238,10 @@ obj-$(RTCONFIG_LLDP) += openlldp
 obj-n += lsof
 obj-$(RTCONFIG_IPERF) += iperf
 
-obj-$(RTCONFIG_PUSH_EMAIL) += openssl
+obj-$(RTCONFIG_FRS_FEEDBACK) += openssl
 obj-$(RTCONFIG_PUSH_EMAIL) += email-3.1.3
-ifeq ($(RTCONFIG_PUSH_EMAIL),y)
+obj-$(RTCONFIG_FRS_FEEDBACK) += curl-7.21.7
+ifeq ($(RTCONFIG_FRS_FEEDBACK),y)
 obj-$(RTCONFIG_DBLOG) += dblog
 endif
 
@@ -2764,7 +2764,7 @@ wb: json-c openssl libxml2 curl-7.21.7
 wb-install:
 	$(MAKE) -C wb INSTALLDIR=$(INSTALLDIR)/wb install
 
-rc: shared nvram$(BCMEX)$(EX7) libdisk $(if $(RTCONFIG_FBWIFI),fb_wifi) $(if $(RTCONFIG_QTN),libqcsapi_client) $(if $(CONFIG_LIBBCM),libbcm) $(if $(RTCONFIG_BWDPI),bwdpi_source) $(if $(RTCONFIG_USB_SMS_MODEM),smspdu) $(if $(RTCONFIG_HND_ROUTER),bcm_flashutil bcm_util bcm_boardctl) $(if $(RTCONFIG_OPENVPN),libvpn) $(if $(RTCONFIG_LANTIQ),libfapi-0.1) $(if $(RTCONFIG_CFGSYNC), $(CFGSYNC_PKG) $(if $(RTCONFIG_AMAS), amas-utils) $(if $(RTCONFIG_LANTIQ),hostapd-2.6)) json-c $(if $(RTCONFIG_PUSH_EMAIL), $(CURL))
+rc: shared nvram$(BCMEX)$(EX7) libdisk $(if $(RTCONFIG_FBWIFI),fb_wifi) $(if $(RTCONFIG_QTN),libqcsapi_client) $(if $(CONFIG_LIBBCM),libbcm) $(if $(RTCONFIG_BWDPI),bwdpi_source) $(if $(RTCONFIG_USB_SMS_MODEM),smspdu) $(if $(RTCONFIG_HND_ROUTER),bcm_flashutil bcm_util bcm_boardctl) $(if $(RTCONFIG_OPENVPN),libvpn) $(if $(RTCONFIG_LANTIQ),libfapi-0.1) $(if $(RTCONFIG_CFGSYNC), $(CFGSYNC_PKG) $(if $(RTCONFIG_AMAS), amas-utils) $(if $(RTCONFIG_LANTIQ),hostapd-2.6)) json-c $(if $(RTCONFIG_FRS_FEEDBACK), curl-7.21.7)
 
 rc-install:
 	$(MAKE) -C rc INSTALLDIR=$(INSTALLDIR)/rc install
@@ -4493,7 +4493,7 @@ ifneq ($(MEDIA_SERVER_STATIC),y)
 	install -D zlib/libz.so.1 $(INSTALLDIR)/zlib/usr/lib/
 	$(STRIP) $(INSTALLDIR)/zlib/usr/lib/libz.so.1
 endif
-ifeq ($(or $(RTCONFIG_USB_BECEEM),$(RTCONFIG_MEDIA_SERVER),$(RTCONFIG_CLOUDSYNC),$(RTCONFIG_PUSH_EMAIL)),y)
+ifeq ($(or $(RTCONFIG_USB_BECEEM),$(RTCONFIG_MEDIA_SERVER),$(RTCONFIG_CLOUDSYNC),$(RTCONFIG_FRS_FEEDBACK)),y)
 	install -d $(INSTALLDIR)/zlib/usr/lib
 	install -D zlib/libz.so.1 $(INSTALLDIR)/zlib/usr/lib/
 	$(STRIP) $(INSTALLDIR)/zlib/usr/lib/libz.so.1

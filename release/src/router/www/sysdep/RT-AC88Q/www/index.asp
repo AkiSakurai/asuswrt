@@ -1144,22 +1144,34 @@ function validForm(){
 	document.getElementById('client_name').value = document.getElementById('client_name').value.trim();
 	if(document.getElementById('client_name').value.length == 0){
 		alert("<#File_Pop_content_alert_desc1#>");
-		document.getElementById("client_name").style.display = "";
 		document.getElementById('client_name').focus();
 		document.getElementById('client_name').select();
+		document.getElementById('client_name').value = "";
 		return false;
 	}
 	else if(document.getElementById('client_name').value.indexOf(">") != -1 || document.getElementById('client_name').value.indexOf("<") != -1){
 		alert("<#JS_validstr2#> '<', '>'");
 		document.getElementById('client_name').focus();
 		document.getElementById('client_name').select();
-		document.getElementById('client_name').value = "";		
+		document.getElementById('client_name').value = "";
 		return false;
+	}
+
+	if(utf8_ssid_support){
+		var len = validator.lengthInUtf8(document.getElementById('client_name').value);
+		if(len > 32){
+			alert("Username cannot be greater than 32 characters.");/* untranslated */
+			document.getElementById('client_name').focus();
+			document.getElementById('client_name').select();
+			document.getElementById('client_name').value = "";
+			return false;
+		}
 	}
 	else if(!validator.haveFullWidthChar(document.getElementById('client_name'))) {
 		alert('<#JS_validchar#>');
 		document.getElementById('client_name').focus();
 		document.getElementById('client_name').select();
+		document.getElementById('client_name').value = "";
 		return false;
 	}
 
