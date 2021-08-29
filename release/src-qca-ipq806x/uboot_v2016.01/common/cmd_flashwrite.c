@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018, 2020 The Linux Foundation. All rights reserved.
 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -22,6 +22,7 @@
 #include <nand.h>
 #include <mmc.h>
 #include <sdhci.h>
+#include <ubi_uboot.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 #ifndef CONFIG_SDHCI_SUPPORT
@@ -39,7 +40,8 @@ uint32_t part_size, uint32_t file_size, char *layout)
 	char runcmd[256];
 	int nand_dev = CONFIG_NAND_FLASH_INFO_IDX;
 
-	if (flash_type == SMEM_BOOT_NAND_FLASH) {
+	if (((flash_type == SMEM_BOOT_NAND_FLASH) ||
+		(flash_type == SMEM_BOOT_QSPI_NAND_FLASH))) {
 
 		snprintf(runcmd, sizeof(runcmd), "nand device %d && ", nand_dev);
 
@@ -85,7 +87,8 @@ static int fl_erase(int flash_type, uint32_t offset, uint32_t part_size,
 	char runcmd[256];
 	int nand_dev = CONFIG_NAND_FLASH_INFO_IDX;
 
-	if (flash_type == SMEM_BOOT_NAND_FLASH) {
+	if (((flash_type == SMEM_BOOT_NAND_FLASH) ||
+		(flash_type == SMEM_BOOT_QSPI_NAND_FLASH))) {
 
 		snprintf(runcmd, sizeof(runcmd), "nand device %d && ", nand_dev);
 		if (strcmp(layout, "default") != 0) {
@@ -117,11 +120,69 @@ static int fl_erase(int flash_type, uint32_t offset, uint32_t part_size,
 	return CMD_RET_SUCCESS;
 }
 
+#ifdef IPQ_UBI_VOL_WRITE_SUPPORT
+int ubi_vol_present(char* ubi_vol_name)
+{
+	int i;
+	int j=0;
+	struct ubi_device *ubi;
+	struct ubi_volume *vol;
+
+	if (ubi_set_rootfs_part())
+		return 0;
+
+	ubi = ubi_devices[0];
+	for (i = 0; ubi && i < (ubi->vtbl_slots + 1); i++) {
+		vol = ubi->volumes[i];
+		if (!vol)
+			continue;	/* Empty record */
+		if (vol->name_len <= UBI_VOL_NAME_MAX &&
+		    strnlen(vol->name, vol->name_len + 1) == vol->name_len) {
+			j++;
+			if (!strncmp(ubi_vol_name, vol->name,
+						UBI_VOL_NAME_MAX)) {
+				return 1;
+			}
+		}
+
+		if (j == ubi->vol_count - UBI_INT_VOL_COUNT)
+			break;
+	}
+
+	printf("volume or partition %s not found\n", ubi_vol_name);
+	return 0;
+}
+
+int write_ubi_vol(char* ubi_vol_name, uint32_t load_addr, uint32_t file_size)
+{
+	char runcmd[256];
+
+	if (!strncmp(ubi_vol_name, "ubi_rootfs", UBI_VOL_NAME_MAX)) {
+		snprintf(runcmd, sizeof(runcmd),
+			"ubi remove rootfs_data &&"
+			"ubi remove %s &&"
+			"ubi create %s 0x%x &&"
+			"ubi write 0x%x %s 0x%x &&"
+			"ubi create rootfs_data",
+			 ubi_vol_name, ubi_vol_name, file_size,
+			 load_addr, ubi_vol_name, file_size);
+	} else {
+		snprintf(runcmd, sizeof(runcmd),
+			"ubi write 0x%x %s 0x%x ",
+			 load_addr, ubi_vol_name, file_size);
+	}
+
+	return run_command(runcmd, 0);
+}
+#endif
+
 static int do_flash(cmd_tbl_t *cmdtp, int flag, int argc,
 char * const argv[])
 {
 	int flash_cmd = 0;
-	uint32_t load_addr, offset, part_size, file_size, adj_size;
+	uint32_t offset, part_size, adj_size;
+	uint32_t load_addr = 0;
+	uint32_t file_size = 0;
 	uint32_t size_block, start_block, file_size_cpy;
 	char *part_name = NULL, *filesize, *loadaddr;
 	int flash_type, ret, retn;
@@ -136,7 +197,9 @@ char * const argv[])
 	layout = "default";
 	retn = CMD_RET_FAILURE;
 
+#ifdef CONFIG_QCA_MMC
 	block_dev_desc_t *blk_dev;
+#endif
 	disk_partition_t disk_info = {0};
 	qca_smem_flash_info_t *sfi = &qca_smem_flash_info;
 	nand_info_t *nand = &nand_info[CONFIG_NAND_FLASH_INFO_IDX];
@@ -178,11 +241,18 @@ char * const argv[])
 	flash_type = sfi->flash_type;
 	part_name = argv[1];
 
-	if (sfi->flash_type == SMEM_BOOT_NAND_FLASH) {
+	if (((sfi->flash_type == SMEM_BOOT_NAND_FLASH) ||
+		(sfi->flash_type == SMEM_BOOT_QSPI_NAND_FLASH))) {
 
 		ret = smem_getpart(part_name, &start_block, &size_block);
-		if (ret)
+		if (ret) {
+#ifdef IPQ_UBI_VOL_WRITE_SUPPORT
+			if (ubi_vol_present(part_name))
+				return write_ubi_vol(part_name, load_addr,
+								file_size);
+#endif
 			return retn;
+		}
 
 		offset = sfi->flash_block_size * start_block;
 		part_size = sfi->flash_block_size * size_block;
@@ -202,6 +272,7 @@ char * const argv[])
 			layout = "sbl";
 #endif
 
+#ifdef CONFIG_QCA_MMC
 	} else if (sfi->flash_type == SMEM_BOOT_MMC_FLASH) {
 
 		blk_dev = mmc_get_dev(mmc_host.dev_num);
@@ -216,6 +287,7 @@ char * const argv[])
 			part_size = (ulong)disk_info.size;
 		}
 
+#endif
 	} else if (sfi->flash_type == SMEM_BOOT_SPI_FLASH) {
 
 		if (get_which_flash_param(part_name)) {
@@ -226,11 +298,11 @@ char * const argv[])
 			if (ret)
 				return retn;
 
-		} else if ((sfi->flash_secondary_type == SMEM_BOOT_NAND_FLASH)
+		} else if (((sfi->flash_secondary_type == SMEM_BOOT_NAND_FLASH)||
+				(sfi->flash_secondary_type == SMEM_BOOT_QSPI_NAND_FLASH))
 				&& (strncmp(part_name, "rootfs", 6) == 0)) {
 
-			/* IPQ806X - NOR + NAND */
-			flash_type = SMEM_BOOT_NAND_FLASH;
+			flash_type = sfi->flash_secondary_type;
 
 			if (sfi->rootfs.offset == 0xBAD0FF5E) {
 				if (smem_bootconfig_info() == 0)
@@ -240,7 +312,8 @@ char * const argv[])
 				part_size = (ulong) IPQ_NAND_ROOTFS_SIZE;
 			}
 
-		}else if ((smem_getpart(part_name, &start_block, &size_block)
+#ifdef CONFIG_QCA_MMC
+		} else if ((smem_getpart(part_name, &start_block, &size_block)
 				== -ENOENT) && (sfi->rootfs.offset == 0xBAD0FF5E)){
 
 			/* NOR + EMMC */
@@ -257,12 +330,19 @@ char * const argv[])
 				offset = (ulong)disk_info.start;
 				part_size = (ulong)disk_info.size;
 			}
+#endif
 		} else {
 
 			ret = smem_getpart(part_name, &start_block,
 							&size_block);
-			if (ret)
+			if (ret) {
+#ifdef IPQ_UBI_VOL_WRITE_SUPPORT
+				if (ubi_vol_present(part_name))
+					return write_ubi_vol(part_name,
+						load_addr, file_size);
+#endif
 				return retn;
+			}
 
 			offset = sfi->flash_block_size * start_block;
 			part_size = sfi->flash_block_size * size_block;
@@ -270,7 +350,9 @@ char * const argv[])
 	}
 
 	if (flash_cmd) {
-		if (flash_type == SMEM_BOOT_NAND_FLASH) {
+
+		if (((flash_type == SMEM_BOOT_NAND_FLASH) ||
+			(flash_type == SMEM_BOOT_QSPI_NAND_FLASH))) {
 
 			adj_size = file_size % nand->writesize;
 			if (adj_size)
@@ -285,6 +367,11 @@ char * const argv[])
 				if (adj_size)
 					file_size = file_size + 1;
 			}
+		}
+
+		if (file_size > part_size) {
+			printf("Image size is greater than partition memory\n");
+			return CMD_RET_FAILURE;
 		}
 
 		ret = write_to_flash(flash_type, load_addr, offset, part_size,

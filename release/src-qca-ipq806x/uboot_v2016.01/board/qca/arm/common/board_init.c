@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2017, 2020 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -118,6 +118,8 @@ int board_init(void)
         report_l2err(l2esr);
 #endif
 
+	qgic_init();
+
 	qca_smem_flash_info_t *sfi = &qca_smem_flash_info;
 
 	gd->bd->bi_boot_params = QCA_BOOT_PARAMS_ADDR;
@@ -148,6 +150,7 @@ int board_init(void)
 #ifndef CONFIG_ENV_IS_NOWHERE
 	switch (sfi->flash_type) {
 	case SMEM_BOOT_NAND_FLASH:
+	case SMEM_BOOT_QSPI_NAND_FLASH:
 		nand_env_device = CONFIG_NAND_FLASH_INFO_IDX;
 		break;
 	case SMEM_BOOT_SPI_FLASH:
@@ -178,6 +181,7 @@ int board_init(void)
 
 	switch (sfi->flash_type) {
 	case SMEM_BOOT_NAND_FLASH:
+	case SMEM_BOOT_QSPI_NAND_FLASH:
 		board_env_range = CONFIG_ENV_SIZE_MAX;
 		BUG_ON(board_env_size < CONFIG_ENV_SIZE_MAX);
 		break;
@@ -244,7 +248,8 @@ int get_current_flash_type(uint32_t *flash_type)
 
 	if (*flash_type == SMEM_BOOT_SPI_FLASH) {
 		if (get_which_flash_param("rootfs") ||
-		    sfi->flash_secondary_type == SMEM_BOOT_NAND_FLASH)
+		    ((sfi->flash_secondary_type == SMEM_BOOT_NAND_FLASH) ||
+			(sfi->flash_secondary_type == SMEM_BOOT_QSPI_NAND_FLASH)))
 			*flash_type = SMEM_BOOT_NORPLUSNAND;
 		else {
 			if ((sfi->rootfs.offset == 0xBAD0FF5E) ||
@@ -403,11 +408,11 @@ int board_late_init(void)
 }
 
 #ifdef CONFIG_SMEM_VERSION_C
-int ram_ptable_init_v2()
+int ram_ptable_init_v2(void)
 {
 	struct usable_ram_partition_table rtable;
 	int mx = ARRAY_SIZE(rtable.ram_part_entry);
-	int i, ret;
+	int i;
 
 	if (smem_ram_ptable_init_v2(&rtable) > 0) {
 		gd->ram_size = 0;
@@ -493,4 +498,9 @@ void report_l2err(u32 l2esr)
 __weak void clear_l2cache_err(void)
 {
 	return;
+}
+
+__weak int smem_read_cpu_count()
+{
+	return -1;
 }

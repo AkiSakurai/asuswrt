@@ -130,6 +130,11 @@ block_dev_desc_t *usb_stor_get_dev(int index)
 {
 	return (index < usb_max_devs) ? &usb_dev_desc[index] : NULL;
 }
+
+int usb_max_dev_avail(void)
+{
+	return usb_max_devs;
+}
 #endif
 
 static void usb_show_progress(void)

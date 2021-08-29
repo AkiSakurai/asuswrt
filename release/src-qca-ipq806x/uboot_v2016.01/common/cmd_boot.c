@@ -44,6 +44,25 @@ static int do_go(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	printf ("## Application terminated, rc = 0x%lX\n", rc);
 	return rcode;
 }
+static int do_canary(cmd_tbl_t *cmdtp, int flag, int argc,
+		char * const argv[])
+{
+	char Buffer[10] = {'\0'};
+	printf("Stack Canary test start.\n");
+
+	if (argc < 2 || argc > 2)
+		return CMD_RET_USAGE;
+
+	strlcpy(Buffer, argv[1], strlen(argv[1]));
+
+	return 0;
+}
+
+U_BOOT_CMD(
+	canary, 2, 0, do_canary,
+	"test stack canary",
+	"\n canary HelloworldHelloWorld \n"
+);
 
 /* -------------------------------------------------------------------- */
 

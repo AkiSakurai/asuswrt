@@ -136,7 +136,7 @@ struct image_section sections[] = {
 	},
 };
 
-#define NO_OF_SECTIONS		ARRAY_SIZE(sections)
+#define NO_OF_SECTIONS	ARRAY_SIZE(sections)
 int src_size;
 
 #ifndef __HAVE_ARCH_STRLCPY

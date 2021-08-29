@@ -14,6 +14,7 @@
 #include <common.h>
 #include <fdtdec.h>
 #include <watchdog.h>
+#include <console.h>
 #include <spi.h>
 #include <malloc.h>
 #include <asm/io.h>

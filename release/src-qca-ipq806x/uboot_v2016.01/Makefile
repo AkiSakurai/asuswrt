@@ -365,7 +365,7 @@ KBUILD_CPPFLAGS := -D__KERNEL__ -D__UBOOT__
 
 KBUILD_CFLAGS   := -Wall -Wstrict-prototypes \
 		   -Wno-format-security \
-		   -fno-builtin -ffreestanding
+		   -fno-builtin -ffreestanding -Werror
 KBUILD_AFLAGS   := -D__ASSEMBLY__
 
 # Read UBOOTRELEASE from include/config/uboot.release (if it exists)
@@ -573,7 +573,19 @@ ifdef BUILD_TAG
 KBUILD_CFLAGS += -DBUILD_TAG='"$(BUILD_TAG)"'
 endif
 
-KBUILD_CFLAGS += $(call cc-option,-fno-stack-protector)
+ifdef CONFIG_ARCH_IPQ807x
+KBUILD_CFLAGS += $(call cc-option,-fstack-protector)
+else
+ifdef CONFIG_ARCH_IPQ5018
+KBUILD_CFLAGS += $(call cc-option,-fstack-protector)
+else
+ifdef CONFIG_ARCH_IPQ6018
+KBUILD_CFLAGS += $(call cc-option,-fstack-protector)
+else
+KBUILD_CFLAGS += $(call cc-option, -fno-stack-protector)
+endif
+endif
+endif
 KBUILD_CFLAGS += $(call cc-option,-fno-delete-null-pointer-checks)
 
 KBUILD_CFLAGS	+= -g

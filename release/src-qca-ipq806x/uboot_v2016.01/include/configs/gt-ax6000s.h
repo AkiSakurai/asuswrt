@@ -20,7 +20,7 @@
 #define CONFIG_AQRMODEL		107	/* 113 or 107 */
 
 /* Set 1-st version number in accordance with SPF version. */
-#if SPFVER == 10
+#if SPFVER == 11
 #define CONFIG_METATOOLDIR	"build_ipq"
 #define KV1C			"2"
 #elif SPFVER == 8

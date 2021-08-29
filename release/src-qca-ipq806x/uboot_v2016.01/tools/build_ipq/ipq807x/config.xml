@@ -32,7 +32,7 @@ Confidential and Proprietary - Qualcomm Technologies, Inc.
 	</data>
 
 	<data type="EMMC_PARAMETER">
-		<total_block>7634944</total_block>
+		<total_block>15269888</total_block>
 		<partition_mbn>gpt_main0.bin</partition_mbn>
 		<partition_mbn_backup>gpt_backup0.bin</partition_mbn_backup>
 	</data>
@@ -74,6 +74,12 @@ Confidential and Proprietary - Qualcomm Technologies, Inc.
 		<entry>
 			<machid>0x8010300</machid>
 			<board>AP-HK01-C4</board>
+			<spi_nand>false</spi_nand>
+			<memory>256M32_DDR3</memory>
+		</entry>
+		<entry>
+			<machid>0x8010400</machid>
+			<board>AP-HK01-C5</board>
 			<spi_nand>false</spi_nand>
 			<memory>256M32_DDR3</memory>
 		</entry>
@@ -127,10 +133,23 @@ Confidential and Proprietary - Qualcomm Technologies, Inc.
 		</entry>
 		<entry>
 			<machid>0x801000E</machid>
-			<board>AP-HK10</board>
+			<board>AP-HK10-C1</board>
 			<spi_nand>false</spi_nand>
-			<memory>256M16_DDR3</memory>
+			<memory>256M32_DDR3</memory>
 		</entry>
+		<entry>
+			<machid>0x801010E</machid>
+			<board>AP-HK10-C2</board>
+			<spi_nand>false</spi_nand>
+			<memory>256M32_DDR3</memory>
+		</entry>
+		<entry>
+			<machid>0x8010011</machid>
+			<board>AP-HK11-C1</board>
+			<spi_nand>false</spi_nand>
+			<memory>512M16_DDR4</memory>
+		</entry>
+
 		<entry>
 			<machid>0x8010009</machid>
 			<board>AP-AC01</board>
@@ -147,19 +166,13 @@ Confidential and Proprietary - Qualcomm Technologies, Inc.
 			<machid>0x801000F</machid>
 			<board>AP-AC03</board>
 			<spi_nand>false</spi_nand>
-			<memory>256M16_DDR3</memory>
+			<memory>256M16_4L_DDR3</memory>
 		</entry>
 		<entry>
 			<machid>0x8010010</machid>
 			<board>AP-AC04</board>
 			<spi_nand>false</spi_nand>
-			<memory>256M16_DDR3</memory>
-		</entry>
-		<entry>
-			<machid>0x801000B</machid>
-			<board>AP-OAK01</board>
-			<spi_nand>false</spi_nand>
-			<memory>512M16_DDR4</memory>
+			<memory>256M16_4L_DDR3</memory>
 		</entry>
 		<entry>
 			<machid>0x801000C</machid>

@@ -62,10 +62,12 @@ def main():
 	global cdir
 	global outputdir
 	global ARCH_NAME
+	global memory_profile
 
+	memory_profile = "default"
 	if len(sys.argv) > 1:
 		try:
-			opts, args = getopt(sys.argv[1:], "c:o:")
+			opts, args = getopt(sys.argv[1:], "c:o:m:")
 		except GetoptError, e:
 			print "config file and output path are needed to generate cdt files"
 			raise
@@ -74,6 +76,8 @@ def main():
 				file_path = value
 			elif option == "-o":
 				outputdir = value
+			elif option == "-m":
+				memory_profile = value
 	else:
 		print "config file and output path are needed to generate cdt files"
 		return -1
@@ -83,7 +87,9 @@ def main():
 	machid = None
 	board = None
 	memory = None
+	discrete_smps = None
 	memory_first = None
+	device_size = None
 
 	arch = root.find(".//data[@type='ARCH']/SOC")
 	ARCH_NAME = str(arch.text)
@@ -104,6 +110,7 @@ def main():
 			machid = entry.find(".//machid")
 			board = entry.find(".//board")
 			memory = entry.find(".//memory")
+			discrete_smps = entry.find(".//discrete_smps")
 			if memory == None:
 				memory = memory_first
 			set_props = None
@@ -116,8 +123,28 @@ def main():
 			root_cdt = tree_cdt_xml.getroot()
 			machID = root_cdt.find(".//device[@id='cdb0']/props[@name='platform_id']")
 			machID.text = set_props
-			tree_cdt_xml.write(os.path.join(srcDir,  board.text + "_" + \
-					memory.text + ".xml"))
+
+                        if discrete_smps != None:
+                            if discrete_smps.text == "true":
+                                boot_settings = root_cdt.find(".//device[@id='cdb2']/props[@name='boot_settings']")
+                                # Overwritting Bit12 for discrete smps
+                                boot_settings.text = str(int(boot_settings.text) | 4096)
+
+			if memory_profile != "default":
+				sizes = root_cdt.findall(".//device[@id='cdb1']/props[@name='device_size_cs0']")
+				for device_size in sizes:
+					device_size.text = memory_profile
+
+				# Set 16-bit addressing to the device in Low Memory profiles
+				interface_width = root_cdt.findall(".//device[@id='cdb1']/props[@name='interface_width_cs0']")
+				for width in interface_width:
+					width.text = "1"
+				tree_cdt_xml.write(os.path.join(srcDir, board.text + "_" + \
+						memory.text + "_LM" + memory_profile + ".xml"))
+
+			else:
+				tree_cdt_xml.write(os.path.join(srcDir, board.text + "_" + \
+									memory.text + ".xml"))
 	else:
 		os.system("cp " + cdt_path + "*"  + " " + srcDir + "/")
 

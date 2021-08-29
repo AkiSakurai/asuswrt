@@ -119,13 +119,13 @@
 		mux_0 {
 			pins = "gpio68";
 			function = "mdc";
-			drive-strength = <8>;
+			drive-strength = <16>;
 			bias-pull-up;
 		};
 		mux_1 {
 			pins = "gpio69";
 			function = "mdio";
-			drive-strength = <8>;
+			drive-strength = <16>;
 			bias-pull-up;
 		};
 	};

@@ -59,6 +59,8 @@ var orig_wan_vpndhcp = '<% nvram_get("wan_vpndhcp"); %>';
 var orig_ttl_inc_enable = '<% nvram_get("ttl_inc_enable"); %>';
 var iptv_profiles = [<% get_iptvSettings();%>][0];
 var isp_profiles = iptv_profiles.isp_profiles;
+var orig_wnaports_bond = '<% nvram_get("wanports_bond"); %>';
+
 
 function initial(){
 	show_menu();
@@ -500,6 +502,21 @@ function applyRule(){
 			if(lacp_enabled && document.form.iptv_port_settings.value == "56"){
 				document.form.lacp_enabled.disabled = false;
 				document.form.lacp_enabled.value = "0";
+			}
+		}
+
+		if(wan_bonding_support && orig_bond_wan == "1"){
+			if(wanAggr_p2_conflicts_w_stb_port(document.form.switch_stb_x.value, wanAggr_p2_num(orig_wnaports_bond))){
+				var msg = "<#WANAggregation_PortConflict_hint1#>".replace(/LAN-*\D* 4/, wanAggr_p2_name(orig_wnaports_bond));
+				if(confirm(msg)){
+					document.form.bond_wan.disabled = false;
+					document.form.bond_wan.value = "0";
+				}
+				else{
+					document.form.switch_wantag.value = original_switch_wantag;
+					ISP_Profile_Selection(original_switch_wantag);
+					return false;
+				}
 			}
 		}
 
@@ -1193,6 +1210,7 @@ function change_mr_enable(switch_stb_x){
 <input type="hidden" name="wan11_auth_x" value="<% nvram_get("wan11_auth_x"); %>">
 <input type="hidden" name="lacp_enabled" value="<% nvram_get("lacp_enabled"); %>" disabled>
 <input type="hidden" name="switch_stb_x" value="<% nvram_get("switch_stb_x"); %>" disabled>
+<input type="hidden" name="bond_wan" value="<% nvram_get("bond_wan"); %>" disabled>
 
 <!---- connection settings start  ---->
 <div id="connection_settings_table"  class="contentM_connection">

@@ -85,6 +85,7 @@ ARCH_NAME = ""
 SRC_DIR = ""
 MODE = ""
 image_type = "all"
+memory_size = "default"
 lk = "false"
 
 #
@@ -603,7 +604,10 @@ class Pack(object):
                     memory = section.find(".//memory").text
                 except AttributeError, e:
                     memory = "128M16"
-                filename = "cdt-" + board + "_" + memory + ".bin"
+                if memory_size != "default":
+                    filename = "cdt-" + board + "_" + memory + "_LM" + memory_size + ".bin"
+                else:
+                    filename = "cdt-" + board + "_" + memory + ".bin"
             else:
                 filename = "cdt-" + board + ".bin"
 
@@ -646,12 +650,14 @@ class Pack(object):
                        if count > 2:
                            error("More than 2 NAND images for NOR+NAND is not allowed")
                elif img_size > part_info.length:
-                   error("img size is larger than part. len in '%s'" % section_conf)
+                   print "img size is larger than part. len in '%s'" % section_conf
+                   return 0
             else:
                 if part_info != None:
                     if (img_size > 0):
                         if img_size > (part_info.length * self.flinfo.blocksize):
-                            error("img size is larger than part. len in '%s'" % section_conf)
+                            print "img size is larger than part. len in '%s'" % section_conf
+                            return 0
 
             if part_info == None and self.flinfo.type != 'norplusnand':
                 print "Flash type is norplusemmc"
@@ -704,7 +710,11 @@ class Pack(object):
             if machid:
                 script.end_if()
 
+        return 1
+
     def __gen_flash_script_image(self, filename, soc_version, file_exists, machid, partition, flinfo, script):
+
+	    global IF_HK10
 
 	    img_size = 0
 	    if file_exists == 1:
@@ -748,20 +758,24 @@ class Pack(object):
                         if count > 2:
                             error("More than 2 NAND images for NOR+NAND is not allowed")
                 elif img_size > part_info.length:
-                    error("img size is larger than part. len in '%s'" % section_conf)
+                    print "img size is larger than part. len in '%s'" % section_conf
+                    return 0
             else:
                 if part_info != None:
                     if (img_size > 0):
                         if img_size > (part_info.length * self.flinfo.blocksize):
-                            error("img size is larger than part. len in '%s'" % section_conf)
+                            print "img size is larger than part. len in '%s'" % section_conf
+                            return 0
 
 	    if part_info == None and self.flinfo.type != 'norplusnand':
                 print "Flash type is norplusemmc"
-                return
+                return 1
 
 	    if machid:
 		script.start_if("machid", machid)
 
+            if section_conf == "mibib" and IF_HK10:
+                section_conf = "mibib_hk10"
             if section_conf == "qsee":
                 section_conf = "tz"
             elif section_conf == "appsbl":
@@ -769,10 +783,12 @@ class Pack(object):
                     section_conf = "lkboot"
                 else:
                     section_conf = "u-boot"
-            elif section_conf == "rootfs" and self.flash_type in ["nand", "nand-4k", "norplusnand", "norplusnand-4k"]:
+            elif section_conf == "rootfs" and self.flash_type in ["nand", "nand-4k", "nand-audio", "nand-audio-4k", "norplusnand", "norplusnand-4k"]:
                 section_conf = "ubi"
-            elif section_conf == "wififw" and self.flash_type in ["nand", "nand-4k", "norplusnand", "norplusnand-4k"]:
+            elif section_conf == "wififw" and self.flash_type in ["nand", "nand-4k", "nand-audio", "nand-audio-4k", "norplusnand", "norplusnand-4k"]:
                 section_conf = "wififw_ubi"
+                if IF_HK10:
+                    section_conf = "wififw_ubi_hk10"
 
 	    if soc_version:
 		section_conf = section_conf + "_v" + str(soc_version)
@@ -787,7 +803,7 @@ class Pack(object):
 		script.append('setenv stdout serial && echo "error: binary image not found" && exit 1', fatal=False)
 		if soc_version:
 		    script.end_if()
-		return
+		return 1
 
             if ARCH_NAME == "ipq806x":
                 script.switch_layout(layout)
@@ -822,6 +838,8 @@ class Pack(object):
 	    if machid:
 		script.end_if()
 
+            return 1
+
     def __gen_flash_script(self, script, flinfo, root):
         """Generate the script to flash the images.
 
@@ -831,6 +849,7 @@ class Pack(object):
 	global MODE
 	global SRC_DIR
 	global ARCH_NAME
+	global IF_HK10
 
 	diff_files = ""
         count = 0
@@ -841,7 +860,10 @@ class Pack(object):
         if self.flash_type == "norplusemmc" and flinfo.type == "emmc":
             srcDir_part = SRC_DIR + "/" + ARCH_NAME + "/flash_partition/" + flinfo.type + "-partition.xml"
         else:
-            srcDir_part = SRC_DIR + "/" + ARCH_NAME + "/flash_partition/" + self.flash_type.lower() + "-partition.xml"
+            if IF_HK10:
+                srcDir_part = SRC_DIR + "/" + ARCH_NAME + "/flash_partition/" + self.flash_type.lower() + "-partition-hk10.xml"
+            else:
+                srcDir_part = SRC_DIR + "/" + ARCH_NAME + "/flash_partition/" + self.flash_type.lower() + "-partition.xml"
 
         root_part = ET.parse(srcDir_part)
         if self.flash_type != "emmc" and flinfo.type != "emmc":
@@ -954,7 +976,9 @@ class Pack(object):
             else:
 		try:
 			if image_type == "all" or section.attrib['image_type'] == image_type:
-		                self.__gen_flash_script_cdt(entries, partition, flinfo, script)
+		                ret = self.__gen_flash_script_cdt(entries, partition, flinfo, script)
+				if ret == 0:
+				    return 0
                                 continue
 		except KeyError, e:
 			continue
@@ -982,7 +1006,9 @@ class Pack(object):
 				if 'optional' in img.attrib:
 				     if not os.path.exists(os.path.join(self.images_dname, filename)):
 					file_exists = 0
-				self.__gen_flash_script_image(filename, soc_version, file_exists, machid, partition, flinfo, script)
+				ret = self.__gen_flash_script_image(filename, soc_version, file_exists, machid, partition, flinfo, script)
+				if ret == 0:
+                                    return 0
 				file_exists = 1 # generating flash script is mandatory by default
 
 			soc_version = 0 # Clear soc_version for next iteration
@@ -1002,7 +1028,9 @@ class Pack(object):
 			   if section.attrib['optional']:
 				if not os.path.exists(os.path.join(self.images_dname, filename)):
 				     file_exists = 0
-                           self.__gen_flash_script_image(filename, version, file_exists, machid, partition, flinfo, script)
+                           ret = self.__gen_flash_script_image(filename, version, file_exists, machid, partition, flinfo, script)
+                           if ret == 0:
+                                return 0
 			   file_exists = 1
                         diff_soc_ver_files = 0 # Clear diff_soc_ver_files for next iteration
                         continue
@@ -1011,7 +1039,11 @@ class Pack(object):
                         pass
 
             if filename != "":
-                self.__gen_flash_script_image(filename, soc_version, file_exists, machid, partition, flinfo, script)
+                ret = self.__gen_flash_script_image(filename, soc_version, file_exists, machid, partition, flinfo, script)
+                if ret == 0:
+                    return 0
+
+        return 1
 
     def __gen_script_cdt(self, images, flinfo, root, section_conf, partition):
         global ARCH_NAME
@@ -1027,7 +1059,10 @@ class Pack(object):
                 except AttributeError, e:
                     memory = "128M16"
 
-                filename = "cdt-" + board + "_" + memory + ".bin"
+                if memory_size != "default":
+                    filename = "cdt-" + board + "_" + memory + "_LM" + memory_size + ".bin"
+                else:
+                    filename = "cdt-" + board + "_" + memory + ".bin"
                 file_info = "ddr-" + board + "_" + memory
             else:
                 filename = "cdt-" + board + ".bin"
@@ -1056,6 +1091,8 @@ class Pack(object):
 
     def __gen_script_append_images(self, filename, soc_version, images, flinfo, root, section_conf, partition):
 
+        global HK10
+
 	part_info = self.__get_part_info(partition)
 	if part_info == None and self.flinfo.type != 'norplusnand':
 	    return
@@ -1078,9 +1115,9 @@ class Pack(object):
             else:
                 print " Using u-boot..."
 	        section_conf = "u-boot"
-	elif section_conf == "rootfs" and self.flash_type in ["nand", "nand-4k", "norplusnand", "norplusnand-4k"]:
+	elif section_conf == "rootfs" and self.flash_type in ["nand", "nand-4k", "nand-audio", "nand-audio-4k", "norplusnand", "norplusnand-4k"]:
 	    section_conf = "ubi"
-	elif section_conf == "wififw" and self.flash_type in ["nand", "nand-4k", "norplusnand", "norplusnand-4k"]:
+	elif section_conf == "wififw" and self.flash_type in ["nand", "nand-4k", "nand-audio", "nand-audio-4k", "norplusnand", "norplusnand-4k"]:
 	    section_conf = "wififw_ubi"
 
 	if soc_version:
@@ -1102,13 +1139,20 @@ class Pack(object):
         """
 	global MODE
 	global SRC_DIR
+	global HK10
 
 	soc_version = 0
 	diff_soc_ver_files = 0
 	diff_files = ""
 	file_exists = 1
 
-        self.__gen_flash_script(script, flinfo, root)
+        ret = self.__gen_flash_script(script, flinfo, root)
+        if ret == 0:
+            return 0 #Stop packing this single-image
+
+        if HK10:
+            script.end_if() #end if started for hk10+pine
+
         if (self.flash_type == "norplusemmc" and flinfo.type == "emmc") or (self.flash_type != "norplusemmc"):
             if flinfo.type == "emmc":
                 script.start_activity("Flashing rootfs_data:")
@@ -1253,6 +1297,11 @@ class Pack(object):
 		        for img in imgs:
 				soc_version = img.get('soc_version')
 				filename = img.text
+                                if HK10 and section_conf == "wififw":
+                                    filename_hk10 = filename.replace("wifi_fw_ubi", "wifi_fw_ipq8074_qcn9000_ubi")
+				    if os.path.exists(os.path.join(self.images_dname, filename_hk10)):
+                                        section_conf_hk10 = section_conf + "_ubi_hk10"
+                                        self.__gen_script_append_images(filename_hk10, soc_version, images, flinfo, root, section_conf_hk10, partition)
 				if 'optional' in img.attrib:
 				    if not os.path.exists(os.path.join(self.images_dname, filename)):
 					file_exists = 0
@@ -1264,6 +1313,13 @@ class Pack(object):
 			continue
 		    except KeyError, e:
 			continue
+
+                # system-partition specific for HK10+PINE
+                if section_conf == "mibib" and HK10:
+                    img = section.find('img_name')
+                    filename_hk10 = img.text[:-4] + "-hk10.bin"
+                    section_conf_hk10 = section_conf + "_hk10"
+                    self.__gen_script_append_images(filename_hk10, soc_version, images, flinfo, root, section_conf_hk10, partition)
 
             else:
 		if diff_soc_ver_files:
@@ -1290,6 +1346,7 @@ class Pack(object):
 
             if filename != "":
                 self.__gen_script_append_images(filename, soc_version, images, flinfo, root, section_conf, partition)
+        return 1
 
     def __mkimage(self, images):
         """Create the multi-image blob.
@@ -1335,6 +1392,8 @@ class Pack(object):
     def __gen_board_script(self, flinfo, part_fname, images, root):
 	global SRC_DIR
 	global ARCH_NAME
+	global HK10
+	global IF_HK10
 
         """Generate the flashing script for one board.
 
@@ -1345,12 +1404,18 @@ class Pack(object):
         fconf_fname -- string, flash config file specific to the board
         images -- list of ImageInfo, append images used by the board here
         """
+        IF_HK10 = False
         script_fp = open(self.scr_fname, "a")
+        self.flinfo = flinfo
 
         if flinfo.type != "emmc":
             if root.find(".//data[@type='NAND_PARAMETER']/entry") != None:
                 if self.flash_type == "nand-4k" or self.flash_type == "norplusnand-4k":
                     flash_param = root.find(".//data[@type='NAND_PARAMETER']/entry[@type='4k']")
+                elif self.flash_type == "nand-audio":
+                    flash_param = root.find(".//data[@type='NAND_PARAMETER']/entry[@type='audio-2k']")
+                elif self.flash_type == "nand-audio-4k":
+                    flash_param = root.find(".//data[@type='NAND_PARAMETER']/entry[@type='audio-4k']")
                 else:
                     flash_param = root.find(".//data[@type='NAND_PARAMETER']/entry[@type='2k']")
             else:
@@ -1364,22 +1429,45 @@ class Pack(object):
 
             srcDir_part = SRC_DIR + "/" + ARCH_NAME + "/flash_partition/" + flinfo.type + "-partition.xml"
             root_part = ET.parse(srcDir_part)
-            mibib = MIBIB(part_fname, flinfo.pagesize, flinfo.blocksize,
-                          flinfo.chipsize, blocksize, chipsize, root_part)
-            self.partitions = mibib.get_parts()
+
             if flinfo.type == "nand":
                 script = Flash_Script(flinfo, self.ipq_nand)
             elif flinfo.type == "nor":
                 script = Flash_Script(flinfo, pagesize)
+
+            script.probe()
+            # system-partition specific for HK10+PINE
+            if HK10:
+                IF_HK10 = True
+                part_fname_hk10 = part_fname[:-4] + "-hk10.bin"
+                mibib_hk10 = MIBIB(part_fname_hk10, flinfo.pagesize, flinfo.blocksize,
+                                   flinfo.chipsize, blocksize, chipsize, root_part)
+                self.partitions = mibib_hk10.get_parts()
+
+                script.append('if test "$machid" = "801000e" || test "$machid" = "801010e"; then\n', fatal=False)
+                ret = self.__gen_flash_script(script, flinfo, root)
+                if ret == 0:
+                    return 0 #Issue in packing hk10+pine single-image
+
+                script.append('else', fatal=False)
+                self.partitions = {}
+                IF_HK10 = False
+
+            mibib = MIBIB(part_fname, flinfo.pagesize, flinfo.blocksize,
+                          flinfo.chipsize, blocksize, chipsize, root_part)
+            self.partitions = mibib.get_parts()
+
         else:
             gpt = GPT(part_fname, flinfo.pagesize, flinfo.blocksize, flinfo.chipsize)
             self.partitions = gpt.get_parts()
             script = Flash_Script(flinfo)
 
-        self.flinfo = flinfo
+        ret = self.__gen_script(script_fp, script, images, flinfo, root)
+	if ret == 0:
+	    return 0
 
-        script.probe()
-        self.__gen_script(script_fp, script, images, flinfo, root)
+	if HK10:
+	    HK10 = False
 
         try:
             script_fp.write(script.dumps())
@@ -1387,6 +1475,7 @@ class Pack(object):
             error("error writing to script '%s'" % script_fp.name, e)
 
         script_fp.close()
+        return 1
 
     def __process_board_flash_emmc(self, ftype, images, root):
         """Extract board info from config and generate the flash script.
@@ -1418,19 +1507,29 @@ class Pack(object):
 
         flinfo = FlashInfo(ftype, pagesize, blocksize, chipsize)
 
-        self.__gen_board_script(flinfo, part_fname, images, root)
+        ret = self.__gen_board_script(flinfo, part_fname, images, root)
+	if ret == 0:
+            return 0
+
+        return 1
 
     def __process_board_flash(self, ftype, images, root):
 	global SRC_DIR
 	global ARCH_NAME
+	global MODE
+	global HK10
 
         try:
             if ftype == "tiny-nor":
                 part_info = root.find(".//data[@type='" + "NOR_PARAMETER']")
-            elif ftype == "nand" or ftype == "nand-4k":
+            elif ftype in ["nand", "nand-4k", "nand-audio", "nand-audio-4k"]:
                 if root.find(".//data[@type='NAND_PARAMETER']/entry") != None:
                     if ftype == "nand":
                         part_info = root.find(".//data[@type='NAND_PARAMETER']/entry[@type='2k']")
+                    elif ftype == "nand-audio":
+                        part_info = root.find(".//data[@type='NAND_PARAMETER']/entry[@type='audio-2k']")
+                    elif ftype == "nand-audio-4k":
+                        part_info = root.find(".//data[@type='NAND_PARAMETER']/entry[@type='audio-4k']")
                     else:
                         part_info = root.find(".//data[@type='NAND_PARAMETER']/entry[@type='4k']")
                 else:
@@ -1439,6 +1538,54 @@ class Pack(object):
                 part_info = root.find(".//data[@type='" + "NORPLUSNAND_PARAMETER']")
             else:
                 part_info = root.find(".//data[@type='" + ftype.upper() + "_PARAMETER']")
+
+	    if ARCH_NAME == "ipq6018" or ARCH_NAME == "ipq5018":
+		if MODE == "64":
+                    MODE_APPEND = "_64"
+                else:
+                    MODE_APPEND = ""
+
+                if ftype in ["nand-audio", "nand-audio-4k"]:
+                    UBINIZE_CFG_NAME = ARCH_NAME + "-ubinize" + MODE_APPEND + "-audio.cfg"
+                else:
+                    UBINIZE_CFG_NAME = ARCH_NAME + "-ubinize" + MODE_APPEND + ".cfg"
+
+                f1 = open(SRC_DIR + "/" + ARCH_NAME + "/flash_partition/" + UBINIZE_CFG_NAME, 'r')
+                UBINIZE_CFG_NAME = SRC_DIR + "/" + ARCH_NAME + "/flash_partition/tmp-" + UBINIZE_CFG_NAME
+                f2 = open(UBINIZE_CFG_NAME, 'w')
+                for line in f1:
+                    f2.write(line.replace('image=', "image=" + SRC_DIR + "/"))
+                f1.close()
+                f2.close()
+
+                if ftype in ["nand-4k", "nand-audio-4k", "norplusnand-4k"]:
+                    if ARCH_NAME == "ipq6018":
+                        UBI_IMG_NAME = "openwrt-ipq-ipq60xx" + MODE_APPEND + "-ubi-root-m4096-p256KiB.img"
+                    if ARCH_NAME == "ipq5018":
+                        UBI_IMG_NAME = "openwrt-ipq-ipq50xx" + MODE_APPEND + "-ubi-root-m4096-p256KiB.img"
+
+                    cmd = '%s -m 4096 -p 256KiB -o root.ubi %s' % ((SRC_DIR + "/ubinize") ,UBINIZE_CFG_NAME)
+                    ret = subprocess.call(cmd, shell=True)
+                    if ret != 0:
+                         error("ubinization got failed")
+                    cmd = 'dd if=root.ubi of=%s bs=4k conv=sync' % (SRC_DIR + "/" + UBI_IMG_NAME)
+                    ret = subprocess.call(cmd, shell=True)
+                    if ret != 0:
+                         error("ubi image copy operation failed")
+                elif ftype in ["nand", "nand-audio", "norplusnand"]:
+                    if ARCH_NAME == "ipq6018":
+                        UBI_IMG_NAME = "openwrt-ipq-ipq60xx" + MODE_APPEND +"-ubi-root.img"
+                    if ARCH_NAME == "ipq5018":
+                        UBI_IMG_NAME = "openwrt-ipq-ipq50xx" + MODE_APPEND +"-ubi-root.img"
+
+                    cmd = '%s -m 2048 -p 128KiB -o root.ubi %s' % ((SRC_DIR + "/ubinize") ,UBINIZE_CFG_NAME)
+                    ret = subprocess.call(cmd, shell=True)
+                    if ret != 0:
+                         error("ubinization got failed")
+                    cmd = 'dd if=root.ubi of=%s bs=2k conv=sync' % (SRC_DIR + "/" + UBI_IMG_NAME)
+                    ret = subprocess.call(cmd, shell=True)
+                    if ret != 0:
+                         error("ubi image copy operation failed")
 
             part_file = SRC_DIR + "/" + ARCH_NAME + "/flash_partition/" + ftype + "-partition.xml"
             part_xml = ET.parse(part_file)
@@ -1449,9 +1596,12 @@ class Pack(object):
             pages_per_block = int(part_info.find(".//pages_per_block").text)
             blocks_per_chip = int(part_info.find(".//total_block").text)
 
+            if ARCH_NAME == "ipq807x" and (ftype == "norplusnand" or ftype == "nand"):
+                HK10 = True
+
             if ftype in ["tiny-nor", "norplusnand", "norplusnand-4k", "norplusemmc"]:
                 ftype = "nor"
-            if ftype == "nand-4k":
+            if ftype in ["nand-4k", "nand-audio", "nand-audio-4k"]:
                 ftype = "nand"
 
         except ValueError, e:
@@ -1462,18 +1612,24 @@ class Pack(object):
 
         flinfo = FlashInfo(ftype, pagesize, blocksize, chipsize)
 
-        self.__gen_board_script(flinfo, part_fname, images, root)
+        ret = self.__gen_board_script(flinfo, part_fname, images, root)
+	return ret
 
     def __process_board(self, images, root):
 
+        global HK10
+
+        HK10 = False
         try:
-            if self.flash_type in [ "nand", "nand-4k", "nor", "tiny-nor", "norplusnand", "norplusnand-4k" ]:
-                self.__process_board_flash(self.flash_type, images, root)
+            if self.flash_type in [ "nand", "nand-4k", "nand-audio", "nand-audio-4k", "nor", "tiny-nor", "norplusnand", "norplusnand-4k" ]:
+                ret = self.__process_board_flash(self.flash_type, images, root)
             elif self.flash_type == "emmc":
-                self.__process_board_flash_emmc(self.flash_type, images, root)
+                ret = self.__process_board_flash_emmc(self.flash_type, images, root)
             elif self.flash_type == "norplusemmc":
-                self.__process_board_flash("norplusemmc", images, root)
-                self.__process_board_flash_emmc("norplusemmc", images, root)
+                ret = self.__process_board_flash("norplusemmc", images, root)
+		if ret:
+                    ret = self.__process_board_flash_emmc("norplusemmc", images, root)
+            return ret
         except ValueError, e:
             error("error getting board info in section '%s'" % board_section.find('machid').text, e)
 
@@ -1495,9 +1651,13 @@ class Pack(object):
             pass
 
         images = []
-        self.__process_board(images, root)
-        images.insert(0, ImageInfo("script", "flash.scr", "script"))
-        self.__mkimage(images)
+        ret = self.__process_board(images, root)
+        if ret != 0:
+            images.insert(0, ImageInfo("script", "flash.scr", "script"))
+            self.__mkimage(images)
+        else:
+	    fail_img = out_fname.split("/")
+            print "Failed to pack %s" % fail_img[-1]
 
 class UsageError(Exception):
     """Indicates error in command arguments."""
@@ -1520,6 +1680,7 @@ class ArgParser(object):
 	global SRC_DIR
 	global ARCH_NAME
 	global image_type
+	global memory_size
         global lk
 
         """Start the parsing process, and populate members with parsed value.
@@ -1530,7 +1691,7 @@ class ArgParser(object):
 	cdir = os.path.abspath(os.path.dirname(""))
         if len(sys.argv) > 1:
             try:
-                opts, args = getopt(sys.argv[1:], "", ["arch=", "fltype=", "srcPath=", "inImage=", "outImage=", "image_type=", "lk"])
+                opts, args = getopt(sys.argv[1:], "", ["arch=", "fltype=", "srcPath=", "inImage=", "outImage=", "image_type=", "memory=", "lk"])
             except GetoptError, e:
 		raise UsageError(e.msg)
 
@@ -1553,6 +1714,9 @@ class ArgParser(object):
 		elif option == "--image_type":
 		    image_type = value
 
+                elif option == "--memory":
+                    memory_size = value
+
                 elif option =="--lk":
                     lk = "true"
 
@@ -1562,11 +1726,11 @@ class ArgParser(object):
 # Verify arch type
 	    MODE = "32"
 
-	    if ARCH_NAME == "ipq807x":
+	    if ARCH_NAME == "ipq807x" or ARCH_NAME == "ipq5018":
 		MODE = "32"
-	    elif ARCH_NAME == "ipq807x_64":
+	    elif ARCH_NAME == "ipq807x_64" or ARCH_NAME == "ipq5018_64":
 		MODE = "64"
-		ARCH_NAME = "ipq807x"
+		ARCH_NAME = ARCH_NAME[:-3]
 
 	    if ARCH_NAME == "ipq6018":
 		MODE = "32"
@@ -1604,7 +1768,7 @@ class ArgParser(object):
 	print "python pack_hk.py [options] [Value] ..."
 	print
         print "options:"
-        print "  --arch \tARCH_TYPE [ipq40xx/ipq806x/ipq807x/ipq807x_64/ipq6018/ipq6018_64]"
+        print "  --arch \tARCH_TYPE [ipq40xx/ipq806x/ipq807x/ipq807x_64/ipq6018/ipq6018_64/ipq5018/ipq5018_64]"
 	print
 	print "  --fltype \tFlash Type [nor/tiny-nor/nand/emmc/norplusnand/norplusemmc]"
         print " \t\tMultiple flashtypes can be passed by a comma separated string"
@@ -1614,6 +1778,10 @@ class ArgParser(object):
 	print "  --inImage \tPath to the direcory containg binaries and images needed for singleimage"
 	print
         print "  --outImage \tPath to the directory where single image will be generated"
+        print
+        print "  --memory \tMemory size for low memory profile"
+        print " \t\tIf it is not specified CDTs with default memory size are taken for single-image packing.\n"
+        print " \t\tIf specified, CDTs created with specified memory size will be used for single-image.\n"
         print
         print "  --lk \t\tReplace u-boot with lkboot for appsbl"
         print " \t\tThis Argument does not take any value"
@@ -1631,14 +1799,24 @@ def gen_kernelboot_img(parser):
             rmtree(TMP_DIR)
 	os.makedirs(TMP_DIR)
 
+        if ARCH_NAME == "ipq807x":
+            BOARD_NAME = ARCH_NAME + "-hk01"
+        elif ARCH_NAME == "ipq6018":
+            BOARD_NAME = ARCH_NAME + "-cp02-c1"
+        else:
+            error("Error: Arch not supported")
+
         if MODE == "64":
             KERNEL_IMG_NAME = "openwrt-" + ARCH_NAME + "_" + MODE + "-kernelboot.img"
             BASE_ADDR = "0x41078000"
         else:
             KERNEL_IMG_NAME = "openwrt-" + ARCH_NAME + "-kernelboot.img"
-            BASE_ADDR = "0x41200000"
+            if ARCH_NAME == "ipq807x":
+                BASE_ADDR = "0x41200000"
+            elif ARCH_NAME == "ipq6018":
+                BASE_ADDR = "0x41000000"
 
-        src = parser.images_dname + "/qcom-" + ARCH_NAME + "-hk01.dtb"
+        src = parser.images_dname + "/qcom-" + BOARD_NAME + ".dtb"
         if not os.path.exists(src):
             error("%s file not found" % src)
         copy(src, TMP_DIR)
@@ -1648,7 +1826,7 @@ def gen_kernelboot_img(parser):
 	    error("%s file not found" % src)
         copy(src, TMP_DIR)
 
-        cmd = [SKALES_DIR + "/dtbTool -o " + TMP_DIR + "/qcom-ipq807x-hk01-dt.img " + TMP_DIR]
+        cmd = [SKALES_DIR + "/dtbTool -o " + TMP_DIR + "/qcom-" + BOARD_NAME + "-dt.img " + TMP_DIR]
         ret = subprocess.call(cmd, shell=True)
         if ret != 0:
             print ret
@@ -1662,8 +1840,8 @@ def gen_kernelboot_img(parser):
 
         cmd = [SKALES_DIR + "/mkbootimg",
                 "--kernel=" + TMP_DIR + "/Image.gz",
-                "--dt=" + TMP_DIR + "/qcom-ipq807x-hk01-dt.img",
-                "--cmdline=\'rootfsname=rootfs rootwait nosmp\'",
+                "--dt=" + TMP_DIR + "/qcom-" + BOARD_NAME + "-dt.img",
+                "--cmdline=\'rootfsname=rootfs rootwait\'",
                 "--output=" + parser.images_dname + "/" + KERNEL_IMG_NAME,
                 "--base=" + BASE_ADDR]
         ret = subprocess.call(cmd)
@@ -1694,7 +1872,6 @@ def main():
 
     config = SRC_DIR + "/" + ARCH_NAME + "/config.xml"
     root = ET.parse(config)
-
 
 # Add nand-4k flash type, if nand flash type is specified
     if "nand" in parser.flash_type.split(","):

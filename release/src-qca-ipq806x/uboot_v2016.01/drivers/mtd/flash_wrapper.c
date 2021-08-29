@@ -7,6 +7,7 @@
 #include <command.h>
 #include <asm/errno.h>
 #include <malloc.h>
+#include <netdev.h>
 
 #define QC98XX_EEPROM1_OFFSET		0x1000	/* QCA98xx 2G/5G EEPROM; QCN50x4 2G+5G EEPROM */
 #if !defined(CONFIG_ARCH_IPQ807x)
@@ -25,6 +26,10 @@
 #include <jffs2/load_kernel.h>
 
 unsigned long cfg_kern2_addr = CFG_KERN2_ADDR;
+
+/* drivers/net/ipq807x/ipq807x_edma.c */
+extern int aqr_phy_chip(void);
+extern void detect_aqr_phy(void);
 
 /* common/cmd_mtdparts.c */
 extern int do_mtdparts(cmd_tbl_t *cmdtp, int flag, int argc, char * argv[]);
@@ -631,6 +636,10 @@ int ra_flash_init_layout(void)
 			setenv(ename, mac_str);
 		}
 	}
+#if defined(GTAXY16000) || defined(RTAX89U)
+	if (aqr_phy_chip() == AQR_PHY_113C)
+		detect_aqr_phy();
+#endif
 #else
 	int r;
 	char *sf_probe[] = { "sf", "probe" };

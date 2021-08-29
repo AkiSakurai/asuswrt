@@ -59,6 +59,8 @@ const struct spi_flash_params spi_flash_params_table[] = {
 	{"MX25U6435F",	   0xc22537, 0x0,	64 * 1024,   128, RD_NORM,			  0},
 	{"MX25U12835F",	   0xc22538, 0x0,	64 * 1024,   256, RD_NORM,			  0},
 	{"MX25U25635F",	   0xc22539, 0x0,	64 * 1024,   512, RD_NORM,			  0},
+	{"MX66U1G45GM",	   0xc2253b, 0x0,	64 * 1024,  2048, RD_FULL,			  0},
+	{"MX25U51245G",    0xc2253a, 0x0,       64 * 1024,  1024, RD_FULL,                        0},
 #endif
 #ifdef CONFIG_SPI_FLASH_SPANSION	/* SPANSION */
 	{"S25FL008A",	   0x010213, 0x0,	64 * 1024,    16, RD_NORM,			  0},

@@ -18,6 +18,8 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
+extern int do_dumpqca_minimal_data(const char *offset);
+
 #define MAX_DELAY_STOP_STR 32
 
 #ifndef DEBUG_BOOTKEYS
@@ -362,6 +364,11 @@ __weak int apps_iscrashed(void)
 	return 0;
 }
 
+__weak int apps_iscrashed_crashdump_disabled(void)
+{
+	return 0;
+}
+
 void autoboot_command(const char *s)
 {
 	debug("### main_loop: bootcmd=\"%s\"\n", s ? s : "<UNDEFINED>");
@@ -374,15 +381,29 @@ void autoboot_command(const char *s)
 	if (apps_iscrashed()) {
 		printf("Crashdump magic found, initializing dump activity..\n");
 		s = getenv("dump_to_flash");
+		if (!s) {
+			s = getenv("dump_minimal");
+			if (s) {
+				if (strncmp(s, "1", sizeof("1"))) {
+					printf("\nError: Invalid variable dump_minimal \n");
+					reset_board();
+				}
+			}
+		}
 		if (s) {
-			do_dumpqca_flash_data(s);	/* write core dump data to flash */
-			run_command("reset", 0);
+			do_dumpqca_minimal_data(s);
+			reset_board();
 		}
 		else
-			dump_func();
+			dump_func(FULL_DUMP);
 		return;
 	}
 #endif
+
+	if (apps_iscrashed_crashdump_disabled()) {
+		printf("Crashdump disabled, resetting the board..\n");
+		reset_board();
+	}
 
 	if (stored_bootdelay != -1 && s && !abortboot(stored_bootdelay)) {
 #if defined(CONFIG_AUTOBOOT_KEYED) && !defined(CONFIG_AUTOBOOT_KEYED_CTRLC)

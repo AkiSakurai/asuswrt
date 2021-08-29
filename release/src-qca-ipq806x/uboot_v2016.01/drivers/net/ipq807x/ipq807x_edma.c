@@ -932,7 +932,7 @@ static int ipq807x_eth_init(struct eth_device *eth_dev, bd_t *this)
 		port_8033 = fdtdec_get_uint(gd->fdt_blob, node, "8033_port", -1);
 
 	if (node >= 0) {
-		if (is_aqr_phy_exist())
+		if (aqr_phy_chip() == AQR_PHY_107_113_A1B0)
 			aquantia_port = fdtdec_get_uint(gd->fdt_blob, node, "aquantia_port", -1);
 	}
 
@@ -1832,11 +1832,18 @@ int ipq807x_edma_hw_init(struct ipq807x_edma_hw *ehw)
 }
 
 #if defined(GTAXY16000) || defined(RTAX89U)
-static int aqr_phy_absent = 0;
+static enum AQR_PHY_CHIP aqr_phy_chip_id = AQR_PHY_ABSENT;
 
-int is_aqr_phy_exist(void)
+/* @return:
+ * 	0:	AQR chip doesn't exist
+ *  otherwise:	enum AQR_PHY_CHIP
+ */
+int aqr_phy_chip(void)
 {
-	return !aqr_phy_absent;
+	if (aqr_phy_chip_id <= AQR_PHY_ABSENT || aqr_phy_chip_id >= AQR_PHY_CHIP_MAX)
+		return 0;
+	else
+		return aqr_phy_chip_id;
 }
 
 void detect_aqr_phy(void)
@@ -1844,14 +1851,38 @@ void detect_aqr_phy(void)
 	const int phyaddr = CONFIG_AQR_PHYADDR;
 	int r;
 	unsigned short id1 = 0;
+	unsigned char hwid[4] = { 0 };
+#if defined(RTAX89U)
+	unsigned char min_aqr113c_hwid = 'C';
+#elif defined(GTAXY16000)
+	unsigned char min_aqr113c_hwid = 'D';
+#else
+	unsigned char min_aqr113c_hwid = 'A';
+#endif
 
 	r = ipq_mdio_read(phyaddr, 0x40070002, &id1);
-	if (r < 0 || id1 == 0xFFFF) {
-		printf("Can't find AQR PHY%d!\n", phyaddr);
-		aqr_phy_absent = 1;
-	} else {
-		aqr_phy_absent = 0;
+	if (r >= 0 && id1 != 0xFFFF) {
+		aqr_phy_chip_id = AQR_PHY_107_113_A1B0;
+		return;
 	}
+
+	r = ra_factory_read(hwid, OFFSET_HWID, 4);
+	printf("HwId: %c\n", hwid[0]);
+
+	/* If read factory success, hwid must be configured correctly,
+	 * don't assume AQR113C exist if lower hwid or not configured hwid.
+	 * If read factory fail, always assume AQR113C exist.
+	 */
+	if (!r && (*hwid < min_aqr113c_hwid || *hwid == 0xFF)) {
+		printf("Can't find AQR107/113 A1,B0 @ PHY%d!\n", phyaddr);
+		aqr_phy_chip_id = AQR_PHY_ABSENT;
+		return;
+	}
+
+	/* Assume DUT equips with AQR113C that connects to 2nd, bit-bang MII bus.
+	 * We can't detect id due to U-Boot's bit-bang MII bus driver doesn't support C45 phy.
+	 */
+	aqr_phy_chip_id = AQR_PHY_113C;
 }
 
 #if defined(CONFIG_AQR_PHYADDR)
@@ -1908,7 +1939,7 @@ int ipq807x_edma_init(void *edma_board_cfg)
 
 	detect_aqr_phy();
 	if (node >= 0) {
-		if (is_aqr_phy_exist())
+		if (aqr_phy_chip() == AQR_PHY_107_113_A1B0)
 			aquantia_port = fdtdec_get_uint(gd->fdt_blob, node, "aquantia_port", -1);
 	}
 

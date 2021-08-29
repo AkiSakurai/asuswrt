@@ -18,6 +18,7 @@ export CFLAGS+=$(EXTRACFLAGS)
 export LDFLAGS+=$(EXTRALDFLAGS)
 
 # Package dependence
+PKGDEP_LIBIEEE1905	:= libqcacommon
 PKGDEP_QCA_NSS_DRV	:= qca-nss-gmac qca-nss-dp
 PKGDEP_QCA_NSS_DP	:= qca-ssdk
 PKGDEP_QCA_NSS_ECM	:= qca-nss-drv shortcut-fe nat46 qca-mcs-lkm qca-hyfi-bridge
@@ -64,7 +65,7 @@ pobj-$(RTCONFIG_WIFI_QCN5024_QCN5054) += qca-wifi $(PKGDEP_QCA_WIFI)
 pobj-$(RTCONFIG_WIFI_QCN5024_QCN5054) += qca-hk
 pobj-$(RTCONFIG_WIFI_QCN5024_QCN5054) += qca-acfg $(PKGDEP_QCA_ACFG)
 pobj-$(RTCONFIG_WIFI_QCN5024_QCN5054) += qca-cfg80211 $(PKGDEP_QCA_CFG80211)
-#pobj-$(RTCONFIG_WIFI_QCN5024_QCN5054) += qca-cnssdiag $(PKGDEP_QCA_CNSSDIAG)
+pobj-$(RTCONFIG_WIFI_QCN5024_QCN5054) += qca-cnssdiag $(PKGDEP_QCA_CNSSDIAG)
 pobj-$(RTCONFIG_WIFI_QCN5024_QCN5054) += qca-hostap $(PKGDEP_QCA_HOSTAP)
 pobj-$(RTCONFIG_WIFI_QCN5024_QCN5054) += ftm $(PKGDEP_FTM)
 #pobj-$(RTCONFIG_SWITCH_QCA8075_QCA8337_PHY_AQR107_AR8035_QCA8033) += mcproxy
@@ -87,6 +88,9 @@ pobj-y += btdiag
 
 pobj-$(RTCONFIG_SWITCH_QCA8075_PHY_AQR107) += aq-fw-download
 pobj-$(RTCONFIG_SWITCH_QCA8075_QCA8337_PHY_AQR107_AR8035_QCA8033) += aq-fw-download
+
+# U-Boot binaries
+pobj-$(RTCONFIG_SWITCH_QCA8075_QCA8337_PHY_AQR107_AR8035_QCA8033) += uboot_bins
 
 pobj-clean := $(foreach pobj, $(pobj-y) $(pobj-n) $(pobj-), $(pobj)-clean)
 pobj-install := $(foreach pobj,$(pobj-y),$(pobj)-install)

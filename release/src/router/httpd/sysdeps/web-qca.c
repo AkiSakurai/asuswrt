@@ -442,7 +442,7 @@ static unsigned int getAPChannelbyIWInfo(const char *ifname)
 	/* Example: /sys/kernel/debug/ieee80211/phy0/wil6210/freq
 	 * Freq = 60480
 	 */
-	r = f_read_string("/sys/kernel/debug/ieee80211/phy0/wil6210/freq", buf, sizeof(buf));
+	r = f_read_string("/sys/kernel/debug/ieee80211/phy2/wil6210/freq", buf, sizeof(buf));
 	if (r < strlen("Freq = xxxxx"))
 		return 0;
 
@@ -1882,7 +1882,7 @@ static int wl_scan(int eid, webs_t wp, int argc, char_t **argv, int unit)
 
 	dbg("Please wait...");
 #if defined(RTCONFIG_QCA_LBD)
-	if (nvram_match("qca_lbd_enable", "1") && pids("lbd")) {
+	if (nvram_match("smart_connect_x", "1") && pids("lbd")) {
 		eval("rc", "rc_service", "stop_qca_lbd");
 		restart_lbd = 1;
 	}

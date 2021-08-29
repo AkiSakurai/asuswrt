@@ -133,7 +133,10 @@ typedef struct {
 	uint16_t  sn;
 	uint16_t  en;
 	uint8_t   key;
-	char	  pad[27];
+	char      pad[3];
+	uint32_t  en2;
+	char	  pad2[19];
+	uint8_t   flag;
 #else
 	char	  pad[32];
 #endif
@@ -209,6 +212,8 @@ int create_asus(const char *optarg)
 
 	sscanf(en, "%d-%s", &v1, tmp);
 	asus_tail.en = (uint16_t)v1;
+	asus_tail.en2 = (uint32_t)v1;
+	asus_tail.flag = 1;
 #endif
 
 	fname = strsep(&next, ",");

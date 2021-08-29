@@ -33,6 +33,9 @@
 #include <asm/arch-qca-common/iomap.h>
 #include <asm/io.h>
 #include <dm/device.h>
+#include <mmc.h>
+#include <spi.h>
+#include "ipq_spi.h"
 
 #define DLOAD_MAGIC_COOKIE_1 0xE47B337D
 #define DLOAD_MAGIC_COOKIE_2 0x0501CAB0
@@ -72,7 +75,10 @@ struct dumpinfo_t dumpinfo_n[] = {
 	{ "WLAN_FW.BIN",  0x41400000, 0x000FFF80, 0 },
 	{ "WLAN_FW_900B.BIN", 0x44000000, 0x00600000, 0 },
 	{ "EBICS0.BIN",   0x40000000, 0x20000000, 0 },
-	{ "EBI1CS1.BIN",  0x60000000, 0x20000000, 0 }
+	{ "EBI1CS1.BIN",  0x60000000, 0x20000000, 0 },
+	{ "EBICS2.BIN",  0x60000000, 0x20000000, 0, 0, 0, 0, 1 },
+	{ "EBICS1.BIN",  CONFIG_UBOOT_END_ADDR, 0x10000000, 0, 0, 0, 0, 1 },
+	{ "EBICS0.BIN",  0x40000000, CONFIG_QCA_UBOOT_OFFSET, 0, 0, 0, 0, 1 }
 };
 int dump_entries_n = ARRAY_SIZE(dumpinfo_n);
 
@@ -102,7 +108,10 @@ struct dumpinfo_t dumpinfo_s[] = {
 	{ "WLAN_FW.BIN",  0x41400000, 0x000FFF80, 0 },
 	{ "WLAN_FW_900B.BIN", 0x44000000, 0x00600000, 0 },
 	{ "EBICS0.BIN",   0x40000000, 0x20000000, 0 },
-	{ "EBI1CS1.BIN",  0x60000000, 0x20000000, 0 }
+	{ "EBI1CS1.BIN",  0x60000000, 0x20000000, 0 },
+	{ "EBICS2.BIN",  0x60000000, 0x20000000, 0, 0, 0, 0, 1 },
+	{ "EBICS1.BIN",  CONFIG_UBOOT_END_ADDR, 0x10000000, 0, 0, 0, 0, 1 },
+	{ "EBICS0.BIN",  0x40000000, CONFIG_QCA_UBOOT_OFFSET, 0, 0, 0, 0, 1 }
 };
 int dump_entries_s = ARRAY_SIZE(dumpinfo_s);
 
@@ -188,6 +197,11 @@ void reset_cpu(unsigned long a)
 	while(1);
 }
 
+void reset_board(void)
+{
+	run_command("reset", 0);
+}
+
 void ipq_uboot_fdt_fixup(void)
 {
 	int ret, len;
@@ -199,11 +213,11 @@ void ipq_uboot_fdt_fixup(void)
 		/*
 		 * Open in place with a new length.
 		 */
-		ret = fdt_open_into(gd->fdt_blob, gd->fdt_blob, len);
+		ret = fdt_open_into(gd->fdt_blob, (void *)gd->fdt_blob, len);
 		if (ret)
 			 debug("uboot-fdt-fixup: Cannot expand FDT: %s\n", fdt_strerror(ret));
 
-		ret = fdt_setprop(gd->fdt_blob, 0, "config_name",
+		ret = fdt_setprop((void *)gd->fdt_blob, 0, "config_name",
 				config, (strlen(config)+1));
 		if (ret)
 			debug("uboot-fdt-fixup: unable to set config_name(%d)\n", ret);
@@ -215,7 +229,7 @@ int board_mmc_init(bd_t *bis)
 {
 	int node, gpio_node;
 	int ret = -ENODEV;
-	u32 *emmc_base;
+	const u32 *emmc_base;
 	int len;
 	qca_smem_flash_info_t *sfi = &qca_smem_flash_info;
 
@@ -228,7 +242,7 @@ int board_mmc_init(bd_t *bis)
 
 	emmc_base = fdt_getprop(gd->fdt_blob, node, "reg", &len);
 
-	if (emmc_base == FDT_ADDR_T_NONE) {
+	if ((u32)emmc_base == FDT_ADDR_T_NONE) {
 		printf("No valid SDCC base address found in device tree\n");
 		goto out;
         }
@@ -252,7 +266,7 @@ out:
 void board_nand_init(void)
 {
 	int node, gpio_node;
-	u32 *nand_base;
+	const u32 *nand_base;
 	struct ipq_nand ipq_nand;
 	int len;
 
@@ -265,7 +279,7 @@ void board_nand_init(void)
 
 	nand_base = fdt_getprop(gd->fdt_blob, node, "reg", &len);
 
-	if (nand_base == FDT_ADDR_T_NONE) {
+	if ((u32)nand_base == FDT_ADDR_T_NONE) {
 		printf("No valid NAND base address found in device tree\n");
 		goto spi_init;
         }
@@ -341,7 +355,7 @@ int board_eth_init(bd_t *bis)
 			phy_name_ptr = (char*)fdt_getprop(gd->fdt_blob, offset,
 					"phy_name", &phy_name_len);
 
-			strncpy(gmac_cfg[loop].phy_name, phy_name_ptr, phy_name_len);
+			strncpy((char *)gmac_cfg[loop].phy_name, phy_name_ptr, phy_name_len);
 
 		}
 	}
@@ -434,7 +448,7 @@ void qca_serial_init(struct ipq_serial_platdata *plat)
 
 }
 
-void ipq_wifi_pci_power_enable()
+void ipq_wifi_pci_power_enable(void)
 {
 	int offset;
 	u32 gpio;
@@ -452,7 +466,7 @@ void ipq_wifi_pci_power_enable()
 	}
 }
 
-static void ipq_wifi_pci_power_disable()
+static void ipq_wifi_pci_power_disable(void)
 {
 	int offset;
 	u32 gpio;
@@ -512,7 +526,7 @@ void board_pci_init(int id)
 
 void board_pci_deinit()
 {
-	int node, gpio_node, i, gpio;
+	int node, i;
 	char name[16];
 	struct fdt_resource parf;
 	struct fdt_resource pci_rst;
@@ -1093,7 +1107,6 @@ static int krait_release_secondary(void)
 }
 int bring_sec_core_up(unsigned int cpuid, unsigned int entry, unsigned int arg)
 {
-	int err = 0;
 	dcache_old_status = dcache_status();
 	if (!secondary_core_already_reset) {
 		secondary_core_already_reset = 1;

@@ -123,7 +123,11 @@ const char STA_2G[] = "sta0";
 const char VPHY_5G[] = "wifi1";
 const char VPHY_2G[] = "wifi0";
 #endif
+#if defined(RTCONFIG_CFG80211)
+const char WSUP_DRV[] = "nl80211";
+#else
 const char WSUP_DRV[] = "athr";
+#endif
 #else
 #error Define WiFi 2G/5G interface name!
 #endif
@@ -141,7 +145,7 @@ const char VPHY_5G2[] = "xxx";
 #if defined(RTCONFIG_WIGIG)
 const char WIF_60G[] = "wlan0";
 const char STA_60G[] = "wlan0";
-const char VPHY_60G[] = "phy0";
+const char VPHY_60G[] = "phy2";
 const char WSUP_DRV_60G[] = "nl80211";
 #else
 const char WIF_60G[] = "xxx";
@@ -1121,6 +1125,47 @@ int get_channel_list_via_country(int unit, const char *country_code,
 
 	return (p - buffer);
 }
+
+#ifdef RTCONFIG_BONDING_WAN
+/** Return speed of a bonding interface.
+ * @bond_if:	name of bonding interface. LAN bond_if = bond0; WAN bond_if = bond1.
+ * @return:
+ *  <= 0	error
+ *  otherwise	link speed
+ */
+int get_bonding_speed(char *bond_if)
+{
+	int speed;
+	char confbuf[sizeof(SYS_CLASS_NET) + IFNAMSIZ + sizeof("/speedXXXXXX")];
+	char buf[32] = { 0 };
+
+	snprintf(confbuf, sizeof(confbuf), SYS_CLASS_NET "/%s/speed", bond_if);
+	if (f_read_string(confbuf, buf, sizeof(buf)) <= 0)
+		return 0;
+
+	speed = safe_atoi(buf);
+	if (speed <= 0)
+		speed = 0;
+
+	return speed;
+}
+
+/** Return link speed of a bonding slave port if it's connected or 0 if it's disconnected.
+ * @port:	0: WAN, 1~8: LAN1~8, 30: 10G base-T (RJ-45), 31: 10G SFP+
+ * @return:
+ *  <= 0:	disconnected
+ *  otherwise:	link speed
+ */
+int get_bonding_port_status(int port)
+{
+	int ret = 0;
+
+	if (__get_bonding_port_status)
+		ret = __get_bonding_port_status(port);
+
+	return ret;
+}
+#endif /* RTCONFIG_BONDING_WAN */
 
 #ifdef RTCONFIG_POWER_SAVE
 #define SYSFS_CPU	"/sys/devices/system/cpu"

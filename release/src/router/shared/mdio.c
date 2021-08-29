@@ -480,7 +480,7 @@ int aqr_phy_speed(unsigned int phy)
 		xs_status = 0;
 	aneg_st = (xs_status >> 0xE) & 3;
 
-	if (aneg_st != 2) {
+	if (!aneg_st) {
 		/* If auto negotiation status (AQR PHY and IPQ807X XGMAC) is not completed,
 		 * network is not ok even link up.  Notifiy this case and assume it is not link up.
 		 */

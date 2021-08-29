@@ -19,6 +19,8 @@
 <script type="text/javascript" src="/detect.js"></script>
 
 <script>
+var wanports_bond = '<% nvram_get("wanports_bond"); %>';
+var sw_mode = '<% nvram_get("sw_mode"); %>';
 var lacp_support = isSupport("lacp");
 var lacp_enabled = '<% nvram_get("lacp_enabled"); %>' == 1 ?true: false;
 var bonding_policy_support = false;
@@ -54,6 +56,11 @@ function initial(){
 	}
 	else{
 		document.getElementById("natAccelDesc").innerHTML = "<#NAT_Acceleration_ctf_disable#>";
+	}
+	if(qca_support){
+		if(sw_mode == 2 || sw_mode == 3){
+			document.getElementById("qca_tr").style.display = 'none';
+		}
 	}
 	show_menu();
 
@@ -97,6 +104,21 @@ function initial(){
 		}
 	}
 
+	// LAN1 or LAN2 is used in WAN aggregation. (RT: Disable LAN LACP; AP/RP/MB: Disable WAN aggregation)
+	if((based_modelid == "RT-AX89U" || based_modelid == "GT-AXY16000") && wan_bonding_support && document.form.bond_wan.value == "1" && (wanports_bond.indexOf("1") != -1 || wanports_bond.indexOf("2") != -1)){
+		if (sw_mode == 2 || sw_mode == 3){
+			document.form.bond_wan.disabled = false;
+			document.form.bond_wan.value = "0";
+		}else{
+			var note_str = "This function is disabled because " + wanAggr_p2_name(wanports_bond) + " is configured as wan aggregation port. If you want to enable it, please click <a href=\"http://router.asus.com/Advanced_WAN_Content.asp\" target=\"_blank\" style=\"text-decoration:underline;\">here</a> to change wan aggregation settings."; //untranslated
+			document.form.lacp_enabled.style.display = "none";
+			document.form.lacp_enabled.disabled = true;
+			document.getElementById("lacp_note").innerHTML = note_str;
+			document.getElementById("lacp_desc").style.display = "";
+			document.form.lacp_enabled.value = "0";
+		}
+	}
+
 	disable_lacp_if_conflicts_with_iptv();
 }
 
@@ -109,15 +131,15 @@ function applyRule(){
 
 function check_bonding_policy(obj){
 	if(obj.value == "1"){
-		if(based_modelid == "GT-AC5300" || based_modelid == "RT-AC86U"){
+		if(bonding_policy_support){
 			document.getElementById("lacp_policy_tr").style.display = "";
+			document.form.bonding_policy.disabled = false;
 		}
 
-		document.form.bonding_policy.disabled = false;
 		document.getElementById("lacp_desc").style.display = "";
 	}
 	else{
-		if(based_modelid == "GT-AC5300" || based_modelid == "RT-AC86U"){
+		if(bonding_policy_support){
 			document.getElementById("lacp_policy_tr").style.display = "none";
 		}
 
@@ -163,6 +185,7 @@ function check_bonding_policy(obj){
 <input type="hidden" name="firmver" value="<% nvram_get("firmver"); %>">
 <input type="hidden" name="switch_wantag" value="<% nvram_get("switch_wantag"); %>" disabled>
 <input type="hidden" name="switch_stb_x" value="<% nvram_get("switch_stb_x"); %>" disabled>
+<input type="hidden" name="bond_wan" value="<% nvram_get("bond_wan"); %>" disabled>
 
 <table class="content" align="center" cellpadding="0" cellspacing="0">
   <tr>
@@ -191,7 +214,7 @@ function check_bonding_policy(obj){
 		  
 		  <table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable">
 		  	
-      	<tr>
+	<tr id="qca_tr">
 		<th><#NAT_Acceleration#></th>
           <td>
 		<select name="qca_sfe" class="input_option">
@@ -224,7 +247,7 @@ function check_bonding_policy(obj){
 	<tr id="lacp_policy_tr" style="display:none">
 		<th>Bonding Policy</th>
 		<td>
-			<select name="bonding_policy" class="input_option">
+			<select name="bonding_policy" class="input_option" disabled>
 				<option value="0">Default</option>
 				<option value="1">Source Bonding</option>
 				<option value="2">Destination Bonding</option>

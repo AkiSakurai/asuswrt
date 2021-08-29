@@ -12,4 +12,13 @@ config SYS_VENDOR
 config SYS_CONFIG_NAME
        default "ipq6018"
 
+config USB_XHCI_IPQ
+	bool "Enable usb support for ipq6018"
+
+config PCI_IPQ
+	bool "Enable pci support for ipq6018"
+
+config IPQ6018_QCA_AQUANTIA_PHY
+	bool "Enable Aquantia PHY support for ipq6018"
+
 endif

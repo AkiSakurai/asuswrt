@@ -18,6 +18,7 @@
 #include <net.h>
 
 #define PHY_MAX		6
+#define IPQ6018_PHY_MAX 5
 #define MDIO_CTRL_0_REG		0x00090040
 #define MDIO_CTRL_0_DIV(x)	(x << 0)
 #define MDIO_CTRL_0_MODE	(1 << 8)
@@ -98,6 +99,7 @@ enum port_wrapper_cfg {
 	PORT_WRAPPER_QSGMII,
 	PORT_WRAPPER_SGMII_PLUS,
 	PORT_WRAPPER_10GBASE_R,
+	PORT_WRAPPER_SGMII_FIBER,
 };
 
 enum phy_mode {

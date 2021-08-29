@@ -27,22 +27,11 @@
 #define _GNU_SOURCE
 
 #include <arpa/inet.h>
+#include <errno.h>
 #if defined(DEBUG) && defined(DMALLOC)
 #include <dmalloc.h>
 #endif
 #include <rtconfig.h>
-
-/* DEBUG DEFINE */
-#define HTTPD_DEBUG             "/tmp/HTTPD_DEBUG"
-
-/* DEBUG FUNCTION */
-
-#define HTTPD_DBG(fmt,args...) \
-        if(f_exists(HTTPD_DEBUG) > 0) { \
-                char info[1024]; \
-                snprintf(info, sizeof(info), "echo \"[HTTPD][%s:(%d)]"fmt"\" >> /tmp/HTTPD_DEBUG.log", __FUNCTION__, __LINE__, ##args); \
-                system(info); \
-        }
 
 /* Basic authorization userid and passwd limit */
 #define AUTH_MAX 64
@@ -64,6 +53,13 @@ struct mime_handler {
 };
 
 extern struct mime_handler mime_handlers[];
+
+struct log_pass_url_list {
+        char *pattern;
+        char *mime_type;
+};
+
+extern struct log_pass_url_list log_pass_handlers[];
 
 struct useful_redirect_list {
 	char *pattern;
@@ -121,7 +117,7 @@ struct iptv_profile {
 };
 
 #ifdef RTCONFIG_ODMPID
-struct REPLACE_ODMPID_S {
+struct REPLACE_PRODUCTID_S {
         char *org_name;
         char *replace_name;
 };
@@ -175,6 +171,27 @@ struct REPLACE_ODMPID_S {
 #else
 #define NMP_CL_JSON_FILE                "/tmp/nmp_cl_json.js"
 #endif
+
+enum {
+	HTTP_OK = 200,
+	HTTP_FAIL = 400,
+	HTTP_RULE_ADD_SUCCESS = 2001,
+	HTTP_RULE_DEL_SUCCESS,
+	HTTP_NORULE_DEL,
+	HTTP_OVER_MAX_RULE_LIMIT = 4000,
+	HTTP_INVALID_ACTION,
+	HTTP_INVALID_MAC,
+	HTTP_INVALID_ENABLE_OPT,
+	HTTP_INVALID_NAME,
+	HTTP_INVALID_EMAIL,
+	HTTP_INVALID_INPUT,
+	HTTP_INVALID_IPADDR,
+	HTTP_INVALID_TS,
+	HTTP_INVALID_FILE,
+        HTTP_INVALID_SUPPORT,
+	HTTP_SHMGET_FAIL = 5000,
+	HTTP_FB_SVR_FAIL
+};
 
 /* Exception MIME handler */
 struct except_mime_handler {
@@ -291,6 +308,7 @@ typedef char char_t;
 #define websDefaultHandler(wp, urlPrefix, webDir, arg, url, path, query) ({ do_ej(path, wp); fflush(wp); 1; })
 #define websWriteData(wp, buf, nChars) ({ int TMPVAR = fwrite(buf, 1, nChars, wp); fflush(wp); TMPVAR; })
 #define websWriteDataNonBlock websWriteData
+#define nvram_default_safe_get(name) (nvram_default_get(name) ? : "")
 
 extern int ejArgs(int argc, char_t **argv, char_t *fmt, ...);
 
@@ -459,4 +477,7 @@ extern void do_feedback_mail_cgi(char *url, FILE *stream);
 extern void do_dfb_log_file(char *url, FILE *stream);
 extern int is_amas_support(void);
 extern void do_set_fw_path_cgi(char *url, FILE *stream);
+#if defined(RTCONFIG_AMAZON_WSS)
+extern void amazon_wss_enable(char *wss_enable, char *do_rc);
+#endif
 #endif /* _httpd_h_ */

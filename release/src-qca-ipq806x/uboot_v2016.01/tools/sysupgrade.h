@@ -127,3 +127,4 @@ int is_component_authenticated(char *, char *, char *);
 int is_image_authenticated(void);
 int do_board_upgrade_check(char *);
 int check_nand_preamble(uint8_t *);
+int find_mtd_part_size(void);

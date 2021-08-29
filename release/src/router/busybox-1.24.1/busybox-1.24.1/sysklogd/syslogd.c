@@ -39,6 +39,7 @@
 //usage:	)
 //usage:     "\n	-l N		Log only messages more urgent than prio N (1-8)"
 //usage:     "\n	-S		Smaller output"
+//usage:     "\n	-H NAME		Use NAME as hostname"
 //usage:	IF_FEATURE_SYSLOGD_DUP(
 //usage:     "\n	-D		Drop duplicates"
 //usage:	)
@@ -67,6 +68,7 @@
 
 #if ENABLE_FEATURE_REMOTE_LOG
 #include <netinet/in.h>
+#include <resolv.h>
 #endif
 
 #if ENABLE_FEATURE_IPC_SYSLOG
@@ -75,28 +77,9 @@
 #include <sys/shm.h>
 #endif
 
-//#define dbg(fmt, args...) do { FILE *fp = fopen("/dev/console", "w"); if (fp) { fprintf(fp, fmt, ## args); fclose(fp); } else fprintf(stderr, fmt, ## args); } while (0)
-const char *log_keys_file = "/tmp/log_keys";
-const char *log_header_file = "/tmp/log_header";
-char log_keys[128];
-char log_header[16];
-int inserted = 0;
-
-#define foreach_47(word, wordlist, next) \
-		for(next = &wordlist[strspn(wordlist, "/")], \
-				strncpy(word, next, sizeof(word)), \
-				word[strcspn(word, "/")] = '\0', \
-				word[sizeof(word) - 1] = '\0', \
-				next = strchr(next, '/'); \
-				strlen(word); \
-				next = next ? &next[strspn(next, "/")] : "", \
-				strncpy(word, next, sizeof(word)), \
-				word[strcspn(word, "/")] = '\0', \
-				word[sizeof(word) - 1] = '\0', \
-				next = strchr(next, '/'))
-
 
 #define DEBUG 0
+#define ENABLE_FEATURE_REMOTE_HOSTNAME ENABLE_FEATURE_REMOTE_LOG
 
 /* MARK code is not very useful, is bloat, and broken:
  * can deadlock if alarmed to make MARK while writing to IPC buffer
@@ -188,6 +171,9 @@ struct globals {
 #endif
 	/* localhost's name. We print only first 64 chars */
 	char *hostname;
+#if ENABLE_FEATURE_REMOTE_HOSTNAME
+	int hostname_len;
+#endif
 
 	/* We recv into recvbuf... */
 	char recvbuf[MAX_READ * (1 + ENABLE_FEATURE_SYSLOGD_DUP)];
@@ -235,6 +221,7 @@ enum {
 	OPTBIT_outfile, // -O
 	OPTBIT_loglevel, // -l
 	OPTBIT_small, // -S
+	OPTBIT_hostname, // -H
 	IF_FEATURE_ROTATE_LOGFILE(OPTBIT_filesize   ,)	// -s
 	IF_FEATURE_ROTATE_LOGFILE(OPTBIT_rotatecnt  ,)	// -b
 	IF_FEATURE_REMOTE_LOG(    OPTBIT_remotelog  ,)	// -R
@@ -249,6 +236,7 @@ enum {
 	OPT_outfile     = 1 << OPTBIT_outfile ,
 	OPT_loglevel    = 1 << OPTBIT_loglevel,
 	OPT_small       = 1 << OPTBIT_small   ,
+	OPT_hostname    = 1 << OPTBIT_hostname,
 	OPT_filesize    = IF_FEATURE_ROTATE_LOGFILE((1 << OPTBIT_filesize   )) + 0,
 	OPT_rotatecnt   = IF_FEATURE_ROTATE_LOGFILE((1 << OPTBIT_rotatecnt  )) + 0,
 	OPT_remotelog   = IF_FEATURE_REMOTE_LOG(    (1 << OPTBIT_remotelog  )) + 0,
@@ -258,7 +246,7 @@ enum {
 	OPT_cfg         = IF_FEATURE_SYSLOGD_CFG(   (1 << OPTBIT_cfg        )) + 0,
 	OPT_kmsg        = IF_FEATURE_KMSG_SYSLOG(   (1 << OPTBIT_kmsg       )) + 0,
 };
-#define OPTION_STR "m:nO:l:S" \
+#define OPTION_STR "m:nO:l:SH:" \
 	IF_FEATURE_ROTATE_LOGFILE("s:" ) \
 	IF_FEATURE_ROTATE_LOGFILE("b:" ) \
 	IF_FEATURE_REMOTE_LOG(    "R:" ) \
@@ -272,7 +260,7 @@ enum {
 	IF_FEATURE_ROTATE_LOGFILE(,*opt_b) \
 	IF_FEATURE_IPC_SYSLOG(    ,*opt_C = NULL) \
 	IF_FEATURE_SYSLOGD_CFG(   ,*opt_f = NULL)
-#define OPTION_PARAM &opt_m, &(G.logFile.path), &opt_l \
+#define OPTION_PARAM &opt_m, &(G.logFile.path), &opt_l, &(G.hostname) \
 	IF_FEATURE_ROTATE_LOGFILE(,&opt_s) \
 	IF_FEATURE_ROTATE_LOGFILE(,&opt_b) \
 	IF_FEATURE_REMOTE_LOG(    ,&remoteAddrList) \
@@ -672,7 +660,7 @@ static void log_locally(time_t now, char *msg, logFile_t *log_file)
 			i = G.logFileRotate;
 #else
 			i = G.logFileRotate - 1;
-#endif
+#endif 
 			/* rename: f.8 -> f.9; f.7 -> f.8; ... */
 			while (1) {
 #if 1
@@ -891,6 +879,17 @@ static NOINLINE int create_socket(void)
 }
 
 #if ENABLE_FEATURE_REMOTE_LOG
+static void reset_dns_wait(int sig UNUSED_PARAM)
+{
+	llist_t *item;
+	unsigned last = monotonic_sec() - DNS_WAIT_SEC - 1;
+
+	for (item = G.remoteHosts; item != NULL; item = item->link) {
+		remoteHost_t *rh = (remoteHost_t *)item->data;
+		rh->last_dns_resolve = last;
+	}
+}
+
 static int try_to_resolve_remote(remoteHost_t *rh)
 {
 	if (!rh->remoteAddr) {
@@ -900,18 +899,109 @@ static int try_to_resolve_remote(remoteHost_t *rh)
 		if ((now - rh->last_dns_resolve) < DNS_WAIT_SEC)
 			return -1;
 		rh->last_dns_resolve = now;
+#if !defined(__UCLIBC__) || UCLIBC_VERSION < KERNEL_VERSION(0, 9, 31)
+		res_init();
+#endif
 		rh->remoteAddr = host2sockaddr(rh->remoteHostname, 514);
 		if (!rh->remoteAddr)
 			return -1;
+
+		if (option_mask32 & OPT_locallog) {
+			char *addr = xmalloc_sockaddr2dotted(&(rh->remoteAddr->u.sa));
+			sprintf(G.parsebuf, "syslogd: using server %s", addr);
+			free(addr);
+			timestamp_and_log_internal(G.parsebuf);
+		}
 	}
 	return xsocket(rh->remoteAddr->u.sa.sa_family, SOCK_DGRAM, 0);
 }
+
+#if ENABLE_FEATURE_REMOTE_HOSTNAME
+static void split_and_log_remote(char *tmpbuf, int len)
+{
+	struct iovec iov[6];
+	struct msghdr msg = { .msg_iov = iov };
+	char *p, *buf = tmpbuf;
+	char timebuf[26], *timestamp = NULL;
+	llist_t *item;
+	time_t now;
+
+	for (tmpbuf += len; buf < tmpbuf; buf += len + 1) {
+		int i = 0;
+
+		iov[i].iov_base = buf;
+		len = strnlen(buf, tmpbuf - buf);
+
+		if (*buf == '<' && (p = buf + strspn(buf + 1, "0123456789")) > buf && p[1] == '>') {
+			p += 2;
+			/* Jan 18 00:11:22 msg... */
+			/* 01234567890123456 */
+			if (len - (p - buf) >= 16
+			 && p[3] == ' ' && p[6] == ' '
+			 && p[9] == ':' && p[12] == ':' && p[15] == ' '
+			) {
+				p += 16;
+				iov[i++].iov_len = p - buf;
+			} else {
+				if (!timestamp) {
+					time(&now);
+					timestamp = ctime_r(&now, timebuf) + 4; /* skip day of week */
+				}
+				iov[i++].iov_len = p - buf;
+				iov[i].iov_base = timestamp;
+				iov[i++].iov_len = 16;
+			}
+			iov[i].iov_base = G.hostname;
+			iov[i++].iov_len = G.hostname_len;
+			iov[i].iov_base = (char *)" ";
+			iov[i++].iov_len = 1;
+			iov[i].iov_base = p;
+			iov[i++].iov_len = len - iov[0].iov_len;
+		} else
+			iov[i++].iov_len = len;
+
+		/* Stock syslogd sends it '\n'-terminated
+		 * over network, mimic that */
+		iov[i].iov_base = (char *)"\n";
+		iov[i++].iov_len = 1;
+		msg.msg_iovlen = i;
+
+		for (item = G.remoteHosts; item != NULL; item = item->link) {
+			remoteHost_t *rh = (remoteHost_t *)item->data;
+
+			if (rh->remoteFD == -1) {
+				rh->remoteFD = try_to_resolve_remote(rh);
+				if (rh->remoteFD == -1)
+					continue;
+			}
+
+			/* Send message to remote logger.
+			 * On some errors, close and set remoteFD to -1
+			 * so that DNS resolution is retried.
+			 */
+			msg.msg_name = &(rh->remoteAddr->u.sa);
+			msg.msg_namelen = rh->remoteAddr->len;
+			if (sendmsg(rh->remoteFD, &msg, MSG_DONTWAIT | MSG_NOSIGNAL) == -1) {
+				switch (errno) {
+				case ECONNRESET:
+				case ENOTCONN: /* paranoia */
+				case EPIPE:
+					close(rh->remoteFD);
+					rh->remoteFD = -1;
+					free(rh->remoteAddr);
+					rh->remoteAddr = NULL;
+				}
+			}
+		}
+	}
+}
+#endif
 #endif
 
 static void do_syslogd(void) NORETURN;
 static void do_syslogd(void)
 {
-#if ENABLE_FEATURE_REMOTE_LOG
+#if ENABLE_FEATURE_REMOTE_LOG && !ENABLE_FEATURE_REMOTE_HOSTNAME
 	llist_t *item;
 #endif
 #if ENABLE_FEATURE_SYSLOGD_DUP
@@ -922,17 +1012,15 @@ static void do_syslogd(void)
 #define recvbuf (G.recvbuf)
 #endif
 
-	char word[128], *next;
-	char *ptr1 = NULL, *sent_ptr = NULL;
-	char save;
-	char newlog[MAX_READ * (1 + ENABLE_FEATURE_SYSLOGD_DUP) + 16];
-	int added = 0;
-
 	/* Set up signal handlers (so that they interrupt read()) */
 	signal_no_SA_RESTART_empty_mask(SIGTERM, record_signo);
 	signal_no_SA_RESTART_empty_mask(SIGINT, record_signo);
 	//signal_no_SA_RESTART_empty_mask(SIGQUIT, record_signo);
+#if ENABLE_FEATURE_REMOTE_LOG
+	signal(SIGHUP, reset_dns_wait);
+#else
 	signal(SIGHUP, SIG_IGN);
+#endif
 #ifdef SYSLOGD_MARK
 	signal(SIGALRM, do_mark);
 	alarm(G.markInterval);
@@ -957,8 +1045,7 @@ static void do_syslogd(void)
 		else
 			recvbuf = G.recvbuf;
 #endif
-
-read_again:
+ read_again:
 		sz = read(STDIN_FILENO, recvbuf, MAX_READ - 1);
 		if (sz < 0) {
 			if (!bb_got_signal)
@@ -987,7 +1074,12 @@ read_again:
 				continue;
 		last_sz = sz;
 #endif
-#if ENABLE_FEATURE_REMOTE_LOG
+#if ENABLE_FEATURE_REMOTE_HOSTNAME
+		if (G.remoteHosts) {
+			recvbuf[sz] = '\0'; /* ensure it *is* NUL terminated */
+			split_and_log_remote(recvbuf, sz);
+		}
+#elif ENABLE_FEATURE_REMOTE_LOG
 		/* Stock syslogd sends it '\n'-terminated
 		 * over network, mimic that */
 		recvbuf[sz] = '\n';
@@ -1003,35 +1095,11 @@ read_again:
 					continue;
 			}
 
-			sent_ptr = NULL;
-			added = 0;
-
-			if(inserted){
-				foreach_47(word, log_keys, next){
-					if((ptr1 = strstr(recvbuf, word)) != NULL){
-						ptr1 += strlen(word);
-						save = *ptr1;
-						*ptr1 = '\0';
-
-						snprintf(newlog, sizeof(newlog), "%s%s: %c%s", recvbuf, log_header, save, ptr1+1);
-
-						*ptr1 = save;
-						sent_ptr = newlog;
-						added = inserted+2;
-
-						break;
-					}
-				}
-			}
-
-			if(!sent_ptr)
-				sent_ptr = recvbuf;
-
 			/* Send message to remote logger.
 			 * On some errors, close and set remoteFD to -1
 			 * so that DNS resolution is retried.
 			 */
-			if (sendto(rh->remoteFD, sent_ptr, sz+1+added,
+			if (sendto(rh->remoteFD, recvbuf, sz+1,
 					MSG_DONTWAIT | MSG_NOSIGNAL,
 					&(rh->remoteAddr->u.sa), rh->remoteAddr->len) == -1
 			) {
@@ -1070,7 +1138,6 @@ int syslogd_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_REMOTE_LOG
 	llist_t *remoteAddrList = NULL;
 #endif
-	FILE *fp;
 
 	INIT_G();
 
@@ -1114,8 +1181,12 @@ int syslogd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	/* Store away localhost's name before the fork */
-	G.hostname = safe_gethostname();
+	if (!(opts & OPT_hostname))
+		G.hostname = safe_gethostname();
 	*strchrnul(G.hostname, '.') = '\0';
+#if ENABLE_FEATURE_REMOTE_HOSTNAME
+	G.hostname_len = strlen(G.hostname);
+#endif
 
 	if (!(opts & OPT_nofork)) {
 		bb_daemonize_or_rexec(DAEMON_CHDIR_ROOT, argv);
@@ -1123,19 +1194,6 @@ int syslogd_main(int argc UNUSED_PARAM, char **argv)
 
 	//umask(0); - why??
 	write_pidfile(CONFIG_PID_FILE_PATH "/syslogd.pid");
-
-	memset(log_keys, 0, sizeof(log_keys));
-	if((fp = fopen(log_keys_file, "r")) != NULL){
-		fread(log_keys, sizeof(char), sizeof(log_keys), fp);
-		fclose(fp);
-	}
-
-	memset(log_header, 0, sizeof(log_header));
-	if((fp = fopen(log_header_file, "r")) != NULL){
-		fread(log_header, sizeof(char), sizeof(log_header), fp);
-		fclose(fp);
-		inserted = strlen(log_header);
-	}
 
 	do_syslogd();
 	/* return EXIT_SUCCESS; */

@@ -66,7 +66,7 @@ struct lp55xx_leds_pattern lp55xx_leds_col[] = {
 	{ LP55XX_PALE_DOGWOOD_LEDS,	"6e", "c3", "ff" },	//
 	{ LP55XX_GREENERY_LEDS,	"41", "ff", "32" },		// GREEN
 	{ LP55XX_PRIMROSE_YELLOW_LEDS,	"0a", "ff", "ff" },	// YELLOW
-#if defined(VZWAC1300)
+#if defined(VZWAC1300) || defined(SHAC1300)
 	{ LP55XX_WHITE_LEDS,	"ff", "ff", "1e" },		// BLUE
 	{ LP55XX_LIGHT_CYAN_LEDS,	"ff", "ff", "ff" },	// WHITE
 #else

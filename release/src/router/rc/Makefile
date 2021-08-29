@@ -1,4 +1,6 @@
 include ../common.mak
+include $(SRCBASE)/.config
+
 CFLAGS += -Wall -Os $(EXTRACFLAGS)
 CFLAGS += -I. -I$(TOP)/shared -I$(SRCBASE)/include
 ifneq ($(HND_ROUTER),y)
@@ -65,8 +67,6 @@ ifeq ($(RTCONFIG_LANTIQ),y)
 CFLAGS += -I$(TOP)/shared/sysdeps/lantiq -I$(TOP)/wireless_tools -I$(TOP)/fapi_wlan_common-05.04.00.131/include -I$(TOP)/libhelper-1.4.0.2/include -DPACKAGE_ID=\"fapi_wlan_common\" -DLOGGING_ID="fapi_wlan_common"
 CFLAGS  += -I$(TOP)/wlc_nt
 endif
-
-include $(SRCBASE)/.config
 
 ifeq ($(RTCONFIG_REALTEK),y)
 LDFLAGS = -L$(TOP)/nvram${BCMEX} -lnvram -L$(TOP)/shared -lshared -lcrypt -ldl
@@ -318,13 +318,6 @@ endif
 
 OBJS += $(if $(wildcard private.c),private.o,prebuild/private.o)
 
-ifeq ($(RTCONFIG_CONNDIAG),y)
-ifeq ($(RTCONFIG_BCMBSD),y)
-CFLAGS += -I$(TOP)/bsd
-endif
-OBJS += $(if $(wildcard conn_diag.c),conn_diag.o,prebuild/conn_diag.o)
-endif
-
 # TODO, speedtest
 ifeq ($(RTCONFIG_SPEEDTEST),y)
 OBJS += $(if $(wildcard speedtest.c),speedtest.o,prebuild/speedtest.o)
@@ -398,6 +391,10 @@ OBJS += pc_block.o
 OBJS += pc_tmp.o
 endif
 
+ifeq ($(RTCONFIG_INTERNETCTRL),y)
+OBJS += ic.o
+endif
+
 ifeq ($(RTCONFIG_HTTPS),y)
 ifeq ($(RTCONFIG_FRS_FEEDBACK),y)
 OBJS += dsl_fb.o
@@ -423,10 +420,11 @@ endif
 endif
 
 ifeq ($(and $(RTCONFIG_BCMWL6),$(RTCONFIG_PROXYSTA)),y)
+OBJS += arpreq.o
 OBJS += psta_monitor.o
 endif
 
-ifeq ($(or $(RTCONFIG_BCMWL6),$(RTCONFIG_LANTIQ),$(RTCONFIG_QCA),$(RTCONFIG_REALTEK)),y)
+ifeq ($(or $(RTCONFIG_BCMWL6),$(RTCONFIG_LANTIQ),$(RTCONFIG_QCA),$(RTCONFIG_REALTEK),$(RTCONFIG_RALINK)),y)
 ifeq ($(RTCONFIG_AMAS),y)
 ifneq ($(RTCONFIG_DISABLE_REPEATER_UI),y)
 vpath %.c sysdeps/amas
@@ -443,12 +441,14 @@ ifeq ($(RTCONFIG_WPS),y)
 OBJS += wpsaide.o
 endif
 
+ifeq ($(or $(RTCONFIG_CONCURRENTREPEATER),$(RTCONFIG_AMAS)),y)
+ifeq ($(RTCONFIG_RALINK),y)
+OBJS += re_wpsc.o
+endif
+endif
 ifeq ($(RTCONFIG_CONCURRENTREPEATER),y)
 ifneq ($(RPAC68U),y)
 OBJS += led_monitor.o
-endif
-ifeq ($(RTCONFIG_RALINK),y)
-OBJS += re_wpsc.o
 endif
 endif
 
@@ -533,10 +533,12 @@ ifeq ($(RTCONFIG_IPERF),y)
 OBJS += monitor.o
 endif
 
-
-ifeq ($(RTCONFIG_HTTPS),y)
+ifeq ($(or $(RTCONFIG_FRS_LIVE_UPDATE),$(RTCONFIG_FRS_FEEDBACK)),y)
 CFLAGS += -I$(TOP)/curl-7.21.7/include
 LDFLAGS += -L$(TOP)/curl-7.21.7/lib/.libs -lcurl
+endif
+
+ifeq ($(RTCONFIG_HTTPS),y)
 ifeq ($(or $(RTCONFIG_PUSH_EMAIL),$(RTCONFIG_NOTIFICATION_CENTER)),y)
 OBJS += pwdec.o
 CFLAGS += -I$(TOP)/json-c
@@ -566,9 +568,6 @@ OBJS += roamast-ralink.o
 endif
 ifeq ($(CONFIG_BCMWL5),y)
 OBJS += roamast-broadcom.o
-ifeq ($(RTCONFIG_CONNDIAG),y)
-OBJS += conn_diag-broadcom.o
-endif
 endif
 ifeq ($(RTCONFIG_REALTEK),y)
 OBJS += roamast-realtek.o
@@ -576,9 +575,6 @@ endif
 ifeq ($(RTCONFIG_LANTIQ),y)
 CFLAGS += -I$(TOP)/hostapd-2.6/src/utils/
 OBJS += roamast-lantiq.o
-ifeq ($(RTCONFIG_CONNDIAG),y)
-OBJS += conn_diag-lantiq.o
-endif
 ifeq ($(RTCONFIG_AMAS),y)
 OBJS += ../hostapd-2.6/src/common/wpa_ctrl.o
 OBJS += ../hostapd-2.6/src/utils/os_unix.o
@@ -586,9 +582,6 @@ endif
 endif
 ifeq ($(RTCONFIG_QCA),y)
 OBJS += roamast-qca.o
-ifeq ($(RTCONFIG_CONNDIAG),y)
-OBJS += conn_diag-qca.o
-endif
 endif
 endif
 
@@ -659,6 +652,10 @@ OBJS += erp_monitor.o
 endif
 OBJS += $(if $(RTCONFIG_SOC_IPQ8074),erp_monitor.o)
 
+ifeq ($(RTCONFIG_GN_WBL),y)
+OBJS += gn_wbl.o
+endif
+
 ifeq ($(RCONFIG_SW_HW_AUTH), y)
 CLFAGS += -I(TOP)/sw-hw-auth
 endif
@@ -679,6 +676,7 @@ CFLAGS += -I$(TOP)/libasuslog
 endif
 
 CFLAGS += -I$(TOP)/wlceventd
+LDFLAGS2 = $(LDFLAGS)
 
 ifeq ($(RTCONFIG_QCA_LBD),y)
 OBJS += $(if $(wildcard sysdeps/qca/lbd-qca.c),lbd-qca.o,prebuild/lbd-qca.o)
@@ -689,17 +687,42 @@ CFLAGS += -DRTAC1200V2
 endif
 
 ifeq ($(RTCONFIG_ISP_CUSTOMIZE),y)
-OBJS	+= $(if $(wildcard customize_rc.c),customize_rc.o,prebuild/customize_rc.o)
+OBJS += $(if $(wildcard customize_rc.c),customize_rc.o,prebuild/customize_rc.o)
 endif
 
-all: PB rc init.prep
+ifeq ($(RTCONFIG_CONNDIAG),y)
+ifeq ($(RTCONFIG_BCMBSD),y)
+CFLAGS += -I$(TOP)/bsd
+endif
+ifeq ($(RTCONFIG_LANTIQ),y)
+CFLAGS += -fPIC
+endif
+ifeq ($(RTCONFIG_HND_ROUTER_AX),y)
+CFLAGS += $(ACSDV2_DIR)
+endif
+CFLAGS += -I$(TOP)/acsd$(BCMEX)$(EX7)
+LDFLAGS2 += -L$(TOP)/sqlite/.libs -lsqlite3
+LDFLAGS2 += -L. -lconn_diag
+
+OBJS += conn_diag.o
+ifeq ($(CONFIG_BCMWL5),y)
+OBJS += conn_diag-broadcom.o
+else ifeq ($(RTCONFIG_LANTIQ),y)
+OBJS += conn_diag-lantiq.o
+else ifeq ($(RTCONFIG_QCA),y)
+OBJS += conn_diag-qca.o
+endif
+DIAG_OBJS += conn_diag-sql.o
+endif
+
+all: PB rc $(if $(RTCONFIG_BRCM_HOSTAPD), $(WPS_PBCD)) init.prep
 
 PB:
 	[ ! -d prebuild ] || cp prebuild/* ./
 
-rc: $(OBJS)
+rc: $(OBJS) $(if $(RTCONFIG_CONNDIAG),libconn_diag.so,)
 	@echo " [rc] CC $@"
-	@$(CC) -o $@ $^ $(LDFLAGS) $(CFLAGS)
+	@$(CC) -o $@ $^ $(LDFLAGS2) $(CFLAGS)
 
 	$(SIZECHECK)
 	$(CPTMP)
@@ -709,6 +732,10 @@ install: all
 	@install -D rc $(INSTALLDIR)/sbin/rc
 	@$(STRIP) $(INSTALLDIR)/sbin/rc
 	@chmod 0500 $(INSTALLDIR)/sbin/rc
+ifeq ($(RTCONFIG_CONNDIAG),y)
+	@install -D libconn_diag.so $(INSTALLDIR)/usr/lib/libconn_diag.so
+	@$(STRIP) $(INSTALLDIR)/usr/lib/libconn_diag.so
+endif
 
 ifeq ($(RTCONFIG_BCMARM),y)
 ifneq ($(HND_ROUTER),y)
@@ -774,10 +801,11 @@ ifeq ($(and $(CONFIG_BCMWL5),$(RTCONFIG_FANCTRL)),y)
 endif
 
 ifeq ($(and $(RTCONFIG_BCMWL6),$(RTCONFIG_PROXYSTA)),y)
+	@cd $(INSTALLDIR)/sbin && ln -sf rc sendarp
 	@cd $(INSTALLDIR)/sbin && ln -sf rc psta_monitor
 endif
 
-ifeq ($(or $(RTCONFIG_BCMWL6),$(RTCONFIG_LANTIQ),$(RTCONFIG_QCA),$(RTCONFIG_REALTEK)),y)
+ifeq ($(or $(RTCONFIG_BCMWL6),$(RTCONFIG_LANTIQ),$(RTCONFIG_QCA),$(RTCONFIG_REALTEK),$(RTCONFIG_RALINK)),y)
 ifeq ($(RTCONFIG_AMAS),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc obd
 	@cd $(INSTALLDIR)/sbin && ln -sf rc obd_eth
@@ -810,6 +838,8 @@ endif
 
 ifeq ($(RTCONFIG_CONCURRENTREPEATER),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc led_monitor
+endif
+ifeq ($(or $(RTCONFIG_CONCURRENTREPEATER),$(RTCONFIG_AMAS)),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc re_wpsc
 endif
 
@@ -867,6 +897,7 @@ endif
 	@cd $(INSTALLDIR)/sbin && ln -sf rc wanduck
 ifeq ($(RTCONFIG_CONNDIAG),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc conn_diag
+	@cd $(INSTALLDIR)/sbin && ln -sf rc diag_data
 endif
 ifeq ($(and $(CONFIG_BCMWL5),$(RTCONFIG_DUALWAN)),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc dualwan
@@ -968,6 +999,9 @@ ifeq ($(RTCONFIG_PARENTALCTRL),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc pc_block
 	@cd $(INSTALLDIR)/sbin && ln -sf rc pc_tmp
 endif
+ifeq ($(RTCONFIG_INTERNETCTRL),y)
+	@cd $(INSTALLDIR)/sbin && ln -sf rc ic
+endif
 	@cd $(INSTALLDIR)/sbin && ln -sf rc wlcscan
 ifeq ($(RTCONFIG_WIRELESSREPEATER),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc wlcconnect
@@ -1000,6 +1034,9 @@ ifeq ($(or $(RTCONFIG_SOC_IPQ8064),$(RTCONFIG_SOC_IPQ8074)),y)
 endif
 ifeq ($(RTCONFIG_WIFI_QCN5024_QCN5054),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc stress_pktgen
+endif
+ifeq ($(RTCONFIG_SOC_IPQ8074),y)
+	@cd $(INSTALLDIR)/sbin && ln -sf rc test_blu
 endif
 ifeq ($(RTCONFIG_HTTPS),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc rsasign_check
@@ -1094,7 +1131,7 @@ ifeq ($(or $(RTAC68U),$(RT4GAC68U)),y)
 endif
 
 clean:
-	rm -f rc *.o .*.depend *.prep
+	rm -f rc *.o .*.depend *.prep libconn_diag.so
 
 size: rc
 	mipsel-uclibc-nm --print-size --size-sort rc
@@ -1375,16 +1412,6 @@ ifneq ($(wildcard ./prebuild/roamast-lantiq.o),)
 roamast-lantiq.o:
 	@-cp -f ./prebuild/roamast-lantiq.o .
 endif
-ifeq ($(RTCONFIG_CONNDIAG),y)
-ifneq ($(wildcard ./prebuild/conn_diag-broadcom.o),)
-conn_diag-broadcom.o:
-	@-cp -f ./prebuild/conn_diag-broadcom.o .
-endif
-ifneq ($(wildcard ./prebuild/conn_diag-lantiq.o),)
-conn_diag-lantiq.o:
-	@-cp -f ./prebuild/conn_diag-lantiq.o .
-endif
-endif
 endif
 
 ifeq ($(RTCONFIG_TR069),y)
@@ -1431,3 +1458,12 @@ pswatch: pswatch.c
 	@$(CC) -o $@ $^
 	$(STRIP) $@
 	$(CPTMP)
+
+ifeq ($(RTCONFIG_CONNDIAG),y)
+libconn_diag.so: $(DIAG_OBJS)
+ifeq ($(HND_ROUTER_AX),y)
+	$(LD) -L$(TOP_PLATFORM)/nvram -lnvram -L$(TOP)/shared -lshared -shared -o $@ $^
+else
+	$(LD) -L$(TOP)/nvram${BCMEX}${EX7} -lnvram -L$(TOP)/shared -lshared -shared -o $@ $^
+endif
+endif

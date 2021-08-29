@@ -30,10 +30,18 @@ extern void ar8xxx_write(int reg, u32 val);
 #endif
 
 #if defined(GTAXY16000) || defined(RTAX89U)
-int is_aqr_phy_exist(void);
+enum AQR_PHY_CHIP {
+	AQR_PHY_ABSENT = 0,
+	AQR_PHY_107_113_A1B0,
+	AQR_PHY_113C,
+
+	AQR_PHY_CHIP_MAX
+};
+
+int aqr_phy_chip(void);
 void detect_aqr_phy(void);
 #else
-static inline int is_aqr_phy_exist(void)
+static inline int aqr_phy_chip(void)
 {
 #if defined(CONFIG_AQR_PHYADDR)
 	return 1;

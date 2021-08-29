@@ -118,6 +118,17 @@ struct nand_erase_options {
 
 typedef struct nand_erase_options nand_erase_options_t;
 
+#ifdef READ_ONFI_PAGE_PARA
+#define ONFI_PARA_PAGE_SIZE	512
+struct nand_onfi_para_page {
+	unsigned char buffer[ONFI_PARA_PAGE_SIZE+1];
+	int size;
+};
+
+extern struct nand_onfi_para_page onfi_para;
+void Read_onfi_ParameterPage_DataStructure(unsigned char *ParPage, int size);
+#endif
+
 int nand_read_skip_bad(nand_info_t *nand, loff_t offset, size_t *length,
 		       size_t *actual, loff_t lim, u_char *buffer);
 

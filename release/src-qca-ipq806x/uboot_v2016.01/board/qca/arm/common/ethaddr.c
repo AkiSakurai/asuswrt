@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2017, 2020 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -80,6 +80,8 @@ int get_eth_mac_address(uchar *enetaddr, uint no_of_macs)
 		if (qca_smem_flash_info.flash_type == SMEM_BOOT_SPI_FLASH)
 			flash_type = CONFIG_SPI_FLASH_INFO_IDX;
 		else if (qca_smem_flash_info.flash_type == SMEM_BOOT_NAND_FLASH)
+			flash_type = CONFIG_NAND_FLASH_INFO_IDX;
+		else if (qca_smem_flash_info.flash_type == SMEM_BOOT_QSPI_NAND_FLASH)
 			flash_type = CONFIG_NAND_FLASH_INFO_IDX;
 		else {
 			printf("Unknown flash type\n");

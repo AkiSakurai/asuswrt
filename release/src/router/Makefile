@@ -464,10 +464,8 @@ endif
 
 ifeq ($(RTCONFIG_OPENSSL11),y)
 OPENSSL := openssl-1.1
-CURL := curl
 else ifeq ($(RTCONFIG_OPENSSL10),y)
 OPENSSL := openssl-1.0
-CURL := curl-7.21.x
 else
 $(error OpenSSL is not defined)
 endif
@@ -600,6 +598,10 @@ obj-$(RTCONFIG_SOC_IPQ40XX) += qca-hyctl.ipq40xx
 obj-$(RTCONFIG_SOC_IPQ40XX) += qca-hyd.ipq40xx
 endif
 
+ifeq ($(RTCONFIG_SOC_IPQ40XX),y)
+obj-$(RTCONFIG_QCA_MCSD) += qca-libhyficommon.ipq40xx
+endif
+
 obj-$(PLC_UTILS) += plc-utils
 
 #################################################################################
@@ -703,7 +705,7 @@ obj-$(RTCONFIG_PERMISSION_MANAGEMENT) += sqlite
 obj-$(RTCONFIG_PERMISSION_MANAGEMENT) += sqlCipher
 obj-$(RTCONFIG_PERMISSION_MANAGEMENT) += PMS_DBapis
 
-obj-$(RTCONFIG_SPEEDTEST) += $(CURL)
+obj-$(RTCONFIG_SPEEDTEST) += curl
 
 obj-$(RTCONFIG_BWDPI) += sqlite
 obj-$(RTCONFIG_BWDPI) += bwdpi_source
@@ -717,6 +719,11 @@ obj-$(RTCONFIG_LETSENCRYPT) += socat
 
 #obj-$(RTCONFIG_SYSSTATE) += sysstate
 obj-y += sysstate
+
+obj-$(RTCONFIG_AHS) += openssl
+obj-$(RTCONFIG_AHS) += curl
+obj-$(RTCONFIG_AHS) += json-c
+obj-$(RTCONFIG_AHS) += ahs
 
 obj-$(RTCONFIG_OPENVPN) += openssl
 obj-$(RTCONFIG_OPENVPN) += libvpn
@@ -761,7 +768,16 @@ ifeq ($(RTCONFIG_DSL),y)
 obj-y += spectrum
 endif
 ifeq ($(RTCONFIG_RALINK),y)
-obj-y += $(if $(RTCONFIG_MTK_8021X3000),802.1x-3.0.0.0,$(if $(CONFIG_SUPPORT_OPENWRT),8021xd,802.1x))
+ifeq ($(RTCONFIG_MTK_8021X3000),y)	
+obj-y += 802.1x-3.0.0.0
+else
+ifeq ($(RTCONFIG_MTK_8021XD3000),y)	
+obj-y += 8021xd
+endif
+ifneq ($(RTCONFIG_WLMODULE_MT7615E_AP), y)
+obj-y += 802.1x
+endif
+endif
 obj-y += libupnp-1.3.1
 obj-y += wsc_upnp
 endif
@@ -807,6 +823,7 @@ ifeq ($(RTCONFIG_AMAS),y)
 obj-y  += jansson-2.7
 obj-y  += libevent-2.0.21
 obj-y  += lldpd-0.9.8
+obj-y  += libxml2
 endif
 
 .PHONY: emf$(BCMEX)$(EX7) igs$(BCMEX)$(EX7) hspot_ap$(BCMEX)$(EX7) wps$(BCMEX)$(EX7)
@@ -853,12 +870,10 @@ obj-y += scsi-idle
 endif
 obj-y += libusb10
 obj-y += libusb
-obj-y += libusb-0.1.12
-ifeq ($(RTCONFIG_USB),y)
 ifneq ($(RTCONFIG_8M_SFP),y)
 obj-y += hub-ctrl
 endif
-endif
+obj-$(RTCONFIG_USB_PRINTER) += libusb-0.1.12
 obj-$(RTCONFIG_USB_PRINTER) += u2ec
 obj-$(RTCONFIG_USB_PRINTER) += LPRng
 
@@ -1013,7 +1028,7 @@ endif
 #add by gauss for cloudsync
 obj-$(RTCONFIG_CLOUDSYNC) += openssl
 obj-$(RTCONFIG_CLOUDSYNC) += libxml2
-obj-$(RTCONFIG_CLOUDSYNC) += $(CURL)
+obj-$(RTCONFIG_CLOUDSYNC) += curl
 obj-$(RTCONFIG_CLOUDSYNC) += smartsync_api
 obj-$(RTCONFIG_CLOUDSYNC) += asuswebstorage
 obj-$(RTCONFIG_CLOUDSYNC) += inotify
@@ -1031,7 +1046,7 @@ obj-$(RTCONFIG_USBCLIENT) += usbclient
 
 #aaews,asusnatnl related
 obj-$(RTCONFIG_TUNNEL) += libxml2
-obj-$(RTCONFIG_TUNNEL) += $(CURL)
+obj-$(RTCONFIG_TUNNEL) += curl
 obj-$(RTCONFIG_TUNNEL) += wb
 obj-$(RTCONFIG_TUNNEL) += aaews
 obj-$(RTCONFIG_TUNNEL) += mastiff
@@ -1075,7 +1090,7 @@ obj-$(RTCONFIG_COOVACHILLI) += coovachilli
 obj-$(RTCONFIG_FREERADIUS) += sqlite pcre-8.31
 obj-$(RTCONFIG_FREERADIUS) += talloc-2.1.1
 obj-$(RTCONFIG_FREERADIUS) += freeradius-server-3.0.0
-obj-$(RTCONFIG_CAPTIVE_PORTAL) += sqlite libxml2 pcre-8.31 lighttpd-1.4.39 libexif $(CURL)
+obj-$(RTCONFIG_CAPTIVE_PORTAL) += sqlite libxml2 pcre-8.31 lighttpd-1.4.39 libexif curl
 obj-$(RTCONFIG_CAPTIVE_PORTAL) += samba-3.5.8
 
 obj-$(RTCONFIG_FBWIFI) += fb_wifi
@@ -1182,7 +1197,7 @@ obj-$(RTCONFIG_PUSH_EMAIL) += openssl
 obj-$(RTCONFIG_PUSH_EMAIL) += email-3.1.3
 
 obj-$(RTCONFIG_FRS_FEEDBACK) += openssl
-obj-$(RTCONFIG_FRS_FEEDBACK) += $(CURL)
+obj-$(RTCONFIG_FRS_FEEDBACK) += curl
 ifeq ($(RTCONFIG_FRS_FEEDBACK),y)
 obj-$(RTCONFIG_DBLOG) += dblog
 endif
@@ -1233,7 +1248,7 @@ obj-$(RTCONFIG_BONDING) += ifenslave
 
 obj-$(RTCONFIG_GEOIP) += GeoIP-1.6.2
 
-obj-$(RTCONFIG_TRANSMISSION) += Transmission $(CURL) libevent-2.0.21
+obj-$(RTCONFIG_TRANSMISSION) += Transmission curl libevent-2.0.21
 
 ifeq ($(RTCONFIG_TOR),y)
 obj-y += openssl
@@ -1325,7 +1340,7 @@ obj-$(RTCONFIG_RSYSLOGD) += libestr
 obj-$(RTCONFIG_RSYSLOGD) += libfastjson
 obj-$(RTCONFIG_RSYSLOGD) += rsyslog
 
-obj-$(RTCONFIG_FRS_LIVE_UPDATE) += $(CURL)
+obj-$(RTCONFIG_FRS_LIVE_UPDATE) += curl
 obj-$(RTCONFIG_FRS_LIVE_UPDATE) += openssl
 
 ifeq ($(RTCONFIG_BCMARM),y)
@@ -2100,6 +2115,8 @@ ifeq ($(RTCONFIG_BWDPI),y)
 	@cp -f $(TOP)/bwdpi_source/RC_INDEP/*.ko $(TARGETDIR)/usr/bwdpi/
 	@cp -f $(TOP)/bwdpi_source/RC_INDEP/*.trf $(TARGETDIR)/usr/bwdpi/
 	@cp -f $(TOP)/bwdpi_source/RC_INDEP/*.cert $(TARGETDIR)/usr/bwdpi/
+	-@cp -f $(TOP)/bwdpi_source/RC_INDEP/*.enc $(TARGETDIR)/usr/bwdpi/             # enc / pem / libshn_pctrl.so needs in the same folder
+	-@cp -f $(TOP)/bwdpi_source/RC_INDEP/*.pem $(TARGETDIR)/usr/bwdpi/             # enc / pem / libshn_pctrl.so needs in the same folder
 	@install -D $(TOP)/bwdpi_source/RC_INDEP/wred $(TARGETDIR)/usr/sbin/wred
 	@install -D $(TOP)/bwdpi_source/RC_INDEP/wred_set_conf $(TARGETDIR)/usr/sbin/wred_set_conf
 	-@install -D $(TOP)/bwdpi_source/RC_INDEP/wred_set_wbl $(TARGETDIR)/usr/sbin/wred_set_wbl
@@ -2669,12 +2686,12 @@ mssl: openssl
 mssl-install:
 	$(MAKE) -C mssl INSTALLDIR=$(INSTALLDIR)/mssl install
 
-wb: json-c openssl libxml2 $(CURL)
+wb: json-c openssl libxml2 curl
 
 wb-install:
 	$(MAKE) -C wb INSTALLDIR=$(INSTALLDIR)/wb install
 
-rc: shared nvram$(BCMEX)$(EX7) libdisk $(if $(RTCONFIG_FBWIFI),fb_wifi) $(if $(RTCONFIG_QTN),libqcsapi_client) $(if $(CONFIG_LIBBCM),libbcm) $(if $(RTCONFIG_BWDPI),bwdpi_source) $(if $(RTCONFIG_USB_SMS_MODEM),smspdu) $(if $(RTCONFIG_HND_ROUTER),bcm_flashutil bcm_util bcm_boardctl) $(if $(RTCONFIG_OPENVPN),libvpn) $(if $(RTCONFIG_LANTIQ),libfapi-0.1) $(if $(RTCONFIG_CFGSYNC), $(CFGSYNC_PKG) $(if $(RTCONFIG_AMAS), amas-utils) $(if $(RTCONFIG_LANTIQ),hostapd-2.6)) json-c $(if $(RTCONFIG_FRS_FEEDBACK), $(CURL))
+rc: shared nvram$(BCMEX)$(EX7) libdisk $(if $(RTCONFIG_FBWIFI),fb_wifi) $(if $(RTCONFIG_QTN),libqcsapi_client) $(if $(CONFIG_LIBBCM),libbcm) $(if $(RTCONFIG_BWDPI),bwdpi_source) $(if $(RTCONFIG_USB_SMS_MODEM),smspdu) $(if $(RTCONFIG_HND_ROUTER),bcm_flashutil bcm_util bcm_boardctl) $(if $(RTCONFIG_OPENVPN),libvpn) $(if $(RTCONFIG_LANTIQ),libfapi-0.1) $(if $(RTCONFIG_CFGSYNC), $(CFGSYNC_PKG) $(if $(RTCONFIG_AMAS), amas-utils) $(if $(RTCONFIG_LANTIQ),hostapd-2.6)) json-c $(if $(RTCONFIG_FRS_FEEDBACK), curl)
 
 rc-install:
 	$(MAKE) -C rc INSTALLDIR=$(INSTALLDIR)/rc install
@@ -3178,36 +3195,37 @@ libupnp-1.3.1/Makefile: libupnp-1.3.1/Makefile.in
 		$(CONFIGURE) --prefix=/usr --disable-dependency-tracking \
 	)
 
-libusb10/stamp-h1:
-	cd libusb10 && CFLAGS="-Os -Wall $(EXTRACFLAGS)" LIBS="-lpthread -ldl -lc $(EXTRALDFLAGS)" \
-	$(CONFIGURE) --enable-shared --prefix=/usr ac_cv_lib_rt_clock_gettime=no
-	-@$(MAKE) -C libusb10 clean
-	touch $@
+libusb10/Makefile:
+	cd libusb10 && \
+	$(CONFIGURE) --enable-shared --prefix=/usr --disable-udev \
+		CFLAGS="-Os -Wall $(EXTRACFLAGS)" \
+		LIBS="-lpthread -ldl -lc $(EXTRALDFLAGS)" \
+		ac_cv_lib_rt_clock_gettime=no
 
-libusb10: libusb10/stamp-h1
+libusb10: libusb10/Makefile
 	$(MAKE) -C $@
 
 libusb10-install: libusb10
-	install -D libusb10/libusb/.libs/libusb-1.0.so.0.0.0 $(INSTALLDIR)/libusb10/usr/lib/libusb-1.0.so.0
+	install -D libusb10/libusb/.libs/libusb-1.0.so.0.2.0 $(INSTALLDIR)/libusb10/usr/lib/libusb-1.0.so.0
 	$(STRIP) $(INSTALLDIR)/libusb10/usr/lib/*.so.*
 	cd $(INSTALLDIR)/libusb10/usr/lib && \
-		ln -sf libusb-1.0.so.0 libusb-1.0.so.0.0.0 && \
+		ln -sf libusb-1.0.so.0 libusb-1.0.so.0.2.0 && \
 		ln -sf libusb-1.0.so.0 libusb-1.0.so
 
 libusb10-clean:
-	-@$(MAKE) -C libusb10 clean
-	@rm -f libusb10/stamp-h1
+	[ ! -f libusb10/Makefile ] || $(MAKE) -C libusb10 distclean
+	@rm -f libusb10/Makefile
 
-libusb/stamp-h1:
-	cd libusb && CFLAGS="-Wall -Os $(EXTRACFLAGS)" LIBS="-lpthread -ldl -lc $(EXTRALDFLAGS)" \
-	$(CONFIGURE) --prefix=/usr \
+libusb/Makefile:
+	cd libusb && \
+	$(CONFIGURE) --enable-shared --prefix=/usr \
+		CFLAGS="-Os -Wall $(EXTRACFLAGS)" \
+		LIBS="-lpthread -ldl -lc $(EXTRALDFLAGS)" \
 		LIBUSB_1_0_CFLAGS="-I$(TOP)/libusb10/libusb" \
 		LIBUSB_1_0_LIBS="-L$(TOP)/libusb10/libusb/.libs -lusb-1.0 \
 		-Wl,-R/lib:/usr/lib:/opt/usr/lib:/usr/local/share"
-	-@$(MAKE) -C libusb clean
-	touch $@
 
-libusb: libusb10 libusb/stamp-h1
+libusb: libusb10 libusb/Makefile
 	$(MAKE) -C $@
 
 libusb-install: libusb
@@ -3218,8 +3236,8 @@ libusb-install: libusb
 		ln -sf libusb-0.1.so.4 libusb.so
 
 libusb-clean:
-	-@$(MAKE) -C libusb clean
-	@rm -f libusb/stamp-h1
+	[ ! -f libusb/Makefile ] || $(MAKE) -C libusb distclean
+	@rm -f libusb/Makefile
 
 usb-modeswitch-1.2.3: libusb
 	$(MAKE) -C $@ CC=$(CC) CFLAGS="-Os $(EXTRACFLAGS) -I$(TOP)/libusb/libusb" LIBS="\
@@ -3863,19 +3881,20 @@ protect_srv-clean:
 	-$(MAKE) -C protect_srv clean
 	@rm -f protect_srv/stamp-h1
 
-socat/stamp-h1:
+socat/Makefile:
 	cd socat && \
 	$(CONFIGURE) --prefix=/usr \
 	CFLAGS="-I$(STAGEDIR)/usr/include" \
 	LDFLAGS="-L$(STAGEDIR)/usr/lib -ldl"
 	touch $@
 
-socat: socat/stamp-h1
+socat: socat/Makefile
 	$(MAKE) -C $@
 
 socat-clean:
-	-$(MAKE) -C socat clean
-	@rm -f socat/stamp-h1
+	[ ! -f socat/Makefile ] || $(MAKE) -C socat distclean
+	@rm -f socat/Makefile
+
 socat-install:
 	install -d $(INSTALLDIR)/socat/usr/sbin/
 	install -D socat/socat $(INSTALLDIR)/socat/usr/sbin/socat
@@ -4008,7 +4027,7 @@ lldpd-0.9.8/Makefile:
 	CFLAGS="-g -O2 -I$(STAGEDIR)/usr/include" \
 	LDFLAGS="-L$(TOP)/lldpd-0.9.8/lib -lm -L$(STAGEDIR)/usr/lib -ljansson $(if $(RTCONFIG_AMAS),-L$(TOP)/json-c/.libs,) -ldl" \
 	--with-privsep-user=nobody --with-privsep-group=root --with-privsep-path=/var/run/lldpd \
-	$(if $(HND_ROUTER),,--enable-oldies) \
+	$(if $(filter y,$(HND_ROUTER)),,--enable-oldies) \
 	$(if $(RTCONFIG_AMAS),--with-json=yes,)
 
 lldpd-0.9.8-install: lldpd-0.9.8
@@ -4627,6 +4646,19 @@ sysstate-install:
 	echo "install sysstate"
 	$(MAKE) -C sysstate install
 
+ahs: openssl curl json-c
+	@$(SEP)
+	echo "build ahs"
+	$(MAKE) -C ahs
+
+ahs-clean:
+	echo "clean ahs"
+	$(MAKE) -C ahs clean
+
+ahs-install:
+	echo "install ahs"
+	$(MAKE) -C ahs install
+
 qsr10g_image:
 aqr107_image:
 
@@ -5114,7 +5146,7 @@ else
 endif
 	@touch $@
 
-lighttpd-1.4.39: shared nvram$(BCMEX)$(EX7) libpasswd libdisk samba-3.5.8 pcre-8.31 libxml2 sqlite libexif openssl $(CURL) $(if $(RTCONFIG_PERMISSION_MANAGEMENT),PMS_DBapis) lighttpd-1.4.39/stamp-h1
+lighttpd-1.4.39: shared nvram$(BCMEX)$(EX7) libpasswd libdisk samba-3.5.8 pcre-8.31 libxml2 sqlite libexif openssl curl $(if $(RTCONFIG_PERMISSION_MANAGEMENT),PMS_DBapis) lighttpd-1.4.39/stamp-h1
 
 lighttpd-1.4.39-install:
 	if [ -f lighttpd-1.4.39/Makefile ] ; then \
@@ -5415,7 +5447,7 @@ webdav_client-clean:
 fb_wifi/stamp-h1:
 	touch $@
 
-fb_wifi: $(CURL) fb_wifi/stamp-h1
+fb_wifi: curl fb_wifi/stamp-h1
 	@$(MAKE) -C fb_wifi
 
 fb_wifi-install: fb_wifi
@@ -5433,7 +5465,7 @@ fb_wifi-clean:
 
 #libcurl
 curl/configure:
-	@cd curl && buildconf
+	@cd curl && ./buildconf
 
 curl/Makefile: curl/configure
 	@cd curl && $(CONFIGURE) CC=$(CC) \
@@ -5447,9 +5479,10 @@ curl/Makefile: curl/configure
 		--disable-smb --disable-smtp --disable-gopher \
 		--disable-manual --disable-libcurl-option $(if $(RTCONFIG_IPV6),--enable-ipv6,--disable-ipv6) \
 		--disable-threaded-resolver --disable-ntlm-wb \
-		--disable-doh --disable-netrc --without-zlib \
-		--with-ssl=$(STAGEDIR)/usr \
-		--with-ca-bundle=/etc/ssl/certs/ca-certificates.crt --with-ca-fallback \
+		--disable-doh --disable-netrc --disable-dnsshuffle \
+		--disable-progress-meter --without-zlib \
+		--with-ssl=$(STAGEDIR)/usr --with-ca-fallback \
+		--with-ca-bundle=/etc/ssl/certs/ca-certificates.crt \
 		CFLAGS="-Os -Wall -ffunction-sections -fdata-sections" \
 		CPPFLAGS="-I$(STAGEDIR)/usr/include" \
 		LDFLAGS="-Wl,--gc-sections $(LDFLAGS) -L$(STAGEDIR)/usr/lib" \
@@ -5463,11 +5496,11 @@ curl: openssl curl/Makefile
 
 curl-install:
 	@$(SEP)
-	install -D curl/lib/.libs/libcurl.so.4.5.0 $(INSTALLDIR)/curl/usr/lib/libcurl.so.4.5.0
-	$(STRIP) $(INSTALLDIR)/curl/usr/lib/libcurl.so.4.5.0
+	install -D curl/lib/.libs/libcurl.so.4.6.0 $(INSTALLDIR)/curl/usr/lib/libcurl.so.4.6.0
+	$(STRIP) $(INSTALLDIR)/curl/usr/lib/libcurl.so.4.6.0
 	cd $(INSTALLDIR)/curl/usr/lib && \
-		ln -sf libcurl.so.4.5.0 libcurl.so && \
-		ln -sf libcurl.so.4.5.0 libcurl.so.4
+		ln -sf libcurl.so.4.6.0 libcurl.so && \
+		ln -sf libcurl.so.4.6.0 libcurl.so.4
 ifeq ($(or $(RTCONFIG_SPEEDTEST),$(RTCONFIG_LETSENCRYPT)),y)
 	# for speedtest
 	install -D curl/src/.libs/curl $(INSTALLDIR)/curl/usr/sbin/curl
@@ -5477,34 +5510,6 @@ endif
 curl-clean:
 	[ ! -f curl/Makefile ] || $(MAKE) -C curl distclean
 	@rm -f curl/Makefile
-# temporary curl-7.21.7 path compatibility
-	rm -f curl-7.21.7
-
-curl-7.21.x: curl-7.21.x/Makefile
-# temporary curl-7.21.7 path compatibility
-	[ "$(notdir $(realpath $curl-7.21.7))" = "$@" ] || (rm -f curl-7.21.7 && ln -s $@ curl-7.21.7)
-	$(MAKE) -C $@ && $(MAKE) $@-stage && sed 's|/usr/lib|$(STAGEDIR)/usr/lib|g' -i $(STAGEDIR)/usr/lib/libcurl.la
-
-curl-7.21.x/Makefile: curl-7.21.x/configure
-	@cd curl-7.21.x && $(CONFIGURE) CC=$(CC) \
-		--prefix=/usr --bindir=/usr/sbin --libdir=/usr/lib \
-		--enable-http --with-ssl=$(TOP)/openssl LDFLAGS="-ldl $(EXTRALDFLAGS)" \
-		--with-ca-bundle=/etc/ssl/certs/ca-certificates.crt
-
-curl-7.21.x-install: curl-7.21.x
-	@$(SEP)
-	install -D curl-7.21.x/lib/.libs/libcurl.so.4.2.0 $(INSTALLDIR)/curl-7.21.x/usr/lib/libcurl.so.4.2.0
-	$(STRIP) $(INSTALLDIR)/curl-7.21.x/usr/lib/libcurl.so.4.2.0
-	cd $(INSTALLDIR)/curl-7.21.x/usr/lib && ln -sf libcurl.so.4.2.0 libcurl.so && ln -sf libcurl.so.4.2.0 libcurl.so.4
-ifeq ($(or $(RTCONFIG_SPEEDTEST),$(RTCONFIG_LETSENCRYPT)),y)
-	# for speedtest
-	install -D curl-7.21.x/src/.libs/curl $(INSTALLDIR)/curl-7.21.x/usr/sbin/curl
-	$(STRIP) $(INSTALLDIR)/curl-7.21.x/usr/sbin/curl
-endif
-
-curl-7.21.x-clean:
-	[ ! -f curl-7.21.x/Makefile ] || $(MAKE) -C curl-7.21.x clean
-	@rm -f curl-7.21.x/Makefile
 # temporary curl-7.21.7 path compatibility
 	rm -f curl-7.21.7
 
@@ -6327,6 +6332,8 @@ wget-clean:
 wget-install:
 	install -D wget/src/wget $(INSTALLDIR)/wget/usr/sbin/wget
 	$(STRIP) $(INSTALLDIR)/wget/usr/sbin/wget
+	install -d $(INSTALLDIR)/wget/rom/etc
+	echo "ca_certificate=/etc/ssl/certs/ca-certificates.crt" > $(INSTALLDIR)/wget/rom/etc/wgetrc
 
 rtk_wifi_eventd: $(if $(RTCONFIG_CFGSYNC), cfg_mnt)
 
@@ -6965,7 +6972,7 @@ lantiq_cmd-clean:
 
 #aaews: wb
 
-#wb: shared nvram $(CURL) openssl libxml2 asusnatnl
+#wb: shared nvram curl openssl libxml2 asusnatnl
 aaews: wb
 	cd aaews && \
 	CC=$(CC) CXX=$(CXX) AR=$(AR) RANLIB=$(RANLIB) LD=$(LD) CFLAGS="-Os -Wall $(EXTRACFLAGS)" \
@@ -7075,34 +7082,6 @@ phddns-install: phddns
 phddns-clean:
 	@[ ! -f phddns/Makefile ] || $(MAKE) -C phddns clean
 	@rm -f phddns/stamp-h1
-
-lighttpd-le/configure:
-	cd lighttpd-le && ./autogen.sh
-
-lighttpd-le/Makefile: lighttpd-le/configure
-	cd lighttpd-le && \
-	$(CONFIGURE) \
-	--prefix=/usr/local \
-	--with-openssl=$(STAGEDIR)/usr \
-	--without-pcre \
-	--without-zlib \
-	--without-bzip2
-	@touch $@
-
-lighttpd-le: openssl lighttpd-le/Makefile
-	$(MAKE) -C lighttpd-le
-
-lighttpd-le-clean:
-	-@[ ! -f lighttpd-le/Makefile ] || $(MAKE) -C lighttpd-le distclean
-	@rm -f lighttpd-le/Makefile
-
-lighttpd-le-install: lighttpd-le
-	install -D lighttpd-le/src/lighttpd $(INSTALLDIR)/lighttpd-le/usr/sbin/lighttpd
-	install -D lighttpd-le/src/.libs/mod_dirlisting.so $(INSTALLDIR)/lighttpd-le/usr/local/lib/mod_dirlisting.so
-	install -D lighttpd-le/src/.libs/mod_staticfile.so $(INSTALLDIR)/lighttpd-le/usr/local/lib/mod_staticfile.so
-	install -D lighttpd-le/src/.libs/mod_indexfile.so $(INSTALLDIR)/lighttpd-le/usr/local/lib/mod_indexfile.so
-	$(STRIP) $(INSTALLDIR)/lighttpd-le/usr/sbin/lighttpd
-	$(STRIP) $(INSTALLDIR)/lighttpd-le/usr/local/lib/mod_*.so
 
 quicksec-7.0:
 	@$(SEP)

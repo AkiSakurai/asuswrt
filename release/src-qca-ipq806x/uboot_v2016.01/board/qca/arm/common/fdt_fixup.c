@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2017, 2020 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,6 +19,11 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
+#ifdef CONFIG_IPQ_FDT_FIXUP
+#define FDT_EDIT "fdtedit"
+/* Buffer size to hold numbers from 0-99 + 1 NULL character */
+#define NUM_BUF_SIZE 3
+#endif
 /*
  * Don't have this as a '.bss' variable. The '.bss' and '.rel.dyn'
  * sections seem to overlap.
@@ -481,6 +486,91 @@ static int ipq40xx_patch_eth_params(void *blob, unsigned long gmac_no)
 	return 0;
 }
 
+#ifdef CONFIG_IPQ_FDT_FIXUP
+void parse_fdt_fixup(char* buf, void *blob)
+{
+	int nodeoff, value, ret;
+	char *node, *property, *node_value;
+	bool str = true;
+
+	node = strsep(&buf, "%");
+	property = strsep(&buf, "%");
+	node_value = strsep(&buf, "%");
+
+	debug("node: %s, property: %s, node_value: %s\n",
+			node, property, node_value);
+
+	if (node_value && node_value[0] != '?') {
+		str = false;
+		value = simple_strtoul(node_value, NULL, 10);
+	} else {
+		node_value++;
+	}
+
+	nodeoff = fdt_path_offset(blob, node);
+	if (nodeoff < 0) {
+		printf("%s: unable to find node '%s'\n",
+				__func__, node);
+		return;
+	}
+
+	if (!strncmp(property, "delete", strlen("delete"))) {
+		ret = fdt_delprop(blob, nodeoff, node_value);
+		if (ret) {
+			printf("%s: unable to delete %s\n",
+					__func__, node_value);
+			return;
+		}
+	} else if (!str) {
+		ret = fdt_setprop_u32(blob, nodeoff, property,
+				value);
+		if (ret) {
+			printf("%s: failed to set prop %s\n",
+					__func__, property);
+			return;
+		}
+	} else {
+		ret = fdt_setprop(blob, nodeoff, property,
+				node_value,
+				(strlen(node_value) + 1));
+		if (ret) {
+			printf("%s: failed to set prop %s\n",
+					__func__, property);
+			return;
+		}
+	}
+}
+
+void ipq_fdt_fixup(void *blob)
+{
+	int i, fdteditnum;
+	char buf[sizeof(FDT_EDIT) + NUM_BUF_SIZE], num[NUM_BUF_SIZE];
+	char *s;
+
+	/* fdteditnum - defines the number of envs to parse
+	 * starting from 0. eg: fdtedit0, fdtedit1, and so on.
+	 */
+	s = getenv("fdteditnum");
+	if (s)
+		fdteditnum = simple_strtoul(s, NULL, 10);
+	else
+		return;
+
+	printf("%s: fixup fdtedits\n", __func__);
+
+	for (i = 0; i <= fdteditnum; i++) {
+		/* Generate env names fdtedit0, fdtedit1,..fdteditn */
+		strlcpy(buf, FDT_EDIT, sizeof(buf));
+		snprintf(num, sizeof(num), "%d", i);
+		strlcat(buf, num, sizeof(buf));
+
+		s = getenv(buf);
+		if (s)
+			parse_fdt_fixup(s, blob);
+	}
+}
+#endif
+
 __weak void fdt_fixup_sd_ldo_gpios_toggle(void *blob)
 {
 	return;
@@ -496,12 +586,32 @@ __weak void fdt_fixup_cpr(void *blob)
 	return;
 }
 
+__weak void fdt_fixup_cpus_node(void * blob)
+{
+	return;
+}
+
+__weak void fdt_fixup_set_dload_dis(void *blob)
+{
+	return;
+}
+
 __weak void fdt_fixup_set_dload_warm_reset(void *blob)
 {
 	return;
 }
 
 __weak void fdt_fixup_set_qce_fixed_key(void *blob)
+{
+	return;
+}
+
+__weak void fdt_fixup_set_qca_cold_reboot_enable(void *blob)
+{
+	return;
+}
+
+__weak void fdt_fixup_wcss_rproc_for_atf(void *blob)
 {
 	return;
 }
@@ -532,6 +642,7 @@ int ft_board_setup(void *blob, bd_t *bd)
 		{ "qcom,msm-nand", MTD_DEV_TYPE_NAND, 0 },
 		{ "qcom,qcom_nand", MTD_DEV_TYPE_NAND, 0 },
 		{ "qcom,ebi2-nandc-bam-v1.5.0", MTD_DEV_TYPE_NAND, 0 },
+		{ "qcom,ebi2-nandc-bam-v2.1.1", MTD_DEV_TYPE_NAND, 0 },
 		{ "spinand,mt29f", MTD_DEV_TYPE_NAND, 1 },
 		{ "n25q128a11", MTD_DEV_TYPE_NAND,
 				CONFIG_IPQ_SPI_NOR_INFO_IDX },
@@ -545,9 +656,9 @@ int ft_board_setup(void *blob, bd_t *bd)
 #ifndef CONFIG_QCA_APPSBL_DLOAD
 	ipq_fdt_mem_rsvd_fixup(blob);
 #endif
-
 #if !defined(CONFIG_ASUS_PRODUCT)
-	if (sfi->flash_type == SMEM_BOOT_NAND_FLASH) {
+	if (((sfi->flash_type == SMEM_BOOT_NAND_FLASH) ||
+		(sfi->flash_type == SMEM_BOOT_QSPI_NAND_FLASH))) {
 		snprintf(parts_str, sizeof(parts_str), "mtdparts=nand0");
 	} else if (sfi->flash_type == SMEM_BOOT_SPI_FLASH) {
 		/* Patch NOR block size and density for
@@ -555,7 +666,8 @@ int ft_board_setup(void *blob, bd_t *bd)
 		ipq_fdt_fixup_spi_nor_params(blob);
 		snprintf(parts_str,sizeof(parts_str), "mtdparts=" QCA_SPI_NOR_DEVICE);
 
-		if (sfi->flash_secondary_type == SMEM_BOOT_NAND_FLASH) {
+		if ((sfi->flash_secondary_type == SMEM_BOOT_NAND_FLASH) ||
+			(sfi->flash_secondary_type == SMEM_BOOT_QSPI_NAND_FLASH)) {
 			if(smem_bootconfig_info() == 0)
 				activepart = get_rootfs_active_partition();
 			if (!activepart) {
@@ -602,18 +714,30 @@ int ft_board_setup(void *blob, bd_t *bd)
 			ipq40xx_patch_eth_params(blob, gmac_no);
 	}
 	dcache_disable();
+#ifdef CONFIG_IPQ_FDT_FIXUP
+	ipq_fdt_fixup(blob);
+#endif
 	fdt_fixup_ethernet(blob);
 	ipq_fdt_fixup_usb_device_mode(blob);
 	fdt_fixup_auto_restart(blob);
 	fdt_fixup_sd_ldo_gpios_toggle(blob);
 	fdt_fixup_cpr(blob);
+	fdt_fixup_cpus_node(blob);
 	fdt_low_memory_fixup(blob);
 	s = getenv("dload_warm_reset");
 	if (s)
 		fdt_fixup_set_dload_warm_reset(blob);
+	s = getenv("dload_dis");
+	if (s)
+		fdt_fixup_set_dload_dis(blob);
 	s = getenv("qce_fixed_key");
 	if (s)
 		fdt_fixup_set_qce_fixed_key(blob);
+	s = getenv("atf");
+	if (s) {
+		fdt_fixup_set_qca_cold_reboot_enable(blob);
+		fdt_fixup_wcss_rproc_for_atf(blob);
+	}
 
 #ifdef CONFIG_QCA_MMC
 	board_mmc_deinit();

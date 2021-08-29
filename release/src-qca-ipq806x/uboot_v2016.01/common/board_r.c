@@ -652,7 +652,7 @@ static int check_clear_crashdump_magic(void)
 	if (p != NULL && !strcmp(p, "yes")) {
 		printf("\nCrashdump magic found, upload crashdump!\n");
 		setenv("ethaddr", MK_STR(CONFIG_ETHADDR));
-		dump_func();
+		dump_func(FULL_DUMP);
 	} else {
 		printf("\nCrashdump magic found, clear it and reboot!\n");
 	}
@@ -1084,6 +1084,12 @@ static void handle_boottype_1(void)
 	char *argv[4];
 	cmd_tbl_t c, *cmdtp = &c;
 
+	if (!chkVer())
+	       set_ver();
+
+	if ((chkMAC()) < 0)
+	       init_mac();
+
 	argv[2] = &file_name_space[0];
 	memset(file_name_space, 0, sizeof(file_name_space));
 
@@ -1101,6 +1107,14 @@ static void handle_boottype_2(void)
 	char *argv[4];
 	cmd_tbl_t c, *cmdtp = &c;
 	char addr_str[11];
+
+#if !defined(UBOOT_STAGE1)
+	if (!chkVer())
+	       set_ver();
+
+	if ((chkMAC()) < 0)
+	       init_mac();
+#endif /* ! UBOOT_STAGE1 */
 
 	argv[2] = &file_name_space[0];
 	memset(file_name_space, 0, sizeof(file_name_space));
@@ -1133,7 +1147,7 @@ static void handle_boottype_2(void)
 	}
 
 #if defined(CONFIG_AQR_PHYADDR)
-	if (is_aqr_phy_exist()) {
+	if (aqr_phy_chip() == AQR_PHY_107_113_A1B0) {
 		ipq_board_fw_download(CONFIG_AQR_PHYADDR);
 		__ipq_qca_aquantia_phy_init();
 	}

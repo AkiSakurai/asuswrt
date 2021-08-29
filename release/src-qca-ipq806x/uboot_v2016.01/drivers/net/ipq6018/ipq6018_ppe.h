@@ -32,18 +32,21 @@
 #define IPQ6018_PPE_BASE_ADDR			0x3a000000
 #define IPQ6018_PPE_REG_SIZE			0x1000000
 
+#define PORT4					4
 #define PORT5					5
-#define PORT6					6
 #define PORT_GMAC_TYPE				1
 #define PORT_XGMAC_TYPE				2
+
 struct port_mux_ctrl {
-	uint32_t  port4_pcs_sel:1;
+	uint32_t  port3_pcs_sel:2;
+	uint32_t  port4_pcs_sel:2;
 	uint32_t  port5_pcs_sel:2;
 	uint32_t  port5_gmac_sel:1;
-	uint32_t  port6_pcs_sel:1;
-	uint32_t  port6_gmac_sel:1;
-	uint32_t  _reserved0:26;
+	uint32_t  pcs0_ch4_sel:1;
+	uint32_t  pcs0_ch0_sel:1;
+	uint32_t  _reserved0:23;
 };
+
 union port_mux_ctrl_u {
 	uint32_t val;
 	struct port_mux_ctrl bf;
@@ -105,21 +108,22 @@ union ipo_action_u {
 };
 
 #define IPQ6018_PORT_MUX_CTRL			0x10
-#define PORT4_PCS_SEL_GMII_FROM_PCS0		1
-#define PORT4_PCS_SEL_RGMII 			0
-#define PORT5_PCS_SEL_RGMII 			0
-#define PORT5_PCS_SEL_GMII_FROM_PCS0 		1
-#define PORT5_PCS_SEL_GMII_FROM_PCS1		2
-#define PORT5_GMAC_SEL_GMAC			1
-#define PORT5_GMAC_SEL_XGMAC			0
-#define PORT6_PCS_SEL_RGMII			0
-#define PORT6_PCS_SEL_GMII_FROM_PCS2		1
-#define PORT6_GMAC_SEL_GMAC			1
-#define PORT6_GMAC_SEL_XGMAC			0
+#define CPPE_PORT3_PCS_SEL_PCS0_CHANNEL2 0
+#define CPPE_PORT3_PCS_SEL_PCS0_CHANNEL4 1
+#define CPPE_PORT4_PCS_SEL_PCS0_CHANNEL3 0
+#define CPPE_PORT4_PCS_SEL_PCS0_SGMIIPLUS 1
+#define CPPE_PORT5_PCS_SEL_PCS0_CHANNEL4 0
+#define CPPE_PORT5_PCS_SEL_PCS1_CHANNEL0 1
+#define CPPE_PORT5_GMAC_SEL_GMAC 0
+#define CPPE_PORT5_GMAC_SEL_XGMAC 1
+#define CPPE_PCS0_CHANNEL4_SEL_PORT5_CLOCK 0x0
+#define CPPE_PCS0_CHANNEL4_SEL_PORT3_CLOCK 0x1
+#define CPPE_PCS0_CHANNEL0_SEL_PSGMII 0x0
+#define CPPE_PCS0_CHANNEL0_SEL_SGMIIPLUS 0x1
+#define CPPE_DETECTION_PHY_FAILURE 0xFFFF
 
 #define PORT_PHY_STATUS_ADDRESS			0x44
-#define PORT_PHY_STATUS_PORT5_1_OFFSET		8
-#define PORT_PHY_STATUS_PORT6_OFFSET		16
+#define PORT_PHY_STATUS_PORT5_1_OFFSET		16
 
 #define IPQ6018_PPE_IPE_L3_BASE_ADDR		0x200000
 #define IPQ6018_PPE_L3_VP_PORT_TBL_ADDR		(IPQ6018_PPE_IPE_L3_BASE_ADDR + 0x1000)

@@ -44,6 +44,11 @@
 
 #define NAWDS_SH_FMT	"/etc/Wireless/sh/nawds_%s.sh"
 
+#if defined(RTCONFIG_GLOBAL_INI)
+#define WLFW_CAL_01_BIN			"/data/vendor/wifi/wlfw_cal_01.bin"	/* SPF10 or above */
+#else
+#define WLFW_CAL_01_BIN			"/data/misc/wifi/wlfw_cal_01.bin"
+#endif
 
 extern const char WIF_2G[];
 extern const char WIF_5G[];
@@ -593,6 +598,10 @@ enum ASUS_IOCTL_SUBCMD {
 #error Define MII_IFNAME interface!
 #endif
 
+#if defined(RTCONFIG_SOC_IPQ8074)
+#define UNSQUASHFS	"/usr/sbin/unsquashfs"
+#define SQUASHFS_ROOT	"/tmp/.squashfs-root"
+#endif	/* RTCONFIG_SOC_IPQ8074 */
 
 unsigned long task_mask;
 
@@ -634,7 +643,7 @@ typedef struct {
 #define BD_5G_PREFIX	BD_2G_PREFIX
 #define BD_5G_CHIP_DIR	BD_2G_CHIP_DIR
 #define BD_5G_HW_DIR	BD_2G_HW_DIR
-#elif defined(RTAC58U) || defined(VZWAC1300) || defined(RT4GAC53U)
+#elif defined(RTAC58U) || defined(VZWAC1300) || defined(SHAC1300) || defined(RT4GAC53U)
 #define BD_2G_PREFIX	"boardData_1_0_IPQ4019_Y9803_wifi0"
 #define BD_5G_PREFIX	"boardData_1_0_IPQ4019_Y9803_wifi1"
 #define BD_2G_CHIP_DIR	"IPQ4019"
@@ -698,8 +707,13 @@ extern int swap_5g_band(int band);
 #endif
 
 /* qca.c */
+#if defined(RTCONFIG_SOC_IPQ8074)
 extern unsigned char get_soc_version_major(void);
+#else
+static inline unsigned char get_soc_version_major(void) { return 0; }
+#endif
 extern int get_parameter_from_ini_file(const char *param_name, char *param_val, size_t param_val_size, const char *ini_fn);
+extern int get_board_or_default_parameter_from_ini_file(const char *board_name, const char *param_name, char *param_val, size_t param_val_size, const char *ini_fn);
 extern int get_integer_parameter_from_ini_file(const char *param_name, int *param_val, const char *ini_fn);
 extern int get_channf(int band, const char *ifname);
 extern int __get_qca_sta_info_by_ifname(const char *ifname, char subunit_id, int (*handler)(const WLANCONFIG_LIST *rptr, void *arg), void *arg);

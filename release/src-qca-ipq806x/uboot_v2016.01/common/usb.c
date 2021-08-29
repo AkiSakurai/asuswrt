@@ -43,6 +43,9 @@
 
 #define USB_BUFSIZ	512
 
+#define TRANSCEND_USB_VENDOR_ID		0x8564
+#define TRANSCEND_USB_PRODUCT_ID	0x1000
+
 static int asynch_allowed;
 char usb_started; /* flag for the started/stopped USB status */
 
@@ -1088,8 +1091,20 @@ int usb_select_config(struct usb_device *dev)
 	le16_to_cpus(&dev->descriptor.idProduct);
 	le16_to_cpus(&dev->descriptor.bcdDevice);
 
+	/*The Transcend device fails for get configuration length. Adding
+	  delay about 10 micro secs to fix this.*/
+	if (dev->descriptor.idVendor == TRANSCEND_USB_VENDOR_ID &&
+		dev->descriptor.idProduct == TRANSCEND_USB_PRODUCT_ID)
+		udelay(10);
 	/* only support for one config for now */
 	err = usb_get_configuration_len(dev, 0);
+
+	/*The Transcend device fails for get configuration number. Adding
+	  delay about 10 micro secs to fix this.*/
+	if (dev->descriptor.idVendor == TRANSCEND_USB_VENDOR_ID &&
+		dev->descriptor.idProduct == TRANSCEND_USB_PRODUCT_ID)
+		udelay(10);
+
 	if (err >= 0) {
 		tmpbuf = (unsigned char *)malloc_cache_aligned(err);
 		if (!tmpbuf)

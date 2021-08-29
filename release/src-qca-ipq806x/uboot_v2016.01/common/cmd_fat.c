@@ -111,7 +111,7 @@ static int do_fat_fswrite(cmd_tbl_t *cmdtp, int flag,
 	int part = 1;
 	void *buf;
 
-	if (argc < 5)
+	if (argc < 6)
 		return cmd_usage(cmdtp);
 
 	part = get_device_and_partition(argv[1], argv[2], &dev_desc, &info, 1);

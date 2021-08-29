@@ -75,6 +75,7 @@ int ipq40xx_ess_sw_init(ipq40xx_edma_board_cfg_t *cfg)
 	case MACH_TYPE_IPQ40XX_AP_DK04_1_C2:
 	case MACH_TYPE_IPQ40XX_AP_DK04_1_C3:
 	case MACH_TYPE_IPQ40XX_AP_DK04_1_C6:
+	case MACH_TYPE_IPQ40XX_AP_DK05_1_C1:
 	case MACH_TYPE_IPQ40XX_AP_DK06_1_C1:
 	case MACH_TYPE_IPQ40XX_AP_DK07_1_C1:
 	case MACH_TYPE_IPQ40XX_AP_DK07_1_C2:
@@ -136,7 +137,7 @@ int ipq40xx_ess_sw_init(ipq40xx_edma_board_cfg_t *cfg)
 		ipq40xx_ess_sw_wr(S17_P4LOOKUP_CTRL_REG, 0x34006f);;
 		break;
 	default:
-		printf("ess cfg not supported for %x machid\n",
+		printf("ess cfg not supported for %lx machid\n",
 					gd->bd->bi_arch_number);
 		return -1;
 	}

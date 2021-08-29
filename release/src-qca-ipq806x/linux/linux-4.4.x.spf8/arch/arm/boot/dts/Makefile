@@ -504,9 +504,11 @@ dtb-$(CONFIG_ASUS_RTAD7200) += qcom-ipq8064-rt-ad7200.dtb
 dtb-$(CONFIG_ASUS_GTAXY16000) += \
 	qcom-ipq807x-gt-axy16000.dtb \
 	qcom-ipq807x-gt-axy16000_r350.dtb \
+	qcom-ipq807x-gt-axy16000_r400.dtb \
 	qcom-ipq807x-rt-ax89u.dtb \
 	qcom-ipq807x-rt-ax89u_r300.dtb \
-	qcom-ipq807x-rt-ax89u_r350.dtb
+	qcom-ipq807x-rt-ax89u_r350.dtb \
+	qcom-ipq807x-rt-ax89u_r400.dtb
 dtb-$(CONFIG_QCA_APHK01) += qcom-ipq807x-hk01.dtb
 dtb-$(CONFIG_ARCH_QCOM) += \
 	qcom-ipq4019-ap.dk01.1-c1.dtb \

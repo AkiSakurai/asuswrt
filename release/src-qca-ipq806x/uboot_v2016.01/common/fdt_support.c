@@ -599,34 +599,107 @@ void fdt_fixup_ethernet(void *fdt)
 void fdt_fixup_dtb(void *blob)
 {
 	uint32_t ff = cpu_to_be32(0xFF);
-	int node, err;
+	int node, err, copied_dp6_mac = 0, aqrchip = aqr_phy_chip();
+	const char *m;
+	unsigned char mac_addr[6] = { 0 };
 	char *node_tbl[] = {
 		"/soc/dp6",
 		"/soc/mdio@90000/ethernet-phy@5",
 		"/soc/ess-instance/ess-switch@3a000000/qcom,port_phyinfo/port@5",
 		NULL
+	}, *aqr113c_node_tbl[] = {
+		"/soc/dp6_aqr113c",
+		"/soc/mdio1/ethernet-phy@5",
+		"/soc/ess-instance/ess-switch@3a000000/qcom,port_phyinfo/port@5_113c",
+		NULL
 	}, **p;
+	struct rename_node_tbl_s {
+		char *src_path;
+		char *dst_name;
+	} rename_node_tbl[] = {
+		{ "/soc/dp6_aqr113c", "dp6" },
+		{ "/soc/ess-instance/ess-switch@3a000000/qcom,port_phyinfo/port@5_113c", "port@5" },
 
-	if (is_aqr_phy_exist())
+		{ NULL, NULL }
+	}, *q;
+
+#if 0
+	int v;
+	char *r;
+	const char *aqrchipstr[] = { "No AQR chip", "AQR107/AQR113", "AQR113C" };
+
+	if ((r = getenv("aqrchip")) != NULL) {
+		v = simple_strtol(r, NULL, 10);
+		if (v >= AQR_PHY_ABSENT && v < AQR_PHY_CHIP_MAX) {
+			aqrchip = v;
+			printf("Force aqrchip = %d [%s]\n", aqrchip, aqrchipstr[aqrchip]);
+		}
+	}
+#else
+	if (aqrchip == AQR_PHY_107_113_A1B0)
 		return;
+#endif
 
-	/* Remove/adjust settings related to AQR PHY in device-tree blob. */
-	for (p = &node_tbl[0]; *p != NULL; ++p) {
-		node = fdt_path_offset (working_fdt, *p);
-		if (node < 0)
-			continue;
-		err = fdt_del_node(working_fdt, node);
-		if (err < 0)
-			continue;
-		printf("del %s okay\n", *p);
+	if (aqrchip == AQR_PHY_113C) {
+		/* Backup local-mac-address of /soc/dp6 */
+		if ((node = fdt_path_offset (working_fdt, "/soc/dp6")) >= 0) {
+			if ((m = fdt_getprop(working_fdt, node, "local-mac-address", NULL)) != NULL) {
+				memcpy(mac_addr, m, 6);
+				copied_dp6_mac = 1;
+			}
+		}
 	}
 
-	err = fdt_find_and_setprop(working_fdt, "/soc/ess-instance/ess-switch@3a000000",
-		"switch_mac_mode2", &ff, sizeof(ff), 0);
-	if (err < 0) {
-		printf("%s: Can't adjust switch_mac_mode2.\n", __func__);
-	} else {
-		printf("Remove AQR107 settings\n");
+	if (aqrchip == AQR_PHY_ABSENT || aqrchip == AQR_PHY_113C) {
+		/* Remove/adjust settings related to AQR107 PHY in device-tree blob. */
+		for (p = &node_tbl[0]; *p != NULL; ++p) {
+			node = fdt_path_offset (working_fdt, *p);
+			if (node < 0)
+				continue;
+			err = fdt_del_node(working_fdt, node);
+			if (err < 0)
+				continue;
+			printf("del %s okay\n", *p);
+		}
+	}
+
+	if (aqrchip == AQR_PHY_ABSENT) {
+		err = fdt_find_and_setprop(working_fdt, "/soc/ess-instance/ess-switch@3a000000",
+			"switch_mac_mode2", &ff, sizeof(ff), 0);
+		if (err < 0) {
+			printf("%s: Can't adjust switch_mac_mode2.\n", __func__);
+		} else {
+			printf("Remove AQR107 settings\n");
+		}
+	} else if (aqrchip == AQR_PHY_113C) {
+		/* Enable nodes for AQR113C and rename /soc/dp6* as /soc/dp6 */
+		for (p = &aqr113c_node_tbl[0]; *p != NULL; ++p) {
+			node = fdt_path_offset (working_fdt, *p);
+			if (node < 0) {
+				printf("%s not found, skip\n", *p);
+				continue;
+			}
+			err = fdt_setprop(working_fdt, node, "status", "ok", 3);
+			if (err < 0) {
+				printf("Set %s/status failed, err %d\n", *p, err);
+				continue;
+			}
+			printf("enable %s/status okay\n", *p);
+		}
+
+		/* Rename nodes. If it's /soc/dp6, update local-mac-address of it. */
+		for (q = &rename_node_tbl[0]; q->src_path && q->dst_name; ++q) {
+			if ((node = fdt_path_offset (working_fdt, q->src_path)) < 0) {
+				printf("can't find %s\n", q->src_path);
+				continue;
+			}
+
+			if ((err = fdt_set_name(working_fdt, node, q->dst_name)) >= 0) {
+				debug("%s => %s okay\n", q->src_path, q->dst_name);
+				if (copied_dp6_mac && !strcmp(q->dst_name, "dp6"))
+					fdt_setprop(working_fdt, node, "local-mac-address", mac_addr, 6);
+			}
+		}
 	}
 }
 #endif

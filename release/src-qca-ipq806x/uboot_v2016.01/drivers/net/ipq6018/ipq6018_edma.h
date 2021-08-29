@@ -19,7 +19,7 @@
 #define __IPQ6018_EDMA__
 
 #define IPQ6018_NSS_DP_START_PHY_PORT   1
-#define IPQ6018_NSS_DP_MAX_PHY_PORTS    6
+#define IPQ6018_NSS_DP_MAX_PHY_PORTS    5
 
 #define IPQ6018_EDMA_BUF_SIZE		2000
 #define IPQ6018_EDMA_DEVICE_NODE_NAME	"edma"
@@ -36,7 +36,7 @@
 #define IPQ6018_EDMA_MAX_GMACS		IPQ6018_NSS_DP_MAX_PHY_PORTS
 #define IPQ6018_EDMA_TX_BUF_SIZE	(1540 + IPQ6018_EDMA_TX_PREHDR_SIZE)
 
-#define IPQ6018_EDMA_MAX_TXCMPL_RINGS	8	/* Max TxCmpl rings */
+#define IPQ6018_EDMA_MAX_TXCMPL_RINGS	24	/* Max TxCmpl rings */
 #define IPQ6018_EDMA_MAX_RXDESC_RINGS	16	/* Max RxDesc rings */
 #define IPQ6018_EDMA_MAX_RXFILL_RINGS	8	/* Max RxFill rings */
 #define IPQ6018_EDMA_MAX_TXDESC_RINGS	24	/* Max TxDesc rings */
@@ -52,14 +52,13 @@
 #define IPQ6018_EDMA_TX_QUEUE		1
 #define IPQ6018_EDMA_RX_QUEUE		1
 
-//#define IPQ6018_EDMA_TX_DESC_RING_START	23
 #define IPQ6018_EDMA_TX_DESC_RING_START	0
 #define IPQ6018_EDMA_TX_DESC_RING_NOS	1
 #define IPQ6018_EDMA_TX_DESC_RING_SIZE	\
 (IPQ6018_EDMA_TX_DESC_RING_START + IPQ6018_EDMA_TX_DESC_RING_NOS)
 
-#define IPQ6018_EDMA_TX_CMPL_RING_START	7
-#define IPQ6018_EDMA_TX_CMPL_RING_NOS	1
+#define IPQ6018_EDMA_TX_CMPL_RING_START	0
+#define IPQ6018_EDMA_TX_CMPL_RING_NOS	8
 #define IPQ6018_EDMA_TX_CMPL_RING_SIZE	\
 (IPQ6018_EDMA_TX_CMPL_RING_START + IPQ6018_EDMA_TX_CMPL_RING_NOS)
 
@@ -291,8 +290,6 @@ static inline void ipq6018_free_mem(void *ptr)
 		free(ptr);
 }
 
-//extern struct ipq6018_edma_hw ipq6018_edma_hw;
-
 uint32_t ipq6018_edma_reg_read(uint32_t reg_off);
 void ipq6018_edma_reg_write(uint32_t reg_off, uint32_t val);
 
@@ -315,9 +312,11 @@ typedef struct {
 } ipq6018_edma_board_cfg_t;
 
 extern void ipq6018_ppe_provision_init(void);
+extern void ipq6018_port_mac_clock_reset(int port);
 extern void ipq6018_speed_clock_set(int port, int speed_clock1, int speed_clock2);
 extern void ipq6018_pqsgmii_speed_set(int port, int speed, int status);
 extern void ipq6018_uxsgmii_speed_set(int port, int speed, int duplex, int status);
+extern void ppe_port_mux_mac_type_set(int port_id, int mode);
 extern void ppe_port_bridge_txmac_set(int port, int status);
 extern void ipq6018_10g_r_speed_set(int port, int status);
 extern int phy_status_get_from_ppe(int port_id);

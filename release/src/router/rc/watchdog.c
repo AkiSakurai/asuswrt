@@ -3504,7 +3504,7 @@ void btn_check(void)
 #endif
 #else
 #ifdef RTAC68U
-			if (is_ac66u_v2_series())
+			if (is_ac66u_v2_series() || is_ac68u_v3_series())
 				kill_pidfile_s("/var/run/wanduck.pid", SIGUSR2);
 			else
 #endif
@@ -3807,7 +3807,9 @@ void btn_check(void)
 
 #if (defined(RTCONFIG_QCA) && defined(RTCONFIG_WIFI_CLONE)) || \
     defined(RTCONFIG_WPSMULTIBAND)
+#ifndef RTCONFIG_RALINK       
 				stop_wps_method();
+#endif				
 #endif
 #ifdef RTCONFIG_WIFI_CLONE
 				if (nvram_match("wps_e_success", "1")) {
@@ -4438,9 +4440,12 @@ static void catch_sig(int sig)
 #endif
 #ifdef RTCONFIG_RALINK
 	else if (sig == SIGTTIN)
-	{
+	{		
 		wsc_user_commit();
-		need_restart_wsc = 1;
+		need_restart_wsc = 1;	
+#ifdef RTCONFIG_WPSMULTIBAND
+		stop_wps_method();
+#endif	
 	}
 #endif
 }
@@ -5995,7 +6000,7 @@ void wigig_temperatore_check(void)
 	 * T_radio = 91.875
 	 */
 	chk_t1 = t2;
-	r = f_read_string("/sys/kernel/debug/ieee80211/phy0/wil6210/temp", buf, sizeof(buf));
+	r = f_read_string("/sys/kernel/debug/ieee80211/phy2/wil6210/temp", buf, sizeof(buf));
 	if (r < 32)
 		return;
 	if (!(p = strstr(buf, "T_mac")) || (r = sscanf(p, "T_mac = %lf", &t_mac)) != 1)
@@ -6289,7 +6294,7 @@ void ntevent_intranet_usage_insight()
 	tm = localtime(&now);
 
 	/* send event at 9:00 each Monday */
-	if (tm->tm_wday == 1 && tm->tm_hour == 9) {
+	if (tm->tm_wday == 1 && tm->tm_hour == 9 && tm->tm_min == 0) {
 		snprintf(str, 32, "0x%x", HINT_INTERNET_USAGE_INSIGHT_EVENT);
 		eval("Notify_Event2NC", str, "");
 	}
@@ -6333,7 +6338,6 @@ static void ntevent_disk_usage_check(){
 }
 #endif
 
-#ifdef RTCONFIG_FORCE_AUTO_UPGRADE
 /* DEBUG DEFINE */
 #define FAUPGRADE_DEBUG             "/tmp/FAUPGRADE_DEBUG"
 
@@ -6354,13 +6358,11 @@ static void ntevent_disk_usage_check(){
 
 static void auto_firmware_check()
 {
-	static int period_retry = -1;
-	static int period = 2877;
+	int periodic_check = 0;
+	static int period_retry = 0;
+	static int bootup_check_period = 3;	//wait 3 times(90s) to check
 	static int bootup_check = 1;
 #ifndef RTCONFIG_FW_JUMP
-	static int periodic_check = 0;
-	int cycle_manual = nvram_get_int("fw_check_period");
-	int cycle = (cycle_manual > 1) ? cycle_manual : 2880;
 	char *datestr[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 	time_t now;
 	struct tm local;
@@ -6372,30 +6374,21 @@ static void auto_firmware_check()
 		return;
 	}
 
+	if(bootup_check_period > 0){	//bootup wait 90s to check
+		bootup_check_period--;
+		return;
+	}
+
 	time(&now);
 	localtime_r(&now, &local);
 
-#ifdef RTCONFIG_FW_JUMP
-	period = 0;
-#else
-	if (!bootup_check && !periodic_check)
-	{
-		if ((local.tm_hour == (2 + rand_hr)) &&	// every 48 hours at 2 am + random offset
-		    (local.tm_min == rand_min))
-		{
-			periodic_check = 1;
-			period = -1;
-		}
-	}
+	if(local.tm_hour == (2 + rand_hr) && local.tm_min == rand_min) //at 2 am + random offset to check
+		periodic_check = 1;
 
-	if (bootup_check || periodic_check)
-		period = (period + 1) % cycle;
-	else
-		return;
+	//FAUPGRADE_DBG("periodic_check = %d, period_retry = %d, bootup_check = %d", periodic_check, period_retry, bootup_check);
+#ifndef RTCONFIG_FW_JUMP
+	if (bootup_check || periodic_check || period_retry!=0)
 #endif
-
-	//FAUPGRADE_DBG("period = %d, period_retry = %d, bootup_check = %d", period, period_retry, bootup_check);
-	if (!period || (period_retry < 2 && bootup_check == 0))
 	{
 #ifndef RTCONFIG_FW_JUMP
 		if(nvram_get_int("webs_state_dl_error")){
@@ -6405,21 +6398,26 @@ static void auto_firmware_check()
 				nvram_set("webs_state_dl_error", "0");
 		}
 
-		period_retry = (period_retry+1) % 3;
-		FAUPGRADE_DBG("period_retry = %d", period_retry);
 		if (bootup_check)
 		{
 			bootup_check = 0;
 			rand_hr = rand_seed_by_time() % 4;
 			rand_min = rand_seed_by_time() % 60;
 			FAUPGRADE_DBG("periodic_check AM %d:%d", 2 + rand_hr, rand_min);
+#ifdef RTCONFIG_AMAS
+			if(nvram_match("re_mode", "1"))
+				return;
+#endif
 		}
+
+		period_retry = (period_retry+1) % 3;
 #endif
 
 		if(!nvram_contains_word("rc_support", "noupdate")){
 #if defined(RTL_WTDOG)
 			stop_rtl_watchdog();
 #endif
+			nvram_set("webs_update_trigger", "watchdog");
 			eval("/usr/sbin/webs_update.sh");
 #if defined(RTL_WTDOG)
 			start_rtl_watchdog();
@@ -6428,7 +6426,7 @@ static void auto_firmware_check()
 #ifdef RTCONFIG_DSL
 		eval("/usr/sbin/notif_update.sh");
 #endif
-
+#ifdef RTCONFIG_FORCE_AUTO_UPGRADE
 		if (nvram_get_int("webs_state_update")
 				&& !nvram_get_int("webs_state_error")
 				&& !nvram_get_int("webs_state_dl_error")
@@ -6451,6 +6449,7 @@ static void auto_firmware_check()
 
 			if (nvram_get_int("webs_state_flag") != 2)
 			{
+				period_retry = 0; //stop retry
 				FAUPGRADE_DBG("no need to upgrade firmware");
 				return;
 			}
@@ -6468,12 +6467,16 @@ static void auto_firmware_check()
 			}
 		}
 		else{
-			FAUPGRADE_DBG("could not retrieve firmware information: webs_state_update = %d, webs_state_error = %d, webs_state_dl_error = %d, webs_state_info.len = %d", nvram_get_int("webs_state_update"), nvram_get_int("webs_state_error"), nvram_get_int("webs_state_dl_error"), strlen(nvram_safe_get("webs_state_info")));
+			FAUPGRADE_DBG("could not retrieve firmware information: webs_state_update = %d, webs_state_error = %d, webs_state_dl_error = %d, webs_state_info.len = %d", nvram_get_int("webs_state_update"), nvram_get_int("webs_state_error"), nvram_get_int("webs_state_dl_error"), (unsigned int)strlen(nvram_safe_get("webs_state_info")));
 		}
+#else
+		period_retry = 0; //stop retry
+#endif
 		return;
 	}
+
 }
-#endif
+
 
 #if defined(RTCONFIG_LP5523) || defined(RTCONFIG_LYRA_HIDE)
 #define FILE_LP5523 "/tmp/lp5523_log"
@@ -8047,6 +8050,9 @@ wdp:
 	AiProtectionMonitor_mail_log();	// libbwdpi.so
 	tm_eula_check();		// libbwdpi.so
 #endif
+#if defined(RTCONFIG_LANTIQ) && defined(RTCONFIG_GN_WBL)
+	GN_WBL_restart();
+#endif
 
 #ifdef RTCONFIG_NOTIFICATION_CENTER
 	alert_mail_service();
@@ -8090,7 +8096,7 @@ wdp:
 #if defined(RTCONFIG_AMAS)
 	amaslib_check();
 #if defined(RTCONFIG_QCA_LBD)
-	if (nvram_match("qca_lbd_enable", "1") && !pids("lbd") && !mediabridge_mode() && f_exists(LBD_PATH))
+	if (nvram_match("smart_connect_x", "1") && !pids("lbd") && !mediabridge_mode() && f_exists(LBD_PATH))
 		start_qca_lbd();
 #endif
 #endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2017, 2020 The Linux Foundation. All rights reserved.
 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -27,10 +27,15 @@
 #include <asm/errno.h>
 #include <asm/arch-qca-common/qca_common.h>
 #include <usb.h>
+#include <elf.h>
 
 #define SEC_AUTH_SW_ID 		0x17
 #define ROOTFS_IMAGE_TYPE       0x13
+#define NO_OF_PROGRAM_HDRS	3
+#define ELF_HDR_PLUS_PHDR_SIZE	sizeof(Elf32_Ehdr) + \
+		(NO_OF_PROGRAM_HDRS * sizeof(Elf32_Phdr))
 
+unsigned long __stack_chk_guard = 0x000a0dff;
 static int debug = 0;
 static char mtdids[256];
 DECLARE_GLOBAL_DATA_PTR;
@@ -38,7 +43,6 @@ static qca_smem_flash_info_t *sfi = &qca_smem_flash_info;
 int ipq_fs_on_nand ;
 extern int nand_env_device;
 extern qca_mmc mmc_host;
-extern void board_usb_deinit(int id);
 extern void aquantia_phy_reset_init_done(void);
 
 #ifdef CONFIG_QCA_MMC
@@ -67,6 +71,19 @@ kernel_img_info_t kernel_img_info;
 
 char dtb_config_name[64];
 
+#ifdef CONFIG_IPQ_ELF_AUTH
+typedef struct {
+	unsigned int img_offset;
+	unsigned int img_load_addr;
+	unsigned int img_size;
+} image_info;
+#endif
+
+void __stack_chk_fail(void)
+{
+	printf("stack-protector: U-boot stack is corrupted.\n");
+	bad_mode ();
+}
 /*
  * Set the root device and bootargs for mounting root filesystem.
  */
@@ -77,11 +94,14 @@ static int set_fs_bootargs(int *fs_on_nand)
 	int ret = 0;
 	char boot_args[MAX_BOOT_ARGS_SIZE] = {'\0'};
 
+
+
 #define nand_rootfs "ubi.mtd=" QCA_ROOT_FS_PART_NAME " root=mtd:ubi_rootfs rootfstype=squashfs"
 
 	if (sfi->flash_type == SMEM_BOOT_SPI_FLASH) {
 		if (get_which_flash_param("rootfs") ||
-		    sfi->flash_secondary_type == SMEM_BOOT_NAND_FLASH) {
+		    ((sfi->flash_secondary_type == SMEM_BOOT_NAND_FLASH) ||
+			(sfi->flash_secondary_type == SMEM_BOOT_QSPI_NAND_FLASH))) {
 			bootargs = nand_rootfs;
 			*fs_on_nand = 1;
 
@@ -134,7 +154,8 @@ static int set_fs_bootargs(int *fs_on_nand)
 			if (getenv("fsbootargs") == NULL)
 				setenv("fsbootargs", bootargs);
 		}
-	} else if (sfi->flash_type == SMEM_BOOT_NAND_FLASH) {
+	} else if (((sfi->flash_type == SMEM_BOOT_NAND_FLASH) ||
+			(sfi->flash_type == SMEM_BOOT_QSPI_NAND_FLASH))) {
 		bootargs = nand_rootfs;
 		if (getenv("fsbootargs") == NULL)
 			setenv("fsbootargs", bootargs);
@@ -228,43 +249,54 @@ __weak int switch_ce_channel_buf(unsigned int channel_id)
 	return 0;
 }
 
-#ifdef CONFIG_IPQ_ROOTFS_AUTH
-static int authenticate_rootfs(unsigned int kernel_addr)
+#ifdef CONFIG_IPQ_ELF_AUTH
+static int parse_elf_image_phdr(image_info *img_info, unsigned int addr)
 {
-	unsigned int kernel_imgsize;
-	unsigned int request;
+	Elf32_Ehdr *ehdr; /* Elf header structure pointer */
+	Elf32_Phdr *phdr; /* Program header structure pointer */
+	int i;
+
+	ehdr = (Elf32_Ehdr *)addr;
+	phdr = (Elf32_Phdr *)(addr + ehdr->e_phoff);
+
+	if (!IS_ELF(*ehdr)) {
+		printf("It is not a elf image \n");
+		return -EINVAL;
+	}
+
+	if (ehdr->e_type != ET_EXEC) {
+		printf("Not a valid elf image\n");
+		return -EINVAL;
+	}
+
+	/* Load each program header */
+	for (i = 0; i < NO_OF_PROGRAM_HDRS; ++i) {
+		printf("Parsing phdr load addr 0x%x offset 0x%x size 0x%x type 0x%x\n",
+		      phdr->p_paddr, phdr->p_offset, phdr->p_filesz, phdr->p_type);
+		if(phdr->p_type == PT_LOAD) {
+			img_info->img_offset = phdr->p_offset;
+			img_info->img_load_addr = phdr->p_paddr;
+			img_info->img_size =  phdr->p_filesz;
+			return 0;
+		}
+		++phdr;
+	}
+
+	return -EINVAL;
+}
+#endif
+
+#ifdef CONFIG_IPQ_ROOTFS_AUTH
+static int copy_rootfs(unsigned int request, uint32_t size)
+{
 	int ret;
-	mbn_header_t *mbn_ptr;
 	char runcmd[256];
-	struct {
-		unsigned long type;
-		unsigned long size;
-		unsigned long addr;
-	} rootfs_img_info;
 #ifdef CONFIG_QCA_MMC
 	block_dev_desc_t *blk_dev;
 	disk_partition_t disk_info;
 	unsigned int active_part = 0;
 #endif
 
-	request = CONFIG_ROOTFS_LOAD_ADDR;
-	rootfs_img_info.addr = CONFIG_ROOTFS_LOAD_ADDR;
-	rootfs_img_info.type = SEC_AUTH_SW_ID;
-	request += sizeof(mbn_header_t);/* space for mbn header */
-
-	/* get , kernel size = header + kernel + certificate */
-	mbn_ptr = (mbn_header_t *) kernel_addr;
-	kernel_imgsize = mbn_ptr->image_size + sizeof(mbn_header_t);
-
-	/* get rootfs MBN header and validate it */
-	mbn_ptr = (mbn_header_t *)((uint32_t)mbn_ptr + kernel_imgsize);
-	if (mbn_ptr->image_type != ROOTFS_IMAGE_TYPE &&
-			(mbn_ptr->code_size + mbn_ptr->signature_size +
-			 mbn_ptr->cert_chain_size != mbn_ptr->image_size))
-		return CMD_RET_FAILURE;
-
-	/* pack, MBN header + rootfs + certificate */
-	/* copy rootfs from the boot device */
 	if (ipq_fs_on_nand) {
 		snprintf(runcmd, sizeof(runcmd),
 			"ubi read 0x%x ubi_rootfs &&", request);
@@ -289,7 +321,7 @@ static int authenticate_rootfs(unsigned int kernel_addr)
 		if(ret == 0)
 			snprintf(runcmd, sizeof(runcmd), "mmc read 0x%x 0x%X 0x%X &&",
 					request, (uint)disk_info.start,
-					(uint)(mbn_ptr->code_size / disk_info.blksz) + 1);
+					(uint)(size / disk_info.blksz) + 1);
 		else
 			return CMD_RET_FAILURE;
 #endif
@@ -302,6 +334,42 @@ static int authenticate_rootfs(unsigned int kernel_addr)
 		printf("runcmd: %s\n", runcmd);
 	if (run_command(runcmd, 0) != CMD_RET_SUCCESS)
 		return CMD_RET_FAILURE;
+
+	return 0;
+}
+
+#ifndef CONFIG_IPQ_ELF_AUTH
+static int authenticate_rootfs(unsigned int kernel_addr)
+{
+	unsigned int kernel_imgsize;
+	unsigned int request;
+	int ret;
+	mbn_header_t *mbn_ptr;
+	struct {
+		unsigned long type;
+		unsigned long size;
+		unsigned long addr;
+	} rootfs_img_info;
+
+	request = CONFIG_ROOTFS_LOAD_ADDR;
+	rootfs_img_info.addr = CONFIG_ROOTFS_LOAD_ADDR;
+	rootfs_img_info.type = SEC_AUTH_SW_ID;
+	request += sizeof(mbn_header_t);/* space for mbn header */
+
+	/* get , kernel size = header + kernel + certificate */
+	mbn_ptr = (mbn_header_t *) kernel_addr;
+	kernel_imgsize = mbn_ptr->image_size + sizeof(mbn_header_t);
+
+	/* get rootfs MBN header and validate it */
+	mbn_ptr = (mbn_header_t *)((uint32_t)mbn_ptr + kernel_imgsize);
+	if (mbn_ptr->image_type != ROOTFS_IMAGE_TYPE &&
+			(mbn_ptr->code_size + mbn_ptr->signature_size +
+			 mbn_ptr->cert_chain_size != mbn_ptr->image_size))
+		return CMD_RET_FAILURE;
+
+	/* pack, MBN header + rootfs + certificate */
+	/* copy rootfs from the boot device */
+	copy_rootfs(request, mbn_ptr->code_size);
 
 	/* copy rootfs MBN header */
 	memcpy((void *)CONFIG_ROOTFS_LOAD_ADDR, (void *)kernel_addr + kernel_imgsize,
@@ -320,7 +388,44 @@ static int authenticate_rootfs(unsigned int kernel_addr)
 
 	return CMD_RET_SUCCESS;
 }
+
+#else
+static int authenticate_rootfs_elf(unsigned int rootfs_hdr)
+{
+	int ret;
+	unsigned int request;
+	image_info img_info;
+	struct {
+		unsigned long type;
+		unsigned long size;
+		unsigned long addr;
+	} rootfs_img_info;
+
+	request = CONFIG_ROOTFS_LOAD_ADDR;
+	rootfs_img_info.addr = request;
+	rootfs_img_info.type = SEC_AUTH_SW_ID;
+
+	if (parse_elf_image_phdr(&img_info, rootfs_hdr))
+		return CMD_RET_FAILURE;
+
+	memcpy((void*)request, (void*)rootfs_hdr, img_info.img_offset);
+
+	request += img_info.img_offset;
+
+	/* copy rootfs from the boot device */
+	copy_rootfs(request, img_info.img_size);
+
+	rootfs_img_info.size = img_info.img_offset + img_info.img_size;
+	ret = qca_scm_secure_authenticate(&rootfs_img_info, sizeof(rootfs_img_info));
+	if (ret)
+		return CMD_RET_FAILURE;
+
+	return CMD_RET_SUCCESS;
+}
 #endif
+#endif
+
+
 static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
 {
 	char runcmd[256];
@@ -331,8 +436,8 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 	disk_partition_t disk_info;
 	unsigned int active_part = 0;
 #endif
-#ifdef CONFIG_USB_XHCI_IPQ
-	int i;
+#ifdef CONFIG_IPQ_ELF_AUTH
+	image_info img_info;
 #endif
 
 	if (argc == 2 && strncmp(argv[1], "debug", 5) == 0)
@@ -346,7 +451,8 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 		if (debug) {
 			printf("Using nand device %d\n", CONFIG_SPI_FLASH_INFO_IDX);
 		}
-	} else if (sfi->flash_type == SMEM_BOOT_NAND_FLASH) {
+	} else if (((sfi->flash_type == SMEM_BOOT_NAND_FLASH) ||
+		(sfi->flash_type == SMEM_BOOT_QSPI_NAND_FLASH))) {
 		if (debug) {
 			printf("Using nand device 0\n");
 		}
@@ -374,13 +480,30 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 			 "nand device %d && "
 			 "setenv mtdids nand%d=nand%d && "
 			 "setenv mtdparts mtdparts=nand%d:0x%llx@0x%llx(fs),${msmparts} && "
-			 "ubi part fs && "
-			 "ubi read 0x%x kernel && ", is_spi_nand_available(),
+			 "ubi part fs && ", is_spi_nand_available(),
 			 is_spi_nand_available(),
 			 is_spi_nand_available(),
 			 is_spi_nand_available(),
-			 sfi->rootfs.size, sfi->rootfs.offset,
-			 request);
+			 sfi->rootfs.size, sfi->rootfs.offset);
+
+		if (run_command(runcmd, 0) != CMD_RET_SUCCESS)
+			return CMD_RET_FAILURE;
+
+#ifdef CONFIG_IPQ_ELF_AUTH
+		snprintf(runcmd, sizeof(runcmd),
+			 "ubi read 0x%x kernel 0x%x && ",
+			 request, ELF_HDR_PLUS_PHDR_SIZE);
+
+		if (run_command(runcmd, 0) != CMD_RET_SUCCESS)
+			return CMD_RET_FAILURE;
+
+		if (parse_elf_image_phdr(&img_info, request))
+			return CMD_RET_FAILURE;
+
+		request = img_info.img_load_addr - img_info.img_offset;
+#endif
+		snprintf(runcmd, sizeof(runcmd),
+			 "ubi read 0x%x kernel && ", request);
 
 		if (debug)
 			printf("%s", runcmd);
@@ -410,8 +533,21 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 		}
 
 		if (ret == 0) {
+#ifdef CONFIG_IPQ_ELF_AUTH
 			snprintf(runcmd, sizeof(runcmd), "mmc read 0x%x 0x%X 0x%X",
 				 CONFIG_SYS_LOAD_ADDR,
+				 (uint)disk_info.start, ELF_HDR_PLUS_PHDR_SIZE);
+
+			if (run_command(runcmd, 0) != CMD_RET_SUCCESS)
+				return CMD_RET_FAILURE;
+
+			if (parse_elf_image_phdr(&img_info, request))
+				return CMD_RET_FAILURE;
+
+			request = img_info.img_load_addr - img_info.img_offset;
+#endif
+			snprintf(runcmd, sizeof(runcmd), "mmc read 0x%x 0x%X 0x%X",
+				 request,
 				 (uint)disk_info.start, (uint)disk_info.size);
 
 			if (run_command(runcmd, 0) != CMD_RET_SUCCESS)
@@ -424,10 +560,31 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 		/*
 		 * Kernel is in a separate partition
 		 */
+		snprintf(runcmd, sizeof(runcmd), "sf probe &&");
+
+		if (run_command(runcmd, 0) != CMD_RET_SUCCESS)
+			return CMD_RET_FAILURE;
+
+#ifdef CONFIG_IPQ_ELF_AUTH
 		snprintf(runcmd, sizeof(runcmd),
-			 "sf probe &&"
 			 "sf read 0x%x 0x%x 0x%x && ",
 			 CONFIG_SYS_LOAD_ADDR,
+			 (uint)sfi->hlos.offset, ELF_HDR_PLUS_PHDR_SIZE);
+
+		if (debug)
+			printf("%s", runcmd);
+
+		if (run_command(runcmd, 0) != CMD_RET_SUCCESS)
+			return CMD_RET_FAILURE;
+
+		if (parse_elf_image_phdr(&img_info, request))
+			return CMD_RET_FAILURE;
+
+		request = img_info.img_load_addr - img_info.img_offset;
+#endif
+		snprintf(runcmd, sizeof(runcmd),
+			 "sf read 0x%x 0x%x 0x%x && ",
+			 request,
 			 (uint)sfi->hlos.offset, (uint)sfi->hlos.size);
 
 		if (debug)
@@ -441,7 +598,12 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 
 	setenv("mtdids", mtdids);
 
+#ifndef CONFIG_IPQ_ELF_AUTH
 	request += sizeof(mbn_header_t);
+#else
+	kernel_img_info.kernel_load_addr = request;
+	request = img_info.img_load_addr;
+#endif
 
 	/* This sys call will switch the CE1 channel to register usage */
 	ret = switch_ce_channel_buf(0);
@@ -457,12 +619,20 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 		BUG();
 	}
 #ifdef CONFIG_IPQ_ROOTFS_AUTH
+#ifdef CONFIG_IPQ_ELF_AUTH
+	if (authenticate_rootfs_elf(img_info.img_load_addr +
+				img_info.img_size) != CMD_RET_SUCCESS) {
+		printf("Rootfs elf image authentication failed\n");
+		BUG();
+	}
+#else
 	/* Rootfs's header and certificate at end of kernel image, copy from
 	 * there and pack with rootfs image and authenticate rootfs */
 	if (authenticate_rootfs(CONFIG_SYS_LOAD_ADDR) != CMD_RET_SUCCESS) {
 		printf("Rootfs image authentication failed\n");
 		BUG();
 	}
+#endif
 #endif
 	/*
 	* This sys call will switch the CE1 channel to ADM usage
@@ -474,14 +644,6 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 		return CMD_RET_FAILURE;
 
 	dcache_enable();
-
-	board_pci_deinit();
-#ifdef CONFIG_USB_XHCI_IPQ
-	usb_stop();
-        for (i=0; i<CONFIG_USB_MAX_CONTROLLER_COUNT; i++) {
-		board_usb_deinit(i);
-        }
-#endif
 
 	ret = config_select(request, runcmd, sizeof(runcmd));
 
@@ -514,9 +676,6 @@ static int do_boot_unsignedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const
 	disk_partition_t disk_info;
 	unsigned int active_part = 0;
 #endif
-#ifdef CONFIG_USB_XHCI_IPQ
-	int i;
-#endif
 
 	if (argc == 2 && strncmp(argv[1], "debug", 5) == 0)
 		debug = 1;
@@ -529,7 +688,8 @@ static int do_boot_unsignedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const
 		printf("Booting from flash\n");
 	}
 
-	if (sfi->flash_type == SMEM_BOOT_NAND_FLASH) {
+	if (((sfi->flash_type == SMEM_BOOT_NAND_FLASH) ||
+			(sfi->flash_type == SMEM_BOOT_QSPI_NAND_FLASH))) {
 		if (debug) {
 			printf("Using nand device 0\n");
 		}
@@ -617,15 +777,6 @@ static int do_boot_unsignedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const
 	}
 
 	dcache_enable();
-
-	board_pci_deinit();
-
-#ifdef CONFIG_USB_XHCI_IPQ
-	usb_stop();
-        for (i=0; i<CONFIG_USB_MAX_CONTROLLER_COUNT; i++) {
-		board_usb_deinit(i);
-        }
-#endif
 
 	setenv("mtdids", mtdids);
 

@@ -357,6 +357,8 @@
 #define FORCE_RATE_10                           (0 << 13) | (1 << 15) | (1 << 8)
 #define FORCE_RATE_100                          (1 << 13) | (1 << 15) | (1 << 8)
 
+#define BMCR_RESET              0x8000
+
 typedef struct
 {
 	volatile u32 status;		/* Status */

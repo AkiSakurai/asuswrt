@@ -65,6 +65,9 @@
 #include "pc.h"
 #endif
 
+#ifdef RTCONFIG_INTERNETCTRL
+#include "ic.h"
+#endif
 
 #define IFUP (IFF_UP | IFF_RUNNING | IFF_BROADCAST | IFF_MULTICAST)
 
@@ -150,7 +153,7 @@ extern char wan6face[];
 #define CONFIGURED_WAN_NIC      DEFAULT_WAN_NIC
 #endif
 
-#if defined(MAPAC1300) || defined(MAPAC2200) || defined(VZWAC1300)
+#if defined(MAPAC1300) || defined(MAPAC2200) || defined(VZWAC1300) || defined(SHAC1300)
 #define DEFAULT_WAN_NIC "eth0"
 #define DEFAULT_LAN_NIC "eth1"
 #define DEFAULT_WAN_PORT_SHIFT  5
@@ -186,9 +189,9 @@ static inline int is_cap(){
 
 static inline char *node_str(){
 	if(is_cap())
-		return "CAP";
+		return "C";
 
-	return "RE";
+	return "R";
 }
 #endif
 
@@ -369,6 +372,9 @@ static inline void setFanOnOff(const int onoff) { }
 extern void ate_temperature_record(void);
 #if defined(RTCONFIG_WIFI_QCN5024_QCN5054)
 extern int stress_pktgen_main(int argc, char *argv[]);
+#endif
+#if defined(RTCONFIG_SOC_IPQ8074)
+extern int test_bl_updater_main(int argc, char *argv[]);
 #endif
 
 /* shared/boardapi.c */
@@ -591,7 +597,15 @@ extern void acs_ch_weight_param(void);
 extern void get_stainfo(int bssidx, int vifidx);
 #endif	/* RTCONFIG_QCA */
 
-#if defined(RTCONFIG_SWITCH_QCA8075_QCA8337_PHY_AQR107_AR8035_QCA8033)
+#if defined(RTCONFIG_SOC_IPQ8074)
+extern int upgrade_bootloader_v2(void);
+extern int pre_firmware_upgrade(const char *fname);
+#else	/* !RTCONFIG_SOC_IPQ8074 */
+static inline int upgrade_bootloader_v2(void) { return 0; }
+static inline int pre_firmware_upgrade(const char __attribute__((__unused__)) *fname) { return 0; }
+#endif	/* RTCONFIG_SOC_IPQ8074 */
+
+#if defined(RTCONFIG_QCA_MCSD)
 extern int start_mcsd(FILE *fp);
 extern void stop_mcsd(void);
 #else
@@ -931,6 +945,7 @@ extern int route_del(char *name, int metric, char *dst, char *gateway, char *gen
 extern int start_vlan(void);
 extern int stop_vlan(void);
 extern int config_vlan(void);
+extern int set_bonding_iface_hwaddr(const char *bond_if, const char *hwaddr);
 extern void config_loopback(void);
 #ifdef RTCONFIG_IPV6
 extern int _ipv6_route_add(const char *name, int metric, const char *dst, const char *gateway, int flags);
@@ -1040,6 +1055,8 @@ extern void disable_ipv6(const char *ifname);
 extern void start_lan_ipv6(void);
 extern void stop_lan_ipv6(void);
 #endif
+extern int set_bonding(const char *bond_if, const char *mode, const char *policy, char *hwaddr);
+extern void remove_bonding(const char *bond_if);
 #ifdef RTCONFIG_WIRELESSREPEATER
 extern void start_lan_wlc(void);
 extern void stop_lan_wlc(void);
@@ -1094,6 +1111,11 @@ extern void config_blocking_redirect(FILE *fp);
 // pc_tmp.c
 #ifdef RTCONFIG_PARENTALCTRL
 extern int pc_tmp_main(int argc, char *argv[]);
+#endif
+
+/* ic.c */
+#ifdef RTCONFIG_INTERNETCTRL
+extern int ic_main(int argc, char *argv[]);
 #endif
 
 // ppp.c
@@ -1299,10 +1321,12 @@ extern void restart_fanctrl(void);
 #endif
 
 #if defined(RTCONFIG_BCMWL6) && defined(RTCONFIG_PROXYSTA)
+// arp.c
+extern int send_arpreq(void);
 // psta_monitor.c
 extern int psta_monitor_main(int argc, char *argv[]);
 #endif
-#if defined(RTCONFIG_AMAS) && (defined(RTCONFIG_BCMWL6) || defined(RTCONFIG_LANTIQ) || defined(RTCONFIG_QCA) || defined(RTCONFIG_REALTEK))
+#if defined(RTCONFIG_AMAS) && (defined(RTCONFIG_BCMWL6) || defined(RTCONFIG_LANTIQ) || defined(RTCONFIG_QCA) || defined(RTCONFIG_REALTEK) || defined(RTCONFIG_RALINK))
 // obd.c
 extern int obd_main(int argc, char *argv[]);
 extern void amas_wait_wifi_ready(void);
@@ -1347,8 +1371,6 @@ extern int ntp_main(int argc, char *argv[]);
 
 // common.c
 extern void usage_exit(const char *cmd, const char *help) __attribute__ ((noreturn));
-#define modprobe(mod, args...) ({ char *argv[] = { "modprobe", "-s", mod, ## args, NULL }; _eval(argv, NULL, 0, NULL); })
-extern int modprobe_r(const char *mod);
 #define xstart(args...)	_xstart(args, NULL)
 extern int _xstart(const char *cmd, ...);
 extern void run_nvscript(const char *nv, const char *arg1, int wtime);
@@ -1546,9 +1568,6 @@ extern int update_wan_leds(int wan_unit, int link_wan_unit);
 int LanWanLedCtrl(void);
 #endif
 extern int wanduck_main(int argc, char *argv[]);
-#ifdef RTCONFIG_CONNDIAG
-extern int conn_diag_main(int argc, char *argv[]);
-#endif
 
 // tcpcheck.c
 extern int setupsocket(int sock);
@@ -1559,6 +1578,7 @@ extern void subtime(struct timeval *a, struct timeval *b, struct timeval *res);
 extern void setupset(fd_set *theset, int *numfds);
 extern void waitforconnects();
 extern int tcpcheck_main(int argc, char *argv[]);
+extern int tcpcheck_retval(int timeout, char *host_port);
 
 // readmem.c
 #ifdef BUILD_READMEM
@@ -1702,10 +1722,15 @@ extern void update_macfilter_relist();
 
 extern int start_nat_rules(void);
 extern int stop_nat_rules(void);
-extern void stop_syslogd(void);
-extern void stop_klogd(void);
 extern int start_syslogd(void);
+extern void stop_syslogd(void);
+#ifdef RTCONFIG_RSYSLOGD
+static inline void reload_syslogd(void) {};
+#else
+extern void reload_syslogd(void);
 extern int start_klogd(void);
+extern void stop_klogd(void);
+#endif
 extern int start_logger(void);
 extern void start_dfs(void);
 extern void handle_notifications(void);
@@ -1814,7 +1839,7 @@ extern int firmware_check_main(int argc, char *argv[]);
 #ifdef RTCONFIG_HTTPS
 extern int rsasign_check_main(int argc, char *argv[]);
 extern int rsarootca_check_main(int argc, char *argv[]);
-extern char *pwdec(const char *input, char *output);
+extern char *pwdec(const char *input, char *output, int output_len);
 extern char *pwdec_dsl(char *input);
 #endif
 #ifdef RTCONFIG_ISP_CUSTOMIZE
@@ -1935,6 +1960,9 @@ void apply_config_to_driver();
 #endif
 #endif
 #endif	/* RTCONFIG_WIRELESSREPEATER */
+#if defined(RTCONFIG_QCA_LBD)
+extern void duplicate_wl_ifaces(void);
+#endif
 
 #ifdef RTCONFIG_PARENTALCTRL
 extern void stop_pc_block(void);
@@ -1985,6 +2013,8 @@ extern void stop_cfgsync(void);
 extern int start_cfgsync(void);
 extern void send_event_to_cfgmnt(int event_id);
 #ifdef RTCONFIG_CONNDIAG
+extern int conn_diag_main(int argc, char *argv[]);
+extern int diag_data_main(int argc, char *argv[]);
 extern void stop_conn_diag(void);
 extern void start_conn_diag(void);
 #endif
@@ -2042,6 +2072,7 @@ extern void extract_data(char *path, FILE *fp);
 extern int merge_log(char *path, int len);
 extern void stop_dpi_engine_service(int forced);
 extern void start_dpi_engine_service();
+extern void start_wrs_wbl_service();
 extern void setup_wrs_conf();
 extern void auto_sig_check();
 extern void sqlite_db_check();
@@ -2066,6 +2097,10 @@ extern int get_anomaly_main(char *cmd);
 extern int get_app_patrol_main();
 extern void web_history_save();
 extern void AiProtectionMonitor_mail_log();
+extern int get_fw_mesh_user(void **output, unsigned int *buf_used_len);
+extern int get_fw_mesh_extender(void **output, unsigned int *buf_used_len);
+extern int mesh_set_user(char *macstr, char *ipstr, uint8_t action);
+extern int mesh_set_extender(char *macstr, uint8_t action);
 #endif
 
 /* amas_lib.c */
@@ -2197,32 +2232,11 @@ enum BTNSETUP_STATE
 #endif
 
 /* led_monitor.c */
-#if defined(RTCONFIG_CONCURRENTREPEATER)
+
+#if defined(RTCONFIG_CONCURRENTREPEATER) || defined(RTCONFIG_AMAS)
 extern int re_wpsc_main(void);
 extern int stop_re_wpsc();
 extern int start_re_wpsc();
-
-typedef struct led_state_s {
-	int id;
-	int color;
-	int state;
-	unsigned long flash_interval;
-	unsigned long next_switch_time;
-	short changed;
-} led_state_t;
-
-extern int led_monitor_main(int argc, char *argv[]);
-extern int stop_led_monitor();
-extern int start_led_monitor();
-extern int set_off_led(led_state_t *led);
-extern int set_on_led(led_state_t *led);
-#ifdef RTCONFIG_REALTEK
-extern void update_gpiomode(int gpio, int mode);
-#endif
-#if defined(RTCONFIG_RALINK)
-extern int air_monitor_main(int argc, char *argv[]);
-#endif
-
 enum LED_STATUS
 {
 	LED_BOOTING = 0,
@@ -2243,6 +2257,29 @@ enum LED_STATUS
 	LED_FACTORY_RESET,
 	LED_AP_WPS_START
 };
+#endif
+
+#if defined(RTCONFIG_CONCURRENTREPEATER)
+typedef struct led_state_s {
+	int id;
+	int color;
+	int state;
+	unsigned long flash_interval;
+	unsigned long next_switch_time;
+	short changed;
+} led_state_t;
+
+extern int led_monitor_main(int argc, char *argv[]);
+extern int stop_led_monitor();
+extern int start_led_monitor();
+extern int set_off_led(led_state_t *led);
+extern int set_on_led(led_state_t *led);
+#ifdef RTCONFIG_REALTEK
+extern void update_gpiomode(int gpio, int mode);
+#endif
+#if defined(RTCONFIG_RALINK)
+extern int air_monitor_main(int argc, char *argv[]);
+#endif
 #endif
 
 #ifdef RTCONFIG_TUNNEL
@@ -2442,5 +2479,36 @@ typedef struct probe_PCIE_param_s {
 	int bPCIE_down;
 } probe_PCIE_param_t;
 #endif /* RTAX88U */
+
+#ifdef RTCONFIG_ASUSCTRL
+/* asusctrl */
+extern void asus_ctrl_enband5grp();
+extern int asus_ctrl_en(int cid);
+extern int asus_ctrl_ignore();
+#ifdef RTCONFIG_BCMARM
+extern int asus_ctrl_write(char *asusctrl);
+#else
+static inline int asus_ctrl_write(char *asusctrl) { return 0; }
+#endif
+#endif
+
+#ifdef RTCONFIG_BCMARM
+typedef struct WiFi_temperature_s {
+	double t2g;
+	double t5g;
+	double t5g2;
+} WiFi_temperature_t;
+double get_cpu_temp();
+int get_wifi_temps(WiFi_temperature_t *wt);
+#endif /* RTCONFIG_BCMARM */
+
+#ifdef RTCONFIG_GN_WBL
+extern void add_GN_WBL_EBTbrouteRule();
+extern void add_GN_WBL_ChainRule(FILE *fp);
+extern void add_GN_WBL_ForwardRule(FILE *fp);
+#ifdef RTCONFIG_LANTIQ
+extern void GN_WBL_restart();
+#endif
+#endif
 
 #endif	/* __RC_H__ */

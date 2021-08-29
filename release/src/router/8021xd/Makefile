@@ -89,6 +89,12 @@ romfs:
 	ln -sf rt2860apd $(ROMFSDIR)/bin/rtinicapd
 	ln -sf rt2860apd $(ROMFSDIR)/bin/rtwifi3apd	
 	ln -sf rt2860apd $(ROMFSDIR)/bin/rt2860apd_x
+	
+
+install: all
+	install -D rt2860apd $(INSTALLDIR)/bin/rt2860apd
+	$(STRIP) $(INSTALLDIR)/bin/rt2860apd
+	cd $(INSTALLDIR)/bin && ln -sf rt2860apd rtinicapd 	
 
 -include $(OBJS:%.o=%.d)
 

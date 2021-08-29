@@ -347,7 +347,7 @@ void start_jffs2(void)
 	notice_set("jffs", format ? "Formatted" : "Loaded");
 	jffs2_fail = 0;
 
-#ifdef HND_ROUTER
+#if defined(HND_ROUTER) || defined(DSL_AC68U)
 #ifdef RTCONFIG_JFFS_NVRAM
 	system("rm -rf /jffs/nvram_war");
 	jffs_nvram_init();

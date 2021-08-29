@@ -362,23 +362,37 @@ apply.iptv = function(){
 		qisPostData.wan10_pppoe_passwd = $("#iptv_pppoe_passwd").val();
 	}
 	else if(qisPostData.switch_wantag == "manual"){
+		var showHints = 0;
+
 		if(isSupport("port2_device")){
-			if(hasBlank([
+			if(rangeCheck([
 				$("#internet_vid"),
+				$("#stb_vid")], 2, 4094))
+				showHints = 1;
+
+			if(rangeCheck([
 				$("#internet_prio"),
-				$("#stb_vid"),
-				$("#stb_prio"),
-			])) return false;
+				$("#stb_prio")], 0, 7, 1))
+				showHints = 1;
+
+			if(showHints)
+				return false;
 		}
 		else{
-			if(hasBlank([
+			if(rangeCheck([
 				$("#internet_vid"),
-				$("#internet_prio"),
 				$("#stb_vid"),
+				$("#voip_vid")], 2, 4094))
+				showHints = 1;
+
+			if(rangeCheck([
+				$("#internet_prio"),
 				$("#stb_prio"),
-				$("#voip_vid"),
-				$("#voip_prio")
-			])) return false;
+				$("#voip_prio")], 0, 7, 1))
+				showHints = 1;
+
+			if(showHints)
+				return false;
 		}
 
 		qisPostData.switch_wan0tagid = $("#internet_vid").val();
@@ -389,6 +403,16 @@ apply.iptv = function(){
 			qisPostData.switch_wan2tagid = $("#voip_vid").val();
 			qisPostData.switch_wan2prio = $("#voip_prio").val();
 		}
+
+		if(qisPostData.switch_wan1tagid == "" && qisPostData.switch_wan2tagid == "")
+			qisPostData.switch_stb_x = "0";
+		else if(qisPostData.switch_wan1tagid == "" && qisPostData.switch_wan2tagid != "")
+			qisPostData.switch_stb_x = "3";
+		else if(qisPostData.switch_wan1tagid != "" && qisPostData.switch_wan2tagid == "")
+			qisPostData.switch_stb_x = "4";
+		else
+			qisPostData.switch_stb_x = "6";
+
 	}
 
 	if(isSupport("gobi")){
@@ -612,6 +636,8 @@ apply.lanStatic = function(){
 		else{
 			if(!isSupport("MB_mode_concurrep"))
 				transformWLCObj();
+			else if(isSupport("SMARTREP"))
+				copyWLCObj_wlc1ToWlc2();
 
 			httpApi.nvramSet((function(){
 				qisPostData.action_mode = "apply";
@@ -879,7 +905,7 @@ apply.yadnsDisable = function(){
 apply.yadnsSetting = function(){
 	httpApi.nvramSet((function(){
 		qisPostData.action_mode = "apply";
-		qisPostData.rc_service = "restart_yadns";
+		qisPostData.rc_service = getRestartService();
 		return qisPostData;
 	})(), (systemVariable.isNewFw == 0) ? goTo.Finish : goTo.Update);
 };
@@ -1122,20 +1148,8 @@ abort.wanType = function(){
 	}
 	else if(systemVariable.detwanResult.wanType == "CHECKING"){
 		systemVariable.manualWanSetup = false;
-
-		setTimeout(function(){
-			if(!isPage("waiting_page")) return false;
-
-			if(systemVariable.detwanResult.wanType == "" || systemVariable.detwanResult.wanType == "CHECKING"){
-				systemVariable.detwanResult = httpApi.detwanGetRet();
-				if(isPage("waiting_page")) setTimeout(arguments.callee, 1000);
-				return false;
-			}
-
-			if(!systemVariable.manualWanSetup) goTo.autoWan();	
-		}, 1000);
-
-		goTo.loadPage("waiting_page", true);	
+		goTo.loadPage("waiting_page", true);
+		goTo.Waiting();
 	}
 	else{
 		if(!systemVariable.forceChangePw)
@@ -2198,6 +2212,8 @@ goTo.lanDHCP = function(){
 		else{
 			if(!isSupport("MB_mode_concurrep"))
 				transformWLCObj();
+			else if(isSupport("SMARTREP"))
+				copyWLCObj_wlc1ToWlc2();
 
 			httpApi.nvramSet((function(){
 				qisPostData.action_mode = "apply";
@@ -2639,10 +2655,16 @@ goTo.Update = function(){
 
 	$("#newVersion").val(systemVariable.newFwVersion);
 	$("#desktop_applyBtn_update").html(applyBtn);
-	$("#desktop_abortBtn_update").html(abortBtn);
 	$("#mobile_applyBtn_update").html(applyBtn);
-	$("#mobile_abortBtn_update").html(abortBtn);
-
+	if(systemVariable.forceLevel == 1){
+		$("#desktop_abortBtn_update").remove();
+		$("#mobile_abortBtn_update").remove();
+	}
+	else{
+		$("#desktop_abortBtn_update").html(abortBtn);
+		$("#mobile_abortBtn_update").html(abortBtn);
+	}
+	
 	goTo.loadPage("update_page", false);
 };
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2017, 2020 The Linux Foundation. All rights reserved.
 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -39,6 +39,7 @@ enum {
 	SMEM_BOOT_SPI_FLASH       = 6,
 	SMEM_BOOT_NORPLUSNAND     = 7,
 	SMEM_BOOT_NORPLUSEMMC     = 8,
+	SMEM_BOOT_QSPI_NAND_FLASH  = 11,
 };
 
 struct version_entry
@@ -73,6 +74,9 @@ void ipq_fdt_fixup_usb_device_mode(void *blob);
 void fdt_fixup_auto_restart(void *blob);
 int get_soc_version(uint32_t *soc_ver_major, uint32_t *soc_ver_minor);
 unsigned int get_dts_machid(unsigned int machid);
+#ifdef IPQ_UBI_VOL_WRITE_SUPPORT
+int ubi_set_rootfs_part(void);
+#endif
 
 typedef struct {
 	loff_t offset;

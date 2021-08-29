@@ -12,17 +12,20 @@
  * ASUS configuration.
  * All CONFIG_XXX will be copied to include/autoconf.mk automatically.
  */
-#define SPFVER			10
+#define SPFVER			11	/* 8: SPF8, 11 or 111: SPF11.1, 110: SPF11.0 */
 #define CONFIG_MODEL		"GT-AXY16000"
 #define CONFIG_FLASH_TYPE	"nand"
 #define CONFIG_BLS_FIT_IMAGE
 #define CONFIG_ECC_THRESHOLD	(3)	/* per-page bit-flips threshold. */
 
-#define CONFIG_AQRMODEL		113	/* 113 or 107 */
+#define CONFIG_AQRMODEL		113	/* 113 A1,B0 or 107 */
 
 /* Set 1-st version number in accordance with SPF version. */
-#if SPFVER == 10
+#if SPFVER == 11 || SPFVER == 111
 #define CONFIG_METATOOLDIR	"build_ipq"
+#define KV1C			"2"
+#elif SPFVER == 110
+#define CONFIG_METATOOLDIR	"build_spf11.0"
 #define KV1C			"2"
 #elif SPFVER == 8
 #define CONFIG_METATOOLDIR	"build_spf8"
@@ -42,9 +45,15 @@
 #endif
 
 #define CONFIG_UBI_SUPPORT
-#define CONFIG_BLVER		KV1C KV2C "15"
+#if SPFVER == 111
+#define CONFIG_BLVER		KV1C KV2C "21"
+#else
+#define CONFIG_BLVER		KV1C KV2C "16"
+#endif
 #define CONFIG_DUAL_BAND
 #define CONFIG_HAVE_WAN_RED_LED
+#undef CONFIG_CMD_NFS		        /* NFS support */
+#undef CONFIG_CMD_DHCP
 
 #define CONFIG_SYS_LOAD_ADDR	0x4B000000
 #define CONFIG_SYS_LONGHELP
@@ -98,6 +107,7 @@ extern int modifies;
 #define OFFSET_PIN_CODE			(FTRY_PARM_SHIFT + 0xD180)	/* 8 bytes */
 #define OFFSET_COUNTRY_CODE		(FTRY_PARM_SHIFT + 0xD188)	/* 2 bytes */
 #define OFFSET_BOOT_VER			(FTRY_PARM_SHIFT + 0xD18A)	/* 4 bytes */
+#define OFFSET_HWID			(FTRY_PARM_SHIFT + 0x0FF00)	/* 4 bytes */
 
 /*-----------------------------------------------------------------------
  * Bootloader size and Config size definitions

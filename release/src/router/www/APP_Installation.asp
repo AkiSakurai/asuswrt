@@ -96,7 +96,7 @@ var webs_state_update;
 var webs_state_error;
 var webs_state_info;
 var wan_unit_orig = '<% nvram_get("wan_unit"); %>';
-var fileflex_text = "From any Internet connected device, remotely access and share all your files via your ASUS router.<br>(Third party software with one year free trial)";/* untranslated */
+var fileflex_text = "<#FileFlex_desc0#>";
 
 function initial(){
 	show_menu();
@@ -705,6 +705,9 @@ function show_apps(){
 	stoppullstate = 1;
 	cookie.set("hwaddr", '<% nvram_get("lan_hwaddr"); %>', 1000);
 	cookie.set("apps_last", "", 1000);
+	//re-turn FormTitle height
+	if($("#FormTitle > table").height() > $("#FormTitle").height())
+		$("#FormTitle").height($("#FormTitle > table").height());
 }
 
 /* 

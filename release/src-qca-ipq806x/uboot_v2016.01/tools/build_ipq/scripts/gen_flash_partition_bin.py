@@ -19,7 +19,7 @@ Nor_Params = namedtuple("Nor_Params", "pagesize pages_per_block total_blocks")
 Nand_Params = namedtuple("nand_Params", "pagesize pages_per_block total_blocks")
 outputdir = ""
 
-def process_nand_device(pagesize, pages_per_block, total_blocks, entry):
+def process_nand_device(pagesize, pages_per_block, total_blocks, entry, nand_type):
 
         global mbn_gen
         global nandsyspartition
@@ -27,15 +27,24 @@ def process_nand_device(pagesize, pages_per_block, total_blocks, entry):
         global cdir
         global ARCH_NAME
         global outputdir
+        global HK10
 
 	nand_pagesize = pagesize
 	nand_pages_per_block = pages_per_block
 	nand_total_blocks = total_blocks
 
-	if nand_pagesize == 2048:
-		nand_partition = "$$/" + ARCH_NAME + "/flash_partition/nand-partition.xml"
-	else:
+	if nand_type == "audio-4k":
+		nand_partition = "$$/" + ARCH_NAME + "/flash_partition/nand-audio-4k-partition.xml"
+	elif nand_type == "audio-2k":
+		nand_partition = "$$/" + ARCH_NAME + "/flash_partition/nand-audio-partition.xml"
+	elif nand_type == "4k":
 		nand_partition = "$$/" + ARCH_NAME + "/flash_partition/nand-4k-partition.xml"
+	elif nand_type == "2k":
+		if HK10:
+			nand_partition = "$$/" + ARCH_NAME + "/flash_partition/nand-partition-hk10.xml"
+		else:
+			nand_partition = "$$/" + ARCH_NAME + "/flash_partition/nand-partition.xml"
+
 	nand_partition = nand_partition.replace('$$', cdir)
 
 	nand_parts = Nand_Params(nand_pagesize, nand_pages_per_block, nand_total_blocks)
@@ -49,13 +58,22 @@ def process_nand_device(pagesize, pages_per_block, total_blocks, entry):
 		partition_tool = outputdir + '/partition_tool'
 	os.chmod(partition_tool, 0744)
 
-	if entry == False or (entry == True and nand_pagesize == 2048):
-		nandsyspartition = outputdir + '/nand-system-partition-' + ARCH_NAME + '.bin'
-		nanduserpartition = 'nand-user-partition.bin'
+	if entry == False or (entry == True and nand_pagesize == 2048 and nand_type == '2k'):
+		if HK10:
+			nandsyspartition = outputdir + '/nand-system-partition-' + ARCH_NAME + '-hk10.bin'
+			nanduserpartition = 'nand-user-partition-hk10.bin'
+		else:
+			nandsyspartition = outputdir + '/nand-system-partition-' + ARCH_NAME + '.bin'
+			nanduserpartition = 'nand-user-partition.bin'
 	else:
 		nand_blocksize = (nand_pagesize * nand_pages_per_block) / 1024
-		nandsyspartition = outputdir + '/nand-system-partition-' + ARCH_NAME + '-m' + str(nand_pagesize) + '-p' + str(nand_blocksize) + 'KiB.bin'
-		nanduserpartition = 'nand-user-partition-m' + str(nand_pagesize) + '-p' + str(nand_blocksize) + 'KiB.bin'
+		if nand_type == "audio-2k" or nand_type == "audio-4k":
+			nand_type = "audio-"
+		elif nand_type == "4k":
+			nand_type = ""
+		nandsyspartition = outputdir + '/nand-' + nand_type + 'system-partition-' + ARCH_NAME + '-m' + str(nand_pagesize) + '-p' + str(nand_blocksize) + 'KiB.bin'
+		nanduserpartition = 'nand-' + nand_type + 'user-partition-m' + str(nand_pagesize) + '-p' + str(nand_blocksize) + 'KiB.bin'
+
 	nanduserbin= os.path.splitext(nanduserpartition)[0] + ".bin"
 
 	print '\tNand page size: ' + str(nand_parts.pagesize) + ', pages/block: ' \
@@ -104,6 +122,7 @@ def process_nand(config_path, flash_type):
 	global cdir
 	global ARCH_NAME
 	global outputdir
+	global HK10
 
 	tree = ET.parse(config_path)
 	root = tree.getroot()
@@ -111,6 +130,10 @@ def process_nand(config_path, flash_type):
 	arch = root.find(".//data[@type='ARCH']/SOC")
 	ARCH_NAME = str(arch.text)
 	entry = False
+	HK10 = False
+
+	if ARCH_NAME == "ipq807x":
+		HK10 = True
 
 	if root.find(".//data[@type='NAND_PARAMETER']/entry") != None:
 
@@ -120,14 +143,27 @@ def process_nand(config_path, flash_type):
 			nand_pagesize = int(nand_param.find(".//page_size").text)
 			nand_pages_per_block = int(nand_param.find(".//pages_per_block").text)
 			nand_total_blocks = int(nand_param.find(".//total_block").text)
-			if process_nand_device(nand_pagesize, nand_pages_per_block, nand_total_blocks, entry) != 0:
+			nand_type = nand_param.get('type')
+
+			if HK10:
+				if process_nand_device(nand_pagesize, nand_pages_per_block, nand_total_blocks, entry, nand_type) != 0:
+					return -1
+				HK10 = False
+
+			if process_nand_device(nand_pagesize, nand_pages_per_block, nand_total_blocks, entry, nand_type) != 0:
 				return -1
 	else:
 		nand_param = root.find(".//data[@type='NAND_PARAMETER']")
 		nand_pagesize = int(nand_param.find('page_size').text)
 		nand_pages_per_block = int(nand_param.find('pages_per_block').text)
 		nand_total_blocks = int(nand_param.find('total_block').text)
-		if process_nand_device(nand_pagesize, nand_pages_per_block, nand_total_blocks, entry) != 0:
+
+		if HK10:
+			if process_nand_device(nand_pagesize, nand_pages_per_block, nand_total_blocks, entry, "2k") != 0:
+				return -1
+			HK10 = False
+
+		if process_nand_device(nand_pagesize, nand_pages_per_block, nand_total_blocks, entry, "2k") != 0:
 			return -1
 
 	return 0
@@ -229,13 +265,17 @@ def process_norplusnand_device(nor_pagesize, nor_pages_per_block, nor_total_bloc
 	global cdir
 	global ARCH_NAME
 	global outputdir
+        global HK10
 
 	if nand_pagesize == 2048:
-		norplusnand_partition = "$$/" + ARCH_NAME + "/flash_partition/norplusnand-partition.xml"
+		if HK10:
+			norplusnand_partition = "$$/" + ARCH_NAME + "/flash_partition/norplusnand-partition-hk10.xml"
+		else:
+			norplusnand_partition = "$$/" + ARCH_NAME + "/flash_partition/norplusnand-partition.xml"
 	else:
 		norplusnand_partition = "$$/" + ARCH_NAME + "/flash_partition/norplusnand-4k-partition.xml"
-	norplusnand_partition = norplusnand_partition.replace('$$', cdir)
 
+	norplusnand_partition = norplusnand_partition.replace('$$', cdir)
 	nand_parts = Nand_Params(nand_pagesize, nand_pages_per_block, nand_total_blocks)
 	nor_parts = Nor_Params(nor_pagesize, nor_pages_per_block, nor_total_blocks)
 
@@ -249,12 +289,17 @@ def process_norplusnand_device(nor_pagesize, nor_pages_per_block, nor_total_bloc
 	os.chmod(partition_tool, 0744)
 
 	if entry == False or (entry == True and nand_pagesize == 2048):
-		norplusnandsyspartition = outputdir + '/norplusnand-system-partition-' + ARCH_NAME + '.bin'
-		userpart = 'norplusnand-user-partition.bin'
+		if HK10:
+			norplusnandsyspartition = outputdir + '/norplusnand-system-partition-' + ARCH_NAME + '-hk10.bin'
+			userpart = 'norplusnand-user-partition-hk10.bin'
+		else:
+			norplusnandsyspartition = outputdir + '/norplusnand-system-partition-' + ARCH_NAME + '.bin'
+			userpart = 'norplusnand-user-partition.bin'
 	else:
 		nand_blocksize = (nand_pagesize * nand_pages_per_block) / 1024
 		norplusnandsyspartition = outputdir + '/norplusnand-system-partition-' + ARCH_NAME + '-m' + str(nand_pagesize) + '-p' + str(nand_blocksize) + 'KiB.bin'
 		userpart = 'norplusnand-user-partition-m' + str(nand_pagesize) + '-p' + str(nand_blocksize) + 'KiB.bin'
+
 	norplusnanduserbin= os.path.splitext(userpart)[0] +".bin"
 
 	print '\tNor page size: ' + str(nor_parts.pagesize) + ', pages/block: ' \
@@ -312,6 +357,7 @@ def process_norplusnand(config_path, flash_type):
 	global cdir
 	global ARCH_NAME
 	global outputdir
+	global HK10
 
 	tree = ET.parse(config_path)
 	root = tree.getroot()
@@ -337,6 +383,10 @@ def process_norplusnand(config_path, flash_type):
 		root_part.write(norplusnand_partition)
 
 	entry = False
+	HK10 = False
+
+	if ARCH_NAME == "ipq807x":
+		HK10 = True
 
 	if root.find(".//data[@type='NAND_PARAMETER']/entry") != None:
 
@@ -347,20 +397,35 @@ def process_norplusnand(config_path, flash_type):
 			nand_pages_per_block = int(nand_param.find(".//pages_per_block").text)
 			nand_total_blocks = int(nand_param.find(".//total_block").text)
 
+			if HK10:
+				if process_norplusnand_device(nor_pagesize,
+						nor_pages_per_block, nor_total_blocks, nand_pagesize,
+						nand_pages_per_block, nand_total_blocks, entry) != 0:
+					return -1
+				HK10 = False
+
 			if process_norplusnand_device(nor_pagesize,
 				nor_pages_per_block, nor_total_blocks, nand_pagesize,
 				nand_pages_per_block, nand_total_blocks, entry) != 0:
 				return -1
+
 	else:
 		nand_param = root.find(".//data[@type='NAND_PARAMETER']")
 		nand_pagesize = int(nand_param.find('page_size').text)
 		nand_pages_per_block = int(nand_param.find('pages_per_block').text)
 		nand_total_blocks = int(nand_param.find('total_block').text)
+
+		if HK10:
+			if process_norplusnand_device(nor_pagesize,
+					nor_pages_per_block, nor_total_blocks, nand_pagesize,
+					nand_pages_per_block, nand_total_blocks, entry) != 0:
+				return -1
+			HK10 = False
+
 		if process_norplusnand_device(nor_pagesize,
 			nor_pages_per_block, nor_total_blocks, nand_pagesize,
 			nand_pages_per_block, nand_total_blocks, entry) != 0:
 			return -1
-
 	return 0
 
 

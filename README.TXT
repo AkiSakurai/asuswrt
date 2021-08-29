@@ -80,7 +80,7 @@ Set Up Environment(Tested in Fedora 8/9 and Ubuntu)
 		sudo yum install gettext-devel libxml2-devel mtd-utils-ubi ncurses-devel \
 			zlib-devel intltool sharutils docbook-dtds docbook-style-xsl \
 			uboot-tools dtc gengetopt qemu gperf cmake glib2-devel gtk-doc \
-			texinfo lzo-devel
+			texinfo lzo-devel libbsd-devel
 
 		If you are using Fedora 19 or above, you need to install below packages.
 		sudo yum groupinstall "C Development Tools and Libraries"

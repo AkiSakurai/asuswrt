@@ -443,7 +443,7 @@ static int rctest_main(int argc, char *argv[])
 			else stop_psta_monitor();
 		}
 #endif
-#if defined(RTCONFIG_AMAS) && (defined(RTCONFIG_BCMWL6) || defined(RTCONFIG_LANTIQ) || defined(RTCONFIG_QCA) || defined(RTCONFIG_REALTEK))
+#if defined(RTCONFIG_AMAS) && (defined(RTCONFIG_BCMWL6) || defined(RTCONFIG_LANTIQ) || defined(RTCONFIG_QCA) || defined(RTCONFIG_REALTEK) || defined(RTCONFIG_RALINK))
 		else if (strcmp(argv[1], "obd") == 0) {
 			if (on) start_obd();
 			else stop_obd();
@@ -584,6 +584,11 @@ static int rctest_main(int argc, char *argv[])
 		}
 		else if (strcmp(argv[1], "fa_dump") == 0) {
 			_dprintf("(%d) done.\n", get_fa_dump());
+		}
+#endif
+#ifdef RTCONFIG_ASUSCTRL
+		else if (strcmp(argv[1], "asusctrl") == 0) {
+			printf("ignore=%d, en=%d, flag=(0x%x)\n", asus_ctrl_ignore(), asus_ctrl_en(atoi(argv[2])), nvram_get_hex("asusctrl_flags"));
 		}
 #endif
 		else {
@@ -1090,7 +1095,7 @@ static const applets_t applets[] = {
 #if defined(RTCONFIG_BCMWL6) && defined(RTCONFIG_PROXYSTA)
 	{ "psta_monitor",		psta_monitor_main		},
 #endif
-#if defined(RTCONFIG_AMAS) && (defined(RTCONFIG_BCMWL6) || defined(RTCONFIG_LANTIQ) || defined(RTCONFIG_QCA) || defined(RTCONFIG_REALTEK)) && !defined(RTCONFIG_DISABLE_REPEATER_UI)
+#if defined(RTCONFIG_AMAS) && (defined(RTCONFIG_BCMWL6) || defined(RTCONFIG_LANTIQ) || defined(RTCONFIG_QCA) || defined(RTCONFIG_REALTEK) || defined(RTCONFIG_RALINK)) && !defined(RTCONFIG_DISABLE_REPEATER_UI)
 	{ "obd",			obd_main			},
 #endif
 #if defined(RTCONFIG_AMAS) && defined(RTCONFIG_ETHOBD)
@@ -1117,12 +1122,16 @@ static const applets_t applets[] = {
 #ifdef RTCONFIG_IPV6
 	{ "dhcp6c",			dhcp6c_wan			},
 #endif
+#if defined(RTCONFIG_CONCURRENTREPEATER) || defined(RTCONFIG_AMAS)
+#if defined(RTCONFIG_RALINK)
+	{ "re_wpsc",			re_wpsc_main			},
+#endif
+#endif
 #if defined(RTCONFIG_CONCURRENTREPEATER)
 #if !defined(RPAC68U)
 	{ "led_monitor",		led_monitor_main		},
 #endif
 #if defined(RTCONFIG_RALINK)
-	{ "re_wpsc",			re_wpsc_main			},
 	{ "air_monitor",		air_monitor_main		},
 #endif
 #endif
@@ -1154,6 +1163,7 @@ static const applets_t applets[] = {
 	{ "wanduck",			wanduck_main			},
 #ifdef RTCONFIG_CONNDIAG
 	{ "conn_diag",			conn_diag_main			},
+	{ "diag_data",			diag_data_main			},
 #endif
 #if defined(CONFIG_BCMWL5) && !defined(HND_ROUTER) && defined(RTCONFIG_DUALWAN)
 	{ "dualwan",			dualwan_control			},
@@ -1189,6 +1199,9 @@ static const applets_t applets[] = {
 #endif
 #if defined(RTCONFIG_WIFI_QCN5024_QCN5054)
 	{ "stress_pktgen",		stress_pktgen_main		},
+#endif
+#if defined(RTCONFIG_SOC_IPQ8074)
+	{ "test_blu",			test_bl_updater_main		},
 #endif
 #ifdef RTCONFIG_HTTPS
 	{ "rsasign_check",		rsasign_check_main		},
@@ -1239,7 +1252,7 @@ static const applets_t applets[] = {
 #if defined(MAPAC2200)
 	{ "dpdt_ant",			dpdt_ant_main		},
 #endif
-#if defined(MAPAC1300) || defined(VZWAC1300)
+#if defined(MAPAC1300) || defined(VZWAC1300) || defined(SHAC1300)
 	{ "thermal_txpwr",		thermal_txpwr_main		},
 #endif
 #ifdef RTCONFIG_ADTBW
@@ -1680,6 +1693,12 @@ int main(int argc, char **argv)
 		restart_wireless();
 		return 0;
 	}
+#if defined(RTCONFIG_BCMWL6) && defined(RTCONFIG_PROXYSTA)
+	else if (!strcmp(base, "sendarp")) {
+		send_arpreq();
+		return 0;
+	}
+#endif
 #ifdef RTCONFIG_BCM_7114
 	else if (!strcmp(base, "stop_wl")) {
 		stop_wl_bcm();
@@ -2037,6 +2056,12 @@ int main(int argc, char **argv)
 	}
 	else if (!strcmp(base, "pc_tmp")) {
 		pc_tmp_main(argc, argv);
+		return 0;
+	}
+#endif
+#ifdef RTCONFIG_INTERNETCTRL
+	else if (!strcmp(base, "ic")) {
+		ic_main(argc, argv);
 		return 0;
 	}
 #endif

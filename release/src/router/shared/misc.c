@@ -5,6 +5,7 @@
 
 */
 #include <string.h>
+#include <strings.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -2392,13 +2393,24 @@ void bcmvlan_models(int model, char *vlan)
 
 char *get_productid(void)
 {
-	char *productid = nvram_safe_get("productid");
 #ifdef RTCONFIG_ODMPID
-	char *odmpid = nvram_safe_get("odmpid");
-	if (*odmpid)
-		productid = odmpid;
+	char *productid = nvram_safe_get("odmpid");
+
+	if (*productid)
+		return productid;
 #endif
-	return productid;
+
+	return nvram_safe_get("productid");
+}
+
+char *get_lan_hostname(void)
+{
+	char *hostname = nvram_safe_get("lan_hostname");
+
+	if (*hostname && is_valid_hostname(hostname))
+		return hostname;
+
+	return get_productid();
 }
 
 int backup_rx;
@@ -2488,6 +2500,30 @@ static const struct dummy_ifaces_s {
 	{ 0, NULL }
 };
 
+/** Convert strings like "0 1 15" to uint32_t bitmask 0x8003.
+ * @str:	pointer to a string includes one or more number.
+ * @return:	bitmask
+ */
+uint32_t nums_str_to_u32_mask(const char *str)
+{
+	uint32_t r = 0;
+	int b;
+	char *next, num[16], tmp[100];
+
+	if (!str || *str == '\0')
+		return 0;
+
+	strlcpy(tmp, str, sizeof(tmp));
+	foreach (num, tmp, next) {
+		b = safe_atoi(num);
+		if (b < 0 || b > 31)
+			continue;
+		r |= 1U << b;
+	}
+
+	return r;
+}
+
 /*
  * @ifname_desc:	12 bytes character array.
  * @return:
@@ -2496,15 +2532,6 @@ static const struct dummy_ifaces_s {
  */
 unsigned int netdev_calc(char *ifname, char *ifname_desc, unsigned long long *rx, unsigned long long *tx, char *ifname_desc2, unsigned long long *rx2, unsigned long long *tx2, char *nv_lan_ifname, char *nv_lan_ifnames)
 {
-#if defined(RTCONFIG_QCA) && defined(RTCONFIG_LACP)
-	const char *lacpiface[] = {
-#if defined(RTCONFIG_SWITCH_QCA8075_QCA8337_PHY_AQR107_AR8035_QCA8033)
-		"eth2", "eth1"			/* LAN1, LAN2 */
-#else
-#error Define slave interface.
-#endif
-	};
-#endif
 	char word[100], word1[100], *next, *next1;
 	char tmp[100];
 	char modelvlan[32];
@@ -2522,6 +2549,54 @@ unsigned int netdev_calc(char *ifname, char *ifname_desc, unsigned long long *rx
 		    (!p->exact && !strncmp(p->name, ifname, strlen(p->name))))
 			return 0;
 	}
+
+#if defined(RTCONFIG_QCA)
+#if defined(RTCONFIG_LACP)
+	/* Handle LAN aggregation interfaces.
+	 * tmcal.js converts LACPx as LANx.
+	 */
+	if (nvram_match("lacp_enabled", "1")) {
+		int b;
+		const char *q;
+#if defined(RTCONFIG_SWITCH_QCA8075_QCA8337_PHY_AQR107_AR8035_QCA8033)
+		uint32_t m = BS_LAN1_PORT_MASK | BS_LAN2_PORT_MASK;
+#else
+#error	FIXME
+#endif
+		while ((b = ffs(m)) > 0) {
+			b--;
+			if (b >= BS_LAN1_PORT_ID && b <= BS_LAN8_PORT_ID
+			 && (q = bs_port_id_to_iface(b)) != NULL && !strcmp(ifname, q)) {
+				snprintf(ifname_desc, 12, "LACP%d", b);
+				return 1;
+			}
+
+			m &= ~(1U << b);
+		}
+	}
+#endif
+
+#if defined(RTCONFIG_BONDING_WAN)
+	/* Handle WAN aggregation interfaces.
+	 * tmcal.js converts WAGGR? as correct port name.
+	 */
+	if (bond_wan_enabled()) {
+		int b;
+		const char *q;
+		uint32_t m =  nums_str_to_u32_mask(nvram_get("wanports_bond"));
+
+		while ((b = ffs(m)) > 0) {
+			b--;
+			if ((q = bs_port_id_to_iface(b)) != NULL && !strcmp(ifname, q)) {
+				snprintf(ifname_desc, 12, "WAGGR%d", b);
+				return 1;
+			}
+
+			m &= ~(1U << b);
+		}
+	}
+#endif
+#endif
 
 	// find in LAN interface
 	if (find_word(nv_lan_ifnames, ifname))
@@ -2627,16 +2702,6 @@ unsigned int netdev_calc(char *ifname, char *ifname_desc, unsigned long long *rx
 		strcpy(ifname_desc, "BRIDGE");
 		return 1;
 	}
-#if defined(RTCONFIG_QCA) && defined(RTCONFIG_LACP)
-	else if (nvram_match("lacp_enabled", "1") && !strcmp(ifname, lacpiface[0])) {
-		strlcpy(ifname_desc, "LACP1", 12);
-		return 1;
-	}
-	else if (nvram_match("lacp_enabled", "1") && !strcmp(ifname, lacpiface[1])) {
-		strlcpy(ifname_desc, "LACP2", 12);
-		return 1;
-	}
-#endif
 	// find in WAN interface
 	else if (ifname && (unit = get_wan_unit(ifname)) >= 0)	{
 		if (dualwan_unit__nonusbif(unit)) {
@@ -4500,6 +4565,88 @@ int isValid_digit_string(const char *string) {
 	return 1;
 }
 
+/*
+ * Validate a char is not valid for a host hame
+ * @name:	pointer to  a string.
+ */
+static int is_invalid_char_for_hostname(int c)
+{
+	int ret = 0;
+
+	if (c < 0x20)
+		ret = 1;
+#if 0
+	else if (c >= 0x21 && c <= 0x2c)	/* !"#$%&'()*+, */
+		ret = 1;
+#else	/* allow '+' */
+	else if (c >= 0x21 && c <= 0x2a)	/* !"#$%&'()* */
+		ret = 1;
+	else if (c == 0x2c)			/* , */
+		ret = 1;
+#endif
+	else if (c >= 0x2e && c <= 0x2f)	/* ./ */
+		ret = 1;
+	else if (c >= 0x3a && c <= 0x40)	/* :;<=>?@ */
+		ret = 1;
+#if 0
+	else if (c >= 0x5b && c <= 0x60)	/* [\]^_ */
+		ret = 1;
+#else	/* allow '_' */
+	else if (c >= 0x5b && c <= 0x5e)	/* [\]^ */
+		ret = 1;
+	else if (c == 0x60)			/* ` */
+		ret = 1;
+#endif
+	else if (c >= 0x7b)			/* {|}~ DEL */
+		ret = 1;
+#if 0
+	printf("%c (0x%02x) is %svalid for hostname\n", c, c, (ret == 0) ? "  " : "in");
+#endif
+	return ret;
+}
+
+/*
+ * Validate a string is valid host name
+ * @name:	pointer to  a string.
+ */
+int is_valid_hostname(const char *name)
+{
+	const char *p;
+	int c;
+
+	if (!name)
+		return 0;
+
+	for (p = name; (c = *p); p++) {
+		if (is_invalid_char_for_hostname(c))
+			return 0;
+	}
+
+	return p - name;
+}
+
+/*
+ * Validate a string is valid domain name
+ * @name:	pointer to  a string.
+ */
+int is_valid_domainname(const char *name)
+{
+	const char *p;
+	int c;
+
+	if (!name)
+		return 0;
+
+	for (p = name; (c = *p); p++) {
+		if (((c | 0x20) < 'a' || (c | 0x20) > 'z') &&
+		    ((c < '0' || c > '9')) &&
+		    (c != '.' && c != '-' && c != '_'))
+			return 0;
+	}
+
+	return p - name;
+}
+
 #if defined(RTCONFIG_AMAS)
 /*
 	define amas_lib trigger function
@@ -4697,5 +4844,23 @@ int get_index_page(char *page, int size)
 	else
 		strlcpy(page, "index.asp", size);
 
+	return 0;
+}
+
+/*
+	general API to check wss supported interface
+*/
+int amazon_wss_ap_isolate_support(char *prefix)
+{
+	char gn_wbl_en[32] = {0};
+
+	/* not amazon_wss interface */
+	if (strcmp(prefix, "wl0.2_")) return 0;
+
+	/* amazon_ffs is enabled */
+	snprintf(gn_wbl_en, sizeof(gn_wbl_en), "%sgn_wbl_enable", prefix);
+	if (nvram_match(gn_wbl_en, "1")) return 1;
+
+	/* mismatch */
 	return 0;
 }

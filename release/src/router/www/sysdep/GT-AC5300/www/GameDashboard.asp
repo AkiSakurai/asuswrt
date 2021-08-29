@@ -825,22 +825,10 @@ var netoolApiDashBoard = {
 	}
 }
 function updateClientsCount() {
-	$.ajax({
-		url: '/update_networkmapd.asp',
-		dataType: 'script', 
-		error: function(xhr) {
-			setTimeout("updateClientsCount();", 1000);
-		},
-		success: function(response){
-			client_count = fromNetworkmapd_maclist[0].length;
-			if(fromNetworkmapd_maclist[0].length == '0'){
-				client_count = totalClientNum.online;
-			}
-
-			$("#client_count").html(client_count);
-			setTimeout("updateClientsCount();", 5000);
-		}
-	});
+	originData.fromNetworkmapd[0] = httpApi.hookGet("get_clientlist", true);
+	genClientList();
+	$("#client_count").html(totalClientNum.online);
+	setTimeout("updateClientsCount();", 5000);
 }
 
 function rgbToHex(c){

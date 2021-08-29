@@ -79,13 +79,13 @@
 		mux_0 {
 			pins = "gpio68";
 			function = "mdc";
-			drive-strength = <8>;
+			drive-strength = <16>;
 			bias-pull-up;
 		};
 		mux_1 {
 			pins = "gpio69";
 			function = "mdio";
-			drive-strength = <8>;
+			drive-strength = <16>;
 			bias-pull-up;
 		};
 	};
@@ -286,7 +286,7 @@
 };
 
 &soc {
-	mdio@90000 {
+	mdio0: mdio@90000 {
 		pinctrl-0 = <&mdio_pins>;
 		pinctrl-names = "default";
 		phy-reset-gpio = <&tlmm 37 0>;

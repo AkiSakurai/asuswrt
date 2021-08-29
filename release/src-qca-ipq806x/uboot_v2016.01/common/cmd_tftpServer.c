@@ -354,7 +354,7 @@ static int load_asus_firmware(cmd_tbl_t *cmdtp, int argc, char * const argv[])
 		}
 
 #if defined(CONFIG_AQR_PHYADDR)
-		if (is_aqr_phy_exist()) {
+		if (aqr_phy_chip() == AQR_PHY_107_113_A1B0) {
 			ipq_board_fw_download(CONFIG_AQR_PHYADDR);
 			__ipq_qca_aquantia_phy_init();
 		}
@@ -382,7 +382,7 @@ static int load_asus_firmware(cmd_tbl_t *cmdtp, int argc, char * const argv[])
 	}
 
 #if defined(CONFIG_AQR_PHYADDR)
-	if (is_aqr_phy_exist()) {
+	if (aqr_phy_chip() == AQR_PHY_107_113_A1B0) {
 		ipq_board_fw_download(CONFIG_AQR_PHYADDR);
 		__ipq_qca_aquantia_phy_init();
 	}

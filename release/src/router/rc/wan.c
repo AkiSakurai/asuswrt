@@ -1415,8 +1415,17 @@ TRACE_PT("3g begin with %s.\n", wan_ifname);
 						memcpy(ifr.ifr_hwaddr.sa_data, lan, 6);	//change to the original mac when same as wan in eth1
 				}
 #endif	/* RTCONFIG_DETWAN */
-				ifr.ifr_hwaddr.sa_family = ARPHRD_ETHER;
-				ioctl(s, SIOCSIFHWADDR, &ifr);
+#if defined(RTCONFIG_BONDING_WAN) && defined(RTCONFIG_QCA)
+				if (!strncmp(ifr.ifr_name, "bond", 4)) {
+					ether_etoa((unsigned char *) ifr.ifr_hwaddr.sa_data, eabuf);
+					set_bonding_iface_hwaddr(ifr.ifr_name, eabuf);
+				} else {
+#endif
+					ifr.ifr_hwaddr.sa_family = ARPHRD_ETHER;
+					ioctl(s, SIOCSIFHWADDR, &ifr);
+#if defined(RTCONFIG_BONDING_WAN) && defined(RTCONFIG_QCA)
+				}
+#endif
 			}
 
 			/* Bring up i/f */
@@ -1797,6 +1806,10 @@ stop_wan_if(int unit)
 		stop_igmpproxy();
 	}
 
+#ifdef RTCONFIG_OPENVPN
+	stop_ovpn_eas();
+#endif
+
 #ifdef RTCONFIG_VPNC
 	/* Stop VPN client */
 	stop_vpnc();
@@ -2021,7 +2034,7 @@ int update_resolvconf(void)
 				if (dnspriv_enable)
 					break;
 #endif
-#ifdef RTCONFIG_OPENVPN
+#if defined(RTCONFIG_OPENVPN) && !defined(RTCONFIG_VPN_FUSION)
 				if (write_ovpn_resolv_dnsmasq(fp_servers))
 					break;
 #endif
@@ -2031,7 +2044,9 @@ int update_resolvconf(void)
 					break;
 #endif
 				foreach(tmp, (*wan_dns ? wan_dns : wan_xdns), next)
-					fprintf(fp_servers, "server=%s\n", tmp);
+				{
+ 					fprintf(fp_servers, "server=%s\n", tmp);
+				}
 			} while (0);
 
 			wan_domain = nvram_safe_get_r(strcat_r(prefix, "domain", tmp), wan_domain_buf, sizeof(wan_domain_buf));
@@ -2607,6 +2622,9 @@ wan_up(const char *pwan_ifname)
 	/* default route via default gateway */
 	add_multi_routes(0);
 
+	/* Kick syslog to re-resolve remote server */
+	reload_syslogd();
+
 #if defined(RTCONFIG_USB_MODEM) && defined(RTCONFIG_INTERNAL_GOBI)
 	if(dualwan_unit__usbif(wan_unit)){
 		modem_unit = get_modemunit_by_type(get_dualwan_by_unit(wan_unit));
@@ -2642,6 +2660,10 @@ wan_up(const char *pwan_ifname)
 
 	/* Sync time */
 	refresh_ntpc();
+
+#ifdef RTCONFIG_VPN_FUSION
+	vpnc_set_internet_policy(1);
+#endif
 
 #if !defined(RTCONFIG_MULTIWAN_CFG)
 	if (wan_unit != wan_primary_ifunit()
@@ -2940,6 +2962,10 @@ wan_down(char *wan_ifname)
 #ifdef RTCONFIG_LANTIQ
 	disable_ppa_wan(wan_ifname);
 #endif
+#ifdef RTCONFIG_VPN_FUSION
+	vpnc_set_internet_policy(0);
+#endif
+
 }
 
 int
@@ -3420,7 +3446,7 @@ stop_wan(void)
 #else
 	_dprintf("no wifison feature\n");
 #endif
-	}	
+	}
 	else
 	{
 		if (!is_routing_enabled())
@@ -3457,9 +3483,6 @@ stop_wan(void)
 	fc_fini();
 #endif
 
-#ifdef RTCONFIG_OPENVPN
-	stop_ovpn_eas();
-#endif
 #if defined(RTCONFIG_PPTPD) || defined(RTCONFIG_ACCEL_PPTPD)
 	if (nvram_get_int("pptpd_enable"))
 		stop_pptpd();
@@ -3706,8 +3729,11 @@ int autodet_main(int argc, char *argv[]){
 		}
 
 		if(nvram_get_int(strcat_r(prefix2, "state", tmp2)) == AUTODET_STATE_FINISHED_WITHPPPOE
-				|| nvram_get_int(strcat_r(prefix2, "auxstate", tmp2)) == AUTODET_STATE_FINISHED_WITHPPPOE)
+				|| nvram_get_int(strcat_r(prefix2, "auxstate", tmp2)) == AUTODET_STATE_FINISHED_WITHPPPOE){
+			nvram_set_int(strcat_r(prefix2, "state", tmp2), AUTODET_STATE_FINISHED_OK);
+			nvram_set_int(strcat_r(prefix2, "auxstate", tmp2), AUTODET_STATE_FINISHED_WITHPPPOE);
 			continue;
+		}
 
 		nvram_set_int(strcat_r(prefix2, "state", tmp2), AUTODET_STATE_INITIALIZING);
 		nvram_set_int(strcat_r(prefix2, "auxstate", tmp2), AUTODET_STATE_INITIALIZING);
@@ -4113,7 +4139,7 @@ static void detwan_preinit(void)
 		nvram_set("lan_ifnames", lan);
 
 	stop_wanduck();
-	// Only MAP-AC2200 && MAC-AC1300 support DETWAN 
+	// Only MAP-AC2200 && MAC-AC1300 support DETWAN
 	// following configs are same in both products
 	nvram_set("detwan_proto", "-1");
 	nvram_set("wanports_mask", "0");

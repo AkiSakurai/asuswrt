@@ -486,7 +486,7 @@ static void ipq8074_battery_power(void)
 
 static void pre_erp_standby_mode(int model)
 {
-	if (model <= MODEL_UNKNOWN || model >= MODEL_MAX)
+	if (model <= MODEL_UNKNOWN)
 		return;
 
 	return;
@@ -494,7 +494,7 @@ static void pre_erp_standby_mode(int model)
 
 static void post_erp_standby_mode(int model)
 {
-	if (model <= MODEL_UNKNOWN || model >= MODEL_MAX)
+	if (model <= MODEL_UNKNOWN)
 		return;
 
 	switch (model) {
@@ -628,7 +628,7 @@ static void ipq8074_ac_power(void)
 
 static void pre_erp_wakeup_mode(int model)
 {
-	if (model <= MODEL_UNKNOWN || model >= MODEL_MAX)
+	if (model <= MODEL_UNKNOWN)
 		return;
 
 	switch (model) {
@@ -642,7 +642,7 @@ static void pre_erp_wakeup_mode(int model)
 
 static void post_erp_wakeup_mode(int model)
 {
-	if (model <= MODEL_UNKNOWN || model >= MODEL_MAX)
+	if (model <= MODEL_UNKNOWN)
 		return;
 
 	return;

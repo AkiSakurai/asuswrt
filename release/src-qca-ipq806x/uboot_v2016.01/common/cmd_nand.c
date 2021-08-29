@@ -492,6 +492,19 @@ static int do_nand(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 		return 0;
 	}
 
+#ifdef READ_ONFI_PAGE_PARA
+	if (strcmp(cmd, "onfipara") == 0) {
+		if (onfi_para.size == 0) {
+			printf("\n Non-ONFI device found.\n");
+			return 0;
+		}
+		printf("\n**************ONFI PARAMETER PAGE*************\n");
+		Read_onfi_ParameterPage_DataStructure(onfi_para.buffer, onfi_para.size);
+		printf("\n********************END***********************\n");
+		return 0;
+	}
+#endif
+
 	/*
 	 * Syntax is:
 	 *   0    1     2       3    4
@@ -949,6 +962,9 @@ static char nand_help_text[] =
 	"nand erase.part [clean] partition - erase entire mtd partition'\n"
 	"nand erase.chip [clean] - erase entire chip'\n"
 	"nand bad - show bad blocks\n"
+#ifdef READ_ONFI_PAGE_PARA
+	"nand onfipara - Read entire onfi parameter page data structure\n"
+#endif
 	"nand dump[.oob] off - dump page\n"
 #ifdef CONFIG_CMD_NAND_TORTURE
 	"nand torture off - torture block at offset\n"

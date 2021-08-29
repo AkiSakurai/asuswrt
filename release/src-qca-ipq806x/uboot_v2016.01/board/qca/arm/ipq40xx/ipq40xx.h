@@ -28,7 +28,12 @@
 #define GCC_BLSP1_UART1_APPS_CBCR       0x0180203c
 #define GCC_SDCC1_BCR		0x1818000
 
+#define MSM_SDC1_BASE		0x7824000
+#define MSM_SDC1_MCI_HC_MODE	0x7824078
+#define MSM_SDC1_SDHCI_BASE	0x7824900
+
 #define KERNEL_AUTH_CMD		0x13
+#define SCM_CMD_SEC_AUTH	0x15
 
 unsigned int smem_get_board_machtype(void);
 
@@ -49,18 +54,6 @@ typedef struct {
 } ipq40xx_edma_board_cfg_t;
 
 typedef struct {
-	int gpio;
-	unsigned int func;
-	unsigned int out;
-	unsigned int pull;
-	unsigned int drvstr;
-	unsigned int oe;
-	unsigned int gpio_vm;
-	unsigned int gpio_od_en;
-	unsigned int gpio_pu_res;
-} gpio_func_data_t;
-
-typedef struct {
 	unsigned int uart_dm_base;
 	gpio_func_data_t *dbg_uart_gpio;
 } uart_cfg_t;
@@ -76,6 +69,8 @@ void board_pci_init(int id);
 __weak void board_pcie_clock_init(int id) {}
 __weak void aquantia_phy_reset_init_done(void) {}
 __weak void aquantia_phy_reset_init(void) {}
+__weak void qgic_init(void) {}
+__weak void handle_noc_err(void) {}
 __weak int ipq_get_tz_version(char *version_name, int buf_size)
 {
 	return 1;
@@ -157,9 +152,10 @@ typedef enum {
 	SMEM_BOOT_FLASH_DENSITY = 482,
 	SMEM_PARTITION_TABLE_OFFSET = 483,
 	SMEM_BOOT_DUALPARTINFO = 484,
+	SMEM_NUM_CPUINFO = 485,
 	SMEM_FIRST_VALID_TYPE = SMEM_SPINLOCK_ARRAY,
-	SMEM_LAST_VALID_TYPE = SMEM_BOOT_DUALPARTINFO,
-	SMEM_MAX_SIZE = SMEM_BOOT_DUALPARTINFO + 1,
+	SMEM_LAST_VALID_TYPE = SMEM_NUM_CPUINFO,
+	SMEM_MAX_SIZE = SMEM_NUM_CPUINFO + 1,
 } smem_mem_type_t;
 
 unsigned smem_read_alloc_entry(smem_mem_type_t type, void *buf, int len);
@@ -171,4 +167,6 @@ extern const add_node_t add_fdt_node[];
 unsigned int get_board_index(unsigned int machid);
 void reset_crashdump(void);
 void ipq_fdt_fixup_socinfo(void *blob);
+void reset_board(void);
+
 #endif

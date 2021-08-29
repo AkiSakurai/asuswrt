@@ -1168,8 +1168,8 @@ const zoneinfo_t tz_list[] = {
 	{"UTC4_2",	"America/Caracas"},	// (GMT-04:00) Caracas
         {"UTC4DST_2",	"America/Santiago"},	// (GMT-04:00) Santiago
         {"NST3.30DST",	"Canada/Newfoundland"},	// (GMT-03:30) Newfoundland
-        {"EBST3DST_1",	"America/Araguaina"},	// (GMT-03:00) Brasilia
-        {"UTC3",	"America/Araguaina"},	// (GMT-03:00) Buenos Aires, Georgetown
+        {"EBST3",	"America/Araguaina"},	// (GMT-03:00) Brasilia //EBST3DST_1
+		{"UTC3",	"America/Araguaina"},	// (GMT-03:00) Buenos Aires, Georgetown
         {"EBST3DST_2",	"America/Godthab"},	// (GMT-03:00) Greenland
         {"UTC2",	"Atlantic/South_Georgia"},	// (GMT-02:00) South Georgia
         {"EUT1DST",     "Atlantic/Azores"},	// (GMT-01:00) Azores
@@ -1199,14 +1199,14 @@ const zoneinfo_t tz_list[] = {
         {"UTC-3_1",     "Asia/Kuwait"},		// (GMT+03:00) Kuwait, Riyadh
         {"UTC-3_2",     "Africa/Nairobi"},	// (GMT+03:00) Nairobi
         {"UTC-3_3",     "Europe/Minsk"},	// (GMT+03:00) Minsk
-        {"UTC-3_4",     "Europe/Moscow"},	// (GMT+03:00) Moscow, St. Petersburg
-        {"UTC-3_5",     "Europe/Volgograd"},	// (GMT+03:00) Volgograd
+        {"UTC-3_4",     "Europe/Moscow"},	// (GMT+03:00) Moscow, St. Petersburg        
         {"IST-3",       "Asia/Baghdad"},	// (GMT+03:00) Baghdad
         {"UTC-3_6",     "Asia/Istanbul"},	// (GMT+03:00) Istanbul
         {"UTC-3.30DST", "Asia/Tehran"},		// (GMT+03:00) Tehran        
         {"UTC-4_1",     "Asia/Muscat"},		// (GMT+04:00) Abu Dhabi, Muscat
         {"UTC-4_5",     "Europe/Samara"},	// (GMT+04:00) Izhevsk, Samara
-        {"UTC-4_4",     "Asia/Tbilisi"},	// (GMT+04:00) Tbilisi, Yerevan
+		{"UTC-4_7",     "Europe/Volgograd"},	// (GMT+03:00) Volgograd	//UTC-3_5
+		{"UTC-4_4",     "Asia/Tbilisi"},	// (GMT+04:00) Tbilisi, Yerevan
         {"UTC-4_6",	"Asia/Baku"},		// (GMT+04:00) Baku
         {"UTC-4.30",    "Asia/Kabul"},		// (GMT+04:30) Kabul
         {"UTC-5",       "Asia/Karachi"},	// (GMT+05:00) Islamabad, Karachi, Tashkent
@@ -1322,7 +1322,13 @@ void time_zone_x_mapping(void)
 	else if (nvram_match("time_zone", "UTC-10_5")){		/*Magadan*/
 		nvram_set("time_zone", "UTC-11_4");
 	}
-
+	else if (nvram_match("time_zone", "EBST3DST_1")){	/*Brasilia*/
+		nvram_set("time_zone", "EBST3");
+		nvram_set("time_zone_dst", "0");
+	}
+	else if (nvram_match("time_zone", "UTC-3_5")){	/*Volgograd*/
+		nvram_set("time_zone", "UTC-4_7");
+	}
 
 	snprintf(tmpstr, sizeof(tmpstr), "%s", nvram_safe_get("time_zone"));
 	/* replace . with : */
@@ -1393,89 +1399,6 @@ setup_timezone(void)
 	}
 
 	settimeofday(tvp, &tz);
-}
-
-int
-is_invalid_char_for_hostname(char c)
-{
-	int ret = 0;
-
-	if (c < 0x20)
-		ret = 1;
-#if 0
-	else if (c >= 0x21 && c <= 0x2c)	/* !"#$%&'()*+, */
-		ret = 1;
-#else	/* allow '+' */
-	else if (c >= 0x21 && c <= 0x2a)	/* !"#$%&'()* */
-		ret = 1;
-	else if (c == 0x2c)			/* , */
-		ret = 1;
-#endif
-	else if (c >= 0x2e && c <= 0x2f)	/* ./ */
-		ret = 1;
-	else if (c >= 0x3a && c <= 0x40)	/* :;<=>?@ */
-		ret = 1;
-#if 0
-	else if (c >= 0x5b && c <= 0x60)	/* [\]^_ */
-		ret = 1;
-#else	/* allow '_' */
-	else if (c >= 0x5b && c <= 0x5e)	/* [\]^ */
-		ret = 1;
-	else if (c == 0x60)			/* ` */
-		ret = 1;
-#endif
-	else if (c >= 0x7b)			/* {|}~ DEL */
-		ret = 1;
-#if 0
-	printf("%c (0x%02x) is %svalid for hostname\n", c, c, (ret == 0) ? "  " : "in");
-#endif
-	return ret;
-}
-
-int
-is_valid_hostname(const char *name)
-{
-	int len, i;
-
-	if (!name)
-		return 0;
-
-	len = strlen(name);
-	for (i = 0; i < len ; i++) {
-		if (is_invalid_char_for_hostname(name[i])) {
-			len = 0;
-			break;
-		}
-	}
-#if 0
-	printf("%s is %svalid for hostname\n", name, len ? "" : "in");
-#endif
-	return len;
-}
-
-int
-is_valid_domainname(const char *name)
-{
-	int len, i;
-	unsigned char c;
-
-	if (!name)
-		return 0;
-
-	len = strlen(name);
-	for (i = 0; i < len; i++) {
-		c = name[i];
-		if (((c | 0x20) < 'a' || (c | 0x20) > 'z') &&
-		    ((c < '0' || c > '9')) &&
-		    (c != '.' && c != '-' && c != '_')) {
-			len = 0;
-			break;
-		}
-	}
-#if 0
-	printf("%s is %svalid for domainname\n", name, len ? "" : "in");
-#endif
-	return len;
 }
 
 int get_meminfo_item(const char *name)

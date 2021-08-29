@@ -1,4 +1,4 @@
-VERSION:51318292
+VERSION:51121684
 
 1,II,WLAN_BWA_SET_PMAC_BW: mac_id=%d, pmac_bw=%d [!WAL_EOK returned] 
 2,III,WLAN_BWA_UPDATE_VDEV_BW: phy_mode=%d, opmode=%d, Requested operating voltage corner=0x%x 
@@ -2759,808 +2759,806 @@ phy_warm_reset = %d
 2574,I,HK_DBG invalid peer 
 2575,IIIIII,flush_38_hist: %02d %02d %02d %02d %02d %02d 
 2576,IIII,JIRA1967 WAR_Enable=%u, Duration_set=%u, Flag_set_count=%u, WAR_hit_count=%u 
-2577,I,TX_ABORT FAILED 0x%x 
-2578,II,TX resuming on MAC: %p, %lx
+2577,IIIIII,_psd: desc %d, user_info 0x%x, ppdu 0x%x, seq_ctrl 0x%x, userid %d, flags %d 
+2578,I,TX_ABORT FAILED 0x%x 
+2579,II,TX resuming on MAC: %p, %lx
  
-2579,III,seq not cleaned ! queue_id:%x, txq:%p, seq_ctrl:%p
+2580,III,seq not cleaned ! queue_id:%x, txq:%p, seq_ctrl:%p
  
-2580,IIII,MSDUTTL TQM peer_id:%d deq:%d tid_num:%d qtype:%d 
-2581,III,peer:%p, tid:%d, SSN:%x 
-2582,I,invalid TID number %d 
+2581,IIII,MSDUTTL TQM peer_id:%d deq:%d tid_num:%d qtype:%d 
+2582,III,peer:%p, tid:%d, SSN:%x 
+2583,I,invalid TID number %d 
  
-2583,I,Received wrong eapol frame as g1 frame Qpeer: %p 
+2584,I,Received wrong eapol frame as g1 frame Qpeer: %p 
  
-2584,IIII,TXPPDU_0 ppdu_id:0x%08x sched_result:%d flush_reasoni:%d uid1__uid2:0x%08x 
-2585,I,delimiter user track: peer:%d runs out of data 
+2585,IIII,TXPPDU_0 ppdu_id:0x%08x sched_result:%d flush_reasoni:%d uid1__uid2:0x%08x 
 2586,I,delimiter user track: peer:%d runs out of data 
-2587,IIIIIIIII,TXPPDU_0 peerid_tidnum_hwq:0x%08x ppdu_id:0x%08x tstamp:0x%08x%08x dur:%5u mpdutried__failed:0x%08x mcs_nss_bw_pream:0x%08x seqnum__sifs__sch:0x%08x tries__fes__flush:0x%08x 
-2588,IIIII,TXPPDU_1_064 ssn__basn:0x%08x enq_bitmap:%08x_%08x compl_bitmap:%08x_%08x 
-2589,IIIIIIIII,TXPPDU_1_256 ssn__basn:0x%08x compl_bitmap:%08x_%08x_%08x_%08x_%08x_%08x_%08x_%08x 
-2590,I,aligned_stainfo %x 
+2587,I,delimiter user track: peer:%d runs out of data 
+2588,IIIIIIIII,TXPPDU_0 peerid_tidnum_hwq:0x%08x ppdu_id:0x%08x tstamp:0x%08x%08x dur:%5u mpdutried__failed:0x%08x mcs_nss_bw_pream:0x%08x seqnum__sifs__sch:0x%08x tries__fes__flush:0x%08x 
+2589,IIIII,TXPPDU_1_064 ssn__basn:0x%08x enq_bitmap:%08x_%08x compl_bitmap:%08x_%08x 
+2590,IIIIIIIII,TXPPDU_1_256 ssn__basn:0x%08x compl_bitmap:%08x_%08x_%08x_%08x_%08x_%08x_%08x_%08x 
+2591,I,aligned_stainfo %x 
  
-2591,II,_wal_peer_flush_tids: send msg to SCHED_ALGO, thread_id =%d tid_bitmap=0x%x
+2592,II,_wal_peer_flush_tids: send msg to SCHED_ALGO, thread_id =%d tid_bitmap=0x%x
  
-2592,I,isr_hdlr: req=%x
+2593,I,isr_hdlr: req=%x
  
-2593,I,TX_IST_TRIGGER RECEIVED %d
+2594,I,TX_IST_TRIGGER RECEIVED %d
  
-2594,IIII,abort incompl seq, txq:%x, seq_ctrl=%p, cmds_posted=%x, compl=%x
+2595,IIII,abort incompl seq, txq:%x, seq_ctrl=%p, cmds_posted=%x, compl=%x
  
-2595,IIIII,CONG_CTRL_FD sw_pid:%d tid_num:%d buf_id:%d desc_id:%d bin_idx:%d 
-2596,IIIII,CONG_CTRL_AD sw_pid:%d tid_num:%d buf_id:%d desc_id:%d bin_idx:%d 
-2597,III,CONG_CTRL_DropD sw_pid:%d tid_num:%d buf_id:%d 
-2598,III,CONG_CTRL_DiscD sw_pid:%d tid_num:%d buf_id:%d 
-2599,IIIIIIIII,CONGCTRL FW_CONTROL *OVERRIDE* peer_id:%d tid_num:%d traffic_enq:%d drop:%d deq:%d tot_deq:%d rate_max_allowed:%d old_threshold:%d max_extra:%d 
-2600,IIIIIIIII,CONGCTRL FW_CONTROL *DISABLED* peer_id:%d tid_num:%d traffic_enq:%d drop:%d deq:%d tot_deq:%d rate_max_allowed:%d old_threshold:%d max_extra:%d 
-2601,IIIIIIIII,CONGCTRL FW_CONTROL peer_id:%d tid_num:%d traffic_enq:%d drop:%d deq:%d tot_deq:%d rate_max_allowed:%d old_threshold:%d max_extra:%d 
-2602,IIIII,cbf_mimo_ctrl Nr=%x,Nc=%x,fb=%x,BW=%x,Ng=%x 
-2603,,Set the Lowest rate for the CBF 
-2604,,_wal_enable_cbf_timer 
-2605,,_wal_disable_cbf_timer 
-2606,,_wal_enable_cv_timer 
-2607,,_wal_disable_cv_timer 
-2608,II,cbf nss mis-match cv_flags=%x cv_Nc=%x
+2596,IIIII,CONG_CTRL_FD sw_pid:%d tid_num:%d buf_id:%d desc_id:%d bin_idx:%d 
+2597,IIIII,CONG_CTRL_AD sw_pid:%d tid_num:%d buf_id:%d desc_id:%d bin_idx:%d 
+2598,III,CONG_CTRL_DropD sw_pid:%d tid_num:%d buf_id:%d 
+2599,III,CONG_CTRL_DiscD sw_pid:%d tid_num:%d buf_id:%d 
+2600,IIIIIIIII,CONGCTRL FW_CONTROL *OVERRIDE* peer_id:%d tid_num:%d traffic_enq:%d drop:%d deq:%d tot_deq:%d rate_max_allowed:%d old_threshold:%d max_extra:%d 
+2601,IIIIIIIII,CONGCTRL FW_CONTROL *DISABLED* peer_id:%d tid_num:%d traffic_enq:%d drop:%d deq:%d tot_deq:%d rate_max_allowed:%d old_threshold:%d max_extra:%d 
+2602,IIIIIIIII,CONGCTRL FW_CONTROL peer_id:%d tid_num:%d traffic_enq:%d drop:%d deq:%d tot_deq:%d rate_max_allowed:%d old_threshold:%d max_extra:%d 
+2603,IIIII,cbf_mimo_ctrl Nr=%x,Nc=%x,fb=%x,BW=%x,Ng=%x 
+2604,,Set the Lowest rate for the CBF 
+2605,,_wal_enable_cbf_timer 
+2606,,_wal_disable_cbf_timer 
+2607,,_wal_enable_cv_timer 
+2608,,_wal_disable_cv_timer 
+2609,II,cbf nss mis-match cv_flags=%x cv_Nc=%x
  
-2609,II,cbf bw mis-match cv_flags=%x cv_bw=%x
+2610,II,cbf bw mis-match cv_flags=%x cv_bw=%x
  
-2610,II,BTCOEX_DBG_MCI_2: Coex Band setting. WLAN1(%d),  WLAN2(%d)
+2611,II,BTCOEX_DBG_MCI_2: Coex Band setting. WLAN1(%d),  WLAN2(%d)
  
-2611,IIII,BTCOEX_DBG_MCI_2: PtaBtStomped(%d) PtaWlanStomped(%d) PtaBtHighPriFaling(%d) PtaBtHighPriRising(%d) 
-2612,IIII,BTCOEX_DBG_MCI_2: PtaBtLowPriFalling(%d) PtaBtLowPriRising(%d) PtaBtActiveFalling(%d) PtaBtActiveRising(%d) 
-2613,IIII,BTCOEX_DBG_MCI_2: Pta2BtStomped(%d) Pta2WlanStomped(%d) Pta2BtHighPriFaling(%d) Pta2BtHighPriRising(%d) 
-2614,IIII,BTCOEX_DBG_MCI_2: Pta2BtLowPriFalling(%d) Pta2BtLowPriRising(%d) Pta2BtActiveFalling(%d) Pta2BtActiveRising(%d) 
-2615,I,MCI_GPM_COEX: GPM Sent [0x%x] - CAL GRANT 
-2616,I,MCI_GPM_COEX: GPM Sent [0x%x] -  CAL REQ 
-2617,I,MCI_GPM_COEX: GPM Sent [0x%x] - CAL DONE 
-2618,I,COEX_POLL_BT_CAL_DONE_TIMEOUT: BtCalState(0x%x) 
-2619,III,COEX_WHAL_PAUSE: WlanCalState(%u) WlanMciState(%u) BtCalHwPaused(%u) 
-2620,III,COEX_RX_MCI_GPM_BT_CAL_REQ: Cal Req state(0x%x) WlanCalState(0x%x) BtCalState(0x%x) 
-2621,IIII,COEX_WLAN_CAL_START: BtMciState(0x%x) isFirstCal(%u) HsReqired(%u) WlanCalState(0x%x) 
-2622,II,COEX_WLAN_CAL_START: WlanCalState(0x%x) i(%u) 
-2623,IIIII,COEX_BtMciState: BtMciState(0x%x) BtCalState(0x%x) WlanCalState(0x%x) RxReqWakeCount(%u) RxRemoteResetCount(%u) 
-2624,I,COEX_RESTART_CAL: BtCalState(0x%x) 
-2625,I,COEX_GENERIC_ERROR: MCIIntfTimeout(%u) 
-2626,II,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x]- Version query 
-2627,IIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - WLAN Version resp. : Major(0x%x) Minor(0x%x) 
-2628,IIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x]- WLAN Conn. Status Report : 5G Status(0x%x) 2G Status(0x%x) 
-2629,IIIIIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x]- WLAN Unused channels : 0x%x 0x%x 0x%x 0x%x 0x%x 
-2630,IIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x]- Status Query : WLAN QueryType(0x%x) Source 0x%x 
-2631,III,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - Disable BT GPM : State(0x%x) 
-2632,IIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - BT Update flags : Opcode(0x%x) BT Flags(0x%x) 
-2633,IIIII,MCI_GPM_COEX: OBSOLETE GPM Sent [0x%x] [0x%x] - BT Pause profile : PauseSlot(0x%x) ProfileBitmap(0x%x) Data(0x%x) 
-2634,IIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - WLAN set ACL Inactivity Report : InactivityThresh(0x%x) LinkID(0x%x) 
-2635,IIIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - BT remote registry write : Address(0x%x) Value(0x%x) Op(0x%x) 
-2636,III,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - concurrent TX on chain0(%u) 
-2637,IIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - BT Airtime Stats Req: NumOfDelivery(0x%x) TestInterval(0x%x) 
-2638,III,WHAL_MCI_GPM_SENT: [0x%x] [0x%x] - WLAN Status Update : Status(0x%x) 
-2639,,NULL: Buffers not allocated 
-2640,,BTCOEX_DBG_MCI_2: Trying to power up. due to POWERUP_FAILURE, return 
+2612,IIII,BTCOEX_DBG_MCI_2: PtaBtStomped(%d) PtaWlanStomped(%d) PtaBtHighPriFaling(%d) PtaBtHighPriRising(%d) 
+2613,IIII,BTCOEX_DBG_MCI_2: PtaBtLowPriFalling(%d) PtaBtLowPriRising(%d) PtaBtActiveFalling(%d) PtaBtActiveRising(%d) 
+2614,IIII,BTCOEX_DBG_MCI_2: Pta2BtStomped(%d) Pta2WlanStomped(%d) Pta2BtHighPriFaling(%d) Pta2BtHighPriRising(%d) 
+2615,IIII,BTCOEX_DBG_MCI_2: Pta2BtLowPriFalling(%d) Pta2BtLowPriRising(%d) Pta2BtActiveFalling(%d) Pta2BtActiveRising(%d) 
+2616,I,MCI_GPM_COEX: GPM Sent [0x%x] - CAL GRANT 
+2617,I,MCI_GPM_COEX: GPM Sent [0x%x] -  CAL REQ 
+2618,I,MCI_GPM_COEX: GPM Sent [0x%x] - CAL DONE 
+2619,I,COEX_POLL_BT_CAL_DONE_TIMEOUT: BtCalState(0x%x) 
+2620,III,COEX_WHAL_PAUSE: WlanCalState(%u) WlanMciState(%u) BtCalHwPaused(%u) 
+2621,III,COEX_RX_MCI_GPM_BT_CAL_REQ: Cal Req state(0x%x) WlanCalState(0x%x) BtCalState(0x%x) 
+2622,IIII,COEX_WLAN_CAL_START: BtMciState(0x%x) isFirstCal(%u) HsReqired(%u) WlanCalState(0x%x) 
+2623,II,COEX_WLAN_CAL_START: WlanCalState(0x%x) i(%u) 
+2624,IIIII,COEX_BtMciState: BtMciState(0x%x) BtCalState(0x%x) WlanCalState(0x%x) RxReqWakeCount(%u) RxRemoteResetCount(%u) 
+2625,I,COEX_RESTART_CAL: BtCalState(0x%x) 
+2626,I,COEX_GENERIC_ERROR: MCIIntfTimeout(%u) 
+2627,II,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x]- Version query 
+2628,IIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - WLAN Version resp. : Major(0x%x) Minor(0x%x) 
+2629,IIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x]- WLAN Conn. Status Report : 5G Status(0x%x) 2G Status(0x%x) 
+2630,IIIIIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x]- WLAN Unused channels : 0x%x 0x%x 0x%x 0x%x 0x%x 
+2631,IIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x]- Status Query : WLAN QueryType(0x%x) Source 0x%x 
+2632,III,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - Disable BT GPM : State(0x%x) 
+2633,IIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - BT Update flags : Opcode(0x%x) BT Flags(0x%x) 
+2634,IIIII,MCI_GPM_COEX: OBSOLETE GPM Sent [0x%x] [0x%x] - BT Pause profile : PauseSlot(0x%x) ProfileBitmap(0x%x) Data(0x%x) 
+2635,IIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - WLAN set ACL Inactivity Report : InactivityThresh(0x%x) LinkID(0x%x) 
+2636,IIIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - BT remote registry write : Address(0x%x) Value(0x%x) Op(0x%x) 
+2637,III,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - concurrent TX on chain0(%u) 
+2638,IIII,MCI_GPM_COEX: GPM Sent [0x%x] [0x%x] - BT Airtime Stats Req: NumOfDelivery(0x%x) TestInterval(0x%x) 
+2639,III,WHAL_MCI_GPM_SENT: [0x%x] [0x%x] - WLAN Status Update : Status(0x%x) 
+2640,,NULL: Buffers not allocated 
+2641,,BTCOEX_DBG_MCI_2: Trying to power up. due to POWERUP_FAILURE, return 
  
-2641,,BTCOEX_DBG_MCI_2: Calling cxc power down
- 
-2642,II,BTCOEX_DBG_MCI_2: _whal_mci_powerup Power up wmac%d, and band is %dG
+2642,,BTCOEX_DBG_MCI_2: Calling cxc power down
  
 2643,II,BTCOEX_DBG_MCI_2: _whal_mci_powerup Power up wmac%d, and band is %dG
  
 2644,II,BTCOEX_DBG_MCI_2: _whal_mci_powerup Power up wmac%d, and band is %dG
  
-2645,II,ERROR_COEX_MCI_GPM: Drop GPM, Recovery in progress: SWGpmIndex(%u) NumGPM(%u) 
-2646,,COEX_MCI_ISR_IntRaw: BMH ISR overflow 
-2647,IIIIIII,WHAL_COEX_BMH_ISR: Tx(%u) Rx(%u) BmhIntRaw(0x%x) BmhRxMsgRaw(0x%x) BmhInt1Raw(0x%x) invalid_hdr(%u) cont_info_to(%u) 
-2648,,COEX_MCI_ISR_IntRaw: LMH ISR overflow 
-2649,,COEX_MCI_ISR_IntRaw: PMH ISR overflow 
-2650,,COEX_MCI_ISR_IntRaw: COEX MCIBasic Bus Sync Error in MCIM ISR 
-2651,,COEX_MCI_ISR_IntRaw: COEX Fatal error: MCI_ISR_IntRaw 
-2652,,COEX_MCI_ISR_IntRaw: MCIM ISR overflow 
-2653,,COEX_MCI_ISR_IntRaw: SMH ISR overflow 
-2654,IIIII,HWSCH_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x.0x%x) 
-2655,IIIII,TXPCU_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
-2656,IIIII,RXPCU_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
-2657,IIIII,PDG_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
-2658,IIIII,CRYPTO_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
-2659,IIIII,TXOLE_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
-2660,IIIII,RXOLE_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
-2661,IIIII,RXDMA_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
-2662,IIIII,RXDMA1_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
-2663,IIIII,TXDMA_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
-2664,II,whal_wmac_clr_rogue_ap_type_by_mask: rogue_ap_bit_mask[%d]: %d 
-2665,II,whal_wmac_set_rogue_ap_type: rogue_ap_bit_mask[%d]: %d 
-2666,III,%s: mac%d invalid time type %d
+2645,II,BTCOEX_DBG_MCI_2: _whal_mci_powerup Power up wmac%d, and band is %dG
  
-2667,I,CCE rxole last rule valid :0x%0x 
-2668,I,CCE tcl last rule valid :0x%0x 
-2669,I,CCE prev_super_rule rule valid :0x%0x 
-2670,I,CCE appended_super_rule_indication rule valid :0x%0x 
-2671,II,CCE last_super_rule_valid :0x%0x,current super_rule :0x%0x 
-2672,I,CCE rxole last rule valid :0x%0x 
-2673,I,CCE tcl last rule valid :0x%0x 
-2674,II,CCE Setting super rule number %d to : %d 
-2675,I,CCE updated super rule valids bitmap :0x%0x 
-2676,IIII,in whal api call:cce_drop_1: 0x%0x,cce_drop_2: 0x%0x,cce_drop_3: 0x%0x,cce_drop_4: 0x%0x 
-2677,I,in whal cce disable api call:idle: 0x%0x  
-2678,II,in whal cce disable api call:idle: 0x%0x ,iteration : %d 
-2679,II,in whal cce enable api call:idle: 0x%0x ,iteration : %d 
-2680,I,link_Desc_tshd register value:%02x 
+2646,II,ERROR_COEX_MCI_GPM: Drop GPM, Recovery in progress: SWGpmIndex(%u) NumGPM(%u) 
+2647,,COEX_MCI_ISR_IntRaw: BMH ISR overflow 
+2648,IIIIIII,WHAL_COEX_BMH_ISR: Tx(%u) Rx(%u) BmhIntRaw(0x%x) BmhRxMsgRaw(0x%x) BmhInt1Raw(0x%x) invalid_hdr(%u) cont_info_to(%u) 
+2649,,COEX_MCI_ISR_IntRaw: LMH ISR overflow 
+2650,,COEX_MCI_ISR_IntRaw: PMH ISR overflow 
+2651,,COEX_MCI_ISR_IntRaw: COEX MCIBasic Bus Sync Error in MCIM ISR 
+2652,,COEX_MCI_ISR_IntRaw: COEX Fatal error: MCI_ISR_IntRaw 
+2653,,COEX_MCI_ISR_IntRaw: MCIM ISR overflow 
+2654,,COEX_MCI_ISR_IntRaw: SMH ISR overflow 
+2655,IIIII,HWSCH_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x.0x%x) 
+2656,IIIII,TXPCU_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
+2657,IIIII,RXPCU_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
+2658,IIIII,PDG_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
+2659,IIIII,CRYPTO_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
+2660,IIIII,TXOLE_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
+2661,IIIII,RXOLE_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
+2662,IIIII,RXDMA_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
+2663,IIIII,RXDMA1_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
+2664,IIIII,TXDMA_TRACER_LOG: mac(%d), tbus_index(0x%x), dbg_select(0x%x), debug_trace(0x%x,0x%x) 
+2665,II,whal_wmac_clr_rogue_ap_type_by_mask: rogue_ap_bit_mask[%d]: %d 
+2666,II,whal_wmac_set_rogue_ap_type: rogue_ap_bit_mask[%d]: %d 
+2667,III,%s: mac%d invalid time type %d
+ 
+2668,I,CCE rxole last rule valid :0x%0x 
+2669,I,CCE tcl last rule valid :0x%0x 
+2670,I,CCE prev_super_rule rule valid :0x%0x 
+2671,I,CCE appended_super_rule_indication rule valid :0x%0x 
+2672,II,CCE last_super_rule_valid :0x%0x,current super_rule :0x%0x 
+2673,I,CCE rxole last rule valid :0x%0x 
+2674,I,CCE tcl last rule valid :0x%0x 
+2675,II,CCE Setting super rule number %d to : %d 
+2676,I,CCE updated super rule valids bitmap :0x%0x 
+2677,IIII,in whal api call:cce_drop_1: 0x%0x,cce_drop_2: 0x%0x,cce_drop_3: 0x%0x,cce_drop_4: 0x%0x 
+2678,I,in whal cce disable api call:idle: 0x%0x  
+2679,II,in whal cce disable api call:idle: 0x%0x ,iteration : %d 
+2680,II,in whal cce enable api call:idle: 0x%0x ,iteration : %d 
 2681,I,link_Desc_tshd register value:%02x 
-2682,II,Info: TPC = %u, %u
+2682,I,link_Desc_tshd register value:%02x 
+2683,II,Info: TPC = %u, %u
  
-2683,II,InfoTPC: Max TPC = %d Min TPC = %d
+2684,II,InfoTPC: Max TPC = %d Min TPC = %d
  
-2684,IIII,WMI_CMD_RX handle in data offload cmd=%d length=%d endPt=%d, pHTCbuf=%x 
-2685,IIII,WMI_CMD_RX handle in BE cmd=%d length=%d endPt=%d, pHTCbuf=%x 
-2686,IIII,WMI_CMD_RX handle in RT cmd=%d length=%d endPt=%d, pHTCbuf=%x 
-2687,IIII,WMI_CMD_RX cmd comp. handle in hif --free buf cmd=%d length=%d endPt=%d, pHTCbuf=%x 
-2688,II,WMI_EVT completion msg to RT pEvt=%p, thread_id=%d 
-2689,III,WMI_EVT msg to HIF EventId=%d length=%d pEvt=%p 
-2690,I,WMI_EVENT_SEND EventId = 0x%x 
-2691,II,WMI_CMD_RX CmdId = 0x%x Length = %d 
-2692,I,WMI_SEND_EVENT_WRONG_TLV CmdId/EventId = 0x%x 
-2693,IIII,WMI_CMD_RX process inline cmd=%d length=%d endPt=%d, pHTCbuf=%x 
-2694,IIIII,WMI_CMD_RX send dispatch msg to threads, cmd=%d length=%d endPt=%d, pHTCbuf=%x msg_size=%d 
-2695,IIII,RT WMI_EVT EventId=%d length=%d pEvt=%p filterAction:%d 
-2696,I, pending EventId = 0x%x 
-2697,II,WMI_EVENT_SEND drop EventId = 0x%x, action:0x%x 
-2698,III,WAL_AP_PS_DBGID_PEER_CREATE vdev_id = %d AssocID = %d peer:%0x 
-2699,III,WAL_AP_PS_DBGID_PEER_DELETE vdev_id = %d AssocID = %d peer:%0x 
-2700,IIII,WAL_AP_PS_DBGID_PSPOLL_REQ AssocID = %d Aid = %d PeerPSEnabled = %d SendNInProgress = %d 
-2701,III,WAL_AP_PS_DBGID_DUPLICATE_TRIGGER  AssocID = %d SeqNO = %d Tid = %d 
-2702,III,WAL_AP_PS_DBGID_NO_TRIGGER  AssocID = %d peer_handle->uapsd_trigger_tids = %d Tid = %d 
-2703,I,_wal_ps_buf_peer_rx_event_handler BE->SA, thread_id=%d 
-2704,I,_wal_ps_buf_peer_thread_comm_handler BE->SA, thread_id=%d 
-2705,I,_wal_ps_buf_peer_excess_retries_event_handler BE->SA, thread_id=%d 
-2706,II,WAL_AP_PS_DBGID_HOST_TX_PAUSE 0x%x 0x%x 
-2707,II,WAL_AP_PS_DBGID_PS_DESC_BIN_HWM Bitmap = 0x%x VdevMap = 0x%x 
-2708,II,WAL_AP_PS_DBGID_HOST_TX_UNPAUSE 0x%x 0x%x 
-2709,II,WAL_AP_PS_DBGID_PS_DESC_BIN_LWM Bitmap = 0x%x VdevMap = 0x%x 
-2710,IIII,WAL_AP_PS_DBGIG_SET_PARAM vdev_id = %d AssocID = %d Param = %d Value = %d 
-2711,IIII,WAL_AP_PS_DBGIG_UAPSD_CFG vdev_id = %d AssocID = %d UAPSDTriggerTids = 0x%x UAPSDDeliveryTids = 0x%x 
-2712,IIIII,WAL_AP_PS_DBGID_DETECT_OUT_OF_SYNC_STA vdev_id = %d AssocID = %d Timestamp = %d OldestTxBufferedWaitingMs = %d n_buffered_mpdu = %d 
-2713,IIIII,WAL_AP_PS_DBGID_DETECT_OUT_OF_SYNC_STA vdev_id = %d AssocID = %d Timestamp = %d OldestTxBufferedWaitingMs = %d QDepeth = %d 
-2714,II,WAL_AP_PS_DBGID_SLEEP_STA_INC vdev_id = %d num_sleeping_sta:%d 
-2715,II,WAL_AP_PS_DBGID_SLEEP_STA_DEC vdev_id = %d num_sleeping_sta:%d 
-2716,II,WAL_AP_PS_DBGID_HOST_TX_PAUSE vdev_id = %d : 0x%x 
-2717,II,WAL_AP_PS_DBGID_HOST_TX_UNPAUSE vdev_id = %d : 0x%x 
-2718,,_wal_ps_buf_peer_create_instance() ps_psoc_handle NULL !!! 
-2719,,_wal_ps_buf_peer_create_instance() TDLS peer_handle alloc failed !!! 
-2720,III,_wal_ps_buf_peer_create_instance() vdev_id = %d peer_handle = %p wal_peer = %p 
-2721,,invalid access 
-2722,IIII,_wal_ps_buf_delete_create_instance() vdev_id = %d peer_handle = %p PM enabled: %d wal_peer = %p 
-2723,IIIIIII,WAL_AP_PS_DBGID_PSPOLL vdev_id = %d AssocID = %d Tid = %d Flags = 0x%x legacy_tidmask = 0x%x allowed_legacy_tidmask = 0x%x pending_legacy_tidmap = 0x%x 
-2724,IIIII,WAL_AP_PS_DBGID_PSPOLL_ERROR vdev_id = %d AssocID = %d TidPaused = %d AllowdLegacyTidMask = 0x%x LegacyTidMask = 0x%x 
-2725,IIIIIIII,WAL_AP_PS_DBGID_UAPSD_RESPONSE vdev_id = %d AssocID = %d Tid = %d NumMPDUToSend = %d need_extra_qnull = %d Flags = %d allow_n_flags_qnull = %d SPLength = 0x%x 
-2726,IIIIII,WAL_AP_PS_DBGID_UAPSD_RESPONSE_ERROR vdev_id = %d AssocID = %d Tid/Paused = 0x%x AllowedUAPSDTidMask = 0x%x PendingTidMap = 0x%x SPLength = 0x%x 
-2727,IIIII,WAL_AP_PS_DBGID_TRIGGER vdev_id = %d AssocID = %d Timestamp = %d USPActive = %d SendNInProgress = %d 
-2728,IIII,WAL_AP_PS_DBGID_START_SP vdev_id = %d AssocID = %d Timestamp = %d Mark = %d 
-2729,IIIII,WAL_AP_PS_DBGID_NEXT_RESPONSE vdev_id = %d AssocID = %d USPActive = %d PendingUSP = %d PendingPollResp = %d 
-2730,IIII,WAL_AP_PS_DBGID_START_SP vdev_id = %d AssocID = %d Timestamp = %d Mark = %d 
-2731,IIII,WAL_AP_PS_DBGID_COMPLETED_EOSP vdev_id = %d AssocID = %d Timestamp = %d LastRxTriggerTime = %d 
-2732,IIIIII,WAL_AP_PS_DBGID_SEND_COMPLETE vdev_id = %d AssocID = %d FrameCtrl = 0x%x QoSCtrl = 0x%x USPActive = %d PendingPollResp = %d 
-2733,IIII,WAL_AP_PS_DBGID_SEND_N_COMPLETE vdev_id = %d AssocID = %d USPActive = %d PendingPollResp = %d 
-2734,III,WAL_AP_PS_DBGID_UPDATE_TIM vdev_id = %d AssocID = %d IsTimSet = %d 
-2735,IIII,WAL_AP_PS_DBGID_SYNC_TIM vdev_id = %d AssocID = %d Tids = 0x%x TimSet = %d 
-2736,III,WAL_AP_PS_DBGID_SM vdev_id = %d assoc_id:%d ACTIVE <-- PM_STATE_CHANGE(num_sleeping_sta = 0x%x) 
-2737,III,WAL_AP_PS_DBGID_SM vdev_id = %d assoc_id:%d ACTIVE ==> SLEEP_DOZE(num_sleeping_sta = 0x%x) 
-2738,III,WAL_AP_PS_DBGID_SM vdev_id = %d assoc_id:%d SLEEP_DOZE <-- PM_STATE_CHANGE (num_sleeping_sta = 0x%x) 
-2739,II,WAL_AP_PS_DBGID_SM: vdev_id = %d assoc_id:%d SLEEP_DOZE <-- RX 
-2740,II,WAL_AP_PS_DBGID_SM: vdev_id = %d assoc_id:%d SLEEP_DOZE <-- SEND_COMP 
-2741,II,WAL_AP_PS_DBGID_SM: vdev_id = %d assoc_id:%d SLEEP_DOZE <-- SEND_N_COMP 
-2742,III,WAL_AP_PS_DBGID_SM vdev_id = %d assoc_id:%d SLEEP_DOZE ==> ACTIVE (num_sleeping_sta = 0x%x) 
-2743,,wal_ps_tdls_wal_peer_event_handler()  buf_sta_handle NULL return 
-2744,III,wal_ps_tdls_init_default_configs() assoc_id = %d uapsd_trigger_tids = 0x%x default_legacy_ac = 0x%x 
-2745,II,_wal_ps_de_initialize_tdls_buf_sta_instance (peer=%p vdev = %p) 
-2746,III,wal_ps_initialize_tdls_buf_sta_instance() failed (peer=%p caps = %p vdev = %p) failed 
-2747,,wal_ps_initialize_tdls_buf_sta_instance() buf_sta create failed 
-2748,IIII,wal_ps_initialize_tdls_buf_sta_instance() (peer=%p caps = %p vdev = %p slp_sta_support = %d) 
-2749,III,_wal_ps_sta_process_rx_event: frame_control=%0x, qos_control=%0x, thread_id=%d 
-2750,,_wal_ps_sta_process_rx_event: leaky AP detected 
-2751,III,TDLS_DBGID_WAL_SET  Tdls8: vdev_id = %d param_type = %d value = 0x%x 
-2752,II,TDLS_DBGID_WAL_SET not handled in switch vdev_id = 0x%x param_type = %d 
-2753,II,TDLS_DBGID_WAL_GET  Tdls9: vdev_id = 0x%x param_type = %d 
-2754,II,TDLS_DBGID_WAL_GET not handled in switch vdev_id = 0x%x param_type = %d 
-2755,II,_ar_wal_tdls_vattach() vdev_id = %d vdev flags: 0x%x 
-2756,,_ar_wal_tdls_vattach(): failure: no memory left for vdev tdls handle, must be at max tdls vdevs  
-2757,II,_ar_wal_tdls_vdetach() vdev_id = %d vdev flags = 0x%x  
-2758,IIIII,_ar_wal_tdls_attach() tdls_psoc_handle = %p                              pdev = %p, num_vdevs = %d                              num_conn_table = %d tdls_pool ptr = %p 
-2759,IIII,_ar_wal_tdls_psoc_init()                              tdls_psoc_handle = %p num_vdevs = %d num_conn_table = %d tdls_pool ptr = %p 
-2760,,_tdls_process_rx_frame(): wal_pdev NULL 
-2761,,_tdls_process_rx_frame(): wal_peer NULL 
-2762,,_tdls_process_rx_frame():L3 invalid 
-2763,,_tdls_process_rx_frame(): tdls payload is NULL 
-2764,I,_tdls_process_rx_frame(): action code = %d 
-2765,I,_tdls_process_rx_frame(): tdls payload size is incorrect: %d 
-2766,I,_tdls_wlan_action_notif: notif_type = %d 
-2767,II,_tdls_uapsd_send_pti_frame() vdev_id = %d peer_type =0x%x 
-2768,III,_tdls_uapsd_send_pti_frame() failed buf_bitmask is zero vdev_id = %d peer_type = 0x%x tid_bitmap = 0x%x 
-2769,II,_tdls_uapsd_send_pti_frame(): get pti frame buffer failed vdev_id = %d peer_type = 0x%x 
-2770,IIII,_tdls_uapsd_send_pti_frame():  vdev_id = %d status = 0x%x dialog token = 0x%x buf_bitmask = 0x%x 
-2771,I,_tdls_uapsd_ptr_recv_notif_handler() ptr frame not received issue tear down peer_handle = %p 
-2772,II,_tdls_uapsd_send_pti_frame_to_peer  failure buf_sta_handle = %p ptr_timer running = 0x%x 
-2773,I,tdls_uapsd_send_pti_frame failed: status = %d 
-2774,II,_tdls_uapsd_cancel_ptr_recv_timer() dialog_token = 0x%x ia_action = 0x%x 
-2775,I,_tdls_uapsd_cancel_ptr_recv_timer() RX Event pwrmgmt = %d 
-2776,I,_tdls_uapsd_cancel_ptr_recv_timer() RX Event 2 pwrmgmt = %d 
-2777,I,_tdls_uapsd_enter_exit_buf_sta_role() enter: %d 
-2778,I,tdls_pti_tx_completion() completion_status = %x 
-2779,IIIIII,swba_intr: misc=0x%x,period=%u,tsf=%u,tbtt-curr=%u/next=%u,diff=%u 
-2780,II,Staggered beacon drift: next_beacon = %u, next_hw_tbtt = %u 
-2781,III,Staggered beacon drift recover: next_beacon = %u,                                 beacon_period = %u, until_next_tbtt = %u 
-2782,I,cur_tsf %u 
-2783,II,Burst beacon drift: next_beacon = %u, next_hw_tbtt = %u 
-2784,III,Burst beacon drift recover: next_beacon = %u,                                         beacon_period = %u, until_next_tbtt = %u 
-2785,III,_wal_swba_set_and_fire: cur_tsf=0x%x sta_offset=0x%x next_beacon=0x%x 
-2786,I,next_beacon_wal_swba_restore=%d 
-2787,II,WAL_DBGID_GET_HW_CHAINMASK  Tx:0x%x Rx:0x%x 
-2788,III,WAL_DBGID_SET_HW_CHAINMASK 0x%x 0x%x 0x%x 
-2789,I,_wal_set_home_channel : num home chans = %d 
-2790,IIIIIIIII,COEX_SYSTEM_MONITOR: bt(%u) pmh(%u) num_prof(%u), non_link(%u) acl_int(%u) passive_bt(%u) wlanrx_crit(%u) wlanrx(0x%x) 2g_pdev_idle(%u) 
-2791,III,COEX_MWS_WBTMR_SYNC: T2NonWlan(%u) Now(%u) Now+NonWlanDuration(%u) 
-2792,IIIIII,COEX_CTS2S_RESULT: result(%u) pdev(%u) ts(%u) cts2s_tx_latency(%u) cts2s_max_time(%u) dut_nav(%u) 
-2793,IIII,WAL_COEX_RC_CHAINMASK: pdev_id(%u) RFBand(%u) ShareIndx(%u) NumWlanRfChains(%u) 
-2794,III,COEX_CONFIG_MGR: WlanConfigManager(0x%x) Stimulus(%u) CurBand(%u) 
-2795,IIII,COEX_MWS_ANT_DIVERSITY: RSSI Threshold met. Type= %d rssi= %d, threshold= %d (BRssi=%d) 
-2796,IIIIIII,WAL_COEX_ALT_CHM: pdev(%u) chm(0x%x) enable_alt(%u) is_2gchan(%u) alt_chm(%u) selfgenAltChm (%u) pending(%u) 
-2797,,WAL_COEX_ALT_CHM: pdev is NULL 
-2798,II,COEX_SET_NSS: VdevId(%u) NumStreams(%u) 
-2799,II,WAL_COEX_ENTER_PSP: Error(0x%x) TX_SEND_BURST disabled (0x%x) 
-2800,II,WAL_COEX_EXIT_PSP: Error(0x%llx) TX_SEND_BURST enabled (0x%x) 
-2801,II,WAL_COEX_PSP: Error(0x%x) MinInterval(%u) BtIdleTime(%u) 
-2802,IIIIIIII,COEX_SYSTEM_UPDATE: status(%u) stimulus(%u) hw_mode(%u) wlan0_state(0x%x) wlan1_state(0x%x) algo(%u) num_chains(%u) aggr_lim(%u) 
-2803,,COEX_RESET_WEIGHT_GROUP:  Group6 exceeded the programmed timeout 
-2804,,COEX_SET_WEIGHT_GROUP3: Setting coex weight group to 3 BT became normal 
-2805,,COEX_SET_WEIGHT_GROUP3: Setting coex weight group to 3 due because 2G vdev is Paused 
-2806,I,COEX_SET_WEIGHT_GROUP6: Setting coex weight group 6 due to reason %d 
-2807,I,COEX_EXIT_OCS: OCSTransitionState(0x%x) 
-2808,III,COEX_ENTER_OCS: OCSTransitionState(%u) Status(%u) DynOCSStatus(%u) 
-2809,III,COEX_CTS2S_SEND: Dur(%u) Time2Discard(%u) CurrTime(%u) 
-2810,IIIII,WAL_COEX_MNGR: Error(0x%x) Stimulus(%u) BTSMState(0x%x) SysUpdateResult(%u) ConfigMngr(0x%x) 
-2811,II,COEX_ENTER_OCS:  Error in starting OCS Status = 0x%x, TransState(0x%x) 
-2812,IIII,COEX_ENTER_OCS: Dur(%u) Intrvl(%u) TranState(0x%x) Status(%u) 
-2813,II,COEX_EXIT_OCS: TranState(%u) Status(%u) 
-2814,IIII,COEX_UPDATE_OCS: Dur(%u) Intrvl(%u) TransState(0x%x) Status(%u) 
-2815,II,WAL_COEX_BDF: Flags(0x%x) Config(0x%x) 
-2816,II,WAL_COEX_GET_DATA: Datatype : (%d) | inparam : (%d) is NULL 
-2817,I,WAL_COEX_WSI: Error(0x%x) 
-2818,I,WAL_COEX_WSI_TMR: enable(%u) 
-2819,II,COEX_WAL_PAUSE_RESUME: Pause(%u) State(0x%x) 
-2820,II,COEX_HWQ_EMPTY_CB: PauseState(0x%x) pdev(%u) 
-2821,IIII,COEX_UPDATE_AFH: IsAdd(%u) Freq(%u), 2G(%u) HT20(%u) 
-2822,I,COEX_MCI_TIMER_HANDLER: Recovery(0x%x) 
-2823,II,COEX_MCI_RECOVER: StimulusState(0x%x) RecoveryState(0x%x) 
-2824,III,BTCOEX_ADD_PROFILE: BTLinkId(%u) LinkId(%u) MinFreeLinkId(%u) 
-2825,III,BTCOEX_REMOVE_PROFILE: BTLinkId(%u) LinkId(%u) MinFreeLinkId(%u) 
-2826,,WAL_COEX_BT_BA: Interval is 0 
-2827,III,COEX_BT_PRIO_BUDGET: BTIdleTime(%u) BtLowPrioBudget(%u) BtHiPrioBudget(%u) 
-2828,I,COEX_GENERIC_ERROR: Cannot Alloc link, Exceeds max BT links: LinkId(%u) 
+2685,IIII,WMI_CMD_RX handle in data offload cmd=%d length=%d endPt=%d, pHTCbuf=%x 
+2686,IIII,WMI_CMD_RX handle in BE cmd=%d length=%d endPt=%d, pHTCbuf=%x 
+2687,IIII,WMI_CMD_RX handle in RT cmd=%d length=%d endPt=%d, pHTCbuf=%x 
+2688,IIII,WMI_CMD_RX cmd comp. handle in hif --free buf cmd=%d length=%d endPt=%d, pHTCbuf=%x 
+2689,II,WMI_EVT completion msg to RT pEvt=%p, thread_id=%d 
+2690,III,WMI_EVT msg to HIF EventId=%d length=%d pEvt=%p 
+2691,I,WMI_EVENT_SEND EventId = 0x%x 
+2692,II,WMI_CMD_RX CmdId = 0x%x Length = %d 
+2693,I,WMI_SEND_EVENT_WRONG_TLV CmdId/EventId = 0x%x 
+2694,IIII,WMI_CMD_RX process inline cmd=%d length=%d endPt=%d, pHTCbuf=%x 
+2695,IIIII,WMI_CMD_RX send dispatch msg to threads, cmd=%d length=%d endPt=%d, pHTCbuf=%x msg_size=%d 
+2696,IIII,RT WMI_EVT EventId=%d length=%d pEvt=%p filterAction:%d 
+2697,I, pending EventId = 0x%x 
+2698,II,WMI_EVENT_SEND drop EventId = 0x%x, action:0x%x 
+2699,III,WAL_AP_PS_DBGID_PEER_CREATE vdev_id = %d AssocID = %d peer:%0x 
+2700,III,WAL_AP_PS_DBGID_PEER_DELETE vdev_id = %d AssocID = %d peer:%0x 
+2701,IIII,WAL_AP_PS_DBGID_PSPOLL_REQ AssocID = %d Aid = %d PeerPSEnabled = %d SendNInProgress = %d 
+2702,III,WAL_AP_PS_DBGID_DUPLICATE_TRIGGER  AssocID = %d SeqNO = %d Tid = %d 
+2703,III,WAL_AP_PS_DBGID_NO_TRIGGER  AssocID = %d peer_handle->uapsd_trigger_tids = %d Tid = %d 
+2704,I,_wal_ps_buf_peer_rx_event_handler BE->SA, thread_id=%d 
+2705,I,_wal_ps_buf_peer_thread_comm_handler BE->SA, thread_id=%d 
+2706,I,_wal_ps_buf_peer_excess_retries_event_handler BE->SA, thread_id=%d 
+2707,II,WAL_AP_PS_DBGID_HOST_TX_PAUSE 0x%x 0x%x 
+2708,II,WAL_AP_PS_DBGID_PS_DESC_BIN_HWM Bitmap = 0x%x VdevMap = 0x%x 
+2709,II,WAL_AP_PS_DBGID_HOST_TX_UNPAUSE 0x%x 0x%x 
+2710,II,WAL_AP_PS_DBGID_PS_DESC_BIN_LWM Bitmap = 0x%x VdevMap = 0x%x 
+2711,IIII,WAL_AP_PS_DBGIG_SET_PARAM vdev_id = %d AssocID = %d Param = %d Value = %d 
+2712,IIII,WAL_AP_PS_DBGIG_UAPSD_CFG vdev_id = %d AssocID = %d UAPSDTriggerTids = 0x%x UAPSDDeliveryTids = 0x%x 
+2713,IIIII,WAL_AP_PS_DBGID_DETECT_OUT_OF_SYNC_STA vdev_id = %d AssocID = %d Timestamp = %d OldestTxBufferedWaitingMs = %d n_buffered_mpdu = %d 
+2714,IIIII,WAL_AP_PS_DBGID_DETECT_OUT_OF_SYNC_STA vdev_id = %d AssocID = %d Timestamp = %d OldestTxBufferedWaitingMs = %d QDepeth = %d 
+2715,II,WAL_AP_PS_DBGID_SLEEP_STA_INC vdev_id = %d num_sleeping_sta:%d 
+2716,II,WAL_AP_PS_DBGID_SLEEP_STA_DEC vdev_id = %d num_sleeping_sta:%d 
+2717,II,WAL_AP_PS_DBGID_HOST_TX_PAUSE vdev_id = %d : 0x%x 
+2718,II,WAL_AP_PS_DBGID_HOST_TX_UNPAUSE vdev_id = %d : 0x%x 
+2719,,_wal_ps_buf_peer_create_instance() ps_psoc_handle NULL !!! 
+2720,,_wal_ps_buf_peer_create_instance() TDLS peer_handle alloc failed !!! 
+2721,III,_wal_ps_buf_peer_create_instance() vdev_id = %d peer_handle = %p wal_peer = %p 
+2722,,invalid access 
+2723,IIII,_wal_ps_buf_delete_create_instance() vdev_id = %d peer_handle = %p PM enabled: %d wal_peer = %p 
+2724,IIIIIII,WAL_AP_PS_DBGID_PSPOLL vdev_id = %d AssocID = %d Tid = %d Flags = 0x%x legacy_tidmask = 0x%x allowed_legacy_tidmask = 0x%x pending_legacy_tidmap = 0x%x 
+2725,IIIII,WAL_AP_PS_DBGID_PSPOLL_ERROR vdev_id = %d AssocID = %d TidPaused = %d AllowdLegacyTidMask = 0x%x LegacyTidMask = 0x%x 
+2726,IIIIIIII,WAL_AP_PS_DBGID_UAPSD_RESPONSE vdev_id = %d AssocID = %d Tid = %d NumMPDUToSend = %d need_extra_qnull = %d Flags = %d allow_n_flags_qnull = %d SPLength = 0x%x 
+2727,IIIIII,WAL_AP_PS_DBGID_UAPSD_RESPONSE_ERROR vdev_id = %d AssocID = %d Tid/Paused = 0x%x AllowedUAPSDTidMask = 0x%x PendingTidMap = 0x%x SPLength = 0x%x 
+2728,IIIII,WAL_AP_PS_DBGID_TRIGGER vdev_id = %d AssocID = %d Timestamp = %d USPActive = %d SendNInProgress = %d 
+2729,IIII,WAL_AP_PS_DBGID_START_SP vdev_id = %d AssocID = %d Timestamp = %d Mark = %d 
+2730,IIIII,WAL_AP_PS_DBGID_NEXT_RESPONSE vdev_id = %d AssocID = %d USPActive = %d PendingUSP = %d PendingPollResp = %d 
+2731,IIII,WAL_AP_PS_DBGID_START_SP vdev_id = %d AssocID = %d Timestamp = %d Mark = %d 
+2732,IIII,WAL_AP_PS_DBGID_COMPLETED_EOSP vdev_id = %d AssocID = %d Timestamp = %d LastRxTriggerTime = %d 
+2733,IIIIII,WAL_AP_PS_DBGID_SEND_COMPLETE vdev_id = %d AssocID = %d FrameCtrl = 0x%x QoSCtrl = 0x%x USPActive = %d PendingPollResp = %d 
+2734,IIII,WAL_AP_PS_DBGID_SEND_N_COMPLETE vdev_id = %d AssocID = %d USPActive = %d PendingPollResp = %d 
+2735,III,WAL_AP_PS_DBGID_UPDATE_TIM vdev_id = %d AssocID = %d IsTimSet = %d 
+2736,IIII,WAL_AP_PS_DBGID_SYNC_TIM vdev_id = %d AssocID = %d Tids = 0x%x TimSet = %d 
+2737,III,WAL_AP_PS_DBGID_SM vdev_id = %d assoc_id:%d ACTIVE <-- PM_STATE_CHANGE(num_sleeping_sta = 0x%x) 
+2738,III,WAL_AP_PS_DBGID_SM vdev_id = %d assoc_id:%d ACTIVE ==> SLEEP_DOZE(num_sleeping_sta = 0x%x) 
+2739,III,WAL_AP_PS_DBGID_SM vdev_id = %d assoc_id:%d SLEEP_DOZE <-- PM_STATE_CHANGE (num_sleeping_sta = 0x%x) 
+2740,II,WAL_AP_PS_DBGID_SM: vdev_id = %d assoc_id:%d SLEEP_DOZE <-- RX 
+2741,II,WAL_AP_PS_DBGID_SM: vdev_id = %d assoc_id:%d SLEEP_DOZE <-- SEND_COMP 
+2742,II,WAL_AP_PS_DBGID_SM: vdev_id = %d assoc_id:%d SLEEP_DOZE <-- SEND_N_COMP 
+2743,III,WAL_AP_PS_DBGID_SM vdev_id = %d assoc_id:%d SLEEP_DOZE ==> ACTIVE (num_sleeping_sta = 0x%x) 
+2744,,wal_ps_tdls_wal_peer_event_handler()  buf_sta_handle NULL return 
+2745,III,wal_ps_tdls_init_default_configs() assoc_id = %d uapsd_trigger_tids = 0x%x default_legacy_ac = 0x%x 
+2746,II,_wal_ps_de_initialize_tdls_buf_sta_instance (peer=%p vdev = %p) 
+2747,III,wal_ps_initialize_tdls_buf_sta_instance() failed (peer=%p caps = %p vdev = %p) failed 
+2748,,wal_ps_initialize_tdls_buf_sta_instance() buf_sta create failed 
+2749,IIII,wal_ps_initialize_tdls_buf_sta_instance() (peer=%p caps = %p vdev = %p slp_sta_support = %d) 
+2750,III,_wal_ps_sta_process_rx_event: frame_control=%0x, qos_control=%0x, thread_id=%d 
+2751,,_wal_ps_sta_process_rx_event: leaky AP detected 
+2752,III,TDLS_DBGID_WAL_SET  Tdls8: vdev_id = %d param_type = %d value = 0x%x 
+2753,II,TDLS_DBGID_WAL_SET not handled in switch vdev_id = 0x%x param_type = %d 
+2754,II,TDLS_DBGID_WAL_GET  Tdls9: vdev_id = 0x%x param_type = %d 
+2755,II,TDLS_DBGID_WAL_GET not handled in switch vdev_id = 0x%x param_type = %d 
+2756,II,_ar_wal_tdls_vattach() vdev_id = %d vdev flags: 0x%x 
+2757,,_ar_wal_tdls_vattach(): failure: no memory left for vdev tdls handle, must be at max tdls vdevs  
+2758,II,_ar_wal_tdls_vdetach() vdev_id = %d vdev flags = 0x%x  
+2759,IIIII,_ar_wal_tdls_attach() tdls_psoc_handle = %p                              pdev = %p, num_vdevs = %d                              num_conn_table = %d tdls_pool ptr = %p 
+2760,IIII,_ar_wal_tdls_psoc_init()                              tdls_psoc_handle = %p num_vdevs = %d num_conn_table = %d tdls_pool ptr = %p 
+2761,,_tdls_process_rx_frame(): wal_pdev NULL 
+2762,,_tdls_process_rx_frame(): wal_peer NULL 
+2763,,_tdls_process_rx_frame():L3 invalid 
+2764,,_tdls_process_rx_frame(): tdls payload is NULL 
+2765,I,_tdls_process_rx_frame(): action code = %d 
+2766,I,_tdls_process_rx_frame(): tdls payload size is incorrect: %d 
+2767,I,_tdls_wlan_action_notif: notif_type = %d 
+2768,II,_tdls_uapsd_send_pti_frame() vdev_id = %d peer_type =0x%x 
+2769,III,_tdls_uapsd_send_pti_frame() failed buf_bitmask is zero vdev_id = %d peer_type = 0x%x tid_bitmap = 0x%x 
+2770,II,_tdls_uapsd_send_pti_frame(): get pti frame buffer failed vdev_id = %d peer_type = 0x%x 
+2771,IIII,_tdls_uapsd_send_pti_frame():  vdev_id = %d status = 0x%x dialog token = 0x%x buf_bitmask = 0x%x 
+2772,I,_tdls_uapsd_ptr_recv_notif_handler() ptr frame not received issue tear down peer_handle = %p 
+2773,II,_tdls_uapsd_send_pti_frame_to_peer  failure buf_sta_handle = %p ptr_timer running = 0x%x 
+2774,I,tdls_uapsd_send_pti_frame failed: status = %d 
+2775,II,_tdls_uapsd_cancel_ptr_recv_timer() dialog_token = 0x%x ia_action = 0x%x 
+2776,I,_tdls_uapsd_cancel_ptr_recv_timer() RX Event pwrmgmt = %d 
+2777,I,_tdls_uapsd_cancel_ptr_recv_timer() RX Event 2 pwrmgmt = %d 
+2778,I,_tdls_uapsd_enter_exit_buf_sta_role() enter: %d 
+2779,I,tdls_pti_tx_completion() completion_status = %x 
+2780,IIIIII,swba_intr: misc=0x%x,period=%u,tsf=%u,tbtt-curr=%u/next=%u,diff=%u 
+2781,II,Staggered beacon drift: next_beacon = %u, next_hw_tbtt = %u 
+2782,III,Staggered beacon drift recover: next_beacon = %u,                                 beacon_period = %u, until_next_tbtt = %u 
+2783,I,cur_tsf %u 
+2784,II,Burst beacon drift: next_beacon = %u, next_hw_tbtt = %u 
+2785,III,Burst beacon drift recover: next_beacon = %u,                                         beacon_period = %u, until_next_tbtt = %u 
+2786,III,_wal_swba_set_and_fire: cur_tsf=0x%x sta_offset=0x%x next_beacon=0x%x 
+2787,I,next_beacon_wal_swba_restore=%d 
+2788,II,WAL_DBGID_GET_HW_CHAINMASK  Tx:0x%x Rx:0x%x 
+2789,III,WAL_DBGID_SET_HW_CHAINMASK 0x%x 0x%x 0x%x 
+2790,I,_wal_set_home_channel : num home chans = %d 
+2791,IIIIIIIII,COEX_SYSTEM_MONITOR: bt(%u) pmh(%u) num_prof(%u), non_link(%u) acl_int(%u) passive_bt(%u) wlanrx_crit(%u) wlanrx(0x%x) 2g_pdev_idle(%u) 
+2792,III,COEX_MWS_WBTMR_SYNC: T2NonWlan(%u) Now(%u) Now+NonWlanDuration(%u) 
+2793,IIIIII,COEX_CTS2S_RESULT: result(%u) pdev(%u) ts(%u) cts2s_tx_latency(%u) cts2s_max_time(%u) dut_nav(%u) 
+2794,IIII,WAL_COEX_RC_CHAINMASK: pdev_id(%u) RFBand(%u) ShareIndx(%u) NumWlanRfChains(%u) 
+2795,III,COEX_CONFIG_MGR: WlanConfigManager(0x%x) Stimulus(%u) CurBand(%u) 
+2796,IIII,COEX_MWS_ANT_DIVERSITY: RSSI Threshold met. Type= %d rssi= %d, threshold= %d (BRssi=%d) 
+2797,IIIIIII,WAL_COEX_ALT_CHM: pdev(%u) chm(0x%x) enable_alt(%u) is_2gchan(%u) alt_chm(%u) selfgenAltChm (%u) pending(%u) 
+2798,,WAL_COEX_ALT_CHM: pdev is NULL 
+2799,II,COEX_SET_NSS: VdevId(%u) NumStreams(%u) 
+2800,II,WAL_COEX_ENTER_PSP: Error(0x%x) TX_SEND_BURST disabled (0x%x) 
+2801,II,WAL_COEX_EXIT_PSP: Error(0x%llx) TX_SEND_BURST enabled (0x%x) 
+2802,II,WAL_COEX_PSP: Error(0x%x) MinInterval(%u) BtIdleTime(%u) 
+2803,IIIIIIII,COEX_SYSTEM_UPDATE: status(%u) stimulus(%u) hw_mode(%u) wlan0_state(0x%x) wlan1_state(0x%x) algo(%u) num_chains(%u) aggr_lim(%u) 
+2804,,COEX_RESET_WEIGHT_GROUP:  Group6 exceeded the programmed timeout 
+2805,,COEX_SET_WEIGHT_GROUP3: Setting coex weight group to 3 BT became normal 
+2806,,COEX_SET_WEIGHT_GROUP3: Setting coex weight group to 3 due because 2G vdev is Paused 
+2807,I,COEX_SET_WEIGHT_GROUP6: Setting coex weight group 6 due to reason %d 
+2808,I,COEX_EXIT_OCS: OCSTransitionState(0x%x) 
+2809,III,COEX_ENTER_OCS: OCSTransitionState(%u) Status(%u) DynOCSStatus(%u) 
+2810,III,COEX_CTS2S_SEND: Dur(%u) Time2Discard(%u) CurrTime(%u) 
+2811,IIIII,WAL_COEX_MNGR: Error(0x%x) Stimulus(%u) BTSMState(0x%x) SysUpdateResult(%u) ConfigMngr(0x%x) 
+2812,II,COEX_ENTER_OCS:  Error in starting OCS Status = 0x%x, TransState(0x%x) 
+2813,IIII,COEX_ENTER_OCS: Dur(%u) Intrvl(%u) TranState(0x%x) Status(%u) 
+2814,II,COEX_EXIT_OCS: TranState(%u) Status(%u) 
+2815,IIII,COEX_UPDATE_OCS: Dur(%u) Intrvl(%u) TransState(0x%x) Status(%u) 
+2816,II,WAL_COEX_BDF: Flags(0x%x) Config(0x%x) 
+2817,II,WAL_COEX_GET_DATA: Datatype : (%d) | inparam : (%d) is NULL 
+2818,I,WAL_COEX_WSI: Error(0x%x) 
+2819,I,WAL_COEX_WSI_TMR: enable(%u) 
+2820,II,COEX_WAL_PAUSE_RESUME: Pause(%u) State(0x%x) 
+2821,II,COEX_HWQ_EMPTY_CB: PauseState(0x%x) pdev(%u) 
+2822,IIII,COEX_UPDATE_AFH: IsAdd(%u) Freq(%u), 2G(%u) HT20(%u) 
+2823,I,COEX_MCI_TIMER_HANDLER: Recovery(0x%x) 
+2824,II,COEX_MCI_RECOVER: StimulusState(0x%x) RecoveryState(0x%x) 
+2825,III,BTCOEX_ADD_PROFILE: BTLinkId(%u) LinkId(%u) MinFreeLinkId(%u) 
+2826,III,BTCOEX_REMOVE_PROFILE: BTLinkId(%u) LinkId(%u) MinFreeLinkId(%u) 
+2827,,WAL_COEX_BT_BA: Interval is 0 
+2828,III,COEX_BT_PRIO_BUDGET: BTIdleTime(%u) BtLowPrioBudget(%u) BtHiPrioBudget(%u) 
 2829,I,COEX_GENERIC_ERROR: Cannot Alloc link, Exceeds max BT links: LinkId(%u) 
-2830,III,COEX_GENERIC_ERROR: BT removing invalid link: Type(%u) State(0x%x), NumProf(%u) 
-2831,I,COEX_GENERIC_ERROR: Exceeds max BT links: LinkId(%u) 
-2832,I,COEX_GENERIC_ERROR: CCK Rate Config 0x121212 (%u) 
-2833,II,COEX_GENERIC_ERROR: No record for existing link (%u) 
-2834,I,COEX_GENERIC_ERROR: Exceeds max num BT links- LinkId:(%u) 
-2835,I,COEX_GENERIC_ERROR: Exceeds max BT links- LinkId(%u) 
-2836,I,COEX_GENERIC_ERROR: BT RXSS lower threshold is out of range Thresold(%d) 
-2837,,COEX_GENERIC_ERROR: COEX_BT_LINKID_ERROR 
-2838,I,COEX_GENERIC_ERROR: COEX_BT_LINKID_INVALID LinkId(%u) 
-2839,,WAL_COEX_WGT2PRIO: Invalid Weight Group 
-2840,I,COEX_GENERIC_ERROR: Alloc Failed: Exceeds max num BT links: LinkId(%u) 
-2841,I,COEX_GENERIC_ERROR: Exceeds max num BT links: LinkId(%u) 
-2842,II,COEX_GENERIC_ERROR: Link rate overshoots: Rate(%u) Id(%u) 
-2843,I,COEX_GENERIC_ERROR: Alloc Fail: Exceeds max num BT links- Link(%u) 
-2844,I,COEX_GENERIC_ERROR: Exceeds max num BT links- Link(%u) 
-2845,III,COEX_GENERIC_ERROR: Invalid GPM: MCI_GPM_BT_SCAN_UPDATE  En(%u) Window(%u) Int(%u) 
-2846,I,COEX_GENERIC_ERROR: COEX_BT_GPM_OVERFLOW NumBtGpmOverflow(%u) 
-2847,I,COEX_GENERIC_ERROR: COEX_DUPLICATE_LINK_ERROR BtNonLinkCriticalNum(%u) 
-2848,I,COEX_GENERIC_ERROR: COEX_NUM_LINK_OVERFLOW_ERROR BtNonLinkCriticalNum(%u) 
-2849,IIII,WAL_COEX_PROC_GPM: Error(0x%x) status(%d) type(%u) subtype(%u) 
-2850,III,COEX_BT_INTERVAL_START: bt_intrvl_cnt(%u) duration(%u) enable_bt_bw_lim(%u) 
-2851,II,COEX_WLAN_INTERVAL_START: wlan_intrvl_cnt(%u) duration(%u) 
-2852,II,COEX_WLAN_POSTPAUSE_INTERVAL_START: Dur(%u) Wght(%u) 
-2853,II,COEX_BT_PROFILE_ADD_RMV: LinkId(%u) CoexLinkType(%u) 
-2854,II,COEX_PROFILE_ERROR: BTCOEX_ADD_PROFILE LinkId(%u) CoexLinkType(%u) 
-2855,II,COEX_PROFILE_ERROR: BTCOEX_REMOVE_PROFILE LinkId(%u) CoexLinkType(%u) 
+2830,I,COEX_GENERIC_ERROR: Cannot Alloc link, Exceeds max BT links: LinkId(%u) 
+2831,III,COEX_GENERIC_ERROR: BT removing invalid link: Type(%u) State(0x%x), NumProf(%u) 
+2832,I,COEX_GENERIC_ERROR: Exceeds max BT links: LinkId(%u) 
+2833,I,COEX_GENERIC_ERROR: CCK Rate Config 0x121212 (%u) 
+2834,II,COEX_GENERIC_ERROR: No record for existing link (%u) 
+2835,I,COEX_GENERIC_ERROR: Exceeds max num BT links- LinkId:(%u) 
+2836,I,COEX_GENERIC_ERROR: Exceeds max BT links- LinkId(%u) 
+2837,I,COEX_GENERIC_ERROR: BT RXSS lower threshold is out of range Thresold(%d) 
+2838,,COEX_GENERIC_ERROR: COEX_BT_LINKID_ERROR 
+2839,I,COEX_GENERIC_ERROR: COEX_BT_LINKID_INVALID LinkId(%u) 
+2840,,WAL_COEX_WGT2PRIO: Invalid Weight Group 
+2841,I,COEX_GENERIC_ERROR: Alloc Failed: Exceeds max num BT links: LinkId(%u) 
+2842,I,COEX_GENERIC_ERROR: Exceeds max num BT links: LinkId(%u) 
+2843,II,COEX_GENERIC_ERROR: Link rate overshoots: Rate(%u) Id(%u) 
+2844,I,COEX_GENERIC_ERROR: Alloc Fail: Exceeds max num BT links- Link(%u) 
+2845,I,COEX_GENERIC_ERROR: Exceeds max num BT links- Link(%u) 
+2846,III,COEX_GENERIC_ERROR: Invalid GPM: MCI_GPM_BT_SCAN_UPDATE  En(%u) Window(%u) Int(%u) 
+2847,I,COEX_GENERIC_ERROR: COEX_BT_GPM_OVERFLOW NumBtGpmOverflow(%u) 
+2848,I,COEX_GENERIC_ERROR: COEX_DUPLICATE_LINK_ERROR BtNonLinkCriticalNum(%u) 
+2849,I,COEX_GENERIC_ERROR: COEX_NUM_LINK_OVERFLOW_ERROR BtNonLinkCriticalNum(%u) 
+2850,IIII,WAL_COEX_PROC_GPM: Error(0x%x) status(%d) type(%u) subtype(%u) 
+2851,III,COEX_BT_INTERVAL_START: bt_intrvl_cnt(%u) duration(%u) enable_bt_bw_lim(%u) 
+2852,II,COEX_WLAN_INTERVAL_START: wlan_intrvl_cnt(%u) duration(%u) 
+2853,II,COEX_WLAN_POSTPAUSE_INTERVAL_START: Dur(%u) Wght(%u) 
+2854,II,COEX_BT_PROFILE_ADD_RMV: LinkId(%u) CoexLinkType(%u) 
+2855,II,COEX_PROFILE_ERROR: BTCOEX_ADD_PROFILE LinkId(%u) CoexLinkType(%u) 
 2856,II,COEX_PROFILE_ERROR: BTCOEX_REMOVE_PROFILE LinkId(%u) CoexLinkType(%u) 
-2857,IIIIIII,COEX_BT_NUM_PROFILES: NumBTProfiles(%u) ACL(%u) PwrSaveACL(%u) HI ACL(%u) HID(%u) Voice(%u) BA(%u) 
-2858,II,COEX_BT_RXSS_THRES: NewRSSI(%d) 1 LowerThresh(%d) 
-2859,IIIII,WAL_COEX_SCHED_INTERVAL: Error(0x%x) bt_grant(%u) interval(%u) bt_traffic_status(%u) is_bt_heavy(%u) 
-2860,,COEX_START_PRIO_TIMER: Warning! Coex start prio timer already running 
-2861,II,COEX_BT_PRIO_BUDGET: pBtCoexInfoDev->bt_prof_prev_bitmap(%d) pBtCoexInfoDev->bt_prof_bitmap(%d) 
-2862,III,COEX_INVALID_GPM: [0x%x] [0x%x] timer[%u] 
-2863,,COEX_GENERIC_ERROR: COEX_LIST_OVERFLOW_ERROR 
-2864,,COEX_GENERIC_ERROR: COEX_ERROR_GET_RSSI 
-2865,,COEX_GENERIC_ERROR: COEX_ERROR_GET_RSSI_SEQ 
-2866,II,COEX_GENERIC_ERROR: id(%u) isPaused(%u) 
-2867,IIII,COEX_GENERIC_ERROR: [AP] Either Invalid Duty Cycle or OCS not Configured.Current duty_cycle:(%d),wlan_duration:(%d),pta0_algo:(%d), pta1_algo:(%d) 
-2868,,COEX_GENERIC_ERROR: Either Invalid 2G MacID or 2G Mac is not Enabled 
-2869,IIIII,COEX_FORCE_OCS: wlan_dur(%u) bt_dur(%u)  wlan_wght(%u) bt_wght(%u) algo(%u) 
-2870,II,COEX_WAL_COEX_INIT: bdf_flag(0x%x), pta_feature_enabled(%d) 
-2871,IIIIII,COEX_WAL_COEX_INIT: pta_num(%d) ,pta_mode(0x%x) first_slot_time(0x%x) bt_priority_time(0x%x) pta_algo(0x%x) pta_priority(0x%x) 
-2872,IIIIII,COEX_WAL_COEX_INIT: pta_num(%d) pta_mode(0x%x) first_slot_time(0x%x) bt_priority_time(0x%x) pta_algo(0x%x) pta_priority(0x%x) 
-2873,IIIIIIIII,COEX_SET_COEX_WEIGHT: wght_grp(%u) reason(%u) wlan_idle(%u) hid_con_tx_o(%u) bcon_tx_o(%u) bcon_rx_o(%u) prio_wlan_fc(%u) flow_ctrl(0x%x) concur_tx(%u) 
-2874,II,COEX_POWER_CHANGE: Swapping the MAC id for SLEEP_VOTE from %d to %d due to possible SYNC DBS SCAN 
-2875,I,COEX_POWER_CHANGE: ERROR - Invalid mac_id %u was passed 
-2876,IIIII,COEX_RX_RATE_THRESHOLD: RSSIType(%u) LowKpbsThresh(%u) UpperKpbsThresh(%u) NumPPDUsBelowThresh(%u) NumPPDUsAboveThresh(%u) 
-2877,II,COEX_GENERIC_ERROR: ErrCode(%u) RSSIType(%u) 
-2878,I,COEX_GENERIC_ERROR: ErrCode(%u) 
-2879,IIII,COEX_RX_RATE_THRESHOLD: ChWidth(0xFF) TriggRate(%u) XputMonitorActiveNum(%u) TotalCoexIntrvls(%u) EventType(%u) 
-2880,IIIII,COEX_RX_RATE_THRESHOLD: ChWidth(%u) TriggRate(%u) XputMonitorActiveNum(%u) TotalCoexIntrvls(%u) EventType(%u) 
-2881,IIIII,WAL_COEX_BAND_CHANGE: Pdev(%u) NewFreq(%u) WLANSysState(0x%x) CurBand(%u) HWMode(%u) 
-2882,I,COEX_CHANNEL_CHANGE: Invalid pdev_id %u was passed 
-2883,I,COEX_POWER_CHANGE: PHY is ON - Coex recipe change is best effort. mac_id(%d) 
-2884,IIIIII,WAL_COEX_POWER_CHANGE: mac(%u) event_type(%u) cur_state(0x%x) new_state(0x%x) macs_up(0x%x) mac_woke(0x%x) 
-2885,I,WAL_COEX_VDEV_STATE: Error(0x%x) 
-2886,,COEX_VDEV_STATE: 2g vdev not paused 
-2887,,COEX_VDEV_STATE: 2g vdev not unpaused 
-2888,III,WAL_COEX_VDEV_STATE: VDEV_MIGRATE: old_mac_id %u, new_mac_id %u, old_mac_sleep_state %u ! 
-2889,II,WAL_COEX_VDEV_STATE: VDEV_MIGRATE: ERROR - Invalid old_mac_id %u / new_mac_id %u was passed ! 
-2890,IIIIIIIII,WAL_COEX_VDEV_STATE: Error(0x%x) id(%u) stimulus(%u) vdev_state(0x%x) strict_dur_scan(%u) num_peers(%u) pdev(%u) chan(%u) op(%u) 
-2891,IIIIIII,WAL_COEX_MODE_CHANGE: new_mode(%u) old_mode(%u) band_mac_map(0x%x) mac0_settings(0x%x) mac1_settings(0x%x) mac0_band(%u) mac1_band(%u) 
-2892,IIIII,COEX_TRF_FREERUN: NextIntvl(%u) AllocatedBtIntervals(%u) BtIntervalCnt(%u) AllocatedWlanIntervals(%u) WlanIntervalCnt(%u) 
-2893,IIIII,COEX_TRF_SHAPE_PM: interval(%u) Dur(%u) Latency(%u) ConcurrState(0x%x) wlan_2g(%u) 
-2894,IIIIIII,WAL_COEX_SCHED_RESULT: Error(0x%x) SchedulerReq(%u) Algo(%u) PrevAlgo(%u) Policy(%u) NextInterval(%u) WlanRxState(%u) 
-2895,,WAL_COEX_WGT2PRIO: Invalid Weight Group 
-2896,III,COEX_GET_T2BT: t2bt(%u) sched_time(%u) curr_time(%u) 
-2897,,WAL_COEX_WGT2PRIO: Invalid Weight Group 
-2898,IIIIII,COEX_TRF_SHAPE_PSP: Error(0x%x) NextInterval(%u) wght(%u) IntrvalDur(%u) BtTriggerRecieved(%u) IS_PSP_ALG_WLAN_CRITICAL(%u) 
-2899,II,COEX_SET_WEIGHT_GROUP3: Setting coex weight group 3 BT hasn't been non-critical pCoexDev->DynamicOcsSchedReq = %d  pBtCoexWeightDev->resetWtVdevPause= %d 
-2900,I,COEX_SET_WEIGHT_GROUP6: Setting coex weight group six pCoexDev->DynamicOcsSchedReq %d 
-2901,II,COEX_SET_WEIGHT_GROUP3: Else part pCoexDev->DynamicOcsSchedReq = %d  pBtCoexWeightDev->resetWtVdevPause= %d 
-2902,IIIIIIII,WAL_COEX_VERSION: coex_ver(0x%x) wlan[major(%u) minor(%u)] bt[major(%u) minor(%u)] rom(%u) soc(%u) bt_features(0x%x) 
-2903,,WAL_COEX_VERSION: Bluetooth version information is not available. 
-2904,II,WAL_COEX_TWS_GPM: error(0x%x) status(%d) 
+2857,II,COEX_PROFILE_ERROR: BTCOEX_REMOVE_PROFILE LinkId(%u) CoexLinkType(%u) 
+2858,IIIIIII,COEX_BT_NUM_PROFILES: NumBTProfiles(%u) ACL(%u) PwrSaveACL(%u) HI ACL(%u) HID(%u) Voice(%u) BA(%u) 
+2859,II,COEX_BT_RXSS_THRES: NewRSSI(%d) 1 LowerThresh(%d) 
+2860,IIIII,WAL_COEX_SCHED_INTERVAL: Error(0x%x) bt_grant(%u) interval(%u) bt_traffic_status(%u) is_bt_heavy(%u) 
+2861,,COEX_START_PRIO_TIMER: Warning! Coex start prio timer already running 
+2862,II,COEX_BT_PRIO_BUDGET: pBtCoexInfoDev->bt_prof_prev_bitmap(%d) pBtCoexInfoDev->bt_prof_bitmap(%d) 
+2863,III,COEX_INVALID_GPM: [0x%x] [0x%x] timer[%u] 
+2864,,COEX_GENERIC_ERROR: COEX_LIST_OVERFLOW_ERROR 
+2865,,COEX_GENERIC_ERROR: COEX_ERROR_GET_RSSI 
+2866,,COEX_GENERIC_ERROR: COEX_ERROR_GET_RSSI_SEQ 
+2867,II,COEX_GENERIC_ERROR: id(%u) isPaused(%u) 
+2868,IIII,COEX_GENERIC_ERROR: [AP] Either Invalid Duty Cycle or OCS not Configured.Current duty_cycle:(%d),wlan_duration:(%d),pta0_algo:(%d), pta1_algo:(%d) 
+2869,,COEX_GENERIC_ERROR: Either Invalid 2G MacID or 2G Mac is not Enabled 
+2870,IIIII,COEX_FORCE_OCS: wlan_dur(%u) bt_dur(%u)  wlan_wght(%u) bt_wght(%u) algo(%u) 
+2871,II,COEX_WAL_COEX_INIT: bdf_flag(0x%x), pta_feature_enabled(%d) 
+2872,IIIIII,COEX_WAL_COEX_INIT: pta_num(%d) ,pta_mode(0x%x) first_slot_time(0x%x) bt_priority_time(0x%x) pta_algo(0x%x) pta_priority(0x%x) 
+2873,IIIIII,COEX_WAL_COEX_INIT: pta_num(%d) pta_mode(0x%x) first_slot_time(0x%x) bt_priority_time(0x%x) pta_algo(0x%x) pta_priority(0x%x) 
+2874,IIIIIIIII,COEX_SET_COEX_WEIGHT: wght_grp(%u) reason(%u) wlan_idle(%u) hid_con_tx_o(%u) bcon_tx_o(%u) bcon_rx_o(%u) prio_wlan_fc(%u) flow_ctrl(0x%x) concur_tx(%u) 
+2875,II,COEX_POWER_CHANGE: Swapping the MAC id for SLEEP_VOTE from %d to %d due to possible SYNC DBS SCAN 
+2876,I,COEX_POWER_CHANGE: ERROR - Invalid mac_id %u was passed 
+2877,IIIII,COEX_RX_RATE_THRESHOLD: RSSIType(%u) LowKpbsThresh(%u) UpperKpbsThresh(%u) NumPPDUsBelowThresh(%u) NumPPDUsAboveThresh(%u) 
+2878,II,COEX_GENERIC_ERROR: ErrCode(%u) RSSIType(%u) 
+2879,I,COEX_GENERIC_ERROR: ErrCode(%u) 
+2880,IIII,COEX_RX_RATE_THRESHOLD: ChWidth(0xFF) TriggRate(%u) XputMonitorActiveNum(%u) TotalCoexIntrvls(%u) EventType(%u) 
+2881,IIIII,COEX_RX_RATE_THRESHOLD: ChWidth(%u) TriggRate(%u) XputMonitorActiveNum(%u) TotalCoexIntrvls(%u) EventType(%u) 
+2882,IIIII,WAL_COEX_BAND_CHANGE: Pdev(%u) NewFreq(%u) WLANSysState(0x%x) CurBand(%u) HWMode(%u) 
+2883,I,COEX_CHANNEL_CHANGE: Invalid pdev_id %u was passed 
+2884,I,COEX_POWER_CHANGE: PHY is ON - Coex recipe change is best effort. mac_id(%d) 
+2885,IIIIII,WAL_COEX_POWER_CHANGE: mac(%u) event_type(%u) cur_state(0x%x) new_state(0x%x) macs_up(0x%x) mac_woke(0x%x) 
+2886,I,WAL_COEX_VDEV_STATE: Error(0x%x) 
+2887,,COEX_VDEV_STATE: 2g vdev not paused 
+2888,,COEX_VDEV_STATE: 2g vdev not unpaused 
+2889,III,WAL_COEX_VDEV_STATE: VDEV_MIGRATE: old_mac_id %u, new_mac_id %u, old_mac_sleep_state %u ! 
+2890,II,WAL_COEX_VDEV_STATE: VDEV_MIGRATE: ERROR - Invalid old_mac_id %u / new_mac_id %u was passed ! 
+2891,IIIIIIIII,WAL_COEX_VDEV_STATE: Error(0x%x) id(%u) stimulus(%u) vdev_state(0x%x) strict_dur_scan(%u) num_peers(%u) pdev(%u) chan(%u) op(%u) 
+2892,IIIIIII,WAL_COEX_MODE_CHANGE: new_mode(%u) old_mode(%u) band_mac_map(0x%x) mac0_settings(0x%x) mac1_settings(0x%x) mac0_band(%u) mac1_band(%u) 
+2893,IIIII,COEX_TRF_FREERUN: NextIntvl(%u) AllocatedBtIntervals(%u) BtIntervalCnt(%u) AllocatedWlanIntervals(%u) WlanIntervalCnt(%u) 
+2894,IIIII,COEX_TRF_SHAPE_PM: interval(%u) Dur(%u) Latency(%u) ConcurrState(0x%x) wlan_2g(%u) 
+2895,IIIIIII,WAL_COEX_SCHED_RESULT: Error(0x%x) SchedulerReq(%u) Algo(%u) PrevAlgo(%u) Policy(%u) NextInterval(%u) WlanRxState(%u) 
+2896,,WAL_COEX_WGT2PRIO: Invalid Weight Group 
+2897,III,COEX_GET_T2BT: t2bt(%u) sched_time(%u) curr_time(%u) 
+2898,,WAL_COEX_WGT2PRIO: Invalid Weight Group 
+2899,IIIIII,COEX_TRF_SHAPE_PSP: Error(0x%x) NextInterval(%u) wght(%u) IntrvalDur(%u) BtTriggerRecieved(%u) IS_PSP_ALG_WLAN_CRITICAL(%u) 
+2900,II,COEX_SET_WEIGHT_GROUP3: Setting coex weight group 3 BT hasn't been non-critical pCoexDev->DynamicOcsSchedReq = %d  pBtCoexWeightDev->resetWtVdevPause= %d 
+2901,I,COEX_SET_WEIGHT_GROUP6: Setting coex weight group six pCoexDev->DynamicOcsSchedReq %d 
+2902,II,COEX_SET_WEIGHT_GROUP3: Else part pCoexDev->DynamicOcsSchedReq = %d  pBtCoexWeightDev->resetWtVdevPause= %d 
+2903,IIIIIIII,WAL_COEX_VERSION: coex_ver(0x%x) wlan[major(%u) minor(%u)] bt[major(%u) minor(%u)] rom(%u) soc(%u) bt_features(0x%x) 
+2904,,WAL_COEX_VERSION: Bluetooth version information is not available. 
 2905,II,WAL_COEX_TWS_GPM: error(0x%x) status(%d) 
 2906,II,WAL_COEX_TWS_GPM: error(0x%x) status(%d) 
-2907,IIIIIII,tsf_alloc: pdev_id = %d vdev_id = %d type = %d tsf_id = 0x%x bss_id = 0x%x pdev_tsf_id_map = 0x%x pdev_bss_id_map = 0x%x 
-2908,IIIIIII,tsf_realloc (flag=0x%x): pdev_id = %d vdev_id = %d type = %d tsf_id = 0x%x bss_id = 0x%x pdev_tsf_id_map = 0x%x pdev_bss_id_map = 0x%x 
-2909,I,Do bss2 context switch %d  
-2910,IIIIIII,tsf_free: pdev_id = %d vdev_id = %d type = %d tsf_id = 0x%x bss_id = 0x%x pdev_tsf_id_map = 0x%x pdev_bss_id_map = 0x%x 
-2911,IIIIIIII,staid_alloc: pdev_id = %d vdev_id = %d (%x.%x.%x) type = %d sta_id = 0x%x pdev_sta_id_map = 0x%x 
-2912,IIIIIIII,staid_free: pdev_id = %d vdev_id = %d (%x.%x.%x) type = %d sta_id = 0x%x pdev_sta_id_map = 0x%x 
-2913,IIIIIIII,wal_vdev_set_spoofed_mac_addr: pdev_id = %d vdev_id = %d spoof_mac=%x.%x.%x spoof_type=%d sta_id = 0x%x spoof_sta_id=0x%x 
-2914,IIIII,wal_vdev_restore_mac: pdev_id = %d vdev_id = %d spoof_type = %d sta_id = 0x%x spoof_sta_id=0x%x 
-2915,IIIIIIII,wal_vdev_set_mac_addr: pdev_id = %d vdev_id = %d mac=%02x:%02x:%02x:%02x:%02x:%02x 
-2916,IIIII,wal_vdev_add_random_mac_addr: pdev_id = %d vdev_id = %d spoof_mac=%x.%x.%x 
-2917,IIIII,wal_vdev_del_random_mac_addr: pdev_id = %d vdev_id = %d spoof_mac=%x.%x.%x 
-2918,II,wal_pdev_dstall_detection_pause pdev_id:%d pause_countdown:%d 
-2919,III,wal_pdev_dstall_mon_timer_timeout: pdev_id:%d dstall_pause_countdown:%d total_active_vdev_cnt%d 
-2920,I,wal_get_mac_addresses:Halphy num_macaddr =%d,Defaulting to max WAL_NUM_MAC_ADDRESSES 
-2921,IIIIII,_wal_dev_reset: mode=%x,c0=%lx,c1=%lx,inprog=%d,dis=%d,en=%x 
-2922,II, WAL_DBGID_SET_POWER_STATE  current = 0x%x desired = 0x%x 
-2923,I,wal_pdev_flush_all_non_pause_tids: send msg to SCHED_ALGO, thread_id =%d 
+2907,II,WAL_COEX_TWS_GPM: error(0x%x) status(%d) 
+2908,IIIIIII,tsf_alloc: pdev_id = %d vdev_id = %d type = %d tsf_id = 0x%x bss_id = 0x%x pdev_tsf_id_map = 0x%x pdev_bss_id_map = 0x%x 
+2909,IIIIIII,tsf_realloc (flag=0x%x): pdev_id = %d vdev_id = %d type = %d tsf_id = 0x%x bss_id = 0x%x pdev_tsf_id_map = 0x%x pdev_bss_id_map = 0x%x 
+2910,I,Do bss2 context switch %d  
+2911,IIIIIII,tsf_free: pdev_id = %d vdev_id = %d type = %d tsf_id = 0x%x bss_id = 0x%x pdev_tsf_id_map = 0x%x pdev_bss_id_map = 0x%x 
+2912,IIIIIIII,staid_alloc: pdev_id = %d vdev_id = %d (%x.%x.%x) type = %d sta_id = 0x%x pdev_sta_id_map = 0x%x 
+2913,IIIIIIII,staid_free: pdev_id = %d vdev_id = %d (%x.%x.%x) type = %d sta_id = 0x%x pdev_sta_id_map = 0x%x 
+2914,IIIIIIII,wal_vdev_set_spoofed_mac_addr: pdev_id = %d vdev_id = %d spoof_mac=%x.%x.%x spoof_type=%d sta_id = 0x%x spoof_sta_id=0x%x 
+2915,IIIII,wal_vdev_restore_mac: pdev_id = %d vdev_id = %d spoof_type = %d sta_id = 0x%x spoof_sta_id=0x%x 
+2916,IIIIIIII,wal_vdev_set_mac_addr: pdev_id = %d vdev_id = %d mac=%02x:%02x:%02x:%02x:%02x:%02x 
+2917,IIIII,wal_vdev_add_random_mac_addr: pdev_id = %d vdev_id = %d spoof_mac=%x.%x.%x 
+2918,IIIII,wal_vdev_del_random_mac_addr: pdev_id = %d vdev_id = %d spoof_mac=%x.%x.%x 
+2919,II,wal_pdev_dstall_detection_pause pdev_id:%d pause_countdown:%d 
+2920,III,wal_pdev_dstall_mon_timer_timeout: pdev_id:%d dstall_pause_countdown:%d total_active_vdev_cnt%d 
+2921,I,wal_get_mac_addresses:Halphy num_macaddr =%d,Defaulting to max WAL_NUM_MAC_ADDRESSES 
+2922,IIIIII,_wal_dev_reset: mode=%x,c0=%lx,c1=%lx,inprog=%d,dis=%d,en=%x 
+2923,II, WAL_DBGID_SET_POWER_STATE  current = 0x%x desired = 0x%x 
+2924,I,wal_pdev_flush_all_non_pause_tids: send msg to SCHED_ALGO, thread_id =%d 
  
-2924,II,WAL_PDEV_REG_DOMAIN (pdev=%d): reg=0x%x 
-2925,II,Set PN_SHIFT_FACTOR: old_pn_shift = %d new_pn_shift = %d 
-2926,I,CONGCTRL SET MAX thresholds from HOST: max_avail:%u 
-2927,,Quiet functionality not supported 
+2925,II,WAL_PDEV_REG_DOMAIN (pdev=%d): reg=0x%x 
+2926,II,Set PN_SHIFT_FACTOR: old_pn_shift = %d new_pn_shift = %d 
+2927,I,CONGCTRL SET MAX thresholds from HOST: max_avail:%u 
+2928,,Quiet functionality not supported 
  
-2928,I,start hwbmiss delay wake tmr, timeout:%d 
-2929,II,wal_vdev_reconfig vdev_id %d  tsf_id is %d 
-2930,IIII,wal_vdev_start vdev_id %d vdev_type %d vdev's mac %dbss_peer %d 
-2931,II,wal_vdev_stop vdev_id %d vdev_type %d 
-2932,IIIII,wal_vdev_up: pdev_id %d vdev_id %d, vdev_type %d flags 0x%x cnt_per_opmode %d 
-2933,IIIII,wal_vdev_down pdev_id %d vdev_id %d vdev_type %d flags 0x%x cnt_per_opmode %d 
-2934,III,[ERP_PROTECTION]: param_val %d default profile 0x%x new profile 0x%x 
-2935,IIII,WAL_DBGID_SETUP_RSSI_INTERRUPTS vdev_id = %d 0x%x 0x%x 0x%x 
-2936,I,%s: NULL pointer 
- 
+2929,I,start hwbmiss delay wake tmr, timeout:%d 
+2930,II,wal_vdev_reconfig vdev_id %d  tsf_id is %d 
+2931,IIII,wal_vdev_start vdev_id %d vdev_type %d vdev's mac %dbss_peer %d 
+2932,II,wal_vdev_stop vdev_id %d vdev_type %d 
+2933,IIIII,wal_vdev_up: pdev_id %d vdev_id %d, vdev_type %d flags 0x%x cnt_per_opmode %d 
+2934,IIIII,wal_vdev_down pdev_id %d vdev_id %d vdev_type %d flags 0x%x cnt_per_opmode %d 
+2935,III,[ERP_PROTECTION]: param_val %d default profile 0x%x new profile 0x%x 
+2936,IIII,WAL_DBGID_SETUP_RSSI_INTERRUPTS vdev_id = %d 0x%x 0x%x 0x%x 
 2937,I,%s: NULL pointer 
  
-2938,I,%s: invalid addr_type 
+2938,I,%s: NULL pointer 
  
-2939,I,%s: no buf in pool 
+2939,I,%s: invalid addr_type 
  
-2940,I,%s: inserting at head 
+2940,I,%s: no buf in pool 
  
-2941,I,%s: update the existing filter 
+2941,I,%s: inserting at head 
  
-2942,I,%s: no buf in pool 
+2942,I,%s: update the existing filter 
  
-2943,I,%s: Inserting in the list 
+2943,I,%s: no buf in pool 
  
-2944,I,%s: NULL pointer 
+2944,I,%s: Inserting in the list 
  
-2945,I,%s: Invalid addr_type 
+2945,I,%s: NULL pointer 
  
-2946,I,%s: List is empty
+2946,I,%s: Invalid addr_type 
  
-2947,I,%s: removing from the head 
+2947,I,%s: List is empty
  
-2948,I,%s: removing from the middle 
+2948,I,%s: removing from the head 
  
-2949,I,%s: NULL pointer 
+2949,I,%s: removing from the middle 
  
 2950,I,%s: NULL pointer 
  
-2951,I,%s: Invalid addr_type 
+2951,I,%s: NULL pointer 
  
-2952,I,%s: List is empty
+2952,I,%s: Invalid addr_type 
  
-2953,II,wal_vdev_pre_migrate - old_pdev is %d, new_pdev is = %d 
-2954,II,wal_vdev_post_migrate - old_pdev is %d, new_pdev is = %d 
-2955,,wal_vdev_post_migrate - Calling rx_resume 
-2956,II,_wal_vdev_migrate_tear_down: vdev_id = %d rssi_beacon = %d 
-2957,III,_wal_vdev_migrate_tear_down: vdev_id = %d sta_bss_tstamp = 0x%x time_at_sta_bss_tstamp = 0x%x 
-2958,II,_wal_vdev_migrate_bring_up: vdev_id = %d rssi_beacon = %d 
-2959,IIII,_wal_vdev_migrate_bring_up: vdev_id = %d cur_tsf_64 = 0x%x sta_bss_tstamp = 0x%x time_at_sta_bss_tstamp = 0x%x 
-2960,IIIIII,wal_vdev_migrate (%d, 0x%x): pdev %d->%d, active=%d/%d 
-2961,,_wal_vdev_state_publish: Entry  
-2962,II,_wal_vdev_state_publish: bytes is %d, less than output size = %d  
-2963,I,_wal_vdev_state_publish: vdev_id_map %d  
-2964,I,_wal_vdev_state_publish: vdev  %d  
-2965,II,_wal_vdev_state_publish: vdev_type_state is %d, vdev_id_state = %d  
-2966,IIIIII,_wal_vdev_state_publish: mac_address is %d:%d:%d:%d:%d:%d  
-2967,,_wal_vdev_state_publish: Exit  
-2968,IIII,wal_vdev_event_handler (vdev=0x%x,%d): add peer (0x%x)-count=%d 
-2969,IIII,wal_vdev_event_handler (vdev=0x%x,%d): del peer (0x%x)-count=%d 
-2970,III,num_tids=%d,num_mpdu=%d
+2953,I,%s: List is empty
  
-2971,III,tid_sz=%d,mpdu_sz=%d
+2954,II,wal_vdev_pre_migrate - old_pdev is %d, new_pdev is = %d 
+2955,II,wal_vdev_post_migrate - old_pdev is %d, new_pdev is = %d 
+2956,,wal_vdev_post_migrate - Calling rx_resume 
+2957,II,_wal_vdev_migrate_tear_down: vdev_id = %d rssi_beacon = %d 
+2958,III,_wal_vdev_migrate_tear_down: vdev_id = %d sta_bss_tstamp = 0x%x time_at_sta_bss_tstamp = 0x%x 
+2959,II,_wal_vdev_migrate_bring_up: vdev_id = %d rssi_beacon = %d 
+2960,IIII,_wal_vdev_migrate_bring_up: vdev_id = %d cur_tsf_64 = 0x%x sta_bss_tstamp = 0x%x time_at_sta_bss_tstamp = 0x%x 
+2961,IIIIII,wal_vdev_migrate (%d, 0x%x): pdev %d->%d, active=%d/%d 
+2962,,_wal_vdev_state_publish: Entry  
+2963,II,_wal_vdev_state_publish: bytes is %d, less than output size = %d  
+2964,I,_wal_vdev_state_publish: vdev_id_map %d  
+2965,I,_wal_vdev_state_publish: vdev  %d  
+2966,II,_wal_vdev_state_publish: vdev_type_state is %d, vdev_id_state = %d  
+2967,IIIIII,_wal_vdev_state_publish: mac_address is %d:%d:%d:%d:%d:%d  
+2968,,_wal_vdev_state_publish: Exit  
+2969,IIII,wal_vdev_event_handler (vdev=0x%x,%d): add peer (0x%x)-count=%d 
+2970,IIII,wal_vdev_event_handler (vdev=0x%x,%d): del peer (0x%x)-count=%d 
+2971,III,num_tids=%d,num_mpdu=%d
  
-2972,I,nss_chainmaks:array=%x 
-2973,II,wal_soc_switch_mode: nss applied for mac0 -  %d and %d 
-2974,IIII,_wal_soc_switch_mode: mhz = %d mac_id = %d  tx_resumed %d last_pdev_state %d 
-2975,, Caling DPD SM for home channel  
-2976,I,wal_soc_switch_mode: Start switching to mode = %d 
-2977,I,wal_soc_switch_mode: Not switching to mode = %d 
-2978,II,wal_soc_switch_mode: tx chainmask [%d] from protocol %d 
-2979,II,wal_soc_switch_mode: rx chainmask [%d] from protocol %d 
-2980,II,wal_soc_switch_mode: pdev_state[%d] = %d 
-2981,I,wal_soc_switch_mode: Switched to Mode = %d 
-2982,,_wal_soc_pkt_info_run_algo: No monitored phy mode or device in sleep mode, enabled pktlog.
+2972,III,tid_sz=%d,mpdu_sz=%d
  
-2983,IIIIII,pktlog from %d to %d: tx_msdu %d, threshold %d, tx_ppdu %d, threshold %d.
+2973,I,nss_chainmaks:array=%x 
+2974,II,wal_soc_switch_mode: nss applied for mac0 -  %d and %d 
+2975,IIII,_wal_soc_switch_mode: mhz = %d mac_id = %d  tx_resumed %d last_pdev_state %d 
+2976,, Caling DPD SM for home channel  
+2977,I,wal_soc_switch_mode: Start switching to mode = %d 
+2978,I,wal_soc_switch_mode: Not switching to mode = %d 
+2979,II,wal_soc_switch_mode: tx chainmask [%d] from protocol %d 
+2980,II,wal_soc_switch_mode: rx chainmask [%d] from protocol %d 
+2981,II,wal_soc_switch_mode: pdev_state[%d] = %d 
+2982,I,wal_soc_switch_mode: Switched to Mode = %d 
+2983,,_wal_soc_pkt_info_run_algo: No monitored phy mode or device in sleep mode, enabled pktlog.
  
-2984,IIIIII,pktlog from %d to %d: rx_msdu %d, threshold %d, rx_ppdu %d, threshold %d.
+2984,IIIIII,pktlog from %d to %d: tx_msdu %d, threshold %d, tx_ppdu %d, threshold %d.
  
-2985,IIIIII,pktlog from %d to %d: tx_msdu %d, sum_msdu %d, threshold %d, sum_ppdu %d, threshold %d.
+2985,IIIIII,pktlog from %d to %d: rx_msdu %d, threshold %d, rx_ppdu %d, threshold %d.
  
-2986,III,_wal_soc_register_pkt_info_handler 0x%x, 0x%x, 0x%x 
-2987,III,_wal_soc_unregister_pkt_info_handler 0x%x, 0x%x, 0x%x 
-2988,II,_wal_soc_state_publish: bytes is %d, less than output size = %d  
-2989,II,_wal_soc_state_publish: correct return num_mac %d soc mode %d 
-2990,,_wal_soc_state_publish: gp_wal_soc is null 
-2991,II,Tx_Pause: WAL_PEER_EVENT_SEND_N_COMPLETE sent: peer:0X%x, tid_num:%d 
-2992,I,Tx_Pause: Pdev event PEER_CREATE for peer:0X%x rcvd 
-2993,IIII,Tx_Pause: WAL_PEER_TX_PAUSE_UNPAUSE_COMPLETE sent: peer:0X%x, module_id:%d, tids_to_pause:0X%x, tids_to_unpause:0X%x 
-2994,IIII,Tx_Pause: WAL_PEER_TX_BLOCK_UNBLOCK_COMPLETE sent: peer:0X%x, module_id:%d, tids_to_block:0X%x, tids_to_unblock:0X%x 
-2995,III,Tx_Pause: WAL_VDEV_TX_PAUSE_COMPLETE sent: vdev_id:%d, module_id:%d, block:%d 
-2996,III,Tx_Pause: WAL_VDEV_TX_UNPAUSE_COMPLETE sent: vdev_id:%d, module_id:%d, block:%d 
-2997,III,Tx_Pause: WAL_PDEV_TX_PAUSE_COMPLETE sent: pdev_id:%d, module_id:%d, block:%d 
-2998,III,Tx_Pause: WAL_PDEV_TX_UNPAUSE_COMPLETE sent: pdev_id:%d, module_id:%d, block:%d 
-2999,IIII,Tx_Pause: WAL_PEER_TX_PAUSE_UNPAUSE_REQ comp: peer:0X%x, module_id:%d, tids_to_pause:0X%x, tids_to_unpause:0X%x 
-3000,IIII,Tx_Pause: WAL_PEER_TX_BLOCK_UNBLOCK_REQ comp: peer:0X%x, module_id:%d, tids_to_block:0X%x, tids_to_unblock:0X%x 
-3001,III,Tx_Pause: WAL_VDEV_TX_PAUSE_REQ comp: vdev_id:%d, module_id:%d, block:%d 
-3002,III,Tx_Pause: WAL_VDEV_TX_UNPAUSE_REQ comp: vdev_id:%d, module_id:%d, block:%d 
-3003,III,Tx_Pause: WAL_PDEV_TX_PAUSE_REQ comp: pdev_id:%d, module_id:%d, block:%d 
-3004,III,Tx_Pause: WAL_PDEV_TX_UNPAUSE_REQ comp: pdev_id:%d, module_id:%d, block:%d 
-3005,IIII,Tx_Pause: WAL_PDEV_TX_PAUSE_REQ rcvd: pdev_id:%d, module_id:%d, block:%d, filter:%d 
-3006,III,Tx_Pause: WAL_PDEV_TX_UNPAUSE_REQ rcvd: pdev_id:%d, module_id:%d, block:%d 
-3007,I,Tx_Pause: unsupported pdev request id:%d 
-3008,IIII,Tx_Pause: WAL_VDEV_TX_PAUSE_REQ rcvd: vdev_id:%d, module_id:%d, block:%d, filter:%d 
-3009,III,Tx_Pause: WAL_VDEV_TX_UNPAUSE_REQ rcvd: vdev_id:%d, module_id:%d, block:%d 
-3010,I,Tx_Pause: unsupported vdev request id:%d 
-3011,IIIII,Tx_Pause: WAL_PEER_TX_PAUSE_UNPAUSE_REQ rcvd: peer:0X%x, module_id:%d, tids_to_pause:0X%x, tids_to_unpause:0X%x, filter:%d 
-3012,IIIII,Tx_Pause: WAL_PEER_TX_BLOCK_UNBLOCK_REQ rcvd: peer:0X%x, module_id:%d, tids_to_block:0X%x, tids_to_unblock:0X%x, filter:%d 
-3013,I,Tx_Pause: unsupported peer request id:%d 
-3014,IIII,Tx_Pause: WAL_PEER_SEND_N_REQ rcvd: peer:0X%x, tidno:%d, num_frames:%d, flags:0X%x [No_Resp] 
-3015,IIII,Tx_Pause: WAL_PEER_PS_PRE_REQ rcvd: peer:0X%x, force_ps:%d, pm_ts:%d, paused_tidmask:0X%x  [No_Resp] 
-3016,I,Tx_Pause: WAL_VDEV_TX_PAUSE_RESET_IND rcvd: vdev_id:%d [No_Resp] 
-3017,II,Tx_Pause: WAL_TX_PAUSE_TID_CREATE rcvd: peer:0X%x, tid_num:%d [No_Resp] 
-3018,I,Tx_Pause: WAL_TX_PAUSE_VDEV_CREATE rcvd: vdev_id:%d [No_Resp] 
-3019,I,Tx_Pause: WAL_TX_PAUSE_PEER_CREATE rcvd: peer:0X%x [No_Resp] 
-3020,I,Tx_Pause: WAL_TX_PAUSE_HWQ_EMPTY rcvd: tid_num:%d [No_Resp] 
-3021,I,Tx_Pause: unsupported no-resp request id:%d 
-3022,I,Tx_Pause: unsupported request id:%d 
-3023,IIII,tid_pause_data_stall tid_num:%d pause_module_id_map:%d block_module_id_map:%d peer:0X%x 
-3024,II,WAL_DBGID_SMPS_SET_HW_MODE: new=0x%x old=0x%x 
-3025,,_wal_rmc_deliver_event: Deliver RMC event 
-3026,I,RMC event handler: event_type = 0x%x
+2986,IIIIII,pktlog from %d to %d: tx_msdu %d, sum_msdu %d, threshold %d, sum_ppdu %d, threshold %d.
  
-3027,I,pdev_id = %d: DMA is not attached
+2987,III,_wal_soc_register_pkt_info_handler 0x%x, 0x%x, 0x%x 
+2988,III,_wal_soc_unregister_pkt_info_handler 0x%x, 0x%x, 0x%x 
+2989,II,_wal_soc_state_publish: bytes is %d, less than output size = %d  
+2990,II,_wal_soc_state_publish: correct return num_mac %d soc mode %d 
+2991,,_wal_soc_state_publish: gp_wal_soc is null 
+2992,II,Tx_Pause: WAL_PEER_EVENT_SEND_N_COMPLETE sent: peer:0X%x, tid_num:%d 
+2993,I,Tx_Pause: Pdev event PEER_CREATE for peer:0X%x rcvd 
+2994,IIII,Tx_Pause: WAL_PEER_TX_PAUSE_UNPAUSE_COMPLETE sent: peer:0X%x, module_id:%d, tids_to_pause:0X%x, tids_to_unpause:0X%x 
+2995,IIII,Tx_Pause: WAL_PEER_TX_BLOCK_UNBLOCK_COMPLETE sent: peer:0X%x, module_id:%d, tids_to_block:0X%x, tids_to_unblock:0X%x 
+2996,III,Tx_Pause: WAL_VDEV_TX_PAUSE_COMPLETE sent: vdev_id:%d, module_id:%d, block:%d 
+2997,III,Tx_Pause: WAL_VDEV_TX_UNPAUSE_COMPLETE sent: vdev_id:%d, module_id:%d, block:%d 
+2998,III,Tx_Pause: WAL_PDEV_TX_PAUSE_COMPLETE sent: pdev_id:%d, module_id:%d, block:%d 
+2999,III,Tx_Pause: WAL_PDEV_TX_UNPAUSE_COMPLETE sent: pdev_id:%d, module_id:%d, block:%d 
+3000,IIII,Tx_Pause: WAL_PEER_TX_PAUSE_UNPAUSE_REQ comp: peer:0X%x, module_id:%d, tids_to_pause:0X%x, tids_to_unpause:0X%x 
+3001,IIII,Tx_Pause: WAL_PEER_TX_BLOCK_UNBLOCK_REQ comp: peer:0X%x, module_id:%d, tids_to_block:0X%x, tids_to_unblock:0X%x 
+3002,III,Tx_Pause: WAL_VDEV_TX_PAUSE_REQ comp: vdev_id:%d, module_id:%d, block:%d 
+3003,III,Tx_Pause: WAL_VDEV_TX_UNPAUSE_REQ comp: vdev_id:%d, module_id:%d, block:%d 
+3004,III,Tx_Pause: WAL_PDEV_TX_PAUSE_REQ comp: pdev_id:%d, module_id:%d, block:%d 
+3005,III,Tx_Pause: WAL_PDEV_TX_UNPAUSE_REQ comp: pdev_id:%d, module_id:%d, block:%d 
+3006,IIII,Tx_Pause: WAL_PDEV_TX_PAUSE_REQ rcvd: pdev_id:%d, module_id:%d, block:%d, filter:%d 
+3007,III,Tx_Pause: WAL_PDEV_TX_UNPAUSE_REQ rcvd: pdev_id:%d, module_id:%d, block:%d 
+3008,I,Tx_Pause: unsupported pdev request id:%d 
+3009,IIII,Tx_Pause: WAL_VDEV_TX_PAUSE_REQ rcvd: vdev_id:%d, module_id:%d, block:%d, filter:%d 
+3010,III,Tx_Pause: WAL_VDEV_TX_UNPAUSE_REQ rcvd: vdev_id:%d, module_id:%d, block:%d 
+3011,I,Tx_Pause: unsupported vdev request id:%d 
+3012,IIIII,Tx_Pause: WAL_PEER_TX_PAUSE_UNPAUSE_REQ rcvd: peer:0X%x, module_id:%d, tids_to_pause:0X%x, tids_to_unpause:0X%x, filter:%d 
+3013,IIIII,Tx_Pause: WAL_PEER_TX_BLOCK_UNBLOCK_REQ rcvd: peer:0X%x, module_id:%d, tids_to_block:0X%x, tids_to_unblock:0X%x, filter:%d 
+3014,I,Tx_Pause: unsupported peer request id:%d 
+3015,IIII,Tx_Pause: WAL_PEER_SEND_N_REQ rcvd: peer:0X%x, tidno:%d, num_frames:%d, flags:0X%x [No_Resp] 
+3016,IIII,Tx_Pause: WAL_PEER_PS_PRE_REQ rcvd: peer:0X%x, force_ps:%d, pm_ts:%d, paused_tidmask:0X%x  [No_Resp] 
+3017,I,Tx_Pause: WAL_VDEV_TX_PAUSE_RESET_IND rcvd: vdev_id:%d [No_Resp] 
+3018,II,Tx_Pause: WAL_TX_PAUSE_TID_CREATE rcvd: peer:0X%x, tid_num:%d [No_Resp] 
+3019,I,Tx_Pause: WAL_TX_PAUSE_VDEV_CREATE rcvd: vdev_id:%d [No_Resp] 
+3020,I,Tx_Pause: WAL_TX_PAUSE_PEER_CREATE rcvd: peer:0X%x [No_Resp] 
+3021,I,Tx_Pause: WAL_TX_PAUSE_HWQ_EMPTY rcvd: tid_num:%d [No_Resp] 
+3022,I,Tx_Pause: unsupported no-resp request id:%d 
+3023,I,Tx_Pause: unsupported request id:%d 
+3024,IIII,tid_pause_data_stall tid_num:%d pause_module_id_map:%d block_module_id_map:%d peer:0X%x 
+3025,II,WAL_DBGID_SMPS_SET_HW_MODE: new=0x%x old=0x%x 
+3026,,_wal_rmc_deliver_event: Deliver RMC event 
+3027,I,RMC event handler: event_type = 0x%x
  
-3028,III,mac_id = %d: trigger = %d enable = %d 
-3029,I,_wal_spectral_scan_get_config  called %p 
-3030,I,pdev_id = %d: spectral attach 
+3028,I,pdev_id = %d: DMA is not attached
  
-3031,,wal_spectral_deliver_wmi_event: WMI Event Alloc Failed!!! 
-3032,I,<%d>: WMI event called 
-3033,I,pdev_id = %d: DMA push config 
+3029,III,mac_id = %d: trigger = %d enable = %d 
+3030,I,_wal_spectral_scan_get_config  called %p 
+3031,I,pdev_id = %d: spectral attach 
  
-3034,I,pdev_id = %d: spectral sig handler 
+3032,,wal_spectral_deliver_wmi_event: WMI Event Alloc Failed!!! 
+3033,I,<%d>: WMI event called 
+3034,I,pdev_id = %d: DMA push config 
  
 3035,I,pdev_id = %d: spectral sig handler 
  
 3036,I,pdev_id = %d: spectral sig handler 
  
-3037,I,pdev_id = %d: DMA attached success
+3037,I,pdev_id = %d: spectral sig handler 
  
-3038,III,WMMAC_PAUSE_CB: peer=0x%x blocked tids=0x%x/0x%x 
-3039,IIII,WMMAC_Q_REPRIO: peer=0x%x tid=%d qid:%d->%d 
-3040,II,WMMAC_PAUSE_CB: unblock tid(%d)=0x%x 
-3041,IIIII,WMMAC_ADD_DELTS: ac=%d admitted=%d acm=%d block=0x%x downgrade=0x%x 
-3042,III,WMMAC_UPDATE: used_time=%d admitted_time=%d, downgrade=%d 
-3043,IIII,WMMAC_Q_DEPRIO: peer=0x%x tid=%d qid:%d->%d 
-3044,III,WMMAC_Q_DROP: peer=0x%x tid(%d)=0x%x 
-3045,IIII,WMMAC_PERIODIC_UPDATE 0x%x 0x%x 0x%x 0x%x 
-3046,I,WMMAC_NO_DOWNGRADE: unblock tid mask=0x%x 
-3047,III,WMMAC_PERIODIC_UPDATE (VO): peer=0x%x, used=%d, admitted=%d 
-3048,III,WMMAC_PERIODIC_UPDATE (VI): peer=0x%x, used=%d, admitted=%d 
-3049,IIII,WMMAC_USED_TIME_EXCEED: used=%d admitted=%d tx_sts=%d wmmac_q=%d 
-3050,IIIIII,WMMAC_STATUS: peer=0x%x, used=%d, admitted=%d, txq_sts=%d/%d, downgrade=%d 
-3051,IIIII,WMMAC_TXQ_STATUS ac=%d txq_status=0x%02x used=%d admitted=%d downgrade=%d 
-3052,III,buf free: free the reused abf:0x%x, thread:%d, cb flags:0x%x 
-3053,IIII,free beacon abf:0x%x, thread:%d, cb flags:0x%x,rsvd:%d 
-3054,IIII,SMGMT buf free,small:%d,abf:0x%x,thread:%d,bufCnt:%d 
-3055,IIII,MGMT buf free,small:%d,abf:0x%x,thread:%d,bufCnt:%d 
-3056,II,MGMT buf get failure: mgmtbufCnt = %d, bsmall = %d 
-3057,II,MGMT buf get beacon: mac_id:%d, rsvd:%d 
-3058,III,MGMT buf abf failure: smgmtbufCnt = %d, bsmall = %d mgmtBufCnt = %d 
-3059,IIIII,MGMT buf get success: abf = 0x%x  mgmtBufCnt =%d smgmtbuffcnt = %d bsmall = %d,flags = 0x%x 
-3060,,wlan_buf_mac_buffer_dispatcher no buffers available in chain 
-3061,I,wlan_buf_mac_buffer_dispatcher mac_id=%d
+3038,I,pdev_id = %d: DMA attached success
  
-3062,,wlan_buf_mac_buffer_dispatcher oops 
+3039,III,WMMAC_PAUSE_CB: peer=0x%x blocked tids=0x%x/0x%x 
+3040,IIII,WMMAC_Q_REPRIO: peer=0x%x tid=%d qid:%d->%d 
+3041,II,WMMAC_PAUSE_CB: unblock tid(%d)=0x%x 
+3042,IIIII,WMMAC_ADD_DELTS: ac=%d admitted=%d acm=%d block=0x%x downgrade=0x%x 
+3043,III,WMMAC_UPDATE: used_time=%d admitted_time=%d, downgrade=%d 
+3044,IIII,WMMAC_Q_DEPRIO: peer=0x%x tid=%d qid:%d->%d 
+3045,III,WMMAC_Q_DROP: peer=0x%x tid(%d)=0x%x 
+3046,IIII,WMMAC_PERIODIC_UPDATE 0x%x 0x%x 0x%x 0x%x 
+3047,I,WMMAC_NO_DOWNGRADE: unblock tid mask=0x%x 
+3048,III,WMMAC_PERIODIC_UPDATE (VO): peer=0x%x, used=%d, admitted=%d 
+3049,III,WMMAC_PERIODIC_UPDATE (VI): peer=0x%x, used=%d, admitted=%d 
+3050,IIII,WMMAC_USED_TIME_EXCEED: used=%d admitted=%d tx_sts=%d wmmac_q=%d 
+3051,IIIIII,WMMAC_STATUS: peer=0x%x, used=%d, admitted=%d, txq_sts=%d/%d, downgrade=%d 
+3052,IIIII,WMMAC_TXQ_STATUS ac=%d txq_status=0x%02x used=%d admitted=%d downgrade=%d 
+3053,III,buf free: free the reused abf:0x%x, thread:%d, cb flags:0x%x 
+3054,IIII,free beacon abf:0x%x, thread:%d, cb flags:0x%x,rsvd:%d 
+3055,IIII,SMGMT buf free,small:%d,abf:0x%x,thread:%d,bufCnt:%d 
+3056,IIII,MGMT buf free,small:%d,abf:0x%x,thread:%d,bufCnt:%d 
+3057,II,MGMT buf get failure: mgmtbufCnt = %d, bsmall = %d 
+3058,II,MGMT buf get beacon: mac_id:%d, rsvd:%d 
+3059,III,MGMT buf abf failure: smgmtbufCnt = %d, bsmall = %d mgmtBufCnt = %d 
+3060,IIIII,MGMT buf get success: abf = 0x%x  mgmtBufCnt =%d smgmtbuffcnt = %d bsmall = %d,flags = 0x%x 
+3061,,wlan_buf_mac_buffer_dispatcher no buffers available in chain 
+3062,I,wlan_buf_mac_buffer_dispatcher mac_id=%d
+ 
 3063,,wlan_buf_mac_buffer_dispatcher oops 
-3064,I,wlan_buf_rxbuf_requeue mac_id=%d
+3064,,wlan_buf_mac_buffer_dispatcher oops 
+3065,I,wlan_buf_rxbuf_requeue mac_id=%d
  
-3065,,wlan_buf_mac_buffer_dispatcher oops 
 3066,,wlan_buf_mac_buffer_dispatcher oops 
-3067,IIII,arena_flags: 0x%x, bytes:%d, call1:0x%x, call2:0x%x
+3067,,wlan_buf_mac_buffer_dispatcher oops 
+3068,IIII,arena_flags: 0x%x, bytes:%d, call1:0x%x, call2:0x%x
  
-3068,IIII,unknown proxy_flag:0x%x, ret:0x%x, ret1:0x%x,ret2:0x%x 
-3069,,BEGIN: cmnos_allocram_info_dump() 
-3070,IIIIII,arena: %d, start: 0x%p, current: 0x%p, used = %d, remaining: %d, num_allocs: %d
+3069,IIII,unknown proxy_flag:0x%x, ret:0x%x, ret1:0x%x,ret2:0x%x 
+3070,,BEGIN: cmnos_allocram_info_dump() 
+3071,IIIIII,arena: %d, start: 0x%p, current: 0x%p, used = %d, remaining: %d, num_allocs: %d
  
-3071,IIIII,max: %d, idx: %d, total_num: %d, total_bytes: %d, length: %d 
-3072,,HEX_DUMP: 
-3073,,END: cmnos_allocram_info_dump() 
-3074,,cmnos_threads_delete
+3072,IIIII,max: %d, idx: %d, total_num: %d, total_bytes: %d, length: %d 
+3073,,HEX_DUMP: 
+3074,,END: cmnos_allocram_info_dump() 
+3075,,cmnos_threads_delete
  
-3075,I,cmnos_threads_delete: send exit to 0x%x thread app id
+3076,I,cmnos_threads_delete: send exit to 0x%x thread app id
  
-3076,I,cmnos_threads_delete: wait for thread app id 0x%x to exit
+3077,I,cmnos_threads_delete: wait for thread app id 0x%x to exit
  
-3077,I,cmnos_threads_delete: thread app id 0x%x is done
+3078,I,cmnos_threads_delete: thread app id 0x%x is done
  
-3078,,cmnos_threads_delete: clean up mutex locks
+3079,,cmnos_threads_delete: clean up mutex locks
  
-3079,,cmnos_threads_delete: clean up thread barriers
+3080,,cmnos_threads_delete: clean up thread barriers
  
-3080,,cmnos_threads_delete: do global cleanups
+3081,,cmnos_threads_delete: do global cleanups
  
-3081,III,APP THREAD ID %d thread stack: %dB used, %dB unused
+3082,III,APP THREAD ID %d thread stack: %dB used, %dB unused
  
-3082,I,product resulting in buffer overflow: num_of_elem * elem_sz = 0x%x 
-3083,I,profile_report: #profiles enabled > WMI limit (=%d) 
-3084,I,profile_report: could not alloc, size=%d 
-3085,III,SM: %d:%p : allocation from event pool failed for event %d 
-3086,IIIIIIII,[SM:ChgSta] CurS:%x --> NextS:%x mod_id=%d vapid =%d make_sm = 0x%x extra = 0x%x extra2 = 0x%x extra3 = 0x%x 
-3087,III,SM: %d:%p : invalid event %d 
-3088,IIIIIIII,[SM:RcvEvt] CurS:%x <-- Event:%x mod_id=%d vapid =%d make_sm = 0x%x extra = 0x%x extra2 = 0x%x extra3 = 0x%x 
-3089,IIII,SM: %d:%p : event %d not handled in state %d 
-3090,IIIIIIII,[SM:RcvEvt] Evt:%d not handled in CurS:%d mod_id=%d vapid =%d make_sm = 0x%x extra = 0x%x extra2 = 0x%x extra3 = 0x%x 
-3091,II,11ac MU-MIMO GID MGMT: user successfully assigned completed: assoc id: %d, mu_user_id: %d 
-3092,III,11ac MU-MIMO GID MGMT: Send GID MGMT failed. AID: %d, mu_user_id: %d, status: %d 
-3093,IIIIIIII,11ac MU-MIMO GID MGMT: Sending GID MGMT frame: AID: %d, mu_user_id: %d, grp_status[0]: 0x%08x, grp_status[1]: 0x%08x, user_pos_map[0]: 0x%08x, user_pos_map[1]: 0x%08x, user_pos_map[2]: 0x%08x, user_pos_map[3]: 0x%08x 
-3094,II,11ac MU-MIMO GID MGMT: Send GID MGMT failed. AID: %d, mu_user_id: %d 
-3095,II,11ac MU-MIMO GID MGMT: Error in assigned group %d, user position %d 
-3096,II,11ac MU-MIMO GID MGMT: Assigned group %d, user position %d 
-3097,,11ac MU-MIMO GID MGMT: Ignoring GID MGMT message recieved while not in STA mode. 
-3098,III,Number of invalid peer assoc capabilities for HT %d, VHT %d, HE %d
+3083,I,product resulting in buffer overflow: num_of_elem * elem_sz = 0x%x 
+3084,I,profile_report: #profiles enabled > WMI limit (=%d) 
+3085,I,profile_report: could not alloc, size=%d 
+3086,III,SM: %d:%p : allocation from event pool failed for event %d 
+3087,IIIIIIII,[SM:ChgSta] CurS:%x --> NextS:%x mod_id=%d vapid =%d make_sm = 0x%x extra = 0x%x extra2 = 0x%x extra3 = 0x%x 
+3088,III,SM: %d:%p : invalid event %d 
+3089,IIIIIIII,[SM:RcvEvt] CurS:%x <-- Event:%x mod_id=%d vapid =%d make_sm = 0x%x extra = 0x%x extra2 = 0x%x extra3 = 0x%x 
+3090,IIII,SM: %d:%p : event %d not handled in state %d 
+3091,IIIIIIII,[SM:RcvEvt] Evt:%d not handled in CurS:%d mod_id=%d vapid =%d make_sm = 0x%x extra = 0x%x extra2 = 0x%x extra3 = 0x%x 
+3092,II,11ac MU-MIMO GID MGMT: user successfully assigned completed: assoc id: %d, mu_user_id: %d 
+3093,III,11ac MU-MIMO GID MGMT: Send GID MGMT failed. AID: %d, mu_user_id: %d, status: %d 
+3094,IIIIIIII,11ac MU-MIMO GID MGMT: Sending GID MGMT frame: AID: %d, mu_user_id: %d, grp_status[0]: 0x%08x, grp_status[1]: 0x%08x, user_pos_map[0]: 0x%08x, user_pos_map[1]: 0x%08x, user_pos_map[2]: 0x%08x, user_pos_map[3]: 0x%08x 
+3095,II,11ac MU-MIMO GID MGMT: Send GID MGMT failed. AID: %d, mu_user_id: %d 
+3096,II,11ac MU-MIMO GID MGMT: Error in assigned group %d, user position %d 
+3097,II,11ac MU-MIMO GID MGMT: Assigned group %d, user position %d 
+3098,,11ac MU-MIMO GID MGMT: Ignoring GID MGMT message recieved while not in STA mode. 
+3099,III,Number of invalid peer assoc capabilities for HT %d, VHT %d, HE %d
  
-3099,,Set INVALID!!! RTS Rate Index 
-3100,III,migrate peer in delete prog %p, flags:%x, sw_peer_id:%x 
-3101,I,sched_algo_req_handler: unsupported msg type:%d 
-3102,IIIII,user %d: assigned: %d, rate_kbps: %d, qdepth: %d, target_mpdu: %d
+3100,,Set INVALID!!! RTS Rate Index 
+3101,III,migrate peer in delete prog %p, flags:%x, sw_peer_id:%x 
+3102,I,sched_algo_req_handler: unsupported msg type:%d 
+3103,IIIII,user %d: assigned: %d, rate_kbps: %d, qdepth: %d, target_mpdu: %d
  
-3103,II,Per user txtime user%d : %d 
-3104,IIIII,RU_ALLOC DBG: id: %d, ru_input: flags: 0x%08x, tx_bw_mask 0x%08x, ppdu_time: %d, input user count: %d 
-3105,IIIIIIII,RU_ALLOC DBG: id: %d, aid: %d, max_bw: %d, rix: %d, queue_depth: %d, qos_weight: %d, consec_no_mpdu_tried: %d, consec_skip_cnt: %d 
-3106,IIII,RU_ALLOC DBG: id: %d, ru_result: ret_val: %d, num_users: %d, tx_bw_mask 0x%08x 
-3107,II,RU_ALLOC DBG: id: %d, DROPPED_USER: aid: %d 
-3108,,ATF stats 
+3104,III,_psd: tid %d WMM_AC %d noack %d 
+3105,II,Per user txtime user%d : %d 
+3106,IIIII,RU_ALLOC DBG: id: %d, ru_input: flags: 0x%08x, tx_bw_mask 0x%08x, ppdu_time: %d, input user count: %d 
+3107,IIIIIIII,RU_ALLOC DBG: id: %d, aid: %d, max_bw: %d, rix: %d, queue_depth: %d, qos_weight: %d, consec_no_mpdu_tried: %d, consec_skip_cnt: %d 
+3108,IIII,RU_ALLOC DBG: id: %d, ru_result: ret_val: %d, num_users: %d, tx_bw_mask 0x%08x 
+3109,II,RU_ALLOC DBG: id: %d, DROPPED_USER: aid: %d 
+3110,,ATF stats 
  
-3109,III,atf pdev %d tx time %d, rx time %d 
+3111,III,atf pdev %d tx time %d, rx time %d 
  
-3110,I,atf vdev %d 
+3112,I,atf vdev %d 
  
-3111,,bss  
-3112,,self  
-3113,IIIIIII,peer %d, mac %x %x, tx time %u, rx time %u, atf units: expected %d actual %d 
+3113,,bss  
+3114,,self  
+3115,IIIIIII,peer %d, mac %x %x, tx time %u, rx time %u, atf units: expected %d actual %d 
  
-3114,,Resetting ATF stats 
+3116,,Resetting ATF stats 
  
-3115,III,Pdev id %d, hwq %d, last sched order idx %d 
+3117,III,Pdev id %d, hwq %d, last sched order idx %d 
  
-3116,IIIII,last scheduled peer ids %d, %d, %d, %d, %d 
-3117,IIII,delimiter user track: Number of total MU PPDU %d, MU PPDUs with delimiter users: %d, Percent:%d                    Average MU number of delimiter users %d 
-3118,IIII,ac_mu_mimo : Per user txtime user%d_bin_%d - %d : %d 
-3119,II,ac_mu_mimo : Num schedules with num_users as %d : %d 
-3120,II,%s skipping bank %d
+3118,IIIII,last scheduled peer ids %d, %d, %d, %d, %d 
+3119,IIII,delimiter user track: Number of total MU PPDU %d, MU PPDUs with delimiter users: %d, Percent:%d                    Average MU number of delimiter users %d 
+3120,IIII,ac_mu_mimo : Per user txtime user%d_bin_%d - %d : %d 
+3121,II,ac_mu_mimo : Num schedules with num_users as %d : %d 
+3122,II,%s skipping bank %d
  
-3121,I,PHYDBG LWod 0x%lx
+3123,I,PHYDBG LWod 0x%lx
  
-3122,I,PHYDBG UWod 0x%lx
+3124,I,PHYDBG UWod 0x%lx
  
-3123,I,ANI_DUMP_PHYID%d ANI CONFIGURE 
+3125,I,ANI_DUMP_PHYID%d ANI CONFIGURE 
  
-3124,IIII,ANI_DUMP_PHYID%d DL_OFDM %d DL_MIN %d DL_MAX %d 
+3126,IIII,ANI_DUMP_PHYID%d DL_OFDM %d DL_MIN %d DL_MAX %d 
  
-3125,IIIII,ANI_DUMP_PHYID%d DL_OFDM %d DL_CCK %d DL_MIN %d DL_MAX %d 
+3127,IIIII,ANI_DUMP_PHYID%d DL_OFDM %d DL_CCK %d DL_MIN %d DL_MAX %d 
  
-3126,I,ANI_DUMP_PHYID%d RESTORE DL 
+3128,I,ANI_DUMP_PHYID%d RESTORE DL 
  
-3127,,ANI_DUMP_PHYID PHYB ANI_RESET 
+3129,,ANI_DUMP_PHYID PHYB ANI_RESET 
  
-3128,,ANI_DUMP_PHYID PHYA ANI_RESET 
+3130,,ANI_DUMP_PHYID PHYA ANI_RESET 
  
-3129,III,ANI_DUMP_PHYID%d OFDM_REG 0x%x CCK_REG 0x%x 
+3131,III,ANI_DUMP_PHYID%d OFDM_REG 0x%x CCK_REG 0x%x 
  
-3130,IIIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL -%d CCK_DL -%d 
+3132,IIIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL -%d CCK_DL -%d 
  
-3131,IIIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL -%d CCK_DL +%d 
+3133,IIIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL -%d CCK_DL +%d 
  
-3132,IIIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL +%d CCK_DL -%d 
+3134,IIIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL +%d CCK_DL -%d 
  
-3133,IIIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL +%d CCK_DL +%d 
+3135,IIIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL +%d CCK_DL +%d 
  
-3134,IIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL -%d 
+3136,IIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL -%d 
  
-3135,IIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL -%d 
+3137,IIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL -%d 
  
-3136,IIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL +%d 
+3138,IIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL +%d 
  
-3137,IIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL +%d 
+3139,IIIIIII,ANI_DUMP_PHYID%d OFDM %d LSIG %d CCK %d SIZ1 %d M %d OFDM_DL +%d 
  
-3138,II,ANI_DUMP_PHYID%d ERROR RATE < %d PERCENT 
+3140,II,ANI_DUMP_PHYID%d ERROR RATE < %d PERCENT 
  
-3139,II,ANI_DUMP_PHYID%d ERROR RATE > %d PERCENT 
+3141,II,ANI_DUMP_PHYID%d ERROR RATE > %d PERCENT 
  
-3140,I,ANI_DUMP_PHYID%d CONSECUTIVE ERROR, INCREMENTING DESENSE LEVEL 
+3142,I,ANI_DUMP_PHYID%d CONSECUTIVE ERROR, INCREMENTING DESENSE LEVEL 
  
-3141,I,ANI_DUMP_PHYID%d CONSECUTIVE LESS ERROR, DECREMENTING DESENSE LEVEL 
+3143,I,ANI_DUMP_PHYID%d CONSECUTIVE LESS ERROR, DECREMENTING DESENSE LEVEL 
  
-3142,II,ANI_DUMP_PHYID%d ANI API ENABLED %d 
+3144,II,ANI_DUMP_PHYID%d ANI API ENABLED %d 
  
-3143,II,ANI_DUMP_PHYID%d ENABLED %d 
+3145,II,ANI_DUMP_PHYID%d ENABLED %d 
  
-3144,II,ANI_DUMP_PHYID%d DISABLED %d 
+3146,II,ANI_DUMP_PHYID%d DISABLED %d 
  
-3145,II,ANI_DUMP_PHYID%d SetAniPollPeriod %d 
+3147,II,ANI_DUMP_PHYID%d SetAniPollPeriod %d 
  
-3146,II,ANI_DUMP_PHYID%d SetAniListenPeriod %d 
+3148,II,ANI_DUMP_PHYID%d SetAniListenPeriod %d 
  
-3147,II,ANI_DUMP_PHYID%d GET ANI STATE %d 
+3149,II,ANI_DUMP_PHYID%d GET ANI STATE %d 
  
-3148,IIIII,ANI_PARAMS PHYB DL_MIN -%d DL_MAX %d THRESHOLD %d POLL_TIME %dms LISTEN_TIME %dms
+3150,IIIII,ANI_PARAMS PHYB DL_MIN -%d DL_MAX %d THRESHOLD %d POLL_TIME %dms LISTEN_TIME %dms
  
-3149,IIIII,ANI_PARAMS PHYB DL_MIN %d DL_MAX %d THRESHOLD %d POLL_TIME %dms LISTEN_TIME %dms
+3151,IIIII,ANI_PARAMS PHYB DL_MIN %d DL_MAX %d THRESHOLD %d POLL_TIME %dms LISTEN_TIME %dms
  
-3150,IIIII,ANI_PARAMS PHYA DL_MIN -%d DL_MAX %d THRESHOLD %d POLL_TIME %dms LISTEN_TIME %dms
+3152,IIIII,ANI_PARAMS PHYA DL_MIN -%d DL_MAX %d THRESHOLD %d POLL_TIME %dms LISTEN_TIME %dms
  
-3151,IIIII,ANI_PARAMS PHYA DL_MIN %d DL_MAX %d THRESHOLD %d POLL_TIME %dms LISTEN_TIME %dms
+3153,IIIII,ANI_PARAMS PHYA DL_MIN %d DL_MAX %d THRESHOLD %d POLL_TIME %dms LISTEN_TIME %dms
  
-3152,I,error in BDF CRC sum = %x
+3154,I,error in BDF CRC sum = %x
  
-3153,IIII,phyrf_bdf_SetUserSARValues SARUserLimits[%d] : CCK2gLimit %x  Ofdm2gLimit %x Ofdm5gLimit %x
+3155,IIII,phyrf_bdf_SetUserSARValues SARUserLimits[%d] : CCK2gLimit %x  Ofdm2gLimit %x Ofdm5gLimit %x
   
-3154,III,phyrf_bdf_ActivateSARLimitSet  enable = %d, Index = %d, chainNum = %d
+3156,III,phyrf_bdf_ActivateSARLimitSet  enable = %d, Index = %d, chainNum = %d
   
-3155,II,Triggering Periodic NFCAL with short wait relative time(ms) : %u, phyId : %u 
-3156,II,Restarting Periodic NFCAL timer with short wait relative time(ms) : %u, phyId : %u 
-3157,II,Stopping Periodic NFCAL timer with short wait relative time(ms) : %u, phyId : %u 
-3158,I,ANI_DUMP_PHYID %d HALPHY_DO_CALIBRATION - ANI DISABLED 
+3157,II,Triggering Periodic NFCAL with short wait relative time(ms) : %u, phyId : %u 
+3158,II,Restarting Periodic NFCAL timer with short wait relative time(ms) : %u, phyId : %u 
+3159,II,Stopping Periodic NFCAL timer with short wait relative time(ms) : %u, phyId : %u 
+3160,I,ANI_DUMP_PHYID %d HALPHY_DO_CALIBRATION - ANI DISABLED 
  
-3159,I,ANI_DUMP_PHYID %d HALPHY_DO_CALIBRATION - ANI ENABLED 
+3161,I,ANI_DUMP_PHYID %d HALPHY_DO_CALIBRATION - ANI ENABLED 
  
-3160,,[RXSOP] apply sensitivity changes 
-3161,,in phyrf_cal_RunDPDCalibration
+3162,,[RXSOP] apply sensitivity changes 
+3163,,in phyrf_cal_RunDPDCalibration
  
-3162,I,g_chIdx after increment %d
+3164,I,g_chIdx after increment %d
  
-3163,IIIII,CALSM: %x,  callingContext=%d, dB size = %d, masterCalDbExist()=%d, sizeof(t_caldB_synopsis)=%d 
-3164,IIII,CALSM:  final 	calDBEnableSetting=%d, 	final CalTimeOutSetting = %d, 	final PersistentEnable = %d, 	masterCalDbExist()=%d 
-3165,II,CALSM::: callingContext = %d, Final doCalFlag = %d 
-3166,III,CC::: generateCalSmTable=0x%x, callingContext=%d, curCalTypeIdx=%d 
-3167,III,CAL SM table gen for globalCallingContext[%d]=%d, Gen Cal profile seqeunce prepration time = %d 
-3168,IIIIIIII,CALSM: 	globalCallingContext[%d]=%d, 	mhz=%d, 	freq1=%d, 	freq2=%d, 	phy_mode=%3d, 	chainMask=%2X, 	Total_cal_time=%d us 
-3169,II,Summary starts: calibration with globalCallingContext[%d]=%d 
-3170,IIIII,:::::::: %d	%d	%d	%d	%d 
-3171,II,Summary ends: calibration with globalCallingContext[%d]=%d 
-3172,II,CAL SM::: genCalTable calType=%d hwCalMask 0x%x 
-3173,II,%d: calType=%d 
-3174,II,%d: calType=%d 
+3165,IIIII,CALSM: %x,  callingContext=%d, dB size = %d, masterCalDbExist()=%d, sizeof(t_caldB_synopsis)=%d 
+3166,IIII,CALSM:  final 	calDBEnableSetting=%d, 	final CalTimeOutSetting = %d, 	final PersistentEnable = %d, 	masterCalDbExist()=%d 
+3167,II,CALSM::: callingContext = %d, Final doCalFlag = %d 
+3168,III,CC::: generateCalSmTable=0x%x, callingContext=%d, curCalTypeIdx=%d 
+3169,III,CAL SM table gen for globalCallingContext[%d]=%d, Gen Cal profile seqeunce prepration time = %d 
+3170,IIIIIIII,CALSM: 	globalCallingContext[%d]=%d, 	mhz=%d, 	freq1=%d, 	freq2=%d, 	phy_mode=%3d, 	chainMask=%2X, 	Total_cal_time=%d us 
+3171,II,Summary starts: calibration with globalCallingContext[%d]=%d 
+3172,IIIII,:::::::: %d	%d	%d	%d	%d 
+3173,II,Summary ends: calibration with globalCallingContext[%d]=%d 
+3174,II,CAL SM::: genCalTable calType=%d hwCalMask 0x%x 
 3175,II,%d: calType=%d 
-3176,II,PDET=%d: calType=%d 
-3177,IIII,CC::: inside cal_SM_Main, 0x%x, (pHandle=0x%x, smInput=0x%x, pCalSmTable=0x%x) 
-3178,IIII,CAL SM caltype= %d, globalCallingContext[%d]=%d, Total cal time = %d 
-3179,IIII,CAL SM::: cal type idx=%d, ptrStandalone=%x, pIn=%x, pOut=%x  
-3180,II,CB: sizeofrxdoc=%d, sizeofdpd=%d 
-3181,,error: phyId not matched to system supported number of PHYs. 
-3182,I,ERROR: invalid band of %d
+3176,II,%d: calType=%d 
+3177,II,%d: calType=%d 
+3178,II,PDET=%d: calType=%d 
+3179,IIII,CC::: inside cal_SM_Main, 0x%x, (pHandle=0x%x, smInput=0x%x, pCalSmTable=0x%x) 
+3180,IIII,CAL SM caltype= %d, globalCallingContext[%d]=%d, Total cal time = %d 
+3181,IIII,CAL SM::: cal type idx=%d, ptrStandalone=%x, pIn=%x, pOut=%x  
+3182,II,CB: sizeofrxdoc=%d, sizeofdpd=%d 
+3183,,error: phyId not matched to system supported number of PHYs. 
+3184,I,ERROR: invalid band of %d
  
-3183,II,ERROR: table index never found for frequency %d at %d bandwidth
+3185,II,ERROR: table index never found for frequency %d at %d bandwidth
  
-3184,,error: phyId not matched to system supported number of PHYs. 
-3185,IIIIII,TEMPSEN:::  phyId=%d, calType=%d rfChainMask = %d, chainIdx=%d, globalCallingContext=%d, UseAltTableAllowed=%d  
 3186,,error: phyId not matched to system supported number of PHYs. 
-3187,III,CC::: rxiqStart: %x, txiqStart: %x, txloStart: %x 
-3188,I,CB::: IS_FTM_MODE() : %x, DISALBE_RESTORE_FOR_FTM is defined 
-3189,,error: phyId not matched to system supported number of PHYs. 
-3190,IIIIIIII,TEMPSEN:::   phyId = %d, chainIdx = %d, CBNormalizedOffset=%d, CBTempInC=%d, LastTempInC=%d, getTime=%u, curTempID=%d, CBtempeID=%d 
-3191,III,TEMPSEN:::  RXDCO_MASTER:validBitMask[tempID:%d][rfChain:%d]=%x  
-3192,III,TEMPSEN:::  RXDCO_MASTER:validBitMask[tempID:%d][rfChain:%d]=%x  
-3193,III,TEMPSEN:::  TXLO:validBitMask[tempID:%d][rfChain:%d]=%x  
-3194,,error: phyId not matched to system supported number of PHYs. 
-3195,,error: phyId not matched to system supported number of PHYs. 
-3196,IIIIIII,caldB_synopsis: [%d], 	phyID=%d, 	mHz=%d, 	f1=%d, 	f2=%d, 	phyMode=%d, 	fullResetTime(us)=%d 
-3197,IIIIIIII,caldB_synopsis: RXDCO:	0x%08x 	0x%08x,	0x%08x, 	0x%08x, 	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
-3198,IIIIIIII,caldB_synopsis: RXDCO:	0x%08x 	0x%08x,	0x%08x, 	0x%08x, 	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
-3199,IIII,caldB_synopsis: RXDCO:	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
-3200,IIII,caldB_synopsis: RXDCO:	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
-3201,II,caldB_synopsis: RXDCO:	0x%08x 	0x%08x 
-3202,II,caldB_synopsis: RXDCO:	0x%08x 	0x%08x 
-3203,IIIIIIII,caldB_synopsis: COMIQ:	0x%08x 	0x%08x,	0x%08x, 	0x%08x, 	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
-3204,IIIIIIII,caldB_synopsis: COMIQ:	0x%08x 	0x%08x,	0x%08x, 	0x%08x, 	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
-3205,IIII,caldB_synopsis: COMIQ:	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
-3206,IIII,caldB_synopsis: COMIQ:	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
-3207,II,caldB_synopsis: chEntryIdx:	0x%08x 	0x%08x 
-3208,II,caldB_synopsis: COMIQ:	0x%08x 	0x%08x 
-3209,III,caldB_synopsis: 	phyId=%d 	calFileVersionID=0x%08x 	calFileRevisionID0x%08x 
-3210,III,ColdBoot: iPphyId=%d, phyId=%d, shortenPhyId=%d 
-3211,I,ColdBoot: pHandle=%x 
-3212,I,ColdBoot: pMacHandle=%x 
-3213,I,ColdBoot: MODE_LAST_IDX=%d 
-3214,I,ColdBoot: calMask=%d 
-3215,I,ColdBoot: chList[0]=%x 
-3216,I,ColdBoot: chList[1]=%x 
-3217,I,ColdBoot: chList[2]=%x 
-3218,I,ColdBoot: chList[3]=%x 
-3219,I,ColdBoot: chList[4]=%x 
-3220,I,ColdBoot: chList[5]=%x 
-3221,I,ColdBoot: chList[6]=%x 
-3222,I,ColdBoot: chList[7]=%x 
-3223,I,ColdBoot: chList[8]=%x 
-3224,I,ColdBoot: chList[9]=%x 
-3225,I,ColdBoot: chList[10]=%x 
-3226,II,ColdBoot: coldBootCalStartTime[%d]=%d 
-3227,III,ColdBoot: phyId=%d, groupMapping[%d][1]=%d 
-3228,III,ColdBoot: phyId=%d, groupMapping[%d][1]=%d 
-3229,,ColdBoot: continue to next mode idx 
-3230,,ColdBoot: break in time out 
-3231,III,ColdBoot: calModeIdx=%d, coldbootCalGroup[%d]=%d 
-3232,III,ColdBoot: curChList=%x, chList[%d]=%x 
-3233,IIIII,ColdBoot: i=%d, calModeIdx=%d, curChList=%x, curChList[%d]=%d 
-3234,II,ColdBoot: chBw[%d]=%d 
-3235,I,ColdBoot: whChan.mhz=%d 
-3236,I,ColdBoot: whChan.band_center_freq1=%d 
-3237,I,ColdBoot: whChan.band_center_freq2=%d 
-3238,I,ColdBoot: whChan.phy_mode=%d 
-3239,I,ColdBoot: whChan.flags=%d 
-3240,,DFS_DUMPS set 0x8000 
+3187,IIIIII,TEMPSEN:::  phyId=%d, calType=%d rfChainMask = %d, chainIdx=%d, globalCallingContext=%d, UseAltTableAllowed=%d  
+3188,,error: phyId not matched to system supported number of PHYs. 
+3189,III,CC::: rxiqStart: %x, txiqStart: %x, txloStart: %x 
+3190,I,CB::: IS_FTM_MODE() : %x, DISALBE_RESTORE_FOR_FTM is defined 
+3191,,error: phyId not matched to system supported number of PHYs. 
+3192,IIIIIIII,TEMPSEN:::   phyId = %d, chainIdx = %d, CBNormalizedOffset=%d, CBTempInC=%d, LastTempInC=%d, getTime=%u, curTempID=%d, CBtempeID=%d 
+3193,III,TEMPSEN:::  RXDCO_MASTER:validBitMask[tempID:%d][rfChain:%d]=%x  
+3194,III,TEMPSEN:::  RXDCO_MASTER:validBitMask[tempID:%d][rfChain:%d]=%x  
+3195,III,TEMPSEN:::  TXLO:validBitMask[tempID:%d][rfChain:%d]=%x  
+3196,,error: phyId not matched to system supported number of PHYs. 
+3197,,error: phyId not matched to system supported number of PHYs. 
+3198,IIIIIII,caldB_synopsis: [%d], 	phyID=%d, 	mHz=%d, 	f1=%d, 	f2=%d, 	phyMode=%d, 	fullResetTime(us)=%d 
+3199,IIIIIIII,caldB_synopsis: RXDCO:	0x%08x 	0x%08x,	0x%08x, 	0x%08x, 	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
+3200,IIIIIIII,caldB_synopsis: RXDCO:	0x%08x 	0x%08x,	0x%08x, 	0x%08x, 	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
+3201,IIII,caldB_synopsis: RXDCO:	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
+3202,IIII,caldB_synopsis: RXDCO:	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
+3203,II,caldB_synopsis: RXDCO:	0x%08x 	0x%08x 
+3204,II,caldB_synopsis: RXDCO:	0x%08x 	0x%08x 
+3205,IIIIIIII,caldB_synopsis: COMIQ:	0x%08x 	0x%08x,	0x%08x, 	0x%08x, 	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
+3206,IIIIIIII,caldB_synopsis: COMIQ:	0x%08x 	0x%08x,	0x%08x, 	0x%08x, 	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
+3207,IIII,caldB_synopsis: COMIQ:	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
+3208,IIII,caldB_synopsis: COMIQ:	0x%08x 	0x%08x,	0x%08x, 	0x%08x 
+3209,II,caldB_synopsis: chEntryIdx:	0x%08x 	0x%08x 
+3210,II,caldB_synopsis: COMIQ:	0x%08x 	0x%08x 
+3211,III,caldB_synopsis: 	phyId=%d 	calFileVersionID=0x%08x 	calFileRevisionID0x%08x 
+3212,III,ColdBoot: iPphyId=%d, phyId=%d, shortenPhyId=%d 
+3213,I,ColdBoot: pHandle=%x 
+3214,I,ColdBoot: pMacHandle=%x 
+3215,I,ColdBoot: MODE_LAST_IDX=%d 
+3216,I,ColdBoot: calMask=%d 
+3217,I,ColdBoot: chList[0]=%x 
+3218,I,ColdBoot: chList[1]=%x 
+3219,I,ColdBoot: chList[2]=%x 
+3220,I,ColdBoot: chList[3]=%x 
+3221,I,ColdBoot: chList[4]=%x 
+3222,I,ColdBoot: chList[5]=%x 
+3223,I,ColdBoot: chList[6]=%x 
+3224,I,ColdBoot: chList[7]=%x 
+3225,I,ColdBoot: chList[8]=%x 
+3226,I,ColdBoot: chList[9]=%x 
+3227,I,ColdBoot: chList[10]=%x 
+3228,II,ColdBoot: coldBootCalStartTime[%d]=%d 
+3229,III,ColdBoot: phyId=%d, groupMapping[%d][1]=%d 
+3230,III,ColdBoot: phyId=%d, groupMapping[%d][1]=%d 
+3231,,ColdBoot: continue to next mode idx 
+3232,,ColdBoot: break in time out 
+3233,III,ColdBoot: calModeIdx=%d, coldbootCalGroup[%d]=%d 
+3234,III,ColdBoot: curChList=%x, chList[%d]=%x 
+3235,IIIII,ColdBoot: i=%d, calModeIdx=%d, curChList=%x, curChList[%d]=%d 
+3236,II,ColdBoot: chBw[%d]=%d 
+3237,I,ColdBoot: whChan.mhz=%d 
+3238,I,ColdBoot: whChan.band_center_freq1=%d 
+3239,I,ColdBoot: whChan.band_center_freq2=%d 
+3240,I,ColdBoot: whChan.phy_mode=%d 
+3241,I,ColdBoot: whChan.flags=%d 
+3242,,DFS_DUMPS set 0x8000 
  
-3241,IIIIIIIII,DFS_DUMPS timestamp=%d diff_ts=%d pulse_rssi=%d pulse_duration=%d is_chirp=%d sidx=%d detector_id=%d
+3243,IIIIIIIII,DFS_DUMPS timestamp=%d diff_ts=%d pulse_rssi=%d pulse_duration=%d is_chirp=%d sidx=%d detector_id=%d
  false_radar=%d radar_check=%d 
-3242,,DFS_DUMPS set 0x8001 
+3244,,DFS_DUMPS set 0x8001 
  
-3243,,DFS_DUMP set g_dfs_test_mode 
+3245,,DFS_DUMP set g_dfs_test_mode 
  
-3244,,DFS_DUMP clear g_dfs_test_mode 
+3246,,DFS_DUMP clear g_dfs_test_mode 
  
-3245,,DFS_DUMP Send Radar summary pulse to host 
+3247,,DFS_DUMP Send Radar summary pulse to host 
  
-3246,,DFS_DUMP stop Sending Radar summary pulse to host 
+3248,,DFS_DUMP stop Sending Radar summary pulse to host 
  
-3247,,DFS_DUMPS Print all the pulse information
+3249,,DFS_DUMPS Print all the pulse information
  
-3248,,DFS_DUMPS Stop printing pulse information
+3250,,DFS_DUMPS Stop printing pulse information
  
-3249,I,DFS_DUMPS RAW_FFT Data Dump set to %d
+3251,I,DFS_DUMPS RAW_FFT Data Dump set to %d
  
-3250,I,DFS_DUMPS regdomain %d 
- 
-3251,I,%s NOT available
- 
-3252,I,%s NOT available
+3252,I,DFS_DUMPS regdomain %d 
  
 3253,I,%s NOT available
  
@@ -3706,817 +3704,823 @@ phy_warm_reset = %d
  
 3324,I,%s NOT available
  
-3325,I,PAPRD: ------ phyrfPaprdCalibrationSM : State %d 
+3325,I,%s NOT available
  
-3326,,----- PAPRDTUNING START ----- 
-3327,I,PAPRD:SM state %d
+3326,I,%s NOT available
  
-3328,,PAPRD:Excess Retries, Aborting
+3327,I,PAPRD: ------ phyrfPaprdCalibrationSM : State %d 
  
-3329,,PAPRD:PAPRD_CAL_SM_DPD_TRAINING_PROCESS_DATA 
+3328,,----- PAPRDTUNING START ----- 
+3329,I,PAPRD:SM state %d
  
-3330,,PAPRD A1:smState : PAPRD_CAL_SM_TEARDOWN_TRAINING 
+3330,,PAPRD:Excess Retries, Aborting
  
-3331,,----- PAPRDTUNING DONE ----- 
-3332,I,----- PAPRDTIMING %d ----- 
-3333,II,PAPRD: phyrfPaprdEnableCal: Channel = %d, dpd_enable = %d
+3331,,PAPRD:PAPRD_CAL_SM_DPD_TRAINING_PROCESS_DATA 
  
-3334,IIII,%s : Chain = %d, txgainIdx = %d, dacgain = %d
- 
-3335,I,PAPRD: phyrf_mc_SendTxCompletion : Tx Error %d, retrying 
- 
-3336,II,j val: %d, true code val: %d 
-3337,,Invalid country code. Setting to "US". 
-3338,,Invalid country_code/domain_code. No currentRD or ctl value change. 
-3339,IIII,halphySetTxChannelPowerLimit phyId %d limit %d maxTxPower %d curChan->mhz %d 
-3340,II,debugId = %u, resetErrId = %x 
-3341,IIII,HalphySetTxPowerScale phyId %d chan %d tpscale %d maxTxPower %d 
-3342,II,%s, chan = %d
- 
-3343,IIIIII,HalphyResetSetup phyId %d resetFlags 0x%x resetCause 0x%x chan_max_tx_power %d limit %d maxTxPower %d 
-3344,,DFS_DUMP DFS 160 initialized 
- 
-3345,,DFS_DUMP DFS 160 initialized 
- 
-3346,I,$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ STARTING TPC TIMER phyID %d $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ 
-3347,I,$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ STOPPING TPC TIMER phyID = %d $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ 
-3348,II,setting plut and alut for 160 chan1 %d chan2 %d 
-3349,IIIIIII,tpccal::chan %u chain %u gain %u bdfmeaspwr %d opcglutOffset %d opcPwrOffset %d measPwr %d 
-3350,II,combCalGroupHandler(): phyId = %d; cmdid = %d 
-3351,II,PHYDBGdumpHandler(Phy:%d, Option:%d)
- 
-3352,III,### data_ptr %p size %d status 0x%x
- 
-3353,II,### data_ptr %p stream_cnt %d
- 
-3354,,### Data buffer stream ended
- 
-3355,,bdGetSizeHandler
- 
-3356,III,bdReadHandler: bdSize %d, offset 0x%x, size %d
- 
-3357,I,error in bdReadHandler: status %d
- 
-3358,IIII,Tx Gain Control:Chain %d, Gain %d, dacGain %d, forceCal %d 
- 
-3359,,OFDMA TonePlan
- 
-3360,III,PAPRD TCMD: Chain %d Glut Idx %d Gain Idx %d
- 
-3361,II,ftm_tid_create_handler: pdev %d, tid %d 
-3362,II,[MU] wal_mu_peer_assoc() peer[%d] AID %d 
-3363,IIII,tpccal::2G opcChan[%u] %u, tpcChan[%u] %u 
-3364,IIII,tpccal::5G opcChan[%u] %u, tpcChan[%u] %u 
-3365,,tpccal::Starting ... 
-3366,,TPC Cal message check 
- 
-3367,III,tpccal::Starting tx for Chan %u, Chain %u, Gain %u 
-3368,,tpccal::Completed 
-3369,,tpccal::Post processing OLPC Caldata 
-3370,,tpccal::Sending Caldata to host 
-3371,IIIII,tpccal::Got measurement %d from host for Chan %u Chain %u Chain(user) %u Gain %u 
-3372,IIIIII,tpccal::Thermoffset %u for Band %u tpcChan %u opcChan[%u] %u  Chain %u 
-3373,II,Got Power from host %d, Read pdadc %d
- 
-3374,II,Received identical power meas:%d prevMeas:%d .Failing calloop 
-3375,II,Sending to host freq2G %d, freq5G %d
- 
-3376,III,tpccal::Stopping tx before starting for Chan %u, Chain %u, Gain %u 
-3377,IIIII,freq %d gIdx %d dacGain %d paCfg %d chMask %d
- 
-3378,III,Sending to host freq2G %d, freq5G %d, chain %d 
-3379,IIII,gain %d pwr %d numChain %d numCalpt %d
- 
-3380,IIII,tpccal::Sending to host to look for measurements inChan2G %u, Chan5G %u, ChainMask(User) %u, Gain %u 
-3381,,tpccal::Post processing CLPC Caldata 
-3382,,tpccal::Generating Caldata 
-3383,I,tpcCal::Generating Caldata for Channel %d 
-3384,I,tpcCal::Generating Caldata for Chain %d 
-3385,III,tpcCal::Generating Caldata for GLUT Gain Idx %d txgainIdx %d meas_pwr %d 
-3386,III,tpcCal::Generating Caldata for PLUT Gain Idx %d pdadc_read %d meas_pwr %d 
-3387,I,tpcCal::Generating Caldata for Channel %d 
-3388,I,tpcCal::Generating Caldata for Chain %d 
-3389,III,tpcCal::Generating Caldata for GLUT Gain Idx %d txgainIdx %d meas_pwr %d 
-3390,III,tpcCal::Generating Caldata for PLUT Gain Idx %d pdadc_read %d meas_pwr %d 
-3391,,Invalid freq pier pointer dereference 
-3392,,tpcOnepointCal::tpcPowerMeasurementDelayTimeout 
-3393,,tpcOnepointCAL::Starting... 
-3394,IIII,tpcOnepointCal::Requesting pwr measurement for phy %u, freq %u, chainMask %u,tgtPwr_db8 %u 
-3395,IIII,tpcOnepointCal::Requesting pwr measurement for phy %u, freq %u, chainMask %u,tgtPwr_db8 %u 
-3396,,tpcOnepointcal::Completed 
-3397,,tpcOnepointcal::Failure, -999 power detected 
-3398,IIIIII,tpcOnepointCal::Pwr measurement for phy %u, freq %u, chainMask %u, glutOffset %d, thermOffset %u, measPwr_db8 is %u 
-3399,III,tpcOnepointCal::Failure at BandIdx:%d chanIdx:%d chainIdx:%d 
-3400,IIII,tpcOnepointCal::Starting Tx for phy %u, freq %d, chainMask %d, txPwr_db2 %d 
-3401,IIII,tpcOnepointCal::Stopping Tx for phy %u, freq %d, chainMask %d, txPwr_db2 %d 
-3402,I,RXDCO ::SM::: convertNewRxdcoLutfromCalDb chainIdx = %d pStart= NULLLLLLLLLLLLLLLLL
- 
-3403,II,convertNewRxdcoLutfromCalDb:::pStart=%x(pNewDcoLut=%x) from caldb
- 
-3404,III,convertNewRxdcoLutfromCalDb:::Restore Rxdco LUT from caldb with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
- 
-3405,II,convertNewRxdcoLutfromCalDb:::pStart=%x(pNewDcoLut=%x) to caldb=%d
- 
-3406,III,convertNewRxdcoLutfromCalDb:::Save Rxdco LUT to caldb with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
- 
-3407,,APPLICALBE_RESUBMISSION_ONLY:: failure on not getting pStart (= NULL) from caldb! 
-3408,I,APPLICALBE_RESUBMISSION_ONLY:: failure on getting chainIdx:%d from pPhyRxdcoInput 
-3409,I,MODE2CALID in  *calMode		=%d 
-3410,I,MODE2CALID in  *calId		=%d 
-3411,I,MODE2CALID in  retValue		=%d 
-3412,I,COMPOSE RXDCO INPUT pIn 		=%x 
-3413,I,COMPOSE RXDCO INPUT phyInput 	=%x 
-3414,I,COMPOSE RXDCO INPUT rxdcoInput 	=%x 
-3415,I,COMPOSE RXDCO INPUT pUnionDcoLut 	=%x 
-3416,I,COMPOSE RXDCO INPUT in *calId 	=%x 
-3417,I,COMPOSE RXDCO INPUT override bwCode 	=%x 
-3418,I,COMPOSE RXDCO INPUT out *calId 	=%x 
-3419,I,CAL_COMMON_PARAM pHandle 	=%x 
-3420,I,CAL_COMMON_PARAM calType 	=%d 
-3421,I,CAL_COMMON_PARAM cmdGroupId 	=%d 
-3422,I,CAL_COMMON_PARAM isRestoreOnly 	=%d 
-3423,I,CAL_COMMON_PARAM calTypeVarianceId 	=%d 
-3424,III,CAL_COMMON_PARAM reserved 	=%d %d %d 
-3425,I,CAL_COMMON_PARAM (pIn->pHandle).phyId 	=%x 
-3426,I,CAL_COMMON_PARAM halphyBW 	=%x 
-3427,I,PHYDEVLIB_PHY_INPUT phyId 		=%d 
-3428,I,PHYDEVLIB_PHY_INPUT bandCode	=%d 
-3429,I,PHYDEVLIB_PHY_INPUT bwCode 	=%d 
-3430,I,PHYDEVLIB_PHY_INPUT phyMode 	=%d 
-3431,I,PHYDEVLIB_PHY_INPUT band_center_freq1 	=%d 
-3432,I,PHYDEVLIB_PHY_INPUT band_center_freq2 	=%d 
-3433,I,PHYDEVLIB_PHY_INPUT txChMask 	=%x 
-3434,I,PHYDEVLIB_PHY_INPUT rxChMask 	=%x 
-3435,I,PHYDEVLIB_PHY_INPUT phyBase 	=%x 
-3436,I,PHYDEVLIB_PHY_INPUT phyBaseExt 	=%x 
-3437,I,PHYDEVLIB_PHY_INPUT concMode 	=%d 
-3438,I,PHYDEVLIB_PHY_INPUT dynPriChan 	=%d 
-3439,I,PHYDEVLIB_PHY_INPUT homeCh		=%d 
-3440,I,PHYDEVLIB_PHY_INPUT dtim 		=%d 
-3441,I,PHYDEVLIB_PHY_INPUT extLNA 		=%d 
-3442,I,PHYDEVLIB_PHY_INPUT extPA 		=%d 
-3443,I,PHYDEVLIB_PHY_INPUT isSBSmode 	=%d 
-3444,I,PHYDEVLIB_PHY_INPUT loType 		=%d 
-3445,I,PHYDEVLIB_PHY_INPUT dpdMode 	=%d 
-3446,I,PHYDEVLIB_PHY_INPUT loadIniMask 	=%d 
-3447,I,PHYDEVLIB_PHY_INPUT calMask 	=%x 
-3448,I,PHYDEVLIB_PHY_INPUT cal_mode_ctrl 	=%d 
-3449,I,PHYDEVLIB_PHY_INPUT boardId 	=%d 
-3450,I,FINALCASE pHandle 		=%x 
-3451,I,FINALCASE callingContext 		=%d 
-3452,I,FINALCASE calMode 		=%x 
-3453,I,FINALCASE calId 			=%d 
-3454,I,FINALCASE rxChainMask 		=%x 
-3455,I,FINALCASE in finalCase		=%x 
-3456,I,FINALCASE statusChainMask 		=%x 
-3457,I,FINALCASE subMode80p80 		=%x 
-3458,II,FINALCASE out finalCase 		=%x for calMode=%d 
-3459,I,OVERRIDE FINALCASE out finalCase 	=%d 
-3460,I,FC_HANDLE  pHandle 		=%x 
-3461,I,FC_HANDLE  phyInput 		=%x 
-3462,I,FC_HANDLE  rxdcoInput 		=%x 
-3463,I,FC_HANDLE  finalCase 		=%d 
-3464,I,FC_HANDLE  rxChainMask 		=%x 
-3465,I,FC_HANDLE  subMode80p80 		=%d 
-3466,I,FC_HANDLE  autoIterativeIdx 		=%d 
-3467,I,FC_HANDLE  rxdcoInput->calCmdId 	=%d 
-3468,I,FC_HANDLE  iterIdx 		=%d 
-3469,,RXDCO ****** invokes rxdco cal ***** 
-3470,IIIII,RXDCO ::: BF CAL_SAVE bwCode=%d, chainIdx=%d tableIdx=%d, Output:real= %x img=%x
- 
-3471,,RXDCO ::: AFTER:CAL_SAVE convertNewRxdcoLutfromCalDb failed
- 
-3472,I,ITER2CMDIDX  iterIdx 		=%d 
-3473,I,ITER2CMDIDX  cmdIdx 		=%d 
-3474,I,UPDATE_RXDCO_TRACKING  pHandle 	=%x 
-3475,III,UPDATE_RXDCO_TRACKING  calMode 	=%d (RXDCO_CAL_MODE_NORMAL=%d,RXDCO_CAL_MODE_DTIM=%d 
-3476,I,UPDATE_RXDCO_TRACKING  rxChainMask 	=%x 
-3477,I,UPDATE_RXDCO_TRACKING  subMode80p80 	=%d 
-3478,,UPDATE_RXDCO_TRACKING  	RXDCO_CAL_MODE_NORMAL 
-3479,,UPDATE_RXDCO_TRACKING  	RXDCO_CAL_MODE_NORMAL 
-3480,,APPLICALBE_RESUBMISSION_ONLY:: failure on not getting pStart (= NULL) from caldb! 
-3481,I,NEED_TO_DO_CAL:: cannot update rxdco caldb for chainIdx = %d! 
-3482,,RXDCO SM NEW COLDBOOT SUPPORT VERSION ************** 
-3483,I,RXDCO SM FINAL VERSION bandw=%d>>>>>>>>>>>>>>>>>> 
-3484,IIII,RXDCO SM SKIPPED:::finalCase = %d, doCalFlag = %d,  skipMask = %x, previousCalResultAtHomeCh=%d 
-3485,IIII,RXDCO SM REUSE:::finalCase = %d, doCalFlag = %d,  skipMask = %x, previousCalResultAtHomeCh=%d 
-3486,,RXDCO SM FINALCASE BASED 
-3487,,RXDCO SM FINAL VERSION <<<<<<<<<<<<<<<<<< 
-3488,,RXDCO SM BRING UP VERSION ************** 
-3489,IIII,RXDCO SM::bwCode=%d, bandCode=%d, calCmdId=%d, cal_mode=%d 
-3490,IIIII,RXDCO SM::rxChainMask=%x, homech=%d, phyMode=%d, dtim=%d boardId=0x%x 
-3491,IIIII,RXDCO SM::FCS:::Restore from tableIdx:%d homeCh:%d chain:%d, img:0x%x, real:0x%x 
-3492,IIII,RXDCO SM::FCS::: Save::: homeCh:%d, chain:%d, img:0x%x, real:0x%x 
-3493,I,PALCAL_INPUT calCmdId			=%d 
-3494,I,PALCAL_INPUT pPalDlyVals			=%x 
-3495,I,PALCAL_INPUT pcalMethod			=%d 
-3496,I,PALCAL_INPUT pcalOptDoSetEDandDM		=%d 
-3497,III,PALCAL CONF ModeStatus[phyId=%d][ConfMode=%d][0]	=%d 
-3498,III,PALCAL CONF ModeStatus[phyId=%d][ConfMode=%d][1]	=%d 
-3499,III,PALCAL CONF ModeStatus[phyId=%d][ConfMode=%d][2]	=%d 
-3500,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][0]		=%d 
-3501,III,PALCAL STORE palCalDlyVals[phyId=%d]{%d][1]		=%d 
-3502,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][2]		=%d 
-3503,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][3]		=%d 
-3504,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][4]		=%d 
-3505,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][5]		=%d 
-3506,,Welcome, cal SM for Pdet Cal will be created 
-3507,,PALCAL STARTED 
-3508,I,PALCAL CONF final pal_cal_input->pcalMethod=%d 
-3509,,PALCAL COMPLETED 
-3510,,APPLICALBE_RESUBMISSION_ONLY:: failure on not getting pStart (= NULL) from caldb! 
-3511,II,combCal_SM_restore: RXIQ: chainIdx=%d,  pStartRxIq=%x 
-3512,I,cannot update txiq table in caldb for chainIdx = %d! 
-3513,II,combCal_SM_restore: TXIQ: chainIdx=%d,  pStartTxIq=%x 
-3514,I,cannot update txiq table in caldb for chainIdx = %d! 
-3515,II,combCal_SM_restore: TXLO: chainIdx=%d,  pStartTxLo=%x 
-3516,I,cannot update txlo table in caldb for chainIdx = %d! 
-3517,II,combCal_SM_save: RXIQ: chainIdx=%d,  pStartRxIq=%x 
-3518,I,cannot update rxiq table in caldb for chainIdx = %d! 
-3519,II,combCal_SM_save: TXIQ: chainIdx=%d,  pStartTxIq=%x 
-3520,I,cannot update txiq table in caldb for chainIdx = %d! 
-3521,III,combCal_SM_save: TXLO: chainIdx=%d,  pStartTxLo=%x, 4 * NUM_GAINS_PER_MODE_DIG_ANA_CL=%d 
-3522,I,cannot update txlo table in caldb for chainIdx = %d! 
-3523,I,COMPOSE CMBIQ INPUT pIn 		=%x 
-3524,I,COMPOSE CMBIQ INPUT phyInput 	=%x 
-3525,I,COMPOSE CMBIQ INPUT rxdcoInput 	=%x 
-3526,I,COMPOSE CMBIQ INPUT in *calId 	=%x 
-3527,I,COMPOSE CMBIQ INPUT out *calId 	=%x 
-3528,I,MODE2CALID in  *calMode		=%d 
-3529,I,MODE2CALID in  *calId		=%d 
-3530,I,MODE2CALID in  retValue		=%d 
-3531,I,FINALCASE pHandle 		=%x 
-3532,I,FINALCASE callingContext 		=%d 
-3533,I,FINALCASE calMode 		=%x 
-3534,I,FINALCASE calId 			=%d 
-3535,I,FINALCASE rxChainMask 		=%x 
-3536,I,FINALCASE in finalCase		=%x 
-3537,I,FINALCASE statusChainMask 		=%x 
-3538,I,FINALCASE subMode80p80 		=%x 
-3539,I,FINALCASE out finalCase		=%x 
-3540,I,OVERRIDE FINALCASE pHandle 		=%x 
-3541,I,OVERRIDE FINALCASE callingContext 	=%d 
-3542,I,OVERRIDE FINALCASE calId 		=%d 
-3543,I,OVERRIDE FINALCASE in finalCase 	=%d 
-3544,I,OVERRIDE FINALCASE out finalCase 	=%d 
-3545,I,ITER2CMDIDX  iterIdx 		=%d 
-3546,I,ITER2CMDIDX  cmdIdx 		=%d 
-3547,I,UPDATE_COMBC_TRACKING  pHandle 	=%x 
-3548,I,UPDATE_COMBC_TRACKING  calMode 	=%d 
-3549,I,UPDATE_COMBC_TRACKING  rxChainMask 	=%x 
-3550,I,UPDATE_COMBC_TRACKING  subMode80p80 	=%d 
-3551,,UPDATE_COMBC_TRACKING  		COMB_TXLO_TXIQ_RXIQ 
-3552,,UPDATE_COMBC_TRACKING  		COMB_CAL_MODE_DPD_LP_RXIQ 
-3553,I,FC_HANDLE  pHandle 		=%x 
-3554,I,FC_HANDLE  phyInput 		=%x 
-3555,I,FC_HANDLE  fdmtCombCalInput 	=%x 
-3556,I,FC_HANDLE  fdmtCombCalOutput 	=%x 
-3557,I,FC_HANDLE  finalCase 		=%d 
-3558,I,FC_HANDLE  rxChainMask 		=%x 
-3559,I,FC_HANDLE  subMode80p80 		=%d 
-3560,I,path to call docal due to NEED_TO_DO_CAL,  calCmdId 		=%d 
-3561,I,CAL_COMMON_PARAM pHandle 	=%x 
-3562,I,CAL_COMMON_PARAM calType 	=%d 
-3563,I,CAL_COMMON_PARAM cmdGroupId 	=%d 
-3564,I,CAL_COMMON_PARAM isRestoreOnly 	=%d 
-3565,I,CAL_COMMON_PARAM calTypeVarianceId 	=%d 
-3566,III,CAL_COMMON_PARAM reserved 	=%d %d %d 
-3567,I,CAL_COMMON_PARAM (pIn->pHandle).phyId 	=%x 
-3568,I,CAL_COMMON_PARAM halphyBW 	=%x 
-3569,I,PHYDEVLIB_PHY_INPUT phyId 		=%d 
-3570,I,PHYDEVLIB_PHY_INPUT bandCode	=%d 
-3571,I,PHYDEVLIB_PHY_INPUT bwCode 	=%d 
-3572,I,PHYDEVLIB_PHY_INPUT phyMode 	=%d 
-3573,I,PHYDEVLIB_PHY_INPUT band_center_freq1 	=%d 
-3574,I,PHYDEVLIB_PHY_INPUT band_center_freq2 	=%d 
-3575,I,PHYDEVLIB_PHY_INPUT txChMask 	=%x 
-3576,I,PHYDEVLIB_PHY_INPUT rxChMask 	=%x 
-3577,I,PHYDEVLIB_PHY_INPUT phyBase 	=%x 
-3578,I,PHYDEVLIB_PHY_INPUT phyBaseExt 	=%x 
-3579,I,PHYDEVLIB_PHY_INPUT concMode 	=%d 
-3580,I,PHYDEVLIB_PHY_INPUT dynPriChan 	=%d 
-3581,I,PHYDEVLIB_PHY_INPUT homeCh		=%d 
-3582,I,PHYDEVLIB_PHY_INPUT dtim 		=%d 
-3583,I,PHYDEVLIB_PHY_INPUT extLNA 		=%d 
-3584,I,PHYDEVLIB_PHY_INPUT extPA 		=%d 
-3585,I,PHYDEVLIB_PHY_INPUT isSBSmode 	=%d 
-3586,I,PHYDEVLIB_PHY_INPUT loType 		=%d 
-3587,I,PHYDEVLIB_PHY_INPUT dpdMode 	=%d 
-3588,I,PHYDEVLIB_PHY_INPUT loadIniMask 	=%d 
-3589,I,PHYDEVLIB_PHY_INPUT calMask 	=%d 
-3590,I,PHYDEVLIB_PHY_INPUT cal_mode_ctrl 	=%d 
-3591,I,CCAL_INPUT calCmdId		=%d 
-3592,I,CCAL_INPUT cal_chain_mask		=%x 
-3593,I,CCAL_INPUT cal_mode		=%d 
-3594,I,CCAL_INPUT mode (80p80 mode)		=%d 
-3595,I,CCAL_INPUT fixed_gain		=%d 
-3596,I,CCAL_INPUT engineSharing		=%d 
-3597,I,CCAL_INPUT driveTxGLUTIdx		=%d 
-3598,I,CCAL_INPUT enableBlockAccAvg		=%d 
-3599,I,CCAL_INPUT blockSize		=%d 
-3600,I,CCAL_INPUT dcEstWindowSize		=%d 
-3601,I,CCAL_INPUT numOfBlocks		=%d 
-3602,I,CCAL_INPUT numSamplesToReadback[0]	=%d 
-3603,I,CCAL_INPUT numSamplesToReadback[1]	=%d 
-3604,I,CCAL_INPUT numSamplesToReadback[2]	=%d 
-3605,I,CCAL_INPUT rxGainSettlingTime		=%d 
-3606,I,CCAL_INPUT txGainSettlingTime		=%d 
-3607,I,CCAL_INPUT txShiftSettlingTime		=%d 
-3608,I,CCAL_INPUT calModeSettlingTime	=%d 
-3609,I,CCAL_INPUT loopbackSettlingTime	=%d 
-3610,I,CCAL_INPUT txResidueSettlingTime	=%d 
-3611,I,CCAL_INPUT numTaps[0] 		=%d 
-3612,I,CCAL_INPUT numTaps[1] 		=%d 
-3613,,Welcome, cal SM for Comb Cal will be created..
- 
-3614,III,CalSM: scan cal end 	phyId=%d, 	calProgress[0]=%d, 	calProgress[1]=%d 
-3615,III,CalSM: get yield time 	phyId=%d, 	calProgress[0]=%d, 	calProgress[1]=%d 
-3616,IIIII,CalSM: annouce yield time 	phyId=%d, 	finalCase=%d, 	phyInput->bwCode=%d, 	calProgress[0]=%d, 	calProgress[1]=%d 
-3617,III,CalSM: cal end 	phyId=%d, 	calProgress[0]=%d, 	calProgress[1]=%d 
-3618,IIIIII,PAPRD:Chain = %d, tpc_index = %d, table_offset = %d, glut_idx_offset = %x, txgain_index = %d isForcedGainMode = %d
- 
-3619,I,PAPRD: HWDISABLE CHAIN : %d
- 
-3620,,PAPRD: HWDISABLE ALL
- 
-3621,I,-Q5-PAPRD-:Iron version is : %d 
- 
-3622,II,-Q5-PAPRD-:Chain = %d, Tx Cal Sub Mode = %d 
- 
-3623,III,-Q5-PAPRD-:Chain = %d, dpd Rx loop chian %d Rx Cal Sub Mode = %d 
- 
-3624,I,-Q5-PAPRD-:Loopback Attenuation = %d
- 
-3625,III,PAPRD-: set_txgain_idx DPD DAC gain = 0x%x chainmask = 0x%x, Phy Id = %d 
- 
-3626,I,-Q5-PAPRDTUNING-:DynBW = %d 
- 
-3627,I,-Q5-PAPRDTUNING-:Min loopback delay  = %d 
- 
-3628,I,-Q5-PAPRD : StopTraining for Chain = %d 
- 
-3629,IIII,--Q5--PAPRDPHYDBG %d %d %d %d
- 
-3630,III,-Q5-PAPRDTUNING-:sq PASS: sq_idx_sw %d sq_idx_hw %d force_sq_idx %d
- 
-3631,IIII,-Q5-PAPRDTUNING-:sq FAIL : %d sq_idx_sw %d sq_idx_hw %d force_sq_idx %d
- 
-3632,,-Q5-PAPRD-:DPD training Failed. Paprd Done bit is not set in HW!
- 
-3633,I,-Q5-PAPRDTUNING-:DPD training AGC2 size 0x%x 
- 
-3634,I,-Q5-PAPRDTUNING-:DPD training AGC2 pwr 0x%x 
- 
-3635,I,-Q5-PAPRDTUNING-:DPD training rx gain idx 0x%x 
- 
-3636,I,-Q5-PAPRD-:DPD training active %d 
- 
-3637,I,-Q5-PAPRD-:DPD training incomplete %d 
- 
-3638,I,-Q5-PAPRDTUNING-:SQ index HW is %d 
- 
-3639,I,-Q5-PAPRD-:DC estimate I %d 
- 
-3640,I,-Q5-PAPRD-:DC estimate Q %d 
- 
-3641,I,-Q5-PAPRD-:HW calculated stage2 min dispersion = %lu 
- 
-3642,I,-Q5-PAPRD-:Dispersion value at SQ Stage2 (minimum index - 1) = %lu 
- 
-3643,I,-Q5-PAPRD-:Dispersion value at SQ Stage2 (minimum index + 1) = %lu 
- 
-3644,II,-Q5-PAPRD-:CheckSignalQuality sq_idx_sw %d sq quality %d 
- 
-3645,,-Q5-PAPRD-:Read back DPD training data from memory:
- 
-3646,II,-Q5-PAPRD-:Raw Data: chain %d table %d
- 
-3647,,-Q5-PAPRD-:DpdTrainData0	  DpdTrainData1	 DpdTrainData2	 DpdTrainData3 
- 
-3648,IIII,-Q5-PAPRD-:%lu	 %lu	 %lu	 %lu 
- 
-3649,II, PAPRD: Populate DPD LUT of Chain %lu at table_idx %lu 
- 
-3650,IIII, PAPRD:tableType: %d tableIdx: %d at even entry: %d from is : %lx
- 
-3651,IIII, PAPRD:tableType: %d tableIdx: %d at odd entry: %d from is : %lx
- 
-3652,I,-Q5-PAPRD-:channel freq %d
- 
-3653,II,-Q5-PAPRD-:txChain %d tableIndex %d
- 
-3654,I,-Q5-PAPRD-:forced_sq_idx %d 
-3655,II,-Q5-PAPRD-:sq_idx_sw %d sq_idx_hw %d
- 
-3656,II,--Q5--PAPRD: validmask 0x%x phyInput->validChainMask 0x%x
- 
-3657,III,RXDCO::rxdco_write_dco_lut time(%u - %u) = %u 
-3658,,RXDCO:: cal failure 
-3659,IIIII,rxdco_save:::pDcoLut=%x + tableIdx = %d, Rxdco LUT from HW with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
- 
-3660,IIIII,rxdco_restore:::pDcoLut=%x + tableIdx = %d, Write Rxdco LUT into HW with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
- 
-3661,III,RxDCO - SEC RUN VHT160 - %d, PRI80 - 0x%x, SEC80 - 0x%x
- 
-3662,III,RxDCO - PRI RUN VHT160 - %d, PRI80 - 0x%x, SEC80 - 0x%x
- 
-3663,I,RXDCO: *************************************** HW cal timeout, range_iter=%d 
-3664,I,RXDCO: cal done successful, range_iter=%d 
-3665,,RXDCO: Failed all 3 tries! 
- 
-3666,,index out of range 
-3667,I,cal_done time out calDoneCount=%lu 
-3668,I,cal_done early calDoneCount=%lu 
-3669,,RXDCO: cal_done failure and reset DO_CALIBRATE bit and CF_RESET_CORE !!!!!
- 
-3670,IIII,Rxdco::: suboptim: [%d][%d]:ABS(Res_Imag) = %d, ABS(Res_Real) = %d 
-3671,IIII,Rxdco::: Failed: [%d][%d]:ABS(Res_Imag) = %d, ABS(Res_Real) = %d 
-3672,IIII,Rxdco::: OK: [%d][%d]:ABS(Res_Imag) = %d, ABS(Res_Real) = %d 
-3673,III,Rxdco::: failure_count[%d] = %d, num_cal_gain = %d 
-3674,IIII,RXDCO::TRangeOK %d Tsuccess %d TResidualOK %d pIter_parms->dcoc_range %d 
+3332,,PAPRD A1:smState : PAPRD_CAL_SM_TEARDOWN_TRAINING 
+ 
+3333,,----- PAPRDTUNING DONE ----- 
+3334,I,----- PAPRDTIMING %d ----- 
+3335,II,PAPRD: phyrfPaprdEnableCal: Channel = %d, dpd_enable = %d
+ 
+3336,IIII,%s : Chain = %d, txgainIdx = %d, dacgain = %d
+ 
+3337,I,PAPRD: phyrf_mc_SendTxCompletion : Tx Error %d, retrying 
+ 
+3338,II,j val: %d, true code val: %d 
+3339,,Invalid country code. Setting to "US". 
+3340,,Invalid country_code/domain_code. No currentRD or ctl value change. 
+3341,IIII,halphySetTxChannelPowerLimit phyId %d limit %d maxTxPower %d curChan->mhz %d 
+3342,II,debugId = %u, resetErrId = %x 
+3343,IIII,HalphySetTxPowerScale phyId %d chan %d tpscale %d maxTxPower %d 
+3344,II,%s, chan = %d
+ 
+3345,IIIIII,HalphyResetSetup phyId %d resetFlags 0x%x resetCause 0x%x chan_max_tx_power %d limit %d maxTxPower %d 
+3346,,DFS_DUMP DFS 160 initialized 
+ 
+3347,,DFS_DUMP DFS 160 initialized 
+ 
+3348,I,$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ STARTING TPC TIMER phyID %d $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ 
+3349,I,$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ STOPPING TPC TIMER phyID = %d $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ 
+3350,II,setting plut and alut for 160 chan1 %d chan2 %d 
+3351,IIIIIII,tpccal::chan %u chain %u gain %u bdfmeaspwr %d opcglutOffset %d opcPwrOffset %d measPwr %d 
+3352,II,combCalGroupHandler(): phyId = %d; cmdid = %d 
+3353,II,PHYDBGdumpHandler(Phy:%d, Option:%d)
+ 
+3354,III,### data_ptr %p size %d status 0x%x
+ 
+3355,II,### data_ptr %p stream_cnt %d
+ 
+3356,,### Data buffer stream ended
+ 
+3357,,bdGetSizeHandler
+ 
+3358,III,bdReadHandler: bdSize %d, offset 0x%x, size %d
+ 
+3359,I,error in bdReadHandler: status %d
+ 
+3360,IIII,Tx Gain Control:Chain %d, Gain %d, dacGain %d, forceCal %d 
+ 
+3361,,OFDMA TonePlan
+ 
+3362,III,PAPRD TCMD: Chain %d Glut Idx %d Gain Idx %d
+ 
+3363,II,ftm_tid_create_handler: pdev %d, tid %d 
+3364,II,[MU] wal_mu_peer_assoc() peer[%d] AID %d 
+3365,IIII,tpccal::2G opcChan[%u] %u, tpcChan[%u] %u 
+3366,IIII,tpccal::5G opcChan[%u] %u, tpcChan[%u] %u 
+3367,,tpccal::Starting ... 
+3368,,TPC Cal message check 
+ 
+3369,III,tpccal::Starting tx for Chan %u, Chain %u, Gain %u 
+3370,,tpccal::Completed 
+3371,,tpccal::Post processing OLPC Caldata 
+3372,,tpccal::Sending Caldata to host 
+3373,IIIII,tpccal::Got measurement %d from host for Chan %u Chain %u Chain(user) %u Gain %u 
+3374,IIIIII,tpccal::Thermoffset %u for Band %u tpcChan %u opcChan[%u] %u  Chain %u 
+3375,II,Got Power from host %d, Read pdadc %d
+ 
+3376,II,Received identical power meas:%d prevMeas:%d .Failing calloop 
+3377,II,Sending to host freq2G %d, freq5G %d
+ 
+3378,III,tpccal::Stopping tx before starting for Chan %u, Chain %u, Gain %u 
+3379,IIIII,freq %d gIdx %d dacGain %d paCfg %d chMask %d
+ 
+3380,III,Sending to host freq2G %d, freq5G %d, chain %d 
+3381,IIII,gain %d pwr %d numChain %d numCalpt %d
+ 
+3382,IIII,tpccal::Sending to host to look for measurements inChan2G %u, Chan5G %u, ChainMask(User) %u, Gain %u 
+3383,,tpccal::Post processing CLPC Caldata 
+3384,,tpccal::Generating Caldata 
+3385,I,tpcCal::Generating Caldata for Channel %d 
+3386,I,tpcCal::Generating Caldata for Chain %d 
+3387,III,tpcCal::Generating Caldata for GLUT Gain Idx %d txgainIdx %d meas_pwr %d 
+3388,III,tpcCal::Generating Caldata for PLUT Gain Idx %d pdadc_read %d meas_pwr %d 
+3389,I,tpcCal::Generating Caldata for Channel %d 
+3390,I,tpcCal::Generating Caldata for Chain %d 
+3391,III,tpcCal::Generating Caldata for GLUT Gain Idx %d txgainIdx %d meas_pwr %d 
+3392,III,tpcCal::Generating Caldata for PLUT Gain Idx %d pdadc_read %d meas_pwr %d 
+3393,,Invalid freq pier pointer dereference 
+3394,,tpcOnepointCal::tpcPowerMeasurementDelayTimeout 
+3395,,tpcOnepointCAL::Starting... 
+3396,IIII,tpcOnepointCal::Requesting pwr measurement for phy %u, freq %u, chainMask %u,tgtPwr_db8 %u 
+3397,IIII,tpcOnepointCal::Requesting pwr measurement for phy %u, freq %u, chainMask %u,tgtPwr_db8 %u 
+3398,,tpcOnepointcal::Completed 
+3399,,tpcOnepointcal::Failure, -999 power detected 
+3400,IIIIII,tpcOnepointCal::Pwr measurement for phy %u, freq %u, chainMask %u, glutOffset %d, thermOffset %u, measPwr_db8 is %u 
+3401,III,tpcOnepointCal::Failure at BandIdx:%d chanIdx:%d chainIdx:%d 
+3402,IIII,tpcOnepointCal::Starting Tx for phy %u, freq %d, chainMask %d, txPwr_db2 %d 
+3403,IIII,tpcOnepointCal::Stopping Tx for phy %u, freq %d, chainMask %d, txPwr_db2 %d 
+3404,I,PALCAL_INPUT calCmdId			=%d 
+3405,I,PALCAL_INPUT pPalDlyVals			=%x 
+3406,I,PALCAL_INPUT pcalMethod			=%d 
+3407,I,PALCAL_INPUT pcalOptDoSetEDandDM		=%d 
+3408,III,PALCAL CONF ModeStatus[phyId=%d][ConfMode=%d][0]	=%d 
+3409,III,PALCAL CONF ModeStatus[phyId=%d][ConfMode=%d][1]	=%d 
+3410,III,PALCAL CONF ModeStatus[phyId=%d][ConfMode=%d][2]	=%d 
+3411,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][0]		=%d 
+3412,III,PALCAL STORE palCalDlyVals[phyId=%d]{%d][1]		=%d 
+3413,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][2]		=%d 
+3414,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][3]		=%d 
+3415,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][4]		=%d 
+3416,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][5]		=%d 
+3417,,Welcome, cal SM for Pdet Cal will be created 
+3418,,PALCAL STARTED 
+3419,I,PALCAL CONF final pal_cal_input->pcalMethod=%d 
+3420,,PALCAL COMPLETED 
+3421,,APPLICALBE_RESUBMISSION_ONLY:: failure on not getting pStart (= NULL) from caldb! 
+3422,II,combCal_SM_restore: RXIQ: chainIdx=%d,  pStartRxIq=%x 
+3423,I,cannot update txiq table in caldb for chainIdx = %d! 
+3424,II,combCal_SM_restore: TXIQ: chainIdx=%d,  pStartTxIq=%x 
+3425,I,cannot update txiq table in caldb for chainIdx = %d! 
+3426,II,combCal_SM_restore: TXLO: chainIdx=%d,  pStartTxLo=%x 
+3427,I,cannot update txlo table in caldb for chainIdx = %d! 
+3428,II,combCal_SM_save: RXIQ: chainIdx=%d,  pStartRxIq=%x 
+3429,I,cannot update rxiq table in caldb for chainIdx = %d! 
+3430,II,combCal_SM_save: TXIQ: chainIdx=%d,  pStartTxIq=%x 
+3431,I,cannot update txiq table in caldb for chainIdx = %d! 
+3432,III,combCal_SM_save: TXLO: chainIdx=%d,  pStartTxLo=%x, 4 * NUM_GAINS_PER_MODE_DIG_ANA_CL=%d 
+3433,I,cannot update txlo table in caldb for chainIdx = %d! 
+3434,I,COMPOSE CMBIQ INPUT pIn 		=%x 
+3435,I,COMPOSE CMBIQ INPUT phyInput 	=%x 
+3436,I,COMPOSE CMBIQ INPUT rxdcoInput 	=%x 
+3437,I,COMPOSE CMBIQ INPUT in *calId 	=%x 
+3438,I,COMPOSE CMBIQ INPUT out *calId 	=%x 
+3439,I,MODE2CALID in  *calMode		=%d 
+3440,I,MODE2CALID in  *calId		=%d 
+3441,I,MODE2CALID in  retValue		=%d 
+3442,I,FINALCASE pHandle 		=%x 
+3443,I,FINALCASE callingContext 		=%d 
+3444,I,FINALCASE calMode 		=%x 
+3445,I,FINALCASE calId 			=%d 
+3446,I,FINALCASE rxChainMask 		=%x 
+3447,I,FINALCASE in finalCase		=%x 
+3448,I,FINALCASE statusChainMask 		=%x 
+3449,I,FINALCASE subMode80p80 		=%x 
+3450,I,FINALCASE out finalCase		=%x 
+3451,I,OVERRIDE FINALCASE pHandle 		=%x 
+3452,I,OVERRIDE FINALCASE callingContext 	=%d 
+3453,I,OVERRIDE FINALCASE calId 		=%d 
+3454,I,OVERRIDE FINALCASE in finalCase 	=%d 
+3455,I,OVERRIDE FINALCASE out finalCase 	=%d 
+3456,I,ITER2CMDIDX  iterIdx 		=%d 
+3457,I,ITER2CMDIDX  cmdIdx 		=%d 
+3458,I,UPDATE_COMBC_TRACKING  pHandle 	=%x 
+3459,I,UPDATE_COMBC_TRACKING  calMode 	=%d 
+3460,I,UPDATE_COMBC_TRACKING  rxChainMask 	=%x 
+3461,I,UPDATE_COMBC_TRACKING  subMode80p80 	=%d 
+3462,,UPDATE_COMBC_TRACKING  		COMB_TXLO_TXIQ_RXIQ 
+3463,,UPDATE_COMBC_TRACKING  		COMB_CAL_MODE_DPD_LP_RXIQ 
+3464,I,FC_HANDLE  pHandle 		=%x 
+3465,I,FC_HANDLE  phyInput 		=%x 
+3466,I,FC_HANDLE  fdmtCombCalInput 	=%x 
+3467,I,FC_HANDLE  fdmtCombCalOutput 	=%x 
+3468,I,FC_HANDLE  finalCase 		=%d 
+3469,I,FC_HANDLE  rxChainMask 		=%x 
+3470,I,FC_HANDLE  subMode80p80 		=%d 
+3471,I,path to call docal due to NEED_TO_DO_CAL,  calCmdId 		=%d 
+3472,I,CAL_COMMON_PARAM pHandle 	=%x 
+3473,I,CAL_COMMON_PARAM calType 	=%d 
+3474,I,CAL_COMMON_PARAM cmdGroupId 	=%d 
+3475,I,CAL_COMMON_PARAM isRestoreOnly 	=%d 
+3476,I,CAL_COMMON_PARAM calTypeVarianceId 	=%d 
+3477,III,CAL_COMMON_PARAM reserved 	=%d %d %d 
+3478,I,CAL_COMMON_PARAM (pIn->pHandle).phyId 	=%x 
+3479,I,CAL_COMMON_PARAM halphyBW 	=%x 
+3480,I,PHYDEVLIB_PHY_INPUT phyId 		=%d 
+3481,I,PHYDEVLIB_PHY_INPUT bandCode	=%d 
+3482,I,PHYDEVLIB_PHY_INPUT bwCode 	=%d 
+3483,I,PHYDEVLIB_PHY_INPUT phyMode 	=%d 
+3484,I,PHYDEVLIB_PHY_INPUT band_center_freq1 	=%d 
+3485,I,PHYDEVLIB_PHY_INPUT band_center_freq2 	=%d 
+3486,I,PHYDEVLIB_PHY_INPUT txChMask 	=%x 
+3487,I,PHYDEVLIB_PHY_INPUT rxChMask 	=%x 
+3488,I,PHYDEVLIB_PHY_INPUT phyBase 	=%x 
+3489,I,PHYDEVLIB_PHY_INPUT phyBaseExt 	=%x 
+3490,I,PHYDEVLIB_PHY_INPUT concMode 	=%d 
+3491,I,PHYDEVLIB_PHY_INPUT dynPriChan 	=%d 
+3492,I,PHYDEVLIB_PHY_INPUT homeCh		=%d 
+3493,I,PHYDEVLIB_PHY_INPUT dtim 		=%d 
+3494,I,PHYDEVLIB_PHY_INPUT extLNA 		=%d 
+3495,I,PHYDEVLIB_PHY_INPUT extPA 		=%d 
+3496,I,PHYDEVLIB_PHY_INPUT isSBSmode 	=%d 
+3497,I,PHYDEVLIB_PHY_INPUT loType 		=%d 
+3498,I,PHYDEVLIB_PHY_INPUT dpdMode 	=%d 
+3499,I,PHYDEVLIB_PHY_INPUT loadIniMask 	=%d 
+3500,I,PHYDEVLIB_PHY_INPUT calMask 	=%d 
+3501,I,PHYDEVLIB_PHY_INPUT cal_mode_ctrl 	=%d 
+3502,I,CCAL_INPUT calCmdId		=%d 
+3503,I,CCAL_INPUT cal_chain_mask		=%x 
+3504,I,CCAL_INPUT cal_mode		=%d 
+3505,I,CCAL_INPUT mode (80p80 mode)		=%d 
+3506,I,CCAL_INPUT fixed_gain		=%d 
+3507,I,CCAL_INPUT engineSharing		=%d 
+3508,I,CCAL_INPUT driveTxGLUTIdx		=%d 
+3509,I,CCAL_INPUT enableBlockAccAvg		=%d 
+3510,I,CCAL_INPUT blockSize		=%d 
+3511,I,CCAL_INPUT dcEstWindowSize		=%d 
+3512,I,CCAL_INPUT numOfBlocks		=%d 
+3513,I,CCAL_INPUT numSamplesToReadback[0]	=%d 
+3514,I,CCAL_INPUT numSamplesToReadback[1]	=%d 
+3515,I,CCAL_INPUT numSamplesToReadback[2]	=%d 
+3516,I,CCAL_INPUT rxGainSettlingTime		=%d 
+3517,I,CCAL_INPUT txGainSettlingTime		=%d 
+3518,I,CCAL_INPUT txShiftSettlingTime		=%d 
+3519,I,CCAL_INPUT calModeSettlingTime	=%d 
+3520,I,CCAL_INPUT loopbackSettlingTime	=%d 
+3521,I,CCAL_INPUT txResidueSettlingTime	=%d 
+3522,I,CCAL_INPUT numTaps[0] 		=%d 
+3523,I,CCAL_INPUT numTaps[1] 		=%d 
+3524,,Welcome, cal SM for Comb Cal will be created..
+ 
+3525,III,CalSM: scan cal end 	phyId=%d, 	calProgress[0]=%d, 	calProgress[1]=%d 
+3526,III,CalSM: get yield time 	phyId=%d, 	calProgress[0]=%d, 	calProgress[1]=%d 
+3527,IIIII,CalSM: annouce yield time 	phyId=%d, 	finalCase=%d, 	phyInput->bwCode=%d, 	calProgress[0]=%d, 	calProgress[1]=%d 
+3528,III,CalSM: cal end 	phyId=%d, 	calProgress[0]=%d, 	calProgress[1]=%d 
+3529,I,RXDCO ::SM::: convertNewRxdcoLutfromCalDb chainIdx = %d pStart= NULLLLLLLLLLLLLLLLL
+ 
+3530,II,convertNewRxdcoLutfromCalDb:::pStart=%x(pNewDcoLut=%x) from caldb
+ 
+3531,III,convertNewRxdcoLutfromCalDb:::Restore Rxdco LUT from caldb with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
+ 
+3532,II,convertNewRxdcoLutfromCalDb:::pStart=%x(pNewDcoLut=%x) to caldb=%d
+ 
+3533,III,convertNewRxdcoLutfromCalDb:::Save Rxdco LUT to caldb with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
+ 
+3534,,APPLICALBE_RESUBMISSION_ONLY:: failure on not getting pStart (= NULL) from caldb! 
+3535,I,APPLICALBE_RESUBMISSION_ONLY:: failure on getting chainIdx:%d from pPhyRxdcoInput 
+3536,I,MODE2CALID in  *calMode		=%d 
+3537,I,MODE2CALID in  *calId		=%d 
+3538,I,MODE2CALID in  retValue		=%d 
+3539,I,COMPOSE RXDCO INPUT pIn 		=%x 
+3540,I,COMPOSE RXDCO INPUT phyInput 	=%x 
+3541,I,COMPOSE RXDCO INPUT rxdcoInput 	=%x 
+3542,I,COMPOSE RXDCO INPUT pUnionDcoLut 	=%x 
+3543,I,COMPOSE RXDCO INPUT in *calId 	=%x 
+3544,I,COMPOSE RXDCO INPUT override bwCode 	=%x 
+3545,I,COMPOSE RXDCO INPUT out *calId 	=%x 
+3546,I,CAL_COMMON_PARAM pHandle 	=%x 
+3547,I,CAL_COMMON_PARAM calType 	=%d 
+3548,I,CAL_COMMON_PARAM cmdGroupId 	=%d 
+3549,I,CAL_COMMON_PARAM isRestoreOnly 	=%d 
+3550,I,CAL_COMMON_PARAM calTypeVarianceId 	=%d 
+3551,III,CAL_COMMON_PARAM reserved 	=%d %d %d 
+3552,I,CAL_COMMON_PARAM (pIn->pHandle).phyId 	=%x 
+3553,I,CAL_COMMON_PARAM halphyBW 	=%x 
+3554,I,PHYDEVLIB_PHY_INPUT phyId 		=%d 
+3555,I,PHYDEVLIB_PHY_INPUT bandCode	=%d 
+3556,I,PHYDEVLIB_PHY_INPUT bwCode 	=%d 
+3557,I,PHYDEVLIB_PHY_INPUT phyMode 	=%d 
+3558,I,PHYDEVLIB_PHY_INPUT band_center_freq1 	=%d 
+3559,I,PHYDEVLIB_PHY_INPUT band_center_freq2 	=%d 
+3560,I,PHYDEVLIB_PHY_INPUT txChMask 	=%x 
+3561,I,PHYDEVLIB_PHY_INPUT rxChMask 	=%x 
+3562,I,PHYDEVLIB_PHY_INPUT phyBase 	=%x 
+3563,I,PHYDEVLIB_PHY_INPUT phyBaseExt 	=%x 
+3564,I,PHYDEVLIB_PHY_INPUT concMode 	=%d 
+3565,I,PHYDEVLIB_PHY_INPUT dynPriChan 	=%d 
+3566,I,PHYDEVLIB_PHY_INPUT homeCh		=%d 
+3567,I,PHYDEVLIB_PHY_INPUT dtim 		=%d 
+3568,I,PHYDEVLIB_PHY_INPUT extLNA 		=%d 
+3569,I,PHYDEVLIB_PHY_INPUT extPA 		=%d 
+3570,I,PHYDEVLIB_PHY_INPUT isSBSmode 	=%d 
+3571,I,PHYDEVLIB_PHY_INPUT loType 		=%d 
+3572,I,PHYDEVLIB_PHY_INPUT dpdMode 	=%d 
+3573,I,PHYDEVLIB_PHY_INPUT loadIniMask 	=%d 
+3574,I,PHYDEVLIB_PHY_INPUT calMask 	=%x 
+3575,I,PHYDEVLIB_PHY_INPUT cal_mode_ctrl 	=%d 
+3576,I,PHYDEVLIB_PHY_INPUT boardId 	=%d 
+3577,I,FINALCASE pHandle 		=%x 
+3578,I,FINALCASE callingContext 		=%d 
+3579,I,FINALCASE calMode 		=%x 
+3580,I,FINALCASE calId 			=%d 
+3581,I,FINALCASE rxChainMask 		=%x 
+3582,I,FINALCASE in finalCase		=%x 
+3583,I,FINALCASE statusChainMask 		=%x 
+3584,I,FINALCASE subMode80p80 		=%x 
+3585,II,FINALCASE out finalCase 		=%x for calMode=%d 
+3586,I,OVERRIDE FINALCASE out finalCase 	=%d 
+3587,I,FC_HANDLE  pHandle 		=%x 
+3588,I,FC_HANDLE  phyInput 		=%x 
+3589,I,FC_HANDLE  rxdcoInput 		=%x 
+3590,I,FC_HANDLE  finalCase 		=%d 
+3591,I,FC_HANDLE  rxChainMask 		=%x 
+3592,I,FC_HANDLE  subMode80p80 		=%d 
+3593,I,FC_HANDLE  autoIterativeIdx 		=%d 
+3594,I,FC_HANDLE  rxdcoInput->calCmdId 	=%d 
+3595,I,FC_HANDLE  iterIdx 		=%d 
+3596,,RXDCO ****** invokes rxdco cal ***** 
+3597,IIIII,RXDCO ::: BF CAL_SAVE bwCode=%d, chainIdx=%d tableIdx=%d, Output:real= %x img=%x
+ 
+3598,,RXDCO ::: AFTER:CAL_SAVE convertNewRxdcoLutfromCalDb failed
+ 
+3599,I,ITER2CMDIDX  iterIdx 		=%d 
+3600,I,ITER2CMDIDX  cmdIdx 		=%d 
+3601,I,UPDATE_RXDCO_TRACKING  pHandle 	=%x 
+3602,III,UPDATE_RXDCO_TRACKING  calMode 	=%d (RXDCO_CAL_MODE_NORMAL=%d,RXDCO_CAL_MODE_DTIM=%d 
+3603,I,UPDATE_RXDCO_TRACKING  rxChainMask 	=%x 
+3604,I,UPDATE_RXDCO_TRACKING  subMode80p80 	=%d 
+3605,,UPDATE_RXDCO_TRACKING  	RXDCO_CAL_MODE_NORMAL 
+3606,,UPDATE_RXDCO_TRACKING  	RXDCO_CAL_MODE_NORMAL 
+3607,,APPLICALBE_RESUBMISSION_ONLY:: failure on not getting pStart (= NULL) from caldb! 
+3608,I,NEED_TO_DO_CAL:: cannot update rxdco caldb for chainIdx = %d! 
+3609,,RXDCO SM NEW COLDBOOT SUPPORT VERSION ************** 
+3610,I,RXDCO SM FINAL VERSION bandw=%d>>>>>>>>>>>>>>>>>> 
+3611,IIII,RXDCO SM SKIPPED:::finalCase = %d, doCalFlag = %d,  skipMask = %x, previousCalResultAtHomeCh=%d 
+3612,IIII,RXDCO SM REUSE:::finalCase = %d, doCalFlag = %d,  skipMask = %x, previousCalResultAtHomeCh=%d 
+3613,,RXDCO SM FINALCASE BASED 
+3614,,RXDCO SM FINAL VERSION <<<<<<<<<<<<<<<<<< 
+3615,,RXDCO SM BRING UP VERSION ************** 
+3616,IIII,RXDCO SM::bwCode=%d, bandCode=%d, calCmdId=%d, cal_mode=%d 
+3617,IIIII,RXDCO SM::rxChainMask=%x, homech=%d, phyMode=%d, dtim=%d boardId=0x%x 
+3618,IIIII,RXDCO SM::FCS:::Restore from tableIdx:%d homeCh:%d chain:%d, img:0x%x, real:0x%x 
+3619,IIII,RXDCO SM::FCS::: Save::: homeCh:%d, chain:%d, img:0x%x, real:0x%x 
+3620,IIIIII,PAPRD:Chain = %d, tpc_index = %d, table_offset = %d, glut_idx_offset = %x, txgain_index = %d isForcedGainMode = %d
+ 
+3621,I,PAPRD: HWDISABLE CHAIN : %d
+ 
+3622,,PAPRD: HWDISABLE ALL
+ 
+3623,I,-Q5-PAPRD-:Iron version is : %d 
+ 
+3624,II,-Q5-PAPRD-:Chain = %d, Tx Cal Sub Mode = %d 
+ 
+3625,III,-Q5-PAPRD-:Chain = %d, dpd Rx loop chian %d Rx Cal Sub Mode = %d 
+ 
+3626,I,-Q5-PAPRD-:Loopback Attenuation = %d
+ 
+3627,III,PAPRD-: set_txgain_idx DPD DAC gain = 0x%x chainmask = 0x%x, Phy Id = %d 
+ 
+3628,I,-Q5-PAPRDTUNING-:DynBW = %d 
+ 
+3629,I,-Q5-PAPRDTUNING-:Min loopback delay  = %d 
+ 
+3630,I,-Q5-PAPRD : StopTraining for Chain = %d 
+ 
+3631,IIII,--Q5--PAPRDPHYDBG %d %d %d %d
+ 
+3632,III,-Q5-PAPRDTUNING-:sq PASS: sq_idx_sw %d sq_idx_hw %d force_sq_idx %d
+ 
+3633,IIII,-Q5-PAPRDTUNING-:sq FAIL : %d sq_idx_sw %d sq_idx_hw %d force_sq_idx %d
+ 
+3634,,-Q5-PAPRD-:DPD training Failed. Paprd Done bit is not set in HW!
+ 
+3635,I,-Q5-PAPRDTUNING-:DPD training AGC2 size 0x%x 
+ 
+3636,I,-Q5-PAPRDTUNING-:DPD training AGC2 pwr 0x%x 
+ 
+3637,I,-Q5-PAPRDTUNING-:DPD training rx gain idx 0x%x 
+ 
+3638,I,-Q5-PAPRD-:DPD training active %d 
+ 
+3639,I,-Q5-PAPRD-:DPD training incomplete %d 
+ 
+3640,I,-Q5-PAPRDTUNING-:SQ index HW is %d 
+ 
+3641,I,-Q5-PAPRD-:DC estimate I %d 
+ 
+3642,I,-Q5-PAPRD-:DC estimate Q %d 
+ 
+3643,I,-Q5-PAPRD-:HW calculated stage2 min dispersion = %lu 
+ 
+3644,I,-Q5-PAPRD-:Dispersion value at SQ Stage2 (minimum index - 1) = %lu 
+ 
+3645,I,-Q5-PAPRD-:Dispersion value at SQ Stage2 (minimum index + 1) = %lu 
+ 
+3646,II,-Q5-PAPRD-:CheckSignalQuality sq_idx_sw %d sq quality %d 
+ 
+3647,,-Q5-PAPRD-:Read back DPD training data from memory:
+ 
+3648,II,-Q5-PAPRD-:Raw Data: chain %d table %d
+ 
+3649,,-Q5-PAPRD-:DpdTrainData0	  DpdTrainData1	 DpdTrainData2	 DpdTrainData3 
+ 
+3650,IIII,-Q5-PAPRD-:%lu	 %lu	 %lu	 %lu 
+ 
+3651,II, PAPRD: Populate DPD LUT of Chain %lu at table_idx %lu 
+ 
+3652,IIII, PAPRD:tableType: %d tableIdx: %d at even entry: %d from is : %lx
+ 
+3653,IIII, PAPRD:tableType: %d tableIdx: %d at odd entry: %d from is : %lx
+ 
+3654,I,-Q5-PAPRD-:channel freq %d
+ 
+3655,II,-Q5-PAPRD-:txChain %d tableIndex %d
+ 
+3656,I,-Q5-PAPRD-:forced_sq_idx %d 
+3657,II,-Q5-PAPRD-:sq_idx_sw %d sq_idx_hw %d
+ 
+3658,II,--Q5--PAPRD: validmask 0x%x phyInput->validChainMask 0x%x
+ 
+3659,II,-Q5-PAPRD-:phy_core_PaprdChangeTrainingIndex(): Change training position to chain index %d and dpd table index %d 
+ 
+3660,I,-Q5-PAPRD-:Invalid channel %d
+ 
+3661,II,-Q5-PAPRD-:pPaprdStruct->tableIndex = %d, pPaprdStruct->txChain = %d
+ 
+3662,I,-Q5-PAPRD-:training_done_for_curr_table_idx %d 
+ 
+3663,II,-Q5-PAPRD-:SQ is %lu and update DPD table; Training done table : 0x%x
+ 
+3664,III,-Q5-PAPRD-:SQ is %lu; SQ > SQ limit, DPD cal failed at chain %d table index %d
+ 
+3665,,-Q5-PAPRD-:X 	 Y 	 theta
+ 
+3666,III,-Q5-PAPRD-:%lu	%lu	%lu
+ 
+3667,III,-Q5-PAPRD-:small signal gain is %ld | angle is 0x%x noise_ratio_ampm = %d
+ 
+3668,IIII,-Q5-PAPRD-:PA_in[%d] = 0x%lx 	 PA_angle[%d] = 0x%lx
+ 
+3669,II,-Q5-PAPRD-:phy_core_PaprdCalcGainFxp : max bins %d X[GfxpIdx] %d
+ 
+3670,II,-Q5-PAPRDTUNING-:small signal gain is %d, max_bins %d
+ 
+3671,I,phyPkDetDcoCal: Peak Detector DCO CAL phyId = %d ... 
+3672,II,phyPkDetDcoCal: Peak Detector DCO CAL phyId = %d failed (failed chain mask %x) 
+3673,I,phyPkDetDcoCal: Peak Detector DCO CAL phyId = %d completed 
+3674,,Unsigned value can't be negative! Please correct! 
 3675,,Unsigned value can't be negative! Please correct! 
-3676,,Unsigned value can't be negative! Please correct! 
-3677,II,scaledval = %d, Pow2_tiadc(2,(fpspec.bits - fpspec.ibits) = %x 
-3678,,Unsigned value can't be negative! Please correct! 
-3679,II,-Q5-PAPRD-:phy_core_PaprdChangeTrainingIndex(): Change training position to chain index %d and dpd table index %d 
+3676,II,scaledval = %d, Pow2_tiadc(2,(fpspec.bits - fpspec.ibits) = %x 
+3677,,Unsigned value can't be negative! Please correct! 
+3678,I,comb cal return rc = %d 
+3679,I,HW CaL polling time out...., calCount = %d 
+3680,II,core %d do_calibrate = %d 
+3681,III,TXCL digital corr core_idx=%d, chain=%d, gain_idx=%d
  
-3680,I,-Q5-PAPRD-:Invalid channel %d
+3682,I,Array bound! num_uvals=%lu 
+3683,I,%d 
+3684,I,-%d 
+3685,III,RXDCO::rxdco_write_dco_lut time(%u - %u) = %u 
+3686,,RXDCO:: cal failure 
+3687,IIIII,rxdco_save:::pDcoLut=%x + tableIdx = %d, Rxdco LUT from HW with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
  
-3681,II,-Q5-PAPRD-:pPaprdStruct->tableIndex = %d, pPaprdStruct->txChain = %d
+3688,IIIII,rxdco_restore:::pDcoLut=%x + tableIdx = %d, Write Rxdco LUT into HW with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
  
-3682,I,-Q5-PAPRD-:training_done_for_curr_table_idx %d 
+3689,III,RxDCO - SEC RUN VHT160 - %d, PRI80 - 0x%x, SEC80 - 0x%x
  
-3683,II,-Q5-PAPRD-:SQ is %lu and update DPD table; Training done table : 0x%x
+3690,III,RxDCO - PRI RUN VHT160 - %d, PRI80 - 0x%x, SEC80 - 0x%x
  
-3684,III,-Q5-PAPRD-:SQ is %lu; SQ > SQ limit, DPD cal failed at chain %d table index %d
+3691,I,RXDCO: *************************************** HW cal timeout, range_iter=%d 
+3692,I,RXDCO: cal done successful, range_iter=%d 
+3693,,RXDCO: Failed all 3 tries! 
  
-3685,,-Q5-PAPRD-:X 	 Y 	 theta
+3694,,index out of range 
+3695,I,cal_done time out calDoneCount=%lu 
+3696,I,cal_done early calDoneCount=%lu 
+3697,,RXDCO: cal_done failure and reset DO_CALIBRATE bit and CF_RESET_CORE !!!!!
  
-3686,III,-Q5-PAPRD-:%lu	%lu	%lu
+3698,IIII,Rxdco::: suboptim: [%d][%d]:ABS(Res_Imag) = %d, ABS(Res_Real) = %d 
+3699,IIII,Rxdco::: Failed: [%d][%d]:ABS(Res_Imag) = %d, ABS(Res_Real) = %d 
+3700,IIII,Rxdco::: OK: [%d][%d]:ABS(Res_Imag) = %d, ABS(Res_Real) = %d 
+3701,III,Rxdco::: failure_count[%d] = %d, num_cal_gain = %d 
+3702,IIII,RXDCO::TRangeOK %d Tsuccess %d TResidualOK %d pIter_parms->dcoc_range %d 
+3703,I,POE : phyDisableIron_qca8704() DISABLE FLAG %d
  
-3687,III,-Q5-PAPRD-:small signal gain is %ld | angle is 0x%x noise_ratio_ampm = %d
- 
-3688,IIII,-Q5-PAPRD-:PA_in[%d] = 0x%lx 	 PA_angle[%d] = 0x%lx
- 
-3689,II,-Q5-PAPRD-:phy_core_PaprdCalcGainFxp : max bins %d X[GfxpIdx] %d
- 
-3690,II,-Q5-PAPRDTUNING-:small signal gain is %d, max_bins %d
- 
-3691,I,comb cal return rc = %d 
-3692,I,HW CaL polling time out...., calCount = %d 
-3693,II,core %d do_calibrate = %d 
-3694,III,TXCL digital corr core_idx=%d, chain=%d, gain_idx=%d
- 
-3695,I,Array bound! num_uvals=%lu 
-3696,I,%d 
-3697,I,-%d 
-3698,I,phyPkDetDcoCal: Peak Detector DCO CAL phyId = %d ... 
-3699,II,phyPkDetDcoCal: Peak Detector DCO CAL phyId = %d failed (failed chain mask %x) 
-3700,I,phyPkDetDcoCal: Peak Detector DCO CAL phyId = %d completed 
-3701,I,POE : phyDisableIron_qca8704() DISABLE FLAG %d
- 
-3702,IIII,POE: set_synth_channel() BW = %di LO type = %d, PHY Id = %d PHY base = 0x%x 
-3703,I,POE : synth disabled PHY base = 0x%x 
-3704,I,POE : synth disabled PHY base = 0x%x 
+3704,IIII,POE: set_synth_channel() BW = %di LO type = %d, PHY Id = %d PHY base = 0x%x 
 3705,I,POE : synth disabled PHY base = 0x%x 
 3706,I,POE : synth disabled PHY base = 0x%x 
 3707,I,POE : synth disabled PHY base = 0x%x 
 3708,I,POE : synth disabled PHY base = 0x%x 
-3709,,POE : phySetChannel_qca8704() synth enabled
+3709,I,POE : synth disabled PHY base = 0x%x 
+3710,I,POE : synth disabled PHY base = 0x%x 
+3711,,POE : phySetChannel_qca8704() synth enabled
  
-3710,,POE : phySetChannel_qca8704() synth enabled for baseext
+3712,,POE : phySetChannel_qca8704() synth enabled for baseext
  
-3711,IIII,POE : phySetChannel_qca8704() Rx chainmask = 0x%x Tx Chain mask = 0x%x Lo type = %d Band = %d
+3713,IIII,POE : phySetChannel_qca8704() Rx chainmask = 0x%x Tx Chain mask = 0x%x Lo type = %d Band = %d
  
-3712,I,Chip version of Hardware:%x 
-3713,,dma_prepare 
-3714,I,host ring reader %p stop request 
+3714,I,Chip version of Hardware:%x 
+3715,,dma_prepare 
+3716,I,host ring reader %p stop request 
  
-3715,IIIII,host ring reader %p has base address 0x%llx, %lu elements, tail address 0x%llx, head address 0x%llx 
+3717,IIIII,host ring reader %p has base address 0x%llx, %lu elements, tail address 0x%llx, head address 0x%llx 
  
-3716,III,host ring reader %p failed to copy from address 0x%llx with status %d 
-3717,III,host ring reader %p head index is %lu, shadow tail index is %lu 
+3718,III,host ring reader %p failed to copy from address 0x%llx with status %d 
+3719,III,host ring reader %p head index is %lu, shadow tail index is %lu 
  
-3718,III,tail dirty host ring reader %p head index is %lu, shadow tail index is %lu 
+3720,III,tail dirty host ring reader %p head index is %lu, shadow tail index is %lu 
  
-3719,II,host ring reader %p read %lu elements 
+3721,II,host ring reader %p read %lu elements 
  
-3720,II,PCSS ring feeder %p fed %u elements 
+3722,II,PCSS ring feeder %p fed %u elements 
  
-3721,II,PCSS ring feeder %p PCSS ring has %hu elements remaining 
+3723,II,PCSS ring feeder %p PCSS ring has %hu elements remaining 
  
-3722,III,PCSS ring feeder %p expected %lu elements; got %u 
+3724,III,PCSS ring feeder %p expected %lu elements; got %u 
  
-3723,IIIII,PCSS ring feeder %p has phy %p, ring %d, input ring %p, output ring %p 
+3725,IIIII,PCSS ring feeder %p has phy %p, ring %d, input ring %p, output ring %p 
  
-3724,IIII,pcss_ring_feeder.c:%d: feeder = %p, pcss_up_ndown = %d, pcss_ring_saved = %d, pcss_ring_fed = %d
+3726,IIII,pcss_ring_feeder.c:%d: feeder = %p, pcss_up_ndown = %d, pcss_ring_saved = %d, pcss_ring_fed = %d
  
-3725,I,: pdev=%d 
-3726,,PHYDBG Memory Dump
+3727,I,: pdev=%d 
+3728,,PHYDBG Memory Dump
  
-3727,I,PHYDBG MEMBANK %d
+3729,I,PHYDBG MEMBANK %d
  
-3728,I,LWORD: 0x%x 
-3729,I,UWORD: 0x%x 
 3730,I,LWORD: 0x%x 
 3731,I,UWORD: 0x%x 
-3732,,PHYDBG ADC capture configured
+3732,I,LWORD: 0x%x 
+3733,I,UWORD: 0x%x 
+3734,,PHYDBG ADC capture configured
  
-3733,,PHYDBG capture started
+3735,,PHYDBG capture started
  
-3734,,PHYDBG capture stopped
+3736,,PHYDBG capture stopped
  
-3735,I,PHYDBG Event Capture Configured with 0x%x
+3737,I,PHYDBG Event Capture Configured with 0x%x
  
-3736,I,HALPHY DUMP: WIFITOOL issued with subcommand ID %d 
-3737,I,BDF DUMP: Invalid NV Section  %d 
-3738,I,BDF DUMP: NV Section Size: %d 
-3739,II,BDF DUMP: sub-section size: %d sub-section id: 0x%d 
-3740,II,BDF DUMP: index: %d d: 0x%x 
-3741,II,BDF DUMP: index: %d d:0x%x 
-3742,III,ANI_DUMP_PHYID%d g_ani_dl_ofdm %d g_error_threshold %d 
+3738,I,HALPHY DUMP: WIFITOOL issued with subcommand ID %d 
+3739,I,BDF DUMP: Invalid NV Section  %d 
+3740,I,BDF DUMP: NV Section Size: %d 
+3741,II,BDF DUMP: sub-section size: %d sub-section id: 0x%d 
+3742,II,BDF DUMP: index: %d d: 0x%x 
+3743,II,BDF DUMP: index: %d d:0x%x 
+3744,III,ANI_DUMP_PHYID%d g_ani_dl_ofdm %d g_error_threshold %d 
  
-3743,II,g_XtalCalPPM[%d]=%d 
-3744,II,g_ThermalEnable[%d]=%d 
-3745,I,pResetStruct->enable_ldocal_otp = %u 
-3746,I,ANI_DUMP_PHYID%d WIFITOOL COMMAND ISSUED TO SET MIN / MAX DL OF ANI 
+3745,II,g_XtalCalPPM[%d]=%d 
+3746,II,g_ThermalEnable[%d]=%d 
+3747,I,pResetStruct->enable_ldocal_otp = %u 
+3748,I,ANI_DUMP_PHYID%d WIFITOOL COMMAND ISSUED TO SET MIN / MAX DL OF ANI 
  
-3747,I,ANI_DUMP_PHYID%d CONFIG OF ANI 
+3749,I,ANI_DUMP_PHYID%d CONFIG OF ANI 
  
-3748,II,ANI_DUMP_PHYID%d g_ani_enable %d 
+3750,II,ANI_DUMP_PHYID%d g_ani_enable %d 
  
-3749,II,ANI_DUMP_PHYID%d g_ani_trigger %d 
+3751,II,ANI_DUMP_PHYID%d g_ani_trigger %d 
  
-3750,II,ANI_DUMP_PHYID%d g_ani_dl_ofdm %d 
+3752,II,ANI_DUMP_PHYID%d g_ani_dl_ofdm %d 
  
-3751,II,ANI_DUMP_PHYID%d g_ani_dl_cck %d 
+3753,II,ANI_DUMP_PHYID%d g_ani_dl_cck %d 
  
-3752,II,ANI_DUMP_PHYID%d g_ani_dl_min %d 
+3754,II,ANI_DUMP_PHYID%d g_ani_dl_min %d 
  
-3753,II,ANI_DUMP_PHYID%d g_ani_dl_max %d 
+3755,II,ANI_DUMP_PHYID%d g_ani_dl_max %d 
  
-3754,II,ANI_DUMP_PHYID%d g_error_threshold %d 
+3756,II,ANI_DUMP_PHYID%d g_error_threshold %d 
  
-3755,I,ANI_DUMP_PHYID%d WIFITOOL COMMAND ISSUED TO SET ERROR THRESHOLD OF ANI 
+3757,I,ANI_DUMP_PHYID%d WIFITOOL COMMAND ISSUED TO SET ERROR THRESHOLD OF ANI 
  
-3756,I,ANI_DUMP_PHYID%d CONFIG OF ANI 
+3758,I,ANI_DUMP_PHYID%d CONFIG OF ANI 
  
-3757,II,ANI_DUMP_PHYID%d g_ani_enable %d 
+3759,II,ANI_DUMP_PHYID%d g_ani_enable %d 
  
-3758,II,ANI_DUMP_PHYID%d g_ani_trigger %d 
+3760,II,ANI_DUMP_PHYID%d g_ani_trigger %d 
  
-3759,II,ANI_DUMP_PHYID%d g_ani_dl_ofdm %d 
+3761,II,ANI_DUMP_PHYID%d g_ani_dl_ofdm %d 
  
-3760,II,ANI_DUMP_PHYID%d g_ani_dl_cck %d 
+3762,II,ANI_DUMP_PHYID%d g_ani_dl_cck %d 
  
-3761,II,ANI_DUMP_PHYID%d g_ani_dl_min %d 
+3763,II,ANI_DUMP_PHYID%d g_ani_dl_min %d 
  
-3762,II,ANI_DUMP_PHYID%d g_ani_dl_max %d 
+3764,II,ANI_DUMP_PHYID%d g_ani_dl_max %d 
  
-3763,II,ANI_DUMP_PHYID%d g_error_threshold %d 
+3765,II,ANI_DUMP_PHYID%d g_error_threshold %d 
  
-3764,I,PAPRD: Invalid PHY ID = %d 
-3765,II,PAPRD: Phy ID %d | Enable for MM = %d 
-3766,IIII,ADDRVAL: indx = %d addr = 0x%X val = 0x%X en=%d 
-3767,IIII,ADDRVAL: indx = %d addr = 0x%X val = 0x%X en=%d 
+3766,I,PAPRD: Invalid PHY ID = %d 
+3767,II,PAPRD: Phy ID %d | Enable for MM = %d 
 3768,IIII,ADDRVAL: indx = %d addr = 0x%X val = 0x%X en=%d 
-3769,I,Invalid or Unsupported halphy debug sub command: %d 
-3770,IIIIIIIII,DFS_DUMPS timestamp=%d fft_num=%d radar_check=%d total_gain=%d base_pwr=%d peak_sidx=%i relpwr=%d peak_mag=%d num_str_bins_ib=%d
+3769,IIII,ADDRVAL: indx = %d addr = 0x%X val = 0x%X en=%d 
+3770,IIII,ADDRVAL: indx = %d addr = 0x%X val = 0x%X en=%d 
+3771,I,Invalid or Unsupported halphy debug sub command: %d 
+3772,IIIIIIIII,DFS_DUMPS timestamp=%d fft_num=%d radar_check=%d total_gain=%d base_pwr=%d peak_sidx=%i relpwr=%d peak_mag=%d num_str_bins_ib=%d
  
-3771,IIIIIIIII,DFS_DUMPS ts=%d diff_ts=%d sidx=%i dur=%d chirp=%d det=%d radar_check=%d agc_event=%d rssi=%d  
-3772,IIIII,DFS_DUMPS ts=%d delta_peak=%d delta_diff=%d total_gain=%d is_max_pw=%d  
-3773,IIIII,DFS_DUMP radar summary detection_mode=%d  timestamp=%d pulse_rssi=%d is_chirp=%d sidx=%d
+3773,IIIIIIIII,DFS_DUMPS ts=%d diff_ts=%d sidx=%i dur=%d chirp=%d det=%d radar_check=%d agc_event=%d rssi=%d  
+3774,IIIII,DFS_DUMPS ts=%d delta_peak=%d delta_diff=%d total_gain=%d is_max_pw=%d  
+3775,IIIII,DFS_DUMP radar summary detection_mode=%d  timestamp=%d pulse_rssi=%d is_chirp=%d sidx=%d
  
-3774,,FFT_RAW START 
+3776,II,DFS_DUMPS Radar Found with Filter Id = %d min dur=%d
  
-3775,II,FFT_RAW %p 0x%x 
+3777,II,CHANNEL_CLOSE radarevent g_dfs_test_mode=%d  event_data.detection_mode=%d
  
-3776,II,FFT_RAW %p 0x%x 
+3778,I,DFS_DEBUGS false_radar dfs->dfs_seq_num =%d
  
-3777,II,FFT_RAW %p 0x%x 
+3779,III,DFS_DUMPS %s: Rejecting Radar since duration diff %ld is more than %d
  
-3778,II,FFT_RAW %p 0x%x 
+3780,,FFT_RAW START 
  
-3779,,FFT_RAW END 
+3781,II,FFT_RAW %p 0x%x 
  
-3780,III,DFS_DUMP pcss_ipc_sig_handler_process_multiple_ring_element pHandle=%d ipc_ring_id=%d num_bufs=%d
+3782,II,FFT_RAW %p 0x%x 
  
-3781,II,DFS_DUMP Dfs0Sighandler pHandle=%d ipc_ring_id=%d
+3783,II,FFT_RAW %p 0x%x 
  
-3782,II,DFS_DUMP Dfs1Sighandler pHandle=%d ipc_ring_id=%d
+3784,II,FFT_RAW %p 0x%x 
  
-3783,II,DFS_DUMPS Radar Found with Filter Id = %d min dur=%d
+3785,,FFT_RAW END 
  
-3784,II,CHANNEL_CLOSE radarevent g_dfs_test_mode=%d  event_data.detection_mode=%d
+3786,III,DFS_DUMP pcss_ipc_sig_handler_process_multiple_ring_element pHandle=%d ipc_ring_id=%d num_bufs=%d
  
-3785,I,DFS_DEBUGS false_radar dfs->dfs_seq_num =%d
+3787,II,DFS_DUMP Dfs0Sighandler pHandle=%d ipc_ring_id=%d
  
-3786,III,DFS_DUMPS %s: Rejecting Radar since duration diff %ld is more than %d
+3788,II,DFS_DUMP Dfs1Sighandler pHandle=%d ipc_ring_id=%d
  
-3787,,No BDF merge since one of the pointer is NULL or invalid length 
-3788,IIII,loadDFStable - table: %d, phy: %d, column: %d, filt: %c
+3789,,No BDF merge since one of the pointer is NULL or invalid length 
+3790,IIII,loadDFStable - table: %d, phy: %d, column: %d, filt: %c
  
-3789,I,loadDFStable: invalid table %d
+3791,I,loadDFStable: invalid table %d
  
-3790,I,loadDFStable: invalid phy %d
+3792,I,loadDFStable: invalid phy %d
  
-3791,,DFS Table Pointer is NULL 
-3792,IIII,loadDFSVREGtable - table: %d, phy: %d, column: %d, filt: %c
+3793,,DFS Table Pointer is NULL 
+3794,IIII,loadDFSVREGtable - table: %d, phy: %d, column: %d, filt: %c
  
-3793,I,loadDFSVREGtable: invalid table %d
+3795,I,loadDFSVREGtable: invalid table %d
  
-3794,I,loadDFSVREGtable: invalid phy %d
+3796,I,loadDFSVREGtable: invalid phy %d
  
-3795,,DFS VREG Table Pointer is NULL 
-3796,IIII,loadNONDFStable - table: %d, phy: %d, column: %d, filt: %c
+3797,,DFS VREG Table Pointer is NULL 
+3798,IIII,loadNONDFStable - table: %d, phy: %d, column: %d, filt: %c
  
-3797,I,loadNONDFStable: invalid table %d
+3799,I,loadNONDFStable: invalid table %d
  
-3798,I,loadNONDFStable: invalid phy %d
+3800,I,loadNONDFStable: invalid phy %d
  
-3799,,DFS Table Pointer is NULL 
-3800,IIII,loadNONDFSVREGtable - table: %d, phy: %d, column: %d, filt: %c
+3801,,DFS Table Pointer is NULL 
+3802,IIII,loadNONDFSVREGtable - table: %d, phy: %d, column: %d, filt: %c
  
-3801,I,loadNONDFSVREGtable: invalid table %d
+3803,I,loadNONDFSVREGtable: invalid table %d
  
-3802,I,loadNONDFSVREGtable: invalid phy %d
+3804,I,loadNONDFSVREGtable: invalid phy %d
  
-3803,,DFS VREG Table Pointer is NULL 
-3804,IIII,loadBBtable - table: %d, phy: %d, column: %d, filt: %c
+3805,,DFS VREG Table Pointer is NULL 
+3806,IIII,loadBBtable - table: %d, phy: %d, column: %d, filt: %c
  
-3805,I,loadBBtable: invalid table %d
+3807,I,loadBBtable: invalid table %d
  
-3806,I,loadBBtable: invalid phy %d
+3808,I,loadBBtable: invalid phy %d
  
-3807,,BB Table Pointer is NULL 
-3808,IIII,loadBBVREGtable - table: %d, phy: %d, column: %d, filt: %c
+3809,,BB Table Pointer is NULL 
+3810,IIII,loadBBVREGtable - table: %d, phy: %d, column: %d, filt: %c
  
-3809,I,loadBBVREGtable: invalid table %d
+3811,I,loadBBVREGtable: invalid table %d
  
-3810,I,loadBBVREGtable: invalid phy %d
+3812,I,loadBBVREGtable: invalid phy %d
  
-3811,,BB VREG Table Pointer is NULL 
-3812,,Error: cannot commit NULL table!
+3813,,BB VREG Table Pointer is NULL 
+3814,,Error: cannot commit NULL table!
  
-3813,II,Note: table filtered out. table[%d].filter = %c
+3815,II,Note: table filtered out. table[%d].filter = %c
  
-3814,IIII,XtalCal::sign_flag=%d,  ppm(0.5 unit) = %x value = %x A_ABS(ppm) = %d
+3816,I,ov_rel0:%d 
+3817,IIII,XtalCal::sign_flag=%d,  ppm(0.5 unit) = %x value = %x A_ABS(ppm) = %d
  
-3815,III,phyrfBdfGetXtalCalValue: capin=%d, capout=%d offsetPPM = %d
+3818,III,phyrfBdfGetXtalCalValue: capin=%d, capout=%d offsetPPM = %d
  
-3816,II,XtalCal:: Entering AdjustXtalForLongPkt: capin=%d, capout=%d
+3819,II,XtalCal:: Entering AdjustXtalForLongPkt: capin=%d, capout=%d
  
-3817,IIII,XtalCal:: delta = %d, loop %d,  residue=%d, STEPSIZE=%d 
-3818,II,XtalCal : CAPIN %d CAPOUT %d
+3820,IIII,XtalCal:: delta = %d, loop %d,  residue=%d, STEPSIZE=%d 
+3821,II,XtalCal : CAPIN %d CAPOUT %d
  
-3819,III,AdjustXtalCAPValue -> bdf::: CAPIN %d CAPOUT %d, offsetPPM %d
+3822,III,AdjustXtalCAPValue -> bdf::: CAPIN %d CAPOUT %d, offsetPPM %d
  
-3820,I,AdjustXtalCAPValue::: deltaTime in MS = %d 
-3821,I,AdjustXtalCAPValue::: deltaTime in MS = %d 
-3822,III,AdjustXtalCAPValue::: incoming adjusted ppm X = %d real adjusted ppm Y = %d, (X - Y) = %d
+3823,I,AdjustXtalCAPValue::: deltaTime in MS = %d 
+3824,I,AdjustXtalCAPValue::: deltaTime in MS = %d 
+3825,III,AdjustXtalCAPValue::: incoming adjusted ppm X = %d real adjusted ppm Y = %d, (X - Y) = %d
  
-3823,,CTL table under update process. CTL table will not be parsed/updated at this time. 
-3824,III,bdf::SetXtalCalValue capIn %d capOut %d, ppmOffset %d
+3826,I,VK_NF minNfLimit=%d 
+3827,I,ERROR: device ID %d not found in lookup list... analog master tables not set!!!
  
-3825,,SetCtlTable halphy api called. Access to BDF CTL data temporarily disabled. 
-3826,,CTL DATA push failed. 
-3827,IIIIIII,Variables: is2G: %d, seq: %d, endflag: %d, totalLen: %d, ctl_ptr: %d, beginning actual address: %d, BDF beginning: %d 
-3828,I,CTL 2G DATA push under process at seq %d 
-3829,I,Size being copied in this iteration: %d 
-3830,II,Value at address %d before copy: %d 
-3831,,Invalid CTL data size. Access denied to copy this fragment. Please copy CTL blob from beginning with right size. 
-3832,II,Value at address %d after copy: %d 
-3833,I,Size copied: %d 
-3834,IIIIIII,Variables: is2G: %d, seq: %d, endflag: %d, totalLen: %d, ctl_ptr: %d, beginning actual address: %d, BDF beginning: %d 
-3835,I,CTL 5G DATA push under process at seq %d 
-3836,I,Size being copied in this iteration: %d 
-3837,II,Value at address %d before copy: %d 
-3838,,Invalid CTL data size. Access denied to copy this fragment. Please copy CTL blob from beginning with right size. 
-3839,II,Value at address %d after copy: %d 
-3840,I,Size copied: %d 
-3841,,CTL DATA push successful. CTL parsing will be allowed. 
-3842,IIIII,tpcOnepointCal::Saving to BDF txPwrOffset_db8 %d for Band %u, Chain %u,Chan %u, calAttempts %u 
-3843,IIIII,tpcOnepointCal::Saving to BDF glutOffset %d for Band %u, Chain %u,Chan %u, calAttempts %u 
-3844,IIIII,tpcOnepointCal:: Saving to BDF thermalOffset %u for Band %u, Chain %u,Chan %u, calAttempts %u 
-3845,IIIII,tpcOnepointCal::Saving to BDF txPwrOffset_db8 %d for Band %u, Chain %u,Chan %u, calAttempts %u 
-3846,IIIII,tpcOnepointCal::Saving to BDF glutOffset %d for Band %u, Chain %u,Chan %u, calAttempts %u 
-3847,IIIII,tpcOnepointCal:: Saving to BDF thermalOffset %u for Band %u, Chain %u,Chan %u, calAttempts %u 
-3848,II,phyrf_tpc_device_GetOnePointTpcOffset channel %d chosen_chanid = %d 
-3849,IIII,channel:%d cmask:%d is2GHz:%d tpcPowerOffset:%d
+3828,,CTL table under update process. CTL table will not be parsed/updated at this time. 
+3829,III,bdf::SetXtalCalValue capIn %d capOut %d, ppmOffset %d
  
-3850,III,[RXSOP] INI DEFALUT_GT_MAX:%d DEFAULT_LOW_GT_MAX:%d DEFAULT_VERY_LOW_GT_MAX:%d 
-3851,III,[RXSOP] DEFALUT_GT_MAX:%d DEFAULT_LOW_GT_MAX:%d DEFAULT_VERY_LOW_GT_MAX:%d 
-3852,IIIIII,tpcOnepointCal:: chosen phyId %u calFreq[%u] %u curChan %u curChain %u onePointTpcGLUTOffset %d 
-3853,IIIIII,tpcOnepointCal:: chosen phyId %u calFreq[%u] %u curChan %u curChain %u onePointThermOffset %d 
-3854,IIIIIII,tpcOnepointCal:: chosen phyId %u alphaThermFreq[%u] %u curChan %u curChain %u tempIdx %u alphaThermValue %u 
-3855,I,ov_rel0:%d 
-3856,I,ERROR: device ID %d not found in lookup list... analog master tables not set!!!
+3830,,SetCtlTable halphy api called. Access to BDF CTL data temporarily disabled. 
+3831,,CTL DATA push failed. 
+3832,IIIIIII,Variables: is2G: %d, seq: %d, endflag: %d, totalLen: %d, ctl_ptr: %d, beginning actual address: %d, BDF beginning: %d 
+3833,I,CTL 2G DATA push under process at seq %d 
+3834,I,Size being copied in this iteration: %d 
+3835,II,Value at address %d before copy: %d 
+3836,,Invalid CTL data size. Access denied to copy this fragment. Please copy CTL blob from beginning with right size. 
+3837,II,Value at address %d after copy: %d 
+3838,I,Size copied: %d 
+3839,IIIIIII,Variables: is2G: %d, seq: %d, endflag: %d, totalLen: %d, ctl_ptr: %d, beginning actual address: %d, BDF beginning: %d 
+3840,I,CTL 5G DATA push under process at seq %d 
+3841,I,Size being copied in this iteration: %d 
+3842,II,Value at address %d before copy: %d 
+3843,,Invalid CTL data size. Access denied to copy this fragment. Please copy CTL blob from beginning with right size. 
+3844,II,Value at address %d after copy: %d 
+3845,I,Size copied: %d 
+3846,,CTL DATA push successful. CTL parsing will be allowed. 
+3847,IIIII,tpcOnepointCal::Saving to BDF txPwrOffset_db8 %d for Band %u, Chain %u,Chan %u, calAttempts %u 
+3848,IIIII,tpcOnepointCal::Saving to BDF glutOffset %d for Band %u, Chain %u,Chan %u, calAttempts %u 
+3849,IIIII,tpcOnepointCal:: Saving to BDF thermalOffset %u for Band %u, Chain %u,Chan %u, calAttempts %u 
+3850,IIIII,tpcOnepointCal::Saving to BDF txPwrOffset_db8 %d for Band %u, Chain %u,Chan %u, calAttempts %u 
+3851,IIIII,tpcOnepointCal::Saving to BDF glutOffset %d for Band %u, Chain %u,Chan %u, calAttempts %u 
+3852,IIIII,tpcOnepointCal:: Saving to BDF thermalOffset %u for Band %u, Chain %u,Chan %u, calAttempts %u 
+3853,II,phyrf_tpc_device_GetOnePointTpcOffset channel %d chosen_chanid = %d 
+3854,IIII,channel:%d cmask:%d is2GHz:%d tpcPowerOffset:%d
  
-3857,I,PAPRD:HcaHwComponentTrxIron_paprd::HwDisable : PhyBase %8x 
+3855,III,[RXSOP] INI DEFALUT_GT_MAX:%d DEFAULT_LOW_GT_MAX:%d DEFAULT_VERY_LOW_GT_MAX:%d 
+3856,III,[RXSOP] DEFALUT_GT_MAX:%d DEFAULT_LOW_GT_MAX:%d DEFAULT_VERY_LOW_GT_MAX:%d 
+3857,IIIIII,tpcOnepointCal:: chosen phyId %u calFreq[%u] %u curChan %u curChain %u onePointTpcGLUTOffset %d 
+3858,IIIIII,tpcOnepointCal:: chosen phyId %u calFreq[%u] %u curChan %u curChain %u onePointThermOffset %d 
+3859,IIIIIII,tpcOnepointCal:: chosen phyId %u alphaThermFreq[%u] %u curChan %u curChain %u tempIdx %u alphaThermValue %u 
+3860,I,VK_NF minNfLimitFromBdf=%d 
+3861,I,PAPRD:HcaHwComponentTrxIron_paprd::HwDisable : PhyBase %8x 
  
-3858,II,PAPRDTUNING: SETTING - LoopBack Attn | Glut %d Value %d
+3862,II,PAPRDTUNING: SETTING - LoopBack Attn | Glut %d Value %d
  
-3859,II,PAPRDTUNING: SETTING - Timing Delay | Glut %d Value %d
+3863,II,PAPRDTUNING: SETTING - Timing Delay | Glut %d Value %d
  
-3860,, PAPRD: XmitTrainingFrame failed 
+3864,, PAPRD: XmitTrainingFrame failed 
  
-3861,I, PAPRD: XmitTrainingFrame tx_count %d
+3865,I, PAPRD: XmitTrainingFrame tx_count %d
  
-3862,IIII,PAPRDTUNING: Channel %d chainIdx %d glutIdx %d gainIdx %d
+3866,IIII,PAPRDTUNING: Channel %d chainIdx %d glutIdx %d gainIdx %d
  
-3863,IIII,PAPRDTUNING: Channel %d chainIdx %d glutIdx %d gainIdx %d
+3867,IIII,PAPRDTUNING: Channel %d chainIdx %d glutIdx %d gainIdx %d
  
-3864,I,PAPRD phy_core_set_paprd_enable : enable %d
+3868,I,PAPRD phy_core_set_paprd_enable : enable %d
  
-3865,II,HcaHwComponentTrxIron_paprd::FtmControl : channel %d dpd_enable %d 
+3869,II,HcaHwComponentTrxIron_paprd::FtmControl : channel %d dpd_enable %d 
  
-3866,III,FJC TPC DUP programming minMaxMethod %d clpcErrCmnDupEn %d dupModeBDFEnable %d 
-3867,III,tpcOnepointCal::phyId %d Chain %u latestAccumulatedClpcError %u 
-3868,III,tpcOnepointCal::phyId %d Chain %u thermalVal %u 
-3869,I,ov_rel1:%d 
-3870,IIII,tpcOnepointCal:: thermCalValue %u alphaTherm %u thermGainErrMax %u for chain %u 
-3871,IIIIIIII,ANI_DUMP2_PHYID%d OFDM DL=%d CDL=%d min_a=%x min_b=%x min_c=%x min_d=%x offset=%d
+3870,III,FJC TPC DUP programming minMaxMethod %d clpcErrCmnDupEn %d dupModeBDFEnable %d 
+3871,III,tpcOnepointCal::phyId %d Chain %u latestAccumulatedClpcError %u 
+3872,III,tpcOnepointCal::phyId %d Chain %u thermalVal %u 
+3873,I,ov_rel1:%d 
+3874,IIII,tpcOnepointCal:: thermCalValue %u alphaTherm %u thermGainErrMax %u for chain %u 
+3875,IIIIIIII,ANI_DUMP2_PHYID%d OFDM DL=%d CDL=%d min_a=%x min_b=%x min_c=%x min_d=%x offset=%d
  
-3872,IIIIIIII,ANI_DUMP2_PHYID%d OFDM DL=%d CDL=%d a=%x b=%x c=%x d=%x offset=%d
+3876,IIIIIIII,ANI_DUMP2_PHYID%d OFDM DL=%d CDL=%d a=%x b=%x c=%x d=%x offset=%d
  
-3873,IIII,ANI_DUMP2_PHYID%d CCK DL=%d CDL=%d offset=%d 
+3877,IIII,ANI_DUMP2_PHYID%d CCK DL=%d CDL=%d offset=%d 
  
-3874,I,WarmReset Cause = Ucode |phyid = %d 
+3878,I,WarmReset Cause = Ucode |phyid = %d 
  
-3875,I,WarmReset Cause = MAC |phyid = %d 
+3879,I,WarmReset Cause = MAC |phyid = %d 
  
-3876,,SpurMitigation: No 2G Spur freq available 
+3880,,SpurMitigation: No 2G Spur freq available 
  
-3877,,SpurMitigation: No 5G Spur freq available 
+3881,,SpurMitigation: No 5G Spur freq available 
  
-3878,I,SpurMitigation: flatChannelThreshold : 0x%x 
+3882,I,SpurMitigation: flatChannelThreshold : 0x%x 
  
-3879,,SpurMitigation: Spur is in Pri20 
+3883,,SpurMitigation: Spur is in Pri20 
  
-3880,I,SpurMitigation: flatChannelThreshold : 0x%x 
+3884,I,SpurMitigation: flatChannelThreshold : 0x%x 
  
-3881,IIII,%s PriCount : 0x%lx , 1stPriSpur : 0x%lx , 2ndPriSpur : 0x%lx 
+3885,IIII,%s PriCount : 0x%lx , 1stPriSpur : 0x%lx , 2ndPriSpur : 0x%lx 
  
-3882,IIII,%s ExtCount : 0x%lx , 1stExtSpur : 0x%lx , 2ndExtSpur : 0x%lx 
+3886,IIII,%s ExtCount : 0x%lx , 1stExtSpur : 0x%lx , 2ndExtSpur : 0x%lx 
  
-3883,I,the bwCode %d
+3887,I,the bwCode %d
  
-3884,,WarmReset: Skip WSI Config for WarmReset 
-3885,,Setting QuarterRate %d
+3888,,WarmReset: Skip WSI Config for WarmReset 
+3889,,Setting QuarterRate %d
  
-3886,,Setting Half Rate %d
+3890,,Setting Half Rate %d
  
-3887,I,ANI_DUMP_PHYID%d SAVE ANI DEFAULTS 
+3891,I,ANI_DUMP_PHYID%d SAVE ANI DEFAULTS 
  
-3888,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1a_db %x 
+3892,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1a_db %x 
  
-3889,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1b_db %x 
+3893,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1b_db %x 
  
-3890,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1c_db %x 
+3894,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1c_db %x 
  
-3891,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1d_db %x 
+3895,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1d_db %x 
  
-3892,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1a_en %x 
+3896,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1a_en %x 
  
-3893,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1b_en %x 
+3897,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1b_en %x 
  
-3894,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1c_en %x 
+3898,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1c_en %x 
  
-3895,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_lt_thr1d_en %x 
+3899,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_lt_thr1d_en %x 
  
-3896,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.desense_11b_thr_vreg %x 
+3900,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.desense_11b_thr_vreg %x 
  
-3897,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.maxGainTableIniDefaults.max_rf_Gain %d 
+3901,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.maxGainTableIniDefaults.max_rf_Gain %d 
  
-3898,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.maxGainTableIniDefaults.max_rf_LowGain %d 
+3902,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.maxGainTableIniDefaults.max_rf_LowGain %d 
  
-3899,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.maxGainTableIniDefaults.max_rf_VeryLowGain %d 
+3903,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.maxGainTableIniDefaults.max_rf_VeryLowGain %d 
  
-3900,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1a_db_ext %x 
+3904,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1a_db_ext %x 
  
-3901,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1b_db_ext %x 
+3905,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1b_db_ext %x 
  
-3902,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1c_db_ext %x 
+3906,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1c_db_ext %x 
  
-3903,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1d_db_ext %x 
+3907,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1d_db_ext %x 
  
-3904,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1a_en_ext %x 
+3908,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1a_en_ext %x 
  
-3905,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1b_en_ext %x 
+3909,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1b_en_ext %x 
  
-3906,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1c_en_ext %x 
+3910,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1c_en_ext %x 
  
-3907,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_lt_thr1d_en_ext %x 
+3911,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_lt_thr1d_en_ext %x 
  
-3908,I,WHAL_ERROR_EEPROM_MACADDR - sum = %lx
+3912,I,WHAL_ERROR_EEPROM_MACADDR - sum = %lx
  
-3909,IIIIII,hw adjust pwr in %d, pwr out %d rCode = %x, rc = %d rtIdx %d heDelta %d
+3913,IIIIII,hw adjust pwr in %d, pwr out %d rCode = %x, rc = %d rtIdx %d heDelta %d
  
-3910,IIII,tempCode ch%d = %d, calTemp %d, tempSlope %d
+3914,IIII,tempCode ch%d = %d, calTemp %d, tempSlope %d
  
-3911,II,##########bdf thermCode %d, calTemp %d
+3915,II,##########bdf thermCode %d, calTemp %d
  
-3912,I,##########bdf temp slope %d
+3916,I,##########bdf temp slope %d
  
-3913,I,%s
+3917,I,%s
  

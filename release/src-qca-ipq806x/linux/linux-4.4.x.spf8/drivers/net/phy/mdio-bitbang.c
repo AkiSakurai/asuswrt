@@ -21,6 +21,7 @@
 #include <linux/module.h>
 #include <linux/mdio-bitbang.h>
 #include <linux/types.h>
+#define ndelay(x) do {} while (0)
 #include <linux/delay.h>
 
 #define MDIO_READ 2

@@ -1755,9 +1755,9 @@ static int nand_get_info(struct mtd_info *mtd, uint32_t flash_id)
 int ipq_nand_scan(struct mtd_info *mtd)
 {
 	int ret;
-	uint32_t nand_id1;
-	uint32_t nand_id2;
-	uint32_t onfi_sig;
+	uint32_t nand_id1 = 0;
+	uint32_t nand_id2 = 0;
+	uint32_t onfi_sig = 0;
 	struct nand_chip *chip = MTD_NAND_CHIP(mtd);
 	struct ipq_nand_dev *dev = MTD_IPQ_NAND_DEV(mtd);
 	struct ebi2nd_regs *regs = dev->regs;
@@ -2098,7 +2098,7 @@ void qpic_bam_reset(struct ebi2nd_regs *regs)
 		status = val & SW_RESET_DONE_SYNC;
 		count++;
 		if (count > NAND_READY_TIMEOUT)
-			return -ETIMEDOUT;
+			return;
 		udelay(10);
 	} while (!status);
 
@@ -2213,22 +2213,22 @@ static int do_ipq_nand_cmd(cmd_tbl_t *cmdtp, int flag,
 {
 	int ret;
 	enum ipq_nand_layout layout;
-	int node, gpio_node;
-	u32 *nand_base;
+	int node;
+	const u32 *nand_base;
 	struct ipq_nand ipq_nand;
 	int len;
 
 	node = fdt_path_offset(gd->fdt_blob, "nand");
 	if (node < 0) {
 		printf("Could not find nand-flash in device tree\n");
-		return;
+		return -ENXIO;
 	}
 
 	nand_base = fdt_getprop(gd->fdt_blob, node, "reg", &len);
 
-	if (nand_base == FDT_ADDR_T_NONE) {
+	if ((u32)nand_base == FDT_ADDR_T_NONE) {
 		printf("No valid NAND base address found in device tree\n");
-		return;
+		return -EFAULT;
 	}
 
 	if (argc != 2)

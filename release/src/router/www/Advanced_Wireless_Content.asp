@@ -324,7 +324,6 @@ function genBWTable(_unit){
 				bws.push(4);
 				bwsDesc.push("80+80 MHz");
 			}
-			
 			if(vht160_support && array_160m.length/4 >= 1 && enable_bw_160){
 				bwsDesc[0] = "20/40/80/160 MHz";
 				bws.push(5);
@@ -847,7 +846,7 @@ function enableSmartCon(val){
 			value = ["1"];
 			add_options_x2(document.form.smart_connect_t, desc, value, val);
 		}
-		else if(based_modelid == "RT-AC88U" || based_modelid == "RT-AC86U" || based_modelid == "GT-AC2900" || based_modelid == "RT-AC3100" || based_modelid == "BLUECAVE"){
+		else if(based_modelid == "RT-AC88U" || based_modelid == "RT-AC86U" || based_modelid == "GT-AC2900" || based_modelid == "RT-AC3100" || based_modelid == "BLUECAVE" || based_modelid == "MAP-AC1750" || based_modelid == "RT-AX89U" || based_modelid == "GT-AXY16000"){
 			desc = ["Dual-Band Smart Connect (2.4GHz and 5GHz)"];
 			value = ["1"];
 			add_options_x2(document.form.smart_connect_t, desc, value, val);
@@ -862,6 +861,9 @@ function enableSmartCon(val){
 		based_modelid == "RT-AC86U" ||
 		based_modelid == "GT-AC2900" ||
 		based_modelid == "RT-AC3100" ||
+		based_modelid == "MAP-AC1750" ||
+		based_modelid == "RT-AX89U" ||
+		based_modelid == "GT-AXY16000" ||
 		based_modelid == "BLUECAVE"){
 		document.getElementById("smartcon_rule_link").style.display = "none";
 		if(val == 0){
@@ -892,7 +894,10 @@ function enableSmartCon(val){
 		regen_auto_option(document.form.wl_nmode_x);
 		document.getElementById("wl_optimizexbox_span").style.display = "none";
 		document.getElementById("wl_gmode_checkbox").style.display = "none";
-		regen_auto_option(document.form.wl_bw);
+		if (Qcawifi_support)
+			__regen_auto_option(document.form.wl_bw, 1);
+		else
+			regen_auto_option(document.form.wl_bw);
 		regen_auto_option(document.form.wl_channel);
 		regen_auto_option(document.form.wl_nctrlsb);			
 	}
@@ -921,10 +926,14 @@ function enable_160MHz(obj){
 	insertExtChannelOption();
 }
 
-function regen_auto_option(obj){
+function __regen_auto_option(obj,val){
 	free_options(obj);
-	obj.options[0] = new Option("<#Auto#>", 0);
+	obj.options[0] = new Option("<#Auto#>", val);
 	obj.selectedIndex = 0;
+}
+
+function regen_auto_option(obj){
+	__regen_auto_option(obj,0);
 }
 
 var wl_unit = <% nvram_get("wl_unit"); %>;
@@ -1093,6 +1102,7 @@ function ajax_wl_channel(){
 <input type="hidden" name="wps_band" value="<% nvram_get("wps_band_x"); %>" disabled>
 <input type="hidden" name="wps_multiband" value="<% nvram_get("wps_multiband"); %>" disabled>
 <input type="hidden" name="w_Setting" value="1">
+<input type="hidden" name="w_apply" value="1">
 <input type="hidden" name="smart_connect_x" value="<% nvram_get("smart_connect_x"); %>">
 
 <table class="content" align="center" cellpadding="0" cellspacing="0">
@@ -1144,7 +1154,7 @@ function ajax_wl_channel(){
 
 										$('#radio_smartcon_enable').iphoneSwitch( smart_connect_flag_t > 0, 
 										 function() {
-											if(based_modelid != "RT-AC5300" && based_modelid != "GT-AC5300" && based_modelid !="RT-AC3200" && based_modelid != "RT-AC88U" && based_modelid != "RT-AC86U" && based_modelid != "GT-AC2900" && based_modelid != "RT-AC3100" && based_modelid != "BLUECAVE")
+											if(based_modelid != "RT-AC5300" && based_modelid != "GT-AC5300" && based_modelid !="RT-AC3200" && based_modelid != "RT-AC88U" && based_modelid != "RT-AC86U" && based_modelid != "GT-AC2900" && based_modelid != "RT-AC3100" && based_modelid != "BLUECAVE" && based_modelid != "MAP-AC1750" && based_modelid != "RT-AX89U" && based_modelid != "GT-AXY16000" )
 												enableSmartCon(1);
 											else{
 												if(document.form.smart_connect_t.value)

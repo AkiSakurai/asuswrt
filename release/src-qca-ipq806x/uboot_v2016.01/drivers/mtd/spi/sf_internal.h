@@ -244,4 +244,6 @@ void spi_flash_mtd_unregister(void);
  */
 int spi_flash_scan(struct spi_flash *flash);
 
+int spi_nand_flash_probe(struct spi_slave *spi, struct spi_flash *flash,
+			 u8 *idcode);
 #endif /* _SF_INTERNAL_H_ */

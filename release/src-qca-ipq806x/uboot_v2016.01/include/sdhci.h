@@ -203,6 +203,9 @@
 #define SDHCI_MAX_DIV_SPEC_200	256
 #define SDHCI_MAX_DIV_SPEC_300	2046
 
+/*Vendor Specific register*/
+#define SDHCI_VENDOR_IOPAD 0x20C
+
 /*
  * quirks
  */
@@ -290,6 +293,10 @@ struct sdhci_host {
 
 	struct mmc_config cfg;
 };
+
+#if defined(CONFIG_QCA_MMC) && defined(CONFIG_SDHCI_SUPPORT)
+int board_mmc_env_init(struct sdhci_host mmc_host);
+#endif
 
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS
 

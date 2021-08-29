@@ -340,6 +340,19 @@ function initial(){
 		
 		if(wanlink_ipaddr == '0.0.0.0' || wanlink_ipaddr == '')
 			document.getElementById("wanIP_div").style.display = "none";
+
+		if(wan_bonding_support && orig_bond_wan == "1"){
+			document.getElementById("wanAggr_div").style.display = "";
+			document.getElementById('single_wan_line').style.display = "none";
+			document.getElementById('primary_wan_line').style.display = "";
+			document.getElementById('secondary_wan_line').style.display = "";
+		}
+		else{
+			document.getElementById("wanAggr_div").style.display = "none";
+			document.getElementById('single_wan_line').style.display = "";
+			document.getElementById('primary_wan_line').style.display = "none";
+			document.getElementById('secondary_wan_line').style.display = "none";
+		}
 	}
 
 	if(smart_connect_support){
@@ -1956,37 +1969,14 @@ function redirectTimeScheduling() {
 	location.href = "ParentalControl.asp" ;
 }
 function updateClientsCount() {
-	$.ajax({
-		url: '/update_networkmapd.asp',
-		dataType: 'script', 
-		error: function(xhr) {
-			setTimeout("updateClientsCount();", 1000);
-		},
-		success: function(response){
-			//When not click iconClient and not click View Client List need update client count.
-			if(lastName != "iconClient") {
-				if(document.getElementById("clientlist_viewlist_content")) {
-					if(document.getElementById("clientlist_viewlist_content").style.display == "none"){
-						if(fromNetworkmapd_maclist[0].length == '0'){
-							show_client_status(totalClientNum.online);
-						}
-						else{
-							show_client_status(fromNetworkmapd_maclist[0].length);
-						}
-					}
-				}
-				else{
-					if(fromNetworkmapd_maclist[0].length == '0'){
-						show_client_status(totalClientNum.online);
-					}
-					else{
-						show_client_status(fromNetworkmapd_maclist[0].length);
-					}
-				}
-			}
-			setTimeout("updateClientsCount();", 5000);
-		}
-	});
+	//When not click iconClient and not click View Client List need update client count.
+	var viewlist_obj = document.getElementById("clientlist_viewlist_content");
+	if(lastName != "iconClient" && (viewlist_obj == null || (viewlist_obj && viewlist_obj.style.display == "none"))){
+		originData.fromNetworkmapd[0] = httpApi.hookGet("get_clientlist", true);
+		genClientList();
+		show_client_status(totalClientNum.online);
+	}
+	setTimeout("updateClientsCount();", 5000);
 }
 function setDefaultIcon() {
 	var mac = document.getElementById("macaddr_field").value;
@@ -2487,6 +2477,10 @@ function notice_apply(){
 						<div id="rssi_div" style="margin-top:5px;display:none">
 							<span style="font-size:14px;font-family: Verdana, Arial, Helvetica, sans-serif;">RSSI:</span>
 							<strong id="rssi_status" class="index_status" style="font-size:14px;"></strong>
+						</div>
+						<div id="wanAggr_div" style="margin-top:5px;display:none;">
+							<span style="font-size:14px;font-family: Verdana, Arial, Helvetica, sans-serif; color: #FFCC00;">WAN Aggregation:</span>
+							<strong id="wan_bonding_status" class="index_status" style="font-size:14px;"></strong>
 						</div>
 					</td>
 						

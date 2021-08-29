@@ -107,6 +107,8 @@
 
 #define CONFIG_OF_COMBINE		1
 
+#define CONFIG_QCA_UBOOT_OFFSET		0xA600000
+#define CONFIG_UBOOT_END_ADDR		0x4AA00000
 #define CONFIG_QCA_SMEM_BASE		0x4AB00000
 
 #define CONFIG_IPQ_FDT_HIGH		0x4A400000
@@ -276,7 +278,7 @@ extern loff_t board_env_size;
 #define CLEAR_MAGIC				0x0
 #define SCM_CMD_TZ_CONFIG_HW_FOR_RAM_DUMP_ID	0x9
 #define SCM_CMD_TZ_FORCE_DLOAD_ID		0x10
-#define SCM_CMD_TZ_PSHOLD			0x15
+#define SCM_CMD_TZ_PSHOLD			0x16
 #define BOOT_VERSION				0
 #define TZ_VERSION				1
 #define RPM_VERSION				3
@@ -309,10 +311,10 @@ extern loff_t board_env_size;
 #define CONFIG_NET_RETRY_COUNT		5
 #define CONFIG_SYS_RX_ETH_BUFFER	16
 #define CONFIG_CMD_PING
-#define CONFIG_CMD_DHCP
 #define CONFIG_MII
 #define CONFIG_CMD_MII
 #if !defined(CONFIG_ASUS_PRODUCT)
+#define CONFIG_CMD_DHCP
 #define CONFIG_IPADDR	192.168.10.10
 #define CONFIG_NETMASK	255.255.255.0
 #define CONFIG_SERVERIP	192.168.10.1
@@ -338,8 +340,10 @@ extern loff_t board_env_size;
 #endif
 
 #define CONFIG_QCA_KERNEL_CRASHDUMP_ADDRESS	*((unsigned int *)0x08600658)
+#define TLV_BUF_OFFSET				500 * 1024
 #define CONFIG_CPU_CONTEXT_DUMP_SIZE		4096
-#define CONFIG_TLV_DUMP_SIZE			2048
+#define CONFIG_TLV_DUMP_SIZE			12 * 1024
+
 
 /* L1 cache line size is 64 bytes, L2 cache line size is 128 bytes
  * Cache flush and invalidation based on L1 cache, so the cache line

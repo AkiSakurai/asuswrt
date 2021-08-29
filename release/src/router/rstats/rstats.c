@@ -136,8 +136,25 @@ enum if_id {
 	IFID_WIRELESS3_4,	/* WIRELESS3.4 */
 	IFID_WIRELESS3_5,	/* WIRELESS3.6 */
 	IFID_WIRELESS3_6,	/* WIRELESS3.5 */
-	IFID_LACP1,		/* LACP1, first slave interface of bonding interface */
-	IFID_LACP2,		/* LACP2, second slave interface of bonding interface */
+	IFID_LACP1,		/* LACP1, if LAN1 is slave interface of LAN bonding interface */
+	IFID_LACP2,		/* LACP2, if LAN2 is slave interface of LAN bonding interface */
+	IFID_LACP3,		/* LACP3, if LAN3 is slave interface of LAN bonding interface */
+	IFID_LACP4,		/* LACP4, if LAN4 is slave interface of LAN bonding interface */
+	IFID_LACP5,		/* LACP5, if LAN5 is slave interface of LAN bonding interface */
+	IFID_LACP6,		/* LACP6, if LAN6 is slave interface of LAN bonding interface */
+	IFID_LACP7,		/* LACP7, if LAN7 is slave interface of LAN bonding interface */
+	IFID_LACP8,		/* LACP8, if LAN8 is slave interface of LAN bonding interface */
+	IFID_WAGGR0,		/* WAGGR0, if WAN is slave interface of WAN bonding interface */
+	IFID_WAGGR1,		/* WAGGR1, if LAN1 is slave interface of WAN bonding interface */
+	IFID_WAGGR2,		/* WAGGR2, if LAN2 is slave interface of WAN bonding interface */
+	IFID_WAGGR3,		/* WAGGR3, if LAN3 is slave interface of WAN bonding interface */
+	IFID_WAGGR4,		/* WAGGR4, if LAN4 is slave interface of WAN bonding interface */
+	IFID_WAGGR5,		/* WAGGR5, if LAN5 is slave interface of WAN bonding interface */
+	IFID_WAGGR6,		/* WAGGR6, if LAN6 is slave interface of WAN bonding interface */
+	IFID_WAGGR7,		/* WAGGR7, if LAN7 is slave interface of WAN bonding interface */
+	IFID_WAGGR8,		/* WAGGR8, if LAN8 is slave interface of WAN bonding interface */
+	IFID_WAGGR30,		/* WAGGR30, if 10G base-T (RJ-45) is slave interface of WAN bonding interface */
+	IFID_WAGGR31,		/* WAGGR30, if 10G SFP+ is slave interface of WAN bonding interface */
 
 	IFID_MAX
 };
@@ -746,6 +763,7 @@ static enum if_id desc_to_id(char *desc)
 {
 	enum if_id id = IFID_MAX;
 	char *d = desc + 9, *s = desc + 10;
+	int v;
 
 	if (!desc)
 		return -1;
@@ -778,11 +796,23 @@ static enum if_id desc_to_id(char *desc)
 			id = IFID_WIRELESS3;
 		else if (*d == '.' && *s >= '0' && *s <= '6' && *(s + 1) == '\0')
 			id = IFID_WIRELESS3 + *s - '0' + 1;
+	} else if (!strncmp(desc, "LACP", 4)) {
+		s = desc + 4;
+		if (*s != '\0') {
+			v = safe_atoi(s);
+			if (v >= 1 && v <= 8)
+				id = IFID_LACP1 + v - 1;
+		}
+	} else if (!strncmp(desc, "WAGGR", 5)) {
+		s = desc + 5;
+		if (*s != '\0') {
+			v = safe_atoi(s);
+			if (v <= BS_LAN8_PORT_ID)
+				id = IFID_WAGGR0 + v;
+			else if (v >= BS_10GR_PORT_ID && v <= BS_10GS_PORT_ID)
+				id = IFID_WAGGR30 + v;
+		}
 	}
-	else if (!strcmp(desc, "LACP1"))
-		id = IFID_LACP1;
-	else if (!strcmp(desc, "LACP2"))
-		id = IFID_LACP2;
 
 	if (id < 0 || id == IFID_MAX)
 		_dprintf("%s: Unknown desc [%s]\n", __func__, desc);
@@ -968,15 +998,15 @@ static void calc(void)
 				vlan_tx += counter[1];
 			}
 			if(strncmp(ifname, "eth0", 4)==0){
-				if(counter[0]>vlan_rx) {
+				if(counter[0]>=vlan_rx) {
 					counter[0] -= vlan_rx;
 				} else {
-					counter[0] = counter[0] + 0xffffffff - vlan_rx;
+					counter[0] = counter[0] + (~0ULL - vlan_rx + 1);
 				}
-				if(counter[1]>vlan_tx) {
+				if(counter[1]>=vlan_tx) {
 					counter[1] -= vlan_tx;
 				} else {
-					counter[1] = counter[1] + 0xffffffff - vlan_tx;
+					counter[1] = counter[1] + (~0ULL - vlan_tx + 1);
 				}
 			}
 		}

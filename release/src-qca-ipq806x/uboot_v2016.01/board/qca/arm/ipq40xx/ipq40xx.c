@@ -77,6 +77,9 @@ const add_node_t add_fdt_node[] = {
 
 struct dumpinfo_t dumpinfo_n[] = {
 	{ "EBICS0.BIN", 0x80000000, 0x10000000, 0 },
+	{ "EBICS2.BIN", 0xA0000000, 0x10000000, 0, 0, 0, 0, 1 },
+	{ "EBICS1.BIN", CONFIG_UBOOT_END_ADDR, 0x10000000, 0, 0, 0, 0, 1 },
+	{ "EBICS0.BIN", 0x80000000, CONFIG_QCA_UBOOT_OFFSET, 0, 0, 0, 0, 1 },
 };
 
 int dump_entries_n = ARRAY_SIZE(dumpinfo_n);
@@ -146,11 +149,16 @@ void reset_cpu(ulong addr)
 	while (1);
 }
 
+void reset_board(void)
+{
+	run_command("reset", 0);
+}
+
 void board_nand_init(void)
 {
 	int gpio_node;
 
-	qpic_nand_init();
+	qpic_nand_init(NULL);
 
 	gpio_node = fdt_path_offset(gd->fdt_blob, "/spi/spi_gpio");
 	if (gpio_node >= 0) {
@@ -193,6 +201,7 @@ int board_eth_init(bd_t *bis)
 	switch (gd->bd->bi_arch_number) {
 	case MACH_TYPE_IPQ40XX_AP_DK01_1_S1:
 	case MACH_TYPE_IPQ40XX_AP_DK01_1_C2:
+	case MACH_TYPE_IPQ40XX_AP_DK05_1_C1:
 		/* 8075 out of reset */
 		mdelay(1);
 		gpio_set_value(62, 1);
@@ -244,7 +253,7 @@ int board_eth_init(bd_t *bis)
 	}
 	edma_cfg->unit = fdtdec_get_uint(gd->fdt_blob, node, "unit", 0);
 	edma_cfg->phy = fdtdec_get_uint(gd->fdt_blob, node, "phy", 0);
-	strcpy(edma_cfg->phy_name, fdt_getprop(gd->fdt_blob, node, "phy_name", &len));
+	strcpy((char *)edma_cfg->phy_name, fdt_getprop(gd->fdt_blob, node, "phy_name", &len));
 
 	status = ipq40xx_edma_init(edma_cfg);
 	return status;
@@ -268,7 +277,7 @@ void emmc_sdhci_init(void)
 
 int board_mmc_init(bd_t *bis)
 {
-	int ret;
+	int ret = 0;
 	int node, gpio_node;
 	fdt_addr_t base;
 	qca_smem_flash_info_t *sfi = &qca_smem_flash_info;
@@ -328,7 +337,7 @@ void board_mmc_deinit(void)
 #endif
 
 
-static void pcie_clock_init()
+static void pcie_clock_init(void)
 {
 
 	/* Enable PCIE CLKS */
@@ -572,6 +581,8 @@ unsigned int get_dts_machid(unsigned int machid)
 	{
 		case MACH_TYPE_IPQ40XX_AP_DK04_1_C6:
 			return MACH_TYPE_IPQ40XX_AP_DK04_1_C1;
+		case MACH_TYPE_IPQ40XX_AP_DK05_1_C1:
+			return MACH_TYPE_IPQ40XX_AP_DK01_1_C2;
 		default:
 			return machid;
 	}
@@ -622,7 +633,7 @@ static int scm_boot_addr_already_set;
 extern int get_cpu_id(void);
 static volatile int core_var;
 
-volatile void bring_secondary_core_down(unsigned int state)
+void bring_secondary_core_down(unsigned int state)
 {
 	int current_cpu_id;
 
@@ -691,3 +702,89 @@ int bring_sec_core_up(unsigned int cpuid, unsigned int entry, unsigned int arg)
 
 	return 0;
 }
+
+int smem_read_cpu_count()
+{
+	uint32_t core_no;
+
+	if (!smem_read_alloc_entry(SMEM_NUM_CPUINFO, &core_no,
+			sizeof(uint32_t))) {
+		if (core_no != 4)
+			return core_no;
+	}
+	return -1;
+}
+
+void fdt_fixup_cpus_node(void *blob)
+{
+	int numcpus;
+	int nodeoff;
+
+	numcpus =  smem_read_cpu_count();
+
+	if (numcpus == 2)
+	{
+		nodeoff = fdt_path_offset(blob, "/cpus/cpu@2");
+
+		if (nodeoff >= 0)
+			fdt_del_node((void *)blob, nodeoff);
+		else
+			printf("fixup_cpus_node: can't disable cpu2\n");
+
+		nodeoff = fdt_path_offset(blob, "/cpus/cpu@3");
+
+		if (nodeoff >= 0)
+			fdt_del_node((void *)blob, nodeoff);
+		else
+			printf("fixup_cpus_node: can't disable cpu3\n");
+	}
+
+	else if (numcpus == 1)
+	{
+		nodeoff = fdt_path_offset(blob, "/cpus/cpu@1");
+
+		if (nodeoff >= 0)
+			fdt_del_node((void *)blob, nodeoff);
+		else
+			printf("fixup_cpus_node: can't disable cpu1\n");
+
+		nodeoff = fdt_path_offset(blob, "/cpus/cpu@2");
+
+		if (nodeoff >= 0)
+			fdt_del_node((void *)blob, nodeoff);
+		else
+			printf("fixup_cpus_node: can't disable cpu2\n");
+
+		nodeoff = fdt_path_offset(blob, "/cpus/cpu@3");
+
+		if (nodeoff >= 0)
+			fdt_del_node((void *)blob, nodeoff);
+		else
+			printf("fixup_cpus_node: can't disable cpu3\n");
+	}
+	return;
+}
+
+void ipq_uboot_fdt_fixup(void)
+{
+	int ret, len;
+	const char *config = "config@ap.dk05.1-c1";
+	len = fdt_totalsize(gd->fdt_blob) + strlen(config) + 1;
+
+	if (gd->bd->bi_arch_number == MACH_TYPE_IPQ40XX_AP_DK05_1_C1)
+	{
+		/*
+		 * Open in place with a new length.
+		 */
+		ret = fdt_open_into(gd->fdt_blob, (void *)gd->fdt_blob, len);
+		if (ret)
+			 debug("uboot-fdt-fixup: Cannot expand FDT: %s\n", fdt_strerror(ret));
+
+		ret = fdt_setprop((void *)gd->fdt_blob, 0, "config_name",
+				config, (strlen(config)+1));
+		if (ret)
+			debug("uboot-fdt-fixup: unable to set config_name(%d)\n", ret);
+	}
+	return;
+}
+

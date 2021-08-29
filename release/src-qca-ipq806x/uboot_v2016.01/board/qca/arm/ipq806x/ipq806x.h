@@ -24,6 +24,7 @@
 #define GMAC_AHB_RESET		0x903E24
 
 #define KERNEL_AUTH_CMD                 0x7
+#define SCM_CMD_SEC_AUTH		0x15
 
 #define MSM_TMR_BASE        0x0200A000
 
@@ -153,6 +154,8 @@ static inline int gmac_cfg_is_valid(ipq_gmac_board_cfg_t *cfg)
 
 __weak void aquantia_phy_reset_init_done(void) {}
 __weak void aquantia_phy_reset_init(void) {}
+__weak void qgic_init(void) {}
+__weak void handle_noc_err(void) {}
 
 struct smem_ram_ptn {
 	char name[16];
@@ -212,6 +215,7 @@ typedef enum {
 } smem_mem_type_t;
 
 unsigned smem_read_alloc_entry(smem_mem_type_t type, void *buf, int len);
+int ipq_get_tz_version(char *version_name, int buf_size);
 /* Reserved-memory node names*/
 extern const char *rsvd_node;
 extern const char *del_node[];
@@ -220,4 +224,7 @@ void reset_crashdump(void);
 void ipq_fdt_fixup_socinfo(void *blob);
 void board_pci_init(int id);
 void board_pcie_clock_init(int id);
+
+void reset_board(void);
+
 #endif /* _IPQ806X_H_ */

@@ -21,6 +21,9 @@ static const char *sc_basic_param[] = { "smart_connect_x", "bsd_ifnames", "bsd_b
 
 void cm_revertSmartConnectParameters(int bandNum);
 #endif
+#ifdef RTCONFIG_DWB
+void dwb_init_settings(void);
+#endif
 
 void dwb_init_settings(void);
 

@@ -29,7 +29,7 @@ mbn_v6 = ""
 def print_help():
 	print "\nUsage: python prepareSingleImage.py <option> <value>\n"
 
-	print "--arch \t\tArch(e.g ipq40xx/ipq807x/ipq807x_64/ipq6018/ipq6018_64)\n"
+	print "--arch \t\tArch(e.g ipq40xx/ipq807x/ipq807x_64/ipq6018/ipq6018_64/ipq5018/ipq5018_64)\n"
 	print " \t\te.g python prepareSingleImage.py --arch ipq807x\n\n"
 
 	print "--fltype \tFlash Type (nor/nand/emmc/norplusnand/norplusemmc)"
@@ -62,6 +62,11 @@ def print_help():
 	print "\t\tThis Argument does not take any value\n"
 	print "\t\te.g python prepareSingleImage.py --gencdt\n\n"
 
+	print "--memory \tWhether to use Low Memory Profiles for cdt binaries to be generated"
+	print "\t\tThis option depends on '--gencdt'\n"
+	print "\t\tIf specified the <VALUE> is taken as memory size in generating cdt binaries\n"
+	print "\t\te.g python prepareSingleImage.py --gencdt --memory <VALUE>\n\n"
+
 	print "--genpart \tWhether flash partition table(s) to be generated"
 	print "\t\tIf not specified partition table(s) will not be generated"
 	print "\t\tThis Argument does not take any value\n"
@@ -74,7 +79,7 @@ def print_help():
 
 	print "--genmbn \tWhether u-boot.elf to be converted to u-boot.mbn"
 	print "\t\tIf not specified u-boot.mbn will not be generated"
-	print "\t\tThis is currently used/needed only for IPQ807x, IPQ6018"
+	print "\t\tThis is currently used/needed only for IPQ807x, IPQ6018, IPQ5018"
 	print "\t\tThis Argument does not take any value\n"
 	print "\t\te.g python prepareSingleImage.py --genmbn\n\n"
 
@@ -109,9 +114,10 @@ def copy_images(image_type, build_dir):
 def gen_cdt():
 	global srcDir
 	global configDir
+	global memory
 
 	cdt_path = srcDir + '/gen_cdt_bin.py'
-	prc = subprocess.Popen(['python2', cdt_path, '-c', configDir, '-o', inDir], cwd=cdir)
+	prc = subprocess.Popen(['python2', cdt_path, '-c', configDir, '-o', inDir, '-m', memory], cwd=cdir)
 	prc.wait()
 
 	if prc.returncode != 0:
@@ -172,7 +178,10 @@ def gen_lk_mbn():
 
 	bootconfig_path = srcDir + '/elftombn.py'
 	print "Converting LK elf to mbn ..."
-	prc = subprocess.Popen(['python2', bootconfig_path, '-f', inDir + "/openwrt-" + arch + "-lkboot.elf", '-o', inDir + "/openwrt-" + arch + "-lkboot.mbn"], cwd=cdir)
+	if mbn_v6 != "true":
+		prc = subprocess.Popen(['python2', bootconfig_path, '-f', inDir + "/openwrt-" + arch + "-lkboot.elf", '-o', inDir + "/openwrt-" + arch + "-lkboot.mbn"], cwd=cdir)
+	else:
+		prc = subprocess.Popen(['python2', bootconfig_path, '-f', inDir + "/openwrt-" + arch + "-lkboot.elf", '-o', inDir + "/openwrt-" + arch + "-lkboot.mbn", '-v', "6"], cwd=cdir)
 	prc.wait()
 
 	if prc.returncode != 0:
@@ -195,16 +204,18 @@ def main():
 	global inDir
 	global mode
 	global mbn_v6
+	global memory
 
 	to_generate_cdt = "false"
 	to_generate_part = "false"
 	to_generate_bootconf = "false"
 	to_generate_mbn = "false"
-        to_generate_lk_mbn = "false"
+	to_generate_lk_mbn = "false"
+	memory = "default"
 
 	if len(sys.argv) > 1:
 		try:
-			opts, args = getopt(sys.argv[1:], "h", ["arch=", "fltype=", "in=", "bootimg=", "tzimg=", "nhssimg=", "rpmimg=", "wififwimg", "gencdt", "genpart", "genbootconf", "genmbn", "lk", "help"])
+			opts, args = getopt(sys.argv[1:], "h", ["arch=", "fltype=", "in=", "bootimg=", "tzimg=", "nhssimg=", "rpmimg=", "wififwimg", "gencdt", "memory=", "genpart", "genbootconf", "genmbn", "lk", "help"])
 		except GetoptError, e:
 			print_help()
 			raise
@@ -212,11 +223,11 @@ def main():
 		for option, value in opts:
 			if option == "--arch":
 				arch = value
-				if arch == "ipq807x":
+				if arch == "ipq807x" or arch == "ipq5018":
 					mode = "32"
-				elif arch == "ipq807x_64":
+				elif arch == "ipq807x_64" or arch == "ipq5018_64":
 					mode = "64"
-					arch = "ipq807x"
+					arch = arch[:-3]
 				if arch == "ipq6018":
 					mode = "32"
 				elif arch == "ipq6018_64":
@@ -244,6 +255,8 @@ def main():
 				wififwImgDir = value
 			elif option == "--gencdt":
 				to_generate_cdt = "true"
+			elif option == "--memory":
+				memory = value
 			elif option == "--genbootconf":
 				to_generate_bootconf = "true"
 			elif option == "--genpart":

@@ -18,6 +18,31 @@
 #include <asm/u-boot.h>
 #include <asm/arch-qca-common/qca_common.h>
 
+#define CLK_TOGGLE_ENABLE 0x1
+
+#define GCC_NSS_PPE_RESET		0x01868014
+
+/*
+ * PPE ASSERT and DEASSERT values
+ */
+#define PPE_ASSERT			0xf0000
+#define PPE_DEASSERT			0x0
+
+/*
+ * EDMA HW ASSERT and DEASSERT values
+ */
+#define GCC_EDMA_HW_RESET_ASSERT 	0x300000
+#define GCC_EDMA_HW_RESET_DEASSERT 	0x0
+
+/*
+ * NSS Port ASSERT and DEASSERT values
+ */
+#define NSS_PORT1_ASSERT		0x1000003
+#define NSS_PORT2_ASSERT		0x200000c
+#define NSS_PORT3_ASSERT		0x4000030
+#define NSS_PORT4_ASSERT		0x8000300
+#define NSS_PORT5_ASSERT		0x10000c00
+
 /*
  * GCC-SDCC Registers
  */
@@ -25,11 +50,18 @@
 #define GCC_SDCC1_APPS_CBCR	0x1842018
 #define GCC_SDCC1_APPS_CFG_RCGR	0x1842008
 #define GCC_SDCC1_APPS_CMD_RCGR	0x1842004
+#define GCC_SDCC1_APPS_CFG_RCGR_SRC_SEL	(2 << 8)
+#define GCC_SDCC1_APPS_CFG_RCGR_SRC_DIV	(0xB << 0)
 #define GCC_SDCC1_APPS_M	0x184200C
 #define GCC_SDCC1_APPS_N	0x1842010
 #define GCC_SDCC1_APPS_D	0x1842014
+#define SDCC1_M_VAL		0x1
+#define SDCC1_N_VAL		0xFC
+#define SDCC1_D_VAL		0xFD
+
 #define GCC_BLSP1_UART1_APPS_CBCR       0x0180203c
 #define GCC_SDCC1_BCR		0x01842000
+#define GCC_SDCC1_AHB_CBCR	0x0184201C
 
 #define GCC_BLSP1_UART2_APPS_CFG_RCGR	0x01803038
 #define GCC_BLSP1_UART2_APPS_M		0x0180303C
@@ -57,21 +89,33 @@
 #define CLOCK_UPDATE_TIMEOUT_US	1000
 
 #define CLOCK_UPDATE_TIMEOUT_US	1000
-#define KERNEL_AUTH_CMD		0x13
+#define KERNEL_AUTH_CMD		0x1E
+#define SCM_CMD_SEC_AUTH	0x1F
 
 /* USB Registers */
 #define GCC_USB0_GDSCR			0x183E078
+#define SW_COLLAPSE_ENABLE		(1 << 0)
+#define SW_OVERRIDE_ENABLE		(1 << 2)
 #define GCC_SYS_NOC_USB0_AXI_CBCR	0x1826040
 #define GCC_USB0_MASTER_CFG_RCGR	0x183E010
+#define GCC_USB0_MASTER_CFG_RCGR_SRC_SEL	(1 << 8)
+#define GCC_USB0_MASTER_CFG_RCGR_SRC_DIV	(0xb << 0)
 #define GCC_USB0_MASTER_CMD_RCGR	0x183E00C
 #define GCC_USB0_MASTER_CBCR		0x183E000
 #define GCC_USB0_SLEEP_CBCR		0x183E004
 #define GCC_USB0_MOCK_UTMI_CFG_RCGR	0x0183E024
+#define GCC_USB_MOCK_UTMI_SRC_SEL	(0 << 8)
+#define GCC_USB_MOCK_UTMI_SRC_DIV	(1 << 0)
+#define UTMI_M				0x1
+#define UTMI_N				0xf7
+#define UTMI_D				0xf6
 #define GCC_USB0_MOCK_UTMI_M		0x0183E028
 #define GCC_USB0_MOCK_UTMI_N		0x0183E02C
 #define GCC_USB0_MOCK_UTMI_D		0x0183E030
 #define GCC_USB0_MOCK_UTMI_CMD_RCGR	0x183E020
 #define GCC_USB0_MOCK_UTMI_CBCR		0x183E008
+#define GCC_USB0_PHY_PIPE_MISC		0x183E048
+#define GCC_USB0_PHY_PIPE_MISC		0x183E048
 #define GCC_USB0_PHY_CFG_AHB_CBCR	0x183E080
 #define GCC_USB0_AUX_CBCR		0x183E044
 #define GCC_USB0_PIPE_CBCR		0x183E040
@@ -83,7 +127,22 @@
 #define GCC_USB3PHY_0_PHY_BCR		0x183E03C
 #define USB30_1_GENERAL_CFG		0x8AF8808
 #define USB30_1_GUCTL			0x8A0C12C
+#define USB30_1_FLADJ			0x8A0C630
+#define GUCTL					0x700C12C
+#define FLADJ					0x700C630
 #define USB30_PHY_1_QUSB2PHY_BASE	0x79000
+#define GCC_USB0_AUX_CFG_RCGR		0x183E060
+#define GCC_USB0_AUX_CMD_RCGR		0x183E05C
+#define GCC_USB0_AUX_CFG_MODE_DUAL_EDGE (2 << 12)
+#define GCC_USB0_AUX_CFG_SRC_SEL	(0 << 8)
+#define GCC_USB0_AUX_CFG_SRC_DIV	(0 << 0)
+#define GCC_USB0_AUX_M			0x183E064
+#define GCC_USB0_AUX_N			0x183E068
+#define GCC_USB0_AUX_D			0x183E06C
+#define AUX_M				0x0
+#define AUX_N				0x0
+#define AUX_D				0x0
+
 
 #define GCC_USB1_GDSCR			0x183F078
 #define GCC_SNOC_BUS_TIMEOUT2_AHB_CBCR	0x01847014
@@ -176,7 +235,7 @@
 #define USB3_PHY_START_CONTROL			0x808
 #define USB3_PHY_SW_RESET			0x800
 
-#define GCC_SYS_NOC_PCIE0_AXI_CLK	0x01826048
+#define GCC_SYS_NOC_PCIE0_AXI_CBCR	0x01826048
 #define GCC_PCIE0_PHY_BCR		0x01875038
 #define GCC_PCIE0PHY_PHY_BCR		0x0187503C
 #define GCC_PCIE0_AXI_M_CBCR		0x01875008
@@ -185,11 +244,32 @@
 #define GCC_PCIE0_AUX_CBCR		0x01875014
 #define GCC_PCIE0_PIPE_CBCR		0x01875018
 #define GCC_PCIE0_AUX_CMD_RCGR		0x01875024
+#define GCC_PCIE0_AUX_CFG_RCGR		0x01875028
+#define GCC_PCIE0_AUX_CFG_RCGR_SRC_SEL	(0 << 8)
+#define GCC_PCIE0_AUX_CFG_RCGR_SRC_DIV	(0 << 0)
 #define GCC_PCIE0_AXI_CMD_RCGR		0x01875054
 #define GCC_PCIE0_AXI_CFG_RCGR		0x01875058
+#define GCC_PCIE0_AXI_CFG_RCGR_SRC_SEL	(1 << 8)
+#define GCC_PCIE0_AXI_CFG_RCGR_SRC_DIV	(7 << 0)
+#define CMD_UPDATE			0x1
+#define ROOT_EN				0x2
+#define PIPE_CLK_ENABLE			0x4FF1
+#define CLK_DISABLE			0x0
+#define NOC_HANDSHAKE_FSM_EN		(1 << 15)
 #define GCC_PCIE0_AXI_S_BRIDGE_CBCR	0x01875048
 #define GCC_PCIE0_RCHNG_CMD_RCGR	0x01875070
 #define GCC_PCIE0_RCHNG_CFG_RCGR	0x01875074
+#define GCC_PCIE0_RCHNG_CFG_RCGR_SRC_SEL	(1 << 8)
+#define GCC_PCIE0_RCHNG_CFG_RCGR_SRC_DIV	(0xF << 0)
+#define GCC_PCIE0_PHY_PIPE_MISC_SRC_SEL	(0x1 << 8)
+#define GCC_PCIE0_PHY_PIPE_MISC		0x187501C
+
+#define GCC_BLSP1_QUP1_SPI_APPS_CFG_RCGR		0x1802028
+#define GCC_BLSP1_QUP1_SPI_APPS_CFG_RCGR_SRC_SEL	(1 << 8)
+#define GCC_BLSP1_QUP1_SPI_APPS_CFG_RCGR_SRC_DIV	(0x1F << 0)
+
+#define GCC_BLSP1_QUP1_SPI_APPS_CMD_RCGR		0x1802024
+#define GCC_BLSP1_QUP1_SPI_APPS_CBCR			0x1802004
 
 #define set_mdelay_clearbits_le32(addr, value, delay)	\
 	 setbits_le32(addr, value);			\
@@ -198,6 +278,19 @@
 
 #ifdef CONFIG_SMEM_VERSION_C
 #define RAM_PART_NAME_LENGTH 16
+
+#define SECONDARY_CORE_STACKSZ (8 * 1024)
+#define CPU_POWER_DOWN (1 << 16)
+
+#define ARM_PSCI_TZ_FN_BASE		0x84000000
+#define ARM_PSCI_TZ_FN(n)		(ARM_PSCI_TZ_FN_BASE + (n))
+
+#define ARM_PSCI_TZ_FN_CPU_OFF		ARM_PSCI_TZ_FN(2)
+#define ARM_PSCI_TZ_FN_CPU_ON		ARM_PSCI_TZ_FN(3)
+#define ARM_PSCI_TZ_FN_AFFINITY_INFO	ARM_PSCI_TZ_FN(4)
+
+unsigned int __invoke_psci_fn_smc(unsigned int, unsigned int,
+					 unsigned int, unsigned int);
 
 /**
  * Number of RAM partition entries which are usable by APPS.
@@ -239,6 +332,14 @@ struct usable_ram_partition_table
 };
 #endif
 
+unsigned int __invoke_psci_fn_smc(unsigned int, unsigned int,
+				unsigned int, unsigned int);
+int do_pmic_reset(void);
+void reset_board(void);
+int do_dumpqca_minimal_data(const char *offset);
+int ipq_get_tz_version(char *version_name, int buf_size);
+void ipq_fdt_fixup_socinfo(void *blob);
+
 struct smem_ram_ptn {
 	char name[16];
 	unsigned long long start;
@@ -260,9 +361,6 @@ struct smem_ram_ptn {
 	unsigned reserved2, reserved3, reserved4, reserved5;
 } __attribute__ ((__packed__));
 
-__weak void aquantia_phy_reset_init_done(void) {}
-__weak void aquantia_phy_reset_init(void) {}
-
 struct smem_ram_ptable {
 #define _SMEM_RAM_PTABLE_MAGIC_1	0x9DA5E0A8
 #define _SMEM_RAM_PTABLE_MAGIC_2	0xAF9EC4E2
@@ -275,6 +373,7 @@ struct smem_ram_ptable {
 } __attribute__ ((__packed__));
 
 int smem_ram_ptable_init(struct smem_ram_ptable *smem_ram_ptable);
+int smem_ram_ptable_init_v2(struct usable_ram_partition_table *usable_ram_partition_table);
 
 typedef enum {
 	SMEM_SPINLOCK_ARRAY = 7,
@@ -301,6 +400,7 @@ extern const char *rsvd_node;
 extern const char *del_node[];
 extern const add_node_t add_fdt_node[];
 
+void reset_crashdump(void);
 int ipq_board_usb_init(void);
 
 #define MSM_SDC1_BASE           0x7800000
@@ -310,5 +410,8 @@ int ipq_board_usb_init(void);
 void board_pci_init(int id);
 __weak void board_pcie_clock_init(int id) {}
 #endif
+
+__weak void qgic_init(void) {}
+__weak void handle_noc_err(void) {}
 
 #endif /* _IPQ6018_CDP_H_ */

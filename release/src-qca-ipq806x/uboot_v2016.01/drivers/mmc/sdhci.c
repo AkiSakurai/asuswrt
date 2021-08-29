@@ -21,10 +21,18 @@ void *aligned_buffer;
 
 #define CACHE_LINE_SIZE	(CONFIG_SYS_CACHELINE_SIZE)
 
+__weak void sdhci_bus_pwr_off(struct sdhci_host *host)
+{
+	return;
+}
+
 static void sdhci_reset(struct sdhci_host *host, u8 mask)
 {
 	unsigned long timeout;
 
+	if (mask & SDHCI_RESET_ALL) {
+		sdhci_bus_pwr_off(host);
+	}
 	/* Wait max 100 ms */
 	timeout = 100;
 	sdhci_writeb(host, mask, SDHCI_SOFTWARE_RESET);
@@ -600,6 +608,10 @@ static int sdhci_init(struct mmc *mmc)
 	return 0;
 }
 
+__weak void mmc_iopad_config(struct sdhci_host *host)
+{
+	return;
+}
 
 static const struct mmc_ops sdhci_ops = {
 	.send_cmd	= sdhci_send_command,
@@ -660,8 +672,11 @@ int add_sdhci(struct sdhci_host *host, u32 max_clk, u32 min_clk)
 
 	if (host->quirks & SDHCI_QUIRK_BROKEN_VOLTAGE)
 		host->cfg.voltages |= host->voltages;
-
-	host->cfg.host_caps = MMC_MODE_HS | MMC_MODE_HS_52MHz | MMC_MODE_8BIT;
+#ifdef CONFIG_MMC_FORCE_CAP_4BIT_BUSWIDTH
+        host->cfg.host_caps = MMC_MODE_HS | MMC_MODE_HS_52MHz | MMC_MODE_4BIT;
+#else
+        host->cfg.host_caps = MMC_MODE_HS | MMC_MODE_HS_52MHz | MMC_MODE_8BIT;
+#endif
 	if (SDHCI_GET_VERSION(host) >= SDHCI_SPEC_300) {
 		if (caps & SDHCI_CAN_DO_8BIT)
 			host->cfg.host_caps |= MMC_MODE_8BIT;
@@ -672,6 +687,8 @@ int add_sdhci(struct sdhci_host *host, u32 max_clk, u32 min_clk)
 	host->cfg.b_max = CONFIG_SYS_MMC_MAX_BLK_COUNT;
 
 	sdhci_reset(host, SDHCI_RESET_ALL);
+
+	mmc_iopad_config(host);
 
 	host->mmc = mmc_create(&host->cfg, host);
 	if (host->mmc == NULL) {

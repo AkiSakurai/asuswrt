@@ -21,10 +21,17 @@
 
 extern int ipq_mdio_read(int mii_id,
 		int regnum, ushort *data);
+extern int ipq_mdio_write(int mii_id,
+		int regnum, u16 data);
 
 u16 qca8081_phy_reg_read(u32 dev_id, u32 phy_id, u32 reg_id)
 {
 	return ipq_mdio_read(phy_id, reg_id, NULL);
+}
+
+u16 qca8081_phy_reg_write(u32 dev_id, u32 phy_id, u32 reg_id, u16 value)
+{
+	return ipq_mdio_write(phy_id, reg_id, value);
 }
 
 u8 qca8081_phy_get_link_status(u32 dev_id, u32 phy_id)
@@ -86,6 +93,7 @@ int ipq_qca8081_phy_init(struct phy_ops **ops, u32 phy_id)
 {
 	u16 phy_data;
 	struct phy_ops *qca8081_ops;
+
 	qca8081_ops = (struct phy_ops *)malloc(sizeof(struct phy_ops));
 	if (!qca8081_ops)
 		return -ENOMEM;
@@ -99,5 +107,17 @@ int ipq_qca8081_phy_init(struct phy_ops **ops, u32 phy_id)
 	phy_data = qca8081_phy_reg_read(0x0, phy_id, QCA8081_PHY_ID2);
 	printf ("PHY ID2: 0x%x\n", phy_data);
 
-	return 0;
+	/*enable vga when init napa to fix 8023az issue*/
+	phy_data = qca8081_phy_reg_read(0x0, phy_id, QCA808X_8023AZ_ENABLE_VGA);
+	phy_data &= (~QCA808X_PHY_8023AZ_AFE_CTRL_MASK);
+	phy_data |= QCA808X_PHY_8023AZ_AFE_EN;
+	phy_data = qca8081_phy_reg_write(0x0, phy_id, QCA808X_8023AZ_ENABLE_VGA, phy_data);
+	if (phy_data != 0)
+		return phy_data;
+
+	/*special configuration for AZ under 1G speed mode*/
+	phy_data = QCA808X_PHY_MMD3_AZ_TRAINING_VAL;
+	phy_data = qca8081_phy_reg_write(0x0, phy_id, QCA808X_AZ_CONFIG_UNDER_1G_SPEED,
+					phy_data);
+	return phy_data;
 }

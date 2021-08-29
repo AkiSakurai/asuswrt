@@ -325,7 +325,7 @@ var httpApi ={
 
 	"detwanGetRet": function(){
 		var wanInfo = httpApi.nvramGet(["wan0_state_t", "wan0_sbstate_t", "wan0_auxstate_t", "autodet_state", "autodet_auxstate", "wan0_proto",
-										 "link_internet", "x_Setting", "usb_modem_act_sim"], true);
+										 "link_internet", "x_Setting", "usb_modem_act_sim", "link_wan"], true);
 
 		var wanTypeList = {
 			"dhcp": "DHCP",
@@ -397,6 +397,12 @@ var httpApi ={
 			retData.isIPConflict = false;
 			retData.isError = true;
 		}
+		else if(wanInfo.link_wan == ""){
+			retData.wanType = wanTypeList.check;
+		}
+		else if(wanInfo.link_wan == "0"){
+			retData.wanType = wanTypeList.noWan;
+		}
 		else if(
 			wanInfo.link_internet   == "2" &&
 			wanInfo.wan0_state_t    == "2" &&
@@ -423,9 +429,6 @@ var httpApi ={
 		else if(!isSupport("gobi") && hadPlugged("modem")){
 			retData.wanType = wanTypeList.modem;
 		}
-		else if(wanInfo.wan0_auxstate_t == "1"){
-			retData.wanType = wanTypeList.noWan;
-		}
 		else if(wanInfo.autodet_state == "3" || wanInfo.autodet_state == "5"){
 			retData.wanType = wanTypeList.resetModem;
 		}
@@ -440,9 +443,6 @@ var httpApi ={
 			else{
 				retData.wanType = wanTypeList.noWan;
 			}
-		}
-		else if(wanInfo.autodet_state == "2"){
-			retData.wanType = wanTypeList.dhcp;
 		}
 		else{
 			retData.wanType = wanTypeList.check;
@@ -800,7 +800,7 @@ var httpApi ={
 			return;
 		}
 
-		if(modelName != "Lyra" && modelName != "Lyra_Mini" && modelName != "LyraMini" && modelName != "LYRA_VOICE" && modelName != "Lyra_Trio" && modelName != "GT-AXY16000" && modelName != "RT-AX89X")
+		if(modelName != "Lyra" && modelName != "Lyra_Mini" && modelName != "LyraMini" && modelName != "LYRA_VOICE" && modelName != "Lyra_Trio" && modelName != "GT-AXY16000" && modelName != "RT-AX89X" && modelName != "SH-AC1300")
 			return;
 
 		var isMac = function(_mac){
@@ -852,6 +852,7 @@ var httpApi ={
 			case "LYRA_VOICE":
 			case "Lyra_Mini":
 			case "LyraMini":
+			case "SH-AC1300":
 				offset = -3;
 				break;
 			case "Lyra_Trio":
@@ -893,6 +894,58 @@ var httpApi ={
 			}
 		}
 		return status;
+	},
+
+	"amazon_wss": {
+		"if_support": function(_wl_unit, _wl_subunit){
+			var support_if = ["0.2"];
+			return (support_if.indexOf("" + _wl_unit + "." + _wl_subunit + "") != -1) ? true : false;
+		},
+
+		"getStatue": function(_wl_unit, _wl_subunit){
+			var value = "0";
+			if(httpApi.amazon_wss.if_support(_wl_unit, _wl_subunit))
+				value = httpApi.nvramGet(["wl" + _wl_unit + "." + _wl_subunit + "_gn_wbl_enable"], true)["wl" + _wl_unit + "." + _wl_subunit + "_gn_wbl_enable"];
+			if(value == "")
+				value = "0";
+			return value;
+		},
+
+		"getProfile": function(){
+			return {
+				"Hide SSID": "Yes",
+				"Network Name SSID": "simple_setup",	
+				"Oauth mode": "Open System",	
+				"Bandwidth Setting": "D: 80 kbps, U: 80 kbps",	
+				"Access Intranet": "Disable"
+			}
+		},
+
+		"set": function(postData, parmData){
+			var asyncDefault = true;
+			var _wl_unit = "", _wl_subunit = "";
+			if(parmData != undefined){
+				if(parmData.async != undefined)
+					asyncDefault = parmData.async;
+				if(parmData.wl_unit != undefined && parmData.wl_subunit != undefined){
+					_wl_unit = parmData.wl_unit;
+					_wl_subunit = parmData.wl_subunit;
+				}
+			}
+
+			if(httpApi.amazon_wss.if_support(_wl_unit, _wl_subunit)){
+				$.ajax({
+					url: '/amazon_wss.cgi',
+					dataType: 'json',
+					data: postData,
+					async: asyncDefault,
+					error: function(){},
+					success: function(response){
+						if(parmData.callBack) parmData.callBack.call(response);
+					}
+				});
+			}
+		}
 	},
 
 	"ftp_port_conflict_check" : {
@@ -964,5 +1017,26 @@ var httpApi ={
 		conflict : function(){
 			return (httpApi.ftp_port_conflict_check.usb_ftp.enabled() && httpApi.ftp_port_conflict_check.port_forwarding.enabled()) ? true : false;
 		}
+	},
+
+	"isItSafe_trend": function(queryStr){
+		var $form = $("<form>", {
+			action: "https://global.sitesafety.trendmicro.com/result.php",
+			method: "post",
+			target: "_blank"
+		});
+
+		$form
+			.append($("<input>", {
+				type: "hidden",
+				name: "urlname",
+				value: queryStr
+			}))
+			.append($("<input>", {
+				type: "hidden",
+				name: "getinfo",
+				value: "Check Now"
+			}))			
+			.appendTo("body").submit().remove();
 	}
 }

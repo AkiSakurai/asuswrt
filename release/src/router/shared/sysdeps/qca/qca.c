@@ -33,17 +33,17 @@ extern int get_ap_mac(const char *ifname, struct iwreq *pwrq);
  */
 unsigned char get_soc_version_major(void)
 {
-#if defined(RTAX89U)
-	const unsigned char sver = 1;
-#elif defined(GTAXY16000)
+#if defined(RTAX89U) || defined(GTAXY16000)
 	const unsigned char sver = 2;
 #else
 	const unsigned char sver = 0;
 #endif
 	unsigned char v = sver;
 
-	if (f_read("/sys/firmware/devicetree/base/soc_version_major", &v, 1) <= 0)	/* 1 byte */
+	if (f_read("/sys/firmware/devicetree/base/soc_version_major", &v, 1) <= 0) {	/* 1 byte */
+		dbg("%s: can't read soc_version_major, assume it's %d\n", __func__, sver);
 		v = sver;
+	}
 
 	return v;
 }
@@ -75,7 +75,7 @@ int get_internal_ini_filename(char *ini_fn, size_t ini_fn_size)
 		return -2;
 	}
 
-	snprintf(ini_fn, ini_fn_size, "%s/%s", GLOBAL_INI_TOPDIR, ini_fn_tbl[v - 1]);
+	snprintf(ini_fn, ini_fn_size, "%s/internal/%s", GLOBAL_INI_TOPDIR, ini_fn_tbl[v - 1]);
 
 	return 0;
 }
@@ -131,6 +131,44 @@ int get_parameter_from_ini_file(const char *param_name, char *param_val, size_t 
 
 	return 0;
 }
+
+#if defined(RTCONFIG_SPF11_QSDK) || defined(RTCONFIG_SPF11_1_QSDK)
+/* Get one board/default parameter from .ini file and return it's value in string format.
+ * If board-specific parameter absent, return default parameter instead.
+ * If @param_name is replicated multi-times, first one is returned.
+ * @board_name: e.g. ap-hk_v1
+ * @param_name:
+ * @param_val:
+ * @param_val_size:
+ * @ini_fn:
+ * @return:
+ * 	0:	success
+ *  otherwise:	error
+ */
+int get_board_or_default_parameter_from_ini_file(const char *board_name, const char *param_name, char *param_val, size_t param_val_size, const char *ini_fn)
+{
+	int c, r;
+	char key_name[256];
+
+	if (!board_name || !param_name || !param_val || !param_val_size || !ini_fn)
+		return -1;
+
+	for (c = 0; c <= 1; ++c) {
+		/* e.g.
+		 * ap-hk06_v2_enable_daemon_support=0
+		 * ap-hk_v1_default_enable_daemon_support=1
+		 */
+		snprintf(key_name, sizeof(key_name), "%s_%s%s", board_name, (c == 0)? "" : "default_", param_name);
+
+		*param_val = '\0';
+		r = get_parameter_from_ini_file(key_name, param_val, param_val_size, ini_fn);
+		if (!r && *param_val != '\0')
+			break;
+	}
+
+	return 0;
+}
+#endif	/* RTCONFIG_SPF11_QSDK || RTCONFIG_SPF11_1_QSDK */
 
 /* Get one parameter from .ini file and return it's value in integer format.
  * If @param_name is replicated multi-times, first one is returned.
@@ -368,6 +406,21 @@ int get_channf(int band, const char *ifname)
  *  Operating band                       : 5GHz
  *  Current Operating class      : 0
  *  Supported Rates              : 12  18  24  36  48  72  96  108
+ *
+ * SPF11 CSU1 QSDK example:
+ * admin@RT-AX89U-4988:/tmp# wlanconfig ath0 list
+ * ADDR               AID CHAN TXRATE RXRATE RSSI MINRSSI MAXRSSI IDLE  TXSEQ  RXSEQ  CAPS XCAPS ACAPS     ERP    STATE MAXRATE(DOT11) HTCAPS   VHTCAPS ASSOCTIME    IEs   MODE RXNSS TXNSS                   PSMODE
+ * 14:dd:a9:3d:68:65    1   40 325M    433M  -61     -79     -53   24      0   65535    EP    OI NULL    0          b         541666            AWPS             gGR 00:19:28     RSN WME IEEE80211_MODE_11AC_VHT80  1 1   0  
+ *  Minimum Tx Power             : 0
+ *  Maximum Tx Power             : 0
+ *  HT Capability                        : Yes
+ *  VHT Capability                       : Yes
+ *  MU capable                   : No
+ *  SNR                          : 32
+ *  Operating band                       : 5GHz
+ *  Current Operating class      : 0
+ *  Supported Rates              : 12  18  24  36  48  72  96  108 
+ *  Max STA phymode              : IEEE80211_MODE_11AC_VHT80 
  */
 static int __get_QCA_sta_info_by_ifname(const char *ifname, char subunit_id, int (*handler)(const WLANCONFIG_LIST *rptr, void *arg), void *arg)
 {
@@ -395,7 +448,9 @@ static int __get_QCA_sta_info_by_ifname(const char *ifname, char subunit_id, int
 
 		{ .key = NULL, .fmt = NULL, .var = NULL },
 	}, part2_tbl[] = {
-		/* Parse ACAPS (no data, omit) ~ IEs (maybe empty string, RSN, WME, or both). */
+		/* Parse ACAPS ~ IEs (maybe empty string, RSN, WME, or both).
+		 * ACAPS is empty on ILQ2.x ~ SPF10, is "NULL" on SPF11
+		 */
 		{ .key = "ASSOCTIME",	.fmt = "%s",	.var = &r->conn_time },
 
 		{ .key = NULL, .fmt = NULL, .var = NULL },
@@ -430,7 +485,12 @@ static int __get_QCA_sta_info_by_ifname(const char *ifname, char subunit_id, int
 	if ((q = strstr(line_buf, "ACAPS")) != NULL) {
 		*(q - 1) = '\0';
 		l2 = q;
+#if defined(RTCONFIG_SPF11_QSDK) || defined(RTCONFIG_SPF11_1_QSDK)
+		init_sta_info_item(q, part2_tbl);
+#else
+		/* ILQ2.x ~ SPF10 */
 		init_sta_info_item(q + strlen("ACAPS"), part2_tbl);	/* skip ACAPS due to it doesn't have data. */
+#endif
 	}
 	init_sta_info_item(line_buf, part1_tbl);
 

@@ -725,7 +725,7 @@ int ipq_gmac_init(ipq_gmac_board_cfg_t *gmac_cfg)
 	uchar *mac_addr;
 	char ethaddr[32] = "ethaddr";
 	char mac[64];
-	int i;
+	int i, phy_idx;
 	int ret;
 	int gmac_gpio_node = 0, ar8033_gpio_node = 0, offset = 0;
 	memset(enet_addr, 0, sizeof(enet_addr));
@@ -867,6 +867,12 @@ int ipq_gmac_init(ipq_gmac_board_cfg_t *gmac_cfg)
 			strncpy(bb_miiphy_buses[i].name, gmac_cfg->phy_name,
 						sizeof(bb_miiphy_buses[i].name));
 			miiphy_register(bb_miiphy_buses[i].name, bb_miiphy_read, bb_miiphy_write);
+			for (phy_idx = 0; phy_idx < ipq_gmac_macs[i]->no_of_phys; phy_idx++) {
+				miiphy_write(bb_miiphy_buses[i].name,
+						ipq_gmac_macs[i]->phy_address[phy_idx], PHY_CONTROL_REG,
+						BMCR_RESET | AUTO_NEG_ENABLE);
+				mdelay(100);
+			}
 		}
 
 		eth_register(dev[i]);

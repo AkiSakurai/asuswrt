@@ -118,6 +118,8 @@ static void v7_inval_dcache_level_setway(void)
 	}
 	/* DSB to make sure the operation is complete */
 	DSB;
+	/* Full system ISB - make sure the instruction stream sees it */
+	ISB;
 }
 
 static void v7_clean_inval_dcache_level_setway(void)
@@ -142,6 +144,8 @@ static void v7_clean_inval_dcache_level_setway(void)
 	}
 	/* DSB to make sure the operation is complete */
 	DSB;
+	/* Full system ISB - make sure the instruction stream sees it */
+	ISB;
 }
 
 static void v7_maint_dcache_level_setway(void)
@@ -173,6 +177,8 @@ static void v7_maint_dcache_level_setway(void)
 	} else if (c1.operation == ARMV7_DCACHE_CLEAN_INVAL_ALL) {
 		v7_clean_inval_dcache_level_setway();
 	}
+	DSB;
+	ISB;
 }
 
 static void v7_maint_dcache_all(void)
@@ -188,6 +194,8 @@ static void v7_maint_dcache_all(void)
 			v7_maint_dcache_level_setway();
 		c1.level_start_bit += 3;
 	}
+	DSB;
+	ISB;
 }
 
 static void v7_dcache_clean_inval_range(u32 start, u32 stop, u32 line_len)
@@ -259,6 +267,8 @@ static void v7_dcache_maint_range(u32 start, u32 stop, u32 range_op)
 
 	/* DSB to make sure the operation is complete */
 	DSB;
+	/* Full system ISB - make sure the instruction stream sees it */
+	ISB;
 }
 
 /* Invalidate TLB */

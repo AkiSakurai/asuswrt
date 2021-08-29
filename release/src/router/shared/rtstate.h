@@ -265,6 +265,15 @@ enum {
 	DISKMON_FORMAT
 };
 
+#ifdef RTCONFIG_ASUSCTRL
+enum {
+	ASUSCTRL_DFS_BAND2 = 1,
+	ASUSCTRL_DFS_BAND3,
+	ASUSCTRL_CHG_PWR,
+	ASUSCTRL_MAX
+};
+#endif
+
 #define DISKMON_FREQ_DISABLE 0
 #define DISKMON_FREQ_MONTH 1
 #define DISKMON_FREQ_WEEK 2
@@ -347,6 +356,7 @@ extern char *link_wan_nvname(int unit, char *buf, int size);
 extern int is_internet_connect(int unit);
 extern int is_wan_connect(int unit);
 extern int is_phy_connect(int unit);
+extern int is_phy_connect2(int unit);
 extern int is_ip_conflict(int unit);
 extern int get_wan_unit(char *ifname);
 extern char *get_wan_ifname(int unit);
@@ -359,8 +369,8 @@ extern char *get_usb_ehci_port(int port);
 extern char *get_usb_ohci_port(int port);
 extern int get_usb_port_number(const char *usb_port);
 extern int get_usb_port_host(const char *usb_port);
-#ifdef RTCONFIG_DUALWAN
 extern void set_wanscap_support(char *feature);
+#ifdef RTCONFIG_DUALWAN
 extern void add_wanscap_support(char *feature);
 extern int get_wans_dualwan(void);
 extern int get_dualwan_by_unit(int unit);

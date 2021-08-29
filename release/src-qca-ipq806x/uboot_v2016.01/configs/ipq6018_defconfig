@@ -69,7 +69,7 @@ CONFIG_CMD_FLASH=y
 # CONFIG_CMD_SF is not set
 # CONFIG_CMD_SPI is not set
 # CONFIG_CMD_I2C is not set
-CONFIG_CMD_USB=y
+# CONFIG_CMD_USB is not set
 CONFIG_CMD_FPGA=y
 
 #
@@ -88,12 +88,20 @@ CONFIG_CMD_NET=y
 # CONFIG_CMD_TFTPSRV is not set
 # CONFIG_CMD_RARP is not set
 # CONFIG_CMD_DHCP is not set
-CONFIG_CMD_NFS=y
+# CONFIG_CMD_NFS is not set
 # CONFIG_CMD_PING is not set
 # CONFIG_CMD_CDP is not set
 # CONFIG_CMD_SNTP is not set
 # CONFIG_CMD_DNS is not set
 # CONFIG_CMD_LINK_LOCAL is not set
+
+#
+# Network PHY
+#
+CONFIG_QCA8075_PHY=y
+CONFIG_IPQ6018_QCA_AQUANTIA_PHY=y
+# CONFIG_QCA8033_PHY is not set
+CONFIG_QCA8081_PHY=y
 
 #
 # Misc commands
@@ -217,6 +225,7 @@ CONFIG_SIMPLE_BUS=y
 # PCI
 #
 # CONFIG_DM_PCI is not set
+CONFIG_PCI_IPQ=y
 
 #
 # Pin controllers
@@ -262,6 +271,7 @@ CONFIG_REQUIRE_SERIAL_CONSOLE=y
 #
 CONFIG_USB=y
 CONFIG_DM_USB=y
+CONFIG_USB_XHCI_IPQ=y
 
 #
 # Graphics support

@@ -262,6 +262,41 @@ int __qca_scm_call_armv8_32(u32 x0, u32 x1, u32 x2, u32 x3, u32 x4, u32 x5,
 	return r0;
 }
 
+/**
+ * __scm_call_64() - Invoke a syscall in the secure world
+ *  <at> svc_id: service identifier
+ *  <at> cmd_id: command identifier
+ *  <at> ownr_id: owner identifier
+ *  <at> fn_id: The function ID for this syscall
+ *  <at> desc: Descriptor structure containing arguments and return values
+ *
+ * Sends a command to the SCM and waits for the command to finish processing.
+ *
+ */
+static int __scm_call_64(u32 svc_id, u32 cmd_id, u32 ownr_id, struct qca_scm_desc *desc)
+{
+	int arglen = desc->arginfo & 0xf;
+	int ret;
+	u32 fn_id = QCA_SCM_FNID(svc_id, cmd_id, ownr_id);
+
+
+	if (arglen > QCA_MAX_ARG_LEN) {
+		printf("Error Extra args not supported\n");
+		hang();
+	}
+
+	desc->ret[0] = desc->ret[1] = desc->ret[2] = 0;
+
+	flush_dcache_all();
+
+	ret = __qca_scm_call_armv8_32(fn_id, desc->arginfo,
+			desc->args[0], desc->args[1],
+			desc->args[2], desc->x5,
+			&desc->ret[0], &desc->ret[1],
+			&desc->ret[2]);
+
+	return ret;
+}
 
 /**
  * scm_call_64() - Invoke a syscall in the secure world
@@ -275,26 +310,7 @@ int __qca_scm_call_armv8_32(u32 x0, u32 x1, u32 x2, u32 x3, u32 x4, u32 x5,
  */
 static int scm_call_64(u32 svc_id, u32 cmd_id, struct qca_scm_desc *desc)
 {
-	int arglen = desc->arginfo & 0xf;
-	int ret;
-	u32 fn_id = QCA_SCM_SIP_FNID(svc_id, cmd_id);
-
-
-	if (arglen > QCA_MAX_ARG_LEN) {
-		printf("Error Extra args not supported\n");
-		hang();
-	}
-
-	desc->ret[0] = desc->ret[1] = desc->ret[2] = 0;
-
-	flush_dcache_all();
-	ret = __qca_scm_call_armv8_32(fn_id, desc->arginfo,
-			desc->args[0], desc->args[1],
-			desc->args[2], desc->x5,
-			&desc->ret[0], &desc->ret[1],
-			&desc->ret[2]);
-
-	return ret;
+	return __scm_call_64(svc_id, cmd_id, SCM_OWNR_SIP, desc);
 }
 
 static enum scm_interface_version {
@@ -557,9 +573,18 @@ int qca_scm_secure_authenticate(void *cmd_buf, size_t cmd_len)
 int qca_scm_call_write(u32 svc_id, u32 cmd_id, u32 *addr, u32 val)
 {
 	int ret = 0;
-
 	struct qca_scm_desc desc = {0};
-	desc.arginfo = QCA_SCM_ARGS(2, SCM_READ_OP);
+
+	/* In ipq807x, this SCM call is called as a Fast
+	 * SCM call which means it will get executed in
+	 * EL3 monitor mode itself without jumping to QSEE.
+	 * But, In ipq6018, We need to jump into QSEE which
+	 * will execute the SCM call, as we do not have
+	 * support for Fast SCM call in ipq6018.
+	 */
+
+	desc.arginfo = QCA_SCM_ARGS(2, SCM_VAL, SCM_VAL);
+
 	desc.args[0] = (u32)addr;
 	desc.args[1] = val;
 	ret = scm_call_64(svc_id, cmd_id, &desc);
@@ -654,3 +679,12 @@ int qca_scm_usb_mode_write(u32 arg1, u32 arg2)
 	return ret;
 }
 
+#ifdef CONFIG_IPQ_TZT
+int qca_scm(u32 svc_id, u32 cmd_id, u32 ownr_id, u32 *addr, u32 val)
+{
+	struct qca_scm_desc desc = {0};
+
+	memcpy(&desc, addr, sizeof(u32)*val);
+	return  __scm_call_64(svc_id, cmd_id, ownr_id, &desc);
+}
+#endif

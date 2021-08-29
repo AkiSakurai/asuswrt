@@ -32,6 +32,36 @@
 #include "../../../../drivers/net/ipq_common/ipq_phy.h"
 #include "../../../../drivers/net/ipq807x/ipq807x_edma.h"
 
+#define MSM_GIC_DIST_BASE	0x0B000000
+#define MSM_GIC_CPU_BASE	0x0B002000
+
+#define GIC_CPU_REG(off)	(MSM_GIC_CPU_BASE  + (off))
+#define GIC_DIST_REG(off)	(MSM_GIC_DIST_BASE + (off))
+
+#define GIC_CPU_CTRL		GIC_CPU_REG(0x00)
+#define GIC_CPU_PRIMASK		GIC_CPU_REG(0x04)
+#define GIC_CPU_BINPOINT	GIC_CPU_REG(0x08)
+#define GIC_CPU_INTACK		GIC_CPU_REG(0x0c)
+#define GIC_CPU_EOI		GIC_CPU_REG(0x10)
+#define GIC_CPU_RUNNINGPRI	GIC_CPU_REG(0x14)
+#define GIC_CPU_HIGHPRI		GIC_CPU_REG(0x18)
+
+#define GIC_DIST_CTRL		GIC_DIST_REG(0x000)
+#define GIC_DIST_CTR		GIC_DIST_REG(0x004)
+#define GIC_DIST_ENABLE_SET	GIC_DIST_REG(0x100)
+#define GIC_DIST_ENABLE_CLEAR	GIC_DIST_REG(0x180)
+#define GIC_DIST_PENDING_SET	GIC_DIST_REG(0x200)
+#define GIC_DIST_PENDING_CLEAR	GIC_DIST_REG(0x280)
+#define GIC_DIST_ACTIVE_BIT	GIC_DIST_REG(0x300)
+#define GIC_DIST_PRI		GIC_DIST_REG(0x400)
+#define GIC_DIST_TARGET		GIC_DIST_REG(0x800)
+#define GIC_DIST_CONFIG		GIC_DIST_REG(0xc00)
+#define GIC_DIST_SOFTINT	GIC_DIST_REG(0xf00)
+
+#define REG_VAL_NOC_ERR		0x100000
+#define NOC_ERR_STATUS_REG	0xb000220
+#define NOC_ERR_CLR_REG		0xb0002a0
+
 #define DLOAD_MAGIC_COOKIE	0x10
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -87,24 +117,196 @@ struct dumpinfo_t dumpinfo_n[] = {
 	 *                                |  PMIC dump (8k)      |
 	 *                                ------------------------
 	 */
+
+	/* Compressed EBICS dump follows descending order
+	 * to use in-memory compression for which destination
+	 * for compression will be address of EBICS2.BIN
+	 */
 	{ "EBICS0.BIN", 0x40000000, 0x10000000, 0 },
+	{ "EBICS2.BIN", 0x60000000, 0x20000000, 0, 0, 0, 0, 1 },
+	{ "EBICS1.BIN", CONFIG_UBOOT_END_ADDR, 0x10000000, 0, 0, 0, 0, 1 },
+	{ "EBICS0.BIN", 0x40000000, CONFIG_QCA_UBOOT_OFFSET, 0, 0, 0, 0, 1 },
 	{ "CODERAM.BIN", 0x00200000, 0x00028000, 0 },
 	{ "DATARAM.BIN", 0x00290000, 0x00014000, 0 },
 	{ "MSGRAM.BIN", 0x00060000, 0x00006000, 1 },
 	{ "IMEM.BIN", 0x08600000, 0x00001000, 0 },
 	{ "NSSIMEM.BIN", 0x08600658, 0x00060000, 0, 1, 0x2000 },
+	{ "UNAME.BIN", 0, 0, 0, 0, 0, MINIMAL_DUMP },
+	{ "CPU_INFO.BIN", 0, 0, 0, 0, 0, MINIMAL_DUMP },
+	{ "DMESG.BIN", 0, 0, 0, 0, 0, MINIMAL_DUMP },
+	{ "PT.BIN", 0, 0, 0, 0, 0, MINIMAL_DUMP },
+	{ "WLAN_MOD.BIN", 0, 0, 0, 0, 0, MINIMAL_DUMP },
 };
 int dump_entries_n = ARRAY_SIZE(dumpinfo_n);
 
 struct dumpinfo_t dumpinfo_s[] = {
 	{ "EBICS_S0.BIN", 0x40000000, 0xAC00000, 0 },
 	{ "EBICS_S1.BIN", CONFIG_TZ_END_ADDR, 0x10000000, 0 },
+	{ "EBICS_S2.BIN", CONFIG_TZ_END_ADDR, 0x10000000, 0, 0, 0, 0, 1 },
+	{ "EBICS_S1.BIN", CONFIG_UBOOT_END_ADDR, 0x200000, 0, 0, 0, 0, 1 },
+	{ "EBICS_S0.BIN", 0x40000000, CONFIG_QCA_UBOOT_OFFSET, 0, 0, 0, 0, 1 },
 	{ "DATARAM.BIN", 0x00290000, 0x00014000, 0 },
 	{ "MSGRAM.BIN", 0x00060000, 0x00006000, 1 },
 	{ "IMEM.BIN", 0x08600000, 0x00001000, 0 },
 	{ "NSSIMEM.BIN", 0x08600658, 0x00060000, 0, 1, 0x2000 },
+	{ "UNAME.BIN", 0, 0, 0, 0, 0, MINIMAL_DUMP },
+	{ "CPU_INFO.BIN", 0, 0, 0, 0, 0, MINIMAL_DUMP },
+	{ "DMESG.BIN", 0, 0, 0, 0, 0, MINIMAL_DUMP },
+	{ "PT.BIN", 0, 0, 0, 0, 0, MINIMAL_DUMP },
+	{ "WLAN_MOD.BIN", 0, 0, 0, 0, 0, MINIMAL_DUMP },
 };
 int dump_entries_s = ARRAY_SIZE(dumpinfo_s);
+
+gpio_func_data_t spi_nor_gpio[] = {
+	{
+		.gpio = 38,
+		.func = 3,
+		.pull = 3,
+		.oe = 0,
+		.vm = 1,
+		.od_en = 0,
+		.pu_res = 2,
+	},
+	{
+		.gpio = 39,
+		.func = 3,
+		.pull = 3,
+		.oe = 0,
+		.vm = 1,
+		.od_en = 0,
+		.pu_res = 2,
+	},
+	{
+		.gpio = 40,
+		.func = 2,
+		.pull = 3,
+		.oe = 0,
+		.vm = 1,
+		.od_en = 0,
+		.pu_res = 2,
+	},
+	{
+		.gpio = 41,
+		.func = 2,
+		.pull = 3,
+		.oe = 0,
+		.vm = 1,
+		.od_en = 0,
+		.pu_res = 2,
+	},
+};
+
+gpio_func_data_t qpic_nand_gpio[] = {
+	{
+		.gpio = 1,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 3,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 4,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 5,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 6,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 7,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 8,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 10,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 11,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 12,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 13,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 14,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 15,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+	{
+		.gpio = 17,
+		.func = 1,
+		.pull = 3,
+		.drvstr = 3,
+		.oe = 0,
+	},
+};
+
+board_param_t gboard_param = {
+	.spi_nor_cfg = {
+		.gpio = spi_nor_gpio,
+		.gpio_count = ARRAY_SIZE(spi_nor_gpio),
+	},
+	.qpic_nand_cfg = {
+		.gpio = qpic_nand_gpio,
+		.gpio_count = ARRAY_SIZE(qpic_nand_gpio),
+	},
+};
 
 void uart2_configure_mux(void)
 {
@@ -178,14 +380,6 @@ void qca_serial_init(struct ipq_serial_platdata *plat)
 {
 	int node, uart2_node;
 
-	writel(1, GCC_BLSP1_UART1_APPS_CBCR);
-
-	node = fdt_path_offset(gd->fdt_blob, "/serial@78B3000/serial_gpio");
-	if (node < 0) {
-		printf("Could not find serial_gpio node\n");
-		return;
-	}
-
 	if (plat->port_id == 1) {
 		uart2_node = fdt_path_offset(gd->fdt_blob, "uart2");
 		if (uart2_node < 0) {
@@ -196,8 +390,8 @@ void qca_serial_init(struct ipq_serial_platdata *plat)
 				uart2_node, "serial_gpio");
 		uart2_clock_config(plat->m_value, plat->n_value, plat->d_value);
 		writel(1, GCC_BLSP1_UART2_APPS_CBCR);
+		qca_gpio_init(node);
 	}
-	qca_gpio_init(node);
 }
 
 unsigned long timer_read_counter(void)
@@ -239,6 +433,11 @@ void reset_cpu(unsigned long a)
 		qti_scm_pshold();
 	}
 	while(1);
+}
+
+void reset_board(void)
+{
+	run_command("reset", 0);
 }
 
 void emmc_clock_config(int mode)
@@ -423,7 +622,20 @@ void aquantia_phy_reset_init_done(void)
 		gpio_set_value(aquantia_gpio, 0x1);
 	}
 }
-
+void check_uniphy_ext_ref_clk(void)
+{
+	int node;
+	node = fdt_path_offset(gd->fdt_blob, "/ess-switch");
+	if (node >= 0) {
+		if(fdtdec_get_bool(gd->fdt_blob, node, "uniphy_ext_ref_clk")){
+			printf("External ref clk setting found... \n");
+			writel(PLL_REF_CLKSEL_50M, PLL_REFERENCE_CLOCK); /*0x8218 - 50M 0x8017 - 48M(default)*/
+			writel(ANA_EN_SW_RSTN_DIS, PLL_POWER_ON_AND_RESET);	/*give reset*/
+			mdelay(1);
+			writel(ANA_EN_SW_RSTN_EN, PLL_POWER_ON_AND_RESET);
+		}
+	}
+}
 void eth_clock_enable(void)
 {
 	int tlmm_base = 0x1025000;
@@ -480,6 +692,9 @@ void eth_clock_enable(void)
 	 * ethernet clk rcgr block init -- end
 	 * these clk init will be moved to sbl later
 	 */
+
+	/*this is for ext oscillator clk for ref clk-*/
+	check_uniphy_ext_ref_clk();
 
 	/* bring phy out of reset */
 	writel(7, tlmm_base + 0x1f000);
@@ -562,16 +777,23 @@ void board_nand_init(void)
 {
 #ifdef CONFIG_QCA_SPI
 	int gpio_node;
+	int i;
 #endif
 
-	qpic_nand_init();
+	qpic_nand_init(&gboard_param.qpic_nand_cfg);
 
 #ifdef CONFIG_QCA_SPI
 	gpio_node = fdt_path_offset(gd->fdt_blob, "/spi/spi_gpio");
 	if (gpio_node >= 0) {
 		qca_gpio_init(gpio_node);
-		ipq_spi_init(CONFIG_IPQ_SPI_NOR_INFO_IDX);
+	} else {
+		/* Setting default values */
+		for (i = 0; i < gboard_param.spi_nor_cfg.gpio_count; i++)
+			gpio_tlmm_config(&gboard_param.spi_nor_cfg.gpio[i]);
 	}
+
+	ipq_spi_init(CONFIG_IPQ_SPI_NOR_INFO_IDX);
+
 #endif
 }
 
@@ -782,25 +1004,18 @@ void board_pci_deinit(void)
 #ifdef CONFIG_USB_XHCI_IPQ
 void board_usb_deinit(int id)
 {
-	void __iomem *boot_clk_ctl __attribute__((unused)), *usb_bcr, *qusb2_phy_bcr;
-	void __iomem *usb_phy_bcr, *usb_gen_cfg __attribute__((unused)), *usb_guctl __attribute__((unused)), *phy_base;
+	void __iomem *usb_phy_bcr, *usb_bcr, *qusb2_phy_bcr, *phy_base;
 
 	if (id == 0) {
-		boot_clk_ctl = (u32 *)GCC_USB_0_BOOT_CLOCK_CTL;
 		usb_bcr = (u32 *)GCC_USB0_BCR;
 		qusb2_phy_bcr = (u32 *)GCC_QUSB2_0_PHY_BCR;
 		usb_phy_bcr = (u32 *)GCC_USB0_PHY_BCR;
-		usb_gen_cfg = (u32 *)USB30_1_GENERAL_CFG;
-		usb_guctl = (u32 *)USB30_1_GUCTL;
 		phy_base = (u32 *)USB30_PHY_1_QUSB2PHY_BASE;
 	}
 	else if (id == 1) {
-		boot_clk_ctl = (u32 *)GCC_USB_1_BOOT_CLOCK_CTL;
 		usb_bcr = (u32 *)GCC_USB1_BCR;
 		qusb2_phy_bcr = (u32 *)GCC_QUSB2_1_PHY_BCR;
 		usb_phy_bcr = (u32 *)GCC_USB1_PHY_BCR;
-		usb_gen_cfg = (u32 *)USB30_2_GENERAL_CFG;
-		usb_guctl = (u32 *)USB30_2_GUCTL;
 		phy_base = (u32 *)USB30_PHY_2_QUSB2PHY_BASE;
 	}
 	else {
@@ -978,7 +1193,7 @@ static void usb_init_ssphy(int index)
 static void usb_init_phy(int index)
 {
 	void __iomem *boot_clk_ctl, *usb_bcr, *qusb2_phy_bcr;
-	void __iomem *usb_phy_bcr, *usb3_phy_bcr, *usb_gen_cfg __attribute__((unused)), *usb_guctl, *phy_base;
+	void __iomem *usb_phy_bcr, *usb3_phy_bcr, *usb_guctl, *phy_base;
 
 	if (index == 0) {
 		boot_clk_ctl = (u32 *)GCC_USB_0_BOOT_CLOCK_CTL;
@@ -986,7 +1201,6 @@ static void usb_init_phy(int index)
 		qusb2_phy_bcr = (u32 *)GCC_QUSB2_0_PHY_BCR;
 		usb_phy_bcr = (u32 *)GCC_USB0_PHY_BCR;
 		usb3_phy_bcr = (u32 *)GCC_USB3PHY_0_PHY_BCR;
-		usb_gen_cfg = (u32 *)USB30_1_GENERAL_CFG;
 		usb_guctl = (u32 *)USB30_1_GUCTL;
 		phy_base = (u32 *)USB30_PHY_1_QUSB2PHY_BASE;
 	}
@@ -996,7 +1210,6 @@ static void usb_init_phy(int index)
 		qusb2_phy_bcr = (u32 *)GCC_QUSB2_1_PHY_BCR;
 		usb_phy_bcr = (u32 *)GCC_USB1_PHY_BCR;
 		usb3_phy_bcr = (u32 *)GCC_USB3PHY_1_PHY_BCR;
-		usb_gen_cfg = (u32 *)USB30_2_GENERAL_CFG;
 		usb_guctl = (u32 *)USB30_2_GUCTL;
 		phy_base = (u32 *)USB30_PHY_2_QUSB2PHY_BASE;
 	}
@@ -1561,4 +1774,80 @@ void set_platform_specific_default_env(void)
 void sdi_disable(void)
 {
 	qca_scm_sdi();
+}
+
+void handle_noc_err(void)
+{
+	uint32_t noc_err_pending = 0;
+	noc_err_pending = readl(NOC_ERR_STATUS_REG);
+
+	if ((noc_err_pending & REG_VAL_NOC_ERR) == REG_VAL_NOC_ERR) {
+		printf("NOC Error detected, restarting");
+		writel(REG_VAL_NOC_ERR, NOC_ERR_CLR_REG);
+		run_command("reset", 0);
+	}
+}
+
+/* Intialize distributor */
+static void qgic_dist_init(void)
+{
+	uint32_t i;
+	uint32_t num_irq = 0;
+	uint32_t cpumask = 1;
+
+	cpumask |= cpumask << 8;
+	cpumask |= cpumask << 16;
+
+	/* Disabling GIC */
+	writel(0, GIC_DIST_CTRL);
+
+	/*
+	 * Find out how many interrupts are supported.
+	 */
+	num_irq = readl(GIC_DIST_CTR) & 0x1f;
+	num_irq = (num_irq + 1) * 32;
+
+	/* Set each interrupt line to use N-N software model
+	 * and edge sensitive, active high
+	 */
+	for (i = 32; i < num_irq; i += 16)
+		writel(0xffffffff, GIC_DIST_CONFIG + i * 4 / 16);
+
+	writel(0xffffffff, GIC_DIST_CONFIG + 4);
+
+	/* Set up interrupts for this CPU */
+	for (i = 32; i < num_irq; i += 4)
+		writel(cpumask, GIC_DIST_TARGET + i * 4 / 4);
+
+	/* Set priority of all interrupts */
+
+	/*
+	 * In bootloader we dont care about priority so
+	 * setting up equal priorities for all
+	 */
+	for (i = 0; i < num_irq; i += 4)
+		writel(0xa0a0a0a0, GIC_DIST_PRI + i * 4 / 4);
+
+	/* Disabling interrupts */
+	for (i = 0; i < num_irq; i += 32)
+		writel(0xffffffff, GIC_DIST_ENABLE_CLEAR + i * 4 / 32);
+
+	writel(0x0000ffff, GIC_DIST_ENABLE_SET);
+
+	/*Enabling GIC */
+	writel(1, GIC_DIST_CTRL);
+}
+
+/* Intialize cpu specific controller */
+static void qgic_cpu_init(void)
+{
+	writel(0xf0, GIC_CPU_PRIMASK);
+	writel(1, GIC_CPU_CTRL);
+}
+
+/* Initialize QGIC. Called from platform specific init code */
+void qgic_init(void)
+{
+	qgic_dist_init();
+	qgic_cpu_init();
 }

@@ -24,11 +24,22 @@ Confidential and Proprietary - Qualcomm Technologies, Inc.
 			<pages_per_block>64</pages_per_block>
 			<total_block>4096</total_block>
 		</entry>
+		<entry type="audio-2k">
+			<page_size>2048</page_size>
+			<pages_per_block>64</pages_per_block>
+			<total_block>4096</total_block>
+		</entry>
 		<entry type="4k">
 			<page_size>4096</page_size>
 			<pages_per_block>64</pages_per_block>
 			<total_block>4096</total_block>
 		</entry>
+		<entry type="audio-4k">
+			<page_size>4096</page_size>
+			<pages_per_block>64</pages_per_block>
+			<total_block>4096</total_block>
+		</entry>
+
 	</data>
 
 	<data type="EMMC_PARAMETER">
@@ -55,21 +66,58 @@ Confidential and Proprietary - Qualcomm Technologies, Inc.
 	<data type="MACH_ID_BOARD_MAP">
 		<entry>
 			<machid>0x8030000</machid>
-			<board>AP-CP01</board>
+			<board>AP-CP01-C1</board>
 			<spi_nand>false</spi_nand>
 			<memory>256M32_DDR3</memory>
 		</entry>
 		<entry>
+			<machid>0x8030001</machid>
+			<board>AP-CP01-C2</board>
+			<spi_nand>false</spi_nand>
+			<memory>256M32_DDR3</memory>
+		</entry>
+		<entry>
+			<machid>0x8030002</machid>
+			<board>AP-CP01-C3</board>
+			<spi_nand>false</spi_nand>
+			<memory>256M32_DDR3</memory>
+		</entry>
+		<entry>
+			<machid>0x8030003</machid>
+			<board>AP-CP01-C4</board>
+			<spi_nand>false</spi_nand>
+			<memory>256M32_DDR3</memory>
+			<discrete_smps>true</discrete_smps>
+		</entry>
+		<entry>
 			<machid>0x8030100</machid>
-			<board>AP-CP02</board>
+			<board>AP-CP02-C1</board>
 			<spi_nand>false</spi_nand>
 			<memory>256M32_DDR4</memory>
 		</entry>
 		<entry>
 			<machid>0x8030200</machid>
-			<board>AP-CP03</board>
+			<board>AP-CP03-C1</board>
 			<spi_nand>false</spi_nand>
 			<memory>256M16_DDR3</memory>
+		</entry>
+		<entry>
+			<machid>0x1030000</machid>
+			<board>DB-CP01</board>
+			<spi_nand>false</spi_nand>
+			<memory>256M32_DDR3</memory>
+		</entry>
+		<entry>
+			<machid>0x1030100</machid>
+			<board>DB-CP02</board>
+			<spi_nand>false</spi_nand>
+			<memory>1024M32_DDR4</memory>
+		</entry>
+		<entry>
+			<machid>0xF030000</machid>
+			<board>CP-EMU</board>
+			<spi_nand>false</spi_nand>
+			<memory>256M32_DDR3</memory>
 		</entry>
 	</data>
 

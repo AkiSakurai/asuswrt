@@ -485,7 +485,6 @@ del_lan_routes(char *lan_ifname)
 	return del_routes("lan_", "route", lan_ifname);
 }
 
-#if defined(RTCONFIG_QCA)||defined(RTCONFIG_RALINK) || defined(RTCONFIG_LANTIQ)
 char *get_hwaddr(const char *ifname)
 {
 	int s = -1;
@@ -506,7 +505,6 @@ error:
 	close(s);
 	return p;
 }
-#endif
 
 void set_hwaddr(const char *ifname, const char *mac)
 {
@@ -780,7 +778,7 @@ static int check_bonding_mode(const char *mode)
 	if (!mode)
 		return 0;
 
-	if (isdigit(mode) && strlen(mode) == 1) {
+	if (isdigit(*mode) && strlen(mode) == 1) {
 		v = atoi(mode);
 		if (v < 0 || v > 6)
 			return 0;
@@ -823,7 +821,69 @@ static int check_bonding_policy(const char *policy)
 	return ret;
 }
 
-int set_bonding(const char *bond_if, const char *mode, const char *policy)
+/* Add interfaces in @slaves to @bond_if interface.
+ * @bond_if:	bonding interface name, it must be created before using this function.
+ * @slaves:	space char seperated string, e.g., "eth1 eth2".
+ * 		If it's readed from a sysfs attribute, make sure trailing new-line character removed.
+ * @return:
+ * 	0:	successful
+ *  otherwise:	error
+ */
+static int add_slaves_to_bonding_iface(const char *bond_if, char *slaves)
+{
+	const char *bonding_entry = "/sys/class/net/%s/bonding/%s";
+	char *next, path[256], iface[IFNAMSIZ], value[IFNAMSIZ + 1], slave_ifs[20 * IFNAMSIZ];
+	int r = 0;
+
+	if (!bond_if || *bond_if == '\0' || !slaves || *slaves == '\0')
+		return -1;
+
+	snprintf(path, sizeof(path), bonding_entry, bond_if, "slaves");
+	*slave_ifs = '\0';
+	f_read_string(path, slave_ifs, sizeof(slave_ifs));
+	trimNL(slave_ifs);
+	foreach (iface, slaves, next) {
+		if (find_word(slave_ifs, iface))
+			continue;
+		ifconfig(iface, 0, NULL, NULL);
+		snprintf(value, sizeof(value), "+%s", iface);
+		if (f_write_string(path, value, 0, 0) <= 0)
+			r++;
+	}
+
+	return r;
+}
+
+/* Remove slave interfaces from @bond_if interface.
+ * @bond_if:	bonding interface name, it must be created before using this function.
+ * @return:
+ * 	0:	successful
+ *  otherwise:	error
+ */
+static int remove_slaves_from_bonding_iface(const char *bond_if)
+{
+	const char *bonding_entry = "/sys/class/net/%s/bonding/%s";
+	char *next, path[256], iface[IFNAMSIZ], value[IFNAMSIZ + 1], slave_ifs[20 * IFNAMSIZ];
+	int r = 0;
+
+	if (!bond_if || *bond_if == '\0')
+		return -1;
+
+	snprintf(path, sizeof(path), bonding_entry, bond_if, "slaves");
+	*slave_ifs = '\0';
+	f_read_string(path, slave_ifs, sizeof(slave_ifs));
+	trimNL(slave_ifs);
+	foreach (iface, slave_ifs, next) {
+		ifconfig(iface, 0, NULL, NULL);
+		snprintf(value, sizeof(value), "-%s", iface);
+		if (f_write_string(path, value, 0, 0) <= 0)
+			r++;
+	}
+
+	return r;
+}
+
+int set_bonding(const char *bond_if, const char *mode, const char *policy, char *hwaddr)
 {
 	const char *bonding_masters = "/sys/class/net/bonding_masters";
 	const char *bonding_entry = "/sys/class/net/%s/bonding/%s";
@@ -834,9 +894,8 @@ int set_bonding(const char *bond_if, const char *mode, const char *policy)
 	const char *default_mode = "802.3ad";
 #endif
 	const char *default_policy = "layer3+4";
-	char path[256];
-	char value[32];
-	char word[256], *next;
+	char path[256], value[32], slave_ifs[IFNAMSIZ * 11], *p = NULL;
+	unsigned char mac[ETHER_ADDR_LEN], old_mac[ETHER_ADDR_LEN] = { 0 };
 
 	if (bond_if == NULL)
 		return -1;
@@ -859,44 +918,67 @@ int set_bonding(const char *bond_if, const char *mode, const char *policy)
 	if (!check_bonding_policy(policy))
 		policy = default_policy;
 
-	//set bonding interface
-	snprintf(value, sizeof(value), "+%s", bond_if);
-	f_write_string(bonding_masters, value, 0, 0);			//always return (-1) in this case.
-	sleep(1);
+	if (!iface_exist(bond_if)) {
+		//set bonding interface
+		snprintf(value, sizeof(value), "+%s", bond_if);
+		f_write_string(bonding_masters, value, 0, 0);			//always return (-1) in this case.
+		sleep(1);
+	}
+	ifconfig(bond_if, 0, NULL, NULL);
 
-	//set mode
+	/* Get current slaves list */
+	snprintf(path, sizeof(path), bonding_entry, bond_if, "slaves");
+	*slave_ifs = '\0';
+	f_read_string(path, slave_ifs, sizeof(slave_ifs));
+	trimNL(slave_ifs);
+
+	if ((p = get_hwaddr(bond_if)) != NULL) {
+		if (!ether_atoe(p, old_mac))
+			memset(old_mac, 0, sizeof(old_mac));
+		free(p);
+	}
+	if (hwaddr && !ether_atoe(hwaddr, mac))
+		memset(mac, 0, sizeof(mac));
+
+	/* If mode different, or hwaddr is specified and different, remove slave interfaces temporary. */
 	snprintf(path, sizeof(path), bonding_entry, bond_if, "mode");
-	if(f_write_string(path, mode, 0, 0) <= 0)
-		cprintf("%s: FAIL ! (%s)(%s)\n", __func__, path, mode);
+	*value = '\0';
+	f_read_string(path, value, sizeof(value));
+	trimNL(value);
+	if (*slave_ifs != '\0' && (strcmp(mode, value) || (hwaddr && memcmp(old_mac, mac, ETHER_ADDR_LEN)))) {
+		remove_slaves_from_bonding_iface(bond_if);
+	}
+
+	//set mode, it can't be set if one or more slave interface exist
+	if (strcmp(mode, value)) {
+		//ifconfig(bond_if, 0, NULL, NULL);
+		f_write_string(path, mode, 0, 0);
+	}
+
+	/* Set MAC address, can't be set if one or more slave interface exist */
+	if (hwaddr && memcmp(old_mac, mac, ETHER_ADDR_LEN))
+		set_hwaddr(bond_if, hwaddr);
 
 	//set xmit_hash_policy
 	snprintf(path, sizeof(path), bonding_entry, bond_if, "xmit_hash_policy");
-	if(f_write_string(path, policy, 0, 0) <= 0)
-		cprintf("%s: FAIL ! (%s)(%s)\n", __func__, path, policy);
+	f_write_string(path, policy, 0, 0);
 
 	//set miimon
 	snprintf(path, sizeof(path), bonding_entry, bond_if, "miimon");
-	if(f_write_string(path, "100", 0, 0) <= 0)
-		cprintf("%s: FAIL ! (%s) 100\n", __func__, path);
+	f_write_string(path, "100", 0, 0);
 
 	//add slave interfaces
-	snprintf(path, sizeof(path), bonding_entry, bond_if, "slaves");
-	snprintf(value, sizeof(value), "%s_ifnames", bond_if);
-	foreach (word, nvram_safe_get(value), next) {
-		if (ifconfig(word, 0, NULL, NULL) != 0) {
-			cprintf("%s: FAIL ! ifdown(%s)\n", __func__, word);
-		}
-		snprintf(value, sizeof(value), "+%s", word);
-		if(f_write_string(path, value, 0, 0) <= 0)
-			cprintf("%s: FAIL ! (%s)(%s)\n", __func__, path, value);
+	if (*slave_ifs != '\0') {
+		add_slaves_to_bonding_iface(bond_if, slave_ifs);
 	}
+	snprintf(value, sizeof(value), "%s_ifnames", bond_if);
+	add_slaves_to_bonding_iface(bond_if, nvram_get(value));
 
 #if defined(RTCONFIG_SWITCH_RTL8370M_PHY_QCA8033_X2) || \
     defined(RTCONFIG_SWITCH_RTL8370MB_PHY_QCA8033_X2)
 	if (!strcmp(mode, "802.3ad") || !strcmp(mode, "4")) {
 		snprintf(path, sizeof(path), bonding_entry, bond_if, "all_slaves_active");
-		if (f_write_string(path, "1", 0, 0) <= 0)
-			cprintf("%s: FAIL !(%s)(%s)\n", __func__, path, "1");
+		f_write_string(path, "1", 0, 0);
 	}
 #endif
 
@@ -907,11 +989,10 @@ int set_bonding(const char *bond_if, const char *mode, const char *policy)
 
 void remove_bonding(const char *bond_if)
 {
+#if !defined(RTCONFIG_SWITCH_QCA8075_QCA8337_PHY_AQR107_AR8035_QCA8033)
 	const char *bonding_masters = "/sys/class/net/bonding_masters";
-	const char *bonding_entry = "/sys/class/net/%s/bonding/%s";
-	char path[256];
-	char value[32];
-	char word[256], *next;
+	char path[256], value[32];
+#endif
 
 	if (bond_if == NULL)
 		return;
@@ -924,22 +1005,62 @@ void remove_bonding(const char *bond_if)
 	}
 
 	//remove slave interfaces
-	snprintf(path, sizeof(path), bonding_entry, bond_if, "slaves");
-	snprintf(value, sizeof(value), "%s_ifnames", bond_if);
-	foreach (word, nvram_safe_get(value), next) {
-		if (ifconfig(word, 0, NULL, NULL) != 0) {
-			cprintf("%s: FAIL ! ifdown(%s)\n", __func__, word);
-		}
-		snprintf(value, sizeof(value), "-%s", word);
-		if (f_write_string(path, value, 0, 0) <= 0)
-			cprintf("%s: FAIL ! (%s)(%s)\n", __func__, path, value);
-	}
+	remove_slaves_from_bonding_iface(bond_if);
 
+#if !defined(RTCONFIG_SWITCH_QCA8075_QCA8337_PHY_AQR107_AR8035_QCA8033)
 	//remove bonding interface
 	snprintf(value, sizeof(value), "-%s", bond_if);
-	if(f_write_string(bonding_masters, value, 0, 0) <= 0)
-		cprintf("%s: FAIL ! (%s)(%s)\n", __func__, bonding_masters, value);
+	f_write_string(bonding_masters, value, 0, 0);
+#endif
 }
+
+
+#if defined(RTCONFIG_BONDING_WAN) && defined(RTCONFIG_QCA)
+/* Set MAC address to a bonding interface. To achieve it, we have to remove all slave interfaces from @bond_if,
+ * Set MAC address and then add all slave interfaces back.
+ * @bond_if:
+ * @hwaddr:
+ * @return:
+ *  0:		success
+ *  otherwise	error
+ */
+int set_bonding_iface_hwaddr(const char *bond_if, const char *hwaddr)
+{
+	unsigned char mac[ETHER_ADDR_LEN], old_mac[ETHER_ADDR_LEN] = { 0 };
+	char bonding_entry[sizeof("/sys/class/net/XXX/bonding") + IFNAMSIZ];
+	char *p, *next, path[256], value[IFNAMSIZ + 2], iface[IFNAMSIZ], slave_ifs[IFNAMSIZ * 11];
+
+	if (!bond_if || bond_if == '\0' || !hwaddr || !ether_atoe(hwaddr, mac))
+		return -1;
+
+	if (!iface_exist(bond_if))
+		return -2;
+
+	if ((p = get_hwaddr(bond_if)) != NULL) {
+		if (!ether_atoe(p, old_mac))
+			memset(old_mac, 0, sizeof(old_mac));
+		free(p);
+	}
+
+	if (!memcmp(old_mac, mac, ETHER_ADDR_LEN))
+		return 0;
+
+	snprintf(path, sizeof(path), "%s/slaves", bonding_entry);
+	if (f_read_string(path, slave_ifs, sizeof(slave_ifs)) <= 0)
+		return -3;
+
+	foreach (iface, slave_ifs, next) {
+		snprintf(value, sizeof(value), "-%s", iface);
+		if (f_write_string(path, value, 0, 0) <= 0)
+			return -4;
+	}
+
+	set_hwaddr(bond_if, hwaddr);
+	add_slaves_to_bonding_iface(bond_if, slave_ifs);
+
+	return 0;
+}
+#endif
 
 #ifdef RTCONFIG_CAPTIVE_PORTAL
 int is_add_if(const char *ifname)
@@ -1126,6 +1247,10 @@ void start_lan(void)
 #endif
 
 	update_lan_state(LAN_STATE_INITIALIZING, 0);
+
+	/* set hostname on lan (re)start */
+	set_hostname();
+
 	if (sw_mode() == SW_MODE_REPEATER
 #if defined(RTCONFIG_BCMWL6) && defined(RTCONFIG_PROXYSTA)
 		|| psr_mode() || mediabridge_mode()
@@ -1512,12 +1637,7 @@ void start_lan(void)
 
 					sprintf(nv_mode, "%s_mode", ifname);
 					sprintf(nv_policy, "%s_policy", ifname);
-					set_bonding(ifname, nvram_get(nv_mode), nvram_get(nv_policy));
-
-					/* Make sure MAC address of bond interface
-					 * is equal to LAN MAC address.
-					 */
-					set_hwaddr(ifname, (const char *) get_lan_hwaddr());
+					set_bonding(ifname, nvram_get(nv_mode), nvram_get(nv_policy), get_lan_hwaddr());
 				}
 #if defined(RTCONFIG_ALPINE)
 				set_hwaddr(ifname, (const char *) get_lan_hwaddr());
@@ -1946,8 +2066,12 @@ gmac3_no_swbr:
 	if (bonding_enabled) {
 		/* Bring up bond0 interface */
 		ifconfig("bond0", IFUP, NULL, NULL);
-		sprintf(tmp, "ifenslave bond0 %s", bonding_ifnames);
-		system(tmp);
+		char slaves[32];
+		memset(slaves, 0, sizeof(slaves));
+		f_read_string("/sys/devices/virtual/net/bond0/bonding/slaves", slaves, sizeof(slaves));
+		foreach(word, bonding_ifnames, next)
+			if (!strstr(slaves, word))
+				doSystem("ifenslave bond0 %s", word);
 		eval("brctl", "addif", nvram_safe_get("lan_ifname"), "bond0");
 		/* remap imp port */
 		sprintf(tmp, "ethswctl -c bondingports -v 0x%x", bonding_portmask);
@@ -2875,9 +2999,15 @@ NEITHER_WDS_OR_PSTA:
 #endif
 
 #elif defined(RTCONFIG_QCA)
+#if defined(RTCONFIG_SWITCH_RTL8370M_PHY_QCA8033_X2) || defined(RTCONFIG_SWITCH_RTL8370MB_PHY_QCA8033_X2) || !defined(RTCONFIG_QCN550X)
 		/* All models use eth0/eth1 as LAN or WAN. */
 		if (!strncmp(interface, "eth0", 4) || !strncmp(interface, "eth1", 4))
 			return;
+#else
+		/* RT-AC59U family */
+		if (!strncmp(interface, "eth0", 4))
+			return;
+#endif
 #if defined(RTCONFIG_SWITCH_RTL8370M_PHY_QCA8033_X2) || defined(RTCONFIG_SWITCH_RTL8370MB_PHY_QCA8033_X2)
 		/* BRT-AC828 SR1~SR3: eth2/eth3 are WAN1/WAN2.
 		 * BRT-AC828 SR4+   : eth2/eth3 are LAN2/WAN2.
@@ -2885,14 +3015,15 @@ NEITHER_WDS_OR_PSTA:
 		if (!strncmp(interface, "eth2", 4) || !strncmp(interface, "eth3", 4))
 			return;
 #endif
+
 #elif defined(RTCONFIG_REALTEK)
 		TRACE_PT("do nothing in hotplug net\n");
+#elif defined(RTCONFIG_LANTIQ)
+		TRACE_PT("do nothing in hotplug net\n");
 #else
-#ifndef RTCONFIG_LANTIQ
 		// for all models, ethernet's physical interface.
 		if(!strcmp(interface, "eth0"))
 			return;
-#endif
 #endif
 
 		// Not wired ethernet.
@@ -3551,6 +3682,9 @@ lan_up(char *lan_ifname)
 
 		refresh_ntpc();
 	}
+
+	/* Kick syslog to re-resolve remote server */
+	reload_syslogd();
 
 	/* Scan new subnetwork */
 	stop_networkmap();
@@ -4298,12 +4432,7 @@ void start_lan_wl(void)
 
 					sprintf(nv_mode, "%s_mode", ifname);
 					sprintf(nv_policy, "%s_policy", ifname);
-					set_bonding(ifname, nvram_get(nv_mode), nvram_get(nv_policy));
-
-					/* Make sure MAC address of bond interface
-					 * is equal to LAN MAC address.
-					 */
-					set_hwaddr(ifname, (const char *) get_lan_hwaddr());
+					set_bonding(ifname, nvram_get(nv_mode), nvram_get(nv_policy), get_lan_hwaddr());
 				}
 #ifdef RTCONFIG_DETWAN
 #ifdef RTCONFIG_ETHBACKHAUL
@@ -4580,8 +4709,12 @@ gmac3_no_swbr:
 	if (bonding_enabled) {
 		/* Bring up bond0 interface */
 		ifconfig("bond0", IFUP, NULL, NULL);
-		sprintf(tmp, "ifenslave bond0 %s", bonding_ifnames);
-		system(tmp);
+		char slaves[32];
+		memset(slaves, 0, sizeof(slaves));
+		f_read_string("/sys/devices/virtual/net/bond0/bonding/slaves", slaves, sizeof(slaves));
+		foreach(word, bonding_ifnames, next)
+			if (!strstr(slaves, word))
+				doSystem("ifenslave bond0 %s", word);
 		eval("brctl", "addif", nvram_safe_get("lan_ifname"), "bond0");
 		/* remap imp port */
 		sprintf(tmp, "ethswctl -c bondingports -v 0x%x", bonding_portmask);
@@ -4627,6 +4760,10 @@ gmac3_no_swbr:
 
 #if defined(RTCONFIG_RALINK) && defined(RTCONFIG_WLMODULE_MT7615E_AP)
 	start_wds_ra();
+#endif
+#if defined(RTCONFIG_QCA_LBD)
+	if (nvram_get_int("smart_connect_x") == 1) 
+		duplicate_wl_ifaces();
 #endif
 #ifdef RTCONFIG_QCA
 	gen_qca_wifi_cfgs();
@@ -4734,9 +4871,6 @@ void restart_wl(void)
 	init_wllc();
 #endif
 
-#ifndef RTCONFIG_QCA
-	nvram_set_int("wlready", 1);
-#endif
 	nvram_set("reload_svc_radio", "1");
 #ifndef RTCONFIG_QCA
 	timecheck();
@@ -4854,6 +4988,11 @@ void lanaccess_wl(void)
 	int u, unit;
 #ifdef CONFIG_BCMWL5
 	int subunit;
+#endif
+
+#ifdef RTCONFIG_GN_WBL
+	/* this rule will flush ebtables broute table, so it must be the first function */
+	add_GN_WBL_EBTbrouteRule();
 #endif
 
 	snprintf(lan_subnet, sizeof(lan_subnet), "%s/%s", nvram_safe_get("lan_ipaddr"), nvram_safe_get("lan_netmask"));
@@ -5063,7 +5202,7 @@ void restart_wireless(void)
 	stop_chilli();
 	stop_CP();
 #endif
-#if defined(RTCONFIG_WLCEVENTD) && defined(CONFIG_BCMWL5)
+#if defined(RTCONFIG_WLCEVENTD) && (defined(CONFIG_BCMWL5) || defined(RTCONFIG_RALINK))
 	stop_wlceventd();
 #endif
 	stop_wps();
@@ -5124,7 +5263,7 @@ void restart_wireless(void)
 	start_8021x();
 #endif
 	start_wps();
-#if defined(RTCONFIG_WLCEVENTD) && defined(CONFIG_BCMWL5) || defined(CONFIG_REALTEK)
+#if defined(RTCONFIG_WLCEVENTD) && (defined(CONFIG_BCMWL5) || defined(CONFIG_REALTEK) || defined(RTCONFIG_RALINK))
 	start_wlceventd();
 #endif
 #ifdef RTCONFIG_BCMWL6
@@ -5168,6 +5307,9 @@ void restart_wireless(void)
 #ifndef RTCONFIG_DHDAP
 	restart_wl();
 	lanaccess_wl();
+#endif
+#ifndef RTCONFIG_QCA
+	nvram_set_int("wlready", 1);
 #endif
 
 #ifdef CONFIG_BCMWL5

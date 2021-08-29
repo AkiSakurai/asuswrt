@@ -17,10 +17,15 @@
 #include <configs/ipq807x.h>
 #include <asm/u-boot.h>
 #include <asm/arch-qca-common/qca_common.h>
+#include <asm/arch-qca-common/gpio.h>
 
 /*
  * GCC-SDCC Registers
  */
+#define MSM_SDC1_BASE		0x7824000
+#define MSM_SDC1_MCI_HC_MODE	0x7824078
+#define MSM_SDC1_SDHCI_BASE	0x7824900
+
 #define GCC_SDCC1_MISC		0x1842020
 #define GCC_SDCC1_APPS_CBCR	0x1842018
 #define GCC_SDCC1_APPS_CFG_RCGR	0x1842008
@@ -140,6 +145,7 @@
 #define GCC_USB1_PIPE_CBCR		0x183F040
 
 #define KERNEL_AUTH_CMD                0x13
+#define SCM_CMD_SEC_AUTH		0x15
 
 #define USB0_SSPHY_BASE 0x78000
 #define USB1_SSPHY_BASE 0x58000
@@ -227,6 +233,16 @@
 #define ARM_PSCI_TZ_FN_CPU_ON		ARM_PSCI_TZ_FN(3)
 #define ARM_PSCI_TZ_FN_AFFINITY_INFO	ARM_PSCI_TZ_FN(4)
 
+/*CMN BLOCK REG*/
+#define PLL_REFERENCE_CLOCK		0x0009B784
+#define PLL_POWER_ON_AND_RESET		0x0009B780
+
+/*0x8218 - 50M 0x8017 - 48M(default)*/
+#define PLL_REF_CLKSEL_50M		0x8218
+
+#define ANA_EN_SW_RSTN_DIS		0xBF
+#define ANA_EN_SW_RSTN_EN		0xFF
+
 unsigned int __invoke_psci_fn_smc(unsigned int, unsigned int,
 					 unsigned int, unsigned int);
 
@@ -296,6 +312,8 @@ void reset_crashdump(void);
 void board_pci_init(int id);
 __weak void board_pcie_clock_init(int id) {}
 #endif
+void qgic_init(void);
+void handle_noc_err(void);
 void ipq_fdt_fixup_socinfo(void *blob);
 extern void ipq_fdt_fixup_usb_device_mode(void *blob);
 extern void fdt_fixup_auto_restart(void *blob);
@@ -305,5 +323,6 @@ __weak int ipq_get_tz_version(char *version_name, int buf_size)
 {
 	return 1;
 }
+void reset_board(void);
 
 #endif /* _IPQ807X_H_ */

@@ -16,8 +16,8 @@
 / {
 	model ="QCA, IPQ6018-EMULATION-C1";
 	compatible = "qca,ipq6018", "qca,ipq6018-emulation-c1";
-	machid = <0x08010000>;
-	config_name = "config@1";
+	machid = <0xF030000>;
+	config_name = "config@emulation-c3";
 	spi_nand_available = <1>;
 
 	aliases {
@@ -67,7 +67,39 @@
 		wr_pipe_1 = <14>;
 		rd_pipe_1 = <15>;
 		status = "ok";
-		spi_gpio {};
+		spi_gpio {
+			gpio1 {
+				gpio = <38>;
+				func = <1>;
+				pull = <GPIO_PULL_DOWN>;
+				drvstr = <GPIO_2MA>;
+				oe = <GPIO_OE_DISABLE>;
+			};
+
+			gpio2 {
+				gpio = <39>;
+				func = <1>;
+				pull = <GPIO_PULL_DOWN>;
+				drvstr = <GPIO_2MA>;
+				oe = <GPIO_OE_DISABLE>;
+			};
+
+			gpio3 {
+				gpio = <40>;
+				func = <1>;
+				pull = <GPIO_PULL_DOWN>;
+				drvstr = <GPIO_2MA>;
+				oe = <GPIO_OE_DISABLE>;
+			};
+
+			gpio4 {
+				gpio = <41>;
+				func = <1>;
+				pull = <GPIO_PULL_DOWN>;
+				drvstr = <GPIO_2MA>;
+				oe = <GPIO_OE_DISABLE>;
+			};
+		};
 		spi_nand {
 			bus-num = <1>;
 			cs = <0>;
@@ -116,6 +148,10 @@
 
 	xhci@7000000 {
 		qcom,emulation = <1>;
+	};
+
+	timer {
+		gpt_freq_hz = <240000>;
 	};
 
 };

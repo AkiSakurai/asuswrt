@@ -131,7 +131,12 @@ void usb_ss_utmi_clock_config(unsigned int usb_port, unsigned int m,
 		unsigned int n, unsigned int d);
 
 void i2c_clock_config(void);
-
+void emmc_clock_config(int mode);
+void nand_clock_config(void);
+void pcie_clock_config(pci_clk_offset_t *offset);
+void pcie_clock_shutdown(pci_clk_offset_t *offset);
+void emmc_clock_reset(void);
+void emmc_clock_disable(void);
 /* Uart specific clock settings */
 void uart_pll_vote_clk_enable(void);
 void uart_clock_config(unsigned int gsbi_port, unsigned int m, unsigned int n,

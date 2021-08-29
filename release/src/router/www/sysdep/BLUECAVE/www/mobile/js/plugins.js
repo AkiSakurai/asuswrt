@@ -196,6 +196,18 @@ function hasBlank(objArray){
 	if($(".hint").length > 0) return true;
 }
 
+function rangeCheck(objArray, min, max, reserveHints){//1: reserve previous hints
+	if(reserveHints != 1)
+		$(".hint").remove();
+
+	$.each(objArray, function(idx, $obj){
+		if($obj.val().length > 0 && (isNaN($obj.val()) || $obj.val() < min || $obj.val() > max)){
+			$obj.showTextHint('<#JS_validrange#> ' + min + ' <#JS_validrange_to#> ' + max + '.');
+		}
+	})
+	if($(".hint").length > 0) return true;
+}
+
 function hadPlugged(deviceType){
 	var usbDeviceList = httpApi.hookGet("show_usb_path") || [];
 	return (usbDeviceList.join().search(deviceType) != -1)
@@ -839,7 +851,7 @@ var isPage = function(page){
 }
 
 var isSupport = function(_ptn){
-	var ui_support = httpApi.hookGet("get_ui_support");
+	var ui_support = JSON.parse(JSON.stringify(httpApi.hookGet("get_ui_support")));
 	var matchingResult = false;
 	var odmpid = httpApi.nvramGet(["odmpid"], true).odmpid;
 
@@ -985,13 +997,14 @@ function startLiveUpdate(){
 		setTimeout(arguments.callee, 1000);
 	}
 	else{
-		httpApi.nvramSet({"action_mode":"apply", "rc_service":"start_webs_update"}, function(){
+		httpApi.nvramSet({"action_mode":"apply", "webs_update_trigger":"QIS", "rc_service":"start_webs_update"}, function(){
 			setTimeout(function(){
-				var fwInfo = httpApi.nvramGet(["webs_state_update", "webs_state_info", "webs_state_flag"], true);
+				var fwInfo = httpApi.nvramGet(["webs_state_update", "webs_state_info", "webs_state_flag", "webs_state_level"], true);
 				
 				if(fwInfo.webs_state_flag == "1" || fwInfo.webs_state_flag == "2"){
 					systemVariable.isNewFw = fwInfo.webs_state_flag;
 					systemVariable.newFwVersion = fwInfo.webs_state_info;
+					systemVariable.forceLevel = fwInfo.webs_state_level;
 				}
 
 				if(fwInfo.webs_state_update == "0" || fwInfo.webs_state_update == ""){
@@ -1070,7 +1083,14 @@ transformWLCObj = function(){
 	Object.keys(qisPostData).forEach(function(key){
 		qisPostData[key.replace("wlc" + wlcUnit, "wlc")] = qisPostData[key];
 	});
+
 	postDataModel.remove(wlcMultiObj["wlc" + wlcUnit]);
+};
+copyWLCObj_wlc1ToWlc2 = function(){
+	var wlcPostData = wlcMultiObj.wlc2;
+	$.each(wlcPostData, function(item){wlcPostData[item] = qisPostData[item.replace("2", "1")];});
+	qisPostData.wlc2_band = 2;
+	postDataModel.insert(wlcPostData);
 };
 transformWLToGuest = function(){
 	var transformWLIdx = function(_wlcUnit){

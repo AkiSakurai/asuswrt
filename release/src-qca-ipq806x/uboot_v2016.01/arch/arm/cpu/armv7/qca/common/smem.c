@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2015-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013, 2015-2017, 2020 The Linux Foundation. All rights reserved.
  *
  * Based on smem.c from lk.
  *
@@ -36,7 +36,12 @@
 #include <asm/arch-qca-common/smem.h>
 #include <nand.h>
 #include "fdt_info.h"
+#include <ubi_uboot.h>
+#include <command.h>
 
+#ifdef IPQ_UBI_VOL_WRITE_SUPPORT
+static struct ubi_device *ubi;
+#endif
 typedef struct smem_pmic_type
 {
 	unsigned pmic_model;
@@ -283,7 +288,7 @@ static void *qcom_smem_get_private(struct smem_partition_header *phdr,
 		if (e->canary != SMEM_PRIVATE_CANARY) {
 		printf("Found invalid canary in\
 				host common partition\n");
-		return -EINVAL;
+		return ERR_PTR(-EINVAL);
 		}
 		if (le16_to_cpu(e->item) == item) {
 			if (size != NULL)
@@ -295,11 +300,10 @@ static void *qcom_smem_get_private(struct smem_partition_header *phdr,
 
 		e = private_entry_next(e);
 	}
-
-	return -ENOENT;
+	return ERR_PTR(-ENOENT);
 }
 
-static int qcom_smem_enumerate_partitions()
+static int qcom_smem_enumerate_partitions(void)
 {
 	struct smem_partition_header *header;
 	struct smem_ptable_entry *entry;
@@ -307,7 +311,8 @@ static int qcom_smem_enumerate_partitions()
 	u32 version, host0, host1;
 	int i;
 
-	ptable = CONFIG_QCA_SMEM_BASE + CONFIG_QCA_SMEM_SIZE - SZ_4K;
+	ptable = (struct smem_private_ptable*) (CONFIG_QCA_SMEM_BASE + \
+					CONFIG_QCA_SMEM_SIZE - SZ_4K);
 	if (memcmp(ptable->magic, SMEM_PTABLE_MAGIC, sizeof(ptable->magic)))
 		return -EINVAL;
 
@@ -338,7 +343,8 @@ static int qcom_smem_enumerate_partitions()
 			return -EINVAL;
 		}
 
-		header = CONFIG_QCA_SMEM_BASE + le32_to_cpu(entry->offset);
+		header = (struct smem_partition_header*) (CONFIG_QCA_SMEM_BASE + \
+							le32_to_cpu(entry->offset));
 		host0 = le16_to_cpu(header->host0);
 		host1 = le16_to_cpu(header->host1);
 
@@ -979,12 +985,103 @@ int getpart_offset_size(char *part_name, uint32_t *offset, uint32_t *size)
 	return 0;
 }
 
+#ifdef IPQ_UBI_VOL_WRITE_SUPPORT
+int ubi_set_rootfs_part(void)
+{
+	int ret;
+	uint32_t offset;
+	uint32_t part_size = 0;
+	uint32_t size_block, start_block;
+	qca_smem_flash_info_t *sfi = &qca_smem_flash_info;
+	char runcmd[256];
+	int i;
+
+	if (((sfi->flash_type == SMEM_BOOT_NAND_FLASH) ||
+		(sfi->flash_type == SMEM_BOOT_QSPI_NAND_FLASH))) {
+		ret = smem_getpart(QCA_ROOT_FS_PART_NAME,
+				&start_block, &size_block);
+		if (ret)
+			return ret;
+
+		offset = sfi->flash_block_size * start_block;
+		part_size = sfi->flash_block_size * size_block;
+	} else if (sfi->flash_type == SMEM_BOOT_SPI_FLASH &&
+				get_which_flash_param(QCA_ROOT_FS_PART_NAME)) {
+		ret = getpart_offset_size(QCA_ROOT_FS_PART_NAME, &offset,
+								&part_size);
+		if (ret)
+			return ret;
+	}
+
+	if (!part_size)
+		return -ENOENT;
+
+	if (ubi) {
+		for (i = 0; i < ubi->vtbl_slots; i++) {
+			if (ubi->volumes[i]) {
+				kfree(ubi->volumes[i]->eba_tbl);
+				kfree(ubi->volumes[i]);
+				ubi->volumes[i] = NULL;
+			}
+		}
+	}
+
+	snprintf(runcmd, sizeof(runcmd),
+		 "nand device %d && "
+		 "setenv mtdids nand%d=nand%d && "
+		 "setenv mtdparts mtdparts=nand%d:0x%x@0x%x(fs),${msmparts} && "
+		 "ubi part fs && ", is_spi_nand_available(),
+		 is_spi_nand_available(),
+		 is_spi_nand_available(),
+		 is_spi_nand_available(),
+		 part_size, offset);
+
+	if (run_command(runcmd, 0) != CMD_RET_SUCCESS)
+		return CMD_RET_FAILURE;
+
+	if (ubi) {
+		kfree(ubi);
+		ubi = NULL;
+	}
+
+	ubi = ubi_devices[0];
+	return 0;
+}
+
+static void print_ubi_vol_info(void)
+{
+	int i;
+	int j=0;
+	struct ubi_volume *vol;
+
+	for (i = 0; i < (ubi->vtbl_slots + 1); i++) {
+		vol = ubi->volumes[i];
+		if (!vol)
+			continue;	/* Empty record */
+		if (vol->name_len <= UBI_VOL_NAME_MAX && strnlen(vol->name,
+			vol->name_len + 1) == vol->name_len) {
+			printf("\tubi vol %d %s\n", vol->vol_id, vol->name);
+			j++;
+		} else {
+			printf("\tubi vol %d %c%c%c%c%c\n",
+				vol->vol_id, vol->name[0], vol->name[1],
+				vol->name[2], vol->name[3], vol->name[4]);
+			j++;
+		}
+		if (j == ubi->vol_count - UBI_INT_VOL_COUNT)
+			break;
+	}
+}
+#endif
+
 int do_smeminfo(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 {
 	qca_smem_flash_info_t *sfi = &qca_smem_flash_info;
 	int i;
 	uint32_t bsize;
-
+#ifdef IPQ_UBI_VOL_WRITE_SUPPORT
+	ubi_set_rootfs_part();
+#endif
 	if(sfi->flash_density != 0) {
 		printf(	"flash_type:		0x%x\n"
 			"flash_index:		0x%x\n"
@@ -1031,6 +1128,12 @@ int do_smeminfo(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 
 		printf("%3d: " smem_ptn_name_fmt " 0x%08x %#16llx %#16llx\n",
 		       i, p->name, p->attr, ((loff_t)p->start) * bsize, psize);
+#ifdef IPQ_UBI_VOL_WRITE_SUPPORT
+		if (!strncmp(p->name, QCA_ROOT_FS_PART_NAME, SMEM_PTN_NAME_MAX)
+		    && ubi) {
+			print_ubi_vol_info();
+		}
+#endif
 	}
 	return 0;
 }

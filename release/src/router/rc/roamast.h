@@ -137,20 +137,21 @@
 #define KEY_ROAMING_EVENT 34952
 
 typedef struct _TG_ROAMING_TABLE {
+	unsigned char sta[MAX_STA_COUNT][MAC_LEN];
+	int band_unit[MAX_STA_COUNT];
+	int sta_rssi[MAX_STA_COUNT];
 	time_t tstamp[MAX_STA_COUNT];
 	int user_low_rssi[MAX_STA_COUNT];
 	int rssi_cnt[MAX_STA_COUNT];
 	int idle_period[MAX_STA_COUNT];
-	unsigned char sta[MAX_STA_COUNT][MAC_LEN];
-	int sta_rssi[MAX_STA_COUNT];
-	int idle_start[MAX_STA_COUNT];
+	time_t idle_start[MAX_STA_COUNT];
 	int total;
 } TG_ROAMING_TABLE, *P_TG_ROAMING_TABLE;
 
 typedef struct _ROAMING_TABLE {
-	time_t tstamp[MAX_STA_COUNT];
 	unsigned char sta[MAX_STA_COUNT][MAC_LEN];
 	int sta_rssi[MAX_STA_COUNT];
+	time_t tstamp[MAX_STA_COUNT];
 	int candidate_rssi_criteria[MAX_STA_COUNT];
 	unsigned char candidate[MAX_STA_COUNT][MAC_LEN];
 	int candidate_rssi[MAX_STA_COUNT];
@@ -188,6 +189,8 @@ typedef struct rast_sta_info {
 	int32 last_txrx_bytes; /* bytes */
 #elif defined(RTCONFIG_REALTEK)
 	unsigned long long last_txrx_bytes;
+#elif defined(RTCONFIG_LANTIQ)
+	unsigned long last_txrx_bytes;
 #else //BRCM
 #ifndef RTCONFIG_BCMARM
 	uint32 prepkts;
@@ -206,12 +209,17 @@ typedef struct rast_sta_info {
 	uint8 rrm_bcn_passive_cap;	/* RRM Beacon Passive Measurement capability */
 #endif
 #endif
-#if defined(RTCONFIG_LANTIQ)
-	unsigned long last_txrx_bytes;
-#endif
 	int32 tx_rate;
 	int32 rx_rate;
-}rast_sta_info_t;
+#if defined(RTCONFIG_BCMARM)
+	int64 tx_byte;
+	int64 rx_byte;
+#if defined(RTCONFIG_HND_ROUTER_AX) || defined(RTCONFIG_HND_ROUTER_AX_675X)
+	char tx_nrate[64];
+	char rx_nrate[64];
+#endif
+#endif
+} rast_sta_info_t;
 
 
 #ifdef RTCONFIG_ADV_RAST
@@ -220,7 +228,7 @@ typedef struct rast_maclist {
 	uint8 mesh_node;
         struct ether_addr addr;
         struct rast_maclist *next;
-}rast_maclist_t;
+} rast_maclist_t;
 #endif
 
 typedef struct rast_bss_info {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2017, 2019 The Linux Foundation. All rights reserved.
 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -15,6 +15,15 @@
 #define ___QCA_COMMON_H_
 #include <asm/u-boot.h>
 #include <asm/arch-qca-common/smem.h>
+#include <asm/arch-qca-common/gpio.h>
+
+#ifdef CONFIG_ARCH_IPQ5018
+#include <asm/arch-ipq5018/clk.h>
+#endif
+
+#ifdef CONFIG_ARCH_IPQ6018
+#include <asm/arch-ipq6018/clk.h>
+#endif
 
 #ifdef CONFIG_ARCH_IPQ807x
 #include <asm/arch-ipq807x/clk.h>
@@ -31,6 +40,12 @@
 
 #define XMK_STR(x)#x
 #define MK_STR(x)XMK_STR(x)
+
+/* Crashdump levels */
+enum {
+	FULL_DUMP,
+	MINIMAL_DUMP
+};
 
 struct ipq_i2c_platdata {
 	int type;
@@ -49,12 +64,38 @@ typedef struct {
 	u32 val[2];
 } add_node_t;
 
+typedef struct qca_gpio_config gpio_func_data_t;
+
+typedef struct  {
+	gpio_func_data_t *gpio;
+	unsigned int gpio_count;
+}spi_cfg_t;
+
+typedef struct  {
+	gpio_func_data_t *gpio;
+	unsigned int gpio_count;
+}qpic_nand_cfg_t;
+
+typedef struct {
+	spi_cfg_t spi_nor_cfg;
+	qpic_nand_cfg_t qpic_nand_cfg;
+}board_param_t;
+
 int qca_mmc_init(bd_t *, qca_mmc *);
+
+#if defined(CONFIG_QCA_MMC) && !defined(CONFIG_SDHCI_SUPPORT)
+int board_mmc_env_init(qca_mmc mmc_host);
+#endif
+
+int ipq_board_usb_init(void);
+int spi_nand_init(void);
 void board_mmc_deinit(void);
 void board_pci_deinit(void);
 void set_flash_secondary_type(qca_smem_flash_info_t *);
-void dump_func(void);
+void dump_func(unsigned int dump_level);
+int do_dumpqca_minimal_data(const char *offset);
 int do_dumpqca_flash_data(const char *);
+int do_dumpqca_usb_data(unsigned int dump_level);
 int apps_iscrashed(void);
 int set_uuid_bootargs(char *boot_args, char *part_name, int buflen, bool gpt_flag);
 int is_secondary_core_off(unsigned int cpuid);
@@ -69,6 +110,7 @@ void aquantia_phy_reset_init_done(void);
 void aquantia_phy_reset_init(void);
 int bring_sec_core_up(unsigned int cpuid, unsigned int entry, unsigned int arg);
 int is_secondary_core_off(unsigned int cpuid);
+int smem_read_cpu_count(void);
 
 struct dumpinfo_t{
 	char name[16]; /* use only file name in 8.3 format */
@@ -79,6 +121,8 @@ struct dumpinfo_t{
 			    * to address to be dumped
 			    */
 	uint32_t offset; /* offset to be added to start address */
+	uint32_t dump_level;
+	uint32_t to_compress; /* non-zero represent for compressed dump*/
 };
 extern struct dumpinfo_t dumpinfo_n[];
 extern int dump_entries_n;
@@ -86,9 +130,6 @@ extern int dump_entries_n;
 extern struct dumpinfo_t dumpinfo_s[];
 extern int dump_entries_s;
 
-#define MSM_SDC1_BASE		0x7824000
-#define MSM_SDC1_MCI_HC_MODE	0x7824078
-#define MSM_SDC1_SDHCI_BASE		0x7824900
 #define MMC_IDENTIFY_MODE	0
 #define MMC_DATA_TRANSFER_MODE	1
 #define MMC_DATA_TRANSFER_SDHCI_MODE 2

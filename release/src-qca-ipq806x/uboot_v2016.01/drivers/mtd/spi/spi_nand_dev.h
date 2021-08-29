@@ -14,7 +14,10 @@
 #ifndef SPI_NAND_DEV_H
 #define SPI_NAND_DEV_H
 #define MTD_MAX_OOBFREE_ENTRIES_LARGE	32
+#ifdef MTD_MAX_ECCPOS_ENTRIES_LARGE
+#undef MTD_MAX_ECCPOS_ENTRIES_LARGE
 #define MTD_MAX_ECCPOS_ENTRIES_LARGE	640
+#endif
 #define INT_MAX				((int)(~0U>>1))
 
 /* Flash opcodes. */
@@ -77,6 +80,7 @@ struct spi_nand_flash_params {
 	u32 erase_size;
 	u8 no_of_dies;
 	int prev_die_id;
+	u8 plane_id;
 	u8 protec_bpx;
 	u64 pages_per_die;
 	void (*norm_read_cmd) (u8 *cmd, int column);

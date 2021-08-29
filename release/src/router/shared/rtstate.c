@@ -197,6 +197,15 @@ int is_phy_connect(int unit){
 		return get_wanports_status(unit);
 }
 
+int is_phy_connect2(int unit){
+#ifdef RTCONFIG_USB_MODEM
+	if(dualwan_unit__usbif(unit))
+		return 1;
+	else
+#endif
+		return get_wanports_status(unit);
+}
+
 int is_ip_conflict(int unit){
 	int wan_state, wan_sbstate;
 
@@ -711,12 +720,12 @@ int get_usb_port_host(const char *usb_port)
 #endif
 #endif // RTCONFIG_USB
 
-#if defined(RTCONFIG_DUALWAN)
 void set_wanscap_support(char *feature)
 {
 	nvram_set("wans_cap", feature);
 }
 
+#if defined(RTCONFIG_DUALWAN)
 void add_wanscap_support(char *feature)
 {
 	char features[128];

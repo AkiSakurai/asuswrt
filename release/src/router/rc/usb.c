@@ -3233,7 +3233,7 @@ start_samba(void)
 #ifdef RTCONFIG_NVRAM_ENCRYPT
 			char dec_passwd[64];
 			memset(dec_passwd, 0, sizeof(dec_passwd));
-			pw_dec(tmp_ascii_passwd, dec_passwd);
+			pw_dec(tmp_ascii_passwd, dec_passwd, sizeof(dec_passwd));
 			tmp_ascii_passwd = dec_passwd;
 #endif
 			memset(char_passwd, 0, 64);
@@ -3434,7 +3434,7 @@ void start_dms(void)
 	char *argv[] = { MEDIA_SERVER_APP, "-f", "/etc/"MEDIA_SERVER_APP".conf", "-R", NULL, NULL, NULL };
 	static int once = 1;
 	unsigned char ea[ETHER_ADDR_LEN];
-	char serial[18], uuid[37];
+	char serial[18], uuid[37], *friendly_name;
 	char *nv, *nvp, *b, *c;
 	char *nv2, *nvp2;
 	unsigned char type = 0;
@@ -3511,6 +3511,10 @@ void start_dms(void)
 			snprintf(uuid, sizeof(uuid), "4d696e69-444c-164e-9d41-%02x%02x%02x%02x%02x%02x",
 				 ea[0], ea[1], ea[2], ea[3], ea[4], ea[5]);
 
+			friendly_name = nvram_get("dms_friendly_name");
+			if (*friendly_name == '\0' || !is_valid_hostname(friendly_name))
+				friendly_name = get_lan_hostname();
+
 			fprintf(f,
 				"network_interface=%s\n"
 				"port=%d\n"
@@ -3523,7 +3527,7 @@ void start_dms(void)
 				"album_art_names=Cover.jpg/cover.jpg/Thumb.jpg/thumb.jpg\n",
 				nvram_safe_get("lan_ifname"),
 				(port < 0) || (port >= 0xffff) ? 0 : port,
-				is_valid_hostname(nvram_get("dms_friendly_name")) ? nvram_get("dms_friendly_name") : get_productid(),
+				friendly_name,
 				dbdir,
 				nvram_get_int("dms_tivo") ? "yes" : "no",
 				nvram_get_int("dms_stdlna") ? "yes" : "no");
@@ -3667,10 +3671,10 @@ write_mt_daapd_conf(char *servername)
 #if 1
 	char *http_passwd = nvram_safe_get("http_passwd");
 #ifdef RTCONFIG_NVRAM_ENCRYPT
-	int declen = pw_dec_len(http_passwd);
+	int declen = strlen(http_passwd);
 	char dec_passwd[declen];
 	memset(dec_passwd, 0, sizeof(dec_passwd));
-	pw_dec(http_passwd, dec_passwd);
+	pw_dec(http_passwd, dec_passwd, sizeof(dec_passwd));
 	http_passwd = dec_passwd;
 #endif
 	memset(dbdir, 0, sizeof(dbdir));
@@ -3716,7 +3720,7 @@ write_mt_daapd_conf(char *servername)
 void
 start_mt_daapd()
 {
-	char servername[32];
+	char *servername;
 
 	if (getpid() != 1) {
 		notify_rc("start_mt_daapd");
@@ -3734,12 +3738,11 @@ start_mt_daapd()
 	if (!sd_partition_num() && !nvram_match("usb_debug", "1"))
 		return;
 
-	if (is_valid_hostname(nvram_safe_get("daapd_friendly_name")))
-		strncpy(servername, nvram_safe_get("daapd_friendly_name"), sizeof(servername));
-	else
-		servername[0] = '\0';
-	if (strlen(servername)==0) strncpy(servername, get_productid(), sizeof(servername));
-		write_mt_daapd_conf(servername);
+	servername = nvram_safe_get("daapd_friendly_name");
+	if (*servername == '\0' || !is_valid_hostname(servername))
+		servername = get_lan_hostname();
+
+	write_mt_daapd_conf(servername);
 
 	if (pids("mt-daapd")) {
 		killall_tk("mt-daapd");
@@ -3846,10 +3849,10 @@ void write_webdav_permissions()
 			ascii_to_char_safe(char_user, tmp_ascii_user, 64);
 			memset(char_passwd, 0, 64);
 #ifdef RTCONFIG_NVRAM_ENCRYPT
-			int declen = pw_dec_len(tmp_ascii_passwd);
+			int declen = strlen(tmp_ascii_passwd);
 			char dec_passwd[declen];
 			memset(dec_passwd, 0, sizeof(dec_passwd));
-			pw_dec(tmp_ascii_passwd, dec_passwd);
+			pw_dec(tmp_ascii_passwd, dec_passwd, sizeof(dec_passwd));
 			tmp_ascii_passwd = dec_passwd;
 #endif
 			ascii_to_char_safe(char_passwd, tmp_ascii_passwd, 64);
