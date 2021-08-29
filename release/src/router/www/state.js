@@ -568,7 +568,7 @@ var sdk_7 = sdk_version_array[0] == 7 ? true : false;
 var sdk_5 = sdk_version_array[0] == 5 ? true : false;
 var bcm_mumimo_support = isSupport("mumimo");		//Broadcom MU-MIMOs
 var he_frame_support = isSupport("11AX");
-var ofdma_support = isSupport("11AX");
+var ofdma_support = isSupport("ofdma");
 var nt_center_support = isSupport("nt_center");
 var dblog_support = isSupport("dblog");
 var qca_support = isSupport("qca");

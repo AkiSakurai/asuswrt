@@ -422,7 +422,7 @@ function initial(){
 			inputCtrl(document.form.wl_txbf, 1);
 			inputCtrl(document.form.wl_turbo_qam, 1);
 		}
-		if(Qcawifi_support && (based_modelid == "GT-AXY16000" || based_modelid == "RT-AX89U") && document.form.wl_nmode_x.value == "0" && document.form.wl0_he_features.value == "3"){
+		if(Qcawifi_support && (based_modelid == "GT-AXY16000" || based_modelid == "RT-AX89U") && document.form.wl_nmode_x.value == "0" && document.form.wl0_11ax.value == "1"){
 			inputCtrl(document.form.wl_txbf, 1);
 			document.getElementById("wl_MU_MIMO_field").style.display = "";
 			document.form.wl_mumimo.disabled = false;
@@ -553,6 +553,14 @@ function initial(){
 	else
 		document.getElementById("wl_implicitxbf_field").style.display = "none";
 
+	/* Extended NSS, 5G 160MHz only */
+	if((wl_unit_value == '1' || wl_unit_value == '2') && document.form.wl_nmode_x.value != 2 && (based_modelid == "GT-AXY16000" || based_modelid == "RT-AX89U")){
+		inputCtrl(document.form.wl_ext_nss, 1);
+	}
+	else{
+		inputCtrl(document.form.wl_ext_nss, 0);
+	}
+
 	/* Hardware WiFi offloading */
 	if(wl_unit_value != '3' && (based_modelid == "RT-AC88Q" || based_modelid == "BRT-AC828" || based_modelid == "RT-AD7200")){
 		inputCtrl(document.form.wl_hwol, 1);
@@ -626,15 +634,26 @@ function initial(){
 	}
 
 	if(ofdma_support && wl_unit_value != '0'){
+		var wl_11ax = '<% nvram_get("wl_11ax"); %>';
 		if(document.form.wl_nmode_x.value == '0' || document.form.wl_nmode_x.value == '8'){
 			if (based_modelid != 'RT-AX92U' || (wl_unit_value != '0' && wl_unit_value != '1')) {
 				$('#ofdma_field').show();
-				configureOFDMA();
+				if(wl_11ax == '0'){
+					document.form.wl_ofdma.value = 0;
+					document.getElementsByName('wl_ofdma')[0].style.backgroundColor = "#4C4C4C";
+					document.form.wl_ofdma.disabled = true;
+					$('#ofdma_hint').show();
+				}
 			}
 		}
 		else if(document.form.wl_nmode_x.value == '9'){
 			$('#ofdma_field').show();
-			configureOFDMA();
+			if(wl_11ax == '0'){
+				document.form.wl_ofdma.value = 0;
+				document.getElementsByName('wl_ofdma')[0].style.backgroundColor = "#4C4C4C";
+				document.form.wl_ofdma.disabled = true;
+				$('#ofdma_hint').show();
+			}
 		}
 	}
 }
@@ -827,10 +846,6 @@ function applyRule(){
 				return;
 		}
 
-		if(ofdma_support){
-			setOFDMA();
-		}
-		
 		showLoading();
 		document.form.submit();
 	}
@@ -1475,38 +1490,12 @@ function checkWLReady(){
   	});
 }
 
-function configureOFDMA(){
-	if(wl_unit_value == '1'){	// 5GHz/5GHz-1
-		var _temp = document.form.wl1_he_features.value;
-	}
-	else if(wl_unit_value == '2'){  // 5 GHz-2
-		var _temp = document.form.wl2_he_features.value;
-	}
-	else{		// 2.4 GHz
-		var _temp = document.form.wl0_he_features.value;
-	}
-
-	if(_temp == '0'){
-		_temp = 3;
-		document.form.ofdma.disabled = true;
-	}
-
-	document.form.ofdma.value = _temp;
-}
-
 function setOFDMA(){
-	var he_val = document.form.ofdma.value;
-	if(wl_unit_value == '1'){	// 5GHz/5GHz-1
-		document.form.wl1_he_features.disabled = false;
-		document.form.wl1_he_features.value = he_val;
-	}
-	else if(wl_unit_value == '2'){  // 5 GHz-2
-		document.form.wl2_he_features.disabled = false;
-		document.form.wl2_he_features.value = he_val;
-	}
-	else{		// 2.4 GHz
-		document.form.wl0_he_features.disabled = false;
-		document.form.wl0_he_features.value = he_val;
+	// 2.4 GHz does not support so far
+	//document.form.wl0_ofdma.disabled = false;
+	document.form.wl1_ofdma.disabled = false;
+	if(band5g2_support){
+		document.form.wl2_ofdma.disabled = false;
 	}
 }
 </script>
@@ -1523,7 +1512,7 @@ function setOFDMA(){
 <input type="hidden" name="productid" value="<% nvram_get("productid"); %>">
 <input type="hidden" name="wl_nmode_x" value="<% nvram_get("wl_nmode_x"); %>">
 <input type="hidden" name="wl_gmode_protection_x" value="<% nvram_get("wl_gmode_protection_x"); %>">
-<input type="hidden" name="wl0_he_features" value="<% nvram_get("wl0_he_features"); %>">
+<input type="hidden" name="wl0_11ax" value="<% nvram_get("wl0_11ax"); %>">
 <input type="hidden" name="current_page" value="Advanced_WAdvanced_Content.asp">
 <input type="hidden" name="next_page" value="Advanced_WAdvanced_Content.asp">
 <input type="hidden" name="group_id" value="">
@@ -1545,9 +1534,6 @@ function setOFDMA(){
 <input type="hidden" name="wl_sched" value="<% nvram_get("wl_sched"); %>">
 <input type="hidden" name="wl_txpower" value="<% nvram_get("wl_txpower"); %>">
 <input type="hidden" name="wl1_mumimo" value="<% nvram_get("wl1_mumimo"); %>" disabled>
-<input type="hidden" name="wl0_he_features" value='<% nvram_get("wl0_he_features"); %>' disabled>
-<input type="hidden" name="wl1_he_features" value='<% nvram_get("wl1_he_features"); %>' disabled>
-<input type="hidden" name="wl2_he_features" value='<% nvram_get("wl2_he_features"); %>' disabled>
 <table class="content" align="center" cellpadding="0" cellspacing="0">
 	<tr>
 		<td width="17">&nbsp;</td>
@@ -1868,13 +1854,14 @@ function setOFDMA(){
 						<th><a class="hintstyle" href="javascript:void(0);" onClick="">OFDMA</a></th>
 						<td>
 							<div style="display:table-cell;vertical-align:middle">
-								<select name="ofdma" class="input_option">
-									<option value="3"><#WLANConfig11b_WirelessCtrl_buttonname#></option>
-									<option value="7"><#WLANConfig11b_WirelessCtrl_button1name#></option>
+								<select name="wl_ofdma" class="input_option">
+									<option value="0" <% nvram_match("wl_ofdma", "0","selected"); %>><#WLANConfig11b_WirelessCtrl_buttonname#></option>
+									<option value="1" <% nvram_match("wl_ofdma", "1","selected"); %>><#WLANConfig11b_WirelessCtrl_button1name#></option>
 								</select>
+								<span id="ofdma_hint" style="margin-left:4px;display:none">*Need to enable <a href="Advanced_Wireless_Content.asp" style="color:#FC0;text-decoration:underline;">802.11ax / Wi-Fi 6 mode</a></span>
 							</div>
 						</td>
-					</tr>					
+					</tr>
 					<tr id="wl_txbf_field">
 						<th><a id="wl_txbf_desc" class="hintstyle" href="javascript:void(0);" onClick="openHint(3,24);"><#WLANConfig11b_x_ExpBeam#></a></th>
 						<td>
@@ -1900,6 +1887,15 @@ function setOFDMA(){
 							<select name="wl_implicitxbf" class="input_option">
 								<option value="0" <% nvram_match("wl_implicitxbf", "0","selected"); %>><#WLANConfig11b_WirelessCtrl_buttonname#></option>
 								<option value="1" <% nvram_match("wl_implicitxbf", "1","selected"); %>><#WLANConfig11b_WirelessCtrl_button1name#></option>
+							</select>
+						</td>
+					</tr>
+					<tr id="ext_nss_field" style="display:none">
+						<th><a class="hintstyle" href="javascript:void(0);" onClick="">Extended NSS</a></th>
+						<td>
+							<select name="wl_ext_nss" class="input_option">
+								<option value="0" <% nvram_match("wl_ext_nss", "0","selected"); %>><#WLANConfig11b_WirelessCtrl_buttonname#></option>
+								<option value="1" <% nvram_match("wl_ext_nss", "1","selected"); %>><#WLANConfig11b_WirelessCtrl_button1name#></option>
 							</select>
 						</td>
 					</tr>

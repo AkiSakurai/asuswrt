@@ -2129,6 +2129,9 @@ int get_radar_channel_list(const char *vphy, int radar_list[], int size)
 	if(vphy == NULL || radar_list == NULL || size < 0)
 		return -1;
 
+	if (!strcmp(vphy, VPHY_2G) || !strcmp(vphy, VPHY_60G))
+		return 0;
+
 	unlink(dfs_file);
 	doSystem("radartool -i %s getnol %s", vphy, dfs_file);
 

@@ -317,20 +317,13 @@ function change_wl_nmode(o){
 		if(o.value == '0'){
 			if (based_modelid != 'RT-AX92U' || (wl_unit != '0' && wl_unit != '1')) {
 				$("#he_mode_field").show();
-				document.form.wl0_he_features.disabled = false;
-				document.form.wl1_he_features.disabled = false;
-				if (band5g2_support) {
-					document.form.wl2_he_features.disabled = false;
-				}
-			}		
+			}
+		}
+		else if(o.value == '9'){		// AX only
+			$("#he_mode_field").show();
 		}
 		else{
 			$("#he_mode_field").hide();
-			document.form.wl0_he_features.disabled = true;
-			document.form.wl1_he_features.disabled = true;
-			if (band5g2_support) {
-				document.form.wl2_he_features.disabled = true;
-			}
 		}
 	}
 
@@ -1124,9 +1117,10 @@ function ajax_wl_channel(){
 <input type="hidden" name="wl_wep_x_orig" value='<% nvram_get("wl_wep_x"); %>'>
 <input type="hidden" name="wl_optimizexbox" value='<% nvram_get("wl_optimizexbox"); %>'>
 <input type="hidden" name="wl_bw_160" value='<% nvram_get("wl_bw_160"); %>'>
-<input type="hidden" name="wl0_he_features" value='<% nvram_get("wl0_he_features"); %>'>
-<input type="hidden" name="wl1_he_features" value='<% nvram_get("wl1_he_features"); %>'>
-<input type="hidden" name="wl2_he_features" value='<% nvram_get("wl2_he_features"); %>'>
+<input type="hidden" name="wl0_11ax" value='<% nvram_get("wl0_11ax"); %>'>
+<input type="hidden" name="wl1_11ax" value='<% nvram_get("wl1_11ax"); %>'>
+<input type="hidden" name="wl2_11ax" value='<% nvram_get("wl2_11ax"); %>'>
+
 <input type="hidden" name="wl_subunit" value='-1'>
 <input type="hidden" name="wl1_dfs" value='<% nvram_get("wl1_dfs"); %>'>
 <input type="hidden" name="acs_dfs" value='<% nvram_get("acs_dfs"); %>'>
@@ -1265,9 +1259,9 @@ function ajax_wl_channel(){
 				</th>
 				<td>
 					<div style="width:465px;display:flex;align-items: center;">
-						<select name="he_mode" class="input_option" onChange="he_frame_mode(this);">
-							<option value="3" <% nvram_match("wl0_he_features", "3","selected"); %> ><#WLANConfig11b_WirelessCtrl_button1name#></option>
-							<option value="0" <% nvram_match("wl0_he_features", "0","selected"); %> ><#WLANConfig11b_WirelessCtrl_buttonname#></option>
+						<select name="wl_11ax" class="input_option" onChange="he_frame_mode(this);">
+							<option value="1" <% nvram_match("wl_11ax", "1","selected"); %>><#WLANConfig11b_WirelessCtrl_button1name#></option>
+							<option value="0" <% nvram_match("wl_11ax", "0","selected"); %>><#WLANConfig11b_WirelessCtrl_buttonname#></option>
 						</select>
 						<span id="he_mode_faq" style="padding: 0 10px"><#WLANConfig11b_HE_Frame_Mode_faq#></span>
 					</div>

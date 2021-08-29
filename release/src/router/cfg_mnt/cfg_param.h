@@ -190,6 +190,16 @@ enum {
 	SUBFT_ACS_INCLUDE_DFS,
 	/* sub feature for connection diagmostic */
 	SUBFT_CONNECTION_DIAGMOSTIC,
+
+	/* sub feature for 802.11ax/Wi-Fi 6 mode */
+	SUBFT_11_AX_2G,
+	SUBFT_11_AX_5G,
+	SUBFT_11_AX_5G1,
+
+	/* sub feature for OFDMA */
+	SUBFT_OFDMA_2G,
+	SUBFT_OFDMA_5G,
+	SUBFT_OFDMA_5G1
 };
 
 struct subfeature_mapping_s subfeature_mapping_list[] = {
@@ -312,7 +322,15 @@ struct subfeature_mapping_s subfeature_mapping_list[] = {
 	{ "he_features_5g1", SUBFT_HE_FEATURES_5G1, FT_WIRELESS },
 	/* sub feature for ACS include DFS */
 	{ "acs_dfs", SUBFT_ACS_INCLUDE_DFS, FT_WIRELESS },
-#endif	
+#endif
+	/* 802.11ax/Wi-Fi 6 mode */
+	{ "11ax_2g", SUBFT_11_AX_2G, FT_WIRELESS },
+	{ "11ax_5g", SUBFT_11_AX_5G, FT_WIRELESS },
+	{ "11ax_5g1", SUBFT_11_AX_5G1, FT_WIRELESS },
+	/* ofdma */
+	{ "ofdma_2g", SUBFT_OFDMA_2G, FT_WIRELESS },
+	{ "ofdma_5g", SUBFT_OFDMA_5G, FT_WIRELESS },
+	{ "ofdma_5g1", SUBFT_OFDMA_5G1, FT_WIRELESS },
 	/* connection diagnostic */
 	{ "connection_diagnostic", SUBFT_CONNECTION_DIAGMOSTIC, FT_MISC},
 	/* END */
@@ -665,10 +683,18 @@ struct param_mapping_s param_mapping_list[] = {
 	{ "wl2_he_features", FT_WIRELESS, SUBFT_HE_FEATURES_5G1 },
 	/* ACS include DFS channels */
 	{ "acs_dfs", FT_WIRELESS, SUBFT_ACS_INCLUDE_DFS },
+#endif
+	/* 802.11ax/Wi-Fi 6 mode */
+	{ "wl0_11ax", FT_WIRELESS, SUBFT_11_AX_2G },
+	{ "wl1_11ax", FT_WIRELESS, SUBFT_11_AX_5G },
+	{ "wl2_11ax", FT_WIRELESS, SUBFT_11_AX_5G1 },
+	/* ofdma */
+	{ "wl0_ofdma", FT_WIRELESS, SUBFT_OFDMA_2G },
+	{ "wl1_ofdma", FT_WIRELESS, SUBFT_OFDMA_5G },
+	{ "wl2_ofdma", FT_WIRELESS, SUBFT_OFDMA_5G1 },
 	/* connection diagnostic */
 	{ "enable_diag", 	FT_MISC,	SUBFT_CONNECTION_DIAGMOSTIC },
 	{ "diag_interval", 	FT_MISC,	SUBFT_CONNECTION_DIAGMOSTIC },
-#endif	
 	/* END */
 	{ NULL, 0, 0 }
 };

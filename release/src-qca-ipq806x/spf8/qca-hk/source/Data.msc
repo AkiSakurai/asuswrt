@@ -1,4 +1,4 @@
-VERSION:50794004
+VERSION:51318292
 
 1,II,WLAN_BWA_SET_PMAC_BW: mac_id=%d, pmac_bw=%d [!WAL_EOK returned] 
 2,III,WLAN_BWA_UPDATE_VDEV_BW: phy_mode=%d, opmode=%d, Requested operating voltage corner=0x%x 
@@ -3918,261 +3918,261 @@ phy_warm_reset = %d
 3507,III,CalSM: get yield time 	phyId=%d, 	calProgress[0]=%d, 	calProgress[1]=%d 
 3508,IIIII,CalSM: annouce yield time 	phyId=%d, 	finalCase=%d, 	phyInput->bwCode=%d, 	calProgress[0]=%d, 	calProgress[1]=%d 
 3509,III,CalSM: cal end 	phyId=%d, 	calProgress[0]=%d, 	calProgress[1]=%d 
-3510,I,PALCAL_INPUT calCmdId			=%d 
-3511,I,PALCAL_INPUT pPalDlyVals			=%x 
-3512,I,PALCAL_INPUT pcalMethod			=%d 
-3513,I,PALCAL_INPUT pcalOptDoSetEDandDM		=%d 
-3514,III,PALCAL CONF ModeStatus[phyId=%d][ConfMode=%d][0]	=%d 
-3515,III,PALCAL CONF ModeStatus[phyId=%d][ConfMode=%d][1]	=%d 
-3516,III,PALCAL CONF ModeStatus[phyId=%d][ConfMode=%d][2]	=%d 
-3517,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][0]		=%d 
-3518,III,PALCAL STORE palCalDlyVals[phyId=%d]{%d][1]		=%d 
-3519,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][2]		=%d 
-3520,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][3]		=%d 
-3521,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][4]		=%d 
-3522,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][5]		=%d 
-3523,,Welcome, cal SM for Pdet Cal will be created 
-3524,,PALCAL STARTED 
-3525,I,PALCAL CONF final pal_cal_input->pcalMethod=%d 
-3526,,PALCAL COMPLETED 
-3527,I,RXDCO ::SM::: convertNewRxdcoLutfromCalDb chainIdx = %d pStart= NULLLLLLLLLLLLLLLLL
- 
-3528,II,convertNewRxdcoLutfromCalDb:::pStart=%x(pNewDcoLut=%x) from caldb
- 
-3529,III,convertNewRxdcoLutfromCalDb:::Restore Rxdco LUT from caldb with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
- 
-3530,II,convertNewRxdcoLutfromCalDb:::pStart=%x(pNewDcoLut=%x) to caldb=%d
- 
-3531,III,convertNewRxdcoLutfromCalDb:::Save Rxdco LUT to caldb with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
- 
-3532,,APPLICALBE_RESUBMISSION_ONLY:: failure on not getting pStart (= NULL) from caldb! 
-3533,I,APPLICALBE_RESUBMISSION_ONLY:: failure on getting chainIdx:%d from pPhyRxdcoInput 
-3534,I,MODE2CALID in  *calMode		=%d 
-3535,I,MODE2CALID in  *calId		=%d 
-3536,I,MODE2CALID in  retValue		=%d 
-3537,I,COMPOSE RXDCO INPUT pIn 		=%x 
-3538,I,COMPOSE RXDCO INPUT phyInput 	=%x 
-3539,I,COMPOSE RXDCO INPUT rxdcoInput 	=%x 
-3540,I,COMPOSE RXDCO INPUT pUnionDcoLut 	=%x 
-3541,I,COMPOSE RXDCO INPUT in *calId 	=%x 
-3542,I,COMPOSE RXDCO INPUT override bwCode 	=%x 
-3543,I,COMPOSE RXDCO INPUT out *calId 	=%x 
-3544,I,CAL_COMMON_PARAM pHandle 	=%x 
-3545,I,CAL_COMMON_PARAM calType 	=%d 
-3546,I,CAL_COMMON_PARAM cmdGroupId 	=%d 
-3547,I,CAL_COMMON_PARAM isRestoreOnly 	=%d 
-3548,I,CAL_COMMON_PARAM calTypeVarianceId 	=%d 
-3549,III,CAL_COMMON_PARAM reserved 	=%d %d %d 
-3550,I,CAL_COMMON_PARAM (pIn->pHandle).phyId 	=%x 
-3551,I,CAL_COMMON_PARAM halphyBW 	=%x 
-3552,I,PHYDEVLIB_PHY_INPUT phyId 		=%d 
-3553,I,PHYDEVLIB_PHY_INPUT bandCode	=%d 
-3554,I,PHYDEVLIB_PHY_INPUT bwCode 	=%d 
-3555,I,PHYDEVLIB_PHY_INPUT phyMode 	=%d 
-3556,I,PHYDEVLIB_PHY_INPUT band_center_freq1 	=%d 
-3557,I,PHYDEVLIB_PHY_INPUT band_center_freq2 	=%d 
-3558,I,PHYDEVLIB_PHY_INPUT txChMask 	=%x 
-3559,I,PHYDEVLIB_PHY_INPUT rxChMask 	=%x 
-3560,I,PHYDEVLIB_PHY_INPUT phyBase 	=%x 
-3561,I,PHYDEVLIB_PHY_INPUT phyBaseExt 	=%x 
-3562,I,PHYDEVLIB_PHY_INPUT concMode 	=%d 
-3563,I,PHYDEVLIB_PHY_INPUT dynPriChan 	=%d 
-3564,I,PHYDEVLIB_PHY_INPUT homeCh		=%d 
-3565,I,PHYDEVLIB_PHY_INPUT dtim 		=%d 
-3566,I,PHYDEVLIB_PHY_INPUT extLNA 		=%d 
-3567,I,PHYDEVLIB_PHY_INPUT extPA 		=%d 
-3568,I,PHYDEVLIB_PHY_INPUT isSBSmode 	=%d 
-3569,I,PHYDEVLIB_PHY_INPUT loType 		=%d 
-3570,I,PHYDEVLIB_PHY_INPUT dpdMode 	=%d 
-3571,I,PHYDEVLIB_PHY_INPUT loadIniMask 	=%d 
-3572,I,PHYDEVLIB_PHY_INPUT calMask 	=%x 
-3573,I,PHYDEVLIB_PHY_INPUT cal_mode_ctrl 	=%d 
-3574,I,PHYDEVLIB_PHY_INPUT boardId 	=%d 
-3575,I,FINALCASE pHandle 		=%x 
-3576,I,FINALCASE callingContext 		=%d 
-3577,I,FINALCASE calMode 		=%x 
-3578,I,FINALCASE calId 			=%d 
-3579,I,FINALCASE rxChainMask 		=%x 
-3580,I,FINALCASE in finalCase		=%x 
-3581,I,FINALCASE statusChainMask 		=%x 
-3582,I,FINALCASE subMode80p80 		=%x 
-3583,II,FINALCASE out finalCase 		=%x for calMode=%d 
-3584,I,OVERRIDE FINALCASE out finalCase 	=%d 
-3585,I,FC_HANDLE  pHandle 		=%x 
-3586,I,FC_HANDLE  phyInput 		=%x 
-3587,I,FC_HANDLE  rxdcoInput 		=%x 
-3588,I,FC_HANDLE  finalCase 		=%d 
-3589,I,FC_HANDLE  rxChainMask 		=%x 
-3590,I,FC_HANDLE  subMode80p80 		=%d 
-3591,I,FC_HANDLE  autoIterativeIdx 		=%d 
-3592,I,FC_HANDLE  rxdcoInput->calCmdId 	=%d 
-3593,I,FC_HANDLE  iterIdx 		=%d 
-3594,,RXDCO ****** invokes rxdco cal ***** 
-3595,IIIII,RXDCO ::: BF CAL_SAVE bwCode=%d, chainIdx=%d tableIdx=%d, Output:real= %x img=%x
- 
-3596,,RXDCO ::: AFTER:CAL_SAVE convertNewRxdcoLutfromCalDb failed
- 
-3597,I,ITER2CMDIDX  iterIdx 		=%d 
-3598,I,ITER2CMDIDX  cmdIdx 		=%d 
-3599,I,UPDATE_RXDCO_TRACKING  pHandle 	=%x 
-3600,III,UPDATE_RXDCO_TRACKING  calMode 	=%d (RXDCO_CAL_MODE_NORMAL=%d,RXDCO_CAL_MODE_DTIM=%d 
-3601,I,UPDATE_RXDCO_TRACKING  rxChainMask 	=%x 
-3602,I,UPDATE_RXDCO_TRACKING  subMode80p80 	=%d 
-3603,,UPDATE_RXDCO_TRACKING  	RXDCO_CAL_MODE_NORMAL 
-3604,,UPDATE_RXDCO_TRACKING  	RXDCO_CAL_MODE_NORMAL 
-3605,,APPLICALBE_RESUBMISSION_ONLY:: failure on not getting pStart (= NULL) from caldb! 
-3606,I,NEED_TO_DO_CAL:: cannot update rxdco caldb for chainIdx = %d! 
-3607,,RXDCO SM NEW COLDBOOT SUPPORT VERSION ************** 
-3608,I,RXDCO SM FINAL VERSION bandw=%d>>>>>>>>>>>>>>>>>> 
-3609,IIII,RXDCO SM SKIPPED:::finalCase = %d, doCalFlag = %d,  skipMask = %x, previousCalResultAtHomeCh=%d 
-3610,IIII,RXDCO SM REUSE:::finalCase = %d, doCalFlag = %d,  skipMask = %x, previousCalResultAtHomeCh=%d 
-3611,,RXDCO SM FINALCASE BASED 
-3612,,RXDCO SM FINAL VERSION <<<<<<<<<<<<<<<<<< 
-3613,,RXDCO SM BRING UP VERSION ************** 
-3614,IIII,RXDCO SM::bwCode=%d, bandCode=%d, calCmdId=%d, cal_mode=%d 
-3615,IIIII,RXDCO SM::rxChainMask=%x, homech=%d, phyMode=%d, dtim=%d boardId=0x%x 
-3616,IIIII,RXDCO SM::FCS:::Restore from tableIdx:%d homeCh:%d chain:%d, img:0x%x, real:0x%x 
-3617,IIII,RXDCO SM::FCS::: Save::: homeCh:%d, chain:%d, img:0x%x, real:0x%x 
-3618,,Unsigned value can't be negative! Please correct! 
-3619,,Unsigned value can't be negative! Please correct! 
-3620,II,scaledval = %d, Pow2_tiadc(2,(fpspec.bits - fpspec.ibits) = %x 
-3621,,Unsigned value can't be negative! Please correct! 
-3622,I,comb cal return rc = %d 
-3623,I,HW CaL polling time out...., calCount = %d 
-3624,II,core %d do_calibrate = %d 
-3625,III,TXCL digital corr core_idx=%d, chain=%d, gain_idx=%d
+3510,I,RXDCO ::SM::: convertNewRxdcoLutfromCalDb chainIdx = %d pStart= NULLLLLLLLLLLLLLLLL
+ 
+3511,II,convertNewRxdcoLutfromCalDb:::pStart=%x(pNewDcoLut=%x) from caldb
+ 
+3512,III,convertNewRxdcoLutfromCalDb:::Restore Rxdco LUT from caldb with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
+ 
+3513,II,convertNewRxdcoLutfromCalDb:::pStart=%x(pNewDcoLut=%x) to caldb=%d
+ 
+3514,III,convertNewRxdcoLutfromCalDb:::Save Rxdco LUT to caldb with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
+ 
+3515,,APPLICALBE_RESUBMISSION_ONLY:: failure on not getting pStart (= NULL) from caldb! 
+3516,I,APPLICALBE_RESUBMISSION_ONLY:: failure on getting chainIdx:%d from pPhyRxdcoInput 
+3517,I,MODE2CALID in  *calMode		=%d 
+3518,I,MODE2CALID in  *calId		=%d 
+3519,I,MODE2CALID in  retValue		=%d 
+3520,I,COMPOSE RXDCO INPUT pIn 		=%x 
+3521,I,COMPOSE RXDCO INPUT phyInput 	=%x 
+3522,I,COMPOSE RXDCO INPUT rxdcoInput 	=%x 
+3523,I,COMPOSE RXDCO INPUT pUnionDcoLut 	=%x 
+3524,I,COMPOSE RXDCO INPUT in *calId 	=%x 
+3525,I,COMPOSE RXDCO INPUT override bwCode 	=%x 
+3526,I,COMPOSE RXDCO INPUT out *calId 	=%x 
+3527,I,CAL_COMMON_PARAM pHandle 	=%x 
+3528,I,CAL_COMMON_PARAM calType 	=%d 
+3529,I,CAL_COMMON_PARAM cmdGroupId 	=%d 
+3530,I,CAL_COMMON_PARAM isRestoreOnly 	=%d 
+3531,I,CAL_COMMON_PARAM calTypeVarianceId 	=%d 
+3532,III,CAL_COMMON_PARAM reserved 	=%d %d %d 
+3533,I,CAL_COMMON_PARAM (pIn->pHandle).phyId 	=%x 
+3534,I,CAL_COMMON_PARAM halphyBW 	=%x 
+3535,I,PHYDEVLIB_PHY_INPUT phyId 		=%d 
+3536,I,PHYDEVLIB_PHY_INPUT bandCode	=%d 
+3537,I,PHYDEVLIB_PHY_INPUT bwCode 	=%d 
+3538,I,PHYDEVLIB_PHY_INPUT phyMode 	=%d 
+3539,I,PHYDEVLIB_PHY_INPUT band_center_freq1 	=%d 
+3540,I,PHYDEVLIB_PHY_INPUT band_center_freq2 	=%d 
+3541,I,PHYDEVLIB_PHY_INPUT txChMask 	=%x 
+3542,I,PHYDEVLIB_PHY_INPUT rxChMask 	=%x 
+3543,I,PHYDEVLIB_PHY_INPUT phyBase 	=%x 
+3544,I,PHYDEVLIB_PHY_INPUT phyBaseExt 	=%x 
+3545,I,PHYDEVLIB_PHY_INPUT concMode 	=%d 
+3546,I,PHYDEVLIB_PHY_INPUT dynPriChan 	=%d 
+3547,I,PHYDEVLIB_PHY_INPUT homeCh		=%d 
+3548,I,PHYDEVLIB_PHY_INPUT dtim 		=%d 
+3549,I,PHYDEVLIB_PHY_INPUT extLNA 		=%d 
+3550,I,PHYDEVLIB_PHY_INPUT extPA 		=%d 
+3551,I,PHYDEVLIB_PHY_INPUT isSBSmode 	=%d 
+3552,I,PHYDEVLIB_PHY_INPUT loType 		=%d 
+3553,I,PHYDEVLIB_PHY_INPUT dpdMode 	=%d 
+3554,I,PHYDEVLIB_PHY_INPUT loadIniMask 	=%d 
+3555,I,PHYDEVLIB_PHY_INPUT calMask 	=%x 
+3556,I,PHYDEVLIB_PHY_INPUT cal_mode_ctrl 	=%d 
+3557,I,PHYDEVLIB_PHY_INPUT boardId 	=%d 
+3558,I,FINALCASE pHandle 		=%x 
+3559,I,FINALCASE callingContext 		=%d 
+3560,I,FINALCASE calMode 		=%x 
+3561,I,FINALCASE calId 			=%d 
+3562,I,FINALCASE rxChainMask 		=%x 
+3563,I,FINALCASE in finalCase		=%x 
+3564,I,FINALCASE statusChainMask 		=%x 
+3565,I,FINALCASE subMode80p80 		=%x 
+3566,II,FINALCASE out finalCase 		=%x for calMode=%d 
+3567,I,OVERRIDE FINALCASE out finalCase 	=%d 
+3568,I,FC_HANDLE  pHandle 		=%x 
+3569,I,FC_HANDLE  phyInput 		=%x 
+3570,I,FC_HANDLE  rxdcoInput 		=%x 
+3571,I,FC_HANDLE  finalCase 		=%d 
+3572,I,FC_HANDLE  rxChainMask 		=%x 
+3573,I,FC_HANDLE  subMode80p80 		=%d 
+3574,I,FC_HANDLE  autoIterativeIdx 		=%d 
+3575,I,FC_HANDLE  rxdcoInput->calCmdId 	=%d 
+3576,I,FC_HANDLE  iterIdx 		=%d 
+3577,,RXDCO ****** invokes rxdco cal ***** 
+3578,IIIII,RXDCO ::: BF CAL_SAVE bwCode=%d, chainIdx=%d tableIdx=%d, Output:real= %x img=%x
+ 
+3579,,RXDCO ::: AFTER:CAL_SAVE convertNewRxdcoLutfromCalDb failed
+ 
+3580,I,ITER2CMDIDX  iterIdx 		=%d 
+3581,I,ITER2CMDIDX  cmdIdx 		=%d 
+3582,I,UPDATE_RXDCO_TRACKING  pHandle 	=%x 
+3583,III,UPDATE_RXDCO_TRACKING  calMode 	=%d (RXDCO_CAL_MODE_NORMAL=%d,RXDCO_CAL_MODE_DTIM=%d 
+3584,I,UPDATE_RXDCO_TRACKING  rxChainMask 	=%x 
+3585,I,UPDATE_RXDCO_TRACKING  subMode80p80 	=%d 
+3586,,UPDATE_RXDCO_TRACKING  	RXDCO_CAL_MODE_NORMAL 
+3587,,UPDATE_RXDCO_TRACKING  	RXDCO_CAL_MODE_NORMAL 
+3588,,APPLICALBE_RESUBMISSION_ONLY:: failure on not getting pStart (= NULL) from caldb! 
+3589,I,NEED_TO_DO_CAL:: cannot update rxdco caldb for chainIdx = %d! 
+3590,,RXDCO SM NEW COLDBOOT SUPPORT VERSION ************** 
+3591,I,RXDCO SM FINAL VERSION bandw=%d>>>>>>>>>>>>>>>>>> 
+3592,IIII,RXDCO SM SKIPPED:::finalCase = %d, doCalFlag = %d,  skipMask = %x, previousCalResultAtHomeCh=%d 
+3593,IIII,RXDCO SM REUSE:::finalCase = %d, doCalFlag = %d,  skipMask = %x, previousCalResultAtHomeCh=%d 
+3594,,RXDCO SM FINALCASE BASED 
+3595,,RXDCO SM FINAL VERSION <<<<<<<<<<<<<<<<<< 
+3596,,RXDCO SM BRING UP VERSION ************** 
+3597,IIII,RXDCO SM::bwCode=%d, bandCode=%d, calCmdId=%d, cal_mode=%d 
+3598,IIIII,RXDCO SM::rxChainMask=%x, homech=%d, phyMode=%d, dtim=%d boardId=0x%x 
+3599,IIIII,RXDCO SM::FCS:::Restore from tableIdx:%d homeCh:%d chain:%d, img:0x%x, real:0x%x 
+3600,IIII,RXDCO SM::FCS::: Save::: homeCh:%d, chain:%d, img:0x%x, real:0x%x 
+3601,I,PALCAL_INPUT calCmdId			=%d 
+3602,I,PALCAL_INPUT pPalDlyVals			=%x 
+3603,I,PALCAL_INPUT pcalMethod			=%d 
+3604,I,PALCAL_INPUT pcalOptDoSetEDandDM		=%d 
+3605,III,PALCAL CONF ModeStatus[phyId=%d][ConfMode=%d][0]	=%d 
+3606,III,PALCAL CONF ModeStatus[phyId=%d][ConfMode=%d][1]	=%d 
+3607,III,PALCAL CONF ModeStatus[phyId=%d][ConfMode=%d][2]	=%d 
+3608,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][0]		=%d 
+3609,III,PALCAL STORE palCalDlyVals[phyId=%d]{%d][1]		=%d 
+3610,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][2]		=%d 
+3611,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][3]		=%d 
+3612,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][4]		=%d 
+3613,III,PALCAL STORE palCalDlyVals[phyId=%d][%d][5]		=%d 
+3614,,Welcome, cal SM for Pdet Cal will be created 
+3615,,PALCAL STARTED 
+3616,I,PALCAL CONF final pal_cal_input->pcalMethod=%d 
+3617,,PALCAL COMPLETED 
+3618,IIIIII,PAPRD:Chain = %d, tpc_index = %d, table_offset = %d, glut_idx_offset = %x, txgain_index = %d isForcedGainMode = %d
  
-3626,I,Array bound! num_uvals=%lu 
-3627,I,%d 
-3628,I,-%d 
-3629,IIIIII,PAPRD:Chain = %d, tpc_index = %d, table_offset = %d, glut_idx_offset = %x, txgain_index = %d isForcedGainMode = %d
+3619,I,PAPRD: HWDISABLE CHAIN : %d
  
-3630,I,PAPRD: HWDISABLE CHAIN : %d
+3620,,PAPRD: HWDISABLE ALL
  
-3631,,PAPRD: HWDISABLE ALL
+3621,I,-Q5-PAPRD-:Iron version is : %d 
  
-3632,I,-Q5-PAPRD-:Iron version is : %d 
+3622,II,-Q5-PAPRD-:Chain = %d, Tx Cal Sub Mode = %d 
  
-3633,II,-Q5-PAPRD-:Chain = %d, Tx Cal Sub Mode = %d 
+3623,III,-Q5-PAPRD-:Chain = %d, dpd Rx loop chian %d Rx Cal Sub Mode = %d 
  
-3634,III,-Q5-PAPRD-:Chain = %d, dpd Rx loop chian %d Rx Cal Sub Mode = %d 
+3624,I,-Q5-PAPRD-:Loopback Attenuation = %d
  
-3635,I,-Q5-PAPRD-:Loopback Attenuation = %d
+3625,III,PAPRD-: set_txgain_idx DPD DAC gain = 0x%x chainmask = 0x%x, Phy Id = %d 
  
-3636,III,PAPRD-: set_txgain_idx DPD DAC gain = 0x%x chainmask = 0x%x, Phy Id = %d 
+3626,I,-Q5-PAPRDTUNING-:DynBW = %d 
  
-3637,I,-Q5-PAPRDTUNING-:DynBW = %d 
+3627,I,-Q5-PAPRDTUNING-:Min loopback delay  = %d 
  
-3638,I,-Q5-PAPRDTUNING-:Min loopback delay  = %d 
+3628,I,-Q5-PAPRD : StopTraining for Chain = %d 
  
-3639,I,-Q5-PAPRD : StopTraining for Chain = %d 
+3629,IIII,--Q5--PAPRDPHYDBG %d %d %d %d
  
-3640,IIII,--Q5--PAPRDPHYDBG %d %d %d %d
+3630,III,-Q5-PAPRDTUNING-:sq PASS: sq_idx_sw %d sq_idx_hw %d force_sq_idx %d
  
-3641,III,-Q5-PAPRDTUNING-:sq PASS: sq_idx_sw %d sq_idx_hw %d force_sq_idx %d
+3631,IIII,-Q5-PAPRDTUNING-:sq FAIL : %d sq_idx_sw %d sq_idx_hw %d force_sq_idx %d
  
-3642,IIII,-Q5-PAPRDTUNING-:sq FAIL : %d sq_idx_sw %d sq_idx_hw %d force_sq_idx %d
+3632,,-Q5-PAPRD-:DPD training Failed. Paprd Done bit is not set in HW!
  
-3643,,-Q5-PAPRD-:DPD training Failed. Paprd Done bit is not set in HW!
+3633,I,-Q5-PAPRDTUNING-:DPD training AGC2 size 0x%x 
  
-3644,I,-Q5-PAPRDTUNING-:DPD training AGC2 size 0x%x 
+3634,I,-Q5-PAPRDTUNING-:DPD training AGC2 pwr 0x%x 
  
-3645,I,-Q5-PAPRDTUNING-:DPD training AGC2 pwr 0x%x 
+3635,I,-Q5-PAPRDTUNING-:DPD training rx gain idx 0x%x 
  
-3646,I,-Q5-PAPRDTUNING-:DPD training rx gain idx 0x%x 
+3636,I,-Q5-PAPRD-:DPD training active %d 
  
-3647,I,-Q5-PAPRD-:DPD training active %d 
+3637,I,-Q5-PAPRD-:DPD training incomplete %d 
  
-3648,I,-Q5-PAPRD-:DPD training incomplete %d 
+3638,I,-Q5-PAPRDTUNING-:SQ index HW is %d 
  
-3649,I,-Q5-PAPRDTUNING-:SQ index HW is %d 
+3639,I,-Q5-PAPRD-:DC estimate I %d 
  
-3650,I,-Q5-PAPRD-:DC estimate I %d 
+3640,I,-Q5-PAPRD-:DC estimate Q %d 
  
-3651,I,-Q5-PAPRD-:DC estimate Q %d 
+3641,I,-Q5-PAPRD-:HW calculated stage2 min dispersion = %lu 
  
-3652,I,-Q5-PAPRD-:HW calculated stage2 min dispersion = %lu 
+3642,I,-Q5-PAPRD-:Dispersion value at SQ Stage2 (minimum index - 1) = %lu 
  
-3653,I,-Q5-PAPRD-:Dispersion value at SQ Stage2 (minimum index - 1) = %lu 
+3643,I,-Q5-PAPRD-:Dispersion value at SQ Stage2 (minimum index + 1) = %lu 
  
-3654,I,-Q5-PAPRD-:Dispersion value at SQ Stage2 (minimum index + 1) = %lu 
+3644,II,-Q5-PAPRD-:CheckSignalQuality sq_idx_sw %d sq quality %d 
  
-3655,II,-Q5-PAPRD-:CheckSignalQuality sq_idx_sw %d sq quality %d 
+3645,,-Q5-PAPRD-:Read back DPD training data from memory:
  
-3656,,-Q5-PAPRD-:Read back DPD training data from memory:
+3646,II,-Q5-PAPRD-:Raw Data: chain %d table %d
  
-3657,II,-Q5-PAPRD-:Raw Data: chain %d table %d
+3647,,-Q5-PAPRD-:DpdTrainData0	  DpdTrainData1	 DpdTrainData2	 DpdTrainData3 
  
-3658,,-Q5-PAPRD-:DpdTrainData0	  DpdTrainData1	 DpdTrainData2	 DpdTrainData3 
+3648,IIII,-Q5-PAPRD-:%lu	 %lu	 %lu	 %lu 
  
-3659,IIII,-Q5-PAPRD-:%lu	 %lu	 %lu	 %lu 
+3649,II, PAPRD: Populate DPD LUT of Chain %lu at table_idx %lu 
  
-3660,II, PAPRD: Populate DPD LUT of Chain %lu at table_idx %lu 
+3650,IIII, PAPRD:tableType: %d tableIdx: %d at even entry: %d from is : %lx
  
-3661,IIII, PAPRD:tableType: %d tableIdx: %d at even entry: %d from is : %lx
+3651,IIII, PAPRD:tableType: %d tableIdx: %d at odd entry: %d from is : %lx
  
-3662,IIII, PAPRD:tableType: %d tableIdx: %d at odd entry: %d from is : %lx
+3652,I,-Q5-PAPRD-:channel freq %d
  
-3663,I,-Q5-PAPRD-:channel freq %d
+3653,II,-Q5-PAPRD-:txChain %d tableIndex %d
  
-3664,II,-Q5-PAPRD-:txChain %d tableIndex %d
+3654,I,-Q5-PAPRD-:forced_sq_idx %d 
+3655,II,-Q5-PAPRD-:sq_idx_sw %d sq_idx_hw %d
  
-3665,I,-Q5-PAPRD-:forced_sq_idx %d 
-3666,II,-Q5-PAPRD-:sq_idx_sw %d sq_idx_hw %d
+3656,II,--Q5--PAPRD: validmask 0x%x phyInput->validChainMask 0x%x
  
-3667,II,--Q5--PAPRD: validmask 0x%x phyInput->validChainMask 0x%x
+3657,I,comb cal return rc = %d 
+3658,I,HW CaL polling time out...., calCount = %d 
+3659,II,core %d do_calibrate = %d 
+3660,III,TXCL digital corr core_idx=%d, chain=%d, gain_idx=%d
  
-3668,III,RXDCO::rxdco_write_dco_lut time(%u - %u) = %u 
-3669,,RXDCO:: cal failure 
-3670,IIIII,rxdco_save:::pDcoLut=%x + tableIdx = %d, Rxdco LUT from HW with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
+3661,I,Array bound! num_uvals=%lu 
+3662,I,%d 
+3663,I,-%d 
+3664,II,-Q5-PAPRD-:phy_core_PaprdChangeTrainingIndex(): Change training position to chain index %d and dpd table index %d 
  
-3671,IIIII,rxdco_restore:::pDcoLut=%x + tableIdx = %d, Write Rxdco LUT into HW with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
+3665,I,-Q5-PAPRD-:Invalid channel %d
  
-3672,III,RxDCO - SEC RUN VHT160 - %d, PRI80 - 0x%x, SEC80 - 0x%x
+3666,II,-Q5-PAPRD-:pPaprdStruct->tableIndex = %d, pPaprdStruct->txChain = %d
  
-3673,III,RxDCO - PRI RUN VHT160 - %d, PRI80 - 0x%x, SEC80 - 0x%x
+3667,I,-Q5-PAPRD-:training_done_for_curr_table_idx %d 
  
-3674,I,RXDCO: *************************************** HW cal timeout, range_iter=%d 
-3675,I,RXDCO: cal done successful, range_iter=%d 
-3676,,RXDCO: Failed all 3 tries! 
+3668,II,-Q5-PAPRD-:SQ is %lu and update DPD table; Training done table : 0x%x
  
-3677,,index out of range 
-3678,I,cal_done time out calDoneCount=%lu 
-3679,I,cal_done early calDoneCount=%lu 
-3680,,RXDCO: cal_done failure and reset DO_CALIBRATE bit and CF_RESET_CORE !!!!!
+3669,III,-Q5-PAPRD-:SQ is %lu; SQ > SQ limit, DPD cal failed at chain %d table index %d
  
-3681,IIII,Rxdco::: suboptim: [%d][%d]:ABS(Res_Imag) = %d, ABS(Res_Real) = %d 
-3682,IIII,Rxdco::: Failed: [%d][%d]:ABS(Res_Imag) = %d, ABS(Res_Real) = %d 
-3683,IIII,Rxdco::: OK: [%d][%d]:ABS(Res_Imag) = %d, ABS(Res_Real) = %d 
-3684,III,Rxdco::: failure_count[%d] = %d, num_cal_gain = %d 
-3685,IIII,RXDCO::TRangeOK %d Tsuccess %d TResidualOK %d pIter_parms->dcoc_range %d 
-3686,I,phyPkDetDcoCal: Peak Detector DCO CAL phyId = %d ... 
-3687,II,phyPkDetDcoCal: Peak Detector DCO CAL phyId = %d failed (failed chain mask %x) 
-3688,I,phyPkDetDcoCal: Peak Detector DCO CAL phyId = %d completed 
-3689,II,-Q5-PAPRD-:phy_core_PaprdChangeTrainingIndex(): Change training position to chain index %d and dpd table index %d 
+3670,,-Q5-PAPRD-:X 	 Y 	 theta
  
-3690,I,-Q5-PAPRD-:Invalid channel %d
+3671,III,-Q5-PAPRD-:%lu	%lu	%lu
  
-3691,II,-Q5-PAPRD-:pPaprdStruct->tableIndex = %d, pPaprdStruct->txChain = %d
+3672,III,-Q5-PAPRD-:small signal gain is %ld | angle is 0x%x noise_ratio_ampm = %d
  
-3692,I,-Q5-PAPRD-:training_done_for_curr_table_idx %d 
+3673,IIII,-Q5-PAPRD-:PA_in[%d] = 0x%lx 	 PA_angle[%d] = 0x%lx
  
-3693,II,-Q5-PAPRD-:SQ is %lu and update DPD table; Training done table : 0x%x
+3674,II,-Q5-PAPRD-:phy_core_PaprdCalcGainFxp : max bins %d X[GfxpIdx] %d
  
-3694,III,-Q5-PAPRD-:SQ is %lu; SQ > SQ limit, DPD cal failed at chain %d table index %d
+3675,II,-Q5-PAPRDTUNING-:small signal gain is %d, max_bins %d
  
-3695,,-Q5-PAPRD-:X 	 Y 	 theta
+3676,III,RXDCO::rxdco_write_dco_lut time(%u - %u) = %u 
+3677,,RXDCO:: cal failure 
+3678,IIIII,rxdco_save:::pDcoLut=%x + tableIdx = %d, Rxdco LUT from HW with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
  
-3696,III,-Q5-PAPRD-:%lu	%lu	%lu
+3679,IIIII,rxdco_restore:::pDcoLut=%x + tableIdx = %d, Write Rxdco LUT into HW with chainIdx = %d, LUT_Imag = 0x%x, LUT_Real = 0x%x
  
-3697,III,-Q5-PAPRD-:small signal gain is %ld | angle is 0x%x noise_ratio_ampm = %d
+3680,III,RxDCO - SEC RUN VHT160 - %d, PRI80 - 0x%x, SEC80 - 0x%x
  
-3698,IIII,-Q5-PAPRD-:PA_in[%d] = 0x%lx 	 PA_angle[%d] = 0x%lx
+3681,III,RxDCO - PRI RUN VHT160 - %d, PRI80 - 0x%x, SEC80 - 0x%x
  
-3699,II,-Q5-PAPRD-:phy_core_PaprdCalcGainFxp : max bins %d X[GfxpIdx] %d
+3682,I,RXDCO: *************************************** HW cal timeout, range_iter=%d 
+3683,I,RXDCO: cal done successful, range_iter=%d 
+3684,,RXDCO: Failed all 3 tries! 
  
-3700,II,-Q5-PAPRDTUNING-:small signal gain is %d, max_bins %d
+3685,,index out of range 
+3686,I,cal_done time out calDoneCount=%lu 
+3687,I,cal_done early calDoneCount=%lu 
+3688,,RXDCO: cal_done failure and reset DO_CALIBRATE bit and CF_RESET_CORE !!!!!
  
+3689,IIII,Rxdco::: suboptim: [%d][%d]:ABS(Res_Imag) = %d, ABS(Res_Real) = %d 
+3690,IIII,Rxdco::: Failed: [%d][%d]:ABS(Res_Imag) = %d, ABS(Res_Real) = %d 
+3691,IIII,Rxdco::: OK: [%d][%d]:ABS(Res_Imag) = %d, ABS(Res_Real) = %d 
+3692,III,Rxdco::: failure_count[%d] = %d, num_cal_gain = %d 
+3693,IIII,RXDCO::TRangeOK %d Tsuccess %d TResidualOK %d pIter_parms->dcoc_range %d 
+3694,I,phyPkDetDcoCal: Peak Detector DCO CAL phyId = %d ... 
+3695,II,phyPkDetDcoCal: Peak Detector DCO CAL phyId = %d failed (failed chain mask %x) 
+3696,I,phyPkDetDcoCal: Peak Detector DCO CAL phyId = %d completed 
+3697,,Unsigned value can't be negative! Please correct! 
+3698,,Unsigned value can't be negative! Please correct! 
+3699,II,scaledval = %d, Pow2_tiadc(2,(fpspec.bits - fpspec.ibits) = %x 
+3700,,Unsigned value can't be negative! Please correct! 
 3701,I,POE : phyDisableIron_qca8704() DISABLE FLAG %d
  
 3702,IIII,POE: set_synth_channel() BW = %di LO type = %d, PHY Id = %d PHY base = 0x%x 
@@ -4218,60 +4218,60 @@ phy_warm_reset = %d
 3728,IIIII,DFS_DUMPS ts=%d delta_peak=%d delta_diff=%d total_gain=%d is_max_pw=%d  
 3729,IIIII,DFS_DUMP radar summary detection_mode=%d  timestamp=%d pulse_rssi=%d is_chirp=%d sidx=%d
  
-3730,II,DFS_DUMPS Radar Found with Filter Id = %d min dur=%d
+3730,,FFT_RAW START 
  
-3731,II,CHANNEL_CLOSE radarevent g_dfs_test_mode=%d  event_data.detection_mode=%d
+3731,II,FFT_RAW %p 0x%x 
  
-3732,I,DFS_DEBUGS false_radar dfs->dfs_seq_num =%d
+3732,II,FFT_RAW %p 0x%x 
  
-3733,III,DFS_DUMPS %s: Rejecting Radar since duration diff %ld is more than %d
+3733,II,FFT_RAW %p 0x%x 
  
-3734,,PHYDBG Memory Dump
+3734,II,FFT_RAW %p 0x%x 
  
-3735,I,PHYDBG MEMBANK %d
+3735,,FFT_RAW END 
  
-3736,I,LWORD: 0x%x 
-3737,I,UWORD: 0x%x 
-3738,I,LWORD: 0x%x 
-3739,I,UWORD: 0x%x 
-3740,,PHYDBG ADC capture configured
+3736,III,DFS_DUMP pcss_ipc_sig_handler_process_multiple_ring_element pHandle=%d ipc_ring_id=%d num_bufs=%d
  
-3741,,PHYDBG capture started
+3737,II,DFS_DUMP Dfs0Sighandler pHandle=%d ipc_ring_id=%d
  
-3742,,PHYDBG capture stopped
+3738,II,DFS_DUMP Dfs1Sighandler pHandle=%d ipc_ring_id=%d
  
-3743,I,PHYDBG Event Capture Configured with 0x%x
+3739,II,DFS_DUMPS Radar Found with Filter Id = %d min dur=%d
  
-3744,I,HALPHY DUMP: WIFITOOL issued with subcommand ID %d 
-3745,I,BDF DUMP: Invalid NV Section  %d 
-3746,I,BDF DUMP: NV Section Size: %d 
-3747,II,BDF DUMP: sub-section size: %d sub-section id: 0x%d 
-3748,II,BDF DUMP: index: %d d: 0x%x 
-3749,II,BDF DUMP: index: %d d:0x%x 
-3750,III,ANI_DUMP_PHYID%d g_ani_dl_ofdm %d g_error_threshold %d 
+3740,II,CHANNEL_CLOSE radarevent g_dfs_test_mode=%d  event_data.detection_mode=%d
  
-3751,II,g_XtalCalPPM[%d]=%d 
-3752,II,g_ThermalEnable[%d]=%d 
-3753,I,pResetStruct->enable_ldocal_otp = %u 
-3754,I,ANI_DUMP_PHYID%d WIFITOOL COMMAND ISSUED TO SET MIN / MAX DL OF ANI 
+3741,I,DFS_DEBUGS false_radar dfs->dfs_seq_num =%d
  
-3755,I,ANI_DUMP_PHYID%d CONFIG OF ANI 
+3742,III,DFS_DUMPS %s: Rejecting Radar since duration diff %ld is more than %d
  
-3756,II,ANI_DUMP_PHYID%d g_ani_enable %d 
+3743,,PHYDBG Memory Dump
  
-3757,II,ANI_DUMP_PHYID%d g_ani_trigger %d 
+3744,I,PHYDBG MEMBANK %d
  
-3758,II,ANI_DUMP_PHYID%d g_ani_dl_ofdm %d 
+3745,I,LWORD: 0x%x 
+3746,I,UWORD: 0x%x 
+3747,I,LWORD: 0x%x 
+3748,I,UWORD: 0x%x 
+3749,,PHYDBG ADC capture configured
  
-3759,II,ANI_DUMP_PHYID%d g_ani_dl_cck %d 
+3750,,PHYDBG capture started
  
-3760,II,ANI_DUMP_PHYID%d g_ani_dl_min %d 
+3751,,PHYDBG capture stopped
  
-3761,II,ANI_DUMP_PHYID%d g_ani_dl_max %d 
+3752,I,PHYDBG Event Capture Configured with 0x%x
  
-3762,II,ANI_DUMP_PHYID%d g_error_threshold %d 
+3753,I,HALPHY DUMP: WIFITOOL issued with subcommand ID %d 
+3754,I,BDF DUMP: Invalid NV Section  %d 
+3755,I,BDF DUMP: NV Section Size: %d 
+3756,II,BDF DUMP: sub-section size: %d sub-section id: 0x%d 
+3757,II,BDF DUMP: index: %d d: 0x%x 
+3758,II,BDF DUMP: index: %d d:0x%x 
+3759,III,ANI_DUMP_PHYID%d g_ani_dl_ofdm %d g_error_threshold %d 
  
-3763,I,ANI_DUMP_PHYID%d WIFITOOL COMMAND ISSUED TO SET ERROR THRESHOLD OF ANI 
+3760,II,g_XtalCalPPM[%d]=%d 
+3761,II,g_ThermalEnable[%d]=%d 
+3762,I,pResetStruct->enable_ldocal_otp = %u 
+3763,I,ANI_DUMP_PHYID%d WIFITOOL COMMAND ISSUED TO SET MIN / MAX DL OF ANI 
  
 3764,I,ANI_DUMP_PHYID%d CONFIG OF ANI 
  
@@ -4289,30 +4289,30 @@ phy_warm_reset = %d
  
 3771,II,ANI_DUMP_PHYID%d g_error_threshold %d 
  
-3772,I,PAPRD: Invalid PHY ID = %d 
-3773,II,PAPRD: Phy ID %d | Enable for MM = %d 
-3774,IIII,ADDRVAL: indx = %d addr = 0x%X val = 0x%X en=%d 
-3775,IIII,ADDRVAL: indx = %d addr = 0x%X val = 0x%X en=%d 
-3776,IIII,ADDRVAL: indx = %d addr = 0x%X val = 0x%X en=%d 
-3777,I,Invalid or Unsupported halphy debug sub command: %d 
-3778,,FFT_RAW START 
+3772,I,ANI_DUMP_PHYID%d WIFITOOL COMMAND ISSUED TO SET ERROR THRESHOLD OF ANI 
  
-3779,II,FFT_RAW %p 0x%x 
+3773,I,ANI_DUMP_PHYID%d CONFIG OF ANI 
  
-3780,II,FFT_RAW %p 0x%x 
+3774,II,ANI_DUMP_PHYID%d g_ani_enable %d 
  
-3781,II,FFT_RAW %p 0x%x 
+3775,II,ANI_DUMP_PHYID%d g_ani_trigger %d 
  
-3782,II,FFT_RAW %p 0x%x 
+3776,II,ANI_DUMP_PHYID%d g_ani_dl_ofdm %d 
  
-3783,,FFT_RAW END 
+3777,II,ANI_DUMP_PHYID%d g_ani_dl_cck %d 
  
-3784,III,DFS_DUMP pcss_ipc_sig_handler_process_multiple_ring_element pHandle=%d ipc_ring_id=%d num_bufs=%d
+3778,II,ANI_DUMP_PHYID%d g_ani_dl_min %d 
  
-3785,II,DFS_DUMP Dfs0Sighandler pHandle=%d ipc_ring_id=%d
+3779,II,ANI_DUMP_PHYID%d g_ani_dl_max %d 
  
-3786,II,DFS_DUMP Dfs1Sighandler pHandle=%d ipc_ring_id=%d
+3780,II,ANI_DUMP_PHYID%d g_error_threshold %d 
  
+3781,I,PAPRD: Invalid PHY ID = %d 
+3782,II,PAPRD: Phy ID %d | Enable for MM = %d 
+3783,IIII,ADDRVAL: indx = %d addr = 0x%X val = 0x%X en=%d 
+3784,IIII,ADDRVAL: indx = %d addr = 0x%X val = 0x%X en=%d 
+3785,IIII,ADDRVAL: indx = %d addr = 0x%X val = 0x%X en=%d 
+3786,I,Invalid or Unsupported halphy debug sub command: %d 
 3787,,No BDF merge since one of the pointer is NULL or invalid length 
 3788,IIII,loadDFStable - table: %d, phy: %d, column: %d, filt: %c
  
@@ -4435,78 +4435,78 @@ phy_warm_reset = %d
 3868,III,tpcOnepointCal::phyId %d Chain %u thermalVal %u 
 3869,I,ov_rel1:%d 
 3870,IIII,tpcOnepointCal:: thermCalValue %u alphaTherm %u thermGainErrMax %u for chain %u 
-3871,IIIIIIII,ANI_DUMP2_PHYID%d OFDM DL=%d CDL=%d min_a=%x min_b=%x min_c=%x min_d=%x offset=%d
+3871,I,WarmReset Cause = Ucode |phyid = %d 
  
-3872,IIIIIIII,ANI_DUMP2_PHYID%d OFDM DL=%d CDL=%d a=%x b=%x c=%x d=%x offset=%d
+3872,I,WarmReset Cause = MAC |phyid = %d 
  
-3873,IIII,ANI_DUMP2_PHYID%d CCK DL=%d CDL=%d offset=%d 
+3873,,SpurMitigation: No 2G Spur freq available 
  
-3874,I,WarmReset Cause = Ucode |phyid = %d 
+3874,,SpurMitigation: No 5G Spur freq available 
  
-3875,I,WarmReset Cause = MAC |phyid = %d 
+3875,I,SpurMitigation: flatChannelThreshold : 0x%x 
  
-3876,,SpurMitigation: No 2G Spur freq available 
+3876,,SpurMitigation: Spur is in Pri20 
  
-3877,,SpurMitigation: No 5G Spur freq available 
+3877,I,SpurMitigation: flatChannelThreshold : 0x%x 
  
-3878,I,SpurMitigation: flatChannelThreshold : 0x%x 
+3878,IIII,%s PriCount : 0x%lx , 1stPriSpur : 0x%lx , 2ndPriSpur : 0x%lx 
  
-3879,,SpurMitigation: Spur is in Pri20 
+3879,IIII,%s ExtCount : 0x%lx , 1stExtSpur : 0x%lx , 2ndExtSpur : 0x%lx 
  
-3880,I,SpurMitigation: flatChannelThreshold : 0x%x 
+3880,I,the bwCode %d
  
-3881,IIII,%s PriCount : 0x%lx , 1stPriSpur : 0x%lx , 2ndPriSpur : 0x%lx 
+3881,,WarmReset: Skip WSI Config for WarmReset 
+3882,,Setting QuarterRate %d
  
-3882,IIII,%s ExtCount : 0x%lx , 1stExtSpur : 0x%lx , 2ndExtSpur : 0x%lx 
+3883,,Setting Half Rate %d
  
-3883,I,the bwCode %d
+3884,I,ANI_DUMP_PHYID%d SAVE ANI DEFAULTS 
  
-3884,,WarmReset: Skip WSI Config for WarmReset 
-3885,,Setting QuarterRate %d
+3885,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1a_db %x 
  
-3886,,Setting Half Rate %d
+3886,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1b_db %x 
  
-3887,I,ANI_DUMP_PHYID%d SAVE ANI DEFAULTS 
+3887,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1c_db %x 
  
-3888,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1a_db %x 
+3888,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1d_db %x 
  
-3889,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1b_db %x 
+3889,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1a_en %x 
  
-3890,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1c_db %x 
+3890,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1b_en %x 
  
-3891,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1d_db %x 
+3891,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1c_en %x 
  
-3892,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1a_en %x 
+3892,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_lt_thr1d_en %x 
  
-3893,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1b_en %x 
+3893,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.desense_11b_thr_vreg %x 
  
-3894,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1c_en %x 
+3894,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.maxGainTableIniDefaults.max_rf_Gain %d 
  
-3895,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_lt_thr1d_en %x 
+3895,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.maxGainTableIniDefaults.max_rf_LowGain %d 
  
-3896,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.desense_11b_thr_vreg %x 
+3896,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.maxGainTableIniDefaults.max_rf_VeryLowGain %d 
  
-3897,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.maxGainTableIniDefaults.max_rf_Gain %d 
+3897,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1a_db_ext %x 
  
-3898,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.maxGainTableIniDefaults.max_rf_LowGain %d 
+3898,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1b_db_ext %x 
  
-3899,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.maxGainTableIniDefaults.max_rf_VeryLowGain %d 
+3899,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1c_db_ext %x 
  
-3900,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1a_db_ext %x 
+3900,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1d_db_ext %x 
  
-3901,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1b_db_ext %x 
+3901,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1a_en_ext %x 
  
-3902,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1c_db_ext %x 
+3902,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1b_en_ext %x 
  
-3903,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_thr1d_db_ext %x 
+3903,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1c_en_ext %x 
  
-3904,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1a_en_ext %x 
+3904,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_lt_thr1d_en_ext %x 
  
-3905,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1b_en_ext %x 
+3905,IIIIIIII,ANI_DUMP2_PHYID%d OFDM DL=%d CDL=%d min_a=%x min_b=%x min_c=%x min_d=%x offset=%d
  
-3906,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_gt_thr1c_en_ext %x 
+3906,IIIIIIII,ANI_DUMP2_PHYID%d OFDM DL=%d CDL=%d a=%x b=%x c=%x d=%x offset=%d
  
-3907,II,ANI_DUMP_PHYID%d pAniStruct->ini_defaults.rssi_lt_thr1d_en_ext %x 
+3907,IIII,ANI_DUMP2_PHYID%d CCK DL=%d CDL=%d offset=%d 
  
 3908,I,WHAL_ERROR_EEPROM_MACADDR - sum = %lx
  

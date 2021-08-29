@@ -708,7 +708,7 @@ var getRestartService = function(){
 	if(
 		qisPostData.hasOwnProperty("wl0_ssid") || 
 		qisPostData.hasOwnProperty("wl0.1_ssid") || 
-		qisPostData.hasOwnProperty("wl0_he_features") || 
+		qisPostData.hasOwnProperty("wl0_11ax") || 
 		systemVariable.isDefault || 
 		isSmartConnectChanged()
 	){

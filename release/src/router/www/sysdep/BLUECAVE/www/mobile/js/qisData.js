@@ -275,7 +275,7 @@ var boostKeyObj = {
 }
 
 var axModeObj = {
-	"wl0_he_features": "3",
-	"wl1_he_features": "7",
-	"wl2_he_features": "7"
+	"wl0_11ax": "1",
+	"wl1_11ax": "1",
+	"wl2_11ax": "1"
 }

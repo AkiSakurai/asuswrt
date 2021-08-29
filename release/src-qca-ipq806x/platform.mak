@@ -179,8 +179,10 @@ define platformRouterOptions
 		sed -i "/RTCONFIG_VHT160/d" $(1); \
 		if [ "$(BW160M)" = "y" ]; then \
 			echo "RTCONFIG_VHT160=y" >>$(1); \
+			echo "RTCONFIG_BW160M=y" >>$(1); \
 		else \
 			echo "# RTCONFIG_VHT160 is not set" >>$(1); \
+			echo "# RTCONFIG_BW160M is not set" >>$(1); \
 		fi; \
 		for chip in $(SWITCH_CHIP_ID_POOL) ; do \
 			sed -i "/RTCONFIG_SWITCH_$${chip}\>/d" $(1); \
@@ -466,8 +468,6 @@ define platformKernelConfig
 			echo "# CONFIG_BRIDGE_EBT_ARPNAT is not set" >>$(1); \
 			sed -i "/CONFIG_NF_CONNTRACK_EVENTS/d" $(1); \
 			echo "CONFIG_NF_CONNTRACK_EVENTS=y" >>$(1); \
-			sed -i "/CONFIG_NF_CONNTRACK_CHAIN_EVENTS/d" $(1); \
-			echo "# CONFIG_NF_CONNTRACK_CHAIN_EVENTS is not set" >>$(1); \
 		fi; \
 		if [ "$(RTAC88N)" = "y" ] ; then \
 			sed -i "/CONFIG_MACH_IPQ806X_AP148\>/d" $(1); \

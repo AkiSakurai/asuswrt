@@ -95,7 +95,7 @@ function initial(){
 		var dcDesc = new Array();
 		cur = '<% nvram_get("fanctrl_dutycycle"); %>';
 		dc = [0, -1, 1, 2, 3];	/* auto, off, state 1~3 */
-		dcDesc = ["<#Auto#>", "<#btn_disable#>", "76%", "86%", "100%"];
+		dcDesc = ["<#Auto#>", "<#btn_disable#>", "<#Low#>", "<#Medium#>", "<#High#>"];
 		add_options_x2(document.form.fanctrl_dutycycle, dcDesc, dc, cur);
 	}
 

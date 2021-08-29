@@ -160,6 +160,10 @@ ifeq ($(RTCONFIG_BCMBSD),y)
 CFLAGS += -DSMART_CONNECT
 endif
 
+ifeq ($(or $(HND_ROUTER_AX),$(RTCONFIG_WIFI_QCN5024_QCN5054)),y)
+CFLAGS += -DSUPPORT_11AX
+endif
+
 ifeq ($(wildcard $(SRCBASE)/router/cfg_mnt/*.c),)
 all:
 	-cp -f prebuild/cfg_server cfg_server

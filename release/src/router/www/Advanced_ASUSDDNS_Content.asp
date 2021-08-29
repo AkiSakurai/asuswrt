@@ -88,7 +88,7 @@ function init(){
 		}
 	}
 
-	setTimeout(show_warning_message, 100);
+	setTimeout(show_warning_message, 1000);
 
 	ASUS_EULA.config(applyRule, refreshpage);
 	if(ddns_enable_x == "1" && ddns_server_x == "WWW.ASUS.COM"){
@@ -135,7 +135,6 @@ function show_warning_message(){
 		showhide("wan_ip_hide2", 1);
 }
 
-<% get_realip(); %>
 function get_real_ip(){
 	$.ajax({
 		url: 'get_real_ip.asp',

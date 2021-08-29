@@ -97,6 +97,9 @@ Set Up Environment(Tested in Fedora 8/9 and Ubuntu)
 		If you are using Fedora 29+, you may need to install 32-bit packages listed below.
 			glibc-devel.i686
 
+		If you are using Fedora 31+, you may need to install packages listed below.
+			python2
+
    2. prepare source to, ex, $HOME/asuswrt
 
 	cd $HOME
@@ -161,7 +164,7 @@ Set Up Environment(Tested in Fedora 8/9 and Ubuntu)
 	Qualcomm IPQ806x/IPQ807x/IPQ40xx ARM SoC models
 	===============================================
 
-		For example, BRT-AC828, RT-AC58U, GT-AXY16000, RT-AX89U.
+		For example, BRT-AC828, RT-AC58U, GT-AXY16000, RT-AX89X.
 
 		To install the tools:
 		    - extract tools/openwrt-gcc463.arm.tar.bz2 directory to /opt
@@ -206,7 +209,7 @@ Set Up Environment(Tested in Fedora 8/9 and Ubuntu)
 		make rt-ac55u
 		( make rt-ac55uhp )
 
-	g. brt-ac828 (/ rt-ad7200 / gt-axy16000 / rt-ax89u)
+	g. brt-ac828 (/ rt-ad7200 / gt-axy16000 / rt-ax89x)
 		cd release/src-qca-ipq806x
 		make brt-ac828
 		( make rt-ad7200 )

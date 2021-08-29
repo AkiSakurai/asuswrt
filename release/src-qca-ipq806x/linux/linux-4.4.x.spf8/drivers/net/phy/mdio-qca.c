@@ -43,11 +43,12 @@
 
 #define QCA_MAX_PHY_RESET	3
 
+/* sync with qca-ssdk/qca-nss-dp's ipq40xx_mdio_data */
 struct qca_mdio_data {
 	struct mii_bus *mii_bus;
-	spinlock_t lock;
 	void __iomem *membase;
 	int phy_irq[PHY_MAX_ADDR];
+	spinlock_t lock;
 };
 
 static int qca_mdio_wait_busy(struct qca_mdio_data *am)

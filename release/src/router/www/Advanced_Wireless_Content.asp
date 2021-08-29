@@ -33,6 +33,7 @@ $(function () {
 
 wl_channel_list_2g = '<% channel_list_2g(); %>';
 wl_channel_list_5g = '<% channel_list_5g(); %>';
+wl_channel_list_5g_2 = '<% channel_list_5g_2(); %>';
 var wl_unit_value = '<% nvram_get("wl_unit"); %>';
 var wl_subunit_value = '<% nvram_get("wl_subunit"); %>';
 var wlc_band_value = '<% nvram_get("wlc_band"); %>';
@@ -40,6 +41,8 @@ var cur_control_channel = [<% wl_control_channel(); %>][0];
 var wlc0_ssid = '<% nvram_get("wlc0_ssid"); %>';
 var wlc1_ssid = '<% nvram_get("wlc1_ssid"); %>';
 var wifison_ready = httpApi.nvramGet(["wifison_ready"]).wifison_ready;
+var wl_bw_160 = '<% nvram_get("wl_bw_160"); %>';
+var enable_bw_160 = (wl_bw_160 == 1) ? true : false;
 
 function initial(){
 	show_menu();
@@ -49,6 +52,10 @@ function initial(){
             .attr('target', '_blank')
             .attr('style', 'color:#FC0;text-decoration:underline;')
             .attr('href', 'https://www.asus.com/support/FAQ/1037422/');
+	}
+
+	if(vht160_support){
+		$("#enable_160mhz").attr("checked", enable_bw_160);
 	}
 
 	wireless_mode_change(document.form.wl_nmode_x);
@@ -85,6 +92,10 @@ function initial(){
 
 	if(!(band5g_support && band5g_11ac_support && document.form.wl_unit.value >= 1)){
 		document.form.wl_nmode_x.remove(3); //remove "N/AC Mixed" for NON-AC router and NOT in 5G
+	}
+
+	if(vht160_support && wl_unit_value != '0'){
+		document.getElementById('enable_160_field').style.display = "";
 	}
 
 	if('<% nvram_get("wl_nmode_x"); %>' == "2")
@@ -313,7 +324,8 @@ function genBWTable(_unit){
 				bws.push(4);
 				bwsDesc.push("80+80 MHz");
 			}
-			if(vht160_support && array_160m.length/4 >= 1){
+			
+			if(vht160_support && array_160m.length/4 >= 1 && enable_bw_160){
 				bwsDesc[0] = "20/40/80/160 MHz";
 				bws.push(5);
 				bwsDesc.push("160 MHz");
@@ -529,6 +541,10 @@ function applyRule(){
 			}
 		}
 
+		if(vht160_support){
+			document.form.wl_bw_160.value = $("#enable_160mhz").prop("checked") ? 1 : 0;
+		}
+
 		showLoading();
 		document.form.wps_config_state.value = "1";		
 		if((auth_mode == "shared" || auth_mode == "wpa" || auth_mode == "wpa2"  || auth_mode == "wpawpa2" || auth_mode == "radius" ||
@@ -676,13 +692,9 @@ function _change_wl_unit(val){
 	if (band60g_support && he_frame_support) {
 		if (document.form.wl_unit.value == '3') {
 			$("#he_mode_field").hide();
-			document.form.wl0_he_features.disabled = true;
-			document.form.wl1_he_features.disabled = true;
 		}
 		else {
 			$("#he_mode_field").show();
-			document.form.wl0_he_features.disabled = false;
-			document.form.wl1_he_features.disabled = false;
 		}
 	}
 	if(!concurrep_support && (isSwMode("re") || isSwMode("mb")) && val == wlc_band_value)
@@ -889,6 +901,26 @@ function enableSmartCon(val){
 		_change_smart_connect(val);
 }
 
+function enable_160MHz(obj){
+	cur = '<% nvram_get("wl_bw"); %>';
+	var bws = new Array();
+	var bwsDesc = new Array();
+
+	if(obj.checked){
+		bws = [1, 0, 2, 3, 5];
+		bwsDesc = ["20/40/80/160 MHz", "20 MHz", "40 MHz", "80 MHz", "160 MHz"];
+		enable_bw_160 = true;
+	}
+	else{
+		bws = [1, 0, 2, 3];
+		bwsDesc = ["20/40/80 MHz", "20 MHz", "40 MHz", "80 MHz"];
+		enable_bw_160 = false;
+	}
+
+	add_options_x2(document.form.wl_bw, bwsDesc, bws, cur);
+	insertExtChannelOption();
+}
+
 function regen_auto_option(obj){
 	free_options(obj);
 	obj.options[0] = new Option("<#Auto#>", 0);
@@ -947,13 +979,9 @@ function change_wl_nmode(o){
 	if (he_frame_support) {
 		if (o.value == '0' && !(band60g_support && document.form.wl_unit.value == '3')) {
 			$("#he_mode_field").show();
-			document.form.wl0_he_features.disabled = false;
-			document.form.wl1_he_features.disabled = false;
 		}
 		else {
 			$("#he_mode_field").hide();
-			document.form.wl0_he_features.disabled = true;
-			document.form.wl1_he_features.disabled = true;
 		}
 	}
 
@@ -973,13 +1001,11 @@ function change_wl_nmode(o){
 	genBWTable(wl_unit);
 }
 function he_frame_mode(obj) {
-	if (obj.value != "0") {
-		document.form.wl0_he_features.value = "3";
-		document.form.wl1_he_features.value = "7";
-	}
-	else {
-		document.form.wl0_he_features.value = "0";
-		document.form.wl1_he_features.value = "0";
+	if (obj.value == "0" && wl_unit != 0) {
+		$("#enable_160mhz")[0].checked = false
+		enable_160MHz($("#enable_160mhz")[0]);
+		document.form.acs_dfs_checkbox.checked = false;
+		document.form.acs_dfs.value = 0;
 	}
 }
 
@@ -1057,8 +1083,7 @@ function ajax_wl_channel(){
 <input type="hidden" name="AUTO_CHANNEL" value='<% nvram_get("AUTO_CHANNEL"); %>'>
 <input type="hidden" name="wl_wep_x_orig" value='<% nvram_get("wl_wep_x"); %>'>
 <input type="hidden" name="wl_optimizexbox" value='<% nvram_get("wl_optimizexbox"); %>'>
-<input type="hidden" name="wl0_he_features" value='<% nvram_get("wl0_he_features"); %>'>
-<input type="hidden" name="wl1_he_features" value='<% nvram_get("wl1_he_features"); %>'>
+<input type="hidden" name="wl_bw_160" value='<% nvram_get("wl_bw_160"); %>'>
 <input type="hidden" name="wl_subunit" value='-1'>
 <input type="hidden" name="acs_dfs" value='<% nvram_get("acs_dfs"); %>'>
 <input type="hidden" name="acs_band1" value='<% nvram_get("acs_band1"); %>'>
@@ -1207,9 +1232,9 @@ function ajax_wl_channel(){
 					</th>
 					<td>
 						<div style="display:flex;align-items: center;">
-							<select name="he_mode" class="input_option" onChange="he_frame_mode(this);">
-								<option value="7" <% nvram_match("wl0_he_features", "7" ,"selected"); %> ><#WLANConfig11b_WirelessCtrl_button1name#></option>
-								<option value="0" <% nvram_match("wl0_he_features", "0" ,"selected"); %> ><#WLANConfig11b_WirelessCtrl_buttonname#></option>
+							<select name="wl_11ax" class="input_option" onChange="he_frame_mode(this);">
+								<option value="1" <% nvram_match("wl_11ax", "1" ,"selected"); %> ><#WLANConfig11b_WirelessCtrl_button1name#></option>
+								<option value="0" <% nvram_match("wl_11ax", "0" ,"selected"); %> ><#WLANConfig11b_WirelessCtrl_buttonname#></option>
 							</select>
 							<span id="he_mode_faq" style="padding: 0 10px"><#WLANConfig11b_HE_Frame_Mode_faq#></span>
 						</div>
@@ -1223,7 +1248,8 @@ function ajax_wl_channel(){
 							<option class="content_input_fd" value="0" <% nvram_match("wl_bw", "0","selected"); %>>20 MHz</option>
 							<option class="content_input_fd" value="2" <% nvram_match("wl_bw", "2","selected"); %>>40 MHz</option>
 							<option class="content_input_fd" value="3" <% nvram_match("wl_bw", "3","selected"); %>>80 MHz</option>
-						</select>				
+						</select>
+						<span id="enable_160_field" style="display:none"><input type="checkbox" onclick="enable_160MHz(this);" id="enable_160mhz">Enable 160 MHz</span>			
 			   	</td>
 			 	</tr>			  
 			  

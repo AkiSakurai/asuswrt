@@ -192,9 +192,9 @@ function applyRule(){
 <input type="hidden" name="wl_subunit" value="-1">
 <input type="hidden" name="wl_bw_160" value='<% nvram_get("wl_bw_160"); %>'>
 <input type="hidden" name="acs_dfs" value='<% nvram_get("acs_dfs"); %>'>
-<input type="hidden" name="wl0_he_features" value='<% nvram_get("wl0_he_features"); %>'>
-<input type="hidden" name="wl1_he_features" value='<% nvram_get("wl1_he_features"); %>'>
-<input type="hidden" name="wl2_he_features" value='<% nvram_get("wl2_he_features"); %>'>
+<input type="hidden" name="wl0_11ax" value='<% nvram_get("wl0_11ax"); %>'>
+<input type="hidden" name="wl1_11ax" value='<% nvram_get("wl1_11ax"); %>'>
+<input type="hidden" name="wl2_11ax" value='<% nvram_get("wl2_11ax"); %>'>
 <table border="0" cellpadding="0" cellspacing="0" id="rt_table">
 <tr>
 	<td>		
@@ -247,19 +247,19 @@ function applyRule(){
 									<div align="center" class="left" style="width:94px; float:right; cursor:pointer;" id="he_enable"></div>
 									<div class="iphone_switch_container" style="height:32px; width:74px; position: relative; overflow: hidden">
 										<script type="text/javascript">
-											var _flag = ('<% nvram_get("wl0_he_features"); %>' == 3) ? true : false;
+											var _flag = ('<% nvram_get("wl0_11ax"); %>' == 3) ? true : false;
 											$('#he_enable').iphoneSwitch(_flag,
 												function(){
-													document.form.wl0_he_features.value = "3";
-													document.form.wl1_he_features.value = "3";
-													document.form.wl2_he_features.value = "3";
+													document.form.wl0_11ax.value = "1";
+													document.form.wl1_11ax.value = "1";
+													document.form.wl2_11ax.value = "1";
 												},
 												function(){
 													document.form.wl_bw_160.value = 0;
 													document.form.acs_dfs.value = 0;
-													document.form.wl0_he_features.value = "0";
-													document.form.wl1_he_features.value = "0";
-													document.form.wl2_he_features.value = "0";
+													document.form.wl0_11ax.value = "0";
+													document.form.wl1_11ax.value = "0";
+													document.form.wl2_11ax.value = "0";
 												}
 											);
 										</script>

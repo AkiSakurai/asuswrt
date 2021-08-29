@@ -2090,9 +2090,9 @@ function cal_panel_block(obj){
 function hide_notice(){
 	$("#notice_div").hide();
 	var iframe = document.getElementById("statusframe");
-	iframe.contentWindow.document.form.wl0_he_features.value = "0";
-	iframe.contentWindow.document.form.wl1_he_features.value = "0";
-	iframe.contentWindow.document.form.wl2_he_features.value = "0";
+	iframe.contentWindow.document.form.wl0_11ax.value = "0";
+	iframe.contentWindow.document.form.wl1_11ax.value = "0";
+	iframe.contentWindow.document.form.wl2_11ax.value = "0";
 }
 function notice_apply(){
 	var iframe = document.getElementById("statusframe");

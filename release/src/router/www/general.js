@@ -1550,21 +1550,10 @@ function wireless_mode_change(obj){
 		if (obj.value == '0') {
 			if (based_modelid != 'RT-AX92U' || (wl_unit != '0' && wl_unit != '1')) {
 				$("#he_mode_field").show();
-				document.form.wl0_he_features.disabled = false;
-				document.form.wl1_he_features.disabled = false;
-				if (band5g2_support) {
-					document.form.wl2_he_features.disabled = false;
-				}
 			}
 		}
 		else {
 			$("#he_mode_field").hide();
-			document.form.wl0_he_features.disabled = true;
-			document.form.wl1_he_features.disabled = true;
-			if (band5g2_support) {
-				document.form.wl2_he_features.disabled = true;
-			}
-
 		}
 	}
 

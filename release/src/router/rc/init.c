@@ -1732,6 +1732,34 @@ void package_defaults(int restore_defaults)
 }
 #endif
 
+#if defined(RTCONFIG_WIFI_QCN5024_QCN5054)
+static void pre_restore_defaults(void)
+{
+	int i, he_features;
+	char prefix[sizeof("wlXXXXXX_")];
+
+	for (i = WL_2G_BAND; i < MAX_NR_WL_IF && i <= WL_5G_2_BAND; ++i) {
+		SKIP_ABSENT_BAND(i);
+
+		snprintf(prefix, sizeof(prefix), "wl%d_", i);
+#if defined(RTCONFIG_BW160M)
+		if ((i == WL_5G_BAND || i == WL_5G_2_BAND)
+		 && !nvram_pf_get(prefix, "bw_160")
+		 && (nvram_pf_match(prefix, "bw", "1") || nvram_pf_get_int(prefix, "bw") == WL_BW_160))
+			nvram_pf_set(prefix, "bw_160", "1");
+#endif
+
+		if (!nvram_pf_get(prefix, "he_features"))
+			continue;
+		he_features = nvram_pf_get_int(prefix, "he_features");
+		if (!nvram_pf_get(prefix, "11ax"))
+			nvram_pf_set_int(prefix, "11ax", !!(he_features & 3));
+		if (!nvram_pf_get(prefix, "ofdma"))
+			nvram_pf_set_int(prefix, "ofdma", !!(he_features & (3 << 2)));
+	}
+}
+#endif
+
 /* ASUS use erase nvram to reset default only */
 static void
 restore_defaults(void)
@@ -1749,6 +1777,10 @@ restore_defaults(void)
 
 	nvram_unset(ASUS_STOP_COMMIT);
 	nvram_unset(LED_CTRL_HIPRIO);
+
+#if defined(RTCONFIG_WIFI_QCN5024_QCN5054)
+	pre_restore_defaults();
+#endif
 
 	// Restore defaults if nvram version mismatch
 	restore_defaults = RESTORE_DEFAULTS();
@@ -2309,6 +2341,26 @@ static int wan_iptv_same_vid(void)
 #endif
 #endif
 
+/* If @nv nvram variable exist, append @sep and @val to it. */
+void add_nv_val(const char *nv, const char sep, char *val)
+{
+	char *orig, *buf;
+
+	if (!nv || !sep || !(val && *val))
+		return;
+
+	orig = nvram_safe_get(nv);
+	if (*orig) {
+		if (asprintf(&buf, "%s%c%s", orig, sep, val) < 0 || !buf) {
+			dbg("%s(%s,%c,%s) fail\n", __func__, nv, sep, val);
+			return;
+		}
+		nvram_set(nv, buf);
+		free(buf);
+	} else
+		nvram_set(nv, val);
+}
+
 /**
  * Generic wan_ifnames / lan_ifnames / wl_ifnames / wl[01]_vifnames initialize helper
  * @wan_ifaces:	WAN interfaces.
@@ -2681,13 +2733,25 @@ static int set_basic_ifname_vars(char *wan_ifaces[MAX_WAN_IFACE_ID], char *lan, 
     defined(RTCONFIG_SWITCH_QCA8075_QCA8337_PHY_AQR107_AR8035_QCA8033) || \
     defined(RTCONFIG_SWITCH_QCA8337N)
 		/* If wan2 or wan is not used as WAN, bridge it to LAN. */
-		if (wan2_orig && !(get_wans_dualwan() & WANSCAP_WAN2))
+		if (wan2_orig && !(get_wans_dualwan() & WANSCAP_WAN2)) {
 			add_lan_phy(wan2_orig);
-		if (wan && !(get_wans_dualwan() & WANSCAP_WAN))
-			add_lan_phy(wan);
+#if defined(RTCONFIG_AMAS) || defined(RTCONFIG_CFGSYNC)
+			add_nv_val("wired_ifnames", ' ', wan2_orig);
 #endif
-		if (wan_ifaces[SFPP_IFACE_ID] && !(get_wans_dualwan() & WANSCAP_SFPP))
+		}
+		if (wan && !(get_wans_dualwan() & WANSCAP_WAN)) {
+			add_lan_phy(wan);
+#if defined(RTCONFIG_AMAS) || defined(RTCONFIG_CFGSYNC)
+			add_nv_val("wired_ifnames", ' ', wan);
+#endif
+		}
+#endif
+		if (wan_ifaces[SFPP_IFACE_ID] && !(get_wans_dualwan() & WANSCAP_SFPP)) {
 			add_lan_phy(wan_ifaces[SFPP_IFACE_ID]);
+#if defined(RTCONFIG_AMAS) || defined(RTCONFIG_CFGSYNC)
+			add_nv_val("wired_ifnames", ' ', wan_ifaces[SFPP_IFACE_ID]);
+#endif
+		}
 #else /* !RTCONFIG_DUALWAN */
 		add_lan_phy(wl2g);
 		if (wl5g)
@@ -2712,13 +2776,21 @@ static int set_basic_ifname_vars(char *wan_ifaces[MAX_WAN_IFACE_ID], char *lan, 
 #endif
 #endif
 
-	_dprintf("%s: WAN %s LAN %s 2G %s 5G %s "
+	_dprintf("%s: WAN %s LAN %s [%s] "
+#if defined(RTCONFIG_AMAS) || defined(RTCONFIG_CFGSYNC)
+		"WIRED [%s] "
+#endif
+		"2G %s 5G %s "
 #if defined(RTCONFIG_HAS_5G_2)
 		"5G2 %s "
 #endif
 		"60G %s "
 		"USB %s AP_LAN %s DW_WAN %s DW_LAN %s force_dwlan %d, sw_mode %d\n",
-		__func__, wan, lan, wl2g, wl5g? wl5g:"N/A",
+		__func__, wan, lan, nvram_safe_get("lan_ifnames"),
+#if defined(RTCONFIG_AMAS) || defined(RTCONFIG_CFGSYNC)
+		nvram_safe_get("wired_ifnames"),
+#endif
+		wl2g, wl5g? wl5g:"N/A",
 #if defined(RTCONFIG_HAS_5G_2)
 		wl5g2? wl5g2:"N/A",
 #endif
@@ -5819,7 +5891,7 @@ int init_nvram(void)
 			wan1 = "eth5";				/* 10G RJ-45 */
 			nvram_set_int("led_r10g_gpio", 20);	/* 10G RJ-45 */
 			config_netdev_bled("led_r10g_gpio", "eth5");
-			add_rc_support("11AX 10G_LWAN 10GS_LWAN");
+			add_rc_support("11AX ofdma 10G_LWAN 10GS_LWAN");
 #if defined(RTCONFIG_FANCTRL)
 			add_rc_support("fanctrl");
 #endif
@@ -5885,6 +5957,9 @@ int init_nvram(void)
 #endif
 
 		snprintf(lan_ifs, sizeof(lan_ifs), "%s %s", lan_1, lan_2);
+#if defined(RTCONFIG_AMAS) || defined(RTCONFIG_CFGSYNC)
+		nvram_set("wired_ifnames", lan_ifs);
+#endif
 		set_basic_ifname_vars(wan_ifaces, lan_ifs, wl_ifaces, "usb", NULL, "vlan2", "vlan3", 0);
 
 		nvram_set_int("btn_wps_gpio", 34|GPIO_ACTIVE_LOW);
@@ -5964,9 +6039,6 @@ int init_nvram(void)
 		nvram_set("wl1_HT_TxStream", "8");
 		nvram_set("wl1_HT_RxStream", "8");
 
-#if defined(RTCONFIG_AMAS) || defined(RTCONFIG_CFGSYNC)
-		nvram_set("wired_ifnames", lan_ifs);
-#endif
 #if defined(RTCONFIG_AMAS) && defined(RTCONFIG_QCA_LBD)
 		if (sw_mode()!=SW_MODE_REPEATER) {
 			nvram_set("qca_lbd_enable", "1");

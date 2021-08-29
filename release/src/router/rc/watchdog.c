@@ -235,6 +235,8 @@ static void *fn_acts[_NSIG];
 static int ddns_check_count = 0;
 static int freeze_duck_count = 0;
 
+static char time_zone_t[32]={0};
+
 static const struct mfg_btn_s {
 	enum btn_id id;
 	char *name;
@@ -6370,15 +6372,14 @@ static void auto_firmware_check()
 		return;
 	}
 
+	time(&now);
+	localtime_r(&now, &local);
+
 #ifdef RTCONFIG_FW_JUMP
 	period = 0;
 #else
 	if (!bootup_check && !periodic_check)
 	{
-		setenv("TZ", nvram_safe_get("time_zone_x"), 1);
-		time(&now);
-		localtime_r(&now, &local);
-
 		if ((local.tm_hour == (2 + rand_hr)) &&	// every 48 hours at 2 am + random offset
 		    (local.tm_min == rand_min))
 		{
@@ -7967,7 +7968,13 @@ void watchdog(int sig)
 	if (watchdog_period)
 		return;
 
-#if defined(RTCONFIG_HND_ROUTER_AX) && defined(RTCONFIG_HNDMFG)
+	if(nvram_match("ntp_ready", "1") && !nvram_match("time_zone_x", time_zone_t)){
+		strlcpy(time_zone_t, nvram_safe_get("time_zone_x"), sizeof(time_zone_t));
+		setenv("TZ", nvram_safe_get("time_zone_x"), 1);
+		tzset();
+	}
+
+#if defined(RTCONFIG_HND_ROUTER_AX) && defined(RTCONFIG_BCM_MFG)
 	ate_temperature_record();
 #endif
 

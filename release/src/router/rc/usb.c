@@ -271,6 +271,7 @@ void add_usb_host_module(void)
 #if defined(RTCONFIG_USB_XHCI)
 	load_kmods(PRE_XHCI_KMODS);
 #if defined(RTN65U) || defined(RTCONFIG_QCA) || defined(RTAC85U) || defined(RTAC85P) || defined(RTACRH26) || defined(TUFAC1750)
+	if (nvram_get_int("usb_usb3") == 1)
 		u3_param = "u3intf=1";
 #if !defined(RTCONFIG_SOC_IPQ40XX)
 	modprobe(USB30_MOD, u3_param);
