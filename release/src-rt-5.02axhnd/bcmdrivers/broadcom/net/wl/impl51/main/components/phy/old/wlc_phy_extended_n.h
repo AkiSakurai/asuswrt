@@ -1,7 +1,7 @@
 /*
  * NPHY specific defines and declarations
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phy_extended_n.h 672101 2016-11-24 06:06:10Z $
+ * $Id: wlc_phy_extended_n.h 773654 2019-03-27 08:40:08Z $
  */
 
 #ifndef _wlc_phy_extended_n_h_
@@ -125,6 +125,11 @@
 #define NPHY_ACI_CHANNEL_DELTA_GE_REV3 4   /* How far a signal can bleed */
 #define NPHY_ACI_CHANNEL_SKIP_GE_REV3 3	   /* Num of immediately surrounding channels to skip */
 
+/* #define BCM943217ROUTER_ACI_SCANMORECH */
+#ifdef BCM943217ROUTER_ACI_SCANMORECH
+#define NPHY_ACI_CHANNEL_SKIP_IS_REV17 0
+#endif // endif
+
 /* noise immunity raise/lowered using crsminpwr or init gain value */
 /* before assoc, consec crs glitch before raising noise immunity */
 #define NPHY_NOISE_NOASSOC_GLITCH_TH_UP 2
@@ -167,6 +172,8 @@
 #define NPHY_NOISE_CRSMINPWR_ARRAY_MAX_INDEX 44
 #define NPHY_NOISE_CRSMINPWR_ARRAY_MAX_INDEX_REV_7 120
 #define NPHY_NOISE_CRSMINPWR_ARRAY_MAX_INDEX_REV_17 120
+#define NPHY_NOISE_CRSMINPWR_ARRAY_MAX_INDEX_REV_17_ACI_OFF 96
+#define NPHY_NOISE_CRSMINPWR_ARRAY_MAX_INDEX_REV_17_ACI_ON 72
 
 /* wl interference 4, no assoc, crsminpwr index increment */
 #define NPHY_NOISE_NOASSOC_CRSIDX_INCR 16
@@ -183,6 +190,7 @@
 #define BPHY_DESENSE_NOISE_CRSIDX_DECR	1
 #define BPHY_DESENSE_CRSMINPWR_BASELINE	0x46
 #define BPHY_DESENSE_CRSMINPWR_ARRAY_MAX_INDEX 15
+#define BPHY_DESENSE_CRSMINPWR_RSSI_LIMIT_MAX 255 /* H/W bit-width limit */
 #endif // endif
 
 /* rssi cal defines */

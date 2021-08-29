@@ -1,7 +1,7 @@
 /*
  * WPS AP
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_ap.h 655918 2016-08-24 07:53:47Z $
+ * $Id: wps_ap.h 766338 2018-07-31 04:55:48Z $
  */
 
 #ifndef __WPS_AP_H__
@@ -88,6 +88,9 @@ typedef struct {
 	uint8 authorizedMacs[SIZE_MAC_ADDR * SIZE_AUTHORIZEDMACS_NUM];
 	int eap_frag_threshold;
 	int wps_delay_deauth_ms;
+#if defined(MULTIAP)
+	char backhaul_ifname[IFNAMSIZ];
+#endif	/* MULTIAP */
 } wpsap_wksp_t;
 
 /*

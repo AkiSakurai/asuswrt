@@ -1300,6 +1300,13 @@ static CURLcode ftp_state_use_port(struct connectdata *conn,
     Curl_closesocket(conn, conn->sock[SECONDARYSOCKET]);
   conn->sock[SECONDARYSOCKET] = portsock;
 
+  /* this tcpconnect assignment below is a hackish work-around to make the
+     multi interface with active FTP work - as it will not wait for a
+     (passive) connect in Curl_is_connected().
+
+     The *proper* fix is to make sure that the active connection from the
+     server is done in a non-blocking way. Currently, it is still BLOCKING.
+  */
   conn->bits.tcpconnect[SECONDARYSOCKET] = TRUE;
 
   state(conn, FTP_PORT);
@@ -2438,6 +2445,15 @@ static CURLcode ftp_state_get_resp(struct connectdata *conn,
       125 Data connection already open; Transfer starting. */
 
     curl_off_t size=-1; /* default unknown size */
+
+    /*
+     * It appears that there are FTP-servers that return size 0 for files when
+     * SIZE is used on the file while being in BINARY mode. To work around
+     * that (stupid) behavior, we attempt to parse the RETR response even if
+     * the SIZE returned size zero.
+     *
+     * Debugging help from Salvatore Sorrentino on February 26, 2003.
+     */
 
     if((instate != FTP_LIST) &&
        !data->set.prefer_ascii &&

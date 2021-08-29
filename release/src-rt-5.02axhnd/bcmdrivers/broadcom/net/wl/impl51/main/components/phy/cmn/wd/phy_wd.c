@@ -1,7 +1,7 @@
 /*
  * WatchDog callback function registration module implementation.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_wd.c 767086 2018-08-28 05:28:44Z $
+ * $Id: phy_wd.c 774347 2019-04-19 20:25:01Z $
  */
 
 #include <phy_cfg.h>

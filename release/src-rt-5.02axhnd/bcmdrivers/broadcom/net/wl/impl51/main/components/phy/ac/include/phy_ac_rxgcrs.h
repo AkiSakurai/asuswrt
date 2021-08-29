@@ -1,7 +1,7 @@
 /*
  * ACPHY Rx Gain Control and Carrier Sense module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rxgcrs.h 766436 2018-08-01 20:33:15Z $
+ * $Id: phy_ac_rxgcrs.h 774730 2019-05-06 08:41:28Z $
  */
 
 #ifndef _phy_ac_rxgcrs_h_
@@ -122,7 +122,11 @@ uint16 phy_ac_rxgcrs_get_deaf_count(phy_ac_rxgcrs_info_t *rxgcrsi);
 	(ACMAJORREV_40(pi->pubpi->phy_rev) && CHSPEC_IS2G(pi->radio_chanspec)) ? 64 : \
 	(ACMAJORREV_44(pi->pubpi->phy_rev) && (pi->pubpi->slice == DUALMAC_AUX)) ? 66 : \
 	(ACMAJORREV_47(pi->pubpi->phy_rev) && (RADIOREV(pi->pubpi->radiorev) > 0)) ? 64 : \
+	(ACMAJORREV_51(pi->pubpi->phy_rev) && CHSPEC_IS2G(pi->radio_chanspec)) ? 64 : \
+	(ACMAJORREV_51(pi->pubpi->phy_rev) && CHSPEC_IS5G(pi->radio_chanspec)) ? 68 : \
+	(ACMAJORREV_129(pi->pubpi->phy_rev)) ? 64 : \
 	67)
+#define ACPHY_HI_GAIN_28NM 45
 
 #define ACPHY_INIT_GAIN_4365_2G 67
 #define ACPHY_INIT_GAIN_4365_5G 64
@@ -193,6 +197,12 @@ uint16 phy_ac_rxgcrs_get_deaf_count(phy_ac_rxgcrs_info_t *rxgcrsi);
 
 #define SSAGC_N_CLIPCNT_THRESH 6
 #define SSAGC_N_RSSI_THRESH 7
+
+#define MAX_VALID_EDTHRESH		(-15) /* max level of valid rssi */
+#define VALID_ED_THRESH(x) ((x != 0) && (x <  MAX_VALID_EDTHRESH))
+
+/* ~ dB diff between rate 1 & rate 6 without lesi */
+#define BPHY_OFDM_SEN_DIFF 5
 
 typedef struct {
 	uint8 elna;
@@ -283,18 +293,22 @@ void phy_ac_rxgcrs_force_lesiscale(phy_ac_rxgcrs_info_t *rxgcrsi, void *p);
 extern int phy_ac_rxgcrs_min_pwr_cal(phy_ac_rxgcrs_info_t *rxgcrsi, uint8 crsmin_cal_mode);
 void phy_ac_rxgcrs_set_lesiscale(phy_ac_rxgcrs_info_t *rxgcrsi, int8 *lesi_scale);
 extern void wlc_phy_force_gainlevel_acphy(phy_info_t *pi, int16 int_val);
-extern void wlc_phy_set_srom_eu_edthresh_acphy(phy_info_t *pi);
 void phy_ac_rxgcrs_lesi(phy_ac_rxgcrs_info_t *rxgcrsi, bool on, uint8 delta_halfdB);
 int phy_ac_rxgcrs_iovar_get_lesi(phy_ac_rxgcrs_info_t *rxgcrsi, int32 *ret_val);
 int phy_ac_rxgcrs_iovar_get_lesi_cap(phy_ac_rxgcrs_info_t *rxgcrsi, int32 *ret_val);
 int phy_ac_rxgcrs_iovar_get_lesi_ovrd(phy_ac_rxgcrs_info_t *rxgcrsi, int32 *ret_val);
 int phy_ac_rxgcrs_iovar_set_lesi_ovrd(phy_ac_rxgcrs_info_t *rxgcrsi, int32 set_val);
+int phy_ac_rxgcrs_iovar_get_lesiscale_offset(phy_ac_rxgcrs_info_t *rxgcrsi, int8 band,
+	int32 *ret_val);
+int phy_ac_rxgcrs_iovar_set_lesiscale_offset(phy_ac_rxgcrs_info_t *rxgcrsi, int8 band,
+	int32 set_val);
 extern void phy_ac_get_fem_rxgains(phy_info_t *pi, int8 *rx_gains);
 extern void phy_ac_get_rxgains_ctrl(phy_info_t *pi, int8 *rx_gains, int8 *input_param);
 extern void chanspec_setup_rxgcrs(phy_info_t *pi);
 extern void phy_ac_rxgcrs_set_mclip_agc_en(phy_info_t *pi, bool en);
 extern bool phy_ac_rxgcrs_get_cap_lesi(phy_info_t *pi);
 extern void phy_ac_rxcgrs_restore_force_crsmin(phy_info_t *pi);
+extern void wlc_phy_agc_28nm(phy_info_t *pi, bool init, bool band_change, bool bw_change);
 bool phy_ac_rxgcrs_get_cap_mclip_agc_en(phy_info_t *pi);
 bool phy_ac_rxgcrs_get_cap_lesi(phy_info_t *pi);
 #ifdef WL11ULB
@@ -312,4 +326,5 @@ acphy_desense_values_t phy_ac_rxgcrs_get_desense(phy_ac_rxgcrs_info_t *rxgcrs_in
 void phy_ac_rxgcrs_clean_noise_array(phy_ac_rxgcrs_info_t *rxgcrsi);
 extern void wlc_phy_set_crs_min_offsets_acphy(phy_info_t *pi, uint8 core,
 	int8 ac_offset, int8 mf_offset);
+extern void wlc_phy_apply_edcrs_acphy(phy_info_t *pi);
 #endif /* _phy_ac_rxgcrs_h_ */

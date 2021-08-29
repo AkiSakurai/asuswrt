@@ -1,7 +1,7 @@
 /*
  * ACPHY STF module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_stf.c 742511 2018-01-22 14:14:24Z $
+ * $Id: phy_ac_stf.c 767311 2018-09-05 10:26:32Z $
  */
 #include <phy_cfg.h>
 #include <typedefs.h>
@@ -178,7 +178,8 @@ phy_ac_stf_set_stf_chain(phy_type_stf_ctx_t *ctx, uint8 txchain, uint8 rxchain)
 	if (!(ACMAJORREV_32(pi->pubpi->phy_rev) ||
 		ACMAJORREV_33(pi->pubpi->phy_rev) ||
 		ACMAJORREV_37(pi->pubpi->phy_rev) ||
-		ACMAJORREV_47_51(pi->pubpi->phy_rev))) {
+		(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)))) {
 		phy_ac_chanmgr_set_both_txchain_rxchain(pi->u.pi_acphy->chanmgri, rxchain, txchain);
 	}
 
@@ -216,7 +217,8 @@ phy_ac_stf_chain_init(phy_type_stf_ctx_t *ctx, bool txrxchain_mask,
 
 	if ((txrxchain_mask) &&
 		(ACMAJORREV_32(pi->pubpi->phy_rev) ||
-		ACMAJORREV_33(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev))) {
+		ACMAJORREV_33(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)))) {
 		phy_stf_set_phytxchain(cmn_stf_info, txchain & pi->sromi->sw_txchain_mask);
 		phy_stf_set_phyrxchain(cmn_stf_info, rxchain & pi->sromi->sw_rxchain_mask);
 	} else {

@@ -1,7 +1,7 @@
 /*
  * NPHY BT Coex module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_n_btcx.c 679944 2017-01-18 01:22:39Z $
+ * $Id: phy_n_btcx.c 775981 2019-06-17 10:59:30Z $
  */
 
 #include <phy_cfg.h>
@@ -163,11 +163,8 @@ phy_n_btcx_override_enable(phy_type_btcx_ctx_t *ctx)
 
 		wlapi_coex_flush_a2dp_buffers(pi->sh->physhim);
 
-		/* Enable manual BTCX mode */
-		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi), BTCX_CTRL_EN | BTCX_CTRL_SW);
 		/* Force WLAN antenna and priority */
-		OR_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
-			BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL);
+		phy_btcx_override_enable(pi);
 	}
 }
 
@@ -182,11 +179,8 @@ phy_n_btcx_override_disable(phy_type_btcx_ctx_t *ctx)
 		/* Ucode better be suspended when we mess with BTCX regs directly */
 		ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
 
-		/* Enable manual BTCX mode */
-		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi), BTCX_CTRL_EN | BTCX_CTRL_SW);
 		/* Force BT priority */
-		AND_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
-			~(BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL));
+		phy_btcx_override_disable(pi);
 	}
 }
 

@@ -17,9 +17,7 @@ AC_CONFIG_HEADERS([config.h])
 AC_PROG_CC
 
 # Checks for libraries.
-# FIXME: Replace `main' with a function in `-lm':
 #AC_CHECK_LIB([m], [main])
-# FIXME: Replace `main' with a function in `-lxml2':
 #AC_CHECK_LIB([xml2], [main])
 
 # Checks for header files.

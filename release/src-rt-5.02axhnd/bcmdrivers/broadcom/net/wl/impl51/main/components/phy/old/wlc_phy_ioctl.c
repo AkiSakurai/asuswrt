@@ -3,7 +3,7 @@
  * PHY ioctl processing of Broadcom BCM43XX 802.11abg
  * Networking Device Driver.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -47,13 +47,16 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phy_ioctl.c 689610 2017-03-12 13:11:51Z $
+ * $Id: wlc_phy_ioctl.c 776000 2019-06-17 14:14:53Z $
  */
 
 /*
  * This file contains high portion PHY ioctl processing and table.
  */
 
+/* XXX: Define wlc_cfg.h to be the first header file included as some builds
+ * get their feature flags thru this file.
+ */
 #include <wlc_cfg.h>
 #include <typedefs.h>
 #include <bcmutils.h>
@@ -144,7 +147,7 @@ wlc_phy_ioctl_dispatch(phy_info_t *pi, int cmd, int len, void *arg, bool *ta_ok)
 	int bcmerror = 0;
 	int val, *pval;
 	bool bool_val;
-	uint8 max_aci_mode;
+	int max_aci_mode;
 	bool suspend;
 
 	UNUSED_PARAMETER(suspend);

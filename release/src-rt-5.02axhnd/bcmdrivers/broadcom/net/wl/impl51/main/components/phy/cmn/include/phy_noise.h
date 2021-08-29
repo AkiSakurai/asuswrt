@@ -1,7 +1,7 @@
 /*
  * NOISEmeasure module internal interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_noise.h 685853 2017-02-19 06:48:41Z $
+ * $Id: phy_noise.h 775453 2019-05-30 14:48:52Z $
  */
 
 #ifndef _phy_noise_h_
@@ -102,4 +102,19 @@ int  phy_noise_aci_args(phy_info_t *pi, wl_aci_args_t *params, bool get, int len
 #endif // endif
 #endif /* Compiling out ACI code */
 bool phy_noise_pmstate_get(phy_info_t *pi);
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+/* Crossing point between Knoise high and low gains */
+#define NOISE_BIAS_GAIN_THRESH	50
+/* Parameters for phy_noise_get/set_gain_bias() */
+#define NOISE_BIAS_GAINTYPE_LO	0
+#define NOISE_BIAS_GAINTYPE_HI	1
+#define NOISE_BIAS_BAND_2G		0
+#define NOISE_BIAS_BAND_5G		1
+int phy_noise_get_gain_bias(phy_info_t *pi, int gaintype, int band);
+int phy_noise_set_gain_bias(phy_info_t *pi, int gaintype, int band, int value);
+int phy_noise_get_radar_gain_bias(phy_info_t *pi, int gaintype);
+int phy_noise_set_radar_gain_bias(phy_info_t *pi, int gaintype, int value);
+int phy_noise_get_rxgainerr_bias(phy_info_t *pi);
+int phy_noise_set_rxgainerr_bias(phy_info_t *pi, int value);
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 #endif /* _phy_noise_h_ */

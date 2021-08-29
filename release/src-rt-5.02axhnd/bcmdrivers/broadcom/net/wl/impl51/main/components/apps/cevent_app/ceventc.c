@@ -2,7 +2,7 @@
  * Command Line Interface for CEVENT
  *
  *
- * Copyright (C) 2018, Broadcom. All Rights Reserved.
+ * Copyright (C) 2019, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -33,6 +33,7 @@ int cli_verbose = 0;
 #define CA_CMD_PAUSE	"pause"
 #define CA_CMD_RESUME	"resume"
 #define CA_CMD_END	"end"
+#define CA_CMD_FLUSH	"flush"
 
 static int ca_cli_connect(ca_cli_t *ctx);
 static int ca_cli_disconnect(ca_cli_t *ctx);
@@ -104,6 +105,7 @@ ca_cli_usage(ca_cli_t *ctx)
 	printf("\tpause\t\t - pause logging on all interfaces or single by passing -i <iface>\n");
 	printf("\tresume\t\t - resume logging on all interfaces or single by passing -i <iface>\n");
 	printf("\tstatus\t\t - show daemon status\n");
+	printf("\tflush\t\t - flushes log file(s)\n");
 	printf("\thelp\t\t - show this help\n");
 	printf("\t-h\t\t\t - show this help\n");
 	printf("\t-v\t\t\t - show version\n");
@@ -208,6 +210,8 @@ ca_cli_getopt(ca_cli_t *ctx)
 			act = CA_ACT_RESUME;
 		} else if (!strcasecmp(ctx->argv[i], CA_CMD_END)) {
 			act = CA_ACT_END;
+		} else if (!strcasecmp(ctx->argv[i], CA_CMD_FLUSH)) {
+			act = CA_ACT_FLUSH;
 		} else {
 			if (act != CA_ACT_DEFAULT) {
 				CC_ERR("Unhandled non-option argument '%s'\n", ctx->argv[i]);
@@ -256,6 +260,7 @@ ca_cli_act(ca_cli_t *ctx)
 		case CA_ACT_PAUSE:
 		case CA_ACT_RESUME:
 		case CA_ACT_END:
+		case CA_ACT_FLUSH:
 			/* nothing to append; action is mentioned in the header */
 			return hdr->len;
 		default:

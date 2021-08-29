@@ -1331,6 +1331,8 @@ CURLcode Curl_nss_connect(struct connectdata *conn, int sockindex)
 
   ssl_cbc_random_iv = !data->set.ssl_enable_beast;
 #ifdef SSL_CBC_RANDOM_IV
+  /* unless the user explicitly asks to allow the protocol vulnerability, we
+     use the work-around */
   if(SSL_OptionSet(model, SSL_CBC_RANDOM_IV, ssl_cbc_random_iv) != SECSuccess)
     infof(data, "warning: failed to set SSL_CBC_RANDOM_IV = %d\n",
           ssl_cbc_random_iv);

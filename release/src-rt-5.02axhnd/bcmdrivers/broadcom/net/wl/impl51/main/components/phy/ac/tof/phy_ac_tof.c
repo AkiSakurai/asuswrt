@@ -1,7 +1,7 @@
 /*
  * ACPHY TOF module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -1250,14 +1250,21 @@ static void phy_ac_tof_calc_snr_bpsk(const cint32* mf_out, const cint32* chan,
 	*snr = (wl_proxd_snr_t)(noise_pwr == 0) ? 0xffff : (len*((final_sc*final_sc) / noise_pwr));
 }
 
-static int phy_ac_tof_demod_snr(void *In, void *chan_in, uint8 bw_factor,
+static int phy_ac_tof_demod_snr(phy_info_t *pi, void *In, void *chan_in, uint8 bw_factor,
 	wl_proxd_bitflips_t *bit_flips, wl_proxd_snr_t *snr)
 {
 	cint32* pIn = (cint32*)In;
-	cint32* chan, chan_out[K_TOF_HALF_CHAN_LENGTH_2X_OS_80M];
+	cint32* chan;
+	cint32* chan_out;
 	const uint16 *sc_idx_arr = NULL, *band_length = NULL;
 	uint16 num_bl = 0;
 	uint32 i = 0, j = 0;
+	uint32 alloc_size = K_TOF_HALF_CHAN_LENGTH_2X_OS_80M * sizeof(cint32*);
+
+	if ((chan_out = (cint32*) phy_malloc(pi, alloc_size)) == NULL) {
+		PHY_ERROR(("%s: phy_malloc failed\n", __FUNCTION__));
+		return BCME_NOMEM;
+	}
 
 	switch (bw_factor) {
 	case 2:
@@ -1289,6 +1296,11 @@ static int phy_ac_tof_demod_snr(void *In, void *chan_in, uint8 bw_factor,
 		NUM_LEGACY_NZ_SC += band_length[i];
 	}
 	phy_ac_tof_calc_snr_bpsk(pIn, chan, sc_idx_arr, NUM_LEGACY_NZ_SC, bit_flips, snr);
+
+	if (chan_out != NULL) {
+		phy_mfree(pi, chan_out, alloc_size);
+	}
+
 	return BCME_OK;
 }
 
@@ -1444,7 +1456,7 @@ static int phy_ac_tof_mf(phy_info_t *pi, int n, cint32* pIn, bool seq, bool isTx
 		uint16	print_chan_len = (K_TOF_CHAN_LENGTH_20M << bw_factor);
 
 		chan = (chan + num_max_cores*print_chan_len);
-		ret_val = phy_ac_tof_demod_snr((void*)pIn, (void*)chan, bw_factor,
+		ret_val = phy_ac_tof_demod_snr(pi, (void*)pIn, (void*)chan, bw_factor,
 		&(tofi->bitflips), &(tofi->snr));
 
 		PHY_ERROR(("SNR = %d, Bit Flips = %d\n", tofi->snr,  tofi->bitflips));
@@ -2792,7 +2804,7 @@ phy_ac_tof_calc_snr_bitflips(phy_type_tof_ctx_t *ctx, void *In,
 	if (tofi->flag_sec_2_0) {
 		wlc_phy_tof_conj_arr(chan, print_chan_len);
 	}
-	retval = phy_ac_tof_demod_snr(In, (void*)chan, bw_factor, bit_flips, snr);
+	retval = phy_ac_tof_demod_snr(pi, In, (void*)chan, bw_factor, bit_flips, snr);
 	return retval;
 }
 
@@ -3005,15 +3017,10 @@ phy_ac_tof_chan_freq_response(phy_type_tof_ctx_t *ctx, int len, int nbits, bool 
 		/* reorder tones */
 		nfft = len;
 		nfft_over_2 = (len >> 1);
-		if (CHSPEC_IS80(pi->radio_chanspec) ||
-			PHY_AS_80P80(pi, pi->radio_chanspec)) {
+		if (nfft == TOF_NFFT_80MHZ) {
 			i_l = 122;
 			i_r = 2;
-		} else if (CHSPEC_IS160(pi->radio_chanspec)) {
-			i_l = 122;
-			i_r = 2;
-			ASSERT(0);
-		} else if (CHSPEC_IS40(pi->radio_chanspec)) {
+		} else if (nfft == TOF_NFFT_40MHZ) {
 			i_l = 58;
 			i_r = 2;
 		} else {
@@ -3052,11 +3059,12 @@ phy_ac_tof_chan_freq_response(phy_type_tof_ctx_t *ctx, int len, int nbits, bool 
 		}
 	} else if (ACMAJORREV_2(pi->pubpi->phy_rev) ||
 		ACMAJORREV_4(pi->pubpi->phy_rev) ||
-		ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+		ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		wlc_unpack_float_acphy(nbits, UNPACK_FLOAT_AUTO_SCALE, 0,
 			CORE0CHANESTTBL_FLOAT_FORMAT, CORE0CHANESTTBL_REV2_DATA_SIZE,
 			CORE0CHANESTTBL_REV2_EXP_SIZE, len, pIn, H, NULL);
-	} else if (ACMAJORREV_0(pi->pubpi->phy_rev) || ACMAJORREV_5(pi->pubpi->phy_rev)) {
+	} else if (ACMAJORREV_0(pi->pubpi->phy_rev) || ACMAJORREV_5(pi->pubpi->phy_rev) ||
+		ACMAJORREV_33(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
 		wlc_unpack_float_acphy(nbits, UNPACK_FLOAT_AUTO_SCALE, 0,
 			CORE0CHANESTTBL_FLOAT_FORMAT, CORE0CHANESTTBL_REV0_DATA_SIZE,
 			CORE0CHANESTTBL_REV0_EXP_SIZE, len, pIn, H, NULL);
@@ -3083,7 +3091,7 @@ phy_ac_chan_mag_sqr_impulse_response(phy_type_tof_ctx_t *ctx, int frame_type,
 	uint16 channel_smoothing = (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 		ACMAJORREV_33(pi->pubpi->phy_rev) ||
 		ACMAJORREV_37(pi->pubpi->phy_rev) ||
-		ACMAJORREV_47(pi->pubpi->phy_rev)) ?
+		ACMAJORREV_GE47(pi->pubpi->phy_rev)) ?
 		AC2PHY_TBL_ID_CHANNELSMOOTHING_1x1 : ACPHY_TBL_ID_CHANNELSMOOTHING_1x1;
 #ifdef TOF_DBG
 	int collect_hraw_size = 0;
@@ -3210,21 +3218,30 @@ static int phy_ac_tof_info(phy_type_tof_ctx_t *ctx, wlc_phy_tof_info_t *tof_info
 	phy_ac_tof_info_t *tofi = (phy_ac_tof_info_t *)ctx;
 	phy_info_t *pi = tofi->pi;
 
-	uint16 status0, status1, status5;
+	uint16 status0, status1, status2, status5, freq_est;
 	uint16 subband_shift;
-	int frame_bw, cfo;
+	int frame_bw, cfo, coarse_fo, fine_fo;
+
+	bool  suspend = !(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC);
+	if (!suspend) {
+		wlapi_suspend_mac_and_wait(pi->sh->physhim);
+	}
 
 	status0 = (int)READ_PHYREG(pi, RxStatus0) & 0xffff;
 	status1 = (int)READ_PHYREG(pi, RxStatus1);
+	status2 = (int)READ_PHYREG(pi, RxStatus2);
 	status5 = (int)READ_PHYREG(pi, RxStatus5);
+	freq_est = (int)READ_PHYREG(pi, PhyStatsFreqEst);
 
+	BCM_REFERENCE(status2);
+	BCM_REFERENCE(status5);
 	if (tof_info_mask & WLC_PHY_TOF_INFO_TYPE_FRAME_TYPE) {
 		tof_info->frame_type = status0 & PRXS0_FT_MASK;
 		tof_info->info_mask |= WLC_PHY_TOF_INFO_TYPE_FRAME_TYPE;
 	}
 
 	if (tof_info_mask & WLC_PHY_TOF_INFO_TYPE_FRAME_BW) {
-		if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+		if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
 			frame_bw = status1 & PRXS1_ACPHY_SUBBAND_MASK_GEN2;
 			subband_shift = PRXS1_ACPHY_SUBBAND_SHIFT_GEN2;
 		} else {
@@ -3251,11 +3268,15 @@ static int phy_ac_tof_info(phy_type_tof_ctx_t *ctx, wlc_phy_tof_info_t *tof_info
 	}
 
 	if (tof_info_mask & WLC_PHY_TOF_INFO_TYPE_CFO) {
-		cfo = ((int)status5 & 0xff);
-		if (cfo > 127) {
-			   cfo -= 256;
-		}
-		cfo = cfo * 2298;
+		fine_fo = ((int)freq_est & 0xff);
+		coarse_fo = ((int)(freq_est >> 8) & 0xff);
+		if (coarse_fo > 127)
+			coarse_fo -= 256;
+		if (fine_fo > 127)
+			fine_fo -= 256;
+
+		cfo = coarse_fo + fine_fo;
+		//tofi->tof_cur_cfo = cfo;
 		tof_info->cfo = cfo;
 		tof_info->info_mask |= WLC_PHY_TOF_INFO_TYPE_CFO;
 	}
@@ -3273,6 +3294,9 @@ static int phy_ac_tof_info(phy_type_tof_ctx_t *ctx, wlc_phy_tof_info_t *tof_info
 	if (tof_info_mask & WLC_PHY_TOF_INFO_TYPE_PHYERROR) {
 		tof_info->tof_phy_error = tofi->tof_phy_error;
 		tof_info->info_mask |= WLC_PHY_TOF_INFO_TYPE_PHYERROR;
+	}
+	if (!suspend) {
+		wlapi_enable_mac(pi->sh->physhim);
 	}
 	return BCME_OK;
 }
@@ -3329,6 +3353,7 @@ chanspec_t chanspec, int32* ki, int32* kt, int32* kseq)
 	uint16 const *kvalueptr = NULL;
 	int channel = CHSPEC_CHANNEL(chanspec);
 
+	/* Base K value (VHT FTM, VHT ACK) */
 	if (CHSPEC_IS80(chanspec)) {
 		*ki = tofi->proxd_ki[0];
 		*kt = tofi->proxd_kt[0];
@@ -3427,7 +3452,7 @@ chanspec_t chanspec, int32* ki, int32* kt, int32* kseq)
 			kvalueptr = NULL;
 			*kseq = TOF_SEQ_K_43602_2G;
 		}
-	} else if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+	} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
 		if (CHSPEC_IS80(chanspec)) {
 			kvalueptr = proxd_4361_80m_k_values;
 		} else if (CHSPEC_IS40(chanspec)) {
@@ -3450,10 +3475,13 @@ static int phy_ac_tof_kvalue(phy_type_tof_ctx_t *ctx, chanspec_t chanspec, uint3
 	int32 ki = 0, kt = 0, kseq = 0;
 	int rtt_adj = 0, rtt_adj_ts, irate_adj = 0, iack_adj = 0, trate_adj = 0, tack_adj = 0;
 	int rtt_adj_papd = 0, papd_en = 0;
+	bool suspend;
 	uint8 bwidx;
 
 	phy_ac_tof_info_t *tofi = (phy_ac_tof_info_t *)ctx;
 	phy_info_t *pi = tofi->pi;
+
+	suspend = !(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC);
 
 	kvaluep = phy_ac_tof_kvalue_tables(pi, tofi, chanspec, &ki, &kt, &kseq);
 	if (flag & WL_PROXD_SEQEN) {
@@ -3465,19 +3493,30 @@ static int phy_ac_tof_kvalue(phy_type_tof_ctx_t *ctx, chanspec_t chanspec, uint3
 		}
 		return BCME_OK;
 	}
+	/* Sub-band Idx for Init and Resp */
 	bwidx = flag & WL_PROXD_BW_MASK;
 
 	if (kvaluep) {
-		int8 rateidx, ackidx; /* VHT = -1, legacy6M = 0, legacy = 1, mcs0 = 2, mcs = 3 */
-		rateidx = rspecidx & 0xff;
+		/* VHT = -1, legacy6M = 0, legacy = 1, mcs0 = 2, mcs = 3 */
+		int8 rateidx, ackidx;
+		rateidx = (rspecidx & WL_RSPEC_FTMIDX_MASK) >> WL_RSPEC_FTMIDX_SHIFT;
 		rateidx--;
-		ackidx = (rspecidx >> 8) & 0xff;
+		ackidx = (rspecidx & WL_RSPEC_ACKIDX_MASK) >> WL_RSPEC_ACKIDX_SHIFT;
 		ackidx--;
+
+		if (!suspend) {
+			wlapi_suspend_mac_and_wait(pi->sh->physhim);
+		}
+		/* To check constant value */
 		rtt_adj = (4 - READ_PHYREGFLD(pi, RxFeCtrl1, rxfe_bilge_cnt));
 		rtt_adj_ts = 80;
 		if (READ_PHYREGFLD(pi, PapdEnable0, papd_compEnb0)) {
 			papd_en = 1;
 		}
+		if (!suspend) {
+			wlapi_enable_mac(pi->sh->physhim);
+		}
+
 		if (CHSPEC_IS80(chanspec)) {
 			if (channel <= 58) {
 				idx = (channel - 42) >> 4;
@@ -3490,13 +3529,22 @@ static int phy_ac_tof_kvalue(phy_type_tof_ctx_t *ctx, chanspec_t chanspec, uint3
 			if (papd_en) {
 				rtt_adj_papd = 25;
 			}
-			if (rateidx != -1) {
-				irate_adj = tofi->proxdi_rate_offset_80m[rateidx];
-				trate_adj = tofi->proxdt_rate_offset_80m[rateidx];
-			}
-			if (ackidx != -1) {
-				iack_adj = tofi->proxdi_ack_offset[0];
-				tack_adj = tofi->proxdt_ack_offset[0];
+			if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
+				if (rateidx != -1) {
+					irate_adj = tofi->proxdi_rate_offset_80m[rateidx];
+				}
+				if (ackidx != -1) {
+					trate_adj = tofi->proxdt_rate_offset_80m[ackidx];
+				}
+			} else {
+				if (rateidx != -1) {
+					irate_adj = tofi->proxdi_rate_offset_80m[rateidx];
+					trate_adj = tofi->proxdt_rate_offset_80m[rateidx];
+				}
+				if (ackidx != -1) {
+					iack_adj = tofi->proxdi_ack_offset[0];
+					tack_adj = tofi->proxdt_ack_offset[0];
+				}
 			}
 		} else if (CHSPEC_IS40(chanspec)) {
 			if (channel <= 62) {
@@ -3510,13 +3558,22 @@ static int phy_ac_tof_kvalue(phy_type_tof_ctx_t *ctx, chanspec_t chanspec, uint3
 			if (papd_en) {
 				rtt_adj_papd = 30;
 			}
-			if (rateidx != -1) {
-				irate_adj = tofi->proxdi_rate_offset_40m[rateidx];
-				trate_adj = tofi->proxdt_rate_offset_40m[rateidx];
-			}
-			if (ackidx != -1) {
-				iack_adj = tofi->proxdi_ack_offset[1];
-				tack_adj = tofi->proxdt_ack_offset[1];
+			if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
+				if (rateidx != -1) {
+					irate_adj = tofi->proxdi_rate_offset_40m[rateidx];
+				}
+				if (ackidx != -1) {
+					trate_adj = tofi->proxdt_rate_offset_40m[ackidx];
+				}
+			} else {
+				if (rateidx != -1) {
+					irate_adj = tofi->proxdi_rate_offset_40m[rateidx];
+					trate_adj = tofi->proxdt_rate_offset_40m[rateidx];
+				}
+				if (ackidx != -1) {
+					iack_adj = tofi->proxdi_ack_offset[1];
+					tack_adj = tofi->proxdt_ack_offset[1];
+				}
 			}
 		} else if (CHSPEC_IS20_5G(chanspec)) {
 			/* 5G 20M Hz channels */
@@ -3530,13 +3587,22 @@ static int phy_ac_tof_kvalue(phy_type_tof_ctx_t *ctx, chanspec_t chanspec, uint3
 			if (papd_en) {
 				rtt_adj_papd = 66;
 			}
-			if (rateidx != -1) {
-				irate_adj = tofi->proxdi_rate_offset_20m[rateidx];
-				trate_adj = tofi->proxdt_rate_offset_20m[rateidx];
-			}
-			if (ackidx != -1) {
-				iack_adj = tofi->proxdi_ack_offset[2];
-				tack_adj = tofi->proxdt_ack_offset[2];
+			if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
+				if (rateidx != -1) {
+					irate_adj = tofi->proxdi_rate_offset_20m[rateidx];
+				}
+				if (ackidx != -1) {
+					trate_adj = tofi->proxdt_rate_offset_20m[ackidx];
+				}
+			} else {
+				if (rateidx != -1) {
+					irate_adj = tofi->proxdi_rate_offset_20m[rateidx];
+					trate_adj = tofi->proxdt_rate_offset_20m[rateidx];
+				}
+				if (ackidx != -1) {
+					iack_adj = tofi->proxdi_ack_offset[2];
+					tack_adj = tofi->proxdt_ack_offset[2];
+				}
 			}
 		} else if (channel >= 1 && channel <= 14) {
 			/* 2G channels */
@@ -3544,20 +3610,34 @@ static int phy_ac_tof_kvalue(phy_type_tof_ctx_t *ctx, chanspec_t chanspec, uint3
 			if (papd_en) {
 				rtt_adj_papd = 70;
 			}
-			if (rateidx != -1) {
-				irate_adj = tofi->proxdi_rate_offset_2g[rateidx];
-				trate_adj = tofi->proxdt_rate_offset_2g[rateidx];
-			}
-			if (ackidx != -1) {
-				iack_adj = tofi->proxdi_ack_offset[3];
-				tack_adj = tofi->proxdt_ack_offset[3];
+			if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
+				if (rateidx != -1) {
+					irate_adj = tofi->proxdi_rate_offset_2g[rateidx];
+				}
+				if (ackidx != -1) {
+					trate_adj = tofi->proxdt_rate_offset_2g[ackidx];
+				}
+			} else {
+				if (rateidx != -1) {
+					irate_adj = tofi->proxdi_rate_offset_2g[rateidx];
+					trate_adj = tofi->proxdt_rate_offset_2g[rateidx];
+				}
+				if (ackidx != -1) {
+					iack_adj = tofi->proxdi_ack_offset[3];
+					tack_adj = tofi->proxdt_ack_offset[3];
+				}
 			}
 		}
 		rtt_adj = (rtt_adj_ts * rtt_adj) >> K_TOF_K_RTT_ADJ_Q;
 		ki += ((int32)rtt_adj + (int32)rtt_adj_papd - irate_adj - iack_adj);
 		kt += ((int32)rtt_adj + (int32)rtt_adj_papd - trate_adj - tack_adj);
 		if (bwidx) {
-			kt -= tofi->proxd_subbw_offset[bwidx - 1][rateidx + 1];
+			if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
+				kt -= tofi->proxd_subbw_offset[bwidx - 1][ackidx + 1];
+				ki -= tofi->proxd_subbw_offset[bwidx - 1][rateidx + 1];
+			} else {
+				kt -= tofi->proxd_subbw_offset[bwidx - 1][rateidx + 1];
+			}
 		}
 		if (kip) {
 			*kip = (uint32)(ki + (int8)(kvaluep[idx] & 0xff));
@@ -4003,7 +4083,7 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 			tofi->proxd_ki[1] = TOF_INITIATOR_K_43602_40M;
 			tofi->proxd_ki[2] = TOF_INITIATOR_K_43602_20M;
 			tofi->proxd_ki[3] = TOF_INITIATOR_K_43602_2G;
-		} else if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
 			tofi->proxd_ki[0] = TOF_INITIATOR_K_4361_80M;
 			tofi->proxd_ki[1] = TOF_INITIATOR_K_4361_40M;
 			tofi->proxd_ki[2] = TOF_INITIATOR_K_4361_20M;
@@ -4049,7 +4129,7 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 			tofi->proxd_kt[1] = TOF_TARGET_K_43602_40M;
 			tofi->proxd_kt[2] = TOF_TARGET_K_43602_20M;
 			tofi->proxd_kt[3] = TOF_TARGET_K_43602_2G;
-		} else if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
 			tofi->proxd_kt[0] = TOF_TARGET_K_4361_80M;
 			tofi->proxd_kt[1] = TOF_TARGET_K_4361_40M;
 			tofi->proxd_kt[2] = TOF_TARGET_K_4361_20M;
@@ -4082,7 +4162,7 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 		} else if (ACMAJORREV_0(pi->pubpi->phy_rev) || ACMAJORREV_5(pi->pubpi->phy_rev)) {
 			/* For 43602 */
 			kvalueptr = proxd_43602_80m_k_values;
-		} else if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
 			kvalueptr = proxd_4361_80m_k_values;
 		} else {
 			return;
@@ -4117,7 +4197,7 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 		} else if (ACMAJORREV_0(pi->pubpi->phy_rev) || ACMAJORREV_5(pi->pubpi->phy_rev)) {
 			/* For 43602 */
 			kvalueptr = proxd_43602_40m_k_values;
-		} else if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
 			kvalueptr = proxd_4361_40m_k_values;
 		} else {
 			return;
@@ -4152,7 +4232,7 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 		} else if (ACMAJORREV_0(pi->pubpi->phy_rev) || ACMAJORREV_5(pi->pubpi->phy_rev)) {
 			/* For 43602 */
 			kvalueptr = proxd_43602_20m_k_values;
-		} else if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
 			kvalueptr = proxd_4361_20m_k_values;
 		} else {
 			return;
@@ -4186,7 +4266,7 @@ BCMATTACHFN(phy_ac_nvram_proxd_read)(phy_info_t *pi, phy_ac_tof_info_t *tofi)
 		} else if (ACMAJORREV_0(pi->pubpi->phy_rev) || ACMAJORREV_5(pi->pubpi->phy_rev)) {
 			/* For 43602 */
 			kvalueptr = proxd_43602_2g_k_values;
-		} else if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
 			kvalueptr = proxd_4361_2g_k_values;
 		} else {
 			return;

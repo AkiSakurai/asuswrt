@@ -14,7 +14,7 @@
  * whose associated chanspec is used as the current radio chanspec, and
  * whose s/w properties are applied to the corresponding h/w if any.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -58,7 +58,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_chanmgr_api.h 766514 2018-08-04 06:18:03Z $
+ * $Id: phy_chanmgr_api.h 769448 2018-11-15 04:59:58Z $
  */
 
 #ifndef _phy_chanmgr_api_h_
@@ -67,9 +67,6 @@
 #include <typedefs.h>
 #include <bcmwifi_channels.h>
 #include <phy_api.h>
-
-/* add the feature to take out the BW RESET duriny the BW change  0: disable 1: enable */
-#define BW_RESET 1
 
 #ifdef PHYCAL_CACHING
 /*

@@ -1,6 +1,6 @@
 # Makefile fragment for phy-specific configuration.
 #
-# Copyright (C) 2018, Broadcom. All Rights Reserved.
+# Copyright (C) 2019, Broadcom. All Rights Reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -41,6 +41,7 @@ PHY_SRC_INC_DIRS += ac/dsi
 PHY_SRC_INC_DIRS += ac/papdcal
 PHY_SRC_INC_DIRS += ac/et
 PHY_SRC_INC_DIRS += ac/samp
+PHY_SRC_INC_DIRS += ac/radio
 
 phy_IncDirs := old $(PHY_MOD_INC_DIRS) $(PHY_SRC_INC_DIRS)
 phy_SrcDirs := old $(PHY_MOD_SRC_DIRS) $(PHY_SRC_INC_DIRS)

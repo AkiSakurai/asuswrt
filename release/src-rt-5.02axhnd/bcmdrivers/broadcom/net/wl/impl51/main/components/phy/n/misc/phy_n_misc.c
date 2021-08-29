@@ -1,7 +1,7 @@
 /*
  * NPHY MISC module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -191,6 +191,10 @@ phy_n_misc_test_stop(phy_type_misc_ctx_t *ctx)
 	phy_n_misc_info_t *info = (phy_n_misc_info_t *)ctx;
 	phy_info_t *pi = info->pi;
 	BCM_REFERENCE(pi);
+	/* phytest register needs to be accessed only via phy and not directly
+	 * XXX PR39573: clean up 2G regs. For 5G, bypass
+	 *  cleanup, assuming active phytest doesn't come from bphy
+	 */
 	if (CHSPEC_IS2G(pi->radio_chanspec)) {
 		phy_utils_and_phyreg(pi, (NPHY_TO_BPHY_OFF + BPHY_TEST), 0xfc00);
 		/* BPHY_DDFS_ENABLE is removed in mimophy rev 3 */

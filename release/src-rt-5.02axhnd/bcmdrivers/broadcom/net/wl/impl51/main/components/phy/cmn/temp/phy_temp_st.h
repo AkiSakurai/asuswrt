@@ -1,7 +1,7 @@
 /*
  * TEMPerature sense module internal interface.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_temp_st.h 760979 2018-05-04 06:42:22Z $
+ * $Id: phy_temp_st.h 774624 2019-04-30 18:59:48Z $
  */
 
 #ifndef _phy_temp_st_
@@ -53,6 +53,11 @@
 
 #include <typedefs.h>
 #include <phy_temp.h>
+
+//typedef struct {
+//	uint8   phy_temp_reduce_cnt;
+//	uint8   phy_temp_incr_cnt;
+//} phy_txcore_temp_cnt_t;
 
 typedef struct {
 	uint8	disable_temp; /* temp at which to drop to 1-Tx chain */
@@ -68,6 +73,7 @@ typedef struct {
 	uint8	phycal_tempdelta; /* temperature delta below which
 							* phy calibrations will not run
 							*/
+	phy_txcore_temp_cnt_t txcore_temp_cnt;
 	uint8	phycal_tempdelta_default;
 	bool    skip_tempsense;   /* Don't do tempsense (for debug) */
 } phy_txcore_temp_t;

@@ -1,6 +1,6 @@
 /*
  * Public interface to wireless security key operations
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: wlc_key.h 725941 2017-10-11 01:39:47Z $
+ * $Id: wlc_key.h 777731 2019-08-07 19:37:44Z $
  */
 
 #ifndef _wlc_key_h_
@@ -197,10 +197,7 @@ typedef uint32 wlc_key_flags_t;
 #define WLC_KEY_DBG_SETTABLE_FLAGS 0
 #endif /* BCMDBG */
 
-#define WLC_KEY_CCX_SETTABLE_FLAGS 0
-
-#define WLC_KEY_SETTABLE_FLAGS (WLC_KEY_DBG_SETTABLE_FLAGS |\
-	WLC_KEY_CCX_SETTABLE_FLAGS)
+#define WLC_KEY_SETTABLE_FLAGS WLC_KEY_DBG_SETTABLE_FLAGS
 
 /* Key expiration - absolute time in seconds when key expires. Time reference
  * is the same as wlc->pub->now

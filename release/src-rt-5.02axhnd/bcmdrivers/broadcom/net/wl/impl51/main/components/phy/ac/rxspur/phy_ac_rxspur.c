@@ -1,7 +1,7 @@
 /*
  * ACPHY Rx Spur canceller module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rxspur.c 742511 2018-01-22 14:14:24Z $
+ * $Id: phy_ac_rxspur.c 776481 2019-07-01 08:01:41Z $
  */
 
 #include <phy_cfg.h>
@@ -135,7 +135,9 @@ struct acphy_spurcan_values {
 	uint8 s3_en;
 	uint16 s3_omega_high;
 	uint16 s3_omega_low;
-
+	uint8 s4_en;
+	uint16 s4_omega_high;
+	uint16 s4_omega_low;
 };
 
 /* module private states */
@@ -149,6 +151,7 @@ struct phy_ac_rxspur_info {
 	uint16	*spurcan_ChanList;
 	int16	*spurcan_SpurFreq;
 	uint8	spurcan_NoSpurs;
+	uint8	spurcan_CoreMask;
 	uint8	acphy_spuravoid_mode;
 	uint8	curr_spurmode;
 	int8	acphy_spuravoid_mode_override;
@@ -163,6 +166,18 @@ static const uint32 acphy_spurcan_spur_freqKHz_rev12[] = {2431000, 2468400,
 static const uint32 acphy_spurcan_spur_freqKHz_router_4349_mimo[] = {2432000};
 static const uint32 acphy_spurcan_spur_freqKHz_router_4349_rsdb[] = {2432000, 2457778};
 
+// 6710 has Xtal spurs at harmonic of 50 MHz
+static const uint32 acphy_spurcan_spur_freqKHz_rev129[] = {2450000,
+	5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5750000, 5800000};
+
+// 63178/47622 has an Xtal spur on 2450 MHz, 49th harmonic of 50 MHz
+static const uint32 acphy_spurcan_spur_freqKHz_rev51[] = {2450000};
+
+// 6878 has an Xtal spur on 2450 MHz, 49th harmonic of 50 MHz
+// also seeing 25 MHz spurs so making seperate entry for 6878
+// 5GHz spurs yet unknown
+static const uint32 acphy_spurcan_spur_freqKHz_rev128[] = {2425000, 2450000, 2475000};
+
 /* local functions */
 static int phy_ac_rxspur_std_params(phy_ac_rxspur_info_t *info);
 static void phy_ac_set_spurmode(phy_type_rxspur_ctx_t *ctx, uint16 freq);
@@ -171,6 +186,8 @@ static void phy_ac_get_spurmode(phy_ac_rxspur_info_t *rxspuri, uint16 freq);
 static int phy_ac_rxspur_set_force_spurmode(phy_type_rxspur_ctx_t *ctx, int16 int_val);
 static int phy_ac_rxspur_get_force_spurmode(phy_type_rxspur_ctx_t *ctx, int32 *ret_int_ptr);
 #endif /* WLTEST */
+static void phy_ac_set_dssf_freq(phy_info_t *pi, uint8 stage, uint8 core, int32 f_kHz,
+	uint8 phy_bw);
 
 /* register phy type specific implementation */
 phy_ac_rxspur_info_t *
@@ -269,6 +286,7 @@ BCMATTACHFN(phy_ac_rxspur_std_params)(phy_ac_rxspur_info_t *rxspuri)
 	uint8 i;
 	uint16 *Sp_chanlist;
 	int16 *Sp_freqlist;
+	phy_stf_data_t *stf_shdata = phy_stf_get_data(pi->stfi);
 
 	rxspuri->curr_spurmode = 0;
 	if (CHIPID(pi->sh->chip) == BCM4335_CHIP_ID) {
@@ -318,6 +336,13 @@ BCMATTACHFN(phy_ac_rxspur_std_params)(phy_ac_rxspur_info_t *rxspuri)
 			}
 		}
 	}
+	if (ACMAJORREV_51(pi->pubpi->phy_rev) || ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		rxspuri->spurcan_CoreMask = (uint8)PHY_GETINTVAR_DEFAULT(pi,
+				rstr_spurcan_coremask, 0);
+	}
+	if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		rxspuri->spurcan_CoreMask = stf_shdata->hw_phytxchain;
+	}
 
 	return BCME_OK;
 }
@@ -334,10 +359,10 @@ phy_ac_setup_spurmode(phy_ac_rxspur_info_t *rxspuri)
 	wlapi_switch_macfreq(pi->sh->physhim, rxspuri->acphy_spuravoid_mode);
 }
 
-static void phy_ac_spurcan_clk(phy_info_t *pi, bool enable)
+static void phy_ac_spurcan_clk(phy_info_t *pi, uint8 core, bool enable)
 {
-	MOD_PHYREG(pi, forceFront0, spurcan_clk_en_slms0, enable);
-	MOD_PHYREG(pi, forceFront0, spurcan_clk_en_slms1, enable);
+	MOD_PHYREGCE(pi, forceFront, core, spurcan_clk_en_slms0, enable);
+	MOD_PHYREGCE(pi, forceFront, core, spurcan_clk_en_slms1, enable);
 }
 
 static void
@@ -348,7 +373,7 @@ phy_ac_spurcan_setup(phy_ac_rxspur_info_t *rxspuri, bool enable)
 	uint8 core = spurcan->core;
 
 	if (enable) {
-		phy_ac_spurcan_clk(pi, enable);
+		phy_ac_spurcan_clk(pi, core, enable);
 		MOD_PHYREG(pi, spur_can_phy_bw_mhz, spur_can_phy_bw_mhz, spurcan->bw);
 		if (ROUTER_4349(pi)) {
 			MOD_PHYREG(pi, spur_can_P_sp_min, spur_can_P_sp_min_dbm_slms, 0x8f);
@@ -372,6 +397,12 @@ phy_ac_spurcan_setup(phy_ac_rxspur_info_t *rxspuri, bool enable)
 			spur_can_omega_low, spurcan->s3_omega_low);
 		MOD_PHYREGCM(pi, spur_can_p, s3_en, core,
 			spur_can_stage_enable, spurcan->s3_en);
+		MOD_PHYREGCM(pi, spur_can_p, s4_omega_high, core,
+			spur_can_omega_high, spurcan->s4_omega_high);
+		MOD_PHYREGCM(pi, spur_can_p, s4_omega_low, core,
+			spur_can_omega_low, spurcan->s4_omega_low);
+		MOD_PHYREGCM(pi, spur_can_p, s4_en, core,
+			spur_can_stage_enable, spurcan->s4_en);
 		MOD_PHYREG(pi, spur_can_en, spur_can_enable,
 			spurcan->spurcan_en);
 	} else {
@@ -380,10 +411,58 @@ phy_ac_spurcan_setup(phy_ac_rxspur_info_t *rxspuri, bool enable)
 		MOD_PHYREGCM(pi, spur_can_p, s2_en, core, spur_can_stage_enable, 0);
 		MOD_PHYREGCM(pi, spur_can_p, s3_en, core, spur_can_stage_enable, 0);
 		if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-			phy_ac_spurcan_clk(pi, 0);
+			phy_ac_spurcan_clk(pi, core, 0);
 		} else {
-			phy_ac_spurcan_clk(pi, enable);
+			phy_ac_spurcan_clk(pi, core, enable);
 		}
+	}
+}
+
+static void
+phy_ac_fll_setup(phy_ac_rxspur_info_t *rxspuri, bool enable)
+{
+	phy_info_t *pi = rxspuri->pi;
+	acphy_spurcan_values_t *spurcan = rxspuri->spurcan_params;
+	uint8 core = spurcan->core;
+
+	if (enable) {
+		/* Below 3 regs are the minimum settings to enable the FLL section */
+		MOD_PHYREGCE(pi, forceFront, core, spurcan_clk_en_fll, 1);
+		MOD_PHYREG(pi, spur_can_en, spur_can_enable, 1);
+		MOD_PHYREGCE(pi, spur_can_fll_enable_p, core, fll_enable, 1);
+
+		/* Fast acquisition mode disables the LMS adaptation to make FLL fully converge */
+		MOD_PHYREGCE(pi, spur_can_fll_enable_p, core, fast_acq_mode, 0);
+		/* De-noising, i.e. update omega only if the update term is strong */
+		MOD_PHYREGCE(pi, spur_can_fll_enable_p, core, denoising_en, 0);
+		/* PI controller to stabilize the loop, passes through P leg if disabled */
+		MOD_PHYREGCE(pi, spur_can_fll_enable_p, core, pi_en, 0);
+		MOD_PHYREG(pi, spur_can_fll_ctrl3, pi_Kp, 4);
+		MOD_PHYREG(pi, spur_can_fll_ctrl3, pi_Ki, 1);
+
+		ACPHY_REG_LIST_START
+		  /* Damping amount in omega corrections
+			* d_omega = (d_phi >> (damping - log2f_mu))
+			*/
+		  MOD_PHYREG_ENTRY(pi, spur_can_fll_ctrl1, damping, 16)
+		  /* Further heavy LPF (1st IIR) on omega, not used by HW
+			* FW can utilize this if needed
+			*/
+		  MOD_PHYREG_ENTRY(pi, spur_can_fll_ctrl3, omega_lpf_gamma, 10)
+		  /* -log2(alpha) of the 1st order IIR for LPFing of down-converted spur
+		       * (y[n] = (1-alpha)*y[n-1] + alpha*x[n])
+		       */
+		  MOD_PHYREG_ENTRY(pi, spur_can_fll_ctrl3, eex1_lpf_alpha, 3)
+		  MOD_PHYREG_ENTRY(pi, spur_can_fll_ctrl1, dphi_lpf_beta, 0)
+		  /* Some other settings */
+		  MOD_PHYREG_ENTRY(pi, spur_can_fll_ctrl1, mu_threshold, 116)
+		  MOD_PHYREG_ENTRY(pi, spur_can_fll_ctrl2, lsb_trun_en, 1)
+		  MOD_PHYREG_ENTRY(pi, spur_can_fll_ctrl2, boost_skip_count, 24)
+		ACPHY_REG_LIST_EXECUTE(pi);
+	} else {
+		MOD_PHYREGCE(pi, forceFront, core, spurcan_clk_en_fll, 0);
+		MOD_PHYREG(pi, spur_can_en, spur_can_enable, 0);
+		MOD_PHYREGCE(pi, spur_can_fll_enable_p, core, fll_enable, 0);
 	}
 }
 
@@ -406,17 +485,11 @@ phy_ac_dssf_setup(phy_ac_rxspur_info_t *rxspuri)
 	WRITE_PHYREGCE(pi, DSSF_exp_j_theta_i_s2, dssf->core, dssf->theta_i_s2);
 	WRITE_PHYREGCE(pi, DSSF_exp_i_theta_q_s2, dssf->core, dssf->theta_q_s2);
 
-	if (dssf->core == 0) {
-		MOD_PHYREG(pi, DSSF_control_0, idepth_s1, dssf->idepth_s1);
-		MOD_PHYREG(pi, DSSF_control_0, idepth_s2, dssf->idepth_s2);
-		MOD_PHYREG(pi, DSSF_control_0, enabled_s1, dssf->enabled_s1);
-		MOD_PHYREG(pi, DSSF_control_0, enabled_s2, dssf->enabled_s2);
-	} else if (dssf->core == 1) {
-		MOD_PHYREG(pi, DSSF_control_1, idepth_s1, dssf->idepth_s1);
-		MOD_PHYREG(pi, DSSF_control_1, idepth_s2, dssf->idepth_s2);
-		MOD_PHYREG(pi, DSSF_control_1, enabled_s1, dssf->enabled_s1);
-		MOD_PHYREG(pi, DSSF_control_1, enabled_s2, dssf->enabled_s2);
-	}
+	MOD_PHYREGCE(pi, DSSF_control_, dssf->core, idepth_s1, dssf->idepth_s1);
+	MOD_PHYREGCE(pi, DSSF_control_, dssf->core, idepth_s2, dssf->idepth_s2);
+
+	MOD_PHYREGCE(pi, DSSF_control_, dssf->core, enabled_s1, dssf->enabled_s1);
+	MOD_PHYREGCE(pi, DSSF_control_, dssf->core, enabled_s2, dssf->enabled_s2);
 }
 #endif /* WL_DSSF_DISABLED */
 
@@ -512,8 +585,10 @@ phy_ac_spurcan(phy_ac_rxspur_info_t *rxspuri, bool enable)
 	phy_info_acphy_t *pi_ac = rxspuri->aci;
 	acphy_spurcan_values_t *spurcan = rxspuri->spurcan_params;
 	uint8 i, core;
-	uint8 num_spurs = 0;
+	uint8 num_spurs;
+	uint8 spur_1st_stage = 2;	/* Use stage2 and stage3 */
 	bool enable_final;
+	uint8 num_slms, num_fll;
 	uint8 tbl_len = 0;
 	uint16 channel = CHSPEC_CHANNEL(pi->radio_chanspec);
 	uint32 fc_KHz, omega;
@@ -542,18 +617,30 @@ phy_ac_spurcan(phy_ac_rxspur_info_t *rxspuri, bool enable)
 			spurfreq = acphy_spurcan_spur_freqKHz_rev12;
 			tbl_len = ARRAYSIZE(acphy_spurcan_spur_freqKHz_rev12);
 		}
-		num_spurs = 1;	/* Use stage2 and stage3 */
+		num_slms = 2;
+		num_fll = 1;
 
 		/* Make default to 0x6E 110 later change the value if there is spur */
 		MOD_PHYREG(pi, overideDigiGain1, cckdigigainEnCntValue, 0x6E);
 
 	} else if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
 		tbl_len = rxspuri->spurcan_NoSpurs;
-		num_spurs = 1;	/* Use stage2 and stage3 */
 		MOD_PHYREG(pi, overideDigiGain1, cckdigigainEnCntValue, 0xAF);
-	} else if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-		// Have to add spurs list if we plan to enable
-		spurfreq = NULL;
+	} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+		spurfreq = acphy_spurcan_spur_freqKHz_rev51;
+		tbl_len = ARRAYSIZE(acphy_spurcan_spur_freqKHz_rev51);
+		num_slms = 2;
+		num_fll = 1;
+	} else if (ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		spurfreq = acphy_spurcan_spur_freqKHz_rev128;
+		tbl_len = ARRAYSIZE(acphy_spurcan_spur_freqKHz_rev128);
+		num_slms = 1;
+		num_fll = 1;
+	} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		spurfreq = acphy_spurcan_spur_freqKHz_rev129;
+		tbl_len = ARRAYSIZE(acphy_spurcan_spur_freqKHz_rev129);
+		num_slms = 2;
+		num_fll = 1;
 	}
 	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
 		Sp_chanlist = (rxspuri->spurcan_ChanList);
@@ -561,38 +648,38 @@ phy_ac_spurcan(phy_ac_rxspur_info_t *rxspuri, bool enable)
 		if (rxspuri->spurcan_NoSpurs != 0) {
 			bzero(spurcan, sizeof(acphy_spurcan_values_t));
 			spurcan->bw = bw/1000;
+			num_spurs = 0;
 			for (i = 0; i < tbl_len; i++) {
 				if (freq == Sp_chanlist[i]) {
 					// Spur frequency in KHz
 					fsp = Sp_freqlist[i];
 					spurcan->spurcan_en = 1;
-					num_spurs = num_spurs + 1;
 					sign = (fsp > 0) - (fsp < 0);
 					math_uint64_divide(&omega, sign * fsp, 0, bw);
 					omega = sign * omega;
-					if (num_spurs == 1) {
+					if ((spur_1st_stage + num_spurs) == 1) {
 						spurcan->s1_en = 1;
 						spurcan->s1_omega_high = omega >> 16;
 						spurcan->s1_omega_low = omega & 0x0000ffff;
-					} else if (num_spurs == 2) {
+					} else if ((spur_1st_stage + num_spurs) == 2) {
 						spurcan->s2_en = 1;
 						spurcan->s2_omega_high = omega >> 16;
 						spurcan->s2_omega_low = omega & 0x0000ffff;
-					} else if (num_spurs == 3) {
+					} else if ((spur_1st_stage + num_spurs) == 3) {
 						spurcan->s3_en = 1;
 						spurcan->s3_omega_high = omega >> 16;
 						spurcan->s3_omega_low = omega & 0x0000ffff;
 						break;
 					}
+					num_spurs++;
 				}
 			}
-			if ((num_spurs <= 1) || (!enable)) {
+			if ((num_spurs == 0) || (!enable)) {
 				enable_final = FALSE;
 			} else {
 				enable_final = TRUE;
 			}
 			phy_ac_spurcan_setup(pi_ac->rxspuri, enable_final);
-			num_spurs = 1;
 		}
 	} else if (spurfreq != NULL) {
 		FOREACH_CORE(pi, core) {
@@ -600,34 +687,60 @@ phy_ac_spurcan(phy_ac_rxspur_info_t *rxspuri, bool enable)
 			spurcan->channel = channel;
 			spurcan->core = core;
 			spurcan->bw = bw/1000;
+			num_spurs = 0;
 			for (i = 0; i < tbl_len; i++) {
+				// Next statement could be outside loop but this way code
+				// is more compact
+				if (!enable || ((rxspuri->spurcan_CoreMask & (1 << core)) == 0)) {
+					break;
+				}
+
 				fsp = spurfreq[i] - fc_KHz;
 
-				if ((ROUTER_4349(pi) ||
-					ACMAJORREV_44_46(pi->pubpi->phy_rev)) && !fsp) {
+				/* JIRA: SWWLAN-92418
+				 * Issue: Enabling spurcan at DC freq is degrading rx sensitivity.
+				 * Fix: Don't enable spurcan if spur is at DC freq.
+				 */
+				if (fsp == 0) {
 					continue;
 				}
 
 				if (((-bw/2) < fsp) && (fsp < (bw/2))) {
 					spurcan->spurcan_en = 1;
-					num_spurs = num_spurs + 1;
+
 					sign = (fsp > 0) - (fsp < 0);
 					math_uint64_divide(&omega, sign * fsp, 0, bw);
 					omega = sign * omega;
-					if (num_spurs == 1) {
+					PHY_CAL(("%s: spur @ %d kHz, omega = %d\n",
+						__FUNCTION__, fsp, omega));
+					if ((spur_1st_stage + num_spurs) == 1) {
 						spurcan->s1_en = 1;
 						spurcan->s1_omega_high = omega >> 16;
 						spurcan->s1_omega_low = omega & 0x0000ffff;
-					} else if (num_spurs == 2) {
+					} else if ((spur_1st_stage + num_spurs) == 2) {
 						spurcan->s2_en = 1;
 						spurcan->s2_omega_high = omega >> 16;
 						spurcan->s2_omega_low = omega & 0x0000ffff;
-					} else if (num_spurs == 3) {
+					} else if (((spur_1st_stage + num_spurs) == 3) &&
+						(num_slms > 1)) {
 						spurcan->s3_en = 1;
 						spurcan->s3_omega_high = omega >> 16;
 						spurcan->s3_omega_low = omega & 0x0000ffff;
 						break;
+					/* if no more slms go to spur can stage 4 (FLL) */
+					} else if (((spur_1st_stage + num_spurs) == 3) &&
+						(num_fll > 0)) {
+						spurcan->s4_en = 1;
+						spurcan->s4_omega_high = omega >> 16;
+						spurcan->s4_omega_low = omega & 0x0000ffff;
+						break;
+					} else {
+						PHY_ERROR(("wl%d: %s: No more spur cancellers\n",
+							pi->sh->unit, __FUNCTION__));
+						ASSERT(0);
 					}
+					num_spurs++;
+
 					if (ACMAJORREV_4(pi->pubpi->phy_rev)) {
 						MOD_PHYREG(pi, overideDigiGain1,
 							cckdigigainEnCntValue, 0x82);
@@ -639,13 +752,17 @@ phy_ac_spurcan(phy_ac_rxspur_info_t *rxspuri, bool enable)
 
 				}
 			}
-			if ((num_spurs <= 1) || (!enable)) {
-				enable_final = FALSE;
+			PHY_CAL(("%s: channel %d, core %d, bw = %d MHz",
+				__FUNCTION__, channel, core, spurcan->bw));
+			if (spurcan->spurcan_en) {
+				PHY_CAL((" ==> enable %d cancellers\n", num_spurs));
 			} else {
-				enable_final = TRUE;
+				PHY_CAL((" ==> disable cancellers\n"));
 			}
-			phy_ac_spurcan_setup(pi_ac->rxspuri, enable_final);
-			num_spurs = 1;
+			phy_ac_spurcan_setup(pi_ac->rxspuri, spurcan->spurcan_en);
+			if (spurcan->s4_en) {
+				phy_ac_fll_setup(pi_ac->rxspuri, spurcan->spurcan_en);
+			}
 		}
 	} else {
 		// spurfreq is NULL
@@ -667,19 +784,25 @@ phy_ac_dssf(phy_ac_rxspur_info_t *rxspuri, bool on)
 	phy_info_acphy_t *pi_ac = rxspuri->aci;
 	acphy_dssf_values_t *dssf = rxspuri->dssf_params;
 
+	if (ACMAJORREV_47(pi->pubpi->phy_rev) && !pi->sromi->dssf_dis_ch138) {
+		phy_ac_dssf_43684(rxspuri, TRUE);
+		return;
+	}
+
 	if (!(((ACMAJORREV_1(pi->pubpi->phy_rev) && ACMINORREV_2(pi)) ||
 		ACMAJORREV_3(pi->pubpi->phy_rev)) &&
-		PHY_ILNA(pi)) && !(ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev))) {
+		PHY_ILNA(pi)) && !(ACMAJORREV_40_128(pi->pubpi->phy_rev))) {
 		return;
 	}
 
 	if (ACMAJORREV_4(pi->pubpi->phy_rev) || ACMAJORREV_36(pi->pubpi->phy_rev) ||
 		ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-		ACMAJORREV_37(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		ACMAJORREV_37(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		return;
 	}
 
-	if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev) &&
+	if (ACMAJORREV_40_128(pi->pubpi->phy_rev) &&
 		!(CHSPEC_IS2G(pi->radio_chanspec) && BF2_2G_SPUR_WAR(pi_ac))) {
 		return;
 	}
@@ -712,7 +835,7 @@ phy_ac_dssf(phy_ac_rxspur_info_t *rxspuri, bool on)
 			dssf->DSSF_gain_th1_s2 = 73;
 			dssf->DSSF_gain_th2_s2 = 78;
 		}
-	} else if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+	} else if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 		dssf->DSSF_gain_th0_s1 = 0;
 		dssf->DSSF_gain_th1_s1 = 0;
 		dssf->DSSF_gain_th2_s1 = 0;
@@ -747,7 +870,7 @@ phy_ac_dssf(phy_ac_rxspur_info_t *rxspuri, bool on)
 	if (on) {
 		dssf->channel = CHSPEC_CHANNEL(pi->radio_chanspec);
 
-		if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+		if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 			dssf->idepth_s1 = 0;
 			dssf->idepth_s2 = 0;
 			dssf->enabled_s1 = 1;
@@ -1635,6 +1758,80 @@ phy_ac_dssf(phy_ac_rxspur_info_t *rxspuri, bool on)
 }
 
 void
+phy_ac_dssf_43684(phy_ac_rxspur_info_t *rxspuri, bool on)
+{
+#ifndef WL_DSSF_DISABLED
+	phy_info_t *pi = rxspuri->pi;
+	phy_info_acphy_t *pi_ac = rxspuri->aci;
+	acphy_dssf_values_t *dssf = rxspuri->dssf_params;
+	phy_stf_data_t *stf_shdata = phy_stf_get_data(pi->stfi);
+	uint8 core;
+
+	dssf->channel = 0;
+	dssf->core = 0;
+
+	dssf->theta_i_s1 = 0;
+	dssf->theta_q_s1 = 0;
+	dssf->theta_i_s2 = 0;
+	dssf->theta_q_s2 = 0;
+	dssf->enabled_s1 = 0;
+	dssf->enabled_s2 = 0;
+	dssf->DSSF_C_CTRL = 0;
+	dssf->on = on;
+	dssf->channel = CHSPEC_CHANNEL(pi->radio_chanspec);
+
+	wlapi_suspend_mac_and_wait(pi->sh->physhim);
+
+	WRITE_PHYREG(pi, DSSF_C_CTRL, 0);
+
+	if (on) {
+		dssf->idepth_s1 = 2;
+		dssf->idepth_s2 = 2;
+		dssf->enabled_s1 = 1;
+		dssf->enabled_s2 = 1;
+		dssf->DSSF_C_CTRL = 1;
+		switch (dssf->channel) {
+			case 138:
+				/* bw=80, fc=5690 MHz */
+				/* platform spur at 10MHz+ppm */
+				/* placing double notch: 9925kHz & 10075kHz */
+				dssf->theta_i_s1 =  2913;
+				dssf->theta_q_s1 =  2878;
+				dssf->theta_i_s2 =  2879;
+				dssf->theta_q_s2 =  2912;
+				break;
+			case 142:
+				/* bw=40, fc=5710 MHz */
+				/* platform spur at -10MHz+ppm */
+				/* placing double notch: -9950kHz & -10050kHz */
+				dssf->theta_i_s1 =  32;
+				dssf->theta_q_s1 =  4097;
+				dssf->theta_i_s2 =  8160;
+				dssf->theta_q_s2 =  4097;
+				break;
+			default:
+				dssf->idepth_s1 = 0;
+				dssf->idepth_s2 = 0;
+				dssf->enabled_s1 = 0;
+				dssf->enabled_s2 = 0;
+				dssf->DSSF_C_CTRL = 0;
+				break;
+		}
+	} else {
+		dssf->DSSF_C_CTRL = 0;
+		dssf->enabled_s1 = 0;
+		dssf->enabled_s2 = 0;
+	}
+
+	FOREACH_ACTV_CORE(pi, stf_shdata->phytxchain, core) {
+		dssf->core = core;
+		phy_ac_dssf_setup(pi_ac->rxspuri);
+	}
+	wlapi_enable_mac(pi->sh->physhim);
+#endif /* WL_DSSF_DISABLED */
+}
+
+void
 phy_ac_dssfB(phy_ac_rxspur_info_t *rxspuri, bool on)
 {
 	phy_info_t *pi = rxspuri->pi;
@@ -2250,6 +2447,18 @@ phy_ac_get_spurmode(phy_ac_rxspur_info_t *rxspuri, uint16 freq)
 				rxspuri->acphy_spuravoid_mode = 2;
 			}
 		}
+	} else if (EMBEDDED_2x2AX_CORE(pi->sh->chip) ||
+			ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		if (CHSPEC_IS2G(pi->radio_chanspec) &&
+			(((CHSPEC_CHANNEL(pi->radio_chanspec) >= 1) &&
+			(CHSPEC_CHANNEL(pi->radio_chanspec) <= 5)) ||
+			(CHSPEC_IS40(pi->radio_chanspec) &&
+			((CHSPEC_CHANNEL(pi->radio_chanspec) >= 3) &&
+			(CHSPEC_CHANNEL(pi->radio_chanspec) <= 7))))) {
+			rxspuri->acphy_spuravoid_mode = 1;
+		} else {
+			rxspuri->acphy_spuravoid_mode = 0;
+		}
 	} else {
 		rxspuri->acphy_spuravoid_mode = 0;
 	}
@@ -2345,3 +2554,133 @@ phy_ac_rxspur_get_force_spurmode(phy_type_rxspur_ctx_t *ctx, int32 *ret_int_ptr)
 	return BCME_OK;
 }
 #endif /* defined(WLTEST) */
+
+void phy_ac_dssf_setup_iov(phy_info_t *pi, void *p)
+{
+#ifndef WL_DSSF_DISABLED
+	int32 *dssf_args = p;
+	uint8 en = (uint8) dssf_args[0];
+	int32 f_kHz = dssf_args[1];
+	int8 depth_mode = (int8) dssf_args[2];
+	uint8 stage = (uint8) dssf_args[3];
+	uint8 rxcore = (uint8) dssf_args[4];
+	uint8 phy_bw, core, depth, disCrsCorr;
+
+	/* disableCRSCorr has nothing to do with DSSF
+	 * however it belongs to DSSF_C_CTRL reg, which is written below
+	 * hence we save the value here and restore at the end
+	 */
+	disCrsCorr = READ_PHYREGFLD(pi, DSSF_C_CTRL, disableCRSCorr);
+
+	if (en) { /* enable DSSF on desired stage & core at inputted freq/depth */
+		if (CHSPEC_IS160(pi->radio_chanspec))
+			phy_bw = 160;
+		else if (CHSPEC_IS80(pi->radio_chanspec))
+			phy_bw = 80;
+		else if (CHSPEC_IS40(pi->radio_chanspec))
+			phy_bw = 40;
+		else
+			phy_bw = 20;
+
+		phy_ac_set_dssf_freq(pi, stage, rxcore, f_kHz, phy_bw);
+
+		wlapi_suspend_mac_and_wait(pi->sh->physhim);
+		WRITE_PHYREG(pi, DSSF_C_CTRL, 1);
+		switch (depth_mode) {
+			case -1:
+				WRITE_PHYREG(pi, DSSF_C_CTRL, 0x4); /* auto mode */
+				depth = 0;
+				break;
+			case 0:
+				WRITE_PHYREG(pi, DSSF_C_CTRL, 0x0); /* off */
+				depth = 0;
+				break;
+			case 6:
+				depth = 0; /* 6dB fixed (always on) */
+				break;
+			case 12:
+				depth = 1; /* 12dB fixed (always on) */
+				break;
+			case 18:
+				depth = 2; /* 18dB fixed (always on) */
+				break;
+			default:
+				depth = 0;
+				break;
+		}
+
+		if (stage == 1) {
+			/* 1st notch */
+			MOD_PHYREGCE(pi, DSSF_control_, rxcore, enabled_s1, 1);
+			MOD_PHYREGCE(pi, DSSF_control_, rxcore, idepth_s1, depth);
+		} else if (stage == 2) {
+			/* 2nd notch */
+			MOD_PHYREGCE(pi, DSSF_control_, rxcore, enabled_s2, 1);
+			MOD_PHYREGCE(pi, DSSF_control_, rxcore, idepth_s2, depth);
+		} else if (stage == 3) {
+			/* 3rd notch */
+			MOD_PHYREGCE(pi, DSSF_control_, rxcore, enabled_s3, 1);
+			MOD_PHYREGCE(pi, DSSF_control_, rxcore, idepth_s3, depth);
+		}
+		MOD_PHYREG(pi, DSSF_C_CTRL, disableCRSCorr, disCrsCorr);
+		wlapi_enable_mac(pi->sh->physhim);
+	} else { /* disable all cores and reset the regs */
+		wlapi_suspend_mac_and_wait(pi->sh->physhim);
+		FOREACH_CORE(pi, core) {
+			WRITE_PHYREG(pi, DSSF_C_CTRL, 0x2000);
+			MOD_PHYREGCE(pi, DSSF_control_, core, enabled_s1, 0);
+			MOD_PHYREGCE(pi, DSSF_control_, core, enabled_s2, 0);
+			MOD_PHYREGCE(pi, DSSF_control_, core, enabled_s3, 0);
+			MOD_PHYREGCE(pi, DSSF_control_, core, idepth_s1, 0);
+			MOD_PHYREGCE(pi, DSSF_control_, core, idepth_s2, 0);
+			MOD_PHYREGCE(pi, DSSF_control_, core, idepth_s3, 0);
+			WRITE_PHYREGCE(pi, DSSF_exp_j_theta_i_s1, core, 0);
+			WRITE_PHYREGCE(pi, DSSF_exp_i_theta_q_s1, core, 0);
+			WRITE_PHYREGCE(pi, DSSF_exp_j_theta_i_s2, core, 0);
+			WRITE_PHYREGCE(pi, DSSF_exp_i_theta_q_s2, core, 0);
+			WRITE_PHYREGCE(pi, DSSF_exp_j_theta_i_s3, core, 0);
+			WRITE_PHYREGCE(pi, DSSF_exp_i_theta_q_s3, core, 0);
+		}
+		MOD_PHYREG(pi, DSSF_C_CTRL, disableCRSCorr, disCrsCorr);
+		wlapi_enable_mac(pi->sh->physhim);
+	}
+#endif /* WL_DSSF_DISABLED */
+}
+
+static void
+phy_ac_set_dssf_freq(phy_info_t *pi, uint8 stage, uint8 core, int32 f_kHz, uint8 phy_bw)
+{
+	fixed theta = 0, rot = 0;
+	uint16 i_samp, q_samp;
+	math_cint32 tone_samp;
+
+	rot = FIXED((ABS(f_kHz) * 36)/phy_bw) / 100; /* 2*pi*f/20/1000  Note: f in Hz */
+	theta = 0;
+
+	if (f_kHz > 0)
+		theta += rot;
+	else
+		theta -= rot;
+
+	math_cmplx_cordic(theta, &tone_samp);
+
+	i_samp = (uint16)(FLOAT(tone_samp.i * 4095) & 0x1fff);
+	q_samp = (uint16)(FLOAT(tone_samp.q * 4095) & 0x1fff);
+
+	wlapi_suspend_mac_and_wait(pi->sh->physhim);
+
+	if (stage == 1) {
+		/* 1st notch */
+		WRITE_PHYREGCE(pi, DSSF_exp_j_theta_i_s1, core, i_samp);
+		WRITE_PHYREGCE(pi, DSSF_exp_i_theta_q_s1, core, q_samp);
+	} else if (stage == 2) {
+		/* 2nd notch */
+		WRITE_PHYREGCE(pi, DSSF_exp_j_theta_i_s2, core, i_samp);
+		WRITE_PHYREGCE(pi, DSSF_exp_i_theta_q_s2, core, q_samp);
+	} else if (stage == 3) {
+		/* 3rd notch */
+		WRITE_PHYREGCE(pi, DSSF_exp_j_theta_i_s3, core, i_samp);
+		WRITE_PHYREGCE(pi, DSSF_exp_i_theta_q_s3, core, q_samp);
+	}
+	wlapi_enable_mac(pi->sh->physhim);
+}

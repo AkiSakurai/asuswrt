@@ -357,22 +357,15 @@ function check_multi_range(obj, mini, maxi, allow_range){
 }
 
 function switchPortForward(obj){
-	if(obj.checked){
-		httpApi.nvramSet({
-			"vts_enable_x": "1",
-			"action_mode": "apply",
-			"action_wait": "5",
-			"rc_service": "restart_firewall"
-		});
-	}
-	else{
-		httpApi.nvramSet({
-			"vts_enable_x": "0",
-			"action_mode": "apply",
-			"action_wait": "5",
-			"rc_service": "restart_firewall"
-		});	
-	}
+	nvram.vts_enable_x = (obj.checked)?"1":"0";
+
+	httpApi.nvramSet({
+		"vts_enable_x": nvram.vts_enable_x,
+		"action_mode": "apply",
+		"action_wait": "5",
+		"rc_service": "restart_firewall"
+	});
+
 	showLoading(5);
 }
 

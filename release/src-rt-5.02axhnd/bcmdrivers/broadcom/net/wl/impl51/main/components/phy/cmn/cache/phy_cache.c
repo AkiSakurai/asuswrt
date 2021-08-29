@@ -1,7 +1,7 @@
 /*
  * CACHE module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_cache.c 767767 2018-09-25 19:06:32Z $
+ * $Id: phy_cache.c 768660 2018-10-22 05:15:09Z $
  */
 
 #include <phy_cfg.h>
@@ -105,6 +105,10 @@ struct phy_cache_info {
 	/* cache control */
 	uint8 ctl_sz;
 	phy_cache_ctl_t *ctl;
+
+	/* Cache Validation */
+	void *wlc_context_ptr;
+	phy_cache_validate_fn_t wlc_validate_fn;
 
 	/* common scratch buffer */
 	uint16	reuse_buffer_size;
@@ -554,6 +558,20 @@ fail:
 	return err;
 }
 
+/* Register callback at attach time. This is used to signal wlc to validate chanspecs. */
+int
+BCMATTACHFN(phy_cache_register_cb)(wlc_phy_t *ppi, phy_cache_validate_fn_t fn, void *context)
+{
+	phy_cache_info_t *ci = ((phy_info_t *)ppi)->cachei;
+	ASSERT(fn != NULL);
+	ASSERT(context != NULL);
+
+	ci->wlc_validate_fn = fn;
+	ci->wlc_context_ptr = context;
+
+	return BCME_OK;
+}
+
 /* Find the control struct index (same as cache entry index) for 'chanspec' */
 static int
 phy_cache_find_ctl(phy_cache_info_t *ci, chanspec_t chanspec)
@@ -563,7 +581,7 @@ phy_cache_find_ctl(phy_cache_info_t *ci, chanspec_t chanspec)
 	/* TODO: change to some faster search when necessary */
 
 	for (ctl = 0; ctl < (int)ci->ctl_sz; ctl ++) {
-		if ((ci->ctl[ctl].state & CTL_ST_USED) && (ci->ctl[ctl].chanspec == chanspec)) {
+		if (ci->ctl && (ci->ctl[ctl].state & CTL_ST_USED) && (ci->ctl[ctl].chanspec == chanspec)) {
 			return ctl;
 		}
 	}
@@ -604,6 +622,13 @@ phy_cache_add_entry(phy_cache_info_t *ci, chanspec_t chanspec)
 	if ((ctl = phy_cache_find_ctl(ci, chanspec)) >= 0) {
 		ASSERT(ci->ctl[ctl].bufp != NULL);
 		return BCME_OK;
+	}
+
+	/* If cache buffers are full, call MAC layer to see if some of them can be deleted */
+	if (ci->calcachebuf_param->cal_cache_buf_bmp == (1 << PHY_CACHE_SZ) - 1) {
+		if (ci->wlc_validate_fn && ci->wlc_context_ptr) {
+			ci->wlc_validate_fn(ci->wlc_context_ptr);
+		}
 	}
 
 	/* TODO: change to some faster search when necessary */

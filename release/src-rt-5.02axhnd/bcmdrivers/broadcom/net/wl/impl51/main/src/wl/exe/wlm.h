@@ -2,7 +2,7 @@
  * Common (OS-independent) portion of
  * WLM (Wireless LAN Manufacturing) test library.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

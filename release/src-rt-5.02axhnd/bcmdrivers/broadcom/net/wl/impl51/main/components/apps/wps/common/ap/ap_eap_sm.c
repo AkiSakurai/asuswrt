@@ -1,7 +1,7 @@
 /*
  * WPS AP eap state machine
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: ap_eap_sm.c 742933 2018-01-24 06:52:45Z $
+ * $Id: ap_eap_sm.c 766338 2018-07-31 04:55:48Z $
  */
 
 #include <stdio.h>

@@ -3,7 +3,7 @@
  * Perform password to key hash algorithm as defined in WPA and 802.11i
  * specifications
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

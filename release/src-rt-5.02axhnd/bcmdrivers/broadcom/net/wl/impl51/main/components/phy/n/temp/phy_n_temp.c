@@ -1,7 +1,7 @@
 /*
  * NPHY TEMPerature sense module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -145,6 +145,9 @@ phy_n_temp_throttle(phy_type_temp_ctx_t *ctx)
 	temp = phy_temp_get_st(ti);
 	ASSERT(temp != NULL);
 
+	/* XXX Watchdog override is a master switch to kill all PHY related
+	 *  periodic activities in the driver
+	 */
 	if (!pi->phywatchdog_override)
 		return temp->bitmap;
 

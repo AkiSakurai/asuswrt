@@ -2,7 +2,7 @@
  * cevent CLI reporting
  *
  *
- * Copyright (C) 2018, Broadcom. All Rights Reserved.
+ * Copyright (C) 2019, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -29,7 +29,7 @@ int
 ca_cli_dump_local(ca_cli_t *ctx)
 {
 	const char * nv_out_file_path = nvram_safe_get("ceventd_out");
-	char sys_cmd[256] = "";
+	char sys_cmd[512] = "";
 	char grep_iface[64] = "";
 	char grep_mac[64] = "";
 
@@ -52,9 +52,13 @@ ca_cli_dump_local(ca_cli_t *ctx)
 					"Flags Stts Rsn  Auth AT    \tDir \tEVENT\n");
 			snprintf(sys_cmd, sizeof(sys_cmd),
 				"bp=0; grep -v TIME.ms %s %s 2>/dev/null | %s %s "
-				"while read -r a b c d e f g h i j k rest; do bd=`expr $b - $bp`; "
+				"while read -r a b c d e f g h i j k rest; do "
+				/* if TIME value is large, extract the first 9 digits
+				 * from LSB to calculate the TDiff */
+				"bx=$b && [ ${#b} -ge 10 ] && from=`expr ${#b} - 8` && "
+				"bx=`expr substr $b $from 9`; bd=`expr $bx - $bp`; "
 				"echo -e \"$b  $bd\\t$c  $d $e $f $g $h $i \\t$j \t$k\"; "
-				"bp=$b; done",
+				"bp=$bx; done",
 				ctx->out_path, ctx->out_bak_path, grep_iface, grep_mac);
 			system(sys_cmd);
 		}

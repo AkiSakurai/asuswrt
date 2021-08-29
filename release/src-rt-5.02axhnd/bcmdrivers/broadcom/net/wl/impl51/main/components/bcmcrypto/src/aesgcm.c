@@ -1,7 +1,7 @@
 /*
  * aesgcm.c
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -48,6 +48,9 @@
  * $Id: aesgcm.c 680841 2017-01-23 22:28:09Z $
  */
 
+/* XXX: Define bcm_cfg.h to be the first header file included as some builds
+ * get their feature flags thru this file.
+ */
 #include <bcm_cfg.h>
 #include <aesgcm.h>
 #include <typedefs.h>

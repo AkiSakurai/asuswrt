@@ -2,7 +2,7 @@
  * MBO implementation for
  * Broadcom 802.11bang Networking Device Driver
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -140,6 +140,9 @@
 #define MBO_STA_MARKED_CHANNEL_RANGE_RESERVED		2 /* 2- 254 */
 #define MBO_STA_MARKED_CHANNEL_PREFERABLE		255
 
+#define MBO_BSSCFG_ENABLE		0x01
+#define MBO_BSSCFG_IS_ENABLED(mbc)	(mbc->flags & MBO_BSSCFG_ENABLE)
+
 typedef struct np_chan_entry {
 	uint8 chan;
 	uint8 ref_cnt;
@@ -184,6 +187,7 @@ struct wlc_mbo_info {
 typedef struct wlc_mbo_bsscfg_cubby {
 	uint8 mbo_assoc_disallowed;
 	uint8 mbo_ap_attr;
+	uint8 flags;
 } wlc_mbo_bsscfg_cubby_t;
 
 typedef struct wlc_mbo_scb_cubby {
@@ -257,6 +261,7 @@ static int wlc_mbo_iov_get_mbo_ap(const bcm_iov_cmd_digest_t *dig, const uint8 *
 	size_t ilen, uint8 *obuf, size_t *olen);
 static int wlc_mbo_iov_set_mbo_ap(const bcm_iov_cmd_digest_t *dig, const uint8 *ibuf,
 	size_t ilen, uint8 *obuf, size_t *olen);
+static void wlc_mbo_bss_updn(void *ctx, bsscfg_up_down_event_data_t *evt);
 #define MAX_SET_GET_DATA_CAP_SIZE  8
 
 static const bcm_iov_cmd_info_t mbo_sub_cmds[] = {
@@ -341,9 +346,7 @@ BCMATTACHFN(wlc_mbo_ap_attach)(wlc_info_t *wlc)
 	cubby_params.context = mbo;
 	cubby_params.fn_init = NULL;
 	cubby_params.fn_deinit = NULL;
-	cubby_params.fn_get = NULL;
-	cubby_params.fn_set = NULL;
-	cubby_params.config_size = sizeof(wlc_mbo_bsscfg_cubby_t);
+
 	mbo->cfgh = wlc_bsscfg_cubby_reserve_ext(wlc, sizeof(wlc_mbo_bsscfg_cubby_t *),
 		&cubby_params);
 	if (mbo->cfgh < 0) {
@@ -389,6 +392,14 @@ BCMATTACHFN(wlc_mbo_ap_attach)(wlc_info_t *wlc)
 		          wlc->pub->unit, __FUNCTION__));
 		goto fail;
 	}
+
+	/* bsscfg up/down callback */
+	if (wlc_bsscfg_updown_register(wlc, wlc_mbo_bss_updn, mbo) != BCME_OK) {
+		WL_ERROR(("wl%d: %s: wlc_bsscfg_updown_register() failed\n",
+		          wlc->pub->unit, __FUNCTION__));
+		goto fail;
+	}
+
 	/* enable GAS module to process incoming request */
 	bcm_gas_incoming_request(TRUE);
 	bcm_gas_subscribe_event(mbo->wlc, wlc_mbo_gas_event_cb);
@@ -410,7 +421,10 @@ BCMATTACHFN(wlc_mbo_ap_detach)(wlc_mbo_info_t* mbo)
 		wl_gas_stop_eventq(mbo->gasi);
 	}
 	bcm_gas_unsubscribe_event(wlc_mbo_gas_event_cb);
+	/* unregister for bss up/down */
+	wlc_bsscfg_updown_unregister(mbo->wlc, wlc_mbo_bss_updn, (void *)mbo);
 	mbo->wlc->pub->cmn->_mbo = FALSE;
+	bcm_iov_free_parse_context(&mbo->iov_parse_ctx, (bcm_iov_free_t)mbo_iov_context_free);
 	wlc_module_unregister(mbo->wlc->pub, "mbo", mbo);
 	MFREE(mbo->wlc->osh, mbo, sizeof(*mbo));
 	mbo = NULL;
@@ -429,11 +443,15 @@ wlc_mbo_iov_get_mbo_ap_attr(const bcm_iov_cmd_digest_t *dig, const uint8 *ibuf,
 	uint16 buflen = 0;
 	wlc_mbo_info_t *mbo = (wlc_mbo_info_t*)dig->cmd_ctx;
 
-	if (!mbo || !MBO_ENAB(mbo->wlc->pub)) {
+	if (!mbo) {
 		return BCME_UNSUPPORTED;
 	}
 	mbc = MBO_BSSCFG_CUBBY(mbo, dig->bsscfg);
 	ASSERT(mbc);
+
+	if (!MBO_BSSCFG_IS_ENABLED(mbc)) {
+		return BCME_UNSUPPORTED;
+	}
 	nbytes = sizeof(mbc->mbo_ap_attr);
 
 	xtlv_size = bcm_xtlv_size_for_data(sizeof(uint8), BCM_XTLV_OPTION_ALIGN32);
@@ -471,12 +489,15 @@ wlc_mbo_iov_get_ap_attr_assoc_disallowed(const bcm_iov_cmd_digest_t* dig, const 
 	uint16 buflen = 0;
 	wlc_mbo_info_t *mbo = (wlc_mbo_info_t*)dig->cmd_ctx;
 
-	if (!mbo || !MBO_ENAB(mbo->wlc->pub)) {
+	if (!mbo) {
 		return BCME_UNSUPPORTED;
 	}
 	mbc = MBO_BSSCFG_CUBBY(mbo, dig->bsscfg);
 	ASSERT(mbc);
 
+	if (!MBO_BSSCFG_IS_ENABLED(mbc)) {
+		return BCME_UNSUPPORTED;
+	}
 	xtlv_size = bcm_xtlv_size_for_data(sizeof(mbc->mbo_assoc_disallowed),
 		BCM_XTLV_OPTION_ALIGN32);
 	if (xtlv_size > *olen) {
@@ -517,11 +538,16 @@ wlc_mbo_iov_set_ap_attr_assoc_disallowed(const bcm_iov_cmd_digest_t *dig, const 
 	uint8 *ptr = NULL;
 
 	wlc_mbo_info_t *mbo = (wlc_mbo_info_t*)dig->cmd_ctx;
-	if (!mbo || !MBO_ENAB(mbo->wlc->pub)) {
+	if (!mbo) {
 		return BCME_UNSUPPORTED;
 	}
 	mbc = MBO_BSSCFG_CUBBY(mbo, dig->bsscfg);
 	ASSERT(mbc);
+
+	if (!MBO_BSSCFG_IS_ENABLED(mbc)) {
+		return BCME_UNSUPPORTED;
+	}
+
 	nbytes = sizeof(mbc->mbo_assoc_disallowed);
 	pibuf = (uint8*)MALLOCZ(mbo->wlc->osh, ilen);
 	if (pibuf == NULL) {
@@ -565,7 +591,7 @@ wlc_mbo_iov_get_fwd_gas_rqst_to_app(const bcm_iov_cmd_digest_t *dig, const uint8
 	uint16 buflen = 0;
 	wlc_mbo_info_t *mbo = (wlc_mbo_info_t*)dig->cmd_ctx;
 
-	if (!mbo || !MBO_ENAB(mbo->wlc->pub)) {
+	if (!mbo || !BSS_MBO_ENAB(mbo->wlc, dig->bsscfg)) {
 		return BCME_UNSUPPORTED;
 	}
 	xtlv_size = bcm_xtlv_size_for_data(sizeof(mbo->fwd_gas_rqst_to_app),
@@ -640,9 +666,13 @@ wlc_mbo_iov_get_mbo_ap(const bcm_iov_cmd_digest_t *dig, const uint8 *ibuf,
 	uint16 buflen = 0;
 	uint8 enab = FALSE;
 	wlc_mbo_info_t *mbo = (wlc_mbo_info_t*)dig->cmd_ctx;
+	wlc_mbo_bsscfg_cubby_t *mbc;
 
-	if ((mbo->wlc) && (mbo->wlc->pub)) {
-		enab = mbo->wlc->pub->cmn->_mbo;
+	ASSERT(mbo);
+	mbc = MBO_BSSCFG_CUBBY(mbo, dig->bsscfg);
+
+	if (mbc) {
+		enab = (MBO_BSSCFG_IS_ENABLED(mbc)) ? TRUE: FALSE;
 	}
 	xtlv_size = bcm_xtlv_size_for_data(sizeof(enab),
 		BCM_XTLV_OPTION_ALIGN32);
@@ -679,10 +709,14 @@ wlc_mbo_iov_set_mbo_ap(const bcm_iov_cmd_digest_t *dig, const uint8 *ibuf,
 	uint16 nbytes = 0;
 	uint8 *pibuf = NULL;
 	uint8 *ptr = NULL;
+	wlc_mbo_bsscfg_cubby_t *mbc;
 
 	wlc_mbo_info_t *mbo = (wlc_mbo_info_t*)dig->cmd_ctx;
 
 	ASSERT(mbo);
+
+	mbc = MBO_BSSCFG_CUBBY(mbo, dig->bsscfg);
+
 	nbytes = sizeof(data);
 	pibuf = (uint8*)MALLOCZ(mbo->wlc->osh, ilen);
 	if (pibuf == NULL) {
@@ -699,7 +733,13 @@ wlc_mbo_iov_set_mbo_ap(const bcm_iov_cmd_digest_t *dig, const uint8 *ibuf,
 			mbo->wlc->pub->unit, __FUNCTION__));
 		goto fail;
 	}
-	mbo->wlc->pub->cmn->_mbo = (uint8)data ? TRUE: FALSE;
+	if ((uint8)data) {
+		mbc->flags |= MBO_BSSCFG_ENABLE;
+	} else {
+		mbc->flags &= ~MBO_BSSCFG_ENABLE;
+	}
+
+	wlc_bsscfg_update_rclass(mbo->wlc, dig->bsscfg);
 fail:
 	if (ptr) {
 		MFREE(mbo->wlc->osh, ptr, ilen);
@@ -724,14 +764,11 @@ wlc_mbo_build_ie(void *ctx, wlc_iem_build_data_t *data)
 
 	ASSERT(mbo != NULL);
 
-	if (!MBO_ENAB(mbo->wlc->pub)) {
-		return BCME_OK;
-	}
 	cp = data->buf;
 	ie_hdr = (wifi_mbo_oce_ie_t *)cp;
 
 	mbc = MBO_BSSCFG_CUBBY(mbo, data->cfg);
-	if (!mbc) {
+	if (!mbc || !(MBO_BSSCFG_IS_ENABLED(mbc))) {
 		return BCME_OK;
 	}
 
@@ -788,7 +825,7 @@ wlc_mbo_calc_ie_len(void *ctx, wlc_iem_calc_data_t *data)
 		return 0;
 	}
 	total_len = MBO_OCE_IE_HDR_SIZE;
-	if (!MBO_ENAB(mbo->wlc->pub)) {
+	if (!MBO_BSSCFG_IS_ENABLED(mbc)) {
 		return 0;
 	} else {
 		/* add for MBO ap attribute indicate IE */
@@ -1200,7 +1237,7 @@ wlc_mbo_calc_len_mbo_ie_bsstrans_req(uint8 reqmode, bool* assoc_retry_attr)
 }
 
 void
-wlc_mbo_add_mbo_ie_bsstrans_req(wlc_info_t* wlc, uint8* data, bool assoc_retry_attr,
+wlc_mbo_add_mbo_ie_bsstrans_req(wlc_info_t* wlc, uint8** data, bool assoc_retry_attr,
 	uint8 retry_delay, uint8 transition_reason)
 {
 	uint8 *cp = NULL;
@@ -1210,7 +1247,7 @@ wlc_mbo_add_mbo_ie_bsstrans_req(wlc_info_t* wlc, uint8* data, bool assoc_retry_a
 	wifi_mbo_trans_reason_code_attr_t* trans_rc_attr = NULL;
 	wifi_mbo_assoc_retry_delay_attr_t* retry_delay_attr = NULL;
 
-	cp = data;
+	cp = *data;
 	ie_hdr = (wifi_mbo_oce_ie_t *)cp;
 
 	/* fill in MBO-OCE IE header */
@@ -1242,6 +1279,7 @@ wlc_mbo_add_mbo_ie_bsstrans_req(wlc_info_t* wlc, uint8* data, bool assoc_retry_a
 	}
 
 	ie_hdr->len = total_len;
+	*data += total_len + TLV_HDR_LEN;
 }
 
 bool
@@ -1322,6 +1360,7 @@ wlc_mbo_get_gas_support(wlc_info_t* wlc)
 	ASSERT(mbo);
 	return (int32)(mbo->fwd_gas_rqst_to_app);
 }
+
 /* iovar context alloc */
 static void *
 mbo_iov_context_alloc(void *ctx, uint size)
@@ -1388,7 +1427,7 @@ wlc_mbo_iov_cmd_validate(const bcm_iov_cmd_digest_t *dig, uint32 actionid,
 	mbo = (wlc_mbo_info_t *)dig->cmd_ctx;
 	ASSERT(mbo);
 	wlc = mbo->wlc;
-	if (!MBO_ENAB(wlc->pub)) {
+	if (!BSS_MBO_ENAB(wlc, dig->bsscfg)) {
 		ret = BCME_UNSUPPORTED;
 		goto fail;
 	}
@@ -1605,5 +1644,28 @@ wlc_mbo_gas_parse_query_list(uint8 *data, int body_len, uint8 *flag)
 		}
 	}
 	return BCME_OK;
+}
+
+bool
+wlc_mbo_bsscfg_is_enabled(wlc_info_t *wlc, wlc_bsscfg_t *cfg)
+{
+	wlc_mbo_info_t *mbo = wlc->mbo;
+	wlc_mbo_bsscfg_cubby_t *mbo_bsscfg;
+
+	if (!mbo) {
+		return FALSE;
+	}
+
+	mbo_bsscfg = MBO_BSSCFG_CUBBY(mbo, cfg);
+
+	return (mbo_bsscfg ? (MBO_BSSCFG_IS_ENABLED(mbo_bsscfg)): FALSE);
+}
+
+void
+wlc_mbo_bss_updn(void *ctx, bsscfg_up_down_event_data_t *evt)
+{
+	wlc_mbo_info_t *mbo = (wlc_mbo_info_t*)ctx;
+
+	wlc_bsscfg_update_rclass(mbo->wlc, evt->bsscfg);
 }
 #endif /* MBO_AP */

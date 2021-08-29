@@ -1,7 +1,7 @@
 /*
  * ACPHY PAPD CAL module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_papdcal.h 656647 2016-08-29 12:15:57Z $
+ * $Id: phy_ac_papdcal.h 773574 2019-03-25 20:46:34Z $
  */
 
 #ifndef _phy_ac_papdcal_h_
@@ -98,6 +98,8 @@ void phy_ac_papdcal_unregister_impl(phy_ac_papdcal_info_t *info);
 /* ************************************************************************* */
 /* ************************************************************************* */
 extern uint16 papd_gainctrl_pga[];
+extern uint16 papd_gainctrl_calidx[];
+extern uint16 papd_gainctrl_bbmult[];
 
 /* used for PAPD cal */
 typedef struct _acphy_txgains {
@@ -135,12 +137,13 @@ extern void wlc_phy_papd_dump_eps_trace_acphy(phy_info_t *pi, struct bcmstrbuf *
 extern void wlc_phy_do_papd_cal_acphy(phy_info_t *pi);
 extern void wlc_phy_get_papd_cal_pwr_acphy(phy_info_t *pi, int8 *targetpwr, int8 *tx_idx,
                                            uint8 core);
+extern uint8 phy_ac_papdcal_eps_table_size(phy_info_t *pi, uint8 core);
 
 /* APAPD_ARRAYSIZE = corr_end - startindex + 1 */
 #define APAPD_ARRAYSIZE 76
 
 void phy_ac_papdcal_cal_init(phy_info_t *pi);
-void phy_ac_papdcal(phy_info_t *pi);
+void phy_ac_papdcal_multiphase(phy_info_t *pi);
 #ifdef PHYCAL_CACHING
 void phy_ac_papdcal_save_cache(phy_ac_papdcal_info_t *papdcali, ch_calcache_t *ctx);
 #endif /* PHYCAL_CACHING */

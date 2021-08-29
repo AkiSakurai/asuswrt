@@ -579,7 +579,7 @@ static bool set_mode(struct btd_adapter *adapter, uint16_t opcode,
 	memset(&cp, 0, sizeof(cp));
 	cp.val = mode;
 
-	DBG("sending set mode command for index %u", adapter->dev_id);
+	DBG("sending set mode[%u] command for index %u opcode 0x%04x", mode, adapter->dev_id, opcode);
 
 	if (mgmt_send(adapter->mgmt, opcode,
 				adapter->dev_id, sizeof(cp), &cp,
@@ -5715,6 +5715,21 @@ static void adapter_remove_connection(struct btd_adapter *adapter,
 #ifdef RTCONFIG_LANTIQ
 	notify_rc("restart_bluetooth_service");
 #endif
+#if defined(RTAX95Q)
+	/// enable advertising
+	if (bdaddr_type != BDADDR_BREDR) {
+		int dd = hci_open_dev(adapter->dev_id);
+		if (dd < 0) {
+			btd_warn(adapter->dev_id, "Open hci device failed");
+		}
+		else {
+			if (hci_le_set_advertise_enable(dd, 0x01, 1000) < 0) {
+				btd_warn(adapter->dev_id, "Enable advertise failed");
+			}
+			hci_close_dev(dd);
+		}
+	}
+#endif
 }
 
 static void adapter_stop(struct btd_adapter *adapter)
@@ -7938,6 +7953,10 @@ static void read_info_complete(uint8_t status, uint16_t length,
 			goto failed;
 		}
 
+		DBG("%s mode, \n missing_settings:0x%08x MGMT_SETTING_LE:0x%08x, \ncurrent_settings:0x%08x MGMT_SETTING_BREDR:0x%08x",
+				main_opts.mode==0?"DUEL":main_opts.mode==1?"BREDR":"LE",
+				missing_settings, MGMT_SETTING_LE,
+				adapter->current_settings, MGMT_SETTING_BREDR);
 		if (missing_settings & MGMT_SETTING_LE)
 			set_mode(adapter, MGMT_OP_SET_LE, 0x01);
 		if (adapter->current_settings & MGMT_SETTING_BREDR)
@@ -8078,7 +8097,9 @@ static void read_info_complete(uint8_t status, uint16_t length,
 	else if (adapter->current_settings & MGMT_SETTING_CONNECTABLE)
 		set_mode(adapter, MGMT_OP_SET_CONNECTABLE, 0x00);
 
+#if 0	/*Enable discoverable*/
 	if (adapter->stored_discoverable && !adapter->discoverable_timeout)
+#endif
 		set_discoverable(adapter, 0x01, 0);
 
 	if (adapter->current_settings & MGMT_SETTING_POWERED)

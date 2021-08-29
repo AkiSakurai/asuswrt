@@ -1,6 +1,6 @@
 /*
  * Key Management Module km_wowl_hw Implementation
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_wowl_hw.c 631569 2016-04-15 02:17:57Z $
+ * $Id: km_wowl_hw.c 774133 2019-04-11 09:15:54Z $
  */
 
 /* This file implements the wlc keymgmt functionality. It provides
@@ -364,6 +364,9 @@ BCMATTACHFN(km_wowl_hw_attach)(wlc_info_t *wlc, wlc_keymgmt_t *km)
 	hw->shm_info.max_rx_pn = hw->max_idx;
 	hw->shm_info.max_tx_pn = 1;
 
+	/* XXX initialize max key size; this may become corerev dependent when
+	 * h/w supports longer keys.
+	 */
 	hw->max_key_size = D11_MAX_KEY_SIZE;
 
 	/* note: algo init needs this to be done first */

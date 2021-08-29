@@ -1,7 +1,7 @@
 /*
  * PHY modules reclaimable strings.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_rstr.c 766697 2018-08-10 00:10:49Z $
+ * $Id: phy_rstr.c 775037 2019-05-16 02:01:47Z $
  */
 
 #include <typedefs.h>
@@ -473,7 +473,12 @@ const char BCMATTACHDATA(rstr_lowpowerrange5g)[] = "lowpowerrange5g";
 const char BCMATTACHDATA(rstr_paprdis)[] = "paprdis";
 const char BCMATTACHDATA(rstr_papdwar)[] = "papdwar";
 const char BCMATTACHDATA(rstr_low_adc_rate_en)[] = "low_adc_rate_en";
+const char BCMATTACHDATA(rstr_ppr_backoff_2g)[] = "ppr_backoff_2g";
+const char BCMATTACHDATA(rstr_ppr_backoff_5g)[] = "ppr_backoff_5g";
+const char BCMATTACHDATA(rstr_dssf_dis_ch138)[] = "dssf_dis_ch138";
 const char BCMATTACHDATA(rstr_bphymrc_en)[] = "bphymrc";
+const char BCMATTACHDATA(rstr_idletssi_disable_2g)[] = "idletssi_disable_2g";
+const char BCMATTACHDATA(rstr_idletssi_disable_5g)[] = "idletssi_disable_5g";
 
 const char BCMATTACHDATA(rstr_tssisleep_en)[] = "tssisleep_en";
 const char BCMATTACHDATA(ed_thresh2g)[] = "ed_thresh2g";
@@ -553,11 +558,17 @@ const char BCMATTACHDATA(rstr_gainctrlsph)[] = "gainctrlsph";
 
 /* NVRAM PARAM String for ulp_adc_mode */
 const char BCMATTACHDATA(rstr_ulpadc)[] = "ulpadc";
+
+/* NVRAM PARAM String for spur canceller */
 const char BCMATTACHDATA(rstr_spurcan_chlist)[] = "spurcan_ch_list_MHz";
 const char BCMATTACHDATA(rstr_spurcan_spfreq)[] = "spurcan_sp_freq_KHz";
 const char BCMATTACHDATA(rstr_spurcan_numspur)[] = "spurcan_NumSpur";
+const char BCMATTACHDATA(rstr_spurcan_coremask)[] = "spurcan_CoreMask";
 
 const char BCMATTACHDATA(rstr_vcotune)[] = "vcotune";
+
+/* NVRAM PARAM for alternative DAC DIV Ratio to avoid spurs */
+const char BCMATTACHDATA(rstr_dacdiv10_2g)[] = "dacdiv10_2g";
 
 #ifdef WLC_SW_DIVERSITY
 const char BCMATTACHDATA(rstr_swdiv_en)[] = "swdiv_en";

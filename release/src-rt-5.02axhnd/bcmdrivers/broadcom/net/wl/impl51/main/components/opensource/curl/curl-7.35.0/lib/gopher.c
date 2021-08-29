@@ -137,6 +137,15 @@ static CURLcode gopher_do(struct connectdata *conn, bool *done)
       Curl_safefree(sel_org);
       return result;
     }
+    /* Don't busyloop. The entire loop thing is a work-around as it causes a
+       BLOCKING behavior which is a NO-NO. This function should rather be
+       split up in a do and a doing piece where the pieces that aren't
+       possible to send now will be sent in the doing function repeatedly
+       until the entire request is sent.
+
+       Wait a while for the socket to be writable. Note that this doesn't
+       acknowledge the timeout.
+    */
     Curl_socket_ready(CURL_SOCKET_BAD, sockfd, 100);
   }
 

@@ -1,7 +1,7 @@
 /*
  * ACPHY RADIO control module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_radio.h 742511 2018-01-22 14:14:24Z $
+ * $Id: phy_ac_radio.h 775385 2019-05-29 11:30:21Z $
  */
 
 #ifndef _phy_ac_radio_h_
@@ -60,9 +60,10 @@
 #include <wlc_phytbl_20694.h>
 #include <wlc_phytbl_20695.h>
 #include <wlc_phytbl_20696.h>
-#include <wlc_phytbl_20697.h>
 #include <wlc_phytbl_20698.h>
 #include <wlc_phytbl_20704.h>
+#include <wlc_phytbl_20707.h>
+#include <wlc_phytbl_20709.h>
 
 #ifdef ATE_BUILD
 #include <wl_ate.h>
@@ -130,6 +131,7 @@ typedef struct phy_ac_radio_data {
 	/* this data is shared between radio and chanmgr */
 	uint16	rccal_gmult;
 	uint16	rccal_gmult_rc;
+	uint16	rccal_cmult_rc;
 	uint8	rccal_dacbuf;
 	uint8	vcodivmode;
 	uint8	srom_txnospurmod2g; /* 2G Tx spur optimization */
@@ -212,34 +214,36 @@ extern int wlc_phy_chan2freq_20695(phy_info_t *pi, uint8 channel,
 //extern int wlc_phy_chan2freq_20694(phy_info_t *pi, uint8 channel);
 extern int wlc_phy_chan2freq_20694(phy_info_t *pi, uint8 channel,
 	const chan_info_radio20694_rffe_t **chan_info);
-extern int wlc_phy_chan2freq_20697(phy_info_t *pi, uint8 channel,
-	chan_info_radio20697_rffe_t *chan_info);
-
 extern int wlc_phy_chan2freq_20696(phy_info_t *pi, uint8 channel,
 	const chan_info_radio20696_rffe_t **chan_info);
 extern int wlc_phy_chan2freq_20698(phy_info_t *pi, uint8 channel,
 	const chan_info_radio20698_rffe_t **chan_info);
 extern int wlc_phy_chan2freq_20704(phy_info_t *pi, uint8 channel,
 	const chan_info_radio20704_rffe_t **chan_info);
+extern int wlc_phy_chan2freq_20707(phy_info_t *pi, uint8 channel,
+        const chan_info_radio20707_rffe_t **chan_info);
+extern int wlc_phy_chan2freq_20709(phy_info_t *pi, uint8 channel,
+	const chan_info_radio20709_rffe_t **chan_info);
+extern int wlc_phy_chan2freq_20709(phy_info_t *pi, uint8 channel,
+	const chan_info_radio20709_rffe_t **chan_info);
 extern void wlc_phy_radio20694_afe_div_ratio(phy_info_t *pi, uint8 use_ovr, uint8 ipapd);
 extern void wlc_phy_radio20696_afe_div_ratio(phy_info_t *pi);
 extern void wlc_phy_radio20698_afe_div_ratio(phy_info_t *pi, uint8 use_ovr,
 	chanspec_t chanspec_sc, uint8 sc_mode);
 extern void wlc_phy_radio20704_afe_div_ratio(phy_info_t *pi, uint8 use_ovr);
-extern void wlc_phy_radio20697_afe_div_ratio(phy_info_t *pi, uint8 use_ovr);
+extern void wlc_phy_radio20707_afe_div_ratio(phy_info_t *pi, uint8 use_ovr);
+extern void wlc_phy_radio20709_afe_div_ratio(phy_info_t *pi, uint8 use_ovr);
 extern void
 wlc_phy_radio20695_txdac_bw_setup(phy_info_t *pi, uint8 filter_type, uint8 dacbw);
 extern void
 wlc_phy_radio20694_txdac_bw_setup(phy_info_t *pi, uint8 filter_type, uint8 dacbw);
 extern void
 wlc_phy_radio20696_txdac_bw_setup(phy_info_t *pi, uint8 filter_type, uint8 dacbw);
-extern void
-wlc_phy_radio20697_reg_update(phy_info_t *pi, uint16 *regarray,	uint16 *maskarray,
-	uint16 *valarray, uint16 sizeval);
 extern void wlc_phy_radio20698_set_tx_notch(phy_info_t *pi);
 extern void wlc_phy_radio20704_set_tx_notch(phy_info_t *pi);
-extern void
-	wlc_phy_ac_set_20697_lpf_rc_bw(phy_info_t *pi);
+extern void wlc_phy_radio20707_set_tx_notch(phy_info_t *pi);
+extern void wlc_phy_radio20709_set_tx_notch(phy_info_t *pi);
+
 /* Cleanup Chanspec */
 extern void chanspec_setup_radio(phy_info_t *pi);
 extern void chanspec_tune_radio(phy_info_t *pi);
@@ -251,7 +255,13 @@ extern void wlc_phy_radio20698_pu_rx_core(phy_info_t *pi, uint core, uint fc, bo
 extern void wlc_phy_radio20698_powerup_RFP1(phy_info_t *pi, bool pwrup);
 
 extern void wlc_phy_radio20704_sel_logen_mode(phy_info_t *pi, uint8 mode);
+extern void wlc_phy_radio20707_sel_logen_mode(phy_info_t *pi, uint8 mode);
+extern void wlc_phy_radio20709_sel_logen_mode(phy_info_t *pi, uint8 mode);
 extern void wlc_phy_chanspec_radio20704_setup(phy_info_t *pi, uint8 ch, uint8 toggle_logen_reset,
+	uint8 logen_mode);
+extern void wlc_phy_chanspec_radio20707_setup(phy_info_t *pi, uint8 ch, uint8 toggle_logen_reset,
+        uint8 logen_mode);
+extern void wlc_phy_chanspec_radio20709_setup(phy_info_t *pi, uint8 ch, uint8 toggle_logen_reset,
 	uint8 logen_mode);
 
 /* Obtain DAC rate for different modes */

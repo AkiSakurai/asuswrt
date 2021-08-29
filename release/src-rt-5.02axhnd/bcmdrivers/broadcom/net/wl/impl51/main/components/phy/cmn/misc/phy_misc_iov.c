@@ -1,7 +1,7 @@
 /*
  * Miscellaneous module implementation - iovar table/handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -48,6 +48,9 @@
  * $Id: phy_misc_iov.c 738246 2017-12-27 21:56:39Z $
  */
 
+/* XXX: Define wlc_cfg.h to be the first header file included as some builds
+ * get their feature flags thru this file.
+ */
 #include <wlc_cfg.h>
 #include <typedefs.h>
 #include <phy_api.h>

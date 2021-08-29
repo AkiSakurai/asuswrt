@@ -1,6 +1,6 @@
 /*
  * Implementation of wlc_key algo 'aes'
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_key_aes.c 764693 2018-05-29 15:43:56Z $
+ * $Id: km_key_aes.c 774180 2019-04-15 07:45:12Z $
  */
 
 #include "km_key_aes_pvt.h"
@@ -62,7 +62,7 @@
 #define key_aes_tx_gcm(k, p, h, b, l, s) BCME_UNSUPPORTED
 #endif /* !BCMGCMP */
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) && defined(BCMINTERNAL)
 /* check aes key for compatible algo vs (key, icv, iv) sizes
  * note: all gcm/gmac algorithms have longer icv
  */
@@ -136,7 +136,7 @@ key_aes_seq_to_body(wlc_key_t *key, uint8 *seq, uint8 *body)
 }
 
 static void
-key_aes_seq_from_body(wlc_key_t *key, uint8 *seq, uint8 *body)
+key_aes_seq_from_body(wlc_key_t *key, uint8 *seq, const uint8 *body)
 {
 	if (!AES_KEY_ALGO_OCBXX(key)) {
 		seq[0] = body[0];
@@ -276,11 +276,16 @@ key_aes_set_data(wlc_key_t *key, const uint8 *data,
 			if (KM_SCB_LEGACY_AES(scb))
 				key->info.flags |= WLC_KEY_FLAG_AES_MODE_LEGACY;
 		}
-
-		/* use ivtw (if configured), except for BIP */
+		/* use ivtw (if configured), except for BIP and non WPA_NONE Group Key case */
 #ifdef BRCMAPIVTW
-		if (!WLC_KEY_ALGO_IS_BIPXX(key->info.algo))
-			key->info.flags |= WLC_KEY_FLAG_USE_IVTW; /* if enabled */
+		{
+			wlc_bsscfg_t *cfg = wlc_keymgmt_get_bsscfg(KEY_KM(key), key->info.key_idx);
+			if (!WLC_KEY_ALGO_IS_BIPXX(key->info.algo) &&
+				(!WLC_KEY_IS_GROUP(&key->info) || (WLC_KEY_IS_IBSS(&key->info) &&
+				(cfg->WPA_auth == WPA_AUTH_NONE))))
+				key->info.flags |= WLC_KEY_FLAG_USE_IVTW; /* if enabled */
+		}
+#else
 #endif /* BRCMAPIVTW */
 
 		memcpy(key_data, data, key->info.key_len);
@@ -339,10 +344,8 @@ key_aes_ccm_nonce_flags(wlc_key_t *key, void *pkt,
 		KM_ASSERT(scb != NULL);
 		if (KM_SCB_MFP(scb))
 			nonce_flags = AES_CCMP_NF_MANAGEMENT;
-		else if (KM_SCB_CCX_MFP(scb))
-			nonce_flags = 0xff;
 	} else
-#endif // endif
+#endif /* MFP */
 	if (KM_KEY_FC_TYPE_QOS_DATA(fc) &&
 		!(key->info.flags & WLC_KEY_FLAG_AES_MODE_LEGACY)) {
 		uint16 qc;
@@ -414,7 +417,7 @@ key_aes_gcm_calc_params(const struct dot11_header *hdr, const uint8 *body,
 	/* process fc */
 	fc =  ltoh16(hdr->fc);
 	if (FC_TYPE(fc) == FC_TYPE_MNG)
-		aad_fc = (fc & (FC_SUBTYPE_MASK | AES_CCMP_FC_MASK)); /* MFP and CCX */
+		aad_fc = (fc & (FC_SUBTYPE_MASK | AES_CCMP_FC_MASK)); /* MFP */
 	else
 		aad_fc = (fc & AES_CCMP_FC_MASK); /* note: no legacy 11iD3 support */
 
@@ -494,10 +497,6 @@ key_aes_rx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 
 		if (KM_SCB_MFP(scb)) {
 			err = km_key_aes_rx_mmpdu_mcmfp(key, pkt, hdr, body, body_len, pkt_info);
-			goto done;
-		}
-		if (!KM_SCB_CCX_MFP(scb)) {
-			err = BCME_UNSUPPORTED;
 			goto done;
 		}
 #endif /* MFP */
@@ -776,7 +775,7 @@ key_aes_tx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 	key_aes_seq_to_body(key, aes_key->tx_seq, body);
 
 	if (WLC_KEY_IN_HW(&key->info) && txd != NULL) {
-		if (KEY_COREREV_GE80(key)) {
+		if (KEY_COREREV_GE128(key)) {
 			/* do nothing */
 		} else if (KEY_COREREV_GE40(key)) {
 			d11actxh_t * txh = &txd->rev40;

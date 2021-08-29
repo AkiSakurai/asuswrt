@@ -1,7 +1,7 @@
 /*
  * ACPHY MU-MIMO module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_mu.c 743053 2018-01-24 15:06:09Z $
+ * $Id: phy_ac_mu.c 766889 2018-08-20 08:20:01Z $
  */
 
 #include <phy_cfg.h>
@@ -71,7 +71,7 @@
  * implemented, but the registers are not contiguous, update the code to handle the new GID
  * register layout.
  */
-#if ACCONF_GT(51) || ACCONF_MSK(0xF0E80000) || ACCONF2_MSK(0x700CC)
+#if ACCONF_GT(129) || ACCONF_MSK(0xF0E80000) || ACCONF2_MSK(0x700CC)
 #error "Verify that ACPHY_GidLutVal60_63(phy_rev) = ACPHY_GidLutVal0_3(phy_rev) + 15"
 #endif // endif
 #endif  /* WL_MU_RX */

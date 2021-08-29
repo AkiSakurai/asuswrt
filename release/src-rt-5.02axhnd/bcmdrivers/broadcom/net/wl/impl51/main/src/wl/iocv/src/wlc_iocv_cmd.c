@@ -2,7 +2,7 @@
  * IOCV module interface - iovar command facility.
  * iovar command is in xTLV format.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_iocv_cmd.c 631222 2016-04-13 18:51:05Z $
+ * $Id: wlc_iocv_cmd.c 765723 2018-07-13 11:57:53Z $
  */
 
 #include <typedefs.h>
@@ -53,13 +53,14 @@
 #include <bcmendian.h>
 #include <wlc_types.h>
 #include <wlc_iocv_cmd.h>
+#include <wlc_iocv.h>
 
 /* Process iovar command.
  * The command in xTLV format is in in_buf/in_len.
  * The out_buf and in_buf may point to the same memory.
  */
 int
-wlc_iocv_iov_cmd_proc(void *ctx, const wlc_iov_cmd_t *tbl, uint sz, bool set,
+wlc_iocv_iov_cmd_proc(wlc_info_t *wlc, void *ctx, const wlc_iov_cmd_t *tbl, uint sz, bool set,
 	void *in_buf, uint in_len, void *out_buf, uint out_len, struct wlc_if *wlcif)
 {
 	bcm_xtlv_t *cmd = (bcm_xtlv_t *)in_buf;
@@ -68,6 +69,7 @@ wlc_iocv_iov_cmd_proc(void *ctx, const wlc_iov_cmd_t *tbl, uint sz, bool set,
 	uint i;
 	uint hdrlen = BCM_XTLV_HDR_SIZE;
 	int err = BCME_NOTFOUND;
+	bcm_iovar_t iovar;
 
 	/* Handle a single command for now */
 
@@ -82,9 +84,16 @@ wlc_iocv_iov_cmd_proc(void *ctx, const wlc_iov_cmd_t *tbl, uint sz, bool set,
 		}
 
 		/* Do some validation... */
-
 		if (tbl[i].hdlr == NULL) {
 			err = BCME_ERROR;
+			break;
+		}
+
+		iovar.flags = tbl[i].flags;
+		iovar.type = tbl[i].type;
+		iovar.minlen = in_len; /* len validation not possible, undefined in wlc_iov_cmd_t */
+		err = wlc_iovar_check(wlc, &iovar, cmd->data, in_len, set, wlcif);
+		if (err) {
 			break;
 		}
 

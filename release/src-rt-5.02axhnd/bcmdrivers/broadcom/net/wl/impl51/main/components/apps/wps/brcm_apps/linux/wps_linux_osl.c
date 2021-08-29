@@ -1,7 +1,7 @@
 /*
  * WPS OSL file
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_linux_osl.c 676559 2016-12-22 17:02:55Z $
+ * $Id: wps_linux_osl.c 766338 2018-07-31 04:55:48Z $
  */
 
 #include <stdio.h>
@@ -74,6 +74,10 @@
 #ifdef WPS_UPNP_DEVICE
 #include <upnp.h>
 #endif // endif
+
+#ifdef MULTIAP
+#include <wps_1905.h>
+#endif /* MULTIAP */
 
 static char if_name[IFNAMSIZ] = "";
 
@@ -300,6 +304,51 @@ wps_osl_ui_handle_deinit(int handle)
 {
 	close_udp_socket(handle);
 }
+
+#ifdef MULTIAP
+/* Init 1905 socket */
+int
+wps_osl_1905_handle_init()
+{
+	int handle;
+
+	/* open socket */
+	handle = open_udp_socket(WPS_1905_ADDR, WPS_1905_PORT);
+	if (handle < 0) {
+		TUTRACE((TUTRACE_ERR, "init 1905 handle error\n"));
+		return -1;
+	}
+	return handle;
+}
+
+void
+wps_osl_1905_handle_deinit(int handle)
+{
+	close_udp_socket(handle);
+}
+
+int
+wps_osl_1905_send_response(wps_hndl_t wpsHandle, unsigned short port, char *msg, uint32 len)
+{
+	struct sockaddr_in sockAddr;
+	int                sendLen;
+
+	/* kernel address */
+	memset(&sockAddr, 0, sizeof(sockAddr));
+	sockAddr.sin_family      = AF_INET;
+	sockAddr.sin_addr.s_addr = htonl(0x7f000001); /* 127.0.0.1 */
+	sockAddr.sin_port        = htons(port);
+
+	sendLen = sendto(wpsHandle.handle, msg, len, 0, (struct sockaddr *)&sockAddr,
+		sizeof(sockAddr));
+	if (len != sendLen) {
+		printf("%s: sendto failed", __FUNCTION__);
+		return -1;
+	}
+
+	return WPS_SUCCESS;
+}
+#endif /* MULTIAP */
 
 /* Receive packet */
 static struct sockaddr_in dst;

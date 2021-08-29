@@ -1,7 +1,7 @@
 /*
  * ACPHY Channel Manager module implementation - iovar handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_chanmgr_iov.c 766514 2018-08-04 06:18:03Z $
+ * $Id: phy_ac_chanmgr_iov.c 775352 2019-05-28 22:19:51Z $
  */
 
 #include <phy_ac_chanmgr_iov.h>
@@ -64,7 +64,10 @@ enum {
 	IOV_TDCS_160M = 7,
 	IOV_PHY_CHANUP = 8,
 	IOV_UL_MAC_AIDED = 9,
-	IOV_UL_MAC_AIDED_TIMING = 10
+	IOV_UL_MAC_AIDED_TIMING = 10,
+	IOV_PHY_C2C_SYNC = 11,
+	IOV_PHY_LOWRATETSSI = 12,
+	IOV_PHY_LOWRATETSSI_OVRD = 13
 };
 
 static const bcm_iovar_t phy_ac_chanmgr_iovars[] = {
@@ -78,6 +81,9 @@ static const bcm_iovar_t phy_ac_chanmgr_iovars[] = {
 	{"phy_chanup", IOV_PHY_CHANUP, 0, 0, IOVT_UINT32, 0},
 	{"ul_mac_aided", IOV_UL_MAC_AIDED, 0, 0, IOVT_UINT16, 0},
 	{"ul_mac_aided_timing", IOV_UL_MAC_AIDED_TIMING, 0, 0, IOVT_UINT16, 0},
+	{"phy_c2c_sync", IOV_PHY_C2C_SYNC, IOVF_SET_UP | IOVF_GET_UP, 0, IOVT_INT16, 0},
+	{"phy_lowratetssi", IOV_PHY_LOWRATETSSI, 0, 0, IOVT_INT8, 0},
+	{"phy_lowratetssi_ovrd", IOV_PHY_LOWRATETSSI_OVRD, IOVF_SET_DOWN, 0, IOVT_UINT32, 0},
 #endif /* BCMDBG  || WLTEST */
 	{"phy_vcore", IOV_PHY_VCORE, 0, 0, IOVT_UINT16, 0},
 	{NULL, 0, 0, 0, 0, 0}
@@ -94,7 +100,9 @@ phy_ac_chanmgr_doiovar(void *ctx, uint32 aid,
 	int err = BCME_OK;
 	int32 *ret_int_ptr = (int32 *)a;
 	phy_ac_chanmgr_info_t *chanmgri = pi->u.pi_acphy->chanmgri;
+	phy_ac_info_t *aci = pi->u.pi_acphy;
 	BCM_REFERENCE(chanmgri);
+	BCM_REFERENCE(aci);
 
 	if (plen >= (uint)sizeof(int_val))
 		bcopy(p, &int_val, sizeof(int_val));
@@ -174,6 +182,50 @@ phy_ac_chanmgr_doiovar(void *ctx, uint32 aid,
 			*ret_int_ptr = phy_ac_chanmgr_enable_mac_aided_timing(pi, FALSE, 0);
 			break;
 		}
+		case IOV_SVAL(IOV_PHY_C2C_SYNC): {
+			if ((ACMAJORREV_32(pi->pubpi->phy_rev) && ACMINORREV_2(pi)) ||
+			    ACMAJORREV_33(pi->pubpi->phy_rev) ||
+			    ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
+				switch (int_val) {
+				case 0:
+				case 1:
+					if (!aci->c2c_sync_override) {
+						aci->c2c_sync_saved = aci->c2c_sync_en;
+						aci->c2c_sync_override = TRUE;
+					}
+					aci->c2c_sync_en = int_val;
+					phy_ac_chanmgr_core2core_sync_setup(chanmgri,
+					                                    (bool) int_val);
+					break;
+				case AUTO:
+					if (aci->c2c_sync_override) {
+						aci->c2c_sync_en = aci->c2c_sync_saved;
+						aci->c2c_sync_override = FALSE;
+						phy_ac_chanmgr_core2core_sync_setup(
+						        chanmgri, (bool)(aci->c2c_sync_en));
+					}
+					break;
+				default:
+					err = BCME_RANGE;
+					break;
+				}
+			} else {
+				err = BCME_UNSUPPORTED;
+			}
+			break;
+		}
+		case IOV_GVAL(IOV_PHY_C2C_SYNC): {
+			*ret_int_ptr = ((uint8)(aci->c2c_sync_override) << 4) + aci->c2c_sync_en;
+			break;
+		}
+		case IOV_GVAL(IOV_PHY_LOWRATETSSI):
+			err = phy_ac_chanmgr_iovar_get_lowratetssi(chanmgri, ret_int_ptr);
+			break;
+		case IOV_GVAL(IOV_PHY_LOWRATETSSI_OVRD):
+			err = phy_ac_chanmgr_iovar_get_lowratetssi_ovrd(chanmgri, ret_int_ptr);
+		case IOV_SVAL(IOV_PHY_LOWRATETSSI_OVRD):
+			err = phy_ac_chanmgr_iovar_set_lowratetssi_ovrd(chanmgri, int_val);
+			break;
 #endif /* ACCONF || ACCONF2 */
 #endif /* defined(BCMDBG) ||  defined(WLTEST) */
 

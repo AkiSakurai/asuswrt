@@ -1,7 +1,7 @@
 /*
  * ACPHY Core module internal interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_info.h 767415 2018-09-11 00:27:51Z $
+ * $Id: phy_ac_info.h 775385 2019-05-29 11:30:21Z $
  */
 
 #ifndef _phy_ac_info_h_
@@ -133,14 +133,35 @@
 /* Major Revs */
 #define USE_HW_MINORVERSION(phy_rev) (ACREV_IS(phy_rev, 24) || ACREV_GE(phy_rev, 32))
 
+#define ACMAJORREV_129(phy_rev) \
+	(ACREV_IS(phy_rev, 129))
+
+#define ACMAJORREV_GE129(phy_rev) \
+	(ACREV_GE(phy_rev, 129))
+
+#define ACMAJORREV_128(phy_rev) \
+	(ACREV_IS(phy_rev, 128))
+
 #define ACMAJORREV_51(phy_rev) \
 	(ACREV_IS(phy_rev, 51))
 
 #define ACMAJORREV_47(phy_rev) \
 	(ACREV_IS(phy_rev, 47))
 
+#define ACMAJORREV_GE47(phy_rev) \
+	(ACREV_GE(phy_rev, 47))
+
 #define ACMAJORREV_47_51(phy_rev) \
 	(ACREV_IS(phy_rev, 47) || ACREV_IS(phy_rev, 51))
+
+#define ACMAJORREV_47_129(phy_rev) \
+	(ACREV_IS(phy_rev, 47) || ACREV_IS(phy_rev, 129))
+
+#define ACMAJORREV_51_129(phy_rev) \
+	(ACREV_IS(phy_rev, 51) || ACREV_IS(phy_rev, 129))
+
+#define ACMAJORREV_47_51_129(phy_rev) \
+	(ACREV_IS(phy_rev, 47) || ACREV_IS(phy_rev, 51) || ACREV_IS(phy_rev, 129))
 
 #define ACMAJORREV_46(phy_rev) \
 	(ACREV_IS(phy_rev, 46))
@@ -160,8 +181,18 @@
 #define ACMAJORREV_GE40_NE47(phy_rev) \
 	(ACREV_GE(phy_rev, 40) && !ACREV_IS(phy_rev, 47))
 
+#define ACMAJORREV_GE40_NE47_NE129(phy_rev) \
+	(ACREV_GE(phy_rev, 40) && !ACREV_IS(phy_rev, 47) && !ACREV_IS(phy_rev, 129))
+
 #define ACMAJORREV_GE40_NE47_NE51(phy_rev) \
 	(ACREV_GE(phy_rev, 40) && !ACREV_IS(phy_rev, 47) && !ACREV_IS(phy_rev, 51))
+
+#define ACMAJORREV_GE40_NE47_NE51_NE129(phy_rev) \
+	(ACREV_GE(phy_rev, 40) && !ACREV_IS(phy_rev, 47) && !ACREV_IS(phy_rev, 51) &&\
+	!ACREV_IS(phy_rev, 129))
+
+#define ACMAJORREV_40_128(phy_rev) \
+	(ACREV_IS(phy_rev, 40) || ACREV_IS(phy_rev, 128))
 
 #define ACMAJORREV_37(phy_rev) \
 	(ACREV_IS(phy_rev, 37))
@@ -383,8 +414,8 @@
 #define ACREV0_SUB 0
 #endif /* ACCONF || ACCONF2 */
 
-#define ACPHY_GAIN_VS_TEMP_SLOPE_2G 7   /* units: db/100C */
-#define ACPHY_GAIN_VS_TEMP_SLOPE_5G 7   /* units: db/100C */
+#define ACPHY_GAIN_VS_TEMP_SLOPE_2G (ACMAJORREV_47((pi)->pubpi->phy_rev) ? 4 : 7) /* dB/100C */
+#define ACPHY_GAIN_VS_TEMP_SLOPE_5G (ACMAJORREV_47((pi)->pubpi->phy_rev) ? 4 : 7) /* dB/100C */
 #define ACPHY_SWCTRL_NVRAM_PARAMS 5
 #define ACPHY_RSSIOFFSET_NVRAM_PARAMS 4
 #define ACPHY_GAIN_DELTA_2G_PARAMS 2
@@ -561,8 +592,8 @@
 #define ACPHY_TBL_ID_ESTPWRLUTS2                128
 #define ACPHY_TBL_ID_IQCOEFFLUTS2               129
 
-#define ACPHY_TBL_ID_GAINCTRLBBMULTLUTS0 		128
-#define ACPHY_TBL_ID_ESTPWRSHFTLUTS0    		129
+#define ACPHY_TBL_ID_GAINCTRLBBMULTLUTS0        128
+#define ACPHY_TBL_ID_ESTPWRSHFTLUTS0            129
 
 #define ACPHY_TBL_ID_LOFTCOEFFLUTS2             130
 #define ACPHY_TBL_ID_RFPWRLUTS2                 131
@@ -574,15 +605,16 @@
 #define ACPHY_TBL_ID_CORE2CHANESTTBL            137
 #define ACPHY_TBL_ID_CORE2CHNSMCHANNELTBL       142
 #define ACPHY_TBL_ID_RSSITOGAINCODETBL1         146
-#define ACPHY_TBL_ID_DYNRADIOREGTBL1    		147
-#define ACPHY_TBL_ID_ADCSAMPCAP_PATH1   		148
+#define ACPHY_TBL_ID_DYNRADIOREGTBL1            147
+#define ACPHY_TBL_ID_ADCSAMPCAP_PATH1           148
+#define ACPHY_TBL_ID_PAPDLUTSELECT2             157
 #define ACPHY_TBL_ID_GAINLIMIT2                 158
 #define ACPHY_TBL_ID_TXGAINCTRLBBMULTLUTS2      159
 #define ACPHY_TBL_ID_MCLPAGCCLIP2TBL1           159
-#define ACPHY_TBL_ID_GAINCTRLBBMULTLUTS1 		160
+#define ACPHY_TBL_ID_GAINCTRLBBMULTLUTS1        160
 #define ACPHY_TBL_ID_ESTPWRLUTS3                160
-#define ACPHY_TBL_ID_ESTPWRSHFTLUTS1    		161
-#define ACPHY_TBL_ID_IDAC_GMAP0			132
+#define ACPHY_TBL_ID_ESTPWRSHFTLUTS1            161
+#define ACPHY_TBL_ID_IDAC_GMAP0                 132
 #define ACPHY_TBL_ID_IQCOEFFLUTS3               161
 #define ACPHY_TBL_ID_LOFTCOEFFLUTS3             162
 #define ACPHY_TBL_ID_RFPWRLUTS3                 163
@@ -641,9 +673,9 @@
 #define AXPHY_TBL_ID_IDAC_RES_TABLE2            393
 #define AXPHY_TBL_ID_IDAC_RES_TABLE3            425
 
-#define AXPHY_TBL_ID_NVADJTBL                    12
-#define AXPHY_TBL_ID_NVNOISESHAPINGTBL	          74
-#define AXPHY_TBL_ID_NVRXEVMSHAPINGTBL	          75
+#define AXPHY_TBL_ID_NVADJTBL                   12
+#define AXPHY_TBL_ID_NVNOISESHAPINGTBL	        74
+#define AXPHY_TBL_ID_NVRXEVMSHAPINGTBL	        75
 
 /* 4365C0 specific PHY tables */
 #define ACPHY_TBL_ID_PHASETRACKTBL_B          11
@@ -710,17 +742,13 @@
 #define AX_RXEVMTBL_DEPTH_MAXBW20      256
 #define AX_RXNOISESHPTBL_DEPTH_MAXBW20 256
 #define SQTHRESHOLDTBL_DEPTH_MAXBW20 64
+#define NVADJ11AXTBL_DEPTH           256
+#define NVNOISESHAPINGTBL_DEPTH      512
+#define NVNOISESHAPING11AXTBL_DEPTH  512
+#define NVRXEVMSHAPINGTBL_DEPTH      512
 
 /* hirssi elnabypass */
 #define PHY_SW_HIRSSI_UCODE_CAP(pi)	ACMAJORREV_0((pi)->pubpi->phy_rev)
-#define PHY_SW_HIRSSI_PERIOD      5    /* 5 second timeout */
-#define PHY_SW_HIRSSI_OFF         (-1)
-#define PHY_SW_HIRSSI_BYP_THR    (-13)
-#define PHY_SW_HIRSSI_RES_THR    (-15)
-#define PHY_SW_HIRSSI_W1_BYP_REG  ACPHY_W2W1ClipCnt3(rev)
-#define PHY_SW_HIRSSI_W1_BYP_CNT  31
-#define PHY_SW_HIRSSI_W1_RES_REG  ACPHY_W2W1ClipCnt1(rev)
-#define PHY_SW_HIRSSI_W1_RES_CNT  31
 
 #define VASIPREGISTERS_RESET            0xe4
 #define VASIPREGISTERS_SET              0xe0
@@ -770,6 +798,10 @@
 	((core == 1) ? ACPHY_TBL_ID_LOFTCOEFFLUTS1 : \
 	((core == 2) ? ACPHY_TBL_ID_LOFTCOEFFLUTS2 : ACPHY_TBL_ID_LOFTCOEFFLUTS3))))
 
+/* This implements a WAR for bug in 4349A0 RTL where 5G lnaRoutLUT locations
+ * and lna2 locations are not accessible. For more details refer the
+ * 4349 Phy cheatsheet and JIRA:SW4349-243
+ */
 #define ACPHY_LNAROUT_BAND_OFFSET(pi, chanspec) \
 	(CHSPEC_IS5G(chanspec) ? 8 : 0)
 
@@ -967,6 +999,10 @@
  * CEE : e.g. ACPHY_EpsilonTableAdjust0_epsilonOffset0
  */
 
+/* XXX
+ * bcast access is illegal for 80p80 since new registers that were added in MIMO
+ * became path regs in 80p80 with register bank offset of 0xb00
+ */
 #define ACPHYREGCE(pi, reg, core) ((ACPHY_##reg##0(pi->pubpi->phy_rev)) \
 	+ ((core) * PHY_REG_BANK_CORE1_OFFSET))
 #define ACPHYREGCM(pi, reg0, reg1, core) ((ACPHY_##reg0##0_##reg1(pi->pubpi->phy_rev)) \
@@ -1187,24 +1223,15 @@ field3, value3, field4, value4, field5, value5) \
 #define RADIO_REG_20695_FLD_SHIFT(pi, regnm, fldname) \
 		RF_##20695##_##regnm##_##fldname##_SHIFT(pi->pubpi.radiorev)
 
-#define RADIO_REG_20697X(pi, regpfx, regnm, core) \
-	(((pi)->pubpi->slice == DUALMAC_MAIN) ? \
-	 regpfx##core##_20697_SLICE0_##regnm((pi)->pubpi->radiorev) : \
-	 regpfx##core##_20697_SLICE1_##regnm((pi)->pubpi->radiorev))
-
 #if PHY_CORE_MAX == 1	/* Single PHY core chips */
 
 #define RADIO_REG_20693(pi, regnm, core)	RADIO_REG_2069X(pi, 20693, regnm, 0)
-#define RADIO_REG_20697(pi, regpfx, regnm, core) RADIO_REG_20697X(pi, regpfx, regnm, 0)
 
 #elif PHY_CORE_MAX == 2	/* Dual PHY core chips */
 
 #define RADIO_REG_20693(pi, regnm, core)	\
 	((core == 0) ? RADIO_REG_2069X(pi, 20693, regnm, 0) : \
 	 RADIO_REG_2069X(pi, 20693, regnm, 1))
-#define RADIO_REG_20697(pi, regpfx, regnm, core) \
-	((core == 0) ? RADIO_REG_20697X(pi, regpfx, regnm, 0) : \
-	RADIO_REG_20697X(pi, regpfx, regnm, 1))
 
 #elif PHY_CORE_MAX == 3 /* 3 PHY core chips */
 
@@ -1212,10 +1239,6 @@ field3, value3, field4, value4, field5, value5) \
 	((core == 0) ? RADIO_REG_2069X(pi, 20693, regnm, 0) : \
 	((core == 1) ? RADIO_REG_2069X(pi, 20693, regnm, 1) : \
 	 RADIO_REG_2069X(pi, 20693, regnm, 2)))
-#define RADIO_REG_20697(pi, regpfx, regnm, core) \
-	((core == 0) ? RADIO_REG_20697X(pi, regpfx, regnm, 0) : \
-	((core == 1) ? RADIO_REG_20697X(pi, regpfx, regnm, 1) : \
-	RADIO_REG_20697X(pi, regpfx, regnm, 2)))
 
 #else	/* no more than 4 cores currently supported */
 
@@ -1224,11 +1247,6 @@ field3, value3, field4, value4, field5, value5) \
 		((core == 1) ? RADIO_REG_2069X(pi, 20693, regnm, 1) : \
 		((core == 2) ? RADIO_REG_2069X(pi, 20693, regnm, 2) : \
 		 RADIO_REG_2069X(pi, 20693, regnm, 3))))
-#define RADIO_REG_20697(pi, regpfx, regnm, core) \
-		((core == 0) ? RADIO_REG_20697X(pi, regpfx, regnm, 0) : \
-		((core == 1) ? RADIO_REG_20697X(pi, regpfx, regnm, 1) : \
-		((core == 2) ? RADIO_REG_20697X(pi, regpfx, regnm, 2) : \
-		INVALID_ADDRESS)))
 
 #endif	/* PHY_CORE_MAX */
 
@@ -1281,6 +1299,29 @@ field3, value3, field4, value4, field5, value5) \
 
 #define RADIO_ALLREG_20704(pi, regnm)  RFX_20704_##regnm(pi->pubpi->radiorev)
 
+#define RADIO_REG_20707(pi, regnm, core) \
+	((core == 0) ? RF0_20707_##regnm((pi)->pubpi->radiorev) : \
+	((core == 1) ? RF1_20707_##regnm((pi)->pubpi->radiorev) : \
+	((core == 2) ? RF2_20707_##regnm((pi)->pubpi->radiorev) : \
+	  INVALID_ADDRESS)))
+
+#define RADIO_PLLREG_20707(pi, regnm, pll) \
+	((pll == 0) ? RFP0_20707_##regnm((pi)->pubpi->radiorev) : \
+	  INVALID_ADDRESS)
+
+#define RADIO_ALLREG_20707(pi, regnm)  RFX_20707_##regnm(pi->pubpi->radiorev)
+
+#define RADIO_REG_20709(pi, regnm, core) \
+	((core == 0) ? RF0_20709_##regnm((pi)->pubpi->radiorev) : \
+	((core == 1) ? RF1_20709_##regnm((pi)->pubpi->radiorev) : \
+	  INVALID_ADDRESS))
+
+#define RADIO_PLLREG_20709(pi, regnm, pll) \
+	((pll == 0) ? RFP0_20709_##regnm((pi)->pubpi->radiorev) : \
+	  INVALID_ADDRESS)
+
+#define RADIO_ALLREG_20709(pi, regnm)  RFX_20709_##regnm(pi->pubpi->radiorev)
+
 #define RADIO_PLLREGC_FLD_20693(pi, regnm, pll, fldname, value) \
 	{RADIO_PLLREG_20693(pi, regnm, pll), \
 	 RF_20693_##regnm##_##fldname##_MASK(pi->pubpi->radiorev), \
@@ -1323,12 +1364,14 @@ field3, value3, field4, value4, field5, value5) \
 	_READ_RADIO_REG(pi, RADIO_REG_20695(pi, regpfx, regnm, core))
 #define READ_RADIO_REG_20696(pi, regnm, core) \
 	_READ_RADIO_REG(pi, RADIO_REG_20696(pi, regnm, core))
-#define READ_RADIO_REG_20697(pi, regpfx, regnm, core) \
-	_READ_RADIO_REG(pi, RADIO_REG_20697(pi, regpfx, regnm, core))
 #define READ_RADIO_REG_20698(pi, regnm, core) \
 	_READ_RADIO_REG(pi, RADIO_REG_20698(pi, regnm, core))
 #define READ_RADIO_REG_20704(pi, regnm, core) \
 	_READ_RADIO_REG(pi, RADIO_REG_20704(pi, regnm, core))
+#define READ_RADIO_REG_20707(pi, regnm, core) \
+	_READ_RADIO_REG(pi, RADIO_REG_20707(pi, regnm, core))
+#define READ_RADIO_REG_20709(pi, regnm, core) \
+	_READ_RADIO_REG(pi, RADIO_REG_20709(pi, regnm, core))
 
 #define READ_RADIO_PLLREG_20696(pi, regnm) \
 	_READ_RADIO_REG(pi, RADIO_PLLREG_20696(pi, regnm))
@@ -1357,6 +1400,24 @@ field3, value3, field4, value4, field5, value5) \
 #define WRITE_RADIO_ALLREG_20704(pi, regnm, val) \
 	_WRITE_RADIO_REG(pi, RADIO_ALLREG_20704(pi, regnm), val)
 
+#define READ_RADIO_PLLREG_20707(pi, regnm, pll) \
+	_READ_RADIO_REG(pi, RADIO_PLLREG_20707(pi, regnm, pll))
+
+#define WRITE_RADIO_PLLREG_20707(pi, regnm, pll, val) \
+	_WRITE_RADIO_REG(pi, RADIO_PLLREG_20707(pi, regnm, pll), val)
+
+#define WRITE_RADIO_ALLREG_20707(pi, regnm, val) \
+	_WRITE_RADIO_REG(pi, RADIO_ALLREG_20707(pi, regnm), val)
+
+#define READ_RADIO_PLLREG_20709(pi, regnm, pll) \
+	_READ_RADIO_REG(pi, RADIO_PLLREG_20709(pi, regnm, pll))
+
+#define WRITE_RADIO_PLLREG_20709(pi, regnm, pll, val) \
+	_WRITE_RADIO_REG(pi, RADIO_PLLREG_20709(pi, regnm, pll), val)
+
+#define WRITE_RADIO_ALLREG_20709(pi, regnm, val) \
+	_WRITE_RADIO_REG(pi, RADIO_ALLREG_20709(pi, regnm), val)
+
 #define READ_RADIO_REG_28NM(pi, regpfx, regnm, core) \
 	((RADIOID_IS((pi)->pubpi->radioid, BCM20694_ID) ? \
 	  READ_RADIO_REG_20694(pi, regpfx, regnm, core) : \
@@ -1368,6 +1429,10 @@ field3, value3, field4, value4, field5, value5) \
 	  READ_RADIO_REG_20698(pi, regnm, core) : \
 	 (RADIOID_IS((pi)->pubpi->radioid, BCM20704_ID) ? \
 	  READ_RADIO_REG_20704(pi, regnm, core) : \
+	 (RADIOID_IS((pi)->pubpi->radioid, BCM20707_ID) ? \
+	  READ_RADIO_REG_20707(pi, regnm, core) : \
+	 (RADIOID_IS((pi)->pubpi->radioid, BCM20709_ID) ? \
+	  READ_RADIO_REG_20709(pi, regnm, core) : \
 	  0))))))
 
 #define READ_RADIO_REGC(pi, regpfx, regnm, core) \
@@ -1423,19 +1488,15 @@ field3, value3, field4, value4, field5, value5) \
 		RF_20704_##regnm##_##fldname##_MASK(pi->pubpi->radiorev)) \
 		>> RF_20704_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev))
 
-#define READ_RADIO_REGFLD_20697X(pi, regpfx, regnm, slice, core, fldname) \
-	((_READ_RADIO_REG(pi, \
-		((core == 0) ? regpfx##0_20697_SLICE##slice##_##regnm((pi)->pubpi->radiorev) : \
-		((core == 1) ? regpfx##1_20697_SLICE##slice##_##regnm((pi)->pubpi->radiorev) : \
-		((core == 2) ? regpfx##2_20697_SLICE##slice##_##regnm((pi)->pubpi->radiorev) : \
-		INVALID_ADDRESS)))) & \
-		RF_20697_SLICE##slice##_##regnm##_##fldname##_MASK(pi->pubpi->radiorev)) \
-		>> RF_20697_SLICE##slice##_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev))
+#define READ_RADIO_REGFLD_20707(pi, regpfx, regnm, core, fldname) \
+	((_READ_RADIO_REG(pi, RADIO_REG_20707(pi, regnm, core)) & \
+		RF_20707_##regnm##_##fldname##_MASK(pi->pubpi->radiorev)) \
+		>> RF_20707_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev))
 
-#define READ_RADIO_REGFLD_20697(pi, regpfx, regnm, core, fldname) \
-	(((pi)->pubpi->slice == DUALMAC_MAIN) ? \
-		READ_RADIO_REGFLD_20697X(pi, regpfx, regnm, 0, core, fldname) : \
-		READ_RADIO_REGFLD_20697X(pi, regpfx, regnm, 1, core, fldname))
+#define READ_RADIO_REGFLD_20709(pi, regpfx, regnm, core, fldname) \
+	((_READ_RADIO_REG(pi, RADIO_REG_20709(pi, regnm, core)) & \
+		RF_20709_##regnm##_##fldname##_MASK(pi->pubpi->radiorev)) \
+		>> RF_20709_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev))
 
 #define READ_RADIO_REGFLD_TINY(pi, regnm, core, fldname) \
 	((RADIOID_IS((pi)->pubpi->radioid, BCM20691_ID)) \
@@ -1460,6 +1521,16 @@ field3, value3, field4, value4, field5, value5) \
 	((_READ_RADIO_REG(pi, RADIO_PLLREG_20704(pi, regnm, pll)) & \
 		RF_20704_##regnm##_##fldname##_MASK(pi->pubpi->radiorev)) \
 		>> RF_20704_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev))
+
+#define READ_RADIO_PLLREGFLD_20707(pi, regnm, pll, fldname) \
+	((_READ_RADIO_REG(pi, RADIO_PLLREG_20707(pi, regnm, pll)) & \
+		RF_20707_##regnm##_##fldname##_MASK(pi->pubpi->radiorev)) \
+		>> RF_20707_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev))
+
+#define READ_RADIO_PLLREGFLD_20709(pi, regnm, pll, fldname) \
+	((_READ_RADIO_REG(pi, RADIO_PLLREG_20709(pi, regnm, pll)) & \
+		RF_20709_##regnm##_##fldname##_MASK(pi->pubpi->radiorev)) \
+		>> RF_20709_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev))
 
 #define MOD_RADIO_REG_2069X(pi, id, regnm, core, fldname, value) \
 	_MOD_RADIO_REG(pi, \
@@ -1500,6 +1571,18 @@ field3, value3, field4, value4, field5, value5) \
 		RF_20704_##regnm##_##fldname##_MASK(pi->pubpi->radiorev), \
 		((value) << RF_20704_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev)))
 
+#define MOD_RADIO_PLLREG_20707(pi, regnm, pll, fldname, value) \
+	_MOD_RADIO_REG(pi, \
+		RADIO_PLLREG_20707(pi, regnm, pll), \
+		RF_20707_##regnm##_##fldname##_MASK(pi->pubpi->radiorev), \
+		((value) << RF_20707_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev)))
+
+#define MOD_RADIO_PLLREG_20709(pi, regnm, pll, fldname, value) \
+	_MOD_RADIO_REG(pi, \
+		RADIO_PLLREG_20709(pi, regnm, pll), \
+		RF_20709_##regnm##_##fldname##_MASK(pi->pubpi->radiorev), \
+		((value) << RF_20709_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev)))
+
 #define MOD_RADIO_ALLREG_20693(pi, regnm, fldname, value) \
 	_MOD_RADIO_REG(pi, \
 		RADIO_ALLREG_20693(pi, regnm), \
@@ -1523,21 +1606,6 @@ field3, value3, field4, value4, field5, value5) \
 		RADIO_REG_20695(pi, regpfx, regnm, core), \
 		RF_##20695##_##regnm##_##fldname##_MASK(pi->pubpi->radiorev), \
 		((value) << RF_##20695##_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev)))
-
-#define MOD_RADIO_REG_20697X(pi, regpfx, regnm, slice, core, fldname, value) \
-	_MOD_RADIO_REG(pi, \
-		((core == 0) ? regpfx##0_20697_SLICE##slice##_##regnm((pi)->pubpi->radiorev) : \
-		((core == 1) ? regpfx##1_20697_SLICE##slice##_##regnm((pi)->pubpi->radiorev) : \
-		((core == 2) ? regpfx##2_20697_SLICE##slice##_##regnm((pi)->pubpi->radiorev) : \
-		INVALID_ADDRESS))), \
-		RF_20697_SLICE##slice##_##regnm##_##fldname##_MASK(pi->pubpi->radiorev), \
-		((value) << \
-		 RF_20697_SLICE##slice##_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev)))
-
-#define MOD_RADIO_REG_20697(pi, regpfx, regnm, core, fldname, value) \
-	(((pi)->pubpi->slice == DUALMAC_MAIN) ? \
-	 MOD_RADIO_REG_20697X(pi, regpfx, regnm, 0, core, fldname, value) : \
-	 MOD_RADIO_REG_20697X(pi, regpfx, regnm, 1, core, fldname, value))
 
 #define MOD_RADIO_REG_TINY(pi, regnm, core, fldname, value) \
 	(RADIOID_IS((pi)->pubpi->radioid, BCM20691_ID)) \
@@ -1569,6 +1637,18 @@ field3, value3, field4, value4, field5, value5) \
 		RF_##20704##_##regnm##_##fldname##_MASK(pi->pubpi->radiorev), \
 		((value) << RF_##20704##_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev)))
 
+#define MOD_RADIO_REG_20707(pi, regnm, core, fldname, value) \
+	_MOD_RADIO_REG(pi, \
+		RADIO_REG_20707(pi, regnm, core), \
+		RF_##20707##_##regnm##_##fldname##_MASK(pi->pubpi->radiorev), \
+		((value) << RF_##20707##_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev)))
+
+#define MOD_RADIO_REG_20709(pi, regnm, core, fldname, value) \
+	_MOD_RADIO_REG(pi, \
+		RADIO_REG_20709(pi, regnm, core), \
+		RF_##20709##_##regnm##_##fldname##_MASK(pi->pubpi->radiorev), \
+		((value) << RF_##20709##_##regnm##_##fldname##_SHIFT(pi->pubpi->radiorev)))
+
 #define MOD_RADIO_REG_28NM(pi, regpfx, regnm, core, fldname, value) \
 	((RADIOID_IS((pi)->pubpi->radioid, BCM20695_ID)) \
 	? MOD_RADIO_REG_20695(pi, regpfx, regnm, core, fldname, value) : BCM_REFERENCE(pi))
@@ -1588,16 +1668,11 @@ field3, value3, field4, value4, field5, value5) \
 #define WRITE_RADIO_REG_20704(pi, regnm, core, value) \
 	_WRITE_RADIO_REG(pi, RADIO_REG_20704(pi, regnm, core), value)
 
-#define WRITE_RADIO_REG_20697X(pi, regpfx, regnm, slice, core, value) \
-	_WRITE_RADIO_REG(pi, \
-		((core == 0) ? regpfx##0_20697_SLICE##slice##_##regnm((pi)->pubpi->radiorev) : \
-		((core == 1) ? regpfx##1_20697_SLICE##slice##_##regnm((pi)->pubpi->radiorev) : \
-		((core == 2) ? regpfx##2_20697_SLICE##slice##_##regnm((pi)->pubpi->radiorev) : \
-		INVALID_ADDRESS))), \
-		value)
+#define WRITE_RADIO_REG_20707(pi, regnm, core, value) \
+	_WRITE_RADIO_REG(pi, RADIO_REG_20707(pi, regnm, core), value)
 
-#define WRITE_RADIO_REG_20697(pi, regpfx, regnm, core, value) \
-	_WRITE_RADIO_REG(pi, RADIO_REG_20697(pi, regpfx, regnm, core), value)
+#define WRITE_RADIO_REG_20709(pi, regnm, core, value) \
+	_WRITE_RADIO_REG(pi, RADIO_REG_20709(pi, regnm, core), value)
 
 #define WRITE_RADIO_REG_28NM(pi, regpfx, regnm, core, value) \
 		((RADIOID_IS((pi)->pubpi->radioid, BCM20695_ID)) \
@@ -1725,9 +1800,14 @@ field3, value3, field4, value4, field5, value5) \
 #define ACPHY_ENABLE_STALL(pi, stall_val) MOD_PHYREG(pi, RxFeCtrl1, disable_stalls, stall_val)
 
 /* Table driven register access for dongle memory optimizations */
+/* XXX: table driven approach can not be applied as-is on AC PHY, because of the way the AC PHY
+ * register access macros are defined (using rev-dependency inside the macro). For that reason,
+ * AC-PHY specific table macros are defined that apply the table approach only if a builds is
+ * sufficiently chip, radio and PHY rev specific.
+ */
 #if (defined(BCMRADIOREV) || defined(BCMRADIO20691REV) || defined(BCMRADIOREV20693REV) \
-	|| defined(BCMRADIOREV2096REV)) && defined(DONGLEBUILD) && !IS_MULTI_REV2(ACCONF, \
-	ACCONF2) && defined(BCMCHIPID)
+	|| defined(BCMRADIOREV2096REV)) && defined(DONGLEBUILD) && !IS_MULTI_REV3(ACCONF, \
+	ACCONF2, ACCONF5) && defined(BCMCHIPID)
 #define ACPHY_REG_LIST_START						\
 	{ static const uint16 write_phy_reg_table[] = {
 #define ACPHY_REG_LIST_EXECUTE(pi)					\
@@ -1811,16 +1891,30 @@ field3, value3, field4, value4, field5, value5) \
 		RF_##20704##_##regnm##_##fldname##_MASK(pi->pubpi.radiorev), \
 		((value) << RF_##20704##_##regnm##_##fldname##_SHIFT(pi->pubpi.radiorev)))
 
+#define MOD_RADIO_REG_20707_ENTRY(pi, regnm, core, fldname, value) \
+	RADIO_REG_MOD_ENTRY(RADIO_REG_20707(pi, regnm, 0),              \
+		RF_##20707##_##regnm##_##fldname##_MASK(pi->pubpi.radiorev), \
+		((value) << RF_##20707##_##regnm##_##fldname##_SHIFT(pi->pubpi.radiorev)))
+
+#define MOD_RADIO_REG_20709_ENTRY(pi, regnm, core, fldname, value) \
+	RADIO_REG_MOD_ENTRY(RADIO_REG_20709(pi, regnm, 0),		\
+		RF_##20709##_##regnm##_##fldname##_MASK(pi->pubpi.radiorev), \
+		((value) << RF_##20709##_##regnm##_##fldname##_SHIFT(pi->pubpi.radiorev)))
+
 #define MOD_RADIO_PLLREG_20704_ENTRY(pi, regnm, core, fldname, value) \
 	RADIO_REG_MOD_ENTRY(RADIO_PLLREG_20704(pi, regnm, 0),		\
 		RF_##20704##_##regnm##_##fldname##_MASK(pi->pubpi.radiorev), \
 		((value) << RF_##20704##_##regnm##_##fldname##_SHIFT(pi->pubpi.radiorev)))
 
-#define MOD_RADIO_REG_20697_ENTRY(pi, regpfx, regnm, slice, core, fldname, value) \
-	RADIO_REG_MOD_ENTRY(regpfx##0_20697_SLICE##slice##_##regnm((pi)->pubpi->radiorev), \
-		RF_20697_SLICE##slice##_##regnm##_##fldname##_MASK((pi)->pubpi.radiorev), \
-		((value) << \
-		RF_20697_SLICE##slice##_##regnm##_##fldname##_SHIFT((pi)->pubpi.radiorev)))
+#define MOD_RADIO_PLLREG_20707_ENTRY(pi, regnm, core, fldname, value) \
+	RADIO_REG_MOD_ENTRY(RADIO_PLLREG_20707(pi, regnm, 0),           \
+		RF_##20707##_##regnm##_##fldname##_MASK(pi->pubpi.radiorev), \
+		((value) << RF_##20707##_##regnm##_##fldname##_SHIFT(pi->pubpi.radiorev)))
+
+#define MOD_RADIO_PLLREG_20709_ENTRY(pi, regnm, core, fldname, value) \
+	RADIO_REG_MOD_ENTRY(RADIO_PLLREG_20709(pi, regnm, 0),		\
+		RF_##20709##_##regnm##_##fldname##_MASK(pi->pubpi.radiorev), \
+		((value) << RF_##20709##_##regnm##_##fldname##_SHIFT(pi->pubpi.radiorev)))
 
 #define WRITE_RADIO_REG_20695_ENTRY(pi, regpfx, regnm, core, value) \
 		 RADIO_REG_WRITE_ENTRY(RADIO_REG_20695(pi, regpfx, regnm, 0), value)
@@ -1830,10 +1924,11 @@ field3, value3, field4, value4, field5, value5) \
 		 RADIO_REG_WRITE_ENTRY(RADIO_REG_20698(pi, regnm, 0), value)
 #define WRITE_RADIO_REG_20704_ENTRY(pi, regnm, core, value) \
 		 RADIO_REG_WRITE_ENTRY(RADIO_REG_20704(pi, regnm, 0), value)
-#define WRITE_RADIO_REG_20697_ENTRY(pi, regpfx, regnm, slice, core, value) \
-		 RADIO_REG_WRITE_ENTRY(\
-			 regpfx##0_20697_SLICE##slice##_##regnm((pi)->pubpi->radiorev), \
-			 value)
+#define WRITE_RADIO_REG_20707_ENTRY(pi, regnm, core, value) \
+		RADIO_REG_WRITE_ENTRY(RADIO_REG_20707(pi, regnm, 0), value)
+#define WRITE_RADIO_REG_20709_ENTRY(pi, regnm, core, value) \
+		 RADIO_REG_WRITE_ENTRY(RADIO_REG_20709(pi, regnm, 0), value)
+
 #if BCMRADIOID == BCM20695_ID
 	#define MOD_RADIO_REG_28NM_ENTRY(pi, regpfx, regnm, core, fldname, value)	\
 		MOD_RADIO_REG_20695_ENTRY(pi, regpfx, regnm, 0, fldname, value)
@@ -1857,6 +1952,9 @@ field3, value3, field4, value4, field5, value5) \
 #endif /* BCMRADIOID */
 
 #else /* RADIOREV && DONGLEBUILD && !IS_MULTI_REV && BCMCHIPID */
+/* XXX: For AC builds that are not sufficiently specific to a PHY REV and CHIP ID,
+ * use the non-table driver register access method
+ */
 #define ACPHY_REG_LIST_START
 #define ACPHY_REG_LIST_EXECUTE(pi)
 #define RADIO_REG_LIST_START
@@ -1889,8 +1987,10 @@ field3, value3, field4, value4, field5, value5) \
 	WRITE_RADIO_REG_20698(pi, regnm, core, value);
 #define WRITE_RADIO_REG_20704_ENTRY(pi, regnm, core, value) \
 	WRITE_RADIO_REG_20704(pi, regnm, core, value);
-#define WRITE_RADIO_REG_20697_ENTRY(pi, regpfx, regnm, slice, core, value) \
-	WRITE_RADIO_REG_20697X(pi, regpfx, regnm, slice, core, value);
+#define WRITE_RADIO_REG_20707_ENTRY(pi, regnm, core, value) \
+	WRITE_RADIO_REG_20707(pi, regnm, core, value);
+#define WRITE_RADIO_REG_20709_ENTRY(pi, regnm, core, value) \
+	WRITE_RADIO_REG_20709(pi, regnm, core, value);
 #define MOD_RADIO_REG_20691_ENTRY(pi, regnm, core, fldname, value)	\
 	MOD_RADIO_REG_20691(pi, regnm, core, fldname, value);
 #define MOD_RADIO_REG_20693_ENTRY(pi, regnm, core, fldname, value)	\
@@ -1911,8 +2011,14 @@ field3, value3, field4, value4, field5, value5) \
 	MOD_RADIO_REG_20704(pi, regnm, core, fldname, value);
 #define MOD_RADIO_PLLREG_20704_ENTRY(pi, regnm, core, fldname, value) \
 	MOD_RADIO_PLLREG_20704(pi, regnm, core, fldname, value);
-#define MOD_RADIO_REG_20697_ENTRY(pi, regpfx, regnm, slice, core, fldname, value) \
-	MOD_RADIO_REG_20697X(pi, regpfx, regnm, slice, core, fldname, value);
+#define MOD_RADIO_REG_20707_ENTRY(pi, regnm, core, fldname, value) \
+	MOD_RADIO_REG_20707(pi, regnm, core, fldname, value);
+#define MOD_RADIO_PLLREG_20707_ENTRY(pi, regnm, core, fldname, value) \
+	MOD_RADIO_PLLREG_20707(pi, regnm, core, fldname, value);
+#define MOD_RADIO_REG_20709_ENTRY(pi, regnm, core, fldname, value) \
+	MOD_RADIO_REG_20709(pi, regnm, core, fldname, value);
+#define MOD_RADIO_PLLREG_20709_ENTRY(pi, regnm, core, fldname, value) \
+	MOD_RADIO_PLLREG_20709(pi, regnm, core, fldname, value);
 #define MOD_RADIO_REG_28NM_ENTRY(pi, regpfx, regnm, core, fldname, value)	\
 		MOD_RADIO_REG_28NM(pi, regpfx, regnm, core, fldname, value);
 
@@ -1978,6 +2084,16 @@ field3, value3, field4, value4, field5, value5) \
 #define HWACI_A_SIGN2_REV47      0x451
 #define HWACI_B_SIGN2_REV47      0xd34
 
+/* Detector 2 : W1 - ADC */
+#define HWACI_DET_TH2_0_2G_REV129 5
+#define HWACI_DET_TH2_1_2G_REV129 0
+#define HWACI_DET_TH2_2_2G_REV129 5
+#define HWACI_A_SHIFT2_2G_REV129  0
+#define HWACI_B_SHIFT2_2G_REV129  0x100
+#define HWACI_DET_TH2_0_5G_REV129 5
+#define HWACI_DET_TH2_1_5G_REV129 0
+#define HWACI_DET_TH2_2_5G_REV129 5
+
 /* ********************************************************************* */
 /* The following definitions shared between attach, radio, rxiqcal and phytbl ... */
 /* ********************************************************************* */
@@ -2031,7 +2147,7 @@ field3, value3, field4, value4, field5, value5) \
 		((ACMAJORREV_32((pi)->pubpi->phy_rev) || \
 		 ACMAJORREV_33((pi)->pubpi->phy_rev) || \
 		 ACMAJORREV_37((pi)->pubpi->phy_rev) || \
-		 ACMAJORREV_47_51((pi)->pubpi->phy_rev) || \
+		 ACMAJORREV_GE47((pi)->pubpi->phy_rev) || \
 		 IS_4364_1x1(pi) || IS_4364_3x3(pi))			\
 		 ? (pi)->u.pi_acphy->sromi->swctrlmap4->enable : 0)
 /* ************************************************ */
@@ -2184,13 +2300,13 @@ typedef struct {
 	int8 rssi_tr_offset;
 } acphy_rssioffset_t;
 
+#define MAX_GPIO_BANDSEL 16
 typedef struct {
 	uint8 enable;
 	uint8 bitwidth8;
 	uint8 bitwidth10_ext;
 	uint8 misc_usage;
-	uint8 bandsel_on_gpio9;
-	uint8 bandsel_on_gpio11;
+	uint8 bandsel_on_gpio[MAX_GPIO_BANDSEL];
 	uint16 tx2g[PHY_CORE_MAX];
 	uint16 rx2g[PHY_CORE_MAX];
 	uint16 rxbyp2g[PHY_CORE_MAX];
@@ -2288,6 +2404,15 @@ struct phy_param_info {
 	uint16	phy_reg_sz;
 };
 
+typedef struct {
+	bool enabled;
+	bool active;
+	struct ether_addr ea;
+	int16 avg_freqErr;
+	uint8 avg_cnt;
+	int32 wild_base_offset;
+} acphy_sniffer_align_t;
+
 /* The PHY Information for AC PHY structure definition */
 struct phy_info_acphy
 {
@@ -2371,6 +2496,11 @@ struct phy_info_acphy
 	bool ul_mac_aided_en;
 	uint8 ul_mac_aided_timing_en;
 	uint8	tx_pwr_ctrl_status;
+	uint8 c2c_sync_en;
+	bool c2c_sync_override;
+	bool c2csync_dac_clks_on;
+	uint8 c2c_sync_saved;
+	acphy_sniffer_align_t sniffer_aligner;
 };
 
 /* Chanspec Call Trace - Various call Paths */
@@ -2410,7 +2540,6 @@ typedef enum {
 #define CAL_COEFF_READ    0
 #define CAL_COEFF_WRITE   1
 #define CAL_COEFF_WRITE_BIQ2BYP   2
-#define MPHASE_TXCAL_CMDS_PER_PHASE  2 /* number of tx iqlo cal commands per phase in mphase cal */
 #define ACPHY_RXCAL_TONEAMP 181
 
 /* This number is picked based on 4355 TPC performance at nominal uisng longSeqTxCal. */

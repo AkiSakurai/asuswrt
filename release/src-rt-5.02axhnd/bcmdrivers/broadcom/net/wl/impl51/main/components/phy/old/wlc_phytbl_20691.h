@@ -5,7 +5,7 @@
  * THE CONTENTS OF THIS FILE IS TEMPORARY.
  * Eventually it'll be auto-generated.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -56,6 +56,9 @@
 #ifndef _WLC_PHYTBL_20691_H_
 #define _WLC_PHYTBL_20691_H_
 
+/* XXX: Define wlc_cfg.h to be the first header file included as some builds
+ * get their feature flags thru this file.
+ */
 #include <wlc_cfg.h>
 #include <typedefs.h>
 

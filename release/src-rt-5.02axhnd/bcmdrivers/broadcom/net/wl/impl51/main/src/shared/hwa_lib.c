@@ -2,7 +2,7 @@
  * HWA library routines that are not specific to PCIE or MAC facing blocks.
  *
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -54,6 +54,7 @@
 #include <osl.h>
 #include <bcmutils.h>
 #include <siutils.h>
+#include <bcmdevs.h>
 #ifdef HWA_BUS_BUILD
 #include <rte_cfg.h>
 #include <pciedev.h>
@@ -85,7 +86,6 @@ hwa_ring_init(hwa_ring_t *ring, const char *name,
 
 	HWA_RING_ASSERT(ring != HWA_RING_NULL);
 	HWA_RING_ASSERT((ring_dir == HWA_RING_S2H) || (ring_dir == HWA_RING_H2S));
-	HWA_RING_ASSERT(_CSBTBL[block_id] == 1);
 	HWA_RING_ASSERT(depth != 0);
 	HWA_RING_ASSERT(memory != (void*)NULL);
 
@@ -171,22 +171,39 @@ BCMATTACHFN(hwa_dma_attach)(hwa_dev_t *dev)
 	dev->dma.outstanding_rds_max =
 		BCM_GBF(v32, HWA_DMA_CORECAPABILITIES_MAXRDOUTSTANDING);
 
-	/* HWA_DMA_CHANNEL1 burst length is adjustable, experiment value can reach to 128 */
+	/* HWA_DMA_CHANNEL1 burst length is adjustable */
 	dev->dma.channels = HWA_DMA_CHANNELS_MAX;
-	dev->dma.burst_length[HWA_DMA_CHANNEL0] = DMA_BL_64;
-	dev->dma.burst_length[HWA_DMA_CHANNEL1] = DMA_BL_64;
+	dev->dma.burst_length[HWA_DMA_CHANNEL0].tx = DMA_BL_64;
+	dev->dma.burst_length[HWA_DMA_CHANNEL0].rx = DMA_BL_64;
+	dev->dma.burst_length[HWA_DMA_CHANNEL1].tx = DMA_BL_64;
+	dev->dma.burst_length[HWA_DMA_CHANNEL1].rx = DMA_BL_64;
+	HWA_BUS_EXPR({
+		if (BCM43684_CHIP(hwa_dev->sih->chip)) {
+			uint32 mps = pcie_h2ddma_rx_get_burstlen(hwa_dev->pciedev);
+
+			dev->dma.burst_length[HWA_DMA_CHANNEL1].tx =
+				pcie_h2ddma_tx_get_burstlen(hwa_dev->pciedev);
+			/* XXX: set rxburstlen to minimum of MPS configured during
+			* enumeration and the burst length supported by chip.
+			*/
+			dev->dma.burst_length[HWA_DMA_CHANNEL1].rx = MIN(mps, DMA_BL_128);
+		}
+	});
 	dev->dma.outstanding_rds = DMA_MR_2;
 	/* channelCnt contains one less than the number of DMA channel
 	 * pairs supported by this device
 	 */
 	HWA_ASSERT(dev->dma.channels <= (dev->dma.channels_max + 1));
-	HWA_ASSERT(dev->dma.burst_length[HWA_DMA_CHANNEL0] <= dev->dma.burst_length_max);
+	HWA_ASSERT(dev->dma.burst_length[HWA_DMA_CHANNEL0].tx <= dev->dma.burst_length_max);
+	HWA_ASSERT(dev->dma.burst_length[HWA_DMA_CHANNEL0].rx <= dev->dma.burst_length_max);
 	HWA_ASSERT(dev->dma.outstanding_rds <= dev->dma.outstanding_rds_max);
 
-	HWA_TRACE(("%s channels[%u:%u] burstlen[%u:%u:%u] outst_rds[%u:%u]\n",
+	HWA_ERROR(("%s channels[%u:%u] burstlen[%u:%u:%u:%u:%u] outst_rds[%u:%u]\n",
 		HWAde, dev->dma.channels, dev->dma.channels_max,
-		dev->dma.burst_length[HWA_DMA_CHANNEL0],
-		dev->dma.burst_length[HWA_DMA_CHANNEL1],
+		dev->dma.burst_length[HWA_DMA_CHANNEL0].tx,
+		dev->dma.burst_length[HWA_DMA_CHANNEL0].rx,
+		dev->dma.burst_length[HWA_DMA_CHANNEL1].tx,
+		dev->dma.burst_length[HWA_DMA_CHANNEL1].rx,
 		dev->dma.burst_length_max,
 		dev->dma.outstanding_rds, dev->dma.outstanding_rds_max));
 
@@ -223,13 +240,14 @@ BCMATTACHFN(hwa_dma_attach)(hwa_dev_t *dev)
 			// | D64_XC_PD "PtyChkDisable"
 			// | D64_XC_SA "SelectActive"
 			// | D64_XC_AE "AddrExt" ... NIC Mode impacts???
-			| BCM_SBF(dev->dma.burst_length[i], D64_XC_BL)
+			| BCM_SBF(dev->dma.burst_length[i].tx, D64_XC_BL)
 			| BCM_SBF(DMA_PC_0, D64_XC_PC) // "PrefetchCtl" = 0
 			| BCM_SBF(DMA_PT_1, D64_XC_PT) // "PrefetchThresh" = 0
 			| BCM_SBIT(D64_XC_CO) // Coherent
 			| 0U);
 		HWA_WR_REG_NAME(HWAde, regs, dma, channels[i].tx.control, tx32);
 
+		// XXX, KL: D64_RC_WC is not working in Veloce, disable it.
 		// Enabling WaitForComplete is only required for specififc DMA transfers
 		// to Host DDR over PCIE, to avoid readback traffic.
 		rx32 = (0U
@@ -239,10 +257,11 @@ BCMATTACHFN(hwa_dma_attach)(hwa_dev_t *dev)
 			// | D64_RC_SH "SepRxHdrDescrEn"
 			// | D64_RC_OC "OverflowCont"
 			// | D64_RC_PD "PtyChkDisable"
+			// | D64_RC_WC // "WaitForComplete" ... bad, forces a readback FIXME!!!
 			// | D64_RC_SA "SelectActive"
 			// | D64_RC_GE "GlomEn"
 			// | D64_RC_AE "AddrExt" ... NIC Mode impacts???
-			| BCM_SBF(dev->dma.burst_length[i], D64_RC_BL)
+			| BCM_SBF(dev->dma.burst_length[i].rx, D64_RC_BL)
 			| BCM_SBF(DMA_PC_0, D64_RC_PC) // "PrefetchCtl" = 0
 			| BCM_SBF(DMA_PT_1, D64_RC_PT) // "PrefetchThresh" = 0
 			| BCM_SBIT(D64_RC_CO) // Coherent
@@ -250,6 +269,12 @@ BCMATTACHFN(hwa_dma_attach)(hwa_dev_t *dev)
 		HWA_WR_REG_NAME(HWAde, regs, dma, channels[i].rx.control, rx32);
 
 	} // for dma.channels
+
+	/*
+	 * XXX Ignore dma::powercontrol::poweronrequest register
+	 * v32 = BCM_SBIT(HWA_DMA_POWERCONTROL_POWERONREQUEST);
+	 * HWA_WR_REG_NAME(HWAde, regs, dma, powercontrol, v32);
+	 */
 
 	// DMA channels not yet enabled, see hwa_dma_enable()
 	dev->dma.enabled = FALSE;
@@ -311,27 +336,29 @@ hwa_dma_channel_status(hwa_dma_t *dma, uint32 channel)
 	return status;
 } // hwa_dma_channel_status
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 void // Dump the dma channels state
 hwa_dma_dump(hwa_dma_t *dma, struct bcmstrbuf *b, bool verbose, bool dump_regs)
 {
 	if (dma == (hwa_dma_t*)NULL)
 		return;
 
-	HWA_BPRINT(b, "%s channels[%u:%u] burstlen[%u:%u:%u] outst_rds[%u:%u] %s\n",
+	HWA_BPRINT(b, "%s channels[%u:%u] burstlen[%u:%u:%u:%u:%u] outst_rds[%u:%u] %s\n",
 		HWAde, dma->channels, dma->channels_max,
-		dma->burst_length[HWA_DMA_CHANNEL0],
-		dma->burst_length[HWA_DMA_CHANNEL1],
+		dma->burst_length[HWA_DMA_CHANNEL0].tx,
+		dma->burst_length[HWA_DMA_CHANNEL0].rx,
+		dma->burst_length[HWA_DMA_CHANNEL1].tx,
+		dma->burst_length[HWA_DMA_CHANNEL1].rx,
 		dma->burst_length_max,
 		dma->outstanding_rds, dma->outstanding_rds_max,
 		dma->enabled ? "ENABLED" : "DISABLED");
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 	if (dump_regs)
 		hwa_dma_regs_dump(dma, b);
 #endif // endif
 } // hwa_dma_dump
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 void // Dump the dma block registers
 hwa_dma_regs_dump(hwa_dma_t *dma, struct bcmstrbuf *b)
 {
@@ -415,6 +442,9 @@ hwa_bm_config(hwa_dev_t *dev, hwa_bm_t *bm,
 
 	if (bm->instance == HWA_TX_BM) {
 		bm->pkt_max     = HWA_TXPATH_PKTS_MAX;
+		/* XXX, 16 is suggested number from designer,
+		 * It also can be a tolance cycle for txfree ring
+		 */
 		bm->avail_sw    = HWA_TXPATH_PKTS_MAX - 16;
 	}
 	else {
@@ -565,14 +595,12 @@ hwa_bm_free(hwa_bm_t *bm, uint16 buf_idx)
 			    HWA_RD_REG_NAME(bm->name, regs, rx_bm, dealloc_status);
 		status = BCM_GBF(v32, HWA_BM_DEALLOC_STATUS_DEALLOCSTATUS);
 
-#if HWA_REVISION_GE_128
 		// WAR for HWA2.x
 		if (status == HWA_BM_SUCCESS_SW) {
 			HWA_STATS_EXPR(bm->frees++);
 			bm->avail_sw++;
 			return HWA_SUCCESS;
 		}
-#endif /* HWA_REVISION_GE_128 */
 
 		if (status & HWA_BM_DONEBIT) {
 			HWA_ASSERT(status == HWA_BM_SUCCESS);
@@ -614,7 +642,7 @@ hwa_bm_avail(hwa_bm_t *bm)
 
 } // hwa_bm_avail
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 void // Dump HWA Buffer Manager software state
 hwa_bm_dump(hwa_bm_t *bm, struct bcmstrbuf *b, bool verbose, bool dump_regs)
 {
@@ -626,13 +654,13 @@ hwa_bm_dump(hwa_bm_t *bm, struct bcmstrbuf *b, bool verbose, bool dump_regs)
 		HWA_BPRINT(b, "+ alloc<%u> frees<%u> fails<%u> avail_sw_low<%u>\n",
 			bm->allocs, bm->frees, bm->fails, bm->avail_sw_low));
 	HWA_STATS_EXPR(bm->avail_sw_low = 0);
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 	if (dump_regs)
 		hwa_bm_regs_dump(bm, b);
 #endif // endif
 } // hwa_bm_dump
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 void // Dump HWA Buffer Manager registers
 hwa_bm_regs_dump(hwa_bm_t *bm, struct bcmstrbuf *b)
 {
@@ -708,6 +736,7 @@ hwa_stats_clear(hwa_dev_t *dev, hwa_stats_set_index_t set_idx)
 	HWA_ASSERT(set_idx < HWA_STATS_SET_INDEX_MAX);
 	HWA_FTRACE(HWA00);
 
+	// FIXME: By placing dma template in this reg we need to repeatedly set them
 	v32 =
 		BCM_SBF(set_idx, HWA_COMMON_STATSCONTROLREG_STATSSETIDX) |
 		BCM_SBF(1, HWA_COMMON_STATSCONTROLREG_CLEARSTATSSET) |
@@ -742,6 +771,7 @@ hwa_stats_copy(hwa_dev_t *dev, hwa_stats_set_index_t set_idx,
 	HWA_WR_REG_NAME(HWA00, dev->regs, common, statdonglreaddressreg, loaddr);
 	HWA_WR_REG_NAME(HWA00, dev->regs, common, statdonglreaddresshireg, hiaddr);
 
+	// FIXME: Why do we have txpost wi related DMAPCIEDESCTEMPLATE attributes
 	//        in the Common::StatsControlReg?
 	//        By placing dma template in this reg we need to repeatedly set them
 	v32 =
@@ -771,15 +801,25 @@ hwa_stats_copy(hwa_dev_t *dev, hwa_stats_set_index_t set_idx,
  * Section: Upstream callback handlers
  * -----------------------------------------------------------------------------
  */
-static int // Default HWA noop handler
+// Default HWA noop handler
+#if !defined(HWA_PKTPGR_BUILD)
+static int
 hwa_callback_noop(void *context,
 	uintptr arg1, uintptr arg2, uint32 arg3, uint32 arg4)
 {
-	HWA_TRACE(("%s(arg1<0x%08x> arg2<0x%08x> arg3<0x%08x> arg4<0x%08x>)\n",
+	HWA_TRACE(("%s(arg1<0x%llx> arg2<0x%llx> arg3<0x%08x> arg4<0x%08x>)\n",
 		__FUNCTION__, HWA_PTR2UINT(arg1), HWA_PTR2UINT(arg2), arg3, arg4));
 	return HWA_FAILURE;
 
 } // hwa_callback_noop
+#else /* HWA_PKTPGR_BUILD */
+static int
+hwa_callback_noop(void *context, hwa_dev_t *dev, /* const */ hwa_pp_cmd_t *pp_cmd)
+{
+	HWA_TRACE(("%s(dev<%p>,cmd<%p)\n", __FUNCTION__, dev, pp_cmd));
+	return HWA_FAILURE;
+} // hwa_callback_noop
+#endif /* HWA_PKTPGR_BUILD */
 
 void // Register an upper layer upstream callback handler
 hwa_register(hwa_dev_t *dev,
@@ -820,7 +860,13 @@ BCMATTACHFN(hwa_attach)(void *wlc, uint device, osl_t *osh,
 	memset(hwa_dev, 0, sizeof(hwa_dev_t));
 
 	// Attach to backplane
+#ifdef DONGLEBUILD
 	hwa_dev->sih = si_attach(device, osh, regs, bustype, NULL, NULL, 0);
+#else
+	/* Don't need to call si_attach again for NIC. We have already done this earlier */
+	hwa_dev->sih = hwa_get_wlc_sih(wlc);
+#endif // endif
+
 	if (!hwa_dev->sih) {
 		goto fail_si_attach;
 	}
@@ -831,6 +877,8 @@ BCMATTACHFN(hwa_attach)(void *wlc, uint device, osl_t *osh,
 	if (!si_iscoreup(hwa_dev->sih)) {
 		si_core_reset(hwa_dev->sih, 0, 0);
 	}
+
+	// FIXME: Need an assert to ensure that HWA core is up
 
 	// Setup the HWA platform contexts and regs
 	hwa_dev->wlc = wlc;
@@ -851,17 +899,9 @@ BCMATTACHFN(hwa_attach)(void *wlc, uint device, osl_t *osh,
 #ifdef RXCPL4
 	hwa_dev->rxcpl_inuse = 0;
 #endif // endif
-	hwa_dev->txfifo_apb = 1;
-	hwa_dev->txstat_apb = 1;
-	hwa_dev->txfifo_hwupdnext = 1;
-	hwa_dev->tx_pktdealloc = 0;
-
-#if HWA_REVISION_GE_129
 	hwa_dev->txfifo_apb = 0;
 	hwa_dev->txstat_apb = 1;
 	hwa_dev->txfifo_hwupdnext = 0;
-	hwa_dev->tx_pktdealloc = 1;
-#endif // endif
 
 	// Update from nvram if any.
 #ifdef RXCPL4
@@ -875,21 +915,24 @@ BCMATTACHFN(hwa_attach)(void *wlc, uint device, osl_t *osh,
 		hwa_dev->txstat_apb = bcm_strtoul(val, NULL, 0);
 	if ((val = getvar(NULL, "txfifo_hwupdnext")) != NULL)
 		hwa_dev->txfifo_hwupdnext = bcm_strtoul(val, NULL, 0);
-	if ((val = getvar(NULL, "tx_pktdealloc")) != NULL)
-		hwa_dev->tx_pktdealloc = bcm_strtoul(val, NULL, 0);
 
 	HWA_PRINT("%s "
 #ifdef RXCPL4
 		"rxcpl_inuse<%u> "
 #endif // endif
 		"txfifo_apb<%u> txstat_apb<%u> "
-		"txfifo_hwupdnext<%u> tx_pktdealloc<%u>\n",
+		"txfifo_hwupdnext<%u> txfree<%s>\n",
 		HWA00,
 #ifdef RXCPL4
 		hwa_dev->rxcpl_inuse,
 #endif // endif
 		hwa_dev->txfifo_apb, hwa_dev->txstat_apb,
-		hwa_dev->txfifo_hwupdnext, hwa_dev->tx_pktdealloc);
+		hwa_dev->txfifo_hwupdnext,
+#ifdef HWA_TXPOST_FREEIDXTX
+		"ring");
+#else
+		"reg");
+#endif // endif
 
 	// Fetch the pcie_ipc object
 	HWA_BUS_EXPR(hwa_dev->pcie_ipc = hnd_get_pcie_ipc());
@@ -901,21 +944,24 @@ BCMATTACHFN(hwa_attach)(void *wlc, uint device, osl_t *osh,
 	hwa_dev->self = hwa_dev;
 
 	HWA_TRACE(("%s driver mode<%s> hwa_dev<%p> size<%d> core id<%u> rev<%u>"
-		" device<%u> bustype<%u>\n",
+		" device<%x> bustype<%u>\n",
 		HWA00, (hwa_dev->driver_mode == HWA_FD_MODE) ? "FD" : "NIC", hwa_dev,
 		(int)sizeof(hwa_dev_t), hwa_dev->coreid, hwa_dev->corerev,
 		hwa_dev->device, hwa_dev->bustype));
 
 	HWA_ASSERT(hwa_dev->coreid  == HWA_CORE_ID); // hnd_soc.h
 	HWA_ASSERT(hwa_dev->corerev == HWA_REVISION_ID); // hwa_regs.h, -DBCMHWA
+	HWA_ASSERT(hwa_dev->corerev >= 129); // 43684A0, A1 Depleted
 
 	v32 = HWA_RD_REG_NAME(HWA00, hwa_dev->regs, top, hwahwcap2);
 	BCM_REFERENCE(v32);
 	HWA_ASSERT(BCM_GBF(v32, HWA_TOP_HWAHWCAP2_HWABLKSPRESENT) ==
 		HWA_BLKS_PRESENT);
 
+#ifdef HWA_DPC_BUILD
 	// Attach HWA DMA engines/channels
 	hwa_dma_attach(hwa_dev);
+#endif /* HWA_DPC_BUILD */
 
 	for (i = 0; i < HWA_CALLBACK_MAX; i++) {
 		hwa_register(hwa_dev, i, NULL, hwa_callback_noop);
@@ -930,6 +976,8 @@ BCMATTACHFN(hwa_attach)(void *wlc, uint device, osl_t *osh,
 	HWA_TXSTAT_EXPR(hwa_txstat_attach(hwa_dev)); // HWA4a
 
 	HWA_CPLENG_EXPR(hwa_cpleng_attach(hwa_dev)); // HWA2b HWA4b
+
+	HWA_PKTPGR_EXPR(hwa_pktpgr_attach(hwa_dev)); // HWApp
 
 	HWA_TRACE(("\n\n----- HWA ATTACH PHASE DONE -----\n\n"));
 
@@ -959,6 +1007,8 @@ BCMATTACHFN(hwa_detach)(struct hwa_dev *dev)
 
 	HWA_CPLENG_EXPR(hwa_cpleng_detach(&dev->cpleng)); // HWA2b HWA4b
 
+	HWA_PKTPGR_EXPR(hwa_pktpgr_detach(&dev->pktpgr)); // HWApp
+
 #ifdef HWA_DPC_BUILD
 #ifdef DONGLEBUILD
 	hwa_osl_detach(dev);
@@ -974,6 +1024,7 @@ hwa_config(struct hwa_dev *dev)
 {
 	uint32 v32, splithdr;
 	hwa_regs_t *regs;
+	HWA_SWITCHCORE_DEFS();
 
 	HWA_TRACE(("\n\n+++++ HWA CONFIG PHASE BEGIN +++++\n\n"));
 	HWA_FTRACE(HWA00);
@@ -981,16 +1032,18 @@ hwa_config(struct hwa_dev *dev)
 	HWA_ASSERT(dev != (hwa_dev_t*)NULL);
 	regs = dev->regs;
 
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
+
 #if !defined(BCMPCIEDEV) /* NIC mode SW driver */
 
 	HWA_ASSERT(dev->driver_mode == HWA_NIC_MODE);
 
 	dev->macif_placement = HWA_MACIF_IN_HOSTMEM; // Currently MACIf(s) in DDR
-	dev->macif_coherency = HWA_HW_COHERENCY;
+	dev->macif_coherency = HWA_HW_COHERENCY;	 // FIXME: NIC Integration
 
 	// Following configuration should be fetched using the dev->osh OS layer
-	dev->host_coherency  = HWA_HW_COHERENCY;
-	dev->host_addressing = HWA_64BIT_ADDRESSING;
+	dev->host_coherency  = HWA_HW_COHERENCY;	 // FIXME: NIC Integration
+	dev->host_addressing = HWA_64BIT_ADDRESSING; // FIXME: NIC integration
 	dev->host_physaddrhi = HWA_INVALID_HIADDR;
 
 	splithdr = 0U; // NIC mode uses contiguous packet
@@ -1005,7 +1058,7 @@ hwa_config(struct hwa_dev *dev)
 	HWA_ASSERT(dev->pcie_ipc != (struct pcie_ipc *)NULL);
 
 	dev->macif_placement = HWA_MACIF_IN_DNGLMEM; // Always in device memory
-	dev->macif_coherency = HWA_HW_COHERENCY;     // Always HW coherent
+	dev->macif_coherency = HWA_HW_COHERENCY;	 // Always HW coherent
 
 	// Determine Host coherency model using host advertised capability
 	dev->host_coherency =
@@ -1026,10 +1079,15 @@ hwa_config(struct hwa_dev *dev)
 		HWA_UINT2PTR(pcie_ipc_rings_t, dev->pcie_ipc->rings_daddr32);
 	HWA_ASSERT(dev->pcie_ipc_rings != (pcie_ipc_rings_t*)NULL);
 
+	// FIXME: SW driver validated for Aggregated WI(RxPost, RxCpl and TxCpl)
+	// FIXME: TxPost will continue to use non-aggregated but compact format!!!
 	HWA_ASSERT((dev->pcie_ipc->hcap1 & PCIE_IPC_HCAP1_ACWI) != 0);
 	dev->wi_aggr_cnt = HWA_PCIEIPC_WI_AGGR_CNT; // WI format aggregation cnt
 	HWA_TRACE(("%s wi_aggr_cnt<%u>\n", HWA00, dev->wi_aggr_cnt));
 
+	// FIXME: Not clear why host_2byte_index is part of common::intr_control
+	// FIXME: This register is for generating SW doorbell using [addr, val]
+	// FIXME: use_val and host_2byte_index will conflict!!!
 #ifdef PCIE_DMAINDEX16 /* dmaindex16 firmware target build */
 	HWA_ASSERT((dev->pcie_ipc->flags & PCIE_IPC_FLAGS_DMA_INDEX) != 0);
 	HWA_ASSERT((dev->pcie_ipc->flags & PCIE_IPC_FLAGS_2BYTE_INDICES) != 0);
@@ -1090,6 +1148,8 @@ hwa_config(struct hwa_dev *dev)
 	 * configure various descriptors.
 	 */
 	v32 = (0U
+		HWA_PKTPGR_EXPR(
+		    | BCM_SBIT(HWA_COMMON_HWA2HWCAP_HWPPSUPPORT))
 		| BCM_SBF(splithdr, HWA_COMMON_HWA2HWCAP_DATA_BUF_CAP)
 		| BCM_SBF(dev->host_addressing,
 		          HWA_COMMON_HWA2HWCAP_PCIE_IPC_PKT_ADDR32_CAP)
@@ -1113,11 +1173,13 @@ hwa_config(struct hwa_dev *dev)
 	HWA_RXPOST_EXPR(hwa_rxpost_preinit(&dev->rxpost));
 	HWA_RXFILL_EXPR(hwa_rxfill_preinit(&dev->rxfill));
 
+	// FIXME during integration phase ... allocate TxLfrag pool
 	HWA_TXPOST_EXPR({
 		void *memory;
 		uint32 mem_sz;
 		uint32 txbuf_bytes;
 
+		//XXX, for now it's 44 + 96 = 140, need to reduce the to X.
 		txbuf_bytes = HWA_TXPOST_PKT_BYTES + LBUFFRAGSZ;
 		mem_sz = txbuf_bytes * HWA_TXPATH_PKTS_MAX;
 		if ((memory = MALLOCZ(dev->osh, mem_sz)) == NULL) {
@@ -1131,6 +1193,10 @@ hwa_config(struct hwa_dev *dev)
 			HWA_PTR2UINT(memory), HWA_PTR2HIADDR(memory), memory);
 	});
 
+	HWA_PKTPGR_EXPR(hwa_pktpgr_preinit(&dev->pktpgr));
+
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
+
 	HWA_TRACE(("\n\n----- HWA CONFIG PHASE DONE -----\n\n"));
 
 } // hwa_config
@@ -1139,6 +1205,7 @@ void // HWA INIT PHASE
 hwa_init(hwa_dev_t *dev)
 {
 	uint32 v32;
+	HWA_SWITCHCORE_DEFS();
 
 	HWA_TRACE(("\n\n+++++ HWA INIT PHASE BEGIN +++++\n\n"));
 	HWA_FTRACE(HWA00);
@@ -1147,8 +1214,12 @@ hwa_init(hwa_dev_t *dev)
 	HWA_ASSERT(dev->regs != (hwa_regs_t*)NULL);
 
 	v32 = 0U; // Disable module clk gating
+
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
+
 	HWA_WR_REG_NAME(HWA00, dev->regs, common, module_clkgating_enable, v32);
 
+	// XXX Default module_clkext must be 3 or above CRWLHWA-299
 	v32 = HWA_RD_REG_NAME(HWA00, dev->regs, common, module_clkext);
 	HWA_ASSERT(v32 >= 3);
 
@@ -1164,10 +1235,13 @@ hwa_init(hwa_dev_t *dev)
 			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCK3B_CLKENABLE)
 			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCKTXSTS_CLKENABLE))
 		HWA_TXPOST_EXPR(
+			// XXX, Set block3B_clkEnable to make 3A only mode work.
 			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCK3B_CLKENABLE)
 			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCK3A_CLKENABLE))
 		HWA_TXFIFO_EXPR(
 			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCK3B_CLKENABLE))
+		HWA_PKTPGR_EXPR(
+			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_PAGER_CLKENABLE))
 		| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCKSTATISTICS_CLKENABLE);
 	HWA_RXPATH_EXPR(
 		if (HWA_RX_CORES > 1)
@@ -1192,6 +1266,10 @@ hwa_init(hwa_dev_t *dev)
 
 	HWA_CPLENG_EXPR(hwa_cpleng_init(&dev->cpleng));
 
+	// HWA_PKTPGR_EXPR no hwa_pktpgr_init(), revisit during WLAN integration
+
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
+
 	dev->inited = TRUE;
 
 	HWA_TRACE(("\n\n----- HWA INIT PHASE DONE -----\n\n"));
@@ -1201,10 +1279,15 @@ hwa_init(hwa_dev_t *dev)
 void // HWA DEINIT PHASE
 hwa_deinit(hwa_dev_t *dev)
 {
+
+	HWA_SWITCHCORE_DEFS();
+
 	HWA_TRACE(("\n\n+++++ HWA DEINIT PHASE BEGIN +++++\n\n"));
 	HWA_FTRACE(HWA00);
 
 	HWA_ASSERT(dev != (hwa_dev_t*)NULL);
+
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
 
 	// DeInitialize all blocks
 	HWA_RXDATA_EXPR(hwa_rxdata_deinit(&dev->rxdata));
@@ -1221,6 +1304,10 @@ hwa_deinit(hwa_dev_t *dev)
 
 	HWA_CPLENG_EXPR(hwa_cpleng_deinit(&dev->cpleng));
 
+	HWA_PKTPGR_EXPR(hwa_pktpgr_deinit(&dev->pktpgr));
+
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
+
 	HWA_TRACE(("\n\n----- HWA DEINIT PHASE DONE -----\n\n"));
 
 }
@@ -1235,6 +1322,7 @@ void
 hwa_reinit(hwa_dev_t *dev)
 {
 	uint32 v32;
+	HWA_SWITCHCORE_DEFS();
 
 	HWA_FTRACE(HWA00);
 
@@ -1244,8 +1332,12 @@ hwa_reinit(hwa_dev_t *dev)
 
 	hwa_init(dev);
 
+#ifdef HWA_DPC_BUILD
 	// DMA channels are enabled now
 	hwa_dma_enable(&dev->dma);
+#endif /* HWA_DPC_BUILD */
+
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
 
 	// Enable all blocks except 1a and 1b
 	v32 = (0U
@@ -1257,6 +1349,8 @@ hwa_reinit(hwa_dev_t *dev)
 			| BCM_SBIT(HWA_COMMON_MODULE_ENABLE_BLOCK3B_ENABLE))
 		HWA_TXSTAT_EXPR(
 			| BCM_SBIT(HWA_COMMON_MODULE_ENABLE_BLOCKTXSTS_ENABLE))
+		HWA_PKTPGR_EXPR(
+			| BCM_SBIT(HWA_COMMON_MODULE_ENABLE_PAGER_ENABLE))
 		| BCM_SBIT(HWA_COMMON_MODULE_ENABLE_BLOCKSTATISTICS_ENABLE));
 	HWA_TXSTAT_EXPR(
 		if (HWA_TX_CORES > 1)
@@ -1264,6 +1358,8 @@ hwa_reinit(hwa_dev_t *dev)
 	HWA_WR_REG_NAME(HWA00, dev->regs, common, module_enable, v32);
 
 	HWA_RXPOST_EXPR(hwa_wlc_mac_event(dev, WLC_E_HWA_RX_REINIT));
+
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
 
 	dev->reinit = FALSE;
 
@@ -1293,14 +1389,19 @@ void // Enable all blocks. DMA engines and BMs are enabled in INIT Phase
 hwa_enable(hwa_dev_t *dev)
 {
 	uint32 v32;
+	HWA_SWITCHCORE_DEFS();
 
 	HWA_TRACE(("\n\n+++++ HWA ENABLE PHASE BEGIN +++++\n\n"));
 	HWA_FTRACE(HWA00);
 
 	HWA_ASSERT(dev != (hwa_dev_t*)NULL);
 
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
+
+#ifdef HWA_DPC_BUILD
 	// DMA channels are enabled now
 	hwa_dma_enable(&dev->dma);
+#endif /* HWA_DPC_BUILD */
 
 	// Enable all blocks except 1a 1b - not using hwa_module_request()
 	v32 = (0U
@@ -1313,11 +1414,15 @@ hwa_enable(hwa_dev_t *dev)
 			| BCM_SBIT(HWA_COMMON_MODULE_ENABLE_BLOCK3B_ENABLE))
 		HWA_TXSTAT_EXPR(
 			| BCM_SBIT(HWA_COMMON_MODULE_ENABLE_BLOCKTXSTS_ENABLE))
+		HWA_PKTPGR_EXPR(
+			| BCM_SBIT(HWA_COMMON_MODULE_ENABLE_PAGER_ENABLE))
 		| BCM_SBIT(HWA_COMMON_MODULE_ENABLE_BLOCKSTATISTICS_ENABLE));
 	HWA_TXSTAT_EXPR(
 		if (HWA_TX_CORES > 1)
 			v32 |= BCM_SBIT(HWA_COMMON_MODULE_ENABLE_BLOCKTXSTS1_ENABLE));
 	HWA_WR_REG_NAME(HWA00, dev->regs, common, module_enable, v32);
+
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
 
 	HWA_TRACE(("\n\n----- HWA ENABLE PHASE DONE -----\n\n"));
 } // hwa_enable
@@ -1326,17 +1431,22 @@ void // Disable all blocks. DMA engines.
 hwa_disable(hwa_dev_t *dev)
 {
 	uint32 v32;
+	HWA_SWITCHCORE_DEFS();
 
 	HWA_TRACE(("\n\n+++++ HWA DISABLE PHASE BEGIN +++++\n\n"));
 	HWA_FTRACE(HWA00);
 
 	HWA_ASSERT(dev != (hwa_dev_t*)NULL);
 
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
+
 	// Disable all blocks except 3a, and cpl engine.
 	v32 = HWA_RD_REG_NAME(HWA00, dev->regs, common, module_enable);
 	v32 &= (HWA_COMMON_MODULE_ENABLE_BLOCKCPL_ENABLE_MASK |
 		HWA_COMMON_MODULE_ENABLE_BLOCK3A_ENABLE_MASK);
 	HWA_WR_REG_NAME(HWA00, dev->regs, common, module_enable, v32);
+
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
 
 	HWA_TRACE(("\n\n----- HWA DISABLE PHASE DONE -----\n\n"));
 }
@@ -1397,11 +1507,14 @@ hwa_error(hwa_dev_t *dev)
 {
 	uint32 i, v32;
 	hwa_regs_t *regs;
+	HWA_SWITCHCORE_DEFS();
 
 	if (dev == (hwa_dev_t*)NULL)
 		return;
 
 	regs = dev->regs;
+
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
 
 	v32 = HWA_RD_REG_NAME(HWA00, regs, common, intstatus);
 	if (v32 & HWA_INTSTATUS_ERRORS)
@@ -1420,19 +1533,24 @@ hwa_error(hwa_dev_t *dev)
 			HWA_WARN(("%s dma rcv::status1<0x%08x>\n", HWA00, v32));
 	}
 
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
 } // hwa_error
 
+// XXX Invoke everytime MAC driver performs a MAC clkctlstatus register update
 uint32 // HWA clock control
 hwa_clkctl_request(hwa_clkctl_cmd_t cmd, bool enable)
 {
 	uint32 top32; // dma32;
 	hwa_dev_t *dev;
 	hwa_regs_t *regs;
+	HWA_SWITCHCORE_DEFS();
 
 	dev = HWA_DEVP(FALSE); // CAUTION: global access without audit
 
 	// Setup locals
 	regs = dev->regs;
+
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
 
 	top32 = HWA_RD_REG_NAME(HWA00, regs, top, clkctlstatus);
 	// dma32 = HWA_RD_REG_NAME(HWA00, regs, dma, clockctlstatus);
@@ -1463,22 +1581,26 @@ done:
 	HWA_TRACE(("%s clkctl cmd<%u> enable<%u> reg<0x%08x>\n",
 		HWA00, cmd, enable, top32));
 
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
 	return top32;
 
 } // hwa_clkctl_request
 
+// XXX Invoke everytime MAC driver performs a MAC powercontrol register update
 uint32 // HWA power control
 hwa_pwrctl_request(hwa_pwrctl_cmd_t cmd, uint32 arg_v32)
 {
 	uint32 v32;
 	hwa_dev_t *dev;
 	hwa_regs_t *regs;
+	HWA_SWITCHCORE_DEFS();
 
 	dev = HWA_DEVP(FALSE); // CAUTION: global access without audit
 
 	// Setup locals
 	regs = dev->regs;
 
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
 	v32 = HWA_RD_REG_NAME(HWA00, regs, top, powercontrol);
 	switch (cmd) {
 		case HWA_MEM_CLK_GATING:
@@ -1498,8 +1620,11 @@ hwa_pwrctl_request(hwa_pwrctl_cmd_t cmd, uint32 arg_v32)
 	}
 
 	HWA_WR_REG_NAME(HWA00, regs, top, powercontrol, v32);
+
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
+
 	HWA_TRACE(("%s pwrctl cmd<%u> arg_v32<%u> reg<0x%08x>\n",
-	           HWA00, cmd, arg_v32, v32));
+			HWA00, cmd, arg_v32, v32));
 
 	return v32;
 
@@ -1511,6 +1636,7 @@ hwa_module_request(hwa_dev_t *dev, hwa_module_block_t blk,
 {
 	uint32 v32;
 	hwa_regs_t *regs;
+	HWA_SWITCHCORE_DEFS();
 
 	// Audit parameters and pre-conditions
 	HWA_AUDIT_DEV(dev);
@@ -1518,6 +1644,7 @@ hwa_module_request(hwa_dev_t *dev, hwa_module_block_t blk,
 	// Setup locals
 	regs = dev->regs;
 
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
 	switch (cmd) {
 		case HWA_MODULE_CLK_ENABLE:
 			v32 = HWA_RD_REG_NAME(HWA00, regs, common, module_clk_enable);
@@ -1542,6 +1669,7 @@ hwa_module_request(hwa_dev_t *dev, hwa_module_block_t blk,
 		default:
 			HWA_WARN(("%s module blk<%u> cmd<%u> enable<%u> failure\n",
 				HWA00, blk, cmd, enable));
+			HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
 			return -1;
 	}
 
@@ -1563,6 +1691,7 @@ hwa_module_request(hwa_dev_t *dev, hwa_module_block_t blk,
 		case HWA_MODULE_ENABLE:
 			HWA_WR_REG_NAME(HWA00, regs, common, module_enable, v32); break;
 		default:
+			HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
 			return -1;
 	}
 
@@ -1570,6 +1699,7 @@ done:
 	HWA_TRACE(("%s module blk<%u> cmd<%u> enable<%u> reg<0x%08x>\n",
 		HWA00, blk, cmd, enable, v32));
 
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
 	return v32;
 
 } // hwa_module_request
@@ -1611,11 +1741,7 @@ hwa_sw_doorbell_request(struct hwa_dev *dev, hwa_sw_doorbell_t request,
 			HWA_WR_REG_NAME(HWA00, regs, common, txintrval, value);
 			v32 |= (0U
 				| BCM_SBIT(HWA_COMMON_INTR_CONTROL_TXHOSTINTR_EN)
-#if HWA_REVISION_EQ_128
-				| BCM_SBIT(HWA_COMMON_INTR_CONTROL_USEVAL)
-#else
 				| BCM_SBIT(HWA_COMMON_INTR_CONTROL_USEVAL_TX)
-#endif // endif
 				| 0U);
 			break;
 
@@ -1625,63 +1751,33 @@ hwa_sw_doorbell_request(struct hwa_dev *dev, hwa_sw_doorbell_t request,
 			HWA_WR_REG_NAME(HWA00, regs, common, rxintrval, value);
 			v32 |= (0U
 				| BCM_SBIT(HWA_COMMON_INTR_CONTROL_RXHOSTINTR_EN)
-#if HWA_REVISION_EQ_128
-				| BCM_SBIT(HWA_COMMON_INTR_CONTROL_USEVAL)
-#else
 				| BCM_SBIT(HWA_COMMON_INTR_CONTROL_USEVAL_RX)
-#endif // endif
 				| 0U);
 			break;
 
 		case HWA_TXCPL_DOORBELL:
-#if HWA_REVISION_EQ_128
-			HWA_WR_REG_NAME(HWA00, regs, common, cplintraddrlo, haddr64.loaddr);
-			HWA_WR_REG_NAME(HWA00, regs, common, cplintraddrhi, haddr64.hiaddr);
-			HWA_WR_REG_NAME(HWA00, regs, common, cplintrval, value);
-#else
 			HWA_WR_REG_NAME(HWA00, regs, common, cplintr_tx_addrlo, haddr64.loaddr);
 			HWA_WR_REG_NAME(HWA00, regs, common, cplintr_tx_addrhi, haddr64.hiaddr);
 			HWA_WR_REG_NAME(HWA00, regs, common, cplintr_tx_val, value);
-#endif // endif
 			v32 |= (0U
 				| BCM_SBIT(HWA_COMMON_INTR_CONTROL_CPLHOSTINTR_EN)
-#if HWA_REVISION_EQ_128
-				| BCM_SBIT(HWA_COMMON_INTR_CONTROL_USEVAL)
-#else
 				| BCM_SBIT(HWA_COMMON_INTR_CONTROL_USEVAL_CPLTX)
-#endif // endif
 				| 0U);
 
 			break;
 
 		case HWA_RXCPL_DOORBELL:
-		{
-#if HWA_REVISION_GE_129
-			uint32 useval_cplrx;
-#endif // endif
-#if HWA_REVISION_EQ_128
-			HWA_WR_REG_NAME(HWA00, regs, common, cplintraddrlo, haddr64.loaddr);
-			HWA_WR_REG_NAME(HWA00, regs, common, cplintraddrhi, haddr64.hiaddr);
-			HWA_WR_REG_NAME(HWA00, regs, common, cplintrval, value);
-#else
 			HWA_ASSERT(index < 4);
 			HWA_WR_REG_NAME(HWA00, regs, common, cplintr_rx[index].addrlo,
 				haddr64.loaddr);
 			HWA_WR_REG_NAME(HWA00, regs, common, cplintr_rx[index].addrhi,
 				haddr64.hiaddr);
 			HWA_WR_REG_NAME(HWA00, regs, common, cplintr_rx[index].val, value);
-			useval_cplrx = 1 << index;
-#endif // endif
 			v32 |= (0U
 				| BCM_SBIT(HWA_COMMON_INTR_CONTROL_CPLHOSTINTR_EN)
-#if HWA_REVISION_EQ_128
-				| BCM_SBIT(HWA_COMMON_INTR_CONTROL_USEVAL)
-#else
-				| BCM_SBF(useval_cplrx, HWA_COMMON_INTR_CONTROL_USEVAL_CPLRX)
-#endif // endif
+				| BCM_SBF((1 << index), HWA_COMMON_INTR_CONTROL_USEVAL_CPLRX)
 				| 0U);
 			break;
-		}
 
 		default: HWA_WARN(("%s doorbell<%u> failure\n", HWA00, request));
 			HWA_ASSERT(0);
@@ -1692,14 +1788,17 @@ hwa_sw_doorbell_request(struct hwa_dev *dev, hwa_sw_doorbell_t request,
 
 } // hwa_sw_doorbell_request
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 
 void // Dump all HWA blocks
 hwa_dump(struct hwa_dev *dev, struct bcmstrbuf *b, uint32 block_bitmap,
 	bool verbose, bool dump_regs, bool dump_txfifo_shadow, uint8 *fifo_bitmap)
 {
+	HWA_SWITCHCORE_DEFS();
 	if (dev == (hwa_dev_t*)NULL)
 		return;
+
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
 
 	HWA_BPRINT(b, "HWA[%s] rev<%d> driver<%d> dev<%p> regs<%p> "
 		"intmask<0x%08x> defintmask<0x%08x> intstatus<0x%08x> "
@@ -1712,6 +1811,7 @@ hwa_dump(struct hwa_dev *dev, struct bcmstrbuf *b, uint32 block_bitmap,
 	HWA_RXDATA_EXPR(HWA_BPRINT(b, "2A ")); HWA_RXCPLE_EXPR(HWA_BPRINT(b, "2B "));
 	HWA_TXPOST_EXPR(HWA_BPRINT(b, "3A ")); HWA_TXFIFO_EXPR(HWA_BPRINT(b, "3B "));
 	HWA_TXSTAT_EXPR(HWA_BPRINT(b, "4A ")); HWA_TXCPLE_EXPR(HWA_BPRINT(b, "4B "));
+	HWA_PKTPGR_EXPR(HWA_BPRINT(b, "PP "));
 	HWA_BPRINT(b, "] blocks are enabled\n");
 
 	HWA_BUS_EXPR(
@@ -1735,12 +1835,15 @@ hwa_dump(struct hwa_dev *dev, struct bcmstrbuf *b, uint32 block_bitmap,
 		}
 	}
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 	if (dump_regs) {
 		hwa_regs_dump(dev, b,
 			(block_bitmap & (HWA_DUMP_TOP|HWA_DUMP_CMN))); // top and common only
 	}
 #endif // endif
+	if (block_bitmap & HWA_DUMP_PP) {
+		HWA_PKTPGR_EXPR(hwa_pktpgr_dump(&dev->pktpgr, b, verbose, dump_regs));
+	}
 
 	if (block_bitmap & HWA_DUMP_DMA) {
 		hwa_dma_dump(&dev->dma, b, verbose, dump_regs); // dump DMA channels
@@ -1776,9 +1879,10 @@ hwa_dump(struct hwa_dev *dev, struct bcmstrbuf *b, uint32 block_bitmap,
 	if (block_bitmap & (HWA_DUMP_2B|HWA_DUMP_4B)) {
 		HWA_CPLENG_EXPR(hwa_cpleng_dump(&dev->cpleng, b, verbose, dump_regs)); // HWAce
 	}
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
 } // hwa_dump
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 
 void // Dump all HWA block registers or just top and common blocks
 hwa_regs_dump(hwa_dev_t *dev, struct bcmstrbuf *b, uint32 block_bitmap)
@@ -1827,15 +1931,9 @@ hwa_regs_dump(hwa_dev_t *dev, struct bcmstrbuf *b, uint32 block_bitmap)
 		HWA_BPR_REG(b, common, txintraddr_hi);
 		HWA_BPR_REG(b, common, rxintraddr_lo);
 		HWA_BPR_REG(b, common, rxintraddr_hi);
-#if HWA_REVISION_EQ_128
-		HWA_BPR_REG(b, common, cplintraddr_lo);
-		HWA_BPR_REG(b, common, cplintraddr_hi);
-		HWA_BPR_REG(b, common, cplintrval);
-#else
 		HWA_BPR_REG(b, common, cplintr_tx_addr_lo);
 		HWA_BPR_REG(b, common, cplintr_tx_addr_hi);
 		HWA_BPR_REG(b, common, cplintr_tx_val);
-#endif // endif
 		HWA_BPR_REG(b, common, intr_control);
 		HWA_BPR_REG(b, common, module_clk_enable);
 		HWA_BPR_REG(b, common, module_clkgating_enable);
@@ -1844,6 +1942,10 @@ hwa_regs_dump(hwa_dev_t *dev, struct bcmstrbuf *b, uint32 block_bitmap)
 		HWA_BPR_REG(b, common, module_clkext);
 		HWA_BPR_REG(b, common, module_enable);
 		HWA_BPR_REG(b, common, module_idle);
+#ifdef HWA_PKTPGR_BUILD
+		HWA_BPR_REG(b, common, dmatxsel);
+		HWA_BPR_REG(b, common, dmarxsel);
+#endif /* HWA_PKTPGR_BUILD */
 		HWA_BPR_REG(b, common, gpiomuxcfg);
 		HWA_BPR_REG(b, common, gpioout);
 		HWA_BPR_REG(b, common, gpiooe);
@@ -1856,7 +1958,6 @@ hwa_regs_dump(hwa_dev_t *dev, struct bcmstrbuf *b, uint32 block_bitmap)
 		HWA_BPR_REG(b, common, hwa2hwcap);
 		HWA_BPR_REG(b, common, hwa2swpkt_high32_pa);
 		HWA_BPR_REG(b, common, hwa2pciepc_pkt_high32_pa);
-#if HWA_REVISION_GE_129
 		HWA_BPR_REG(b, common, cplintr_rx[0].addr_lo);
 		HWA_BPR_REG(b, common, cplintr_rx[0].addr_hi);
 		HWA_BPR_REG(b, common, cplintr_rx[0].val);
@@ -1869,7 +1970,10 @@ hwa_regs_dump(hwa_dev_t *dev, struct bcmstrbuf *b, uint32 block_bitmap)
 		HWA_BPR_REG(b, common, cplintr_rx[3].addr_lo);
 		HWA_BPR_REG(b, common, cplintr_rx[3].addr_hi);
 		HWA_BPR_REG(b, common, cplintr_rx[3].val);
-#endif // endif
+#if HWA_REVISION_GE_131
+		HWA_BPR_REG(b, common, pageintstatus);
+		HWA_BPR_REG(b, common, pageintmask);
+#endif /* HWA_REVISION_GE_131 */
 	}
 
 	// DMA
@@ -1905,6 +2009,10 @@ hwa_regs_dump(hwa_dev_t *dev, struct bcmstrbuf *b, uint32 block_bitmap)
 	if (block_bitmap & (HWA_DUMP_2B|HWA_DUMP_4B)) {
 		HWA_CPLENG_EXPR(hwa_cpleng_regs_dump(&dev->cpleng, b));
 	}
+
+	if (block_bitmap & HWA_DUMP_PP) {
+		HWA_PKTPGR_EXPR(hwa_pktpgr_regs_dump(&dev->pktpgr, b));
+	}
 } // hwa_regs_dump
 
 void // Read a single register in HWA given its offset in HWA regs
@@ -1912,12 +2020,16 @@ hwa_reg_read(hwa_dev_t *dev, uint32 reg_offset)
 {
 	uint32 v32;
 	uintptr reg_base;
+	HWA_SWITCHCORE_DEFS();
 
 	if (dev == (hwa_dev_t*)NULL)
 		return;
 
 	reg_base = HWA_PTR2UINT(dev->regs);
+
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
 	v32 = HWA_RD_REG((uintptr)reg_base + reg_offset);
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
 
 	HWA_PRINT("HWA_REGISTER[0x%p] offset<0x%04x> v32[0x%08x, %10u]\n",
 		(void*)(reg_base + reg_offset), reg_offset, v32, v32);
@@ -1928,7 +2040,7 @@ hwa_reg_read(hwa_dev_t *dev, uint32 reg_offset)
 
 #endif /* BCMDBG */
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 static int
 hwa_dbg_get_regaddr(hwa_regs_t *regs, char *type, uintptr *reg_addr)
 {
@@ -1955,6 +2067,8 @@ hwa_dbg_get_regaddr(hwa_regs_t *regs, char *type, uintptr *reg_addr)
 		HWA_TXSTAT_EXPR(*reg_addr = HWA_PTR2UINT(&regs->tx_status[0])); //core 0
 	} else if (!strcmp(type, "cpl")) {
 		HWA_CPLENG_EXPR(*reg_addr = HWA_PTR2UINT(&regs->cpl));
+	} else if (!strcmp(type, "pp")) {
+		HWA_PKTPGR_EXPR(*reg_addr = HWA_PTR2UINT(&regs->pager));
 	} else {
 		return BCME_BADARG;
 	}
@@ -1983,6 +2097,7 @@ hwa_dbg_regread(struct hwa_dev *dev, char *type, uint32 reg_offset, int32 *ret_i
 	return ret;
 }
 
+#if defined(WLTEST)
 int
 hwa_dbg_regwrite(struct hwa_dev *dev, char *type, uint32 reg_offset, uint32 val)
 {
@@ -2001,9 +2116,14 @@ hwa_dbg_regwrite(struct hwa_dev *dev, char *type, uint32 reg_offset, uint32 val)
 	return BCME_OK;
 }
 #endif // endif
+#endif // endif
 
 #ifdef HWA_DPC_BUILD
 /* ========= Common ISR/DPC handle functions ========= */
+
+/* XXX:  need to make sure HWA_SWITCHCORE is called for all reg rds/wrs for functions
+ * under HWA_DPC implemented for NIC mode
+ */
 void
 hwa_intrson(hwa_dev_t *dev)
 {
@@ -2162,3 +2282,40 @@ done:
 	return (dev->intstatus) ? TRUE : FALSE;
 }
 #endif /* HWA_DPC_BUILD */
+
+#ifndef DONGLEBUILD
+int
+BCMATTACHFN(hwa_probe)(struct hwa_dev *dev, uint irq, uint coreid, uint unit)
+{
+	int ret = BCME_OK;
+
+	HWA_FTRACE(HWA00);
+
+	HWA_ASSERT(dev != (hwa_dev_t*)NULL);
+
+	if (!dev)
+		return BCME_BADARG;
+
+#ifdef HWA_DPC_BUILD
+#ifndef RTE_POLL
+	if (hnd_isr_register(irq, coreid, unit, hwa_isr, hwa_dev,
+		hwa_dpc_thread, hwa_dev, thread, bus) == NULL) {
+		HWA_ERROR(("%s: hnd_isr_register for hwa%d failed\n", HWA00, unit));
+		return BCME_NORESOURCE;
+	}
+#endif /* !RTE_POLL */
+
+	dev->sys_dev = hnd_dpc_create(_hwa_dpctask, dev, NULL);
+	if (dev->sys_dev == NULL) {
+		return BCME_NORESOURCE;
+	}
+#endif /* HWA_DPC_BUILD */
+
+	if (hwa_wlc_module_register(dev)) {
+		HWA_ERROR(("%s wlc_module_register() failed\n", HWA00));
+		ret = BCME_ERROR;
+	}
+
+	return ret;
+}
+#endif /* DONGLEBUILD */

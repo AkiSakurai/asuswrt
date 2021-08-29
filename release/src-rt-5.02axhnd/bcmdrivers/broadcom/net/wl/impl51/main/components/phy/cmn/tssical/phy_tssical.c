@@ -1,7 +1,7 @@
 /*
  * TSSI Cal module implementation.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tssical.c 766697 2018-08-10 00:10:49Z $
+ * $Id: phy_tssical.c 771380 2019-01-23 22:47:21Z $
  */
 
 #include <phy_cfg.h>
@@ -62,6 +62,10 @@
 #include <phy_utils_var.h>
 #include <phy_misc_api.h>
 
+/* XXXX FIXME: The below macro PHY_TXFIFO_END_BLK_REV35 is a mac
+* specific value ( equal to xmtfifo_sz )
+* shouldn't be really defined here - Refer to PR 103560
+*/
 #define PHY_TXFIFO_END_BLK_REV35	(0x7900 >> 2)
 
 /* forward declaration */
@@ -354,6 +358,22 @@ void wlc_phy_get_tssi_sens_min(wlc_phy_t *ppi, int8 *tssiSensMinPwr)
 	}
 }
 
+void wlc_idletssi_force(phy_info_t *pi, int16 *idletssi, bool read)
+{
+	phy_tssical_info_t *ti = pi->tssicali;
+	phy_type_tssical_fns_t *fns = ti->fns;
+	if (fns->idletssi_force != NULL) {
+		wlapi_suspend_mac_and_wait(pi->sh->physhim);
+		phy_utils_phyreg_enter(pi);
+		(fns->idletssi_force)(fns->ctx, idletssi, read);
+		phy_utils_phyreg_exit(pi);
+		wlapi_enable_mac(pi->sh->physhim);
+	}
+	else {
+		PHY_INFORM(("%s: No phy specific function\n", __FUNCTION__));
+	}
+}
+
 /* driver down processing */
 int
 phy_tssical_down(phy_tssical_info_t *cmn_info)
@@ -534,6 +554,10 @@ BCMATTACHFN(phy_tssical_read_olpc_params)(phy_info_t *pi, phy_tssical_info_t *in
 {
 	uint8 i;
 	info->disable_olpc = (int8) (PHY_GETINTVAR_DEFAULT_SLICE(pi, rstr_disable_olpc, 0));
+	if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		// Disable OLPC for 6710A0 before the bringup
+		info->disable_olpc = 1;
+	}
 	for (i = 0; i < PHY_CORE_MAX; i++) {
 		/* Tempslope is in S0.10 format */
 		info->olpc_tempslope2g[i] = (int16) (PHY_GETINTVAR_ARRAY_DEFAULT_SLICE
@@ -543,11 +567,11 @@ BCMATTACHFN(phy_tssical_read_olpc_params)(phy_info_t *pi, phy_tssical_info_t *in
 	}
 	/* Both olpc_thresh and olpc_anchor are in qdb format */
 	info->olpc_thresh = (int8) (PHY_GETINTVAR_DEFAULT_SLICE(pi, rstr_olpc_thresh, 0));
-	/* If olpc_thresh2g/5g not present in nvram, just load them with olpc_thresh value */
-	info->olpc_thresh2g = (int8) (PHY_GETINTVAR_DEFAULT_SLICE(pi, rstr_olpc_thresh2g,
-		info->olpc_thresh));
-	info->olpc_thresh5g = (int8) (PHY_GETINTVAR_DEFAULT_SLICE(pi, rstr_olpc_thresh5g,
-		info->olpc_thresh));
+	/* If olpc_thresh2g/5g not present in nvram, just load them with olpc_thresh value.
+	 * Note: olpc tresholds may or may not be present in nvram or srom18 (as a
+	 * function of boardflags4).
+	 */
+	phy_tssical_read_olpc_thresholds(pi, info, info->olpc_thresh);
 	info->olpc_anchor2g = (int8) (PHY_GETINTVAR_DEFAULT_SLICE(pi, rstr_olpc_anchor2g, 0));
 	info->olpc_anchor5g = (int8) (PHY_GETINTVAR_DEFAULT_SLICE(pi, rstr_olpc_anchor5g, 0));
 	/* olpc_idx_in_use is the top level control for whether  */

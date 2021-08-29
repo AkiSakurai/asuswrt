@@ -1,7 +1,7 @@
 /*
  * ACS deamon (Linux)
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,21 +42,47 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acsd_main.c 764927 2018-06-11 06:02:47Z $
+ * $Id: acsd_main.c 777105 2019-07-19 06:49:03Z $
  */
 
 #include <ethernet.h>
 #include <bcmeth.h>
 #include <bcmevent.h>
 #include <802.11.h>
+#include <common_utils.h>
 
 #include "acsd_svr.h"
 #include "acs_dfsr.h"
+
+#include <signal.h>
+
+#define ACS_CHAN_BW_160MHZ		160
+#define ACS_CHAN_BW_80MHZ		80
+#define ACS_CHAN_BW_40MHZ		40
+#define ACS_CHAN_BW_20MHZ		20
+
+#define ACS_ZDFS_BLANKING_THRESHOLD_PERCENT_ADJACENT		(5)	/* adjacent channel */
+#define ACS_ZDFS_BLANKING_THRESHOLD_PERCENT_NONADJACENT_FCC	(17)	/* non-adjacent in FCC */
+#define ACS_ZDFS_BLANKING_THRESHOLD_PERCENT_NONADJACENT_ETSI	(30)	/* non-adjacent in ETSI */
+#define ACS_ZDFS_BLANKING_THRESHOLD_PERCENT_WEATHER_ETSI	(5)	/* EU weather channel */
+
+static int acs_chspec_to_bw_mhz(chanspec_t ch);
+static bool acs_are_channels_5g_adjacent(chanspec_t ch0, chanspec_t ch1);
+static int acs_get_blanking_threshold();
+static bool acs_is_2g_blanked_by_5g();
 
 char chanspecbuf[32];
 extern void dump_bss_info(wl_bss_info_t *bi);
 
 acsd_wksp_t *d_info;
+static bool acsd_running = TRUE;
+
+static void
+acsd_term_hdlr(int sig)
+{
+	acsd_running = FALSE;
+	return;
+}
 
 /* open a UDP packet to event dispatcher for receiving/sending data */
 static int
@@ -273,7 +299,7 @@ done:
 }
 
 /* Check if stay in current channel long enough */
-static bool
+bool
 chanim_record_chan_dwell(acs_chaninfo_t *c_info, chanim_info_t *ch_info)
 {
 	uint8 cur_idx = chanim_mark(ch_info).record_idx;
@@ -293,31 +319,229 @@ chanim_record_chan_dwell(acs_chaninfo_t *c_info, chanim_info_t *ch_info)
 	return FALSE;
 }
 
+#ifdef ZDFS_2G
+
+/* call this at start of ZDFS_2G CAC */
+void
+acs_update_tx_dur_secs_start()
+{
+	int i;
+	acs_chaninfo_t **ci_5g_all = d_info->acs_info->ci_5g_all;
+
+	for (i = 0; i < ACSD_MAX_INTERFACES && ci_5g_all[i]; i++) {
+		ci_5g_all[i]->tx_dur_secs_start = acs_get_tx_dur_secs(ci_5g_all[i]);
+	}
+
+	d_info->acs_info->ci_zdfs_2g->zdfs_2g_start_tick = d_info->ticks;
+}
+
+/* call this at end of ZDFS_2G CAC */
+void
+acs_update_tx_dur_secs_end()
+{
+	int i;
+	acs_chaninfo_t **ci_5g_all = d_info->acs_info->ci_5g_all;
+
+	for (i = 0; i < ACSD_MAX_INTERFACES && ci_5g_all[i]; i++) {
+		ci_5g_all[i]->tx_dur_secs_end = acs_get_tx_dur_secs(ci_5g_all[i]);
+	}
+
+	d_info->acs_info->ci_zdfs_2g->zdfs_2g_end_tick = d_info->ticks;
+}
+
+/* call this with chanspec to get respective bandwidth in MHz */
+static int
+acs_chspec_to_bw_mhz(chanspec_t ch)
+{
+
+	uint16 bw_flag = CHSPEC_BW(ch);
+	int bw_mhz = 0;
+
+	if (bw_flag == WL_CHANSPEC_BW_160) {
+		bw_mhz = ACS_CHAN_BW_160MHZ;
+	} else if (bw_flag == WL_CHANSPEC_BW_80) {
+		bw_mhz = ACS_CHAN_BW_80MHZ;
+	} else if (bw_flag == WL_CHANSPEC_BW_40) {
+		bw_mhz = ACS_CHAN_BW_40MHZ;
+	} else if (bw_flag == WL_CHANSPEC_BW_20) {
+		bw_mhz = ACS_CHAN_BW_20MHZ;
+	}
+
+	return bw_mhz;
+}
+
+/* given two 5GHz chanspecs, returns if the two are adjacent/overlapping (TRUE) or
+ * non-adjacent/separated (FALSE) in spectrum
+ */
+static bool
+acs_are_channels_5g_adjacent(chanspec_t ch0, chanspec_t ch1)
+{
+	int cent0 = CHSPEC_CHANNEL(ch0), bw_mhz0 = acs_chspec_to_bw_mhz(ch0);
+	int cent1 = CHSPEC_CHANNEL(ch1), bw_mhz1 = acs_chspec_to_bw_mhz(ch1);
+	int bw_num_ch0 = bw_mhz0 / 5; /* channel numbers are per 5MHz */
+	int bw_num_ch1 = bw_mhz1 / 5;
+
+	if (CHSPEC_IS2G(ch0) || CHSPEC_IS2G(ch1)) {
+		return FALSE;
+	}
+
+	return (ABS(cent0 - cent1) <= ((bw_num_ch0 + bw_num_ch1)/2));
+}
+
+/* Returns the ZDFS blanking threshold percent applicable based on
+ *  - the channel being cleared (using ZDFS_2G) and
+ *  - channels used on 5GHz interface(s)
+ *  For multi 5GHz case (5GL, 5GH), even if one of those is operating on an adjacent or weather
+ *  radar channel, lower thresholds are returned.
+ */
+static int
+acs_get_blanking_threshold()
+{
+	acs_chaninfo_t *ci_zdfs_2g = d_info->acs_info->ci_zdfs_2g;
+	acs_chaninfo_t *ci_zdfs_5g = ci_zdfs_2g->ci_5g;
+	acs_chaninfo_t **ci_5g_all = d_info->acs_info->ci_5g_all;
+	chanspec_t ch_zdfs_2g = ci_zdfs_2g->acs_bgdfs->next_scan_chan;
+	bool is_etsi = ci_zdfs_5g->country_is_edcrs_eu;
+	bool is_dfs_weather = acs_is_dfs_weather_chanspec(ci_zdfs_5g, ch_zdfs_2g);
+	bool is_adj = FALSE;
+	int i;
+
+	for (i = 0; i < ACSD_MAX_INTERFACES && ci_5g_all[i]; i++) {
+		if (acs_are_channels_5g_adjacent(ch_zdfs_2g, ci_5g_all[i]->cur_chspec)) {
+			is_adj = TRUE;
+			break;
+		}
+	}
+
+	if (is_adj) {
+		return ACS_ZDFS_BLANKING_THRESHOLD_PERCENT_ADJACENT;
+	}
+	if (is_etsi) {
+		if (is_dfs_weather) {
+			return ACS_ZDFS_BLANKING_THRESHOLD_PERCENT_WEATHER_ETSI;
+		} else {
+			return ACS_ZDFS_BLANKING_THRESHOLD_PERCENT_NONADJACENT_ETSI;
+		}
+	} else {
+		return ACS_ZDFS_BLANKING_THRESHOLD_PERCENT_NONADJACENT_FCC;
+	}
+}
+
+/* Returns TRUE if traffic from 5GHz interface(s), appear to exceed the blanking thresholds.
+ * Limitations:
+ *  - Does a pessimistic sum of traffic where there are multiple 5GHz interfaces (as traffic
+ *    duration overlap) can not be determined reliably.
+ *  - Applies common low threshold even if just one of the 5GHz interfaces is operating on
+ *    an adjacent/weather radar channel.
+ */
+static bool
+acs_is_2g_blanked_by_5g()
+{
+	int i, total = 0, duration, percent = 0, threshold = 100;
+	acs_chaninfo_t **ci_5g_all = d_info->acs_info->ci_5g_all;
+	acs_chaninfo_t *ci_zdfs_2g = d_info->acs_info->ci_zdfs_2g;
+	chanspec_t ch_zdfs_2g = ci_zdfs_2g->acs_bgdfs->next_scan_chan;
+	bool ret = FALSE;
+
+	for (i = 0; i < ACSD_MAX_INTERFACES && ci_5g_all[i]; i++) {
+		total += ci_5g_all[i]->tx_dur_secs_end - ci_5g_all[i]->tx_dur_secs_start;
+	}
+
+	duration = ci_zdfs_2g->zdfs_2g_end_tick - ci_zdfs_2g->zdfs_2g_start_tick;
+	if (duration > 0) {
+		percent = (total * 100) / duration;
+	}
+
+	percent = (percent < 0 ? (0) : (percent > 100 ? 100 : percent));
+
+	threshold = acs_get_blanking_threshold();
+
+	ret = (percent > threshold);
+
+	ACSD_INFO("%s: %s retd: %d, ch: 0x%4x, per:%d th:%d\n",
+			ci_zdfs_2g->name, __func__, ret, ch_zdfs_2g, percent, threshold);
+
+	return ret;
+}
+
+/* returns the c_info corresponding to a zdfs 2g interface if available else NULL */
+acs_chaninfo_t*
+acs_get_zdfs_2g_ci()
+{
+	return d_info->acs_info->ci_zdfs_2g;
+}
+
+#endif /* ZDFS_2G */
+/* This function compares the exclude_ifname with ifnames and
+ * increment the excl_cnt if it matches
+ */
+int
+acs_compare_iface_list(char *exclude_ifname)
+{
+	int i, excl_cnt = 0;
+	if (exclude_ifname != NULL) {
+		for (i = 0; i < 16 && d_info->acs_info->exclude_ifnames[i] != NULL; i++) {
+			if (!strncmp(d_info->acs_info->exclude_ifnames[i], exclude_ifname,
+					strlen(exclude_ifname))) {
+				excl_cnt++;
+			}
+		}
+	}
+	return excl_cnt;
+}
+
 /* On txfail event, change the channel only if it crosses dwell time period */
 static int
-acs_channel_trigger(acs_chaninfo_t *c_info, char *ifname)
+acs_channel_trigger(acs_chaninfo_t *c_info, char *ifname, unsigned char *addr)
 {
 	int ret = 0;
 	bool chan_least_dwell = FALSE;
-	wl_bcmdcs_data_t dcs_data;
+	time_t now = uptime();
 
 	chan_least_dwell = chanim_record_chan_dwell(c_info,
 			c_info->chanim_info);
 
 	if (!chan_least_dwell) {
-		ACSD_5G("chan_least_dwell is FALSE\n");
+		ACSD_5G("%s: chan_least_dwell is FALSE\n", c_info->name);
 		return ret;
 	}
 
+	if (!c_info->traffic_thresh) {
+		if (acs_update_rssi(c_info, addr)) {
+			ACSD_ERROR("intf:%s not able to update the rssi"
+				"value\n", c_info->name);
+			return ret;
+		}
+		if (c_info->acs_ignore_txfail_on_far_sta) {
+			if (c_info->sta_status & ACS_STA_EXIST_FAR) {
+				ACSD_5G(" intf: %s Ignoring txfail for the far "
+					"sta %d\n", c_info->name,
+					c_info->sta_status);
+			return ret;
+			}
+		}
+	}
+
+	if (c_info->acs_txop_thresh) {
+		if (c_info->txop_score >= c_info->acs_txop_thresh) {
+			ACSD_5G("Ignoring txfail if txop score is"
+				"greater than threshold ifnmae :%s"
+				" txop score : %d and txop threshold: %d\n",
+				c_info->name, c_info->txop_score,
+				c_info->acs_txop_thresh);
+			return ret;
+		}
+	}
+
 	if (acsd_trigger_dfsr_check(c_info)) {
-		ACSD_DFSR("trigger DFS reentry...\n");
+		ACSD_DFSR("%s: trigger DFS reentry...\n", c_info->name);
 		acs_dfsr_set(ACS_DFSR_CTX(c_info),
 			c_info->cur_chspec, __FUNCTION__);
 		return ret;
 	}
 
 	if (!acsd_need_chan_switch(c_info)) {
-		ACSD_5G("No channel switch...\n");
+		ACSD_5G("%s: No channel switch...\n", c_info->name);
 		return ret;
 	}
 
@@ -327,37 +551,41 @@ acs_channel_trigger(acs_chaninfo_t *c_info, char *ifname)
 		return ret;
 	}
 
-	if (acsd_hi_chan_check(c_info)) {
+	if (c_info->cur_is_dfs) {
 		acs_get_best_dfs_forced_chspec(c_info);
 		c_info->selected_chspec = acs_adjust_ctrl_chan(
 			c_info,	c_info->dfs_forced_chspec);
-		ACSD_5G("Select 0x%4x (%s)\n", c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
+		ACSD_5G("%s: Select 0x%4x (%s)\n", c_info->name,
+			c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
 	} else {
 		c_info->switch_reason = APCS_TXFAIL;
 		acs_select_chspec(c_info);
 	}
 
 	if (!acs_bgdfs_attempt_on_txfail(c_info)) {
-		dcs_data.reason = 0;
-		dcs_data.chspec = c_info->selected_chspec;
 
-		if (c_info->selected_chspec == c_info->cur_chspec) {
-			ACSD_INFO("Seleted = cur 0x%4x (%s) avoid CSA\n",
-				c_info->cur_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
+		if (CHSPEC_CHANNEL(c_info->selected_chspec) ==
+				CHSPEC_CHANNEL(c_info->recent_prev_chspec)) {
+			if (now - c_info->acs_prev_chan_at < 2 * c_info->acs_chan_dwell_time) {
+				ACSD_INFO("%s: staying on same channel because of prev_chanspec"
+						"dwell restrictions\n", c_info->name);
+				return ret;
+			}
+		}
+
+		if (c_info->fallback_to_primary && CHSPEC_CHANNEL(c_info->selected_chspec) ==
+				CHSPEC_CHANNEL(c_info->cur_chspec)) {
+			ACSD_INFO("%s: Seleted = cur 0x%4x (%s) avoid CSA\n",
+					c_info->name, c_info->cur_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
 			return ret;
 		}
 
 		ACSD_INFO("%s Performing CSA on chspec 0x%4x (%s)\n",
-				c_info->name, dcs_data.chspec, wf_chspec_ntoa(dcs_data.chspec, chanspecbuf));
-		if ((ret = dcs_handle_request(ifname, &dcs_data,
-				DOT11_CSA_MODE_ADVISORY, ACS_CSA_COUNT,
-				c_info->acs_dcs_csa))) {
-			ACSD_ERROR("err from dcs_handle_request:"
-					"%d\n", ret);
-		} else {
+				c_info->name, c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
+		if (!(ret = acs_csa_handle_request(c_info))) {
 			c_info->recent_prev_chspec = c_info->cur_chspec;
 			c_info->acs_prev_chan_at = uptime();
-			if (!c_info->trf_thold) {
+			if (!c_info->traffic_thresh) {
 				acs_intfer_config_txfail(c_info);
 			}
 			chanim_upd_acs_record(c_info->chanim_info,
@@ -365,6 +593,31 @@ acs_channel_trigger(acs_chaninfo_t *c_info, char *ifname)
 		}
 	}
 	return ret;
+}
+
+/* set chanspec_info for all 5GHz interfaces supporting 11h */
+static int
+acsd_set_5g_chanspec_info(chanspec_t chspec, uint8 bmp, acs_chan_info_bmp_t bmp_type)
+{
+	acs_chaninfo_t* c_info;
+	int i, err = BCME_OK;
+
+	for (i = 0; i < ACS_MAX_IF_NUM; i++) {
+		c_info = d_info->acs_info->chan_info[i];
+
+		if ((!c_info) || (c_info->mode == ACS_MODE_DISABLE)) {
+			continue;
+		}
+		/* skip if 2G or not 11h */
+		if (BAND_2G(c_info->rs_info.band_type) || !ACS_11H(c_info)) {
+			continue;
+		}
+		err = acs_set_chanspec_info(c_info, chspec, bmp, bmp_type);
+		ACSD_INFO("%s: set chanspec_info returned %d for ch:0x%04x", c_info->name,
+				err, chspec);
+	}
+
+	return err;
 }
 
 /* listen to sockets and call handlers to process packets */
@@ -405,7 +658,7 @@ acsd_main_loop(struct timeval *tv)
 			acs_dfsr_set(ACS_DFSR_CTX(c_info), c_info->cur_chspec, __FUNCTION__);
 		}
 		else {
-			if (acsd_hi_chan_check(c_info)) {
+			if (c_info->cur_is_dfs) {
 				acs_get_best_dfs_forced_chspec(c_info);
 				c_info->selected_chspec = acs_adjust_ctrl_chan(c_info,
 					c_info->dfs_forced_chspec);
@@ -415,16 +668,8 @@ acsd_main_loop(struct timeval *tv)
 				c_info->switch_reason = APCS_TXFAIL;
 				acs_select_chspec(c_info);
 			}
-			dcs_data.reason = 1;
-			dcs_data.chspec = c_info->selected_chspec;
-
-			if ((err = dcs_handle_request(test_cswitch_ifname, &dcs_data,
-					DOT11_CSA_MODE_ADVISORY, ACS_CSA_COUNT,
-					c_info->acs_dcs_csa))) {
-				ACSD_ERROR("err from dcs_handle_request: %d\n", err);
-			}
-			else {
-				if (!c_info->trf_thold) {
+			if (!(err = acs_csa_handle_request(c_info))) {
+				if (!c_info->traffic_thresh) {
 					acs_intfer_config_txfail(c_info);
 				}
 				chanim_upd_acs_record(c_info->chanim_info,
@@ -501,6 +746,14 @@ acsd_main_loop(struct timeval *tv)
 		evt_type = ntoh32(pvt_data->event.event_type);
 		ACSD_INFO("recved brcm event, event_type: %d\n", evt_type);
 
+		if ((evt_type == WLC_E_TXFAIL_THRESH || evt_type == WLC_E_TXFAIL_TRFTHOLD) &&
+				(acs_compare_iface_list(ifname))) {
+			ACSD_INFO("ignore txfail for this excluded intf %s\n", ifname);
+			return;
+		}
+
+		acs_check_ifname_is_virtual(&ifname);
+
 		if ((idx = acs_idx_from_map(ifname)) < 0) {
 			ACSD_INFO("cannot find the mapped entry for ifname: %s\n", ifname);
 			return;
@@ -513,8 +766,16 @@ acsd_main_loop(struct timeval *tv)
 			return;
 		}
 
-		if (!AUTOCHANNEL(c_info) && !COEXCHECK(c_info)) {
+		if (!AUTOCHANNEL(c_info) && !COEXCHECK(c_info) &&
+				evt_type != WLC_E_REQ_BW_CHANGE &&
+				evt_type != WLC_E_RADAR_DETECTED) {
 			ACSD_INFO("Event fail ACSD not in autochannel/coex modes \n");
+			return;
+		}
+
+		if ((evt_type != WLC_E_ESCAN_RESULT) && c_info->acs_escan->acs_escan_inprogress) {
+			ACSD_INFO("when scan is in progress, don't allow other"
+				" events for processing\n");
 			return;
 		}
 
@@ -524,295 +785,356 @@ acsd_main_loop(struct timeval *tv)
 			ACSD_INFO("In coex mode, discard events other than escan %d\n", evt_type);
 			return;
 		}
-		if (c_info->acs_bgdfs != NULL && c_info->acs_bgdfs->state != BGDFS_STATE_IDLE) {
+
+		if (evt_type == WLC_E_RADAR_DETECTED) {
+			/* 5G */
+			if (BAND_5G(c_info->rs_info.band_type)) {
+				/* no processing of radar detected signal from 5G interfaces */
+				ACSD_INFO("%s: Ignore radar event in 5G\n", c_info->name);
+				return;
+			}
+			/* 2G */
+			if (c_info->acs_zdfs_2g_ignore_radar) {
+				/* since configured to ignore radar from 2g, return */
+				ACSD_INFO("%s: Ignore radar event in 2G\n", c_info->name);
+				return;
+			}
+		}
+
+		if (c_info->acs_bgdfs != NULL && c_info->acs_bgdfs->state != BGDFS_STATE_IDLE &&
+			evt_type != WLC_E_REQ_BW_CHANGE && BAND_5G(c_info->rs_info.band_type)) {
+			ACSD_INFO("ACSD avoid events During BGDFS evt_type %d acs_bgdfs state %d\n",
+				evt_type, c_info->acs_bgdfs->state);
 			return;
 		}
 
 		/* Wi-Fi Blanket Repeater needs to run in Fixed Chanspec mode, to implement this
 		 * behaviour, WBD needs ACSD not to change channel, if not told to do so through CLI
 		 */
-		if (FIXCHSPEC(c_info) && (evt_type == WLC_E_TXFAIL_THRESH)) {
+		if (FIXCHSPEC(c_info) && (evt_type == WLC_E_TXFAIL_THRESH ||
+				evt_type == WLC_E_TXFAIL_TRFTHOLD)) {
 			ACSD_INFO("ACSD mode is FIXCHSPEC, avoid channel switch\n");
 			return;
 		}
-		if (c_info->trf_thold) {
-			if (FIXCHSPEC(c_info) && (evt_type == WLC_E_TXFAIL_TRFTHOLD)) {
-				ACSD_INFO("ACSD mode is FIXCHSPEC, avoid channel switch\n");
-				return;
-			}
-		}
 
-		if (evt_type == WLC_E_TXFAIL_THRESH && BAND_2G(c_info->rs_info.band_type)) {
+		if (BAND_2G(c_info->rs_info.band_type) &&
+			(evt_type == WLC_E_TXFAIL_TRFTHOLD || evt_type == WLC_E_TXFAIL_THRESH)) {
 			ACSD_INFO("Avoid TXfail events when in 2G band\n");
 			return;
 		}
 
-		if (c_info->trf_thold) {
-			if (evt_type == WLC_E_TXFAIL_TRFTHOLD &&
-				BAND_2G(c_info->rs_info.band_type)) {
-				ACSD_INFO("Avoid TXfail events when in 2G band\n");
+		if (c_info->ignore_txfail) {
+			if (evt_type == WLC_E_TXFAIL_THRESH || evt_type == WLC_E_TXFAIL_TRFTHOLD) {
+				ACSD_INFO("Avoid changing the channels for txfail events as of"
+					"now\n");
 				return;
 			}
 		}
 
-		if (c_info->ignore_txfail) {
-			if (evt_type == WLC_E_TXFAIL_THRESH || evt_type == WLC_E_TXFAIL_TRFTHOLD) {
-				ACSD_INFO("Avoid changing the channels for txfail events as of now\n");
-				return;
-			}
+		if (c_info->wet_enabled && acs_check_assoc_scb(c_info)) {
+			ACSD_INFO("avoid channel switch when ACSD is in WET mode and scb associated\n");
+			return;
 		}
 
 		d_info->stats.valid_events++;
 
 		switch (evt_type) {
 			case WLC_E_DCS_REQUEST:
-				{
-					dot11_action_wifi_vendor_specific_t * actfrm;
-					actfrm = (dot11_action_wifi_vendor_specific_t *)(pvt_data + 1);
+			{
+				dot11_action_wifi_vendor_specific_t * actfrm;
+				actfrm = (dot11_action_wifi_vendor_specific_t *)(pvt_data + 1);
 
-					if ((err = dcs_parse_actframe(actfrm, &dcs_data))) {
-						ACSD_ERROR("err from dcs_parse_request: %d\n", err);
+				if ((err = dcs_parse_actframe(actfrm, &dcs_data))) {
+					ACSD_ERROR("err from dcs_parse_request: %d\n", err);
+					break;
+				}
+
+				if ((err = dcs_handle_request(ifname, &dcs_data,
+						DOT11_CSA_MODE_ADVISORY, DCS_CSA_COUNT,
+						CSA_BROADCAST_ACTION_FRAME)))
+					ACSD_ERROR("err from dcs_handle_req: %d\n", err);
+
+				break;
+			}
+			case WLC_E_SCAN_COMPLETE:
+			{
+				ACSD_INFO("recved brcm event: scan complete\n");
+				break;
+			}
+			case WLC_E_PKTDELAY_IND:
+			{
+				txdelay_event_t pktdelay;
+
+				memcpy(&pktdelay, (txdelay_event_t *)(pvt_data + 1),
+						sizeof(txdelay_event_t));
+				/* stay in current channel more than acs_chan_dwell_time */
+				chan_least_dwell = chanim_record_chan_dwell(c_info,
+						c_info->chanim_info);
+
+				if (chan_least_dwell &&
+						(pktdelay.chanim_stats.chan_idle <
+						 c_info->acs_ci_scan_chanim_stats)) {
+					c_info->switch_reason = APCS_TXDLY;
+					acs_select_chspec(c_info);
+
+					if (CHSPEC_CHANNEL(c_info->selected_chspec) ==
+							CHSPEC_CHANNEL(c_info->cur_chspec)) {
+						ACSD_INFO("%s: Seleted = cur 0x%x avoid CSA\n",
+								c_info->name, c_info->cur_chspec);
 						break;
 					}
 
-					if ((err = dcs_handle_request(ifname, &dcs_data,
-							DOT11_CSA_MODE_ADVISORY, DCS_CSA_COUNT,
-							CSA_BROADCAST_ACTION_FRAME)))
-						ACSD_ERROR("err from dcs_handle_req: %d\n", err);
+					c_info->recent_prev_chspec = c_info->cur_chspec;
+					c_info->acs_prev_chan_at = uptime();
 
-					break;
-				}
-			case WLC_E_SCAN_COMPLETE:
-				{
-					ACSD_INFO("recved brcm event: scan complete\n");
-					break;
-				}
-			case WLC_E_PKTDELAY_IND:
-				{
-					txdelay_event_t pktdelay;
-
-					memcpy(&pktdelay, (txdelay_event_t *)(pvt_data + 1),
-							sizeof(txdelay_event_t));
-					/* stay in current channel more than acs_chan_dwell_time */
-					chan_least_dwell = chanim_record_chan_dwell(c_info,
-							c_info->chanim_info);
-
-					if (chan_least_dwell &&
-							(pktdelay.chanim_stats.chan_idle <
-							 c_info->acs_ci_scan_chanim_stats)) {
-
-						c_info->switch_reason = APCS_TXDLY;
-						acs_select_chspec(c_info);
-						dcs_data.reason = 0;
-						dcs_data.chspec = c_info->selected_chspec;
-
-						if ((err = dcs_handle_request(ifname, &dcs_data,
-							DOT11_CSA_MODE_ADVISORY, ACS_CSA_COUNT,
-							c_info->acs_dcs_csa)))
-							ACSD_ERROR("err from dcs_handle_request:"
-								"%d\n", err);
-						else
-							chanim_upd_acs_record(c_info->chanim_info,
+					if (!acs_csa_handle_request(c_info)) {
+						chanim_upd_acs_record(c_info->chanim_info,
 							c_info->selected_chspec, APCS_TXDLY);
 					}
-					break;
 				}
+				break;
+			}
 			case WLC_E_TXFAIL_THRESH:
-				{
-					wl_intfer_event_t *event;
-					unsigned char *addr;
+			{
+				wl_intfer_event_t *event;
+				unsigned char *addr;
 
-					/* ensure we have the latest channel information and
-					   dwell time etc
-					   */
-					acs_update_status(c_info);
+				/* ensure we have the latest channel information and
+				   dwell time etc
+				   */
+				acs_update_status(c_info);
 
-					event = (wl_intfer_event_t *)(pvt_data + 1);
-					addr = (unsigned char *)(&(pvt_data->event.addr));
+				event = (wl_intfer_event_t *)(pvt_data + 1);
+				addr = (unsigned char *)(&(pvt_data->event.addr));
 
-					ACSD_5G("Intfer:%s Mac:%02x:%02x:%02x:%02x:%02x:%02x"
-						"status = 0x%x\n", ifname, addr[0], addr[1],
-						addr[2], addr[3], addr[4], addr[5], event->status);
+				ACSD_5G("Intfer:%s Mac:%02x:%02x:%02x:%02x:%02x:%02x"
+					"status = 0x%x\n", ifname, addr[0], addr[1],
+					addr[2], addr[3], addr[4], addr[5], event->status);
 
-					for (idx = 0; idx < WLINTFER_STATS_NSMPLS; idx++) {
-						ACSD_5G("0x%x\t", event->txfail_histo[idx]);
-					}
-
-					ACSD_5G("\n time:%u", (uint32)uptime());
-					acs_channel_trigger(c_info, ifname);
-
-					break;
+				for (idx = 0; idx < WLINTFER_STATS_NSMPLS; idx++) {
+					ACSD_5G("0x%x\t", event->txfail_histo[idx]);
 				}
+
+				ACSD_5G("\n time:%u", (uint32)uptime());
+				acs_channel_trigger(c_info, ifname, addr);
+
+				break;
+			}
 			case WLC_E_TXFAIL_TRFTHOLD:
-				{
-					wlc_trf_thold_event_t *event;
-					unsigned char *addr;
+			{
+				wlc_traffic_thresh_event_t *event;
+				unsigned char *addr;
 
-					/* ensure we have the latest channel information and
-					   dwell time etc
-					   */
-					acs_update_status(c_info);
+				/* ensure we have the latest channel information and
+				   dwell time etc
+				   */
+				acs_update_status(c_info);
 
-					event = (wlc_trf_thold_event_t *)(pvt_data + 1);
-					addr = (unsigned char *)(&(pvt_data->event.addr));
+				event = (wlc_traffic_thresh_event_t *)(pvt_data + 1);
+				addr = (unsigned char *)(&(pvt_data->event.addr));
 
-					ACSD_INFO("Intfer:%s Mac:%02x:%02x:%02x:%02x:%02x:%02x",
-						ifname, addr[0], addr[1], addr[2], addr[3],
-						addr[4], addr[5]);
+				ACSD_INFO("Intfer:%s Mac:%02x:%02x:%02x:%02x:%02x:%02x",
+					ifname, addr[0], addr[1], addr[2], addr[3],
+					addr[4], addr[5]);
 
-					ACSD_INFO("Inter type:%d version %d length %d count %d \n",
-						event->type, event->version, event->length,
-						event->count);
+				ACSD_INFO("Inter type:%d version %d length %d count %d \n",
+					event->type, event->version, event->length,
+					event->count);
 
-					ACSD_5G("\n time:%u", (uint32)uptime());
-					acs_channel_trigger(c_info, ifname);
+				ACSD_5G("\n time:%u", (uint32)uptime());
+				acs_channel_trigger(c_info, ifname, addr);
 
-					break;
-				}
+				break;
+			}
 			case WLC_E_ESCAN_RESULT:
-				{
-					if (!c_info->acs_escan->acs_escan_inprogress ||
-							!c_info->acs_escan->acs_use_escan) {
-						ACSD_INFO("ACSD Escan not triggered from ACSD\n");
-						return;
-					}
+			{
+				if (!c_info->acs_escan->acs_escan_inprogress ||
+						!c_info->acs_escan->acs_use_escan) {
+					ACSD_INFO("ACSD Escan not triggered from ACSD\n");
+					return;
+				}
 
-					escan_event_status = ntoh32(pvt_data->event.status);
-					escan_data = (wl_escan_result_t*)(pvt_data + 1);
+				escan_event_status = ntoh32(pvt_data->event.status);
+				escan_data = (wl_escan_result_t*)(pvt_data + 1);
 
-					if (escan_event_status == WLC_E_STATUS_PARTIAL) {
-						wl_bss_info_t *bi = &escan_data->bss_info[0];
-						wl_bss_info_t *bss;
+				if (escan_event_status == WLC_E_STATUS_PARTIAL) {
+					wl_bss_info_t *bi = &escan_data->bss_info[0];
+					wl_bss_info_t *bss;
 
-						/* check if we've received info of same BSSID */
-						for (result = c_info->acs_escan->escan_bss_head;
-								result;	result = result->next) {
-							bss = result->bss;
-
-							if (!memcmp(bi->BSSID.octet,
-								bss->BSSID.octet,
-								ETHER_ADDR_LEN) &&
-								CHSPEC_BAND(bi->chanspec) ==
-								CHSPEC_BAND(bss->chanspec) &&
-								bi->SSID_len ==	bss->SSID_len &&
-								! memcmp(bi->SSID, bss->SSID,
-								bi->SSID_len)) {
-								break;
-							}
-						}
-
-						if (!result) {
-							/* New BSS. Allocate memory and save it */
-							struct escan_bss *ebss = (struct escan_bss *)acsd_malloc(
-								OFFSETOF(struct escan_bss, bss)
-								+ bi->length);
-
-							if (!ebss) {
-								ACSD_ERROR("can't allocate memory"
-										"for escan bss");
-								break;
-							}
-
-							ebss->next = NULL;
-							memcpy(&ebss->bss, bi, bi->length);
-							if (c_info->acs_escan->escan_bss_tail) {
-								c_info->acs_escan->escan_bss_tail->next = ebss;
-							} else {
-								c_info->acs_escan->escan_bss_head =
-								ebss;
-							}
-
-							c_info->acs_escan->escan_bss_tail = ebss;
-						} else if (bi->RSSI != WLC_RSSI_INVALID) {
-							/* We've got this BSS. Update RSSI
-							   if necessary
-							   */
-							bool preserve_maxrssi = FALSE;
-							if (((bss->flags &
-								WL_BSS_FLAGS_RSSI_ONCHANNEL) ==
-								(bi->flags &
-								WL_BSS_FLAGS_RSSI_ONCHANNEL)) &&
-								((bss->RSSI == WLC_RSSI_INVALID) ||
-								(bss->RSSI < bi->RSSI))) {
-								/* Preserve max RSSI if the
-								   measurements are both
-								   on-channel or both off-channel
-								   */
-								preserve_maxrssi = TRUE;
-							} else if ((bi->flags &
-								WL_BSS_FLAGS_RSSI_ONCHANNEL) &&
-								(bss->flags &
-								WL_BSS_FLAGS_RSSI_ONCHANNEL) == 0) {
-								/* Preserve the on-channel RSSI
-								   measurement if the
-								   new measurement is off channel
-								   */
-								preserve_maxrssi = TRUE;
-								bss->flags |=
-								WL_BSS_FLAGS_RSSI_ONCHANNEL;
-							}
-
-							if (preserve_maxrssi) {
-								bss->RSSI = bi->RSSI;
-								bss->SNR = bi->SNR;
-								bss->phy_noise = bi->phy_noise;
-							}
-						}
-					} else if (escan_event_status == WLC_E_STATUS_SUCCESS) {
-						/* Escan finished. Lets dump results */
-						c_info->timestamp_acs_scan = uptime();
-						if (c_info->acs_escan->scan_type == ACS_SCAN_TYPE_CS) {
-							c_info->timestamp_tx_idle =
-								c_info->timestamp_acs_scan;
-						}
-#ifdef ACS_DEBUG
-						/* print scan results */
-						for (result = c_info->acs_escan->escan_bss_head;
+					/* check if we've received info of same BSSID */
+					for (result = c_info->acs_escan->escan_bss_head;
 							result;	result = result->next) {
-							dump_bss_info(result->bss);
-						}
-#endif // endif
-						c_info->acs_escan->acs_escan_inprogress = FALSE;
-						ACSD_INFO("Escan success!\n");
-					} else {
-						ACSD_ERROR("sync_id: %d, status:%d, misc."
-							"error/abort\n",
-							escan_data->sync_id, status);
+						bss = result->bss;
 
-						acs_escan_free(c_info->acs_escan->escan_bss_head);
-						c_info->acs_escan->escan_bss_head = NULL;
-						c_info->acs_escan->escan_bss_tail = NULL;
-						c_info->acs_escan->acs_escan_inprogress = FALSE;
+						if (!memcmp(bi->BSSID.octet,
+							bss->BSSID.octet,
+							ETHER_ADDR_LEN) &&
+							CHSPEC_BAND(bi->chanspec) ==
+							CHSPEC_BAND(bss->chanspec) &&
+							bi->SSID_len ==	bss->SSID_len &&
+							! memcmp(bi->SSID, bss->SSID,
+							bi->SSID_len)) {
+							break;
+						}
 					}
-					break;
+
+					if (!result) {
+						/* New BSS. Allocate memory and save it */
+						struct escan_bss *ebss;
+						ebss = (struct escan_bss *)acsd_malloc(
+							OFFSETOF(struct escan_bss, bss)
+							+ bi->length);
+
+						if (!ebss) {
+							ACSD_ERROR("can't allocate memory"
+									"for escan bss");
+							break;
+						}
+
+						ebss->next = NULL;
+						memcpy(&ebss->bss, bi, bi->length);
+						if (c_info->acs_escan->escan_bss_tail) {
+							c_info->acs_escan->escan_bss_tail->next =
+							ebss;
+						} else {
+							c_info->acs_escan->escan_bss_head =
+							ebss;
+						}
+
+						c_info->acs_escan->escan_bss_tail = ebss;
+					} else if (bi->RSSI != WLC_RSSI_INVALID) {
+						/* We've got this BSS. Update RSSI
+						   if necessary
+						   */
+						bool preserve_maxrssi = FALSE;
+						if (((bss->flags &
+							WL_BSS_FLAGS_RSSI_ONCHANNEL) ==
+							(bi->flags &
+							WL_BSS_FLAGS_RSSI_ONCHANNEL)) &&
+							((bss->RSSI == WLC_RSSI_INVALID) ||
+							(bss->RSSI < bi->RSSI))) {
+							/* Preserve max RSSI if the
+							   measurements are both
+							   on-channel or both off-channel
+							   */
+							preserve_maxrssi = TRUE;
+						} else if ((bi->flags &
+							WL_BSS_FLAGS_RSSI_ONCHANNEL) &&
+							(bss->flags &
+							WL_BSS_FLAGS_RSSI_ONCHANNEL) == 0) {
+							/* Preserve the on-channel RSSI
+							   measurement if the
+							   new measurement is off channel
+							   */
+							preserve_maxrssi = TRUE;
+							bss->flags |=
+							WL_BSS_FLAGS_RSSI_ONCHANNEL;
+						}
+
+						if (preserve_maxrssi) {
+							bss->RSSI = bi->RSSI;
+							bss->SNR = bi->SNR;
+							bss->phy_noise = bi->phy_noise;
+						}
+					}
+				} else if (escan_event_status == WLC_E_STATUS_SUCCESS) {
+					/* Escan finished. Lets dump results */
+					c_info->timestamp_acs_scan = uptime();
+					if (c_info->acs_escan->scan_type == ACS_SCAN_TYPE_CS) {
+						c_info->timestamp_tx_idle =
+							c_info->timestamp_acs_scan;
+					}
+#ifdef ACS_DEBUG
+					/* print scan results */
+					for (result = c_info->acs_escan->escan_bss_head;
+						result;	result = result->next) {
+						dump_bss_info(result->bss);
+					}
+#endif // endif
+					c_info->acs_escan->acs_escan_inprogress = FALSE;
+					ACSD_INFO("Escan success!\n");
+				} else {
+					ACSD_ERROR("sync_id: %d, status:%d, misc."
+						"error/abort\n",
+						escan_data->sync_id, status);
+
+					acs_escan_free(c_info->acs_escan->escan_bss_head);
+					c_info->acs_escan->escan_bss_head = NULL;
+					c_info->acs_escan->escan_bss_tail = NULL;
+					c_info->acs_escan->acs_escan_inprogress = FALSE;
 				}
+				break;
+			}
 			case WLC_E_MODE_SWITCH:
-				{
-					wl_event_mode_switch_t *ev_ms =
-						(wl_event_mode_switch_t *) (pvt_data + 1);
-					wl_event_mode_switch_dyn160 *data_dyn160;
-					if (ev_ms->version != WL_EVENT_MODESW_VER_1) {
-						ACSD_ERROR("%s: Unsupported modesw event ver %d",
-								c_info->name, ev_ms->version);
-						break;
-					}
-					if (ev_ms->reason != WL_E_MODESW_REASON_DYN160) {
-						break;
-					}
-					if (bytes < ev_ms->data_offset + sizeof(*data_dyn160)) {
-						ACSD_ERROR("%s: invalid event data offset %d",
-								c_info->name, ev_ms->data_offset);
-						break;
-					}
-					data_dyn160 = (wl_event_mode_switch_dyn160 *)
-						((uint8 *)ev_ms) + ev_ms->data_offset;
-					if (data_dyn160->trigger == 0) {
-						c_info->is_mu_active = FALSE;
-					} else if (data_dyn160->trigger == 1) {
-						c_info->is_mu_active = TRUE;
-					}
+			{
+				wl_event_mode_switch_t *ev_ms =
+					(wl_event_mode_switch_t *) (pvt_data + 1);
+				wl_event_mode_switch_dyn160 *data_dyn160;
+				if (ev_ms->version != WL_EVENT_MODESW_VER_1) {
+					ACSD_ERROR("%s: Unsupported modesw event ver %d",
+							c_info->name, ev_ms->version);
 					break;
 				}
+				if (ev_ms->reason != WL_E_MODESW_REASON_DYN160) {
+					break;
+				}
+				if (bytes < ev_ms->data_offset + sizeof(*data_dyn160)) {
+					ACSD_ERROR("%s: invalid event data offset %d",
+							c_info->name, ev_ms->data_offset);
+					break;
+				}
+				data_dyn160 = (wl_event_mode_switch_dyn160 *)
+					((uint8 *)ev_ms) + ev_ms->data_offset;
+				if (data_dyn160->trigger == 0) {
+					c_info->is_mu_active = FALSE;
+				} else if (data_dyn160->trigger == 1) {
+					c_info->is_mu_active = TRUE;
+				}
+				break;
+			}
+			case WLC_E_REQ_BW_CHANGE:
+			{
+				wl_event_req_bw_upgd_t *data;
+				chanspec_t upgrd_chspec;
+
+				data = (wl_event_req_bw_upgd_t *)(pvt_data + 1);
+
+				if ((data->length != WL_EVENT_REQ_BW_UPGD_LEN) ||
+					(data->version != WL_EVENT_REQ_BW_UPGD_VER_1)) {
+					ACSD_ERROR("%s: Invalid BW UPGD REQ event ver %d len %d\n",
+						c_info->name, data->version, data->length);
+					break;
+				}
+				upgrd_chspec = data->upgrd_chspec;
+				ACSD_INFO("%s Received REQ_BW_UPGRADE event %d for chanspec 0x%x\n",
+					c_info->name, WLC_E_REQ_BW_CHANGE, upgrd_chspec);
+				/* Trigger BGDFS */
+				if (acs_bgdfs_attempt(c_info, upgrd_chspec, FALSE) != BCME_OK) {
+					ACSD_ERROR("%s dfs_ap_move Failed\n", c_info->name);
+				}
+				break;
+			}
+			case WLC_E_RADAR_DETECTED:
+			{
+				chanspec_t chspec;
+				uint16 subband;
+				wl_event_radar_detect_data_t *radar_data;
+				radar_data = (wl_event_radar_detect_data_t *)(pvt_data + 1);
+				chspec = dtoh16(radar_data->current_chanspec);
+				subband = dtoh16(radar_data->radar_info[0].subband);
+				ACSD_INFO("%s: Handling the radar event %d\n", c_info->name,
+						evt_type);
+				err = acsd_set_5g_chanspec_info(chspec, (uint8)(subband & 0xFFu),
+						ACS_CHAN_INFO_INACTIVE);
+				if (c_info->acs_bgdfs) {
+					c_info->acs_bgdfs->state = BGDFS_STATE_IDLE;
+					c_info->cac_mode = ACS_CAC_MODE_AUTO;
+				}
+				if (c_info->ci_5g && c_info->ci_5g->acs_bgdfs) {
+					c_info->ci_5g->acs_bgdfs->next_scan_chan = 0;
+				}
+				break;
+			}
 			default:
 				ACSD_INFO("recved event type %x\n", evt_type);
 				break;
@@ -836,7 +1158,7 @@ acs_upgrade_downgrade_opermode(acs_chaninfo_t * c_info)
 		return;
 	}
 
-	if (ACS_CHINFO_IS_UNCLEAR(acs_channel_info(c_info, c_info->cur_chspec))) {
+	if (ACS_CHINFO_IS_UNCLEAR(acs_get_chanspec_info(c_info, c_info->cur_chspec))) {
 		ACSD_DEBUG("%s Chanspec 0x%4x (%s) NOT cleared or CAC in Progress\n",
 			c_info->name, c_info->cur_chspec, wf_chspec_ntoa(c_info->cur_chspec, chanspecbuf));
 		return;
@@ -851,7 +1173,7 @@ acs_upgrade_downgrade_opermode(acs_chaninfo_t * c_info)
 			WL_CHANSPEC_BW_160);
 
 		if (CHSPEC_IS160(upgrade_chspc) && !wf_chspec_malformed(upgrade_chspc) &&
-			ACS_CHINFO_IS_CLEARED(acs_channel_info(c_info, upgrade_chspc))) {
+			ACS_CHINFO_IS_CLEARED(acs_get_chanspec_info(c_info, upgrade_chspc))) {
 			ACSD_INFO("%s Upgrading to 160 Mhz chanspec 0x%4x (%s) by oper_mode \n",
 				c_info->name, upgrade_chspc, wf_chspec_ntoa(upgrade_chspc, chanspecbuf));
 			/* Upgrade to 160Mhz done in two steps, 0x112 and then to 0x116 */
@@ -915,17 +1237,47 @@ acsd_cleanup(void)
 		free(d_info);
 	}
 }
-
+static int
+acs_bgdfs_radar_detect(acs_chaninfo_t *c_info)
+{
+	wl_dfs_ap_move_status_v2_t *status_v2 = NULL;
+	const char *dfs_state_str[DFS_SCAN_S_MAX] = {
+		"Radar Free On Channel",
+		"Radar Found On Channel",
+		"Radar Scan In Progress",
+		"Radar Scan Aborted",
+		"RSDB Mode switch in Progress For Scan"
+	};
+	status_v2 = &c_info->acs_bgdfs->status;
+	ACSD_INFO("%s: version=%d, move status=%d\n", c_info->name,
+		status_v2->version, status_v2->move_status);
+	if (status_v2->move_status == DFS_SCAN_S_RADAR_FOUND) {
+		ACSD_INFO("%s: %s\n", c_info->name,
+			dfs_state_str[status_v2->move_status]);
+		return TRUE;
+	} else {
+		ACSD_INFO("%s: dfs AP move in IDLE state\n", c_info->name);
+		return FALSE;
+	}
+}
 static void
 acsd_watchdog(uint ticks)
 {
 	int i, ret;
 	acs_chaninfo_t* c_info;
+	acs_bgdfs_info_t * bgdfs;
 
 	for (i = 0; i < ACS_MAX_IF_NUM; i++) {
 		c_info = d_info->acs_info->chan_info[i];
 
 		if ((!c_info) || (c_info->mode == ACS_MODE_DISABLE)) {
+			continue;
+		}
+		bgdfs = c_info->acs_bgdfs;
+
+		if (c_info->wet_enabled && acs_check_assoc_scb(c_info)) {
+			ACSD_INFO("%s: do not perform scan or no channel change,"
+				" when ACSD is in WET mode and scb associated\n", c_info->name);
 			continue;
 		}
 
@@ -939,12 +1291,77 @@ acsd_watchdog(uint ticks)
 				acs_update_dyn160_status(c_info);
 			}
 		}
+#ifdef ZDFS_2G
+		if (c_info == acs_get_zdfs_2g_ci() &&
+				bgdfs->state != BGDFS_STATE_IDLE) {
+			time_t now = uptime();
+			wl_bcmdcs_data_t dcs_data;
+			int err;
+			chanspec_t last_cleared_chanspec;
+			if ((ret = acs_bgdfs_get(c_info)) != BGDFS_CAP_TYPE0) {
+				ACSD_ERROR("acs bgdfs get failed with %d\n", ret);
+			}
+			if (bgdfs->timeout < now) {
+				bgdfs->state = BGDFS_STATE_IDLE;
+				c_info->cac_mode = ACS_CAC_MODE_AUTO;
+				acs_update_tx_dur_secs_end();
+				last_cleared_chanspec = BGDFS_SUB_LAST(&c_info->acs_bgdfs->status,
+						BGDFS_SUB_SCAN_CORE);
+				if (last_cleared_chanspec == bgdfs->next_scan_chan &&
+						!acs_is_2g_blanked_by_5g() &&
+						!acs_bgdfs_radar_detect(c_info)) {
+					acs_chaninfo_t *ci_5g = c_info->ci_5g;
 
+					/* clearing the passive bit */
+					ret = acs_set_chanspec_info(ci_5g,
+						bgdfs->next_scan_chan, FALSE, ACS_CHAN_INFO_ACTIVE);
+					if (ret != BCME_OK) {
+						ACSD_ERROR("%s: Failed to clear the chanspec"
+							"0x%02x \n", c_info->name,
+							bgdfs->next_scan_chan);
+						return;
+					}
+					ACSD_INFO("%s:2g last cleared channel is 0x%x\n",
+						c_info->name, bgdfs->next_scan_chan);
+
+					/* If 2G BGDFS is not stunted, switch channel
+					 * on 5G Interface by CSA
+					 */
+					if (!(bgdfs->bgdfs_stunted)) {
+						dcs_data.reason = 0;
+						dcs_data.chspec = bgdfs->next_scan_chan;
+						ACSD_INFO("%s:Initiate csa on channel 0x%x\n",
+							ci_5g->name, bgdfs->next_scan_chan);
+						if ((err = dcs_handle_request(ci_5g->name,
+								&dcs_data,
+								DOT11_CSA_MODE_ADVISORY,
+								ACS_CSA_COUNT,
+								ci_5g->acs_dcs_csa))) {
+							ACSD_ERROR("%sErr dcs_handle_request:%d\n",
+								ci_5g->name, err);
+						}
+					}
+					/* Clear 5G radio's channel to be scanced next.
+					 * This is the channel on which next BGDFS_2G
+					 * may be attempted.
+					 */
+					ci_5g->acs_bgdfs->next_scan_chan = 0;
+					/* Resetting it to null due to successful completion
+					 * of ZDFS_2G attempt
+					 */
+					c_info->ci_5g = 0;
+					ci_5g->ci_2g = 0;
+				} else {
+					ACSD_INFO("%s: Not able to clear the channel 0x%x\n",
+							c_info->name, bgdfs->next_scan_chan);
+				}
+			}
+		}
+#endif /* ZDFS_2G */
 		/* BGDFS is not enabled/triggered if 160Mhz BW capable */
 		if (ACS_11H_AND_BGDFS(c_info) &&
 				(!c_info->is160_bwcap || c_info->bgdfs160) &&
-				c_info->acs_bgdfs->state != BGDFS_STATE_IDLE) {
-			acs_bgdfs_info_t * bgdfs = c_info->acs_bgdfs;
+				bgdfs->state != BGDFS_STATE_IDLE) {
 			time_t now = uptime();
 			bool bgdfs_scan_done = FALSE;
 			if ((ticks % ACS_BGDFS_SCAN_STATUS_CHECK_INTERVAL) == 0) {
@@ -957,6 +1374,7 @@ acsd_watchdog(uint ticks)
 			}
 			if (bgdfs_scan_done || bgdfs->timeout < now) {
 				bgdfs->state = BGDFS_STATE_IDLE;
+				c_info->cac_mode = ACS_CAC_MODE_AUTO;
 				if (!bgdfs_scan_done &&
 						(ret = acs_bgdfs_get(c_info)) != BGDFS_CAP_TYPE0) {
 					ACSD_ERROR("acs bgdfs get failed with %d\n", ret);
@@ -965,28 +1383,28 @@ acsd_watchdog(uint ticks)
 						bgdfs->acs_bgdfs_on_txfail &&
 						((ret = acs_bgdfs_check_status(c_info, TRUE))
 						 != BCME_OK)) {
-					wl_bcmdcs_data_t dcs_data;
-					int err;
 					ACSD_INFO("%s####BGDFS Failed. Do Full MIMO CAC#####\n",
 							c_info->name);
 
-					dcs_data.reason = 0;
-					dcs_data.chspec = c_info->selected_chspec;
-					if ((err = dcs_handle_request(c_info->name,
-							&dcs_data,
-							DOT11_CSA_MODE_ADVISORY,
-							ACS_CSA_COUNT,
-							c_info->acs_dcs_csa))) {
-						ACSD_ERROR("%s Error dcs_handle_request: %d\n",
-								c_info->name, err);
-					}
+					acs_csa_handle_request(c_info);
 					bgdfs->acs_bgdfs_on_txfail = FALSE;
-
 				} else if (bgdfs->next_scan_chan != 0) {
 					if ((ret = acs_bgdfs_check_status(c_info, FALSE))
 							== BCME_OK) {
 						ACSD_INFO("acs bgdfs ch 0x%4x (%s) is radar free\n",
 								bgdfs->next_scan_chan, wf_chspec_ntoa(bgdfs->next_scan_chan, chanspecbuf));
+						/* Updating the selected chanspec with bgdfs
+						 * scan core chanspec
+						 */
+						if (!c_info->country_is_edcrs_eu) {
+							c_info->selected_chspec =
+								bgdfs->next_scan_chan;
+							chanim_upd_acs_record(c_info->chanim_info,
+								bgdfs->next_scan_chan, APCS_ZDFS);
+							c_info->recent_prev_chspec =
+								c_info->cur_chspec;
+							c_info->acs_prev_chan_at = uptime();
+						}
 					} else if (bgdfs->next_scan_chan != 0) {
 						ACSD_INFO("acs bgdfs chan 0x%4x (%s) is not radar free "
 								"(err: %d)\n",
@@ -1002,8 +1420,8 @@ acsd_watchdog(uint ticks)
 
 		if (BAND_5G(c_info->rs_info.band_type)) { /* Update channel idle times */
 
-			if (ACS_11H_AND_BGDFS(c_info) &&
-				(ticks % ACS_TRAFFIC_INFO_UPDATE_INTERVAL((c_info)->acs_bgdfs)) == 0) {
+			if (ACS_11H_AND_BGDFS(c_info) && (ticks %
+				ACS_TRAFFIC_INFO_UPDATE_INTERVAL((c_info)->acs_bgdfs)) == 0) {
 
 				if ((ret = acs_activity_update(c_info)) != BCME_OK) {
 					ACSD_ERROR("activity update failed");
@@ -1014,9 +1432,9 @@ acsd_watchdog(uint ticks)
 				/* BGDFS is not enabled/triggered if 160Mhz BW capable */
 				if (ACS_11H_AND_BGDFS(c_info) &&
 						(!c_info->is160_bwcap || c_info->bgdfs160) &&
-						c_info->acs_bgdfs->idle &&
-						c_info->acs_bgdfs->state == BGDFS_STATE_IDLE) {
-					if (c_info->acs_bgdfs->ahead &&
+						bgdfs->idle &&
+						bgdfs->state == BGDFS_STATE_IDLE) {
+					if (bgdfs->ahead &&
 							acs_bgdfs_ahead_trigger_scan(c_info) !=
 							BCME_OK) {
 						ACSD_ERROR("BGDFS ahead trigger scan "
@@ -1026,24 +1444,12 @@ acsd_watchdog(uint ticks)
 				/* Upgrade to 160Mhz by full MIMO CAC */
 				if (ACS_11H_AND_BGDFS(c_info) && c_info->is160_upgradable &&
 						!c_info->dyn160_enabled &&
-						c_info->acs_bgdfs->idle) {
+						bgdfs->idle) {
 					if (acs_upgrade_to160(c_info) == BCME_OK) {
-						wl_bcmdcs_data_t dcs_data;
-						int err;
 						ACSD_INFO("%s acs_upgrade_to160 picked 0x%4x (%s)\n",
 								c_info->name,
 								c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
-
-						dcs_data.reason = 0;
-						dcs_data.chspec = c_info->selected_chspec;
-						if ((err = dcs_handle_request(c_info->name,
-								&dcs_data,
-								DOT11_CSA_MODE_ADVISORY,
-								ACS_CSA_COUNT,
-								c_info->acs_dcs_csa))) {
-							ACSD_ERROR("%sErr dcs_handle_request:%d\n",
-									c_info->name, err);
-						}
+						acs_csa_handle_request(c_info);
 					} else {
 						ACSD_ERROR("%s acs_upgrade_to160 Failed\n",
 								c_info->name);
@@ -1060,47 +1466,101 @@ acsd_watchdog(uint ticks)
 		if (ticks % ACS_STATUS_POLL == 0)
 			acs_update_status(c_info);
 
-		acsd_chanim_check(ticks, c_info);
-		if ((ticks % ACS_CHANIM_POLL_MIN) == 0) {
+		/* Chanim_stats updates for every 1 min, but we are also updating chanim_stats
+		 * if switch reason is CS or CI scan. These stats are helpful for selecting
+		 * better channel.
+		 */
+		if ((ticks % ACS_CHANIM_POLL_MIN) == 0 ||
+				c_info->switch_reason_type == APCS_CSTIMER ||
+				c_info->switch_reason_type == ACS_SCAN_TYPE_CI) {
 			acsd_chanim_check(ticks, c_info);
 		}
 
-		if (c_info->txop_channel_select && (-- c_info->txop_channel_select == 0) &&
-			(c_info->switch_reason != APCS_TXFAIL)) {
+		/*
+		 * After completion of cs/ci scan timeout acsd does scan and try to select the
+		 * best channel. While selecting best channel acsd may stay on same channel
+		 * if TXOP on current channel is greater than threshold(90 for CS, 80 for CI)
+		 * else acsd calculate the score for all valid channels and select the best channel,
+		 * during this period c_info->txop_channel_select is set to 2
+		 * (inside acs_pick_chanspec_common function). The reason for this setting is wait
+		 * for 2 sec and check if txop recovers within the time limit. If it recovers no
+		 * channel change is allowed and acsd stays on same channel. If it doesn't recover
+		 * update the channel and acs_record in this function.
+		 */
+		if (c_info->txop_channel_select && (-- c_info->txop_channel_select == 0)) {
 			chanim_info_t * ch_info = c_info->chanim_info;
 			uint8 cur_idx = chanim_mark(ch_info).record_idx;
 			uint8 start_idx;
+			uint8 scan_type;
 			chanim_acs_record_t *start_record;
+			time_t now = uptime();
 
 			start_idx = MODSUB(cur_idx, 1, CHANIM_ACS_RECORD);
 			start_record = &ch_info->record[start_idx];
-			ACSD_INFO("prev timestamp1 %d cur time stamp1 %d score %d\n",
+			ACSD_INFO("%s: prev timestamp1 %d cur time stamp1 %d score %d\n",
+				c_info->name,
 				c_info->timestamp, c_info->cur_timestamp, c_info->txop_score);
+			scan_type = ((c_info->switch_reason_type == ACS_SCAN_TYPE_CI) ?
+				(c_info->txop_score < c_info->ci_scan_txop_limit) :
+				(c_info->txop_score < ACS_TXOP_LIMIT));
 
-			if ((c_info->timestamp != c_info->cur_timestamp) &&
-					(c_info->txop_score < ACS_TXOP_LIMIT)) {
+			if (CHSPEC_CHANNEL(c_info->selected_chspec) ==
+					CHSPEC_CHANNEL(c_info->recent_prev_chspec)) {
+				if (now - c_info->acs_prev_chan_at <
+						2 * c_info->acs_chan_dwell_time) {
+					ACSD_INFO("%s: staying on same channel because of"
+							"prev_chspec dwell time restrictions\n",
+							c_info->name);
+					return;
+				}
+			}
+
+			if ((c_info->timestamp != c_info->cur_timestamp) && scan_type) {
 				if (c_info->cur_chspec != c_info->selected_chspec) {
-					ACSD_PRINT("selected_chspec is 0x%4x (%s)\n",
-							c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
+					int ret = 0;
+					ACSD_PRINT("%s: selected_chspec is 0x%4x (%s)\n",
+						c_info->name, c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
 					c_info->selected_chspec = acs_adjust_ctrl_chan(c_info,
 						c_info->selected_chspec);
-					ACSD_PRINT("Adjusted channel spec: 0x%4x (%s)\n",
-						c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
-					ACSD_PRINT("selected channel spec: 0x%4x (%s)\n",
-						c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
-					acs_set_chspec(c_info, TRUE, ACSD_USE_DEF_METHOD);
-					ret = acs_update_driver(c_info);
+					ACSD_PRINT("%s: Adjusted channel spec: 0x%4x (%s)\n",
+						c_info->name, c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
+					ACSD_PRINT("%s: selected channel spec: 0x%4x (%s)\n",
+						c_info->name, c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
+					if (c_info->fallback_to_primary &&
+							CHSPEC_CHANNEL(c_info->selected_chspec) ==
+							CHSPEC_CHANNEL(c_info->cur_chspec)) {
+						ACSD_PRINT("%s selected 0x%4x and cur_chspec 0x%4x"
+							" both are under same control channel\n",
+							c_info->name, c_info->selected_chspec,
+							c_info->cur_chspec);
+						c_info->switch_reason_type = 0;
+						return;
+					}
+					ACSD_INFO("%s Performing CSA on chspec 0x%x\n",
+							c_info->name, c_info->selected_chspec);
+					if ((ret = acs_csa_handle_request(c_info))) {
+						return;
+					}
 					if (start_record->trigger == APCS_TXDLY) {
 						chanim_mark(ch_info).record_idx = start_idx;
 					}
-					chanim_upd_acs_record(c_info->chanim_info,
+					if (c_info->switch_reason_type == APCS_CSTIMER) {
+						chanim_upd_acs_record(c_info->chanim_info,
+								c_info->selected_chspec,
+								APCS_CSTIMER);
+					} else {
+						chanim_upd_acs_record(c_info->chanim_info,
 							c_info->selected_chspec, APCS_TXDLY);
+					}
+					c_info->recent_prev_chspec = c_info->cur_chspec;
+					c_info->acs_prev_chan_at = uptime();
 				}
 			} else {
 				c_info->selected_chspec = c_info->cur_chspec;
-				ACSD_PRINT("staying in current channel as txop is recovered "
-					"with in time limit\n");
+				ACSD_PRINT("%s: staying in current channel as txop is recovered "
+					"with in time limit\n", c_info->name);
 			}
+				c_info->switch_reason_type = 0;
 		}
 
 		acs_scan_timer_or_dfsr_check(c_info); /* AUTOCHANNEL/DFSR is checked in called fn */
@@ -1121,12 +1581,19 @@ main(int argc, char *argv[])
 	char *val;
 #if !defined(DEBUG)
 	int daemonize = 1;
-#endif
+#endif // endif
+
+	val = nvram_safe_get("acsd_disable");
+	if (!strcmp(val, "1")) {
+		ACSD_ERROR("Not Staring ACSD as acsd_disable nvram is set\n");
+		return err;
+	}
 
 	val = nvram_safe_get("acsd_debug_level");
 	if (strcmp(val, ""))
 		acsd_debug_level = strtoul(val, NULL, 0);
 
+	argv[0] = "acsd2";
 	ACSD_INFO("acsd start...\n");
 
 	if (argc > 1) {
@@ -1166,7 +1633,14 @@ main(int argc, char *argv[])
 	tv.tv_sec = d_info->poll_interval;
 	tv.tv_usec = 0;
 
-	while (1) {
+	/* Provide necessary info to debug_monitor for service restart */
+#if 0
+	dm_register_app_restart_info(getpid(), 1, argv, NULL);
+#endif
+	/* establish a handler to handle SIGTERM. */
+	signal(SIGTERM, acsd_term_hdlr);
+	acsd_running = TRUE;
+	while (acsd_running) {
 		/* Don't change channel when WPS is in the processing,
 		 * to avoid WPS fails
 		 */

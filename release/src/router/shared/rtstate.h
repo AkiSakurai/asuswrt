@@ -265,6 +265,23 @@ enum {
 	DISKMON_FORMAT
 };
 
+#ifdef RTCONFIG_ASUSCTRL
+enum {
+	ASUSCTRL_DFS_BAND2 = 1,
+	ASUSCTRL_DFS_BAND3,
+	ASUSCTRL_CHG_PWR,
+	ASUSCTRL_MAX
+};
+#endif
+
+#ifdef RTCONFIG_BROOP
+enum {
+	BROOP_IDLE,
+	BROOP_DETECT
+};
+
+#endif
+
 #define DISKMON_FREQ_DISABLE 0
 #define DISKMON_FREQ_MONTH 1
 #define DISKMON_FREQ_WEEK 2
@@ -385,5 +402,11 @@ extern int get_modemunit_by_type(int wan_type);
 extern int get_wantype_by_modemunit(int modem_unit);
 
 extern char *get_userdns_r(const char *prefix, char *buf, size_t buflen);
+
+#ifdef RTCONFIG_BROOP
+int is_bridged(const char *brif, const char *ifname);
+int netlink_broop(char ctrl, int val);
+int detect_broop();
+#endif
 
 #endif	/* !__RTSTATE_H__ */

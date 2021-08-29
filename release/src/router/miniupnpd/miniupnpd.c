@@ -1250,6 +1250,16 @@ init(int argc, char * * argv, struct runtime_vars * v)
 				}
 				break;
 #endif	/* ENABLE_AURASYNC */
+#ifdef ENABLE_NVGFN
+			case UPNPENABLENVGFN:
+				if(strcmp(ary_options[i].value, "yes") == 0)
+					SETFLAG(ENABLENVGFNMASK);	/*enablenvgfn = 1;*/
+				else if(strcmp(ary_options[i].value, "gfn_only") == 0) {
+					SETFLAG(ENABLENVGFNMASK);
+					gfn_only = 1;
+				}
+				break;
+#endif	/* ENABLE_NVGFN */
 #ifdef ENABLE_PCP
 			case UPNPPCPMINLIFETIME:
 					min_lifetime = atoi(ary_options[i].value);
@@ -1506,7 +1516,7 @@ init(int argc, char * * argv, struct runtime_vars * v)
 #else	/* #ifndef MULTIPLE_EXTERNAL_IP */
 			if(i+2 < argc)
 			{
-				char *val=calloc((strlen(argv[i+1]) + strlen(argv[i+2]) + 1), sizeof(char));
+				char *val = calloc((strlen(argv[i+1]) + strlen(argv[i+2]) + 2), sizeof(char));
 				if (val == NULL)
 				{
 					fprintf(stderr, "memory allocation error for listen address storage\n");

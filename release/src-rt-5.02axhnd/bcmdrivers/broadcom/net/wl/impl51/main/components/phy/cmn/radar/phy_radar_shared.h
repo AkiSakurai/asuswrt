@@ -1,7 +1,7 @@
 /*
  * RadarDetect module internal interface (functions sharde by PHY type specific implementations).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_radar_shared.h 752845 2018-03-19 07:24:28Z $
+ * $Id: phy_radar_shared.h 777256 2019-07-24 23:41:25Z $
  */
 
 #ifndef _phy_radar_shared_h_
@@ -56,18 +56,25 @@
 #include <phy_radar_api.h>
 
 /* radar_args.feature_mask bitfields */
-#define RADAR_FEATURE_DEBUG_SHORT_PULSE		(1 << 0) /* when bit-3 is on,
-						          * 0=>bin5 data, 1=>short pulse data
-						          */
-#define RADAR_FEATURE_DEBUG_INPUT_PULSE_DATA	(1 << 1) /* output before-fitlered pulse data */
+#define RADAR_FEATURE_DEBUG_SHORT_PULSE		(1 << 0) /* output radar short pulses data */
+#define RADAR_FEATURE_DEBUG_BIN5_PULSE		(1 << 1) /* output radar long pulses data */
 #define RADAR_FEATURE_DEBUG_PULSES_PER_ANT	(1 << 2) /* output # pulses at each antenna
 						          * (if # pulse > 5)
 						          */
-#define RADAR_FEATURE_DEBUG_PULSE_DATA		(1 << 3) /* output radar pulses data */
-#define RADAR_FEATURE_DEBUG_PW_CHECK_INFO	(1 << 4) /* output PW checking debug messages */
-#define RADAR_FEATURE_DEBUG_STAGGERED_RESET	(1 << 5) /* output staggered reset */
-#define RADAR_FEATURE_DEBUG_FIFO_OUTPUT		(1 << 6) /* output fifo output */
-#define RADAR_FEATURE_DEBUG_INTV_PW		(1 << 7) /* output intervals and pruned pw */
+#define RADAR_FEATURE_DEBUG_FIFO_OUTPUT		(1 << 3) /* output fifo output
+								  * (unfiltered pulse data)
+								  */
+#define RADAR_FEATURE_DEBUG_PRUNED_BIN5_PULSE	(1 << 4) /* output pruned
+								  * bin5 pulse
+								  */
+#define RADAR_FEATURE_DEBUG_PRUNED_SHORT_PULSE	(1 << 5) /* output pruned
+								  * short pulse
+								  */
+#define RADAR_FEATURE_DEBUG_TIME_UNIT_US	(1 << 6) /* output time values such
+								  * tstart, pw, pri, in us
+								  * (micro-second) unit, else output
+								  * in 20MHz samples
+								  */
 #define RADAR_FEATURE_UK_DETECT			(1 << 8) /* enable UK radar detection */
 #define RADAR_FEATURE_DEBUG_EU_TYPE		(1 << 9) /* output EU type debug messages */
 #define RADAR_FEATURE_FCC_DETECT		(1 << 11) /* enable FCC radar detection */
@@ -75,7 +82,8 @@
 #define RADAR_FEATURE_USE_MAX_PW		(1 << 13) /* for combining pulse use max of pw(i)
 						           * and pw(i-1) inlieu of pw(i-1) + pw(i)
 						           */
-#define RADAR_FEATURE_DEBUG_REJECTED_RADAR	(1 << 14) /* output the skipped large intervals */
+#define RADAR_FEATURE_DEBUG_INVLID_LP	(1 << 14) /* output invalid LP data */
+#define RADAR_FEATURE_DEBUG_REJECTED_RADAR	0 /* output the skipped large intervals */
 
 void phy_radar_shared_attach(phy_info_t *pi);
 

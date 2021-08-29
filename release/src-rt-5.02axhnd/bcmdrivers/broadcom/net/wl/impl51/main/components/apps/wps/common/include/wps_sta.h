@@ -1,7 +1,7 @@
 /*
  * WPS station
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_sta.h 749115 2018-02-27 20:25:46Z $
+ * $Id: wps_sta.h 767092 2018-08-28 06:18:20Z $
  */
 #ifndef __WPS_STA_H__
 #define __WPS_STA_H__
@@ -53,6 +53,11 @@
 #define WPS_MAX_AP_SCAN_LIST_LEN 50
 #define PBC_WALK_TIME 120
 #include <wlioctl.h>
+
+#ifndef IFNAMSIZ
+#define IFNAMSIZ 16
+#endif // endif
+
 wps_ap_list_info_t *wps_get_ap_list(void);
 wps_ap_list_info_t *create_aplist(void);
 int add_wps_ie(unsigned char *p_data, int length, bool pbc, bool b_wps_version2);
@@ -72,6 +77,9 @@ int do_wps_escan(void);
 char* get_wps_escan_results(void);
 wps_ap_list_info_t *create_aplist_escan(void);
 /* END escan patch */
+#if defined(MULTIAP)
+int do_map_wps_escan(char *ssid);
+#endif	/* MULTIAP */
 
 #ifdef WFA_WPS_20_TESTBED
 int set_wps_ie_frag_threshold(int threshold);
@@ -82,6 +90,9 @@ bool wps_wl_init(void *caller_ctx, void *callback);
 void wps_wl_deinit();
 wps_ap_list_info_t *wps_wl_surveying(bool b_pbc, bool b_v2, bool b_add_wpsie);
 bool wps_wl_join(uint8 *bssid, char *ssid, uint8 wep);
+int wpssta_display_aplist(wps_ap_list_info_t *ap);
+/* Escan timeout value in seconds */
+#define ESCAN_TIMER_INTERVAL_S 10
 
 int wps_escan_timeout_handler(uint32 timout_state);
 uint32 wps_eap_reset_scan_result();
@@ -107,4 +118,10 @@ struct escan_bss {
 	wl_bss_info_t bss[1];
 };
 
+typedef struct escan_bss_results {
+	char ifname[IFNAMSIZ];
+	bool is_scan_done;
+	struct escan_bss *bss_head;
+	struct escan_bss *bss_tail;
+} escan_bss_results_t;
 #endif /* __WPS_STA_H__ */

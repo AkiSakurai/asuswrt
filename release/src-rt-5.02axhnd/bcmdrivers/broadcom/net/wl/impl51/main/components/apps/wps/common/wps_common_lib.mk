@@ -1,5 +1,5 @@
 #
-# Copyright 2018 Broadcom
+# Copyright 2019 Broadcom
 #
 # This program is the proprietary software of Broadcom and/or
 # its licensors, and may only be used, duplicated, modified or distributed
@@ -52,11 +52,11 @@ BLDTYPE = release
 #BLDTYPE = debug
 
 ifeq ($(BLDTYPE),debug)
-export CFLAGS = -Wall -Wnested-externs -g -D_TUDEBUGTRACE
-export CXXFLAGS = -Wall -Wnested-externs -g -D_TUDEBUGTRACE
+export CFLAGS = -Os -Wall -Wnested-externs -g -D_TUDEBUGTRACE
+export CXXFLAGS = -Os -Wall -Wnested-externs -g -D_TUDEBUGTRACE
 else
-export CFLAGS = -Os -Wall -Wnested-externs
-export CXXFLAGS = -Os -Wall -Wnested-externs
+export CFLAGS = -Wall -Wnested-externs
+export CXXFLAGS = -Wall -Wnested-externs
 endif
 
 ifdef WCN_NET_SUPPORT

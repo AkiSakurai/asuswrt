@@ -1,7 +1,7 @@
 /*
  * ACPHY TEMPerature sense module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_temp.h 752951 2018-03-19 18:29:56Z $
+ * $Id: phy_ac_temp.h 775385 2019-05-29 11:30:21Z $
  */
 
 #ifndef _phy_ac_temp_h_
@@ -123,32 +123,6 @@ typedef struct _tempsense_radioregs_tiny {
 	uint16 tia_cfg7[PHY_CORE_MAX];
 } tempsense_radioregs_tiny_t;
 
-typedef struct _tempsense_radioregs_20697 {
-	uint16 tempsense_cfg[PHY_CORE_MAX];
-	uint16 testbuf_cfg1[PHY_CORE_MAX];
-	uint16 auxpga_cfg1[PHY_CORE_MAX];
-	uint16 auxpga_vmid[PHY_CORE_MAX];
-	uint16 tempsense_ovr1[PHY_CORE_MAX];
-	uint16 testbuf_ovr1[PHY_CORE_MAX];
-	uint16 auxpga_ovr1[PHY_CORE_MAX];
-	uint16 tia_cfg1_ovr[PHY_CORE_MAX];
-	uint16 tia_reg7[PHY_CORE_MAX];
-	uint16 lpf_ovr1[PHY_CORE_MAX];
-	uint16 lpf_ovr2[PHY_CORE_MAX];
-	uint16 lpf_reg7[PHY_CORE_MAX];
-	uint16 iqcal_cfg4[PHY_CORE_MAX];
-	uint16 iqcal_cfg5[PHY_CORE_MAX];
-	uint16 iqcal_ovr1[PHY_CORE_MAX];
-	uint16 vbat_ovr1[PHY_CORE_MAX];
-	uint16 vbat_cfg[PHY_CORE_MAX];
-	uint16 tia_reg16[PHY_CORE_MAX];
-	uint16 tia_reg17[PHY_CORE_MAX];
-	uint16 tia_reg18[PHY_CORE_MAX];
-	uint16 lpf_notch_ovr1[PHY_CORE_MAX];
-	uint16 lpf_notch_reg7[PHY_CORE_MAX];
-	uint16 tia_cfg2_ovr[PHY_CORE_MAX];
-} tempsense_radioregs_20697_t;
-
 typedef struct _tempsense_radioregs_20694 {
 	uint16 tempsense_cfg[PHY_CORE_MAX];
 	uint16 testbuf_cfg1[PHY_CORE_MAX];
@@ -175,7 +149,6 @@ typedef struct _acphy_tempsense_radioregs
 		tempsense_radioregs_t acphy_tempsense_radioregs;
 		tempsense_radioregs_tiny_t acphy_tempsense_radioregs_tiny;
 		tempsense_radioregs_20694_t acphy_tempsense_radioregs_20694;
-		tempsense_radioregs_20697_t acphy_tempsense_radioregs_20697;
 	} u;
 } acphy_tempsense_radioregs_t;
 
@@ -183,8 +156,6 @@ extern int16 wlc_phy_tempsense_acphy(phy_info_t *pi);
 extern void phy_ac_update_tempsense_bitmap(phy_info_t *pi);
 extern uint8 wlc_phy_vbat_monitoring_algorithm_acphy(phy_info_t *pi);
 extern uint8 phy_ac_vbat_monitoring_algorithm_20694(phy_ac_temp_info_t *ti);
-extern int16 wlc_phy_tempsense_vbatsense_acphy_20697
-	(phy_info_t *pi, uint8 tempsense_vbatsense);
 extern void phy_ac_update_dutycycle_throttle_state(phy_info_t *pi);
 int phy_ac_temp_get(phy_ac_temp_info_t *info);
 

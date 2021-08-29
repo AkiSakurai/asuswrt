@@ -1,7 +1,7 @@
 /*
  * RSSI Compute module internal interface (to PHY specific implementation).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_type_rssi.h 671704 2016-11-22 21:37:09Z $
+ * $Id: phy_type_rssi.h 770653 2018-12-24 07:37:55Z $
  */
 
 #ifndef _phy_type_rssi_h_
@@ -66,6 +66,10 @@
 typedef void phy_type_rssi_ctx_t;
 
 typedef void (*phy_type_rssi_compute_fn_t)(phy_type_rssi_ctx_t *ctx, wlc_d11rxhdr_t *wrxh);
+typedef void (*phy_type_ulofdma_per_user_rxstats_fn_t)(phy_type_rssi_ctx_t *ctx,
+	wlc_d11rxhdr_t *wrxh);
+typedef void (*phy_type_tracked_freq_offset_fn_t)(phy_type_rssi_ctx_t *ctx,
+	wlc_d11rxhdr_t *wrxh);
 typedef void (*phy_type_rssi_init_gain_err_fn_t)(phy_type_rssi_ctx_t *ctx);
 typedef int (*phy_type_rssi_dump_fn_t)(phy_type_rssi_ctx_t *ctx, struct bcmstrbuf *b);
 typedef void (*phy_type_rssi_update_pkteng_rxstats_fn_t)(phy_type_rssi_ctx_t *ctx, uint8 statidx);
@@ -78,6 +82,8 @@ typedef int8 (*phy_type_rssi_get_rssi_fn_t)(phy_type_rssi_ctx_t *ctx, uint8 core
 
 typedef struct {
 	phy_type_rssi_compute_fn_t compute;
+	phy_type_ulofdma_per_user_rxstats_fn_t ulofdma_per_user_rxstats;
+	phy_type_tracked_freq_offset_fn_t tracked_freq_offset;
 	phy_type_rssi_init_gain_err_fn_t init_gain_err;
 	phy_type_rssi_dump_fn_t dump;
 	phy_type_rssi_update_pkteng_rxstats_fn_t update_pkteng_rxstats;

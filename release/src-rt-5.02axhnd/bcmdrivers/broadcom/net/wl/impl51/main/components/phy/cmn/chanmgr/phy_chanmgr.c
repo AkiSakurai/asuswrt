@@ -1,7 +1,7 @@
 /*
  * CHanSPEC manipulation module implementation.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_chanmgr.c 767249 2018-08-31 21:16:34Z $
+ * $Id: phy_chanmgr.c 773578 2019-03-26 00:28:43Z $
  */
 
 #include <phy_cfg.h>
@@ -325,8 +325,8 @@ phy_chanmgr_set_oper(phy_info_t *pi, chanspec_t chanspec)
 {
 	/* This API is called or must be called after wlc_phy_chanspec_set */
 	phy_chanmgr_notif_data_t data;
-	ASSERT(pi->radio_chanspec == chanspec);
 
+	ASSERT(pi->radio_chanspec == chanspec);
 	PHY_TRACE(("phy_chanmgr_set_oper: 0x%x\n", chanspec));
 
 	data.event = PHY_CHANMGR_NOTIF_OPCH_CHG;
@@ -453,10 +453,6 @@ wlc_phy_chanspec_set(wlc_phy_t *ppi, chanspec_t chanspec)
 #else
 		(fns->chanspec_set)(fns->ctx, chanspec);
 #endif /* ENABLE_FCBS */
-	}
-	if (fns->preempt != NULL) {
-		(fns->preempt)(fns->ctx, ((pi->sh->interference_mode & ACPHY_ACI_PREEMPTION) != 0),
-			FALSE);
 	}
 
 	wlapi_update_bt_chanspec(pi->sh->physhim, chanspec,
@@ -719,6 +715,13 @@ phy_chanmgr_set_shm(phy_info_t *pi, chanspec_t chanspec)
 
 	PHY_TRACE(("wl%d: %s: M_CURCHANNEL %x\n", pi->sh->unit, __FUNCTION__, curchannel));
 	wlapi_bmac_write_shm(pi->sh->physhim, M_CURCHANNEL(pi), curchannel);
+#if defined(WL_PSMX)
+	if (wlapi_psmx_enabled(pi->sh->physhim) && D11REV_GE(pi->sh->corerev, 128)) {
+		wlapi_suspend_macx_and_wait(pi->sh->physhim);
+		wlapi_bmac_write_shmx(pi->sh->physhim, MX_CURCHANNEL(pi), curchannel);
+		wlapi_enable_macx(pi->sh->physhim);
+	}
+#endif // endif
 
 	return BCME_OK;
 }

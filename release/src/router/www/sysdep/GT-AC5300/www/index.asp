@@ -562,6 +562,12 @@ function show_middle_status(auth_mode, wl_wep_x){
 		case "psk2":
 				security_mode = "WPA2-Personal";
 				break;
+		case "sae":
+				security_mode = "WPA3-Personal";
+				break;
+		case "psk2sae":
+				security_mode = "WPA2/WPA3-Personal";
+				break;		
 		case "pskpsk2":
 				security_mode = "WPA-Auto-Personal";
 				document.getElementById("wl_securitylevel_span").style.fontSize = "16px";
@@ -1803,7 +1809,7 @@ function popupEditBlock(clientObj){
 
 function check_usb3(){
 	if(based_modelid == "DSL-AC68U" || based_modelid == "RT-AC3200" || based_modelid == "RT-AC87U" || based_modelid == "RT-AC68U" || based_modelid == "RT-AC68A" || based_modelid == "RT-AC56S" || based_modelid == "RT-AC56U" || based_modelid == "RT-AC55U" || based_modelid == "RT-AC55UHP" || based_modelid == "RT-N18U" || based_modelid == "RT-AC88U" || based_modelid == "RT-AC86U" || based_modelid == "GT-AC2900" || based_modelid == "RT-AC3100" || based_modelid == "RT-AC5300" || based_modelid == "RP-AC68U" || based_modelid == "RT-AC58U"  || based_modelid == "RT-AC82U" ||
-	based_modelid == "MAP-AC3000" || based_modelid == "RT-AC85P" || based_modelid == "RT-AC85U" || based_modelid == "RT-AC65U"|| based_modelid == "4G-AC68U" || based_modelid == "BLUECAVE" || based_modelid == "RT-AX92U" || based_modelid == "RT-ACRH26"){
+	based_modelid == "MAP-AC3000" || based_modelid == "RT-AC85P" || based_modelid == "RT-AC85U" || based_modelid == "RT-AC65U"|| based_modelid == "4G-AC68U" || based_modelid == "BLUECAVE" || based_modelid == "RT-AX92U" || based_modelid == "RT-AX95Q" || based_modelid == "RT-AX58U" || based_modelid == "TUF-AX3000" || based_modelid == "RT-AX56U" || based_modelid == "RT-ACRH26"){
 		document.getElementById('usb_text_1').innerHTML = "USB 3.0";
 	}
 	else if(based_modelid == "RT-AC88Q" || based_modelid == "RT-AX89U" || based_modelid == "RT-AD7200" || based_modelid == "RT-N65U" || based_modelid == "GT-AC5300" || based_modelid == "RT-AX88U" || based_modelid == "GT-AX11000" || based_modelid == "GT-AC9600" || based_modelid == "GT-AXY16000"){
@@ -2098,9 +2104,9 @@ function cal_panel_block(obj){
 function hide_notice(){
 	$("#notice_div").hide();
 	var iframe = document.getElementById("statusframe");
-	iframe.contentWindow.document.form.wl0_he_features.value = "0";
-	iframe.contentWindow.document.form.wl1_he_features.value = "0";
-	iframe.contentWindow.document.form.wl2_he_features.value = "0";
+	iframe.contentWindow.document.form.wl0_11ax.value = "0";
+	iframe.contentWindow.document.form.wl1_11ax.value = "0";
+	iframe.contentWindow.document.form.wl2_11ax.value = "0";
 }
 function notice_apply(){
 	var iframe = document.getElementById("statusframe");
@@ -2506,7 +2512,7 @@ function notice_apply(){
 		<div id="NM_table" class="NM_table" >
 		<div id="NM_table_div" style="background-color:rgba(0,0,0,.5);height:805px;">
 			<div style="width:51%;float:left;background:url('images/New_ui/networkmap/networkmap_bg.png') no-repeat rgba(0,0,0,.5);background-position-x: 4px; height:805px;">
-			<table id="_NM_table" border="0" cellpadding="0" cellspacing="0" style="opacity:.95;" >
+			<table id="_NM_table" border="0" cellpadding="0" cellspacing="0" style="opacity:.95;margin-left:-30px;" >
 				<tr>
 					<td width="40px" rowspan="11" valign="center"></td>
 					<!--== Dual WAN ==-->

@@ -1,6 +1,6 @@
 /*
  *-----------------------------------------------------------------------------
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -50,7 +50,7 @@
  *
  *  $ txgaintables_tcl2c.py 47xxtcl wlc_phytbl_ac_gains.h wlc_phytbl_ac_gains.c
  *
- * $Id: wlc_phytbl_ac_gains.h 767381 2018-09-07 23:44:46Z $
+ * $Id: wlc_phytbl_ac_gains.h 775385 2019-05-29 11:30:21Z $
  */
 /* FILE-CSTYLED */
 
@@ -98,15 +98,22 @@ extern const uint16 acphy28nm_txgain_epa_2g_p5_20698a0_rev0[TXGAIN_TABLES_LEN];
 extern const uint16 acphy28nm_txgain_epa_2g_p5_20698b0_rev2[TXGAIN_TABLES_LEN];
 extern const uint16 acphy28nm_txgain_epa_5g_p5_20698a0_rev0[TXGAIN_TABLES_LEN];
 extern const uint16 acphy28nm_txgain_epa_5g_p5_20698b0_rev2[TXGAIN_TABLES_LEN];
+extern const uint16 acphy28nm_txgain_ipa_2g_p5_20704a0_rev0[TXGAIN_TABLES_LEN];
+extern const uint16 acphy28nm_txgain_ipa_2g_p5_20704a0_rev1[TXGAIN_TABLES_LEN];
 extern const uint16 acphy28nm_txgain_epa_2g_p5_20704a0_rev0[TXGAIN_TABLES_LEN];
 extern const uint16 acphy28nm_txgain_epa_5g_p5_20704a0_rev0[TXGAIN_TABLES_LEN];
+extern const uint16 acphy28nm_txgain_ipa_2g_p5_20707a0_rev0[TXGAIN_TABLES_LEN];
+extern const uint16 acphy28nm_txgain_ipa_5g_p5_20707a0_rev0[TXGAIN_TABLES_LEN];
+extern const uint16 acphy28nm_txgain_epa_2g_p5_20707a0_rev0[TXGAIN_TABLES_LEN];
+extern const uint16 acphy28nm_txgain_epa_5g_p5_20707a0_rev0[TXGAIN_TABLES_LEN];
+extern const uint16 acphy28nm_txgain_ipa_2g_p5_20709a0_rev0[TXGAIN_TABLES_LEN];
+extern const uint16 acphy28nm_txgain_epa_2g_p5_20709a0_rev0[TXGAIN_TABLES_LEN];
+extern const uint16 acphy28nm_txgain_ipa_5g_p5_20709a0_rev0[TXGAIN_TABLES_LEN];
+extern const uint16 acphy28nm_txgain_epa_5g_p5_20709a0_rev0[TXGAIN_TABLES_LEN];
 extern const uint16 acphy28nm_txgain_epa_5g_p5_20694a0_rev4[TXGAIN_TABLES_LEN];
 extern const uint16 acphy28nm_txgain_epa_2g_p5_20694a0_rev4[TXGAIN_TABLES_LEN];
 extern const uint16 acphy28nm_txgain_ipa_2g_p5_20694a0_rev4[TXGAIN_TABLES_LEN];
 extern const uint16 acphy28nm_txgain_ipa_2g_p5_20694b0_rev11[TXGAIN_TABLES_LEN];
 extern const uint16 acphy28nm_txgain_epa_5g_p5_20694b0_rev8[TXGAIN_TABLES_LEN];
 extern const uint16 acphy28nm_txgain_epa_2g_p5_20694b0_rev8[TXGAIN_TABLES_LEN];
-extern const uint16 acphy28nm_txgain_main_epa_5g_p5_20697a0_rev6[TXGAIN_TABLES_LEN];
-extern const uint16 acphy28nm_txgain_aux_epa_2g_p5_20697a0_rev7[TXGAIN_TABLES_LEN];
-extern const uint16 acphy28nm_txgain_aux_ipa_2g_p5_20697a0_rev9[TXGAIN_TABLES_LEN];
 #endif /* WLC_PHYTBL_AC_GAINS_H_ */

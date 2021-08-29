@@ -1,7 +1,7 @@
 /*
  * Security and Key Management Module
  * Internal interface to key management module
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +44,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km.h 767108 2018-08-28 12:23:52Z $
+ * $Id: km.h 774257 2019-04-17 10:08:19Z $
  */
 
 #ifndef _km_h_
@@ -140,12 +140,10 @@
 #define KM_BSSCFG_HAS_NATIVEIF(_bsscfg) BSSCFG_HAS_NATIVEIF(_bsscfg)
 #define KM_BSSCFG_UP(_bsscfg) (_bsscfg)->up
 #define KM_BSSCFG_NOBCMC(_bsscfg) ((_bsscfg)->flags & WLC_BSSCFG_NOBCMC)
-#define KM_BSSCFG_WIN7PLUS(_pub, _bsscfg) WLEXTSTA_ENAB(_pub)
 
 #define KM_SCB_LEGACY_AES(_scb) ((_scb != NULL) &&\
 	((_scb)->flags & SCB_LEGACY_AES))
 #define KM_SCB_MFP(_scb) SCB_MFP(_scb)
-#define KM_SCB_CCX_MFP(_scb) SCB_CCX_MFP(_scb)
 #define KM_SCB_WDS(_scb) SCB_WDS(_scb)
 #define KM_SCB_WPA_SUP(_scb) ((_scb)->flags & SCB_WPA_SUP)
 #define KM_WLC_BSSCFG(_wlc, _idx) WLC_BSSCFG(_wlc, _idx)
@@ -244,14 +242,19 @@ bool km_is_replay(wlc_keymgmt_t *km, wlc_key_info_t *key_info, int ins,
 /* update ivtw */
 void km_update_ivtw(wlc_keymgmt_t *km, wlc_key_info_t *key_info, int ins,
 	uint8 *rx_seq, size_t seq_len, bool chained);
-
+/* set ivtw */
+int km_set_ivtw(wlc_keymgmt_t *km, wlc_key_info_t *key_info, int ins,
+		const uint8 *rx_seq, size_t seq_len);
 extern void km_null_key_deauth(wlc_keymgmt_t *km, scb_t *scb, void *pkt);
 
 #ifdef BRCMAPIVTW
 #define KM_UPDATE_IVTW(_km, _ki, _ins, _seq, _seq_len, _chained) km_update_ivtw(\
 	_km, _ki, _ins, _seq, _seq_len, _chained)
+#define KM_SET_IVTW(_km, _ki, _ins, _seq, _seq_len) km_set_ivtw(\
+			_km, _ki, _ins, _seq, _seq_len)
 #else
 #define KM_UPDATE_IVTW(_km, _ki, _ins, _seq, _seq_len, _chained)
+#define KM_SET_IVTW(_km, _ki, _ins, _seq, _seq_len) BCME_OK
 #endif /* BRCMAPIVTW */
 
 /* get max keys supported */

@@ -1,7 +1,7 @@
 /*
  * Linux Visualization Data Collector
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: vis_linux_main.c 676788 2016-12-24 17:48:35Z $
+ * $Id: vis_linux_main.c 771857 2019-02-11 05:32:44Z $
  */
 #include "vis_linux_main.h"
 #include <stdio.h>
@@ -980,10 +980,10 @@ main(int argc, char **argv)
 		else /* Any one found break the loop */
 			break;
 	}
-	vis_check_interfaces_are_up();
 
-	/* Get DUT info deosnot reflect proper values in the boot time so getting after delay */
+	/* Get DUT info doesnot reflect proper values in the boot time so getting after delay */
 	sleep(5);
+	vis_check_interfaces_are_up();
 	get_dut_info_from_driver();
 
 	get_server_ip_address();

@@ -1,7 +1,7 @@
 #
 # Linux acsdv2 Makefile
 #
-# Copyright 2018 Broadcom
+# Copyright 2019 Broadcom
 #
 # This program is the proprietary software of Broadcom and/or
 # its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
 # OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
 # NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
 #
-# $Id: Makefile 736533 2017-12-15 13:52:50Z $
+# $Id: Makefile 771599 2019-02-01 05:32:37Z $
 #
 
 WLAN_ComponentsInUse += bcmwifi math
@@ -57,9 +57,15 @@ CFLAGS	+= $(if $(WLAN_ComponentIncPath),$(WLAN_ComponentIncPath),$(addprefix -I,
 #CFLAGS += -DACS_DEBUG
 CFLAGS	+= -s -O2 -fno-strict-aliasing
 CFLAGS  += -DWL11AC_80P80 -DWL11AC_160
+CFLAGS  += -DZDFS_2G
+
+ifneq ($(CMWIFI),)
+LDFLAGS        += -L$(INSTALL_DIR)/lib -lwlcsm
+endif
+
 CFLAGS  += $(EXTRACFLAGS)
 LDFLAGS += -L$(TOP_PLATFORM)/nvram -L$(INSTALLDIR)/nvram/usr/lib -lnvram
-LDFLAGS += -L$(TOP)/shared -L$(INSTALLDIR)/shared/usr/lib -lshared
+LDFLAGS += -L$(TOP)/shared -L$(INSTALLDIR)/shared/usr/lib -lshared -lpthread
 LDFLAGS += -L$(TOP_PLATFORM)/wlcsm -lwlcsm
 LDFLAGS += $(EXTRA_LDFLAGS)
 
@@ -87,8 +93,15 @@ clean:
 
 ${OBJS}: acsd.h acsd_svr.h acs_dfsr.h
 
+ifneq ($(PREBUILT_BCMBIN),1)
 acsd2: bcmutils.o bcmxtlv.o bcm_app_utils.o ${OBJS}
 	$(CC) $(CFLAGS) $^ -o $@  $(LDFLAGS)
 
 acs_cli2: acsd_cli.o acsd_utils.o bcmwifi_channels.o
 	$(CC) $(CFLAGS) $^ -o $@  $(LDFLAGS)
+else
+acsd2:
+	cp -f $(SRCBASE)/../components/apps/acsdv2/$(PRBM_DIR)/$@ ./
+acs_cli2:
+	cp -f $(SRCBASE)/../components/apps/acsdv2/$(PRBM_DIR)/$@ ./
+endif

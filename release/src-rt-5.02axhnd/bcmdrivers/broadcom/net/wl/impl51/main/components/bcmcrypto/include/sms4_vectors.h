@@ -3,7 +3,7 @@
  * sms4_vectors.h
  * SMS4 block cipher test vectors
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

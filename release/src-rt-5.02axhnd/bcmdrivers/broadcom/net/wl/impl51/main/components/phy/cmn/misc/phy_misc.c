@@ -1,7 +1,7 @@
 /*
  * Miscellaneous module implementation.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_misc.c 767248 2018-08-31 20:55:03Z $
+ * $Id: phy_misc.c 775501 2019-06-02 00:18:19Z $
  */
 
 #include <phy_cfg.h>
@@ -195,7 +195,7 @@ wlc_phy_test_init(phy_info_t *pi, int channel, bool txpkt)
 	}
 
 	/* Force WLAN antenna */
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
 	return 0;
 }
@@ -504,7 +504,7 @@ wlc_phy_hold_upd(wlc_phy_t *pih, mbool id, bool set)
 	PHY_TRACE(("%s: id %d val %d old pi->measure_hold 0%x\n", __FUNCTION__, id, set,
 		pi->measure_hold));
 
-	PHY_CAL(("wl%d: %s: %s %s flag\n", pi->sh->unit, __FUNCTION__,
+	PHY_TRACE(("wl%d: %s: %s %s flag\n", pi->sh->unit, __FUNCTION__,
 		set ? "SET" : "CLR",
 		(id == PHY_HOLD_FOR_ASSOC) ? "ASSOC" :
 		((id == PHY_HOLD_FOR_SCAN) ? "SCAN" :
@@ -525,11 +525,17 @@ wlc_phy_hold_upd(wlc_phy_t *pih, mbool id, bool set)
 		mboolclr(pi->measure_hold, id);
 	}
 	if (id & PHY_HOLD_FOR_SCAN) {
+		PHY_CAL(("wl%d: %s: %s SCAN flag\n", pi->sh->unit, __FUNCTION__,
+			set ? "SET" : "CLR"));
 		phy_txiqlocal_scanroam_cache(pi, set);
 		phy_rxiqcal_scanroam_cache(pi, set);
-
-		// Call dc-cal on end of scan, as we don't save/restore dccal coeffs
-		if (!set) phy_chanmgr_dccal_force(pi);
+		/* No need to call dc-cal at the end of scan if phyreset is removed */
+		if (HW_PHYRESET_ON_BW_CHANGE == 1) {
+			/* Call dc-cal on end of scan if there is phyreset,
+			 * as we don't save/restore dccal coeffs
+			 */
+			if (!set) phy_chanmgr_dccal_force(pi);
+		}
 	}
 }
 

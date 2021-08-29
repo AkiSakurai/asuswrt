@@ -1,7 +1,7 @@
 /*
  * RadarDetect module internal interface.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_radar_st.h 767730 2018-09-25 03:30:30Z $
+ * $Id: phy_radar_st.h 777256 2019-07-24 23:41:25Z $
  */
 
 #ifndef _phy_radar_st_
@@ -107,20 +107,6 @@
 #define RDR_SDEPTH_EXTRA_PULSES 1
 #define TONEDETECTION 1
 #define LPQUANT 128
-/* below definitions for chanset_elna_chk */
-#define NC_CHAN_2GBW20 0x1
-#define NC_CHAN_2GBW40 0x2
-#define SC_CHAN_2GBW20 0x4
-#define SC_CHAN_2GBW40 0x8
-#define NC_CHAN_5GBW20 0x10
-#define NC_CHAN_5GBW40 0x20
-#define NC_CHAN_5GBW80 0x40
-#define NC_CHAN_5GBW160 0x80
-#define SC_CHAN_5GBW20 0x100
-#define SC_CHAN_5GBW40 0x200
-#define SC_CHAN_5GBW80 0x400
-#define SC_CHAN_5GBW160 0x800
-#define EXT_LNA_5G_OFF 0x1000
 
 typedef struct {
 	wl_radar_args_t radar_args;	/* radar detection parametners */
@@ -146,18 +132,13 @@ typedef struct {
 	uint32 last_tstart;
 	uint8 lp_cnt;
 	uint8 lp_skip_cnt;
-	int lp_pw_fm_matched;
 	uint16 lp_pw[3];
 	int16 lp_fm[3];
-	int lp_n_non_single_pulses;
-	bool lp_just_skipped;
 	uint16 lp_skipped_pw;
 	int16 lp_skipped_fm;
-	uint8 lp_skip_tot;
 	uint8 lp_csect_single;
 	uint32 last_detection_time;
 	uint32 last_detection_time_lp;
-	uint32 last_skipped_time;
 	uint8 lp_len_his[LP_LEN_HIS_SIZE];
 	uint8 lp_len_his_idx;
 	int16 min_detected_fc_bin5;
@@ -165,6 +146,11 @@ typedef struct {
 	int16 avg_detected_fc_bin5;
 	pulse_data_t pulse_tail[RDR_NANTENNAS];
 	int16 subband_result;
+	uint16 transmission_chirp;
+	uint8 chirp_fail_cnt;
+	uint8 chirp_match_cnt;
+	uint8 max_burst_intv_fail_cnt;
+	uint8 tot_lp_cnt;
 } radar_lp_info_t;
 
 /* RADAR data structure */
@@ -178,7 +164,6 @@ typedef struct {
 	radar_lp_info_t	*radar_work_lp_sc;	/* scan core radar persistent info */
 	wl_radar_status_t *radar_status_sc;	/* dump/clear radar status */
 	bool first_radar_indicator_sc;	/* first radar indicator */
-	uint16 chanset_elna_chk;
 } phy_radar_st_t;
 
 /*

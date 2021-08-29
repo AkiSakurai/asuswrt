@@ -1,7 +1,7 @@
 /*
  * TLV
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: tlv.c 542265 2015-03-19 08:29:38Z $
+ * $Id: tlv.c 766179 2018-07-26 07:49:15Z $
  */
 
 #include <wpstypes.h>
@@ -1442,6 +1442,9 @@ subtlv_getid(uint8 theId)
 	/* uint8 */
 	case WPS_WFA_SUBID_VERSION2:
 	case WPS_WFA_SUBID_SETTINGS_DELAY_TIME:
+#if defined(MULTIAP)
+	case WPS_WFA_SUBID_MAP_EXT_ATTR:
+#endif	/* MULTIAP */
 		return TLV_UINT8;
 	/* uint8*  */
 	case WPS_WFA_SUBID_AUTHORIZED_MACS:

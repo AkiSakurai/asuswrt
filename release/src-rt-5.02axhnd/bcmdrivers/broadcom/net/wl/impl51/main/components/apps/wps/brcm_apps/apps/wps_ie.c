@@ -1,7 +1,7 @@
 /*
  * WPS IE
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: wps_ie.c 542265 2015-03-19 08:29:38Z $
+ * $Id: wps_ie.c 770535 2018-12-19 06:55:19Z $
  */
 
 #include <stdio.h>
@@ -61,6 +61,9 @@
 #include <wps_ui.h>
 #include <wps_aplockdown.h>
 #include <wps_ie.h>
+#ifdef MULTIAP
+#include <bcmnvram.h>
+#endif	/* MULTIAP */
 
 #ifdef WFA_WPS_20_TESTBED
 #define STR_ATTR_LEN(str, max) ((uint16)((b_zlength) ? 0 : strlen(str)))
@@ -711,6 +714,11 @@ wps_ie_set(char *wps_ifname, CTlvSsrIE *ssrmsg)
 	char *wlnames, *wl_mode;
 	int band_flag;
 	int band;
+	bool is_backhaul = FALSE;
+#if defined(MULTIAP)
+	char wl_name[IFNAMSIZ] = {0};
+	char *map = NULL;
+#endif  /* MULTIAP */
 
 	/* Search matched ess with the wps_ifname */
 	imax = wps_get_ess_num();
@@ -748,13 +756,25 @@ found:
 
 			sprintf(tmp, "%s_band", ifname);
 			band = atoi(wps_safe_get_conf(tmp));
+			is_backhaul = FALSE;
+#if defined(MULTIAP)
+			/* Check whether interface is backhaul or not. */
+			(void)osifname_to_nvifname(ifname, wl_name, sizeof(wl_name));
+			snprintf(tmp, sizeof(tmp), "%s_map", wl_name);
+			map = nvram_safe_get(tmp);
+			if (map[0] != '\0' && (strtoul(map, NULL, 0) == WPS_NVVAL_MAP_BH_BSS)) {
+				is_backhaul = TRUE;
+			}
+#endif	/* MULTIAP */
 			/*
 			  * 1. If wps_ifname is null, set to all the wl interfaces.
 			  * 2. Set ie to the exact matched wl interface if wps_ifname is given.
 			  * 3. For each band, at most one wl interface is able to set the ssrmsg.
+			  * 4. For backhaul interface don't add wps ie.
 			  */
-			if (wps_ifname == NULL || strcmp(wps_ifname, ifname) == 0 ||
-			    ((i == matched) && (band != matched_band) && !(band_flag & band))) {
+			if (!is_backhaul &&
+			    (wps_ifname == NULL || strcmp(wps_ifname, ifname) == 0 ||
+			    ((i == matched) && (band != matched_band) && !(band_flag & band)))) {
 				/* Set ssrmsg to expected wl interface */
 				add_ie(i, ifname, ssrmsg);
 				band_flag |= band;

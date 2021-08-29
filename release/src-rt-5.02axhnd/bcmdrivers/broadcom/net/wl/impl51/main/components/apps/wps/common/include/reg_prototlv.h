@@ -1,7 +1,7 @@
 /*
  * Registrar protocol TLV
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: reg_prototlv.h 676790 2016-12-24 17:51:50Z $
+ * $Id: reg_prototlv.h 766179 2018-07-26 07:49:15Z $
  */
 
 #ifndef _WPS_REG_PROTO_TLV_
@@ -147,7 +147,8 @@ typedef SubTlvObj_uint8
 	CSubTlvVersion2,
 	CSubTlvReqToEnr,
 	CSubTlvSettingsDelayTime,
-	CSubTlvNwKeyShareable;
+	CSubTlvNwKeyShareable,
+	CSubTlvMAPAttr;
 
 typedef SubTlvObj_ptru
 	CSubTlvUuid, /* =16B */

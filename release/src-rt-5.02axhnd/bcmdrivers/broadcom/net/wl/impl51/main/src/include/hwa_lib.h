@@ -17,7 +17,7 @@
  * - Defaults to HWA-2.0 support, in particular WI formats.
  *
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -220,7 +220,7 @@ typedef struct hwa_dev hwa_dev_t;
 #define HWA_RING_ASSERT(exp)            HWA_NOOP
 #endif /* ! HWA_RING_DEBUG */
 
-// List of all circular ring interfaces between HWA and SW
+// List of all circular ring interfaces between HWA|PP and SW
 typedef enum hwa_ring_num
 {
 	HWA_RXPOST_WI_H2S_RINGNUM       = 0, // 1a->SW: RxPost WorkItems
@@ -232,8 +232,21 @@ typedef enum hwa_ring_num
 	HWA_TXFIFO_PKTCHAIN_S2H_RINGNUM = 6, // SW->3b: PktChain transmit request
 	HWA_TXSTAT_QUEUE_H2S_RINGNUM    = 7, // 4a->SW: TxStatus to SW
 	HWA_TXCPLE_CED_S2H_RINGNUM      = 8, // SW->4b: Completion Entry Desc ring
-	HWA_TXPOST_TXFREE_S2H_RINGNUM   = 9, // SW->3a: free TxBuffers  "FREEIDXTX", (REV >= 129)
-	HWA_INTERFACE_RING_NUM_MAX      = 10
+	HWA_TXPOST_TXFREE_S2H_RINGNUM   = 9, // SW->3a: Free TxBuffers "FREEIDXTX"
+
+	// With PacketPager, SW does not directly interface to HWA blocks.
+	// List of PacketPager circular ring interfaces: 5 Request + 3 Response
+	HWA_PKTPGR_PAGEIN_S2H_RINGNUM   = 10, // SW->PP: PAGEIN  Request
+	HWA_PKTPGR_PAGEIN_H2S_RINGNUM   = 11, // PP->SW: PAGEIN  Response
+	HWA_PKTPGR_PAGEOUT_S2H_RINGNUM  = 12, // SW->PP: PAGEOUT Request
+	HWA_PKTPGR_PAGEOUT_H2S_RINGNUM  = 13, // PP->SW: PAGEOUT Response
+	HWA_PKTPGR_PAGEMGR_S2H_RINGNUM  = 14, // SW->PP: PAGEMGR Request
+	HWA_PKTPGR_PAGEMGR_H2S_RINGNUM  = 15, // PP->SW: PAGEMGR Response
+	HWA_PKTPGR_FREEPKT_S2H_RINGNUM  = 16, // SW->PP: FREEPKT(Rx, Tx) Request
+	HWA_PKTPGR_FREERPH_S2H_RINGNUM  = 17, // SW->PP: FREE(RPH, D11) Request
+
+	HWA_INTERFACE_RING_NUM_MAX      = 18  // 6 bit ring_num: hence < 63
+
 } hwa_ring_num_t;
 
 // hwa_ring_id encodes HWA block_id, direction and ring number. Used in debug.
@@ -399,10 +412,10 @@ hwa_ring_cons_pend(hwa_ring_t *h2s_ring, int *pend_read)
 }
 
 static INLINE void // Given a H2S ring, SW commit a previously pending read
-hwa_ring_cons_done(hwa_ring_t *h2s_ring, int read)
+hwa_ring_cons_done(hwa_ring_t *h2s_ring, int read_index)
 {
 	HWA_RING_ASSERT(h2s_ring != HWA_RING_NULL);
-	bcm_ring_cons_done(HWA_RING_STATE(h2s_ring), read);
+	bcm_ring_cons_done(HWA_RING_STATE(h2s_ring), read_index);
 }
 
 static INLINE void // Given a H2S ring, SW set ring in state where all elements are consumed.
@@ -452,22 +465,93 @@ hwa_ring_is_cons_all(hwa_ring_t *s2h_ring)
  * interface). As a consumer of H2S interface, work will be forwarded to the
  * upstream handler.
  *
+ * For each H2S Interface a pair of callbacks may be registered, namely
+ * - Process one item from the H2S interface
+ * - Done processing N number of items, where N is defined as a budget or a
+ *   end-of-request. Done processing handler is optional. A Done processing
+ *   handler may be defined, for a semantics of End-Of-Processing.
+ *   E.g. one schedcmd request may result in several pktchain response items.
+ *
+ * The default handler is hwa_callback_noop()
+ *
+ * HWA_RXPOST_WI_H2S is for HWA_RXPOST_ONLY_BUILD, and is unsupported.
+ * HWA1a and HWA1b are both functional and so HWA1a ONLY is deprecated
+ *
+ * In HWA Packet Pager based interfaces, a callback is invoked in all H2S with
+ * an in-place pointer to the received element. Packet Pager uses a fixed
+ * 16 Byte structure for all requests and responses. Marshalling to/from a
+ * Packet Pager formatted request or response is in the caller. H2S callbacks
+ * are directly passed a pointer (in-place) to the ring element to be processed.
+ * Caller (consumer) should NEVER modify the ring element contents (i.e. const).
+ *
  * -----------------------------------------------------------------------------
  */
-typedef enum hwa_callback {
-	HWA_RXPOST_RECV     = 0,                // Process a RxPost workitem
-	HWA_RXFIFO_RECV     = 1,                // Process a received packet
-	HWA_RXFIFO_DONE     = 2,                // Done processing Rx FIFO
-	HWA_PKTCHAIN_SENDUP = 3,                // CFP_sendup, dngl_sendup
-	HWA_SCHEDCMD_DONE   = 4,                // Potential/Confirm SchedCmd done
-	HWA_TXSTAT_PROC     = 5,                // Process TxStatus
-	HWA_TXSTAT_DONE     = 6,                // Done processing all TxStatus
-	HWA_CALLBACK_MAX    = 7
+typedef enum hwa_callback
+{
+	                                        // Handlers Registered
+#if !defined(HWA_PKTPGR_BUILD)
+	                                        // HWA_RXPOST_WI_H2S
+	HWA_RXPOST_PROC_CB  = 0,                //   ---hwa_callback_noop---
+	HWA_RXPOST_DONE_CB  = 1,                //   ---hwa_callback_noop---
+	                                        // HWA_RXFILL_RXFIFO_H2S
+	HWA_RXFIFO_PROC_CB  = 2,                //   hwa_rxfill_bmac_recv()
+	HWA_RXFIFO_DONE_CB  = 3,                //   hwa_rxfill_bmac_done()
+	                                        // HWA_TXPOST_PKTCHAIN_H2S
+	HWA_TXPOST_PROC_CB  = 4,                //   hwa_txpost_sendup()
+	HWA_TXPOST_DONE_CB  = 5,                //   hwa_txpost_schedcmd_done()
+	                                        // HWA_TXSTAT_QUEUE_H2S
+	HWA_TXSTAT_PROC_CB  = 6,                //   hwa_txstat_bmac_proc()
+	HWA_TXSTAT_DONE_CB  = 7,                //   hwa_txstat_bmac_done()
+
+	HWA_CALLBACK_MAX    = 8
+
+#else  /* HWA_PKTPGR_BUILD */
+
+	// All response interface commands are packed to end of previous
+	HWA_PKTPGR_PAGEIN_CALLBACK       = 0,   /* ref: hwa_pp_pagein_cmd_t */
+	    HWA_PKTPGR_PAGEIN_RXPROCESS  =      /* hwa_pktpgr_pagein_rxprocess() */
+	        (HWA_PKTPGR_PAGEIN_CALLBACK + HWA_PP_PAGEIN_RXPROCESS),
+	    HWA_PKTPGR_PAGEIN_TXSTATUS   =      /* hwa_pktpgr_pagein_txstatus() */
+	        (HWA_PKTPGR_PAGEIN_CALLBACK + HWA_PP_PAGEIN_TXSTATUS),
+	    HWA_PKTPGR_PAGEIN_TXPOST     =      /* hwa_pp_pagein_cmd_txpost() */
+		    (HWA_PKTPGR_PAGEIN_CALLBACK + HWA_PP_PAGEIN_TXPOST_WITEMS),
+	    HWA_PKTPGR_PAGEIN_TXPOST_FRC =      /* hwa_pp_pagein_cmd_txpost() */
+	        (HWA_PKTPGR_PAGEIN_CALLBACK + HWA_PP_PAGEIN_TXPOST_WITEMS_FRC),
+
+	HWA_PKTPGR_PAGEOUT_CALLBACK      =      /* ref: hwa_pp_pageout_cmd_t */
+	        (HWA_PP_PAGEIN_CMD_MAX),
+	    HWA_PKTPGR_PAGEOUT_PKTLIST   =      /* hwa_pktpgr_pageout_pktlist() */
+	        (HWA_PKTPGR_PAGEOUT_CALLBACK + HWA_PP_PAGEOUT_PKTLIST_WR),
+	    HWA_PKTPGR_PAGEOUT_LOCAL     =      /* hwa_pktpgr_pageout_local() */
+	        (HWA_PKTPGR_PAGEOUT_CALLBACK + HWA_PP_PAGEOUT_PKTLOCAL),
+
+	HWA_PKTPGR_PAGEMGR_CALLBACK      =      /* ref: hwa_pp_pagemgr_cmd_t */
+	        (HWA_PP_PAGEIN_CMD_MAX + HWA_PP_PAGEOUT_CMD_MAX),
+	    HWA_PKTPGR_PAGEMGR_ALLOC_RX  =      /* hwa_pktpgr_pagemgr_alloc_rx() */
+	        (HWA_PKTPGR_PAGEMGR_CALLBACK + HWA_PP_PAGEMGR_ALLOC_RX),
+	    HWA_PKTPGR_PAGEMGR_ALLOC_RPH =      /* hwa_pktpgr_pagemgr_alloc_rph() */
+	        (HWA_PKTPGR_PAGEMGR_CALLBACK + HWA_PP_PAGEMGR_ALLOC_RX_RPH),
+	    HWA_PKTPGR_PAGEMGR_ALLOC_TX  =      /* hwa_pktpgr_pagemgr_alloc_tx() */
+	        (HWA_PKTPGR_PAGEMGR_CALLBACK + HWA_PP_PAGEMGR_ALLOC_TX),
+	    HWA_PKTPGR_PAGEMGR_PUSH      =      /* hwa_pktpgr_pagemgr_push() */
+	        (HWA_PKTPGR_PAGEMGR_CALLBACK + HWA_PP_PAGEMGR_PUSH),
+	    HWA_PKTPGR_PAGEMGR_PULL      =      /* hwa_pktpgr_pagemgr_pull() */
+	        (HWA_PKTPGR_PAGEMGR_CALLBACK + HWA_PP_PAGEMGR_PULL),
+
+	HWA_CALLBACK_MAX =                      /* all response commands */
+	(HWA_PP_PAGEIN_CMD_MAX + HWA_PP_PAGEOUT_CMD_MAX + HWA_PP_PAGEMGR_CMD_MAX)
+#endif /* HWA_PKTPGR_BUILD */
+
 } hwa_callback_t;
 
-// Upstream subsystems callback handlers
+// Application subsystems callback handlers
+#if !defined(HWA_PKTPGR_BUILD)
 typedef int (* hwa_callback_fn_t)(void *context, uintptr arg1, uintptr arg2,
                    uint32 arg3, uint32 arg4);
+#else  /* HWA_PKTPGR_BUILD */
+typedef int (* hwa_callback_fn_t)(void *context,
+                   hwa_dev_t *dev, /* const */ hwa_pp_cmd_t *pp_cmd);
+#endif /* HWA_PKTPGR_BUILD */
 
 typedef struct hwa_handler {                // upstream subsystem's handler
 	void              *context;             // opaque callback context
@@ -543,7 +627,7 @@ int     hwa_rxpost_deinit(hwa_rxpost_t *rxpost);
 int     hwa_rxpost_process(hwa_dev_t *dev);
 #endif /* HWA_RXPOST_ONLY_BUILD */
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 void    hwa_rxpost_dump(hwa_rxpost_t *rxpost, struct bcmstrbuf *b, bool verbose);
 #endif // endif
 
@@ -669,10 +753,10 @@ int     hwa_rxfill_rxbuffer_process(hwa_dev_t *dev, uint32 core, bool bound);
 // Return the number of available RxBuffers for reception in the RX FIFOs
 uint32  hwa_rxfill_fifo_avail(hwa_rxfill_t *rxfill, uint32 core);
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 // Debug support for HWA1b block
 void    hwa_rxfill_dump(hwa_rxfill_t *rxfill, struct bcmstrbuf *b, bool verbose);
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 // Debug dump of various transfer status
 #define HWA_RXFILL_TFRSTATUS_DEFINE(mgr) \
 void hwa_rxfill_##mgr##_tfrstatus(hwa_rxfill_t *rxfill, uint32 core)
@@ -739,10 +823,10 @@ int     hwa_rxpath_error(hwa_dev_t *dev, uint32 core); // return 0 = no error
 void    hwa_rxpath_hpa_req_test(hwa_dev_t *dev, uint32 pktid);
 #endif // endif
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 // Debug support for HWA1x blocks 1a + 1b
 void    hwa_rxpath_dump(hwa_rxpath_t *rxpath, struct bcmstrbuf *b, bool verbose, bool dump_regs);
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 void    hwa_rxpath_regs_dump(hwa_rxpath_t *rxpath, struct bcmstrbuf *b);
 #endif // endif
 #endif /* BCMDBG */
@@ -787,6 +871,10 @@ typedef struct hwa_rxdata
 	uint32                     fhr_pktfetch;  // enabled pktfetch filter bitmap
 	uint32                     fhr_l2filter;  // enabled l2filter filter bitmap
 	uint32                     llc_snap_da_filter;  // enabled l2filter filter bitmap
+	uint32                     udpv6_filter;   // l2filter filter bitmap for UDPv6
+	uint32                     udpv4_filter;  // l2filter filter bitmap for UDPv4
+	uint32                     tcp_filter;    // l2filter filter bitmap for TCP
+	uint32                     chainable_filters;   // chainable filter bitmap
 
 	uint32                     rxfilteren;    // Enabled filters in HWA2a
 
@@ -803,7 +891,7 @@ typedef struct hwa_rxdata
 #ifdef WLNDOE
 	uint32                     ndoe_filter;   // pktfetch filter bitmap for NDOE
 #endif // endif
-#if defined(BDO) || defined(TKO) || defined(ICMP)
+#if defined(BDO) || defined(ICMP)
 	uint32                     ip_filter;     // pktfetch filter bitmap for IP packet
 #endif // endif
 #ifdef WL_TBOW
@@ -820,6 +908,9 @@ void    hwa_rxdata_deinit(hwa_rxdata_t *rxdata);
 
 // Init exist known pktfetch filter
 void    hwa_rxdata_fhr_filter_init_pktfetch(hwa_rxdata_t *rxdata);
+
+// Reinit exist known filter
+void    hwa_rxdata_fhr_filter_reinit(hwa_rxdata_t *rxdata);
 
 // Allocate a new filter and start building parameters before configuring HWA2a
 int     hwa_rxdata_fhr_filter_new(hwa_rxdata_fhr_filter_type_t filter_type,
@@ -839,7 +930,7 @@ int     hwa_rxdata_fhr_filter_del(uint32 filter_id);
 #ifdef WLNDOE
 void    hwa_rxdata_fhr_filter_ndoe(bool enable);
 #endif // endif
-#if defined(BDO) || defined(TKO) || defined(ICMP)
+#if defined(BDO) || defined(ICMP)
 void    hwa_rxdata_fhr_filter_ip(bool enable);
 #endif // endif
 #ifdef WL_TBOW
@@ -855,7 +946,7 @@ uint32  hwa_rxdata_fhr_hits_get(uint32 filter_id);
 void    hwa_rxdata_fhr_hits_clr(uint32 filter_id); // ALL: filter_id = ~0U
 
 // HWA2a Debug Support
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 void    hwa_rxdata_fhr_dump(hwa_rxdata_t *rxdata, struct bcmstrbuf *b, bool verbose);
 void    hwa_rxdata_dump(hwa_rxdata_t *rxdata, struct bcmstrbuf *b, bool verbose);
 #endif /* BCMDBG */
@@ -914,7 +1005,6 @@ void    hwa_rxdata_dump(hwa_rxdata_t *rxdata, struct bcmstrbuf *b, bool verbose)
 
 #define HWA_TXPOST_FLOW_LUT_COLL_DEPTH      8 // Flow LUT collision list depth
 
-#if HWA_REVISION_GE_129
 // S2H TxFree Queue Interface interrupt aggregation
 #define HWA_TXPOST_RING_INTRAGGR_COUNT      4
 #define HWA_TXPOST_RING_INTRAGGR_TMOUT      200   // usecs
@@ -923,7 +1013,6 @@ void    hwa_rxdata_dump(hwa_rxdata_t *rxdata, struct bcmstrbuf *b, bool verbose)
 
 // S2H TX Free TxBuf Index ring aka "FREEIDXTX"
 #define HWA_TXPOST_TXFREE_DEPTH             1024
-#endif // endif
 
 // Flow Ring Configuration customization
 typedef enum hwa_txpost_frc_field
@@ -984,6 +1073,9 @@ typedef struct hwa_txpost               // HWA3a TxPost state
 	// flowing id recoder per schedcmd id
 	uint16                  flowring_id[HWA_TXPOST_SCHEDCMD_RING_DEPTH];
 
+	// HWA fetch request flags per schedcmd id
+	uint8			schedule_flags[HWA_TXPOST_SCHEDCMD_RING_DEPTH];
+
 	// Audit HWA32 schedcmd and pktchain WI transfer
 	HWA_DEBUG_EXPR(uint8    wi_count[HWA_TXPOST_SCHEDCMD_RING_DEPTH]);
 
@@ -1029,14 +1121,29 @@ typedef struct hwa_txpost               // HWA3a TxPost state
 	uint8                   wi_size;        // size of a TxPost WI
 	uint8                   aggr_spec;      // aggregation depth 4b and mode 1b
 
-#if HWA_REVISION_GE_129
 	hwa_ring_t              txfree_ring;    // S2H interface "FREEIDXTX"
 	HWA_STATS_EXPR(uint32   txfree_cnt);
-#endif /* HWA_REVISION_GE_129 */
 
 	// HWA3a schedule command histogram
 	HWA_BCMDBG_EXPR(uint32 schecmd_histogram[HWA_TXPOST_SCHEDCMD_TRANSFER_COUNT+1]);
 } hwa_txpost_t;
+
+#define TXPOST_SCHED_FLAGS(txpost, cmd_id)	((txpost)->schedule_flags[(cmd_id)])
+
+#define TXPOST_RESP_PEND_FLAGS_ISSET(flags)	((flags) & TXPOST_SCHED_FLAGS_RESP_PEND_MASK)
+#define TXPOST_RESP_PEND_SET(txpost, cmd_id) \
+	(TXPOST_SCHED_FLAGS(txpost, cmd_id) |= TXPOST_SCHED_FLAGS_RESP_PEND_MASK)
+
+#define TXPOST_RESP_PEND_ISSET(txpost, cmd_id) \
+	(TXPOST_RESP_PEND_FLAGS_ISSET(TXPOST_SCHED_FLAGS((txpost), (cmd_id))))
+
+#define TXPOST_SCHED_FLAGS_SQS_FORCE_ISSET(flags) \
+	((flags) & TXPOST_SCHED_FLAGS_SQS_FORCE_MASK)
+#define TXPOST_SCHED_FLAGS_SQS_FORCE_SET(txpost, cmd_id) \
+	(TXPOST_SCHED_FLAGS(txpost, cmd_id) |= TXPOST_SCHED_FLAGS_SQS_FORCE_MASK)
+
+#define TXPOST_SCHED_FLAGS_SQS_ISSET(txpost, cmd_id) \
+	(TXPOST_SCHED_FLAGS_SQS_FORCE_ISSET(TXPOST_SCHED_FLAGS((txpost), (cmd_id))))
 
 // HWA3a block level management
 void    BCMATTACHFN(hwa_txpost_detach)(hwa_txpost_t *txpost);
@@ -1093,7 +1200,7 @@ void    hwa_txpost_stats_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b,
             uint32 set_idx, uint8 clear_on_copy);
 
 // HWA3a Debug Support
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 // Use local SW shadowed state, to dump HWA3a AXI lookup tables
 void    hwa_txpost_frc_table_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b, bool verbose);
 #if !defined(HWA_NO_LUT)
@@ -1104,7 +1211,7 @@ void    hwa_txpost_flow_lut_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b, bool
 
 // Dump all SW and HWA3a state
 void    hwa_txpost_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b, bool verbose, bool dump_regs);
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 // Dump HWA3a registers
 void    hwa_txpost_regs_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b);
 #endif // endif
@@ -1132,9 +1239,7 @@ void    hwa_txpost_bm_lb_init(hwa_dev_t *dev, void *memory, uint16 pkt_total,
 #define HWA_TXFIFO_PKTCHAIN_RING_DEPTH  64
 
 #define HWA_TXFIFO_PKTCNT_THRESHOLD     0
-#if HWA_REVISION_GE_129
 #define HWA_TXFIFO_AGGR_AQM_DESC_THRESHOLD 3
-#endif // endif
 
 typedef struct hwa_txfifo
 {
@@ -1177,14 +1282,14 @@ void    hwa_txfifo_stats_clear(hwa_txfifo_t *txfifo, uint32 core);
 void    hwa_txfifo_stats_dump(hwa_txfifo_t *txfifo, struct bcmstrbuf *b, uint8 clear_on_copy);
 
 // HWA3b Debug Support
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 // Dump HWA3b state
 void    hwa_txfifo_state(hwa_dev_t *dev);
 // Dump all SW and HWA3b state
 void    hwa_txfifo_dump(hwa_txfifo_t *txfifo, struct bcmstrbuf *b, bool verbose, bool dump_regs,
             bool dump_txfifo_shadow, uint8 *fifo_bitmap);
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 // Dump HWA3b registers
 void    hwa_txfifo_regs_dump(hwa_txfifo_t *txfifo, struct bcmstrbuf *b);
 #endif // endif
@@ -1203,8 +1308,11 @@ void    hwa_txfifo_regs_dump(hwa_txfifo_t *txfifo, struct bcmstrbuf *b);
 #define HWA_TXSTAT_QUEUE_DEPTH          1024
 
 // H2S TxStatus Queue Interface interrupt aggregation
-#define HWA_TXSTAT_INTRAGGR_COUNT       32
-#define HWA_TXSTAT_INTRAGGR_TMOUT       100 // usecs
+//#define HWA_TXSTAT_INTRAGGR_COUNT       32
+//#define HWA_TXSTAT_INTRAGGR_TMOUT       100 // usecs
+// No interrupt coalescing to reduce latency by default
+#define HWA_TXSTAT_INTRAGGR_COUNT       1
+#define HWA_TXSTAT_INTRAGGR_TMOUT       0 // usecs
 
 #define HWA_TXSTAT_RING_ELEM_SIZE       32 // 32 Bytes per TxStatus
 
@@ -1230,6 +1338,10 @@ typedef struct hwa_txstat
 	HWA_STATS_EXPR(uint32 proc_cnt[HWA_TX_CORES_MAX]);
 
 	hwa_txstat_stats_t stats[HWA_TX_CORES]; // Common block stats
+
+	hwa_mem_addr_t          txstat_addr;    // AXI address of HWA4b TxStat memory
+
+	bool                    status_stall;   // WAR for TXs stall.
 } hwa_txstat_t;
 
 // HWA4a TxStat block level management
@@ -1246,10 +1358,10 @@ int     hwa_txstat_process(struct hwa_dev *dev, uint32 core, bool bound);
 void    hwa_txstat_stats_clear(hwa_txstat_t *txstat, uint32 core);
 void    hwa_txstat_stats_dump(hwa_txstat_t *txstat, struct bcmstrbuf *b, uint8 clear_on_copy);
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 // Debug support for HWA1x blocks 1a + 1b + 2a
 void    hwa_txstat_dump(hwa_txstat_t *txstat, struct bcmstrbuf *b, bool verbose, bool dump_regs);
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 void    hwa_txstat_regs_dump(hwa_txstat_t *txstat, struct bcmstrbuf *b);
 #endif // endif
 #endif /* BCMDBG */
@@ -1396,15 +1508,163 @@ void    hwa_cpleng_status(hwa_cpleng_t *cpleng, struct bcmstrbuf *b);
 void    hwa_cpleng_stats_clear(hwa_cpleng_t *cpleng, uint32 eng_id);
 void    hwa_cpleng_stats_dump(hwa_cpleng_t *cpleng, struct bcmstrbuf *b, uint8 clear_on_copy);
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 // Debug support for HWA2b and HWA4b
 void    hwa_cple_dump(hwa_cple_t *cple, struct bcmstrbuf *b, const char *name, bool verbose);
 void    hwa_cpleng_dump(hwa_cpleng_t *cpleng, struct bcmstrbuf *b, bool verbose, bool dump_regs);
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 void    hwa_cpleng_regs_dump(hwa_cpleng_t *cpleng, struct bcmstrbuf *b);
 #endif // endif
 #endif /* BCMDBG */
 #endif /* HWA_CPLENG_BUILD */
+
+/*
+ * -----------------------------------------------------------------------------
+ * Section: HWA Packet Pager
+ * -----------------------------------------------------------------------------
+ */
+#if defined(HWA_PKTPGR_BUILD)
+
+// Depth of PCIe Full Dongle HWA1a RxPost to SW Interface
+#define HWA_PKTPGR_INTERFACE_DEPTH  512
+
+// No interrupt coalescing to reduce latency by default
+#define HWA_PKTPGR_INTRAGGR_COUNT   1
+#define HWA_PKTPGR_INTRAGGR_TMOUT   0       // usecs
+
+// XXX FIXME KEN confirm with VLSI below two: 16 delay cycles? RxProcBestEffort?
+#define HWA_PKTPGR_REQ_WAITTIME     0       // delay cycles between requests
+#define HWA_PKTPGR_RX_BESTEFFORT    0       // XXX FIXME ???
+
+// XXX FIXME Confirm order of Thresh1 or Thresh2 - which should be higher
+#define HWA_PKTPGR_HOSTPKTPOOL_TH1  64
+#define HWA_PKTPGR_HOSTPKTPOOL_TH2  128
+#define HWA_PKTPGR_DNGLPKTPOOL_TH1  64
+#define HWA_PKTPGR_DNGLPKTPOOL_TH2  128
+
+#define HWA_PKTPGR_D11BDEST_TH0     16     // XXX FIXME ...
+#define HWA_PKTPGR_D11BDEST_TH1     32
+#define HWA_PKTPGR_D11BDEST_TH2     128
+
+// First level IntStatus: common::pageintstatus
+// - exclude PAGER_BM:
+//           HDBM(full, Th1, Th2, alloc/free err)
+//           DDBM(full, Th1, Th2, alloc/free err)
+#define HWA_PKTPGR_INT_MASK                         \
+	(HWA_COMMON_PAGEINTSTATUS_PAGER_IN_INTR_MASK  | \
+	 HWA_COMMON_PAGEINTSTATUS_PAGER_OUT_INTR_MASK | \
+	 HWA_COMMON_PAGEINTSTATUS_PAGER_MGR_INTR_MASK)
+//   HWA_COMMON_PAGEINTSTATUS_PAGER_BM_INTR_MASK
+
+// Second level IntStatus: PAGEIN, PAGEOUT, PAGEMGR, PAGERBM
+// When second level intstatus is enabled, it gets noted into first level
+//
+// PAGEIN: exclude PPINREQINT and all errors
+#define HWA_PKTPGR_PAGEIN_INT_MASK \
+	(HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPINT_MASK)
+// PAGEOUT: exclude PPOUTREQINT and all errors
+#define HWA_PKTPGR_PAGEOUT_INT_MASK \
+	(HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTRSPINT_MASK)
+// PAGEMGR: exclude PPALLOCREQINT, PPFREEREQINT, PPFREERPHREQINT and all errors
+#define HWA_PKTPGR_PAGEMGR_INT_MASK \
+	(HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPINT_MASK)
+// PAGERBM: exclude PP#DBMFULLINT, PP#DBMTH1INT, PP#DBMTH2INT and alloc/free err
+#define HWA_PKTPGR_PAGERBM_INT_MASK (0U)
+
+/*
+ * (see hwa_reg_defs.h)
+ * Errors reported via PAGEIN, PAGEOUT, PAGEMGR, PAGERBM
+ *
+ *      HWA_PAGER_PAGEIN_ERRORS_MASK
+ *          + HWA_PAGER_PAGEIN_REQ_ERRORS_MASK
+ *          + HWA_PAGER_PAGEIN_RSP_ERRORS_MASK
+ *      HWA_PAGER_PAGEOUT_ERRORS_MASK
+ *          + HWA_PAGER_PAGEOUT_REQ_ERRORS_MASK
+ *          + HWA_PAGER_PAGEOUT_RSP_ERRORS_MASK
+ *      HWA_PAGER_PAGEMGR_ERRORS_MASK
+ *          + HWA_PAGER_PAGEMGR_REQ_ERRORS_MASK
+ *          + HWA_PAGER_PAGEMGR_RSP_ERRORS_MASK
+ *      HWA_PAGER_PAGERBM_ERRORS_MASK
+ *          + HWA_PAGER_HDBM_ERRORS_MASK
+ *          + HWA_PAGER_DDBM_ERRORS_MASK
+ *
+ * hwa_pktpgr_status() queries above errors in PAGEIN, PAGEOUT, PAGEMGR, PAGERBM
+ */
+
+typedef enum hwa_pktpgr_ring
+{
+	hwa_pktpgr_pagein_req_ring     = 0,
+	hwa_pktpgr_pageout_req_ring    = 1,
+	hwa_pktpgr_pagemgr_req_ring    = 2,
+	hwa_pktpgr_freepkt_req_ring    = 3,
+	hwa_pktpgr_freerph_req_ring    = 4,
+	hwa_pktpgr_req_ring_max        = 5,
+
+	hwa_pktpgr_pagein_rsp_ring     = 0,
+	hwa_pktpgr_pageout_rsp_ring    = 1,
+	hwa_pktpgr_pagemgr_rsp_ring    = 2,
+	hwa_pktpgr_rsp_ring_max        = 3,
+
+	hwa_pktpgr_ring_max            = hwa_pktpgr_req_ring_max
+	                               + hwa_pktpgr_rsp_ring_max
+} hwa_pktpgr_ring_t;
+
+typedef struct hwa_pktpgr
+{
+	// Table of Packet Pager Request and Response hwa_ring contexts
+	hwa_ring_t    * req_ring[hwa_pktpgr_req_ring_max];
+	hwa_ring_t    * rsp_ring[hwa_pktpgr_rsp_ring_max];
+
+	uint8_t         trans_id[hwa_pktpgr_req_ring_max];
+
+	hwa_ring_t      pagein_req_ring;        // PageIN Request ring
+	hwa_ring_t      pagein_rsp_ring;        // PageIN Response ring
+	hwa_ring_t      pageout_req_ring;       // PageOUT Request ring
+	hwa_ring_t      pageout_rsp_ring;       // PageOUT Response ring
+	hwa_ring_t      pagemgr_req_ring;       // PageMGR Request ring
+	hwa_ring_t      pagemgr_rsp_ring;       // PageMGR Response ring
+	hwa_ring_t      freepkt_req_ring;       // PageMGR FREEPKT Request ring
+	hwa_ring_t      freerph_req_ring;       // PageMGR FREERPH Request ring
+
+	// Table of Host and Dongle Packet Pool context
+	uint16          hostpktpool_max;        // Host Lbuf Pool max items
+	uint16          dnglpktpool_max;        // Dngl Lbuf Pool max items
+	haddr64_t       hostpktpool_haddr64;    // Host Lbuf Pool memory address
+	void          * dnglpktpool_mem;        // Dngl Lbuf Pool memory pointer
+
+} hwa_pktpgr_t;
+
+// Post a hwa_pp_cmd_t request command to a S2H Request ring
+int     hwa_pktpgr_request(hwa_dev_t *dev,
+                           hwa_pktpgr_ring_t req_ring, void *hwa_pp_cmd);
+
+hwa_ring_t * BCMATTACHFN(hwa_pktpgr_ring_init)(hwa_ring_t *hwa_ring,
+                         const char *ring_name, uint8 ring_dir, uint8 ring_num,
+                         uint16 depth, void *memory,
+                         hwa_regs_t *regs, hwa_pp_ring_t *hwa_pp_ring);
+
+hwa_pktpgr_t *BCMATTACHFN(hwa_pktpgr_attach)(hwa_dev_t *dev);
+void    BCMATTACHFN(hwa_pktpgr_detach)(hwa_pktpgr_t *pktpgr);
+
+void    hwa_pktpgr_preinit(hwa_pktpgr_t *pktpgr);
+
+void    hwa_pktpgr_init(hwa_pktpgr_t *pktpgr);
+void    hwa_pktpgr_deinit(hwa_pktpgr_t *pktpgr);
+
+// HWA Packet Pager Debug Support
+void    hwa_pktpgr_status(hwa_dev_t *dev);
+
+#if defined(BCMDBG) || defined(HWA_DUMP)
+// Dump all SW and HWA Packet Pager state
+void    hwa_pktpgr_dump(hwa_pktpgr_t *pktpgr, struct bcmstrbuf *b,
+                        bool verbose, bool dump_regs);
+#if defined(WLTEST) || defined(HWA_DUMP)
+// Dump HWA Packet Pager registers
+void    hwa_pktpgr_regs_dump(hwa_pktpgr_t *pktpgr, struct bcmstrbuf *b);
+#endif // endif
+#endif /* BCMDBG */
+
+#endif /* HWA_PKTPGR_BUILD */
 
 /*
  * -----------------------------------------------------------------------------
@@ -1432,7 +1692,10 @@ typedef struct hwa_dma
 {
 	uint8 channels, channels_max;             // channel count
 	uint8 burst_length_max;                   // burst length
-	uint8 burst_length[HWA_DMA_CHANNELS_MAX]; // burst length
+	struct {
+		uint8 tx;                         // tx burst length
+		uint8 rx;                         // rx burst length
+	} burst_length[HWA_DMA_CHANNELS_MAX];
 	uint8 outstanding_rds, outstanding_rds_max;
 	uint8 arbitration;                        // 0 = RR, 1 = fixed Chnl# prio
 
@@ -1444,9 +1707,9 @@ void    hwa_dma_enable(hwa_dma_t *dma);     // HWA's DMA engines enabled
 
 hwa_dma_status_t hwa_dma_channel_status(hwa_dma_t *dma, uint32 channel);
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 void    hwa_dma_dump(hwa_dma_t *dma, struct bcmstrbuf *b, bool verbose, bool dump_regs);
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 void    hwa_dma_regs_dump(hwa_dma_t *dma, struct bcmstrbuf *b);
 #endif // endif
 #endif /* BCMDBG */
@@ -1497,9 +1760,9 @@ int     hwa_bm_alloc(hwa_bm_t *bm, dma64addr_t *buf_addr);
 int     hwa_bm_free(hwa_bm_t *bm, uint16 buf_idx);
 uint32  hwa_bm_avail(hwa_bm_t *bm);
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 void    hwa_bm_dump(hwa_bm_t *bm, struct bcmstrbuf *b, bool verbose, bool dump_regs);
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 void    hwa_bm_regs_dump(hwa_bm_t *bm,  struct bcmstrbuf *b);
 #endif // endif
 #endif /* BCMDBG */
@@ -1582,6 +1845,7 @@ typedef enum hwa_module_cmd
 } hwa_module_cmd_t;
 
 // HWA Module block: enum values picked from register common::module_enable
+// XXX FIXME: KEN Check module_clkavail and module_idle .. no pager bit9?
 typedef enum hwa_module_block
 {
 	HWA_MODULE_RXCORE0    = 0, // Core0: HWA1a RxPost HWA1b RxFILL HWA2a RxDATA
@@ -1593,6 +1857,7 @@ typedef enum hwa_module_block
 	HWA_MODULE_TXFIFO     = 6, // HWA3b TxFIFO
 	HWA_MODULE_TXSTAT1    = 7, // Core1: HWA4a TxSTAT
 	HWA_MODULE_STATS      = 8, // Statistics Engine
+	HWA_MODULE_PAGER      = 9  // Pager Block
 } hwa_module_block_t;
 
 // Control a HWA module by programming the corresponding common register
@@ -1642,6 +1907,8 @@ struct hwa_dev
 	// HWA common: shared by multiple blocks
 	hwa_dma_t       dma;                      // HWA DMA engine SW state
 
+	HWA_PKTPGR_EXPR(hwa_pktpgr_t pktpgr);     // SW state of HWA Packet Pager
+
 	HWA_RXPATH_EXPR(hwa_rxpath_t rxpath);     // SW state HWA1a, HWA1b and HWA2a
 
 #ifdef HWA_MAC_BUILD // HWA MAC facing blocks, used in Dongle and NIC mode
@@ -1688,8 +1955,6 @@ struct hwa_dev
 	uint8			txstat_apb;       //0: AXI, 1: APB
 	// HWA 3b update packet chain next.
 	uint8			txfifo_hwupdnext; //0: doesn't update, 1: update
-	// TX buffer free interface.
-	uint8			tx_pktdealloc;    //0: register base, 1: free queue base.
 	bool                    inited;
 	bool                    up;
 	bool                    reinit;
@@ -1724,6 +1989,32 @@ struct hwa_dev
 #define HWA_DEVP(AUDIT) \
 ({ if (AUDIT) { HWA_AUDIT_DEV(hwa_dev); } hwa_dev; })
 
+#define HWA_SWITCHCORE_DEFS()	uint32 orig_core_idx, intr_val;
+#define HWA_SWITCHCORE(_sih_, _origidx_, _intr_val_)				\
+({									  \
+	*_origidx_ = 0;							 \
+	*_intr_val_ = 0;							\
+	if (BUSTYPE(_sih_->bustype) == PCI_BUS) {			   \
+		si_switch_core(_sih_, HWA_CORE_ID, _origidx_, _intr_val_);   \
+	}								   \
+})
+#define HWA_RESTORECORE(_sih_, _coreid_, _intr_val_)	\
+if (BUSTYPE(_sih_->bustype) == PCI_BUS)		 \
+	si_restore_core(_sih_, _coreid_, _intr_val_);
+
+#define MAC_SWITCHCORE_DEFS()	uint32 orig_core_idx, intr_val;
+#define MAC_SWITCHCORE(_sih_, _origidx_, _intr_val_)				\
+({									  \
+	*_origidx_ = 0;							 \
+	*_intr_val_ = 0;							\
+	if (BUSTYPE(_sih_->bustype) == PCI_BUS) {			   \
+		si_switch_core(_sih_, D11_CORE_ID, _origidx_, _intr_val_);   \
+	}								   \
+})
+#define MAC_RESTORECORE(_sih_, _coreid_, _intr_val_)	\
+if (BUSTYPE(_sih_->bustype) == PCI_BUS)		 \
+	si_restore_core(_sih_, _coreid_, _intr_val_);
+
 #define HWA_MODULE_IDLE_BURNLOOP	256
 #define HWA_FSM_IDLE_POLLLOOP		10 * 1000
 
@@ -1749,8 +2040,8 @@ bool    hwa_txdma_dpc(hwa_dev_t *dev, uint32 intstatus);
 bool    hwa_dpc(hwa_dev_t *dev);
 #endif /* HWA_DPC_BUILD */
 
-#if defined(BCMDBG)
-#if defined(WLTEST)
+#if defined(BCMDBG) || defined(HWA_DUMP)
+#if defined(WLTEST) || defined(HWA_DUMP)
 void    hwa_regs_dump(hwa_dev_t *dev, struct bcmstrbuf *b, uint32 block_bitmap);
 void    hwa_reg_read(hwa_dev_t *dev, uint32 reg_offset);
 #endif // endif

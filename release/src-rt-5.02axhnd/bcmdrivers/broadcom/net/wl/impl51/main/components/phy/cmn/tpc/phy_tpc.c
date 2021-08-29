@@ -1,7 +1,7 @@
 /*
  * TxPowerCtrl module implementation.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tpc.c 759380 2018-04-25 06:54:57Z $
+ * $Id: phy_tpc.c 774858 2019-05-09 02:42:47Z $
  */
 
 #include <phy_cfg.h>
@@ -157,6 +157,29 @@ BCMATTACHFN(phy_tpc_attach)(phy_info_t *pi)
 	info->data->channel_short_window = TRUE;
 #endif // endif
 
+#ifdef WL11AX
+	if ((info->data->ru_tx_power_offset = ppr_ru_create(pi->sh->osh)) == NULL) {
+		PHY_ERROR(("wl%d: %s: out of memory, malloc ru_tx_power_offset fail\n",
+				pi->sh->unit, __FUNCTION__));
+		goto fail;
+	}
+	if ((info->data->clm_ru_txpwr_limit = ppr_ru_create(pi->sh->osh)) == NULL) {
+		PHY_ERROR(("wl%d: %s: out of memory, malloc clm_ru_txpwr_limit fail\n",
+				pi->sh->unit, __FUNCTION__));
+		goto fail;
+	}
+	if ((info->data->board_ru_txpwr_limit = ppr_ru_create(pi->sh->osh)) == NULL) {
+		PHY_ERROR(("wl%d: %s: out of memory, malloc board_ru_txpwr_limit fail\n",
+				pi->sh->unit, __FUNCTION__));
+		goto fail;
+	}
+	if ((info->data->tgt_ru_txpwr_limit = ppr_ru_create(pi->sh->osh)) == NULL) {
+		PHY_ERROR(("wl%d: %s: out of memory, malloc tgt_ru_txpwr_limit fail\n",
+				pi->sh->unit, __FUNCTION__));
+		goto fail;
+	}
+#endif /* WL11AX */
+
 	/* Register callbacks */
 
 	/* register init fn */
@@ -189,6 +212,21 @@ BCMATTACHFN(phy_tpc_detach)(phy_tpc_info_t *info)
 	}
 
 	pi = info->priv->pi;
+
+#ifdef WL11AX
+	if (info->data->ru_tx_power_offset != NULL) {
+		ppr_ru_delete(pi->sh->osh, info->data->ru_tx_power_offset);
+	}
+	if (info->data->clm_ru_txpwr_limit != NULL) {
+		ppr_ru_delete(pi->sh->osh, info->data->clm_ru_txpwr_limit);
+	}
+	if (info->data->board_ru_txpwr_limit != NULL) {
+		ppr_ru_delete(pi->sh->osh, info->data->board_ru_txpwr_limit);
+	}
+	if (info->data->tgt_ru_txpwr_limit != NULL) {
+		ppr_ru_delete(pi->sh->osh, info->data->tgt_ru_txpwr_limit);
+	}
+#endif /* WL11AX */
 
 	phy_mfree(pi, info, sizeof(phy_tpc_mem_t));
 }
@@ -276,6 +314,11 @@ phy_preassoc_pwrctrl_upd(phy_info_t *pi, chanspec_t chspec)
 {
 	phy_tpc_info_t *ti = pi->tpci;
 	phy_type_tpc_fns_t *fns = ti->priv->fns;
+	/* XXX this block of code
+	   should be called before radio channel
+	   is changed to the new channel
+	   [PHY_RE_ARCH] Condition pi->sh->up is used redundantly
+	*/
 	if ((pi->radio_chanspec != chspec) && fns->shortwindow_upd != NULL &&
 	    fns->store_setting != NULL && pi->sh->up) {
 		(fns->store_setting)(fns->ctx, pi->radio_chanspec);
@@ -365,6 +408,9 @@ wlc_phy_txpower_recalc_target(phy_info_t *pi, ppr_t *txpwr_reg, ppr_t *txpwr_tar
 	/* Change to current bandwidth */
 	ppr_set_ch_bw(pi->tx_power_offset, PPR_CHSPEC_BW(chspec));
 	ppr_clear(pi->tx_power_offset);
+#ifdef WL11AX
+	ppr_ru_clear(pi->tpci->data->ru_tx_power_offset);
+#endif /* WL11AX */
 
 #ifdef WLTXPWR_CACHE
 	if ((!ti->data->txpwroverride) && wlc_phy_get_cached_pwr(pi->txpwr_cache,
@@ -510,6 +556,9 @@ wlc_phy_txpwr_srom9_convert(phy_info_t *pi, int8 *srom_max,
 		pwr_offset >>= 4;
 		/* nibble info indicates offset in 0.5dB units convert to 0.25dB */
 		srom_max[rate] = (int8)(tmp_max_pwr - (nibble << 1));
+		/* XXX
+		  printf("****** srom_max[rate] = %d nibble = %d \n", srom_max[rate], nibble << 1);
+		*/
 	}
 }
 
@@ -571,6 +620,12 @@ wlc_phy_txpwr_apply_srom9(phy_info_t *pi, uint8 band_num, chanspec_t chanspec,
 
 	switch (band_num) {
 	case WL_CHAN_FREQ_RANGE_2G:
+		/* XXX
+		   printf("wlc_phy_txpwr_apply_srom9:
+		   pi->ppr->u.sr9.cckbw202gpo = %d ************ \n",pi->ppr->u.sr9.cckbw202gpo);
+		   printf("wlc_phy_txpwr_apply_srom9: pi->ppr->u.sr9.cckbw20ul2gpo
+		   = %d*************** \n",pi->ppr->u.sr9.cckbw20ul2gpo);
+		*/
 		if (CHSPEC_BW_LE20(chanspec)) {
 			wlc_phy_txpwr_srom9_convert(pi, cck20_offset_ppr_api.pwr,
 			                            pi->ppr->u.sr9.cckbw202gpo, tmp_max_pwr,
@@ -598,6 +653,14 @@ wlc_phy_txpwr_apply_srom9(phy_info_t *pi, uint8 band_num, chanspec_t chanspec,
 		/* OFDM srom conversion */
 		/* ofdm_20IN20: S1x1, S1x2, S1x3 */
 		/*  pwr_offsets = pi->ppr->u.sr9.ofdm[band_num].bw20; */
+		/* XXX
+		   printf("wlc_phy_txpwr_apply_srom9: pi->ppr->u.sr9.ofdm[band_num].bw20 =
+		   %d ************ \n",pi->ppr->u.sr9.ofdm[band_num].bw20);
+		   printf("wlc_phy_txpwr_apply_srom9:  pi->ppr->u.sr9.ofdm[band_num].bw20ul =
+		   %d*************** \n", pi->ppr->u.sr9.ofdm[band_num].bw20ul);
+		   printf("wlc_phy_txpwr_apply_srom9:  pi->ppr->u.sr9.ofdm[band_num].bw40 =
+		   %d*************** \n", pi->ppr->u.sr9.ofdm[band_num].bw40);
+		*/
 		if (CHSPEC_BW_LE20(chanspec)) {
 			wlc_phy_txpwr_srom9_convert(pi, ofdm20_offset_ppr_api.pwr,
 			                            pi->ppr->u.sr9.ofdm[band_num].bw20,
@@ -634,6 +697,15 @@ wlc_phy_txpwr_apply_srom9(phy_info_t *pi, uint8 band_num, chanspec_t chanspec,
 			wlc_phy_ppr_set_ofdm(tx_srom_max_pwr, WL_TX_BW_40,
 			                     &ofdmdup40_offset_ppr_api, pi);
 
+			/* XXX
+			  printf("wlc_phy_txpwr_apply_srom9:  pi->ppr->u.sr9.mcs[band_num].bw20 =
+			  %d ************ \n", pi->ppr->u.sr9.mcs[band_num].bw20);
+			  printf("wlc_phy_txpwr_apply_srom9:  pi->ppr->u.sr9.mcs[band_num].bw20ul =
+			  %d*************** \n", pi->ppr->u.sr9.ofdm[band_num].bw20ul);
+			  printf("wlc_phy_txpwr_apply_srom9:  pi->ppr->u.sr9.mcs[band_num].bw40 =
+			  %d*************** \n", pi->ppr->u.sr9.mcs[band_num].bw40);
+			*/
+
 			/* 40MHz HT  */
 
 			/* pwr_offsets = pi->ppr->u.sr9.mcs[band_num].bw20ul; */
@@ -656,6 +728,13 @@ wlc_phy_txpwr_apply_srom9(phy_info_t *pi, uint8 band_num, chanspec_t chanspec,
 		default:
 			break;
 		}
+		/* XXX
+		  printf("wlc_phy_txpwr_apply_srom9: *******************
+		  band = %d ******************** \n", band_num);
+		  ppr_dsss_printf(tx_srom_max_pwr);
+		  ppr_ofdm_printf(tx_srom_max_pwr);
+		  ppr_mcs_ht_printf(tx_srom_max_pwr);
+		*/
 }
 
 /* CCK Pwr Index Convergence Correction */
@@ -947,6 +1026,72 @@ wlc_phy_txpower_get_current(wlc_phy_t *ppi, ppr_t *reg_pwr, phy_tx_power_t *powe
 fail:
 	return ret;
 }
+
+#ifdef WL11AX
+int
+wlc_phy_txpower_get_txctrl(wlc_phy_t *ppi, phy_tx_power_t *power)
+{
+	phy_info_t *pi = (phy_info_t *)ppi;
+	int ret;
+
+	if (!pi->sh->up) {
+		ret = BCME_NOTUP;
+		PHY_ERROR(("wl%d: %s: PHY not up: %d\n", pi->sh->unit,
+			__FUNCTION__, ret));
+		return ret;
+	}
+	ret = wlc_phy_get_txctrl_mu(ppi, &power->txctrl_info);
+	if (ret != BCME_OK) {
+		PHY_ERROR(("wl%d: %s: PHY func fail: %d\n", pi->sh->unit,
+			__FUNCTION__, ret));
+	}
+	return ret;
+}
+
+void wlc_phy_set_ru_power_limits(wlc_phy_t *ppi, ppr_ru_t *ru_reg_pwr)
+{
+	phy_info_t *pi = (phy_info_t *)ppi;
+	phy_tpc_info_t *ti = pi->tpci;
+
+	/* Set RU regulatory limits */
+	ppr_copy_ru_struct(ru_reg_pwr, ti->data->clm_ru_txpwr_limit);
+}
+
+#ifdef WL_EXPORT_CURPOWER
+void phy_tpc_get_he_tb_board_limits(wlc_phy_t *ppi, ppr_ru_t **board_he_txpwr_limit)
+{
+	phy_info_t *pi = (phy_info_t*)ppi;
+	phy_tpc_info_t *ti = pi->tpci;
+
+	ASSERT(ti);
+	ASSERT(ti->data->board_ru_txpwr_limit);
+
+	*board_he_txpwr_limit = ti->data->board_ru_txpwr_limit;
+}
+
+void phy_tpc_get_he_tb_clm_limits(wlc_phy_t *ppi, ppr_ru_t **clm_he_txpwr_limit)
+{
+	phy_info_t *pi = (phy_info_t*)ppi;
+	phy_tpc_info_t *ti = pi->tpci;
+
+	ASSERT(ti);
+	ASSERT(ti->data->clm_ru_txpwr_limit);
+
+	*clm_he_txpwr_limit = ti->data->clm_ru_txpwr_limit;
+}
+
+void phy_tpc_get_he_tb_tgt_limits(wlc_phy_t *ppi, ppr_ru_t **final_he_txpwr_limit)
+{
+	phy_info_t *pi = (phy_info_t*)ppi;
+	phy_tpc_info_t *ti = pi->tpci;
+
+	ASSERT(ti);
+	ASSERT(ti->data->tgt_ru_txpwr_limit);
+
+	*final_he_txpwr_limit = ti->data->tgt_ru_txpwr_limit;
+}
+#endif /* WL_EXPORT_CURPOWER */
+#endif /* WL11AX */
 
 void
 wlc_phy_get_ppr_board_limits(wlc_phy_t *ppi, ppr_t *ppr_board_limits)
@@ -1658,6 +1803,35 @@ phy_tpc_get_pavars(phy_tpc_info_t *tpci, void* a, void* p)
 		return BCME_UNSUPPORTED;
 	}
 }
+
+int
+phy_tpc_txpower_get_instant(phy_tpc_info_t *tpci, void *pwr)
+{
+	phy_type_tpc_fns_t *fns = tpci->priv->fns;
+	PHY_TRACE(("%s\n", __FUNCTION__));
+	if (fns->txpower_get_instant != NULL) {
+		return (fns->txpower_get_instant)(fns->ctx, pwr);
+	} else {
+		PHY_ERROR(("Unsupported PHY type!\n"));
+		return BCME_UNSUPPORTED;
+	}
+
+}
+
+int
+phy_tpc_txpower_get_instant_percore(phy_tpc_info_t *tpci, void *pwr)
+{
+	phy_type_tpc_fns_t *fns = tpci->priv->fns;
+	PHY_TRACE(("%s\n", __FUNCTION__));
+	if (fns->txpower_get_instant_percore != NULL) {
+		return (fns->txpower_get_instant_percore)(fns->ctx, pwr);
+	} else {
+		PHY_ERROR(("Unsupported PHY type!\n"));
+		return BCME_UNSUPPORTED;
+	}
+
+}
+
 #endif // endif
 
 #ifdef  TXPWRBACKOFF
@@ -1928,6 +2102,25 @@ int wlc_phy_get_est_pout(wlc_phy_t *ppi, uint8* est_Pout,
 	return status;
 }
 
+#ifdef WL11AX
+int
+wlc_phy_get_txctrl_mu(wlc_phy_t *ppi, phy_txctrl_info_t* txctrl_info)
+{
+	phy_info_t *pi = (phy_info_t *)ppi;
+	phy_tpc_info_t *tpci = pi->tpci;
+	phy_type_tpc_fns_t *fns = tpci->priv->fns;
+	phy_type_tpc_ctx_t *ctx = fns->ctx;
+	int status = BCME_OK;
+
+	ASSERT(fns->get_txctrl_mu);
+	if (!pi->sh->up) {
+		return BCME_NOTUP;
+	}
+	status = fns->get_txctrl_mu(ctx, txctrl_info);
+	return status;
+}
+#endif /* WL11AX */
+
 int32
 phy_tpc_get_min_power_limit(wlc_phy_t *ppi)
 {
@@ -2027,6 +2220,14 @@ phy_tpc_get_band_from_channel(phy_tpc_info_t *tpci, uint channel)
 static int8
 wlc_phy_convert_srom_txpwr40Moffset(uint8 offset)
 {
+	/* XXX
+	 * This function checks to see if the 40MHz offset
+	 * programmed into srom is
+	 * in the correcr range and if the values are programmed
+	 * right, it converts a 3 bit 2 complement
+	 * number to decimal that is used to offset the estpower
+	 * in the estpower look up table
+	 */
 	if (offset == 0xf)
 		return 0;
 	else if (offset > 0x7) {
@@ -2525,6 +2726,39 @@ phy_tpc_dump_txpower_limits(wlc_phy_t *ppi, ppr_t* txpwr)
 }
 #endif /* BCMDBG */
 
+/* XXX MUST REVIEW MUST REVIEW MUST REVIEW; why is old NPHY off different than
+ * restore logic in the off case???? johnvb
+ *
+ * Old "off" code did NOTHING to turn power control off other then set a
+ * structure variable (probably a bug) but looks like it might have been
+ * trying to do this (dead) code to turn it off.
+ *
+ * OFF:
+ *		phy_utils_and_phyreg(pi, NPHY_TxPwrCtrlCmd,
+ * 			(uint16) ~NPHY_TxPwrCtrlCmd_txPwrCtrl_en_MASK);
+ * 		wlc_phy_txpwrctrl_enable_nphy(pi, PHY_TPC_HW_OFF);
+ *
+ * Old "restore" code had this logic to turn power control OFF or ON:
+ *
+ * OFF:
+ *		-- FIXME, to restore previous pwrindex
+ *		wlc_phy_txpwr_fixpower_nphy(pi);
+ * ON:
+ * 		-- turn on power control --
+ *		wlc_phy_txpwrctrl_enable_nphy(pi, PHY_TPC_HW_ON);
+ *
+ * What is the correct way to do this?
+ *
+ * Do we need to set power index's/save power index's?
+ *
+ * We are trying to implement a single set function (not a save and restore).
+ * This might mean we need to internally keep some state information
+ * including whether we have any information yet.  Of course this information
+ * would need to be initialized at some appropriate place.
+ *
+ * When would that logically be?  (phy attach, init, etc)
+ *
+ */
 void
 phy_tpc_set_txpower_hw_ctrl(wlc_phy_t *ppi, bool hwpwrctrl)
 {

@@ -1,7 +1,7 @@
 
 # GNUmakefile for wl/exe
 #
-#  Copyright 2018 Broadcom
+#  Copyright 2019 Broadcom
 #
 #  This program is the proprietary software of Broadcom and/or
 #  its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
 #
 #  <<Broadcom-WL-IPTag/Proprietary:>>
 #
-# $Id: GNUmakefile 766220 2018-07-27 05:40:29Z $
+# $Id: GNUmakefile 777912 2019-08-14 18:14:51Z $
 
 # Work out the directory of this file.
 MWD := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
@@ -118,6 +118,11 @@ ifeq ($(WLTEST),1)
     CFLAGS += -DWLTEST
 endif
 
+# binary compatible to mfgtest firmware
+ifneq ($(strip $(BCA_CPEROUTER)),)
+    CFLAGS += -DWLTEST
+endif
+
 ifeq ($(PCIE_MFGTEST),1)
     CFLAGS += -DPCIE_MFGTEST
 endif
@@ -126,7 +131,7 @@ ifeq ($(OLYMPIC_RWL),1)
     CFLAGS += -DOLYMPIC_RWL
 endif
 
-ifneq ($(findstring $(TARGETENV), "linux linuxmips linuxmips_be linuxarm linuxarm_le android android_ndk_r6b"),)
+ifneq ($(findstring $(TARGETENV), "linux linuxmips linuxmips_be linuxarm linuxarm64 linuxarm_le android android_ndk_r6b"),)
 
 #ifdef WLP2P
   CFLAGS += -DWLP2P
@@ -154,10 +159,6 @@ ifneq ($(findstring $(TARGETENV), "linux linuxmips linuxmips_be linuxarm linuxar
 
 #ifdef WLBDO
   CFLAGS += -DWLBDO
-#endif // endif
-
-#ifdef WLTKO
-  CFLAGS += -DWLTKO
 #endif // endif
 
 #ifdef WL_PROXDETECT
@@ -286,11 +287,17 @@ ifeq ($(CONFIG_EAP),y)
   CFLAGS += -DWL_EAP_STATS -DWLPROPRIETARY_11N_RATES
   CFLAGS += -DWL_EAP_DROP_RX_MGMT_RSSI
   CFLAGS += -DWL_EAP_PER_VAP_CONFIG_RATESET
+  CFLAGS += -DWL_EAP_FIPS_LOOPBACK
   CFLAGS += -DWL_EAP_SNR
+  CFLAGS += -DWL_EAP_POLL_IDLE_STA
 endif
 
 ifeq ($(CONFIG_AIRIQ),y)
   CFLAGS += -DWL_AIR_IQ
+endif
+
+ifeq ($(BUILD_BRCM_UNFWLCFG),y)
+  CFLAGS += -DWL_UNFNVRAM
 endif
 
 # extra warnings
@@ -345,12 +352,6 @@ WL_OBJS      := wlu.o wlu_common.o wlu_linux.o bcmutils.o bcm_math.o bcmwifi_cha
 SERVER_OBJS  := wlu_server_linux.o wlu_pipe_linux.o wlu_pipe.o wlu_server_shared.o shellproc_linux.o
 WLM_OBJS     := $(WL_OBJS) wlm.o
 
-ifneq ($(wildcard ../../../components/hml),)
-  CFLAGS += -DHOFFLOAD_MODULES
-  CFLAGS += -I../../../components/hml/include -I../../pciedev
-  WL_OBJS += wluc_hoffload.o
-endif
-
 WL_OBJS += wluc_phy.o
 WL_OBJS += wluc_wnm.o
 WL_OBJS += wluc_cac.o
@@ -368,6 +369,7 @@ WL_OBJS += wluc_toe.o
 WL_OBJS += wluc_arpoe.o
 WL_OBJS += wluc_keep_alive.o
 WL_OBJS += wluc_ap.o
+WL_OBJS += wluc_omn.o
 WL_OBJS += wluc_ampdu.o
 WL_OBJS += wluc_ampdu_cmn.o
 WL_OBJS += wluc_bmac.o
@@ -424,10 +426,6 @@ ifneq ($(findstring WLBDO, $(CFLAGS)),)
 WL_OBJS += wluc_bdo.o
 endif
 
-ifneq ($(findstring WLTKO, $(CFLAGS)),)
-WL_OBJS += wluc_tko.o
-endif
-
 ifneq ($(findstring WLPFN, $(CFLAGS)),)
 WL_OBJS += wluc_pfn.o
 endif
@@ -450,10 +448,6 @@ endif
 
 ifneq ($(findstring WL_RANDMAC, $(CFLAGS)),)
 WL_OBJS += wluc_randmac.o
-endif
-
-ifneq ($(findstring WLMESH, $(CFLAGS)),)
-WL_OBJS += wluc_mesh.o
 endif
 
 ifneq ($(findstring WL_NATOE, $(CFLAGS)),)
@@ -732,10 +726,6 @@ endif
 endif
 endif
 
-#ifdef WLTKO
-GCDEFS += -DWLTKO
-#endif // endif
-
 #ifdef WLNDOE
 GCDEFS += -DWLNDOE
 #endif // endif
@@ -769,6 +759,7 @@ WL_OBJS += $(OBJDIR)/wluc_toe.o
 WL_OBJS += $(OBJDIR)/wluc_arpoe.o
 WL_OBJS += $(OBJDIR)/wluc_keep_alive.o
 WL_OBJS += $(OBJDIR)/wluc_ap.o
+WL_OBJS += $(OBJDIR)/wluc_omn.o
 WL_OBJS += $(OBJDIR)/wluc_ampdu.o
 WL_OBJS += $(OBJDIR)/wluc_ampdu_cmn.o
 WL_OBJS += $(OBJDIR)/wluc_bmac.o
@@ -789,10 +780,6 @@ WL_OBJS += $(OBJDIR)/wluc_otp.o
 ifneq ($(or $(findstring WL_BTCDYN, $(GCDEFS)),\
 	    $(findstring WL_BTCDYN, $(CFLAGS))),)
 WL_OBJS += $(OBJDIR)/wluc_btcdyn.o
-endif
-
-ifneq ($(findstring WLMESH, $(CFLAGS)),)
-WL_OBJS += $(OBJDIR)/wluc_mesh.o
 endif
 
 ifneq ($(or $(findstring WL_NAN, $(GCDEFS)),\
@@ -840,10 +827,6 @@ ifneq ($(or $(findstring WLBDO, $(GCDEFS)),\
 WL_OBJS += $(OBJDIR)/wluc_bdo.o
 endif
 
-ifneq ($(or $(findstring WLTKO, $(GCDEFS)),\
-	    $(findstring WLTKO, $(CFLAGS))),)
-WL_OBJS += $(OBJDIR)/wluc_tko.o
-endif
 ifneq ($(or $(findstring WLPFN, $(GCDEFS)),\
 	    $(findstring WLPFN, $(CFLAGS))),)
 WL_OBJS += $(OBJDIR)/wluc_pfn.o

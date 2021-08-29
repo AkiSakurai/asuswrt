@@ -23,7 +23,7 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -778,6 +778,9 @@ static const uint32 rcon[] = {
  * @return	the number of rounds for the given cipher key size.
  */
 
+/* xxx This seems to be the only way to prevent ARM CM3 optimizer from FULLY
+ * unrolling the inner loops of rijndaelKeySetupEnc and producing a huge function.
+ */
 uint8 _rijndael10 = 10;
 uint8 _rijndael8 = 8;
 uint8 _rijndael7 = 7;

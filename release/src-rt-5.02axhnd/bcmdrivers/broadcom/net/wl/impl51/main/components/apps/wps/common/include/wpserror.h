@@ -1,7 +1,7 @@
 /*
  * WPS ERROR code definition
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wpserror.h 525052 2015-01-08 20:18:35Z $
+ * $Id: wpserror.h 766179 2018-07-26 07:49:15Z $
  */
 
 #ifndef _WPS_ERROR_
@@ -89,6 +89,11 @@
 #define WPS_IGNORE_MSG_CONT         WPS_BASE+28 /* Ignore this message and continue */
 #define WPS_ERR_PBC_OVERLAP         WPS_BASE+29 /* PBC overlap found my M1 UUID mismatch */
 #define WPS_M2D_NACK_CONT           WPS_BASE+30	/* Received NACK reply in M2D state */
+
+#if defined(MULTIAP)
+#define MAP_BASE                    0x1500
+#define MAP_TIMEOUT                 MAP_BASE+1
+#endif	/* MULTIAP */
 
 /* CQueue */
 #define CQUEUE_BASE               0x2000

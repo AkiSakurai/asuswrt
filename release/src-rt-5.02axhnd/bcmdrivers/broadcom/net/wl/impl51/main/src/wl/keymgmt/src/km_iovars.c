@@ -1,6 +1,6 @@
 /*
  * Key Management Module Implementation - iovar support
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_iovars.c 748967 2018-02-27 04:57:32Z $
+ * $Id: km_iovars.c 774133 2019-04-11 09:15:54Z $
  */
 
 #include "km_pvt.h"
@@ -338,6 +338,9 @@ km_doiovar(void *ctx, uint32 actionid,
 			break;
 		}
 
+		/* XXX: algo fixup based on key length, some callers expect this. In future,
+		 * algo must always be specified, so that we can support 32 byte AES keys
+		 */
 		if  (wl_key.algo == CRYPTO_ALGO_OFF) {
 			switch (wl_key.len) {
 			case WEP1_KEY_SIZE:  wl_key.algo = CRYPTO_ALGO_WEP1; break;
@@ -774,10 +777,6 @@ wlc_keymgmt_wsec(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg, uint32 val)
 	if (!wlc->pub->up)
 		return (0);
 
-	if (AIBSS_ENAB(wlc->pub)) {
-		wlc_update_beacon(wlc);
-		wlc_update_probe_resp(wlc, TRUE);
-	}
 	return (0);
 } /* wlc_keymgmt_wsec */
 

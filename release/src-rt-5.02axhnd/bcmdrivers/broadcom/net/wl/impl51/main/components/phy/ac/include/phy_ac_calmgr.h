@@ -1,7 +1,7 @@
 /*
  * ACPHY Calibration Manager module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_calmgr.h 718240 2017-08-30 06:36:58Z $
+ * $Id: phy_ac_calmgr.h 771063 2019-01-12 07:03:47Z $
  */
 
 #ifndef _phy_ac_calmgr_h_
@@ -60,7 +60,7 @@
 
 /* forward declaration */
 typedef struct phy_ac_calmgr_info phy_ac_calmgr_info_t;
-
+typedef struct multiphase_caltimes multiphase_caltimes_t;
 /* register/unregister ACPHY specific implementations to/from common */
 phy_ac_calmgr_info_t *phy_ac_calmgr_register_impl(phy_info_t *pi,
 	phy_ac_info_t *aci, phy_calmgr_info_t *cmn_info);

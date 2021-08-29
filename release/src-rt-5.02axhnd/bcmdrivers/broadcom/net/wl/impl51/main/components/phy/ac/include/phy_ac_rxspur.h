@@ -1,7 +1,7 @@
 /*
  * ACPHY Rx Spur canceller module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rxspur.h 657044 2016-08-30 21:37:55Z $
+ * $Id: phy_ac_rxspur.h 775037 2019-05-16 02:01:47Z $
  */
 
 #ifndef _phy_ac_rxspur_h_
@@ -81,5 +81,7 @@ extern void phy_ac_dssf(phy_ac_rxspur_info_t *rxspuri, bool on);
 extern void phy_ac_dssfB(phy_ac_rxspur_info_t *rxspuri, bool on);
 extern void phy_ac_spurcan(phy_ac_rxspur_info_t *rxspuri, bool enable);
 void chanspec_bbpll_parr(phy_ac_rxspur_info_t *rxspuri, uint32 *bbpll_parr_in, bool state);
+extern void phy_ac_dssf_setup_iov(phy_info_t *pi, void *p);
+extern void phy_ac_dssf_43684(phy_ac_rxspur_info_t *rxspuri, bool on);
 
 #endif /* _phy_ac_rxspur_h_ */

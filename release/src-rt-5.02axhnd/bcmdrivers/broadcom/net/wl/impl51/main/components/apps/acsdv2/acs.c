@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -41,7 +41,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acs.c 764927 2018-06-11 06:02:47Z $
+ * $Id: acs.c 776254 2019-06-24 06:20:23Z $
  */
 
 #include <stdio.h>
@@ -79,9 +79,6 @@
 #define ACS_CS_MAX_CHAN(band)	((band == WLC_BAND_5G) ? ACS_CS_MAX_5G_CHAN : \
 			(band == WLC_BAND_2G) ? ACS_CS_MAX_2G_CHAN : 0)
 
-/* Need 13, strlen("per_chan_info"), +4, sizeof(uint32). Rounded to 20. */
-#define ACS_PER_CHAN_INFO_BUF_LEN 20
-
 #define ACS_DFLT_FLAGS ACS_FLAGS_LASTUSED_CHK
 
 acs_policy_t predefined_policy[ACS_POLICY_MAX] = {
@@ -111,7 +108,7 @@ acs_dump_config_extra(acs_chaninfo_t *c_info)
 {
 	uint8 intf_thld_setting = c_info->intfparams.thld_setting;
 
-	ACSD_INFO("acs_dump_config_extra:\n");
+	ACSD_INFO("%s: acs_dump_config_extra:\n", c_info->name);
 	ACSD_INFO("\t acs_txdelay_period: %d\n", c_info->acs_txdelay_period);
 	ACSD_INFO("\t acs_txdelay_cnt: %d\n", c_info->acs_txdelay_cnt);
 	ACSD_INFO("\t acs_txdelay_ratio: %d\n", c_info->acs_txdelay_ratio);
@@ -229,13 +226,13 @@ acs_get_rs_info(acs_chaninfo_t * c_info, char* prefix)
 	ACS_ERR(ret, "failed to get obss_coex");
 
 	rsi->coex_enb = dtoh32(coex);
-	ACSD_INFO("coex_enb: %d\n",  rsi->coex_enb);
+	ACSD_INFO("%s: coex_enb: %d\n", c_info->name, rsi->coex_enb);
 
 	ret = wl_ioctl(c_info->name, WLC_GET_BAND, &band, sizeof(band));
 	ACS_ERR(ret, "failed to get band info");
 
 	rsi->band_type = dtoh32(band);
-	ACSD_INFO("band_type: %d\n",  rsi->band_type);
+	ACSD_INFO("%s: band_type: %d\n", c_info->name, rsi->band_type);
 
 	memset(&param, 0, sizeof(param));
 	param.band = band;
@@ -244,7 +241,7 @@ acs_get_rs_info(acs_chaninfo_t * c_info, char* prefix)
 	ACS_ERR(ret, "failed to get bw_cap");
 
 	rsi->bw_cap = *((uint32 *)data_buf);
-	ACSD_INFO("bw_cap: %d\n",  rsi->bw_cap);
+	ACSD_INFO("%s: bw_cap: %d\n", c_info->name, rsi->bw_cap);
 
 	return ret;
 }
@@ -348,6 +345,42 @@ acs_check_cap(acs_chaninfo_t *c_info, char *str)
 	}
 }
 
+static bool init_ch[3] = { FALSE, FALSE, FALSE };
+
+void acs_set_initial_chanspec(acs_chaninfo_t *c_info)
+{
+	chanspec_t chanspec = WL_CHSPEC_DEF_5G_H;
+	char prefix[PREFIX_LEN], tmp[100];
+	int band5grp;
+
+	if (c_info->rs_info.pref_chspec == 0) {
+		if (c_info->rs_info.band_type == WLC_BAND_5G) {
+			int ret = 0;
+
+			if (!init_ch[c_info->unit])
+				init_ch[c_info->unit] = TRUE;
+			else
+				return;
+
+			snprintf(prefix, sizeof(prefix), "wl%d_", c_info->unit);
+			band5grp = nvram_get_hex(strcat_r(prefix, "band5grp", tmp));
+			if (!(band5grp & WL_5G_BAND_4)) {
+				if (band5grp & WL_5G_BAND_1)
+					chanspec = WL_CHSPEC_DEF_5G_L;
+				else if (band5grp & WL_5G_BAND_2)
+					chanspec = wf_chspec_aton("52");
+				else if (band5grp & WL_5G_BAND_3)
+					chanspec = wf_chspec_aton("100");
+			}
+			acs_set_chanspec(c_info, chanspec);
+			ret = acs_update_driver(c_info);
+			if (ret) {
+				ACSD_ERROR("%s: update driver failed\n", c_info->name);
+			}
+		}
+	}
+}
+
 static int
 acs_start(char *name, acs_chaninfo_t *c_info)
 {
@@ -372,10 +405,11 @@ acs_start(char *name, acs_chaninfo_t *c_info)
 	acs_retrieve_config(c_info, prefix);
 
 	if ((ret = acs_get_country(c_info)) != BCME_OK)
-		ACSD_ERROR("Failed to get country info\n");
+		ACSD_ERROR("%s: Failed to get country info\n", c_info->name);
 
 	rsi = &c_info->rs_info;
 	acs_get_rs_info(c_info, prefix);
+	acs_set_initial_chanspec(c_info);
 
 	if (rsi->pref_chspec == 0) {
 		c_info->mode = ACS_MODE_SELECT;
@@ -387,22 +421,28 @@ acs_start(char *name, acs_chaninfo_t *c_info)
 	else
 		c_info->mode = ACS_MODE_MONITOR; /* default mode */
 
-	if ((c_info->mode == ACS_MODE_SELECT) && BAND_5G(rsi->band_type) &&
+	if (BAND_5G(rsi->band_type) &&
 		(nvram_match(strcat_r(prefix, "reg_mode", tmp), "h") ||
 		nvram_match(strcat_r(prefix, "reg_mode", tmp), "strict_h"))) {
 		rsi->reg_11h = TRUE;
 	}
 
 	ret = acsd_chanim_init(c_info);
-	if (ret < 0)
-		ACS_FREE(c_info);
 	ACS_ERR(ret, "chanim init failed\n");
 
-	c_info->trf_thold = acs_check_cap(c_info, ACS_CAP_STRING_TRF_THOLD);
+	c_info->traffic_thresh = acs_check_cap(c_info, ACS_CAP_STRING_TRAFFIC_THRESH);
+
+	if (c_info->acs_ignore_txfail_on_far_sta) {
+		if (c_info->traffic_thresh && c_info->traffic_thresh_en) {
+			ACSD_DEBUG("%s: setting far_sta rssi %d\n", c_info->name,
+					c_info->acs_far_sta_rssi);
+			acs_set_far_sta_rssi(c_info, c_info->acs_far_sta_rssi);
+		}
+	}
 
 	if (AUTOCHANNEL(c_info) && BAND_5G(rsi->band_type)) {
-		if (c_info->trf_thold) {
-			acs_intfer_config_trfthold(c_info, prefix);
+		if (c_info->traffic_thresh && c_info->traffic_thresh_en) {
+				acs_intfer_config_traffic_thresh(c_info, prefix);
 		} else {
 			acs_intfer_config_txfail(c_info);
 		}
@@ -411,7 +451,8 @@ acs_start(char *name, acs_chaninfo_t *c_info)
 	/* Do not even allocate a DFS Reentry context on 2.4GHz which does not have DFS channels */
 	/* or if 802.11h spectrum management is not enabled. */
 	if (BAND_2G(c_info->rs_info.band_type) || (rsi->reg_11h == FALSE)) {
-		ACSD_DFSR("DFS Reentry disabled %s\n", (BAND_2G(c_info->rs_info.band_type)) ?
+		ACSD_DFSR("%s: DFS Reentry disabled %s\n", c_info->name,
+			(BAND_2G(c_info->rs_info.band_type)) ?
 			"on 2.4GHz band" : "as 802.11h is not enabled");
 		c_info->acs_dfs = ACS_DFS_DISABLED;
 	} else {
@@ -447,8 +488,10 @@ acs_start(char *name, acs_chaninfo_t *c_info)
 	ACS_ERR(ret, "request data failed\n");
 
 acs_start_done:
-	if (is_router_mode() && !nvram_get_int("x_Setting") && !c_info->unit)
+	if (is_router_mode() && !nvram_get_int("x_Setting") && !c_info->unit && !init_ch[0]) {
+		init_ch[0] = TRUE;
 		nvram_set_int("obd_allow_scan", 1);
+	}
 
 	return ret;
 }
@@ -494,53 +537,6 @@ acs_check_bss_is_enabled(char *name, acs_chaninfo_t **c_info_ptr, char *prefix)
 	return BCME_OK;
 }
 
-/*
- * Returns the channel info of the chspec passed (by combining per_chan_info of each 20MHz subband)
- */
-uint32
-acs_channel_info(acs_chaninfo_t *c_info, chanspec_t chspec)
-{
-	char resbuf[ACS_PER_CHAN_INFO_BUF_LEN];
-	int ret;
-	uint8 sub_channel;
-	chanspec_t sub_chspec;
-	uint32 chinfo = 0, max_inactive = 0, sub_chinfo;
-
-	FOREACH_20_SB(chspec, sub_channel) {
-		sub_chspec = (uint16) sub_channel;
-		ret = acs_get_per_chan_info(c_info, sub_chspec, resbuf, ACS_PER_CHAN_INFO_BUF_LEN);
-		if (ret != BCME_OK) {
-			ACSD_ERROR("%s Failed to get channel (0x%02x) info: %d\n",
-				c_info->name, sub_chspec, ret);
-			return 0;
-		}
-
-		sub_chinfo = dtoh32(*(uint32 *)resbuf);
-		ACSD_DFSR("%s: sub_chspec 0x%04x info %08x (%s, %d minutes)\n",
-			c_info->name, sub_chspec, sub_chinfo,
-			(sub_chinfo & WL_CHAN_INACTIVE) ? "inactive" :
-			((sub_chinfo & WL_CHAN_PASSIVE) ? "passive" : "active"),
-			GET_INACT_TIME(sub_chinfo));
-
-		/* combine subband chinfo (except inactive time) using bitwise OR */
-		chinfo |= ((~INACT_TIME_MASK) & sub_chinfo);
-		/* compute maximum inactive time amongst each subband */
-		if (max_inactive < GET_INACT_TIME(sub_chinfo)) {
-			max_inactive = GET_INACT_TIME(sub_chinfo);
-		}
-	}
-	/* merge maximum inactive time computed into the combined chinfo */
-	chinfo |= max_inactive << INACT_TIME_OFFSET;
-
-	ACSD_DFSR("%s: chanspec 0x%04x (%s) info %08x (%s, %d minutes)\n",
-		c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf), chinfo,
-		(chinfo & WL_CHAN_INACTIVE) ? "inactive" :
-		((chinfo & WL_CHAN_PASSIVE) ? "passive" : "active"),
-		GET_INACT_TIME(chinfo));
-
-	return chinfo;
-}
-
 bool
 acsd_is_lp_chan(acs_chaninfo_t *c_info, chanspec_t chspec)
 {
@@ -572,10 +568,24 @@ bool acs_check_for_nondfs_chan(acs_chaninfo_t *c_info, int bw)
 	return ret;
 }
 
+bool acs_nondfs_chan_check_for_bgdfs_trigger(acs_chaninfo_t *c_info, int bw)
+{
+	bool ret = FALSE;
+	if (!c_info->country_is_edcrs_eu) {
+		if (bw > ACS_BW_40 && acs_high_power_nondfs_chan_check(c_info, bw) &&
+				acs_low_power_nondfs_chan_check(c_info, bw)) {
+			ret = TRUE;
+		} else if (bw <= ACS_BW_40) {
+			ret = TRUE;
+		}
+	}
+	return ret;
+}
+
 /* check for availability of high power channel present in the list of
  * valid channels to select
  */
-bool acs_check_for_hp_chan(acs_chaninfo_t *c_info, int bw)
+bool acs_high_power_nondfs_chan_check(acs_chaninfo_t *c_info, int bw)
 {
 	int i;
 	ch_candidate_t* candi;
@@ -602,14 +612,35 @@ bool acs_check_for_hp_chan(acs_chaninfo_t *c_info, int bw)
 
 }
 
+/* check for availability of low power channel present in the list of
+ * valid channels to select
+ */
+bool acs_low_power_nondfs_chan_check(acs_chaninfo_t *c_info, int bw)
+{
+	int i;
+	ch_candidate_t* candi;
+	bool ret = FALSE;
+	candi = c_info->candidate[bw];
+	for (i = 0; i < c_info->c_count[bw]; i++) {
+		if ((!candi[i].valid) || (candi[i].is_dfs)) {
+			continue;
+		}
+		if (acsd_is_lp_chan(c_info, candi[i].chspec)) {
+			ret = TRUE;
+			break;
+		}
+	}
+	return ret;
+
+}
 /* check for overlap between the passed channel arguments */
-bool acs_check_for_overlap_5g(chanspec_t cur_chspec, chanspec_t candi_chspec)
+bool acs_check_for_overlap(chanspec_t chspec1, chanspec_t chspec2)
 {
 	uint8 channel1, channel2;
 
-	FOREACH_20_SB(candi_chspec, channel1) {
-		FOREACH_20_SB(cur_chspec, channel2) {
-			if (channel1 == channel2) {
+	FOREACH_20_SB(chspec1, channel1) {
+		FOREACH_20_SB(chspec2, channel2) {
+			if (ABS(channel1 - channel2) < CH_20MHZ_APART) {
 				return TRUE;
 			}
 		}
@@ -659,8 +690,8 @@ acs_adjust_ctrl_chan(acs_chaninfo_t *c_info, chanspec_t chspec)
 			if (ch == ctrl_sb[i]) {
 				last_chan_idx = j;
 				num_sb[i] = bss_info[j].nCtrl;
-				ACSD_INFO("sb:%d channel = %d num_sb = %d\n", i,
-						channel, num_sb[i]);
+				ACSD_INFO("%s: sb:%d channel = %d num_sb = %d\n", c_info->name,
+					i, channel, num_sb[i]);
 				break;
 			}
 		}
@@ -670,7 +701,7 @@ acs_adjust_ctrl_chan(acs_chaninfo_t *c_info, chanspec_t chspec)
 	/* when dyn160 is enabled with DFS on FCC, control ch of 50o must be ULL or higher */
 	if (max_sb == 8 && c_info->dyn160_enabled && ACS_11H(c_info) &&
 		CHSPEC_IS160(selected) &&
-		!acs_is_country_edcrs_eu(c_info->country.ccode) &&
+		!c_info->country_is_edcrs_eu &&
 		CHSPEC_CHANNEL(selected) == ACS_DYN160_CENTER_CH) {
 		i = 4;
 		selected_sb = WL_CHANSPEC_CTL_SB_ULL >> WL_CHANSPEC_CTL_SB_SHIFT;
@@ -697,17 +728,39 @@ acs_adjust_ctrl_chan(acs_chaninfo_t *c_info, chanspec_t chspec)
 
 		if (!excl && num_sb[i] > num_sb[selected_sb]) {
 			selected_sb = i;
-			ACSD_INFO("selected sb so far = %d n_sbs = %d\n",
+			ACSD_INFO("%s: selected sb so far = %d n_sbs = %d\n", c_info->name,
 					selected_sb, num_sb[selected_sb]);
 		}
 	}
 
-	ACSD_INFO("selected sb: %d\n", selected_sb);
+	ACSD_INFO("%s: selected sb: %d\n", c_info->name, selected_sb);
 	selected &=  ~(WL_CHANSPEC_CTL_SB_MASK);
 	selected |= (selected_sb << WL_CHANSPEC_CTL_SB_SHIFT);
-	ACSD_INFO("Final selected chanspec: 0x%4x (%s)\n", selected, wf_chspec_ntoa(selected, chanspecbuf));
+	ACSD_INFO("%s: Final selected chanspec: 0x%4x\n", c_info->name, selected);
 	return selected;
 }
+/* return TRUE if ACSD is in AP mode else return FALSE
+ */
+/*bool
+acs_is_mode_check(char *osifname)
+{
+	char tmp[32], prefix[PREFIX_LEN];
+
+	if (strstr(osifname, "eth")) {
+		osifname_to_nvifname(osifname, prefix, sizeof(prefix));
+		strcat(prefix, "_");
+	} else {
+		make_wl_prefix(prefix, sizeof(prefix), 0, osifname);
+	}
+
+	nvram_safe_get(strcat_r(prefix, "mode", tmp));
+
+	if (nvram_match(tmp, "psr") || nvram_match(tmp, "sta") || nvram_match(tmp, "wet") ||
+			nvram_match(tmp, "dwds") || nvram_match(tmp, "psta")) {
+		return FALSE;
+	}
+	return TRUE;
+}*/
 
 /*
  * acs_get_txduration - get the overall tx duration
@@ -722,10 +775,11 @@ acs_get_txduration(acs_chaninfo_t * c_info)
 	char *data_buf;
 	wl_chanim_stats_t *list;
 	wl_chanim_stats_t param;
-	chanim_stats_t * stats;
+	chanim_stats_t * stats = NULL;
+	chanim_stats_v2_t *statsv2 = NULL;
 	int buflen = ACS_CHANIM_BUF_LEN;
 	uint32 count = WL_CHANIM_COUNT_ONE;
-	uint8 tx_duration;
+	uint8 tx_duration = 0;
 
 	data_buf = acsd_malloc(ACS_CHANIM_BUF_LEN);
 	list = (wl_chanim_stats_t *) data_buf;
@@ -736,7 +790,7 @@ acs_get_txduration(acs_chaninfo_t * c_info)
 	ret = acs_get_chanim_stats(c_info, &param, sizeof(wl_chanim_stats_t), data_buf, buflen);
 	if (ret < 0) {
 		ACS_FREE(data_buf);
-		ACSD_ERROR("failed to get chanim results");
+		ACSD_ERROR("%s: failed to get chanim results", c_info->name);
 		return FALSE;
 	}
 
@@ -744,11 +798,20 @@ acs_get_txduration(acs_chaninfo_t * c_info)
 	list->version = dtoh32(list->version);
 	list->count = dtoh32(list->count);
 
-	stats = list->stats;
-	stats->chanspec = htod16(stats->chanspec);
-	tx_duration = stats->ccastats[CCASTATS_TXDUR];
-	ACSD_INFO("chspec 0x%4x (%s) tx_duration %d txblank_th %d\n", stats->chanspec, wf_chspec_ntoa(stats->chanspec, chanspecbuf),
-			tx_duration, c_info->acs_bgdfs->txblank_th);
+	if (list->version == WL_CHANIM_STATS_VERSION) {
+		stats = (chanim_stats_t *)list->stats;
+		stats->chanspec = dtoh16(stats->chanspec);
+		tx_duration = stats->ccastats[CCASTATS_TXDUR];
+		ACSD_INFO("%s: chspec 0x%4x tx_duration %d txblank_th %d\n", c_info->name,
+			stats->chanspec, tx_duration, c_info->acs_bgdfs->txblank_th);
+	} else if (list->version == WL_CHANIM_STATS_V2) {
+		statsv2 = (chanim_stats_v2_t *)list->stats;
+		statsv2->chanspec = dtoh16(statsv2->chanspec);
+		tx_duration = statsv2->ccastats[CCASTATS_TXDUR];
+		ACSD_INFO("%s: chspec 0x%4x tx_duration %d txblank_th %d\n", c_info->name,
+			statsv2->chanspec, tx_duration, c_info->acs_bgdfs->txblank_th);
+	}
+
 	ACS_FREE(data_buf);
 	return (tx_duration > c_info->acs_bgdfs->txblank_th) ? TRUE : FALSE;
 }
@@ -760,17 +823,78 @@ acs_init_info(acs_info_t ** acs_info_p)
 
 	*acs_info_p = acs_info;
 }
+/* This function is used to get enabled virtual ifnames and
+ * store it in local structure
+ */
+static void
+acs_store_vifnames(void)
+{
+	ifname_idx_map_t *cur_map;
+	char prefix[8], *ifnames[16] = {0};
+	char *token, *delim = ",";
+	char *vifname;
+	int i, j = 0;
+	for (i = 0; i < ACS_MAX_IF_NUM; i++) {
+		cur_map = &acs_info->acs_ifmap[i];
+		memset(prefix, 0, sizeof(prefix));
+		osifname_to_nvifname(cur_map->name, prefix, sizeof(prefix));
+		strcat(prefix, "_vifs");
+		vifname = nvram_safe_get(prefix);
+		token = strtok(vifname, delim);
+		while (token != NULL) {
+			ifnames[j] = token;
+			acs_info->chan_info[i]->vifnames[j] = ifnames[j];
+			ACSD_INFO("ifname %s and corresponding vifnames are %s\n",
+				cur_map->name, acs_info->chan_info[i]->vifnames[j]);
+			token = strtok(NULL, delim);
+			j++;
+		}
+		j = 0;
+	}
+}
+
+/* This function will get available exclude_ifname list by using nvram
+ * (acs_exclude_ifnames) and copy to exclude_ifname variable
+ */
+void acs_get_exclude_interface_list(void)
+{
+	char *token;
+	char *delim = ",";
+	int i = 0;
+	char *p = NULL, *excl_ifname[ACS_EXCLUDE_IFACE_LIST] = {0};
+	p = nvram_safe_get("acs_exclude_ifnames");
+	token = strtok(p, delim);
+	while (token != NULL) {
+		excl_ifname[i] = token;
+		acs_info->exclude_ifnames[i] = excl_ifname[i];
+		ACSD_INFO("exclude interface list is %s \n", acs_info->exclude_ifnames[i]);
+		token = strtok(NULL, delim);
+		i++;
+	}
+}
 
 void
 acs_init_run(acs_info_t ** acs_info_p)
 {
-	char name[16], *next, prefix[PREFIX_LEN], name_enab_if[32] = { 0 }, *vifname, *vif_next;
+	char name[16], prefix[PREFIX_LEN] = "", name_enab_if[32] = { 0 };
+	char *next, *vifname, *vif_next;
 	acs_chaninfo_t * c_info;
 	int ret = 0;
+#ifdef ZDFS_2G
+	int i, tmpint;
+	bool acs_zdfs_2g = nvram_match("acs_zdfs_2g", "1");
+	bool radar_ignore = nvram_match("acs_zdfs_2g_ignore_radar", "1");
+	bool avail_5g = FALSE;
+#endif /* ZDFS_2G */
+
 	acs_init_info(acs_info_p);
 	int if_count = 0, loop_count;
 	int finished = 0, loop_ret = 0;
 	char acs_ifnames[32];
+
+#ifdef ZDFS_2G
+	(*acs_info_p)->ci_zdfs_2g  = NULL;
+#endif /* ZDFS_2G */
 
 	snprintf(acs_ifnames, sizeof(acs_ifnames), "%s", nvram_safe_get("acs_ifnames"));
 
@@ -817,10 +941,17 @@ ACSD_INFO("the gotten acs_chaninfo_t was NULL\n");
 ACSD_INFO("sitesurvey %s\n", name);
 		ret = acs_start(name, c_info);
 		if (ret) {
-			if (acs_allow_scan(c_info, ACS_SCAN_TYPE_CS))
+		    	if (acs_allow_scan(c_info, ACS_SCAN_TYPE_CS))
 				ACSD_ERROR("acs_start failed for ifname: %s\n", name);
 			continue;
 		}
+
+#ifdef ZDFS_2G
+		if (BAND_5G(c_info->rs_info.band_type)) {
+			/* Set if there is atleast one 5G interface */
+			avail_5g = TRUE;
+		}
+#endif /* ZDFS_2G */
 
 		if ((AUTOCHANNEL(c_info) || COEXCHECK(c_info)) && 
 			!(c_info->wet_enabled && acs_check_assoc_scb(c_info))) {
@@ -838,7 +969,7 @@ ACSD_INFO("%s select channel...\n", name);
 
 			ret = acs_update_driver(c_info);
 			if (ret)
-				ACSD_ERROR("update driver failed\n");
+				ACSD_ERROR("%s: update driver failed\n", name);
 
 			ACSD_DEBUG("ifname %s - mode: %s\n", name,
 			   AUTOCHANNEL(c_info)? "SELECT" :
@@ -867,47 +998,41 @@ ACSD_INFO("wait 2 seconds for next loop...\n");
 	}
 	else
 ACSD_INFO("finish loop\n");
-}
 
-/*
- * acs_is_country_edcrs_eu - takes country_code string and
- * returns true if it is a EDCRS_EU country.
- * EDCRS_EU countries follow harmonized ETSI regulations.
- */
-bool
-acs_is_country_edcrs_eu(char * country_code)
-{
+#ifdef ZDFS_2G
+	/* Iterate through the 2G interface and enable zdfs_2g
+	 * only if atleast one 5G interface is available
+	 */
+	if (acs_zdfs_2g) {
+		int num_5g = 0;
+		for (i = 0; i < ACS_MAX_IF_NUM; i++) {
+			bool is_5g = FALSE;
+			acs_chaninfo_t * tc_info = (*acs_info_p)->chan_info[i];
 
-	static const char cc_list[][WLC_CNTRY_BUF_SZ] = {
-		"AL", "DZ", "AD", "AT",    "AZ", "BE", "BJ", "BT",
-		"BA", "BW", "IO", "BG",    "CD", "CI", "HR", "CY",
-		"CZ", "DK", "EE", "FO",    "FI", "FR", "GE", "DE",
-		"GH", "GI", "GR", "GL",    "GG", "GN", "HU", "IS",
-		"IE", "IL", "IT", "JE",    "JO", "KE", "KW", "LV",
-		"LB", "LI", "LT", "LU",    "MK", "MG", "MW", "MT",
-		"IM", "MU", "MC", "MN",    "ME", "MA", "NL", "NG",
-		"NO", "OM", "PK", "PN",    "PL", "PT", "QA", "RO",
-		"RW", "SM", "SA", "SN",    "RS", "SK", "SI", "ZA",
-		"ES", "SZ", "SE", "CH",    "TH", "TN", "TR", "AE",
-		"UG", "GB", "VA", "ZW",    "E0"
-	};
-	int i, len = sizeof(cc_list)/sizeof(cc_list[0]);
-
-	if (country_code == NULL || strlen(country_code) >= WLC_CNTRY_BUF_SZ) {
-		ACSD_ERROR("country null or malformed\n");
-		return FALSE;
-	}
-
-	for (i = 0; i < len; ++i) {
-		if (strncmp(cc_list[i], country_code, WLC_CNTRY_BUF_SZ) == 0) {
-			ACSD_INFO("country %s is an EDCRS_EU country (@%d/%d)\n",
-					country_code, i, len);
-			return TRUE;
+			if (!tc_info) {
+				continue;
+			}
+			is_5g = BAND_5G(tc_info->rs_info.band_type);
+			if (is_5g) {
+				if (num_5g < ACSD_MAX_INTERFACES) {
+					(*acs_info_p)->ci_5g_all[num_5g++] = tc_info;
+				}
+				continue;
+			}
+			if (tc_info->bgdfs160 && avail_5g) {
+				acs_set_zdfs_2g(tc_info, TRUE);
+			}
+			if (ACS_CI_HAS_ZDFS_2G(tc_info, tmpint) &&
+					!((*acs_info_p)->ci_zdfs_2g)) {
+				(*acs_info_p)->ci_zdfs_2g = tc_info;
+				(*acs_info_p)->ci_zdfs_2g->acs_zdfs_2g_ignore_radar = radar_ignore;
+			}
 		}
 	}
+#endif /* ZDFS_2G */
 
-	ACSD_INFO("country %s is not an EDCRS_EU country (%d)\n", country_code, len);
-	return FALSE;
+	acs_store_vifnames();
+	acs_get_exclude_interface_list();
 }
 
 int
@@ -939,14 +1064,8 @@ acs_update_status(acs_chaninfo_t * c_info)
 	acs_dfsr_chanspec_update(ACS_DFSR_CTX(c_info), c_info->cur_chspec,
 			__FUNCTION__, c_info->name);
 
-	if (acs_get_country(c_info) == BCME_OK) {
-		c_info->country_is_edcrs_eu = acs_is_country_edcrs_eu(c_info->country.ccode);
-	} else {
-		c_info->country_is_edcrs_eu = FALSE;
-	}
-
-	ACSD_INFO("%s: chanspec: 0x%4x (%s) is160_bwcap %d is160_upgradable %d, is160_downgradable %d\n",
-		c_info->name, c_info->cur_chspec, wf_chspec_ntoa(c_info->cur_chspec, chanspecbuf), c_info->is160_bwcap,
+	ACSD_INFO("%s: chanspec: 0x%x is160_bwcap %d is160_upgradable %d, is160_downgradable %d\n",
+		c_info->name, c_info->cur_chspec, c_info->is160_bwcap,
 		c_info->is160_upgradable, c_info->is160_downgradable);
 
 	return ret;
@@ -1007,12 +1126,13 @@ int acs_tx_idle_check(acs_chaninfo_t *c_info)
 	if ((now - c_info->timestamp_tx_idle) < timer)
 		return full_scan;
 
-	ACSD_INFO("acs_tx_idle: now %u(%u)\n", (uint)now, c_info->timestamp_tx_idle);
+	ACSD_INFO("%s: acs_tx_idle: now %u(%u)\n", c_info->name,
+		(uint)now, c_info->timestamp_tx_idle);
 
 	/* Check wl transmit activity and trigger full scan if it is idle */
 	ret = acs_get_dfsr_counters(c_info->name, cntbuf);
 	if (ret < 0) {
-		ACSD_ERROR("wl counters failed (%d)\n", ret);
+		ACSD_ERROR("%s: wl counters failed (%d)\n", c_info->name, ret);
 		return full_scan;
 	}
 
@@ -1023,16 +1143,17 @@ int acs_tx_idle_check(acs_chaninfo_t *c_info)
 	/* As we need only wlc layer ctrs here, no need to input corerev.  */
 	ret = wl_cntbuf_to_xtlv_format(NULL, cntbuf, ACSD_WL_CNTBUF_SIZE, 0);
 	if (ret < 0) {
-		ACSD_ERROR("wl_cntbuf_to_xtlv_format failed (%d)\n", ret);
+		ACSD_ERROR("%s: wl_cntbuf_to_xtlv_format failed (%d)\n", c_info->name, ret);
 		return full_scan;
 	}
 
 	if (!(wlc_cnt = GET_WLCCNT_FROM_CNTBUF(cntbuf))) {
-		ACSD_ERROR("wlc_cnt NULL\n");
+		ACSD_ERROR("%s: wlc_cnt NULL\n", c_info->name);
 		return full_scan;
 	}
 
-	ACSD_INFO("acs_tx_idle: txframe %d(%d)\n", wlc_cnt->txframe, c_info->acs_txframe);
+	ACSD_INFO("%s: acs_tx_idle: txframe %d(%d)\n", c_info->name,
+			wlc_cnt->txframe, c_info->acs_txframe);
 
 	if (wlc_cnt->txframe > c_info->acs_txframe)
 		acs_txframe = wlc_cnt->txframe - c_info->acs_txframe;
@@ -1040,7 +1161,7 @@ int acs_tx_idle_check(acs_chaninfo_t *c_info)
 		acs_txframe = wlc_cnt->txframe + ((uint32)0xFFFFFFFF - c_info->acs_txframe);
 
 	if (acs_txframe < (c_info->acs_tx_idle_cnt * (now - c_info->timestamp_tx_idle))) {
-		ACSD_INFO("acs_tx_idle fullscan: %d\n", c_info->acs_txframe);
+		ACSD_INFO("%s: acs_tx_idle fullscan: %d\n", c_info->name, c_info->acs_txframe);
 		full_scan = 1;
 	}
 
@@ -1060,26 +1181,86 @@ acs_cleanup(acs_info_t ** acs_info_p)
 	for (i = 0; i < ACS_MAX_IF_NUM; i++) {
 		acs_chaninfo_t* c_info = (*acs_info_p)->chan_info[i];
 
-		ACS_FREE(c_info->scan_results);
+		if (c_info) {
+			ACS_FREE(c_info->scan_results);
 
-		if (c_info->acs_escan->acs_use_escan)
-			acs_escan_free(c_info->acs_escan->escan_bss_head);
+			if (c_info->acs_escan && c_info->acs_escan->acs_use_escan)
+				acs_escan_free(c_info->acs_escan->escan_bss_head);
 
-		acs_cleanup_scan_entry(c_info);
-		ACS_FREE(c_info->ch_bssinfo);
-		ACS_FREE(c_info->chanim_stats);
-		ACS_FREE(c_info->scan_chspec_list.chspec_list);
-		ACS_FREE(c_info->candidate[ACS_BW_20]);
-		ACS_FREE(c_info->candidate[ACS_BW_40]);
-		ACS_FREE(c_info->chanim_info);
-		ACS_FREE(c_info->acs_bgdfs);
+			acs_cleanup_scan_entry(c_info);
+			ACS_FREE(c_info->ch_bssinfo);
+			ACS_FREE(c_info->chanim_stats);
+			ACS_FREE(c_info->scan_chspec_list.chspec_list);
+			ACS_FREE(c_info->candidate[ACS_BW_20]);
+			ACS_FREE(c_info->candidate[ACS_BW_40]);
+			ACS_FREE(c_info->chanim_info);
+			ACS_FREE(c_info->acs_bgdfs);
 
-		acs_dfsr_exit(ACS_DFSR_CTX(c_info));
+			acs_dfsr_exit(ACS_DFSR_CTX(c_info));
 
-		ACS_FREE(c_info);
+			ACS_FREE(c_info);
+		}
 	}
 	ACS_FREE(acs_info);
 	*acs_info_p = NULL;
+}
+
+/* This function is used to check whether ifname is virtual or primary,
+ * if ifname is virtual convert it from virtual to corresponding
+ * primary interface
+ */
+void
+acs_check_ifname_is_virtual(char **ifname)
+{
+	ifname_idx_map_t *cur_map;
+	int i, j;
+	for (i = 0; i < ACS_MAX_IF_NUM; i++) {
+		cur_map = &acs_info->acs_ifmap[i];
+		for (j = 0; j < ACS_MAX_VIFNAMES; j++) {
+			if (acs_info->chan_info[i] != NULL &&
+				acs_info->chan_info[i]->vifnames[j] != NULL && *ifname != NULL) {
+				if (!strncmp(acs_info->chan_info[i]->vifnames[j], *ifname,
+					strlen(*ifname))) {
+					ACSD_INFO("found vir intf %s converting to corresponding "
+					"primary intf %s and iface length is %zu\n",
+					acs_info->chan_info[i]->vifnames[j], cur_map->name,
+					strlen(*ifname));
+					*ifname = cur_map->name;
+					break;
+				}
+			}
+		}
+	}
+}
+
+/* configure intfer params for virtual interfaces,currently
+ * copying default params of primary iface to virtual iface
+ */
+void acs_virtual_intfer_config(acs_chaninfo_t *c_info, void *vir_params)
+{
+	char prefix[PREFIX_LEN], name_enab_if[32] = { 0 }, *vifname, *vifnext;
+	char buf[32] = { 0 }, *bss_check;
+	wl_intfer_params_t *params;
+
+	params = (wl_intfer_params_t *)vir_params;
+	osifname_to_nvifname(c_info->name, prefix, sizeof(prefix));
+	strcat(prefix, "_vifs");
+	vifname = nvram_safe_get(prefix);
+	foreach(name_enab_if, vifname, vifnext) {
+		strcat_r(name_enab_if, "_bss_enabled", buf);
+		bss_check = nvram_safe_get(buf);
+		if (atoi(bss_check) == 1) {
+			wl_iovar_set(name_enab_if, "intfer_params", (void *)params,
+					sizeof(wl_intfer_params_t));
+			ACSD_5G("ifname: %s cnt:%d period:%d tcptxfail:%d txfail:%d\n",
+				name_enab_if, params->period, params->cnt,
+				params->tcptxfail_thresh, params->txfail_thresh);
+		} else {
+			ACSD_INFO("interface is diabled %s\n", name_enab_if);
+			continue;
+		}
+
+	}
 }
 
 /* set intfer trigger params */
@@ -1101,7 +1282,7 @@ int acs_intfer_config_txfail(acs_chaninfo_t *c_info)
 		if (CHSPEC_IS80(c_info->cur_chspec)) {
 			thld_setting = ACSD_INTFER_PARAMS_80_THLD_HI;
 		} else if (CHSPEC_BW_GE(c_info->cur_chspec,
-					WL_CHANSPEC_BW_160)) {
+				WL_CHANSPEC_BW_160)) {
 			thld_setting = ACSD_INTFER_PARAMS_160_THLD_HI;
 		}
 	} else if (CHSPEC_BW_GE(c_info->cur_chspec, WL_CHANSPEC_BW_160)) {
@@ -1109,7 +1290,7 @@ int acs_intfer_config_txfail(acs_chaninfo_t *c_info)
 	}
 
 	if (thld_setting == intfer->thld_setting) {
-		ACSD_5G("Same Setting intfer[%d].\n", thld_setting);
+		ACSD_5G("%s: Same Setting intfer[%d].\n", c_info->name, thld_setting);
 		return err;
 	}
 	intfer->thld_setting = thld_setting;
@@ -1125,89 +1306,69 @@ int acs_intfer_config_txfail(acs_chaninfo_t *c_info)
 	err = acs_set_intfer_params(c_info->name, &params, sizeof(wl_intfer_params_t));
 
 	if (err < 0) {
-		ACSD_ERROR("intfer_params error! ret code: %d\n", err);
+		ACSD_ERROR("%s: intfer_params error! ret code: %d\n", c_info->name, err);
 	}
 
-	ACSD_5G("Setting intfer[%d]: cnt:%d period:%d tcptxfail:%d txfail:%d\n",
+	ACSD_5G("%s: Setting intfer[%d]: cnt:%d period:%d tcptxfail:%d txfail:%d\n", c_info->name,
 			thld_setting, params.period, params.cnt,
 			params.tcptxfail_thresh, params.txfail_thresh);
+
+	acs_virtual_intfer_config(c_info, &params);
 
 	return err;
 }
 
-/* set intfer trigger params based on type,AC and numsecs*/
-int acs_intfer_config_trfthold(acs_chaninfo_t *c_info, char *prefix)
+/* set interface and bss configuration to get txfail event from driver */
+int acs_intfer_config_traffic_thresh(acs_chaninfo_t *c_info, char *prefix)
 {
-	wl_trf_thold_t trfdata;
-	acs_intfer_trf_thold_t *intfer = &(c_info->trf_params);
+	wl_traffic_thresh_t trfdata;
 	int err = 0;
-	char *str_ac = NULL;
-	char tmp[32];
 
-	ACSD_INFO("%s@%d\n", __FUNCTION__, __LINE__);
-	memset(&trfdata, 0, sizeof(wl_trf_thold_t));
-	/* Setting txfail configuration
-	*/
-	str_ac = nvram_safe_get(strcat_r(prefix, "acs_access_category_en", tmp));
+	ACSD_INFO("%s: %s@%d\n", c_info->name, __FUNCTION__, __LINE__);
+	memset(&trfdata, 0, sizeof(wl_traffic_thresh_t));
 
-	trfdata.ap = ACS_AP_CFG;
-	trfdata.thresh = intfer->thresh;
-	trfdata.num_secs = intfer->num_secs;
+	/* enabling interface configuration */
+	trfdata.mode = ACS_INTF_CFG;
+	trfdata.enable = 1;
 
-	if (strstr(str_ac, "0")) {
-		ACSD_5G("setting txfail config for BE\n");
-		trfdata.type = ACS_AC_BE;
-		err = acs_set_intfer_trf_thold(c_info->name, &trfdata,
-				sizeof(wl_trf_thold_t));
-
-		ACS_ERR(err, "intfer_params error! ret code\n");
-
-		ACSD_5G("Setting intfer traffic info: type:%d thresh:%d num_secs:%d\n",
-				trfdata.type, trfdata.thresh, trfdata.num_secs);
-	}
-	if (strstr(str_ac, "1")) {
-		ACSD_5G("setting txfail config for BK\n");
-		trfdata.type = ACS_AC_BK;
-		err = acs_set_intfer_trf_thold(c_info->name, &trfdata,
-				sizeof(wl_trf_thold_t));
-
-		ACS_ERR(err, "intfer_params error! ret code\n");
-
-		ACSD_5G("Setting intfer traffic info: type:%d thresh:%d num_secs:%d\n",
-				trfdata.type, trfdata.thresh, trfdata.num_secs);
-	}
-	if (strstr(str_ac, "2")) {
-		ACSD_5G("setting txfail config for VI\n");
-		trfdata.type = ACS_AC_VI;
-		err = acs_set_intfer_trf_thold(c_info->name, &trfdata,
-				sizeof(wl_trf_thold_t));
-
-		ACS_ERR(err, "intfer_params error! ret code\n");
-
-		ACSD_5G("Setting intfer traffic info: type:%d thresh:%d num_secs:%d\n",
-				trfdata.type, trfdata.thresh, trfdata.num_secs);
-	}
-	if (strstr(str_ac, "3")) {
-		ACSD_5G("setting txfail config for VO\n");
-		trfdata.type = ACS_AC_VO;
-		err = acs_set_intfer_trf_thold(c_info->name, &trfdata,
-				sizeof(wl_trf_thold_t));
-
-		ACS_ERR(err, "intfer_params error! ret code\n");
-
-		ACSD_5G("Setting intfer traffic info: type:%d thresh:%d num_secs:%d\n",
-				trfdata.type, trfdata.thresh, trfdata.num_secs);
-	}
-	ACSD_5G("setting txfail config for TO\n");
-	trfdata.type = ACS_AC_TO;
-	err = acs_set_intfer_trf_thold(c_info->name, &trfdata,
-			sizeof(wl_trf_thold_t));
-
-	ACS_ERR(err, "intfer_params error! ret code\n");
-
-	ACSD_INFO("Setting intfer traffic info: type:%d thresh:%d num_secs:%d\n",
-			trfdata.type, trfdata.thresh, trfdata.num_secs);
+	err = acs_set_intfer_traffic_thresh(c_info->name, &trfdata,
+			sizeof(wl_traffic_thresh_t));
+	ACS_ERR(err, "intferface config error! ret code\n");
 	return err;
+}
+
+int acs_update_rssi(acs_chaninfo_t *c_info, unsigned char *addr)
+{
+	int ret = 0;
+	scb_val_t scb_val;
+
+	/* reset assoc STA staus */
+	c_info->sta_status = ACS_STA_NONE;
+
+	memset(&scb_val, 0, sizeof(scb_val));
+	memcpy(&scb_val.ea, addr, ETHER_ADDR_LEN);
+
+	ret = wl_ioctl(c_info->name, WLC_GET_RSSI, &scb_val, sizeof(scb_val));
+
+	if (ret < 0) {
+		ACSD_ERROR("Err: reading intf:%s STA:"MACF" RSSI %d\n",
+			c_info->name, ETHERP_TO_MACF(&scb_val.ea),
+			dtoh32(scb_val.val));
+		return ret;
+	}
+	ACSD_5G("txfail sta intf:%s Mac:%02x:%02x:%02x:%02x:%02x:%02x RSSI: %d\n",
+		c_info->name, addr[0], addr[1], addr[2], addr[3],
+		addr[4], addr[5], dtoh32(scb_val.val));
+
+	if (dtoh32(scb_val.val) < c_info->acs_far_sta_rssi) {
+		c_info->sta_status |= ACS_STA_EXIST_FAR;
+	} else {
+		c_info->sta_status |= ACS_STA_EXIST_CLOSE;
+	}
+
+	ACSD_5G("%s: %s@%d sta_status:0x%x\n", c_info->name, __FUNCTION__, __LINE__,
+		c_info->sta_status);
+	return ret;
 }
 
 int acs_update_assoc_info(acs_chaninfo_t *c_info)
@@ -1219,16 +1380,16 @@ int acs_update_assoc_info(acs_chaninfo_t *c_info)
 	/* reset assoc STA staus */
 	c_info->sta_status = ACS_STA_NONE;
 
-	ACSD_INFO("%s@%d\n", __FUNCTION__, __LINE__);
+	ACSD_INFO("%s: %s@%d\n", c_info->name, __FUNCTION__, __LINE__);
 
 	/* read assoclist */
 	list = (struct maclist *)acsd_malloc(ACSD_BUFSIZE_4K);
 	memset(list, 0, ACSD_BUFSIZE_4K);
-	ACSD_INFO("WLC_GET_ASSOCLIST\n");
+	ACSD_INFO("%s: WLC_GET_ASSOCLIST\n", c_info->name);
 	list->count = htod32((ACSD_BUFSIZE_4K - sizeof(int)) / ETHER_ADDR_LEN);
 	ret = wl_ioctl(c_info->name, WLC_GET_ASSOCLIST, list, ACSD_BUFSIZE_4K);
 	if (ret < 0) {
-		ACSD_ERROR("WLC_GET_ASSOCLIST failure\n");
+		ACSD_ERROR("%s: WLC_GET_ASSOCLIST failure\n", c_info->name);
 		ACS_FREE(list);
 		return ret;
 	}
@@ -1263,7 +1424,7 @@ int acs_update_assoc_info(acs_chaninfo_t *c_info)
 
 		acs_assoclist->sta_info[cnt].rssi = dtoh32(scb_val.val);
 		ether_copy(&(list->ea[cnt]), &(acs_assoclist->sta_info[cnt].ea));
-		ACSD_INFO("%s@%d sta_info sta:"MACF" rssi:%d [%d]\n",
+		ACSD_INFO("%s: %s@%d sta_info sta:"MACF" rssi:%d [%d]\n", c_info->name,
 				__FUNCTION__, __LINE__,
 				ETHER_TO_MACF(list->ea[cnt]), dtoh32(scb_val.val),
 				c_info->acs_far_sta_rssi);
@@ -1273,39 +1434,19 @@ int acs_update_assoc_info(acs_chaninfo_t *c_info)
 		else
 			c_info->sta_status |= ACS_STA_EXIST_CLOSE;
 
-		ACSD_INFO("%s@%d sta_status:0x%x\n", __FUNCTION__, __LINE__, c_info->sta_status);
+		ACSD_INFO("%s: %s@%d sta_status:0x%x\n", c_info->name,
+			__FUNCTION__, __LINE__, c_info->sta_status);
 	}
 	ACS_FREE(list);
 
 	if (!ret) {
 		/* check to see if we need to update intfer params */
-		if (!c_info->trf_thold && (c_info->sta_status & ACS_STA_EXIST_FAR)) {
+		if (!c_info->traffic_thresh && (c_info->sta_status & ACS_STA_EXIST_FAR)) {
 			acs_intfer_config_txfail(c_info);
 		}
 	}
 
 	return ret;
-}
-
-/*
- * Check to see if we need goto hi power chan
- * (1) if exit from DFS chan, we goto hi power chan
- */
-int
-acsd_hi_chan_check(acs_chaninfo_t *c_info)
-{
-	bool is_dfs = c_info->cur_is_dfs;
-	int bw = CHSPEC_BW(c_info->cur_chspec);
-
-	if (bw <= WL_CHANSPEC_BW_40 || !is_dfs) {
-		ACSD_5G("Not running in 80MBW , Chanspec:0x%4x (%s)\n",
-				c_info->cur_chspec, wf_chspec_ntoa(c_info->cur_chspec, chanspecbuf));
-		return FALSE;
-	}
-
-	ACSD_5G("running in 80Mbw DFS Chanspec:0x%4x (%s)\n",
-			c_info->cur_chspec, wf_chspec_ntoa(c_info->cur_chspec, chanspecbuf));
-	return TRUE;
 }
 
 /*
@@ -1321,8 +1462,9 @@ acsd_need_chan_switch(acs_chaninfo_t *c_info)
 	bool is_dfs = c_info->cur_is_dfs;
 	int bw = CHSPEC_BW(c_info->cur_chspec);
 
-	ACSD_5G("sta_status:0x%x chanspec:0x%4x (%s) acs_dfs:%d acs_assoclist:%p is_dfs:%d\n",
-			c_info->sta_status, c_info->cur_chspec, wf_chspec_ntoa(c_info->cur_chspec, chanspecbuf),
+	ACSD_5G("%s: sta_status:0x%x chanspec:0x%x acs_dfs:%d acs_assoclist:%p is_dfs:%d\n",
+			c_info->name,
+			c_info->sta_status, c_info->cur_chspec,
 			c_info->acs_dfs, c_info->acs_assoclist, is_dfs);
 
 	if ((bw > WL_CHANSPEC_BW_40) &&
@@ -1397,7 +1539,8 @@ acs_get_video_sta_traffic_info(acs_chaninfo_t * c_info, acs_traffic_info_t *t_in
 		memcpy(&ea, &c_info->vid_sta[i].ea, sizeof(ea));
 		if (acs_get_stainfo(c_info->name, &ea, sizeof(ea), stabuf,
 				ACS_MAX_STA_INFO_BUF) < 0) {
-			ACSD_ERROR("sta_info for %s failed\n", c_info->vid_sta[i].vid_sta_mac);
+			ACSD_ERROR("%s: sta_info for %s failed\n", c_info->name,
+				c_info->vid_sta[i].vid_sta_mac);
 			return BCME_ERROR;
 		}
 		sta = (sta_info_v6_t *)stabuf;
@@ -1431,12 +1574,13 @@ acs_get_initial_traffic_stats(acs_chaninfo_t *c_info)
 
 	if (!c_info->acs_toa_enable) {
 		if ((ret = acs_get_traffic_info(c_info, &t_curr)) != BCME_OK) {
-			ACSD_ERROR("Failed to get traffic information\n");
+			ACSD_ERROR("%s: Failed to get traffic information\n", c_info->name);
 			return ret;
 		}
 	} else {
 		if ((ret = acs_get_video_sta_traffic_info(c_info, &t_curr)) != BCME_OK) {
-			ACSD_ERROR("Failed to get video sta traffic information\n");
+			ACSD_ERROR("%s: Failed to get video sta traffic information\n",
+				c_info->name);
 			return ret;
 		}
 	}
@@ -1468,12 +1612,13 @@ acs_activity_update(acs_chaninfo_t * c_info)
 
 	if (!c_info->acs_toa_enable) {
 		if ((ret = acs_get_traffic_info(c_info, &t_curr)) != BCME_OK) {
-			ACSD_ERROR("Failed to get traffic information\n");
+			ACSD_ERROR("%s: Failed to get traffic information\n", c_info->name);
 			return ret;
 		}
 	} else {
 		if ((ret = acs_get_video_sta_traffic_info(c_info, &t_curr)) != BCME_OK) {
-			ACSD_ERROR("Failed to get video sta traffic information\n");
+			ACSD_ERROR("%s: Failed to get video sta traffic information\n",
+				c_info->name);
 			return ret;
 		}
 	}
@@ -1548,11 +1693,14 @@ acs_process_cmd(acs_chaninfo_t * c_info, chanspec_t chspec, int dfs_ap_move)
 	if ((reason != WL_CHAN_REASON_DFS_AP_MOVE_RADAR_FOUND) &&
 		(reason != WL_CHAN_REASON_DFS_AP_MOVE_STUNT) &&
 		(reason != WL_CHAN_REASON_DFS_AP_MOVE_ABORTED)) {
+		if (c_info->acs_use_csa) {
+			ret = acs_csa_handle_request(c_info);
+		} else {
+			ret = acs_update_driver(c_info);
 
-		ret = acs_update_driver(c_info);
-
-		if (ret)
-			ACSD_ERROR("update driver failed\n");
+			if (ret)
+				ACSD_ERROR("update driver failed\n");
+		}
 	}
 	ACSD_DEBUG("ifname %s - mode: %s\n", c_info->name,
 		AUTOCHANNEL(c_info)? "SELECT" :

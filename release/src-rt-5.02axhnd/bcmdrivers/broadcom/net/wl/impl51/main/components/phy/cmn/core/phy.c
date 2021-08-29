@@ -1,7 +1,7 @@
 /*
  * PHY Core module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy.c 733511 2017-11-28 21:51:26Z $
+ * $Id: phy.c 778037 2019-08-20 22:18:34Z $
  */
 
 #include <typedefs.h>
@@ -451,6 +451,11 @@ BCMATTACHFN(phy_module_attach)(shared_phy_t *sh, void *regs, int bandtype, char 
 	if (pi->pubpi->phy_type == PHY_TYPE_LCNXN) {
 		pi->pubpi->phy_type = PHY_TYPE_N;
 		pi->pubpi->phy_rev += LCNXN_BASEREV;
+	}
+
+	/* AXPHY for now remapped to ACPHY */
+	if (pi->pubpi->phy_type == PHY_TYPE_AX) {
+		pi->pubpi->phy_type = PHY_TYPE_AC;
 	}
 
 	/* Default to 1 core. Each PHY specific attach should initialize it
@@ -860,6 +865,11 @@ BCMATTACHFN(prephy_module_attach)(shared_phy_t *sh, void *regs)
 	phyversion = R_REG(osh, D11_PHY_REG_0(pi));
 	pi->pubpi->phy_type = PHY_TYPE(phyversion);
 	pi->pubpi->phy_rev = phyversion & PV_PV_MASK;
+
+	/* AXPHY for now remapped to ACPHY */
+	if (pi->pubpi->phy_type == PHY_TYPE_AX) {
+		pi->pubpi->phy_type = PHY_TYPE_AC;
+	}
 
 	if ((pi->prephyi = phy_prephy_attach(pi)) == NULL) {
 		PHY_ERROR(("%s: phy_prephy_attach failed\n", __FUNCTION__));
@@ -1515,6 +1525,9 @@ WLBANDINITFN(phy_init)(phy_info_t *pi, chanspec_t chanspec)
 	 */
 	wlc_phy_femctrl_mask_on_band_change(pi);
 #endif // endif
+	/* XXX: specific to 43012 for openloop cal. inside chip check to avoid other chips to
+	 * force tempsense here.
+	 */
 	if (CHIPID(pi->sh->chip) == BCM43012_CHIP_ID) {
 		int16 curtemp = phy_temp_sense_read((wlc_phy_t *)pi);
 		wlapi_openloop_cal(pi->sh->physhim, (uint16) curtemp);
@@ -1565,6 +1578,10 @@ phy_bss_init(wlc_phy_t *pih, bool bonlyap, int noise)
 	phy_info_t *pi = (phy_info_t*)pih;
 
 	if (bonlyap) {
+		/* PR43338 WAR, we have generic CCK reception problem with ACI of OFDM.
+		 * should narrow RC filter and turn off OFDM classification if we are
+		 * associate to B ONLY AP
+		 */
 	}
 
 	return phy_noise_bss_init(pi->noisei, noise);

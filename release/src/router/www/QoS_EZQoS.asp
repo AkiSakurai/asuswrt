@@ -121,6 +121,7 @@
 	height:96px;
 	margin-left:2px;
 	cursor:pointer;
+	background-size: cover;
 }
 
 #Game{
@@ -273,6 +274,10 @@ if(based_modelid == "RT-AC68A" || based_modelid == "MAP-AC1750"){	//MODELDEP : S
 	bwdpi_support = false;
 }
 
+if(geforceNow_support){
+	var orig_nvgfn_enable = httpApi.nvramGet(["nvgfn_enable"], true).nvgfn_enable;
+}
+
 function show_up_down(value){
 	if(value){
 		document.getElementById('upload_tr').style.display = "";
@@ -321,6 +326,7 @@ if(wl_info.band5g_2_support != '-1'){
 		}
 	}
 }
+var GN_with_Amazon_WSS_enabled = (amazon_wss_support && ((httpApi.amazon_wss.getStatue(0, 2) == "1") ? true : false));
 
 if(pm_support) {
 	var device_list = [<% pms_device_info(); %>][0];
@@ -432,6 +438,11 @@ function initial(){
 	}
 	init_changeScale();
 
+	if(geforceNow_support){
+		document.getElementById("GeForce_upnp").style.display = "";
+		document.getElementById("GeForceNow_item").style.display = "";
+	}
+
 	if((isFirefox || isOpera) && document.getElementById("FormTitle"))
 		document.getElementById("FormTitle").className = "FormTitle";
 }
@@ -526,7 +537,14 @@ function switchPage(page){
 function validForm(){
 
 	if(document.form.qos_enable.value == 0 && document.form.qos_enable_orig.value == 0){
-		return false;
+		if(geforceNow_support){
+			if(document.form.nvgfn_enable.value == orig_nvgfn_enable){
+				return false;
+			}
+		}
+		else{
+			return false;
+		}
 	}
 
 	if(document.form.qos_enable.value == 1){
@@ -639,7 +657,11 @@ function submitQoS(){
 				.show("tm")
 		}
 		else{
-			if(ctf_disable == 1 || (fc_disable_orig != '' && runner_disable_orig != '')){	//HW NAT [OFF] or HND ROUTER
+			if(geforceNow_support && document.form.qos_enable.value == 0 && document.form.qos_enable_orig.value == 0 &&
+				(document.form.nvgfn_enable.value != orig_nvgfn_enable)){
+				document.form.action_script.value = "restart_upnp;";
+			}
+			else if(ctf_disable == 1 || (fc_disable_orig != '' && runner_disable_orig != '')){	//HW NAT [OFF] or HND ROUTER
 				document.form.action_script.value = "restart_qos;restart_firewall";
 			}
 			else{
@@ -664,6 +686,32 @@ function submitQoS(){
 			if(reset_wan_to_fo.change_status)
 				reset_wan_to_fo.change_wan_mode(document.form);
 
+			if(GN_with_Amazon_WSS_enabled && 
+				((document.form.qos_enable_orig.value == "1" && document.form.qos_enable.value == "0") || //Qos enable to disable
+				(document.form.qos_type_orig.value == "2" && document.form.qos_type.value != "2"))){ // Qos type is change from Bandwidth Limiter to other.
+					document.form.action_script.value = "restart_wireless;" + document.form.action_script.value;
+					if (lantiq_support)
+						document.form.action_wait.value = "60"; // for extend the time to let Amazon WSS ebtable rule ready, or it will block all clients
+					var postData = {
+						"do_rc": "0",
+						"wss_enable": "0"
+					};
+					var parmData = {
+						"wl_unit": "0",
+						"wl_subunit": "2",
+						"async": false
+					};
+					httpApi.amazon_wss.set(postData, parmData);
+					var append_hidden_item = function(_item, _value){
+						var NewInput = document.createElement("input");
+						NewInput.type = "hidden";
+						NewInput.name =  _item;
+						NewInput.value = _value;
+						document.form.appendChild(NewInput);
+					};
+					append_hidden_item("wl0.2_bss_enabled", "0");
+			}
+
 			showLoading();
 			document.form.submit();
 		}
@@ -681,6 +729,8 @@ function change_qos_type(value){
 		document.getElementById('int_type').checked = false;
 		document.getElementById('trad_type').checked = true;
 		document.getElementById('bw_limit_type').checked = false;
+		if(geforceNow_support)
+			document.getElementById('GeForce_type').checked = false;
 		document.getElementById('bandwidth_setting_tr').style.display = "none";
 		show_up_down(1);
 		document.getElementById('list_table').style.display = "none";
@@ -698,6 +748,8 @@ function change_qos_type(value){
 		document.getElementById('trad_type').checked = false;
 		document.getElementById('bw_limit_type').checked = false;
 		document.getElementById('bandwidth_setting_tr').style.display = "";
+		if(geforceNow_support)
+			document.getElementById('GeForce_type').checked = false;
 		document.getElementById('list_table').style.display = "none";
 		if(document.getElementById("auto").checked){
 			show_up_down(0);
@@ -715,10 +767,12 @@ function change_qos_type(value){
 
 		show_settings("Adaptive_quick");
 	}
-	else{		// Bandwidth Limiter
+	else if(value == 2){		// Bandwidth Limiter
 		document.getElementById('int_type').checked = false;
 		document.getElementById('trad_type').checked = false;
 		document.getElementById('bw_limit_type').checked = true;
+		if(geforceNow_support)
+			document.getElementById('GeForce_type').checked = false;
 		document.getElementById('bandwidth_setting_tr').style.display = "none";
 		show_up_down(0);
 		document.getElementById('list_table').style.display = "block";
@@ -733,11 +787,40 @@ function change_qos_type(value){
 		if(!pm_support)
 			showDropdownClientList('setClientIP', 'name>mac', 'all', 'ClientList_Block_PC', 'pull_arrow', 'all');
 	}
+	else if(value == 3) {		// GeforceNow QoS
+		document.getElementById('int_type').checked = false;
+		document.getElementById('trad_type').checked = false;
+		document.getElementById('bw_limit_type').checked = false;
+		document.getElementById('GeForce_type').checked = true;
+		document.getElementById('bandwidth_setting_tr').style.display = "none";
+		show_up_down(1);
+		document.getElementById('list_table').style.display = "none";
+		document.form.qos_bw_rulelist.disabled = false;
+		if(document.form.qos_type_orig.value == 3 && document.form.qos_enable_orig.value != 0){
+			document.form.action_script.value = "restart_qos;restart_firewall";
+		}
+		else{
+			document.form.action_script.value = "reboot";
+		}
+		show_settings("NonAdaptive");
+	}
+	else {
+		alert("no such qos");
+	}
 
 	document.form.qos_type.value = value;
 
-	if(value != 2 && GN_with_BandwidthLimeter){
-		alert("Guest Network > Bandwidth Limiter will be Disabled.");		/* Untranslated */
+	if(value != 2){
+		var alert_hint = "";
+		if(GN_with_BandwidthLimeter)
+			alert_hint += "The Bandwidth Limiter of Guest Network will be disabled."/* Untranslated */
+		if(GN_with_Amazon_WSS_enabled){
+			if(alert_hint != "")
+				alert_hint += "\n";
+			alert_hint += "Amazon Wi-Fi Simple Setup will be disabled. "/* Untranslated */
+		}
+		if(alert_hint != "")
+			alert(alert_hint);
 	}
 }
 
@@ -1472,6 +1555,13 @@ function setGroup(name){
 							<tr>
 								<td valign="top">
 									<table style="margin-left:3px;" width="95%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable">
+										<tr id="GeForce_upnp" style="display: none;">
+											<th>Enable GeForce NOW QoS UPnP control</th>
+											<td>
+												<input type="radio" name="nvgfn_enable" class="input" value="1" <% nvram_match("nvgfn_enable", "1", "checked"); %>><#checkbox_Yes#>
+												<input type="radio" name="nvgfn_enable" class="input" value="0" <% nvram_match("nvgfn_enable", "0", "checked"); %>><#checkbox_No#>
+											</td>
+										</tr>
 										<tr>
 											<th><#Enable_QoS#></th>
 											<td colspan="2">
@@ -1507,9 +1597,16 @@ function setGroup(name){
 																document.getElementById('bandwidth_setting_tr').style.display = "none";
 																document.getElementById('list_table').style.display = "none";
 
-																if(GN_with_BandwidthLimeter){
-																	alert("Guest Network > Bandwidth Limiter will be Disabled.");		/* Untranslated */
+																var alert_hint = "";
+																if(GN_with_BandwidthLimeter)
+																	alert_hint += "The Bandwidth Limiter of Guest Network will be disabled."/* Untranslated */
+																if(GN_with_Amazon_WSS_enabled){
+																	if(alert_hint != "")
+																	alert_hint += "\n";
+																	alert_hint += "Amazon Wi-Fi Simple Setup will be disabled. "/* Untranslated */
 																}
+																if(alert_hint != "")
+																	alert(alert_hint);
 
 																if(bwdpi_support){
 
@@ -1524,10 +1621,11 @@ function setGroup(name){
 										</tr>
 										<tr id="qos_type_tr" style="display:none">
 											<th><#QoS_Type#></th>
-											<td colspan="2">
+											<td colspan="3">
 												<input id="int_type" name="qos_type_radio" value="1" onClick="change_qos_type(this.value);" style="display:none;" type="radio" <% nvram_match("qos_type", "1","checked"); %>><a id="int_type_link" class="hintstyle" style="display:none;" href="javascript:void(0);" onClick="openHint(20, 5);"><label for="int_type"><#Adaptive_QoS#></label></a>
 												<input id="trad_type" name="qos_type_radio" value="0" onClick="change_qos_type(this.value);" type="radio" <% nvram_match("qos_type", "0","checked"); %>><a class="hintstyle" href="javascript:void(0);" onClick="openHint(20, 6);"><label for="trad_type"><#EzQoS_type_traditional#></label></a>
 												<input id="bw_limit_type" name="qos_type_radio" value="2" onClick="change_qos_type(this.value);" type="radio" <% nvram_match("qos_type", "2","checked"); %>><a class="hintstyle" href="javascript:void(0);" onClick="openHint(20, 7)"><label for="bw_limit_type"><#Bandwidth_Limiter#></label></a>
+												<span id="GeForceNow_item" style="display: none;"><input id="GeForce_type" name="qos_type_radio" value="3" onClick="change_qos_type(this.value);" type="radio" <% nvram_match("qos_type", "3","checked"); %>><a class="hintstyle" href="javascript:void(0);"><label for="GeForce_type">GeForce NOW QoS</label></a></span>
 											</td>
 										</tr>
 										<tr id="bandwidth_setting_tr" style="display:none">

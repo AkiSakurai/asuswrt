@@ -1,6 +1,7 @@
 /*
  * API for accessing CLM data
- * Copyright 2018 Broadcom
+ *
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_clm.h 691329 2017-03-21 22:51:30Z $
+ * $Id: wlc_clm.h 802970 2019-02-05 19:00:18Z $
  */
 
 #ifndef _WLC_CLM_H_
@@ -98,16 +99,6 @@ typedef enum clm_bandwidth {
 
 	/** 80+80MHz channel */
 	CLM_BW_80_80,
-#endif // endif
-#ifdef WL11ULB
-	/** 2.5MHz channel */
-	CLM_BW_2_5,
-
-	/** 5MHz channel */
-	CLM_BW_5,
-
-	/** 10MHz channel */
-	CLM_BW_10,
 #endif // endif
 	/** Number of channel bandwidth identifiers */
 	CLM_BW_NUM
@@ -183,6 +174,14 @@ typedef enum clm_flags {
 
 	/** PSD limits present */
 	CLM_FLAG_PSD		= 0x00000400,
+
+	/** Region is compliant with 2018 RED (Radio Equipment Directive), that
+	 * limits frame burst duration and maybe something else
+	 */
+	CLM_FLAG_RED_EU	= 0x00000800,
+
+	/** HE limits present */
+	CLM_FLAG_HE = 0x00001000,
 
 	/* DEBUGGING FLAGS (ALLOCATED AS TOP BITS) */
 
@@ -320,6 +319,14 @@ typedef struct clm_power_limits {
 	clm_power_t limit[WL_NUMRATES];
 } clm_power_limits_t;
 
+#ifdef WL_RU_NUMRATES
+/** Per-OFDMA-rate-group power limits */
+typedef struct clm_ru_power_limits {
+	/** Per-rate-group limits (WL_RATE_DISABLED for disabled rates) */
+	clm_power_t limit[WL_RU_NUMRATES];
+} clm_ru_power_limits_t;
+#endif /* WL_RU_NUMRATES */
+
 /* ITERATORS - TOKENS THAT REPRESENT VARIOUS ITEMS IN THE CLM */
 
 /** Country (region) definition */
@@ -391,11 +398,56 @@ typedef struct clm_channels_params {
 	clm_bandwidth_t bw;
 
 	/** If nonzero - one channel in 80+80 channel pair, in this case
-	 * function returns other 80MHz channels that may be used in pair with
-	 * it
-	 */
+	* function returns other 80MHz channels that may be used in pair with
+	* it
+	*/
 	unsigned int this_80_80;
 } clm_channels_params_t;
+
+/** Input parameters for clm_psd_limit() */
+typedef struct clm_psd_limit_params {
+	/** Bandwidth of channels to look for. Default is CLM_BW_20 */
+	clm_bandwidth_t bw;
+} clm_psd_limit_params_t;
+
+#ifdef WL_RU_NUMRATES
+/** Result struct for clm_available_he_limits() */
+typedef struct clm_available_he_limits_result {
+	/** Bitmask, corresponded to available members of wl_he_rate_type enum */
+	unsigned int rate_type_mask;
+
+	/** Bitmask, corresponded to available members of wl_tx_nss enum */
+	unsigned int nss_mask;
+
+	/** Bitmask, corresponded to available members of wl_tx_chains enum */
+	unsigned int chains_mask;
+
+	/** Bitmask, corresponded to available members of wl_tx_mode enum */
+	unsigned int tx_mode_mask;
+} clm_available_he_limits_result_t;
+
+/** Additional parameters for clm_he_limit() */
+typedef struct clm_he_limit_params {
+	/** Desired rate type */
+	wl_he_rate_type_t he_rate_type;
+
+	/** Desired TX mode */
+	wl_tx_mode_t tx_mode;
+
+	/** Desired number of spatial streams */
+	unsigned int nss;
+
+	/** Desired number of TX chains */
+	unsigned int chains;
+} clm_he_limit_params_t;
+
+/** Result structure for clm_he_limit() */
+typedef struct clm_he_limit_result {
+	/** Requested HE limit */
+	clm_power_t limit;
+} clm_he_limit_result_t;
+
+#endif /* WL_RU_NUMRATES */
 
 /* forward declaration for CLM header data structure used in clm_init()
  * struct clm_data_header is defined in clm_data.h
@@ -547,6 +599,29 @@ clm_limits(const clm_country_locales_t *locales, clm_band_t band,
 	unsigned int channel, int ant_gain, clm_limits_type_t limits_type,
 	const clm_limits_params_t *params, clm_power_limits_t *limits);
 
+#ifdef WL_RU_NUMRATES
+/** Retrieves OFDMA power limits on the given band/(sub)channel/bandwidth using
+ * the given antenna gain
+ * \param[in] locales Country (region) locales' information
+ * \param[in] band Frequency band
+ * \param[in] channel Channel number (main channel if subchannel limits output
+ * is required)
+ * \param[in] ant_gain Antenna gain in quarter dBm (used if limit is given in
+ * EIRP terms)
+ * \param[in] limits_type Subchannel to get limits for
+ * \param[in] params Other parameters
+ * \param[out] limits Limits for given above parameters
+ * \return CLM_RESULT_OK in case of success, CLM_RESULT_ERR if `locales` is
+ * null or contains invalid information, or if any other input parameter
+ * (except channel) has invalid value, CLM_RESULT_NOT_FOUND if channel has
+ * invalid value or has no OFDMA limits
+ */
+extern clm_result_t
+clm_ru_limits(const clm_country_locales_t *locales, clm_band_t band,
+	unsigned int channel, int ant_gain, clm_limits_type_t limits_type,
+	const clm_limits_params_t *params, clm_ru_power_limits_t *limits);
+#endif /* WL_RU_NUMRATES */
+
 /** Retrieves information about channels with valid power limits for locales of
  * some region. This function is deprecated. It is being superseded by
  * clm_valid_channels()
@@ -597,12 +672,21 @@ extern clm_result_t
 clm_regulatory_limit(const clm_country_locales_t *locales, clm_band_t band,
 	unsigned int channel, int *limit);
 
+/** Resets given clm_psd_limit() parameters structure to defaults
+* \param[out] params Address of parameters' structure to reset
+* \return CLM_RESULT_OK in case of success, CLM_RESULT_ERR if null pointer
+* passed
+*/
+extern clm_result_t
+clm_psd_limit_params_init(clm_psd_limit_params_t *params);
+
 /** Retrieves PSD limit for given channel
  * \param[in] locales Country (region) locales' information
  * \param[in] band Frequency band
  * \param[in] channel Channel number
  * \param[in] ant_gain Antenna gain in quarters of dBm. Used if PSD limit
  * specified as EIRP
+ * \param[in] params Other parameters of limit being requested
  * \param[out] psd_limit PSD limit in qdBm/MHz
  * \return CLM_RESULT_OK in case of success, CLM_RESULT_ERR if `locales` is
  * null or contains invalid information, if `psd_limit` is null or if any other
@@ -611,7 +695,61 @@ clm_regulatory_limit(const clm_country_locales_t *locales, clm_band_t band,
  */
 extern clm_result_t
 clm_psd_limit(const clm_country_locales_t *locales, clm_band_t band,
-	unsigned int channel, int ant_gain, clm_power_t *psd_limit);
+	unsigned int channel, int ant_gain, const clm_psd_limit_params_t *params,
+	clm_power_t *psd_limit);
+
+/* Temporary alias for smoot transition to new signature. Will be removed */
+#define clm_psd_limit_new clm_psd_limit
+
+#ifdef WL_RU_NUMRATES
+/** Determines what kinds of HE limits available for given channel
+ * \param[in] locales Country (region) locales' information
+ * \param[in] band Band of requested channel
+ * \param[in] bandwidth Channel bandwidth (main channel bandwidth if
+ * subchannel is requested)
+ * \param[in] channel Channel number (main channel number if subchannel is
+ * requested)
+ * \param[in] limits_type Subchannel to get limits for
+ * \param[out] result Structure, containing information about available HE
+ * limits
+ * \return CLM_RESULT_OK if some kind of HE limits was found,
+ * CLM_RESULT_NOT_FOUND if no HE limits was found, CLM_RESULT_ERR if some
+ * pointer is null or some other parameter is out of range
+ */
+extern clm_result_t
+clm_available_he_limits(const clm_country_locales_t *locales, clm_band_t band,
+	clm_bandwidth_t bandwidth, unsigned int channel,
+	clm_limits_type_t limits_type, clm_available_he_limits_result_t *result);
+
+/** Resets given clm_he_limit() parameters structure to defaults
+ * \param[out] params Address of parameters' structure to reset
+ * \return CLM_RESULT_OK in case of success, CLM_RESULT_ERR if null pointer
+ * passed
+ */
+extern clm_result_t
+clm_he_limit_params_init(struct clm_he_limit_params *params);
+
+/** Retrieves HE power limit of given type
+ * \param[in] locales Country (region) locales' information
+ * \param[in] band Channel band
+ * \param[in] bandwidth Channel bandwidth (main channel bandwidth if
+ * subchannel is requested)
+ * \param[in] channel Channel number (main channel if subchannel limit is
+ * required)
+ * \param[in] ant_gain Antenna gain in quarter dBm (used if limit is given in
+ * EIRP terms)
+ * \param[in] limits_type Subchannel to get limits for
+ * \param[in] params Other parameters
+ * \param[out] limits Limit for given above parameters
+ * \return CLM_RESULT_OK in case of success, CLM_RESULT_ERR if some parameter
+ * is null or out of range, CLM_RESULT_NOT_FOUND if requested limit not found
+ */
+extern clm_result_t
+clm_he_limit(const clm_country_locales_t *locales, clm_band_t band,
+	clm_bandwidth_t bandwidth, unsigned int channel, int ant_gain,
+	clm_limits_type_t limits_type, const clm_he_limit_params_t *params,
+	clm_he_limit_result_t *result);
+#endif /* WL_RU_NUMRATES */
 
 /** Performs one iteration step over set of aggregations. Looks up first/next
  * aggregation

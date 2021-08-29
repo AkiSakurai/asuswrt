@@ -1,6 +1,6 @@
 /*
  * Key Management Module Implementation - utilities
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,10 +43,11 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_util.c 767108 2018-08-28 12:23:52Z $
+ * $Id: km_util.c 774133 2019-04-11 09:15:54Z $
  */
 
 #include "km_pvt.h"
+#include "km_hw_impl.h"
 
 #include <nan.h>
 
@@ -534,7 +535,14 @@ have_key:
 	f->body_len -= (key_info->iv_len);
 	f->totlen -= (key_info->iv_len);
 	if ((PKTISHDRCONVTD(KM_OSH(km), f->p)) && (f->isamsdu)) {
+		/* XXX  SWWLAN-187559 WAR
+		 * Header conversion + AMSDU : NO ICV bytes present
+		 */
 	} else {
+		/* XXX Dont see MIC bytes decremented any where.
+		 * Probably due to AMSDU disabled in TKIP mode.
+		 * But will be a problem if a thridparty transmits AMSDU in TKIP mode
+		 */
 		f->body_len -= key_info->icv_len;
 		f->totlen -= key_info->icv_len;
 	}
@@ -610,6 +618,12 @@ km_needs_hw_key(keymgmt_t *km, km_pvt_key_t *km_pvt_key, wlc_key_info_t *key_inf
 			/* AP group keys need hw keys, for tx */
 		}
 
+		/* TKIP: use SW keys for BCMC traffic on secondary BSS */
+		if (KM_HW_COREREV_GE128(km) && (key_info->algo == CRYPTO_ALGO_TKIP) &&
+			!WLC_KEY_IS_DEFAULT_BSS(key_info) &&
+			(km_pvt_key->flags & KM_FLAG_BSS_KEY))
+			break;
+
 		/* IBSS group keys are tx only - h/w support is needed */
 
 		needs = TRUE;
@@ -670,6 +684,12 @@ km_get_hw_idx_key_info(keymgmt_t *km, wlc_key_hw_index_t hw_idx,
 }
 #endif // endif
 
+/* XXX when processing a rx'd unicast ucode tries a pairwise key match first
+ * based on the frame's TA and then falls back to a default key indicated by
+ * the key index field in IV field of the frame if no pairwise key match is
+ * found. For multicast/broadcast frames the ucode uses the key index field
+ * in the frames' IV anyway to find the key entry.
+ */
 /* determine if default keys are valid for rx unicast */
 bool
 km_rxucdefkeys(keymgmt_t *km)
@@ -792,6 +812,16 @@ km_update_ivtw(keymgmt_t *km, wlc_key_info_t *key_info, int ins,
 	KM_DBG_ASSERT(WLC_KEY_USE_IVTW(key_info));
 	KM_DBG_ASSERT(km->ivtw != NULL);
 	km_ivtw_update(km->ivtw, key_info, ins, rx_seq, seq_len, chained);
+}
+
+int
+km_set_ivtw(keymgmt_t *km, wlc_key_info_t *key_info, int ins,
+	const uint8 *rx_seq, size_t seq_len)
+{
+	KM_DBG_ASSERT(KM_VALID(km) && key_info != NULL);
+	KM_DBG_ASSERT(WLC_KEY_USE_IVTW(key_info));
+	KM_DBG_ASSERT(km->ivtw != NULL);
+	return (km_ivtw_set(km->ivtw, key_info, ins, rx_seq, seq_len));
 }
 #endif /* BRCMAPIVTW */
 

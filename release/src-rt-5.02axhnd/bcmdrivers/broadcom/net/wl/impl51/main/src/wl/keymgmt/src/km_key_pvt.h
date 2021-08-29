@@ -1,6 +1,6 @@
 /*
  * Private header - wireless security key implementation
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_key_pvt.h 764284 2018-05-24 15:20:36Z $
+ * $Id: km_key_pvt.h 777731 2019-08-07 19:37:44Z $
  */
 
 #ifndef _km_key_pvt_h_
@@ -155,12 +155,12 @@ typedef int (*key_tx_msdu_cb_t)(wlc_key_t *key, void *pkt, struct ether_header *
 typedef int (*key_dump_cb_t)(const wlc_key_t *key, struct bcmstrbuf *b);
 
 struct key_algo_callbacks {
-	key_algo_destroy_cb_t		destroy;
+	key_algo_destroy_cb_t			destroy;
 	key_algo_get_cb_t			get_data;
 	key_algo_set_cb_t			set_data;
-	key_rx_cb_t					rx_mpdu;
+	key_rx_cb_t				rx_mpdu;
 	key_rx_msdu_cb_t			rx_msdu;
-	key_tx_cb_t					tx_mpdu;
+	key_tx_cb_t				tx_mpdu;
 	key_tx_msdu_cb_t			tx_msdu;
 	key_dump_cb_t				dump;
 };
@@ -209,19 +209,14 @@ struct wlc_key {
 
 #define KEY_COREREV_LT40(_key) (D11REV_LT(KEY_COREREV(_key), 40))
 #define KEY_COREREV_GE40(_key) (D11REV_GE(KEY_COREREV(_key), 40))
-#define KEY_COREREV_LT80(_key) (D11REV_LT(KEY_COREREV(_key), 80))
-#define KEY_COREREV_GE80(_key) (D11REV_GE(KEY_COREREV(_key), 80))
 #define KEY_COREREV_LT128(_key) (D11REV_LT(KEY_COREREV(_key), 128))
 #define KEY_COREREV_GE128(_key) (D11REV_GE(KEY_COREREV(_key), 128))
-
 #define KEY_ERR(args) WL_ERROR(args)
 #define KEY_LOG(args) KM_LOG(args)
 #define KEY_PRINTF(args) KM_PRINTF(args)
 #define KEY_LOG_DECL(stmt) KM_LOG_DECL(stmt)
 #define KEY_LOG_DUMP(stmt) KM_LOG_DUMP(stmt)
 #define KEY_LOG_DUMP_PKT(_msg, _key, _pkt) KM_LOG_DUMP_PKT(_msg, KEY_WLC(_key), _pkt)
-
-#define KEY_CCX(_key) NULL
 
 #define KEY_MPDU_LEN(_key, _pkt) PKTLEN(KEY_OSH(_key), _pkt)
 

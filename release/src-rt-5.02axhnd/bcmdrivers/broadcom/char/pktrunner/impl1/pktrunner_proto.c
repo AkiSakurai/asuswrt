@@ -98,6 +98,8 @@
 #define ARRAYSIZE(a)  (sizeof(a)/sizeof(a[0]))
 #endif
 
+// #define MCAST_FORWARD_TO_HOST
+
 typedef union {
     bdmf_number    num;
     rdpa_stat_t    rdpastat;
@@ -397,7 +399,7 @@ static int runner_refresh_ucast(uint32_t tuple, uint32_t *pktsCnt_p, uint32_t *o
 
 static int runner_refresh_mcast(uint32_t tuple, uint32_t *pktsCnt_p, uint32_t *octetsCnt_p)
 {
-#if !defined(CONFIG_BCM_PKTRUNNER_MCAST_DNAT) && !defined(CONFIG_BCM_RTP_SEQ_CHECK)
+#ifndef MCAST_FORWARD_TO_HOST
     int rc, flowIdx = runner_get_hw_entix(tuple);
     pktRunner_flowStat_t flowStat, resetFlowStat;
 
@@ -849,6 +851,10 @@ static void add_l2_commands(rdpa_ip_flow_result_t *ip_flow_result, Blog_t *blog_
 #endif
 
     ip_flow_result->pathstat_idx = blog_p->hw_pathstat_idx;
+    
+    /* get_max_rx_pkt_len including crc according to mtu */
+    ip_flow_result->max_pkt_len = blog_getTxMtu(blog_p) + blog_p->rx.length + 4;
+
     ip_flow_result->l2_header_number_of_tags = blog_p->vtag_num;
     ip_flow_result->l2_header_offset = blog_p->rx.length - blog_p->tx.length - bcmtaglen - l2_header_offset;
     ip_flow_result->l2_header_size += blog_p->tx.length + bcmtaglen;
@@ -1401,7 +1407,7 @@ static uint32_t runner_activate_mcast(Blog_t *blog_p)
     if (rc < 0)
         goto exit;
 
-#if defined(CONFIG_BCM_PKTRUNNER_MCAST_DNAT) || defined(CONFIG_BCM_RTP_SEQ_CHECK)
+#ifdef MCAST_FORWARD_TO_HOST
     request.mcast_result.action = rdpa_forward_action_host;
 #endif
 

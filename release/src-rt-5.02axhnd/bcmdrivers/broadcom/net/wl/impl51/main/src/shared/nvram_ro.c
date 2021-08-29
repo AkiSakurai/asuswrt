@@ -1,7 +1,7 @@
 /*
  * Read-only support for NVRAM on flash and otp.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: nvram_ro.c 709258 2017-07-06 14:07:35Z $
+ * $Id: nvram_ro.c 766665 2018-08-09 09:00:19Z $
  */
 
 #include <typedefs.h>
@@ -446,17 +446,22 @@ initvars_file(si_t *sih, osl_t *osh, char **nvramp, int *nvraml)
 	char *nvram_buf = *nvramp;
 	void	*nvram_fp = NULL;
 	int ret = 0, len = 0;
+	char *nvram_fname = sih->nvram_fname;
 
-	nvram_fp = (void*)osl_os_open_image("nvram.txt");
+	if (nvram_fname == NULL) {
+		nvram_fname = "nvram.txt"; /* default file name */
+	}
+
+	nvram_fp = (void*)osl_os_open_image(nvram_fname);
 	if (nvram_fp != NULL) {
 		if (!(len = osl_os_get_image_block(nvram_buf, MAXSZ_NVRAM_VARS, nvram_fp))) {
-			NVR_MSG(("Could not read nvram.txt file\n"));
+			NVR_MSG(("Could not read %s file\n", nvram_fname));
 			ret = -1;
 			goto exit;
 		}
 	}
 	else {
-		NVR_MSG(("Could not open nvram.txt file\n"));
+		NVR_MSG(("Could not open %s file\n", nvram_fname));
 		ret = -1;
 		goto exit;
 	}

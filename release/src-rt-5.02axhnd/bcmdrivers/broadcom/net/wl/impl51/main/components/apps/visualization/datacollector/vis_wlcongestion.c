@@ -1,7 +1,7 @@
 /*
  * chanim statistics for visualization tool
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -70,6 +70,9 @@
 #pragma warning(disable : 4761)
 #endif // endif
 
+#ifdef BCMCCX
+#include <proto/802.11_ccx.h>
+#endif // endif
 #include <bcmendian.h>
 #include "vis_common.h"
 #if defined(WLPFN) && defined(linux)

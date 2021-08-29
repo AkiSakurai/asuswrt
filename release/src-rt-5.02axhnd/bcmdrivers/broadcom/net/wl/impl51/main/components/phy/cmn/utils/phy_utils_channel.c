@@ -1,7 +1,7 @@
 /*
  * PHY utils - chanspec functions.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_utils_channel.c 667413 2016-10-27 05:06:42Z $
+ * $Id: phy_utils_channel.c 777833 2019-08-13 05:49:18Z $
  */
 
 #include <typedefs.h>
@@ -146,7 +146,10 @@ static const phy_chan_info_basic_t chan_info_all[] = {
 /* 61 */	{209,   5045},
 /* 62 */	{210,   5050},
 /* 63 */	{212,   5060},
-/* 64 */	{216,   5080}
+/* 64 */	{216,   5080},
+/* 65 */	{169,   5845},
+/* 66 */	{173,   5865},
+/* 67 */	{171,   5855}
 
 #else
 
@@ -241,6 +244,15 @@ phy_utils_chanspec_band_validch(phy_info_t *pi, uint band, chanvec_t *channels)
 		/* Disable channel 144 unless it's an ACPHY */
 		if ((channel == 144) && (!ISACPHY(pi)))
 			continue;
+
+		/* For Non-HE capable PHY, ch169, 173 are not supported.
+		 * For HE capable PHY, ch169, 173 are supported and corresponding tuning tables
+		 * are expected to support these channels, too.
+		 */
+		if ((channel >= 169) && (channel <= 173) &&
+			!(wlc_phy_cap_get((wlc_phy_t*)pi) & PHY_CAP_HE)) {
+			continue;
+		}
 
 		if (((band == WLC_BAND_2G) && (channel <= CH_MAX_2G_CHANNEL)) ||
 		    ((band == WLC_BAND_5G) && (channel > CH_MAX_2G_CHANNEL)))

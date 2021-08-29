@@ -10,7 +10,7 @@
  * The library guarantees that client callbacks occur in the same order that the
  * clients registered interest.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

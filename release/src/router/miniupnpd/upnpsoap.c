@@ -34,6 +34,9 @@
 #ifdef ENABLE_AURASYNC
 #include <aura_rgb.h>
 #endif
+#ifdef ENABLE_NVGFN
+#include <nvgfn.h>
+#endif
 
 static void
 BuildSendAndCloseSoapResp(struct upnphttp * h,
@@ -278,6 +281,7 @@ GetExternalIPAddress(struct upnphttp * h, const char * action)
 	if(use_ext_ip_addr)
 	{
 		strncpy(ext_ip_addr, use_ext_ip_addr, INET_ADDRSTRLEN);
+		ext_ip_addr[INET_ADDRSTRLEN - 1] = '\0';
 	}
 	else if(getifaddr(ext_if_name, ext_ip_addr, INET_ADDRSTRLEN, NULL, NULL) < 0)
 	{
@@ -819,6 +823,7 @@ DeletePortMappingRange(struct upnphttp * h, const char * action)
 	{
 		SoapError(h, 730, "PortMappingNotFound");
 		ClearNameValueList(&data);
+		free(port_list);
 		return;
 	}
 
@@ -1918,8 +1923,8 @@ SendSetupMessage(struct upnphttp * h, const char * action)
 	const char * OutMessage = "";	/* base64 */
 
 	ParseNameValue(h->req_buf + h->req_contentoff, h->req_contentlen, &data);
-	ProtocolType = GetValueFromNameValueList(&data, "NewProtocolType");	/* string */
-	InMessage = GetValueFromNameValueList(&data, "NewInMessage");	/* base64 */
+	ProtocolType = GetValueFromNameValueList(&data, "ProtocolType");        /* string */
+	InMessage = GetValueFromNameValueList(&data, "InMessage");      /* base64 */
 
 	if(ProtocolType == NULL || InMessage == NULL)
 	{
@@ -2120,6 +2125,742 @@ Err:
 }
 #endif
 
+#ifdef ENABLE_NVGFN
+static void
+GetQosState(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"<CurrentQosState>%d</CurrentQosState>"
+		"</u:%sResponse>";
+
+	char body[1024];
+	int value;
+	int bodylen;
+	char *err_msg = "Invalid Args";
+
+	if (nvgfn_GetQosState(&value) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp, action, SERVICE_TYPE_NVGFN,
+				value, action);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+SetQosState(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"</u:%sResponse>";
+
+	struct NameValueParserData data;
+	char *err_msg = "Invalid Args";
+	char *qos_state;
+
+	char body[512];
+	int bodylen;
+
+	ParseNameValue(h->req_buf + h->req_contentoff, h->req_contentlen, &data);
+	qos_state = GetValueFromNameValueList(&data, "NewQosState");
+
+	if ( !qos_state )
+		goto Err;
+
+	if(strcmp(qos_state, "0") && strcmp(qos_state, "1")){
+		err_msg = "Wrong value of QoS state!";
+		goto Err;
+	}
+
+	if (nvgfn_SetQosState(qos_state) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp,
+	              action, SERVICE_TYPE_NVGFN, action);
+
+	ClearNameValueList(&data);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	ClearNameValueList(&data);
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+GetQosRule(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"<CurrentQosRuleChannel>%s</CurrentQosRuleChannel>"
+		"<CurrentQosRulePort>%d</CurrentQosRulePort>"
+		"<CurrentQosRuleProtocol>%s</CurrentQosRuleProtocol>"
+		"<CurrentQosRuleDirection>%s</CurrentQosRuleDirection>"
+		"</u:%sResponse>";
+
+	struct NameValueParserData data;
+	char *err_msg = "Invalid Args";
+	char *QosRuleChannel;
+	char body[1024];
+	int bodylen;
+	NVGFN_QOS_RULE_T qos_rule;
+
+	memset(&qos_rule, 0, sizeof(NVGFN_QOS_RULE_T));
+	ParseNameValue(h->req_buf + h->req_contentoff, h->req_contentlen, &data);
+	QosRuleChannel = GetValueFromNameValueList(&data, "CurrentQosRuleChannel");
+
+	if ( !QosRuleChannel )
+		goto Err;
+
+	if(strcmp(QosRuleChannel, "audio") && strcmp(QosRuleChannel, "control") && strcmp(QosRuleChannel, "mic") && strcmp(QosRuleChannel, "video")){
+		err_msg = "Wrong channel type!";
+		goto Err;
+	}
+
+	snprintf(qos_rule.channel, sizeof(qos_rule.channel), "%s", QosRuleChannel);
+
+	if (nvgfn_GetQosRule(&qos_rule) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp, action, SERVICE_TYPE_NVGFN,
+				qos_rule.channel, qos_rule.port, qos_rule.protocol, qos_rule.direction, action);
+	ClearNameValueList(&data);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	ClearNameValueList(&data);
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+SetQosRule(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"</u:%sResponse>";
+
+	struct NameValueParserData data;
+	char *err_msg = "Invalid Args";
+	char *NewChannel, *NewProtocol, *NewPortStr, *NewDirection;
+	int NewPort;
+	NVGFN_QOS_RULE_T qos_rule;
+
+	char body[512];
+	int bodylen;
+
+	ParseNameValue(h->req_buf + h->req_contentoff, h->req_contentlen, &data);
+	NewChannel = GetValueFromNameValueList(&data, "NewQosRuleChannel");
+	NewProtocol = GetValueFromNameValueList(&data, "NewQosRuleProtocol");
+	NewPortStr = GetValueFromNameValueList(&data, "NewQosRulePort");
+	NewDirection = GetValueFromNameValueList(&data, "NewQosRuleDirection");
+
+	if ( !NewChannel || !NewProtocol || !NewPortStr || !NewDirection)
+		goto Err;
+
+	if(strcmp(NewChannel, "audio") && strcmp(NewChannel, "control") && strcmp(NewChannel, "mic") && strcmp(NewChannel, "video")){
+		err_msg = "Wrong channel value!";
+		goto Err;
+	}
+
+	if(strcmp(NewProtocol, "tcp") && strcmp(NewProtocol, "udp")){
+		err_msg = "Wrong protocol type!";
+		goto Err;
+	}
+
+	if(strcmp(NewDirection, "in") && strcmp(NewDirection, "out") && strcmp(NewDirection, "inout") ){
+		err_msg = "Wrong direction value!";
+		goto Err;
+	}
+
+	NewPort = atoi(NewPortStr);
+	if(NewPort < NVGFN_QOSPORT_MIN || NewPort > NVGFN_QOSPORT_MAX){
+		err_msg = "Wrong port value!";
+		goto Err;
+	}
+
+	memset(&qos_rule, 0, sizeof(NVGFN_QOS_RULE_T));
+	snprintf(qos_rule.channel, sizeof(qos_rule.channel), "%s", NewChannel);
+	snprintf(qos_rule.protocol, sizeof(qos_rule.protocol), "%s", NewProtocol);
+	snprintf(qos_rule.direction, sizeof(qos_rule.direction), "%s", NewDirection);
+	qos_rule.port = NewPort;
+
+	if (nvgfn_SetQoSRule(&qos_rule) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp,
+	              action, SERVICE_TYPE_NVGFN, action);
+	ClearNameValueList(&data);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	ClearNameValueList(&data);
+	SoapError(h, 402, err_msg);
+	return;
+}
+static void
+GetWifiScanState(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"<CurrentWifiScanState>%d</CurrentWifiScanState>"
+		"</u:%sResponse>";
+
+	char body[1024];
+	int value;
+	int bodylen;
+	char *err_msg = "Invalid Args";
+
+	if (nvgfn_GetWifiScanState(&value) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp, action, SERVICE_TYPE_NVGFN,
+				value, action);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+SetWifiScanState(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"</u:%sResponse>";
+
+	struct NameValueParserData data;
+	char *err_msg = "Invalid Args";
+	char *WifiScanState;
+
+	char body[512];
+	int bodylen;
+
+	ParseNameValue(h->req_buf + h->req_contentoff, h->req_contentlen, &data);
+	WifiScanState = GetValueFromNameValueList(&data, "NewWifiScanState");
+
+	if ( !WifiScanState )
+		goto Err;
+
+	if(strcmp(WifiScanState, "0") && strcmp(WifiScanState, "1")){
+		err_msg = "Wrong value of wifi scan state!";
+		goto Err;
+	}
+
+	if (nvgfn_SetWifiScanState(WifiScanState) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp,
+	              action, SERVICE_TYPE_NVGFN, action);
+	ClearNameValueList(&data);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	ClearNameValueList(&data);
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+GetWifiScanInterval(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"<CurrentWifiScanInterval>%d</CurrentWifiScanInterval>"
+		"</u:%sResponse>";
+
+	char body[1024];
+	int value;
+	int bodylen;
+	char *err_msg = "Invalid Args";
+
+	if (nvgfn_GetWifiScanInterval(&value) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp, action, SERVICE_TYPE_NVGFN,
+				value, action);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+SetWifiScanInterval(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"</u:%sResponse>";
+
+	struct NameValueParserData data;
+	char *err_msg = "Invalid Args";
+	char *WifiScanInterval;
+
+	char body[512];
+	int bodylen, iInterval;
+
+	ParseNameValue(h->req_buf + h->req_contentoff, h->req_contentlen, &data);
+	WifiScanInterval = GetValueFromNameValueList(&data, "NewWifiScanInterval");
+
+	if ( !WifiScanInterval )
+		goto Err;
+
+
+	iInterval = atoi(WifiScanInterval);
+	if(iInterval < NVGFN_WIFISCANINTERVAL_MIN || iInterval > NVGFN_WIFISCANINTERVAL_MAX) {
+		err_msg = "Wrong value of WifiScanInterval!";
+		goto Err;
+	}
+
+	if (nvgfn_SetWifiScanInterval(WifiScanInterval) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp,
+	              action, SERVICE_TYPE_NVGFN, action);
+	ClearNameValueList(&data);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	ClearNameValueList(&data);
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+GetDownloadBandwidth(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"<CurrentDownloadBandwidth>%d</CurrentDownloadBandwidth>"
+		"</u:%sResponse>";
+
+	char body[1024];
+	int value;
+	int bodylen;
+	char *err_msg = "Invalid Args";
+
+	if (nvgfn_GetDownloadBandwidth(&value) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp, action, SERVICE_TYPE_NVGFN,
+				value, action);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+SetDownloadBandwidth(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"</u:%sResponse>";
+
+	struct NameValueParserData data;
+	char *err_msg = "Invalid Args";
+	char *DownloadBandwidth;
+
+	char body[512];
+	int bodylen, iBandwidth;
+
+	ParseNameValue(h->req_buf + h->req_contentoff, h->req_contentlen, &data);
+	DownloadBandwidth = GetValueFromNameValueList(&data, "NewDownloadBandwidth");
+
+	if ( !DownloadBandwidth )
+		goto Err;
+
+	iBandwidth = atoi(DownloadBandwidth);
+	if(iBandwidth < NVGFN_BANDWIDTH_MIN || iBandwidth > NVGFN_BANDWIDTH_MAX) {
+		err_msg = "Wrong value of DownloadBandwidth!";
+		goto Err;
+	}
+
+	if (nvgfn_SetDownloadBandwidth(DownloadBandwidth) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp,
+	              action, SERVICE_TYPE_NVGFN, action);
+	ClearNameValueList(&data);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	ClearNameValueList(&data);
+	SoapError(h, 402, err_msg);
+	return;
+}
+static void
+GetDownloadBandwidthReservation(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"<CurrentDownloadBandwidthReservation>%d</CurrentDownloadBandwidthReservation>"
+		"</u:%sResponse>";
+
+	char body[1024];
+	int value;
+	int bodylen;
+	char *err_msg = "Invalid Args";
+
+	if (nvgfn_GetDownloadBandwidthReservation(&value) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp, action, SERVICE_TYPE_NVGFN,
+				value, action);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+SetDownloadBandwidthReservation(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"</u:%sResponse>";
+
+	struct NameValueParserData data;
+	char *err_msg = "Invalid Args";
+	char *DownloadBandwidthReservation;
+
+	char body[512];
+	int bodylen, iBandwidth;
+
+	ParseNameValue(h->req_buf + h->req_contentoff, h->req_contentlen, &data);
+	DownloadBandwidthReservation = GetValueFromNameValueList(&data, "NewDownloadBandwidthReservation");
+
+	if ( !DownloadBandwidthReservation )
+		goto Err;
+
+	iBandwidth = atoi(DownloadBandwidthReservation);
+	if(iBandwidth < NVGFN_BANDWIDTH_MIN || iBandwidth > NVGFN_BANDWIDTH_MAX) {
+		err_msg = "Wrong value of DownloadBandwidthReservation!";
+		goto Err;
+	}
+
+	if (nvgfn_SetDownloadBandwidthReservation(DownloadBandwidthReservation) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp,
+	              action, SERVICE_TYPE_NVGFN, action);
+	ClearNameValueList(&data);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	ClearNameValueList(&data);
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+GetUploadBandwidth(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"<CurrentUploadBandwidth>%d</CurrentUploadBandwidth>"
+		"</u:%sResponse>";
+
+	char body[1024];
+	int value;
+	int bodylen;
+	char *err_msg = "Invalid Args";
+
+	if (nvgfn_GetUploadBandwidth(&value) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp, action, SERVICE_TYPE_NVGFN,
+				value, action);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+SetUploadBandwidth(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"</u:%sResponse>";
+
+	struct NameValueParserData data;
+	char *err_msg = "Invalid Args";
+	char *UploadBandwidth;
+
+	char body[512];
+	int bodylen, iBandwidth;
+
+	ParseNameValue(h->req_buf + h->req_contentoff, h->req_contentlen, &data);
+	UploadBandwidth = GetValueFromNameValueList(&data, "NewUploadBandwidth");
+
+	if ( !UploadBandwidth )
+		goto Err;
+
+	iBandwidth = atoi(UploadBandwidth);
+	if(iBandwidth < NVGFN_BANDWIDTH_MIN || iBandwidth > NVGFN_BANDWIDTH_MAX) {
+		err_msg = "Wrong value of UploadBandwidth!";
+		goto Err;
+	}
+
+	if (nvgfn_SetUploadBandwidth(UploadBandwidth) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp,
+	              action, SERVICE_TYPE_NVGFN, action);
+
+	ClearNameValueList(&data);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	ClearNameValueList(&data);
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+GetUploadBandwidthReservation(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"<CurrentUploadBandwidthReservation>%d</CurrentUploadBandwidthReservation>"
+		"</u:%sResponse>";
+
+	char body[1024];
+	int value;
+	int bodylen;
+	char *err_msg = "Invalid Args";
+
+	if (nvgfn_GetUploadBandwidthReservation(&value) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp, action, SERVICE_TYPE_NVGFN,
+				value, action);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+SetUploadBandwidthReservation(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"</u:%sResponse>";
+
+	struct NameValueParserData data;
+	char *err_msg = "Invalid Args";
+	char *UploadBandwidthReservation;
+
+	char body[512];
+	int bodylen, iBandwidth;
+
+	ParseNameValue(h->req_buf + h->req_contentoff, h->req_contentlen, &data);
+	UploadBandwidthReservation = GetValueFromNameValueList(&data, "NewUploadBandwidthReservation");
+
+	if ( !UploadBandwidthReservation )
+		goto Err;
+
+	iBandwidth = atoi(UploadBandwidthReservation);
+	if(iBandwidth < NVGFN_BANDWIDTH_MIN || iBandwidth > NVGFN_BANDWIDTH_MAX) {
+		err_msg = "Wrong value of UploadBandwidthReservation!";
+		goto Err;
+	}
+
+	if (nvgfn_SetUploadBandwidthReservation(UploadBandwidthReservation) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp,
+	              action, SERVICE_TYPE_NVGFN, action);
+
+	ClearNameValueList(&data);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	ClearNameValueList(&data);
+	SoapError(h, 402, err_msg);
+	return;
+}
+static void
+GetMcsIndex(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"<CurrentMcsIndexAuto>%d</CurrentMcsIndexAuto>"
+		"<CurrentMcsIndex>%d</CurrentMcsIndex>"
+		"<CurrentIndexType>%s</CurrentIndexType>"
+		"<CurrentSpatialStreams>%d</CurrentSpatialStreams>"
+		"</u:%sResponse>";
+
+	char body[1024];
+	NVGFN_MCS_INDEX_T McsIndex;
+	int bodylen;
+	char *err_msg = "Invalid Args";
+
+	if (nvgfn_GetMcsIndex(&McsIndex) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp, action, SERVICE_TYPE_NVGFN,
+				McsIndex.McsIndexAuto, McsIndex.McsIndex, McsIndex.McsIndexType, McsIndex.SpatialStreams, action);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	SoapError(h, 402, err_msg);
+	return;
+}
+
+static void
+SetMcsIndex(struct upnphttp * h, const char * action)
+{
+	static const char resp[] =
+		"<u:%sResponse "
+		"xmlns:u=\"%s\">"
+		"</u:%sResponse>";
+
+	struct NameValueParserData data;
+	char *err_msg = "Invalid Args";
+	char body[512];
+	int bodylen;
+	char *NewMcsIndexAuto, *NewMcsIndex, *NewMcsIndexType, *NewSpatialStreams;
+	int iMcsIndexAuto, iMcsIndex, iSpatialStreams;
+	NVGFN_MCS_INDEX_T McsIndex;
+
+	ParseNameValue(h->req_buf + h->req_contentoff, h->req_contentlen, &data);
+	NewMcsIndexAuto = GetValueFromNameValueList(&data, "NewMcsIndexAuto");
+	NewMcsIndex = GetValueFromNameValueList(&data, "NewMcsIndex");
+	NewMcsIndexType = GetValueFromNameValueList(&data, "NewIndexType");
+	NewSpatialStreams = GetValueFromNameValueList(&data, "NewSpatialStreams");
+
+	if ( !NewMcsIndexAuto || !NewMcsIndex || !NewMcsIndexType || !NewSpatialStreams)
+		goto Err;
+
+	iMcsIndexAuto = atoi(NewMcsIndexAuto);
+	iMcsIndex = atoi(NewMcsIndex);
+	iSpatialStreams = atoi(NewSpatialStreams);
+
+	if(iMcsIndexAuto < 0 || iMcsIndexAuto > 1){
+		err_msg = "Wrong value of McsIndexAuto!";
+		goto Err;
+	}
+
+	if(iMcsIndex < NVGFN_MCSINDEX_MIN || iMcsIndex > NVGFN_MCSINDEX_MAX){
+		err_msg = "Wrong value of McsIndex!";
+		goto Err;
+	}
+
+	if(strcmp(NewMcsIndexType, "ht") && strcmp(NewMcsIndexType, "vht")){
+		err_msg = "Wrong value of McsIndexType!";
+		goto Err;
+	}
+
+	if(iSpatialStreams < NVGFN_SPATIALSTREAMS_MIN || iSpatialStreams > NVGFN_SPATIALSTREAMS_MAX){
+		err_msg = "Wrong value of SpatialStreams!";
+		goto Err;
+	}
+
+	McsIndex.McsIndexAuto = iMcsIndexAuto;
+	McsIndex.McsIndex = iMcsIndex;
+	snprintf(McsIndex.McsIndexType, sizeof(McsIndex.McsIndexType), "%s", NewMcsIndexType);
+	McsIndex.SpatialStreams = iSpatialStreams;
+
+	if (nvgfn_SetMcsIndex(&McsIndex) < 0) {
+		err_msg = "action fail!";
+		goto Err;
+	}
+
+	bodylen = snprintf(body, sizeof(body), resp,
+	              action, SERVICE_TYPE_NVGFN, action);
+
+	ClearNameValueList(&data);
+	BuildSendAndCloseSoapResp(h, body, bodylen);
+	return;
+
+Err:
+	ClearNameValueList(&data);
+	SoapError(h, 402, err_msg);
+	return;
+}
+#endif
+
 /* Windows XP as client send the following requests :
  * GetConnectionTypeInfo
  * GetNATRSIPStatus
@@ -2186,6 +2927,26 @@ soapMethods[] =
 #ifdef ENABLE_AURASYNC
 	{ "GetState", Get_AURA_State},
 	{ "SetState", Set_AURA_State},
+#endif
+#ifdef ENABLE_NVGFN
+	{"GetQosState",				GetQosState},
+	{"SetQosState", 			SetQosState},
+	{"GetQosRule",				GetQosRule},
+	{"SetQosRule",				SetQosRule},
+	{"GetWifiScanState",		GetWifiScanState},
+	{"SetWifiScanState",		SetWifiScanState},
+	{"GetWifiScanInterval",		GetWifiScanInterval},
+	{"SetWifiScanInterval",		SetWifiScanInterval},
+	{"GetDownloadBandwidth",	GetDownloadBandwidth},
+	{"SetDownloadBandwidth",	SetDownloadBandwidth},
+	{"GetDownloadBandwidthReservation",	GetDownloadBandwidthReservation},
+	{"SetDownloadBandwidthReservation",	SetDownloadBandwidthReservation},
+	{"GetUploadBandwidth",		GetUploadBandwidth},
+	{"SetUploadBandwidth",		SetUploadBandwidth},
+	{"GetUploadBandwidthReservation",	GetUploadBandwidthReservation},
+	{"SetUploadBandwidthReservation",	SetUploadBandwidthReservation},
+	{"GetMcsIndex",				GetMcsIndex},
+	{"SetMcsIndex",				SetMcsIndex},
 #endif
 	{ 0, 0 }
 };

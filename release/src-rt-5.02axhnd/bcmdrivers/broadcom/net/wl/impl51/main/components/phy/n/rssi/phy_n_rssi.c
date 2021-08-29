@@ -1,7 +1,7 @@
 /*
  * NPHY RSSI Compute module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -201,6 +201,9 @@ phy_n_rssi_compute(phy_type_rssi_ctx_t *ctx, wlc_d11rxhdr_t *wrxh)
 	wrxh->rxpwr[0] = (int8)rxpwr0;
 	wrxh->rxpwr[1] = (int8)rxpwr1;
 
+	/* XXX PR 96319: Some nphy chips, such as 43234, have only one core.
+	 * So the test conditions here are reorganized.
+	 */
 	if (stf_shdata->phyrxchain == 0x1)
 		rxpwr = rxpwr0;
 	else if (stf_shdata->phyrxchain == 0x2)
@@ -248,6 +251,12 @@ _phy_n_rssi_init_gain_err(phy_type_rssi_ctx_t *ctx)
 {
 	phy_n_rssi_info_t *info = (phy_n_rssi_info_t *)ctx;
 	phy_info_t *pi = info->pi;
+	/* XXX
+	 * Gain error computed as follows:
+	 * 1) Backoff subband dependent init_gain from gaintable,
+	 * 2) add back fixed init-gain assumed by rxiqest,
+	 * 3) add subband-dependent rxiqest gain error (retrieved from srom)
+	 */
 	int16 gainerr[NPHY_CORE_NUM];
 	uint16 initgain[NPHY_CORE_NUM];
 	uint8 core;

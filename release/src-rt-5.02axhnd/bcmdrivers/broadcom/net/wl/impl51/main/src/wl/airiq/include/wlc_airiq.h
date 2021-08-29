@@ -4,7 +4,7 @@
  *
  *  Air-IQ general
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -111,6 +111,7 @@
 #define SVMP_SMPL_CHANSPEC_ADDR      (5 + SVMP_HEADER_EXT_ADDR)
 // chanspec of 3x3 chain, set by driver
 #define SVMP_SMPL_CHANSPEC_3X3_ADDR  (6 + SVMP_HEADER_EXT_ADDR)
+#define SVMP_SMPL_COEX_GPIO_MASK_ADDR  (7 + SVMP_HEADER_EXT_ADDR)
 
 /* End of offsets into SVMP */
 /* Offsets into SVMP for AX chip */
@@ -136,13 +137,14 @@
 #define SVMP_AX_SMPL_CHANSPEC_ADDR      (5 + SVMP_AX_HEADER_EXT_ADDR)
 // chanspec of 3x3 chain, set by driver
 #define SVMP_AX_SMPL_CHANSPEC_3X3_ADDR  (6 + SVMP_AX_HEADER_EXT_ADDR)
+#define SVMP_AX_SMPL_COEX_GPIO_MASK_ADDR  (7 + SVMP_AX_HEADER_EXT_ADDR)
 
 /* End of offsets into SVMP for AX chip */
 
-#define VASIP_FFT_SIZE 1024
+#define VASIP_FFT_SIZE PKTBUFSZ
 #define VASIP_FFT_HEADER_SIZE 64
 #define VASIP_FFT_HEADER_MAGIC_NUMBER_OFFSET 32
-#define VASIP_FFT_HEADER_MAGIC_NUM 0xfedcfcde
+
 /* Need a buffer just big enough to include:
  * - the header read from VASIP,
  * - the header prepended by driver
@@ -157,7 +159,7 @@
 
 #define VASIP_HW_SUPPORT 1
 
-#define FFT_BUF_SIZE ((VASIP_FFT_SIZE + VASIP_FFT_HEADER_SIZE +	\
+#define FFT_BUF_SIZE ((VASIP_FFT_SIZE +	\
 		       sizeof(airiq_fftdata_header_t) + 2 * sizeof(uint64)) & (~7))
 
 //#define PHYMODE(w) (((phy_info_t*)WLC_PI(w))->cmni->phymode)
@@ -170,6 +172,7 @@
 #define IS_43525MC(devid)  (devid == BCM4365_D11AC_ID)
 
 #define IS_43694MC2(devid) (devid == BCM43684_D11AX2G_ID)
+#define IS_43694MC5(devid) (devid == BCM43684_D11AX5G_ID)
 #define IS_43694MC(devid)  (devid == BCM43684_D11AX_ID)
 
 #define IS_WAVE2_2G(devid) (IS_43465MC2(devid) || IS_43525MC2(devid))
@@ -206,7 +209,7 @@ struct _airiq_scan_config {
 	uint32 capture_count[MAXCHANNEL];
 	uint8 core_config[MAXCHANNEL]; /* which core to use */
 	uint32 timestamp_us; /* timestamp of the scan */
-	bool bandlocked_save;
+	bool bandlocked_save; /* used for 4x4 mode */
 	/* array of chanspec_t's specified by user in IOVAR */
 	chanspec_t user_chanspec_list[MAXCHANNEL];
 	/* Number of channels in the current scan specified by user in IOVAR */
@@ -242,6 +245,12 @@ typedef struct {
 	uint32 avg;
 } airiq_fft_latency_histogram;
 
+#ifdef AIRIQ_UNITTEST
+#define WL_AIRIQ_MSGTEST WL_PRINT
+#else
+#define WL_AIRIQ_MSGTEST WL_NONE
+#endif /* AIRIQ_UNITTEST */
+
 /* Per-WLAN interface AIRIQ private info structure */
 struct airiq_info {
 
@@ -273,7 +282,7 @@ struct airiq_info {
 	uint32 scanmute;
 	uint32 core;
 	uint16 phy_mode;
-	uint16 bw_3plus1;
+	uint16 bw_3x3;
 #define AIRIQ_DESENS_CNT 16
 	uint32 desens_lut_24ghz[AIRIQ_DESENS_CNT]; /* stores gain codes, steps of 2 db */
 	int16 gain_lut_24ghz[AIRIQ_DESENS_CNT]; /* stores gain */
@@ -295,6 +304,13 @@ struct airiq_info {
 	/* 64-bit aligned fft buffer pointer */
 	uint8 *fft_buffer;
 #endif /* VASIP_HW_SUPPORT */
+	uint32 bundle_size;
+	uint32 bundle_capacity;
+	uint8 *bundle_write_ptr;
+	uint16 bundle_msg_cnt;
+#ifdef AIRIQ_UNITTEST
+	uint32 ut_seqno;
+#endif /* AIRIQ_UNITTEST */
 
 	uint32 fft_log_count[MAXCHANNEL];
 	airiq_fft_latency_histogram fft_latency[MAXCHANNEL];
@@ -333,6 +349,9 @@ struct airiq_info {
 	uint32 svmp_smpl_seq_num_addr;
 	uint32 svmp_smpl_chanspec_addr;
 	uint32 svmp_smpl_chanspec_3x3_addr;
+	uint32 svmp_smpl_coex_gpio_mask_addr;
+	uint16 coex_gpio_mask_2g;
+	uint16 coex_gpio_mask_5g;
 };
 
 /*
@@ -368,6 +387,8 @@ int wlc_airiq_update(airiq_info_t * airiqh,
 #ifdef BCMDBG
 extern int wlc_airiq_dump(airiq_info_t * airiqh, struct bcmstrbuf *b);
 #endif /* BCMDBG */
+
+chanspec_t wlc_airiq_get_current_scan_chanspec(wlc_info_t * wlc);
 
 void wlc_airiq_fftcapture(airiq_info_t * airiqh, uint8 * fftdata, int32 len);
 void wlc_airiq_start_fftcapture(airiq_info_t * airiqh);
@@ -440,6 +461,7 @@ bool wlc_airiq_phymode_3p1(wlc_info_t * wlc);
 /* ----------------------------------------------------------------------- */
 /* airiq general */
 /* ----------------------------------------------------------------------- */
+/* uses only for 4x4 mode */
 void wlc_airiq_set_scan_in_progress(airiq_info_t * airiqh, bool in_progress);
 void wlc_airiq_log_fft(airiq_info_t * airiqh, uint16 channel, uint16 latency);
 int airiq_doiovar(void *hdl,  uint32 actionid,
@@ -449,6 +471,10 @@ void wl_airiq_sendup_scan_complete_alternate(airiq_info_t * airiqh,
 		uint16 status);
 int wl_airiq_sendup_data(airiq_info_t * airiqh, uint8 * data,
 		unsigned long size);
+
+int wlc_airiq_msg_sendup(airiq_info_t *airiqh, int32 length, bool force_sendup);
+uint8 *wlc_airiq_msg_get_buffer(airiq_info_t *airiqh, int32 length);
+void wlc_airiq_msg_reset(airiq_info_t *airiqh);
 
 /* ----------------------------------------------------------------------- */
 /* airiq scan */
@@ -468,6 +494,7 @@ void wl_airiq_sendup_scan_complete_alternate(airiq_info_t * airiqh,
 		uint16 status);
 int wl_airiq_sendup_data(airiq_info_t * airiqh, uint8 * data,
 		unsigned long size);
+void wlc_airiq_set_enable(airiq_info_t *airiqh, bool enable);
 
 /* ----------------------------------------------------------------------- */
 /* LTE-U Detector */
@@ -548,5 +575,12 @@ void wlc_lte_u_free_iqbuf(airiq_info_t *airiqh);
 #define LTE_U_GAINCODE_GAIN(gaincode)	((gaincode)&0xff)
 #define LTE_U_GAINCODE_DESENS(gaincode)	(0xff & ((gaincode)>>8))
 #define LTE_U_GAINCODE(gain, desens)	(((gain) & 0xff) | ((desens) << 8))
+
+#ifdef DONGLEBUILD
+bool wlc_airiq_nvram_enable(void);
+#define AIRIQ_ENAB() wlc_airiq_nvram_enable()
+#else
+#define AIRIQ_ENAB() TRUE
+#endif /* DONGLEBUILD */
 
 #endif /* _wlc_airiq_h_ */

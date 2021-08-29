@@ -5,7 +5,7 @@
  *      using this can give preference to dfs channels over non dfs channels
  *      during channel selection.
  *
- *	Copyright 2018 Broadcom
+ *	Copyright 2019 Broadcom
  *
  *	This program is the proprietary software of Broadcom and/or
  *	its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *	OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  *	NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- *	$Id: acs_dfs.c 736533 2017-12-15 13:52:50Z $
+ *	$Id: acs_dfs.c 774706 2019-05-03 09:28:38Z $
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,21 +65,21 @@
 bool
 acs_dfs_channel_is_usable(acs_chaninfo_t *c_info, chanspec_t chspec)
 {
-	return (acs_channel_info(c_info, chspec) & WL_CHAN_INACTIVE) ? FALSE : TRUE;
+	return (acs_get_chanspec_info(c_info, chspec) & WL_CHAN_INACTIVE) ? FALSE : TRUE;
 }
 
 /* is chanspec DFS channel */
 bool
 acs_is_dfs_chanspec(acs_chaninfo_t *c_info, chanspec_t chspec)
 {
-	return (acs_channel_info(c_info, chspec) & WL_CHAN_RADAR) ? TRUE : FALSE;
+	return (acs_get_chanspec_info(c_info, chspec) & WL_CHAN_RADAR) ? TRUE : FALSE;
 }
 
 /* is chanspec DFS weather channel */
 bool
 acs_is_dfs_weather_chanspec(acs_chaninfo_t *c_info, chanspec_t chspec)
 {
-	return (acs_channel_info(c_info, chspec) & WL_CHAN_RADAR_EU_WEATHER) ? TRUE : FALSE;
+	return (acs_get_chanspec_info(c_info, chspec) & WL_CHAN_RADAR_EU_WEATHER) ? TRUE : FALSE;
 }
 
 static int
@@ -185,7 +185,7 @@ acs_prep_dfs_forced_chspec_list(acs_chaninfo_t *c_info, wl_dfs_forced_t **dfs_fr
 
 	if (ret < 0) {
 		ACS_FREE(data_buf);
-		ACSD_ERROR("failed to get valid chanspec lists");
+		ACSD_ERROR("%s: failed to get valid chanspec lists", c_info->name);
 		return FALSE;
 	}
 
@@ -193,7 +193,7 @@ acs_prep_dfs_forced_chspec_list(acs_chaninfo_t *c_info, wl_dfs_forced_t **dfs_fr
 	count = dtoh32(list->count);
 
 	if (count == 0) {
-		ACSD_INFO("No channels to list \n");
+		ACSD_INFO("%s: No channels to list \n", c_info->name);
 		return FALSE;
 	}
 
@@ -249,7 +249,7 @@ acs_get_best_dfs_forced_chspec(acs_chaninfo_t *c_info)
 	ret = acs_get_dfs_forced_chspec(c_info, smbuf);
 
 	if (ret < 0) {
-		ACSD_ERROR("Get dfs chanspec forced fails \n");
+		ACSD_ERROR("%s: Get dfs chanspec forced fails \n", c_info->name);
 		c_info->dfs_forced_chspec = 0;
 		return;
 	}
@@ -267,7 +267,7 @@ acs_set_dfs_forced_chspec(acs_chaninfo_t * c_info)
 	wl_dfs_forced_t *dfs_frcd;
 	char smbuf[WLC_IOCTL_SMLEN];
 
-	ACSD_INFO("Setting forced chanspec: 0x%4x (%s)!\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+	ACSD_INFO("%s: Setting forced chanspec: 0x%4x (%s)!\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 
 	if (BAND_2G(rsi->band_type) || !rsi->reg_11h ||
 		((BAND_5G(rsi->band_type)) && (c_info->acs_dfs == ACS_DFS_DISABLED))) {
@@ -277,14 +277,15 @@ acs_set_dfs_forced_chspec(acs_chaninfo_t * c_info)
 	ret = acs_get_dfs_forced_chspec(c_info, smbuf);
 
 	if (ret < 0) {
-		ACSD_ERROR("get dfs forced chanspec fails!\n");
+		ACSD_ERROR("%s: get dfs forced chanspec fails!\n", c_info->name);
 		return;
 	}
 
 	dfs_frcd = (wl_dfs_forced_t *) smbuf;
 
 	if (dfs_frcd->chspec_list.num) {
-		ACSD_INFO("User has already issued a dfs_forced_chanspec. Keep that\n");
+		ACSD_INFO("%s: User has already issued a dfs_forced_chanspec. Keep that\n",
+			c_info->name);
 		return;
 	}
 
@@ -298,13 +299,14 @@ acs_set_dfs_forced_chspec(acs_chaninfo_t * c_info)
 	} else {
 		dfs_frcd->version = DFS_PREFCHANLIST_VER;
 		if (!acs_prep_dfs_forced_chspec_list(c_info, &dfs_frcd)) {
-			ACSD_ERROR("Prep dfs forced list error\n");
+			ACSD_ERROR("%s: Prep dfs forced list error\n", c_info->name);
 			goto exit;
 		}
 	}
 	ret = acs_set_dfs_chan_forced(c_info, dfs_frcd, WL_DFS_FORCED_PARAMS_FIXED_SIZE +
 		(dfs_frcd->chspec_list.num * sizeof(chanspec_t)));
-	ACSD_INFO("set dfs forced chanspec 0x%4x (%s) %s!\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf), ret? "Fail" : "Succ");
+	ACSD_INFO("%s: set dfs forced chanspec 0x%4x (%s) %s!\n",
+		c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf), ret? "Fail" : "Succ");
 
 exit:
 	ACS_FREE(dfs_frcd);
@@ -323,7 +325,8 @@ acsd_trigger_dfsr_check(acs_chaninfo_t *c_info)
 	bool is_dfs = c_info->cur_is_dfs;
 	int bw = CHSPEC_BW(c_info->cur_chspec);
 
-	ACSD_5G("sta_status:0x%x chanspec:0x%4x (%s) acs_dfs:%d acs_assoclist:%p is_dfs:%d\n",
+	ACSD_5G("%s: sta_status:0x%x chanspec:0x%4x (%s) acs_dfs:%d acs_assoclist:%p is_dfs:%d\n",
+		c_info->name,
 		c_info->sta_status, c_info->cur_chspec, wf_chspec_ntoa(c_info->cur_chspec, chanspecbuf),
 		c_info->acs_dfs, c_info->acs_assoclist, is_dfs);
 
@@ -333,7 +336,7 @@ acsd_trigger_dfsr_check(acs_chaninfo_t *c_info)
 			(c_info->sta_status & ACS_STA_EXIST_FAR) &&
 			!dfsr_disable &&
 			!is_dfs) {
-		ACSD_5G("goto DFSR.\n");
+		ACSD_5G("%s goto DFSR.\n", c_info->name);
 		return TRUE;
 	}
 

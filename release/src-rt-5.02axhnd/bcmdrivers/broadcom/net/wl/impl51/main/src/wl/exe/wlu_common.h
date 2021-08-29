@@ -1,7 +1,7 @@
 /*
  * Common code for wl routines
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlu_common.h 760445 2018-05-02 05:18:36Z $
+ * $Id: wlu_common.h 775302 2019-05-27 11:48:20Z $
  */
 #include <wlioctl.h>
 #include <bcmutils.h>
@@ -322,3 +322,6 @@ extern void wl_print_hemcsset(uint16 *mcsset);
 extern void wl_print_hemcsnss(uint16 *mcsset);
 extern int wl_sta_info_print(void *wl, void *buf);
 extern int wl_wds_info_all(void *wl, cmd_t *cmd);
+
+extern bool wl_is_he(void *wl);
+extern void wl_rrm_print(uint8 *rrm_cap);

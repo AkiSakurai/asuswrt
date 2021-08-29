@@ -2,7 +2,7 @@
  * PHY and RADIO specific portion of Broadcom BCM43XX 802.11abgn
  * Networking Device Driver.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,15 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phy_n.c 689894 2017-03-13 23:32:18Z $
+ * $Id: wlc_phy_n.c 776008 2019-06-17 16:42:22Z $
+ */
+
+/* XXX WARNING: phy structure has been changed, read this first
+ *
+ * This submodule is for NPHY phy only. It depends on the common submodule wlc_phy_cmn.c
+ *   This file was created(split out of wlc_phy.c) on 3/11/2009.
+ *   The full cvs history inherited from old wlc_phy.c. cvs annotate -r 1.2084 wlc_phy_n.c
+ *   Refer to wlc_phy_cmn.c for new structure
  */
 
 #include <wlc_cfg.h>
@@ -314,6 +322,13 @@ typedef struct nphy_sfo_cfg {
 	uint16 PHY_BW6;
 } nphy_sfo_cfg_t;
 
+/**
+ * IQCAL parameters for various Tx gain settings
+ * tx_gains and intervals for given target tx_gains (for 2G and 5G bands)
+ * Table format:
+ *    Target, TxGm, PGA, PAD, N_search_log2 for CalType 0/1/2/3
+ * PR 39087: larger cal gains for small nominal gain values (removed again)
+ */
 static const uint16 tbl_iqcal_gainparams_nphy[2][NPHY_IQCAL_NUMGAINS][8] = {
 	{ /* 2G table */
 	{0x000, 0, 0, 2, 0x69, 0x69, 0x69, 0x69},
@@ -339,6 +354,16 @@ static const uint16 tbl_iqcal_gainparams_nphy[2][NPHY_IQCAL_NUMGAINS][8] = {
 	}
 };
 
+/**
+ * NPHY tx power gain table
+ * SEE: src/tools/47xxtcl/gaintable_11n.tcl r2.14
+ *
+ * PR 39409 WAR : use DAC gain instead of bb_mult for fine gain steps so that 11b
+ *                frames get fine gain control
+ *
+ * PR 41772 fix : approximate DAC gain steps as 0.5dB
+ *                (actually between 0.5-0.7dB; previously had assumed to be 0.4dB / LSB)
+ */
 static const uint32 nphy_tpc_txgain[] = {
 	0x03cc2b44, 0x03cc2b42, 0x03cc2a44, 0x03cc2a42,
 	0x03cc2944, 0x03c82b44, 0x03c82b42, 0x03c82a44,
@@ -1230,38 +1255,38 @@ static uint32 nphy_tpc_txgain_epa_2057rev7_2gv14[] = {
 };
 
 static uint32 nphy_tpc_txgain_epa_2057rev7_2gv17[] = {
-	0x10520033, 0x10520031, 0x1052002f, 0x104a0031,
-	0x104a002e, 0x104a002b, 0x104a0029, 0x1042002c,
-	0x1042002a, 0x10420027, 0x10420025, 0x10420023,
-	0x10420021, 0x1042001f, 0x10320029, 0x10320026,
-	0x10320024, 0x10320022, 0x10320020, 0x102a0025,
-	0x102a0023, 0x102a0021, 0x102a001f, 0x10220025,
-	0x10220023, 0x10220021, 0x1022001f, 0x1022011f,
-	0x1022021f, 0x1022031f, 0x101a0022, 0x101a0020,
-	0x101a0120, 0x101a0220, 0x101a0320, 0x101a0420,
-	0x101a0520, 0x101a0620, 0x101a0720, 0x1012001f,
-	0x1012001e, 0x1012001c, 0x1012001a, 0x10120019,
-	0x10120119, 0x10120219, 0x10120319, 0x10120419,
-	0x10120519, 0x10120619, 0x100a0024, 0x100a0022,
-	0x100a0020, 0x100a001f, 0x100a001d, 0x100a001b,
-	0x100a001a, 0x100a011a, 0x100a021a, 0x100a031a,
-	0x100a041a, 0x100a051a, 0x100a061a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a,
-	0x100a071a, 0x100a071a, 0x100a071a, 0x100a071a
+	0x2042002a, 0x20420027, 0x20420025, 0x20420023,
+	0x20420021, 0x2042001f, 0x20320029, 0x20320026,
+	0x20320024, 0x20320022, 0x20320020, 0x202a0025,
+	0x202a0023, 0x202a0021, 0x202a001f, 0x20220025,
+	0x20220023, 0x20220021, 0x2022001f, 0x2022011f,
+	0x2022021f, 0x2022031f, 0x201a0022, 0x201a0020,
+	0x201a0120, 0x201a0220, 0x201a0320, 0x201a0420,
+	0x201a0520, 0x201a0620, 0x201a0720, 0x2012001f,
+	0x2012001e, 0x2012001c, 0x2012001a, 0x20120019,
+	0x20120119, 0x20120219, 0x20120319, 0x20120419,
+	0x20120519, 0x20120619, 0x200a0024, 0x200a0022,
+	0x200a0020, 0x200a001f, 0x200a001d, 0x200a001b,
+	0x200a001a, 0x200a011a, 0x200a021a, 0x200a031a,
+	0x200a041a, 0x200a051a, 0x200a061a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a,
+	0x200a071a, 0x200a071a, 0x200a071a, 0x200a071a
 };
 
 /* External PA Gain Table for 43236+ */
@@ -1685,6 +1710,7 @@ static const char BCMATTACHDATA(rstr_rssi_gain_delta_5gh)[] = "rssi_gain_delta_5
 static const char BCMATTACHDATA(rstr_ed_assert_thresh_dbm)[] = "ed_assert_thresh_dbm";
 static const char BCMATTACHDATA(rstr_eu_edthresh2g)[] = "eu_edthresh2g";
 static const char BCMATTACHDATA(rstr_eu_edthresh5g)[] = "eu_edthresh5g";
+static const char BCMATTACHDATA(rstr_high_edcrsthresh_rev17)[] = "high_edcrsthresh_rev17";
 
 /* %%%%%% Function implementation */
 static INLINE void
@@ -1799,6 +1825,14 @@ wlc_phy_table_read_nphy(phy_info_t *pi, uint32 id, uint32 len, uint32 offset, ui
 	}
 }
 
+/**
+ * PR 87670: compact initialization for sparse tables, ie, with large consecutive blocks of 0s
+ *   To exploit gaps in table, this function needs:
+ *   1. a data array of the non-zero init values (for non-consecutive offsets),
+ *   2. an offset struct to indicate the start of blocks of offset with non-zero init values,
+ *      together with the length of the block
+ * FIXME: currently works only for 32-bit wide table entries, but can be extended to other widths
+ */
 static void
 WLBANDINITFN(wlc_phy_sparse_table_init)(phy_info_t *pi,
                                         uint8 table_id,
@@ -1861,6 +1895,11 @@ WLBANDINITFN(wlc_phy_sparse_table_init)(phy_info_t *pi,
 	}
 }
 
+/**
+ * PR 87670: compact and rapid initialization of static tables.
+ * Compact because it exploits the structure of the values to init, instead of defining data struct
+ * Rapid   because it relies on the TableAddress auto-increment
+ */
 static void
 WLBANDINITFN(wlc_phy_compact_table_init)(phy_info_t *pi)
 {
@@ -1956,6 +1995,9 @@ WLBANDINITFN(wlc_phy_static_table_download_nphy)(phy_info_t *pi)
 		if ((CHIPID(pi->sh->chip) == BCM43234_CHIP_ID) ||
 			(CHIPID(pi->sh->chip) == BCM43235_CHIP_ID) ||
 			(CHIPID(pi->sh->chip) == BCM43236_CHIP_ID)) {
+			/* PR 87670: PHY tables have unfortunately been ROM-ed for 43236,
+			 * so keep most of the original code so as not to increase RAM size
+			 */
 			for (idx = 0; idx < mimophytbl_info_sz_43236; idx++)
 				wlc_phy_write_table_nphy(pi, &mimophytbl_info_43236[idx]);
 
@@ -1963,6 +2005,9 @@ WLBANDINITFN(wlc_phy_static_table_download_nphy)(phy_info_t *pi)
 			for (idx = 0; idx < mimophytbl_info_sz_rev8to10; idx++)
 				wlc_phy_write_table_nphy(pi, &mimophytbl_info_rev8to10[idx]);
 
+			/* Compact initialization: customize init to account for content structure.
+			 * PR 87670: avoids defining large data struct and thus shrinks code size
+			 */
 			wlc_phy_compact_table_init(pi);
 		}
 
@@ -1970,6 +2015,9 @@ WLBANDINITFN(wlc_phy_static_table_download_nphy)(phy_info_t *pi)
 		for (idx = 0; idx < mimophytbl_info_sz_rev7; idx++)
 			wlc_phy_write_table_nphy(pi, &mimophytbl_info_rev7[idx]);
 
+		/* Compact initialization: customize init to account for content structure.
+		 * PR 87670: this avoids defining large data struct and thus shrinks code size
+		 */
 		wlc_phy_compact_table_init(pi);
 	}
 }
@@ -2026,6 +2074,11 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 		/* 43226, 43236, 6362 */
 		uint8 offset_core[] = {0, 32}; /* offsets for 2G core0, 2G core 1 */
 
+		/* PR86412: tput/PHY rate dips at powers > ~ -20 dBm because TR switch for
+		   unused core during SISO TX is in an undefined state
+		   Fix is to make sure all entries corresponding to LUT indices
+		   having RX=0, TX=0 throw TR switch to R.
+		*/
 		uint8 map[] = {0, 4, 8};
 		uint8 antswctrllut_vals[2][3] = {{0x2, 0x12, 0x8}, {0x2, 0x18, 0x2}};
 
@@ -2057,6 +2110,11 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 		   are the dedicated pins5357, 47186, 5358, 5356
 		*/
 
+		/* PR86412: tput/PHY rate dips at powers > ~ -20 dBm because TR switch for
+		   unused core during SISO TX is in an undefined state
+		   Fix is to make sure all entries corresponding to LUT indices
+		   having RX=0, TX=0 throw TR switch to R.
+		*/
 		uint8 map0[] = {0, 4, 8};
 		uint8 antswctrllut_vals0[] = {0x1, 0x11, 0x1};
 
@@ -2121,8 +2179,18 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 	case 3: {
 		/* for 47186nrh that uses 2 SPDT switches */
 
+	        /* PR87989: TR switch for shared antenna should be in defined
+		   state, i.e., the control lines should be (high, low) or (low high)
+		   for any situation.
+		*/
+
 		uint8 offset_core[] = {0, 32, 16, 48};
 
+		/* PR86412: tput/PHY rate dips at powers > ~ -20 dBm because TR switch for
+		   unused core during SISO TX is in an undefined state
+		   Fix is to make sure all entries corresponding to LUT indices
+		   having RX=0, TX=0 throw TR switch to R.
+		*/
 		uint8 map[] = {0, 1, 2, 4, 5, 6, 8, 9, 10};
 		uint8 antswctrllut_vals[4][9] = {
 			{0x0A, 0x05, 0x06, 0x1A, 0x19, 0x1A, 0x0A, 0x05, 0x06},
@@ -2285,6 +2353,9 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 			                         1, offset, 8, &antswctrllut_vals1[ct2]);
 		}
 
+		/* PR 108019: CLB bug WAR
+		 * program clb_rf_sw_ctrl_mask_ctrl for 43241IPAAGB
+		 */
 		wlapi_bmac_write_shm(pi->sh->physhim, M_LCNXN_SWCTRL_MASK(pi),
 		                     LCNXN_SWCTRL_MASK_43241IPAAGB);
 		break;
@@ -2313,6 +2384,9 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 			                         1, offset, 8, &antswctrllut_vals1[ct2]);
 		}
 
+		/* PR 108019: CLB bug WAR
+		 * program clb_rf_sw_ctrl_mask_ctrl for 43241IPAAGB
+		 */
 		wlapi_bmac_write_shm(pi->sh->physhim, M_LCNXN_SWCTRL_MASK(pi),
 		                     LCNXN_SWCTRL_MASK_43241IPAAGB);
 		break;
@@ -2480,6 +2554,9 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 		/* set bit1 to mux out rf_sw_ctrl_5 from LUT */
 		phy_utils_write_phyreg(pi, NPHY_REV19_swCtrlLUTConfig, 0x1a);
 
+		/* PR 108019: CLB bug WAR
+		 * program clb_rf_sw_ctrl_mask_ctrl for 43241IPAAGB
+		 */
 		wlapi_bmac_write_shm(pi->sh->physhim, M_LCNXN_SWCTRL_MASK(pi),
 		                     LCNXN_SWCTRL_MASK_43241IPAAGB_eLNA);
 		break;
@@ -2509,6 +2586,9 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 			                         1, offset, 8, &antswctrllut_vals1[ct2]);
 		}
 
+		/* PR 108019: CLB bug WAR
+		 * program clb_rf_sw_ctrl_mask_ctrl for 43241IPAAGB
+		 */
 		wlapi_bmac_write_shm(pi->sh->physhim, M_LCNXN_SWCTRL_MASK(pi),
 		                     LCNXN_SWCTRL_MASK_43241IPAAGB_eLNA);
 		break;
@@ -2578,6 +2658,9 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 		/* 2G core 1 */
 		wlc_phy_set_antswctrllut_nphy(pi, map, vals1, ARRAYSIZE(map), 32);
 
+		/* PR 108019: CLB bug WAR
+		 * program clb_rf_sw_ctrl_mask_ctrl for 43242USBREF
+		 */
 		wlapi_bmac_write_shm(pi->sh->physhim, M_LCNXN_SWCTRL_MASK(pi),
 		                     LCNXN_SWCTRL_MASK_43242USBREF);
 		break;
@@ -2597,6 +2680,9 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 
 		phy_utils_write_phyreg(pi, NPHY_REV19_swCtrlLUTConfig, 0x3);
 
+		/* PR 108019: CLB bug WAR
+		 * program clb_rf_sw_ctrl_mask_ctrl for 43242USBREF
+		 */
 		wlapi_bmac_write_shm(pi->sh->physhim, M_LCNXN_SWCTRL_MASK(pi),
 		                     LCNXN_SWCTRL_MASK_43242USBREF);
 		break;
@@ -2638,6 +2724,9 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 			NPHY_REV19_high_gain_ovr_tr_rx_pu_0_MASK,
 			1 << NPHY_REV19_high_gain_ovr_tr_rx_pu_0_SHIFT);
 
+		/* PR 108019: CLB bug WAR
+		 * program clb_rf_sw_ctrl_mask_ctrl for 43241IPAAGB
+		 */
 		wlapi_bmac_write_shm(pi->sh->physhim, M_LCNXN_SWCTRL_MASK(pi),
 		                     LCNXN_SWCTRL_MASK_43241IPAAGB_eLNA);
 		break;
@@ -2708,6 +2797,10 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 			                         1, offset, 8, &antswctrllut_vals1[ct2]);
 		}
 		}
+		/* PR 108019: CLB bug WAR
+		 * program clb_rf_sw_ctrl_mask_ctrl for 4324B1EFOAGB
+		 * FIX ME: 4324B1 has an ECO fix that needs to be brought up
+		 */
 		wlapi_bmac_write_shm(pi->sh->physhim, M_LCNXN_SWCTRL_MASK(pi),
 			LCNXN_SWCTRL_MASK_4324B1EFOAGB);
 
@@ -2776,6 +2869,10 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 		phy_utils_mod_phyreg(pi, NPHY_REV19_Override_TR_rx_pu_high_gain,
 			NPHY_REV19_high_gain_ovr_tr_rx_pu_1_MASK,
 			1 << NPHY_REV19_high_gain_ovr_tr_rx_pu_1_SHIFT);
+
+		/* PR 108019: CLB bug WAR
+		 * program clb_rf_sw_ctrl_mask_ctrl for 43241IPAAGB
+		 */
 
 		wlapi_bmac_write_shm(pi->sh->physhim, M_LCNXN_SWCTRL_MASK(pi),
 		                     LCNXN_SWCTRL_MASK_43241IPAAGB_eLNA);
@@ -2879,6 +2976,10 @@ WLBANDINITFN(wlc_phy_tbl_init_nphy)(phy_info_t *pi)
 			                         1, offset, 8, &antswctrllut_vals1[ct2]);
 		}
 		}
+		/* PR 108019: CLB bug WAR
+		 * program clb_rf_sw_ctrl_mask_ctrl for 4324B1EFOAGB
+		 * FIX ME: 4324B1 has an ECO fix that needs to be brought up
+		 */
 		wlapi_bmac_write_shm(pi->sh->physhim, M_LCNXN_SWCTRL_MASK(pi),
 			LCNXN_SWCTRL_MASK_4324B1EFOAGB);
 
@@ -3004,6 +3105,12 @@ BCMATTACHFN(wlc_phy_attach_nphy)(phy_info_t *pi)
 	*/
 	pi->u.pi_nphy->rx2tx_biasentry = -1;
 
+	/* Flag initialization should happen at attach, not in the PHY init function.
+	 * The former is called once (at insmod), while the latter can be called multiple times.
+	 * This would reset the flag each time, which is generally undesirable.
+	 *
+	 * FIXME: the min_nvar_adjusted flag should also be moved here.
+	 */
 	((phy_info_nphy_t *)pi_nphy)->nphy_base_nvars_adjusted = FALSE;
 
 	/* Check if extra G-band spur WAR for REV6 40MHz channels 3 through 10
@@ -3142,6 +3249,8 @@ BCMATTACHFN(wlc_phy_attach_nphy)(phy_info_t *pi)
 #endif // endif
 	pi_nphy->ed_assert_thresh_dbm =
 		(int16)PHY_GETINTVAR_DEFAULT(pi, rstr_ed_assert_thresh_dbm, 0);
+	pi_nphy->high_edcrsthresh_rev17 =
+		(uint8)PHY_GETINTVAR_DEFAULT(pi, rstr_high_edcrsthresh_rev17, 0);
 
 #if defined(BCMDBG)
 	phy_dbg_add_dump_fn(pi, "phypapd", wlc_phydump_papd, pi);
@@ -3228,6 +3337,9 @@ void wlc_phy_enable_extpa_ctrl_nphy(phy_info_t *pi)
 			if ((BOARDFLAGS2(GENERIC_PHY_INFO(pi)->boardflags2) &
 			     (BFL2_ANAPACTRL_2G | BFL2_ANAPACTRL_5G)) !=
 			    (BFL2_ANAPACTRL_2G | BFL2_ANAPACTRL_5G)) {
+				/* XXX PR112244 : Using DIGITAL PA ctrl lines to control PA will
+				 * cause TX rate drop on BCM47186NRH.
+				 */
 				if (pi->sh->boardtype != 0x052A) {
 					/* External PA is controlled using DIGITAL PA ctrl lines */
 					si_corereg(pi->sh->sih, SI_CC_IDX,
@@ -3317,6 +3429,10 @@ WLBANDINITFN(wlc_phy_init_nphy)(phy_info_t *pi)
 	/* Step 0, initialize NPHY tables */
 	wlc_phy_tbl_init_nphy(pi);
 
+	/* Reset spur avoidance WAR flags.
+	 * FIXME: the min_nvar_adjusted flag should be moved to wlc_phy_attach_nphy to avoid
+	 * being reset to FALSE everytime wlc_phy_init_nphy is called.
+	 */
 	pi_nphy->nphy_crsminpwr_adjusted = FALSE;
 	pi_nphy->nphy_noisevars_adjusted = FALSE;
 
@@ -3380,6 +3496,9 @@ WLBANDINITFN(wlc_phy_init_nphy)(phy_info_t *pi)
 	/* Delay mimophy start to 2.0 usec to match Skywork FEM board
 	 * else Delay mimophy start to 2.3 usec to match BPHY
 	 */
+	/* XXX PR51695 : APPLE RDR:5416310: M93: 2.4GHz shows a sharp performance
+	 * drop off around -85 dBm
+	 */
 	if (BOARDFLAGS2(GENERIC_PHY_INFO(pi)->boardflags2) & BFL2_SKWRKFEM_BRD ||
 	    ((pi->sh->boardvendor == VENDOR_APPLE) &&
 	     (pi->sh->boardtype == 0x8b)))
@@ -3400,6 +3519,9 @@ WLBANDINITFN(wlc_phy_init_nphy)(phy_info_t *pi)
 		PHY_REG_WRITE_ENTRY(NPHY, TxRifsFrameDelay, 48)
 	PHY_REG_LIST_EXECUTE(pi);
 
+	/* set rx mixedmode capable
+	 *  For REV8 PR 67396: there's no longer programmability to set AutoEnv or to force GF or MM
+	 */
 	if (NREV_LT(pi->pubpi->phy_rev, 8)) {
 		wlc_phy_update_mimoconfig_nphy(pi, pi->n_preamble_override);
 	}
@@ -3464,6 +3586,11 @@ WLBANDINITFN(wlc_phy_init_nphy)(phy_info_t *pi)
 	phy_utils_write_phyreg(pi, NPHY_BBConfig, val & (~BBCFG_RESETCCA));
 	wlapi_bmac_phyclk_fgc(pi->sh->physhim, OFF);
 
+	/* Temporarily Force PHY gated clock on to avoid weird PHY hang
+	 * issue.  refer to PR37122;
+	 * NOTE: no longer need write to psm_phy_hdr_param, per
+	 * mimophyprocs r2.141.
+	 */
 	wlapi_bmac_macphyclk_set(pi->sh->physhim, ON);
 
 	/* trigger a rx2tx to get TX lpf bw and gain latched into 205x,
@@ -3615,6 +3742,10 @@ WLBANDINITFN(wlc_phy_init_nphy)(phy_info_t *pi)
 	if (!NORADIO_ENAB(pi->pubpi)) {
 		bool do_rssi_cal = FALSE;
 
+		/* XXX perform init-time calibrations, required to
+		 * resolve CCX RSSI report incorrectly.  BUT having
+		 * this RSSI cal will cause noticeable audio pop
+		 */
 		do_rssi_cal = (CHSPEC_IS2G(pi->radio_chanspec)) ?
 				(pi_nphy->nphy_rssical_chanspec_2G == 0) :
 				(pi_nphy->nphy_rssical_chanspec_5G == 0);
@@ -3716,6 +3847,16 @@ WLBANDINITFN(wlc_phy_init_nphy)(phy_info_t *pi)
 
 	/* Spur avoidance WAR for 4322 */
 	wlc_phy_spurwar_nphy(pi);
+
+	/* XXX Originally only one condition pi->phy_init_por was present
+	 * Because of this, 5G channels were carying the 2G channel's defaults
+	 * registers setting. To change that, we added the new condition where
+	 * default values of all channels that come here are saved except for
+	 * home channel if ACI is enabled. This is because, if we allow the
+	 * registers settings of home channel to be saved, when ACI source is
+	 * turned off, the ACI enabled register values are restored. Which is
+	 * wrong.
+	 */
 
 	if (pi->phy_init_por) {
 		wlc_phy_aci_noise_store_values_nphy(pi);
@@ -3986,6 +4127,10 @@ wlc_phy_rxcore_setstate_nphy(wlc_phy_t *pih, uint8 rxcore_bitmask, bool enable_p
 	phy_utils_write_phyreg(pi, NPHY_sampleLoopCount, sampleLoopCount_save);
 	phy_utils_write_phyreg(pi, NPHY_sampleInitWaitCount, sampleInitWaitCount_save);
 	phy_utils_write_phyreg(pi, NPHY_sampleCmd, sampleCmd_save);
+	/* PR103444, PR103900: To solve Tx spikes on a core, when the
+	 * Rx chain has been disabled via coremask: we override the
+	 * rxtxbias to be powered up when we apply the coremask
+	 */
 	if ((rxcore_bitmask & 0x3) == 1) {
 		phy_utils_or_radioreg(pi, RADIO_2057_RXTXBIAS_CONFIG_CORE1, 0x20);
 		phy_utils_or_radioreg(pi, RADIO_2057v7_OVR_REG18, 0x80);
@@ -4150,6 +4295,12 @@ static void wlc_phy_elna_gainctrl_workaround(phy_info_t *pi)
 	/* update eLNA gain in Gain[12] table */
 	wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_GAIN1, 2, 0x0, 8, elna_gain_db);
 	wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_GAIN2, 2, 0x0, 8, elna_gain_db);
+
+	/* 43217MCEPA Ch13 RxPER Hump WAR */
+	if (NREV_IS(pi->pubpi->phy_rev, LCNXN_BASEREV + 1)) {
+		PHY_REG_MOD(pi, NPHY, Core1clipwbThreshold2057, clip1wbThreshold, 0x36);
+		PHY_REG_MOD(pi, NPHY, Core2clipwbThreshold2057, clip1wbThreshold, 0x36);
+	}
 }
 
 uint16 wlc_phy_gain_from_code(phy_info_t *pi, uint8 type, uint8 core_num)
@@ -4397,6 +4548,10 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 		phy_utils_or_phyreg(pi, NPHY_IQFlip, NPHY_IQFlip_ADC1 | NPHY_IQFlip_ADC2);
 	}
 
+	/* PR 39179, PR 39185 workaround:
+	 * - DPLL Loop Filter params
+	 * - Set 2: wider upto 10 syms and then switch to narrower
+	 */
 	PHY_REG_LIST_START
 		PHY_REG_WRITE_ENTRY(NPHY, PhaseTrackAlpha0, 293)
 		PHY_REG_WRITE_ENTRY(NPHY, PhaseTrackAlpha1, 435)
@@ -4407,10 +4562,18 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 	PHY_REG_LIST_EXECUTE(pi);
 	/* Rev7 Specific */
 	if (NREV_IS(pi->pubpi->phy_rev, 7)) {
+		/* PR 69268 fix:  keep chanest clock running so reset is observed
+		 *  during TX pre-emption
+		 */
 		PHY_REG_LIST_START
 			PHY_REG_MOD_ENTRY(NPHY, fineRx2clockgatecontrol,
 				forcechanestgatedClksOn, 1)
 
+			/* PR74838: Updating FreqGain0-FreqGain7 Register
+			 * The Default Values are not correct for MRC.
+			 * These values are important for Frequency Estimation/Fine
+			 * Timing Algorithm
+			 */
 			PHY_REG_MOD_ENTRY(NPHY, FreqGain0, freqGainVal0, 32)
 			PHY_REG_MOD_ENTRY(NPHY, FreqGain0, freqGainVal1, 39)
 			PHY_REG_MOD_ENTRY(NPHY, FreqGain1, freqGainVal2, 46)
@@ -4432,6 +4595,9 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 
 	/* Rev7-8 Specific */
 	if (NREV_LE(pi->pubpi->phy_rev, 8)) {
+		/* PR 80122 - for RIFS functionality,
+		 * force clocks on only for auto20u/20l and mf20u/mf20l
+		 */
 		PHY_REG_LIST_START
 			PHY_REG_WRITE_ENTRY(NPHY, forceFront0, 0x1b0)
 			PHY_REG_WRITE_ENTRY(NPHY, forceFront1, 0x1b0)
@@ -4444,6 +4610,9 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 		PHY_REG_LIST_EXECUTE(pi);
 	}
 
+	/* PR77432 - Tx shouldn't turn off before all the samples are on the air.
+	 * (this workaround is particularly true for Resampler On + PAPD On)
+	 */
 	/* Rev8+ Specific */
 	if (NREV_GE(pi->pubpi->phy_rev, LCNXN_BASEREV)) {
 		/* LCNXN */
@@ -4463,9 +4632,17 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 		            (114 << NPHY_txTailCountValue_TailCountValue_SHIFT));
 	} /* [End] Rev8+ Specific */
 
+	/* PR 37069 -- Prevent 40MHz BW glitching at DAC (160MHz)
+	 *    by getting AFE to sample on clk rising edge
+	 *    val   offset
+	 */
 	wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_AFECTRL, 1, 0x00, 16, &dac_control);
 	wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_AFECTRL, 1, 0x10, 16, &dac_control);
 
+	/* PR 40612 fix: use pilots-only tracking for
+	 *  legacy (48/54 Mbps) 64-QAM constellations assuming transmitters
+	 *  have high phase noise
+	 */
 	wlc_phy_table_read_nphy(pi, NPHY_TBL_ID_CMPMETRICDATAWEIGHTTBL,
 	                    1, 0, 32, &leg_data_weights);
 	leg_data_weights = leg_data_weights & 0xffffff;
@@ -4485,6 +4662,10 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 	                       rfseq_tx2rx_dlys_rev3, sizeof(rfseq_tx2rx_events_rev3)/
 	                       sizeof(rfseq_tx2rx_events_rev3[0]));
 
+	/* PR 74937: If IPA is enabled, remove EXT_PA,
+	 *  and move INT_PA_PU delay to CLR_RXTX_BIAS.
+	 * This prevents garbage being spewed out in the air due.
+	 */
 	if (PHY_IPA(pi)) {
 		uint8 rfseq_rx2tx_dlys_rev3_ipa[] = {8, 6, 6, 4, 4, 16, 43, 1, 1};
 		uint8 rfseq_rx2tx_events_rev3_ipa[] = {
@@ -4597,6 +4778,9 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 						        (uint16) MIN((int16)rccal_scap_val +
 						                     16, 0x1f);
 					}
+					/* PR86211: Bandedge improvement WAR for
+					 * 5357NR2/5358NR2 and derivatives
+					 */
 					curr_channel =
 					CHSPEC_CHANNEL(pi->radio_chanspec);
 					if ((pi->sh->sromrev >= 8) &&
@@ -4826,6 +5010,9 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 					rccal_tx20_11n_scap[coreNum] =
 						(uint16) MIN((int16)rccal_scap_val + 16, 0x1f);
 				}
+				/* PR86211: Bandedge improvement WAR for
+				 * 5357NR2/5358NR2 and derivatives
+				 */
 				curr_channel = CHSPEC_CHANNEL(pi->radio_chanspec);
 				if ((pi->sh->sromrev >= 8) &&
 				    (BOARDFLAGS2(GENERIC_PHY_INFO(pi)->boardflags2) &
@@ -4941,6 +5128,11 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 		phy_utils_write_phyreg(pi, NPHY_PingPongComp, 0x3);
 	}
 	if (RADIOID(pi->pubpi->radioid) == BCM2057_ID) {
+		/* PR 74381: Slow response of PAD gain change affects GF
+		performance in 43226A0 and 43226A1. Therefore, force
+		all Tx blocks other than the LPF and intPA to always
+		be ON for the 2057 radiorevs corresponding to these chips.
+		 */
 		if ((RADIOREV(pi->pubpi->radiorev) == 4) ||
 			(RADIOREV(pi->pubpi->radiorev) == 6)) {
 			wlc_phy_rfctrl_override_nphy_rev7(pi,
@@ -5015,6 +5207,10 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 					                 coreNum, IPA2G_IMAIN,
 					                 0x1f);
 
+					/* REV8 FIXME: UMC settings
+					 * WRITE_RADIO_REG4(pi, RADIO_2057, CORE, coreNum,
+					 * IPA2G_BIAS_FILTER, 0x88);
+					 */
 					WRITE_RADIO_REG4(pi, RADIO_2057, CORE, coreNum,
 					                 IPA2G_BIAS_FILTER, 0xee);
 					WRITE_RADIO_REG4(pi, RADIO_2057, CORE,
@@ -5192,6 +5388,13 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 
 	/* AFE mode and settings */
 	if (RADIOREV(pi->pubpi->radiorev) == 4) {
+		/* PR 74284 -- Mitigate unreliable ADC output at high Rx pwr by:
+		 *   - using ADC low-power mode on (done by default in AFESeq)
+		 *   - use correct control bias current of i/q adc reference buffer, ie 0x20
+		 *   - max out the AFE Vcm
+		 * NOT a robust WAR, but shows the least bad performance across stations
+		 * and boards
+		 */
 		wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_AFECTRL, 1, 0x05, 16,
 		                     &afectrl_adc_ctrl1_rev7);
 		wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_AFECTRL, 1, 0x15, 16,
@@ -5292,6 +5495,10 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 
 	} else {
 
+		/* PR80448/PR80449/PR80450/PR80451
+		 * ADC SISO MODE (ADC Mode 2) is prone to Glitches
+		 * WAR - use ADC MIMO MODE (ADC Mode 1) by default
+		 */
 		PHY_REG_LIST_START
 			PHY_REG_MOD_RAW_ENTRY(NPHY_AfectrlCore1,
 				NPHY_REV3_AfectrlCore_adc_pd_MASK,
@@ -5341,6 +5548,11 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 	 * and will less likely to miss actual packets
 	 * ps. this is actually one settings for ACI
 	 */
+	/* XXX In ACI mitigation code, NPHY_energydroptimeoutLen = 2 is assumed
+	 * for proper interference modes 3 and 4 operation. If this value is
+	 * changed, make sure the ACI code is reviewed for proper operation
+	 * This is true only for NPHY REV 7 - 15.
+	 */
 #ifdef NPHYREV7_HTPHY_DFS_WAR
 	if (CHSPEC_IS2G(pi->radio_chanspec)) {
 		phy_utils_write_phyreg(pi, NPHY_energydroptimeoutLen, 0x2);
@@ -5353,8 +5565,26 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 	phy_utils_write_phyreg(pi, NPHY_energydroptimeoutLen, 0x2);
 #endif // endif
 
+	/* PR75409
+	 * Set 6Mbps Min-Noise Offset from 36 to 20.
+	 * Unequal Ant Powers: Gives better Phase Estimates from Sigfield Decoding.
+	 * [Better MRC Combining]
+	 */
 	wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_NOISEVAR, 1, 256, 32, &min_nvar_offset_6mbps);
 
+	/* Tighter LPF HPC for better inner tone EVM during payload decoding
+	 * otherwise keep to a looser LPF HPC for
+	 * 1) Better settling during gain-settling
+	 *  2) Better DC Rejection
+	 * The Current Default Values for Rev7+ is actually workaround settings for Rev3-6
+	 * Transisents from different HPC switch impacts timing in Rev3-6.
+	 * In Rev7+,
+	 * timing is more robust and there should be less transisent as HPVGA is removed.
+	 * For results on Rev7+,
+	 * see http://hwnbu-twiki.sj.broadcom.com/bin/view/Mwgroup/BCM6362A0LabNotebook_22
+	 * Currently txrx_hpc mid,lo, rx2tx_hpc mid,lo and cckpktgn_hpc hi registers
+	 * are not used in hardware.
+	 */
 	/* pktgn_hpc mid,lo */
 	wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_RFSEQ, 2, 0x138, 16, &rfseq_pktgn_lpf_hpc_rev7);
 	/* pktgn_hpc hi */
@@ -5368,6 +5598,11 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 	/* rx2tx_hpc hi */
 	wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_RFSEQ, 1, 0x12A, 16, &rfseq_rx2tx_lpf_h_hpc_rev7);
 
+	/* Increase by 6 dB min_noise_var on +/-1 tones for 20in20 case
+	 * SGI WAR used from Rev3 to Rev6 used to bring floor from 1% to 0.1%
+	 * REV7 FIXME: ZF without this WAR gives good floor of 0.1% - Understand
+	 */
+
 	/* WARNING: we need to also write back the base_nvar, otherwise write
 	 * command will pick up stale lower 32-bit value if its available.
 	 */
@@ -5380,6 +5615,9 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 		base_nvar_buf[1] = (uint32) min_nvar_val;
 		wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_NOISEVAR, 2, 126, 32, &base_nvar_buf);
 	} else {
+		/* Restore the Value Back to Default For 40MHz
+		 * FIXME: Is this Required? Verify.
+		 */
 		wlc_phy_table_read_nphy(pi,  NPHY_TBL_ID_NOISEVAR, 1, 2, 32, &base_nvar_buf[0]);
 		base_nvar_buf[1] = noise_var_tbl_rev7[3];
 		wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_NOISEVAR, 2, 2, 32, &base_nvar_buf);
@@ -5389,10 +5627,18 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 		wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_NOISEVAR, 2, 126, 32, &base_nvar_buf);
 	}
 
+	/* PR 87207: For mcs0-3, reduce the min_noise_var_offset to 20 (0x14).
+	 * This caps the signal-to-crap-ratio reduction to 15dB from current min_noise_var,
+	 * thereby improving MRC in cases with high Rx power imbalance.
+	 */
 	if (CHIPID_43236X_FAMILY(pi))
 		wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_NOISEVAR, 4, 264, 32,
 		                         &min_nvar_offset_mcs0to3);
 
+	/* REV8 FIXME:
+	 * WAR: mfLessAve is contributing high floor for 43236 2G
+	 * Disable it for now.
+	 */
 	if ((CHIPID_43236X_FAMILY(pi) || (CHIPID(pi->sh->chip) == BCM6362_CHIP_ID)) &&
 	    (CHSPEC_IS2G(pi->radio_chanspec))) {
 		PHY_REG_LIST_START
@@ -5795,6 +6041,10 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 			PHY_REG_LIST_EXECUTE(pi);
 		}
 
+		/* XXX PR 90823: for DEV1 boards, we keep 2G eLNA pu lines low
+		 * to ensure that GPIO[45] don't toggle during PHY operation.
+		 * DEV2 boards don't use GPIO[45] to mux out eLNA control lines.
+		 */
 		if (pi->sh->boardrev <= 0x1110) {
 			PHY_REG_LIST_START
 				PHY_REG_MOD_RAW_ENTRY(NPHY_RfctrlLUTLna1, 0xFF, 0x0)
@@ -5845,6 +6095,9 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 		            (1 << NPHY_REV8_TxPwrCtrlCmd_use_perPktPowerOffset_SHIFT));
 	}
 
+	/* XXX PR 91867: temporarily disable ucode WAR to test SW WAR that fixes
+	 * radioreg 0x45 (logen_indbuf2g_idac) to 0x1
+	 */
 	wlapi_bmac_mhf(pi->sh->physhim,  MHF5, 0x1000, 0x1000, WLC_BAND_2G);
 
 	wlc_phy_set_rfseq_nphy(pi, NPHY_RFSEQ_TX2RX, rfseq_tx2rx_events_rev3,
@@ -5886,6 +6139,7 @@ wlc_phy_workarounds_nphy_gainctrl(phy_info_t *pi)
 		/* 53572a0 */
 		wlc_phy_workarounds_nphy_gainctrl_2057_rev13(pi);
 		} else {
+			wlc_phy_workarounds_nphy_gainctrl_2057_rev14(pi);
 			/* 43217 and others */
 			if ((BOARDFLAGS(GENERIC_PHY_INFO(pi)->boardflags) & BFL_ELNA_GAINDEF) &&
 			    ((BOARDFLAGS(GENERIC_PHY_INFO(pi)->boardflags) & BFL_EXTLNA) ||
@@ -5893,7 +6147,6 @@ wlc_phy_workarounds_nphy_gainctrl(phy_info_t *pi)
 				wlc_phy_backoff_initgain_elna(pi);
 				wlc_phy_elna_gainctrl_workaround(pi);
 			}
-			wlc_phy_workarounds_nphy_gainctrl_2057_rev14(pi);
 		}
 	} else {
 		if (CHIPID_43236X_FAMILY(pi)) {
@@ -6230,6 +6483,9 @@ wlc_phy_workarounds_nphy_gainctrl_2057_rev6(phy_info_t *pi)
 			w1clip_th = 25;
 			clip1md_gaincode = 0x82;
 
+			/* REV7 FIXME: optimized for 43226.
+			 * Make sure all channels are covered?
+			 */
 			if ((freq <= 5080) || (freq == 5825)) {
 				/* Low-Gain band */
 				crsminu_th = 0x3e;
@@ -6764,6 +7020,9 @@ wlc_phy_get_chan_freq_range_nphy(phy_info_t *pi, uint channel)
 	if (CHSPEC_IS2G(pi->radio_chanspec)) {
 		return WL_CHAN_FREQ_RANGE_2G;
 	}
+	/* PR 89603: 43236 Sulley need to cover only 5G channels >= 5170MHz,
+	 *           so use the new 5G channel partition
+	 */
 	if ((pi->sromi->subband5Gver == PHY_SUBBAND_3BAND_EMBDDED) ||
 	           ((CHIPID(pi->sh->chip) == BCM43236_CHIP_ID) &&
 	            (pi->sh->boardtype == BCM943236OLYMPICSULLEY_SSID))) {
@@ -6871,6 +7130,12 @@ wlc_phy_adjust_base_noisevar_nphy(phy_info_t *pi, int ntones, int *tone_id_buf, 
 	PHY_INFORM(("wl%d: %s: nphy_base_nvars_adjusted = %d\n", pi->sh->unit, __FUNCTION__,
 	            pi_nphy->nphy_base_nvars_adjusted));
 
+	/* If the base_noise_vars have been adjusted previously (as indicated by the flag
+	 *  pi->nphy_base_nvars_adjusted), then reset the base_noise_vars to the default values
+	 * (stored in pi_nphy->nphy_saved_noisevars) before adjusting them to different values.
+	 *
+	 * FIXME: can't get save-and-restore to work, so restore fixed, known default value for now.
+	 */
 	if (pi_nphy->nphy_base_nvars_adjusted) {
 		PHY_INFORM(("++++++++++++++++++++++++++++++++++++++++++\n"));
 		PHY_INFORM(("       reset base_noise_vars to default values\n"));
@@ -6888,6 +7153,9 @@ wlc_phy_adjust_base_noisevar_nphy(phy_info_t *pi, int ntones, int *tone_id_buf, 
 			PHY_INFORM(("       stored base_nvar   = 0x%x\n", temp_nvar_buf[0]));
 			PHY_INFORM(("       retrieved min_nvar = 0x%x\n", temp_nvar_buf[1]));
 
+			/* FIXME: can't get save-and-restore to work yet,
+			 * so hard code the default baseline nvar value for now.
+			 */
 			temp_nvar_buf[0] = 0x20c020c;
 
 			wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_NOISEVAR, 2,
@@ -6982,6 +7250,13 @@ wlc_phy_spurwar_nphy(phy_info_t *pi)
 		/* We need to enable this code for both bands, so that noisevartbl is
 		 * restored to default values when switching to 5G channels, where
 		 * de-weighting is not needed yet, ie, no known spurs found.
+		 */
+
+		/* FIXME: the code should not write absolute values, but instead should
+		 * read current base_nvar, add user-defined delta, and write back base_nvar.
+		 * Unfortunately, this attempt failed because of unclear driver behavior
+		 * that kept adding the delta (maybe save-and-restore didn't work),
+		 * which is of course wrong. So for now, we write absolute values.
 		 */
 
 		/* 2G BW20 channels see 2 spurs each */
@@ -9643,6 +9918,10 @@ wlc_phy_chanspec_nphy_setup(phy_info_t *pi, chanspec_t chanspec, const nphy_sfo_
 	phy_utils_write_phyreg(pi, NPHY_BW5, ci->PHY_BW5);
 	phy_utils_write_phyreg(pi, NPHY_BW6, ci->PHY_BW6);
 
+	/* PR 41942 WAR
+	 *     - turn off OFDM classification for channel 14
+	 *     - this affects _all_ countries though needed only for locale c/a2
+	 */
 	if (CHSPEC_CHANNEL(pi->radio_chanspec) == 14) {
 		wlc_phy_classifier_nphy(pi, NPHY_ClassifierCtrl_ofdm_en, 0);
 		/* Bit 11 and 6 of BPHY testRegister to '10' */
@@ -9655,6 +9934,9 @@ wlc_phy_chanspec_nphy_setup(phy_info_t *pi, chanspec_t chanspec, const nphy_sfo_
 			phy_utils_and_phyreg(pi, NPHY_TO_BPHY_OFF + BPHY_TEST, ~0x840);
 	}
 
+	/* PR 50508 fix : condition call to txpwrfix_nphy() on
+	 *                Tx power control state
+	 */
 	/* initially force txgain in case txpwrctrl is disabled */
 	if (pi->nphy_txpwrctrl == PHY_TPC_HW_OFF) {
 		wlc_phy_txpwr_fixpower_nphy(pi);
@@ -9730,6 +10012,12 @@ wlc_phy_chanspec_set_nphy(phy_info_t *pi, chanspec_t chanspec)
 		return;
 
 #ifndef WLC_DISABLE_ACI
+	/* XXX PR 109265 Fix for ACI phyrev 7-15
+	 * in function wlc_phy_chanspec_set_nphy, first do a aci registers
+	 * restore to aci inactive default values, followed by chanspec_setup
+	 * (which calls subband cust), followed by storing aci registers, followed
+	 * by restoring aci mitigation-on parameters if ACI state is active.
+	 */
 	if (NREV_LT(pi->pubpi->phy_rev, LCNXN_BASEREV) &&
 		(pi->interf->curr_home_channel ==
 		CHSPEC_CHANNEL(pi->radio_chanspec)) &&
@@ -9767,6 +10055,9 @@ wlc_phy_chanspec_set_nphy(phy_info_t *pi, chanspec_t chanspec)
 	/* band specific 2057 radio inits */
 	if ((RADIOREV(pi->pubpi->radiorev) <= 4) ||
 		(RADIOREV(pi->pubpi->radiorev) == 6)) {
+	    /* PR 73398: software WAR to mux either 2G or 5G LNA2 output to TIA.
+	     * Applies only to 2057 rev3, 4, and 6
+	     */
 	    phy_utils_mod_radioreg(pi, RADIO_2057_TIA_CONFIG_CORE0, 0x2,
 	                  (CHSPEC_IS5G(chanspec) ? (1 << 1) : 0));
 	    phy_utils_mod_radioreg(pi, RADIO_2057_TIA_CONFIG_CORE1, 0x2,
@@ -9923,6 +10214,10 @@ wlc_phy_aci_home_channel_nphy(phy_info_t *pi, chanspec_t chanspec)
 		}
 
 	} else {
+		/* when scanning off home channel, turn off aci mitigation
+		 * and noise mitigation if it is currently on.
+		 * XXX PR 91501: skip if getting here after a power up
+		 */
 		if (!(NREV_LT(pi->pubpi->phy_rev, LCNXN_BASEREV) &&
 			pi->aci_rev7_subband_cust_fix)) {
 			if ((pi->sh->interference_mode == WLAN_AUTO_W_NOISE ||
@@ -10690,6 +10985,9 @@ wlc_phy_rfctrl_override_1tomany_nphy(phy_info_t *pi, uint16 cmd, uint16 value, u
 		rfmxgain = value & NPHY_REV7_RXGAINCODE_RFMXGAIN_MASK;
 		lpfgain = value & NPHY_REV7_RXGAINCODE_LPFGAIN_MASK;
 		lpfgain = lpfgain >> 8;
+		/* REV7 FIXME: value is uint16 but gain code is uint20
+		   Never really override dvgagain so ignore?
+		*/
 		/* dvgagain = value & NPHY_REV7_RXGAINCODE_DVGAGAIN_MASK 0xf0000 */
 		wlc_phy_rfctrl_override_nphy_rev7(
 			pi, NPHY_REV7_RfctrlOverride_rxgain_MASK,
@@ -11107,6 +11405,10 @@ wlc_phy_poll_rssi_nphy(phy_info_t *pi, uint8 rssi_type, int32 *rssi_buf, uint8 n
 	}
 
 	for (samp = 0; samp < nsamps; samp++) {
+		/*
+		 * PR 41490: remove WAR for missing RSSI reg in mimophy rev0-1
+		 * PR 39195: don't need GPIO to get RSSI in mimophy rev >= 2
+		 */
 		rssi0 = phy_utils_read_phyreg(pi, NPHY_RSSIVal1);
 		rssi1 = phy_utils_read_phyreg(pi, NPHY_RSSIVal2);
 
@@ -11182,6 +11484,10 @@ wlc_phy_rfctrlintc_override_nphy(phy_info_t *pi, uint8 field, uint16 value,
 			wlc_phy_force_rfseq_nphy(pi, NPHY_RFSEQ_RESET2RX);
 
 		} else if (field == NPHY_RfctrlIntc_override_TRSW) {
+
+			/* PR59451: Decouple Antenna Config and TR Config in
+			   Antenna siwtch control LUT.
+			*/
 
 			/* Get mask for bit 6 (tr_sw_tx_pu) & bit 7 (tr_sw_rx_pu) */
 			mask = NPHY_REV7_RfctrlIntc_tr_sw_tx_pu_MASK |
@@ -12153,6 +12459,9 @@ wlc_phy_stopplayback_nphy(phy_info_t *pi)
 		pi_nphy->nphy_bb_mult_save = 0;
 	}
 
+	/* PR 75918: Remove the Analog Tx LPF BW override if it was set in
+	 * function wlc_phy_runsamples_nphy() for REVs >= 7
+	 */
 	if (pi_nphy->nphy_sample_play_lpf_bw_ctl_ovr) {
 		wlc_phy_rfctrl_override_nphy_rev7(pi,
 		                                  NPHY_REV7_RfctrlOverride_lpf_bw_ctl_MASK,
@@ -12221,6 +12530,10 @@ static void
 wlc_phy_iqcal_gainparams_nphy(phy_info_t *pi, uint16 core_no, nphy_txgains_t target_gain,
                               nphy_iqcal_params_t *params)
 {
+	/* FIXME: For nphy rev3 we are currently using the same gain
+	   as the current Tx gain for TX IQ/LO cal and hard-coded
+	   correlation values
+	*/
 	params->txlpf = target_gain.txlpf[core_no];
 	params->txgm = target_gain.txgm[core_no];
 	params->pga  = target_gain.pga[core_no];
@@ -12264,6 +12577,9 @@ wlc_phy_txcal_radio_setup_nphy(phy_info_t *pi)
 		pi_nphy->tx_rx_cal_radio_saveregs[(core*11) + 5] =
 			READ_RADIO_REG3(pi, RADIO_2057, TX, core, TX_SSI_MUX);
 
+		/* 2057 rev5 (5357a0) is 2.4G only radio
+		 * REV8 FIXME: Should be replaced with condition on ABAND_PRESENT flag
+		 */
 		if (RADIOREV(pi->pubpi->radiorev) != 5)
 			pi_nphy->tx_rx_cal_radio_saveregs[(core*11) + 6] =
 			        READ_RADIO_REG3(pi, RADIO_2057, TX, core, TSSIA);
@@ -12296,6 +12612,10 @@ wlc_phy_txcal_radio_setup_nphy(phy_info_t *pi)
 			WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, IQCAL_VCM_HG, 0x43);
 			WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, IQCAL_IDAC, 0x55);
 			WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, TSSI_VCM, 0x00);
+			/* 2057 rev5 (5357a0) is 2.4G only radio
+			 * REV8 FIXME: Should be replaced with condition on
+			 * ABAND_PRESENT flag
+			 */
 			if (RADIOREV(pi->pubpi->radiorev) != 5)
 				WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, TSSIA, 0x00);
 			if (pi_nphy->nphy_use_int_tx_iqlo_cal) {
@@ -12337,6 +12657,10 @@ wlc_phy_txcal_radio_cleanup_nphy(phy_info_t *pi)
 		WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, TX_SSI_MUX,
 			pi_nphy->tx_rx_cal_radio_saveregs[(core*11) + 5]);
 
+		/* 2057 rev5 (5357a0) is 2.4G only radio
+		 * REV8 FIXME: Should be replaced with condition on
+		 * ABAND_PRESENT flag
+		 */
 		if (RADIOREV(pi->pubpi->radiorev) != 5)
 			WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, TSSIA,
 			                 pi_nphy->tx_rx_cal_radio_saveregs[(core*11) + 6]);
@@ -12428,6 +12752,11 @@ wlc_phy_txcal_physetup_nphy(phy_info_t *pi)
 		!(pi_nphy->nphy_int_tx_iqlo_cal_tapoff_intpa)) {
 		/* Turn off IPA during Tx IQ/LO cal */
 		if (NREV_IS(pi->pubpi->phy_rev, 7)) {
+			/* PR 73315 Work-Arounds: The PAD peak detector is incorrectly
+			 * controlled by the pincontrol for the internal PA power up/down.
+			 * Hence, override the intpa_pu pincontrol and turn off the PA by
+			 * writing to the power-up/down register
+			 */
 			/* Override the intpa_pu pincontrol */
 			phy_utils_mod_radioreg(pi, RADIO_2057_OVR_REG0, 1<<4, 1<<4);
 
@@ -12488,6 +12817,9 @@ wlc_phy_txcal_phycleanup_nphy(phy_info_t *pi)
 		!(pi_nphy->nphy_int_tx_iqlo_cal_tapoff_intpa)) {
 		/* Power up the internal PA after Tx IQ/LOFT cal is completed */
 		if (NREV_IS(pi->pubpi->phy_rev, 7)) {
+			/* PR 73315 Work-Around:
+			 * Power up the PA by accessing the radio register
+			 */
 			if (CHSPEC_IS2G(pi->radio_chanspec)) {
 				phy_utils_mod_radioreg(pi, RADIO_2057_PAD2G_TUNE_PUS_CORE0,
 				                       1, 1);
@@ -13365,6 +13697,7 @@ wlc_phy_cal_perical_nphy_run(phy_info_t *pi, uint8 caltype)
 	bool restore_tx_gain = FALSE;
 	bool mphase;
 	uint8 entries[] = {0, 0, 0, 0, 0, 0, 0, 0};
+	uint16 var = 31000;
 	int cal_result;
 #ifdef WLSRVSDB
 	uint8 i;
@@ -13449,25 +13782,52 @@ wlc_phy_cal_perical_nphy_run(phy_info_t *pi, uint8 caltype)
 	}
 #endif /* WLSRVSDB */
 
-	/* Make the ucode send a CTS-to-self packet with duration set to 10ms. This
-	 * prevents packets from other STAs/AP from interfering with Rx IQcal
-	 */
-	if (pi->cal_info->cal_phase_id == MPHASE_CAL_STATE_RXCAL) {
-		wlapi_bmac_write_shm(pi->sh->physhim, M_CTS_DURATION(pi), 10000);
-	}
+	if (NREV_IS(pi->pubpi.phy_rev, LCNXN_BASEREV + 1)) {
+		switch (pi->cal_info->cal_phase_id) {
+			case MPHASE_CAL_STATE_INIT:
+				wlapi_bmac_write_shm(pi->sh->physhim, M_CTS_DURATION(pi), 21000);
+				break;
+			case MPHASE_CAL_STATE_TXPHASE0:
+			case MPHASE_CAL_STATE_TXPHASE1:
+			case MPHASE_CAL_STATE_TXPHASE2:
+			case MPHASE_CAL_STATE_TXPHASE3:
+			case MPHASE_CAL_STATE_TXPHASE4:
+			case MPHASE_CAL_STATE_TXPHASE5:
+				wlapi_bmac_write_shm(pi->sh->physhim, M_CTS_DURATION(pi), 5000);
+				break;
+			case MPHASE_CAL_STATE_PAPDCAL:
+			case MPHASE_CAL_STATE_PAPDCAL1:
+				if (PHY_IPA(pi))
+					wlapi_bmac_write_shm(pi->sh->physhim, M_CTS_DURATION(pi),
+					31000);
+				break;
+			case MPHASE_CAL_STATE_RXCAL:
+				wlapi_bmac_write_shm(pi->sh->physhim, M_CTS_DURATION(pi), 21000);
+				break;
+			default:
+				break;
+		}
+	} else {
+		/* Make the ucode send a CTS-to-self packet with duration set to 10ms. This
+		* prevents packets from other STAs/AP from interfering with Rx IQcal
+		*/
+		if (pi->cal_info->cal_phase_id == MPHASE_CAL_STATE_RXCAL) {
+			wlapi_bmac_write_shm(pi->sh->physhim, M_CTS_DURATION(pi), 10000);
+		}
 
-	/* send out CTS-to-self before PAPD cal
-	 * using ~31ms for now which is ~max available; might or might not be enough;
-	 * this is executed by ucode when ucode is suspended a few lines
-	 * below here;
-	 * for a future case where the initial duration is chosen too long,
-	 * can consider using a "CF End" packet (need to add) when ucode
-	 * resumes after the end of the calibration
-	 */
-	if (((pi->cal_info->cal_phase_id == MPHASE_CAL_STATE_PAPDCAL) ||
-	     (pi->cal_info->cal_phase_id == MPHASE_CAL_STATE_PAPDCAL1)) &&
-	    PHY_IPA(pi) && !phy_papdcal_is_wfd_phy_ll_enable(pi->papdcali)) {
-		wlapi_bmac_write_shm(pi->sh->physhim, M_CTS_DURATION(pi), 31000);
+		/* send out CTS-to-self before PAPD cal
+		* using ~31ms for now which is ~max available; might or might not be enough;
+		* this is executed by ucode when ucode is suspended a few lines
+		* below here;
+		* for a future case where the initial duration is chosen too long,
+		* can consider using a "CF End" packet (need to add) when ucode
+		* resumes after the end of the calibration
+		*/
+		if (((pi->cal_info->cal_phase_id == MPHASE_CAL_STATE_PAPDCAL) ||
+		(pi->cal_info->cal_phase_id == MPHASE_CAL_STATE_PAPDCAL1)) &&
+		PHY_IPA(pi) && !phy_papdcal_is_wfd_phy_ll_enable(pi->papdcali)) {
+			wlapi_bmac_write_shm(pi->sh->physhim, M_CTS_DURATION(pi), 31000);
+		}
 	}
 
 #if defined(RXDESENS_EN)
@@ -13514,8 +13874,10 @@ wlc_phy_cal_perical_nphy_run(phy_info_t *pi, uint8 caltype)
 			/* send out CTS-to-self before PAPD cal */
 			if (PHY_IPA(pi)) {
 				phy_utils_phyreg_exit(pi);
+				if (NREV_IS(pi->pubpi.phy_rev, LCNXN_BASEREV + 1))
+					var = 45000;
 				wlapi_enable_mac(pi->sh->physhim);
-				wlapi_bmac_write_shm(pi->sh->physhim, M_CTS_DURATION(pi), 31000);
+				wlapi_bmac_write_shm(pi->sh->physhim, M_CTS_DURATION(pi), var);
 				wlapi_suspend_mac_and_wait(pi->sh->physhim);
 				phy_utils_phyreg_enter(pi);
 				wlc_phy_txpwr_papd_cal_run(pi, TRUE, PHY_CORE_0,
@@ -13593,6 +13955,9 @@ wlc_phy_cal_perical_nphy_run(phy_info_t *pi, uint8 caltype)
 		switch (pi->cal_info->cal_phase_id) {
 		case MPHASE_CAL_STATE_INIT:
 
+			/* XXX Temporary hack for Sulley:
+			 * Adjust crsminpower based on temperature to lower 5G floor across PVT
+			 */
 			if (CHSPEC_IS5G(pi->radio_chanspec) &&
 			    (pi->sh->boardtype == BCM943236OLYMPICSULLEY_SSID)) {
 
@@ -14196,6 +14561,9 @@ wlc_phy_cal_txiqlo_nphy(phy_info_t *pi, nphy_txgains_t target_gain, bool fullcal
 			wlc_phy_table_read_nphy(pi, NPHY_TBL_ID_IQLOCAL, 2, 101, 16, tbl_buf);
 			wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_IQLOCAL, 2, 85, 16, tbl_buf);
 
+			/* Apply Digital LOFT Comp to B-PHY
+			 * PR 38650, PR 38487
+			 */
 			/* TCL: mimophy_write_table iqloCaltbl
 			   [mimophy_read_table iqloCaltbl 2 101] 93
 			 */
@@ -14385,6 +14753,9 @@ cal_try:
 		iq = est[curr_core].iq_prod;
 		ii = est[curr_core].i_pwr;
 		qq = est[curr_core].q_pwr;
+		/* PR93127 swap iq in software as adc flip doesnt function
+		 *   when SPB is turned on
+		 */
 		if ((CHIPID(pi->sh->chip) == BCM43131_CHIP_ID) ||
 		    (CHIPID(pi->sh->chip) == BCM43217_CHIP_ID)) {
 			ii = est[curr_core].q_pwr;
@@ -14633,6 +15004,9 @@ wlc_phy_rxcal_physetup_nphy(phy_info_t *pi, uint8 rx_core)
 	phy_utils_mod_phyreg(pi, NPHY_RfseqCoreActv, NPHY_RfseqCoreActv_EnTx_MASK,
 	            (1 << tx_core) << NPHY_RfseqCoreActv_EnTx_SHIFT);
 
+	/* ... and disable Rx for unused core
+	 * REV7 FIXME: is this needed? should Tx also be disabled? needs TCL investigatgion
+	 */
 	phy_utils_mod_phyreg(pi, NPHY_RfseqCoreActv, NPHY_RfseqCoreActv_DisRx_MASK,
 	            (1 << (1-rx_core)) << NPHY_RfseqCoreActv_DisRx_SHIFT);
 
@@ -14908,9 +15282,14 @@ wlc_phy_cal_rxiq_nphy(phy_info_t *pi, nphy_txgains_t target_gain, uint8 cal_type
 	cal_type = 0;
 
 	/* override bt priority */
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
 	/* Disable the re-sampler (in case we are in spur avoidance mode) */
+	/*
+	  Do this before the stay_in_carriersearch call, so that the resetcca
+	  that is embedded in that function also cleans up any clock misalignments
+	  caused by disabling the re-sampler (a version of PR 57042).
+	*/
 	orig_BBConfig = phy_utils_read_phyreg(pi, NPHY_BBConfig);
 	phy_utils_mod_phyreg(pi, NPHY_BBConfig, NPHY_BBConfig_resample_clk160_MASK, 0);
 
@@ -15151,6 +15530,9 @@ wlc_phy_get_ipa_gaintbl_nphy(phy_info_t *pi)
 {
 	uint32* tx_pwrctrl_tbl = NULL;
 
+	/* PR82371: use compile-time checks (NREV and CHIPID) to identify chips,
+	 * instead of radio revs (run-time check), to limit compiled code size
+	 */
 	if (CHSPEC_IS2G(pi->radio_chanspec)) {
 		/* 2.4G gain tables */
 		if (NREV_IS(pi->pubpi->phy_rev, LCNXN_BASEREV + 1)) {
@@ -15284,6 +15666,9 @@ wlc_phy_get_epa_gaintbl_nphy(phy_info_t *pi)
 {
 	uint32* tx_pwrctrl_tbl = NULL;
 
+	/* PR82371: use compile-time checks (NREV and CHIPID) to identify chips,
+	 * instead of radio revs (run-time check), to limit compiled code size
+	 */
 	if (CHSPEC_IS5G(pi->radio_chanspec)) {
 		if (pi->sh->boardtype == 0xF52A) {
 			/* corresponds to the Cisco E3200 brd */
@@ -15344,6 +15729,9 @@ wlc_phy_get_epa_gaintbl_nphy(phy_info_t *pi)
 		}
 	}
 
+	/* XXX After assign table, see if there is any NULL table.
+	 * Assign a default table then ASSERT since the external build just skip ASSERT.
+	 */
 	if (tx_pwrctrl_tbl == NULL) {
 		tx_pwrctrl_tbl = nphy_tpc_txgain_epa_2057rev5v2;
 		PHY_ERROR(("Unsupported NREV %d radio rev %d combo\n",
@@ -15372,6 +15760,12 @@ wlc_phy_papd_cal_setup_nphy(phy_info_t *pi, nphy_papd_restore_state *state, uint
 	ASSERT(core < NPHY_CORE_NUM);
 
 	off_core = core ^ 0x1;
+
+	/* XXX PR 75918: Select the Analog Tx LPF BW for MIMOPHY Revs >= 7
+	 * XXX PR 95320 for 43236 family:
+	 *      switch to low LPF BW (0 or 2) to fix bandedge failures due to PAPD cal,
+	 *      while not affecting ACPR
+	 */
 
 	lpfbwctl = wlc_phy_read_lpf_bw_ctl_nphy(pi, 0);
 
@@ -15703,6 +16097,10 @@ wlc_phy_papd_cal_cleanup_nphy(phy_info_t *pi, nphy_papd_restore_state *state)
 		}
 	}
 
+	/* PR 74381: Slow response of PAD gian change affects GF performance in 43226A0 and
+	 * 43226A1. Therefore, force all Tx blocks other than the LPF and intPA to always
+	 * be ON for the 2057 radiorevs corresponding to these chips.
+	 */
 	if ((RADIOREV(pi->pubpi->radiorev) == 4) || (RADIOREV(pi->pubpi->radiorev) == 6)) {
 		wlc_phy_rfctrl_override_nphy_rev7(pi, NPHY_REV7_RfctrlOverride_tx_pu_MASK,
 			1, 0x3, 0, NPHY_REV7_RFCTRLOVERRIDE_ID0);
@@ -15860,10 +16258,13 @@ uint16 num_iter, uint8 core)
 	           CHSPEC_CHANNEL(pi->radio_chanspec), cal_mode, off_core));
 
 	ASSERT((cal_mode == CAL_FULL) || (cal_mode == CAL_GCTRL) || (cal_mode == CAL_SOFT));
+	/* XXX STALE:
+	 * bool swcal = ((cal_mode == CAL_GCTRL) || (cal_mode == CAL_SOFT)) ? TRUE : FALSE;
+	 */
 
 	if (core == PHY_CORE_0) {
 		/* override bt priority */
-		wlc_btcx_override_enable(pi);
+		wlc_phy_btcx_override_enable(pi);
 	}
 
 	/* Read the current target gain to obtain the LPF, gm, and intPA gain codes in the
@@ -15941,6 +16342,10 @@ uint16 num_iter, uint8 core)
 	}
 
 	if (cal_mode == CAL_GCTRL) {
+		/* REV8 FIXME: For 2057 2G, need to revisit this logic after
+		 * root-causing PAPD loopback issue.
+		 * Need to optimize the logic for cal robustness and cal time.
+		 */
 		if (((RADIOREV(pi->pubpi->radiorev) == 5) ||
 			(RADIOREV(pi->pubpi->radiorev) == 8) ||
 			(RADIOREV(pi->pubpi->radiorev) == 12) || /* BCM63268 */
@@ -16056,6 +16461,8 @@ uint16 num_iter, uint8 core)
 			wlc_phy_papd_dump_eps_trace_nphy(pi);
 	}
 	/* Remove the gain override */
+	/* REV8 FIXME: clean-up TX gain override (should be part of PAPD setup/cleanup)
+	*/
 	wlc_phy_rfctrl_override_1tomany_nphy(pi,
 		NPHY_REV7_RfctrlOverride_cmd_txgain,
 		rad_gain, (1 << core), 1);
@@ -16118,6 +16525,9 @@ wlc_phy_papd_cal_gctrl_nphy(phy_info_t *pi, uint8 start_gain, uint8 core,
 	 * had irregular gain steps in both the PGA and the PAD gain codes
 	 */
 
+	/* REV7 FIXME: Try to reduce the number gain ctrl iterations in order to
+	 * reduce calibration time
+	 */
 	max_iter = 20;
 
 	gain_step = 1;
@@ -16182,7 +16592,7 @@ wlc_phy_papd_cal_gctrl_nphy(phy_info_t *pi, uint8 start_gain, uint8 core,
 	*/
 
 	if (CHSPEC_IS2G(pi->radio_chanspec)) {
-	  epsmax = 4095;
+		epsmax = 4095;
 	} else {
 	  freq = CHAN5G_FREQ(CHSPEC_CHANNEL(pi->radio_chanspec));
 	  if ((freq >= 5150) && (freq <= 5350)) {
@@ -16669,6 +17079,9 @@ wlc_phy_txpwr_fixpower_nphy(phy_info_t *pi)
 
 	PHY_TRACE(("wl%d: %s\n", pi->sh->unit, __FUNCTION__));
 
+	/* PR 50508 fix : txpwrfix_nphy should get called only
+	 *                if Tx power control state is OFF
+	 */
 	/* initially force txgain in case txpwrctrl is disabled */
 	ASSERT(pi->nphy_txpwrctrl == PHY_TPC_HW_OFF);
 
@@ -16805,7 +17218,7 @@ wlc_phy_txpower_recalc_target_nphy(phy_info_t *pi)
 
 	if (NREV_GE(pi->pubpi->phy_rev, 8) && (pi->sh->sromrev >= 9)) {
 		/* maps to wlc_update_txppr_offset() in wlc.c */
-		wlapi_high_update_txppr_offset(pi->sh->physhim, pi->tx_power_offset);
+		wlapi_high_update_txppr_offset(pi->sh->physhim, pi->tx_power_offset, NULL);
 	} else {
 		/* older SROMs use HW table for Tx power offset */
 		wlc_phy_txpwr_limit_to_tbl_nphy(pi);
@@ -16913,6 +17326,10 @@ wlc_phy_ipa_internal_tssi_setup_nphy(phy_info_t *pi, bool use_pad_tapoff)
 		        (uint8) READ_RADIO_REG3(pi, RADIO_2057, TX, core, TX_SSI_MUX);
 		pi_nphy->tx_precal_tssi_radio_saveregs[core][2] =
 		        (uint8) READ_RADIO_REG3(pi, RADIO_2057, TX, core, TSSIG);
+		/* 2057 rev5 (5357a0) is 2.4G only radio
+		 * REV8 FIXME: Should be replaced with condition on
+		 * ABAND_PRESENT flag
+		 */
 		if (RADIOREV(pi->pubpi->radiorev) != 5)
 			pi_nphy->tx_precal_tssi_radio_saveregs[core][3] =
 			        (uint8) READ_RADIO_REG3(pi, RADIO_2057, TX, core, TSSIA);
@@ -16921,6 +17338,10 @@ wlc_phy_ipa_internal_tssi_setup_nphy(phy_info_t *pi, bool use_pad_tapoff)
 			WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, TX_SSI_MASTER, 0x5);
 			WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, TX_SSI_MUX, 0xe);
 
+			/* 2057 rev5 (5357a0) is 2.4G only radio
+			 * REV8 FIXME: Should be replaced with condition on
+			 * ABAND_PRESENT flag
+			 */
 			if (RADIOREV(pi->pubpi->radiorev) != 5)
 				WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, TSSIA, 0);
 
@@ -16977,6 +17398,10 @@ wlc_phy_internal_tssi_cleanup_nphy(phy_info_t *pi)
 		                 (uint16)pi_nphy->tx_precal_tssi_radio_saveregs[core][1]);
 		WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, TSSIG,
 		                 (uint16)pi_nphy->tx_precal_tssi_radio_saveregs[core][2]);
+		/* 2057 rev5 (5357a0) is 2.4G only radio
+		 * REV8 FIXME: Should be replaced with condition on
+		 * ABAND_PRESENT flag
+		 */
 		if (RADIOREV(pi->pubpi->radiorev) != 5)
 			WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, TSSIA,
 				(uint16)pi_nphy->tx_precal_tssi_radio_saveregs[core][3]);
@@ -17143,6 +17568,9 @@ wlc_phy_txpwrctrl_pwr_setup_nphy(phy_info_t *pi)
 
 		PHY_TXPWR(("ANT%d: a1_0 %d b0_0 %d b1 %d\n", core, a1[core], b0[core], b1[core]));
 
+		/* XXX FIXME: since we're overriding the target_pwr here, there is no longer
+		* a need to do so from pi_nphy->nphy_pwrctrl_info in the previous section
+		*/
 		target_pwr_qtrdbm[core] = (int8)pi->tx_power_max_per_core[core];
 	}
 
@@ -17171,6 +17599,9 @@ wlc_phy_txpwrctrl_pwr_setup_nphy(phy_info_t *pi)
 		}
 	}
 
+	/* set power index initial condition
+	 * Initialize pwr_ctrl index to get higher power at startup for PR41465
+	 */
 	phy_utils_mod_phyreg(pi, NPHY_TxPwrCtrlCmd, NPHY_TxPwrCtrlCmd_pwrIndex_init_MASK,
 		(NPHY_TxPwrCtrlCmd_pwrIndex_init_rev7 <<
 		NPHY_TxPwrCtrlCmd_pwrIndex_init_SHIFT));
@@ -17235,6 +17666,9 @@ wlc_phy_txpwrctrl_pwr_setup_nphy(phy_info_t *pi)
 		wlc_phy_table_write_nphy(pi, tbl_id, tbl_len, tbl_offset, 32, regval);
 	}
 
+	/* PR 90860, PR 90797: 43236 + SROM9
+	 * Power offset in SROM9 comes from TXCTRL word, not from HW Tx power control offset table
+	 */
 	if (!(pi->sh->sromrev >= 9)) {
 		/* load adjusted power tables (maps measured power to power if 1Mbps were sent)
 		 *  entries in tx power table 0001xxxxx
@@ -17359,7 +17793,10 @@ wlc_phy_txpwr_papd_cal_nphy(phy_info_t *pi)
 		return;
 
 	/* Perform a PAPD cal if the Tx gain changes by 1 dB */
-	delta_idx = 2;
+	if (NREV_IS(pi->pubpi.phy_rev, LCNXN_BASEREV+1))
+		delta_idx = 8;
+	else
+		delta_idx = 2;
 
 	/* Note: each watchdog event will trigger PAPD cal on at most one core */
 	FOREACH_CORE(pi, core)
@@ -18118,6 +18555,10 @@ wlc_phy_txpwrctrl_enable_nphy(phy_info_t *pi, uint8 ctrl_type)
 
 		/* force to the user-specified index here? */
 
+		/* PR 90860, PR 90797: 43236 + SROM9
+		 * Power offset in SROM9 comes from TXCTRL word, not from HW Tx power control
+		 * offset table
+		 */
 		if (!(pi->sh->sromrev >= 9)) {
 			/* clear adjusted power tables so that reported power is for last frame
 			 *   (no rate-based adjustment)
@@ -18147,6 +18588,10 @@ wlc_phy_txpwrctrl_enable_nphy(phy_info_t *pi, uint8 ctrl_type)
 
 	} else {
 
+		/* PR 90860, PR 90797: 43236 + SROM9
+		 * Power offset in SROM9 comes from TXCTRL word, not from HW Tx power control
+		 * offset table
+		 */
 		if (!(pi->sh->sromrev >= 9)) {
 			/* load adjusted power tables (maps measured pwr to pwr if 1Mbps were sent)
 			 *    entries in tx power table 0001xxxxx
@@ -18381,6 +18826,26 @@ wlc_phy_txpwr_index_nphy(phy_info_t *pi, uint8 core_mask, int8 txpwrindex, bool 
 					pi_nphy->nphy_txpwrindex[core].index_internal;
 			}
 
+			/* Want to disable HW power control for two reasons:
+			 *   - if we're forcing TX power, we ought to shut off the
+			 *     control loop so that it won't get confused by
+			 *     estPwr values that are inconsistent with its
+			 *     intended TX settings.  once TX power is restored to
+			 *     auto behavior, we wouldn't want the control loop to
+			 *     come up in some wacky state that would delay
+			 *     reconvergence.
+			 *   - PR 37955: Need to disable HW power control before we
+			 *     can actually read table.
+			 *
+			 * However would be nice to support a debug feature that
+			 * allows one antenna forced to a power index, while the
+			 * other runs hw power control, so will only disable
+			 * control for the purpose of the table reads, then
+			 * restore to whatever enable state it had upon entry
+			 * here.  Unfortunately, this means that when tx power
+			 * index is unforced for a given antenna, the power
+			 * control will resume from a diverged state.
+			 */
 			tx_pwr_ctrl_state = pi->nphy_txpwrctrl;
 			wlc_phy_txpwrctrl_enable_nphy(pi, PHY_TPC_HW_OFF);
 
@@ -18638,7 +19103,7 @@ wlc_phy_aci_noise_upd_nphy(phy_info_t *pi)
 		phy_utils_phyreg_enter(pi);
 	}
 	/* override bt priority */
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
 	/* Updating home channel before going into aci scan */
 	pi->interf->curr_home_channel = CHSPEC_CHANNEL(pi->radio_chanspec);
@@ -19116,6 +19581,7 @@ wlc_phy_noise_adj_thresholds_nphy(phy_info_t *pi, uint8 raise)
 	uint16 bphy_min_crsminpwr = 0;
 	uint16 *bphy_crsminpwr_array_ptr;
 	uint16 bphy_crsminpwr_array_max_index;
+	uint32 bphy_crsminpwr_rssi_limit;
 #endif // endif
 	uint16 min_crsminpwr[NPHY_CORE_NUM] = {0, 0};
 	uint16 curgain, origgain;
@@ -19138,6 +19604,12 @@ wlc_phy_noise_adj_thresholds_nphy(phy_info_t *pi, uint8 raise)
 	if (NREV_IS(pi->pubpi->phy_rev, LCNXN_BASEREV + 1)) {
 		crsminpwr_array_max_index =
 		NPHY_NOISE_CRSMINPWR_ARRAY_MAX_INDEX_REV_17;
+		if (pi->aci_state & ACI_ACTIVE)
+			crsminpwr_array_max_index =
+			NPHY_NOISE_CRSMINPWR_ARRAY_MAX_INDEX_REV_17_ACI_ON;
+		else
+			crsminpwr_array_max_index =
+			NPHY_NOISE_CRSMINPWR_ARRAY_MAX_INDEX_REV_17_ACI_OFF;
 	} else {
 		/* max_index is 45, translating to ~-80 dBm */
 		crsminpwr_array_max_index =
@@ -19152,6 +19624,16 @@ wlc_phy_noise_adj_thresholds_nphy(phy_info_t *pi, uint8 raise)
 
 		/* to reduce crs glitches, we will try to use crs min pwr */
 		/* threshold for ofdm in 1 dbm steps, up to a max value (-83 dbm?) */
+		if (NREV_IS(pi->pubpi->phy_rev, LCNXN_BASEREV + 1)) {
+			if (pi->aci_state & ACI_ACTIVE) {
+				lna1_backoff_db = 5;
+				lna2_backoff_db = 8;
+				biq0_backoff_db = 3;
+				biq1_backoff_db = -9;
+			}
+			curr_initgain = curr_initgain - lna1_backoff_db - lna2_backoff_db
+				- biq0_backoff_db - biq1_backoff_db;
+		}
 
 		/* APPLY DESENSE */
 		if (raise) {
@@ -19244,14 +19726,6 @@ wlc_phy_noise_adj_thresholds_nphy(phy_info_t *pi, uint8 raise)
 			/* Leverage 43241 experiments, RB15125, SWWLAN-34216 */
 			if (NREV_IS(pi->pubpi->phy_rev, LCNXN_BASEREV + 1) &&
 			(pi->interf->rssi != WLC_RSSI_INVALID)) {
-				if (pi->aci_state & ACI_ACTIVE) {
-					lna1_backoff_db = 5;
-					lna2_backoff_db = 8;
-					biq0_backoff_db = 3;
-					biq1_backoff_db = -9;
-				}
-				curr_initgain = curr_initgain - lna1_backoff_db - lna2_backoff_db
-				        - biq0_backoff_db - biq1_backoff_db;
 				if ((BOARDFLAGS(GENERIC_PHY_INFO(pi)->boardflags) & BFL_EXTLNA) &&
 				!(pi->aci_state & ACI_ACTIVE)) {
 					koffset = -11;
@@ -19377,12 +19851,35 @@ wlc_phy_noise_adj_thresholds_nphy(phy_info_t *pi, uint8 raise)
 
 #ifdef BPHY_DESENSE
 		/* limit bphy desense */
-		if (bphy_crsminpwr_array_ptr[pi->interf->bphy_crsminpwr_index] <
-			BPHY_DESENSE_CRSMINPWR_BASELINE) {
-			bphy_min_crsminpwr = BPHY_DESENSE_CRSMINPWR_BASELINE;
+		if (NREV_IS(pi->pubpi.phy_rev, LCNXN_BASEREV + 1) &&
+		(pi->interf->rssi != WLC_RSSI_INVALID)) {
+			/* rev 17 bphycrsminpwr is limietd by RSSI
+			 * leverage 4324 formula with a little modification
+			 * bphycrsminpwr = round(2^4*log2(Y*(10^((-abs(X)+
+			 * initgain_db-30)/10)*50)*(2^9/0.4)^2))
+			 * where Y = (40*3)/2^7 and X is the link rssi
+			 */
+			if (pi->aci_state & ACI_ACTIVE) {
+				bphy_crsminpwr_rssi_limit = (((uint32)(243716 +
+				5315*((int32)(pi->interf->rssi + curr_initgain))))/1000);
+			} else {
+				bphy_crsminpwr_rssi_limit = (((uint32)(259662 +
+				5315*((int32)(pi->interf->rssi + curr_initgain))))/1000);
+			}
+
+			if (bphy_crsminpwr_rssi_limit > BPHY_DESENSE_CRSMINPWR_RSSI_LIMIT_MAX)
+				bphy_crsminpwr_rssi_limit = BPHY_DESENSE_CRSMINPWR_RSSI_LIMIT_MAX;
+			bphy_min_crsminpwr = MAX(BPHY_DESENSE_CRSMINPWR_BASELINE,
+			MIN(bphy_crsminpwr_array_ptr[pi->interf->bphy_crsminpwr_index],
+			bphy_crsminpwr_rssi_limit));
 		} else {
-			bphy_min_crsminpwr =
-			bphy_crsminpwr_array_ptr[pi->interf->bphy_crsminpwr_index];
+			if (bphy_crsminpwr_array_ptr[pi->interf->bphy_crsminpwr_index] <
+				BPHY_DESENSE_CRSMINPWR_BASELINE) {
+				bphy_min_crsminpwr = BPHY_DESENSE_CRSMINPWR_BASELINE;
+			} else {
+				bphy_min_crsminpwr =
+				bphy_crsminpwr_array_ptr[pi->interf->bphy_crsminpwr_index];
+			}
 		}
 
 		pi->interf->noise.newbphycrsminpwr = bphy_min_crsminpwr;
@@ -19630,7 +20127,7 @@ wlc_phy_acimode_upd_nphy(phy_info_t *pi)
 		wlapi_suspend_mac_and_wait(pi->sh->physhim);
 		phy_utils_phyreg_enter(pi);
 	}
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
 	aci_pwr = wlc_phy_aci_scan_nphy(pi);
 
@@ -19696,6 +20193,10 @@ wlc_phy_acimode_upd_nphy(phy_info_t *pi)
 
 				/* disable ACI mitigation */
 				wlc_phy_acimode_set_nphy(pi, FALSE, PHY_ACI_PWR_NOTPRESENT);
+
+				/* XXX PR 109268 and PR 109265 Fix for
+				 * ACI phyrev 3-6 for interference mode 4
+				 */
 
 				/* now, use values of crsminpwr and init gains that were
 				 * determined previously
@@ -20010,6 +20511,7 @@ wlc_phy_aci_scan_iqbased_nphy(phy_info_t *pi)
 	uint16 count_thresh = nsamps/5;
 	int num_adc_ranges = 3;	/* ADC power ranges & Valid W2s in that power range */
 	uint32 adc_pwrs_rev7[] = {pi->interf->aci.nphy->adcpwr_enter_thresh, 7000, 10000, 14500};
+	uint32 adc_pwrs_rev17[] = {pi->interf->aci.nphy->adcpwr_enter_thresh, 2000, 10000, 14500};
 	int8 valid_w2s_rev7[] = {15, 0, -15};
 	int16 adc_code;
 	uint16 adc_code_thresh;
@@ -20045,8 +20547,13 @@ wlc_phy_aci_scan_iqbased_nphy(phy_info_t *pi)
 	orig_chanspec = pi->radio_chanspec;
 	orig_channel = CHSPEC_CHANNEL(orig_chanspec);
 
-	/* 4322 */
-	adc_code_thresh = (uint16) math_sqrt_int_32(adc_pwrs_rev7[0]/2);
+	if (NREV_IS(pi->pubpi.phy_rev, LCNXN_BASEREV+1)) {
+		adc_code_thresh = (uint16) math_sqrt_int_32(adc_pwrs_rev17[0]/2);
+		count_thresh /= 2;
+	} else {
+		/* 4322 */
+		adc_code_thresh = (uint16) math_sqrt_int_32(adc_pwrs_rev7[0]/2);
+	}
 
 	/* Save registers that are going to be changed (start) */
 	classifier_state = wlc_phy_classifier_nphy(pi, 0, 0);
@@ -20085,6 +20592,11 @@ wlc_phy_aci_scan_iqbased_nphy(phy_info_t *pi)
 		chan_skip = NPHY_ACI_40MHZ_CHANNEL_SKIP_GE_REV3;
 	} else {
 		chan_delta = NPHY_ACI_CHANNEL_DELTA_GE_REV3;
+#ifdef BCM943217ROUTER_ACI_SCANMORECH
+		if (NREV_IS(pi->pubpi.phy_rev, LCNXN_BASEREV+1))
+			chan_skip = NPHY_ACI_CHANNEL_SKIP_IS_REV17;
+		else
+#endif // endif
 		chan_skip = NPHY_ACI_CHANNEL_SKIP_GE_REV3;
 	}
 
@@ -20175,8 +20687,13 @@ wlc_phy_aci_scan_iqbased_nphy(phy_info_t *pi)
 				avgw2 = avgw2 / count;
 				adcpwr_val = TRUE;
 				for (i = 0; i < num_adc_ranges; i++) {
-					adcpwrL = adc_pwrs_rev7[i];
-					adcpwrR = adc_pwrs_rev7[i+1];
+					if (NREV_IS(pi->pubpi.phy_rev, LCNXN_BASEREV+1)) {
+						adcpwrL = adc_pwrs_rev17[i];
+						adcpwrL = adc_pwrs_rev17[i+1];
+					} else {
+						adcpwrL = adc_pwrs_rev7[i];
+						adcpwrR = adc_pwrs_rev7[i+1];
+					}
 					if ((avg_adcpwr >= adcpwrL) &&
 					(avg_adcpwr < adcpwrR)) {
 						if (avgw2 < valid_w2s_rev7[i]) {
@@ -20262,10 +20779,17 @@ wlc_phy_aci_scan_iqbased_nphy(phy_info_t *pi)
 	wlc_phy_noise_sw_set_nphy(pi);
 
 	/* Based on adc power level decide what is the ACI power level */
-	PHY_ACI(("pwr = %d, pwr > adc_pwrs_rev7[1] = %d\n",
-		pwr, (pwr > adc_pwrs_rev7[1])));
-	if (pwr > adc_pwrs_rev7[1])
-		return PHY_ACI_PWR_HIGH;
+	if (NREV_IS(pi->pubpi.phy_rev, LCNXN_BASEREV+1)) {
+		PHY_ACI(("pwr = %d, pwr > adc_pwrs_rev17[1] = %d\n",
+			pwr, (pwr > adc_pwrs_rev17[1])));
+		if (pwr > adc_pwrs_rev17[1])
+			return PHY_ACI_PWR_HIGH;
+	} else {
+		PHY_ACI(("pwr = %d, pwr > adc_pwrs_rev7[1] = %d\n",
+			pwr, (pwr > adc_pwrs_rev7[1])));
+		if (pwr > adc_pwrs_rev7[1])
+			return PHY_ACI_PWR_HIGH;
+	}
 
 	return PHY_ACI_PWR_NOTPRESENT;
 }
@@ -20404,6 +20928,7 @@ wlc_phy_aci_noise_shared_hw_set_nphy(phy_info_t *pi, bool aci_miti_enable,
 	uint16 newgainarray[4];
 	bool band_switch = FALSE;
 	bool bw_switch = FALSE;
+	uint8 LIMIT_LNA_GAIN_REV17 = 0x7f;
 
 	if (from_aci_call) {
 		if (aci_miti_enable) {
@@ -20448,13 +20973,38 @@ wlc_phy_aci_noise_shared_hw_set_nphy(phy_info_t *pi, bool aci_miti_enable,
 				aci_present_init_gaincodeb = 0x510 |
 					(phy_utils_read_phyreg(pi,
 					NPHY_Core1InitGainCodeB2057) & 0xf);
-
+				if (NREV_IS(pi->pubpi.phy_rev,
+					(LCNXN_BASEREV + 1))) {
+					/* HWONT anti-interference */
+					/* limit lna1, lna2 pkt gain */
+					wlc_phy_table_write_nphy(pi, 4, 1,
+						0x13, 8, &LIMIT_LNA_GAIN_REV17);
+					wlc_phy_table_write_nphy(pi, 4, 1,
+						0xb, 8, &LIMIT_LNA_GAIN_REV17);
+					wlc_phy_table_write_nphy(pi, 4, 1,
+						0x53, 8, &LIMIT_LNA_GAIN_REV17);
+					wlc_phy_table_write_nphy(pi, 4, 1,
+						0x4b, 8, &LIMIT_LNA_GAIN_REV17);
+				}
 			} else {
 				aci_present_init_gaincode = 0x6c;
 				aci_present_init_gaincodeb = 0x910 |
 					(phy_utils_read_phyreg(pi,
 					NPHY_Core1InitGainCodeB2057) & 0xf);
 				pi->interf->max_hpvga_acion_2G = 9;
+				if (NREV_IS(pi->pubpi.phy_rev,
+					(LCNXN_BASEREV + 1))) {
+					/* HWONT anti-interference */
+					/* limit lna1, lna2 pkt gain */
+					wlc_phy_table_write_nphy(pi, 4, 1,
+						0x13, 8, &LIMIT_LNA_GAIN_REV17);
+					wlc_phy_table_write_nphy(pi, 4, 1,
+						0xb, 8, &LIMIT_LNA_GAIN_REV17);
+					wlc_phy_table_write_nphy(pi, 4, 1,
+						0x53, 8, &LIMIT_LNA_GAIN_REV17);
+					wlc_phy_table_write_nphy(pi, 4, 1,
+						0x4b, 8, &LIMIT_LNA_GAIN_REV17);
+				}
 			}
 
 			phy_utils_write_phyreg(pi, NPHY_Core1InitGainCodeA2057,
@@ -20831,20 +21381,38 @@ wlc_phy_aci_hw_set_nphy(phy_info_t *pi, bool enable, int aci_pwr)
 
 		/* ED CRS changes */
 		if (!ed_lock) {
-			PHY_REG_LIST_START
-			        PHY_REG_WRITE_ENTRY(NPHY, ed_crs40AssertThresh0, 0x3eb)
-			        PHY_REG_WRITE_ENTRY(NPHY, ed_crs40AssertThresh1, 0x3eb)
-			        PHY_REG_WRITE_ENTRY(NPHY, ed_crs40DeassertThresh0, 0x341)
-			        PHY_REG_WRITE_ENTRY(NPHY, ed_crs40DeassertThresh1, 0x341)
-			        PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LAssertThresh0, 0x42b)
-			        PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LAssertThresh1, 0x42b)
-			        PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LDeassertThresh0, 0x381)
-			        PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LDeassertThresh1, 0x381)
-			        PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UAssertThresh0, 0x42b)
-			        PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UAssertThresh1, 0x42b)
-			        PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UDeassertThresh0, 0x381)
-			        PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UDeassertThresh1, 0x381)
-			PHY_REG_LIST_EXECUTE(pi);
+			if (NREV_IS(pi->pubpi.phy_rev, (LCNXN_BASEREV + 1))&&
+			pi_nphy->high_edcrsthresh_rev17) {
+				PHY_REG_LIST_START
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs40AssertThresh0, 0x3eb)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs40AssertThresh1, 0x3eb)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs40DeassertThresh0, 0x341)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs40DeassertThresh1, 0x341)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LAssertThresh0, 0x47f)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LAssertThresh1, 0x47f)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LDeassertThresh0, 0x3ff)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LDeassertThresh1, 0x3ff)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UAssertThresh0, 0x47f)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UAssertThresh1, 0x47f)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UDeassertThresh0, 0x3ff)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UDeassertThresh1, 0x3ff)
+				PHY_REG_LIST_EXECUTE(pi);
+			} else {
+				PHY_REG_LIST_START
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs40AssertThresh0, 0x3eb)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs40AssertThresh1, 0x3eb)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs40DeassertThresh0, 0x341)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs40DeassertThresh1, 0x341)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LAssertThresh0, 0x42b)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LAssertThresh1, 0x42b)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LDeassertThresh0, 0x381)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LDeassertThresh1, 0x381)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UAssertThresh0, 0x42b)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UAssertThresh1, 0x42b)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UDeassertThresh0, 0x381)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UDeassertThresh1, 0x381)
+				PHY_REG_LIST_EXECUTE(pi);
+			}
 		}
 	} else {
 		/* Disable ACI mitigation */
@@ -21045,6 +21613,10 @@ wlc_phy_get_deaf_nphy(phy_info_t *pi)
 	wlc_phy_clip_det_nphy(pi, 0, curr_clipdet);
 	wlapi_enable_mac(pi->sh->physhim);
 
+	/* XXX
+	 * For deafness to be set, ofdm and cck classifiers must be disabled,
+	 * AND adc_clip thresholds must be set to max (0xffff)
+	 */
 	if (curr_classifctl != 4) {
 		isDeaf = FALSE;
 	} else {
@@ -21522,6 +22094,12 @@ wlc_phy_test_scraminit_nphy(phy_info_t *pi, int8 init)
 {
 	uint16 mask, value;
 
+	/* PR 38226: routine to allow special testmodes where the scrambler is
+	 * forced to a fixed init value, hence, the same bit sequence into
+	 * the MAC produces the same constellation point sequence every
+	 * time
+	 */
+
 	if (init < 0) {
 		/* auto: clear Mode bit so that scrambler LFSR will be free
 		 * running.  ok to leave scramindexctlEn and initState in
@@ -21796,6 +22374,7 @@ wlc_phy_workarounds_nphy_rev17(phy_info_t *pi)
 {
 	int32 tbl_buf = 0x14;
 	int32 tbl_buf1 = 0x10;
+	phy_info_nphy_t *pi_nphy = pi->u.pi_nphy;
 
 	PHY_REG_LIST_START
 		PHY_REG_WRITE_ENTRY(NPHY, EngCtrl, 0x1)
@@ -21810,6 +22389,24 @@ wlc_phy_workarounds_nphy_rev17(phy_info_t *pi)
 	/* Higher quams */
 	wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_NOISEVAR, 1, 266, 32, &tbl_buf1);
 	wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_NOISEVAR, 1, 267, 32, &tbl_buf1);
+
+	if (NREV_IS(pi->pubpi.phy_rev, (LCNXN_BASEREV + 1))&&
+		pi_nphy->high_edcrsthresh_rev17) {
+				PHY_REG_LIST_START
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs40AssertThresh0, 0x3eb)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs40AssertThresh1, 0x3eb)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs40DeassertThresh0, 0x341)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs40DeassertThresh1, 0x341)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LAssertThresh0, 0x47f)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LAssertThresh1, 0x47f)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LDeassertThresh0, 0x3ff)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20LDeassertThresh1, 0x3ff)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UAssertThresh0, 0x47f)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UAssertThresh1, 0x47f)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UDeassertThresh0, 0x3ff)
+					PHY_REG_WRITE_ENTRY(NPHY, ed_crs20UDeassertThresh1, 0x3ff)
+				PHY_REG_LIST_EXECUTE(pi);
+	}
 }
 
 static void
@@ -21912,6 +22509,17 @@ wlc_phy_workarounds_nphy_gainctrl_2057_rev14(phy_info_t *pi)
 	uint16 curgain_rfseq1, curgain_rfseq2, newgainarray[2];
 	uint16 aci_prsnt_clip1hi_gaincode;
 	uint16 aci_prsnt_clip1hi_gaincodeb;
+	uint16 initgain_codeA = 0x7e, initgain_codeB = 0x624;
+	uint16 initgain_rfseq[] = {0x623f, 0x623f};
+
+	if (BOARDFLAGS(GENERIC_PHY_INFO(pi)->boardflags) & BFL_EXTLNA) {
+		/* Force init gain values before starting elna backoff */
+		phy_utils_write_phyreg(pi, NPHY_Core1InitGainCodeA2057, initgain_codeA);
+		phy_utils_write_phyreg(pi, NPHY_Core1InitGainCodeB2057, initgain_codeB);
+		phy_utils_write_phyreg(pi, NPHY_Core2InitGainCodeA2057, initgain_codeA);
+		phy_utils_write_phyreg(pi, NPHY_Core2InitGainCodeB2057, initgain_codeB);
+		wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_RFSEQ, 2, 0x106, 16, initgain_rfseq);
+	}
 
 	PHY_REG_LIST_START
 		/* disable clip2 detect until clip2 is characterized properly */
@@ -21929,6 +22537,14 @@ wlc_phy_workarounds_nphy_gainctrl_2057_rev14(phy_info_t *pi)
 		PHY_REG_MOD_ENTRY(NPHY, crsminpoweru0, crsminpower0, 0x45)
 		PHY_REG_MOD_ENTRY(NPHY, crsminpowerl0, crsminpower0, 0x45)
 	PHY_REG_LIST_EXECUTE(pi);
+
+	/* reduce crsmin to imporve 43217eLNA mcs0 sensitivity */
+	if (BOARDFLAGS(GENERIC_PHY_INFO(pi)->boardflags) & BFL_EXTLNA) {
+		PHY_REG_LIST_START
+		PHY_REG_MOD_ENTRY(NPHY, crsminpoweru0, crsminpower0, 0x40)
+		PHY_REG_MOD_ENTRY(NPHY, crsminpowerl0, crsminpower0, 0x40)
+		PHY_REG_LIST_EXECUTE(pi);
+	}
 
 	/* LNA1 Gainstep */
 	wlc_phy_table_write_nphy(pi, NPHY_TBL_ID_GAIN1, 4, 0x8, 8, lna1_gain_db);
@@ -21971,6 +22587,7 @@ wlc_phy_workarounds_nphy_gainctrl_2057_rev14(phy_info_t *pi)
 		temp = (temp & 0xff00) | 0x00e0;
 		phy_utils_write_phyreg(pi, NPHY_crsThreshold1l, temp);
 
+	    if (pi->u.pi_nphy->elna2g == 2 && (CHIPID(pi->sh->chip) == BCM5357_CHIP_ID)) {
 		/* Step2 lower LNA1 code by 1 and higher BIQ1 by 2 for initiGain */
 		lna1_gain1 =
 			(uint16) ((phy_utils_read_phyreg(pi, NPHY_Core1InitGainCodeA2057)) & 0x6);
@@ -22034,6 +22651,7 @@ wlc_phy_workarounds_nphy_gainctrl_2057_rev14(phy_info_t *pi)
 			NPHY_Core2clipHiGainCodeB2057) & 0xf);
 		phy_utils_write_phyreg(pi, NPHY_Core2clipHiGainCodeB2057,
 			aci_prsnt_clip1hi_gaincodeb);
+	    }
 	}
 
 	PHY_REG_LIST_START
@@ -22059,8 +22677,8 @@ wlc_phy_workarounds_nphy_gainctrl_2057_rev14(phy_info_t *pi)
 
 	/* w1 clip */
 	if (BOARDFLAGS(GENERIC_PHY_INFO(pi)->boardflags) & BFL_EXTLNA) {
-		PHY_REG_MOD(pi, NPHY, Core1clipwbThreshold2057, clip1wbThreshold, 0x2e);
-		PHY_REG_MOD(pi, NPHY, Core2clipwbThreshold2057, clip1wbThreshold, 0x2e);
+		PHY_REG_MOD(pi, NPHY, Core1clipwbThreshold2057, clip1wbThreshold, 0x32);
+		PHY_REG_MOD(pi, NPHY, Core2clipwbThreshold2057, clip1wbThreshold, 0x32);
 	} else {
 		PHY_REG_MOD(pi, NPHY, Core1clipwbThreshold2057, clip1wbThreshold, 0x16);
 		PHY_REG_MOD(pi, NPHY, Core2clipwbThreshold2057, clip1wbThreshold, 0x16);
@@ -22249,6 +22867,11 @@ wlc_phy_lpf_hpc_override_nphy(phy_info_t *pi, bool setup_not_cleanup)
 		ASSERT(!pi_nphy->is_orig);
 		pi_nphy->is_orig = TRUE;
 	} else {
+		/* XXX
+		 *-------------
+		 * Phy "Cleanup"
+		 *-------------
+		 */
 
 		ASSERT(pi_nphy->is_orig);
 		pi_nphy->is_orig = FALSE;
@@ -22272,6 +22895,12 @@ wlc_phy_rxgaincode_to_dB_nphy(phy_info_t *pi, uint16 gain_code)
 	biq1_code = (gain_code >> 10) & 0x3;
 	hpvga_code = (gain_code >> 12) & 0xf;
 
+	/* XXX
+	* FIXME:
+	* Need to deduce true offset indices into gain table
+	* from the matching entry in gainbits table
+	*/
+
 	/* Look up gains for lna1, lna2 and mixtia from indices: */
 	wlc_phy_table_read_nphy(pi, NPHY_TBL_ID_GAIN1, 1, (0x8 + lna1_code), 8, &lna1_gain);
 	wlc_phy_table_read_nphy(pi, NPHY_TBL_ID_GAIN1, 1, (0x10 + lna2_code), 8, &lna2_gain);
@@ -22292,6 +22921,13 @@ wlc_phy_rxgaincode_to_dB_nphy(phy_info_t *pi, uint16 gain_code)
 	return total_gain;
 }
 
+/**
+ * XXX PR98377: Current HW design for PAPD cal (in fact all cals) doesn't take antenna diveristy
+ * into account. In other words, when PAPD happens if chip is using shared antenna, PAPD cal will
+ * force the chip go back to main antenna for the cal. In this case, even overriding
+ * AntSelConfig205x's overriding bit doesn't work. So we need following two functions to override
+ * the AntSwCtrlLUT entries before doing PAPD cal and restore the original value at the end of CAL.
+ */
 static void wlc_phy_ant_force_nphy(phy_info_t *pi, uint8 *entries)
 {
 	uint16 AntIdx;
@@ -22404,7 +23040,7 @@ wlc_phy_cal_rxiq_nphy_fw_war(phy_info_t *pi, nphy_txgains_t target_gain,
 	nphy_iq_comp_t new_comp;
 
 	/* override bt priority */
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
 	/* getting the phase mismatch metric */
 	if (wlc_phy_cal_rxiq_nphy(pi, target_gain, 0, debug, core_mask) == BCME_OK) {
@@ -22592,9 +23228,19 @@ wlc_phy_watchdog_nphy(phy_wd_ctx_t *ctx)
 			}
 
 			if (!phy_papdcal_is_wfd_phy_ll_enable(pi->papdcali)) {
+				/* 2) if cal is pending, run it as well
+				 * FIXME: move to 0-length timer to finish quickly and
+				 * be more accurate
+				 */
 				wlc_phy_txpwr_papd_cal_nphy(pi);
 			}
 
+			/* PR84133: Check VCO-CAL status and refresh if needed
+			 * - similar to PR76212 for LPPHY
+			 *   FIXME: Pending Radio Verification of the "refresh" bit.
+			 *   Upon reliability determination, we can
+			 *   consolidate vco-cal from wlc_phy_cal_perical
+			 */
 			wlc_phy_radio205x_check_vco_cal_nphy(pi);
 		}
 	}

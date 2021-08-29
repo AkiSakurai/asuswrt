@@ -2,7 +2,7 @@
  * Chip/core-specific address space definitions, masks and other macros for d11 core
  * Broadcom 802.11abg Networking Device Driver
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -58,6 +58,11 @@
 #define D11_AXI_SP_IDX		(1) /* Index 0 and 1 (First and Second slave port) */
 #define	D11_AXI_SP_ID		(2)
 
+/* note: at present UCM_END is 8K as per rev 60. if this changes, we need to
+ * derive this number from ucode memory info.
+ * 8K instructions means 8K * 8bytes.
+ * FIXME: get this number read from some register from the hardware team
+ */
 #define UCM_INSTR_WIDTH_BYTES	(8)
 #define UCM_RAM_SIZE		(8 * 1024)
 #define UCM_END			((UCM_RAM_SIZE * UCM_INSTR_WIDTH_BYTES) - 1)

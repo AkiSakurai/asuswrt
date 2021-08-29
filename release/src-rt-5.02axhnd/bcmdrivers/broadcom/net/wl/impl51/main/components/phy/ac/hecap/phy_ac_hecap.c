@@ -1,7 +1,7 @@
 /*
  * ACPHY High Efficiency 802.11ax (HE) module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -66,17 +66,20 @@
 #include <802.11ax.h>
 
 /* Beamformee STS for <= 80MHz */
-#define HE_PHY_BFE_STS_BELOW80		0x3
+#define HE_PHY_BFE_STS_BELOW80 0x3
 /* Beamformee STS for > 80MHz */
-#define HE_PHY_BFE_STS_ABOVE80		0x3
+#define HE_PHY_BFE_STS_ABOVE80 (ACMAJORREV_51_129(pi->pubpi->phy_rev) ? 0x0 : 0x3)
 /* Total STS for <= 80MHz */
-#define HE_PHY_NSTS_BELOW80		0x3
+#define HE_PHY_NSTS_BELOW80 (ACMAJORREV_51(pi->pubpi->phy_rev) ? 0x1 : \
+			     ACMAJORREV_129(pi->pubpi->phy_rev) ? 0x2 : 0x3)
 /* Number of sounding dimensions for <= 80MHz */
-#define HE_PHY_SOUND_DIM_BELOW80	0x3
+#define HE_PHY_SOUND_DIM_BELOW80 (ACMAJORREV_51(pi->pubpi->phy_rev) ? 0x1 : \
+				  ACMAJORREV_129(pi->pubpi->phy_rev) ? 0x2 : 0x3)
 /* Number of sounding dimensions for > 80MHz */
-#define HE_PHY_SOUND_DIM_ABOVE80	0x3
+#define HE_PHY_SOUND_DIM_ABOVE80 (ACMAJORREV_51_129(pi->pubpi->phy_rev) ? 0x0 : 0x3)
 /* Maximum Nc for beamforming sounding feedback */
-#define HE_PHY_MAC_NC			0x3
+#define HE_PHY_MAX_NC (ACMAJORREV_51(pi->pubpi->phy_rev) ? 0x1 : \
+		       ACMAJORREV_129(pi->pubpi->phy_rev) ? 0x2 : 0x3)
 
 /* module private states */
 struct phy_ac_hecap_info {
@@ -181,6 +184,44 @@ static wlc_he_rateset_t he_rateset_rev51 = {
 	/* .bw80_rx_mcs_nss = */
 	(HE_CAP_MAX_MCS_0_11 << 0)  | (HE_CAP_MAX_MCS_0_11 << 2)  |
 	(HE_CAP_MAX_MCS_NONE << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
+	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
+	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14),
+	/* .bw80p80_tx_mcs_nss = */
+	(HE_CAP_MAX_MCS_NONE << 0)  | (HE_CAP_MAX_MCS_NONE << 2)  |
+	(HE_CAP_MAX_MCS_NONE << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
+	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
+	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14),
+	/* .bw80p80_rx_mcs_nss = */
+	(HE_CAP_MAX_MCS_NONE << 0)  | (HE_CAP_MAX_MCS_NONE << 2)  |
+	(HE_CAP_MAX_MCS_NONE << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
+	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
+	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14),
+	/* .bw160_tx_mcs_nss = */
+	(HE_CAP_MAX_MCS_NONE << 0)  | (HE_CAP_MAX_MCS_NONE << 2)  |
+	(HE_CAP_MAX_MCS_NONE << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
+	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
+	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14),
+	/* .bw160_rx_mcs_nss = */
+	(HE_CAP_MAX_MCS_NONE << 0)  | (HE_CAP_MAX_MCS_NONE << 2)  |
+	(HE_CAP_MAX_MCS_NONE << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
+	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
+	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14)
+};
+
+/**
+ * 6710:
+ * 80MHz: tx/rx max mcs 0..11x3
+ * 80p80 & 160: not supported
+ */
+static const wlc_he_rateset_t he_rateset_rev129 = {
+	/* .bw80_tx_mcs_nss = */
+	(HE_CAP_MAX_MCS_0_11 << 0)  | (HE_CAP_MAX_MCS_0_11 << 2)  |
+	(HE_CAP_MAX_MCS_0_11 << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
+	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
+	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14),
+	/* .bw80_rx_mcs_nss = */
+	(HE_CAP_MAX_MCS_0_11 << 0)  | (HE_CAP_MAX_MCS_0_11 << 2)  |
+	(HE_CAP_MAX_MCS_0_11 << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
 	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
 	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14),
 	/* .bw80p80_tx_mcs_nss = */
@@ -325,6 +366,8 @@ static uint8 phy_ac_hecap_sound_dim_above80(phy_info_t *pi);
 static uint8 phy_ac_hecap_su_codebook_support(phy_info_t *pi);
 static uint8 phy_ac_hecap_mu_codebook_support(phy_info_t *pi);
 static uint8 phy_ac_hecap_max_nc_support(phy_info_t *pi);
+static uint8 phy_ac_hecap_tx_1024qam_less_242tone_support(phy_info_t *pi);
+static uint8 phy_ac_hecap_rx_1024qam_less_242tone_support(phy_info_t *pi);
 static void phy_ac_hecap_write_bsscolor(phy_type_hecap_ctx_t *ctx, wlc_bsscolor_t *bsscolor);
 static void phy_ac_hecap_write_def_pe_dur(phy_type_hecap_ctx_t *ctx, uint8 def_pe_dur);
 static void phy_ac_hecap_get_rateset(phy_type_hecap_ctx_t *ctx, wlc_he_rateset_t *he_rateset);
@@ -497,7 +540,8 @@ phy_ac_hecap_get_phycap_info(phy_type_hecap_ctx_t *ctx, he_phy_cap_t *phycap)
 			bwcap |= HE_PHY_CH_WIDTH_5G_160;
 
 			/* Remove flag from bwcap if the HW rev is not support BW160 */
-			if (ACMAJORREV_47(pi->pubpi->phy_rev) && HW_MINREV_IS(pi, 0))
+			if ((ACMAJORREV_47(pi->pubpi->phy_rev) && HW_MINREV_IS(pi, 0)) ||
+				(ACMAJORREV_129(pi->pubpi->phy_rev)))
 				bwcap &= ~HE_PHY_CH_WIDTH_5G_160;
 		}
 
@@ -609,20 +653,30 @@ phy_ac_hecap_get_phycap_info(phy_type_hecap_ctx_t *ctx, he_phy_cap_t *phycap)
 	/* b62-b63: STBC > 80MHz, not supported */
 
 	/* b64: HE ER SU PPDU 4x HE-LTF and 0.8 us GI */
+
+	/* b74: Tx 1024-QAM <242-tone RU support */
+	setbits((uint8 *)phycap, sizeof(*phycap), HE_PHY_TX_1024_QAM_LESS_242_TONE_RU_IDX,
+		HE_PHY_TX_1024_QAM_LESS_242_TONE_RU_FSZ,
+		phy_ac_hecap_tx_1024qam_less_242tone_support(pi));
+
+	/* b75: Rx 1024-QAM <242-tone RU support */
+	setbits((uint8 *)phycap, sizeof(*phycap), HE_PHY_RX_1024_QAM_LESS_242_TONE_RU_IDX,
+		HE_PHY_RX_1024_QAM_LESS_242_TONE_RU_FSZ,
+		phy_ac_hecap_rx_1024qam_less_242tone_support(pi));
 }
 
 static uint8
 phy_ac_hecap_device_class(phy_info_t *pi)
 {
 	BCM_REFERENCE(pi);
-	return (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev));
+	return (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_GE47(pi->pubpi->phy_rev));
 }
 
 static uint8
 phy_ac_hecap_bfe_sts_below80(phy_info_t *pi)
 {
 	BCM_REFERENCE(pi);
-	if (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev))
+	if (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_GE47(pi->pubpi->phy_rev))
 		return HE_PHY_BFE_STS_BELOW80;
 
 	return 0;
@@ -632,7 +686,7 @@ static uint8
 phy_ac_hecap_bfe_sts_above80(phy_info_t *pi)
 {
 	BCM_REFERENCE(pi);
-	if (ACMAJORREV_47(pi->pubpi->phy_rev))
+	if (ACMAJORREV_47_129(pi->pubpi->phy_rev))
 		return HE_PHY_BFE_STS_ABOVE80;
 
 	return 0;
@@ -642,7 +696,7 @@ static uint8
 phy_ac_hecap_sound_dim_below80(phy_info_t *pi)
 {
 	BCM_REFERENCE(pi);
-	if (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev))
+	if (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_47_51_129(pi->pubpi->phy_rev))
 		return HE_PHY_SOUND_DIM_BELOW80;
 
 	return 0;
@@ -662,23 +716,37 @@ static uint8
 phy_ac_hecap_su_codebook_support(phy_info_t *pi)
 {
 	BCM_REFERENCE(pi);
-	return (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev));
+	return (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_GE47(pi->pubpi->phy_rev));
 }
 
 static uint8
 phy_ac_hecap_mu_codebook_support(phy_info_t *pi)
 {
 	BCM_REFERENCE(pi);
-	return (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev));
+	return (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_GE47(pi->pubpi->phy_rev));
 }
 
 static uint8
 phy_ac_hecap_max_nc_support(phy_info_t *pi)
 {
 	BCM_REFERENCE(pi);
-	if (ACMAJORREV_47_51(pi->pubpi->phy_rev))
-		return HE_PHY_MAC_NC;
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev))
+		return HE_PHY_MAX_NC;
 	return 0;
+}
+
+static uint8
+phy_ac_hecap_tx_1024qam_less_242tone_support(phy_info_t *pi)
+{
+	BCM_REFERENCE(pi);
+	return ACMAJORREV_GE47(pi->pubpi->phy_rev);
+}
+
+static uint8
+phy_ac_hecap_rx_1024qam_less_242tone_support(phy_info_t *pi)
+{
+	BCM_REFERENCE(pi);
+	return ACMAJORREV_GE47(pi->pubpi->phy_rev);
 }
 
 static void
@@ -720,6 +788,10 @@ phy_ac_hecap_write_bsscolor(phy_type_hecap_ctx_t *ctx, wlc_bsscolor_t *bsscolor)
 		}
 	}
 
+	/* Handling for partial Bss color indication
+	 * XXX: not supported in phy_maj44_min0
+	 */
+
 }
 
 static void
@@ -743,6 +815,8 @@ phy_ac_hecap_get_rateset(phy_type_hecap_ctx_t *ctx, wlc_he_rateset_t *he_rateset
 			/* 43684b0 and newer */
 			*he_rateset = he_rateset_rev47_1;
 		}
+	} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		*he_rateset = he_rateset_rev129;
 	} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
 		*he_rateset = he_rateset_rev51;
 	} else if (ACMAJORREV_44(pi->pubpi->phy_rev)) {

@@ -4,7 +4,7 @@
  *
  *  Air-IQ 3+1 mode
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -127,7 +127,7 @@ wlc_airiq_3p1_downgrade_phy(airiq_info_t *airiqh, chanspec_t scan_chanspec)
 	airiqh->upgrade_pending = TRUE;
 	wlc_mute(wlc, OFF, PHY_MUTE_FOR_PREISM);
 
-	WL_AIRIQ(("wl%d: %s: downgraded phy to 3+1\n", wlc->pub->unit, __FUNCTION__));
+	WL_AIRIQ(("wl%d: %s: downgraded phy to 3+1\n", WLCWLUNIT(wlc), __FUNCTION__));
 	ASSERT(airiqh->phy_mode == PHYMODE_3x3_1x1);
 }
 
@@ -147,7 +147,7 @@ wlc_airiq_3p1_upgrade_phy(airiq_info_t *airiqh)
 	/* enable periodic calibration */
 	phy_wd_override(pi, TRUE);
 
-	WL_AIRIQ(("wl%d: %s: upgraded phy to 4x4\n", wlc->pub->unit, __FUNCTION__));
+	WL_AIRIQ(("wl%d: %s: upgraded phy to 4x4\n", WLCWLUNIT(wlc), __FUNCTION__));
 	ASSERT(airiqh->phy_mode == 0);
 }
 
@@ -157,12 +157,12 @@ wlc_airiq_modeswitch_state_upd(airiq_info_t *airiqh, uint new_airiq_modesw_state
 {
 #ifdef BCMDBG
 	if (new_airiq_modesw_state < AIRIQ_MODESW_STATE_CNT) {
-		WL_AIRIQ(("wl%d %s: [%s] -> [%s]\n", airiqh->wlc->pub->unit,
+		WL_AIRIQ(("wl%d %s: [%s] -> [%s]\n", WLCWLUNIT(airiqh->wlc),
 			__FUNCTION__, airiq_modesw_state_str[airiqh->modeswitch_state],
 			airiq_modesw_state_str[new_airiq_modesw_state]));
 	} else {
 		WL_ERROR(("wl%d %s:  invalid new modesw state: %d (curr state: %s\n",
-			airiqh->wlc->pub->unit, __FUNCTION__, new_airiq_modesw_state,
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__, new_airiq_modesw_state,
 			airiq_modesw_state_str[airiqh->modeswitch_state]));
 	}
 #endif // endif
@@ -174,14 +174,14 @@ wlc_airiq_handle_modeswitch(airiq_info_t *airiqh, uint new_state)
 {
 	switch (airiqh->modeswitch_state) {
 	case AIRIQ_MODESW_IDLE:
-		WL_AIRIQ(("wl%d %s: new state %d in idle state\n", airiqh->wlc->pub->unit,
+		WL_AIRIQ(("wl%d %s: new state %d in idle state\n", WLCWLUNIT(airiqh->wlc),
 			__FUNCTION__, new_state));
 		break;
 
 	case AIRIQ_MODESW_DOWNGRADE_IN_PROGRESS:
 		if (new_state == MODESW_DN_AP_COMPLETE) {
 			wlc_airiq_modeswitch_state_upd(airiqh, AIRIQ_MODESW_DOWNGRADE_FINISHED);
-			WL_AIRIQ(("wl%d %s: downgrade completed %d\n", airiqh->wlc->pub->unit,
+			WL_AIRIQ(("wl%d %s: downgrade completed %d\n", WLCWLUNIT(airiqh->wlc),
 				__FUNCTION__, __LINE__));
 
 			/* downgrade complete. continue the scan */
@@ -193,7 +193,7 @@ wlc_airiq_handle_modeswitch(airiq_info_t *airiqh, uint new_state)
 		if (new_state == MODESW_UP_AP_COMPLETE ||
 		    new_state == MODESW_DN_AP_COMPLETE) {
 			wlc_airiq_modeswitch_state_upd(airiqh, AIRIQ_MODESW_IDLE);
-			WL_AIRIQ(("wl%d %s: upgrade completed %d\n", airiqh->wlc->pub->unit,
+			WL_AIRIQ(("wl%d %s: upgrade completed %d\n", WLCWLUNIT(airiqh->wlc),
 				__FUNCTION__, __LINE__));
 
 			/* check for pending Air-IQ phy cal */
@@ -205,15 +205,15 @@ wlc_airiq_handle_modeswitch(airiq_info_t *airiqh, uint new_state)
 	default:
 		if (new_state == MODESW_DN_AP_COMPLETE)
 			WL_AIRIQ(("wl%d %s: [%d] downgrade completed\n",
-				airiqh->wlc->pub->unit,
+				WLCWLUNIT(airiqh->wlc),
 				__FUNCTION__, airiqh->modeswitch_state));
 		else if (new_state == MODESW_UP_AP_COMPLETE)
 			WL_AIRIQ(("wl%d %s: [%d] upgrade completed\n",
-				airiqh->wlc->pub->unit,
+				WLCWLUNIT(airiqh->wlc),
 				__FUNCTION__, airiqh->modeswitch_state));
 		else
 			WL_AIRIQ(("wl%d %s: [%d] unhandled new state (%d)\n",
-				airiqh->wlc->pub->unit,
+				WLCWLUNIT(airiqh->wlc),
 				__FUNCTION__, airiqh->modeswitch_state, new_state));
 		break;
 	}
@@ -236,7 +236,8 @@ wlc_airiq_opmode_change_cb(void *ctx, wlc_modesw_notif_cb_data_t *notif_data)
 
 	if (airiqh->phy_mode != PHYMODE_3x3_1x1 &&
 	    airiqh->phy_mode != 0) {
-		WL_AIRIQ(("%s airiq mode not enabled, exiting.\n", __FUNCTION__));
+		WL_AIRIQ(("wl%d: %s airiq mode not enabled, exiting.\n",
+			WLCWLUNIT(wlc), __FUNCTION__));
 		WL_MODE_SWITCH(("%s MODESW CB status = %d oper_mode = %x signal = %d\n",
 			__FUNCTION__, notif_data->status, notif_data->opmode,
 			notif_data->signal));
@@ -323,6 +324,8 @@ wlc_airiq_3p1_upgrade_wlc(wlc_info_t *wlc)
 		}
 		/* Assume new mode uses all the chains in the device */
 		new_oper_mode = DOT11_D8_OPER_MODE(0, max_nss, 0, is160_8080, bw);
+		WL_MODE_SWITCH(("cfg:%d %s modesw_entry\n", bsscfg->_idx, __FUNCTION__));
+		wlc_airiq_modeswitch_state_upd(wlc->airiq,AIRIQ_MODESW_UPGRADE_IN_PROGRESS);
 		err = wlc_modesw_handle_oper_mode_notif_request(wlc->modesw, bsscfg,
 			new_oper_mode, TRUE, MODESW_CTRL_OPMODE_IE_REQD_OVERRIDE);
 		if (err != BCME_OK) {
@@ -333,12 +336,15 @@ wlc_airiq_3p1_upgrade_wlc(wlc_info_t *wlc)
 	}
 
 	WL_AIRIQ(("wl%d: %s: mode switch up scheduled = %d opmode: 0x%02x, bw: 0x%02x\n",
-		wlc->pub->unit, __FUNCTION__, mode_switch_sched, new_oper_mode, bw));
+		WLCWLUNIT(wlc), __FUNCTION__, mode_switch_sched, new_oper_mode, bw));
 
-	if (mode_switch_sched)
+	if (mode_switch_sched) {
 		return BCME_BUSY;
-	else
+	} else {
+		/*no bss */
+		wlc_airiq_modeswitch_state_upd(wlc->airiq,AIRIQ_MODESW_IDLE);
 		return BCME_OK;
+	}
 }
 
 /* Initiates downgrade of wlc to reduced MIMO plus scan core (3+1) using modesw module. */
@@ -367,6 +373,9 @@ wlc_airiq_3p1_downgrade_wlc(wlc_info_t *wlc)
 			 * the data path (for custom scanning)
 			 */
 		} else {
+			/* XXX DFS code arbitrarily sets to 80MHz. We will at least try to
+			 * base this on something
+			 */
 			if (CHSPEC_IS8080(wlc->chanspec))
 				bw = DOT11_OPER_MODE_8080MHZ;
 			else if (CHSPEC_IS80(wlc->chanspec))
@@ -380,6 +389,8 @@ wlc_airiq_3p1_downgrade_wlc(wlc_info_t *wlc)
 		}
 		/* New mode is one chain less than supported */
 		new_oper_mode = DOT11_D8_OPER_MODE(0, (max_nss - 1), 0, is160_8080, bw);
+		WL_MODE_SWITCH(("cfg:%d %s modesw_entry\n", bsscfg->_idx, __FUNCTION__));
+		wlc_airiq_modeswitch_state_upd(wlc->airiq,AIRIQ_MODESW_DOWNGRADE_IN_PROGRESS);
 		err = wlc_modesw_handle_oper_mode_notif_request(wlc->modesw, bsscfg,
 				new_oper_mode, TRUE, MODESW_CTRL_OPMODE_IE_REQD_OVERRIDE);
 		if (err != BCME_OK) {
@@ -390,12 +401,15 @@ wlc_airiq_3p1_downgrade_wlc(wlc_info_t *wlc)
 	}
 
 	WL_AIRIQ(("wl%d:%s:  mode switch down scheduled = %d opmode: 0x%02x, bw: 0x%02x\n",
-		wlc->pub->unit, __FUNCTION__, mode_switch_sched, new_oper_mode, bw));
+		WLCWLUNIT(wlc), __FUNCTION__, mode_switch_sched, new_oper_mode, bw));
 
-	if (mode_switch_sched)
+	if (mode_switch_sched) {
 		return BCME_BUSY;
-	else
+	} else {
+		/*no bss */
+		wlc_airiq_modeswitch_state_upd(wlc->airiq,AIRIQ_MODESW_IDLE);
 		return BCME_OK;
+	}
 }
 #endif /* WL_MODESW */
 

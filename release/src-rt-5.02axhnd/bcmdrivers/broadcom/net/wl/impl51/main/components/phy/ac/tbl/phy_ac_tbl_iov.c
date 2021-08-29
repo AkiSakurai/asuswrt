@@ -1,7 +1,7 @@
 /*
  * ACPHY PHYTblInit module implementation - iovar handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tbl_iov.c 658512 2016-09-08 07:03:22Z $
+ * $Id: phy_ac_tbl_iov.c 774080 2019-04-09 13:50:37Z $
  */
 
 #include <phy_cfg.h>
@@ -60,7 +60,7 @@
 
 static const bcm_iovar_t phy_ac_tbl_iovars[] = {
 #if defined(WLTEST) || defined(DBG_PHY_IOV)
-	{"phytable", IOV_PHYTABLE, IOVF_GET_UP | IOVF_SET_UP | IOVF_MFG, 0, IOVT_BUFFER, 4*4},
+	{"phytable", IOV_PHYTABLE, IOVF_GET_CLK | IOVF_SET_CLK | IOVF_MFG, 0, IOVT_BUFFER, 4*4},
 #endif // endif
 	{NULL, 0, 0, 0, 0, 0}
 };

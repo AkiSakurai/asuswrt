@@ -1,7 +1,7 @@
 /*
  * WPS Enrollee OS layer
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_enr_osl.h 525052 2015-01-08 20:18:35Z $
+ * $Id: wps_enr_osl.h 767092 2018-08-28 06:18:20Z $
  */
 
 #ifndef __OSL_H__
@@ -54,7 +54,7 @@
 /* Opaque types */
 struct _wps_credentials;
 
-int wps_osl_get_ifname(char *ifname);
+int wps_osl_get_ifname(char *ifname, int buflen);
 int wps_osl_set_ifname(char *ifname);
 int wps_osl_get_mac(uint8 *mac);
 int wps_osl_init(char *);

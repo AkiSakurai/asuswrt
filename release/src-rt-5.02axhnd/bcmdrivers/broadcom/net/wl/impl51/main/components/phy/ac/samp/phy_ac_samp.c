@@ -1,7 +1,7 @@
 /*
  * ACPHY Sample Collect module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_samp.c 757615 2018-04-13 23:29:22Z $
+ * $Id: phy_ac_samp.c 775501 2019-06-02 00:18:19Z $
  */
 
 #include <phy_cfg.h>
@@ -891,20 +891,24 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 			szbytes = 256*1024;
 			sc_buff_offs = 192 * 1024 >> 2;
 		}
-	} else if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
-	           ACMAJORREV_33(pi->pubpi->phy_rev) ||
-	           ACMAJORREV_37(pi->pubpi->phy_rev) ||
-	           ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
-			szbytes = 579*1024;
-			sc_buff_offs = 192 * 1024 >> 2;
-	} else if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
-		if (sicoreunit == DUALMAC_MAIN) {
+	} else if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
+		if ((sicoreunit == DUALMAC_MAIN) || ACMAJORREV_128(pi->pubpi->phy_rev)) {
 			szbytes = 256*1024;
 			sc_buff_offs = 192 * 1024 >> 2;
 		} else {
 			szbytes = 112*1024;
 			sc_buff_offs = 16 * 1024 >> 2;
 		}
+	} else if (ACMAJORREV_51_129(pi->pubpi->phy_rev)) {
+		/* For 63178 the BM is 640 Kbyte */
+		szbytes = 448*1024;
+		sc_buff_offs = 192 * 1024 >> 2;
+	} else if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
+	           ACMAJORREV_33(pi->pubpi->phy_rev) ||
+	           ACMAJORREV_37(pi->pubpi->phy_rev) ||
+	           ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
+			szbytes = 579*1024;
+			sc_buff_offs = 192 * 1024 >> 2;
 	} else if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
 			szbytes = 88*1024;
 			sc_buff_offs = 0;
@@ -938,7 +942,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 		/* Store ClkGateSts register */
 		save_clkgatests = R_REG(pi->sh->osh, D11_CLK_GATE_STS(pi));
 	}
-	if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 		save_clkgatests = R_REG(pi->sh->osh, D11_CLK_GATE_STS(pi));
 	}
 
@@ -1081,7 +1085,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 			words_per_us = phy_ac_words_per_us(sampi,
 					sar_adc_rate, SC_MODE_0_28nm_sar_adc_nti);
 
-			if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+			if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 				MOD_PHYREG(pi, SpecAnaDataCollect, sar_adc_legacy_bus_sel, 1);
 				if (coreSel == 3) {
 					MOD_PHYREG(pi, SpecAnaDataCollect,
@@ -1111,7 +1115,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 			//WRITE_PHYREG(pi, rx1SampCol64bitDataselect, 0x0010);
 			//WRITE_PHYREG(pi, SpecAnaDataCollect, 0x2200);
 
-			if (ACMAJORREV_47(pi->pubpi->phy_rev) || pi->bw == WL_CHANSPEC_BW_160) {
+			if (ACMAJORREV_47_129(pi->pubpi->phy_rev) || pi->bw == WL_CHANSPEC_BW_160) {
 				coreSel = collect->cores;
 				bit_unpacking_mode_28nm = 2;
 
@@ -1145,6 +1149,8 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 				WRITE_PHYREG(pi, rx1Spare, READ_PHYREG(pi, rx1Spare)|0x1);
 				MOD_PHYREG(pi, RxFeTesMmuxCtrl, rxfe_dbg_mux_sel, 1);
 				MOD_PHYREG(pi, AdcDataCollect, adcDataCollectEn, 1);
+
+				mac_64_bits_enable = 1;
 			}
 
 			/*      Mode
@@ -1225,7 +1231,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 				MOD_PHYREG(pi, sarAfeCompCtrl1, sarAfeCompMode, 1);
 				MOD_PHYREG(pi, sarAfeCompCtrl2, sarAfeCompMode, 1);
 				MOD_PHYREG(pi, sarAfeCompCtrl3, sarAfeCompMode, 1);
-
+				mac_64_bits_enable = 1;
 			} else {
 				bit_unpacking_mode_28nm = 3;
 				MOD_PHYREG(pi, SpecAnaDataCollect, saradc_64bits_sel, 0);
@@ -1240,7 +1246,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 			words_per_us  =
 				phy_ac_words_per_us(sampi, sar_adc_rate, SC_MODE_2_28nm_dcc_out);
 
-			if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+			if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 				MOD_PHYREG(pi, SpecAnaDataCollect, sar_adc_legacy_bus_sel, 1);
 				if (coreSel == 2) {
 					/* both cores are active */
@@ -1300,7 +1306,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 
 		case  SC_MODE_3_28nm_farrow_in:
 
-			if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			if (ACMAJORREV_47_129(pi->pubpi->phy_rev)) {
 				coreSel = collect->cores;
 
 				MOD_PHYREG(pi, AdcDataCollect, sampSel, 3);
@@ -1319,6 +1325,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 					sar_adc_rate, SC_MODE_3_28nm_farrow_in);
 				if (pi->bw == WL_CHANSPEC_BW_160) {
 					bit_unpacking_mode_28nm = 1;
+					mac_64_bits_enable = 1;
 				} else {
 					bit_unpacking_mode_28nm = 3;
 				}
@@ -1351,7 +1358,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 				phy_ac_words_per_us(sampi, sar_adc_rate,
 					SC_MODE_3_28nm_farrow_in);
 
-				if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+				if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 					MOD_PHYREG(pi, SpecAnaDataCollect,
 						sar_adc_legacy_bus_sel, 1);
 					if (coreSel == 2) {
@@ -1394,7 +1401,8 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 			if (!ACMAJORREV_32(pi->pubpi->phy_rev) &&
 				!ACMAJORREV_33(pi->pubpi->phy_rev) &&
 				!ACMAJORREV_37(pi->pubpi->phy_rev) &&
-				!ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+				!(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 				MOD_PHYREG(pi, RxFeTesMmuxCtrl, samp_coll_core_sel, coreSel);
 			}
 			MOD_PHYREG(pi, RxFeTesMmuxCtrl, rxfe_dbg_mux_sel, 4);
@@ -1432,20 +1440,21 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 				!ACMAJORREV_32(pi->pubpi->phy_rev) &&
 				!ACMAJORREV_33(pi->pubpi->phy_rev) &&
 				!ACMAJORREV_37(pi->pubpi->phy_rev) &&
-				!ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+				!ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 				pmu_chipctReg5_def = phy_ac_set_pmu_chipctl5(sampi);
 				pmu_chip_ctl_regupdate = 1;
 			}
 			/* Special mode for BCM43457A0/B0, BCM4345B0/B1 (CRDOT11ACPHY-590) */
 			if (ACMAJORREV_3(pi->pubpi->phy_rev) || ACMAJORREV_4(pi->pubpi->phy_rev) ||
-				ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+				ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 				MOD_PHYREG(pi, SpecAnaDataCollect, pktprocMuxEn, 1);
 			}
 			break;
 
 		case SC_MODE_4m_rx_farrow:
 
-			if (ACMAJORREV_47_51(pi->pubpi->phy_rev))
+			if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))
 				mac_64_bits_enable = 1;
 			bitStartVal = collect->bitStart;
 			if (ACMAJORREV_4(pi->pubpi->phy_rev)) {
@@ -1454,7 +1463,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 				}
 				WRITE_PHYREG(pi, data_collect_crosscoresel0, 0x0000);
 				WRITE_PHYREG(pi, data_collect_crosscoresel1, 0xfff0);
-			} else if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+			} else if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 				bitStartVal = 3;
 			} else {
 				if ((bitStartVal < 0) || (bitStartVal > 2)) {
@@ -1501,7 +1510,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 			words_per_us  =
 				phy_ac_words_per_us(sampi, sar_adc_rate, SC_MODE_4_28nm_farrow_out);
 
-			if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+			if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 				MOD_PHYREG(pi, SpecAnaDataCollect, sar_adc_legacy_bus_sel, 1);
 				if (coreSel == 2) {
 					/* both cores are active */
@@ -1531,7 +1540,8 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 
 		case  SC_MODE_5_iq_comp:
 
-			if (ACMAJORREV_47_51(pi->pubpi->phy_rev))
+			if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))
 				mac_64_bits_enable = 1;
 			if (ACMAJORREV_4(pi->pubpi->phy_rev)) {
 				WRITE_PHYREG(pi, data_collect_crosscoresel0, 0x0000);
@@ -1603,7 +1613,8 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 			break;
 
 		case  SC_MODE_6_dc_filt:
-			if (ACMAJORREV_47_51(pi->pubpi->phy_rev))
+			if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))
 				mac_64_bits_enable = 1;
 			if (ACMAJORREV_4(pi->pubpi->phy_rev)) {
 				WRITE_PHYREG(pi, data_collect_crosscoresel0, 0x0000);
@@ -1633,7 +1644,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 					!ACMAJORREV_32(pi->pubpi->phy_rev) &&
 					!ACMAJORREV_33(pi->pubpi->phy_rev) &&
 					!ACMAJORREV_37(pi->pubpi->phy_rev) &&
-					!ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+					!ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 				pmu_chipctReg5_def = phy_ac_set_pmu_chipctl5(sampi);
 				pmu_chip_ctl_regupdate = 1;
 			}
@@ -1677,7 +1688,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 					!ACMAJORREV_32(pi->pubpi->phy_rev) &&
 					!ACMAJORREV_33(pi->pubpi->phy_rev) &&
 					!ACMAJORREV_37(pi->pubpi->phy_rev) &&
-					!ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+					!ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 				pmu_chipctReg5_def = phy_ac_set_pmu_chipctl5(sampi);
 				pmu_chip_ctl_regupdate = 1;
 			}
@@ -1685,7 +1696,8 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 
 		case  SC_MODE_7_rx_filt:
 
-			if (ACMAJORREV_47_51(pi->pubpi->phy_rev))
+			if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))
 				mac_64_bits_enable = 1;
 			MOD_PHYREG(pi, AdcDataCollect, sampSel, 7);
 			if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
@@ -1695,7 +1707,8 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 			if ((pi->bw == WL_CHANSPEC_BW_80) && !ACMAJORREV_32(pi->pubpi->phy_rev) &&
 			    !ACMAJORREV_33(pi->pubpi->phy_rev) &&
 			    !ACMAJORREV_37(pi->pubpi->phy_rev) &&
-			    !ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+			    !(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 				MOD_PHYREG(pi, AdcDataCollect, downSample, 1);
 				downSamp = 1;
 			}
@@ -1717,7 +1730,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 					!ACMAJORREV_32(pi->pubpi->phy_rev) &&
 					!ACMAJORREV_33(pi->pubpi->phy_rev) &&
 					!ACMAJORREV_37(pi->pubpi->phy_rev) &&
-					!ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+					!ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 				pmu_chipctReg5_def = phy_ac_set_pmu_chipctl5(sampi);
 				pmu_chip_ctl_regupdate = 1;
 			}
@@ -1761,7 +1774,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 					!ACMAJORREV_32(pi->pubpi->phy_rev) &&
 					!ACMAJORREV_33(pi->pubpi->phy_rev) &&
 					!ACMAJORREV_37(pi->pubpi->phy_rev) &&
-					!ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+					!ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 				pmu_chipctReg5_def = phy_ac_set_pmu_chipctl5(sampi);
 				pmu_chip_ctl_regupdate = 1;
 			}
@@ -1925,14 +1938,17 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 				}
 			} else {
 				if (IS20MHZ(pi)) {
-					MOD_PHYREG(pi, SpecAnaDataCollect, specAnaModeDs, 1);
+					MOD_PHYREG(pi, SpecAnaDataCollect, specAnaModeDs, 0);
 					fft_sampRate = 20;
 				} else if (IS40MHZ(pi)) {
 					MOD_PHYREG(pi, SpecAnaDataCollect, specAnaModeDs, 0);
 					fft_sampRate = 40;
-				} else {
+				} else if (IS80MHZ(pi)) {
 					MOD_PHYREG(pi, SpecAnaDataCollect, specAnaModeDs, 3);
 					fft_sampRate = 80;
+				} else {
+					MOD_PHYREG(pi, SpecAnaDataCollect, specAnaModeDs, 3);
+					fft_sampRate = 160;
 				}
 			}
 
@@ -1999,7 +2015,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 		wlapi_suspend_mac_and_wait(pi->sh->physhim);
 		phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, TRUE);
 	}
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
 	/* perform AGC if requested */
 	if (collect->agc) {
@@ -2030,7 +2046,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 	sampi->pstart = sc_buff_start;
 
 	/* Disable Mac clkgating */
-	if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 		readreg = R_REG(pi->sh->osh, D11_PSMPowerReqStatus(pi));
 		W_REG(pi->sh->osh, D11_PSMPowerReqStatus(pi),
 			readreg & ~(1<<AUTO_MEM_STBY_RET_SHIFT));
@@ -2061,7 +2077,8 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 		W_REG(pi->sh->osh, D11_CLK_GATE_UCODE_PHY_CLK_CTRL(pi), 0x0);
 	}
 
-	if (ACMAJORREV_36(pi->pubpi->phy_rev) || ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_36(pi->pubpi->phy_rev) ||
+		ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 		W_REG(pi->sh->osh, D11_CLK_GATE_STS(pi), 0x0013);
 	}
 	PHY_TRACE(("wl%d: %s Start capture, trigger = %d\n", pi->sh->unit, __FUNCTION__,
@@ -2075,14 +2092,16 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_33(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_37(pi->pubpi->phy_rev) ||
-		ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		smp_ctl_save = R_REG(pi->sh->osh, D11_SMP_CTRL(pi));
 	}
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_33(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_37(pi->pubpi->phy_rev)) {
 		W_REG(pi->sh->osh, D11_SMP_CTRL(pi), 1 << 11);
-	} else if (ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	} else if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		if (mo == 0x1ff) {
 			W_REG(pi->sh->osh, D11_SMP_CTRL(pi), 1 << 0);
 		} else {
@@ -2090,7 +2109,8 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 				(mac_64_bits_enable << 11) | (0 << 12));
 		}
 	}
-	if (ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		OSL_DELAY(20);
 	}
 
@@ -2126,8 +2146,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 		/* set stop pointer */
 		sampi->pstop = sc_buff_end - 1;
 
-		phy_ac_set_stopptr(sampi, (mac_64_bits_enable ? sampi->pstop :
-			sampi->pstop - 1));
+		phy_ac_set_stopptr(sampi, sampi->pstop);
 
 		/* set up post-trigger duration (expected by ucode in units of 1/8 us) */
 		bred = R_REG(pi->sh->osh, D11_PSM_BRED_3(pi));
@@ -2153,7 +2172,8 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 			if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 				ACMAJORREV_33(pi->pubpi->phy_rev) ||
 				ACMAJORREV_37(pi->pubpi->phy_rev) ||
-				ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+				(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 				OSL_DELAY(4000*(collect->pre_dur + 50));
 			} else {
 				OSL_DELAY(1000*(collect->pre_dur + 50));
@@ -2230,7 +2250,8 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_33(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_37(pi->pubpi->phy_rev) ||
-		ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		W_REG(pi->sh->osh, D11_SMP_CTRL(pi), smp_ctl_save);
 	}
 	wlc_phy_btcx_override_disable(pi);
@@ -2280,7 +2301,7 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 		W_REG(pi->sh->osh, D11_CLK_GATE_STS(pi), save_clkgatests);
 	}
 
-	if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 		/* Restore clkgatests register */
 
 		readreg = R_REG(pi->sh->osh, D11_PSMPowerReqStatus(pi));
@@ -2394,7 +2415,8 @@ phy_ac_sample_collect(phy_type_samp_ctx_t *ctx, wl_samplecollect_args_t *collect
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_33(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_37(pi->pubpi->phy_rev) ||
-	    ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	    (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		ptr[14] = htol32(((collect->filter ? 1 : 0) << 24) |
 			((collect->agc ? 1 : 0) << 16) | (sample_rate << 8) | sample_bitwidth);
 		ptr[15] = htol32(((dBsample_to_dBm_sub << 16) | agc_gain[0]));
@@ -2748,7 +2770,7 @@ phy_ac_samp_mac_IQplay(phy_ac_samp_info_t *sampi, const uint32* buf, uint16 len,
 			/* Load the waveform into MAC buffer */
 			ASSERT(buf != NULL);
 			/* multiply len by 4 since function expects length in bytes */
-			if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+			if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 				unsigned long axi_base = AXI_BASE_ADDR;
 				if (wlapi_si_coreunit(pi->sh->physhim) == 1) {
 					axi_base |= MAIN_AUX_CORE_ADDR_OFFSET;
@@ -2764,7 +2786,7 @@ phy_ac_samp_mac_IQplay(phy_ac_samp_info_t *sampi, const uint32* buf, uint16 len,
 		W_REG(pi->sh->osh, &pi->regs->u.d11acregs.SamplePlayStartPtr, startidx/4);
 		W_REG(pi->sh->osh, &pi->regs->u.d11acregs.SamplePlayStopPtr, (startidx/4)+len-1);
 
-		if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+		if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 			uint32 stall_val;
 			stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
 			ACPHY_DISABLE_STALL(pi);
@@ -2809,7 +2831,7 @@ phy_ac_samp_mac_IQplay(phy_ac_samp_info_t *sampi, const uint32* buf, uint16 len,
 			}
 		}
 		/* Stop MAC play  by setting macBasedDACPlayEn to 0 */
-		if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+		if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 			uint32 stall_val;
 			stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
 			ACPHY_DISABLE_STALL(pi);

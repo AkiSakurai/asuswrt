@@ -30,5 +30,9 @@
 #define SERVICE_TYPE_ASIPC "urn:schemas-upnp-org:service:AuraSync:1"
 #define SERVICE_ID_ASIPC   "urn:upnp-org:serviceId:AuraSync1"
 #endif
-#endif
 
+#ifdef ENABLE_NVGFN
+#define SERVICE_TYPE_NVGFN "urn:nvidia-com:service:GeForceNow:1"
+#define SERVICE_ID_NVGFN   "urn:nvidia-com:serviceId:GeForceNow1"
+#endif
+#endif

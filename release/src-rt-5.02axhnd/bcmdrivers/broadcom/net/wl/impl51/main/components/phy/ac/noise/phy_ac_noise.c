@@ -1,7 +1,7 @@
 /*
  * ACPhy Noise module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_noise.c 767447 2018-09-11 13:22:06Z $
+ * $Id: phy_ac_noise.c 778021 2019-08-20 11:08:01Z $
  */
 
 #include <phy_cfg.h>
@@ -74,6 +74,7 @@
 /* Modules used by this module */
 /* ************************ */
 #include <wlc_radioreg_20691.h>
+#include <wlc_radioreg_20704.h>
 #include <wlc_phy_radio.h>
 #include <wlc_phyreg_ac.h>
 
@@ -95,6 +96,7 @@ typedef struct acphy_aci_params {
 	int8 weakest_rssi;
 
 	uint8 txop, jammer_cnt;
+	int32 init_edcrs, edcrs;
 
 	desense_history_t bphy_hist;
 	desense_history_t ofdm_hist;
@@ -399,10 +401,10 @@ BCMATTACHFN(phy_ac_noise_attach_modes)(phy_info_t *pi)
 		pi->sh->interference_mode_5G |= ACPHY_ACI_GLITCHBASED_DESENSE;
 		if (PHY_XTAL_IS40M(pi)) {
 			/* for 43569/43570 turn-on swaci + preemption only */
+			/* Low-power detect is not set as triggering PSM-WD's on KUDU */
 			pi->sh->interference_mode_2G |=
 				ACPHY_ACI_GLITCHBASED_DESENSE | ACPHY_ACI_HWACI_PKTGAINLMT |
-				ACPHY_ACI_W2NB_PKTGAINLMT | ACPHY_ACI_PREEMPTION |
-				ACPHY_LPD_PREEMPTION;
+				ACPHY_ACI_W2NB_PKTGAINLMT | ACPHY_ACI_PREEMPTION;
 			pi->sh->interference_mode_5G |=
 				ACPHY_ACI_GLITCHBASED_DESENSE | ACPHY_ACI_HWACI_PKTGAINLMT |
 				ACPHY_ACI_W2NB_PKTGAINLMT | ACPHY_ACI_PREEMPTION;
@@ -459,16 +461,6 @@ BCMATTACHFN(phy_ac_noise_attach_modes)(phy_info_t *pi)
 	} else if (ACMAJORREV_37(pi->pubpi->phy_rev)) {
 		pi->sh->interference_mode_2G = ACPHY_ACI_GLITCHBASED_DESENSE;
 		pi->sh->interference_mode_5G = ACPHY_ACI_GLITCHBASED_DESENSE;
-	} else if (ACMAJORREV_47(pi->pubpi->phy_rev) && ACMINORREV_GE(pi, 1)) {
-		/* No premption for 43684A0/B0 */
-		pi->sh->interference_mode_2G |= ACPHY_ACI_GLITCHBASED_DESENSE;
-		pi->sh->interference_mode_5G |= ACPHY_ACI_GLITCHBASED_DESENSE;
-		pi->sh->interference_mode_2G |= ACPHY_ACI_HWACI_PKTGAINLMT;
-		pi->sh->interference_mode_5G |= ACPHY_ACI_HWACI_PKTGAINLMT;
-		if (ACMINORREV_GE(pi, 2)) {
-			pi->sh->interference_mode_2G |= ACPHY_ACI_PREEMPTION;
-			pi->sh->interference_mode_5G |= ACPHY_ACI_PREEMPTION;
-		}
 	} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		if (ACMINORREV_1(pi)) {
 			pi->sh->interference_mode_2G |= ACPHY_ACI_GLITCHBASED_DESENSE
@@ -481,6 +473,38 @@ BCMATTACHFN(phy_ac_noise_attach_modes)(phy_info_t *pi)
 			pi->sh->interference_mode_5G |= ACPHY_ACI_GLITCHBASED_DESENSE
 				| ACPHY_HWACI_MITIGATION;
 		}
+	} else if (ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		/* enable glitched based desense and preemption */
+		pi->sh->interference_mode_2G |= ACPHY_ACI_GLITCHBASED_DESENSE
+				| ACPHY_ACI_PREEMPTION;
+		pi->sh->interference_mode_5G |= ACPHY_ACI_GLITCHBASED_DESENSE
+				| ACPHY_ACI_PREEMPTION;
+	} else if (ACMAJORREV_47(pi->pubpi->phy_rev) && ACMINORREV_GE(pi, 1)) {
+		/* No premption for 43684A0/B0 */
+		pi->sh->interference_mode_2G |= ACPHY_ACI_GLITCHBASED_DESENSE;
+		pi->sh->interference_mode_5G |= ACPHY_ACI_GLITCHBASED_DESENSE;
+		pi->sh->interference_mode_2G |= ACPHY_ACI_HWACI_PKTGAINLMT;
+		pi->sh->interference_mode_5G |= ACPHY_ACI_HWACI_PKTGAINLMT;
+		if (ACMINORREV_GE(pi, 2)) {
+			pi->sh->interference_mode_2G |= ACPHY_ACI_PREEMPTION;
+			pi->sh->interference_mode_5G |= ACPHY_ACI_PREEMPTION;
+		}
+		if (pi->sh->boardflags4 & BFL4_SROM18_ELNABYP_ON_W0_2G)
+			pi->sh->interference_mode_2G |= ACPHY_ACI_ELNABYPASS;
+		if (pi->sh->boardflags4 & BFL4_SROM18_ELNABYP_ON_W0_5G)
+			pi->sh->interference_mode_5G |= ACPHY_ACI_ELNABYPASS;
+	} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+		pi->sh->interference_mode_2G = ACPHY_ACI_GLITCHBASED_DESENSE
+			| ACPHY_ACI_PREEMPTION | ACPHY_LPD_PREEMPTION
+			| ACPHY_MCLIP_ACI_MIT;
+		pi->sh->interference_mode_5G = ACPHY_ACI_GLITCHBASED_DESENSE
+			| ACPHY_ACI_PREEMPTION | ACPHY_LPD_PREEMPTION
+			| ACPHY_MCLIP_ACI_MIT;
+	} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		pi->sh->interference_mode_2G |= ACPHY_ACI_GLITCHBASED_DESENSE;
+		pi->sh->interference_mode_5G |= ACPHY_ACI_GLITCHBASED_DESENSE;
+		pi->sh->interference_mode_2G |= ACPHY_ACI_HWACI_PKTGAINLMT;
+		pi->sh->interference_mode_5G |= ACPHY_ACI_HWACI_PKTGAINLMT;
 	} else if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
 		pi->sh->interference_mode_2G |= ACPHY_ACI_PREEMPTION;
 		pi->sh->interference_mode_5G |= ACPHY_ACI_PREEMPTION;
@@ -584,24 +608,112 @@ phy_ac_noise_calc(phy_type_noise_ctx_t *ctx, int8 cmplx_pwr_dbm[], uint8 extra_g
 	/* knoise support, read gain value from shm, by Peyush */
 	int16 assumed_gain;
 	uint8 i;
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+	/* EAP Noise Biasing optionally includes the rx-gain-error factor.
+	 * Enable with IOVAR phynoisebiasrxgainerr = 1
+	 */
+	bool bias_rxgerr_en = FALSE;
+	int16 gainerr[PHY_CORE_MAX];
+
+	/* Apply rxgain error to each antenna's noise reading? */
+	if (pi->phynoise_bias_rxgainerr) {
+		/* Get per-antenna gain error in half-dBs */
+		if (!wlc_phy_get_rxgainerr_phy(pi, gainerr)) {
+			/* Apply rxgainerr if SROM not empty */
+			bias_rxgerr_en = TRUE;
+		}
+	}
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 
 	FOREACH_CORE(pi, i) {
 		if (BFCTL(pi->u.pi_acphy) == 2) {
-			if (CHSPEC_IS2G(pi->radio_chanspec)) {
-				assumed_gain = (int16)(ACPHY_NOISE_INITGAIN_X29_2G);
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+			/* EAP MACs always pass-up gain used under k-noise */
+			assumed_gain = wlapi_bmac_read_shm(pi->sh->physhim,
+				M_PWRIND_BLKS(pi) + 0x10);
+			PHY_INFORM(("%s using AX RXGAIN from shmem %d\n",
+				__FUNCTION__, assumed_gain));
+#else
+			if (ACMAJORREV_47_51_129(pi->pubpi->phy_rev)) {
+				if (CHSPEC_IS2G(pi->radio_chanspec)) {
+					assumed_gain = (int16)(AXPHY_NOISE_INITGAIN_2G);
+				} else {
+					assumed_gain = (int16)(AXPHY_NOISE_INITGAIN_5G);
+				}
 			} else {
-				assumed_gain = (int16)(ACPHY_NOISE_INITGAIN_X29_5G);
+				if (CHSPEC_IS2G(pi->radio_chanspec)) {
+					assumed_gain = (int16)(ACPHY_NOISE_INITGAIN_X29_2G);
+				} else {
+					assumed_gain = (int16)(ACPHY_NOISE_INITGAIN_X29_5G);
+				}
 			}
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 		} else {
 #ifdef WL_EAP_NOISE_MEASUREMENTS
 			assumed_gain = wlapi_bmac_read_shm(pi->sh->physhim,
 				M_PWRIND_BLKS(pi) + 0x10);
 #else
-			assumed_gain = (int16)(ACPHY_NOISE_INITGAIN);
+			if (ACMAJORREV_47_51_129(pi->pubpi->phy_rev)) {
+				assumed_gain = (int16)(AXPHY_NOISE_INITGAIN);
+			} else {
+				assumed_gain = (int16)(ACPHY_NOISE_INITGAIN);
+			}
 #endif // endif
 		}
 
 		assumed_gain += extra_gain_1dB;
+
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+		/* Enterprise uses noise bias IOVARs to tune noise floor, allowing
+		 * customers to match designs regardless of analog front ends
+		 */
+		{
+			/* Typical rx gains are 69dB for high gain, and
+			 * 45 dB for low gain measurements. Each gear has its
+			 * own bias knob.  Same applies to bands.
+			 */
+			int gain_hi = (assumed_gain >= NOISE_BIAS_GAIN_THRESH) ?
+					NOISE_BIAS_GAINTYPE_HI : NOISE_BIAS_GAINTYPE_LO;
+			int gain_band = CHSPEC_IS2G(pi->radio_chanspec) ?
+					NOISE_BIAS_BAND_2G : NOISE_BIAS_BAND_5G;
+			int gain_bias = phy_noise_get_gain_bias(pi, gain_hi, gain_band);
+
+			/* Include rxgain-error factor in the bias? */
+			if (bias_rxgerr_en) {
+				/* rxgain err formula: new val = old val - rxgain offset */
+				PHY_INFORM(("Noise baised by rxgainerr[core%d]=%d, now %d dB\n",
+					i, gainerr[i], gain_bias - (gainerr[i]/2)));
+				/* half-dB to full-dB conversion */
+				gain_bias -= (gainerr[i]/2);
+			}
+
+			/* GE Rev47 changes the DC Notch when radar detection is enabled.
+			 * This may or may not require additional bias
+			 */
+			if ((pi->sh->radar) && (ACMAJORREV_47_51_129(pi->pubpi->phy_rev))) {
+				if (phy_utils_read_phyreg(pi,
+					ACPHY_RadarMisc(pi->pubpi->phy_rev)) & 1) {
+					int8 radar_bias =
+						phy_noise_get_radar_gain_bias(pi, gain_hi);
+					PHY_INFORM(("EAP %s Add radar bias %d+%d=%d total bias\n",
+						__FUNCTION__, radar_bias, gain_bias,
+						radar_bias + gain_bias));
+					/* Add in offset for radar channels */
+					gain_bias += radar_bias;
+				}
+			}
+
+			if (gain_bias) {
+				/* Subtract the bias from the assumed rx gain. A
+				 * positive bias will raise the noise floor value, and a
+				 * negative bias will lower the floor.
+				 */
+				assumed_gain -= gain_bias;
+				PHY_INFORM(("--> RXGAIN bias %d, assumed gain now: %d\n",
+					gain_bias, assumed_gain));
+			}
+		}
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 
 		if (ACMAJORREV_33(pi->pubpi->phy_rev) || ACMAJORREV_37(pi->pubpi->phy_rev)) {
 			cmplx_pwr_dbm[i] += (int16) ((ACPHY_NOISE_SAMPLEPWR_TO_DBM_10BIT -
@@ -610,12 +722,12 @@ phy_ac_noise_calc(phy_type_noise_ctx_t *ctx, int8 cmplx_pwr_dbm[], uint8 extra_g
 			cmplx_pwr_dbm[i] += (int16) ((ACPHY_NOISE_SAMPLEPWR_TO_DBM_43012
 						- assumed_gain));
 		} else if ((ACMAJORREV_37(pi->pubpi->phy_rev)) ||
-			(ACMAJORREV_51(pi->pubpi->phy_rev)) ||
 			(ACMAJORREV_40(pi->pubpi->phy_rev))) {
 			/* apply this to 4347 and 7271 (with 1.4v/12bit SAR-ADC) */
 			cmplx_pwr_dbm[i] += (int16) (((ACPHY_NOISE_SAMPLEPWR_TO_QDBM_4347+2) >> 2)
 						- assumed_gain);
-		} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_47_51_129(pi->pubpi->phy_rev) ||
+				ACMAJORREV_128(pi->pubpi->phy_rev)) {
 			cmplx_pwr_dbm[i] += (int16) (((ACPHY_NOISE_SAMPLEPWR_TO_QDBM_PHYMAJ47 +
 				2) >> 2) - assumed_gain);
 		} else if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
@@ -652,13 +764,21 @@ phy_ac_noise_calc_fine_resln(phy_type_noise_ctx_t *ctx, int16 cmplx_pwr_dbm[],
 		}
 		assumed_gain += extra_gain_1dB;
 
+		/* Convert to analog input power at ADC and then
+		 * backoff applied gain to get antenna input power:
+		 * XXX FIXME:
+		 * Need to have better way of arriving at assumed_gain
+		 * than having #define's for different boards
+		 * scale conversion factor by 4 as power is in 0.25dB steps
+		 */
 		if ((ACMAJORREV_40(pi->pubpi->phy_rev)) ||
 		           (ACMAJORREV_37(pi->pubpi->phy_rev)) ||
 		           (ACMAJORREV_51(pi->pubpi->phy_rev))) {
 			/* apply this to 4347 and 7271 (with 1.4v/12bit SAR-ADC) */
 			cmplx_pwr_dbm[i] += (int16) (ACPHY_NOISE_SAMPLEPWR_TO_QDBM_4347 -
 			                             (assumed_gain << 2));
-		} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+		} else if (ACMAJORREV_47_129(pi->pubpi->phy_rev) ||
+				ACMAJORREV_128(pi->pubpi->phy_rev)) {
 			cmplx_pwr_dbm[i] += (int16) (ACPHY_NOISE_SAMPLEPWR_TO_QDBM_PHYMAJ47 -
 			                             (assumed_gain << 2));
 		} else if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
@@ -678,6 +798,12 @@ phy_ac_noise_set_mode(phy_type_noise_ctx_t *ctx, int wanted_mode, bool init)
 {
 	phy_ac_noise_info_t *noise_info = (phy_ac_noise_info_t *)ctx;
 	phy_info_t *pi = noise_info->pi;
+	bool desense_en = (wanted_mode & ACPHY_ACI_GLITCHBASED_DESENSE) != 0;
+	bool hwaci_en = (wanted_mode & ACPHY_ACI_HWACI_PKTGAINLMT) != 0;
+	bool prempt_en = (wanted_mode & ACPHY_ACI_PREEMPTION) != 0;
+	bool hwobss_en = (wanted_mode & ACPHY_HWOBSS_MITIGATION) != 0;
+	bool elnabyp_w0_en = (wanted_mode & ACPHY_ACI_ELNABYPASS) != 0;
+	bool mclip_aci_en = (wanted_mode & ACPHY_MCLIP_ACI_MIT) != 0;
 
 	PHY_TRACE(("%s: mode %d init %d\n", __FUNCTION__, wanted_mode, init));
 
@@ -686,26 +812,30 @@ phy_ac_noise_set_mode(phy_type_noise_ctx_t *ctx, int wanted_mode, bool init)
 		pi->crsglitch_prev = 0;
 	}
 
-	if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
-		if (wanted_mode == INTERFERE_NONE) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		if (!desense_en) {
 #ifndef WLC_DISABLE_ACI
 			wlc_phy_desense_aci_reset_params_acphy(pi, TRUE, TRUE, TRUE);
 
 			/* Run noise-cal after reset of desense */
 			phy_ac_rxgcrs_cal(pi->u.pi_acphy->rxgcrsi, FALSE);
 #endif // endif
-			wlc_phy_hwaci_mitigation_enable_acphy(pi, HWACI_DISABLE, FALSE);
-			phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, FALSE);
-			phy_ac_noise_preempt(noise_info, FALSE, FALSE);
-		} else if ((wanted_mode & ACPHY_ACI_HWACI_PKTGAINLMT) != 0) {
+		}
+
+		if (hwaci_en) {
 			wlc_phy_hwaci_mitigation_enable_acphy(pi, HWACI_AUTO_SW, TRUE);
+		} else {
+			wlc_phy_hwaci_mitigation_enable_acphy(pi, HWACI_DISABLE, FALSE);
 		}
-		if ((wanted_mode & ACPHY_ACI_PREEMPTION) != 0) {
-			/* Configured in Pre-Filter Processing mode */
-			phy_ac_noise_preempt(noise_info, TRUE, FALSE);
-		}
-		if ((wanted_mode & ACPHY_HWOBSS_MITIGATION) != 0) {
-			phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, TRUE);
+
+		/* Configured in Pre-Filter Processing mode */
+		phy_ac_noise_preempt(noise_info, prempt_en, FALSE);
+
+		phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, hwobss_en);
+		wlc_phy_elnabypass_on_w0_setup_acphy(pi, elnabyp_w0_en);
+
+		if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			wlc_phy_mclip_aci_mitigation(pi, mclip_aci_en);
 		}
 	} else {
 		/* Depending on interfernece modes, do whatever needs to be done */
@@ -737,7 +867,6 @@ phy_ac_noise_set_mode(phy_type_noise_ctx_t *ctx, int wanted_mode, bool init)
 			if (!ACMAJORREV_32(pi->pubpi->phy_rev) &&
 			    !ACMAJORREV_33(pi->pubpi->phy_rev) &&
 			    !ACMAJORREV_37(pi->pubpi->phy_rev) &&
-			    !ACMAJORREV_47_51(pi->pubpi->phy_rev) &&
 			    !ACPHY_ENABLE_FCBS_HWACI(pi))
 				wlc_phy_hwaci_setup_acphy(pi, TRUE, TRUE);
 			else
@@ -797,6 +926,7 @@ phy_ac_noise_dump(phy_type_noise_ctx_t *ctx, struct bcmstrbuf *b)
 	phy_info_acphy_t *pi_ac = pi->u.pi_acphy;
 	int8 rssi = 0;
 	uint8 jammer_cnt = 0, txop = 0, half_dB = 0;
+	int32 forced_dB = 0;
 
 	if (SCAN_RM_IN_PROGRESS(pi)) {
 		bcm_bprintf(b, "Scanning is in progress. Can't dump aci mitigation info.\n");
@@ -820,8 +950,9 @@ phy_ac_noise_dump(phy_type_noise_ctx_t *ctx, struct bcmstrbuf *b)
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_33(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_37(pi->pubpi->phy_rev) ||
-	    ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
-		bcm_bprintf(b, "*** Channel = %d(%d mhz), Weakest RSSI = %d, Associated = %d ** \n",
+	    (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+	    !ACMAJORREV_128(pi->pubpi->phy_rev))) {
+		bcm_bprintf(b, "*** Channel = %d(%d mhz), Weakest RSSI = %d, Associated = %d\n",
 		            CHSPEC_CHANNEL(pi->radio_chanspec), bw, rssi,
 		            !(ASSOC_INPROG_PHY(pi) || PUB_NOT_ASSOC(pi)));
 	} else {
@@ -842,12 +973,13 @@ phy_ac_noise_dump(phy_type_noise_ctx_t *ctx, struct bcmstrbuf *b)
 			bcm_bprintf(b, "No mitigation information available: pi_ac->aci is NULL\n");
 		}
 	} else {
+		phy_rxgcrs_get_rxdesens(pi, &forced_dB);
 		bcm_bprintf(b, "lna1 tbl desense (ticks) = %d\n", desense.lna1_tbl_desense);
 		bcm_bprintf(b, "lna2 tbl desense (ticks) = %d\n", desense.lna2_tbl_desense);
 		bcm_bprintf(b, "lna1 pktgain limit (ticks) = %d\n", desense.lna1_gainlmt_desense);
 		bcm_bprintf(b, "lna2 pktgain limit (ticks) = %d\n", desense.lna2_gainlmt_desense);
 		bcm_bprintf(b, "elna bypass = %d\n", desense.elna_bypass);
-		bcm_bprintf(b, "forced = %d\n", desense.forced);
+		bcm_bprintf(b, "forced (dB) = %d\n", forced_dB);
 		bcm_bprintf(b, "jammer_cnt = %d, txop = %d\n", jammer_cnt, txop);
 	}
 	if (ACHWACIREV(pi)) {
@@ -866,6 +998,45 @@ phy_ac_noise_get_data(phy_ac_noise_info_t *noisei)
 	return noisei->data;
 }
 
+int32
+phy_ac_noise_get_dynamic_ed_thresh(phy_info_t *pi, bool mode)
+{
+	int32 ret;
+	phy_info_acphy_t *pi_ac = pi->u.pi_acphy;
+	acphy_aci_params_t *aci = pi_ac->noisei->aci;
+
+	/* Get current channels ACI structure */
+	if (aci == NULL) {
+		aci = wlc_phy_desense_aci_getset_chanidx_acphy(pi, pi->radio_chanspec, TRUE);
+	}
+
+	if (mode == TRUE) {
+		ret = aci->edcrs;
+	} else {
+		ret = aci->init_edcrs;
+	}
+
+	return ret;
+}
+
+void
+phy_ac_noise_set_dynamic_ed_thresh(phy_info_t *pi, int32 edcrs, bool mode)
+{
+	phy_info_acphy_t *pi_ac = pi->u.pi_acphy;
+	acphy_aci_params_t *aci = pi_ac->noisei->aci;
+
+	/* Get current channels ACI structure */
+	if (aci == NULL) {
+		aci = wlc_phy_desense_aci_getset_chanidx_acphy(pi, pi->radio_chanspec, TRUE);
+	}
+
+	if (mode == TRUE) {
+		aci->edcrs = edcrs;
+	} else {
+		aci->init_edcrs = edcrs;
+	}
+}
+
 void
 phy_ac_noise_set_gainidx(phy_ac_noise_info_t *noisei, uint16 gainidx)
 {
@@ -881,6 +1052,8 @@ phy_ac_noise_set_trigger_crsmin_cal(phy_ac_noise_info_t *noisei, bool trigger_cr
 void
 chanspec_noise(phy_info_t *pi)
 {
+	phy_info_acphy_t *pi_ac = pi->u.pi_acphy;
+
 	pi->u.pi_acphy->noisei->aci = NULL;
 	bzero((uint8 *)pi->u.pi_acphy->noisei->data->phy_noise_all_core,
 	      sizeof(pi->u.pi_acphy->noisei->data->phy_noise_all_core));
@@ -894,6 +1067,11 @@ chanspec_noise(phy_info_t *pi)
 				pi->radio_chanspec, TRUE);
 		}
 #endif /* !WLC_DISABLE_ACI */
+	}
+
+	if (CCT_INIT(pi_ac) || CCT_BAND_CHG(pi_ac)) {
+		/* Interference modes are BAND dependent */
+		phy_noise_set_mode(pi->noisei, pi->sh->interference_mode, FALSE);
 	}
 
 	if (ACMAJORREV_GE37(pi->pubpi->phy_rev) || ACMAJORREV_32(pi->pubpi->phy_rev) ||
@@ -937,7 +1115,7 @@ wlc_phy_desense_aci_get_avg_max_glitches_acphy(phy_info_t *pi, uint32 glitches[]
 		}
 		glitches_sort[max_glitch_idx] = 0;
 		glitch_cnt += max_glitch;
-		if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
+		if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 			if (j == 1) {
 				glitch_cnt = max_glitch;
 				return glitch_cnt;
@@ -1027,9 +1205,12 @@ phy_ac_noise_upd_aci(phy_type_noise_ctx_t * ctx)
 		}
 	}
 
-	if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		if (pi->sh->interference_mode & ACPHY_ACI_HWACI_PKTGAINLMT)
 			wlc_phy_hwaci_engine_acphy_28nm(pi);
+
+		if (pi->sh->interference_mode & ACPHY_ACI_ELNABYPASS)
+			wlc_phy_elnabypass_on_w0_engine_acphy(pi);
 	} else if (!ACPHY_ENABLE_FCBS_HWACI(pi)) {
 		if ((pi->sh->interference_mode & (ACPHY_ACI_HWACI_PKTGAINLMT |
 		                                  ACPHY_ACI_W2NB_PKTGAINLMT)) != 0) {
@@ -1193,6 +1374,10 @@ phy_ac_noise_update_aci_ma(phy_type_noise_ctx_t *ctx)
 		}
 	}
 
+	/* XXX
+	 * OFDM GLITCHES
+	 * evict old value, admit new value, compute new ma, readjust ma window
+	 */
 	if ((CHSPEC_IS5G(pi->radio_chanspec) && (ofdm_delta >= 0)) ||
 		(CHSPEC_IS2G(pi->radio_chanspec) && (delta >= 0) && (bphy_delta >= 0))) {
 		pi->interf->noise.ofdm_ma_total -= pi->interf->noise.
@@ -1209,6 +1394,10 @@ phy_ac_noise_update_aci_ma(phy_type_noise_ctx_t *ctx)
 		}
 	}
 
+	/* XXX
+	 * BPHY GLITCHES
+	 * evict old value, admit new value, compute new ma, readjust ma window
+	 */
 	if (bphy_delta >= 0) {
 		pi->interf->noise.bphy_ma_total -= pi->interf->noise.
 				bphy_glitch_ma_list[pi->interf->noise.bphy_ma_index];
@@ -1223,6 +1412,10 @@ phy_ac_noise_update_aci_ma(phy_type_noise_ctx_t *ctx)
 			pi->interf->noise.bphy_ma_index = 0;
 	}
 
+	/* XXX
+	 * OFDM BADPLCP
+	 * evict old value, admit new value, compute new ma, readjust ma window
+	 */
 	if ((CHSPEC_IS5G(pi->radio_chanspec) && (ofdm_badplcp_delta >= 0)) ||
 		(CHSPEC_IS2G(pi->radio_chanspec) && (badplcp_delta >= 0) &&
 		(bphy_badplcp_delta >= 0))) {
@@ -1240,6 +1433,10 @@ phy_ac_noise_update_aci_ma(phy_type_noise_ctx_t *ctx)
 			pi->interf->noise.ofdm_badplcp_ma_index = 0;
 	}
 
+	/* XXX
+	 * BPHY BADPLCP
+	 * evict old value, admit new value, compute new ma, readjust ma window
+	 */
 	if (bphy_badplcp_delta >= 0) {
 		pi->interf->noise.bphy_badplcp_ma_total -= pi->interf->noise.
 			bphy_badplcp_ma_list[pi->interf->noise.bphy_badplcp_ma_index];
@@ -1378,7 +1575,7 @@ wlc_phy_hwaci_init_acphy(phy_ac_noise_info_t *noisei)
 	/* hwaci states: 4, check/desense */
 	noisei->hwaci_states_5g[4].w2_sel = 2;
 
-	if (RADIOID(pi->pubpi->radioid) == BCM2069_ID && (RADIOREV(pi->pubpi->radiorev) == 0x2C)) {
+	if (RADIOID_IS(pi->pubpi->radioid, BCM2069_ID) && (RADIOREV(pi->pubpi->radiorev) == 0x2C)) {
 		/* 43569/43570: http://confluence.broadcom.com/x/HJBHEQ */
 		/* hwaci params */
 		noisei->hwaci_args->sample_time = 300;
@@ -2102,7 +2299,7 @@ wlc_phy_hwaci_setup_acphy(phy_info_t *pi, bool on, bool init)
 	}
 	/* make sure 43570 does not go through code */
 	if (ACHWACIREV(pi) || (AC4354REV(pi) && !
-		(RADIOID(pi->pubpi->radioid) == BCM2069_ID &&
+		(RADIOID_IS(pi->pubpi->radioid, BCM2069_ID) &&
 		(RADIOREV(pi->pubpi->radiorev) == 0x2C)))) {
 		if (!ACMAJORREV_5(pi->pubpi->phy_rev)) {
 			MOD_PHYREG(pi, ACI_Mitigation_CTRL1, aci_present_th_mit_on_w12,
@@ -2261,11 +2458,12 @@ wlc_phy_hwaci_mitigation_enable_acphy(phy_info_t *pi, uint8 hwaci_mode, bool ini
 
 	ASSERT(ACPHY_ENABLE_FCBS_HWACI(pi) || ACMAJORREV_32(pi->pubpi->phy_rev) ||
 		ACMAJORREV_33(pi->pubpi->phy_rev) || ACMAJORREV_37(pi->pubpi->phy_rev) ||
-		ACMAJORREV_47_51(pi->pubpi->phy_rev) || (ACPHY_HWACI_28NM(pi)));
+		ACMAJORREV_GE47(pi->pubpi->phy_rev) || (ACPHY_HWACI_28NM(pi)));
 
 	/* Currently M_HWACI_STATUS register changes are not enabled in the uCode */
 	/* For Major rev 44, currently bypassing this due to above uCode not present */
-	if (!(ACMAJORREV_44(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev))) {
+	if (!(ACMAJORREV_44(pi->pubpi->phy_rev) ||
+	  (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)))) {
 		/* Reset to the High Sense mode */
 		wlapi_bmac_write_shm(pi->sh->physhim, M_HWACI_STATUS(pi), 0);
 	}
@@ -2281,7 +2479,8 @@ wlc_phy_hwaci_mitigation_enable_acphy(phy_info_t *pi, uint8 hwaci_mode, bool ini
 		wlc_phy_disable_hwaci_fcbs_trig(pi);
 		if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
 		    ACMAJORREV_37(pi->pubpi->phy_rev) ||
-		    ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		    (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)))
+		{
 			MOD_PHYREG(pi, ACI_Detect_collect_interval, aci_detect_clkenable, 0);
 		} else {
 			MOD_PHYREG(pi, ACI_Detect_CTRL, aci_detect_clkenable, 0);
@@ -2306,7 +2505,8 @@ wlc_phy_hwaci_mitigation_enable_acphy(phy_info_t *pi, uint8 hwaci_mode, bool ini
 				if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 				    ACMAJORREV_33(pi->pubpi->phy_rev) ||
 				    ACMAJORREV_37(pi->pubpi->phy_rev) ||
-				    ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+				    (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				    !ACMAJORREV_128(pi->pubpi->phy_rev))) {
 					if ((pi->sh->interference_mode & ACPHY_ACI_PREEMPTION) != 0)
 						phy_ac_noise_preempt(pi_ac->noisei, TRUE, FALSE);
 				} else {
@@ -2561,7 +2761,8 @@ wlc_phy_hwaci_mitigation_enable_acphy(phy_info_t *pi, uint8 hwaci_mode, bool ini
 		if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 		    ACMAJORREV_33(pi->pubpi->phy_rev) ||
 		    ACMAJORREV_37(pi->pubpi->phy_rev) ||
-		    ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		    (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		    !ACMAJORREV_128(pi->pubpi->phy_rev))) {
 			MOD_PHYREG(pi, ACI_Detect_collect_interval, aci_detect_clkenable, 1);
 		} else {
 			MOD_PHYREG(pi, ACI_Detect_CTRL, aci_detect_clkenable, 1);
@@ -2648,7 +2849,7 @@ wlc_phy_hwaci_mitigation_enable_acphy(phy_info_t *pi, uint8 hwaci_mode, bool ini
 		}
 	}
 
-	if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		pi_ac->noisei->hwaci_states_2g[0].lna1_pktg_lmt = ACPHY_28nm_MAX_LNA1_IDX;
 		pi_ac->noisei->hwaci_states_2g[1].lna1_pktg_lmt = 3;
 		pi_ac->noisei->hwaci_states_2g[2].lna1_pktg_lmt = 2;
@@ -2661,11 +2862,57 @@ wlc_phy_hwaci_mitigation_enable_acphy(phy_info_t *pi, uint8 hwaci_mode, bool ini
 }
 
 void
+wlc_phy_elnabypass_on_w0_setup_acphy(phy_info_t *pi, bool enable)
+{
+	uint8 core, val2g, val5g, val;
+
+	val2g = CHSPEC_IS2G(pi->radio_chanspec) && enable ? 1 : 0;
+	val5g = 0; // Not Implemented yet
+
+	FOREACH_CORE(pi, core) {
+		if (RADIOID_IS(pi->pubpi->radioid, BCM20704_ID)) {
+			val = val2g | val5g; /* 2g/5g commom */
+			MOD_RADIO_REG_20704(pi, RX5G_WRSSI, core, rxdb_wrssi0_low_pu, val);
+			MOD_RADIO_REG_20704(pi, RX5G_WRSSI, core, rxdb_wrssi0_mid_pu, val);
+			MOD_RADIO_REG_20704(pi, RX5G_WRSSI, core, rxdb_wrssi0_high_pu, val);
+			MOD_RADIO_REG_20704(pi, RX5G_WRSSI0, core, rxdb_wrssi0_pu, val);
+			MOD_RADIO_REG_20704(pi, RXDB_CFG1_OVR, core,
+			                    ovr_rxdb_wrssi0_pu, val);
+
+			if (enable) {
+				MOD_RADIO_REG_20704(pi, RX5G_WRSSI0, core,
+				                    rxdb_wrssi0_threshold, 1);
+			}
+		} else if (RADIOID_IS(pi->pubpi->radioid, BCM20698_ID)) {
+			MOD_RADIO_REG_20698(pi, RX5G_WRSSI, core, rx5g_wrssi0_low_pu, val5g);
+			MOD_RADIO_REG_20698(pi, RX5G_WRSSI, core, rx5g_wrssi0_mid_pu, val5g);
+			MOD_RADIO_REG_20698(pi, RX5G_WRSSI, core, rx5g_wrssi0_high_pu, val5g);
+			MOD_RADIO_REG_20698(pi, RX5G_WRSSI0, core, rx5g_wrssi0_pu, val5g);
+			MOD_RADIO_REG_20698(pi, RX5G_CFG1_OVR, core, ovr_rx5g_wrssi0_pu, val5g);
+
+			MOD_RADIO_REG_20698(pi, RX2G_REG5, core, rx2g_wrssi0_low_pu, val2g);
+			MOD_RADIO_REG_20698(pi, RX2G_REG5, core, rx2g_wrssi0_mid_pu, val2g);
+			MOD_RADIO_REG_20698(pi, RX2G_REG5, core, rx2g_wrssi0_high_pu, val2g);
+			MOD_RADIO_REG_20698(pi, LNA2G_REG3, core, lna2g_dig_wrssi0_pu, val2g);
+			MOD_RADIO_REG_20698(pi, RX2G_CFG1_OVR, core,
+			                    ovr_lna2g_dig_wrssi0_pu, val2g);
+
+			if (val2g)
+				MOD_RADIO_REG_20698(pi, LNA2G_REG3, core,
+				                    lna2g_dig_wrssi0_threshold, 1);
+			if (val5g)
+				MOD_RADIO_REG_20698(pi, RX5G_WRSSI0, core,
+				                    rx5g_wrssi0_threshold, 4);
+		}
+	}
+}
+
+void
 wlc_phy_enable_hwaci_28nm(phy_info_t *pi)
 {
 	uint16 hostflag;
 	phy_info_acphy_t *pi_ac = pi->u.pi_acphy;
-	uint8 core, band = CHSPEC_IS2G(pi->radio_chanspec) ? 2 : 5;
+	uint8 band = CHSPEC_IS2G(pi->radio_chanspec) ? 2 : 5;
 
 	// Set shmem bit-3 to enable HWACI interrupt in uCode
 	if (pi_ac->sromi->hwaci_sw_mitigation == 1) {
@@ -2712,13 +2959,15 @@ wlc_phy_enable_hwaci_28nm(phy_info_t *pi)
 			aci_pwr_block_shift, 3)
 	ACPHY_REG_LIST_EXECUTE(pi);
 
-	if (ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+	!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		ACPHY_REG_LIST_START
 			// 0 for cond1, 1 for cond2, 2 for cond1|cond2  3 for cond1&cond2
 			MOD_PHYREG_ENTRY(pi, ACI_Detect_CTRL1,
 				aci_present_select, 1)
 			MOD_PHYREG_ENTRY(pi, ACI_Mitigation_CTRL,
 				aci_mitigation_sw_enable, 1)
+			// FIXME: Disable using the ACI gain table
 			// mitigation is not brought up yet, use normal gain table
 			MOD_PHYREG_ENTRY(pi, ACI_Mitigation_CTRL,
 				aci_mitigation_hw_switching_disable, 1)
@@ -2768,78 +3017,91 @@ wlc_phy_enable_hwaci_28nm(phy_info_t *pi)
 		ACPHY_REG_LIST_EXECUTE(pi);
 	}
 
-	if (ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
-		FOREACH_CORE(pi, core) {
-			/* 1st Detector - disbaled for now */
-			/* Thresholds */
-			WRITE_PHYREGCE(pi, Tiny_ACI_config1, core, HWACI_DET_TH1_0);
-			WRITE_PHYREGCE(pi, Tiny_ACI_config2, core, HWACI_DET_TH1_1);
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config3, core, HWACI_DET_TH1_2);
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config4, core, HWACI_DET_TH1_0);
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config5, core, HWACI_DET_TH1_1);
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config6, core, HWACI_DET_TH1_2);
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+	!ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		/* 1st Detector - disbaled for now */
+		/* Thresholds */
+		ACPHYREG_BCAST(pi, Tiny_ACI_config10, HWACI_DET_TH1_0);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config20, HWACI_DET_TH1_1);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config30, HWACI_DET_TH1_2);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config40, HWACI_DET_TH1_0);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config50, HWACI_DET_TH1_1);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config60, HWACI_DET_TH1_2);
 
-			/* Shifts */
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config13, core, HWACI_A_SHIFT1);
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config14, core, HWACI_A_SHIFT1);
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config15, core, HWACI_B_SHIFT1);
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config16, core, HWACI_B_SHIFT1);
+		/* Shifts */
+		ACPHYREG_BCAST(pi, Tiny_ACI_config130, HWACI_A_SHIFT1);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config140, HWACI_A_SHIFT1);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config150, HWACI_B_SHIFT1);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config160, HWACI_B_SHIFT1);
 
-			/* Signs */
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config17, core, HWACI_A_SIGN1);
-			WRITE_PHYREGCE(pi, Tiny_ACI_config18, core, HWACI_B_SIGN1);
+		/* Signs */
+		ACPHYREG_BCAST(pi, Tiny_ACI_config170, HWACI_A_SIGN1);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config180, HWACI_B_SIGN1);
 
-			/* 2nd Detector : W1 - (ADC/2) */
-			/* Thresholds */
-			WRITE_PHYREGCE(pi, Tiny_ACI_config7, core, (band == 2) ?
+		/* 2nd Detector : W1 - (ADC/2) */
+		/* Thresholds */
+		if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+			ACPHYREG_BCAST(pi, Tiny_ACI_config70, (band == 2) ?
+			               HWACI_DET_TH2_0_2G_REV129 : HWACI_DET_TH2_0_5G_REV129);
+			ACPHYREG_BCAST(pi, Tiny_ACI_config80, (band == 2) ?
+			               HWACI_DET_TH2_1_2G_REV129 : HWACI_DET_TH2_1_5G_REV129);
+			ACPHYREG_BCAST(pi, Tiny_ACI_config90, (band == 2) ?
+			               HWACI_DET_TH2_2_2G_REV129 : HWACI_DET_TH2_2_5G_REV129);
+			ACPHYREG_BCAST(pi, Tiny_ACI_config100, (band == 2) ?
+			               HWACI_DET_TH2_0_2G_REV129 : HWACI_DET_TH2_0_5G_REV129);
+			ACPHYREG_BCAST(pi, Tiny_ACI_config110, (band == 2) ?
+			               HWACI_DET_TH2_1_2G_REV129 : HWACI_DET_TH2_1_5G_REV129);
+			ACPHYREG_BCAST(pi, Tiny_ACI_config120, (band == 2) ?
+			               HWACI_DET_TH2_2_2G_REV129 : HWACI_DET_TH2_2_5G_REV129);
+		} else {
+			ACPHYREG_BCAST(pi, Tiny_ACI_config70, (band == 2) ?
 			               HWACI_DET_TH2_0_2G_REV47 : HWACI_DET_TH2_0_5G_REV47);
-			WRITE_PHYREGCE(pi, Tiny_ACI_config8, core, (band == 2) ?
+			ACPHYREG_BCAST(pi, Tiny_ACI_config80, (band == 2) ?
 			               HWACI_DET_TH2_1_2G_REV47 : HWACI_DET_TH2_1_5G_REV47);
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config9, core, (band == 2) ?
-		               HWACI_DET_TH2_2_2G_REV47 : HWACI_DET_TH2_2_5G_REV47);
-			WRITE_PHYREGCE(pi, Tiny_ACI_config10, core, (band == 2) ?
+			ACPHYREG_BCAST(pi, Tiny_ACI_config90, (band == 2) ?
+			               HWACI_DET_TH2_2_2G_REV47 : HWACI_DET_TH2_2_5G_REV47);
+			ACPHYREG_BCAST(pi, Tiny_ACI_config100, (band == 2) ?
 			               HWACI_DET_TH2_0_2G_REV47 : HWACI_DET_TH2_0_5G_REV47);
-			WRITE_PHYREGCE(pi, Tiny_ACI_config11, core, (band == 2) ?
+			ACPHYREG_BCAST(pi, Tiny_ACI_config110, (band == 2) ?
 			               HWACI_DET_TH2_1_2G_REV47 : HWACI_DET_TH2_1_5G_REV47);
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config12, core, (band == 2) ?
-		               HWACI_DET_TH2_2_2G_REV47 : HWACI_DET_TH2_2_5G_REV47);
-
-			/* Shifts */
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config19, core, (band == 2) ?
-		               HWACI_A_SHIFT2_2G_REV47 : HWACI_A_SHIFT2_5G_REV47);
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config20, core, (band == 2) ?
-		               HWACI_A_SHIFT2_2G_REV47 : HWACI_A_SHIFT2_5G_REV47);
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config21, core, (band == 2) ?
-		               HWACI_B_SHIFT2_2G_REV47 : HWACI_B_SHIFT2_5G_REV47);
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config22, core, (band == 2) ?
-		               HWACI_B_SHIFT2_2G_REV47 : HWACI_B_SHIFT2_5G_REV47);
-
-			/* Signs */
-		    WRITE_PHYREGCE(pi, Tiny_ACI_config23, core, HWACI_A_SIGN2_REV47);
-			WRITE_PHYREGCE(pi, Tiny_ACI_config24, core, HWACI_B_SIGN2_REV47);
-
+			ACPHYREG_BCAST(pi, Tiny_ACI_config120, (band == 2) ?
+			               HWACI_DET_TH2_2_2G_REV47 : HWACI_DET_TH2_2_5G_REV47);
 		}
+
+		/* Shifts */
+		ACPHYREG_BCAST(pi, Tiny_ACI_config190, (band == 2) ?
+		               HWACI_A_SHIFT2_2G_REV47 : HWACI_A_SHIFT2_5G_REV47);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config200, (band == 2) ?
+		               HWACI_A_SHIFT2_2G_REV47 : HWACI_A_SHIFT2_5G_REV47);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config210, (band == 2) ?
+		               HWACI_B_SHIFT2_2G_REV47 : HWACI_B_SHIFT2_5G_REV47);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config220, (band == 2) ?
+		               HWACI_B_SHIFT2_2G_REV47 : HWACI_B_SHIFT2_5G_REV47);
+
+		/* Signs */
+		ACPHYREG_BCAST(pi, Tiny_ACI_config230, HWACI_A_SIGN2_REV47);
+		ACPHYREG_BCAST(pi, Tiny_ACI_config240, HWACI_B_SIGN2_REV47);
 	} else {
 		if (ACMAJORREV_40(pi->pubpi->phy_rev) &&
 		    (RADIOREV(pi->pubpi->radiorev) == 8 ||
 		     RADIOREV_AUX(pi->pubpi->radiorev) == 9)) {
 			ACPHY_REG_LIST_START
-			        // Thresholds for 1st condition
-			        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config10, HWACI_DET_TH1_NOR_SET2)
-			        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config20, HWACI_DET_TH2_NOR_SET2)
-			        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config30, HWACI_DET_TH3_NOR_SET2)
-			        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config40, HWACI_DET_TH1_ACI_SET2)
-			        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config50, HWACI_DET_TH2_ACI_SET2)
-			        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config60, HWACI_DET_TH3_ACI_SET2)
+			    // Thresholds for 1st condition
+			    WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config10, HWACI_DET_TH1_NOR_SET2)
+			    WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config20, HWACI_DET_TH2_NOR_SET2)
+			    WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config30, HWACI_DET_TH3_NOR_SET2)
+			    WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config40, HWACI_DET_TH1_ACI_SET2)
+			    WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config50, HWACI_DET_TH2_ACI_SET2)
+			    WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config60, HWACI_DET_TH3_ACI_SET2)
 
-			        // Thresholds for 2nd condition
-			        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config70, HWACI_DET_TH1_NOR_SET2)
-			        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config80, HWACI_DET_TH2_NOR_SET2)
-			        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config90, HWACI_DET_TH3_NOR_SET2)
-			        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config100, HWACI_DET_TH1_ACI_SET2)
-			        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config110, HWACI_DET_TH2_ACI_SET2)
-			        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config120, HWACI_DET_TH3_ACI_SET2)
-			ACPHY_REG_LIST_EXECUTE(pi);
+			    // Thresholds for 2nd condition
+			    WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config70, HWACI_DET_TH1_NOR_SET2)
+			    WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config80, HWACI_DET_TH2_NOR_SET2)
+			    WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config90, HWACI_DET_TH3_NOR_SET2)
+			    WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config100, HWACI_DET_TH1_ACI_SET2)
+			    WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config110, HWACI_DET_TH2_ACI_SET2)
+			    WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config120, HWACI_DET_TH3_ACI_SET2)
+			    ACPHY_REG_LIST_EXECUTE(pi);
 		}
 
 		ACPHY_REG_LIST_START
@@ -2861,6 +3123,10 @@ wlc_phy_enable_hwaci_28nm(phy_info_t *pi)
 		        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config230, 0x0451)
 		        WRITE_PHYREG_ENTRY(pi, Tiny_ACI_config240, 0x0d34)
 		ACPHY_REG_LIST_EXECUTE(pi);
+	}
+
+	if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		MOD_PHYREG(pi, ACI_Detect_CTRL1, aci_detect_w1w2_select, 1);
 	}
 }
 
@@ -3032,6 +3298,10 @@ wlc_phy_init_FCBS_hwaci(phy_info_t *pi)
 	}
 
 	fastchswTableIndex += 1; /* skip delimiter */
+/*
+ * Fill up rest of table with delimiters
+ * FIXME: USE #define for FCBS table size???
+ */
 	while ((fastchswTableIndex) < 800) {
 		wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_FASTCHSWITCH, 1, fastchswTableIndex,
 			16, &fcbs_table_delim);
@@ -3135,7 +3405,8 @@ wlc_phy_desense_aci_engine_acphy(phy_info_t *pi)
 	uint8 max_rssi, zero = 0;
 	/* use tiny threshold for 43684 also */
 	bool is_tiny = ACMAJORREV_4(pi->pubpi->phy_rev) || ACMAJORREV_32(pi->pubpi->phy_rev) ||
-	    ACMAJORREV_33(pi->pubpi->phy_rev) || ACMAJORREV_47(pi->pubpi->phy_rev);
+	    ACMAJORREV_33(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+	    !ACMAJORREV_128(pi->pubpi->phy_rev));
 	bool lesi_cap = phy_ac_rxgcrs_get_cap_lesi(pi);
 	uint8 max_lesi_desense = lesi_cap ? ACPHY_ACI_MAX_LESI_DESENSE_DB : 0;
 
@@ -3477,8 +3748,7 @@ phy_ac_noise_request_sample(phy_type_noise_ctx_t *ctx, uint8 reason, uint8 ch)
 		}
 
 		/* Do not do noise mmt if in PM State */
-		if (phy_noise_pmstate_get(pi) &&
-			!wlapi_phy_awdl_is_on(pi->sh->physhim)) {
+		if (phy_noise_pmstate_get(pi)) {
 			/* Make sure that you do it every PHY_NOISE_MAX_IDLETIME atleast */
 			if ((pi->sh->now - pi->phynoise_lastmmttime)
 					< PHY_NOISE_MAX_IDLETIME)
@@ -3870,7 +4140,7 @@ wlc_phy_hwaci_engine_acphy(phy_info_t *pi)
 	wlapi_suspend_mac_and_wait(pi->sh->physhim);
 
 	/* Disable BT as it affects rssi counters used for w2aci */
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
 	if (hwaci) {
 		if (ACHWACIREV(pi)) {
@@ -4141,6 +4411,109 @@ wlc_phy_hwaci_engine_acphy_28nm(phy_info_t *pi)
 	}
 }
 
+void
+wlc_phy_elnabypass_on_w0_engine_acphy(phy_info_t *pi)
+{
+	uint8 max_timer = 25;
+	acphy_aci_params_t *aci;
+	acphy_desense_values_t *desense;
+	uint16 w0, w1;
+	bool state_changed = FALSE;
+	phy_info_acphy_t *pi_ac = (phy_info_acphy_t *)pi->u.pi_acphy;
+
+	if (pi_ac->noisei->aci == NULL) {
+		pi_ac->noisei->aci = wlc_phy_desense_aci_getset_chanidx_acphy(pi,
+			pi->radio_chanspec, TRUE);
+	}
+
+	aci = pi_ac->noisei->aci;
+	desense = &aci->desense;
+
+	if (desense->elna_bypass) {
+		w1 = READ_PHYREGFLD(pi, W2W1ClipCnt1, W1ClipCntAccum1) +
+		    READ_PHYREGFLD(pi, W2W1ClipCnt2, W1ClipCntAccum2) +
+		    READ_PHYREGFLD(pi, W2W1ClipCnt3, W1ClipCntAccum3);
+		if (w1 == 0) {
+			if (desense->elna_bypass_timer > 0) desense->elna_bypass_timer--;
+		} else {
+			desense->elna_bypass_timer = max_timer;
+		}
+
+		if (desense->elna_bypass_timer == 0) {
+			desense->elna_bypass = 0;
+			desense->edcrs = 0;   /* default */
+			state_changed = TRUE;
+		}
+	} else {
+		w0 = READ_PHYREGFLD(pi, W2W1ClipCnt1, W2ClipCntAccum1) +
+		    READ_PHYREGFLD(pi, W2W1ClipCnt2, W2ClipCntAccum2) +
+		    READ_PHYREGFLD(pi, W2W1ClipCnt3, W2ClipCntAccum3);
+		/* one of the W0 sometimes has value of 32 even without any signal */
+		if (w0 > 40) {
+			desense->elna_bypass = 1;
+			desense->edcrs = -50;
+			desense->elna_bypass_timer = max_timer;
+			state_changed = TRUE;
+		}
+	}
+
+	if (state_changed) {
+		wlc_phy_desense_calc_total_acphy(pi_ac->rxgcrsi);
+		wlc_phy_agc_28nm(pi, TRUE, TRUE, TRUE);
+		wlc_phy_apply_edcrs_acphy(pi);
+	}
+}
+
+void
+wlc_phy_mclip_aci_mitigation(phy_info_t *pi, bool desense_en)
+{
+	uint8 core;
+	uint16 table_id_core;
+	uint16 start_off_core;
+	/* These are MCLIP ACI Mitigation settings (to be written to ACI tables) */
+	uint8 lna1_gainlim_2g_aci_r51[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+	uint8 lna1_gainlim_5g_aci_r51[6] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+
+	bool suspend;
+	uint8 stall_val;
+
+	ASSERT(ACPHY_ACI_MULTI_CLIP_EN(pi->pubpi->phy_rev) != INVALID_ADDRESS);
+
+	suspend = !(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC);
+	if (!suspend) {
+		wlapi_suspend_mac_and_wait(pi->sh->physhim);
+		phy_utils_phyreg_enter(pi);
+	}
+	stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
+	if (stall_val == 0)
+		ACPHY_DISABLE_STALL(pi);
+
+	if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+		if (desense_en) {
+			lna1_gainlim_5g_aci_r51[4] = 0x64;
+			lna1_gainlim_5g_aci_r51[5] = 0x64;
+		}
+		FOREACH_CORE(pi, core) {
+			/* LNA1 settings */
+			table_id_core = ACPHY_TBL_ID_GAINLIMITACI0 + 32 * core;
+			start_off_core =  8;
+			if (CHSPEC_IS2G(pi->radio_chanspec)) {
+				wlc_phy_hwaci_write_table_acphy(pi, table_id_core,
+					start_off_core, lna1_gainlim_2g_aci_r51, 0);
+			} else {
+				wlc_phy_hwaci_write_table_acphy(pi, table_id_core,
+					start_off_core, lna1_gainlim_5g_aci_r51, 0);
+			}
+		}
+	}
+
+	ACPHY_ENABLE_STALL(pi, stall_val);
+	if (!suspend) {
+		phy_utils_phyreg_exit(pi);
+		wlapi_enable_mac(pi->sh->physhim);
+	}
+}
+
 #endif /* WLC_DISABLE_ACI */
 
 void
@@ -4149,7 +4522,7 @@ wlc_phy_set_aci_regs_acphy(phy_info_t *pi)
 	uint16 aci_th;
 	uint8 core;
 
-	if (ACMAJORREV_40(pi->pubpi->phy_rev) || ACMAJORREV_44(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40_128(pi->pubpi->phy_rev) || ACMAJORREV_44(pi->pubpi->phy_rev)) {
 		PHY_INFORM(("FIXME: 4347A0 Bypass set_aci_regs for the moment\n"));
 		return;
 	}
@@ -4160,11 +4533,11 @@ wlc_phy_set_aci_regs_acphy(phy_info_t *pi)
 	}
 
 	PHY_TRACE(("wl%d: %s\n", pi->sh->unit, __FUNCTION__));
-	if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		aci_th = 0x17f;
 	} else if (ACMAJORREV_0(pi->pubpi->phy_rev) || ACMAJORREV_3(pi->pubpi->phy_rev) ||
 	           (ACMAJORREV_2(pi->pubpi->phy_rev) &&
-	            (RADIOID(pi->pubpi->radioid) == BCM2069_ID) &&
+	            (RADIOID_IS(pi->pubpi->radioid, BCM2069_ID)) &&
 	            (RADIOREV(pi->pubpi->radiorev) == 0x2C) && PHY_XTAL_IS40M(pi)) ||
 	           ACMAJORREV_5(pi->pubpi->phy_rev) || ACMAJORREV_4(pi->pubpi->phy_rev) ||
 	           ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
@@ -4205,12 +4578,12 @@ wlc_phy_set_aci_regs_acphy(phy_info_t *pi)
 	}
 
 	/* Enable below code after analysis */
-	if (ACMAJORREV_47(pi->pubpi->phy_rev)) return;
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) return;
 
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_33(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_37(pi->pubpi->phy_rev) ||
-	    ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	    ACMAJORREV_47_51_129(pi->pubpi->phy_rev)) {
 		MOD_PHYREG(pi, RxControl, bphyacidetEn, 0);
 		/* CRDOT11ACPHY-280 : enabled bphy aci det is causing hangs */
 		if (CHSPEC_IS2G(pi->radio_chanspec) && CHSPEC_IS20(pi->radio_chanspec)) {
@@ -4397,10 +4770,62 @@ static aci_tbl_list_entry_at_init g_aci_tbl_list_acphy [ ] =
 		{0xFFFF, 0, 0, 0, 0, 0}
 	};
 
+static aci_tbl_list_entry_at_init g_aci_tbl_list_acphy_2x2 [ ] =
+	{
+		{ACPHY_TBL_ID_LNAROUTLUTACI, ACPHY_TBL_ID_LNAROUT, 0, 7, 7, 1},
+		{ACPHY_TBL_ID_LNAROUTLUTACI, ACPHY_TBL_ID_LNAROUT, 8, 7, 7, 1},
+		{ACPHY_TBL_ID_LNAROUTLUTACI, ACPHY_TBL_ID_LNAROUT, 16, 7, 7, 1},
+		{ACPHY_TBL_ID_LNAROUTLUTACI, ACPHY_TBL_ID_LNAROUT, 24, 7, 7, 1},
+		{ACPHY_TBL_ID_LNAROUTLUTACI, ACPHY_TBL_ID_LNAROUT, 32, 7, 7, 1},
+		{ACPHY_TBL_ID_LNAROUTLUTACI, ACPHY_TBL_ID_LNAROUT, 40, 7, 7, 1},
+		{ACPHY_TBL_ID_GAINACI0, ACPHY_TBL_ID_GAIN0, 0, 119, 8, 1},
+		{ACPHY_TBL_ID_GAINACI1, ACPHY_TBL_ID_GAIN1, 0, 119, 8, 1},
+		{ACPHY_TBL_ID_GAINBITSACI0, ACPHY_TBL_ID_GAINBITS0, 0, 119, 8, 1},
+		{ACPHY_TBL_ID_GAINBITSACI1, ACPHY_TBL_ID_GAINBITS1, 0, 119, 8, 1},
+		{ACPHY_TBL_ID_GAINLIMITACI0, ACPHY_TBL_ID_GAINLIMIT0, 0, 105, 8, 1},
+		{ACPHY_TBL_ID_GAINLIMITACI1, ACPHY_TBL_ID_GAINLIMIT1, 0, 105, 8, 1},
+		{ACPHY_TBL_ID_RSSICLIPGAINACI0, ACPHY_TBL_ID_RSSICLIPGAIN0, 0, 22, 24, 1},
+		{ACPHY_TBL_ID_RSSICLIPGAINACI1, ACPHY_TBL_ID_RSSICLIPGAIN1, 0, 22, 24, 1},
+		{ACPHY_TBL_ID_MCLPAGCCLIP2TBLACI0, ACPHY_TBL_ID_MCLPAGCCLIP2TBL0, 0, 9, 28, 1},
+		{ACPHY_TBL_ID_MCLPAGCCLIP2TBLACI1, ACPHY_TBL_ID_MCLPAGCCLIP2TBL1, 0, 9, 28, 1},
+		{0xFFFF, 0, 0, 0, 0, 0}
+	};
+
+static aci_tbl_list_entry_at_init g_aci_tbl_list_acphy_3x3 [ ] =
+	{
+		{ACPHY_TBL_ID_LNAROUTLUTACI, ACPHY_TBL_ID_LNAROUT, 0, 7, 7, 1},
+		{ACPHY_TBL_ID_LNAROUTLUTACI, ACPHY_TBL_ID_LNAROUT, 8, 7, 7, 1},
+		{ACPHY_TBL_ID_LNAROUTLUTACI, ACPHY_TBL_ID_LNAROUT, 16, 7, 7, 1},
+		{ACPHY_TBL_ID_LNAROUTLUTACI, ACPHY_TBL_ID_LNAROUT, 24, 7, 7, 1},
+		{ACPHY_TBL_ID_LNAROUTLUTACI, ACPHY_TBL_ID_LNAROUT, 32, 7, 7, 1},
+		{ACPHY_TBL_ID_LNAROUTLUTACI, ACPHY_TBL_ID_LNAROUT, 40, 7, 7, 1},
+		{ACPHY_TBL_ID_GAINACI0, ACPHY_TBL_ID_GAIN0, 0, 119, 8, 1},
+		{ACPHY_TBL_ID_GAINACI1, ACPHY_TBL_ID_GAIN1, 0, 119, 8, 1},
+		{ACPHY_TBL_ID_GAINACI2, ACPHY_TBL_ID_GAIN2, 0, 119, 8, 1},
+		{ACPHY_TBL_ID_GAINBITSACI0, ACPHY_TBL_ID_GAINBITS0, 0, 119, 8, 1},
+		{ACPHY_TBL_ID_GAINBITSACI1, ACPHY_TBL_ID_GAINBITS1, 0, 119, 8, 1},
+		{ACPHY_TBL_ID_GAINBITSACI2, ACPHY_TBL_ID_GAINBITS2, 0, 119, 8, 1},
+		{ACPHY_TBL_ID_GAINLIMITACI0, ACPHY_TBL_ID_GAINLIMIT0, 0, 105, 8, 1},
+		{ACPHY_TBL_ID_GAINLIMITACI1, ACPHY_TBL_ID_GAINLIMIT1, 0, 105, 8, 1},
+		{ACPHY_TBL_ID_GAINLIMITACI2, ACPHY_TBL_ID_GAINLIMIT2, 0, 105, 8, 1},
+		{ACPHY_TBL_ID_RSSICLIPGAINACI0, ACPHY_TBL_ID_RSSICLIPGAIN0, 0, 22, 24, 1},
+		{ACPHY_TBL_ID_RSSICLIPGAINACI1, ACPHY_TBL_ID_RSSICLIPGAIN1, 0, 22, 24, 1},
+		{ACPHY_TBL_ID_RSSICLIPGAINACI2, ACPHY_TBL_ID_RSSICLIPGAIN2, 0, 22, 24, 1},
+		{ACPHY_TBL_ID_MCLPAGCCLIP2TBLACI0, ACPHY_TBL_ID_MCLPAGCCLIP2TBL0, 0, 9, 28, 1},
+		{ACPHY_TBL_ID_MCLPAGCCLIP2TBLACI1, ACPHY_TBL_ID_MCLPAGCCLIP2TBL1, 0, 9, 28, 1},
+		{ACPHY_TBL_ID_MCLPAGCCLIP2TBLACI2, ACPHY_TBL_ID_MCLPAGCCLIP2TBL2, 0, 9, 28, 1},
+		{0xFFFF, 0, 0, 0, 0, 0}
+	};
+
 static aci_tbl_list_entry_at_init *
-BCMRAMFN(phy_ac_noise_get_aci_tbl_list)(void)
+BCMRAMFN(phy_ac_noise_get_aci_tbl_list)(phy_info_t *pi)
 {
-	return g_aci_tbl_list_acphy;
+	if (ACMAJORREV_51(pi->pubpi->phy_rev))
+		return g_aci_tbl_list_acphy_2x2;
+	else if (ACMAJORREV_129(pi->pubpi->phy_rev))
+		return g_aci_tbl_list_acphy_3x3;
+	else
+		return g_aci_tbl_list_acphy;
 }
 
 void
@@ -4408,6 +4833,9 @@ phy_ac_noise_hwaci_switching_regs_tbls_list_init(phy_info_t *pi)
 {
 	phy_ac_noise_data_t *data = pi->u.pi_acphy->noisei->data;
 	aci_reg_list_entry *aci_reg_list_acphy = phy_ac_noise_get_aci_reg_list();
+
+	int num_core;
+	num_core = PHYCORENUM(pi->pubpi->phy_corenum);
 
 	aci_reg_list_acphy[0].regaddraci = ACPHY_Core0Adcclip_aci(pi->pubpi->phy_rev);
 	aci_reg_list_acphy[0].regaddr = ACPHY_Core0Adcclip(pi->pubpi->phy_rev);
@@ -4457,154 +4885,170 @@ phy_ac_noise_hwaci_switching_regs_tbls_list_init(phy_info_t *pi)
 	aci_reg_list_acphy[22].regaddr = ACPHY_Core0SsAgcW1ClipCntTh(pi->pubpi->phy_rev);
 	aci_reg_list_acphy[23].regaddraci = ACPHY_Core0_BiQuad_MaxGain_aci(pi->pubpi->phy_rev);
 	aci_reg_list_acphy[23].regaddr = ACPHY_Core0_BiQuad_MaxGain(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[24].regaddraci = ACPHY_Core1Adcclip_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[24].regaddr = ACPHY_Core1Adcclip(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[25].regaddraci = ACPHY_Core1FastAgcClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[25].regaddr = ACPHY_Core1FastAgcClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[26].regaddraci = ACPHY_Core1RssiClipMuxSel_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[26].regaddr = ACPHY_Core1RssiClipMuxSel(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[27].regaddraci = ACPHY_Core1InitGainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[27].regaddr = ACPHY_Core1InitGainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[28].regaddraci = ACPHY_Core1InitGainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[28].regaddr = ACPHY_Core1InitGainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[29].regaddraci = ACPHY_Core1clipHiGainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[29].regaddr = ACPHY_Core1clipHiGainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[30].regaddraci = ACPHY_Core1clipHiGainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[30].regaddr = ACPHY_Core1clipHiGainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[31].regaddraci = ACPHY_Core1clipmdGainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[31].regaddr = ACPHY_Core1clipmdGainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[32].regaddraci = ACPHY_Core1clipmdGainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[32].regaddr = ACPHY_Core1clipmdGainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[33].regaddraci = ACPHY_Core1cliploGainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[33].regaddr = ACPHY_Core1cliploGainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[34].regaddraci = ACPHY_Core1cliploGainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[34].regaddr = ACPHY_Core1cliploGainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[35].regaddraci = ACPHY_Core1clip2GainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[35].regaddr = ACPHY_Core1clip2GainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[36].regaddraci = ACPHY_Core1clip2GainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[36].regaddr = ACPHY_Core1clip2GainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[37].regaddraci = ACPHY_Core1clipGainCodeB_ilnaP_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[37].regaddr = ACPHY_Core1clipGainCodeB_ilnaP(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[38].regaddraci = ACPHY_Core1DSSScckPktGain_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[38].regaddr = ACPHY_Core1DSSScckPktGain(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[39].regaddraci = ACPHY_Core1HpFBw_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[39].regaddr = ACPHY_Core1HpFBw(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[40].regaddraci = ACPHY_Core1mClpAgcW1ClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[40].regaddr = ACPHY_Core1mClpAgcW1ClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[41].regaddraci = ACPHY_Core1mClpAgcW3ClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[41].regaddr = ACPHY_Core1mClpAgcW3ClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[42].regaddraci = ACPHY_Core1mClpAgcNbClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[42].regaddr = ACPHY_Core1mClpAgcNbClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[43].regaddraci = ACPHY_Core1mClpAgcMDClipCntTh1_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[43].regaddr = ACPHY_Core1mClpAgcMDClipCntTh1(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[44].regaddraci = ACPHY_Core1mClpAgcMDClipCntTh2_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[44].regaddr = ACPHY_Core1mClpAgcMDClipCntTh2(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[45].regaddraci = ACPHY_Core1SsAgcNbClipCntTh1_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[45].regaddr = ACPHY_Core1SsAgcNbClipCntTh1(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[46].regaddraci = ACPHY_Core1SsAgcW1ClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[46].regaddr = ACPHY_Core1SsAgcW1ClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[47].regaddraci = ACPHY_Core1_BiQuad_MaxGain_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[47].regaddr = ACPHY_Core1_BiQuad_MaxGain(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[48].regaddraci = ACPHY_Core2Adcclip_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[48].regaddr = ACPHY_Core2Adcclip(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[49].regaddraci = ACPHY_Core2FastAgcClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[49].regaddr = ACPHY_Core2FastAgcClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[50].regaddraci = ACPHY_Core2RssiClipMuxSel_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[50].regaddr = ACPHY_Core2RssiClipMuxSel(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[51].regaddraci = ACPHY_Core2InitGainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[51].regaddr = ACPHY_Core2InitGainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[52].regaddraci = ACPHY_Core2InitGainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[52].regaddr = ACPHY_Core2InitGainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[53].regaddraci = ACPHY_Core2clipHiGainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[53].regaddr = ACPHY_Core2clipHiGainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[54].regaddraci = ACPHY_Core2clipHiGainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[54].regaddr = ACPHY_Core2clipHiGainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[55].regaddraci = ACPHY_Core2clipmdGainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[55].regaddr = ACPHY_Core2clipmdGainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[56].regaddraci = ACPHY_Core2clipmdGainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[56].regaddr = ACPHY_Core2clipmdGainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[57].regaddraci = ACPHY_Core2cliploGainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[57].regaddr = ACPHY_Core2cliploGainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[58].regaddraci = ACPHY_Core2cliploGainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[58].regaddr = ACPHY_Core2cliploGainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[59].regaddraci = ACPHY_Core2clip2GainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[59].regaddr = ACPHY_Core2clip2GainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[60].regaddraci = ACPHY_Core2clip2GainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[60].regaddr = ACPHY_Core2clip2GainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[61].regaddraci = ACPHY_Core2clipGainCodeB_ilnaP_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[61].regaddr = ACPHY_Core2clipGainCodeB_ilnaP(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[62].regaddraci = ACPHY_Core2DSSScckPktGain_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[62].regaddr = ACPHY_Core2DSSScckPktGain(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[63].regaddraci = ACPHY_Core2HpFBw_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[63].regaddr = ACPHY_Core2HpFBw(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[64].regaddraci = ACPHY_Core2mClpAgcW1ClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[64].regaddr = ACPHY_Core2mClpAgcW1ClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[65].regaddraci = ACPHY_Core2mClpAgcW3ClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[65].regaddr = ACPHY_Core2mClpAgcW3ClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[66].regaddraci = ACPHY_Core2mClpAgcNbClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[66].regaddr = ACPHY_Core2mClpAgcNbClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[67].regaddraci = ACPHY_Core2mClpAgcMDClipCntTh1_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[67].regaddr = ACPHY_Core2mClpAgcMDClipCntTh1(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[68].regaddraci = ACPHY_Core2mClpAgcMDClipCntTh2_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[68].regaddr = ACPHY_Core2mClpAgcMDClipCntTh2(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[69].regaddraci = ACPHY_Core2SsAgcNbClipCntTh1_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[69].regaddr = ACPHY_Core2SsAgcNbClipCntTh1(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[70].regaddraci = ACPHY_Core2SsAgcW1ClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[70].regaddr = ACPHY_Core2SsAgcW1ClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[71].regaddraci = ACPHY_Core2_BiQuad_MaxGain_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[71].regaddr = ACPHY_Core2_BiQuad_MaxGain(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[72].regaddraci = ACPHY_Core3Adcclip_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[72].regaddr = ACPHY_Core3Adcclip(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[73].regaddraci = ACPHY_Core3FastAgcClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[73].regaddr = ACPHY_Core3FastAgcClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[74].regaddraci = ACPHY_Core3RssiClipMuxSel_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[74].regaddr = ACPHY_Core3RssiClipMuxSel(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[75].regaddraci = ACPHY_Core3InitGainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[75].regaddr = ACPHY_Core3InitGainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[76].regaddraci = ACPHY_Core3InitGainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[76].regaddr = ACPHY_Core3InitGainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[77].regaddraci = ACPHY_Core3clipHiGainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[77].regaddr = ACPHY_Core3clipHiGainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[78].regaddraci = ACPHY_Core3clipHiGainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[78].regaddr = ACPHY_Core3clipHiGainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[79].regaddraci = ACPHY_Core3clipmdGainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[79].regaddr = ACPHY_Core3clipmdGainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[80].regaddraci = ACPHY_Core3clipmdGainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[80].regaddr = ACPHY_Core3clipmdGainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[81].regaddraci = ACPHY_Core3cliploGainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[81].regaddr = ACPHY_Core3cliploGainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[82].regaddraci = ACPHY_Core3cliploGainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[82].regaddr = ACPHY_Core3cliploGainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[83].regaddraci = ACPHY_Core3clip2GainCodeA_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[83].regaddr = ACPHY_Core3clip2GainCodeA(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[84].regaddraci = ACPHY_Core3clip2GainCodeB_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[84].regaddr = ACPHY_Core3clip2GainCodeB(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[85].regaddraci = ACPHY_Core3clipGainCodeB_ilnaP_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[85].regaddr = ACPHY_Core3clipGainCodeB_ilnaP(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[86].regaddraci = ACPHY_Core3DSSScckPktGain_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[86].regaddr = ACPHY_Core3DSSScckPktGain(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[87].regaddraci = ACPHY_Core3HpFBw_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[87].regaddr = ACPHY_Core3HpFBw(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[88].regaddraci = ACPHY_Core3mClpAgcW1ClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[88].regaddr = ACPHY_Core3mClpAgcW1ClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[89].regaddraci = ACPHY_Core3mClpAgcW3ClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[89].regaddr = ACPHY_Core3mClpAgcW3ClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[90].regaddraci = ACPHY_Core3mClpAgcNbClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[90].regaddr = ACPHY_Core3mClpAgcNbClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[91].regaddraci = ACPHY_Core3mClpAgcMDClipCntTh1_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[91].regaddr = ACPHY_Core3mClpAgcMDClipCntTh1(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[92].regaddraci = ACPHY_Core3mClpAgcMDClipCntTh2_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[92].regaddr = ACPHY_Core3mClpAgcMDClipCntTh2(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[93].regaddraci = ACPHY_Core3SsAgcNbClipCntTh1_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[93].regaddr = ACPHY_Core3SsAgcNbClipCntTh1(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[94].regaddraci = ACPHY_Core3SsAgcW1ClipCntTh_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[94].regaddr = ACPHY_Core3SsAgcW1ClipCntTh(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[95].regaddraci = ACPHY_Core3_BiQuad_MaxGain_aci(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[95].regaddr = ACPHY_Core3_BiQuad_MaxGain(pi->pubpi->phy_rev);
-	aci_reg_list_acphy[96].regaddr = 0xFFFF;
+
+	if (num_core > 1) {
+	  aci_reg_list_acphy[24].regaddraci = ACPHY_Core1Adcclip_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[24].regaddr = ACPHY_Core1Adcclip(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[25].regaddraci = ACPHY_Core1FastAgcClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[25].regaddr = ACPHY_Core1FastAgcClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[26].regaddraci = ACPHY_Core1RssiClipMuxSel_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[26].regaddr = ACPHY_Core1RssiClipMuxSel(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[27].regaddraci = ACPHY_Core1InitGainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[27].regaddr = ACPHY_Core1InitGainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[28].regaddraci = ACPHY_Core1InitGainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[28].regaddr = ACPHY_Core1InitGainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[29].regaddraci = ACPHY_Core1clipHiGainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[29].regaddr = ACPHY_Core1clipHiGainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[30].regaddraci = ACPHY_Core1clipHiGainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[30].regaddr = ACPHY_Core1clipHiGainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[31].regaddraci = ACPHY_Core1clipmdGainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[31].regaddr = ACPHY_Core1clipmdGainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[32].regaddraci = ACPHY_Core1clipmdGainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[32].regaddr = ACPHY_Core1clipmdGainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[33].regaddraci = ACPHY_Core1cliploGainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[33].regaddr = ACPHY_Core1cliploGainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[34].regaddraci = ACPHY_Core1cliploGainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[34].regaddr = ACPHY_Core1cliploGainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[35].regaddraci = ACPHY_Core1clip2GainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[35].regaddr = ACPHY_Core1clip2GainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[36].regaddraci = ACPHY_Core1clip2GainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[36].regaddr = ACPHY_Core1clip2GainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[37].regaddraci =
+	                        ACPHY_Core1clipGainCodeB_ilnaP_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[37].regaddr = ACPHY_Core1clipGainCodeB_ilnaP(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[38].regaddraci = ACPHY_Core1DSSScckPktGain_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[38].regaddr = ACPHY_Core1DSSScckPktGain(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[39].regaddraci = ACPHY_Core1HpFBw_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[39].regaddr = ACPHY_Core1HpFBw(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[40].regaddraci = ACPHY_Core1mClpAgcW1ClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[40].regaddr = ACPHY_Core1mClpAgcW1ClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[41].regaddraci = ACPHY_Core1mClpAgcW3ClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[41].regaddr = ACPHY_Core1mClpAgcW3ClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[42].regaddraci = ACPHY_Core1mClpAgcNbClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[42].regaddr = ACPHY_Core1mClpAgcNbClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[43].regaddraci =
+	                        ACPHY_Core1mClpAgcMDClipCntTh1_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[43].regaddr = ACPHY_Core1mClpAgcMDClipCntTh1(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[44].regaddraci =
+	                        ACPHY_Core1mClpAgcMDClipCntTh2_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[44].regaddr = ACPHY_Core1mClpAgcMDClipCntTh2(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[45].regaddraci = ACPHY_Core1SsAgcNbClipCntTh1_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[45].regaddr = ACPHY_Core1SsAgcNbClipCntTh1(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[46].regaddraci = ACPHY_Core1SsAgcW1ClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[46].regaddr = ACPHY_Core1SsAgcW1ClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[47].regaddraci = ACPHY_Core1_BiQuad_MaxGain_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[47].regaddr = ACPHY_Core1_BiQuad_MaxGain(pi->pubpi->phy_rev);
+	}
+	if (num_core > 2) {
+	  aci_reg_list_acphy[48].regaddraci = ACPHY_Core2Adcclip_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[48].regaddr = ACPHY_Core2Adcclip(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[49].regaddraci = ACPHY_Core2FastAgcClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[49].regaddr = ACPHY_Core2FastAgcClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[50].regaddraci = ACPHY_Core2RssiClipMuxSel_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[50].regaddr = ACPHY_Core2RssiClipMuxSel(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[51].regaddraci = ACPHY_Core2InitGainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[51].regaddr = ACPHY_Core2InitGainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[52].regaddraci = ACPHY_Core2InitGainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[52].regaddr = ACPHY_Core2InitGainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[53].regaddraci = ACPHY_Core2clipHiGainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[53].regaddr = ACPHY_Core2clipHiGainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[54].regaddraci = ACPHY_Core2clipHiGainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[54].regaddr = ACPHY_Core2clipHiGainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[55].regaddraci = ACPHY_Core2clipmdGainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[55].regaddr = ACPHY_Core2clipmdGainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[56].regaddraci = ACPHY_Core2clipmdGainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[56].regaddr = ACPHY_Core2clipmdGainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[57].regaddraci = ACPHY_Core2cliploGainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[57].regaddr = ACPHY_Core2cliploGainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[58].regaddraci = ACPHY_Core2cliploGainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[58].regaddr = ACPHY_Core2cliploGainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[59].regaddraci = ACPHY_Core2clip2GainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[59].regaddr = ACPHY_Core2clip2GainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[60].regaddraci = ACPHY_Core2clip2GainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[60].regaddr = ACPHY_Core2clip2GainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[61].regaddraci =
+	                        ACPHY_Core2clipGainCodeB_ilnaP_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[61].regaddr = ACPHY_Core2clipGainCodeB_ilnaP(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[62].regaddraci = ACPHY_Core2DSSScckPktGain_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[62].regaddr = ACPHY_Core2DSSScckPktGain(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[63].regaddraci = ACPHY_Core2HpFBw_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[63].regaddr = ACPHY_Core2HpFBw(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[64].regaddraci = ACPHY_Core2mClpAgcW1ClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[64].regaddr = ACPHY_Core2mClpAgcW1ClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[65].regaddraci = ACPHY_Core2mClpAgcW3ClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[65].regaddr = ACPHY_Core2mClpAgcW3ClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[66].regaddraci = ACPHY_Core2mClpAgcNbClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[66].regaddr = ACPHY_Core2mClpAgcNbClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[67].regaddraci =
+	                        ACPHY_Core2mClpAgcMDClipCntTh1_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[67].regaddr = ACPHY_Core2mClpAgcMDClipCntTh1(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[68].regaddraci =
+	                        ACPHY_Core2mClpAgcMDClipCntTh2_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[68].regaddr = ACPHY_Core2mClpAgcMDClipCntTh2(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[69].regaddraci = ACPHY_Core2SsAgcNbClipCntTh1_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[69].regaddr = ACPHY_Core2SsAgcNbClipCntTh1(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[70].regaddraci = ACPHY_Core2SsAgcW1ClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[70].regaddr = ACPHY_Core2SsAgcW1ClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[71].regaddraci = ACPHY_Core2_BiQuad_MaxGain_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[71].regaddr = ACPHY_Core2_BiQuad_MaxGain(pi->pubpi->phy_rev);
+	}
+	if (num_core > 3) {
+	  aci_reg_list_acphy[72].regaddraci = ACPHY_Core3Adcclip_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[72].regaddr = ACPHY_Core3Adcclip(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[73].regaddraci = ACPHY_Core3FastAgcClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[73].regaddr = ACPHY_Core3FastAgcClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[74].regaddraci = ACPHY_Core3RssiClipMuxSel_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[74].regaddr = ACPHY_Core3RssiClipMuxSel(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[75].regaddraci = ACPHY_Core3InitGainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[75].regaddr = ACPHY_Core3InitGainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[76].regaddraci = ACPHY_Core3InitGainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[76].regaddr = ACPHY_Core3InitGainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[77].regaddraci = ACPHY_Core3clipHiGainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[77].regaddr = ACPHY_Core3clipHiGainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[78].regaddraci = ACPHY_Core3clipHiGainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[78].regaddr = ACPHY_Core3clipHiGainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[79].regaddraci = ACPHY_Core3clipmdGainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[79].regaddr = ACPHY_Core3clipmdGainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[80].regaddraci = ACPHY_Core3clipmdGainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[80].regaddr = ACPHY_Core3clipmdGainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[81].regaddraci = ACPHY_Core3cliploGainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[81].regaddr = ACPHY_Core3cliploGainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[82].regaddraci = ACPHY_Core3cliploGainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[82].regaddr = ACPHY_Core3cliploGainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[83].regaddraci = ACPHY_Core3clip2GainCodeA_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[83].regaddr = ACPHY_Core3clip2GainCodeA(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[84].regaddraci = ACPHY_Core3clip2GainCodeB_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[84].regaddr = ACPHY_Core3clip2GainCodeB(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[85].regaddraci =
+	                        ACPHY_Core3clipGainCodeB_ilnaP_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[85].regaddr = ACPHY_Core3clipGainCodeB_ilnaP(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[86].regaddraci = ACPHY_Core3DSSScckPktGain_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[86].regaddr = ACPHY_Core3DSSScckPktGain(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[87].regaddraci = ACPHY_Core3HpFBw_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[87].regaddr = ACPHY_Core3HpFBw(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[88].regaddraci = ACPHY_Core3mClpAgcW1ClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[88].regaddr = ACPHY_Core3mClpAgcW1ClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[89].regaddraci = ACPHY_Core3mClpAgcW3ClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[89].regaddr = ACPHY_Core3mClpAgcW3ClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[90].regaddraci = ACPHY_Core3mClpAgcNbClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[90].regaddr = ACPHY_Core3mClpAgcNbClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[91].regaddraci =
+	                        ACPHY_Core3mClpAgcMDClipCntTh1_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[91].regaddr = ACPHY_Core3mClpAgcMDClipCntTh1(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[92].regaddraci =
+	                        ACPHY_Core3mClpAgcMDClipCntTh2_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[92].regaddr = ACPHY_Core3mClpAgcMDClipCntTh2(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[93].regaddraci = ACPHY_Core3SsAgcNbClipCntTh1_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[93].regaddr = ACPHY_Core3SsAgcNbClipCntTh1(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[94].regaddraci = ACPHY_Core3SsAgcW1ClipCntTh_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[94].regaddr = ACPHY_Core3SsAgcW1ClipCntTh(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[95].regaddraci = ACPHY_Core3_BiQuad_MaxGain_aci(pi->pubpi->phy_rev);
+	  aci_reg_list_acphy[95].regaddr = ACPHY_Core3_BiQuad_MaxGain(pi->pubpi->phy_rev);
+	}
+	aci_reg_list_acphy[num_core*24].regaddr = 0xFFFF;
 
 	data->hwaci_phyreg_list = aci_reg_list_acphy;
-	data->hwaci_phytbl_list = phy_ac_noise_get_aci_tbl_list();
+	data->hwaci_phytbl_list = phy_ac_noise_get_aci_tbl_list(pi);
 }
 
 #ifdef RADIO_HEALTH_CHECK
@@ -4651,6 +5095,9 @@ phy_ac_noise_healthcheck_desense(phy_type_noise_ctx_t *ctx)
 			" max_weakest_rssi: %d allowed_weakest_rssi: %d\n",
 			__FUNCTION__, desense->ofdm_desense,
 			desense->bphy_desense, max_weakest_rssi, allowed_weakest_rssi));
+		/* XXX : Below should be removed along with the forcefail check when the desense
+		  * check is made as fatal error
+		*/
 		if ((aci->desense.ofdm_desense == PHY_FORCEFAIL_DESENSE_VALUE) &&
 			(aci->desense.bphy_desense == PHY_FORCEFAIL_DESENSE_VALUE)) {
 			return (PHY_RC_DESENSE_LIMITS);
@@ -4767,8 +5214,18 @@ static void phy_ac_noise_preempt_postfilter_reg_tbl(phy_ac_noise_info_t *ni, boo
 		/* maximize clip detect thresholds for hi RSSI region to eliminate self-aborts */
 		{ACPHY_PREMPT_ofdm_nominal_clip_th_hipwr0(pi->pubpi->phy_rev), 0xffff},
 		{ACPHY_PREMPT_cck_nominal_clip_th_hipwr0(pi->pubpi->phy_rev), 0xffff},
-		{ACPHY_PREMPT_ofdm_nominal_clip_th0(pi->pubpi->phy_rev), 0x4c00},
+		{ACPHY_PREMPT_ofdm_nominal_clip_th0(pi->pubpi->phy_rev), 0x3400},
 		{ACPHY_PREMPT_cck_nominal_clip_th0(pi->pubpi->phy_rev), 0x6000},
+		{ACPHY_PREMPT_ofdm_max_gain_mismatch_pkt_rcv_th0(pi->pubpi->phy_rev), 0x12},
+		{ACPHY_PREMPT_cck_max_gain_mismatch_pkt_rcv_th0(pi->pubpi->phy_rev), 0xe}};
+
+	uint16 ppr_preempt_phyreg_vals51[][2] = {
+		{ACPHY_PREMPT_ofdm_nominal_clip_th_hipwr_xtra_bits0(pi->pubpi->phy_rev), 0x2f00},
+		/* maximize clip detect thresholds for hi RSSI region to eliminate self-aborts */
+		{ACPHY_PREMPT_ofdm_nominal_clip_th_hipwr0(pi->pubpi->phy_rev), 0xffff},
+		{ACPHY_PREMPT_cck_nominal_clip_th_hipwr0(pi->pubpi->phy_rev), 0xffff},
+		{ACPHY_PREMPT_ofdm_nominal_clip_th0(pi->pubpi->phy_rev), 0x6d60},
+		{ACPHY_PREMPT_cck_nominal_clip_th0(pi->pubpi->phy_rev), 0x9c40},
 		{ACPHY_PREMPT_ofdm_max_gain_mismatch_pkt_rcv_th0(pi->pubpi->phy_rev), 0x12},
 		{ACPHY_PREMPT_cck_max_gain_mismatch_pkt_rcv_th0(pi->pubpi->phy_rev), 0xe}};
 
@@ -4788,7 +5245,14 @@ static void phy_ac_noise_preempt_postfilter_reg_tbl(phy_ac_noise_info_t *ni, boo
 			}
 		}
 
-		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+		if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			for (k = 0; k < ARRAYSIZE(ppr_preempt_phyreg_vals51); k++) {
+				phy_utils_write_phyreg(pi, (ppr_preempt_phyreg_vals51[k][0] |
+				ACPHY_REG_BROADCAST(pi)),
+				ppr_preempt_phyreg_vals51[k][1]);
+			}
+		} else if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		(!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 			for (k = 0; k < ARRAYSIZE(ppr_preempt_phyreg_vals47); k++) {
 				phy_utils_write_phyreg(pi, (ppr_preempt_phyreg_vals47[k][0] |
 				ACPHY_REG_BROADCAST(pi)),
@@ -4801,7 +5265,7 @@ static void phy_ac_noise_preempt_postfilter_reg_tbl(phy_ac_noise_info_t *ni, boo
 		} else {
 			preempt_en = 0x19;
 		}
-		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+		if (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) {
 			if ((pi->sh->interference_mode & ACPHY_LPD_PREEMPTION) != 0) {
 				preempt_en = 0x1f;
 			} else {
@@ -4811,7 +5275,7 @@ static void phy_ac_noise_preempt_postfilter_reg_tbl(phy_ac_noise_info_t *ni, boo
 	}
 
 	ACPHYREG_BCAST(pi, PREMPT_per_pkt_en0, preempt_en);
-	//wlapi_bmac_write_shm(pi->sh->physhim, M_PHYPREEMPT_VAL(pi), preempt_en);
+	wlapi_bmac_write_shm(pi->sh->physhim, M_PHYPREEMPT_VAL(pi), preempt_en);
 }
 
 void
@@ -5270,9 +5734,6 @@ phy_ac_noise_preempt(phy_ac_noise_info_t *ni, bool enable_preempt, bool EnablePo
 			} else {
 				WRITE_PHYREG(pi, PktAbortSupportedStates, 0x2bbf);
 			}
-			if (ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
-				WRITE_PHYREG(pi, PktAbortSupportedStates, 0x2fff);
-			}
 
 			WRITE_PHYREG(pi, BphyAbortExitCtrl, 0x3840);
 			WRITE_PHYREG(pi, PktAbortCounterClr, 0x18);
@@ -5293,30 +5754,7 @@ phy_ac_noise_preempt(phy_ac_noise_info_t *ni, bool enable_preempt, bool EnablePo
 			MOD_PHYREG(pi, PktAbortCtrl, PktAbortEn, 0);
 			phy_ac_noise_preempt_postfilter_reg_tbl(ni, FALSE);
 		}
-	} else if (ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
-		/* 43684 PREEMPTiON SETTINGs */
-		if (enable_preempt) {
-			WRITE_PHYREG(pi, PktAbortCtrl, 0xf041);
-			FOREACH_CORE(pi, core) {
-				MOD_PHYREGC(pi, _BPHY_TargetVar_log2_pt8us,
-					core, bphy_targetVar_log2_pt8us, 479);
-			}
-			WRITE_PHYREG(pi, RxMacifMode, 0x0a00);
-			WRITE_PHYREG(pi, PktAbortSupportedStates, 0x2fff);
-			WRITE_PHYREG(pi, BphyAbortExitCtrl, 0x3840);
-			WRITE_PHYREG(pi, PktAbortCounterClr, 0x18);
-
-			stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
-			ACPHY_DISABLE_STALL(pi);
-			phy_ac_noise_preempt_postfilter_reg_tbl(ni, TRUE);
-			ACPHY_ENABLE_STALL(pi, stall_val);
-		} else {
-			/* Disable Preempt */
-			MOD_PHYREG(pi, RxMacifMode, AbortStatusEn, 0);
-			MOD_PHYREG(pi, PktAbortCtrl, PktAbortEn, 0);
-			phy_ac_noise_preempt_postfilter_reg_tbl(ni, FALSE);
-		}
-	} else if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+	} else if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 		if (enable_preempt) {
 			/* 4347A0 Preemption settings */
 			ACPHY_REG_LIST_START
@@ -5345,7 +5783,7 @@ phy_ac_noise_preempt(phy_ac_noise_info_t *ni, bool enable_preempt, bool EnablePo
 				WRITE_PHYREG(pi, PktAbortCounterClr, 0x1D58);
 			}
 
-			if (ACMAJORREV_40(pi->pubpi->phy_rev) ||
+			if (ACMAJORREV_40_128(pi->pubpi->phy_rev) ||
 				(ACMAJORREV_44(pi->pubpi->phy_rev) &&
 				pi->pubpi->slice == DUALMAC_AUX)) {
 				/* Bphy related setting */
@@ -5354,7 +5792,7 @@ phy_ac_noise_preempt(phy_ac_noise_info_t *ni, bool enable_preempt, bool EnablePo
 
 			ACPHY_REG_LIST_START
 				/* Thresholds */
-				ACPHYREG_BCAST_ENTRY(pi, PREMPT_per_pkt_en0, 0x99)
+				ACPHYREG_BCAST_ENTRY(pi, PREMPT_per_pkt_en0, 0x9d)
 				ACPHYREG_BCAST_ENTRY(pi,
 					PREMPT_ofdm_nominal_clip_th_hipwr_xtra_bits0, 0x1403)
 				ACPHYREG_BCAST_ENTRY(pi, PREMPT_ofdm_low_power_mismatch_th0, 24)
@@ -5374,6 +5812,29 @@ phy_ac_noise_preempt(phy_ac_noise_info_t *ni, bool enable_preempt, bool EnablePo
 				MOD_PHYREG_ENTRY(pi, PktAbortCtrl, PktAbortEn, 0)
 				ACPHYREG_BCAST_ENTRY(pi, PREMPT_per_pkt_en0, 0)
 			ACPHY_REG_LIST_EXECUTE(pi);
+		}
+	} else if (ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
+		/* 43684 PREEMPTiON SETTINGs */
+		if (enable_preempt) {
+			WRITE_PHYREG(pi, PktAbortCtrl, 0xf041);
+			FOREACH_CORE(pi, core) {
+				MOD_PHYREGC(pi, _BPHY_TargetVar_log2_pt8us,
+					core, bphy_targetVar_log2_pt8us, 479);
+			}
+			WRITE_PHYREG(pi, RxMacifMode, 0x0a00);
+			WRITE_PHYREG(pi, PktAbortSupportedStates, 0x2fff);
+			WRITE_PHYREG(pi, BphyAbortExitCtrl, 0x3840);
+			WRITE_PHYREG(pi, PktAbortCounterClr, 0x18);
+
+			stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
+			ACPHY_DISABLE_STALL(pi);
+			phy_ac_noise_preempt_postfilter_reg_tbl(ni, TRUE);
+			ACPHY_ENABLE_STALL(pi, stall_val);
+		} else {
+			/* Disable Preempt */
+			MOD_PHYREG(pi, RxMacifMode, AbortStatusEn, 0);
+			MOD_PHYREG(pi, PktAbortCtrl, PktAbortEn, 0);
+			phy_ac_noise_preempt_postfilter_reg_tbl(ni, FALSE);
 		}
 	}
 
@@ -5475,14 +5936,22 @@ phy_ac_noise_read_shmem(phy_type_noise_ctx_t *ctx, uint8 *lte_on, uint8 *crs_hig
 		    RxGain was overriden when requesting noise measurement
 		*/
 		pi->cal_info->phy_forcecal_request = FALSE;
-		if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+		if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 			phy_ac_ovr_rxgain_noise_sample_request(pi->u.pi_acphy->rxgcrsi, FALSE);
 		}
 	}
 
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+	/* EAP never aborts noise measurements.
+	 * Decides below whether or not to keep measurements based
+	 * on the in-band flags like CRC present.
+	 */
+	 BCM_REFERENCE(noisei);
+#else
 	if (phy_noise_abort_shmem_read(noisei)) {
 		return -1;
 	}
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 
 	if (ISACPHY(pi)) {
 		/* Restore the default value . Required if noise cal is triggered from cals */
@@ -5550,6 +6019,10 @@ phy_ac_noise_read_shmem(phy_type_noise_ctx_t *ctx, uint8 *lte_on, uint8 *crs_hig
 	if ((!noise_during_lte) && (!noise_during_crs)) {
 		wlc_phy_noise_save(pi, noise_dbm_ant, &noise_dbm);
 	} else {
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+		PHY_INFORM(("EAP %s CRS %d LTE %d during noise, using %d dBm\n",
+			__FUNCTION__, noise_during_crs, noise_during_lte, noise_dbm_ant[0]));
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 		noise_dbm = noise_dbm_ant[0];
 	}
 

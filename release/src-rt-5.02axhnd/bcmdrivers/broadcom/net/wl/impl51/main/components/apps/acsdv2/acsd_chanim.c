@@ -1,7 +1,7 @@
 /*
  * ACS deamon chanim module (Linux)
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acsd_chanim.c 754639 2018-03-28 11:55:11Z $
+ * $Id: acsd_chanim.c 777524 2019-08-05 08:28:05Z $
  */
 
 #include "acsd_svr.h"
@@ -115,7 +115,7 @@ acsd_chanim_init(acs_chaninfo_t *c_info)
 	ret = acs_set_chanim_sample_period(c_info->name, chanim_config(ch_info).sample_period);
 
 	if (ret < 0) {
-		ACSD_ERROR("failed to set chanim_sample_period");
+		ACSD_ERROR("%s: failed to set chanim_sample_period", c_info->name);
 	}
 
 	chanim_mark(ch_info).wl_sample_period =
@@ -124,7 +124,7 @@ acsd_chanim_init(acs_chaninfo_t *c_info)
 	ret = acs_set_noise_metric(c_info->name, NOISE_MEASURE_KNOISE);
 
 	if (ret < 0) {
-		ACSD_ERROR("failed to set noise metric");
+		ACSD_ERROR("%s: failed to set noise metric", c_info->name);
 	}
 
 	ACS_FREE(c_info->chanim_info);
@@ -204,21 +204,34 @@ acsd_display_chanim(wl_chanim_stats_t* chanim_stats)
 }
 
 static bool
-chanim_intf_detected(chanim_info_t *ch_info)
+chanim_intf_detected(chanim_info_t *ch_info, uint8 version)
 {
 	bool detected = FALSE;
-	chanim_stats_t* latest = &ch_info->stats[chanim_mark(ch_info).stats_idx];
+	chanim_stats_t* latest = NULL;
+	chanim_stats_v2_t *latestv2 = NULL;
 	chanim_config_t* config = &ch_info->config;
 
 	bool noise_detect = FALSE;
-	int score;
+	int score = 0;
+	if (version == WL_CHANIM_STATS_V2) {
+		latestv2 = (chanim_stats_v2_t *)&ch_info->stats[chanim_mark(ch_info).stats_idx];
+		/* if the detection is not supported, return false */
+		if (latestv2->bgnoise == 0)
+			return detected;
 
-	/* if the detection is not supported, return false */
-	if (latest->bgnoise == 0)
-		return detected;
+		score = latestv2->bgnoise;
+		score += chanim_txop_to_noise(latestv2->chan_idle);
 
-	score = latest->bgnoise;
-	score += chanim_txop_to_noise(latest->chan_idle);
+	} else if (version == WL_CHANIM_STATS_VERSION) {
+		latest = (chanim_stats_t *)&ch_info->stats[chanim_mark(ch_info).stats_idx];
+		/* if the detection is not supported, return false */
+		if (latest->bgnoise == 0)
+			return detected;
+
+		score = latest->bgnoise;
+		score += chanim_txop_to_noise(latest->chan_idle);
+
+	}
 
 	if (score < chanim_mark(ch_info).best_score)
 		chanim_mark(ch_info).best_score = score;
@@ -230,10 +243,16 @@ chanim_intf_detected(chanim_info_t *ch_info)
 	if ((score - chanim_mark(ch_info).best_score) >= config->acs_trigger_var)
 		noise_detect = TRUE;
 
-	if (noise_detect && (latest->ccastats[CCASTATS_INBSS] < 2)) {
-		detected = TRUE;
-	}
+	if (version == WL_CHANIM_STATS_V2) {
+		if (noise_detect && (latestv2->ccastats[CCASTATS_INBSS] < 2)) {
+			detected = TRUE;
+		}
+	} else if (version == WL_CHANIM_STATS_VERSION) {
 
+		if (noise_detect && (latest->ccastats[CCASTATS_INBSS] < 2)) {
+			detected = TRUE;
+		}
+	}
 	return detected;
 }
 
@@ -249,7 +268,8 @@ chanim_speedup_scbprobe(acs_chaninfo_t * c_info)
 	ret = acs_get_scb_probe(c_info->name, &scb_probe, sizeof(wl_scb_probe_t));
 	ACS_ERR(ret, "failed to get scb_probe results");
 
-	ACSD_DEBUG("scb_probe: scb_timeout: %d, scb_max_probe: %d, scb_activity_time: %d\n",
+	ACSD_DEBUG("%s: scb_probe: scb_timeout: %d, scb_max_probe: %d, scb_activity_time: %d\n",
+		c_info->name,
 		scb_probe.scb_timeout, scb_probe.scb_max_probe, scb_probe.scb_activity_time);
 
 	chanim_mark(ch_info).scb_timeout = dtoh32(scb_probe.scb_timeout);
@@ -313,7 +333,7 @@ chanim_upd_acs_record(chanim_info_t *ch_info, chanspec_t selected, uint8 trigger
 		chanim_mark(ch_info).record_idx = 0;
 }
 
-static bool
+bool
 chanim_chk_lockout(chanim_info_t *ch_info)
 {
 	uint8 cur_idx = chanim_mark(ch_info).record_idx;
@@ -348,7 +368,7 @@ chanim_chk_lockout(chanim_info_t *ch_info)
 
 	if (start_record->valid && (passed <
 			chanim_config(ch_info).lockout_period)) {
-		ACSD_ERROR("chanim lockout true\n");
+		ACSD_DEBUG("chanim lockout true\n");
 		return TRUE;
 	}
 	return FALSE;
@@ -356,15 +376,15 @@ chanim_chk_lockout(chanim_info_t *ch_info)
 
 /* update the chanim state machine */
 static int
-chanim_upd_state(acs_chaninfo_t * c_info)
+chanim_upd_state(acs_chaninfo_t * c_info, uint8 version)
 {
 	int ret = 0;
 	chanim_info_t * ch_info = c_info->chanim_info;
 	uint8 cur_state = chanim_mark(ch_info).state;
 	time_t now = uptime();
-	bool detected = chanim_intf_detected(ch_info);
+	bool detected = chanim_intf_detected(ch_info, version);
 
-	ACSD_DEBUG("current time: %ld\n", now);
+	ACSD_DEBUG("%s: current time: %ld\n", c_info->name, now);
 
 	if (chanim_mark(ch_info).detected != detected) {
 		chanim_update_state(c_info, detected);
@@ -375,7 +395,8 @@ chanim_upd_state(acs_chaninfo_t * c_info)
 	case CHANIM_STATE_DETECTING:
 		if (detected) {
 			cur_state = CHANIM_STATE_DETECTED;
-			ACSD_CHANIM("state changed: from %d to %d\n",
+			ACSD_CHANIM("%s: state changed: from %d to %d\n",
+				c_info->name,
 				chanim_mark(ch_info).state, cur_state);
 			chanim_mark(ch_info).detecttime = now;
 		}
@@ -385,7 +406,8 @@ chanim_upd_state(acs_chaninfo_t * c_info)
 
 		if (!detected) {
 			cur_state = CHANIM_STATE_DETECTING;
-			ACSD_CHANIM("state changed: from %d to %d\n",
+			ACSD_CHANIM("%s: state changed: from %d to %d\n",
+				c_info->name,
 				chanim_mark(ch_info).state, cur_state);
 			chanim_mark(ch_info).detecttime = 0;
 			break;
@@ -396,7 +418,8 @@ chanim_upd_state(acs_chaninfo_t * c_info)
 
 			if ((uint8)passed > chanim_act_delay(ch_info)) {
 				cur_state = CHANIM_STATE_ACTON;
-				ACSD_CHANIM("state changed: from %d to %d\n",
+				ACSD_CHANIM("%s: state changed: from %d to %d\n",
+					c_info->name,
 					chanim_mark(ch_info).state, cur_state);
 				chanim_speedup_scbprobe(c_info);
 			}
@@ -407,15 +430,17 @@ chanim_upd_state(acs_chaninfo_t * c_info)
 
 		if (!detected) {
 			cur_state = CHANIM_STATE_DETECTING;
-			ACSD_CHANIM("state changed: from %d to %d\n",
+			ACSD_CHANIM("%s: state changed: from %d to %d\n",
+				c_info->name,
 				chanim_mark(ch_info).state, cur_state);
 			goto post_act;
 		}
 			/* check for lockout */
 		if (chanim_chk_lockout(ch_info)) {
 			cur_state = CHANIM_STATE_LOCKOUT;
-			ACSD_CHANIM("state changed: from %d to %d\n",
-			   chanim_mark(ch_info).state, cur_state);
+			ACSD_CHANIM("%s: state changed: from %d to %d\n",
+				c_info->name,
+				chanim_mark(ch_info).state, cur_state);
 			goto post_act;
 		}
 
@@ -423,11 +448,12 @@ chanim_upd_state(acs_chaninfo_t * c_info)
 			uint lastused = 0;
 			lastused = acs_get_chanim_scb_lastused(c_info);
 
-			ACSD_DEBUG("lastused: %d\n", lastused);
+			ACSD_DEBUG("%s lastused: %d\n", c_info->name, lastused);
 
 			if (lastused < (uint)chanim_act_delay(ch_info)) {
 				cur_state = CHANIM_STATE_DETECTING;
-				ACSD_DEBUG("state changed: from %d to %d\n",
+				ACSD_DEBUG("%s: state changed: from %d to %d\n",
+					c_info->name,
 					chanim_mark(ch_info).state, cur_state);
 				goto post_act;
 			}
@@ -442,22 +468,27 @@ chanim_upd_state(acs_chaninfo_t * c_info)
 			ret = acs_request_data(c_info);
 			ACS_ERR(ret, "request data failed\n");
 
-			c_info->switch_reason = APCS_CHANIM;
-			acs_select_chspec(c_info);
-			/* some other can request to change the channel via acsd, in that
-			 * case proper reason will be provided by requesting APP, For ACSD
-			 * USE_ACSD_DEF_METHOD: ACSD's own default method to set channel
-			 */
-			acs_set_chspec(c_info, TRUE, ACSD_USE_DEF_METHOD);
-			chanim_upd_acs_record(ch_info, c_info->selected_chspec, APCS_CHANIM);
+			if (acs_select_chspec(c_info)) {
+				/* some other can request to change the channel via acsd, in that
+				 * case proper reason will be provided by requesting APP, For ACSD
+				 * USE_ACSD_DEF_METHOD: ACSD's own default method to set channel
+				 */
+				c_info->switch_reason = APCS_CHANIM;
+				if (c_info->acs_use_csa) {
+					ret = acs_csa_handle_request(c_info);
+				} else {
+					acs_set_chspec(c_info, TRUE, ACSD_USE_DEF_METHOD);
+					ret = acs_update_driver(c_info);
+					ACS_ERR(ret, "update driver failed\n");
+				}
 
-			ret = acs_update_driver(c_info);
-			ACS_ERR(ret, "update driver failed\n");
-
-			cur_state = CHANIM_STATE_DETECTING;
-			ACSD_CHANIM("state changed: from %d to %d\n",
-				chanim_mark(ch_info).state, cur_state);
+				cur_state = CHANIM_STATE_DETECTING;
+				ACSD_CHANIM("%s: state changed: from %d to %d\n",
+						c_info->name,
+						chanim_mark(ch_info).state, cur_state);
+			}
 		}
+
 post_act:
 		chanim_mark(ch_info).detecttime = 0;
 		chanim_restore_scbprobe(c_info);
@@ -468,21 +499,23 @@ post_act:
 	case CHANIM_STATE_LOCKOUT:
 		if (!detected) {
 			cur_state = CHANIM_STATE_DETECTING;
-			ACSD_CHANIM("state changed: from %d to %d\n",
+			ACSD_CHANIM("%s: state changed: from %d to %d\n",
+				c_info->name,
 				chanim_mark(ch_info).state, cur_state);
 			break;
 		}
 
 		if (!chanim_chk_lockout(ch_info)) {
 			cur_state = CHANIM_STATE_DETECTED;
-			ACSD_CHANIM("state changed: from %d to %d\n",
-			   chanim_mark(ch_info).state, cur_state);
+			ACSD_CHANIM("%s: state changed: from %d to %d\n",
+				c_info->name,
+				chanim_mark(ch_info).state, cur_state);
 			chanim_mark(ch_info).detecttime = now;
 		}
 		break;
 
 	default:
-		ACSD_ERROR("Invalid chanim state: %d\n", cur_state);
+		ACSD_ERROR("%s: Invalid chanim state: %d\n", c_info->name, cur_state);
 		break;
 	}
 
@@ -555,7 +588,7 @@ acsd_update_chanim(acs_chaninfo_t * c_info, wl_chanim_stats_t * chanim_stats, ui
 			}
 		}
 		else {
-			chanim_upd_state(c_info);
+			chanim_upd_state(c_info, chanim_stats->version);
 		}
 		c_info->cur_timestamp = tmp.timestamp;
 		c_info->txop_score = stats_v3->ccastats[CCASTATS_TXOP] +
@@ -563,6 +596,10 @@ acsd_update_chanim(acs_chaninfo_t * c_info, wl_chanim_stats_t * chanim_stats, ui
 			stats_v3->ccastats[CCASTATS_INBSS];
 		c_info->txrx_score = stats_v3->ccastats[CCASTATS_TXDUR] +
 			stats_v3->ccastats[CCASTATS_INBSS];
+		c_info->channel_free = stats_v3->ccastats[CCASTATS_TXOP];
+		if (c_info->acs_nonwifi_enable) {
+			c_info->glitch_cnt = stats_v3->glitchcnt;
+		}
 	} else if (chanim_stats->version == WL_CHANIM_STATS_V2) {
 		chanim_stats_v2_t tmp;
 		chanim_stats_v2_t *stats_v2 = (chanim_stats_v2_t *)chanim_stats->stats;
@@ -598,7 +635,7 @@ acsd_update_chanim(acs_chaninfo_t * c_info, wl_chanim_stats_t * chanim_stats, ui
 			}
 		}
 		else {
-			chanim_upd_state(c_info);
+			chanim_upd_state(c_info, chanim_stats->version);
 		}
 		c_info->cur_timestamp = tmp.timestamp;
 		c_info->txop_score = stats_v2->ccastats[CCASTATS_TXOP] +
@@ -606,13 +643,17 @@ acsd_update_chanim(acs_chaninfo_t * c_info, wl_chanim_stats_t * chanim_stats, ui
 			stats_v2->ccastats[CCASTATS_INBSS];
 		c_info->txrx_score = stats_v2->ccastats[CCASTATS_TXDUR] +
 			stats_v2->ccastats[CCASTATS_INBSS];
+		c_info->channel_free = stats_v2->ccastats[CCASTATS_TXOP];
+		if (c_info->acs_nonwifi_enable) {
+			c_info->glitch_cnt = stats_v2->glitchcnt;
+		}
 	}
 
 	ch_info->mark.stats_idx ++;
 	if (chanim_mark(ch_info).stats_idx == CHANIM_STATS_RECORD)
 		chanim_mark(ch_info).stats_idx = 0;
 
-	ACSD_DEBUG("stats_idx: %d\n", chanim_mark(ch_info).stats_idx);
+	ACSD_DEBUG("%s: stats_idx: %d\n", c_info->name, chanim_mark(ch_info).stats_idx);
 #ifdef ACSD_SEGMENT_CHANIM
 	if (c_info->ch_avail && c_info->ch_avail_count) {
 		c_info->txop_score = acsd_get_segment_rep(c_info, c_info->txop_score);
@@ -644,7 +685,8 @@ static void acsd_segment_divide(acs_chaninfo_t *c_info)
 
 	if (!c_info->segment_chanim || !c_info->ch_avail || !c_info->num_seg ||
 			!c_info->ch_avail_count) {
-		ACSD_INFO("exit segment_chanim:%d, ch_avail:%p, num_seg:%d, ch_avail_count:%d\n",
+		ACSD_INFO("%s: exit seg_chanim:%d, ch_avail:%p, num_seg:%d, ch_avail_count:%d\n",
+				c_info->name,
 				c_info->segment_chanim, c_info->ch_avail, c_info->num_seg,
 				c_info->ch_avail_count);
 		return;
@@ -655,7 +697,8 @@ static void acsd_segment_divide(acs_chaninfo_t *c_info)
 	/* build absolute frequency map per txop index 0 - 100 */
 	for (i = 0; i < arr_len; i++) {
 		if (arr[i] > ACSD_TXOP_MAX) {
-			ACSD_DEBUG("Err: Must be 0 - %d. Not %d\n", ACSD_TXOP_MAX, arr[i]);
+			ACSD_DEBUG("%s: Err: Must be 0 - %d. Not %d\n", c_info->name,
+				ACSD_TXOP_MAX, arr[i]);
 			arr[i] = ACSD_TXOP_MAX;
 		}
 		abs_freq[arr[i]]++;
@@ -709,7 +752,8 @@ static uint8 acsd_get_segment_rep(acs_chaninfo_t * c_info, uint8 val)
 
 	if (!c_info->segment_chanim || !c_info->ch_avail || !c_info->num_seg ||
 			!c_info->ch_avail_count) {
-		ACSD_INFO("No divs segment_chanim:%d, ch_avail:%p, num_seg:%d, ch_avail_count:%d\n",
+		ACSD_INFO("%s: No divs seg_chanim:%d, ch_avail:%p, num_seg:%d, ch_avail_count:%d\n",
+				c_info->name,
 				c_info->segment_chanim, c_info->ch_avail, c_info->num_seg,
 				c_info->ch_avail_count);
 		return ret; /* return value itself without change */
@@ -732,7 +776,7 @@ static uint8 acsd_get_segment_rep(acs_chaninfo_t * c_info, uint8 val)
 /** takes c_info->ch_avail, divides the values into segments and replaces
  * original ch_avail values with segment representatives instead
  */
-static int acsd_segmentize_chanim(acs_chaninfo_t * c_info)
+int acsd_segmentize_chanim(acs_chaninfo_t * c_info)
 {
 	int i;
 
@@ -753,13 +797,14 @@ static int acsd_segmentize_chanim(acs_chaninfo_t * c_info)
 int
 acsd_chanim_query(acs_chaninfo_t * c_info, uint32 count, uint32 ticks)
 {
-	int i, ret = 0;
+	int i, j = 0, ret = 0;
 	char *data_buf;
 	wl_chanim_stats_t *list;
 	wl_chanim_stats_t param;
 	int buflen = ACS_CHANIM_BUF_LEN;
 	chanim_stats_t *stats = NULL;
 	chanim_stats_v2_t *statsv2 = NULL;
+	chanspec_t input_band = 0;
 
 	data_buf = acsd_malloc(ACS_CHANIM_BUF_LEN);
 	list = (wl_chanim_stats_t *) data_buf;
@@ -776,8 +821,8 @@ acsd_chanim_query(acs_chaninfo_t * c_info, uint32 count, uint32 ticks)
 	list->version = dtoh32(list->version);
 	list->count = dtoh32(list->count);
 
-	ACSD_DEBUG("buflen: %d, version: %d count: %d\n",
-		list->buflen, list->version, list->count);
+	ACSD_DEBUG("%s: buflen: %d, version: %d count: %d\n",
+		c_info->name, list->buflen, list->version, list->count);
 
 	if (list->buflen == 0) {
 		list->version = 0;
@@ -809,18 +854,18 @@ acsd_chanim_query(acs_chaninfo_t * c_info, uint32 count, uint32 ticks)
 		return ret;
 	}
 	if (count != WL_CHANIM_COUNT_ALL) {
-		ACSD_DEBUG("count:%d\n", count);
+		ACSD_DEBUG("%s: count:%d\n", c_info->name, count);
 		return ret;
 	}
 	if (!c_info->ch_avail) {
-		ACSD_DEBUG("ch_avail is NULL\n");
+		ACSD_DEBUG("%s: ch_avail is NULL\n", c_info->name);
 		return ret;
 	}
 	if (!c_info->ch_avail_count) {
-		ACSD_DEBUG("ch_avail_count is zero\n");
+		ACSD_DEBUG("%s: ch_avail_count is zero\n", c_info->name);
 		return ret;
 	}
-	ACSD_INFO("ACSD:  list count: %d, ch_avail_count: %d\n", list->count,
+	ACSD_INFO("ACSD: %s: list count: %d, ch_avail_count: %d\n", c_info->name, list->count,
 			c_info->ch_avail_count);
 	if (list->version == WL_CHANIM_STATS_VERSION)
 	{
@@ -831,14 +876,37 @@ acsd_chanim_query(acs_chaninfo_t * c_info, uint32 count, uint32 ticks)
 	for (i = 0; i < c_info->ch_avail_count; i++) {
 		c_info->ch_avail[i] = 100;
 	}
+	if (c_info->ch_avail_count < list->count)
+	{
+		ACSD_DEBUG("%s: ch_avail_count less than chanim count\n", c_info->name);
+		return ret;
+	}
+
+	if (BAND_5G(c_info->rs_info.band_type)) {
+		input_band = WL_CHANSPEC_BAND_5G;
+	} else {
+		input_band = WL_CHANSPEC_BAND_2G;
+	}
+
 	for (i = 0; i < list->count; i++) {
 		if (list->version == WL_CHANIM_STATS_VERSION) {
 			uint8 *cc = stats[i].ccastats;
-			c_info->ch_avail[i] = cc[CCASTATS_TXOP] + cc[CCASTATS_INBSS] + cc[CCASTATS_TXDUR];
-		} else if (list->version == WL_CHANIM_STATS_V2) {
-			uint8 *cc = statsv2->ccastats;
-			c_info->ch_avail[i] = cc[CCASTATS_TXOP] + cc[CCASTATS_INBSS] + cc[CCASTATS_TXDUR];
-			statsv2++;
+			if (!stats[i].chanspec || input_band != CHSPEC_BAND(stats[i].chanspec)) {
+				continue;
+			}
+			c_info->ch_avail[j] = cc[CCASTATS_TXOP] + cc[CCASTATS_INBSS] +
+				cc[CCASTATS_TXDUR];
+			j++;
+		}
+		else if (list->version == WL_CHANIM_STATS_V2) {
+			uint8 *cc = statsv2[i].ccastats;
+			if (!statsv2[i].chanspec ||
+					input_band != CHSPEC_BAND(statsv2[i].chanspec)) {
+				continue;
+			}
+			c_info->ch_avail[j] = cc[CCASTATS_TXOP] + cc[CCASTATS_INBSS] +
+				cc[CCASTATS_TXDUR];
+			j++;
 		}
 	}
 
@@ -860,13 +928,13 @@ acsd_chanim_check(uint ticks, acs_chaninfo_t *c_info)
 	if (period != chanim_mark(ch_info).wl_sample_period) {
 		ret = acs_set_chanim_sample_period(c_info->name, (uint)period);
 		if (ret < 0) {
-			ACSD_ERROR("failed to set chanim_sample_period");
+			ACSD_ERROR("%s: failed to set chanim_sample_period", c_info->name);
 			return;
 		}
 		chanim_mark(ch_info).wl_sample_period = period;
 	}
 
-	ACSD_DEBUG("ticks: %d, period: %d\n", ticks, period);
+	ACSD_DEBUG("%s: ticks: %d, period: %d\n", c_info->name, ticks, period);
 
 	/* start the query after a number of  ticks (since start or channel change,
 	 * since bgnoise is  not accurate before that.

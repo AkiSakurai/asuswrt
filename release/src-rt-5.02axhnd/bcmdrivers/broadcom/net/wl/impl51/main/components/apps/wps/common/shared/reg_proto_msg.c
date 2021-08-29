@@ -1,7 +1,7 @@
 /*
  * Registrataion protocol messages
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: reg_proto_msg.c 678846 2017-01-11 08:50:19Z $
+ * $Id: reg_proto_msg.c 766338 2018-07-31 04:55:48Z $
  */
 
 #include <wps_dh.h>
@@ -52,6 +52,7 @@
 #include <wpsheaders.h>
 #include <wpscommon.h>
 #include <wpserror.h>
+
 #include <reg_protomsg.h>
 
 #include <sha2.h>
@@ -568,6 +569,11 @@ reg_msg_m8ap_parse(EsM8Ap *t, BufferObj *theBuf, BufferObj *authKey, bool alloca
 			goto tlv_error;
 	}
 
+	/*
+	 * XXX index < 1 || index > 4 should return error.  Our wps utility
+	 * send 0 by default.  Question comes, is that right?
+	 * Set wep index default value to index 1 if value is out of range
+	 */
 	if (t->wepIdx.m_data < 1 || t->wepIdx.m_data > 4)
 		tlv_set(&t->wepIdx, WPS_ID_WEP_TRANSMIT_KEY, (void *)1, 0);
 
@@ -603,6 +609,7 @@ reg_msg_m8ap_parse(EsM8Ap *t, BufferObj *theBuf, BufferObj *authKey, bool alloca
 	if (memcmp(dataMac, t->keyWrapAuth.m_data, SIZE_64_BITS) != 0)
 		TUTRACE((TUTRACE_ERR, "RPROTO: HMAC results don't match\n"));
 	return 0;
+
 tlv_error:
 	TUTRACE((TUTRACE_ERR, "De-serialize error!!\n"));
 	return -1;
@@ -848,6 +855,11 @@ reg_msg_es_new(int es_type)
 	case ES_TYPE_M8STA:
 		size = sizeof(EsM8Sta);
 		break;
+#if defined(MULTIAP)
+	case ES_TYPE_M8BHSTA:
+		size = sizeof(EsM8Sta);
+		break;
+#endif	/* MULTIAP */
 	default:
 		TUTRACE((TUTRACE_ERR, "Unknown ES type %d\n", es_type));
 		return NULL;
@@ -886,6 +898,11 @@ reg_msg_es_del(void *es, bool content_only)
 	case ES_TYPE_M8STA:
 		reg_msg_m8sta_del((EsM8Sta *)es, content_only);
 		break;
+#if defined(MULTIAP)
+	case ES_TYPE_M8BHSTA:
+		reg_msg_m8sta_del((EsM8Sta *)es, content_only);
+		break;
+#endif	/* MULTIAP */
 	default:
 		TUTRACE((TUTRACE_ERR, "Unknown ES type %d\n", *es_type));
 		break;

@@ -1,7 +1,7 @@
 /*
  * TEMPsense module implementation - iovar table/handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,9 +45,12 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_temp_iov.c 760979 2018-05-04 06:42:22Z $
+ * $Id: phy_temp_iov.c 774624 2019-04-30 18:59:48Z $
  */
 
+/* XXX: Define wlc_cfg.h to be the first header file included as some builds
+ * get their feature flags thru this file.
+ */
 #include <wlc_cfg.h>
 #include <typedefs.h>
 #include <phy_api.h>
@@ -64,7 +67,8 @@ enum {
 	IOV_PHY_TEMP_HYSTERESIS = 2,
 	IOV_PHY_TEMPOFFSET = 3,
 	IOV_PHY_TEMPSENSE_OVERRIDE = 4,
-	IOV_PHY_TEMPSENSE_SKIP = 5
+	IOV_PHY_TEMPSENSE_SKIP = 5,
+	IOV_PHY_TEMP_COUNTERS = 6
 };
 
 /* iovar table */
@@ -79,6 +83,7 @@ static const bcm_iovar_t phy_temp_iovars[] = {
 	(IOVF_MFG), 0, IOVT_UINT8, 0
 	},
 #endif /* BCMDBG || WLTEST */
+	{"phy_temp_counters", IOV_PHY_TEMP_COUNTERS, 0, 0, IOVT_INT16, 0},
 	{NULL, 0, 0, 0, 0, 0}
 };
 
@@ -166,6 +171,9 @@ phy_temp_doiovar(void *ctx, uint32 aid,
 		break;
 
 #endif /* BCMDBG || WLTEST */
+	case IOV_GVAL(IOV_PHY_TEMP_COUNTERS):
+		bcopy(&temp->txcore_temp_cnt, a, sizeof(phy_txcore_temp_cnt_t));
+		break;
 
 	default:
 		err = BCME_UNSUPPORTED;

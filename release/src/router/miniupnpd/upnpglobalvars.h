@@ -72,6 +72,20 @@ extern int runtime_flags;
 #define	AS_DIR_MAX	1
 extern int aura_standalone;
 #endif
+#ifdef ENABLE_NVGFN
+#define ENABLENVGFNMASK				0x1000
+#define NVGFN_QOSPORT_MIN			1024
+#define NVGFN_QOSPORT_MAX			65535
+#define NVGFN_MCSINDEX_MIN			0
+#define NVGFN_MCSINDEX_MAX			23
+#define NVGFN_SPATIALSTREAMS_MIN	1
+#define NVGFN_SPATIALSTREAMS_MAX	3
+#define NVGFN_BANDWIDTH_MIN			1
+#define NVGFN_BANDWIDTH_MAX			65535
+#define NVGFN_WIFISCANINTERVAL_MIN	0
+#define NVGFN_WIFISCANINTERVAL_MAX	65535
+extern int gfn_only;
+#endif
 
 #define SETFLAG(mask)	runtime_flags |= mask
 #define GETFLAG(mask)	(runtime_flags & mask)

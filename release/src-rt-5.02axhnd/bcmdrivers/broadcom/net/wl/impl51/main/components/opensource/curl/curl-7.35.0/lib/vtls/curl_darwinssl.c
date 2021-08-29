@@ -1352,6 +1352,10 @@ static CURLcode darwinssl_connect_step1(struct connectdata *conn,
        &all_ciphers_count) == noErr) {
     for(i = 0UL ; i < all_ciphers_count ; i++) {
 #if CURL_BUILD_MAC
+     /* There's a known bug in early versions of Mountain Lion where ST's ECC
+        ciphers (cipher suite 0xC001 through 0xC032) simply do not work.
+        Work around the problem here by disabling those ciphers if we are
+        running in an affected version of OS X. */
       if(darwinver_maj == 12 && darwinver_min <= 3 &&
          all_ciphers[i] >= 0xC001 && all_ciphers[i] <= 0xC032) {
            continue;

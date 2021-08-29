@@ -1,7 +1,7 @@
 /*
  *   bcmwpa.c - shared WPA-related functions
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,9 +45,12 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcmwpa.c 722778 2017-09-21 09:58:38Z $
+ * $Id: bcmwpa.c 775370 2019-05-29 08:20:33Z $
  */
 
+/* XXX: Define bcm_cfg.h to be the first header file included as some builds
+ * get their feature flags thru this file.
+ */
 #include <bcm_cfg.h>
 
 /* include wl driver config file if this file is compiled for driver */
@@ -440,6 +443,9 @@ wpa_encr_key_data(eapol_wpa_key_header_t *body, uint16 key_info, uint8 *ekey,
 	case WPA_KEY_DESC_V2: /* fall through */
 	case WPA_KEY_DESC_V3:
 		len = ntoh16_ua((uint8 *)&body->data_len);
+		/* FIXME: data_len is length to encrypt, but need to make sure buffer is big enought
+		 * for expansion.  how?  problem for caller?
+		 */
 		/* pad if needed - min. 16 bytes, 8 byte aligned */
 		/* padding is 0xdd followed by 0's */
 		if (len < 2*AKW_BLOCK_LEN) {
@@ -568,7 +574,6 @@ rsn_cipher(wpa_suite_t *suite, ushort *cipher, const uint8 *std_oui, bool wep_ok
 		return ret;
 	}
 
-	/* check for other vendor OUIs */
 	return FALSE;
 }
 
@@ -588,7 +593,8 @@ wpa2_cipher(wpa_suite_t *suite, ushort *cipher, bool wep_ok)
  * not update the tlvs buffer pointer/length.
  */
 bool
-bcm_has_ie(uint8 *ie, uint8 **tlvs, uint *tlvs_len, const uint8 *oui, int oui_len, uint8 type)
+bcm_has_ie(const uint8 *ie, const uint8 **tlvs, uint *tlvs_len, const uint8 *oui,
+		int oui_len, uint8 type)
 {
 	/* If the contents match the OUI and the type */
 	if (ie[TLV_LEN_OFF] >= oui_len + 1 &&
@@ -608,7 +614,7 @@ bcm_has_ie(uint8 *ie, uint8 **tlvs, uint *tlvs_len, const uint8 *oui, int oui_le
 }
 
 wpa_ie_fixed_t *
-bcm_find_wpaie(uint8 *parse, uint len)
+bcm_find_wpaie(const uint8 *parse, uint len)
 {
 	bcm_tlv_t *ie;
 
@@ -620,15 +626,15 @@ bcm_find_wpaie(uint8 *parse, uint len)
 	return NULL;
 }
 
-bcm_tlv_t *
-bcm_find_wmeie(uint8 *parse, uint len, uint8 subtype, uint8 subtype_len)
+const bcm_tlv_t *
+bcm_find_wmeie(const uint8 *parse, uint len, uint8 subtype, uint8 subtype_len)
 {
-	bcm_tlv_t *ie;
+	const bcm_tlv_t *ie;
 
 	while ((ie = bcm_parse_tlvs(parse, (int)len, DOT11_MNG_VS_ID))) {
-		if (bcm_is_wme_ie((uint8 *)ie, &parse, &len)) {
+		if (bcm_is_wme_ie((const uint8 *)ie, &parse, &len)) {
 			uint ie_len = TLV_HDR_LEN + ie->len;
-			wme_ie_t *ie_data = (wme_ie_t *)ie->data;
+			const wme_ie_t *ie_data = (const wme_ie_t *)ie->data;
 			/* the subtype_len must include OUI+type+subtype */
 			if (subtype_len > WME_OUI_LEN + 1 &&
 			    ie_len == (uint)TLV_HDR_LEN + subtype_len &&
@@ -636,15 +642,15 @@ bcm_find_wmeie(uint8 *parse, uint len, uint8 subtype, uint8 subtype_len)
 				return ie;
 			}
 			/* move to next IE */
-			len -= (uint)((uint8 *)ie + ie_len - parse);
-			parse = (uint8 *)ie + ie_len;
+			len -= (uint)((const uint8 *)ie + ie_len - parse);
+			parse = (const uint8 *)ie + ie_len;
 		}
 	}
 	return NULL;
 }
 
 wps_ie_fixed_t *
-bcm_find_wpsie(uint8 *parse, uint len)
+bcm_find_wpsie(const uint8 *parse, uint len)
 {
 	bcm_tlv_t *ie;
 
@@ -672,7 +678,7 @@ bcm_wps_find_at(wps_at_fixed_t *at, int len, uint16 id)
 
 #ifdef WLP2P
 wifi_p2p_ie_t *
-bcm_find_p2pie(uint8 *parse, uint len)
+bcm_find_p2pie(const uint8 *parse, uint len)
 {
 	bcm_tlv_t *ie;
 
@@ -685,26 +691,26 @@ bcm_find_p2pie(uint8 *parse, uint len)
 }
 #endif // endif
 
-bcm_tlv_t *
-bcm_find_hs20ie(uint8 *parse, uint len)
+const bcm_tlv_t *
+bcm_find_hs20ie(const uint8 *parse, uint len)
 {
-	bcm_tlv_t *ie;
+	const bcm_tlv_t *ie;
 
 	while ((ie = bcm_parse_tlvs(parse, (int)len, DOT11_MNG_VS_ID))) {
-		if (bcm_is_hs20_ie((uint8 *)ie, &parse, &len)) {
+		if (bcm_is_hs20_ie((const uint8 *)ie, &parse, &len)) {
 			return ie;
 		}
 	}
 	return NULL;
 }
 
-bcm_tlv_t *
-bcm_find_osenie(uint8 *parse, uint len)
+const bcm_tlv_t *
+bcm_find_osenie(const uint8 *parse, uint len)
 {
-	bcm_tlv_t *ie;
+	const bcm_tlv_t *ie;
 
 	while ((ie = bcm_parse_tlvs(parse, (int)len, DOT11_MNG_VS_ID))) {
-		if (bcm_is_osen_ie((uint8 *)ie, &parse, &len)) {
+		if (bcm_is_osen_ie((const uint8 *)ie, &parse, &len)) {
 			return ie;
 		}
 	}
@@ -716,12 +722,12 @@ bcm_find_osenie(uint8 *parse, uint len)
 	(const uint8 *)WPA2_OUI, WPA2_OUI_LEN, type)
 
 eapol_wpa2_encap_data_t *
-wpa_find_kde(uint8 *parse, uint len, uint8 type)
+wpa_find_kde(const uint8 *parse, uint len, uint8 type)
 {
 	bcm_tlv_t *ie;
 
 	while ((ie = bcm_parse_tlvs(parse, (int)len, DOT11_MNG_PROPR_ID))) {
-		if (wpa_is_kde((uint8 *)ie, &parse, &len, type)) {
+		if (wpa_is_kde((uint8 *)ie, (const uint8 **)&parse, &len, type)) {
 			return (eapol_wpa2_encap_data_t *)ie;
 		}
 	}
@@ -729,7 +735,7 @@ wpa_find_kde(uint8 *parse, uint len, uint8 type)
 }
 
 bool
-wpa_is_gtk_encap(uint8 *ie, uint8 **tlvs, uint *tlvs_len)
+wpa_is_gtk_encap(uint8 *ie, const uint8 **tlvs, uint *tlvs_len)
 {
 	return wpa_is_kde(ie, tlvs, tlvs_len, WPA2_KEY_DATA_SUBTYPE_GTK);
 }
@@ -793,10 +799,8 @@ wpa_incr_array(uint8 *array, uint len)
 /* map akm suite to internal WPA_AUTH_XXXX */
 /* akms points to 4 byte suite (oui + type) */
 bool
-bcmwpa_akm2WPAauth(uint8 *akm, uint32 *auth, bool sta_iswpa)
+bcmwpa_akm2WPAauth(uint8 *akm, uint32 *auth)
 {
-	BCM_REFERENCE(sta_iswpa);
-
 	if (!memcmp(akm, WPA2_OUI, DOT11_OUI_LEN)) {
 		switch (akm[DOT11_OUI_LEN]) {
 		case RSN_AKM_NONE:
@@ -826,7 +830,12 @@ bcmwpa_akm2WPAauth(uint8 *akm, uint32 *auth, bool sta_iswpa)
 		case RSN_AKM_FILS_SHA384:
 			*auth = WPA2_AUTH_FILS_SHA384;
 			break;
-
+		case RSN_AKM_SAE_PSK:
+			*auth = WPA3_AUTH_SAE_PSK;
+			break;
+		case RSN_AKM_SAE_FBT:
+			*auth = WPA3_AUTH_SAE_FBT;
+			break;
 		default:
 			return FALSE;
 		}
@@ -837,6 +846,9 @@ bcmwpa_akm2WPAauth(uint8 *akm, uint32 *auth, bool sta_iswpa)
 		switch (akm[WFA_OUI_LEN]) {
 		case OSEN_AKM_UNSPECIFIED:
 			*auth = WPA2_AUTH_UNSPECIFIED;
+			break;
+		case RSN_AKM_DPP:
+			*auth = WPA3_AUTH_DPP;
 			break;
 
 		default:
@@ -929,9 +941,7 @@ bcmwpa_wpaciphers2wsec(uint8 wpacipher)
 bool
 bcmwpa_is_wpa_auth(uint32 auth)
 {
-	if ((auth == WPA_AUTH_NONE) ||
-	   (auth == WPA_AUTH_UNSPECIFIED) ||
-	   (auth == WPA_AUTH_PSK))
+	if ((auth == WPA_AUTH_NONE) || (auth == WPA_AUTH_UNSPECIFIED) || (auth == WPA_AUTH_PSK))
 		return TRUE;
 	else
 		return FALSE;
@@ -940,16 +950,14 @@ bcmwpa_is_wpa_auth(uint32 auth)
 bool
 bcmwpa_includes_wpa_auth(uint32 auth)
 {
-	if (auth & (WPA_AUTH_NONE |
-		WPA_AUTH_UNSPECIFIED |
-		WPA_AUTH_PSK))
+	if (auth & (WPA_AUTH_NONE | WPA_AUTH_UNSPECIFIED | WPA_AUTH_PSK))
 		return TRUE;
 	else
 		return FALSE;
 }
 
 bool
-bcmwpa_is_wpa2_auth(uint32 auth)
+bcmwpa_is_rsn_auth(uint32 auth)
 {
 	auth = auth & ~WPA2_AUTH_FT;
 
@@ -958,6 +966,8 @@ bcmwpa_is_wpa2_auth(uint32 auth)
 	   (auth == BRCM_AUTH_PSK) ||
 	   (auth == WPA2_AUTH_1X_SHA256) ||
 	   (auth == WPA2_AUTH_PSK_SHA256) ||
+	   (auth == WPA3_AUTH_SAE_PSK) ||
+	   (auth == WPA3_AUTH_DPP) ||
 	   WPA2_AUTH_IS_FILS(auth))
 		return TRUE;
 	else
@@ -965,12 +975,17 @@ bcmwpa_is_wpa2_auth(uint32 auth)
 }
 
 bool
-bcmwpa_includes_wpa2_auth(uint32 auth)
+bcmwpa_includes_rsn_auth(uint32 auth)
 {
-	if (auth & (WPA2_AUTH_UNSPECIFIED |
-		WPA2_AUTH_PSK |
-		BRCM_AUTH_PSK | WPA2_AUTH_1X_SHA256| WPA2_AUTH_PSK_SHA256| WPA2_AUTH_IS_FILS(auth)))
+	if (auth & (WPA2_AUTH_UNSPECIFIED | WPA2_AUTH_PSK | BRCM_AUTH_PSK | WPA2_AUTH_1X_SHA256 |
+		WPA2_AUTH_PSK_SHA256 | WPA2_AUTH_IS_FILS(auth) | WPA3_AUTH_SAE_PSK | WPA3_AUTH_DPP))
 		return TRUE;
 	else
 		return FALSE;
+}
+
+bool
+bcmwpa_includes_wpa3_auth(uint32 auth)
+{
+	return ((auth & (WPA3_AUTH_SAE_PSK | WPA3_AUTH_DPP)) != 0);
 }

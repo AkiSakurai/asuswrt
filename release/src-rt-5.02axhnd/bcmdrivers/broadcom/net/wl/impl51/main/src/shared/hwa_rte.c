@@ -1,7 +1,7 @@
 /*
  * Broadcom HWA driver RTE layer
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -63,9 +63,7 @@ static void _hwa_dpctask(void *cbdata);
 
 #ifndef RTE_POLL
 static void hwa_isr(void *cbdata);
-#ifdef THREAD_SUPPORT
 static void hwa_dpc_thread(void *cbdata);
-#endif /* THREAD_SUPPORT */
 static void hwa_run(hwa_dev_t *dev);
 #endif /* !RTE_POLL */
 
@@ -73,21 +71,15 @@ static void hwa_run(hwa_dev_t *dev);
 static void
 _hwa_intrson(hwa_dev_t *dev)
 {
+	OSL_INTERRUPT_SAVE_AREA
+
 	HWA_FTRACE(HWA00);
 
 	HWA_ASSERT(dev != (hwa_dev_t*)NULL);
 
-#ifdef THREAD_SUPPORT
-	/* critical section */
-	osl_ext_interrupt_state_t state = osl_ext_interrupt_disable();
-#endif  /* THREAD_SUPPORT */
-
+	OSL_DISABLE
 	hwa_intrson(dev);
-
-#ifdef THREAD_SUPPORT
-	/* critical section */
-	osl_ext_interrupt_restore(state);
-#endif  /* THREAD_SUPPORT */
+	OSL_RESTORE
 }
 
 static void
@@ -123,7 +115,7 @@ _hwa_dpctask(void *cbdata)
 
 	hwa_intrsupd(drv);
 	_hwa_dpc(drv);
-}
+		}
 
 #ifndef RTE_POLL
 static void
@@ -133,9 +125,6 @@ hwa_run(hwa_dev_t *dev)
 
 	HWA_ASSERT(dev != (hwa_dev_t*)NULL);
 
-#ifndef THREAD_SUPPORT
-	hwa_intrsoff(dev);
-#endif  /* THREAD_SUPPORT */
 	/* call common first level interrupt handler */
 	if (hwa_dispatch(dev)) {
 		/* if more to do... */
@@ -151,15 +140,10 @@ hwa_isr(void *cbdata)
 {
 	hwa_dev_t *dev = (hwa_dev_t *)cbdata;
 
-#ifdef THREAD_SUPPORT
 	/* deassert interrupt */
 	hwa_intrsoff(dev);
-#else
-	hwa_run(dev);
-#endif	/* THREAD_SUPPORT */
 }
 
-#ifdef THREAD_SUPPORT
 static void
 hwa_dpc_thread(void *cbdata)
 {
@@ -167,27 +151,32 @@ hwa_dpc_thread(void *cbdata)
 
 	hwa_run(dev);
 }
-#endif /* THREAD_SUPPORT */
 
+void
+hwa_dpc_invoke(hwa_dev_t *dev, uint32 intmask)
+{
+	dev->intstatus |= intmask;
+	if (hnd_dpc_is_pending(dev->sys_dev)) {
+		return;
+	}
+	hwa_intrsoff(dev);
+	if (!hnd_dpc_schedule(dev->sys_dev)) {
+		ASSERT(0);
+	}
+}
 #endif /* !RTE_POLL */
 #endif /* HWA_DPC_BUILD */
 
 #define AXI_MEM16_FMT	" AXI_MEM16<0x%08x> value<0x%04x>"
 #define AXI_MEM32_FMT	" AXI_MEM32<0x%08x> value<0x%08x>"
 static void
-_hwa_dump(void *arg, int argc, char *argv[])
+hnd_cons_hwa_dump(void *arg, int argc, char *argv[])
 {
-#if defined(BCMDBG)
-	hwa_dev_t *dev = (hwa_dev_t *)arg;
-	bool verbose = FALSE;
-	bool dump_regs = FALSE;
-	bool dump_txfifo_shadow = FALSE;
-#endif // endif
 	hwa_mem_addr_t axi_mem_addr;
 	uint32 u32, size, count, c_idx;
 	uint16 u16;
 
-	// 1. Usage:  dhd -i eth1 cons "hwa dump [verbose] [dump_regs][Txshadow]"
+	// 1. Usage:  dhd -i eth1 cons "hwa dump -b <blocks> -v -r -s -f <HWA fifos> -h"
 	// 2. Usage:  dhd -i eth1 cons "hwa mem [addr] [size] [val]"
 	// NOTE: use "md" console command to dump sysmem "md [addr] [size] [count]
 	// i.e. dhd -i eth1 cons "md 0x4bd7c0 4 32"
@@ -212,6 +201,7 @@ _hwa_dump(void *arg, int argc, char *argv[])
 		}
 
 		if (argv[4]) {
+#if defined(WLTEST)
 			/* SET */
 			if (size == 2) {
 				u16 = (uint16)bcm_strtoul(argv[4], NULL, 0);
@@ -223,6 +213,7 @@ _hwa_dump(void *arg, int argc, char *argv[])
 				HWA_WR_MEM32("AXI_MEM", uint32, axi_mem_addr, &u32);
 				HWA_PRINT("Set" AXI_MEM32_FMT "\n", axi_mem_addr, u32);
 			}
+#endif // endif
 		} else {
 			/* GET */
 			if (size == 2) {
@@ -233,16 +224,26 @@ _hwa_dump(void *arg, int argc, char *argv[])
 				HWA_PRINT("Get" AXI_MEM32_FMT "\n", axi_mem_addr, u32);
 			}
 		}
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 	} else if (strcmp(argv[1], "dump") == 0) {
-		// dhd -i eth1 cons "hwa dump [verbose] [dump_regs]"
-		if (argc >= 3)
-			verbose = atoi(argv[2]);
-		if (argc >= 4)
-			dump_regs = atoi(argv[3]);
-		if (argc >= 5)
-			dump_txfifo_shadow = atoi(argv[4]);
-		hwa_dump(dev, NULL, HWA_DUMP_ALL, verbose, dump_regs, dump_txfifo_shadow, NULL);
+		// dhd -i eth1 cons "hwa dump -b <blocks> -v -r -s -f <HWA fifos> -h"
+		char dump_args[65], *args = NULL;
+		hwa_dev_t *dev = (hwa_dev_t *)arg;
+
+		if (argc >= 3) {
+			int i, len = 0;
+
+			memset(dump_args, 0, sizeof(dump_args));
+			for (i = 2; i < argc; i++) {
+				if ((len + strlen(argv[i]) + 1) < sizeof(dump_args)) {
+					len += snprintf(dump_args + len,
+						sizeof(dump_args) - len,
+						"%s%c", argv[i], ' ');
+				}
+			}
+			args = dump_args;
+		}
+		hwa_dhd_dump(dev, args);
 #endif // endif
 	} else if (strcmp(argv[1], "membytes") == 0) {
 		// dhd -i eth1 cons "hwa membytes [0x28509000] [4] [32]"
@@ -291,10 +292,10 @@ BCMATTACHFN(hwa_probe)(struct hwa_dev *dev, uint irq, uint coreid, uint unit,
 
 #ifdef HWA_DPC_BUILD
 #ifndef RTE_POLL
-	ret = hnd_isr_register(irq, coreid, unit, hwa_isr, hwa_dev,
-		hwa_dpc_thread, hwa_dev, thread, bus);
-	if (ret != BCME_OK) {
+	if (hnd_isr_register(irq, coreid, unit, hwa_isr, hwa_dev,
+		hwa_dpc_thread, hwa_dev, thread, bus) == NULL) {
 		HWA_ERROR(("%s: hnd_isr_register for hwa%d failed\n", HWA00, unit));
+		return BCME_ERROR;
 	}
 #endif /* !RTE_POLL */
 
@@ -305,7 +306,7 @@ BCMATTACHFN(hwa_probe)(struct hwa_dev *dev, uint irq, uint coreid, uint unit,
 #endif /* HWA_DPC_BUILD */
 
 	/* Add "hwa" dump function for debug */
-	if (!hnd_cons_add_cmd("hwa", _hwa_dump, dev)) {
+	if (!hnd_cons_add_cmd("hwa", hnd_cons_hwa_dump, dev)) {
 		HWA_ERROR(("%s: hnd_cons_add_cmd hwa%d failed\n", HWA00, unit));
 	}
 

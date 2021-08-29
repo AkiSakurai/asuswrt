@@ -2,7 +2,7 @@
  * Cevent daemon utils
  *
  *
- * Copyright (C) 2018, Broadcom. All Rights Reserved.
+ * Copyright (C) 2019, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -20,7 +20,7 @@
  * <<Broadcom-WL-IPTag/Open:>>
  *
  *
- * $Id: ceventd_utils.c 762277 2018-05-11 13:55:04Z $
+ * $Id: ceventd_utils.c 774823 2019-05-08 08:15:07Z $
  */
 
 #include "ceventd.h"
@@ -56,7 +56,7 @@ if (cwksp->log_syslogd == 1 ) { /* in syslog case, ident and pid are added throu
 	syslog(LOG_NOTICE, \
 		"%08llu" DELIM "%-8s" DELIM "%-17s" DELIM "%5d" DELIM "%04d" \
 		DELIM "%04d" DELIM "%04d" DELIM "%-8s" DELIM "%-3s" DELIM "%-24s" \
-		DELIM "" fmt "\n", \
+		DELIM "" fmt " ", \
 		ca_ts, ifname, sta, flags, status, reason, \
 		auth, at, dir, hd, \
 		##arg); \
@@ -259,6 +259,7 @@ static void ca_identify_eap_type(ca_wksp_t *cwksp, wl_cevent_t *ce, eapol_header
 		char *pheader, size_t hsz);
 static int ca_identify_wps_msg_type(uint8 wps_msg_type, char* pheader, size_t hsz);
 
+/* opens a new out file */
 int
 ca_out_file_init(ca_wksp_t *cwksp)
 {
@@ -287,6 +288,7 @@ ca_out_file_init(ca_wksp_t *cwksp)
 	return BCME_OK;
 }
 
+/* moves out file (if any) to backup on crossing limit and opens a new out file */
 int
 ca_out_file_reinit(ca_wksp_t *cwksp)
 {
@@ -304,6 +306,22 @@ ca_out_file_reinit(ca_wksp_t *cwksp)
 			cwksp->out_bak_path);
 		rename(cwksp->out_path, cwksp->out_bak_path); /* backup on the same mountpoint/fs */
 	}
+
+	return ca_out_file_init(cwksp);
+}
+
+/* deletes any existing out file and opens a new out file */
+int
+ca_out_file_flush(ca_wksp_t *cwksp)
+{
+	if (!cwksp || !cwksp->out || cwksp->out == stdout) {
+		CA_ERR("called with incorrect params\n");
+		return BCME_ERROR;
+	}
+
+	fclose(cwksp->out);
+	(void) remove(cwksp->out_path);
+	(void) remove(cwksp->out_bak_path);
 
 	return ca_out_file_init(cwksp);
 }
@@ -410,7 +428,7 @@ ca_process_cli_pkt(ca_wksp_t *cwksp, int32 sz_req, uint32 *p_sz_rsp)
 	const uint16 rsp_buf_max = sizeof(cwksp->pkt_cli_rsp);
 	ca_cli_hdr_t *req_hdr = (ca_cli_hdr_t *) req_buf;
 	ca_cli_hdr_t *rsp_hdr = (ca_cli_hdr_t *) rsp_buf;
-	int rem_len, data_len;
+	int rem_len, data_len, ret;
 
 	*p_sz_rsp = 0;
 	cwksp->pkt_cli_rsp[0] = '\0';
@@ -479,6 +497,16 @@ ca_process_cli_pkt(ca_wksp_t *cwksp, int32 sz_req, uint32 *p_sz_rsp)
 		case CA_ACT_END:
 			cwksp->flags |= CA_WKSP_FLAG_SHUTDOWN;
 			rsp_hdr->len += CA_SNPRINTF_1(CA_CLI_DATA(rsp_hdr), rem_len, "Shutting...");
+			*p_sz_rsp = rsp_hdr->len;
+			break;
+		case CA_ACT_FLUSH:
+			if ((ret = ca_out_file_flush(cwksp)) == BCME_OK) {
+				rsp_hdr->len += CA_SNPRINTF_1(CA_CLI_DATA(rsp_hdr), rem_len,
+						"Flushed");
+			} else {
+				rsp_hdr->len += CA_SNPRINTF_1(CA_CLI_DATA(rsp_hdr), rem_len,
+						"Failed to flush (Err:%d)", ret);
+			}
 			*p_sz_rsp = rsp_hdr->len;
 			break;
 		default:

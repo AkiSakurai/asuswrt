@@ -241,6 +241,12 @@ main(int argc, char * * argv)
 	free(s);
 	printf("\n-------------\n");
 #endif
+#ifdef ENABLE_NVGFN
+	s = getVarsNVGFN(&l);
+	xml_pretty_print(s, l, stdout);
+	free(s);
+	printf("\n-------------\n");
+#endif
 #endif
 #endif
 /*

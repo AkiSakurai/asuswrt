@@ -2,7 +2,7 @@
  * Common [OS-independent] rate management
  * 802.11 Networking Adapter Device Driver.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcmwifi_rates.c 764904 2018-06-08 11:28:25Z $
+ * $Id: bcmwifi_rates.c 774598 2019-04-29 17:29:56Z $
  */
 
 #include <typedefs.h>
@@ -144,6 +144,18 @@ wf_he_mcs_to_Ndbps(uint mcs, uint nss, uint bw, bool dcm)
 	return Ndbps;
 }
 
+/**
+ * Returns the rate in [Kbps] units for a caller supplied MCS/bandwidth/Nss/Sgi/dcm combination.
+ *     'mcs' : a *single* spatial stream MCS (11ax)
+ * XXX formula as per http://confluence.broadcom.com/pages/viewpage.action?title=AXPHY&spaceKey=
+ *	WLAN&preview=/323036249/344457953/11ax_rate_table.xlsx
+ * Symbol length = 12.8 usec [given as sym_len/10 below]
+ * GI value = 0.8 or 1.6 or 3.2 usec [given as GI_value/10 below]
+ * rate (Kbps) = (Nsd * Nbpscs * nss * (coding_q/coding_d) * 1000) / ((sym_len/10) + (GI_value/10))
+ *	 Note that, for calculation purpose, following is used. [to be careful with overflows]
+ * rate (Kbps) = (Nsd * Nbpscs * nss * (coding_q/coding_d) * 1000) / ((sym_len + GI_value) / 10)
+ * rate (Kbps) = (Nsd * Nbpscs * nss * (coding_q/coding_d) * 1000) / (sym_len + GI_value) * 10
+ */
 uint
 wf_he_mcs_to_rate(uint mcs, uint nss, uint bw, uint gi, bool dcm)
 {
@@ -262,8 +274,14 @@ wf_mcs_to_rate(uint mcs, uint nss, uint bw, int sgi)
 
 		/* find the number of complex numbers per symbol */
 		if (RSPEC_IS20MHZ(bw)) {
+			/* XXX 4360 TODO: eliminate Phy const in rspec bw, then just compare
+			 * as in 80 and 160 case below instead of RSPEC_IS20MHZ(bw)
+			 */
 			rate = Nsd_20MHz;
 		} else if (RSPEC_IS40MHZ(bw)) {
+			/* XXX 4360 TODO: eliminate Phy const in rspec bw, then just compare
+			 * as in 80 and 160 case below instead of RSPEC_IS40MHZ(bw)
+			 */
 			rate = Nsd_40MHz;
 		} else if (bw == WL_RSPEC_BW_80MHZ) {
 			rate = Nsd_80MHz;
@@ -300,6 +318,10 @@ wf_mcs_to_rate(uint mcs, uint nss, uint bw, int sgi)
 	return rate;
 } /* wf_mcs_to_rate */
 
+/* XXX This function needs update to handle MU frame PLCP as well (MCS is conveyed via VHT-SIGB
+ * field in case of MU frames). Currently this support needs to be added in uCode to communicate
+ * MCS information for an MU frame
+ */
 uint8
 wf_vht_plcp_to_rspec_rate(uint8 *plcp)
 {
@@ -365,8 +387,9 @@ wf_he_plcp_to_rspec_rate(uint8 *plcp, uint16 ft_fmt)
 			nss = nsts;
 			break;
 		case HE_FMT_HETB:
-			mcs = 0;
-			nss = nsts = 1;
+			mcs = ((plcp[6] & 0xe0) >> 5) | ((plcp[7] & 1) << 3);
+			nsts = ((plcp[7] & 0xe0) >> 5) + 1;
+			nss = nsts;
 			break;
 		default:
 			mcs = 0;

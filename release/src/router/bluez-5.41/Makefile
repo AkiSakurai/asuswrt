@@ -26,6 +26,7 @@ install: all
 	cp -f prebuild/rctest					tools/
 	cp -f prebuild/rfcomm					tools/
 	cp -f prebuild/sdptool					tools/
+	cp -f prebuild/btmgmt					tools/
 	cp -f prebuild/bluetoothctl				client/
 	cp -f prebuild/bluetoothd				src/
 	cp -f prebuild/gatttool					attrib/

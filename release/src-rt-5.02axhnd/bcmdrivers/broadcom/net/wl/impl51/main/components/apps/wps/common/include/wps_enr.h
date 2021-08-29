@@ -1,7 +1,7 @@
 /*
  * WPS ENROLL header file
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_enr.h 525052 2015-01-08 20:18:35Z $
+ * $Id: wps_enr.h 766179 2018-07-26 07:49:15Z $
  */
 
 #ifndef __WPS_ENR_H__
@@ -59,5 +59,7 @@ void wpsenr_osl_proc_states(int state);
 int wpsenr_osl_set_wsec(int ess_id, void *credential, int mode);
 int wpsenr_osl_clear_wsec(void);
 int wpsenr_osl_restore_wsec(void);
-
+#if defined(MULTIAP)
+int wpsenr_map_osl_set_wsec(char *ifname, int ess_id, void *credential, int mode);
+#endif	/* MULTIAP */
 #endif /* __WPS_ENR_H__ */

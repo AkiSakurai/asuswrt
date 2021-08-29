@@ -1,7 +1,7 @@
 #
 # curl Makefile
 #
-# Copyright (C) 2018, Broadcom. All Rights Reserved.
+# Copyright (C) 2019, Broadcom. All Rights Reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -23,7 +23,8 @@ CURL_SRC = curl-7.35.0
 .PHONY: all
 all: curl
 
-$(CURL_SRC)/Makefile:
+.PHONY: configure
+configure:
 	cd $(CURL_SRC) && ./configure \
 	    --host=arm-linux \
 	    --disable-shared \
@@ -45,7 +46,7 @@ install: all
 	install $(CURDIR)/$(CURL_SRC)/src/curl $(INSTALLDIR)/usr/sbin/
 
 .PHONY: curl
-curl: $(CURL_SRC)/Makefile
+curl: configure
 	+$(MAKE) -C $(CURL_SRC)
 
 .PHONY: clean

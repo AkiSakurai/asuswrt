@@ -357,6 +357,72 @@ void del_beacon_vsie(char *hexdata)
 {
 	wl_del_ie_with_oui(0, (uchar *) OUI_ASUS);
 }
+
+int add_interface_for_acsd(int unit)
+{
+	int ret = 0, i = 0, band_unit = -1, use = -1, max_items = 4;
+	char *nv, *nvp, *b;
+
+	nv = nvp = strdup(nvram_safe_get("sta_priority"));
+	if (nv) {
+		while ((b = strsep(&nvp, " ")) != NULL) {
+			/* reset count */
+			if (i == max_items) {
+				i = 0;
+				band_unit = -1;
+				use = -1;
+			}
+
+			i++;
+
+			if (i == 2)	/* band unit */
+				band_unit = atoi(b);
+			if (i == 4)	/* use */
+				use = atoi(b);
+
+			/* judge */
+			if ((band_unit != -1 && use != -1)
+				&& (band_unit == unit && use == 0))
+			{
+				ret = 1;
+				break;
+			}
+		}
+		free(nv);
+	}
+
+	dbg("add_interface_for_acsd(%d), ret(%d)\n", unit, ret);
+
+	return ret;
+}
+
+int need_to_start_acsd()
+{
+	int ret = 0, i = 0, max_items = 4;
+	char *nv, *nvp, *b;
+
+	nv = nvp = strdup(nvram_safe_get("sta_priority"));
+	if (nv) {
+		while ((b = strsep(&nvp, " ")) != NULL) {
+			i++;
+
+			if (i == max_items) {	/* use */
+				if (atoi(b) == 0) {
+					ret = 1;
+					break;
+				}
+
+				/* reset count */
+				i = 0;
+			}
+		}
+		free(nv);
+	}
+
+	dbg("need_to_start_acsd(%d)\n", ret);
+
+	return ret;
+}
 #endif
 
 #ifdef RTCONFIG_CFGSYNC
@@ -537,3 +603,52 @@ int wl_cap(int unit, char *cap_check)
 
 	return 0;
 }
+
+#ifdef RTCONFIG_GEFORCENOW
+int wl_set_wifiscan(char *ifname, int val)
+{
+	char buf[48] = {0};
+	snprintf(buf, sizeof(buf), "wl -i %s scansuppress %d", ifname, val);
+	system(buf);
+
+	return 0;
+}
+
+int wl_set_mcsindex(char *ifname, int *is_auto, int *idx, char *idx_type, int *stream)
+{
+	char buf[128] = {0};
+	char *rate = NULL;
+
+	if (!strcmp(ifname, nvram_safe_get("wl0_ifname"))) {
+		rate = "2g_rate";
+	}
+	else {
+		rate = "5g_rate";
+	}
+
+	if (*is_auto) {
+		snprintf(buf, sizeof(buf), "wl -i %s %s auto", ifname, rate);
+	}
+	else {
+		if (!strcmp(idx_type, "vht")) {
+			if (*idx > 9) *idx = 9;
+			if (*idx < 1) *idx = 1;
+			snprintf(buf, sizeof(buf), "wl -i %s %s -v %d -s %d", ifname, rate, *idx, *stream);
+		}
+		else if (!strcmp(idx_type, "ht")) {
+			if (*idx > 23) *idx = 23;
+			if (*idx < 1) *idx = 1;
+			/* HT can't work with stream parameter */
+			*stream = 0;
+			snprintf(buf, sizeof(buf), "wl -i %s %s -h %d", ifname, rate, *idx);
+		}
+		else {
+			NVGFN_DBG("(%s) illegal format!\n", ifname);
+		}
+	}
+	system(buf);
+	NVGFN_DBG("(%s) buf=%s\n", ifname, buf);
+
+	return 0;
+}
+#endif

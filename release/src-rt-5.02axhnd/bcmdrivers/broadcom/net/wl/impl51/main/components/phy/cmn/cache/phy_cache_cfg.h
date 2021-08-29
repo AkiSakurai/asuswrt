@@ -1,7 +1,7 @@
 /*
  * CACHE module - configuration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_cache_cfg.h 690566 2017-03-16 23:31:01Z $
+ * $Id: phy_cache_cfg.h 768660 2018-10-22 05:15:09Z $
  */
 
 #ifndef _phy_cache_cfg_h_
@@ -54,11 +54,6 @@
 /* default cache registry capacity */
 #ifndef PHY_CACHE_REG_SZ
 #define PHY_CACHE_REG_SZ 6
-#endif // endif
-
-/* default cache capacity : This is the max number of cache entries */
-#ifndef PHY_CACHE_SZ
-#define PHY_CACHE_SZ 4
 #endif // endif
 
 /* default cache entry allocation method */

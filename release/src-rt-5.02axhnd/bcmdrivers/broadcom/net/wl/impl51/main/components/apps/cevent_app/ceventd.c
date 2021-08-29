@@ -2,7 +2,7 @@
  * Cevent app header
  *
  *
- * Copyright (C) 2018, Broadcom. All Rights Reserved.
+ * Copyright (C) 2019, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -20,7 +20,7 @@
  * <<Broadcom-WL-IPTag/Open:>>
  *
  *
- * $Id: ceventd.c 761397 2018-05-08 04:57:19Z $
+ * $Id: ceventd.c 777386 2019-07-31 06:15:54Z $
  */
 
 #include "ceventd.h"
@@ -28,6 +28,10 @@
 #define CEVENTD_PID_FILE "/var/run/ceventd.pid"
 #define CEVENTD_DEFAULT_CONSOLE	0
 #define CEVENTD_DEFAULT_SYSLOG	1
+#define CEVENTD_LOCK_ATTEMPT_GAP	1 /* 1 second between consecutive lock attempts */
+#define CEVENTD_MAX_LOCK_ATTEMPTS	8
+
+static ca_wksp_t * gCwksp = NULL; /* used by signal handlers */
 
 /* Gets the unsigned integer config val from nvram, if not found applies the default value */
 uint32
@@ -130,10 +134,15 @@ ca_wksp_deinit(ca_wksp_t *cwksp)
 		CA_DBG("closed output file\n");
 	}
 
+	if (cwksp->pid_fd >= 0) {
+		if (flock(cwksp->pid_fd, LOCK_UN) < 0) {
+			perror("flock");
+			CA_ERR("Error unlocking %s\n", CEVENTD_PID_FILE);
+		}
+	}
+
 	return BCME_OK;
 }
-
-static ca_wksp_t * gCwksp = NULL; /* used by signal handlers */
 
 static void
 ca_term_hdlr(int sig)
@@ -223,7 +232,7 @@ ca_main_loop(ca_wksp_t *cwksp)
 		exit(errno);
 	}
 
-	pid_fp = fopen(CEVENTD_PID_FILE, "a");
+	pid_fp = fopen(CEVENTD_PID_FILE, "w");
 
 	if (pid_fp != NULL) {
 		if (fprintf(pid_fp, "%d\n", getpid()) < 0) {
@@ -260,8 +269,7 @@ main(int argc, char *argv[])
 {
 	const char * nv_dbg = nvram_safe_get("ceventd_dbg");
 	ca_wksp_t * cwksp = NULL;
-	int pid_fd;
-	int locked;
+	int pid_fd, locked, attempts = 0;
 
 	if ((pid_fd = open(CEVENTD_PID_FILE, O_CREAT | O_RDWR | O_SYNC, 0666)) == -1) {
 		perror("open");
@@ -269,8 +277,20 @@ main(int argc, char *argv[])
 		return BCME_ERROR;
 	}
 
-	if ((locked = flock(pid_fd, LOCK_EX | LOCK_NB)) && EWOULDBLOCK == errno) {
-		CA_ERR("Exiting. Daemon already running. (%s is locked)\n", CEVENTD_PID_FILE);
+	do {
+		if ((locked = flock(pid_fd, LOCK_EX | LOCK_NB)) && EWOULDBLOCK == errno) {
+			perror("flock");
+			CA_DBG("%s is locked, attempts: %d\n", CEVENTD_PID_FILE, attempts);
+			sleep(1); /* reattempt lock after 1 sec */
+		} else {
+			CA_DBG("lock acquired for %s,  attempts: %d\n", CEVENTD_PID_FILE, attempts);
+			break;
+		}
+	} while (attempts++ < CEVENTD_MAX_LOCK_ATTEMPTS);
+
+	if (locked && EWOULDBLOCK == errno) {
+		CA_ERR("Exiting. Daemon already running. (%s is locked) attempts:%d\n",
+				CEVENTD_PID_FILE, attempts);
 		return BCME_ERROR;
 	}
 
@@ -286,6 +306,9 @@ main(int argc, char *argv[])
 		CA_ERR("workspace allocation failure\n");
 		return BCME_NOMEM;
 	}
+
+	cwksp->pid_fd = pid_fd;
+	gCwksp = cwksp; /* used by signal handlers */
 
 	return ca_main_loop(cwksp);
 }

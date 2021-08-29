@@ -38,8 +38,8 @@
 	background-image:url(images/New_ui/notification.png);
 	background-repeat:no-repeat;	
 	background-position: 0px 0px;
-	height:24px;
-	width:24px;
+	height: 24px;
+	width: 30px;
 	cursor: pointer;
 }
 
@@ -49,6 +49,6 @@
 
 .notification_on1{
 	cursor: pointer;
-	height:38px;
-	width:24px;
+	height: 24px;
+	width: 30px;
 }

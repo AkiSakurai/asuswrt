@@ -1,7 +1,7 @@
 /*
  * TxPowerCtrl module internal interface (to PHY specific implementations).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_type_tpc.h 759380 2018-04-25 06:54:57Z $
+ * $Id: phy_type_tpc.h 774858 2019-05-09 02:42:47Z $
  */
 
 #ifndef _phy_type_tpc_h_
@@ -92,6 +92,7 @@ typedef struct phy_tpc_config_info {
 
 typedef struct phy_tpc_data {
 	phy_tpc_config_info_t *cfg;
+	ppr_ru_t *ru_tx_power_offset; /* RU ppr offset */
 	uint32	base_index_init_invalid_frame_cnt;
 	uint32	txallfrm_cnt_ref; /* #ifdef PREASSOC_PWRCTRL */
 	int16	radiopwr_override; /* phy PWR_CTL override, -1=default */
@@ -116,6 +117,13 @@ typedef struct phy_tpc_data {
 	uint16 minpwrlimit_fail;
 	const char* ccode_ptr;
 	uint8 txpwr_degrade;
+	/* CLM HE RU TX power Limits */
+	/* ptr to ppr opaque structure for holding RU CLM power limits */
+	ppr_ru_t *clm_ru_txpwr_limit;
+	/* ptr to ppr opaque structure for holding RU Board power limits */
+	ppr_ru_t *board_ru_txpwr_limit;
+	/* ptr to ppr opaque structure for holding  RU Tgt power limits */
+	ppr_ru_t *tgt_ru_txpwr_limit;
 } phy_tpc_data_t;
 
 struct phy_tpc_info {
@@ -156,10 +164,16 @@ typedef int (*phy_type_tpc_txcorepwroffset_fn_t)(phy_type_tpc_ctx_t *ctx,
 typedef void (*phy_type_tpc_set_avvmid_fn_t)(phy_type_tpc_ctx_t *ctx,
 	wlc_phy_avvmid_txcal_t *avvmidinfo, bool set);
 typedef int (*phy_type_tpc_pavars_fn_t)(phy_type_tpc_ctx_t *ctx, void* a, void* p);
+typedef int (*phy_type_tpc_txpower_get_instant_fn_t)(phy_type_tpc_ctx_t *ctx, void *pwr);
+typedef int (*phy_type_tpc_txpower_get_instant_percore_fn_t)(phy_type_tpc_ctx_t *ctx, void *pwr);
 typedef int8 (*phy_type_tpc_get_maxtxpwr_lowlimit_fn_t)(phy_type_tpc_ctx_t *ctx);
 typedef phy_crash_reason_t (*phy_type_tpc_health_check_baseindex_fn_t)(phy_type_tpc_ctx_t *ctx);
 typedef int (*phy_type_tpc_get_est_pout_fn_t)(phy_type_tpc_ctx_t *ctx,
 	uint8* est_Pout, uint8* est_Pout_adj, uint8* est_Pout_cck);
+#ifdef WL11AX
+typedef int (*phy_type_tpc_get_txctrl_mu_fn_t)(phy_type_tpc_ctx_t *ctx,
+	phy_txctrl_info_t* txctrl_info);
+#endif /* WL11AX */
 typedef void (*phy_type_tpc_dump_txpower_limits_fn_t)(phy_type_tpc_ctx_t *ctx,
 	ppr_t *tx_pwr_target);
 typedef bool (*phy_type_tpc_check_vt_fn_t)(phy_type_tpc_ctx_t *ctx,
@@ -218,12 +232,20 @@ typedef struct {
 	phy_type_tpc_pavars_fn_t set_pavars;
 	/* get  pavars */
 	phy_type_tpc_pavars_fn_t get_pavars;
+	/* get current pwr */
+	phy_type_tpc_txpower_get_instant_fn_t txpower_get_instant;
+	/* get current per core pwr */
+	phy_type_tpc_txpower_get_instant_percore_fn_t txpower_get_instant_percore;
 	/* get maxpower low limit */
 	phy_type_tpc_get_maxtxpwr_lowlimit_fn_t get_maxtxpwr_lowlimit;
 	/* health check base index */
 	phy_type_tpc_health_check_baseindex_fn_t baseindex;
 	/* get_est_pout */
 	phy_type_tpc_get_est_pout_fn_t get_est_pout;
+#ifdef WL11AX
+	/* get_txctrl_mu */
+	phy_type_tpc_get_txctrl_mu_fn_t get_txctrl_mu;
+#endif /* WL11AX */
 	/* dump tx power limits */
 	phy_type_tpc_dump_txpower_limits_fn_t dump_txpower_limits;
 	/* set hardware control */

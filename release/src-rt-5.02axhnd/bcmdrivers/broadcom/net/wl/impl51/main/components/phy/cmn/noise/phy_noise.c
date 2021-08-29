@@ -1,7 +1,7 @@
 /*
  * NOISEmeasure module implementation.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_noise.c 753957 2018-03-23 11:56:39Z $
+ * $Id: phy_noise.c 777128 2019-07-19 20:03:15Z $
  */
 
 #include <phy_cfg.h>
@@ -340,7 +340,15 @@ wlc_phy_noise_calc(phy_info_t *pi, uint32 *cmplx_pwr, int8 *pwr_ant, uint8 extra
 		M_PWRIND_BLKS(pi)+0xC)));
 #endif /* WL_EAP_NOISE_MEASUREMENTS */
 
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+	/* Compute total gain as a function of active antennas, e.g., for a
+	 * 2x2 deployment of a 4x4 chip
+	 */
+	math_cmplx_computedB(cmplx_pwr, cmplx_pwr_dbm,
+		PHY_BITSCNT(phy_stf_get_data(pi->stfi)->phyrxchain));
+#else
 	math_cmplx_computedB(cmplx_pwr, cmplx_pwr_dbm, PHYCORENUM(pi->pubpi->phy_corenum));
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 
 	if (fns->calc != NULL)
 		(fns->calc)(fns->ctx, cmplx_pwr_dbm, extra_gain_1dB);
@@ -704,14 +712,32 @@ void
 wlc_phy_noise_save(phy_info_t *pi, int8 *noise_dbm_ant, int8 *max_noise_dbm)
 {
 	uint8 i;
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+	/* save gains f(active antennas), eg, a 2x2 deployment of a 4x4 chip */
+	phy_stf_data_t *stf_shdata = phy_stf_get_data(pi->stfi);
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 
 	FOREACH_CORE(pi, i) {
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+		/* only include active antennas, e.g., for a
+		 * 2x2 deployment of a 4x4 chip
+		 */
+		IF_ACTV_CORE(pi, stf_shdata->phyrxchain, i) {
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 		/* save noise per core */
 		pi->phy_noise_win[i][pi->phy_noise_index] = noise_dbm_ant[i];
 
 		/* save the MAX for all cores */
 		if (noise_dbm_ant[i] > *max_noise_dbm)
 			*max_noise_dbm = noise_dbm_ant[i];
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+		} else {
+			/* reset noise on inactive cores. makes "dump phynoise"
+			 * match rx chain configuration
+			 */
+			pi->phy_noise_win[i][pi->phy_noise_index] = 0;
+		}
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 	}
 	pi->phy_noise_index = MODINC_POW2(pi->phy_noise_index, PHY_NOISE_WINDOW_SZ);
 
@@ -1116,3 +1142,92 @@ phy_noise_avg_per_antenna(wlc_phy_t *pih, int coreidx)
 
 	return result;
 }
+
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+/* Enterprise - generic get/set handlers for biasing noise floor
+ * A positive bias will raise the reported noise floor, while
+ * a negative bias will lower the reported noise floor.
+ *
+ * gaintype: NOISE_BIAS_GAINTYPE_LO or NOISE_BIAS_GAINTYPE_HI
+ * band: NOISE_BIAS_BAND_2G or NOISE_BIAS_BAND_5G
+ * value: bias in dB to set or get.
+ */
+int phy_noise_get_gain_bias(phy_info_t *pi, int gaintype, int band)
+{
+	int bias;
+	if (NOISE_BIAS_GAINTYPE_HI == gaintype) {
+		if (NOISE_BIAS_BAND_2G == band) {
+			bias = pi->phynoise_bias2ghi;
+		} else {
+			bias = pi->phynoise_bias5ghi;
+		}
+	} else {
+		if (NOISE_BIAS_BAND_2G == band) {
+			bias = pi->phynoise_bias2glo;
+		} else {
+			bias = pi->phynoise_bias5glo;
+		}
+	}
+	return bias;
+}
+
+int phy_noise_set_gain_bias(phy_info_t *pi, int gaintype, int band, int value)
+{
+	int rc = 0;
+	if (NOISE_BIAS_GAINTYPE_HI == gaintype) {
+		if (NOISE_BIAS_BAND_2G == band) {
+			pi->phynoise_bias2ghi =  value;
+		} else {
+			pi->phynoise_bias5ghi =  value;
+		}
+	} else {
+		if (NOISE_BIAS_BAND_2G == band) {
+			pi->phynoise_bias2glo =  value;
+		} else {
+			pi->phynoise_bias5glo =  value;
+		}
+	}
+	return rc;
+}
+
+/* Radar channels may need extra boost from
+ * rev47's new radar path that disables
+ * the DC notch filter (see phy_ac_radar_init).
+ */
+int phy_noise_get_radar_gain_bias(phy_info_t *pi, int gaintype)
+{
+	int bias;
+	if (NOISE_BIAS_GAINTYPE_HI == gaintype) {
+		bias = pi->phynoise_bias_radarhi;
+	} else {
+		bias = pi->phynoise_bias_radarlo;
+	}
+	return bias;
+}
+
+int phy_noise_set_radar_gain_bias(phy_info_t *pi, int gaintype, int value)
+{
+	int rc = 0;
+	if (NOISE_BIAS_GAINTYPE_HI == gaintype) {
+		pi->phynoise_bias_radarhi = value;
+	} else {
+		pi->phynoise_bias_radarlo = value;
+	}
+	return rc;
+}
+
+/* rxgainerr subroutines enable/disable inclusion of
+ * SROM's rx gain error into the noise biasing equation
+ */
+int phy_noise_get_rxgainerr_bias(phy_info_t *pi)
+{
+	return (int)pi->phynoise_bias_rxgainerr;
+}
+
+int phy_noise_set_rxgainerr_bias(phy_info_t *pi, int value)
+{
+	int rc = 0;
+	pi->phynoise_bias_rxgainerr = (value == 0) ? 0 : 1;
+	return rc;
+}
+#endif /* WL_EAP_NOISE_MEASUREMENTS */

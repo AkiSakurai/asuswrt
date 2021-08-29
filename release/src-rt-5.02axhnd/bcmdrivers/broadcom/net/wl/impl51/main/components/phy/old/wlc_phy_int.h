@@ -1,7 +1,7 @@
 /*
  * PHY module internal interface crossing different PHY types
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phy_int.h 764742 2018-05-31 02:57:21Z $
+ * $Id: wlc_phy_int.h 775928 2019-06-14 15:27:49Z $
  */
 
 #ifndef _wlc_phy_int_h_
@@ -217,6 +217,41 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 
 #define IS20MHZ(pi)	((pi)->bw == WL_CHANSPEC_BW_20)
 #define IS40MHZ(pi)	((pi)->bw == WL_CHANSPEC_BW_40)
+#define IS80MHZ(pi)	((pi)->bw == WL_CHANSPEC_BW_80)
+#define IS1600MHZ(pi)	((pi)->bw == WL_CHANSPEC_BW_1600)
+
+/* Radio id to phyrev mapping */
+#define RADIO_CONF_HAS_BCM2069_ID \
+	(NCONF_HAS(17) || ACCONF_HAS(3) || \
+	 ACCONF_HAS(8) || ACCONF_HAS(9) || \
+	 ACCONF_HAS(14) || ACCONF_HAS(15) || \
+	 ACCONF_HAS(17) || ACCONF_HAS(18) || \
+	 ACCONF_HAS(26))
+
+#define RADIO_CONF_HAS_BCM20691_ID \
+	(ACCONF_HAS(4) || ACCONF_HAS(7) || \
+	 ACCONF_HAS(11) || ACCONF_HAS(13) || \
+	 ACCONF_HAS(16) || ACCONF_HAS(20) || \
+	 ACCONF_HAS(27))
+
+#define RADIO_CONF_HAS_BCM20693_ID \
+	(ACCONF_HAS(12) || ACCONF_HAS(24) || \
+	 ACCONF_HAS(32) || ACCONF_HAS(33))
+
+#define RADIO_CONF_HAS_BCM20694_ID \
+	(ACCONF_HAS(25) || ACCONF_HAS(40))
+
+#define RADIO_CONF_HAS_BCM20695_ID  ACCONF_HAS(36)
+
+#define RADIO_CONF_HAS_BCM20696_ID  ACCONF_HAS(37)
+
+#define RADIO_CONF_HAS_BCM20698_ID  ACCONF_HAS(47)
+
+#define RADIO_CONF_HAS_BCM20704_ID  ACCONF_HAS(51)
+
+#define RADIO_CONF_HAS_BCM20707_ID  ACCONF_HAS(129)
+
+#define RADIO_CONF_HAS_BCM20709_ID  ACCONF_HAS(128)
 
 #define WL_PKT_BW_20  20
 #define WL_PKT_BW_40  40
@@ -246,6 +281,11 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #define RADIOREV_AUX(rev)	(rev)
 #endif /* BCMRADIOREV */
 
+/* Used for conditioning code when we have multiple radiorev's for
+ * same chip variant. This will not affect code optimizations done
+ * under BCMRADIOREV
+ * JIRA:SW4349-673
+ */
 #define HW_RADIOREV(rev) (rev)
 
 #ifdef BCMSROMREV
@@ -280,7 +320,8 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #ifdef BCMRADIOID
 #define RADIOID_IS(id, value) ((value) == BCMRADIOID)
 #else
-#define RADIOID_IS(id, value)	((id) == (value))
+/* NIC Driver Section */
+#define RADIOID_IS(id, value)	(RADIO_CONF_HAS_##value ? ((id) == (value)) : 0)
 #endif // endif
 #endif /* defined BCMMULTIRADIO0 and BCMMULTIRATIO1 */
 
@@ -297,11 +338,11 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #else
 #define RADIO2069REV(rev)	RADIOREV(rev)
 #endif // endif
-#define RADIO2069_MAJORREV(rev)	((RADIO2069REV(rev) == 0x40) ? 0: \
-	((RADIO2069REV(rev) == 0x42) ? 0:(RADIO2069REV(rev) >> 4)))
+#define RADIO2069_MAJORREV(rev)	(RADIO_CONF_HAS_BCM2069_ID ? ((RADIO2069REV(rev) == 0x40) ? 0: \
+	((RADIO2069REV(rev) == 0x42) ? 0:(RADIO2069REV(rev) >> 4))) : 0)
 
-#define RADIO2069_MINORREV(rev)	((RADIO2069REV(rev) == 0x40) ? 16 : \
-	((RADIO2069REV(rev) == 0x42) ? 17:(RADIO2069REV(rev) & 0x0fU)))
+#define RADIO2069_MINORREV(rev) (RADIO_CONF_HAS_BCM2069_ID ? ((RADIO2069REV(rev) == 0x40) ? 16 : \
+	((RADIO2069REV(rev) == 0x42) ? 17:(RADIO2069REV(rev) & 0x0fU))) : 0)
 
 /*
  * For the 20691 Radio:
@@ -338,16 +379,12 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #define RADIO20691REV(rev)	RADIOREV(rev)
 #endif /* Defined BCMRADIO20691REV */
 
-#ifdef	BCMRADIO20697REV
-#define RADIO20697REV(rev)	BCMRADIO20697REV
-#else
-#define RADIO20697REV(rev)	RADIOREV(rev)
-#endif /* Defined BCMRADIO20691REV */
-
-#define RADIO20691_MAJORREV(rev)	((RADIO20691REV(rev) <= 0x1A) ? 0 : \
+#define RADIO20691_MAJORREV(rev)	(RADIO_CONF_HAS_BCM20691_ID ? \
+					 ((RADIO20691REV(rev) <= 0x1A) ? 0 : \
 					 (RADIO20691REV(rev) <= 0x5A) ? 1 : \
-					 (RADIO20691REV(rev) <= 0x82) ? 1 : 2)
-#define RADIO20691_MINORREV(rev)	((RADIO20691_MAJORREV(rev) == 0) ? \
+					 (RADIO20691REV(rev) <= 0x82) ? 1 : 2) : 0)
+#define RADIO20691_MINORREV(rev)	(RADIO_CONF_HAS_BCM20691_ID ? \
+					((RADIO20691_MAJORREV(rev) == 0) ? \
 					 ((RADIO20691REV(rev) <= 0x12) ? 0 : \
 					  (RADIO20691REV(rev) <= 0x15) ? 1 : 2) : \
 					(RADIO20691_MAJORREV(rev) == 1) ? \
@@ -360,10 +397,7 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 					   (RADIO20691REV(rev) == 0x5A)) ? 4 : \
 					  (RADIO20691REV(rev) <= 0x58) ? 5 : \
 					  (RADIO20691REV(rev) == 0x81) ? 16 : \
-					  (RADIO20691REV(rev) == 0x82) ? 17 : 0) : 0)
-
-/* setting main slice majorrev to 0 (rev is 6), aux slice majorrev to 1 (rev is 9) */
-#define RADIO20697_MAJORREV(rev)	((rev) % 2)
+					  (RADIO20691REV(rev) == 0x82) ? 17 : 0) : 0) : 0)
 
 /* 43012 wlbga Board */
 #define BCM943012WLREF_SSID	0x07d7
@@ -407,10 +441,12 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #define RADIO20693REV(rev)	RADIOREV(rev)
 #endif /* BCMRADIOREV */
 
-#define RADIO20693_MAJORREV(rev)	((RADIO20693REV(rev) <= 0x02) ? 0 : \
+#define RADIO20693_MAJORREV(rev)	(RADIO_CONF_HAS_BCM20693_ID ? \
+	((RADIO20693REV(rev) <= 0x02) ? 0 : \
 	((RADIO20693REV(rev) <= 0x0D) ? 1 : \
-	(RADIO20693REV(rev) < 0x20) ? 2 : 3))
-#define RADIO20693_MINORREV(rev)	((RADIO20693_MAJORREV(rev) == 0) ? 0 : \
+	(RADIO20693REV(rev) < 0x20) ? 2 : 3)) : 0)
+#define RADIO20693_MINORREV(rev)	(RADIO_CONF_HAS_BCM20693_ID ? \
+	((RADIO20693_MAJORREV(rev) == 0) ? 0 : \
 	(RADIO20693_MAJORREV(rev) == 1) ? \
 	((RADIO20693REV(rev) == 0x03) ? 0 : \
 	(RADIO20693REV(rev) == 0x04 || RADIO20693REV(rev) == 0x0A) ? 1 : \
@@ -423,7 +459,7 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 	(RADIO20693REV(rev) == 0x0E) ? 1 : \
 	(RADIO20693REV(rev) == 0x11) ? 3 : (RADIO20693REV(rev) == 0x0F) ? 4 : 5) : \
 	(RADIO20693_MAJORREV(rev) == 3) ? \
-	((RADIO20693REV(rev) == 0x20) ? 0 : 1) : 0)
+	((RADIO20693REV(rev) == 0x20) ? 0 : 1) : 0) : 0)
 
 #ifdef BCMRADIO20694REV
 #define RADIO20694REV(rev)	BCMRADIO20694REV
@@ -431,7 +467,8 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #define RADIO20694REV(rev)	RADIOREV(rev)
 #endif /* BCMRADIOREV */
 
-#define RADIO20694_MAJORREV(rev) ((RADIO20694REV(rev) < 0x08) ? 2 : 3)
+#define RADIO20694_MAJORREV(rev) (RADIO_CONF_HAS_BCM20694_ID ? \
+	((RADIO20694REV(rev) < 0x08) ? 2 : 3) : 0)
 #define RADIO20694_MINORREV(rev)	0
 
 /*
@@ -448,8 +485,9 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #define RADIO20695REV(rev)	RADIOREV(rev)
 #endif /* BCMRADIOREV */
 
-#define RADIO20695_MAJORREV(rev)	((RADIO20695REV(rev) <= 0x1f) ? 0 : \
-	((RADIO20695REV(rev) <= 0x40) ? 1 : 2))
+#define RADIO20695_MAJORREV(rev)    (RADIO_CONF_HAS_BCM20695_ID ? \
+	((RADIO20695REV(rev) <= 0x1f) ? 0 : \
+	((RADIO20695REV(rev) <= 0x40) ? 1 : 2)) : 0)
 #define RADIO20695_MINORREV(rev)	0
 
 #ifdef BCMRADIO20698REV
@@ -458,7 +496,7 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #define RADIO20698REV(rev)	RADIOREV(rev)
 #endif /* BCMRADIOREV */
 
-#define RADIO20698_MAJORREV(rev)	RADIO20698REV(rev)
+#define RADIO20698_MAJORREV(rev)	(RADIO_CONF_HAS_BCM20698_ID ? RADIO20698REV(rev) : 0)
 #define RADIO20698_MINORREV(rev)	0
 
 #ifdef BCMRADIO20704REV
@@ -467,8 +505,26 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #define RADIO20704REV(rev)	RADIOREV(rev)
 #endif /* BCMRADIOREV */
 
-#define RADIO20704_MAJORREV(rev)	RADIO20704REV(rev)
+#define RADIO20704_MAJORREV(rev)	(RADIO_CONF_HAS_BCM20704_ID ? RADIO20704REV(rev) : 0)
 #define RADIO20704_MINORREV(rev)	0
+
+#ifdef BCMRADIO20707REV
+#define RADIO20707REV(rev)      BCMRADIO20707REV
+#else /* BCMRADIOREV */
+#define RADIO20707REV(rev)      RADIOREV(rev)
+#endif /* BCMRADIOREV */
+
+#define RADIO20707_MAJORREV(rev)        (RADIO_CONF_HAS_BCM20707_ID ? RADIO20707REV(rev) : 0)
+#define RADIO20707_MINORREV(rev)        0
+
+#ifdef BCMRADIO20709REV
+#define RADIO20709REV(rev)	BCMRADIO20709REV
+#else /* BCMRADIOREV */
+#define RADIO20709REV(rev)	RADIOREV(rev)
+#endif /* BCMRADIOREV */
+
+#define RADIO20709_MAJORREV(rev)	(RADIO_CONF_HAS_BCM20709_ID ? RADIO20709REV(rev) : 0)
+#define RADIO20709_MINORREV(rev)	0
 
 #ifdef BCMRADIOMAJORREV
 #define RADIOMAJORREV(pi)	BCMRADIOMAJORREV
@@ -479,12 +535,14 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 					RADIO20691_MAJORREV((pi)->pubpi->radiorev) : \
 					(RADIOID_IS((pi)->pubpi->radioid, BCM20694_ID)) ? \
 					RADIO20694_MAJORREV((pi)->pubpi->radiorev) : \
-					(RADIOID_IS((pi)->pubpi->radioid, BCM20697_ID)) ? \
-					RADIO20697_MAJORREV((pi)->pubpi->radiorev) : \
 					(RADIOID_IS((pi)->pubpi->radioid, BCM20698_ID)) ? \
 					RADIO20698_MAJORREV((pi)->pubpi->radiorev) : \
 					(RADIOID_IS((pi)->pubpi->radioid, BCM20704_ID)) ? \
 					RADIO20704_MAJORREV((pi)->pubpi->radiorev) : \
+					(RADIOID_IS((pi)->pubpi->radioid, BCM20707_ID)) ? \
+					RADIO20707_MAJORREV((pi)->pubpi->radiorev) : \
+					(RADIOID_IS((pi)->pubpi->radioid, BCM20709_ID)) ? \
+					RADIO20709_MAJORREV((pi)->pubpi->radiorev) : \
 					RADIO2069_MAJORREV((pi)->pubpi->radiorev))
 #endif /* BCMRADIOMAJORREV */
 
@@ -501,6 +559,10 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 					RADIO20698_MINORREV((pi)->pubpi->radiorev) : \
 					(RADIOID_IS((pi)->pubpi->radioid, BCM20704_ID)) ? \
 					RADIO20704_MINORREV((pi)->pubpi->radiorev) : \
+					(RADIOID_IS((pi)->pubpi->radioid, BCM20707_ID)) ? \
+					RADIO20707_MINORREV((pi)->pubpi->radiorev) : \
+					(RADIOID_IS((pi)->pubpi->radioid, BCM20709_ID)) ? \
+					RADIO20709_MINORREV((pi)->pubpi->radiorev) : \
 					RADIO2069_MINORREV((pi)->pubpi->radiorev))
 
 #endif /* BCMRADIOMINORREV */
@@ -513,13 +575,21 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #define IS_28NM_RADIO(pi) (RADIOID_IS((pi)->pubpi->radioid, BCM20694_ID) || \
 			RADIOID_IS((pi)->pubpi->radioid, BCM20695_ID) || \
 			RADIOID_IS((pi)->pubpi->radioid, BCM20696_ID) || \
-			RADIOID_IS((pi)->pubpi->radioid, BCM20697_ID) || \
 			RADIOID_IS((pi)->pubpi->radioid, BCM20698_ID) || \
-			RADIOID_IS((pi)->pubpi->radioid, BCM20704_ID))
+			RADIOID_IS((pi)->pubpi->radioid, BCM20704_ID) || \
+			RADIOID_IS((pi)->pubpi->radioid, BCM20707_ID) || \
+			RADIOID_IS((pi)->pubpi->radioid, BCM20709_ID))
 
 #define IS_4349A2_RADIO(pi) (RADIOID_IS((pi)->pubpi->radioid, BCM20693_ID) && \
 				((RADIO20693REV((pi)->pubpi->radiorev) >= 0x0A) && \
 				(RADIO20693REV((pi)->pubpi->radiorev) <= 0x0D)))
+
+#ifdef WL_EAP_BCM43570
+/* WLENT customization - easy of use macro for the 43570a2 */
+#define IS_43570(pi) (ACMAJORREV_2(pi->pubpi->phy_rev) && ACMINORREV_5(pi) && \
+				  RADIOID(pi->pubpi->radioid) == BCM2069_ID && \
+				  RADIOREV(pi->pubpi->radiorev) == 0x2C)
+#endif /* WL_EAP_BCM43570 */
 
 #ifdef XTAL_FREQ
 #define PHY_XTALFREQ(_freq)	XTAL_FREQ
@@ -675,7 +745,7 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #define PPREXP_MCS_P_11		11
 
 #define FIRST_REF5_CHANNUM	149	/* Lower bound of disable channel-range for srom rev 1 */
-#define LAST_REF5_CHANNUM	165	/* Upper bound of disable channel-range for srom rev 1 */
+#define LAST_REF5_CHANNUM	173	/* Upper bound of disable channel-range for srom rev 1 */
 #define	FIRST_5G_CHAN		14	/* First allowed channel index for 5G band */
 #define	LAST_5G_CHAN		50	/* Last allowed channel for 5G band */
 #define	FIRST_MID_5G_CHAN	14	/* Lower bound of channel for using m_tssi_to_dbm */
@@ -700,12 +770,21 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #define PHY_SUBBAND_4BAND		4
 #define PHY_MAXNUM_5GSUBBANDS		5
 #define NUMSROM8POFFSETS	8
+/* XXX PHY_SUBBAND_3BAND_DEFAULT is the default setting*
+* that have been used in connectivity for a long time *
+* Japan is defined as 7 because the field has 3 bits and
+it comes up as 7 when not programmed
+*/
 #define PHY_SUBBAND_3BAND_JAPAN		7
 
 #define JAPAN_LOW_5G_CHAN	4900
 #define JAPAN_MID_5G_CHAN	5100
 #define JAPAN_HIGH_5G_CHAN	5500
 
+/* XXX http://hwnbu-twiki.broadcom.com/bin/view/Mwgroup/Subbands5GHz
+*
+* PR 89603: new 5G channel partition that covers only [5170-5825]MHz
+ */
 #define EMBEDDED_LOW_5G_CHAN	5170
 #define EMBEDDED_MID_5G_CHAN	5500
 #define EMBEDDED_HIGH_5G_CHAN	5745
@@ -886,6 +965,9 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 #define ACPHY_NOISE_INITGAIN_X29_2G   (67)
 #define ACPHY_NOISE_INITGAIN_X29_5G   (67)
 #define ACPHY_NOISE_INITGAIN  (67)
+#define AXPHY_NOISE_INITGAIN_2G   (64)
+#define AXPHY_NOISE_INITGAIN_5G   (64)
+#define AXPHY_NOISE_INITGAIN  (64)
 #define ACPHY_NOISE_SAMPLEPWR_TO_DBM  (-37)
 #define ACPHY_NOISE_SAMPLEPWR_TO_DBM_10BIT  (-49)
 #define ACPHY_NOISE_RXGAIN_UNSPECIFIED (-100)
@@ -967,7 +1049,8 @@ typedef void (*gpaioconfig_t) (phy_info_t *pi, wl_gpaio_option_t option, int cor
 
 #define PHY_CAL_SEARCHMODE_RESTART   0  /* cal search mode (former FULL) */
 #define PHY_CAL_SEARCHMODE_REFINE    1 /* cal search mode (former PARTIAL) */
-#define PHY_CAL_SEARCHMODE_UNDEF     2 /* cal search mode: Not defined - This has to be ignored */
+#define PHY_CAL_SEARCHMODE_LOPWR     2 /* cal search mode (txlopwr for loft only) */
+#define PHY_CAL_SEARCHMODE_UNDEF     3 /* cal search mode: Not defined - This has to be ignored */
 
 /* Keeps count of phy watchdog timer ticks (# elapsed seconds) */
 #define PHYTIMER_NOW(pi)	((pi)->sh->now)
@@ -1226,8 +1309,9 @@ typedef struct {
 #define VALID_AC_RADIO(radioid)  (radioid == BCM2069_ID || radioid == BCM20691_ID || \
 				  radioid == BCM20693_ID || radioid == BCM20694_ID || \
 				  radioid == BCM20695_ID || radioid == BCM20696_ID || \
-				  radioid == BCM20697_ID || radioid == BCM20698_ID || \
-				  radioid == BCM20704_ID)
+				  radioid == BCM20698_ID || \
+				  radioid == BCM20704_ID || radioid == BCM20707_ID || \
+				  radioid == BCM20709_ID)
 
 /*
 * however radio ID checks are run-time. If any future chip breaks this dependency
@@ -1705,7 +1789,6 @@ typedef struct {
 	uint       cal_suppress_count; /* in sec */
 	int16      last_cal_temp;
 	uint32 fullphycalcntr;
-	uint32 multiphasecalcntr;
 	bool ignore_crs_status;
 	bool phy_forcecal_request;
 } phy_cal_info_t;
@@ -1724,17 +1807,24 @@ typedef struct {
 	uint16 ofdm_txa[PHY_CORE_MAX];
 	uint16 ofdm_txb[PHY_CORE_MAX];
 	uint16 ofdm_txd[PHY_CORE_MAX]; /* contain di & dq */
+	uint16 ofdm_txd_lopwr[PHY_CORE_MAX]; /* contain di & dq */
+	uint16 ofdm_txd_lopwr1[PHY_CORE_MAX]; /* contain di & dq */
+	uint16 ofdm_txd_lopwr2[PHY_CORE_MAX]; /* contain di & dq */
+
 	uint16 bphy_txa[PHY_CORE_MAX];
 	uint16 bphy_txb[PHY_CORE_MAX];
 	uint16 bphy_txd[PHY_CORE_MAX]; /* contain di & dq */
+
 	uint8  txei[PHY_CORE_MAX];
 	uint8  txeq[PHY_CORE_MAX];
 	uint8  txfi[PHY_CORE_MAX];
 	uint8  txfq[PHY_CORE_MAX];
+
 	uint16 rxa[PHY_CORE_MAX];
 	uint16 rxb[PHY_CORE_MAX];
 	int32 rxs[PHY_CORE_MAX];
 	bool rxe;
+
 	int16 idle_tssi[PHY_CORE_MAX];
 	uint8 baseidx[PHY_CORE_MAX];
 
@@ -1824,6 +1914,7 @@ typedef struct phy_srom_info
 	int8    ofdmfilttype;			/* 20Mhz ofdm filter type */
 	int8    ofdmfilttype40;			/* 40Mhz ofdm filter type */
 	bool	sr18_cck_paparam_en;		/* enabling cck PA PARAM in srom18 */
+	bool	sr18_txpwr_cap_en;		/* enabling txpwr cap in srom18 */
 
 	/* TR isolation indices  */
 	uint8 	triso2g;
@@ -1935,6 +2026,8 @@ typedef struct phy_srom_info
 	int8 maxchipoutpower[2];
 	int8    txidxmincap2g;
 	int8    txidxmincap5g;
+	uint8 dacdiv10_2g;
+	uint8 dssf_dis_ch138;
 } phy_srom_info_t;
 
 /* phy state that is per device instance */
@@ -2170,10 +2263,13 @@ struct srom13_ppr {
 typedef struct sr13_ppr_5g_rateset {
 	ppr_ofdm_rateset_t      ofdm20_offset_5g;
 	ppr_vht_mcs_rateset_t   mcs20_offset_5g;
+	ppr_he_mcs_rateset_t	he_mcs20_offset_5g;
 	ppr_ofdm_rateset_t      ofdm40_offset_5g;
 	ppr_vht_mcs_rateset_t   mcs40_offset_5g;
+	ppr_he_mcs_rateset_t	he_mcs40_offset_5g;
 	ppr_ofdm_rateset_t      ofdm80_offset_5g;
 	ppr_vht_mcs_rateset_t   mcs80_offset_5g;
+	ppr_he_mcs_rateset_t	he_mcs80_offset_5g;
 } sr13_ppr_5g_rateset_t;
 
 struct srom_lgcy_ppr {
@@ -2251,6 +2347,7 @@ typedef struct srom12_pwrdet {
 	uint16	pdoffset20in160[PHY_CORE_MAX][CH_5G_5BAND];
 	uint16	pdoffset40in160[PHY_CORE_MAX][CH_5G_5BAND];
 	uint16	pdoffset80in160[PHY_CORE_MAX][CH_5G_5BAND];
+	uint8   pwr_backoff[2];
 } srom12_pwrdet_t;
 
 /* This structure is used to save/modify/restore the noise vars for specific tones */
@@ -2557,7 +2654,11 @@ struct phy_info
 	uint	tbl_save_id;
 	uint	tbl_save_offset;
 	uint16	phy_wreg;
-	uint16	phy_wreg_limit;
+	uint16	phy_wreg_limit;			/* PCI bus writes bursting control
+						 * XXX there seems some alignment issue for phy_wreg
+						 * to be moved to somewhere else make both of them
+						 * uint16 to simplify alignment
+						 */
 	uint16	tbl_data_hi;
 	uint16	tbl_data_lo;
 	uint16	tbl_addr;
@@ -2610,7 +2711,10 @@ struct phy_info
 	bool	do_noisemode_reset;
 	bool	do_acimode_reset;
 	bool	nphy_btc_lnldo_bump;	/* indicates the bump in ln-ldo1: btcxwar */
-	bool	aci_rev7_subband_cust_fix;
+	bool	aci_rev7_subband_cust_fix;	/* 1 indicates the aci fix for board with subband
+						 * customization. 0 indicated the aci fix for board
+						 * with gainctrl workaround
+						 */
 	bool	phy_bphy_evm;			/* continuous CCK transmission is ON/OFF */
 	bool	phy_bphy_rfcs;			/* nphy BPHY RFCS testpattern is ON/OFF */
 
@@ -2827,6 +2931,16 @@ struct phy_info
 	phy_crash_reason_t phy_crash_rc;
 	bool	phynoise_pmstate; /* PM State for noise mmt decision */
 	uint32	phynoise_lastmmttime; /* Last Noise mmt time. Irrespective of channel. */
+	/* Start WL_EAP_NOISE_MEASUREMENTS */
+	/* Noise Bias IOVARs raise or the lower the calculated noise floor */
+	int8	phynoise_bias2glo;
+	int8	phynoise_bias2ghi;
+	int8	phynoise_bias5glo;
+	int8	phynoise_bias5ghi;
+	int8	phynoise_bias_radarlo;
+	int8	phynoise_bias_radarhi;
+	bool	phynoise_bias_rxgainerr;
+	/* End WL_EAP_NOISE_MEASUREMENTS */
 	bool	ccktpcloop_en;
 	bool    phytxtone_symm; /* A flag to indicate symmetrical tone */
 	uint8 phy_chanest_dump_ctr;	/* Chanest dump counter */
@@ -2839,6 +2953,35 @@ struct phy_info
 	/* ************************************************************************************ */
 	/* [PHY_REARCH] Do not add any variables here. Add them to the individual modules */
 	/* ************************************************************************************ */
+	/* parameters for Dynamic ED
+	* The feature is called every second in a watchdog. It monitors the media for
+	* "const_ed_monitor_window cycles" (e.g. 3cycles=3sec). It measures SED
+	* (significant energy detected) ratio. If SED is larger than "const_sed_upper_bound"
+	* (eg.40%) then it starts to increase the "assert ED threshold" by const_ed_inc_step
+	* (e.g. 1dB) up to "const_ed_th_high". and if the SED goes below "const_sed_lower_bound"
+	* the threshold will be decreased by "const_ed_dec_step" (till we reach "const_ed_th_low")
+	* to avoid unnecessary threshold modification. If SED is too high (larger than
+	* "const_sed_disable"), the feature will be disabled; i.e. the threshold will
+	* be reset to the static edcrs threshold
+	*/
+
+	uint8 ed_count;  /* To keep monitoring count/time */
+	uint32 ed_counter;  /* number of usecs with high energy */
+	int sed; /* Current significant energy detected ratio */
+
+	bool dynamic_ed_thresh_enable; /* Is dynamic ED threshold feature enable? */
+	int const_ed_monitor_window;
+	/* Monitoring count/time for dynamic ED. Can be set through WL */
+	int const_sed_disable; /* Maximum SED for which Dyn ED works */
+	int const_sed_lower_bound; /* Lower bound for SED */
+	int const_sed_upper_bound; /* Upper bound for SED */
+	int const_ed_th_high; /* Maximum ED threshold. Can be set through WL */
+	int const_ed_th_low; /* Minimum ED threshold. Can be set through WL */
+	int const_ed_inc_step; /* ED increment step. Can be set through WL */
+	int const_ed_dec_step; /* ED decrement step. Can be set through WL */
+	bool const_dy_ed_initialized;
+
+	uint8 acphy_for_dynamic_ed; /* Does the board support dynamic ED. Set through nvram. */
 };
 
 struct prephy_info
@@ -3263,11 +3406,76 @@ wlc_phy_chanspec_radio2057_setup(phy_info_t *pi, const chan_info_nphy_radio2057_
 			           (CHIPID((pi)->sh->chip) == BCM43234_CHIP_ID) || \
 			           (CHIPID((pi)->sh->chip) == BCM43238_CHIP_ID))
 
+/* PR 108019 - CLB bug WAR:
+ * The PHY reg clb_rf_sw_ctrl_mask_ctrl mask for WLAN to defer control to BT is board dependent
+ */
 #define LCNXN_SWCTRL_MASK_DEFAULT     0xFFF /* All line under WLAN control */
 #define LCNXN_SWCTRL_MASK_43241IPAAGB 0xFF9 /* RF_SW_CTRL_[2-1] are under BT control */
 #define LCNXN_SWCTRL_MASK_43241IPAAGB_eLNA 0xFD9 /* RF_SW_CTRL_[5,2-1] are under BT control */
 #define LCNXN_SWCTRL_MASK_43242USBREF 0xFF3 /* RF_SW_CTRL_[3-2] are under BT control */
 #define LCNXN_SWCTRL_MASK_4324B1EFOAGB 0xFDC /* RF_SW_CTRL_[5,1-0] are under BT control */
+
+/* Dynamic ED constants
+ * The feature is called every second in a watchdog. It monitors the media for
+ * DYN_ED_WINDOW cycles (e.g. 3cycles=3sec). It measures SED (significant energy detected) ratio.
+ * If SED is larger than DYN_ED_SED_UPPER_BOUND (eg.40%) then it starts to increase the
+ * "assert ED threshold" by DYN_ED_INC_STEP (e.g. 1dB) up to DYN_ED_THRESH_HIGH. and if the SED
+ * goes below DYN_ED_SED_LOWER_BOUND the threshold will be decreased by DYN_ED_DEC_STEP
+ * (till we reach DYN_ED_THRESH_LOW) to avoid unnecessary threshold modification.
+ * If SED is too high (larger than DYN_ED_SED_DISABLE), the feature will be disabled;
+ * i.e. the threshold will be set to the preset value DYN_ED_PRESET_ED_THRESH
+ */
+#define DYN_ED_WINDOW	3	/* monitoring window in watchdog count */
+#define DYN_ED_MAX_SED 100
+/* Maximum allowed value when setting the DYN_ED_SED_UPPER_BOUND
+ * and DYN_ED_SED_LOWER_BOUND by wl commands
+ */
+#define DYN_ED_MIN_SED 0
+/* Minimum allowed value when setting the DYN_ED_SED_UPPER_BOUND
+ * and DYN_ED_SED_LOWER_BOUND by wl commands
+ */
+#define DYN_ED_MIN_ACC_TH -75
+/* Maximum allowed value when setting the DYN_ED_THRESH_HIGH
+ * and DYN_ED_THRESH_HIGH by wl commands
+ */
+#define DYN_ED_MAX_ACC_TH -20
+/* Maximum allowed value when setting the DYN_ED_THRESH_HIGH
+ * and DYN_ED_THRESH_HIGH by wl commands
+ */
+#define DYN_ED_SED_DISABLE 90  /* SED for very high SEDs */
+#define DYN_ED_SED_UPPER_BOUND	40
+/* SED ratios higher than this will trigger dynamic
+ * threshold ==> increase threshold till ED_THRESH_HIGH
+ */
+#define DYN_ED_SED_LOWER_BOUND	5
+/* SED ratios lower than this will make the
+ * threshold decrease to ED_THRESH_LOW
+ */
+#define DYN_ED_THRESH_HIGH -62 /* Highest ed_thresh */
+#define DYN_ED_THRESH_LOW -69 /* Lowest ed_thresh */
+#define DYN_ED_INC_STEP	1	/* ed_thresh increment step size */
+#define DYN_ED_DEC_STEP	1	/* ed_thresh decrement step size */
+
+#define DYN_ED_CNT_REG_LSB 0x1198  /* Registers defined to count ED intervals with high energy */
+#define DYN_ED_CNT_REG_MSB 0x119A  /* Registers defined to count ED intervals with high energy */
+
+/* functions defined and used in dynamic energy detection */
+extern int
+wlc_phy_adjust_ed_thres(phy_info_t *pi, int32 *assert_thresh_dbm, bool set_threshold);
+bool wlc_edcrs_enabled(phy_info_t *pi);
+void wlc_dynamic_ed_thresh_enable(phy_info_t *pi, bool set_dy_ed_en);
+extern void wlc_dynamic_ed_thresh(phy_info_t *pi);
+int wlc_phy_update_ed_thres(phy_info_t *pi, int32 *assert_thresh_dbm, bool set_threshold);
+void wlc_dynamic_ed_thresh_init_const(phy_info_t *pi);
+void wlc_dynamic_ed_th_overwrite_mon_win(phy_info_t *pi, int val);
+void wlc_dynamic_ed_th_overwrite_sed_dis(phy_info_t *pi, int val);
+void wlc_dynamic_ed_th_overwrite_sed_high(phy_info_t *pi, int val);
+void wlc_dynamic_ed_th_overwrite_sed_low(phy_info_t *pi, int val);
+void wlc_dynamic_ed_th_overwrite_th_high(phy_info_t *pi, int val);
+void wlc_dynamic_ed_th_overwrite_th_low(phy_info_t *pi, int val);
+void wlc_dynamic_ed_th_overwrite_step_inc(phy_info_t *pi, int val);
+void wlc_dynamic_ed_th_overwrite_step_dec(phy_info_t *pi, int val);
+void wlc_dynamic_ed_th_overwrite_acphy(phy_info_t *pi, int val);
 
 extern void wlc_phy_trigger_cals_for_btc_adjust(phy_info_t *pi);
 

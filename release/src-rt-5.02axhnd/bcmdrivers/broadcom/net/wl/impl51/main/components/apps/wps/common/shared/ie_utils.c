@@ -1,7 +1,7 @@
 /*
  * WPS IE share utility
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: ie_utils.c 475022 2014-05-02 23:21:49Z $
+ * $Id: ie_utils.c 766338 2018-07-31 04:55:48Z $
  */
 
 #include <wpserror.h>

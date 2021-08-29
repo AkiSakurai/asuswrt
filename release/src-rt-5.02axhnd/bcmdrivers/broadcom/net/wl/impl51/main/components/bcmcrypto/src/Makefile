@@ -1,7 +1,7 @@
 #
 # Assorted cryptographic algorithms
 #
-# Copyright 2018 Broadcom
+# Copyright 2019 Broadcom
 #
 # This program is the proprietary software of Broadcom and/or
 # its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
 #
 # <<Broadcom-WL-IPTag/Proprietary:>>
 #
-# $Id: Makefile 679390 2017-01-14 00:13:47Z $
+# $Id: Makefile 774213 2019-04-16 06:48:32Z $
 #
 
 SRCBASE	:= ..
@@ -68,6 +68,7 @@ clean:
 	rm -f *.o *.obj $(PROGS) *.exe
 
 AESFLAGS := -DBCMAES_TEST -DBCMAES_TEST_STANDALONE -DBCMAES_GENTABLE
+
 aes:	aes.c rijndael-alg-fst.c
 	$(CC) $(CFLAGS) $(AESFLAGS) -o $@ $^ $(LDFLAGS)
 
@@ -81,7 +82,7 @@ passhash:	passhash.c sha1.c prf.c
 	$(CC) $(CFLAGS) -DBCMPASSHASH_TEST -o $@ $^ $(LDFLAGS)
 
 prf:	prf.c hmac.c sha1.c md5.c
-	$(CC) $(CFLAGS) -DBCMPRF_TEST -DBCMCCX -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) -DBCMPRF_TEST -o $@ $^ $(LDFLAGS)
 
 rc4:	rc4.c
 	$(CC) $(CFLAGS) -DBCMRC4_TEST -o $@ $^ $(LDFLAGS)

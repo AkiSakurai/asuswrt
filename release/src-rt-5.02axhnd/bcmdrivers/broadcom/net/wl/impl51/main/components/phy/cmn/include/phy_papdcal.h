@@ -1,7 +1,7 @@
 /*
  * PAPD CAL module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_papdcal.h 657373 2016-09-01 01:08:38Z $
+ * $Id: phy_papdcal.h 773285 2019-03-16 00:12:14Z $
  */
 
 #ifndef _phy_papdcal_h_

@@ -1,7 +1,7 @@
 /*
  * WPS LED (include LAN leds control functions)
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: wps_led.c 676559 2016-12-22 17:02:55Z $
+ * $Id: wps_led.c 766338 2018-07-31 04:55:48Z $
  */
 
 #include <typedefs.h>
@@ -53,6 +53,7 @@
 #include <wps_hal.h>
 #include <wps_led.h>
 #include <wps_wps.h>
+#include <tutrace.h>
 
 extern int wps_getProcessStates();
 
@@ -102,6 +103,7 @@ wps_led(int status)
 		break;
 
 	case WPS_TIMEOUT:
+
 	case WPS_MSG_ERR:
 		wps_hal_led_blink(WPS_BLINKTYPE_ERROR);
 		break;

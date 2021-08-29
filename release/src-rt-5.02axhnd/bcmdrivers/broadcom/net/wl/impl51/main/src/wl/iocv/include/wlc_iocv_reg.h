@@ -1,7 +1,7 @@
 /*
  * IOCV module interface - ioctl/iovar table registration.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -64,6 +64,9 @@
  * But if we are building FULL ROM software,
  * then these macros will be undef'd and redefined in 'wlc_patch.h' with global variables,
  * so that we can avoid abandoning of attach functions if patch is generated.
+ */
+/* XXX they were named as MODULE_IOVAR_PATCH_TABLE & MODULE_IOVAR_PATCH_FUNC
+ * which are too long. rename and shorten them.
  */
 #define IOV_PATCH_TBL NULL
 #define IOV_PATCH_FN NULL

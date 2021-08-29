@@ -1,7 +1,7 @@
 /*
  * Global ASSERT Logging
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcm_assert_log.c 612761 2016-01-14 23:06:00Z $
+ * $Id: bcm_assert_log.c 774680 2019-05-02 12:46:25Z $
  */
 
 #include <epivers.h>
@@ -57,8 +57,8 @@
 
 #include <bcm_assert_log.h>
 
-#if !defined(NDIS) && !defined(linux)
-#error "ASSERT LOG only supports NDIS and LINUX in HIGH driver"
+#if !defined(linux)
+#error "ASSERT LOG only supports LINUX in HIGH driver"
 #endif // endif
 
 #define MAX_ASSERT_NUM		32
@@ -67,35 +67,14 @@ struct bcm_assert_info {
 	uint8 ref_cnt;
 	uint8 cur_idx;
 	uint32 seq_num;
-#if defined(linux)
 	spinlock_t lock;
-#elif defined(NDIS)
-	NDIS_SPIN_LOCK	lock;
-	bool		gotspinlocks;
-#endif // endif
 	assert_record_t assert_table[MAX_ASSERT_NUM];
 };
 
-#if defined(linux)
 #define ASSERT_INIT_LOCK(context)	spin_lock_init(&(context)->lock)
 #define ASSERT_FREE_LOCK(context)
 #define ASSERT_LOCK(context) 		spin_lock(&(context)->lock)
 #define ASSERT_UNLOCK(context) 		spin_unlock(&(context)->lock)
-
-#elif defined(NDIS)
-#define ASSERT_INIT_LOCK(context) do { \
-	NdisAllocateSpinLock(&(context)->lock); \
-	(context)->gotspinlocks = TRUE; \
-	} while (0)
-#define ASSERT_FREE_LOCK(context) do { \
-		if ((context)->gotspinlocks) { \
-			NdisFreeSpinLock(&(context)->lock); \
-			(context)->gotspinlocks = FALSE; \
-		} \
-	} while (0)
-#define ASSERT_LOCK(context)		NdisAcquireSpinLock(&(context)->lock)
-#define ASSERT_UNLOCK(context)		NdisReleaseSpinLock(&(context)->lock)
-#endif /* defined(linux) */
 
 /* Global assert info table: This table cannot be dynamically allocated, since ndis
  * requires allocations to be bound to a driver instance, so this table will have to

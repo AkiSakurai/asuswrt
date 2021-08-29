@@ -1,7 +1,7 @@
 /*
  * Calibration manager module implementation - iovar handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -126,7 +126,7 @@ phy_calmgr_doiovar(void *ctx, uint32 aid,
 		break;
 
 	case IOV_GVAL(IOV_MULTI_PHASE_CAL_CNTR):
-		int_val = (int32)pi->cal_info->multiphasecalcntr;
+		int_val = (int32)pi->cal_info->cal_phase_id;
 		bcopy(&int_val, a, vsize);
 		break;
 

@@ -1,7 +1,7 @@
 /*
  * ACPHY VASIP modules implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_vasip.c 766999 2018-08-24 01:14:37Z $
+ * $Id: phy_ac_vasip.c 776984 2019-07-15 23:14:47Z $
  */
 
 #include <phy_cfg.h>
@@ -93,7 +93,9 @@ CONST d11phyregs_list_t PHYLISTDATA[] = {
 	{0x1400,  4}, /* SMC_CONTROL_STATUS part1 */
 	{0x1405, 17}, /* SMC_CONTROL_STATUS part2 */
 	{0x39f,   2}, /* rxmacphy part1 */
-	{0x1368,  6}  /* rxmacphy part2 */
+	{0x1368,  6}, /* rxmacphy part2 */
+	{0x55c,   3}, /* ImpBfeStatus0Reg */
+	{0x439,  22}  /* BfeStatus */
 };
 
 /*
@@ -160,7 +162,7 @@ BCMATTACHFN(phy_ac_vasip_register_impl)(phy_info_t *pi, phy_ac_info_t *aci,
 	fns.dump_svmp = phy_ac_dump_svmp;
 #endif // endif
 
-	if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		vasip_info->vasipver =
 			READ_PHYREGFLD(pi, MinorVersion, vasipversion);
 	} else if (ACMAJORREV_GE32(pi->pubpi->phy_rev)) {
@@ -225,7 +227,7 @@ phy_ac_vasip_reset_proc(phy_type_vasip_ctx_t *ctx, int reset)
 	vasipregisters_reset_offset = VASIPREGISTERS_RESET;
 	vasipregisters_set_offset = VASIPREGISTERS_SET;
 
-	if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 		vasipregisters_reset_offset >>= 2;
 		vasipregisters_set_offset >>= 2;
 	}
@@ -278,7 +280,7 @@ phy_ac_vasip_set_clk(phy_type_vasip_ctx_t *ctx, bool val)
 	phy_ac_vasip_info_t *info = (phy_ac_vasip_info_t *)ctx;
 	phy_info_t *pi = info->pi;
 
-	if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		phy_ac_vasip_clk_enable(pi->sh->sih, val);
 	} else {
 		MOD_PHYREG(pi, dacClkCtrl, vasipClkEn, val);
@@ -504,14 +506,90 @@ phy_ac_vasip_read_svmp_blk(phy_type_vasip_ctx_t *ctx, uint32 offset, uint16 len,
 }
 
 #if defined(BCMDBG)
+/* for 43684, 63178 */
+static void phy_ac_dump_bfd_status_txv_mem(struct bcmstrbuf *b, phy_info_t *pi)
+{
+	uint32 tmp_val, tbl_val[4];
+	uint16 m, n, usedSlot, slot_count;
+
+	bcm_bprintf(b, "\n===== TXV MEMORY USAGE =====\n");
+	wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_BFDINDEXLUT, 4, 224, 32, &tbl_val[0]);
+	usedSlot = 0;
+	for (m = 0; m < 4; m++) {
+		tmp_val = tbl_val[m];
+		while (tmp_val > 0) {
+			if ((tmp_val & 1) == 0)
+				usedSlot ++;
+			tmp_val  = tmp_val >> 1;
+		}
+	}
+	bcm_bprintf(b, "----- %d slots are used (total 128 slots) ----- \n", usedSlot);
+	for (m = 0; m < 64; m++) {
+		wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_BFDINDEXLUT, 2, 2*m, 32, &tbl_val[0]);
+		slot_count = tbl_val[0] & 0x7;
+		if (slot_count > 0) {
+			bcm_bprintf(b, "txv index %d has %d slots:   ", m, slot_count);
+			for (n = 0; n < slot_count; n++) {
+				if (n < 4)
+					tmp_val = (tbl_val[0] >> (3+ n*7)) & 0x7f;
+				if (n == 4)
+					tmp_val = ((tbl_val[0] >> 31) & 0x1)
+						+ (tbl_val[1] & 0x3f) * 2;
+				if (n > 4)
+					tmp_val = (tbl_val[1] >> (6+ (n-5)*7)) & 0x7f;
+				bcm_bprintf(b, "%03d ", tmp_val);
+			}
+			bcm_bprintf(b, "\n");
+		}
+	}
+}
+
+/* for 6710 or later with NEW_MEMORY_MANAGER */
+static void phy_ac_dump_bfd_status_txv_mem_new(struct bcmstrbuf *b, phy_info_t *pi)
+{
+	uint32 tmp_val, tbl_val[8];
+	uint16 m, n, usedSlot, slotIndex[8];
+
+	bcm_bprintf(b, "\n===== TXV MEMORY USAGE =====\n");
+	wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_BFDINDEXLUT, 8, 224, 32, &tbl_val[0]);
+	tbl_val[0] |= 0x1; // slot0 is invalid, mark as free slot
+	usedSlot = 0;
+	for (m = 0; m < 8; m++) {
+		tmp_val = ~tbl_val[m];
+		for (n = 0; n < 32; n++) {
+			usedSlot += (tmp_val & 1);
+			tmp_val >>= 1;
+		}
+	}
+	bcm_bprintf(b, "----- %d slots are used (total 256 slots) ----- \n", usedSlot);
+	for (m = 0; m < 64; m++) {  // valid txv: 0~63
+		wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_BFDINDEXLUT, 2, 2*m, 32, &tbl_val[0]);
+		for (n = 0; n < 4; n++) {
+			slotIndex[0+n] = tbl_val[0] & 0xff;
+			slotIndex[4+n] = tbl_val[1] & 0xff;
+			tbl_val[0] >>= 8;
+			tbl_val[1] >>= 8;
+		}
+		if (slotIndex[0] > 0) {
+			bcm_bprintf(b, "txv index %d:   %03d", m, slotIndex[0]);
+			n = 1;
+			while ((slotIndex[n] > 0) && (n < 8)) {
+				bcm_bprintf(b, "%03d ", slotIndex[n]);
+				n++;
+			}
+			bcm_bprintf(b, "\n");
+		}
+	}
+}
+
 static void phy_ac_dump_bfd_status(phy_type_vasip_ctx_t *ctx, struct bcmstrbuf *b)
 {
 	phy_ac_vasip_info_t *info = (phy_ac_vasip_info_t *)ctx;
 	phy_info_t *pi = info->pi;
 	uint8 stall_val;
-	uint32 commandIndex, command, tmp_val, tbl_val[4];
+	uint32 commandIndex, command;
 	uint16 bfdrRunning, bfdrDone, bfdrFailed, rptDestIndex, bfdsLogAddr, bfdrCommandIndex;
-	uint16 val0, val1, rptFailed, m, n, usedSlot, slot_count, bfdsCommandIndex;
+	uint16 val0, val1, rptFailed, m, bfdsCommandIndex;
 	uint16 frameDone, steeringDone, steeringRunning, steeringCommandBusy, badReport, badCommand;
 	int local_commandIndex;
 
@@ -603,35 +681,10 @@ static void phy_ac_dump_bfd_status(phy_type_vasip_ctx_t *ctx, struct bcmstrbuf *
 	}
 
 	/* Print TXV status */
-	bcm_bprintf(b, "\n===== TXV MEMORY USAGE =====\n");
-	wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_BFDINDEXLUT, 4, 224, 32, &tbl_val[0]);
-	usedSlot = 0;
-	for (m = 0; m < 4; m++) {
-		tmp_val = tbl_val[m];
-		while (tmp_val > 0) {
-			if ((tmp_val & 1) == 0)
-				usedSlot ++;
-			tmp_val  = tmp_val >> 1;
-		}
-	}
-	bcm_bprintf(b, "-----%d slots are used----- \n", usedSlot);
-	for (m = 0; m < 64; m++) {
-		wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_BFDINDEXLUT, 2, 2*m, 32, &tbl_val[0]);
-		slot_count = tbl_val[0] & 0x7;
-		if (slot_count > 0) {
-			bcm_bprintf(b, "txv index %d has %d slots:   ", m, slot_count);
-			for (n = 0; n < slot_count; n++) {
-				if (n < 4)
-					tmp_val = (tbl_val[0] >> (3+ n*7)) & 0x7f;
-				if (n == 4)
-					tmp_val = ((tbl_val[0] >> 31) & 0x1)
-						+ (tbl_val[1] & 0x3f) * 2;
-				if (n > 4)
-					tmp_val = (tbl_val[1] >> (6+ (n-5)*7)) & 0x7f;
-				bcm_bprintf(b, "%03d ", tmp_val);
-			}
-			bcm_bprintf(b, "\n");
-		}
+	if (ACMAJORREV_GE129(pi->pubpi->phy_rev)) {
+		phy_ac_dump_bfd_status_txv_mem_new(b, pi);
+	} else {
+		phy_ac_dump_bfd_status_txv_mem(b, pi);
 	}
 
 	/* clear BFDr/BFDs status */
@@ -657,8 +710,11 @@ static void phy_ac_dump_svmp(phy_type_vasip_ctx_t *ctx, struct bcmstrbuf *b)
 	uint32 svmp_addr;
 	uint32 tbl_val[32];
 	uint64 tbl_val_64[32];
+	uint8 bfm_busy, smc_busy, steer_running;
+	uint32 compr_rpt_start = 0, compr_rpt_end = 0, compr_rpt_step = 0;
+	uint32 cqi_rpt_start = 0, cqi_rpt_end = 0;
 
-	svmp_list_t svmpmems[] = {
+	static const svmp_list_t svmpmems_4x4[] = {
 		{0x40000, 128},
 		{0x40080, 32},
 		{0x40100, 32},
@@ -678,17 +734,84 @@ static void phy_ac_dump_svmp(phy_type_vasip_ctx_t *ctx, struct bcmstrbuf *b)
 		{0x20000, 32}, /* TXV_IDX = 64 */
 		{0x22000, 32} /* TXV_IDX = 65 */
 	};
+	static const svmp_list_t svmpmems_2x2[] = {
+		{0x18000, 128},		/* interrupt -- err_code_curr */
+		{0x18080, 32},		/* m2v_buf0 (first part) */
+		{0x18100, 32},		/* m2v_buf1 (first part) */
+		{0x18180, 128},		/* v2m_buf_grp */
+		{0x18260, 32},		/* v2m_buf_mvp, v2m_transfer_done */
+		{0x18280, 0x400},	/* bfd_log_buffer */
+		{0x13120, 0x60},	/* pwr_per_ant, param, precoder_buf */
+		{0x0a000, 32},		/* txv_decompressed_report (part) */
+		{0x0a500, 32},		/* txv_decompressed_report (part) */
+		{0x17010, 32},		/* steering_mcs,recommend_mcs */
+		{0x17080, 32},		/* txv_header_addr */
+		{0x0e800, 0x1800},	/* CQI report */
+		{0x10000, 0x2000}	/* BFD compressed report */
+	};
+	static const svmp_list_t svmpmems_3x3[] = {
+		{0x20000, 128},		/* interrupt -- err_code_curr */
+		{0x20080, 32},		/* m2v_buf0 (first part) */
+		{0x20100, 32},		/* m2v_buf1 (first part) */
+		{0x20180, 128},		/* v2m_buf_grp */
+		{0x20260, 32},		/* v2m_buf_mvp, v2m_transfer_done */
+		{0x20280, 0x400},	/* bfd_log_buffer */
+		{0x1a500, 0x60},	/* pwr_per_ant, param, precoder_buf */
+		{0xc800, 32},		/* txv_decompressed_report (part) */
+		{0xcf00, 32},		/* txv_decompressed_report (part) */
+		{0x1c410, 32},		/* steering_mcs,recommend_mcs */
+		{0x1c480, 32},		/* txv_header_addr */
+		{0x0e800, 0x1800},	/* CQI report */
+		{0x10000, 0x8000}	/* BFD compressed report */
+	};
 
-	uint16 phyreg_list[] = {0x1301, 0x1311, 0x1f0, 0x1f1, 0x60d, 0x80d,
-		0xa0d, 0xc0d, 0x601, 0x801, 0xa01, 0xc01, 0x3ec, 0x3, 0x107d};
+	const svmp_list_t *svmpmems = NULL;
 
-	uint16 vasipreg_list[] = {0x2c, 0x30, 0xd0, 0xd4, 0xe0, 0xe4};
+	static const uint16 phyreg_list_4x4[] = {0x1301, 0x1311, 0x1f0, 0x1f1, 0x60d, 0x80d,
+			0xa0d, 0xc0d, 0x601, 0x801, 0xa01, 0xc01, 0x3ec, 0x3, 0x107d};
+	static const uint16 phyreg_list_3x3[] = {0x1301, 0x1311, 0x1f0, 0x1f1, 0x60d, 0x80d,
+			0xa0d, 0x601, 0x801, 0xa01, 0x3ec, 0x3, 0x107d};
+	static const uint16 phyreg_list_2x2[] = {0x1301, 0x1311, 0x1f0, 0x1f1, 0x60d, 0x80d,
+			0x601, 0x801, 0x3ec, 0x3, 0x107d};
+	const uint16 *phyreg_list = NULL;
 
-	phyreg_list_len = sizeof(phyreg_list)/sizeof(phyreg_list[0]);
-	vasipreg_list_len = sizeof(vasipreg_list)/sizeof(vasipreg_list[0]);
+	static const uint16 vasipreg_list[] = {0x2c, 0x30, 0xd0, 0xd4, 0xe0, 0xe4};
 
-	if (!ACMAJORREV_47(pi->pubpi->phy_rev))
+	if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+		svmpmems = svmpmems_4x4;
+		svmp_list_len = sizeof(svmpmems_4x4) / sizeof(svmpmems_4x4[0]);
+		phyreg_list = phyreg_list_4x4;
+		phyreg_list_len = sizeof(phyreg_list_4x4) / sizeof(phyreg_list_4x4[0]);
+		compr_rpt_start = 0x10000;
+		compr_rpt_end = 0x20000;
+		compr_rpt_step = 16;
+		cqi_rpt_start = 0xe000;
+		cqi_rpt_end = 0x10000;
+	} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+		svmpmems = svmpmems_2x2;
+		svmp_list_len = sizeof(svmpmems_2x2) / sizeof(svmpmems_2x2[0]);
+		phyreg_list = phyreg_list_2x2;
+		phyreg_list_len = sizeof(phyreg_list_2x2) / sizeof(phyreg_list_2x2[0]);
+		compr_rpt_start = 0x10000;
+		compr_rpt_end = 0x12000;
+		compr_rpt_step = 2;
+		cqi_rpt_start = 0xe800;
+		cqi_rpt_end = 0x10000;
+	} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		svmpmems = svmpmems_3x3;
+		svmp_list_len = sizeof(svmpmems_3x3) / sizeof(svmpmems_3x3[0]);
+		phyreg_list = phyreg_list_3x3;
+		phyreg_list_len = sizeof(phyreg_list_3x3) / sizeof(phyreg_list_3x3[0]);
+		compr_rpt_start = 0x10000;
+		compr_rpt_end = 0x18000;
+		compr_rpt_step = 4;
+		cqi_rpt_start = 0xe800;
+		cqi_rpt_end = 0x10000;
+	} else {
+		bcm_bprintf(b, "No SVMP dump support for PHYREV %u\n", pi->pubpi->phy_rev);
 		return;
+	}
+	vasipreg_list_len = sizeof(vasipreg_list) / sizeof(vasipreg_list[0]);
 
 	wlapi_suspend_mac_and_wait(pi->sh->physhim);
 	phy_utils_phyreg_enter(pi);
@@ -715,8 +838,8 @@ static void phy_ac_dump_svmp(phy_type_vasip_ctx_t *ctx, struct bcmstrbuf *b)
 			&tbl_val_64[0]);
 		for (n = 0; n < 32; n++) {
 			bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x   0x%-8x\n",
-				ACPHY_TBL_ID_AXMACPHYIFTBL, n+32*m, tbl_val_64[n] & 0xffffffff,
-				(tbl_val_64[n] >> 32) & 0xffffffff);
+				ACPHY_TBL_ID_AXMACPHYIFTBL, n+32*m, (uint32) tbl_val_64[n],
+				(uint32) (tbl_val_64[n] >> 32));
 		}
 	}
 
@@ -755,69 +878,90 @@ static void phy_ac_dump_svmp(phy_type_vasip_ctx_t *ctx, struct bcmstrbuf *b)
 		0x44, tbl_val[0] & 0xffff);
 	}
 
-	wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_SVMPTINYTBL, 2, 0x901, 32, &tbl_val[0]);
-	bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_SVMPTINYTBL,
-		0x901, tbl_val[0]);
-	bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_SVMPTINYTBL,
-		0x902, tbl_val[1]);
-
-	wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_SVMPTINYTBL, 2, 0x9DA, 32, &tbl_val[0]);
-	bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_SVMPTINYTBL,
-		0x9DA, tbl_val[0]);
-	bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_SVMPTINYTBL,
-		0x9DB, tbl_val[1]);
-
-	/* SMC M0 table */
-	wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_SVMPTINYTBL, 32, 0, 32, &tbl_val[0]);
-	for (m = 0; m < 32; m++) {
+	smc_busy = READ_PHYREGFLD(pi, SMCStatus, mac2smc_SMC_busy);
+	if (!smc_busy || 1) {
+		wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_SVMPTINYTBL, 2, 0x901, 32, &tbl_val[0]);
 		bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_SVMPTINYTBL,
-			m, tbl_val[m]);
-	}
-
-	/* SMC M1 table */
-	wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_SVMPTINYTBL, 32, 0x800, 32, &tbl_val[0]);
-	for (m = 0; m < 32; m++) {
+			0x901, tbl_val[0]);
 		bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_SVMPTINYTBL,
-			m+0x800, tbl_val[m]);
-	}
+			0x902, tbl_val[1]);
 
-	/* dump BFM header */
-	wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_BFMSTEERMEM, 8, 0, 32,
-		&tbl_val[0]);
-	for (m = 0; m < 8; m++) {
-		bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_BFMSTEERMEM,
-			m, tbl_val[m]);
-	}
+		wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_SVMPTINYTBL, 2, 0x9DA, 32, &tbl_val[0]);
+		bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_SVMPTINYTBL,
+			0x9DA, tbl_val[0]);
+		bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_SVMPTINYTBL,
+			0x9DB, tbl_val[1]);
 
-	/* dump bfdIndexLUT 128 index */
-	for (m = 0; m < 4; m++) {
-		wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_BFDINDEXLUT, 32, m*32, 32, &tbl_val[0]);
-		for (n = 0; n < 32; n++) {
-			bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_BFDINDEXLUT,
-				n+32*m, tbl_val[n]);
-		}
-	}
-
-	bcm_bprintf(b, "\n===== Important SVMP =====\n");
-	svmp_list_len = sizeof(svmpmems)/sizeof(svmpmems[0]);
-	for (m = 0; m < svmp_list_len; m++) {
-		svmp_block_len = svmpmems[m].cnt/32;
-		svmp_addr = svmpmems[m].addr;
-
-		if ((svmp_addr >= 0x10000) && (svmp_addr < 0x20000)) {
-			step = 16, svmp_len = 16;
-		} else if ((svmp_addr >= 0xe000) && (svmp_addr < 0x10000)) {
-			step = 6, svmp_len = 16;
-		} else {
-			step = 1, svmp_len = 32;
+		/* SMC M0 table */
+		wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_SVMPTINYTBL, 32, 0, 32, &tbl_val[0]);
+		for (m = 0; m < 32; m++) {
+			bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_SVMPTINYTBL,
+				m, tbl_val[m]);
 		}
 
-		for (n = 0; n < svmp_block_len; n += step) {
-			phy_ac_vasip_read_svmp_blk(ctx, svmp_addr + 32*n, svmp_len, &svmp_val[0]);
-			for (idx = 0; idx < svmp_len; idx++)
-				bcm_bprintf(b, "svmp   0x%-4x   0x%-4x\n", svmp_addr + 32*n + idx,
-					svmp_val[idx]);
+		/* SMC M1 table */
+		wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_SVMPTINYTBL, 32, 0x800, 32, &tbl_val[0]);
+		for (m = 0; m < 32; m++) {
+			bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_SVMPTINYTBL,
+				m+0x800, tbl_val[m]);
 		}
+	} else {
+		bcm_bprintf(b, "SMC is running, skip SMC table dump\n");
+	}
+
+	bfm_busy = READ_PHYREGFLD(pi, BfmMuStatus0Reg, bfmMuRunning);
+	if (!bfm_busy || 1) {
+		/* dump BFM header */
+		wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_BFMSTEERMEM, 8, 0, 32,
+			&tbl_val[0]);
+		for (m = 0; m < 8; m++) {
+			bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n", ACPHY_TBL_ID_BFMSTEERMEM,
+				m, tbl_val[m]);
+		}
+	} else {
+		bcm_bprintf(b, "BFM is running, skip BFM table dump\n");
+	}
+
+	steer_running = READ_PHYREGFLD(pi, bfdsStatus0, steeringRunning);
+	if (!steer_running || 1) {
+		/* dump bfdIndexLUT 128 index */
+		for (m = 0; m < 4; m++) {
+			wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_BFDINDEXLUT, 32, m*32, 32,
+				&tbl_val[0]);
+			for (n = 0; n < 32; n++) {
+				bcm_bprintf(b, "0x%-2x   0x%-4x   0x%-8x\n",
+					ACPHY_TBL_ID_BFDINDEXLUT, n+32*m, tbl_val[n]);
+			}
+		}
+	} else {
+		bcm_bprintf(b, "BFD is running, skip BFDINDEXLUT dump\n");
+	}
+
+	// XXX: check for steering is running for now, May need additional check to skip svmp dump
+	if (!steer_running || 1) {
+		bcm_bprintf(b, "\n===== Important SVMP =====\n");
+		for (m = 0; m < svmp_list_len; m++) {
+			svmp_block_len = svmpmems[m].cnt/32;
+			svmp_addr = svmpmems[m].addr;
+
+			if ((svmp_addr >= compr_rpt_start) && (svmp_addr < compr_rpt_end)) {
+				step = compr_rpt_step, svmp_len = 16;
+			} else if ((svmp_addr >= cqi_rpt_start) && (svmp_addr < cqi_rpt_end)) {
+				step = 6, svmp_len = 16;
+			} else {
+				step = 1, svmp_len = 32;
+			}
+
+			for (n = 0; n < svmp_block_len; n += step) {
+				phy_ac_vasip_read_svmp_blk(ctx, svmp_addr + 32*n, svmp_len,
+					&svmp_val[0]);
+				for (idx = 0; idx < svmp_len; idx++)
+					bcm_bprintf(b, "svmp   0x%-4x   0x%-4x\n",
+							svmp_addr + 32*n + idx, svmp_val[idx]);
+			}
+		}
+	} else {
+		bcm_bprintf(b, "BFD is running, skip svmp dump\n");
 	}
 
 	/* restore stall value */

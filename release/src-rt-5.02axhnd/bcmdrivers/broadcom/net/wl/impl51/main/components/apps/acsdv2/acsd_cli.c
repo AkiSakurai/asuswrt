@@ -1,7 +1,7 @@
 /*
  * Frontend command-line utility client for ACSD
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acsd_cli.c 754789 2018-03-29 05:23:07Z $
+ * $Id: acsd_cli.c 776039 2019-06-18 07:31:03Z $
  */
 
 #include <stdio.h>
@@ -151,6 +151,12 @@ acsd_variables[] = {	/* Sorted alphabetically for nicer help display */
 	"msglevel",
 	"sample_period",
 	"threshold_time",
+	"test_dfsr",		/* use ZDFS_2G or ZDFS_5G or full-CAC */
+	"test_preclear",	/* use ZDFS_2G or ZDFS_5G */
+	"zdfs_5g_move",		/* use ZDFS_5G and move on success */
+	"zdfs_2g_move",		/* use ZDFS_2G and move on success */
+	"zdfs_5g_preclear",	/* use ZDFS_5G but not move - ETSI only */
+	"zdfs_2g_preclear",	/* use ZDFS_2G but not move - ETSI only */
 	NULL
 };
 
@@ -260,7 +266,7 @@ static void
 acs_dump_cscore_head(ch_candidate_t *cscore)
 {
 	acsddbg("%7s %8s %3s %3s ", "Channel", "(Chspec)", "Use", "DFS");
-	acs_dump_ch_score_head(cscore->chscore, FALSE);
+	acs_dump_ch_score_head(cscore->chscore, TRUE);
 }
 
 static void
@@ -273,7 +279,7 @@ acs_dump_cscore_body(ch_candidate_t * candi)
 		(candi->valid) ? "" : " Invalid:");
 
 	if (candi->valid) {
-		acs_dump_ch_score_body(candi->chscore, FALSE);
+		acs_dump_ch_score_body(candi->chscore, TRUE);
 	} else {
 		acs_dump_reason(candi);
 	}
@@ -422,7 +428,7 @@ acs_trigger_name(int trigger)
 {
 	static const char *trig_str[APCS_MAX] = {
 		"INIT", "IOCTL", "CHANIM", "TIMER",
-		"BTA", "TXOP/TXDLY", "NONACS", "DFS-REENTRY", "TXFAIL"
+		"CISCAN", "TXOP", "NONACS", "DFS-REENTRY", "TXFAIL", "ZDFS"
 	};
 	return (trigger < APCS_MAX) ? trig_str[trigger] : "(invalid)";
 }
@@ -441,7 +447,7 @@ do_dump_acs_record(acs_cli_info_t *ctx, int rcount)
 		return BCME_OK;
 	}
 
-	acsddbg("Timestamp(ms) ACS-Trigger  ChanSpec  BG-Noise  CCA-Count Idle\n");
+	printf("Timestamp(s) ACS-Trigger  ChanSpec  BG-Noise  CCA-Count Idle\n");
 	for (i = 0; i < count; i++) {
 		time_t ltime = ntohl(result->timestamp);
 		acsddbg("%8u \t%s \t%8x \t%d \t%d \t%d\n",
@@ -667,7 +673,7 @@ create_server_command(acs_cli_info_t *ctx)
 
 	if (ctx->cmdarg[CMDARG_VALUE][0]) {
 		len += acs_snprintf(ctx->cmd_buf+len, ACSD_BUFSIZE_4K - len,
-			"&value=%d", (int)strtoul(ctx->cmdarg[CMDARG_VALUE], NULL, 0));
+			"&value=%s", ctx->cmdarg[CMDARG_VALUE]);
 	}
 	++len;	/* Add the trailing nul byte, not included in len so far */
 

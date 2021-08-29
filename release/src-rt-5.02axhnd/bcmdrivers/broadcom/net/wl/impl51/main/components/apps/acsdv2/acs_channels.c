@@ -3,7 +3,7 @@
  *
  *      This module will calculate Candidate scores for all the channels.
  *
- *	Copyright 2018 Broadcom
+ *	Copyright 2019 Broadcom
  *
  *	This program is the proprietary software of Broadcom and/or
  *	its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +44,7 @@
  *	OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  *	NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- *	$Id: acs_channels.c 758746 2018-04-20 06:40:24Z $
+ *	$Id: acs_channels.c 776842 2019-07-11 07:40:26Z $
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -68,7 +68,7 @@ typedef enum { PICK_NONE = 0, PICK_CURRENT, PICK_CANDIDATE } channel_pick_t;
 #define ACS_CHANNEL_6 6
 #define ACS_CHANNEL_11 11
 
-static bool acs_is_initial_selection(acs_chaninfo_t *c_info);
+bool acs_is_initial_selection(acs_chaninfo_t *c_info);
 /*
 * acs_cns_normalize_score() - Normalizes the CNS score
 * cns:		The highest and lowest noise scores to use for normalization
@@ -100,8 +100,9 @@ acs_pick_best_possible_channel(acs_chaninfo_t *c_info, ch_candidate_t *current,
 {
 	int current_normalized_score, candidate_normalized_score;
 
-	ACSD_INFO("Current: %sDFS channel #%d (0x%4x %s) score[%d] %d,"
+	ACSD_INFO("%s: Current: %sDFS channel #%d (0x%4x %s) score[%d] %d,"
 			" candidate: %sDFS channel #%d (0x%4x %s) score %d.\n",
+			c_info->name,
 			current->is_dfs ? "" : "non-",
 			CHSPEC_CHANNEL(current->chspec), current->chspec, wf_chspec_ntoa(current->chspec, chanspecbuf),
 			score_type,
@@ -112,11 +113,11 @@ acs_pick_best_possible_channel(acs_chaninfo_t *c_info, ch_candidate_t *current,
 
 	/* Pick the channel having the better score */
 	if (candidate->chscore[score_type].score < current->chscore[score_type].score) {
-		ACSD_INFO("-- selecting candidate: better score.\n");
+		ACSD_INFO("%s: -- selecting candidate: better score.\n", c_info->name);
 		return PICK_CANDIDATE;
 	} else if (current->chscore[score_type].score <
 			candidate->chscore[score_type].score) {
-		ACSD_INFO("-- keeping current: better score.\n");
+		ACSD_INFO("%s: -- keeping current: better score.\n", c_info->name);
 		return PICK_CURRENT;
 	}
 
@@ -130,16 +131,18 @@ acs_pick_best_possible_channel(acs_chaninfo_t *c_info, ch_candidate_t *current,
 			candidate_normalized_score = acs_cns_normalize_score(cns,
 				candidate->chscore[CH_SCORE_CNS].score);
 
-			ACSD_INFO("current channel normalized score = %d, "
-				"candidate normal score = %d\n", current_normalized_score,
-				candidate_normalized_score);
+			ACSD_INFO("%s: current channel normalized score = %d, "
+				"candidate normal score = %d\n", c_info->name,
+				current_normalized_score, candidate_normalized_score);
 
 			/* lower noise wins */
 			if (candidate_normalized_score < current_normalized_score) {
-				ACSD_INFO("-- selecting candidate: better CNS score.\n");
+				ACSD_INFO("%s: -- selecting candidate: better CNS score.\n",
+					c_info->name);
 				return PICK_CANDIDATE;
 			} else if (current_normalized_score < candidate_normalized_score) {
-				ACSD_INFO("-- keeping current : better CNS score.\n");
+				ACSD_INFO("%s: -- keeping current : better CNS score.\n",
+					c_info->name);
 				return PICK_CURRENT;
 			}
 
@@ -152,10 +155,11 @@ acs_pick_best_possible_channel(acs_chaninfo_t *c_info, ch_candidate_t *current,
 		 */
 		int intadj_score = current->chscore[CH_SCORE_INTFADJ].score;
 		if (candidate->chscore[CH_SCORE_INTFADJ].score < intadj_score) {
-			ACSD_INFO("-- selecting candidate: quieter 2G channel.\n");
+			ACSD_INFO("%s: -- selecting candidate: quieter 2G channel.\n",
+				c_info->name);
 			return PICK_CANDIDATE;
 		} else {
-			ACSD_INFO("-- keeping current : quieter 2G channel.\n");
+			ACSD_INFO("%s: -- keeping current : quieter 2G channel.\n", c_info->name);
 			return PICK_CURRENT;
 		}
 	}
@@ -216,54 +220,60 @@ acs_prioritize_channels(acs_chaninfo_t *c_info, ch_candidate_t *current,
 {
 	bool is_cur_lp = acsd_is_lp_chan(c_info, current->chspec);
 	bool is_candidate_lp = acsd_is_lp_chan(c_info, candidate->chspec);
-	bool is_eu = acs_is_country_edcrs_eu(c_info->country.ccode);
 
-	if (is_eu) {
+	if (c_info->country_is_edcrs_eu) {
 		if (!current->is_dfs && candidate->is_dfs) {
-			ACSD_INFO("-- selecting candidate: DFS channel. \n");
+			ACSD_INFO("%s: -- selecting candidate: DFS channel. \n", c_info->name);
 			goto pick_candidate;
 		} else if (current->is_dfs && candidate->is_dfs) {
 			if (is_cur_lp && !is_candidate_lp) {
-				ACSD_INFO("-- selecting candidate: High power channel. \n");
+				ACSD_INFO("%s: -- selecting candidate: High power channel. \n",
+					c_info->name);
 				goto pick_candidate;
 			} else if (CHSPEC_CHANNEL(current->chspec) <
 					CHSPEC_CHANNEL(candidate->chspec)) {
-				ACSD_INFO("-- selecting candidate: Higher channel. \n");
+				ACSD_INFO("%s: -- selecting candidate: Higher channel. \n",
+					c_info->name);
 				goto pick_candidate;
 			}
 		} else if (!current->is_dfs && !candidate->is_dfs) {
 			if (CHSPEC_CHANNEL(current->chspec) <
 					CHSPEC_CHANNEL(candidate->chspec)) {
-				ACSD_INFO("-- selecting candidate: Higher channel. \n");
+				ACSD_INFO("%s: -- selecting candidate: Higher channel. \n",
+					c_info->name);
 				goto pick_candidate;
 			}
 
 		}
 	} else {
 		if (is_cur_lp && !is_candidate_lp) {
-			ACSD_INFO("-- selecting candidate: High power channel. \n");
+			ACSD_INFO("%s: -- selecting candidate: High power channel. \n",
+				c_info->name);
 			goto pick_candidate;
 		} else if (!is_cur_lp && !is_candidate_lp) {
 			if (current->is_dfs && !candidate->is_dfs) {
-				ACSD_INFO("-- selecting candidate: Non-DFS channel. \n");
+				ACSD_INFO("%s: -- selecting candidate: Non-DFS channel. \n",
+					c_info->name);
 				goto pick_candidate;
 			} else if ((current->is_dfs && candidate->is_dfs)||
 					(!current->is_dfs && !candidate->is_dfs)) {
 				if (CHSPEC_CHANNEL(current->chspec) <
 						CHSPEC_CHANNEL(candidate->chspec)) {
-					ACSD_INFO("-- selecting candidate: Higher channel. \n");
+					ACSD_INFO("%s: -- selecting candidate: Higher channel. \n",
+						c_info->name);
 					goto pick_candidate;
 				}
 			}
 		} else if (is_cur_lp && is_candidate_lp) {
 			if (CHSPEC_CHANNEL(current->chspec) <
 					CHSPEC_CHANNEL(candidate->chspec)) {
-				ACSD_INFO("-- selecting candidate: Higher channel. \n");
+				ACSD_INFO("%s: -- selecting candidate: Higher channel. \n",
+					c_info->name);
 				goto pick_candidate;
 			}
 		}
 	}
-	ACSD_INFO("-- Keeping current channel. \n");
+	ACSD_INFO("%s: -- Keeping current channel. \n", c_info->name);
 	return PICK_CURRENT;
 pick_candidate:
 	return PICK_CANDIDATE;
@@ -280,10 +290,10 @@ acs_pick_customer_prioritization(acs_chaninfo_t *c_info, ch_candidate_t *current
 	*/
 	if (c_info->acs_cs_dfs_pref) {
 		if (candidate->is_dfs && !current->is_dfs) {
-			ACSD_INFO("-- selecting candidate: DFS channel. \n");
+			ACSD_INFO("%s: -- selecting candidate: DFS channel. \n", c_info->name);
 			return PICK_CANDIDATE;
 		} else if (current->is_dfs && !candidate->is_dfs) {
-			ACSD_INFO("-- keeping current: DFS channel. \n");
+			ACSD_INFO("%s: -- keeping current: DFS channel. \n", c_info->name);
 			return PICK_CURRENT;
 		}
 	}
@@ -295,11 +305,13 @@ acs_pick_customer_prioritization(acs_chaninfo_t *c_info, ch_candidate_t *current
 	if (c_info->acs_cs_high_pwr_pref) {
 		if (acsd_is_lp_chan(c_info, current->chspec) &&
 			!acsd_is_lp_chan(c_info, candidate->chspec)) {
-			ACSD_INFO("-- selecting candidate: High power channel. \n");
+			ACSD_INFO("%s: -- selecting candidate: High power channel. \n",
+				c_info->name);
 			return PICK_CANDIDATE;
 		} else if (!acsd_is_lp_chan(c_info, current->chspec) &&
 			acsd_is_lp_chan(c_info, candidate->chspec)) {
-			ACSD_INFO("-- keeping current: High power channel. \n");
+			ACSD_INFO("%s: -- keeping current: High power channel. \n",
+				c_info->name);
 			return PICK_CURRENT;
 		}
 	}
@@ -319,28 +331,45 @@ acs_pick_eu_weather(acs_chaninfo_t *c_info, ch_candidate_t *current,
 	 */
 	bool current_is_weather, candidate_is_weather;
 
-	if (!acs_is_country_edcrs_eu(c_info->country.ccode))
+	if (!c_info->country_is_edcrs_eu) {
 		return PICK_NONE;
+	}
 
 	current_is_weather = acs_is_dfs_weather_chanspec(c_info,
 			(current->chspec));
 	candidate_is_weather = acs_is_dfs_weather_chanspec(c_info,
 			(candidate->chspec));
 
-	ACSD_INFO("channel and weather:: current: 0x%4x (%s ) %d, candidate: 0x%4x (%s) %d\n",
-			current->chspec, wf_chspec_ntoa(current->chspec, chanspecbuf), current_is_weather,
+	ACSD_INFO("%s: channel and weather:: current: 0x%4x (%s ) %d, candidate: 0x%4x (%s) %d\n",
+			c_info->name, current->chspec, wf_chspec_ntoa(current->chspec, chanspecbuf), current_is_weather,
 			candidate->chspec, wf_chspec_ntoa(candidate->chspec, chanspecbuf), candidate_is_weather);
 
 	/* Both DFS, same score - non weather wins. */
 	if (!candidate_is_weather && current_is_weather) {
-		ACSD_INFO("-- selecting candidate: not weather.\n");
+		ACSD_INFO("%s: -- selecting candidate: not weather.\n", c_info->name);
 		return PICK_CANDIDATE;
 	} else if (candidate_is_weather && !current_is_weather) {
-		ACSD_INFO("-- keeping current: not weather.\n");
+		ACSD_INFO("%s: -- keeping current: not weather.\n", c_info->name);
 		return PICK_CURRENT;
 	}
 
 	return PICK_NONE;
+}
+
+/* update the chanspec before calling csa for channel change */
+int acs_csa_handle_request(acs_chaninfo_t *c_info)
+{
+	wl_bcmdcs_data_t dcs_data;
+	int ret;
+	dcs_data.reason = 0;
+	dcs_data.chspec = c_info->selected_chspec;
+	if ((ret = dcs_handle_request(c_info->name, &dcs_data,
+			DOT11_CSA_MODE_ADVISORY, ACS_CSA_COUNT,
+			c_info->acs_dcs_csa))) {
+		ACSD_ERROR("%s: err from dcs_handle_request:%d\n",
+				c_info->name, ret);
+	}
+	return ret;
 }
 
 /*
@@ -371,7 +400,7 @@ acs_pick_chanspec_common(acs_chaninfo_t *c_info, int bw, int score_type)
 	chanim_stats_t *stats = NULL;
 	int txop_score = 0;
 
-	ACSD_INFO("Selecting channel, score type %d...\n", score_type);
+	ACSD_INFO("%s: Selecting channel, score type %d...\n", c_info->name, score_type);
 	/* find the chanspec with best figure (cns) */
 	cns.lowest_score = acs_remove_noisy_cns(candi, c_info->c_count[bw],
 		c_info->chanim_info->config.acs_trigger_var);
@@ -383,6 +412,7 @@ acs_pick_chanspec_common(acs_chaninfo_t *c_info, int bw, int score_type)
 	}
 
 	if (!acs_is_initial_selection(c_info) &&
+		!c_info->autochannel_through_cli &&
 		!((c_info->switch_reason == APCS_DFS_REENTRY) && c_info->dfs_reentry)) {
 		for (i = 0; i < chstats->count; i++) {
 			if (chstats->version == WL_CHANIM_STATS_VERSION) {
@@ -400,14 +430,19 @@ acs_pick_chanspec_common(acs_chaninfo_t *c_info, int bw, int score_type)
 							stats->ccastats[CCASTATS_TXDUR];
 					}
 					if (txop_score < ACS_TXOP_LIMIT) {
-						c_info->txop_channel_select = ACS_TXOP_CHANNEL_SELECT;
+						if (c_info->switch_reason != APCS_TXFAIL) {
+							c_info->txop_channel_select =
+								ACS_TXOP_CHANNEL_SELECT;
+						}
 						c_info->timestamp = stats->timestamp;
-						ACSD_INFO("timestamp %d txop_score %d\n",
+						ACSD_INFO("%s: timestamp %d txop_score %d\n",
+							c_info->name,
 							c_info->timestamp, txop_score);
 						break;
 					} else {
-						ACSD_INFO("staying on current channel 0x%4x (%s) score %d\n",
-								c_info->cur_chspec, wf_chspec_ntoa(c_info->cur_chspec, chanspecbuf), txop_score);
+						ACSD_INFO("%s: staying on cur channel%x score %d\n",
+							c_info->name, c_info->cur_chspec,
+							txop_score);
 						return c_info->cur_chspec;
 					}
 				}
@@ -425,14 +460,19 @@ acs_pick_chanspec_common(acs_chaninfo_t *c_info, int bw, int score_type)
 							statsv2->ccastats[CCASTATS_TXDUR];
 					}
 					if (txop_score < ACS_TXOP_LIMIT) {
-						c_info->txop_channel_select = ACS_TXOP_CHANNEL_SELECT;
+						if (c_info->switch_reason != APCS_TXFAIL) {
+							c_info->txop_channel_select =
+								ACS_TXOP_CHANNEL_SELECT;
+						}
 						c_info->timestamp = statsv2->timestamp;
-						ACSD_INFO("timestamp %d txop_score %d\n",
+						ACSD_INFO("%s: timestamp %d txop_score %d\n",
+							c_info->name,
 							c_info->timestamp, txop_score);
 						break;
 					} else {
-						ACSD_INFO("staying on current channel 0x%4x (%s) score %d\n",
-								c_info->cur_chspec, wf_chspec_ntoa(c_info->cur_chspec, chanspecbuf), txop_score);
+						ACSD_INFO("%s: staying on cur channel%x score %d\n",
+							c_info->name, c_info->cur_chspec,
+							txop_score);
 						return c_info->cur_chspec;
 					}
 				}
@@ -450,14 +490,16 @@ acs_pick_chanspec_common(acs_chaninfo_t *c_info, int bw, int score_type)
 
 		if (index < 0) { /* No previous candi, avoid comparing against random memory */
 			index = i; /* Select first valid candidate as a starting point */
-			ACSD_INFO("[%d] Default: %s channel #%d (0x%4x %s) with score %d\n",
+			ACSD_INFO("%s: [%d] Default: %s channel #%d (0x%4x %s) with score %d\n",
+				c_info->name,
 				i, (candi[i].is_dfs) ? "DFS" : "non-DFS",
 				CHSPEC_CHANNEL(candi[i].chspec), candi[i].chspec, wf_chspec_ntoa(candi[i].chspec, chanspecbuf),
 				candi[i].chscore[score_type].score);
 			continue;
 		}
 
-		ACSD_INFO("[%d] Checking %s channel #%d (0x%4x %s) with score %d\n",
+		ACSD_INFO("%s: [%d] Checking %s channel #%d (0x%4x %s) with score %d\n",
+			c_info->name,
 			i, (candi[i].is_dfs) ? "DFS" : "non-DFS",
 			CHSPEC_CHANNEL(candi[i].chspec), candi[i].chspec, wf_chspec_ntoa(candi[i].chspec, chanspecbuf),
 			candi[i].chscore[score_type].score);
@@ -499,7 +541,8 @@ acs_pick_chanspec_common(acs_chaninfo_t *c_info, int bw, int score_type)
 
 	if (index >= 0) {
 		chspec = candi[index].chspec;
-		ACSD_INFO("Selected Channel #%d (0x%4x %s)\n", CHSPEC_CHANNEL(chspec), chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+		ACSD_INFO("%s: Selected Channel #%d (0x%4x %s)\n",
+			c_info->name, CHSPEC_CHANNEL(chspec), chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 	}
 	return chspec;
 }
@@ -526,30 +569,34 @@ acs_pick_chanspec(acs_chaninfo_t* c_info, int bw)
 
 		if (index < 0) { /* No previous candi, avoid comparing against random memory */
 			index = i; /* Select first valid candidate as a starting point */
-			ACSD_INFO("[%d] Default: %s channel #%d (0x%4x %s) with score %d\n",
+			ACSD_INFO("%s: [%d] Default: %s channel #%d (0x%4x %s) with score %d\n",
+				c_info->name,
 				i, (candi[i].is_dfs) ? "DFS" : "non-DFS",
 				CHSPEC_CHANNEL(candi[i].chspec), candi[i].chspec, wf_chspec_ntoa(candi[i].chspec, chanspecbuf),
 				candi[i].chscore[score_type].score);
 			continue;
 		}
 
-		ACSD_INFO("[%d] Checking %s channel #%d (0x%4x %s) with score %d\n",
+		ACSD_INFO("%s: [%d] Checking %s channel #%d (0x%4x %s) with score %d\n",
+			c_info->name,
 			i, (candi[i].is_dfs) ? "DFS" : "non-DFS",
 			CHSPEC_CHANNEL(candi[i].chspec), candi[i].chspec, wf_chspec_ntoa(candi[i].chspec, chanspecbuf),
 			candi[i].chscore[score_type].score);
 
 		if (candi[i].chscore[score_type].score >
 		    candi[index].chscore[score_type].score) {
-			ACSD_INFO("-- selected higher (=better) score channel.\n");
+			ACSD_INFO("%s: -- selected higher (=better) score channel.\n",
+				c_info->name);
 			index = i;
 		}
 	}
 
 	if (index < 0) {
-		ACSD_ERROR("No valid chanspec found\n");
+		ACSD_ERROR("%s: No valid chanspec found\n", c_info->name);
 	} else {
 		chspec = candi[index].chspec;
-		ACSD_INFO("The highest score: %d, chspec: 0x%4x (%s)\n",
+		ACSD_INFO("%s: The highest score: %d, chspec: 0x%4x (%s)\n",
+			c_info->name,
 			candi[index].chscore[score_type].score,
 			chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 	}
@@ -559,41 +606,11 @@ acs_pick_chanspec(acs_chaninfo_t* c_info, int bw)
 #ifdef ACSD_SEGMENT_CHANIM
 int acs_segment_allocate(acs_chaninfo_t *c_info)
 {
-	chanspec_t input = WL_CHANSPEC_BW_20;
-	char *data_buf = acsd_malloc(ACS_SM_BUF_LEN);
-	wl_uint32_list_t *list;
-	int ret, count = 0;
-
-	if (BAND_5G(c_info->rs_info.band_type)) {
-		input |= WL_CHANSPEC_BAND_5G;
-	} else {
-		input |= WL_CHANSPEC_BAND_2G;
+	if (c_info->segment_chanim && !c_info->ch_avail) {
+		c_info->ch_avail = (uint8*) acsd_malloc(WL_NUMCHANNELS * sizeof(uint8));
+		c_info->ch_avail_count = WL_NUMCHANNELS;
 	}
-
-	ret = acs_get_perband_chanspecs(c_info, input, data_buf, ACS_SM_BUF_LEN);
-
-	if (ret < 0) {
-		goto free_data_buf;
-	}
-	ACS_ERR(ret, "failed to get valid chanspec lists");
-
-	list = (wl_uint32_list_t *)data_buf;
-	count = dtoh32(list->count);
-
-	if (!count) {
-		ACSD_ERROR("number of valid chanspec is 0\n");
-		ret = -1;
-		goto free_data_buf;
-	}
-	if (c_info->segment_chanim && !c_info->ch_avail && count) {
-		ACSD_DEBUG("allocating on input 0x%4x (%s) count %d\n", input, wf_chspec_ntoa(input, chanspecbuf), count);
-		c_info->ch_avail = (uint8*) acsd_malloc(count * sizeof(uint8));
-		c_info->ch_avail_count = count;
-	}
-
-free_data_buf:
-	ACS_FREE(data_buf);
-	return ret;
+	return 0;
 }
 #endif /* ACSD_SEGMENT_CHANIM */
 
@@ -642,7 +659,7 @@ acs_build_candidates(acs_chaninfo_t *c_info, int bw)
 	count = dtoh32(list->count);
 
 	if (!count) {
-		ACSD_ERROR("number of valid chanspec is 0\n");
+		ACSD_ERROR("%s: number of valid chanspec is 0\n", c_info->name);
 		ret = -1;
 		goto cleanup;
 	}
@@ -658,7 +675,7 @@ acs_build_candidates(acs_chaninfo_t *c_info, int bw)
 #endif
 	candi = c_info->candidate[bw];
 
-	ACSD_DEBUG("address of candi: %p\n", candi);
+	ACSD_DEBUG("%s: address of candi: %p\n", c_info->name, candi);
 	for (i = 0; i < count; i++) {
 		c = (chanspec_t)dtoh32(list->element[i]);
 		candi[i].chspec = c;
@@ -678,7 +695,8 @@ acs_build_candidates(acs_chaninfo_t *c_info, int bw)
 		/* assign weight based on config */
 		for (j = 0; j < CH_SCORE_MAX; j++) {
 			candi[i].chscore[j].weight = c_info->acs_policy.acs_weight[j];
-			ACSD_DEBUG("chanspec: (0x%04x %s) score: %d, weight: %d\n",
+			ACSD_DEBUG("%s: chanspec: (0x%04x %s) score: %d, weight: %d\n",
+				c_info->name,
 				c, wf_chspec_ntoa(c, chanspecbuf), candi[i].chscore[j].score, candi[i].chscore[j].weight);
 		}
 	}
@@ -782,6 +800,22 @@ acs_invalidate_exclusion_channels(acs_chaninfo_t *c_info,
 	}
 }
 
+/* comparing ext20,ext40 and ext80 with ch, on success return TRUE else FALSE */
+static int
+acs_check_for_ext(acs_channel_t *chan, int ch)
+{
+	uint8 *ext_channel = (uint8 *) chan;
+	int i;
+	bool result = FALSE;
+	for (i = 0; i < 8; i++) {
+		if (ch == ext_channel[i]) {
+			result = TRUE;
+			break;
+		}
+	}
+	return result;
+}
+
 /*
  * Individual scoring algorithm. It is subject to tuning or customization based on
  * testing results or customer requirement.
@@ -794,15 +828,7 @@ acs_chan_score_bss(ch_candidate_t* candi, acs_chan_bssinfo_t* bss_info, int ncis
 	int score = 0, tmp_score = 0;
 	int i, min, max;
 	int ch;
-	bool ovlp = FALSE;
-#if 0
-	int ovlp_offset = 0;
-#endif
 	bool hit;
-
-	if (CHSPEC_IS2G(candi->chspec) && (!nvram_match("acs_2g_ch_no_ovlp", "1"))) {
-		ovlp = TRUE;
-	}
 
 	acs_parse_chanspec(candi->chspec, &chan);
 
@@ -811,18 +837,6 @@ acs_chan_score_bss(ch_candidate_t* candi, acs_chan_bssinfo_t* bss_info, int ncis
 
 		/* control channel */
 		min = max = (int)chan.control;
-		if (ovlp) {
-			/* 25 MHz seperation allows nearby channels to be
-			   avoided.
-			   */
-#if 0
-			min -= CH_20MHZ_APART + CH_5MHZ_APART;
-			max += CH_20MHZ_APART + CH_5MHZ_APART;
-#else
-			min -= CH_20MHZ_APART;
-			max += CH_20MHZ_APART;
-#endif
-		}
 
 		ACSD_DEBUG("ch: %d, min: %d, max: %d\n", ch, min, max);
 		ACSD_DEBUG("nCtrl=%2d nExt20=%2d nExt40=%2d nExt80=%2d\n",
@@ -844,25 +858,8 @@ acs_chan_score_bss(ch_candidate_t* candi, acs_chan_bssinfo_t* bss_info, int ncis
 					break;
 				}
 			}
-#if 0
-			if (ovlp) {
-				ovlp_offset = ABS(ch - chan.control);
-				if (ovlp_offset == 0) {
-					score += 4*bss_info[i].nCtrl;
-				} else if (ovlp_offset < CH_20MHZ_APART) {
-					score += 6*bss_info[i].nCtrl;
-				} else {
-					/* bias against channels that are not overlapping
-					 * but within 30 MHz. e.g. 1 <-> 6,  6<->11
-					 */
-					score += bss_info[i].nCtrl;
-				}
-			} else
-#endif
-			{
-				score += bss_info[i].nCtrl;
-			}
-			score += bss_info[i].nExt20 + bss_info[i].nExt40 + bss_info[i].nExt80;
+			score += bss_info[i].nCtrl + bss_info[i].nExt20 + bss_info[i].nExt40 +
+				bss_info[i].nExt80;
 		}
 	}
 	ACSD_INFO("candidate: 0x%4x (%s), score_bss: %d\n", candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf), score);
@@ -878,7 +875,7 @@ acs_candidate_score_bss(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 
 	score = acs_chan_score_bss(candi, bss_info, ncis);
 	candi->chscore[CH_SCORE_BSS].score = score;
-	ACSD_DEBUG("bss score: %d for chanspec 0x%4x (%s)\n", score, candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf));
+	ACSD_DEBUG("%s: bss score: %d for chanspec 0x%x\n", c_info->name, score, candi->chspec);
 }
 
 static void
@@ -902,32 +899,34 @@ acs_candidate_score_busy(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 			stats = (chanim_stats_t *)&ch_stats->stats[i];
 			ch = CHSPEC_CHANNEL(stats->chanspec);
 
-			if ((ch == chan.control) || (ch == chan.ext20)) {
+			if (acs_check_for_ext(&chan, ch)) {
 				score += stats->ccastats[CCASTATS_OBSS];
 				hits ++;
 			}
 		} else if (ch_stats->version == WL_CHANIM_STATS_V2) {
 			ch = CHSPEC_CHANNEL(statsv2->chanspec);
 
-			if ((ch == chan.control) || (ch == chan.ext20)) {
+			if (acs_check_for_ext(&chan, ch)) {
 				score += statsv2->ccastats[CCASTATS_OBSS];
 				hits ++;
 			}
 			statsv2++;
 		}
-		if (hits >= 1 || (hits && chan.control == chan.ext20)) {
+		if ((hits == 8) || (hits == 4 && !chan.ext80[0]) ||
+				(hits == 2 && !chan.ext40[0]) || (hits && !chan.ext20)) {
 			done = TRUE;
+			break;
 		}
 	}
 	if (!done) {
-		ACSD_ERROR("busy check failed for chanspec: 0x%4x (%s)\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+		ACSD_ERROR("%s: busy check failed for chanspec: 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 		return;
 	}
 
 	if (hits) {
 		candi->chscore[CH_SCORE_BUSY].score = score/hits;
 	}
-	ACSD_DEBUG("busy score: %d for chanspec 0x%4x (%s)\n", score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+	ACSD_DEBUG("%s: busy score: %d for chanspec 0x%4x (%s)\n", c_info->name, score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
 static void
@@ -951,7 +950,7 @@ acs_candidate_score_intf(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 			stats = (chanim_stats_t *)&ch_stats->stats[i];
 			ch = CHSPEC_CHANNEL(stats->chanspec);
 
-			if (ch == chan.control || ch == chan.ext20) {
+			if (acs_check_for_ext(&chan, ch)) {
 				score += stats->ccastats[CCASTATS_NOPKT];
 				hits ++;
 			}
@@ -959,25 +958,27 @@ acs_candidate_score_intf(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		} else if (ch_stats->version == WL_CHANIM_STATS_V2) {
 			ch = CHSPEC_CHANNEL(statsv2->chanspec);
 
-			if (ch == chan.control || ch == chan.ext20) {
+			if (acs_check_for_ext(&chan, ch)) {
 				score += statsv2->ccastats[CCASTATS_NOPKT];
 				hits ++;
 			}
 			statsv2++;
 		}
-		if (hits >= 1 || (hits && chan.control == chan.ext20)) {
+		if ((hits == 8) || (hits == 4 && !chan.ext80[0]) ||
+				(hits == 2 && !chan.ext40[0]) || (hits && !chan.ext20)) {
 			done = TRUE;
+			break;
 		}
 	}
 	if (!done) {
-		ACSD_ERROR("intf check failed for chanspec: 0x%4x (%s)\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+		ACSD_ERROR("%s: intf check failed for chanspec: 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 		return;
 	}
 
 	if (hits) {
 		candi->chscore[CH_SCORE_INTF].score = score/hits;
 	}
-	ACSD_DEBUG("intf score: %d for chanspec 0x%4x (%s)\n", score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+	ACSD_DEBUG("%s: intf score: %d for chanspec 0x%4x (%s)\n", c_info->name, score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
 static void
@@ -1000,40 +1001,42 @@ acs_candidate_score_intfadj(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		if (ch_stats->version == WL_CHANIM_STATS_VERSION) {
 			stats = (chanim_stats_t *)&ch_stats->stats[i];
 			ch = CHSPEC_CHANNEL(stats->chanspec);
-			ACSD_DEBUG("channel: %d, ch: %d\n", chan.control, ch);
+			ACSD_DEBUG("%s: channel: %d, ch: %d\n", c_info->name, chan.control, ch);
 
 			if (ch != chan.control) {
 				dist = ch - chan.control;
 				dist = dist > 0 ? dist : dist * -1;
 				score += stats->ccastats[CCASTATS_NOPKT] * d_weight / dist;
 
-				ACSD_DEBUG("dist: %d, count: %d, score: %d\n",
+				ACSD_DEBUG("%s: dist: %d, count: %d, score: %d\n", c_info->name,
 						dist, stats->ccastats[CCASTATS_NOPKT], score);
 				if (chan.ext20 != 0 && ch != chan.ext20) {
 					dist = ABS(ch - chan.ext20);
 					score += stats->ccastats[CCASTATS_NOPKT] * d_weight / dist;
 				}
 
-				ACSD_DEBUG("channel: %d, ch: %d score: %d\n",
+				ACSD_DEBUG("%s: channel: %d, ch: %d score: %d\n", c_info->name,
 						chan.control, ch, score);
 			}
 		} else if (ch_stats->version == WL_CHANIM_STATS_V2) {
 			ch = CHSPEC_CHANNEL(statsv2->chanspec);
-			ACSD_DEBUG("channel: %d, ch: %d\n", chan.control, ch);
+			ACSD_DEBUG("%s: channel: %d, ch: %d\n", c_info->name, chan.control, ch);
 
 			if (ch != chan.control) {
 				dist = ch - chan.control;
 				dist = dist > 0 ? dist : dist * -1;
 				score += statsv2->ccastats[CCASTATS_NOPKT] * d_weight / dist;
 
-				ACSD_DEBUG("dist: %d, count: %d, score: %d\n",
+				ACSD_DEBUG("%s: dist: %d, count: %d, score: %d\n",
+						c_info->name,
 						dist, statsv2->ccastats[CCASTATS_NOPKT], score);
 				if (chan.ext20 != 0 && ch != chan.ext20) {
 					dist = ABS(ch - chan.ext20);
 					score += statsv2->ccastats[CCASTATS_NOPKT]* d_weight / dist;
 				}
 
-				ACSD_DEBUG("channel: %d, ch: %d score: %d\n",
+				ACSD_DEBUG("%s: channel: %d, ch: %d score: %d\n",
+						c_info->name,
 						chan.control, ch, score);
 			}
 			statsv2++;
@@ -1041,7 +1044,7 @@ acs_candidate_score_intfadj(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 	}
 
 	candi->chscore[CH_SCORE_INTFADJ].score = score / d_weight;
-	ACSD_DEBUG("intf_adj score: %d for chanspec 0x%4x (%s)\n", score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+	ACSD_DEBUG("%s: intf_adj score: %d for chanspec 0x%4x (%s)\n", c_info->name, score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
 static void
@@ -1065,33 +1068,34 @@ acs_candidate_score_fcs(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 			stats = (chanim_stats_t *)&ch_stats->stats[i];
 			ch = CHSPEC_CHANNEL(stats->chanspec);
 
-			if (ch == chan.control || ch == chan.ext20) {
+			if (acs_check_for_ext(&chan, ch)) {
 				score += stats->ccastats[CCASTATS_NOCTG];
 				hits ++;
 			}
 		} else if (ch_stats->version == WL_CHANIM_STATS_V2) {
 			ch = CHSPEC_CHANNEL(statsv2->chanspec);
 
-			if (ch == chan.control || ch == chan.ext20) {
+			if (acs_check_for_ext(&chan, ch)) {
 				score += statsv2->ccastats[CCASTATS_NOCTG];
 				hits ++;
 			}
 			statsv2++;
 		}
-		if (hits == 2 || (hits && (chan.ext20 == 0))) {
+		if ((hits == 8) || (hits == 4 && !chan.ext80[0]) ||
+				(hits == 2 && !chan.ext40[0]) || (hits && !chan.ext20)) {
 			done = TRUE;
 			break;
 		}
 	}
 	if (!done) {
-		ACSD_ERROR("fcs check failed for chanspec: 0x%4x (%s)\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+		ACSD_ERROR("%s: fcs check failed for chanspec: 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 		return;
 	}
 
 	if (hits) {
 		candi->chscore[CH_SCORE_FCS].score = score/hits;
 	}
-	ACSD_DEBUG("fcs score: %d for chanspec 0x%4x (%s)\n", score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+	ACSD_DEBUG("%s: fcs score: %d for chanspec 0x%4x (%s)\n", c_info->name, score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
 #define BAND_5G_NUM		6
@@ -1179,7 +1183,7 @@ int get_tc_index(void)
 static void
 acs_candidate_score_txpwr(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 {
-#ifdef RTAX88U
+#if defined(RTAX88U) || defined(GTAX11000)
 	chanspec_t chspec = candi->chspec;
 	acs_channel_t chan;
 	int tc_index = get_tc_index();
@@ -1202,7 +1206,7 @@ acs_candidate_score_txpwr(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		score = -(power + dfs + bw160m);
 	}
 #else
-	bool is_eu = acs_is_country_edcrs_eu(c_info->country.ccode);	/* is in EDCRS_EU */
+	bool is_eu = c_info->country_is_edcrs_eu;       /* is in EDCRS_EU */
 	bool is_hp = !ACS_IS_LOW_POW_CH(wf_chspec_ctlchan(candi->chspec),
 			is_eu);		/* is high power ch */
 	bool is_dfs = acs_is_dfs_chanspec(c_info, candi->chspec);	/* is DFS/radar ch */
@@ -1221,7 +1225,7 @@ acs_candidate_score_txpwr(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 	}
 #endif
 	candi->chscore[CH_SCORE_TXPWR].score = score;
-	ACSD_INFO(" txpower score is %d chanspec 0x%4x (%s)\n", score, candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf));
+	ACSD_INFO("%s: txpower score is %d chanspec 0x%4x (%s)\n", c_info->name, score, candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf));
 }
 
 static void
@@ -1244,7 +1248,7 @@ acs_candidate_score_bgnoise(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 			stats = (chanim_stats_t *)&ch_stats->stats[i];
 			ch = CHSPEC_CHANNEL(stats->chanspec);
 
-			if (ch == chan.control || ch == chan.ext20) {
+			if (acs_check_for_ext(&chan, ch)) {
 				if (stats->bgnoise && stats->bgnoise > ACS_BGNOISE_BASE) {
 					score += MIN(10, stats->bgnoise - ACS_BGNOISE_BASE);
 				}
@@ -1253,7 +1257,7 @@ acs_candidate_score_bgnoise(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		} else if (ch_stats->version == WL_CHANIM_STATS_V2) {
 			ch = CHSPEC_CHANNEL(statsv2->chanspec);
 
-			if (ch == chan.control || ch == chan.ext20) {
+			if (acs_check_for_ext(&chan, ch)) {
 				if (statsv2->bgnoise && statsv2->bgnoise > ACS_BGNOISE_BASE) {
 					score += MIN(10, statsv2->bgnoise - ACS_BGNOISE_BASE);
 				}
@@ -1261,19 +1265,20 @@ acs_candidate_score_bgnoise(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 			}
 			statsv2++;
 		}
-		if (hits == 2 || (hits && (chan.ext20 == 0))) {
+		if ((hits == 8) || (hits == 4 && !chan.ext80[0]) ||
+				(hits == 2 && !chan.ext40[0]) || (hits && !chan.ext20)) {
 			done = TRUE;
 			break;
 		}
 	}
 	if (!done) {
-		ACSD_ERROR("bgnoise check failed for chanspec: 0x%4x (%s)\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+		ACSD_ERROR("%s: bgnoise check failed for chanspec: 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 		return;
 	}
 	if (hits) {
 		candi->chscore[CH_SCORE_BGNOISE].score = score/hits;
 	}
-	ACSD_DEBUG("bgnoise score: %d for chanspec 0x%4x (%s)\n", score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+	ACSD_DEBUG("%s: bgnoise score: %d for chanspec 0x%4x (%s)\n", c_info->name, score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
 static void
@@ -1310,7 +1315,8 @@ acs_candidate_score_cns(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 	 * Check ch_stats to handle rare crash occurence due to ch_stats being NULL.
 	 */
 	if (!ch_stats) {
-		ACSD_ERROR("No chanim_stats available to calculate CNS scores\n");
+		ACSD_ERROR("%s: No chanim_stats available to calculate CNS scores\n",
+			c_info->name);
 		return;
 	}
 
@@ -1324,10 +1330,7 @@ acs_candidate_score_cns(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 			stats = (chanim_stats_t *)&ch_stats->stats[i];
 			ch = CHSPEC_CHANNEL(stats->chanspec);
 
-			if (ch == chan.control || ch == chan.ext20 || ch == chan.ext40[0] ||
-					ch == chan.ext40[1] || ch == chan.ext80[0] ||
-					ch == chan.ext80[1] || ch == chan.ext80[2] ||
-					ch == chan.ext80[3]) {
+			if (acs_check_for_ext(&chan, ch)) {
 				score = stats->bgnoise;
 				score += chanim_txop_to_noise(stats->chan_idle);
 				hits ++;
@@ -1336,10 +1339,7 @@ acs_candidate_score_cns(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		} else if (ch_stats->version == WL_CHANIM_STATS_V2) {
 			ch = CHSPEC_CHANNEL(statsv2->chanspec);
 
-			if (ch == chan.control || ch == chan.ext20 || ch == chan.ext40[0] ||
-					ch == chan.ext40[1] || ch == chan.ext80[0] ||
-					ch == chan.ext80[1] || ch == chan.ext80[2] ||
-					ch == chan.ext80[3]) {
+			if (acs_check_for_ext(&chan, ch)) {
 				score = statsv2->bgnoise;
 				score += chanim_txop_to_noise(statsv2->chan_idle);
 				hits ++;
@@ -1359,11 +1359,11 @@ acs_candidate_score_cns(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 	 * the channel. Only set CNS=0 if all the 20MHz subchannels are excluded.
 	 */
 	if (!hits) {
-		ACSD_ERROR("knoise check failed for chanspec: 0x%4x (%s)\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+		ACSD_ERROR("%s: knoise check failed for chanspec: 0x%x\n", c_info->name, chspec);
 		return;
 	}
 	candi->chscore[CH_SCORE_CNS].score = max_score;
-	ACSD_INFO("Composite Noise Score (CNS): %d for chanspec 0x%4x (%s)\n",
+	ACSD_INFO("%s: Composite Noise Score (CNS): %d for chanspec 0x%4x (%s)\n", c_info->name,
 		max_score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
@@ -1450,7 +1450,8 @@ acs_candidate_adjacent_bss(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 	}
 
 	candi->chscore[CH_SCORE_ADJ].score = adjbss;
-	ACSD_5G("adjacent bss score: %d for chanspec 0x%4x (%s)\n", adjbss, candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf));
+	ACSD_5G("%s: adjacent bss score: %d for chanspec 0x%4x (%s)\n", c_info->name,
+		adjbss, candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf));
 }
 
 static void
@@ -1474,51 +1475,55 @@ acs_candidate_score_txop(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 			stats = (chanim_stats_t *)&ch_stats->stats[i];
 			ch = CHSPEC_CHANNEL(stats->chanspec);
 
-			if ((ch == chan.control) || (ch == chan.ext20)) {
+			if (acs_check_for_ext(&chan, ch)) {
 				/* busy/unable-to-tx time */
 #ifdef ACSD_SEGMENT_CHANIM
-			if (c_info->ch_avail && c_info->ch_avail_count > i) {
-				score += 100 - c_info->ch_avail[i];
-			} else
+				if (c_info->ch_avail && c_info->ch_avail_count > i) {
+					score = MAX(score, 100 - c_info->ch_avail[i]);
+				} else
 #endif /* ACSD_SEGMENT_CHANIM */
-			{
-				score += 100 - stats->ccastats[CCASTATS_TXOP] -
-					stats->ccastats[CCASTATS_INBSS] -
-					stats->ccastats[CCASTATS_TXDUR];
-			}
+				{
+					score = MAX(score, 100 - stats->ccastats[CCASTATS_TXOP] -
+						stats->ccastats[CCASTATS_INBSS] -
+						stats->ccastats[CCASTATS_TXDUR]);
+				}
 				hits ++;
-				done = TRUE;
 			}
 		} else if (ch_stats->version == WL_CHANIM_STATS_V2) {
 			ch = CHSPEC_CHANNEL(statsv2->chanspec);
 
-			if ((ch == chan.control) || (ch == chan.ext20)) {
+			if (acs_check_for_ext(&chan, ch)) {
 				/* busy/unable-to-tx time */
 #ifdef ACSD_SEGMENT_CHANIM
-			if (c_info->ch_avail && c_info->ch_avail_count > i) {
-				score += 100 - c_info->ch_avail[i];
-			} else
+				if (c_info->ch_avail && c_info->ch_avail_count > i) {
+					score = MAX(score, 100 - c_info->ch_avail[i]);
+				} else
 #endif /* ACSD_SEGMENT_CHANIM */
-			{
-				score += 100 - statsv2->ccastats[CCASTATS_TXOP] -
-					statsv2->ccastats[CCASTATS_INBSS] -
-					statsv2->ccastats[CCASTATS_TXDUR];
-			}
+				{
+					score = MAX(score, 100 - statsv2->ccastats[CCASTATS_TXOP] -
+						statsv2->ccastats[CCASTATS_INBSS] -
+						statsv2->ccastats[CCASTATS_TXDUR]);
+
+				}
 				hits ++;
-				done = TRUE;
 			}
 			statsv2++;
 		}
+		if ((hits == 8) || (hits == 4 && !chan.ext80[0]) ||
+				(hits == 2 && !chan.ext40[0]) || (hits && !chan.ext20)) {
+			done = TRUE;
+			break;
+		}
 	}
-	if (!done) {
-		ACSD_ERROR("txop check failed for chanspec: 0x%4x (%s)\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+
+	if (done) {
+		candi->chscore[CH_SCORE_TXOP].score = score;
+	} else {
+		ACSD_ERROR("%s: txop check failed for chanspec: 0x%x\n", c_info->name, chspec);
 		return;
 	}
 
-	if (hits) {
-		candi->chscore[CH_SCORE_TXOP].score = score/hits;
-	}
-	ACSD_DEBUG("txop score: %d for chanspec 0x%4x (%s)\n",
+	ACSD_DEBUG("%s: txop score: %d for chanspec 0x%4x (%s)\n", c_info->name,
 		candi->chscore[CH_SCORE_TXOP].score, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 }
 
@@ -1535,8 +1540,8 @@ acs_candidate_score(acs_chaninfo_t* c_info, int bw)
 			continue;
 		score_p = candi->chscore;
 
-		ACSD_DEBUG("calc score for candidate chanspec: 0x%4x (%s)\n",
-			candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf));
+		ACSD_DEBUG("%s: calc score for candidate chanspec: 0x%4x (%s)\n",
+			c_info->name, candi->chspec, wf_chspec_ntoa(candi->chspec, chanspecbuf));
 
 		/* calculate the score for each factor */
 		if (score_p[CH_SCORE_BSS].weight) {
@@ -1654,7 +1659,7 @@ acs_candidate_check_intf(ch_candidate_t *candi, acs_chaninfo_t* c_info)
 		}
 	}
 	if (!done) {
-		ACSD_ERROR("intf check failed for chanspec: 0x%4x (%s)\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+		ACSD_ERROR("%s: intf check failed for chanspec: 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 		return;
 	}
 }
@@ -1680,7 +1685,7 @@ acs_coex_check(acs_chaninfo_t* c_info, chanspec_t input_chspec)
 	char err_msg[128];
 
 	if (!CHSPEC_IS40(input_chspec))
-		ACSD_ERROR("input channel spec is not 40MHz!");
+		ACSD_ERROR("%s: input channel spec is not 40MHz!", c_info->name);
 
 	/* this will get us the center of the input 40MHz channel */
 	forty_center = CHSPEC_CHANNEL(input_chspec);
@@ -1695,8 +1700,8 @@ acs_coex_check(acs_chaninfo_t* c_info, chanspec_t input_chspec)
 
 	/* Loop over scan data looking for interferance based on 20/40 Coex Rules. */
 	for (ci_index = 0; ci_index < ninfo; ci_index++) {
-		ACSD_DEBUG("Examining ci[%d].channel = %d, forty_center-5 = %d, "
-		          "forty_center+5 = %d\n",
+		ACSD_DEBUG("%s: Examining ci[%d].channel = %d, forty_center-5 = %d, "
+		          "forty_center+5 = %d\n", c_info->name,
 		          ci_index, ci[ci_index].channel, forty_center - WLC_2G_25MHZ_OFFSET,
 		          forty_center+WLC_2G_25MHZ_OFFSET);
 
@@ -1727,21 +1732,22 @@ acs_coex_check(acs_chaninfo_t* c_info, chanspec_t input_chspec)
 
 		if (ci[ci_index].channel < forty_center - WLC_2G_25MHZ_OFFSET ||
 		    ci[ci_index].channel > forty_center + WLC_2G_25MHZ_OFFSET) {
-			ACSD_DEBUG("Not in range, continue.\n");
+			ACSD_DEBUG("%s: Not in range, continue.\n", c_info->name);
 			continue;
 		}
 
-		ACSD_DEBUG("In range.\n");
+		ACSD_DEBUG("%s: In range.\n", c_info->name);
 		if (ci[ci_index].nCtrl || ci[ci_index].nExt20) {
 			/* Is there an existing BSS? */
-			ACSD_DEBUG("Existing BSSs on channel %d\n", ci[ci_index].channel);
+			ACSD_DEBUG("%s: Existing BSSs on channel %d\n", c_info->name,
+				ci[ci_index].channel);
 
 			/* Existing BSS is ONLY okay if:
 			 * Our control channel is aligned with existing 20 or Control Channel
 			 * Our extension channel is aligned with an existing extension channel
 			 */
 			if (ci[ci_index].channel == ctrl_ch) {
-				ACSD_DEBUG("Examining ctrl_ch\n");
+				ACSD_DEBUG("%s: Examining ctrl_ch\n", c_info->name);
 
 				/* Two problems that we need to detect here:
 				 *
@@ -1763,7 +1769,7 @@ acs_coex_check(acs_chaninfo_t* c_info, chanspec_t input_chspec)
 					break;
 				}
 			} else if (ci[ci_index].channel == ext_ch) {
-				ACSD_DEBUG("Examining ext_ch\n");
+				ACSD_DEBUG("%s: Examining ext_ch\n", c_info->name);
 
 				/* Any BSS using this as it's center is an interference */
 				if (ci[ci_index].nCtrl) {
@@ -1787,17 +1793,17 @@ acs_coex_check(acs_chaninfo_t* c_info, chanspec_t input_chspec)
 	if (conflict) {
 		chspec_out = CH20MHZ_CHSPEC(ctrl_ch);
 		if (c_info->rs_info.pref_chspec)
-			ACSD_PRINT("COEX: downgraded chanspec 0x%4x (%s) to 0x%4x (%s): %s\n",
-				input_chspec, wf_chspec_ntoa(input_chspec, chanspecbuf), chspec_out, wf_chspec_ntoa(chspec_out, chanspecbuf), err_msg);
+			ACSD_PRINT("%s: COEX: downgraded chanspec 0x%4x (%s) to 0x%4x (%s): %s\n",
+				c_info->name, input_chspec, wf_chspec_ntoa(input_chspec, chanspecbuf), chspec_out, wf_chspec_ntoa(chspec_out, chanspecbuf), err_msg);
 	} else {
 		chspec_out = input_chspec;
-		ACSD_DEBUG("No conflict found, returning 40MHz chanspec 0x%4x (%s)\n",
-		          chspec_out, wf_chspec_ntoa(chspec_out, chanspecbuf));
+		ACSD_DEBUG("%s: No conflict found, returning 40MHz chanspec 0x%4x (%s)\n",
+		          c_info->name, chspec_out, wf_chspec_ntoa(chspec_out, chanspecbuf));
 	}
 	return chspec_out;
 }
 
-static bool
+bool
 acs_is_initial_selection(acs_chaninfo_t* c_info)
 {
 	bool initial_selection = FALSE;
@@ -1811,7 +1817,7 @@ acs_is_initial_selection(acs_chaninfo_t* c_info)
 	if ((start_idx == CHANIM_ACS_RECORD - 1) && (start_record->timestamp == 0))
 		initial_selection = TRUE;
 
-	ACSD_DFSR("Initial selection is %d\n", initial_selection);
+	ACSD_DFSR("%s: Initial selection is %d\n", c_info->name, initial_selection);
 	return initial_selection;
 }
 
@@ -1824,7 +1830,6 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 	rsi->coex_enb;
 
 	bool dfsr_disable = !(acs_dfsr_reentry_type(ACS_DFSR_CTX(c_info)) == DFS_REENTRY_IMMEDIATE);
-	bool hp_chan_present = FALSE;
 #if 0
 	bool non_dfs_present = FALSE;
 #endif
@@ -1842,10 +1847,6 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 		cur_chspec = c_info->selected_chspec;
 	} else {
 		cur_chspec = (chanspec_t)tmp_chspec;
-	}
-
-	if (!BAND_2G(rsi->band_type)) {
-		hp_chan_present = acs_check_for_hp_chan(c_info, bw);
 	}
 
 #if 0
@@ -1880,10 +1881,12 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 
 		if (BAND_2G(rsi->band_type)) {
 			acs_channel_t chan;
-			ACSD_DEBUG("Filter chanspecs for 2G 40/20 MHz channels\n");
+			ACSD_DEBUG("%s: Filter chanspecs for 2G 40/20 MHz channels\n",
+				c_info->name);
 			acs_parse_chanspec(candi[i].chspec, &chan);
 
-			ACSD_DEBUG("channel: %d, ext: %d\n", chan.control, chan.ext20);
+			ACSD_DEBUG("%s: channel: %d, ext: %d\n", c_info->name, chan.control,
+				chan.ext20);
 
 			if ((!nvram_match("acs_2g_ch_no_restrict", "1")) &&
 					(chan.control != ACS_CHANNEL_1) &&
@@ -1893,7 +1896,7 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 				candi[i].reason |= ACS_INVALID_OVLP;
 				continue;
 			}
-			ACSD_DEBUG("valid channel: %d\n", chan.control);
+			ACSD_DEBUG("%s: valid channel: %d\n", c_info->name, chan.control);
 
 		}
 
@@ -1901,8 +1904,8 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 			/* Invalidate Unusable DFS channels */
 			if (candi[i].is_dfs &&
 					!acs_dfs_channel_is_usable(c_info, candi[i].chspec)) {
-				ACSD_DEBUG("Invalidating 0x%4x (%s) - unusable DFS channel\n",
-						candi[i].chspec, wf_chspec_ntoa(candi[i].chspec, chanspecbuf));
+				ACSD_DEBUG("%s: Invalidating 0x%4x (%s) - unusable DFS channel\n",
+					c_info->name, candi[i].chspec, wf_chspec_ntoa(candi[i].chspec, chanspecbuf));
 
 				candi[i].valid = FALSE;
 				candi[i].reason |= ACS_INVALID_DFS;
@@ -1910,7 +1913,7 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 			/* when dyn160 is enabled with DFS on FCC, allow ch 50o/subset only */
 			if (ACS_11H(c_info) && c_info->dyn160_enabled &&
 					CHSPEC_IS160(candi[i].chspec) &&
-					!acs_is_country_edcrs_eu(c_info->country.ccode) &&
+					!c_info->country_is_edcrs_eu &&
 					CHSPEC_CHANNEL(candi[i].chspec) != ACS_DYN160_CENTER_CH) {
 				candi[i].valid = FALSE;
 				candi[i].reason |= ACS_INVALID_EXCL;
@@ -1918,11 +1921,11 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 
 			if (!acs_is_initial_selection(c_info)) {
 				/* avoid select same channel */
-				if (acs_check_for_overlap_5g(cur_chspec, candi[i].chspec) &&
+				if (acs_check_for_overlap(cur_chspec, candi[i].chspec) &&
 						(c_info->switch_reason != APCS_CSTIMER) &&
 						(c_info->txop_weight == 0)) {
-					ACSD_5G("Skipping cur chan 0x%4x (%s)\n",
-							cur_chspec, wf_chspec_ntoa(cur_chspec, chanspecbuf));
+					ACSD_5G("%s: Skipping cur chan 0x%4x (%s)\n",
+						c_info->name, cur_chspec, wf_chspec_ntoa(cur_chspec, chanspecbuf));
 					candi[i].reason |= ACS_INVALID_SAMECHAN;
 				}
 
@@ -1943,10 +1946,10 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 				if (!(candi[i].reason & ACS_INVALID_DFS) &&
 						candi[i].is_dfs && (dfsr_disable ||
 						(c_info->rs_info.reg_11h &&
-						acs_is_country_edcrs_eu(c_info->country.ccode) &&
+						c_info->country_is_edcrs_eu &&
 						acs_is_dfs_weather_chanspec(c_info,
 						candi[i].chspec) &&
-						ACS_CHINFO_IS_UNCLEAR(acs_channel_info(c_info,
+						ACS_CHINFO_IS_UNCLEAR(acs_get_chanspec_info(c_info,
 						candi[i].chspec))))) {
 					candi[i].reason |= ACS_INVALID_DFS;
 				}
@@ -1968,16 +1971,11 @@ acs_invalidate_candidates(acs_chaninfo_t *c_info, ch_candidate_t *candi, int bw)
 						candi[i].is_dfs &&
 						((c_info->acs_dfs == ACS_DFS_DISABLED) ||
 						(c_info->rs_info.reg_11h &&
-						acs_is_country_edcrs_eu(c_info->country.ccode) &&
+						c_info->country_is_edcrs_eu &&
 						acs_is_dfs_weather_chanspec(c_info,
 						candi[i].chspec)))) {
 					/* invalidate the candidate for the current trial */
 					candi[i].reason |= ACS_INVALID_DFS;
-				}
-
-				if (acsd_is_lp_chan(c_info, candi[i].chspec) &&
-						hp_chan_present) {
-					candi[i].reason |= ACS_INVALID_LPCHAN;
 				}
 
 				if (c_info->country_is_edcrs_eu) {
@@ -2047,6 +2045,15 @@ acs_select_chspec(acs_chaninfo_t *c_info)
 		(rsi->bw_cap == WLC_BW_CAP_40MHZ) &&
 		rsi->coex_enb;
 
+	/* Return when acsd is not in autochannel or coex mode */
+	if ((BAND_5G(rsi->band_type) && !AUTOCHANNEL(c_info)) ||
+			(BAND_2G(rsi->band_type) && !AUTOCHANNEL(c_info) &&
+			!need_coex_check)) {
+		ACSD_ERROR("%s: %s called when not in auto mode or not in coex mode (%d)",
+				c_info->name, __func__,	c_info->mode);
+		return FALSE;
+	}
+
 	if (CHSPEC_IS2G(rsi->pref_chspec) && CHSPEC_IS40(rsi->pref_chspec) &&
 		need_coex_check) {
 		selected = acs_coex_check(c_info, rsi->pref_chspec);
@@ -2068,14 +2075,27 @@ acs_select_chspec(acs_chaninfo_t *c_info)
 			 */
 			bw = ACS_BW_80;
 	}
+	if (BAND_2G(rsi->band_type) && WL_BW_CAP_40MHZ(rsi->bw_cap)) {
+		if (c_info->acs_nonwifi_enable) {
+			if (!acs_is_initial_selection(c_info) && c_info->glitch_cnt >
+					c_info->acs_chanim_glitch_thresh) {
+				if (CHSPEC_IS40(c_info->selected_chspec)) {
+					bw = ACS_BW_40;
+					goto reduce_bw;
+				} else if (CHSPEC_IS20(c_info->selected_chspec)) {
+					bw = ACS_BW_20;
+				}
+			}
+		}
+	}
 recheck:
-	ACSD_INFO("Selected BW %d; 0-20Mhz, 3-160Mhz\n", bw);
+	ACSD_INFO("%s: Selected BW %d; 0-20Mhz, 3-160Mhz\n", c_info->name, bw);
 	/* build the candidate chanspec list */
 	acs_build_candidates(c_info, bw);
 	candi = c_info->candidate[bw];
 
 	if (!candi) {
-		ACSD_DEBUG("No candidates, try again in 2 sec.\n");
+		ACSD_DEBUG("%s: No candidates, try again in 2 sec.\n", c_info->name);
 		sleep_ms(2000);
 
 		if (iter++ < ACS_BW_DWNGRD_ITERATIONS) {
@@ -2097,16 +2117,18 @@ recheck:
 		if (a_pol->chan_selector)
 			selected = a_pol->chan_selector(c_info, bw);
 		else
-			ACSD_ERROR("chan_selector is null for the selected policy");
+			ACSD_ERROR("%s: chan_selector is null for the selected policy",
+				c_info->name);
 		goto done;
 	} else if (BAND_5G(rsi->band_type)) {
-		ACSD_DEBUG(" no valid channel to select. BW is not adjust. \n");
+		ACSD_DEBUG("%s no valid channel to select. BW is not adjust. \n", c_info->name);
 		/* In 5G we downgrade bandwidth if there is no valid channel can be selected
 		 * on 40/80/160/80p80 Mhz.
 		 */
 
 		if (bw > ACS_BW_20) {
-			ACSD_INFO("Downgrading bw to find a proper channel of operation.\n");
+			ACSD_INFO("%s Downgrading bw to find a proper channel of operation.\n",
+				c_info->name);
 			goto reduce_bw;
 		}
 
@@ -2122,7 +2144,7 @@ recheck:
 reduce_bw:
 	/* if we failed to pick a chanspec, fall back to lower bw */
 	if (bw > ACS_BW_20) {
-		ACSD_DEBUG("Failed to find a valid chanspec\n");
+		ACSD_DEBUG("%s: Failed to find a valid chanspec\n", c_info->name);
 		bw = bw - 1;
 		goto recheck;
 	} /* pick a chanspec if we are here */
@@ -2144,29 +2166,34 @@ reduce_bw:
 
 done:
 	if (acs_is_initial_selection(c_info) || ((c_info->switch_reason == APCS_TXFAIL) &&
-				(selected != c_info->cur_chspec))) {
+			(selected != c_info->cur_chspec))) {
 #if 0
-		ACSD_PRINT("selected channel spec: 0x%4x\n", selected);
+		ACSD_PRINT("%s: selected channel spec: 0x%4x\n", c_info->name, selected);
 #else
-		ACSD_PRINT("selected channel spec: 0x%4x (%s)\n", selected,
+		ACSD_PRINT("%s: selected channel spec: 0x%4x (%s)\n", c_info->name, selected,
 			wf_chspec_ntoa(selected, chanspecbuf));
 #endif
 		selected = acs_adjust_ctrl_chan(c_info, selected);
 #if 0
-		ACSD_PRINT("Adjusted channel spec: 0x%4x\n", selected);
-		ACSD_PRINT("selected channel spec: 0x%4x\n", selected);
+		ACSD_PRINT("%s: Adjusted channel spec: 0x%4x\n", c_info->name, selected);
+		ACSD_PRINT("%s: selected channel spec: 0x%4x\n", c_info->name, selected);
 #else
-		ACSD_PRINT("Adjusted channel spec: 0x%4x (%s)\n", selected,
+		ACSD_PRINT("%s: Adjusted channel spec: 0x%4x (%s)\n", c_info->name, selected,
 			wf_chspec_ntoa(selected, chanspecbuf));
-		ACSD_PRINT("selected channel spec: 0x%4x (%s)\n", selected,
+		ACSD_PRINT("%s: selected channel spec: 0x%4x (%s)\n", c_info->name, selected,
 			wf_chspec_ntoa(selected, chanspecbuf));
 #endif
 	}
 
+	if (c_info->fallback_to_primary && CHSPEC_CHANNEL(selected) ==
+			CHSPEC_CHANNEL(c_info->cur_chspec)) {
+		c_info->selected_chspec = c_info->cur_chspec;
+		return FALSE;
+	}
 	c_info->selected_chspec = selected;
 
 	if (c_info->cur_chspec == c_info->selected_chspec) {
-	    return FALSE;
+		return FALSE;
 	}
 	return TRUE;
 }
@@ -2208,6 +2235,11 @@ acs_set_chspec(acs_chaninfo_t * c_info, bool update_dfs_params, int ch_chng_reas
 	reason = (wl_chan_change_reason_t)ch_chng_reason;
 	char tmp[32], prefix[32];
 
+	if (c_info->wet_enabled && acs_check_assoc_scb(c_info)) {
+		ACSD_INFO("%s: skip acs_set_chspec when ACSD is in WET mode and scb associated\n", c_info->name);
+		return;
+	}
+
 	if (c_info->txop_channel_select == 0) {
 		if (chspec) {
 			ACSD_PRINT("acs_set_chspec: 0x%4x (%s) for reason %s\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf), reason_string(c_info->switch_reason));
@@ -2216,7 +2248,11 @@ acs_set_chspec(acs_chaninfo_t * c_info, bool update_dfs_params, int ch_chng_reas
 			bool is_dfs_weather = acs_is_dfs_weather_chanspec(c_info, chspec);
 
 			if (reason == WL_CHAN_REASON_CSA) {
-				ret = acs_set_chanspec(c_info, chspec);
+				if (c_info->acs_use_csa) {
+					ret = acs_csa_handle_request(c_info);
+				} else {
+					ret = acs_set_chanspec(c_info, chspec);
+				}
 			} else if (reason == WL_CHAN_REASON_DFS_AP_MOVE_START) {
 
 				c_info->switch_reason = APCS_DFS_REENTRY;
@@ -2225,9 +2261,12 @@ acs_set_chspec(acs_chaninfo_t * c_info, bool update_dfs_params, int ch_chng_reas
 				if (!is_dfs || c_info->switch_reason != APCS_DFS_REENTRY ||
 						(ret = acs_bgdfs_attempt(c_info, chspec, FALSE))
 						!= BCME_OK) {
-
 					/* fallback to regular set chanspec */
-					ret = acs_set_chanspec(c_info, chspec);
+					if (c_info->acs_use_csa) {
+						ret = acs_csa_handle_request(c_info);
+					} else {
+						ret = acs_set_chanspec(c_info, chspec);
+					}
 				}
 				/* revert the mode to fix chanspec */
 				c_info->mode = ACS_MODE_FIXCHSPEC;
@@ -2244,19 +2283,23 @@ acs_set_chspec(acs_chaninfo_t * c_info, bool update_dfs_params, int ch_chng_reas
 
 					ret = acs_bgdfs_set(c_info, arg);
 					if (ret != BCME_OK) {
-						ACSD_ERROR("Failed dfs_ap_move option %d \n", arg);
+						ACSD_ERROR("%s: Failed dfs_ap_move option %d \n",
+							c_info->name, arg);
 					} else {
 						acs_bgdfs->state = BGDFS_STATE_IDLE;
 					}
 				}
 			} else {
 				/* Default behavior for USE_ACSD_DEF_METHOD:
-				 * if target channel is a DFS channel on DFS reentry, attempt bgdfs first
+				 * if target channel is a DFS channel on DFS reentry,
+				 * attempt bgdfs first.
 				 */
 				if (!is_dfs || c_info->switch_reason != APCS_DFS_REENTRY ||
-						(ret = acs_bgdfs_attempt(c_info, chspec, FALSE)) != BCME_OK) {
-					// fallback to regular set chanspec
-					ret = acs_set_chanspec(c_info, chspec);
+					(ret = acs_bgdfs_attempt(c_info,
+						chspec, FALSE)) != BCME_OK) {
+						// fallback to regular set chanspec
+						c_info->selected_chspec = chspec;
+						ret = acs_set_chanspec(c_info, chspec);
 				}
 			}
 			if (ret == 0) {
@@ -2269,7 +2312,7 @@ acs_set_chspec(acs_chaninfo_t * c_info, bool update_dfs_params, int ch_chng_reas
 				}
 			}
 			else {
-				ACSD_PRINT("set chanspec 0x%4x (%s) failed!\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+				ACSD_PRINT("%s: set chanspec 0x%4x (%s) failed!\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 			}
 		} else {
 			snprintf(prefix, sizeof(prefix), "wl%d_", c_info->unit);

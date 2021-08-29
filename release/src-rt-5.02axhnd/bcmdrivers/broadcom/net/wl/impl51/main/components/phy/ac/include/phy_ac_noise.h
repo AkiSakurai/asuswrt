@@ -1,7 +1,7 @@
 /*
  * ACPHY Noise module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_noise.h 758727 2018-04-20 05:33:41Z $
+ * $Id: phy_ac_noise.h 776005 2019-06-17 15:01:05Z $
  */
 
 #ifndef _phy_ac_noise_h_
@@ -146,7 +146,8 @@ void phy_ac_noise_unregister_impl(phy_ac_noise_info_t *ac_info);
 	ACMAJORREV_36(pi->pubpi->phy_rev) || ACMAJORREV_GE40(pi->pubpi->phy_rev))
 #define ACPHY_HWACI_WITH_DESENSE_ENG(pi) (ACMAJORREV_4((pi)->pubpi->phy_rev) || \
 	ACMAJORREV_36(pi->pubpi->phy_rev) || ACMAJORREV_GE40(pi->pubpi->phy_rev))
-#define ACPHY_HWACI_HWTBL_MITIGATION(pi) (ACMAJORREV_33((pi)->pubpi->phy_rev))
+#define ACPHY_HWACI_HWTBL_MITIGATION(pi) (ACMAJORREV_33((pi)->pubpi->phy_rev) || \
+	ACMAJORREV_51((pi)->pubpi->phy_rev))
 #else
 #define ACPHY_ENABLE_FCBS_HWACI(pi) 0
 #define ACPHY_HWACI_WITH_DESENSE_ENG(pi) (0)
@@ -184,16 +185,16 @@ typedef struct acphy_desense_values
 	uint8 lna1_tbl_desense, lna2_tbl_desense;   /* in ticks */
 	uint8 lna1_gainlmt_desense, lna2_gainlmt_desense;   /* in ticks */
 	uint8 lna1rout_gainlmt_desense;
-	uint8 elna_bypass;
+	uint8 elna_bypass, elna_bypass_timer;
 	uint8 mixer_setting_desense;
 	uint8 nf_hit_lna12; /* mostly to adjust nb/w1 clip for bt cases */
 	bool on;
-	bool forced;
 	uint8 analog_gain_desense_ofdm, analog_gain_desense_bphy; /* in dBs */
 	uint8 lna1_idx_min, lna1_idx_max;   /* in ticks */
 	uint8 lna2_idx_min, lna2_idx_max;   /* in ticks */
 	uint8 mix_idx_min, mix_idx_max;   /* in ticks */
 	uint8 ofdm_desense_extra_halfdB;
+	int8 edcrs;
 }  acphy_desense_values_t;
 
 typedef struct desense_history {
@@ -279,6 +280,9 @@ extern void wlc_phy_save_def_gain_settings_acphy(phy_info_t *pi);
 
 /* inter-module data API */
 phy_ac_noise_data_t *phy_ac_noise_get_data(phy_ac_noise_info_t *noisei);
+int32 phy_ac_noise_get_dynamic_ed_thresh(phy_info_t *pi, bool mode);
+void phy_ac_noise_set_dynamic_ed_thresh(phy_info_t *pi, int32 edcrs, bool mode);
+
 /* this is used by rxgcrs */
 void phy_ac_noise_set_gainidx(phy_ac_noise_info_t *noisei, uint16 gainidx);
 void phy_ac_noise_set_trigger_crsmin_cal(phy_ac_noise_info_t *noisei, bool trigger_crsmin_cal);
@@ -289,12 +293,15 @@ extern void wlc_phy_hwaci_setup_acphy(phy_info_t *pi, bool on, bool init);
 extern uint8 wlc_phy_disable_hwaci_fcbs_trig(phy_info_t *pi);
 extern void wlc_phy_restore_hwaci_fcbs_trig(phy_info_t *pi, uint8 trig_disable);
 extern void wlc_phy_hwaci_mitigation_enable_acphy(phy_info_t *pi, uint8 hwaci_mode, bool init);
+void wlc_phy_elnabypass_on_w0_setup_acphy(phy_info_t *pi, bool enable);
+extern void wlc_phy_mclip_aci_mitigation(phy_info_t *pi, bool desense_en);
 extern void wlc_phy_enable_hwaci_28nm(phy_info_t *pi);
 extern void wlc_phy_desense_aci_engine_acphy(phy_info_t *pi);
 extern void wlc_phy_reset_noise_var_shaping_acphy(phy_info_t *pi);
 extern void wlc_phy_hwaci_override_acphy(phy_info_t *pi, int state);
 extern void wlc_phy_hwaci_engine_acphy(phy_info_t *pi);
 extern void wlc_phy_hwaci_engine_acphy_28nm(phy_info_t *pi);
+void wlc_phy_elnabypass_on_w0_engine_acphy(phy_info_t *pi);
 extern void wlc_phy_hwaci_mitigate_acphy(phy_info_t *pi, bool aci_status);
 acphy_desense_values_t* phy_ac_noise_get_desense(phy_ac_noise_info_t *noisei);
 uint8 phy_ac_noise_get_desense_state(phy_ac_noise_info_t *noisei);

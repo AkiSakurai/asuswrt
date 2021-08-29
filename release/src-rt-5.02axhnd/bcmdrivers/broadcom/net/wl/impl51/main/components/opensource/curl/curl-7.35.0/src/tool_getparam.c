@@ -1597,6 +1597,10 @@ ParameterError getparameter(char *flag,    /* f or -long-flag */
         return err;
       break;
     case 'r':
+      /* Specifying a range WITHOUT A DASH will create an illegal HTTP range
+         (and won't actually be range by definition). The man page previously
+         claimed that to be a good way, why this code is added to work-around
+         it. */
       if(ISDIGIT(*nextarg) && !strchr(nextarg, '-')) {
         char buffer[32];
         curl_off_t off;

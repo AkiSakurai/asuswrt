@@ -1,6 +1,6 @@
 /*
  * Key Management Module Implementation - scb support
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_scb.c 767601 2018-09-18 14:29:52Z $
+ * $Id: km_scb.c 773616 2019-03-26 14:51:30Z $
  */
 
 #include "km_pvt.h"
@@ -632,11 +632,6 @@ km_scb_amt_alloc(keymgmt_t *km, scb_t *scb)
 	if (BSSCFG_STA(bsscfg) && PSTA_ENAB(KM_PUB(km)))
 		ea = &bsscfg->cur_etheraddr; /* PSTA uses A1 match */
 #endif // endif
-#if defined(WET) || defined(WET_DONGLE)
-	if (BSSCFG_STA(bsscfg) && (WET_ENAB(km->wlc) || WET_DONGLE_ENAB(km->wlc))) {
-		ea = &bsscfg->cur_etheraddr; /* WET uses A1 match */
-	}
-#endif // endif
 
 	scb_km = KM_SCB(km, scb);
 	amt_idx = scb_km->amt_idx;
@@ -770,15 +765,20 @@ int wlc_keymgmt_get_scb_amt_idx(wlc_keymgmt_t *km, scb_t *scb)
 	KM_ASSERT(KM_VALID(km));
 
 	err = BCME_NOTFOUND;
-	/* OLPC SCB is not ignored */
-	if (!scb || (KM_IGNORED_SCB(scb) && !SCB_OLPC(scb)))
+	if (!scb || (KM_IGNORED_SCB(scb))) {
 		goto done;
+	}
+
+	if (SCB_MARKED_DEL(scb)) {
+		goto done;
+	}
 
 	ASSERT((KM_SCB(km, scb)->flags & KM_SCB_FLAG_INIT) != 0);
 
 	amt_idx = km_scb_amt_alloc(km, scb);
-	if (amt_idx != KM_HW_AMT_IDX_INVALID)
+	if (amt_idx != KM_HW_AMT_IDX_INVALID) {
 		err = amt_idx;
+	}
 
 done:
 	return err;

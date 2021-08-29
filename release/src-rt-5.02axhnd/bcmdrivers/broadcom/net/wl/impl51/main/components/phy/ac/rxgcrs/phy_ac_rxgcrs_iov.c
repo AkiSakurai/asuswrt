@@ -1,7 +1,7 @@
 /*
  * ACPHY Rx Gain Control and Carrier Sense module implementation - iovar handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rxgcrs_iov.c 759965 2018-04-27 08:01:39Z $
+ * $Id: phy_ac_rxgcrs_iov.c 770846 2019-01-07 23:58:52Z $
  */
 
 #include <phy_ac_rxgcrs_iov.h>
@@ -60,7 +60,9 @@ enum {
 	IOV_PHY_FORCE_LESISCALE = 3,
 	IOV_PHY_LESI = 4,
 	IOV_PHY_LESI_CAP = 5,
-	IOV_PHY_LESI_OVRD = 6
+	IOV_PHY_LESI_OVRD = 6,
+	IOV_PHY_LESISCALE_HALFDB_2G = 7,
+	IOV_PHY_LESISCALE_HALFDB_5G = 8
 };
 
 static const bcm_iovar_t phy_ac_rxgcrs_iovars[] = {
@@ -79,6 +81,10 @@ static const bcm_iovar_t phy_ac_rxgcrs_iovars[] = {
 	{"phy_lesi_cap", IOV_PHY_LESI_CAP,
 	IOVF_GET_UP, 0, IOVT_UINT32, 0},
 	{"phy_lesi_ovrd", IOV_PHY_LESI_OVRD,
+	IOVF_SET_UP, 0, IOVT_UINT32, 0},
+	{"phy_lesiscale_halfdb_2g", IOV_PHY_LESISCALE_HALFDB_2G,
+	IOVF_SET_UP, 0, IOVT_UINT32, 0},
+	{"phy_lesiscale_halfdb_5g", IOV_PHY_LESISCALE_HALFDB_5G,
 	IOVF_SET_UP, 0, IOVT_UINT32, 0},
 	{NULL, 0, 0, 0, 0, 0}
 };
@@ -136,6 +142,18 @@ phy_ac_rxgcrs_doiovar(void *ctx, uint32 aid,
 			err = phy_ac_rxgcrs_iovar_get_lesi_ovrd(rxgcrsi, ret_int_ptr);
 		case IOV_SVAL(IOV_PHY_LESI_OVRD):
 			err = phy_ac_rxgcrs_iovar_set_lesi_ovrd(rxgcrsi, int_val);
+			break;
+		case IOV_GVAL(IOV_PHY_LESISCALE_HALFDB_2G):
+			err = phy_ac_rxgcrs_iovar_get_lesiscale_offset(rxgcrsi, 2, ret_int_ptr);
+			break;
+		case IOV_SVAL(IOV_PHY_LESISCALE_HALFDB_2G):
+			err = phy_ac_rxgcrs_iovar_set_lesiscale_offset(rxgcrsi, 2, int_val);
+			break;
+		case IOV_GVAL(IOV_PHY_LESISCALE_HALFDB_5G):
+			err = phy_ac_rxgcrs_iovar_get_lesiscale_offset(rxgcrsi, 5, ret_int_ptr);
+			break;
+		case IOV_SVAL(IOV_PHY_LESISCALE_HALFDB_5G):
+			err = phy_ac_rxgcrs_iovar_set_lesiscale_offset(rxgcrsi, 5, int_val);
 			break;
 		default:
 			err = BCME_UNSUPPORTED;

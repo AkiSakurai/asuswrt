@@ -4,7 +4,7 @@
  *
  *  Air-IQ data capture
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -87,115 +87,6 @@ wlc_airiq_phy_chan2fc(uint channel)
 	}
 }
 
-#ifdef __AIRIQ_FFTCAPTURE
-void
-wlc_airiq_fftcapture(airiq_info_t *airiqh, uint8 *fftdata, int32 len)
-{
-	chanspec_t chanspec;
-	uint16 seqno, gaincode;
-	uint32 timestamp;
-	uint16 flags;
-	airiq_fftdata_header_t *hdr;
-	uint8 *buffer;
-	int32 datalen = len - 32 + sizeof(airiq_fftdata_header_t);
-
-	if (airiqh->latch_vasip_start_time) {
-		airiqh->vasip_time_correction = airiqh->start_time_mac - timestamp;
-		airiqh->latch_vasip_start_time = FALSE;
-	}
-	/* Synchronize timestamps to MAC clock at beginning of each scan on a channel */
-	timestamp = timestamp + airiqh->vasip_time_correction;
-
-#ifdef BCMDBG
-	uint16 latency;
-#endif // endif
-
-	timestamp = ltoh32(*(uint32*)(fftdata + 4));
-	seqno = ltoh16(*(uint16*)(fftdata + 8));
-	chanspec = ltoh16(*(uint16*)(fftdata + 10));
-#ifdef BCMDBG
-	latency = ltoh16(*(uint16*)(fftdata + 12));
-	wlc_airiq_log_fft(airiqh, CHSPEC_CHANNEL(chanspec), latency);
-#endif // endif
-	if (D11REV_IS(airiqh->wlc->pub->corerev, 56)) {
-		/* gaincode valid only in first frag */
-	} else {
-		gaincode = ltoh16(*(uint16*)(fftdata + 14));
-		flags = FFT_FLAG_INTERLEAVED;
-	}
-
-	airiqh->fft_count++;
-	if (airiqh->capture_limit > 0 &&
-		airiqh->fft_count >= airiqh->capture_limit &&
-		airiqh->iq_capture_enable) {
-
-		wlc_airiq_phy_disable_fft_capture(airiqh);
-		if (airiqh->scan.home_scan) {
-			if (airiqh->sweep_count >= 0) {
-				airiqh->sweep_count--;
-				if (airiqh->sweep_count <= 0) {
-					airiqh->scan_enable = FALSE;
-					airiqh->scan.run_phycal = FALSE;
-					wlc_airiq_set_scan_in_progress(airiqh, FALSE);
-					/* chanspec restore, disable FFT, disable scan */
-					wl_airiq_sendup_scan_complete_alternate(airiqh,
-						AIRIQ_SCAN_SUCCESS);
-				}
-			}
-		}
-	}
-
-	buffer = MALLOCZ(airiqh->wlc->osh, datalen);
-
-	if (buffer) {
-		hdr = (airiq_fftdata_header_t*)buffer;
-
-		/* Setup the data hdr */
-		hdr->timestamp = timestamp;
-		hdr->seqno = seqno;
-		hdr->flags = flags;
-		hdr->message_type = MESSAGE_TYPE_FFTCPX;
-		hdr->corerev = airiqh->wlc->pub->corerev;
-		hdr->unit = airiqh->wlc->pub->unit;
-		hdr->size_bytes = datalen;
-		hdr->data_bytes = len - 32;
-		hdr->fc_mhz = (uint16)wlc_airiq_phy_chan2fc(CHSPEC_CHANNEL(chanspec));
-		hdr->chanspec = chanspec;
-
-		hdr->gaincode = gaincode;
-
-		switch (hdr->data_bytes) {
-		case 256: /* 20 MHz */
-			hdr->bins = 64;
-			break;
-		case 512: /* 40 MHz */
-			hdr->bins = 128;
-			break;
-		case 1024: /* 80 MHz */
-			hdr->bins = 256;
-			break;
-		default:
-			WL_ERROR(("%s: Unknown FFT length: %d bytes\n", __FUNCTION__, len));
-			hdr->bins = 0;
-			break;
-		}
-
-		/* copy the FFT IQ data */
-		memcpy(buffer + sizeof(airiq_fftdata_header_t), fftdata + 32, hdr->data_bytes);
-
-		wl_airiq_sendup_data(airiqh, buffer,  datalen);
-		MFREE(airiqh->wlc->osh, buffer, datalen);
-	} else {
-		WL_ERROR(("%s: Could not allocate bytes: queue full\n", __FUNCTION__));
-	}
-//    spin_unlock_bh(&airiq.lock);
-	/*
-	 * end critical section
-	 */
-
-}
-#endif /* __AIRIQ_FFTCAPTURE */
-
 #ifdef VASIP_HW_SUPPORT
 void wlc_airiq_vasipfftcapture(airiq_info_t *airiqh)
 {
@@ -207,6 +98,8 @@ void wlc_airiq_vasipfftcapture(airiq_info_t *airiqh)
 	uint16 seqno = 0;
 	uint32 timestamp, gain, bw;
 	uint16 *header_ptr;
+	uint16 vasip_fft_header[VASIP_FFT_HEADER_SIZE / 2];
+	bool force_sendup = FALSE;
 
 	airiqh->fft_count++;
 	if (airiqh->capture_limit > 0 &&
@@ -214,13 +107,15 @@ void wlc_airiq_vasipfftcapture(airiq_info_t *airiqh)
 
 		wlc_airiq_phy_disable_fft_capture(airiqh);
 
+		/* sendup the message if last FFT on a channel */
+		force_sendup = TRUE;
+
 		if (airiqh->scan.home_scan) {
 			if (airiqh->sweep_count >= 0) {
 				airiqh->sweep_count--;
 				if (airiqh->sweep_count <= 0) {
-					airiqh->scan_enable = FALSE;
+					wlc_airiq_set_enable(airiqh, FALSE);
 					airiqh->scan.run_phycal = FALSE;
-					wlc_airiq_set_scan_in_progress(airiqh, FALSE);
 					/* chanspec restore, disable FFT, disable scan */
 					wl_airiq_sendup_scan_complete_alternate(airiqh,
 						AIRIQ_SCAN_SUCCESS);
@@ -235,15 +130,15 @@ void wlc_airiq_vasipfftcapture(airiq_info_t *airiqh)
 	*	SVMP_HEADER_ADDR, VASIP_FFT_HEADER_SIZE / 8);
 	*/
 
-	wlc_svmp_mem_read_axi(airiqh->wlc->hw, (uint16*)airiqh->fft_buffer,
+	wlc_svmp_mem_read_axi(airiqh->wlc->hw, vasip_fft_header,
 		airiqh->svmp_header_addr, VASIP_FFT_HEADER_SIZE / 2);
 
-	header_ptr  = (uint16*)airiqh->fft_buffer;
-	gain        = ltoh16(*(header_ptr + 3));
+	header_ptr  = (uint16*)vasip_fft_header;
+	gain        = ltoh16(vasip_fft_header[3]);
 	timestamp   = ltoh32(*(uint32*)(header_ptr + 18));
-	seqno       = ltoh16(*(header_ptr + 20));
-	chanspec    = ltoh16(*(header_ptr + 21));
-	chanspec3x3 = ltoh16(*(header_ptr + 22));
+	seqno       = ltoh16(vasip_fft_header[20]);
+	chanspec    = ltoh16(vasip_fft_header[21]);
+	chanspec3x3 = ltoh16(vasip_fft_header[22]);
 
 #ifdef BCMDBG
 	wlc_airiq_log_fft(airiqh, CHSPEC_CHANNEL(chanspec), 0);
@@ -262,18 +157,26 @@ void wlc_airiq_vasipfftcapture(airiq_info_t *airiqh)
 		datalen = 1024 + sizeof(airiq_fftdata_header_t);
 		break;
 	default:
-		WL_ERROR(("%s: Unknown bandwidth: %d bw\n", __FUNCTION__, bw));
+		WL_ERROR(("wl%d: %s: Unknown bandwidth: %d bw\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__, bw));
 		prhex("FFT header:", (uchar*)header_ptr, VASIP_FFT_HEADER_SIZE);
 		//ASSERT(0);
 		return;
 		break;
 	}
 
-	buffer = airiqh->fft_buffer + VASIP_FFT_HEADER_SIZE;
+	buffer = wlc_airiq_msg_get_buffer(airiqh, datalen);
+
+	if (! buffer) {
+		WL_ERROR(("wl%d %s: buffer fail.\n", airiqh->wlc->pub->unit, __FUNCTION__));
+		return;
+	}
+
 	hdr = (airiq_fftdata_header_t *)buffer;
 
-	ASSERT(ISALIGNED(buffer + sizeof(airiq_fftdata_header_t), sizeof(uint64)));
-
+	/* This assert is not needed since the 64-bit read has been disabled.
+	 * ASSERT(ISALIGNED(buffer + sizeof(airiq_fftdata_header_t), sizeof(uint64)));
+	 */
 	/* simplified logic -- buffer is sized to handle the extra uint64 */
 	words2read = ((datalen - sizeof(airiq_fftdata_header_t)) >> 3) + 1;
 
@@ -313,13 +216,13 @@ void wlc_airiq_vasipfftcapture(airiq_info_t *airiqh)
 		hdr->data_bytes = 1024;
 		break;
 	default:
-		WL_ERROR(("%s: Unknown bandwidth: %d bw\n", __FUNCTION__, bw));
+		WL_ERROR(("wl%d: %s: Unknown bandwidth: %d bw\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__, bw));
 		hdr->bins = 0;
 		break;
 	}
 
-	/* copy the FFT data */
-	wl_airiq_sendup_data(airiqh, buffer,  datalen);
+	wlc_airiq_msg_sendup(airiqh, datalen, force_sendup);
 
 	/* AIRIQ_DBG(("%s: chanspec=%x size=%d timestamp=%08d seqno=%x\n",
 	 *  __FUNCTION__,hdr->chanspec,datalen,hdr->timestamp,hdr->seqno));
@@ -439,7 +342,8 @@ uint8 chan2index(uint16 chanspec)
 		break;
 	default:
 		index = 0;
-		WL_ERROR(("%s: chanspec 0x%x unknown bw 0x%x\n", __FUNCTION__, chanspec, bw));
+		WL_ERROR(("%s: chanspec 0x%x unknown bw 0x%x\n",
+			__FUNCTION__, chanspec, bw));
 		break;
 	}
 	return index;
@@ -502,7 +406,8 @@ bool wlc_lte_u_create_iqbuf(airiq_info_t *airiqh)
 
 	// Allocate iqbuf
 	if ((airiqh->iqbuf = (uint8*)MALLOC(airiqh->wlc->osh, airiqh->iqbuf_size)) == NULL) {
-		WL_ERROR(("%s: Could not allocate IQ buffer memory \n", __FUNCTION__));
+		WL_ERROR(("wl%d: %s: Could not allocate IQ buffer memory \n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 		return FALSE;
 	}
 
@@ -587,7 +492,8 @@ void wlc_lte_u_vasipiqcapture(airiq_info_t *airiqh)
 					WLC_E_STATUS_SUCCESS, 0, 0, (void*)(lte_u_event),
 					lte_u_event->data_len);
 			} else {
-				WL_AIRIQ(("%s: Could not get bytes\n", __FUNCTION__));
+				WL_AIRIQ(("wl%d: %s: Could not get bytes\n",
+					WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 			}
 		}
 		MFREE(airiqh->wlc->osh, lte_u_event, sizeof(lte_u_event_t) + eventlen);

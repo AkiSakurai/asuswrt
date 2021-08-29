@@ -1,7 +1,7 @@
 /*
  * lcn20PHY RSSI Compute module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -252,6 +252,13 @@ phy_lcn20_rssi_compute(phy_type_rssi_ctx_t *ctx, wlc_d11rxhdr_t *wrxh)
 
 	rssi = (rssi << LCN20_QDB_SHIFT) + rssi_qdb;
 
+	/* XXX The board atten value in the shmem has the status for swctrl line 0 and 1, we are
+	* comparing them with the Rxattn nvram parameter.
+	* Note: This method has a serious limitation; the assumption here is that the swctrl
+	* lines on the chip design for LNA control are fixed to 0 and 1. This needs to be done
+	* properly, the swctrl lines for LNA mode needs to be passed via nvram to ucode,
+	* read the required lines and compare this with swctrl map
+	*/
 	if (board_atten == ((pi->u.pi_lcn20phy->swctrlmap_2g[LCN20PHY_I_WL_RX_ATTN] &
 		LCN20PHY_I_WL_RX_ATTN_MASK) >> LCN20PHY_I_WL_RX_ATTN_SHIFT))
 		elna_bypass = 1;
@@ -270,6 +277,9 @@ phy_lcn20_rssi_compute(phy_type_rssi_ctx_t *ctx, wlc_d11rxhdr_t *wrxh)
 	rssi_gain_params.tia_R3_val = tia_R3_val;
 	rssi_gain_params.dvga1_val = dvga1_val;
 
+	/* XXX Passing invalid value of 255 for frame type and rate
+	* as these info are currently not available on link based implementation
+	*/
 	rssi = wlc_lcn20phy_rxpath_rssicorr(pi, rssi, &rssi_gain_params, 255, 255);
 
 	PHY_INFORM(("%s : Corrected: rssiqdB= %d, boardattn= %d\n",
@@ -373,6 +383,14 @@ phy_lcn20_rssi_get_pkteng_stats(phy_type_rssi_ctx_t *ctx, void *a, int alen,
 			frm_type[i] = (rate_lcn[i] & 0x3);
 			rate[i] = (rate_lcn[i] >> 2) & 63;
 
+			/* XXX The elna value in the shmem has the status for swctrl line 0
+			* and 1, we are comparing them with the Rxattn nvram parameter.
+			* Note: This method has a serious limitation; the assumption here is
+			* that the swctrl lines on the chip design for LNA control are fixed
+			* to 0 and 1. This needs to be done properly, the swctrl lines for
+			* LNA mode needs to bepassed via nvram to ucode, read the required
+			* lines and compare this with swctrl map
+			*/
 			if (elna_bypass ==
 				((pi->u.pi_lcn20phy->swctrlmap_2g[LCN20PHY_I_WL_RX_ATTN] &
 				LCN20PHY_I_WL_RX_ATTN_MASK) >> LCN20PHY_I_WL_RX_ATTN_SHIFT))

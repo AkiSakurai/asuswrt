@@ -2,7 +2,7 @@
  * MBO declarations/definitions for
  * Broadcom 802.11abgn Networking Device Driver
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -114,7 +114,7 @@ wlc_mbo_oce_info_t *wlc_init_mbo_oce(wlc_info_t* wlc);
 int wlc_mbo_process_wnm_notif(wlc_info_t *wlc, struct scb *scb, uint8 *body, int body_len);
 void wlc_mbo_update_scb_band_cap(wlc_info_t* wlc, struct scb* scb, uint8* data);
 int wlc_mbo_process_bsstrans_resp(wlc_info_t* wlc, struct scb* scb, uint8* body, int body_len);
-void wlc_mbo_add_mbo_ie_bsstrans_req(wlc_info_t* wlc, uint8* data, bool assoc_retry_attr,
+void wlc_mbo_add_mbo_ie_bsstrans_req(wlc_info_t* wlc, uint8** data, bool assoc_retry_attr,
 	uint8 retry_delay, uint8 transition_reason);
 int wlc_mbo_calc_len_mbo_ie_bsstrans_req(uint8 reqmode, bool* assoc_retry_attr);
 bool wlc_mbo_reject_assoc_req(wlc_info_t *wlc, wlc_bsscfg_t *bsscfg);
@@ -122,5 +122,6 @@ bool wlc_mbo_is_channel_non_preferred(wlc_info_t* wlc, struct scb* scb, uint8 ch
 	uint8 opclass);
 int32 wlc_mbo_get_gas_support(wlc_info_t* wlc);
 extern void wlc_mbo_update_gasi(wlc_info_t* wlc, void* gasi);
+extern bool wlc_mbo_bsscfg_is_enabled(wlc_info_t *wlc, wlc_bsscfg_t *cfg);
 #endif /* MBO_AP */
 #endif	/* _wlc_mbo_h_ */

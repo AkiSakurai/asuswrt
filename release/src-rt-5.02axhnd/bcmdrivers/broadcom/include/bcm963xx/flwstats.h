@@ -183,7 +183,7 @@ typedef struct {
 #define DUMP_TUPLE_FIELD_INT(P,FIELD,KEYTOKEN,MASK) \
 	if(P->mask & MASK)\
 	{\
-        if (P->mask & (FLWSTATS_QUERYMASK_L4DSTPRT | \
+        if (MASK & (FLWSTATS_QUERYMASK_L4DSTPRT | \
                        FLWSTATS_QUERYMASK_L4SRCPRT | \
                        FLWSTATS_QUERYMASK_INVID | \
                        FLWSTATS_QUERYMASK_OUTVID)) \
@@ -241,7 +241,7 @@ typedef struct {
 #define DUMP_TUPLE_FIELD_INT(P,FIELD,KEYTOKEN,MASK) \
 	if(P->mask & MASK)\
 	{\
-        if (P->mask & (FLWSTATS_QUERYMASK_L4DSTPRT | \
+        if (MASK & (FLWSTATS_QUERYMASK_L4DSTPRT | \
                        FLWSTATS_QUERYMASK_L4SRCPRT | \
                        FLWSTATS_QUERYMASK_INVID | \
                        FLWSTATS_QUERYMASK_OUTVID)) \

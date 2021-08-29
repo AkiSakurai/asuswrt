@@ -1,7 +1,7 @@
 /*
  * ACPHY Miscellaneous modules implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_misc.c 766801 2018-08-14 18:08:26Z $
+ * $Id: phy_ac_misc.c 778060 2019-08-21 18:50:19Z $
  */
 
 #include <phy_cfg.h>
@@ -86,9 +86,12 @@
 #include "wlc_radioreg_20693.h"
 #include "wlc_radioreg_20694.h"
 #include <wlc_radioreg_20695.h>
-#include <wlc_radioreg_20697.h>
 #include <wlc_radioreg_20698.h>
 #include <wlc_radioreg_20704.h>
+#include <wlc_radioreg_20707.h>
+
+#define VASIP_MEMORY_SIZE_BYTE 0x8FFFF
+#define VASIP_MEMORY_START 0x28410000
 
 /* module private states */
 struct phy_ac_misc_info {
@@ -740,6 +743,8 @@ phyradregs_list_t dot11acphy_regs_rev44_aux[] = {
 
 #endif /* PHY_DUMP_BINARY */
 /* local functions */
+static void enable_vasip_sc(phy_info_t *pi);
+
 static void wlc_phy_srom_read_rxgainerr_acphy(phy_info_t *pi);
 static void phy_ac_misc_nvram_femctrl_read(phy_info_t *pi);
 static void phy_ac_misc_nvram_femctrl_clb_read(phy_info_t *pi);
@@ -766,7 +771,28 @@ static bool phy_ac_misc_get_rxgainerr(phy_type_misc_ctx_t *ctx, int16 *gainerr);
 #ifdef ATE_BUILD
 static void phy_ac_gpaio_gpaioconfig(phy_type_misc_ctx_t *ctx, wl_gpaio_option_t option, int core);
 static void phy_type_misc_disable_ate_gpiosel(phy_type_misc_ctx_t *ctx);
-#endif // endif
+static void phy_ac_iqdac_buf_dc_setup(phy_info_t *pi, int option);
+static void phy_ac_iqdac_buf_dc_meas(phy_info_t *pi, int core);
+static void phy_ac_iqdac_buf_dc_clear(phy_info_t *pi, int option);
+typedef struct regs_save_dacbufiq_dc {
+	uint16 txdac_reg0[PHY_CORE_MAX];
+	uint16 txdac_reg1[PHY_CORE_MAX];
+	uint16 tx2g_mx[PHY_CORE_MAX];
+	uint16 tx5g_mx[PHY_CORE_MAX];
+	uint16 pmu_op1[PHY_CORE_MAX];
+	uint16 bg_reg10;
+	uint16 bg_reg9;
+	uint16 lpf_ovr1[PHY_CORE_MAX];
+	uint16 lpf_ovr2[PHY_CORE_MAX];
+	uint16 lpf_reg7[PHY_CORE_MAX];
+	uint16 lpf_reg8[PHY_CORE_MAX];
+	uint16 lpf_reg9[PHY_CORE_MAX];
+	uint16 txiqlocal_d[PHY_CORE_MAX];
+	uint16 bbmult[PHY_CORE_MAX];
+} regs_save_dacbufiq_dc_t;
+
+static regs_save_dacbufiq_dc_t save_regs_dc_meas;
+#endif /* ATE_BUILD */
 
 static void phy_ac_misc_nvram_attach(phy_ac_misc_info_t *misc_info, phy_info_t *pi);
 static uint8 phy_ac_misc_get_bfe_ndp_recvstreams(phy_type_misc_ctx_t *ctx);
@@ -921,7 +947,8 @@ phy_ac_rx_iq_est_res0(phy_ac_misc_info_t *info, uint32 cmplx_pwr[], uint8 extra_
 		result = (result << 8) | (noise_dbm_ant[core - 1] & 0xff);
 
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-	    ACMAJORREV_37(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	    ACMAJORREV_37(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+	    !ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		for (core = 0; core < PHYCORENUM(pi->pubpi->phy_corenum); core++)
 		    info->iqest[core] = noise_dbm_ant[core];
 	}
@@ -1015,6 +1042,7 @@ phy_ac_rx_iq_est_res1_calrev1(phy_info_t *pi, int16 noise_dBm_ant_fine[], uint8 
 				phy_ac_chanmgr_get_chan_freq_range_80p80(pi,
 					pi->radio_chanspec, chans);
 				tmp_range = chans[0];
+				// FIXME - core0/1: chans[0], core2/3 chans[1]
 			} else {
 				tmp_range =  phy_ac_chanmgr_get_chan_freq_range(pi,
 					pi->radio_chanspec, PRIMARY_FREQ_SEGMENT);
@@ -1114,7 +1142,8 @@ phy_ac_rx_iq_est_res1(phy_ac_misc_info_t *info, uint8 gain_correct,
 	if (!ACMAJORREV_32(pi->pubpi->phy_rev) &&
 		!ACMAJORREV_33(pi->pubpi->phy_rev) &&
 		!ACMAJORREV_37(pi->pubpi->phy_rev) &&
-		!ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		!(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		wlc_phy_noise_calc_fine_resln(pi, cmplx_pwr, crsmin_pwr,
 			noise_dBm_ant_fine, extra_gain_1dB, tot_gain);
 	}
@@ -1130,7 +1159,8 @@ phy_ac_rx_iq_est_res1(phy_ac_misc_info_t *info, uint8 gain_correct,
 	}
 
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-		ACMAJORREV_37(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		ACMAJORREV_37(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		wlc_phy_noise_calc_fine_resln(pi, cmplx_pwr, crsmin_pwr,
 			noise_dBm_ant_fine, extra_gain_1dB, tot_gain);
 	}
@@ -1186,7 +1216,8 @@ phy_ac_rx_iq_est_res1(phy_ac_misc_info_t *info, uint8 gain_correct,
 	}
 
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-	    ACMAJORREV_37(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	    ACMAJORREV_37(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+	    !ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		for (core = 0; core < PHYCORENUM(pi->pubpi->phy_corenum); core++)
 		    info->iqest[core] = noise_dBm_ant_fine[core];
 	}
@@ -1450,7 +1481,8 @@ static int phy_ac_iovar_get_rx_iq_est(phy_type_misc_ctx_t *ctx, int32 *ret_int_p
 		}
 	}
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-	    ACMAJORREV_37(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	    ACMAJORREV_37(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+	    !ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		if (pi->phy_rxiq_resln) {
 		  FOREACH_CORE(pi, r) {
 		    tmp = (info->iqest[r]) & 0x3ff;
@@ -1566,6 +1598,7 @@ wlc_phy_force_rfseq_acphy(phy_info_t *pi, uint8 cmd)
 	uint16 trigger_mask, status_mask;
 	uint16 orig_RfseqCoreActv;
 	uint8 stall_val, fifo_rst_val = 0;
+	uint32 phyctl_save;
 
 	if (READ_PHYREGFLD(pi, OCLControl1, ocl_mode_enable) == 1) {
 		if (cmd == ACPHY_RFSEQ_RESET2RX)
@@ -1616,6 +1649,7 @@ wlc_phy_force_rfseq_acphy(phy_info_t *pi, uint8 cmd)
 	orig_RfseqCoreActv = READ_PHYREG(pi, RfseqMode);
 	stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
 	fifo_rst_val = READ_PHYREGFLD(pi, RxFeCtrl1, soft_sdfeFifoReset);
+	phyctl_save = R_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi));
 
 	/* Force gated clocks on */
 	if ((pi->pubpi->phy_rev >= 32)) {
@@ -1664,7 +1698,7 @@ wlc_phy_force_rfseq_acphy(phy_info_t *pi, uint8 cmd)
 		OSL_DELAY(1);
 
 		/* Force gated clocks off */
-		W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), 0x2); /* set reg(PHY_CTL) 0x2 */
+		W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), phyctl_save); /* restore */
 		wlapi_bmac_phyclk_fgc(pi->sh->physhim, OFF);
 	}
 	WRITE_PHYREG(pi, RfseqMode, orig_RfseqCoreActv);
@@ -1707,6 +1741,10 @@ wlc_phy_get_deaf_acphy(phy_info_t *pi)
 	curr_classifctl = READ_PHYREG(pi, ClassifierCtrl) &
 		ACPHY_ClassifierCtrl_classifierSel_MASK(pi->pubpi->phy_rev);
 
+	/* XXX
+	 * For deafness to be set, ofdm and cck classifiers must be disabled,
+	 * AND adc_clip thresholds must be set to max (0xffff)
+	 */
 	if (curr_classifctl != 4) {
 		isDeaf = FALSE;
 	} else {
@@ -1756,7 +1794,7 @@ phy_ac_init_test(phy_type_misc_ctx_t *ctx, bool encals)
 	phy_info_t *pi = info->pi;
 
 	/* Force WLAN antenna */
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 	/* Disable tx power control */
 	wlc_phy_txpwrctrl_enable_acphy(pi, PHY_TPC_HW_OFF);
 	/* Recalibrate for this channel */
@@ -1817,6 +1855,11 @@ wlc_phy_freq_accuracy_acphy(phy_type_misc_ctx_t *ctx, int channel)
 void
 wlc_phy_test_scraminit_acphy(phy_info_t *pi, int8 init)
 {
+	/* PR 38226: routine to allow special testmodes where the scrambler is
+	 * forced to a fixed init value, hence, the same bit sequence into
+	 * the MAC produces the same constellation point sequence every
+	 * time
+	 */
 
 	if (init < 0) {
 		/* auto: clear Mode bit so that scrambler LFSR will be free
@@ -1850,6 +1893,17 @@ void
 wlc_phy_cts2self(phy_info_t *pi, uint16 duration)
 {
 	int mac_depth = 0;
+	int carrier_depth = 0;
+	phy_info_acphy_t *pi_ac = (phy_info_acphy_t *)pi->u.pi_acphy;
+
+	/* phycrs would get stuck when phy is in deaf and mac tries to transmit pkt
+	 * disable phy deaf before mac is unsuspended
+	 */
+	while ((carrier_depth < 100) && (phy_ac_rxgcrs_get_deaf_count(pi_ac->rxgcrsi) > 0)) {
+		/* Re-enable classifier/detection */
+		phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, FALSE);
+		carrier_depth++;
+	}
 	while ((mac_depth < 100) && !(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC)) {
 		/* Unsuspend mac */
 		wlapi_enable_mac(pi->sh->physhim);
@@ -1866,6 +1920,13 @@ wlc_phy_cts2self(phy_info_t *pi, uint16 duration)
 
 	/* Make sure mac is suspended when this function is called and over */
 	ASSERT((R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC) == 0);
+
+	while (carrier_depth) {
+		/* Leave the stay in carrier status as original */
+		phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, TRUE);
+		carrier_depth--;
+	}
+	wlc_phy_resetcca_acphy(pi);
 
 	/* Disable Power control */
 	wlc_phy_txpwrctrl_enable_acphy(pi, PHY_TPC_HW_OFF);
@@ -1952,33 +2013,39 @@ wlc_phy_gen_load_samples_acphy(phy_info_t *pi, int32 f_kHz, uint16 max_val)
 			fs_spb = (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 				ACMAJORREV_33(pi->pubpi->phy_rev) ||
 				ACMAJORREV_37(pi->pubpi->phy_rev) ||
-				ACMAJORREV_47_51(pi->pubpi->phy_rev)) ? 80 : 160;
+				(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))) ? 80 : 160;
 		else if (CHSPEC_IS40(pi->radio_chanspec))
 			fs_spb = (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 				ACMAJORREV_33(pi->pubpi->phy_rev) ||
 				ACMAJORREV_37(pi->pubpi->phy_rev) ||
-				ACMAJORREV_47_51(pi->pubpi->phy_rev)) ? 40 : 80;
+				(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))) ? 40 : 80;
 		else
 			fs_spb = (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 				ACMAJORREV_33(pi->pubpi->phy_rev) ||
 				ACMAJORREV_37(pi->pubpi->phy_rev) ||
-				ACMAJORREV_47_51(pi->pubpi->phy_rev)) ? 20 : 40;
+				(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))) ? 20 : 40;
 	} else if (phy_ac_radio_get_data(pi->u.pi_acphy->radioi)->dac_mode == 2) {
 		fs_spb = (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 			ACMAJORREV_33(pi->pubpi->phy_rev) ||
 			ACMAJORREV_37(pi->pubpi->phy_rev) ||
-			ACMAJORREV_47_51(pi->pubpi->phy_rev)) ? 80 : 160;
+			(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev))) ? 80 : 160;
 	} else { /* dac mode 3 */
 		fs_spb = (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 			ACMAJORREV_33(pi->pubpi->phy_rev) ||
 			ACMAJORREV_37(pi->pubpi->phy_rev) ||
-			ACMAJORREV_47_51(pi->pubpi->phy_rev)) ? 40 : 80;
+			(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev))) ? 40 : 80;
 	}
 
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_33(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_37(pi->pubpi->phy_rev) ||
-	    ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	    (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+	    !ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		tbl_len = fs_spb << 1;
 		if ((ACMAJORREV_47(pi->pubpi->phy_rev) && HW_ACMINORREV(pi) >= 1)) {
 			if (CHSPEC_IS160(pi->radio_chanspec)) {
@@ -2047,7 +2114,8 @@ wlc_phy_gen_load_samples_acphy(phy_info_t *pi, int32 f_kHz, uint16 max_val)
 		if (!ACMAJORREV_32(pi->pubpi->phy_rev) &&
 		    !ACMAJORREV_33(pi->pubpi->phy_rev) &&
 		    !ACMAJORREV_37(pi->pubpi->phy_rev) &&
-		    !ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		    !(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		    !ACMAJORREV_128(pi->pubpi->phy_rev))) {
 			if (pi->phytxtone_symm) {
 			        tone_buf[t].q = 0;
 			}
@@ -2106,6 +2174,12 @@ phy_ac_misc_modify_bbmult(phy_ac_misc_info_t *misci, uint16 max_val, bool modify
 		misci->bb_mult_save_valid = 1;
 	}
 
+	/* XXX	max_val = 0, set bbmult = 0
+	 * elseif modify_bbmult = 1,
+	 * set samp_play (default mag 186) power @ DAC = OFDM packet power @ DAC (9.5-bit RMS)
+	 * by setting bb_mult (2.6 format) to
+	 * 64/64 for bw = 20, 40, 80MHz
+	 */
 	if (max_val == 0 || modify_bbmult) {
 		if (max_val == 0) {
 			bb_mult = 0;
@@ -2135,35 +2209,21 @@ wlc_phy_tx_tone_acphy(phy_info_t *pi, int32 f_kHz, uint16 max_val, uint8 iqmode,
 
 	PHY_TRACE(("wl%d: %s\n", pi->sh->unit, __FUNCTION__));
 
-	if (ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 		pi_ac->tx_pwr_ctrl_status = pi->txpwrctrl;
 		wlc_phy_txpwrctrl_enable_acphy(pi, PHY_TPC_HW_OFF);
 	}
 
 	if (max_val == 0) {
+		/* XXX PR90390: For a zero ampltitude signal, bypass loading samples
+		 * and set bbmult = 0
+		 */
 		num_samps = 1;
 	} else if ((num_samps = wlc_phy_gen_load_samples_acphy(pi, f_kHz, max_val)) == 0) {
 		return BCME_ERROR;
 	}
 
 	phy_ac_misc_modify_bbmult(pi_ac->misci, max_val, modify_bbmult);
-
-	if (ACMAJORREV_44(pi->pubpi->phy_rev) && (pi->pubpi->slice == DUALMAC_AUX) &&
-		PHY_IPA(pi)) {
-		uint16 core, mix_gm_gc, dac_attn;
-		FOREACH_CORE(pi, core) {
-			mix_gm_gc = READ_RADIO_REGFLD_20697X(pi, RF, TXMIX2G_CFG6, 1, core,
-				mx2g_gm_gc);
-			dac_attn = READ_RADIO_REGFLD_20697X(pi, RF, TXDAC_REG0, 1, core,
-				iqdac_attn);
-			if ((dac_attn != IPA_20697_DAC_ATTN_VAL) &&
-				(mix_gm_gc > IPA_20697_MAX_MIX_GM_GC_VAL)) {
-				PHY_ERROR(("%s: Invalid dac_attn(%d) or mx_gm_gc(%d) value\n",
-					__FUNCTION__, dac_attn, mix_gm_gc));
-				ASSERT(0);
-			}
-		}
-	}
 
 	if (ACMAJORREV_5(pi->pubpi->phy_rev) && ACMINORREV_0(pi) &&
 	    (BFCTL(pi_ac) == 3) &&
@@ -2189,6 +2249,9 @@ wlc_phy_tx_tone_acphy_mac_based(phy_info_t *pi, int32 f_kHz, uint16 max_val, uin
 	UNUSED_PARAMETER(iqmode);  /* to keep function prototype same as the PHY-based version */
 
 	if (max_val == 0) {
+		/* XXX PR90390: For a zero ampltitude signal, bypass loading samples
+		 * and set bbmult = 0
+		 */
 		num_samps = 1;
 	} else if ((num_samps = wlc_phy_gen_load_samples_acphy(pi, f_kHz, max_val)) == 0) {
 		return BCME_ERROR;
@@ -2245,6 +2308,10 @@ wlc_phy_stopplayback_acphy(phy_info_t *pi, bool no_reset)
 		/* check status register */
 		playback_status = READ_PHYREG(pi, sampleStatus);
 		if (playback_status & 0x1) {
+			/* Disable stall before issue the sample play stop
+			as the stall can cause it to miss the trigger
+			JIRA:CRDOT11ACPHY-1099
+			*/
 			stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
 			ACPHY_DISABLE_STALL(pi);
 			phy_utils_or_phyreg(pi, ACPHY_sampleCmd(pi->pubpi->phy_rev),
@@ -2257,9 +2324,6 @@ wlc_phy_stopplayback_acphy(phy_info_t *pi, bool no_reset)
 			PHY_CAL(("wlc_phy_stopplayback_acphy: already disabled\n"));
 		}
 	}
-	/* disable the dac_test mode */
-	phy_utils_and_phyreg(pi, ACPHY_sampleCmd(pi->pubpi->phy_rev),
-		~ACPHY_sampleCmd_DacTestMode_MASK(pi->pubpi->phy_rev));
 
 	/* if bb_mult_save does exist, restore bb_mult and undef bb_mult_save */
 	if (pi_ac->misci->bb_mult_save_valid != 0) {
@@ -2288,7 +2352,7 @@ wlc_phy_stopplayback_acphy(phy_info_t *pi, bool no_reset)
 	if (no_reset == FALSE) {
 		wlc_phy_resetcca_acphy(pi);
 	}
-	if (ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 		wlc_phy_txpwrctrl_enable_acphy(pi, pi_ac->tx_pwr_ctrl_status);
 	}
 }
@@ -2297,8 +2361,6 @@ wlc_phy_stopplayback_acphy(phy_info_t *pi, bool no_reset)
 #define SAMPLE_WAIT_COUNT	60	/* Should be at least 60 for farrow FIFO depth to settle.
 					 * 60 is to support 80mhz mode.  Units are in 25 ns.
 					 */
-#define DAC_TEST_MODE		0	/* 1 == enable DAC Test Mode */
-
 static void
 wlc_phy_runsamples_acphy(phy_info_t *pi, uint16 num_samps, uint8 iqmode)
 {
@@ -2323,19 +2385,19 @@ wlc_phy_runsamples_acphy_with_counts(phy_info_t *pi, uint16 num_samps, uint8 iqm
 		phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, TRUE);
 	/* Delay for proper RX2TX in sample play ow spurious emissions,radar FD */
 	if (!ACMAJORREV_32(phy_rev) && !ACMAJORREV_33(phy_rev) &&
-	    !ACMAJORREV_37(phy_rev) && !ACMAJORREV_47_51(phy_rev)) {
+	    !ACMAJORREV_37(phy_rev) && !ACMAJORREV_GE47(phy_rev)) {
 		OSL_DELAY(15);
 	}
 
-	if (ACMAJORREV_GE37(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_GE33(pi->pubpi->phy_rev)) {
 		stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
 		ACPHY_DISABLE_STALL(pi);
+		if (READ_PHYREGFLD(pi, sampleCmd, enable)) {
+			MOD_PHYREG(pi, sampleCmd, stop, 0x1);
+			OSL_DELAY(10);
+		}
 		MOD_PHYREG(pi, sampleCmd, enable, 0x1);
 		ACPHY_ENABLE_STALL(pi, stall_val);
-	}
-
-	if (ACMAJORREV_33(pi->pubpi->phy_rev)) {
-		MOD_PHYREG(pi, sampleCmd, enable, 0x1);
 	}
 
 	phy_utils_and_phyreg(pi, ACPHY_macbasedDACPlay(phy_rev),
@@ -2363,26 +2425,19 @@ wlc_phy_runsamples_acphy_with_counts(phy_info_t *pi, uint16 num_samps, uint8 iqm
 	orig_RfseqCoreActv = READ_PHYREG(pi, RfseqMode);
 	phy_utils_or_phyreg(pi, ACPHY_RfseqMode(phy_rev),
 		ACPHY_RfseqMode_CoreActv_override_MASK(phy_rev));
-	phy_utils_and_phyreg(pi, ACPHY_sampleCmd(phy_rev),
-		~ACPHY_sampleCmd_DacTestMode_MASK(phy_rev));
-	phy_utils_and_phyreg(pi, ACPHY_sampleCmd(phy_rev), ~ACPHY_sampleCmd_start_MASK(phy_rev));
-	phy_utils_and_phyreg(pi, ACPHY_iqloCalCmdGctl(phy_rev), 0x3FFF);
-	if (ACMAJORREV_47_51(phy_rev) && iqmode) {
-		OSL_DELAY(1);
+	if (READ_PHYREGFLD(pi, iqloCalCmdGctl, iqlo_cal_en)) {
+		phy_utils_and_phyreg(pi, ACPHY_iqloCalCmdGctl(phy_rev), 0x3FFF);
+		OSL_DELAY(20);
 	}
 	stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
 	ACPHY_DISABLE_STALL(pi);
 	if (iqmode) {
-		phy_utils_or_phyreg(pi, ACPHY_iqloCalCmdGctl(phy_rev), 0x8000);
+		MOD_PHYREG(pi, iqloCalCmdGctl, iqlo_cal_en, 0x1);
 	} else {
-		uint16  sample_cmd = ACPHY_sampleCmd_start_MASK(phy_rev);
-#if (DAC_TEST_MODE == 1)
-		sample_cmd |= ACPHY_sampleCmd_DacTestMode_MASK(phy_rev);
-#endif /* DAC_TEST_MODE */
 		/* Disable stall before issue the sample play start
 		as the stall can cause it to miss the start
 		*/
-		phy_utils_or_phyreg(pi, ACPHY_sampleCmd(phy_rev), sample_cmd);
+		MOD_PHYREG(pi, sampleCmd, start, 0x1);
 	}
 
 	/* Wait till the Rx2Tx sequencing is done */
@@ -2415,7 +2470,8 @@ wlc_phy_runsamples_acphy_mac_based(phy_info_t *pi, uint16 num_samps)
 
 	/* Delay for proper RX2TX in sample play ow spurious emissions,radar FD */
 	if (!ACMAJORREV_32(phy_rev) && !ACMAJORREV_33(phy_rev) &&
-	    !ACMAJORREV_37(phy_rev) && !ACMAJORREV_47_51(phy_rev)) {
+	    !ACMAJORREV_37(phy_rev) && !(ACMAJORREV_GE47(phy_rev) &&
+	    !ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		OSL_DELAY(15);
 	}
 
@@ -2438,6 +2494,7 @@ wlc_phy_runsamples_acphy_mac_based(phy_info_t *pi, uint16 num_samps)
 			ACPHY_macbasedDACPlay_macBasedDACPlayMode_MASK(phy_rev) & (0x3 <<
 			ACPHY_macbasedDACPlay_macBasedDACPlayMode_SHIFT(phy_rev)));
 	} else if (CHSPEC_IS160(pi->radio_chanspec)) {
+		// FIXME
 		ASSERT(0);
 	} else if (CHSPEC_IS40(pi->radio_chanspec)) {
 		phy_utils_or_phyreg(pi, ACPHY_macbasedDACPlay(phy_rev),
@@ -3037,228 +3094,6 @@ wlc_phy_gpaio_acphy(phy_info_t *pi, wl_gpaio_option_t option, int core)
 
 			MOD_RADIO_REG_20694(pi, RF, PMU_OP1, core, wlpmu_tsten, test_en);
 			MOD_RADIO_REG_20694(pi, RF, PMU_OP1, core, wlpmu_ana_mux, ana_mux);
-		} else if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-			if (pi->pubpi->slice == DUALMAC_AUX) {
-				/* Power up gpaio block, powerdown rcal,
-				 * clear all test point seletion
-				 */
-				MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL2, core, gpaio_pu, 0x1);
-				MOD_RADIO_REG_20697(pi, RFP, RCAL_CFG_NORTH, 0, rcal_pu, 0);
-				MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL2, core,
-					gpaio_rcal_pu, 0);
-				MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL0, core,
-						gpaio_sel_0to15_port, 0);
-				MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL1, core,
-						gpaio_sel_16to31_port, 0);
-				MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL3, core,
-						gpaio_sel_32to47_port, 0);
-				MOD_RADIO_REG_20697(pi, RF, IQCAL_CFG1, core,
-					loopback_bias_pu, 1);
-				MOD_RADIO_REG_20697(pi, RF, IQCAL_OVR1, core,
-					ovr_iqcal_PU_loopback_bias, 1);
-
-				/* To bring out various radio test signals on gpaio. */
-				switch (option) {
-					case (GPAIO_PMU_AFELDO): {
-						test_en = 1;
-						ana_mux = 0;
-						testpoint = 34;
-						break;
-					}
-					case (GPAIO_PMU_LPFTXLDO): {
-						test_en = 1;
-						ana_mux = 1;
-						testpoint = 34;
-						break;
-					}
-					case (GPAIO_PMU_LOGENLDO): {
-						test_en = 1;
-						ana_mux = 2;
-						testpoint = 34;
-						break;
-					}
-					case GPAIO_PMU_RXLDO2G: {
-						test_en = 1;
-						ana_mux = 3;
-						testpoint = 34;
-						break;
-					}
-					case GPAIO_PMU_RXLDO5G: {
-						test_en = 1;
-						ana_mux = 3;
-						testpoint = 34;
-						break;
-					}
-					case GPAIO_PMU_LDO1P6: {
-						test_en = 1;
-						ana_mux = 5;
-						testpoint = 34;
-						break;
-					}
-					case GPAIO_RCAL: {
-						test_en = 0;
-						ana_mux = 0;
-						testpoint = 100;
-						MOD_RADIO_REG_20697(pi, RFP, BG_REG3, 0,
-							bg_rcal_pu, 1);
-						MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL2, core,
-							gpaio_rcal_pu, 1);
-						break;
-					}
-					case GPAIO_PMU_CLEAR: {
-						test_en = 0;
-						ana_mux = 0;
-						testpoint = 100;
-						MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL0, core,
-							gpaio_sel_0to15_port, 0);
-						MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL1, core,
-							gpaio_sel_16to31_port, 0);
-						MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL3, core,
-							gpaio_sel_32to47_port, 0);
-						MOD_RADIO_REG_20697(pi, RF, PA2G_CFG1, core,
-							pa2g_gpio_sw_pu, 0);
-						MOD_RADIO_REG_20697(pi, RF, IQCAL_CFG1, core,
-							loopback_bias_pu, 0);
-						break;
-					}
-					case GPAIO_OFF: {
-						test_en = 0;
-						ana_mux = 0;
-						testpoint = 100;
-						MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL2, core,
-								gpaio_pu, 0x0);
-						break;
-					}
-					default:
-						break;
-				}
-			} else {
-				/* Power up gpaio block, powerdown rcal,
-				 * clear all test point seletion
-				 */
-				MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL2, core,
-					gpaio_pu, 0x1);
-				MOD_RADIO_REG_20697(pi, RFP, RCAL_CFG_NORTH, 1,
-					rcal_pu, 0);
-				MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL2, 0,
-					gpaio_rcal_pu, 0);
-				MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL0, core,
-					gpaio_sel_0to15_port, 0);
-				MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL1, core,
-					gpaio_sel_16to31_port, 0);
-				MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL3, core,
-					gpaio_sel_32to47_port, 0);
-				MOD_RADIO_REG_20697(pi, RF, IQCAL_CFG1, core,
-					loopback_bias_pu, 1);
-				MOD_RADIO_REG_20697(pi, RF, IQCAL_OVR1, core,
-					ovr_iqcal_PU_loopback_bias, 1);
-				/* To bring out various radio test signals on gpaio. */
-				switch (option) {
-					case (GPAIO_PMU_AFELDO): {
-						test_en = 1;
-						ana_mux = 0;
-						testpoint = 33;
-						break;
-					}
-					case (GPAIO_PMU_LPFTXLDO): {
-						test_en = 1;
-						ana_mux = 1;
-						testpoint = 33;
-						break;
-					}
-					case (GPAIO_PMU_LOGENLDO): {
-						test_en = 1;
-						ana_mux = 2;
-						testpoint = 33;
-						break;
-					}
-					case GPAIO_PMU_RXLDO5G: {
-						test_en = 1;
-						ana_mux = 3;
-						testpoint = 33;
-						break;
-					}
-					case GPAIO_PMU_ADCLDO: {
-						test_en = 1;
-						ana_mux = 4;
-						testpoint = 33;
-						break;
-					}
-					case GPAIO_PMU_LDO1P6: {
-						test_en = 1;
-						ana_mux = 5;
-						testpoint = 33;
-						break;
-					}
-					case GPAIO_RCAL: {
-						test_en = 0;
-						ana_mux = 0;
-						testpoint = 100;
-						MOD_RADIO_REG_20697(pi, RFP, BG_REG3, 1,
-							bg_rcal_pu, 1);
-						MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL2, core,
-							gpaio_rcal_pu, 1);
-						break;
-					}
-					case GPAIO_PMU_CLEAR: {
-						test_en = 0;
-						ana_mux = 0;
-						testpoint = 100;
-						MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL0, core,
-							gpaio_sel_0to15_port, 0);
-						MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL1, core,
-							gpaio_sel_16to31_port, 0);
-						MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL3, core,
-							gpaio_sel_32to47_port, 0);
-						MOD_RADIO_REG_20697(pi, RF, IQCAL_CFG1, core,
-							loopback_bias_pu, 0);
-						MOD_RADIO_REG_20697(pi, RF, IQCAL_CFG1, core,
-							iqcal_tssi_GPIO_ctrl, 0);
-						MOD_RADIO_REG_20697X(pi, RF, PA5G_CFG1, 0, core,
-							pa5g_gpio_sw_pu, 0);
-						MOD_RADIO_REG_20697X(pi, RF, TX5G_CFG1, 0, core,
-							pad5g_gpio_sw_pu, 0);
-						break;
-					}
-					case GPAIO_OFF: {
-						test_en = 0;
-						ana_mux = 0;
-						testpoint = 100;
-						MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL2, core,
-							gpaio_pu, 0x0);
-						break;
-					}
-					default:
-						break;
-				}
-			}
-			if (testpoint < 16) {
-				gpaiosel0 = 1 << (testpoint - 0);
-			} else if (testpoint < 32) {
-				gpaiosel1 = 1 << (testpoint - 16);
-			} else if (testpoint < 48) {
-				gpaiosel3 = 1 << (testpoint - 32);
-			}
-
-			MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL0, core,
-				gpaio_sel_0to15_port, gpaiosel0);
-			MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL1, core,
-				gpaio_sel_16to31_port, gpaiosel1);
-			MOD_RADIO_REG_20697(pi, RF, GPAIO_SEL3, core,
-				gpaio_sel_32to47_port, gpaiosel3);
-
-			if (pi->pubpi->slice == DUALMAC_AUX) {
-				MOD_RADIO_REG_20697(pi, RFP, PMU_OP1, 0,
-					wlpmu_tsten, test_en);
-				MOD_RADIO_REG_20697(pi, RFP, PMU_OP1, 0,
-					wlpmu_ana_mux, ana_mux);
-			} else {
-				MOD_RADIO_REG_20697(pi, RF, PMU_OP1, core,
-					wlpmu_tsten, test_en);
-				MOD_RADIO_REG_20697(pi, RF, PMU_OP1, core,
-					wlpmu_ana_mux, ana_mux);
-			}
-
 		}  else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
 			uint8 c;
 			/* Powerdown gpaio top and other GPAIO blocks, powerdown rcal,
@@ -3397,6 +3232,18 @@ wlc_phy_gpaio_acphy(phy_info_t *pi, wl_gpaio_option_t option, int core)
 						wlpmu_ana_mux, 0x5);
 					break;
 				}
+				case GPAIO_IQDAC_BUF_DC_SETUP:{
+					phy_ac_iqdac_buf_dc_setup(pi, core);
+					break;
+				}
+				case GPAIO_IQDAC_BUF_DC_MEAS:{
+					phy_ac_iqdac_buf_dc_meas(pi, core);
+					break;
+				}
+				case GPAIO_IQDAC_BUF_DC_CLEAR:{
+					phy_ac_iqdac_buf_dc_clear(pi, core);
+					break;
+				}
 				case GPAIO_OFF: {
 					MOD_RADIO_PLLREG_20698(pi, GPAIO_SEL6, 0,
 						gpaio_top_pu, 0x0);
@@ -3454,6 +3301,9 @@ wlc_phy_gpaio_acphy(phy_info_t *pi, wl_gpaio_option_t option, int core)
 			default:
 				break;
 			}
+		} else {
+			PHY_ERROR(("wlc_phy_gpaio_acphy not supported in this rev."));
+			ASSERT(FALSE);
 		}
 	}
 }
@@ -3473,6 +3323,153 @@ phy_ac_gpaio_gpaioconfig(phy_type_misc_ctx_t *ctx, wl_gpaio_option_t option, int
 		wlc_phy_conditional_resume(pi, &suspend);
 
 	return;
+}
+
+static void phy_ac_iqdac_buf_dc_setup(phy_info_t *pi, int option)
+{
+	/* Input argument option was re-purposed from "core" of wlc_phy_gpaio_acphy. */
+	uint8 core_idx;
+	uint16 didq = 0;
+	uint16 bbmult = 0;
+
+	/* Save regs before they are modified */
+	FOREACH_CORE(pi, core_idx) {
+	    save_regs_dc_meas.txdac_reg0[core_idx] = READ_RADIO_REG_20698(pi, TXDAC_REG0, core_idx);
+	    save_regs_dc_meas.txdac_reg1[core_idx] = READ_RADIO_REG_20698(pi, TXDAC_REG1, core_idx);
+	    save_regs_dc_meas.tx2g_mx[core_idx] = READ_RADIO_REG_20698(pi, TX2G_MIX_REG2, core_idx);
+	    save_regs_dc_meas.tx5g_mx[core_idx] = READ_RADIO_REG_20698(pi, TX5G_MIX_REG1, core_idx);
+	    save_regs_dc_meas.pmu_op1[core_idx] = READ_RADIO_REG_20698(pi, PMU_OP1, core_idx);
+	    save_regs_dc_meas.lpf_reg8[core_idx] = READ_RADIO_REG_20698(pi, LPF_REG8, core_idx);
+	    save_regs_dc_meas.lpf_reg9[core_idx] = READ_RADIO_REG_20698(pi, LPF_REG9, core_idx);
+
+	    if ((option == 2) || (option == 4)) {
+	        save_regs_dc_meas.lpf_ovr1[core_idx] = READ_RADIO_REG_20698(pi, LPF_OVR1, core_idx);
+	        save_regs_dc_meas.lpf_ovr2[core_idx] = READ_RADIO_REG_20698(pi, LPF_OVR2, core_idx);
+	        save_regs_dc_meas.lpf_reg7[core_idx] = READ_RADIO_REG_20698(pi, LPF_REG7, core_idx);
+	    }
+
+	    save_regs_dc_meas.txiqlocal_d[core_idx] = wlc_acphy_get_tx_locc(pi, core_idx);
+	    wlc_phy_get_tx_bbmult_acphy(pi, &save_regs_dc_meas.bbmult[core_idx], core_idx);
+	}
+	save_regs_dc_meas.bg_reg10 = READ_RADIO_PLLREG_20698(pi, BG_REG10, 0);
+	save_regs_dc_meas.bg_reg9 = READ_RADIO_PLLREG_20698(pi, BG_REG9, 0);
+
+	FOREACH_CORE(pi, core_idx) {
+	    MOD_RADIO_REG_20698(pi, TXDAC_REG0, core_idx, iqdac_buf_cmsel, 1);
+	    MOD_RADIO_REG_20698(pi, TXDAC_REG0, core_idx, iqdac_buf_bw, 4);
+	    MOD_RADIO_REG_20698(pi, TXDAC_REG1, core_idx, iqdac_lowcm_en, 1);
+	    MOD_RADIO_REG_20698(pi, TXDAC_REG0, core_idx, iqdac_attn, 3);
+	    MOD_RADIO_REG_20698(pi, TXDAC_REG1, core_idx, iqdac_buf_op_cur, 0);
+	    MOD_RADIO_REG_20698(pi, TXDAC_REG1, core_idx, iqdac_buf_suref_ctrl, 0);
+	    MOD_RADIO_REG_20698(pi, TX2G_MIX_REG2, core_idx, tx2g_mx_idac_bb, 15);
+	    MOD_RADIO_REG_20698(pi, TX5G_MIX_REG1, core_idx, tx5g_idac_mx_bbdc, 26);
+	    if ((option == 1) || (option == 2)) {
+	        MOD_RADIO_REG_20698(pi, PMU_OP1, core_idx, wlpmu_TXldo_adj, 7);
+	    } else if ((option == 3) || (option == 4)) {
+	        MOD_RADIO_REG_20698(pi, PMU_OP1, core_idx, wlpmu_TXldo_adj, 4);
+	    }
+
+	    if ((option == 2) || (option == 4)) {
+	        MOD_RADIO_REG_20698(pi, LPF_REG7, core_idx, lpf_sw_bq1_bq2, 0x0);
+	        MOD_RADIO_REG_20698(pi, LPF_OVR2, core_idx, ovr_lpf_sw_bq1_bq2,	0x1);
+	        MOD_RADIO_REG_20698(pi, LPF_REG7, core_idx, lpf_sw_bq2_adc, 0x0);
+	        MOD_RADIO_REG_20698(pi, LPF_OVR1, core_idx, ovr_lpf_sw_bq2_adc,	0x1);
+	        MOD_RADIO_REG_20698(pi, LPF_REG7, core_idx, lpf_sw_bq1_adc, 0x0);
+	        MOD_RADIO_REG_20698(pi, LPF_OVR2, core_idx, ovr_lpf_sw_bq1_adc,	0x1);
+	        MOD_RADIO_REG_20698(pi, LPF_REG7, core_idx, lpf_sw_dac_bq2, 0x0);
+	        MOD_RADIO_REG_20698(pi, LPF_OVR1, core_idx, ovr_lpf_sw_dac_bq2,	0x1);
+	        MOD_RADIO_REG_20698(pi, LPF_REG7, core_idx, lpf_sw_bq2_rc, 0x0);
+	        MOD_RADIO_REG_20698(pi, LPF_OVR1, core_idx, ovr_lpf_sw_bq2_rc,	0x1);
+	        MOD_RADIO_REG_20698(pi, LPF_REG7, core_idx, lpf_sw_dac_rc, 0x0);
+	        MOD_RADIO_REG_20698(pi, LPF_OVR1, core_idx, ovr_lpf_sw_dac_rc,	0x1);
+	        MOD_RADIO_REG_20698(pi, LPF_REG7, core_idx, lpf_sw_aux_adc, 0x0);
+	        MOD_RADIO_REG_20698(pi, LPF_OVR2, core_idx, ovr_lpf_sw_aux_adc,	0x1);
+	    }
+
+	    wlc_acphy_set_tx_locc(pi, didq, core_idx);
+	    wlc_phy_set_tx_bbmult_acphy(pi, &bbmult, core_idx);
+	}
+
+	MOD_RADIO_PLLREG_20698(pi, BG_REG10, 0, bg_wlpmu_bypcal, 1);
+	if ((option == 1) || (option == 2)) {
+	    MOD_RADIO_PLLREG_20698(pi, BG_REG9, 0, bg_wlpmu_cal_mancodes, 0);
+	} else if ((option == 3) || (option == 4)) {
+	    MOD_RADIO_PLLREG_20698(pi, BG_REG9, 0, bg_wlpmu_cal_mancodes, 0x20);
+	}
+}
+
+static void phy_ac_iqdac_buf_dc_meas(phy_info_t *pi, int core)
+{
+	int core_idx = (core >> 2);
+	int rail = core & 3;
+	uint16 lpf_sw_rc_test_val = 0, lpf_sw_test_gpaio_val = 0;
+
+	/*
+	 * Variable core is overloaded with:
+	 * 	Bits 2~3:	actual core id;
+	 *	Bit 1:   	rail (I/Q);
+	 *	Bit 0:   	swap.
+	 * swap = 0 ==>, (I/Q)p goes to GPAIO, (I/Q)n goes to eTSSI
+	 * swap = 1 ==>, (I/Q)n goes to GPAIO, (I/Q)p goes to eTSSI
+	*/
+	/* rail == 0 ==> I, rail == 1 ==> I swap */
+	/* rail == 2 ==> Q, rail == 3 ==> Q swap */
+
+	ASSERT((core >= 0) && (core <= 15));
+
+	switch (rail) {
+		case 0:
+			lpf_sw_rc_test_val = 1;
+			lpf_sw_test_gpaio_val = 1;
+			break;
+		case 1:
+			lpf_sw_rc_test_val = 0x20;
+			lpf_sw_test_gpaio_val = 0x2;
+			break;
+		case 2:
+			lpf_sw_rc_test_val = 0x400;
+			lpf_sw_test_gpaio_val = 0x4;
+			break;
+		case 3:
+			lpf_sw_rc_test_val = 0x8000;
+			lpf_sw_test_gpaio_val = 0x8;
+			break;
+	}
+
+	MOD_RADIO_REG_20698(pi, GPAIO_SEL9, 2, toptestmux_pu, 1);
+	MOD_RADIO_REG_20698(pi, GPAIO_SEL9, 2, gpaio2test2_sel, 1);
+	MOD_RADIO_REG_20698(pi, GPAIO_SEL0, core_idx, gpaio_sel_0to15_port, 64);
+	MOD_RADIO_REG_20698(pi, GPAIO_SEL2, core_idx, gpaio_pu, 1);
+	MOD_RADIO_REG_20698(pi, LPF_REG9, core_idx, lpf_sw_rc_test, lpf_sw_rc_test_val);
+	MOD_RADIO_REG_20698(pi, LPF_REG8, core_idx, lpf_sw_adc_test, 0);
+	MOD_RADIO_REG_20698(pi, LPF_REG8, core_idx, lpf_sw_test_gpaio, lpf_sw_test_gpaio_val);
+}
+
+static void phy_ac_iqdac_buf_dc_clear(phy_info_t *pi, int option)
+{
+	/* Input argument option was re-purposed from "core" of wlc_phy_gpaio_acphy. */
+	uint8 core;
+
+	FOREACH_CORE(pi, core) {
+	    WRITE_RADIO_REG_20698(pi, TXDAC_REG0, core, save_regs_dc_meas.txdac_reg0[core]);
+	    WRITE_RADIO_REG_20698(pi, TXDAC_REG1, core, save_regs_dc_meas.txdac_reg1[core]);
+	    WRITE_RADIO_REG_20698(pi, TX2G_MIX_REG2, core, save_regs_dc_meas.tx2g_mx[core]);
+	    WRITE_RADIO_REG_20698(pi, TX5G_MIX_REG1, core, save_regs_dc_meas.tx5g_mx[core]);
+	    WRITE_RADIO_REG_20698(pi, PMU_OP1, core, save_regs_dc_meas.pmu_op1[core]);
+	    WRITE_RADIO_REG_20698(pi, LPF_REG8, core, save_regs_dc_meas.lpf_reg8[core]);
+	    WRITE_RADIO_REG_20698(pi, LPF_REG9, core, save_regs_dc_meas.lpf_reg9[core]);
+
+	    if ((option == 2) || (option == 4)) {
+	        WRITE_RADIO_REG_20698(pi, LPF_OVR1, core, save_regs_dc_meas.lpf_ovr1[core]);
+	        WRITE_RADIO_REG_20698(pi, LPF_OVR2, core, save_regs_dc_meas.lpf_ovr2[core]);
+	        WRITE_RADIO_REG_20698(pi, LPF_REG7, core, save_regs_dc_meas.lpf_reg7[core]);
+	    }
+
+	    wlc_acphy_set_tx_locc(pi, save_regs_dc_meas.txiqlocal_d[core], core);
+	    wlc_phy_set_tx_bbmult_acphy(pi, &save_regs_dc_meas.bbmult[core], core);
+	}
+	WRITE_RADIO_PLLREG_20698(pi, BG_REG10, 0, save_regs_dc_meas.bg_reg10);
+	WRITE_RADIO_PLLREG_20698(pi, BG_REG9, 0, save_regs_dc_meas.bg_reg9);
 }
 #endif /* ATE_BUILD */
 
@@ -3710,4 +3707,111 @@ phy_ac_misc_classifier(phy_type_misc_ctx_t *ctx, uint16 mask, uint16 val)
 	BCM_REFERENCE(mask);
 
 	return phy_rxgcrs_sel_classifier(pi, val);
+}
+
+static void enable_vasip_sc(phy_info_t *pi)
+{
+	const uint16 fix0 = 0;
+	const uint16 fix1 = 0x22;
+	const uint16 start_addr = 0x0800;
+	const uint16 fix4 = 1;
+
+	uint16 end_addr;
+	if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+		/* 63178: max VASIP addr=0x20000 (16-bit), this addr is 256-bit */
+		end_addr = 0x1fff;
+	} else {
+		end_addr = 0x47ff;
+	}
+
+	wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_SVMPSAMPCOL, 1, 0, 16, &fix0);
+	wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_SVMPSAMPCOL, 1, 1, 16, &fix1);
+	wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_SVMPSAMPCOL, 1, 2, 16, &start_addr);
+	wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_SVMPSAMPCOL, 1, 3, 16, &end_addr);
+	wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_SVMPSAMPCOL, 1, 0, 16, &fix4);
+	/*
+	#reset svmp sample collect
+	axphy_write_table svmpsampcol { 0x0} 0x0 ;
+	axphy_write_table svmpsampcol { 0x22 } 0x1 ; #set packing mode to 2
+	#start address
+	axphy_write_table svmpsampcol { 0x0800} 0x2 ;
+	#end address -for total samples = 65528
+	axphy_write_table svmpsampcol { 0x47ff } 0x3 ;
+	#axphy_write_table svmpsampcol { 0x0} 0x4 ;
+	axphy_write_table svmpsampcol { 0x1} 0x0 ;
+	*/
+	MOD_PHYREG(pi, SvmpSampColphy1_svmp_ip_phy1_mux_sel, toa_en, 1);
+	MOD_PHYREG(pi, SpecAnaControl, toa_en, 1);
+	MOD_PHYREG(pi, dacClkCtrl, vasipClkEn, 1);
+	MOD_PHYREG(pi, dacClkCtrl, vasipAutoClkEn, 1);
+	MOD_PHYREG(pi, rx1misc_0, rx1toaClkEn, 1);
+	MOD_PHYREG(pi, rx1misc_0, rx1sampColClkEn, 1);
+	MOD_PHYREG(pi, dacClkCtrl, svmpsampcolClkEn, 1);
+}
+
+/*      The following function loads the VASIP sample capture.
+	It will be called from: wl phy_vasip_sc {arg}
+	{arg} sets the capture config and it has 32 bits
+	bits 0-3 determine the second MUX value: 0 to 13 are currently defined.
+	bits 4&5 determine the trigger: 00 means force trigger, 01 means packet proc transition
+	bits 6&7 determinies the packing: 00-->No packign, 01-->2, 10-->4, 11-->8
+	bits 8,9 are uses for core selection. Core selection is
+	semi-statistically done: core-->0, 1-->1, 2-->2, 3-->3
+	bits 10-14 are the initial packet proc state for packet proc transition
+	bits 15-19 are the final state for packet proc transtion
+*/
+void wlc_vasip_sample_capture_set(phy_info_t *pi, int32 val)
+{
+	const uint16 pack0 = 0x20;
+	const uint16 pack1 = 0x21;
+	const uint16 pack2 = 0x22;
+	const uint16 pack3 = 0x23;
+
+	int32 secMux, trigType, packingFactor, core, initialState, finalState;
+	secMux = val & 0xf;
+	trigType = (val>>4) & 0x3;
+	packingFactor = (val>>6) & 0x3;
+	core = (val >> 8) & 0x3;
+	initialState = (val >> 10) & 0x1f;
+	finalState = (val >> 15) & 0x1f;
+
+	enable_vasip_sc(pi);
+
+	if (packingFactor == 0x0) {
+		wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_SVMPSAMPCOL, 1, 1, 16, &pack0);
+	} else if (packingFactor == 0x1) {
+		wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_SVMPSAMPCOL, 1, 1, 16, &pack1);
+	} else if (packingFactor == 0x2) {
+		wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_SVMPSAMPCOL, 1, 1, 16, &pack2);
+	} else if (packingFactor == 0x3) {
+		wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_SVMPSAMPCOL, 1, 1, 16, &pack3);
+	}
+
+	MOD_PHYREG(pi, SvmpSampColphy1_svmp_ip_phy1_mux_sel, phy1_svmp_ip_phy1_mux_sel, 5);
+	MOD_PHYREG(pi, SvmpSampColphy1_svmp_ip_phy1_mux_sel, phy2vasip_legSampleCollect, 1);
+	MOD_PHYREG(pi, SpecAnaControl, toa_en, 0);
+	MOD_PHYREG(pi, SpecAnaDataCollect, specAnaMode, 0);
+	MOD_PHYREG(pi, AdcDataCollect, sampSel, secMux);
+	MOD_PHYREG(pi, SampleCapture, en_43684b0_sample_capture, 1);
+	MOD_PHYREG(pi, SampleCapture, sample_capture_en, 1);
+	MOD_PHYREG(pi, SampleCapture, core_sel_0, core);
+	MOD_PHYREG(pi, SampleCapture, core_sel_1, 1);
+	MOD_PHYREG(pi, SampleCapture, core_sel_2, 2);
+	MOD_PHYREG(pi, SampleCapture, core_sel_3, 3);
+	MOD_PHYREG(pi, SvmpSampColaoatrig1caplen, aoatrig1caplen, 0);
+	MOD_PHYREG(pi, SvmpSampColaoatrig1caplenHigh, aoatrig1caplenHigh, 1);
+	if (trigType == 0) {
+		//Force trigger once
+		MOD_PHYREG(pi, SvmpSampColSpecAnaControl, force_trigger, 0);
+		MOD_PHYREG(pi, SvmpSampColSpecAnaControl, force_trigger, 1);
+		OSL_DELAY(100000);
+		MOD_PHYREG(pi, SvmpSampColSpecAnaControl, force_trigger, 0);
+	} else if (trigType == 1) {
+		MOD_PHYREG(pi, SvmpSampColaoatrig1transt, aoatrig1transt1, initialState);
+		//pktproc state transition FROM
+		MOD_PHYREG(pi, SvmpSampColaoatrig1transt, aoatrig1transt2, finalState);
+		//pktproc state transition To
+	} else {
+		printf("not valid capture mode!\n");
+	}
 }

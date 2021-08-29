@@ -1,7 +1,7 @@
 /*
  * ACPHY RadarDetect module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_radar.c 767497 2018-09-13 09:32:10Z $
+ * $Id: phy_ac_radar.c 777256 2019-07-24 23:41:25Z $
  */
 
 #include <typedefs.h>
@@ -213,15 +213,22 @@ static const wl_radar_thr2_t BCMATTACHDATA(wlc_phy_radar_thresh2_acphy) = {
 	WL_RADAR_THR_VERSION,
 	0x6b4, 0x30, 0x6b4, 0x30, 0x6b4, 0x30, 0x6b4, 0x30, 0x6b4, 0x30, 0x6b8, 0x30,
 	0x6b4, 0x30, 0x6b4, 0x30, //SC core
-	0xa, 0xa, 0xa, 0x258, 0x258, 0x258, 0x258, 0x4, 0xc,
+	0xa, 0xa, 0xa, 0x258, 0x258, 0x258, 0x258, 0x5124, 0xc,
 	0x8, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 	// fc_varth_sb = 10, fc_varth_bin5_sb = 10
 	// notradar_enb = 2'b1010, [3]: normal core lp, [2]: normal core non-lp
 	// [1]: scan core lp, [0]: scan core non-lp
 	// max_notradar_lp = 600, max_notradar = 600
 	// max_notradar_lp_sc = 600, max_notradar_sc = 600
-	// highpow_war_enb = 2'b0110, [0]: highpow WAR, [1]: chirp criterion
+	// highpow_war_enb = 2'b0110, [0]: highpow WAR, [1]: chirp criterion on/off
 	// [2-3]: min_fm_lp of scan core
+	// [4-6]: good_chirp_tollerance
+	// [7-9]: bad chirp count skip limit
+	// [10-12]: csect_single_lp_decr
+	// [13]: chirp check on/off
+	// [14]: fc variation check on/off
+	// [15]: upper bw20 chirp relax for the whole 20MHz band instead
+	// of just upper band edge(chirp_relax_lv2 == TRUE)
 	// highpow_sp_ratio = 5
 	// fm_chk_opt = 2'b1000, [0]: fm check debug mode, [1]: absolute fm check,
 	// [2]: fm variation check, [3]: ETSI4 absolute fm check
@@ -234,7 +241,7 @@ static const wl_radar_thr2_t BCMATTACHDATA(wlc_phy_radar_thresh2_acphy) = {
 static const wl_radar_thr2_t BCMATTACHDATA(wlc_phy_radar_thresh2_axphy_43684) = {
 	WL_RADAR_THR_VERSION,
 	0x6a4, 0x30, 0x6ac, 0x30, 0x6b0, 0x30, 0x6a4, 0x30, 0x6a4, 0x30, 0x6b0, 0x30,
-	0x6b0, 0x30, 0x6ac, 0x30, 0xa, 0xa, 0xa, 0x258, 0x258, 0x258, 0x258, 0x4, 0xc,
+	0x6b0, 0x30, 0x6ac, 0x30, 0xa, 0xa, 0xa, 0x258, 0x258, 0x258, 0x258, 0x7126, 0xc,
 	0xe, 0x1941, 0x19, 0x0, 0x14, 0x64, 0xf0, 0xfffb, 0x5
 };
 
@@ -264,17 +271,17 @@ BCMATTACHFN(phy_radar_init_st)(phy_info_t *pi, phy_radar_st_t *st)
 		st->rparams.radar_thrs = wlc_phy_radar_thresh_acphy_1core_4350;
 	} else if (ACMAJORREV_5(pi->pubpi->phy_rev)) {
 		st->rparams.radar_thrs = wlc_phy_radar_thresh_acphy_43602;
-	} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+	} else if (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		st->rparams.radar_thrs = PHY_LESI_ON(pi) ? wlc_phy_radar_thresh_axphy_43684_lesi :
 			wlc_phy_radar_thresh_axphy_43684;
 	}
 
 	/* 20Mhz channel radar params */
 	st->rparams.min_deltat_lp = 19000;	/* 1e-3*20e6 - small error	*/
-	st->rparams.max_deltat_lp = 90000;	/* 2*2e-3*20e6 + small error	*/
+	st->rparams.max_deltat_lp = 84000;	/* 2*2e-3*20e6 + small error	*/
 	st->rparams.radar_args.nskip_rst_lp = 2;
 	st->rparams.radar_args.min_burst_intv_lp = 12000000;
-	st->rparams.radar_args.max_burst_intv_lp = 50000000;
+	st->rparams.radar_args.max_burst_intv_lp = 90000000;
 	st->rparams.radar_args.quant = 16;
 	st->rparams.radar_args.ncontig = 54832; /* 0xd630; */
 
@@ -305,14 +312,14 @@ BCMATTACHFN(phy_radar_init_st)(phy_info_t *pi, phy_radar_st_t *st)
 			st->rparams.radar_args.npulses = 7; /* 6; */
 			st->rparams.radar_args.npulses_lp = 12; /* 8; */
 		}
-	} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+	} else if (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		st->rparams.radar_args.npulses = PHY_LESI_ON(pi) ? 6 : 7;
 		st->rparams.radar_args.npulses_lp = PHY_LESI_ON(pi) ? 9 : 10;
 	} else {
 		st->rparams.radar_args.npulses = 7;
 		st->rparams.radar_args.npulses_lp = 10;
 	}
-	st->rparams.radar_args.t2_min = 30528;	/* 0x7740 */
+	st->rparams.radar_args.t2_min = 26432;	/* 0x6740 */
 #ifdef BIN5_RADAR_DETECT_WAR
 	st->rparams.radar_args.npulses_lp = 6;
 	st->rparams.radar_args.t2_min = 31488;
@@ -325,17 +332,17 @@ BCMATTACHFN(phy_radar_init_st)(phy_info_t *pi, phy_radar_st_t *st)
 	 * npulses_lp => bin5 detected
 	 * t2_min[11:10] = # times combining adjacent pulses < min_pw_lp
 	 * t2_min[9] = fm_tol enable
-	 * t2_min[8] = skip_type 5 enable
+	 * t2_min[8] = not used
 	 * t2_min[7:4] = y; bin5 remove pw <= 10*y
 	 * t2_min[3:0] = t; non-bin5 remove pw <= 5*y
 	 * st_level_time[11:0] =  pw criterion for short pluse noise filter
 	 * st_level_time[15:12] =  2^x-1 as FMOFFSET
 	 */
-	st->rparams.radar_args.min_pw_lp = 700;
+	st->rparams.radar_args.min_pw_lp = 960;
 #ifdef BIN5_RADAR_DETECT_WAR
 	st->rparams.radar_args.min_pw_lp = 50;
 #endif // endif
-	st->rparams.radar_args.max_pw_lp = 2000;
+	st->rparams.radar_args.max_pw_lp = 2020;
 	if (TONEDETECTION)
 		st->rparams.radar_args.min_fm_lp = 500 - 256;
 	else
@@ -350,17 +357,18 @@ BCMATTACHFN(phy_radar_init_st)(phy_info_t *pi, phy_radar_st_t *st)
 #endif // endif
 
 	if (TONEDETECTION)
-		st->rparams.radar_args.max_span_lp = 61708;  /* 0xf20c; 15, 1, 12 */
+		st->rparams.radar_args.max_span_lp = 45324;  /* 0xb10c; 1, 3, 1, 12 */
 	else
 		st->rparams.radar_args.max_span_lp = 62476;  /* 0xf40c; 15, 4, 12 */
-	/* max_span_lp[15:12] = skip_tot max */
+	/* max_span_lp[15] = tot_lp_cnt check on/off */
+	/* max_span_lp[14:12] = tot_lp_cnt min */
 	/* max_span_lp[11:8] = x, x/16 = % alowed fm tollerance bin5 */
 	/* max_span_lp[7:0] = alowed pw tollerance bin5 */
 
 	st->rparams.radar_args.min_deltat = 2000;
 	st->rparams.radar_args.version = WL_RADAR_ARGS_VERSION;
 	if (TONEDETECTION) {
-		st->rparams.radar_args.fra_pulse_err = 65282; /* 0x1002, */
+		st->rparams.radar_args.fra_pulse_err = 65283; /* 0xff03, */
 		/* bits 15-8: EU-t4 min_fm = 255 */
 		/* bits 7-0: time from last det = 2 minute */
 	} else {
@@ -385,7 +393,7 @@ BCMATTACHFN(phy_radar_init_st)(phy_info_t *pi, phy_radar_st_t *st)
 		}
 		st->rparams.radar_args.feature_mask = 0xa800;
 		st->rparams.radar_args.blank = 0x6419;
-	} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+	} else if (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		st->rparams.radar_args.npulses_stg2 = 7;
 		st->rparams.radar_args.npulses_stg3 = 5;
 		st->rparams.radar_args.feature_mask = 0xa800;
@@ -492,6 +500,17 @@ WLBANDINITFN(phy_ac_radar_init)(phy_type_radar_ctx_t *ctx, bool on)
 			}
 			phy_utils_write_phyreg(pi, ACPHY_RadarBlankCtrl2(pi->pubpi->phy_rev),
 				valRadarBlankCtrl2);
+			phy_utils_write_phyreg(pi, ACPHY_RadarMisc(pi->pubpi->phy_rev), 0x1);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			if (CHSPEC_IS80(pi->radio_chanspec) &&
+				!(CHSPEC_CHANNEL(pi->radio_chanspec) <= WL_THRESHOLD_LO_BAND)) {
+				phy_utils_write_phyreg(pi,
+					ACPHY_RadarBlankCtrl2(pi->pubpi->phy_rev), 0x5e88);
+			} else {
+				phy_utils_write_phyreg(pi,
+					ACPHY_RadarBlankCtrl2(pi->pubpi->phy_rev), 0x5f88);
+			}
+			phy_utils_write_phyreg(pi, ACPHY_RadarMisc(pi->pubpi->phy_rev), 0x1);
 		} else {
 			phy_utils_write_phyreg(pi, ACPHY_RadarBlankCtrl2(pi->pubpi->phy_rev),
 				0x5f88);
@@ -510,7 +529,8 @@ WLBANDINITFN(phy_ac_radar_init)(phy_type_radar_ctx_t *ctx, bool on)
 				/* WRITE_PHYREG_ENTRY(pi, RadarT3BelowMin, 0) */
 			ACPHY_REG_LIST_EXECUTE(pi);
 			/* enable new fm */
-			if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 				phy_utils_write_phyreg(pi,
 					ACPHY_RadarDetectConfig2(pi->pubpi->phy_rev),
 					PHY_LESI_ON(pi) ? (CHSPEC_IS20(pi->radio_chanspec) ?
@@ -537,14 +557,25 @@ WLBANDINITFN(phy_ac_radar_init)(phy_type_radar_ctx_t *ctx, bool on)
 			(pi->pubpi->phy_rev), 0x0);
 	}
 
-	if (TINY_RADIO(pi) || ACMAJORREV_47(pi->pubpi->phy_rev)) {
+	if (TINY_RADIO(pi) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-			ACMAJORREV_47(pi->pubpi->phy_rev)) {
-			phy_utils_write_phyreg(pi, ACPHY_Radar_adc_to_dbm
-				(pi->pubpi->phy_rev), (ACMAJORREV_47(pi->pubpi->phy_rev) &&
-				PHY_LESI_ON(pi) && !CHSPEC_IS160(pi->radio_chanspec)) ?
-				0xb4a3 : 0x34a3);
-
+			(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev))) {
+			if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+				phy_utils_write_phyreg(pi, ACPHY_Radar_adc_to_dbm
+					(pi->pubpi->phy_rev), (PHY_LESI_ON(pi) &&
+					!CHSPEC_IS160(pi->radio_chanspec)) ?
+					0xb4a3 : 0x34a3);
+			} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+				phy_utils_write_phyreg(pi, ACPHY_Radar_adc_to_dbm
+					(pi->pubpi->phy_rev), (CHSPEC_IS20(pi->radio_chanspec) &&
+					(CHSPEC_CHANNEL(pi->radio_chanspec) >
+					WL_THRESHOLD_LO_BAND)) ? 0xb4a3 : 0x34a3);
+			} else {
+				phy_utils_write_phyreg(pi, ACPHY_Radar_adc_to_dbm
+					(pi->pubpi->phy_rev), 0x34a3);
+			}
 			if (CHSPEC_IS8080(pi->radio_chanspec) ||
 				PHY_AS_80P80(pi, pi->radio_chanspec)) {
 				phy_utils_write_phyreg(pi, ACPHY_RadarDetectConfig1
@@ -555,17 +586,27 @@ WLBANDINITFN(phy_ac_radar_init)(phy_type_radar_ctx_t *ctx, bool on)
 			}
 			phy_utils_write_phyreg(pi, ACPHY_RadarT3BelowMin(pi->pubpi->phy_rev),
 				0x14);
-			if (ACMAJORREV_47(pi->pubpi->phy_rev))
-				phy_utils_write_phyreg(pi,
-					ACPHY_RadarMisc(pi->pubpi->phy_rev), 0x1);
 			if (CHSPEC_IS20(pi->radio_chanspec)) {
-			ACPHY_REG_LIST_START
-				WRITE_PHYREG_ENTRY(pi, RadarMaLength, 0x08)
-				WRITE_PHYREG_ENTRY(pi, RadarT3Timeout, 200)
-				WRITE_PHYREG_ENTRY(pi, RadarResetBlankingDelay, 25)
-				WRITE_PHYREG_ENTRY(pi, RadarBlankCtrl, 0xac19)
-				WRITE_PHYREG_ENTRY(pi, RadarT3Timeout, 0x258)
-			ACPHY_REG_LIST_EXECUTE(pi);
+				ACPHY_REG_LIST_START
+					WRITE_PHYREG_ENTRY(pi, RadarMaLength, 0x08)
+					WRITE_PHYREG_ENTRY(pi, RadarT3Timeout, 200)
+					WRITE_PHYREG_ENTRY(pi, RadarResetBlankingDelay, 25)
+					WRITE_PHYREG_ENTRY(pi, RadarT3Timeout, 0x258)
+				ACPHY_REG_LIST_EXECUTE(pi);
+				if (((ACMAJORREV_32(pi->pubpi->phy_rev) ||
+					ACMAJORREV_33(pi->pubpi->phy_rev) ||
+					ACMAJORREV_47(pi->pubpi->phy_rev)) &&
+					(CHSPEC_CHANNEL(pi->radio_chanspec) >
+					WL_THRESHOLD_LO_BAND)) ||
+					ACMAJORREV_51(pi->pubpi->phy_rev)) {
+				ACPHY_REG_LIST_START
+					WRITE_PHYREG_ENTRY(pi, RadarBlankCtrl, 0xa419)
+				ACPHY_REG_LIST_EXECUTE(pi);
+				} else {
+				ACPHY_REG_LIST_START
+					WRITE_PHYREG_ENTRY(pi, RadarBlankCtrl, 0xac19)
+				ACPHY_REG_LIST_EXECUTE(pi);
+				}
 			} else if (CHSPEC_IS40(pi->radio_chanspec)) {
 			ACPHY_REG_LIST_START
 				WRITE_PHYREG_ENTRY(pi, RadarMaLength, 0x10)
@@ -590,7 +631,10 @@ WLBANDINITFN(phy_ac_radar_init)(phy_type_radar_ctx_t *ctx, bool on)
 				WRITE_PHYREG_ENTRY(pi, RadarMaLength, 0x0)
 				WRITE_PHYREG_ENTRY(pi, RadarT3Timeout, 1600)
 				WRITE_PHYREG_ENTRY(pi, RadarResetBlankingDelay, 200)
-				WRITE_PHYREG_ENTRY(pi, RadarBlankCtrl, 0xacc8)
+				WRITE_PHYREG_ENTRY(pi, RadarBlankCtrl,
+					(ACMAJORREV_32(pi->pubpi->phy_rev) ||
+					ACMAJORREV_33(pi->pubpi->phy_rev) ||
+					ACMAJORREV_47(pi->pubpi->phy_rev)) ? 0xa4c8 : 0xacc8)
 				WRITE_PHYREG_ENTRY(pi, RadarT3Timeout, 0x12c0)
 			ACPHY_REG_LIST_EXECUTE(pi);
 

@@ -1,7 +1,7 @@
 /*
  * vasip module implementation.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_vasip.c 766999 2018-08-24 01:14:37Z $
+ * $Id: phy_vasip.c 766959 2018-08-22 23:05:02Z $
  */
 
 #include <phy_cfg.h>

@@ -1,7 +1,7 @@
 /*
  * ACPHY 20698 Radio PLL configuration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -223,7 +223,7 @@
 			RF_##20698##_##reg##_##fld##_SHIFT(pi->pubpi->radiorev);
 
 /* structure to hold computed PLL config values */
-typedef struct {
+struct pll_config_20698_tbl_s {
 	uint32 xtal_fx;
 	uint32 loop_bw;
 	uint8 use_doubler;
@@ -232,7 +232,9 @@ typedef struct {
 	uint16 *reg_field_mask;
 	uint8 *reg_field_shift;
 	uint16 *reg_field_val;
-} pll_config_20698_tbl_t;
+};
+
+typedef struct pll_config_20698_tbl_s pll_config_20698_tbl_t;
 
 typedef enum {
 	IDX_20698_OVR_RFPLL_VCOCAL_SLOPEIN,
@@ -322,21 +324,12 @@ static void print_pll_config_20698(pll_config_20698_tbl_t *pll, uint32 lo_freq,
 	uint32 loop_bw, uint32 icp_fx);
 #endif // endif
 
-/* Structure to hold 20698 PLL config values */
-static pll_config_20698_tbl_t pll_conf_20698;
-
-static pll_config_20698_tbl_t *
-BCMRAMFN(wlc_phy_ac_get_20698_pll_config)(phy_info_t *pi)
-{
-	return &pll_conf_20698;
-}
-
 void
-wlc_phy_radio20698_pll_tune(phy_info_t *pi, uint32 chan_freq, uint8 logen_mode)
+wlc_phy_radio20698_pll_tune(phy_info_t *pi, pll_config_20698_tbl_t *pll, uint32 chan_freq,
+                            uint8 logen_mode)
 {
 	uint8 ac_mode;
 	uint8 pll_num = (logen_mode == 4) ? 1 : 0; /* FIXME43684: Only PLL0 supported right now */
-	pll_config_20698_tbl_t *pll = wlc_phy_ac_get_20698_pll_config(pi);
 
 	ac_mode = 1;
 	phy_ac_radio20698_pll_config_ch_dep_calc(pi, chan_freq, ac_mode, pll);
@@ -351,9 +344,12 @@ wlc_phy_radio20698_pll_tune(phy_info_t *pi, uint32 chan_freq, uint8 logen_mode)
 }
 
 void
-BCMATTACHFN(phy_ac_radio20698_populate_pll_config_mfree)(phy_info_t *pi)
+BCMATTACHFN(phy_ac_radio20698_populate_pll_config_mfree)(phy_info_t *pi,
+                                                         pll_config_20698_tbl_t *pll)
 {
-	pll_config_20698_tbl_t *pll = wlc_phy_ac_get_20698_pll_config(pi);
+	if (pll == NULL) {
+		return;
+	}
 
 	if (pll->reg_addr != NULL) {
 		phy_mfree(pi, pll->reg_addr, (sizeof(uint16) * PLL_CONFIG_20698_ARRAY_SIZE));
@@ -372,14 +368,19 @@ BCMATTACHFN(phy_ac_radio20698_populate_pll_config_mfree)(phy_info_t *pi)
 	if (pll->reg_field_val != NULL) {
 		phy_mfree(pi, pll->reg_field_val, (sizeof(uint16) * PLL_CONFIG_20698_ARRAY_SIZE));
 	}
+
+	phy_mfree(pi, pll, sizeof(pll_config_20698_tbl_t));
 }
 
-int
+pll_config_20698_tbl_t *
 BCMATTACHFN(phy_ac_radio20698_populate_pll_config_tbl)(phy_info_t *pi)
 {
-	pll_config_20698_tbl_t *pll = wlc_phy_ac_get_20698_pll_config(pi);
+	pll_config_20698_tbl_t *pll;
 
-	PHY_ERROR(("%s: XXX 43684a0 TODO: Only RFP0 is supported.\n", __FUNCTION__));
+	if ((pll = phy_malloc(pi, sizeof(pll_config_20698_tbl_t))) == NULL) {
+		PHY_ERROR(("%s: phy_malloc pll_conf failed\n", __FUNCTION__));
+		goto fail;
+	}
 
 	if ((pll->reg_addr =
 		phy_malloc(pi, (sizeof(uint16) * PLL_CONFIG_20698_ARRAY_SIZE))) == NULL) {
@@ -557,28 +558,12 @@ BCMATTACHFN(phy_ac_radio20698_populate_pll_config_tbl)(phy_info_t *pi)
 	/* Add frequency independent data */
 	phy_ac_radio20698_pll_config_const_calc(pi, pll);
 
-	return BCME_OK;
+	return pll;
 
 fail:
-	if (pll->reg_addr != NULL) {
-		phy_mfree(pi, pll->reg_addr, (sizeof(uint16) * PLL_CONFIG_20698_ARRAY_SIZE));
-	}
+	phy_ac_radio20698_populate_pll_config_mfree(pi, pll);
 
-	if (pll->reg_field_mask != NULL) {
-		phy_mfree(pi, pll->reg_field_mask,
-				(sizeof(uint16) * PLL_CONFIG_20698_ARRAY_SIZE));
-	}
-
-	if (pll->reg_field_shift != NULL) {
-		phy_mfree(pi, pll->reg_field_shift,
-				(sizeof(uint8) * PLL_CONFIG_20698_ARRAY_SIZE));
-	}
-
-	if (pll->reg_field_val != NULL) {
-		phy_mfree(pi, pll->reg_field_val, (sizeof(uint16) * PLL_CONFIG_20698_ARRAY_SIZE));
-	}
-
-	return BCME_NOMEM;
+	return NULL;
 }
 
 static void

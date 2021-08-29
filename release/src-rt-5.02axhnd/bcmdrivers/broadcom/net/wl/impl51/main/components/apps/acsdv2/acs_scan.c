@@ -4,7 +4,7 @@
  *      This module will initiate the escan and try to get the escan results
  *      from driver/firmware for all the channels.
  *
- *	Copyright 2018 Broadcom
+ *	Copyright 2019 Broadcom
  *
  *	This program is the proprietary software of Broadcom and/or
  *	its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *	OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  *	NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- *	$Id: acs_scan.c 761941 2018-05-10 04:54:35Z $
+ *	$Id: acs_scan.c 777836 2019-08-13 06:27:19Z $
  */
 
 #include <stdio.h>
@@ -159,7 +159,7 @@ acs_build_scanlist(acs_chaninfo_t *c_info)
 	c_info->scan_chspec_list.excl_count = 0;
 
 	if (!count) {
-		ACSD_ERROR("number of valid chanspec is 0\n");
+		ACSD_ERROR("%s: number of valid chanspec is 0\n", c_info->name);
 		ret = -1;
 		goto cleanup_sl;
 	}
@@ -215,9 +215,8 @@ acs_build_scanlist(acs_chaninfo_t *c_info)
 				}
 			}
 		}
-		ACSD_INFO("chanspec: 0x%04x (%s), chspec_info: 0x%x  pref_chan: 0x%x\n", c,
-			wf_chspec_ntoa(c, chanspecbuf),
-			ch_list[i].chspec_info, ch_list[i].flags);
+		ACSD_INFO("%s: chanspec: 0x%04x (%s), chspec_info: 0x%x  pref_chan: 0x%x\n",
+			c_info->name, c, wf_chspec_ntoa(c, chanspecbuf), ch_list[i].chspec_info, ch_list[i].flags);
 	}
 	acs_ci_scan_update_idx(&c_info->scan_chspec_list, 0);
 
@@ -253,10 +252,10 @@ acs_scan_prep(acs_chaninfo_t *c_info, wl_scan_params_t *params, int *params_size
 		params->channel_list[scount++] = htodchanspec(scan_chspec_p->chspec_list[i].chspec);
 	}
 	params->channel_num = htod32(scount & WL_SCAN_PARAMS_COUNT_MASK);
-	ACSD_INFO("scan channel number: %d\n", params->channel_num);
+	ACSD_INFO("%s: scan channel number: %d\n", c_info->name, params->channel_num);
 
 	*params_size = WL_SCAN_PARAMS_FIXED_SIZE + scount * sizeof(uint16);
-	ACSD_INFO("params size: %d\n", *params_size);
+	ACSD_INFO("%s: params size: %d\n", c_info->name, *params_size);
 
 	return ret;
 }
@@ -302,7 +301,8 @@ acs_expire_scan_entry(acs_chaninfo_t *c_info, time_t limit)
 	while (curptr) {
 		time_t diff = now - curptr->timestamp;
 		if (diff > limit) {
-			ACSD_5G("Scan expire: diff %dsec chanspec 0x%4x (%s), SSID %s\n",
+			ACSD_5G("%s: Scan expire: diff %dsec chanspec 0x%4x (%s), SSID %s\n",
+				c_info->name,
 				(int)diff, curptr->binfo_local.chanspec, wf_chspec_ntoa(curptr->binfo_local.chanspec, chanspecbuf), curptr->binfo_local.SSID);
 			if (previous == NULL)
 				*rootp = curptr->next;
@@ -323,9 +323,16 @@ int acs_allow_scan(acs_chaninfo_t *c_info, uint8 type)
 {
 	time_t now = uptime();
 	uint32 diff = now - c_info->timestamp_acs_scan;
-	if (c_info->txrx_score > ACS_CHANIM_TXRX_PER) {
-		ACSD_DEBUG("scan is not initiated due to current txrx_score: %d is more than"
-			"limit:%d\n", c_info->txrx_score, ACS_CHANIM_TXRX_PER);
+	uint8 tx_score = c_info->txrx_score + ACS_CHANIM_DELTA;
+	/* Before allowing CI scan verifying the txrx_score(tx+inbss), and txop value.
+	 * If combination of tx_score and txop is greater than threshold(ACS_CHANIM_TX_AVAIL)
+	 * then don't initiate scan else proceed for CI scan.
+	 */
+	if ((type == ACS_SCAN_TYPE_CI) &&
+			(tx_score + c_info->channel_free) > c_info->acs_chanim_tx_avail) {
+		ACSD_DEBUG("%s: Don't initiate CI scan if tx_score %d plus channel free is %d"
+			       "greater than threshold %d\n", c_info->name, tx_score,
+			       c_info->channel_free, c_info->acs_chanim_tx_avail);
 		return FALSE;
 	}
 	if ((type == ACS_SCAN_TYPE_CI) && diff >= c_info->acs_ci_scan_timeout) {
@@ -336,16 +343,20 @@ int acs_allow_scan(acs_chaninfo_t *c_info, uint8 type)
 		}
 	} else if ((type == ACS_SCAN_TYPE_CS) && diff >= c_info->acs_cs_scan_timer) {
 		if (c_info->cur_is_dfs) {
-			ACSD_DEBUG("Don't allow CS scan when operating on dfs channel\n");
+			ACSD_DEBUG("%s: Don't allow CS scan when operating on dfs channel\n",
+				c_info->name);
 			return FALSE;
 		}
-		return (c_info->last_scan_type != ACS_SCAN_TYPE_CS);
-	} else {
-		ACSD_DEBUG("Invalid scan type \n");
+		/* Allow cs scan when acsd is on non-dfs channel and there are no associations */
+		if (!c_info->cur_is_dfs && !acs_check_assoc_scb(c_info)) {
+			return TRUE;
+		}
+	} else if (!(type == ACS_SCAN_TYPE_CS || type == ACS_SCAN_TYPE_CI)) {
+		ACSD_DEBUG("%s: Invalid scan type \n", c_info->name);
 		return FALSE;
 	}
+	return FALSE;
 }
-
 int acs_ci_scan_check(acs_chaninfo_t *c_info)
 {
 	acs_scan_chspec_t* chspec_q = &c_info->scan_chspec_list;
@@ -364,8 +375,8 @@ int acs_ci_scan_check(acs_chaninfo_t *c_info)
 	/* scan pref chan: when txop < thld, start ci scan for pref chan */
 	if (acs_allow_scan(c_info, ACS_SCAN_TYPE_CI)) {
 		if (c_info->scan_chspec_list.ci_pref_scan_request && (chspec_q->pref_count > 0)) {
-			ACSD_PRINT("acs_ci_scan_timeout start CI pref scan: scan_count %d\n",
-					chspec_q->pref_count);
+			ACSD_PRINT("%s: acs_ci_scan_timeout start CI pref scan: scan_count %d\n",
+				c_info->name, chspec_q->pref_count);
 			c_info->scan_chspec_list.ci_pref_scan_request = FALSE;
 
 			if (chspec_q->ci_scan_running != ACS_CI_SCAN_RUNNING_PREF) {
@@ -388,9 +399,10 @@ int acs_ci_scan_check(acs_chaninfo_t *c_info)
 		c_info->last_scan_type = ACS_SCAN_TYPE_CI;
 		c_info->timestamp_acs_scan = now;
 		acs_ci_scan_update_idx(&c_info->scan_chspec_list, 0);
-		ACSD_INFO("acs_ci_scan_timeout start CI scan: now %u(%u), scan_count %d\n",
-			(uint)now, c_info->timestamp_acs_scan,
-			chspec_q->count - chspec_q->excl_count);
+		ACSD_INFO("%s: acs_ci_scan_timeout start CI scan: now %u(%u), scan_count %d\n",
+				c_info->name,
+				(uint)now, c_info->timestamp_acs_scan,
+				chspec_q->count - chspec_q->excl_count);
 		return 1;
 	}
 
@@ -407,17 +419,53 @@ int acs_ci_scan_finish_check(acs_chaninfo_t * c_info)
 
 	/* Check for end of scan: scanned all channels once */
 	if ((c_info->acs_ci_scan_count) && (!(--c_info->acs_ci_scan_count))) {
-		ACSD_INFO("acs_ci_scan_timeout stop CI scan: now %u \n", (uint)uptime());
+		ACSD_INFO("%s: acs_ci_scan_timeout stop CI scan: now %u \n",
+			c_info->name, (uint)uptime());
 		chspec_q->ci_scan_running = 0;
 	}
 
 	return 0;
 }
 
+void acs_normalize_chanim_stats_after_ci_scan(acs_chaninfo_t * c_info)
+{
+	wl_chanim_stats_t *chstats = c_info->chanim_stats;
+	chanim_stats_v2_t *statsv2 = NULL;
+	chanim_stats_t *stats = NULL;
+	int i;
+
+	for (i = 0; i < chstats->count; i++) {
+		if (chstats->version == WL_CHANIM_STATS_VERSION) {
+			stats = (chanim_stats_t *)&chstats->stats[i];
+			stats->ccastats[CCASTATS_TXOP] = MIN(stats->ccastats[CCASTATS_TXOP] +
+					ACS_NORMALIZE_CHANIM_STATS_LIMIT, ACS_MAX_TXOP);
+			stats->ccastats[CCASTATS_INBSS] = MAX(stats->ccastats[CCASTATS_INBSS] -
+					ACS_NORMALIZE_CHANIM_STATS_LIMIT, 0);
+			stats->ccastats[CCASTATS_TXDUR] = MAX(stats->ccastats[CCASTATS_TXDUR] -
+					ACS_NORMALIZE_CHANIM_STATS_LIMIT, 0);
+			c_info->ch_avail[i] = stats->ccastats[CCASTATS_TXOP] +
+			       stats->ccastats[CCASTATS_INBSS] + stats->ccastats[CCASTATS_TXDUR];
+		} else if (chstats->version == WL_CHANIM_STATS_V2) {
+			statsv2 = (chanim_stats_v2_t *)&chstats->stats[i];
+			statsv2->ccastats[CCASTATS_TXOP] = MIN(statsv2->ccastats[CCASTATS_TXOP] +
+					ACS_NORMALIZE_CHANIM_STATS_LIMIT, ACS_MAX_TXOP);
+			statsv2->ccastats[CCASTATS_INBSS] = MAX(statsv2->ccastats[CCASTATS_INBSS] -
+					ACS_NORMALIZE_CHANIM_STATS_LIMIT, 0);
+			statsv2->ccastats[CCASTATS_TXDUR] = MAX(statsv2->ccastats[CCASTATS_TXDUR] -
+					ACS_NORMALIZE_CHANIM_STATS_LIMIT, 0);
+			c_info->ch_avail[i] = statsv2->ccastats[CCASTATS_TXOP] +
+			       statsv2->ccastats[CCASTATS_INBSS] +
+			       statsv2->ccastats[CCASTATS_TXDUR];
+		}
+	}
+	acsd_segmentize_chanim(c_info);
+}
+
 int
 acs_do_ci_update(uint ticks, acs_chaninfo_t * c_info)
 {
 	int ret = 0;
+	uint8 tx_score = c_info->txrx_score + ACS_CHANIM_DELTA;
 
 	if (ticks % c_info->acs_ci_scan_timer)
 		return ret;
@@ -427,11 +475,26 @@ acs_do_ci_update(uint ticks, acs_chaninfo_t * c_info)
 	if (!(c_info->scan_chspec_list.ci_scan_running))
 		return ret;
 
-	if (c_info->acs_bgdfs != NULL && c_info->acs_bgdfs->state != BGDFS_STATE_IDLE) {
-		ACSD_DEBUG("Don't initiate CI scan when bgdfs is in progress\n");
+	if (chanim_chk_lockout(c_info->chanim_info) && c_info->acs_lockout_enable) {
+		ACSD_DEBUG("%s: Don't initiate CI scan while in lockout period\n", c_info->name);
 		return ret;
+	} else if (c_info->acs_bgdfs != NULL && c_info->acs_bgdfs->state != BGDFS_STATE_IDLE) {
+		ACSD_DEBUG("%s: Don't initiate CI scan when bgdfs is in progress\n",
+			c_info->name);
+		return ret;
+	/* Before allowing CI scan verifying the txrx_score(tx+inbss), and txop value.
+	 * If combination of tx_score and txop is greater than threshold(ACS_CHANIM_TX_AVAIL)
+	 * then don't initiate scan else proceed for CI scan.
+	 */
+	} else if ((tx_score + c_info->channel_free) > c_info->acs_chanim_tx_avail) {
+		ACSD_DEBUG("%s: Don't initiate CI scan if tx_score %d plus channel free is %d"
+			       "greater than threshold %d\n", c_info->name, tx_score,
+			       c_info->channel_free, c_info->acs_chanim_tx_avail);
+		return FALSE;
+	} else {
+		ACSD_DEBUG("%s: continue and allow acsd to initiate CI scan"
+			"when not in lockout_period\n", c_info->name);
 	}
-
 	ret = acs_run_ci_scan(c_info);
 	if (ret < 0)
 	ACSD_INFO("ci scan failed\n");
@@ -440,6 +503,18 @@ acs_do_ci_update(uint ticks, acs_chaninfo_t * c_info)
 	ACS_ERR(ret, "request data failed\n");
 
 	acs_ci_scan_finish_check(c_info);
+
+	if (!(c_info->scan_chspec_list.ci_scan_running)) {
+		acs_normalize_chanim_stats_after_ci_scan(c_info);
+		if (c_info->txop_score < c_info->ci_scan_txop_limit) {
+			acs_select_chspec(c_info);
+			c_info->switch_reason_type = ACS_SCAN_TYPE_CI;
+		} else {
+			ACSD_INFO("txop is better on current channel, so staying back here!"
+					" ifname = %s score = %d\n", c_info->name,
+					c_info->txop_score);
+		}
+	}
 
 	return ret;
 }
@@ -458,7 +533,7 @@ int acs_run_normal_ci_scan(acs_chaninfo_t *c_info)
 	channel_info_t ci;
 
 	if ((scan_chspec_q->count - scan_chspec_q->excl_count) == 0) {
-		ACSD_INFO("scan chanspec queue is empty.\n");
+		ACSD_INFO("%s: scan chanspec queue is empty.\n", c_info->name);
 		return ret;
 	}
 
@@ -499,11 +574,11 @@ int acs_run_normal_ci_scan(acs_chaninfo_t *c_info)
 			if (!ci.scan_channel)
 				break;
 
-			ACSD_PRINT("ci scan in progress ...\n");
+			ACSD_PRINT2("%s: scan in progress ...\n", c_info->name);
 			sleep_ms(2);
 		}
 	}
-	ACSD_INFO("ci scan on chspec: 0x%4x (%s)\n", scan_elemt->chspec, wf_chspec_ntoa(scan_elemt->chspec, chanspecbuf));
+	ACSD_INFO("%s: ci scan on chspec: 0x%x\n", c_info->name, scan_elemt->chspec);
 	ACS_FREE(params);
 	return ret;
 }
@@ -578,7 +653,7 @@ acs_run_normal_cs_scan(acs_chaninfo_t *c_info)
 			if (!ci.scan_channel)
 				break;
 
-			ACSD_PRINT("cs scan in progress ...\n");
+			ACSD_PRINT2("%s: scan in progress ...\n", c_info->name);
 			sleep_ms(ACS_CS_SCAN_DWELL);
 		}
 	}
@@ -595,7 +670,7 @@ acs_get_scan(char* name, char *scan_buf, uint buf_len)
 	list->buflen = htod32(buf_len);
 	ret = wl_ioctl(name, WLC_SCAN_RESULTS, scan_buf, buf_len);
 	if (ret)
-		ACSD_ERROR("err from WLC_SCAN_RESULTS: %d\n", ret);
+		ACSD_ERROR("%s: err from WLC_SCAN_RESULTS: %d\n", name, ret);
 
 	list->buflen = dtoh32(list->buflen);
 	list->version = dtoh32(list->version);
@@ -612,7 +687,7 @@ acs_get_scan(char* name, char *scan_buf, uint buf_len)
 		list->buflen = 0;
 		list->count = 0;
 	}
-	ACSD_INFO("list->count: %d, list->buflen: %d\n", list->count, list->buflen);
+	ACSD_INFO("%s: list->count: %d, list->buflen: %d\n", name, list->count, list->buflen);
 
 	return ret;
 }
@@ -630,7 +705,8 @@ acs_run_escan(acs_chaninfo_t *c_info, uint8 scan_type)
 
 	params = (wl_escan_params_t*)acsd_malloc(params_size);
 	if (params == NULL) {
-		ACSD_ERROR("Error allocating %d bytes for scan params\n", params_size);
+		ACSD_ERROR("%s: Error allocating %d bytes for scan params\n",
+			c_info->name, params_size);
 		return BCME_NOMEM;
 	}
 	memset(params, 0, params_size);
@@ -660,7 +736,10 @@ acs_run_escan(acs_chaninfo_t *c_info, uint8 scan_type)
 	err = acs_set_escan_params(c_info, params, params_size);
 	if (err != 0)
 		goto exit2;
-
+	/* Updating ci scan index only for success case, on failure CI scan will
+	 * happen on same chanspec again
+	 */
+	acs_ci_scan_update_idx(&c_info->scan_chspec_list, 1);
 	c_info->acs_escan->scan_type = scan_type;
 	c_info->acs_escan->acs_escan_inprogress = TRUE;
 
@@ -668,7 +747,7 @@ acs_run_escan(acs_chaninfo_t *c_info, uint8 scan_type)
 	c_info->acs_escan->escan_bss_head = NULL;
 	c_info->acs_escan->escan_bss_tail = NULL;
 
-	ACSD_INFO("Escan start \n");
+	ACSD_INFO("%s: Escan start \n", c_info->name);
 	while (uptime() < escan_timeout && c_info->acs_escan->acs_escan_inprogress) {
 		memcpy(&tv_tmp, &tv, sizeof(tv));
 		acsd_main_loop(&tv_tmp);
@@ -690,7 +769,7 @@ acs_escan_prep_ci(acs_chaninfo_t *c_info, wl_scan_params_t *params, int *params_
 	bool is_dfs = FALSE;
 
 	if ((scan_chspec_q->count - scan_chspec_q->excl_count) == 0) {
-		ACSD_INFO("scan chanspec queue is empty.\n");
+		ACSD_INFO("%s: scan chanspec queue is empty.\n", c_info->name);
 		return ret;
 	}
 
@@ -709,11 +788,10 @@ acs_escan_prep_ci(acs_chaninfo_t *c_info, wl_scan_params_t *params, int *params_
 
 	params->channel_list[0] = htodchanspec(scan_elemt->chspec);
 
-	acs_ci_scan_update_idx(scan_chspec_q, 1);
 	c_info->timestamp_acs_scan = uptime();
 
 	*params_size = WL_SCAN_PARAMS_FIXED_SIZE + params->channel_num * sizeof(uint16);
-	ACSD_INFO("ci scan on chspec: 0x%4x (%s)\n", scan_elemt->chspec, wf_chspec_ntoa(scan_elemt->chspec, chanspecbuf));
+	ACSD_INFO("%s: ci scan on chspec: 0x%4x (%s)\n", c_info->name, scan_elemt->chspec, wf_chspec_ntoa(scan_elemt->chspec, chanspecbuf));
 
 	return ret;
 }
@@ -746,10 +824,10 @@ acs_escan_prep_cs(acs_chaninfo_t *c_info, wl_scan_params_t *params, int *params_
 		params->channel_list[scount++] = htodchanspec(scan_chspec_p->chspec_list[i].chspec);
 	}
 	params->channel_num = htod32(scount & WL_SCAN_PARAMS_COUNT_MASK);
-	ACSD_INFO("scan channel number: %d\n", params->channel_num);
+	ACSD_INFO("%s: scan channel number: %d\n", c_info->name, params->channel_num);
 
 	*params_size = WL_SCAN_PARAMS_FIXED_SIZE + scount * sizeof(uint16);
-	ACSD_INFO("params size: %d\n", *params_size);
+	ACSD_INFO("%s: params size: %d\n", c_info->name, *params_size);
 
 	return ret;
 }
@@ -858,7 +936,8 @@ acs_update_escanresult_queue(acs_chaninfo_t *c_info)
 		memcpy(&new_entry->binfo_local.BSSID, &bi->BSSID, sizeof(struct ether_addr));
 		new_entry->timestamp = uptime();
 		acs_parse_chanspec(cur_chspec, &chan);
-		ACSD_INFO("Scan: chanspec 0x%4x (%s), control %x SSID %s\n", cur_chspec, wf_chspec_ntoa(cur_chspec, chanspecbuf),
+		ACSD_INFO("%s: Scan: chanspec 0x%4x (%s), control %x SSID %s\n",
+			c_info->name, cur_chspec, wf_chspec_ntoa(cur_chspec, chanspecbuf),
 			chan.control, new_entry->binfo_local.SSID);
 		/* BSS type in 2.4G band */
 		if (chan.control <= ACS_CS_MAX_2G_CHAN) {
@@ -896,8 +975,8 @@ acs_update_scanresult_queue(acs_chaninfo_t *c_info)
 		memcpy(&new_entry->binfo_local.BSSID, &bi->BSSID, sizeof(struct ether_addr));
 		new_entry->timestamp = uptime();
 		acs_parse_chanspec(cur_chspec, &chan);
-		ACSD_INFO("Scan: chanspec 0x%4x (%s), control %x SSID %s\n", cur_chspec, wf_chspec_ntoa(cur_chspec, chanspecbuf),
-			chan.control, new_entry->binfo_local.SSID);
+		ACSD_INFO("%s: Scan: chanspec 0x%4x (%s), control %x SSID %s\n", c_info->name,
+			cur_chspec, wf_chspec_ntoa(cur_chspec, chanspecbuf), chan.control, new_entry->binfo_local.SSID);
 		/* BSS type in 2.4G band */
 		if (chan.control <= ACS_CS_MAX_2G_CHAN) {
 			if (acs_bss_is_11b(bi))
@@ -985,7 +1064,7 @@ acs_update_chan_bssinfo(acs_chaninfo_t *c_info)
 		biq = c_info->acs_bss_info_q;
 		/* set channel range centered by the scan channel */
 		bss_info[c].channel = CHSPEC_CHANNEL(chspec_list[c].chspec);
-		ACSD_DEBUG("count: %d, channel: %d\n", c, bss_info[c].channel);
+		ACSD_DEBUG("%s: count: %d, channel: %d\n", c_info->name, c, bss_info[c].channel);
 
 		while (biq) {
 			assert(biq);
@@ -996,7 +1075,8 @@ acs_update_chan_bssinfo(acs_chaninfo_t *c_info)
 			acs_incr_bss_count(&bss_info[c], chan_p, bss_info[c].channel);
 			biq = biq->next;
 		}
-		ACSD_DEBUG(" channel %u: %u nCtrl %u nExt20 %u nExt40 %u nExt80\n",
+		ACSD_DEBUG("%s: channel %u: %u nCtrl %u nExt20 %u nExt40 %u nExt80\n",
+			c_info->name,
 			bss_info[c].channel, bss_info[c].nCtrl, bss_info[c].nExt20,
 			bss_info[c].nExt40, bss_info[c].nExt80);
 	}
@@ -1078,7 +1158,7 @@ acs_derive_bw_from_given_chspec(acs_chaninfo_t * c_info)
 			bw = ACS_BW_20;
 			break;
 		default:
-			ACSD_ERROR("bandwidth unsupported ");
+			ACSD_ERROR("%s: bandwidth unsupported ", c_info->name);
 			return BCME_UNSUPPORTED;
 	}
 	return bw;
@@ -1094,23 +1174,33 @@ int
 acs_scan_timer_or_dfsr_check(acs_chaninfo_t * c_info)
 {
 	uint cs_scan_timer;
-	chanim_info_t * ch_info;
 	int ret = 0;
-	uint8 cur_idx;
-	uint8 start_idx;
-	chanim_acs_record_t *start_record;
 	int switch_reason = APCS_INIT; /* Abuse APCS_INIT as undefined switch reason (no switch) */
-	ch_info = c_info->chanim_info;
-	cur_idx = chanim_mark(ch_info).record_idx;
-	start_idx = MODSUB(cur_idx, 1, CHANIM_ACS_RECORD);
-	start_record = &ch_info->record[start_idx];
+
+	/* stay in current channel more than acs_chan_dwell_time */
+	if (AUTOCHANNEL(c_info) && BAND_2G(c_info->rs_info.band_type) &&
+			WL_BW_CAP_40MHZ(c_info->rs_info.bw_cap)) {
+		if (!chanim_record_chan_dwell(c_info,
+				c_info->chanim_info)) {
+			ACSD_DEBUG("%s: chan_least_dwell is FALSE\n", c_info->name);
+			return ret;
+		}
+		if (c_info->acs_nonwifi_enable) {
+			if (c_info->glitch_cnt > c_info->acs_chanim_glitch_thresh) {
+				ACSD_PRINT("ifname: %s glitch count is %u\n",
+						c_info->name, c_info->glitch_cnt);
+				switch_reason = APCS_CHANIM;
+			}
+		}
+	}
 
 	if (c_info->acs_bgdfs != NULL && c_info->acs_bgdfs->state != BGDFS_STATE_IDLE) {
 		ACSD_DEBUG("%s: Don't allow CS Scan when bgdfs is in progress\n", c_info->name);
 		return ret;
 	}
 
-	if (AUTOCHANNEL(c_info) && (c_info->country_is_edcrs_eu || !(c_info->cur_is_dfs)) &&
+	if ((AUTOCHANNEL(c_info) || COEXCHECK(c_info)) &&
+		(c_info->country_is_edcrs_eu || !(c_info->cur_is_dfs)) &&
 		acs_allow_scan(c_info, ACS_SCAN_TYPE_CS)) {
 		/* Check whether we should switch now because of the CS scan timer */
 		cs_scan_timer = c_info->acs_cs_scan_timer;
@@ -1118,9 +1208,9 @@ acs_scan_timer_or_dfsr_check(acs_chaninfo_t * c_info)
 		if (SCAN_TIMER_ON(c_info) && cs_scan_timer) {
 			time_t passed;
 
-			ACSD_DEBUG(" timer: %d\n", cs_scan_timer);
+			ACSD_DEBUG("%s: timer: %d\n", c_info->name, cs_scan_timer);
 
-			passed = uptime() - start_record->timestamp;
+			passed = uptime() - c_info->last_scanned_time;
 
 			if (acs_tx_idle_check(c_info) ||
 				((passed > cs_scan_timer) && (!acs_check_assoc_scb(c_info)))) {
@@ -1134,7 +1224,7 @@ acs_scan_timer_or_dfsr_check(acs_chaninfo_t * c_info)
 	if ((switch_reason == APCS_INIT) &&
 		BAND_5G(c_info->rs_info.band_type) &&
 		acs_dfsr_reentry_type(ACS_DFSR_CTX(c_info)) == DFS_REENTRY_IMMEDIATE) {
-			ACSD_DFSR("Switching Channels for DFS Reentry.\n");
+			ACSD_DFSR("%s: Switching Channels for DFS Reentry.\n", c_info->name);
 			switch_reason = APCS_DFS_REENTRY;
 	}
 	c_info->switch_reason = switch_reason;
@@ -1142,6 +1232,15 @@ acs_scan_timer_or_dfsr_check(acs_chaninfo_t * c_info)
 	switch (switch_reason) {
 	case APCS_CSTIMER:
 		/* start scan */
+		if (chanim_chk_lockout(c_info->chanim_info) && c_info->acs_lockout_enable) {
+			ACSD_DEBUG("%s: Don't initiate full scan while in lockout period\n",
+				c_info->name);
+			c_info->last_scanned_time = uptime();
+			break;
+		} else {
+			ACSD_DEBUG("%s:  Allow acsd to initiate scan and channel"
+					"change if needed\n", c_info->name);
+		}
 		ret = acs_run_cs_scan(c_info);
 		ACS_ERR(ret, "cs scan failed\n");
 		acs_cleanup_scan_entry(c_info);
@@ -1151,6 +1250,7 @@ acs_scan_timer_or_dfsr_check(acs_chaninfo_t * c_info)
 
 		/* Fall through to common case */
 
+select_chanspec:
 	case APCS_DFS_REENTRY:
 
 		if (acs_select_chspec(c_info)) {
@@ -1171,19 +1271,44 @@ acs_scan_timer_or_dfsr_check(acs_chaninfo_t * c_info)
 					c_info->acs_bgdfs->acs_bgdfs_on_txfail = TRUE;
 			}
 
-			chanim_upd_acs_record(ch_info, c_info->selected_chspec, switch_reason);
+			c_info->last_scanned_time = uptime();
+
+			/* After completion of CS scan and channel selection acsd updates record
+			 * with new selected channel. But after 2 sec acs_record is updating again
+			 * in acsd_watchdog function. So to avoid updating record twice we are not
+			 * adding the acs record here, instead updating the acs_record in
+			 * acsd_watchdog function. Updating the acs_record below Only for
+			 * DFS-REENTRY case.
+			 */
+			if (!(switch_reason == APCS_CSTIMER || switch_reason == APCS_CHANIM)) {
+				chanim_upd_acs_record(c_info->chanim_info, c_info->selected_chspec,
+						switch_reason);
+			}
+			c_info->switch_reason_type = APCS_CSTIMER;
 
 			if (c_info->acs_bgdfs == NULL ||
-				c_info->acs_bgdfs->state == BGDFS_STATE_IDLE) {
+					c_info->acs_bgdfs->state == BGDFS_STATE_IDLE) {
+				if (c_info->acs_use_csa &&
+						c_info->switch_reason == APCS_DFS_REENTRY) {
+					ret = acs_csa_handle_request(c_info);
+				} else {
 					ret = acs_update_driver(c_info);
 					ACS_ERR(ret, "update driver failed\n");
+				}
 			}
 		}
 		else {
-		    start_record->timestamp = uptime();
+		    c_info->last_scanned_time = uptime();
 		}
 		break;
+	case APCS_CHANIM:
+		ret = acs_run_cs_scan(c_info);
+		ACS_ERR(ret, "cs scan failed\n");
+		acs_cleanup_scan_entry(c_info);
 
+		ret = acs_request_data(c_info);
+		ACS_ERR(ret, "request data failed\n");
+		goto select_chanspec;
 	default:
 		break;
 	}

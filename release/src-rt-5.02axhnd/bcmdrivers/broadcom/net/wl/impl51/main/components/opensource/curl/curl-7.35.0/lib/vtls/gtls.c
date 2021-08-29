@@ -1084,6 +1084,8 @@ static ssize_t gtls_recv(struct connectdata *conn, /* connection data */
   }
 
   if(ret == GNUTLS_E_REHANDSHAKE) {
+    /* BLOCKING call, this is bad but a work-around for now. Fixing this "the
+       proper way" takes a whole lot of work. */
     CURLcode rc = handshake(conn, num, FALSE, FALSE);
     if(rc)
       /* handshake() writes error message on its own */

@@ -4,7 +4,7 @@
  *      This module will retrieve acs configurations from nvram, if params are
  *      not set it will retrieve default values.
  *
- *      Copyright 2018 Broadcom
+ *      Copyright 2019 Broadcom
  *
  *      This program is the proprietary software of Broadcom and/or
  *      its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *      OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  *      NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- *	$Id: acs_cfg.c 764927 2018-06-11 06:02:47Z $
+ *	$Id: acs_cfg.c 777145 2019-07-22 05:05:21Z $
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -128,13 +128,13 @@ acs_toa_load_station(acs_chaninfo_t *c_info, const char *keyfmt, int stain)
 	char ea[ACS_STA_EA_LEN];
 
 	if (acs_snprintf(keybuf, sizeof(keybuf), keyfmt, stain) >= sizeof(keybuf)) {
-		ACSD_ERROR("key buffer too small\n");
+		ACSD_ERROR("%s: key buffer too small\n", c_info->name);
 		return BCME_ERROR;
 	}
 
 	tokens = nvram_get(keybuf);
 	if (!tokens) {
-		ACSD_INFO("No toa NVRAM params set\n");
+		ACSD_INFO("%s: No toa NVRAM params set\n", c_info->name);
 		return BCME_ERROR;
 	}
 
@@ -144,7 +144,7 @@ acs_toa_load_station(acs_chaninfo_t *c_info, const char *keyfmt, int stain)
 	if (sta_type) {
 		c_info->acs_toa_enable = TRUE;
 		if (index >= ACS_MAX_VIDEO_STAS) {
-			ACSD_ERROR("MAX VIDEO STAs exceeded\n");
+			ACSD_ERROR("%s: MAX VIDEO STAs exceeded\n", c_info->name);
 			return BCME_ERROR;
 		}
 
@@ -153,11 +153,12 @@ acs_toa_load_station(acs_chaninfo_t *c_info, const char *keyfmt, int stain)
 		c_info->vid_sta[index].vid_sta_mac[ACS_STA_EA_LEN -1] = '\0';
 		if (!bcm_ether_atoe(c_info->vid_sta[index].vid_sta_mac,
 			&c_info->vid_sta[index].ea)) {
-			ACSD_ERROR("toa video sta ether addr NOT proper\n");
+			ACSD_ERROR("%s: toa video sta ether addr NOT proper\n",
+				c_info->name);
 			return BCME_ERROR;
 		}
 		c_info->video_sta_idx++;
-		ACSD_INFO("VIDEOSTA %s\n", c_info->vid_sta[index].vid_sta_mac);
+		ACSD_INFO("%s: VIDEOSTA %s\n", c_info->name, c_info->vid_sta[index].vid_sta_mac);
 	}
 
 	return BCME_OK;
@@ -171,7 +172,7 @@ acs_bgdfs_acs_toa_retrieve_config(acs_chaninfo_t *c_info, char * prefix)
 
 	c_info->acs_toa_enable = FALSE;
 	c_info->video_sta_idx = 0;
-	ACSD_INFO("retrieve TOA config from nvram ...\n");
+	ACSD_INFO("%s: retrieve TOA config from nvram ...\n", c_info->name);
 
 	/* Load station specific settings */
 	for (stain = 1; stain <= ACS_MAX_VIDEO_STAS; ++stain) {
@@ -260,6 +261,20 @@ acs_retrieve_config_bgdfs(acs_bgdfs_info_t *acs_bgdfs, char * prefix)
 				acs_bgdfs->fallback_blocking_cac);
 	}
 
+	/* acs_bgdfs_fallback_blocking_cac */
+	acs_safe_get_conf(conf_word, sizeof(conf_word),
+		strcat_r(prefix, "acs_zdfs_2g_fallback_5g", tmp));
+
+	if (!strcmp(conf_word, "")) {
+		ACSD_INFO("No acs_zdfs_2g_fallback_5g set. Get default.\n");
+		acs_bgdfs->zdfs_2g_fallback_5g = ACS_ZDFS_2G_FALLBACK_5G;
+	} else {
+		char *endptr = NULL;
+		acs_bgdfs->zdfs_2g_fallback_5g = strtoul(conf_word, &endptr, 0);
+		ACSD_DEBUG("acs_zdfs_2g_fallback_5g: 0x%x\n",
+				acs_bgdfs->zdfs_2g_fallback_5g);
+	}
+
 	/* acs_bgdfs_txblank_threshold */
 	acs_safe_get_conf(conf_word, sizeof(conf_word),
 		strcat_r(prefix, "acs_bgdfs_txblank_threshold", tmp));
@@ -289,19 +304,20 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 	bool bgdfs_cap = FALSE;
 
 	/* the current layout of config */
-	ACSD_INFO("retrieve config from nvram ...\n");
+	ACSD_INFO("%s: retrieve config from nvram ...\n", c_info->name);
 
 	acs_safe_get_conf(conf_word, sizeof(conf_word),
 		strcat_r(prefix, "acs_scan_entry_expire", tmp));
 
 	if (!strcmp(conf_word, "")) {
-		ACSD_INFO("No acs_scan_entry_expire set. Retrieve default.\n");
+		ACSD_INFO("%s: No acs_scan_entry_expire set. Retrieve default.\n", c_info->name);
 		c_info->acs_scan_entry_expire = ACS_CI_SCAN_EXPIRE;
 	}
 	else {
 		char *endptr = NULL;
 		c_info->acs_scan_entry_expire = strtoul(conf_word, &endptr, 0);
-		ACSD_DEBUG("acs_scan_entry_expire: 0x%x\n", c_info->acs_scan_entry_expire);
+		ACSD_DEBUG("%s: acs_scan_entry_expire: 0x%x\n", c_info->name,
+			c_info->acs_scan_entry_expire);
 	}
 
 	/* acs_bgdfs_enab */
@@ -309,13 +325,13 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 		strcat_r(prefix, "acs_bgdfs_enab", tmp));
 
 	if (!strcmp(conf_word, "")) {
-		ACSD_INFO("No acs_bgdfs_enab is set. Retrieve default.\n");
+		ACSD_INFO("%s: No acs_bgdfs_enab is set. Retrieve default.\n", c_info->name);
 		acs_bgdfs_enab = ACS_BGDFS_ENAB;
 	}
 	else {
 		char *endptr = NULL;
 		acs_bgdfs_enab = strtoul(conf_word, &endptr, 0);
-		ACSD_DEBUG("acs_bgdfs_enab: 0x%x\n", acs_bgdfs_enab);
+		ACSD_DEBUG("%s: acs_bgdfs_enab: 0x%x\n", c_info->name, acs_bgdfs_enab);
 	}
 
 	bgdfs_cap = acs_bgdfs_capable(c_info);
@@ -332,44 +348,58 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 		strcat_r(prefix, "acs_boot_only", tmp));
 
 	if (!strcmp(conf_word, "")) {
-		ACSD_INFO("No acs_boot_only is set. Retrieve default. \n");
+		ACSD_INFO("%s: No acs_boot_only is set. Retrieve default. \n", c_info->name);
 		c_info->acs_boot_only = ACS_BOOT_ONLY_DEFAULT;
 	} else {
 		char *endptr = NULL;
 		c_info->acs_boot_only = strtoul(conf_word, &endptr, 0);
-		ACSD_DEBUG("acs_boot_only: 0x%x\n", c_info->acs_boot_only);
+		ACSD_DEBUG("%s: acs_boot_only: 0x%x\n", c_info->name, c_info->acs_boot_only);
 	}
 
 	acs_safe_get_conf(conf_word, sizeof(conf_word),
 		strcat_r(prefix, "acs_ignore_txfail", tmp));
 
 	if (!strcmp(conf_word, "")) {
-		ACSD_DEBUG("Retrieve default. \n");
+		ACSD_DEBUG("%s: Retrieve default. \n", c_info->name);
 		c_info->ignore_txfail = ACS_IGNORE_TXFAIL;
 	} else {
 		char *endptr = NULL;
 		c_info->ignore_txfail = strtoul(conf_word, &endptr, 0);
-		ACSD_DEBUG("acs_ignore_txfail: 0x%x\n", c_info->ignore_txfail);
+		ACSD_DEBUG("%s: acs_ignore_txfail: 0x%x\n", c_info->name,
+			c_info->ignore_txfail);
+	}
+
+	acs_safe_get_conf(conf_word, sizeof(conf_word),
+		strcat_r(prefix, "acs_traffic_thresh_en", tmp));
+
+	if (!strcmp(conf_word, "")) {
+		ACSD_DEBUG("%s: Retrieve default. \n", c_info->name);
+		c_info->traffic_thresh_en = ACS_TRAFFIC_THRESH_ENABLE;
+	} else {
+		char *endptr = NULL;
+		c_info->traffic_thresh_en = strtoul(conf_word, &endptr, 0);
+		ACSD_DEBUG("%s: acs_traffic_thresh_en: 0x%x\n", c_info->name,
+			c_info->traffic_thresh_en);
 	}
 
 	acs_safe_get_conf(conf_word, sizeof(conf_word),
 		strcat_r(prefix, "acs_flags", tmp));
 
 	if (!strcmp(conf_word, "")) {
-		ACSD_INFO("No acs flag set. Retrieve default.\n");
+		ACSD_INFO("%s: No acs flag set. Retrieve default.\n", c_info->name);
 		flags = ACS_DFLT_FLAGS;
 	}
 	else {
 		char *endptr = NULL;
 		flags = strtoul(conf_word, &endptr, 0);
-		ACSD_DEBUG("acs flags: 0x%x\n", flags);
+		ACSD_DEBUG("%s: acs flags: 0x%x\n", c_info->name, flags);
 	}
 
 	acs_safe_get_conf(conf_word, sizeof(conf_word),
 		strcat_r(prefix, "acs_pol", tmp));
 
 	if (!strcmp(conf_word, "")) {
-		ACSD_INFO("No acs policy set. Retrieve default.\n");
+		ACSD_INFO("%s: No acs policy set. Retrieve default.\n", c_info->name);
 
 		acs_safe_get_conf(conf_word, sizeof(conf_word),
 			strcat_r(prefix, "acs_pol_idx", tmp));
@@ -381,10 +411,10 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 		if (!strcmp(conf_word, "")) {
 			if (BAND_5G(band)) {
 				index = ACS_POLICY_DEFAULT5G;
-				ACSD_PRINT("Selecting 5g band ACS policy\n");
+				ACSD_PRINT("%s: Selecting 5g band ACS policy\n", c_info->name);
 			} else {
 				index = ACS_POLICY_DEFAULT2G;
-				ACSD_PRINT("Selecting 2g band ACS policy\n");
+				ACSD_PRINT("%s: Selecting 2g band ACS policy\n", c_info->name);
 			}
 		} else {
 			index = atoi(conf_word);
@@ -417,6 +447,17 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 		a_pol->chan_selector = acs_pick_chanspec;
 	}
 
+	if ((str = nvram_get(strcat_r(prefix, "acs_nonwifi_enable", tmp))) == NULL) {
+		c_info->acs_nonwifi_enable = ACS_NON_WIFI_ENABLE;
+	} else {
+		c_info->acs_nonwifi_enable = atoi(str);
+	}
+
+	if ((str = nvram_get(strcat_r(prefix, "acs_lockout_enable", tmp))) == NULL) {
+		c_info->acs_lockout_enable = ACS_LOCKOUT_ENABLE;
+	} else {
+		c_info->acs_lockout_enable = atoi(str);
+	}
 	if ((str = nvram_get(strcat_r(prefix, "acs_txdelay_period", tmp))) == NULL)
 		c_info->acs_txdelay_period = ACS_TXDELAY_PERIOD;
 	else
@@ -432,10 +473,32 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 	else
 		c_info->acs_txdelay_ratio = atoi(str);
 
-	if ((str = nvram_get(strcat_r(prefix, "acs_far_sta_rssi", tmp))) == NULL)
+	if ((str = nvram_get(strcat_r(prefix, "acs_ignore_txfail_on_far_sta", tmp))) == NULL) {
+		c_info->acs_ignore_txfail_on_far_sta = ACS_IGNORE_TXFAIL_ON_FAR_STA;
+#ifdef MULTIAP
+		/* For MultiAP ignore tx fail on far sta should be enabled always */
+		if (((str = nvram_get(strcat_r(prefix, "map", tmp))) != NULL) && atoi(str))
+			c_info->acs_ignore_txfail_on_far_sta = 1;
+#endif /* MULTIAP */
+	} else {
+		c_info->acs_ignore_txfail_on_far_sta = atoi(str);
+	}
+
+	if ((str = nvram_get(strcat_r(prefix, "acs_far_sta_rssi", tmp))) == NULL) {
 		c_info->acs_far_sta_rssi = ACS_FAR_STA_RSSI;
-	else
+#ifdef MULTIAP
+		 /* far sta rssi's default value should be same as in wbd_weak_sta_cfg */
+		if (((str = nvram_get(strcat_r(prefix, "map", tmp))) != NULL) && atoi(str)) {
+			if ((str = nvram_get(strcat_r(prefix, "wbd_weak_sta_cfg", tmp))) != NULL) {
+				int wbd_rssi = 0;
+				sscanf(str, "%d %d", &wbd_rssi, &wbd_rssi);
+				c_info->acs_far_sta_rssi = wbd_rssi;
+			}
+		}
+#endif /* MULTIAP */
+	} else {
 		c_info->acs_far_sta_rssi = atoi(str);
+	}
 
 	if ((str = nvram_get(strcat_r(prefix, "acs_nofcs_least_rssi", tmp))) == NULL)
 		c_info->acs_nofcs_least_rssi = ACS_NOFCS_LEAST_RSSI;
@@ -446,6 +509,13 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 		c_info->acs_scan_chanim_stats = ACS_SCAN_CHANIM_STATS;
 	else
 		c_info->acs_scan_chanim_stats = atoi(str);
+
+	if (((str = nvram_get(strcat_r(prefix, "acs_txop_thresh", tmp))) == NULL) ||
+		(str[0] == '\0')) {
+		c_info->acs_txop_thresh = ACS_TXOP_THRESH;
+	} else {
+		c_info->acs_txop_thresh = strtoul(str, NULL, 0);
+	}
 
 	if ((str = nvram_get(strcat_r(prefix, "acs_ci_scan_chanim_stats", tmp))) == NULL)
 		c_info->acs_ci_scan_chanim_stats = ACS_CI_SCAN_CHANIM_STATS;
@@ -472,10 +542,22 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 	else
 		c_info->acs_dfs = atoi(str);
 
-	if ((str = nvram_get(strcat_r(prefix, "acs_chan_dwell_time", tmp))) == NULL)
+	if ((str = nvram_get(strcat_r(prefix, "acs_chan_dwell_time", tmp))) == NULL ||
+			!str[0] || str[0] < '1' || str[0] > '9') {
 		c_info->acs_chan_dwell_time = ACS_CHAN_DWELL_TIME;
-	else
+		ACSD_INFO(" ifname :%s overriding acs_chan_dwell time to default %ds\n",
+				c_info->name, c_info->acs_chan_dwell_time);
+	} else {
 		c_info->acs_chan_dwell_time = atoi(str);
+		if (c_info->acs_chan_dwell_time < ACS_CHAN_DWELL_TIME_MIN) {
+			c_info->acs_chan_dwell_time = ACS_CHAN_DWELL_TIME_MIN;
+		} else if (c_info->acs_chan_dwell_time > ACS_CHAN_DWELL_TIME_MAX) {
+			c_info->acs_chan_dwell_time = ACS_CHAN_DWELL_TIME_MAX;
+		}
+		ACSD_INFO(" ifname :%s adjusted acs_chan_dwell time to range [%d, %d]: %ds\n",
+				c_info->name, ACS_CHAN_DWELL_TIME_MIN, ACS_CHAN_DWELL_TIME_MAX,
+				c_info->acs_chan_dwell_time);
+	}
 
 	if ((str = nvram_get(strcat_r(prefix, "acs_chan_flop_period", tmp))) == NULL)
 		c_info->acs_chan_flop_period = ACS_CHAN_FLOP_PERIOD;
@@ -487,26 +569,42 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 	else
 		c_info->acs_tx_idle_cnt = atoi(str);
 
+	if ((str = nvram_get(strcat_r(prefix, "acs_fallback_to_primary", tmp))) == NULL) {
+		c_info->fallback_to_primary = ACS_FALLBACK_TO_PRIMARY;
+	} else {
+		c_info->fallback_to_primary = atoi(str);
+	}
+
+	if (((str = nvram_get(strcat_r(prefix, "acs_chanim_tx_avail", tmp))) == NULL) ||
+			!str[0] || str[0] < '1' || str[0] > '9') {
+		c_info->acs_chanim_tx_avail = ACS_CHANIM_TX_AVAIL;
+	} else {
+		c_info->acs_chanim_tx_avail = atoi(str);
+		if (c_info->acs_chanim_tx_avail <= 0) {
+			c_info->acs_chanim_tx_avail = ACS_CHANIM_TX_AVAIL;
+		}
+	}
+
 	if ((str = nvram_get(strcat_r(prefix, "acs_ci_scan_timeout", tmp))) == NULL) {
-		c_info->acs_ci_scan_timeout = ACS_CI_SCAN_TIMEOUT;
+		c_info->acs_ci_scan_timeout = ACS_CI_SCAN_TIMEOUT_DEFAULT;
 	} else {
 		c_info->acs_ci_scan_timeout = atoi(str);
-		if (c_info->acs_ci_scan_timeout < ACS_CI_SCAN_TIMEOUT)
+		if (c_info->acs_ci_scan_timeout < ACS_CI_SCAN_TIMEOUT_MIN)
 		{
-			c_info->acs_ci_scan_timeout = ACS_CI_SCAN_TIMEOUT;
-			ACSD_INFO(" ifname :%s adjusting the ci scan timeout to default %d\n",
-			c_info->name, c_info->acs_ci_scan_timeout);
+			c_info->acs_ci_scan_timeout = ACS_CI_SCAN_TIMEOUT_MIN;
+			ACSD_INFO(" ifname :%s adjusting the ci scan timeout to min %ds\n",
+				c_info->name, c_info->acs_ci_scan_timeout);
 		}
 	}
 
 	if ((str = nvram_get(strcat_r(prefix, "acs_cs_scan_timer", tmp))) == NULL) {
-		c_info->acs_cs_scan_timer = ACS_DFLT_CS_SCAN_TIMER;
+		c_info->acs_cs_scan_timer = ACS_CS_SCAN_TIMER_DEFAULT;
 	} else {
 		c_info->acs_cs_scan_timer = atoi(str);
-		if (c_info->acs_cs_scan_timer < ACS_DFLT_CS_SCAN_TIMER)
+		if (c_info->acs_cs_scan_timer < ACS_CS_SCAN_TIMER_MIN)
 		{
-			c_info->acs_cs_scan_timer = ACS_DFLT_CS_SCAN_TIMER;
-			ACSD_INFO(" ifname :%s adjusting the cs scan timer to default %d\n",
+			c_info->acs_cs_scan_timer = ACS_CS_SCAN_TIMER_MIN;
+			ACSD_INFO(" ifname :%s adjusting the cs scan timer to min %ds\n",
 				c_info->name, c_info->acs_cs_scan_timer);
 		}
 	}
@@ -523,6 +621,13 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 		}
 	}
 
+	if (((str = nvram_get(strcat_r(prefix, "acs_ignore_txfail_on_far_sta", tmp))) == NULL) ||
+		(str[0] == '\0')) {
+		c_info->acs_ignore_txfail_on_far_sta = ACS_IGNORE_TXFAIL_ON_FAR_STA;
+	} else {
+		c_info->acs_ignore_txfail_on_far_sta = strtoul(str, NULL, 0);
+	}
+
 	if ((str = nvram_get(strcat_r(prefix, "intfer_period", tmp))) == NULL)
 		c_info->intfparams.period = ACS_INTFER_SAMPLE_PERIOD;
 	else
@@ -536,79 +641,67 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 	c_info->intfparams.thld_setting = ACSD_INTFER_THLD_SETTING;
 
 	if ((str = nvram_get(strcat_r(prefix, "intfer_txfail", tmp))) == NULL) {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD].txfail_thresh =
-			ACS_INTFER_TXFAIL_THRESH;
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD]
+			.txfail_thresh = ACS_INTFER_TXFAIL_THRESH;
 	} else {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD].txfail_thresh =
-			strtoul(str, NULL, 0);
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD]
+			.txfail_thresh = strtoul(str, NULL, 0);
 	}
 
 	if ((str = nvram_get(strcat_r(prefix, "intfer_tcptxfail", tmp))) == NULL) {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD].tcptxfail_thresh =
-			ACS_INTFER_TCPTXFAIL_THRESH;
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD]
+			.tcptxfail_thresh = ACS_INTFER_TCPTXFAIL_THRESH;
 	} else {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD].tcptxfail_thresh =
-			strtoul(str, NULL, 0);
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD]
+			.tcptxfail_thresh = strtoul(str, NULL, 0);
 	}
 
 	if ((str = nvram_get(strcat_r(prefix, "intfer_txfail_hi", tmp))) == NULL) {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD_HI].txfail_thresh =
-			ACS_INTFER_TXFAIL_THRESH_HI;
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD_HI]
+			.txfail_thresh = ACS_INTFER_TXFAIL_THRESH_HI;
 	} else {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD_HI].txfail_thresh =
-			strtoul(str, NULL, 0);
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD_HI]
+			.txfail_thresh = strtoul(str, NULL, 0);
 	}
 
 	if ((str = nvram_get(strcat_r(prefix, "intfer_tcptxfail_hi", tmp))) == NULL) {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD_HI].tcptxfail_thresh =
-			ACS_INTFER_TCPTXFAIL_THRESH_HI;
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD_HI]
+			.tcptxfail_thresh = ACS_INTFER_TCPTXFAIL_THRESH_HI;
 	} else {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD_HI].tcptxfail_thresh =
-			strtoul(str, NULL, 0);
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_80_THLD_HI]
+			.tcptxfail_thresh = strtoul(str, NULL, 0);
 	}
 
 	if ((str = nvram_get(strcat_r(prefix, "intfer_txfail_160", tmp))) == NULL) {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD].txfail_thresh =
-			ACS_INTFER_TXFAIL_THRESH_160;
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD]
+			.txfail_thresh = ACS_INTFER_TXFAIL_THRESH_160;
 	} else {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD].txfail_thresh =
-			strtoul(str, NULL, 0);
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD]
+			.txfail_thresh = strtoul(str, NULL, 0);
 	}
 
 	if ((str = nvram_get(strcat_r(prefix, "intfer_tcptxfail_160", tmp))) == NULL) {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD].tcptxfail_thresh =
-			ACS_INTFER_TCPTXFAIL_THRESH_160;
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD]
+			.tcptxfail_thresh = ACS_INTFER_TCPTXFAIL_THRESH_160;
 	} else {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD].tcptxfail_thresh =
-			strtoul(str, NULL, 0);
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD]
+			.tcptxfail_thresh = strtoul(str, NULL, 0);
 	}
 
 	if ((str = nvram_get(strcat_r(prefix, "intfer_txfail_160_hi", tmp))) == NULL) {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD_HI].txfail_thresh =
-			ACS_INTFER_TXFAIL_THRESH_160_HI;
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD_HI]
+			.txfail_thresh = ACS_INTFER_TXFAIL_THRESH_160_HI;
 	} else {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD_HI].txfail_thresh =
-			strtoul(str, NULL, 0);
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD_HI]
+			.txfail_thresh = strtoul(str, NULL, 0);
 	}
 
 	if ((str = nvram_get(strcat_r(prefix, "intfer_tcptxfail_160_hi", tmp))) == NULL) {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD_HI].tcptxfail_thresh =
-			ACS_INTFER_TCPTXFAIL_THRESH_160_HI;
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD_HI]
+			.tcptxfail_thresh = ACS_INTFER_TCPTXFAIL_THRESH_160_HI;
 	} else {
-		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD_HI].tcptxfail_thresh =
-			strtoul(str, NULL, 0);
-	}
-
-	if ((str = nvram_get(strcat_r(prefix, "acs_inttrf_thresh", tmp))) == NULL) {
-		c_info->trf_params.thresh = ACS_INTFER_TRF_THRESH;
-	} else {
-		c_info->trf_params.thresh = atoi(str);
-	}
-
-	if ((str = nvram_get(strcat_r(prefix, "acs_inttrf_numsecs", tmp))) == NULL) {
-		c_info->trf_params.num_secs = ACS_INTFER_TRF_NUMSECS;
-	} else {
-		c_info->trf_params.num_secs = atoi(str);
+		c_info->intfparams.acs_txfail_thresholds[ACSD_INTFER_PARAMS_160_THLD_HI]
+			.tcptxfail_thresh = strtoul(str, NULL, 0);
 	}
 
 	if (nvram_match(strcat_r(prefix, "dcs_csa_unicast", tmp), "1"))
@@ -625,6 +718,24 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 		c_info->dfs_reentry = ACS_DFS_REENTRY_EN;
 	} else {
 		c_info->dfs_reentry = strtol(str, NULL, 0);
+	}
+
+	if (((str = nvram_get(strcat_r(prefix, "acs_use_csa", tmp))) == NULL) ||
+			!str[0] || str[0] < '1' || str[0] > '9') {
+		c_info->acs_use_csa = ACS_USE_CSA;
+	} else {
+		c_info->acs_use_csa = strtol(str, NULL, 0);
+	}
+
+	if ((str = nvram_get(strcat_r(prefix, "ci_scan_txop_limit", tmp))) == NULL) {
+		c_info->ci_scan_txop_limit = ACS_TXOP_LIMIT_CI;
+	} else {
+		c_info->ci_scan_txop_limit = strtol(str, NULL, 0);
+		if (c_info->ci_scan_txop_limit < 0 || c_info->ci_scan_txop_limit > 100) {
+			c_info->ci_scan_txop_limit = ACS_TXOP_LIMIT_CI;
+			ACSD_INFO("Adjusting ci_scan txop limit to default ifname = %s txop_"
+				"limit = %d\n", c_info->name, c_info->ci_scan_txop_limit);
+		}
 	}
 
 #ifdef ACSD_SEGMENT_CHANIM
@@ -676,13 +787,14 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 			strcat_r(prefix, "acs_cs_dfs_pref", tmp));
 
 	if (!strcmp(conf_word, "")) {
-		ACSD_INFO("No acs_cs_dfs_pref set. Use val of acs_dfs instead\n");
+		ACSD_INFO("%s: No acs_cs_dfs_pref set. Use val of acs_dfs instead\n",
+			c_info->name);
 		c_info->acs_cs_dfs_pref = c_info->acs_dfs;
 	}
 	else {
 		char *endptr = NULL;
 		c_info->acs_cs_dfs_pref = strtoul(conf_word, &endptr, 0);
-		ACSD_DEBUG("acs_cs_dfs_pref: 0x%x\n", c_info->acs_cs_dfs_pref);
+		ACSD_DEBUG("%s: acs_cs_dfs_pref: 0x%x\n", c_info->name, c_info->acs_cs_dfs_pref);
 	}
 
 	/* Customer Knob #2
@@ -692,13 +804,15 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 			strcat_r(prefix, "acs_cs_high_pwr_pref", tmp));
 
 	if (!strcmp(conf_word, "")) {
-		ACSD_INFO("No acs_cs_high_pwr_pref set. Disabled by default.\n");
+		ACSD_INFO("%s: No acs_cs_high_pwr_pref set. Disabled by default.\n",
+			c_info->name);
 		c_info->acs_cs_high_pwr_pref = 0;
 	}
 	else {
 		char *endptr = NULL;
 		c_info->acs_cs_high_pwr_pref = strtoul(conf_word, &endptr, 0);
-		ACSD_DEBUG("acs_cs_high_pwr_pref: 0x%x\n", c_info->acs_cs_high_pwr_pref);
+		ACSD_DEBUG("%s: acs_cs_high_pwr_pref: 0x%x\n", c_info->name,
+			c_info->acs_cs_high_pwr_pref);
 	}
 
 	/* allocate core data structure for escan */
@@ -709,13 +823,31 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 			strcat_r(prefix, "acs_use_escan", tmp));
 
 	if (!strcmp(conf_word, "")) {
-		ACSD_INFO("No escan config set. use defaults\n");
+		ACSD_INFO("%s: No escan config set. use defaults\n", c_info->name);
 		c_info->acs_escan->acs_use_escan = ACS_ESCAN_DEFAULT;
 	}
 	else {
 		char *endptr = NULL;
 		c_info->acs_escan->acs_use_escan = strtoul(conf_word, &endptr, 0);
-		ACSD_DEBUG("acs escan enable: %d\n", c_info->acs_escan->acs_use_escan);
+		ACSD_DEBUG("%s: acs escan enable: %d\n", c_info->name,
+			c_info->acs_escan->acs_use_escan);
+	}
+
+	if (c_info->acs_nonwifi_enable) {
+		acs_safe_get_conf(conf_word, sizeof(conf_word),
+				strcat_r(prefix, "acs_chanim_glitch_thresh", tmp));
+
+		if (!strcmp(conf_word, "")) {
+			ACSD_INFO("ifname: %s No acs_chanim_glitch_thresh is set."
+					"Retrieve default. \n", c_info->name);
+			c_info->acs_chanim_glitch_thresh = ACS_CHANIM_GLITCH_THRESH;
+		}
+		else {
+			char *endptr = NULL;
+			c_info->acs_chanim_glitch_thresh = strtoul(conf_word, &endptr, 0);
+			ACSD_DEBUG("ifname: %s acs_chanim_glitch_thresh: 0x%x\n",
+				c_info->name, c_info->acs_chanim_glitch_thresh);
+		}
 	}
 
 	c_info->flags = flags;

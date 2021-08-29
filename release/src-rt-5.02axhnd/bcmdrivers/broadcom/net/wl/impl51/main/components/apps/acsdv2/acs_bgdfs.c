@@ -5,7 +5,7 @@
  *      If bgdfs is succeeds it will move to target channel else it will switch back to
  *      regular chanspec.
  *
- *      Copyright 2018 Broadcom
+ *      Copyright 2019 Broadcom
  *
  *      This program is the proprietary software of Broadcom and/or
  *      its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *      OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  *      NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- *	$Id: acs_bgdfs.c 760537 2018-05-02 10:31:58Z $
+ *	$Id: acs_bgdfs.c 777995 2019-08-20 06:13:13Z $
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -97,7 +97,7 @@ acs_bgdfs_idle_check(acs_chaninfo_t * c_info)
 		return BCME_BUSY;
 	}
 
-	ACSD_INFO("%s: Link idle. Initiaiting 3+1 bgdfs. Accumulated frames tx+rx:%u,"
+	ACSD_INFO("%s: Link idle. Initiating 3+1 bgdfs. Accumulated frames tx+rx:%u,"
 		"th:%u, num_acc:%u\n", c_info->name, total_frames, th_frames,
 		acs_act->num_accumulated);
 
@@ -106,6 +106,76 @@ acs_bgdfs_idle_check(acs_chaninfo_t * c_info)
 	return BCME_OK;
 }
 
+#ifdef ZDFS_2G
+/*
+ * try to initiate background DFS scan on the 2g interface; returns BCME_OK if successful
+ */
+static int
+acs_bgdfs_attempt_2g(acs_chaninfo_t * ci_2g, acs_chaninfo_t * ci_5g,
+		chanspec_t chspec, bool stunt)
+{
+	int ret = 0;
+	acs_bgdfs_info_t *acs_bgdfs = ci_2g->acs_bgdfs;
+
+	if (ci_5g->cac_mode != ACS_CAC_MODE_AUTO &&
+			ci_5g->cac_mode != ACS_CAC_MODE_ZDFS_2G_ONLY) {
+		ACSD_INFO("%s ZDFS 2G avoided as CAC mode is %d\n",
+				ci_5g->name, ci_5g->cac_mode);
+		return BCME_NOTENABLED;
+	}
+
+	if (acs_bgdfs == NULL) {
+		return BCME_ERROR;
+	}
+
+	if (acs_bgdfs->state != BGDFS_STATE_IDLE) {
+		/* already in progress; just return silently */
+		return BCME_OK;
+	}
+
+	/* If tx duration (on 5G is) more than tx blanking threshold, avoid BGDFS */
+	if (acs_get_txduration(ci_5g)) {
+		ACSD_INFO("%s ZDFS 2G avoided as Tx duration exceeding threshold\n", ci_5g->name);
+		return BCME_OK;
+	}
+
+	if (acs_bgdfs->cap == BGDFS_CAP_UNKNOWN) {
+		/* to update capability if this is the first time */
+		(void) acs_bgdfs_get(ci_2g);
+	}
+	if (acs_bgdfs->cap != BGDFS_CAP_TYPE0) {
+		/* other types are not supported */
+		return BCME_ERROR;
+	}
+
+	/* If setting channel, ensure chanspec is neighbor friendly */
+	if (((int)chspec) > 0 && !stunt) {
+		chspec = acs_adjust_ctrl_chan(ci_5g, chspec);
+	}
+
+	ACSD_INFO("%s####Attempting BGDFS 2G on channel 0x%x stunt %d\n", ci_2g->name,
+			chspec, stunt);
+	if ((ret = acs_bgdfs_set(ci_2g, chspec)) == BCME_OK) {
+		time_t now = uptime();
+		bool is_dfs_weather = acs_is_dfs_weather_chanspec(ci_5g, chspec);
+		acs_bgdfs->state = BGDFS_STATE_MOVE_REQUESTED;
+		acs_bgdfs->timeout = now +
+			(is_dfs_weather ? BGDFS_CCA_EU_WEATHER : BGDFS_CCA_FCC) +
+			BGDFS_POST_CCA_WAIT;
+		acs_bgdfs->next_scan_chan = chspec;
+		acs_bgdfs->bgdfs_stunted = stunt;
+
+		acs_update_tx_dur_secs_start();
+		/* let the 2g iface remember which 5g iface requested this bgdfs task */
+		ci_2g->ci_5g = ci_5g; /* Null this on completion of this ZDFS_2G attempt */
+		/* let the 5g iface remember the 2g iface to which the bgdfs task is delegated */
+		ci_5g->ci_2g = ci_2g; /* Null this on completion of this ZDFS_2G attempt */
+	}
+
+	return ret;
+}
+#endif /* ZDFS_2G */
+
 /*
  * try to initiate background DFS scan and move; returns BCME_OK if successful
  */
@@ -113,10 +183,14 @@ int
 acs_bgdfs_attempt(acs_chaninfo_t * c_info, chanspec_t chspec, bool stunt)
 {
 	int ret = 0;
+	time_t now = uptime();
 	acs_bgdfs_info_t *acs_bgdfs = c_info->acs_bgdfs;
+	acs_chaninfo_t *zdfs_2g_ci = NULL;
 
-	if (acs_bgdfs == NULL) {
-		return BCME_ERROR;
+	if (c_info->cac_mode == ACS_CAC_MODE_FULL_ONLY) {
+		ACSD_INFO("%s BGDFS disabled due to CAC mode %d\n",
+				c_info->name, c_info->cac_mode);
+		return BCME_NOTENABLED;
 	}
 
 	/* when mode is ACS_MODE_FIXCHSPEC (eg. used with WBD), BGDFS is allowed
@@ -133,6 +207,39 @@ acs_bgdfs_attempt(acs_chaninfo_t * c_info, chanspec_t chspec, bool stunt)
 			stunt = TRUE;
 			ACSD_INFO("%s BGDFS ch:0x%04x downgraded to stunt\n", c_info->name, chspec);
 		}
+	}
+
+#ifdef ZDFS_2G
+	if (c_info->cac_mode == ACS_CAC_MODE_AUTO ||
+			c_info->cac_mode == ACS_CAC_MODE_ZDFS_2G_ONLY) {
+		if ((zdfs_2g_ci = acs_get_zdfs_2g_ci()) != NULL && zdfs_2g_ci->acs_bgdfs &&
+				zdfs_2g_ci->acs_bgdfs->state == BGDFS_STATE_IDLE) {
+			return acs_bgdfs_attempt_2g(zdfs_2g_ci, c_info, chspec, stunt);
+		}
+		/* if ZDFS_2G is in progress on behalf of this 5G interface, return */
+		if (zdfs_2g_ci && zdfs_2g_ci->ci_5g == c_info) {
+			return BCME_OK;
+		}
+
+		/* if fallback to ZDFS_5G is not allowed, return */
+		if ((c_info->cac_mode == ACS_CAC_MODE_ZDFS_2G_ONLY) ||
+				(zdfs_2g_ci && acs_bgdfs && !acs_bgdfs->zdfs_2g_fallback_5g)) {
+			return BCME_OK;
+		}
+	}
+#else
+	(void) zdfs_2g_ci;
+#endif /* ZDFS_2G */
+
+	if (acs_bgdfs == NULL) {
+		return BCME_ERROR;
+	}
+
+	if (c_info->cac_mode != ACS_CAC_MODE_AUTO &&
+			c_info->cac_mode != ACS_CAC_MODE_ZDFS_5G_ONLY) {
+		ACSD_INFO("%s BGDFS disabled due to CAC mode %d\n",
+				c_info->name, c_info->cac_mode);
+		return BCME_NOTENABLED;
 	}
 
 	if (acs_bgdfs->state != BGDFS_STATE_IDLE) {
@@ -164,9 +271,21 @@ acs_bgdfs_attempt(acs_chaninfo_t * c_info, chanspec_t chspec, bool stunt)
 	/* If setting channel, ensure chanspec is neighbor friendly */
 	if (((int)chspec) > 0 && !stunt) {
 		chspec = acs_adjust_ctrl_chan(c_info, chspec);
+		c_info->selected_chspec = chspec;
 	}
 
-	ACSD_INFO("%s####Attempting 3+1 on channel 0x%4x (%s)\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+	if (!stunt && CHSPEC_CHANNEL(c_info->selected_chspec) ==
+			CHSPEC_CHANNEL(c_info->recent_prev_chspec)) {
+		if (now - c_info->acs_prev_chan_at <
+				2 * c_info->acs_chan_dwell_time) {
+			ACSD_INFO("%s: staying on same channel because of"
+					" prev_chspec dwell restrictions\n",
+					c_info->name);
+			return ret;
+		}
+	}
+
+	ACSD_INFO("%s####Attempting 3+1 on channel 0x%x\n", c_info->name, chspec);
 	if ((ret = acs_bgdfs_set(c_info, chspec)) == BCME_OK) {
 		time_t now = uptime();
 		bool is_dfs_weather = acs_is_dfs_weather_chanspec(c_info, chspec);
@@ -175,7 +294,7 @@ acs_bgdfs_attempt(acs_chaninfo_t * c_info, chanspec_t chspec, bool stunt)
 			(is_dfs_weather ? BGDFS_CCA_EU_WEATHER : BGDFS_CCA_FCC) +
 			BGDFS_POST_CCA_WAIT;
 		if (stunt && (ret = acs_bgdfs_set(c_info, DFS_AP_MOVE_STUNT)) != BCME_OK) {
-			ACSD_ERROR("Failed to stunt dfs_ap_move");
+			ACSD_ERROR("%s: Failed to stunt dfs_ap_move", c_info->name);
 		}
 	}
 	return ret;
@@ -230,7 +349,7 @@ static int acs_bgdfs_build_candidates(acs_chaninfo_t *c_info, int bw)
 	c_info->bgdfs_candidate[bw] = (ch_candidate_t*)acsd_malloc(count * sizeof(ch_candidate_t));
 	bgdfs_candi = c_info->bgdfs_candidate[bw];
 
-	ACSD_DEBUG("address of candi: %p\n", bgdfs_candi);
+	ACSD_DEBUG("%s: address of candi: %p\n", c_info->name, bgdfs_candi);
 	for (i = 0; i < count; i++) {
 		c = (chanspec_t)dtoh32(list->element[i]);
 		bgdfs_candi[i].chspec = c;
@@ -241,6 +360,22 @@ cleanup:
 	free(data_buf);
 	return ret;
 }
+
+int acs_bgdfs_check_candidates(acs_chaninfo_t *c_info, int bw)
+{
+	int ret = 0;
+	ret = acs_bgdfs_build_candidates(c_info, bw);
+
+	if (ret != BCME_OK) {
+		ACSD_ERROR("%s: %s could not get list of candidates\n", c_info->name, __FUNCTION__);
+		return BCME_ERROR;
+	}
+
+	ret = acs_nondfs_chan_check_for_bgdfs_trigger(c_info, bw);
+
+	return ret;
+}
+
 /*
  * acs_bgdfs_choose_channel - identifies the best channel to
  *   - do BGDFS scan ahead of time if include_unclear is TRUE
@@ -284,7 +419,7 @@ acs_bgdfs_choose_channel(acs_chaninfo_t * c_info, bool include_unclear,	bool pic
 			bw = ACS_BW_20;
 			break;
 		default:
-			ACSD_ERROR("bandwidth unsupported ");
+			ACSD_ERROR("%s: bandwidth unsupported\n", c_info->name);
 			return BCME_UNSUPPORTED;
 	}
 reduce_bw:
@@ -307,7 +442,7 @@ reduce_bw:
 		cand_ch = cand_arr[i].chspec;
 		cand_ts = acs_get_recent_timestamp(c_info, cand_ch);
 
-		cand_chinfo = acs_channel_info(c_info, cand_ch);
+		cand_chinfo = acs_get_chanspec_info(c_info, cand_ch);
 		cand_is_weather = ((cand_chinfo & WL_CHAN_WEATHER_RADAR) != 0);
 		cand_attempted = (cand_ch == c_info->acs_bgdfs->last_attempted) ||
 			(((~WL_CHANSPEC_CTL_SB_MASK) & cand_ch) ==
@@ -349,7 +484,8 @@ reduce_bw:
 		}
 
 		/* avoid recent BGDFS attempted channel */
-		if (cand_attempted && (now - c_info->acs_bgdfs->last_attempted_at) <
+		if (c_info->country_is_edcrs_eu && cand_attempted &&
+				(now - c_info->acs_bgdfs->last_attempted_at) <
 				(c_info->acs_bgdfs->idle_interval * 2)) {
 			continue;
 		}
@@ -438,7 +574,7 @@ acs_bgdfs_check_status(acs_chaninfo_t * c_info, bool bgdfs_on_txfail)
 	}
 
 	/* if channel is cleared, don't bother to verify move status for error */
-	if (ACS_CHINFO_IS_CLEARED(acs_channel_info(c_info, scan_ch))) {
+	if (ACS_CHINFO_IS_CLEARED(acs_get_chanspec_info(c_info, scan_ch))) {
 		return BCME_OK;
 	}
 
@@ -458,7 +594,8 @@ acs_bgdfs_check_status(acs_chaninfo_t * c_info, bool bgdfs_on_txfail)
 		BGDFS_SUB_LAST(status, BGDFS_SUB_MAIN_CORE) != scan_ch &&
 		BGDFS_SUB_CHAN(status, BGDFS_SUB_SCAN_CORE) != scan_ch &&
 		BGDFS_SUB_LAST(status, BGDFS_SUB_SCAN_CORE) != scan_ch) {
-		ACSD_ERROR("background scan channel 0x%4x (%s) mismatch [0x%x, 0x%x, 0x%x, 0x%x]\n",
+		ACSD_ERROR("%s: background scan channel 0x%4x (%s) mismatch [0x%x, 0x%x, 0x%x, 0x%x]\n",
+			c_info->name,
 			scan_ch, wf_chspec_ntoa(scan_ch, chanspecbuf),
 			BGDFS_SUB_CHAN(status, BGDFS_SUB_MAIN_CORE),
 			BGDFS_SUB_LAST(status, BGDFS_SUB_MAIN_CORE),
@@ -490,6 +627,12 @@ acs_bgdfs_ahead_trigger_scan(acs_chaninfo_t * c_info)
 	bool is_etsi = c_info->country_is_edcrs_eu;
 	bool is_dfs = c_info->cur_is_dfs;
 
+	if (c_info->cac_mode == ACS_CAC_MODE_FULL_ONLY) {
+		ACSD_INFO("%s BGDFS disabled due to CAC mode %d\n",
+				c_info->name, c_info->cac_mode);
+		return BCME_NOTENABLED;
+	}
+
 	if (acs_bgdfs == NULL) {
 		return BCME_UNSUPPORTED;
 	}
@@ -503,7 +646,7 @@ acs_bgdfs_ahead_trigger_scan(acs_chaninfo_t * c_info)
 	/* find best excluding precleared channels */
 	if (acs_bgdfs->next_scan_chan == 0 &&
 		(ret = acs_bgdfs_choose_channel(c_info, TRUE, FALSE)) != BCME_OK) {
-		ACSD_INFO("acs_bgdfs_choose_channel returned %d\n", ret);
+		ACSD_INFO("%s: acs_bgdfs_choose_channel returned %d\n", c_info->name, ret);
 	}
 
 	chosen_chspec = acs_bgdfs->next_scan_chan;
@@ -521,8 +664,9 @@ acs_bgdfs_ahead_trigger_scan(acs_chaninfo_t * c_info)
 	}
 
 	/* In FCC/ETSI, if on a low power Non-DFS, attempt a DFS 3+1 move */
-	if (!acs_is_dfs_chanspec(c_info, c_info->cur_chspec) &&
-		acsd_is_lp_chan(c_info, c_info->cur_chspec)) {
+	if (!(FIXCHSPEC(c_info) || (c_info->wet_enabled && acs_check_assoc_scb(c_info)) || MONITORCHECK(c_info)) &&
+			!acs_is_dfs_chanspec(c_info, c_info->cur_chspec) &&
+			acsd_is_lp_chan(c_info, c_info->cur_chspec)) {
 		ACSD_INFO("%s: moving to DFS channel 0x%0x\n", c_info->name, chosen_chspec);
 		if ((ret = acs_bgdfs_attempt(c_info, chosen_chspec, FALSE)) != BCME_OK) {
 			ACSD_ERROR("dfs_ap_move Failed\n");
@@ -540,6 +684,22 @@ acs_bgdfs_ahead_trigger_scan(acs_chaninfo_t * c_info)
 	return BCME_OK;
 }
 
+static int
+acs_check_for_valid_dfs_channels(acs_chaninfo_t *c_info, int bw)
+{
+	int i;
+	ch_candidate_t *candi;
+	bool ret = FALSE;
+	candi = c_info->candidate[bw];
+	for (i = 0; i < c_info->c_count[bw]; i++) {
+		if (candi[i].is_dfs && acs_dfs_channel_is_usable(c_info, candi[i].chspec)) {
+			ret = TRUE;
+			break;
+		}
+	}
+	return ret;
+}
+
 /*
  * acs_bgdfs_attempt_on_txfail - attempts BGDFS scan on txfail
  *
@@ -553,20 +713,71 @@ acs_bgdfs_attempt_on_txfail(acs_chaninfo_t * c_info)
 {
 	int ret = BCME_OK;
 	chanspec_t chspec = 0;
-	if (ACS_11H_AND_BGDFS(c_info) &&
-		!c_info->cur_is_dfs &&
-		c_info->country_is_edcrs_eu) {
+	int bw = ACS_BW_20;
+	int chbw = CHSPEC_BW(c_info->cur_chspec);
+	time_t now = uptime();
+
+	if (c_info->cac_mode == ACS_CAC_MODE_FULL_ONLY) {
+		ACSD_INFO("%s BGDFS disabled due to CAC mode %d\n",
+				c_info->name, c_info->cac_mode);
+		return BCME_NOTENABLED;
+	}
+
+
+	switch (chbw) {
+		case WL_CHANSPEC_BW_160:
+			bw = ACS_BW_160;
+			break;
+		case WL_CHANSPEC_BW_8080:
+			bw = ACS_BW_8080;
+			break;
+		case WL_CHANSPEC_BW_80:
+			bw = ACS_BW_80;
+			break;
+		case WL_CHANSPEC_BW_40:
+			bw = ACS_BW_40;
+			break;
+		case WL_CHANSPEC_BW_20:
+			bw = ACS_BW_20;
+			break;
+		default:
+			ACSD_ERROR("%s: bandwidth unsupported\n", c_info->name);
+			return FALSE;
+	}
+	/* Don't attempt dfs-reentry(bgdfs) if there are no valid dfs channels available.
+	 */
+	if (!acs_check_for_valid_dfs_channels(c_info, bw)) {
+		ACSD_INFO("%s: Not attempting dfs-reentry due to no dfs channels\n",
+				c_info->name);
+		return FALSE;
+	}
+	if (ACS_11H_AND_BGDFS(c_info) && !c_info->cur_is_dfs &&
+		(c_info->country_is_edcrs_eu || !acs_bgdfs_check_candidates(c_info, bw))) {
 		acs_dfsr_set_reentry_type(ACS_DFSR_CTX(c_info), DFS_REENTRY_IMMEDIATE);
+		c_info->switch_reason = APCS_DFS_REENTRY;
 		acs_select_chspec(c_info);
 		chspec = c_info->selected_chspec;
-		ACSD_INFO("%s Selected chan 0x%4x (%s) for attempting bgdfs\n", c_info->name, chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+		if (CHSPEC_CHANNEL(c_info->selected_chspec) ==
+				CHSPEC_CHANNEL(c_info->recent_prev_chspec)) {
+			if (now - c_info->acs_prev_chan_at < 2 * c_info->acs_chan_dwell_time) {
+			ACSD_INFO("%s: staying on same channel because of prev_chanspec dwell"
+					"restrictions\n", c_info->name);
+				return TRUE;
+			}
+		}
+
+		ACSD_INFO("%s Selected chan 0x%x for attempting bgdfs\n", c_info->name, chspec);
 		if (chspec) {
 			ret = acs_bgdfs_attempt(c_info, chspec, FALSE);
 			if (ret != BCME_OK) {
-				ACSD_ERROR("Failed bgdfs on 0x%4x (%s)\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+				ACSD_ERROR("%s: Failed bgdfs on %x\n", c_info->name, chspec);
 				return FALSE;
 			}
 			c_info->acs_bgdfs->acs_bgdfs_on_txfail = TRUE;
+			chanim_upd_acs_record(c_info->chanim_info, c_info->selected_chspec,
+					c_info->switch_reason);
+			c_info->recent_prev_chspec = c_info->cur_chspec;
+			c_info->acs_prev_chan_at = uptime();
 			return TRUE;
 		}
 	}

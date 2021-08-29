@@ -1,22 +1,23 @@
-/*
+/**
+ * -----------------------------------------------------------------------------
+ *
  * HWA Core Register Definitions
  * Assembled from various HWA top, common and blocks reg_defs.h files
  *
- *  reg_defs.h                       regs_defs.h timestamp       regs.txt
+ * These definitions must be compatible with all HWA revisions. When a new
+ * chipset's HWA revision is added, include the RegDB generated signature.
  *
- *  hwa_top_reg_defs.h               Thu Jul 13 23:01:16 2017    4601ab6
- *  hwa_common_reg_defs.h            Sun Aug 27 17:51:25 2017    d738a28
- *  hwa_bm_reg_defs.h                Wed Aug 23 17:58:12 2017    1010c13
- *  hwa_tx_reg_defs.h                Sun Aug 27 17:51:22 2017    324283d
- *  hwa_txdma_reg_defs.h             Sun Aug 27 17:51:21 2017    3ff0b65
- *  hwa_tx_status_reg_defs.h         Wed Aug 23 17:58:04 2017    2ee6c00
- *  hwa_rx_reg_defs.h                Wed Aug 23 17:58:10 2017    7b3a5e6
- *  hwa_cpl_reg_defs.h               Thu Jul 13 23:01:02 2017    cc1ef1f
- *  hwa_dma_reg_defs.h               Thu Jul 13 23:01:12 2017    34374a5
  *
- *  hc_hin_reg_defs.h                Thu Aug 24 17:42:31 2017    Unknown
+ *  Family   Revision     Chips
+ *  ------   --------     ----------------------------
+ *  HWA2.0   128          43684Ax (Deprecated/Deleted)
+ *  HWA2.1   129          43684Bx May 30 2018
+ *  HWA2.1   130          43684Cx Mar 25 2019
+ *  HWA2.2   131           6715Ax Apr 29 2019
  *
- * Copyright 2018 Broadcom
+ * -----------------------------------------------------------------------------
+ *
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -63,6 +64,39 @@
  *
  * vim: set ts=4 noet sw=4 tw=80:
  * -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+ * -----------------------------------------------------------------------------
+ */
+
+/*
+ * -----------------------------------------------------------------------------
+ *  XXX Internal
+ *
+ *  reg_defs.h                 Rev   RegDB timestamp             TXT SHA
+ *  ------------------------   ---   ------------------------    -------
+ *  hwa_top_reg_defs.h         130   Mon Mar 25 20:05:16 2019    e513820
+ *  hwa_common_reg_defs.h      130   Mon Mar 25 20:05:11 2019    1c23a2d
+ *  hwa_bm_reg_defs.h          130   Mon Mar 25 20:05:10 2019    1010c13
+ *  hwa_tx_reg_defs.h          130   Mon Mar 25 20:05:01 2019    0796610
+ *  hwa_txdma_reg_defs.h       130   Mon Mar 25 20:04:59 2019    047dcd7
+ *  hwa_tx_status_reg_defs.h   130   Mon Mar 25 20:04:58 2019    a9a5baa
+ *  hwa_rx_reg_defs.h          130   Mon Mar 25 20:05:07 2019    0ffdd81
+ *  hwa_cpl_reg_defs.h         130   Mon Mar 25 20:05:04 2019    cc1ef1f
+ *  hwa_dma_reg_defs.h         130   Mon Mar 25 20:05:13 2019    34374a5
+ *
+ *  hwa_top_reg_defs.h         131   Mon Apr 29 01:35:07 2019    cddf284
+ *  hwa_common_reg_defs.h      131   Mon Apr 29 01:34:58 2019    adcb798
+ *  hwa_bm_reg_defs.h          131   Mon Apr 29 01:34:56 2019    1010c13
+ *  hwa_tx_reg_defs.h          131   Mon Apr 29 01:34:44 2019    fe4eaca
+ *  hwa_txdma_reg_defs.h       131   Mon Apr 29 01:34:42 2019    2f9162e
+ *  hwa_tx_status_reg_defs.h   131   Mon Apr 29 01:34:39 2019    aa399d1
+ *  hwa_rx_reg_defs.h          131   Mon Apr 29 01:34:51 2019    5a7b113
+ *  hwa_cpl_reg_defs.h         131   Mon Apr 29 01:34:47 2019    9b0f78a
+ *  hwa_dma_reg_defs.h         131   Mon Apr 29 01:35:00 2019    17e600e
+ *  hwa_pager_reg_defs.h       131   Mon Apr 29 01:35:04 2019    6432aaa
+ *
+ *  hc_hin_reg_defs.h                Thu Aug 24 17:42:31 2017    Unknown
+ *
+ * -----------------------------------------------------------------------------
  */
 
 #ifndef _HWA_REGS_H
@@ -71,6 +105,9 @@
 #include <typedefs.h>
 #include <bcmdefs.h>
 #include <hwa_reg_defs.h> // regdb.pl generated SHIFT and MASK macros
+
+#define HWA_REGS_NULL                   ((hwa_regs_t *)NULL)
+#define HWA_AUDIT_REGS(regs)            HWA_ASSERT((regs) != HWA_REGS_NULL)
 
 #define HWA_TX_CORES_MAX 2
 #define HWA_RX_CORES_MAX 2
@@ -166,9 +203,36 @@ typedef volatile struct hwa_dma_channel {               // 0x000
 	uint32 PAD[2];                                      // 0x038 - 0x03f
 } hwa_dma_channel_t;                                    // 0x040  64B  16Regs
 
+// Packet Pager registers layout for pktpool
+typedef volatile struct hwa_pp_pool {
+	dma64addr_t addr;                                   // 0x000 - 0x007
+	uint32      ctrl;                                   // 0x008
+	uint32      size;                                   // 0x00c
+	uint32      intr_th;                                // 0x010
+	uint32      alloc_index;                            // 0x014
+	uint32      dealloc_index;                          // 0x018
+	uint32      dealloc_status;                         // 0x01c
+} hwa_pp_pool_t;                                        // 0x020 32B    8Regs
+
+// Packet Pager registers layout for ring
+typedef volatile struct hwa_pp_ring {
+	uint32      addr;                                   // 0x000
+	uint32      wr_index;                               // 0x004
+	uint32      rd_index;                               // 0x008
+	uint32      cfg;                                    // 0x00c
+	uint32      lazyint_cfg;                            // 0x010
+	uint32      debug;                                  // 0x014
+} hwa_pp_ring_t;                                        // 0x018 24B    4Regs
+
+// Packet Pager registers layout for IntStatus/Mark
+typedef volatile struct hwa_pp_int {
+	uint32      status;                                 // 0x000
+	uint32      mask;                                   // 0x004
+} hwa_pp_int_t;                                         // 0x008  8B    2Regs
+
 /*
  * -----------------------------------------------------------------------------
- * HWA_TOP REGISTERS: hwa_top_reg_defs.h Thu Jul 13 23:01:16 2017
+ * HWA_TOP REGISTERS: hwa_top_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 typedef volatile struct hwa_top_regs {                  // 0x000
@@ -186,7 +250,7 @@ typedef volatile struct hwa_top_regs {                  // 0x000
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_COMMON REGISTERS: hwa_common_reg_defs.h Sun Aug 27 17:51:25 2017
+ * HWA_COMMON REGISTERS: hwa_common_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 typedef volatile struct hwa_common_regs {               // 0x000
@@ -204,13 +268,8 @@ typedef volatile struct hwa_common_regs {               // 0x000
 	uint32 txintrval;                                   // 0x0a8
 	DECL_DMA64ADDR(rxintraddr);                         // 0x0ac - 0x0b3
 	uint32 rxintrval;                                   // 0x0b4
-#if HWA_REVISION_EQ_128
-	DECL_DMA64ADDR(cplintraddr);                        // 0x0b8 - 0x0bf
-	uint32 cplintrval;                                  // 0x0c0
-#else  /* HWA_REVISION_GE_129 */
 	DECL_DMA64ADDR(cplintr_tx_addr);                    // 0x0b8 - 0x0bf
 	uint32 cplintr_tx_val;                              // 0x0c0
-#endif /* HWA_REVISION_GE_129 */
 	uint32 intr_control;                                // 0x0c4
 	uint32 PAD[2];                                      // 0x0c8 - 0x0cf
 	uint32 module_clk_enable;                           // 0x0d0
@@ -220,7 +279,10 @@ typedef volatile struct hwa_common_regs {               // 0x000
 	uint32 module_clkext;                               // 0x0e0
 	uint32 module_enable;                               // 0x0e4
 	uint32 module_idle;                                 // 0x0e8
-	uint32 PAD[5];                                      // 0x0ec - 0x0ff
+	uint32 PAD;                                         // 0x0ec
+	uint32 dmatxsel;                                    // 0x0f0
+	uint32 dmarxsel;                                    // 0x0f4
+	uint32 PAD[2];                                      // 0x0f8 - 0x0ff
 	uint32 gpiomuxcfg;                                  // 0x100
 	uint32 gpioout;                                     // 0x104
 	uint32 gpiooe;                                      // 0x108
@@ -233,18 +295,19 @@ typedef volatile struct hwa_common_regs {               // 0x000
 	uint32 hwa2hwcap;                                   // 0x130
 	uint32 hwa2swpkt_high32_pa;                         // 0x134
 	uint32 hwa2pciepc_pkt_high32_pa;                    // 0x138
-#if HWA_REVISION_EQ_128
-	uint32 PAD[49];                                     // 0x13c - 0x1ff
-#else  /* HWA_REVISION_GE_129 */
-	uint32 PAD[9];                                      // 0x13c - 0x15f
+	uint32 PAD;                                         // 0x13c
+	uint32 dma_sof_status;                              // 0x140
+	uint32 dma_eof_status;                              // 0x144
+	uint32 PAD[6];                                      // 0x148 - 0x15f
 	hwa_cplintr_t cplintr_rx[4];                        // 0x160 - 0x19f
-	uint32 PAD[24];                                     // 0x1a0 - 0x1ff
-#endif /* HWA_REVISION_GE_129 */
+	uint32 pageintstatus;                               // 0x1a0
+	uint32 pageintmask;                                 // 0x1a4
+	uint32 PAD[22];                                     // 0x1a8 - 0x1ff
 } hwa_common_regs_t;                                    // 0x200 512B 128Regs
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_BM REGISTERS: hwa_bm_reg_defs.h Wed Aug 23 17:58:12 2017
+ * HWA_BM REGISTERS: hwa_bm_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 typedef volatile struct hwa_bm_regs {                   // 0x000
@@ -260,7 +323,7 @@ typedef volatile struct hwa_bm_regs {                   // 0x000
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_TX REGISTERS: hwa_tx_reg_defs.h Sun Aug 27 17:51:22 2017
+ * HWA_TX REGISTERS: hwa_tx_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 typedef volatile struct hwa_tx_regs {                   // 0x000
@@ -278,15 +341,11 @@ typedef volatile struct hwa_tx_regs {                   // 0x000
 	uint32 pkt_chq_rd_idx;                              // 0x0c8
 	uint32 pkt_chq_ctrl;                                // 0x0cc
 	uint32 txpost_frc_base_addr;                        // 0x0d0
-#if HWA_REVISION_EQ_128
-	uint32 PAD[5];                                      // 0x0d4 - 0x0e7
-#else  /* HWA_REVISION_GE_129 */
 	uint32 pktdealloc_ring_addr;                        // 0x0d4
 	uint32 pktdealloc_ring_wrindex;                     // 0x0d8
 	uint32 pktdealloc_ring_rdindex;                     // 0x0dc
 	uint32 pktdealloc_ring_depth;                       // 0x0e0
 	uint32 pktdealloc_ring_lazyintrconfig;              // 0x0e4
-#endif /* HWA_REVISION_GE_129 */
 	uint32 pkt_ch_valid;                                // 0x0e8
 	uint32 pkt_ch_flowid_reg[HWA_TX_PKT_CH_MAX / 2];    // 0x0ec - 0x0fb
 	uint32 dma_desc_template;                           // 0x0fc
@@ -297,10 +356,6 @@ typedef volatile struct hwa_tx_regs {                   // 0x000
 	uint32 txp_host_rdidx_update_reg;                   // 0x114
 	uint32 txpost_status_reg;                           // 0x118
 	uint32 txpost_status_reg2;                          // 0x11c
-#if HWA_REVISION_EQ_128
-	uint32 txpost_cfg1;                                 // 0x120
-	uint32 PAD[39];                                     // 0x124 - 0x1bf
-#else  /* HWA_REVISION_GE_129 */
 	uint32 pktdeallocmgr_tfrstatus;                     // 0x120
 	uint32 pktdealloc_localfifo_cfg_status;             // 0x124
 	uint32 txpost_cfg1;                                 // 0x128
@@ -310,63 +365,14 @@ typedef volatile struct hwa_tx_regs {                   // 0x000
 	uint32 PAD[2];                                      // 0x138 - 0x13f
 	uint32 txpost_debug_reg;                            // 0x140
 	uint32 PAD[31];                                     // 0x144 - 0x1bf
-#endif /* HWA_REVISION_GE_129 */
 } hwa_tx_regs_t;                                        // 0x1c0 448B 112Regs
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_TXDMA REGISTERS: hwa_txdma_reg_defs.h Sun Aug 27 17:51:21 2017
+ * HWA_TXDMA REGISTERS: hwa_txdma_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 typedef volatile struct hwa_txdma_regs {                // 0x000
-#if HWA_REVISION_EQ_128
-	uint32 txd_ctrl;                                    // 0x000
-	uint32 txd_host_addr_h;                             // 0x004
-	uint32 txd_rinfo_table_addr_l;                      // 0x008
-	uint32 txd_rinfo_ctrl;                              // 0x00c
-	uint32 txd_rinfo_fixup_bitmap;                      // 0x010
-	uint32 txd_rinfo_table_update;                      // 0x014
-	uint32 txd_rinfo_config_addr_l;                     // 0x018
-	uint32 txd_cache_table_addr_l;                      // 0x01c
-	uint32 txd_cache_ctrl;                              // 0x020
-	uint32 txd_pktinfo_fixup_bitmap;                    // 0x024
-	uint32 txd_cacheinfo_fixup_bitmap;                  // 0x028
-	uint32 mac_txd_bm_pool_base_addr_l;                 // 0x02c
-	uint32 mac_txd_bm_config;                           // 0x030
-	uint32 mac_txd_bm_pool_avail_count_sts;             // 0x034
-	uint32 eth_type_out[HWA_TXDMA_ETH_TYPE_OUI_MAX];    // 0x038 - 0x047
-	uint32 sw2hwa_tx_pkt_chain_q_base_addr_l;           // 0x048
-	uint32 sw2hwa_tx_pkt_chain_q_wr_index;              // 0x04c
-	uint32 sw2hwa_tx_pkt_chain_q_rd_index;              // 0x050
-	uint32 sw2hwa_tx_pkt_chain_q_ctrl;                  // 0x054
-	uint32 fifo_index;                                  // 0x058
-	uint32 fifo_base_addr;                              // 0x05c
-	uint32 fifo_wr_index;                               // 0x060
-	uint32 fifo_depth;                                  // 0x064
-	uint32 sw_pkt_size;                                 // 0x068
-	uint32 dma_desc_template_txdma;                     // 0x06c
-	uint32 state_sts;                                   // 0x070
-	uint32 hwa_txdma2_cfg1;                             // 0x074
-	uint32 hwa_txdma2_cfg2;                             // 0x078
-	DECL_DMA64ADDR(ovflowq_base_addr);                  // 0x07c - 0x083
-	uint32 num_txfifo_percore;                          // 0x084
-	uint32 fifo_rd_index;                               // 0x088
-	uint32 fifo_attrib;                                 // 0x08c
-	uint32 fifo_base_addrhi;                            // 0x090
-	uint32 PAD[1];                                      // 0x094 - 0x097
-	DECL_DMA64ADDR(aqm_base_addr);                      // 0x098 - 0x09f
-	uint32 aqm_wr_index;                                // 0x0a0
-	uint32 aqm_depth;                                   // 0x0a4
-	uint32 aqm_rd_index;                                // 0x0a8
-	uint32 aqm_attrib;                                  // 0x0ac
-	uint32 state_sts2;                                  // 0x0b0
-	uint32 state_sts3;                                  // 0x0b4
-	uint32 hwa_txdma2_cfg3;                             // 0x0b8
-	uint32 hwa_txdma2_cfg4;                             // 0x0bc
-	uint32 sw2hwa_tx_pkt_chain_q_base_addr_h;           // 0x0c0
-	uint32 sw_tx_pkt_nxt_h;                             // 0x0c4
-	uint32 PAD[14];                                     // 0x0c8 - 0x0ff
-#else  /* HWA_REVISION_GE_129 */
 	uint32 hwa_txdma2_cfg1;                             // 0x000
 	uint32 hwa_txdma2_cfg2;                             // 0x004
 	uint32 hwa_txdma2_cfg3;                             // 0x008
@@ -395,13 +401,18 @@ typedef volatile struct hwa_txdma_regs {                // 0x000
 	uint32 PAD[2];                                      // 0x078 - 0x07f
 	uint32 sw_tx_pkt_nxt_h;                             // 0x080
 	uint32 dma_desc_template_txdma;                     // 0x084
-	uint32 PAD[30];                                     // 0x088 - 0x0ff
-#endif /* HWA_REVISION_GE_129 */
+	uint32 PAD[2];                                      // 0x088 - 0x08f
+	uint32 pp_pageout_cfg;                              // 0x090
+	uint32 pp_pageout_sts;                              // 0x094
+	uint32 pp_pagein_cfg;                               // 0x098
+	uint32 pp_pagein_sts;                               // 0x09c
+	uint32 pp_pageout_dataptr_th;                       // 0x0a0
+	uint32 PAD[23];                                     // 0x0a0 - 0x0ff
 } hwa_txdma_regs_t;                                     // 0x100 256B  64Regs
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_TX_STATUS REGISTERS: hwa_tx_status_reg_defs.h Wed Aug 23 17:58:04 2017
+ * HWA_TX_STATUS REGISTERS: hwa_tx_status_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 typedef volatile struct hwa_tx_status_regs {            // 0x000
@@ -413,19 +424,15 @@ typedef volatile struct hwa_tx_status_regs {            // 0x000
 	uint32 tse_sts;                                     // 0x018
 	uint32 txs_debug_reg;                               // 0x01c
 	uint32 dma_desc_template_txs;                       // 0x020
-#if HWA_REVISION_EQ_128
-	uint32 PAD[23];                                     // 0x024 - 0x07f
-#else  /* HWA_REVISION_GE_129 */
 	uint32 txe_cfg1;                                    // 0x024
 	uint32 tse_axi_base;                                // 0x028
 	uint32 tse_axi_ctl;                                 // 0x02c
 	uint32 PAD[20];                                     // 0x030 - 0x7f
-#endif /* HWA_REVISION_GE_129 */
 } hwa_tx_status_regs_t;                                 // 0x080 128B  32Regs
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_RX REGISTERS: hwa_rx_reg_defs.h Wed Aug 23 17:58:10 2017
+ * HWA_RX REGISTERS: hwa_rx_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 typedef volatile struct hwa_rx_regs {                   // 0x000
@@ -442,7 +449,12 @@ typedef volatile struct hwa_rx_regs {                   // 0x000
 	DECL_RXPATH_FIFO(d0dest);                           // 0x060 - 0x08f
 	DECL_RXPATH_FIFO(d1dest);                           // 0x090 - 0x0bf
 	DECL_RXPATH_RING(d11bdest);                         // 0x0c0 - 0x0d7
-	uint32 PAD[6];                                      // 0x0d8 - 0x0ef
+	uint32 d11bdest_threshold_l1l0;                     // 0x0d8
+	uint32 d11bdest_threshold_l2;                       // 0x0dc
+	uint32 d11bdest_ring_wrindex_dir;                   // 0x0e0
+	uint32 pagein_status;                               // 0x0e4
+	uint32 recycle_status;                              // 0x0e8
+	uint32 PAD;                                         // 0x0ec
 	DECL_RXPATH_RING(freeidxsrc);                       // 0x0f0 - 0x107
 	uint32 PAD[6];                                      // 0x108 - 0x11f
 	uint32 rxpmgr_cfg;                                  // 0x120
@@ -477,12 +489,14 @@ typedef volatile struct hwa_rx_regs {                   // 0x000
 	uint32 debug_errorstatus;                           // 0x1a8
 	uint32 debug_hwa2status;                            // 0x1ac
 	uint32 debug_hwa2errorstatus;                       // 0x1b0
-	uint32 PAD[11];                                     // 0x1b4 - 0x1df
+	uint32 debug_freeidx_err;                           // 0x1b4
+	uint32 debug_freeidx_cnt;                           // 0x1b8
+	uint32 PAD[9];                                      // 0x1bc - 0x1df
 } hwa_rx_regs_t;                                        // 0x1e0 480B 120Regs
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_CPL REGISTERS: hwa_cpl_reg_defs.h Thu Jul 13 23:01:02 2017
+ * HWA_CPL REGISTERS: hwa_cpl_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 typedef volatile struct hwa_cpl_regs {                  // 0x000
@@ -500,7 +514,7 @@ typedef volatile struct hwa_cpl_regs {                  // 0x000
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_DMA REGISTERS: hwa_dma_reg_defs.h Thu Jul 13 23:01:12 2017
+ * HWA_DMA REGISTERS: hwa_dma_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 typedef volatile struct hwa_dma_regs {                  // 0x000
@@ -524,6 +538,58 @@ typedef volatile struct hwa_dma_regs {                  // 0x000
 	hwa_dma_channel_t channels[HWA_DMA_CHANNELS];       // 0x100 - 0x17f
 	uint32 PAD[32];                                     // 0x180 - 0x1ff
 } hwa_dma_regs_t;                                       // 0x200 512B 128Regs
+
+/*
+ * -----------------------------------------------------------------------------
+ * HWA_PAGER REGISTERS: hwa_pager_reg_defs.h
+ * -----------------------------------------------------------------------------
+ */
+typedef volatile struct hwa_pager_regs {                // 0x000
+	uint32          pp_pager_cfg;                       // 0x000
+	uint32          pp_pktctx_size;                     // 0x004
+	uint32          pp_pktbuf_size;                     // 0x008
+	uint32          PAD[5];                             // 0x00c - 0x01f
+	hwa_pp_ring_t   pagein_req_ring;                    // 0x020 - 0x037
+	uint32          PAD[2];                             // 0x038 - 0x03f
+	hwa_pp_ring_t   pagein_rsp_ring;                    // 0x040 - 0x057
+	hwa_pp_int_t    pagein_int;                         // 0x058 - 0x05f
+	hwa_pp_ring_t   pageout_req_ring;                   // 0x060 - 0x077
+	uint32          PAD[2];                             // 0x078 - 0x07f
+	hwa_pp_ring_t   pageout_rsp_ring;                   // 0x080 - 0x097
+	hwa_pp_int_t    pageout_int;                        // 0x098 - 0x09f
+	hwa_pp_ring_t   pagemgr_req_ring;                   // 0x0a0 - 0x0b7
+	uint32          PAD[2];                             // 0x0b8 - 0x0bf
+	hwa_pp_ring_t   pagemgr_rsp_ring;                   // 0x0c0 - 0x0d7
+	hwa_pp_int_t    pagemgr_int;                        // 0x0d8 - 0x0df
+	hwa_pp_ring_t   freepkt_req_ring;                   // 0x0e0 - 0x0f7
+	uint32          PAD[2];                             // 0x0f8 - 0x0ff
+	hwa_pp_ring_t   freerph_req_ring;                   // 0x100 - 0x117
+	uint32          PAD[2];                             // 0x118 - 0x11f
+	uint32          rx_alloc_transaction_id;            // 0x120
+	uint32          rx_free_transaction_id;             // 0x124
+	uint32          tx_alloc_transaction_id;            // 0x128
+	uint32          tx_free_transaction_id;             // 0x12c
+	uint32          PAD[4];                             // 0x130 - 0x13f
+	hwa_pp_pool_t   hostpktpool;                        // 0x140 - 0x15f
+	hwa_pp_pool_t   dnglpktpool;                        // 0x160 - 0x17f
+	hwa_pp_int_t    pagerbm_int;                        // 0x180 - 0x187
+	uint32          PAD[2];                             // 0x188 - 0x18f
+	uint32          pp_dma_descr_template;              // 0x190
+	uint32          pp_pagein_req_ddbmth;               // 0x194
+	uint32          PAD[2];                             // 0x198 - 0x19f
+	uint32          pp_apkt_cfg;                        // 0x1a0
+	uint32          pp_rx_apkt_cfg;                     // 0x1a4
+	uint32          pp_fpkt_cfg;                        // 0x1a8
+	uint32          pp_phpl_cfg;                        // 0x1ac
+	uint32          PAD[4];                             // 0x1b0 - 0x1bf
+	uint32          pp_apkt_sts_dbg;                    // 0x1c0
+	uint32          pp_rx_apkt_sts_dbg;                 // 0x1c4
+	uint32          pp_fpkt_sts_dbg;                    // 0x1c8
+	uint32          pp_tb_sts_dbg;                      // 0x1cc
+	uint32          pp_push_sts_dbg;                    // 0x1d0
+	uint32          pp_pull_sts_dbg;                    // 0x1d4
+	uint32          PAD[10];                            // 0x1d8 - 0x1ff
+} hwa_pager_regs_t;                                     // 0x200 512B 128Reg
 
 /*
  * -----------------------------------------------------------------------------
@@ -552,15 +618,19 @@ typedef volatile struct hwa_regs {                      // 0x000
 	// DMA Blocks
 	hwa_dma_regs_t          dma;                        // 0xe00 - 0xfff
 
-} hwa_regs_t;                                           // 0x1000 4KB 1KRegs
+	// ------------------------------------------------ 4KB boundary
 
-#define HWA_REGS_NULL                   ((hwa_regs_t*)NULL)
-#define HWA_AUDIT_REGS(regs)            HWA_ASSERT((regs) != HWA_REGS_NULL)
+#if HWA_REVISION_GE_131
+	// Packet Pager Block
+	hwa_pager_regs_t        pager;                      // 0x1000 - 0x11ff
+#endif /* HWA_REVISION_GE_131 */
+
+} hwa_regs_t;
 
 /*
  * -----------------------------------------------------------------------------
- * HWA HC HIN REGISTER MAP: hc_hin_reg_defs.h Thu Aug 24 17:42:31 2017
- * HWA PSM REGISTER MAP: hc_psm_reg_defs.h (Mon Sep  4 10:01:00 2017)
+ * HWA HC HIN REGISTER MAP: hc_hin_reg_defs.h
+ * HWA PSM REGISTER MAP: hc_psm_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 

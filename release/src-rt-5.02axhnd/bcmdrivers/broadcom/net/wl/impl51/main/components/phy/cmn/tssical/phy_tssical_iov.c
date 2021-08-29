@@ -1,7 +1,7 @@
 /*
  * TSSICAL module implementation - iovar handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tssical_iov.c 685804 2017-02-18 02:11:13Z $
+ * $Id: phy_tssical_iov.c 765542 2018-07-06 22:21:16Z $
  */
 
 #include <phy_tssical_iov.h>
@@ -111,6 +111,17 @@ static const bcm_iovar_t phy_tssical_iovars[] = {
 	0, 0, IOVT_INT8, 0
 	},
 #endif /* WLC_TXCAL */
+#if defined(WLTEST)
+	/* OLPC thresholds can be present in srom or nvram. Allow
+	 * manipulation for board tuning
+	 */
+	{"olpc_thresh2g", IOV_OLPC_THRESH2G,
+	IOVF_SET_DOWN, 0, IOVT_INT8, 0
+	},
+	{"olpc_thresh5g", IOV_OLPC_THRESH5G,
+	IOVF_SET_DOWN, 0, IOVT_INT8, 0
+	},
+#endif // endif
 
 	{NULL, 0, 0, 0, 0, 0}
 };
@@ -305,6 +316,60 @@ phy_tssical_doiovar(void *ctx, uint32 aid,
 		break;
 	}
 #endif /* WLC_TXCAL */
+
+#if defined(WLTEST)
+	/* Only certain chip families support olpc threshold tuning commands:
+	 *  srom 18 (11ax): has olpc threshold 2g/5g entries in srom,
+	 *  srom 11 (11ac1): chips (53573/47452) and/or designs lacking physical eeproms,
+	 *  or WLC_TXCAL is enabled
+	 */
+	case IOV_GVAL(IOV_OLPC_THRESH2G):
+		if (FALSE ||
+#ifdef WLC_TXCAL
+			TRUE ||
+#endif /* WLC_TXCAL */
+			SROMREV(pi->sh->sromrev) == 18 || SROMREV(pi->sh->sromrev) == 11) {
+			int_val = phy_tssical_get_olpc_threshold2g(pi->tssicali);
+			bcopy(&int_val, a, sizeof(int_val));
+		} else {
+			err = BCME_UNSUPPORTED;
+		}
+		break;
+	case IOV_SVAL(IOV_OLPC_THRESH2G):
+		if (FALSE ||
+#ifdef WLC_TXCAL
+			TRUE ||
+#endif /* WLC_TXCAL */
+			SROMREV(pi->sh->sromrev) == 18 || SROMREV(pi->sh->sromrev) == 11) {
+			phy_tssical_set_olpc_threshold2g(pi->tssicali, (int8)int_val);
+		} else {
+			err = BCME_UNSUPPORTED;
+		}
+		break;
+	case IOV_GVAL(IOV_OLPC_THRESH5G):
+		if (FALSE ||
+#ifdef WLC_TXCAL
+			TRUE ||
+#endif /* WLC_TXCAL */
+			SROMREV(pi->sh->sromrev) == 18 || SROMREV(pi->sh->sromrev) == 11) {
+			int_val = phy_tssical_get_olpc_threshold5g(pi->tssicali);
+			bcopy(&int_val, a, sizeof(int_val));
+		} else {
+			err = BCME_UNSUPPORTED;
+		}
+		break;
+	case IOV_SVAL(IOV_OLPC_THRESH5G):
+		if (FALSE ||
+#ifdef WLC_TXCAL
+			TRUE ||
+#endif /* WLC_TXCAL */
+			SROMREV(pi->sh->sromrev) == 18 || SROMREV(pi->sh->sromrev) == 11) {
+			phy_tssical_set_olpc_threshold5g(pi->tssicali, (int8)int_val);
+		} else {
+			err = BCME_UNSUPPORTED;
+		}
+		break;
+#endif // endif
 
 	default:
 		err = BCME_UNSUPPORTED;

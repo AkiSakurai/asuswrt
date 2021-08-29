@@ -1,22 +1,23 @@
-/*
+/**
+ * -----------------------------------------------------------------------------
+ *
  * HWA Core Register Field Definitions
  * Assembled from various HWA top, common and blocks reg_defs.h files
  *
- *  reg_defs.h                       regs_defs.h timestamp       regs.txt
+ * These definitions must be compatible with all HWA revisions. When a new
+ * chipset's HWA revision is added, include the RegDB generated signature.
  *
- *  hwa_top_reg_defs.h               Thu Jul 13 23:01:16 2017    4601ab6
- *  hwa_common_reg_defs.h            Sun Aug 27 17:51:25 2017    d738a28
- *  hwa_bm_reg_defs.h                Wed Aug 23 17:58:12 2017    1010c13
- *  hwa_tx_reg_defs.h                Sun Aug 27 17:51:22 2017    324283d
- *  hwa_txdma_reg_defs.h             Sun Aug 27 17:51:21 2017    3ff0b65
- *  hwa_tx_status_reg_defs.h         Wed Aug 23 17:58:04 2017    2ee6c00
- *  hwa_rx_reg_defs.h                Wed Aug 23 17:58:10 2017    7b3a5e6
- *  hwa_cpl_reg_defs.h               Thu Jul 13 23:01:02 2017    cc1ef1f
- *  hwa_dma_reg_defs.h               Thu Jul 13 23:01:12 2017    34374a5
  *
- *  hc_hin_reg_defs.h                Thu Aug 24 17:42:31 2017    Unknown
+ * Family   Revision     Chips
+ * ------   --------     ----------------------------
+ * HWA2.0   128          43684Ax (Deprecated/Deleted)
+ * HWA2.1   129          43684Bx May 30 2018
+ * HWA2.1   130          43684Cx Mar 25 2019
+ * HWA2.2   131           6715A0 Apr 29 2019
  *
- * Copyright 2018 Broadcom
+ * -----------------------------------------------------------------------------
+ *
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -57,13 +58,45 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: $
+ * $Id$
  *
  * vim: set ts=4 noet sw=4 tw=80:
  * -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+ * -----------------------------------------------------------------------------
+ */
+
+/**
+ * -----------------------------------------------------------------------------
+ *  XXX Internal
+ *
+ *  reg_defs.h                 Rev   RegDB timestamp             TXT SHA
+ *  ------------------------   ---   ------------------------    -------
+ *  hwa_top_reg_defs.h         130   Mon Mar 25 20:05:16 2019    e513820
+ *  hwa_common_reg_defs.h      130   Mon Mar 25 20:05:11 2019    1c23a2d
+ *  hwa_bm_reg_defs.h          130   Mon Mar 25 20:05:10 2019    1010c13
+ *  hwa_tx_reg_defs.h          130   Mon Mar 25 20:05:01 2019    0796610
+ *  hwa_txdma_reg_defs.h       130   Mon Mar 25 20:04:59 2019    047dcd7
+ *  hwa_tx_status_reg_defs.h   130   Mon Mar 25 20:04:58 2019    a9a5baa
+ *  hwa_rx_reg_defs.h          130   Mon Mar 25 20:05:07 2019    0ffdd81
+ *  hwa_cpl_reg_defs.h         130   Mon Mar 25 20:05:04 2019    cc1ef1f
+ *  hwa_dma_reg_defs.h         130   Mon Mar 25 20:05:13 2019    34374a5
+ *
+ *  hwa_top_reg_defs.h         131   Mon Apr 29 01:35:07 2019    cddf284
+ *  hwa_common_reg_defs.h      131   Mon Apr 29 01:34:58 2019    adcb798
+ *  hwa_bm_reg_defs.h          131   Mon Apr 29 01:34:56 2019    1010c13
+ *  hwa_tx_reg_defs.h          131   Mon Apr 29 01:34:44 2019    fe4eaca
+ *  hwa_txdma_reg_defs.h       131   Mon Apr 29 01:34:42 2019    2f9162e
+ *  hwa_tx_status_reg_defs.h   131   Mon Apr 29 01:34:39 2019    aa399d1
+ *  hwa_rx_reg_defs.h          131   Mon Apr 29 01:34:51 2019    5a7b113
+ *  hwa_cpl_reg_defs.h         131   Mon Apr 29 01:34:47 2019    9b0f78a
+ *  hwa_dma_reg_defs.h         131   Mon Apr 29 01:35:00 2019    17e600e
+ *  hwa_pager_reg_defs.h       131   Mon Apr 29 01:35:04 2019    6432aaa
+ *
+ *  hc_hin_reg_defs.h                Thu Aug 24 17:42:31 2017    Unknown
+ *
+ * -----------------------------------------------------------------------------
  */
 
 #ifndef _HWA_REG_DEFS_H
@@ -71,7 +104,7 @@
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_TOP MACROS: hwa_top_reg_defs.h Thu Jul 13 23:01:16 2017
+ * HWA_TOP MACROS: hwa_top_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 #define hwa_top_base                                0x100
@@ -178,24 +211,12 @@
 #define HWA_TOP_HWAHWCAP1_MAXSEGCNT3A3B_SHIFT      9
 #define HWA_TOP_HWAHWCAP1_MAXSEGCNT3A3B_MASK \
 	(0xf << HWA_TOP_HWAHWCAP1_MAXSEGCNT3A3B_SHIFT)
-#define HWA_TOP_HWAHWCAP1_MAXRINGINFO3B_SHIFT      13
-#define HWA_TOP_HWAHWCAP1_MAXRINGINFO3B_MASK \
-	(0x7 << HWA_TOP_HWAHWCAP1_MAXRINGINFO3B_SHIFT)
 #define HWA_TOP_HWAHWCAP1_MAXHOSTRINGS2B4B_SHIFT      16
 #define HWA_TOP_HWAHWCAP1_MAXHOSTRINGS2B4B_MASK \
 	(0xf << HWA_TOP_HWAHWCAP1_MAXHOSTRINGS2B4B_SHIFT)
-#if HWA_REVISION_EQ_128
-#define HWA_TOP_HWAHWCAP1_NUMBUF3A_SHIFT      20
-#define HWA_TOP_HWAHWCAP1_NUMBUF3A_MASK \
-	(0xf << HWA_TOP_HWAHWCAP1_NUMBUF3A_SHIFT)
-#define HWA_TOP_HWAHWCAP1_NUMTXPOSTLOCALBUF3A_SHIFT      24
-#define HWA_TOP_HWAHWCAP1_NUMTXPOSTLOCALBUF3A_MASK \
-	(0xff << HWA_TOP_HWAHWCAP1_NUMTXPOSTLOCALBUF3A_SHIFT)
-#else  /* HWA_REVISION_GE_129 */
 #define HWA_TOP_HWAHWCAP1_NUMBUF3A_SHIFT      24
 #define HWA_TOP_HWAHWCAP1_NUMBUF3A_MASK \
 	(0xff << HWA_TOP_HWAHWCAP1_NUMBUF3A_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 
 /* Bits in hwa_top_hwahwcap2 */
 #define HWA_TOP_HWAHWCAP2_HWABLKSPRESENT_SHIFT      0
@@ -216,15 +237,13 @@
 #define HWA_TOP_HWAHWCAP2_TOP2REGS_OVFLOWQ_PRESENT_SHIFT      20
 #define HWA_TOP_HWAHWCAP2_TOP2REGS_OVFLOWQ_PRESENT_MASK \
 	(0x1 << HWA_TOP_HWAHWCAP2_TOP2REGS_OVFLOWQ_PRESENT_SHIFT)
-#if HWA_REVISION_EQ_128
-#define HWA_TOP_HWAHWCAP2_NUMBUF3A_HN_SHIFT      24
-#define HWA_TOP_HWAHWCAP2_NUMBUF3A_HN_MASK \
-	(0xf << HWA_TOP_HWAHWCAP2_NUMBUF3A_HN_SHIFT)
-#endif /* HWA_REVISION_EQ_128 */
+#define HWA_TOP_HWAHWCAP2_TOP2REGS_SADA_SIZE2K_SHIFT      21
+#define HWA_TOP_HWAHWCAP2_TOP2REGS_SADA_SIZE2K_MASK \
+	(0x1 << HWA_TOP_HWAHWCAP2_TOP2REGS_SADA_SIZE2K_SHIFT)
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_COMMON MACROS: hwa_common_reg_defs.h Sun Aug 27 17:51:25 2017
+ * HWA_COMMON MACROS: hwa_common_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 #define hwa_common_base                             0x200
@@ -247,15 +266,9 @@
 #define hwa_common_rxintraddrlo                     0x0ac
 #define hwa_common_rxintraddrhi                     0x0b0
 #define hwa_common_rxintrval                        0x0b4
-#if HWA_REVISION_EQ_128
-#define hwa_common_cplintraddrlo                    0x0b8
-#define hwa_common_cplintraddrhi                    0x0bc
-#define hwa_common_cplintrval                       0x0c0
-#else  /* HWA_REVISION_GE_129 */
 #define hwa_common_cplintr_tx_addrlo                0x0b8
 #define hwa_common_cplintr_tx_addrhi                0x0bc
 #define hwa_common_cplintr_tx_val                   0x0c0
-#endif /* HWA_REVISION_GE_129 */
 #define hwa_common_intr_control                     0x0c4
 #define hwa_common_module_clk_enable                0x0d0
 #define hwa_common_module_clkgating_enable          0x0d4
@@ -264,6 +277,8 @@
 #define hwa_common_module_clkext                    0x0e0
 #define hwa_common_module_enable                    0x0e4
 #define hwa_common_module_idle                      0x0e8
+#define hwa_common_dmatxsel                         0x0f0
+#define hwa_common_dmarxsel                         0x0f4
 #define hwa_common_gpiomuxcfg                       0x100
 #define hwa_common_gpioout                          0x104
 #define hwa_common_gpiooe                           0x108
@@ -276,7 +291,8 @@
 #define hwa_common_hwa2hwcap                        0x130
 #define hwa_common_hwa2swpkt_high32_pa              0x134
 #define hwa_common_hwa2pciepc_pkt_high32_pa         0x138
-#if HWA_REVISION_GE_129
+#define hwa_common_dma_sof_status                   0x140
+#define hwa_common_dma_eof_status                   0x144
 #define hwa_common_cplintr_rx0_addrlo               0x160
 #define hwa_common_cplintr_rx0_addrhi               0x164
 #define hwa_common_cplintr_rx0_val                  0x168
@@ -289,7 +305,8 @@
 #define hwa_common_cplintr_rx3_addrlo               0x190
 #define hwa_common_cplintr_rx3_addrhi               0x194
 #define hwa_common_cplintr_rx3_val                  0x198
-#endif /* HWA_REVISION_GE_129 */
+#define hwa_common_pageintstatus                    0x1a0
+#define hwa_common_pageintmask                      0x1a4
 
 /* Bits in hwa_common_rxpost_wridx_r */
 #define HWA_COMMON_RXPOST_WRIDX_R_WRINDEX_SHIFT      0
@@ -343,6 +360,15 @@
 #define HWA_COMMON_INTSTATUS_TXDMA_PKTCHN_RD_INDEX_INTR_SHIFT      11
 #define HWA_COMMON_INTSTATUS_TXDMA_PKTCHN_RD_INDEX_INTR_MASK \
 	(0x1 << HWA_COMMON_INTSTATUS_TXDMA_PKTCHN_RD_INDEX_INTR_SHIFT)
+#define HWA_COMMON_INTSTATUS_D11BDEST0_THRESHOLD0_INT_SHIFT      12
+#define HWA_COMMON_INTSTATUS_D11BDEST0_THRESHOLD0_INT_MASK \
+	(0x1 << HWA_COMMON_INTSTATUS_D11BDEST0_THRESHOLD0_INT_SHIFT)
+#define HWA_COMMON_INTSTATUS_D11BDEST0_THRESHOLD1_INT_SHIFT      13
+#define HWA_COMMON_INTSTATUS_D11BDEST0_THRESHOLD1_INT_MASK \
+	(0x1 << HWA_COMMON_INTSTATUS_D11BDEST0_THRESHOLD1_INT_SHIFT)
+#define HWA_COMMON_INTSTATUS_D11BDEST0_THRESHOLD2_INT_SHIFT      14
+#define HWA_COMMON_INTSTATUS_D11BDEST0_THRESHOLD2_INT_MASK \
+	(0x1 << HWA_COMMON_INTSTATUS_D11BDEST0_THRESHOLD2_INT_SHIFT)
 #define HWA_COMMON_INTSTATUS_TXSQUEUEFULL_INT_CORE0_SHIFT      16
 #define HWA_COMMON_INTSTATUS_TXSQUEUEFULL_INT_CORE0_MASK \
 	(0x1 << HWA_COMMON_INTSTATUS_TXSQUEUEFULL_INT_CORE0_SHIFT)
@@ -385,11 +411,12 @@
 #define HWA_COMMON_INTSTATUS_CMDQ_RD_INTR_SHIFT      29
 #define HWA_COMMON_INTSTATUS_CMDQ_RD_INTR_MASK \
 	(0x1 << HWA_COMMON_INTSTATUS_CMDQ_RD_INTR_SHIFT)
-#if HWA_REVISION_GE_129
 #define HWA_COMMON_INTSTATUS_TXP_PKTDEALLOC_RD_INTR_SHIFT      30
 #define HWA_COMMON_INTSTATUS_TXP_PKTDEALLOC_RD_INTR_MASK \
 	(0x1 << HWA_COMMON_INTSTATUS_TXP_PKTDEALLOC_RD_INTR_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
+#define HWA_COMMON_INTSTATUS_PACKET_PAGER_INTR_SHIFT      31
+#define HWA_COMMON_INTSTATUS_PACKET_PAGER_INTR_MASK \
+	(0x1 << HWA_COMMON_INTSTATUS_PACKET_PAGER_INTR_SHIFT)
 
 /* Bits in hwa_common_intmask */
 #define HWA_COMMON_INTMASK_RXPSRC0_INTMASK_SHIFT      0
@@ -428,6 +455,15 @@
 #define HWA_COMMON_INTMASK_PKTCHN_RD_INTMASK_SHIFT      11
 #define HWA_COMMON_INTMASK_PKTCHN_RD_INTMASK_MASK \
 	(0x1 << HWA_COMMON_INTMASK_PKTCHN_RD_INTMASK_SHIFT)
+#define HWA_COMMON_INTMASK_D11BDEST0_THRESHOLD0_INTMASK_SHIFT      12
+#define HWA_COMMON_INTMASK_D11BDEST0_THRESHOLD0_INTMASK_MASK \
+	(0x1 << HWA_COMMON_INTMASK_D11BDEST0_THRESHOLD0_INTMASK_SHIFT)
+#define HWA_COMMON_INTMASK_D11BDEST0_THRESHOLD1_INTMASK_SHIFT      13
+#define HWA_COMMON_INTMASK_D11BDEST0_THRESHOLD1_INTMASK_MASK \
+	(0x1 << HWA_COMMON_INTMASK_D11BDEST0_THRESHOLD1_INTMASK_SHIFT)
+#define HWA_COMMON_INTMASK_D11BDEST0_THRESHOLD2_INTMASK_SHIFT      14
+#define HWA_COMMON_INTMASK_D11BDEST0_THRESHOLD2_INTMASK_MASK \
+	(0x1 << HWA_COMMON_INTMASK_D11BDEST0_THRESHOLD2_INTMASK_SHIFT)
 #define HWA_COMMON_INTMASK_TXSQUEUEFULL_INTMASK_CORE0_SHIFT      16
 #define HWA_COMMON_INTMASK_TXSQUEUEFULL_INTMASK_CORE0_MASK \
 	(0x1 << HWA_COMMON_INTMASK_TXSQUEUEFULL_INTMASK_CORE0_SHIFT)
@@ -470,11 +506,12 @@
 #define HWA_COMMON_INTMASK_CMDQRD_INTMASK_SHIFT      29
 #define HWA_COMMON_INTMASK_CMDQRD_INTMASK_MASK \
 	(0x1 << HWA_COMMON_INTMASK_CMDQRD_INTMASK_SHIFT)
-#if HWA_REVISION_GE_129
 #define HWA_COMMON_INTMASK_TXP_PKTDEALLOC_RD_INTMASK_SHIFT      30
 #define HWA_COMMON_INTMASK_TXP_PKTDEALLOC_RD_INTMASK_MASK \
 	(0x1 << HWA_COMMON_INTMASK_TXP_PKTDEALLOC_RD_INTMASK_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
+#define HWA_COMMON_INTMASK_PACKET_PAGER_INTMASK_SHIFT      31
+#define HWA_COMMON_INTMASK_PACKET_PAGER_INTMASK_MASK \
+	(0x1 << HWA_COMMON_INTMASK_PACKET_PAGER_INTMASK_SHIFT)
 
 /* Bits in hwa_common_statscontrolreg */
 #define HWA_COMMON_STATSCONTROLREG_STATSSETIDX_SHIFT      0
@@ -507,6 +544,9 @@
 #define HWA_COMMON_STATSCONTROLREG_DMAHWADESCTEMPLATENOTPCIE_SHIFT      28
 #define HWA_COMMON_STATSCONTROLREG_DMAHWADESCTEMPLATENOTPCIE_MASK \
 	(0x1 << HWA_COMMON_STATSCONTROLREG_DMAHWADESCTEMPLATENOTPCIE_SHIFT)
+#define HWA_COMMON_STATSCONTROLREG_DMAPCIEDESCTEMPLATEWC_SHIFT      29
+#define HWA_COMMON_STATSCONTROLREG_DMAPCIEDESCTEMPLATEWC_MASK \
+	(0x1 << HWA_COMMON_STATSCONTROLREG_DMAPCIEDESCTEMPLATEWC_SHIFT)
 
 /* Bits in hwa_common_statdonglreaddressreg */
 #define HWA_COMMON_STATDONGLREADDRESSREG_STATSDONGLEADDR_SHIFT      0
@@ -599,22 +639,6 @@
 #define HWA_COMMON_RXINTRVAL_RXINTR_VALUE_MASK \
 	(0xffffffff << HWA_COMMON_RXINTRVAL_RXINTR_VALUE_SHIFT)
 
-#if HWA_REVISION_EQ_128
-/* Bits in hwa_common_cplintraddrlo */
-#define HWA_COMMON_CPLINTRADDRLO_CPLINTR_ADDRLO_SHIFT      0
-#define HWA_COMMON_CPLINTRADDRLO_CPLINTR_ADDRLO_MASK \
-	(0xffffffff << HWA_COMMON_CPLINTRADDRLO_CPLINTR_ADDRLO_SHIFT)
-
-/* Bits in hwa_common_cplintraddrhi */
-#define HWA_COMMON_CPLINTRADDRHI_CPLINTR_ADDRHI_SHIFT      0
-#define HWA_COMMON_CPLINTRADDRHI_CPLINTR_ADDRHI_MASK \
-	(0xffffffff << HWA_COMMON_CPLINTRADDRHI_CPLINTR_ADDRHI_SHIFT)
-
-/* Bits in hwa_common_cplintrval */
-#define HWA_COMMON_CPLINTRVAL_CPLINTR_VALUE_SHIFT      0
-#define HWA_COMMON_CPLINTRVAL_CPLINTR_VALUE_MASK \
-	(0xffffffff << HWA_COMMON_CPLINTRVAL_CPLINTR_VALUE_SHIFT)
-#else /* HWA_REVISION_GE_129 */
 /* Bits in hwa_common_cplintr_tx_addrlo */
 #define HWA_COMMON_CPLINTR_TX_ADDRLO_CPLINTR_ADDRLO_SHIFT      0
 #define HWA_COMMON_CPLINTR_TX_ADDRLO_CPLINTR_ADDRLO_MASK \
@@ -629,14 +653,8 @@
 #define HWA_COMMON_CPLINTR_TX_VAL_CPLINTR_VALUE_SHIFT      0
 #define HWA_COMMON_CPLINTR_TX_VAL_CPLINTR_VALUE_MASK \
 	(0xffffffff << HWA_COMMON_CPLINTR_TX_VAL_CPLINTR_VALUE_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 
 /* Bits in hwa_common_intr_control */
-#if HWA_REVISION_EQ_128
-#define HWA_COMMON_INTR_CONTROL_USEVAL_SHIFT      0
-#define HWA_COMMON_INTR_CONTROL_USEVAL_MASK \
-	(0x1 << HWA_COMMON_INTR_CONTROL_USEVAL_SHIFT)
-#endif /* HWA_REVISION_EQ_128 */
 #define HWA_COMMON_INTR_CONTROL_TXHOSTINTR_EN_SHIFT      1
 #define HWA_COMMON_INTR_CONTROL_TXHOSTINTR_EN_MASK \
 	(0x1 << HWA_COMMON_INTR_CONTROL_TXHOSTINTR_EN_SHIFT)
@@ -652,7 +670,6 @@
 #define HWA_COMMON_INTR_CONTROL_HOST_2BYTE_INDEX_SHIFT      5
 #define HWA_COMMON_INTR_CONTROL_HOST_2BYTE_INDEX_MASK \
 	(0x1 << HWA_COMMON_INTR_CONTROL_HOST_2BYTE_INDEX_SHIFT)
-#if HWA_REVISION_GE_129
 #define HWA_COMMON_INTR_CONTROL_USEVAL_TX_SHIFT      8
 #define HWA_COMMON_INTR_CONTROL_USEVAL_TX_MASK \
 	(0x1 << HWA_COMMON_INTR_CONTROL_USEVAL_TX_SHIFT)
@@ -665,7 +682,6 @@
 #define HWA_COMMON_INTR_CONTROL_USEVAL_CPLRX_SHIFT      11
 #define HWA_COMMON_INTR_CONTROL_USEVAL_CPLRX_MASK \
 	(0xf << HWA_COMMON_INTR_CONTROL_USEVAL_CPLRX_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 
 /* Bits in hwa_common_module_clk_enable */
 #define HWA_COMMON_MODULE_CLK_ENABLE_BLOCKRXCORE0_CLKENABLE_SHIFT      0
@@ -695,6 +711,9 @@
 #define HWA_COMMON_MODULE_CLK_ENABLE_BLOCKSTATISTICS_CLKENABLE_SHIFT      8
 #define HWA_COMMON_MODULE_CLK_ENABLE_BLOCKSTATISTICS_CLKENABLE_MASK \
 	(0x1 << HWA_COMMON_MODULE_CLK_ENABLE_BLOCKSTATISTICS_CLKENABLE_SHIFT)
+#define HWA_COMMON_MODULE_CLK_ENABLE_PAGER_CLKENABLE_SHIFT      9
+#define HWA_COMMON_MODULE_CLK_ENABLE_PAGER_CLKENABLE_MASK \
+	(0x1 << HWA_COMMON_MODULE_CLK_ENABLE_PAGER_CLKENABLE_SHIFT)
 
 /* Bits in hwa_common_module_clkgating_enable */
 #define HWA_COMMON_MODULE_CLKGATING_ENABLE_BLOCKRXCORE0_CLKGATINGENABLE_SHIFT      0
@@ -724,6 +743,9 @@
 #define HWA_COMMON_MODULE_CLKGATING_ENABLE_BLOCKSTATISTICS_CLKGATINGENABLE_SHIFT      8
 #define HWA_COMMON_MODULE_CLKGATING_ENABLE_BLOCKSTATISTICS_CLKGATINGENABLE_MASK \
 	(0x1 << HWA_COMMON_MODULE_CLKGATING_ENABLE_BLOCKSTATISTICS_CLKGATINGENABLE_SHIFT)
+#define HWA_COMMON_MODULE_CLKGATING_ENABLE_PAGER_CLKGATINGENABLE_SHIFT      9
+#define HWA_COMMON_MODULE_CLKGATING_ENABLE_PAGER_CLKGATINGENABLE_MASK \
+	(0x1 << HWA_COMMON_MODULE_CLKGATING_ENABLE_PAGER_CLKGATINGENABLE_SHIFT)
 
 /* Bits in hwa_common_module_reset */
 #define HWA_COMMON_MODULE_RESET_BLOCKRXCORE0_RESET_SHIFT      0
@@ -753,6 +775,9 @@
 #define HWA_COMMON_MODULE_RESET_BLOCKSTATISTICS_RESET_SHIFT      8
 #define HWA_COMMON_MODULE_RESET_BLOCKSTATISTICS_RESET_MASK \
 	(0x1 << HWA_COMMON_MODULE_RESET_BLOCKSTATISTICS_RESET_SHIFT)
+#define HWA_COMMON_MODULE_RESET_PAGER_RESET_SHIFT      9
+#define HWA_COMMON_MODULE_RESET_PAGER_RESET_MASK \
+	(0x1 << HWA_COMMON_MODULE_RESET_PAGER_RESET_SHIFT)
 
 /* Bits in hwa_common_module_clkavail */
 #define HWA_COMMON_MODULE_CLKAVAIL_BLOCKRXCORE0_CLKAVAIL_SHIFT      0
@@ -816,6 +841,9 @@
 #define HWA_COMMON_MODULE_ENABLE_BLOCKSTATISTICS_ENABLE_SHIFT      8
 #define HWA_COMMON_MODULE_ENABLE_BLOCKSTATISTICS_ENABLE_MASK \
 	(0x1 << HWA_COMMON_MODULE_ENABLE_BLOCKSTATISTICS_ENABLE_SHIFT)
+#define HWA_COMMON_MODULE_ENABLE_PAGER_ENABLE_SHIFT      9
+#define HWA_COMMON_MODULE_ENABLE_PAGER_ENABLE_MASK \
+	(0x1 << HWA_COMMON_MODULE_ENABLE_PAGER_ENABLE_SHIFT)
 
 /* Bits in hwa_common_module_idle */
 #define HWA_COMMON_MODULE_IDLE_BLOCKRXCORE0_IDLE_SHIFT      0
@@ -842,6 +870,73 @@
 #define HWA_COMMON_MODULE_IDLE_BLOCKTXSTS1_IDLE_SHIFT      7
 #define HWA_COMMON_MODULE_IDLE_BLOCKTXSTS1_IDLE_MASK \
 	(0x1 << HWA_COMMON_MODULE_IDLE_BLOCKTXSTS1_IDLE_SHIFT)
+
+/* Bits in hwa_common_dmatxsel */
+#define HWA_COMMON_DMATXSEL_FETCH_SWPKTC_WDMATX_SHIFT      0
+#define HWA_COMMON_DMATXSEL_FETCH_SWPKTC_WDMATX_MASK \
+	(0x1 << HWA_COMMON_DMATXSEL_FETCH_SWPKTC_WDMATX_SHIFT)
+#define HWA_COMMON_DMATXSEL_FETCH_SWPKT_WDMATX_SHIFT      1
+#define HWA_COMMON_DMATXSEL_FETCH_SWPKT_WDMATX_MASK \
+	(0x1 << HWA_COMMON_DMATXSEL_FETCH_SWPKT_WDMATX_SHIFT)
+#define HWA_COMMON_DMATXSEL_FETCH_SCMDQ_WDMATX_SHIFT      2
+#define HWA_COMMON_DMATXSEL_FETCH_SCMDQ_WDMATX_MASK \
+	(0x1 << HWA_COMMON_DMATXSEL_FETCH_SCMDQ_WDMATX_SHIFT)
+#define HWA_COMMON_DMATXSEL_FETCH_PAGEIN_REQCMD_WDMATX_SHIFT      3
+#define HWA_COMMON_DMATXSEL_FETCH_PAGEIN_REQCMD_WDMATX_MASK \
+	(0x1 << HWA_COMMON_DMATXSEL_FETCH_PAGEIN_REQCMD_WDMATX_SHIFT)
+#define HWA_COMMON_DMATXSEL_FETCH_PAGEOUT_REQCMD_WDMATX_SHIFT      4
+#define HWA_COMMON_DMATXSEL_FETCH_PAGEOUT_REQCMD_WDMATX_MASK \
+	(0x1 << HWA_COMMON_DMATXSEL_FETCH_PAGEOUT_REQCMD_WDMATX_SHIFT)
+#define HWA_COMMON_DMATXSEL_FETCH_PAGEMGR_ALLOC_REQCMD_WDMATX_SHIFT      5
+#define HWA_COMMON_DMATXSEL_FETCH_PAGEMGR_ALLOC_REQCMD_WDMATX_MASK \
+	(0x1 << HWA_COMMON_DMATXSEL_FETCH_PAGEMGR_ALLOC_REQCMD_WDMATX_SHIFT)
+#define HWA_COMMON_DMATXSEL_FETCH_PAGEMGR_FREE_REQCMD_WDMATX_SHIFT      6
+#define HWA_COMMON_DMATXSEL_FETCH_PAGEMGR_FREE_REQCMD_WDMATX_MASK \
+	(0x1 << HWA_COMMON_DMATXSEL_FETCH_PAGEMGR_FREE_REQCMD_WDMATX_SHIFT)
+#define HWA_COMMON_DMATXSEL_FETCH_PAGEMGR_FREE_RPH_REQCMD_WDMATX_SHIFT      7
+#define HWA_COMMON_DMATXSEL_FETCH_PAGEMGR_FREE_RPH_REQCMD_WDMATX_MASK \
+	(0x1 << HWA_COMMON_DMATXSEL_FETCH_PAGEMGR_FREE_RPH_REQCMD_WDMATX_SHIFT)
+#define HWA_COMMON_DMATXSEL_FETCH_FREEP_PACKET_WDMATX_SHIFT      8
+#define HWA_COMMON_DMATXSEL_FETCH_FREEP_PACKET_WDMATX_MASK \
+	(0x1 << HWA_COMMON_DMATXSEL_FETCH_FREEP_PACKET_WDMATX_SHIFT)
+#define HWA_COMMON_DMATXSEL_FETCH_PHPL_PACKET_WDMATX_SHIFT      9
+#define HWA_COMMON_DMATXSEL_FETCH_PHPL_PACKET_WDMATX_MASK \
+	(0x1 << HWA_COMMON_DMATXSEL_FETCH_PHPL_PACKET_WDMATX_SHIFT)
+
+/* Bits in hwa_common_dmarxsel */
+#define HWA_COMMON_DMARXSEL_TXD_MAC_WDMARX_SHIFT      0
+#define HWA_COMMON_DMARXSEL_TXD_MAC_WDMARX_MASK \
+	(0x1 << HWA_COMMON_DMARXSEL_TXD_MAC_WDMARX_SHIFT)
+#define HWA_COMMON_DMARXSEL_TXS_MOVE_WDMARX_SHIFT      1
+#define HWA_COMMON_DMARXSEL_TXS_MOVE_WDMARX_MASK \
+	(0x1 << HWA_COMMON_DMARXSEL_TXS_MOVE_WDMARX_SHIFT)
+#define HWA_COMMON_DMARXSEL_TXP_SWPKT_WDMARX_SHIFT      2
+#define HWA_COMMON_DMARXSEL_TXP_SWPKT_WDMARX_MASK \
+	(0x1 << HWA_COMMON_DMARXSEL_TXP_SWPKT_WDMARX_SHIFT)
+#define HWA_COMMON_DMARXSEL_TXP_PKTCHQ_WDMARX_SHIFT      3
+#define HWA_COMMON_DMARXSEL_TXP_PKTCHQ_WDMARX_MASK \
+	(0x1 << HWA_COMMON_DMARXSEL_TXP_PKTCHQ_WDMARX_SHIFT)
+#define HWA_COMMON_DMARXSEL_PAGEIN_L2D_WDMARX_SHIFT      4
+#define HWA_COMMON_DMARXSEL_PAGEIN_L2D_WDMARX_MASK \
+	(0x1 << HWA_COMMON_DMARXSEL_PAGEIN_L2D_WDMARX_SHIFT)
+#define HWA_COMMON_DMARXSEL_PAGEOUT_L2H_WDMARX_SHIFT      5
+#define HWA_COMMON_DMARXSEL_PAGEOUT_L2H_WDMARX_MASK \
+	(0x1 << HWA_COMMON_DMARXSEL_PAGEOUT_L2H_WDMARX_SHIFT)
+#define HWA_COMMON_DMARXSEL_UPDATE_PAGEIN_RSPCMD_WDMARX_SHIFT      6
+#define HWA_COMMON_DMARXSEL_UPDATE_PAGEIN_RSPCMD_WDMARX_MASK \
+	(0x1 << HWA_COMMON_DMARXSEL_UPDATE_PAGEIN_RSPCMD_WDMARX_SHIFT)
+#define HWA_COMMON_DMARXSEL_UPDATE_PAGEOUT_RSPCMD_WDMARX_SHIFT      7
+#define HWA_COMMON_DMARXSEL_UPDATE_PAGEOUT_RSPCMD_WDMARX_MASK \
+	(0x1 << HWA_COMMON_DMARXSEL_UPDATE_PAGEOUT_RSPCMD_WDMARX_SHIFT)
+#define HWA_COMMON_DMARXSEL_UPDATE_PAGEMGR_ALLOC_RSPCMD_WDMARX_SHIFT      8
+#define HWA_COMMON_DMARXSEL_UPDATE_PAGEMGR_ALLOC_RSPCMD_WDMARX_MASK \
+	(0x1 << HWA_COMMON_DMARXSEL_UPDATE_PAGEMGR_ALLOC_RSPCMD_WDMARX_SHIFT)
+#define HWA_COMMON_DMARXSEL_UPDATE_APKT_PACKET_WDMARX_SHIFT      9
+#define HWA_COMMON_DMARXSEL_UPDATE_APKT_PACKET_WDMARX_MASK \
+	(0x1 << HWA_COMMON_DMARXSEL_UPDATE_APKT_PACKET_WDMARX_SHIFT)
+#define HWA_COMMON_DMARXSEL_UPDATE_RXAPKT_PACKET_WDMARX_SHIFT      10
+#define HWA_COMMON_DMARXSEL_UPDATE_RXAPKT_PACKET_WDMARX_MASK \
+	(0x1 << HWA_COMMON_DMARXSEL_UPDATE_RXAPKT_PACKET_WDMARX_SHIFT)
 
 /* Bits in hwa_common_gpiomuxcfg */
 #define HWA_COMMON_GPIOMUXCFG_GPIOSEL_SHIFT      0
@@ -924,6 +1019,9 @@
 #define HWA_COMMON_HWA2HWCAP_SWPKT_ADDR32_CAP_SHIFT      2
 #define HWA_COMMON_HWA2HWCAP_SWPKT_ADDR32_CAP_MASK \
 	(0x1 << HWA_COMMON_HWA2HWCAP_SWPKT_ADDR32_CAP_SHIFT)
+#define HWA_COMMON_HWA2HWCAP_HWPPSUPPORT_SHIFT      3
+#define HWA_COMMON_HWA2HWCAP_HWPPSUPPORT_MASK \
+	(0x1 << HWA_COMMON_HWA2HWCAP_HWPPSUPPORT_SHIFT)
 
 /* Bits in hwa_common_hwa2swpkt_high32_pa */
 #define HWA_COMMON_HWA2SWPKT_HIGH32_PA_SWPKT_HIGH32_PA_SHIFT      0
@@ -935,7 +1033,34 @@
 #define HWA_COMMON_HWA2PCIEPC_PKT_HIGH32_PA_PCIEPC_PKT_HIGH32_PA_MASK \
 	(0xffffffff << HWA_COMMON_HWA2PCIEPC_PKT_HIGH32_PA_PCIEPC_PKT_HIGH32_PA_SHIFT)
 
-#if HWA_REVISION_GE_129
+/* Bits in hwa_common_dma_sof_status */
+#define HWA_COMMON_DMA_SOF_STATUS_REG_CH0_SOF_ZERO_00_SHIFT      0
+#define HWA_COMMON_DMA_SOF_STATUS_REG_CH0_SOF_ZERO_00_MASK \
+	(0x1 << HWA_COMMON_DMA_SOF_STATUS_REG_CH0_SOF_ZERO_00_SHIFT)
+#define HWA_COMMON_DMA_SOF_STATUS_REG_CH0_SOF_ZERO_01_SHIFT      1
+#define HWA_COMMON_DMA_SOF_STATUS_REG_CH0_SOF_ZERO_01_MASK \
+	(0x1 << HWA_COMMON_DMA_SOF_STATUS_REG_CH0_SOF_ZERO_01_SHIFT)
+#define HWA_COMMON_DMA_SOF_STATUS_REG_CH1_SOF_ZERO_00_SHIFT      16
+#define HWA_COMMON_DMA_SOF_STATUS_REG_CH1_SOF_ZERO_00_MASK \
+	(0x1 << HWA_COMMON_DMA_SOF_STATUS_REG_CH1_SOF_ZERO_00_SHIFT)
+#define HWA_COMMON_DMA_SOF_STATUS_REG_CH1_SOF_ZERO_01_SHIFT      17
+#define HWA_COMMON_DMA_SOF_STATUS_REG_CH1_SOF_ZERO_01_MASK \
+	(0x1 << HWA_COMMON_DMA_SOF_STATUS_REG_CH1_SOF_ZERO_01_SHIFT)
+
+/* Bits in hwa_common_dma_eof_status */
+#define HWA_COMMON_DMA_EOF_STATUS_REG_CH0_EOF_ZERO_00_SHIFT      0
+#define HWA_COMMON_DMA_EOF_STATUS_REG_CH0_EOF_ZERO_00_MASK \
+	(0x1 << HWA_COMMON_DMA_EOF_STATUS_REG_CH0_EOF_ZERO_00_SHIFT)
+#define HWA_COMMON_DMA_EOF_STATUS_REG_CH0_EOF_ZERO_01_SHIFT      1
+#define HWA_COMMON_DMA_EOF_STATUS_REG_CH0_EOF_ZERO_01_MASK \
+	(0x1 << HWA_COMMON_DMA_EOF_STATUS_REG_CH0_EOF_ZERO_01_SHIFT)
+#define HWA_COMMON_DMA_EOF_STATUS_REG_CH1_EOF_ZERO_00_SHIFT      16
+#define HWA_COMMON_DMA_EOF_STATUS_REG_CH1_EOF_ZERO_00_MASK \
+	(0x1 << HWA_COMMON_DMA_EOF_STATUS_REG_CH1_EOF_ZERO_00_SHIFT)
+#define HWA_COMMON_DMA_EOF_STATUS_REG_CH1_EOF_ZERO_01_SHIFT      17
+#define HWA_COMMON_DMA_EOF_STATUS_REG_CH1_EOF_ZERO_01_MASK \
+	(0x1 << HWA_COMMON_DMA_EOF_STATUS_REG_CH1_EOF_ZERO_01_SHIFT)
+
 /* Bits in hwa_common_cplintr_rx#_addrlo, # = 0..3 */
 #define HWA_COMMON_CPLINTR_RX_ADDRLO_CPLINTR_RX_ADDRLO_SHIFT      0
 #define HWA_COMMON_CPLINTR_RX_ADDRLO_CPLINTR_RX_ADDRLO_MASK \
@@ -950,11 +1075,38 @@
 #define HWA_COMMON_CPLINTR_RX_VAL_CPLINTR_RX_VALUE_SHIFT      0
 #define HWA_COMMON_CPLINTR_RX_VAL_CPLINTR_RX_VALUE_MASK \
 	(0xffffffff << HWA_COMMON_CPLINTR_RX_VAL_CPLINTR_RX_VALUE_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
+
+/* Bits in hwa_common_pageintstatus */
+#define HWA_COMMON_PAGEINTSTATUS_PAGER_IN_INTR_SHIFT      0
+#define HWA_COMMON_PAGEINTSTATUS_PAGER_IN_INTR_MASK \
+	(0x1 << HWA_COMMON_PAGEINTSTATUS_PAGER_IN_INTR_SHIFT)
+#define HWA_COMMON_PAGEINTSTATUS_PAGER_OUT_INTR_SHIFT      1
+#define HWA_COMMON_PAGEINTSTATUS_PAGER_OUT_INTR_MASK \
+	(0x1 << HWA_COMMON_PAGEINTSTATUS_PAGER_OUT_INTR_SHIFT)
+#define HWA_COMMON_PAGEINTSTATUS_PAGER_MGR_INTR_SHIFT      2
+#define HWA_COMMON_PAGEINTSTATUS_PAGER_MGR_INTR_MASK \
+	(0x1 << HWA_COMMON_PAGEINTSTATUS_PAGER_MGR_INTR_SHIFT)
+#define HWA_COMMON_PAGEINTSTATUS_PAGER_BM_INTR_SHIFT      3
+#define HWA_COMMON_PAGEINTSTATUS_PAGER_BM_INTR_MASK \
+	(0x1 << HWA_COMMON_PAGEINTSTATUS_PAGER_BM_INTR_SHIFT)
+
+/* Bits in hwa_common_pageintmask */
+#define HWA_COMMON_PAGEINTMASK_PAGER_IN_INTMASK_SHIFT      0
+#define HWA_COMMON_PAGEINTMASK_PAGER_IN_INTMASK_MASK \
+	(0x1 << HWA_COMMON_PAGEINTMASK_PAGER_IN_INTMASK_SHIFT)
+#define HWA_COMMON_PAGEINTMASK_PAGER_OUT_INTMASK_SHIFT      1
+#define HWA_COMMON_PAGEINTMASK_PAGER_OUT_INTMASK_MASK \
+	(0x1 << HWA_COMMON_PAGEINTMASK_PAGER_OUT_INTMASK_SHIFT)
+#define HWA_COMMON_PAGEINTMASK_PAGER_MGR_INTMASK_SHIFT      2
+#define HWA_COMMON_PAGEINTMASK_PAGER_MGR_INTMASK_MASK \
+	(0x1 << HWA_COMMON_PAGEINTMASK_PAGER_MGR_INTMASK_SHIFT)
+#define HWA_COMMON_PAGEINTMASK_PAGER_BM_INTMASK_SHIFT      3
+#define HWA_COMMON_PAGEINTMASK_PAGER_BM_INTMASK_MASK \
+	(0x1 << HWA_COMMON_PAGEINTMASK_PAGER_BM_INTMASK_SHIFT)
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_BM MACROS: hwa_bm_reg_defs.h Wed Aug 23 17:58:12 2017
+ * HWA_BM MACROS: hwa_bm_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 #define hwa_tx_bm_base                              0x400
@@ -1030,7 +1182,7 @@
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_TX MACROS: hwa_tx_reg_defs.h Sun Aug 27 17:51:22 2017
+ * HWA_TX MACROS: hwa_tx_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 #define hwa_tx_base                                 0x440
@@ -1090,13 +1242,11 @@
 #define hwa_tx_pkt_chq_rd_idx                       0x0c8
 #define hwa_tx_pkt_chq_ctrl                         0x0cc
 #define hwa_tx_txpost_frc_base_addr                 0x0d0
-#if HWA_REVISION_GE_129
 #define hwa_tx_pktdealloc_ring_addr                 0x0d4
 #define hwa_tx_pktdealloc_ring_wrindex              0x0d8
 #define hwa_tx_pktdealloc_ring_rdindex              0x0dc
 #define hwa_tx_pktdealloc_ring_depth                0x0e0
 #define hwa_tx_pktdealloc_ring_lazyintrconfig       0x0e4
-#endif /* HWA_REVISION_GE_129 */
 #define hwa_tx_pkt_ch_valid                         0x0e8
 #define hwa_tx_pkt_ch_flowid_reg1                   0x0ec
 #define hwa_tx_pkt_ch_flowid_reg2                   0x0f0
@@ -1111,39 +1261,23 @@
 #define hwa_tx_txp_host_rdidx_update_reg            0x114
 #define hwa_tx_txpost_status_reg                    0x118
 #define hwa_tx_txpost_status_reg2                   0x11c
-#if HWA_REVISION_EQ_128
-#define hwa_tx_txpost_cfg1                          0x120
-#else  /* HWA_REVISION_GE_129 */
 #define hwa_tx_pktdeallocmgr_tfrstatus              0x120
 #define hwa_tx_pktdealloc_localfifo_cfg_status      0x124
 #define hwa_tx_txpost_cfg1                          0x128
 #define hwa_tx_txpost_aggr_config                   0x130
 #define hwa_tx_txpost_aggr_wi_ctrl                  0x134
 #define hwa_tx_txpost_debug_reg                     0x140
-#endif /* HWA_REVISION_GE_129 */
 
 /* Bits in hwa_tx_txpost_config */
 #define HWA_TX_TXPOST_CONFIG_TXPOSTLOCALMEMDEPTH_SHIFT      0
 #define HWA_TX_TXPOST_CONFIG_TXPOSTLOCALMEMDEPTH_MASK \
 	(0xffff << HWA_TX_TXPOST_CONFIG_TXPOSTLOCALMEMDEPTH_SHIFT)
-#if HWA_REVISION_EQ_128
-#define HWA_TX_TXPOST_CONFIG_TXPOSTBLOCKENABLE_SHIFT      16
-#define HWA_TX_TXPOST_CONFIG_TXPOSTBLOCKENABLE_MASK \
-	(0x1 << HWA_TX_TXPOST_CONFIG_TXPOSTBLOCKENABLE_SHIFT)
-#define HWA_TX_TXPOST_CONFIG_SEQNUMENABLE_SHIFT      17
-#define HWA_TX_TXPOST_CONFIG_SEQNUMENABLE_MASK \
-	(0x1 << HWA_TX_TXPOST_CONFIG_SEQNUMENABLE_SHIFT)
-#define HWA_TX_TXPOST_CONFIG_NUMSTATISTICSREGSET_SHIFT      18
-#define HWA_TX_TXPOST_CONFIG_NUMSTATISTICSREGSET_MASK \
-	(0x1ff << HWA_TX_TXPOST_CONFIG_NUMSTATISTICSREGSET_SHIFT)
-#else  /* HWA_REVISION_GE_129 */
 #define HWA_TX_TXPOST_CONFIG_MIN_FETCH_THRESH_TXPPKTDEALLOC_SHIFT      16
 #define HWA_TX_TXPOST_CONFIG_MIN_FETCH_THRESH_TXPPKTDEALLOC_MASK \
 	(0x7 << HWA_TX_TXPOST_CONFIG_MIN_FETCH_THRESH_TXPPKTDEALLOC_SHIFT)
 #define HWA_TX_TXPOST_CONFIG_SWTXPKTDEALLOCIFENABLE_SHIFT      19
 #define HWA_TX_TXPOST_CONFIG_SWTXPKTDEALLOCIFENABLE_MASK \
 	(0x1 << HWA_TX_TXPOST_CONFIG_SWTXPKTDEALLOCIFENABLE_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 #define HWA_TX_TXPOST_CONFIG_AUTOSTARTNEXTEMPYLOCDISABLE_SHIFT      27
 #define HWA_TX_TXPOST_CONFIG_AUTOSTARTNEXTEMPYLOCDISABLE_MASK \
 	(0x1 << HWA_TX_TXPOST_CONFIG_AUTOSTARTNEXTEMPYLOCDISABLE_SHIFT)
@@ -1153,11 +1287,9 @@
 #define HWA_TX_TXPOST_CONFIG_TXPKTPKTNEXTDEALLOCHW_SHIFT      29
 #define HWA_TX_TXPOST_CONFIG_TXPKTPKTNEXTDEALLOCHW_MASK \
 	(0x1 << HWA_TX_TXPOST_CONFIG_TXPKTPKTNEXTDEALLOCHW_SHIFT)
-#if HWA_REVISION_GE_129
 #define HWA_TX_TXPOST_CONFIG_TXPOSTLOCALMEMMODE_SHIFT      30
 #define HWA_TX_TXPOST_CONFIG_TXPOSTLOCALMEMMODE_MASK \
 	(0x3 << HWA_TX_TXPOST_CONFIG_TXPOSTLOCALMEMMODE_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 
 /* Bits in hwa_tx_txpost_wi_ctrl */
 #define HWA_TX_TXPOST_WI_CTRL_WORKITEMSIZE_SHIFT      0
@@ -1516,7 +1648,6 @@
 #define HWA_TX_TXPOST_FRC_BASE_ADDR_FLOWCONTEXTBASEADDR_MASK \
 	(0xffffffff << HWA_TX_TXPOST_FRC_BASE_ADDR_FLOWCONTEXTBASEADDR_SHIFT)
 
-#if HWA_REVISION_GE_129
 /* Bits in hwa_tx_pktdealloc_ring_addr */
 #define HWA_TX_PKTDEALLOC_RING_ADDR_PKTDEALLOCRINGADDR_SHIFT      0
 #define HWA_TX_PKTDEALLOC_RING_ADDR_PKTDEALLOCRINGADDR_MASK \
@@ -1544,7 +1675,6 @@
 #define HWA_TX_PKTDEALLOC_RING_LAZYINTRCONFIG_PKTDEALLOCRINGINTRAGGRTIMER_SHIFT      16
 #define HWA_TX_PKTDEALLOC_RING_LAZYINTRCONFIG_PKTDEALLOCRINGINTRAGGRTIMER_MASK \
 	(0xffff << HWA_TX_PKTDEALLOC_RING_LAZYINTRCONFIG_PKTDEALLOCRINGINTRAGGRTIMER_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 
 /* Bits in hwa_tx_pkt_ch_valid */
 #define HWA_TX_PKT_CH_VALID_CHAIN1VALID_SHIFT      0
@@ -1673,7 +1803,6 @@
 #define HWA_TX_DMA_DESC_TEMPLATE_NONDMAPKTTAGWRTEMPLATECOHERENT_SHIFT      21
 #define HWA_TX_DMA_DESC_TEMPLATE_NONDMAPKTTAGWRTEMPLATECOHERENT_MASK \
 	(0x1 << HWA_TX_DMA_DESC_TEMPLATE_NONDMAPKTTAGWRTEMPLATECOHERENT_SHIFT)
-#if HWA_REVISION_GE_129
 #define HWA_TX_DMA_DESC_TEMPLATE_DMASWTXPKTDEALLOCDESCTEMPLATEADDREXT_SHIFT      22
 #define HWA_TX_DMA_DESC_TEMPLATE_DMASWTXPKTDEALLOCDESCTEMPLATEADDREXT_MASK \
 	(0x3 << HWA_TX_DMA_DESC_TEMPLATE_DMASWTXPKTDEALLOCDESCTEMPLATEADDREXT_SHIFT)
@@ -1683,7 +1812,15 @@
 #define HWA_TX_DMA_DESC_TEMPLATE_DMASWTXPKTDEALLOCDESCTEMPLATECOHERENT_SHIFT      25
 #define HWA_TX_DMA_DESC_TEMPLATE_DMASWTXPKTDEALLOCDESCTEMPLATECOHERENT_MASK \
 	(0x1 << HWA_TX_DMA_DESC_TEMPLATE_DMASWTXPKTDEALLOCDESCTEMPLATECOHERENT_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
+#define HWA_TX_DMA_DESC_TEMPLATE_DMATXPKTDESCTEMPLATEWC_SHIFT      26
+#define HWA_TX_DMA_DESC_TEMPLATE_DMATXPKTDESCTEMPLATEWC_MASK \
+	(0x1 << HWA_TX_DMA_DESC_TEMPLATE_DMATXPKTDESCTEMPLATEWC_SHIFT)
+#define HWA_TX_DMA_DESC_TEMPLATE_DMAPKTCHQDESCTEMPLATEWC_SHIFT      27
+#define HWA_TX_DMA_DESC_TEMPLATE_DMAPKTCHQDESCTEMPLATEWC_MASK \
+	(0x1 << HWA_TX_DMA_DESC_TEMPLATE_DMAPKTCHQDESCTEMPLATEWC_SHIFT)
+#define HWA_TX_DMA_DESC_TEMPLATE_DMAPCIERDIDXDESCTEMPLATEWC_SHIFT      28
+#define HWA_TX_DMA_DESC_TEMPLATE_DMAPCIERDIDXDESCTEMPLATEWC_MASK \
+	(0x1 << HWA_TX_DMA_DESC_TEMPLATE_DMAPCIERDIDXDESCTEMPLATEWC_SHIFT)
 
 /* Bits in hwa_tx_h2d_wr_ind_array_base_addr */
 #define HWA_TX_H2D_WR_IND_ARRAY_BASE_ADDR_H2DWRIDXARRAYBASEADDR_SHIFT      0
@@ -1793,13 +1930,10 @@
 #define HWA_TX_TXPOST_STATUS_REG2_CMDQRDINTR_SHIFT      18
 #define HWA_TX_TXPOST_STATUS_REG2_CMDQRDINTR_MASK \
 	(0x1 << HWA_TX_TXPOST_STATUS_REG2_CMDQRDINTR_SHIFT)
-#if HWA_REVISION_GE_129
 #define HWA_TX_TXPOST_STATUS_REG2_TXPPKTDEALLOCRDINTR_SHIFT      19
 #define HWA_TX_TXPOST_STATUS_REG2_TXPPKTDEALLOCRDINTR_MASK \
 	(0x1 << HWA_TX_TXPOST_STATUS_REG2_TXPPKTDEALLOCRDINTR_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 
-#if HWA_REVISION_GE_129
 /* Bits in hwa_tx_pktdeallocmgr_tfrstatus */
 #define HWA_TX_PKTDEALLOCMGR_TFRSTATUS_STATE_SHIFT      0
 #define HWA_TX_PKTDEALLOCMGR_TFRSTATUS_STATE_MASK \
@@ -1815,6 +1949,9 @@
 	(0x3ff << HWA_TX_PKTDEALLOCMGR_TFRSTATUS_DEST_SPACE_AVAIL_EL_SHIFT)
 
 /* Bits in hwa_tx_pktdealloc_localfifo_cfg_status */
+#define HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_REG_PKTDEALLOC_HDLR_IDX_SHIFT      0
+#define HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_REG_PKTDEALLOC_HDLR_IDX_MASK \
+	(0xff << HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_REG_PKTDEALLOC_HDLR_IDX_SHIFT)
 #define HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_PKTDEALLOCLOCALFIFO_WRPTR_SHIFT      8
 #define HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_PKTDEALLOCLOCALFIFO_WRPTR_MASK \
 	(0xff << HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_PKTDEALLOCLOCALFIFO_WRPTR_SHIFT)
@@ -1827,22 +1964,30 @@
 #define HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_PKTDEALLOCLOCALFIFO_FULL_SHIFT      25
 #define HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_PKTDEALLOCLOCALFIFO_FULL_MASK \
 	(0x1 << HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_PKTDEALLOCLOCALFIFO_FULL_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
+#define HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_REG_PKTDEALLOC_HDLR_IDLE_SHIFT      26
+#define HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_REG_PKTDEALLOC_HDLR_IDLE_MASK \
+	(0x1 << HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_REG_PKTDEALLOC_HDLR_IDLE_SHIFT)
+#define HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_REG_PKTDEALLOC_HDLR_ERR_SHIFT      27
+#define HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_REG_PKTDEALLOC_HDLR_ERR_MASK \
+	(0x1 << HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_REG_PKTDEALLOC_HDLR_ERR_SHIFT)
+#define HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_REG_PKTDEALLOC_HDLR_ACT_SHIFT      28
+#define HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_REG_PKTDEALLOC_HDLR_ACT_MASK \
+	(0x1 << HWA_TX_PKTDEALLOC_LOCALFIFO_CFG_STATUS_REG_PKTDEALLOC_HDLR_ACT_SHIFT)
 
 /* Bits in hwa_tx_txpost_cfg1 */
 #define HWA_TX_TXPOST_CFG1_BZERO_PKTTAG_SUPPORT_SHIFT      0
 #define HWA_TX_TXPOST_CFG1_BZERO_PKTTAG_SUPPORT_MASK \
 	(0x1 << HWA_TX_TXPOST_CFG1_BZERO_PKTTAG_SUPPORT_SHIFT)
-#if HWA_REVISION_GE_129
 #define HWA_TX_TXPOST_CFG1_BIT63OFPAYLOADADDR_SHIFT      1
 #define HWA_TX_TXPOST_CFG1_BIT63OFPAYLOADADDR_MASK \
 	(0x1 << HWA_TX_TXPOST_CFG1_BIT63OFPAYLOADADDR_SHIFT)
 #define HWA_TX_TXPOST_CFG1_SETSOFEOF4WIF_SHIFT      2
 #define HWA_TX_TXPOST_CFG1_SETSOFEOF4WIF_MASK \
 	(0x1 << HWA_TX_TXPOST_CFG1_SETSOFEOF4WIF_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
+#define HWA_TX_TXPOST_CFG1_TXP_MEMORY_TH_SHIFT      16
+#define HWA_TX_TXPOST_CFG1_TXP_MEMORY_TH_MASK \
+	(0xffff << HWA_TX_TXPOST_CFG1_TXP_MEMORY_TH_SHIFT)
 
-#if HWA_REVISION_GE_129
 /* Bits in hwa_tx_txpost_aggr_config */
 #define HWA_TX_TXPOST_AGGR_CONFIG_TXPOSTLOCALMEMDEPTH1_SHIFT      0
 #define HWA_TX_TXPOST_AGGR_CONFIG_TXPOSTLOCALMEMDEPTH1_MASK \
@@ -1899,68 +2044,16 @@
 #define HWA_TX_TXPOST_DEBUG_REG_TXPFWCMDCNT_SHIFT      16
 #define HWA_TX_TXPOST_DEBUG_REG_TXPFWCMDCNT_MASK \
 	(0x3f << HWA_TX_TXPOST_DEBUG_REG_TXPFWCMDCNT_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_TXDMA MACROS: hwa_txdma_reg_defs.h Sun Aug 27 17:51:21 2017
+ * HWA_TXDMA MACROS: hwa_txdma_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 #define hwa_txdma_base                              0x600
 #define hwa_txdma_last                              0x6ff
 
 /* hwa_txdma registers */
-#if HWA_REVISION_EQ_128
-#define hwa_txdma_txd_ctrl                          0x000
-#define hwa_txdma_txd_host_addr_h                   0x004
-#define hwa_txdma_txd_rinfo_table_addr_l            0x008
-#define hwa_txdma_txd_rinfo_ctrl                    0x00c
-#define hwa_txdma_txd_rinfo_fixup_bitmap            0x010
-#define hwa_txdma_txd_rinfo_table_update            0x014
-#define hwa_txdma_txd_rinfo_config_addr_l           0x018
-#define hwa_txdma_txd_cache_table_addr_l            0x01c
-#define hwa_txdma_txd_cache_ctrl                    0x020
-#define hwa_txdma_txd_pktinfo_fixup_bitmap          0x024
-#define hwa_txdma_txd_cacheinfo_fixup_bitmap        0x028
-#define hwa_txdma_mac_txd_bm_pool_base_addr_l       0x02c
-#define hwa_txdma_mac_txd_bm_config                 0x030
-#define hwa_txdma_mac_txd_bm_pool_avail_count_sts   0x034
-#define hwa_txdma_eth_type_oui_1                    0x038
-#define hwa_txdma_eth_type_oui_2                    0x03c
-#define hwa_txdma_eth_type_oui_3                    0x040
-#define hwa_txdma_eth_type_oui_4                    0x044
-#define hwa_txdma_sw2hwa_tx_pkt_chain_q_base_addr_l 0x048
-#define hwa_txdma_sw2hwa_tx_pkt_chain_q_wr_index    0x04c
-#define hwa_txdma_sw2hwa_tx_pkt_chain_q_rd_index    0x050
-#define hwa_txdma_sw2hwa_tx_pkt_chain_q_ctrl        0x054
-#define hwa_txdma_fifo_index                        0x058
-#define hwa_txdma_fifo_base_addr                    0x05c
-#define hwa_txdma_fifo_wr_index                     0x060
-#define hwa_txdma_fifo_depth                        0x064
-#define hwa_txdma_sw_pkt_size                       0x068
-#define hwa_txdma_dma_desc_template_txdma           0x06c
-#define hwa_txdma_state_sts                         0x070
-#define hwa_txdma_hwa_txdma2_cfg1                   0x074
-#define hwa_txdma_hwa_txdma2_cfg2                   0x078
-#define hwa_txdma_ovflowq_base_addr_lo              0x07c
-#define hwa_txdma_ovflowq_base_addr_hi              0x080
-#define hwa_txdma_num_txfifo_percore                0x084
-#define hwa_txdma_fifo_rd_index                     0x088
-#define hwa_txdma_fifo_attrib                       0x08c
-#define hwa_txdma_fifo_base_addrhi                  0x090
-#define hwa_txdma_aqm_base_addrlo                   0x098
-#define hwa_txdma_aqm_base_addrhi                   0x09c
-#define hwa_txdma_aqm_wr_index                      0x0a0
-#define hwa_txdma_aqm_depth                         0x0a4
-#define hwa_txdma_aqm_rd_index                      0x0a8
-#define hwa_txdma_aqm_attrib                        0x0ac
-#define hwa_txdma_state_sts2                        0x0b0
-#define hwa_txdma_state_sts3                        0x0b4
-#define hwa_txdma_hwa_txdma2_cfg3                   0x0b8
-#define hwa_txdma_hwa_txdma2_cfg4                   0x0bc
-#define hwa_txdma_sw2hwa_tx_pkt_chain_q_base_addr_h 0x0c0
-#define hwa_txdma_sw_tx_pkt_nxt_h                   0x0c4
-#else  /* HWA_REVISION_GE_129 */
 #define hwa_txdma_hwa_txdma2_cfg1                   0x000
 #define hwa_txdma_hwa_txdma2_cfg2                   0x004
 #define hwa_txdma_hwa_txdma2_cfg3                   0x008
@@ -1988,213 +2081,97 @@
 #define hwa_txdma_aqm_attrib                        0x074
 #define hwa_txdma_sw_tx_pkt_nxt_h                   0x080
 #define hwa_txdma_dma_desc_template_txdma           0x084
-#endif /* HWA_REVISION_GE_129 */
+#define hwa_txdma_pp_pageout_cfg                    0x090
+#define hwa_txdma_pp_pageout_sts                    0x094
+#define hwa_txdma_pp_pagein_cfg                     0x098
+#define hwa_txdma_pp_pagein_sts                     0x09c
+#define hwa_txdma_pp_pageout_dataptr_th				0x0a0
 
-#if HWA_REVISION_EQ_128
-/* Bits in hwa_txdma_txd_ctrl */
-#define HWA_TXDMA_TXD_CTRL_TXHSIZE0_SHIFT      0
-#define HWA_TXDMA_TXD_CTRL_TXHSIZE0_MASK \
-	(0x1f << HWA_TXDMA_TXD_CTRL_TXHSIZE0_SHIFT)
-#define HWA_TXDMA_TXD_CTRL_TXHSIZE1_SHIFT      5
-#define HWA_TXDMA_TXD_CTRL_TXHSIZE1_MASK \
-	(0x1f << HWA_TXDMA_TXD_CTRL_TXHSIZE1_SHIFT)
-#define HWA_TXDMA_TXD_CTRL_TXHSIZE2_SHIFT      10
-#define HWA_TXDMA_TXD_CTRL_TXHSIZE2_MASK \
-	(0x1f << HWA_TXDMA_TXD_CTRL_TXHSIZE2_SHIFT)
-#define HWA_TXDMA_TXD_CTRL_TXHSIZE3_SHIFT      15
-#define HWA_TXDMA_TXD_CTRL_TXHSIZE3_MASK \
-	(0x1f << HWA_TXDMA_TXD_CTRL_TXHSIZE3_SHIFT)
+/* Bits in hwa_txdma_hwa_txdma2_cfg1 */
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_NEW_FORMAT_SHIFT      0
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_NEW_FORMAT_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_NEW_FORMAT_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_64BITADDRESS_SHIFT      1
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_64BITADDRESS_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_64BITADDRESS_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_USE_OVFLOWQ_SHIFT      2
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_USE_OVFLOWQ_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_USE_OVFLOWQ_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_STOP_OVFLOWQ_SHIFT      3
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_STOP_OVFLOWQ_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_STOP_OVFLOWQ_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_NON_AQM_CTDMA_MODE_SHIFT      4
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_NON_AQM_CTDMA_MODE_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_NON_AQM_CTDMA_MODE_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_LAST_PTR_UPDATE_SHIFT      5
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_LAST_PTR_UPDATE_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_LAST_PTR_UPDATE_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_HW_UPDATE_PKTNXT_SHIFT      6
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_HW_UPDATE_PKTNXT_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_HW_UPDATE_PKTNXT_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_SWPKT_FORMAT_SHIFT      7
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_SWPKT_FORMAT_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_SWPKT_FORMAT_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_LENGTH_IN_SWPKT_SHIFT      8
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_LENGTH_IN_SWPKT_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_LENGTH_IN_SWPKT_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_NUMDES_HWSW_SHIFT      9
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_NUMDES_HWSW_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_NUMDES_HWSW_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_TXFIFO_CONTEXT_SHIFT      10
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_TXFIFO_CONTEXT_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_TXFIFO_CONTEXT_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CURRENTIDX_CALCULATION_SHIFT      11
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CURRENTIDX_CALCULATION_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CURRENTIDX_CALCULATION_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CURRENTIDX_CAL_WTIME_SHIFT      12
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CURRENTIDX_CAL_WTIME_MASK \
+	(0xf << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CURRENTIDX_CAL_WTIME_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_AQM_8B_SUPPORT_SHIFT      16
+#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_AQM_8B_SUPPORT_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_AQM_8B_SUPPORT_SHIFT)
 
-/* Bits in hwa_txdma_txd_host_addr_h */
-#define HWA_TXDMA_TXD_HOST_ADDR_H_UPPER32BITSHOSTADDR_SHIFT      0
-#define HWA_TXDMA_TXD_HOST_ADDR_H_UPPER32BITSHOSTADDR_MASK \
-	(0xffffffff << HWA_TXDMA_TXD_HOST_ADDR_H_UPPER32BITSHOSTADDR_SHIFT)
+/* Bits in hwa_txdma_hwa_txdma2_cfg2 */
+#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_AGGR_AQM_DESCRIPTOR_THRESHOLD_SHIFT      0
+#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_AGGR_AQM_DESCRIPTOR_THRESHOLD_MASK \
+	(0x7 << HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_AGGR_AQM_DESCRIPTOR_THRESHOLD_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_AGGR_AQM_DESCRIPTOR_ENABLE_SHIFT      3
+#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_AGGR_AQM_DESCRIPTOR_ENABLE_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_AGGR_AQM_DESCRIPTOR_ENABLE_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_CNT_REACH_SHIFT      8
+#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_CNT_REACH_MASK \
+	(0xff << HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_CNT_REACH_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_TIMER_SHIFT      16
+#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_TIMER_MASK \
+	(0xffff << HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_TIMER_SHIFT)
 
-/* Bits in hwa_txdma_txd_rinfo_table_addr_l */
-#define HWA_TXDMA_TXD_RINFO_TABLE_ADDR_L_RATEINFOTABBALOW_SHIFT      0
-#define HWA_TXDMA_TXD_RINFO_TABLE_ADDR_L_RATEINFOTABBALOW_MASK \
-	(0xffffffff << HWA_TXDMA_TXD_RINFO_TABLE_ADDR_L_RATEINFOTABBALOW_SHIFT)
+/* Bits in hwa_txdma_hwa_txdma2_cfg3 */
+#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_LIMIT_THREAHOLD_SHIFT      0
+#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_LIMIT_THREAHOLD_MASK \
+	(0xffff << HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_LIMIT_THREAHOLD_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG3_AQM_DESC_FREE_SPACE_SHIFT      16
+#define HWA_TXDMA_HWA_TXDMA2_CFG3_AQM_DESC_FREE_SPACE_MASK \
+	(0xff << HWA_TXDMA_HWA_TXDMA2_CFG3_AQM_DESC_FREE_SPACE_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_OVQ_QID_SHIFT      24
+#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_OVQ_QID_MASK \
+	(0x7f << hwa_txdma_HWA_TXDMA2_CFG3_txdma_ovq_qid_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_DISABLE_QID_SHIFT      31
+#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_DISABLE_QID_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_DISABLE_QID_SHIFT)
 
-/* Bits in hwa_txdma_txd_rinfo_ctrl */
-#define HWA_TXDMA_TXD_RINFO_CTRL_RATEINFOSTRUCTSIZE_SHIFT      0
-#define HWA_TXDMA_TXD_RINFO_CTRL_RATEINFOSTRUCTSIZE_MASK \
-	(0xff << HWA_TXDMA_TXD_RINFO_CTRL_RATEINFOSTRUCTSIZE_SHIFT)
-#define HWA_TXDMA_TXD_RINFO_CTRL_NUMRATEINFO_SHIFT      8
-#define HWA_TXDMA_TXD_RINFO_CTRL_NUMRATEINFO_MASK \
-	(0x7 << HWA_TXDMA_TXD_RINFO_CTRL_NUMRATEINFO_SHIFT)
-
-/* Bits in hwa_txdma_txd_rinfo_fixup_bitmap */
-#define HWA_TXDMA_TXD_RINFO_FIXUP_BITMAP_RATEINFOFIXUPBITMAP_SHIFT      0
-#define HWA_TXDMA_TXD_RINFO_FIXUP_BITMAP_RATEINFOFIXUPBITMAP_MASK \
-	(0xffffffff << HWA_TXDMA_TXD_RINFO_FIXUP_BITMAP_RATEINFOFIXUPBITMAP_SHIFT)
-
-/* Bits in hwa_txdma_txd_rinfo_table_update */
-#define HWA_TXDMA_TXD_RINFO_TABLE_UPDATE_RATEINFOTABINDEX_SHIFT      0
-#define HWA_TXDMA_TXD_RINFO_TABLE_UPDATE_RATEINFOTABINDEX_MASK \
-	(0xffff << HWA_TXDMA_TXD_RINFO_TABLE_UPDATE_RATEINFOTABINDEX_SHIFT)
-#define HWA_TXDMA_TXD_RINFO_TABLE_UPDATE_RATEINFOTRANSFERBUSY_SHIFT      16
-#define HWA_TXDMA_TXD_RINFO_TABLE_UPDATE_RATEINFOTRANSFERBUSY_MASK \
-	(0x1 << HWA_TXDMA_TXD_RINFO_TABLE_UPDATE_RATEINFOTRANSFERBUSY_SHIFT)
-
-/* Bits in hwa_txdma_txd_rinfo_config_addr_l */
-#define HWA_TXDMA_TXD_RINFO_CONFIG_ADDR_L_RATEINFOBUFFADDRLOW_SHIFT      0
-#define HWA_TXDMA_TXD_RINFO_CONFIG_ADDR_L_RATEINFOBUFFADDRLOW_MASK \
-	(0xffffffff << HWA_TXDMA_TXD_RINFO_CONFIG_ADDR_L_RATEINFOBUFFADDRLOW_SHIFT)
-
-/* Bits in hwa_txdma_txd_cache_table_addr_l */
-#define HWA_TXDMA_TXD_CACHE_TABLE_ADDR_L_CACHEINFOTABBALOW_SHIFT      0
-#define HWA_TXDMA_TXD_CACHE_TABLE_ADDR_L_CACHEINFOTABBALOW_MASK \
-	(0xffffffff << HWA_TXDMA_TXD_CACHE_TABLE_ADDR_L_CACHEINFOTABBALOW_SHIFT)
-
-/* Bits in hwa_txdma_txd_cache_ctrl */
-#define HWA_TXDMA_TXD_CACHE_CTRL_PKTINFTRUCTSIZE_SHIFT      0
-#define HWA_TXDMA_TXD_CACHE_CTRL_PKTINFTRUCTSIZE_MASK \
-	(0xff << HWA_TXDMA_TXD_CACHE_CTRL_PKTINFTRUCTSIZE_SHIFT)
-#define HWA_TXDMA_TXD_CACHE_CTRL_CACHEINFOSTRUCTSIZE_SHIFT      8
-#define HWA_TXDMA_TXD_CACHE_CTRL_CACHEINFOSTRUCTSIZE_MASK \
-	(0xff << HWA_TXDMA_TXD_CACHE_CTRL_CACHEINFOSTRUCTSIZE_SHIFT)
-
-/* Bits in hwa_txdma_txd_pktinfo_fixup_bitmap */
-#define HWA_TXDMA_TXD_PKTINFO_FIXUP_BITMAP_PKTINFOFIXUPBITMAP_SHIFT      0
-#define HWA_TXDMA_TXD_PKTINFO_FIXUP_BITMAP_PKTINFOFIXUPBITMAP_MASK \
-	(0xffffffff << HWA_TXDMA_TXD_PKTINFO_FIXUP_BITMAP_PKTINFOFIXUPBITMAP_SHIFT)
-
-/* Bits in hwa_txdma_txd_cacheinfo_fixup_bitmap */
-#define HWA_TXDMA_TXD_CACHEINFO_FIXUP_BITMAP_CACHEINFOFIXUPBITMAP_SHIFT      0
-#define HWA_TXDMA_TXD_CACHEINFO_FIXUP_BITMAP_CACHEINFOFIXUPBITMAP_MASK \
-	(0xffffffff << HWA_TXDMA_TXD_CACHEINFO_FIXUP_BITMAP_CACHEINFOFIXUPBITMAP_SHIFT)
-
-/* Bits in hwa_txdma_mac_txd_bm_pool_base_addr_l */
-#define HWA_TXDMA_MAC_TXD_BM_POOL_BASE_ADDR_L_BUFPOOLBASEADDRLOW_SHIFT      0
-#define HWA_TXDMA_MAC_TXD_BM_POOL_BASE_ADDR_L_BUFPOOLBASEADDRLOW_MASK \
-	(0xffffffff << HWA_TXDMA_MAC_TXD_BM_POOL_BASE_ADDR_L_BUFPOOLBASEADDRLOW_SHIFT)
-
-/* Bits in hwa_txdma_mac_txd_bm_config */
-#define HWA_TXDMA_MAC_TXD_BM_CONFIG_NUMBUFFERS_SHIFT      0
-#define HWA_TXDMA_MAC_TXD_BM_CONFIG_NUMBUFFERS_MASK \
-	(0xffff << HWA_TXDMA_MAC_TXD_BM_CONFIG_NUMBUFFERS_SHIFT)
-#define HWA_TXDMA_MAC_TXD_BM_CONFIG_BUFFERSIZE_SHIFT      16
-#define HWA_TXDMA_MAC_TXD_BM_CONFIG_BUFFERSIZE_MASK \
-	(0xfff << HWA_TXDMA_MAC_TXD_BM_CONFIG_BUFFERSIZE_SHIFT)
-
-/* Bits in hwa_txdma_mac_txd_bm_pool_avail_count_sts */
-#define HWA_TXDMA_MAC_TXD_BM_POOL_AVAIL_COUNT_STS_BUFPOOLAVAILCOUNT_SHIFT      0
-#define HWA_TXDMA_MAC_TXD_BM_POOL_AVAIL_COUNT_STS_BUFPOOLAVAILCOUNT_MASK \
-	(0xffff << HWA_TXDMA_MAC_TXD_BM_POOL_AVAIL_COUNT_STS_BUFPOOLAVAILCOUNT_SHIFT)
-
-/* Bits in hwa_txdma_eth_type_oui */
-#define HWA_TXDMA_ETH_TYPE_OUI_ETHTYPE_SHIFT      0
-#define HWA_TXDMA_ETH_TYPE_OUI_ETHTYPE_MASK \
-	(0xffff << HWA_TXDMA_ETH_TYPE_OUI_ETHTYPE_SHIFT)
-#define HWA_TXDMA_ETH_TYPE_OUI_OUI_SHIFT      16
-#define HWA_TXDMA_ETH_TYPE_OUI_OUI_MASK \
-	(0xff << HWA_TXDMA_ETH_TYPE_OUI_OUI_SHIFT)
-
-/* Bits in hwa_txdma_eth_type_oui_1 */
-#define HWA_TXDMA_ETH_TYPE_OUI_1_ETHTYPE1_SHIFT      0
-#define HWA_TXDMA_ETH_TYPE_OUI_1_ETHTYPE1_MASK \
-	(0xffff << HWA_TXDMA_ETH_TYPE_OUI_1_ETHTYPE1_SHIFT)
-#define HWA_TXDMA_ETH_TYPE_OUI_1_OUI1_SHIFT      16
-#define HWA_TXDMA_ETH_TYPE_OUI_1_OUI1_MASK \
-	(0xff << HWA_TXDMA_ETH_TYPE_OUI_1_OUI1_SHIFT)
-
-/* Bits in hwa_txdma_eth_type_oui_2 */
-#define HWA_TXDMA_ETH_TYPE_OUI_2_ETHTYPE2_SHIFT      0
-#define HWA_TXDMA_ETH_TYPE_OUI_2_ETHTYPE2_MASK \
-	(0xffff << HWA_TXDMA_ETH_TYPE_OUI_2_ETHTYPE2_SHIFT)
-#define HWA_TXDMA_ETH_TYPE_OUI_2_OUI2_SHIFT      16
-#define HWA_TXDMA_ETH_TYPE_OUI_2_OUI2_MASK \
-	(0xff << HWA_TXDMA_ETH_TYPE_OUI_2_OUI2_SHIFT)
-
-/* Bits in hwa_txdma_eth_type_oui_3 */
-#define HWA_TXDMA_ETH_TYPE_OUI_3_ETHTYPE3_SHIFT      0
-#define HWA_TXDMA_ETH_TYPE_OUI_3_ETHTYPE3_MASK \
-	(0xffff << HWA_TXDMA_ETH_TYPE_OUI_3_ETHTYPE3_SHIFT)
-#define HWA_TXDMA_ETH_TYPE_OUI_3_OUI3_SHIFT      16
-#define HWA_TXDMA_ETH_TYPE_OUI_3_OUI3_MASK \
-	(0xff << HWA_TXDMA_ETH_TYPE_OUI_3_OUI3_SHIFT)
-
-/* Bits in hwa_txdma_eth_type_oui_4 */
-#define HWA_TXDMA_ETH_TYPE_OUI_4_ETHTYPE4_SHIFT      0
-#define HWA_TXDMA_ETH_TYPE_OUI_4_ETHTYPE4_MASK \
-	(0xffff << HWA_TXDMA_ETH_TYPE_OUI_4_ETHTYPE4_SHIFT)
-#define HWA_TXDMA_ETH_TYPE_OUI_4_OUI4_SHIFT      16
-#define HWA_TXDMA_ETH_TYPE_OUI_4_OUI4_MASK \
-	(0xff << HWA_TXDMA_ETH_TYPE_OUI_4_OUI4_SHIFT)
-#endif /* HWA_REVISION_EQ_128 */
-
-/* Bits in hwa_txdma_sw2hwa_tx_pkt_chain_q_base_addr_l */
-#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_BASE_ADDR_L_PKTCHAINQBASEADDRLO_SHIFT      0
-#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_BASE_ADDR_L_PKTCHAINQBASEADDRLO_MASK \
-	(0xffffffff << HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_BASE_ADDR_L_PKTCHAINQBASEADDRLO_SHIFT)
-
-/* Bits in hwa_txdma_sw2hwa_tx_pkt_chain_q_wr_index */
-#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_WR_INDEX_PKTCHAINQWRIND_SHIFT      0
-#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_WR_INDEX_PKTCHAINQWRIND_MASK \
-	(0xffff << HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_WR_INDEX_PKTCHAINQWRIND_SHIFT)
-
-/* Bits in hwa_txdma_sw2hwa_tx_pkt_chain_q_rd_index */
-#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_RD_INDEX_PKTCHAINQRDIND_SHIFT      0
-#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_RD_INDEX_PKTCHAINQRDIND_MASK \
-	(0xffff << HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_RD_INDEX_PKTCHAINQRDIND_SHIFT)
-
-/* Bits in hwa_txdma_sw2hwa_tx_pkt_chain_q_ctrl */
-#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_CTRL_PKTCHAINQDEPTH_SHIFT      0
-#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_CTRL_PKTCHAINQDEPTH_MASK \
-	(0xffff << HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_CTRL_PKTCHAINQDEPTH_SHIFT)
-
-/* Bits in hwa_txdma_fifo_index */
-#define HWA_TXDMA_FIFO_INDEX_TXFIFOINDEX_SHIFT      0
-#define HWA_TXDMA_FIFO_INDEX_TXFIFOINDEX_MASK \
-	(0xff << HWA_TXDMA_FIFO_INDEX_TXFIFOINDEX_SHIFT)
-
-/* Bits in hwa_txdma_fifo_base_addr */
-#define HWA_TXDMA_FIFO_BASE_ADDR_TXFIFOBASEADDR_SHIFT      0
-#define HWA_TXDMA_FIFO_BASE_ADDR_TXFIFOBASEADDR_MASK \
-	(0xffffffff << HWA_TXDMA_FIFO_BASE_ADDR_TXFIFOBASEADDR_SHIFT)
-
-/* Bits in hwa_txdma_fifo_wr_index */
-#define HWA_TXDMA_FIFO_WR_INDEX_TXFIFOWRINDEX_SHIFT      0
-#define HWA_TXDMA_FIFO_WR_INDEX_TXFIFOWRINDEX_MASK \
-	(0xffff << HWA_TXDMA_FIFO_WR_INDEX_TXFIFOWRINDEX_SHIFT)
-
-/* Bits in hwa_txdma_fifo_depth */
-#define HWA_TXDMA_FIFO_DEPTH_TXFIFODEPTH_SHIFT      0
-#define HWA_TXDMA_FIFO_DEPTH_TXFIFODEPTH_MASK \
-	(0xffff << HWA_TXDMA_FIFO_DEPTH_TXFIFODEPTH_SHIFT)
-
-#if HWA_REVISION_EQ_128
-/* Bits in hwa_txdma_sw_pkt_size */
-#define HWA_TXDMA_SW_PKT_SIZE_SWPKTSIZE_SHIFT      0
-#define HWA_TXDMA_SW_PKT_SIZE_SWPKTSIZE_MASK \
-	(0xff << HWA_TXDMA_SW_PKT_SIZE_SWPKTSIZE_SHIFT)
-#endif /* HWA_REVISION_EQ_128 */
-
-/* Bits in hwa_txdma_dma_desc_template_txdma */
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATENOTPCIE_SHIFT      0
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATENOTPCIE_MASK \
-	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATENOTPCIE_SHIFT)
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATECOHERENT_SHIFT      1
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATECOHERENT_MASK \
-	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATECOHERENT_SHIFT)
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATEADDREXT_SHIFT      2
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATEADDREXT_MASK \
-	(0x3 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATEADDREXT_SHIFT)
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATENOTPCIE_SHIFT      4
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATENOTPCIE_MASK \
-	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATENOTPCIE_SHIFT)
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATECOHERENT_SHIFT      5
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATECOHERENT_MASK \
-	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATECOHERENT_SHIFT)
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATEADDREXT_SHIFT      6
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATEADDREXT_MASK \
-	(0x3 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATEADDREXT_SHIFT)
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAHWADESCTEMPLATENOTPCIE_SHIFT      8
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAHWADESCTEMPLATENOTPCIE_MASK \
-	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAHWADESCTEMPLATENOTPCIE_SHIFT)
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_NONDMAHWADESCTEMPLATECOHERENT_SHIFT      9
-#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_NONDMAHWADESCTEMPLATECOHERENT_MASK \
-	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_NONDMAHWADESCTEMPLATECOHERENT_SHIFT)
+/* Bits in hwa_txdma_hwa_txdma2_cfg4 */
+#define HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_EMPTY_CNT_REACH_SHIFT      0
+#define HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_EMPTY_CNT_REACH_MASK \
+	(0xffff << HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_EMPTY_CNT_REACH_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_FSM_TIMER_SHIFT      16
+#define HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_FSM_TIMER_MASK \
+	(0x3fff << HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_FSM_TIMER_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_PULLFSM_C_STATE_SHIFT      30
+#define HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_PULLFSM_C_STATE_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_PULLFSM_C_STATE_SHIFT)
+#define HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_PULLFSM_E_STATE_SHIFT      31
+#define HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_PULLFSM_E_STATE_MASK \
+	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_PULLFSM_E_STATE_SHIFT)
 
 /* Bits in hwa_txdma_state_sts */
 #define HWA_TXDMA_STATE_STS_TXH_DMA_CURSTATE_SHIFT      0
@@ -2221,136 +2198,12 @@
 #define HWA_TXDMA_STATE_STS_TXDMA_SWPKT_DMA_WAIT_STATE_SHIFT      24
 #define HWA_TXDMA_STATE_STS_TXDMA_SWPKT_DMA_WAIT_STATE_MASK \
 	(0x3 << HWA_TXDMA_STATE_STS_TXDMA_SWPKT_DMA_WAIT_STATE_SHIFT)
-#if HWA_REVISION_GE_129
 #define HWA_TXDMA_STATE_STS_TXDMA_ALLOFLEN_ZERO_SHIFT      26
 #define HWA_TXDMA_STATE_STS_TXDMA_ALLOFLEN_ZERO_MASK \
 	(0x1 << HWA_TXDMA_STATE_STS_TXDMA_ALLOFLEN_ZERO_SHIFT)
 #define HWA_TXDMA_STATE_STS_TXDMA_DESCDIFF_HWSW_SHIFT      27
 #define HWA_TXDMA_STATE_STS_TXDMA_DESCDIFF_HWSW_MASK \
 	(0x1 << HWA_TXDMA_STATE_STS_TXDMA_DESCDIFF_HWSW_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
-
-/* Bits in hwa_txdma_hwa_txdma2_cfg1 */
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_NEW_FORMAT_SHIFT      0
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_NEW_FORMAT_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_NEW_FORMAT_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_64BITADDRESS_SHIFT      1
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_64BITADDRESS_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_64BITADDRESS_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_USE_OVFLOWQ_SHIFT      2
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_USE_OVFLOWQ_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_USE_OVFLOWQ_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_STOP_OVFLOWQ_SHIFT      3
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_STOP_OVFLOWQ_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_STOP_OVFLOWQ_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_NON_AQM_CTDMA_MODE_SHIFT      4
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_NON_AQM_CTDMA_MODE_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_NON_AQM_CTDMA_MODE_SHIFT)
-#if HWA_REVISION_GE_129
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_LAST_PTR_UPDATE_SHIFT      5
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_LAST_PTR_UPDATE_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_LAST_PTR_UPDATE_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_HW_UPDATE_PKTNXT_SHIFT      6
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_HW_UPDATE_PKTNXT_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_HW_UPDATE_PKTNXT_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_SWPKT_FORMAT_SHIFT      7
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_SWPKT_FORMAT_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_SWPKT_FORMAT_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_LENGTH_IN_SWPKT_SHIFT      8
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_LENGTH_IN_SWPKT_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_LENGTH_IN_SWPKT_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_NUMDES_HWSW_SHIFT      9
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_NUMDES_HWSW_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_NUMDES_HWSW_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_TXFIFO_CONTEXT_SHIFT      10
-#define HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_TXFIFO_CONTEXT_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_TXFIFO_CONTEXT_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
-
-/* Bits in hwa_txdma_hwa_txdma2_cfg2 */
-#if HWA_REVISION_EQ_128
-#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_BUFFER_FIXED_MSB32_SHIFT      0
-#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_BUFFER_FIXED_MSB32_MASK \
-	(0xffffffff << HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_BUFFER_FIXED_MSB32_SHIFT)
-#else  /* HWA_REVISION_GE_129 */
-#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_AGGR_AQM_DESCRIPTOR_THRESHOLD_SHIFT      0
-#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_AGGR_AQM_DESCRIPTOR_THRESHOLD_MASK \
-	(0x7 << HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_AGGR_AQM_DESCRIPTOR_THRESHOLD_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_AGGR_AQM_DESCRIPTOR_ENABLE_SHIFT      3
-#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_AGGR_AQM_DESCRIPTOR_ENABLE_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_AGGR_AQM_DESCRIPTOR_ENABLE_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_CNT_REACH_SHIFT      8
-#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_CNT_REACH_MASK \
-	(0xff << HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_CNT_REACH_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_TIMER_SHIFT      16
-#define HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_TIMER_MASK \
-	(0xffff << HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_TIMER_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
-
-#if HWA_REVISION_EQ_128
-/* Bits in hwa_txdma_ovflowq_base_addr_lo */
-#define HWA_TXDMA_OVFLOWQ_BASE_ADDR_LO_OVFLOWQ_BASE_ADDR_LOW_SHIFT      0
-#define HWA_TXDMA_OVFLOWQ_BASE_ADDR_LO_OVFLOWQ_BASE_ADDR_LOW_MASK \
-	(0xffffffff << HWA_TXDMA_OVFLOWQ_BASE_ADDR_LO_OVFLOWQ_BASE_ADDR_LOW_SHIFT)
-
-/* Bits in hwa_txdma_ovflowq_base_addr_hi */
-#define HWA_TXDMA_OVFLOWQ_BASE_ADDR_HI_OVFLOWQ_BASE_ADDR_HI_SHIFT      0
-#define HWA_TXDMA_OVFLOWQ_BASE_ADDR_HI_OVFLOWQ_BASE_ADDR_HI_MASK \
-	(0xffffffff << HWA_TXDMA_OVFLOWQ_BASE_ADDR_HI_OVFLOWQ_BASE_ADDR_HI_SHIFT)
-
-/* Bits in hwa_txdma_num_txfifo_percore */
-#define HWA_TXDMA_NUM_TXFIFO_PERCORE_NUM_TXFIFO_CORE0_SHIFT      0
-#define HWA_TXDMA_NUM_TXFIFO_PERCORE_NUM_TXFIFO_CORE0_MASK \
-	(0xffff << HWA_TXDMA_NUM_TXFIFO_PERCORE_NUM_TXFIFO_CORE0_SHIFT)
-#define HWA_TXDMA_NUM_TXFIFO_PERCORE_NUM_TXFIFO_CORE1_SHIFT      16
-#define HWA_TXDMA_NUM_TXFIFO_PERCORE_NUM_TXFIFO_CORE1_MASK \
-	(0xffff << HWA_TXDMA_NUM_TXFIFO_PERCORE_NUM_TXFIFO_CORE1_SHIFT)
-#endif /* HWA_REVISION_EQ_128 */
-
-/* Bits in hwa_txdma_fifo_rd_index */
-#define HWA_TXDMA_FIFO_RD_INDEX_TXFIFORDINDEX_SHIFT      0
-#define HWA_TXDMA_FIFO_RD_INDEX_TXFIFORDINDEX_MASK \
-	(0xffff << HWA_TXDMA_FIFO_RD_INDEX_TXFIFORDINDEX_SHIFT)
-
-/* Bits in hwa_txdma_fifo_attrib */
-#define HWA_TXDMA_FIFO_ATTRIB_TXFIFOATTRIB_SHIFT      0
-#define HWA_TXDMA_FIFO_ATTRIB_TXFIFOATTRIB_MASK \
-	(0xffff << HWA_TXDMA_FIFO_ATTRIB_TXFIFOATTRIB_SHIFT)
-
-/* Bits in hwa_txdma_fifo_base_addrhi */
-#define HWA_TXDMA_FIFO_BASE_ADDRHI_TXFIFOBASEADDRHI_SHIFT      0
-#define HWA_TXDMA_FIFO_BASE_ADDRHI_TXFIFOBASEADDRHI_MASK \
-	(0xffffffff << HWA_TXDMA_FIFO_BASE_ADDRHI_TXFIFOBASEADDRHI_SHIFT)
-
-/* Bits in hwa_txdma_aqm_base_addrlo */
-#define HWA_TXDMA_AQM_BASE_ADDRLO_TXAQMBASEADDRLO_SHIFT      0
-#define HWA_TXDMA_AQM_BASE_ADDRLO_TXAQMBASEADDRLO_MASK \
-	(0xffffffff << HWA_TXDMA_AQM_BASE_ADDRLO_TXAQMBASEADDRLO_SHIFT)
-
-/* Bits in hwa_txdma_aqm_base_addrhi */
-#define HWA_TXDMA_AQM_BASE_ADDRHI_TXAQMBASEADDRHI_SHIFT      0
-#define HWA_TXDMA_AQM_BASE_ADDRHI_TXAQMBASEADDRHI_MASK \
-	(0xffffffff << HWA_TXDMA_AQM_BASE_ADDRHI_TXAQMBASEADDRHI_SHIFT)
-
-/* Bits in hwa_txdma_aqm_wr_index */
-#define HWA_TXDMA_AQM_WR_INDEX_TXAQMWRINDEX_SHIFT      0
-#define HWA_TXDMA_AQM_WR_INDEX_TXAQMWRINDEX_MASK \
-	(0xffff << HWA_TXDMA_AQM_WR_INDEX_TXAQMWRINDEX_SHIFT)
-
-/* Bits in hwa_txdma_aqm_depth */
-#define HWA_TXDMA_AQM_DEPTH_TXAQMDEPTH_SHIFT      0
-#define HWA_TXDMA_AQM_DEPTH_TXAQMDEPTH_MASK \
-	(0xffff << HWA_TXDMA_AQM_DEPTH_TXAQMDEPTH_SHIFT)
-
-/* Bits in hwa_txdma_aqm_rd_index */
-#define HWA_TXDMA_AQM_RD_INDEX_TXAQMRDINDEX_SHIFT      0
-#define HWA_TXDMA_AQM_RD_INDEX_TXAQMRDINDEX_MASK \
-	(0xffff << HWA_TXDMA_AQM_RD_INDEX_TXAQMRDINDEX_SHIFT)
-
-/* Bits in hwa_txdma_aqm_attrib */
-#define HWA_TXDMA_AQM_ATTRIB_TXAQMATTRIB_SHIFT      0
-#define HWA_TXDMA_AQM_ATTRIB_TXAQMATTRIB_MASK \
-	(0xffff << HWA_TXDMA_AQM_ATTRIB_TXAQMATTRIB_SHIFT)
 
 /* Bits in hwa_txdma_state_sts2 */
 #define HWA_TXDMA_STATE_STS2_TXDMA_SWPKT_DMA_WAIT_STATE_SHIFT      0
@@ -2386,51 +2239,206 @@
 #define HWA_TXDMA_STATE_STS3_TXDMA_SWPKT_ADDR_MASK \
 	(0xffff << HWA_TXDMA_STATE_STS3_TXDMA_SWPKT_ADDR_SHIFT)
 
-/* Bits in hwa_txdma_hwa_txdma2_cfg3 */
-#if HWA_REVISION_EQ_128
-#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_LIMIT_TRHREAHOLD_SHIFT      0
-#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_LIMIT_TRHREAHOLD_MASK \
-	(0xffff << HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_LIMIT_TRHREAHOLD_SHIFT)
-#else /* HWA_REVISION_GE_129 */
-#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_LIMIT_THREAHOLD_SHIFT      0
-#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_LIMIT_THREAHOLD_MASK \
-	(0xffff << HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_LIMIT_THREAHOLD_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
-#if HWA_REVISION_GE_129
-#define HWA_TXDMA_HWA_TXDMA2_CFG3_AQM_DESC_FREE_SPACE_SHIFT      16
-#define HWA_TXDMA_HWA_TXDMA2_CFG3_AQM_DESC_FREE_SPACE_MASK \
-	(0xff << HWA_TXDMA_HWA_TXDMA2_CFG3_AQM_DESC_FREE_SPACE_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
-#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_OVQ_QID_SHIFT      24
-#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_OVQ_QID_MASK \
-	(0x7f << hwa_txdma_HWA_TXDMA2_CFG3_txdma_ovq_qid_SHIFT)
-#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_DISABLE_QID_SHIFT      31
-#define HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_DISABLE_QID_MASK \
-	(0x1 << HWA_TXDMA_HWA_TXDMA2_CFG3_TXDMA_DISABLE_QID_SHIFT)
-
-/* Bits in hwa_txdma_hwa_txdma2_cfg4 */
-#define HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_EMPTY_CNT_REACH_SHIFT      0
-#define HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_EMPTY_CNT_REACH_MASK \
-	(0xffff << HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_EMPTY_CNT_REACH_SHIFT)
-#if HWA_REVISION_EQ_128
-#define HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_SWTXPKT_CNT_REACH_SHIFT      16
-#define HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_SWTXPKT_CNT_REACH_MASK \
-	(0xffff << HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_SWTXPKT_CNT_REACH_SHIFT)
-#endif /* HWA_REVISION_EQ_128 */
+/* Bits in hwa_txdma_sw2hwa_tx_pkt_chain_q_base_addr_l */
+#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_BASE_ADDR_L_PKTCHAINQBASEADDRLO_SHIFT      0
+#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_BASE_ADDR_L_PKTCHAINQBASEADDRLO_MASK \
+	(0xffffffff << HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_BASE_ADDR_L_PKTCHAINQBASEADDRLO_SHIFT)
 
 /* Bits in hwa_txdma_sw2hwa_tx_pkt_chain_q_base_addr_h */
 #define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_BASE_ADDR_H_PKTCHAINQBASEADDRHI_SHIFT      0
 #define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_BASE_ADDR_H_PKTCHAINQBASEADDRHI_MASK \
 	(0xffffffff << HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_BASE_ADDR_H_PKTCHAINQBASEADDRHI_SHIFT)
 
+/* Bits in hwa_txdma_sw2hwa_tx_pkt_chain_q_wr_index */
+#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_WR_INDEX_PKTCHAINQWRIND_SHIFT      0
+#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_WR_INDEX_PKTCHAINQWRIND_MASK \
+	(0xffff << HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_WR_INDEX_PKTCHAINQWRIND_SHIFT)
+
+/* Bits in hwa_txdma_sw2hwa_tx_pkt_chain_q_rd_index */
+#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_RD_INDEX_PKTCHAINQRDIND_SHIFT      0
+#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_RD_INDEX_PKTCHAINQRDIND_MASK \
+	(0xffff << HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_RD_INDEX_PKTCHAINQRDIND_SHIFT)
+
+/* Bits in hwa_txdma_sw2hwa_tx_pkt_chain_q_ctrl */
+#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_CTRL_PKTCHAINQDEPTH_SHIFT      0
+#define HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_CTRL_PKTCHAINQDEPTH_MASK \
+	(0xffff << HWA_TXDMA_SW2HWA_TX_PKT_CHAIN_Q_CTRL_PKTCHAINQDEPTH_SHIFT)
+
+/* Bits in hwa_txdma_fifo_index */
+#define HWA_TXDMA_FIFO_INDEX_TXFIFOINDEX_SHIFT      0
+#define HWA_TXDMA_FIFO_INDEX_TXFIFOINDEX_MASK \
+	(0xff << HWA_TXDMA_FIFO_INDEX_TXFIFOINDEX_SHIFT)
+
+/* Bits in hwa_txdma_fifo_base_addr */
+#define HWA_TXDMA_FIFO_BASE_ADDR_TXFIFOBASEADDR_SHIFT      0
+#define HWA_TXDMA_FIFO_BASE_ADDR_TXFIFOBASEADDR_MASK \
+	(0xffffffff << HWA_TXDMA_FIFO_BASE_ADDR_TXFIFOBASEADDR_SHIFT)
+
+/* Bits in hwa_txdma_fifo_base_addrhi */
+#define HWA_TXDMA_FIFO_BASE_ADDRHI_TXFIFOBASEADDRHI_SHIFT      0
+#define HWA_TXDMA_FIFO_BASE_ADDRHI_TXFIFOBASEADDRHI_MASK \
+	(0xffffffff << HWA_TXDMA_FIFO_BASE_ADDRHI_TXFIFOBASEADDRHI_SHIFT)
+
+/* Bits in hwa_txdma_fifo_wr_index */
+#define HWA_TXDMA_FIFO_WR_INDEX_TXFIFOWRINDEX_SHIFT      0
+#define HWA_TXDMA_FIFO_WR_INDEX_TXFIFOWRINDEX_MASK \
+	(0xffff << HWA_TXDMA_FIFO_WR_INDEX_TXFIFOWRINDEX_SHIFT)
+
+/* Bits in hwa_txdma_fifo_rd_index */
+#define HWA_TXDMA_FIFO_RD_INDEX_TXFIFORDINDEX_SHIFT      0
+#define HWA_TXDMA_FIFO_RD_INDEX_TXFIFORDINDEX_MASK \
+	(0xffff << HWA_TXDMA_FIFO_RD_INDEX_TXFIFORDINDEX_SHIFT)
+
+/* Bits in hwa_txdma_fifo_depth */
+#define HWA_TXDMA_FIFO_DEPTH_TXFIFODEPTH_SHIFT      0
+#define HWA_TXDMA_FIFO_DEPTH_TXFIFODEPTH_MASK \
+	(0xffff << HWA_TXDMA_FIFO_DEPTH_TXFIFODEPTH_SHIFT)
+
+/* Bits in hwa_txdma_fifo_attrib */
+#define HWA_TXDMA_FIFO_ATTRIB_TXFIFOATTRIB_SHIFT      0
+#define HWA_TXDMA_FIFO_ATTRIB_TXFIFOATTRIB_MASK \
+	(0xffff << HWA_TXDMA_FIFO_ATTRIB_TXFIFOATTRIB_SHIFT)
+
+/* Bits in hwa_txdma_aqm_base_addrlo */
+#define HWA_TXDMA_AQM_BASE_ADDRLO_TXAQMBASEADDRLO_SHIFT      0
+#define HWA_TXDMA_AQM_BASE_ADDRLO_TXAQMBASEADDRLO_MASK \
+	(0xffffffff << HWA_TXDMA_AQM_BASE_ADDRLO_TXAQMBASEADDRLO_SHIFT)
+
+/* Bits in hwa_txdma_aqm_base_addrhi */
+#define HWA_TXDMA_AQM_BASE_ADDRHI_TXAQMBASEADDRHI_SHIFT      0
+#define HWA_TXDMA_AQM_BASE_ADDRHI_TXAQMBASEADDRHI_MASK \
+	(0xffffffff << HWA_TXDMA_AQM_BASE_ADDRHI_TXAQMBASEADDRHI_SHIFT)
+
+/* Bits in hwa_txdma_aqm_wr_index */
+#define HWA_TXDMA_AQM_WR_INDEX_TXAQMWRINDEX_SHIFT      0
+#define HWA_TXDMA_AQM_WR_INDEX_TXAQMWRINDEX_MASK \
+	(0xffff << HWA_TXDMA_AQM_WR_INDEX_TXAQMWRINDEX_SHIFT)
+
+/* Bits in hwa_txdma_aqm_rd_index */
+#define HWA_TXDMA_AQM_RD_INDEX_TXAQMRDINDEX_SHIFT      0
+#define HWA_TXDMA_AQM_RD_INDEX_TXAQMRDINDEX_MASK \
+	(0xffff << HWA_TXDMA_AQM_RD_INDEX_TXAQMRDINDEX_SHIFT)
+
+/* Bits in hwa_txdma_aqm_depth */
+#define HWA_TXDMA_AQM_DEPTH_TXAQMDEPTH_SHIFT      0
+#define HWA_TXDMA_AQM_DEPTH_TXAQMDEPTH_MASK \
+	(0xffff << HWA_TXDMA_AQM_DEPTH_TXAQMDEPTH_SHIFT)
+
+/* Bits in hwa_txdma_aqm_attrib */
+#define HWA_TXDMA_AQM_ATTRIB_TXAQMATTRIB_SHIFT      0
+#define HWA_TXDMA_AQM_ATTRIB_TXAQMATTRIB_MASK \
+	(0xffff << HWA_TXDMA_AQM_ATTRIB_TXAQMATTRIB_SHIFT)
+
 /* Bits in hwa_txdma_sw_tx_pkt_nxt_h */
 #define HWA_TXDMA_SW_TX_PKT_NXT_H_SWTXPKTNXTADDRHI_SHIFT      0
 #define HWA_TXDMA_SW_TX_PKT_NXT_H_SWTXPKTNXTADDRHI_MASK \
 	(0xffffffff << HWA_TXDMA_SW_TX_PKT_NXT_H_SWTXPKTNXTADDRHI_SHIFT)
 
+/* Bits in hwa_txdma_dma_desc_template_txdma */
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATENOTPCIE_SHIFT      0
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATENOTPCIE_MASK \
+	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATENOTPCIE_SHIFT)
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATECOHERENT_SHIFT      1
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATECOHERENT_MASK \
+	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATECOHERENT_SHIFT)
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATEADDREXT_SHIFT      2
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATEADDREXT_MASK \
+	(0x3 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATEADDREXT_SHIFT)
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATENOTPCIE_SHIFT      4
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATENOTPCIE_MASK \
+	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATENOTPCIE_SHIFT)
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATECOHERENT_SHIFT      5
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATECOHERENT_MASK \
+	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATECOHERENT_SHIFT)
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATEADDREXT_SHIFT      6
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATEADDREXT_MASK \
+	(0x3 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATEADDREXT_SHIFT)
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAHWADESCTEMPLATENOTPCIE_SHIFT      8
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAHWADESCTEMPLATENOTPCIE_MASK \
+	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAHWADESCTEMPLATENOTPCIE_SHIFT)
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_NONDMAHWADESCTEMPLATECOHERENT_SHIFT      9
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_NONDMAHWADESCTEMPLATECOHERENT_MASK \
+	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_NONDMAHWADESCTEMPLATECOHERENT_SHIFT)
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATEWCAQMTXD_SHIFT      10
+#define HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATEWCAQMTXD_MASK \
+	(0x1 << HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMATCMDESCTEMPLATEWCAQMTXD_SHIFT)
+
+/* Bits in hwa_txdma_pp_pageout_cfg */
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_HDBM_AVAILCNT_SHIFT      0
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_HDBM_AVAILCNT_MASK \
+	(0xff << HWA_TXDMA_PP_PAGEOUT_CFG_PP_HDBM_AVAILCNT_SHIFT)
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_MACFIFO_EMPTY_CNT_SHIFT      8
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_MACFIFO_EMPTY_CNT_MASK \
+	(0xff << HWA_TXDMA_PP_PAGEOUT_CFG_PP_MACFIFO_EMPTY_CNT_SHIFT)
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_MACAQM_EMPTY_CNT_SHIFT      16
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_MACAQM_EMPTY_CNT_MASK \
+	(0xff << HWA_TXDMA_PP_PAGEOUT_CFG_PP_MACAQM_EMPTY_CNT_SHIFT)
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_RDMA_COHERENT_SHIFT      25
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_RDMA_COHERENT_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_RDMA_COHERENT_SHIFT)
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_RDMA_NOTPCIE_SHIFT      26
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_RDMA_NOTPCIE_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_RDMA_NOTPCIE_SHIFT)
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_WDMA_WCPDESC_SHIFT      27
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_WDMA_WCPDESC_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_WDMA_WCPDESC_SHIFT)
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_WDMA_COHERENT_SHIFT      28
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_WDMA_COHERENT_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_WDMA_COHERENT_SHIFT)
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_WDMA_NOTPCIE_SHIFT      29
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_WDMA_NOTPCIE_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEOUT_CFG_PP_PAGEOUT_WDMA_NOTPCIE_SHIFT)
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_HDBM_STOP_SHIFT      30
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_HDBM_STOP_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEOUT_CFG_PP_HDBM_STOP_SHIFT)
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_HDBM_FORCESTOP_SHIFT      31
+#define HWA_TXDMA_PP_PAGEOUT_CFG_PP_HDBM_FORCESTOP_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEOUT_CFG_PP_HDBM_FORCESTOP_SHIFT)
+
+/* Bits in hwa_txdma_pp_pageout_sts */
+#define HWA_TXDMA_PP_PAGEOUT_STS_PPOUTSTSDBG_SHIFT      0
+#define HWA_TXDMA_PP_PAGEOUT_STS_PPOUTSTSDBG_MASK \
+	(0xffffffff << HWA_TXDMA_PP_PAGEOUT_STS_PPOUTSTSDBG_SHIFT)
+
+/* Bits in hwa_txdma_pp_pagein_cfg */
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_DDBM_AVAILCNT_SHIFT      0
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_DDBM_AVAILCNT_MASK \
+	(0x3fff << HWA_TXDMA_PP_PAGEIN_CFG_PP_DDBM_AVAILCNT_SHIFT)
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_RDMA_COHERENT_SHIFT      25
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_RDMA_COHERENT_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_RDMA_COHERENT_SHIFT)
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_RDMA_NOTPCIE_SHIFT      26
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_RDMA_NOTPCIE_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_RDMA_NOTPCIE_SHIFT)
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_WDMA_WCPDESC_SHIFT      27
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_WDMA_WCPDESC_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_WDMA_WCPDESC_SHIFT)
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_WDMA_COHERENT_SHIFT      28
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_WDMA_COHERENT_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_WDMA_COHERENT_SHIFT)
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_WDMA_NOTPCIE_SHIFT      29
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_WDMA_NOTPCIE_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEIN_CFG_PP_PAGEIN_WDMA_NOTPCIE_SHIFT)
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_HDBM_STOP_SHIFT      30
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_HDBM_STOP_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEIN_CFG_PP_HDBM_STOP_SHIFT)
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_HDBM_FORCESTOP_SHIFT      31
+#define HWA_TXDMA_PP_PAGEIN_CFG_PP_HDBM_FORCESTOP_MASK \
+	(0x1 << HWA_TXDMA_PP_PAGEIN_CFG_PP_HDBM_FORCESTOP_SHIFT)
+
+/* Bits in hwa_txdma_pp_pagein_sts */
+#define HWA_TXDMA_PP_PAGEIN_STS_PPINSTSDBG_SHIFT      0
+#define HWA_TXDMA_PP_PAGEIN_STS_PPINSTSDBG_MASK \
+	(0xffffffff << HWA_TXDMA_PP_PAGEIN_STS_PPINSTSDBG_SHIFT)
+
+/* Bits in hwa_txdma_pp_pageout_dataptr_th */
+#define HWA_TXDMA_PP_PAGEOUT_DATAPTR_TH_PPOUT_DATAPTR_TH_SHIFT      0
+#define HWA_TXDMA_PP_PAGEOUT_DATAPTR_TH_PPOUT_DATAPTR_TH_MASK \
+	(0xffffffff << HWA_TXDMA_PP_PAGEOUT_DATAPTR_TH_PPOUT_DATAPTR_TH_SHIFT)
+
 /*
  * -----------------------------------------------------------------------------
- * HWA_TX_STATUS MACROS: hwa_tx_status_reg_defs.h Wed Aug 23 17:58:04 2017
+ * HWA_TX_STATUS MACROS: hwa_tx_status_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 #define hwa_tx_status0_base                         0x700
@@ -2449,11 +2457,9 @@
 #define hwa_tx_status_tse_sts                       0x018
 #define hwa_tx_status_txs_debug_reg                 0x01c
 #define hwa_tx_status_dma_desc_template_txs         0x020
-#if HWA_REVISION_GE_129
 #define hwa_tx_status_txe_cfg1                      0x024
 #define hwa_tx_status_tse_axi_base                  0x028
 #define hwa_tx_status_tse_axi_ctl                   0x02c
-#endif /* HWA_REVISION_GE_129 */
 
 /* Bits in hwa_tx_status_tseq_base_l */
 #define HWA_TX_STATUS_TSEQ_BASE_L_REGS2TXS_QUEUE_ADDR_L_SHIFT      0
@@ -2488,13 +2494,8 @@
 #define HWA_TX_STATUS_TSE_CTL_LAZYINTRTIMEOUT_MASK \
 	(0xffff << HWA_TX_STATUS_TSE_CTL_LAZYINTRTIMEOUT_SHIFT)
 #define HWA_TX_STATUS_TSE_CTL_MACTXSTATUSSIZE_SHIFT      22
-#if HWA_REVISION_EQ_128
-#define HWA_TX_STATUS_TSE_CTL_MACTXSTATUSSIZE_MASK \
-	(0x7f << HWA_TX_STATUS_TSE_CTL_MACTXSTATUSSIZE_SHIFT)
-#else  /* HWA_REVISION_GE_129 */
 #define HWA_TX_STATUS_TSE_CTL_MACTXSTATUSSIZE_MASK \
 	(0xff << HWA_TX_STATUS_TSE_CTL_MACTXSTATUSSIZE_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 
 /* Bits in hwa_tx_status_tse_sts */
 #define HWA_TX_STATUS_TSE_STS_ENGINESTATE_SHIFT      0
@@ -2515,18 +2516,11 @@
 #define HWA_TX_STATUS_TXS_DEBUG_REG_START_CURSTATE_MASK \
 	(0xf << HWA_TX_STATUS_TXS_DEBUG_REG_START_CURSTATE_SHIFT)
 #define HWA_TX_STATUS_TXS_DEBUG_REG_NUM_TX_STATUS_COUNT_SHIFT      4
-#if HWA_REVISION_EQ_128
-#define HWA_TX_STATUS_TXS_DEBUG_REG_NUM_TX_STATUS_COUNT_MASK \
-	(0xff << HWA_TX_STATUS_TXS_DEBUG_REG_NUM_TX_STATUS_COUNT_SHIFT)
-#else  /* HWA_REVISION_GE_129 */
 #define HWA_TX_STATUS_TXS_DEBUG_REG_NUM_TX_STATUS_COUNT_MASK \
 	(0x3ff << HWA_TX_STATUS_TXS_DEBUG_REG_NUM_TX_STATUS_COUNT_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
-#if HWA_REVISION_GE_129
 #define HWA_TX_STATUS_TXS_DEBUG_REG_TX_STATUS_CNT_FULL_REQ_SHIFT      14
 #define HWA_TX_STATUS_TXS_DEBUG_REG_TX_STATUS_CNT_FULL_REQ_MASK \
 	(0x1 << HWA_TX_STATUS_TXS_DEBUG_REG_TX_STATUS_CNT_FULL_REQ_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 
 /* Bits in hwa_tx_status_dma_desc_template_txs */
 #define HWA_TX_STATUS_DMA_DESC_TEMPLATE_TXS_DMAPCIEDESCTEMPLATENOTPCIE_SHIFT      0
@@ -2547,8 +2541,10 @@
 #define HWA_TX_STATUS_DMA_DESC_TEMPLATE_TXS_NONDMAHWADESCTEMPLATECOHERENT_SHIFT      6
 #define HWA_TX_STATUS_DMA_DESC_TEMPLATE_TXS_NONDMAHWADESCTEMPLATECOHERENT_MASK \
 	(0x1 << HWA_TX_STATUS_DMA_DESC_TEMPLATE_TXS_NONDMAHWADESCTEMPLATECOHERENT_SHIFT)
+#define HWA_TX_STATUS_DMA_DESC_TEMPLATE_TXS_DMAPCIEDESCTEMPLATEPERDESCWC_SHIFT      7
+#define HWA_TX_STATUS_DMA_DESC_TEMPLATE_TXS_DMAPCIEDESCTEMPLATEPERDESCWC_MASK \
+	(0x1 << HWA_TX_STATUS_DMA_DESC_TEMPLATE_TXS_DMAPCIEDESCTEMPLATEPERDESCWC_SHIFT)
 
-#if HWA_REVISION_GE_129
 /* Bits in hwa_tx_status_txe_cfg1 */
 #define HWA_TX_STATUS_TXE_CFG1_ACCESSMODE_SHIFT      0
 #define HWA_TX_STATUS_TXE_CFG1_ACCESSMODE_MASK \
@@ -2559,6 +2555,12 @@
 #define HWA_TX_STATUS_TXE_CFG1_CHECKVALID_SHIFT      2
 #define HWA_TX_STATUS_TXE_CFG1_CHECKVALID_MASK \
 	(0x1 << HWA_TX_STATUS_TXE_CFG1_CHECKVALID_SHIFT)
+#define HWA_TX_STATUS_TXE_CFG1_CNTDECWVALID_SHIFT      3
+#define HWA_TX_STATUS_TXE_CFG1_CNTDECWVALID_MASK \
+	(0x1 << HWA_TX_STATUS_TXE_CFG1_CNTDECWVALID_SHIFT)
+#define HWA_TX_STATUS_TXE_CFG1_ONEREQREAD_SHIFT      4
+#define HWA_TX_STATUS_TXE_CFG1_ONEREQREAD_MASK \
+	(0x1 << HWA_TX_STATUS_TXE_CFG1_ONEREQREAD_SHIFT)
 
 /* Bits in hwa_tx_status_tse_axi_base */
 #define HWA_TX_STATUS_TSE_AXI_BASE_REGS2TXS_BASE_ADDR_AXI_SHIFT      0
@@ -2575,11 +2577,10 @@
 #define HWA_TX_STATUS_TSE_AXI_CTL_REGS2TXS_DATALENGTH_AXI_SHIFT      16
 #define HWA_TX_STATUS_TSE_AXI_CTL_REGS2TXS_DATALENGTH_AXI_MASK \
 	(0xff << HWA_TX_STATUS_TSE_AXI_CTL_REGS2TXS_DATALENGTH_AXI_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_RX MACROS: hwa_rx_reg_defs.h Wed Aug 23 17:58:10 2017
+ * HWA_RX MACROS: hwa_rx_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 #define hwa_rx_core0_base                           0x840
@@ -2630,6 +2631,11 @@
 #define hwa_rx_d11bdest_ring_rdindex                0x0cc
 #define hwa_rx_d11bdest_ring_cfg                    0x0d0
 #define hwa_rx_d11bdest_intraggr_seqnum_cfg         0x0d4
+#define hwa_rx_d11bdest_threshold_l1l0              0x0d8
+#define hwa_rx_d11bdest_threshold_l2                0x0dc
+#define hwa_rx_d11bdest_ring_wrindex_dir            0x0e0
+#define hwa_rx_pagein_status                        0x0e4
+#define hwa_rx_recycle_status                       0x0e8
 #define hwa_rx_freeidxsrc_ring_addrlo               0x0f0
 #define hwa_rx_freeidxsrc_ring_addrhi               0x0f4
 #define hwa_rx_freeidxsrc_ring_wrindex              0x0f8
@@ -2668,6 +2674,8 @@
 #define hwa_rx_debug_errorstatus                    0x1a8
 #define hwa_rx_debug_hwa2status                     0x1ac
 #define hwa_rx_debug_hwa2errorstatus                0x1b0
+#define hwa_rx_debug_freeidx_err                    0x1b4
+#define hwa_rx_debug_freeidx_cnt                    0x1b8
 
 /* Bits in hwa_rx_rxpsrc_ring_addrlo */
 #define HWA_RX_RXPSRC_RING_ADDRLO_ADDRLO_SHIFT      0
@@ -2782,14 +2790,21 @@
 #define HWA_RX_RXPSRC_RING_HWA2CFG_RXP_AGGR_MODE_SHIFT      20
 #define HWA_RX_RXPSRC_RING_HWA2CFG_RXP_AGGR_MODE_MASK \
 	(0x1 << HWA_RX_RXPSRC_RING_HWA2CFG_RXP_AGGR_MODE_SHIFT)
-#if HWA_REVISION_GE_129
+#define HWA_RX_RXPSRC_RING_HWA2CFG_D11B_TYPE_SHIFT      21
+#define HWA_RX_RXPSRC_RING_HWA2CFG_D11B_TYPE_MASK \
+	(0x1 << HWA_RX_RXPSRC_RING_HWA2CFG_D11B_TYPE_SHIFT)
 #define HWA_RX_RXPSRC_RING_HWA2CFG_NIC64_1B_SHIFT      22
 #define HWA_RX_RXPSRC_RING_HWA2CFG_NIC64_1B_MASK \
 	(0x1 << HWA_RX_RXPSRC_RING_HWA2CFG_NIC64_1B_SHIFT)
-#define HWA_RC_RXPSRC_RING_HWA2CFG_NIC_1A_DISABLE_SHIFT      23
-#define HWA_RC_RXPSRC_RING_HWA2CFG_NIC_1A_DISABLE_MASK \
-	(0x1 << HWA_RC_RXPSRC_RING_HWA2CFG_NIC_1A_DISABLE_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
+#define HWA_RX_RXPSRC_RING_HWA2CFG_NIC_1A_DISABLE_SHIFT      23
+#define HWA_RX_RXPSRC_RING_HWA2CFG_NIC_1A_DISABLE_MASK \
+	(0x1 << HWA_RX_RXPSRC_RING_HWA2CFG_NIC_1A_DISABLE_SHIFT)
+#define HWA_RX_RXPSRC_RING_HWA2CFG_PP_INT_D11B_SHIFT      30
+#define HWA_RX_RXPSRC_RING_HWA2CFG_PP_INT_D11B_MASK \
+	(0x1 << HWA_RX_RXPSRC_RING_HWA2CFG_PP_INT_D11B_SHIFT)
+#define HWA_RX_RXPSRC_RING_HWA2CFG_PP_PAGER_MODE_SHIFT      31
+#define HWA_RX_RXPSRC_RING_HWA2CFG_PP_PAGER_MODE_MASK \
+	(0x1 << HWA_RX_RXPSRC_RING_HWA2CFG_PP_PAGER_MODE_SHIFT)
 
 /* Bits in hwa_rx_rxpdest_ring_addrlo */
 #define HWA_RX_RXPDEST_RING_ADDRLO_ADDRLO_SHIFT      0
@@ -2871,6 +2886,9 @@
 	(0xffff << HWA_RX_D0DEST_RING_RDINDEX_RD_INDEX_SHIFT)
 
 /* Bits in hwa_rx_d0dest_ring_cfg */
+#define HWA_RX_D0DEST_RING_CFG_TEMPLATE_WRITE_COMP_SHIFT      5
+#define HWA_RX_D0DEST_RING_CFG_TEMPLATE_WRITE_COMP_MASK \
+	(0x1 << HWA_RX_D0DEST_RING_CFG_TEMPLATE_WRITE_COMP_SHIFT)
 #define HWA_RX_D0DEST_RING_CFG_TEMPLATE_COHERENT_SHIFT      6
 #define HWA_RX_D0DEST_RING_CFG_TEMPLATE_COHERENT_MASK \
 	(0x1 << HWA_RX_D0DEST_RING_CFG_TEMPLATE_COHERENT_SHIFT)
@@ -2926,6 +2944,9 @@
 	(0xffff << HWA_RX_D1DEST_RING_RDINDEX_RD_INDEX_SHIFT)
 
 /* Bits in hwa_rx_d1dest_ring_cfg */
+#define HWA_RX_D1DEST_RING_CFG_TEMPLATE_WRITE_COMP_SHIFT      5
+#define HWA_RX_D1DEST_RING_CFG_TEMPLATE_WRITE_COMP_MASK \
+	(0x1 << HWA_RX_D1DEST_RING_CFG_TEMPLATE_WRITE_COMP_SHIFT)
 #define HWA_RX_D1DEST_RING_CFG_TEMPLATE_COHERENT_SHIFT      6
 #define HWA_RX_D1DEST_RING_CFG_TEMPLATE_COHERENT_MASK \
 	(0x1 << HWA_RX_D1DEST_RING_CFG_TEMPLATE_COHERENT_SHIFT)
@@ -2979,8 +3000,14 @@
 #define HWA_RX_D11BDEST_RING_RDINDEX_RD_INDEX_SHIFT      0
 #define HWA_RX_D11BDEST_RING_RDINDEX_RD_INDEX_MASK \
 	(0xffff << HWA_RX_D11BDEST_RING_RDINDEX_RD_INDEX_SHIFT)
+#define HWA_RX_D11BDEST_RING_RDINDEX_RD22_INDEX_SHIFT      16
+#define HWA_RX_D11BDEST_RING_RDINDEX_RD22_INDEX_MASK \
+	(0xffff << HWA_RX_D11BDEST_RING_RDINDEX_RD22_INDEX_SHIFT)
 
 /* Bits in hwa_rx_d11bdest_ring_cfg */
+#define HWA_RX_D11BDEST_RING_CFG_TEMPLATE_WRITE_COMP_SHIFT      4
+#define HWA_RX_D11BDEST_RING_CFG_TEMPLATE_WRITE_COMP_MASK \
+	(0x1 << HWA_RX_D11BDEST_RING_CFG_TEMPLATE_WRITE_COMP_SHIFT)
 #define HWA_RX_D11BDEST_RING_CFG_TEMPLATE_NOTPCIE_SHIFT      5
 #define HWA_RX_D11BDEST_RING_CFG_TEMPLATE_NOTPCIE_MASK \
 	(0x1 << HWA_RX_D11BDEST_RING_CFG_TEMPLATE_NOTPCIE_SHIFT)
@@ -3004,6 +3031,79 @@
 #define HWA_RX_D11BDEST_INTRAGGR_SEQNUM_CFG_AGGR_TIMER_SHIFT      16
 #define HWA_RX_D11BDEST_INTRAGGR_SEQNUM_CFG_AGGR_TIMER_MASK \
 	(0xffff << HWA_RX_D11BDEST_INTRAGGR_SEQNUM_CFG_AGGR_TIMER_SHIFT)
+
+/* Bits in hwa_rx_d11bdest_threshold_l1l0 */
+#define HWA_RX_D11BDEST_THRESHOLD_L1L0_PP_D11THRESHOLD_L0_SHIFT      0
+#define HWA_RX_D11BDEST_THRESHOLD_L1L0_PP_D11THRESHOLD_L0_MASK \
+	(0x7ff << HWA_RX_D11BDEST_THRESHOLD_L1L0_PP_D11THRESHOLD_L0_SHIFT)
+#define HWA_RX_D11BDEST_THRESHOLD_L1L0_PP_D11THRESHOLD_L1_SHIFT      16
+#define HWA_RX_D11BDEST_THRESHOLD_L1L0_PP_D11THRESHOLD_L1_MASK \
+	(0x7ff << HWA_RX_D11BDEST_THRESHOLD_L1L0_PP_D11THRESHOLD_L1_SHIFT)
+
+/* Bits in hwa_rx_d11bdest_threshold_l2 */
+#define HWA_RX_D11BDEST_THRESHOLD_L2_PP_D11THRESHOLD_L2_SHIFT      0
+#define HWA_RX_D11BDEST_THRESHOLD_L2_PP_D11THRESHOLD_L2_MASK \
+	(0x7ff << HWA_RX_D11BDEST_THRESHOLD_L2_PP_D11THRESHOLD_L2_SHIFT)
+
+/* Bits in hwa_rx_d11bdest_ring_wrindex_dir */
+#define HWA_RX_D11BDEST_RING_WRINDEX_DIR_WR_INDEX_DIRECT_SHIFT      16
+#define HWA_RX_D11BDEST_RING_WRINDEX_DIR_WR_INDEX_DIRECT_MASK \
+	(0xffff << HWA_RX_D11BDEST_RING_WRINDEX_DIR_WR_INDEX_DIRECT_SHIFT)
+
+/* Bits in hwa_rx_pagein_status */
+#define HWA_RX_PAGEIN_STATUS_STATE_SHIFT      0
+#define HWA_RX_PAGEIN_STATUS_STATE_MASK \
+	(0x1f << HWA_RX_PAGEIN_STATUS_STATE_SHIFT)
+#define HWA_RX_PAGEIN_STATUS_PAGEIN_ALLOC_ERR_SHIFT      5
+#define HWA_RX_PAGEIN_STATUS_PAGEIN_ALLOC_ERR_MASK \
+	(0x1 << HWA_RX_PAGEIN_STATUS_PAGEIN_ALLOC_ERR_SHIFT)
+#define HWA_RX_PAGEIN_STATUS_PAGEIN_TAIL_ERR_SHIFT      6
+#define HWA_RX_PAGEIN_STATUS_PAGEIN_TAIL_ERR_MASK \
+	(0x1 << HWA_RX_PAGEIN_STATUS_PAGEIN_TAIL_ERR_SHIFT)
+#define HWA_RX_PAGEIN_STATUS_PAGEIN_ERR_SHIFT      7
+#define HWA_RX_PAGEIN_STATUS_PAGEIN_ERR_MASK \
+	(0x1 << HWA_RX_PAGEIN_STATUS_PAGEIN_ERR_SHIFT)
+#define HWA_RX_PAGEIN_STATUS_TEMPLATE_NOTPCIE_H_SHIFT      8
+#define HWA_RX_PAGEIN_STATUS_TEMPLATE_NOTPCIE_H_MASK \
+	(0x1 << HWA_RX_PAGEIN_STATUS_TEMPLATE_NOTPCIE_H_SHIFT)
+#define HWA_RX_PAGEIN_STATUS_TEMPLATE_COHERENT_H_SHIFT      9
+#define HWA_RX_PAGEIN_STATUS_TEMPLATE_COHERENT_H_MASK \
+	(0x1 << HWA_RX_PAGEIN_STATUS_TEMPLATE_COHERENT_H_SHIFT)
+#define HWA_RX_PAGEIN_STATUS_TEMPLATE_ADDREXT_H_SHIFT      10
+#define HWA_RX_PAGEIN_STATUS_TEMPLATE_ADDREXT_H_MASK \
+	(0x3 << HWA_RX_PAGEIN_STATUS_TEMPLATE_ADDREXT_H_SHIFT)
+#define HWA_RX_PAGEIN_STATUS_TEMPLATE_NOTPCIE_D_SHIFT      12
+#define HWA_RX_PAGEIN_STATUS_TEMPLATE_NOTPCIE_D_MASK \
+	(0x1 << HWA_RX_PAGEIN_STATUS_TEMPLATE_NOTPCIE_D_SHIFT)
+#define HWA_RX_PAGEIN_STATUS_TEMPLATE_COHERENT_D_SHIFT      13
+#define HWA_RX_PAGEIN_STATUS_TEMPLATE_COHERENT_D_MASK \
+	(0x1 << HWA_RX_PAGEIN_STATUS_TEMPLATE_COHERENT_D_SHIFT)
+#define HWA_RX_PAGEIN_STATUS_TEMPLATE_ADDREXT_D_SHIFT      14
+#define HWA_RX_PAGEIN_STATUS_TEMPLATE_ADDREXT_D_MASK \
+	(0x3 << HWA_RX_PAGEIN_STATUS_TEMPLATE_ADDREXT_D_SHIFT)
+#define HWA_RX_PAGEIN_STATUS_PP_RXLFRAG_DATA_BUF_LEN_SHIFT      16
+#define HWA_RX_PAGEIN_STATUS_PP_RXLFRAG_DATA_BUF_LEN_MASK \
+	(0x3f << HWA_RX_PAGEIN_STATUS_PP_RXLFRAG_DATA_BUF_LEN_SHIFT)
+#define HWA_RX_PAGEIN_STATUS_PP_RXLFRAG_DATA_BUF_OFFSET_SHIFT      24
+#define HWA_RX_PAGEIN_STATUS_PP_RXLFRAG_DATA_BUF_OFFSET_MASK \
+	(0x3f << HWA_RX_PAGEIN_STATUS_PP_RXLFRAG_DATA_BUF_OFFSET_SHIFT)
+
+/* Bits in hwa_rx_recycle_status */
+#define HWA_RX_RECYCLE_STATUS_RECYCLE_WR_INDEX_SHIFT      0
+#define HWA_RX_RECYCLE_STATUS_RECYCLE_WR_INDEX_MASK \
+	(0xffff << HWA_RX_RECYCLE_STATUS_RECYCLE_WR_INDEX_SHIFT)
+#define HWA_RX_RECYCLE_STATUS_RECYCLE_TRANS_ID_SHIFT      16
+#define HWA_RX_RECYCLE_STATUS_RECYCLE_TRANS_ID_MASK \
+	(0xff << HWA_RX_RECYCLE_STATUS_RECYCLE_TRANS_ID_SHIFT)
+#define HWA_RX_RECYCLE_STATUS_RECYCLE_DONE_SHIFT      29
+#define HWA_RX_RECYCLE_STATUS_RECYCLE_DONE_MASK \
+	(0x1 << HWA_RX_RECYCLE_STATUS_RECYCLE_DONE_SHIFT)
+#define HWA_RX_RECYCLE_STATUS_RESTART_REQ_SHIFT      30
+#define HWA_RX_RECYCLE_STATUS_RESTART_REQ_MASK \
+	(0x1 << HWA_RX_RECYCLE_STATUS_RESTART_REQ_SHIFT)
+#define HWA_RX_RECYCLE_STATUS_RECYCLE_REQ_SHIFT      31
+#define HWA_RX_RECYCLE_STATUS_RECYCLE_REQ_MASK \
+	(0x1 << HWA_RX_RECYCLE_STATUS_RECYCLE_REQ_SHIFT)
 
 /* Bits in hwa_rx_freeidxsrc_ring_addrlo */
 #define HWA_RX_FREEIDXSRC_RING_ADDRLO_ADDRLO_SHIFT      0
@@ -3035,6 +3135,15 @@
 #define HWA_RX_FREEIDXSRC_RING_CFG_TEMPLATE_ADDREXT_SHIFT      7
 #define HWA_RX_FREEIDXSRC_RING_CFG_TEMPLATE_ADDREXT_MASK \
 	(0x3 << HWA_RX_FREEIDXSRC_RING_CFG_TEMPLATE_ADDREXT_SHIFT)
+#define HWA_RX_FREEIDXSRC_RING_CFG_SEQ_NO_ERR_DROP_SHIFT      13
+#define HWA_RX_FREEIDXSRC_RING_CFG_SEQ_NO_ERR_DROP_MASK \
+	(0x1 << HWA_RX_FREEIDXSRC_RING_CFG_SEQ_NO_ERR_DROP_SHIFT)
+#define HWA_RX_FREEIDXSRC_RING_CFG_SEQ_NO_CHK_SHIFT      14
+#define HWA_RX_FREEIDXSRC_RING_CFG_SEQ_NO_CHK_MASK \
+	(0x1 << HWA_RX_FREEIDXSRC_RING_CFG_SEQ_NO_CHK_SHIFT)
+#define HWA_RX_FREEIDXSRC_RING_CFG_PAIR_IDX_RANGE_NOCHK_SHIFT      15
+#define HWA_RX_FREEIDXSRC_RING_CFG_PAIR_IDX_RANGE_NOCHK_MASK \
+	(0x1 << HWA_RX_FREEIDXSRC_RING_CFG_PAIR_IDX_RANGE_NOCHK_SHIFT)
 #define HWA_RX_FREEIDXSRC_RING_CFG_DEPTH_SHIFT      16
 #define HWA_RX_FREEIDXSRC_RING_CFG_DEPTH_MASK \
 	(0xffff << HWA_RX_FREEIDXSRC_RING_CFG_DEPTH_SHIFT)
@@ -3252,6 +3361,9 @@
 #define HWA_RX_RXFILL_CTRL0_RPHSIZE_SHIFT      8
 #define HWA_RX_RXFILL_CTRL0_RPHSIZE_MASK \
 	(0xff << HWA_RX_RXFILL_CTRL0_RPHSIZE_SHIFT)
+#define HWA_RX_RXFILL_CTRL0_TEMPLATE_WRITE_COMP_SHIFT      16
+#define HWA_RX_RXFILL_CTRL0_TEMPLATE_WRITE_COMP_MASK \
+	(0x1 << HWA_RX_RXFILL_CTRL0_TEMPLATE_WRITE_COMP_SHIFT)
 #define HWA_RX_RXFILL_CTRL0_LEN_OFFSET_IN_RPH_SHIFT      17
 #define HWA_RX_RXFILL_CTRL0_LEN_OFFSET_IN_RPH_MASK \
 	(0x7f << HWA_RX_RXFILL_CTRL0_LEN_OFFSET_IN_RPH_SHIFT)
@@ -3387,20 +3499,40 @@
 #define HWA_RX_DEBUG_HWA2STATUS_PKTADDR_ERR_SHIFT      1
 #define HWA_RX_DEBUG_HWA2STATUS_PKTADDR_ERR_MASK \
 	(0x1 << HWA_RX_DEBUG_HWA2STATUS_PKTADDR_ERR_SHIFT)
-#if HWA_REVISION_GE_129
 #define HWA_RX_DEBUG_HWA2STATUS_POPPED_BUF_AVAIL_IDLE_SHIFT      2
 #define HWA_RX_DEBUG_HWA2STATUS_POPPED_BUF_AVAIL_IDLE_MASK \
 	(0x1 << HWA_RX_DEBUG_HWA2STATUS_POPPED_BUF_AVAIL_IDLE_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
+#define HWA_RX_DEBUG_HWA2STATUS_BM2CLIENT_DEALLOC_ERR0_SHIFT      3
+#define HWA_RX_DEBUG_HWA2STATUS_BM2CLIENT_DEALLOC_ERR0_MASK \
+	(0x1 << HWA_RX_DEBUG_HWA2STATUS_BM2CLIENT_DEALLOC_ERR0_SHIFT)
+#define HWA_RX_DEBUG_HWA2STATUS_FREEIDXSRC2REGS_SEQ_ERR_SHIFT      4
+#define HWA_RX_DEBUG_HWA2STATUS_FREEIDXSRC2REGS_SEQ_ERR_MASK \
+	(0x1 << HWA_RX_DEBUG_HWA2STATUS_FREEIDXSRC2REGS_SEQ_ERR_SHIFT)
 
 /* Bits in hwa_rx_debug_hwa2errorstatus */
 #define HWA_RX_DEBUG_HWA2ERRORSTATUS_HWA2ERRORSTATUS_SHIFT      0
 #define HWA_RX_DEBUG_HWA2ERRORSTATUS_HWA2ERRORSTATUS_MASK \
 	(0xffffffff << HWA_RX_DEBUG_HWA2ERRORSTATUS_HWA2ERRORSTATUS_SHIFT)
 
+/* Bits in hwa_rx_debug_freeidx_err */
+#define HWA_RX_DEBUG_FREEIDX_ERR_FREEIDX_ERR_SHIFT      0
+#define HWA_RX_DEBUG_FREEIDX_ERR_FREEIDX_ERR_MASK \
+	(0xffffffff << HWA_RX_DEBUG_FREEIDX_ERR_FREEIDX_ERR_SHIFT)
+
+/* Bits in hwa_rx_debug_freeidx_cnt */
+#define HWA_RX_DEBUG_FREEIDX_CNT_SIMPCNT_SHIFT      0
+#define HWA_RX_DEBUG_FREEIDX_CNT_SIMPCNT_MASK \
+	(0x7fff << HWA_RX_DEBUG_FREEIDX_CNT_SIMPCNT_SHIFT)
+#define HWA_RX_DEBUG_FREEIDX_CNT_PAIRCNT_SHIFT      16
+#define HWA_RX_DEBUG_FREEIDX_CNT_PAIRCNT_MASK \
+	(0x7fff << HWA_RX_DEBUG_FREEIDX_CNT_PAIRCNT_SHIFT)
+#define HWA_RX_DEBUG_FREEIDX_CNT_CNTCLR_SHIFT      31
+#define HWA_RX_DEBUG_FREEIDX_CNT_CNTCLR_MASK \
+	(0x1 << HWA_RX_DEBUG_FREEIDX_CNT_CNTCLR_SHIFT)
+
 /*
  * -----------------------------------------------------------------------------
- * HWA_CPL MACROS: hwa_cpl_reg_defs.h Thu Jul 13 23:01:02 2017
+ * HWA_CPL MACROS: hwa_cpl_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 #define hwa_cpl_base                                0xc00
@@ -3710,11 +3842,7 @@
 #define HWA_CPL_CPL_DMA_CONFIG_NUMCOMPLETIONWORKITEM_SHIFT      0
 #define HWA_CPL_CPL_DMA_CONFIG_NUMCOMPLETIONWORKITEM_MASK \
 	(0x3f << HWA_CPL_CPL_DMA_CONFIG_NUMCOMPLETIONWORKITEM_SHIFT)
-#if HWA_REVISION_EQ_128
-#define HWA_CPL_CPL_DMA_CONFIG_TXCPLRINGOFFSET_SHIFT      6
-#else  /* HWA_REVISION_GE_129 */
 #define HWA_CPL_CPL_DMA_CONFIG_TXCPLRINGOFFSET_SHIFT      8
-#endif /* HWA_REVISION_GE_129 */
 #define HWA_CPL_CPL_DMA_CONFIG_TXCPLRINGOFFSET_MASK \
 	(0x7 << HWA_CPL_CPL_DMA_CONFIG_TXCPLRINGOFFSET_SHIFT)
 
@@ -3743,10 +3871,13 @@
 #define HWA_CPL_DMA_DESC_TEMPLATE_CPL_NONDMAHOSTWRIDTEMPLATECOHERENT_SHIFT      9
 #define HWA_CPL_DMA_DESC_TEMPLATE_CPL_NONDMAHOSTWRIDTEMPLATECOHERENT_MASK \
 	(0x1 << HWA_CPL_DMA_DESC_TEMPLATE_CPL_NONDMAHOSTWRIDTEMPLATECOHERENT_SHIFT)
+#define HWA_CPL_DMA_DESC_TEMPLATE_CPL_DMAPCIEDESCTEMPLATEWAITCOMP_SHIFT      10
+#define HWA_CPL_DMA_DESC_TEMPLATE_CPL_DMAPCIEDESCTEMPLATEWAITCOMP_MASK \
+	(0x1 << HWA_CPL_DMA_DESC_TEMPLATE_CPL_DMAPCIEDESCTEMPLATEWAITCOMP_SHIFT)
 
 /*
  * -----------------------------------------------------------------------------
- * HWA_DMA MACROS: hwa_dma_reg_defs.h Thu Jul 13 23:01:12 2017
+ * HWA_DMA MACROS: hwa_dma_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 #define hwa_dma_base                                0xe00
@@ -4079,6 +4210,9 @@
 #define HWA_DMA_RCVCTRL_COHERENT_SHIFT      26
 #define HWA_DMA_RCVCTRL_COHERENT_MASK \
 	(0x1 << HWA_DMA_RCVCTRL_COHERENT_SHIFT)
+#define HWA_DMA_RCVCTRL_PERDESCRWAITFORCOMPLETE_SHIFT      28
+#define HWA_DMA_RCVCTRL_PERDESCRWAITFORCOMPLETE_MASK \
+	(0x1 << HWA_DMA_RCVCTRL_PERDESCRWAITFORCOMPLETE_SHIFT)
 
 /* Bits in hwa_dma_rcvptr */
 #define HWA_DMA_RCVPTR_RCVPTR_SHIFT      0
@@ -4113,7 +4247,1090 @@
 
 /*
  * -----------------------------------------------------------------------------
- * HC_HIN MACROS: hc_hin_reg_defs.h Thu Aug 24 17:42:31 2017
+ * HWA_PAGER MACROS: hwa_pager_reg_defs.h
+ * -----------------------------------------------------------------------------
+ */
+#define hwa_pager_base                              0x1000
+#define hwa_pager_last                              0x11ff
+
+/* hwa_pager registers */
+#define hwa_pager_pp_pager_cfg                      0x000
+#define hwa_pager_pp_pktctx_size                    0x004
+#define hwa_pager_pp_pktbuf_size                    0x008
+#define hwa_pager_pp_pagein_req_ring_addr           0x020
+#define hwa_pager_pp_pagein_req_ring_wr_index       0x024
+#define hwa_pager_pp_pagein_req_ring_rd_index       0x028
+#define hwa_pager_pp_pagein_req_ring_cfg            0x02c
+#define hwa_pager_pp_pagein_req_ring_lazyint_cfg    0x030
+#define hwa_pager_pp_pagein_req_ring_debug          0x034
+#define hwa_pager_pp_pagein_rsp_ring_addr           0x040
+#define hwa_pager_pp_pagein_rsp_ring_wr_index       0x044
+#define hwa_pager_pp_pagein_rsp_ring_rd_index       0x048
+#define hwa_pager_pp_pagein_rsp_ring_cfg            0x04c
+#define hwa_pager_pp_pagein_rsp_ring_lazyint_cfg    0x050
+#define hwa_pager_pp_pagein_rsp_ring_debug          0x054
+#define hwa_pager_pp_pagein_intstatus               0x058
+#define hwa_pager_pp_pagein_intmask                 0x05c
+#define hwa_pager_pp_pageout_req_ring_addr          0x060
+#define hwa_pager_pp_pageout_req_ring_wr_index      0x064
+#define hwa_pager_pp_pageout_req_ring_rd_index      0x068
+#define hwa_pager_pp_pageout_req_ring_cfg           0x06c
+#define hwa_pager_pp_pageout_req_ring_lazyint_cfg   0x070
+#define hwa_pager_pp_pageout_req_ring_debug         0x074
+#define hwa_pager_pp_pageout_rsp_ring_addr          0x080
+#define hwa_pager_pp_pageout_rsp_ring_wr_index      0x084
+#define hwa_pager_pp_pageout_rsp_ring_rd_index      0x088
+#define hwa_pager_pp_pageout_rsp_ring_cfg           0x08c
+#define hwa_pager_pp_pageout_rsp_ring_lazyint_cfg   0x090
+#define hwa_pager_pp_pageout_rsp_ring_debug         0x094
+#define hwa_pager_pp_pageout_intstatus              0x098
+#define hwa_pager_pp_pageout_intmask                0x09c
+#define hwa_pager_pp_alloc_req_ring_addr            0x0a0
+#define hwa_pager_pp_alloc_req_ring_wr_index        0x0a4
+#define hwa_pager_pp_alloc_req_ring_rd_index        0x0a8
+#define hwa_pager_pp_alloc_req_ring_cfg             0x0ac
+#define hwa_pager_pp_alloc_req_ring_lazyint_cfg     0x0b0
+#define hwa_pager_pp_alloc_req_ring_debug           0x0b4
+#define hwa_pager_pp_alloc_rsp_ring_addr            0x0c0
+#define hwa_pager_pp_alloc_rsp_ring_wr_index        0x0c4
+#define hwa_pager_pp_alloc_rsp_ring_rd_index        0x0c8
+#define hwa_pager_pp_alloc_rsp_ring_cfg             0x0cc
+#define hwa_pager_pp_alloc_rsp_ring_lazyint_cfg     0x0d0
+#define hwa_pager_pp_alloc_rsp_ring_debug           0x0d4
+#define hwa_pager_pp_pagemgr_intstatus              0x0d8
+#define hwa_pager_pp_pagemgr_intmask                0x0dc
+#define hwa_pager_pp_free_req_ring_addr             0x0e0
+#define hwa_pager_pp_free_req_ring_wr_index         0x0e4
+#define hwa_pager_pp_free_req_ring_rd_index         0x0e8
+#define hwa_pager_pp_free_req_ring_cfg              0x0ec
+#define hwa_pager_pp_free_req_ring_lazyint_cfg      0x0f0
+#define hwa_pager_pp_free_req_ring_debug            0x0f4
+#define hwa_pager_pp_free_rph_req_ring_addr         0x100
+#define hwa_pager_pp_free_rph_req_ring_wr_index     0x104
+#define hwa_pager_pp_free_rph_req_ring_rd_index     0x108
+#define hwa_pager_pp_free_rph_req_ring_cfg          0x10c
+#define hwa_pager_pp_free_rph_req_ring_lazyint_cfg  0x110
+#define hwa_pager_pp_free_rph_req_ring_debug        0x114
+#define hwa_pager_rx_alloc_transaction_id           0x120
+#define hwa_pager_rx_free_transaction_id            0x124
+#define hwa_pager_tx_alloc_transaction_id           0x128
+#define hwa_pager_tx_free_transaction_id            0x12c
+#define hwa_pager_pp_hostpktpool_addr_lo            0x140
+#define hwa_pager_pp_hostpktpool_addr_hi            0x144
+#define hwa_pager_pp_hostpktpool_ctrl               0x148
+#define hwa_pager_pp_hostpktpool_size               0x14c
+#define hwa_pager_pp_hostpktpool_intr_th            0x150
+#define hwa_pager_pp_hostpktpool_alloc_index        0x154
+#define hwa_pager_pp_hostpktpool_dealloc_index      0x158
+#define hwa_pager_pp_hostpktpool_dealloc_status     0x15c
+#define hwa_pager_pp_dnglpktpool_addr_lo            0x160
+#define hwa_pager_pp_dnglpktpool_addr_hi            0x164
+#define hwa_pager_pp_dnglpktpool_ctrl               0x168
+#define hwa_pager_pp_dnglpktpool_size               0x16c
+#define hwa_pager_pp_dnglpktpool_intr_th            0x170
+#define hwa_pager_pp_dnglpktpool_alloc_index        0x174
+#define hwa_pager_pp_dnglpktpool_dealloc_index      0x178
+#define hwa_pager_pp_dnglpktpool_dealloc_status     0x17c
+#define hwa_pager_pp_pagerbm_intstatus              0x180
+#define hwa_pager_pp_pagerbm_intmask                0x184
+#define hwa_pager_pp_dma_descr_template             0x190
+#define hwa_pager_pp_pagein_req_ddbmth              0x194
+#define hwa_pager_pp_apkt_cfg                       0x1a0
+#define hwa_pager_pp_rx_apkt_cfg                    0x1a4
+#define hwa_pager_pp_fpkt_cfg                       0x1a8
+#define hwa_pager_pp_phpl_cfg                       0x1ac
+#define hwa_pager_pp_apkt_sts_dbg                   0x1c0
+#define hwa_pager_pp_rx_apkt_sts_dbg                0x1c4
+#define hwa_pager_pp_fpkt_sts_dbg                   0x1c8
+#define hwa_pager_pp_tb_sts_dbg                     0x1cc
+#define hwa_pager_pp_push_sts_dbg                   0x1d0
+#define hwa_pager_pp_pull_sts_dbg                   0x1d4
+
+/* Bits common to all pp rings's cfg register */
+#define HWA_PAGER_PP_RING_CFG_DEPTH_SHIFT      0
+#define HWA_PAGER_PP_RING_CFG_DEPTH_MASK  \
+	(0xffff << HWA_PAGER_PP_RING_CFG_DEPTH_SHIFT)
+
+/* Bits common to all pp req rings's cfg register */
+#define HWA_PAGER_PP_REQ_RING_CFG_WAITTIME_SHIFT      24
+#define HWA_PAGER_PP_REQ_RING_CFG_WAITTIME_MASK \
+	(0x3f << HWA_PAGER_PP_REQ_RING_CFG_WAITTIME_SHIFT)
+#define HWA_PAGER_PP_REQ_RING_CFG_STOP_SHIFT      30
+#define HWA_PAGER_PP_REQ_RING_CFG_STOP_MASK \
+	(0x1 << HWA_PAGER_PP_REQ_RING_CFG_STOP_SHIFT)
+#define HWA_PAGER_PP_REQ_RING_CFG_FORCESTOP_SHIFT      31
+#define HWA_PAGER_PP_REQ_RING_CFG_FORCESTOP_MASK \
+	(0x1 << HWA_PAGER_PP_REQ_RING_CFG_FORCESTOP_SHIFT)
+
+/* Bits common to all pp rings's lazyint_cfg register */
+#define HWA_PAGER_PP_RING_LAZYINT_CFG_AGGRCOUNT_SHIFT      0
+#define HWA_PAGER_PP_RING_LAZYINT_CFG_AGGRCOUNT_MASK \
+	(0xff << HWA_PAGER_PP_RING_LAZYINT_CFG_AGGRCOUNT_SHIFT)
+#define HWA_PAGER_PP_RING_LAZYINT_CFG_AGGRTIMER_SHIFT      16
+#define HWA_PAGER_PP_RING_LAZYINT_CFG_AGGRTIMER_MASK \
+	(0xffff << HWA_PAGER_PP_RING_LAZYINT_CFG_AGGRTIMER_SHIFT)
+
+/* Bits in hwa_pager_pp_pager_cfg */
+#define HWA_PAGER_PP_PAGER_CFG_PAGER_EN_SHIFT      0
+#define HWA_PAGER_PP_PAGER_CFG_PAGER_EN_MASK \
+	(0x1 << HWA_PAGER_PP_PAGER_CFG_PAGER_EN_SHIFT)
+
+/* Bits in hwa_pager_pp_pktctx_size */
+#define HWA_PAGER_PP_PKTCTX_SIZE_PPPKTCTXSIZE_SHIFT      0
+#define HWA_PAGER_PP_PKTCTX_SIZE_PPPKTCTXSIZE_MASK \
+	(0xffff << HWA_PAGER_PP_PKTCTX_SIZE_PPPKTCTXSIZE_SHIFT)
+
+/* Bits in hwa_pager_pp_pktbuf_size */
+#define HWA_PAGER_PP_PKTBUF_SIZE_PPPKTBUFSIZE_SHIFT      0
+#define HWA_PAGER_PP_PKTBUF_SIZE_PPPKTBUFSIZE_MASK \
+	(0xffff << HWA_PAGER_PP_PKTBUF_SIZE_PPPKTBUFSIZE_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_req_ring_addr */
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_ADDR_PPINREQADDR_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_ADDR_PPINREQADDR_MASK \
+	(0xffffffff << HWA_PAGER_PP_PAGEIN_REQ_RING_ADDR_PPINREQADDR_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_req_ring_wr_index */
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_WR_INDEX_PPINREQWRIDX_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_WR_INDEX_PPINREQWRIDX_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEIN_REQ_RING_WR_INDEX_PPINREQWRIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_req_ring_rd_index */
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_RD_INDEX_PPINREQRDIDX_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_RD_INDEX_PPINREQRDIDX_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEIN_REQ_RING_RD_INDEX_PPINREQRDIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_req_ring_cfg */
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINREQDEPTH_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINREQDEPTH_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINREQDEPTH_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINRXPROCESSBE_SHIFT      23
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINRXPROCESSBE_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINRXPROCESSBE_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINREQWAITTIME_SHIFT      24
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINREQWAITTIME_MASK \
+	(0x3f << HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINREQWAITTIME_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINREQSTOP_SHIFT      30
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINREQSTOP_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINREQSTOP_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINREQFORCESTOP_SHIFT      31
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINREQFORCESTOP_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_REQ_RING_CFG_PPINREQFORCESTOP_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_req_ring_lazyint_cfg */
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_LAZYINT_CFG_PPINREQAGGRCOUNT_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_LAZYINT_CFG_PPINREQAGGRCOUNT_MASK \
+	(0xff << HWA_PAGER_PP_PAGEIN_REQ_RING_LAZYINT_CFG_PPINREQAGGRCOUNT_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_LAZYINT_CFG_PPINREQAGGRTIMER_SHIFT      16
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_LAZYINT_CFG_PPINREQAGGRTIMER_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEIN_REQ_RING_LAZYINT_CFG_PPINREQAGGRTIMER_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_req_ring_debug */
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_DEBUG_PPINREQDEBUG_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_REQ_RING_DEBUG_PPINREQDEBUG_MASK \
+	(0xffffffff << HWA_PAGER_PP_PAGEIN_REQ_RING_DEBUG_PPINREQDEBUG_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_rsp_ring_addr */
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_ADDR_PPINRSPADDR_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_ADDR_PPINRSPADDR_MASK \
+	(0xffffffff << HWA_PAGER_PP_PAGEIN_RSP_RING_ADDR_PPINRSPADDR_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_rsp_ring_wr_index */
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_WR_INDEX_PPINRSPWRIDX_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_WR_INDEX_PPINRSPWRIDX_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEIN_RSP_RING_WR_INDEX_PPINRSPWRIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_rsp_ring_rd_index */
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_RD_INDEX_PPINRSPRDIDX_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_RD_INDEX_PPINRSPRDIDX_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEIN_RSP_RING_RD_INDEX_PPINRSPRDIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_rsp_ring_cfg */
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_CFG_PPINRSPDEPTH_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_CFG_PPINRSPDEPTH_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEIN_RSP_RING_CFG_PPINRSPDEPTH_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_rsp_ring_lazyint_cfg */
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_LAZYINT_CFG_PPINRSPAGGRCOUNT_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_LAZYINT_CFG_PPINRSPAGGRCOUNT_MASK \
+	(0xff << HWA_PAGER_PP_PAGEIN_RSP_RING_LAZYINT_CFG_PPINRSPAGGRCOUNT_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_LAZYINT_CFG_PPINRSPAGGRTIMER_SHIFT      16
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_LAZYINT_CFG_PPINRSPAGGRTIMER_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEIN_RSP_RING_LAZYINT_CFG_PPINRSPAGGRTIMER_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_rsp_ring_debug */
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_DEBUG_PPINRSPDEBUG_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_RSP_RING_DEBUG_PPINRSPDEBUG_MASK \
+	(0xffffffff << HWA_PAGER_PP_PAGEIN_RSP_RING_DEBUG_PPINRSPDEBUG_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_intstatus */
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINREQINT_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINREQINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINREQINT_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINREQRXPERRINT_SHIFT      1
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINREQRXPERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINREQRXPERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINREQTXSERRINT_SHIFT      2
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINREQTXSERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINREQTXSERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPREQTXPWIERRINT_SHIFT      3
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPREQTXPWIERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTSTATUS_PPREQTXPWIERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPREQTXPOCERRINT_SHIFT      4
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPREQTXPOCERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTSTATUS_PPREQTXPOCERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPINT_SHIFT      16
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPINT_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPRXPERRINT_SHIFT      17
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPRXPERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPRXPERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPTXSERRINT_SHIFT      18
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPTXSERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPTXSERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPTXPWIERRINT_SHIFT      19
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPTXPWIERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPTXPWIERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPTXPOCERRINT_SHIFT      20
+#define HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPTXPOCERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPTXPOCERRINT_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_intmask */
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINREQMASK_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINREQMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTMASK_PPINREQMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINREQRXPERRMASK_SHIFT      1
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINREQRXPERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTMASK_PPINREQRXPERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINREQTXSERRMASK_SHIFT      2
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINREQTXSERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTMASK_PPINREQTXSERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPREQTXPWIERRMASK_SHIFT      3
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPREQTXPWIERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTMASK_PPREQTXPWIERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPREQTXPOCERRMASK_SHIFT      4
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPREQTXPOCERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTMASK_PPREQTXPOCERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPMASK_SHIFT      16
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPRXPERRMASK_SHIFT      17
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPRXPERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPRXPERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPTXSERRMASK_SHIFT      18
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPTXSERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPTXSERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPTXPWIERRMASK_SHIFT      19
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPTXPWIERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPTXPWIERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPTXPOCERRMASK_SHIFT      20
+#define HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPTXPOCERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEIN_INTMASK_PPINRSPTXPOCERRMASK_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_intstatus conveying Request Errors */
+#define HWA_PAGER_PAGEIN_REQ_ERRORS_MASK \
+	(HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINREQRXPERRINT_MASK \
+	| HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINREQTXSERRINT_MASK \
+	| HWA_PAGER_PP_PAGEIN_INTSTATUS_PPREQTXPWIERRINT_MASK \
+	| HWA_PAGER_PP_PAGEIN_INTSTATUS_PPREQTXPOCERRINT_MASK)
+
+/* Bits in hwa_pager_pp_pagein_intstatus conveying Response Errors */
+#define HWA_PAGER_PAGEIN_RSP_ERRORS_MASK \
+	(HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPRXPERRINT_MASK \
+	| HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPTXSERRINT_MASK \
+	| HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPTXPWIERRINT_MASK \
+	| HWA_PAGER_PP_PAGEIN_INTSTATUS_PPINRSPTXPOCERRINT_MASK)
+
+/* Bits in hwa_pager_pp_pagein_intstatus conveying Errors */
+#define HWA_PAGER_PAGEIN_ERRORS_MASK \
+	(HWA_PAGER_PAGEIN_REQ_ERRORS_MASK | HWA_PAGER_PAGEIN_RSP_ERRORS_MASK)
+
+/* Bits in hwa_pager_pp_pageout_req_ring_addr */
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_ADDR_PPOUTREQADDR_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_ADDR_PPOUTREQADDR_MASK \
+	(0xffffffff << HWA_PAGER_PP_PAGEOUT_REQ_RING_ADDR_PPOUTREQADDR_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_req_ring_wr_index */
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_WR_INDEX_PPOUTREQWRIDX_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_WR_INDEX_PPOUTREQWRIDX_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEOUT_REQ_RING_WR_INDEX_PPOUTREQWRIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_req_ring_rd_index */
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_RD_INDEX_PPOUTREQRDIDX_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_RD_INDEX_PPOUTREQRDIDX_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEOUT_REQ_RING_RD_INDEX_PPOUTREQRDIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_req_ring_cfg */
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_CFG_PPOUTREQDEPTH_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_CFG_PPOUTREQDEPTH_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEOUT_REQ_RING_CFG_PPOUTREQDEPTH_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_CFG_PPOUTREQWAITTIME_SHIFT      24
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_CFG_PPOUTREQWAITTIME_MASK \
+	(0x3f << HWA_PAGER_PP_PAGEOUT_REQ_RING_CFG_PPOUTREQWAITTIME_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_CFG_PPOUTREQSTOP_SHIFT      30
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_CFG_PPOUTREQSTOP_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_REQ_RING_CFG_PPOUTREQSTOP_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_CFG_PPOUTREQFORCESTOP_SHIFT      31
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_CFG_PPOUTREQFORCESTOP_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_REQ_RING_CFG_PPOUTREQFORCESTOP_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_req_ring_lazyint_cfg */
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_LAZYINT_CFG_PPOUTREQAGGRCOUNT_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_LAZYINT_CFG_PPOUTREQAGGRCOUNT_MASK \
+	(0xff << HWA_PAGER_PP_PAGEOUT_REQ_RING_LAZYINT_CFG_PPOUTREQAGGRCOUNT_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_LAZYINT_CFG_PPOUTREQAGGRTIMER_SHIFT      16
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_LAZYINT_CFG_PPOUTREQAGGRTIMER_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEOUT_REQ_RING_LAZYINT_CFG_PPOUTREQAGGRTIMER_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_req_ring_debug */
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_DEBUG_PPOUTREQDEBUG_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_REQ_RING_DEBUG_PPOUTREQDEBUG_MASK \
+	(0xffffffff << HWA_PAGER_PP_PAGEOUT_REQ_RING_DEBUG_PPOUTREQDEBUG_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_rsp_ring_addr */
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_ADDR_PPOUTRSPADDR_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_ADDR_PPOUTRSPADDR_MASK \
+	(0xffffffff << HWA_PAGER_PP_PAGEOUT_RSP_RING_ADDR_PPOUTRSPADDR_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_rsp_ring_wr_index */
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_WR_INDEX_PPOUTRSPWRIDX_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_WR_INDEX_PPOUTRSPWRIDX_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEOUT_RSP_RING_WR_INDEX_PPOUTRSPWRIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_rsp_ring_rd_index */
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_RD_INDEX_PPOUTRSPRDIDX_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_RD_INDEX_PPOUTRSPRDIDX_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEOUT_RSP_RING_RD_INDEX_PPOUTRSPRDIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_rsp_ring_cfg */
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_CFG_PPOUTRSPDEPTH_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_CFG_PPOUTRSPDEPTH_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEOUT_RSP_RING_CFG_PPOUTRSPDEPTH_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_rsp_ring_lazyint_cfg */
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_LAZYINT_CFG_PPOUTRSPAGGRCOUNT_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_LAZYINT_CFG_PPOUTRSPAGGRCOUNT_MASK \
+	(0xff << HWA_PAGER_PP_PAGEOUT_RSP_RING_LAZYINT_CFG_PPOUTRSPAGGRCOUNT_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_LAZYINT_CFG_PPOUTRSPAGGRTIMER_SHIFT      16
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_LAZYINT_CFG_PPOUTRSPAGGRTIMER_MASK \
+	(0xffff << HWA_PAGER_PP_PAGEOUT_RSP_RING_LAZYINT_CFG_PPOUTRSPAGGRTIMER_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_rsp_ring_debug */
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_DEBUG_PPOUTRSPDEBUG_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_RSP_RING_DEBUG_PPOUTRSPDEBUG_MASK \
+	(0xffffffff << HWA_PAGER_PP_PAGEOUT_RSP_RING_DEBUG_PPOUTRSPDEBUG_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_intstatus */
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQINT_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQINT_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQPKTLISTNRERRINT_SHIFT      1
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQPKTLISTNRERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQPKTLISTNRERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQPKTLISTWRERRINT_SHIFT      2
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQPKTLISTWRERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQPKTLISTWRERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQLOCALPAKCETERRINT_SHIFT      3
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQLOCALPAKCETERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQLOCALPAKCETERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTRSPINT_SHIFT      16
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTRSPINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTRSPINT_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTRSPPKTLISTWRERRINT_SHIFT      17
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTRSPPKTLISTWRERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTRSPPKTLISTWRERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTRSPLOCALPACKETERRINT_SHIFT      18
+#define HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTRSPLOCALPACKETERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTRSPLOCALPACKETERRINT_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_intmask */
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTREQMASK_SHIFT      0
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTREQMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTREQMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTREQPKTLISTNRERRMASK_SHIFT      1
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTREQPKTLISTNRERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTREQPKTLISTNRERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTREQPKTLISTWRERRMASK_SHIFT      2
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTREQPKTLISTWRERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTREQPKTLISTWRERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTREQLOCALPAKCETERRMASK_SHIFT      3
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTREQLOCALPAKCETERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTREQLOCALPAKCETERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTRSPMASK_SHIFT      16
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTRSPMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTRSPMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTRSPPKTLISTWRERRMASK_SHIFT      17
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTRSPPKTLISTWRERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTRSPPKTLISTWRERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTRSPLOCALPACKETERRMASK_SHIFT      18
+#define HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTRSPLOCALPACKETERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEOUT_INTMASK_PPOUTRSPLOCALPACKETERRMASK_SHIFT)
+
+/* Bits in hwa_pager_pp_pageout_intstatus conveying Request Errors */
+#define HWA_PAGER_PAGEOUT_REQ_ERRORS_MASK \
+	(HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQPKTLISTNRERRINT_MASK \
+	| HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQPKTLISTWRERRINT_MASK \
+	| HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTREQLOCALPAKCETERRINT_MASK)
+
+/* Bits in hwa_pager_pp_pageout_intstatus conveying Response Errors */
+#define HWA_PAGER_PAGEOUT_RSP_ERRORS_MASK \
+	(HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTRSPPKTLISTWRERRINT_MASK \
+	| HWA_PAGER_PP_PAGEOUT_INTSTATUS_PPOUTRSPLOCALPACKETERRINT_MASK)
+
+/* Bits in hwa_pager_pp_pageout_intstatus conveying Errors */
+#define HWA_PAGER_PAGEOUT_ERRORS_MASK \
+	(HWA_PAGER_PAGEOUT_REQ_ERRORS_MASK | HWA_PAGER_PAGEOUT_RSP_ERRORS_MASK)
+
+/* Bits in hwa_pager_pp_alloc_req_ring_addr */
+#define HWA_PAGER_PP_ALLOC_REQ_RING_ADDR_PPALLOCREQADDR_SHIFT      0
+#define HWA_PAGER_PP_ALLOC_REQ_RING_ADDR_PPALLOCREQADDR_MASK \
+	(0xffffffff << HWA_PAGER_PP_ALLOC_REQ_RING_ADDR_PPALLOCREQADDR_SHIFT)
+
+/* Bits in hwa_pager_pp_alloc_req_ring_wr_index */
+#define HWA_PAGER_PP_ALLOC_REQ_RING_WR_INDEX_PPALLOCREQWRIDX_SHIFT      0
+#define HWA_PAGER_PP_ALLOC_REQ_RING_WR_INDEX_PPALLOCREQWRIDX_MASK \
+	(0xffff << HWA_PAGER_PP_ALLOC_REQ_RING_WR_INDEX_PPALLOCREQWRIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_alloc_req_ring_rd_index */
+#define HWA_PAGER_PP_ALLOC_REQ_RING_RD_INDEX_PPALLOCREQRDIDX_SHIFT      0
+#define HWA_PAGER_PP_ALLOC_REQ_RING_RD_INDEX_PPALLOCREQRDIDX_MASK \
+	(0xffff << HWA_PAGER_PP_ALLOC_REQ_RING_RD_INDEX_PPALLOCREQRDIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_alloc_req_ring_cfg */
+#define HWA_PAGER_PP_ALLOC_REQ_RING_CFG_PPALLOCREQDEPTH_SHIFT      0
+#define HWA_PAGER_PP_ALLOC_REQ_RING_CFG_PPALLOCREQDEPTH_MASK \
+	(0xffff << HWA_PAGER_PP_ALLOC_REQ_RING_CFG_PPALLOCREQDEPTH_SHIFT)
+#define HWA_PAGER_PP_ALLOC_REQ_RING_CFG_PPALLOCREQWAITTIME_SHIFT      24
+#define HWA_PAGER_PP_ALLOC_REQ_RING_CFG_PPALLOCREQWAITTIME_MASK \
+	(0x3f << HWA_PAGER_PP_ALLOC_REQ_RING_CFG_PPALLOCREQWAITTIME_SHIFT)
+#define HWA_PAGER_PP_ALLOC_REQ_RING_CFG_PPALLOCREQSTOP_SHIFT      30
+#define HWA_PAGER_PP_ALLOC_REQ_RING_CFG_PPALLOCREQSTOP_MASK \
+	(0x1 << HWA_PAGER_PP_ALLOC_REQ_RING_CFG_PPALLOCREQSTOP_SHIFT)
+#define HWA_PAGER_PP_ALLOC_REQ_RING_CFG_PPALLOCREQFORCESTOP_SHIFT      31
+#define HWA_PAGER_PP_ALLOC_REQ_RING_CFG_PPALLOCREQFORCESTOP_MASK \
+	(0x1 << HWA_PAGER_PP_ALLOC_REQ_RING_CFG_PPALLOCREQFORCESTOP_SHIFT)
+
+/* Bits in hwa_pager_pp_alloc_req_ring_lazyint_cfg */
+#define HWA_PAGER_PP_ALLOC_REQ_RING_LAZYINT_CFG_PPALLOCREQAGGRCOUNT_SHIFT      0
+#define HWA_PAGER_PP_ALLOC_REQ_RING_LAZYINT_CFG_PPALLOCREQAGGRCOUNT_MASK \
+	(0xff << HWA_PAGER_PP_ALLOC_REQ_RING_LAZYINT_CFG_PPALLOCREQAGGRCOUNT_SHIFT)
+#define HWA_PAGER_PP_ALLOC_REQ_RING_LAZYINT_CFG_PPALLOCREQAGGRTIMER_SHIFT      16
+#define HWA_PAGER_PP_ALLOC_REQ_RING_LAZYINT_CFG_PPALLOCREQAGGRTIMER_MASK \
+	(0xffff << HWA_PAGER_PP_ALLOC_REQ_RING_LAZYINT_CFG_PPALLOCREQAGGRTIMER_SHIFT)
+
+/* Bits in hwa_pager_pp_alloc_req_ring_debug */
+#define HWA_PAGER_PP_ALLOC_REQ_RING_DEBUG_PPALLOCREQDEBUG_SHIFT      0
+#define HWA_PAGER_PP_ALLOC_REQ_RING_DEBUG_PPALLOCREQDEBUG_MASK \
+	(0xffffffff << HWA_PAGER_PP_ALLOC_REQ_RING_DEBUG_PPALLOCREQDEBUG_SHIFT)
+
+/* Bits in hwa_pager_pp_alloc_rsp_ring_addr */
+#define HWA_PAGER_PP_ALLOC_RSP_RING_ADDR_PPALLOCRSPADDR_SHIFT      0
+#define HWA_PAGER_PP_ALLOC_RSP_RING_ADDR_PPALLOCRSPADDR_MASK \
+	(0xffffffff << HWA_PAGER_PP_ALLOC_RSP_RING_ADDR_PPALLOCRSPADDR_SHIFT)
+
+/* Bits in hwa_pager_pp_alloc_rsp_ring_wr_index */
+#define HWA_PAGER_PP_ALLOC_RSP_RING_WR_INDEX_PPALLOCRSPWRIDX_SHIFT      0
+#define HWA_PAGER_PP_ALLOC_RSP_RING_WR_INDEX_PPALLOCRSPWRIDX_MASK \
+	(0xffff << HWA_PAGER_PP_ALLOC_RSP_RING_WR_INDEX_PPALLOCRSPWRIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_alloc_rsp_ring_rd_index */
+#define HWA_PAGER_PP_ALLOC_RSP_RING_RD_INDEX_PPALLOCRSPRDIDX_SHIFT      0
+#define HWA_PAGER_PP_ALLOC_RSP_RING_RD_INDEX_PPALLOCRSPRDIDX_MASK \
+	(0xffff << HWA_PAGER_PP_ALLOC_RSP_RING_RD_INDEX_PPALLOCRSPRDIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_alloc_rsp_ring_cfg */
+#define HWA_PAGER_PP_ALLOC_RSP_RING_CFG_PPALLOCRSPDEPTH_SHIFT      0
+#define HWA_PAGER_PP_ALLOC_RSP_RING_CFG_PPALLOCRSPDEPTH_MASK \
+	(0xffff << HWA_PAGER_PP_ALLOC_RSP_RING_CFG_PPALLOCRSPDEPTH_SHIFT)
+
+/* Bits in hwa_pager_pp_alloc_rsp_ring_lazyint_cfg */
+#define HWA_PAGER_PP_ALLOC_RSP_RING_LAZYINT_CFG_PPALLOCRSPAGGRCOUNT_SHIFT      0
+#define HWA_PAGER_PP_ALLOC_RSP_RING_LAZYINT_CFG_PPALLOCRSPAGGRCOUNT_MASK \
+	(0xff << HWA_PAGER_PP_ALLOC_RSP_RING_LAZYINT_CFG_PPALLOCRSPAGGRCOUNT_SHIFT)
+#define HWA_PAGER_PP_ALLOC_RSP_RING_LAZYINT_CFG_PPALLOCRSPAGGRTIMER_SHIFT      16
+#define HWA_PAGER_PP_ALLOC_RSP_RING_LAZYINT_CFG_PPALLOCRSPAGGRTIMER_MASK \
+	(0xffff << HWA_PAGER_PP_ALLOC_RSP_RING_LAZYINT_CFG_PPALLOCRSPAGGRTIMER_SHIFT)
+
+/* Bits in hwa_pager_pp_alloc_rsp_ring_debug */
+#define HWA_PAGER_PP_ALLOC_RSP_RING_DEBUG_PPALLOCRSPDEBUG_SHIFT      0
+#define HWA_PAGER_PP_ALLOC_RSP_RING_DEBUG_PPALLOCRSPDEBUG_MASK \
+	(0xffffffff << HWA_PAGER_PP_ALLOC_RSP_RING_DEBUG_PPALLOCRSPDEBUG_SHIFT)
+
+/* Bits in hwa_pager_pp_pagemgr_intstatus */
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQINT_SHIFT      0
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQRXERRINT_SHIFT      1
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQRXERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQRXERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQRXRPHERRINT_SHIFT      2
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQRXRPHERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQRXRPHERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQTXERRINT_SHIFT      3
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQTXERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQTXERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPPUSHPKTCNTINT_SHIFT      4
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPPUSHPKTCNTINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPPUSHPKTCNTINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPINT_SHIFT      8
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPRXERRINT_SHIFT      9
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPRXERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPRXERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPRXRPHERRINT_SHIFT      10
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPRXRPHERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPRXRPHERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPTXERRINT_SHIFT      11
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPTXERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPTXERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREEREQINT_SHIFT      16
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREEREQINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREEREQINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREEREQRXERINT_SHIFT      17
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREEREQRXERINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREEREQRXERINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREEREQTXERINT_SHIFT      18
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREEREQTXERINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREEREQTXERINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREERPHREQINT_SHIFT      24
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREERPHREQINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREERPHREQINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREERPHRXRPHERRINT_SHIFT      25
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREERPHRXRPHERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREERPHRXRPHERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREERPHRXD11BERRINT_SHIFT      26
+#define HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREERPHRXD11BERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREERPHRXD11BERRINT_SHIFT)
+
+/* Bits in hwa_pager_pp_pagemgr_intmask */
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCREQMASK_SHIFT      0
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCREQMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCREQMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCREQRXERRMASK_SHIFT      1
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCREQRXERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCREQRXERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCREQRXRPHERRMASK_SHIFT      2
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCREQRXRPHERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCREQRXRPHERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCREQTXERRMASK_SHIFT      3
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCREQTXERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCREQTXERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPPUSHPKTCNTMASK_SHIFT      4
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPPUSHPKTCNTMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPPUSHPKTCNTMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCRSPMASK_SHIFT      8
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCRSPMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCRSPMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCRSPRXERRMASK_SHIFT      9
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCRSPRXERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCRSPRXERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCRSPRXRPHERRMASK_SHIFT      10
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCRSPRXRPHERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCRSPRXRPHERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCRSPTXERRMASK_SHIFT      11
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCRSPTXERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPALLOCRSPTXERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREEREQMASK_SHIFT      16
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREEREQMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREEREQMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREEREQRXERMASK_SHIFT      17
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREEREQRXERMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREEREQRXERMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREEREQTXEMASKT_SHIFT      18
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREEREQTXEMASKT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREEREQTXEMASKT_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREERPHREQMASK_SHIFT      24
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREERPHREQMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREERPHREQMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREERPHRXRPHERRMASK_SHIFT      25
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREERPHRXRPHERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREERPHRXRPHERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREERPHRXD11BERRMASK_SHIFT      26
+#define HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREERPHRXD11BERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREERPHRXD11BERRMASK_SHIFT)
+
+/* Bits in hwa_pager_pp_pagemgr_intstatus conveying Request Errors */
+#define HWA_PAGER_PAGEMGR_REQ_ERRORS_MASK \
+	(HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQRXERRINT_MASK \
+	| HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQRXRPHERRINT_MASK \
+	| HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCREQTXERRINT_MASK \
+	| HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPPUSHPKTCNTINT_MASK \
+	| HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREEREQRXERINT_MASK \
+	| HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREEREQTXERINT_MASK \
+	| HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPFREERPHRXRPHERRINT_MASK \
+	| HWA_PAGER_PP_PAGEMGR_INTMASK_PPFREERPHRXD11BERRMASK_MASK)
+
+/* Bits in hwa_pager_pp_pagemgr_intstatus conveying Response Errors */
+#define HWA_PAGER_PAGEMGR_RSP_ERRORS_MASK \
+	(HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPRXERRINT_MASK \
+	| HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPRXRPHERRINT_MASK \
+	| HWA_PAGER_PP_PAGEMGR_INTSTATUS_PPALLOCRSPTXERRINT_MASK)
+
+/* Bits in hwa_pager_pp_pagemgr_intstatus conveying Errors */
+#define HWA_PAGER_PAGEMGR_ERRORS_MASK \
+	(HWA_PAGER_PAGEMGR_REQ_ERRORS_MASK | HWA_PAGER_PAGEMGR_RSP_ERRORS_MASK)
+
+/* Bits in hwa_pager_pp_free_req_ring_addr */
+#define HWA_PAGER_PP_FREE_REQ_RING_ADDR_PPFREEREQADDR_SHIFT      0
+#define HWA_PAGER_PP_FREE_REQ_RING_ADDR_PPFREEREQADDR_MASK \
+	(0xffffffff << HWA_PAGER_PP_FREE_REQ_RING_ADDR_PPFREEREQADDR_SHIFT)
+
+/* Bits in hwa_pager_pp_free_req_ring_wr_index */
+#define HWA_PAGER_PP_FREE_REQ_RING_WR_INDEX_PPFREEREQWRIDX_SHIFT      0
+#define HWA_PAGER_PP_FREE_REQ_RING_WR_INDEX_PPFREEREQWRIDX_MASK \
+	(0xffff << HWA_PAGER_PP_FREE_REQ_RING_WR_INDEX_PPFREEREQWRIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_free_req_ring_rd_index */
+#define HWA_PAGER_PP_FREE_REQ_RING_RD_INDEX_PPFREEREQRDIDX_SHIFT      0
+#define HWA_PAGER_PP_FREE_REQ_RING_RD_INDEX_PPFREEREQRDIDX_MASK \
+	(0xffff << HWA_PAGER_PP_FREE_REQ_RING_RD_INDEX_PPFREEREQRDIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_free_req_ring_cfg */
+#define HWA_PAGER_PP_FREE_REQ_RING_CFG_PPFREEREQDEPTH_SHIFT      0
+#define HWA_PAGER_PP_FREE_REQ_RING_CFG_PPFREEREQDEPTH_MASK \
+	(0xffff << HWA_PAGER_PP_FREE_REQ_RING_CFG_PPFREEREQDEPTH_SHIFT)
+#define HWA_PAGER_PP_FREE_REQ_RING_CFG_PPFREEREQWAITTIME_SHIFT      24
+#define HWA_PAGER_PP_FREE_REQ_RING_CFG_PPFREEREQWAITTIME_MASK \
+	(0x3f << HWA_PAGER_PP_FREE_REQ_RING_CFG_PPFREEREQWAITTIME_SHIFT)
+#define HWA_PAGER_PP_FREE_REQ_RING_CFG_PPFREEREQSTOP_SHIFT      30
+#define HWA_PAGER_PP_FREE_REQ_RING_CFG_PPFREEREQSTOP_MASK \
+	(0x1 << HWA_PAGER_PP_FREE_REQ_RING_CFG_PPFREEREQSTOP_SHIFT)
+#define HWA_PAGER_PP_FREE_REQ_RING_CFG_PPFREEREQFORCESTOP_SHIFT      31
+#define HWA_PAGER_PP_FREE_REQ_RING_CFG_PPFREEREQFORCESTOP_MASK \
+	(0x1 << HWA_PAGER_PP_FREE_REQ_RING_CFG_PPFREEREQFORCESTOP_SHIFT)
+
+/* Bits in hwa_pager_pp_free_req_ring_lazyint_cfg */
+#define HWA_PAGER_PP_FREE_REQ_RING_LAZYINT_CFG_PPFREEREQAGGRCOUNT_SHIFT      0
+#define HWA_PAGER_PP_FREE_REQ_RING_LAZYINT_CFG_PPFREEREQAGGRCOUNT_MASK \
+	(0xff << HWA_PAGER_PP_FREE_REQ_RING_LAZYINT_CFG_PPFREEREQAGGRCOUNT_SHIFT)
+#define HWA_PAGER_PP_FREE_REQ_RING_LAZYINT_CFG_PPFREEREQAGGRTIMER_SHIFT      16
+#define HWA_PAGER_PP_FREE_REQ_RING_LAZYINT_CFG_PPFREEREQAGGRTIMER_MASK \
+	(0xffff << HWA_PAGER_PP_FREE_REQ_RING_LAZYINT_CFG_PPFREEREQAGGRTIMER_SHIFT)
+
+/* Bits in hwa_pager_pp_free_req_ring_debug */
+#define HWA_PAGER_PP_FREE_REQ_RING_DEBUG_PPFREEREQDEBUG_SHIFT      0
+#define HWA_PAGER_PP_FREE_REQ_RING_DEBUG_PPFREEREQDEBUG_MASK \
+	(0xffffffff << HWA_PAGER_PP_FREE_REQ_RING_DEBUG_PPFREEREQDEBUG_SHIFT)
+
+/* Bits in hwa_pager_pp_free_rph_req_ring_addr */
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_ADDR_PPFREERPHREQADDR_SHIFT      0
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_ADDR_PPFREERPHREQADDR_MASK \
+	(0xffffffff << HWA_PAGER_PP_FREE_RPH_REQ_RING_ADDR_PPFREERPHREQADDR_SHIFT)
+
+/* Bits in hwa_pager_pp_free_rph_req_ring_wr_index */
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_WR_INDEX_PPFREERPHRREQWRIDX_SHIFT      0
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_WR_INDEX_PPFREERPHRREQWRIDX_MASK \
+	(0xffff << HWA_PAGER_PP_FREE_RPH_REQ_RING_WR_INDEX_PPFREERPHRREQWRIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_free_rph_req_ring_rd_index */
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_RD_INDEX_PPFREERPHRREQRDIDX_SHIFT      0
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_RD_INDEX_PPFREERPHRREQRDIDX_MASK \
+	(0xffff << HWA_PAGER_PP_FREE_RPH_REQ_RING_RD_INDEX_PPFREERPHRREQRDIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_free_rph_req_ring_cfg */
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_CFG_PPFREERPHRREQDEPTH_SHIFT      0
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_CFG_PPFREERPHRREQDEPTH_MASK \
+	(0xffff << HWA_PAGER_PP_FREE_RPH_REQ_RING_CFG_PPFREERPHRREQDEPTH_SHIFT)
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_CFG_PPFREERPHREQWAITTIME_SHIFT      24
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_CFG_PPFREERPHREQWAITTIME_MASK \
+	(0x3f << HWA_PAGER_PP_FREE_RPH_REQ_RING_CFG_PPFREERPHREQWAITTIME_SHIFT)
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_CFG_PPFREERPHRSTOPQ_SHIFT      30
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_CFG_PPFREERPHRSTOPQ_MASK \
+	(0x1 << HWA_PAGER_PP_FREE_RPH_REQ_RING_CFG_PPFREERPHRSTOPQ_SHIFT)
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_CFG_PPFREERPHREQFORCESTOP_SHIFT      31
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_CFG_PPFREERPHREQFORCESTOP_MASK \
+	(0x1 << HWA_PAGER_PP_FREE_RPH_REQ_RING_CFG_PPFREERPHREQFORCESTOP_SHIFT)
+
+/* Bits in hwa_pager_pp_free_rph_req_ring_lazyint_cfg */
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_LAZYINT_CFG_PPFREERPHRREQAGGRCOUNT_SHIFT      0
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_LAZYINT_CFG_PPFREERPHRREQAGGRCOUNT_MASK \
+	(0xff << HWA_PAGER_PP_FREE_RPH_REQ_RING_LAZYINT_CFG_PPFREERPHRREQAGGRCOUNT_SHIFT)
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_LAZYINT_CFG_PPFREERPHRREQAGGRTIMER_SHIFT      16
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_LAZYINT_CFG_PPFREERPHRREQAGGRTIMER_MASK \
+	(0xffff << HWA_PAGER_PP_FREE_RPH_REQ_RING_LAZYINT_CFG_PPFREERPHRREQAGGRTIMER_SHIFT)
+
+/* Bits in hwa_pager_pp_free_rph_req_ring_debug */
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_DEBUG_PPFREERPHRREQDEBUG_SHIFT      0
+#define HWA_PAGER_PP_FREE_RPH_REQ_RING_DEBUG_PPFREERPHRREQDEBUG_MASK \
+	(0xffffffff << HWA_PAGER_PP_FREE_RPH_REQ_RING_DEBUG_PPFREERPHRREQDEBUG_SHIFT)
+
+/* Bits in hwa_pager_rx_alloc_transaction_id */
+#define HWA_PAGER_RX_ALLOC_TRANSACTION_ID_RXALLOCTRANSID_SHIFT      0
+#define HWA_PAGER_RX_ALLOC_TRANSACTION_ID_RXALLOCTRANSID_MASK \
+	(0xffffffff << HWA_PAGER_RX_ALLOC_TRANSACTION_ID_RXALLOCTRANSID_SHIFT)
+
+/* Bits in hwa_pager_rx_free_transaction_id */
+#define HWA_PAGER_RX_FREE_TRANSACTION_ID_RXFREETRANSID_SHIFT      0
+#define HWA_PAGER_RX_FREE_TRANSACTION_ID_RXFREETRANSID_MASK \
+	(0xffffffff << HWA_PAGER_RX_FREE_TRANSACTION_ID_RXFREETRANSID_SHIFT)
+
+/* Bits in hwa_pager_tx_alloc_transaction_id */
+#define HWA_PAGER_TX_ALLOC_TRANSACTION_ID_TXALLOCTRANSID_SHIFT      0
+#define HWA_PAGER_TX_ALLOC_TRANSACTION_ID_TXALLOCTRANSID_MASK \
+	(0xffffffff << HWA_PAGER_TX_ALLOC_TRANSACTION_ID_TXALLOCTRANSID_SHIFT)
+
+/* Bits in hwa_pager_tx_free_transaction_id */
+#define HWA_PAGER_TX_FREE_TRANSACTION_ID_TXFREETRANSID_SHIFT      0
+#define HWA_PAGER_TX_FREE_TRANSACTION_ID_TXFREETRANSID_MASK \
+	(0xffffffff << HWA_PAGER_TX_FREE_TRANSACTION_ID_TXFREETRANSID_SHIFT)
+
+/* Bits in hwa_pager_pp_hostpktpool_addr_lo */
+#define HWA_PAGER_PP_HOSTPKTPOOL_ADDR_LO_PPHDADDRLO_SHIFT      0
+#define HWA_PAGER_PP_HOSTPKTPOOL_ADDR_LO_PPHDADDRLO_MASK \
+	(0xffffffff << HWA_PAGER_PP_HOSTPKTPOOL_ADDR_LO_PPHDADDRLO_SHIFT)
+
+/* Bits in hwa_pager_pp_hostpktpool_addr_hi */
+#define HWA_PAGER_PP_HOSTPKTPOOL_ADDR_HI_PPHDADDRHI_SHIFT      0
+#define HWA_PAGER_PP_HOSTPKTPOOL_ADDR_HI_PPHDADDRHI_MASK \
+	(0xffffffff << HWA_PAGER_PP_HOSTPKTPOOL_ADDR_HI_PPHDADDRHI_SHIFT)
+
+/* Bits in hwa_pager_pp_hostpktpool_ctrl */
+#define HWA_PAGER_PP_HOSTPKTPOOL_CTRL_PPHDENABLE_SHIFT      0
+#define HWA_PAGER_PP_HOSTPKTPOOL_CTRL_PPHDENABLE_MASK \
+	(0x1 << HWA_PAGER_PP_HOSTPKTPOOL_CTRL_PPHDENABLE_SHIFT)
+#define HWA_PAGER_PP_HOSTPKTPOOL_CTRL_PPHDAVAILCNT_SHIFT      16
+#define HWA_PAGER_PP_HOSTPKTPOOL_CTRL_PPHDAVAILCNT_MASK \
+	(0xffff << HWA_PAGER_PP_HOSTPKTPOOL_CTRL_PPHDAVAILCNT_SHIFT)
+
+/* Bits in hwa_pager_pp_hostpktpool_size */
+#define HWA_PAGER_PP_HOSTPKTPOOL_SIZE_PPHDSIZE_SHIFT      0
+#define HWA_PAGER_PP_HOSTPKTPOOL_SIZE_PPHDSIZE_MASK \
+	(0xffff << HWA_PAGER_PP_HOSTPKTPOOL_SIZE_PPHDSIZE_SHIFT)
+
+/* Bits in hwa_pager_pp_hostpktpool_intr_th */
+#define HWA_PAGER_PP_HOSTPKTPOOL_INTR_TH_PPHDTH1_SHIFT      0
+#define HWA_PAGER_PP_HOSTPKTPOOL_INTR_TH_PPHDTH1_MASK \
+	(0xffff << HWA_PAGER_PP_HOSTPKTPOOL_INTR_TH_PPHDTH1_SHIFT)
+#define HWA_PAGER_PP_HOSTPKTPOOL_INTR_TH_PPHDTH2_SHIFT      16
+#define HWA_PAGER_PP_HOSTPKTPOOL_INTR_TH_PPHDTH2_MASK \
+	(0xffff << HWA_PAGER_PP_HOSTPKTPOOL_INTR_TH_PPHDTH2_SHIFT)
+
+/* Bits in hwa_pager_pp_hostpktpool_alloc_index */
+#define HWA_PAGER_PP_HOSTPKTPOOL_ALLOC_INDEX_PPHDALLOCIDX_SHIFT      0
+#define HWA_PAGER_PP_HOSTPKTPOOL_ALLOC_INDEX_PPHDALLOCIDX_MASK \
+	(0xffff << HWA_PAGER_PP_HOSTPKTPOOL_ALLOC_INDEX_PPHDALLOCIDX_SHIFT)
+#define HWA_PAGER_PP_HOSTPKTPOOL_ALLOC_INDEX_PPHDALLOCSTS_SHIFT      30
+#define HWA_PAGER_PP_HOSTPKTPOOL_ALLOC_INDEX_PPHDALLOCSTS_MASK \
+	(0x3 << HWA_PAGER_PP_HOSTPKTPOOL_ALLOC_INDEX_PPHDALLOCSTS_SHIFT)
+
+/* Bits in hwa_pager_pp_hostpktpool_dealloc_index */
+#define HWA_PAGER_PP_HOSTPKTPOOL_DEALLOC_INDEX_PPHDDEALLOCIDX_SHIFT      0
+#define HWA_PAGER_PP_HOSTPKTPOOL_DEALLOC_INDEX_PPHDDEALLOCIDX_MASK \
+	(0xffff << HWA_PAGER_PP_HOSTPKTPOOL_DEALLOC_INDEX_PPHDDEALLOCIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_hostpktpool_dealloc_status */
+#define HWA_PAGER_PP_HOSTPKTPOOL_DEALLOC_STATUS_PPHDDEALLOCSTS_SHIFT      0
+#define HWA_PAGER_PP_HOSTPKTPOOL_DEALLOC_STATUS_PPHDDEALLOCSTS_MASK \
+	(0x3 << HWA_PAGER_PP_HOSTPKTPOOL_DEALLOC_STATUS_PPHDDEALLOCSTS_SHIFT)
+
+/* Bits in hwa_pager_pp_dnglpktpool_addr_lo */
+#define HWA_PAGER_PP_DNGLPKTPOOL_ADDR_LO_PPDDADDRLO_SHIFT      0
+#define HWA_PAGER_PP_DNGLPKTPOOL_ADDR_LO_PPDDADDRLO_MASK \
+	(0xffffffff << HWA_PAGER_PP_DNGLPKTPOOL_ADDR_LO_PPDDADDRLO_SHIFT)
+
+/* Bits in hwa_pager_pp_dnglpktpool_addr_hi */
+#define HWA_PAGER_PP_DNGLPKTPOOL_ADDR_HI_PPDDADDRHI_SHIFT      0
+#define HWA_PAGER_PP_DNGLPKTPOOL_ADDR_HI_PPDDADDRHI_MASK \
+	(0xffffffff << HWA_PAGER_PP_DNGLPKTPOOL_ADDR_HI_PPDDADDRHI_SHIFT)
+
+/* Bits in hwa_pager_pp_dnglpktpool_ctrl */
+#define HWA_PAGER_PP_DNGLPKTPOOL_CTRL_PPDDENABLE_SHIFT      0
+#define HWA_PAGER_PP_DNGLPKTPOOL_CTRL_PPDDENABLE_MASK \
+	(0x1 << HWA_PAGER_PP_DNGLPKTPOOL_CTRL_PPDDENABLE_SHIFT)
+#define HWA_PAGER_PP_DNGLPKTPOOL_CTRL_PPDDAVAILCNT_SHIFT      16
+#define HWA_PAGER_PP_DNGLPKTPOOL_CTRL_PPDDAVAILCNT_MASK \
+	(0xffff << HWA_PAGER_PP_DNGLPKTPOOL_CTRL_PPDDAVAILCNT_SHIFT)
+
+/* Bits in hwa_pager_pp_dnglpktpool_size */
+#define HWA_PAGER_PP_DNGLPKTPOOL_SIZE_PPDDSIZE_SHIFT      0
+#define HWA_PAGER_PP_DNGLPKTPOOL_SIZE_PPDDSIZE_MASK \
+	(0xffff << HWA_PAGER_PP_DNGLPKTPOOL_SIZE_PPDDSIZE_SHIFT)
+
+/* Bits in hwa_pager_pp_dnglpktpool_intr_th */
+#define HWA_PAGER_PP_DNGLPKTPOOL_INTR_TH_PPDDTH1_SHIFT      0
+#define HWA_PAGER_PP_DNGLPKTPOOL_INTR_TH_PPDDTH1_MASK \
+	(0xffff << HWA_PAGER_PP_DNGLPKTPOOL_INTR_TH_PPDDTH1_SHIFT)
+#define HWA_PAGER_PP_DNGLPKTPOOL_INTR_TH_PPDDTH2_SHIFT      16
+#define HWA_PAGER_PP_DNGLPKTPOOL_INTR_TH_PPDDTH2_MASK \
+	(0xffff << HWA_PAGER_PP_DNGLPKTPOOL_INTR_TH_PPDDTH2_SHIFT)
+
+/* Bits in hwa_pager_pp_dnglpktpool_alloc_index */
+#define HWA_PAGER_PP_DNGLPKTPOOL_ALLOC_INDEX_PPDDALLOCIDX_SHIFT      0
+#define HWA_PAGER_PP_DNGLPKTPOOL_ALLOC_INDEX_PPDDALLOCIDX_MASK \
+	(0xffff << HWA_PAGER_PP_DNGLPKTPOOL_ALLOC_INDEX_PPDDALLOCIDX_SHIFT)
+#define HWA_PAGER_PP_DNGLPKTPOOL_ALLOC_INDEX_PPDDALLOCSTS_SHIFT      30
+#define HWA_PAGER_PP_DNGLPKTPOOL_ALLOC_INDEX_PPDDALLOCSTS_MASK \
+	(0x3 << HWA_PAGER_PP_DNGLPKTPOOL_ALLOC_INDEX_PPDDALLOCSTS_SHIFT)
+
+/* Bits in hwa_pager_pp_dnglpktpool_dealloc_index */
+#define HWA_PAGER_PP_DNGLPKTPOOL_DEALLOC_INDEX_PPDDDEALLOCIDX_SHIFT      0
+#define HWA_PAGER_PP_DNGLPKTPOOL_DEALLOC_INDEX_PPDDDEALLOCIDX_MASK \
+	(0xffff << HWA_PAGER_PP_DNGLPKTPOOL_DEALLOC_INDEX_PPDDDEALLOCIDX_SHIFT)
+
+/* Bits in hwa_pager_pp_dnglpktpool_dealloc_status */
+#define HWA_PAGER_PP_DNGLPKTPOOL_DEALLOC_STATUS_PPDDDEALLOCSTS_SHIFT      0
+#define HWA_PAGER_PP_DNGLPKTPOOL_DEALLOC_STATUS_PPDDDEALLOCSTS_MASK \
+	(0x3 << HWA_PAGER_PP_DNGLPKTPOOL_DEALLOC_STATUS_PPDDDEALLOCSTS_SHIFT)
+
+/* Bits in hwa_pager_pp_pagerbm_intstatus */
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMFULLINT_SHIFT      0
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMFULLINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMFULLINT_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMTH1INT_SHIFT      1
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMTH1INT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMTH1INT_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMTH2INT_SHIFT      2
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMTH2INT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMTH2INT_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMFREEERRINT_SHIFT      3
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMFREEERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMFREEERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMALLOCERRINT_SHIFT      4
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMALLOCERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMALLOCERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMFULLINT_SHIFT      16
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMFULLINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMFULLINT_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMTH1INT_SHIFT      17
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMTH1INT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMTH1INT_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMTH2INT_SHIFT      18
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMTH2INT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMTH2INT_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMFREEERRINT_SHIFT      19
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMFREEERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMFREEERRINT_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMALLOCERRERRINT_SHIFT      20
+#define HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMALLOCERRERRINT_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMALLOCERRERRINT_SHIFT)
+
+/* Bits in hwa_pager_pp_pagerbm_intmask */
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMFULLMASK_SHIFT      0
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMFULLMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMFULLMASK_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMTH1MASK_SHIFT      1
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMTH1MASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMTH1MASK_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMTH2MASK_SHIFT      2
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMTH2MASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMTH2MASK_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMFREEERRASK_SHIFT      3
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMFREEERRASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMFREEERRASK_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMALLOCERRASK_SHIFT      4
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMALLOCERRASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTMASK_PPHDBMALLOCERRASK_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMFULLMASK_SHIFT      16
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMFULLMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMFULLMASK_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMTH1MASK_SHIFT      17
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMTH1MASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMTH1MASK_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMTH2MASK_SHIFT      18
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMTH2MASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMTH2MASK_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMFREEERRMASK_SHIFT      19
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMFREEERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMFREEERRMASK_SHIFT)
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMALLOCERRMASK_SHIFT      20
+#define HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMALLOCERRMASK_MASK \
+	(0x1 << HWA_PAGER_PP_PAGERBM_INTMASK_PPDDBMALLOCERRMASK_SHIFT)
+
+/* Bits in hwa_pager_pp_pagerbm_intstatus conveying HDBM Errors */
+#define HWA_PAGER_HDBM_ERRORS_MASK \
+	(HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMFREEERRINT_MASK \
+	| HWA_PAGER_PP_PAGERBM_INTSTATUS_PPHDBMALLOCERRINT_MASK)
+
+/* Bits in hwa_pager_pp_pagerbm_intstatus conveying DDBM Errors */
+#define HWA_PAGER_DDBM_ERRORS_MASK \
+	(HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMFREEERRINT_MASK \
+	| HWA_PAGER_PP_PAGERBM_INTSTATUS_PPDDBMALLOCERRERRINT_MASK)
+
+/* Bits in hwa_pager_pp_pagerbm_intstatus conveying Errors */
+#define HWA_PAGER_PAGERBM_ERRORS_MASK \
+	(HWA_PAGER_HDBM_ERRORS_MASK | HWA_PAGER_DDBM_ERRORS_MASK)
+
+/* Bits in hwa_pager_pp_dma_descr_template */
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPINREQNOTPCIE_SHIFT      0
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPINREQNOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPINREQNOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPINREQCOHERENT_SHIFT      1
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPINREQCOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPINREQCOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPINRSPNOTPCIE_SHIFT      2
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPINRSPNOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPINRSPNOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPINRSPCOHERENT_SHIFT      3
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPINRSPCOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPINRSPCOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPOUTREQNOTPCIE_SHIFT      4
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPOUTREQNOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPOUTREQNOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPOUTREQCOHERENT_SHIFT      5
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPOUTREQCOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPOUTREQCOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPOUTRSPNOTPCIE_SHIFT      6
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPOUTRSPNOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPOUTRSPNOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPOUTRSPCOHERENT_SHIFT      7
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPOUTRSPCOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPOUTRSPCOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPALLOCREQNOTPCIE_SHIFT      8
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPALLOCREQNOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPALLOCREQNOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPALLOCREQCOHERENT_SHIFT      9
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPALLOCREQCOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPALLOCREQCOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPALLOCRSPNOTPCIE_SHIFT      10
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPALLOCRSPNOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPALLOCRSPNOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPALLOCRSPCOHERENT_SHIFT      11
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPALLOCRSPCOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPALLOCRSPCOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPFREEREQNOTPCIE_SHIFT      12
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPFREEREQNOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPFREEREQNOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPFREEREQCOHERENT_SHIFT      13
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPFREEREQCOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPFREEREQCOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPFREERPHREQNOTPCIE_SHIFT      14
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPFREERPHREQNOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPFREERPHREQNOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPFREERPHREQCOHERENT_SHIFT      15
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPFREERPHREQCOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPFREERPHREQCOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPAPKTNOTPCIE_SHIFT      16
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPAPKTNOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPAPKTNOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPAPKTCOHERENT_SHIFT      17
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPAPKTCOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPAPKTCOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPRXAPKTNOTPCIE_SHIFT      18
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPRXAPKTNOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPRXAPKTNOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPRXAPKTCOHERENT_SHIFT      19
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPRXAPKTCOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPRXAPKTCOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHSANOTPCIE_SHIFT      20
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHSANOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHSANOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHSACOHERENT_SHIFT      21
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHSACOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHSACOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHDANOTPCIE_SHIFT      22
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHDANOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHDANOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHDACOHERENT_SHIFT      23
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHDACOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHDACOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHDAWCPDESC_SHIFT      24
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHDAWCPDESC_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPUSHDAWCPDESC_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLSANOTPCIE_SHIFT      25
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLSANOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLSANOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLSACOHERENT_SHIFT      26
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLSACOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLSACOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLDANOTPCIE_SHIFT      27
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLDANOTPCIE_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLDANOTPCIE_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLDACOHERENT_SHIFT      28
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLDACOHERENT_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLDACOHERENT_SHIFT)
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLDAWCPDESC_SHIFT      29
+#define HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLDAWCPDESC_MASK \
+	(0x1 << HWA_PAGER_PP_DMA_DESCR_TEMPLATE_PPPULLDAWCPDESC_SHIFT)
+
+/* Bits in hwa_pager_pp_pagein_req_ddbmth */
+#define HWA_PAGER_PP_PAGEIN_REQ_DDBMTH_PAGEIN_REQ_DDBMTH_SHIFT      0
+#define HWA_PAGER_PP_PAGEIN_REQ_DDBMTH_PAGEIN_REQ_DDBMTH_MASK \
+	(0x3fff << HWA_PAGER_PP_PAGEIN_REQ_DDBMTH_PAGEIN_REQ_DDBMTH_SHIFT)
+
+/* Bits in hwa_pager_pp_apkt_cfg */
+#define HWA_PAGER_PP_APKT_CFG_PPAPKTHDAVAILCNT_SHIFT      0
+#define HWA_PAGER_PP_APKT_CFG_PPAPKTHDAVAILCNT_MASK \
+	(0x3fff << HWA_PAGER_PP_APKT_CFG_PPAPKTHDAVAILCNT_SHIFT)
+#define HWA_PAGER_PP_APKT_CFG_PPAPKTDDAVAILCNT_SHIFT      16
+#define HWA_PAGER_PP_APKT_CFG_PPAPKTDDAVAILCNT_MASK \
+	(0x3fff << HWA_PAGER_PP_APKT_CFG_PPAPKTDDAVAILCNT_SHIFT)
+#define HWA_PAGER_PP_APKT_CFG_PPAPKTSTOP_SHIFT      30
+#define HWA_PAGER_PP_APKT_CFG_PPAPKTSTOP_MASK \
+	(0x1 << HWA_PAGER_PP_APKT_CFG_PPAPKTSTOP_SHIFT)
+#define HWA_PAGER_PP_APKT_CFG_PPAPKTFORCESTOP_SHIFT      31
+#define HWA_PAGER_PP_APKT_CFG_PPAPKTFORCESTOP_MASK \
+	(0x1 << HWA_PAGER_PP_APKT_CFG_PPAPKTFORCESTOP_SHIFT)
+
+/* Bits in hwa_pager_pp_rx_apkt_cfg */
+#define HWA_PAGER_PP_RX_APKT_CFG_PPRXAPKTHDAVAILCNT_SHIFT      0
+#define HWA_PAGER_PP_RX_APKT_CFG_PPRXAPKTHDAVAILCNT_MASK \
+	(0x3fff << HWA_PAGER_PP_RX_APKT_CFG_PPRXAPKTHDAVAILCNT_SHIFT)
+#define HWA_PAGER_PP_RX_APKT_CFG_PPRXAPKTDDAVAILCNT_SHIFT      16
+#define HWA_PAGER_PP_RX_APKT_CFG_PPRXAPKTDDAVAILCNT_MASK \
+	(0x3fff << HWA_PAGER_PP_RX_APKT_CFG_PPRXAPKTDDAVAILCNT_SHIFT)
+#define HWA_PAGER_PP_RX_APKT_CFG_PPRXAPKTSTOP_SHIFT      30
+#define HWA_PAGER_PP_RX_APKT_CFG_PPRXAPKTSTOP_MASK \
+	(0x1 << HWA_PAGER_PP_RX_APKT_CFG_PPRXAPKTSTOP_SHIFT)
+#define HWA_PAGER_PP_RX_APKT_CFG_PPRXAPKTFORCESTOP_SHIFT      31
+#define HWA_PAGER_PP_RX_APKT_CFG_PPRXAPKTFORCESTOP_MASK \
+	(0x1 << HWA_PAGER_PP_RX_APKT_CFG_PPRXAPKTFORCESTOP_SHIFT)
+
+/* Bits in hwa_pager_pp_fpkt_cfg */
+#define HWA_PAGER_PP_FPKT_CFG_PPFPKTSTOP_SHIFT      30
+#define HWA_PAGER_PP_FPKT_CFG_PPFPKTSTOP_MASK \
+	(0x1 << HWA_PAGER_PP_FPKT_CFG_PPFPKTSTOP_SHIFT)
+#define HWA_PAGER_PP_FPKT_CFG_PPFPKTFORCESTOP_SHIFT      31
+#define HWA_PAGER_PP_FPKT_CFG_PPFPKTFORCESTOP_MASK \
+	(0x1 << HWA_PAGER_PP_FPKT_CFG_PPFPKTFORCESTOP_SHIFT)
+
+/* Bits in hwa_pager_pp_phpl_cfg */
+#define HWA_PAGER_PP_PHPL_CFG_PPPHPLHDAVAILCNT_SHIFT      0
+#define HWA_PAGER_PP_PHPL_CFG_PPPHPLHDAVAILCNT_MASK \
+	(0xff << HWA_PAGER_PP_PHPL_CFG_PPPHPLHDAVAILCNT_SHIFT)
+#define HWA_PAGER_PP_PHPL_CFG_PPPHPLDDAVAILCNT_SHIFT      8
+#define HWA_PAGER_PP_PHPL_CFG_PPPHPLDDAVAILCNT_MASK \
+	(0xff << HWA_PAGER_PP_PHPL_CFG_PPPHPLDDAVAILCNT_SHIFT)
+#define HWA_PAGER_PP_PHPL_CFG_PPPHPLSTOP_SHIFT      30
+#define HWA_PAGER_PP_PHPL_CFG_PPPHPLSTOP_MASK \
+	(0x1 << HWA_PAGER_PP_PHPL_CFG_PPPHPLSTOP_SHIFT)
+#define HWA_PAGER_PP_PHPL_CFG_PPPHPLFORCESTOP_SHIFT      31
+#define HWA_PAGER_PP_PHPL_CFG_PPPHPLFORCESTOP_MASK \
+	(0x1 << HWA_PAGER_PP_PHPL_CFG_PPPHPLFORCESTOP_SHIFT)
+
+/* Bits in hwa_pager_pp_apkt_sts_dbg */
+#define HWA_PAGER_PP_APKT_STS_DBG_PPAPKTSTSDBG_SHIFT      0
+#define HWA_PAGER_PP_APKT_STS_DBG_PPAPKTSTSDBG_MASK \
+	(0xffffffff << HWA_PAGER_PP_APKT_STS_DBG_PPAPKTSTSDBG_SHIFT)
+
+/* Bits in hwa_pager_pp_rx_apkt_sts_dbg */
+#define HWA_PAGER_PP_RX_APKT_STS_DBG_PPRXAPKTSTSDBG_SHIFT      0
+#define HWA_PAGER_PP_RX_APKT_STS_DBG_PPRXAPKTSTSDBG_MASK \
+	(0xffffffff << HWA_PAGER_PP_RX_APKT_STS_DBG_PPRXAPKTSTSDBG_SHIFT)
+
+/* Bits in hwa_pager_pp_fpkt_sts_dbg */
+#define HWA_PAGER_PP_FPKT_STS_DBG_PPFPKTSTSDBG_SHIFT      0
+#define HWA_PAGER_PP_FPKT_STS_DBG_PPFPKTSTSDBG_MASK \
+	(0xffffffff << HWA_PAGER_PP_FPKT_STS_DBG_PPFPKTSTSDBG_SHIFT)
+
+/* Bits in hwa_pager_pp_tb_sts_dbg */
+#define HWA_PAGER_PP_TB_STS_DBG_PPTBSTSDBG_SHIFT      0
+#define HWA_PAGER_PP_TB_STS_DBG_PPTBSTSDBG_MASK \
+	(0xffffffff << HWA_PAGER_PP_TB_STS_DBG_PPTBSTSDBG_SHIFT)
+
+/* Bits in hwa_pager_pp_push_sts_dbg */
+#define HWA_PAGER_PP_PUSH_STS_DBG_PPPUSHSTSDBG_SHIFT      0
+#define HWA_PAGER_PP_PUSH_STS_DBG_PPPUSHSTSDBG_MASK \
+	(0xffffffff << HWA_PAGER_PP_PUSH_STS_DBG_PPPUSHSTSDBG_SHIFT)
+
+/* Bits in hwa_pager_pp_pull_sts_dbg */
+#define HWA_PAGER_PP_PULL_STS_DBG_PPPULLSTSDBG_SHIFT      0
+#define HWA_PAGER_PP_PULL_STS_DBG_PPPULLSTSDBG_MASK \
+	(0xffffffff << HWA_PAGER_PP_PULL_STS_DBG_PPPULLSTSDBG_SHIFT)
+
+/*
+ * -----------------------------------------------------------------------------
+ * HC_HIN MACROS: hc_hin_reg_defs.h
  * -----------------------------------------------------------------------------
  */
 #define hwa_hc_hin_base                             0x000
@@ -4176,28 +5393,20 @@
 #define _HWA_MACIF_CTL_TXSTATUSEN_SHIFT      0
 #define _HWA_MACIF_CTL_TXSTATUSEN_MASK \
 	(0x1 << _HWA_MACIF_CTL_TXSTATUSEN_SHIFT)
-#if HWA_REVISION_EQ_128
-#define _HWA_MACIF_CTL_TXSTATUS_COUNT_SHIFT  1
-#define _HWA_MACIF_CTL_TXSTATUS_COUNT_MASK \
-	(0x3 << _HWA_MACIF_CTL_TXSTATUS_COUNT_SHIFT)
-#else /* HWA_REVISION_GE_129 */
 #define _HWA_MACIF_CTL_TXDMAEN_SHIFT      1
 #define _HWA_MACIF_CTL_TXDMAEN_MASK \
 	(0x1 << _HWA_MACIF_CTL_TXDMAEN_SHIFT)
 #define _HWA_MACIF_CTL_TXSTATUSMEM_AXI_SHIFT  2
 #define _HWA_MACIF_CTL_TXSTATUSMEM_AXI_MASK \
 	(0x1 << _HWA_MACIF_CTL_TXSTATUSMEM_AXI_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 #define _HWA_MACIF_CTL_RXDMAEN_SHIFT         3
 #define _HWA_MACIF_CTL_RXDMAEN_MASK \
 	(0x1 << _HWA_MACIF_CTL_RXDMAEN_SHIFT)
-#if HWA_REVISION_GE_129
 #define _HWA_MACIF_CTL_TXSTATUS_COUNT_SHIFT  4
 #define _HWA_MACIF_CTL_TXSTATUS_COUNT_MASK \
 	(0x7 << _HWA_MACIF_CTL_TXSTATUS_COUNT_SHIFT)
 #define _HWA_MACIF_CTL_TXSTATUSFIFO_AXI_SHIFT  7
 #define _HWA_MACIF_CTL_TXSTATUSFIFO_AXI_MASK \
 	(0x1 << _HWA_MACIF_CTL_TXSTATUSFIFO_AXI_SHIFT)
-#endif /* HWA_REVISION_GE_129 */
 
 #endif /* _HWA_REG_DEFS_H */

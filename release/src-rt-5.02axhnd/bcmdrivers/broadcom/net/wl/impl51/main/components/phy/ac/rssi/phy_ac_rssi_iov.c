@@ -1,7 +1,7 @@
 /*
  * ACPHY RSSICompute module implementation - iovar handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -57,7 +57,10 @@
 enum {
 	IOV_PHY_RSSI_CAL_REV = 1,
 	IOV_PHY_RSSI_QDB_EN = 2,
-	IOV_PHY_RXGAIN_RSSI = 3
+	IOV_PHY_RXGAIN_RSSI = 3,
+	IOV_PHY_ULOFDMA_STATS = 4,
+	IOV_PHY_UL_PWR_CTRL = 5,
+	IOV_PHY_TRACKED_FREQ = 6
 };
 
 static const bcm_iovar_t phy_ac_rssi_iovars[] = {
@@ -66,6 +69,9 @@ static const bcm_iovar_t phy_ac_rssi_iovars[] = {
 	{"rssi_qdb_en", IOV_PHY_RSSI_QDB_EN,
 	(IOVF_SET_UP | IOVF_GET_UP | IOVF_MFG), 0, IOVT_INT16, 0},
 	{"rxg_rssi", IOV_PHY_RXGAIN_RSSI, (IOVF_SET_UP | IOVF_GET_UP | IOVF_MFG), 0, IOVT_INT16, 0},
+	{"phy_ulofdma_stats", IOV_PHY_ULOFDMA_STATS, (0), 0, IOVT_INT16, 0},
+	{"phy_ul_pwr_ctrl", IOV_PHY_UL_PWR_CTRL, (0), 0, IOVT_INT16, 0},
+	{"phy_tracked_freq", IOV_PHY_TRACKED_FREQ, (0), 0, IOVT_INT16, 0},
 	{NULL, 0, 0, 0, 0, 0}
 };
 
@@ -108,6 +114,22 @@ phy_ac_rssi_doiovar(void *ctx, uint32 aid,
 
 		case IOV_GVAL(IOV_PHY_RXGAIN_RSSI):
 			*ret_int_ptr = data->rxgaincal_rssical;
+			break;
+
+		case IOV_GVAL(IOV_PHY_ULOFDMA_STATS):
+			bcopy(&data->per_user_stats, a, sizeof(wl_ulofdma_per_user_rxstats_t));
+			break;
+
+		case IOV_SVAL(IOV_PHY_UL_PWR_CTRL):
+			data->per_user_stats.ul_pwr_ctrl = int_val;
+			break;
+
+		case IOV_GVAL(IOV_PHY_UL_PWR_CTRL):
+			*ret_int_ptr = data->per_user_stats.ul_pwr_ctrl;
+			break;
+
+		case IOV_GVAL(IOV_PHY_TRACKED_FREQ):
+			bcopy(&data->tracked_freq_stats, a, sizeof(wl_tracked_freq_offset_t));
 			break;
 
 		default:

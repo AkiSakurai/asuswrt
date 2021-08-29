@@ -1,7 +1,7 @@
 /*
  * TEMPerature sense module implementation.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_temp.c 763047 2018-05-17 04:32:07Z $
+ * $Id: phy_temp.c 774724 2019-05-04 10:45:39Z $
  */
 
 #include <phy_cfg.h>
@@ -106,6 +106,12 @@ BCMATTACHFN(phy_temp_attach)(phy_info_t *pi)
 	temp = &((phy_temp_mem_t *)info)->temp;
 	info->temp = temp;
 
+	/* XXX Temperature (in degrees centigrade) at which one Tx chain is disabled
+	 * to prevent further heating
+	 *
+	 * PR 83721 FIXME: add 25C offset to tempthresh once chips are qualed at 150C
+	 *                 if BFL2_TEMPSENSE_HIGHER is high
+	 */
 	init_txrxchain = (1 << PHYCORENUM(pi->pubpi->phy_corenum)) - 1;
 
 	temp->disable_temp = (uint8)PHY_GETINTVAR(pi, rstr_tempthresh);
@@ -136,6 +142,9 @@ BCMATTACHFN(phy_temp_attach)(phy_info_t *pi)
 	pi->phy_tempsense_offset = 0;
 
 	wlc_phy_read_tempdelta_settings(info, PHY_CAL_MAXTEMPDELTA);
+
+	if (ISNPHY(pi) && NREV_IS(pi->pubpi.phy_rev, LCNXN_BASEREV+1))
+		temp->phycal_tempdelta = 4;
 
 	/* Register callbacks */
 

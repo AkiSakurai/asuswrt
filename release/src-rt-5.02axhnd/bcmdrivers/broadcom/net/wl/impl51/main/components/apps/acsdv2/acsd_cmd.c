@@ -1,7 +1,7 @@
 /*
  * ACS deamon command module (Linux)
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acsd_cmd.c 761206 2018-05-07 05:50:21Z $
+ * $Id: acsd_cmd.c 777835 2019-08-13 06:26:04Z $
  */
 
 #include "acsd_svr.h"
@@ -82,6 +82,13 @@ extern void acs_cleanup_scan_entry(acs_chaninfo_t *c_info);
 			goto done; \
 		} \
 	}
+
+#define ACS_CMD_TEST_DFSR		"test_dfsr"
+#define ACS_CMD_TEST_PRECLEAR		"test_preclear"
+#define ACS_CMD_ZDFS_5G_MOVE		"zdfs_5g_move"
+#define ACS_CMD_ZDFS_5G_PRECLEAR	"zdfs_5g_preclear"
+#define ACS_CMD_ZDFS_2G_MOVE		"zdfs_2g_move"
+#define ACS_CMD_ZDFS_2G_PRECLEAR	"zdfs_2g_preclear"
 
 static int
 acsd_extract_token_val(char* data, const char *token, char *output, int len)
@@ -167,6 +174,71 @@ acs_policy_name(acs_policy_index i)
 		/* No default so compiler will complain if new definitions are missing */
 	}
 	return "(unknown)";
+}
+
+/* processes DFS move/preclear related commands including
+ *	test_dfsr, test_preclear,
+ *	zdfs_5g_move, zdfs_5g_preclear,
+ *	zdfs_2g_move, zdfs_2g_preclear,
+ */
+static int
+acsd_dfs_cmd(acs_chaninfo_t *c_info, char *buf, char *param, char *val, uint *r_size,
+		bool move, acs_cac_mode_t cac_mode)
+{
+	int ret = BCME_OK;
+	acs_chaninfo_t *zdfs_2g_ci = NULL;
+	chanspec_t chspec = wf_chspec_aton(val);
+
+	/* request must come from a 5GHz interface only */
+	if (!BAND_5G(c_info->rs_info.band_type)) {
+		*r_size = sprintf(buf, "ERR: not a 5Hz interface");
+		return BCME_BADBAND;
+	}
+	if (!move && !c_info->country_is_edcrs_eu) {
+		*r_size = sprintf(buf, "ERR: Country code does not support preclearance");
+		return BCME_UNSUPPORTED;
+	}
+	if (!move || cac_mode == ACS_CAC_MODE_ZDFS_5G_ONLY ||
+			cac_mode == ACS_CAC_MODE_ZDFS_2G_ONLY) {
+		/* ensure bgdfs is enabled */
+		if (!c_info->acs_bgdfs) {
+			*r_size = sprintf(buf, "ERR: ZDFS not enabled");
+			return BCME_NOTENABLED;
+		}
+	}
+	if (cac_mode == ACS_CAC_MODE_ZDFS_5G_ONLY &&
+			c_info->acs_bgdfs->state != BGDFS_STATE_IDLE) {
+		/* avoid ZDFS if the 5Hz interface is busy with ZDFS */
+		if (c_info->acs_bgdfs->state != BGDFS_STATE_IDLE) {
+			*r_size = sprintf(buf, "ERR: ZDFS_5G is not idle on this interface");
+			return BCME_BUSY;
+		}
+	}
+	if (ACS_CAC_MODE_ZDFS_2G_ONLY == cac_mode) {
+		if ((zdfs_2g_ci = acs_get_zdfs_2g_ci()) == NULL || !zdfs_2g_ci->acs_bgdfs) {
+			*r_size = sprintf(buf, "ERR: ZDFS_2G is not available");
+			return BCME_NOTENABLED;
+		}
+		if (zdfs_2g_ci->acs_bgdfs->state != BGDFS_STATE_IDLE) {
+			*r_size = sprintf(buf, "ERR: ZDFS_2G is not idle");
+			return BCME_BUSY;
+		}
+	}
+
+	c_info->cac_mode = cac_mode;
+	if (move) {
+		c_info->selected_chspec = chspec;
+		acs_set_chspec(c_info, FALSE, WL_CHAN_REASON_DFS_AP_MOVE_START);
+		chanim_upd_acs_record(c_info->chanim_info, c_info->selected_chspec,
+				APCS_DFS_REENTRY);
+	} else { /* preclear */
+		c_info->acs_bgdfs->next_scan_chan = chspec;
+		ret = acs_bgdfs_ahead_trigger_scan(c_info);
+	}
+
+	*r_size = sprintf(buf, "%s chanspec: %7s (status:%d)", param, val, ret);
+
+	return ret;
 }
 
 /* buf should be null terminated. rcount doesn;t include the terminuating null */
@@ -255,12 +327,27 @@ acsd_proc_cmd(acsd_wksp_t* d_info, char* buf, uint rcount, uint* r_size)
 		}
 
 		err = acs_run_cs_scan(c_info);
+		if (err) {
+			ACSD_ERROR("ifname: %s scan is failed due to: %d\n", c_info->name, err);
+			return err;
+		}
 
 		acs_cleanup_scan_entry(c_info);
 		err = acs_request_data(c_info);
 
 		if (pick) {
+			c_info->autochannel_through_cli = TRUE;
 			acs_select_chspec(c_info);
+			if (c_info->acs_use_csa) {
+				err = acs_csa_handle_request(c_info);
+			} else {
+				err = acs_set_chanspec(c_info, c_info->selected_chspec);
+			}
+			c_info->autochannel_through_cli = FALSE;
+			if (!err) {
+				chanim_upd_acs_record(c_info->chanim_info,
+						c_info->selected_chspec, APCS_IOCTL);
+			}
 		}
 
 		*r_size = sprintf(buf, "Request finished");
@@ -447,7 +534,8 @@ acsd_proc_cmd(acsd_wksp_t* d_info, char* buf, uint rcount, uint* r_size)
 				idx = (idx + 1) % CHANIM_ACS_RECORD;
 			}
 
-			ACSD_DEBUG("rsize: %d, sizeof: %zd\n", *r_size, sizeof(chanim_acs_record_t));
+			ACSD_DEBUG("rsize: %d, sizeof: %zd\n", *r_size,
+					sizeof(chanim_acs_record_t));
 
 		} else if (!strcmp(param, "acsd_stats")) {
 			acsd_stats_t * d_stats = &d_info->stats;
@@ -601,6 +689,25 @@ acsd_proc_cmd(acsd_wksp_t* d_info, char* buf, uint rcount, uint* r_size)
 			*r_size = sprintf(buf, "%d sec", c_info->acs_scan_entry_expire);
 			goto done;
 		}
+		if (!strcmp(param, ACS_CMD_TEST_DFSR) || !strcmp(param, ACS_CMD_ZDFS_2G_MOVE) ||
+				!strcmp(param, ACS_CMD_ZDFS_5G_MOVE)) {
+			char ch_str[CHANSPEC_STR_LEN];
+			*r_size = sprintf(buf, "chanspec: %7s (0x%04x) for dfsr (CAC mode:%d)",
+					wf_chspec_ntoa(c_info->selected_chspec, ch_str),
+					c_info->selected_chspec, c_info->cac_mode);
+			goto done;
+		}
+		if ((!strcmp(param, ACS_CMD_TEST_PRECLEAR) ||
+				!strcmp(param, ACS_CMD_ZDFS_2G_PRECLEAR) ||
+				!strcmp(param, ACS_CMD_ZDFS_5G_PRECLEAR)) &&
+				c_info->acs_bgdfs != NULL) {
+			char ch_str[CHANSPEC_STR_LEN];
+			*r_size = sprintf(buf, "chanspec: %7s (0x%04x) to preclear (CAC mode:%d)",
+					wf_chspec_ntoa(c_info->acs_bgdfs->next_scan_chan, ch_str),
+					c_info->acs_bgdfs->next_scan_chan, c_info->cac_mode);
+			goto done;
+		}
+
 		if (!strcmp(param, "acs_ci_scan_timer")) {
 			*r_size = sprintf(buf, "%d sec", c_info->acs_ci_scan_timer);
 			goto done;
@@ -808,6 +915,37 @@ acsd_proc_cmd(acsd_wksp_t* d_info, char* buf, uint rcount, uint* r_size)
 		if (!strcmp(param, "acs_ci_scan_timer")) {
 			c_info->acs_ci_scan_timer = setval;
 			*r_size = sprintf(buf, "%d sec", c_info->acs_ci_scan_timer);
+			goto done;
+		}
+
+		if (!strcmp(param, ACS_CMD_TEST_DFSR)) {
+			acsd_dfs_cmd(c_info, buf, param, val, r_size, TRUE,
+					ACS_CAC_MODE_AUTO);
+			goto done;
+		}
+		if (!strcmp(param, ACS_CMD_TEST_PRECLEAR)) {
+			acsd_dfs_cmd(c_info, buf, param, val, r_size, FALSE,
+					ACS_CAC_MODE_AUTO);
+			goto done;
+		}
+		if (!strcmp(param, ACS_CMD_ZDFS_5G_MOVE)) {
+			acsd_dfs_cmd(c_info, buf, param, val, r_size, TRUE,
+					ACS_CAC_MODE_ZDFS_5G_ONLY);
+			goto done;
+		}
+		if (!strcmp(param, ACS_CMD_ZDFS_2G_MOVE)) {
+			acsd_dfs_cmd(c_info, buf, param, val, r_size, TRUE,
+					ACS_CAC_MODE_ZDFS_2G_ONLY);
+			goto done;
+		}
+		if (!strcmp(param, ACS_CMD_ZDFS_5G_PRECLEAR)) {
+			acsd_dfs_cmd(c_info, buf, param, val, r_size, FALSE,
+					ACS_CAC_MODE_ZDFS_5G_ONLY);
+			goto done;
+		}
+		if (!strcmp(param, ACS_CMD_ZDFS_2G_PRECLEAR)) {
+			acsd_dfs_cmd(c_info, buf, param, val, r_size, FALSE,
+					ACS_CAC_MODE_ZDFS_2G_ONLY);
 			goto done;
 		}
 

@@ -1,7 +1,7 @@
 /*
  * ACPHY dccal module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_dccal.h 754220 2018-03-26 18:37:38Z $
+ * $Id: phy_ac_dccal.h 775385 2019-05-29 11:30:21Z $
  */
 
 #ifndef _phy_ac_dccal_h_
@@ -56,7 +56,6 @@
 #include <phy_dccal.h>
 #include <wlc_radioreg_20695.h>
 #include <wlc_radioreg_20694.h>
-#include <wlc_radioreg_20697.h>
 #include <wlc_radioreg_20698.h>
 
 /* forward declaration */
@@ -70,12 +69,15 @@ void phy_ac_dccal_unregister_impl(phy_ac_dccal_info_t *info);
 void wlc_dcc_fsm_restart(phy_info_t *pi);
 int wlc_phy_tiny_static_dc_offset_cal(phy_info_t *pi);
 void wlc_dcc_fsm_reset(phy_info_t *pi);
+bool phy_ac_dccal_multiphase_isen(phy_info_t *pi);
+void phy_ac_dccal_multiphase(phy_info_t *pi, uint16 cal_time);
 void phy_ac_dccal(phy_info_t *pi);
 void phy_ac_dccal_2steps(phy_info_t *pi);
 void phy_ac_dccal_dcoe_only(phy_info_t *pi);
 void phy_ac_dccal_idacc_only(phy_info_t *pi);
 void phy_ac_dccal_init(phy_info_t *pi);
 void phy_ac_load_gmap_tbl(phy_info_t *pi);
+void phy_ax_dccal_digcorr_bwspecific(phy_info_t *pi);
 
 /* DCC with digcorr */
 void phy_ax_dccal_digcorr_init(phy_info_t *pi);

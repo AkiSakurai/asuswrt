@@ -1,7 +1,7 @@
 /*
  * TxPowerCtrl module public interface (to MAC driver).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tpc_api.h 759380 2018-04-25 06:54:57Z $
+ * $Id: phy_tpc_api.h 773008 2019-03-11 03:17:43Z $
  */
 
 #ifndef _phy_tpc_api_h_
@@ -78,6 +78,15 @@ void wlc_phy_prev_chanspec_set(wlc_phy_t *ppi, chanspec_t prev_chanspec);
 int wlc_phy_txpower_set(wlc_phy_t *ppi, int8 qdbm, bool override, ppr_t *reg_pwr);
 void wlc_phy_txpower_recalc_target(phy_info_t *pi, ppr_t *txpwr_reg, ppr_t *txpwr_targets);
 int wlc_phy_txpower_get_current(wlc_phy_t *ppi, ppr_t *reg_pwr, phy_tx_power_t *power);
+#ifdef WL11AX
+int wlc_phy_txpower_get_txctrl(wlc_phy_t *ppi, phy_tx_power_t *power);
+void wlc_phy_set_ru_power_limits(wlc_phy_t *ppi, ppr_ru_t *ru_reg_pwr);
+#ifdef WL_EXPORT_CURPOWER
+void phy_tpc_get_he_tb_board_limits(wlc_phy_t *ppi, ppr_ru_t **board_he_txpwr_limit);
+void phy_tpc_get_he_tb_clm_limits(wlc_phy_t *ppi, ppr_ru_t **clm_he_txpwr_limit);
+void phy_tpc_get_he_tb_tgt_limits(wlc_phy_t *ppi, ppr_ru_t **final_he_txpwr_limit);
+#endif /* WL_EXPORT_CURPOWER */
+#endif /* WL11AX */
 void wlc_phy_get_ppr_board_limits(wlc_phy_t *ppi, ppr_t *ppr_board_limits);
 void wlc_phy_txpower_sromlimit(wlc_phy_t *ppi, chanspec_t chanspec, uint8 *min_pwr,
 	ppr_t *max_pwr, uint8 core);

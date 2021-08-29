@@ -1658,6 +1658,9 @@ static CURLcode ssh_statemach_act(struct connectdata *conn, bool *block)
           sshc->actualcode = err>= LIBSSH2_FX_OK?
             sftp_libssh2_error_to_CURLE(err):CURLE_SSH;
           if(!sshc->actualcode) {
+            /* Sometimes, for some reason libssh2_sftp_last_error() returns
+               zero even though libssh2_sftp_open() failed previously! We need
+               to work around that! */
             sshc->actualcode = CURLE_SSH;
             err=-1;
           }

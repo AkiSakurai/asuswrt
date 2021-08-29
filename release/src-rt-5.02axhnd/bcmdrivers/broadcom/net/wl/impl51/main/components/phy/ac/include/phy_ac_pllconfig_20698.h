@@ -1,7 +1,7 @@
 /*
  * ACPHY 20698 Radio PLL configuration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -50,11 +50,15 @@
 #ifndef _PHY_AC_20698_PLLCONFIG_H
 #define _PHY_AC_20698_PLLCONFIG_H
 
+struct pll_config_20698_tbl_s; /* forward declaration */
+
 extern void
-wlc_phy_radio20698_pll_tune(phy_info_t *pi, uint32 chan_freq, uint8 logen_mode);
-extern int
+wlc_phy_radio20698_pll_tune(phy_info_t *pi, struct pll_config_20698_tbl_s *pll,
+                            uint32 chan_freq, uint8 logen_mode);
+extern struct pll_config_20698_tbl_s*
 BCMATTACHFN(phy_ac_radio20698_populate_pll_config_tbl)(phy_info_t *pi);
 extern void
-BCMATTACHFN(phy_ac_radio20698_populate_pll_config_mfree)(phy_info_t *pi);
+BCMATTACHFN(phy_ac_radio20698_populate_pll_config_mfree)(phy_info_t *pi,
+                                                         struct pll_config_20698_tbl_s *pll);
 
 #endif /* _PHY_AC_20698_PLLCONFIG_H */

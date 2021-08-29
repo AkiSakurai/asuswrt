@@ -1,7 +1,7 @@
 /*
  * WPS GPIO Header file
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_gpio.h 738722 2018-01-03 09:44:05Z $
+ * $Id: wps_gpio.h 773434 2019-03-20 18:30:53Z $
  */
 
 #ifndef _WPS_GPIO_H_

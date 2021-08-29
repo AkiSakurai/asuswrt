@@ -157,7 +157,7 @@ void check_wan_nvram(void){
 	if(nvram_match("wan1_proto", "")) nvram_set("wan1_proto", "dhcp");
 }
 #else
-int add_multi_routes(void){
+int add_multi_routes(int check_link){
 	int unit;
 	char tmp[100], prefix[] = "wanXXXXXXXXXX_";
 	char wan_proto[32];
@@ -166,6 +166,7 @@ int add_multi_routes(void){
 	int debug = nvram_get_int("routes_debug");
 	int lock;
 	lock = file_lock("mt_routes");
+_dprintf("add_multi_routes: running...\n");
 
 	// clean the rules of routing table and re-build them then.
 	system("ip rule flush");
@@ -185,8 +186,10 @@ int add_multi_routes(void){
 		snprintf(wan_multi_gate[unit], sizeof(wan_multi_gate[unit]), "%s", nvram_safe_get(strcat_r(prefix, "gateway", tmp)));
 
 		// when wan_down().
-		if(!is_wan_connect(unit))
+		if(check_link && !is_wan_connect(unit)){
+_dprintf("add_multi_routes: skip because of the result of is_wan_connect(%d)...\n", unit);
 			continue;
+		}
 
 		snprintf(cmd, sizeof(cmd), "ip route replace %s dev %s proto kernel", wan_multi_gate[unit], wan_multi_if[unit]);
 if(debug) printf("test 10. cmd=%s.\n", cmd);
@@ -1766,6 +1769,10 @@ stop_wan_if(int unit)
 		stop_igmpproxy();
 	}
 
+#ifdef RTCONFIG_OPENVPN
+	stop_ovpn_eas();
+#endif
+
 #ifdef RTCONFIG_VPNC
 	/* Stop VPN client */
 	stop_vpnc();
@@ -1774,7 +1781,7 @@ stop_wan_if(int unit)
 	/* Stop l2tp */
 	if (strcmp(wan_proto, "l2tp") == 0) {
 		kill_pidfile_tk("/var/run/l2tpd.pid");
-		usleep(1000*10000);
+		usleep(1000*1000);
 	}
 
 	/* Stop pppd */
@@ -1789,6 +1796,16 @@ stop_wan_if(int unit)
 	/* Stop pre-authenticator */
 	stop_auth(unit, 0);
 
+#if 1
+	/* Clean WAN interface */
+	snprintf(wan_ifname, sizeof(wan_ifname), "%s", nvram_safe_get(strcat_r(prefix, "ifname", tmp)));
+	if (*wan_ifname && *wan_ifname != '/') {
+#ifdef RTCONFIG_IPV6
+		disable_ipv6(wan_ifname);
+#endif
+		ifconfig(wan_ifname, IFUP, "0.0.0.0", NULL);
+	}
+#else
 	/* Bring down WAN interfaces */
 	// Does it have to?
 	snprintf(wan_ifname, sizeof(wan_ifname), "%s", nvram_safe_get(strcat_r(prefix, "ifname", tmp)));
@@ -1811,6 +1828,7 @@ stop_wan_if(int unit)
 #endif
 		}
 	}
+#endif
 
 #ifdef RTCONFIG_DSL
 #ifdef RTCONFIG_DUALWAN
@@ -1925,9 +1943,6 @@ int update_resolvconf(void)
 #ifdef RTCONFIG_YANDEXDNS
 	int yadns_mode = nvram_get_int("yadns_enable_x") ? nvram_get_int("yadns_mode") : YADNS_DISABLED;
 #endif
-#ifdef RTCONFIG_DUALWAN
-	int primary_unit = wan_primary_ifunit();
-#endif
 
 	lock = file_lock("resolv");
 
@@ -1941,20 +1956,16 @@ int update_resolvconf(void)
 		goto error;
 	}
 
-#ifdef RTCONFIG_OPENVPN
-	if (!write_ovpn_resolv(fp, fp_servers))
-#endif
 	{
 		for (unit = WAN_UNIT_FIRST; unit < WAN_UNIT_MAX; unit++) {
 			char *wan_xdns, *wan_xdomain;
 			char wan_xdns_buf[sizeof("255.255.255.255 ")*2], wan_xdomain_buf[256];
 
 #ifdef RTCONFIG_DUALWAN
-			if (unit != primary_unit && nvram_invmatch("wans_mode", "lb"))
+			/* skip disconnected WANs in LB mode */
+			if (nvram_match("wans_mode", "lb") && !is_phy_connect(unit))
 				continue;
 #endif
-			if (!is_phy_connect(unit))
-				continue;
 
 			snprintf(prefix, sizeof(prefix), "wan%d_", unit);
 			wan_dns = nvram_safe_get_r(strcat_r(prefix, "dns", tmp), wan_dns_buf, sizeof(wan_dns_buf));
@@ -1972,9 +1983,13 @@ int update_resolvconf(void)
 				if (yadns_mode != YADNS_DISABLED)
 					break;
 #endif
+#ifdef RTCONFIG_OPENVPN
+				if (write_ovpn_resolv_dnsmasq(fp_servers))
+					break;
+#endif
 #ifdef RTCONFIG_DUALWAN
 				/* Skip not fully connected WANs in LB mode */
-				if (unit != primary_unit && nvram_match("wans_mode", "lb") && !*wan_dns)
+				if (nvram_match("wans_mode", "lb") && !*wan_dns)
 					break;
 #endif
 				foreach(tmp, (*wan_dns ? wan_dns : wan_xdns), next)
@@ -2548,7 +2563,7 @@ wan_up(const char *pwan_ifname)
 	update_resolvconf();
 
 	/* default route via default gateway */
-	add_multi_routes();
+	add_multi_routes(0);
 
 #if defined(RTCONFIG_USB_MODEM) && defined(RTCONFIG_INTERNAL_GOBI)
 	if(dualwan_unit__usbif(wan_unit)){
@@ -2645,58 +2660,6 @@ wan_up(const char *pwan_ifname)
 	adjust_netdev_if_of_wan_bled(1, wan_unit, wan_ifname);
 #endif
 
-#ifdef RTCONFIG_BWDPI
-	int enabled = check_bwdpi_nvram_setting();
-	int changed = tdts_check_wan_changed();
-
-	BWDPI_DBG("enabled = %d, changed = %d\n", enabled, changed);
-
-	if(enabled){
-		_dprintf("[%s] do dpi engine service ... \n", __FUNCTION__);
-		// if Adaptive QoS or AiProtection is enabled
-		int count = 0;
-		int val = 0;
-		while (count < 3) {
-			sleep(1);
-			val = found_default_route(0);
-			count++;
-			if ((val == 1) || (count == 3)) break;
-		}
-
-		BWDPI_DBG("found_default_route result: %d\n", val);
-
-		if (val) {
-			// if restart_wan_if, remove dpi engine related
-			if ((f_exists(DEVNODE) || f_exists("/dev/idpfw")) && changed == 0)
-			{
-				_dprintf("[%s] stop dpi engine service - %d\n", __FUNCTION__, changed);
-				stop_dpi_engine_service(0);
-			}
-			else if ((f_exists(DEVNODE) || f_exists("/dev/idpfw")) && changed == 1)
-			{
-				_dprintf("[%s] stop dpi engine service - %d\n", __FUNCTION__, changed);
-				stop_dpi_engine_service(1);
-			}
-			_dprintf("[%s] start dpi engine service\n", __FUNCTION__);
-			start_dpi_engine_service();
-			start_firewall(wan_unit, 0);
-		}
-
-		if(nvram_get_int("qos_enable") == 1 && nvram_get_int("qos_type") != 1){
-			_dprintf("[wan up] tradtional qos or bandwidth limiter start\n");
-			start_iQos();
-		}
-	}
-	else{
-		if(nvram_get_int("qos_enable") == 1 && nvram_get_int("qos_type") != 1){
-			_dprintf("[wan up] tradtional qos or bandwidth limiter start\n");
-			start_iQos();
-		}
-	}
-#else
-	start_iQos();
-#endif
-
 #if !defined(RTCONFIG_MULTIWAN_CFG)
 	/* FIXME: Protect below code from 2-nd WAN temporarilly. */
 	if(wan_unit == wan_primary_ifunit())
@@ -2764,6 +2727,59 @@ wan_up(const char *pwan_ifname)
 	}
 #endif
 
+#ifdef RTCONFIG_BWDPI
+	int enabled = check_bwdpi_nvram_setting();
+	int changed = tdts_check_wan_changed();
+
+	BWDPI_DBG("enabled = %d, changed = %d\n", enabled, changed);
+
+	if(enabled){
+		_dprintf("[%s] do dpi engine service ... \n", __FUNCTION__);
+		// if Adaptive QoS or AiProtection is enabled
+		int count = 0;
+		int val = 0;
+		while (count < 5) {
+			sleep(1);
+			val = found_default_route(0);
+			usleep(400*1000);
+			count++;
+			if ((val == 1) || (count == 5)) break;
+		}
+
+		BWDPI_DBG("found_default_route result: %d\n", val);
+
+		if (val) {
+			// if restart_wan_if, remove dpi engine related
+			if ((f_exists("/dev/detector") || f_exists("/dev/idpfw")) && changed == 0)
+			{
+				_dprintf("[%s] stop dpi engine service - %d\n", __FUNCTION__, changed);
+				stop_dpi_engine_service(0);
+			}
+			else if ((f_exists("/dev/detector") || f_exists("/dev/idpfw")) && changed == 1)
+			{
+				_dprintf("[%s] stop dpi engine service - %d\n", __FUNCTION__, changed);
+				stop_dpi_engine_service(1);
+			}
+			_dprintf("[%s] start dpi engine service\n", __FUNCTION__);
+			start_dpi_engine_service();
+			start_firewall(wan_unit, 0);
+		}
+
+		if(IS_NON_AQOS()){
+			_dprintf("[wan up] tradtional qos or bandwidth limiter start\n");
+			start_iQos();
+		}
+	}
+	else{
+		if(IS_NON_AQOS()){
+			_dprintf("[wan up] tradtional qos or bandwidth limiter start\n");
+			start_iQos();
+		}
+	}
+#else
+	start_iQos();
+#endif
+
 #ifdef RTCONFIG_AMAS
 	if (is_amaslib_enabled()) {
 		// force to trigger amaslib to do static scan
@@ -2779,6 +2795,12 @@ wan_up(const char *pwan_ifname)
 		eval("fc", "config", "--tcp-ack-mflows", "1");
 	}
 #endif
+
+#ifdef RTCONFIG_AMAS_WGN
+	wgn_check_subnet_conflict();
+	wgn_check_avalible_brif();
+#endif		
+
 
 _dprintf("%s(%s): done.\n", __FUNCTION__, wan_ifname);
 }
@@ -2870,7 +2892,7 @@ wan_down(char *wan_ifname)
 
 #ifdef RTCONFIG_DUALWAN
 	if(nvram_match("wans_mode", "lb"))
-		add_multi_routes();
+		add_multi_routes(1);
 #endif
 
 #ifdef RTCONFIG_GETREALIP
@@ -3325,7 +3347,6 @@ start_wan(void)
 #endif
 #endif // RTCONFIG_DUALWAN
 
-	sleep(1); // let wanduck's detect not be close with start_wan().
 	nvram_set("wanduck_start_detect", "1");
 
 #ifdef RTCONFIG_MULTICAST_IPTV
@@ -3396,9 +3417,6 @@ stop_wan(void)
 	fc_fini();
 #endif
 
-#ifdef RTCONFIG_OPENVPN
-	stop_ovpn_eas();
-#endif
 #if defined(RTCONFIG_PPTPD) || defined(RTCONFIG_ACCEL_PPTPD)
 	if (nvram_get_int("pptpd_enable"))
 		stop_pptpd();

@@ -2,7 +2,7 @@
  * GAS state machine functions which implements the GAS protocol
  * as defined in 802.11u.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -67,6 +67,7 @@
 #include "bcm_encode_ie.h"
 #include "bcm_decode_ie.h"
 #include "bcm_gas.h"
+#include "osl.h"
 
 #ifndef WL_PRMAC
 #define WL_PRMAC(args)
@@ -138,13 +139,13 @@ static int gFragmentResponse =
 	FALSE;
 #endif	/* BCM_GAS_NO_REASSEMBLY */
 
-/* dialog token */
-static uint8 gNextDialogToken = 0;
+/* Dialog token repetition bound */
+static uint8 gDialogTokenRepeatBound = 4u;
 
 /* head of link list of instances for initiated and incoming */
-static int gGasInstanceMaximum = 4;
+static int gGasInstanceMaximum = 4u;
 static bcm_gas_t *gGasInstance = 0;
-static int gGasInstanceIncomingMaximum = 4;
+static int gGasInstanceIncomingMaximum = 4u;
 static bcm_gas_t *gGasInstanceIncoming = 0;
 
 typedef struct {
@@ -799,7 +800,7 @@ bcm_gas_t *bcm_gas_create(struct bcm_gas_wl_drv_hdl *drv, int bsscfg_idx,
 	void *wl_drv_if, uint16 channel, struct ether_addr *dst)
 {
 	bcm_gas_t *gas;
-#ifdef BCMDBG
+#if defined(BCMDBG) || defined(BCMDBG_ERR)
 	char eabuf[ETHER_ADDR_STR_LEN];
 #endif // endif
 
@@ -825,7 +826,7 @@ bcm_gas_t *bcm_gas_create(struct bcm_gas_wl_drv_hdl *drv, int bsscfg_idx,
 	/* save new entry */
 	del_entry(gas);
 	if (!add_entry(gas)) {
-		WL_ERROR(("failed to add new entry\n"));
+		WL_ERROR(("failed to add new entry %s\n", bcm_ether_ntoa(&gas->peer, eabuf)));
 		goto fail;
 	}
 
@@ -1722,14 +1723,27 @@ static void state_idle(bcm_gas_t *gas, eventT event,
 {
 	(void)dataLen;
 	(void)data;
+	uint8 i = 0;
 
 	switch (event) {
 	case EVENT_CONFIGURE:
 		break;
 	case EVENT_START:
 		delete_response_data(gas);
-		/* assign dialog token */
-		gas->dialogToken = gNextDialogToken++;
+
+		/* Randomize and assign the dialog token */
+		/* Random Dialog tokens assigned per GAS instance;
+		* 2 consecutive GAS instances should not get the same random Dialog tokens
+		* in order to avoid the possible attacker scenarios
+		*/
+		for (i = 0; i < gDialogTokenRepeatBound; i++) {
+			uint8 randtoken;
+			randtoken = (uint8)OSL_RAND();
+			if (randtoken != gas->dialogToken) {
+				gas->dialogToken = randtoken;
+				break;
+			}
+		}
 		tx_gas_request(gas, gas->responseTimeout,
 			gas->dialogToken, gas->advertisementProtocol,
 			gas->txRequest.length, gas->txRequest.data);
@@ -1817,13 +1831,8 @@ static void state_tx_request(bcm_gas_t *gas, eventT event,
 	case EVENT_RX_REQUEST:
 		break;
 	case EVENT_RX_RESPONSE:
-		tmrStop(gas->responseTimer);
-		if (gasDecode->dialogToken != gas->dialogToken) {
-			WL_P2PO(("dialog token mismatch %d != %d\n",
-				gasDecode->dialogToken, gas->dialogToken));
-			fail(gas, DOT11_SC_NO_OUTSTAND_REQ);
-		}
-		else {
+		if (gasDecode->dialogToken == gas->dialogToken) {
+			tmrStop(gas->responseTimer);
 			if (gasDecode->response.statusCode != DOT11_SC_SUCCESS) {
 				fail(gas, gasDecode->response.statusCode);
 			}
@@ -1878,19 +1887,16 @@ static void state_tx_request(bcm_gas_t *gas, eventT event,
 
 static void rx_comeback_request(bcm_gas_t *gas, bcm_decode_gas_t *gasDecode)
 {
-	tmrStop(gas->responseTimer);
-	if (gasDecode->dialogToken != gas->dialogToken) {
-		WL_P2PO(("dialog token mismatch %d != %d\n",
-			gasDecode->dialogToken, gas->dialogToken));
-		fail(gas, DOT11_SC_NO_OUTSTAND_REQ);
-	}
-	else {
+
+	if (gasDecode->dialogToken == gas->dialogToken) {
 		uint32 sent;
 		int more;
 		uint16 statusCode = 0;
 		uint8 fragmentId;
 		uint16 rspLen;
 		uint8 *rsp;
+
+		tmrStop(gas->responseTimer);
 
 		/* determine query data size */
 		sent = gas->txResponse.fragmentId * MAX_FRAGMENT_SIZE;
@@ -1962,13 +1968,12 @@ static void state_tx_response(bcm_gas_t *gas, eventT event,
 
 static void rx_comeback_response(bcm_gas_t *gas, bcm_decode_gas_t *gasDecode)
 {
-	tmrStop(gas->responseTimer);
 	if (gasDecode->dialogToken != gas->dialogToken) {
-		WL_P2PO(("dialog token mismatch %d != %d\n",
-			gasDecode->dialogToken, gas->dialogToken));
-		fail(gas, DOT11_SC_NO_OUTSTAND_REQ);
+		return;
 	}
-	else if (gasDecode->comebackResponse.statusCode != DOT11_SC_SUCCESS) {
+
+	tmrStop(gas->responseTimer);
+	if (gasDecode->comebackResponse.statusCode != DOT11_SC_SUCCESS) {
 		fail(gas, gasDecode->comebackResponse.statusCode);
 	}
 	else {

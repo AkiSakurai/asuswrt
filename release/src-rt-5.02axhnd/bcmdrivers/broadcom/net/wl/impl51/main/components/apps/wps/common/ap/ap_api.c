@@ -1,7 +1,7 @@
 /*
  * WPS AP API
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: ap_api.c 678846 2017-01-11 08:50:19Z $
+ * $Id: ap_api.c 766338 2018-07-31 04:55:48Z $
  */
 
 #if !defined(__linux__) && !defined(TARGETOS_nucleus) && !defined(_MACOSX_)&& \
@@ -97,7 +97,12 @@ static uint32 wps_setProbeRespIE(WPSAPI_T *g_mc, uint8 respType, uint8 scState,
 #endif /* !WPS_ROUTER */
 static uint32 wpsap_createM7AP(WPSAPI_T *g_mc);
 static uint32 wpsap_createM8Sta(WPSAPI_T *g_mc, bool psk_format);
+
 static uint32 wps_sendMsg(void *mcdev, TRANSPORT_TYPE trType, char * dataBuffer, uint32 dataLen);
+
+#if defined(MULTIAP)
+static uint32 wpsap_createMAPM8Sta(WPSAPI_T *g_mc, bool psk_format);
+#endif	/* MULTIAP */
 
 char* wps_msg_type_str(int msgType)
 {
@@ -272,8 +277,18 @@ wpsap_start(WPSAPI_T *g_mc, char *pin)
 		/* Create the encrypted settings TLV for STA */
 		/* Leverage mp_tlvEsM8Sta in the case of b_oob_m2 is TRUE */
 		ret = wpsap_createM8Sta(g_mc, FALSE);
-		if (ret != WPS_SUCCESS)
+		if (ret != WPS_SUCCESS) {
+			TUTRACE((TUTRACE_ERR, "wpsap_start: M8Sta creation failed\n"));
 			break;
+		}
+#if defined(MULTIAP)
+		if (dev_info->map_attr) {
+			if (wpsap_createMAPM8Sta(g_mc, FALSE) != WPS_SUCCESS) {
+				TUTRACE((TUTRACE_ERR, "wpsap_start: M8MAPSta creation failed\n"));
+				break;
+			}
+		}
+#endif	/* MULTIAP */
 
 		/* Instantiate the Registrar SM */
 		g_mc->mp_regSM = reg_sm_new(g_mc);
@@ -828,6 +843,120 @@ wpsap_createM7AP(WPSAPI_T *g_mc)
 
 	return WPS_SUCCESS;
 }
+
+#if defined(MULTIAP)
+static uint32
+wpsap_createMAPM8Sta(WPSAPI_T *g_mc, bool psk_format)
+{
+	char *cp_data;
+	uint16 data16;
+	CTlvCredential *p_tlvCred;
+	uint32 nwKeyLen = 0;
+	char *p_nwKey;
+	uint8 *p_macAddr;
+	uint8 data8;
+	DevInfo *info = g_mc->dev_info;
+	EsM8Sta *es;
+
+	/*
+	 * Create the Encrypted Settings TLV for STA config
+	 * We will also need to delete this blob eventually, as the
+	 * SM will not delete it.
+	 */
+	if (info->mp_tlvEsM8BhSta) {
+		TUTRACE((TUTRACE_ERR, "wpsap_createMAPM8Sta: info->mp_tlvEsM8Sta exist!"));
+		reg_msg_es_del(info->mp_tlvEsM8BhSta, 0);
+	}
+	info->mp_tlvEsM8BhSta = (EsM8Sta *)reg_msg_es_new(ES_TYPE_M8BHSTA);
+	if (!info->mp_tlvEsM8BhSta) {
+		TUTRACE((TUTRACE_ERR, "wpsap_createMAPM8Sta: alloc "
+			"failed for info->mp_tlvEsM8BhSta !"));
+		return WPS_ERR_SYSTEM;
+	}
+
+	es = info->mp_tlvEsM8BhSta;
+
+	/* credential */
+	p_tlvCred = (CTlvCredential *)malloc(sizeof(CTlvCredential));
+	if (!p_tlvCred) {
+		TUTRACE((TUTRACE_ERR, "wpsap_createMAPM8Sta: alloc "
+			"failed for p_tlvCred !"));
+		return WPS_ERR_SYSTEM;
+	}
+	memset(p_tlvCred, 0, sizeof(CTlvCredential));
+
+	/* Fill in credential items */
+	/* nwIndex */
+	tlv_set(&p_tlvCred->nwIndex, WPS_ID_NW_INDEX, (void *)1, 0);
+	/* ssid */
+	cp_data = info->backhaul_ssid;
+	data16 = strlen(cp_data);
+	tlv_set(&p_tlvCred->ssid, WPS_ID_SSID, cp_data, data16);
+
+	TUTRACE((TUTRACE_ERR, "wpsap_createMAPM8Sta: do REAL sec config here...\n"));
+
+	if (devinfo_getBackhaulKeyMgmtType(info) == WPS_WL_AKM_PSK)
+		data16 = WPS_AUTHTYPE_WPAPSK;
+	else if (devinfo_getBackhaulKeyMgmtType(info) == WPS_WL_AKM_PSK2)
+		data16 = WPS_AUTHTYPE_WPA2PSK;
+	else if (devinfo_getBackhaulKeyMgmtType(info) == WPS_WL_AKM_BOTH)
+		data16 = WPS_AUTHTYPE_WPAPSK | WPS_AUTHTYPE_WPA2PSK;
+	else
+		data16 = WPS_AUTHTYPE_OPEN;
+
+	tlv_set(&p_tlvCred->authType, WPS_ID_AUTH_TYPE, UINT2PTR(data16), 0);
+	TUTRACE((TUTRACE_ERR, "wpsap_createMAPM8Sta: Auth type = 0x%x...\n", data16));
+
+	/* encrType */
+	data16 = info->backhaul_crypto;
+
+	tlv_set(&p_tlvCred->encrType, WPS_ID_ENCR_TYPE, UINT2PTR(data16), 0);
+	TUTRACE((TUTRACE_ERR, "wpsap_createMAPM8Sta: encr type = 0x%x...\n", data16));
+
+	/* nwKey */
+	p_nwKey = info->backhaul_nwKey;
+	nwKeyLen = strlen(p_nwKey);
+	/* some enrolles don't like passphrase format, use 64 hex characters instead */
+	if (nwKeyLen < SIZE_64_BYTES && psk_format) {
+		unsigned char output[SHA2_SHA1_DIGEST_LEN * 2];
+
+		if (passhash(p_nwKey, nwKeyLen, (uchar *)info->backhaul_ssid,
+			strlen(info->backhaul_ssid), output)) {
+			TUTRACE((TUTRACE_ERR, "wpsap_createMAPM8Sta: passhash failed\n"));
+		} else {
+			/*  hex to string */
+			if (wps_hex2str(info->backhaul_nwKey, sizeof(info->backhaul_nwKey), output,
+				SIZE_32_BYTES)) {
+				nwKeyLen = SIZE_64_BYTES;
+			}
+		}
+	}
+
+	tlv_set(&p_tlvCred->nwKey, WPS_ID_NW_KEY, p_nwKey, nwKeyLen);
+
+	/* macAddr, Enrollee Station's MAC */
+	p_macAddr = info->peerMacAddr;
+	data16 = SIZE_MAC_ADDR;
+	tlv_set(&p_tlvCred->macAddr, WPS_ID_MAC_ADDR,
+	        (uint8 *)p_macAddr, data16);
+
+	/* WSC 2.0, WFA "Network Key Shareable" subelement */
+	data8 = info->version2;
+	if (data8 >= WPS_VERSION2 && info->b_nwKeyShareable) {
+		data16 = 1;
+		subtlv_set(&p_tlvCred->nwKeyShareable, WPS_WFA_SUBID_NW_KEY_SHAREABLE,
+			UINT2PTR(data16), 0);
+		TUTRACE((TUTRACE_ERR, "wpsap_createMAPM8Sta: Network Key Shareable is TRUE\n"));
+	}
+
+	if (!wps_sslist_add(&es->credential, p_tlvCred)) {
+		tlv_credentialDelete(p_tlvCred, 0);
+		return WPS_ERR_SYSTEM;
+	}
+
+	return WPS_SUCCESS;
+}
+#endif	/* MULTIAP */
 
 static uint32
 wpsap_createM8Sta(WPSAPI_T *g_mc, bool psk_format)

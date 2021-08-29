@@ -1,7 +1,7 @@
 /*
  * CALibrationManaGeR module internal interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_calmgr.h 690566 2017-03-16 23:31:01Z $
+ * $Id: phy_calmgr.h 771063 2019-01-12 07:03:47Z $
  */
 
 /*
@@ -142,25 +142,16 @@ typedef enum phy_calmgr_cal_id {
 /* Phases for multi-phased PHY calibration */
 enum {
 	PHY_CAL_PHASE_IDLE			= 0,
-	PHY_CAL_PHASE_INIT			= 1,
-	PHY_CAL_PHASE_TX0			= 2,
-	PHY_CAL_PHASE_TX1			= 3,
-	PHY_CAL_PHASE_TX2			= 4,
-	PHY_CAL_PHASE_TX3			= 5,
-	PHY_CAL_PHASE_TX4			= 6,
-	PHY_CAL_PHASE_TX5			= 7,
-	PHY_CAL_PHASE_TX6			= 8,
-	PHY_CAL_PHASE_TX7			= 9,
-	PHY_CAL_PHASE_TX8			= 10,
-	PHY_CAL_PHASE_TX9			= 11,
-	PHY_CAL_PHASE_TX_LAST		= 12,
-	PHY_CAL_PHASE_PAPDCAL		= 13,	/* IPA */
-	PHY_CAL_PHASE_TXPRERXCAL0	= 14,	/* bypass Biq2 pre rx cal */
-	PHY_CAL_PHASE_TXPRERXCAL1	= 15,	/* bypass Biq2 pre rx cal */
-	PHY_CAL_PHASE_TXPRERXCAL2	= 16,	/* bypass Biq2 pre rx cal */
-	PHY_CAL_PHASE_RXCAL			= 17,
-	PHY_CAL_PHASE_RSSICAL		= 18,
-	PHY_CAL_PHASE_IDLETSSI		= 19
+	PHY_CAL_PHASE_INIT,
+	PHY_CAL_PHASE_VCOCAL,
+	PHY_CAL_PHASE_DCCAL,
+	PHY_CAL_PHASE_IDLETSSI,
+	PHY_CAL_PHASE_TX,
+	PHY_CAL_PHASE_TX_LOPWR,
+	PHY_CAL_PHASE_TXPRERX,
+	PHY_CAL_PHASE_RXCAL,
+	PHY_CAL_PHASE_PAPDCAL,
+	PHY_CAL_PHASE_DONE  /* Done */
 };
 
 #define PHY_PERICAL_MPHASE_PENDING(pi) \
@@ -209,6 +200,11 @@ typedef struct phy_calmgr_cal_info {
 } phy_calmgr_cal_info_t;
 void phy_calmgr_query_cal(phy_calmgr_info_t *ci, phy_calmgr_cal_info_t *st);
 
+/* This function includes two parameters in order to be able to connect to legacy
+ * n PHY that uses caltype and also new PHYs that use only the searchmode.
+ * legacy_caltype is not to be used for AC PHY.
+ * XXX This has to be removed in the future.
+ */
 void phy_calmgr_cals(phy_info_t *pi, uint8 legacy_caltype, uint8 searchmode);
 int phy_calmgr_mphase_reset(phy_calmgr_info_t *ci);
 int phy_calmgr_mphase_restart(phy_calmgr_info_t *ci);

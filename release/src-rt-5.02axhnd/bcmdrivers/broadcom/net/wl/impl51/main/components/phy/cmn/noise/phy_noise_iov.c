@@ -1,7 +1,7 @@
 /*
  * NOISEmeasure module implementation - iovar handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_noise_iov.c 657044 2016-08-30 21:37:55Z $
+ * $Id: phy_noise_iov.c 775453 2019-05-30 14:48:52Z $
  */
 
 #include <phy_noise_iov.h>
@@ -54,12 +54,32 @@
 
 /* iovar ids */
 enum {
-	IOV_PHYNOISE_SROM = 1
+	IOV_PHYNOISE_SROM = 1,
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+	IOV_PHYNOISE_BIAS2GLO = 2,
+	IOV_PHYNOISE_BIAS2GHI = 3,
+	IOV_PHYNOISE_BIAS5GLO = 4,
+	IOV_PHYNOISE_BIAS5GHI = 5,
+	IOV_PHYNOISE_BIASRADARHI = 6,
+	IOV_PHYNOISE_BIASRADARLO = 7,
+	IOV_PHYNOISE_BIASRXGAINERR = 8,
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
+	IOV_PHYNOISE_LAST
 };
 
 /* iovar table */
 static const bcm_iovar_t phy_noise_iovars[] = {
 	{"phynoise_srom", IOV_PHYNOISE_SROM, IOVF_GET_UP, 0, IOVT_UINT32, 0},
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+	/* Noise Bias IOVARs raise or the lower the calculated noise floor */
+	{"phynoisebias2glo", IOV_PHYNOISE_BIAS2GLO, IOVF_GET_UP, 0, IOVT_INT8, 0},
+	{"phynoisebias2ghi", IOV_PHYNOISE_BIAS2GHI, IOVF_GET_UP, 0, IOVT_INT8, 0},
+	{"phynoisebias5glo", IOV_PHYNOISE_BIAS5GLO, IOVF_GET_UP, 0, IOVT_INT8, 0},
+	{"phynoisebias5ghi", IOV_PHYNOISE_BIAS5GHI, IOVF_GET_UP, 0, IOVT_INT8, 0},
+	{"phynoisebiasradarhi", IOV_PHYNOISE_BIASRADARHI, IOVF_GET_UP, 0, IOVT_INT8, 0},
+	{"phynoisebiasradarlo", IOV_PHYNOISE_BIASRADARLO, IOVF_GET_UP, 0, IOVT_INT8, 0},
+	{"phynoisebiasrxgainerr", IOV_PHYNOISE_BIASRXGAINERR, IOVF_GET_UP, 0, IOVT_BOOL, 0},
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 	{NULL, 0, 0, 0, 0, 0}
 };
 
@@ -81,6 +101,62 @@ phy_noise_doiovar(void *ctx, uint32 aid,
 	case IOV_GVAL(IOV_PHYNOISE_SROM):
 		err = phy_noise_get_srom_level(pi, ret_int_ptr);
 		break;
+
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+	/* Noise Bias IOVARs raise or the lower the calculated noise floor */
+	case IOV_GVAL(IOV_PHYNOISE_BIAS2GLO):
+		*ret_int_ptr = phy_noise_get_gain_bias(pi,
+			NOISE_BIAS_GAINTYPE_LO, NOISE_BIAS_BAND_2G);
+		break;
+	case IOV_SVAL(IOV_PHYNOISE_BIAS2GLO):
+		phy_noise_set_gain_bias(pi,
+			NOISE_BIAS_GAINTYPE_LO, NOISE_BIAS_BAND_2G, int_val);
+		break;
+	case IOV_GVAL(IOV_PHYNOISE_BIAS2GHI):
+		*ret_int_ptr = phy_noise_get_gain_bias(pi,
+			NOISE_BIAS_GAINTYPE_HI, NOISE_BIAS_BAND_2G);
+		break;
+	case IOV_SVAL(IOV_PHYNOISE_BIAS2GHI):
+		phy_noise_set_gain_bias(pi,
+			NOISE_BIAS_GAINTYPE_HI, NOISE_BIAS_BAND_2G, int_val);
+		break;
+
+	case IOV_GVAL(IOV_PHYNOISE_BIAS5GLO):
+		*ret_int_ptr = phy_noise_get_gain_bias(pi,
+			NOISE_BIAS_GAINTYPE_LO, NOISE_BIAS_BAND_5G);
+		break;
+	case IOV_SVAL(IOV_PHYNOISE_BIAS5GLO):
+		phy_noise_set_gain_bias(pi,
+			NOISE_BIAS_GAINTYPE_LO, NOISE_BIAS_BAND_5G, int_val);
+		break;
+	case IOV_GVAL(IOV_PHYNOISE_BIAS5GHI):
+		*ret_int_ptr = phy_noise_get_gain_bias(pi,
+			NOISE_BIAS_GAINTYPE_HI, NOISE_BIAS_BAND_5G);
+		break;
+	case IOV_SVAL(IOV_PHYNOISE_BIAS5GHI):
+		phy_noise_set_gain_bias(pi,
+			NOISE_BIAS_GAINTYPE_HI, NOISE_BIAS_BAND_5G, int_val);
+		break;
+	case IOV_GVAL(IOV_PHYNOISE_BIASRADARLO):
+		*ret_int_ptr = phy_noise_get_radar_gain_bias(pi, NOISE_BIAS_GAINTYPE_LO);
+		break;
+	case IOV_SVAL(IOV_PHYNOISE_BIASRADARLO):
+		phy_noise_set_radar_gain_bias(pi, NOISE_BIAS_GAINTYPE_LO, int_val);
+		break;
+	case IOV_GVAL(IOV_PHYNOISE_BIASRADARHI):
+		*ret_int_ptr = phy_noise_get_radar_gain_bias(pi, NOISE_BIAS_GAINTYPE_HI);
+		break;
+	case IOV_SVAL(IOV_PHYNOISE_BIASRADARHI):
+		phy_noise_set_radar_gain_bias(pi, NOISE_BIAS_GAINTYPE_HI, int_val);
+		break;
+
+	case IOV_GVAL(IOV_PHYNOISE_BIASRXGAINERR):
+		*ret_int_ptr = phy_noise_get_rxgainerr_bias(pi);
+		break;
+	case IOV_SVAL(IOV_PHYNOISE_BIASRXGAINERR):
+		phy_noise_set_rxgainerr_bias(pi, int_val);
+		break;
+#endif /* WL_EAP_NOISE_MEASUREMENTS */
 
 	default:
 		err = BCME_UNSUPPORTED;

@@ -1,7 +1,7 @@
 /*
  * ACPHY Miscellaneous module implementation - iovar handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -60,13 +60,17 @@ enum {
 	IOV_PHY_RXGAINERR_5GM = 3,
 	IOV_PHY_RXGAINERR_5GH = 4,
 	IOV_PHY_RXGAINERR_5GU = 5,
-	IOV_PHY_RUD_AGC_ENABLE = 6
+	IOV_PHY_RUD_AGC_ENABLE = 6,
+	IOV_PHY_RXFDIQI = 7,
+	IOV_PHY_VASIP_SC = 8
 };
 
 static const bcm_iovar_t phy_ac_misc_iovars[] = {
 #ifdef WLTEST
 	{"phy_rxgainerr_2g", IOV_PHY_RXGAINERR_2G,
 	(IOVF_GET_UP | IOVF_SET_UP | IOVF_MFG), 0, IOVT_BUFFER, 4*sizeof(int8)},
+	{"phy_vasip_sc", IOV_PHY_VASIP_SC,
+	(IOVF_SET_UP), 0, IOVT_BUFFER, 4*sizeof(int8)},
 	{"phy_rxgainerr_5gl", IOV_PHY_RXGAINERR_5GL,
 	(IOVF_GET_UP | IOVF_SET_UP | IOVF_MFG), 0, IOVT_BUFFER, 4*sizeof(int8)},
 	{"phy_rxgainerr_5gm", IOV_PHY_RXGAINERR_5GM,
@@ -75,6 +79,8 @@ static const bcm_iovar_t phy_ac_misc_iovars[] = {
 	(IOVF_GET_UP | IOVF_SET_UP | IOVF_MFG), 0, IOVT_BUFFER, 4*sizeof(int8)},
 	{"phy_rxgainerr_5gu", IOV_PHY_RXGAINERR_5GU,
 	(IOVF_GET_UP | IOVF_SET_UP | IOVF_MFG), 0, IOVT_BUFFER, 4*sizeof(int8)},
+	{"phy_force_rxfdiqi", IOV_PHY_RXFDIQI,
+	(IOVF_GET_UP | IOVF_SET_UP | IOVF_MFG), 0, IOVT_BUFFER, sizeof(int8)},
 #endif /* WLTEST */
 	{"rud_agc_enable", IOV_PHY_RUD_AGC_ENABLE,
 	(IOVF_SET_UP | IOVF_GET_UP | IOVF_MFG), 0, IOVT_INT16, 0},
@@ -163,6 +169,17 @@ phy_ac_misc_doiovar(void *ctx, uint32 aid,
 		  getDeltaValues[core] = pi->rxgainerr_5gu[core];
 		}
 		break;
+	case IOV_SVAL(IOV_PHY_RXFDIQI):
+		pi->u.pi_acphy->rxiqcali->fdiqi->forced_val = (int32) *setDeltaValues;
+		pi->u.pi_acphy->rxiqcali->fdiqi->forced = TRUE;
+		break;
+	case IOV_GVAL(IOV_PHY_RXFDIQI):
+		if (pi->u.pi_acphy->rxiqcali->fdiqi->enabled) {
+			*getDeltaValues = 1;
+		} else {
+			*getDeltaValues = 0;
+		}
+		break;
 #endif /* WLTEST */
 	case IOV_SVAL(IOV_PHY_RUD_AGC_ENABLE):
 		{
@@ -180,7 +197,15 @@ phy_ac_misc_doiovar(void *ctx, uint32 aid,
 			err = phy_ac_misc_get_rud_agc_enable(pi->u.pi_acphy->misci, ret_int_ptr);
 		}
 		break;
-
+	case IOV_SVAL(IOV_PHY_VASIP_SC):
+		{
+			int32 int_val = 0;
+			if (plen >= (uint)sizeof(int_val)) {
+				bcopy(p, &int_val, sizeof(int_val));
+			}
+			wlc_vasip_sample_capture_set(pi, int_val);
+		}
+		break;
 	default:
 		err = BCME_UNSUPPORTED;
 		break;

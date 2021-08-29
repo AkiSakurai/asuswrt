@@ -631,7 +631,8 @@ struct SingleRequest {
   bool content_range;           /* set TRUE if Content-Range: was found */
   curl_off_t offset;            /* possible resume offset read from the
                                    Content-Range: header */
-  int httpcode;
+  int httpcode;                 /* error code from the 'HTTP/1.? XXX' or
+                                   'RTSP/1.? XXX' line */
   struct timeval start100;      /* time stamp to wait for the 100 code from */
   enum expect100 exp100;        /* expect 100 continue state */
 

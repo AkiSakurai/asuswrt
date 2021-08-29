@@ -1,7 +1,7 @@
 /*
  * ACPHY RXIQ CAL module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rxiqcal.h 657664 2016-09-02 04:57:54Z $
+ * $Id: phy_ac_rxiqcal.h 774335 2019-04-18 22:29:40Z $
  */
 
 #ifndef _phy_ac_rxiqcal_h_
@@ -125,7 +125,39 @@ typedef struct _acphy_rxcal_phyregs {
 	uint16 lbFarrowCtrl;
 	uint16 spur_can_s1_en[PHY_CORE_MAX];
 	uint16 spur_can_en[PHY_CORE_MAX];
+
+	uint16 RadarMisc;
 } acphy_rxcal_phyregs_t;
+
+typedef struct acphy_rx_fdiqi_ctl_struct {
+	bool forced;
+	bool wls;
+	uint16 forced_val;
+	bool enabled;
+	int64 slope[PHY_CORE_MAX];
+	uint8 leakage_comp_mode;
+} acphy_rx_fdiqi_ctl_t;
+
+/* module private states */
+struct phy_ac_rxiqcal_info {
+	phy_info_t                      *pi;
+	phy_ac_info_t           *aci;
+	phy_rxiqcal_info_t      *cmn_info;
+	acphy_2069_rxcal_radioregs_t *ac_2069_rxcal_radioregs_orig;
+	acphy_tiny_rxcal_radioregs_t *ac_tiny_rxcal_radioregs_orig;
+	acphy_rx_fdiqi_ctl_t    *fdiqi;
+	/* cache coeffs */
+	rxcal_coeffs_t *rxcal_cache; /* Array of size PHY_CORE_MAX */
+	uint16 rxcal_cache_cookie;
+	/* std params */
+	uint8 txpwridx_for_rxiqcal[PHY_CORE_MAX];
+	bool rxiqcal_percore_2g, rxiqcal_percore_5g;
+#if defined(BCMDBG_RXCAL)
+	phy_iq_est_t rxcal_noise[PHY_CORE_MAX];
+	phy_iq_est_t rxcal_signal[PHY_CORE_MAX];
+#endif /* BCMDBG_RXCAL */
+/* add other variable size variables here at the end */
+};
 
 int32 phy_ac_rxiqcal_get_fdiqi_slope(phy_ac_rxiqcal_info_t *rxiqcali, uint8 core);
 void phy_ac_rxiqcal_set_fdiqi_slope(phy_ac_rxiqcal_info_t *rxiqcali, uint8 core, int32 slope);
@@ -135,6 +167,9 @@ void phy_ac_rxiqcal_set_fdiqi_enable(phy_ac_rxiqcal_info_t *rxiqcali, bool enabl
 extern void wlc_phy_rx_iq_comp_acphy(phy_info_t *pi, uint8 write,
 	phy_iq_comp_t *pcomp, uint8 rx_core);
 extern void wlc_phy_rx_fdiqi_comp_acphy(phy_info_t *pi, bool enable);
+extern void phy_rx_fdiqi_comp_acphy_15tap_1Fs(phy_info_t *pi, bool enable);
+extern void phy_rx_fdiqi_comp_acphy_15tap_2Fs(phy_info_t *pi, bool enable);
+extern void phy_rx_fdiqi_comp_acphy_11tap(phy_info_t *pi, bool enable);
 extern int  wlc_phy_cal_rx_fdiqi_acphy(phy_info_t *pi);
 extern void wlc_phy_turnon_rxlogen_20694(phy_info_t *pi, uint8 *sr_reg);
 extern void wlc_phy_turnoff_rxlogen_20694(phy_info_t *pi, uint8 *sr_reg);
@@ -145,7 +180,7 @@ extern void wlc_phy_force_fdiqi_acphy(phy_info_t *pi, uint16 int_val);
 #endif // endif
 extern void wlc_phy_dig_lpf_override_acphy(phy_info_t *pi, uint8 dig_lpf_ht);
 void wlc_phy_rxcal_coeffs_upd(phy_info_t *pi, rxcal_coeffs_t *rxcal_cache);
-void phy_ac_rxiqcal(phy_info_t *pi);
+void phy_ac_rxiqcal_multiphase(phy_info_t *pi, uint16 cts_time);
 #ifdef PHYCAL_CACHING
 void phy_ac_rxiqcal_save_cache(phy_ac_rxiqcal_info_t *rxiqcali, ch_calcache_t *ctx);
 #else

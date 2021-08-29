@@ -1,7 +1,7 @@
 /*
  * ACPHY 20696 Radio PLL configuration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -286,6 +286,7 @@ static void print_pll_config_20696(pll_config_20696_tbl_t *pll, uint32 lo_freq,
 #endif // endif
 
 /* Structure to hold 20696 PLL config values */
+// FIXME:  EH this should be part of phy_ac_radio_info_t
 static pll_config_20696_tbl_t pll_conf_20696;
 
 static pll_config_20696_tbl_t *

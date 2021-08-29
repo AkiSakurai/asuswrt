@@ -1,6 +1,6 @@
 /*
  * Key Management Module Implementation - bsscfg support
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_bsscfg.c 768091 2018-10-04 09:07:09Z $
+ * $Id: km_bsscfg.c 775553 2019-06-04 08:25:05Z $
  */
 
 #include "km_pvt.h"
@@ -128,6 +128,7 @@ km_bsscfg_init_internal(wlc_keymgmt_t *km, wlc_bsscfg_t *bsscfg)
 	bss_km->tx_key_id = WLC_KEY_ID_INVALID;
 	bss_km->flags = KM_BSSCFG_FLAG_NONE;
 	bss_km->flags |= (bsscfg->wsec & WSEC_SWFLAG) ? KM_BSSCFG_FLAG_SWKEYS : 0;
+	bss_km->flags |= KM_BSSCFG_FLAG_B4M4;
 	bss_km->algo = CRYPTO_ALGO_NONE;
 	bss_km->amt_idx = KM_HW_AMT_IDX_INVALID;
 	bss_km->cfg_amt_idx = KM_HW_AMT_IDX_INVALID;
@@ -221,6 +222,10 @@ km_bsscfg_init_internal(wlc_keymgmt_t *km, wlc_bsscfg_t *bsscfg)
 	if (KM_MFP_ENAB(km)) {
 		int mfp_err = BCME_OK;
 
+		/* reserve a block of keys for igtk keys. PSTA shares the
+		 * keys from primary STA.
+		 * XXX IBSS do we need per-SCB IGTKs?
+		 */
 		if (BSSCFG_PSTA(bsscfg))
 			goto mfp_done;
 
@@ -543,6 +548,16 @@ km_bsscfg_up_down(void *ctx, bsscfg_up_down_event_data_t *evt_data)
 	else
 		bss_km->flags &= ~KM_BSSCFG_FLAG_UP;
 
+	/* Do not remove GTK while bss is going down, as hostapd
+	 * does not instruct firmware to reinstall GTK when
+	 * first STA reassociates. This used to work with NAS
+	 * as it installs GTK when first STA associates.
+	 */
+
+	/* XXX Keeping the code commented for now. Will be removed
+	 * in future, once complete testing is done.
+	 */
+#ifdef RETAIN_GTK_ON_BSS_DOWN
 #ifndef BCMAUTH_PSK
 	if (notif == WLC_KEYMGMT_NOTIF_BSS_DOWN) {
 		if (BSSCFG_AP(evt_data->bsscfg)) {
@@ -550,6 +565,7 @@ km_bsscfg_up_down(void *ctx, bsscfg_up_down_event_data_t *evt_data)
 		}
 	}
 #endif // endif
+#endif /* RETAIN_GTK_ON_BSS_DOWN */
 
 done:
 	KM_LOG(("wl%d.%d: %s: exit up: %d, notif: %d \n",  KM_UNIT(km),

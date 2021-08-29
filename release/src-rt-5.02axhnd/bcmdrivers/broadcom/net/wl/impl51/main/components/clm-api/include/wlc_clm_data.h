@@ -1,6 +1,6 @@
 /*
  * CLM Data structure definitions
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_clm_data.h 691384 2017-03-22 02:07:34Z $
+ * $Id: wlc_clm_data.h 802970 2019-02-05 19:00:18Z $
  */
 
 #ifndef _WLC_CLM_DATA_H_
@@ -87,15 +87,15 @@ enum clm_data_const {
 	 * region are absent region considered to be deleted from incremental
 	 * BLOB
 	 */
-	CLM_LOC_NONE = 0xFFF,
+	CLM_LOC_NONE = 0x3FFF,
 
 	/** Locale index that designates that region in incremental data uses
 	 * the same locale as correspondent base locale
 	 */
-	CLM_LOC_SAME = 0xFFE,
+	CLM_LOC_SAME = 0x3FFE,
 
 	/** Locale index marks region as deleted (used in incremental data) */
-	CLM_LOC_DELETED = 0xFFD,
+	CLM_LOC_DELETED = 0x3FFD,
 
 	/** Region revision that marks mapping, deleted in incremental
 	 * aggregation
@@ -234,10 +234,10 @@ enum clm_data_const {
 	 */
 	CLM_REGISTRY_FLAG_CD_REGIONS = 0x00010000,
 
-	/** Field that contains number of extra bytes (0, 1, 2) in region
+	/** Field that contains number of extra bytes (0, 1, 2, 3) in region
 	 * record that contain locale indices
 	 */
-	CLM_REGISTRY_FLAG_CD_LOC_IDX_BYTES_MASK  = 0x000C0000,
+	CLM_REGISTRY_FLAG_CD_LOC_IDX_BYTES_MASK = 0x000C0000,
 	CLM_REGISTRY_FLAG_CD_LOC_IDX_BYTES_SHIFT = 18,
 
 	/** 16-bit region index. Used only if CLM_REGISTRY_FLAG_CD_REGIONS
@@ -251,7 +251,9 @@ enum clm_data_const {
 	/** BLOB may contain extended rates sets */
 	CLM_REGISTRY_FLAG_EXT_RATE_SETS = 0x00800000,
 
-	/** BLOB may contain ULB channels */
+	/** BLOB may contain ULB channels. This bit retained to allow ClmAPI to
+	 * accept BLOBs with ULB channels (ClmAPI ignores these channels)
+	 */
 	CLM_REGISTRY_FLAG_ULB = 0x01000000,
 
 	/** BLOB contains regrev remap table */
@@ -283,42 +285,86 @@ enum clm_data_const {
 
 	/** All known registry flags (first flags field) */
 	CLM_REGISTRY_FLAG_ALL = CLM_REGISTRY_FLAG_COUNTRY_10_FL
-		| CLM_REGISTRY_FLAG_APPS_VERSION
-		| CLM_REGISTRY_FLAG_SUB_CHAN_RULES
-		| CLM_REGISTRY_FLAG_160MHZ
-		| CLM_REGISTRY_FLAG_PER_BW_RS
-		| CLM_REGISTRY_FLAG_PER_BAND_RATES
-		| CLM_REGISTRY_FLAG_USER_STRING
-		| CLM_REGISTRY_FLAG_HIGH_BW_COMBS
-		| CLM_REGISTRY_FLAG_NUM_RATES_MASK
-		| CLM_REGISTRY_FLAG_CD_REGIONS
-		| CLM_REGISTRY_FLAG_CD_LOC_IDX_BYTES_MASK
-		| CLM_REGISTRY_FLAG_CD_16_BIT_REGION_INDEX
-		| CLM_REGISTRY_FLAG_CD_16_BIT_REV
-		| CLM_REGISTRY_FLAG_EXT_RATE_SETS
-		| CLM_REGISTRY_FLAG_ULB
-		| CLM_REGISTRY_FLAG_REGREV_REMAP
-		| CLM_REGISTRY_FLAG_SUBCHAN_RULES_40
-		| CLM_REGISTRY_FLAG_SUBCHAN_RULES_INC
-		| CLM_REGISTRY_FLAG_SUBCHAN_RULES_INC_SEPARATE
-		| CLM_REGISTRY_FLAG_REGION_FLAG_2
-		| CLM_REGISTRY_FLAG_REGION_LOC_12_FLAG_SWAP
-		| CLM_REGISTRY_FLAG_REGISTRY_FLAGS2,
+	| CLM_REGISTRY_FLAG_APPS_VERSION
+	| CLM_REGISTRY_FLAG_SUB_CHAN_RULES
+	| CLM_REGISTRY_FLAG_160MHZ
+	| CLM_REGISTRY_FLAG_PER_BW_RS
+	| CLM_REGISTRY_FLAG_PER_BAND_RATES
+	| CLM_REGISTRY_FLAG_USER_STRING
+	| CLM_REGISTRY_FLAG_HIGH_BW_COMBS
+	| CLM_REGISTRY_FLAG_NUM_RATES_MASK
+	| CLM_REGISTRY_FLAG_CD_REGIONS
+	| CLM_REGISTRY_FLAG_CD_LOC_IDX_BYTES_MASK
+	| CLM_REGISTRY_FLAG_CD_16_BIT_REGION_INDEX
+	| CLM_REGISTRY_FLAG_CD_16_BIT_REV
+	| CLM_REGISTRY_FLAG_EXT_RATE_SETS
+	| CLM_REGISTRY_FLAG_ULB
+	| CLM_REGISTRY_FLAG_REGREV_REMAP
+	| CLM_REGISTRY_FLAG_SUBCHAN_RULES_40
+	| CLM_REGISTRY_FLAG_SUBCHAN_RULES_INC
+	| CLM_REGISTRY_FLAG_SUBCHAN_RULES_INC_SEPARATE
+	| CLM_REGISTRY_FLAG_REGION_FLAG_2
+	| CLM_REGISTRY_FLAG_REGION_LOC_12_FLAG_SWAP
+	| CLM_REGISTRY_FLAG_REGISTRY_FLAGS2,
 
 	/* FLAGS USED IN REGISTRY. SECOND FLAGS FIELD */
 
 	/** Base locales may have PSD limits */
 	CLM_REGISTRY_FLAG2_PSD_LIMITS = 0x00000001,
 
+	/** PSD limits are bandwidth-specific */
+	CLM_REGISTRY_FLAG2_MULTIBANDWIDTH_PSD = 0x00000002,
+
+	/** CLM version and apps version strings are stored outside of header
+	 * and have unlimited length
+	 */
+	CLM_REGISTRY_FLAG2_DATA_VERSION_STRINGS = 0x00000004,
+
+	/** Locales may contain HE/RU limits (that are not part of clm_rates_t)
+	 */
+	CLM_REGISTRY_FLAG2_HE_LIMITS = 0x00000008,
+
+	/** Field that contains number of rates in clm_ru_rates enum (mask and
+	 * shift)
+	 */
+	CLM_REGISTRY_FLAG2_NUM_RU_RATES_MASK = 0x00000FF0,
+	CLM_REGISTRY_FLAG2_NUM_RU_RATES_SHIFT = 4,
+
+	/** HE SU rates are part of clm_rates enum */
+	CLM_REGISTRY_FLAG2_HE_SU_ORDINARY = 0x00001000,
+
+	/** HE RU rate indices are fixed (and comprise clm_ru_rates enum) */
+	CLM_REGISTRY_FLAG2_HE_RU_FIXED = 0x00002000,
+
+	/** BLOB may contain ext-4 rates sets (4TX rate sets, indexed relative
+	 * to lowest 4TX rate index)
+	 */
+	CLM_REGISTRY_FLAG2_EXT4 = 0x00004000,
+
+	/** RU rate sets specified separately per band and bandwidth */
+	CLM_REGISTRY_FLAG2_RU_SETS_PER_BW_BAND = 0x00008000,
+
+	/** RU limits organized to support subchannel limits */
+	CLM_REGISTRY_FLAG2_RU_SUBCHAN_LIMITS = 0x00010000,
+
 	/** All known registry flags (second flags field) */
 	CLM_REGISTRY_FLAG2_ALL = CLM_REGISTRY_FLAG2_PSD_LIMITS
+	| CLM_REGISTRY_FLAG2_MULTIBANDWIDTH_PSD
+	| CLM_REGISTRY_FLAG2_DATA_VERSION_STRINGS
+	| CLM_REGISTRY_FLAG2_HE_LIMITS
+	| CLM_REGISTRY_FLAG2_NUM_RU_RATES_MASK
+	| CLM_REGISTRY_FLAG2_HE_SU_ORDINARY
+	| CLM_REGISTRY_FLAG2_HE_RU_FIXED
+	| CLM_REGISTRY_FLAG2_EXT4
+	| CLM_REGISTRY_FLAG2_RU_SETS_PER_BW_BAND
+	| CLM_REGISTRY_FLAG2_RU_SUBCHAN_LIMITS
 };
 
 /** Major version number of CLM data format */
-#define CLM_FORMAT_VERSION_MAJOR 19
+#define CLM_FORMAT_VERSION_MAJOR 23
 
 /* Minor version number of CLM data format */
-#define CLM_FORMAT_VERSION_MINOR 2
+#define CLM_FORMAT_VERSION_MINOR 0
 
 /** Flags and flag masks used in BLOB's byte fields */
 enum clm_data_flags {
@@ -366,15 +412,6 @@ enum clm_data_flags {
 	/** 80+80MHz channel width */
 	CLM_DATA_FLAG_WIDTH_80_80 = 0x48,
 
-	/** 2.5MHz channel width (if WIDTH_EXT flag set) */
-	CLM_DATA_FLAG_WIDTH_2_5 = 0x00,
-
-	/** 5MHz channel width (if WIDTH_EXT flag set) */
-	CLM_DATA_FLAG_WIDTH_5 = 0x01,
-
-	/** 10MHz channel width (if WIDTH_EXT flag set) */
-	CLM_DATA_FLAG_WIDTH_10 = 0x08,
-
 	/** Mask of (noncontiguous!) channel width field */
 	CLM_DATA_FLAG_WIDTH_MASK = 0x49,
 
@@ -417,9 +454,55 @@ enum clm_data_flags {
 	CLM_DATA_FLAG2_WIDTH_EXT = 0x01,
 
 	/** Rate set indices in extended rates' table */
+
+	/** Normal rates (neither HE, nor extended) */
+	CLM_DATA_FLAG2_RATE_TYPE_MAIN = 0x00,
+
+	/** Extended rates - rate with index, specified relative to lowest 3TX
+	 * rate index
+	 */
+	CLM_DATA_FLAG2_RATE_TYPE_EXT = 0x02,
+
+	/** HE rates that have index, defined outside of clm_rates_t
+	 * (originally - all HE rates, subsequently - only OFDMA rates)
+	 */
+	CLM_DATA_FLAG2_RATE_TYPE_HE = 0x04,
+
+	/** Extended 4TX rates - rate with index, specified relative to lowest
+	 * 4TX rate index
+	 */
+	CLM_DATA_FLAG2_RATE_TYPE_EXT4 = 0x06,
+
+	/** Mask of rate type field */
+	CLM_DATA_FLAG2_RATE_TYPE_MASK = 0x06,
+
+	/** Older representation of CLM_DATA_FLAG2_RATE_TYPE_EXT as bitfield.
+	 * For compatibility with older BLOB formats (e.g. generated with
+	 * explicit BLOB version)
+	 */
 	CLM_DATA_FLAG2_EXT_RATES = 0x02,
 
+	/** Outer channel bandwidth is the same as specified by
+	 * CLM_DATA_FLAG_WIDTH_... flags
+	 */
+	CLM_DATA_FLAG2_OUTER_BW_SAME = 0x00,
+
+	/** Outer channel bandwidth is 40MHz (for RU limit) */
+	CLM_DATA_FLAG2_OUTER_BW_40 = 0x08,
+
+	/** Outer channel bandwidth is 80MHz (for RU limit) */
+	CLM_DATA_FLAG2_OUTER_BW_80 = 0x10,
+
+	/** Outer channel bandwidth is 160MHz (for RU limit) */
+	CLM_DATA_FLAG2_OUTER_BW_160 = 0x18,
+
+	/** Mask and shift for outer bandwidth, used by RU limits */
+	CLM_DATA_FLAG2_OUTER_BW_MASK = 0x18,
+	CLM_DATA_FLAG2_OUTER_BW_SHIFT = 3,
+
 	/* REGION FLAGS */
+
+	/* FLAGS OF FIRST REGION FLAG BYTE */
 
 	/** Subchannel rules 3-bit index */
 	CLM_DATA_FLAG_REG_SC_RULES_MASK = 0x07,
@@ -442,10 +525,17 @@ enum clm_data_flags {
 	/** Region is EDCRS-EU compliant */
 	CLM_DATA_FLAG_REG_EDCRS_EU = 0x20,
 
-	/** Subchannel rules index high 5 bits in second region flags byte */
+	/** Region is compliant with 2018 RED (Radio Equipment Directive), that
+	 * limits frame burst duration and maybe something else
+	 */
+	CLM_DATA_FLAG_REG_RED_EU = 0x80,
+
+	/* FLAGS OF SECOND REGION FLAG BYTE */
+
+	/** Subchannel rules index high 5 bits  */
 	CLM_DATA_FLAG_2_REG_SC_RULES_MASK = 0x1F,
 
-	/** Limit peak power during PAPD calibration (second region flag byte) */
+	/** Limit peak power during PAPD calibration */
 	CLM_DATA_FLAG_2_REG_LO_GAIN_NBCAL = 0x20,
 
 	/** China Spur WAR2 flag from CLM XML */
@@ -463,7 +553,12 @@ enum clm_data_flags {
 	CLM_DATA_FLAG_SC_RULE_BW_80 = 0x04,
 
 	/** Use 160MHz limits */
-	CLM_DATA_FLAG_SC_RULE_BW_160 = 0x08
+	CLM_DATA_FLAG_SC_RULE_BW_160 = 0x08,
+
+	/* HE RATE DESCRIPTOR FLAGS */
+
+	/** TXBF rate */
+	CLM_HE_RATE_FLAG_TXBF = 0x01
 };
 
 /** Subchannel identifiers == clm_limits_type-1 */
@@ -839,6 +934,20 @@ typedef struct clm_country_rev_definition_cd12 {
 	unsigned char extra[5];
 } clm_country_rev_definition_cd12_t;
 
+/** Third-generation region descriptor: content-dependent layout, 6 extra bytes
+ * (13 bytes overall)
+ */
+typedef struct clm_country_rev_definition_cd13 {
+	/** Region identifier */
+	struct clm_cc_rev cc_rev;
+
+	/** Indices of region locales' descriptors */
+	unsigned char locales[CLM_LOC_IDX_NUM];
+
+	/** Extra bytes */
+	unsigned char extra[6];
+} clm_country_rev_definition_cd13_t;
+
 /** Set of region descriptors */
 typedef struct clm_country_rev_definition_set {
 	/** Number of region descriptors in set */
@@ -935,6 +1044,21 @@ typedef struct clm_regrev_regrev_remap {
 	unsigned char r8;
 } clm_regrev_regrev_remap_t;
 
+/** HE rate descriptor */
+typedef struct clm_he_rate_dsc {
+	/** Rate type - element of wl_he_rate_type_t enum */
+	unsigned char rate_type;
+
+	/** Number of transmit streams (preexpansion) */
+	unsigned char nss;
+
+	/** Number of transmit chains (postexpansion) */
+	unsigned char chains;
+
+	/** Set of CLM_HE_RATE_FLAG_... flags */
+	unsigned char flags;
+} clm_he_rate_dsc_t;
+
 /** Set of regrev remap descriptors */
 typedef struct clm_regrev_cc_remap_set {
 	/** Number of elements */
@@ -984,10 +1108,10 @@ typedef struct clm_data_registry {
 	 */
 	const unsigned char *locale_valid_channels;
 
-	/** Sequence of byte strings that encode rate sets for 5GHz 20MHz and
-	 * ULB channels (all 20MHz rate sets if
-	 * CLM_REGISTRY_FLAG_PER_BAND_RATES registry flag not set, all rate
-	 * sets if CLM_REGISTRY_FLAG_PER_BW_RS registry flag not set)
+	/** Sequence of byte strings that encode rate sets for 5GHz 20MHz (all
+	 * 20MHz rate sets if CLM_REGISTRY_FLAG_PER_BAND_RATES registry flag
+	 * not set, all rate sets if CLM_REGISTRY_FLAG_PER_BW_RS registry flag
+	 * not set)
 	 */
 	const unsigned char *locale_rate_sets_5g_20m;
 
@@ -1004,7 +1128,7 @@ typedef struct clm_data_registry {
 	const struct clm_aggregate_cc_set *aggregates;
 
 	/** Flags */
-	int flags;
+	unsigned int flags;
 
 	/** Address of subchannel rules set descriptor for 80MHz channels or
 	 * NULL
@@ -1043,8 +1167,8 @@ typedef struct clm_data_registry {
 	 */
 	const unsigned char *locale_rate_sets_5g_160m;
 
-	/** Sequence of byte strings that encode rate sets for 2.4GHz 20MHz and
-	 * ULB channels
+	/** Sequence of byte strings that encode rate sets for 2.4GHz 20MHz
+	 * channels
 	 */
 	const unsigned char *locale_rate_sets_2g_20m;
 
@@ -1074,8 +1198,8 @@ typedef struct clm_data_registry {
 	const struct clm_cc_rev_set *extra_ccrevs;
 
 	/** Sequence of byte strings that encode rate 3+TX sets for 2.4GHz
-	 * 20MHz and ULB channels. Used in case of main rate set overflow or if
-	 * 4TX rates are present
+	 * 20MHz channels. Used in case of main rate set overflow or if 4TX
+	 * rates are present
 	 */
 	const unsigned char *locale_ext_rate_sets_2g_20m;
 
@@ -1086,8 +1210,8 @@ typedef struct clm_data_registry {
 	const unsigned char *locale_ext_rate_sets_2g_40m;
 
 	/** Sequence of byte strings that encode rate 3+TX sets for 5GHz 20MHz
-	 * and ULB channels. Used in case of main rate set overflow or if 4TX
-	 * rates are present
+	 * channels. Used in case of main rate set overflow or if 4TX rates are
+	 * present
 	 */
 	const unsigned char *locale_ext_rate_sets_5g_20m;
 
@@ -1109,32 +1233,32 @@ typedef struct clm_data_registry {
 	 */
 	const unsigned char *locale_ext_rate_sets_5g_160m;
 
-	/** Vector of channel range descriptors for 2.5MHz channel ranges */
-	const struct clm_channel_range *channel_ranges_2_5m;
+	/** Deprecated */
+	const void *channel_ranges_2_5m;
 
-	/** Vector of channel range descriptors for 5MHz channel ranges */
-	const struct clm_channel_range *channel_ranges_5m;
+	/** Deprecated */
+	const void *channel_ranges_5m;
 
-	/** Vector of channel range descriptors for 10MHz channel ranges */
-	const struct clm_channel_range *channel_ranges_10m;
+	/** Deprecated */
+	const void *channel_ranges_10m;
 
-	/** Valid 2.5MHz channels of 2.4GHz band */
-	const struct clm_channel_comb_set *valid_channels_2g_2_5m;
+	/** Deprecated */
+	const void *valid_channels_2g_2_5m;
 
-	/** Valid 5MHz channels of 2.4GHz band */
-	const struct clm_channel_comb_set *valid_channels_2g_5m;
+	/** Deprecated */
+	const void *valid_channels_2g_5m;
 
-	/** Valid 10MHz channels of 2.4GHz band */
-	const struct clm_channel_comb_set *valid_channels_2g_10m;
+	/** Deprecated */
+	const void *valid_channels_2g_10m;
 
-	/** Valid 2.5MHz channels of 5GHz band */
-	const struct clm_channel_comb_set *valid_channels_5g_2_5m;
+	/** Deprecated  */
+	const void *valid_channels_5g_2_5m;
 
-	/** Valid 5MHz channels of 5GHz band */
-	const struct clm_channel_comb_set *valid_channels_5g_5m;
+	/** Deprecated  */
+	const void *valid_channels_5g_5m;
 
-	/** Valid 10MHz channels of 5GHz band */
-	const struct clm_channel_comb_set *valid_channels_5g_10m;
+	/** Deprecated */
+	const void *valid_channels_5g_10m;
 
 	/** Regrev remap table or NULL */
 	const clm_regrev_cc_remap_set_t *regrev_remap;
@@ -1150,7 +1274,80 @@ typedef struct clm_data_registry {
 	const clm_sub_chan_rules_set_40_t *sub_chan_rules_5g_40m;
 
 	/** Second flags word */
-	int flags2;
+	unsigned int flags2;
+
+	/** CLM version string (unrestricted length) */
+	const char *clm_version;
+
+	/** Apps version (unrestricted length) */
+	const char *apps_version;
+
+	/** Descriptors of HE rates. NULL if HE rates have fixed codes */
+	const clm_he_rate_dsc_t *he_rates;
+
+	/** Sequence of byte strings that encode:
+	 *  - All HE rate sets if CLM_REGISTRY_FLAG2_HE_SU_ORDINARY not set
+	 *  - OFDMA rate sets if CLM_REGISTRY_FLAG2_HE_SU_ORDINARY is set but
+	 *    CLM_REGISTRY_FLAG2_RU_PER_BW_BAND not set
+	 *  - 5G 20M OFDMA rate sets if CLM_REGISTRY_FLAG2_RU_PER_BW_BAND set
+	 */
+	const unsigned char *locale_rate_sets_he;
+
+	/** Sequence of byte strings that encode rate 4TX sets for 2.4GHz
+	 * 20MHz channels. Used if number of 3TX and 4TX rates exceeds 255
+	 */
+	const unsigned char *locale_ext4_rate_sets_2g_20m;
+
+	/** Sequence of byte strings that encode rate 4TX sets for 2.4GHz
+	 * 40MHz channels. Used if number of 3TX and 4TX rates exceeds 255
+	 */
+	const unsigned char *locale_ext4_rate_sets_2g_40m;
+
+	/** Sequence of byte strings that encode rate 4TX sets for 5GHz 20MHz
+	 * channels. Used if number of 3TX and 4TX rates exceeds 255
+	 */
+	const unsigned char *locale_ext4_rate_sets_5g_20m;
+
+	/** Sequence of byte strings that encode rate 4TX sets for 5GHz 40MHz
+	 * channels. Used if number of 3TX and 4TX rates exceeds 255
+	 */
+	const unsigned char *locale_ext4_rate_sets_5g_40m;
+
+	/** Sequence of byte strings that encode rate 4TX sets for 5GHz 80MHz
+	 * channels. Used if number of 3TX and 4TX rates exceeds 255
+	 */
+	const unsigned char *locale_ext4_rate_sets_5g_80m;
+
+	/** Sequence of byte strings that encode rate 4TX sets for 5GHz 160MHz
+	 * channels. Used if number of 3TX and 4TX rates exceeds 255
+	 */
+	const unsigned char *locale_ext4_rate_sets_5g_160m;
+
+	/** Sequence of byte strings that encode OFDMA rate sets for 2.4GHz
+	 * 20MHz channels
+	 */
+	const unsigned char *locale_he_rate_sets_2g_20m;
+
+	/** Sequence of byte strings that encode OFDMA rate sets for 2.4GHz
+	 * 20MHz channels
+	 */
+	const unsigned char *locale_he_rate_sets_2g_40m;
+
+	/** Sequence of byte strings that encode OFDMA rate sets for 2.4GHz
+	 * 20MHz channels
+	 */
+	const unsigned char *locale_he_rate_sets_5g_40m;
+
+	/** Sequence of byte strings that encode OFDMA rate sets for 2.4GHz
+	 * 20MHz channels
+	 */
+	const unsigned char *locale_he_rate_sets_5g_80m;
+
+	/** Sequence of byte strings that encode OFDMA rate sets for 2.4GHz
+	 * 20MHz channels
+	 */
+	const unsigned char *locale_he_rate_sets_5g_160m;
+
 } clm_registry_t;
 
 /** CLM data BLOB header */

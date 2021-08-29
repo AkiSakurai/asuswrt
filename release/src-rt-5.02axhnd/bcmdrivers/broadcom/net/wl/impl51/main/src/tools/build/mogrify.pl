@@ -42,7 +42,7 @@
 #
 # $Copyright (C) 2004 Broadcom Corporation$
 #
-# $Id: mogrify.pl 725653 2017-10-09 19:22:01Z eb888198 $
+# $Id: mogrify.pl 768239 2018-10-08 16:52:06Z jp933255 $
 # $Revision: 434756 $
 #
 # SVN: $HeadURL$
@@ -67,7 +67,9 @@ $prog            = (split '/', $0)[-1];
 $copyright_year = (localtime)[5] + 1900;
 
 $patcomment = '(JIRA[:\s]*[A-Z]{2}[A-Za-z0-9-]+|PR\s*[#:]?\s*\d+|FIXME|XXX|XXXLP|XXXX|work[ -]?around)';
+# Define regexp for certain deletion markers without having that patter appear in this source, then precompile it.  TODO: More precompilation is needed.
 $patdel = "YYDELETE" . "MEYY";
+$repatdel = qr/$patdel/;
 $id_del = '__ID_KEYWORD_LINE__';
 
 $lineterm = '';
@@ -794,6 +796,20 @@ sub splitlong {
     return $head . "\\${lineterm}\t" . &splitlong($tail);
 }
 
+# precompile regexps
+my  $cvsrcs = qr/\$Id:\s+.*,v\s+/;
+my  $svnrcs = qr/\$Id:\s+.*\d+\s+\d{4}-\d{2}-\d{2}\s+/;
+my $preservecomment = qr'^\s*(/\*([^*]|\*[^/])*\*/)';
+my $strip_unwanted_comment1 = qr'([ \t]*/\*.*?\*/)';
+my $strip_unwanted_comment2 = qr"(?<=[\r\n])[ \t]*${patdel}[ \t]*[\r]{0,1}\n"x;
+my $strip_unwanted_comment3 = qr'(\n?[ \t]*//.*$)';
+my $recopyright = qr/\$[ \t]*copyright.*broadcom.*\$/i;
+my $splitlongcpp = qr/^\s*\#\s*(?:if|ifdef|ifndef|elif)\b/;
+my $filenames_c_cpp_asm = qr/\.(c|cpp|h|s|h\.in)$/i;
+
+# Handling for Makefiles and selected environment variable files
+my $re_makefile_name =  /.*(akefile(\.inc)?|akerules(\.env)?)|\.(make|mk)$|(bcm9|vars43).*\.txt$/i;
+
 sub process_file {
     my $process_fname  = shift;
     open(INPUT, "<$process_fname") or die "$prog: Error: $process_fname: $!";
@@ -816,51 +832,47 @@ sub process_file {
 
         if ($strip_comments) {
             # CVS RCS String correction
-            if ($external_flag && ($output =~ m/\$Id:\s+.*,v\s+/)) {
+            if ($external_flag && ($output =~ m/$cvsrcs/)) {
                 $output =~ s {(\d\d:\d\d:\d\d)\s+(\w+)\s+(Exp)\s+\$}
                              {$1 $3 \$}g;
             }
             # SVN RCS String correction
-            if ($external_flag && ($output =~ m/\$Id:\s+.*\d+\s+\d{4}-\d{2}-\d{2}\s+/)) {
+            if ($external_flag && ($output =~ m/$svnrcs/)) {
                 $output =~ s {(\d\d:\d\d:\d\d.*?)\s+(\w+)\s+\$}
                              {$1 \$}g;
             }
             # Preserve comment at the top of the file that contains copyright text
-            $output =~ m#^\s*(/\*([^*]|\*[^/])*\*/)#;
+            $output =~ m/$preservecomment/;
             my $header = $1;
             push(@result, $header);
         }
 
         # For external builds, strip out login-id info from rcs string
         # CVS RCS String correction
-        if ($external_flag && ($output =~ m/\$Id:\s+.*,v\s+/)) {
+        if ($external_flag && ($output =~ m/$cvsrcs/)) {
             $output =~ s {(\d\d:\d\d:\d\d)\s+(\w+)\s+(Exp)\s+\$}
                              {$1 $3 \$}g;
         }
         # SVN RCS String correction
-        if ($external_flag && ($output =~ m/\$Id:\s+.*\d+\s+\d{4}-\d{2}-\d{2}\s+/)) {
+        if ($external_flag && ($output =~ m/$svnrcs/)) {
            $output =~ s {(\d\d:\d\d:\d\d.*?)\s+(\w+)\s+\$}
                              {$1 \$}g;
         }
 
         # Handling for C, C++, ASM source files only
-        if ($process_fname =~ m/\.(c|cpp|h|s|h\.in)$/gi) {
+        if ($process_fname =~ m/$filenames_c_cpp_asm/g) {
             # Remove unwanted C comments and the white space surrounding them
-            $output =~ s{([ \t]*/\*.*?\*/)}
+            $output =~ s{$strip_unwanted_comment1}
                 {strip_c_comment($1)}egsx;
-            $output =~ s{(?<=[\r\n])[ \t]*${patdel}[ \t]*[\r]{0,1}\n}
-                {}gx;
-            $output =~ s{${patdel}}
-                {}gx;
+            $output =~ s/$strip_unwanted_comment2//gx;
+            $output =~ s/$repatdel//gx;
             # Remove unwanted single-line or line-tailing C++ comments
-            $output =~ s{(\n?[ \t]*//.*$)}
+            $output =~ s{$strip_unwanted_comment3}
                 {strip_cpp_comment($1)}egmx;
         }
 
         # Handling for Makefiles and selected environment variable files
-        if ($process_fname =~ m/.*(akefile(\.inc)?|akerules(\.env)?)$/gi ||
-            $process_fname =~ m/\.(make|mk)$/gi ||
-            $process_fname =~ m/(bcm9|vars43).*\.txt$/gi) {
+        if ($process_fname =~ m/$re_makefile_name/g) {
             $non_c_file = 1;
             # Remove unwanted single-line or line-tailing pound comments
             $output =~ s{(\n?[ \t]*\#.*$)}
@@ -869,7 +881,7 @@ sub process_file {
 
         # XXX Fixme: updating the copyright using these regular expressions is very
         # XXX slow and takes much longer than all the rest of the mogrification.
-        if ( $output =~ m/\$[ \t]*copyright.*broadcom.*\$/i )
+        if ( $output =~ m/$recopyright/i )
         {
             if ( $debug ) { print "Entered Copyright section on ${currfile}\n"; }
             # Insert Broadcom Dual copyright/license text (non-conditional)
@@ -960,7 +972,7 @@ sub process_file {
         my $uierr = 0;
         my $line = 1;
         foreach (split('\n', $output)) {
-            if (/^\s*\#\s*(?:if|ifdef|ifndef|elif)\b/) {
+            if (/$splitlongcpp/) {
                 if ($non_c_file) {
                     print STDERR "$process_fname:$line: unmogrified CPP directive: $_\n"
                     unless $quiet;

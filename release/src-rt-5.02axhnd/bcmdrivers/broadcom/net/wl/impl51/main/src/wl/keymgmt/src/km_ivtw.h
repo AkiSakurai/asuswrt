@@ -1,6 +1,6 @@
 /*
  * Internal interface to BRCMAPIVTW support
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_ivtw.h 617309 2016-02-04 23:50:36Z $
+ * $Id: km_ivtw.h 773323 2019-03-18 09:04:08Z $
  */
 
 #ifndef _km_ivtw_h_
@@ -62,13 +62,15 @@ int km_ivtw_set_mode(km_ivtw_t *ivtw, int val);
 int km_ivtw_enable(km_ivtw_t *ivtw, wlc_key_index_t key_idx, bool enable);
 
 bool km_ivtw_is_replay(km_ivtw_t *ivtw, wlc_key_info_t *key_info, int ins,
-	uint8 *key_seq, uint8 *rx_seq, size_t seq_len);
+	uint8 *key_seq, const uint8 *rx_seq, size_t seq_len);
 
 int km_ivtw_reset(km_ivtw_t *ivtw, wlc_key_index_t key_idx);
 
 void km_ivtw_update(km_ivtw_t *ivtw, wlc_key_info_t *key_info, int ins,
-    uint8 *rx_seq, size_t seq_len, bool chained);
+    const uint8 *rx_seq, size_t seq_len, bool chained);
 
+int km_ivtw_set(km_ivtw_t *ivtw, wlc_key_info_t *key_info, int ins,
+		const uint8 *rx_seq, size_t seq_len);
 #if defined(BCMDBG)
 void km_ivtw_dump(km_ivtw_t *ivtw, struct bcmstrbuf *b);
 #endif // endif

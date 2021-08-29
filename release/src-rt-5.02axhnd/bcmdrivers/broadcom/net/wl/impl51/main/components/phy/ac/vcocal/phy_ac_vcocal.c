@@ -1,7 +1,7 @@
 /*
  * ACPHY VCO CAL module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_vcocal.c 742511 2018-01-22 14:14:24Z $
+ * $Id: phy_ac_vcocal.c 775928 2019-06-14 15:27:49Z $
  */
 
 #include <typedefs.h>
@@ -66,9 +66,10 @@
 #include <wlc_radioreg_20694.h>
 #include <wlc_radioreg_20695.h>
 #include <wlc_radioreg_20696.h>
-#include <wlc_radioreg_20697.h>
 #include <wlc_radioreg_20698.h>
 #include <wlc_radioreg_20704.h>
+#include <wlc_radioreg_20707.h>
+#include <wlc_radioreg_20709.h>
 #include <phy_calmgr.h>
 #include <phy_rstr.h>
 #include <phy_utils_var.h>
@@ -201,15 +202,16 @@ wlc_phy_force_vcocal_acphy(phy_type_vcocal_ctx_t *ctx)
 		wlc_phy_20698_radio_vcocal(pi, VCO_CAL_MODE_20698,
 				VCO_CAL_COUPLING_MODE_20698, 0);
 	} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
-		wlc_phy_20704_radio_vcocal(pi, VCO_CAL_MODE_20704,
-				VCO_CAL_COUPLING_MODE_20704);
+		wlc_phy_20704_radio_vcocal(pi);
+	} else if (ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		wlc_phy_20709_radio_vcocal(pi);
+	} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		wlc_phy_20707_radio_vcocal(pi);
 	} else if (ACMAJORREV_37(pi->pubpi->phy_rev)) {
 		wlc_phy_20696_radio_vcocal(pi, VCO_CAL_MODE_20696,
 				VCO_CAL_COUPLING_MODE_20696);
 	} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		wlc_phy_20694_radio_vcocal(pi, 0, 1);
-	} else if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-		wlc_phy_20697_radio_vcocal(pi, 0, 0, 0);
 	} else {
 		wlc_phy_radio2069_vcocal(pi);
 	}
@@ -590,7 +592,7 @@ wlc_phy_radio2069x_vcocal_isdone(phy_info_t *pi, bool set_delay, bool cache_calc
 					done &= READ_RADIO_PLLREGFLD_20693(pi, PLL_STATUS1,
 						end_core, rfpll_vcocal_done_cal);
 				}
-			} else if (RADIOID(pi->pubpi->radioid) == BCM20696_ID) {
+			} else if (RADIOID_IS(pi->pubpi->radioid, BCM20696_ID)) {
 				done = READ_RADIO_PLLREGFLD_20696(pi, PLL_STATUS1,
 					rfpll_vcocal_done_cal);
 			} else
@@ -1088,74 +1090,105 @@ wlc_phy_20698_radio_vcocal(phy_info_t *pi, uint8 cal_mode, uint8 coupling_mode, 
 }
 
 void
-wlc_phy_20704_radio_vcocal(phy_info_t *pi, uint8 cal_mode, uint8 coupling_mode)
+wlc_phy_20704_radio_vcocal(phy_info_t *pi)
 {
-	/* 20704_procs.tcl r??????: 20704_vco_cal */
-	// FIXME63178: tcl code not available yet
+	/* 20704_procs.tcl r773183: 20704_vco_cal */
 
-	uint8 rfpll_vcocal_FastSwitch[] = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 0};
-	uint8 rfpll_vcocal_slopeInOVR[] = {1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0};
-	uint8 rfpll_vcocal_slopeIn[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-	uint8 rfpll_vcocal_FourthMesEn[] = {1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0};
-	uint8 rfpll_vcocal_FixMSB[] = {3, 0, 3, 0, 3, 0, 3, 0, 3, 0, 3, 0, 0, 0, 0};
-
-	/* PU cal clock */
-	if (cal_mode == 0) {
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL1, 0, rfpll_vcocal_FastSwitch,
-			rfpll_vcocal_FastSwitch[cal_mode]);
+	RADIO_REG_LIST_START
+		/* activate clkvcocal */
+		MOD_RADIO_PLLREG_20704_ENTRY(pi, PLL_REFDOUBLER2, 0, RefDoubler_pu_clkvcocal, 0x1)
+		/* PU cal clock */
+		MOD_RADIO_PLLREG_20704_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_FastSwitch, 0x3)
 		/* Slope In */
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL15, 0, rfpll_vcocal_slopeIn,
-			rfpll_vcocal_slopeIn[cal_mode]);
+		MOD_RADIO_PLLREG_20704_ENTRY(pi, PLL_VCOCAL15, 0, rfpll_vcocal_slopeIn, 0x0)
 		/* Slope In OVR */
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL_OVR1, 0, ovr_rfpll_vcocal_slopeIn,
-			rfpll_vcocal_slopeInOVR[cal_mode]);
+		MOD_RADIO_PLLREG_20704_ENTRY(pi, PLL_VCOCAL_OVR1, 0, ovr_rfpll_vcocal_slopeIn, 0x1)
 		/* Additional Measurement for VCO CAL */
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL1, 0, rfpll_vcocal_FourthMesEn,
-			rfpll_vcocal_FourthMesEn[cal_mode]);
+		MOD_RADIO_PLLREG_20704_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_FourthMesEn, 0x1)
 		/* Fixed MSB */
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL1, 0, rfpll_vcocal_FixMSB,
-			rfpll_vcocal_FixMSB[cal_mode]);
-	} else  {
-		/* Slope In */
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL15, 0, rfpll_vcocal_slopeIn,
-			rfpll_vcocal_slopeIn[0]);
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL_OVR1, 0, ovr_rfpll_vcocal_slopeIn,
-			rfpll_vcocal_slopeInOVR[1]);
-	}
+		MOD_RADIO_PLLREG_20704_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_FixMSB, 0x3)
 
-	/* 2 coupled VCO cal modes. Change if only if coupled VCO is enabled */
-	if (READ_RADIO_PLLREGFLD_20704(pi, PLL_VCOCAL24, 0, rfpll_vcocal_enableCoupling)) {
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL24, 0,
-			rfpll_vcocal_couplingMode, coupling_mode);
-	}
-
-	if (cal_mode <= 5) {
 		/* Cold Start */
 		// Cold Start When rst_n is asserted to VCO Cal
 		// Initialize slope & offset: if slope == 0
-		//Normal operation: update slope & offset if error > thres
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL1, 0, rfpll_vcocal_enableCal, 0x1);
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL1, 0, rfpll_vcocal_rst_n, 0x0);
-		OSL_DELAY(10);
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL1, 0, rfpll_vcocal_rst_n, 0x1);
-
-		MOD_RADIO_PLLREG_20704(pi, PLL_CFG2, 0, rfpll_rst_n, 0x0);
-		OSL_DELAY(10);
-		MOD_RADIO_PLLREG_20704(pi, PLL_CFG2, 0, rfpll_rst_n, 0x1);
-
-	} else {
-		/* WARM Start */
-		// WARM Start When pll_val is changed without rst_n toggling
-		// Initialize slope & offset: If slope == 0
-		// Fast switch option!
 		// Normal operation: update slope & offset if error > thres
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL1, 0, rfpll_vcocal_enableCal, 0x0);
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL1, 0, rfpll_vcocal_enableCal, 0x1);
-		MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL1, 0, rfpll_vcocal_rst_n, 0x1);
-		MOD_RADIO_PLLREG_20704(pi, PLL_CFG2, 0, rfpll_rst_n, 0x0);
-		OSL_DELAY(1);
-		MOD_RADIO_PLLREG_20704(pi, PLL_CFG2, 0, rfpll_rst_n, 0x1);
-	}
+		MOD_RADIO_PLLREG_20704_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_enableCal, 0x1)
+		MOD_RADIO_PLLREG_20704_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_rst_n, 0x0)
+	RADIO_REG_LIST_EXECUTE(pi, 0);
+
+	OSL_DELAY(10);
+	MOD_RADIO_PLLREG_20704(pi, PLL_VCOCAL1, 0, rfpll_vcocal_rst_n, 0x1);
+
+	MOD_RADIO_PLLREG_20704(pi, PLL_CFG2, 0, rfpll_rst_n, 0x0);
+	OSL_DELAY(10);
+	MOD_RADIO_PLLREG_20704(pi, PLL_CFG2, 0, rfpll_rst_n, 0x1);
+}
+
+void
+wlc_phy_20707_radio_vcocal(phy_info_t *pi)
+{
+	RADIO_REG_LIST_START
+		/* activate clkvcocal */
+		MOD_RADIO_PLLREG_20707_ENTRY(pi, PLL_REFDOUBLER2, 0, RefDoubler_pu_clkvcocal, 0x1)
+		/* PU cal clock */
+		MOD_RADIO_PLLREG_20707_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_FastSwitch, 0x3)
+		/* Slope In */
+		MOD_RADIO_PLLREG_20707_ENTRY(pi, PLL_VCOCAL15, 0, rfpll_vcocal_slopeIn, 0x0)
+		/* Slope In OVR */
+		MOD_RADIO_PLLREG_20707_ENTRY(pi, PLL_VCOCAL_OVR1, 0, ovr_rfpll_vcocal_slopeIn, 0x1)
+		/* Additional Measurement for VCO CAL */
+		MOD_RADIO_PLLREG_20707_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_FourthMesEn, 0x1)
+		/* Fixed MSB */
+		MOD_RADIO_PLLREG_20707_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_FixMSB, 0x3)
+
+		/* Cold Start */
+		// Cold Start When rst_n is asserted to VCO Cal
+		// Initialize slope & offset: if slope == 0
+		// Normal operation: update slope & offset if error > thres
+		MOD_RADIO_PLLREG_20707_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_enableCal, 0x1)
+		MOD_RADIO_PLLREG_20707_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_rst_n, 0x0)
+	RADIO_REG_LIST_EXECUTE(pi, 0);
+
+	OSL_DELAY(10);
+	MOD_RADIO_PLLREG_20707(pi, PLL_VCOCAL1, 0, rfpll_vcocal_rst_n, 0x1);
+
+	MOD_RADIO_PLLREG_20707(pi, PLL_CFG2, 0, rfpll_rst_n, 0x0);
+	OSL_DELAY(10);
+	MOD_RADIO_PLLREG_20707(pi, PLL_CFG2, 0, rfpll_rst_n, 0x1);
+}
+
+void
+wlc_phy_20709_radio_vcocal(phy_info_t *pi)
+{
+	/* 20709_procs.tcl r781709: 20709_vco_cal */
+	RADIO_REG_LIST_START
+		/* activate clkvcocal */
+		MOD_RADIO_PLLREG_20709_ENTRY(pi, PLL_REFDOUBLER2, 0, RefDoubler_pu_clkvcocal, 0x1)
+		/* PU cal clock */
+		MOD_RADIO_PLLREG_20709_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_FastSwitch, 0x3)
+		/* Slope In */
+		MOD_RADIO_PLLREG_20709_ENTRY(pi, PLL_VCOCAL15, 0, rfpll_vcocal_slopeIn, 0x0)
+		/* Slope In OVR */
+		MOD_RADIO_PLLREG_20709_ENTRY(pi, PLL_VCOCAL_OVR1, 0, ovr_rfpll_vcocal_slopeIn, 0x1)
+		/* Additional Measurement for VCO CAL */
+		MOD_RADIO_PLLREG_20709_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_FourthMesEn, 0x1)
+		/* Fixed MSB */
+		MOD_RADIO_PLLREG_20709_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_FixMSB, 0x3)
+
+		/* Cold Start */
+		// Cold Start When rst_n is asserted to VCO Cal
+		// Initialize slope & offset: if slope == 0
+		// Normal operation: update slope & offset if error > thres
+		MOD_RADIO_PLLREG_20709_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_enableCal, 0x1)
+		MOD_RADIO_PLLREG_20709_ENTRY(pi, PLL_VCOCAL1, 0, rfpll_vcocal_rst_n, 0x0)
+	RADIO_REG_LIST_EXECUTE(pi, 0);
+
+	OSL_DELAY(10);
+	MOD_RADIO_PLLREG_20709(pi, PLL_VCOCAL1, 0, rfpll_vcocal_rst_n, 0x1);
+
+	MOD_RADIO_PLLREG_20709(pi, PLL_CFG2, 0, rfpll_rst_n, 0x0);
+	OSL_DELAY(10);
+	MOD_RADIO_PLLREG_20709(pi, PLL_CFG2, 0, rfpll_rst_n, 0x1);
 }
 
 void
@@ -1230,7 +1263,7 @@ wlc_phy_radio20694_vcocal_isdone(phy_info_t *pi, bool set_delay, bool cache_calc
 			/* power off vcocal_clk */
 			MOD_RADIO_REG_20694(pi, RFP, PLL_CFG6, 0, rfpll_vcocal_clk_pu, 0x0);
 			MOD_RADIO_REG_20694(pi, RFP, PLL_OVR1, 0, ovr_rfpll_vcocal_clk_pu, 0x0);
-			if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
+			if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 				if (sicoreunit == DUALMAC_MAIN) {
 					wlapi_bmac_write_shm(pi->sh->physhim, (shmoff + 0x6c),
 							(0x1000 | maincap));
@@ -1313,6 +1346,7 @@ wlc_phy_radio20698_vcocal_isdone(phy_info_t *pi, bool set_delay)
 void
 wlc_phy_radio20704_vcocal_isdone(phy_info_t *pi, bool set_delay)
 {
+	/* 20704_procs.tcl r783071: 20704_vco_cal */
 	uint8 done, itr;
 
 	/* Wait for vco_cal to be done, max = 10us * 10 = 100us */
@@ -1337,248 +1371,100 @@ wlc_phy_radio20704_vcocal_isdone(phy_info_t *pi, bool set_delay)
 		PHY_ERROR(("wl%d: %s  vcocal failure (not done, timeout)\n",
 				pi->sh->unit, __FUNCTION__));
 	}
+
+	RADIO_REG_LIST_START
+		/* rst_n signal for Delta Sigma Modulator */
+		/* improves int.PN when VCO freq. is an integer */
+		MOD_RADIO_PLLREG_20704_ENTRY(pi, PLL_OVR1, 0, ovr_rfpll_rst_n, 0x1)
+		MOD_RADIO_PLLREG_20704_ENTRY(pi, PLL_CFG2, 0, rfpll_rst_n, 0x0)
+		MOD_RADIO_PLLREG_20704_ENTRY(pi, PLL_CFG2, 0, rfpll_rst_n, 0x1)
+		/* deactivate clkvcocal */
+		MOD_RADIO_PLLREG_20704_ENTRY(pi, PLL_REFDOUBLER2, 0, RefDoubler_pu_clkvcocal, 0x0)
+	RADIO_REG_LIST_EXECUTE(pi, 0);
 }
 
 void
-wlc_phy_20697_radio_vcocal(phy_info_t *pi, uint8 cal_mode, uint8 coupling_mode, uint8 pll_num)
+wlc_phy_radio20707_vcocal_isdone(phy_info_t *pi, bool set_delay)
 {
-	uint8 rfpll_vcocal_FastSwitch[] = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 0};
-	uint8 rfpll_vcocal_slopeInOVR[] = {1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0};
-	uint8 rfpll_vcocal_slopeIn[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-	uint8 rfpll_vcocal_FourthMesEn[] = {1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0};
-	uint8 rfpll_vcocal_FixMSB[] = {3, 0, 3, 0, 3, 0, 3, 0, 3, 0, 3, 0, 0, 0, 0};
+	uint8 done, itr;
 
-	if (pi->pubpi->slice == DUALMAC_AUX &&
-		(HW_ACMINORREV(pi) == 0)) {
-		/* VCO CAL WAR for reading vco cal done */
-		wlapi_set_gci_reg6_bit4(pi->sh->physhim, 1);
-		wlapi_jtag_setbit_128(pi->sh->physhim, 9, 34, 1);
-	}
-
-	/* Turning ON buffer in XTAL to send clocks to RFPLL in radio */
-	MOD_RADIO_REG_20697(pi, RFP, XTAL4, 0, xtal_pu_pfddrv, 1);
-	if (pi->pubpi->slice == DUALMAC_MAIN) {
-		if (pll_num == 1) {
-			/* Ensure main PLL is on for DFS PLL */
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_CFG6, 0, 1, rfpll_vcocal_clk_pu, 1);
-		}
-		/* TODO:phy_maj44 Move it to pref values */
-		MOD_RADIO_REG_20697X(pi, RFP, PLL_OVR2, 0, 0, ovr_rfpll_frct_wild_base_high,
-			0x1);
-		/* TODO:phy_maj44 Move it to pref values */
-		MOD_RADIO_REG_20697X(pi, RFP, PLL_OVR2, 0, 0, ovr_rfpll_frct_wild_base_low,
-			0x1);
-
-		MOD_RADIO_REG_20697X(pi, RFP, PLL_OVR1, 0, pll_num, ovr_rfpll_rst_n, 0x1);
-		MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL_OVR1, 0, pll_num,
-			ovr_rfpll_vcocal_rst_n, 0x1);
-		MOD_RADIO_REG_20697X(pi, RFP, PLL_CFG7, 0, 0, rfpll_vcocal_clkxtal_pu, 0x1);
-		if (cal_mode == 0) {
-			/* Fast Switch mode */
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL1, 0, pll_num,
-				rfpll_vcocal_FastSwitch, rfpll_vcocal_FastSwitch[cal_mode]);
-			/* Slope In OVR */
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL_OVR1, 0, pll_num,
-				ovr_rfpll_vcocal_slopeIn, rfpll_vcocal_slopeInOVR[cal_mode]);
-			/* Slope In */
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL15, 0, pll_num,
-				rfpll_vcocal_slopeIn, rfpll_vcocal_slopeIn[cal_mode]);
-			/* Additional Measurement for VCO CAL */
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL1, 0, pll_num,
-				rfpll_vcocal_FourthMesEn, rfpll_vcocal_FourthMesEn[cal_mode]);
-			/* Fixed MSB */
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL1, 0, pll_num, rfpll_vcocal_FixMSB,
-				rfpll_vcocal_FixMSB[cal_mode]);
-		} else  {
-			/* if we have operation mode 0.pretend we do first time VCO cal anyway,
-			*  set slope to all zeros
-			*/
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL_OVR1, 0, pll_num,
-				ovr_rfpll_vcocal_slopeIn, rfpll_vcocal_slopeInOVR[1]);
-			/* Slope In */
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL15, 0, pll_num,
-				rfpll_vcocal_slopeIn, rfpll_vcocal_slopeIn[0]);
-		}
-
-		if (READ_RADIO_REGFLD_20697X(pi, RFP, PLL_VCOCAL24, 0, pll_num,
-			rfpll_vcocal_enableCoupling) == 1) {
-			/* 2 coupled VCO cal modes. Change only if coupled VCO is enbled */
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL24, 0, pll_num,
-				rfpll_vcocal_couplingMode, coupling_mode);
-		}
-		if (cal_mode <= 5) {
-			/* Cold Start
-			* Cold Start When rst_n is asserted to VCO Cal
-			* Initialize slope & offset: if slope == 0
-			* Normal operation: update slope & offset if error > thres
-			* TRIGGER VCOCAL
-			*/
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL1, 0, pll_num,
-				rfpll_vcocal_enableCal, 0x1);
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL1, 0, pll_num,
-				rfpll_vcocal_rst_n, 0x0);
-			OSL_DELAY(10);
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL1, 0, pll_num,
-				rfpll_vcocal_rst_n, 0x1);
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_CFG2, 0, pll_num, rfpll_rst_n, 0x0);
-			OSL_DELAY(10);
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_CFG2, 0, pll_num, rfpll_rst_n, 0x1);
-		} else {
-			/* WARM Start
-			* WARM Start When pll_val is changed without rst_n toggling
-			* Initialize slope & offset: If slope == 0
-			* Fast switch option!
-			* Normal operation: update slope & offset if error > thres
-			*/
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL1, 0, pll_num,
-				rfpll_vcocal_enableCal, 0x0);
-			OSL_DELAY(10);
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL1, 0, pll_num,
-				rfpll_vcocal_enableCal, 0x1);
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL1, 0, pll_num, rfpll_vcocal_rst_n,
-				0x1);
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_CFG2, 0, pll_num, rfpll_rst_n, 0x0);
-			OSL_DELAY(10);
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_CFG2, 0, pll_num, rfpll_rst_n, 0x1);
-		}
-	} else {
-		/* TODO:phy_maj44 Move it to pref values */
-		MOD_RADIO_REG_20697X(pi, RFP, PLL_OVR2, 1, 0, ovr_rfpll_frct_wild_base_high,
-			0x1);
-		/* TODO:phy_maj44 Move it to pref values */
-		MOD_RADIO_REG_20697X(pi, RFP, PLL_OVR2, 1, 0, ovr_rfpll_frct_wild_base_low,
-			0x1);
-
-		/* AUX SLICE VCO CAL */
-		ACPHY_REG_LIST_START
-			MOD_RADIO_REG_20697_ENTRY(pi, RFP, PLL_CFG7, 1, 0,
-				rfpll_vcocal_clkxtal_pu, 1)
-			MOD_RADIO_REG_20697_ENTRY(pi, RFP, PLL_OVR1, 1, 0, ovr_rfpll_rst_n, 0x1)
-			MOD_RADIO_REG_20697_ENTRY(pi, RFP, PLL_VCOCAL_OVR1, 1, 0,
-				ovr_rfpll_vcocal_rst_n, 0x1)
-			MOD_RADIO_REG_20697_ENTRY(pi, RFP, PLL_CFG2, 1, 0, rfpll_rst_n, 0x0)
-			MOD_RADIO_REG_20697_ENTRY(pi, RFP, PLL_VCOCAL1, 1, 0, rfpll_vcocal_rst_n,
-				0x0)
-			MOD_RADIO_REG_20697_ENTRY(pi, RFP, PLL_VCOCAL1, 1, 0,
-				rfpll_vcocal_enableCal, 0x0)
-		ACPHY_REG_LIST_EXECUTE(pi);
-		OSL_DELAY(11);
-		MOD_RADIO_REG_20697X(pi, RFP, PLL_CFG2, 1, 0, rfpll_rst_n, 0x1);
-		MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL1, 1, 0, rfpll_vcocal_rst_n, 0x1);
-		OSL_DELAY(1);
-		MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL1, 1, 0, rfpll_vcocal_enableCal, 0x1);
-	}
-}
-
-int32
-wlc_phy_radio20697_vcocal_isdone(phy_info_t *pi, bool set_delay, bool cache_calcode, uint8 pll_num)
-{
-	phy_ac_vcocal_info_t *vi = pi->u.pi_acphy->vcocali;
-	uint8 done = 0, itr = 0, need_refresh = 1;
-	/* Wait for vco_cal to be done, max = 10us * 100 = 1000us  */
+	/* Wait for vco_cal to be done, max = 10us * 10 = 100us */
 	/* timeout is 1ms in TCL */
-	for (itr = 0; itr < 100; itr++) {
+	done = 0;
+	for (itr = 0; itr < 10; itr++) {
 		OSL_DELAY(10);
-		if (pi->pubpi->slice == DUALMAC_MAIN) {
-			done = READ_RADIO_REGFLD_20697X(pi, RFP, PLL_STATUS1, 0, pll_num,
-				rfpll_vcocal_done_cal);
-		} else {
-			done = READ_RADIO_REGFLD_20697X(pi, RFP, PLL_VCOCAL_RDBK, 1, 0,
-				rfpll_vcocal_legacy_done_cal);
-			/* Aux slice has only one PLL */
-			ASSERT(pll_num == 0);
-		}
-		PHY_TRACE(("[slice: %d] Waiting for vco cal to get over\n", pi->sh->unit));
+		done = READ_RADIO_PLLREGFLD_20707(pi, PLL_STATUS1, 0,
+		rfpll_vcocal_done_cal);
 		if (done == 1) {
-			need_refresh = READ_RADIO_REGFLD_20697(pi, RFP, PLL_CFGR1, pll_num,
-				rfpll_monitor_need_refresh);
 			break;
 		}
 	}
-
 	/* Clear Slope In OVR */
-	if (pi->pubpi->slice == DUALMAC_MAIN) {
-		MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL_OVR1, 0, pll_num, ovr_rfpll_vcocal_slopeIn,
-			0x0);
-	}
+	MOD_RADIO_PLLREG_20707(pi, PLL_VCOCAL_OVR1, 0, ovr_rfpll_vcocal_slopeIn, 0x0);
+
 	/* Need to wait extra time after vcocal done bit is high for it to settle */
 	if (set_delay == TRUE) {
-	  OSL_DELAY(120);
+		OSL_DELAY(120);
 	}
-
-	if ((done == 1) && (need_refresh == 0)) {
-		if (cache_calcode && (pi->pubpi->slice == DUALMAC_MAIN)) {
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL7, 0, pll_num,
-				rfpll_vcocal_CalCapRBMode, 0x2);
-			vi->maincap = READ_RADIO_REGFLD_20697X(pi, RFP, PLL_STATUS2, 0, pll_num,
-				rfpll_vcocal_calCapRB);
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL7, 0, pll_num,
-				rfpll_vcocal_CalCapRBMode, 0x3);
-			vi->secondcap = READ_RADIO_REGFLD_20697X(pi, RFP, PLL_STATUS2, 0, pll_num,
-				rfpll_vcocal_calCapRB);
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_VCOCAL7, 0, pll_num,
-				rfpll_vcocal_CalCapRBMode, 0x4);
-			vi->auxcap = READ_RADIO_REGFLD_20697X(pi, RFP, PLL_STATUS2, 0, pll_num,
-				rfpll_vcocal_calCapRB);
-
-			PHY_TRACE(("wl%d: vi->maincap: %x\n", pi->sh->unit, vi->maincap));
-			PHY_TRACE(("wl%d: vi->secondcap: %x\n", pi->sh->unit, vi->secondcap));
-			PHY_TRACE(("wl%d: vi->auxcap: %x\n", pi->sh->unit, vi->auxcap));
-
-			if (pll_num == 1) {
-				MOD_RADIO_REG_20697X(pi, RFP, PLL_CFG6, 0, 1,
-					rfpll_vcocal_clk_pu, 0);
-			} else {
-				MOD_RADIO_REG_20697X(pi, RFP, PLL_CFG7, 0, 0,
-					rfpll_vcocal_clkxtal_pu, 0);
-			}
-		} else if (pi->pubpi->slice == DUALMAC_AUX) {
-			vi->auxcap = READ_RADIO_REGFLD_20697X(pi, RFP, PLL_VCOCAL_RDBK, 1, 0,
-				rfpll_vcocal_cal_val);
-			/* Turning OFF VCOCAL CLOCK */
-			MOD_RADIO_REG_20697X(pi, RFP, PLL_CFG7, 1, 0, rfpll_vcocal_clkxtal_pu, 0);
-			PHY_TRACE(("wl%d: vi->auxcap: %x\n", pi->sh->unit, vi->auxcap));
-		}
-	} else {
-		if (done == 0) {
-			PHY_INFORM(("wl%d: %s  vcocal timeout\n",
-				pi->pubpi->slice, __FUNCTION__));
-		} else {
-			PHY_INFORM(("wl%d: %s Needs refresh. vcocal unsuccessful\n",
-				pi->pubpi->slice, __FUNCTION__));
-		}
-		// ASSERT(FALSE);
-		// return BCME_VCOCAL_FAIL;
-		return BCME_OK;
+	if (!done) {
+		PHY_ERROR(("wl%d: %s  vcocal failure (not done, timeout)\n",
+				pi->sh->unit, __FUNCTION__));
 	}
-	if (pi->pubpi->slice == DUALMAC_AUX &&
-		(HW_ACMINORREV(pi) == 0)) {
-		/* VCO CAL WAR for reading vco cal done */
-		wlapi_jtag_setbit_128(pi->sh->physhim, 9, 34, 0);
-		wlapi_set_gci_reg6_bit4(pi->sh->physhim, 0);
-	}
-
-	return BCME_OK;
+	/* deactivate clkvcocal */
+	MOD_RADIO_PLLREG_20707(pi, PLL_REFDOUBLER2, 0, RefDoubler_pu_clkvcocal, 0x0);
 }
 
 void
-phy_ac_vcocal(phy_info_t *pi)
+wlc_phy_radio20709_vcocal_isdone(phy_info_t *pi, bool set_delay)
 {
-#if defined(PHYCAL_CACHING)
-	ch_calcache_t *ctx = NULL;
-	ctx = wlc_phy_get_chanctx(pi, pi->radio_chanspec);
-#endif // endif
+	/* 20709_procs.tcl r799798: 20709_vco_cal */
+	uint8 done, itr;
 
-#ifdef WFD_PHY_LL
-	/* Single-core on 20MHz channel */
-	wlc_phy_cts2self(pi, 600);
-#else
-	wlc_phy_cts2self(pi, 300);
-#endif // endif
-
-	if ((pi->radar_percal_mask & 0x4) != 0) {
-	    pi->u.pi_acphy->radar_cal_active = TRUE;
+	/* Wait for vco_cal to be done, max = 10us * 10 = 100us */
+	/* timeout is 1ms in TCL */
+	done = 0;
+	for (itr = 0; itr < 10; itr++) {
+		OSL_DELAY(10);
+		done = READ_RADIO_PLLREGFLD_20709(pi, PLL_STATUS1, 0,
+				rfpll_vcocal_done_cal);
+		if (done == 1) {
+			break;
+		}
 	}
+	/* Clear Slope In OVR */
+	MOD_RADIO_PLLREG_20709(pi, PLL_VCOCAL_OVR1, 0, ovr_rfpll_vcocal_slopeIn, 0x0);
+
+	/* Need to wait extra time after vcocal done bit is high for it to settle */
+	if (set_delay == TRUE) {
+		OSL_DELAY(120);
+	}
+	if (!done) {
+		PHY_ERROR(("wl%d: %s  vcocal failure (not done, timeout)\n",
+				pi->sh->unit, __FUNCTION__));
+	}
+
+	RADIO_REG_LIST_START
+		/* rst_n signal for Delta Sigma Modulator */
+		/* improves int.PN when VCO freq. is an integer */
+		MOD_RADIO_PLLREG_20709_ENTRY(pi, PLL_OVR1, 0, ovr_rfpll_rst_n, 0x1)
+		MOD_RADIO_PLLREG_20709_ENTRY(pi, PLL_CFG2, 0, rfpll_rst_n, 0x0)
+		MOD_RADIO_PLLREG_20709_ENTRY(pi, PLL_CFG2, 0, rfpll_rst_n, 0x1)
+		/* deactivate clkvcocal */
+		MOD_RADIO_PLLREG_20709_ENTRY(pi, PLL_REFDOUBLER2, 0, RefDoubler_pu_clkvcocal, 0x0)
+	RADIO_REG_LIST_EXECUTE(pi, 0);
+}
+
+void
+phy_ac_vcocal_multiphase(phy_info_t *pi, uint16 cts_time)
+{
+	/* XXX: RSSI cal comment to be removed?
+	 *     RSSI Cal & VCO Cal
+	*/
+#if defined(PHYCAL_CACHING)
+	ch_calcache_t *ctx = wlc_phy_get_chanctx(pi, pi->radio_chanspec);
+#endif // endif
+
+	wlc_phy_cts2self(pi, cts_time);
 
 	/* RSSI & VCO cal (prevents VCO/PLL from losing lock with temp delta) */
 	wlc_phy_force_vcocal_acphy(pi->u.pi_acphy->vcocali);
@@ -1589,12 +1475,14 @@ phy_ac_vcocal(phy_info_t *pi)
 		wlc_phy_radio20698_vcocal_isdone(pi, TRUE);
 	} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
 		wlc_phy_radio20704_vcocal_isdone(pi, TRUE);
+	} else if (ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		wlc_phy_radio20709_vcocal_isdone(pi, TRUE);
+	} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		wlc_phy_radio20707_vcocal_isdone(pi, TRUE);
 	} else if (ACMAJORREV_37(pi->pubpi->phy_rev)) {
 		wlc_phy_radio20696_vcocal_isdone(pi, TRUE, FALSE);
 	} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		wlc_phy_radio20694_vcocal_isdone(pi, FALSE, TRUE);
-	} else if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-		wlc_phy_radio20697_vcocal_isdone(pi, FALSE, TRUE, 0);
 	} else {
 		wlc_phy_radio2069x_vcocal_isdone(pi, TRUE, FALSE);
 	}
@@ -1603,45 +1491,23 @@ phy_ac_vcocal(phy_info_t *pi)
 		wlc_phy_radio2069x_vcocal_isdone(pi, TRUE, FALSE);
 		MOD_RADIO_REG_20691(pi, PLL_XTAL2, 0, xtal_pu_caldrv, 0x0);
 	}
+
 	pi->cal_info->last_cal_time = pi->sh->now;
 	pi->cal_info->u.accal.chanspec = pi->radio_chanspec;
 
-	/* If this is the first calibration after association then we
-	 * still have to do calibrate the idle-tssi, otherrwise done
-	 */
-	if (pi->first_cal_after_assoc) {
-		pi->cal_info->cal_phase_id++;
+	pi->cal_info->cal_phase_id++;
+
 #if defined(PHYCAL_CACHING)
-	} else if (ctx && (ctx->valid != TRUE)) {
-		pi->cal_info->cal_phase_id++;
+	if (ctx)
+		phy_ac_tpc_save_cache(pi->u.pi_acphy->tpci, ctx);
+
 #endif // endif
-	} else {
-#if defined(PHYCAL_CACHING)
-		if (ctx) {
-			phy_ac_tpc_save_cache(pi->u.pi_acphy->tpci, ctx);
-		}
-#endif // endif
-		phy_calmgr_mphase_reset(pi->calmgri);
-	}
 }
+
 static int
 phy_ac_vcocal_status(phy_type_vcocal_ctx_t *ctx)
 {
 	phy_ac_vcocal_info_t *info = (phy_ac_vcocal_info_t *)ctx;
 	phy_info_t *pi = info->pi;
 	return wlc_phy_radio2069x_vcocal_isdone(pi, TRUE, FALSE);
-}
-
-void
-wlc_phy_get_radio20697_vcocal_codes(phy_info_t *pi, uint16 *maincap, uint16* secondcap,
-	uint16* auxcap)
-{
-	phy_ac_vcocal_info_t *vcocali = pi->u.pi_acphy->vcocali;
-	if (pi->pubpi->slice == DUALMAC_MAIN) {
-		*maincap = vcocali->maincap;
-		*secondcap = vcocali->secondcap;
-		*auxcap = vcocali->auxcap;
-	} else {
-		*auxcap = vcocali->auxcap;
-	}
 }

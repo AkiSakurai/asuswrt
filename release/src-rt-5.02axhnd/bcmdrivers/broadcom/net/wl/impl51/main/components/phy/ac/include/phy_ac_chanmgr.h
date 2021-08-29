@@ -1,7 +1,7 @@
 /*
  * ACPHY Channel Manager module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_chanmgr.h 766514 2018-08-04 06:18:03Z $
+ * $Id: phy_ac_chanmgr.h 775385 2019-05-29 11:30:21Z $
  */
 
 #ifndef _phy_ac_chanmgr_h_
@@ -448,7 +448,6 @@ typedef struct {
 		uint16 val;
 } sparse_array_entry_t;
 
-extern void wlc_phy_apply_default_edthresh_acphy(phy_info_t *pi, chanspec_t chanspec);
 extern void wlc_phy_chanspec_set_acphy(phy_info_t *pi, chanspec_t chanspec);
 extern void phy_ac_chanmgr_set_phymode(phy_info_t *pi, chanspec_t chanspec, chanspec_t chanspec_sc,
 	uint16 phymode);
@@ -484,8 +483,6 @@ extern void wlc_phy_rx_farrow_setup_28nm_ulp(phy_info_t *pi, uint16 ulp_adc_50mh
 extern void wlc_phy_tx_farrow_setup_28nm_ulp(phy_info_t *pi, uint16 ulp_tx_mode);
 extern void wlc_phy_farrow_setup_20694(phy_info_t *pi, uint16 ulp_tx_mode,
 	uint16 ulp_adc_50mhz_mode);
-extern void wlc_phy_farrow_setup_20697(phy_info_t *pi, uint16 ulp_tx_mode,
-	uint16 ulp_adc_50mhz_mode);
 extern void wlc_phy_farrow_setup_acphy(phy_info_t *pi, chanspec_t chanspec);
 extern void phy_ac_chanmgr_write_rx_farrow_tiny(phy_info_t *pi, chanspec_t chanspec,
 	chanspec_t chanspec_sc, int sc_mode);
@@ -504,7 +501,12 @@ extern void wlc_phy_ulb_mode(phy_info_t *pi, uint8 ulb_mode);
 #endif /* WL11ULB */
 
 extern void phy_ac_chanmgr_core2core_sync_setup(phy_ac_chanmgr_info_t *chanmgri, bool enable);
+extern void phy_ac_chanmgr_core2core_sync_dac_clks(phy_ac_chanmgr_info_t *chanmgri, bool enable);
 extern void phy_ac_chanmgr_hwobss(phy_ac_chanmgr_info_t *chanmgri, bool enable_hwobss);
+
+int phy_ac_chanmgr_iovar_get_lowratetssi(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
+int phy_ac_chanmgr_iovar_get_lowratetssi_ovrd(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
+int phy_ac_chanmgr_iovar_set_lowratetssi_ovrd(phy_ac_chanmgr_info_t *chanmgri, int32 set_val);
 
 void phy_ac_chanmgr_cal_init(phy_info_t *pi, uint8 *enULB);
 void phy_ac_chanmgr_cal_reset(phy_info_t *pi);
@@ -528,6 +530,8 @@ extern int phy_ac_chanmgr_set_val_phymode(phy_ac_chanmgr_info_t *chanmgri, int32
 extern int phy_ac_chanmgr_get_val_phymode(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
 extern int phy_ac_chanmgr_get_val_phy_vcore(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
 extern bool phy_ac_chanmgr_get_val_nonbf_logen_mode(phy_ac_chanmgr_info_t *chanmgri);
+extern void phy_ac_chanmgr_low_rate_tssi_rfseq_fiforst_dly(phy_info_t *pi, bool enable);
+extern void wlc_phy_set_rfseqext_tbl_majrev47(phy_info_t *pi, uint8 mode);
 
 /* WAR */
 extern void phy_ac_chanmgr_mutx_war(wlc_phy_t *pih, bool enable);

@@ -3,7 +3,7 @@
  * Networking Device Driver.
  *
  * -----------------------------------------------------------------------------
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -48,7 +48,12 @@
  * <<Broadcom-WL-IPTag/Proprietary:>>
  * -----------------------------------------------------------------------------
  *
- * $Id: wlc_phy_lcn20.c 679815 2017-01-17 13:01:39Z $
+ * $Id: wlc_phy_lcn20.c 775501 2019-06-02 00:18:19Z $
+ */
+
+/* XXX WARNING: phy structure has been changed, read this first
+ *
+ * This submodule is for LCN20 phy only. It depends on the common submodule wlc_phy_cmn.c
  */
 
 #include <wlc_cfg.h>
@@ -472,6 +477,12 @@ uint32 mu_deltaLUT[14] = {
 	6483948
 };
 
+/* XXX To desense detection in ACI mode we would like to have a different init gain
+ * from normal mode. The lcn20 architecture does not allow for this explicitly. To
+ * achieve the same effect we shift the gain table (which is in 3dB steps) by 2
+ * places so that we have 6 dB less init gain than in normal mode. Need to adjust JSSI
+ * calculation in ACI mode as a result.
+ */
 #define LCN20PHY_ACITBL_OFFSET 6
 
 #define LCN20PHY_NORTBL_ACITBL_RSSIOFFSET_REPORT 10
@@ -3165,6 +3176,18 @@ wlc_lcn20phy_aci_modes(phy_info_t *pi, int wanted_mode)
 	return BCME_OK;
 }
 
+/* XXX Note on ACI detector: We use TIA in a one-pole configuration for ACI mode
+ * while in listen mode. The reason is that we need to attenuate in-band ACI
+ * and so we design a response that has about 8-10dB attenuation at the band
+ * edge. If we were to use a two-pole filter to achive the same effect we
+ * would have a hard time detecting rssi clipping in ACI mode. We need to
+ * detect this clipping to remain in ACI mode. Thus while we are in ACI mode
+ * the nb clip counts will be the same as the w3 clip counts. In normal mode
+ * we use a second order TIA reponse in listen mode. To allow for similar
+ * differnces in clip counts between ACI and normal mode across all channel
+ * we are constrained by the first order reposnse of the TIA in ACI mode. For
+ * that reason we will pick the w3 rssi for the ACI detector.
+ */
 void
 wlc_lcn20phy_aci_init(phy_info_t *pi)
 {
@@ -3211,6 +3234,9 @@ wlc_lcn20phy_aci_init(phy_info_t *pi)
 	/* the pwr block scaling applied to blocks entering the sliding window */
 	PHY_REG_MOD(pi, LCN20PHY, ACI_Detect_CTRL3, aci_pwr_block_shift, 4);
 	/* each scaled A must exceed scaled B by this threshold for output.aci_sel to be true */
+	/* XXX Use 2nd and 3rd ACI detector inequality to make ACI detector not asserted
+	 * when -50dBm ~ -70dBm inband AWGN comes in to pass ED test
+	*/
 	PHY_REG_MOD(pi, LCN20PHY, ACI_Detect_Config1, aci_det_threshold_nor_0, 0x1000);
 	PHY_REG_MOD(pi, LCN20PHY, ACI_Detect_Config2, aci_det_threshold_nor_1, -0x3000);
 	PHY_REG_MOD(pi, LCN20PHY, ACI_Detect_Config3, aci_det_threshold_nor_2, -0x800);
@@ -3271,6 +3297,14 @@ wlc_lcn20phy_aci_init(phy_info_t *pi)
 	PHY_REG_MOD(pi, LCN20PHY, ACI_Detect_CTRL1, aci_detect_enable, 1);
 }
 
+/* XXX Note on ACI mode AGC operation: We would like to base the AGC off of the SOI power.
+ * The AGC will use the power at the output of the ACI filter to adjust the AGC until
+ * the nb mid detector clips (nb low not used). Therefore to work in the presence of
+ * ACI powers <= -35dBm we need to delay the nb mid clipping threshold until the SOI
+ * power is roughly of the same magnitude as the the ACI power. However, this leaves
+ * a large SOI range that must work with rssi_no_clip_gain. We can reduce this range
+ * by allowing rssi_gain to be less than init_gain.
+ */
 static void
 wlc_lcn20phy_agc_setup(phy_info_t *pi)
 {
@@ -3693,6 +3727,13 @@ wlc_phy_chanspec_set_lcn20phy(phy_info_t *pi, chanspec_t chanspec)
 
 	PHY_TRACE(("wl%d: %s\n", pi->sh->unit, __FUNCTION__));
 
+	/* Set the phy bandwidth as dictated by the chanspec
+	* FIXME: For now, not calling this but seems like it might  be necessary
+	* during the init, Need to check
+	if (CHSPEC_BW(chanspec) != pi->bw)
+		wlapi_bmac_bw_set(pi->sh->physhim, CHSPEC_BW(chanspec));
+	*/
+
 	wlc_lcn20phy_bandset(pi);
 
 	wlc_lcn20phy_deaf_mode(pi, TRUE);
@@ -3955,7 +3996,7 @@ wlc_lcn20phy_eu_edcrs_detect(phy_info_t *pi)
 	/* Forcing WLAN antenna and priority is required to get a
 	* valid status in stMcDebugReg2 register
 	*/
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
 	/* Check EDCRS a few times to decide if the medium is busy */
 	/* If medium is busy, skip phy cal this time around */
@@ -4023,7 +4064,7 @@ wlc_lcn20phy_calib_modes(phy_info_t *pi, uint mode)
 	wlapi_bmac_write_shm(pi->sh->physhim, M_CTS_DURATION(pi), cts_time_us);
 	wlapi_suspend_mac_and_wait(pi->sh->physhim);
 
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
 	if (!(SCAN_RM_IN_PROGRESS(pi) || VSDB_CHANCHG_IN_PROGRESS(pi)))
 		pi->phy_lastcal = pi->sh->now;
@@ -4048,7 +4089,7 @@ wlc_lcn20phy_calib_modes(phy_info_t *pi, uint mode)
 		wlc_lcn20phy_dssf_cal(pi);
 
 	wlc_lcn20phy_idle_tssi_est(pi);
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
 #ifdef LCN20_PAPD_ENABLE
 	if ((mode == PHY_FULLCAL) || (mode & LCN20PHY_CALMODE_PAPD)) {
@@ -4314,6 +4355,10 @@ wlc_lcn20phy_force_pwr_index(phy_info_t *pi, int indx)
 		wlc_phy_set_tx_locc_lcn20phy(pi, (uint16)locoeffs);
 	}
 
+	/* FIXME :
+	 * Enable hti along with PAPD,
+	 * Fix will impact PAPD functions as well, do not change only here
+	 */
 #ifdef LCN20_PAPD_ENABLE
 	/* Force PAPD to work with Fixed Epsilon offset TODO:
 	 * this is a WAR until offset per Tx idx is supported
@@ -5825,6 +5870,9 @@ wlc_lcn20phy_tx_pu(phy_info_t *pi, bool bEnable, bool rxrfmode)
 		PHY_REG_MOD(pi, LCN20PHY, rfoverride4, papu_ovr, 0);
 		/* Mixer, cascode, , .. */
 		PHY_REG_MOD(pi, LCN20PHY, RFOverride0, internalrftxpu_ovr, 0);
+		/* Power up txlogen (JIRA HW43430-225: txlogen needs to be powered up
+		* with "trsw_tx_pwrup_pu", it should have been powered-up by "internalrftxpu_ovr")
+		*/
 		PHY_REG_MOD(pi, LCN20PHY, rfoverride4, trsw_tx_pwrup_ovr, 0);
 		/* DAC and LPF: */
 		PHY_REG_MOD(pi, LCN20PHY, AfeCtrlOvr1, dac_pu_ovr, 0);
@@ -5868,6 +5916,9 @@ wlc_lcn20phy_tx_pu(phy_info_t *pi, bool bEnable, bool rxrfmode)
 			LCN20PHY_RFOverride0_internalrftxpu_ovr_MASK,
 			(1 << LCN20PHY_RFOverride0_internalrftxpu_ovr_SHIFT));
 
+		/* Power up txlogen (JIRA HW43430-225: txlogen needs to be powered up
+		* with "trsw_tx_pwrup_pu", it should have been powered-up by "internalrftxpu_ovr")
+		*/
 		PHY_REG_MOD(pi, LCN20PHY, rfoverride4, trsw_tx_pwrup_ovr, 1);
 		PHY_REG_MOD(pi, LCN20PHY, rfoverride4val, trsw_tx_pwrup_ovr_val, 1);
 
@@ -5959,7 +6010,7 @@ void
 wlc_lcn20phy_set_tx_tone_and_gain_idx(phy_info_t *pi)
 {
 	/* Force WLAN antenna */
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
 	if (LCN20PHY_TX_PWR_CTRL_OFF != wlc_lcn20phy_get_tx_pwr_ctrl(pi)) {
 		int8 curr_pwr_idx_val;
@@ -5991,6 +6042,9 @@ wlc_lcn20phy_dccal_init(phy_info_t *pi, uint8 dccal_mode, bool reset_tbl, uint8 
 	PHY_REG_MOD(pi, LCN20PHY, phyreg2dccal_pktproc_ctrl, dccal_pktproc_initwait, 32);
 
 	if (dccal_mode & LCN20PHY_DCCALMODE_DCOE) {
+		/* FIXME: do we need to do the read and compare operation or we can do unconditional
+		* this perhaps depends on the HW block, what it means to write into these bits
+		*/
 		phy_utils_mod_phyreg(pi, LCN20PHY_phyreg2dccal_config_0,
 			LCN20PHY_INITDCOE_MASK, LCN20PHY_INITDCOE_VAL);
 
@@ -6042,6 +6096,9 @@ wlc_lcn20phy_dccal_init(phy_info_t *pi, uint8 dccal_mode, bool reset_tbl, uint8 
 			};
 		uint16 mask;
 
+		/* FIXME: do we need to do the read and compare operation or we can do unconditional
+		* this perhaps depends on the HW block, what it means to write into these bits
+		*/
 		phy_utils_mod_phyreg(pi, LCN20PHY_phyreg2dccal_config_2,
 			LCN20PHY_INITIDACC_MASK, LCN20PHY_INITIDACC_VAL);
 
@@ -6747,6 +6804,12 @@ wlc_lcn20phy_calc_iq_mismatch(phy_info_t *pi, phy_iq_est_t *est, lcn20phy_iq_mis
 	(int)mismatch->mag, (int)mismatch->angle, (int)val.i, (int)val.q));
 }
 
+/*
+* convert ii qq, iq to [mag phase]
+*
+* FIXME: We should be able to get rid of this wrapper function and use
+*  wlc_lcn20phy_calc_iq_mismatch() directly
+*/
 static void
 wlc_lcn20phy_rxiqcal_pnp(phy_info_t *pi, phy_iq_est_t *iqest, int32 *angle, int32 *mag)
 {
@@ -7167,6 +7230,9 @@ wlc_lcn20phy_tx_iqlo_cal_phy_setup(phy_info_t *pi)
 	/* Force TR switch to Tx for iTR and eTR configurations */
 	wlc_lcn20phy_set_trsw_override(pi, LCN20PHY_TRS_TXMODE, FALSE);
 
+	/* Power up txlogen (JIRA HW43430-225: txlogen needs to be powered up
+	* with "trsw_tx_pwrup_pu", it should have been powered-up by "internalrftxpu_ovr",
+	*/
 	PHY_REG_MOD(pi, LCN20PHY, rfoverride4, trsw_tx_pwrup_ovr, 1);
 	PHY_REG_MOD(pi, LCN20PHY, rfoverride4val, trsw_tx_pwrup_ovr_val, 1);
 	/* Power up DAC and LPF: */
@@ -7412,6 +7478,12 @@ wlc_lcn20phy_tx_iqlo_cal_txpwr(phy_info_t *pi)
 	SAVE_txpwrctrl = wlc_lcn20phy_get_tx_pwr_ctrl(pi);
 	SAVE_indx = wlc_lcn20phy_get_current_tx_pwr_idx(pi);
 	/* ofdm and cck setting */
+	/* FIXME : Will need this later
+	SAVE_lpf_ofdm_tx_bw =
+		PHY_REG_READ(pi, LCN20PHY, lpfbwlutreg3, lpf_ofdm_tx_bw_ctl);
+	SAVE_lpf_ofdm_tx_bw =
+		PHY_REG_READ(pi, LCN20PHY, lpfbwlutreg3, lpf_cck_tx_bw_ctl);
+	*/
 
 	/* set LPF bw for ofdm and cck */
 	PHY_REG_MOD(pi, LCN20PHY, lpfbwlutreg3, lpf_cck_tx_bw_ctl, 0);
@@ -8626,7 +8698,7 @@ wlc_phy_sample_collect_lcn20phy(phy_info_t *pi, wl_samplecollect_args_t *collect
 	old_sslpnCalibClkEnCtrl = phy_utils_read_phyreg(pi, LCN20PHY_sslpnCalibClkEnCtrl);
 
 	/* Force WLAN antenna */
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
 	/* enabling debug clock */
 	PHY_REG_MOD(pi, LCN20PHY, sslpnCalibClkEnCtrl, debugClkEn, 1);
@@ -9419,6 +9491,10 @@ wlc_phy_papd_loopback_radio20692_cleanup_lcn20(phy_info_t *pi)
 static void
 wlc_phy_papd_phy_setup_lcn20(phy_info_t *pi)
 {
+	/* XXX Notes:
+	 *   - also note that in the driver we do a resetCCA after this to be on the safe
+	 *     side; may want to revisit this here, too, in case we run into issues
+	 */
 
 	phy_info_lcn20phy_t *pi_lcn20 = pi->u.pi_lcn20phy;
 
@@ -9506,6 +9582,10 @@ wlc_phy_papd_phy_setup_lcn20(phy_info_t *pi)
 static void
 wlc_phy_papd_phy_cleanup_lcn20(phy_info_t *pi)
 {
+	/* XXX Notes:
+	 *   - also note that in the driver we do a resetCCA after this to be on the safe
+	 *     side; may want to revisit this here, too, in case we run into issues
+	 */
 
 	phy_info_lcn20phy_t *pi_lcn20 = pi->u.pi_lcn20phy;
 	lcn20phy_rxiqcal_phyregs_t *psave = pi_lcn20->rxiqcal_phyregs;
@@ -9831,8 +9911,14 @@ wlc_lcn20phy_rx_power(phy_info_t *pi, uint16 num_samps, uint8 wait_time,
 	if (!suspend)
 		wlapi_suspend_mac_and_wait(pi->sh->physhim);
 
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 
+	/* XXX for non-caled channels, get the left/right
+	 *	caled channel, and do linear interpolation of the
+	 *	delta value of these two caled channel for this non-cal channel;
+	 *	in default setting, the caled channel is (1 3 6 9 12)
+	 *	for channel 13, the delta value is the same as channel 12
+	 */
 	bzero(delta_slope, sizeof(delta_slope));
 	channel_seg = 0;
 	while ((channel > pi_lcn20->rssi_cal_channel[channel_seg]) &&
@@ -11411,6 +11497,14 @@ wlc_lcn20phy_rxpath_rssicorr(phy_info_t *pi, int16 rssi,
 
 	real_total_gain = real_lna1_gain + real_tia_gain + real_dvga1_gain + 2;
 
+	/* XXX for dubuging purpose to report the gain index
+	 *	init_gain_index = ((lna_params->wl_gain_tbl_offset+
+	 *	lna_params->crs_gain_high_gain_db_40mhz)*85)>>8;
+	 *	init_gain = lna_params->crs_gain_high_gain_db_40mhz;
+	 * real_gain_index = (real_total_gain + LCN20PHY_NORTBL_OFFSET_NEW
+	 *	- init_gain)/3 + init_gain_index;
+	 */
+
 	nominal_power = rssi + (real_total_gain<<LCN20_QDB_SHIFT);
 	if (elna_bypass) {
 		nominal_power = nominal_power - ((pi_lcn20->tr_isolation * LCN20PHY_GAIN_STEP)
@@ -11452,6 +11546,12 @@ wlc_lcn20phy_rxpath_rssicorr(phy_info_t *pi, int16 rssi,
 
 	rssi = new_rssi_value;
 
+	/* XXX for non-caled channels, get the left/right
+	 *	caled channel, and do linear interpolation of the
+	 *	delta value of these two caled channel for this non-cal channel;
+	 *	in default setting, the caled channel is (1 3 6 9 12)
+	 *	for channel 13, the delta value is the same as channel 12
+	 */
 	channel_seg = 0;
 	while ((channel > pi_lcn20->rssi_cal_channel[channel_seg]) &&
 		(channel_seg < LCN20PHY_GROUPS-1))
@@ -11569,7 +11669,15 @@ wlc_lcn20phy_rxpath_rssicorr(phy_info_t *pi, int16 rssi,
 			break;
 	}
 
+	/* XXX Based on the frametype and rate info from the PLCP,
+	* corresponding offsets from the NVRAM are applied
+	*/
+
 	if (frm_type == LCN20PHY_CCK) {
+		/* XXX rates: 1,2,5.5,11 => plcp values : 10,20,55,46
+		* NVRAM indices for rate offset will be 0 - 3 for rates 1,2,5.5,11 in
+		* that order
+		*/
 		if (rate == LCN20PHY_RATE_1M) {
 			rssi += pi_lcn20->rssi_rate_offset[0];
 		}
@@ -11588,10 +11696,18 @@ wlc_lcn20phy_rxpath_rssicorr(phy_info_t *pi, int16 rssi,
 	}
 	else if (frm_type == LCN20PHY_OFDM) {
 
+		/* XXX rates : 6,9,12,18,24,36,48,54 => plcp values : 11,15,10,14,9,13,8,12
+		* NVRAM indices  for rate offset will be 4 - 11 for rates
+		* 48,24,12,6,54,36,18,9 in that order
+		*/
 		rssi += pi_lcn20->rssi_rate_offset[LCN20PHY_OFDM_IDX + rate
 			- LCN20PHY_OFDM_PLCP_OFFSET];
 	}
 	else if (frm_type == LCN20PHY_HT) {
+		/* XXX mcs rates:  0,1,2,3,4,5,6,7 => plcp values: 0,1,2,3,4,5,6,7
+		* NVRAM indices  for rate offset will be 12 - 19 for mcs rates
+		* 0,1,2,3,4,5,6,7 in that order
+		*/
 		rssi += pi_lcn20->rssi_rate_offset[LCN20PHY_HT_IDX +rate];
 	}
 	else {

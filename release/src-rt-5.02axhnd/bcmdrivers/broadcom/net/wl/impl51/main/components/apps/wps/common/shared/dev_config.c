@@ -1,7 +1,7 @@
 /*
  * Device config
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: dev_config.c 383928 2013-02-08 04:15:06Z $
+ * $Id: dev_config.c 766179 2018-07-26 07:49:15Z $
  */
 
 #include <string.h>
@@ -91,6 +91,11 @@ devinfo_delete(DevInfo *dev_info)
 			reg_msg_es_del(dev_info->mp_tlvEsM8Ap, 0);
 		if (dev_info->mp_tlvEsM8Sta)
 			reg_msg_es_del(dev_info->mp_tlvEsM8Sta, 0);
+#if defined(MULTIAP)
+		if (dev_info->mp_tlvEsM8BhSta) {
+			reg_msg_es_del(dev_info->mp_tlvEsM8BhSta, 0);
+		}
+#endif	/* MULTIAP */
 
 		free(dev_info);
 	}
@@ -111,3 +116,20 @@ devinfo_getKeyMgmtType(DevInfo *dev_info)
 
 	return WPS_WL_AKM_NONE;
 }
+
+#if defined(MULTIAP)
+uint16
+devinfo_getBackhaulKeyMgmtType(DevInfo *dev_info)
+{
+	char *pmgmt = dev_info->backhaul_keyMgmt;
+
+	if (!strcmp(pmgmt, "WPA-PSK"))
+		return WPS_WL_AKM_PSK;
+	else if (!strcmp(pmgmt, "WPA2-PSK"))
+		return WPS_WL_AKM_PSK2;
+	else if (!strcmp(pmgmt, "WPA-PSK WPA2-PSK"))
+		return WPS_WL_AKM_BOTH;
+
+	return WPS_WL_AKM_NONE;
+}
+#endif	/* MULTIAP */

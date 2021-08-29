@@ -1,7 +1,7 @@
 /*
  * RSSICompute module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_rssi.c 719684 2017-09-06 09:26:48Z $
+ * $Id: phy_rssi.c 770921 2019-01-08 22:15:54Z $
  */
 
 #include <phy_cfg.h>
@@ -59,6 +59,7 @@
 #include "phy_type_rssi.h"
 #include "phy_rssi_cfg.h"
 #include <phy_rssi.h>
+#include <phy_ac_info.h>
 #include <bcmdevs.h>
 
 /* rssi moving average window */
@@ -178,6 +179,44 @@ BCMATTACHFN(phy_rssi_enable_ma)(phy_rssi_info_t *ri, bool enab)
 	return BCME_OK;
 }
 
+void phy_ac_align_sniffer_compute_offset(phy_info_t *pi, d11rxhdr_t *rxh)
+{
+	uint16 low_bit;
+	uint16 high_bit;
+	uint32 total;
+	bool   pos_freq;
+	int32 pll_wild_base_offset;
+	int32 tracked_freq_offsetHz;
+
+	if (pi->u.pi_acphy->sniffer_aligner.enabled &&
+		pi->u.pi_acphy->sniffer_aligner.active) {
+		//printf("\nSniffer Aligner matched packets \n");
+		low_bit = (uint16)PRXS_TRACKED_FREQ_L_REV_GE129(rxh);
+		high_bit = (uint16)PRXS_TRACKED_FREQ_H_REV_GE129(rxh);
+		total = (uint32)((high_bit << 6) + low_bit);
+		pos_freq = TRUE;
+		if (total > (1 << 19)) {
+			total = (1 << 20) - total;
+			pos_freq = FALSE;
+		}
+		tracked_freq_offsetHz = ((int32) total * 4883) >> 13;
+		if (CHSPEC_IS2G(pi->radio_chanspec)) {
+			pll_wild_base_offset = (int32)(total * 4340) / 500000;
+		} else {
+			pll_wild_base_offset = (int32)(total * 7716) / 1000000;
+		}
+		if (!pos_freq) {
+			pll_wild_base_offset = -pll_wild_base_offset;
+			tracked_freq_offsetHz = -tracked_freq_offsetHz;
+		}
+		/* printf("\nTotal = %d, Hz= %d, wildbase_oofset = %d \n",total,
+				tracked_freq_offsetHz, pll_wild_base_offset);
+		*/
+		pi->u.pi_acphy->sniffer_aligner.wild_base_offset = pll_wild_base_offset;
+		pi->u.pi_acphy->sniffer_aligner.active = FALSE;
+	}
+}
+
 /* compute RSSI based on rxh and other info, save result in wrxh */
 int8 BCMFASTPATH
 phy_rssi_compute_rssi(phy_info_t *pi, wlc_d11rxhdr_t *wrxh)
@@ -213,6 +252,12 @@ phy_rssi_compute_rssi(phy_info_t *pi, wlc_d11rxhdr_t *wrxh)
 	/* redirect the request to PHY type specific implementation */
 	ASSERT(fns->compute != NULL);
 	(fns->compute)(fns->ctx, wrxh);
+
+	if (fns->ulofdma_per_user_rxstats != NULL)
+		(fns->ulofdma_per_user_rxstats)(fns->ctx, wrxh);
+
+	if (fns->tracked_freq_offset != NULL)
+		(fns->tracked_freq_offset)(fns->ctx, wrxh);
 
 	/* getting moving average of rssi values */
 	if (info->do_ma)

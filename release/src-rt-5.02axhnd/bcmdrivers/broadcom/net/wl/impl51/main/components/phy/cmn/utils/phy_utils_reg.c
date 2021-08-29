@@ -1,7 +1,7 @@
 /*
  * PHY utils - register access functions.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_utils_reg.c 766999 2018-08-24 01:14:37Z $
+ * $Id: phy_utils_reg.c 766114 2018-07-25 00:46:01Z $
  */
 
 #include <typedefs.h>

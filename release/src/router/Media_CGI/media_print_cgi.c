@@ -1049,56 +1049,16 @@ int test_if_System_folder(const char *const dirname){
     int i;
 
     for(i = 0; MS_System_folder[i] != NULL; ++i){
-        if(!upper_strcmp(dirname, MS_System_folder[i]))
+        if(strcasecmp(dirname, MS_System_folder[i]) == 0)
             return 1;
     }
 
     for(i = 0; Linux_System_folder[i] != NULL; ++i){
-        if(!upper_strcmp(dirname, Linux_System_folder[i]))
+        if(strcasecmp(dirname, Linux_System_folder[i]) == 0)
             return 1;
     }
 
     return 0;
-}
-
-char *get_upper_str(const char *const str, char **target){
-    int len, i;
-    char *ptr;
-
-    len = strlen(str);
-    *target = (char *)malloc(sizeof(char)*(len+1));
-    if(*target == NULL){
-        fprintf(stderr,"No memory \"*target\".\n");
-        return NULL;
-    }
-    ptr = *target;
-    for(i = 0; i < len; ++i)
-        ptr[i] = toupper(str[i]);
-    ptr[len] = 0;
-
-    return ptr;
-}
-
-int upper_strcmp(const char *const str1, const char *const str2){
-    char *upper_str1, *upper_str2;
-    int ret;
-
-    if(str1 == NULL || str2 == NULL)
-        return -1;
-
-    if(get_upper_str(str1, &upper_str1) == NULL)
-        return -1;
-
-    if(get_upper_str(str2, &upper_str2) == NULL){
-        free(upper_str1);
-        return -1;
-    }
-
-    ret = strcmp(upper_str1, upper_str2);
-    free(upper_str1);
-    free(upper_str2);
-
-    return ret;
 }
 
 int

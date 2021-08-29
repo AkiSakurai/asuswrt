@@ -3,7 +3,7 @@
 #
 # Note that this is an direct filter file
 #
-# Copyright 2018 Broadcom
+# Copyright 2019 Broadcom
 #
 # This program is the proprietary software of Broadcom and/or
 # its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
 #
 # <<Broadcom-WL-IPTag/Proprietary:>>
 #
-# $Id: linux-2.6.36-dhdap-gpl-filelist.txt 767441 2018-09-11 11:49:11Z $
+# $Id: linux-2.6.36-dhdap-gpl-filelist.txt 775504 2019-06-02 07:06:05Z $
 #
 # NOTE: Wildcards are NOT allowed in any filelist. List actual file/dir names
 
@@ -35052,6 +35052,7 @@ main/src/shared/pcie_core.c
 main/src/shared/hndpmu.c
 main/src/shared/hndlhl.c
 main/src/shared/hndmem.c
+main/src/shared/linux.module.arm.lds
 main/components/router/bcmdrv/shared/nflash.c
 main/components/router/bcmdrv/shared/hndnand.c
 main/components/router/bcmdrv/shared/ccsflash.c
@@ -37073,6 +37074,7 @@ main/components/router/emf/emfconf/Makefile
 main/components/router/emf/igsconf/prebuilt/igs
 main/components/router/emf/igsconf/Makefile
 main/components/router/hnd/Makefile
+main/components/router/hnd/Makefile.shared
 main/components/router/hnd/hnd_c.c
 main/components/router/hnd/shared_ksyms.sh
 main/components/router/hnd_emf/Makefile
@@ -37781,6 +37783,8 @@ main/components/router/rc/rc.h
 main/components/router/rc/services.c
 main/components/router/rc/udhcpc.c
 main/components/router/rc/usb_hotplug.c
+main/components/router/rc/hostapd_config.c
+main/components/router/rc/wps_pbcd.c
 main/components/router/shared/dict.c
 main/components/router/shared/dict.h
 main/components/router/shared/linux_timer.c
@@ -37810,6 +37814,8 @@ main/components/router/shared/wl.c
 main/components/router/shared/UdpLib.c
 main/components/router/shared/wlif_utils.c
 main/components/router/shared/wlif_utils.h
+main/components/router/shared/wbd_rc_shared.c
+main/components/router/shared/wbd_rc_shared.h
 main/components/router/shared/confmtd_utils.c
 main/components/router/shared/confmtd_utils.h
 main/components/router/shared/cifs_path.h
@@ -41225,6 +41231,8 @@ sys/src/wl/sys/wl_cfg80211.c
 sys/src/wl/sys/wl_cfg80211.h
 sys/src/wl/sys/wl_cfgp2p.c
 sys/src/wl/sys/wl_cfgp2p.h
+sys/src/wl/sys/wl_cfgvendor_common.c
+sys/src/wl/sys/wl_cfgvendor_common.h
 sys/src/wl/sys/wl_cfgvendor.c
 sys/src/wl/sys/wl_cfgvendor.h
 sys/src/wl/sys/wl_core.c
@@ -41274,6 +41282,7 @@ sys/src/shared/bcm_app_utils.c
 sys/src/shared/bcmevent.c
 sys/src/shared/bcm_l2_filter.c
 sys/src/shared/bcmutils.c
+sys/src/include/bcmiov.h
 sys/src/shared/bcmxtlv.c
 sys/src/shared/bcm_psta.c
 sys/src/shared/hnd_pktq.c
@@ -41327,6 +41336,7 @@ sys/src/include/hnd_pktpool.h
 sys/src/include/brcm_nl80211.h
 sys/src/shared/bcmwifi/include/bcmwifi_channels.h
 sys/src/include/dbus.h
+sys/src/include/wlioctl_utils.h
 sys/src/include/dhdioctl.h
 sys/src/include/d11reglist_proto.h
 sys/src/include/epivers.h
@@ -41352,6 +41362,7 @@ sys/src/include/flring_fc.h
 sys/src/include/bcm_l2_filter.h
 sys/components/proto/include/802.11e.h
 sys/components/proto/include/802.11.h
+sys/components/proto/include/802.11r.h
 sys/components/proto/include/802.11s.h
 sys/components/proto/include/802.1d.h
 sys/components/proto/include/802.3.h

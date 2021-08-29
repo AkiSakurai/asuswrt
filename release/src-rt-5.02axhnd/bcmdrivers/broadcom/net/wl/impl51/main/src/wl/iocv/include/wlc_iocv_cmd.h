@@ -1,7 +1,7 @@
 /*
  * IOCV module interface - iovar subcommand facility.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_iocv_cmd.h 622560 2016-03-03 02:41:41Z $
+ * $Id: wlc_iocv_cmd.h 765723 2018-07-13 11:57:53Z $
  */
 
 #ifndef _wlc_iocv_cmd_t_
@@ -59,12 +59,12 @@ typedef int (wlc_iov_cmd_fn_t)(void *ctx, uint8 *params, uint16 plen,
 /*  each mesh submodule defines list of "wl mesh" <cmd> handlers  */
 typedef struct {
 	uint16 cmd;
-	uint16 flags;    /* See IOVF_XXXX flags in wlc_iocv_desc.h */
-	uint16 min_len;  /* for result buffer length validation */
+	uint16 flags;	/* See IOVF_XXXX flags in wlc_iocv_desc.h */
+	uint8 type;	/* See IOVT_XXXX, base type of argument. */
 	wlc_iov_cmd_fn_t *hdlr;
 } wlc_iov_cmd_t;
 
-int wlc_iocv_iov_cmd_proc(void *ctx, const wlc_iov_cmd_t *tbl, uint sz, bool set,
+int wlc_iocv_iov_cmd_proc(wlc_info_t *wlc, void *ctx, const wlc_iov_cmd_t *tbl, uint sz, bool set,
 	void *in_buf, uint in_len, void *out_buf, uint out_len, struct wlc_if *wlcif);
 
 #endif /* _wlc_iocv_cmd_t_ */

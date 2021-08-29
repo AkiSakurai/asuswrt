@@ -8,7 +8,7 @@
  * as the current radio chanspec. The cache entry that is associated with the current
  * chanspec context is called the current cache entry.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
