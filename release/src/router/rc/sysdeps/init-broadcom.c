@@ -2099,6 +2099,12 @@ void eth_phypower(char *port, int onoff){
 	}
 	else
 #endif
+	if(!strncmp(port, "br1", 3) || !strncmp(port, "vlan", 4) || !strncmp(port, "eth", 3))
+	{
+		snprintf(cmd, sizeof(cmd), "ethctl %s phy-power %s", "eth0", onoff ? "up" : "down");
+		system(cmd);
+	}
+	else
 	{
 		snprintf(cmd, sizeof(cmd), "ethctl %s phy-power %s", port, onoff ? "up" : "down");
 		system(cmd);
@@ -2970,6 +2976,12 @@ void init_others(void)
 
 #if defined(RTCONFIG_HND_ROUTER_AX) && defined(BCA_HNDROUTER) && defined(RTCONFIG_HND_WL)
 	wl_thread_affinity_update();
+#endif
+
+#if defined(RTAX88U) || defined(RTAX92U)
+	if(nvram_match("HwVer", "1.0")) {
+		system("pwr config --cpuwait off");
+	}
 #endif
 }
 #else
@@ -7353,22 +7365,42 @@ void init_cfg_excl(char *cfg_excl, unsigned int *ech, int unit)
 }
 
 void dump_exclchans(unsigned int *excs, char *des) {
-
-	int i=0 , j= 0;
+	int i=0 , j= 0, k=0;
 
 	_dprintf("\n%s. dump cfg_excl_chans:\n", des);
 
 	for(i=0; i<3; ++i) {
-		_dprintf("\n<%d>\n", i);
+		_dprintf("\n<wl%d>\n", i);
+		k=0;
 		for(j=0; j<MAX_CHANS; ++j) {
-			_dprintf("[%2x] ", *(excs + i*MAX_CHANS + j));
-			if(j==10)
-				_dprintf("\n");
+			if(*(excs + i*MAX_CHANS + j)) {
+				_dprintf("[%2x] ", *(excs + i*MAX_CHANS + j));
+				++k;
+				if(k%10==0)
+					_dprintf("\n");
+			}
 		}
 	}
 	_dprintf("\n");
 }
 
+int init_exclbase(int unit)
+{
+	if(!nvram_get_int("excbase")) {
+		nvram_set("excbase", "1");
+		nvram_set("wl0_acs_excl_chans_base", nvram_safe_get("wl0_acs_excl_chans"));
+		nvram_set("wl1_acs_excl_chans_base", nvram_safe_get("wl1_acs_excl_chans"));
+		if(unit == 3)
+			nvram_set("wl2_acs_excl_chans_base", nvram_safe_get("wl2_acs_excl_chans"));
+
+		_dprintf("\nset exclchans base:\n0:[%s]\n1:[%s]\n2:[%s]\n", nvram_safe_get("wl0_acs_excl_chans_base"), nvram_safe_get("wl1_acs_excl_chans_base"), nvram_safe_get("wl2_acs_excl_chans_base"));
+		nvram_set("wl0_acs_excl_chans_cfg", "");
+		nvram_set("wl1_acs_excl_chans_cfg", "");
+		nvram_set("wl2_acs_excl_chans_cfg", "");
+		return 0;
+	}
+	return 1;
+}
 #endif
 
 #ifdef RTCONFIG_BCMWL6
@@ -7516,7 +7548,10 @@ void set_acs_ifnames()
 #endif
 
 #ifdef RTCONFIG_AVBLCHAN
-	add_cfgexcl_2_acsexcl(cfg_excl_chans);
+	int excinit = 0;
+	excinit = init_exclbase(unit);
+	if(excinit)
+		add_cfgexcl_2_acsexcl(cfg_excl_chans);
 #endif
 	nvram_set_int("wl0_acs_dfs", 0);
 	nvram_set_int("wl1_acs_dfs", nvram_match("wl1_reg_mode", "h") ? 2 : 0);

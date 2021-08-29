@@ -1487,8 +1487,8 @@ int get_bonding_port_status(int port)
 #elif defined(RTAX92U)
 	int lan_ports=4;
 	int ports[lan_ports+1];
-	/* 4 3 2 1 0	W0 L1 L2 L3 L4 */
-	ports[0]=4; ports[1]=3; ports[2]=2; ports[3]=1; ports[4]=0;
+	/* 7 3 2 1 0	W0 L1 L2 L3 L4 */
+	ports[0]=7; ports[1]=3; ports[2]=2; ports[3]=1; ports[4]=0;
 #elif defined(RTCONFIG_EXTPHY_BCM84880) /* GT-AX11000 */
 	int lan_ports=5;
 	int ports[lan_ports+1];

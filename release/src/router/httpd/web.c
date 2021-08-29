@@ -2957,8 +2957,11 @@ static int validate_apply(webs_t wp, json_object *root) {
 #endif
 #ifdef RTCONFIG_CFGSYNC
 	char *action_script = websGetVar(wp, "action_script", "");
-	char real_action_script[64] = {0};
+	char cfg_action_script[256], acc_action_script[64], cfg_ver[9];
 	json_object *cfg_root = json_object_new_object();
+
+	memset(cfg_action_script, 0, sizeof(cfg_action_script));
+	memset(acc_action_script, 0, sizeof(acc_action_script));
 #endif
 
 	/* go through each nvram value */
@@ -3440,7 +3443,7 @@ static int validate_apply(webs_t wp, json_object *root) {
 		// ugly solution?
 #ifdef RTCONFIG_CFGSYNC
 		if (nvram_match("x_Setting", "1") && pids("cfg_server"))
-			strcat(real_action_script, "chpass");
+			strlcat(acc_action_script, "chpass", sizeof(acc_action_script));
 		else
 #endif
 		notify_rc("chpass");
@@ -3465,8 +3468,11 @@ static int validate_apply(webs_t wp, json_object *root) {
 			mod_account(orig_acc, modified_acc, modified_pass);
 
 #ifdef RTCONFIG_CFGSYNC
-		if (nvram_match("x_Setting", "1") && pids("cfg_server"))
-			strcat(real_action_script, ";restart_ftpsamba");
+		if (nvram_match("x_Setting", "1") && pids("cfg_server")) {
+			if (strlen(acc_action_script))
+				strlcat(acc_action_script, ";", sizeof(acc_action_script));
+			strlcat(acc_action_script, "restart_ftpsamba", sizeof(acc_action_script));
+		}
 		else
 #endif
 		notify_rc_and_wait("restart_ftpsamba");
@@ -3545,13 +3551,17 @@ static int validate_apply(webs_t wp, json_object *root) {
 		if (nvram_match("x_Setting", "1") && pids("cfg_server") &&
 			check_if_file_exist(CFG_SERVER_PID))
 		{
-			char cfg_ver[9] = {0};
-
 			/* add action_script */
 			if (!acc_modified && strlen(action_script) > 0)
 				json_object_object_add(cfg_root, "action_script", json_object_new_string(action_script));
-			else if (acc_modified && strlen(real_action_script))
-				json_object_object_add(cfg_root, "action_script", json_object_new_string(real_action_script));
+			else if (acc_modified && strlen(acc_action_script)) {
+				strlcat(cfg_action_script, acc_action_script, sizeof(cfg_action_script));
+				if (strlen(action_script)) {
+					strlcat(cfg_action_script, ";", sizeof(cfg_action_script));
+					strlcat(cfg_action_script, action_script, sizeof(cfg_action_script));
+				}
+				json_object_object_add(cfg_root, "action_script", json_object_new_string(cfg_action_script));
+			}
 
 			if (check_cfg_changed(cfg_root)) {
 				/* save the changed nvram parameters */
@@ -3564,8 +3574,8 @@ static int validate_apply(webs_t wp, json_object *root) {
 				nvram_set("cfg_ver", cfg_ver);
 				cfg_changed = 1;
 
-				/* trigger cfg_server to send notification */
-				if (acc_modified && strlen(real_action_script) && root) {
+				/* for not from web browser */
+				if (acc_modified && strlen(acc_action_script) && root) {
 					kill_pidfile_s(CFG_SERVER_PID, SIGUSR2);
 					cfg_changed = 0;
 				}

@@ -702,10 +702,6 @@ wl_defaults(void)
 
 		snprintf(prefix, sizeof(prefix), "wl%d_", unit);
 
-#ifdef RTCONFIG_AVBLCHAN
-		nvram_set(strcat_r(prefix, "acs_excl_chans_cfg", tmp), "");
-		nvram_set(strcat_r(prefix, "acs_excl_chans", tmp), "");
-#endif
 		if (strlen(wlx_vifnames))
 		{
 #if defined(RTCONFIG_AMAS)
@@ -770,6 +766,15 @@ wl_defaults(void)
 
 #if defined(RTCONFIG_BCMWL6) && defined(RTCONFIG_PROXYSTA)
 	reset_psr_hwaddr();
+#endif
+#ifdef RTCONFIG_AVBLCHAN
+	nvram_set("wl0_acs_excl_chans_cfg", "");
+	nvram_set("wl1_acs_excl_chans_cfg", "");
+	nvram_set("wl2_acs_excl_chans_cfg", "");
+	nvram_set("wl0_acs_excl_chans", "");
+	nvram_set("wl1_acs_excl_chans", "");
+	nvram_set("wl2_acs_excl_chans", "");
+	nvram_set("excbase", "0");
 #endif
 }
 
@@ -11183,10 +11188,7 @@ dbg("boot/continue fail= %d/%d\n", nvram_get_int("Ate_boot_fail"),nvram_get_int(
 			char word[64], *next;
 			foreach(word, nvram_safe_get("wan_ifnames"), next)
 			{
-				if(!strncmp(word, "br1", 3) || !strncmp(word, "vlan", 4) || !strncmp(word, "eth", 3))
-					eth_phypower("eth0", 1);
-				else
-					eth_phypower(word, 1);
+				eth_phypower(word, 1);
 			}
 #endif
 

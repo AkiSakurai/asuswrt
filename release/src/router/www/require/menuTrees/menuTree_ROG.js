@@ -92,7 +92,7 @@ define(function(){
 				menuName: "Game Radar",
 				index: "menu_GameRadar", 
 				tab: [
-					{url: "Main_GameServer_Content.asp", tabName: "Game Radar"},
+					{url: "Main_GameServer_Content.asp", tabName: "<#AiProtection_title_Radar#>"},
 					{url: "NULL", tabName: "__INHERIT__"}
 				] 
 			},

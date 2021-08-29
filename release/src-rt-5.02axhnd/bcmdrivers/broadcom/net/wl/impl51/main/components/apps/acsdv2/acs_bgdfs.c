@@ -123,7 +123,7 @@ acs_bgdfs_attempt(acs_chaninfo_t * c_info, chanspec_t chspec, bool stunt)
 	 *  - only in EU &
 	 *  - without move (stunt to preclear only)
 	 */
-	if (FIXCHSPEC(c_info)) {
+	if (FIXCHSPEC(c_info) || (c_info->wet_enabled && acs_check_assoc_scb(c_info))) {
 		if (!c_info->country_is_edcrs_eu) {
 			ACSD_INFO("%s BGDFS ch:0x%04x not allowed in ACS_MODE_FIXCHSPEC\n",
 				c_info->name, chspec);

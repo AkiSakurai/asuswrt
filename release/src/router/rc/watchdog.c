@@ -3525,14 +3525,6 @@ void btn_check(void)
 
 			if (is_wps_stopped() || --wsc_timeout == 0)
 			{
-#if defined(HND_ROUTER) && defined(RTCONFIG_PROXYSTA)
-				if (!nvram_get_int("wps_band_x") && (is_dpsr(nvram_get_int("wps_band_x"))
-#ifdef RTCONFIG_DPSTA
-					|| is_dpsta(nvram_get_int("wps_band_x"))
-#endif
-				))
-					eval("wl", "spatial_policy", "1");
-#endif
 				wsc_timeout = 0;
 
 				btn_pressed_setup = BTNSETUP_NONE;
@@ -4249,6 +4241,8 @@ unsigned long get_etlan_count()
 		if (strcmp(ifname, "eth1") && strcmp(ifname, "eth2") && strcmp(ifname, "eth3") && strcmp(ifname, "eth4")
 #ifdef RTCONFIG_EXT_BCM53134
  			&& strcmp(ifname, "eth5")
+#elif defined(RTCONFIG_EXTPHY_BCM84880)
+			&& (strcmp(ifname, "eth5") && !nvram_get_int("wans_extwan"))
 #endif
 		) continue;
 
@@ -4322,8 +4316,9 @@ void fake_etlan_led(void)
 #endif
 
 	phystatus = GetPhyStatus(0);
-#ifdef GTAX11000
-	if (!(phystatus & 0x1e)) // ignore 2.5G port
+#if defined(GTAX11000) && defined(RTCONFIG_EXTPHY_BCM84880)
+	if (	(nvram_get_int("wans_extwan") && !(phystatus & 0x3e)) || // configure 2.5G port as WAN, need to consider 1G WAN connectivity
+		(!nvram_get_int("wans_extwan") && !(phystatus & 0x1e)))  // configure 2.5G port as LAN, ignore 2.5G port
 #else
 	if (!phystatus
 #ifdef RTAX92U

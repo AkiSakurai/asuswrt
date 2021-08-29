@@ -2171,6 +2171,33 @@ done:
 	return TRUE;
 }
 
+static struct {
+                uint reason;
+                const char *reason_name;
+        } reason_names[] = {
+		{ APCS_INIT, "APCS_INIT" },
+		{ APCS_IOCTL, "APCS_IOCTL" },
+		{ APCS_CHANIM, "APCS_CHANIM" },
+		{ APCS_CSTIMER, "APCS_CSTIMER" },
+		{ APCS_TXDLY, "APCS_TXDLY" },
+		{ APCS_NONACSD, "APCS_NONACSD" },
+		{ APCS_DFS_REENTRY, "APCS_DFS_REENTRY" },
+		{ APCS_TXFAIL, "APCS_TXFAIL" },
+        };
+
+const char *reason_string(int rc)
+{
+	int i;
+	const char* reason_name = "UNKNOWN";
+
+	for (i = 0; (i < ARRAYSIZE(reason_names)) && (i < APCS_MAX); i++) {
+		if (reason_names[i].reason == rc)
+			reason_name = reason_names[i].reason_name;
+	}
+
+	return reason_name;
+}
+
 void
 acs_set_chspec(acs_chaninfo_t * c_info, bool update_dfs_params, int ch_chng_reason)
 {
@@ -2183,6 +2210,8 @@ acs_set_chspec(acs_chaninfo_t * c_info, bool update_dfs_params, int ch_chng_reas
 
 	if (c_info->txop_channel_select == 0) {
 		if (chspec) {
+			ACSD_PRINT("acs_set_chspec: 0x%4x (%s) for reason %s\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf), reason_string(c_info->switch_reason));
+
 			bool is_dfs = acs_is_dfs_chanspec(c_info, chspec);
 			bool is_dfs_weather = acs_is_dfs_weather_chanspec(c_info, chspec);
 
@@ -2240,7 +2269,7 @@ acs_set_chspec(acs_chaninfo_t * c_info, bool update_dfs_params, int ch_chng_reas
 				}
 			}
 			else {
-				ACSD_ERROR("set chanspec 0x%4x (%s) failed!\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf));
+				ACSD_PRINT("set chanspec 0x%4x (%s) failed!\n", chspec, wf_chspec_ntoa(chspec, chanspecbuf));
 			}
 		} else {
 			snprintf(prefix, sizeof(prefix), "wl%d_", c_info->unit);

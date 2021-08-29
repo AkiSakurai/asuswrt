@@ -764,8 +764,19 @@ acs_init_run(acs_info_t ** acs_info_p)
 	acs_chaninfo_t * c_info;
 	int ret = 0;
 	acs_init_info(acs_info_p);
+	int if_count = 0, loop_count, last_loop_count = 0;
+	char acs_ifnames[32];
 
-	foreach(name, nvram_safe_get("acs_ifnames"), next) {
+	snprintf(acs_ifnames, sizeof(acs_ifnames), "%s", nvram_safe_get("acs_ifnames"));
+
+	foreach(name, acs_ifnames, next)
+		++if_count;
+
+LOOP_AGAIN:
+	loop_count = 0;
+
+	foreach(name, acs_ifnames, next) {
+		++loop_count;
 		c_info = NULL;
 		osifname_to_nvifname(name, prefix, sizeof(prefix));
 		if (acs_check_bss_is_enabled(name, &c_info, prefix) != BCME_OK) {
@@ -790,6 +801,8 @@ acs_init_run(acs_info_t ** acs_info_p)
 			ACSD_ERROR("acs_start failed for ifname: %s\n", name);
 			break;
 		}
+
+		if (loop_count <= last_loop_count) continue;
 
 		if ((AUTOCHANNEL(c_info) || COEXCHECK(c_info)) && 
 			!(c_info->wet_enabled && acs_check_assoc_scb(c_info))) {
@@ -821,6 +834,11 @@ acs_init_run(acs_info_t ** acs_info_p)
 			c_info->mode = ACS_MODE_DISABLE;
 		}
 	}
+
+	last_loop_count = loop_count;
+
+	if (loop_count != if_count)
+		goto LOOP_AGAIN;
 }
 
 /*

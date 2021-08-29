@@ -1323,7 +1323,7 @@ function hideEventTriggerDesc(){
 										</div>
 
 										<div style="display:flex;align-items:center;margin: 12px;">
-											<div style="font-size:14px;font-family: Xolonium;">Enable LED</div>
+											<div style="font-size:14px;font-family: Xolonium;"><#ROG_LED_Enable#></div>
 											<div class="switch-button-container" >
 												<label for="aura_switch" style="cursor:pointer;">
 													<input type="checkbox" id="aura_switch" class="switch-button" style="display:none;" onchange="aura_enable(this);">
@@ -1336,7 +1336,7 @@ function hideEventTriggerDesc(){
 										<div class="aura-scheme-container">
 											<div class="aura-scheme">
 												<div id="_event" class="aura-icon aura-icon-event" onclick="changeRgbMode(this);"></div>
-												<div class="aura-desc">Event</div>
+												<div class="aura-desc"><#AURA_Event#></div>
 												<div style="width:16px;height:16px;background: url('images/New_ui/helpicon.png');margin: 5px auto 0 auto;cursor:pointer;" onclick="showEventTriggerDesc();"></div>
 											</div>
 											<div class="aura-scheme">
@@ -1408,7 +1408,7 @@ function hideEventTriggerDesc(){
 												<div class="boost-text">AURA RGB</div>
 											</div>
 											<div id="boost_qos" style="display:none;" class="boost-function boost-border-even" onclick="handleBoostKey(this)">
-												<div class="boost-text">Game Boost</div>
+												<div class="boost-text"><#Game_Boost#></div>
 											</div>
 											<div id="boost_geforce" style="display:none;" class="boost-function boost-border-even" onclick="handleBoostKey(this)">
 												<div class="boost-text">Geforce Now</div>

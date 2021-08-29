@@ -3241,13 +3241,13 @@ function set_variable(_variable, _val){
 
 function isPortConflict(_val){
 	if(_val == '<% nvram_get("http_lanport"); %>')
-		return "<#portConflictHint#> HTTP LAN port.";
+		return "<#portConflictHint#>: HTTP LAN port.";
 	else if(_val == '<% nvram_get("dm_http_port"); %>')
-		return "<#portConflictHint#> Download Master.";
+		return "<#portConflictHint#>: <#DM_title#>.";
 	else if(_val == '<% nvram_get("webdav_http_port"); %>')
-		return "<#portConflictHint#> Cloud Disk.";
+		return "<#portConflictHint#>: Cloud Disk.";
 	else if(_val == '<% nvram_get("webdav_https_port"); %>')
-		return "<#portConflictHint#> Cloud Disk.";
+		return "<#portConflictHint#>: Cloud Disk.";
 	else
 		return false;
 }

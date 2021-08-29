@@ -237,6 +237,16 @@ wlc_phy_adjust_ed_thres(phy_info_t *pi, int32 *assert_thresh_dbm, bool set_thres
 	return BCME_UNSUPPORTED;
 }
 
+int
+wlc_phy_update_ed_thres(phy_info_t *pi, int32 *assert_thresh_dbm, bool set_threshold)
+{
+        int err = BCME_OK;
+
+        err = wlc_phy_adjust_ed_thres(pi, assert_thresh_dbm, set_threshold);
+
+        return err;
+}
+
 /* Rx desense Module */
 #if defined(RXDESENS_EN)
 int
