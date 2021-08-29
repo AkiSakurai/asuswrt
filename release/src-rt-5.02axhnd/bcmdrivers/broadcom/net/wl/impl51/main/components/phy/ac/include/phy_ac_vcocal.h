@@ -1,7 +1,7 @@
 /*
  * ACPHY VCO CAL module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_vcocal.h 775385 2019-05-29 11:30:21Z $
+ * $Id: phy_ac_vcocal.h 779474 2019-09-30 22:16:58Z $
  */
 
 #ifndef _phy_ac_vcocal_h_
@@ -87,25 +87,21 @@ extern int wlc_phy_radio2069x_vcocal_isdone(phy_info_t *pi, bool set_delay, bool
 extern void wlc_phy_28nm_radio_vcocal(phy_info_t *pi, uint8 cal_mode, uint8 coupling_mode);
 extern void wlc_phy_28nm_radio_vcocal_isdone(phy_info_t *pi, bool set_delay);
 extern void wlc_phy_20694_radio_vcocal(phy_info_t *pi, uint8 cal_mode, uint8 coupling_mode);
-extern void wlc_phy_20696_radio_vcocal(phy_info_t *pi, uint8 cal_mode, uint8 coupling_mode);
 extern void wlc_phy_20698_radio_vcocal(phy_info_t *pi, uint8 cal_mode, uint8 coupling_mode,
 	uint8 logen_mode);
 extern void wlc_phy_20704_radio_vcocal(phy_info_t *pi);
 extern void wlc_phy_20707_radio_vcocal(phy_info_t *pi);
 extern void wlc_phy_20709_radio_vcocal(phy_info_t *pi);
 extern void wlc_phy_radio20694_vcocal_isdone(phy_info_t *pi, bool set_delay, bool cache_calcode);
-extern void wlc_phy_radio20696_vcocal_isdone(phy_info_t *pi, bool set_delay, bool cache_calcode);
-extern void wlc_phy_radio20698_vcocal_isdone(phy_info_t *pi, bool set_delay);
+extern bool wlc_phy_radio20698_vcocal_isdone(phy_info_t *pi, bool set_delay);
 extern void wlc_phy_radio20704_vcocal_isdone(phy_info_t *pi, bool set_delay);
 extern void wlc_phy_radio20707_vcocal_isdone(phy_info_t *pi, bool set_delay);
 extern void wlc_phy_radio20709_vcocal_isdone(phy_info_t *pi, bool set_delay);
+extern void wlc_phy_radio20698_vcocal_done_check(phy_info_t *pi, bool set_delay);
 
 /* 20695 vco cal */
 #define VCO_CAL_MODE_20695              0
 #define VCO_CAL_COUPLING_MODE_20695     0
-/* 20696 vco cal */
-#define VCO_CAL_MODE_20696              0
-#define VCO_CAL_COUPLING_MODE_20696     0
 /* 20698 vco cal */
 #define VCO_CAL_MODE_20698              0
 #define VCO_CAL_COUPLING_MODE_20698     1

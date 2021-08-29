@@ -1,7 +1,7 @@
 /*
  * ACPHY 20695 Radio PLL configuration
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_pllconfig_20695.h 648459 2016-07-12 12:29:59Z $
+ * $Id: phy_ac_pllconfig_20695.h 778873 2019-09-12 09:45:22Z $
  */
 
 #ifndef _PHY_AC_20695_PLLCONFIG_H
@@ -184,7 +184,7 @@
 #define PLL_CONFIG_20695_VAL_ENTRY(pll_struct, offset, val) \
 	pll_struct->reg_field_val[IDX_20695_##offset] = val
 
-#if defined(DBAND) || defined(USE_5G_PLL_FOR_2G)
+#if defined(MULTIBAND) || defined(USE_5G_PLL_FOR_2G)
 #define PLL_CONFIG_20695_REG_INFO_ENTRY(pi, pll_str, offset, regpfx, reg2g, reg5g, fld2g, fld5g) \
 	do { \
 	pll_str->reg_addr_2g[IDX_20695_##offset] = RADIO_REG_20695(pi, RFP, reg2g, 0); \
@@ -207,7 +207,7 @@
 	pll_str->reg_field_shift_2g[IDX_20695_##offset] = \
 			RF_##20695##_##reg2g##_##fld2g##_SHIFT(pi->pubpi->radiorev); \
 	} while (0)
-#endif /* DBAND */
+#endif /* MULTIBAND */
 
 /* structure to hold computed PLL config values */
 typedef struct {

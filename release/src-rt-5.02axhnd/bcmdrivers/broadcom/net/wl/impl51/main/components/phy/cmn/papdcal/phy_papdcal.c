@@ -1,7 +1,7 @@
 /*
  * PAPD CAL module implementation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_papdcal.c 657373 2016-09-01 01:08:38Z $
+ * $Id: phy_papdcal.c 785862 2020-04-08 01:20:21Z $
  */
 
 #include <phy_cfg.h>
@@ -308,12 +308,144 @@ int phy_papdcal_get_lut_idx1(phy_info_t *pi, int32* idx)
 }
 
 int
+phy_papdcal_get_idx(phy_info_t *pi, int32* idx)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->get_idx != NULL) {
+		return (fns->get_idx)(fns->ctx, idx);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
 phy_papdcal_set_idx(phy_info_t *pi, int8 idx)
 {
 	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
 
 	if (fns->set_idx != NULL) {
 		return (fns->set_idx)(fns->ctx, idx);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_papdcal_get_bbmult(phy_info_t *pi, int32* bbmult)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->get_bbmult != NULL) {
+		return (fns->get_bbmult)(fns->ctx, bbmult);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_papdcal_set_bbmult(phy_info_t *pi, int32 bbmult)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->set_bbmult != NULL) {
+		return (fns->set_bbmult)(fns->ctx, bbmult);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_papdcal_get_extraepsoffset(phy_info_t *pi, int32* extraepsoffset)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->get_extraepsoffset != NULL) {
+		return (fns->get_extraepsoffset)(fns->ctx, extraepsoffset);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_papdcal_set_extraepsoffset(phy_info_t *pi, int32 extraepsoffset)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->set_extraepsoffset != NULL) {
+		return (fns->set_extraepsoffset)(fns->ctx, extraepsoffset);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_papdcal_get_tiagain(phy_info_t *pi, int32* tiagain)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->get_tiagain != NULL) {
+		return (fns->get_tiagain)(fns->ctx, tiagain);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_papdcal_set_tiagain(phy_info_t *pi, int8 tiagain)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->set_tiagain != NULL) {
+		return (fns->set_tiagain)(fns->ctx, tiagain);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_papdcal_get_comp_disable(phy_info_t *pi, int32* comp_disable)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->get_comp_disable != NULL) {
+		return (fns->get_comp_disable)(fns->ctx, comp_disable);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_papdcal_set_comp_disable(phy_info_t *pi, int8 comp_disable)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->set_comp_disable != NULL) {
+		return (fns->set_comp_disable)(fns->ctx, comp_disable);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_papdcal_get_dump(phy_info_t *pi, int32* papdcal_dump)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->get_dump != NULL) {
+		return (fns->get_dump)(fns->ctx, papdcal_dump);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_papdcal_set_dump(phy_info_t *pi, int8 papdcal_dump)
+{
+	phy_type_papdcal_fns_t *fns = pi->papdcali->priv->fns;
+
+	if (fns->set_dump != NULL) {
+		return (fns->set_dump)(fns->ctx, papdcal_dump);
 	} else {
 		return BCME_UNSUPPORTED;
 	}

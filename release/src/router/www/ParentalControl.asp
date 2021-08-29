@@ -198,7 +198,7 @@ function register_event(){
 
 function initial(){
 	show_menu();
-	if(based_modelid == "GT-AC5300" || based_modelid == "GT-AC9600" || based_modelid == "RT-AC1200" || based_modelid == "RT-AC1200GU"){
+	if(hnd_support || based_modelid == "RT-AC1200" || based_modelid == "RT-AC1200_V2" || based_modelid == "RT-AC1200GU" || based_modelid == "RT-N19"){
 		$("#nat_desc").hide();
 	}
 
@@ -208,7 +208,8 @@ function initial(){
 		document.getElementById('desc_title').innerHTML = "<#ParentalCtrl_Desc_TS#>";
 		document.getElementById('web_title').innerHTML = "<#Web_Title#> - <#Time_Scheduling#>";
 		document.getElementById('PC_enable').innerHTML = "<#ParentalCtrl_Enable_TS#>";
-		document.getElementById('switch_menu').style.display = "";
+		if(isSupport("webs_filter") && isSupport("apps_filter"))
+			document.getElementById('switch_menu').style.display = "";
 	}
 	document.getElementById('disable_NAT').href = "Advanced_SwitchCtrl_Content.asp?af=ctf_disable_force";	//this id is include in string : #ParentalCtrl_disable_NAT#
 
@@ -238,8 +239,10 @@ function initial(){
 	var mac = cookie.get("time_scheduling_mac");
 	if(mac != "" && mac != null) {
 		var idx = MULTIFILTER_MAC_row.indexOf(mac);
-		gen_lantowanTable(idx);
-		window.location.hash = "edit_time_anchor";                   
+		if(idx != -1){
+			gen_lantowanTable(idx);
+			window.location.hash = "edit_time_anchor";
+		}
 		cookie.unset("time_scheduling_mac");
 	}
 }
@@ -768,7 +771,7 @@ function addRow_main(upper){
 		return false;
 	}
 	
-	if(!check_macaddr(document.form.PC_mac, check_hwaddr_flag(document.form.PC_mac))){
+	if(!check_macaddr(document.form.PC_mac, check_hwaddr_flag(document.form.PC_mac, 'inner'))){
 		document.form.PC_mac.focus();
 		document.form.PC_mac.select();
 		return false;	
@@ -943,7 +946,7 @@ function show_inner_tab(){
 }
 </script></head>
 
-<body onload="initial();" onunload="unload_body();" onselectstart="return false;">
+<body onload="initial();" onunload="unload_body();" onselectstart="return false;" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 

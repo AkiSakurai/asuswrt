@@ -1,7 +1,7 @@
 /*
  * Proxd FTM method implementation - Vendor-Specific support. See twiki FineTimingMeasurement.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmvs.c 777286 2019-07-25 19:43:30Z $
+ * $Id: pdftmvs.c 788031 2020-06-18 14:10:58Z $
  */
 
 #include "pdftmpvt.h"
@@ -269,12 +269,12 @@ pdftm_vs_is_ftm_action(pdftm_t *ftm, const dot11_management_header_t *hdr,
 */
 static int
 ftm_vs_handle_rx_initiator_rpt(pdftm_t *ftm, wlc_bsscfg_t *bsscfg,
-	const dot11_management_header_t *hdr, const uint8 *body, uint body_len,
-	const wlc_d11rxhdr_t *wrxh, ratespec_t rspec)
+	dot11_management_header_t *hdr, uint8 *body, uint body_len,
+	wlc_d11rxhdr_t *wrxh, ratespec_t rspec)
 {
-	const dot11_action_vs_frmhdr_t *vs_afhdr;
+	dot11_action_vs_frmhdr_t *vs_afhdr;
 	int err = BCME_OK;
-	const bcm_xtlv_t *p_tlvs;
+	bcm_xtlv_t *p_tlvs;
 	uint tlvs_len;
 	pdftm_session_t *sn = NULL;
 	pdftm_notify_info_t notify_info;
@@ -289,14 +289,14 @@ ftm_vs_handle_rx_initiator_rpt(pdftm_t *ftm, wlc_bsscfg_t *bsscfg,
 	/* no need to parse xtlvs of an initiator-report, simply propagate to the
 	 * host/app if applicable (see event_mask)
 	 */
-	vs_afhdr = (const dot11_action_vs_frmhdr_t *) body;
-	p_tlvs = (const bcm_xtlv_t *) vs_afhdr->data;
+	vs_afhdr = (dot11_action_vs_frmhdr_t *) body;
+	p_tlvs = (bcm_xtlv_t *) vs_afhdr->data;
 	tlvs_len = body_len - DOT11_ACTION_VS_HDR_LEN; /* including XTLV headers */
 
 	FTM_INIT_SESSION_NOTIFY_INFO(&notify_info, NULL, &hdr->sa,
 		WL_PROXD_EVENT_VS_INITIATOR_RPT,
 		D11RXHDR_ACCESS_VAL(&wrxh->rxhdr, ftm->wlc->pub->corerev, RxChan),
-		rspec, (const uint8 *)p_tlvs, tlvs_len);
+		rspec, (uint8 *)p_tlvs, tlvs_len);
 	(void) pdftm_notify(ftm, sn != NULL ? sn->bsscfg : bsscfg,
 		PDFTM_NOTIF_EVENT_TYPE, &notify_info);
 
@@ -329,11 +329,11 @@ ftm_vs_handle_rx_collect(pdftm_t *ftm, wlc_bsscfg_t *bsscfg,
 	handle receiving a FTM Vendor Specific Action Frame
 */
 int
-pdftm_vs_rx_frame(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, const dot11_management_header_t *hdr,
-	const uint8 *body, uint body_len, const wlc_d11rxhdr_t *wrxh, ratespec_t rspec)
+pdftm_vs_rx_frame(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, dot11_management_header_t *hdr,
+	uint8 *body, uint body_len, wlc_d11rxhdr_t *wrxh, ratespec_t rspec)
 {
 	int err;
-	const dot11_action_vs_frmhdr_t *vs_afhdr;
+	dot11_action_vs_frmhdr_t *vs_afhdr;
 
 	ASSERT(bsscfg != NULL);
 
@@ -346,7 +346,7 @@ pdftm_vs_rx_frame(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, const dot11_management_hea
 	}
 
 	err = BCME_UNSUPPORTED;
-	vs_afhdr = (const dot11_action_vs_frmhdr_t *)body;
+	vs_afhdr = (dot11_action_vs_frmhdr_t *)body;
 	if (vs_afhdr->type == BRCM_FTM_VS_AF_TYPE) {
 		switch (vs_afhdr->subtype) {
 			case BRCM_FTM_VS_INITIATOR_RPT_SUBTYPE:
@@ -545,6 +545,7 @@ ftm_vs_pack_sec_params(pdftm_session_t *sn, pdburst_session_info_t *bsi, uint8 *
 
 #ifdef FTM_DONGLE_DEBUG
 	if (FTM_DEBUG_OPT(sn->ftm, WL_PROXD_DEBUG_SEC)) {
+	    	if (WL_ERROR_ON())
 		prhex("ri_rr:", rbuf, rlen);
 	}
 #endif // endif
@@ -1021,8 +1022,9 @@ int pdftm_vs_prep_tx(void *ctx, pdburst_frame_type_t type,
 	uint max_tlv_len = BCM_TLV_HDR_SIZE + BCM_TLV_MAX_DATA_SIZE;
 	uint8 *ri_rr = NULL;
 	wlc_phy_tof_secure_2_0_t  tof_sec_params;
-	bzero(&tof_sec_params, sizeof(tof_sec_params));
 	wlc_info_t *wlc;
+
+	bzero(&tof_sec_params, sizeof(tof_sec_params));
 
 	ASSERT(FTM_VALID_SESSION(sn));
 
@@ -1240,6 +1242,7 @@ int vs_prep_mf_buf(uint8 *body, uint body_max, uint len, pdburst_session_info_t 
 	len += mf_len;
 
 #ifdef BCMDBG
+	if (WL_ERROR_ON())
 	prhex("mf-buf Frm body", body, len);
 #endif // endif
 
@@ -1314,7 +1317,9 @@ pdftm_vs_rx(pdburst_method_ctx_t ctx, pdburst_frame_type_t type,
 					(type != PDBURST_FRAME_TYPE_MEAS_END)) {
 					break;
 				}
-
+				if (bsi->vs_meas_info == NULL) {
+					break;
+				}
 				err = ftm_vs_unpack_meas_info(sn,
 					tlv->data, tlv->len, bsi);
 				if (err) {

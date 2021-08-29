@@ -1,7 +1,7 @@
 /*
  * NPHY RADIO contorl module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_n_radio.c 672101 2016-11-24 06:06:10Z $
+ * $Id: phy_n_radio.c 778608 2019-09-05 16:50:19Z $
  */
 
 #include <typedefs.h>
@@ -198,18 +198,18 @@ phy_n_radio_query_idcode(phy_info_t *pi)
 	if (D11REV_GE(pi->sh->corerev, 24)) {
 		uint32 b0, b1, b2;
 
-		W_REG(pi->sh->osh, D11_radioregaddr(pi), 0);
+		W_REG(pi->sh->osh, D11_radioregaddr(pi), (uint16)0);
 #ifdef __mips__
 		(void)R_REG(pi->sh->osh, D11_radioregaddr(pi));
 #endif // endif
 		b0 = (uint32)R_REG(pi->sh->osh, D11_radioregdata(pi));
-		W_REG(pi->sh->osh, D11_radioregaddr(pi), 1);
+		W_REG(pi->sh->osh, D11_radioregaddr(pi), (uint16)1);
 #ifdef __mips__
 		(void)R_REG(pi->sh->osh, D11_radioregaddr(pi));
 #endif // endif
 		b1 = (uint32)R_REG(pi->sh->osh, D11_radioregdata(pi));
 
-		W_REG(pi->sh->osh, D11_radioregaddr(pi), 2);
+		W_REG(pi->sh->osh, D11_radioregaddr(pi), (uint16)2);
 #ifdef __mips__
 		(void)R_REG(pi->sh->osh, D11_radioregaddr(pi));
 #endif // endif
@@ -217,7 +217,7 @@ phy_n_radio_query_idcode(phy_info_t *pi)
 		idcode = ((b0  & 0xf) << 28) | (((b2 << 8) | b1) << 12) | ((b0 >> 4) & 0xf);
 	}
 	else {
-		W_REG(pi->sh->osh, D11_PHY_REG_B(pi), RADIO_IDCODE);
+		W_REG(pi->sh->osh, D11_PHY_REG_B(pi), (uint16)RADIO_IDCODE);
 #ifdef __mips__
 		(void)R_REG(pi->sh->osh, D11_PHY_REG_B(pi));
 #endif // endif

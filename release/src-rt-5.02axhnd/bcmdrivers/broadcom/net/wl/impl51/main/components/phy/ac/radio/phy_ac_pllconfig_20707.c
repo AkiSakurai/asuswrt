@@ -1,7 +1,7 @@
 /*
  * ACPHY 20707 Radio PLL configuration
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -992,7 +992,7 @@ wlc_phy_radio20707_pll_tune(phy_info_t *pi, pll_config_20707_tbl_t *pll, uint32 
 	rfpll_vco_cvar_dec = 9;
 	rfpll_vco_ALC_ref_ctrl_dec = 10;
 	rfpll_vco_bias_mode_dec = 1;
-	rfpll_vco_tempco_dcadj_dec = 3;
+	rfpll_vco_tempco_dcadj_dec = 4;
 	rfpll_vco_tempco_dec = 5;
 	PLL_CONFIG_20707_VAL_ENTRY(pll, RFPLL_VCO_CVAR, rfpll_vco_cvar_dec);
 	PLL_CONFIG_20707_VAL_ENTRY(pll, RFPLL_VCO_ALC_REF_CTRL, rfpll_vco_ALC_ref_ctrl_dec);

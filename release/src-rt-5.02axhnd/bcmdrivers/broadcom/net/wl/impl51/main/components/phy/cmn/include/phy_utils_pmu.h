@@ -1,7 +1,7 @@
 /*
  * PMU control module internal interface - shared by PHY type specific implementations.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_utils_pmu.h 659421 2016-09-14 06:45:22Z $
+ * $Id: phy_utils_pmu.h 781636 2019-11-26 10:48:34Z $
  */
 
 #ifndef _phy_utils_pmu_h_
@@ -56,4 +56,6 @@
 
 void phy_utils_pmu_regcontrol_access(phy_info_t *pi, uint8 addr, uint32* val, bool write);
 void phy_utils_pmu_chipcontrol_access(phy_info_t *pi, uint8 addr, uint32* val, bool write);
+void phy_utils_pmu_bbpll_freq_switch(phy_info_t *pi, uint *pll_val, uint restore);
+
 #endif /* _phy_utils_pmu_h_ */

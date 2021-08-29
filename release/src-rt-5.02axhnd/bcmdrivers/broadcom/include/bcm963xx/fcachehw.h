@@ -99,7 +99,7 @@ typedef enum
  * account HW flows */
 #define FHW_MAX_ENT         65536
 #else
-#define FHW_MAX_ENT         16384     /* Maximum number of entries      */
+#define FHW_MAX_ENT         16512     /* Maximum number of entries      */
 #endif
 #if (FHW_MAX_ENT > (128*1024))
 #error "Invalid number of HW Accelerator entries, DO NOT EXCEED 128K" 

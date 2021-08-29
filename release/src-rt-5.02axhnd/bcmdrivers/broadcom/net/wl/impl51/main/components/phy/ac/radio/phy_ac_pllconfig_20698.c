@@ -1,7 +1,7 @@
 /*
  * ACPHY 20698 Radio PLL configuration
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -107,6 +107,8 @@
 #define CONST_3_OVER_2_FX  0xc0000000
 /* 2/3 in (0.1.31) */
 #define CONST_2_OVER_3_FX  0x55555555
+/* 3/4 in (0.1.31) */
+#define CONST_3_OVER_4_FX  0x60000000
 /* 13.151136 in (0.16.16) */
 #define CONST_13P151136_FX 0x000d26b1
 /* 1607.45  in (0.16.16) */
@@ -185,6 +187,10 @@
 #define RFPLL_VCOCAL_FORCE_AUX1_OVRVAL_DEC		0
 #define RFPLL_VCOCAL_FORCE_AUX2_OVR_DEC			0
 #define RFPLL_VCOCAL_FORCE_AUX2_OVRVAL_DEC		0
+#define RFPLL_VCOCAL_FORCE_AUX1_OVR_ADJ_DEC		1
+#define RFPLL_VCOCAL_FORCE_AUX1_OVRVAL_ADJ_DEC		0
+#define RFPLL_VCOCAL_FORCE_AUX2_OVR_ADJ_DEC		1
+#define RFPLL_VCOCAL_FORCE_AUX2_OVRVAL_ADJ_DEC		0
 #define RFPLL_VCO_CAP_MODE_DEC					0
 #define CAP_MULTIPLIER_RATIO					8
 #define CAP_MULTIPLIER_RATIO_PLUS_ONE			9
@@ -194,6 +200,7 @@
 #define USE_DOUBLER					1
 /* VCO_SELECT: 0->VCO1; 1->VCO2; 2->VCO1+VCO2 */
 #define VCO_SELECT					2
+#define VCO_SELECT_ADJ					0
 
 /* No of fraction bits */
 #define NF0		0
@@ -318,7 +325,7 @@ static void phy_ac_radio20698_write_pll_config(phy_info_t *pi, pll_config_20698_
 static void BCMATTACHFN(phy_ac_radio20698_pll_config_const_calc)(phy_info_t *pi,
 		pll_config_20698_tbl_t *pll);
 static void phy_ac_radio20698_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
-		uint8 ac_mode, pll_config_20698_tbl_t *pll);
+		uint8 ac_mode, pll_config_20698_tbl_t *pll, bool adj_state);
 #if DBG_PLL != 0
 static void print_pll_config_20698(pll_config_20698_tbl_t *pll, uint32 lo_freq,
 	uint32 loop_bw, uint32 icp_fx);
@@ -329,10 +336,39 @@ wlc_phy_radio20698_pll_tune(phy_info_t *pi, pll_config_20698_tbl_t *pll, uint32 
                             uint8 logen_mode)
 {
 	uint8 ac_mode;
+	phy_ac_chanmgr_info_t *chanmgri = pi->u.pi_acphy->chanmgri;
+	bool vco_pll_adjust_state;
+	acphy_vco_pll_adjust_mode_t vco_pll_adjust_mode;
 	uint8 pll_num = (logen_mode == 4) ? 1 : 0; /* FIXME43684: Only PLL0 supported right now */
 
 	ac_mode = 1;
-	phy_ac_radio20698_pll_config_ch_dep_calc(pi, chan_freq, ac_mode, pll);
+
+	// Based on vco_pll_adjust_mode, determine to use which vco_pll setting
+	// logen_div3en is reset by "wlc_phy_radio20698_upd_band_related_reg", no need to restore
+	// rfpll_vco_buf_sel_1p8V_1p0V is restored to preferred setting if needed
+	// The adjust setting is only for PLL0
+	vco_pll_adjust_state = (pll_num == 0) ?
+		phy_ac_chanmgr_get_data(chanmgri)->vco_pll_adjust_state : FALSE;
+	vco_pll_adjust_mode = phy_ac_chanmgr_get_data(chanmgri)->vco_pll_adjust_mode;
+	if ((chan_freq == 5510) || (chan_freq == 5590)) {
+		if (((vco_pll_adjust_mode == ACPHY_PLL_ADJ_MODE_AUTO) && vco_pll_adjust_state) ||
+			(vco_pll_adjust_mode == ACPHY_PLL_ADJ_MODE_ON)) {
+			vco_pll_adjust_state = TRUE;
+			MOD_RADIO_PLLREG_20698(pi, PLL_VCO7, pll_num,
+				rfpll_vco_buf_sel_1p8V_1p0V, 0);
+			MOD_RADIO_PLLREG_20698(pi, LOGEN_REG0, pll_num, logen_div3en, 1);
+		} else {
+			vco_pll_adjust_state = FALSE;
+			MOD_RADIO_PLLREG_20698(pi, PLL_VCO7, pll_num,
+				rfpll_vco_buf_sel_1p8V_1p0V, 1);
+			MOD_RADIO_PLLREG_20698(pi, LOGEN_REG0, pll_num, logen_div3en, 0);
+		}
+	} else {
+		vco_pll_adjust_state = FALSE;
+		MOD_RADIO_PLLREG_20698(pi, PLL_VCO7, pll_num, rfpll_vco_buf_sel_1p8V_1p0V, 1);
+	}
+	phy_ac_chanmgr_get_data(chanmgri)->vco_pll_adjust_state = vco_pll_adjust_state;
+	phy_ac_radio20698_pll_config_ch_dep_calc(pi, chan_freq, ac_mode, pll, vco_pll_adjust_state);
 
 	/* Write computed values to PLL registers */
 	phy_ac_radio20698_write_pll_config(pi, pll, pll_num);
@@ -696,7 +732,7 @@ BCMATTACHFN(phy_ac_radio20698_pll_config_const_calc)(phy_info_t *pi, pll_config_
 
 static void
 phy_ac_radio20698_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
-	uint8 ac_mode, pll_config_20698_tbl_t *pll)
+	uint8 ac_mode, pll_config_20698_tbl_t *pll, bool adj_state)
 {
 	/* 20698_procs.tcl r710814: 20698_pll_config */
 	uint32 icp_fx;
@@ -707,7 +743,8 @@ phy_ac_radio20698_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 	uint32 temp_32;
 	uint32 temp_32_1;
 	uint32 dcv_fx;
-	uint32 vco_freq_fx;
+	uint64 vco_freq_fx;
+	bool vco_freq_fx_overflow;
 	uint32 divide_ratio_fx;
 	uint32 ndiv_over_kvco_fx;
 	uint8 enable_coupled_VCO;
@@ -787,10 +824,36 @@ phy_ac_radio20698_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 	/* In 2G: VCO = LO x 3/2 */
 	/* In 5G: VCO = LO x 2/3  */
 	/* <0.13.0> * <0.1.31> --> <0.12,20> */
-	vco_freq_fx = (uint32)math_fp_mult_64(
+	vco_freq_fx = math_fp_mult_64(
 		lo_freq,
-		(lo_freq <= 3000)? CONST_3_OVER_2_FX : CONST_2_OVER_3_FX,
+		(lo_freq <= 3000)? CONST_3_OVER_2_FX :
+		(adj_state == 1)? CONST_3_OVER_4_FX : CONST_2_OVER_3_FX,
 		NF0, NF31, NF20);
+
+	// For some freq and multiplier combinations, vco_freq_fx would need 33 bits
+	vco_freq_fx_overflow = ((vco_freq_fx >> 32) != 0) ? TRUE : FALSE;
+
+	if (adj_state) {
+		pll->vco_select = VCO_SELECT_ADJ;
+		PLL_CONFIG_20698_VAL_ENTRY(pll, RFPLL_VCOCAL_FORCE_AUX1_OVR,
+			RFPLL_VCOCAL_FORCE_AUX1_OVR_ADJ_DEC);
+		PLL_CONFIG_20698_VAL_ENTRY(pll, RFPLL_VCOCAL_FORCE_AUX1_OVRVAL,
+			RFPLL_VCOCAL_FORCE_AUX1_OVRVAL_ADJ_DEC);
+		PLL_CONFIG_20698_VAL_ENTRY(pll, RFPLL_VCOCAL_FORCE_AUX2_OVR,
+			RFPLL_VCOCAL_FORCE_AUX2_OVR_ADJ_DEC);
+		PLL_CONFIG_20698_VAL_ENTRY(pll, RFPLL_VCOCAL_FORCE_AUX2_OVRVAL,
+			RFPLL_VCOCAL_FORCE_AUX2_OVRVAL_ADJ_DEC);
+	} else {
+		pll->vco_select = VCO_SELECT;
+		PLL_CONFIG_20698_VAL_ENTRY(pll, RFPLL_VCOCAL_FORCE_AUX1_OVR,
+			RFPLL_VCOCAL_FORCE_AUX1_OVR_DEC);
+		PLL_CONFIG_20698_VAL_ENTRY(pll, RFPLL_VCOCAL_FORCE_AUX1_OVRVAL,
+			RFPLL_VCOCAL_FORCE_AUX1_OVRVAL_DEC);
+		PLL_CONFIG_20698_VAL_ENTRY(pll, RFPLL_VCOCAL_FORCE_AUX2_OVR,
+			RFPLL_VCOCAL_FORCE_AUX2_OVR_DEC);
+		PLL_CONFIG_20698_VAL_ENTRY(pll, RFPLL_VCOCAL_FORCE_AUX2_OVRVAL,
+			RFPLL_VCOCAL_FORCE_AUX2_OVRVAL_DEC);
+	}
 	/* ------------------------------------------------------------------- */
 
 	/* ------------------------------------------------------------------- */
@@ -819,7 +882,11 @@ phy_ac_radio20698_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 	divide_ratio_fx = math_fp_round_32(divide_ratio_fx, (nf - NF21));
 
 	/* <0.32.0> / <0.12.20> --> <0.(32 - nf).nf> */
-	nf = math_fp_div_64(lo_freq, vco_freq_fx, NF0, NF20, &lo_div_vco_ratio_fx);
+	if (vco_freq_fx_overflow) {
+		nf = math_fp_div_64(lo_freq, vco_freq_fx >> 1, NF0, NF20, &lo_div_vco_ratio_fx);
+	} else {
+		nf = math_fp_div_64(lo_freq, vco_freq_fx, NF0, NF20, &lo_div_vco_ratio_fx);
+	}
 	/* floor(<0.(32-nf).nf>, (nf-16)) -> 0.16.16 */
 	lo_div_vco_ratio_fx = math_fp_floor_32(lo_div_vco_ratio_fx, (nf - NF16));
 
@@ -831,9 +898,13 @@ phy_ac_radio20698_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 	   to calculate the next bit. This time is required by vco to settle.
 	*/
 	/* <0.16.16> * <0.8.24> --> <0.8.16> */
-	rfpll_vcocal_XtalCount_raw_fx = (uint32)math_fp_mult_64(lo_div_vco_ratio_fx << 1,
+	if (vco_freq_fx_overflow) {
+		rfpll_vcocal_XtalCount_raw_fx = (uint32)math_fp_mult_64(lo_div_vco_ratio_fx,
+			pll->xtal_fx, NF16, NF24, NF16);
+	} else {
+		rfpll_vcocal_XtalCount_raw_fx = (uint32)math_fp_mult_64(lo_div_vco_ratio_fx << 1,
 		pll->xtal_fx, NF16, NF24, NF16);
-
+	}
 	/* ceil(<0.8.16>, 16) -> <0.8.0> */
 	rfpll_vcocal_XtalCount_dec = (uint16)math_fp_ceil_64(rfpll_vcocal_XtalCount_raw_fx, NF16);
 
@@ -881,11 +952,11 @@ phy_ac_radio20698_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 	PLL_CONFIG_20698_VAL_ENTRY(pll, RFPLL_VCOCAL_INITCAPB, rfpll_vcocal_InitCapB);
 
 	if (lo_freq >= 2000 && lo_freq <= 3000) {
-		rfpll_vcocal_NormCountLeft = -39;
+		rfpll_vcocal_NormCountLeft = 985; //-39 with 10bits
 		rfpll_vcocal_NormCountRight = 39;
 		rfpll_vcocal_CouplThres2_dec = 25;
 	} else {
-		rfpll_vcocal_NormCountLeft = -50;
+		rfpll_vcocal_NormCountLeft = 974; //-50 with 10bits
 		rfpll_vcocal_NormCountRight = 50;
 		rfpll_vcocal_CouplThres2_dec = 40;
 	}
@@ -1008,15 +1079,15 @@ phy_ac_radio20698_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 	/* Special settings for spur affected channels */
 	if (lo_freq == 5510) {
 		if (RADIOREV(pi->pubpi->radiorev) >= 2) {
-			loop_band = 560;
+			if (!adj_state) loop_band = 560;
 			rfpll_vco_cvar_dec = 7;
 		} else {
-			loop_band = 340;
+			if (!adj_state) loop_band = 340;
 			rfpll_vco_cvar_dec = 8;
 		}
 	}
 	else if (lo_freq == 5590) {
-		loop_band = 450;
+		if (!adj_state) loop_band = 450;
 		if (RADIOREV(pi->pubpi->radiorev) >= 2) {
 			rfpll_vco_cvar_dec = 7;
 		} else {

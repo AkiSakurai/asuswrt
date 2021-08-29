@@ -1,7 +1,7 @@
 /*
  * Misc useful os-independent macros and functions.
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmutils.h 776274 2019-06-24 10:52:42Z $
+ * $Id: bcmutils.h 786823 2020-05-10 08:13:02Z $
  */
 
 #ifndef	_bcmutils_h_
@@ -96,10 +96,6 @@ typedef struct bcmstrbuf {
 
 /* ** driver-only section ** */
 #ifdef BCMDRIVER
-#ifdef EFI
-/* forward declare structyre type */
-struct spktq;
-#endif // endif
 #include <osl.h>
 #include <hnd_pktq.h>
 #include <hnd_pktpool.h>
@@ -245,6 +241,8 @@ extern int bcmdumplogent(char *buf, uint idx);
 #define	bcmdumplog(buf, size)	*buf = '\0'
 #define	bcmdumplogent(buf, idx)	-1
 #endif /* BCMPERFSTATS */
+
+#define US_PER_SECOND		1000000 /* 1 sec = 1000000 us */
 
 #define TSF_TICKS_PER_MS	1000
 #define TS_ENTER		0xdeadbeef	/* Timestamp profiling enter */
@@ -454,6 +452,7 @@ extern int bcm_get_ifname_unit(const char* ifname, int *unit, int *subunit);
 #define BCME_VCOCAL_FAIL		-66	/* VCOCAL failed */
 #define BCME_BANDLOCKED			-67	/* interface is restricted to a band */
 #define BCME_BAD_IE_DATA		-68	/* Recieved ie with invalid/bad data */
+#define BCME_NOT_ADMITTED 		-69 /* Client not admitted for OFDMA */
 #define BCME_LAST			BCME_BAD_IE_DATA
 
 #define BCME_NOTENABLED BCME_DISABLED
@@ -672,6 +671,11 @@ extern int bcm_find_fsb(uint32 num);
 #define	NBITMASK(nbits)	MAXBITVAL(nbits)
 #define MAXNBVAL(nbyte)	MAXBITVAL((nbyte) * 8)
 
+/* Number of bits in a uint16 */
+#define NUM_BITS_U16                (NBBY * sizeof(uint16))
+/* Number of uint16 required for a bitmap */
+#define BMAP_NUM_U16(sz)            ((sz) / NUM_BITS_U16)
+
 /*
  * In a bitmap of size maxbit, count number of zero bits from a given bit
  * position, upto next numbits. Return the count of zero-bits when a set
@@ -744,6 +748,18 @@ DECLARE_MAP_API(8, 2, 3, 3U, 0x00FF) /* setbit8() and getbit8() */
 #define CRC32_GOOD_VALUE 0xdebb20e3	/* Good final CRC32 checksum value */
 
 /* use for direct output of MAC address in printf etc */
+#ifdef DONGLEBUILD
+
+extern char *bcm_macf_buffer(const void *ea);
+#define MACF				"%s"
+#define CONST_ETHERP_TO_MACF(ea)	(char*)bcm_macf_buffer((const void *)(ea))
+#define ETHERP_TO_MACF(ea)		CONST_ETHERP_TO_MACF(ea)
+#define ETHER_TO_MACF(ea)		(char*)bcm_macf_buffer((const void *)&ea)
+#define MACDBG				MACF
+#define MAC2STRDBG(ea)			CONST_ETHERP_TO_MACF(ea)
+
+#else /* DONGLEBUILD */
+
 #define MACF				"%02x:%02x:%02x:%02x:%02x:%02x"
 #define ETHERP_TO_MACF(ea)		((struct ether_addr *) (ea))->octet[0], \
 					((struct ether_addr *) (ea))->octet[1], \
@@ -766,6 +782,8 @@ DECLARE_MAP_API(8, 2, 3, 3U, 0x00FF) /* setbit8() and getbit8() */
 
 #define MACDBG				MACF
 #define MAC2STRDBG(ea)			CONST_ETHERP_TO_MACF(ea)
+
+#endif /* DONGLEBUILD */
 
 /* bcm_format_flags() bit description structure */
 typedef struct bcm_bit_desc {
@@ -886,6 +904,9 @@ extern uint bcm_bitcount(uint8 *bitmap, uint bytelength);
 
 extern bool bcm_bprintf_bypass;
 extern int bcm_bprintf(struct bcmstrbuf *b, const char *fmt, ...);
+extern int bcm_bprintf_val_pcent(bcmstrbuf_t *b, uint32 val, uint32 pcent, int pad);
+
+#define DEFAULT_PADDING 4
 
 /* power conversion */
 extern uint16 bcm_qdbm_to_mw(uint8 qdbm);

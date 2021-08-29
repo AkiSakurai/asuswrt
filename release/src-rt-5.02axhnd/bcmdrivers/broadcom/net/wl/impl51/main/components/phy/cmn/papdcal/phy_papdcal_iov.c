@@ -1,7 +1,7 @@
 /*
  * PAPD CAL module implementation - iovar handlers & registration
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_papdcal_iov.c 680443 2017-01-20 00:16:59Z $
+ * $Id: phy_papdcal_iov.c 785862 2020-04-08 01:20:21Z $
  */
 
 #include <phy_papdcal_iov.h>
@@ -67,6 +67,12 @@ static const bcm_iovar_t phy_papdcal_iovars[] = {
 	{"phy_pacalidx0", IOV_PHY_PACALIDX0, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_UINT32, 0},
 	{"phy_pacalidx1", IOV_PHY_PACALIDX1, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_UINT32, 0},
 	{"phy_pacalidx", IOV_PHY_PACALIDX, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_UINT32, 0},
+	{"phy_papdbbmult", IOV_PHY_PAPDBBMULT, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_UINT32, 0},
+	{"phy_papdextraepsoffset", IOV_PHY_PAPDEXTRAEPSOFFSET, (IOVF_GET_UP | IOVF_MFG), 0,
+	IOVT_UINT32, 0},
+	{"phy_papdtiagain", IOV_PHY_PAPDTIAGAIN, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_UINT32, 0},
+	{"papdcomp_disable", IOV_PAPDCOMP_DISABLE, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_UINT32, 0},
+	{"phy_papd_dump", IOV_PHY_PAPD_DUMP, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_UINT32, 0},
 #endif // endif
 #if defined(WLTEST) || defined(DBG_PHY_IOV) || defined(WFD_PHY_LL_DEBUG) || \
 	defined(ATE_BUILD)
@@ -132,8 +138,52 @@ phy_papdcal_doiovar(void *ctx, uint32 aid,
 			err = phy_papdcal_get_lut_idx1(pi, ret_int_ptr);
 			break;
 
+		case IOV_GVAL(IOV_PHY_PACALIDX):
+			err = phy_papdcal_get_idx(pi, ret_int_ptr);
+			break;
+
 		case IOV_SVAL(IOV_PHY_PACALIDX):
 			err = phy_papdcal_set_idx(pi, (int8)int_val);
+			break;
+
+		case IOV_GVAL(IOV_PHY_PAPDBBMULT):
+			err = phy_papdcal_get_bbmult(pi, ret_int_ptr);
+			break;
+
+		case IOV_SVAL(IOV_PHY_PAPDBBMULT):
+			err = phy_papdcal_set_bbmult(pi, (int32)int_val);
+			break;
+
+		case IOV_GVAL(IOV_PHY_PAPDEXTRAEPSOFFSET):
+			err = phy_papdcal_get_extraepsoffset(pi, ret_int_ptr);
+			break;
+
+		case IOV_SVAL(IOV_PHY_PAPDEXTRAEPSOFFSET):
+			err = phy_papdcal_set_extraepsoffset(pi, (int32)int_val);
+			break;
+
+		case IOV_GVAL(IOV_PHY_PAPDTIAGAIN):
+			err = phy_papdcal_get_tiagain(pi, ret_int_ptr);
+			break;
+
+		case IOV_SVAL(IOV_PHY_PAPDTIAGAIN):
+			err = phy_papdcal_set_tiagain(pi, (int32)int_val);
+			break;
+
+		case IOV_GVAL(IOV_PAPDCOMP_DISABLE):
+			err = phy_papdcal_get_comp_disable(pi, ret_int_ptr);
+			break;
+
+		case IOV_SVAL(IOV_PAPDCOMP_DISABLE):
+			err = phy_papdcal_set_comp_disable(pi, (int32)int_val);
+			break;
+
+		case IOV_GVAL(IOV_PHY_PAPD_DUMP):
+			err = phy_papdcal_get_dump(pi, ret_int_ptr);
+			break;
+
+		case IOV_SVAL(IOV_PHY_PAPD_DUMP):
+			err = phy_papdcal_set_dump(pi, (int32)int_val);
 			break;
 #endif // endif
 #if defined(WLTEST) || defined(DBG_PHY_IOV) || defined(WFD_PHY_LL_DEBUG) || \

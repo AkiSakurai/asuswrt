@@ -19,54 +19,50 @@ export EXTRACFLAGS := -DBCMWPA2 -DBCMARM -fno-delete-null-pointer-checks -marm
 endif
 
  ifeq ($(HND_ROUTER),y)
-export PLATFORM_ARCH := arm-glibc
  ifeq ($(HND_ROUTER_AX),y)
+export PLATFORM_ARCH := arm-glibc
 export CROSS_COMPILE := /opt/toolchains/crosstools-arm-gcc-5.5-linux-4.1-glibc-2.26-binutils-2.28.1/usr/bin/arm-buildroot-linux-gnueabi-
- else
-export CROSS_COMPILE := /opt/toolchains/crosstools-arm-gcc-5.3-linux-4.1-glibc-2.22-binutils-2.25/usr/bin/arm-buildroot-linux-gnueabi-
- endif
 export CROSS_COMPILER := $(CROSS_COMPILE)
 export CONFIGURE := ./configure LD=$(CROSS_COMPILE)ld --host=arm-buildroot-linux-gnueabi
-ifeq ($(HND_ROUTER_AX_675X),y)
-ifeq ($(HND_ROUTER_AX_6710),y)
+ifeq ($(BRCM_CHIP),4908)
 export CONFIGURE_64 := ./configure LD=$(CROSS_COMPILE_64)ld --host=aarch64-buildroot-linux-gnu
+export HOSTCONFIG_64 := linux-aarch64 -DL_ENDIAN -march=armv8-a -fomit-frame-pointer -mabi=lp64 -ffixed-r8 -D__ARM_ARCH_8A__
 endif
-else
-export CONFIGURE_64 := ./configure LD=$(CROSS_COMPILE_64)ld --host=aarch64-buildroot-linux-gnu 
-endif
-export HOSTCONFIG := linux-armv4 -DOPENSSL_NO_HEARTBEATS -DL_ENDIAN no-engine -Os -march=armv7-a -fomit-frame-pointer -mabi=aapcs-linux -marm -ffixed-r8 -msoft-float -D__ARM_ARCH_7A__
-ifeq ($(HND_ROUTER_AX_675X),y)
-ifeq ($(HND_ROUTER_AX_6710),y)
-export HOSTCONFIG_64 := linux-aarch64 -DOPENSSL_NO_HEARTBEATS -DL_ENDIAN no-engine -Os -march=armv8-a -fomit-frame-pointer -mabi=lp64 -ffixed-r8 -D__ARM_ARCH_8A__ no-asm
-endif
-else
-export HOSTCONFIG_64 := linux-aarch64 -DOPENSSL_NO_HEARTBEATS -DL_ENDIAN no-engine -Os -march=armv8-a -fomit-frame-pointer -mabi=lp64 -ffixed-r8 -D__ARM_ARCH_8A__ no-asm
-endif
- ifeq ($(HND_ROUTER_AX),y)
+export HOSTCONFIG := linux-armv4 -DL_ENDIAN -march=armv7-a -fomit-frame-pointer -mabi=aapcs-linux -marm -ffixed-r8 -msoft-float -D__ARM_ARCH_7A__
 export TOP_PLATFORM := $(SRCBASE)/router-sysdep
 export BCMEX :=
- else
-export TOP_PLATFORM := $(SRCBASE)/router
-export BCMEX := _arm
- endif
 export ARCH := arm
 export HOST :=
- ifeq ($(HND_ROUTER_AX),y)
 export TOOLS := /opt/toolchains/crosstools-arm-gcc-5.5-linux-4.1-glibc-2.26-binutils-2.28.1
- else
-export TOOLS := /opt/toolchains/crosstools-arm-gcc-5.3-linux-4.1-glibc-2.22-binutils-2.25
- endif
 export RTVER := 0.9.32.1
 export BCMSUB := brcmarm
 export KERNEL_BINARY=$(LINUXDIR)/vmlinux
 export PRBM_EXT=_preb
+ else
+export PLATFORM_ARCH := arm-glibc
+export CROSS_COMPILE := /opt/toolchains/crosstools-arm-gcc-5.3-linux-4.1-glibc-2.22-binutils-2.25/usr/bin/arm-buildroot-linux-gnueabi-
+export CROSS_COMPILER := $(CROSS_COMPILE)
+export CONFIGURE := ./configure LD=$(CROSS_COMPILE)ld --host=arm-buildroot-linux-gnueabi
+export CONFIGURE_64 := ./configure LD=$(CROSS_COMPILE_64)ld --host=aarch64-buildroot-linux-gnu 
+export HOSTCONFIG := linux-armv4 -DL_ENDIAN -march=armv8-a -fomit-frame-pointer -mabi=aapcs-linux -marm -ffixed-r8 -msoft-float -D__ARM_ARCH_8A__
+export HOSTCONFIG_64 := linux-aarch64 -DL_ENDIAN -march=armv8-a -fomit-frame-pointer -mabi=lp64 -ffixed-r8 -D__ARM_ARCH_8A__
+export TOP_PLATFORM := $(SRCBASE)/router
+export BCMEX := _arm
+export ARCH := arm
+export HOST :=
+export TOOLS := /opt/toolchains/crosstools-arm-gcc-5.3-linux-4.1-glibc-2.22-binutils-2.25
+export RTVER := 0.9.32.1
+export BCMSUB := brcmarm
+export KERNEL_BINARY=$(LINUXDIR)/vmlinux
+export PRBM_EXT=_preb
+ endif
  else
 export KERNEL_BINARY=$(LINUXDIR)/arch/arm/boot/zImage
 export PLATFORM_ARCH := arm-uclibc
 export CROSS_COMPILE := arm-brcm-linux-uclibcgnueabi-
 export CROSS_COMPILER := $(CROSS_COMPILE)
 export CONFIGURE := ./configure --host=arm-linux --build=$(BUILD)
-export HOSTCONFIG := linux-armv4
+export HOSTCONFIG := linux-armv4 -fomit-frame-pointer
 export BCMEX := _arm
 export EXTRA_FLAG := -lgcc_s
 export ARCH := arm
@@ -113,6 +109,28 @@ export CONFIG_BCMWL5=y
 
 
 define platformRouterOptions
+	@( \
+	if [ "$(RTAC5300)" = "y" ] ; then \
+		sed -i "/RTCONFIG_HAS_5G_2/d" $(1); \
+		echo "RTCONFIG_HAS_5G_2=y" >>$(1); \
+	fi; \
+	if [ "$(GTAC5300)" = "y" ] ; then \
+		sed -i "/RTCONFIG_HAS_5G_2/d" $(1); \
+		echo "RTCONFIG_HAS_5G_2=y" >>$(1); \
+	fi; \
+	if [ "$(RTAC3200)" = "y" ] ; then \
+		sed -i "/RTCONFIG_HAS_5G_2/d" $(1); \
+		echo "RTCONFIG_HAS_5G_2=y" >>$(1); \
+	fi; \
+	if [ "$(RTAX92U)" = "y" -o "$(GTAX11000)" = "y" -o "$(RTAX95Q)" = "y" ]; then \
+		sed -i "/RTCONFIG_HAS_5G_2/d" $(1); \
+		echo "RTCONFIG_HAS_5G_2=y" >>$(1); \
+	fi; \
+	if [ "$(BCM_OAM)" = "y" ]; then \
+		sed -i "/RTCONFIG_BCM_OAM/d" $(1); \
+		echo "RTCONFIG_BCM_OAM=y" >>$(1); \
+	fi; \
+	)
 endef
 
 define platformBusyboxOptions
@@ -154,6 +172,14 @@ define platformKernelConfig
 		echo "# CONFIG_MTD_NAND_ONENAND is not set" >>$(1); \
 		sed -i "/CONFIG_MTD_BRCMNAND/d" $(1); \
 		echo "CONFIG_MTD_BRCMNAND=y" >>$(1); \
+	fi; \
+	if [ "$(DSL_BCM)" = "y" ]; then \
+		sed -i "/CONFIG_BCM_XTMCFG is not set/d" $(1); \
+		echo "CONFIG_BCM_XTMCFG=m" >>$(1); \
+		sed -i "/CONFIG_BCM_XTMRT is not set/d" $(1); \
+		echo "CONFIG_BCM_XTMRT=m" >>$(1); \
+		sed -i "/CONFIG_BCM_ADSL is not set/d" $(1); \
+		echo "CONFIG_BCM_ADSL=m" >>$(1); \
 	fi; \
 	if [ "$(ARM)" = "y" ]; then \
 		if [ "$(HND_ROUTER)" != "y" ]; then \
@@ -410,7 +436,7 @@ define platformKernelConfig
 				(cd rdp/projects/WL4908/target/rdpa_gpl; rm -rf include; ln -sf ../../../../../rdp/drivers/rdpa_gpl/include include); \
 				(cd rdp/projects/WL4908/target/bdmf; rm -rf framework; ln -sf ../../../../../rdp/drivers/bdmf/framework framework); \
 				(cd rdp/projects/WL4908/target/bdmf; rm -rf system; ln -sf ../../../../../rdp/drivers/bdmf/system system); \
-				if [ -d $(HND_SRC)/bcmdrivers/opensource/net/enet/impl7 ]; then \
+				if [ "$(HND_ROUTER_AX)" = "y" ]; then \
 					cp $(TOP_PLATFORM)/hnd_extra/prebuilt/bcm_enet.o $(HND_SRC)/bcmdrivers/opensource/net/enet/impl7/bcm_enet$(PRBM_EXT).o ; \
 				else \
 					cp $(TOP_PLATFORM)/hnd_extra/prebuilt/bcm_enet.o $(HND_SRC)/bcmdrivers/opensource/net/enet/impl5/bcm_enet$(PRBM_EXT).o ; \

@@ -232,7 +232,6 @@ extern char* strncpy_n(char *destination, const char *source, size_t num);
 extern void nvram_initialize_all(char *prefix);
 static inline void sys_reboot(void)
 {
-	eval("wl", "reboot");
 	kill(1, SIGTERM);
 }
 
@@ -1105,21 +1104,47 @@ wbd_enable_fbt(char *prefix)
 	wbd_nvram_prefix_set(prefix, WBD_NVRAM_FBT, strnvval);
 	WBD_RC_PRINT("%swbd_fbt NVRAM not defined, Seting it[%s]\n", prefix, strnvval);
 
-	/* If psk2ft is already defined in akm NVRAM, do not add it */
+	memset(strnvval, 0, sizeof(strnvval));
 	nvval = wbd_nvram_prefix_safe_get(prefix, NVRAM_AKM);
-	if (find_in_list(nvval, "psk2ft")) {
-		goto end;
+	WBDSTRNCPY(strnvval, nvval, sizeof(strnvval));
+
+	/* Add psk2ft if psk2 is defined in akm NVRAM */
+	if (find_in_list(nvval, "psk2")) {
+		add_to_list("psk2ft", strnvval, sizeof(strnvval));
 	}
 
-	/* Else Add psk2ft to akm */
-	memset(strnvval, 0, sizeof(strnvval));
-	WBDSTRNCPY(strnvval, nvval, sizeof(strnvval));
-	add_to_list("psk2ft", strnvval, sizeof(strnvval));
-	wbd_nvram_prefix_set(prefix, NVRAM_AKM, strnvval);
-	WBD_RC_PRINT("psk2ft not defined in %sakm NVRAM, Seting it[%s]\n", prefix, strnvval);
+	/* Add saeft if sae is defined in akm NVRAM */
+	if (find_in_list(nvval, "sae")) {
+		add_to_list("saeft", strnvval, sizeof(strnvval));
+	}
 
-end:
+	wbd_nvram_prefix_set(prefix, NVRAM_AKM, strnvval);
+	WBD_RC_PRINT("Set %sakm NVRAM to [%s]\n", prefix, strnvval);
+
 	return fbt;
+}
+
+/* Disable FBT */
+int
+wbd_disable_fbt(char *prefix)
+{
+	char strnvval[WBD_MAX_BUF_16] = {0}, strakm[WBD_MAX_BUF_256] = {0};
+	char *nvval = NULL;
+
+	/* Set wbd_fbt NVRAM */
+	snprintf(strnvval, sizeof(strnvval), "%d", WBD_FBT_DEF_FBT_DISABLED);
+	wbd_nvram_prefix_set(prefix, WBD_NVRAM_FBT, strnvval);
+	WBD_RC_PRINT("Disabling FBT by setting %swbd_fbt as [%s]\n", prefix, strnvval);
+
+	/* If psk2ft or saeft is defined in akm NVRAM, remove it */
+	nvval = wbd_nvram_prefix_safe_get(prefix, NVRAM_AKM);
+	WBDSTRNCPY(strakm, nvval, sizeof(strakm));
+	remove_from_list("psk2ft", strakm, strlen(strakm));
+	remove_from_list("saeft", strakm, strlen(strakm));
+	wbd_nvram_prefix_set(prefix, NVRAM_AKM, strakm);
+	WBD_RC_PRINT("Remove FBT from akm by setting %sakm as [%s]\n", prefix, strakm);
+
+	return 0;
 }
 
 /* Check whether FBT enabling is possible or not. First it checks for psk2 and then wbd_fbt */
@@ -1131,15 +1156,10 @@ wbd_is_fbt_possible(char *prefix)
 
 	/* Check if the akm contains psk2 or not */
 	nvval = wbd_nvram_prefix_safe_get(prefix, NVRAM_AKM);
-	if (find_in_list(nvval, "psk2") == NULL) {
-		WBD_RC_PRINT("%s%s[%s]. Not psk2\n", prefix, NVRAM_AKM, nvval);
-		goto end;
-	}
 
-	/* TODO : FBT + SAE Not supported now. Remove below code when support is added */
-	if (find_in_list(nvval, "sae") != NULL) {
-		WBD_RC_PRINT("%s%s[%s]. SAE + FBT not supported\n", prefix, NVRAM_AKM, nvval);
-		goto end;
+	if ((find_in_list(nvval, "psk2") == NULL) && (find_in_list(nvval, "sae") == NULL)) {
+		WBD_RC_PRINT("%s%s[%s]. Not psk2 or sae. So no FBT\n", prefix, NVRAM_AKM, nvval);
+		return 0;
 	}
 
 	/* Get the wlxy_wbd_ft NVRAM value, which tells whether FBT is enabled from WBD or not
@@ -1476,4 +1496,45 @@ end:
 	}
 
 	return isweak;
+}
+
+int
+disable_map_bh_bss(char *name, char *ifname, int bsscfg_idx)
+{
+	int map, map_mode, macmode, mac_filter = 1;
+	char prefix[IFNAMSIZ];
+	char maclist_buf[WLC_IOCTL_MAXLEN];
+	maclist_t *maclist = NULL;
+
+	map_mode = wbd_nvram_safe_get_int(NULL, NVRAM_MAP_MODE, MAP_MODE_FLAG_DISABLED);
+	if (MAP_IS_CONTROLLER(map_mode)) {
+		/* Do not disable backhaul BSS of controller */
+		return 0;
+	}
+
+	wbd_get_prefix(ifname, prefix, sizeof(prefix));
+	map = wbd_nvram_safe_get_int(prefix, NVRAM_MAP, 0);
+	if (!I5_IS_BSS_BACKHAUL(map)) {
+		/* Do not disable if this is not a MAP backhaul BSS */
+		return 0;
+	}
+
+	WBD_RC_PRINT("MAC Block MAP backhaul BSS (%s) till controller is detected\n", ifname);
+	macmode = htod32(WLC_MACMODE_ALLOW);
+	if (wl_ioctl(ifname, WLC_SET_MACMODE, &macmode, sizeof(macmode)) != 0) {
+		WBD_RC_PRINT("%s: WLC_SET_MACMODE failed to set to WLC_MACMODE_ALLOW\n", ifname);
+	}
+
+	memset(maclist_buf, 0, WLC_IOCTL_MAXLEN);
+	maclist = (maclist_t *)maclist_buf;
+	maclist->count = 0;
+	maclist->count = htod32(maclist->count);
+	if (wl_ioctl(ifname, WLC_SET_MACLIST, maclist,
+		(ETHER_ADDR_LEN * maclist->count + sizeof(uint32))) != 0) {
+		WBD_RC_PRINT("%s: WLC_SET_MACLIST failed to set to MACLIST NONE\n", ifname);
+	}
+
+	wl_iovar_setint(ifname, "probresp_mac_filter", mac_filter);
+
+	return 0;
 }

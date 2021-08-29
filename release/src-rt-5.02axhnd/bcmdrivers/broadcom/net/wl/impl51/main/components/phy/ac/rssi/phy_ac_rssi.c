@@ -1,7 +1,7 @@
 /*
  * ACPHY RSSI Compute module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rssi.c 775385 2019-05-29 11:30:21Z $
+ * $Id: phy_ac_rssi.c 778561 2019-09-04 15:11:49Z $
  */
 
 #include <phy_cfg.h>
@@ -652,12 +652,29 @@ phy_ulofdma_per_user_rxstats(phy_type_rssi_ctx_t *ctx, wlc_d11rxhdr_t *wrxh)
 	uint16 user_rssi[MAX_NUM_ULOFDMA_USERS];
 	uint8 user_snr[MAX_NUM_ULOFDMA_USERS];
 	int16 user_freq_error[MAX_NUM_ULOFDMA_USERS];
-	uint8 user, he_format, frame_type;
+	uint8 user, he_format, frame_type, core;
+	int16 gain_err_temp_adj_for_rssi, temp_adj, gain_adj, tmp, temp_gain_adj;
+	bool temp_comp, gain_comp;
 
 	BCM_REFERENCE(pi);
 
 	frame_type = (uint8)D11PPDU_FT(rxh, pi->sh->corerev);
 	he_format = (uint8)D11PPDU_HEF(rxh, pi->sh->corerev);
+
+	/* Gain error and temp compensation
+	   43684 reports max rssi over cores, decided to comp avg gain error over cores
+	*/
+	gain_comp = !(per_user_stat->ulofdma_rssi_cal_disable & 0x1);
+	temp_comp = !((per_user_stat->ulofdma_rssi_cal_disable & 0x2) >> 1);
+
+	wlc_phy_upd_gain_wrt_temp_phy(pi, &gain_err_temp_adj_for_rssi);
+	temp_adj = (temp_comp == TRUE) ? gain_err_temp_adj_for_rssi : 0;
+
+	tmp = 0;
+	FOREACH_CORE(pi, core) {
+		tmp += info->gain_err[core];
+	}
+	gain_adj = (gain_comp == TRUE) ? (tmp >> 1) : 0;
 
 	if (D11REV_GE(pi->sh->corerev, 128) && (frame_type == 4) && (he_format == 3)) {
 		bzero(user_rssi, sizeof(int16)*MAX_NUM_ULOFDMA_USERS);
@@ -684,8 +701,10 @@ phy_ulofdma_per_user_rxstats(phy_type_rssi_ctx_t *ctx, wlc_d11rxhdr_t *wrxh)
 		per_user_stat->mu_error_code = mu_error_code;
 		for (user = 0; user < MAX_NUM_ULOFDMA_USERS; user++) {
 			per_user_stat->user_mac_idx[user] = user_mac_idx[user];
-			per_user_stat->user_rssi[user] = (user_rssi[user] > 511) ?
-				((int16)user_rssi[user] - 1024) : (int16)user_rssi[user];
+			temp_gain_adj = (user_rssi[user] != 0) ? (temp_adj - gain_adj) : 0;
+			per_user_stat->user_rssi[user] = ((user_rssi[user] > 511) ?
+				((int16)user_rssi[user] - 1024) : (int16)user_rssi[user])
+				+ temp_gain_adj;
 			per_user_stat->user_snr[user] = user_snr[user];
 			per_user_stat->user_freq_error[user] = user_freq_error[user];
 		}
@@ -974,10 +993,10 @@ phy_ac_rssi_compute_compensation(phy_type_rssi_ctx_t *ctx, int16 *rxpwr_core, bo
 
 				tmp = info->gain_err[core] * 2 -
 				    gain_err_temp_adj_for_rssi;
-			    if (!db_qdb) {
+				if (!db_qdb) {
 					tmp = ((tmp >= 0) ? ((tmp + 2) >> 2) : -1 *
 						((-1 * tmp + 2) >> 2));
-				    rxpwr_core[core] -= tmp;
+					rxpwr_core[core] -= tmp;
 					rxpwr_core_qdBm[core] = 0;
 				} else {
 					rxpwr_core_qdBm[core] = rxpwr_core[core] - tmp;
@@ -1251,21 +1270,13 @@ wlc_phy_rssi_get_chan_freq_range_acphy(phy_info_t *pi, uint8 core_segment_mappin
 			const chan_info_radio20694_rffe_t *chan_info;
 			freq = wlc_phy_chan2freq_20694(pi, channel,
 				&chan_info);
-		} else if (RADIOID_IS(pi->pubpi->radioid, BCM20695_ID)) {
-			const chan_info_radio20695_rffe_t *chan_info;
-			freq = wlc_phy_chan2freq_20695(pi, channel,
-				&chan_info);
-		} else if (RADIOID_IS(pi->pubpi->radioid, BCM20696_ID)) {
-			const chan_info_radio20696_rffe_t *chan_info;
-			freq = wlc_phy_chan2freq_20696(pi, channel,
-				&chan_info);
 		} else if (RADIOID_IS(pi->pubpi->radioid, BCM20698_ID)) {
 			const chan_info_radio20698_rffe_t *chan_info;
 			freq = wlc_phy_chan2freq_20698(pi, channel,
 				&chan_info);
 		} else if (RADIOID_IS(pi->pubpi->radioid, BCM20704_ID)) {
 			const chan_info_radio20704_rffe_t *chan_info;
-			freq = wlc_phy_chan2freq_20704(pi, channel,
+			freq = wlc_phy_chan2freq_20704(pi, pi->radio_chanspec,
 				&chan_info);
 		} else if (RADIOID_IS(pi->pubpi->radioid, BCM20707_ID)) {
 			const chan_info_radio20707_rffe_t *chan_info;

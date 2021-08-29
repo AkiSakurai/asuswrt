@@ -2,7 +2,7 @@
  * Proxd FTM method support. See twiki FineTimingMeasurement.
  * This header is private/internal to proxd FTM method
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmpvt.h 777979 2019-08-19 23:14:13Z $
+ * $Id: pdftmpvt.h 788031 2020-06-18 14:10:58Z $
  */
 
 #ifndef _pdftmpvt_h_
@@ -809,10 +809,16 @@ enum {
 
 /* Default FTM separation in micro seconds */
 #define FTM_SEP_SEQ_EN	3600u
+#define FTM_SEP_CM3	1400u
+#ifdef TOF_DEFAULT_USE_MULTICORE
+#define FTM_SEP_80M	3100u
+#define FTM_SEP_40M	1700u
+#define FTM_SEP_20M	500u
+#else
 #define FTM_SEP_80M	1300u
 #define FTM_SEP_40M	700u
 #define FTM_SEP_20M	200u
-#define FTM_SEP_CM3	1400u
+#endif /* TOF_DEFAULT_SINGLE_CORE_EN */
 
 #define FTM_SESSION_FOR_SID(_ftm, _sid) pdftm_find_session(_ftm, \
 	&(_sid), NULL, WL_PROXD_SESSION_FLAG_NONE, WL_PROXD_SESSION_STATE_NONE)

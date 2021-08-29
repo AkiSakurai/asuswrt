@@ -50,10 +50,10 @@ void check_watchdog()
 
 	if (atoi(reboot) || atoi(upgrade))
 		return;
-#ifdef CONFIG_BCMWL5
-	if (ATE_BRCM_FACTORY_MODE())
+
+	if (ate_factory_mode())
 		return;
-#endif
+
 	ret = stat("/tmp/watchdog_heartbeat", &sb);
 	time(&now);
 

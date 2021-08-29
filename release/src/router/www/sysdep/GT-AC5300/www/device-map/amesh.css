@@ -341,26 +341,6 @@
 @-webkit-keyframes rotate-loading {
 	0%  {transform: rotate(0deg);-ms-transform: rotate(0deg); -webkit-transform: rotate(0deg); -o-transform: rotate(0deg); -moz-transform: rotate(0deg);}
 	100% {transform: rotate(360deg);-ms-transform: rotate(360deg); -webkit-transform: rotate(360deg); -o-transform: rotate(360deg); -moz-transform: rotate(360deg);}
-	}
-
-@-o-keyframes rotate-loading {
-	0%  {transform: rotate(0deg);-ms-transform: rotate(0deg); -webkit-transform: rotate(0deg); -o-transform: rotate(0deg); -moz-transform: rotate(0deg);}
-	100% {transform: rotate(360deg);-ms-transform: rotate(360deg); -webkit-transform: rotate(360deg); -o-transform: rotate(360deg); -moz-transform: rotate(360deg);}
-}
-
-@keyframes rotate-loading {
-	0%  {transform: rotate(0deg);-ms-transform: rotate(0deg); -webkit-transform: rotate(0deg); -o-transform: rotate(0deg); -moz-transform: rotate(0deg);}
-	100% {transform: rotate(360deg);-ms-transform: rotate(360deg); -webkit-transform: rotate(360deg); -o-transform: rotate(360deg); -moz-transform: rotate(360deg);}
-}
-
-@-moz-keyframes rotate-loading {
-	0%  {transform: rotate(0deg);-ms-transform: rotate(0deg); -webkit-transform: rotate(0deg); -o-transform: rotate(0deg); -moz-transform: rotate(0deg);}
-	100% {transform: rotate(360deg);-ms-transform: rotate(360deg); -webkit-transform: rotate(360deg); -o-transform: rotate(360deg); -moz-transform: rotate(360deg);}
-}
-
-@-webkit-keyframes rotate-loading {
-	0%  {transform: rotate(0deg);-ms-transform: rotate(0deg); -webkit-transform: rotate(0deg); -o-transform: rotate(0deg); -moz-transform: rotate(0deg);}
-	100% {transform: rotate(360deg);-ms-transform: rotate(360deg); -webkit-transform: rotate(360deg); -o-transform: rotate(360deg); -moz-transform: rotate(360deg);}
 }
 
 @-o-keyframes rotate-loading {
@@ -449,8 +429,8 @@
 	border-radius: 5px;
 	border-style: solid;
 	border-width: 1px;
-	border-bottom-color: #190508;
-	border-right-color: #190508;
+	border-bottom-color: #5d0b19;
+	border-right-color: #5d0b19;
 	border-left-color: #5d0b19;
 	border-top-color: #5d0b19;
 	cursor: pointer;
@@ -673,7 +653,7 @@
 }
 .aimesh_illustration_bg {
 	margin: 15px 10px 0px 10px;
-	background-color: #4f5b5f;
+	background-color: rgb(145,7,31);
 	border-radius: 10px;
 	position: relative;
 	height: 130px;

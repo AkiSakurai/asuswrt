@@ -9,7 +9,7 @@
  * The driver only tries to preempt another key when the soft key is an AES key. It does
  * not attempt to preempt for TKIP or WEP keys. Group keys cannot be preempted.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

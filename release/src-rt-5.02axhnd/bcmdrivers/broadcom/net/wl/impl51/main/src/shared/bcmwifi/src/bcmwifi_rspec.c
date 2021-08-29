@@ -2,7 +2,7 @@
  * Common [OS-independent] rate management
  * 802.11 Networking Adapter Device Driver.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcmwifi_rspec.c 774598 2019-04-29 17:29:56Z $
+ * $Id: bcmwifi_rspec.c 787915 2020-06-16 09:14:08Z $
  */
 
 #include <typedefs.h>
@@ -56,6 +56,7 @@
 
 #include <bcmwifi_rspec.h>
 #include <bcmwifi_rates.h>
+#include <bcmutils.h>
 
 /* TODO: Consolidate rspec utility functions from wlc_rate.c and bcmwifi_monitor.c
  * into here if they're shared by non wl layer as well...
@@ -76,11 +77,32 @@ wf_he_rspec_to_rate(ratespec_t rspec)
 	uint bw =  RSPEC_BW(rspec) >> WL_RSPEC_BW_SHIFT;
 	uint gi =  RSPEC_HE_LTF_GI(rspec);
 
+	if (mcs <= WLC_MAX_HE_MCS && nss != 0 && nss <= 8) {
+		return wf_he_mcs_to_rate(mcs, nss, bw, gi, dcm);
+	}
+#ifdef BCMDBG
+	printf("%s: rspec %x, mcs %u, nss %u\n", __FUNCTION__, rspec, mcs, nss);
+#endif // endif
+	ASSERT(mcs <= WLC_MAX_HE_MCS);
+	ASSERT(nss != 0 && nss <= 8);
+	return 0;
+} /* wf_he_rspec_to_rate */
+
+uint
+wf_he_rspec_ru_type_to_rate(ratespec_t rspec, ru_type_t ru_type)
+{
+	uint mcs = RSPEC_HE_MCS(rspec);
+	uint nss = RSPEC_HE_NSS(rspec);
+	bool dcm = (rspec & WL_RSPEC_DCM) != 0;
+	uint gi =  RSPEC_HE_LTF_GI(rspec);
+	uint nsd;
+
 	ASSERT(mcs <= WLC_MAX_HE_MCS);
 	ASSERT(nss != 0 && nss <= 8);
 
+	nsd = wf_he_ru_type_to_nsd(ru_type);
 	if (mcs <= WLC_MAX_HE_MCS && nss != 0 && nss <= 8) {
-		return wf_he_mcs_to_rate(mcs, nss, bw, gi, dcm);
+		return wf_he_mcs_nsd_to_rate(mcs, nss, nsd, gi, dcm);
 	}
 
 	return 0;
@@ -184,11 +206,9 @@ wf_plcp_to_rspec(uint16 ft_fmt, uint8 *plcp, ratespec_t *rspec)
 			*rspec = wf_vht_plcp_to_rspec(plcp);
 			return TRUE;
 #endif /* WL11AC */
-#ifdef WL11N
 		case FT_HT:
 			*rspec = wf_ht_plcp_to_rspec(plcp);
 			return TRUE;
-#endif /* WL11N */
 
 		case FT_OFDM:
 			*rspec = OFDM_RSPEC(OFDM_PHY2MAC_RATE(((ofdm_phy_hdr_t *)plcp)->rlpt[0]));
@@ -362,3 +382,71 @@ const uint8 rate_info[128] = {
 /* 110 */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 /* 120 */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
+
+ru_type_t
+wf_he_ruidx_to_ru_type(uint32 ruidx)
+{
+	uint32 ru_type;
+
+	if (ruidx <= HE_MAX_26_TONE_RU_INDX) {
+		ru_type = D11AX_RU26_TYPE;
+	} else if (ruidx <= HE_MAX_52_TONE_RU_INDX) {
+		ru_type = D11AX_RU52_TYPE;
+	} else if (ruidx <= HE_MAX_106_TONE_RU_INDX) {
+		ru_type = D11AX_RU106_TYPE;
+	} else if (ruidx <= HE_MAX_242_TONE_RU_INDX) {
+		ru_type = D11AX_RU242_TYPE;
+	} else if (ruidx <= HE_MAX_484_TONE_RU_INDX) {
+		ru_type = D11AX_RU484_TYPE;
+	} else if (ruidx <= HE_MAX_996_TONE_RU_INDX) {
+		ru_type = D11AX_RU996_TYPE;
+	} else if (ruidx <= HE_MAX_2x996_TONE_RU_INDX) {
+		ru_type = D11AX_RU1992_TYPE;
+	} else {
+		ru_type = D11AX_RU_MAX_TYPE;
+	}
+
+	return (ru_type);
+}
+
+uint32
+wf_he_ru_type_to_nsd(ru_type_t ru_type)
+{
+	const uint32 ru_type_to_nsd[] = {
+		24,		/* HE_RU_26_TONE */
+		48,		/* HE_RU_52_TONE */
+		102,	/* HE_RU_106_TONE */
+		234,	/* HE_RU_242_TONE */
+		468,	/* HE_RU_484_TONE */
+		980,	/* HE_RU_996_TONE */
+		1960	/* HE_RU_2x996_TONE */
+	};
+	uint32 nsd = 0;
+
+	if (ru_type < ARRAYSIZE(ru_type_to_nsd)) {
+		nsd = ru_type_to_nsd[ru_type];
+	}
+
+	return nsd;
+}
+
+uint32
+wf_he_ru_type_to_tones(ru_type_t ru_type)
+{
+	const uint32 ru_type_to_tone[] = {
+		HE_RU_26_TONE,		/* HE_RU_26_TONE */
+		HE_RU_52_TONE,		/* HE_RU_52_TONE */
+		HE_RU_106_TONE,		/* HE_RU_106_TONE */
+		HE_RU_242_TONE,		/* HE_RU_242_TONE */
+		HE_RU_484_TONE,		/* HE_RU_484_TONE */
+		HE_RU_996_TONE,		/* HE_RU_996_TONE */
+		HE_RU_2x996_TONE	/* HE_RU_2x996_TONE */
+	};
+	uint32 tone = 0;
+
+	if (ru_type < ARRAYSIZE(ru_type_to_tone)) {
+		tone = ru_type_to_tone[ru_type];
+	}
+
+	return tone;
+}

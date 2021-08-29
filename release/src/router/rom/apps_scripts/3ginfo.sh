@@ -161,3 +161,15 @@ echo ">"
 echo "ps>"
 ps
 
+echo ">"
+echo "brctl show >"
+brctl show
+
+echo ">"
+echo "ATE Get_WanLanStatus >"
+/sbin/ATE Get_WanLanStatus
+
+echo ">"
+echo "dmesg >"
+dmesg -c
+

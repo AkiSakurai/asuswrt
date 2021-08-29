@@ -45,7 +45,11 @@
 
 #if defined(linux)
 /* Use SVID search */
+#if defined(__GLIBC__) || defined(__UCLIBC__)
 #define __USE_GNU
+#else
+#define _GNU_SOURCE	//musl
+#endif	/* ! (__GLIBC__ || __UCLIBC__) */
 #include <search.h>
 #elif defined(vxworks)
 /* Use vxsearch */
@@ -81,7 +85,11 @@ get_cgi(char *name)
 {
 	ENTRY e, *ep;
 
+#if !(defined(__GLIBC__) || defined(__UBLIBC__))
+	if (!htab.__tab)
+#else
 	if (!htab.table)
+#endif
 		return NULL;
 
 	e.key = name;
@@ -134,7 +142,11 @@ set_cgi(char *name, char *value)
 {
 	ENTRY e, *ep;
 
+#if !(defined(__GLIBC__) || defined(__UBLIBC__))
+	if (!htab.__tab)
+#else
 	if (!htab.table)
+#endif
 		return;
 
 	e.key = name;
@@ -189,7 +201,12 @@ char *webcgi_get(const char *name)
 {
        ENTRY e, *ep;
  
-       if (!htab.table) return NULL;
+#if !(defined(__GLIBC__) || defined(__UBLIBC__))
+	if (!htab.__tab)
+#else
+       if (!htab.table)
+#endif
+	       return NULL;
  
        e.key = (char *)name;
        hsearch_r(e, FIND, &ep, &htab);
@@ -203,7 +220,12 @@ void webcgi_set(char *name, char *value)
 {
        ENTRY e, *ep;
  
-       if (!htab.table) {
+#if !(defined(__GLIBC__) || defined(__UBLIBC__))
+	if (!htab.__tab)
+#else
+       if (!htab.table)
+#endif
+       {
                hcreate_r(16, &htab);
        }
  
@@ -223,7 +245,12 @@ void webcgi_init(char *query)
        int nel;
        char *q, *end, *name, *value;
  
-       if (htab.table) hdestroy_r(&htab);
+#if !(defined(__GLIBC__) || defined(__UBLIBC__))
+	if (!htab.__tab)
+#else
+       if (htab.table)
+#endif
+	       hdestroy_r(&htab);
        if (query == NULL) return;
  
 //    cprintf("query = %s\n", query);

@@ -2,7 +2,7 @@
  * MBO implementation for
  * Broadcom 802.11bang Networking Device Driver
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -83,6 +83,7 @@
 #include <wlc_ie_mgmt_ft.h>
 #include "wlc_mbo_oce_priv.h"
 #include <wlc_bsscfg_viel.h>
+#include <wlc_event_utils.h>
 
 #ifndef WLWNM
 #error "WNM is required for MBO"
@@ -105,6 +106,8 @@
 #define MBO_ASSOC_DISALLOWED_REASON_AIR_INTERFACE_OVERLOAD	0x03
 #define MBO_ASSOC_DISALLOWED_REASON_AUTH_SERVER_OVERLOAD	0x04
 #define MBO_ASSOC_DISALLOWED_REASON_INSUFFICIENT_RSSI		0x05
+/* change REASON_MAX once reason updates in MBO standard */
+#define MBO_ASSOC_DISALLOWED_REASON_MAX				0x05
 
 #define MBO_NP_CHAN_ATTR_OPCLASS_LEN		1 /* 1 byte */
 #define MBO_NP_CHAN_ATTR_PREF_LEN		1 /* 1 byte */
@@ -134,6 +137,7 @@
 
 #define MIN_ADVERTISEMENT_PROTO_ELEMENT_SIZE		4
 #define MBO_SEND_NEIGHBOR_REPORT			0X01
+#define MBO_GAS_RQST_ANQP_QUERY				0X02
 
 #define MBO_STA_MARKED_CHANNEL_NON_OPERABLE		0
 #define MBO_STA_MARKED_CHANNEL_NON_PREFERABLE		1
@@ -169,8 +173,10 @@ struct mbo_chan_pref_list {
 
 typedef struct wlc_mbo_data {
 	/* configured cellular data capability of device */
-	wlc_mbo_oce_ie_build_hndl_t build_ie_hndl;
-	wlc_mbo_oce_ie_parse_hndl_t parse_ie_hndl;
+	wlc_mbo_oce_ie_build_data_t	mbo_oce_build_data;
+	wlc_mbo_oce_ie_build_hndl_t	mbo_oce_build_h;
+	wlc_mbo_oce_ie_parse_data_t	mbo_oce_parse_data;
+	wlc_mbo_oce_ie_parse_hndl_t	mbo_oce_parse_h;
 } wlc_mbo_data_t;
 
 struct wlc_mbo_info {
@@ -229,10 +235,9 @@ static int wlc_mbo_iov_get_fwd_gas_rqst_to_app(const bcm_iov_cmd_digest_t *dig, 
 	size_t ilen, uint8 *obuf, size_t *olen);
 static int wlc_mbo_iov_cmd_validate(const bcm_iov_cmd_digest_t *dig, uint32 actionid,
 	const uint8 *ibuf, size_t ilen, uint8 *obuf, size_t *olen);
-static uint wlc_mbo_calc_ie_len(void *ctx, wlc_iem_calc_data_t *data);
-static int wlc_mbo_build_ie(void *ctx, wlc_iem_build_data_t *data);
-
-static int wlc_mbo_parse_ie(void *ctx, wlc_iem_parse_data_t *data);
+static uint wlc_mbo_calc_ie_len(void *ctx, wlc_bsscfg_t *data);
+static int wlc_mbo_build_ie(void *ctx, wlc_mbo_oce_attr_build_data_t *data);
+static int wlc_mbo_parse_ie(void *ctx, wlc_mbo_oce_attr_parse_data_t *data);
 
 static int wlc_mbo_scb_init(void *ctx, struct scb *scb);
 static void wlc_mbo_scb_deinit(void *ctx, struct scb *scb);
@@ -252,8 +257,8 @@ static int BCMATTACHFN(mbo_iov_get_digest_cb)(void *ctx, bcm_iov_cmd_digest_t **
 
 static void wlc_mbo_gas_event_cb(void *context, bcm_gas_t *gas, bcm_gas_event_t *event);
 /* handle incoming GAS query request frame */
-static void wlc_mbo_process_gas_request(wlc_mbo_info_t *mbo, bcm_gas_t *gas,
-	int len, uint8 *data);
+static void wlc_mbo_process_gas_request(wlc_mbo_info_t *mbo, bcm_gas_t *gas, wlc_bsscfg_t *bsscfg,
+	struct ether_addr *peer_addr);
 static uint wlc_mbo_calc_anqp_ie_len(void *ctx, wlc_iem_calc_data_t *data);
 static int wlc_mbo_build_anqp_ie(void *ctx, wlc_iem_build_data_t *data);
 static int wlc_mbo_gas_parse_query_list(uint8 *data, int body_len, uint8 *flag);
@@ -314,6 +319,8 @@ BCMATTACHFN(wlc_mbo_ap_attach)(wlc_info_t *wlc)
 	}
 	mbo->wlc = wlc;
 
+	mbo->mbo_data = (wlc_mbo_data_t *)MALLOCZ(wlc->osh, sizeof(wlc_mbo_data_t));
+
 	/* parse config */
 	memset(&parse_cfg, 0, sizeof(parse_cfg));
 	parse_cfg.alloc_fn = (bcm_iov_malloc_t)mbo_iov_context_alloc;
@@ -367,22 +374,21 @@ BCMATTACHFN(wlc_mbo_ap_attach)(wlc_info_t *wlc)
 		          wlc->pub->unit, __FUNCTION__));
 		goto fail;
 	}
-	/* bcn/prbrsp */
-	if (wlc_iem_vs_add_build_fn_mft(wlc->iemi, ie_build_fstbmp, WLC_IEM_VS_IE_PRIO_MBO_OCE,
-	      wlc_mbo_calc_ie_len, wlc_mbo_build_ie, mbo) != BCME_OK) {
-		WL_ERROR(("wl%d: %s: wlc_iem_add_build_fn failed, mbo in bcn\n",
-		          wlc->pub->unit, __FUNCTION__));
-		goto fail;
-	}
+	/* register MBO attributes build and parse callbacks */
+	mbo->mbo_data->mbo_oce_build_data.build_fn = wlc_mbo_build_ie;
+	mbo->mbo_data->mbo_oce_build_data.fstbmp = ie_build_fstbmp;
 
-	ret = wlc_iem_vs_add_parse_fn_mft(wlc->iemi, ie_parse_fstbmp,
-		WLC_IEM_VS_IE_PRIO_MBO_OCE, wlc_mbo_parse_ie, mbo);
-	if (ret != BCME_OK) {
-		WL_ERROR(("wl%d: %s: wlc_iem_vs_add_parse_fn failed\n",
-		          wlc->pub->unit, __FUNCTION__));
-		goto fail;
+	mbo->mbo_data->mbo_oce_build_data.ctx = mbo;
 
-	}
+	mbo->mbo_data->mbo_oce_build_h =
+		wlc_mbo_oce_register_ie_build_cb(wlc->mbo_oce, &mbo->mbo_data->mbo_oce_build_data);
+
+	mbo->mbo_data->mbo_oce_parse_data.parse_fn = wlc_mbo_parse_ie;
+	mbo->mbo_data->mbo_oce_parse_data.fstbmp = ie_parse_fstbmp;
+	mbo->mbo_data->mbo_oce_parse_data.ctx = mbo;
+
+	mbo->mbo_data->mbo_oce_parse_h =
+		wlc_mbo_oce_register_ie_parse_cb(wlc->mbo_oce, &mbo->mbo_data->mbo_oce_parse_data);
 
 	/* bcn/probresp */
 	if (wlc_iem_vs_add_build_fn_mft(wlc->iemi, anqp_ie_build_fstbmp,
@@ -421,6 +427,15 @@ BCMATTACHFN(wlc_mbo_ap_detach)(wlc_mbo_info_t* mbo)
 		wl_gas_stop_eventq(mbo->gasi);
 	}
 	bcm_gas_unsubscribe_event(wlc_mbo_gas_event_cb);
+
+	wlc_mbo_oce_unregister_ie_build_cb(mbo->wlc->mbo_oce, mbo->mbo_data->mbo_oce_build_h);
+	wlc_mbo_oce_unregister_ie_parse_cb(mbo->wlc->mbo_oce, mbo->mbo_data->mbo_oce_parse_h);
+
+	if (mbo->mbo_data) {
+		MFREE(mbo->wlc->osh, mbo->mbo_data, sizeof(wlc_mbo_data_t));
+		mbo->mbo_data = NULL;
+	}
+
 	/* unregister for bss up/down */
 	wlc_bsscfg_updown_unregister(mbo->wlc, wlc_mbo_bss_updn, (void *)mbo);
 	mbo->wlc->pub->cmn->_mbo = FALSE;
@@ -536,6 +551,7 @@ wlc_mbo_iov_set_ap_attr_assoc_disallowed(const bcm_iov_cmd_digest_t *dig, const 
 	uint16 nbytes = 0;
 	uint8 *pibuf = NULL;
 	uint8 *ptr = NULL;
+	wlc_mbo_bss_status_t mbo_bss_status;
 
 	wlc_mbo_info_t *mbo = (wlc_mbo_info_t*)dig->cmd_ctx;
 	if (!mbo) {
@@ -565,6 +581,14 @@ wlc_mbo_iov_set_ap_attr_assoc_disallowed(const bcm_iov_cmd_digest_t *dig, const 
 			mbo->wlc->pub->unit, __FUNCTION__));
 		goto fail;
 	}
+	if (data > MBO_ASSOC_DISALLOWED_REASON_MAX) {
+		WL_MBO_ERR(("wl%d: %s: out of range reason for assoc disallowed attribute,"
+			" allowed max reason is [%d] \n",
+			mbo->wlc->pub->unit, __FUNCTION__,
+			MBO_ASSOC_DISALLOWED_REASON_MAX));
+		ret = BCME_RANGE;
+		goto fail;
+	}
 	prev_val = mbc->mbo_assoc_disallowed;
 	mbc->mbo_assoc_disallowed = data;
 
@@ -573,6 +597,20 @@ wlc_mbo_iov_set_ap_attr_assoc_disallowed(const bcm_iov_cmd_digest_t *dig, const 
 		wlc_bss_update_beacon(mbo->wlc, dig->bsscfg);
 		/* update AP or IBSS probe responses */
 		wlc_bss_update_probe_resp(mbo->wlc, dig->bsscfg, TRUE);
+
+		/* TODO:
+		 * Discuss dynamic option to update per bss  mbo capability in usersapce.
+		 * Remove event forward from IOVAR
+		 */
+		memset(&mbo_bss_status, 0, sizeof(mbo_bss_status));
+		mbo_bss_status.version = WLC_E_MBO_BSS_STATUS_VERSION;
+		mbo_bss_status.length = sizeof(mbo_bss_status);
+		mbo_bss_status.assoc_allowance_status  = mbc->mbo_assoc_disallowed;
+		mbo_bss_status.ap_attr  = mbc->mbo_ap_attr;
+		mbo_bss_status.mbo_bss_enable  = mbc->flags & MBO_BSSCFG_ENABLE;
+
+		wlc_bss_mac_event(mbo->wlc, dig->bsscfg, WLC_E_MBO_CAPABILITY_STATUS,
+			NULL, 0, 0, 0, &mbo_bss_status, sizeof(mbo_bss_status));
 	}
 fail:
 	if (ptr) {
@@ -739,7 +777,7 @@ wlc_mbo_iov_set_mbo_ap(const bcm_iov_cmd_digest_t *dig, const uint8 *ibuf,
 		mbc->flags &= ~MBO_BSSCFG_ENABLE;
 	}
 
-	wlc_bsscfg_update_rclass(mbo->wlc, dig->bsscfg);
+	wlc_bsscfg_update_rclass(mbo->wlc);
 fail:
 	if (ptr) {
 		MFREE(mbo->wlc->osh, ptr, ilen);
@@ -751,41 +789,32 @@ fail:
  * (Re)Association response frames
  */
 static int
-wlc_mbo_build_ie(void *ctx, wlc_iem_build_data_t *data)
+wlc_mbo_build_ie(void *ctx, wlc_mbo_oce_attr_build_data_t *data)
 {
 	wlc_mbo_info_t *mbo = (wlc_mbo_info_t *)ctx;
 	wlc_mbo_bsscfg_cubby_t *mbc;
 	uint8 *cp = NULL;
-	wifi_mbo_oce_ie_t *ie_hdr = NULL;
 	uint total_len = 0; /* len to be put in IE header */
-	int len = 0;
 	wifi_mbo_ap_cap_ind_attr_t *ap_attr = NULL;
 	wifi_mbo_assoc_disallowed_attr_t *ap_assoc_attr = NULL;
 
 	ASSERT(mbo != NULL);
 
 	cp = data->buf;
-	ie_hdr = (wifi_mbo_oce_ie_t *)cp;
 
 	mbc = MBO_BSSCFG_CUBBY(mbo, data->cfg);
 	if (!mbc || !(MBO_BSSCFG_IS_ENABLED(mbc))) {
 		return BCME_OK;
 	}
 
-	/* fill in MBO-OCE IE header */
-	ie_hdr->id = MBO_OCE_IE_ID;
-	memcpy(ie_hdr->oui, MBO_OCE_OUI, WFA_OUI_LEN);
-	ie_hdr->oui_type = MBO_OCE_OUI_TYPE;
-	len = MBO_OCE_IE_HDR_SIZE;
-	cp += len;
-	total_len = MBO_OCE_IE_NO_ATTR_LEN;
-
+	if (!data->buf_len) {
+		return wlc_mbo_calc_ie_len(mbo, data->cfg);
+	}
 	/* fill in MBO AP attribute */
 	ap_attr = (wifi_mbo_ap_cap_ind_attr_t *)cp;
 	ap_attr->id = MBO_ATTR_MBO_AP_CAPABILITY;
 	ap_attr->len = sizeof(*ap_attr) - MBO_ATTR_HDR_LEN;
 	ap_attr->cap_ind = mbc->mbo_ap_attr;
-
 	cp += sizeof(*ap_attr);
 	total_len += sizeof(*ap_attr);
 	/* MBO standard possible values:
@@ -808,23 +837,22 @@ wlc_mbo_build_ie(void *ctx, wlc_iem_build_data_t *data)
 		total_len += sizeof(*ap_assoc_attr);
 	}
 
-	ie_hdr->len = total_len;
-	return BCME_OK;
+	return total_len;
 }
 
 static uint
-wlc_mbo_calc_ie_len(void *ctx, wlc_iem_calc_data_t *data)
+wlc_mbo_calc_ie_len(void *ctx, wlc_bsscfg_t *cfg)
 {
 	wlc_mbo_info_t *mbo = (wlc_mbo_info_t *)ctx;
 	wlc_mbo_bsscfg_cubby_t *mbc;
 	uint total_len = 0;
 	ASSERT(mbo);
 
-	mbc = MBO_BSSCFG_CUBBY(mbo, data->cfg);
+	mbc = MBO_BSSCFG_CUBBY(mbo, cfg);
 	if (!mbc) {
 		return 0;
 	}
-	total_len = MBO_OCE_IE_HDR_SIZE;
+	//total_len = MBO_OCE_IE_HDR_SIZE;
 	if (!MBO_BSSCFG_IS_ENABLED(mbc)) {
 		return 0;
 	} else {
@@ -839,7 +867,6 @@ wlc_mbo_calc_ie_len(void *ctx, wlc_iem_calc_data_t *data)
 	}
 	return total_len;
 }
-
 /* Parse MBO IE in ASSOC/Reassoc/Probe request frame for Non preferred chan and cellular
  * capability MBO attributes. There can be more than one Non preferred chan attribute in
  * MBO IE in frame.
@@ -849,7 +876,7 @@ wlc_mbo_calc_ie_len(void *ctx, wlc_iem_calc_data_t *data)
  * value provided in Cellular data subelement
  */
 static int
-wlc_mbo_parse_ie(void *ctx, wlc_iem_parse_data_t *data)
+wlc_mbo_parse_ie(void *ctx, wlc_mbo_oce_attr_parse_data_t *data)
 {
 	wlc_mbo_info_t *mbo = (wlc_mbo_info_t *)ctx;
 	wlc_iem_ft_pparm_t *ftpparm = data->pparm->ft;
@@ -864,17 +891,13 @@ wlc_mbo_parse_ie(void *ctx, wlc_iem_parse_data_t *data)
 		return BCME_OK;
 	}
 
-	/* validate minimum IE length */
-	if (data->ie_len <= MBO_OCE_IE_HDR_SIZE) {
-		return BCME_OK;
-	}
 	ASSERT(data->ie);
 
 	ASSERT(scb);
 
 	mbo_scb = MBO_SCB_CUBBY(mbo, scb);
 
-	cp = data->ie + MBO_OCE_IE_HDR_SIZE;
+	cp = data->ie;
 	local = cp;
 
 	switch (data->ft) {
@@ -895,8 +918,7 @@ wlc_mbo_parse_ie(void *ctx, wlc_iem_parse_data_t *data)
 			wlc_mbo_free_np_chan_list(mbo, mbo_scb);
 
 			/* check for Non preferred channel report attribute */
-			while ((ptr = (uint8*)bcm_parse_tlvs(local,
-					(data->ie_len - MBO_OCE_IE_HDR_SIZE),
+			while ((ptr = (uint8*)bcm_parse_tlvs(local, data->ie_len,
 					MBO_ATTR_NON_PREF_CHAN_REPORT)) != NULL) {
 
 				bcm_tlv_t *elt = (bcm_tlv_t*)ptr;
@@ -915,7 +937,6 @@ wlc_mbo_parse_ie(void *ctx, wlc_iem_parse_data_t *data)
 
 	return BCME_OK;
 }
-
 /* Process Non preferred chan attribute or subelemnt from (Re)Association request or WNM
  * notification request frame from STA.
  */
@@ -935,6 +956,7 @@ wlc_mbo_process_scb_np_chan_list(wlc_mbo_info_t* mbo, wlc_mbo_scb_cubby_t *mbo_s
 	}
 #ifdef BCMDBG
 	/* Include ID and len of element for debug */
+	if (WL_ERROR_ON())
 	prhex(" MBO Non preferred element data  ==>", ibuf, (ibuf[MBO_ATTRIBUTE_LEN_OFFSET] + 2));
 #endif	/* BCMDBG */
 
@@ -1443,27 +1465,65 @@ wlc_mbo_iov_cmd_validate(const bcm_iov_cmd_digest_t *dig, uint32 actionid,
 fail:
 	return ret;
 }
+
 /* callback to handle gas events */
 static void
 wlc_mbo_gas_event_cb(void *context, bcm_gas_t *gas, bcm_gas_event_t *event)
 {
 	wlc_info_t *wlc = (wlc_info_t *)context;
 	wlc_mbo_info_t *mbo = wlc->mbo;
+	struct ether_addr *addr = NULL;
+	struct ether_addr *peer_addr = NULL;
+	wlc_bsscfg_t *bsscfg = NULL;
+	uint8 flag = 0;
 
-	if ((event->type == BCM_GAS_EVENT_QUERY_REQUEST)) {
-		if (!wlc_mbo_get_gas_support(wlc)) {
-			wlc_mbo_process_gas_request(mbo, event->gas,
-				event->queryReq.len, event->queryReq.data);
-		} else {
-			bcm_gas_no_query_response(event->gas);
-		}
+	if (event->type != BCM_GAS_EVENT_QUERY_REQUEST) {
+		WL_ERROR(("wl%d: %s Ignore GAS request with event [%d] \n", wlc->pub->unit,
+			__FUNCTION__, event->type));
+		goto end;
 	}
+
+	addr = bcm_gas_get_mac_addr(gas);
+	bsscfg = wlc_bsscfg_find_by_bssid(wlc, addr);
+
+	if (!BSS_MBO_ENAB(wlc, bsscfg)) {
+		goto end;
+	}
+
+	/* parse for anqp query, if anqp query is present send event to userspace
+	 * with query payload. MAP-R2 needs this event to communicate to controller.
+	 */
+	wlc_mbo_gas_parse_query_list(event->queryReq.data, event->queryReq.len, &flag);
+	bcm_gas_update_gas_incoming_info(event->gas, TRUE);
+
+	if (!flag) {
+		goto end;
+	}
+
+	if (flag & MBO_GAS_RQST_ANQP_QUERY) {
+		peer_addr = bcm_gas_get_peer_mac_addr(gas);
+
+		prhex(" ANQP query : \n", event->queryReq.data, event->queryReq.len);
+		wlc_bss_mac_event(mbo->wlc, bsscfg, WLC_E_GAS_RQST_ANQP_QUERY,
+			peer_addr, 0, 0, 0, event->queryReq.data,
+			event->queryReq.len);
+	}
+
+	if (!wlc_mbo_get_gas_support(wlc) && (flag & MBO_SEND_NEIGHBOR_REPORT)) {
+		/* Firmware can send only neighbor report information */
+		wlc_mbo_process_gas_request(mbo, event->gas, bsscfg, peer_addr);
+		return;
+	}
+
+end:
+	bcm_gas_no_query_response(event->gas);
 	BCM_REFERENCE(mbo);
-	return;
 }
+
 /* handle incoming GAS query request frame */
 static void
-wlc_mbo_process_gas_request(wlc_mbo_info_t *mbo, bcm_gas_t *gas, int len, uint8 *data)
+wlc_mbo_process_gas_request(wlc_mbo_info_t *mbo, bcm_gas_t *gas, wlc_bsscfg_t *bsscfg,
+	struct ether_addr *peer_addr)
 {
 	uint8 *buffer;
 	wlc_info_t *wlc = mbo->wlc;
@@ -1471,12 +1531,10 @@ wlc_mbo_process_gas_request(wlc_mbo_info_t *mbo, bcm_gas_t *gas, int len, uint8 
 	uint16 resp_len = 0;
 	uint16  buffer_size = 256;
 	uint16 list_cnt = 0;
-	wlc_bsscfg_t *bsscfg = NULL;
-	struct ether_addr *addr = NULL;
 	bcm_encode_t *response = &rsp;
 	uint16 buf_size = 0;
 	uint8 *buf = NULL;
-	uint8 flag = 0, len_copied = 0;
+	uint8 len_copied = 0;
 
 	buffer = MALLOC(wlc->osh, buffer_size);
 	if (buffer == 0) {
@@ -1486,17 +1544,6 @@ wlc_mbo_process_gas_request(wlc_mbo_info_t *mbo, bcm_gas_t *gas, int len, uint8 
 	memset(buffer, 0, buffer_size);
 
 	bcm_encode_init(&rsp, buffer_size, buffer);
-
-	bcm_gas_update_gas_incoming_info(gas, TRUE);
-	wlc_mbo_gas_parse_query_list(data, len, &flag);
-
-	if (!flag) {
-		bcm_gas_no_query_response(gas);
-		goto end;
-	}
-
-	addr = bcm_gas_get_mac_addr(gas);
-	bsscfg = wlc_bsscfg_find_by_bssid(wlc, addr);
 
 	list_cnt = wlc_rrm_get_neighbor_count(wlc, bsscfg, 0x00);
 	/* As per MBP standard 3.5.1.1 WFA_MBO tech spec MBO AP should also
@@ -1511,10 +1558,6 @@ wlc_mbo_process_gas_request(wlc_mbo_info_t *mbo, bcm_gas_t *gas, int len, uint8 
 		return;
 	}
 
-	if (flag & MBO_SEND_NEIGHBOR_REPORT) {
-		wlc_rrm_get_nbr_report(wlc, bsscfg, list_cnt, buf);
-	}
-
 	len_copied = ((list_cnt + 1) * (TLV_HDR_LEN + DOT11_NEIGHBOR_REP_IE_FIXED_LEN +
 			TLV_HDR_LEN + DOT11_NGBR_BSSTRANS_PREF_SE_LEN));
 
@@ -1523,14 +1566,18 @@ wlc_mbo_process_gas_request(wlc_mbo_info_t *mbo, bcm_gas_t *gas, int len, uint8 
 	MFREE(wlc->osh, buf, buf_size);
 	bcm_gas_set_bsscfg_index(gas, wlc->cfg->_idx);
 	bcm_gas_set_query_response(gas, resp_len, response->buf);
-end:
+
 	if (buffer) {
 		MFREE(wlc->osh, buffer, buffer_size);
 	}
 }
+
 static uint
 wlc_mbo_calc_anqp_ie_len(void *ctx, wlc_iem_calc_data_t *data)
 {
+	wlc_mbo_info_t *mbo = NULL;
+	wlc_mbo_bsscfg_cubby_t *mbc = NULL;
+
 	/* if beacon is already having Advertisement protocol element IE
 	 * enabled by hotspot or any other APP, return
 	 */
@@ -1540,6 +1587,14 @@ wlc_mbo_calc_anqp_ie_len(void *ctx, wlc_iem_calc_data_t *data)
 
 	/* only include advertisement protocol IE if interworking is enabled */
 	if (!isset(data->cfg->ext_cap, DOT11_EXT_CAP_IW)) {
+		/* interworking is pre-requisite if bsscfg is enabled with
+		 * MBO support
+		 */
+		mbo = data->cfg->wlc->mbo;
+		mbc = MBO_BSSCFG_CUBBY(mbo, data->cfg);
+		if (mbc && MBO_BSSCFG_IS_ENABLED(mbc)) {
+			wlc_bsscfg_set_ext_cap(data->cfg, DOT11_EXT_CAP_IW, 1);
+		}
 		return 0;
 	}
 
@@ -1619,6 +1674,7 @@ wlc_mbo_gas_parse_query_list(uint8 *data, int body_len, uint8 *flag)
 	 */
 
 #ifdef BCMDBG
+	if (WL_ERROR_ON())
 	prhex("ANQP data: ", (uchar*)data, body_len);
 #endif /* BCMDBG */
 
@@ -1631,6 +1687,12 @@ wlc_mbo_gas_parse_query_list(uint8 *data, int body_len, uint8 *flag)
 		bcm_decode_init(&ie, anqp.anqpQueryListLength, anqp.anqpQueryListBuffer);
 		bcm_decode_anqp_query_list(&ie, &queryList);
 
+		if (queryList.queryLen) {
+			/* anqp query rcvd, use this information to
+			 * send gas query to userspace
+			 */
+			*flag |= MBO_GAS_RQST_ANQP_QUERY;
+		}
 		for (i = 0; i < queryList.queryLen; i++) {
 			switch (queryList.queryId[i]) {
 				case ANQP_ID_NEIGHBOR_REPORT:
@@ -1666,6 +1728,6 @@ wlc_mbo_bss_updn(void *ctx, bsscfg_up_down_event_data_t *evt)
 {
 	wlc_mbo_info_t *mbo = (wlc_mbo_info_t*)ctx;
 
-	wlc_bsscfg_update_rclass(mbo->wlc, evt->bsscfg);
+	wlc_bsscfg_update_rclass(mbo->wlc);
 }
 #endif /* MBO_AP */

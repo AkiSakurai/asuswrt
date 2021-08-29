@@ -2,7 +2,7 @@
  * Basic types and constants relating to 802.11ax/HE STA
  * This is a portion of 802.11ax definition. The rest are in 802.11.h.
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: 802.11ax.h 773486 2019-03-21 11:40:40Z $
+ * $Id: 802.11ax.h 787811 2020-06-12 08:11:34Z $
  */
 
 #ifndef _802_11ax_h_
@@ -269,19 +269,7 @@ typedef uint8 he_phy_cap_t[HE_PHY_CAP_INFO_SIZE];
 						 * MRQ and if the STA provides unsolicited HE MFB.
 						 */
 
-/* b27-b28: Max. AMPDU Length HE Exponent */
-/* Use Max AMPDU length exponent from VHT or HT */
-#define HE_MAC_MAX_AMPDU_EXP_ADOPT_VHT	0
-/* Max. AMPDU length =
- * 2^(20 + MAX_AMPDU_LEN_HE_EXPO_1) -1 (if this value in VHT CAP is 7) or
- * 2^(16 + MAX_AMPDU_LEN_HE_EXPO_1) -1 (if this value in HT CAP is 7).
- */
-#define HE_MAC_MAX_AMPDU_EXP_HE_1	1
-/* Max. AMPDU length =
- * 2^(20 + MAX_AMPDU_LEN_HE_EXPO_2) -1 (if this value in VHT CAP is 7) or
- * 2^(16 + MAX_AMPDU_LEN_HE_EXPO_2) -1 (if this value in HT CAP is 7).
- */
-#define HE_MAC_MAX_AMPDU_EXP_HE_2	2
+#define HE_MAC_AMPDU_MAX_LEN		6500631 /* ref 26.6.1 of 802.11axD6.0 */
 
 /* HE PHY Capabilities values */
 /* b1-b7: Channel Width Support field */
@@ -761,6 +749,7 @@ typedef uint8 he_trig_usrinfo_typedep_set_t[HE_TRIG_USRINFO_TYPEDEP_SZ];
 #define HE_RU_242_TONE			242
 #define HE_RU_484_TONE			484
 #define HE_RU_996_TONE			996
+#define HE_RU_2x996_TONE		(2*996)
 #define HE_MAX_26_TONE_RU_INDX		36
 #define HE_MAX_52_TONE_RU_INDX		52
 #define HE_MAX_106_TONE_RU_INDX		60
@@ -785,5 +774,15 @@ typedef uint8 he_trig_usrinfo_typedep_set_t[HE_TRIG_USRINFO_TYPEDEP_SZ];
 #define HE_N_TAIL			6	/* tail field bits for BCC */
 #define HE_N_SERVICE			16	/* bits in service field */
 #define HE_T_MAX_PE			16	/* max Packet extension duration */
+
+/* ADDBA Capability field */
+#define ADDBA_CAP_SIZE	1
+typedef uint8 addba_cap_t[ADDBA_CAP_SIZE];
+
+/* bit position and field width */
+#define ADDBA_CAP_NOFRAG_IDX		0	/* No-Fragment */
+#define ADDBA_CAP_NOFRAG_FSZ		1
+#define ADDBA_CAP_HE_FRAGOP_IDX		1	/* HE Fragment Operation */
+#define ADDBA_CAP_HE_NOFRAG_FSZ		2
 
 #endif /* _802_11ax_h_ */

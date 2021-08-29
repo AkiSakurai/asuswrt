@@ -42,6 +42,7 @@
 #include <wlif_utils.h>
 #include <rtstate.h>
 #include <stdlib.h>
+#include <linux/sockios.h>
 #include "amas_wgn_shared.h"
 
 #define DBG_ODS(...) (_dprintf("%s(LINE:%d):%s\n", __FILE__, __LINE__, __VA_ARGS__));
@@ -59,8 +60,10 @@
 
 #define IS_ZERO_MAC(MACADDR)	( (memcmp(MACADDR, "\x00\x00\x00\x00\x00\x00", 6) == 0) )
 #define IS_RE_MODE()  			( (nvram_get_int("re_mode") == 1) )
+#define IS_ROUTER_MODE() 		( (sw_mode() == SW_MODE_ROUTER) )
+#define IS_CAP_MODE() 			( (sw_mode() == SW_MODE_ROUTER || access_point_mode()) )
 #define WGN_WLIFU_MAX_NO_BRIDGE	WLIFU_MAX_NO_BRIDGE
-#if defined(RTAX58U) || defined(TUFAX3000)
+#if defined(RTAX58U) || defined(TUFAX3000) || defined(RTAX82U)
 #define WGN_ETH_IFNAME			"eth4"
 #else
 #define WGN_ETH_IFNAME			"eth0"
@@ -86,9 +89,9 @@
 	memset(cmd_buff, 0, sizeof(cmd_buff));\
 	for (cmd_argc=0, cmd_buff_offset=0; cmd_argv[cmd_argc] != NULL && cmd_buff_offset < sizeof(cmd_buff); cmd_argc++)\
 	{\
-		strncat(cmd_buff, cmd_argv[cmd_argc], strlen(cmd_argv[cmd_argc]));\
+		strlcat(cmd_buff, cmd_argv[cmd_argc], sizeof(cmd_buff));\
 		cmd_buff_offset+=strlen(cmd_argv[cmd_argc]);\
-		strncat(cmd_buff, " ", 1);\
+		strlcat(cmd_buff, " ", sizeof(cmd_buff));\
 		cmd_buff_offset++;\
 	}\
 	if ((cmd_ret = doSystem("%s", cmd_buff)) != 0)\
@@ -155,6 +158,23 @@ int iface_is_up(
 	return ((ifr.ifr_flags & IFF_UP) == IFF_UP) ? 1 : 0;
 }
 
+int find_lan_ifnames_by_ifname(
+    char *ifname)
+{
+    int ret = 0;    
+    char word[64];
+    char *next = NULL;
+                    
+    if (!ifname)
+        return 0;
+
+    foreach(word, nvram_safe_get("lan_ifnames"), next)
+        if ((ret = !strncmp(word, ifname, strlen(ifname))))
+            break;
+    
+    return ret;
+}
+
 int find_br0_ifnames_by_ifname(
 	char *ifname)
 {
@@ -218,6 +238,51 @@ int iface_get_mac(
 	if (ret == 1) memcpy((unsigned char *)&ret_mac[0], (unsigned char *)&ifr.ifr_hwaddr.sa_data[0], 6);
 	close(sock);
 	return ret;
+}
+
+// ioctl for bridge
+enum { ARG_ADDBR = 0, ARG_DELBR, ARG_ADDIF, ARG_DELIF};
+int ioctl_bridge(
+    int action, 
+    char *br, 
+    char *brif)
+{
+    int ret = -1;
+    int fd = 0;
+    unsigned request;
+    struct ifreq ifr;
+
+    if (br == NULL) {
+        _dprintf("[%s:%s] Unknow lan_ifname, can't add interface to bridge.\n", __FILE__, __FUNCTION__);
+        return -1;
+    }    
+
+    memset(&ifr, 0x00, sizeof(struct ifreq));
+    strlcpy(ifr.ifr_name, br, IFNAMSIZ);
+    ifr.ifr_ifindex = if_nametoindex(brif);
+             
+    if (!ifr.ifr_ifindex) {
+        _dprintf("Can't get index for %s\n", brif);
+        return -1;
+    }
+
+    if (action == ARG_ADDIF)
+        request = SIOCBRADDIF;
+    else if (action == ARG_DELIF)
+        request = SIOCBRDELIF;
+    else {
+        _dprintf("Only support addif/delif from bridge interface.\n");
+        return -1;
+    }
+
+    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+        return -1;
+
+    if ((ret = ioctl(fd, request, &ifr)) < 0)
+        return errno;
+
+    close(fd);
+    return 0;    
 }
 
 struct brif_rule_t 
@@ -321,84 +386,6 @@ struct brif_rule_t* brif_list_find(
 	return p;
 }
 
-void check_default_config(
-	void)
-{
-	char *s1, *s2;
-
-#if defined(RTAC5300) || defined(GTAC5300)	
-	// <ip>netmask>dhcp_enable>dhcp_start>dhcp_end>domainname>dns>wins>ema>macipbinding>
-	char default_subnet_rulelist[] = 
-	{
-		"<192.168.101.1>255.255.255.0>1>192.168.101.2>192.168.101.254>86400>>>>>"\
-		"<192.168.102.1>255.255.255.0>1>192.168.102.2>192.168.102.254>86400>>>>>"\
-		"<192.168.103.1>255.255.255.0>1>192.168.103.2>192.168.103.254>86400>>>>>"\
-		"<192.168.104.1>255.255.255.0>1>192.168.104.2>192.168.104.254>86400>>>>>"\
-		"<192.168.105.1>255.255.255.0>1>192.168.105.2>192.168.105.254>86400>>>>>"\
-		"<192.168.106.1>255.255.255.0>1>192.168.106.2>192.168.106.254>86400>>>>>"\
-		"\0"
-	};
-#else 	/* defined(RTAC5300) || defined(GTAC5300) */ 
-	// <ip>netmask>dhcp_enable>dhcp_start>dhcp_end>domainname>dns>wins>ema>macipbinding>	
-	char default_subnet_rulelist[] = 
-	{
-		"<192.168.101.1>255.255.255.0>1>192.168.101.2>192.168.101.254>86400>>>>>"\
-		"<192.168.102.1>255.255.255.0>1>192.168.102.2>192.168.102.254>86400>>>>>"\
-		"<192.168.103.1>255.255.255.0>1>192.168.103.2>192.168.103.254>86400>>>>>"\
-		"<192.168.104.1>255.255.255.0>1>192.168.104.2>192.168.104.254>86400>>>>>"\
-		"\0"
-	};
-#endif	/* defined(RTAC5300) || defined(GTAC5300) */		
-
-#if defined(RTAC5300) || defined(GTAC5300)
-	// <enable>vid>prio>wanportset>lanportset>wl2gset>wl5gset>subnet_name>internet>public_vlan>
-	char default_vlan_rulelist[] = 
-	{
-		"<1>501>0>0>FFFF>0002>0000>192.168.101.1/24>1>0>"\
-		"<1>502>0>0>FFFF>0004>0000>192.168.102.1/24>1>0>"\
-		"<1>503>0>0>FFFF>0000>0002>192.168.103.1/24>1>0>"\
-		"<1>504>0>0>FFFF>0000>0004>192.168.104.1/24>1>0>"\
-		"<1>505>0>0>FFFF>0000>00000002>192.168.105.1/24>1>0>"\
-		"<1>506>0>0>FFFF>0000>00000004>192.168.106.1/24>1>0>"\
-		"\0"
-	};
-#else	/* defined(RTAC5300) || defined(GTAC5300) */
-	// <enable>vid>prio>wanportset>lanportset>wl2gset>wl5gset>subnet_name>internet>public_vlan>
-	char default_vlan_rulelist[] = 
-	{
-		"<1>501>0>0>FFFF>0002>0000>192.168.101.1/24>1>0>"\
-		"<1>502>0>0>FFFF>0004>0000>192.168.102.1/24>1>0>"\
-		"<1>503>0>0>FFFF>0000>0002>192.168.103.1/24>1>0>"\
-		"<1>504>0>0>FFFF>0000>0004>192.168.104.1/24>1>0>"\
-		"\0"
-	};	
-#endif	/* defined(RTAC5300) || defined(GTAC5300) */				
-
-	s1 = nvram_safe_get(WGN_SUBNET_RULE_NVRAM);
-	s2 = nvram_safe_get(WGN_VLAN_RULE_NVRAM);
-	if (!IS_RE_MODE())
-	{
-		if (s1[0] == '\0' || s2[0] == '\0')
-		{
-			nvram_set(WGN_SUBNET_RULE_NVRAM, default_subnet_rulelist);
-			nvram_set(WGN_VLAN_RULE_NVRAM, default_vlan_rulelist);
-			nvram_commit();
-		}
-	}
-	else
-	{
-		if (s1[0] != '\0')
-		{
-			nvram_unset(WGN_SUBNET_RULE_NVRAM);
-		}
-
-		nvram_set(WGN_VLAN_RULE_NVRAM, "");
-		nvram_commit();
-	}
-
-	return;
-}
-
 #define SET_SUBNET_RULE(VLAN_RULE, SUBNET_RULE, IP, IPMASK) do {\
 	struct in_addr ADDR;\
 	ADDR.s_addr = htonl(IP);\
@@ -421,20 +408,135 @@ void check_default_config(
 	snprintf(VLAN_RULE->subnet_name, WGN_VLAN_RULE_SUBNET_NAME_SIZE, "%s/%d", SUBNET_RULE->ipaddr, ipmask_to_int((IPMASK)));\
 }while(0)
 
-extern
-void wgn_check_subnet_conflict(
+void check_vlan_rulelist_subnet_conflict(
 	void)
 {
-
 	size_t i, j;
 	int cfg_changed = 0;
 	int conflict = 0;
 
 	struct wgn_vlan_rule_t *p_vlan_list = NULL;
-	struct wgn_vlan_rule_t vlan_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct wgn_vlan_rule_t tagged_base_vlan_list[WGN_MAXINUM_VLAN_RULELIST];
+	size_t tagged_base_vlan_list_size = 0;
+	struct wgn_vlan_rule_t vlan_list[WGN_MAXINUM_VLAN_RULELIST];
+	size_t vlan_list_size = 0;
+	struct wgn_subnet_rule_t *p1 = NULL, *p2 = NULL;
+	struct wgn_subnet_rule_t subnet_list[WGN_MAXINUM_SUBNET_RULELIST];
+	size_t subnet_list_size = 0;
+	struct wgn_subnet_rule_t tagged_base_subnet_list[WGN_MAXINUM_SUBNET_RULELIST];
+	size_t tagged_base_subnet_list_size = 0;
+	struct in_addr lan_addr;
+
+	if (IS_RE_MODE())
+		return;
+
+	if (!IS_CAP_MODE())
+		return;
+
+	memset(tagged_base_vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_vlan_list_get_other_from_nvram(tagged_base_vlan_list, WGN_MAXINUM_VLAN_RULELIST, &tagged_base_vlan_list_size))
+		return;
+
+	if (tagged_base_vlan_list_size <= 0)
+		return;
+
+	memset(tagged_base_subnet_list, 0, sizeof(struct wgn_subnet_rule_t) * WGN_MAXINUM_SUBNET_RULELIST);
+	if (!wgn_subnet_list_get_other_from_nvram(tagged_base_subnet_list, WGN_MAXINUM_SUBNET_RULELIST, &tagged_base_subnet_list_size))
+		return;
+
+	if (tagged_base_subnet_list_size <= 0)
+		return;
+
+	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAXINUM_VLAN_RULELIST, &vlan_list_size))
+		return;
+
+	if (vlan_list_size <= 0)
+		return;
+
+	memset(subnet_list, 0, sizeof(struct wgn_subnet_rule_t) * WGN_MAXINUM_SUBNET_RULELIST);
+	if (!wgn_subnet_list_get_from_nvram(subnet_list, WGN_MAXINUM_SUBNET_RULELIST, &subnet_list_size))
+		return;
+
+	if (subnet_list_size <= 0)
+		return;
+
+	for (i=0, p_vlan_list=&vlan_list[0]; i<vlan_list_size; )
+	{
+		conflict = 0;
+		if (!(p1 = wgn_subnet_list_find(subnet_list, subnet_list_size, p_vlan_list->subnet_name)))
+		{
+			i++;
+			p_vlan_list++;
+			continue;
+		}
+
+		for (j=0; j<tagged_base_vlan_list_size; j++)
+		{
+			if (!(p2 = wgn_subnet_list_find(tagged_base_subnet_list, tagged_base_subnet_list_size, tagged_base_vlan_list[j].subnet_name)))
+				continue;
+
+			if ((conflict = inet_deconflict(p1->ipaddr, p1->ipmask, p2->ipaddr, p2->ipmask, &lan_addr)))
+			{
+				cfg_changed = 1;
+				SET_SUBNET_RULE(p_vlan_list, p1, htonl(lan_addr.s_addr), 0xffffff00);
+				if (!(p1 = wgn_subnet_list_find(subnet_list, subnet_list_size, p_vlan_list->subnet_name)))
+					break;
+			}
+		}
+
+		if (!p1)
+		{
+			i++;
+			p_vlan_list++;
+			continue;
+		}
+
+		for (j=0; j<vlan_list_size; j++)
+		{
+			if (i==j)
+				continue;
+
+			if (!(p2 = wgn_subnet_list_find(subnet_list, subnet_list_size, vlan_list[j].subnet_name)))
+				continue;
+
+			if ((conflict = inet_deconflict(p1->ipaddr, p1->ipmask, p2->ipaddr, p2->ipmask, &lan_addr)))
+			{
+				cfg_changed = 1;
+				SET_SUBNET_RULE(p_vlan_list, p1, ntohl(lan_addr.s_addr), 0xffffff00);
+				if (!(p1 = wgn_subnet_list_find(subnet_list, subnet_list_size, p_vlan_list->subnet_name)))
+					break;				
+			}
+		}
+
+		if (conflict == 1)
+			continue; 
+
+		i++;
+		p_vlan_list++;
+	}
+
+   	if (cfg_changed)
+ 	{
+ 		wgn_vlan_list_set_to_nvram(vlan_list, vlan_list_size);
+ 		wgn_subnet_list_set_to_nvram(subnet_list, subnet_list_size);
+ 	}
+
+ 	return;
+}
+
+void check_ip_subnet_conflict(
+	void)
+{
+	size_t i, j;
+	int cfg_changed = 0;
+	int conflict = 0;
+
+	struct wgn_vlan_rule_t *p_vlan_list = NULL;
+	struct wgn_vlan_rule_t vlan_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t vlan_total = 0;
 	struct wgn_subnet_rule_t *p1 = NULL, *p2 = NULL;
-	struct wgn_subnet_rule_t subnet_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct wgn_subnet_rule_t subnet_list[WGN_MAXINUM_SUBNET_RULELIST];
 	size_t subnet_total = 0;
 
 	struct in_addr lan_addr;
@@ -445,6 +547,9 @@ void wgn_check_subnet_conflict(
 	char *lan_netmask;
 
 	if (IS_RE_MODE())
+		return;
+
+	if (!IS_CAP_MODE())
 		return;
 
 	wan_ipaddr = wan_netmask = NULL;
@@ -464,19 +569,27 @@ void wgn_check_subnet_conflict(
 	if ((!wan_ipaddr || !wan_netmask) && (!lan_ipaddr || !lan_netmask))
 		return;
 
-	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAX_NO_GUEST_NETWORK, &vlan_total))
+	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAXINUM_VLAN_RULELIST, &vlan_total))
 		return;
 
-	memset(subnet_list, 0, sizeof(struct wgn_subnet_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_subnet_list_get_from_nvram(subnet_list, WGN_MAX_NO_GUEST_NETWORK, &subnet_total))
+	if (vlan_total <= 0)
+		return;
+
+	memset(subnet_list, 0, sizeof(struct wgn_subnet_rule_t) * WGN_MAXINUM_SUBNET_RULELIST);
+	if (!wgn_subnet_list_get_from_nvram(subnet_list, WGN_MAXINUM_SUBNET_RULELIST, &subnet_total))
+		return;
+
+	if (subnet_total <= 0)
 		return;
 
  	for (i=0, p_vlan_list=&vlan_list[0]; i<vlan_total; )
  	{
+ 		conflict = 0;
  		if (!(p1 = wgn_subnet_list_find(subnet_list, subnet_total, p_vlan_list->subnet_name)))
  		{
  			i++;
+ 			p_vlan_list++;
  			continue;
  		}
 
@@ -529,7 +642,153 @@ void wgn_check_subnet_conflict(
  		wgn_vlan_list_set_to_nvram(vlan_list, vlan_total);
  	}
 
-	return;	
+ 	return;		
+}
+
+void check_vlan_id_conflict(
+	void)
+{
+#define WGN_VID_ALL_RANGE_START 	50
+#define WGN_VID_ALL_RANGE_END 		4095
+#define WGN_VID_RANGE_START 		510
+#define WGN_VID_RANGE_END			1510			
+
+	int iptv_vids[3]={0}, x = 0, vid = 0, conflict = 0, find_all_range = 0, cfg_changed = 0;
+	unsigned int wan_allow_list = 0x00000000;//wan0,wan1
+	unsigned int lan_allow_list = 0x00FF00FF;//lan1~8
+	size_t i, j;
+
+	struct wgn_vlan_rule_t tagged_base_vlan_list[WGN_MAXINUM_VLAN_RULELIST];
+	size_t tagged_base_vlan_list_size = 0;
+	struct wgn_vlan_rule_t vlan_list[WGN_MAXINUM_VLAN_RULELIST];
+	size_t vlan_list_size = 0;
+
+	memset(tagged_base_vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_vlan_list_get_other_from_nvram(tagged_base_vlan_list, WGN_MAXINUM_VLAN_RULELIST, &tagged_base_vlan_list_size))
+		return;
+
+	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAXINUM_VLAN_RULELIST, &vlan_list_size))
+		return;
+
+	get_iptv_and_dualwan_info(iptv_vids,3,&wan_allow_list,&lan_allow_list);
+	for (i=0, find_all_range=0, vid=0; i<vlan_list_size; )
+	{
+		if (conflict == 1)
+		{
+			conflict = 0;
+			cfg_changed = 1;
+			if (vid == 0)
+				vid = WGN_VID_RANGE_START;
+			else if (vid == -1)
+			{
+				vlan_list[i].vid = -1;
+				i++;
+				continue;
+			}
+			else
+			{
+				if (!find_all_range)
+				{
+					if (++vid > WGN_VID_RANGE_END)
+					{
+						vid = WGN_VID_ALL_RANGE_START;
+						find_all_range = 1;
+					}
+				}
+				else 
+				{
+					if (++vid > WGN_VID_ALL_RANGE_END)
+						vid = -1;
+				}				
+			}
+
+			if (vid == -1)
+			{
+				vlan_list[i].vid = -1;
+				i++;
+				continue;				
+			}
+
+			vlan_list[i].vid = vid;
+			DBG_PRINTF("solve conflict: vlan_list[%d].vid: %d\n", i, vlan_list[i].vid);
+		}
+
+		if (vlan_list[i].vid == -1)
+		{
+			conflict = 1;
+			continue;
+		}
+
+		// check iptv
+		for (x=0; x<3; x++)
+		{
+			if (vlan_list[i].vid == iptv_vids[x])
+			{
+				DBG_PRINTF("IPTV conflict: vlan_list[%d].vid: %d\n", i, vlan_list[i].vid);
+				conflict = 1;
+				break;
+			}
+		}
+
+		if (conflict == 1)
+			continue;
+
+		for (j=0; j<tagged_base_vlan_list_size; j++)
+		{
+			if (vlan_list[i].vid == tagged_base_vlan_list[j].vid)
+			{
+				DBG_PRINTF("TAGGED_BASE conflict: vlan_list[%d].vid: %d\n", i, vlan_list[i].vid);
+				conflict = 1;
+				break;
+			}						
+		}
+
+		if (conflict == 1)
+			continue;
+
+		// self
+		for (j=0; j<vlan_list_size; j++)
+		{
+			if (i==j)
+				continue;
+
+			if (vlan_list[i].vid == vlan_list[j].vid)
+			{
+				DBG_PRINTF("WGN conflict: vlan_list[%d].vid: %d\n", i, vlan_list[i].vid);
+				conflict = 1;
+				break;				
+			}
+		}
+
+		if (conflict == 1)
+			continue;
+
+		i++;
+	}
+
+ 	if (cfg_changed)
+ 	{
+ 		wgn_vlan_list_set_to_nvram(vlan_list, vlan_list_size);
+ 	}
+
+	return;
+}
+
+extern
+void wgn_check_subnet_conflict(
+	void)
+{
+	if (!IS_CAP_MODE() && !IS_RE_MODE())
+		return;
+
+	// check_ip_subnet_conflict
+	check_ip_subnet_conflict();
+	// check_vlan_rulelist_subnet_conflict
+	check_vlan_rulelist_subnet_conflict();
+	// check_vlan_id_conflict
+	check_vlan_id_conflict();
+	return;
 }
 
 extern 
@@ -541,17 +800,20 @@ void wgn_check_avalible_brif(
 	size_t i;
 	size_t j;
 	size_t vlan_total = 0;
-	char brif_rule[256 * WGN_MAX_NO_GUEST_NETWORK];
+	char brif_rule[256 * WGN_MAXINUM_VLAN_RULELIST];
 	char brx[81], s[133];	
-	struct wgn_vlan_rule_t vlan_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct wgn_vlan_rule_t vlan_list[WGN_MAXINUM_VLAN_RULELIST];
+
+	if (!IS_CAP_MODE() && !IS_RE_MODE())
+		return;
 
 	nvram_unset(WGN_BRIF_RULE_NVRAM);
-	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAX_NO_GUEST_NETWORK, &vlan_total))
+	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAXINUM_VLAN_RULELIST, &vlan_total))
 		return;
 
 	memset(brif_rule, 0, sizeof(brif_rule));
-	for (i=0, j=WGN_BRIF_INDEX_START; i<vlan_total && j<WGN_MAX_NO_GUEST_NETWORK; i++, j++)	
+	for (i=0, j=WGN_BRIF_INDEX_START; i<vlan_total && j<WGN_MAXINUM_VLAN_RULELIST; i++, j++)	
 	{
 		memset(brx, 0, sizeof(brx));
 		snprintf(brx, sizeof(brx)-1, "br%d", j);
@@ -582,7 +844,6 @@ extern
 void wgn_init(
 	void)
 {
-	check_default_config();
 	return;
 }
 
@@ -744,22 +1005,26 @@ void wgn_filter_forward(
 	char word[64];
 	char *next = NULL;
 	char *wan_ifname = NULL;
+    char *pppoe_ifname = NULL;
 	char *wgn_ifnames = NULL;
 
 	struct brif_rule_t *p_brif_rule = NULL;
-	struct brif_rule_t brif_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct brif_rule_t brif_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t brif_listsize = 0;
 	wgn_vlan_rule *p_vlan_rule = NULL;
-	wgn_vlan_rule vlan_list[WGN_MAX_NO_GUEST_NETWORK];
+	wgn_vlan_rule vlan_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t vlan_listsize = 0;
 
 	if (IS_RE_MODE())
 		return;
 
+	if (!IS_CAP_MODE())
+		return;
+
 	if (!fp)
 		return;
 
-	wan_ifname = nvram_safe_get(WGN_WAN_IFNAME);
+    wan_ifname = nvram_safe_get(WGN_WAN_IFNAME);
 	if (wan_ifname[0] == '\0') 
 		return;
 
@@ -767,12 +1032,15 @@ void wgn_filter_forward(
 	if (wgn_ifnames[0] == '\0')
 		return;
 
-	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!brif_list_get_from_nvram(brif_list, WGN_MAX_NO_GUEST_NETWORK, &brif_listsize))
+    if (nvram_invmatch("wan0_pppoe_ifname", ""))
+        pppoe_ifname = nvram_get("wan0_pppoe_ifname");
+
+	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!brif_list_get_from_nvram(brif_list, WGN_MAXINUM_VLAN_RULELIST, &brif_listsize))
 		return;
 
-	memset(vlan_list, 0, sizeof(wgn_vlan_rule) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAX_NO_GUEST_NETWORK, &vlan_listsize))
+	memset(vlan_list, 0, sizeof(wgn_vlan_rule) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAXINUM_VLAN_RULELIST, &vlan_listsize))
 		return;
 
 	foreach (word, wgn_ifnames, next)
@@ -787,7 +1055,10 @@ void wgn_filter_forward(
 			continue;
 
 		//iptables -A  FORWARD  -i brX -o eth0 -j ACCEPT
-		fprintf(fp, "-A FORWARD -i %s -o %s -j ACCEPT\n", word, wan_ifname);		
+		fprintf(fp, "-A FORWARD -i %s -o %s -j ACCEPT\n", word, wan_ifname);
+
+        if (pppoe_ifname)
+            fprintf(fp, "-A FORWARD -i %s -o %s -j ACCEPT\n", word, pppoe_ifname);
 	}
 
 	return;
@@ -801,13 +1072,19 @@ void wgn_filter_input(
 	char *wgn_ifnames = NULL;
 
 	struct brif_rule_t *p_brif_rule = NULL;
-	struct brif_rule_t brif_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct brif_rule_t brif_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t brif_listsize = 0;
 	wgn_vlan_rule *p_vlan_rule = NULL;
-	wgn_vlan_rule vlan_list[WGN_MAX_NO_GUEST_NETWORK];
+	wgn_vlan_rule vlan_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t vlan_listsize = 0;
 
+	int unit = 0;
+	int subunit = 0; 
+
 	if (IS_RE_MODE()) 
+		return;
+
+	if (!IS_CAP_MODE())
 		return;
 
 	if (!fp)
@@ -817,12 +1094,12 @@ void wgn_filter_input(
 	if (wgn_ifnames[0] == '\0')
 		return;
 
-	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!brif_list_get_from_nvram(brif_list, WGN_MAX_NO_GUEST_NETWORK, &brif_listsize))
+	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!brif_list_get_from_nvram(brif_list, WGN_MAXINUM_VLAN_RULELIST, &brif_listsize))
 		return;
 
-	memset(vlan_list, 0, sizeof(wgn_vlan_rule) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAX_NO_GUEST_NETWORK, &vlan_listsize))
+	memset(vlan_list, 0, sizeof(wgn_vlan_rule) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAXINUM_VLAN_RULELIST, &vlan_listsize))
 		return;
 	foreach(word, wgn_ifnames, next)
 	{
@@ -835,8 +1112,25 @@ void wgn_filter_input(
 		if (!p_vlan_rule->internet)
 			continue;
 
-		//iptables -A INPUT  -i brX -m state --state NEW -j ACCEPT
-		fprintf(fp, "-A INPUT -i %s -m state --state NEW -j ACCEPT\n", word);		
+		unit = subunit = -1;
+		wgn_get_wl_unit(&unit, &subunit, p_vlan_rule);
+		if (unit < 0 || subunit <= 0)
+			continue;
+
+		if (!get_wl_bss_enabled(unit, subunit))
+			continue;
+
+		if (get_wl_lanaccess(unit, subunit))
+			continue;
+
+		// iptables -A INPUT -i brX -p udp --dport 53 -j ACCEPT
+		fprintf(fp, "-A INPUT -i %s -p udp --dport 53 -j ACCEPT\n", word);
+		// iptables -A INPUT -i brX -p udp --dport 67 -j ACCEPT
+		fprintf(fp, "-A INPUT -i %s -p udp --dport 67 -j ACCEPT\n", word);
+		// iptables -A INPUT -i brX -p udp --dport 68 -j ACCEPT
+		fprintf(fp, "-A INPUT -i %s -p udp --dport 68 -j ACCEPT\n", word);
+		// iptables -A INPUT -i brX -j DROP
+		fprintf(fp, "-A INPUT -i %s -j DROP\n", word);
 	}
 
 	return;
@@ -849,13 +1143,16 @@ void wgn_dnsmasq_conf(
 	char *s = NULL;
 
 	size_t i = 0;
-	struct brif_rule_t brif_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct brif_rule_t brif_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t brif_listsize = 0;
 	struct wgn_subnet_rule_t *p_subnet_rule = NULL;
-	struct wgn_subnet_rule_t subnet_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct wgn_subnet_rule_t subnet_list[WGN_MAXINUM_SUBNET_RULELIST];
 	size_t subnet_listsize = 0;
 
 	if (IS_RE_MODE())
+		return;
+
+	if (!IS_CAP_MODE())
 		return;
 
 	if (fp == NULL)
@@ -864,12 +1161,18 @@ void wgn_dnsmasq_conf(
 	if (!(s = nvram_get(WGN_BRIF_RULE_NVRAM)) || strlen(s) == 0)
 		wgn_check_avalible_brif();
 
-	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!brif_list_get_from_nvram(brif_list, WGN_MAX_NO_GUEST_NETWORK, &brif_listsize))
+	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!brif_list_get_from_nvram(brif_list, WGN_MAXINUM_VLAN_RULELIST, &brif_listsize))
 		return;
 
-	memset(subnet_list, 0, sizeof(struct wgn_subnet_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_subnet_list_get_from_nvram(subnet_list, WGN_MAX_NO_GUEST_NETWORK, &subnet_listsize))
+	if (brif_listsize <= 0)
+		return;
+
+	memset(subnet_list, 0, sizeof(struct wgn_subnet_rule_t) * WGN_MAXINUM_SUBNET_RULELIST);
+	if (!wgn_subnet_list_get_from_nvram(subnet_list, WGN_MAXINUM_SUBNET_RULELIST, &subnet_listsize))
+		return;
+
+	if (subnet_listsize <= 0)
 		return;
 
 	for (i=0; i<brif_listsize; i++)
@@ -905,13 +1208,16 @@ int wgn_if_check_used(
 	char wl_ifname[33];
 	size_t i;
 	size_t total = 0;
-	struct wgn_vlan_rule_t vlan_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct wgn_vlan_rule_t vlan_list[WGN_MAXINUM_VLAN_RULELIST];
 	
+	if (!IS_CAP_MODE() && !IS_RE_MODE())
+		return 0;
+
 	if (!ifname)
 		return 0;
 
-	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAX_NO_GUEST_NETWORK, &total))
+	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAXINUM_VLAN_RULELIST, &total))
 		return 0;
 
 	for (i=0, found=0; i<total; i++)
@@ -1048,10 +1354,10 @@ int wgn_is_wds_guest_vlan(
 	size_t i = 0;
 	int unit1 = 0, unit2 = 0, unit3 = 0, unit4 = 0, unit5 = 0, get_vid = 0;
 
-	struct brif_rule_t brif_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct brif_rule_t brif_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t brif_total = 0;
 	struct wgn_vlan_rule_t *p_vlan_rule = NULL;
-	struct wgn_vlan_rule_t vlan_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct wgn_vlan_rule_t vlan_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t vlan_total = 0;
 
 	if (!ifname || strlen(ifname) == 0)
@@ -1074,12 +1380,12 @@ int wgn_is_wds_guest_vlan(
 		return 0;
 #endif	// HND_ROUTER	
 
-	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!brif_list_get_from_nvram(brif_list, WGN_MAX_NO_GUEST_NETWORK, &brif_total))
+	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!brif_list_get_from_nvram(brif_list, WGN_MAXINUM_VLAN_RULELIST, &brif_total))
 		return 0;
 
-	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAX_NO_GUEST_NETWORK, &vlan_total))
+	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAXINUM_VLAN_RULELIST, &vlan_total))
 		return 0;
 
 	for (i=0; i<brif_total; i++)
@@ -1101,10 +1407,10 @@ void wgn_hotplug_net(
 {
 	int total = 0, unit = 0, subunit = 0, subunit1 = 0, subunit2 = 0, subunit3 = 0;
 	size_t i;
-	struct brif_rule_t brif_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct brif_rule_t brif_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t brif_total = 0;
 	struct wgn_vlan_rule_t *p_vlan_rule = NULL;
-	struct wgn_vlan_rule_t vlan_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct wgn_vlan_rule_t vlan_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t vlan_total = 0;
 
 	char vid[33], vif[IFNAMSIZ+1];
@@ -1130,10 +1436,10 @@ void wgn_hotplug_net(
 		return;
 #endif	// HND_ROUTER	
 
-	if (!brif_list_get_from_nvram(brif_list, WGN_MAX_NO_GUEST_NETWORK, &brif_total))
+	if (!brif_list_get_from_nvram(brif_list, WGN_MAXINUM_VLAN_RULELIST, &brif_total))
 		return;
 
-	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAX_NO_GUEST_NETWORK, &vlan_total))
+	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAXINUM_VLAN_RULELIST, &vlan_total))
 		return;
 
 	for (i=0; i<brif_total; i++)
@@ -1160,14 +1466,14 @@ void wgn_hotplug_net(
 		memset(vid, 0, sizeof(vid));
 		snprintf(vid, sizeof(vid)-1, "%d", p_vlan_rule->vid);
 
-#if defined(HND_ROUTER)
+#if defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710))
 		memset(vif0, 0, sizeof(vif0));
 		snprintf(vif0, sizeof(vif0)-1, "%s.0", interface);
-#endif	/* HND_ROUTER */		
+#endif	/* HND_ROUTER && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)) */
 
 		if (action == 1)	// add
 		{
-#if defined(HND_ROUTER)
+#if defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710))
 			//if (find_br0_ifnames_by_ifname(interface)) exec_cmd("brctl", "delif", "br0", interface);	
 			exec_cmd("brctl", "delif", "br0", interface);		
 			// vlanctl --mcast --if-create-name eth6 eth6.0 --if eth6 --set-if-mode-rg;
@@ -1195,7 +1501,7 @@ void wgn_hotplug_net(
 			exec_cmd("brctl", "addif", "br0", vif0);
 			//if (find_br0_ifnames_by_ifname(interface)) exec_cmd("brctl", "addif", "br0", interface);
 			exec_cmd("brctl", "addif", brif_list[i].br_name, vif);
-#else	/* HND_ROUTER */
+#else	/* defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)) */
 			exec_cmd("vconfig", "set_name_type", "DEV_PLUS_VID_NO_PAD");
 			// vconfig add interface vid
 			exec_cmd("vconfig", "add", interface, vid);
@@ -1204,16 +1510,16 @@ void wgn_hotplug_net(
 			// brctl addif brX vifname
 			exec_cmd("brctl", "addif", brif_list[i].br_name, vif);
 			exec_cmd("vconfig", "set_name_type", "VLAN_PLUS_VID_NO_PAD");			
-#endif	/* HND_ROUTER */
+#endif	/* defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)) */
 		}
 		else	// del
 		{
-#if defined(HND_ROUTER)
+#if defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710))
 			exec_cmd("vlanctl", "--if-delete", vif);
 			exec_cmd("vlanctl", "--if-delete", vif0);
-#else	/* HND_ROUTER */
+#else	/* defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)) */
 			exec_cmd("vconfig", "rem", vif);
-#endif	/* HND_ROUTER */			
+#endif	/* defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)) */
 		}
 	}
 
@@ -1230,6 +1536,7 @@ char *get_sta_bh_ifnames(
 		return NULL;
 
 	memset(buffer, 0, buffer_size);
+
 	if (!IS_RE_MODE())
 		return NULL;
 
@@ -1343,8 +1650,18 @@ char *get_eth_bh_ifnames(
 
 #else	/* HND_ROUTER */
 
+#if defined(RTCONFIG_QCA)
+	if (buffer_size> (strlen(nvram_safe_get("wired_ifnames"))+1))
+	{
+		if (!IS_RE_MODE())
+			ptr += snprintf(ptr, end-ptr, "%s ", nvram_safe_get("wired_ifnames"));
+		else
+			ptr += snprintf(ptr, end-ptr, "%s %s ", nvram_safe_get("wired_ifnames"),nvram_safe_get("eth_ifnames"));
+	}
+#else
 	if (buffer_size > 4)
-		ptr += snprintf(ptr, end-ptr, "%s ", "eth0");
+		ptr += snprintf(ptr, end-ptr, "%s ", WAN_IF_ETH);
+#endif
 
 #endif	/* HND_ROUTER */
 
@@ -1381,25 +1698,25 @@ void destory_vlan(
 		memset(s, 0, sizeof(s));
 		snprintf(s, sizeof(s), "wgn_br%d_wl_ifnames", i);
 		foreach(word, nvram_safe_get(s), next)
-#if defined(HND_ROUTER)
+#if defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710))
 			exec_cmd("vlanctl", "--if-delete", word);
-#else	/* HND_ROUTER */		
+#else	/* defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)) */
 			exec_cmd("vconfig", "rem", word);
-#endif	/* HND_ROUTER */			
+#endif	/* defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)) */
 		nvram_unset(s);
 
 		memset(s, 0, sizeof(s));
 		snprintf(s, sizeof(s), "wgn_br%d_sta_ifnames", i);
 		foreach(word, nvram_safe_get(s), next)
-#if defined(HND_ROUTER)
+#if defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710))
 			exec_cmd("vlanctl", "--if-delete", word);
-#else	/* HND_ROUTER */		
+#else	/* defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)) */
 			exec_cmd("vconfig", "rem", word);
-#endif	/* HND_ROUTER */			
+#endif	/* defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)) */
 		nvram_unset(s);
 	}
 
-#if defined(HND_ROUTER)
+#if defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710))
 	memset(wl_bh_ifnames, 0, sizeof(wl_bh_ifnames));
 	if ((bh_ifnames = get_wl_bh_ifnames(wl_bh_ifnames, sizeof(wl_bh_ifnames))))
 	{
@@ -1421,7 +1738,7 @@ void destory_vlan(
 			exec_cmd("vlanctl", "--if-delete", vif0);
 		}
 	}
-#endif	/* HND_ROUTER */		
+#endif	/* defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)) */
 	return;
 }
 
@@ -1441,6 +1758,7 @@ char *create_vlan(
 	char word[64];
 	char *next = NULL;
 	size_t size = 0;
+    int ret = -1;
 
 #if defined(HND_ROUTER)	
 	char vif0[64];
@@ -1469,6 +1787,7 @@ char *create_vlan(
 			goto create_vlan_failed;
 	}
 
+
 	if (!bh_ifnames || strlen(bh_ifnames) == 0)
 		goto create_vlan_failed;
 
@@ -1478,7 +1797,7 @@ char *create_vlan(
 	memset(vid, 0, sizeof(vid));
 	snprintf(vid, sizeof(vid)-1, "%d", vlan_id);
 
-#if defined(HND_ROUTER)
+#if defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710))
 	if (type != 0)	// wl & sta
 	{
 		foreach (word, bh_ifnames, next)
@@ -1542,15 +1861,17 @@ char *create_vlan(
 			memset(vif, 0, sizeof(vif));
 			snprintf(vif, sizeof(vif)-1, "%s.%s", word, vid);
 			// if (find_br0_ifnames_by_ifname(word)) exec_cmd("brctl", "delif", "br0", word);
-			exec_cmd("brctl", "delif", "br0", word);
-			exec_cmd("vconfig", "add", word, vid);
+			//exec_cmd("brctl", "delif", "br0", word);
+			ret = ioctl_bridge(ARG_DELIF, "br0", word);
+            exec_cmd("vconfig", "add", word, vid);
 			// if (find_br0_ifnames_by_ifname(word)) exec_cmd("brctl", "addif", "br0", word);
-			exec_cmd("brctl", "addif", "br0", word);
-			ifconfig(vif, IFUP | IFF_ALLMULTI | IFF_MULTICAST, NULL, NULL);
+			//if (find_lan_ifnames_by_ifname(word)) exec_cmd("brctl", "addif", "br0", word);
+			if (ret == 0) ioctl_bridge(ARG_ADDIF, "br0", word);
+            ifconfig(vif, IFUP | IFF_ALLMULTI | IFF_MULTICAST, NULL, NULL);
 		}
 		exec_cmd("vconfig", "set_name_type", "VLAN_PLUS_VID_NO_PAD");	
 	}
-#else	/* HND_ROUTER */
+#else	/* defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)) */
 
 	foreach (word, bh_ifnames, next)
 	{
@@ -1564,18 +1885,20 @@ char *create_vlan(
 
 	exec_cmd("vconfig", "set_name_type", "DEV_PLUS_VID_NO_PAD");
 	foreach (word, bh_ifnames, next)
-	{
+	{      
 		memset(vif, 0, sizeof(vif));
 		snprintf(vif, sizeof(vif)-1, "%s.%s", word, vid);
 		// if (find_br0_ifnames_by_ifname(word)) exec_cmd("brctl", "delif", "br0", word);
-		exec_cmd("brctl", "delif", "br0", word);
-		exec_cmd("vconfig", "add", word, vid);
+		//exec_cmd("brctl", "delif", "br0", word);
+		ret = ioctl_bridge(ARG_DELIF, "br0", word);
+        exec_cmd("vconfig", "add", word, vid);
 		// if (find_br0_ifnames_by_ifname(word)) exec_cmd("brctl", "addif", "br0", word);
-		exec_cmd("brctl", "addif", "br0", word);
-		ifconfig(vif, IFUP | IFF_ALLMULTI | IFF_MULTICAST, NULL, NULL);
+		//if (find_lan_ifnames_by_ifname(word)) exec_cmd("brctl", "addif", "br0", word);
+	    if (ret == 0) ioctl_bridge(ARG_ADDIF, "br0", word);
+        ifconfig(vif, IFUP | IFF_ALLMULTI | IFF_MULTICAST, NULL, NULL);
 	}
 	exec_cmd("vconfig", "set_name_type", "VLAN_PLUS_VID_NO_PAD");
-#endif	/* HND_ROUTER */
+#endif	/* defined(HND_ROUTER) && !(defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)) */
 
 	if (strlen(ret_ifnames) > 0)
 		ret_ifnames[strlen(ret_ifnames)-1] = '\0';
@@ -1672,7 +1995,12 @@ int create_guest_bridge(
 			{	
 				foreach (word, sta_vifnames, next)
 				{
-					if (strstr(nvram_safe_get("amas_ifname"), word))
+#if defined(RTCONFIG_QCA)
+					if (strstr(word,nvram_safe_get("amas_ifname")))
+#else
+					//if (strstr(nvram_safe_get("amas_ifname"), word))
+					if (strstr(word,nvram_safe_get("amas_ifname")))						
+#endif
 					{			
 						exec_cmd("brctl", "addif", br_ifname, word);
 						strlcat(nvram_val, word, sizeof(nvram_val));
@@ -1807,8 +2135,8 @@ extern
 void wgn_start(
 	void)
 {
-	char wgn_ifnames[(WGN_MAX_NO_GUEST_NETWORK * IFNAMSIZ) + 1];
-	char wl_ifnames[(WGN_MAX_NO_GUEST_NETWORK * IFNAMSIZ) + 1];
+	char wgn_ifnames[(WGN_MAXINUM_VLAN_RULELIST * IFNAMSIZ) + 1];
+	char wl_ifnames[(WGN_MAXINUM_VLAN_RULELIST * IFNAMSIZ) + 1];
 	char wl_ifname[33];
 	char *ipaddr = NULL;
 	char *ipmask = NULL;
@@ -1817,36 +2145,51 @@ void wgn_start(
 	int unit;
 	int subunit;
 
-	struct brif_rule_t brif_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct brif_rule_t brif_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t brif_total = 0;
-	struct wgn_vlan_rule_t vlan_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct wgn_vlan_rule_t vlan_list[WGN_MAXINUM_VLAN_RULELIST];
 	struct wgn_vlan_rule_t *p_vlan_rule = NULL;
 	size_t vlan_total = 0;
-	struct wgn_subnet_rule_t subnet_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct wgn_subnet_rule_t subnet_list[WGN_MAXINUM_VLAN_RULELIST];
 	struct wgn_subnet_rule_t *p_subnet_rule = NULL;
 	size_t subnet_total = 0;
 
 	memset(wgn_ifnames, 0, sizeof(wgn_ifnames));
 	memset(wl_ifnames, 0, sizeof(wl_ifnames));
 
+	if (!IS_CAP_MODE() && !IS_RE_MODE())
+		return;	
+
 	if (IS_RE_MODE())
 		wgn_check_avalible_brif();
 
-	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!brif_list_get_from_nvram(brif_list, WGN_MAX_NO_GUEST_NETWORK, &brif_total))
+	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!brif_list_get_from_nvram(brif_list, WGN_MAXINUM_VLAN_RULELIST, &brif_total))
 		return;
 
-	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAX_NO_GUEST_NETWORK, &vlan_total))
+	if (brif_total <= 0)
 		return;
 
-	memset(subnet_list, 0, sizeof(struct wgn_subnet_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_subnet_list_get_from_nvram(subnet_list, WGN_MAX_NO_GUEST_NETWORK, &subnet_total))
+	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAXINUM_VLAN_RULELIST, &vlan_total))
+		return;
+
+	if (vlan_total <= 0)
+		return;
+
+	memset(subnet_list, 0, sizeof(struct wgn_subnet_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_subnet_list_get_from_nvram(subnet_list, WGN_MAXINUM_VLAN_RULELIST, &subnet_total))
+		return;
+
+	if (subnet_total <= 0)
 		return;
 
 	for (i=0; i<brif_total; i++)
 	{
 		if (!(p_vlan_rule = wgn_vlan_list_find(vlan_list, vlan_total, brif_list[i].subnet_name)))
+			continue;
+
+		if (p_vlan_rule->vid == -1)
 			continue;
 
 		if (!p_vlan_rule->enable)
@@ -1924,12 +2267,15 @@ char* wgn_guest_lan_ipaddr(
 	char word1[64], *next1 = NULL;
 
 	int if_idx = 0, found = 0;
-	struct brif_rule_t brif_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct brif_rule_t brif_list[WGN_MAXINUM_VLAN_RULELIST];
 	struct brif_rule_t *p_brif_rule = NULL;
 	size_t brif_total = 0;
-	struct wgn_subnet_rule_t subnet_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct wgn_subnet_rule_t subnet_list[WGN_MAXINUM_SUBNET_RULELIST];
 	struct wgn_subnet_rule_t *p_subnet_rule = NULL;
 	size_t subnet_total = 0;
+
+	if (!IS_CAP_MODE() && !IS_RE_MODE())
+		return NULL;
 
 	if (!result || result_bsize <= 0)
 		return NULL;
@@ -1937,15 +2283,15 @@ char* wgn_guest_lan_ipaddr(
 	if (!(wgn_ifnames = nvram_get(WGN_IFNAMES)))
 		return NULL;
 
-	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!brif_list_get_from_nvram(brif_list, WGN_MAX_NO_GUEST_NETWORK, &brif_total))
+	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!brif_list_get_from_nvram(brif_list, WGN_MAXINUM_VLAN_RULELIST, &brif_total))
 		return NULL;
 
 	if (brif_total <= 0)
 		return NULL;
 
-	memset(subnet_list, 0, sizeof(struct wgn_subnet_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_subnet_list_get_from_nvram(subnet_list, WGN_MAX_NO_GUEST_NETWORK, &subnet_total))
+	memset(subnet_list, 0, sizeof(struct wgn_subnet_rule_t) * WGN_MAXINUM_SUBNET_RULELIST);
+	if (!wgn_subnet_list_get_from_nvram(subnet_list, WGN_MAXINUM_SUBNET_RULELIST, &subnet_total))
 		return NULL;
 
 	if (subnet_total <= 0)
@@ -1996,12 +2342,15 @@ char* wgn_guest_lan_netmask(
 	char word1[64], *next1 = NULL;
 
 	int if_idx = 0, found = 0;
-	struct brif_rule_t brif_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct brif_rule_t brif_list[WGN_MAXINUM_VLAN_RULELIST];
 	struct brif_rule_t *p_brif_rule = NULL;
 	size_t brif_total = 0;
-	struct wgn_subnet_rule_t subnet_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct wgn_subnet_rule_t subnet_list[WGN_MAXINUM_SUBNET_RULELIST];
 	struct wgn_subnet_rule_t *p_subnet_rule = NULL;
 	size_t subnet_total = 0;
+
+	if (!IS_CAP_MODE() && !IS_RE_MODE())
+		return NULL;
 
 	if (!result || result_bsize <= 0)
 		return NULL;
@@ -2009,15 +2358,15 @@ char* wgn_guest_lan_netmask(
 	if (!(wgn_ifnames = nvram_get(WGN_IFNAMES)))
 		return NULL;
 
-	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!brif_list_get_from_nvram(brif_list, WGN_MAX_NO_GUEST_NETWORK, &brif_total))
+	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!brif_list_get_from_nvram(brif_list, WGN_MAXINUM_VLAN_RULELIST, &brif_total))
 		return NULL;
 
 	if (brif_total <= 0)
 		return NULL;
 
-	memset(subnet_list, 0, sizeof(struct wgn_subnet_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_subnet_list_get_from_nvram(subnet_list, WGN_MAX_NO_GUEST_NETWORK, &subnet_total))
+	memset(subnet_list, 0, sizeof(struct wgn_subnet_rule_t) * WGN_MAXINUM_SUBNET_RULELIST);
+	if (!wgn_subnet_list_get_from_nvram(subnet_list, WGN_MAXINUM_SUBNET_RULELIST, &subnet_total))
 		return NULL;
 
 	if (subnet_total <= 0)
@@ -2066,6 +2415,9 @@ char* wgn_guest_lan_ifnames(
 	char word[64], *next = NULL;
 	int ifidx = 0;
 
+	if (!IS_CAP_MODE() && !IS_RE_MODE())
+		return NULL;
+
 	if (!ret_ifnames || ret_ifnames_bsize <= 0)
 		return NULL;
 
@@ -2113,7 +2465,8 @@ char* wgn_all_lan_ifnames(
 		if (ss[strlen(ss)-1] != ' ') strlcat(b, " ", alloc_size);
 	}
 
-	if (!IS_RE_MODE())
+	//if (!IS_RE_MODE())
+	if (IS_CAP_MODE())
 	{
 		if ((wgn_ifnames = nvram_get(WGN_IFNAMES)) && strlen(wgn_ifnames) > 0)
 		{
@@ -2154,25 +2507,25 @@ void wgn_stop(
 	char *wgn_ifnames = NULL;
 	char word[64], *next = NULL;
 	struct brif_rule_t *p_brif_rule = NULL;
-	struct brif_rule_t brif_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct brif_rule_t brif_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t brif_total = 0;
 	struct wgn_vlan_rule_t *p_vlan_rule = NULL;
-	struct wgn_vlan_rule_t vlan_list[WGN_MAX_NO_GUEST_NETWORK];
+	struct wgn_vlan_rule_t vlan_list[WGN_MAXINUM_VLAN_RULELIST];
 	size_t vlan_total = 0;
 	int ifidx = 0;
 
 	if (!(wgn_ifnames = nvram_get(WGN_IFNAMES)))
 		return;
 
-	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!brif_list_get_from_nvram(brif_list, WGN_MAX_NO_GUEST_NETWORK, &brif_total))
+	memset(brif_list, 0, sizeof(struct brif_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!brif_list_get_from_nvram(brif_list, WGN_MAXINUM_VLAN_RULELIST, &brif_total))
 		return;
 
 	if (brif_total <= 0)
 		return;
 
-	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAX_NO_GUEST_NETWORK);
-	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAX_NO_GUEST_NETWORK, &vlan_total))
+	memset(vlan_list, 0, sizeof(struct wgn_vlan_rule_t) * WGN_MAXINUM_VLAN_RULELIST);
+	if (!wgn_vlan_list_get_from_nvram(vlan_list, WGN_MAXINUM_VLAN_RULELIST, &vlan_total))
 		return;
 
 	if (vlan_total <= 0)
@@ -2236,3 +2589,4 @@ void wgn_stop(
 	nvram_set_int(WGN_ENABLED, 0);
 	return;
 }
+

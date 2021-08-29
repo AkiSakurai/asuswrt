@@ -1620,6 +1620,7 @@ int get_wl_channel_list_5g_by_bw(string_1024 list_of_channels, int bw)
 	char *p;
 	int i = 0;;
 	char cur_ccode[20] = {0};
+	int len = 0;
 
 	sprintf(tmp, "[\"%d\"]", 0);
 
@@ -1649,16 +1650,16 @@ int get_wl_channel_list_5g_by_bw(string_1024 list_of_channels, int bw)
 	while (p)
 	{
 		if (i == 0)
-			sprintf(tmp, "[\"%s\"", (char *) p);
+			len += sprintf(tmp, "[\"%s\"", (char *) p);
 		else
-			sprintf(tmp,  "%s, \"%s\"", tmp, (char *) p);
+			len += sprintf(tmp+len,  ", \"%s\"", (char *) p);
 
 		p = strtok(NULL, ",");
 		i++;
 	}
 
 	if (i)
-		sprintf(tmp,  "%s]", tmp);
+		len += sprintf(tmp+len,  "]");
 
 ERROR:
 	/* list_of_channels = 1024, tmp = 256 */

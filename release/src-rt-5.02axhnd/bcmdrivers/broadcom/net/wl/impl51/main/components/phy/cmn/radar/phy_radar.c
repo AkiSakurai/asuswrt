@@ -1,7 +1,7 @@
 /*
  * RadarDetect module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_radar.c 752845 2018-03-19 07:24:28Z $
+ * $Id: phy_radar.c 780019 2019-10-14 08:28:40Z $
  */
 
 #include <typedefs.h>
@@ -193,15 +193,15 @@ phy_radar_get_st(phy_radar_info_t *ri)
 static int
 phy_radar_init(phy_radar_info_t *ri, bool init)
 {
-#ifdef BAND5G
+#if BAND5G
 	phy_type_radar_fns_t *fns = ri->fns;
 	phy_info_t *pi = ri->pi;
 #endif // endif
 
 	PHY_TRACE(("%s: init %d\n", __FUNCTION__, init));
 
-#ifdef BAND5G
-	if (CHSPEC_IS5G(pi->radio_chanspec)) {
+#if BAND5G
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 		if (fns->init != NULL)
 			return (fns->init)(fns->ctx, init);
 	}
@@ -251,6 +251,20 @@ phy_radar_detect_enable(phy_info_t *pi, bool enab)
 	phy_radar_init(ri, enab);
 }
 
+void
+phy_radar_tuning_reset(phy_info_t *pi)
+{
+	phy_radar_info_t *ri = pi->radari;
+	phy_type_radar_fns_t *fns = ri->fns;
+
+	PHY_TRACE(("%s\n", __FUNCTION__));
+
+	if (fns->reset == NULL)
+		return;
+
+	(fns->reset)(fns->ctx);
+}
+
 uint8
 phy_radar_detect(phy_info_t *pi, radar_detected_info_t *radar_detected,
 bool sec_pll, bool bw80_80_mode)
@@ -276,7 +290,7 @@ phy_radar_detect_mode_set(phy_info_t *pi, phy_radar_detect_mode_t mode)
 	PHY_TRACE(("wl%d: %s, Radar detect mode set done\n", pi->sh->unit, __FUNCTION__));
 
 	if (mode != RADAR_DETECT_MODE_FCC && mode != RADAR_DETECT_MODE_EU &&
-		mode != RADAR_DETECT_MODE_UK) {
+		mode != RADAR_DETECT_MODE_UK && mode != RADAR_DETECT_MODE_JP) {
 		PHY_TRACE(("wl%d: bogus radar detect mode: %d\n", pi->sh->unit, mode));
 		return;
 	}
@@ -302,20 +316,26 @@ phy_radar_detect_mode_set(phy_info_t *pi, phy_radar_detect_mode_t mode)
 	if (mode == RADAR_DETECT_MODE_FCC) {
 		st->rparams.radar_args.feature_mask =
 			((st->rparams.radar_args.feature_mask & ~RADAR_FEATURE_ETSI_DETECT) &
-			~RADAR_FEATURE_UK_DETECT) |
+			~RADAR_FEATURE_UK_DETECT & ~RADAR_FEATURE_NEWJP_DETECT) |
 			RADAR_FEATURE_FCC_DETECT;
 	}
 	else if (mode == RADAR_DETECT_MODE_UK) {
 		st->rparams.radar_args.feature_mask =
-			((st->rparams.radar_args.feature_mask & ~RADAR_FEATURE_FCC_DETECT) |
-			RADAR_FEATURE_ETSI_DETECT) |
+			((st->rparams.radar_args.feature_mask & ~RADAR_FEATURE_FCC_DETECT) &
+			~RADAR_FEATURE_NEWJP_DETECT) | RADAR_FEATURE_ETSI_DETECT |
 			RADAR_FEATURE_UK_DETECT;
 	}
 	else if (mode == RADAR_DETECT_MODE_EU) {
 		st->rparams.radar_args.feature_mask =
 			((st->rparams.radar_args.feature_mask & ~RADAR_FEATURE_FCC_DETECT) &
-			~ RADAR_FEATURE_UK_DETECT) |
+			~RADAR_FEATURE_UK_DETECT & ~RADAR_FEATURE_NEWJP_DETECT) |
 			RADAR_FEATURE_ETSI_DETECT;
+	}
+	else if (mode == RADAR_DETECT_MODE_JP) {
+		st->rparams.radar_args.feature_mask =
+			((st->rparams.radar_args.feature_mask & ~RADAR_FEATURE_ETSI_DETECT) &
+			~RADAR_FEATURE_UK_DETECT) | RADAR_FEATURE_FCC_DETECT |
+			RADAR_FEATURE_NEWJP_DETECT;
 	}
 
 	if (fns->mode == NULL)

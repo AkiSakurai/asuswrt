@@ -1,6 +1,6 @@
 /*
  * Key Management Module Implementation - notify support
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_notify.c 756573 2018-04-09 21:44:16Z $
+ * $Id: km_notify.c 778655 2019-09-06 11:27:56Z $
  */
 
 #include "km_pvt.h"
@@ -238,11 +238,11 @@ km_handle_key_update(keymgmt_t *km, wlc_key_t *key, wlc_key_info_t *key_info)
 	/* compatibility: sync up scb wsec invalidate txc */
 	if (km_pvt_key->flags & KM_FLAG_SCB_KEY) {
 		scb_t *scb;
-		uint bandunit;
+		enum wlc_bandunit bandunit;
 
 		scb = km_pvt_key->u.scb;
 		bsscfg = SCB_BSSCFG(scb);
-		bandunit = CHSPEC_WLCBANDUNIT(bsscfg->current_bss->chanspec);
+		bandunit = CHSPEC_BANDUNIT(bsscfg->current_bss->chanspec);
 
 		/* update key scb if necessary */
 		if (scb->bandunit != bandunit) {
@@ -287,8 +287,10 @@ km_handle_key_update(keymgmt_t *km, wlc_key_t *key, wlc_key_info_t *key_info)
 				wlc_ratelinkmem_update_link_entry(km->wlc, scb);
 			}
 			/* update bsscfg scb linkmem entry */
-			wlc_ratelinkmem_update_link_entry(km->wlc,
-				WLC_RLM_BSSCFG_LINK_SCB(km->wlc, bsscfg));
+			scb = WLC_RLM_BSSCFG_LINK_SCB(km->wlc, bsscfg);
+			if (scb) {
+				wlc_ratelinkmem_update_link_entry(km->wlc, scb);
+			}
 		}
 	}
 

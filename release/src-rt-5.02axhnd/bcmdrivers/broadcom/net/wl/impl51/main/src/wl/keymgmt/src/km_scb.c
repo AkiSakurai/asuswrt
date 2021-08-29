@@ -1,6 +1,6 @@
 /*
  * Key Management Module Implementation - scb support
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_scb.c 773616 2019-03-26 14:51:30Z $
+ * $Id: km_scb.c 779298 2019-09-24 18:38:16Z $
  */
 
 #include "km_pvt.h"

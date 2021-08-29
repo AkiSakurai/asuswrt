@@ -946,7 +946,7 @@ function genWANSoption(){
 			document.form.wan_selection.options[i] = new Option(wans_dualwan_NAME, i);
 		}
 
-		if(productid == "GT-AX6000" || productid == "RT-AC89U"){
+		if(based_modelid == "GT-AXY16000" || based_modelid == "RT-AX89U"){
 			if(wans_dualwan_NAME == "WAN2")
 				document.form.wan_selection.options[i] = new Option("10G base-T", i);
 			else if(wans_dualwan_NAME == "SFP+")

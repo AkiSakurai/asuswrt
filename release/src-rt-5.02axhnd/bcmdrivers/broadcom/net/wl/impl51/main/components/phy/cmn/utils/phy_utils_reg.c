@@ -1,7 +1,7 @@
 /*
  * PHY utils - register access functions.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_utils_reg.c 766114 2018-07-25 00:46:01Z $
+ * $Id: phy_utils_reg.c 778608 2019-09-05 16:50:19Z $
  */
 
 #include <typedefs.h>
@@ -339,7 +339,7 @@ phy_utils_write_phychannelreg(phy_info_t *pi, uint val)
 
 	wlc_phy_conditional_assert(pi);
 
-	W_REG(pi->sh->osh, D11_PHY_REG_8(pi), val);
+	W_REG(pi->sh->osh, D11_PHY_REG_8(pi), (uint16)val);
 
 	if ((BUSTYPE(pi->sh->bustype) == PCMCIA_BUS) &&
 	    (pi->sh->buscorerev <= 3)) {
@@ -710,7 +710,8 @@ phy_utils_and_phyreg(phy_info_t *pi, uint16 addr, uint16 val)
 	(void)R_REG(pi->sh->osh, D11_PHY_REG_ADDR(pi));
 #endif // endif
 
-	W_REG(pi->sh->osh, D11_PHY_REG_DATA(pi), (R_REG(pi->sh->osh, D11_PHY_REG_DATA(pi)) & val));
+	W_REG(pi->sh->osh, D11_PHY_REG_DATA(pi),
+	    (uint16)(R_REG(pi->sh->osh, D11_PHY_REG_DATA(pi)) & val));
 	pi->phy_wreg = 0;	/* clear reg write metering */
 }
 
@@ -730,7 +731,8 @@ phy_utils_or_phyreg(phy_info_t *pi, uint16 addr, uint16 val)
 	(void)R_REG(pi->sh->osh, D11_PHY_REG_ADDR(pi));
 #endif // endif
 
-	W_REG(pi->sh->osh, D11_PHY_REG_DATA(pi), (R_REG(pi->sh->osh, D11_PHY_REG_DATA(pi)) | val));
+	W_REG(pi->sh->osh, D11_PHY_REG_DATA(pi),
+	    (uint16)(R_REG(pi->sh->osh, D11_PHY_REG_DATA(pi)) | val));
 	pi->phy_wreg = 0;	/* clear reg write metering */
 }
 
@@ -751,7 +753,7 @@ phy_utils_mod_phyreg(phy_info_t *pi, uint16 addr, uint16 mask, uint16 val)
 #endif // endif
 
 	W_REG(pi->sh->osh, D11_PHY_REG_DATA(pi),
-	      ((R_REG(pi->sh->osh, D11_PHY_REG_DATA(pi)) & ~mask) | (val & mask)));
+	      (uint16)((R_REG(pi->sh->osh, D11_PHY_REG_DATA(pi)) & ~mask) | (val & mask)));
 	pi->phy_wreg = 0;	/* clear reg write metering */
 }
 

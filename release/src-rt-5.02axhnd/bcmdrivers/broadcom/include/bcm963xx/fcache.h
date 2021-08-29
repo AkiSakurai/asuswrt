@@ -171,6 +171,7 @@ typedef enum FcacheIoctl
     FCACHE_DECL(FCACHE_IOCTL_TCP_ACK_MFLOWS)
     FCACHE_DECL(FCACHE_IOCTL_SET_HW_ACCEL)
     FCACHE_DECL(FCACHE_IOCTL_SW_DEFER)
+    FCACHE_DECL(FCACHE_IOCTL_4O6_FRAG)
     FCACHE_DECL(FCACHE_IOCTL_INVALID)
 } FcacheIoctl_t;
 
@@ -202,7 +203,8 @@ typedef struct {
         uint16_t accel_mode     : 1;
         uint16_t tcp_ack_mflows : 1;
         uint16_t hw_accel       : 1;
-        uint16_t unused         : 5;
+        uint16_t fc_4o6_frag    : 1;
+        uint16_t unused         : 4;
       } flags;	
 }FcStatusInfo_t;
 

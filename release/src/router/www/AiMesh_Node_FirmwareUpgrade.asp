@@ -52,12 +52,19 @@
 	text-align: left;
 	font-weight: bolder;
 }
-.AiMesh_fw_loading {
+.AiMesh_fw_upload_bg {
 	position: absolute;
 	right: 0;
 	top: 0;
 	left: 0;
 	bottom: 0;
+	margin: auto;
+	width: 80%;
+	height: 90%;
+}
+.AiMesh_fw_loading {
+	position: relative;
+	top: 20%;
 	margin: auto;
 }
 .fw_upload_button {
@@ -113,6 +120,13 @@
 }
 </style>
 <script>
+function initial() {
+	var odm_support = ('<% nvram_get("rc_support"); %>'.indexOf('odm') != -1) ? true : false;
+	if(odm_support)
+		document.body.className = "bg-odm";
+	else
+		document.body.className = "bg";
+}
 function dr_advise() {
 	htmlbodyforIE = document.getElementsByTagName("html");  //this both for IE&FF, use "html" but not "body" because <!DOCTYPE html PUBLIC.......>
 	htmlbodyforIE[0].style.overflow = "hidden";	  //hidden the Y-scrollbar for preventing from user scroll it.
@@ -239,7 +253,7 @@ function open_AiMesh_node_fw_upgrade() {
 }
 </script>
 </head>
-<body>
+<body onload="initial();">
 <div id="LoadingBar" class="popup_bar_bg">
 <table cellpadding="5" cellspacing="0" id="loadingBarBlock" class="loadingBarBlock AiMesh_fw_loading" align="center">
 	<tr>
@@ -285,7 +299,7 @@ function open_AiMesh_node_fw_upgrade() {
 <input type="hidden" name="firmver" value="<% nvram_get("firmver"); %>">
 <input type="hidden" name="update" disabled>
 <input type="hidden" name="upload" disabled>
-<div class='AiMesh_fw_loading' style='width:80%;height:90%;'>
+<div class='AiMesh_fw_upload_bg'>
 	<div class="icon_logo">
 	</div>
 	<div class="desc_container">

@@ -2,7 +2,7 @@
  * NPHY RADIO specific portion of Broadcom BCM43XX 802.11abgn
  * Networking Device Driver.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phy_radio_n.c 676800 2016-12-24 19:51:32Z $
+ * $Id: wlc_phy_radio_n.c 778436 2019-08-30 23:21:30Z $
  */
 
 #ifndef _wlc_phy_radio_n_
@@ -4744,7 +4744,7 @@ wlc_phy_chanspec_radio2057_setup(phy_info_t *pi, const chan_info_nphy_radio2057_
 		}
 	} else if ((RADIOREV(pi->pubpi->radiorev) == 7) || (RADIOREV(pi->pubpi->radiorev) == 8) ||
 	           (RADIOREV(pi->pubpi->radiorev) == 12)) {
-	  if (CHSPEC_IS5G(pi->radio_chanspec)) {
+	  if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 		freq = CHAN5G_FREQ(CHSPEC_CHANNEL(pi->radio_chanspec));
 		if (pi->sh->boardtype == BCM943236OLYMPICSULLEY_SSID) {
 		  if ((freq >= 5240) && (freq <= 5825)) {

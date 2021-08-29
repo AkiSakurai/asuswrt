@@ -24,6 +24,8 @@ var wanObj = {
 	},
 
 	"pppoe": {
+		"wan_dhcpenable_x": "1",
+		"wan_dnsenable_x": "1",
 		"wan_pppoe_username": "",
 		"wan_pppoe_passwd": ""
 	},
@@ -101,6 +103,12 @@ var wirelessObj = {
 		"wl2_wpa_psk": "",
 		"wl2_auth_mode_x": "",
 		"wl2_crypto": ""
+	},
+	"wl3": {
+		"wl3_ssid": "",
+		"wl3_wpa_psk": "",
+		"wl3_auth_mode_x": "",
+		"wl3_crypto": ""
 	}
 }
 
@@ -238,6 +246,7 @@ var systemVariable = {
 	},
 	"isNewFw": 0,
 	"newFwVersion": "",
+	"forceLevel": "",
 	"papList": [],
 	"papListAiMesh": [],
 	"selectedAP": {},
@@ -259,7 +268,10 @@ var systemVariable = {
 	"wanOption": false,
 	"interval_status": false,
 	"modelCloudIcon": [],
-	"onboardingInfo": {}
+	"onboardingInfo": {},
+	"skipAiMeshOptionPage": false,
+	"amas_newWindow_addNode": false,
+	"authModePostData": {}
 }
 
 var aimeshObj = {

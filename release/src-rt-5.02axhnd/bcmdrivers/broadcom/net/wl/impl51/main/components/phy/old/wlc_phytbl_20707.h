@@ -1,7 +1,7 @@
 /*
  * Radio 20707 table definition header file
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -96,27 +96,59 @@ typedef struct _chan_info_radio20707_rffe_5G {
 	uint8 RFP0_logen_reg0_logen_div3en;
 } chan_info_radio20707_rffe_5G_t;
 
+typedef struct _chan_info_radio20707_rffe_6G {
+	/* 5G tuning data */
+	uint8 RFP0_logen_reg1_logen_mix_ctune;
+	uint8 RF0_logen_core_reg3_logen_lc_ctune;
+	uint8 RF1_logen_core_reg3_logen_lc_ctune;
+	uint8 RF2_logen_core_reg3_logen_lc_ctune;
+	uint8 RF0_rx5g_reg1_rxdb_lna_tune;
+	uint8 RF1_rx5g_reg1_rxdb_lna_tune;
+	uint8 RF2_rx5g_reg1_rxdb_lna_tune;
+	uint8 RF0_tx5g_mix_reg4_tx5g_mx_tune;
+	uint8 RF1_tx5g_mix_reg4_tx5g_mx_tune;
+	uint8 RF2_tx5g_mix_reg4_tx5g_mx_tune;
+	uint8 RF0_tx5g_pad_reg3_tx5g_pad_tune;
+	uint8 RF1_tx5g_pad_reg3_tx5g_pad_tune;
+	uint8 RF2_tx5g_pad_reg3_tx5g_pad_tune;
+	uint8 RFP0_logen_reg0_logen_div3en;
+} chan_info_radio20707_rffe_6G_t;
+
 typedef struct _chan_info_radio20707_rffe {
 	uint16 channel;
 	uint16 freq;
 	union {
 		/* In this union, make sure the largest struct is at the top. */
+		chan_info_radio20707_rffe_6G_t val_6G;
 		chan_info_radio20707_rffe_5G_t val_5G;
 		chan_info_radio20707_rffe_2G_t val_2G;
 	} u;
 } chan_info_radio20707_rffe_t;
 
-extern const chan_info_radio20707_rffe_t
-	chan_tune_20707_rev0[];
+extern const chan_info_radio20707_rffe_t chan_tune_20707_rev0_2g[];
+extern const chan_info_radio20707_rffe_t chan_tune_20707_rev0_5g[];
+extern const chan_info_radio20707_rffe_t chan_tune_20707_rev0_6g[];
+extern const chan_info_radio20707_rffe_t chan_tune_20707_rev1_2g[];
+extern const chan_info_radio20707_rffe_t chan_tune_20707_rev1_ipa_5g[];
+extern const chan_info_radio20707_rffe_t chan_tune_20707_rev1_epa_5g[];
+extern const chan_info_radio20707_rffe_t chan_tune_20707_rev1_6g[];
 
-extern const uint16 chan_tune_20707_rev0_length;
+extern const uint16 chan_tune_20707_rev0_length_2g;
+extern const uint16 chan_tune_20707_rev0_length_5g;
+extern const uint16 chan_tune_20707_rev0_length_6g;
+extern const uint16 chan_tune_20707_rev1_length_2g;
+extern const uint16 chan_tune_20707_rev1_length_ipa_5g;
+extern const uint16 chan_tune_20707_rev1_length_epa_5g;
+extern const uint16 chan_tune_20707_rev1_length_6g;
 
 #if (defined(BCMDBG) && defined(DBG_PHY_IOV)) || defined(BCMDBG_PHYDUMP)
 extern const radio_20xx_dumpregs_t dumpregs_20707_rev0[];
+extern const radio_20xx_dumpregs_t dumpregs_20707_rev1[];
 #endif // endif
 
 /* Radio referred values tables */
 extern const radio_20xx_prefregs_t prefregs_20707_rev0[];
+extern const radio_20xx_prefregs_t prefregs_20707_rev1[];
 
 extern int8 BCMATTACHDATA(lna12_gain_tbl_2g_20707rX_ilna)[2][N_LNA12_GAINS];
 extern int8 BCMATTACHDATA(lna12_gain_tbl_5g_20707rX_ilna)[2][N_LNA12_GAINS];

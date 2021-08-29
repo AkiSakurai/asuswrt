@@ -2,7 +2,7 @@
  * Required functions exported by the PHY module (phy-dependent)
  * to common (os-independent) driver code.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phy_hal.h 770792 2019-01-04 01:55:04Z $
+ * $Id: wlc_phy_hal.h 778212 2019-08-27 08:22:59Z $
  */
 
 #ifndef _wlc_phy_h_
@@ -203,6 +203,7 @@ enum {
 	IOV_PHY_BSSCOLOR,
 	IOV_PHY_TXPWRCAP,
 	IOV_PHY_SNIFFER_ALIGN,
+	IOV_RPCALPHASEVARS,
 	IOV_PHY_LAST	/* insert before this one */
 };
 

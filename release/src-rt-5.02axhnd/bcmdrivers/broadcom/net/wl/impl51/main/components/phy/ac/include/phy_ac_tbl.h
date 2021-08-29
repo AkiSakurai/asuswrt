@@ -1,7 +1,7 @@
 /*
  * ACPHY PHYTableInit module interface
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tbl.h 720902 2017-09-12 17:20:17Z $
+ * $Id: phy_ac_tbl.h 775590 2019-06-05 07:51:57Z $
  */
 
 #ifndef _phy_ac_tbl_h_

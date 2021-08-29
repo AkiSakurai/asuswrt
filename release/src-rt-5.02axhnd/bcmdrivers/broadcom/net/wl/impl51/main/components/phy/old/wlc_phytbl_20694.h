@@ -1,7 +1,7 @@
 /*
  * Radio 20694 channel tuning header file
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phytbl_20694.h 691143 2017-03-21 00:21:29Z $
+ * $Id: wlc_phytbl_20694.h 780795 2019-11-04 09:45:36Z $
  */
 
 #ifndef  _wlc_phytbl_20694_h_
@@ -135,8 +135,6 @@ extern radio_20xx_prefregs_t prefregs_20694_rev4_5g_aux[];
 
 extern int8 BCMATTACHDATA(lna12_gain_tbl_2g_maj40)[2][N_LNA12_GAINS];
 extern int8 BCMATTACHDATA(lna12_gain_tbl_5g_maj40)[2][N_LNA12_GAINS];
-extern int8 BCMATTACHDATA(lna12_gainbits_tbl_2g_maj40)[2][N_LNA12_GAINS];
-extern int8 BCMATTACHDATA(lna12_gainbits_tbl_5g_maj40)[2][N_LNA12_GAINS];
 extern uint8 BCMATTACHDATA(lna1_rout_map_2g_maj40)[N_LNA12_GAINS];
 extern uint8 BCMATTACHDATA(lna1_rout_map_5g_maj40)[N_LNA12_GAINS];
 extern uint8 BCMATTACHDATA(lna1_gain_map_2g_maj40)[N_LNA12_GAINS];

@@ -4,7 +4,7 @@
  *
  *  Air-IQ general
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -91,11 +91,11 @@ extern void wlc_disable_hw_beacons(wlc_info_t *wlc);
 int airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 	void *arg, uint alen, uint vsize, struct wlc_if *wlcif);
 
-#ifdef BCMDBG
+#if defined(BCMDBG) || defined(WLTEST)
 static void wlc_airiq_reset_fft_counters(airiq_info_t *airiqh);
-
 static void wlc_airiq_dump_fft_counters(airiq_info_t *airiqh, struct bcmstrbuf *b);
-#endif /* BCMDBG */
+static int wlc_airiq_dump(airiq_info_t * airiqh, struct bcmstrbuf *b);
+#endif // endif
 void wlc_airiq_default_scan_channels(airiq_info_t *airiqh);
 
 static const uint16 airiq_fft_latency_bins[AIRIQ_HISTOGRAM_BINCNT] =
@@ -106,6 +106,7 @@ static const uint16 airiq_fft_latency_bins[AIRIQ_HISTOGRAM_BINCNT] =
 
 static const char BCMATTACHDATA(rstr_airiq_coex_gpio_2g)[] = "airiq_coex_gpio_2g";
 static const char BCMATTACHDATA(rstr_airiq_coex_gpio_5g)[] = "airiq_coex_gpio_5g";
+static const char BCMATTACHDATA(rstr_airiq_coex_gpio_6g)[] = "airiq_coex_gpio_6g";
 
 /*
  * Initialize airiq private context. It returns a pointer to the
@@ -123,7 +124,7 @@ BCMATTACHFN(wlc_airiq_attach) (wlc_info_t * wlc)
 	airiqh = MALLOC(wlc->osh, sizeof(airiq_info_t));
 	if (!airiqh) {
 		WL_ERROR(("wl%d: %s: MALLOC failed, malloced %d bytes\n",
-			wlc->pub->unit, __FUNCTION__, MALLOCED(wlc->osh)));
+			WLCWLUNIT(wlc), __FUNCTION__, MALLOCED(wlc->osh)));
 		return NULL;
 	}
 
@@ -142,7 +143,7 @@ BCMATTACHFN(wlc_airiq_attach) (wlc_info_t * wlc)
 			    NULL, /* up fcn */
 			    NULL); /* down fcn */
 
-#ifdef BCMDBG
+#if defined(BCMDBG) || defined(WLTEST)
 	wlc_dump_register(wlc->pub, "airiq", (dump_fn_t)wlc_airiq_dump, (void*)airiqh);
 #endif // endif
 	/* This code is for platforms where the WL driver scanning is used */
@@ -167,6 +168,7 @@ BCMATTACHFN(wlc_airiq_attach) (wlc_info_t * wlc)
 	airiqh->pkt_up_counter = 0;
 	airiqh->coex_gpio_mask_2g   = getintvar(wlc->pub->vars, rstr_airiq_coex_gpio_2g);
 	airiqh->coex_gpio_mask_5g   = getintvar(wlc->pub->vars, rstr_airiq_coex_gpio_5g);
+	airiqh->coex_gpio_mask_6g   = getintvar(wlc->pub->vars, rstr_airiq_coex_gpio_6g);
 	/* get 64-bit aligned pointer */
 	airiqh->fft_buffer = (uint8*)(((uintptr)airiqh->__fft_buffer + 7) & (uintptr)(~7));
 	ASSERT(ISALIGNED(airiqh->fft_buffer, 8));
@@ -193,7 +195,7 @@ BCMATTACHFN(wlc_airiq_attach) (wlc_info_t * wlc)
 	/* register up/down callback: needed to upgrade phy */
 	if (wlc_bsscfg_updown_register(wlc, wlc_airiq_updown_cb, wlc) != BCME_OK) {
 		WL_ERROR(("wl%d: %s: wlc_bsscfg_updown_register() failed\n",
-			wlc->pub->unit, __FUNCTION__));
+			WLCWLUNIT(wlc), __FUNCTION__));
 		ASSERT(0);
 		return NULL;
 	}
@@ -228,8 +230,7 @@ BCMATTACHFN(wlc_airiq_detach) (airiq_info_t * airiqh)
 	MFREE(airiqh->wlc->osh, airiqh, sizeof(airiq_info_t));
 }
 
-#ifdef BCMDBG
-
+#if defined(BCMDBG) || defined(WLTEST)
 static void
 wlc_airiq_dump_fft_counters(airiq_info_t *airiqh, struct bcmstrbuf *b)
 {
@@ -282,7 +283,7 @@ wlc_airiq_log_fft(airiq_info_t *airiqh, uint16 channel, uint16 latency)
 	airiqh->fft_latency[channel].bin[AIRIQ_HISTOGRAM_BINCNT - 1]++;
 }
 
-int
+static int
 wlc_airiq_dump(airiq_info_t *airiqh, struct bcmstrbuf *b)
 {
 
@@ -292,7 +293,7 @@ wlc_airiq_dump(airiq_info_t *airiqh, struct bcmstrbuf *b)
 
 	return 0;
 }
-#endif /* BCMDBG */
+#endif // endif
 
 static void
 wlc_airiq_updown_cb(void *ctx, bsscfg_up_down_event_data_t *updown_data)
@@ -365,7 +366,7 @@ wlc_airiq_updown_cb(void *ctx, bsscfg_up_down_event_data_t *updown_data)
 void
 wlc_airiq_fifo_suspend_complete(airiq_info_t *airiqh)
 {
-	WL_PRINT(("%s: TXPKTPENDTOT=%d\n", __FUNCTION__,
+	WL_PRINT(("wl%d: %s: TXPKTPENDTOT=%d\n", WLCWLUNIT(airiqh->wlc), __FUNCTION__,
 		TXPKTPENDTOT(airiqh->wlc)));
 
 	airiqh->tx_suspending = FALSE;
@@ -395,7 +396,7 @@ wlc_airiq_set_enable(airiq_info_t *airiqh, bool enable)
 {
 	airiqh->scan_enable = enable;
 	if (airiqh->phy_mode != PHYMODE_3x3_1x1) {
-		wlc_phy_hold_upd(WLC_PI(airiqh->wlc),PHY_HOLD_FOR_SCAN, enable);
+		wlc_phy_hold_upd(WLC_PI(airiqh->wlc), PHY_HOLD_FOR_SCAN, enable);
 	}
 	wlc_set_wake_ctrl(airiqh->wlc);
 }
@@ -404,7 +405,12 @@ int wl_airiq_sendup_data(airiq_info_t *airiqh, uint8 *data, unsigned long size)
 {
 	airiq_event_t *airiq_event;
 
-	airiq_event = MALLOC(airiqh->wlc->osh, sizeof(airiq_event_t) + size);
+	airiq_event = MALLOCZ(airiqh->wlc->osh, sizeof(airiq_event_t) + size);
+	if (!airiq_event) {
+		WL_ERROR(("wl%d: %s: MALLOC failed, malloced %d bytes\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__, MALLOCED(airiqh->wlc->osh)));
+		return BCME_NOMEM;
+	}
 	airiq_event->airiq_event_type = AIRIQ_EVENT_DATA;
 	airiq_event->data_len = sizeof(airiq_event_t) + size;
 
@@ -424,6 +430,7 @@ void wl_airiq_sendup_scan_complete_alternate(airiq_info_t *airiqh, uint16 status
 {
 	airiq_event_t *airiq_event;
 	uint16 radio;
+	airiq_scan_complete_t airiq_scan_complete_msg;
 
 	radio = airiqh->wlc->pub->unit;
 
@@ -432,21 +439,28 @@ void wl_airiq_sendup_scan_complete_alternate(airiq_info_t *airiqh, uint16 status
 		/* handle special  case for RSDB  radio 47452 */
 
 		/* now send it up */
-		airiq_event = MALLOCZ(airiqh->wlc->osh, sizeof(airiq_event_t));
-		airiq_event->airiq_event_type = AIRIQ_EVENT_SCAN_COMPLETE;
-		airiq_event->data_len = sizeof(airiq_event_t);
+		airiq_event = MALLOCZ(airiqh->wlc->osh, sizeof(airiq_event_t)+sizeof(airiq_scan_complete_t));
+		if (!airiq_event) {
+			WL_ERROR(("wl%d: %s: MALLOC failed, malloced %d bytes\n",
+				WLCWLUNIT(airiqh->wlc), __FUNCTION__, MALLOCED(airiqh->wlc->osh)));
+			return;
+		}
+
+		airiq_event->airiq_event_type = AIRIQ_EVENT_SCAN_COMPLETE_V2;
+		airiq_event->data_len = sizeof(airiq_event_t)+sizeof(airiq_scan_complete_t);
 		airiq_event->scan_status[radio] = status;
-		airiqh->scan_complete[radio]++;
-		airiq_event->scan_complete[radio] = airiqh->scan_complete[radio];
 		airiq_event->pkt_counter = airiqh->pkt_up_counter++;
+		airiq_scan_complete_msg.message_type =MESSAGE_TYPE_SCAN_COMPLETE;
+		airiq_scan_complete_msg.unit = radio;
+		memcpy(airiq_event->data, &airiq_scan_complete_msg, sizeof(airiq_scan_complete_t));
 
 		wlc_mac_event(airiqh->wlc, WLC_E_AIRIQ_EVENT, NULL, WLC_E_STATUS_SUCCESS,
 			0, 0, (void*)(airiq_event), airiq_event->data_len);
-		MFREE(airiqh->wlc->osh, airiq_event, sizeof(airiq_event_t));
+		MFREE(airiqh->wlc->osh, airiq_event, sizeof(airiq_event_t)+sizeof(airiq_scan_complete_t));
 		return;
 
 	} else {
-		WL_ERROR(("%s: invalid radio number %d > %d\n",
+		WL_ERROR(("wl%d: %s: invalid radio number %d > %d\n", WLCWLUNIT(airiqh->wlc),
 			__FUNCTION__, radio, SCAN_COMPLETE_RADIOS - 1));
 	}
 }
@@ -456,6 +470,11 @@ bool wl_lte_u_send_scan_abort_event(airiq_info_t *airiqh, int reason)
 	lte_u_event_t *lte_u_event;
 
 	lte_u_event = MALLOC(airiqh->wlc->osh, sizeof(lte_u_event_t) + sizeof(uint32));
+	if (!lte_u_event) {
+		WL_ERROR(("wl%d: %s: MALLOC failed, malloced %d bytes\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__, MALLOCED(airiqh->wlc->osh)));
+		return FALSE;
+	}
 	lte_u_event->lte_u_event_type = LTE_U_EVENT_SCAN_ABORT;
 	lte_u_event->data_len = sizeof(lte_u_event_t) + sizeof(uint32);
 	memcpy(lte_u_event->data, &reason, sizeof(uint32));
@@ -515,6 +534,11 @@ void wlc_lte_u_send_status(airiq_info_t *airiqh)
 
 		lte_u_event = MALLOC(airiqh->wlc->osh, sizeof(lte_u_event_t) +
 			sizeof(lte_u_scan_status_t));
+		if (!lte_u_event) {
+			WL_ERROR(("wl%d: %s: MALLOC failed, malloced %d bytes\n",
+				WLCWLUNIT(airiqh->wlc), __FUNCTION__, MALLOCED(airiqh->wlc->osh)));
+			return;
+		}
 		lte_u_event->lte_u_event_type = LTE_U_EVENT_SCAN_STATUS;
 		lte_u_event->data_len = sizeof(lte_u_event_t) + sizeof(lte_u_scan_status_t);
 		memcpy(lte_u_event->data, &(airiqh->scan.lte_scan_status[scan_chidx]),
@@ -539,6 +563,11 @@ void wlc_lte_u_send_status(airiq_info_t *airiqh)
 
 		lte_u_event = MALLOC(airiqh->wlc->osh, sizeof(lte_u_event_t) +
 			sizeof(lte_u_scan_status_t));
+		if (!lte_u_event) {
+			WL_ERROR(("wl%d: %s: MALLOC failed, malloced %d bytes\n",
+				WLCWLUNIT(airiqh->wlc), __FUNCTION__, MALLOCED(airiqh->wlc->osh)));
+			return;
+		}
 		lte_u_event->lte_u_event_type = LTE_U_EVENT_SCAN_STATUS;
 		lte_u_event->data_len = sizeof(lte_u_event_t) + sizeof(lte_u_scan_status_t);
 		memcpy(lte_u_event->data, &(airiqh->scan.lte_scan_status[scan_chidx]),
@@ -575,7 +604,8 @@ static void _wlc_airiq_msg_sendup(airiq_info_t *airiqh)
 	msg->corerev = airiqh->wlc->pub->corerev;
 	msg->unit = airiqh->wlc->pub->unit;
 
-	WL_AIRIQ_MSGTEST(("%s: SENDING %d msgs %d bytes freespace=%d\n", __FUNCTION__,
+	WL_AIRIQ_MSGTEST(("wl%d: %s: SENDING %d msgs %d bytes freespace=%d\n",
+		WLCWLUNIT(airiqh->wlc), __FUNCTION__,
 		airiqh->bundle_msg_cnt, msg->size_bytes,
 		airiqh->bundle_capacity - airiqh->bundle_size));
 
@@ -591,7 +621,8 @@ int wlc_airiq_msg_sendup(airiq_info_t *airiqh, int32 length, bool force_sendup)
 	bool sendup;
 
 	if (total > airiqh->bundle_capacity) {
-		WL_ERROR(("%s: too big: (%d+%d) %d > %d\n", __FUNCTION__,
+		WL_ERROR(("wl%d: %s: too big: (%d+%d) %d > %d\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__,
 			length, airiqh->bundle_size, total, airiqh->bundle_capacity));
 		return -1;
 	}
@@ -608,9 +639,9 @@ int wlc_airiq_msg_sendup(airiq_info_t *airiqh, int32 length, bool force_sendup)
 	if (sendup) {
 		_wlc_airiq_msg_sendup(airiqh);
 	} else {
-		WL_AIRIQ_MSGTEST(("%s: [QUEUE-%d byte] %d msgs %d bytes freespace=%d\n",
-			__FUNCTION__, length, airiqh->bundle_msg_cnt, airiqh->bundle_size,
-			free_space));
+		WL_AIRIQ_MSGTEST(("wl%d: %s: [QUEUE-%d byte] %d msgs %d bytes freespace=%d\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__, length,
+			airiqh->bundle_msg_cnt, airiqh->bundle_size, free_space));
 	}
 
 	return BCME_OK;
@@ -639,18 +670,22 @@ uint8 *wlc_airiq_msg_get_buffer(airiq_info_t *airiqh, int32 length)
 	ASSERT(freebytes >= 0);
 
 	if (freebytes < length) {
-		WL_AIRIQ_MSGTEST(("%s: [SEND] %d msgs queued/total %d/%d (%d free)\n", __FUNCTION__,
-			airiqh->bundle_msg_cnt, airiqh->bundle_size, airiqh->bundle_capacity, freebytes));
+		WL_AIRIQ_MSGTEST(("wl%d: %s: [SEND] %d msgs queued/total %d/%d (%d free)\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__,
+			airiqh->bundle_msg_cnt, airiqh->bundle_size,
+			airiqh->bundle_capacity, freebytes));
 		/* send bundle and reset */
 		_wlc_airiq_msg_sendup(airiqh);
 	} else {
-		WL_AIRIQ_MSGTEST(("%s: %d msgs queued/total %d/%d (%d free)\n", __FUNCTION__,
-			airiqh->bundle_msg_cnt, airiqh->bundle_size, airiqh->bundle_capacity, freebytes));
+		WL_AIRIQ_MSGTEST(("wl%d: %s: %d msgs queued/total %d/%d (%d free)\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__,
+			airiqh->bundle_msg_cnt, airiqh->bundle_size,
+			airiqh->bundle_capacity, freebytes));
 	}
 
 	if (length >= airiqh->bundle_capacity) {
-		WL_ERROR(("%s: requested length %d exceeds buffer capacity %d\n",
-			__FUNCTION__, length, airiqh->bundle_capacity));
+		WL_ERROR(("wl%d: %s: requested length %d exceeds buffer capacity %d\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__, length, airiqh->bundle_capacity));
 		return NULL;
 	}
 	return airiqh->bundle_write_ptr;

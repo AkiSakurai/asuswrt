@@ -1,7 +1,7 @@
 /*
  * Proxd FTM method implementation - iovar support. See twiki FineTimingMeasurement.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmiov.c 777979 2019-08-19 23:14:13Z $
+ * $Id: pdftmiov.c 778924 2019-09-13 19:33:40Z $
  */
 
 #include "pdftmpvt.h"
@@ -2288,15 +2288,16 @@ ftm_iov_get_tune(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, wl_proxd_session_id_t sid,
 	const wl_proxd_tlv_t *req_tlvs, int req_len,
 	int rsp_max, wl_proxd_tlv_t *rsp_tlvs, int *rsp_len)
 {
-	BCM_REFERENCE(bsscfg);
-	BCM_REFERENCE(sid);
-	BCM_REFERENCE(req_tlvs);
-	BCM_REFERENCE(req_len);
 	int err;
 	ftm_iov_tlv_digest_t *dig;
 
 	const uint16 tlv_ids[] = { ID(TUNE) };
 	int tlvs_len;
+
+	BCM_REFERENCE(bsscfg);
+	BCM_REFERENCE(sid);
+	BCM_REFERENCE(req_tlvs);
+	BCM_REFERENCE(req_len);
 
 	FTM_DIG_INIT(ftm, NULL, dig);
 	dig->tune = proxd_get_tunep(ftm->wlc, NULL);
@@ -2315,12 +2316,13 @@ static int
 ftm_iov_tune(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, wl_proxd_session_id_t sid,
 	const wl_proxd_tlv_t *req_tlvs, int req_len)
 {
-	BCM_REFERENCE(sid);
-	BCM_REFERENCE(req_tlvs);
-	BCM_REFERENCE(req_len);
 	int err = BCME_OK;
 	ftm_iov_tlv_digest_t *dig = NULL;
 	wl_proxd_params_tof_tune_t *tunep = NULL;
+
+	BCM_REFERENCE(sid);
+	BCM_REFERENCE(req_tlvs);
+	BCM_REFERENCE(req_len);
 
 	if (!ftm)
 		return BCME_NOTREADY;
@@ -2338,11 +2340,13 @@ ftm_iov_tune(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, wl_proxd_session_id_t sid,
 				tunep->Ki = tunep->Kt = 0;
 			tunep->setflags &= ~WL_PROXD_SETFLAG_K;
 #ifdef BCMDBG
+		if (WL_ERROR_ON()) {
 		prhex("ftm_iov_tune: ORIG", (uint8 *)proxd_get_tunep(ftm->wlc, NULL),
 			sizeof(wl_proxd_params_tof_tune_t));
 		prhex("ftm_iov_tune: dig", (uint8 *)dig->tune,
 			sizeof(wl_proxd_params_tof_tune_t));
 		prhex("ftm_iov_tune: SET", (const uint8 *)req_tlvs->data, req_tlvs->len);
+		}
 #endif /* BCMDBG */
 		}
 	}
@@ -2354,10 +2358,11 @@ static void
 ftm_iov_pack_tune(const ftm_iov_tlv_digest_t *dig, uint8 **buf,
 	const uint8 *data, int len)
 {
-	BCM_REFERENCE(len);
 	int i;
 	const wl_proxd_params_tof_tune_t *tunep;
 	uint32 ki = 0, kt = 0;
+
+	BCM_REFERENCE(len);
 
 	tunep = (const wl_proxd_params_tof_tune_t *)data;
 

@@ -1,7 +1,7 @@
 /*
  * ACPHY BT Coex module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_btcx.c 775501 2019-06-02 00:18:19Z $
+ * $Id: phy_ac_btcx.c 778436 2019-08-30 23:21:30Z $
  */
 
 #include <phy_cfg.h>
@@ -779,7 +779,7 @@ phy_ac_btcx_override_enable(phy_type_btcx_ctx_t *ctx)
 
 	/* This is required only for 2G operation. No BTCX in 5G */
 	if (BF_SROM11_BTCOEX(pi->u.pi_acphy) &&
-		(CHSPEC_IS2G(pi->radio_chanspec) || ACMAJORREV_36(pi->pubpi->phy_rev))) {
+		(CHSPEC_IS2G(pi->radio_chanspec))) {
 		/* Ucode better be suspended when we mess with BTCX regs directly */
 		ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
 #if (!defined(WL_SISOCHIP) && defined(SWCTRL_TO_BT_IN_COEX))
@@ -812,7 +812,7 @@ phy_ac_btcx_override_disable(phy_type_btcx_ctx_t *ctx)
 	phy_info_t *pi = btcxi->pi;
 
 	if (BF_SROM11_BTCOEX(pi->u.pi_acphy) &&
-		(CHSPEC_IS2G(pi->radio_chanspec) || ACMAJORREV_36(pi->pubpi->phy_rev))) {
+		(CHSPEC_IS2G(pi->radio_chanspec))) {
 		/* Ucode better be suspended when we mess with BTCX regs directly */
 		ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
 
@@ -849,7 +849,7 @@ wlc_phy_ac_femctrl_mask_on_band_change_btcx(phy_ac_btcx_info_t *btcxi)
 	if (ACMAJORREV_2(pi->pubpi->phy_rev)) {
 		/* When WLAN is in 5G, WLAN table should control the FEM lines */
 		/* and BT should not have any access permissions */
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			/* disable BT Fem control table accesses */
 			enBtSignalsToFEMLut = 0;
 			if (!ACPHY_FEMCTRL_ACTIVE(pi)) {
@@ -1024,7 +1024,7 @@ phy_ac_btcx_ucm_update_ack_pwr_offset(phy_ac_btcx_info_t *btcxi)
 		return;
 	}
 	/* Update Offset to 0 for 5G or coex_abstxpwr_ison is not set */
-	if (CHSPEC_IS5G(pi->radio_chanspec) ||
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec) ||
 		(btcxi->coex_abstxpwr_ison != TRUE)) {
 			btcxi->ack_pwr_offset = DEFAULT_OFFSET;
 		goto finish;
@@ -1037,7 +1037,7 @@ phy_ac_btcx_ucm_update_ack_pwr_offset(phy_ac_btcx_info_t *btcxi)
 	if (curr_resp_mask == 0)
 		goto finish;
 	/* Update Offset to 0 for 5G or not in HYBRID mode */
-	if (CHSPEC_IS5G(pi->radio_chanspec) ||
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec) ||
 			(wlapi_bmac_btc_mode_get(pi->sh->physhim) != WL_BTC_HYBRID)) {
 		btcxi->ack_pwr_offset = DEFAULT_OFFSET;
 		goto finish;

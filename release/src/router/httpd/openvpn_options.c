@@ -526,6 +526,18 @@ add_option (char *p[], int line, int unit)
 			return VPN_UPLOAD_NEED_STATIC;
 		}
 	}
+	else if (streq (p[0], "tls-crypt") && p[1])
+	{
+		nvram_pf_set(prefix, "tlscrypt", "1");
+		if (streq (p[1], INLINE_FILE_TAG) && p[2])
+		{
+			set_ovpn_key(OVPN_TYPE_CLIENT, unit, OVPN_CLIENT_STATIC, p[2], NULL);
+		}
+		else
+		{
+			return VPN_UPLOAD_NEED_STATIC;
+		}
+	}
 	else if (streq (p[0], "secret") && p[1])
 	{
 		nvram_pf_set(prefix, "crypt", "secret");
@@ -641,10 +653,10 @@ void parse_openvpn_status(int unit)
 	char *token;
 	ovpn_sconf_t conf;
 
-	sprintf(buf, "/etc/openvpn/server%d/status", unit);
+	snprintf(buf, sizeof(buf), "/etc/openvpn/server%d/status", unit);
 	fpi = fopen(buf, "r");
 
-	sprintf(buf, "/etc/openvpn/server%d/client_status", unit);
+	snprintf(buf, sizeof(buf), "/etc/openvpn/server%d/client_status", unit);
 	fpo = fopen(buf, "w");
 
 	get_ovpn_sconf(unit, &conf);
@@ -678,11 +690,12 @@ void parse_openvpn_status(int unit)
 				token = strtok(NULL, ",");	//Bytes Sent
 				token = strtok(NULL, ",");	//Connected Since
 				token = strtok(NULL, ",");	//Connected Since (time_t)
-				token = strtok(NULL, ",");	//Username, include'\n'
+				token = strtok(NULL, ",");	//Username
 				if(token)
 					fprintf(fpo, "%s", token);
 				else
 					fprintf(fpo, "NoUsername");
+				fprintf(fpo, "\n");
 			}
 			else if(!strncmp(buf, "REMOTE", 6) && conf.auth_mode == OVPN_AUTH_STATIC) {
 				token = strtok(buf, ",");	//REMOTE,

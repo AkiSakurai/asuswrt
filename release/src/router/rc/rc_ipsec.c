@@ -10,6 +10,9 @@
 #include <sys/stat.h>
 #include "rc_ipsec.h"
 
+/* for struct utsname */
+#include <sys/utsname.h>
+
 #ifdef IPSEC_DEBUG
 #define DBG(args) _dprintf args
 #endif
@@ -65,6 +68,28 @@ static ipsec_samba_t pre_samba_prof;
 static ipsec_prof_t prof[2][MAX_PROF_NUM];
 static pki_ca_t ca_tab[CA_FILES_MAX_NUM];
 
+int get_active_wan_unit(void)
+{
+    int active_wan_unit = 0;
+#ifdef RTCONFIG_DUALWAN
+    int connected = 0;
+    if(nvram_match("wans_mode", "lb")){
+        for(active_wan_unit = WAN_UNIT_FIRST; active_wan_unit < WAN_UNIT_MAX; active_wan_unit++){
+            if(is_wan_connect(active_wan_unit)){
+                connected = 1;
+                break;
+            }
+        }
+
+        if(!connected)
+            active_wan_unit = WAN_UNIT_FIRST;
+    }
+    else
+#endif
+        active_wan_unit = wan_primary_ifunit();
+
+    return active_wan_unit;
+}
 
 /*param 1: char *p_end , IN : the src of string buf */
 /*param 2: char *p_tmp , OUT: the dest of string buf*/
@@ -212,6 +237,7 @@ void ipsec_prof_fill(int prof_idx, char *p_data, ipsec_prof_type_t prof_type)
     int i = 1;
     char *p_end = NULL, *p_tmp = NULL, *ptr=NULL;;
     p_end = p_data;
+
     /*vpn_type*/
     prof[prof_type][prof_idx].vpn_type = (uint8_t)ipsec_profile_int_parse(FLAG_NONE,
                                                                p_end, &i);
@@ -333,9 +359,12 @@ void ipsec_prof_fill(int prof_idx, char *p_data, ipsec_prof_type_t prof_type)
     ipsec_profile_str_parse(p_end, p_tmp, &i);
     p_end += i;
     /*xauth_server_type,USER auth: auth2meth for IKEv2*/
-    p_tmp = &(prof[prof_type][prof_idx].auth2meth[0]);
+    p_tmp = &(prof[prof_type][prof_idx].rightauth2_method[0]);
     ipsec_profile_str_parse(p_end, p_tmp, &i);
     p_end += i;
+    /* leftauth_method = rightauth2_method if leftauth_method is not given */
+    snprintf(prof[prof_type][prof_idx].leftauth_method, sizeof(prof[prof_type][prof_idx].leftauth_method), "%s", prof[prof_type][prof_idx].rightauth2_method);
+
     /*traversal*/
     prof[prof_type][prof_idx].traversal = (uint16_t)ipsec_profile_int_parse(FLAG_NONE,
                                                                  p_end, &i);
@@ -377,10 +406,41 @@ void ipsec_prof_fill(int prof_idx, char *p_data, ipsec_prof_type_t prof_type)
     ipsec_profile_str_parse(p_end, p_tmp, &i);
 	while ((ptr=strchr(p_tmp, '<'))!=NULL) *ptr = '>';  /*to replace '<' to '>' e.g. >1.1.1.1>2.2.2.2>3.3.3.3>4.4.4.4*/
 
-	p_end += i; /*to shifft next '>'*/
+    p_end += i; /*to shifft next '>'*/
     /*ipsec_conn_en*/
-	/*the last one doesn't need to parse ">".*/
-	prof[prof_type][prof_idx].ipsec_conn_en = atoi(p_end);
+
+    if(!strstr(p_end, ">"))
+    {
+        prof[prof_type][prof_idx].ipsec_conn_en = atoi(p_end);
+    }
+    else
+    {
+        /* there are more parameters to be parsed */
+        prof[prof_type][prof_idx].ipsec_conn_en = (uint8_t)ipsec_profile_int_parse(FLAG_NONE,
+                                                                   p_end, &i);
+        p_end += i;
+
+        p_tmp = &(prof[prof_type][prof_idx].leftauth_method[0]);
+        ipsec_profile_str_parse(p_end, p_tmp, &i);
+        p_end += i;
+
+        p_tmp = &(prof[prof_type][prof_idx].leftcert[0]);
+        ipsec_profile_str_parse(p_end, p_tmp, &i);
+        p_end += i;
+        
+        p_tmp = &(prof[prof_type][prof_idx].leftsendcert[0]);
+        ipsec_profile_str_parse(p_end, p_tmp, &i);
+        p_end += i;
+        
+        p_tmp = &(prof[prof_type][prof_idx].leftkey[0]);
+        ipsec_profile_str_parse(p_end, p_tmp, &i);
+        p_end += i;
+        
+        p_tmp = &(prof[prof_type][prof_idx].eap_identity[0]);
+        ipsec_profile_str_parse(p_end, p_tmp, &i);
+		/*the last one doesn't need to parse ">".*/
+    }
+
     /*the end of profile*/
     return;
 }
@@ -412,8 +472,12 @@ void ipsec_prof_fill_ext(int prof_idx, char *p_data, ipsec_prof_type_t prof_type
     p_end += i; /*to shifft next '>'*/
 
 	/*hash_p2_ext*/
-	/*the last one doesn't need to parse ">".*/
-    prof[prof_type][prof_idx].hash_p2_ext = atoi(p_end);
+    prof[prof_type][prof_idx].hash_p2_ext = (uint8_t)ipsec_profile_int_parse(FLAG_NONE,
+                                                               p_end, &i);
+	p_end += i; /*to shifft next '>'*/
+
+	/*pfs_group*/
+    prof[prof_type][prof_idx].pfs_group= atoi(p_end); /*the last one doesn't need to parse ">".*/
 
 	/*the end of profile*/
 	return;
@@ -441,17 +505,17 @@ int pre_ipsec_prof_set()
 				sprintf(&buf_ext[0], "ipsec_profile_client_%d_ext", i);
 			}
 
-	        if(NULL != nvram_safe_get(&buf[0]) && NULL != nvram_safe_get(&buf_ext[0])){
-	            strcpy(p_tmp, nvram_safe_get(&buf[0]));
-				strcpy(p_tmp_ext, nvram_safe_get(&buf_ext[0]));
-	            /*to avoid nvram that it has not been inited ready*/
-	            if(0 != *p_tmp){
-		            ipsec_prof_fill(i-1, p_tmp,prof_count);
+			if(strlen(nvram_safe_get(&buf[0])) > 0 && strlen(nvram_safe_get(&buf_ext[0])) > 0){
+				strlcpy(p_tmp, nvram_safe_get(&buf[0]), sizeof(buf1));
+				strlcpy(p_tmp_ext, nvram_safe_get(&buf_ext[0]), sizeof(buf1_ext));
+				/*to avoid nvram that it has not been inited ready*/
+				if(0 != *p_tmp){
+					ipsec_prof_fill(i-1, p_tmp,prof_count);
 					if(0 != *p_tmp_ext)
-						ipsec_prof_fill_ext(i-1, p_tmp_ext,prof_count);
-	                rc = 1;
-	            }
-	        }
+					ipsec_prof_fill_ext(i-1, p_tmp_ext,prof_count);
+					rc = 1;
+				}
+			}
 	    }
 	}
 
@@ -498,6 +562,7 @@ void rc_ipsec_conf_set()
     return;
 }
 
+/*
 void rc_ipsec_secrets_init()
 {
     FILE *fp = NULL;
@@ -513,6 +578,7 @@ void rc_ipsec_secrets_init()
     }
     return;
 }
+*/
 
 void rc_strongswan_conf_set()
 {
@@ -520,53 +586,54 @@ void rc_strongswan_conf_set()
 	char *user;
 	int rc;
 
+	fp = fopen("/etc/strongswan.conf", "w");
+	if (fp == NULL)
+		return;
+
 	user = nvram_safe_get("http_username");
 	if (*user == '\0')
 		user = "admin";
 
-    rc = pre_ipsec_samba_prof_set();
-//DBG(("ipsec_samba#\n"));
-    fp = fopen("/tmp/etc/strongswan.conf", "w");
-    fprintf(fp, "# strongswan.conf - strongSwan configuration file\n#\n"
-                "# Refer to the strongswan.conf(5) manpage for details\n#\n"
-                "# Configuration changes should be made in the included files"
-                "\ncharon {\n\n"
-                "  user = %s\n"
-                "  threads = %d\n"
-                "  send_vendor_id = yes\n"
-                "  duplicheck.enable = no\n"
-                "  interfaces_ignore = %s\n"
-                "  starter { load_warning = no }\n\n"
-                "  load_modular = yes\n\n"
-                "  i_dont_care_about_security_and_use_aggressive_mode_psk = yes\n\n"
-                "  plugins {\n    include strongswan.d/charon/*.conf\n  }\n"
-                "  filelog {\n      /var/log/strongswan.charon.log {\n"
-                "        time_format = %%b %%e %%T\n        default = %d\n"
-                "        append = no\n        flush_line = yes\n"
-                "     }\n  }\n",
-                user,
-                nvram_get_int("ipsec_threads_num"), nvram_safe_get("lan_ifname"), nvram_get_int("ipsec_log_level"));
-    if(0 != rc){
-        if(('n' != samba_prof.dns1[0]) && ('\0' != samba_prof.dns1[0])){
-            fprintf(fp,"\n  dns1=%s\n", samba_prof.dns1);
-        }
-        if(('n' != samba_prof.dns2[0]) && ('\0' != samba_prof.dns2[0])){
-            fprintf(fp,"  dns2=%s\n", samba_prof.dns2);
-        }
-        if(('n' != samba_prof.nbios1[0]) && ('\0' != samba_prof.nbios1[0])){
-            fprintf(fp,"\n\n  nbns1=%s\n", samba_prof.nbios1);
-        }
-        if(('n' != samba_prof.nbios2[0]) && ('\0' != samba_prof.nbios2[0])){
-            fprintf(fp,"  nbns2=%s\n", samba_prof.nbios2);
-        }
-    }
-    fprintf(fp, "\n}#the end of the Charon {\n\n");
-    if(NULL != fp){
-        fclose(fp);
-    }
-/*DBG(("[%d]strongswan.conf:\n dns1:%s\n dns2:%s\n wins1=%s\n wins2=%s\n",
-      rc, samba_prof.dns1, samba_prof.dns2, samba_prof.nbios1, samba_prof.nbios2));*/
-    return;
+	fprintf(fp,
+		"charon {\n"
+		"	user = %s\n"
+		"	threads = %d\n"
+		"	send_vendor_id = yes\n"
+		"	interfaces_ignore = %s\n"
+		"	starter { load_warning = no }\n"
+		"	load_modular = yes\n"
+		"	i_dont_care_about_security_and_use_aggressive_mode_psk = yes\n"
+		"	plugins {\n"
+		"		include strongswan.d/charon/*.conf\n"
+		"	}\n"
+		"	filelog {\n"
+		"		charon {\n"
+		"			path = /var/log/strongswan.charon.log\n"
+		"			time_format = %%b %%e %%T\n"
+		"			default = %d\n"
+		"			append = no\n"
+		"			flush_line = yes\n"
+		"		}\n"
+		"	}\n",
+		user,
+		nvram_get_int("ipsec_threads_num") ? : 8,
+		nvram_safe_get("lan_ifname"),
+		nvram_get_int("ipsec_log_level") ? : 1);
+
+	rc = pre_ipsec_samba_prof_set();
+	if (rc != 0) {
+		if (('n' != samba_prof.dns1[0]) && ('\0' != samba_prof.dns1[0]))
+			fprintf(fp,"	dns1=%s\n", samba_prof.dns1);
+		if (('n' != samba_prof.dns2[0]) && ('\0' != samba_prof.dns2[0]))
+			fprintf(fp,"	dns2=%s\n", samba_prof.dns2);
+		if (('n' != samba_prof.nbios1[0]) && ('\0' != samba_prof.nbios1[0]))
+			fprintf(fp,"	nbns1=%s\n", samba_prof.nbios1);
+		if (('n' != samba_prof.nbios2[0]) && ('\0' != samba_prof.nbios2[0]))
+			fprintf(fp,"	nbns2=%s\n", samba_prof.nbios2);
+	}
+
+	fprintf(fp, "}\n");
+	fclose(fp);
 }
 
 void rc_ipsec_ca2ipsecd_cp(FILE *fp, uint32_t idx)
@@ -619,7 +686,7 @@ void rc_ipsec_start(FILE *fp)
 void rc_ipsec_up(FILE *fp, int prof_idx, ipsec_prof_type_t prof_type)
 {
     if((NULL != fp) && ('\0' != prof[prof_type][prof_idx].profilename[0])){
-        fprintf(fp, "ipsec up %s & \n", prof[prof_type][prof_idx].profilename);
+        //fprintf(fp, "ipsec up %s & \n", prof[prof_type][prof_idx].profilename);
 #if defined(RTCONFIG_QUICKSEC)
 		//fprintf(fp, "quicksecpm -f /tmp/%s.xml -d\n", prof[prof_type][prof_idx].profilename);
 #endif
@@ -943,87 +1010,165 @@ void rc_ipsec_ca_export(char *verify_pwd)
     return;
 }
 
+void rc_ipsec_gen_cert(int skip_checking)
+{
+    FILE *fp = NULL;
+    struct utsname uts;
+    char device_cn[64] = {0};
+    char ddns_name[128] = {0}, remote_id[128] = {0}, prefix[16] = {0};
+    int ca_lifetime = 2200;
+
+    if((skip_checking == 0) && check_if_file_exist(FILE_PATH_CA_ETC FILE_NAME_CERT_PEM)&&check_if_file_exist(FILE_PATH_CA_ETC FILE_NAME_SVR_PRIVATE_KEY)&&check_if_file_exist(FILE_PATH_CA_ETC FILE_NAME_SVR_CERT_PEM)){
+        DBG(("CA files are ready there.\n"));
+        return;
+    }
+
+    if((skip_checking == 0) && (!nvram_match("ntp_ready", "1")))
+    {
+        DBG(("NTP is not synced yet, skip generating CA files.\n"));
+        return;
+    }
+
+    DBG(("Generate CA files.\n"));
+    uname(&uts);
+    snprintf(device_cn, sizeof(device_cn), "%s", uts.nodename);
+    if(strlen(device_cn) == 0){
+        snprintf(device_cn, sizeof(device_cn), "%s", nvram_safe_get("odmpid"));
+        if(strlen(device_cn) == 0)
+        {
+            snprintf(device_cn, sizeof(device_cn), "%s", nvram_safe_get("productid"));
+        }
+    }
+
+    if(nvram_get_int("ipsec_ca_lifetime") > 0){
+        ca_lifetime = nvram_get_int("ipsec_ca_lifetime");
+    }
+
+    snprintf(ddns_name, sizeof(ddns_name), "%s", nvram_safe_get("ddns_hostname_x"));
+    if(strlen(ddns_name) == 0 )
+    {
+        snprintf(prefix, sizeof(prefix), "wan%d_", get_active_wan_unit());
+        snprintf(remote_id, sizeof(remote_id), "%s", nvram_pf_safe_get(prefix, "ipaddr"));
+        if(strlen(remote_id) == 0){
+            DBG(("[Error]wan ip is not set yet, no any CAs will be created.\n"));
+            return;
+        }
+    }else
+        strlcpy(remote_id, ddns_name, sizeof(remote_id));
+
+    fp = fopen(FILE_PATH_CA_ETC"generate.sh", "w");
+    if(NULL != fp){
+        fprintf(fp, "#!/bin/sh\n\n");
+        fprintf(fp, "pki --gen --size 2048 --outform pem > %s%s\n"
+                    "pki --self --in %s%s --dn \"C=TW,O=ASUS,CN=ASUS %s Root CA\" --ca --lifetime %d --outform pem > %s%s\n"
+                    "pki --gen --size 2048 --outform pem > %s%s\n"
+                    "pki --pub --in %s%s | pki --issue --cacert %s%s --cakey %s%s --dn \"C=TW,O=ASUS,CN=%s\" --san=\"%s\" --lifetime %d --outform pem > %s%s\n\n"
+                    "openssl x509 -in %s%s -outform der -out %s%s\n\n",
+                    FILE_PATH_CA_ETC, FILE_NAME_CA_PRIVATE_KEY,
+                    FILE_PATH_CA_ETC, FILE_NAME_CA_PRIVATE_KEY, trimNL(device_cn), ca_lifetime, FILE_PATH_CA_ETC, FILE_NAME_CERT_PEM,
+                    FILE_PATH_CA_ETC, FILE_NAME_SVR_PRIVATE_KEY,
+                    FILE_PATH_CA_ETC, FILE_NAME_SVR_PRIVATE_KEY, FILE_PATH_CA_ETC, FILE_NAME_CERT_PEM, FILE_PATH_CA_ETC, FILE_NAME_CA_PRIVATE_KEY, remote_id, remote_id, ca_lifetime, FILE_PATH_CA_ETC, FILE_NAME_SVR_CERT_PEM,
+                    FILE_PATH_CA_ETC, FILE_NAME_CERT_PEM, FILE_PATH_CA_ETC, FILE_NAME_CERT_DER
+                    );
+        fclose(fp);
+    }
+    chmod(FILE_PATH_CA_ETC"generate.sh", 0777);
+    system(FILE_PATH_CA_ETC"generate.sh");
+}
+
 void rc_ipsec_ca_init( )
 {
     FILE *fp = NULL;
-	char *argv[3];
-
-	argv[0] = "/bin/sh";
-	argv[1] = FILE_PATH_CA_ETC"ca_init.sh&";
-	argv[2] = NULL;
 
     fp = fopen(FILE_PATH_CA_ETC"ca_init.sh", "w");
     if(NULL != fp){
-        fprintf(fp, "cp -r %s*asusCert.pem /tmp/etc/ipsec.d/cacerts/\n"
-                    "cp -r %s*Cert.pem /tmp/etc/ipsec.d/certs/\n"
-                    "cp -r %s*Key.pem /tmp/etc/ipsec.d/private/\n",
+        fprintf(fp, "#!/bin/sh\n\n");
+        fprintf(fp, "cp -r %sasusCert.pem /tmp/etc/ipsec.d/cacerts/\n"
+                    "cp -r %ssvrCert.pem /tmp/etc/ipsec.d/certs/\n"
+                    "cp -r %ssvrKey.pem /tmp/etc/ipsec.d/private/\n",
                     FILE_PATH_CA_ETC, FILE_PATH_CA_ETC, FILE_PATH_CA_ETC);
         fclose(fp);
     }
     chmod(FILE_PATH_CA_ETC"ca_init.sh", 0777);
-    DBG(("to run "FILE_PATH_CA_ETC"ca_init.sh in the background!\n"));
-    //system("."FILE_PATH_CA_ETC"ca_init.sh&");
-	_eval(argv, NULL, 0, NULL);
-    return;
+    system(FILE_PATH_CA_ETC"ca_init.sh");
 }
 
 void rc_ipsec_conf_default_init()
 {
-    FILE *fp = NULL;
-    fp = fopen("/tmp/etc/ipsec.conf", "w");
-    fprintf(fp, "# /etc/ipsec.conf\n"
-                "config setup\n\n\n"
-                "conn %%default\n"
-                "  ikelifetime=60m\n"
-                "  keylife=20m\n"
-                "  rekeymargin=3m\n"
-                "  keyingtries=1\n"
-                "  keyexchange=ike\n\n");
-    if(NULL != fp){
-        fclose(fp);
-    }
-    return;
+	FILE *fp;
+
+	fp = fopen("/etc/ipsec.conf", "w");
+	if (fp == NULL)
+		return;
+
+	/* default */
+	fprintf(fp,
+		"config setup\n"
+		"conn %%default\n"
+		"	ikelifetime=60m\n"
+		"	keylife=20m\n"
+		"	rekeymargin=3m\n"
+		"	keyingtries=1\n"
+		"	keyexchange=ike\n"
+		"\n");
+
+	fclose(fp);
 }
 
 void rc_ipsec_psk_xauth_rw_init()
 {
-    FILE *fp = NULL;
-    fp = fopen("/tmp/etc/ipsec.conf", "a+w");
-    fprintf(fp,"#also supports iOS PSK and Shrew on Windows\n"
-                "conn android_xauth_psk\n"
-                "  keyexchange=ikev1\n"
-                "  left=%%defaultroute\n"
-                "  leftauth=psk\n"
-                "  leftsubnet=0.0.0.0/0\n"
-                "  right=%%any\n"
-                "  rightauth=psk\n"
-                "  rightauth2=xauth\n"
-                "  rightsourceip=10.2.1.0/24\n"
-                "  auto=add\n\n");
-    if(NULL != fp){
-        fclose(fp);
-    }
-    return;
+	FILE *fp;
+
+	fp = fopen("/etc/ipsec.conf", "a+w");
+	if (fp == NULL)
+		return;
+
+	/* also supports iOS PSK and Shrew on Windows */
+	fprintf(fp,
+		"conn android_xauth_psk\n"
+		"	keyexchange=ikev1\n"
+		"	left=%%defaultroute\n"
+		"	leftauth=psk\n"
+		"	leftsubnet=0.0.0.0/0\n"
+		"	right=%%any\n"
+		"	rightauth=psk\n"
+		"	rightauth2=xauth\n"
+		"	rightsourceip=10.2.1.0/24\n"
+		"	auto=add\n"
+		"\n");
+
+	fclose(fp);
 }
 
 void rc_ipsec_secrets_set()
 {
-    char ipsec_client_list_name[SZ_MIN], buf[SZ_MAX], s_tmp[SZ_MAX];
-    char auth2meth[SZ_MIN];
-    char *p_str = NULL, *p_str1 = NULL;
-    int i,prof_count = 0, unit;
-    FILE *fp = NULL;
+	char ipsec_client_list_name[SZ_MIN] = {0}, buf[SZ_MAX] = {0}, s_tmp[SZ_MAX] = {0};
+	char auth2meth[SZ_MIN] = {0};
+#ifdef RTCONFIG_INSTANT_GUARD
+	char ig_client_list[1024] = {0}, ig_client_buf[128] = {0};
+	char *desc = NULL, *ts = NULL, *active = NULL;
+#endif
+	char ipsec_client_list_buf[1024] = {0}, ig_client_list_tmp[1024] = {0};
+	char *name = NULL, *passwd = NULL;
+	char word[1024] = {0}, *word_next = NULL;
+	int i,prof_count = 0, unit;
+	FILE *fp = NULL;
 	//char word[80], *next;
 	char tmp[100], prefix[] = "wanXXXXXXXXXX_";
-    fp = fopen("/tmp/etc/ipsec.secrets", "w");
-    fprintf(fp,"#/etc/ipsec.secrets\n\n");
-	
+	fp = fopen("/tmp/etc/ipsec.secrets", "w");
+	if(!fp)
+	{
+		DBG(("Cannot open ipsec.secrets!\n"));
+		return;
+	}
+	fprintf(fp,"#/etc/ipsec.secrets\n\n");
+
 	for(prof_count = PROF_CLI; prof_count < PROF_ALL; prof_count++){
-    	for(i = 0; i < MAX_PROF_NUM; i++){
+		for(i = 0; i < MAX_PROF_NUM; i++){
 			if(IPSEC_CONN_EN_DOWN != prof[prof_count][i].ipsec_conn_en){
-	        if((0 != strcmp(prof[prof_count][i].auth_method_key, "null")) &&
-	           ('\0' != prof[prof_count][i].auth_method_key[0]) &&
-	           ((1 == prof[prof_count][i].auth_method) || (0 == prof[prof_count][i].auth_method))){
+				if((0 != strcmp(prof[prof_count][i].auth_method_key, "null")) &&
+					('\0' != prof[prof_count][i].auth_method_key[0]) &&
+					((1 == prof[prof_count][i].auth_method) || (0 == prof[prof_count][i].auth_method))){
 					if(strcmp(prof[prof_count][i].local_public_interface,"wan") == 0){
 						strcpy(prof[prof_count][i].local_pub_ip,nvram_safe_get("wan0_ipaddr"));
 					}
@@ -1031,74 +1176,103 @@ void rc_ipsec_secrets_set()
 						strcpy(prof[prof_count][i].local_pub_ip,nvram_safe_get("wan1_ipaddr"));
 					}
 					else if(strcmp(prof[prof_count][i].local_public_interface,"usb") == 0) {
-				   for(unit = WAN_UNIT_FIRST; unit < WAN_UNIT_MAX; ++unit){
+						for(unit = WAN_UNIT_FIRST; unit < WAN_UNIT_MAX; ++unit){
 							if (dualwan_unit__usbif(unit)) {
 								wan_prefix(unit, prefix);
 								strcpy(prof[prof_count][i].local_pub_ip,nvram_safe_get(strcat_r(prefix, "ipaddr", tmp)));
 								break;
 							}
-				   }
-			   }
-			   else{
+						}
+					}
+					else{
 						strcpy(prof[prof_count][i].local_pub_ip,nvram_safe_get("lan_ipaddr"));
 					}
 					fprintf(fp,"\n %s : %s %s\n\n"
-					/*fprintf(fp,"\n %s %s : %s %s\n\n"
-	               , ((0 == strcmp(prof[prof_count][i].local_id, "null") ||
-	                  ('\0' == prof[prof_count][i].local_id[0])) ?
-	                  ((('\0' == prof[prof_count][i].local_pub_ip[0]) ||
-	                    ('n' == prof[prof_count][i].local_pub_ip[0])) ? "\%any" :
-		                 prof[prof_count][i].local_pub_ip ) : prof[prof_count][i].local_id)*/
-	               , ((0 == strcmp(prof[prof_count][i].remote_id, "null") ||
-	                  ('\0' == prof[prof_count][i].remote_id[0])) ?
-	                  ((('\0' == prof[prof_count][i].remote_gateway[0]) ||
-	                    ('n' == prof[prof_count][i].remote_gateway[0])) ? "\%any" : 
-	                    prof[prof_count][i].remote_gateway) : prof[prof_count][i].remote_id)
-	               , ((0 == prof[prof_count][i].auth_method) ? "RSA" : "PSK")
-	               , prof[prof_count][i].auth_method_key);
-			   	}
-        /*second-factor auth*/
-	        if((IKE_TYPE_V1 == prof[prof_count][i].ike) && 
-	           (IPSEC_AUTH2_TYP_CLI == prof[prof_count][i].xauth)){
-	            fprintf(fp, "#cli[%d]\n %s : XAUTH %s\n", i, prof[prof_count][i].xauth_account
-	                      , prof[prof_count][i].xauth_password);
-	        }else if((IKE_TYPE_V2 == prof[prof_count][i].ike) &&
-	           (IPSEC_AUTH2_TYP_CLI == prof[prof_count][i].xauth)){
-	            fprintf(fp, "#cli[%d]\n %s : EAP %s\n", i, prof[prof_count][i].xauth_account
-	                      , prof[prof_count][i].xauth_password);
-        }
-        memset(ipsec_client_list_name, 0, sizeof(char) * SZ_MIN);
-				sprintf(ipsec_client_list_name, "ipsec_client_list_%d", i+1);
-        if(NULL != nvram_safe_get(ipsec_client_list_name)){
-            p_str = &buf[0];
-            p_str1 = &s_tmp[0];
+						/*fprintf(fp,"\n %s %s : %s %s\n\n"
+						, ((0 == strcmp(prof[prof_count][i].local_id, "null") ||
+						('\0' == prof[prof_count][i].local_id[0])) ?
+						((('\0' == prof[prof_count][i].local_pub_ip[0]) ||
+						('n' == prof[prof_count][i].local_pub_ip[0])) ? "\%any" :
+						prof[prof_count][i].local_pub_ip ) : prof[prof_count][i].local_id)*/
+						, ((0 == strcmp(prof[prof_count][i].remote_id, "null") ||
+						('\0' == prof[prof_count][i].remote_id[0])) ?
+						((('\0' == prof[prof_count][i].remote_gateway[0]) ||
+						('n' == prof[prof_count][i].remote_gateway[0])) ? "\%any" :
+						prof[prof_count][i].remote_gateway) : prof[prof_count][i].remote_id)
+						, ((0 == prof[prof_count][i].auth_method) ? "RSA" : "PSK")
+						, prof[prof_count][i].auth_method_key);
+				}
+				/*second-factor auth*/
+				if((IKE_TYPE_V1 == prof[prof_count][i].ike) &&
+				(IPSEC_AUTH2_TYP_CLI == prof[prof_count][i].xauth)){
+					fprintf(fp, "#cli[%d]\n %s : XAUTH %s\n", i, prof[prof_count][i].xauth_account
+							, prof[prof_count][i].xauth_password);
+				}else if((IKE_TYPE_V2 == prof[prof_count][i].ike) &&
+						(IPSEC_AUTH2_TYP_CLI == prof[prof_count][i].xauth)){
+					fprintf(fp, "#cli[%d]\n %s : EAP %s\n", i, prof[prof_count][i].xauth_account
+							, prof[prof_count][i].xauth_password);
+				}
+
+				memset(ipsec_client_list_name, 0, sizeof(char) * SZ_MIN);
+				snprintf(ipsec_client_list_name, sizeof(ipsec_client_list_name), "ipsec_client_list_%d", i+1);
+#ifdef RTCONFIG_INSTANT_GUARD
+				if(nvram_get_int("ipsec_ig_enable") == 1)
+				{
+					strlcpy(ig_client_list, nvram_safe_get("ig_client_list"), sizeof(ig_client_list));
+				}
+#endif
+				//if(NULL != nvram_safe_get(ipsec_client_list_name)){
+				if(strlen(nvram_safe_get(ipsec_client_list_name)) > 0
+#ifdef RTCONFIG_INSTANT_GUARD
+				|| strlen(ig_client_list) > 0
+#endif
+				){
 					memset(buf, 0, sizeof(char) * SZ_MAX);
 					memset(s_tmp, 0, sizeof(char) * SZ_MAX);
-            strcpy(buf, nvram_safe_get(ipsec_client_list_name));
-            while('\0' != *p_str){
-                if('<' == *p_str){
-                    *p_str = '\n';
-                }
-                if('>' == *p_str){
-                    *p_str1 = *p_str++ = ' ';
-                    memset(auth2meth, 0, sizeof(char) * SZ_MIN);
-                    sprintf(auth2meth, ": %s ", 
-	                            (IKE_TYPE_V2 == prof[prof_count][i].ike) ? "EAP" : "XAUTH");
-                    sprintf(p_str1 + 1, "%s", auth2meth);
-                    p_str1 += strlen(auth2meth) + 1;
-                }
-                *p_str1++ = *p_str++;
-            }
-            p_str1 = '\0';
-					fprintf(fp, "\n#ipsec_client_list_%d\n\n%s\n", i+1, s_tmp);
+					memset(ipsec_client_list_buf, 0, sizeof(ipsec_client_list_buf));
+
+					if((VPN_TYPE_HOST_NET == prof[prof_count][i].vpn_type) &&
+						(prof[prof_count][i].ike == IKE_TYPE_V2) &&
+						(prof[prof_count][i].auth_method == 0)){
+						snprintf(s_tmp, sizeof(s_tmp), ": RSA %s\n", prof[prof_count][i].leftkey);
+					}
+
+					if(nvram_get_int("ipsec_server_enable") == 1){
+						strlcpy(buf, nvram_safe_get(ipsec_client_list_name), sizeof(buf));
+						foreach_60(word,buf, word_next){
+							if((vstrsep(word, ">", &name, &passwd)) != 2)
+								continue;
+
+							snprintf(ipsec_client_list_buf, sizeof(ipsec_client_list_buf), "\n%s : %s %s"
+									, name, (IKE_TYPE_V2 == prof[prof_count][i].ike) ? "EAP" : "XAUTH", passwd);
+							strlcat(s_tmp, ipsec_client_list_buf, sizeof(s_tmp));
+						}
+					}
+#ifdef RTCONFIG_INSTANT_GUARD
+					if(nvram_get_int("ipsec_ig_enable") == 1){
+						strlcpy(ig_client_list, nvram_safe_get("ig_client_list"), sizeof(ig_client_list));
+						memset(ig_client_list_tmp, 0, sizeof(ig_client_list_tmp));
+						memset(ig_client_buf, 0, sizeof(ig_client_buf));
+						foreach_60(word, ig_client_list, word_next){
+							if((vstrsep(word, ">", &name, &passwd, &desc, &ts, &active)) != 5)
+								continue;
+							if(active != NULL && !strcmp(active, "1")){
+								snprintf(ig_client_buf, sizeof(ig_client_buf), "\n%s : %s %s"
+										, name, (IKE_TYPE_V2 == prof[prof_count][i].ike) ? "EAP" : "XAUTH", passwd);
+								strlcat(ig_client_list_tmp, ig_client_buf, sizeof(ig_client_list_tmp));
+							}
+						}
+					}
+#endif
+					fprintf(fp, "\n#ipsec_client_list_%d\n\n%s%s\n", i+1, s_tmp, ig_client_list_tmp);
 				}
-        }
-    	}
+			}
+		}
 	}
-    if(NULL != fp){
-        fclose(fp);
-    }
-    return;
+	if(NULL != fp){
+		fclose(fp);
+	}
+	return;
 }
 
 void ipsec_conf_local_set(FILE *fp, int prof_idx, ipsec_prof_type_t prof_type)
@@ -1139,7 +1313,6 @@ void ipsec_conf_local_set(FILE *fp, int prof_idx, ipsec_prof_type_t prof_type)
 		strcpy(left_ipaddr, nvram_safe_get(tmp_str));
 	}
 	
-
 	if(0 != strlen(left_ipaddr) && 0 != strcmp(left_ipaddr,"0.0.0.0"))
 		fprintf(fp, "  left=%s\n  #receive web value#left=%s\n", left_ipaddr, prof[prof_type][prof_idx].local_pub_ip);
 	else
@@ -1162,7 +1335,7 @@ void ipsec_conf_local_set(FILE *fp, int prof_idx, ipsec_prof_type_t prof_type)
         fprintf(fp, "  leftauth=%s\n"
                 , (prof[prof_type][prof_idx].auth_method == 1) ? "psk" :
                    ((prof[prof_type][prof_idx].ike == IKE_TYPE_V2) ?
-                     prof[prof_type][prof_idx].auth2meth : "pubkey")
+                     prof[prof_type][prof_idx].leftauth_method : "pubkey")
                );
     }
     if((VPN_TYPE_NET_NET_CLI == prof[prof_type][prof_idx].vpn_type) &&
@@ -1172,13 +1345,30 @@ void ipsec_conf_local_set(FILE *fp, int prof_idx, ipsec_prof_type_t prof_type)
     }else if((VPN_TYPE_NET_NET_CLI == prof[prof_type][prof_idx].vpn_type) &&
        (prof[prof_type][prof_idx].ike == IKE_TYPE_V2) && 
        (IPSEC_AUTH2_TYP_DIS != prof[prof_type][prof_idx].xauth)){
-        fprintf(fp, "  rightauth2=%s\n", prof[prof_type][prof_idx].auth2meth);
+        fprintf(fp, "  rightauth2=%s\n", prof[prof_type][prof_idx].rightauth2_method);
     }
     if((0 != strcmp(prof[prof_type][prof_idx].local_id, "null")) && 
        ('\0' != prof[prof_type][prof_idx].local_id[0])){
         fprintf(fp, "  leftid=%s\n", prof[prof_type][prof_idx].local_id);
     }
 	
+    if((VPN_TYPE_HOST_NET == prof[prof_type][prof_idx].vpn_type) &&
+       (prof[prof_type][prof_idx].ike == IKE_TYPE_V2) &&
+       (prof[prof_type][prof_idx].auth_method == 0)){
+        fprintf(fp, "  leftcert=%s\n", prof[prof_type][prof_idx].leftcert);
+    }
+    if((VPN_TYPE_HOST_NET == prof[prof_type][prof_idx].vpn_type) &&
+       (prof[prof_type][prof_idx].ike == IKE_TYPE_V2) &&
+       (prof[prof_type][prof_idx].auth_method == 0)){
+        fprintf(fp, "  #leftsendcert is the key point for iOS devices\n");
+        fprintf(fp, "  leftsendcert=%s\n", prof[prof_type][prof_idx].leftsendcert);
+    }
+    if((VPN_TYPE_HOST_NET == prof[prof_type][prof_idx].vpn_type) &&
+       (prof[prof_type][prof_idx].ike == IKE_TYPE_V2) &&
+       (prof[prof_type][prof_idx].auth_method == 0)){
+        fprintf(fp, "  eap_identity=%s\n", prof[prof_type][prof_idx].eap_identity);
+    }
+
     return;
 }
 
@@ -1203,7 +1393,7 @@ void ipsec_conf_remote_set(FILE *fp, int prof_idx, ipsec_prof_type_t prof_type)
         fprintf(fp, "  rightauth=%s\n"
                   , (prof[prof_type][prof_idx].auth_method == 1) ? "psk" :
                      ((prof[prof_type][prof_idx].ike == IKE_TYPE_V2) ?
-                     prof[prof_type][prof_idx].auth2meth : "pubkey")
+                     prof[prof_type][prof_idx].rightauth2_method : "pubkey")
                );
     }
     if(((VPN_TYPE_NET_NET_SVR == prof[prof_type][prof_idx].vpn_type) ||
@@ -1215,7 +1405,7 @@ void ipsec_conf_remote_set(FILE *fp, int prof_idx, ipsec_prof_type_t prof_type)
         (VPN_TYPE_HOST_NET == prof[prof_type][prof_idx].vpn_type)) &&
        (prof[prof_type][prof_idx].ike == IKE_TYPE_V2) &&
        (IPSEC_AUTH2_TYP_DIS != prof[prof_type][prof_idx].xauth)){
-        fprintf(fp, "  rightauth2=%s\n", prof[prof_type][prof_idx].auth2meth);
+        fprintf(fp, "  rightauth2=%s\n", prof[prof_type][prof_idx].rightauth2_method);
     }
     if(VPN_TYPE_HOST_NET == prof[prof_type][prof_idx].vpn_type){
         if((0 != strcmp(prof[prof_type][prof_idx].virtual_subnet, "null")) &&
@@ -1310,9 +1500,9 @@ void ipsec_conf_phase1_set(FILE *fp, int prof_idx, ipsec_prof_type_t prof_type)
 
 void ipsec_conf_phase2_set(FILE *fp, int prof_idx, ipsec_prof_type_t prof_type)
 {
-	char str[128];
+	char str[1024];
     fprintf(fp, "  keylife=%d\n", prof[prof_type][prof_idx].keylife_p2);
-	fprintf(fp, "  esp=%s!\n", get_ike_esp_bit_convert1(str, sizeof(str), prof[prof_type][prof_idx].encryption_p2_ext, prof[prof_type][prof_idx].hash_p2_ext, 0) + 1);
+	fprintf(fp, "  esp=%s!\n", get_ike_esp_bit_convert1(str, sizeof(str), prof[prof_type][prof_idx].encryption_p2_ext, prof[prof_type][prof_idx].hash_p2_ext, prof[prof_type][prof_idx].pfs_group) + 1);
 	//fprintf(fp, "  esp=%s", get_ike_esp_bit_convert(str, sizeof(str), ENCRYPTION_TYPE_MAX_NUM, prof[prof_type][prof_idx].encryption_p2_ext, FLAG_IKE_ENCRYPT) + 1);
 	//fprintf(fp, "%s\n", get_ike_esp_bit_convert(str, sizeof(str), HASH_TYPE_MAX_NUM, prof[prof_type][prof_idx].hash_p2_ext, FLAG_ESP_HASH));
 
@@ -1395,7 +1585,7 @@ void rc_ipsec_topology_set()
 		    if(IKE_AGGRESSIVE_MODE == prof[prof_count][i].exchange){
             	fprintf(fp,"  aggressive=yes\n");
         	}
-			
+
 	        ipsec_conf_local_set(fp, i, prof_count);
 	        ipsec_conf_remote_set(fp, i, prof_count);
 			
@@ -1416,10 +1606,15 @@ void rc_ipsec_topology_set()
 			
 			if(DPD_NONE != prof[prof_count][i].dead_peer_detection)
 				fprintf(fp,"  dpddelay=%ds\n", prof[prof_count][i].ipsec_dpd);
-	        fprintf(fp,"  auto=add\n");
+			
+	        if(VPN_TYPE_NET_NET_CLI == prof[prof_count][i].vpn_type || VPN_TYPE_NET_NET_PEER == prof[prof_count][i].vpn_type)
+				fprintf(fp,"  auto=start\n");
+			else
+		        fprintf(fp,"  auto=add\n\n");
 	    }
 	}
 	}
+
     if(NULL != fp){
         fclose(fp);
     }
@@ -1428,8 +1623,11 @@ void rc_ipsec_topology_set()
 void rc_ipsec_nvram_convert_check(void)
 {
 	int i, prof_count = 0;
-	char buf[SZ_MIN], buf_ext[SZ_MIN];
-	char *nvp=NULL, *b=NULL;
+	char buf[SZ_MIN], buf_ext[SZ_MIN], tmpStr[SZ_MIN];
+	char *nv=NULL, *nvp=NULL, *b=NULL;
+	char *encryption_p1=NULL, *hash_p1=NULL, *dh_group=NULL;
+	char *encryption_p2=NULL, *hash_p2=NULL, *pfs_group=NULL;
+	
 	for(prof_count = PROF_CLI; prof_count < PROF_ALL; prof_count++){
 	    for(i = 1; i <= MAX_PROF_NUM; i++){
 			if(PROF_SVR == prof_count){
@@ -1440,13 +1638,24 @@ void rc_ipsec_nvram_convert_check(void)
 				sprintf(&buf[0], "ipsec_profile_client_%d", i);
 				sprintf(&buf_ext[0], "ipsec_profile_client_%d_ext", i);
 			}
-			if(0 != strcmp(nvram_safe_get(&buf[0]), "") && 0 == strcmp(nvram_safe_get(&buf_ext[0]),"")){
+			if(0 != strcmp(nvram_safe_get(&buf[0]), "")){
+				if(0 == strcmp(nvram_safe_get(&buf_ext[0]),""))	/* if there no ext nvram, filled them. */
+				{
 				nvp = strdup(nvram_safe_get(&buf[0]));
 				b = strsep(&nvp, ">");
 				if(0 == strcmp(b, "4"))
-					nvram_set(&buf_ext[0], "0>0>0>0>0");	/* none */
+					nvram_set(&buf_ext[0], "0>0>0>0>0>0");	/* none */
 				else
-					nvram_set(&buf_ext[0], "6>6>255>6>6");	/* 3des-aes128-sha1-sha256-modp768-modp1024-modp1536-modp2048-modp3072-modp4096-modp6144-modp8192 */
+					nvram_set(&buf_ext[0], "6>6>255>6>6>255");
+				}
+				else	/* if there is ext nvram but format not match, replace them. */
+				{
+					nv = nvp = strdup(nvram_safe_get(&buf_ext[0]));
+					if (vstrsep(nv, ">", &encryption_p1, &hash_p1, &dh_group, &encryption_p2, &hash_p2, &pfs_group) == 6)
+						continue;
+					sprintf(tmpStr, "%s>%s>%s>%s>%s>255", encryption_p1, hash_p1, dh_group, encryption_p2, hash_p2);
+					nvram_set(&buf_ext[0], tmpStr);
+				}
 			}
 
 		}
@@ -1460,12 +1669,16 @@ void rc_ipsec_config_init(void)
 	memset((ipsec_samba_t *)&pre_samba_prof, 0, sizeof(ipsec_samba_t));
 	if(!d_exists("/etc/ipsec.d") || !d_exists("/etc/strongswan.d"))
 		system("cp -rf /usr/etc/* /tmp/etc/");
-    //mkdir("/jffs/ca_files", 0777);
+    system("mkdir -p /jffs/ca_files");
     /*ipsec.conf init*/    
     rc_ipsec_conf_default_init();
     rc_ipsec_psk_xauth_rw_init();
     /*ipsec.secrets init*/
-    if(nvram_get_int("ipsec_server_enable") || nvram_get_int("ipsec_client_enable"))
+    if(nvram_get_int("ipsec_server_enable") || nvram_get_int("ipsec_client_enable")
+#ifdef RTCONFIG_INSTANT_GUARD
+         || nvram_get_int("ipsec_ig_enable")
+#endif
+        )
 		rc_ipsec_set(IPSEC_INIT,PROF_ALL);
     //rc_ipsec_secrets_set();
     //rc_ipsec_conf_set();
@@ -1476,14 +1689,6 @@ void rc_ipsec_config_init(void)
     /*ca import*/
     //rc_ipsec_ca_import();
     return;
-}
-void rc_set_ipsec_stack_block_size(void)
-{
-	char command[64];
-	if(NULL != nvram_safe_get("ipsec_stack_block_size")){
-		snprintf(command, sizeof(command), "echo \"%s\" > /tmp/ipsec_stack_block_size", nvram_safe_get("ipsec_stack_block_size"));
-		system(command);
-	}
 }
 #if 0
 static int cur_bitmap_en_scan()
@@ -1637,7 +1842,7 @@ void rc_ipsec_topology_set_XML()
 	qs_virtual_ip_t virtual_ip;
 	char lan_class[32];
 	char *subnet, *subnet_total;
-	
+
     memset(p_tmp, 0, sizeof(char) * SZ_MIN);
 	memset(&virtual_ip, 0, sizeof(qs_virtual_ip_t));
 	memset(alg_buf, 0, sizeof(char)* SZ_64BUF);
@@ -1923,15 +2128,20 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
 	char *local_subnet, *local_subnet_total;
 	int prof_i = 0, is_duplicate = 0;
 	char tmpStr[20];
+/* moved to firewall
 	int isakmp_port = nvram_get_int("ipsec_isakmp_port");
 	int nat_t_port = nvram_get_int("ipsec_nat_t_port");
+*/
 
 	argv[0] = "/bin/sh";
 	argv[1] = FILE_PATH_IPSEC_SH;
 	argv[2] = NULL;
-	
+
+    rc_ipsec_nvram_convert_check();
     rc_ipsec_conf_set();
     rc_ipsec_secrets_set();
+    rc_ipsec_gen_cert(0);
+    rc_ipsec_ca_init();
     rc_strongswan_conf_set();
 #if defined(RTCONFIG_QUICKSEC)
 	rc_ipsec_topology_set_XML();
@@ -1964,7 +2174,11 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
 	else
 		nvram_set_int("ipsec_client_enable",0);
 	
-	if((nvram_get_int("ipsec_server_enable") == 1 || nvram_get_int("ipsec_client_enable") == 1 )){
+	if((nvram_get_int("ipsec_server_enable") == 1 || nvram_get_int("ipsec_client_enable") == 1 )
+#ifdef RTCONFIG_INSTANT_GUARD
+         || nvram_get_int("ipsec_ig_enable")
+#endif
+        ){
 		/*if(IPSEC_INIT == conn_status){
 			if (!pids("starter") && !pids("charon"))
 				rc_ipsec_start(fp);
@@ -2026,6 +2240,7 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
 								sprintf(tmpStr,"wan%d_gw_ifname",unit);
 								if(0 != strlen(nvram_safe_get(tmpStr)))
 									strcpy(interface,nvram_safe_get(tmpStr));
+								/* moved to firewall
 								fprintf(fp1, "iptables -D INPUT -i %s --protocol esp -j ACCEPT\n", interface);
 								fprintf(fp1, "iptables -D INPUT -i %s --protocol ah -j ACCEPT\n", interface);
 								fprintf(fp1, "iptables -D INPUT -i %s -p udp --dport %d -j ACCEPT\n", interface, isakmp_port);
@@ -2044,6 +2259,7 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
 								fprintf(fp1, "iptables -I OUTPUT -o %s -p udp --sport %d -j ACCEPT\n", interface, nat_t_port);
 								fprintf(fp1, "iptables -D INPUT -i %s -s %s -j ACCEPT\n",interface, prof[prof_count][i].virtual_subnet);
 								fprintf(fp1, "iptables -I INPUT -i %s -s %s -j ACCEPT\n",interface, prof[prof_count][i].virtual_subnet);
+								*/
 #ifdef RTCONFIG_BCMARM
 								/* mark connect to bypass CTF */
 								if (nvram_match("ctf_disable", "0")){
@@ -2062,6 +2278,7 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
 						}
 						else{
 							/* Net to Net */
+							/* moved to firewall
 							fprintf(fp1, "iptables -D INPUT -i %s --protocol esp -j ACCEPT\n", interface);
 							fprintf(fp1, "iptables -D INPUT -i %s --protocol ah -j ACCEPT\n", interface);
 							fprintf(fp1, "iptables -D INPUT -i %s -p udp --dport %d -j ACCEPT\n", interface, isakmp_port);
@@ -2078,10 +2295,13 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
 							fprintf(fp1, "iptables -I OUTPUT -o %s --protocol ah -j ACCEPT\n", interface);
 							fprintf(fp1, "iptables -I OUTPUT -o %s -p udp --sport %d -j ACCEPT\n", interface, isakmp_port);
 							fprintf(fp1, "iptables -I OUTPUT -o %s -p udp --sport %d -j ACCEPT\n", interface, nat_t_port);
+							*/
 							local_subnet_total = strdup(prof[prof_count][i].local_subnet);
 							while((local_subnet = strsep(&local_subnet_total, ",")) != NULL){
+								/* moved to firewall
 								fprintf(fp1, "iptables -t nat -D POSTROUTING -s %s -m policy --dir out --pol ipsec -j ACCEPT\n", local_subnet);
 								fprintf(fp1, "iptables -t nat -I POSTROUTING -s %s -m policy --dir out --pol ipsec -j ACCEPT\n", local_subnet);
+								*/
 #ifdef RTCONFIG_BCMARM
 								/* mark connect to bypass CTF */
 								if (nvram_match("ctf_disable", "0")){
@@ -2103,7 +2323,8 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
 						//cur_bitmap_en = cur_bitmap_en_scan();
 						get_bitmap_scan((int *) cur_bitmap_en_p);
 						if(0 != strcmp(interface,"")){
-							/*fprintf(fp, "iptables -D INPUT -i %s --protocol esp -j ACCEPT\n", interface);
+							/* moved to firewall
+							fprintf(fp, "iptables -D INPUT -i %s --protocol esp -j ACCEPT\n", interface);
 							fprintf(fp, "iptables -D INPUT -i %s --protocol ah -j ACCEPT\n", interface);
 							fprintf(fp, "iptables -D INPUT -i %s -p udp --dport 500 -j ACCEPT\n", interface);
 							fprintf(fp, "iptables -D INPUT -i %s -p udp --dport 4500 -j ACCEPT\n", interface);
@@ -2118,11 +2339,14 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
 							fprintf(fp, "iptables -I OUTPUT -o %s --protocol esp -j ACCEPT\n", interface);
 							fprintf(fp, "iptables -I OUTPUT -o %s --protocol ah -j ACCEPT\n", interface);
 							fprintf(fp, "iptables -I OUTPUT -o %s -p udp --sport 500 -j ACCEPT\n", interface);
-							fprintf(fp, "iptables -I OUTPUT -o %s -p udp --sport 4500 -j ACCEPT\n", interface);*/
+							fprintf(fp, "iptables -I OUTPUT -o %s -p udp --sport 4500 -j ACCEPT\n", interface);
+							*/
 
 						if(VPN_TYPE_HOST_NET == prof[prof_count][i].vpn_type){
-							/*fprintf(fp, "iptables -D INPUT -i %s -s %s -j ACCEPT\n",interface,prof[prof_count][i].virtual_subnet);
-							fprintf(fp, "iptables -I INPUT -i %s -s %s -j ACCEPT\n",interface,prof[prof_count][i].virtual_subnet);*/
+							/* moved to firewall
+							fprintf(fp, "iptables -D INPUT -i %s -s %s -j ACCEPT\n",interface,prof[prof_count][i].virtual_subnet);
+							fprintf(fp, "iptables -I INPUT -i %s -s %s -j ACCEPT\n",interface,prof[prof_count][i].virtual_subnet);
+							*/
 #ifdef RTCONFIG_BCMARM
 							/* mark connect to bypass CTF */
 							/*if (nvram_match("ctf_disable", "0")){
@@ -2136,8 +2360,10 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
 						else{
 							local_subnet_total = strdup(prof[prof_count][i].local_subnet);
 							while((local_subnet = strsep(&local_subnet_total, ",")) != NULL){
-								/*fprintf(fp, "iptables -t nat -D POSTROUTING -s %s -m policy --dir out --pol ipsec -j ACCEPT\n", local_subnet);
-								fprintf(fp, "iptables -t nat -I POSTROUTING -s %s -m policy --dir out --pol ipsec -j ACCEPT\n", local_subnet);*/
+								/* moved to firewall
+								fprintf(fp, "iptables -t nat -D POSTROUTING -s %s -m policy --dir out --pol ipsec -j ACCEPT\n", local_subnet);
+								fprintf(fp, "iptables -t nat -I POSTROUTING -s %s -m policy --dir out --pol ipsec -j ACCEPT\n", local_subnet);
+								*/
 #ifdef RTCONFIG_BCMARM
 								/* mark connect to bypass CTF */
 								/*if (nvram_match("ctf_disable", "0")){
@@ -2165,19 +2391,25 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
 						}
     				}
 					if(0 == is_duplicate){
-						/*fprintf(fp, "iptables -D INPUT -i %s --protocol esp -j ACCEPT\n", interface);
+						/* moved to firewall
+						fprintf(fp, "iptables -D INPUT -i %s --protocol esp -j ACCEPT\n", interface);
 						fprintf(fp, "iptables -D INPUT -i %s --protocol ah -j ACCEPT\n", interface);
 						fprintf(fp, "iptables -D INPUT -i %s -p udp --dport 500 -j ACCEPT\n", interface);
 						fprintf(fp, "iptables -D INPUT -i %s -p udp --dport 4500 -j ACCEPT\n", interface); 
 						fprintf(fp, "iptables -D OUTPUT -o %s --protocol esp -j ACCEPT\n", interface);
 						fprintf(fp, "iptables -D OUTPUT -o %s --protocol ah -j ACCEPT\n", interface);
 						fprintf(fp, "iptables -D OUTPUT -o %s -p udp --sport 500 -j ACCEPT\n", interface);
-						fprintf(fp, "iptables -D OUTPUT -o %s -p udp --sport 4500 -j ACCEPT\n", interface);*/
+						fprintf(fp, "iptables -D OUTPUT -o %s -p udp --sport 4500 -j ACCEPT\n", interface);
+						*/
 					}
 					rc_ipsec_down(fp, i, prof_count);
 				}
 
-				if((0 == nvram_get_int("ipsec_server_enable")) && (PROF_SVR == prof_count))
+				if((0 == nvram_get_int("ipsec_server_enable")) && (PROF_SVR == prof_count)
+#ifdef RTCONFIG_INSTANT_GUARD
+                 && (0 == nvram_get_int("ipsec_ig_enable"))
+#endif
+                 )
 				rc_ipsec_down(fp, i, prof_count);
 			
 			}
@@ -2189,7 +2421,11 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
 		(0 == cur_bitmap_en_p[PROF_CLI] && 0 == cur_bitmap_en_p[PROF_SVR])){
         rc_ipsec_stop(fp);
         ipsec_start_en = FALSE;
-    }else if((0 == nvram_get_int("ipsec_server_enable")) && (0 == nvram_get_int("ipsec_client_enable")))
+	}else if((0 == nvram_get_int("ipsec_server_enable")) && (0 == nvram_get_int("ipsec_client_enable"))
+#ifdef RTCONFIG_INSTANT_GUARD
+			&& (0 == nvram_get_int("ipsec_ig_enable"))
+#endif
+	)
     {
         rc_ipsec_stop(fp);
 		ipsec_start_en = FALSE;
@@ -2202,7 +2438,7 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
     if(NULL != fp){
         fclose(fp);
     }
-#if defined(RTCONFIG_SOC_IPQ8064)		
+#if defined(RTCONFIG_SOC_IPQ8064) || defined(RTCONFIG_SOC_IPQ8074)
 	reinit_ecm(-1);
 #endif
 	DBG(("rc_ipsec_down_stat<<<< CLI: 0x%x, SVR: 0x%x\n", cur_bitmap_en_p[PROF_CLI],cur_bitmap_en_p[PROF_SVR]));
@@ -2212,3 +2448,4 @@ void rc_ipsec_set(ipsec_conn_status_t conn_status, ipsec_prof_type_t prof_type)
 	run_ipsec_firewall_scripts();
     return;
 }
+

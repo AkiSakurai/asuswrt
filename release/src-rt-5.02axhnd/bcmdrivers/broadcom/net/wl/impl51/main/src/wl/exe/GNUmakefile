@@ -1,7 +1,7 @@
 
 # GNUmakefile for wl/exe
 #
-#  Copyright 2019 Broadcom
+#  Copyright 2020 Broadcom
 #
 #  This program is the proprietary software of Broadcom and/or
 #  its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
 #
 #  <<Broadcom-WL-IPTag/Proprietary:>>
 #
-# $Id: GNUmakefile 777912 2019-08-14 18:14:51Z $
+# $Id: GNUmakefile 786269 2020-04-22 21:40:36Z $
 
 # Work out the directory of this file.
 MWD := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
@@ -268,6 +268,10 @@ CFLAGS += -DWLBAM
   CFLAGS += -DWL_TDMTX
 #endif // endif
 
+#ifdef WLC_DTPC
+  CFLAGS += -DWLC_DTPC
+#endif // endif
+
 ifeq ($(CONFIG_EAP),y)
   CFLAGS += -DWL_EAP_STA_SCB_TIMEOUT
   CFLAGS += -DWL_EAP_PER_VAP_CONFIG
@@ -281,7 +285,6 @@ ifeq ($(CONFIG_EAP),y)
   CFLAGS += -DWL_EAP_SCAN_BEACON_DELAY
   CFLAGS += -DWL_EAP_SCAN_TEST
   CFLAGS += -DWL_EAP_80211RAW
-  CFLAGS += -DWL_EAP_PER_VAP_DTIM
   CFLAGS += -DWL_EAP_CUST_EVENT_HNDLR
   CFLAGS += -DWL_EAP_MONITOR
   CFLAGS += -DWL_EAP_STATS -DWLPROPRIETARY_11N_RATES
@@ -389,6 +392,7 @@ WL_OBJS += wlu_avail_utils.o
 WL_OBJS += wluc_otp.o
 WL_OBJS += bcm_math.o
 WL_OBJS += wluc_mbo.o
+WL_OBJS += wluc_perf_utils.o
 
 ifneq ($(findstring WL_BTCDYN, $(CFLAGS)),)
 WL_OBJS += wluc_btcdyn.o
@@ -509,6 +513,10 @@ endif
 #TODO add build option check
 ifneq ($(findstring WL_TDMTX, $(CFLAGS)),)
 WL_OBJS += wluc_tdmtx.o
+endif
+
+ifneq ($(findstring WLC_DTPC, $(CFLAGS)),)
+WL_OBJS += wluc_dtpc.o
 endif
 
 # include build settings for nl80211 support
@@ -776,6 +784,7 @@ WL_OBJS += $(OBJDIR)/wluc_led.o
 WL_OBJS += $(OBJDIR)/wluc_interfere.o
 WL_OBJS += $(OBJDIR)/wluc_ltecx.o
 WL_OBJS += $(OBJDIR)/wluc_otp.o
+WL_OBJS += $(OBJDIR)/wluc_perf_utils.o
 
 ifneq ($(or $(findstring WL_BTCDYN, $(GCDEFS)),\
 	    $(findstring WL_BTCDYN, $(CFLAGS))),)

@@ -1,7 +1,7 @@
 /*
  * Broadcom device-specific manifest constants.
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmdevs.h 775362 2019-05-29 05:39:37Z $
+ * $Id: bcmdevs.h 787019 2020-05-14 03:53:09Z $
  */
 
 #ifndef	_BCMDEVS_H
@@ -295,6 +295,7 @@
 #define BCM43684_D11AX_ID	0x4429		/**< 43684 802.11ax dualband device */
 #define BCM43684_D11AX2G_ID	0x442a		/**< 43684 802.11ax 2G device */
 #define BCM43684_D11AX5G_ID	0x442b		/**< 43684 802.11ax 5G device */
+#define BCM43684_D11AX6G_ID	0x6006		/**< 43684 802.11ax 6G device */
 
 #define BCM43349_D11N_ID	0x43e6		/* 43349 802.11n dualband id */
 #define BCM43349_D11N2G_ID	0x43e7		/* 43349 802.11n 2.4Ghz band id */
@@ -322,6 +323,15 @@
 #define BCM6710_D11AX_ID	0x4493		/**< 6710 802.11ax dualband device */
 #define BCM6710_D11AX2G_ID	0x4494		/**< 6710 802.11ax 2G device */
 #define BCM6710_D11AX5G_ID	0x4495		/**< 6710 802.11ax 5G device */
+#define BCM6710_D11AX6G_ID	0x6009		/**< 6710 802.11ax 6G device */
+
+#define BCM43692_D11AX_ID	0x600d		/**< 43692 802.11ax dualband device */
+#define BCM43692_D11AX2G_ID	0x600e		/**< 43692 802.11ax 2G device */
+#define BCM43692_D11AX5G_ID	0x600f		/**< 43692 802.11ax 5G device */
+
+#define BCM6715_D11AX_ID	0x6001		/**< 6715 802.11ax dualband device */
+#define BCM6715_D11AX2G_ID	0x6002		/**< 6715 802.11ax 2G device */
+#define BCM6715_D11AX5G_ID	0x6003		/**< 6715 802.11ax 5G device */
 
 #define BCM6878_D11AC_ID	0x6878		/**< 6878 802.11ax dualband device */
 #define BCM6878_D11AC2G_ID	0x4496		/**< 6878 802.11ax 2G device */
@@ -614,8 +624,19 @@
 					case BCM47622_CHIP_ID
 
 #define BCM6710_CHIP_ID		0x6710		/* 6710 chipcommon chipid */
-#define BCM6710_CHIP(chipid)	((CHIPID(chipid) == BCM6710_CHIP_ID))
-#define CASE_BCM6710_CHIP	case BCM6710_CHIP_ID
+#define BCM6705_CHIP_ID		0xaaac		/* 6705 chipid (same as 43692), 6710 2x2 variant */
+#define BCM43692_CHIP_ID	0xaaac		/* 43692 chipid, 6710 EAP 2x2 variant */
+#define BCM43693_CHIP_ID	0xaaad		/* 43693 chipid, 6710 EAP 3x3 version */
+#define BCM6710_CHIP(chipid)	((CHIPID(chipid) == BCM6710_CHIP_ID) || \
+				(CHIPID(chipid) == BCM43692_CHIP_ID) || \
+				(CHIPID(chipid) == BCM43693_CHIP_ID))
+#define CASE_BCM6710_CHIP	case BCM6710_CHIP_ID: /* fallthrough */ \
+				case BCM43692_CHIP_ID: /* also for BCM6705, fallthrough */ \
+				case BCM43693_CHIP_ID
+
+#define BCM6715_CHIP_ID		0x6715		/* 6715 chipcommon chipid */
+#define BCM6715_CHIP(chipid)	((CHIPID(chipid) == BCM6715_CHIP_ID))
+#define CASE_BCM6715_CHIP	case BCM6715_CHIP_ID
 
 #define BCM6878_CHIP_ID		0x6878		/* 6878 chipcommon chipid */
 #define BCM6878_CHIP(chipid)	((CHIPID(chipid) == BCM6878_CHIP_ID))
@@ -751,7 +772,7 @@
 					     * driver per chip/boardtype. This can be used
 					     * when tempsense qualification happens after shipment
 					     */
-#define BFL2_BTC3WIREONLY       0x02000000  /* standard 3 wire btc only.  4 wire not supported */
+#define BFL2_BTC3WIREONLY       0x02000000  /* 0:sw-based GPIO 3-wire btc; 1:GCI-based 3-wire btc */
 #define BFL2_PWR_NOMINAL	0x04000000  /* 0: power reduction on, 1: no power reduction */
 #define BFL2_EXTLNA_PWRSAVE	0x08000000  /* boardflag to enable ucode to apply power save */
 						/* ucode control of eLNA during Tx */
@@ -831,6 +852,7 @@
 #define BFL4_SROM13_CCK_SPUR_EN     (1 << 4)   /* using cck spur reduction setting in 4366 */
 #define BFL4_SROM13_1P5V_CBUCK		(1 << 7)   /* using 1.5V cbuck board in 4366 */
 #define BFL4_SROM13_EN_SW_TXRXCHAIN_MASK (1 << 8)   /* Enable/disable bit for sw chain mask */
+#define BFL4_SROM13_CORE3_P1C       (1 << 9)   /* Enable/disable bit for core-3 as +1 scan core */
 #define BFL4_SROM18_CCK_PAPARAM_EN   (1 << 16)   /* Enable/disable bit for sw chain mask */
 #define BFL4_SROM18_OLPC_THRESH_EN	 (1 << 17)  /* Enable bit for olpc_2g5g_th */
 #define BFL4_SROM18_TXPWR_CAP_EN     (1 << 18)   /* bit to enable TXPWR_CAP as default */

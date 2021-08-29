@@ -4,7 +4,7 @@
  *
  *  Air-IQ 3+1 mode
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -114,18 +114,16 @@ void
 wlc_airiq_3p1_downgrade_phy(airiq_info_t *airiqh, chanspec_t scan_chanspec)
 {
 	wlc_info_t *wlc = airiqh->wlc;
-	phy_info_t *pi = (phy_info_t *) WLC_PI(wlc);
 
 	/* disable periodic calibration; so that it doesn't interfere */
-	phy_wd_override(pi, FALSE);
-
-	wlc_mute(wlc, ON, PHY_MUTE_FOR_PREISM);
+	wlc_suspend_mac_and_wait(wlc);
 
 	wlc_airiq_scan_set_chanspec_3p1(airiqh, (phy_info_t*)WLC_PI(wlc),
 		wlc->home_chanspec, scan_chanspec);
 
 	airiqh->upgrade_pending = TRUE;
-	wlc_mute(wlc, OFF, PHY_MUTE_FOR_PREISM);
+
+	wlc_enable_mac(wlc);
 
 	WL_AIRIQ(("wl%d: %s: downgraded phy to 3+1\n", WLCWLUNIT(wlc), __FUNCTION__));
 	ASSERT(airiqh->phy_mode == PHYMODE_3x3_1x1);
@@ -138,14 +136,13 @@ wlc_airiq_3p1_upgrade_phy(airiq_info_t *airiqh)
 	wlc_info_t *wlc = airiqh->wlc;
 	phy_info_t *pi = (phy_info_t *) WLC_PI(wlc);
 
-	wlc_mute(wlc, ON, PHY_MUTE_FOR_PREISM);
+	wlc_suspend_mac_and_wait(wlc);
+
 	phy_ac_chanmgr_set_val_phymode(PHY_AC_CHANMGR(pi), 0);
 
-	airiqh->upgrade_pending = FALSE;
-	wlc_mute(wlc, OFF, PHY_MUTE_FOR_PREISM);
+	wlc_enable_mac(wlc);
 
-	/* enable periodic calibration */
-	phy_wd_override(pi, TRUE);
+	airiqh->upgrade_pending = FALSE;
 
 	WL_AIRIQ(("wl%d: %s: upgraded phy to 4x4\n", WLCWLUNIT(wlc), __FUNCTION__));
 	ASSERT(airiqh->phy_mode == 0);
@@ -238,14 +235,14 @@ wlc_airiq_opmode_change_cb(void *ctx, wlc_modesw_notif_cb_data_t *notif_data)
 	    airiqh->phy_mode != 0) {
 		WL_AIRIQ(("wl%d: %s airiq mode not enabled, exiting.\n",
 			WLCWLUNIT(wlc), __FUNCTION__));
-		WL_MODE_SWITCH(("%s MODESW CB status = %d oper_mode = %x signal = %d\n",
-			__FUNCTION__, notif_data->status, notif_data->opmode,
+		WL_MODE_SWITCH(("wl%d: %s MODESW CB status = %d oper_mode = %x signal = %d\n",
+			WLCWLUNIT(wlc), __FUNCTION__, notif_data->status, notif_data->opmode,
 			notif_data->signal));
 		return;
 	}
 
-	WL_MODE_SWITCH(("%s MODESW Callback status = %d oper_mode = %x signal = %d\n",
-			__FUNCTION__,
+	WL_MODE_SWITCH(("wl%d: %s MODESW Callback status = %d oper_mode = %x signal = %d\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__,
 			notif_data->status, notif_data->opmode, notif_data->signal));
 #if defined(BCMDBG) || defined(WLMSG_MODESW)
 	bsscfg = notif_data->cfg;
@@ -260,10 +257,10 @@ wlc_airiq_opmode_change_cb(void *ctx, wlc_modesw_notif_cb_data_t *notif_data)
 			WLCWLUNIT(wlc), __FUNCTION__, notif_data->signal,
 			airiq_modesw_state_str[airiqh->modeswitch_state]));
 #endif // endif
-		if (airiq_modesw_state == AIRIQ_MODESW_DOWNGRADE_IN_PROGRESS)
+		if (airiq_modesw_state == AIRIQ_MODESW_DOWNGRADE_IN_PROGRESS) {
 			/* downgrade and set to first chanspec */
 			wlc_airiq_3p1_downgrade_phy(airiqh, airiqh->scan.chanspec_list[0]);
-		else if (airiq_modesw_state == AIRIQ_MODESW_UPGRADE_IN_PROGRESS) {
+		} else if (airiq_modesw_state == AIRIQ_MODESW_UPGRADE_IN_PROGRESS) {
 			wlc_airiq_3p1_upgrade_phy(airiqh);
 			wlc_airiq_modeswitch_state_upd(airiqh, AIRIQ_MODESW_PHY_UPGRADED);
 		}
@@ -304,6 +301,12 @@ wlc_airiq_3p1_upgrade_wlc(wlc_info_t *wlc)
 			/* Try next link if this one's already at max possible chains */
 			if (nss >= max_nss)
 				continue;
+
+			if (wlc->stf->core3_p1c && nss >= 3) {
+				WL_MODE_SWITCH(("wl%d bsscfg:%d: P1C configuration currnss=%d\n",
+					wlc->pub->unit,bsscfg->_idx, nss));
+				continue;
+			}
 			/* Else fall through to announce we're returning the scan chain
 			 * back to the data path
 			 */
@@ -324,12 +327,13 @@ wlc_airiq_3p1_upgrade_wlc(wlc_info_t *wlc)
 		}
 		/* Assume new mode uses all the chains in the device */
 		new_oper_mode = DOT11_D8_OPER_MODE(0, max_nss, 0, is160_8080, bw);
-		WL_MODE_SWITCH(("cfg:%d %s modesw_entry\n", bsscfg->_idx, __FUNCTION__));
-		wlc_airiq_modeswitch_state_upd(wlc->airiq,AIRIQ_MODESW_UPGRADE_IN_PROGRESS);
+		WL_MODE_SWITCH(("wl%d: %s: cfg:%d modesw_entry\n", WLCWLUNIT(wlc),
+			__FUNCTION__, bsscfg->_idx));
+		wlc_airiq_modeswitch_state_upd(wlc->airiq, AIRIQ_MODESW_UPGRADE_IN_PROGRESS);
 		err = wlc_modesw_handle_oper_mode_notif_request(wlc->modesw, bsscfg,
 			new_oper_mode, TRUE, MODESW_CTRL_OPMODE_IE_REQD_OVERRIDE);
 		if (err != BCME_OK) {
-			WL_ERROR(("wl%d: failed to request modesw %d\n", wlc->pub->unit, err));
+			WL_ERROR(("wl%d: failed to request modesw %d\n", WLCWLUNIT(wlc), err));
 			break;
 		}
 		mode_switch_sched = TRUE;
@@ -341,8 +345,8 @@ wlc_airiq_3p1_upgrade_wlc(wlc_info_t *wlc)
 	if (mode_switch_sched) {
 		return BCME_BUSY;
 	} else {
-		/*no bss */
-		wlc_airiq_modeswitch_state_upd(wlc->airiq,AIRIQ_MODESW_IDLE);
+		/* no bss */
+		wlc_airiq_modeswitch_state_upd(wlc->airiq, AIRIQ_MODESW_IDLE);
 		return BCME_OK;
 	}
 }
@@ -369,6 +373,13 @@ wlc_airiq_3p1_downgrade_wlc(wlc_info_t *wlc)
 			/* Try next link if this one already has free chains */
 			if (nss == (max_nss - 1))
 				continue;
+			WL_MODE_SWITCH(("%s: core3_p1c=%d nss=%d max_nss=%d hw_txchain=%d op_rxstreams=%d\n",
+				__FUNCTION__, wlc->stf->core3_p1c, nss, max_nss, wlc->stf->hw_txchain, wlc->stf->op_rxstreams));
+			if (wlc->stf->core3_p1c && nss >= 3) {
+				WL_MODE_SWITCH(("wl%d bsscfg:%d: P1C configuration currnss=%d\n",
+					wlc->pub->unit,bsscfg->_idx, nss));
+				continue;
+			}
 			/* Else fall through to announce we're taking a chain from
 			 * the data path (for custom scanning)
 			 */
@@ -389,12 +400,13 @@ wlc_airiq_3p1_downgrade_wlc(wlc_info_t *wlc)
 		}
 		/* New mode is one chain less than supported */
 		new_oper_mode = DOT11_D8_OPER_MODE(0, (max_nss - 1), 0, is160_8080, bw);
-		WL_MODE_SWITCH(("cfg:%d %s modesw_entry\n", bsscfg->_idx, __FUNCTION__));
-		wlc_airiq_modeswitch_state_upd(wlc->airiq,AIRIQ_MODESW_DOWNGRADE_IN_PROGRESS);
+		WL_MODE_SWITCH(("wl%d: %s: cfg:%d modesw_entry\n",
+			WLCWLUNIT(wlc), __FUNCTION__, bsscfg->_idx));
+		wlc_airiq_modeswitch_state_upd(wlc->airiq, AIRIQ_MODESW_DOWNGRADE_IN_PROGRESS);
 		err = wlc_modesw_handle_oper_mode_notif_request(wlc->modesw, bsscfg,
 				new_oper_mode, TRUE, MODESW_CTRL_OPMODE_IE_REQD_OVERRIDE);
 		if (err != BCME_OK) {
-			WL_ERROR(("wl%d: failed to request modesw %d\n", wlc->pub->unit, err));
+			WL_ERROR(("wl%d: failed to request modesw %d\n", WLCWLUNIT(wlc), err));
 			break;
 		}
 		mode_switch_sched = TRUE;
@@ -406,8 +418,8 @@ wlc_airiq_3p1_downgrade_wlc(wlc_info_t *wlc)
 	if (mode_switch_sched) {
 		return BCME_BUSY;
 	} else {
-		/*no bss */
-		wlc_airiq_modeswitch_state_upd(wlc->airiq,AIRIQ_MODESW_IDLE);
+		/* no bss */
+		wlc_airiq_modeswitch_state_upd(wlc->airiq, AIRIQ_MODESW_IDLE);
 		return BCME_OK;
 	}
 }

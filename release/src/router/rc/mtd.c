@@ -24,7 +24,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#ifdef __GLIBC__		//musl doesn't have error.h
 #include <error.h>
+#endif	/* __GLIBC__ */
 #include <sys/ioctl.h>
 #include <sys/sysinfo.h>
 #include <sys/mman.h>
@@ -52,9 +54,6 @@
 #endif
 //	#define DEBUG_SIMULATE
 
-#ifdef RTCONFIG_REALTEK
-#include "../shared/sysdeps/realtek/realtek.h"
-#endif
 
 struct code_header {
 	char magic[4];
@@ -227,17 +226,18 @@ int mtd_unlock_erase_main(int argc, char *argv[])
 int asusimg2rtkimg(char *src_name)
 {
 		FILE *pSrcFile = NULL, *pDstFile = NULL;
+		int pDstFile_fd = -1;
 		unsigned char buf[4096] = {0};
-		long filesize, kernelsize;
+		long filesize, kernelsize, write_total_size = 0;
 		int first_read_kernel = 1, first_read_root = 1, last_read_kernel = 0, count;
 
 		pSrcFile = fopen(src_name, "r");
-		pDstFile = fopen("/tmp/linux.trx.tmp", "w");
-		if (pSrcFile && pDstFile) {
+		pDstFile = fopen(src_name, "r+"); // If using same file, it cannot need 2x firmware_size free memory.
+		pDstFile_fd = fileno(pDstFile);
+		if (pSrcFile && pDstFile && pDstFile_fd != -1) {
 			/* Get image size */
 			fseek(pSrcFile, 0, SEEK_END);
 			filesize = ftell(pSrcFile);
-
 			/* Skip ASUS trx header */
 			fseek(pSrcFile, 64, SEEK_SET);
 			filesize -= 64;
@@ -261,6 +261,7 @@ int asusimg2rtkimg(char *src_name)
 				}
 				if (kernelsize > 0) { // Write Kernel + Kernrl signature
 					fwrite(buf, 1, count, pDstFile);
+					write_total_size += count;
 					kernelsize -= count;
 
 					if (kernelsize > 0 && kernelsize <= sizeof(buf))
@@ -269,29 +270,26 @@ int asusimg2rtkimg(char *src_name)
 				else { // Write Rootfs
 					if (first_read_root) {
 						fwrite(buf+16, 1, count-16, pDstFile);
+						write_total_size += (count-16);
+
 						first_read_root = 0;
 					}
-					else
+					else {
 						fwrite(buf, 1, count, pDstFile);
+						write_total_size += count;
+					}
 				}
 
 				filesize -= count;
 
 			} while(filesize > 0);
 
-			fclose(pSrcFile);
-			fclose(pDstFile);
-
-			if (remove(src_name) == 0) { // Delete asus trx image
-				if (rename("/tmp/linux.trx.tmp", "/tmp/linux.trx") == 0) // rename rtk trx image
-					return 1;
-				else {
-					_dprintf("rename failed\n");
-					return 0;
-				}
-			}
-			else {
-				_dprintf("Delete linux.trx failed\n");
+			/* resize new firmware file */
+			fseek(pDstFile, 0, SEEK_SET);
+			if (ftruncate(pDstFile_fd, write_total_size)) {
+				_dprintf("ftruncate file error.\n");
+				fclose(pSrcFile);
+				fclose(pDstFile);
 				return 0;
 			}
 		}
@@ -299,8 +297,10 @@ int asusimg2rtkimg(char *src_name)
 			_dprintf("Open file failed\n");
 			return 0;
 		}
-
-	return 0;
+		
+	fclose(pSrcFile);
+	fclose(pDstFile);
+	return 1;
 }
 int copy_file2file(char * src_name,long src_offset, char *dst_name,long dst_offset,char* errorInfo)
 {
@@ -352,6 +352,58 @@ int copy_file2file(char * src_name,long src_offset, char *dst_name,long dst_offs
 		if(fdst>0) close(fdst);
 		return retval;
 }
+int asusimg2rtkimgtar(char *src_name)
+{
+		FILE *pSrcFile = NULL, *pDstFile = NULL;
+		int pDstFile_fd = -1;
+		unsigned char buf[4096] = {0};
+		long filesize,  write_total_size = 0;
+		int count;
+		_dprintf("%s %d\n", __FUNCTION__,__LINE__);
+
+		pSrcFile = fopen(src_name, "r");
+		pDstFile = fopen(src_name, "r+"); // If using same file, it cannot need 2x firmware_size free memory.
+		pDstFile_fd = fileno(pDstFile);
+		if (pSrcFile && pDstFile && pDstFile_fd != -1) {
+			/* Get image size */
+			fseek(pSrcFile, 0, SEEK_END);
+			filesize = ftell(pSrcFile);
+			/* Skip ASUS trx header */
+			fseek(pSrcFile, 64, SEEK_SET);
+			filesize -= 64;
+
+			do {
+				
+				count = fread(buf, 1, sizeof(buf), pSrcFile);
+				fwrite(buf, 1, count, pDstFile);
+				write_total_size += count;
+				filesize -= count;
+
+			} while(filesize > 0);
+
+			/* resize new firmware file */
+			fseek(pDstFile, 0, SEEK_SET);
+			if (ftruncate(pDstFile_fd, write_total_size)) {
+				_dprintf("ftruncate file error.\n");
+				fclose(pSrcFile);
+				fclose(pDstFile);
+				return 0;
+			}
+		}
+		else {
+			_dprintf("Open file failed\n");
+			return 0;
+		}
+		
+	fclose(pSrcFile);
+	fclose(pDstFile);
+
+	system("mv /tmp/linux.trx /tmp/img.tar");
+
+	system("tar xvf /tmp/img.tar -C /tmp");
+	return 1;
+
+}
 #endif /* RTCONFIG_REALTEK */
 
 #ifdef RTCONFIG_BCMARM
@@ -360,7 +412,7 @@ int mtd_write_main_old(int argc, char *argv[])
 int mtd_write_main(int argc, char *argv[])
 #endif
 {
-	int mf = -1;
+	int mf = -1, device = 0;
 	mtd_info_t mi;
 	erase_info_t ei;
 	FILE *f;
@@ -374,17 +426,28 @@ int mtd_write_main(int argc, char *argv[])
 	char *dev = NULL;
 	char msg_buf[2048];
 	int alloc = 0, bounce = 0, fd;
+	int skip_bytes = 0, count_bytes = 0;
+#if defined(RTCONFIG_DUAL_TRX2)
+	int imtd_id = -1, omtd_id, mtd_size;
+#endif
+	char mtdblockname[sizeof("/dev/mtdblockXYYYYYY")] = { 0 };
 #ifdef DEBUG_SIMULATE
 	FILE *of;
 #endif
 
-	while ((c = getopt(argc, argv, "i:d:")) != -1) {
+	while ((c = getopt(argc, argv, "i:d:s:c:")) != -1) {
 		switch (c) {
 		case 'i':
 			iname = optarg;
 			break;
 		case 'd':
 			dev = optarg;
+			break;
+		case 's':
+			skip_bytes = atoi(optarg);
+			break;
+		case 'c':
+			count_bytes = atoi(optarg);
 			break;
 		}
 	}
@@ -393,6 +456,31 @@ int mtd_write_main(int argc, char *argv[])
 		usage_exit(argv[0], "-i file -d part");
 	}
 
+#if defined(RTCONFIG_DUAL_TRX2)
+	device = !strncmp(iname, "/dev/mtd", 8);
+	if (device) {
+		/* Make sure /dev/mtdblockX is different MTD partition. */
+		if (!strncmp(iname, "/dev/mtdblock", 13)) {
+			imtd_id = safe_atoi(iname + 13);
+			strlcpy(mtdblockname, iname, sizeof(mtdblockname));
+		} else {
+			imtd_id = safe_atoi(iname + 8);
+			snprintf(mtdblockname, sizeof(mtdblockname), "/dev/mtdblock%d", imtd_id);
+		}
+
+		if (mtd_getinfo(dev, &omtd_id, &mtd_size) == 1) {
+			if (imtd_id == omtd_id) {
+				dbg("%s: source MTD part. = destination MTD part. (%d/%d)\n",
+					__func__, imtd_id, omtd_id);
+				return 1;
+			}
+		} else {
+			dbg("%s: mtd_getinfo() can't find %s\n", __func__, dev);
+			return 1;
+		}
+	}
+#endif
+
 	if (!wait_action_idle(10)) {
 		printf("System is busy\n");
 		return 1;
@@ -400,7 +488,33 @@ int mtd_write_main(int argc, char *argv[])
 
 	set_action(ACT_WEB_UPGRADE);
 #ifdef RTCONFIG_REALTEK
-
+#ifdef RPAC92
+		if (!asusimg2rtkimgtar(iname))
+			goto ERROR;
+		if(strcmp(iname,"/tmp/linux.trx")==0)
+		{
+			if(copy_file2file("/tmp/uImage",0,"/dev/mtdblock7",0x0,msg_buf)<0)
+			{
+				_dprintf("%s %d copy_file2file /tmp/uImage /dev/mtdblock7\n", __FUNCTION__,__LINE__);
+				error=msg_buf;
+			}
+			if(copy_file2file("/tmp/rootfs",0,"/dev/mtdblock8",0x0,msg_buf)<0)
+			{
+				_dprintf("%s %d copy_file2file /tmp/rootfs /dev/mtdblock8 \n", __FUNCTION__,__LINE__);
+				error=msg_buf;
+			}
+			if(copy_file2file("/tmp/uImage",0,"/dev/mtdblock9",0x0,msg_buf)<0)
+			{
+				_dprintf("%s %d copy_file2file /tmp/uImage /dev/mtdblock9 \n", __FUNCTION__,__LINE__);
+				error=msg_buf;
+			}
+			if(copy_file2file("/tmp/rootfs",0,"/dev/mtdblock10",0x0,msg_buf)<0)
+			{
+				_dprintf("%s %d copy_file2file /tmp/rootfs /dev/mtdblock10 \n", __FUNCTION__,__LINE__);
+				error=msg_buf;
+			}
+		}
+#else
 		if (!asusimg2rtkimg(iname))
 			goto ERROR;
 
@@ -465,19 +579,23 @@ int mtd_write_main(int argc, char *argv[])
 			}
 #endif
 		}
+#endif
 		//_dprintf("%s %d\n", __FUNCTION__,__LINE__);
 	goto RTK_FINISH;
 #endif /* RTCONFIG_REALTEK */
 
-	if ((f = fopen(iname, "r")) == NULL) {
+	if ((f = fopen(device? mtdblockname : iname, "r")) == NULL) {
 		error = "Error opening input file";
 		goto ERROR;
 	}
 
 	fd = fileno(f);
 	fseek( f, 0, SEEK_END);
-	filelen = ftell(f);
-	fseek( f, 0, SEEK_SET);
+	if (count_bytes)
+		filelen = count_bytes;
+	else
+		filelen = ftell(f) - skip_bytes;
+	fseek( f, skip_bytes, SEEK_SET);
 	_dprintf("file len=0x%x\n", filelen);
 
 #ifdef RTCONFIG_BCMARM
@@ -502,19 +620,33 @@ int mtd_write_main(int argc, char *argv[])
 #else
 	unit_len = ROUNDUP(filelen, mi.erasesize);
 #endif
+
+#if defined(RTCONFIG_SOC_IPQ40XX)
+	if (mi.type != MTD_UBIVOLUME) {
+		_dprintf("Non UBI, unit_len set to erasesize!\n");
+		unit_len = mi.erasesize;
+	}
+#endif
 	if (unit_len > mi.size) {
 		error = "File is too big to fit in MTD";
 		goto ERROR;
 	}
 
-	if ((buf = mmap(0, filelen, PROT_READ, MAP_SHARED, fd, 0)) == (unsigned char*)MAP_FAILED) {
+	if (skip_bytes) {// do not use mmap
+		alloc = 1;
+	} else if ((buf = mmap(0, filelen, PROT_READ, MAP_SHARED, fd, 0)) == (unsigned char*)MAP_FAILED) {
 		_dprintf("mmap %x bytes fail!. errno %d (%s).\n", filelen, errno, strerror(errno));
 		alloc = 1;
 	}
 
+	if (device && (c = get_firmware_length(buf)) > 0) {
+		filelen = c;
+		_dprintf("new file len=0x%x\n", filelen);
+	}
+
 	sysinfo(&si);
 	if (alloc) {
-		if ((si.freeram * si.mem_unit) <= (unit_len + (4096 * 1024)))
+		if (skip_bytes || ((si.freeram * si.mem_unit) <= (unit_len + (4096 * 1024))))
 			unit_len = mi.erasesize;
 	}
 
@@ -527,8 +659,8 @@ int mtd_write_main(int argc, char *argv[])
 			goto ERROR;
 		}
 	}
-	_dprintf("freeram=%lx unit_len=%lx filelen=%lx mi.erasesize=%x mi.writesize=%x\n",
-		si.freeram, unit_len, filelen, mi.erasesize, mi.writesize);
+	_dprintf("freeram=%lx unit_len=%lx filelen=%lx mi.erasesize=%x mi.writesize=%x, skip_bytes=%x\n",
+		si.freeram, unit_len, filelen, mi.erasesize, mi.writesize, skip_bytes);
 
 	if (alloc && !(buf = malloc(unit_len))) {
 		error = "Not enough memory";
@@ -717,6 +849,7 @@ mtd_erase(const char *mtd)
 	return 0;
 }
 
+#ifndef RTCONFIG_URLFW
 static char *
 base64enc(const char *p, char *buf, int len)
 {
@@ -862,6 +995,7 @@ http_get(const char *server, char *buf, size_t count, off_t offset)
 {
 	return wget(METHOD_GET, server, buf, count, offset);
 }
+#endif /* !RTCONFIG_URLFW */
 
 /*
  * Write a file to an MTD device
@@ -886,10 +1020,19 @@ mtd_write(const char *path, const char *mtd)
 	int ret = -1;
 
 	/* Examine TRX header */
+#ifdef RTCONFIG_URLFW
+	if ((fp = url_fopen(path, "rb")))
+		count = safe_fread(&trx, 1, sizeof(struct trx_header), fp);
+	else {
+		fprintf(stderr, "%s: Can't open path\n", path);
+		goto fail;
+	}
+#else /* !RTCONFIG_URLFW */
 	if ((fp = fopen(path, "r")))
 		count = safe_fread(&trx, 1, sizeof(struct trx_header), fp);
 	else
 		count = http_get(path, (char *) &trx, sizeof(struct trx_header), 0);
+#endif /* !RTCONFIG_URLFW */
 	if (count < sizeof(struct trx_header)) {
 		fprintf(stderr, "%s: File is too small (%ld bytes)\n", path, count);
 		goto fail;
@@ -945,10 +1088,14 @@ mtd_write(const char *path, const char *mtd)
 			count = off = sizeof(struct trx_header);
 			memcpy(buf, &trx, sizeof(struct trx_header));
 		}
+#ifdef RTCONFIG_URLFW
+		count += safe_fread(&buf[off], 1, len - off, fp);
+#else /* !RTCONFIG_URLFW */
 		if (fp)
 			count += safe_fread(&buf[off], 1, len - off, fp);
 		else
 			count += http_get(path, &buf[off], len - off, erase_info.start + off);
+#endif /* !RTCONFIG_URLFW */
 		if (count < len) {
 			fprintf(stderr, "%s: Truncated file (actual %ld expect %ld)\n", path,
 				count - off, len - off);
@@ -1073,84 +1220,84 @@ CmsImageFormat parseImgHdr(UINT8 *bufP, UINT32 bufLen)
 int
 bca_sys_upgrade(const char *path)
 {
-	int ret = 0;
-	pid_t pid = getpid();
-	int imgsz, ulimgsz = 0;
-#if 0
-	int spsz;
+	FILE *fp;
+#ifdef RTCONFIG_PIPEFW
+	struct stat st;
 #endif
+	int ret = 0;
+	int imgsz, ulimgsz = 0;
 	int r_count, w_count;
-	FILE *fp = NULL;
 	char *buf = NULL;
-	uint bufsz = 0;
 	imgif_flash_info_t flash_info;
 	uint blknum = 0;
+	uint bufsz = 0;
+	pid_t pid = getpid();
 
-	/* Opening communication pipe between HTTPD parent process */
-	if ((fp = fopen(path, "r")) == NULL) {
-		_dprintf("*** Filed open a file %s. Error: %s. Aborting \n",
-				path, strerror(errno));
+#ifdef RTCONFIG_PIPEFW
+	if (strcmp(path, "-") == 0)
+		fp = freopen(NULL, "rb", stdin);
+	else
+#endif
+	{
+#ifdef RTCONFIG_URLFW
+		fp = url_fopen(path, "rb");
+#else /* !RTCONFIG_URLFW */
+		fp = fopen(path, "rb");
+#endif /* !RTCONFIG_URLFW */
+	}
+	if (fp == NULL) {
 		ret = errno;
+		_dprintf("*** Error(pid:%d): %s@%d Failed to open file %s: %s. Aborting\n",
+			pid, __FUNCTION__, __LINE__, path, strerror(errno));
 		goto fail;
 	}
-
-	/* HTTPD parent process supposed to send the image size. reading it. */
-#if 0
-	if (nvram_match("uup", "1")) {
+	
+#ifdef RTCONFIG_PIPEFW
+	if ((strcmp(path, "-") == 0) ||
+	    (stat(path, &st) == 0 && (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode)))) {
+		nvram_set("pipe_path", path);
+		/* HTTPD parent process supposed to send the image size. reading it. */
 		r_count = safe_fread((void*)&imgsz, 1, sizeof(imgsz), fp);
 		if (r_count < sizeof(imgsz)) {
-			_dprintf("*** Error(pid:%d): %s@%d Pipe read failed. Expected:%d,read:%d. Aborting\n",
-				pid, __FUNCTION__, __LINE__, sizeof(imgsz), r_count);
 			ret = EPIPE;
+			_dprintf("*** Error(pid:%d): %s@%d Failed to read pipe. Expected %ld, read %d: %s. Aborting\n",
+				pid, __FUNCTION__, __LINE__, sizeof(imgsz), r_count, strerror(errno));
+			nvram_set_int("pipe_size", imgsz);
+			nvram_set_int("pipe_rcount", r_count);
 			goto fail;
 		}
-		nvram_set("uup", "0");
-		_dprintf("%s@%d(pid:%d): image size=%d.\n",
-			__FUNCTION__, __LINE__, pid, imgsz);
-	} else if ((spsz = atoi(nvram_safe_get("spsz")))) {
-		imgsz = spsz;
-		_dprintf("\nnonui update(spsz): imgsz is %d\n", imgsz);
-		nvram_set("spsz", "0");
-		nvram_set("fakelive", "0");
-	} else {	// liveupdate
-#else
+		nvram_set_int("pipe_size", imgsz);
+	} else
+#endif
 	{
-#endif
-#if 0
-		nvram_set("fakelive", "0");
-#endif
 		fseek(fp, 0, SEEK_END);
-
 		imgsz = ftell(fp);
-#if 0
-		_dprintf("\nnonui update: imgsz is %d\n", imgsz);
-#endif
 		fseek(fp, 0, SEEK_SET);
 	}
 
 	/* Initialize IMGIF context */
 	imgifHandle = imgif_open(parseImgHdr, NULL);
 	if (imgifHandle == NULL) {
+		ret = EIO;
 		_dprintf("*** Error(pid:%d): %s@%d Failed to create image ifc context. Aborting\n",
 			pid, __FUNCTION__, __LINE__);
-		ret = EIO;
 		goto fail;
 	}
 
 #if defined(IMGIF_API_VERSION)
 	/* query flash device information */
 	if (imgif_get_flash_info(&flash_info) < 0) {
-		_dprintf("*** Error(pid:%d): %s@%d Failed to get flash info. Aborting\n",
-			getpid(), __FUNCTION__, __LINE__);
 		ret = EIO;
+		_dprintf("*** Error(pid:%d): %s@%d Failed to get flash info. Aborting\n",
+			pid, __FUNCTION__, __LINE__);
 	goto fail;
 	}
 #else
 	/* query flash device information */
 	if (imgif_get_flash_info(imgifHandle, &flash_info) < 0) {
-		_dprintf("*** Error(pid:%d): %s@%d Failed to get flash info. Aborting\n",
-			getpid(), __FUNCTION__, __LINE__);
 		ret = EIO;
+		_dprintf("*** Error(pid:%d): %s@%d Failed to get flash info. Aborting\n",
+			pid, __FUNCTION__, __LINE__);
 		goto fail;
 	}
 #endif
@@ -1167,9 +1314,9 @@ bca_sys_upgrade(const char *path)
 
 	/* Allocating image upload buffer */
 	if ((buf = malloc(bufsz)) == NULL) {
-		_dprintf("*** Error(pid:%d) %s@%d malloc failed. %s\n",
-				getpid(), __FUNCTION__, __LINE__, strerror(errno));
 		ret = errno;
+		_dprintf("*** Error(pid:%d) %s@%d malloc failed. %s\n",
+			pid, __FUNCTION__, __LINE__, strerror(errno));
 		goto fail;
 	}
 
@@ -1179,17 +1326,17 @@ bca_sys_upgrade(const char *path)
 		r_count = safe_fread((void*)buf, 1, bufsz, fp);
 		if ((r_count < bufsz) && ((r_count + ulimgsz) != imgsz)) {
 			/* This must be the last chunk, othrwise fail */
-			_dprintf("*** Error(pid:%d): %s@%d Pipe read failed. Expected:%d,read:%d. Aborting\n",
-			pid, __FUNCTION__, __LINE__, bufsz, r_count);
 			ret = EPIPE;
+			_dprintf("*** Error(pid:%d): %s@%d Pipe read failed. Expected:%d,read:%d. Aborting\n",
+				pid, __FUNCTION__, __LINE__, bufsz, r_count);
 			goto fail;
 		}
 		/* Write chunk to the flash. */
 		w_count = imgif_write(imgifHandle, (UINT8*)buf, r_count);
 		if ((w_count < 0) || (w_count != r_count)) {
+			ret = EIO;
 			_dprintf("\nimgif_write() failed, towrite=%d, ret=%d",
 				     w_count, r_count);
-			ret = EIO;
 			goto fail;
 		}
 		_dprintf(".");
@@ -1203,13 +1350,47 @@ bca_sys_upgrade(const char *path)
 	if (imgifHandle != NULL) {
 		if (imgif_close(imgifHandle, (ret != 0)) == 0) {
 			if (ret == 0) {
+				ret = 99;
 				_dprintf("\nDone. (written %d bytes, %d blocks with size %d\n",
 					ulimgsz, blknum, flash_info.eraseSize);
 				setBootImageState(BOOT_SET_NEW_IMAGE);
+
+				if (nvram_match(ATE_FACTORY_MODE_STR(), "1") ||
+					nvram_match(ATE_UPGRADE_MODE_STR(), "1")) {
+					if ((fp = fopen("/tmp/ate_upgrade_state", "w")) != NULL) {
+						fprintf(fp, "Upgarde Complete\n");
+						fclose(fp);
+					} else
+						_dprintf("Fail to open /tmp/ate_upgrade_state\n");
+				}
+#ifdef RTCONFIG_PIPEFW
+				if (nvram_get_int("ate_upgrade_reset")) {
+					_dprintf("[ATE] Reset Default...\n");
+#ifndef HND_ROUTER
+					nvram_set("restore_defaults", "1");
+					nvram_set(ASUS_STOP_COMMIT, "1");
+#endif
+					ResetDefault();
+                                }
+
+				if (nvram_get_int("ate_upgrade_reboot")) {
+					_dprintf("[ATE] REBOOT...\n");
+					kill(1, SIGTERM);
+				}
+#endif
 			}
 		} else {
 			if (ret == 0) {
 				_dprintf("\n*** Fail to write the image\n");
+
+				if (nvram_match(ATE_FACTORY_MODE_STR(), "1") ||
+					nvram_match(ATE_UPGRADE_MODE_STR(), "1")) {
+					if ((fp = fopen("/tmp/ate_upgrade_state", "w")) != NULL) {
+						fprintf(fp, "Can't write firmware image\n");
+						fclose(fp);
+					} else
+						_dprintf("Fail to open /tmp/ate_upgrade_state\n");
+				}
 			}
 			ret = EIO;
 		}

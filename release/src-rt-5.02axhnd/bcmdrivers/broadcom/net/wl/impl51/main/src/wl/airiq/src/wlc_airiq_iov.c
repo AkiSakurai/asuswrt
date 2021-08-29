@@ -4,7 +4,7 @@
  *
  *  Air-IQ IOVAR
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -93,7 +93,6 @@
 #include <wlc_radioreg_20693.h>
 #include <wlc_radioreg_20694.h>
 #include <wlc_radioreg_20695.h>
-#include <wlc_radioreg_20696.h>
 #include <wlc_radioreg_20697.h>
 #include <wlc_radioreg_20698.h>
 #include <wlc_phyreg_ac.h>
@@ -138,11 +137,11 @@ enum {
 	IOV_AIRIQ_OFFLOAD                = 0x60,
 	IOV_AIRIQ_OFFLOAD_CMD            = 0x61,
 #endif // endif
-#ifdef BCMDBG
+#if defined(BCMDBG) || defined(WLTEST)
 	/* Debug */
 	IOV_AIRIQ_TXTONE                 = 0x80,
 	IOV_AIRIQ_3PLUS1                 = 0x81,
-#endif /* BCMDBG */
+#endif /* BCMDBG || WLTEST */
 	IOV_LTE_U_SCAN_START             = 0x90,
 	IOV_LTE_U_SCAN_ABORT             = 0x91,
 	IOV_LTE_U_SCAN_CONFIG            = 0x92,
@@ -227,14 +226,14 @@ const bcm_iovar_t airiq_iovars[] = {
 	{ "airiq_mangain",
 	IOV_AIRIQ_MANGAIN, (0), (0), IOVT_UINT32, 0
 	},
-#ifdef BCMDBG
+#if defined(BCMDBG) || defined(WLTEST)
 	{ "airiq_txtone",
 	IOV_AIRIQ_TXTONE, (0), (0), IOVT_INT32, 0
 	},
 	{ "airiq_3plus1",
 	IOV_AIRIQ_3PLUS1, (0), (0), IOVT_UINT32, 0
 	},
-#endif // endif
+#endif /* BCMDBG || WLTEST */
 	{ "lte_u_scan_config",
 	IOV_LTE_U_SCAN_CONFIG, (0), (0), IOVT_BUFFER, sizeof(airiq_config_t)
 	},
@@ -256,7 +255,7 @@ const bcm_iovar_t airiq_iovars[] = {
 	{ "airiq_msgbundle_ut",
 	IOV_AIRIQ_MSGBUNDLE_TEST, (0), (0), IOVT_UINT32, 0 },
 #endif /* AIRIQ_UNITTEST */
-	{ NULL, 0, 0, 0, 0 , 0 }
+	{ NULL, 0, 0, 0, 0, 0 }
 };
 
 /* Handling AIRIQ related iovars */
@@ -272,24 +271,29 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 	phy_info_t *pi;
 
 	if (!airiqh) {
-		WL_ERROR(("%s: null airiq handle\n", __FUNCTION__));
+		WL_ERROR(("wl%d: %s: null airiq handle\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 		return BCME_ERROR;
 	}
 	if (!airiqh->wlc) {
-		WL_ERROR(("%s: null wlc\n", __FUNCTION__));
+		WL_ERROR(("wl%d: %s: null wlc\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 		return BCME_ERROR;
 	}
 	if (!airiqh->wlc->band) {
-		WL_ERROR(("%s: null band\n", __FUNCTION__));
+		WL_ERROR(("wl%d: %s: null band\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 		return BCME_ERROR;
 	}
 	if (!WLC_PI(airiqh->wlc)) {
-		WL_ERROR(("%s: null hwpi\n", __FUNCTION__));
+		WL_ERROR(("wl%d: %s: null hwpi\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 		return BCME_ERROR;
 	}
 #ifdef DONGLEBUILD
 	if (plen >= MAXPKTDATABUFSZ) {
-		WL_ERROR(("%s: iovar attachment too large\n", __FUNCTION__));
+		WL_ERROR(("wl%d: %s: iovar attachment too large\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 		return BCME_BUFTOOLONG;
 	}
 #endif // endif
@@ -301,7 +305,8 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 
 	switch (actionid) {
 	case IOV_GVAL(IOV_AIRIQ_SCANNING):
-		WL_AIRIQ(("%s: airiq scanning query: %d\n", __FUNCTION__, airiqh->scan_enable));
+		WL_AIRIQ(("wl%d: %s: airiq scanning query: %d\n",
+			WLCWLUNIT(airiqh->wlc),  __FUNCTION__, airiqh->scan_enable));
 		*ret_int_ptr = airiqh->scan_enable;
 		break;
 	case IOV_GVAL(IOV_AIRIQ_GAIN_TABLE_24GHZ):
@@ -328,7 +333,8 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 		// offload engine.
 #ifdef WLOFFLD
 		if (WLOFFLD_AIRIQ_ENAB(airiqh->wlc->pub)) {
-			WL_AIRIQ(("airiq_gain: ignoring iovar gain control from applicaton\n"));
+			WL_AIRIQ(("wl%d: airiq_gain: ignoring iovar gain control from applicaton\n",
+				WLCWLUNIT(airiqh->wlc)));
 
 		} else
 #endif /* WLOFFLD */
@@ -344,28 +350,29 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 	case IOV_SVAL(IOV_AIRIQ_SCAN):
 	{
 		airiq_config_t *sc = (airiq_config_t*)arg;
-		WL_AIRIQ(("%s: scan.\n", __FUNCTION__));
+		WL_AIRIQ(("wl%d: %s: scan.\n", WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 
-		err = airiq_update_scan_config(airiqh, sc);
-
-		if (err != BCME_OK) {
-			break;
-		}
-		if (!chanspec_list_valid(airiqh, sc)) {
-			return BCME_UNSUPPORTED;
-		}
 		if (sc->start) {
 			if (SCAN_IN_PROGRESS(airiqh->wlc->scan)) {
-				WL_AIRIQ(("%s: Cannot start scan: WL scan in progress\n",
-					__FUNCTION__));
+				WL_AIRIQ(("wl%d: %s: Cannot start scan: WL scan in progress\n",
+					WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 				err = BCME_BUSY;
 #if defined(WLDFS) && (defined(RSDB_DFS_SCAN) || defined(BGDFS))
 			} else if (wlc_dfs_scan_in_progress(airiqh->wlc->dfs)) {
-				WL_AIRIQ(("%s: Cannot start scan: DFS scan in progress\n",
-					__FUNCTION__));
+				WL_AIRIQ(("wl%d: %s: Cannot start scan: DFS scan in progress\n",
+					WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 				err = BCME_BUSY;
 #endif /* WLDFS && (RSDB_DFS_SCAN || BGDFS) */
 			} else {
+
+				err = airiq_update_scan_config(airiqh, sc);
+
+				if (err != BCME_OK) {
+					break;
+				}
+				if (!chanspec_list_valid(airiqh, sc)) {
+					return BCME_UNSUPPORTED;
+				}
 				// now start the scan.
 				airiqh->scan_type = SCAN_TYPE_AIRIQ;
 				err = wlc_airiq_start_scan(airiqh, sc->sweep_cnt, 0);
@@ -375,7 +382,7 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 	}
 	case IOV_SVAL(IOV_AIRIQ_HOME_SCAN):
 	{
-		WL_AIRIQ(("%s: scan.\n", __FUNCTION__));
+		WL_AIRIQ(("wl%d: %s: scan.\n", WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 
 		// now start the scan.
 		airiqh->scan.capture_count[0] = (uint32)int_val;
@@ -390,7 +397,7 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 		break;
 	}
 	case IOV_SVAL(IOV_AIRIQ_SCAN_ABORT):
-		WL_AIRIQ(("%s: scan abort.\n", __FUNCTION__));
+		WL_AIRIQ(("wl%d: %s: scan abort.\n", WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 		/* Decode scan settings into args list */
 		err = wlc_airiq_scan_abort(airiqh, TRUE);
 		break;
@@ -476,7 +483,8 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 		}
 
 		if (airiqh->pending_olcmd.command_status != AIRIQ_OL_CMD_IDLE) {
-			WL_ERROR(("Air-IQ offload cmd: squashing ongoing cmd w/ status = %d.\n",
+			WL_ERROR(("wl%d: Air-IQ offload cmd: squashing "
+				"ongoing cmd w/ status = %d.\n", WLCWLUNIT(airiqh->wlc),
 				airiqh->pending_olcmd.command_status));
 		}
 
@@ -504,9 +512,9 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 
 		olcmd->command_status = airiqh->pending_olcmd.command_status;
 
-		WL_AIRIQ(("Air-IQ Get OLCMD status=%d alen=%d size=%d bufsz=%d\n",
-			olcmd->command_status, alen, airiqh->pending_olcmd.size,
-			airiqh->olcmd_buffer_size));
+		WL_AIRIQ(("wl%d: Air-IQ Get OLCMD status=%d alen=%d size=%d bufsz=%d\n",
+			WLCWLUNIT(airiqh->wlc), olcmd->command_status, alen,
+			airiqh->pending_olcmd.size, airiqh->olcmd_buffer_size));
 
 		if (!WLOFFLD_AIRIQ_ENAB(airiqh->wlc->pub)) {
 			WL_ERROR(("wl%d: Get OLCMD (disabled) 0x%x length=%d\n",
@@ -524,8 +532,9 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 			if (alen >= sizeof(airiq_ol_cmd_t) + airiqh->olcmd_buffer_size) {
 				memcpy(olcmd + 1, airiqh->olcmd_buffer, airiqh->olcmd_buffer_size);
 			} else {
-				WL_ERROR(("Air-IQ OLCMD (short): alen=%d olcmdsz=%d bufsz=%d\n",
-					alen, (int)sizeof(airiq_ol_cmd_t),
+				WL_ERROR(("wl%d: Air-IQ OLCMD (short): "
+					"alen=%d olcmdsz=%d bufsz=%d\n",
+					WLCWLUNIT(airiqh->wlc), alen, (int)sizeof(airiq_ol_cmd_t),
 					airiqh->olcmd_buffer_size));
 				err = BCME_BUFTOOSHORT;
 			}
@@ -573,6 +582,8 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 	}
 	break;
 #endif /* WLOFFLD */
+#endif /* BCMDBG */
+#if defined(BCMDBG) || defined(WLTEST)
 	case IOV_SVAL(IOV_AIRIQ_TXTONE):
 	{
 		if (int_val == 0) {
@@ -580,7 +591,8 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 		} else {
 			phy_iq_est_t loopback_rx_iq[PHY_CORE_MAX];
 			int32 freq_khz = int_val / 2;
-			WL_AIRIQ(("Turned on TX tone at %d kHz offset\n", int_val));
+			WL_AIRIQ(("wl%d: Turned on TX tone at %d kHz offset\n",
+				WLCWLUNIT(airiqh->wlc), int_val));
 
 			wlc_phy_tx_tone_acphy(pi, freq_khz, ACPHY_RXCAL_TONEAMP, 0, FALSE);
 
@@ -594,39 +606,12 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 		} else {
 			int32 radio_chanspec_sc;
 			phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi), &radio_chanspec_sc);
-			*ret_int_ptr = CHSPEC_CHANNEL(radio_chanspec_sc);
+			*ret_int_ptr = radio_chanspec_sc;
 		}
 		break;
 	case IOV_SVAL(IOV_AIRIQ_3PLUS1):
 	{
-		/* when the phy is downgraded, the +1 chanspec is set to scan.chanspec_list[0] */
-		airiqh->scan.chanspec_list[0] = CHSPEC_BW(pi->radio_chanspec) | int_val;
-		if (int_val < 20) {
-			airiqh->scan.chanspec_list[0] |= WL_CHANSPEC_BAND_2G;
-		} else {
-			airiqh->scan.chanspec_list[0] |= WL_CHANSPEC_BAND_5G;
-		}
-
-		airiqh->scan.scan_start = 0; /* do not begin scanning */
-
-		/* Place the radio into the airiq 3+1 mode with the given chanspec on the +1 */
-		err = wlc_airiq_3p1_scan_prep(airiqh);
-
-		if (err == BCME_BUSY) {
-			/* Must reconfigure and wait for callback */
-			WL_AIRIQ(("%s: preparing for 3+1 scan. downgrade\n", __FUNCTION__));
-#if defined(WL_MODESW)
-			wlc_airiq_modeswitch_state_upd(airiqh, AIRIQ_MODESW_DOWNGRADE_IN_PROGRESS);
-#endif // endif
-			airiqh->phy_mode = PHYMODE_3x3_1x1;
-			return 0;
-		} else if (err != BCME_OK) {
-			WL_ERROR(("%s: error starting 3+1 scan, couldn't downgrade (%d)\n",
-				__FUNCTION__, err));
-			return err;
-		}
-		/* phymode is already set */
-		wlc_airiq_3p1_downgrade_phy(airiqh, airiqh->scan.chanspec_list[0]);
+		wlc_airiq_scan_set_chanspec_3p1(airiqh, pi, pi->radio_chanspec, int_val);
 
 		break;
 	}
@@ -637,10 +622,11 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 	case IOV_SVAL(IOV_LTE_U_SCAN_CONFIG):
 	{
 		airiq_config_t *sc = (airiq_config_t*)arg;
-		WL_AIRIQ(("%s: scan config.\n", __FUNCTION__));
+		WL_AIRIQ(("wl%d: %s: scan config.\n", WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 
 		if (! lte_u_chanspec_list_valid(airiqh, sc)) {
-			WL_AIRIQ(("%s: scan config chanspec is not valid .\n", __FUNCTION__));
+			WL_AIRIQ(("wl%d: %s: scan config chanspec is not valid .\n",
+				WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 			return BCME_UNSUPPORTED;
 		}
 		err = lte_u_update_scan_config(airiqh, sc);
@@ -653,7 +639,7 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 	case IOV_SVAL(IOV_LTE_U_DETECTOR_CONFIG):
 	{
 		lte_u_detector_config_t *dc = (lte_u_detector_config_t*)arg;
-		WL_AIRIQ(("%s: detector config.\n", __FUNCTION__));
+		WL_AIRIQ(("wl%d: %s: detector config.\n", WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 
 		err = lte_u_update_detector_config(airiqh, dc);
 		break;
@@ -665,11 +651,13 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 			return BCME_ERROR;
 		}
 		if (SCAN_IN_PROGRESS(airiqh->wlc->scan)) {
-			WL_AIRIQ(("%s: Cannot start scan: WL scan in progress\n", __FUNCTION__));
+			WL_AIRIQ(("wl%d: %s: Cannot start scan: WL scan in progress\n",
+				WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 			err = BCME_BUSY;
 #if defined(WLDFS) && (defined(RSDB_DFS_SCAN) || defined(BGDFS))
 		} else if (wlc_dfs_scan_in_progress(airiqh->wlc->dfs)) {
-			WL_AIRIQ(("%s: Cannot start scan: DFS scan in progress\n", __FUNCTION__));
+			WL_AIRIQ(("wl%d: %s: Cannot start scan: DFS scan in progress\n",
+				WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 			err = BCME_BUSY;
 #endif /* WLDFS && (RSDB_DFS_SCAN || BGDFS) */
 		} else {
@@ -680,7 +668,7 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 		break;
 	}
 	case IOV_SVAL(IOV_LTE_U_SCAN_ABORT):
-		WL_AIRIQ(("%s: scan abort.\n", __FUNCTION__));
+		WL_AIRIQ(("wl%d: %s: scan abort.\n", WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 		/* Decode scan settings into args list */
 		err = wlc_lte_u_scan_abort(airiqh, TRUE);
 		break;
@@ -706,7 +694,7 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 		uint8 *msgdata;
 
 		if (msgsz > 0 && msgsz < VASIP_FFT_SIZE) {
-			WL_PRINT(("sending %d...\n", msgsz));
+			WL_PRINT(("wl%d: sending %d...\n", WLCWLUNIT(airiqh->wlc), msgsz));
 
 			hdr = (airiq_fftdata_header_t *)wlc_airiq_msg_get_buffer(airiqh, msgsz);
 			if (! hdr) {
@@ -756,22 +744,23 @@ airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 
 		int k;
 
-		WL_PRINT(("Air-IQ MSG: %d msgs queued/total %d/%d (%d free)\n",
-			airiqh->bundle_msg_cnt, airiqh->bundle_size, airiqh->bundle_capacity,
-			airiqh->bundle_capacity - airiqh->bundle_size));
-		WL_PRINT(("fft_buffer=%p write_ptr=%p (delta=%d) capacity=%d\n",
-			airiqh->fft_buffer, airiqh->bundle_write_ptr,
+		WL_PRINT(("wl%d: Air-IQ MSG: %d msgs queued/total %d/%d (%d free)\n",
+			WLCWLUNIT(airiqh->wlc), airiqh->bundle_msg_cnt, airiqh->bundle_size,
+			airiqh->bundle_capacity, airiqh->bundle_capacity - airiqh->bundle_size));
+		WL_PRINT(("wl%d: fft_buffer=%p write_ptr=%p (delta=%d) capacity=%d\n",
+			WLCWLUNIT(airiqh->wlc), airiqh->fft_buffer, airiqh->bundle_write_ptr,
 			airiqh->bundle_write_ptr - airiqh->fft_buffer, airiqh->bundle_capacity));
 
 		msg = (airiq_message_header_t *)airiqh->fft_buffer;
 
-		WL_PRINT(("HDR: type=%d size=%d corerev=%d unit=%d\n",
+		WL_PRINT(("wl%d: HDR: type=%d size=%d corerev=%d unit=%d\n", WLCWLUNIT(airiqh->wlc),
 			msg->message_type, msg->size_bytes, msg->corerev, msg->unit));
 		hdr = (uint8 *)airiqh->fft_buffer + sizeof(airiq_message_header_t);
 		for (k = 0; k < airiqh->bundle_msg_cnt; k++) {
 			msg = (airiq_message_header_t *)hdr;
-			WL_PRINT(("Submessage[%d]: type=%d size=%d corerev=%d unit=%d\n",
-				k, msg->message_type, msg->size_bytes, msg->corerev, msg->unit));
+			WL_PRINT(("wl%d: Submessage[%d]: type=%d size=%d corerev=%d unit=%d\n",
+				WLCWLUNIT(airiqh->wlc), k, msg->message_type, msg->size_bytes,
+				msg->corerev, msg->unit));
 			hdr += msg->size_bytes;
 		}
 		break;

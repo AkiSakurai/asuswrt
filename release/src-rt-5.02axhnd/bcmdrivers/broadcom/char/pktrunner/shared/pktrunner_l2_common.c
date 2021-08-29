@@ -99,6 +99,8 @@ uint32_t pktrunner_l2flow_key_construct(Blog_t *blog_p, rdpa_l2_flow_key_t* l2_k
     if (blog_p->l2_ipv4 || blog_p->l2_ipv6)
         l2_key->tos = blog_p->rx.tuple.tos;
 
+    l2_key->tcp_pure_ack = blog_p->key.tcp_pure_ack;
+
     /* End of key build */
 
     return 0;

@@ -1,7 +1,7 @@
 /*
  * Broadcom STA monitor implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcm_stamon.c 776892 2019-07-12 08:19:54Z $
+ * $Id: bcm_stamon.c 776562 2019-07-02 10:32:53Z $
  */
 
 #include <string.h>

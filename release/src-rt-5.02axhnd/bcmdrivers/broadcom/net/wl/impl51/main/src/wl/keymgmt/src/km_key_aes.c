@@ -1,6 +1,6 @@
 /*
  * Implementation of wlc_key algo 'aes'
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,11 +43,13 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_key_aes.c 774180 2019-04-15 07:45:12Z $
+ * $Id: km_key_aes.c 787653 2020-06-08 09:59:53Z $
  */
 
 #include "km_key_aes_pvt.h"
-
+#ifdef WL_REUSE_KEY_SEQ
+#include "wlfc_proto.h"
+#endif // endif
 /* internal interface */
 
 /* BCMCCMP - s/w decr/encr for ccm */
@@ -62,57 +64,7 @@
 #define key_aes_tx_gcm(k, p, h, b, l, s) BCME_UNSUPPORTED
 #endif /* !BCMGCMP */
 
-#if defined(BCMDBG) && defined(BCMINTERNAL)
-/* check aes key for compatible algo vs (key, icv, iv) sizes
- * note: all gcm/gmac algorithms have longer icv
- */
-static bool
-key_aes_valid(const wlc_key_t *key)
-{
-	bool valid = FALSE;
-	switch (key->info.algo) {
-	case CRYPTO_ALGO_AES_CCM:
-#ifdef MFP
-	case CRYPTO_ALGO_BIP:
-#endif /* MFP */
-		valid = (key->info.key_len == AES_KEY_MIN_SIZE) &&
-			(key->info.iv_len == AES_KEY_IV_SIZE) &&
-			(key->info.icv_len == AES_KEY_MIN_ICV_SIZE);
-		break;
-
-	case CRYPTO_ALGO_AES_GCM:
-	case CRYPTO_ALGO_BIP_GMAC:
-		valid = (key->info.key_len == AES_KEY_MIN_SIZE) &&
-			(key->info.iv_len == AES_KEY_IV_SIZE) &&
-			(key->info.icv_len == AES_KEY_MAX_ICV_SIZE);
-		break;
-
-	case CRYPTO_ALGO_AES_CCM256:
-#ifdef MFP
-	case CRYPTO_ALGO_BIP_CMAC256:
-#endif /* MFP */
-	case CRYPTO_ALGO_AES_GCM256:
-	case CRYPTO_ALGO_BIP_GMAC256:
-		valid = (key->info.key_len == AES_KEY_MAX_SIZE) &&
-			(key->info.iv_len == AES_KEY_IV_SIZE) &&
-			(key->info.icv_len == AES_KEY_MAX_ICV_SIZE);
-		break;
-
-	case CRYPTO_ALGO_AES_OCB_MSDU:
-	case CRYPTO_ALGO_AES_OCB_MPDU:
-		valid = (key->info.key_len == AES_KEY_MIN_SIZE) &&
-			(key->info.iv_len == DOT11_IV_AES_OCB_LEN) &&
-			(key->info.icv_len == AES_KEY_MIN_ICV_SIZE);
-		break;
-	default:
-		break;
-	}
-	return valid;
-}
-#define AES_KEY_VALID(_key) key_aes_valid(_key)
-#else
 #define AES_KEY_VALID(_key) AES_KEY_ALGO_VALID(_key)
-#endif /* BCMDBG */
 
 static void
 key_aes_seq_to_body(wlc_key_t *key, uint8 *seq, uint8 *body)
@@ -331,7 +283,7 @@ key_aes_set_data(wlc_key_t *key, const uint8 *data,
 #ifdef BCMCCMP
 static uint8
 key_aes_ccm_nonce_flags(wlc_key_t *key, void *pkt,
-	const struct dot11_header *hdr, uint8 *body, bool htc)
+	const struct dot11_header *hdr, uint8 *body, bool htc, bool tx)
 {
 	uint16 fc;
 	uint8 nonce_flags = 0;
@@ -340,10 +292,15 @@ key_aes_ccm_nonce_flags(wlc_key_t *key, void *pkt,
 
 #if defined(MFP)
 	if (FC_TYPE(fc) == FC_TYPE_MNG) {
-		scb_t *scb = WLPKTTAGSCBGET(pkt);
-		KM_ASSERT(scb != NULL);
-		if (KM_SCB_MFP(scb))
+		if (!tx) {
+			scb_t *scb = WLPKTTAGSCBGET(pkt);
+			KM_ASSERT(scb != NULL);
+			if (KM_SCB_MFP(scb)) {
+				nonce_flags = AES_CCMP_NF_MANAGEMENT;
+			}
+		} else if (WLPKTFLAG_PMF(WLPKTTAG(pkt))) {
 			nonce_flags = AES_CCMP_NF_MANAGEMENT;
+		}
 	} else
 #endif /* MFP */
 	if (KM_KEY_FC_TYPE_QOS_DATA(fc) &&
@@ -373,7 +330,7 @@ key_aes_rx_ccm(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 	pkt_len = (body + body_len) - (uint8 *)hdr;
 	do {
 		uint8 nonce_flags = key_aes_ccm_nonce_flags(key, pkt, hdr, body,
-			(pkt_info->flags & KEY_PKT_HTC_PRESENT) != 0);
+			(pkt_info->flags & KEY_PKT_HTC_PRESENT) != 0, FALSE);
 		{
 			uint32 rk[4*(AES_MAXROUNDS+1)];
 			int st;
@@ -640,7 +597,7 @@ key_aes_tx_ccm(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 			rijndaelKeySetupEnc(rk, aes_key->key, key->info.key_len << 3);
 			st = aes_ccmp_encrypt(rk, key->info.key_len, pkt_len, (uint8 *)hdr,
 				(key->info.flags & WLC_KEY_FLAG_AES_MODE_LEGACY),
-				key_aes_ccm_nonce_flags(key, pkt, hdr, body, FALSE),
+				key_aes_ccm_nonce_flags(key, pkt, hdr, body, FALSE, TRUE),
 				key->info.icv_len);
 
 			if (st != AES_CCMP_ENCRYPT_SUCCESS)
@@ -680,6 +637,69 @@ key_aes_tx_gcm(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 	return BCME_OK;
 }
 #endif /* BCMGCMP */
+
+#ifdef WL_REUSE_KEY_SEQ
+static bool
+key_aes_tx_mpdu_reuse_seq(wlc_key_t *key, void *pkt, uint8 *body)
+{
+	aes_key_t *aes_key;
+	uint8 *key_seq;
+#ifdef BCMDBG
+	uint8 buf[8] = {0}, buf1[8] = {0};
+	int j;
+#endif // endif
+	key_seq = PKTFRAGFCTLV(KEY_OSH(key), pkt);
+	if (!GET_DRV_HAS_ASSIGNED_KEY_SEQ(key_seq)) {
+		return FALSE;
+	}
+	aes_key = (aes_key_t *)key->algo_impl.ctx;
+	key_aes_seq_to_body(key, key_seq, body);
+	RESET_DRV_HAS_ASSIGNED_KEY_SEQ(key_seq);
+	SET_WL_HAS_ASSIGNED_KEY_SEQ(key_seq);
+#ifdef BCMDBG
+	WL_TRACE(("%s reuses key seq for d11 seq %02x => ",
+		__FUNCTION__, WL_SEQ_GET_NUM(WLPKTTAG(pkt)->seq)));
+	for (j = KEY_SEQ_SIZE; j > 0; --j) {
+		WL_TRACE(("%02x", key_seq[j - 1]));
+	}
+	WL_TRACE((" tx_seq => "));
+	key_aes_seq_to_body(key, aes_key->tx_seq, buf);
+	key_aes_seq_from_body(key, buf1, buf);
+	for (j = KEY_SEQ_SIZE; j > 0; --j) {
+		WL_TRACE(("%02x", buf1[j - 1]));
+	}
+	WL_TRACE(("\n"));
+#endif // endif
+	if (km_key_seq_less(key_seq, aes_key->tx_seq, KEY_SEQ_SIZE) ||
+		!memcmp(key_seq, aes_key->tx_seq, KEY_SEQ_SIZE)) {
+	} else {
+		ASSERT(0);
+	}
+	return TRUE;
+}
+
+static void
+wlc_set_wl_has_assigned_key_seq(wlc_key_t *key, void *pkt, uint8 *body)
+{
+#ifdef BCMDBG
+	int j;
+#endif // endif
+	uint8 *key_seq;
+	key_seq = PKTFRAGFCTLV(KEY_OSH(key), pkt);
+	key_aes_seq_from_body(key, key_seq, body);
+	SET_WL_HAS_ASSIGNED_KEY_SEQ(key_seq);
+#ifdef BCMDBG
+	WL_TRACE(("%s suppressed d11 seq %02x key seq => ", __FUNCTION__,
+		WL_SEQ_GET_NUM(WLPKTTAG(pkt)->seq)));
+	for (j = WL_KEY_SEQ_SIZE; j > 0; --j) {
+		WL_TRACE(("%02x", key_seq[j - 1]));
+	}
+	WL_TRACE(("\n"));
+#endif // endif
+	return;
+}
+#endif /* WL_REUSE_KEY_SEQ */
+
 #ifdef WLCFP
 /** Fast path code to do AES processing
  * 1. Increment sequence number
@@ -687,27 +707,34 @@ key_aes_tx_gcm(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
  * 3. Update Tx descriptor cache info
  */
 void
-key_aes_tx_mpdu_fast(wlc_key_t *key, uint8 *body, d11txhdr_t *txd)
+key_aes_tx_mpdu_fast(wlc_key_t *key, void *pkt, uint8 *body, d11txhdr_t *txd)
 {
 	aes_key_t	*aes_key;
+	bool reusesseq = FALSE;
 
 	aes_key = (aes_key_t *)key->algo_impl.ctx;
-
-	/** Update the key sequence Number */
-	if (!AES_KEY_ALGO_OCBXX(key)) {
-		ASSERT(KEY_SEQ_IS_MAX(aes_key->tx_seq) == FALSE);
-		KEY_SEQ_INCR(aes_key->tx_seq, AES_KEY_SEQ_SIZE);
-	} else {
-		uint32 val = ltoh32_ua(aes_key->tx_seq);
-		if (val >= ((1 << 28) - 3)) {
-			memset(aes_key->tx_seq, 0, AES_KEY_SEQ_SIZE);
-		} else {
+#ifdef WL_REUSE_KEY_SEQ
+	reusesseq = key_aes_tx_mpdu_reuse_seq(key, pkt, body);
+#endif // endif
+	if (!reusesseq) {
+		/** Update the key sequence Number */
+		if (!AES_KEY_ALGO_OCBXX(key)) {
+			ASSERT(KEY_SEQ_IS_MAX(aes_key->tx_seq) == FALSE);
 			KEY_SEQ_INCR(aes_key->tx_seq, AES_KEY_SEQ_SIZE);
+		} else {
+			uint32 val = ltoh32_ua(aes_key->tx_seq);
+			if (val >= ((1 << 28) - 3)) {
+				memset(aes_key->tx_seq, 0, AES_KEY_SEQ_SIZE);
+			} else {
+				KEY_SEQ_INCR(aes_key->tx_seq, AES_KEY_SEQ_SIZE);
+			}
 		}
+		/* update iv in pkt - seq and key id  */
+		key_aes_seq_to_body(key, aes_key->tx_seq, body);
+#ifdef WL_REUSE_KEY_SEQ
+		wlc_set_wl_has_assigned_key_seq(key, pkt, body);
+#endif // endif
 	}
-
-	/* update iv in pkt - seq and key id  */
-	key_aes_seq_to_body(key, aes_key->tx_seq, body);
 
 	if (KEY_COREREV_GE128(key)) {
 		ASSERT(RATELINKMEM_ENAB(key->wlc->pub) == TRUE);
@@ -735,9 +762,10 @@ key_aes_tx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 	int err = BCME_OK;
 	aes_key_t *aes_key;
 	uint16 fc;
-#ifdef BCMDBG
+#if defined(BCMDBG) || defined(MFP_TEST)
 	bool gen_err = FALSE;
-#endif // endif
+#endif /* BCMDBG || MFP_TEST */
+	bool reuse_seq = FALSE;
 
 	KM_DBG_ASSERT(AES_KEY_VALID(key));
 
@@ -748,31 +776,41 @@ key_aes_tx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 	}
 
 	aes_key = (aes_key_t *)key->algo_impl.ctx;
-
 #ifdef BCMDBG
 	if (key->info.flags & WLC_KEY_FLAG_GEN_REPLAY) {
 		key->info.flags &= ~WLC_KEY_FLAG_GEN_REPLAY;
+		reuse_seq = FALSE;
 	} else
 #endif /* BCMDBG */
-	{
-		if (!AES_KEY_ALGO_OCBXX(key)) {
-			if (KEY_SEQ_IS_MAX(aes_key->tx_seq)) {
-				err = BCME_BADKEYIDX;
-				goto done;
-			}
-			KEY_SEQ_INCR(aes_key->tx_seq, AES_KEY_SEQ_SIZE);
-		} else {
-			uint32 val = ltoh32_ua(aes_key->tx_seq);
-			if (val >= ((1 << 28) - 3)) {
-				memset(aes_key->tx_seq, 0, AES_KEY_SEQ_SIZE);
-			} else {
+	 {
+#ifdef WL_REUSE_KEY_SEQ
+		reuse_seq = key_aes_tx_mpdu_reuse_seq(key, pkt, body);
+#endif // endif
+		if (!reuse_seq) {
+			if (!AES_KEY_ALGO_OCBXX(key)) {
+				if (KEY_SEQ_IS_MAX(aes_key->tx_seq)) {
+					err = BCME_BADKEYIDX;
+					goto done;
+				}
 				KEY_SEQ_INCR(aes_key->tx_seq, AES_KEY_SEQ_SIZE);
+			} else {
+				uint32 val = ltoh32_ua(aes_key->tx_seq);
+				if (val >= ((1 << 28) - 3)) {
+					memset(aes_key->tx_seq, 0, AES_KEY_SEQ_SIZE);
+				} else {
+					KEY_SEQ_INCR(aes_key->tx_seq, AES_KEY_SEQ_SIZE);
+				}
 			}
 		}
 	}
 
-	/* update iv in pkt - seq and key id  */
-	key_aes_seq_to_body(key, aes_key->tx_seq, body);
+	if (!reuse_seq) {
+		/* update iv in pkt - seq and key id  */
+		key_aes_seq_to_body(key, aes_key->tx_seq, body);
+#ifdef WL_REUSE_KEY_SEQ
+		wlc_set_wl_has_assigned_key_seq(key, pkt, body);
+#endif // endif
+	}
 
 	if (WLC_KEY_IN_HW(&key->info) && txd != NULL) {
 		if (KEY_COREREV_GE128(key)) {
@@ -792,7 +830,7 @@ key_aes_tx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 		goto done;
 	}
 
-#ifdef BCMDBG
+#if defined(BCMDBG) || defined(MFP_TEST)
 	if (key->info.flags & (WLC_KEY_FLAG_GEN_MFP_ACT_ERR|
 		WLC_KEY_FLAG_GEN_MFP_DISASSOC_ERR |
 		WLC_KEY_FLAG_GEN_MFP_DEAUTH_ERR)) {
@@ -816,7 +854,7 @@ key_aes_tx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 			aes_key->key[0] = ~aes_key->key[0];
 	}
 
-#endif /* BCMDBG */
+#endif /* BCMDBG || MFP_TEST */
 
 	switch (key->info.algo) {
 	case CRYPTO_ALGO_AES_CCM:
@@ -832,10 +870,10 @@ key_aes_tx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 		break;
 	}
 
-#ifdef BCMDBG
+#if defined(BCMDBG) || defined(MFP_TEST)
 	if (gen_err)
 		aes_key->key[0] = ~aes_key->key[0];
-#endif // endif
+#endif /* BCMDBG || MFP_TEST */
 
 done:
 	return err;

@@ -1,7 +1,7 @@
 /*
  * ACPHY RADIO control module implementation - iovar handlers & registration
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -68,7 +68,8 @@ enum {
 	IOV_LP_VCO_2G = 2,
 	IOV_RADIO_PD = 3,
 	IOV_RCCAL_GET_GMULT = 4,
-	IOV_RCCAL_GET_CMULT = 5
+	IOV_RCCAL_GET_CMULT = 5,
+	IOV_RPCALPHASE = 6
 };
 
 static const bcm_iovar_t phy_ac_radio_iovars[] = {
@@ -76,6 +77,7 @@ static const bcm_iovar_t phy_ac_radio_iovars[] = {
 	{"lp_vco_2g", IOV_LP_VCO_2G, (IOVF_SET_UP|IOVF_GET_UP), 0, IOVT_UINT8, 0},
 #if defined(WLTEST)
 	{"radio_pd", IOV_RADIO_PD, (IOVF_SET_UP|IOVF_GET_UP), 0, IOVT_UINT8, 0},
+	{"get_rpcal_phase", IOV_RPCALPHASE, IOVF_GET_UP, 0, IOVT_UINT8, 0},
 #endif /* WLTEST */
 	{"rccal_get_gmult", IOV_RCCAL_GET_GMULT, IOVF_GET_UP, 0, IOVT_UINT32, 0},
 	{"rccal_get_cmult", IOV_RCCAL_GET_CMULT, IOVF_GET_UP, 0, IOVT_UINT32, 0},
@@ -147,6 +149,11 @@ phy_ac_radio_doiovar(void *ctx, uint32 aid,
 	case IOV_GVAL(IOV_RADIO_PD):
 	{
 		*ret_int_ptr = phy_ac_radio_get_data(radioi)->acphy_4335_radio_pd_status;
+		break;
+	}
+	case IOV_GVAL(IOV_RPCALPHASE):
+	{
+		*ret_int_ptr = wlc_phy_get_recip_LO_div_phase(pi);
 		break;
 	}
 #endif /* WLTEST */

@@ -2,7 +2,7 @@
  * HWA library routines that are not specific to PCIE or MAC facing blocks.
  *
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -177,19 +177,19 @@ BCMATTACHFN(hwa_dma_attach)(hwa_dev_t *dev)
 	dev->dma.burst_length[HWA_DMA_CHANNEL0].rx = DMA_BL_64;
 	dev->dma.burst_length[HWA_DMA_CHANNEL1].tx = DMA_BL_64;
 	dev->dma.burst_length[HWA_DMA_CHANNEL1].rx = DMA_BL_64;
+	dev->dma.outstanding_rds = DMA_MR_1;
+#if HWA_REVISION_GE_130
 	HWA_BUS_EXPR({
 		if (BCM43684_CHIP(hwa_dev->sih->chip)) {
-			uint32 mps = pcie_h2ddma_rx_get_burstlen(hwa_dev->pciedev);
-
 			dev->dma.burst_length[HWA_DMA_CHANNEL1].tx =
 				pcie_h2ddma_tx_get_burstlen(hwa_dev->pciedev);
-			/* XXX: set rxburstlen to minimum of MPS configured during
-			* enumeration and the burst length supported by chip.
-			*/
-			dev->dma.burst_length[HWA_DMA_CHANNEL1].rx = MIN(mps, DMA_BL_128);
+			dev->dma.burst_length[HWA_DMA_CHANNEL1].rx =
+				pcie_h2ddma_rx_get_burstlen(hwa_dev->pciedev);
 		}
 	});
 	dev->dma.outstanding_rds = DMA_MR_2;
+#endif /* HWA_REVISION_GE_130 */
+
 	/* channelCnt contains one less than the number of DMA channel
 	 * pairs supported by this device
 	 */
@@ -306,6 +306,40 @@ hwa_dma_enable(hwa_dma_t *dma)
 	dma->enabled = TRUE;
 
 } // hwa_dma_enable
+
+void // Adjust HWA DMA Rx burst length
+hwa_dma_rx_burstlen_adjust(hwa_dma_t *dma)
+{
+
+#ifdef HWA_REVISION_GE_130
+
+	hwa_dev_t *dev;
+	hwa_regs_t *regs;
+	uint32 rx32;
+	uint8 rx_bl;
+
+	HWA_FTRACE(HWAde);
+
+	dev = HWA_DEV(dma);
+	regs = dev->regs;
+
+	/* XXX: set rxburstlen to minimum of MPS configured during
+	* enumeration and the burst length supported by chip.
+	*/
+	rx_bl = dma->burst_length[HWA_DMA_CHANNEL1].rx;
+	rx_bl = MIN(rx_bl, DMA_BL_128);
+	dma->burst_length[HWA_DMA_CHANNEL1].rx = rx_bl;
+
+	rx32 = HWA_RD_REG_NAME(HWAde, regs, dma, channels[HWA_DMA_CHANNEL1].rx.control);
+	rx32 = BCM_CBF(rx32, D64_RC_BL);
+	rx32 |= BCM_SBF(rx_bl, D64_RC_BL);
+	HWA_WR_REG_NAME(HWAde, regs, dma, channels[HWA_DMA_CHANNEL1].rx.control, rx32);
+
+	HWA_ERROR(("%s adjust channels[1] rx burstlen[%u]\n", HWAde, rx_bl));
+
+#endif /* HWA_REVISION_GE_130 */
+
+} // hwa_dma_rx_burstlen_adjust
 
 hwa_dma_status_t // Get the HWA DMA Xmt and Rcv status for a given channel
 hwa_dma_channel_status(hwa_dma_t *dma, uint32 channel)
@@ -442,10 +476,16 @@ hwa_bm_config(hwa_dev_t *dev, hwa_bm_t *bm,
 
 	if (bm->instance == HWA_TX_BM) {
 		bm->pkt_max     = HWA_TXPATH_PKTS_MAX;
+		bm->avail_sw    = bm->pkt_max;
+
 		/* XXX, 16 is suggested number from designer,
 		 * It also can be a tolance cycle for txfree ring
+		 * CRBCAHWA-529: Fixed >= rev130
 		 */
-		bm->avail_sw    = HWA_TXPATH_PKTS_MAX - 16;
+#if HWA_REVISION_EQ_129
+		HWA_ASSERT(bm->avail_sw > 16);
+		bm->avail_sw    -= 16;
+#endif // endif
 	}
 	else {
 		bm->pkt_max     = HWA_RXPATH_PKTS_MAX;
@@ -1170,6 +1210,10 @@ hwa_config(struct hwa_dev *dev)
 	v32 = dev->host_physaddrhi;
 	HWA_WR_REG_NAME(HWA00, regs, common, hwa2pciepc_pkt_high32_pa, v32);
 
+	if (dev->pcie_ipc->hcap1 & PCIE_IPC_HCAP1_LIMIT_BL) {
+		HWA_DPC_EXPR(hwa_dma_rx_burstlen_adjust(&dev->dma));
+	}
+
 	HWA_RXPOST_EXPR(hwa_rxpost_preinit(&dev->rxpost));
 	HWA_RXFILL_EXPR(hwa_rxfill_preinit(&dev->rxfill));
 
@@ -1231,18 +1275,21 @@ hwa_init(hwa_dev_t *dev)
 		HWA_CPLENG_EXPR(
 			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCKCPL_CLKENABLE))
 		HWA_TXSTAT_EXPR(
-			// Set block3B_clkEnable to enalbe 4A TxS internal memory region for DMA.
-			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCK3B_CLKENABLE)
 			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCKTXSTS_CLKENABLE))
 		HWA_TXPOST_EXPR(
-			// XXX, Set block3B_clkEnable to make 3A only mode work.
-			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCK3B_CLKENABLE)
 			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCK3A_CLKENABLE))
 		HWA_TXFIFO_EXPR(
 			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCK3B_CLKENABLE))
 		HWA_PKTPGR_EXPR(
 			| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_PAGER_CLKENABLE))
 		| BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCKSTATISTICS_CLKENABLE);
+#if HWA_REVISION_EQ_129
+	// XXX, CRBCAHWA-581: WAR for rev129
+	// Set block3B_clkEnable to enalbe 4A TxS internal memory region for DMA.
+	HWA_TXSTAT_EXPR(v32 |= BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCK3B_CLKENABLE));
+	// XXX, Set block3B_clkEnable to make 3A only mode work.
+	HWA_TXPOST_EXPR(v32 |= BCM_SBF(1, HWA_COMMON_MODULE_CLK_ENABLE_BLOCK3B_CLKENABLE));
+#endif // endif
 	HWA_RXPATH_EXPR(
 		if (HWA_RX_CORES > 1)
 			v32 |= BCM_SBIT(HWA_COMMON_MODULE_CLK_ENABLE_BLOCKRXCORE1_CLKENABLE));
@@ -2237,13 +2284,6 @@ hwa_dpc(hwa_dev_t *dev)
 		return FALSE;  // no re-schedule
 
 	// PCIE face.
-#ifdef HWA_RXPOST_ONLY_BUILD
-	// HWA1a only RxPost, intr-bit1
-	if (intstatus & HWA_COMMON_INTSTATUS_RXPDEST0_INT_MASK) {
-		(void)hwa_rxpost_process(dev);
-	}
-#endif // endif
-
 #ifdef HWA_TXPOST_BUILD
 	// HWA3a TxPOST, intr-bit18
 	if (intstatus & HWA_COMMON_INTSTATUS_TXPKTCHN_INT_MASK) {

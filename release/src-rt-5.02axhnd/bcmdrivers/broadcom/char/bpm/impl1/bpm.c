@@ -1648,6 +1648,8 @@ static int bpm_init_buf_pool( uint32_t tot_num_buf )
 
     }   /* while num */
 
+    BCM_LOG_DEBUG(BCM_LOG_ID_BPM,"tot_num_buf:%u buf_top_idx:%u mem_idx:%u",tot_num_buf,bpm_pg->buf_top_idx,bpm_pg->mem_idx);
+
 #if defined(CONFIG_BCM_BPM_BUF_TRACKING)
     /* Set up static buffer pool */
     memsz = sizeof(size_t) * bpm_pg->buf_top_idx;
@@ -2853,8 +2855,8 @@ static int __init bpm_module_init( void )
             return BPM_ERROR;
         }
 
-        tot_mem_pool = (tot_num_buf * BPM_BUF_SIZE/BPM_MAX_MEMSIZE) + 1;
-        BCM_LOG_DEBUG( BCM_LOG_ID_BPM, "tot_mem_pool=%u\n", tot_mem_pool);
+        tot_mem_pool = (tot_num_buf / (BPM_MAX_MEMSIZE/BPM_BUF_SIZE));
+        tot_mem_pool += ((tot_num_buf % (BPM_MAX_MEMSIZE/BPM_BUF_SIZE))? 1 : 0);
 
         if (tot_mem_pool > BPM_MAX_MEM_POOL_IX)
         {
@@ -2888,6 +2890,9 @@ static int __init bpm_module_init( void )
             return BPM_ERROR;
         }
 
+        BCM_LOG_NOTICE( BCM_LOG_ID_BPM, "tot_mem_pool=%u mem_idx:%u", tot_mem_pool, bpm_pg->mem_idx);
+        WARN_ON(bpm_pg->mem_idx < tot_mem_pool);
+        BUG_ON(bpm_pg->mem_idx > tot_mem_pool);
 #if defined(CC_BPM_SKB_POOL_BUILD)
         /* Preinitialize a pool of sk_buff(s), as a percent of tot_num_buf */
         if (bpm_init_skb_pool( tot_num_buf ) == BPM_ERROR)

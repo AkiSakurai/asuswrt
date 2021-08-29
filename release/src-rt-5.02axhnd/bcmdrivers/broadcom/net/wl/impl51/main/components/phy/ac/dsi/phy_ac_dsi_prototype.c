@@ -1,7 +1,7 @@
 /*
  * ACPHY DeepSleepInit module - 4339 Prototype Work
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

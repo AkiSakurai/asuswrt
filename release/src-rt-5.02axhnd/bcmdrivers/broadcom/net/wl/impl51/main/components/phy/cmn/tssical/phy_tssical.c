@@ -1,7 +1,7 @@
 /*
  * TSSI Cal module implementation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tssical.c 771380 2019-01-23 22:47:21Z $
+ * $Id: phy_tssical.c 778608 2019-09-05 16:50:19Z $
  */
 
 #include <phy_cfg.h>
@@ -332,10 +332,7 @@ int wlc_phy_tssivisible_thresh(wlc_phy_t *ppi)
 #endif /* WLOLPC */
 
 	if (fns->visible_thresh == NULL) {
-		if (ISLCN20PHY(pi))
-			visi_thresh_qdbm = LCN20PHY_TXPWR_MIN * WLC_TXPWR_DB_FACTOR;
-		else
-			visi_thresh_qdbm = (PHY_TXPWR_MIN_LEGACYPHY * WLC_TXPWR_DB_FACTOR);
+		visi_thresh_qdbm = (PHY_TXPWR_MIN_LEGACYPHY * WLC_TXPWR_DB_FACTOR);
 	}
 
 	return visi_thresh_qdbm;
@@ -407,33 +404,33 @@ phy_tssical_do_dummy_tx(phy_info_t *pi, bool ofdm, bool pa_on)
 
 	/* set up the TXE transfer */
 
-	W_REG(pi->sh->osh, D11_xmtsel(pi), 0);
+	W_REG(pi->sh->osh, D11_xmtsel(pi), (uint16)0);
 	/* Assign the WEP to the transmit path */
-	W_REG(pi->sh->osh, D11_WEP_CTL(pi), 0x100);
+	W_REG(pi->sh->osh, D11_WEP_CTL(pi), (uint16)0x100);
 
 	/* Set/clear OFDM bit in PHY control word */
-	W_REG(pi->sh->osh, D11_TXE_PHYCTL(pi), (ofdm ? 1 : 0) | PHY_TXC_ANT_0);
+	W_REG(pi->sh->osh, D11_TXE_PHYCTL(pi), (uint16)((ofdm ? 1 : 0) | PHY_TXC_ANT_0));
 
 	ASSERT(ofdm);
-	W_REG(pi->sh->osh, D11_TXE_PHYCTL_1(pi), 0x1A02);
+	W_REG(pi->sh->osh, D11_TXE_PHYCTL_1(pi), (uint16)0x1A02);
 
-	W_REG(pi->sh->osh, D11_TXE_WM_0(pi), 0);		/* No substitutions */
-	W_REG(pi->sh->osh, D11_TXE_WM_1(pi), 0);
+	W_REG(pi->sh->osh, D11_TXE_WM_0(pi), (uint16)0);		/* No substitutions */
+	W_REG(pi->sh->osh, D11_TXE_WM_1(pi), (uint16)0);
 
-	W_REG(pi->sh->osh, D11_xmttplatetxptr(pi), 0);
-	W_REG(pi->sh->osh, D11_xmttxcnt(pi), DUMMY_PKT_LEN);
+	W_REG(pi->sh->osh, D11_xmttplatetxptr(pi), (uint16)0);
+	W_REG(pi->sh->osh, D11_xmttxcnt(pi), (uint16)DUMMY_PKT_LEN);
 
 	/* Set Template as source, length specified as a count and destination
 	 * as Serializer also set "gen_eof"
 	 */
-	W_REG(pi->sh->osh, D11_xmtsel(pi), ((8 << 8) | (1 << 5) | (1 << 2) | 2));
+	W_REG(pi->sh->osh, D11_xmtsel(pi), (uint16)((8 << 8) | (1 << 5) | (1 << 2) | 2));
 
 	/* Instruct the MAC to not calculate FCS, we'll supply a bogus one */
-	W_REG(pi->sh->osh, D11_TXE_CTL(pi), 0);
+	W_REG(pi->sh->osh, D11_TXE_CTL(pi), (uint16)0);
 
 	/* Start transmission and wait until sendframe goes away */
 	/* Set TX_NOW in AUX along with MK_CTLWRD */
-	W_REG(pi->sh->osh, D11_TXE_AUX(pi), 0xD0);
+	W_REG(pi->sh->osh, D11_TXE_AUX(pi), (uint16)0xD0);
 
 	(void)R_REG(pi->sh->osh, D11_TXE_AUX(pi));
 

@@ -1,7 +1,7 @@
 /*
  * BlueToothCoExistence module implementation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_btcx.c 776091 2019-06-18 12:31:18Z $
+ * $Id: phy_btcx.c 778624 2019-09-06 01:52:43Z $
  */
 
 #include <phy_cfg.h>
@@ -299,16 +299,28 @@ phy_btcx_is_eci_coex_enabled(phy_info_t *pi)
 {
 	phy_btcx_info_t *btcxi = pi->btcxi;
 
-	return (btcxi->priv->phy_btc_config->eci_coex && CHSPEC_IS2G(pi->radio_chanspec) &&
+	return ((btcxi->priv->phy_btc_config->coex_mode == COEX_MODE_ECI) &&
+		CHSPEC_IS2G(pi->radio_chanspec) &&
 		wlapi_bmac_btc_mode_get(pi->sh->physhim) != 0);
 }
 
 bool
-phy_btcx_is_sw_coex_enabled(phy_info_t *pi)
+phy_btcx_is_gci_coex_enabled(phy_info_t *pi)
 {
 	phy_btcx_info_t *btcxi = pi->btcxi;
 
-	return (btcxi->priv->phy_btc_config->sw_coex && CHSPEC_IS2G(pi->radio_chanspec) &&
+	return ((btcxi->priv->phy_btc_config->coex_mode == COEX_MODE_GCI) &&
+		CHSPEC_IS2G(pi->radio_chanspec) &&
+		wlapi_bmac_btc_mode_get(pi->sh->physhim) != 0);
+}
+
+bool
+phy_btcx_is_gpio_coex_enabled(phy_info_t *pi)
+{
+	phy_btcx_info_t *btcxi = pi->btcxi;
+
+	return ((btcxi->priv->phy_btc_config->coex_mode == COEX_MODE_GPIO) &&
+		CHSPEC_IS2G(pi->radio_chanspec) &&
 		wlapi_bmac_btc_mode_get(pi->sh->physhim) != 0);
 }
 
@@ -328,12 +340,12 @@ phy_btcx_disable_arbiter(phy_btcx_info_t *bi)
 	PHY_TRACE(("%s\n", __FUNCTION__));
 	ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
 
-	if (phy_btcx_is_eci_coex_enabled(pi)) {
+	if (phy_btcx_is_gci_coex_enabled(pi) || phy_btcx_is_eci_coex_enabled(pi)) {
 		/* Enable manual BTCX mode */
 		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi),
-		       BTCX_CTRL_EN | BTCX_CTRL_SW);
+		       (uint16)(BTCX_CTRL_EN | BTCX_CTRL_SW));
 		/* Reenable WLAN priority, and then wait for BT to finish */
-		OR_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi), BTCX_TRANS_TXCONF);
+		OR_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi), (uint16)BTCX_TRANS_TXCONF);
 		/* While RF_ACTIVE is asserted... */
 		SPINWAIT(R_REG(pi->sh->osh, D11_BTCX_STAT(pi)) & BTCX_STAT_RA,
 				BTCX_WAIT_MAX_US);
@@ -343,7 +355,7 @@ phy_btcx_disable_arbiter(phy_btcx_info_t *bi)
 				pi->sh->unit, __FUNCTION__));
 		}
 		OR_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
-		       BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL);
+		       (uint16)(BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL));
 	}
 
 	/* Cache the MHF state and disable BT coex */
@@ -361,13 +373,13 @@ phy_btcx_enable_arbiter(phy_btcx_info_t *bi)
 	PHY_TRACE(("%s\n", __FUNCTION__));
 	ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
 
-	if (phy_btcx_is_eci_coex_enabled(pi)) {
+	if (phy_btcx_is_gci_coex_enabled(pi) || phy_btcx_is_eci_coex_enabled(pi)) {
 		/* Enable manual BTCX mode */
 		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi),
-		       BTCX_CTRL_EN | BTCX_CTRL_SW);
+		       (uint16)(BTCX_CTRL_EN | BTCX_CTRL_SW));
 		/* Force BT priority */
 		AND_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
-			~(BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL));
+			(uint16)~(BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL));
 	}
 
 	/* Enable BT coex */
@@ -414,20 +426,20 @@ phy_btcx_override_enable(phy_info_t *pi)
 
 	/* Ucode had better be suspended when we mess with BTCX regs directly */
 	ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
-	if (phy_btcx_is_sw_coex_enabled(pi)) {
+	if (phy_btcx_is_gpio_coex_enabled(pi)) {
 		uint32 gi = (~btc_config->gpio_out) & btc_config->gpio_mask;
 		/* Take control of the GPIO */
 		si_gpiocontrol(pi->sh->sih, btc_config->gpio_mask, gi, GPIO_DRV_PRIORITY);
 		/* Deny BT */
 		si_gpioout(pi->sh->sih, (1 << (btc_config->btc_wlan_gpio - 1)),
 			(1 << (btc_config->btc_wlan_gpio - 1)), GPIO_DRV_PRIORITY);
-	} else if (phy_btcx_is_eci_coex_enabled(pi)) {
+	} else if (phy_btcx_is_gci_coex_enabled(pi) || phy_btcx_is_eci_coex_enabled(pi)) {
 		/* Enable manual BTCX mode */
 		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi),
-		       BTCX_CTRL_EN | BTCX_CTRL_SW);
+		       (uint16)(BTCX_CTRL_EN | BTCX_CTRL_SW));
 		/* Force WLAN antenna and priority */
 		OR_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
-		       BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL);
+		       (uint16)(BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL));
 	}
 	btcxi->priv->override_enab = 1;
 }
@@ -464,16 +476,16 @@ phy_btcx_override_disable(phy_info_t *pi)
 
 	/* Ucode had better be suspended when we mess with BTCX regs directly */
 	ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
-	if (phy_btcx_is_sw_coex_enabled(pi)) {
+	if (phy_btcx_is_gpio_coex_enabled(pi)) {
 		/* Release control of the GPIO */
 		si_gpiocontrol(pi->sh->sih, btc_config->gpio_mask, btc_config->gpio_mask,
 			GPIO_DRV_PRIORITY);
-	} else if (phy_btcx_is_eci_coex_enabled(pi)) {
+	} else if (phy_btcx_is_gci_coex_enabled(pi) || phy_btcx_is_eci_coex_enabled(pi)) {
 		/* Enable manual BTCX mode */
-		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi), BTCX_CTRL_EN | BTCX_CTRL_SW);
+		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi), (uint16)(BTCX_CTRL_EN | BTCX_CTRL_SW));
 		/* Force BT priority */
 		AND_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
-			~(BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL));
+			(uint16)~(BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL));
 	}
 	btcxi->priv->override_enab = 0;
 }
@@ -483,14 +495,14 @@ phy_btcx_invert_prisel_polarity(phy_info_t *pi, int8 state)
 {
 	uint16 btcx_ctrl;
 
-	if (phy_btcx_is_eci_coex_enabled(pi)) {
+	if (phy_btcx_is_gci_coex_enabled(pi) || phy_btcx_is_eci_coex_enabled(pi)) {
 		btcx_ctrl = R_REG(pi->sh->osh, D11_BTCX_CTL(pi));
 		if (state == ON) { /* invert prisel polarity */
 			W_REG(pi->sh->osh, D11_BTCX_CTL(pi),
-				btcx_ctrl | BTCX_CTRL_PRI_POL);
+				(uint16)(btcx_ctrl | BTCX_CTRL_PRI_POL));
 		} else {
 			W_REG(pi->sh->osh, D11_BTCX_CTL(pi),
-				btcx_ctrl & ~BTCX_CTRL_PRI_POL);
+				(uint16)(btcx_ctrl & ~BTCX_CTRL_PRI_POL));
 		}
 	}
 }

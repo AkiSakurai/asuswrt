@@ -1,7 +1,7 @@
 /*
  * ACPHY High Efficiency 802.11ax (HE) module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -222,43 +222,6 @@ static const wlc_he_rateset_t he_rateset_rev129 = {
 	/* .bw80_rx_mcs_nss = */
 	(HE_CAP_MAX_MCS_0_11 << 0)  | (HE_CAP_MAX_MCS_0_11 << 2)  |
 	(HE_CAP_MAX_MCS_0_11 << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
-	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
-	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14),
-	/* .bw80p80_tx_mcs_nss = */
-	(HE_CAP_MAX_MCS_NONE << 0)  | (HE_CAP_MAX_MCS_NONE << 2)  |
-	(HE_CAP_MAX_MCS_NONE << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
-	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
-	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14),
-	/* .bw80p80_rx_mcs_nss = */
-	(HE_CAP_MAX_MCS_NONE << 0)  | (HE_CAP_MAX_MCS_NONE << 2)  |
-	(HE_CAP_MAX_MCS_NONE << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
-	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
-	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14),
-	/* .bw160_tx_mcs_nss = */
-	(HE_CAP_MAX_MCS_NONE << 0)  | (HE_CAP_MAX_MCS_NONE << 2)  |
-	(HE_CAP_MAX_MCS_NONE << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
-	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
-	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14),
-	/* .bw160_rx_mcs_nss = */
-	(HE_CAP_MAX_MCS_NONE << 0)  | (HE_CAP_MAX_MCS_NONE << 2)  |
-	(HE_CAP_MAX_MCS_NONE << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
-	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
-	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14)
-};
-
-/**
- * Main slice 11x2 80MHz
- * 80p80 & 160: not supported
- */
-static wlc_he_rateset_t he_rateset_slice0 = {
-	/* .bw80_tx_mcs_nss = */
-	(HE_CAP_MAX_MCS_0_11 << 0)  | (HE_CAP_MAX_MCS_0_11 << 2)  |
-	(HE_CAP_MAX_MCS_NONE << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
-	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
-	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14),
-	/* .bw80_rx_mcs_nss = */
-	(HE_CAP_MAX_MCS_0_11 << 0)  | (HE_CAP_MAX_MCS_0_11 << 2)  |
-	(HE_CAP_MAX_MCS_NONE << 4)  | (HE_CAP_MAX_MCS_NONE << 6)  |
 	(HE_CAP_MAX_MCS_NONE << 8)  | (HE_CAP_MAX_MCS_NONE << 10) |
 	(HE_CAP_MAX_MCS_NONE << 12) | (HE_CAP_MAX_MCS_NONE << 14),
 	/* .bw80p80_tx_mcs_nss = */
@@ -523,9 +486,8 @@ phy_ac_hecap_get_phycap_info(phy_type_hecap_ctx_t *ctx, he_phy_cap_t *phycap)
 		/* b0: Support 40 MHz channel width in 2.4 GHz */
 		bwcap |= HE_PHY_CH_WIDTH_2G_40;
 
-		/* if b0=0, reserved. else
-		 * b4: Support for 242/106/52/26-tone RU mapping in 40 MHz
-		 */
+		/* b4: Support for 242/106/52/26-tone RU mapping in 40 MHz */
+		bwcap |= HE_PHY_CH_WIDTH_2G_242TONE;
 	}
 
 	if (sflags & (SISF_5G_PHY | SISF_DB_PHY)) {
@@ -549,7 +511,10 @@ phy_ac_hecap_get_phycap_info(phy_type_hecap_ctx_t *ctx, he_phy_cap_t *phycap)
 		if (phyaccap & PHY_CAP_8080MHZ)
 			bwcap |= HE_PHY_CH_WIDTH_5G_80P80;
 
-		/* b4: only relates to 80p80 support, not relevant at this point */
+		/* b4: reserved */
+
+		/* b5: indicates support of 242-tone RUs */
+		bwcap |= HE_PHY_CH_WIDTH_5G_242TONE;
 	}
 
 	/* b1-b7: Channel width support */
@@ -669,14 +634,14 @@ static uint8
 phy_ac_hecap_device_class(phy_info_t *pi)
 {
 	BCM_REFERENCE(pi);
-	return (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_GE47(pi->pubpi->phy_rev));
+	return ACMAJORREV_GE47(pi->pubpi->phy_rev);
 }
 
 static uint8
 phy_ac_hecap_bfe_sts_below80(phy_info_t *pi)
 {
 	BCM_REFERENCE(pi);
-	if (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_GE47(pi->pubpi->phy_rev))
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev))
 		return HE_PHY_BFE_STS_BELOW80;
 
 	return 0;
@@ -696,7 +661,7 @@ static uint8
 phy_ac_hecap_sound_dim_below80(phy_info_t *pi)
 {
 	BCM_REFERENCE(pi);
-	if (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_47_51_129(pi->pubpi->phy_rev))
+	if (ACMAJORREV_47_51_129(pi->pubpi->phy_rev))
 		return HE_PHY_SOUND_DIM_BELOW80;
 
 	return 0;
@@ -716,14 +681,14 @@ static uint8
 phy_ac_hecap_su_codebook_support(phy_info_t *pi)
 {
 	BCM_REFERENCE(pi);
-	return (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_GE47(pi->pubpi->phy_rev));
+	return ACMAJORREV_GE47(pi->pubpi->phy_rev);
 }
 
 static uint8
 phy_ac_hecap_mu_codebook_support(phy_info_t *pi)
 {
 	BCM_REFERENCE(pi);
-	return (ACMAJORREV_44_46(pi->pubpi->phy_rev) || ACMAJORREV_GE47(pi->pubpi->phy_rev));
+	return ACMAJORREV_GE47(pi->pubpi->phy_rev);
 }
 
 static uint8
@@ -819,12 +784,6 @@ phy_ac_hecap_get_rateset(phy_type_hecap_ctx_t *ctx, wlc_he_rateset_t *he_rateset
 		*he_rateset = he_rateset_rev129;
 	} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
 		*he_rateset = he_rateset_rev51;
-	} else if (ACMAJORREV_44(pi->pubpi->phy_rev)) {
-		if (pi->pubpi->slice == DUALMAC_MAIN) {
-			*he_rateset = he_rateset_slice0;
-		} else {
-			*he_rateset = he_rateset_slice1;
-		}
 	}
 }
 

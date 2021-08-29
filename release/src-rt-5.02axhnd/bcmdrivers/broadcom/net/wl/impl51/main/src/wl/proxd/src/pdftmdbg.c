@@ -1,7 +1,7 @@
 /*
  * Proxd FTM method implementation - debug support. See twiki FineTimingMeasurement.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmdbg.c 777286 2019-07-25 19:43:30Z $
+ * $Id: pdftmdbg.c 784258 2020-02-24 22:00:37Z $
  */
 
 #include "pdftmpvt.h"
@@ -319,6 +319,9 @@ pdftm_dump(const pdftm_t *ftm, struct bcmstrbuf *b)
 	bcm_bprintf(b, "\tmax sessions: %d\n",	ftm_cmn->max_sessions);
 	bcm_bprintf(b, "\tnum sessions: %d\n",	ftm_cmn->num_sessions);
 
+	bcm_bprintf(b, "\tactive sessions: %d\n",
+		wlc_ftm_num_sessions_inprog((const wlc_ftm_t *)ftm));
+
 	for (i = 0; i < ftm_cmn->max_sessions; ++i) {
 		pdftm_dump_session(ftm, ftm_cmn->sessions[i], b);
 	}
@@ -449,6 +452,7 @@ pdftm_dump_pkt_body(pdftm_t *ftm, const uint8 *body, uint body_len,
 		params = (const dot11_ftm_params_t *)tlv;
 		if (tlv_size < sizeof(*params)) {
 			bcm_bprintf(b, "Params  too short: size %d\n", tlv_size);
+			if (WL_ERROR_ON())
 			prhex("ftm params", body, body_len);
 			return;
 		}

@@ -1,7 +1,7 @@
 /*
  * Broadcom steering implementation which includes BSS transition, block and unblock MAC
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcm_steering.c 778087 2019-08-22 06:32:45Z $
+ * $Id: bcm_steering.c 785662 2020-04-02 13:15:59Z $
  */
 
 #include <typedefs.h>
@@ -55,6 +55,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <assert.h>
+#include <limits.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -81,10 +82,10 @@
 /* Static info set */
 #define WL_SINFOSET_SHIFT	15
 
-#define WL_MAC_PROB_MODE_SET(m, p, f)	((m << WL_MACMODE_SHIFT) | (p << WL_MACPROBE_SHIFT) \
-		| (f << WL_SINFOSET_SHIFT))
-#define	WL_MACMODE_GET(f)	(f & WL_MACMODE_MASK >> WL_MACMODE_SHIFT)
-#define	WL_MACPROBE_GET(f)	(f & WL_MACPROBE_MASK >> WL_MACPROBE_SHIFT)
+#define WL_MAC_PROB_MODE_SET(m, p, f)	(((m) << WL_MACMODE_SHIFT) | ((p) << WL_MACPROBE_SHIFT) \
+		| ((f) << WL_SINFOSET_SHIFT))
+#define	WL_MACMODE_GET(f)	(((f) & WL_MACMODE_MASK) >> WL_MACMODE_SHIFT)
+#define	WL_MACPROBE_GET(f)	(((f) & WL_MACPROBE_MASK) >> WL_MACPROBE_SHIFT)
 #define TIMER_MAX_COUNT	16
 #define WL_MAC_ADD	1
 #define WL_MAC_DEL	0
@@ -97,32 +98,31 @@
 
 /* NVRAM names */
 #define WLIFU_NVRAM_STEERING_MSGLEVEL	"steering_msglevel"
-#define WLIFU_NVRAM_STEER_FLAGS		"steer_flags" /* NVRAM for steering flags */
 #define WLIFU_NVRAM_TM_DEFIANT_WD	"steer_tm_defiant_wd" /* NVRAM for Dafiant WD Timer Tick */
 #define WLIFU_NVRAM_STEER_RESP_TIMEOUT	"steer_resp_timeout"	/* BSS Trans Response timoeut */
 #define WLIFU_NVRAM_NOBCNSSID_TIMEOUT	"nobcnssid_timeout"	/* Nobcnssid timoeut */
+#define WLIFU_NVRAM_FAKE_CHAN_UTIL	"fake_chan_util"	/* Fake channel utilization */
 
-/* Default Value of NVRAM for Steer Flags */
-#define WLIFU_DEF_STEER_FLAGS		0x0
 #define WLIFU_DEF_TM_DEFIANT_WD		5	/* NVRAM Default value of Dafiant WD Timer Tick */
 #define WLIFU_DEF_STEER_RESP_TIMEOUT	5	/* NVRAM Default value of Steer Response */
 #define WLIFU_DEF_NOBCNSSID_TIMEOUT	10	/* NVRAM Default value for nobcnssid timeout */
+#define WLIFU_DEF_FAKE_CHAN_UTIL	205	/* NVRAM Default value for fake */
+						/* channel utilization(80%) */
+/* Steering Band Digit */
+#define WLIFU_BAND_DIGIT_UNWN	0
+#define WLIFU_BAND_DIGIT_5GTO5G	1
+#define WLIFU_BAND_DIGIT_5GTO2G	2
+#define WLIFU_BAND_DIGIT_2GTO5G	3
+#define WLIFU_BAND_DIGIT_2GTO2G	4
 
-/* NVRAM for Steer Flags, Mask Values */		/* Bit	Purpose */
-#define STEER_FLAGS_MASK_BTR_UNWN	0x0001	/* 1 BSSTrans Resp UNKNOWN, Block Brute Force */
-#define STEER_FLAGS_MASK_BTR_RJCT	0x0002	/* 2 BSSTrans Resp REJECT, Apply Brute Force */
-#define STEER_FLAGS_MASK_BTR_ACPT	0x0004	/* 3 BSSTrans Resp ACCEPT, Enbl Defiant Watchdog */
-#define STEER_FLAGS_DISABLE_NOBCNSSID	0x0008	/* 4 Disable nobcnssid default is enabled */
-
-/* For Individual BSS Transition Response types, Get Brute Force Steer Behavior */
-#define BTR_UNWN_BRUTFORCE_BLK(steer_flags) ((steer_flags) & STEER_FLAGS_MASK_BTR_UNWN)
-#define BTR_RJCT_BRUTFORCE(steer_flags) ((steer_flags) & STEER_FLAGS_MASK_BTR_RJCT)
-
-/* For BSS Transition Response ACCEPT, Check if Dafiant STA Watchdog is required or not */
-#define BTR_ACPT_DEFIANT_WD_ON(steer_flags) ((steer_flags) & STEER_FLAGS_MASK_BTR_ACPT)
-
-/* Check whether nobcnssid is enabled or not */
-#define IS_NOBCNSSID_ENABLED(steer_flags) (!((steer_flags) & STEER_FLAGS_DISABLE_NOBCNSSID))
+/* File macros */
+#define STEERINGFILE_LINE_LEN		100
+#define STEERINGFILE_DIR_NAME		"/tmp"
+#define STEERINGFILE_PREFIX		"maclist"
+#define STEERINGFILE_POSTFIX		".txt"
+#define STEERINGFILE_TMPPREFIX		"tmpmaclist"
+#define	STEERINGFILE_NAME_FORMAT	"%s/%s_%s%s"
+#define STEERINGFILE_READWRITE_FORMAT	"%s\t%s\t%lu\t%x\n"
 
 /* to print message level */
 unsigned int g_steering_msglevel;
@@ -216,8 +216,17 @@ typedef struct wl_wlif_hdl_data {
 	callback_hndlr ioctl_hndlr;	/* Ioctl call handler. */
 	void *uschd_hdl;		/* Uschd lib handle. */
 	bcm_timer_module_id timer_hdl;	/* Linux timer handle. */
+	char appname[IFNAMSIZ];		/* Application that uses this library */
 	void *data;			/* App specific data. */
 } wl_wlif_hdl_data_t;
+
+/* Struct to read from file data. */
+typedef struct maclist_entry {
+	char ifname[IFNAMSIZ];			/* Interface name. */
+	char macaddr[ETHER_ADDR_STR_LEN];	/* Sta addr */
+	time_t timeout;				/* Timeout to clear mac from maclist. */
+	short flag;				/* Flag Bit Values */
+} maclist_entry_t;
 
 /*
  * Flag Bit Values
@@ -302,6 +311,47 @@ static void wl_wlif_post_bss_transreq_cb(bcm_timer_id timer_id, void* arg);
 #ifndef BCM_EVENT_HEADER_LEN
 #define BCM_EVENT_HEADER_LEN   (sizeof(bcm_event_t))
 #endif // endif
+
+/* Get interface's chanspec */
+static int
+wl_wlif_get_chanspec(char *ifname, chanspec_t* out_chanspec)
+{
+	int ret = -1;
+	uint32 val = 0;
+
+	/* Validate arg */
+	if (!out_chanspec) {
+		goto end;
+	}
+
+	ret = wl_iovar_getint(ifname, "chanspec", (int*)&val);
+	if (ret < 0) {
+		WLIF_BSSTRANS("ifname %s Get chanspec failed ret %d\n", ifname, ret);
+		goto end;
+	}
+
+	*out_chanspec = (chanspec_t)dtoh32(val);
+
+end:
+	return ret;
+}
+
+/* Get the steering band digit from the chanspecs */
+static int
+wl_wlif_get_steering_band_digit(chanspec_t from_chanspec, chanspec_t to_chanspec)
+{
+	if (CHSPEC_IS5G(from_chanspec) && CHSPEC_IS5G(to_chanspec)) {
+		return WLIFU_BAND_DIGIT_5GTO5G;
+	} else if (CHSPEC_IS5G(from_chanspec) && CHSPEC_IS2G(to_chanspec)) {
+		return WLIFU_BAND_DIGIT_5GTO2G;
+	} else if (CHSPEC_IS2G(from_chanspec) && CHSPEC_IS5G(to_chanspec)) {
+		return WLIFU_BAND_DIGIT_2GTO5G;
+	} else if (CHSPEC_IS2G(from_chanspec) && CHSPEC_IS2G(to_chanspec)) {
+		return WLIFU_BAND_DIGIT_2GTO2G;
+	}
+
+	return WLIFU_BAND_DIGIT_UNWN;
+}
 
 /* listen to sockets for bss response event */
 static int
@@ -451,13 +501,58 @@ wl_wlif_proc_event_socket(int event_fd, struct timeval *tv, char *ifreq, uint8 t
 
 	return WLIFU_BSS_TRANS_RESP_UNKNOWN;
 }
+static void
+wl_wlif_get_maclist_filename(wl_wlif_hdl_data_t *hdl, char *fname)
+{
+	snprintf(fname, PATH_MAX, STEERINGFILE_NAME_FORMAT, STEERINGFILE_DIR_NAME,
+		STEERINGFILE_PREFIX, (hdl->appname), STEERINGFILE_POSTFIX);
+}
+static int
+wl_wlif_get_maclist_entry(char *str, maclist_entry_t *e)
+{
+	int ret;
+	maclist_entry_t zeroe = {0};
+	*e = zeroe;
 
+	ret = sscanf(str, STEERINGFILE_READWRITE_FORMAT, e->ifname, e->macaddr,
+			&e->timeout, &e->flag);
+	return ret;
+}
+static int
+wl_wlif_restore_old_maclist_timer(wl_wlif_hdl_data_t *hdl)
+{
+	FILE *fp;
+	char fname[PATH_MAX];
+	struct maclist_entry entry;
+	int timeout;
+	struct ether_addr ea;
+	char line[STEERINGFILE_LINE_LEN];
+
+	wl_wlif_get_maclist_filename(hdl, fname);
+	if (!(fp = fopen(fname, "r"))) {
+		WLIF_BSSTRANS("Error opening file %s : %s\n", fname, strerror(errno));
+		return -1;
+	}
+	while (fgets(line, sizeof(line), fp) != NULL) {
+		wl_wlif_get_maclist_entry(line, &entry);
+		if ((strncmp(entry.ifname, hdl->ifname, sizeof(entry.ifname)) == 0)) {
+			timeout = (entry.timeout - time(NULL)) < 1 ?
+					1 : (entry.timeout - time(NULL));
+			bcm_ether_atoe((const char *)entry.macaddr, &ea);
+			wl_wlif_create_unblock_mac_timer(hdl, ea, timeout, entry.flag);
+			WLIF_BSSTRANS("%s: create timer for unblocking "MACF" after %d "
+				"seconds\n", hdl->ifname, ETHER_TO_MACF(ea), timeout);
+		}
+	}
+	fclose(fp);
+	return 0;
+}
 /*
  * Init routine for wlif lib handle.
  */
 wl_wlif_hdl*
-wl_wlif_init(void *uschd_hdl, char *ifname,
-	callback_hndlr ioctl_hndlr, void *data)
+wl_wlif_init(void *uschd_hdl, char *ifname, callback_hndlr ioctl_hndlr,
+	void *data, char *appname)
 {
 	wl_wlif_hdl_data_t *hdl = (wl_wlif_hdl_data_t*)calloc(1, sizeof(*hdl));
 	char *value;
@@ -500,8 +595,11 @@ wl_wlif_init(void *uschd_hdl, char *ifname,
 	}
 
 	hdl->data = data;
-	WLIF_BSSTRANS("BSS Transition Initialized Ifname[%s] Msglevel[%d] resp_timeout[%d]\n",
-		hdl->ifname, g_steering_msglevel, hdl->resp_timeout);
+	strncpy(hdl->appname, appname, sizeof(hdl->appname));
+	hdl->appname[sizeof(hdl->appname) - 1] = '\0';
+	WLIF_BSSTRANS("%s: BSS Transition Initialized Ifname[%s] Msglevel[%d] resp_timeout[%d]\n",
+		appname, hdl->ifname, g_steering_msglevel, hdl->resp_timeout);
+	wl_wlif_restore_old_maclist_timer(hdl);
 
 	return hdl;
 }
@@ -831,6 +929,9 @@ wl_wlif_send_bss_transreq(wl_wlif_hdl_data_t *hdl_data,
 		bsstrans_req.tbtt = ioctl_data->disassoc_timer;
 	}
 
+	/* Add steering reason */
+	bsstrans_req.reason = ioctl_data->reason;
+
 	if (++bss_token == 0)
 		bss_token = 1;
 	bsstrans_req.token = bss_token;
@@ -1006,10 +1107,92 @@ wl_wlif_create_timer(void *uschd_hdl, bcm_timer_module_id timer_hdl,
 	return TRUE;
 }
 
+static int
+wl_wlif_add_macblock_to_file(wl_wlif_hdl_data_t *hdl, struct ether_addr addr,
+	int timeout, short flag)
+{
+	FILE *fp;
+	char fname[PATH_MAX];
+	char line[STEERINGFILE_LINE_LEN], eabuf[ETHER_ADDR_STR_LEN];
+	maclist_entry_t entry;
+	bool add = TRUE;
+
+	wl_wlif_get_maclist_filename(hdl, fname);
+	if (!(fp = fopen(fname, "a+"))) {
+		WLIF_BSSTRANS("Error opening file %s: %s\n", fname, strerror(errno));
+		return -1;
+	}
+	bcm_ether_ntoa(&addr, eabuf);
+	while (fgets(line, sizeof(line), fp) != NULL) {
+		wl_wlif_get_maclist_entry(line, &entry);
+		if ((strncmp(entry.macaddr, eabuf, strlen(entry.macaddr)) == 0) &&
+			(strncmp(entry.ifname, hdl->ifname, strlen(entry.ifname)) == 0)) {
+			add = FALSE;
+			break;
+		}
+	}
+	if (add) {
+		snprintf(line, sizeof(line), STEERINGFILE_READWRITE_FORMAT, hdl->ifname, eabuf,
+			(time(NULL) + timeout), flag);
+		fputs(line, fp);
+		WLIF_BSSTRANS("%s: add blocking "MACF" for %d seconds in %s\n", hdl->ifname,
+			ETHER_TO_MACF(addr), timeout, fname);
+	}
+	fclose(fp);
+
+	return 0;
+}
+static int
+wl_wlif_remove_macblock_from_file(wl_wlif_hdl_data_t *hdl, struct ether_addr addr, short flag)
+{
+	FILE *fp, *fp_tmp;
+	char fname[PATH_MAX];
+	char tmpfname[PATH_MAX];
+	char line[STEERINGFILE_LINE_LEN], eabuf[ETHER_ADDR_STR_LEN];
+	maclist_entry_t entry;
+
+	wl_wlif_get_maclist_filename(hdl, fname);
+	if (!(fp = fopen(fname, "r"))) {
+		WLIF_BSSTRANS("Error opening file %s: %s\n", fname, strerror(errno));
+		return -1;
+	}
+	snprintf(tmpfname, PATH_MAX, STEERINGFILE_NAME_FORMAT, STEERINGFILE_DIR_NAME,
+		STEERINGFILE_TMPPREFIX, (hdl->appname), STEERINGFILE_POSTFIX);
+	if (!(fp_tmp = fopen(tmpfname, "w"))) {
+		WLIF_BSSTRANS("Error opening file %s: %s\n", tmpfname, strerror(errno));
+		fclose(fp);
+		return -1;
+	}
+	bcm_ether_ntoa(&addr, eabuf);
+
+	while (fgets(line, sizeof(line), fp) != NULL) {
+		wl_wlif_get_maclist_entry(line, &entry);
+		if ((strncmp(entry.macaddr, eabuf, strlen(entry.macaddr)) == 0) &&
+			(strncmp(entry.ifname, hdl->ifname, strlen(entry.ifname)) == 0)) {
+			WLIF_BSSTRANS("%s: remove "MACF" from %s\n", hdl->ifname,
+				ETHER_TO_MACF(addr), fname);
+			continue;
+		}
+		fputs(line, fp_tmp);
+	}
+	fclose(fp);
+	fclose(fp_tmp);
+	if (remove(fname) != 0) {
+		WLIF_BSSTRANS("filename %s not removed %s\n", fname, strerror(errno));
+		return -1;
+	}
+	if (rename(tmpfname, fname) != 0) {
+		WLIF_BSSTRANS("filename %s not renamed to %s: %s\n", tmpfname, fname,
+			strerror(errno));
+		return -1;
+	}
+
+	return 0;
+}
 /*
  * Retrieves the current macmode, maclist and probe resp filter values
  * of interface, updates the data with STA address and sets them again.
- * If timeout is non zero and non negative than creates timer for
+ * If timeout is non zero and non negative, then creates timer for
  * unblock mac routine.
  * For negative timeout value unblock timer will not be created.
  * For 0 timeout value sta will not be blocked at all.
@@ -1090,6 +1273,7 @@ wl_wlif_block_mac(wl_wlif_hdl *hdl, struct ether_addr addr, int timeout)
 				"seconds\n", hdl_data->ifname, ETHER_TO_MACF(addr), timeout);
 			return FALSE;
 		}
+		wl_wlif_add_macblock_to_file(hdl_data, addr, timeout, flag);
 	}
 
 	macmode = htod32((macmode == WLC_MACMODE_ALLOW) ? WLC_MACMODE_ALLOW : WLC_MACMODE_DENY);
@@ -1174,13 +1358,10 @@ end:
 
 /* Set the Channel utilization value */
 static int
-wl_set_channel_util(wl_wlif_hdl *hdl,
-	struct ether_addr *addr, uint8 chan_util)
+wl_set_channel_util(wl_wlif_hdl *hdl, uint8 chan_util)
 {
 	int ret = -1;
 	char  *param, maclist_buf[WLC_IOCTL_MAXLEN];
-	maclist_t *maclist;
-	bss_load_t  *bss_load;
 	wl_wlif_hdl_data_t *hdl_data;
 	char *iovar_name = "bssload_fake_chan_util";
 
@@ -1194,20 +1375,16 @@ wl_set_channel_util(wl_wlif_hdl *hdl,
 	memset(maclist_buf, 0, sizeof(maclist_buf));
 	strcpy(maclist_buf, iovar_name);
 	param = (char *)(maclist_buf + strlen(iovar_name) + 1);
-	bss_load = (bss_load_t *)param;
-	maclist = &bss_load->maclist;
-	maclist->count = 1;
-	bss_load->chan_util = chan_util;	/* Initialize the channel utilization value */
-	memcpy(maclist->ea, addr, sizeof(struct ether_addr));
+	*param = chan_util;	/* Initialize the channel utilization value */
 
-	WLIF_BSSTRANS("%s: Setting bssload_fake_chan_util to %d for "MACF"\n",
-		hdl_data->ifname,  chan_util, ETHERP_TO_MACF(addr));
+	WLIF_BSSTRANS("%s: Setting bssload_fake_chan_util to %d\n",
+		hdl_data->ifname, chan_util);
 
 	ret = hdl_data->ioctl_hndlr(hdl_data->ifname, WLC_SET_VAR, (void *)maclist_buf,
 			sizeof(maclist_buf), hdl_data->data);
 	if (ret < 0) {
-		WLIF_BSSTRANS("%s: Error setting bssload_fake_chan_util for "MACF"\n",
-			hdl_data->ifname,  ETHERP_TO_MACF(addr));
+		WLIF_BSSTRANS("%s: Error setting bssload_fake_chan_util\n",
+			hdl_data->ifname);
 		return ret;
 	}
 	return  ret;
@@ -1218,11 +1395,16 @@ static int
 wl_wlif_set_fake_chan_util_for_sta(wl_wlif_hdl *hdl,
 	wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd)
 {
-	int ret;
-	uint8  chan_util = 255;
+	char *value;
+	uint8 fake_chan_util = WLIFU_DEF_FAKE_CHAN_UTIL;
 
-	ret = wl_set_channel_util(hdl, &ioctl_hndlr_data->addr, chan_util);
-	return ret;
+	/* Read NVRAM for fake channel utilization */
+	value = nvram_safe_get(WLIFU_NVRAM_FAKE_CHAN_UTIL);
+	if (value[0] != '\0') {
+		fake_chan_util = (uint8)strtoul(value, NULL, 0);
+	}
+
+	return wl_set_channel_util(hdl, fake_chan_util);
 }
 
 /* Clear the Channel utilization value  in Bss load element */
@@ -1230,10 +1412,7 @@ static int
 wl_wlif_clear_fake_chan_util_for_sta(wl_wlif_hdl *hdl,
 	wl_wlif_bss_trans_data_t *ioctl_hndlr_data, int event_fd)
 {
-	int ret;
-	uint8 chan_util = 0;
-	ret = wl_set_channel_util(hdl, &ether_null, chan_util);
-	return ret;
+	return wl_set_channel_util(hdl, 0);
 }
 
 static int
@@ -1411,12 +1590,20 @@ wl_wlif_do_bss_trans(wl_wlif_hdl *hdl,
 	wl_wlif_bss_trans_resp_t *out_resp)
 {
 	int bsstrans_ret = -1, steer_flags = WLIFU_DEF_STEER_FLAGS, brute_force = 0;
+	int steer_band_digit;
 	char *value = NULL;
-	wl_wlif_hdl_data_t *hdl_data;
+	wl_wlif_hdl_data_t *hdl_data = NULL;
+	chanspec_t chanspec = 0;
 
 	if (!hdl) {
 		WLIF_BSSTRANS("Err: Invalid wlif handle \n");
 		goto end;
+	}
+
+	/* Read NVRAM for Steering Flags, to customize steering behavior */
+	value = nvram_safe_get(WLIFU_NVRAM_STEER_FLAGS);
+	if (value[0] != '\0') {
+		steer_flags = (int)strtoul(value, NULL, 0);
 	}
 
 	hdl_data = (wl_wlif_hdl_data_t*)hdl;
@@ -1448,33 +1635,53 @@ wl_wlif_do_bss_trans(wl_wlif_hdl *hdl,
 		goto end;
 	}
 
-	/* Read NVRAM for Steering Flags, to customize steering behavior */
-	value = nvram_safe_get(WLIFU_NVRAM_STEER_FLAGS);
-	if (value[0] != '\0') {
-		steer_flags = (int)strtoul(value, NULL, 0);
+	/* Get the chanspec of current interface */
+	wl_wlif_get_chanspec(hdl_data->ifname, &chanspec);
+	steer_band_digit = wl_wlif_get_steering_band_digit(chanspec, ioctl_hndlr_data->chanspec);
+
+	/* Check if Brute Force Steer is applicable for each steer response type */
+	if (bsstrans_ret == WLIFU_BSS_TRANS_RESP_REJECT) {
+		/* By default no brute force for reject response */
+		brute_force = 0;
+		if (BTR_RJCT_BRUTFORCE_ON(steer_flags)) {
+			/* Brute force enabled for reject response */
+			brute_force = 1;
+		}
 	}
 
-	/* For BSS Transition Response ACCEPT, Check if Dafiant STA Watchdog is required or not */
-	if ((bsstrans_ret == WLIFU_BSS_TRANS_RESP_ACCEPT) && BTR_ACPT_DEFIANT_WD_ON(steer_flags)) {
+	if (bsstrans_ret == WLIFU_BSS_TRANS_RESP_UNKNOWN) {
+		/* By default do brute force for unknown response (legacy STAs) */
+		brute_force = 1;
+		if ( BTR_UNWN_BRUTFORCE_OFF(steer_flags)) {
+			/* No brute force for unknows response */
+			brute_force = 0;
+		}
 
-		/* Create Defiant STA Watchdog Timer */
-		WLIF_BSSTRANS("%s: Creating timer for %d sec to check if the STA "MACF" actually "
-			"moved\n", hdl_data->ifname, ioctl_hndlr_data->timeout,
-			ETHER_TO_MACF(ioctl_hndlr_data->addr));
-		wl_wlif_create_defiant_sta_watchdog_timer(hdl_data,
-			ioctl_hndlr_data->addr, ioctl_hndlr_data->timeout);
+		if (IS_LEGACY_ACT_STA_BRUTEFORCE_OFF(steer_flags)) {
+			/* No brute force for active legacy STAs flag set */
+			if (ioctl_hndlr_data->flags & WLIFU_BSS_TRANS_FLAGS_LEGACY_ACTIVE_STA) {
+				brute_force = 0;
+			}
+		}
 	}
 
-	/* Check if Brute Force Steer is applicable, for this Response Type */
-	brute_force =
-		(((bsstrans_ret == WLIFU_BSS_TRANS_RESP_REJECT) &&
-		(BTR_RJCT_BRUTFORCE(steer_flags))) ||
-		((bsstrans_ret == WLIFU_BSS_TRANS_RESP_UNKNOWN) &&
-		(!BTR_UNWN_BRUTFORCE_BLK(steer_flags))));
+	/* Check if brute force steer is applicable based on band digits */
+	if (bsstrans_ret != WLIFU_BSS_TRANS_RESP_ACCEPT) {
+		brute_force |=
+			(((steer_band_digit == WLIFU_BAND_DIGIT_5GTO5G) &&
+			(BTR_5GTO5G_BRUTEFORCE_ON(steer_flags))) ||
+			((steer_band_digit == WLIFU_BAND_DIGIT_5GTO2G) &&
+			(BTR_5GTO2G_BRUTEFORCE_ON(steer_flags))) ||
+			((steer_band_digit == WLIFU_BAND_DIGIT_2GTO5G) &&
+			(BTR_2GTO5G_BRUTEFORCE_ON(steer_flags))) ||
+			((steer_band_digit == WLIFU_BAND_DIGIT_2GTO2G) &&
+			(BTR_2GTO2G_BRUTEFORCE_ON(steer_flags))));
+	}
 
-	WLIF_BSSTRANS("%s:%s brute force disassoc of STA "MACF" after %d sec. NVRAM %s=%d\n",
+	WLIF_BSSTRANS("%s:%s brute force disassoc of STA "MACF" after %d sec. NVRAM %s=%d "
+		"steer_band_digit=%d\n",
 		hdl_data->ifname, brute_force ? "" : " No", ETHER_TO_MACF(ioctl_hndlr_data->addr),
-		ioctl_hndlr_data->timeout, WLIFU_NVRAM_STEER_FLAGS, steer_flags);
+		ioctl_hndlr_data->timeout, WLIFU_NVRAM_STEER_FLAGS, steer_flags, steer_band_digit);
 	/* If Brute Force Steer is not applicable, for this Response Type, Leave */
 	if (!brute_force) {
 		goto end;
@@ -1485,6 +1692,17 @@ wl_wlif_do_bss_trans(wl_wlif_hdl *hdl,
 		ioctl_hndlr_data->timeout, brute_force);
 
 end:
+	/* For BSS Transition Response ACCEPT, Check if Dafiant STA Watchdog is required or not */
+	if (hdl_data && (bsstrans_ret == WLIFU_BSS_TRANS_RESP_ACCEPT) &&
+		BTR_ACPT_DEFIANT_WD_ON(steer_flags)) {
+
+		/* Create Defiant STA Watchdog Timer */
+		WLIF_BSSTRANS("%s: Creating timer for %d sec to check if the STA "MACF" actually "
+			"moved\n", hdl_data->ifname, ioctl_hndlr_data->timeout,
+			ETHER_TO_MACF(ioctl_hndlr_data->addr));
+		wl_wlif_create_defiant_sta_watchdog_timer(hdl_data,
+			ioctl_hndlr_data->addr, ioctl_hndlr_data->timeout);
+	}
 	return bsstrans_ret;
 }
 
@@ -1558,6 +1776,7 @@ wl_wlif_unblock_mac(wl_wlif_hdl *hdl, struct ether_addr addr, int flag)
 	if (ret < 0) {
 		WLIF_BSSTRANS("%s: Error in WLC_SET_MACMODE. ret=%d\n", hdl_data->ifname, ret);
 	}
+	wl_wlif_remove_macblock_from_file(hdl_data, addr, flag);
 
 	return TRUE;
 }
@@ -1757,7 +1976,19 @@ static bool
 wl_wlif_unset_nobcnssid(wl_wlif_hdl *hdl)
 {
 	wl_wlif_hdl_data_t *hdl_data = (wl_wlif_hdl_data_t*)hdl;
-	int ret = 0;
+	char *val = NULL;
+	int ret, steer_flags = WLIFU_DEF_STEER_FLAGS;
+
+	val = nvram_safe_get(WLIFU_NVRAM_STEER_FLAGS);
+	if (val[0] != '\0') {
+		steer_flags = (int)strtoul(val, NULL, 0);
+	}
+
+	if (IS_FAKE_CHAN_UTIL_ENABLED(steer_flags) &&
+		!wl_wlif_clear_fake_chan_util_for_sta(hdl, NULL, 0))
+	{
+		WLIF_BSSTRANS("%s: fake chan util clear failed. ret=%d\n", hdl_data->ifname, ret);
+	}
 
 	ret = wl_iovar_setint(hdl_data->ifname, "nobcnssid", 0);
 	if (ret != 0) {
@@ -1827,7 +2058,8 @@ wl_wlif_set_nobcnssid(wl_wlif_hdl *hdl)
 {
 	wl_wlif_hdl_data_t *hdl_data;
 	int timeout = atoi(nvram_safe_get(WLIFU_NVRAM_NOBCNSSID_TIMEOUT));
-	int ret = 0;
+	char *val = NULL;
+	int ret, steer_flags = WLIFU_DEF_STEER_FLAGS;
 
 	if (!hdl) {
 		WLIF_BSSTRANS("Err: Invalid wlif handle\n");
@@ -1838,9 +2070,23 @@ wl_wlif_set_nobcnssid(wl_wlif_hdl *hdl)
 
 	wl_endian_probe(hdl_data->ifname);
 
+	val = nvram_safe_get(WLIFU_NVRAM_STEER_FLAGS);
+	if (val[0] != '\0') {
+		steer_flags = (int)strtoul(val, NULL, 0);
+	}
+
+	if (IS_FAKE_CHAN_UTIL_ENABLED(steer_flags) &&
+		!wl_wlif_set_fake_chan_util_for_sta(hdl, NULL, 0))
+	{
+		WLIF_BSSTRANS("%s: fake chan util set failed. ret=%d\n", hdl_data->ifname, ret);
+	}
+
 	ret = wl_iovar_setint(hdl_data->ifname, "nobcnssid", 1);
 	if (ret != 0) {
 		WLIF_BSSTRANS("%s: nobcnssid set failed. ret=%d\n", hdl_data->ifname, ret);
+		if (IS_FAKE_CHAN_UTIL_ENABLED(steer_flags)) {
+			wl_wlif_clear_fake_chan_util_for_sta(hdl, NULL, 0);
+		}
 		return FALSE;
 	}
 
@@ -1850,6 +2096,9 @@ wl_wlif_set_nobcnssid(wl_wlif_hdl *hdl)
 
 	/* In case of timer creation failure unset the nobcnssid iovar */
 	if (!wl_wlif_create_nobcnssid_timer(hdl_data, timeout)) {
+		if (IS_FAKE_CHAN_UTIL_ENABLED(steer_flags)) {
+			wl_wlif_clear_fake_chan_util_for_sta(hdl, NULL, 0);
+		}
 		if (!wl_wlif_unset_nobcnssid(hdl)) {
 			return FALSE;
 		}

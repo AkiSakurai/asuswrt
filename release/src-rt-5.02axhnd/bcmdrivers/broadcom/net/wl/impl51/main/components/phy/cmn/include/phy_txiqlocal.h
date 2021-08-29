@@ -1,7 +1,7 @@
 /*
  * TXIQLO CAL module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_txiqlocal.h 690650 2017-03-17 06:16:02Z $
+ * $Id: phy_txiqlocal.h 781257 2019-11-15 00:45:58Z $
  */
 
 #ifndef _phy_txiqlocal_h_
@@ -94,6 +94,11 @@ void phy_txiqlocal_txiqccget(phy_info_t *pi, void *a);
 void phy_txiqlocal_txiqccset(phy_info_t *pi, void *p);
 void phy_txiqlocal_txloccget(phy_info_t *pi, void *a);
 void phy_txiqlocal_txloccset(phy_info_t *pi, void *p);
+
+#if defined(WLTEST)
+int phy_txiqlocal_get_calidx(phy_info_t *pi, int32 *calidx);
+int phy_txiqlocal_set_calidx(phy_info_t *pi, int32 calidx);
+#endif // endif
 
 void phy_txiqlocal_scanroam_cache(phy_info_t *pi, bool set);
 #endif /* _phy_txiqlocal_h_ */

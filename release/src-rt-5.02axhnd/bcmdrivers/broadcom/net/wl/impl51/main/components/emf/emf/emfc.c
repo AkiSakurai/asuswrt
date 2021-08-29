@@ -47,7 +47,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: emfc.c 776823 2019-07-10 20:34:52Z $
+ * $Id: emfc.c 779297 2019-09-24 18:34:27Z $
  */
 #include <typedefs.h>
 #include <bcmdefs.h>
@@ -1924,6 +1924,7 @@ emfc_exit(emfc_info_t *emfc)
 	clist_delete(&emfc->emfc_list);
 	OSL_UNLOCK(emfc_list_lock);
 
+	emfc_igmp_snooper_unregister(emfc);
 	MFREE(emfc->osh, emfc, sizeof(emfc_info_t));
 
 	EMF_DEBUG("Cleaned up EMFL, exiting common code\n");

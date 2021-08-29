@@ -1,6 +1,6 @@
 /*
  * Key Management Module km_hw Implementation
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_hw.c 775512 2019-06-03 09:01:10Z $
+ * $Id: km_hw.c 783821 2020-02-11 06:00:35Z $
  */
 
 /* This file implements the wlc keymgmt functionality. It provides
@@ -254,6 +254,7 @@ km_hw_reset(km_hw_t *hw)
 	skl_idx_t skl_idx;
 	amt_idx_t amt_idx;
 	int i;
+	char line[2*KM_HW_MAX_DATA_LEN + 1] = {0};
 
 	/* note: may be called during hw attach cleanup */
 	if (!KM_HW_VALID(hw))
@@ -329,7 +330,7 @@ km_hw_reset(km_hw_t *hw)
 
 	if (D11REV_LT(KM_HW_COREREV(hw), 40)) {
 		/* limit h/w idx to what is configured  <= RCMTA_SIZE or AMT_SIZE */
-		W_REG(KM_HW_OSH(hw), D11_rcmta_size(KM_HW_WLC(hw)), hw->max_amt_idx);
+		W_REG(KM_HW_OSH(hw), D11_rcmta_size(KM_HW_WLC(hw)), (uint16)hw->max_amt_idx);
 	}
 
 	if (!KM_HW_KEYTAB_SUPPORTED(hw)) {
@@ -346,6 +347,13 @@ km_hw_reset(km_hw_t *hw)
 
 	hw->flags &= ~KM_HW_DEFKEYS;
 	hw->flags |= (KM_HW_RESET | KM_HW_INITED);
+
+	/* wlc_getrand always returns ok */
+	wlc_getrand(hw->wlc, hw->rand_def_key, sizeof(hw->rand_def_key));
+
+	bcm_format_hex(line, hw->rand_def_key, sizeof(hw->rand_def_key));
+
+	KM_HW_LOG(("wl%d: init random key value: %s\n", KM_HW_UNIT(hw), line));
 
 	KM_HW_LOG(("wl%d: %s: done\n", KM_HW_UNIT(hw), __FUNCTION__));
 }
@@ -691,4 +699,28 @@ bool
 km_hw_amt_idx_valid(km_hw_t *hw, amt_idx_t amt_idx)
 {
 	return KM_HW_AMT_IDX_VALID(hw, amt_idx);
+}
+
+/* Overwrite 0 key with some data to prevent trivial key usage
+ * arm cycle is used rather than random number generator to avoid (remote)
+ * chance of blocking with rng.  This is acceptable since this is intended
+ * only as a inexpensive safety net
+*/
+const uint8 *
+km_hw_fixup_null_hw_key(km_hw_t *hw, const uint8 *data, size_t data_len)
+{
+	uint32 i;
+	char line[2*sizeof(hw->rand_def_key) + 1] = {0};
+
+	for (i = 0; i < data_len; i++) {
+		if (data[i]) {
+			return data;
+		}
+	}
+
+	wlc_getrand(hw->wlc, hw->rand_def_key, sizeof(hw->rand_def_key));
+	bcm_format_hex(line, hw->rand_def_key, sizeof(hw->rand_def_key));
+	KM_HW_PRINT(("wl%d: random key value: %s\n", KM_HW_UNIT(hw), line));
+
+	return hw->rand_def_key;
 }

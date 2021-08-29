@@ -38,35 +38,43 @@
 #include <shutils.h>
 #include <shared.h>
 
-#ifdef RTCONFIG_ODMPID
 struct REPLACE_PRODUCTID_S replace_productid_t[] =
 {
-	{"LYRA_VOICE", "LYRA VOICE"},
-	{"RT-AC57U_V2", "RT-AC57U V2"},
-	{"RT-AC58U_V2", "RT-AC58U V2"},
-	{"RT-AC1300G_PLUS_V2", "RT-AC1300G PLUS V2"},
-	{"RT-AC1500G_PLUS", "RT-AC1500G PLUS"},
-	{NULL, NULL}
+	{"LYRA_VOICE", "LYRA VOICE", "global"},
+	{"RT-AC57U_V2", "RT-AC57U V2", "global"},
+	{"RT-AC58U_V2", "RT-AC58U V2", "global"},
+	{"RT-AC1300G_PLUS_V2", "RT-AC1300G PLUS V2", "global"},
+	{"RT-AC1500G_PLUS", "RT-AC1500G PLUS", "global"},
+	{"ZenWiFi_CT8", "ZenWiFi AC", "global"},
+	{"ZenWiFi_CT8", "灵耀AC3000", "CN"},
+	{"ZenWiFi_XT8", "ZenWiFi AX", "global"},
+	{"ZenWiFi_XT8", "灵耀AX6600", "CN"},
+	{"ZenWiFi_XD4", "ZenWiFi AX Mini", "global"},
+	{"ZenWiFi_XD4", "灵耀AX魔方", "CN"},
+	{"ZenWiFi_CD6R", "ZenWiFi AC Mini", "global"},
+	{"ZenWiFi_CD6N", "ZenWiFi AC Mini", "global"},
+	{"ZenWiFi_XP4", "ZenWiFi AX Hybrid", "global"},
+	{"ZenWiFi_CV4", "ZenWiFi Voice", "global"},
+	{NULL, NULL, NULL}
 };
-#endif
 
 static char * get_arg(char *args, char **next);
 static void call(char *func, FILE *stream);
 
 /* Look for unquoted character within a string */
 static char *
-unqstrstr(char *haystack, char *needle)
+unqstrstr(const char *haystack, const char *needle)
 {
 	char *cur;
 	int q;
 
 	for (cur = haystack, q = 0;
-	     cur < &haystack[strlen(haystack)] && !(!q && !strncmp(needle, cur, strlen(needle)));
+	     cur < (haystack + strlen(haystack)) && !(!q && !strncmp(needle, cur, strlen(needle)));
 	     cur++) {
 		if (*cur == '"')
 			q ? q-- : q++;
 	}
-	return (cur < &haystack[strlen(haystack)]) ? cur : NULL;
+	return (cur < (haystack + strlen(haystack))) ? cur : NULL;
 }
 
 static char *
@@ -148,17 +156,22 @@ process_asp (char *s, char *e, FILE *f)
 	return end;
 }
 
-#ifdef RTCONFIG_ODMPID
-static void replace_productid(char *GET_PID_STR, char *RP_PID_STR, int len){
+extern void replace_productid(char *GET_PID_STR, char *RP_PID_STR, int len){
 
 	struct REPLACE_PRODUCTID_S *p;
 
 	for(p = &replace_productid_t[0]; p->org_name; p++){
 		if(!strcmp(GET_PID_STR, p->org_name)){
-			strlcpy(RP_PID_STR, p->replace_name, len);
-			return;
+			if(!strncmp(nvram_safe_get("preferred_lang"), p->p_lang, 2))
+				strlcpy(RP_PID_STR, p->replace_name, len);
+
+			if(!strcmp("global", p->p_lang) && !strlen(RP_PID_STR))
+				strlcpy(RP_PID_STR, p->replace_name, len);
 		}
 	}
+
+	if(strlen(RP_PID_STR))
+		return;
 
 	/* general  replace underscore with space */
 	strlcpy(RP_PID_STR, GET_PID_STR, len);
@@ -168,7 +181,6 @@ static void replace_productid(char *GET_PID_STR, char *RP_PID_STR, int len){
 			*RP_PID_STR = ' ';
 	}
 }
-#endif
 
 // Call this function if and only if we can read whole <#....#> pattern.
 static char *
@@ -189,7 +201,6 @@ translate_lang (char *s, char *e, FILE *f, kw_t *pkw)
 
 		desc = search_desc (pkw, name);
 		if (desc != NULL) {
-#ifdef RTCONFIG_ODMPID
 			static char pattern1[2048];
 			char RP_PID_STR[32];
 			char GET_PID_STR[32]={0};
@@ -202,10 +213,10 @@ translate_lang (char *s, char *e, FILE *f, kw_t *pkw)
 			pid_len = strlen(PID_STR);
 			get_pid_len = strlen(GET_PID_STR);
 
-			if (get_pid_len && strcmp(PID_STR, GET_PID_STR) != 0) {
+			memset(RP_PID_STR, 0, sizeof(RP_PID_STR));
+			replace_productid(GET_PID_STR, RP_PID_STR, sizeof(RP_PID_STR));
 
-				replace_productid(GET_PID_STR, RP_PID_STR, sizeof(RP_PID_STR));
-
+			if(strcmp(PID_STR, RP_PID_STR) != 0){
 				get_pid_len = strlen(RP_PID_STR);
 				pSrc  = desc;
 				pDest = pattern1;
@@ -224,7 +235,7 @@ translate_lang (char *s, char *e, FILE *f, kw_t *pkw)
 					desc = pattern1;
 				}
 			}
-#endif
+
 			fprintf (f, "%s", desc);
 		}
 
@@ -270,9 +281,20 @@ do_ej(char *path, FILE *stream)
 		nvram_set("preferred_lang", lang);
 	}
 
-	if (load_dictionary (lang, &kw)){
-		no_translate = 0;
+	char *current_lang;
+	struct json_object *root=NULL;
+	do_json_decode(&root);
+	if ((current_lang = get_cgi_json("current_lang", root)) != NULL){
+		if (load_dictionary (current_lang, &kw)){
+			no_translate = 0;
+		}
 	}
+	else{
+		if (load_dictionary (lang, &kw)){
+			no_translate = 0;
+		}
+	}
+	if (root) json_object_put(root);
 #endif  //defined TRANSLATE_ON_FLY
 
 	start_pat = end_pat = pattern;
@@ -285,10 +307,12 @@ do_ej(char *path, FILE *stream)
 		if (((pattern + pattern_size) - end_pat) < frag_size)
 		{
 			len = end_pat - start_pat;
-			memcpy (pattern, start_pat, len);
-			start_pat = pattern;
-			end_pat = start_pat + len;
-			*end_pat = '\0';
+			if(len < pattern_size){
+				memcpy (pattern, start_pat, len);
+				start_pat = pattern;
+				end_pat = start_pat + len;
+				*end_pat = '\0';
+			}
 		}
 
 		read_len = (pattern + pattern_size) - end_pat;

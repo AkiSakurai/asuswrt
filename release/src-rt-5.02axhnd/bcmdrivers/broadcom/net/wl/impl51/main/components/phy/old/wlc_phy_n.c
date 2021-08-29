@@ -2,7 +2,7 @@
  * PHY and RADIO specific portion of Broadcom BCM43XX 802.11abgn
  * Networking Device Driver.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phy_n.c 776008 2019-06-17 16:42:22Z $
+ * $Id: wlc_phy_n.c 781339 2019-11-19 02:28:04Z $
  */
 
 /* XXX WARNING: phy structure has been changed, read this first
@@ -3178,7 +3178,7 @@ BCMATTACHFN(wlc_phy_attach_nphy)(phy_info_t *pi)
 		pi->u.pi_nphy->elna2g = (uint8)PHY_GETINTVAR(pi, rstr_elna2g);
 	}
 
-#ifdef BAND5G
+#if BAND5G
 	if (PHY_GETVAR(pi, rstr_elna5g)) {
 		/* extlnagain5g entry exists, so use it. */
 		pi->u.pi_nphy->elna5g = (uint8)PHY_GETINTVAR(pi, rstr_elna5g);
@@ -3569,8 +3569,7 @@ WLBANDINITFN(wlc_phy_init_nphy)(phy_info_t *pi)
 		   to on-values is not bypassed due to pi->interf->hw_aci_mitig_on
 		   being TRUE
 		*/
-		if (CHSPEC_CHANNEL(pi->radio_chanspec) ==
-			pi->interf->curr_home_channel) {
+		if (pi->radio_chanspec == pi->interf->home_chanspec) {
 			pi->interf->hw_aci_mitig_on = FALSE;
 		}
 		if (CHSPEC_IS20(pi->radio_chanspec) ||
@@ -3797,7 +3796,7 @@ WLBANDINITFN(wlc_phy_init_nphy)(phy_info_t *pi)
 				if (wlc_phy_cal_txiqlo_nphy(pi, target_gain, TRUE, FALSE) ==
 				    BCME_OK) {
 #ifdef RXIQCAL_FW_WAR
-					if ((CHSPEC_IS5G(pi->radio_chanspec) &&
+					if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec) &&
 						(wlc_phy_cal_rxiq_nphy_fw_war(pi,
 						target_gain, 2, FALSE, 0x3) == BCME_OK)) ||
 					    (CHSPEC_IS2G(pi->radio_chanspec) &&
@@ -3821,7 +3820,7 @@ WLBANDINITFN(wlc_phy_init_nphy)(phy_info_t *pi)
 				wlc_phy_cal_perical((wlc_phy_t *)pi, PHY_PERICAL_PHYINIT);
 			}
 		} else {
-#ifdef PHYCAL_CACHING
+#ifdef WLMCHAN /* remove PHYCAL_CACHING and sync from BISON */
 				if (!ctx)
 #endif // endif
 					wlc_phy_restorecal_nphy(pi);
@@ -3869,13 +3868,13 @@ WLBANDINITFN(wlc_phy_init_nphy)(phy_info_t *pi)
 		}
 		wlc_phy_noisemode_reset_nphy(pi);
 #endif // endif
-		/* curr_home_channel may have changed from attached value */
-		pi->interf->curr_home_channel = CHSPEC_CHANNEL(pi->radio_chanspec);
+		/* home_chanspec may have changed from attached value */
+		pi->interf->home_chanspec = pi->radio_chanspec;
 	}
 
 #ifndef WLC_DISABLE_ACI
 	if (!(SCAN_RM_IN_PROGRESS(pi)) &&
-	(CHSPEC_CHANNEL(pi->radio_chanspec) == pi->interf->curr_home_channel)) {
+	(pi->radio_chanspec == pi->interf->home_chanspec)) {
 #ifdef WLSRVSDB
 		uint8 i = 0;
 		for (i = 0; i < 2; i++) {
@@ -3911,8 +3910,7 @@ WLBANDINITFN(wlc_phy_init_nphy)(phy_info_t *pi)
 #if defined(RXDESENS_EN)
 	/* apply desens back after scans */
 	if ((pi_nphy->ntd_save_current_rxdesens != 0) &&
-		(pi_nphy->ntd_save_current_rxdesens_channel ==
-		CHSPEC_CHANNEL(pi->radio_chanspec))) {
+		(pi_nphy->ntd_save_current_rxdesens_chanspec == pi->radio_chanspec)) {
 		wlc_nphy_set_rxdesens((wlc_phy_t *)pi, pi_nphy->ntd_save_current_rxdesens);
 	}
 #endif // endif
@@ -4535,7 +4533,7 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 	PHY_TRACE(("wl%d: %s\n", pi->sh->unit, __FUNCTION__));
 
 	/* bphy classifier on for 2.4G vs off for 5G */
-	if (CHSPEC_IS5G(pi->radio_chanspec)) {
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 		wlc_phy_classifier_nphy(pi, NPHY_ClassifierCtrl_cck_en, 0);
 	} else {
 		wlc_phy_classifier_nphy(pi, NPHY_ClassifierCtrl_cck_en, 1);
@@ -4709,7 +4707,8 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 	/* keep LOGEN buffers on both cores ON all the time
 	 * to fix LOFT issue on SISO Tx
 	 */
-	if ((!PHY_IPA(pi)) && (CHSPEC_IS5G(pi->radio_chanspec)) && (pi->sh->boardtype != 0xF52A)) {
+	if ((!PHY_IPA(pi)) && (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) &&
+			(pi->sh->boardtype != 0xF52A)) {
 		phy_utils_mod_radioreg(pi, RADIO_2057_LOGEN_PUS, 0xc, 0xc);
 		phy_utils_mod_radioreg(pi, RADIO_2057v7_OVR_REG7, 0x80, 0x80);
 		phy_utils_mod_radioreg(pi, RADIO_2057v7_OVR_REG6, 0x1, 0x1);
@@ -5650,7 +5649,7 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 	}
 
 	if (NREV_GE(pi->pubpi->phy_rev, LCNXN_BASEREV+1)) {
-		if (!CHSPEC_IS5G(pi->radio_chanspec))
+		if (!CHSPEC_ISPHY5G6G(pi->radio_chanspec))
 			phy_utils_write_phyreg(pi, NPHY_PeakCnt_duringACI, 0x1);
 	}
 
@@ -5667,7 +5666,8 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 	/* SET Vmid and Av for {RSSI, TSSI} based on ID pdetrangeXg FROM SROM
 	 * The following settings should only be for REV7 given the TSSI issues
 	 */
-	pdetrange = (CHSPEC_IS5G(pi->radio_chanspec)) ? pi->fem5g->pdetrange : pi->fem2g->pdetrange;
+	pdetrange = (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) ?
+		pi->fem5g->pdetrange : pi->fem2g->pdetrange;
 
 	chan_freq_range = wlc_phy_get_chan_freq_range_nphy(pi, 0);
 
@@ -5951,7 +5951,7 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 	}
 	else {
 		PHY_ERROR(("invalid fem%s.pdetrange %d\n",
-		         ((CHSPEC_IS5G(pi->radio_chanspec)) ? "5g" : "2g"),
+		         ((CHSPEC_ISPHY5G6G(pi->radio_chanspec)) ? "5g" : "2g"),
 		         pdetrange));
 		ASSERT(0);
 	}
@@ -6025,7 +6025,7 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 	/* Olympic Sulley boards using 43236B1 */
 	if (pi->sh->boardtype == BCM943236OLYMPICSULLEY_SSID) {
 		if (CHSPEC_IS2G(pi->radio_chanspec) ||
-		    (CHSPEC_IS5G(pi->radio_chanspec) &&
+		    (CHSPEC_ISPHY5G6G(pi->radio_chanspec) &&
 		     (pi->fem5g->antswctrllut == 4))) {
 			/* When in RX mode,
 			 * in 2.4G, look up entries 13, 14 and 45, 46 for T and R.
@@ -6056,7 +6056,7 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 	/* Usb elna  boards using 43236B1 */
 	if ((CHSPEC_IS2G(pi->radio_chanspec) &&
 		(pi->fem2g->antswctrllut == 11)) ||
-		(CHSPEC_IS5G(pi->radio_chanspec) &&
+		(CHSPEC_ISPHY5G6G(pi->radio_chanspec) &&
 		(pi->fem5g->antswctrllut == 11)))
 		 {
 		PHY_REG_LIST_START
@@ -6104,7 +6104,7 @@ wlc_phy_workarounds_nphy(phy_info_t *pi)
 		rfseq_tx2rx_dlys_ext_pa, ARRAYSIZE(rfseq_tx2rx_events_rev3));
 
 	if ((CHSPEC_IS2G(pi->radio_chanspec) && ext_pa_ana_2g) ||
-		(CHSPEC_IS5G(pi->radio_chanspec) && ext_pa_ana_5g)) {
+		(CHSPEC_ISPHY5G6G(pi->radio_chanspec) && ext_pa_ana_5g)) {
 		wlc_phy_set_rfseq_nphy(pi, NPHY_RFSEQ_TX2RX, rfseq_tx2rx_events_rev3,
 			rfseq_tx2rx_dlys_ext_pa, sizeof(rfseq_tx2rx_events_rev3)/
 			sizeof(rfseq_tx2rx_events_rev3[0]));
@@ -6227,7 +6227,7 @@ wlc_phy_adjust_ClipLO_for_triso_2057_rev5_rev9(phy_info_t *pi)
 {
 	uint8 triso;
 	/* LO Gain (Rfseq Format) */
-	triso = (CHSPEC_IS5G(pi->radio_chanspec)) ? pi->fem5g->triso : pi->fem2g->triso;
+	triso = (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) ? pi->fem5g->triso : pi->fem2g->triso;
 	switch (triso) {
 		case 0:
 			PHY_REG_LIST_START
@@ -7533,7 +7533,7 @@ wlc_phy_spurwar_nphy(phy_info_t *pi)
 		}
 	}
 
-	if ((pi_nphy->nphy_aband_spurwar_en) && (CHSPEC_IS5G(pi->radio_chanspec))) {
+	if ((pi_nphy->nphy_aband_spurwar_en) && (CHSPEC_ISPHY5G6G(pi->radio_chanspec))) {
 		switch (cur_channel) {
 		case 54:
 			nphy_adj_tone_id_buf[0] = 32;
@@ -7723,7 +7723,7 @@ wlc_phy_subband_cust_43236B1_preproto_blu2o3_nphy(phy_info_t *pi)
 	}
 
 	/* 5G Band Customizations */
-	if (CHSPEC_IS5G(pi->radio_chanspec)) {
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 
 		/* Default customizations */
 		/* CRS MinPwr */
@@ -8034,7 +8034,7 @@ wlc_phy_subband_cust_43236B1_sulley_nphy(phy_info_t *pi)
 	}
 
 	/* 5G Band Customizations */
-	if (CHSPEC_IS5G(pi->radio_chanspec)) {
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 
 		/* Default customizations */
 
@@ -8327,7 +8327,7 @@ wlc_phy_subband_cust_43236B1_um_nphy(phy_info_t *pi)
 	}
 
 	/* 5G Band Customizations */
-	if (CHSPEC_IS5G(pi->radio_chanspec)) {
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 
 		/* Default customizations */
 		/* CRS MinPwr */
@@ -9157,7 +9157,7 @@ wlc_phy_subband_cust_43236B1_usbelna_nphy(phy_info_t *pi)
 	}
 
 	/* 5G Band Customizations */
-	if (CHSPEC_IS5G(pi->radio_chanspec)) {
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 
 		/* Default customizations */
 		/* CRS MinPwr */
@@ -9866,14 +9866,14 @@ wlc_phy_chanspec_nphy_setup(phy_info_t *pi, chanspec_t chanspec, const nphy_sfo_
 	 * level controls are being driven, 0 = 2.4G, 1 = 5G.
 	 * Enable BPHY in 2G, and disable it in 5G.
 	 */
-	if (CHSPEC_IS5G(chanspec)) {		/* in 5G */
+	if (CHSPEC_ISPHY5G6G(chanspec)) {		/* in 5G */
 
 		/* switch BandControl to 2G temporarily so BPHY regs are accessible */
 		phy_utils_and_phyreg(pi, NPHY_BandControl, ~NPHY_BandControl_currentBand_MASK);
 
 		/* enable force gated clock on */
 		val = R_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi));
-		W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), (val | MAC_PHY_FORCE_CLK));
+		W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), (uint16)(val | MAC_PHY_FORCE_CLK));
 
 		/* Turn-off CCA and put bphy receiver in reset */
 		phy_utils_or_phyreg(pi, (NPHY_TO_BPHY_OFF + BPHY_BB_CONFIG),
@@ -9885,13 +9885,13 @@ wlc_phy_chanspec_nphy_setup(phy_info_t *pi, chanspec_t chanspec, const nphy_sfo_
 		/* select 5G band */
 		phy_utils_or_phyreg(pi, NPHY_BandControl, NPHY_BandControl_currentBand);
 
-	} else if (!CHSPEC_IS5G(chanspec)) {	/* in 2G */
+	} else if (!CHSPEC_ISPHY5G6G(chanspec)) {	/* in 2G */
 		/* select 2G band */
 		phy_utils_and_phyreg(pi, NPHY_BandControl, ~NPHY_BandControl_currentBand);
 
 		/* enable force gated clock on */
 		val = R_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi));
-		W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), (val | MAC_PHY_FORCE_CLK));
+		W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), (uint16)(val | MAC_PHY_FORCE_CLK));
 
 		/* Turn-on CCA and take bphy receiver out of reset */
 		phy_utils_and_phyreg(pi, (NPHY_TO_BPHY_OFF + BPHY_BB_CONFIG),
@@ -10019,8 +10019,7 @@ wlc_phy_chanspec_set_nphy(phy_info_t *pi, chanspec_t chanspec)
 	 * by restoring aci mitigation-on parameters if ACI state is active.
 	 */
 	if (NREV_LT(pi->pubpi->phy_rev, LCNXN_BASEREV) &&
-		(pi->interf->curr_home_channel ==
-		CHSPEC_CHANNEL(pi->radio_chanspec)) &&
+		(pi->interf->home_chanspec == pi->radio_chanspec) &&
 		pi->aci_rev7_subband_cust_fix) {
 		aci_active_save = pi->aci_state & ACI_ACTIVE;
 	}
@@ -10059,9 +10058,9 @@ wlc_phy_chanspec_set_nphy(phy_info_t *pi, chanspec_t chanspec)
 	     * Applies only to 2057 rev3, 4, and 6
 	     */
 	    phy_utils_mod_radioreg(pi, RADIO_2057_TIA_CONFIG_CORE0, 0x2,
-	                  (CHSPEC_IS5G(chanspec) ? (1 << 1) : 0));
+	                  (CHSPEC_ISPHY5G6G(chanspec) ? (1 << 1) : 0));
 	    phy_utils_mod_radioreg(pi, RADIO_2057_TIA_CONFIG_CORE1, 0x2,
-	                  (CHSPEC_IS5G(chanspec) ? (1 << 1) : 0));
+	                  (CHSPEC_ISPHY5G6G(chanspec) ? (1 << 1) : 0));
 	}
 	wlc_phy_chanspec_radio2057_setup(pi, t0, t2);
 
@@ -10083,8 +10082,7 @@ wlc_phy_chanspec_set_nphy(phy_info_t *pi, chanspec_t chanspec)
 		wlc_phy_aci_noise_store_values_nphy(pi);
 	}
 	if (NREV_LT(pi->pubpi->phy_rev, LCNXN_BASEREV) &&
-		(pi->interf->curr_home_channel ==
-		CHSPEC_CHANNEL(pi->radio_chanspec)) &&
+		(pi->interf->home_chanspec == pi->radio_chanspec) &&
 		pi->aci_rev7_subband_cust_fix) {
 			pi->aci_state |= aci_active_save;
 	}
@@ -10125,7 +10123,7 @@ wlc_phy_chanspec_set_nphy(phy_info_t *pi, chanspec_t chanspec)
 	/* save and remove desens when scan in prog */
 	if (SCAN_RM_IN_PROGRESS(pi) && (pi_nphy->ntd_current_rxdesens != 0)) {
 		pi_nphy->ntd_save_current_rxdesens = pi_nphy->ntd_current_rxdesens;
-		pi_nphy->ntd_save_current_rxdesens_channel = pi->interf->curr_home_channel;
+		pi_nphy->ntd_save_current_rxdesens_chanspec = pi->interf->home_chanspec;
 		wlc_nphy_set_rxdesens((wlc_phy_t *)pi, 0);
 	}
 #endif // endif
@@ -10141,8 +10139,7 @@ wlc_phy_chanspec_set_nphy(phy_info_t *pi, chanspec_t chanspec)
 #if defined(RXDESENS_EN)
 	/* apply desens back after scans */
 	if ((pi_nphy->ntd_save_current_rxdesens != 0) &&
-		(pi_nphy->ntd_save_current_rxdesens_channel ==
-		CHSPEC_CHANNEL(pi->radio_chanspec))) {
+		(pi_nphy->ntd_save_current_rxdesens_chanspec == pi->radio_chanspec)) {
 		wlc_nphy_set_rxdesens((wlc_phy_t *)pi, pi_nphy->ntd_save_current_rxdesens);
 	}
 #endif // endif
@@ -10158,7 +10155,7 @@ wlc_phy_aci_home_channel_nphy(phy_info_t *pi, chanspec_t chanspec)
 
 	bool suspend = FALSE;
 
-	if ((CHSPEC_CHANNEL(chanspec) == pi->interf->curr_home_channel) ||
+	if ((chanspec == pi->interf->home_chanspec) ||
 		(pi->sh->interference_mode == WLAN_MANUAL)) {
 		/* back in home channel */
 		/* if aci mitigation was on, turn it back on */
@@ -11291,7 +11288,7 @@ wlc_phy_rssisel_nphy(phy_info_t *pi, uint8 core_code, uint8 rssi_type)
 					NPHY_RfctrlMiscReg2, mask, 0);
 
 				if (rssi_type == NPHY_RSSI_SEL_W1) {
-					if (CHSPEC_IS5G(pi->radio_chanspec)) {
+					if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 					mask = NPHY_RfctrlMiscReg_rssi_wb1a_sel_MASK;
 					val = 1 << NPHY_RfctrlMiscReg_rssi_wb1a_sel_SHIFT;
 					} else {
@@ -11523,7 +11520,7 @@ wlc_phy_rfctrlintc_override_nphy(phy_info_t *pi, uint8 field, uint16 value,
 			mask = NPHY_REV7_RfctrlIntc_ext_2g_papu_MASK |
 			        NPHY_REV7_RfctrlIntc_ext_5g_papu_MASK;
 
-			if (CHSPEC_IS5G(pi->radio_chanspec)) {
+			if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 				val = value << NPHY_REV7_RfctrlIntc_ext_5g_papu_SHIFT;
 			} else {
 				val = value << NPHY_REV7_RfctrlIntc_ext_2g_papu_SHIFT;
@@ -11537,7 +11534,7 @@ wlc_phy_rfctrlintc_override_nphy(phy_info_t *pi, uint8 field, uint16 value,
 			                    NPHY_RfctrlIntc1 : NPHY_RfctrlIntc2,
 			                    NPHY_REV7_RfctrlIntc_override_ext_pa_MASK);
 		} else if (field == NPHY_RfctrlIntc_override_EXT_LNA_PU) {
-			if (CHSPEC_IS5G(pi->radio_chanspec)) {
+			if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 				/* override 5g lna pu */
 				mask = NPHY_REV7_RfctrlIntc_ext_lna_5g_pu_MASK;
 				val = value <<
@@ -11574,7 +11571,7 @@ wlc_phy_rfctrlintc_override_nphy(phy_info_t *pi, uint8 field, uint16 value,
 			phy_utils_mod_phyreg(pi, (core == PHY_CORE_0) ?
 			                     NPHY_RfctrlIntc1 : NPHY_RfctrlIntc2, mask, val);
 		} else if (field == NPHY_RfctrlIntc_override_EXT_LNA_GAIN) {
-			if (CHSPEC_IS5G(pi->radio_chanspec)) {
+			if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 				/* override 5g lna pu */
 				mask = NPHY_REV7_RfctrlIntc_ext_lna_5g_gain_MASK;
 				val = value <<
@@ -11723,7 +11720,7 @@ wlc_phy_rssi_cal_nphy_rev3(phy_info_t *pi)
 	wlc_phy_rfctrl_override_nphy_rev7(pi, NPHY_REV7_RfctrlOverride_rssi_wb2_pu_MASK,
 	                                  1, 0, 0, NPHY_REV7_RFCTRLOVERRIDE_ID0);
 
-	if (CHSPEC_IS5G(pi->radio_chanspec)) {
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 		wlc_phy_rfctrl_override_nphy_rev7(
 			pi, NPHY_REV7_RfctrlOverride_rssi_wb1g_pu_MASK,
 			0, 0, 0, NPHY_REV7_RFCTRLOVERRIDE_ID0);
@@ -12590,7 +12587,7 @@ wlc_phy_txcal_radio_setup_nphy(phy_info_t *pi)
 		pi_nphy->tx_rx_cal_radio_saveregs[(core*11) + 8] =
 			READ_RADIO_REG3(pi, RADIO_2057, TX, core, TSSI_MISC1);
 
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, TX_SSI_MASTER, 0x0a);
 			WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, IQCAL_VCM_HG, 0x43);
 			WRITE_RADIO_REG3(pi, RADIO_2057, TX, core, IQCAL_IDAC, 0x55);
@@ -12865,7 +12862,7 @@ wlc_phy_est_tonepwr_nphy(phy_info_t *pi, int32 *qdBm_pwrbuf, uint8 num_samps)
 	idle_tssi[1] = (temp <= 31)?  temp : (temp - 64);
 
 	tssi_type =
-	    CHSPEC_IS5G(pi->radio_chanspec)?
+	    CHSPEC_ISPHY5G6G(pi->radio_chanspec)?
 	        (uint8)NPHY_RSSI_SEL_TSSI_5G : (uint8)NPHY_RSSI_SEL_TSSI_2G;
 
 	wlc_phy_poll_rssi_nphy(pi, tssi_type, rssi_buf, num_samps);
@@ -13172,7 +13169,7 @@ wlc_phy_cal_txgainctrl_inttssi_nphy(phy_info_t *pi, int8 target_tssi, int8 init_
 		freq_test = 2500;
 	}
 
-	tssi_type = CHSPEC_IS5G(pi->radio_chanspec)? (uint8)NPHY_RSSI_SEL_TSSI_5G :
+	tssi_type = CHSPEC_ISPHY5G6G(pi->radio_chanspec)? (uint8)NPHY_RSSI_SEL_TSSI_5G :
 	        (uint8)NPHY_RSSI_SEL_TSSI_2G;
 
 	if (CHSPEC_IS2G(pi->radio_chanspec)) {
@@ -13323,7 +13320,7 @@ wlc_phy_cal_txgainctrl_inttssi_nphy(phy_info_t *pi, int8 target_tssi, int8 init_
 			/* For Ext PA brds, the gain table will have low gain and
 			 * hence, we force PAD gain to 15 for Tx IQLO cal
 			 */
-			if ((CHSPEC_IS5G(pi->radio_chanspec)) && !PHY_IPA(pi)) {
+			if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec)) && !PHY_IPA(pi)) {
 				target_gain.pad[core] = 15;
 			}
 			rad_gain = ((target_gain.txlpf[core] << 15) |
@@ -13529,7 +13526,7 @@ wlc_phy_cal_txgainctrl_nphy(phy_info_t *pi, int32 dBm_targetpower, bool debug)
 			}
 
 			/* Limit the Tx Power for boards with high power external PA */
-			if (!CHSPEC_IS5G(pi->radio_chanspec)) {
+			if (!CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 				if (pi->fem2g->extpagain == 3) {
 					if (txpwrindex < 50) {
 						txpwrindex = 50;
@@ -13724,6 +13721,10 @@ wlc_phy_cal_perical_nphy_run(phy_info_t *pi, uint8 caltype)
 
 	ASSERT(pi->phy_cal_mode != PHY_PERICAL_DISABLE);
 
+	/* Don't do cal if edcrs is high */
+	if (wlc_phy_eu_edcrs_status_nphy(pi))
+		return;
+
 	/*
 	 * AUTO mode: If the last calibration was on the current channel, do a partial
 	 * calibration, otherwise do a FULL calibration
@@ -13894,7 +13895,7 @@ wlc_phy_cal_perical_nphy_run(phy_info_t *pi, uint8 caltype)
 			phy_utils_phyreg_enter(pi);
 
 #ifdef RXIQCAL_FW_WAR
-				if ((CHSPEC_IS5G(pi->radio_chanspec) &&
+				if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec) &&
 					(BCME_OK == wlc_phy_cal_rxiq_nphy_fw_war(pi, target_gain,
 					(pi->first_cal_after_assoc ||
 					(pi->u.pi_nphy->cal_type_override ==
@@ -13958,7 +13959,7 @@ wlc_phy_cal_perical_nphy_run(phy_info_t *pi, uint8 caltype)
 			/* XXX Temporary hack for Sulley:
 			 * Adjust crsminpower based on temperature to lower 5G floor across PVT
 			 */
-			if (CHSPEC_IS5G(pi->radio_chanspec) &&
+			if (CHSPEC_ISPHY5G6G(pi->radio_chanspec) &&
 			    (pi->sh->boardtype == BCM943236OLYMPICSULLEY_SSID)) {
 
 				int16 nphy_currtemp = 0;
@@ -14049,7 +14050,7 @@ wlc_phy_cal_perical_nphy_run(phy_info_t *pi, uint8 caltype)
 				uint8 core_mask = 0x3;
 
 #ifdef RXIQCAL_FW_WAR
-				if ((CHSPEC_IS5G(pi->radio_chanspec) &&
+				if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec) &&
 					(wlc_phy_cal_rxiq_nphy_fw_war(pi, target_gain,
 					(pi->first_cal_after_assoc ||
 					(pi_nphy->cal_type_override ==
@@ -14080,7 +14081,7 @@ wlc_phy_cal_perical_nphy_run(phy_info_t *pi, uint8 caltype)
 			if ((pi->radar_percal_mask & 0x1) != 0)
 				pi_nphy->nphy_rxcal_active = TRUE;
 #ifdef RXIQCAL_FW_WAR
-				if ((CHSPEC_IS5G(pi->radio_chanspec) &&
+				if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec) &&
 					(wlc_phy_cal_rxiq_nphy_fw_war(pi, target_gain,
 					(pi->first_cal_after_assoc ||
 					(pi_nphy->cal_type_override ==
@@ -14212,6 +14213,47 @@ wlc_phy_cal_perical_nphy_run(phy_info_t *pi, uint8 caltype)
 		wlc_nphy_set_rxdesens((wlc_phy_t *)pi, pi_nphy->ntd_save_current_rxdesens);
 	}
 #endif // endif
+}
+
+/* Return status of edcrs */
+bool
+wlc_phy_eu_edcrs_status_nphy(phy_info_t *pi)
+{
+	bool edcrs = FALSE, suspend;
+	uint loop_count = 50, percentage = 75, edcrs_high_count = 0;
+	uint16 reg_val;
+	uint8 i = 0;
+	uint8 region_group = wlc_phy_get_locale(pi->rxgcrsi);
+
+	/* No need to do anything if region is NOT EU */
+	if (region_group != REGION_EU)
+		return edcrs;
+
+	if (!pi->sh->up)
+		return edcrs;
+
+	/* suspend mac if haven't done so */
+	wlc_phy_conditional_suspend(pi, &suspend);
+
+	phy_utils_phyreg_enter(pi);
+
+	/* Check EDCRS a few times to decide if the medium is busy.
+	   If medium is busy, skip PAPD this time around.
+	 */
+	for (i = 0; i < loop_count; i++) {
+		reg_val = phy_utils_read_phyreg(pi, NPHY_ed_crs);
+		if ((reg_val & 0xee) > 0) {
+			edcrs_high_count++;
+		}
+	}
+
+	if (edcrs_high_count > (loop_count * percentage / 100))
+		edcrs = TRUE;
+
+	phy_utils_phyreg_exit(pi);
+	wlc_phy_conditional_resume(pi, &suspend);
+
+	return edcrs;
 }
 
 int
@@ -14885,7 +14927,7 @@ wlc_phy_rxcal_radio_setup_nphy(phy_info_t *pi, uint8 rx_core)
 	phy_info_nphy_t *pi_nphy = pi->u.pi_nphy;
 
 	if (rx_core == PHY_CORE_0) {
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			pi_nphy->tx_rx_cal_radio_saveregs[0] =
 				phy_utils_read_radioreg(pi, RADIO_2057_TX0_TXRXCOUPLE_5G_PWRUP);
 			pi_nphy->tx_rx_cal_radio_saveregs[1] =
@@ -14905,7 +14947,7 @@ wlc_phy_rxcal_radio_setup_nphy(phy_info_t *pi, uint8 rx_core)
 		}
 
 	} else {
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			pi_nphy->tx_rx_cal_radio_saveregs[0] =
 			        phy_utils_read_radioreg(pi, RADIO_2057_TX1_TXRXCOUPLE_5G_PWRUP);
 			pi_nphy->tx_rx_cal_radio_saveregs[1] =
@@ -14931,7 +14973,7 @@ wlc_phy_rxcal_radio_cleanup_nphy(phy_info_t *pi, uint8 rx_core)
 	phy_info_nphy_t *pi_nphy = pi->u.pi_nphy;
 
 	if (rx_core == PHY_CORE_0) {
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			phy_utils_write_radioreg(pi, RADIO_2057_TX0_TXRXCOUPLE_5G_PWRUP,
 			                pi_nphy->tx_rx_cal_radio_saveregs[0]);
 			phy_utils_write_radioreg(pi, RADIO_2057_TX0_TXRXCOUPLE_5G_ATTEN,
@@ -14945,7 +14987,7 @@ wlc_phy_rxcal_radio_cleanup_nphy(phy_info_t *pi, uint8 rx_core)
 		}
 
 	} else {
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			phy_utils_write_radioreg(pi, RADIO_2057_TX1_TXRXCOUPLE_5G_PWRUP,
 			                pi_nphy->tx_rx_cal_radio_saveregs[0]);
 			phy_utils_write_radioreg(pi, RADIO_2057_TX1_TXRXCOUPLE_5G_ATTEN,
@@ -15121,7 +15163,7 @@ wlc_phy_rxcal_gainctrl_nphy_rev5(phy_info_t *pi, uint8 rx_core, uint16 *rxgain, 
 	wlc_phy_rx_iq_coeffs_nphy(pi, 1, &zero_comp);
 
 	/* Adjust mix_tia gain based on A/G band as per rxgain-control choices */
-	if (CHSPEC_IS5G(pi->radio_chanspec)) {
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 		mix_tia_gain = 3;
 		nphy_rxcal_gaintbl = nphy_ipa_rxcal_gaintbl_5GHz_rev7;
 	} else {
@@ -15470,7 +15512,7 @@ wlc_phy_ipa_set_tx_digi_filts_nphy(phy_info_t *pi)
 		/* to use default 20mhz ofdm filter for 20in40 mode */
 		txfilt20_type = NPHY_FILT_4322_20MHZ;
 	} else {
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			txfilt20_type = NPHY_FILT_ABAND_OFDM20;
 		}
 
@@ -15669,7 +15711,7 @@ wlc_phy_get_epa_gaintbl_nphy(phy_info_t *pi)
 	/* PR82371: use compile-time checks (NREV and CHIPID) to identify chips,
 	 * instead of radio revs (run-time check), to limit compiled code size
 	 */
-	if (CHSPEC_IS5G(pi->radio_chanspec)) {
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 		if (pi->sh->boardtype == 0xF52A) {
 			/* corresponds to the Cisco E3200 brd */
 			tx_pwrctrl_tbl = nphy_tpc_5GHz_txgain_epa_2057rev7_brdtype_0xF52A;
@@ -16454,7 +16496,7 @@ uint16 num_iter, uint8 core)
 
 	/* smooth PAPD eps curve */
 	if (cal_mode != CAL_GCTRL) {
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			wlc_phy_papd_smooth_nphy(pi, core, 5, 0, 35);
 		}
 		if (PHY_CAL_ON())
@@ -17015,7 +17057,7 @@ wlc_phy_txpwr_papd_cal_run(phy_info_t *pi, bool full_cal, uint8 core_from, uint8
 		yref_i = (int16) PHY_REG_READ_CORE(pi, NPHY, core, PapdCalYref_I);
 		yref_q = (int16) PHY_REG_READ_CORE(pi, NPHY, core, PapdCalYref_Q);
 
-		if (CHSPEC_IS5G(pi->radio_chanspec))  {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec))  {
 			PHY_CAL(("PAPD cal Yref core %d: (%d, %d), pga_gain: %d,"
 			         "total offset %d\n", core, yref_i, yref_q,
 			         pgag, offset));
@@ -17718,7 +17760,7 @@ wlc_phy_txpwr_idx_cur_get_nphy(phy_info_t *pi, uint8 core)
 		         NPHY_TxPwrCtrlStatus_baseIndex_SHIFT;
 	} else {
 
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			initPwrIndex5G = NPHY_TxPwrCtrlCmd_pwrIndex_init_rev7_5G;
 
 			pwrIndex = (pi_nphy->nphy_txpwr_idx_5G[core] != 128) ?
@@ -17758,7 +17800,7 @@ wlc_phy_txpwr_idx_get_nphy(phy_info_t *pi)
 
 		tmp = (pwr_idx[1] << 8) | pwr_idx[0];
 	} else {
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			initPwrIndex5G = NPHY_TxPwrCtrlCmd_pwrIndex_init_rev7_5G;
 			pwr_idx[0] = (pi_nphy->nphy_txpwr_idx_5G[0] != 128) ?
 			  pi_nphy->nphy_txpwr_idx_5G[0] : initPwrIndex5G;
@@ -17808,7 +17850,10 @@ wlc_phy_txpwr_papd_cal_nphy(phy_info_t *pi)
 		((PHYCORENUM(pi->pubpi->phy_corenum) > 1) ?
 		((uint32)ABS(txpwr_idx_cur[1] -
 		pi_nphy->nphy_papd_tx_gain_at_last_cal[1]) >= delta_idx) : 0))))) {
-		wlc_phy_txpwr_papd_cal_run(pi, TRUE, PHY_CORE_0, pi->pubpi->phy_corenum - 1);
+		if (!wlc_phy_eu_edcrs_status_nphy(pi)) {
+			wlc_phy_txpwr_papd_cal_run(pi, TRUE, PHY_CORE_0,
+				pi->pubpi->phy_corenum - 1);
+		}
 	}
 }
 
@@ -17843,7 +17888,7 @@ wlc_phy_store_txindex_nphy(phy_info_t *pi)
 			wlc_phy_txpwr_idx_cur_get_nphy(pi, (uint8)core) :
 			pi_nphy->nphy_txpwrindex[core].index_internal);
 
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			pi_nphy->nphy_txpwr_idx_5G[core] =
 				nphy_txpwr_idx;
 		} else {
@@ -18545,7 +18590,7 @@ wlc_phy_txpwrctrl_enable_nphy(phy_info_t *pi, uint8 ctrl_type)
 			FOREACH_CORE(pi, core) {
 				nphy_txpwr_idx = wlc_phy_txpwr_idx_cur_get_nphy(pi, (uint8)core);
 
-				if (CHSPEC_IS5G(pi->radio_chanspec)) {
+				if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 					pi_nphy->nphy_txpwr_idx_5G[core] = nphy_txpwr_idx;
 				} else {
 					pi_nphy->nphy_txpwr_idx_2G[core] = nphy_txpwr_idx;
@@ -18613,7 +18658,7 @@ wlc_phy_txpwrctrl_enable_nphy(phy_info_t *pi, uint8 ctrl_type)
 		                     NPHY_TxPwrCtrlCmd_hwtxPwrCtrl_en_MASK, 0);
 
 		/* lower the starting txpwr index for A-Band */
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			PHY_REG_LIST_START
 				PHY_REG_MOD_ENTRY(NPHY, TxPwrCtrlCmd, pwrIndex_init,
 					NPHY_TxPwrCtrlCmd_pwrIndex_init_rev7_5G)
@@ -18624,7 +18669,7 @@ wlc_phy_txpwrctrl_enable_nphy(phy_info_t *pi, uint8 ctrl_type)
 		}
 
 		/* restore the old txpwr index if they are valid */
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			if ((pi_nphy->nphy_txpwr_idx_5G[0] != 128) &&
 			    (pi_nphy->nphy_txpwr_idx_5G[1] != 128)) {
 				wlc_phy_txpwr_idx_cur_set_nphy(pi,
@@ -18962,16 +19007,17 @@ wlc_phy_txpwr_index_nphy(phy_info_t *pi, uint8 core_mask, int8 txpwrindex, bool 
 #ifndef WLC_DISABLE_ACI
 /** reset both aci and/or noise states, hardware and software */
 void
-wlc_phy_aci_noise_reset_nphy(phy_info_t *pi, uint channel, bool clear_aci_state,
+wlc_phy_aci_noise_reset_nphy(phy_info_t *pi, chanspec_t chanspec, bool clear_aci_state,
 	bool clear_noise_state, bool disassoc)
 {
 	bool suspend;
 
-	if ((pi->interf->curr_home_channel == (uint8) channel) && (disassoc == FALSE)) {
+	if ((pi->interf->home_chanspec == chanspec) &&
+	    (disassoc == FALSE)) {
 		/* same channel, not a disassoc, do not reset */
 		PHY_ACI(("Not a disassoc! and CurCh = HomeCh = %d,"
 			" so do not reset aci/noise state\n",
-			pi->interf->curr_home_channel));
+			CHSPEC_CHANNEL(pi->interf->home_chanspec)));
 		return;
 	}
 
@@ -19006,15 +19052,15 @@ wlc_phy_aci_noise_reset_nphy(phy_info_t *pi, uint channel, bool clear_aci_state,
 	}
 
 	if (!SCAN_RM_IN_PROGRESS(pi))
-		pi->interf->curr_home_channel = (uint8) channel;
+		pi->interf->home_chanspec = chanspec;
 
 #if defined(WLSRVSDB) && !defined(WLC_DISABLE_ACI)
 	if (disassoc && pi->srvsdb_state->srvsdb_active) {
 		if (pi->srvsdb_state->sr_vsdb_channels[0] ==
-			pi->interf->curr_home_channel) {
+			CHSPEC_CHANNEL(pi->interf->home_chanspec)) {
 			pi->srvsdb_state->acimode_noisemode_reset_done[0] = FALSE;
 		} else if (pi->srvsdb_state->sr_vsdb_channels[1] ==
-			pi->interf->curr_home_channel) {
+			CHSPEC_CHANNEL(pi->interf->home_chanspec)) {
 			pi->srvsdb_state->acimode_noisemode_reset_done[1] = FALSE;
 		}
 	}
@@ -19106,7 +19152,7 @@ wlc_phy_aci_noise_upd_nphy(phy_info_t *pi)
 	wlc_phy_btcx_override_enable(pi);
 
 	/* Updating home channel before going into aci scan */
-	pi->interf->curr_home_channel = CHSPEC_CHANNEL(pi->radio_chanspec);
+	pi->interf->home_chanspec = pi->radio_chanspec;
 
 	noise_assoc_enter_th = pi->interf->noise.nphy_noise_assoc_enter_th;
 	noise_noassoc_enter_th = pi->interf->noise.nphy_noise_noassoc_enter_th;
@@ -19666,7 +19712,8 @@ wlc_phy_noise_adj_thresholds_nphy(phy_info_t *pi, uint8 raise)
 			} else {
 				/* maxed out crsminpwr index, reduce init gain */
 				/* reducing gain by 3 db with last stage elements */
-
+			    if (!(NREV_IS(pi->pubpi.phy_rev, LCNXN_BASEREV)||
+			    NREV_IS(pi->pubpi.phy_rev, LCNXN_BASEREV + 1))) {
 				newgain = ((phy_utils_read_phyreg(pi, NPHY_Core1InitGainCodeB2057) &
 				NPHY_Core1InitGainCodeB2057_InitBiQ1Index_MASK) >>
 				NPHY_Core1InitGainCodeB2057_InitBiQ1Index_SHIFT) - 1;
@@ -19714,6 +19761,7 @@ wlc_phy_noise_adj_thresholds_nphy(phy_info_t *pi, uint8 raise)
 				newgain = (newgain << 12) | (curgain & 0xfff);
 
 				pi->interf->noise.newgain_rfseq = newgain;
+			    }
 			}
 
 			/* rev 7 changes crsminpwr only, limit the change */
@@ -19956,7 +20004,7 @@ wlc_phy_noise_limit_rfgain_nphy(phy_info_t *pi, int16 *newgain)
 	if (!NPHY_INTF_RSSI_ENAB(pi))
 		return;
 
-	if (CHSPEC_IS5G(pi->radio_chanspec)) {
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 		if (pi->aci_state == ACI_ACTIVE) {
 			/* 5G channel, currently no ACI mitigation is allowed */
 			return;
@@ -20747,7 +20795,7 @@ wlc_phy_aci_scan_iqbased_nphy(phy_info_t *pi)
 	/* restore tx pwr index to original power index */
 	tx_pwr_ctrl_state = pi->nphy_txpwrctrl;
 	wlc_phy_txpwrctrl_enable_nphy(pi, PHY_TPC_HW_OFF);
-	if (CHSPEC_IS5G(pi->radio_chanspec)) {
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 		pi_nphy->nphy_txpwr_idx_5G[0] = saved_pwr_idx[0];
 		pi_nphy->nphy_txpwr_idx_5G[1] = saved_pwr_idx[1];
 	} else {
@@ -20827,7 +20875,7 @@ wlc_phy_aci_sw_set_nphy(phy_info_t *pi, bool enable, int aci_pwr)
 		pi->aci_start_time = pi->sh->now;
 		wlapi_high_update_phy_mode(pi->sh->physhim, PHY_MODE_ACI);
 	} else {
-		if (CHSPEC_CHANNEL(pi->radio_chanspec) == pi->interf->curr_home_channel) {
+		if (pi->radio_chanspec == pi->interf->home_chanspec) {
 			/* on home channel, i wanted to disable ACI, so do so */
 			pi->aci_state &= ~ACI_ACTIVE;
 			pi->aci_active_pwr_level = aci_pwr;
@@ -21796,8 +21844,8 @@ phy_n_mac_triggered_sample_collect(phy_info_t *pi,
 	dur_1_8_us = (collect->pre_dur << 3) + 240;
 	/* WAR: 240usec additional delay */
 
-	W_REG(pi->sh->osh, D11_TSF_GPT_2_CTR_L(pi), dur_1_8_us & 0xFFFF);
-	W_REG(pi->sh->osh, D11_TSF_GPT_2_CTR_H(pi), dur_1_8_us >> 16);
+	W_REG(pi->sh->osh, D11_TSF_GPT_2_CTR_L(pi), (uint16)(dur_1_8_us & 0xFFFF));
+	W_REG(pi->sh->osh, D11_TSF_GPT_2_CTR_H(pi), (uint16)(dur_1_8_us >> 16));
 
 	/* Mac triggers for lcnxnphy need this bit set for mac triggers */
 	if (NREV_GE(pi->pubpi->phy_rev, LCNXN_BASEREV)) {
@@ -21806,7 +21854,7 @@ phy_n_mac_triggered_sample_collect(phy_info_t *pi,
 	wlapi_bmac_write_shm(pi->sh->physhim, M_SMPL_COL_CTL(pi), collect->mode);
 
 	phy_tmp = R_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi));
-	W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), phy_tmp | (1 << 4));
+	W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), (uint16)(phy_tmp | (1 << 4)));
 
 	phyctrl_val = 1;
 	timer_ctrl = 0;
@@ -22174,7 +22222,7 @@ wlc_phy_gpiosel_nphy(phy_info_t *pi, uint16 sel)
 	mc = R_REG(pi->sh->osh, D11_MACCONTROL(pi));
 	mc &= ~MCTL_GPOUT_SEL_MASK;
 	W_REG(pi->sh->osh, D11_MACCONTROL(pi), mc);
-	W_REG(pi->sh->osh, D11_PSM_GPIOEN(pi), 0x0);
+	W_REG(pi->sh->osh, D11_PSM_GPIOEN(pi), (uint16)0x0);
 
 	/* set up mimophy GPIO sel */
 	phy_utils_write_phyreg(pi, NPHY_gpioSel, sel);
@@ -23267,7 +23315,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom8_read)(phy_info_t *pi)
 	/* read in antenna-related config */
 	pi->aa2g = (uint8) PHY_GETINTVAR(pi, rstr_aa2g);
 
-#ifdef BAND5G
+#if BAND5G
 	pi->aa5g = (uint8) PHY_GETINTVAR(pi, rstr_aa5g);
 #endif /* BAND5G */
 
@@ -23278,7 +23326,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom8_read)(phy_info_t *pi)
 	pi->fem2g->triso = (uint8)PHY_GETINTVAR(pi, rstr_triso2g);
 	pi->fem2g->antswctrllut = (uint8)PHY_GETINTVAR(pi, rstr_antswctl2g);
 
-#ifdef BAND5G
+#if BAND5G
 	pi->fem5g->tssipos = (uint8)PHY_GETINTVAR(pi, rstr_tssipos5g);
 	pi->fem5g->extpagain = (uint8)PHY_GETINTVAR(pi, rstr_extpagain5g);
 	pi->fem5g->pdetrange = (uint8)PHY_GETINTVAR(pi, rstr_pdetrange5g);
@@ -23298,7 +23346,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom8_read)(phy_info_t *pi)
 		pi->u.pi_nphy->elna2g = (uint8)PHY_GETINTVAR(pi, rstr_elna2g);
 
 	}
-#ifdef BAND5G
+#if BAND5G
 	if (PHY_GETVAR(pi, rstr_elna5g)) {
 		/* extlnagain5g entry exists, so use it. */
 		pi->u.pi_nphy->elna5g = (uint8)PHY_GETINTVAR(pi, rstr_elna5g);
@@ -23338,7 +23386,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom8_read_ppr)(phy_info_t *pi)
 		 */
 		bw40po = (uint16)PHY_GETINTVAR(pi, rstr_bw40po);
 		pi->ppr->u.sr8.bw40[WL_CHAN_FREQ_RANGE_2G] = bw40po & 0xf;
-#ifdef BAND5G
+#if BAND5G
 		pi->ppr->u.sr8.bw40[WL_CHAN_FREQ_RANGE_5G_BAND0] = (bw40po & 0xf0) >> 4;
 		pi->ppr->u.sr8.bw40[WL_CHAN_FREQ_RANGE_5G_BAND1] = (bw40po & 0xf00) >> 8;
 		pi->ppr->u.sr8.bw40[WL_CHAN_FREQ_RANGE_5G_BAND2] = (bw40po & 0xf000) >> 12;
@@ -23351,7 +23399,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom8_read_ppr)(phy_info_t *pi)
 		 */
 		cddpo = (uint16)PHY_GETINTVAR(pi, rstr_cddpo);
 		pi->ppr->u.sr8.cdd[WL_CHAN_FREQ_RANGE_2G] = cddpo & 0xf;
-#ifdef BAND5G
+#if BAND5G
 		pi->ppr->u.sr8.cdd[WL_CHAN_FREQ_RANGE_5G_BAND0]  = (cddpo & 0xf0) >> 4;
 		pi->ppr->u.sr8.cdd[WL_CHAN_FREQ_RANGE_5G_BAND1]  = (cddpo & 0xf00) >> 8;
 		pi->ppr->u.sr8.cdd[WL_CHAN_FREQ_RANGE_5G_BAND2]  = (cddpo & 0xf000) >> 12;
@@ -23364,7 +23412,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom8_read_ppr)(phy_info_t *pi)
 		 */
 		stbcpo = (uint16)PHY_GETINTVAR(pi, rstr_stbcpo);
 		pi->ppr->u.sr8.stbc[WL_CHAN_FREQ_RANGE_2G] = stbcpo & 0xf;
-#ifdef BAND5G
+#if BAND5G
 		pi->ppr->u.sr8.stbc[WL_CHAN_FREQ_RANGE_5G_BAND0]  = (stbcpo & 0xf0) >> 4;
 		pi->ppr->u.sr8.stbc[WL_CHAN_FREQ_RANGE_5G_BAND1]  = (stbcpo & 0xf00) >> 8;
 		pi->ppr->u.sr8.stbc[WL_CHAN_FREQ_RANGE_5G_BAND2]  = (stbcpo & 0xf000) >> 12;
@@ -23377,7 +23425,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom8_read_ppr)(phy_info_t *pi)
 		 */
 		bwduppo = (uint16)PHY_GETINTVAR(pi, rstr_bwduppo);
 		pi->ppr->u.sr8.bwdup[WL_CHAN_FREQ_RANGE_2G] = bwduppo & 0xf;
-#ifdef BAND5G
+#if BAND5G
 		pi->ppr->u.sr8.bwdup[WL_CHAN_FREQ_RANGE_5G_BAND0]  = (bwduppo & 0xf0) >> 4;
 		pi->ppr->u.sr8.bwdup[WL_CHAN_FREQ_RANGE_5G_BAND1]  = (bwduppo & 0xf00) >> 8;
 		pi->ppr->u.sr8.bwdup[WL_CHAN_FREQ_RANGE_5G_BAND2]  = (bwduppo & 0xf000) >> 12;
@@ -23457,7 +23505,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom8_read_ppr)(phy_info_t *pi)
 					pi->ppr->u.sr8.mcs[band_num][7] =
 						(uint16)PHY_GETINTVAR(pi, rstr_mcs2gpo7);
 					break;
-#ifdef BAND5G
+#if BAND5G
 				case WL_CHAN_FREQ_RANGE_5G_BAND0:
 					/* 5G lowband */
 					pi_nphy->nphy_txpid5g[PHY_CORE_0][band_num] =

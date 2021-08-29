@@ -4,7 +4,7 @@
  *
  *  Air-IQ userspace interface
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -279,7 +279,8 @@ typedef struct {
 
 enum {
 	AIRIQ_EVENT_DATA      = 0x1,
-	AIRIQ_EVENT_SCAN_COMPLETE      = 0x2
+	AIRIQ_EVENT_SCAN_COMPLETE      = 0x2,
+	AIRIQ_EVENT_SCAN_COMPLETE_V2      = 0x3
 };
 
 typedef struct {

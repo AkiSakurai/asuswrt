@@ -1,7 +1,7 @@
 /*
  * PHY utils - chanspec functions.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_utils_channel.c 777833 2019-08-13 05:49:18Z $
+ * $Id: phy_utils_channel.c 785588 2020-03-31 14:26:07Z $
  */
 
 #include <typedefs.h>
@@ -61,126 +61,189 @@
 
 /* channel info structure */
 typedef struct phy_chan_info_basic {
-	uint16	chan;		/* channel number */
+	chanspec_t	chan;		/* channel number */
 	uint16	freq;		/* in Mhz */
 } phy_chan_info_basic_t;
 
 static const phy_chan_info_basic_t chan_info_all[] = {
 	/* 11b/11g */
-/* 0 */		{1,	2412},
-/* 1 */		{2,	2417},
-/* 2 */		{3,	2422},
-/* 3 */		{4,	2427},
-/* 4 */		{5,	2432},
-/* 5 */		{6,	2437},
-/* 6 */		{7,	2442},
-/* 7 */		{8,	2447},
-/* 8 */		{9,	2452},
-/* 9 */		{10,	2457},
-/* 10 */	{11,	2462},
-/* 11 */	{12,	2467},
-/* 12 */	{13,	2472},
-/* 13 */	{14,	2484},
+/* 0 */		{WL_CHANSPEC_BAND_2G | 1,	2412},
+/* 1 */		{WL_CHANSPEC_BAND_2G | 2,	2417},
+/* 2 */		{WL_CHANSPEC_BAND_2G | 3,	2422},
+/* 3 */		{WL_CHANSPEC_BAND_2G | 4,	2427},
+/* 4 */		{WL_CHANSPEC_BAND_2G | 5,	2432},
+/* 5 */		{WL_CHANSPEC_BAND_2G | 6,	2437},
+/* 6 */		{WL_CHANSPEC_BAND_2G | 7,	2442},
+/* 7 */		{WL_CHANSPEC_BAND_2G | 8,	2447},
+/* 8 */		{WL_CHANSPEC_BAND_2G | 9,	2452},
+/* 9 */		{WL_CHANSPEC_BAND_2G | 10,	2457},
+/* 10 */	{WL_CHANSPEC_BAND_2G | 11,	2462},
+/* 11 */	{WL_CHANSPEC_BAND_2G | 12,	2467},
+/* 12 */	{WL_CHANSPEC_BAND_2G | 13,	2472},
+/* 13 */	{WL_CHANSPEC_BAND_2G | 14,	2484},
 
-#ifdef BAND5G
-/* 11a japan high */
-/* 14 */	{34,	5170},
-/* 15 */	{38,	5190},
-/* 16 */	{42,	5210},
-/* 17 */	{46,	5230},
-
+#if BAND5G
+/* driver defaults to US so keep these channels first */
 /* 11a usa low */
-/* 18 */	{36,	5180},
-/* 19 */	{40,	5200},
-/* 20 */	{44,	5220},
-/* 21 */	{48,	5240},
-/* 22 */	{52,	5260},
-/* 23 */	{54,	5270},
-/* 24 */	{56,	5280},
-/* 25 */	{60,	5300},
-/* 26 */	{62,	5310},
-/* 27 */	{64,	5320},
+/* 14 */	{WL_CHANSPEC_BAND_5G | 36,	5180},
+/* 15 */	{WL_CHANSPEC_BAND_5G | 40,	5200},
+/* 16 */	{WL_CHANSPEC_BAND_5G | 44,	5220},
+/* 17 */	{WL_CHANSPEC_BAND_5G | 48,	5240},
+/* 18 */	{WL_CHANSPEC_BAND_5G | 52,	5260},
+/* 19 */	{WL_CHANSPEC_BAND_5G | 54,	5270},
+/* 20 */	{WL_CHANSPEC_BAND_5G | 56,	5280},
+/* 21 */	{WL_CHANSPEC_BAND_5G | 60,	5300},
+/* 22 */	{WL_CHANSPEC_BAND_5G | 62,	5310},
+/* 23 */	{WL_CHANSPEC_BAND_5G | 64,	5320},
 
 /* 11a Europe */
-/* 28 */	{100,	5500},
-/* 29 */	{102,	5510},
-/* 30 */	{104,	5520},
-/* 31 */	{108,	5540},
-/* 31 */	{110,	5550},
-/* 32 */	{112,	5560},
-/* 33 */	{116,	5580},
-/* 34 */	{118,	5590},
-/* 35 */	{120,	5600},
-/* 36 */	{124,	5620},
-/* 37 */	{126,	5630},
-/* 38 */	{128,	5640},
-/* 39 */	{132,	5660},
-/* 39 */	{134,	5660},
-/* 40 */	{136,	5680},
-/* 41 */	{140,	5700},
+/* 24 */	{WL_CHANSPEC_BAND_5G | 100,	5500},
+/* 25 */	{WL_CHANSPEC_BAND_5G | 102,	5510},
+/* 26 */	{WL_CHANSPEC_BAND_5G | 104,	5520},
+/* 27 */	{WL_CHANSPEC_BAND_5G | 108,	5540},
+/* 28 */	{WL_CHANSPEC_BAND_5G | 110,	5550},
+/* 29 */	{WL_CHANSPEC_BAND_5G | 112,	5560},
+/* 30 */	{WL_CHANSPEC_BAND_5G | 116,	5580},
+/* 31 */	{WL_CHANSPEC_BAND_5G | 118,	5590},
+/* 32 */	{WL_CHANSPEC_BAND_5G | 120,	5600},
+/* 33 */	{WL_CHANSPEC_BAND_5G | 124,	5620},
+/* 34 */	{WL_CHANSPEC_BAND_5G | 126,	5630},
+/* 35 */	{WL_CHANSPEC_BAND_5G | 128,	5640},
+/* 36 */	{WL_CHANSPEC_BAND_5G | 132,	5660},
+/* 37 */	{WL_CHANSPEC_BAND_5G | 134,	5660},
+/* 38 */	{WL_CHANSPEC_BAND_5G | 136,	5680},
+/* 39 */	{WL_CHANSPEC_BAND_5G | 140,	5700},
+
+/* 11a japan high */
+/* 40 */	{WL_CHANSPEC_BAND_5G | 34,	5170},
+/* 41 */	{WL_CHANSPEC_BAND_5G | 38,	5190},
+/* 42 */	{WL_CHANSPEC_BAND_5G | 42,	5210},
+/* 43 */	{WL_CHANSPEC_BAND_5G | 46,	5230},
 
 #ifdef WL11AC
-/* 42 */	{144,   5720},
+/* 44 */	{WL_CHANSPEC_BAND_5G | 144,	5720},
 
 /* 11a usa high, ref5 only */
-/* 43 */	{149,   5745},
-/* 44 */	{151,   5755},
-/* 45 */	{153,   5765},
-/* 46 */	{157,   5785},
-/* 47 */	{159,   5795},
-/* 48 */	{161,   5805},
-/* 49 */	{165,   5825},
+/* 45 */	{WL_CHANSPEC_BAND_5G | 149,	5745},
+/* 46 */	{WL_CHANSPEC_BAND_5G | 151,	5755},
+/* 47 */	{WL_CHANSPEC_BAND_5G | 153,	5765},
+/* 48 */	{WL_CHANSPEC_BAND_5G | 157,	5785},
+/* 49 */	{WL_CHANSPEC_BAND_5G | 159,	5795},
+/* 50 */	{WL_CHANSPEC_BAND_5G | 161,	5805},
+/* 51 */	{WL_CHANSPEC_BAND_5G | 165,	5825},
 
 /* 11a japan */
-/* 50 */	{184,   4920},
-/* 51 */	{185,   4925},
-/* 52 */	{187,   4935},
-/* 53 */	{188,   4940},
-/* 54 */	{189,   4945},
-/* 55 */	{192,   4960},
-/* 56 */	{196,   4980},
-/* 57 */	{200,   5000},
-/* 58 */	{204,   5020},
-/* 59 */	{207,   5035},
-/* 60 */	{208,   5040},
-/* 61 */	{209,   5045},
-/* 62 */	{210,   5050},
-/* 63 */	{212,   5060},
-/* 64 */	{216,   5080},
-/* 65 */	{169,   5845},
-/* 66 */	{173,   5865},
-/* 67 */	{171,   5855}
+/* 52 */	{WL_CHANSPEC_BAND_5G | 184,	4920},
+/* 53 */	{WL_CHANSPEC_BAND_5G | 185,	4925},
+/* 54 */	{WL_CHANSPEC_BAND_5G | 187,	4935},
+/* 55 */	{WL_CHANSPEC_BAND_5G | 188,	4940},
+/* 56 */	{WL_CHANSPEC_BAND_5G | 189,	4945},
+/* 57 */	{WL_CHANSPEC_BAND_5G | 192,	4960},
+/* 58 */	{WL_CHANSPEC_BAND_5G | 196,	4980},
+/* 59 */	{WL_CHANSPEC_BAND_5G | 200,	5000},
+/* 60 */	{WL_CHANSPEC_BAND_5G | 204,	5020},
+/* 61 */	{WL_CHANSPEC_BAND_5G | 207,	5035},
+/* 62 */	{WL_CHANSPEC_BAND_5G | 208,	5040},
+/* 63 */	{WL_CHANSPEC_BAND_5G | 209,	5045},
+/* 64 */	{WL_CHANSPEC_BAND_5G | 210,	5050},
+/* 65 */	{WL_CHANSPEC_BAND_5G | 212,	5060},
+/* 66 */	{WL_CHANSPEC_BAND_5G | 216,	5080},
+/* 65 */	{WL_CHANSPEC_BAND_5G | 169,   5845},
+/* 66 */	{WL_CHANSPEC_BAND_5G | 173,   5865},
+/* 67 */	{WL_CHANSPEC_BAND_5G | 171,   5855},
+/* 68 */	{WL_CHANSPEC_BAND_5G | 167,   5835},
 
 #else
 
 /* 11a usa high, ref5 only */
-/* 42 */	{149,	5745},
-/* 43 */	{151,	5755},
-/* 44 */	{153,	5765},
-/* 45 */	{157,	5785},
-/* 46 */	{159,	5795},
-/* 47 */	{161,	5805},
-/* 48 */	{165,	5825},
+/* 44 */	{WL_CHANSPEC_BAND_5G | 149,	5745},
+/* 45 */	{WL_CHANSPEC_BAND_5G | 151,	5755},
+/* 46 */	{WL_CHANSPEC_BAND_5G | 153,	5765},
+/* 47 */	{WL_CHANSPEC_BAND_5G | 157,	5785},
+/* 48 */	{WL_CHANSPEC_BAND_5G | 159,	5795},
+/* 49 */	{WL_CHANSPEC_BAND_5G | 161,	5805},
+/* 50 */	{WL_CHANSPEC_BAND_5G | 165,	5825},
 
 /* 11a japan */
-/* 49 */	{184,	4920},
-/* 50 */	{185,	4925},
-/* 51 */	{187,	4935},
-/* 52 */	{188,	4940},
-/* 53 */	{189,	4945},
-/* 54 */	{192,	4960},
-/* 55 */	{196,	4980},
-/* 56 */	{200,	5000},
-/* 57 */	{204,	5020},
-/* 58 */	{207,	5035},
-/* 59 */	{208,	5040},
-/* 60 */	{209,	5045},
-/* 61 */	{210,	5050},
-/* 62 */	{212,	5060},
-/* 63 */	{216,	5080}
+/* 51 */	{WL_CHANSPEC_BAND_5G | 184,	4920},
+/* 52 */	{WL_CHANSPEC_BAND_5G | 185,	4925},
+/* 53 */	{WL_CHANSPEC_BAND_5G | 187,	4935},
+/* 54 */	{WL_CHANSPEC_BAND_5G | 188,	4940},
+/* 55 */	{WL_CHANSPEC_BAND_5G | 189,	4945},
+/* 56 */	{WL_CHANSPEC_BAND_5G | 192,	4960},
+/* 57 */	{WL_CHANSPEC_BAND_5G | 196,	4980},
+/* 58 */	{WL_CHANSPEC_BAND_5G | 200,	5000},
+/* 59 */	{WL_CHANSPEC_BAND_5G | 204,	5020},
+/* 60 */	{WL_CHANSPEC_BAND_5G | 207,	5035},
+/* 61 */	{WL_CHANSPEC_BAND_5G | 208,	5040},
+/* 62 */	{WL_CHANSPEC_BAND_5G | 209,	5045},
+/* 63 */	{WL_CHANSPEC_BAND_5G | 210,	5050},
+/* 64 */	{WL_CHANSPEC_BAND_5G | 212,	5060},
+/* 65 */	{WL_CHANSPEC_BAND_5G | 216,	5080},
 #endif /* WL11AC */
 
 #endif /* BAND5G */
+#if BAND6G
+{WL_CHANSPEC_BAND_6G | 1,	5945},
+{WL_CHANSPEC_BAND_6G | 5,	5965},
+{WL_CHANSPEC_BAND_6G | 9,	5985},
+{WL_CHANSPEC_BAND_6G | 13,	6005},
+{WL_CHANSPEC_BAND_6G | 17,	6025},
+{WL_CHANSPEC_BAND_6G | 21,	6045},
+{WL_CHANSPEC_BAND_6G | 25,	6065},
+{WL_CHANSPEC_BAND_6G | 29,	6085},
+{WL_CHANSPEC_BAND_6G | 33,	6105},
+{WL_CHANSPEC_BAND_6G | 37,	6125},
+{WL_CHANSPEC_BAND_6G | 41,	6145},
+{WL_CHANSPEC_BAND_6G | 45,	6165},
+{WL_CHANSPEC_BAND_6G | 49,	6185},
+{WL_CHANSPEC_BAND_6G | 53,	6205},
+{WL_CHANSPEC_BAND_6G | 57,	6225},
+{WL_CHANSPEC_BAND_6G | 61,	6245},
+{WL_CHANSPEC_BAND_6G | 65,	6265},
+{WL_CHANSPEC_BAND_6G | 69,	6285},
+{WL_CHANSPEC_BAND_6G | 73,	6305},
+{WL_CHANSPEC_BAND_6G | 77,	6325},
+{WL_CHANSPEC_BAND_6G | 81,	6345},
+{WL_CHANSPEC_BAND_6G | 85,	6365},
+{WL_CHANSPEC_BAND_6G | 89,	6385},
+{WL_CHANSPEC_BAND_6G | 93,	6405},
+{WL_CHANSPEC_BAND_6G | 97,	6425},
+{WL_CHANSPEC_BAND_6G | 101,	6445},
+{WL_CHANSPEC_BAND_6G | 105,	6465},
+{WL_CHANSPEC_BAND_6G | 109,	6485},
+{WL_CHANSPEC_BAND_6G | 113,	6505},
+{WL_CHANSPEC_BAND_6G | 117,	6525},
+{WL_CHANSPEC_BAND_6G | 121,	6545},
+{WL_CHANSPEC_BAND_6G | 125,	6565},
+{WL_CHANSPEC_BAND_6G | 129,	6585},
+{WL_CHANSPEC_BAND_6G | 133,	6605},
+{WL_CHANSPEC_BAND_6G | 137,	6625},
+{WL_CHANSPEC_BAND_6G | 141,	6645},
+{WL_CHANSPEC_BAND_6G | 145,	6665},
+{WL_CHANSPEC_BAND_6G | 149,	6685},
+{WL_CHANSPEC_BAND_6G | 153,	6705},
+{WL_CHANSPEC_BAND_6G | 157,	6725},
+{WL_CHANSPEC_BAND_6G | 161,	6745},
+{WL_CHANSPEC_BAND_6G | 165,	6765},
+{WL_CHANSPEC_BAND_6G | 169,	6785},
+{WL_CHANSPEC_BAND_6G | 173,	6805},
+{WL_CHANSPEC_BAND_6G | 177,	6825},
+{WL_CHANSPEC_BAND_6G | 181,	6845},
+{WL_CHANSPEC_BAND_6G | 185,	6865},
+{WL_CHANSPEC_BAND_6G | 189,	6885},
+{WL_CHANSPEC_BAND_6G | 193,	6905},
+{WL_CHANSPEC_BAND_6G | 197,	6925},
+{WL_CHANSPEC_BAND_6G | 201,	6945},
+{WL_CHANSPEC_BAND_6G | 205,	6965},
+{WL_CHANSPEC_BAND_6G | 209,	6985},
+{WL_CHANSPEC_BAND_6G | 213,	7005},
+{WL_CHANSPEC_BAND_6G | 217,	7025},
+{WL_CHANSPEC_BAND_6G | 221,	7045},
+{WL_CHANSPEC_BAND_6G | 225,	7065},
+{WL_CHANSPEC_BAND_6G | 229,	7085},
+{WL_CHANSPEC_BAND_6G | 233,	7105},
+#endif /* BAND6G */
 };
 
 chanspec_t
@@ -207,51 +270,55 @@ phy_utils_channel2freq(uint channel)
 	return (0);
 }
 
-/* Converts channel number into the wlc_phy_chan_info index */
-uint
-phy_utils_channel2idx(uint channel)
-{
-	uint i;
-
-	for (i = 0; i < ARRAYSIZE(chan_info_all); i++) {
-		if (chan_info_all[i].chan == channel)
-			return i;
-	}
-
-	ASSERT(FALSE);
-	return (0);
-}
-
 /* fill out a chanvec_t with all the supported channels for the band. */
 void
 phy_utils_chanspec_band_validch(phy_info_t *pi, uint band, chanvec_t *channels)
 {
 	uint i;
 	uint channel;
+	chanspec_t chanspec;
 
-	ASSERT((band == WLC_BAND_2G) || (band == WLC_BAND_5G));
+	ASSERT((band == WLC_BAND_2G) || (band == WLC_BAND_5G) ||
+		(band == WLC_BAND_6G));
 
 	bzero(channels, sizeof(chanvec_t));
 
+	/* Non-HE capable PHY should not report 6G channels */
+	if ((band == WLC_BAND_6G) &&
+		!(wlc_phy_cap_get((wlc_phy_t*)pi) & PHY_CAP_HE)) {
+		return;
+	}
+
 	for (i = 0; i < ARRAYSIZE(chan_info_all); i++) {
-		channel = chan_info_all[i].chan;
-
-		/* disable the high band channels [149-165] for srom ver 1 */
-		if ((pi->a_band_high_disable) && (channel >= FIRST_REF5_CHANNUM) &&
-		    (channel <= LAST_REF5_CHANNUM))
+		chanspec = chan_info_all[i].chan;
+		/* ignore entries for other bands */
+		if (CHSPEC_BANDTYPE(chanspec) != band)
 			continue;
 
-		/* Disable channel 144 unless it's an ACPHY */
-		if ((channel == 144) && (!ISACPHY(pi)))
+		channel = CHSPEC_CHANNEL(chanspec);
+		if (band == WLC_BAND_6G) {
+			if (chan_info_all[i].freq >= 5945)
+				setbit(channels->vec, channel);
 			continue;
+		}
+		if (CHSPEC_BANDTYPE(chanspec) == WLC_BAND_5G) {
+			/* disable the high band channels [149-165] for srom ver 1 */
+			if ((pi->a_band_high_disable) && (channel >= FIRST_REF5_CHANNUM) &&
+			    (channel <= LAST_REF5_CHANNUM))
+				continue;
 
-		/* For Non-HE capable PHY, ch169, 173 are not supported.
-		 * For HE capable PHY, ch169, 173 are supported and corresponding tuning tables
-		 * are expected to support these channels, too.
-		 */
-		if ((channel >= 169) && (channel <= 173) &&
-			!(wlc_phy_cap_get((wlc_phy_t*)pi) & PHY_CAP_HE)) {
-			continue;
+			/* Disable channel 144 unless it's an ACPHY */
+			if ((channel == 144) && (!ISACPHY(pi)))
+				continue;
+
+			/* For Non-HE capable PHY, ch169, 173 are not supported.
+			 * For HE capable PHY, ch169, 173 are supported and corresponding
+			 * tuning tables are expected to support these channels, too.
+			 */
+			if ((channel >= 169) && (channel <= 173) &&
+				!(wlc_phy_cap_get((wlc_phy_t*)pi) & PHY_CAP_HE)) {
+				continue;
+			}
 		}
 
 		if (((band == WLC_BAND_2G) && (channel <= CH_MAX_2G_CHANNEL)) ||
@@ -266,19 +333,32 @@ phy_utils_chanspec_band_firstch(phy_info_t *pi, uint band)
 {
 	uint i;
 	uint channel;
-	chanspec_t chspec;
+	chanspec_t chanspec;
 
-	ASSERT((band == WLC_BAND_2G) || (band == WLC_BAND_5G));
+	ASSERT((band == WLC_BAND_2G) || (band == WLC_BAND_5G) ||
+		(band == WLC_BAND_6G));
+
+	/* Non-HE capable PHY should not report 6G channels */
+	if ((band == WLC_BAND_6G) &&
+		!(wlc_phy_cap_get((wlc_phy_t*)pi) & PHY_CAP_HE)) {
+		return (chanspec_t)INVCHANSPEC;
+	}
 
 	for (i = 0; i < ARRAYSIZE(chan_info_all); i++) {
-		channel = chan_info_all[i].chan;
+		chanspec = chan_info_all[i].chan;
+
+		/* ignore entries for other bands */
+		if (CHSPEC_BANDTYPE(chanspec) != band)
+			continue;
+
+		channel = CHSPEC_CHANNEL(chanspec);
 
 		/* If 40MHX b/w then check if there is an upper 20Mhz adjacent channel */
 		if (IS40MHZ(pi)) {
 			uint j;
 			/* check if the upper 20Mhz channel exists */
 			for (j = 0; j < ARRAYSIZE(chan_info_all); j++) {
-				if (chan_info_all[j].chan == channel + CH_10MHZ_APART)
+				if (chan_info_all[j].chan == chanspec + CH_10MHZ_APART)
 					break;
 			}
 			/* did we find an adjacent channel */
@@ -286,23 +366,17 @@ phy_utils_chanspec_band_firstch(phy_info_t *pi, uint band)
 				continue;
 			/* Convert channel from 20Mhz num to 40 Mhz number */
 			channel = UPPER_20_SB(channel);
-			chspec = channel | WL_CHANSPEC_BW_40 | WL_CHANSPEC_CTL_SB_LOWER;
-			if (band == WLC_BAND_2G)
-				chspec |= WL_CHANSPEC_BAND_2G;
-			else
-				chspec |= WL_CHANSPEC_BAND_5G;
+			chanspec = channel | CHSPEC_BANDTYPE(chanspec) |
+				WL_CHANSPEC_BW_40 | WL_CHANSPEC_CTL_SB_LOWER;
 		}
-		else
-			chspec = CH20MHZ_CHSPEC(channel);
+		if (CHSPEC_BANDTYPE(chanspec) == WLC_BAND_5G) {
+			/* disable the high band channels [149-165] for srom ver 1 */
+			if ((pi->a_band_high_disable) && (channel >= FIRST_REF5_CHANNUM) &&
+			    (channel <= LAST_REF5_CHANNUM))
+				continue;
+		}
 
-		/* disable the high band channels [149-165] for srom ver 1 */
-		if ((pi->a_band_high_disable) && (channel >= FIRST_REF5_CHANNUM) &&
-		    (channel <= LAST_REF5_CHANNUM))
-			continue;
-
-		if (((band == WLC_BAND_2G) && (channel <= CH_MAX_2G_CHANNEL)) ||
-		    ((band == WLC_BAND_5G) && (channel > CH_MAX_2G_CHANNEL)))
-			return chspec;
+		return chanspec;
 	}
 
 	/* should never come here */

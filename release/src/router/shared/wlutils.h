@@ -1,7 +1,7 @@
 /*
  * Broadcom wireless network adapter utility functions
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wlutils.h 736070 2017-12-13 12:45:04Z $
+ * $Id: wlutils.h 779706 2019-10-04 13:58:11Z $
  */
 
 #ifndef _wlutils_h_
@@ -26,11 +26,11 @@
 
 #include <shared.h>
 
-#ifdef RTCONFIG_RALINK
-#elif defined(RTCONFIG_QCA)
-#elif defined(RTCONFIG_ALPINE)
-#elif defined(RTCONFIG_LANTIQ)
-#else
+#ifdef RTCONFIG_REALTEK
+#include <wlioctl.h>
+extern int wl_ioctl(char *name, int cmd, void *buf, int len);
+#endif //RTCONFIG_REALTEK
+#ifdef CONFIG_BCMWL5
 #include <typedefs.h>
 #ifdef RTCONFIG_HND_ROUTER_AX
 #include <ethernet.h>
@@ -38,8 +38,9 @@
 #include <proto/ethernet.h>
 #endif
 #include <wlioctl.h>
+#ifdef RTCONFIG_HND_ROUTER_AX
 #include <bcmtlv.h>
-
+#endif
 /*
  * Pass a wlioctl request to the specified interface.
  * @param	name	interface name
@@ -57,7 +58,7 @@ extern int wl_ioctl(char *name, int cmd, void *buf, int len);
  * @param	len	length of buf
  * @return	>= 0 if successful or < 0 otherwise
  */
-#define DEV_TYPE_LEN 3
+#define DEV_TYPE_LEN 3	/* Length for dev type 'et'/'wl' */
 extern int wl_get_dev_type(char *name, void *buf, int len);
 
 /*
@@ -163,9 +164,18 @@ extern int wl_endian_probe(char *name);
  * @param      val             val or val pointer for int routines
  * @return     success == 0, failure != 0
  */
-extern int wl_heiovar_setint(char *ifname, char *iovar, char *subcmd, int val);
-#endif
 
+extern int wl_heiovar_setint(char *ifname, char *iovar, char *subcmd, int val);
+
+/*
+ * Set msched/umsched related commands
+ * @param	ifname		interface name
+ * @param	iovar		variable name
+ * @param	subcmd		msched/umsched subcommand
+ * @param	val		val or val pointer for int routines
+ * @return	success == 0, failure != 0
+ */
+extern int wl_msched_iovar_setint(char *ifname, char *iovar, char *subcmd, int val);
 
 /*
  * Set xtlv related iovar commands
@@ -208,6 +218,7 @@ extern int wl_iovar_xtlv_setint(char *ifname, char *iovar, int32 val, uint16 ver
 extern int wl_iovar_xtlv_setbuf(char *ifname, char *iovar, uint8 *param, uint16 paramlen,
                uint16 version, uint16 cmd_id, uint16 xtlv_id, bcm_xtlv_opts_t opts,
                uint8 *buf, uint16 buflen);
+#endif
 
 #ifdef __CONFIG_DHDAP__
 extern int dhd_probe(char *name);

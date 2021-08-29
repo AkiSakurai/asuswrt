@@ -1,7 +1,7 @@
 /*
  * Sample Collect module implementation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_samp.c 689072 2017-03-08 23:39:16Z $
+ * $Id: phy_samp.c 775574 2019-06-04 19:15:21Z $
  */
 
 #include <phy_cfg.h>
@@ -208,8 +208,6 @@ phy_sample_collect(phy_samp_info_t *sampi, wl_samplecollect_args_t *collect, voi
 	}
 	else if (ISNPHY(pi))
 		status = phy_n_sample_collect(pi, collect, (uint32 *)b);
-	else if (ISLCN20PHY(pi))
-		status = wlc_phy_sample_collect_lcn20phy(pi, collect, (uint32 *)b);
 	else
 		status = BCME_UNSUPPORTED;
 

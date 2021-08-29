@@ -1,6 +1,6 @@
 /*
  * Private header - wireless security key implementation
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_key_pvt.h 777731 2019-08-07 19:37:44Z $
+ * $Id: km_key_pvt.h 777452 2019-08-01 23:59:49Z $
  */
 
 #ifndef _km_key_pvt_h_

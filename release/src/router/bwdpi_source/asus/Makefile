@@ -1,5 +1,9 @@
 include ../../common.mak
 
+ifeq ($(TOP_PLATFORM),)
+TOP_PLATFORM=$(TOP)
+endif
+
 CFLAGS += -Os -Wall $(EXTRACFLAGS) -fPIC
 CFLAGS += -I. -I$(TOP)/shared -I$(TOP_PLATFORM)/nvram$(BCMEX)$(EX7) -I$(SRCBASE)/include -I$(TOP)/httpd
 CFLAGS += -I$(TOP)/bwdpi_source/src/tdts_udb_sample
@@ -42,12 +46,15 @@ endif
 
 # add rule for ProgControl3 new mechanism
 ifeq ($(RTCONFIG_SOC_IPQ8064),y)
-else ifeq ($(RTCONFIG_SOC_IPQ8074),y)
 	# ipq806x
+else ifeq ($(RTCONFIG_SOC_IPQ8074),y)
+CFLAGS += -DPGCONTROL3
 else ifeq ($(RTCONFIG_SOC_IPQ40XX),y)
-	# ipq807x
-else ifeq ($(RTCONFIG_QCA956X),y)
-	# qca956x
+	# ipq40xx
+else ifeq ($(or $(RTCONFIG_QCA956X),$(RTCONFIG_QCN550X)),y)
+	# qca956x / qcn550x
+else ifeq ($(RTCONFIG_SOC_IPQ60XX),y)
+CFLAGS += -DPGCONTROL3
 else ifeq ($(RTCONFIG_RALINK),y)
 	# mtk
 else ifeq ($(RTCONFIG_LANTIQ),y)
@@ -57,10 +64,10 @@ ifeq ($(RTCONFIG_BCM7),y)
 	# bcm7
 else ifeq ($(HND_ROUTER),y)
 ifeq ($(HND_ROUTER_AX),y)
-ifeq ($(RTCONFIG_HND_ROUTER_AX_675X),y)
+ifeq ($(or $(RTCONFIG_HND_ROUTER_AX_675X),$(RTCONFIG_HND_ROUTER_AX_6710)),y)
 CFLAGS += -DPGCONTROL3
 else
-	# ax-hnd
+CFLAGS += -DPGCONTROL3
 endif # RTCONFIG_HND_ROUTER_AX_675X
 else
 	# hnd
@@ -70,6 +77,7 @@ else ifeq ($(RTCONFIG_BCM_7114),y)
 else
 ifeq ($(RTCONFIG_BCMSMP),y)
 	# bcm6_smp
+CFLAGS += -DPGCONTROL3
 else
 	# bcm6_up
 endif
@@ -105,7 +113,7 @@ OBJS += wrs_wbl.o      # wrs - white and black list
 
 # TrendMicro
 OBJS += conf_app.o ioc_anomaly.o ioc_common.o ioc_qos.o ioc_vp.o ioc_wbl.o ioc_wrs.o ioc_mesh.o
-ifneq ($(RTCONFIG_QCA956X),y)
+ifneq ($(or $(RTCONFIG_QCA956X),$(RTCONFIG_QCN550X)),y)
 OBJS += ioc_patrol_tq.o
 endif
 

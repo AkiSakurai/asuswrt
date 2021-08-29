@@ -90,7 +90,7 @@
 </style>
 <script>
 $(function () {
-	if(amesh_support) {
+	if(amesh_support && ameshRouter_support) {
 		addNewScript('/require/modules/amesh.js');
 	}
 });
@@ -117,7 +117,8 @@ function initial(){
 	var gen_operation_mode = function(_jsonArray, _sw_mode) {
 		var $spanHtml = $('<span>');
 		$spanHtml.attr({"id" : _jsonArray["span"]["id"]});
-		$spanHtml.css("margin-right", "10px");
+		if(_jsonArray.css_list != undefined)
+			$spanHtml.css(_jsonArray.css_list);
 		var $inputHtml = $('<input>');
 		$inputHtml.attr({ "type" : "radio", "id" : _jsonArray["input"]["id"], "name" :  _jsonArray["input"]["name"], "value" : _jsonArray["input"]["value"] });
 		$inputHtml.addClass("input");
@@ -146,10 +147,11 @@ function initial(){
 				"value" : "1"
 			},
 			"label" : {
-				"text" : (amesh_support) ? "<#AiMesh_GW_item#>" : "<#OP_GW_item#>"
+				"text" : (amesh_support && ameshRouter_support) ? "<#AiMesh_GW_item#>" : "<#OP_GW_item#>"
 			},
 			"mode" : "1",
-			"express" : "0"
+			"express" : "0",
+			"css_list" : {"margin":"0px 10px 5px 0px", "display":"block"}
 		},
 		"apMode" : {
 			"span" : {
@@ -161,10 +163,11 @@ function initial(){
 				"value" : "3"
 			},
 			"label" : {
-				"text" : (amesh_support) ? "<#AiMesh_AP_item#>" : "<#OP_AP_item#>"
+				"text" : (amesh_support && ameshRouter_support) ? "<#AiMesh_AP_item#>" : "<#OP_AP_item#>"
 			},
 			"mode" : "3",
-			"express" : "0"
+			"express" : "0",
+			"css_list" : {"margin":"0px 10px 5px 0px", "display":"block"}
 		},
 		"repeaterMode" : {
 			"span" : {
@@ -179,7 +182,8 @@ function initial(){
 				"text" : "<#OP_RE_item#>"
 			},
 			"mode" : "2",
-			"express" : "0"
+			"express" : "0",
+			"css_list" : {"margin":"0px 10px 5px 0px", "display":"inline-block"}
 		},
 		"rp_express_2g" : {
 			"span" : {
@@ -194,7 +198,8 @@ function initial(){
 				"text" : "<#OP_RE2G_item#>"
 			},
 			"mode" : "2",
-			"express" : "1"
+			"express" : "1",
+			"css_list" : {"margin":"0px 10px 5px 0px", "display":"inline-block"}
 		},
 		"rp_express_5g" : {
 			"span" : {
@@ -209,7 +214,8 @@ function initial(){
 				"text" : "<#OP_RE5G_item#>"
 			},
 			"mode" : "2",
-			"express" : "2"
+			"express" : "2",
+			"css_list" : {"margin":"0px 10px 5px 0px", "display":"inline-block"}
 		},
 		"mbMode" : {
 			"span" : {
@@ -224,7 +230,8 @@ function initial(){
 				"text" : "<#OP_MB_item#>"
 			},
 			"mode" : "4",
-			"express" : "0"
+			"express" : "0",
+			"css_list" : {"margin":"0px 10px 5px 0px", "display":"block"}
 		},
 		"AiMeshMode" : {
 			"span" : {
@@ -239,31 +246,20 @@ function initial(){
 				"text" : "<#AiMesh_Node#>"
 			},
 			"mode" : "5",
-			"express" : "0"
+			"express" : "0",
+			"css_list" : {"margin":"0px 10px 5px 0px", "display":"block"}
 		}
 	}
-	if(amesh_support) {
-		$("#operation_mode_bg").append(gen_operation_mode(operation_array["routerMode"], sw_mode_orig));
-		$("#operation_mode_bg").append("<br>");
-		$("#operation_mode_bg").append(gen_operation_mode(operation_array["apMode"], sw_mode_orig));
-		$("#operation_mode_bg").append("<br>");
-		$("#operation_mode_bg").append(gen_operation_mode(operation_array["repeaterMode"], sw_mode_orig));
-		$("#operation_mode_bg").append(gen_operation_mode(operation_array["rp_express_2g"], sw_mode_orig));
-		$("#operation_mode_bg").append(gen_operation_mode(operation_array["rp_express_5g"], sw_mode_orig));
-		$("#operation_mode_bg").append(gen_operation_mode(operation_array["mbMode"], sw_mode_orig));
-		if(ameshNode_support) {
-			$("#operation_mode_bg").append("<br>");
-			$("#operation_mode_bg").append(gen_operation_mode(operation_array["AiMeshMode"], sw_mode_orig));
-		}
-	}
-	else {
-		$("#operation_mode_bg").append(gen_operation_mode(operation_array["routerMode"], sw_mode_orig));
-		$("#operation_mode_bg").append(gen_operation_mode(operation_array["repeaterMode"], sw_mode_orig));
-		$("#operation_mode_bg").append(gen_operation_mode(operation_array["rp_express_2g"], sw_mode_orig));
-		$("#operation_mode_bg").append(gen_operation_mode(operation_array["rp_express_5g"], sw_mode_orig));
-		$("#operation_mode_bg").append(gen_operation_mode(operation_array["apMode"], sw_mode_orig));
-		$("#operation_mode_bg").append(gen_operation_mode(operation_array["mbMode"], sw_mode_orig));
-	}
+
+	$("#operation_mode_bg").append(gen_operation_mode(operation_array["routerMode"], sw_mode_orig));
+	$("#operation_mode_bg").append(gen_operation_mode(operation_array["apMode"], sw_mode_orig));
+	$("#operation_mode_bg").append(gen_operation_mode(operation_array["repeaterMode"], sw_mode_orig));
+	$("#operation_mode_bg").append(gen_operation_mode(operation_array["rp_express_2g"], sw_mode_orig));
+	$("#operation_mode_bg").append(gen_operation_mode(operation_array["rp_express_5g"], sw_mode_orig));
+	$("#operation_mode_bg").append(gen_operation_mode(operation_array["mbMode"], sw_mode_orig));
+	if(amesh_support && ameshNode_support)
+		$("#operation_mode_bg").append(gen_operation_mode(operation_array["AiMeshMode"], sw_mode_orig));
+
 	setScenerion(sw_mode_orig, document.form.wlc_express.value);
 
 	if(downsize_4m_support || downsize_8m_support)
@@ -289,6 +285,11 @@ function initial(){
 	if(!psta_support){
 		document.getElementById("mbMode").style.display = "none";
 		document.getElementById("sw_mode4_radio").disabled = true;
+	}
+
+	if(isSupport("noAP")){
+		$("#apMode").hide();
+		$("#sw_mode3_radio").attr("disabled", true);
 	}
 }
 
@@ -355,7 +356,7 @@ function saveMode(){
 		}
 	}
 
-	if(amesh_support) {
+	if(amesh_support && ameshRouter_support) {
 		if(!AiMesh_confirm_msg("Operation_Mode", document.form.sw_mode.value))
 			return false;
 	}
@@ -389,7 +390,7 @@ function saveMode(){
 		document.form.wlc_psta.value = 0;
 		document.form.wlc_psta.disabled = false;
 
-		if(amesh_support) {
+		if(amesh_support && ameshRouter_support) {
 			document.form.cfg_master.disabled = false;
 			document.form.cfg_master.value = 1;
 		}
@@ -440,6 +441,10 @@ function saveMode(){
 			}
 
 			if(wl_info.band5g_2_support){
+				if(band6g_support){
+					document.getElementById("5g2_title").innerHTML = '6 GHz - <#Security#>';
+				}
+				
 				document.getElementById("wl_unit_field_4").style.display = "";
 				document.getElementById("wl_unit_field_5").style.display = "";
 				document.getElementById("wl_unit_field_6").style.display = "";	
@@ -621,7 +626,7 @@ function setScenerion(mode, express){
 			$("#mode_desc").html("<#OP_AP_desc#><br/><span style=\"color:#FC0\"><#OP_AP_hint#></span>");
 		}else{*/
 			var desc = "";
-			if(amesh_support) {
+			if(amesh_support && ameshRouter_support) {
 				desc += "<#AiMesh_AP_desc#>";
 				desc += "<br>";
 				desc += "<#AiMesh_Node_Add#>";
@@ -648,7 +653,7 @@ function setScenerion(mode, express){
 			pstaDesc += "<br/><span style=\"color:#FC0\"><#deviceDiscorvy4#></span>";
 
 		var url = "/images/New_ui/mb.jpg";
-		var height = "250px";
+		var height = "305px";
 		if(odmpid == "RT-AC66U_B1" || odmpid == "RT-AC1750_B1" || odmpid == "RT-N66U_C1" || odmpid == "RT-AC1900U" || odmpid == "RT-AC67U")
 			url = "/images/RT-AC66U_V2/mb.jpg";
 		else if(odmpid == "RP-AC1900")
@@ -685,7 +690,7 @@ function setScenerion(mode, express){
 		else
 			$("#Senario").css({"height": "", "background": "url(/images/New_ui/rt.jpg) center no-repeat", "margin": "auto", "margin-bottom": "30px"});
 		var desc = "";
-		if(amesh_support) {
+		if(amesh_support && ameshRouter_support) {
 			desc += "<#AiMesh_GW_desc#>";
 			desc += "<br>";
 			desc += "<#AiMesh_Node_Add#>";
@@ -760,7 +765,7 @@ function change_smart_con(v){
 }
 </script>
 </head>
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="hiddenMask" class="popup_bg">
 <table cellpadding="4" cellspacing="0" id="dr_sweet_advise" class="dr_sweet_advise" align="center">
@@ -889,7 +894,7 @@ function change_smart_con(v){
 			</td>
 		</tr>
 		<tr id="wl_unit_field_4" style="display:none;">
-			<th width="180">5 GHz-2 - <#Security#> </th>
+			<th id="5g2_title" width="180">5 GHz-2 - <#Security#> </th>
 			<td class="QISformtd" id="wl_unit_field_4_2">
 				<input type="checkbox" id="sync_with_5ghz" name="sync_with_5ghz" tabindex="8" class="input" onclick="setTimeout('Sync_5ghz(2);',0);" checked="checked"><span id="syncCheckbox_5_2"><#qis_ssid_desc#></span>
 			</td>
@@ -933,7 +938,7 @@ function change_smart_con(v){
 			<tr>
 				<td valign="top" >			
 					<table width="760px" border="0" cellpadding="5" cellspacing="0" class="FormTitle" id="FormTitle">
-						<tr bgcolor="#4D595D" valign="top" style="height:15%;*height:5%">
+						<tr bgcolor="#4D595D" valign="top">
 							<td>
 								<div>&nbsp;</div>
 								<div class="formfonttitle"><#menu5_6#> - <#menu5_6_1_title#></div>

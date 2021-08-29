@@ -284,7 +284,7 @@ function handle_11ac_80MHz(){
 		document.form.wl_bw.remove(3); //remove 80 Mhz when not when not required required
 	} else {
 		document.form.wl_bw[0].text = "20/40/80 MHz";
-		if(document.form.wl_bw.length == 3)
+		if (document.form.wl_bw.length == 3)
 			document.form.wl_bw[3] = new Option("80 MHz", "3");
 	}
 }
@@ -458,6 +458,14 @@ function change_common_radio(o, s, v, r){
 				else
 						showhide("WPS_hideSSID_hint",0);
 			}
+	}
+	else if(v=="bond_wan" && (based_modelid == "RT-AX89U" || based_modelid == "GT-AXY16000")){
+		if(r==1){
+			document.getElementById("wanports_bond_menu").style.display = "";
+			document.form.wanports_bond.disabled = false;
+		}else{
+			document.getElementById("wanports_bond_menu").style.display = "none";
+		}
 	}
 
 	return true;
@@ -725,6 +733,14 @@ function isArray(o) {
 	return Object.prototype.toString.call(o) === '[object Array]';
 }
 
+function has_dfs_channel(chint){
+	ch = chint.toString().split(",");
+	if(ch.indexOf("52") != -1 || ch.indexOf("56") != -1 || ch.indexOf("60") != -1 || ch.indexOf("64") != -1 || ch.indexOf("100") != -1 || ch.indexOf("104") != -1 || ch.indexOf("108") != -1 || ch.indexOf("112") != -1 || ch.indexOf("116") != -1 || ch.indexOf("120") != -1 || ch.indexOf("124") != -1 || ch.indexOf("128") != -1 || ch.indexOf("132") != -1 || ch.indexOf("136") != -1 || ch.indexOf("140") != -1 || ch.indexOf("144") != -1)
+		return true;
+	else
+		return false;
+}
+
 function filter_5g_channel_by_bw(ch_ary, bw){
 	var del, ary;;
 	if(bw == 160){
@@ -755,15 +771,143 @@ function filter_5g_channel_by_bw(ch_ary, bw){
 	return ary;
 }
 
+function filter_60g_control_channel_by_bw(ctrl_ch_ary, edmg_ch_ary, bw){
+	var edmg_sch_mask = [ [], [], [], [], [], [], [], [], [],	// ch  0 ~  8, not EDMG channel or N/A.
+		[ 0x06 ], [ 0x0c ], [ 0x18 ], [ 0x30 ], [ 0x60 ],	// ch  9 ~ 13, BW 4.32GHz EDMG channel.
+		[], [], [],						// ch 14 ~ 16, N/A
+		[ 0x0e ], [ 0x1c ], [ 0x38 ], [ 0x70 ],			// ch 17 ~ 20, BW 6.48GHz EDMG channel.
+		[], [], [], [],						// ch 21 ~ 24, N/A
+		[ 0x1e ], [ 0x3c ], [ 0x78 ] ];				// ch 25 ~ 27, BW 8.64GHz EDMG channel.
+	var new_ctrl_ch_ary = [];
+	for (var i = 0; i < ctrl_ch_ary.length; ++i) {
+		for (var j = 0; j < edmg_ch_ary.length; ++j) {
+			if (!edmg_sch_mask[edmg_ch_ar[j]]
+			 || !((1 << ctrl_ch_ary[i]) & edmg_sch_mask[edmg_ch_ar[j]]))
+				continue;
+
+			new_ctrl_ch_ary.push(ctrl_ch_ary[i]);
+			break;
+		}
+	}
+	return new_ctrl_ch_ary;
+}
+
+function filter_60g_edmg_channel_by_bw(ctrl_ch_ary, bw){
+	var CurrentCtrlCh = parseInt(document.form.wl_channel.value);
+	var edmg_ch_ary = [];
+	var all_ch_mask = 0;
+	if (bw == 4320) {
+		var start_ch = 9;
+		var edmg_sch_mask = [ [ 0x06 ], [ 0x0c ], [ 0x18 ], [ 0x30 ], [ 0x60 ] ];	// ch 1,2; 2,3; 3,4; 4,5; 5,6
+	} else if (bw == 6480) {
+		var start_ch = 17;
+		var edmg_sch_mask = [ [ 0x0e ], [ 0x1c ], [ 0x38 ], [ 0x70 ] ];			// ch 1,2,3; 2,3,4; 3,4,5; 4,5,6
+	} else if (bw == 8640) {
+		var start_ch = 25;
+		var edmg_sch_mask = [ [ 0x1e ], [ 0x3c ], [ 0x78 ] ];				// ch 1,2,3,4; 2,3,4,5, 3,4,5,6
+	} else {
+		return edmg_ch_ary;								// No EDMG channel if bandwidth is 2.16GHz
+	}
+
+	for (var i = 0; i < ctrl_ch_ary.length; ++i) {
+		if (ctrl_ch_ary[i] < 1 || ctrl_ch_ary[i] > 6)
+			continue;
+		all_ch_mask |= 1 << ctrl_ch_ary[i];
+	}
+
+	// Add a EDMG channel if all sub-channel of it are supported.
+	for (var i = 0, ch = start_ch; i < edmg_sch_mask.length; ++i, ++ch) {
+		if ((edmg_sch_mask[i] & all_ch_mask) != edmg_sch_mask[i])
+			continue;
+		if (CurrentCtrlCh && !(edmg_sch_mask[i] & (1 << CurrentCtrlCh)))
+			continue;
+
+		edmg_ch_ary.push(ch);
+	}
+
+	return edmg_ch_ary;
+}
+
 function insertExtChannelOption(){
 	var wl_unit = '<% nvram_get("wl_unit"); %>';
 	if(wl_unit == '0'){
 		insertExtChannelOption_2g();
 	}else if (wl_unit == '3'){
-		//nothing to do
+		insertChannelOption_60g();
 	}else{
 		insertExtChannelOption_5g();
 	}
+}
+
+function wl_bw_to_wigig_bw(wl_bw){
+	/* WL_BW_2160 ~ WL_BW_8640 */
+	if (wl_bw == 6)
+		return 2160;
+	else if (wl_bw == 7)
+		return 4320;
+	else if (wl_bw == 8)
+		return 6480;
+	else if (wl_bw == 9)
+		return 8640;
+	else
+		return 0;
+}
+
+function insertChannelOption_60g(){
+	if (!band60g_support || document.form.wl_unit.value != 3)
+		return;
+
+	var CurrentCtrlCh = document.form.wl_channel.value;
+	var CurrentEdmgCh = document.form.wl_edmg_channel.value;
+	var edma_ch_ary = [], ary = [], ch_v = [];
+
+	if (document.form.wl_bw.value == 6) {
+		// 2.16GHz, hide EDMA channel.
+		document.getElementById("wl_edmg_field").style.display = "none";
+	} else {
+		if (document.form.wl_bw.value == 1) {
+			// auto-bandwidth, list channels of all possible bandwidth
+			max_wl_bw = max_band60g_wl_bw;
+			for (var i = 7; i <= max_wl_bw; ++i) {
+				if (wl_bw_to_wigig_bw(i) <= 2160)
+					continue;
+				ary = filter_60g_edmg_channel_by_bw(wl_channel_list_60g, wl_bw_to_wigig_bw(i));
+				edma_ch_ary = edma_ch_ary.concat(ary);
+			}
+		} else {
+			// list channels of specific bandwidth
+			if (wl_bw_to_wigig_bw(document.form.wl_bw.value) > 2160) {
+				ary = filter_60g_edmg_channel_by_bw(wl_channel_list_60g, wl_bw_to_wigig_bw(document.form.wl_bw.value));
+				edma_ch_ary = edma_ch_ary.concat(ary);
+			}
+		}
+
+		if (CurrentCtrlCh == "0") {
+			// EDMG channel can't be selected if control-channel is auto.
+			edma_ch_ary = [ [0] ];
+			ch_v = [ ["<#Auto#>"] ];
+		} else {
+			if (edma_ch_ary.length > 1 && edma_ch_ary[0] != 0)
+				edma_ch_ary.splice(0,0,0);
+			for (var i = 0, ch_v = []; i < edma_ch_ary.length; ++i)
+				ch_v[i] = edma_ch_ary[i];
+			if (ch_v.length > 1 && ch_v[0] == 0)
+				ch_v[0] = "<#Auto#>";
+		}
+		add_options_x2(document.form.wl_edmg_channel, ch_v, edma_ch_ary, CurrentEdmgCh);
+
+		document.getElementById("wl_edmg_field").style.display = "";
+	}
+
+	wl_channel_list_60g = eval('<% channel_list_60g(); %>');
+	if (wl_channel_list_60g[0] != 0)
+		wl_channel_list_60g.splice(0, 0, 0);
+	for (var i = 0, ch_v = []; i < wl_channel_list_60g.length; ++i)
+		ch_v[i] = wl_channel_list_60g[i];
+	if (ch_v[0] == 0)
+		ch_v[0] = "<#Auto#>";
+
+	add_options_x2(document.form.wl_channel, ch_v, wl_channel_list_60g, CurrentCtrlCh);
 }
 
 function insertExtChannelOption_5g(){
@@ -777,12 +921,9 @@ function insertExtChannelOption_5g(){
 				wl_channel_list_5g = eval('<% channel_list_5g_2(); %>');
 
 			if(lantiq_support){
-				if(document.form.wl_bw.value == "0" ||
-				document.form.wl_bw.value == "1"	){
-					// 20MHz, 20/40/80
+				if(document.form.wl_bw.value == "0" || document.form.wl_bw.value == "1"	){	// 20MHz, 20/40/80
 					wl_channel_list_5g = eval('<% channel_list_5g_20m(); %>');
-				}else if(document.form.wl_bw.value == "2"){
-					// 40MHz
+				}else if(document.form.wl_bw.value == "2"){		// 40MHz
 					wl_channel_list_5g = eval('<% channel_list_5g_40m(); %>');
 				}else{ // 80
 					wl_channel_list_5g = eval('<% channel_list_5g_80m(); %>');
@@ -803,7 +944,6 @@ function insertExtChannelOption_5g(){
 					inputCtrl(document.form.wl_nctrlsb, 0);
 				}
 			}
-
 			if(is_RU_sku){
 				var RU_band4 = (function(){
 					for(i=0;i<wl_channel_list_5g.length;i++){
@@ -821,7 +961,8 @@ function insertExtChannelOption_5g(){
 						}
 						else{
 							wl_channel_list_5g = ['42', '58', '138'];
-						}	
+						}
+						
 					}
 					else if(document.form.wl_bw.value == 2){    // 40 MHz
 						if(RU_band4){
@@ -830,6 +971,7 @@ function insertExtChannelOption_5g(){
 						else{
 							wl_channel_list_5g = ['38', '46', '54', '62', '134', '142'];
 						}
+						
 					}			
 				}
 			}
@@ -839,8 +981,9 @@ function insertExtChannelOption_5g(){
 						wl_channel_list_5g = filter_5g_channel_by_bw(wl_channel_list_5g, 40);
 					}
 					// for V80, V80+80, if not all 4 continuous channels exist, remove them.
-					if( (vht80_80_support && (document.form.wl_bw.value == "3" || document.form.wl_bw.value == "4") && (Rawifi_support || Qcawifi_support))
-					 || (band5g_11ac_support && document.form.wl_bw.value == "3" && Rtkwifi_support)){
+					if((vht80_80_support && (document.form.wl_bw.value == "3" || document.form.wl_bw.value == "4") && (Rawifi_support || Qcawifi_support))
+					|| (band5g_11ac_support && document.form.wl_bw.value == "3" && (Rtkwifi_support || Rawifi_support))
+					|| (band5g_11ax_support || band5g_11ac_support) && (document.form.wl_bw.value == "3") && Qcawifi_support){
 						wl_channel_list_5g = filter_5g_channel_by_bw(wl_channel_list_5g, 80);
 					}
 					// For V160, if not all 8 continuous channels exist, remove them.
@@ -1209,8 +1352,7 @@ function insertExtChannelOption_5g(){
         var ch_v = new Array();
         for(var i=0; i<channels.length; i++){
         	ch_v[i] = channels[i];
-		}
-		
+        }
         if(ch_v[0] == "0"){
 			channels[0] = "<#Auto#>";
 		}
@@ -1233,6 +1375,7 @@ function insertExtChannelOption_5g(){
 					else{
 						ch_v = ['0', '36', '52', '132'];
 					}
+					
 				}
 				else if(document.form.wl_bw.value == 2){    // 40 MHz
 					if(RU_band4){
@@ -1241,11 +1384,12 @@ function insertExtChannelOption_5g(){
 					else{
 						ch_v = ['0', '36', '44', '52', '60', '132', '140'];
 					}
+					
 				}			
 			}
 		}
 		
-        add_options_x2(document.form.wl_channel, channels, ch_v, orig);
+		add_options_x2(document.form.wl_channel, channels, ch_v, orig);
 		var x = document.form.wl_nctrlsb;
 		//x.remove(x.selectedIndex);
 		free_options(x);
@@ -1342,6 +1486,22 @@ function wl_auth_mode_change(isload){
 	var i, cur, algos;
 	inputCtrl(document.form.wl_wep_x,  1);
 
+	if(mode == "sae"){
+		var get_cfg_clientlist = httpApi.hookGet("get_cfg_clientlist", true);
+		if(get_cfg_clientlist != undefined){
+			var len = get_cfg_clientlist.length;
+			for(var i = 1; i < len; i += 1){//filter CAP
+				if(get_cfg_clientlist[i] != undefined && !httpApi.aimesh_get_node_capability(get_cfg_clientlist[i]).wpa3){
+					if(document.getElementById("no_wp3_hint")) document.getElementById("no_wp3_hint").style.display = "";
+					break;
+				}
+			}
+		}
+	}
+	else{
+		if(document.getElementById("no_wp3_hint")) document.getElementById("no_wp3_hint").style.display = "none";
+	}
+
 	/* enable/disable crypto algorithm */
 	if(mode == "wpa" || mode == "wpa2" || mode == "wpawpa2" || mode == "psk" || mode == "psk2" || mode == "sae" || mode == "pskpsk2" || mode == "psk2sae")
 		inputCtrl(document.form.wl_crypto,  1);
@@ -1355,7 +1515,7 @@ function wl_auth_mode_change(isload){
 		inputCtrl(document.form.wl_wpa_psk,  0);
 
 	/* update wl_crypto */
-	if(mode == "psk" || mode == "psk2" || mode == "sae" || mode == "pskpsk2" || mode == "psk2sae" || mode == "wpa" || mode == "wpa2" ||mode == "wpawpa2"){
+	if(mode == "psk" || mode == "psk2" || mode == "sae" || mode == "pskpsk2" || mode == "psk2sae" || mode == "wpa" || mode == "wpa2" || mode == "wpawpa2"){
 		/* Save current crypto algorithm */
 		for(var i = 0; i < document.form.wl_crypto.length; i++){
 			if(document.form.wl_crypto[i].selected){
@@ -1367,9 +1527,8 @@ function wl_auth_mode_change(isload){
 		opts = document.form.wl_auth_mode_x.options;
 		if(opts[opts.selectedIndex].text == "WPA-Personal" || opts[opts.selectedIndex].text == "WPA-Enterprise")
 			algos = new Array("TKIP");
-		else if(opts[opts.selectedIndex].text == "WPA2-Personal" || opts[opts.selectedIndex].text == "WPA3-Personal" || opts[opts.selectedIndex].text == "WPA2/WPA3-Personal" || opts[opts.selectedIndex].text == "WPA2-Enterprise"){
+		else if(opts[opts.selectedIndex].text == "WPA2-Personal" || opts[opts.selectedIndex].text == "WPA3-Personal" || opts[opts.selectedIndex].text == "WPA2/WPA3-Personal" || opts[opts.selectedIndex].text == "WPA2-Enterprise")
 			algos = new Array("AES");
-		}	
 		else
 			algos = new Array("AES", "TKIP+AES");
 
@@ -1429,7 +1588,7 @@ function wl_auth_mode_change(isload){
 	/*For Protected Management Frames, only enable for "(wpa)psk2" or "wpa2" on ARM platform (wl_mfp_support)*/
 	/* QTN_5G support PMF too*/
 	if(wl_mfp_support && (document.form.wl_mfp != null)){
-		if ((mode.search("psk2") >= 0 || mode.search("wpa2") >= 0 || mode.search("sae") >= 0)){
+		if (mode.search("psk2") >= 0 || mode.search("wpa2") >= 0 || mode.search("sae") >= 0){
 			inputCtrl(document.form.wl_mfp,  1);
 		}
 		else{
@@ -1489,20 +1648,21 @@ function showhide(element, sh)
 	}
 }
 
-function check_hwaddr_flag(obj){  //check_hwaddr() remove alert()
+function check_hwaddr_flag(obj, flag){  //check_hwaddr() remove alert()
 	if(obj.value == ""){
 			return 0;
 	}else{
 		var hwaddr = new RegExp("(([a-fA-F0-9]{2}(\:|$)){6})", "gi");
-		//var legal_hwaddr = new RegExp("(^([a-fA-F0-9][aAcCeE02468])(\:))", "gi"); // for legal MAC, unicast & globally unique (OUI enforced)
-
-		if(!hwaddr.test(obj.value))
-    		return 1;
-  		/*else if(!legal_hwaddr.test(obj.value))
-    		return 2;*/
-		else
-			return 0;
-  }
+		var legal_hwaddr = new RegExp("(^([a-fA-F0-9][aAcCeE02468])(\:))", "gi"); // for legal MAC, unicast & globally unique (OUI enforced)
+		if(!hwaddr.test(obj.value)){
+			return 1;
+		}
+  		else if(flag != 'inner' && !legal_hwaddr.test(obj.value)){
+			return 2;
+		}
+				
+		return 0;
+	}
 }
 
 function change_key_des(){
@@ -1560,6 +1720,17 @@ function wireless_mode_change(obj){
 			inputCtrl(document.form.wl_gmode_check, 0);
 	}
 
+	if (he_frame_support) {
+		if (obj.value == '0') {
+			if (based_modelid != 'RT-AX92U' || (wl_unit != '0' && wl_unit != '1')) {
+				$("#he_mode_field").show();
+			}
+		}
+		else {
+			$("#he_mode_field").hide();
+		}
+	}
+
 	if(obj.value == "2")
 		inputCtrl(document.form.wl_bw, 0);
 	else
@@ -1581,14 +1752,23 @@ function limit_auth_method(g_unit){
 	var _current_page = document.form.current_page.value;
 	var auth_method_array = document.form.wl_auth_mode_x.value;
 	if(sw_mode == 2){
-		var auth_array = [["Open System", "open"], ["WPA2-Personal", "psk2"], ["WPA-Auto-Personal", "pskpsk2"]];
+		if(wpa3_support){
+			var auth_array = [["Open System", "open"], ["WPA2-Personal", "psk2"], ["WPA3-Personal", "sae"], ["WPA/WPA2-Personal", "pskpsk2"], ["WPA2/WPA3-Personal", "psk2sae"]];
+		}
+		else{
+			var auth_array = [["Open System", "open"], ["WPA2-Personal", "psk2"], ["WPA-Auto-Personal", "pskpsk2"]];
+		}
 	}
 	else if(document.form.wl_unit.value == "3"){//60G, kernel 3.4 11ad driver doesn't support WPA-Enterprise.
 		var auth_array = [["Open System", "open"], ["WPA2-Personal", "psk2"]];
 	}
 	else if(document.form.wl_nmode_x.value != "2"){
-		if((based_modelid == "RT-AC87U" && '<% nvram_get("wl_unit"); %>' == '1') || g_unit != undefined)
+		if((based_modelid == "RT-AC87U" && '<% nvram_get("wl_unit"); %>' == '1') || g_unit != undefined){
 			var auth_array = [["Open System", "open"], ["WPA2-Personal", "psk2"], ["WPA-Auto-Personal", "pskpsk2"]];
+		}	
+		else if(based_modelid == "RP-AC55"){
+			var auth_array = [["Open System", "open"], ["WPA2-Personal", "psk2"], ["WPA-Auto-Personal", "pskpsk2"]];
+		}
 		else{
 			if(wpa3_support){
 				var auth_array = [["Open System", "open"], ["WPA2-Personal", "psk2"], ["WPA3-Personal", "sae"], ["WPA/WPA2-Personal", "pskpsk2"], ["WPA2/WPA3-Personal", "psk2sae"], ["WPA2-Enterprise", "wpa2"], ["WPA/WPA2-Enterprise", "wpawpa2"]];
@@ -1617,6 +1797,9 @@ function limit_auth_method(g_unit){
 			else if(wifi_logo_support){
 				var auth_array = [["Open System", "open"], ["WPA2-Personal", "psk2"], ["WPA-Auto-Personal", "pskpsk2"], ["WPA-Enterprise", "wpa"], ["WPA2-Enterprise", "wpa2"], ["WPA-Auto-Enterprise", "wpawpa2"]];
 			}
+			else if(based_modelid == "RP-AC55"){
+				var auth_array = [["Open System", "open"], ["Shared Key", "shared"], ["WPA-Personal", "psk"], ["WPA2-Personal", "psk2"], ["WPA-Auto-Personal", "pskpsk2"]];
+			}
 			else{
 				var auth_array = [["Open System", "open"], ["Shared Key", "shared"], ["WPA-Personal", "psk"], ["WPA2-Personal", "psk2"], ["WPA-Auto-Personal", "pskpsk2"], ["WPA-Enterprise", "wpa"], ["WPA2-Enterprise", "wpa2"], ["WPA-Auto-Enterprise", "wpawpa2"], ["Radius with 802.1x", "radius"]];
 			}
@@ -1630,8 +1813,7 @@ function limit_auth_method(g_unit){
 		else{
 			var auth_array = [["Open System", "open"], ["WPA2-Personal", "psk2"], ["WPA-Auto-Personal", "pskpsk2"]];
 		}
-	}
-		
+	}	
 
 	if(is_KR_sku){	// MODELDEP by Territory_code
 		auth_array.splice(0, 1); //remove Open System

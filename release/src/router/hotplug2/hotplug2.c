@@ -19,6 +19,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <string.h>
 #include <linux/types.h>
 #include <linux/netlink.h>
 #include <poll.h>
@@ -320,6 +321,9 @@ void sighandler(int sig) {
 		 */
 		case SIGCHLD:
 			while (1) {
+#ifndef WAIT_ANY
+#define WAIT_ANY (-1)
+#endif
 				p = waitpid (WAIT_ANY, NULL, WNOHANG);
 				if (p <= 0)
 					break;

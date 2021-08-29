@@ -1,6 +1,6 @@
 #define AMAS_ADTBW_TIMER 1   //sec
 #define AMAS_ADTBW_DFT_POLL_INTERVAL 10
-#define AMAS_ADTBW_DFT_TIMEOUT_WARM_UP 60 //sec
+#define AMAS_ADTBW_DFT_TIMEOUT_WARM_UP 90 //sec
 #define AMAS_ADTBW_DFT_TIMEOUT_SWITCH 60 //sec
 #define AMAS_ADTBW_DFT_BW80_RSSI_THRESH_US -57
 #define AMAS_ADTBW_DFT_BW160_RSSI_THRESH_US -69
@@ -15,6 +15,7 @@
 #define AMAS_ADTBW_BW_SWITCH_SUCCESS 0
 #define AMAS_ADTBW_BW_SWITCH_FAILURE 1
 #define AMAS_ADTBW_BW_SWITCH_RADAR_DET 2
+#define AMAS_ADTBW_BW_SWITCH_RADAR_NOT_DET 0
 
 #define AMAS_ADTBW_SKU_UNSUPPORT 0
 #define AMAS_ADTBW_SKU_US 1
@@ -22,10 +23,17 @@
 
 #define AMAS_ADTBW_DEBUG "/tmp/AMAS_ADTBW_DEBUG"
 #define MACF_UP "%02X:%02X:%02X:%02X:%02X:%02X"
+#define LOG_TITLE_AMAS_ADTBW "amas_adtbw"
+
+#define AMAS_ADTBW_SYSLOG(fmt, arg...) \
+	do { logmessage(LOG_TITLE_AMAS_ADTBW, fmt, ##arg); \
+	} while (0)
 
 #define AMAS_ADTBW_DBG(fmt, arg...) \
 	do { if (f_exists(AMAS_ADTBW_DEBUG) || amas_adtbw_dbg) \
 		dbg("AMAS_ADTBW %s(%d): "fmt, __FUNCTION__, __LINE__, ##arg); \
+	    if(amas_adtbw_syslog) \
+		logmessage(LOG_TITLE_AMAS_ADTBW, fmt, ##arg); \
 	} while (0)
 
 typedef enum {
@@ -59,6 +67,7 @@ typedef struct amas_adtbw_state {
 } amas_adtbw_state_t;
 
 int amas_adtbw_dbg;
+int amas_adtbw_syslog;
 amas_adtbw_conf_t adtbw_config;
 amas_adtbw_state_t adtbw_state;
 void start_amas_adtbw(void);

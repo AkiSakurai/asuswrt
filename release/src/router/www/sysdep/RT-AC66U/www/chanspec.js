@@ -49,20 +49,14 @@ if(band5g_support){
 		return false;
 	})();
 	wl_info['1'].bw_160_support = (function(){
-		if(based_modelid == 'RT-AX92U'|| based_modelid == 'RT-AX95Q' || based_modelid == 'RT-AX56U'){
-			return false;
+		var count = 0;
+		for(i=0;i<_chanspecs_5g.length;i++){
+			if(_chanspecs_5g[i].indexOf('/160') != -1){
+				count++;
+			}
 		}
-		else if(based_modelid == 'GT-AC2900'){
-			return (country == 'JP') ? false : true;
-		}
-		else if(based_modelid == 'RT-AX58U' || based_modelid == 'TUF-AX3000'){		// special case, added temporary
-			 return (_chanspecs_5g.indexOf('56') != -1 || _chanspecs_5g.indexOf('100') != -1) ? true : false;
-		}
-		else if(band5g_11ax_support){
-			return true;
-		}
-
-		return false;
+		
+		return (count != 0) ? true : false;
 	})();
 }
 
@@ -111,9 +105,15 @@ if(wl_info.band5g_2_support){
 		return false;
 	})();
 	wl_info['2'].bw_160_support = (function(){
-		return band5g_11ax_support ? true : false;
+		var count = 0;
+		for(i=0;i<_chanspecs_5g_2.length;i++){
+			if(_chanspecs_5g_2[i].indexOf('/160') != -1){
+				count++;
+			}
+		}
+		
+		return (count != 0) ? true : false;
 	})();
-
 
 	for(i=0;i<_chanspecs_5g_2.length;i++){
 		if(_chanspecs_5g_2[i].indexOf("/80") != -1){
@@ -122,7 +122,7 @@ if(wl_info.band5g_2_support){
 		else if(_chanspecs_5g_2[i].indexOf("/160") != -1){
 			wl2.channel_160m.push(_chanspecs_5g_2[i]);
 		}
-		else if(_chanspecs_5g_2[i].indexOf("u")!= -1 || _chanspecs_5g_2[i].indexOf("l") != -1){
+		else if(_chanspecs_5g_2[i].indexOf("u")!= -1 || _chanspecs_5g_2[i].indexOf("l") != -1 || _chanspecs_5g_2[i].indexOf("/40") != -1){
 			wl2.channel_40m.push(_chanspecs_5g_2[i]);
 		}
 		else{
@@ -130,8 +130,6 @@ if(wl_info.band5g_2_support){
 		}
 	}	
 }
-
-
 
 var mesh_5g = JSON.parse('<% get_wl_channel_list_5g(); %>');
 var mesh_5g2 = JSON.parse('<% get_wl_channel_list_5g_2(); %>');
@@ -264,7 +262,7 @@ function wl_chanspec_list_change(){
 					else{
 						for(i=0;i<wl_channel_list_5g.length; i++){
 							var _cur_channel = parseInt(wl_channel_list_5g[i]);
-							var _reg = new RegExp("^" + _cur_channel);					
+							var _reg = new RegExp("^" + _cur_channel);
 							for(j=0;j<wl1.channel_80m.length;j++){
 								if(wl1.channel_80m[j].match(_reg) != null){
 									_wl_channel.push(_cur_channel+"/80");
@@ -430,7 +428,16 @@ function wl_chanspec_list_change(){
 			}		
 		}
 		else if(band == "2"){	// 5 GHz-2 - high band
-			wl_channel_list_5g_2 = JSON.parse('<% channel_list_5g_2(); %>');					
+			wl_channel_list_5g_2 = JSON.parse('<% channel_list_5g_2(); %>');
+			if(band6g_support){		// due to GT-AXE11000 does not support
+				for(var i=wl_channel_list_5g_2.length-1; i>=0; i--){
+					var _channel = parseInt(wl_channel_list_5g_2[i]);
+					if(_channel < 30){
+						wl_channel_list_5g_2.splice(i, 1);
+					}
+				}
+			}
+
 			extend_channel = ["<#Auto#>"];		 // for 5GHz, extension channel always displays Auto
 			extend_channel_value = [""];
 
@@ -450,7 +457,13 @@ function wl_chanspec_list_change(){
 						if(band5g_11ax_support && document.form.wl_nmode_x.value != 1 && bw_160_support && enable_bw_160){
 							for(j=0;j<wl2.channel_160m.length;j++){
 								if(wl2.channel_160m[j].indexOf(_cur_channel) != -1){
-									wl_channel_list_5g_2[i] = _cur_channel + "/160";
+									if(band6g_support){
+										wl_channel_list_5g_2[i] = "6g" + _cur_channel + "/160";
+									}
+									else{
+										wl_channel_list_5g_2[i] = _cur_channel + "/160";
+									}
+									
 									continue loop_auto;
 								}
 							}
@@ -459,7 +472,13 @@ function wl_chanspec_list_change(){
 						if(band5g_11ac_support && document.form.wl_nmode_x.value != 1){
 							for(j=0;j<wl2.channel_80m.length;j++){
 								if(wl2.channel_80m[j].indexOf(_cur_channel) != -1){
-									wl_channel_list_5g_2[i] = _cur_channel + "/80";
+									if(band6g_support){
+										wl_channel_list_5g_2[i] = "6g" + _cur_channel + "/80";
+									}
+									else{
+										wl_channel_list_5g_2[i] = _cur_channel + "/80";
+									}
+									
 									continue loop_auto;
 								}
 							}
@@ -467,14 +486,26 @@ function wl_chanspec_list_change(){
 	
 						for(j=0;j<wl2.channel_40m.length;j++){
 							if(wl2.channel_40m[j].indexOf(_cur_channel) != -1){
-								wl_channel_list_5g_2[i] = wlextchannel_fourty(_cur_channel);
+								if(band6g_support){
+									wl_channel_list_5g_2[i] = "6g" + _cur_channel + "/40";
+								}
+								else{
+									wl_channel_list_5g_2[i] = wlextchannel_fourty(_cur_channel);
+								}
+								
 								continue loop_auto;
 							}
 						}
 	
 						for(j=0;j<wl2.channel_20m.length;j++){
 							if(wl2.channel_20m[j].indexOf(_cur_channel) != -1){
-								wl_channel_list_5g_2[i] = _cur_channel;
+								if(band6g_support){
+									wl_channel_list_5g_2[i] = "6g" +  _cur_channel;
+								}
+								else{
+									wl_channel_list_5g_2[i] = _cur_channel;
+								}
+								
 								continue loop_auto;
 							}
 						}				
@@ -494,9 +525,16 @@ function wl_chanspec_list_change(){
 						var _cur_channel = parseInt(wl_channel_list_5g_2[i]);
 						var _reg = new RegExp("^" + _cur_channel);
 						for(j=0;j<wl2.channel_160m.length;j++){
-							if(wl2.channel_160m[j].match(_reg) != null){
-								_wl_channel.push(_cur_channel+"/160");
+							if(band6g_support){
+								if (wl2.channel_160m[j].includes('6g' + _cur_channel + '/160')) {		
+									_wl_channel.push("6g" + _cur_channel + "/160");										
+								}								
 							}
+							else{
+								if(wl2.channel_160m[j].match(_reg) != null){	
+									_wl_channel.push(_cur_channel + "/160");															
+								}
+							}							
 						}
 					}
 				}
@@ -520,9 +558,16 @@ function wl_chanspec_list_change(){
 						var _cur_channel = parseInt(wl_channel_list_5g_2[i]);
 						var _reg = new RegExp("^" + _cur_channel);
 						for(j=0;j<wl2.channel_80m.length;j++){
-							if(wl2.channel_80m[j].match(_reg) != null){
-								_wl_channel.push(_cur_channel+"/80");
+							if(band6g_support){
+								if (wl2.channel_80m[j].includes('6g' + _cur_channel + '/80')) {
+									_wl_channel.push("6g" + _cur_channel + "/80");
+								}								
 							}
+							else{
+								if(wl2.channel_80m[j].match(_reg) != null){
+									_wl_channel.push(_cur_channel+"/80");						
+								}
+							}							
 						}
 					}
 				}
@@ -545,18 +590,25 @@ function wl_chanspec_list_change(){
 					for(i=0;i<wl_channel_list_5g_2.length; i++){
 						var _cur_channel = parseInt(wl_channel_list_5g_2[i]);
 						for(j=0;j<wl2.channel_40m.length;j++){
-							var _l = wl2.channel_40m[j].split("l");
-							var _u = wl2.channel_40m[j].split("u");
-							if(_l.length > 1){
-								if(_l[0] == _cur_channel){
-									_wl_channel.push(wlextchannel_fourty(_cur_channel));
-								}
+							if(band6g_support){
+								if (wl2.channel_40m[j].includes('6g' + _cur_channel + '/40')) {
+									_wl_channel.push("6g" + _cur_channel + "/40");
+								}								
 							}
 							else{
-								if(_u[0] == _cur_channel){
-									_wl_channel.push(wlextchannel_fourty(_cur_channel));
+								var _l = wl2.channel_40m[j].split("l");
+								var _u = wl2.channel_40m[j].split("u");
+								if(_l.length > 1){
+									if(_l[0] == _cur_channel){
+										_wl_channel.push(wlextchannel_fourty(_cur_channel));
+									}
 								}
-							}
+								else{
+									if(_u[0] == _cur_channel){
+										_wl_channel.push(wlextchannel_fourty(_cur_channel));
+									}
+								}
+							}							
 						}
 					}
 				}
@@ -568,8 +620,8 @@ function wl_chanspec_list_change(){
 				wl_channel_list_5g_2 = _wl_channel;	
 			}
 			else{		//20MHz
-				if(amesh_support && httpApi.hasAiMeshNode()){
-					var _wl_channel = new Array();
+				var _wl_channel = new Array();
+				if(amesh_support && httpApi.hasAiMeshNode()){					
 					for(j=1; j<mesh_5g2.chan_20m.chanspec.length; j++){
 						_wl_channel.push(mesh_5g2.chan_20m.chanspec[j]);
 					}
@@ -577,16 +629,32 @@ function wl_chanspec_list_change(){
 					wl_channel_list_5g_2 = _wl_channel;
 				}
 				
+				if(band6g_support){
+					for(i=0;i<wl_channel_list_5g_2.length; i++){
+						var _cur_channel = parseInt(wl_channel_list_5g_2[i]);						
+						for(j=0;j<wl2.channel_20m.length;j++){
+							if(band6g_support){
+								var _reg = new RegExp("^6g" + _cur_channel + "$");
+								if(wl2.channel_20m[j].match(_reg) != null){
+									_wl_channel.push("6g" + _cur_channel);
+								}
+							}												
+						}
+					}
+					
+					wl_channel_list_5g_2 = _wl_channel;
+				}
 				
-				document.getElementById('wl_nctrlsb_field').style.display = "none";	
+				document.getElementById('wl_nctrlsb_field').style.display = "none";
+				
 			}
-			
+		
 			/*add "Auto" into the option list*/	
 			if(wl_channel_list_5g_2[0] != "0")
 				wl_channel_list_5g_2.splice(0,0,"0");
 			
 			add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, 1);   //construct extension channel
-			chanspecs = wl_channel_list_5g_2;				
+			chanspecs = wl_channel_list_5g_2;
 		}	//end 5GHz-2 - high band
 	} 
 	else { // b/g mode 
@@ -653,8 +721,8 @@ function wl_chanspec_list_change(){
 					}
 				}
 				else{
-					document.form.wl_channel[i] = new Option(chanspecs[i].toString().replace("/160", "").replace("/80", "").replace("u", "").replace("l", ""), chanspecs[i]);
-				}
+					document.form.wl_channel[i] = new Option(chanspecs[i].toString().replace("/160", "").replace("/80", "").replace("u", "").replace("l", "").replace("/40", "").replace("6g", ""), chanspecs[i]);
+				}			
 			}
 
 			document.form.wl_channel[i].value = chanspecs[i];
@@ -687,8 +755,8 @@ function wl_chanspec_list_change(){
 	else{
 		document.form.acs_dfs_checkbox.disabled = false;
 	}
-  
-        change_channel(document.form.wl_channel);
+
+	change_channel(document.form.wl_channel);
 }
 
 function wlextchannel_fourty(v){
@@ -717,49 +785,51 @@ function change_channel(obj){
 	var channel_length =obj.length;
 	var band = document.form.wl_unit.value;
 	var smart_connect = document.form.smart_connect_x.value;
+	cur = '<% nvram_get("wl_chanspec"); %>';
+	cur_extend_channel = cur.slice(-1);			//current control channel
 	if(document.form.wl_bw.value != 1){   // 20/40 MHz or 40MHz
 		if(channel_length == 12){    // 1 ~ 11
 			if(selected_channel >= 1 && selected_channel <= 4){
 				extend_channel = ["<#WLANConfig11b_EChannelAbove#>"];
 				extend_channel_value = ["l"];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);				
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, 'l');				
 			}
 			else if(selected_channel >= 5 && selected_channel <= 7){
 				extend_channel = ["<#WLANConfig11b_EChannelAbove#>", "<#WLANConfig11b_EChannelBelow#>"];
 				extend_channel_value = ["l", "u"];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);							
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, cur_extend_channel);							
 			}
 			else if(selected_channel >= 8 && selected_channel <= 11){
 				extend_channel = ["<#WLANConfig11b_EChannelBelow#>"];
 				extend_channel_value = ["u"];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);								
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, 'u');								
 			}
-			else{				//for 0: Auto
+			else{		//for 0: Auto
 				extend_channel = ["<#Auto#>"];
 				extend_channel_value = [""];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, cur_extend_channel);
 			}
 		}
 		else{		// 1 ~ 13
 			if(selected_channel >= 1 && selected_channel <= 4){
 				extend_channel = ["<#WLANConfig11b_EChannelAbove#>"];
 				extend_channel_value = ["l"];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);							
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, 'l');							
 			}
 			else if(selected_channel >= 5 && selected_channel <= 9){
 				extend_channel = ["<#WLANConfig11b_EChannelAbove#>", "<#WLANConfig11b_EChannelBelow#>"];
 				extend_channel_value = ["l", "u"];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);							
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, cur_extend_channel);							
 			}
 			else if(selected_channel >= 10 && selected_channel <= 13){
 				extend_channel = ["<#WLANConfig11b_EChannelBelow#>"];
 				extend_channel_value = ["u"];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);								
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, 'u');								
 			}
-			else{				//for 0: Auto
+			else{		//for 0: Auto
 				extend_channel = ["<#Auto#>"];
 				extend_channel_value = [""];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, cur_extend_channel);
 			}
 		}
 	}
@@ -787,7 +857,6 @@ function change_channel(obj){
 						document.getElementById('dfs_checkbox').style.display = "none";
 						document.form.acs_dfs.disabled = true;
 					}
-					
 				}
 			}	
 			else{

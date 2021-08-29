@@ -35,7 +35,7 @@ a:active {
 	border-bottom: 1px solid #929eA1;
 }
 .font_style{
-	font-family:Verdana,Arial,Helvetica,sans-serif;
+	font-family: Verdana, Arial, Helvetica, MS UI Gothic, MS P Gothic, sans-serif;
 }
 </style>
 <script type="text/javascript" src="/require/require.min.js"></script>
@@ -417,7 +417,7 @@ function check_status(_device){
 		if(parent.rog_support)
 			parent.document.getElementById('iconUSBdisk_'+diskOrder).style.backgroundPosition = '1px -95px';
 		else
-			parent.document.getElementById('iconUSBdisk_'+diskOrder).style.backgroundPosition = '0 -95px';
+			parent.document.getElementById('iconUSBdisk_'+diskOrder).style.backgroundPosition = '1px -105px';
 	}
 
 	get_disk_log();

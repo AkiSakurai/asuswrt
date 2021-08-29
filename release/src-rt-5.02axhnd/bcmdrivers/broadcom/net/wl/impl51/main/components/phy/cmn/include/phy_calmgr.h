@@ -1,7 +1,7 @@
 /*
  * CALibrationManaGeR module internal interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_calmgr.h 771063 2019-01-12 07:03:47Z $
+ * $Id: phy_calmgr.h 777374 2019-07-30 18:13:54Z $
  */
 
 /*
@@ -147,7 +147,7 @@ enum {
 	PHY_CAL_PHASE_DCCAL,
 	PHY_CAL_PHASE_IDLETSSI,
 	PHY_CAL_PHASE_TX,
-	PHY_CAL_PHASE_TX_LOPWR,
+	PHY_CAL_PHASE_TX_MULTILO,
 	PHY_CAL_PHASE_TXPRERX,
 	PHY_CAL_PHASE_RXCAL,
 	PHY_CAL_PHASE_PAPDCAL,

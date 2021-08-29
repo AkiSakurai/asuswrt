@@ -1,7 +1,7 @@
 /*
  * NPHY Rx Gain Control and Carrier Sense module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_n_rxgcrs.c 772787 2019-03-05 01:32:28Z $
+ * $Id: phy_n_rxgcrs.c 779417 2019-09-27 02:05:34Z $
  */
 
 #include <phy_cfg.h>
@@ -79,6 +79,7 @@ struct phy_n_rxgcrs_info {
 	phy_rxgcrs_info_t *cmn_info;
 };
 
+static bool wlc_phy_is_edcrs_high_nphy(phy_info_t *pi);
 static void phy_n_rxgcrs_adjust_ed_thres(phy_type_rxgcrs_ctx_t * ctx, int32 *assert_threshold,
 	bool set_threshold);
 #if defined(RXDESENS_EN)
@@ -130,6 +131,7 @@ BCMATTACHFN(phy_n_rxgcrs_register_impl)(phy_info_t *pi, phy_n_info_t *ni,
 	bzero(&fns, sizeof(fns));
 	fns.ctx = n_info;
 	fns.adjust_ed_thres = phy_n_rxgcrs_adjust_ed_thres;
+	fns.is_edcrs_high = wlc_phy_is_edcrs_high_nphy;
 #if defined(RXDESENS_EN)
 	fns.get_rxdesens = phy_n_rxgcrs_get_rxdesens;
 	fns.set_rxdesens = phy_n_rxgcrs_set_rxdesens;
@@ -176,6 +178,13 @@ BCMATTACHFN(phy_n_rxgcrs_unregister_impl)(phy_n_rxgcrs_info_t *n_info)
 	phy_rxgcrs_unregister_impl(cmn_info);
 
 	phy_mfree(pi, n_info, sizeof(phy_n_rxgcrs_info_t));
+}
+
+static bool wlc_phy_is_edcrs_high_nphy(phy_info_t *pi)
+{
+	bool edcrs = FALSE;
+	edcrs = wlc_phy_eu_edcrs_status_nphy(pi);
+	return edcrs;
 }
 
 static void phy_n_rxgcrs_adjust_ed_thres(phy_type_rxgcrs_ctx_t * ctx, int32 *assert_thresh_dbm,

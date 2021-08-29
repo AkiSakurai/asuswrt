@@ -1,7 +1,7 @@
 /*
  * Decode functions which provides decoding of ANQP packets as defined in 802.11u.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -50,9 +50,7 @@
 
 #include "802.11.h"
 #include "bcmutils.h"
-#ifdef BCMDBG
 #include "wlioctl_defs.h"
-#endif // endif
 #include "wl_dbg.h"
 #include "bcm_decode_anqp.h"
 static void printAnqpDecode(bcm_decode_anqp_t *anqp)

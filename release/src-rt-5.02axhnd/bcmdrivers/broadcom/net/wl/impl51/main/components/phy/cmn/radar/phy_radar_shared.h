@@ -1,7 +1,7 @@
 /*
  * RadarDetect module internal interface (functions sharde by PHY type specific implementations).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_radar_shared.h 777256 2019-07-24 23:41:25Z $
+ * $Id: phy_radar_shared.h 779103 2019-09-19 07:04:50Z $
  */
 
 #ifndef _phy_radar_shared_h_
@@ -75,6 +75,7 @@
 								  * (micro-second) unit, else output
 								  * in 20MHz samples
 								  */
+#define RADAR_FEATURE_NEWJP_DETECT		(1 << 7) /* enable new JP radar detection */
 #define RADAR_FEATURE_UK_DETECT			(1 << 8) /* enable UK radar detection */
 #define RADAR_FEATURE_DEBUG_EU_TYPE		(1 << 9) /* output EU type debug messages */
 #define RADAR_FEATURE_FCC_DETECT		(1 << 11) /* enable FCC radar detection */

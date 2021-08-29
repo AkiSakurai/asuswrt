@@ -1,7 +1,7 @@
 /*
  * RADIO control module public interface (to MAC driver).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_radio_api.h 775385 2019-05-29 11:30:21Z $
+ * $Id: phy_radio_api.h 779113 2019-09-19 10:18:17Z $
  */
 
 #ifndef _phy_radio_api_h_
@@ -56,8 +56,10 @@
 
 #define PHY_BOARD_2G_FEM_MASK 1
 #define PHY_BOARD_5G_FEM_MASK 2
+#define PHY_BOARD_6G_FEM_MASK 4
 #define PHY_BOARD_2G_FEM_SHIFT 0
 #define PHY_BOARD_5G_FEM_SHIFT 1
+#define PHY_BOARD_6G_FEM_SHIFT 2
 
 /* Radio macros */
 /* Radio ID */
@@ -150,6 +152,10 @@
 #define PHY_BOARD_5G_FEM(pi) \
 	((phy_get_board_bandcap(pi) & PHY_BOARD_5G_FEM_MASK) >> \
 	 PHY_BOARD_5G_FEM_SHIFT)
+
+#define PHY_BOARD_6G_FEM(pi) \
+	((phy_get_board_bandcap(pi) & PHY_BOARD_6G_FEM_MASK) >> \
+	 PHY_BOARD_6G_FEM_SHIFT)
 
 /* switch the radio on/off */
 void phy_radio_switch(phy_info_t *pi, bool on);

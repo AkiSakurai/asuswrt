@@ -40,12 +40,12 @@ endif
 	CFLAGS = -DSUPPORT_LPRng
 	CFLAGS += -I. -I$(TOP)/shared
 	CFLAGS += -I$(TOP)/kernel_header/include -I$(SRCBASE)/include
-#	CFLAGS += -I$(TOP)/libusb/libusb
-	CFLAGS += -I$(TOP)/libusb-0.1.12
+	CFLAGS += -I$(TOP)/libusb/libusb -DASUS_U2EC
+#	CFLAGS += -I$(TOP)/libusb-0.1.12
 	LDFLAGS = -lpthread -ldl
-#	LDFLAGS += -L$(TOP)/libusb10/libusb/.libs -lusb-1.0
-#	LDFLAGS += -L$(TOP)/libusb/libusb/.libs -lusb
-	LDFLAGS += -L$(TOP)/libusb-0.1.12/.libs -l:libusb.a
+	LDFLAGS += -L$(TOP)/libusb10/libusb/.libs -lusb-1.0
+	LDFLAGS += -L$(TOP)/libusb/libusb/.libs -lusb
+#	LDFLAGS += -L$(TOP)/libusb-0.1.12/.libs -l:libusb.a
 	LDFLAGS += -L$(TOP)/shared -lshared
 	LDFLAGS += -L$(TOP_PLATFORM)/nvram${BCMEX}$(EX7) -lnvram
 #endif

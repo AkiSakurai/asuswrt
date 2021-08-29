@@ -190,7 +190,7 @@ function go_format() {
 	if(!Block_chars(document.form.disk_name, ["~", "`", "!", "#", "$", "%", "^", "&", "*", "(", ")", "+", "=", "{", "[", "}", "]", "|", "\\", ":", ";", "\"", "'", "<", ">", ",", ".", "?", "/", " "]))
 		return false;
 
-	if(!confirm("All disk activity will stop while format is in progress and multiple disk partition will reset to be the one. Do you want to run disk format now?")) { /*untranslated*/
+	if(!confirm("<#format_confirm_alert#>")) {
 		document.getElementById('scan_status_field').style.display = "";
 		document.getElementById('progressBar').style.display = "none";
 		return false;
@@ -311,7 +311,7 @@ function showLoadingUpdate(){
 				if(parent.rog_support)
 					parent.document.getElementById('iconUSBdisk_'+diskOrder).style.backgroundPosition = '1px -95px';
 				else
-					parent.document.getElementById('iconUSBdisk_'+diskOrder).style.backgroundPosition = '0 -95px';
+					parent.document.getElementById('iconUSBdisk_'+diskOrder).style.backgroundPosition = '1px -105px';
 				disk_scan_status();
 				return false;
 			}

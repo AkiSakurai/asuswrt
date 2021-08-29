@@ -1,7 +1,7 @@
 /*
  * RadarDetect module public interface (to MAC driver).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_radar_api.h 752845 2018-03-19 07:24:28Z $
+ * $Id: phy_radar_api.h 780019 2019-10-14 08:28:40Z $
  */
 
 #ifndef _phy_radar_api_h_
@@ -90,6 +90,14 @@
 #define RADAR_TYPE_KN4		30  /* Korean 4: PW 1us, PRI 333us (similar to JP 4) */
 #define RADAR_TYPE_UK1		31  /* UK 1: PW 1us, PRI 333us (similar to JP 4) with hopping */
 #define RADAR_TYPE_UK2		32  /* UK 2: PW 20us, PRI 222us with chirp & hopping */
+#define RADAR_TYPE_NEW_JP_1	33  /* New Japan 1 */
+#define RADAR_TYPE_NEW_JP_2	34  /* New Japan 2 */
+#define RADAR_TYPE_NEW_JP_3	35  /* New Japan 3 */
+#define RADAR_TYPE_NEW_JP_4	36  /* New Japan 4 */
+#define RADAR_TYPE_NEW_JP_5	37  /* New Japan 5 */
+#define RADAR_TYPE_NEW_JP_6	38  /* New Japan 6 */
+#define RADAR_TYPE_NEW_JP_7	39  /* New Japan 7 */
+#define RADAR_TYPE_NEW_JP_8	40  /* New Japan 8 */
 #define RADAR_TYPE_UNCLASSIFIED 255 /* Unclassified Radar type */
 
 typedef struct {
@@ -110,9 +118,12 @@ typedef enum  phy_radar_detect_mode {
 	RADAR_DETECT_MODE_FCC,
 	RADAR_DETECT_MODE_EU,
 	RADAR_DETECT_MODE_UK,
+	RADAR_DETECT_MODE_JP,
 	RADAR_DETECT_MODE_MAX
 } phy_radar_detect_mode_t;
 
 void phy_radar_detect_mode_set(phy_info_t *pi, phy_radar_detect_mode_t mode);
+
+void phy_radar_tuning_reset(phy_info_t *pi);
 
 #endif /* _phy_radar_api_h_ */

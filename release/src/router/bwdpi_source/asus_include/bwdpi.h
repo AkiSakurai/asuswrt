@@ -98,9 +98,6 @@
 // Web History database
 #define BWDPI_HIS_DB    (strcmp(nvram_safe_get("bwdpi_his_path"), "")) ? nvram_safe_get("bwdpi_his_path") : BWDPI_HIS_DIR"/WebHistory.db"
 
-// OOM protection
-#define IS_IDPFW()      f_exists("/dev/idpfw")
-
 typedef struct cat_id cid_s;
 struct cat_id{
 	int id;
@@ -149,6 +146,10 @@ enum{
 	INDEX_BANDWIDTH_MONITOR
 };
 
+//dpi.c
+extern int is_sig_wrs_models();
+extern int check_tdts_module_exist();
+
 //wrs.c
 void free_id_list(cid_s **target_list);
 cid_s *get_id_list(cid_s **target_list, char *target_string);
@@ -170,3 +171,6 @@ extern void get_traffic_hook(char *mode, char *name, char *dura, char *date, int
 extern void get_device_stat();
 extern int bwdpi_client_info(char *MAC, char *ipaddr, bwdpi_device *device);
 extern void redirect_page_status(int cat_id, int *retval, webs_t wp);
+
+//iqos.c
+extern void AppRuleModify(char *in, int key, char *out);

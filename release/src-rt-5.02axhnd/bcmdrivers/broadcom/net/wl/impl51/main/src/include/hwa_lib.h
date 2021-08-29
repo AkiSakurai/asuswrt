@@ -17,7 +17,7 @@
  * - Defaults to HWA-2.0 support, in particular WI formats.
  *
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -349,7 +349,7 @@ static INLINE void // Given a S2H ring, SW flushes WR index to HWA
 hwa_ring_prod_put(hwa_ring_t *s2h_ring)
 {
 	HWA_RING_ASSERT(s2h_ring != HWA_RING_NULL);
-	HWA_RING_ASSERT(s2h_ring->reg_wr != 0U);
+	HWA_RING_ASSERT(s2h_ring->reg_wr != NULL);
 	HWA_WR_REG_ADDR(s2h_ring->name, // flush WR index from SW local state to HWA
 	                s2h_ring->reg_wr, HWA_RING_STATE(s2h_ring)->write);
 }
@@ -358,7 +358,7 @@ static INLINE void // Given a S2H ring, SW fetches RD index from HWA
 hwa_ring_prod_get(hwa_ring_t *s2h_ring)
 {
 	HWA_RING_ASSERT(s2h_ring != HWA_RING_NULL);
-	HWA_RING_ASSERT(s2h_ring->reg_rd != 0U);
+	HWA_RING_ASSERT(s2h_ring->reg_rd != NULL);
 	HWA_RING_STATE(s2h_ring)->read = // fetch HWA RD index into SW local state
 		HWA_RD_REG_ADDR(s2h_ring->name, s2h_ring->reg_rd);
 }
@@ -381,7 +381,7 @@ static INLINE void // Given a H2S ring, SW flushes RD index to HWA
 hwa_ring_cons_put(hwa_ring_t *h2s_ring)
 {
 	HWA_RING_ASSERT(h2s_ring != HWA_RING_NULL);
-	HWA_RING_ASSERT(h2s_ring->reg_rd != 0U);
+	HWA_RING_ASSERT(h2s_ring->reg_rd != NULL);
 	HWA_WR_REG_ADDR(h2s_ring->name, // flush RD index from SW local state to HWA
 	                h2s_ring->reg_rd, HWA_RING_STATE(h2s_ring)->read);
 }
@@ -390,7 +390,7 @@ static INLINE void // Given a H2S ring, SW fetches WR index from HWA
 hwa_ring_cons_get(hwa_ring_t *h2s_ring)
 {
 	HWA_RING_ASSERT(h2s_ring != HWA_RING_NULL);
-	HWA_RING_ASSERT(h2s_ring->reg_wr != 0U);
+	HWA_RING_ASSERT(h2s_ring->reg_wr != NULL);
 	HWA_RING_STATE(h2s_ring)->write = // fetch HWA WR index into local SW state
 		HWA_RD_REG_ADDR(h2s_ring->name, h2s_ring->reg_wr);
 }
@@ -474,7 +474,6 @@ hwa_ring_is_cons_all(hwa_ring_t *s2h_ring)
  *
  * The default handler is hwa_callback_noop()
  *
- * HWA_RXPOST_WI_H2S is for HWA_RXPOST_ONLY_BUILD, and is unsupported.
  * HWA1a and HWA1b are both functional and so HWA1a ONLY is deprecated
  *
  * In HWA Packet Pager based interfaces, a callback is invoked in all H2S with
@@ -604,9 +603,6 @@ typedef struct hwa_rxpost_config
 
 typedef struct hwa_rxpost
 {
-	HWA_RXPOST_ONLY_EXPR(hwa_ring_t rxpost_ring);   // H2S RxPost interface
-	HWA_RXPOST_ONLY_EXPR(HWA_STATS_EXPR(uint32 rxpost_cnt)); // RxPost WI count
-
 	bool pending_rph_req;
 	bool pre_rph_allocated;
 	HWA_STATS_EXPR(uint32 rph_alloc_cnt);
@@ -621,11 +617,6 @@ int     hwa_rxpost_preinit(hwa_rxpost_t *rxpost);
 void    hwa_rxpost_free(hwa_rxpost_t *rxpost);
 int     hwa_rxpost_init(hwa_rxpost_t *rxpost);
 int     hwa_rxpost_deinit(hwa_rxpost_t *rxpost);
-
-#ifdef HWA_RXPOST_ONLY_BUILD
-// Process one or more RxPost workitems forwarded by HWA1a in RXPOST ONLY builds
-int     hwa_rxpost_process(hwa_dev_t *dev);
-#endif /* HWA_RXPOST_ONLY_BUILD */
 
 #if defined(BCMDBG) || defined(HWA_DUMP)
 void    hwa_rxpost_dump(hwa_rxpost_t *rxpost, struct bcmstrbuf *b, bool verbose);
@@ -675,7 +666,7 @@ void    hwa_rxpost_dump(hwa_rxpost_t *rxpost, struct bcmstrbuf *b, bool verbose)
 #define HWA_RPH_RESERVE_COUNT           32
 
 // S2H Free RxBuf Index ring aka "FREEIDXSRC"
-#define HWA_RXFILL_RXFREE_DEPTH         256
+#define HWA_RXFILL_RXFREE_DEPTH         512
 
 // Interrupt aggregation specification for H2S and S2H ring interfaces
 #define HWA_RXFILL_RING_INTRAGGR_COUNT  32
@@ -685,7 +676,7 @@ void    hwa_rxpost_dump(hwa_rxpost_t *rxpost, struct bcmstrbuf *b, bool verbose)
 #define HWA_RXFILL_FIFO_INTRAGGR_COUNT  16
 #define HWA_RXFILL_FIFO_INTRAGGR_TMOUT  100   // usecs
 
-#define HWA_RXFILL_FIFO_MIN_THRESHOLD   128   // min FIFO fill threshold
+#define HWA_RXFILL_FIFO_MIN_THRESHOLD   256   // min FIFO fill threshold
 
 // Alert software is FIFO depth stays below threshold for duration
 #define HWA_RXFILL_FIFO_ALERT_THRESHOLD 64
@@ -791,6 +782,17 @@ void    hwa_rxfill_status(hwa_rxfill_t *rxfill, uint32 core);
  * - Manage various RxPath blocks: 1a and 1b.
  *
  * -----------------------------------------------------------------------------
+ */
+
+/* XXX, CRBCAHWA-558, CRBCAHWA-617
+ * 1. SW WAR: set HWA_RXFILL_MIN_FETCH_THRESH_FREEIDX to <= 1
+ *    can avoid error in RX free in PAIR.
+ * 2. HWA_REVISION_GE_130 fix CRBCAHWA-558, CRBCAHWA-617
+ * 3. Although HWA_REVISION_EQ_129 + SW WAR, or HWA_REVISION_EQ_130
+ *    have fix it, we still cannot free as HWA_RXFILL_RXFREE_PAIRED because
+ *    dongle need to free all RxPost resources to Host as possible.
+ * 4. In PKTPGR plaform we are able to free it as HWA_RXFILL_RXFREE_PAIRED
+ *    since we have new Rx recycle process.
  */
 #define HWA_RXFILL_MIN_FETCH_THRESH_RXP     3 // 2^^3 = 8 ???
 #define HWA_RXFILL_MIN_FETCH_THRESH_FREEIDX 3 // 2^^3 = 8 ???
@@ -1704,7 +1706,7 @@ typedef struct hwa_dma
 
 void    BCMATTACHFN(hwa_dma_attach)(hwa_dev_t *dev);
 void    hwa_dma_enable(hwa_dma_t *dma);     // HWA's DMA engines enabled
-
+void    hwa_dma_rx_burstlen_adjust(hwa_dma_t *dma);
 hwa_dma_status_t hwa_dma_channel_status(hwa_dma_t *dma, uint32 channel);
 
 #if defined(BCMDBG) || defined(HWA_DUMP)

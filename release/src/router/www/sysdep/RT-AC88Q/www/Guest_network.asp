@@ -530,7 +530,8 @@ function edit_guest_unit(_unit, _subunit) {
 		}
 	}
 
-	if(amesh_support && amesh_wgn_support){
+	var interface_support =  decodeURIComponent(gn_array[idx][24]);
+	if(amesh_support && amesh_wgn_support && interface_support == "1"){
 		$("#gnset_aimesh_sync").show();
 		$("#gnset_aimesh_sync select[name='wl_sync_node']").attr("disabled", false);
 		if(gn_array[idx][23] == undefined || gn_array[idx][23] == "")
@@ -1261,7 +1262,7 @@ function addRow(obj, upper){
 		obj.focus();
 		obj.select();			
 		return false;
-	}else if(!check_macaddr(obj, check_hwaddr_flag(obj))){
+	}else if(!check_macaddr(obj, check_hwaddr_flag(obj, 'inner'))){
 		obj.focus();
 		obj.select();	
 		return false;	
@@ -1365,10 +1366,10 @@ function show_bandwidth(flag){
 		}
 
 		if(QoS_enable_orig == "0"){
-			show_hint_content += "<br>QoS function of traffic manager will be enable and set as Bandwidth Limiter mode by default.";	/* untranslated */
+			show_hint_content += "<br><#Bandwidth_Limiter_NAT_hint#>";
 		}
 		else if(QoS_type_orig != "2"){
-			show_hint_content += "<br>QoS function of traffic manager will set as Bandwidth Limiter mode.";	/* untranslated */
+			show_hint_content += "<br><#Bandwidth_Limiter_set_hint#>";
 		}
 
 		if(show_hint_content.length <= 0){
@@ -1487,7 +1488,7 @@ function dis_qos_enable(_wl_idx, _form_obj, _control_item){
 <input type="hidden" name="gwlu" value="" disabled>
 <input type="hidden" name="modified" value="0">
 <input type="hidden" name="action_mode" value="apply_new">
-<input type="hidden" name="action_script" value="restart_wireless">
+<input type="hidden" name="action_script" value="restart_wireless;restart_firewall;">
 <input type="hidden" name="action_wait" value="15">
 <input type="hidden" name="preferred_lang" id="preferred_lang" value="<% nvram_get("preferred_lang"); %>">
 <input type="hidden" name="wl_country_code" value="<% nvram_get("wl0_country_code"); %>" disabled>

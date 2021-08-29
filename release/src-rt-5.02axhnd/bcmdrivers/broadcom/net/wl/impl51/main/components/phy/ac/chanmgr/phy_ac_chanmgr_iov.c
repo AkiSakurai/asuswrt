@@ -1,7 +1,7 @@
 /*
  * ACPHY Channel Manager module implementation - iovar handlers & registration
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_chanmgr_iov.c 775352 2019-05-28 22:19:51Z $
+ * $Id: phy_ac_chanmgr_iov.c 784350 2020-02-26 00:20:43Z $
  */
 
 #include <phy_ac_chanmgr_iov.h>
@@ -67,7 +67,10 @@ enum {
 	IOV_UL_MAC_AIDED_TIMING = 10,
 	IOV_PHY_C2C_SYNC = 11,
 	IOV_PHY_LOWRATETSSI = 12,
-	IOV_PHY_LOWRATETSSI_OVRD = 13
+	IOV_PHY_LOWRATETSSI_OVRD = 13,
+	IOV_PHY_VCO_PLL_ADJ_MODE = 14,
+	IOV_PHY_PAPR_EN = 15,
+	IOV_PHY_PAPR_GAMMA = 16
 };
 
 static const bcm_iovar_t phy_ac_chanmgr_iovars[] = {
@@ -84,6 +87,9 @@ static const bcm_iovar_t phy_ac_chanmgr_iovars[] = {
 	{"phy_c2c_sync", IOV_PHY_C2C_SYNC, IOVF_SET_UP | IOVF_GET_UP, 0, IOVT_INT16, 0},
 	{"phy_lowratetssi", IOV_PHY_LOWRATETSSI, 0, 0, IOVT_INT8, 0},
 	{"phy_lowratetssi_ovrd", IOV_PHY_LOWRATETSSI_OVRD, IOVF_SET_DOWN, 0, IOVT_UINT32, 0},
+	{"phy_vco_pll_adj_mode", IOV_PHY_VCO_PLL_ADJ_MODE, 0, 0, IOVT_UINT16, 0},
+	{"phy_papr_en", IOV_PHY_PAPR_EN, IOVF_SET_UP | IOVF_GET_UP, 0, IOVT_INT16, 0},
+	{"phy_papr_gamma", IOV_PHY_PAPR_GAMMA, IOVF_SET_UP | IOVF_GET_UP, 0, IOVT_INT16, 0},
 #endif /* BCMDBG  || WLTEST */
 	{"phy_vcore", IOV_PHY_VCORE, 0, 0, IOVT_UINT16, 0},
 	{NULL, 0, 0, 0, 0, 0}
@@ -226,6 +232,30 @@ phy_ac_chanmgr_doiovar(void *ctx, uint32 aid,
 		case IOV_SVAL(IOV_PHY_LOWRATETSSI_OVRD):
 			err = phy_ac_chanmgr_iovar_set_lowratetssi_ovrd(chanmgri, int_val);
 			break;
+		case IOV_SVAL(IOV_PHY_VCO_PLL_ADJ_MODE): {
+			*ret_int_ptr = phy_ac_chanmgr_enable_vco_pll_adj_mode(pi, TRUE, int_val);
+			break;
+		}
+		case IOV_GVAL(IOV_PHY_VCO_PLL_ADJ_MODE): {
+			*ret_int_ptr = phy_ac_chanmgr_enable_vco_pll_adj_mode(pi, FALSE, 0);
+			break;
+		}
+		case IOV_GVAL(IOV_PHY_PAPR_EN): {
+			err = phy_ac_chanmgr_iovar_get_papr_en(chanmgri, ret_int_ptr);
+			break;
+		}
+		case IOV_SVAL(IOV_PHY_PAPR_EN): {
+			err = phy_ac_chanmgr_iovar_set_papr_en(chanmgri, int_val);
+			break;
+		}
+		case IOV_GVAL(IOV_PHY_PAPR_GAMMA): {
+			err = phy_ac_chanmgr_iovar_get_papr_gamma(chanmgri, ret_int_ptr);
+			break;
+		}
+		case IOV_SVAL(IOV_PHY_PAPR_GAMMA): {
+			err = phy_ac_chanmgr_iovar_set_papr_gamma(chanmgri, int_val);
+			break;
+		}
 #endif /* ACCONF || ACCONF2 */
 #endif /* defined(BCMDBG) ||  defined(WLTEST) */
 

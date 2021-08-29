@@ -1,7 +1,7 @@
 /*
  * Radio 20695 channel tuning table defintion
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phytbl_20694.c 691143 2017-03-21 00:21:29Z $
+ * $Id: wlc_phytbl_20694.c 780795 2019-11-04 09:45:36Z $
  */
 
 #include <wlc_cfg.h>
@@ -3160,22 +3160,10 @@ int8 BCMATTACHDATA(lna12_gain_tbl_2g_maj40)[2][N_LNA12_GAINS] = {
 	{  0,  0, 0, 0,  0,  0}, /* LNA2 Table */
 };
 
-/* 2G LNA1 and LN2 Gain bits table for maj40 */
-int8 BCMATTACHDATA(lna12_gainbits_tbl_2g_maj40)[2][N_LNA12_GAINS] = {
-	{0, 1, 2, 3, 4, 5}, /* LNA1 Table */
-	{3, 3, 3, 3, 3, 3}, /* LNA2 Table */
-};
-
 /* 5G LNA1 and LNA2 Gain dB table for 4347B0 */
 int8 BCMATTACHDATA(lna12_gain_tbl_5g_maj40)[2][N_LNA12_GAINS] = {
 	{-8, -2, 4,10, 15, 21}, /* LNA1 Table */
 	{ 0,  0, 0, 0,  0,  0}, /* LNA2 Table */
-};
-
-/* 5G LNA1 and LN2 Gain bits table for maj40 */
-int8 BCMATTACHDATA(lna12_gainbits_tbl_5g_maj40)[2][N_LNA12_GAINS] = {
-	{0, 1, 2, 3, 4, 5}, /* LNA1 Table */
-	{3, 3, 3, 3, 3, 3}, /* LNA2 Table */
 };
 
 /* TIA Gain table for maj40 */

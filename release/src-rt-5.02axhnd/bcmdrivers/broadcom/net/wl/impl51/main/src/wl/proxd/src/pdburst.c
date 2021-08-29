@@ -1,7 +1,7 @@
 /*
  * Proxd internal interface - burst manager
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdburst.c 777286 2019-07-25 19:43:30Z $
+ * $Id: pdburst.c 788031 2020-06-18 14:10:58Z $
  */
 
 #include <wlc_cfg.h>
@@ -106,6 +106,7 @@
 #include <phy_ac_misc.h>
 #endif /* WL_RANGE_SEQ */
 
+#define TOF_DEBUG_UCODE 1
 /* #define TOF_DEBUG_TIME */
 /* #define TOF_DEBUG_TIME2 */
 /* #define TOF_PROFILE */
@@ -281,7 +282,8 @@ struct pdburst {
 	uint32				ftm_rx_rspec; /* valid only only initiator */
 	uint32				ack_rx_rspec;
 	uint64				phy_deaf_start;
-	uint8				pad[3];
+	bool				deferred;
+	uint8				pad[2];
 };
 
 #define BURST_SEQ_EN(_bp) ((_bp)->seq_en != 0)
@@ -394,8 +396,8 @@ static uint32 tsf_rxm, tsf_tmo, tsf_lastm, tsf_confirm;
 
 static int pdburst_send(pdburst_sm_t *sm, struct ether_addr *da, uint8 type);
 
-static int pdburst_sm(pdburst_sm_t *sm, int event, const uint8 *param, int paramlen,
-	pdburst_data_t *datap);
+static int pdburst_sm(pdburst_sm_t *sm, int event, const pdburst_tsinfo_t *protp,
+	int paramlen, pdburst_data_t *datap);
 static void pdburst_measure(pdburst_t *tofobj, int cmd);
 static int pdburst_confirmed(pdburst_sm_t *sm, wl_proxd_status_t reason);
 static int pdburst_target_done(pdburst_sm_t *sm, wl_proxd_status_t reason);
@@ -495,7 +497,7 @@ pdburst_get_chspec_from_rspec(pdburst_t *burstp, ratespec_t rspec)
 static ratespec_t
 pdburst_get_tgt_ackrspec(pdburst_t *burstp, uint16 ucodeack)
 {
-	uint8 bw, type;
+	uint8 bw, type, leg_rate;
 	ratespec_t ackrspec = 0;
 	ucodeack = (ucodeack & FTM_TXSTATUS_ACK_RSPEC_BLOCK_MASK);
 	bw = (ucodeack >> FTM_TXSTATUS_ACK_RSPEC_BW_SHIFT) &
@@ -514,8 +516,14 @@ pdburst_get_tgt_ackrspec(pdburst_t *burstp, uint16 ucodeack)
 	type = (ucodeack >> FTM_TXSTATUS_ACK_RSPEC_TYPE_SHIFT) &
 		FTM_TXSTATUS_ACK_RSPEC_TYPE_MASK;
 
+	leg_rate = (ucodeack >> FTM_TXSTATUS_ACK_RSPEC_RATE_SHIFT) &
+		FTM_TXSTATUS_ACK_RSPEC_RATE_MASK;
+#ifdef TOF_DEBUG_UCODE
+	FTM_ERR(("\n ucodeack 0x%04x bw 0x%02x type 0x%02x leg_rate 0x%02x\n",
+		ucodeack, bw, type, leg_rate));
+#endif // endif
 	if (type == FTM_TXSTATUS_ACK_RSPEC_TYPE_LEG) {
-		if (FTM_TXSTATUS_ACK_RSPEC_RATE_6M(ucodeack)) {
+		if (FTM_TXSTATUS_ACK_RSPEC_RATE_6M(leg_rate)) {
 			ackrspec |= WLC_RATE_6M;
 		} else { /* any non-6mps is fine */
 			ackrspec |= WLC_RATE_24M;
@@ -530,6 +538,10 @@ pdburst_get_tgt_ackrspec(pdburst_t *burstp, uint16 ucodeack)
 	} else if (type == FTM_TXSTATUS_ACK_RSPEC_TYPE_CCK) {
 		ASSERT(0);
 	}
+
+#ifdef TOF_DEBUG_UCODE
+	FTM_ERR(("\n ackrspec 0x%08x\n", ackrspec));
+#endif // endif
 
 	return ackrspec;
 }
@@ -623,6 +635,14 @@ pdburst_get_kval(pdburst_t *burstp, bool initiator, bool seq_en)
 			TOF_PRINTF(("ack-cspec:%x k:%d ack-rspec:%x idx:%d rate-idx:%d\n",
 				ackchanspec, k, ackrspec, bw_idx, rate_idx));
 		}
+	} else {
+		if (initiator) {
+			TOF_PRINTF(("ftm-cspec:%x k:%d ftm-rspec:%x idx:%d rate-idx:%d\n",
+				ftm_chanspec, k, ftm_ratespec, bw_idx, rate_idx));
+		} else {
+			TOF_PRINTF(("ack-cspec:%x k:%d ack-rspec:%x idx:%d rate-idx:%d\n",
+				ackchanspec, k, ackrspec, bw_idx, rate_idx));
+		}
 	}
 
 	return k;
@@ -650,6 +670,9 @@ static void pdburst_tof_init_vht(pdburst_t *burstp, int len_bytes)
 	int	n_sym, vht_length, vht_pad;
 	int	n_ampdu_delim, n_ampdu_eof;
 
+#ifdef TOF_DEBUG_UCODE
+	TOF_PRINTF(("%s: Setting up SHM values for TOF VHT ACK\n", __FUNCTION__));
+#endif // endif
 	if (CHSPEC_IS80(chanspec)) {
 		dot11_bw = 2;
 		dbps = 117;
@@ -666,19 +689,23 @@ static void pdburst_tof_init_vht(pdburst_t *burstp, int len_bytes)
 		return;
 
 	vht_sig_a1 = dot11_bw | (1<<2) | (63 << 4) | (1<<23);
-	vht_sig_a2 = (1 << 9);
+	vht_sig_a2 = (dot11_bw << 8);
 
 	frame_len = len_bytes + 4;
 	ampdu_len = len_bytes + 8;
 	ampdu_len_wrds = 4 * ((ampdu_len + 3) / 4);
+#ifdef TOF_DEBUG_UCODE
+	TOF_PRINTF(("vht_sig_a1 0x%08x, vht_sig_a2 0x%08x, frame_len %d, words %d\n",
+		vht_sig_a1, vht_sig_a2, frame_len, ampdu_len_wrds));
+#endif // endif
 
 	n_sym = ((8 * ampdu_len + 22) + dbps - 1) / dbps;
 	vht_length = (n_sym * dbps - 22) / 8;
 	vht_pad = (vht_length > ampdu_len_wrds)? vht_length - ampdu_len_wrds : 0;
 
 #ifdef TOF_DEBUG_UCODE
-	TOF_PRINTF(("LEN %d => AMPDU LEN %d => NSYMS %d => %d bytes\n",
-		len_bytes, ampdu_len, n_sym, vht_length));
+	TOF_PRINTF(("LEN %d => AMPDU LEN %d => NSYMS %d => %d bytes => %d pad\n",
+		len_bytes, ampdu_len, n_sym, vht_length, vht_pad));
 #endif // endif
 	n_ampdu_delim = vht_pad >> 2;
 	n_ampdu_eof = vht_pad & 3;
@@ -693,6 +720,11 @@ static void pdburst_tof_init_vht(pdburst_t *burstp, int len_bytes)
 #endif // endif
 	}
 
+	if (D11REV_GE(burstp->wlc->pub->corerev, 80)) {
+		sm->phyctl0 = PHY_TXC_FT_VHT | D11_REV80_PHY_TXC_NON_SOUNDING;
+		sm->phyctl1 = dot11_bw;
+		sm->phyctl2 = (1 << (burstp->core));
+	} else
 	{
 		sm->phyctl0 = (dot11_bw << 14) | 7 | (1 << (burstp->core + 6));
 		sm->phyctl1 = 0;
@@ -704,9 +736,26 @@ static void pdburst_tof_init_vht(pdburst_t *burstp, int len_bytes)
 	sm->vhta2 = (vht_sig_a2 >> 8) & 0xffff;
 	sm->vhtb0 = ((ampdu_len + 3)/4) & 0xffff;
 	sm->vhtb1 = vht_sig_b1;
+	/*
 	sm->ampductl = (n_ampdu_eof << 8) | (1 << 1);
+	*/
+	sm->ampductl = (1 << 0) | (1 << 1);
 	sm->ampdudlim = n_ampdu_delim;
+	/*
 	sm->ampdulen = (frame_len << 4) | 1;
+	*/
+	sm->ampdulen = frame_len;
+
+#ifdef TOF_DEBUG_UCODE
+	TOF_PRINTF(("phyctl0: 0x%04x, phyctl1: 0x%04x, phyctl2: 0x%04x, lsig: 0x%04x\n",
+		sm->phyctl0, sm->phyctl1, sm->phyctl2, sm->lsig));
+	TOF_PRINTF(("vhta0: 0x%04x, vhta1: 0x%04x, vhta2: 0x%04x\n",
+		sm->vhta0, sm->vhta1, sm->vhta2));
+	TOF_PRINTF(("vhtb0: 0x%04x, vhtb1: 0x%04x\n",
+		sm->vhtb0, sm->vhtb1));
+	TOF_PRINTF(("ampductl: 0x%04x, ampdudlim: 0x%04x, ampdulen: 0x%04x\n",
+		sm->ampductl, sm->ampdudlim, sm->ampdulen));
+#endif // endif
 }
 
 static void pdburst_tof_setup_ht(pdburst_t *burstp)
@@ -719,6 +768,9 @@ static void pdburst_tof_setup_vht(pdburst_t *burstp)
 	pdburst_sm_t *sm = burstp->sm;
 	wlc_info_t *wlc	= burstp->wlc;
 	if (wlc_read_shm(wlc, burstp->shmemptr + M_TOF_PHYCTL0_OFFSET(wlc)) != sm->phyctl0) {
+#ifdef TOF_DEBUG_UCODE
+		TOF_PRINTF(("%s: Writing SHM values for TOF VHT ACK\n", __FUNCTION__));
+#endif // endif
 		wlc_write_shm(wlc, burstp->shmemptr + M_TOF_PHYCTL0_OFFSET(wlc), sm->phyctl0);
 		wlc_write_shm(wlc, burstp->shmemptr + M_TOF_PHYCTL1_OFFSET(wlc), sm->phyctl1);
 		wlc_write_shm(wlc, burstp->shmemptr + M_TOF_PHYCTL2_OFFSET(wlc), sm->phyctl2);
@@ -784,6 +836,10 @@ pdburst_rtd_adj(pdburst_t *burstp, int frame_type, int frame_bw, int cfo,
 #endif /* TOF_COLLECT */
 	uint32 *chan_data = NULL;
 	uint32 chan_data_len = 0;
+	bool single_core = TRUE;
+#ifdef TOF_DEFAULT_USE_MULTICORE
+	single_core = FALSE;
+#endif // endif
 
 	uint32* p_collect_data = NULL;
 	nlen_1 = 0;
@@ -1020,7 +1076,7 @@ pdburst_rtd_adj(pdburst_t *burstp, int frame_type, int frame_bw, int cfo,
 		if (!hw_adj_en && sw_adj_en) {
 			adj_err = phy_tof_chan_freq_response(WLC_PI(wlc), nlen,
 				CORE0_K_TOF_H_BITS, params.H, NULL, p_collect_data,
-				TRUE, 1, FALSE);
+				single_core, 1, FALSE);
 			if (adj_err == BCME_OK) {
 #ifdef TOF_COLLECT
 				n_out = nlen;
@@ -1141,10 +1197,12 @@ static bool pdburst_cmd(wlc_info_t *wlc, uint shmemptr, uint16 cmd)
 
 	if (cmd & TOF_RX) {
 		/* Inform ucode to process FTM meas frames on initiator */
-		wlc_write_shm(wlc, shmemptr + M_TOF_FLAGS_OFFSET(wlc), 1);
+		wlc_update_shm(wlc, shmemptr + M_TOF_FLAGS_OFFSET(wlc),
+			1 << TOF_RX_FTM_NBIT, 1 << TOF_RX_FTM_NBIT);
 	}
 	else {
-		wlc_write_shm(wlc, shmemptr + M_TOF_FLAGS_OFFSET(wlc), 0);
+		wlc_update_shm(wlc, shmemptr + M_TOF_FLAGS_OFFSET(wlc),
+			0 << TOF_RX_FTM_NBIT, 1 << TOF_RX_FTM_NBIT);
 	}
 
 	return TRUE;
@@ -1220,7 +1278,7 @@ static void pdburst_measure(pdburst_t *burstp, int cmd)
 			WL_ERROR(("ftp-phydeaf: phy is deaf for(%uus) for more than "
 				"sep intv(%dus)\n", diff, ftm_sep));
 		}
-		TOF_PRINTF(("ftm-phydeaf: phy is deaf form %u to %u(%uus), sep intv(%dus)\n",
+		TOF_PRINTF(("ftm-phydeaf: phy is deaf from %u to %u(%uus), sep intv(%dus)\n",
 			(uint32)burstp->phy_deaf_start, (uint32)phy_deaf_end, diff, ftm_sep));
 	}
 
@@ -1476,6 +1534,10 @@ static int pdburst_measure_results(pdburst_t *burstp, uint64 *tx, uint64 *rx,
 					FTM_ERR(("K %d is bigger than delta %d\n", kt,
 						delta + h_adj));
 				}
+				TOF_PRINTF(("id %d, avbtx %u, avbrx %u, gd %d, h_adj %d, dif %d,"
+					" delta %u, dTraw %d, T1 %llu, T4 %llu (%lld)\n",
+					id, avbtx, avbrx, *gd, h_adj, (*gd - h_adj), delta,
+					(delta + h_adj), *tx, *rx, (*rx - *tx)));
 			}
 		}
 
@@ -1772,6 +1834,7 @@ pdburst_rx_tof_params(pdburst_t *burstp, pdburst_frame_type_t ftype,
 		}
 		err = phy_tof_set_ri_rr(WLC_PI(burstp->wlc), (uint8 *)ri_rr, ri_rr_len,
 			burstp->core, TRUE, TRUE, tof_sec_params);
+		if (WL_ERROR_ON()) {
 		prhex("phy_ri", (uint8 *)bsi.vs_sec_params->ri,
 			((bsi.vs_sec_params->flags &
 			FTM_VS_SEC_F_RANGING_2_0) ?
@@ -1782,6 +1845,7 @@ pdburst_rx_tof_params(pdburst_t *burstp, pdburst_frame_type_t ftype,
 			FTM_VS_SEC_F_RANGING_2_0) ?
 			FTM_VS_TPK_RR_LEN_SECURE_2_0 :
 			FTM_VS_TPK_RR_LEN));
+		}
 
 	} else {
 		err = phy_tof_set_ri_rr(WLC_PI(burstp->wlc), NULL, FTM_TPK_RI_RR_LEN,
@@ -1828,6 +1892,11 @@ static int pdburst_process_rx_frame(pdburst_t* burstp, const wlc_d11rxhdr_t *wrx
 	int ret;
 	pdburst_data_t data;
 	const d11rxhdr_t *rxh;
+	uint32 chan_size;
+	int32 *tmpH;
+	uint32* tmpR;
+	int32 adj_err;
+	uint8 mes_cnt;
 
 	ASSERT(burstp != NULL);
 	ASSERT(burstp->sm != NULL);
@@ -1852,12 +1921,13 @@ static int pdburst_process_rx_frame(pdburst_t* burstp, const wlc_d11rxhdr_t *wrx
 
 	if (tsinfo) {
 		TOF_PRINTF(("pdburst_process_rx_frame: measurement dialog %d "
-			"followup %d rxStatus1 %x\n", tsinfo->tx_id, tsinfo->ts_id,
-			D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, RxStatus1)));
+			"followup %d rxStatus1 0x%x, MuRate 0x%x\n", tsinfo->tx_id, tsinfo->ts_id,
+			D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, RxStatus1),
+			D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, MuRate)));
 	} else {
 		TOF_PRINTF(("pdburst_process_rx_frame: request\n"));
 	}
-#endif // endif
+#endif /* TOF_DEBUG_TIME */
 
 	if (!tsinfo)
 	{
@@ -1891,9 +1961,8 @@ static int pdburst_process_rx_frame(pdburst_t* burstp, const wlc_d11rxhdr_t *wrx
 				frame_bw = 0;
 			}
 			TOF_PRINTF(("frame_bw = %d\n", frame_bw));
-			uint32 chan_size = (K_TOF_COLLECT_CHAN_SIZE) >> (2 - frame_bw);
-			int32* tmpH = NULL;
-			uint32* tmpR;
+			chan_size = (K_TOF_COLLECT_CHAN_SIZE) >> (2 - frame_bw);
+			tmpH = NULL;
 			if (!burstp->collectp) {
 				TOF_PRINTF(("Allocating temp mem ----->\n"));
 				tmpR = (uint32*)MALLOCZ(burstp->wlc->osh,
@@ -1907,7 +1976,7 @@ static int pdburst_process_rx_frame(pdburst_t* burstp, const wlc_d11rxhdr_t *wrx
 				tmpR = (uint32 *) (burstp->collectp->chan);
 			}
 
-			int32 adj_err = phy_tof_chan_freq_response(WLC_PI(burstp->wlc),
+			adj_err = phy_tof_chan_freq_response(WLC_PI(burstp->wlc),
 					chan_size, CORE0_K_TOF_H_BITS, tmpH, NULL, tmpR,
 					FALSE, 1, TRUE);
 			burstp->channel_dumped = TRUE;
@@ -1937,7 +2006,7 @@ static int pdburst_process_rx_frame(pdburst_t* burstp, const wlc_d11rxhdr_t *wrx
 		if (BURST_SEQ_EN(burstp)) {
 			burstp->seq_state = get_next_seq_state(burstp->num_meas);
 		}
-		uint8 mes_cnt = pdburst_rx_measurecnt(burstp, tsinfo);
+		mes_cnt = pdburst_rx_measurecnt(burstp, tsinfo);
 		burstp->num_meas = mes_cnt + 1; /* because meas_cnt starts from 0 */
 #ifdef TOF_DEBUG_TIME
 		TOF_PRINTF(("%s: num_meas %d mes_cnt %d measurecnt %d tx_id %d ts_id %d \n",
@@ -2016,7 +2085,7 @@ static int pdburst_process_rx_frame(pdburst_t* burstp, const wlc_d11rxhdr_t *wrx
 		sm->tof_state != TOF_STATE_IDLE && sm->tof_state != TOF_STATE_ICONFIRM)
 		sm->tof_rxvht = TRUE;
 
-	ret = pdburst_sm(sm, TOF_EVENT_RXACT, (const uint8 *)tsinfo, sizeof(*tsinfo), &data);
+	ret = pdburst_sm(sm, TOF_EVENT_RXACT, tsinfo, sizeof(*tsinfo), &data);
 	if (sm->tof_mode == WL_PROXD_MODE_TARGET)
 		return 0;
 
@@ -2240,7 +2309,7 @@ static int pdburst_send(pdburst_sm_t *sm, struct ether_addr *da, uint8 type)
 #ifdef TOF_DEBUG_TIME
 		TOF_PRINTF(("*** rate spec 0x%08x\n", burstp->configp->ratespec));
 #endif // endif
-		band = wlc->bandstate[CHSPEC_WLCBANDUNIT(burstp->configp->chanspec)];
+		band = wlc->bandstate[CHSPEC_BANDUNIT(burstp->configp->chanspec)];
 		if (RSPEC_ACTIVE(band->rspec_override)) {
 			rate_override = band->rspec_override;
 		} else {
@@ -2334,7 +2403,7 @@ static int pdburst_send(pdburst_sm_t *sm, struct ether_addr *da, uint8 type)
 		if (burstp->sm->tof_legacypeer == TOF_LEGACY_AP)
 			nextFrames--;
 
-		durid = wlc_compute_frame_dur(wlc, CHSPEC2WLC_BAND(bsscfg->current_bss->chanspec),
+		durid = wlc_compute_frame_dur(wlc, CHSPEC_BANDTYPE(bsscfg->current_bss->chanspec),
 				rate_override, WLC_LONG_PREAMBLE, 0);
 		if (nextFrames > 0 && burstp->tunep->rsv_media)
 			durid += burstp->tunep->rsv_media;
@@ -2517,10 +2586,10 @@ static int pdburst_analyze_results(pdburst_t* burstp, tof_tslist_t *listp,
 		for (i = 0, cnt = 0; i < listp->tscnt; i++, toftsp++, ftmp++) {
 			bool valid_ts = TRUE;
 			int32 dT = 0;
-			tof_target_snr = 0;
-			tof_target_bitflips = 0;
 			uint32 rspec = listp->tslist[i].rspec;
 			char rate_buf[20];
+			tof_target_snr = 0;
+			tof_target_bitflips = 0;
 			if ((rspec & WL_RSPEC_ENCODING_MASK) == WL_RSPEC_ENCODE_RATE)
 				sprintf(rate_buf, "rate %d Mbps", (rspec & WL_RSPEC_RATE_MASK)/2);
 			else if ((rspec & WL_RSPEC_ENCODING_MASK) == WL_RSPEC_ENCODE_HT)
@@ -2560,7 +2629,7 @@ static int pdburst_analyze_results(pdburst_t* burstp, tof_tslist_t *listp,
 			ftmp->flags |= (listp->tslist[i].discard? WL_PROXD_RTT_SAMPLE_DISCARD : 0);
 			ftmp->coreid = burstp->core;
 			ftmp->chanspec = burstp->configp->chanspec;
-			FTM_TRACE(("%s (%d)T1 %u T2 %u T3 %u T4 %u Delta %d "
+			TOF_PRINTF(("%s (%d)T1 %u T2 %u T3 %u T4 %u Delta %d "
 				"rssi %d gd %d hadj %d dif "
 				"%d%s tof_phy_error %x \n", rate_buf, ftmp->id,
 				listp->tslist[i].t1, listp->tslist[i].t2, listp->tslist[i].t3,
@@ -2596,12 +2665,6 @@ static int pdburst_analyze_results(pdburst_t* burstp, tof_tslist_t *listp,
 				*/
 				} else if (dT > (burstp->seq_len >> 1)) {
 					dT -= burstp->seq_len;
-				}
-				if  (((burstp->seq_state == TOF_SEQ_NONE) ||
-					(burstp->seq_state == TOF_SEQ_DONE))) {
-					toftsp->discard = TRUE;
-					ftmp->flags |= WL_PROXD_RTT_SAMPLE_DISCARD;
-					continue;
 				}
 			} else {
 				/* Check for valid measurements for Non-SEQ */
@@ -3252,6 +3315,7 @@ static void pdburst_collect_data(void* collect, int index, bool isTwenty)
 		memcpy((void *)&(p_collect - 1)->ri_rr, (void *)&collectp->ri_rr,
 			FTM_TPK_RI_RR_LEN_SECURE_2_0);
 #ifndef WL_PROXD_LOG_OPT
+		if (WL_ERROR_ON())
 		prhex(NULL, (void *)&collectp->ri_rr,
 				FTM_TPK_RI_RR_LEN_SECURE_2_0);
 #endif /* WL_PROXD_LOG_OPT */
@@ -3263,6 +3327,7 @@ static void pdburst_collect_data(void* collect, int index, bool isTwenty)
 		memcpy((void *)&(p_collect - 1)->chan, (void *)&collectp->chan,
 			(collectp->collect_info.num_max_cores + 1)*chan_size*sizeof(uint32));
 #ifdef TOF_DBG
+		if (WL_ERROR_ON())
 		prhex("TOF_COLLECT ri_rr",
 			(uint8 *)&((p_collect - 1)->ri_rr[0]), FTM_TPK_RI_RR_LEN_SECURE_2_0);
 #endif /* TOF_DBG */
@@ -3647,7 +3712,7 @@ static void pdburst_initiator_restore_last_frame(pdburst_t* burstp, ftmts_t *tsp
 }
 
 /* initiator gets AVB time stamp */
-static int pdburst_initiator_get_ts(pdburst_sm_t *sm, pdburst_tsinfo_t *protp,
+static int pdburst_initiator_get_ts(pdburst_sm_t *sm, const pdburst_tsinfo_t *protp,
 	int rssi, uint32 rspec, uint8 type)
 {
 	pdburst_t* burstp = sm->tof_obj;
@@ -3878,13 +3943,22 @@ static void pdburst_ftm_tx_timer(void *ctx)
 	pdburst_sm_t *sm = burstp->sm;
 	uint8 type = TOF_TYPE_MEASURE;
 	int totalfcnt;
+	int err = BCME_OK;
 
 	ASSERT(burstp != NULL);
 	if (sm->tof_mode == WL_PROXD_MODE_INITIATOR)
 	{
 		burstp->ftm_tx_timer_active = FALSE;
-		pdburst_send(sm, &sm->tof_peerea, TOF_TYPE_REQ_START);
-		pdburst_measure(burstp, TOF_RX);
+		err = pdburst_send(sm, &sm->tof_peerea, TOF_TYPE_REQ_START);
+		if (err == BCME_OK) {
+			pdburst_measure(burstp, TOF_RX);
+		} else if (err != BCME_TXFAIL) {
+			/* stop burst for errors other than txfail
+			* In txfail, retries will be attempted in pcb context
+			*/
+			FTM_ERR(("pdburst_ftm_tx_timer: pdburst_send err %d\n", err));
+			pdburst_confirmed(sm, WL_PROXD_E_ERROR);
+		}
 		return;
 	}
 	if (!burstp->caldone && !burstp->smstoped) {
@@ -4055,7 +4129,7 @@ static int pdburst_sm_target_wait(pdburst_sm_t *sm, int event, pdburst_data_t *d
 }
 
 static int pdburst_sm_initiator_wait(pdburst_sm_t *sm, int event, pdburst_data_t *datap,
-	pdburst_tsinfo_t *protp)
+	const pdburst_tsinfo_t *protp)
 {
 	pdburst_t* burstp = sm->tof_obj;
 	wlc_info_t *wlc = burstp->wlc;
@@ -4113,16 +4187,11 @@ static int pdburst_sm_initiator_wait(pdburst_sm_t *sm, int event, pdburst_data_t
 				pdburst_confirmed(sm, WL_PROXD_E_NOACK);
 				ret = TOF_RET_SLEEP;
 			} else {
-				if (burstp->flags & WL_PROXD_SESSION_FLAG_SEQ_EN) {
-					wlc_hrt_add_timeout(burstp->ftm_tx_timer,
-						TOF_REQ_START_RETRY_DUR, pdburst_ftm_tx_timer,
-						(void *)burstp);
-					burstp->ftm_tx_timer_active = TRUE;
-					ret = TOF_RET_SLEEP;
-				} else {
-					pdburst_send(sm, &sm->tof_peerea, TOF_TYPE_REQ_START);
-					pdburst_measure(burstp, TOF_RX);
-				}
+				wlc_hrt_add_timeout(burstp->ftm_tx_timer,
+					TOF_REQ_START_RETRY_DUR, pdburst_ftm_tx_timer,
+					(void *)burstp);
+				burstp->ftm_tx_timer_active = TRUE;
+				ret = TOF_RET_SLEEP;
 			}
 			break;
 
@@ -4195,8 +4264,9 @@ static int pdburst_sm_idle(pdburst_sm_t *sm, int event, pdburst_data_t *datap)
 				} else {
 					phy_tof_setup_ack_core(WLC_PI(burstp->wlc), burstp->core);
 				}
-				pdburst_send(sm, &sm->tof_peerea, TOF_TYPE_REQ_START);
-				pdburst_measure(burstp, TOF_RX);
+				wlc_hrt_add_timeout(burstp->ftm_tx_timer, TOF_REQ_START_DUR,
+					pdburst_ftm_tx_timer, (void *)burstp);
+				burstp->ftm_tx_timer_active = TRUE;
 				sm->tof_state = TOF_STATE_IWAITM;
 			} else if (sm->tof_mode != WL_PROXD_MODE_TARGET) {
 				FTM_ERR(("Invalid mode %d\n", sm->tof_mode));
@@ -4263,14 +4333,9 @@ static int pdburst_sm_idle(pdburst_sm_t *sm, int event, pdburst_data_t *datap)
 }
 
 /* TOF state machine */
-static int pdburst_sm(pdburst_sm_t *sm, int event, const uint8 *param, int paramlen,
-	pdburst_data_t *datap)
+static int pdburst_sm(pdburst_sm_t *sm, int event, const pdburst_tsinfo_t *protp,
+	int paramlen, pdburst_data_t *datap)
 {
-
-	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
-	pdburst_tsinfo_t *protp = (pdburst_tsinfo_t *)param;
-	GCC_DIAGNOSTIC_POP();
-
 	pdburst_t* burstp = sm->tof_obj;
 	int ret = TOF_RET_IGNORE;
 
@@ -4589,24 +4654,35 @@ pdburst_resolve_initator_mac_addr(pdburst_t *burstp)
 			memcpy(mac, rand_mac, ETHER_ADDR_LEN);
 			burstp->randmac_in_use = TRUE;
 		} else {
-			/* in case WL_RANDMAC is undefined */
-			if (BSSCFG_AP(burstp->bsscfg)) {
-				memcpy(mac, &burstp->bsscfg->cur_etheraddr, ETHER_ADDR_LEN);
-				err = BCME_OK;
-			}
-			else {
-				err = BCME_NORESOURCE;
-			}
+		if (burstp->deferred) {
+			/* Burst Deferred/Resched case
+			 * Do nothing as mac addr is already
+			 * resolved while initial burst setup
+			 */
+			goto done;
 		}
-	} else {
-		if (!BSSCFG_AP(burstp->bsscfg)) {
-			/* TODO: ensure AMT is programmed for cur_ether_addr set via iovar */
-			err = BCME_BADADDR;
-			ASSERT(0);
+			/* in case WL_RANDMAC is undefined */
+			memcpy(mac, &burstp->bsscfg->cur_etheraddr, ETHER_ADDR_LEN);
+			err = BCME_OK;
 		}
 	}
 done:
 	return err;
+}
+
+void
+pdftm_set_burst_deferred(pdftm_t *ftm, pdftm_session_t *sn)
+{
+	pdburst_t *burst;
+	pdftm_session_state_t *sst;
+
+	sst = sn->ftm_state;
+	ASSERT(sst);
+	burst = sst->burst;
+	ASSERT(burst);
+
+	burst->deferred = TRUE;
+	return;
 }
 
 int
@@ -4660,8 +4736,8 @@ int
 pdburst_start(pdburst_t *burstp)
 {
 	pdburst_sm_t *sm;
-	wlc_info_t *wlc;
 	int err = BCME_OK;
+	wlc_info_t *wlc;
 #ifdef TOF_DEBUG_TIME
 	uint64 curtsf;
 #endif // endif
@@ -4714,7 +4790,7 @@ pdburst_start(pdburst_t *burstp)
 				FTM_TX_OVRHD_BURST_DURATION_US),
 			pdburst_duration_expired_target, (void *)burstp);
 #ifdef TOF_DEBUG_TIME
-		FTM_GET_TSF(wlc_ftm_get_handle(burstp->wlc), curtsf);
+		FTM_GET_TSF(wlc_ftm_get_handle(wlc), curtsf);
 		TOF_PRINTF(("%s: BURST START TIME = %u.%u \n",
 			__FUNCTION__, FTM_LOG_TSF_ARG(curtsf)));
 #endif // endif
@@ -4723,6 +4799,9 @@ pdburst_start(pdburst_t *burstp)
 		wlc_enable_avb_timer(wlc->hw, TRUE);
 	}
 done:
+#ifdef TOF_DEBUG_UCODE
+	TOF_PRINTF(("%s err %d\n", __FUNCTION__, err));
+#endif // endif
 	return err;
 }
 
@@ -4788,8 +4867,10 @@ pdburst_destroy(pdburst_t **in_burst)
 
 	burstp = *in_burst;
 	*in_burst = NULL;
-
 	if (burstp) {
+		if (SRPWR_ENAB()) {
+			wlc_srpwr_request_on(burstp->wlc);
+		}
 		burstp->smstoped = TRUE;
 		burstp->ctx = NULL;
 		burstp->configp = NULL;
@@ -5646,7 +5727,8 @@ void ftm_vs_update_mf_stats_len(void *burstp, uint16 len)
 * http://confluence.broadcom.com/display/WLAN/NewUcodeInterfaceForProxdFeature
 */
 #define FTM_TIMESTAMP_SHIFT		16
-#define NAN_RANGE_ACK_BLOCK_SIZE	6
+#define TOF_AVB_ACK_BLOCK_SIZE		6
+#define TOF_AVB_ACK_BLOCK_MASK		0x8000
 #define TXS_ACK_INDEX_SHIFT		3
 #define RXH_ACK_INDEX_SHIFT		8
 #define RXH_ACK_INDEX_SHIFT_REV_GE80	12
@@ -5667,37 +5749,47 @@ pdburst_process_tx_rx_status(wlc_info_t *wlc, tx_status_t *txs,
 	uint8 rxh_ack_shift;
 
 	if (txs) {
-		ftm_avb = ((txs->status.s10 >> FTM_TIMESTAMP_SHIFT) & 0xFFFF) |
-			((txs->status.s11 & 0xFFFF) << FTM_TIMESTAMP_SHIFT);
-		index = (txs->status.s9 >> TXS_ACK_INDEX_SHIFT) & 0x0F;
+		ftm_avb = txs->status.ack_map2;
+		index = (txs->status.s5 >> TXS_ACK_INDEX_SHIFT) & 0x07;
 	} else {
-		ftm_avb = (D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, AvbRxTimeL) |
-			(D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, AvbRxTimeH) <<
-			FTM_TIMESTAMP_SHIFT));
+		if (D11REV_GE(wlc->pub->corerev, 128)) {
+			/*
+			Note: for non-FTM frames, AvbRxTimeH is reused for uplink
+			rate info on AX chips
+			*/
+			ftm_avb = (D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, AvbRxTimeL) |
+				(D11RXHDR_GE128_ACCESS_VAL(rxh, UlRtInfo) <<
+				FTM_TIMESTAMP_SHIFT));
+		} else {
+			ftm_avb = (D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, AvbRxTimeL) |
+				(D11RXHDR_LT80_ACCESS_VAL(rxh, AvbRxTimeH) <<
+				FTM_TIMESTAMP_SHIFT));
+		}
 		if (D11REV_GE(wlc->pub->corerev, 80)) {
 			rxh_ack_shift = RXH_ACK_INDEX_SHIFT_REV_GE80;
 		} else {
 			rxh_ack_shift = RXH_ACK_INDEX_SHIFT;
 		}
 		index = (D11RXHDR_ACCESS_VAL(rxh, wlc->pub->corerev, MuRate) >>
-			rxh_ack_shift) & 0x0F;
+			rxh_ack_shift) & 0x07;
 	}
-	FTM_TRACE(("\n index of ACK timestamp in ranging block %d\n", index));
+	FTM_TRACE(("\n AVB FTMTS : %u tof_avb_block index %d\n",
+		ftm_avb, index));
 
 	if (D11REV_GE(wlc->pub->corerev, 80)) {
 		if (index == 0x04) { /* invalid index 0x04..check */
-			OSL_SYS_HALT();
+			TOF_PRINTF(("\n No available block, so ack ts not valid..ignore\n"));
 			return;
 		}
 	} else if (index == 0x0F) { /* invalid index 0x0F..check */
-		OSL_SYS_HALT();
+		TOF_PRINTF(("\n No available block, so ack ts not valid..ignore\n"));
 		return;
 	}
-	off_set = index * NAN_RANGE_ACK_BLOCK_SIZE + M_NAN_RANGE_BLK(wlc->hw);
+	off_set = index * TOF_AVB_ACK_BLOCK_SIZE + M_TOF_AVB_BLK(wlc->hw);
 
 	/* Wait until ack time stamps are updated/valid */
 	i = 0;
-	while (!((wlc_bmac_read_shm(wlc->hw, off_set)) & 0x01) &&
+	while (!((wlc_bmac_read_shm(wlc->hw, off_set)) & TOF_AVB_ACK_BLOCK_MASK) &&
 		(i < TOF_ACK_TS_TIMEOUT)) {
 		OSL_DELAY(1);
 		i++;
@@ -5717,9 +5809,12 @@ pdburst_process_tx_rx_status(wlc_info_t *wlc, tx_status_t *txs,
 		return;
 	}
 
-	if (!(ack_avb_blk[0] & 0x01)) {
+	FTM_TRACE(("\n avb1 0x%04x avb2 0x%04x avb3 0x%04x\n", ack_avb_blk[0],
+		ack_avb_blk[1], ack_avb_blk[2]));
+
+	if (!(ack_avb_blk[0] & TOF_AVB_ACK_BLOCK_MASK)) {
 		TOF_PRINTF(("\n ack field not valid \n"));
-		wlc_bmac_write_shm(wlc->hw, M_NAN_RANGE_ACK_ON(wlc->hw), 0);
+		wlc_bmac_write_shm(wlc->hw, M_TOF_AVB_ACK_ON(wlc->hw), 0);
 		return;
 	}
 
@@ -5727,8 +5822,7 @@ pdburst_process_tx_rx_status(wlc_info_t *wlc, tx_status_t *txs,
 		ack_avb_blk[1], ack_avb_blk[2]));
 
 	p = (pdburst_t *)pdftm_session_get_burstp(wlc, peer,
-		(txs != NULL) ? WL_PROXD_SESSION_FLAG_TARGET :
-		WL_PROXD_SESSION_FLAG_INITIATOR);
+		WL_PROXD_SESSION_FLAG_NONE);
 	if (!p) { /* TODO: debug this */
 		TOF_PRINTF(("\n%s:burst/ssn not created or already freed\n", __FUNCTION__));
 		return;
@@ -5745,11 +5839,22 @@ pdburst_process_tx_rx_status(wlc_info_t *wlc, tx_status_t *txs,
 		sm->tod = ftm_avb;
 		sm->toa = ack_avb;
 		p->ack_rx_rspec = pdburst_get_tgt_ackrspec(p, ack_avb_blk[0]);
+
+		/* target: handle vhtack automatically */
+		if (RSPEC_ISVHT(p->ack_rx_rspec)) {
+			p->flags |= WL_PROXD_SESSION_FLAG_VHTACK;
+		}
+		else {
+			p->flags &= ~WL_PROXD_SESSION_FLAG_VHTACK;
+		}
+		proxd_update_tunep_values(p->tunep, p->configp->chanspec,
+		      BURST_IS_VHTACK(p));
+
 	} else {
 		sm->tod = ack_avb;
 		sm->toa = ftm_avb;
 	}
-	FTM_TRACE(("\n AVB FTMTS : %u ACKTS : %u nan_range_block index %d\n",
+	FTM_TRACE(("\n AVB FTMTS : %u ACKTS : %u tof_avb_block index %d\n",
 		ftm_avb, ack_avb, index));
 }
 
@@ -5765,8 +5870,8 @@ pdburst_clear_ucode_ack_block(wlc_info_t *wlc)
 	uint8 index = 0;
 	uint16 off_set = 0;
 	for (index = 0; index < NUM_UCODE_ACK_TS_BLKS; index++) {
-		off_set = index * NAN_RANGE_ACK_BLOCK_SIZE +
-			M_NAN_RANGE_BLK(wlc->hw);
+		off_set = index * TOF_AVB_ACK_BLOCK_SIZE +
+			M_TOF_AVB_BLK(wlc->hw);
 		wlc_bmac_write_shm(wlc->hw, off_set, 0x0000);
 	}
 }

@@ -1,7 +1,7 @@
 /*
  * PHY module debug utilities
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_dbg.c 729400 2017-10-31 18:34:19Z $
+ * $Id: phy_dbg.c 778608 2019-09-05 16:50:19Z $
  */
 
 #include <phy_cfg.h>
@@ -767,8 +767,8 @@ phy_dbg_test_evm_init(phy_info_t *pi)
 		/* Store initial values */
 		pi->evm_o = R_REG(pi->sh->osh, D11_PSM_GPIOOUT(pi));
 		pi->evm_oe = R_REG(pi->sh->osh, D11_PSM_GPIOEN(pi));
-		AND_REG(pi->sh->osh, D11_PSM_GPIOOUT(pi), ~BOARD_GPIO_PACTRL);
-		OR_REG(pi->sh->osh, D11_PSM_GPIOEN(pi), BOARD_GPIO_PACTRL);
+		AND_REG(pi->sh->osh, D11_PSM_GPIOOUT(pi), (uint16)~BOARD_GPIO_PACTRL);
+		OR_REG(pi->sh->osh, D11_PSM_GPIOEN(pi), (uint16)BOARD_GPIO_PACTRL);
 		OSL_DELAY(1000);
 	}
 }
@@ -842,8 +842,8 @@ phy_dbg_test_evm(phy_info_t *pi, int channel, uint rate, int txpwr)
 
 		/* Set EVM test mode */
 		AND_REG(pi->sh->osh, D11_PHY_REG_A(pi),
-		        ~(TST_TXTEST_ENABLE|TST_TXTEST_RATE|TST_TXTEST_PHASE));
-		OR_REG(pi->sh->osh, D11_PHY_REG_A(pi), TST_TXTEST_ENABLE | reg);
+		        (uint16)~(TST_TXTEST_ENABLE|TST_TXTEST_RATE|TST_TXTEST_PHASE));
+		OR_REG(pi->sh->osh, D11_PHY_REG_A(pi), (uint16)(TST_TXTEST_ENABLE | reg));
 		err = BCME_OK;
 	}
 	return err;
@@ -880,8 +880,8 @@ phy_dbg_test_carrier_suppress(phy_info_t *pi, int channel)
 		}
 
 		/* set carrier suppression test mode */
-		AND_REG(pi->sh->osh, D11_PHY_REG_A(pi), 0xfc00);
-		OR_REG(pi->sh->osh, D11_PHY_REG_A(pi), 0x0228);
+		AND_REG(pi->sh->osh, D11_PHY_REG_A(pi), (uint16)0xfc00);
+		OR_REG(pi->sh->osh, D11_PHY_REG_A(pi), (uint16)0x0228);
 		err = BCME_OK;
 	}
 	return err;

@@ -1,7 +1,7 @@
 /*
  * Encode functions which provides encoding of GAS packets as defined in 802.11u.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -61,7 +61,7 @@ int bcm_encode_gas_request(bcm_encode_t *pkt, uint8 dialogToken,
 /* encode GAS response */
 int bcm_encode_gas_response(bcm_encode_t *pkt, uint8 dialogToken,
 	uint16 statusCode, uint16 comebackDelay, uint8 apieLen, uint8 *apie,
-	uint16 rspLen, uint8 *rsp);
+	uint16 rspLen, uint8 *rsp, uint8 category);
 
 /* encode GAS comeback request */
 int bcm_encode_gas_comeback_request(bcm_encode_t *pkt, uint8 dialogToken);

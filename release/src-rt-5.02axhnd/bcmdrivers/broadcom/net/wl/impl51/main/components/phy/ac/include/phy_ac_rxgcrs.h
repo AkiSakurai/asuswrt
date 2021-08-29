@@ -1,7 +1,7 @@
 /*
  * ACPHY Rx Gain Control and Carrier Sense module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rxgcrs.h 774730 2019-05-06 08:41:28Z $
+ * $Id: phy_ac_rxgcrs.h 780478 2019-10-26 09:55:49Z $
  */
 
 #ifndef _phy_ac_rxgcrs_h_
@@ -104,9 +104,6 @@ uint16 phy_ac_rxgcrs_get_deaf_count(phy_ac_rxgcrs_info_t *rxgcrsi);
 	((CHSPEC_IS2G(pi->radio_chanspec)) ? BF_ELNA_2G(pi->u.pi_acphy) :              \
 	BF_ELNA_5G(pi->u.pi_acphy)) && !(ACMAJORREV_32(pi->pubpi->phy_rev) || \
 	ACMAJORREV_33(pi->pubpi->phy_rev)))
-#define ACPHY_LO_NF_MODE_ELNA_28NM(pi) (IS_28NM_RADIO(pi) && \
-		((CHSPEC_IS2G(pi->radio_chanspec)) ? BF_ELNA_2G(pi->u.pi_acphy) : \
-		BF_ELNA_5G(pi->u.pi_acphy)) && pi->u.pi_acphy->rxgcrsi->lonf_elna_mode)
 /* Following MACROS will be used by GBD only.
  * Tiny gain control has a local array of INIT and clip gains.
  */
@@ -116,17 +113,17 @@ uint16 phy_ac_rxgcrs_get_deaf_count(phy_ac_rxgcrs_info_t *rxgcrsi);
 	(ACPHY_HI_GAIN) : (ACPHY_LO_NF_MODE_ELNA_TINY(pi) ? 43 : 37))
 /* End of GBD used MACRO
  */
-#define ACPHY_INIT_GAIN_28NM_ULP 65
-#define ACPHY_HI_GAIN_28NM_ULP 44
+
 #define ACPHY_INIT_GAIN_28NM (\
 	(ACMAJORREV_40(pi->pubpi->phy_rev) && CHSPEC_IS2G(pi->radio_chanspec)) ? 64 : \
-	(ACMAJORREV_44(pi->pubpi->phy_rev) && (pi->pubpi->slice == DUALMAC_AUX)) ? 66 : \
 	(ACMAJORREV_47(pi->pubpi->phy_rev) && (RADIOREV(pi->pubpi->radiorev) > 0)) ? 64 : \
 	(ACMAJORREV_51(pi->pubpi->phy_rev) && CHSPEC_IS2G(pi->radio_chanspec)) ? 64 : \
-	(ACMAJORREV_51(pi->pubpi->phy_rev) && CHSPEC_IS5G(pi->radio_chanspec)) ? 68 : \
+	(ACMAJORREV_51(pi->pubpi->phy_rev) && CHSPEC_ISPHY5G6G(pi->radio_chanspec)) ? 68 : \
 	(ACMAJORREV_129(pi->pubpi->phy_rev)) ? 64 : \
 	67)
 #define ACPHY_HI_GAIN_28NM 45
+#define ACPHY_MD_GAIN_28NM 30
+#define ACPHY_LO_GAIN_28NM 24
 
 #define ACPHY_INIT_GAIN_4365_2G 67
 #define ACPHY_INIT_GAIN_4365_5G 64
@@ -135,8 +132,6 @@ uint16 phy_ac_rxgcrs_get_deaf_count(phy_ac_rxgcrs_info_t *rxgcrsi);
 #define ACPHY_20695_MAX_LNA2_IDX 2
 #define ACPHY_4365_MAX_LNA2_IDX 2
 #define MAX_ANALOG_RX_GAIN_TINY (ACPHY_LO_NF_MODE_ELNA_TINY(pi) ? 61 : 55)
-#define MAX_ANALOG_RX_GAIN_28NM_ULP 65
-#define MAX_ANALOG_RX_GAIN_28NM_ULP_LONF 65
 
 /* Programming this value into gainlimittable for an index prevents AGC from using it */
 #define GAINLIMIT_MAX_OUT 127
@@ -202,7 +197,7 @@ uint16 phy_ac_rxgcrs_get_deaf_count(phy_ac_rxgcrs_info_t *rxgcrsi);
 #define VALID_ED_THRESH(x) ((x != 0) && (x <  MAX_VALID_EDTHRESH))
 
 /* ~ dB diff between rate 1 & rate 6 without lesi */
-#define BPHY_OFDM_SEN_DIFF 5
+#define BPHY_OFDM_SEN_DIFF 8
 
 typedef struct {
 	uint8 elna;
@@ -262,7 +257,6 @@ extern uint8 wlc_phy_calc_extra_init_gain_acphy(phy_info_t *pi, uint8 extra_gain
 	rxgain_t rxgain[]);
 extern uint8 wlc_phy_get_max_lna_index_acphy(phy_info_t *pi, uint8 lna);
 extern void wlc_phy_rxgainctrl_gainctrl_acphy_tiny(phy_info_t *pi, uint8 init_desense);
-extern void wlc_phy_rxgainctrl_gainctrl_acphy_28nm_ulp(phy_info_t *pi);
 extern void wlc_phy_rxgainctrl_gainctrl_acphy_28nm(phy_info_t *pi, uint8 init_desense);
 
 extern void wlc_phy_rxgainctrl_set_gaintbls_acphy(phy_info_t *pi, bool init,
@@ -270,8 +264,6 @@ extern void wlc_phy_rxgainctrl_set_gaintbls_acphy(phy_info_t *pi, bool init,
 extern void wlc_phy_rxgainctrl_set_gaintbls_acphy_wave2(phy_info_t *pi, uint8 core,
 	uint16 gain_tblid, uint16  gainbits_tblid);
 extern void wlc_phy_rxgainctrl_set_gaintbls_acphy_tiny(phy_info_t *pi, uint8 core,
-	uint16 gain_tblid, uint16 gainbits_tblid);
-extern void wlc_phy_rxgainctrl_set_gaintbls_acphy_28nm_ulp(phy_info_t *pi, uint8 core,
 	uint16 gain_tblid, uint16 gainbits_tblid);
 extern void wlc_phy_rxgainctrl_set_gaintbls_acphy_28nm(phy_info_t *pi, uint8 core,
 	uint16 gain_tblid, uint16 gainbits_tblid);
@@ -282,7 +274,6 @@ extern void wlc_phy_set_agc_gaintbls_acphy(phy_info_t *pi, uint32 gain_tblid, co
 	uint32 gainbits_tblid, const void *gainbits, uint32 gainlimits_tblid,
 	const void *gainlimits_ofdm, const void *gainlimits_cck, uint32 offset, uint32 len);
 
-extern void phy_ac_subband_cust_28nm_ulp(phy_info_t *pi);
 extern void phy_ac_agc_config(phy_info_t *pi, uint8 agc_type);
 /* ************************************* */
 /*		Carrier Sense related definitions		*/

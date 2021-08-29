@@ -1,6 +1,6 @@
 /*
  * Public interface to wireless security key operations
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: wlc_key.h 777731 2019-08-07 19:37:44Z $
+ * $Id: wlc_key.h 782567 2019-12-24 06:43:32Z $
  */
 
 #ifndef _wlc_key_h_
@@ -185,7 +185,7 @@ typedef uint32 wlc_key_flags_t;
 #define WLC_KEY_FLAG_PRIMARY WLC_KEY_FLAG_TX
 
 /* externally settable flags */
-#ifdef BCMDBG
+#if defined(BCMDBG) || defined(MFP_TEST)
 #define WLC_KEY_DBG_SETTABLE_FLAGS (\
 	WLC_KEY_FLAG_GEN_MIC_ERR|\
 	WLC_KEY_FLAG_GEN_REPLAY|\
@@ -195,7 +195,7 @@ typedef uint32 wlc_key_flags_t;
 	WLC_KEY_FLAG_GEN_MFP_DEAUTH_ERR)
 #else
 #define WLC_KEY_DBG_SETTABLE_FLAGS 0
-#endif /* BCMDBG */
+#endif /* BCMDBG || MFP_TEST */
 
 #define WLC_KEY_SETTABLE_FLAGS WLC_KEY_DBG_SETTABLE_FLAGS
 
@@ -290,7 +290,7 @@ struct wlc_key_info {
 #define WLC_KEY_FRAG_HAS_TKIP_MIC(_pkt, _ki, _frag, _nfrags) (\
 	(_ki)->algo == CRYPTO_ALGO_TKIP && (\
 		(WLC_KEY_MIC_IN_HW(_ki) && ((_nfrags) == 1) &&\
-		!WLPKTFLAG_PMF(WLPKTTAG(_pkt))) || (((_frag) + 2) >= (_nfrags))))
+		!WLPKTFLAG_PMF(WLPKTTAG(_pkt))) || (((_frag) + 1) >= (_nfrags))))
 
 #define WLC_KEY_ALGO_IS_BIPXX(_algo) (\
 	(_algo) == CRYPTO_ALGO_BIP ||\

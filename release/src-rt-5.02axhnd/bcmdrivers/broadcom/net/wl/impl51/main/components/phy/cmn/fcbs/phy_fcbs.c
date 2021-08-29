@@ -1,7 +1,7 @@
 /*
  * FCBS module implementation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_fcbs.c 657351 2016-08-31 23:00:22Z $
+ * $Id: phy_fcbs.c 778436 2019-08-30 23:21:30Z $
  */
 
 #include <phy_cfg.h>
@@ -443,7 +443,7 @@ static int wlc_phy_hw_fcbs(wlc_phy_t *ppi, int chanidx, bool set)
 	   the ucode to turn the BPHY core off
 	*/
 	if (CHSPEC_IS2G(pi->phy_fcbs->chanspec[pi->phy_fcbs->curr_fcbs_chan])) {
-		if (CHSPEC_IS5G(pi->phy_fcbs->chanspec[chanidx])) {
+		if (CHSPEC_ISPHY5G6G(pi->phy_fcbs->chanspec[chanidx])) {
 			wlapi_bmac_write_shm(pi->sh->physhim,
 			    pi->phy_fcbs->shmem_bphyctrl, FCBS_BPHY_OFF);
 		}
@@ -822,7 +822,7 @@ int wlc_phy_fcbs(wlc_phy_t *ppi, int chanidx, bool set)
 	   the ucode to turn the BPHY core off
 	*/
 	if (CHSPEC_IS2G(pi->phy_fcbs->chanspec[pi->phy_fcbs->curr_fcbs_chan])) {
-		if (CHSPEC_IS5G(pi->phy_fcbs->chanspec[chanidx])) {
+		if (CHSPEC_ISPHY5G6G(pi->phy_fcbs->chanspec[chanidx])) {
 			wlapi_bmac_write_shm(pi->sh->physhim,
 			    pi->phy_fcbs->shmem_bphyctrl, FCBS_BPHY_OFF);
 		}

@@ -1,7 +1,7 @@
 /*
  * ACPHY Calibration Cache module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_cache.c 775385 2019-05-29 11:30:21Z $
+ * $Id: phy_ac_cache.c 783144 2020-01-15 00:17:24Z $
  */
 
 #include <phy_ac.h>
@@ -68,7 +68,6 @@
 #include <wlc_radioreg_20691.h>
 #include <wlc_radioreg_20694.h>
 #include <wlc_radioreg_20695.h>
-#include <wlc_radioreg_20696.h>
 #include <wlc_radioreg_20698.h>
 #include <wlc_radioreg_20704.h>
 #include <wlc_radioreg_20707.h>
@@ -656,65 +655,6 @@ phy_ac_reg_cache_parse(phy_info_acphy_t *pi_ac, uint16 id, bool populate)
 		ACPHY_REG(pi, AfePuCtrl)
 	};
 
-	/* 7271 IQLOCAL Radio Reg to be backed up */
-	uint16 radioregs_txiqlocal_20696_majorrev37[] = {
-		RADIO_REG_20696(pi, IQCAL_CFG1, 0),
-		RADIO_REG_20696(pi, IQCAL_OVR1, 0),
-		RADIO_REG_20696(pi, IQCAL_CFG4, 0),
-		RADIO_REG_20696(pi, IQCAL_CFG5, 0),
-		RADIO_REG_20696(pi, AUXPGA_CFG1, 0),
-		RADIO_REG_20696(pi, AUXPGA_OVR1, 0),
-		RADIO_REG_20696(pi, TESTBUF_OVR1, 0),
-		RADIO_REG_20696(pi, TESTBUF_CFG1, 0),
-		RADIO_REG_20696(pi, TX2G_MISC_CFG1, 0),
-		RADIO_REG_20696(pi, TX2G_CFG1_OVR, 0),
-		RADIO_REG_20696(pi, TX2G_MIX_REG0, 0),
-		RADIO_REG_20696(pi, TX5G_MISC_CFG1, 0),
-		RADIO_REG_20696(pi, TX5G_CFG2_OVR, 0),
-		RADIO_REG_20696(pi, LPF_OVR1, 0),
-		RADIO_REG_20696(pi, LPF_OVR2, 0),
-		RADIO_REG_20696(pi, LPF_REG7, 0),
-		RADIO_REG_20696(pi, IQCAL_GAIN_RIN, 0),
-		RADIO_REG_20696(pi, IQCAL_GAIN_RFB, 0),
-		RADIO_REG_20696(pi, TXDAC_REG0, 0),
-		RADIO_REG_20696(pi, TXDAC_REG1, 0),
-		RADIO_REG_20696(pi, TXDAC_REG3, 0)
-	};
-
-	/* 7271 RXIQ cal Radio Reg to be stored */
-	uint16 radioregs_rxiqcal_20696_majorrev37[] = {
-		RADIO_REG_20696(pi, LPF_OVR1, 0),
-		RADIO_REG_20696(pi, LPF_OVR2, 0),
-		RADIO_REG_20696(pi, LPF_REG7, 0),
-		RADIO_REG_20696(pi, TIA_REG7, 0),
-		RADIO_REG_20696(pi, TIA_CFG1_OVR, 0),
-		RADIO_REG_20696(pi, LOGEN_CORE_REG0, 0),
-		RADIO_REG_20696(pi, LOGEN_CORE_OVR0, 0),
-		RADIO_REG_20696(pi, TX2G_MIX_REG0, 0),
-		RADIO_REG_20696(pi, TX2G_MISC_CFG1, 0),
-		RADIO_REG_20696(pi, TXDAC_REG0, 0),
-		RADIO_REG_20696(pi, TXDAC_REG1, 0),
-		RADIO_REG_20696(pi, TXDAC_REG3, 0),
-		RADIO_REG_20696(pi, RX2G_CFG1_OVR, 0),
-		RADIO_REG_20696(pi, RX2G_REG1, 0),
-		RADIO_REG_20696(pi, LNA2G_REG1, 0),
-		RADIO_REG_20696(pi, LNA2G_REG2, 0),
-		RADIO_REG_20696(pi, RX2G_REG3, 0),
-		RADIO_REG_20696(pi, TX5G_MISC_CFG1, 0),
-		RADIO_REG_20696(pi, TX5G_MIX_REG0, 0),
-		RADIO_REG_20696(pi, RX5G_CFG1_OVR, 0),
-		RADIO_REG_20696(pi, RX5G_REG1, 0),
-		RADIO_REG_20696(pi, RX5G_REG2, 0),
-		RADIO_REG_20696(pi, RX5G_REG4, 0),
-		RADIO_REG_20696(pi, RX5G_REG5, 0)
-	};
-
-	uint16 radioregs_afecal_20696_majorrev37[] = {
-		RADIO_REG_20696(pi, AFE_CFG1_OVR2, 0),
-		RADIO_REG_20696(pi, LPF_OVR1, 0),
-		RADIO_REG_20696(pi, LPF_OVR2, 0)
-	};
-
 	/* 43684 RXIQ cal Radio Reg to be stored */
 	uint16 radioregs_tempsense_vbat_20698_majorrev47[] = {
 		RADIO_REG_20698(pi, TEMPSENSE_OVR1, 0),
@@ -934,18 +874,12 @@ phy_ac_reg_cache_parse(phy_info_acphy_t *pi_ac, uint16 id, bool populate)
 		RADIO_REG_20704(pi, LPF_NOTCH_REG5, 0)
 	};
 
-	uint16 phyregs_papdcal_majorrev44_aux[] = { };
-
 	/* 6878 moves to separate function phy_ac_reg_cache_parse_20709
 	to populate lists for save & restore functions to avoid stack size issues
 	*/
 
-	/* Temporarily Remove This
-	if (RADIOID_IS(pi->pubpi->radioid, BCM20694_ID)) {
-		PHY_ERROR(("%s: TBD for BCM20694_ID\n", __FUNCTION__));
-		return;
-	}
-	*/
+	if (pi == NULL) return;
+
 	if (!populate) {
 		uint16 radioreg_size = 0;
 		uint16 phyreg_size = 0;
@@ -974,11 +908,6 @@ phy_ac_reg_cache_parse(phy_info_acphy_t *pi_ac, uint16 id, bool populate)
 					ARRAYSIZE(radioregs_papdcal_20704_majorrev51));
 			}
 		} else if (ACMAJORREV_37(pi->pubpi->phy_rev)) {
-			/* 7271 */
-			radioreg_size = MAX(ARRAYSIZE(radioregs_txiqlocal_20696_majorrev37),
-				ARRAYSIZE(radioregs_rxiqcal_20696_majorrev37));
-			radioreg_size = MAX(radioreg_size,
-				ARRAYSIZE(radioregs_afecal_20696_majorrev37));
 		} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 			radioreg_size = MAX(ARRAYSIZE(radioregs_txiqlocal_20694_rmajorrev2),
 			((RADIO20694_MAJORREV(pi->pubpi->radiorev) >= 3) ?
@@ -1006,8 +935,6 @@ phy_ac_reg_cache_parse(phy_info_acphy_t *pi_ac, uint16 id, bool populate)
 
 		if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
 			phyreg_size = ARRAYSIZE(phyregs_papdcal_majorrev51);
-		} else if (ACMAJORREV_44(pi->pubpi->phy_rev)) {
-			phyreg_size = ARRAYSIZE(phyregs_papdcal_majorrev44_aux);
 		} else {
 			phyreg_size = ARRAYSIZE(phyregs_papdcal_majorrev36);
 		}
@@ -1030,9 +957,6 @@ phy_ac_reg_cache_parse(phy_info_acphy_t *pi_ac, uint16 id, bool populate)
 					list = radioregs_txiqlocal_20704_majorrev51;
 					sz   = ARRAYSIZE(radioregs_txiqlocal_20704_majorrev51);
 				} else if (ACMAJORREV_37(pi->pubpi->phy_rev)) {
-					/* 7271 */
-					list = radioregs_txiqlocal_20696_majorrev37;
-					sz   = ARRAYSIZE(radioregs_txiqlocal_20696_majorrev37);
 				} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 					/* 4347 */
 					list = radioregs_txiqlocal_20694_rmajorrev2;
@@ -1046,19 +970,13 @@ phy_ac_reg_cache_parse(phy_info_acphy_t *pi_ac, uint16 id, bool populate)
 				p->reg_cache_id = id;
 				break;
 			case RADIOREGS_RXIQCAL:
-				if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-					list = radioregs_rxiqcal_20695;
-					sz   = ARRAYSIZE(radioregs_rxiqcal_20695);
-				} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+				if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
 					list = radioregs_rxiqcal_20698_majorrev47;
 					sz   = ARRAYSIZE(radioregs_rxiqcal_20698_majorrev47);
 				} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
 					list = radioregs_rxiqcal_20704_majorrev51;
 					sz   = ARRAYSIZE(radioregs_rxiqcal_20704_majorrev51);
 				} else if (ACMAJORREV_37(pi->pubpi->phy_rev)) {
-					/* 7271 */
-					list = radioregs_rxiqcal_20696_majorrev37;
-					sz   = ARRAYSIZE(radioregs_rxiqcal_20696_majorrev37);
 				} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 					list = (RADIO20694_MAJORREV(pi->pubpi->radiorev) >= 3) ?
 					radioregs_rxiqcal_20694_rmajorrev3 :
@@ -1094,11 +1012,6 @@ phy_ac_reg_cache_parse(phy_info_acphy_t *pi_ac, uint16 id, bool populate)
 				if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
 					list = phyregs_papdcal_majorrev51;
 					sz   = ARRAYSIZE(phyregs_papdcal_majorrev51);
-				} else if (ACMAJORREV_44(pi->pubpi->phy_rev)) {
-					if (pi->pubpi->slice == DUALMAC_AUX) {
-						list = phyregs_papdcal_majorrev44_aux;
-						sz   = ARRAYSIZE(phyregs_papdcal_majorrev44_aux);
-					}
 				} else {
 					list = phyregs_papdcal_majorrev36;
 					sz   = ARRAYSIZE(phyregs_papdcal_majorrev36);
@@ -1129,9 +1042,6 @@ phy_ac_reg_cache_parse(phy_info_acphy_t *pi_ac, uint16 id, bool populate)
 					list = radioregs_afecal_20704_majorrev51;
 					sz   = ARRAYSIZE(radioregs_afecal_20704_majorrev51);
 				} else if (ACMAJORREV_37(pi->pubpi->phy_rev)) {
-					/* 7271 */
-					list = radioregs_afecal_20696_majorrev37;
-					sz   = ARRAYSIZE(radioregs_afecal_20696_majorrev37);
 				} else {
 					list = radioregs_afecal_20695;
 					sz   = ARRAYSIZE(radioregs_afecal_20695);
@@ -1185,16 +1095,6 @@ phy_ac_reg_cache_parse(phy_info_acphy_t *pi_ac, uint16 id, bool populate)
 					cache->addr[core+1] = list[i] | JTAG_20694_CR1;
 					cache->data[core] = 0;
 					cache->data[core+1] = 0;
-				} else if (RADIOID_IS(pi->pubpi->radioid, BCM20696_ID)) {
-					/* BCM7271 */
-					cache->addr[core] = list[i];
-					cache->addr[core+1] = (list[i] + JTAG_20696_CR1);
-					cache->addr[core+2] = (list[i] + JTAG_20696_CR2);
-					cache->addr[core+3] = (list[i] + JTAG_20696_CR3);
-					cache->data[core] = 0;
-					cache->data[core+1] = 0;
-					cache->data[core+2] = 0;
-					cache->data[core+3] = 0;
 				} else if (RADIOID_IS(pi->pubpi->radioid, BCM20698_ID)) {
 					cache->addr[core] = list[i];
 					cache->addr[core+1] = (list[i] + JTAG_20698_CR1);
@@ -1413,6 +1313,14 @@ phy_ac_reg_cache_parse_20707(phy_info_acphy_t *pi_ac, uint16 id, bool populate)
 		RADIO_REG_20707(pi, TX5G_MIX_REG0, 0),
 		RADIO_REG_20707(pi, TX5G_CFG1_OVR, 0),
 		RADIO_REG_20707(pi, TX5G_PAD_REG0, 0),
+		RADIO_REG_20707(pi, TX5G_MIX_GC_REG, 0),
+		RADIO_REG_20707(pi, TX5G_MIX_REG2, 0),
+		RADIO_REG_20707(pi, TX5G_PAD_REG1, 0),
+		RADIO_REG_20707(pi, TX5G_PAD_REG3, 0),
+		RADIO_REG_20707(pi, TX2G_MIX_GC_REG, 0),
+		RADIO_REG_20707(pi, TX2G_PAD_REG1, 0),
+		RADIO_REG_20707(pi, TX2G_PAD_REG3, 0),
+		RADIO_REG_20707(pi, TX2G_MIX_REG2, 0),
 	};
 
 	uint16 radioregs_afecal_20707_majorrev129[] = {
@@ -1441,7 +1349,8 @@ phy_ac_reg_cache_parse_20707(phy_info_acphy_t *pi_ac, uint16 id, bool populate)
 		RADIO_REG_20707(pi, TX2G_IPA_REG0, 0),
 		RADIO_REG_20707(pi, TX5G_IPA_REG0, 0),
 		RADIO_REG_20707(pi, TXDAC_REG3, 0),
-		RADIO_REG_20707(pi, RXADC_CFG0, 0)
+		RADIO_REG_20707(pi, RXADC_CFG0, 0),
+		RADIO_REG_20707(pi, TX2G_MISC_CFG6, 0)
 	};
 	uint16 radioregs_wbpapdcal_20707_majorrev129[] = {
 		RADIO_REG_20707(pi, LPF_OVR1, 0),
@@ -2076,15 +1985,28 @@ void
 wlc_phy_cal_cache_dbg_acphy(wlc_phy_t *pih, ch_calcache_t *ctx)
 {
 	phy_info_t *pi = (phy_info_t *) pih;
-	uint8 i, j, eps_table_size;
+	uint8 i, j, eps_table_size, multilo_cal_cnt;
+	uint8 corenum = (uint8) PHYCORENUM(pi->pubpi->phy_corenum);
 	acphy_calcache_t *cache = &ctx->u.acphy_cache;
 	BCM_REFERENCE(pi);
 
 	FOREACH_CORE(pi, i) {
 		PHY_CAL(("CORE %d:\n", i));
-		PHY_CAL(("\tofdm_txa:0x%x  ofdm_txb:0x%x  ofdm_txd:0x%x, ofdm_txd_lopwr:0x%x\n",
-		         cache->ofdm_txa[i], cache->ofdm_txb[i], cache->ofdm_txd[i],
-		         cache->ofdm_txd_lopwr[i]));
+		if (phy_txiqlocal_num_multilo(pi) != 0) {
+			PHY_CAL(("\tofdm_txa:0x%x  ofdm_txb:0x%x  ",
+				cache->ofdm_txa[i], cache->ofdm_txb[i]));
+			PHY_CAL(("ofdm_txd:"));
+			for (multilo_cal_cnt = 1;
+				multilo_cal_cnt <= phy_txiqlocal_num_multilo(pi);
+				multilo_cal_cnt++) {
+				PHY_CAL(("0x%x  ",
+					cache->ofdm_txd[i+(multilo_cal_cnt-1)*corenum]));
+			}
+			PHY_CAL(("\n"));
+		} else {
+			PHY_CAL(("\tofdm_txa:0x%x  ofdm_txb:0x%x  ofdm_txd:0x%x\n",
+				cache->ofdm_txa[i], cache->ofdm_txb[i], cache->ofdm_txd[i]));
+		}
 		PHY_CAL(("\tbphy_txa:0x%x  bphy_txb:0x%x  bphy_txd:0x%x\n",
 			cache->bphy_txa[i], cache->bphy_txb[i], cache->bphy_txd[i]));
 		PHY_CAL(("\ttxei:0x%x  txeq:0x%x\n", cache->txei[i], cache->txeq[i]));
@@ -2122,14 +2044,27 @@ wlc_phydump_cal_cache_acphy(phy_type_cache_ctx_t * cache_ctx, ch_calcache_t *ctx
 	struct bcmstrbuf *b)
 {
 	phy_info_t *pi = (phy_info_t *)cache_ctx;
-	uint8 i;
+	uint8 i, multilo_cal_cnt;
+	uint8 corenum = (uint8) PHYCORENUM(pi->pubpi->phy_corenum);
 	acphy_calcache_t *cache = &ctx->u.acphy_cache;
 	BCM_REFERENCE(pi);
 	FOREACH_CORE(pi, i) {
 		bcm_bprintf(b, "CORE %d:\n", i);
-		bcm_bprintf(b, "\tofdm_txa:0x%x ofdm_txb:0x%x ofdm_txd:0x%x ofdm_txd_lopwr:0x%x\n",
-		            cache->ofdm_txa[i], cache->ofdm_txb[i], cache->ofdm_txd[i],
-		            cache->ofdm_txd_lopwr[i]);
+		if (phy_txiqlocal_num_multilo(pi) != 0) {
+			bcm_bprintf(b, "\tofdm_txa:0x%x ofdm_txb:0x%x  ",
+				cache->ofdm_txa[i], cache->ofdm_txb[i]);
+			bcm_bprintf(b, "ofdm_txd:");
+			for (multilo_cal_cnt = 1;
+				multilo_cal_cnt <= phy_txiqlocal_num_multilo(pi);
+				multilo_cal_cnt++) {
+				bcm_bprintf(b, "0x%x  ",
+				    cache->ofdm_txd[i+(multilo_cal_cnt-1)*corenum]);
+			}
+			bcm_bprintf(b, "\n");
+		} else {
+			bcm_bprintf(b, "\tofdm_txa:0x%x ofdm_txb:0x%x ofdm_txd:0x%x\n",
+				cache->ofdm_txa[i], cache->ofdm_txb[i], cache->ofdm_txd[i]);
+		}
 		bcm_bprintf(b, "\tbphy_txa:0x%x  bphy_txb:0x%x  bphy_txd:0x%x\n",
 			cache->bphy_txa[i], cache->bphy_txb[i], cache->bphy_txd[i]);
 		bcm_bprintf(b, "\ttxei:0x%x  txeq:0x%x\n", cache->txei[i], cache->txeq[i]);
@@ -2154,8 +2089,9 @@ wlc_phy_cal_cache_restore_acphy(phy_type_cache_ctx_t * cache_ctx)
 	phy_iq_comp_t coeffs[PHY_CORE_MAX];
 	uint16 *epstbl_offset_cache;
 	uint32 *epsilon_cache;
-	uint8 extra_lopwr_cal;
-	txiqlocal_lopwr_cal_t lopwr_cal;
+	uint8 num_multi, cnt;
+	uint8 corenum = (uint8) PHYCORENUM(pi->pubpi->phy_corenum);
+	txiqlocal_multilo_t multilo_cal;
 	uint32 epsilon_table_ids[] =
 		{ACPHY_TBL_ID_EPSILON0, ACPHY_TBL_ID_EPSILON1, ACPHY_TBL_ID_EPSILON2};
 	uint32 rfpwrlut_table_ids[] =
@@ -2191,12 +2127,7 @@ wlc_phy_cal_cache_restore_acphy(phy_type_cache_ctx_t * cache_ctx)
 	}
 	phy_utils_phyreg_enter(pi);
 
-	extra_lopwr_cal = phy_txiqlocal_extra_local(pi);
-	if (extra_lopwr_cal != 0) {
-		if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
-			wlc_phy_txiqlocal_lopwr_gettblidx(pi, &lopwr_cal, 0, TRUE);
-		}
-	}
+	num_multi = phy_txiqlocal_num_multilo(pi);
 
 	/* restore the txcal from cache */
 	FOREACH_CORE(pi, core) {
@@ -2209,39 +2140,16 @@ wlc_phy_cal_cache_restore_acphy(phy_type_cache_ctx_t * cache_ctx)
 		                                ab_int, TB_OFDM_COEFFS_AB, core);
 		wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_WRITE,
 		                                &cache->ofdm_txd[core], TB_OFDM_COEFFS_D, core);
-		if (extra_lopwr_cal != 0) {
-			if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
-				wlc_phy_populate_tx_loftcoefluts_acphy(pi, core,
-					cache->ofdm_txd[core],
-					0, lopwr_cal.lofttbl_start_idx - 1);
-				wlc_phy_populate_tx_loftcoefluts_acphy(pi, core,
-					cache->ofdm_txd_lopwr[core],
-					lopwr_cal.lofttbl_start_idx,
-					lopwr_cal.lofttbl_end_idx);
+		if (num_multi != 0) {
+			if (ACMAJORREV_47_129(pi->pubpi->phy_rev)) {
+				for (cnt = 1; cnt <= num_multi; cnt++) {
+					wlc_phy_txiqlocal_lopwr_gettblidx(pi, &multilo_cal, cnt);
+					wlc_phy_populate_tx_loftcoefluts_acphy(pi, core,
+						cache->ofdm_txd[core+corenum*(cnt-1)],
+						multilo_cal.lofttbl_start_idx,
+						multilo_cal.lofttbl_end_idx);
+				}
 			}
-			if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
-				wlc_phy_txiqlocal_lopwr_gettblidx(pi, &lopwr_cal, 0, TRUE);
-				wlc_phy_populate_tx_loftcoefluts_acphy(pi, core,
-					cache->ofdm_txd[core],
-					lopwr_cal.lofttbl_start_idx,
-					lopwr_cal.lofttbl_end_idx);
-				wlc_phy_txiqlocal_lopwr_gettblidx(pi, &lopwr_cal, 1, TRUE);
-				wlc_phy_populate_tx_loftcoefluts_acphy(pi, core,
-					cache->ofdm_txd_lopwr[core],
-					lopwr_cal.lofttbl_start_idx,
-					lopwr_cal.lofttbl_end_idx);
-				wlc_phy_txiqlocal_lopwr_gettblidx(pi, &lopwr_cal, 2, TRUE);
-				wlc_phy_populate_tx_loftcoefluts_acphy(pi, core,
-					cache->ofdm_txd_lopwr1[core],
-					lopwr_cal.lofttbl_start_idx,
-					lopwr_cal.lofttbl_end_idx);
-				wlc_phy_txiqlocal_lopwr_gettblidx(pi, &lopwr_cal, 3, TRUE);
-				wlc_phy_populate_tx_loftcoefluts_acphy(pi, core,
-					cache->ofdm_txd_lopwr2[core],
-					lopwr_cal.lofttbl_start_idx,
-					lopwr_cal.lofttbl_end_idx);
-			}
-
 		}
 
 		/* Restore BPHY Tx IQ Imb Coeffs A,B and Digital Loft Comp Coeffs */
@@ -2294,9 +2202,11 @@ wlc_phy_cal_cache_restore_acphy(phy_type_cache_ctx_t * cache_ctx)
 			wlc_phy_table_write_acphy_dac_war(pi, epsilon_table_ids[core],
 				eps_table_size,	0, 32, epsilon_cache, core);
 			epsilon_cache += eps_table_size;
-			wlc_phy_table_write_acphy(pi, rfpwrlut_table_ids[core],
-				ACPHY_PAPD_RFPWRLUT_TBL_SIZE, 0, 16, epstbl_offset_cache);
-			epstbl_offset_cache += ACPHY_PAPD_RFPWRLUT_TBL_SIZE;
+			if (!ACMAJORREV_129(pi->pubpi->phy_rev)) {
+				wlc_phy_table_write_acphy(pi, rfpwrlut_table_ids[core],
+					ACPHY_PAPD_RFPWRLUT_TBL_SIZE, 0, 16, epstbl_offset_cache);
+				epstbl_offset_cache += ACPHY_PAPD_RFPWRLUT_TBL_SIZE;
+			}
 		}
 	}
 
@@ -2339,6 +2249,8 @@ wlc_phy_cal_dump_acphy(phy_type_cache_ctx_t * cache_ctx, struct bcmstrbuf *b)
 	uint16 ab_int[2], d_reg;
 	uint16 coremask;
 	phy_stf_data_t *stf_shdata = phy_stf_get_data(pi->stfi);
+	uint8 multilo_cal_cnt;
+	txiqlocal_multilo_t multilo_cal = {0, 0};
 
 	if (!pi->sh->up) {
 		return;
@@ -2377,15 +2289,40 @@ wlc_phy_cal_dump_acphy(phy_type_cache_ctx_t * cache_ctx, struct bcmstrbuf *b)
 				fir = READ_RADIO_REGC(pi, RF, TXGM_LOFT_COARSE_I, core);
 				fqr = READ_RADIO_REGC(pi, RF, TXGM_LOFT_COARSE_Q, core);
 			}
-			bcm_bprintf(b, "   core-%d: a/b: (%4d,%4d), d: (%3d,%3d),"
-				" e: (%3d,%3d), f: (%3d,%3d)\n",
-				core, (int16) ab_int[0], (int16) ab_int[1],
-				(int8)((d_reg & 0xFF00) >> 8), /* di */
-				(int8)((d_reg & 0x00FF)),      /* dq */
-				(int8)(-((eir & 0xF0) >> 4) + ((eir & 0xF))), /* ei */
-				(int8)(-((eqr & 0xF0) >> 4) + ((eqr & 0xF))), /* eq */
-				(int8)(-((fir & 0xF0) >> 4) + ((fir & 0xF))), /* fi */
-				(int8)(-((fqr & 0xF0) >> 4) + ((fqr & 0xF))));  /* fq */
+			if (phy_txiqlocal_num_multilo(pi) == 0) {
+				bcm_bprintf(b, "   core-%d: a/b: (%4d,%4d), d: (%3d,%3d),"
+					" e: (%3d,%3d), f: (%3d,%3d)\n",
+					core, (int16) ab_int[0], (int16) ab_int[1],
+					(int8)((d_reg & 0xFF00) >> 8), /* di */
+					(int8)((d_reg & 0x00FF)),      /* dq */
+					(int8)(-((eir & 0xF0) >> 4) + ((eir & 0xF))), /* ei */
+					(int8)(-((eqr & 0xF0) >> 4) + ((eqr & 0xF))), /* eq */
+					(int8)(-((fir & 0xF0) >> 4) + ((fir & 0xF))), /* fi */
+					(int8)(-((fqr & 0xF0) >> 4) + ((fqr & 0xF))));  /* fq */
+			} else {
+				bcm_bprintf(b, "   core-%d: a/b: (%4d,%4d), d: (%3d,%3d),"
+					" e: (%3d,%3d), f: (%3d,%3d)\n",
+					core, (int16) ab_int[0], (int16) ab_int[1], 0, 0,
+					(int8)(-((eir & 0xF0) >> 4) + ((eir & 0xF))), /* ei */
+					(int8)(-((eqr & 0xF0) >> 4) + ((eqr & 0xF))), /* eq */
+					(int8)(-((fir & 0xF0) >> 4) + ((fir & 0xF))), /* fi */
+					(int8)(-((fqr & 0xF0) >> 4) + ((fqr & 0xF))));  /* fq */
+				bcm_bprintf(b, "   Multi-LOFT enabled: ");
+
+				for (multilo_cal_cnt = 1;
+					multilo_cal_cnt <= phy_txiqlocal_num_multilo(pi);
+					multilo_cal_cnt++) {
+					wlc_phy_txiqlocal_lopwr_gettblidx(pi, &multilo_cal,
+						multilo_cal_cnt);
+					wlc_phy_table_read_acphy(pi,
+						ACPHY_TBL_ID_LOFTCOEFFLUTS(core), 1,
+						(int8)multilo_cal.lofttbl_start_idx, 16, &d_reg);
+					bcm_bprintf(b, "(%3d,%3d)  ",
+						(int8)((d_reg & 0xFF00) >> 8),
+						(int8)((d_reg & 0x00FF)));
+				}
+				bcm_bprintf(b, "\n");
+			}
 		}
 	}
 
@@ -2429,17 +2366,12 @@ wlc_phy_cal_dump_acphy(phy_type_cache_ctx_t * cache_ctx, struct bcmstrbuf *b)
 			bcm_bprintf(b, "  %d)", ((dcq*122)/10000));
 			bcm_bprintf(b, "\n");
 		}
-	} else if (ACMAJORREV_44(pi->pubpi->phy_rev)||
-			(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-			!ACMAJORREV_128(pi->pubpi->phy_rev)))
-			    {
+	} else if (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		int16  dci, dcq;
 		uint16 sampnum;
 		uint16 num_samps = 183;
 		int32 cumdci;
 		int32 cumdcq;
-		if (ACMAJORREV_GE47(pi->pubpi->phy_rev))
-			num_samps = 213;
 		bcm_bprintf(b, "DC-cal:\n");
 		FOREACH_ACTV_CORE(pi, coremask, core) {
 			cumdci = 0;
@@ -2481,7 +2413,8 @@ wlc_phy_cal_dump_acphy(phy_type_cache_ctx_t * cache_ctx, struct bcmstrbuf *b)
 					ii = ii - 1024;
 				}
 				bcm_bprintf(b, "[%2d] %4d, %4d ", tia_idx, rr, ii);
-				if (((tia_idx & 7) == 7) && (tia_idx != dcoe_size - 1)) {
+				if (((tia_idx  == 8) || (tia_idx  == 17) || (tia_idx  == 26)) &&
+					(tia_idx != dcoe_size - 1)) {
 					bcm_bprintf(b, "\n   ");
 				}
 			}
@@ -2546,8 +2479,6 @@ wlc_phy_cal_dump_acphy(phy_type_cache_ctx_t * cache_ctx, struct bcmstrbuf *b)
 				READ_RADIO_REGFLD_20694(pi, RF, RXADC_CFG8,
 				core, rxadc_coeff_cap2_adc0_Q));
 		}
-	} else if (ACMAJORREV_44(pi->pubpi->phy_rev)) {
-		bcm_bprintf(b, "\n");
 	} else if (ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		bcm_bprintf(b, "\n");
 		FOREACH_ACTV_CORE(pi, stf_shdata->phyrxchain, core) {
@@ -2601,6 +2532,10 @@ wlc_phy_cal_dump_acphy(phy_type_cache_ctx_t * cache_ctx, struct bcmstrbuf *b)
 			}
 		}
 	}
+
+	bcm_bprintf(b, "R-CAL:\n");
+	bcm_bprintf(b, "   rc_value = %d\n",
+		phy_ac_radio_get_data(pi->u.pi_acphy->radioi)->rcal_value);
 
 	bcm_bprintf(b, "RC-CAL:\n");
 	bcm_bprintf(b, "   gmult = %d\n",

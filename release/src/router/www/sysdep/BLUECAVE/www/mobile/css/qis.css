@@ -588,10 +588,6 @@ a{
 	border-bottom: 1px solid #FFFFFF;
 	margin-left: 35px;
 }
-.ap_title_text{
-	width: 60%;
-	float: left;
-}
 .ap_title_icon{
 	width: 32px;
 	height: 32px;
@@ -1390,4 +1386,25 @@ a{
 	-webkit-transform-origin: 50% 50%;
 	animation: rotate-loading 1.5s linear 0s infinite normal;
 	transform-origin: 50% 50%;
+}
+#prelink_desc{
+	min-height: 750px;
+}
+#noWan_page{
+	min-height: 750px;
+}
+#resetModem_page{
+	min-height: 750px;
+}
+#waiting_page{
+	min-height: 750px;
+}
+#login_name{
+	min-height: 750px;
+}
+#summary_page{
+	min-height: 750px;
+}
+#wireless_setting{
+	min-height: 800px;
 }

@@ -1,7 +1,7 @@
 /*
  * ACPHY Core module internal interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac.h 671787 2016-11-23 03:29:54Z $
+ * $Id: phy_ac.h 782807 2020-01-06 22:47:43Z $
  */
 
 #ifndef _phy_ac_h_
@@ -82,6 +82,7 @@ void wlc_phy_logen_reset(phy_info_t *pi, uint8 core);
 
 /* *** Needs to be moved to TPC header once the AC modules are created *** */
 #define PHY_TXPWR_MIN_ACPHY	1	/* for acphy devices */
+#define PHY_TXPWR_MIN_HEPHY	-10	/* for hephy devices */
 #define PHY_TXPWR_MIN_ACPHY1X1EPA	8	/* for acphy1x1 ipa devices */
 #define PHY_TXPWR_MIN_ACPHY1X1IPA	1	/* for acphy1x1 ipa devices */
 #define PHY_TXPWR_MIN_ACPHY2X2	8	/* for 2x2 acphy devices */

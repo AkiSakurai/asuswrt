@@ -20,7 +20,8 @@
 <style>
 	@font-face{
 		font-family: rog;
-		src: url(/fonts/ROG_Fonts-Regular.otf) format("opentype");
+		src: url(/fonts/ROG_Fonts-Regular.woff) format("woff"),
+		     url(/fonts/ROG_Fonts-Regular.otf) format("opentype");
 	}
 	.tableApi_table, .tableApi_table th{
 		font-family: rog;
@@ -401,7 +402,7 @@
 </script>
 
 </head>
-<body>
+<body class="bg">
 	<div id="TopBanner"></div>
 	<div id="Loading" class="popup_bg"></div>
 	<iframe name="hidden_frame" id="hidden_frame" src="" width="0" height="0" frameborder="0"></iframe>

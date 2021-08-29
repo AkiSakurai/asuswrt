@@ -1,7 +1,7 @@
 /*
  * Sample Collect module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_samp.h 689072 2017-03-08 23:39:16Z $
+ * $Id: phy_samp.h 775574 2019-06-04 19:15:21Z $
  */
 
 #ifndef _phy_samp_h_
@@ -90,8 +90,6 @@ extern int phy_n_mac_triggered_sample_data(phy_info_t *pi, wl_sampledata_t *p, v
 extern int phy_n_mac_triggered_sample_collect(phy_info_t *pi, wl_samplecollect_args_t *p,
 	uint32 *b);
 
-extern int wlc_phy_sample_collect_lcn20phy(phy_info_t *pi, wl_samplecollect_args_t *collect,
-	uint32 *buf);
 #ifdef IQPLAY_DEBUG
 extern int phy_samp_prep_IQplay(phy_info_t *pi);
 #endif /* IQPLAY_DEBUG */

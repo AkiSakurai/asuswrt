@@ -1,7 +1,7 @@
 /*
  * Proxd FTM method scheduler. See twiki FineTimingMeasurement.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmsched.c 777979 2019-08-19 23:14:13Z $
+ * $Id: pdftmsched.c 788031 2020-06-18 14:10:58Z $
  */
 
 #include "pdftmpvt.h"
@@ -112,6 +112,9 @@ ftm_sched_compute_burst_start(pdftm_t *ftm, pdftm_session_t *sn)
 	pdftm_time_t burst_start = 0;
 	pdftm_cmn_t *ftm_cmn = ftm->ftm_cmn;
 	uint64 min_delay_us;
+#ifdef WL_FTM_MSCH
+	uint64 msch_exp = 0, now = 0;
+#endif /* WL_FTM_MSCH */
 	ASSERT(ftm_cmn->sched->burst_sn == NULL || ftm_cmn->sched->in.burst != 0);
 	ASSERT(!ftm_cmn->sched->in.burst || ftm_cmn->sched->burst_sn != NULL);
 
@@ -132,7 +135,28 @@ ftm_sched_compute_burst_start(pdftm_t *ftm, pdftm_session_t *sn)
 			FTM_LOG_TSF_ARG(sst->delay_exp), FTM_LOG_TSF_ARG(min_delay_us))));
 	}
 	BCM_REFERENCE(min_delay_us);
+#ifdef WL_FTM_MSCH
+	if (!BSSCFG_SLOTTED_BSS(sn->bsscfg)) {
+		now = msch_current_time(ftm->wlc->msch_info);
+		msch_exp = wlc_msch_query_timeslot(ftm->wlc->msch_info, 0, 0);
+		if (sst->delay_exp > msch_exp) {
+			burst_start = sst->delay_exp;
+		} else {
+			burst_start = sst->delay_exp + (msch_exp - now);
+		}
+		/* Try to wake up early on target side if possible */
+		if (FTM_SESSION_IS_TARGET(sn)) {
+			if (burst_start > msch_exp + FTM_SCHED_DELAY_EXP_ADJ_US) {
+				burst_start = burst_start - FTM_SCHED_DELAY_EXP_ADJ_US;
+			}
+		}
+	}
+	else {
+		burst_start = sst->delay_exp;
+	}
+#else
 	burst_start = sst->delay_exp;
+#endif /* WL_FTM_MSCH */
 	sst->burst_start = burst_start;
 	sst->burst_end = sst->burst_start +
 		FTM_INTVL2USEC(&sn->config->burst_config->duration);
@@ -424,18 +448,15 @@ pdftm_sched(void *arg)
 				new_state = WL_PROXD_SESSION_STATE_STARTED;
 				err = pdftm_start_session_tsf_scan(sn);
 				if (err != BCME_OK) {
-					if (FTM_SESSION_IS_ASAP(sn) &&
-						(err == WL_PROXD_E_SCANFAIL)) {
-						err = BCME_OK;
-						new_state = WL_PROXD_SESSION_STATE_DELAY;
-					}
-					else if (err != BCME_BUSY ||
-							FTM_SESSION_SCAN_RETRIES_DONE
-							(sn->scan_retry_attempt)) {
-						sn->status = err;
-						new_state = WL_PROXD_SESSION_STATE_STOPPING;
-					}
-					else {
+					if (FTM_SESSION_SCAN_RETRIES_DONE(sn->scan_retry_attempt)) {
+						if (FTM_SESSION_IS_ASAP(sn)) {
+							err = BCME_OK;
+							new_state = WL_PROXD_SESSION_STATE_DELAY;
+						} else {
+							sn->status = err;
+							new_state = WL_PROXD_SESSION_STATE_STOPPING;
+						}
+					} else {
 						retry_scan = TRUE;
 						sn->scan_retry_attempt++;
 					}
@@ -480,8 +501,9 @@ pdftm_sched(void *arg)
 			if (!(sn->config->flags & WL_PROXD_SESSION_FLAG_ASAP) &&
 				FTM_SESSION_IS_INITIATOR(sn)) {
 				err = pdftm_get_session_tsf(sn, NULL);
-				if (err != BCME_OK)
+				if (err != BCME_OK) {
 					new_state = WL_PROXD_SESSION_STATE_STOPPING;
+				}
 			}
 
 			/* note: after this point re-run the scheduler to reclaim session
@@ -524,9 +546,11 @@ pdftm_sched(void *arg)
 	if (retry_scan)
 		min_delay_ms = MIN(min_delay_ms, FTM_SESSION_TSF_SCAN_RETRY_MS);
 
-	FTM_LOGSCHED(ftm, (("wl%d: %s: rescheduling with delay %ums for session idx %d\n",
-		FTM_UNIT(ftm), __FUNCTION__, min_delay_ms, sn ? sn->idx : -1)));
-	ftm_sched_add_timer(sched, min_delay_ms);
+	if (sn) {
+		FTM_LOGSCHED(ftm, (("wl%d: %s: rescheduling with delay %ums for session idx %d\n",
+			FTM_UNIT(ftm), __FUNCTION__, min_delay_ms, sn ? sn->idx : -1)));
+		ftm_sched_add_timer(sched, min_delay_ms);
+	}
 
 done:
 	ftm->ftm_cmn->flags &= ~FTM_FLAG_SCHED_ACTIVE;
@@ -561,9 +585,9 @@ int
 pdftm_wake_sched(pdftm_t *ftm, pdftm_session_t *sn)
 {
 	int err = BCME_OK;
+	pdftm_cmn_t *ftm_cmn = ftm->ftm_cmn;
 
 	BCM_REFERENCE(sn);
-	pdftm_cmn_t *ftm_cmn = ftm->ftm_cmn;
 	if (ftm->ftm_cmn->flags & FTM_FLAG_SCHED_ACTIVE)
 		goto done;
 

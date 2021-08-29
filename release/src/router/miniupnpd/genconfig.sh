@@ -367,7 +367,7 @@ echo "/* Comment the following line to disable NAT-PMP operations */" >> ${CONFI
 echo "#define ENABLE_NATPMP" >> ${CONFIGFILE}
 echo "" >> ${CONFIGFILE}
 
-if [ -n "$AURASYNC" ]; then
+if [ "$AURASYNC" = "y" ]; then
 	echo "#define ENABLE_AURASYNC" >> ${CONFIGFILE}
 	echo "" >> ${CONFIGFILE}
 fi

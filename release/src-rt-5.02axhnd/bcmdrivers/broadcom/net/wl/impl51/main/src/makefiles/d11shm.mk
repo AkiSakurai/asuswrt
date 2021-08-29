@@ -1,8 +1,8 @@
 #
 # d11shm.mk  make file - Geneates d11 shm files
 # <<Broadcom-WL-IPTag/Proprietary:>>
-# Copyright 2019 Broadcom
-# 
+# Copyright 2020 Broadcom
+#
 # This program is the proprietary software of Broadcom and/or
 # its licensors, and may only be used, duplicated, modified or distributed
 # pursuant to the terms and conditions of a separate, written license
@@ -14,15 +14,15 @@
 # AUTHORIZED LICENSE, THEN YOU HAVE NO RIGHT TO USE THIS SOFTWARE IN ANY
 # WAY, AND SHOULD IMMEDIATELY NOTIFY BROADCOM AND DISCONTINUE ALL USE OF
 # THE SOFTWARE.
-# 
+#
 # Except as expressly set forth in the Authorized License,
-# 
+#
 # 1. This program, including its structure, sequence and organization,
 # constitutes the valuable trade secrets of Broadcom, and you shall use
 # all reasonable efforts to protect the confidentiality thereof, and to
 # use this information only in connection with your use of Broadcom
 # integrated circuit products.
-# 
+#
 # 2. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED
 # "AS IS" AND WITH ALL FAULTS AND BROADCOM MAKES NO PROMISES,
 # REPRESENTATIONS OR WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR
@@ -32,7 +32,7 @@
 # ACCURACY OR COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR
 # CORRESPONDENCE TO DESCRIPTION. YOU ASSUME THE ENTIRE RISK ARISING
 # OUT OF USE OR PERFORMANCE OF THE SOFTWARE.
-# 
+#
 # 3. TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL
 # BROADCOM OR ITS LICENSORS BE LIABLE FOR (i) CONSEQUENTIAL, INCIDENTAL,
 # SPECIAL, INDIRECT, OR EXEMPLARY DAMAGES WHATSOEVER ARISING OUT OF OR
@@ -55,6 +55,11 @@ else
 ifdef WOWL
 D11SHM_WOWL ?= 1
 endif
+endif
+
+$(info WL_EAP_UCODE: $(WL_EAP_UCODE))
+ifdef WL_EAP_UCODE
+D11SHM_EAP ?= 1
 endif
 
 ifeq ($(UCODE_IN_ROM),1)
@@ -93,6 +98,9 @@ D11SHM_DEPS += $(D11SHM_TOOLS)/d11shm_c.pl
 D11SHM_DEPS += $(D11SHM_TOOLS)/d11shm_func.pl
 D11SHM_DEPS += $(D11SHM_TOOLS)/d11shm_offsets.pl
 D11SHM_DEPS += $(D11SHMDEFS)/d11ucode_shmdefs_std.h
+ifdef D11SHM_EAP
+D11SHM_DEPS += $(D11SHMDEFS)/d11ucode_shmdefs_eap.h
+endif
 ifdef D11SHM_ULP
 D11SHM_DEPS += $(D11SHMDEFS_WOWL)/d11ucode_shmdefs_ulp.h
 endif
@@ -161,7 +169,7 @@ endef
 
 $(D11SHM_HEADER): $(D11SHM_DEPS) wlconf.h
 	rm -f $(D11SHM_TEMPDIR)/d11shm*.*
-	@echo "Generating D11 SHM, using shmdefs files from STD:$(D11SHMDEFS) WOWL/ULP:$(D11SHMDEFS_WOWL) blddir $(D11SHM_TEMPDIR)"
+	@echo "Generating D11 SHM, using shmdefs files from STD:$(D11SHMDEFS) EAP:$(D11SHMDEFS) WOWL/ULP:$(D11SHMDEFS_WOWL) blddir $(D11SHM_TEMPDIR)"
 ifeq ($(D11SHM_WIN), 1)
 	cl -c -nologo -D_CRT_SECURE_NO_DEPRECATE -DUNRELEASEDCHIP=1 -I$(D11SHM_SRCBASE)/wl/sys/wlc_cfg.h $(D11SHM_IFLAGS) -I. $(WIN_INCLFLAGS) /FI$(D11SHM_CFGFILE) /Fo$(D11SHM_TEMPDIR)/d11shm_rev.obj $(D11SHM_TOOLS)/d11shm_rev.c && \
 	link -nologo -MACHINE:i386  -subsystem:console $(WIN_LDFLAGS) -OUT:$(D11SHM_TEMPDIR)/d11shm_rev.exe $(D11SHM_TEMPDIR)/d11shm_rev.obj
@@ -173,6 +181,11 @@ endif
 
 	#Adding shmdefs of standard ucode to d11shm.c
 	$(call d11shm_func,std,$(D11SHM_TEMPDIR)/d11shm_revs.txt)
+
+ifdef D11SHM_EAP
+	#Adding shmdefs of EAP ucode to d11shm.c
+	$(call d11shm_func,eap,$(D11SHM_TEMPDIR)/d11shm_revs.txt)
+endif
 
 ifdef D11SHM_WOWL
 	#Adding shmdefs of wowl ucode to d11shm.c

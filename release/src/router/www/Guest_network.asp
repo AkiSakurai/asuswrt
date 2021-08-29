@@ -42,11 +42,22 @@ wl_channel_list_5g = '<% channel_list_5g(); %>';
 var QoS_enable_orig = '<% nvram_get("qos_enable"); %>';
 var QoS_type_orig = '<% nvram_get("qos_type"); %>';
 var ctf_disable_orig = '<% nvram_get("ctf_disable"); %>';
+
 var gn_array = gn_array_2g;
 var wl_maclist_x_array = gn_array[0][16];
+
 var captive_portal_used_wl_array = new Array();
+
 var manually_maclist_list_array = new Array();
 var all_gn_status = [];
+Object.prototype.getKey = function(value) {
+	for(var key in this) {
+		if(this[key] == value) {
+			return key;
+		}
+	}
+	return null;
+};
 
 function initial(){
 	show_menu();	
@@ -72,7 +83,13 @@ function initial(){
 		document.getElementById("guest_table5").style.display = "none";
 	
 	if(wl_info.band5g_2_support){
-		document.getElementById("wl_opt1").innerHTML = "5GHz-1";
+		if(band6g_support){
+			document.getElementById("wl_opt1").innerHTML = "5 GHz";
+		}
+		else{
+			document.getElementById("wl_opt1").innerHTML = "5 GHz-1";
+		}
+		
 		document.getElementById("wl_opt2").style.display = "";
 		document.getElementById("guest_table5_2").style.display = "";
 	}
@@ -113,6 +130,9 @@ function initial(){
 		document.getElementById("guest_tableFBWiFi").style.display = "none";
 	}
 
+	if(lyra_hide_support)
+		document.getElementById("gn_index_tr").style.display = "none";
+
 	if(ifttt_support || alexa_support){
 		$("#smart_home_0").show();
 		if(band5g_support)
@@ -145,6 +165,12 @@ function initial(){
 			}, 100);
 		}
 		cookie.unset("captive_portal_gn_idx");
+	}
+
+	//LYRA_VOICE
+	if(based_modelid == "MAP-AC2200V"){
+		document.form.action_wait.value = parseInt(document.form.action_wait.value)+135;
+		document.unitform.action_wait.value = parseInt(document.unitform.action_wait.value)+135;
 	}
 }
 
@@ -191,21 +217,27 @@ function translate_auth(flag){
 	else if(flag == "psk")
 		return "WPA-Personal";
 	else if(flag == "psk2")
- 		return "WPA2-Personal";
+		 return "WPA2-Personal";
 	else if(flag == "sae"){
 		return "WPA3-Personal";
-	}	
-	else if(flag == "pskpsk2")
-		return "WPA-Auto-Personal";
+	}	 
+	else if(flag == "pskpsk2"){
+		if(wpa3_support){
+			return "WPA/WPA2-Personal";
+		}
+		else{
+			return "WPA-Auto-Personal";
+		}
+	}
 	else if(flag == "psk2sae"){
 		return "WPA2/WPA3-Personal";	
-	}
+	}	
 	else if(flag == "wpa")
 		return "WPA-Enterprise";
 	else if(flag == "wpa2")
 		return "WPA2-Enterprise";
 	else if(flag == "wpawpa2")
-		return "WPA-Auto-Enterprise";
+		return "WPA-Auto-Enterprise";		
 	else if(flag == "radius")
 		return "Radius with 802.1x";
 	else
@@ -226,6 +258,8 @@ function gen_gntable_tr(unit, gn_array, slicesb){
 	htmlcode += '"><tr><th align="left" width="160px">';
 	htmlcode += '<table id="GNW_'+GN_band+'G" class="gninfo_th_table" align="left" style="margin:auto;border-collapse:collapse;">';
 	htmlcode += '<tr><th align="left" style="height:40px;"><#QIS_finish_wireless_item1#></th></tr>';
+	if(!lyra_hide_support)
+		htmlcode += "<tr><th align=\"left\" style=\"height:40px;\"><#WLANConfig11b_AuthenticationMethod_itemname#></th></tr>";
 	htmlcode += '<tr><th align="left" style="height:40px;"><#Network_key#></th></tr>';
 	htmlcode += '<tr><th align="left" style="height:40px;"><#mssid_time_remaining#></th></tr>';
 	if(sw_mode != "3"){
@@ -236,8 +270,9 @@ function gen_gntable_tr(unit, gn_array, slicesb){
 	
 	if(tmo_support)	//keep wlx.3 for usingg Passpoint
 		var gn_array_length = gn_array.length-1;
-	else	
+        else
 		var gn_array_length = gn_array.length;
+
 	for(var i=0; i<gn_array_length; i++){			
 			var subunit = i+1+slicesb*4;
 			var show_str;
@@ -324,7 +359,8 @@ function gen_gntable_tr(unit, gn_array, slicesb){
 							show_str = show_str.substring(0,17) + "...";
 						show_str = handle_show_str(show_str);
 						htmlcode += '<tr><td align="center" onclick="change_guest_unit('+ unit +','+ subunit +');">'+ show_str +'</td></tr>';
-						htmlcode += '<tr><td align="center" onclick="change_guest_unit('+ unit +','+ subunit +');">'+ translate_auth(gn_array[i][2]) +'</td></tr>';
+						if(!lyra_hide_support)
+							htmlcode += '<tr><td align="center" onclick="change_guest_unit('+ unit +','+ subunit +');">'+ translate_auth(gn_array[i][2]) +'</td></tr>';
 
 						if(gn_array[i][2].indexOf("wpa") >= 0 || gn_array[i][2].indexOf("radius") >= 0)
 								show_str = "";
@@ -367,19 +403,14 @@ function gen_gntable_tr(unit, gn_array, slicesb){
 						htmlcode += '<tfoot><tr rowspan="3"><td align="center"><span style="color:#FFCC00;">Used by ' + captive_portal_used_wl_array["wl" + unit_subunit] + '</span></td></tr></tfoot>';
 					}
 				}else{
-					if(amazon_wss_if_support){
-						htmlcode += '<tfoot>';
-						htmlcode += '<tr rowspan="3"><td align="center"><input type="button" class="button_gen" value="<#WLANConfig11b_WirelessCtrl_button1name#>" onclick="create_guest_unit('+ unit +','+ subunit +');"></td></tr>';
-						htmlcode += '<tr rowspan="3"><td align="center"><input type="button" class="button_gen" value="Amazon Wi-Fi Simple Setup" onclick="enable_amazon_wss('+ unit +','+ subunit +');"></td></tr>';/* untranslated */
-						htmlcode += '</tfoot>';
-					}
-					else
-						htmlcode += '<tfoot><tr rowspan="3"><td align="center"><input type="button" class="button_gen" value="<#WLANConfig11b_WirelessCtrl_button1name#>" onclick="create_guest_unit('+ unit +','+ subunit +');"></td></tr></tfoot>';
+					htmlcode += '<tfoot><tr rowspan="3"><td align="center"><input type="button" class="button_gen" value="<#WLANConfig11b_WirelessCtrl_button1name#>" onclick="create_guest_unit('+ unit +','+ subunit +');"></td></tr></tfoot>';
 				}
 
 				if(sw_mode != "3"){
-					if(gn_array[i][0] == "1" && control_setting_flag && !amazon_wss_if_support)
-						htmlcode += '<tr><td align="center" onclick="change_guest_unit('+ unit +','+ subunit +');">'+ gn_array[i][12] +'</td></tr>';
+					if(gn_array[i][0] == "1" && control_setting_flag && !amazon_wss_if_support){
+						var status_Access_Intranet = (gn_array[i][12]=="on")?"<#WLANConfig11b_WirelessCtrl_button1name#>":"<#btn_disable#>";
+						htmlcode += '<tr><td align="center" onclick="change_guest_unit('+ unit +','+ subunit +');">'+ status_Access_Intranet +'</td></tr>';
+					}
 				}
 
 				if(gn_array[i][0] == "1" && control_setting_flag){
@@ -394,14 +425,21 @@ function gen_gntable_tr(unit, gn_array, slicesb){
 				}
 			}
 			htmlcode += '</table>';
-			if(amazon_wss_if_support && amazon_wss_status){
-				htmlcode += '<div style="font-size:12px;font-weight:bolder;color:#FC0;position:absolute;text-align:center;width:100%;">Used by <br>Amazon Wi-Fi Simple Setup</div>';/* untranslated */
+			if(amazon_wss_if_support){
+				if(amazon_wss_status)
+					htmlcode += '<div style="font-size:12px;font-weight:bolder;color:#FC0;position:absolute;text-align:center;width:100%;">Used by <br>Amazon Wi-Fi Simple Setup</div>';/* untranslated */
+				else
+					htmlcode += '<div style="position:absolute;margin-top:10px;text-align:center;""><input type="button" class="button_gen" style="word-break:break-word;"value="<#WSS_setup#>" onclick="enable_amazon_wss('+ unit +','+ subunit +');"></div>';
 			}
-			if(i == (gn_array_length-1)){
-				htmlcode += '<div id="smart_home_'+unit+'" style="font-size:12px;font-weight:bolder;color:#FC0;position:absolute;text-align:center;display:none;width:100%;"><#Guest_Network_AlexaIFTTT_setting#></div>';
+			if(lyra_hide_support){
+				if(i == "0")
+					htmlcode += '<div id="smart_home_'+unit+'" style="font-size:12px;font-weight:bolder;color:#FC0;position:absolute;text-align:center;display:none;width:100%;"><#Guest_Network_AlexaIFTTT_setting#></div>';
+			}
+			else{
+				if(i == (gn_array_length-1))
+					htmlcode += '<div id="smart_home_'+unit+'" style="font-size:12px;font-weight:bolder;color:#FC0;position:absolute;text-align:center;display:none;width:100%;"><#Guest_Network_AlexaIFTTT_setting#></div>';
 			}
 			htmlcode += '</td>';
-
 			all_gn_status.push({"idx" : unit_subunit, "enable" : (gn_array[i][0] == '1'), "bw_enabled" : (gn_array[i][18] == '1')});
 	}
 
@@ -447,7 +485,7 @@ function gen_gntable(){
 
 	if(gn_array_2g_tmp.length > 0){
 		htmlcode += '<table style="margin-left:20px;margin-top:25px;" width="95%" align="center" cellpadding="4" cellspacing="0" class="gninfo_head_table" id="gninfo_table_2g">';
-		htmlcode += '<tr id="2g_title"><td align="left" style="color:#5AD;font-size:16px; border-bottom:1px dashed #AAA;"><span>2.4GHz</span>';
+		htmlcode += '<tr id="2g_title"><td align="left" style="color:#5AD;font-size:16px; border-bottom:1px dashed #AAA;"><span>2.4 GHz</span>';
 		htmlcode += '<span id="2g_radio_hint" style="font-size: 14px;display:none;color:#FC0;margin-left:17px;">* <#GuestNetwork_Radio_Status#>	<a style="font-family:Lucida Console;color:#FC0;text-decoration:underline;cursor:pointer;" onclick="_change_wl_unit_status(0);"><#btn_go#></a></span></td></tr>';
 		while(gn_array_2g_tmp.length > 4){
 			htmlcode += '<tr><td>';
@@ -468,10 +506,16 @@ function gen_gntable(){
 	if(gn_array_5g_tmp.length > 0){
 		htmlcode5 += '<table style="margin-left:20px;margin-top:25px;" width="95%" align="center" cellpadding="4" cellspacing="0" class="gninfo_head_table" id="gninfo_table_5g">';
 		htmlcode5 += '<tr id="5g_title"><td align="left" style="color:#5AD; font-size:16px; border-bottom:1px dashed #AAA;">';
-		if(wl_info.band5g_2_support)
-			htmlcode5 += '<span>5GHz-1</span>';
+		if(wl_info.band5g_2_support){
+			if(band6g_support){
+				htmlcode5 += '<span>5 GHz</span>';
+			}
+			else{
+				htmlcode5 += '<span>5 GHz-1</span>';
+			}
+		}			
 		else
-			htmlcode5 += '<span>5GHz</span>';
+			htmlcode5 += '<span>5 GHz</span>';
 		htmlcode5 += '<span id="5g_radio_hint" style="font-size: 14px;display:none;color:#FC0;margin-left:17px;">* <#GuestNetwork_Radio_Status#>	<a style="font-family:Lucida Console;color:#FC0;text-decoration:underline;cursor:pointer;" onclick="_change_wl_unit_status(1);"><#btn_go#></a></span></td></tr>';
 
 		while(gn_array_5g_tmp.length > 4){
@@ -492,7 +536,13 @@ function gen_gntable(){
 
   	if(wl_info.band5g_2_support && gn_array_5g_2_tmp.length > 0){
 		htmlcode5_2 += '<table style="margin-left:20px;margin-top:25px;" width="95%" align="center" cellpadding="4" cellspacing="0" class="gninfo_head_table" id="gninfo_table_5g_2">';
-		htmlcode5_2 += '<tr id="5g_2_title"><td align="left" style="color:#5AD; font-size:16px; border-bottom:1px dashed #AAA;"><span>5GHz-2</span>';
+		if(band6g_support){
+			htmlcode5_2 += '<tr id="5g_2_title"><td align="left" style="color:#5AD; font-size:16px; border-bottom:1px dashed #AAA;"><span>6 GHz</span>';
+		}
+		else{
+			htmlcode5_2 += '<tr id="5g_2_title"><td align="left" style="color:#5AD; font-size:16px; border-bottom:1px dashed #AAA;"><span>5 GHz-2</span>';
+		}
+		
 		htmlcode5_2 += '<span id="5g_2_radio_hint" style="font-size: 14px;display:none;color:#FC0;margin-left:17px;">* <#GuestNetwork_Radio_Status#>	<a style="font-family:Lucida Console;color:#FC0;text-decoration:underline;cursor:pointer;" onclick="_change_wl_unit_status(1);"><#btn_go#></a></span></td></tr>';
 		while(gn_array_5g_2_tmp.length > 4){
 			htmlcode5_2 += '<tr><td >';
@@ -512,7 +562,7 @@ function gen_gntable(){
 
 	if(wl_info.band60g_support) {
 		htmlcode60 += '<table style="margin-left:20px;margin-top:25px;" width="95%" align="center" cellpadding="4" cellspacing="0" class="gninfo_head_table" id="gninfo_table_60g">';
-		htmlcode60 += '<tr id="60g_title"><td align="left" style="color:#5AD; font-size:16px; border-bottom:1px dashed #AAA;"><span>60GHz</span></td></tr>';
+		htmlcode60 += '<tr id="60g_title"><td align="left" style="color:#5AD; font-size:16px; border-bottom:1px dashed #AAA;"><span>60 GHz</span></td></tr>';
 		htmlcode60 += '<tr><td><span style="font-size: 14px;color:#FC0;"><#CTL_nonsupported#></span></td></tr>';
 		htmlcode60 += '</table>';
 		document.getElementById("guest_table60").innerHTML = htmlcode60;
@@ -820,7 +870,7 @@ function mbss_display_ctrl(){
 	if(multissid_support){
 		document.getElementById("wl_channel_field").style.display = "none";
 		document.getElementById("wl_nctrlsb_field").style.display = "none";
-		for(var i=1; i<multissid_support+1; i++)
+		for(var i=1; i<multissid_count+1; i++)
 			add_options_value(document.form.wl_subunit, i, '<% nvram_get("wl_subunit"); %>');
 	}
 	else{
@@ -909,7 +959,10 @@ function change_guest_unit(_unit, _subunit){
 	document.form.wl_ssid.value = decodeURIComponent(gn_array[idx][1]);
 	wl_x_y_bss_enabled = 1;
 	
-	document.form.wl_auth_mode_x.value = decodeURIComponent(gn_array[idx][2]);
+	if(lyra_hide_support)
+		document.form.wl_auth_mode_x.value = "psk2";
+	else
+		document.form.wl_auth_mode_x.value = decodeURIComponent(gn_array[idx][2]);
 	wl_auth_mode_change(1);
 	document.form.wl_crypto.value = decodeURIComponent(gn_array[idx][3]);
 	document.form.wl_wpa_psk.value = decodeURIComponent(gn_array[idx][4]);
@@ -951,7 +1004,17 @@ function change_guest_unit(_unit, _subunit){
 		}
 	}
 
-	if(amesh_support && amesh_wgn_support){
+	if(lyra_hide_support){
+		document.form.wl_crypto.value = "aes";
+		document.getElementById("wl_auth_mode_tr").style.display = "none";
+		document.getElementById("wl_crypt_tr").style.display = "none";
+		document.getElementById("psk_title").innerHTML = "<#Network_key#>";
+		inputCtrl(document.form.wl_macmode, 0);
+		inputCtrl(document.form.wl_lanaccess, 1);
+	}
+
+	var interface_support =  decodeURIComponent(gn_array[idx][24]);
+	if(amesh_support && amesh_wgn_support && interface_support == "1"){
 		$("#aimesh_sync_field").show();
 		$("#aimesh_sync_field select[name='wl_sync_node']").attr("disabled", false);
 		if(gn_array[idx][23] == undefined || gn_array[idx][23] == "")
@@ -1131,7 +1194,7 @@ function addRow(obj, upper){
 		obj.focus();
 		obj.select();			
 		return false;
-	}else if(!check_macaddr(obj, check_hwaddr_flag(obj))){
+	}else if(!check_macaddr(obj, check_hwaddr_flag(obj, 'inner'))){
 		obj.focus();
 		obj.select();	
 		return false;	
@@ -1239,10 +1302,10 @@ function show_bandwidth(flag){
 		}
 
 		if(QoS_enable_orig == "0"){
-			show_hint_content += "<br>QoS function of traffic manager will be enable and set as Bandwidth Limiter mode by default.";	/* untranslated */
+			show_hint_content += "<br><#Bandwidth_Limiter_NAT_hint#>";
 		}
 		else if(QoS_type_orig != "2"){
-			show_hint_content += "<br>QoS function of traffic manager will set as Bandwidth Limiter mode.";	/* untranslated */
+			show_hint_content += "<br><#Bandwidth_Limiter_set_hint#>";
 		}
 
 		if(show_hint_content.length <= 0){
@@ -1299,7 +1362,6 @@ function dis_qos_enable(_wl_idx, _form_obj, _control_item){
 		}
 	}
 }
-
 function enable_amazon_wss(unit, subunit){
 	change_guest_unit(unit, subunit);
 	$(".gn_info_table_bg").hide();
@@ -1330,6 +1392,25 @@ function remove_amazon_wss(unit, subunit){
 	append_hidden_item("wl_bw_enabled", "0");
 	append_hidden_item("wl_bw_dl", "0");
 	append_hidden_item("wl_bw_ul", "0");
+	append_hidden_item("wl_closed", "0");
+	append_hidden_item("wl_ssid", "ASUS_Guest2");
+	append_hidden_item("wl_auth_mode_x", "open");
+	append_hidden_item("wl_wep_x", "0");
+	append_hidden_item("wl_expire", "0");
+	append_hidden_item("qos_enable", "0");
+	append_hidden_item("qos_type", "1");
+	append_hidden_item("wl_lanaccess", "off");
+	append_hidden_item("wl_macmode", "disabled");
+	append_hidden_item("wl_wpa_psk", "");
+	append_hidden_item("wl_crypto", "aes");
+	append_hidden_item("wl_phrase_x", "");
+	append_hidden_item("wl_key", "");
+	append_hidden_item("wl_key1", "");
+	append_hidden_item("wl_key2", "");
+	append_hidden_item("wl_key3", "");
+	append_hidden_item("wl_key4", "");
+	append_hidden_item("wl_mbss", "");
+
 	if (lantiq_support)
 		document.unitform.action_wait.value = "60"; // for extend the time to let Amazon WSS ebtable rule ready, or it will block all clients
 	close_guest_unit(unit, subunit);
@@ -1347,7 +1428,7 @@ function apply_amazon_wss(){
 </script>
 </head>
 
-<body onload="initial();">
+<body onload="initial();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <div id="hiddenMask" class="popup_bg">
@@ -1388,7 +1469,7 @@ function apply_amazon_wss(){
 <input type="hidden" name="gwlu" value="" disabled>
 <input type="hidden" name="modified" value="0">
 <input type="hidden" name="action_mode" value="apply_new">
-<input type="hidden" name="action_script" value="restart_wireless">
+<input type="hidden" name="action_script" value="restart_wireless;restart_firewall;">
 <input type="hidden" name="action_wait" value="15">
 <input type="hidden" name="preferred_lang" id="preferred_lang" value="<% nvram_get("preferred_lang"); %>">
 <input type="hidden" name="wl_country_code" value="<% nvram_get("wl0_country_code"); %>" disabled>
@@ -1448,7 +1529,7 @@ function apply_amazon_wss(){
 									</td>
 									<td>
 										<div id="gn_desc" class="formfontdesc" style="font-style: italic;font-size: 14px;"><#GuestNetwork_desc#></div>
-										<div id="nat_off_hint" class="formfontdesc" style="color:#FC0;display:none;">NAT accelerator is turned off because of bandwidth limiter of Guest Network enabled.</div><!-- untranslated -->
+										<div id="nat_off_hint" class="formfontdesc" style="color:#FC0;display:none;"><#NAT_Acceleration_disabled#></div>
 									</td>
 								</tr>
 							</table>
@@ -1481,19 +1562,17 @@ function apply_amazon_wss(){
 							<table style="margin-left:20px;margin-top:25px;" width="95%" align="center" cellpadding="4" cellspacing="0" class="gninfo_head_table">
 								<tr>
 									<td align="left" style="color:#5AD; font-size:16px; border-bottom:1px dashed #AAA;" colspan="2">
-										<span>Amazon Wi-Fi simple setup</span><!-- untranslated -->
+										<span><#WSS_setup#></span>
 									</td>
 								</tr>
 								<tr>
 									<td>
-										<span style="line-height:20px;">Amazon Wi-Fi simple setup helps you connect supported devices to your Wi-Fi network and Alexa account in fewer steps. Enabling this feature creates a simple setup network that supported devices can use to access Wi-Fi credentials saved in the Amazon Wi-Fi Locker.<!-- untranslated -->
-										</span>
-										&nbsp;
-										<a style="color:#FC0;text-decoration:underline;cursor:pointer;" href="https://www.amazon.com/gp/help/customer/display.html/?nodeId=GMPKVYDBR223TRPY" target="_blank">Learn more.</a><!-- untranslated -->
+										<span style="line-height:20px;"><#WSS_setup_desc0#></span>&nbsp;
+										<a style="color:#FC0;text-decoration:underline;cursor:pointer;" href="https://www.amazon.com/gp/help/customer/display.html/?nodeId=GMPKVYDBR223TRPY" target="_blank"><#Learn_more#></a>
 										<br>
-										<span>You can only turn on either the 2nd set of Guest Network on 2.4GHz or Amazon Wi-Fi simple setup feature.</span><!-- untranslated -->
+										<span><#WSS_setup_desc1#></span>
 										<br>
-										<span id="amazon_wss_hint" style="color:#FC0;line-height:20px;">[Note] Enable this feature will turn off NAT acceleration for more precise packet inspection and turn on QoS function of traffic manager with setting as Bandwidth Limiter mode by default.</span><!-- untranslated -->
+										<span id="amazon_wss_hint" style="color:#FC0;line-height:20px;"><#FW_note#>&nbsp;<#WSS_setup_desc2#></span>
 									</td>
 								</tr>
 								<tr>
@@ -1510,11 +1589,11 @@ function apply_amazon_wss(){
 								<th><#Interface#></th>
 								<td>
 									<select name="wl_unit" class="input_option" onChange="change_wl_unit();" style="display:none">
-										<option id="wl_opt0" class="content_input_fd" value="0" <% nvram_match("wl_unit", "0","selected"); %>>2.4GHz</option>
-										<option id="wl_opt1" class="content_input_fd" value="1" <% nvram_match("wl_unit", "1","selected"); %>>5GHz</option>
-										<option id="wl_opt2" class="content_input_fd" value="2" <% nvram_match("wl_unit", "2","selected"); %>>5GHz-2</option>
+										<option id="wl_opt0" class="content_input_fd" value="0" <% nvram_match("wl_unit", "0","selected"); %>>2.4 GHz</option>
+										<option id="wl_opt1" class="content_input_fd" value="1" <% nvram_match("wl_unit", "1","selected"); %>>5 GHz</option>
+										<option id="wl_opt2" class="content_input_fd" value="2" <% nvram_match("wl_unit", "2","selected"); %>>5 GHz-2</option>
 									</select>			
-									<p id="wl_ifname">2.4GHz</p>
+									<p id="wl_ifname">2.4 GHz</p>
 								</td>
 							</tr>
 							<tr style="display:none">
@@ -1698,7 +1777,7 @@ function apply_amazon_wss(){
 										<#upload_bandwidth#> <input type="text" id="wl_bw_ul_x" name="wl_bw_ul_x" maxlength="12" onkeypress="return validator.bandwidth_code(this, event);" class="input_12_table" value=""><label style="margin-left:2px;">Mb/s</label>
 								</td>
 							</tr>
-
+							
 							<tr class="captive_portal_control_class">
 								<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(0, 26);"><#Access_Intranet#></a></th>
 								<td>

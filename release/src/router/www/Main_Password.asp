@@ -16,7 +16,7 @@
 	background:rgba(40,52,55,0.1);
 }
 .wrapper{
-	background:url(images/New_ui/login_bg.png) no-repeat center center fixed;
+	background:#1F1F1F url(images/New_ui/login_bg.png) no-repeat center center fixed;
 	background-size: cover;
 }
 .title_name {

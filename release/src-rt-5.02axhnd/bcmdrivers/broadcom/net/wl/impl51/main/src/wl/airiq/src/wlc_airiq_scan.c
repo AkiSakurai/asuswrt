@@ -4,7 +4,7 @@
  *
  *  Air-IQ Scan
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -142,14 +142,16 @@ airiq_update_scan_config(airiq_info_t *airiqh, airiq_config_t *sc)
 	cnt = MIN(MAX_CHANSPECS, sc->chanspec_cnt); /* ensure bounds */
 
 	if (cnt <= 0) {
-		WL_ERROR(("%s: wl%d: Invalid chanspec count %d\n",
-			__FUNCTION__, WLCWLUNIT(airiqh->wlc), cnt));
+		WL_ERROR(("wl%d: %s: Invalid chanspec count %d\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__, cnt));
 		return BCME_UNSUPPORTED;
 	}
 
-	if (sc->phy_mode == PHYMODE_3x3_1x1 && D11REV_LT(airiqh->wlc->pub->corerev, 65)) {
-		WL_ERROR(("%s: wl%d: Requested 3+1 mode scan on core rev %d\n",
-			__FUNCTION__, WLCWLUNIT(airiqh->wlc), airiqh->wlc->pub->corerev));
+	if (sc->phy_mode == PHYMODE_3x3_1x1 && !D11REV_IS(airiqh->wlc->pub->corerev, 65)
+			&& !D11REV_IS(airiqh->wlc->pub->corerev, 129)
+			&& !D11REV_IS(airiqh->wlc->pub->corerev, 132)) {
+		WL_ERROR(("wl%d: %s: Requested 3+1 mode scan on unsupported core rev %d\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__, airiqh->wlc->pub->corerev));
 		return BCME_UNSUPPORTED;
 	}
 
@@ -243,7 +245,7 @@ chanspec_list_valid(airiq_info_t *airiqh, airiq_config_t *sc)
 	} else {
 		/* For single band radio check if it supports requested band */
 		for (i = 0; i < sc->chanspec_cnt; i++) {
-			if (CHSPEC2WLC_BAND(sc->chanspec_list[i]) !=
+			if (CHSPEC_BANDTYPE(sc->chanspec_list[i]) !=
 				(uint)airiqh->wlc->band->bandtype) {
 				return FALSE;
 			}
@@ -256,9 +258,19 @@ chanspec_list_valid(airiq_info_t *airiqh, airiq_config_t *sc)
 void wlc_airiq_scan_set_chanspec_3p1(airiq_info_t *airiqh, phy_info_t *pi,
 	chanspec_t home_chanspec, chanspec_t scan_chanspec)
 {
+#ifdef __AIRIQ_DBG
+	uint32 tsf_l=0, tsf_h=0;
+	uint32 tsf2_l=0, tsf2_h=0;
+
+	wlc_read_tsf(airiqh->wlc, &tsf_l, &tsf_h);
+#endif /* __AIRIQ_DBG */
 	phy_ac_chanmgr_set_val_sc_chspec(PHY_AC_CHANMGR(pi), scan_chanspec);
 	phy_ac_chanmgr_set_val_phymode(PHY_AC_CHANMGR(pi), PHYMODE_3x3_1x1);
-
+#ifdef __AIRIQ_DBG
+	wlc_read_tsf(airiqh->wlc, &tsf2_l, &tsf2_h);
+	SCAN_DBG("%s took (%d) %d usec -- 3x3 @ 0x%x +1 @ 0x%x\n", __FUNCTION__, tsf2_h - tsf_h,tsf2_l - tsf_l,
+		home_chanspec, scan_chanspec);
+#endif /* __AIRIQ_DBG */
 	airiqh->upgrade_pending = TRUE;
 }
 
@@ -277,22 +289,14 @@ static void wlc_airiq_scantimer_3p1(void *arg)
 	airiqh = (airiq_info_t*)arg;
 
 	if (!airiqh) {
-		WL_ERROR(("%s(%d): null invalid airiq handle\n",
-					__FUNCTION__, __LINE__));
+		WL_ERROR(("wl%d: %s(%d): null invalid airiq handle\n",
+					WLCWLUNIT(airiqh->wlc), __FUNCTION__, __LINE__));
 		return;
 	}
 
-	/* Init bw */
-	if (!airiqh->bw_3x3) {
-		airiqh->bw_3x3 = airiqh->wlc->chanspec & WL_CHANSPEC_BW_MASK;
-	}
-
-	/*  */
-	/* Increment to next channel */
-	/*  */
 	chancnt = airiqh->scan.channel_cnt;
 
-	SCAN_DBG(KERN_CRIT "-->%s\n", __FUNCTION__);
+	SCAN_DBG("-->%s\n", __FUNCTION__);
 
 	if (!airiqh->wlc->pub->up) {
 		WL_AIRIQ(("wl%d: %s(%d): not up. Scan aborted/Interface down.\n",
@@ -300,7 +304,7 @@ static void wlc_airiq_scantimer_3p1(void *arg)
 		wlc_airiq_set_enable(airiqh, FALSE);
 		airiqh->scan.run_phycal = FALSE;
 		airiqh->wlc->scan->state &= ~(SCAN_STATE_PROHIBIT | SCAN_STATE_PASSIVE);
-		SCAN_DBG(KERN_CRIT "<--%s(%d)\n", __FUNCTION__, __LINE__);
+		SCAN_DBG("<--%s(%d)\n", __FUNCTION__, __LINE__);
 		if (airiqh->sweep_count >= 0) {
 			if (airiqh->scan_type == SCAN_TYPE_AIRIQ) {
 				/* Send a scan completion notification (we need to add status) */
@@ -315,9 +319,10 @@ static void wlc_airiq_scantimer_3p1(void *arg)
 	}
 
 	if (!airiqh->scan_enable) {
-		WL_AIRIQ(("wl%d: %s(%d): scan stopped.\n",
-			WLCWLUNIT(airiqh->wlc), __FUNCTION__, __LINE__));
-		SCAN_DBG(KERN_CRIT "<--%s(%d)\n", __FUNCTION__, __LINE__);
+		WL_AIRIQ(("wl%d %s: scan stopped.\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__));
+		SCAN_DBG("<--%s(%d)\n", __FUNCTION__, __LINE__);
+
 		if (airiqh->sweep_count >= 0) {
 			if (airiqh->scan_type == SCAN_TYPE_AIRIQ) {
 				/* Send a scan completion notification (we need to add status) */
@@ -332,18 +337,19 @@ static void wlc_airiq_scantimer_3p1(void *arg)
 		return;
 
 	}
-	/* If the bandwidth of the 3x3 changed from the last scan we abort the scan here.
-	   Also for the 4365 chip we check if the bandwidth of the 3x3 matches the scan
-	   channel bandwidth, otherwise we abort. In case of 43684 the +1 is allowed to have
+
+	pi = (phy_info_t*)WLC_PI(airiqh->wlc);
+
+	/* For 11ac chips, check if the bandwidth of the 3x3 matches the scan
+	   channel bandwidth, otherwise we abort. In case of 11ax the +1 is allowed to have
 	   a different bandwidth compared to 3x3 and so we do not abort the scan. */
-	if (airiqh->bw_3x3 != (airiqh->wlc->chanspec & WL_CHANSPEC_BW_MASK) ||
-			((airiqh->bw_3x3 !=
+	if ((CHSPEC_BW(pi->radio_chanspec) !=
 			(airiqh->scan.chanspec_list[airiqh->scan.channel_idx] &
 			 WL_CHANSPEC_BW_MASK)) &&
-			 D11REV_LT(airiqh->wlc->pub->corerev, 128))) {
+			 D11REV_LT(airiqh->wlc->pub->corerev, 128)) {
 		/* Bandwidth changed */
-		WL_AIRIQ(("%s: wl%d BW change (0x%x) chspec = 0x%x scan chspec = 0x%x\n",
-			__FUNCTION__, airiqh->wlc->pub->unit, airiqh->bw_3x3,
+		WL_AIRIQ(("wl%d: %s: BW change (0x%x) chspec = 0x%x scan chspec = 0x%x\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__, CHSPEC_BW(pi->radio_chanspec),
 			(airiqh->wlc->chanspec & WL_CHANSPEC_BW_MASK),
 			(airiqh->scan.chanspec_list[airiqh->scan.channel_idx] &
 			WL_CHANSPEC_BW_MASK)));
@@ -361,24 +367,20 @@ static void wlc_airiq_scantimer_3p1(void *arg)
 					LTE_U_SCAN_ABORT_BW_CHANGED);
 			}
 		}
-		airiqh->bw_3x3 = airiqh->wlc->chanspec & WL_CHANSPEC_BW_MASK;
 		return;
 	}
-	pi = (phy_info_t*)WLC_PI(airiqh->wlc);
 
 	/* Age out gain hints  and issue mac event */
 	if (airiqh->scan.scan_start) {
-
 		/* first pass we do not want to age, or create a scan complete event! */
 		airiqh->scan.scan_start = FALSE;
 		airiqh->scan.channel_idx = 0;
-		airiqh->scan.bandlocked_save = airiqh->wlc->bandlocked;
 
 		airiqh->fft_count = 0;
 		airiqh->capture_limit = MAX(10,
 			airiqh->scan.capture_count[airiqh->scan.channel_idx]);
 
-		SCAN_DBG(KERN_CRIT "%s: ***SCANSTART***\n",  __FUNCTION__);
+		SCAN_DBG("%s: ***SCANSTART***\n",  __FUNCTION__);
 		sweep_begin = TRUE;
 	} else {
 		wlc_read_tsf(airiqh->wlc, &tsf, &dummy_tsf_high);
@@ -499,6 +501,7 @@ static void wlc_airiq_scantimer_3p1(void *arg)
 					}
 					wl_airiq_sendup_scan_complete_alternate(airiqh,
 						AIRIQ_SCAN_SUCCESS);
+
 #ifdef WLOFFLD
 					// Offload-indicate to offload core that scan completed
 					if (WLOFFLD_AIRIQ_ENAB(airiqh->wlc->pub)) {
@@ -544,10 +547,6 @@ static void wlc_airiq_scantimer_3p1(void *arg)
 	} else {
 		wlc_lte_u_phy_disable_iq_capture_shm(airiqh);
 	}
-
-	/* Ensure that the band is unlocked. */
-	airiqh->wlc->bandlocked = FALSE;
-	airiqh->wlc->bandinit_pending = TRUE;
 
 	/* set channel */
 	wlc_airiq_scan_set_chanspec_3p1(airiqh, pi, pi->radio_chanspec, chanspec);
@@ -617,7 +616,7 @@ void wlc_airiq_scantimer(void *arg)
 #endif // endif
 
 	if (airiqh->scan_type != SCAN_TYPE_AIRIQ) {
-		WL_ERROR(("%s(%d): invalid AIRIQ 4x4 scan type: 0x%X\n",
+		WL_ERROR(("wl%d: %s(%d): invalid AIRIQ 4x4 scan type: 0x%X\n", WLCWLUNIT(airiqh->wlc),
 					__FUNCTION__, __LINE__, airiqh->scan_type));
 		return;
 	}
@@ -627,31 +626,31 @@ void wlc_airiq_scantimer(void *arg)
 	/*  */
 	chancnt = airiqh->scan.channel_cnt;
 
-	SCAN_DBG(KERN_CRIT "-->%s\n", __FUNCTION__);
+	SCAN_DBG("-->%s\n", __FUNCTION__);
 
 	if (airiqh->tx_suspending) {
 		if (wlc_tx_suspended(airiqh->wlc)) {
 			airiqh->tx_suspending = FALSE;
 		} else {
 			/* wait */
-			WL_PRINT(("%s: tx still suspending. TXPKTPENDTOT=%d\n",__FUNCTION__,
-						TXPKTPENDTOT(airiqh->wlc)));
+			WL_PRINT(("wl%d: %s: tx still suspending. TXPKTPENDTOT=%d\n",
+				WLCWLUNIT(airiqh->wlc), __FUNCTION__, TXPKTPENDTOT(airiqh->wlc)));
 			/* wait a little longer and force it - (see guard timer in wlc_scan.c) */
 			airiqh->tx_suspending = FALSE;
 			wl_add_timer(airiqh->wlc->wl, airiqh->timer, 10, 0);
-			SCAN_DBG(KERN_CRIT"<--%s(%d)\n",__FUNCTION__,__LINE__);
+			SCAN_DBG("<--%s(%d)\n",__FUNCTION__,__LINE__);
 			return;
 		}
 	}
 
 	if (!airiqh->wlc->pub->up) {
-		WL_AIRIQ(("%s(%d): wl%d not up. Scan aborted/Interface down.\n",
-			__FUNCTION__, __LINE__, airiqh->wlc->pub->unit));
+		WL_AIRIQ(("wl%d: %s(%d): wl not up. Scan aborted/Interface down.\n",
+			WLCWLUNIT(airiqh->wlc), __FUNCTION__, __LINE__));
 		wlc_airiq_set_enable(airiqh, FALSE);
 		airiqh->scan.run_phycal = FALSE;
 		wlc_airiq_set_scan_in_progress(airiqh, FALSE);
 		airiqh->wlc->scan->state &= ~(SCAN_STATE_PROHIBIT | SCAN_STATE_PASSIVE);
-		SCAN_DBG(KERN_CRIT "<--%s(%d)\n", __FUNCTION__, __LINE__);
+		SCAN_DBG("<--%s(%d)\n", __FUNCTION__, __LINE__);
 		if (airiqh->sweep_count >= 0) {
 			/* Send a scan completion notification (we need to add status) */
 			wl_airiq_sendup_scan_complete_alternate(airiqh, AIRIQ_SCAN_ABORTED);
@@ -660,9 +659,9 @@ void wlc_airiq_scantimer(void *arg)
 	}
 
 	if (!airiqh->scan_enable) {
-		WL_AIRIQ(("%s(%d): wl%d scan stopped.\n",
+		WL_AIRIQ(("wl%d: %s(%d): wl%d scan stopped.\n", WLCWLUNIT(airiqh->wlc),
 			__FUNCTION__, __LINE__, airiqh->wlc->pub->unit));
-		SCAN_DBG(KERN_CRIT "<--%s(%d)\n", __FUNCTION__, __LINE__);
+		SCAN_DBG("<--%s(%d)\n", __FUNCTION__, __LINE__);
 		if (airiqh->sweep_count >= 0) {
 			/* Send a scan completion notification (we need to add status) */
 			wl_airiq_sendup_scan_complete_alternate(airiqh,
@@ -680,55 +679,49 @@ void wlc_airiq_scantimer(void *arg)
 		airiqh->scan.scan_start = FALSE;
 		airiqh->scan.channel_idx = 0;
 		airiqh->scan.bandlocked_save = airiqh->wlc->bandlocked;
-
 		airiqh->fft_count = 0;
 		airiqh->capture_limit = MAX(10,
 			airiqh->scan.capture_count[airiqh->scan.channel_idx]);
 
-		SCAN_DBG(KERN_CRIT "%s: ***SCANSTART***\n",  __FUNCTION__);
+		SCAN_DBG("%s: ***SCANSTART***\n",  __FUNCTION__);
 		sweep_begin = TRUE;
 	} else {
 		wlc_read_tsf(airiqh->wlc, &tsf, &dummy_tsf_high);
 		fft_smpl_ctrl = wlc_read_shm(airiqh->wlc, M_FFT_SMPL_CTRL(airiqh->wlc));
 
-		if (airiqh->fft_count >= airiqh->capture_limit) {
-			SCAN_DBG("%s: ch[%d]:%3d fftcnt=%4d > %4d: %6d us\n",
+		if (fft_smpl_ctrl == 0) {
+			// FFT_SMPL_CTRL is a countdown counter.
+			WL_AIRIQ(("%s: ch[%d]:%3d fftcnt=%4d, target = %4d:%6dus. SMPL_CTRL=0\n",
 				__FUNCTION__, airiqh->scan.channel_idx,
-				CHSPEC_CHANNEL(airiqh->scan.
-				chanspec_list[airiqh->scan.channel_idx]),
+				CHSPEC_CHANNEL(airiqh->wlc->chanspec),
 				airiqh->fft_count, airiqh->capture_limit,
-				tsf - airiqh->chan_tsf);
+				tsf - airiqh->chan_tsf));
 
 			airiqh->scan.channel_idx = (airiqh->scan.channel_idx + 1) % chancnt;
-		} else if (fft_smpl_ctrl == 0) {
-			// FFT_SMPL_CTRL is a countdown counter. if 0, success
-			// and is useful in offload case.
-			SCAN_DBG("%s: [%3d] fftcnt=%4d, target = %4d:%6dus. SMPL_CTRL=0\n",
-				__FUNCTION__, CHSPEC_CHANNEL(airiqh->wlc->chanspec),
+		} else if ((tsf - airiqh->chan_tsf) < (20 +
+			airiqh->scan.dwell_interval_ms[airiqh->scan.channel_idx])*1000) {
+			// max dwell is 20 ms+  the nominal value.
+			WL_AIRIQ(("%s: ch[%d]:%3d fftcnt=%4d < %4d: %6d us ***WAIT***\n",
+				__FUNCTION__, airiqh->scan.channel_idx,
+				CHSPEC_CHANNEL(airiqh->wlc->chanspec),
 				airiqh->fft_count, airiqh->capture_limit,
-				tsf - airiqh->chan_tsf);
-			airiqh->scan.channel_idx = (airiqh->scan.channel_idx + 1) % chancnt;
-		} else if ((tsf - airiqh->chan_tsf) < (4000 *
-			airiqh->scan.dwell_interval_ms[airiqh->scan.channel_idx]) &&
-				(airiqh->fft_count < airiqh->capture_limit / 2)) {
-			// max dwell is 4x the nominal value.
-			SCAN_DBG("%s: [%3d] fftcnt=%4d < %4d: %6d us ***WAIT***\n",
-				__FUNCTION__, CHSPEC_CHANNEL(airiqh->wlc->chanspec),
-				airiqh->fft_count, airiqh->capture_limit,
-				tsf - airiqh->chan_tsf);
-			wl_add_timer(airiqh->wlc->wl, airiqh->timer, 10, 0);
+				tsf - airiqh->chan_tsf));
+			// extend time by 5ms interval
+			wl_add_timer(airiqh->wlc->wl, airiqh->timer, 5, 0);
 
 			SCAN_DBG("<--%s(%d)\n", __FUNCTION__, __LINE__);
 			return;
 		} else {
-			SCAN_DBG("%s: ch[%d]:%3d fftcnt=%4d<%4d: %6d us > %6d us TIMEOUT\n",
-				__FUNCTION__, airiqh->scan.channel_idx,
+			WL_AIRIQ(("%s: ch[%d]:%3d fftcnt=%4d<%4d: actual dwell time: %6d us"
+				"vs targeted: %6d us TIMEOUT\n",__FUNCTION__,
+				airiqh->scan.channel_idx,
 				CHSPEC_CHANNEL(airiqh->scan.
 				chanspec_list[airiqh->scan.channel_idx]),
 				airiqh->fft_count, airiqh->capture_limit,
 				tsf - airiqh->chan_tsf,
-				(2000 * airiqh->scan.
-				dwell_interval_ms[airiqh->scan.channel_idx]));
+				airiqh->scan.dwell_interval_ms[airiqh->scan.channel_idx]*1000));
+			// stop current fft capture
+			wlc_airiq_phy_disable_fft_capture(airiqh);
 			airiqh->scan.channel_idx = (airiqh->scan.channel_idx + 1) % chancnt;
 		}
 
@@ -792,20 +785,16 @@ void wlc_airiq_scantimer(void *arg)
 	/* Ensure that the band is unlocked. */
 	airiqh->wlc->bandlocked = FALSE;
 	airiqh->wlc->bandinit_pending = TRUE;
-
 	/* set channel */
 	// Indicate that we may scan 'prohibited' channels
 	airiqh->wlc->scan->state |= SCAN_STATE_PROHIBIT | SCAN_STATE_PASSIVE;
 	wlc_suspend_mac_and_wait(airiqh->wlc);
 
-	/* Add block to suppress tx packets */
-	wlc_block_datafifo(airiqh->wlc, DATA_BLOCK_CHANSW, DATA_BLOCK_CHANSW);
-
-	/* mute AP - suspend FIFO's */
-	wlc_ap_mute(airiqh->wlc, TRUE, NULL, WLC_AP_MUTE_SCAN);
-
 	wlc_set_chanspec(airiqh->wlc, chanspec,CHANSW_REASON(CHANSW_IOVAR));
-	wlc_phy_set_deaf(WLC_PI(airiqh->wlc),TRUE);
+
+	/* wlc_set_chanspec automatically clears deaf mode. Set it here */
+	wlc_phy_set_deaf(WLC_PI(airiqh->wlc), TRUE);
+
 	wlc_enable_mac(airiqh->wlc);
 
 	wlc_airiq_phy_enable_fft_capture(airiqh,
@@ -856,13 +845,11 @@ int wlc_airiq_start_scan_phase2(airiq_info_t *airiqh)
 
 	if (airiqh->phy_mode != PHYMODE_3x3_1x1) {
 		/* Add block to suppress tx packets */
-		wlc_block_datafifo(airiqh->wlc, DATA_BLOCK_CHANSW, DATA_BLOCK_CHANSW);
+		WLC_BLOCK_DATAFIFO_SET(airiqh->wlc, DATA_BLOCK_TXCHAIN);
 		/* mute AP */
 		wlc_ap_mute(airiqh->wlc, TRUE, NULL, WLC_AP_MUTE_SCAN);
 		/* suspend tx fifos */
-
-		wlc_tx_suspend(airiqh->wlc);
-		airiqh->tx_suspending = TRUE;
+		wlc_mute(airiqh->wlc, ON, 0);
 	}
 
 	return 0;
@@ -986,9 +973,6 @@ int wlc_airiq_scan_abort(airiq_info_t *airiqh, bool upgrade)
 		} else {
 			wlc_lte_u_phy_disable_iq_capture_shm(airiqh);
 		}
-	} else {
-		/* no active scan, just return */
-		return 0;
 	}
 
 	if (airiqh->phy_mode != PHYMODE_3x3_1x1 ){
@@ -999,8 +983,6 @@ int wlc_airiq_scan_abort(airiq_info_t *airiqh, bool upgrade)
 		 * noise meaurement scan. Need to add coordination
 		 */
 		// restore_bandlock = TRUE;
-	} else {
-		restore_bandlock = TRUE;
 	}
 
 	if (upgrade) {
@@ -1022,6 +1004,9 @@ int wlc_airiq_scan_abort(airiq_info_t *airiqh, bool upgrade)
 #endif /* WL_MODESW */
 		}
 #endif /* VASIP_HW_SUPPORT */
+	} else if (airiqh->phy_mode == PHYMODE_3x3_1x1) {
+		/* return for no upgrade case */
+		return 0;
 	}
 
 	airiqh->scan.run_phycal = FALSE;
@@ -1029,20 +1014,20 @@ int wlc_airiq_scan_abort(airiq_info_t *airiqh, bool upgrade)
 
 	wlc_suspend_mac_and_wait(airiqh->wlc);
 
-	wlc_phy_clear_deaf(WLC_PI(airiqh->wlc), FALSE);
+	wlc_phy_clear_deaf(WLC_PI(airiqh->wlc), TRUE);
 
 	/* set channel */
 	wlc_set_chanspec(airiqh->wlc, airiqh->wlc->home_chanspec, CHANSW_REASON(CHANSW_IOVAR));
 
-	/* restore bandlocked status */
 	if (restore_bandlock) {
 		/* restore bandlocked status */
 		airiqh->wlc->bandlocked = airiqh->scan.bandlocked_save;
-		//airiqh->wlc->bandinit_pending = TRUE;
+		airiqh->wlc->bandinit_pending = TRUE;
 	}
 
 	/* unmute AP */
 	wlc_ap_mute(airiqh->wlc, FALSE, NULL, WLC_AP_MUTE_SCAN);
+	wlc_mute(airiqh->wlc, OFF, 0);
 
 #ifdef STA
 	/* enable CFP and TSF update */
@@ -1052,11 +1037,8 @@ int wlc_airiq_scan_abort(airiq_info_t *airiqh, bool upgrade)
 
 	wlc_enable_mac(airiqh->wlc);
 
-	//TODO pere wlc_phy_clear_tssi(WLC_PI(airiqh->wlc));
-	/* Remove fifo suspend for tx data */
-	wlc_tx_resume(airiqh->wlc);
 	/* Remove block for tx data */
-	wlc_block_datafifo(airiqh->wlc, DATA_BLOCK_CHANSW, 0);
+	WLC_BLOCK_DATAFIFO_CLEAR(airiqh->wlc, DATA_BLOCK_TXCHAIN);
 	/* run txq if not empty */
 	wlc_send_active_q(airiqh->wlc);
 
@@ -1066,7 +1048,7 @@ int wlc_airiq_scan_abort(airiq_info_t *airiqh, bool upgrade)
 #ifdef STA
 	wlc_radio_mpc_upd(airiqh->wlc);
 #endif /* STA */
-WL_AIRIQ(("PERE>>> wl%d: %s(%d): upgrading: phymode=%d(%d) modesw_state=%d, enab=%d\n",
+	WL_AIRIQ(("wl%d: %s(%d): upgrading: phymode=%d(%d) modesw_state=%d, enab=%d\n",
 			WLCWLUNIT(airiqh->wlc), __FUNCTION__,__LINE__, airiqh->phy_mode,
 			PHYMODE(airiqh->wlc), airiqh->modeswitch_state,
 			WLC_MODESW_ENAB(airiqh->wlc->pub)));
@@ -1170,10 +1152,10 @@ lte_u_chanspec_list_valid(airiq_info_t *airiqh, airiq_config_t *sc)
 	int i;
 
 	for (i = 0; i < sc->chanspec_cnt; i++) {
-		if (! BAND_5G(CHSPEC2WLC_BAND(sc->chanspec_list[i]))) {
+		if (! BAND_5G(CHSPEC_BANDTYPE(sc->chanspec_list[i]))) {
 			WL_AIRIQ(("wl%d: %s: BW is not 5G BW of channel [%d] = %x\n",
 				WLCWLUNIT(airiqh->wlc), __FUNCTION__,
-				i, CHSPEC2WLC_BAND(sc->chanspec_list[i])));
+				i, CHSPEC_BANDTYPE(sc->chanspec_list[i])));
 			return FALSE;
 		}
 	}
@@ -1345,7 +1327,8 @@ lte_u_update_scan_config(airiq_info_t *airiqh, airiq_config_t *sc)
 	default:
 		airiqh->lte_u_scan_configured = FALSE;
 		airiqh->scan.channel_cnt  = 0;
-		WL_ERROR(("%s: unknown bw 0x%x\n", __FUNCTION__, bw));
+		WL_ERROR(("wl%d: %s: unknown bw 0x%x\n", WLCWLUNIT(airiqh->wlc),
+			__FUNCTION__, bw));
 		break;
 	}
 
@@ -1410,8 +1393,7 @@ int wlc_lte_u_scan_abort(airiq_info_t *airiqh, bool upgrade)
 
 	/* set channel */
 	wlc_set_chanspec(airiqh->wlc, airiqh->wlc->home_chanspec, CHANSW_REASON(CHANSW_IOVAR));
-	/* restore bandlocked status */
-	airiqh->wlc->bandlocked = airiqh->scan.bandlocked_save;
+
 	/* unmute AP */
 	wlc_ap_mute(airiqh->wlc, FALSE, NULL, WLC_AP_MUTE_SCAN);
 

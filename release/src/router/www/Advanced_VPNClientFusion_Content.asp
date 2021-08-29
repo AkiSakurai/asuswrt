@@ -156,7 +156,6 @@ var vpnc_default_wan = '<% nvram_get("vpnc_default_wan"); %>';
 var vpnc_index = -1;
 var vpnc_dev_policy_list_array = [];
 var vpnc_dev_policy_list_array_ori = [];
-var dhcp_staticlist_array = [];
 var dhcp_staticlist_ori = decodeURIComponent('<% nvram_char_to_ascii("","dhcp_staticlist"); %>');
 
 <% wanlink(); %>
@@ -220,6 +219,7 @@ function initial(){
 	vpnc_dev_policy_list_array = parse_vpnc_dev_policy_list('<% nvram_char_to_ascii("","vpnc_dev_policy_list"); %>');
 
 	//combine vpnc_dev_policy_list_array and dhcp_staticlist
+	var dhcp_staticlist_array = [];
 	var dhcp_staticlist_tmp = '<% nvram_char_to_ascii("","dhcp_staticlist"); %>';
 	if(dhcp_staticlist_tmp != "") {
 		var dhcp_staticlist_row = decodeURIComponent(dhcp_staticlist_tmp).split("<");
@@ -233,6 +233,8 @@ function initial(){
 		var vpnc_dev_policy_ipaddr = vpnc_dev_policy_list_array[i][0];
 		var dhcp_staticlist_mac = dhcp_staticlist_array[vpnc_dev_policy_ipaddr].mac;
 		var dhcp_staticlist_dns = dhcp_staticlist_array[vpnc_dev_policy_ipaddr].dns;
+		if(dhcp_staticlist_dns == "")
+			dhcp_staticlist_dns = "<#Setting_factorydefault_value#>";
 		if(dhcp_staticlist_mac != undefined) {
 			vpnc_dev_policy_list_array[i].splice(0, 0, dhcp_staticlist_mac);
 			vpnc_dev_policy_list_array[i].splice(2, 0, dhcp_staticlist_dns);
@@ -318,19 +320,15 @@ function gen_exception_list_table() {
 		header: [ 
 			{
 				"title" : "<#Client_Name#> (<#PPPConnection_x_MacAddressForISP_itemname#>)",
-				"width" : "25%"
+				"width" : "30%"
 			},
 			{
 				"title" : "<#IPConnection_ExternalIPAddress_itemname#>",
 				"width" : "20%"
 			},
 			{
-				"title" : "<#LANHostConfig_x_LDNSServer1_itemname#>",
-				"width" : "20%"
-			},
-			{
 				"title" : "<#VPN_Fusion_Connection_Name#>",
-				"width" : "15%"
+				"width" : "30%"
 			},
 			{
 				"title" : "<#CTL_Activate#>",
@@ -352,11 +350,7 @@ function gen_exception_list_table() {
 					"validator" : "ipAddressDHCP"
 				},
 				{
-					"editMode" : "text",
-					"title" : "<#LANHostConfig_x_LDNSServer1_itemname#> (Optional)",
-					"maxlength" : "15",
-					"validator" : "ipAddress",
-					"valueMust" : false
+					"editMode" : "hidden"
 				},
 				{
 					"editMode" : "select",
@@ -380,6 +374,7 @@ function gen_exception_list_table() {
 				},
 				{
 					"editMode" : "pureText",
+					"styleList" : {"display":"none"}
 				},
 				{
 					"editMode" : "select",
@@ -408,11 +403,6 @@ function gen_exception_list_table() {
 	}
 
 	tableApi.genTableAPI(tableStruct);
-	var exception_list_length = $(".tableApi_table").find("[row_td_idx=2] > .static-text").length;
-	for(var i = 0; i < exception_list_length; i += 1) {
-		if($(".tableApi_table").find("[row_td_idx=2] > .static-text").eq(i).html() == "")
-			$(".tableApi_table").find("[row_td_idx=2] > .static-text").eq(i).html("<#Setting_factorydefault_value#>");
-	}
 }
 
 var add_profile_flag = false;
@@ -1744,6 +1734,9 @@ function initialIPSecProfile() {
 	$('input:checkbox[name=ipsec_dh_group_p1]').prop("checked", true);
 	$('input:checkbox[name=ipsec_encryption_p2]').prop("checked", true);
 	$('input:checkbox[name=ipsec_hash_p2]').prop("checked", true);
+	settingRadioItemCheck(document.ipsec_form.ipsec_pfs, "1");
+	changePFS();
+	$('input:checkbox[name=ipsec_pfs_group]').prop("checked", true);
 }
 function editIPSecProfile(mode) {
 	add_profile_flag = false;
@@ -1929,6 +1922,7 @@ function UpdatePSecProfile(array, array_ext) {
 	$('input:checkbox[name=ipsec_dh_group_p1]').prop("checked", false);
 	$('input:checkbox[name=ipsec_encryption_p2]').prop("checked", false);
 	$('input:checkbox[name=ipsec_hash_p2]').prop("checked", false);
+	$('input:checkbox[name=ipsec_pfs_group]').prop("checked", false);
 	var set_checkboxlist = function(_objName, _value) {
 		var binary = parseInt(_value).toString(2);
 		var binary_length = binary.length;
@@ -1945,6 +1939,19 @@ function UpdatePSecProfile(array, array_ext) {
 	set_checkboxlist("ipsec_dh_group_p1", array_ext[2]);
 	set_checkboxlist("ipsec_encryption_p2", array_ext[3]);
 	set_checkboxlist("ipsec_hash_p2", array_ext[4]);
+	if(array_ext[5] == undefined) {
+		settingRadioItemCheck(document.ipsec_form.ipsec_pfs, "1");
+		$('input:checkbox[name=ipsec_pfs_group]').prop("checked", true);
+	}
+	else {
+		if(array_ext[5] == "0")
+			settingRadioItemCheck(document.ipsec_form.ipsec_pfs, "0");
+		else {
+			settingRadioItemCheck(document.ipsec_form.ipsec_pfs, "1");
+			set_checkboxlist("ipsec_pfs_group", array_ext[5]);
+		}
+	}
+	changePFS();
 }
 function getRadioItemCheck(obj) {
 	var checkValue = "";
@@ -2215,6 +2222,13 @@ function save_ipsec_profile_panel() {
 			return false;
 		}
 
+		if(getRadioItemCheck(document.ipsec_form.ipsec_pfs) == "1") {
+			if($('input:checkbox[name=ipsec_pfs_group]:checked').length == 0) {
+				alert("Please choose at least one PFS Groups.");/*untranslated*/
+				return false;
+			}
+		}
+
 		return true;
 	}
 
@@ -2320,7 +2334,7 @@ function save_ipsec_profile_panel() {
 				profile_array[37] + ">" + profile_array[38];
 		
 		/* data structure ext
-		1 encryption_p1, hash_p1, DHGroup, encryption_p2, hash_p2
+		1 encryption_p1, hash_p1, DHGroup, encryption_p2, hash_p2, PFS
 		*/
 		var result_ext = "";
 		var encryption_p1 = 0;
@@ -2328,6 +2342,7 @@ function save_ipsec_profile_panel() {
 		var dh_group = 0;
 		var encryption_p2 = 0;
 		var hash_p2 = 0;
+		var pfs_group = 0;
 		var get_checkboxlist = function(_objName) {
 			var value = 0;
 			$('input:checkbox[name=' + _objName + ']:checked').map(function() {
@@ -2340,7 +2355,9 @@ function save_ipsec_profile_panel() {
 		dh_group = get_checkboxlist("ipsec_dh_group_p1");
 		encryption_p2 = get_checkboxlist("ipsec_encryption_p2");
 		hash_p2 = get_checkboxlist("ipsec_hash_p2");
-		var profile_ext_array = [encryption_p1, hash_p1, dh_group, encryption_p2, hash_p2];
+		if(getRadioItemCheck(document.ipsec_form.ipsec_pfs) == "1")
+			pfs_group = get_checkboxlist("ipsec_pfs_group");
+		var profile_ext_array = [encryption_p1, hash_p1, dh_group, encryption_p2, hash_p2, pfs_group];
 		result_ext = profile_ext_array.join(">");
 
 		document.getElementById(document.ipsec_form.ipsec_profile_item.value).value = result;
@@ -2590,6 +2607,13 @@ function controlSubnetStatus(_ikeVersion, _type) {
 			break;
 	}
 }
+function changePFS() {
+	var clickItem = getRadioItemCheck(document.ipsec_form.ipsec_pfs);
+	if(clickItem == "0")
+		$("#tr_adv_pfs_group").hide();
+	else
+		$("#tr_adv_pfs_group").show();
+}
 function parseArrayToStr_vpnc_dev_policy_list(_array) {
 	var vpnc_dev_policy_list = "";
 	for(var i = 0; i < _array.length; i += 1) {
@@ -2620,6 +2644,8 @@ function parseArrayToStr_dhcp_staticlist() {
 				var temp_mac = vpnc_dev_policy_list_array[i][0];
 				var temp_ip = vpnc_dev_policy_list_array[i][1];
 				var temp_dns = vpnc_dev_policy_list_array[i][2];
+				if(!validator.ipv4_addr(temp_dns))
+					temp_dns = "";
 				dhcp_staticlist += temp_mac + ">" + temp_ip + ">" + temp_dns;
 			}
 		}
@@ -2831,7 +2857,7 @@ function del_exception_list_confirm(_parArray) {
 </script>
 </head>
 
-<body onload="initial();" onunload="unload_body();">
+<body onload="initial();" onunload="unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <iframe name="hidden_frame" id="hidden_frame" width="0" height="0" frameborder="0"></iframe>
@@ -3312,6 +3338,26 @@ function del_exception_list_confirm(_parArray) {
 								<label><input type="checkbox" name="ipsec_hash_p2" value="4">SHA256</label>
 								<!--label><input type="checkbox" name="ipsec_hash_p2" value="8">SHA384</label>
 								<label><input type="checkbox" name="ipsec_hash_p2" value="16">SHA512</label-->
+							</td>
+						</tr>
+						<tr id="tr_adv_pfs">
+							<th>Perfect Forward Secrecy (PFS)</th><!-- untranslated -->
+							<td>
+								<label><input type="radio" name="ipsec_pfs" class="input" value="1" onchange="changePFS();"><#WLANConfig11b_WirelessCtrl_button1name#></label>
+								<label><input type="radio" name="ipsec_pfs" class="input" value="0" onchange="changePFS();"><#WLANConfig11b_WirelessCtrl_buttonname#></label>
+							</td>
+						</tr>
+						<tr id="tr_adv_pfs_group">
+							<th>PFS Groups</th><!-- untranslated -->
+							<td>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="1">1</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="2">2</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="4">5</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="8">14</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="16">15</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="32">16</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="64">17</label>
+								<label><input type="checkbox" name="ipsec_pfs_group" value="128">18</label>
 							</td>
 						</tr>
 						<tr id="tr_adv_keylife_time_p2">

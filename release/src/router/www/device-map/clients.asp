@@ -97,17 +97,12 @@ function initial(){
 	parent.hideEditBlock();
 	generate_wireless_band_list();
 	updateClientList();
-	updateClientListBackground();
+	setTimeout(function(){parent.httpApi.updateClientList();}, 5000);//delay to update client list, in order to avoiding the wired client disappeared
+	setInterval(function(){
+		parent.httpApi.updateClientList();
+	}, 1000*60*3);
 
 	reset_NM_height();
-}
-
-function convRSSI(val){
-	val = parseInt(val);
-	if(val >= -50) return 4;
-	else if(val >= -80)	return Math.ceil((24 + ((val + 80) * 26)/10)/25);
-	else if(val >= -90)	return Math.ceil((((val + 90) * 26)/10)/25);
-	else return 1;
 }
 
 function drawClientList(tab){
@@ -167,7 +162,10 @@ function drawClientList(tab){
 			clientHtmlTd += clientObj.type;
 			clientHtmlTd += '" title="';
 			clientHtmlTd += deviceTitle;
-			clientHtmlTd += '"></div>';
+			clientHtmlTd += '">';
+			if(clientObj.type == "36")
+				clientHtmlTd += '<div class="flash"></div>';
+			clientHtmlTd += '</div>';
 		}
 		else if(clientObj.vendor != "") {
 			var venderIconClassName = getVenderIconClassName(clientObj.vendor.toLowerCase());
@@ -215,7 +213,7 @@ function drawClientList(tab){
 			connectModeTip = "<#tm_wired#>";
 		}
 		else {
-			rssi_t = convRSSI(clientObj.rssi);
+			rssi_t = client_convRSSI(clientObj.rssi);
 			switch (rssi_t) {
 				case 1:
 					connectModeTip = "<#Radio#>: <#PASS_score1#>\n";
@@ -241,10 +239,13 @@ function drawClientList(tab){
 
 		if(parent.sw_mode != 4) {
 			clientHtmlTd += '<div style="height:28px;width:28px;float:right;margin-right:5px;margin-bottom:-20px;">';
-			clientHtmlTd += '<div class="radioIcon radio_' + rssi_t +'" title="' + connectModeTip + '"></div>';
+			var radioIcon_css = "radioIcon";
+			if(clientObj.isGN != "" && clientObj.isGN != undefined)
+				radioIcon_css += " GN";
+			clientHtmlTd += '<div class="' + radioIcon_css + ' radio_' + rssi_t +'" title="' + connectModeTip + '"></div>';
 			if(clientObj.isWL != 0) {
 				var bandClass = (navigator.userAgent.toUpperCase().match(/CHROME\/([\d.]+)/)) ? "band_txt_chrome" : "band_txt";
-				clientHtmlTd += '<div class="band_block"><span class='+bandClass+'>' + wl_nband_title[clientObj.isWL-1].replace("Hz", "") + '</span></div>';
+				clientHtmlTd += '<div class="band_block"><span class='+bandClass+'>' + wl_nband_title[clientObj.isWL-1].replace("Hz", "").replace(/\s*/g,"") + '</span></div>';
 			}
 			clientHtmlTd += '</div>';
 		}
@@ -401,20 +402,13 @@ function oui_query_full_vendor(mac){
 	else {
 		if('<% nvram_get("x_Setting"); %>' == '1' && wanConnectStatus && clientList[mac].internetState) {
 			var queryStr = mac.replace(/\:/g, "").splice(6,6,"");
-			$.ajax({
-			 	url: 'https://services11.ieee.org/RST/standards-ra-web/rest/assignments/download/?registry=MA-L&format=html&text='+ queryStr,
-				type: 'GET',
-			 	success: function(response) {
+			var overlibStrTmp = retOverLibStr(clientList[mac]);
+			$.getJSON("http://nw-dlcdnet.asus.com/plugin/js/ouiDB.json", function(data){
+				if(data != "" && data[queryStr] != undefined){
 					if(overlib.isOut) return nd();
-
-					var overlibStrTmp = retOverLibStr(clientList[mac]);
-					if(response.search("Sorry!") == -1) {
-						if(response.search(queryStr) != -1) {
-							var retData = response.split("pre")[1].split("(base 16)")[1].replace("PROVINCE OF CHINA", "R.O.C").split("</");
-							overlibStrTmp += "<p><span>.....................................</span></p><p style='margin-top:5px'><#Manufacturer#> :</p>";
-							overlibStrTmp += retData[0];
-						}
-					}
+					var vendor_name = data[queryStr].trim();
+					overlibStrTmp += "<p><span>.....................................</span></p><p style='margin-top:5px'><#Manufacturer#> :</p>";
+					overlibStrTmp += vendor_name;
 					return overlib(overlibStrTmp);
 				}
 			});

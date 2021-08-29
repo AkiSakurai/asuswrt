@@ -1,7 +1,7 @@
 /*
  * ACPHY ANAcore control module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_ana.c 775501 2019-06-02 00:18:19Z $
+ * $Id: phy_ac_ana.c 778608 2019-09-05 16:50:19Z $
  */
 
 #include <phy_cfg.h>
@@ -686,9 +686,9 @@ phy_ac_ana_switch(phy_type_ana_ctx_t *ctx, bool on)
 	PHY_TRACE(("%s: %d\n", __FUNCTION__, on));
 
 	if (on)
-		W_REG(pi->sh->osh, D11_PHY_REG_3(pi), 0x0);
+		W_REG(pi->sh->osh, D11_PHY_REG_3(pi), (uint16)0x0);
 	else
-		W_REG(pi->sh->osh, D11_PHY_REG_3(pi), 0xF4);
+		W_REG(pi->sh->osh, D11_PHY_REG_3(pi), (uint16)0xF4);
 
 	return BCME_OK;
 }
@@ -970,67 +970,7 @@ BCMATTACHFN(wlc_phy_attach_femctrl_table)(phy_ac_ana_info_t *ani)
 		table_len = 320;
 	}
 
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		switch (BFCTL(pi_ac)) {
-			default:
-			case 17:
-				table_len = 256;
-				switch (BF3_FEMCTRL_SUB(pi_ac)) {
-					case FCBGA_43012:
-					sparse_table_len =
-						ARRAYSIZE(fectrl_fem43012_idx_BCM43012_fcbga);
-						break;
-					case WLBGA_43012 :
-					sparse_table_len =
-						ARRAYSIZE(fectrl_fem43012_idx_BCM43012_wlbga);
-						break;
-					default:
-					PHY_ERROR(("wl%d: %s: Provide correct femctrl_sub \n",
-						pi->sh->unit, __FUNCTION__));
-						ASSERT(0);
-				}
-				/* malloc table */
-				if ((ani->fectrl_idx =
-				     phy_malloc(pi,
-				            sparse_table_len * sizeof(uint16))) == NULL) {
-					PHY_ERROR(("wl%d: %s: out of memory, malloced %d bytes\n",
-						pi->sh->unit,
-					           __FUNCTION__, MALLOCED(pi->sh->osh)));
-					return FALSE;
-				}
-				if ((ani->fectrl_val =
-				     phy_malloc(pi,
-				            sparse_table_len * sizeof(uint16))) == NULL) {
-					PHY_ERROR(("wl%d: %s: out of memory, malloced %d bytes\n",
-					           pi->sh->unit,
-					           __FUNCTION__, MALLOCED(pi->sh->osh)));
-					return FALSE;
-				}
-				switch (BF3_FEMCTRL_SUB(pi_ac)) {
-					case FCBGA_43012:
-						fectrl_idx = fectrl_fem43012_idx_BCM43012_fcbga;
-						fectrl_val = fectrl_fem43012_val_BCM43012_fcbga;
-						break;
-					case WLBGA_43012 :
-						fectrl_idx = fectrl_fem43012_idx_BCM43012_wlbga;
-						fectrl_val = fectrl_fem43012_val_BCM43012_wlbga;
-						break;
-					default:
-					PHY_ERROR(("wl%d: %s: Provide correct femctrl_sub \n",
-						pi->sh->unit, __FUNCTION__));
-						ASSERT(0);
-				}
-				memcpy(ani->fectrl_idx, fectrl_idx,
-				       sparse_table_len* sizeof(uint16));
-				memcpy(ani->fectrl_val, fectrl_val,
-				       sparse_table_len* sizeof(uint16));
-				ani->fectrl_sparse_table_len = sparse_table_len;
-				ani->fectrl_table_len = table_len;
-				break;
-		}
-	}
-
-	if (ACPHY_FEMCTRL_ACTIVE(pi) && (!(ACMAJORREV_36(pi->pubpi->phy_rev)))) {
+	if (ACPHY_FEMCTRL_ACTIVE(pi)) {
 		switch (BFCTL(pi_ac)) {
 		case 0:
 			/* Chip default, do nothing */
@@ -1685,9 +1625,9 @@ wlc_phy_enable_pavref_war(phy_info_t *pi)
 		ARRAYSIZE(lna_trsw_timing), 0x70, 16, &lna_trsw_timing);
 
 	WRITE_PHYREG(pi, dot11acphycrsTxExtension, 0x1);
-	W_REG(pi->sh->osh, D11_IFS_SIFS_RX_TX_TX(pi), 0x7676);
-	W_REG(pi->sh->osh, D11_IFS_SIFS_NAV_TX(pi), 0x0276);
-	W_REG(pi->sh->osh, D11_PSM_INTSEL_2(pi), 0x5);
+	W_REG(pi->sh->osh, D11_IFS_SIFS_RX_TX_TX(pi), (uint16)0x7676);
+	W_REG(pi->sh->osh, D11_IFS_SIFS_NAV_TX(pi), (uint16)0x0276);
+	W_REG(pi->sh->osh, D11_PSM_INTSEL_2(pi), (uint16)0x5);
 }
 
 void

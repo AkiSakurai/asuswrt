@@ -1,7 +1,7 @@
 /*
  * ACPHY TXIQLO CAL module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_txiqlocal.h 775385 2019-05-29 11:30:21Z $
+ * $Id: phy_ac_txiqlocal.h 777374 2019-07-30 18:13:54Z $
  */
 
 #ifndef _phy_ac_txiqlocal_h_
@@ -83,12 +83,11 @@ void phy_ac_txiqlocal_unregister_impl(phy_ac_txiqlocal_info_t *info);
 typedef struct {
 	uint8 lofttbl_start_idx;
 	uint8 lofttbl_end_idx;
-} txiqlocal_lopwr_cal_t;
+} txiqlocal_multilo_t;
 
 /* Enable the pre-RX TxIQ cal for these revs */
 #define ACPHY_TXCAL_PRERXCAL(pi) \
-	(!TINY_RADIO(pi) && (!ACMAJORREV_36((pi)->pubpi->phy_rev)) && \
-	(!ACMAJORREV_40(pi->pubpi->phy_rev)))
+	(!TINY_RADIO(pi) && (!ACMAJORREV_40(pi->pubpi->phy_rev)))
 
 int8 phy_ac_txiqlocal_get_fdiqi_slope(phy_ac_txiqlocal_info_t *txiqlocali, uint8 core);
 void phy_ac_txiqlocal_set_fdiqi_slope(phy_ac_txiqlocal_info_t *txiqlocali, uint8 core, int8 slope);
@@ -104,7 +103,7 @@ extern void wlc_phy_cal_txiqlo_coeffs_acphy(phy_info_t *pi, uint8 rd_wr, uint16 
 extern void wlc_phy_ipa_set_bbmult_acphy(phy_info_t *pi, uint16 *m0, uint16 *m1,
 	uint16 *m2, uint16 *m3, uint8 coremask);
 void wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains,
-	uint8 extraLOcal_cnt);
+	uint8 multilo_cal_cnt);
 uint8 wlc_phy_get_tbl_id_iqlocal(phy_info_t *pi, uint16 core);
 extern void wlc_phy_txcal_phy_setup_acphy_core_sd_adc(phy_info_t *pi, uint8 core,
 	uint16 sdadc_config);
@@ -118,17 +117,17 @@ extern void wlc_phy_tx_fdiqi_comp_acphy(phy_info_t *pi, bool enable, int fdiq_da
 #endif // endif
 void wlc_phy_cal_txiqlo_init_acphy(phy_info_t *pi);
 void phy_ac_txiqlocal_multiphase(phy_info_t *pi, uint8 searchmode, bool Biq2byp, uint16 cts_time,
-	uint8 extraLOcal_cnt);
+	uint8 multilo_cal_cnt);
 void wlc_phy_cal_txiqlo_acphy(phy_info_t *pi, uint8 searchmode, uint8 mphase, bool Biq2byp,
-	uint8 extraLOcal_cnt);
+	uint8 multilo_cal_cnt);
 void wlc_phy_txcal_set_cal_params(phy_info_t *pi, uint8 searchmode, uint8 mphase, bool Biq2byp);
 void wlc_phy_txcal_coeffs_upd(phy_info_t *pi, txcal_coeffs_t *txcal_cache);
-uint8 phy_txiqlocal_extra_local(phy_info_t *pi);
+uint8 phy_txiqlocal_num_multilo(phy_info_t *pi);
 void wlc_phy_txiqlocal_lopwr_gettblidx(phy_info_t *pi,
-	txiqlocal_lopwr_cal_t *txiqlocal_lopwr_cal, uint8 extraLOcal_cnt, bool cache);
+	txiqlocal_multilo_t *multilo_cal, uint8 multilo_cal_cnt);
 #ifdef PHYCAL_CACHING
 void phy_ac_txiqlocal_save_cache(phy_ac_txiqlocal_info_t *txiqlocali,
-                                 ch_calcache_t *ctx, uint8 extraLOcal_cnt);
+                                 ch_calcache_t *ctx, uint8 multilo_cal_cnt);
 #else
 void wlc_phy_scanroam_cache_txcal_acphy(void *ctx, bool set);
 #endif // endif

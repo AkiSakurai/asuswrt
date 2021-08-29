@@ -73,7 +73,11 @@ endif
     obj-$(CONFIG_BCM_RDPA) = rdpa.o
 	OBJS += $(RDD_OBJS)
 	OBJS += $(SUBSYS_OBJS)
+ifneq ($(PREBUILT_EXTRAMOD),1)	
 	rdpa-objs = $(OBJS)
+else
+	rdpa-objs := rdpa$(PRBM_EXT).o
+endif	
 endif
 
 _CFLAGS += $(PROJ_CFLAGS)

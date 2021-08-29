@@ -90,9 +90,9 @@ static int runner_ip_class_inetaddr_event(struct notifier_block *this, unsigned 
  *******************************************************************************/
 
 
-extern bdmf_object_handle ucast_class;
+extern bdmf_object_handle system_obj;
+extern bdmf_object_handle ip_class;
 #if defined(CONFIG_BCM_CSO)
-bdmf_object_handle system_obj;
 
 #if defined(CONFIG_IPV6)
 static struct notifier_block runner_ip_class_inet6addr_notifier = {
@@ -198,29 +198,34 @@ static int runner_ip_class_inetaddr_event(struct notifier_block *this, unsigned 
 }
 #endif
 
+static int runner_ip_class_tcp_ack_prio_set(uint32_t enable)
+{
+    return rdpa_ip_class_tcp_ack_prio_set(ip_class, enable);
+}
 
 int __init runnerHost_construct(void)
 {
 #if defined(CONFIG_BCM_CSO)
-    rdpa_system_get(&system_obj);
-
     register_inetaddr_notifier(&runner_ip_class_inetaddr_notifier);
 #if defined(CONFIG_IPV6)
     register_inet6addr_notifier(&runner_ip_class_inet6addr_notifier);
 #endif
 #endif
 
+    blog_tcp_ack_mflows_set_fn = (blog_tcp_ack_mflows_set_t)runner_ip_class_tcp_ack_prio_set;
+    runner_ip_class_tcp_ack_prio_set(blog_support_get_tcp_ack_mflows());
+
     return 0;
 }
 
 void __exit runnerHost_destruct(void)
 {
+    blog_tcp_ack_mflows_set_fn = (blog_tcp_ack_mflows_set_t)NULL;
+
 #if defined(CONFIG_BCM_CSO)
     unregister_inetaddr_notifier(&runner_ip_class_inetaddr_notifier);
 #if defined(CONFIG_IPV6)
     unregister_inet6addr_notifier(&runner_ip_class_inet6addr_notifier);
 #endif
-
-    bdmf_put(system_obj);
 #endif
 }

@@ -53,25 +53,31 @@
 	background-position: 0px 0px;
 }
 .wl1_icon_on{
-	background-position: 0px 144px;
+	background-position: 0px -48px;
 }
 .wl1_1_icon_on{
-	background-position: 0px 96px;
+	background-position: 0px -96px;
 }
 .wl2_icon_on{
-	background-position: 0px 48px;
+	background-position: 0px -144px;
+}
+.wl6_icon_on{
+	background-position: 0px -192px;
 }
 .wl0_icon_off{
 	background-position: 48px 0px;
 }
 .wl1_icon_off{
-	background-position: 48px 144px;
+	background-position: 48px -48px;
 }
 .wl1_1_icon_off{
-	background-position: 48px 96px;
+	background-position: 48px -96px;
 }
 .wl2_icon_off{
-	background-position: 48px 48px;
+	background-position: 48px -144px;
+}
+.wl6_icon_off{
+	background-position: 48px -192px;
 }
 .wan_state_icon{
 	width: 136px;
@@ -244,7 +250,7 @@
 .event-cancel{
 	width: 20px;
 	height: 20px;
-	background: url('images/gameprofile/cancel.svg');
+	background: url('images/gameprofile/cancel.svg') no-repeat center;;
 	border: 1px solid #842500;
 	background-color:#262626;
 	border-radius: 50%;
@@ -278,6 +284,8 @@ var t_sec = time.getSeconds();
 var wl0_radio = '<% nvram_get("wl0_radio"); %>';
 var wl1_radio = '<% nvram_get("wl1_radio"); %>';
 var wl2_radio = '<% nvram_get("wl2_radio"); %>';
+var label_mac = <% get_label_mac(); %>;
+var CNSku = in_territory_code("CN");
 
 for(i=0;i<30;i++){
 	var temp = [];
@@ -315,6 +323,10 @@ function initial(){
 	else if(rog_support){
 		$("#pingMap").show();
 		if (aura_support) {
+			if(based_modelid == 'GT-AC2900'){
+				$("#aura_event").show();
+			}
+
 			$("#aura_field").show();
 		}
 		else {
@@ -327,6 +339,10 @@ function initial(){
 	}
 	else{
 		$("#wan_state_icon").attr("class", "wan_state_icon");
+	}
+
+	if(uu_support && based_modelid == 'GT-AC5300'){
+		$('#uu_field').show();
 	}
 
 	show_menu();
@@ -375,13 +391,22 @@ function initial(){
 	}
 
 	if(isSwMode("rt") || isSwMode("ap")){
-		var wl1_reg_mode = '<% nvram_get("wl1_reg_mode"); %>';
-		if(isSupport("triband")){
-			var wl2_reg_mode = '<% nvram_get("wl2_reg_mode"); %>';
-		}
+		if(Qcawifi_support){
+			var ch = eval('<% channel_list_5g(); %>').toString().split(",");
+			if(isSupport("triband"))
+			ch += eval('<% channel_list_5g_2(); %>').toString().split(",");
+			if(ch.indexOf("52") != -1 || ch.indexOf("56") != -1 || ch.indexOf("60") != -1 || ch.indexOf("64") != -1 || ch.indexOf("100") != -1 || ch.indexOf("104") != -1 || ch.indexOf("108") != -1 || ch.indexOf("112") != -1 || ch.indexOf("116") != -1 || ch.indexOf("120") != -1 || ch.indexOf("124") != -1 || ch.indexOf("128") != -1 || ch.indexOf("132") != -1 || ch.indexOf("136") != -1 || ch.indexOf("140") != -1 || ch.indexOf("144") != -1){
+				document.getElementById("boost_dfs").style.display = "";
+			}
+		}else{
+			var wl1_reg_mode = '<% nvram_get("wl1_reg_mode"); %>';
+			if(isSupport("triband")){
+				var wl2_reg_mode = '<% nvram_get("wl2_reg_mode"); %>';
+			}
 
-		if(wl1_reg_mode == 'h' || wl2_reg_mode == 'h'){
-			document.getElementById("boost_dfs").style.display = "";
+			if(wl1_reg_mode == 'h' || wl2_reg_mode == 'h'){
+				document.getElementById("boost_dfs").style.display = "";
+			}
 		}
 	}
 
@@ -489,7 +514,12 @@ function check_wireless(){
 
 		temp = (wl1_radio == "1") ? "wl1_icon_on" : "wl1_icon_off"
 		if(band5g2_support){
-			temp = (wl1_radio == "1") ? "wl1_1_icon_on" : "wl1_1_icon_off"
+			if(band6g_support){
+				temp = (wl1_radio == "1") ? "wl1_icon_on" : "wl1_icon_off";
+			}
+			else{
+				temp = (wl1_radio == "1") ? "wl1_1_icon_on" : "wl1_1_icon_off";
+			}			
 		}
 
 		$("#wl1_icon").show();
@@ -501,7 +531,14 @@ function check_wireless(){
 		if (isSwMode('mb')) {
 			wl2_radio = '0';
 		}
-		temp = (wl2_radio == "1") ? "wl2_icon_on" : "wl2_icon_off"
+
+		if(band6g_support){
+			temp = (wl2_radio == "1") ? "wl6_icon_on" : "wl6_icon_off";
+		}
+		else{
+			temp = (wl2_radio == "1") ? "wl2_icon_on" : "wl2_icon_off";
+		}
+		
 
 		$("#wl2_icon").show();
 		$("#wl2_icon").addClass(temp);
@@ -810,22 +847,10 @@ var netoolApiDashBoard = {
 	}
 }
 function updateClientsCount() {
-	$.ajax({
-		url: '/update_networkmapd.asp',
-		dataType: 'script', 
-		error: function(xhr) {
-			setTimeout("updateClientsCount();", 1000);
-		},
-		success: function(response){
-			client_count = fromNetworkmapd_maclist[0].length;
-			if(fromNetworkmapd_maclist[0].length == '0'){
-				client_count = totalClientNum.online;
-			}
-
-			$("#client_count").html(client_count);
-			setTimeout("updateClientsCount();", 5000);
-		}
-	});
+	originData.fromNetworkmapd[0] = httpApi.hookGet("get_clientlist", true);
+	genClientList();
+	$("#client_count").html(totalClientNum.online);
+	setTimeout("updateClientsCount();", 5000);
 }
 
 function rgbToHex(c){
@@ -1018,7 +1043,10 @@ function hideEventTriggerDesc(){
 	$('#aura_event_trigger').removeClass('aura-event-desc-show')
 							.addClass('aura-event-desc-hide');
 }
-
+function uuRegister(mac){
+	var _mac = mac.toLowerCase();
+	window.open('https://router.uu.163.com/asus/pc.html#/acce?gwSn=' + _mac + '&type=asuswrt', '_blank');
+}
 </script>
 </head>
 
@@ -1183,12 +1211,12 @@ function hideEventTriggerDesc(){
 									<script>
 										$("#pingMap").load("/cards/pingMap.html");
 									</script>
-									<div id="aura_field" style="width:345px;height:425px;margin:-360px 0 0 390px;display:none;position: relative'">
+									<div id="aura_field" style="width:345px;height:425px;margin:-360px 0 0 390px;display:none;position: relative">
 										<div id="aura_event_trigger" class="aura-event-container aura-event-desc-hide">
 											<div>
 												<div style="display: flex;justify-content: space-between">
 													<div style="font-size: 16px;font-weight: bold;"><#AURA_Event#></div>
-													<div class="event-cancel" onclick="hideEventTriggerDesc();"></div>
+													<div class="event-cancel" onclick="hideEventTriggerDesc();"></div>											
 												</div>
 												
 												<div style="margin: 3px 0 6px 0;color:#BFBFBF;"><#AURA_Event_desc#></div>
@@ -1216,7 +1244,7 @@ function hideEventTriggerDesc(){
 										</div>
 
 										<div style="display:flex;align-items: center;justify-content: space-around;;">
-											<div class="rog-title" style="height:65px;">AURA RGB</div>
+											<div class="rog-title" style="height:65px;"><#BoostKey_Aura_RGB#></div>
 											<div style="width: 68px;height:68px;margin-top:10px;background: url('./images/New_ui/img-aurasync-logo.png')"></div>
 										</div>
 										<div style="display:flex;margin-top:-20px;">
@@ -1272,7 +1300,7 @@ function hideEventTriggerDesc(){
 										</div>
 
 										<div class="aura-scheme-container">
-											<div class="aura-scheme">
+											<div id="aura_event" class="aura-scheme" style="display:none">
 												<div id="_event" class="aura-icon aura-icon-event" onclick="changeRgbMode(this);"></div>
 												<div class="aura-desc"><#AURA_Event#></div>
 												<div style="width:16px;height:16px;background: url('images/New_ui/helpicon.png');margin: 5px auto 0 auto;cursor:pointer;" onclick="showEventTriggerDesc();"></div>
@@ -1319,6 +1347,22 @@ function hideEventTriggerDesc(){
 											</div>
 										</div>
 									</div>
+									<div id="uu_field" style="width:345px;height:425px;margin:-428px 0 0 390px;position: relative;display:none;">
+										<div style="font-size: 26px;color:#BFBFBF;margin-left:12px;">网易UU加速器</div>
+										<div style="margin: 24px 0 36px 18px;">
+											<img src="/images/uu_accelerator.png" alt="">
+										</div>
+										<div style="font-size:16px;margin: 0 6px;">UU路由器插件为三大主机PS4、Switch、Xbox One提供加速。可实现多台主机同时加速，NAT类型All Open。畅享全球联机超快感！</div>
+										<div style="margin:6px;">
+											<a href="https://uu.163.com/router/" target="_blank" style="color:#4A90E2;text-decoration: underline">FAQ</a>
+										</div>
+										<div class="content-action-container" onclick="uuRegister(label_mac);" style="margin-top:36px;">
+											<div class="button-container button-container-sm" style="margin: 0 auto;">
+												<div class="button-icon icon-go"></div>
+												<div class="button-text"><#btn_go#></div>
+											</div>
+										</div>													
+									</div>
 									
 									<div id="boostKey_field" style="width:720px;height:340px;margin: 33px 0 20px 15px;display:none">
 										<div style="display:flex;align-items: center;justify-content: space-around;margin-bottom:40px;">
@@ -1334,22 +1378,22 @@ function hideEventTriggerDesc(){
 										<div style="display:flex;width:720px;height: 76px;margin: 20px 0 10px 30px;">
 											<div style="width:30px;height:76px;background: rgb(145,7,31);transform: skew(-30deg);"></div>
 											<div id="boost_led" class="boost-function boost-border-odd" onclick="handleBoostKey(this)">
-												<div class="boost-text">LED</div>
+												<div class="boost-text"><#BoostKey_LED#></div>
 											</div>
 											<div id="boost_shuffle" style="display:none;" class="boost-function boost-border-even" onclick="handleBoostKey(this)">
-												<div class="boost-text">AURA Shuffle</div>
+												<div class="boost-text"><#BoostKey_AURA_Shuffle#></div>
 											</div>
 											<div id="boost_dfs" style="display:none;" class="boost-function boost-border-even" onclick="handleBoostKey(this)">
-												<div class="boost-text">DFS Channel</div>
+												<div class="boost-text"><#BoostKey_DFS#></div>
 											</div>
 											<div id="boost_aura" class="boost-function boost-border-odd" onclick="handleBoostKey(this)">
-												<div class="boost-text">AURA RGB</div>
+												<div class="boost-text"><#BoostKey_Aura_RGB#></div>
 											</div>
 											<div id="boost_qos" style="display:none;" class="boost-function boost-border-even" onclick="handleBoostKey(this)">
 												<div class="boost-text"><#Game_Boost#></div>
 											</div>
 											<div id="boost_geforce" style="display:none;" class="boost-function boost-border-even" onclick="handleBoostKey(this)">
-												<div class="boost-text">Geforce Now</div>
+												<div class="boost-text"><#BoostKey_GeForce#></div>
 											</div>
 										</div>
 									</div>

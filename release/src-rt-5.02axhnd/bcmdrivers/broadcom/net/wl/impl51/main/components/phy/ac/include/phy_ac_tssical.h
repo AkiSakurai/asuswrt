@@ -1,7 +1,7 @@
 /*
  * ACPHY TSSI Cal module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tssical.h 775385 2019-05-29 11:30:21Z $
+ * $Id: phy_ac_tssical.h 775632 2019-06-07 08:19:03Z $
  */
 
 #ifndef _phy_ac_tssical_h_
@@ -68,7 +68,6 @@ void phy_ac_tssical_unregister_impl(phy_ac_tssical_info_t *ac_info);
 extern void wlc_phy_tssi_radio_setup_acphy_tiny(phy_info_t *pi, uint8 core_mask, uint8 for_iqcal);
 extern void wlc_phy_tssi_radio_setup_acphy_28nm(phy_info_t *pi, uint8 for_iqcal);
 extern void wlc_phy_tssi_radio_setup_acphy_20694(phy_info_t *pi, uint8 for_iqcal);
-extern void wlc_phy_tssi_radio_setup_acphy_20696(phy_info_t *pi, uint8 for_iqcal);
 extern void wlc_phy_tssi_radio_setup_acphy_20698(phy_info_t *pi, uint8 for_iqcal);
 extern void wlc_phy_tssi_radio_setup_acphy_20704(phy_info_t *pi, uint8 for_iqcal);
 extern void wlc_phy_tssi_radio_setup_acphy_20707(phy_info_t *pi, uint8 for_iqcal);

@@ -1,7 +1,7 @@
 /*
  * NPHY RadarDetect module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_n_radar.c 672101 2016-11-24 06:06:10Z $
+ * $Id: phy_n_radar.c 776423 2019-06-27 22:41:11Z $
  */
 
 #include <typedefs.h>
@@ -197,7 +197,7 @@ WLBANDINITFN(_phy_n_radar_init)(phy_n_radar_info_t *info, bool on)
 			st->rparams.radar_args.fmdemodcfg);
 
 		wlapi_bmac_write_shm(pi->sh->physhim,
-			M_RADAR_REG, st->rparams.radar_args.thresh1);
+			M_RADAR_REG(pi), st->rparams.radar_args.thresh1);
 
 		PHY_REG_LIST_START
 			PHY_REG_WRITE_ENTRY(NPHY, RadarThresh0R, 0x7a8)

@@ -1,7 +1,7 @@
 /*
  * ACPHY Rx Gain Control and Carrier Sense module implementation - iovar handlers & registration
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rxgcrs_iov.c 770846 2019-01-07 23:58:52Z $
+ * $Id: phy_ac_rxgcrs_iov.c 786080 2020-04-15 22:01:54Z $
  */
 
 #include <phy_ac_rxgcrs_iov.h>
@@ -140,6 +140,7 @@ phy_ac_rxgcrs_doiovar(void *ctx, uint32 aid,
 			break;
 		case IOV_GVAL(IOV_PHY_LESI_OVRD):
 			err = phy_ac_rxgcrs_iovar_get_lesi_ovrd(rxgcrsi, ret_int_ptr);
+			break;
 		case IOV_SVAL(IOV_PHY_LESI_OVRD):
 			err = phy_ac_rxgcrs_iovar_set_lesi_ovrd(rxgcrsi, int_val);
 			break;

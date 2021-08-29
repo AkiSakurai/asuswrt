@@ -1,6 +1,6 @@
 /*
  * CLM API functions.
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,15 +44,14 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_clm.c 804029 2019-02-11 19:28:00Z $
+ * $Id: wlc_clm.c 823386 2019-06-04 00:14:32Z $
  */
 
 /* Define wlc_cfg.h to be the first header file included as some builds
  * get their feature flags through this file.
  */
 #include <wlc_cfg.h>
-#include "wlc_clm.h"
-#include "wlc_clm_data.h"
+
 #include <bcmwifi_rates.h>
 #include <typedefs.h>
 
@@ -61,6 +60,8 @@
 #include <bcmutils.h>
 #include <siutils.h>
 #include <bcmendian.h>
+#include "wlc_clm.h"
+#include "wlc_clm_data.h"
 
 /******************************
 * MODULE MACROS AND CONSTANTS *
@@ -68,7 +69,7 @@
 */
 
 /* BLOB format version major number */
-#define FORMAT_VERSION_MAJOR 23
+#define FORMAT_VERSION_MAJOR 24
 
 /* BLOB format version minor number */
 #define FORMAT_VERSION_MINOR 0
@@ -207,8 +208,8 @@ enum clm_internal_const {
 	/** Base value for rates in extended rate set */
 	BASE_EXT_RATE = WL_RATE_1X3_DSSS_1,
 
-	/** Shift valie for hash function that computes index of TX mode index
-	 * for HE0 rates
+	/** Shift value for hash function that computes index of TX mode for
+	 * HE0 rates
 	 */
 	SU_TX_MODE_HASH_SHIFT = 4,
 
@@ -277,8 +278,8 @@ typedef struct data_dsc {
 	 */
 	clm_channel_comb_set_t valid_channel_combs[CLM_BAND_NUM][CLM_BW_NUM];
 
-	/** 40+MHz combs stored in BLOB - deprecated */
-	MY_BOOL has_high_bw_combs;
+	/** 40+MHz combs stored in BLOB - obsoleted */
+	MY_BOOL has_high_bw_combs_obsoleted;
 
 	/** Index within clm_country_rev_definition_cd10_t::extra of byte with
 	 * bits 9-16 of rev. -1 for 8-bit revs
@@ -291,11 +292,11 @@ typedef struct data_dsc {
 	/** Address of header for version strings */
 	const clm_data_header_t *header;
 
-	/** True if BLOB capable of containing 160MHz data - deprecated */
-	MY_BOOL has_160mhz;
+	/** True if BLOB capable of containing 160MHz data - obsoleted */
+	MY_BOOL has_160mhz_obsoleted;
 
-	/** Per-bandwidth base addresses of channel range descriptors */
-	const clm_channel_range_t *chan_ranges_bw[CLM_BW_NUM];
+	/** Obsoleted */
+	const clm_channel_range_t *chan_ranges_bw_obsoleted[CLM_BW_NUM];
 
 	/** Per-band-bandwidth base addresses of rate set definitions */
 	const unsigned char *rate_sets_bw[CLM_BAND_NUM][CLM_BW_NUM];
@@ -321,8 +322,8 @@ typedef struct data_dsc {
 	/** Per-band-bandwidth base addresses of extended rate set definitions */
 	const unsigned char *ext_rate_sets_bw[CLM_BAND_NUM][CLM_BW_NUM];
 
-	/** True if BLOB contains ULB channels - deprecated */
-	MY_BOOL has_ulb;
+	/** True if BLOB contains ULB channels - obsoleted */
+	MY_BOOL has_ulb_obsoleted;
 
 	/** If BLOB has regrev remaps - pointer to remap set structure */
 	const clm_regrev_cc_remap_set_t *regrev_remap;
@@ -347,7 +348,7 @@ typedef struct data_dsc {
 	int reg_loc14_idx;
 
 	/** Obsoleted */
-	const unsigned char *he_rate_sets;
+	const unsigned char *he_rate_sets_obsoleted;
 
 	/** Descriptors of HE rates, used in BLOB */
 	const clm_he_rate_dsc_t *he_rate_dscs;
@@ -359,6 +360,37 @@ typedef struct data_dsc {
 
 	/** Per-band-bandwidth base addresses of OFDMA rate set definitions */
 	const unsigned char *he_rate_sets_bw[CLM_BAND_NUM][CLM_BW_NUM];
+
+	/** Per-band-bandwidth base addresses of channel range descriptors */
+	const clm_channel_range_t *chan_ranges_band_bw[CLM_BAND_NUM][CLM_BW_NUM];
+
+	/** Index within clm_country_rev_definition_cdXX_t::extra of byte with
+	 * bits 9-12 of 6GHz locale indices. -1 for 8 bit locale indices
+	 */
+	int reg_loc12_6g_idx;
+
+	/** Index within clm_country_rev_definition_cdXX_t::extra of byte with
+	 * bits 13-16 of 6GHz locale indices. -1 for 8 and 12 bit locale indices
+	 */
+	int reg_loc16_6g_idx;
+
+	/** Mask that covers valid bits in locale index - used for
+	 * interpretation of special indices (CLM_LOC_... constants, that are
+	 * truncated in BLOB)
+	 */
+	int loc_idx_mask;
+
+	/** Per-band-bandwidth indices of rate set definitions */
+	const unsigned short *rate_sets_indices_bw[CLM_BAND_NUM][CLM_BW_NUM];
+
+	/** Per-band-bandwidth indices of ext rate set definitions */
+	const unsigned short *ext_rate_sets_indices_bw[CLM_BAND_NUM][CLM_BW_NUM];
+
+	/** Per-band-bandwidth indices of ext4 rate set definitions */
+	const unsigned short *ext4_rate_sets_indices_bw[CLM_BAND_NUM][CLM_BW_NUM];
+
+	/** Per-band-bandwidth indices of HE/RU rate set definitions */
+	const unsigned short *he_rate_sets_indices_bw[CLM_BAND_NUM][CLM_BW_NUM];
 } data_dsc_t;
 
 /** Addresses of locale-related data */
@@ -381,11 +413,11 @@ typedef struct locale_data {
 	/** Per-bandwidth channel combs */
 	const clm_channel_comb_set_t *combs[CLM_BW_NUM];
 
-	/** 80MHz subchannel rules - deprecated! */
-	clm_sub_chan_region_rules_80_t sub_chan_channel_rules_80;
+	/** 80MHz subchannel rules - obsoleted */
+	clm_sub_chan_region_rules_80_t sub_chan_channel_rules_80_obsoleted;
 
-	/** 160MHz subchannel rules - deprecated! */
-	clm_sub_chan_region_rules_160_t sub_chan_channel_rules_160;
+	/** 160MHz subchannel rules - obsoleted */
+	clm_sub_chan_region_rules_160_t sub_chan_channel_rules_160_obsoleted;
 
 	/** Per-bandwidth base addresses of extended rate set definitions */
 	const unsigned char * const *ext_rate_sets_bw;
@@ -396,35 +428,52 @@ typedef struct locale_data {
 	/** Per-bandwidth base addresses of extended 4TX rate set definitions */
 	const unsigned char * const *ext4_rate_sets_bw;
 
-	/** Per-bandwidth base addresses of OHDMA rate set definitions */
+	/** Per-bandwidth base addresses of OFDMA rate set definitions */
 	const unsigned char * const *he_rate_sets_bw;
+
+	/** Per-bandwidth indices of rate set definitions */
+	const unsigned short * const *rate_sets_indices_bw;
+
+	/** Per-bandwidth indices of ext rate set definitions */
+	const unsigned short * const *ext_rate_sets_indices_bw;
+
+	/** Per-bandwidth indices of ext4 rate set definitions */
+	const unsigned short * const *ext4_rate_sets_indices_bw;
+
+	/** Per-bandwidth indices of HE/RU rate set definitions */
+	const unsigned short * const *he_rate_sets_indices_bw;
 } locale_data_t;
 
-/** Addresses of region (country)-related data */
-typedef struct country_data {
-	/** Per-bandwidth base addresses of channel range descriptors in data
-	 * set this region defined in
-	 */
-	const clm_channel_range_t * const *chan_ranges_bw;
-
-	/** 80MHz subchannel rules */
-	clm_sub_chan_region_rules_t sub_chan_channel_rules_80;
-
-	/** 160MHz subchannel rules */
-	clm_sub_chan_region_rules_t sub_chan_channel_rules_160;
-
+/** Addresses of region (country)-related data. Replaces previous, completely
+ * obsoleted layout
+ */
+typedef struct country_data_v2 {
 	/** 40MHz subchannel rules */
 	clm_sub_chan_region_rules_t sub_chan_channel_rules_40[CLM_BAND_NUM];
 
-	/** Power increments (offsets) for 80MHz subchannel rules (or NULL) */
-	const signed char *sub_chan_increments_80;
+	/** 80MHz subchannel rules */
+	clm_sub_chan_region_rules_t sub_chan_channel_rules_80[CLM_BAND_NUM];
 
-	/** Power increments (offsets) for 80MHz subchannel rules (or NULL) */
-	const signed char *sub_chan_increments_160;
+	/** 160MHz subchannel rules */
+	clm_sub_chan_region_rules_t sub_chan_channel_rules_160[CLM_BAND_NUM];
 
-	/** Power increments (offsets) for 80MHz subchannel rules (or NULL) */
+	/** Power increments (offsets) for 40MHz subchannel rules (or NULL) */
 	const signed char *sub_chan_increments_40[CLM_BAND_NUM];
-} country_data_t;
+
+	/** Power increments (offsets) for 80MHz subchannel rules (or NULL) */
+	const signed char *sub_chan_increments_80[CLM_BAND_NUM];
+
+	/** Power increments (offsets) for 160MHz subchannel rules (or NULL) */
+	const signed char *sub_chan_increments_160[CLM_BAND_NUM];
+
+	/** Per-band-bandwidth base addresses of channel range descriptors.
+	 * References correspondent field in data_dsc_t. Used in subchannel
+	 * rules' computation where, in case of incremental BLOB use, locale
+	 * subchannel ranges can't be used (as they may come from different
+	 * data source)
+	 */
+	const clm_channel_range_t *(*chan_ranges_band_bw)[CLM_BW_NUM];
+} country_data_v2_t;
 
 /** Information about aggregation */
 typedef struct aggregate_data {
@@ -438,14 +487,31 @@ typedef struct aggregate_data {
 	const void *regions;
 } aggregate_data_t;
 
+/** Locale type descriptor */
+typedef struct loc_type_dsc {
+	/** Band */
+	clm_band_t band;
+
+	/* Locale flavor (base/HT) */
+	base_ht_id_t flavor;
+
+	/** Offset of locale definition field in clm_country_locales_t */
+	unsigned int def_field_offset;
+
+	/** Offset of locales' definition field in clm_registry_t */
+	unsigned int loc_def_field_offset;
+} loc_type_dsc_t;
+
 /** Descriptors of main and incremental data sources */
 static data_dsc_t data_sources[] = {
 	{ NULL, 0, {{{0, 0}}}, 0, 0, 0, NULL, 0, {NULL}, {{NULL}}, 0, 0, 0,
 	(clm_ccrev_format_t)0, {{NULL}}, 0, NULL, 0, 0, 0, 0, 0, NULL, NULL,
-	{{NULL}}, {{NULL}} },
+	{{NULL}}, {{NULL}}, {{NULL}}, 0, 0, 0, {{NULL}}, {{NULL}}, {{NULL}},
+	{{NULL}} },
 	{ NULL, 0, {{{0, 0}}}, 0, 0, 0, NULL, 0, {NULL}, {{NULL}}, 0, 0, 0,
 	(clm_ccrev_format_t)0, {{NULL}}, 0, NULL, 0, 0, 0, 0, 0, NULL, NULL,
-	{{NULL}}, {{NULL}} }
+	{{NULL}}, {{NULL}}, {{NULL}}, 0, 0, 0, {{NULL}}, {{NULL}}, {{NULL}},
+	{{NULL}} }
 };
 
 /** Rate type by rate index. Values are from enum clm_rate_type, compressed to
@@ -543,7 +609,7 @@ static const unsigned char bw_width_to_idx_non_ac[CLM_DATA_FLAG_WIDTH_MASK + 1] 
 
 static const unsigned char* bw_width_to_idx;
 
-#ifdef WL_RU_NUMRATES
+#if defined(WL_RU_NUMRATES)
 /** SU base (modulation index 0) rate indices in same order, as in
  * he_rate_descriptors[] and in clm_ru_rates_t for a particular rate type
  */
@@ -592,7 +658,39 @@ static const clm_he_rate_dsc_t he_rate_descriptors[] = {
 	{0, 3, 4, CLM_HE_RATE_FLAG_TXBF},	/* 3X4_TXBF */
 	{0, 4, 4, CLM_HE_RATE_FLAG_TXBF},	/* 4X4_TXBF */
 };
-#endif /* WL_RU_NUMRATES */
+#elif defined(WL_NUM_HE_RT)
+/** Maps shifted CLM_DATA_FLAG2_OUTER_BW_... constanst to bandwidths */
+static const clm_bandwidth_t outer_bw_to_bw[] = {
+	CLM_BW_NUM, CLM_BW_40,
+#ifdef WL11AC
+	CLM_BW_80, CLM_BW_160
+#else
+	CLM_BW_NUM, CLM_BW_NUM
+#endif /* WL11AC */
+};
+
+/** RU rate types that corresponds to HE on various bandwidths */
+static const wl_he_rate_type_t he_bw_to_ru[] = {
+	WL_HE_RT_RU242, WL_HE_RT_RU484,
+#ifdef WL11AC
+	WL_HE_RT_RU996, (wl_he_rate_type_t)WL_NUM_HE_RT
+#else
+	(wl_he_rate_type_t)WL_NUM_HE_RT, (wl_he_rate_type_t)WL_NUM_HE_RT
+#endif /* WL11AC */
+};
+
+/** Maps WL_HE_RT_... constants to their minimum bandwidths. UB/LUB mapped to
+ * CLM_BW_NUM to designate that they are not allowed on subchannels
+ */
+static const clm_bandwidth_t min_ru_bw[] = {
+	CLM_BW_20, CLM_BW_20, CLM_BW_20, CLM_BW_20, CLM_BW_NUM, CLM_BW_NUM, CLM_BW_20, CLM_BW_40,
+#ifdef WL11AC
+	CLM_BW_80
+#else
+	CLM_BW_NUM
+#endif /* WL11AC */
+};
+#endif /* WL_NUM_HE_RT */
 
 /** Maps limit types to descriptors of paths from main channel to correspondent
  * subchannel. Each descriptor is a byte. High nibble contains number of steps
@@ -623,6 +721,37 @@ static const unsigned char subchan_paths[] = {
 static const int antenna_power_offsets[] = {
 	CLM_LOC_DSC_POWER_IDX, CLM_LOC_DSC_POWER1_IDX, CLM_LOC_DSC_POWER2_IDX,
 	CLM_LOC_DSC_POWER3_IDX
+};
+
+/** Locale type descriptors, ordered by locale type indices
+ * (CLM_LOC_IDX_BASE_... constants)
+ */
+static const loc_type_dsc_t loc_type_dscs[] = {
+	{CLM_BAND_2G, BH_BASE, OFFSETOF(clm_country_locales_t, locale_2G),
+	OFFSETOF(clm_registry_t, locales[CLM_LOC_IDX_BASE_2G])},
+	{CLM_BAND_5G, BH_BASE, OFFSETOF(clm_country_locales_t, locale_5G),
+	OFFSETOF(clm_registry_t, locales[CLM_LOC_IDX_BASE_5G])},
+	{CLM_BAND_2G, BH_HT, OFFSETOF(clm_country_locales_t, locale_2G_HT),
+	OFFSETOF(clm_registry_t, locales[CLM_LOC_IDX_HT_2G])},
+	{CLM_BAND_5G, BH_HT, OFFSETOF(clm_country_locales_t, locale_5G_HT),
+	OFFSETOF(clm_registry_t, locales[CLM_LOC_IDX_HT_5G])},
+#ifdef WL_BAND6G
+	{CLM_BAND_6G, BH_BASE, OFFSETOF(clm_country_locales_t, locale_6G),
+	OFFSETOF(clm_registry_t, locales_6g_base)},
+	{CLM_BAND_6G, BH_HT, OFFSETOF(clm_country_locales_t, locale_6G_HT),
+	OFFSETOF(clm_registry_t, locales_6g_ht)},
+#endif /* WL_BAND6G */
+};
+
+/** Composes locale type indices (CLM_LOC_IDX_BASE_... constants) out of band
+ * and flavor
+ */
+static const unsigned int compose_loc_type[CLM_BAND_NUM][BH_NUM] = {
+	{CLM_LOC_IDX_BASE_2G, CLM_LOC_IDX_HT_2G},
+	{CLM_LOC_IDX_BASE_5G, CLM_LOC_IDX_HT_5G},
+#ifdef WL_BAND6G
+	{CLM_LOC_IDX_BASE_6G, CLM_LOC_IDX_HT_6G},
+#endif /* WL_BAND6G */
 };
 
 /****************************
@@ -843,11 +972,16 @@ iter_pack(int *iter, data_source_id_t ds_id, int idx)
 /** Traversal of byte string sequence
  * \param[in] byte_string_seq Byte string sequence to traverse
  * \param[in] idx Index of string to find
+ * \param[in] sequence_index NULL or sequence index, containing offsets of strings
  * \return Address of idx's string in a sequence
  */
 static const unsigned char *
-get_byte_string(const unsigned char *byte_string_seq, int idx)
+get_byte_string(const unsigned char *byte_string_seq, int idx,
+	const unsigned short *sequence_index)
 {
+	if (sequence_index) {
+		return byte_string_seq + sequence_index[idx];
+	}
 	while (idx--) {
 		byte_string_seq += *byte_string_seq + 1;
 	}
@@ -897,80 +1031,40 @@ get_loc_def(const clm_country_locales_t *locales, int loc_type,
 	locale_data_t *loc_data)
 {
 	data_source_id_t ds_id;
-	int idx, bw_idx;
-	MY_BOOL is_base;
+	int bw_idx;
+	const loc_type_dsc_t *ltd;
 	clm_band_t band;
-	const unsigned char *loc_def;
-	const data_dsc_t *ds;
+	const unsigned char *loc_def = NULL;
+	data_dsc_t *ds;
 
 	bzero(loc_data, sizeof(*loc_data));
-
-	switch (loc_type) {
-	case CLM_LOC_IDX_BASE_2G:
-		iter_unpack(locales->locale_2G, &ds_id, &idx);
-		is_base = TRUE;
-		band = CLM_BAND_2G;
-		break;
-	case CLM_LOC_IDX_BASE_5G:
-		iter_unpack(locales->locale_5G, &ds_id, &idx);
-		is_base = TRUE;
-		band = CLM_BAND_5G;
-		break;
-	case CLM_LOC_IDX_HT_2G:
-		iter_unpack(locales->locale_2G_HT, &ds_id, &idx);
-		is_base = FALSE;
-		band = CLM_BAND_2G;
-		break;
-	case CLM_LOC_IDX_HT_5G:
-		iter_unpack(locales->locale_5G_HT, &ds_id, &idx);
-		is_base = FALSE;
-		band = CLM_BAND_5G;
-		break;
-	default:
+	if ((unsigned int)loc_type >= ARRAYSIZE(loc_type_dscs)) {
 		return FALSE;
 	}
-	if (idx == CLM_LOC_NONE) {
+	ltd = &loc_type_dscs[loc_type];
+	band = ltd->band;
+	loc_def = *(const unsigned char * const *)((const char *)locales + ltd->def_field_offset);
+	if (!loc_def) {
 		return TRUE;
 	}
-	if (idx == CLM_LOC_SAME) {
-		return FALSE;
-	}
+	ds_id = (locales->main_loc_data_bitmask & (1 << loc_type)) ? DS_MAIN : DS_INC;
 	ds = get_data_sources(ds_id);
-	loc_def = (const unsigned char *)relocate_ptr(ds_id, ds->data->locales[loc_type]);
-	while (idx--) {
-		int tx_rec_len;
-		if (is_base) {
-			loc_def = skip_base_header(loc_def, NULL, NULL);
-		}
-		for (;;) {
-			unsigned char flags = *loc_def++;
-			if (flags & CLM_DATA_FLAG_FLAG2) {
-				loc_def++;
-			}
-			tx_rec_len = CLM_LOC_DSC_TX_REC_LEN +
-				((flags &
-				CLM_DATA_FLAG_PER_ANT_MASK) >>
-				CLM_DATA_FLAG_PER_ANT_SHIFT);
-			if (!(flags & CLM_DATA_FLAG_MORE)) {
-				break;
-			}
-			loc_def += 1 + tx_rec_len * (int)(*loc_def);
-		}
-		loc_def += 1 + tx_rec_len * (int)(*loc_def);
-	}
 	loc_data->def_ptr = loc_def;
-	loc_data->chan_ranges_bw = ds->chan_ranges_bw;
+	loc_data->chan_ranges_bw = ds->chan_ranges_band_bw[band];
 	loc_data->rate_sets_bw = ds->rate_sets_bw[band];
+	loc_data->rate_sets_indices_bw = ds->rate_sets_indices_bw[band];
 	loc_data->ext_rate_sets_bw = ds->ext_rate_sets_bw[band];
+	loc_data->ext_rate_sets_indices_bw = ds->ext_rate_sets_indices_bw[band];
 	loc_data->valid_channels = (const unsigned char *)GET_DATA(ds_id, locale_valid_channels);
 	loc_data->restricted_channels =
 		(const unsigned char *)GET_DATA(ds_id, restricted_channels);
 	for (bw_idx = 0; bw_idx < CLM_BW_NUM; ++bw_idx) {
-		loc_data->combs[bw_idx] =
-			&get_data_sources(ds_id)->valid_channel_combs[band][bw_idx];
+		loc_data->combs[bw_idx] = &ds->valid_channel_combs[band][bw_idx];
 	}
 	loc_data->ext4_rate_sets_bw = ds->ext4_rate_sets_bw[band];
+	loc_data->ext4_rate_sets_indices_bw = ds->ext4_rate_sets_indices_bw[band];
 	loc_data->he_rate_sets_bw = ds->he_rate_sets_bw[band];
+	loc_data->he_rate_sets_indices_bw = ds->he_rate_sets_indices_bw[band];
 	return TRUE;
 }
 
@@ -990,10 +1084,7 @@ fill_base_ht_loc_data(const clm_country_locales_t *locales, clm_band_t band,
 		*base_flags = 0;
 	}
 	/* Computing helper information on base locale for given bandwidth */
-	if (!get_loc_def(locales, (band == CLM_BAND_2G) ?
-		CLM_LOC_IDX_BASE_2G : CLM_LOC_IDX_BASE_5G,
-		&(base_ht_loc_data[BH_BASE])))
-	{
+	if (!get_loc_def(locales, compose_loc_type[band][BH_BASE], &(base_ht_loc_data[BH_BASE]))) {
 		return FALSE;
 	}
 	if (base_ht_loc_data[BH_BASE].def_ptr) {
@@ -1003,9 +1094,67 @@ fill_base_ht_loc_data(const clm_country_locales_t *locales, clm_band_t band,
 		base_ht_loc_data[BH_BASE].def_ptr = skip_base_header(
 			base_ht_loc_data[BH_BASE].def_ptr, base_flags, NULL);
 	}
-	return get_loc_def(locales,
-		(band == CLM_BAND_2G) ? CLM_LOC_IDX_HT_2G : CLM_LOC_IDX_HT_5G,
-		&(base_ht_loc_data[BH_HT]));
+	return get_loc_def(locales, compose_loc_type[band][BH_HT], &(base_ht_loc_data[BH_HT]));
+}
+
+/** Fills field or group of fields in given per-band-bandwidth array of pointers
+ * \param[out] dst_array Array being filled. Its true signature is:
+ * 'const SOMETYPE *somearray[CLM_BAND_NUM][CLM_BW_NUM]'
+ * \param[in] band Band of given piece of data
+ * \param[in] bw Bandwidth of given piece of data
+ * \param[in] ds_id Data source of given piece of data
+ * \param[in] field_offset Piece of data. Pointer field within clm_registry_t,
+ * specified by its offset within the structure
+ * \param[in] enabled FALSE means that piece of data shall be ignored
+ * \param[in] per_band_bw TRUE means that piece of data is per-band-bandwidth
+ * field. Should be used to initialize just one field in target array
+ * \param[in] per_bw Evaluated if 'per_band_bw' is FALSE. TRUE means that piece
+ * is per-bandwidth field (i.e. if 'band' parameter is 5G, then value shall be
+ * used for all bands for given bandwidths, if 'band' is not 5GHz, value shall
+ * be ignored). FALSE means that value sshal be used for all bands and
+ * bandwidths if 'band' is 5GHz and 'bw' is 20MHz, ignored otherwise
+ */
+static void
+fill_band_bw_field(void *dst_array, clm_band_t band, clm_bandwidth_t bw,
+	data_source_id_t ds_id, unsigned int field_offset, MY_BOOL enabled,
+	MY_BOOL per_band_bw, MY_BOOL per_bw)
+{
+	const void *(*dst)[CLM_BW_NUM] = (const void *(*)[CLM_BW_NUM])dst_array;
+	const void *ptr;
+	int band_idx, bw_idx;
+	if (!enabled) {
+		return;
+	}
+	if (!(per_band_bw || (per_bw && (band == CLM_BAND_5G)) ||
+		((band == CLM_BAND_5G) && (bw == CLM_BW_20))))
+	{
+		return;
+	}
+#ifdef WL_BAND6G
+	if ((band == CLM_BAND_6G) &&
+		!(get_data_sources(ds_id)->registry_flags2 & CLM_REGISTRY_FLAG2_6GHZ))
+	{
+		return;
+	}
+#endif /* WL_BAND6G */
+	ptr = get_data(ds_id, field_offset);
+	if (per_band_bw) {
+		dst[band][bw] = ptr;
+	} else if (per_bw && (band == CLM_BAND_5G)) {
+		for (band_idx = 0; band_idx < (int)CLM_BAND_NUM; ++band_idx) {
+			if ((band_idx != (int)CLM_BAND_2G) || (bw <= (int)CLM_BW_40)) {
+				dst[band_idx][bw] = ptr;
+			}
+		}
+	} else {
+		for (band_idx = 0; band_idx < (int)CLM_BAND_NUM; ++band_idx) {
+			for (bw_idx = 0; bw_idx < (int)CLM_BW_NUM; ++bw_idx) {
+				if ((band_idx != (int)CLM_BAND_2G) || (bw_idx <= (int)CLM_BW_40)) {
+					dst[band_idx][bw_idx] = ptr;
+				}
+			}
+		}
+	}
 }
 
 /** Tries to fill valid_channel_combs using given CLM data source
@@ -1017,8 +1166,41 @@ fill_base_ht_loc_data(const clm_country_locales_t *locales, clm_band_t band,
 static void
 try_fill_valid_channel_combs(data_source_id_t ds_id)
 {
+	static const struct band_bw_field {
+		clm_band_t band;
+		clm_bandwidth_t bw;
+		unsigned int field_offset;
+	} fields [] = {
+		{CLM_BAND_2G, CLM_BW_20,
+		OFFSETOF(clm_registry_t, valid_channels_2g_20m)},
+		{CLM_BAND_2G, CLM_BW_40,
+		OFFSETOF(clm_registry_t, valid_channels_2g_40m)},
+		{CLM_BAND_5G, CLM_BW_20,
+		OFFSETOF(clm_registry_t, valid_channels_5g_20m)},
+		{CLM_BAND_5G, CLM_BW_40,
+		OFFSETOF(clm_registry_t, valid_channels_5g_40m)},
+#ifdef WL11AC
+		{CLM_BAND_5G, CLM_BW_80,
+		OFFSETOF(clm_registry_t, valid_channels_5g_80m)},
+		{CLM_BAND_5G, CLM_BW_160,
+		OFFSETOF(clm_registry_t, valid_channels_5g_160m)},
+#endif /* WL11AC */
+#ifdef WL_BAND6G
+		{CLM_BAND_6G, CLM_BW_20,
+		OFFSETOF(clm_registry_t, valid_channels_6g_20m)},
+		{CLM_BAND_6G, CLM_BW_40,
+		OFFSETOF(clm_registry_t, valid_channels_6g_40m)},
+#ifdef WL11AC
+		{CLM_BAND_6G, CLM_BW_80,
+		OFFSETOF(clm_registry_t, valid_channels_6g_80m)},
+		{CLM_BAND_6G, CLM_BW_160,
+		OFFSETOF(clm_registry_t, valid_channels_6g_160m)},
+#endif /* WL11AC */
+#endif /* WL_BAND6G */
+	};
 	const clm_channel_comb_set_t *combs[CLM_BAND_NUM][CLM_BW_NUM];
 	int band, bw;
+	const struct band_bw_field *fd;
 	data_dsc_t *ds = get_data_sources(ds_id);
 	if (!ds->data) {
 		/* Can't obtain data - make all combs empty */
@@ -1033,35 +1215,11 @@ try_fill_valid_channel_combs(data_source_id_t ds_id)
 	 * BLOB
 	 */
 	bzero((void *)combs, sizeof(combs));
-	/* 20MHz for sure */
-	combs[CLM_BAND_2G][CLM_BW_20] =
-		(const clm_channel_comb_set_t*)GET_DATA(ds_id, valid_channels_2g_20m);
-	combs[CLM_BAND_5G][CLM_BW_20] =
-		(const clm_channel_comb_set_t*)GET_DATA(ds_id, valid_channels_5g_20m);
-	if (ds->registry_flags & CLM_REGISTRY_FLAG_HIGH_BW_COMBS) {
-		/* Higher bandwidths - only if they are there */
-		static const struct {
-			clm_band_t band;
-			clm_bandwidth_t bw;
-			unsigned int field_offset;
-		} fields [] = {
-			{CLM_BAND_2G, CLM_BW_40,
-			OFFSETOF(clm_registry_t, valid_channels_2g_40m)},
-			{CLM_BAND_5G, CLM_BW_40,
-			OFFSETOF(clm_registry_t, valid_channels_5g_40m)},
-#ifdef WL11AC
-			{CLM_BAND_5G, CLM_BW_80,
-			OFFSETOF(clm_registry_t, valid_channels_5g_80m)},
-			{CLM_BAND_5G, CLM_BW_160,
-			OFFSETOF(clm_registry_t, valid_channels_5g_160m)},
-#endif /* WL11AC */
-		};
-		int idx;
-		for (idx = 0; idx < (int)ARRAYSIZE(fields); ++idx) {
-			combs[fields[idx].band][fields[idx].bw] =
-				(const clm_channel_comb_set_t*)get_data(ds_id,
-				fields[idx].field_offset);
-		}
+	for (fd = fields; fd < (fields + ARRAYSIZE(fields)); ++fd) {
+		fill_band_bw_field((void *)combs, fd->band, fd->bw, ds_id, fd->field_offset,
+			(fd->bw == CLM_BW_20) ||
+			(ds->registry_flags & CLM_REGISTRY_FLAG_HIGH_BW_COMBS),
+			TRUE, FALSE);
 	}
 	/* Transferring combs from BLOB to valid_channel_combs[][] */
 	for (band = 0; band < CLM_BAND_NUM; ++band) {
@@ -1178,7 +1336,7 @@ get_channels(clm_channels_t *channels, const unsigned char *channel_defs,
 	if (def_idx == CLM_RESTRICTED_SET_NONE) {
 		return;
 	}
-	channel_defs = get_byte_string(channel_defs, def_idx);
+	channel_defs = get_byte_string(channel_defs, def_idx, NULL);
 	num_ranges = *channel_defs++;
 	if (!num_ranges) {
 		return;
@@ -1227,7 +1385,7 @@ get_channels(clm_channels_t *channels, const unsigned char *channel_defs,
 	}
 }
 
-/** True if given channel belongs to given range and belong to comb that
+/** True if given channel belongs to given range and belongs to comb that
  * represent this range
  * \param[in] channel Channel in question
  * \param[in] range Range in question
@@ -1258,13 +1416,29 @@ channel_in_range(int channel, const clm_channel_range_t *range,
 		!((channel - comb->first_channel) % comb->stride);
 }
 
-#ifdef WL_RU_NUMRATES
-/** Checks if two numerical ranges (ends not included) intersect */
-static MY_BOOL ranges_intersect(int l1, int r1, int l2, int r2)
+#if defined(WL_RU_NUMRATES) || defined(WL_NUM_HE_RT)
+/** Checks if two numerical ranges intersect by at least given length */
+static MY_BOOL ranges_intersect(int l1, int r1, int l2, int r2, int min_intersection)
 {
-	return (l1 < l2) ? (r1 > l2) : (l1 < r2);
+	return (((r1 < r2) ? r1 : r2) - ((l1 > l2) ? l1 : l2)) >= min_intersection;
 }
-#endif /* WL_RU_NUMRATES */
+#endif /* defined(WL_RU_NUMRATES) || defined(WL_NUM_HE_RT) */
+
+#if defined(WL_NUM_HE_RT) && !defined(WL_RU_NUMRATES)
+/** Returns half-step for nonintersecting channels of given bandwidth in channel
+ * number units (e.g. 2 for CLM_BW_20)
+ */
+static int
+half_step(clm_bandwidth_t bandwidth)
+{
+#ifdef WL11AC
+	if (bandwidth == CLM_BW_80_80) {
+		bandwidth = CLM_BW_80;
+	}
+#endif /* WL11AC */
+	return (CHAN_STRIDE << (bandwidth - CLM_BW_20)) / 2;
+}
+#endif /* defined(WL_NUM_HE_RT) && !defined(WL_RU_NUMRATES) */
 
 /** Fills rate_type[] */
 static void
@@ -1324,6 +1498,20 @@ fill_rate_types(void)
 }
 
 #ifdef WL_RU_NUMRATES
+/** Retrieves a parameters of given RU rate
+ * \param[in] ru_rate RU rate in question
+ * \param[out] rate_dsc Pointer to clm_he_rate_dsc_t, containing all rate
+ * parameters, except rate type
+ * \param[out] rate_type Rate type of given rate
+ */
+static void
+get_ru_rate_info(clm_ru_rates_t ru_rate, const clm_he_rate_dsc_t **ru_rate_dsc,
+	wl_he_rate_type_t *ru_rate_type)
+{
+	*ru_rate_dsc = he_rate_descriptors + (ru_rate % ARRAYSIZE(he_rate_descriptors));
+	*ru_rate_type = (wl_he_rate_type_t)(ru_rate / ARRAYSIZE(he_rate_descriptors) + 1);
+}
+
 /** Fills-in RU(OFDMA) rates - related data structures */
 static void
 fill_ru_rate_info(void)
@@ -1440,12 +1628,16 @@ fill_region_record_data_fields(data_source_id_t ds_id)
 {
 	data_dsc_t *ds = get_data_sources(ds_id);
 	unsigned int registry_flags = ds->registry_flags;
+	unsigned int registry_flags2 = ds->registry_flags2;
 	ds->reg_rev16_idx = -1;
 	ds->reg_loc10_idx = -1;
 	ds->reg_loc12_idx = -1;
 	ds->reg_loc14_idx = -1;
+	ds->reg_loc12_6g_idx = -1;
+	ds->reg_loc16_6g_idx = -1;
 	ds->reg_flags_idx = -1;
 	ds->reg_flags_2_idx = -1;
+	ds->loc_idx_mask = 0xFF;
 	if (registry_flags & CLM_REGISTRY_FLAG_CD_REGIONS) {
 		int idx = 0;
 		int extra_loc_idx_bytes =
@@ -1457,16 +1649,29 @@ fill_region_record_data_fields(data_source_id_t ds_id)
 		 */
 		MY_BOOL loc12_flag_swap =
 			!!(registry_flags & CLM_REGISTRY_FLAG_REGION_LOC_12_FLAG_SWAP);
+		if (registry_flags2 & CLM_REGISTRY_FLAG2_6GHZ) {
+			idx += 2;
+		}
+		ds->loc_idx_mask = (1 << (8 + 2 * extra_loc_idx_bytes)) - 1;
 		ds->reg_rev16_idx =
 			(registry_flags & CLM_REGISTRY_FLAG_CD_16_BIT_REV) ? idx++ : -1;
 		ds->reg_loc10_idx = (extra_loc_idx_bytes-- > 0) ? idx++ : -1;
 		if (loc12_flag_swap) {
 			ds->reg_flags_idx = idx++;
 			ds->reg_loc12_idx = idx++;
+			ds->loc_idx_mask = 0xFFF;
 		} else {
 			ds->reg_loc12_idx = (extra_loc_idx_bytes-- > 0) ? idx++ : -1;
 			ds->reg_loc14_idx = (extra_loc_idx_bytes-- > 0) ? idx++ : -1;
 			ds->reg_flags_idx = idx++;
+			if (registry_flags2 & CLM_REGISTRY_FLAG2_6GHZ) {
+				if (ds->reg_loc10_idx >= 0) {
+					ds->reg_loc12_6g_idx = idx++;
+				}
+				if (ds->reg_loc14_idx >= 0) {
+					ds->reg_loc16_6g_idx = idx++;
+				}
+			}
 		}
 		ds->country_rev_rec_len =
 			OFFSETOF(clm_country_rev_definition_cd10_t, extra) + idx;
@@ -1475,6 +1680,7 @@ fill_region_record_data_fields(data_source_id_t ds_id)
 			((registry_flags & CLM_REGISTRY_FLAG_CD_16_BIT_REGION_INDEX)
 			? CCREV_FORMAT_CC_IDX16 : CCREV_FORMAT_CC_IDX8);
 	} else if (registry_flags & CLM_REGISTRY_FLAG_COUNTRY_10_FL) {
+		ds->loc_idx_mask = 0x3FF;
 		ds->reg_loc10_idx = 0;
 		ds->reg_flags_idx = 1;
 		ds->country_rev_rec_len = sizeof(clm_country_rev_definition10_fl_t);
@@ -1498,127 +1704,221 @@ fill_region_record_data_fields(data_source_id_t ds_id)
 static clm_result_t
 fill_pointer_data_fields(data_source_id_t ds_id)
 {
-	static const struct rate_sets_fields_dsc {
+	static const struct band_bw_fields_dsc {
 		clm_band_t band;
 		clm_bandwidth_t bw;
-		unsigned int ext_field_offset;
-		unsigned int ext4_field_offset;
-		unsigned int he_field_offset;
-	} rate_sets_fields[] = {
+		unsigned int main_rates_field_offset;
+		unsigned int ext_rates_field_offset;
+		unsigned int ext4_rates_field_offset;
+		unsigned int he_rates_field_offset;
+		unsigned int main_rates_indices_field_offset;
+		unsigned int ext_rates_indices_field_offset;
+		unsigned int ext4_rates_indices_field_offset;
+		unsigned int he_rates_indices_field_offset;
+		unsigned int channel_ranges_field_offset;
+	} band_bw_fields[] = {
 		{CLM_BAND_2G, CLM_BW_20,
+		OFFSETOF(clm_registry_t, locale_rate_sets_2g_20m),
 		OFFSETOF(clm_registry_t, locale_ext_rate_sets_2g_20m),
 		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_2g_20m),
-		OFFSETOF(clm_registry_t, locale_he_rate_sets_2g_20m)},
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_2g_20m),
+		OFFSETOF(clm_registry_t, locale_rate_sets_index_2g_20m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_index_2g_20m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_index_2g_20m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_index_2g_20m),
+		OFFSETOF(clm_registry_t, channel_ranges_2g_20m)},
 		{CLM_BAND_2G, CLM_BW_40,
+		OFFSETOF(clm_registry_t, locale_rate_sets_2g_40m),
 		OFFSETOF(clm_registry_t, locale_ext_rate_sets_2g_40m),
 		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_2g_40m),
-		OFFSETOF(clm_registry_t, locale_he_rate_sets_2g_40m)},
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_2g_40m),
+		OFFSETOF(clm_registry_t, locale_rate_sets_index_2g_40m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_index_2g_40m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_index_2g_40m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_index_2g_40m),
+		OFFSETOF(clm_registry_t, channel_ranges_2g_40m)},
 		{CLM_BAND_5G, CLM_BW_20,
+		OFFSETOF(clm_registry_t, locale_rate_sets_5g_20m),
 		OFFSETOF(clm_registry_t, locale_ext_rate_sets_5g_20m),
 		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_5g_20m),
-		OFFSETOF(clm_registry_t, locale_rate_sets_he)},
+		OFFSETOF(clm_registry_t, locale_rate_sets_he),
+		OFFSETOF(clm_registry_t, locale_rate_sets_index_5g_20m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_index_5g_20m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_index_5g_20m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_index_5g_20m),
+		OFFSETOF(clm_registry_t, channel_ranges_20m)},
 		{CLM_BAND_5G, CLM_BW_40,
+		OFFSETOF(clm_registry_t, locale_rate_sets_5g_40m),
 		OFFSETOF(clm_registry_t, locale_ext_rate_sets_5g_40m),
 		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_5g_40m),
-		OFFSETOF(clm_registry_t, locale_he_rate_sets_5g_40m)},
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_5g_40m),
+		OFFSETOF(clm_registry_t, locale_rate_sets_index_5g_40m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_index_5g_40m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_index_5g_40m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_index_5g_40m),
+		OFFSETOF(clm_registry_t, channel_ranges_40m)},
 #ifdef WL11AC
 		{CLM_BAND_5G, CLM_BW_80,
+		OFFSETOF(clm_registry_t, locale_rate_sets_5g_80m),
 		OFFSETOF(clm_registry_t, locale_ext_rate_sets_5g_80m),
 		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_5g_80m),
-		OFFSETOF(clm_registry_t, locale_he_rate_sets_5g_80m)},
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_5g_80m),
+		OFFSETOF(clm_registry_t, locale_rate_sets_index_5g_80m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_index_5g_80m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_index_5g_80m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_index_5g_80m),
+		OFFSETOF(clm_registry_t, channel_ranges_80m)},
 		{CLM_BAND_5G, CLM_BW_80_80,
+		OFFSETOF(clm_registry_t, locale_rate_sets_5g_80m),
 		OFFSETOF(clm_registry_t, locale_ext_rate_sets_5g_80m),
 		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_5g_80m),
-		OFFSETOF(clm_registry_t, locale_he_rate_sets_5g_80m)},
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_5g_80m),
+		OFFSETOF(clm_registry_t, locale_rate_sets_index_5g_80m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_index_5g_80m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_index_5g_80m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_index_5g_80m),
+		OFFSETOF(clm_registry_t, channel_ranges_80m)},
 		{CLM_BAND_5G, CLM_BW_160,
+		OFFSETOF(clm_registry_t, locale_rate_sets_5g_160m),
 		OFFSETOF(clm_registry_t, locale_ext_rate_sets_5g_160m),
 		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_5g_160m),
-		OFFSETOF(clm_registry_t, locale_he_rate_sets_5g_160m)}
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_5g_160m),
+		OFFSETOF(clm_registry_t, locale_rate_sets_index_5g_160m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_index_5g_160m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_index_5g_160m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_index_5g_160m),
+		OFFSETOF(clm_registry_t, channel_ranges_160m)},
 #endif /* WL11AC */
+#ifdef WL_BAND6G
+		{CLM_BAND_6G, CLM_BW_20,
+		OFFSETOF(clm_registry_t, locale_rate_sets_6g_20m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_6g_20m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_6g_20m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_6g_20m),
+		OFFSETOF(clm_registry_t, locale_rate_sets_index_6g_20m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_index_6g_20m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_index_6g_20m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_index_6g_20m),
+		OFFSETOF(clm_registry_t, channel_ranges_6g_20m)},
+		{CLM_BAND_6G, CLM_BW_40,
+		OFFSETOF(clm_registry_t, locale_rate_sets_6g_40m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_6g_40m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_6g_40m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_6g_40m),
+		OFFSETOF(clm_registry_t, locale_rate_sets_index_6g_40m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_index_6g_40m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_index_6g_40m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_index_6g_40m),
+		OFFSETOF(clm_registry_t, channel_ranges_6g_40m)},
+#ifdef WL11AC
+		{CLM_BAND_6G, CLM_BW_80,
+		OFFSETOF(clm_registry_t, locale_rate_sets_6g_80m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_6g_80m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_6g_80m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_6g_80m),
+		OFFSETOF(clm_registry_t, locale_rate_sets_index_6g_80m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_index_6g_80m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_index_6g_80m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_index_6g_80m),
+		OFFSETOF(clm_registry_t, channel_ranges_6g_80m)},
+		{CLM_BAND_6G, CLM_BW_80_80,
+		OFFSETOF(clm_registry_t, locale_rate_sets_6g_80m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_6g_80m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_6g_80m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_6g_80m),
+		OFFSETOF(clm_registry_t, locale_rate_sets_index_6g_80m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_index_6g_80m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_index_6g_80m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_index_6g_80m),
+		OFFSETOF(clm_registry_t, channel_ranges_6g_80m)},
+		{CLM_BAND_6G, CLM_BW_160,
+		OFFSETOF(clm_registry_t, locale_rate_sets_6g_160m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_6g_160m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_6g_160m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_6g_160m),
+		OFFSETOF(clm_registry_t, locale_rate_sets_index_6g_160m),
+		OFFSETOF(clm_registry_t, locale_ext_rate_sets_index_6g_160m),
+		OFFSETOF(clm_registry_t, locale_ext4_rate_sets_index_6g_160m),
+		OFFSETOF(clm_registry_t, locale_he_rate_sets_index_6g_160m),
+		OFFSETOF(clm_registry_t, channel_ranges_6g_160m)}
+#endif /* WL11AC */
+#endif /* WL_BAND6G */
 	};
 	data_dsc_t *ds = get_data_sources(ds_id);
 	int registry_flags = ds->registry_flags;
 	int registry_flags2 = ds->registry_flags2;
+	const struct band_bw_fields_dsc *fd;
 	if (registry_flags & CLM_REGISTRY_FLAG_REGREV_REMAP) {
 		ds->regrev_remap = (const clm_regrev_cc_remap_set_t *)GET_DATA(ds_id, regrev_remap);
 	}
-	if (registry_flags & CLM_REGISTRY_FLAG_PER_BW_RS) {
-		const unsigned char **rate_sets_5g = ds->rate_sets_bw[CLM_BAND_5G];
-		const unsigned char **rate_sets_2g = ds->rate_sets_bw[CLM_BAND_2G];
-		const clm_channel_range_t **chan_ranges_bw = ds->chan_ranges_bw;
-		chan_ranges_bw[CLM_BW_20] =
-			(const clm_channel_range_t *)GET_DATA(ds_id, channel_ranges_20m);
-		chan_ranges_bw[CLM_BW_40] =
-			(const clm_channel_range_t *)GET_DATA(ds_id, channel_ranges_40m);
-#ifdef WL11AC
-		chan_ranges_bw[CLM_BW_80_80] = ds->chan_ranges_bw[CLM_BW_80] =
-			(const clm_channel_range_t *)GET_DATA(ds_id, channel_ranges_80m);
-		chan_ranges_bw[CLM_BW_160] =
-			(const clm_channel_range_t *)GET_DATA(ds_id, channel_ranges_160m);
-#endif /* WL11AC */
-		rate_sets_5g[CLM_BW_20] =
-			(const unsigned char *)GET_DATA(ds_id, locale_rate_sets_5g_20m);
-		rate_sets_5g[CLM_BW_40] =
-			(const unsigned char *)GET_DATA(ds_id, locale_rate_sets_5g_40m);
-#ifdef WL11AC
-		rate_sets_5g[CLM_BW_80_80] =
-			rate_sets_5g[CLM_BW_80] =
-			(const unsigned char *)GET_DATA(ds_id, locale_rate_sets_5g_80m);
-		rate_sets_5g[CLM_BW_160] =
-			(const unsigned char *)GET_DATA(ds_id, locale_rate_sets_5g_160m);
-#endif /* WL11AC */
-		if (registry_flags & CLM_REGISTRY_FLAG_PER_BAND_RATES) {
-			rate_sets_2g[CLM_BW_20] =
-				(const unsigned char *)GET_DATA(ds_id, locale_rate_sets_2g_20m);
-			rate_sets_2g[CLM_BW_40] =
-				(const unsigned char *)GET_DATA(ds_id, locale_rate_sets_2g_40m);
-		} else {
-			rate_sets_2g[CLM_BW_20] = rate_sets_5g[CLM_BW_20];
-			rate_sets_2g[CLM_BW_40] = rate_sets_5g[CLM_BW_40];
+	for (fd = band_bw_fields; fd < (band_bw_fields + ARRAYSIZE(band_bw_fields)); ++fd) {
+		fill_band_bw_field((void *)ds->chan_ranges_band_bw, fd->band, fd->bw, ds_id,
+			fd->channel_ranges_field_offset, TRUE,
+			(registry_flags2 & CLM_REGISTRY_FLAG2_PER_BAND_BW_RANGES) != 0,
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BW_RS) != 0);
+		fill_band_bw_field((void *)ds->rate_sets_bw, fd->band, fd->bw, ds_id,
+			fd->main_rates_field_offset, TRUE,
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BAND_RATES) != 0,
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BW_RS) != 0);
+		fill_band_bw_field((void *)ds->ext_rate_sets_bw, fd->band, fd->bw, ds_id,
+			fd->ext_rates_field_offset,
+			(registry_flags & CLM_REGISTRY_FLAG_EXT_RATE_SETS) != 0,
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BAND_RATES) != 0,
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BW_RS) != 0);
+		fill_band_bw_field((void *)ds->ext4_rate_sets_bw, fd->band, fd->bw, ds_id,
+			fd->ext4_rates_field_offset,
+			(registry_flags2 & CLM_REGISTRY_FLAG2_EXT4) != 0,
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BAND_RATES) != 0,
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BW_RS) != 0);
+		fill_band_bw_field((void *)ds->he_rate_sets_bw, fd->band, fd->bw, ds_id,
+			fd->he_rates_field_offset,
+			(registry_flags2 & CLM_REGISTRY_FLAG2_HE_LIMITS) != 0,
+			(registry_flags2 & CLM_REGISTRY_FLAG2_RU_SETS_PER_BW_BAND) != 0,
+			FALSE);
+		fill_band_bw_field((void *)ds->rate_sets_indices_bw, fd->band, fd->bw, ds_id,
+			fd->main_rates_indices_field_offset,
+			(registry_flags2 & CLM_REGISTRY_FLAG2_RATE_SET_INDEX) != 0,
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BAND_RATES) != 0,
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BW_RS) != 0);
+		fill_band_bw_field((void *)ds->ext_rate_sets_indices_bw, fd->band, fd->bw, ds_id,
+			fd->ext_rates_indices_field_offset,
+			(registry_flags & CLM_REGISTRY_FLAG_EXT_RATE_SETS) &&
+			(registry_flags2 & CLM_REGISTRY_FLAG2_RATE_SET_INDEX),
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BAND_RATES) != 0,
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BW_RS) != 0);
+		fill_band_bw_field((void *)ds->ext4_rate_sets_indices_bw, fd->band, fd->bw, ds_id,
+			fd->ext4_rates_indices_field_offset,
+			(registry_flags2 & CLM_REGISTRY_FLAG2_EXT4) &&
+			(registry_flags2 & CLM_REGISTRY_FLAG2_RATE_SET_INDEX),
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BAND_RATES) != 0,
+			(registry_flags & CLM_REGISTRY_FLAG_PER_BW_RS) != 0);
+		fill_band_bw_field((void *)ds->he_rate_sets_indices_bw, fd->band, fd->bw, ds_id,
+			fd->he_rates_indices_field_offset,
+			(registry_flags2 & CLM_REGISTRY_FLAG2_HE_LIMITS) &&
+			(registry_flags2 & CLM_REGISTRY_FLAG2_RATE_SET_INDEX),
+			(registry_flags2 & CLM_REGISTRY_FLAG2_RU_SETS_PER_BW_BAND) != 0,
+			FALSE);
+	}
+	if (registry_flags2 & CLM_REGISTRY_FLAG2_HE_LIMITS) {
+#if defined(WL_RU_NUMRATES)
+		if (!(registry_flags2 & CLM_REGISTRY_FLAG2_HE_RU_FIXED)) {
+			/* Old-style HE limits not supported with new bcmwifi_rates.h */
+			return CLM_RESULT_ERR;
 		}
-		if (registry_flags & CLM_REGISTRY_FLAG_EXT_RATE_SETS) {
-			int idx;
-			for (idx = 0; idx < (int)ARRAYSIZE(rate_sets_fields); ++idx) {
-				const struct rate_sets_fields_dsc *fd = rate_sets_fields + idx;
-				ds->ext_rate_sets_bw[fd->band][fd->bw] =
-					(const unsigned char *)get_data(ds_id,
-					fd->ext_field_offset);
-				if (registry_flags2 & CLM_REGISTRY_FLAG2_EXT4) {
-					ds->ext4_rate_sets_bw[fd->band][fd->bw] =
-						(const unsigned char *)get_data(ds_id,
-						fd->ext4_field_offset);
-				}
-			}
+#elif defined(WL_NUM_HE_RT)
+		if ((registry_flags2 & (CLM_REGISTRY_FLAG2_HE_RU_FIXED |
+			CLM_REGISTRY_FLAG2_HE_SU_ORDINARY)) || (ds_id != DS_MAIN))
+		{
+			/* New-style HE-limits and incremental operation
+			 * not supported with old bcmwifi_rates.h
+			 */
+			return CLM_RESULT_ERR;
 		}
-#ifdef WL_RU_NUMRATES
-		if (registry_flags2 & CLM_REGISTRY_FLAG2_HE_LIMITS) {
-			int idx;
-			for (idx = 0; idx < (int)ARRAYSIZE(rate_sets_fields); ++idx) {
-				const struct rate_sets_fields_dsc *fd = rate_sets_fields + idx;
-				ds->he_rate_sets_bw[fd->band][fd->bw] =
-					(const unsigned char *)get_data(ds_id,
-					(registry_flags2 & CLM_REGISTRY_FLAG2_RU_SETS_PER_BW_BAND)
-					? fd->he_field_offset
-					: OFFSETOF(clm_registry_t, locale_rate_sets_he));
-			}
-			if (!(registry_flags2 & CLM_REGISTRY_FLAG2_HE_RU_FIXED)) {
-				/* Old-style HE limits not supported anymore */
-				return CLM_RESULT_ERR;
-			}
-		}
-#endif /* WL_RU_NUMRATES */
-	} else {
-		int band, bw;
-		for (bw = 0; bw < CLM_BW_NUM; ++bw) {
-			const clm_channel_range_t *channel_ranges =
-				(const clm_channel_range_t *)GET_DATA(ds_id, channel_ranges_20m);
-			const unsigned char *rate_sets =
-				(const unsigned char *)GET_DATA(ds_id, locale_rate_sets_5g_20m);
-			ds->chan_ranges_bw[bw] = channel_ranges;
-			for (band = 0; band < CLM_BAND_NUM; ++band) {
-				ds->rate_sets_bw[band][bw] = rate_sets;
-			}
-		}
+		ds->he_rate_dscs = (const clm_he_rate_dsc_t *)GET_DATA(ds_id, he_rates);
+#else
+		/* HE limits not supported with very old style bcmwifi_rates.h */
+		return CLM_RESULT_ERR;
+#endif /* WL_NUM_HE_RT */
 	}
 	return CLM_RESULT_OK;
 }
@@ -1968,31 +2268,43 @@ loc_idx(data_source_id_t ds_id,
 	const clm_country_rev_definition_cd10_t *country_definition,
 	int loc_type)
 {
-	int mask = 0xFF;
-	int idx10 = get_data_sources(ds_id)->reg_loc10_idx;
-	int idx12 = get_data_sources(ds_id)->reg_loc12_idx;
-	int idx14 = get_data_sources(ds_id)->reg_loc14_idx;
 	int ret = country_definition->locales[loc_type];
-	if (idx10 >= 0) {
-		ret |= ((int)country_definition->extra[idx10] <<
-			((CLM_LOC_IDX_NUM - loc_type)*2)) & 0x300;
-		mask = 0x3FF;
+	data_dsc_t *ds = get_data_sources(ds_id);
+#ifdef WL_BAND6G
+	if (loc_type_dscs[loc_type].band == CLM_BAND_6G) {
+		if (!(ds->registry_flags2 & CLM_REGISTRY_FLAG2_6GHZ)) {
+			return CLM_LOC_NONE;
+		}
+		if (ds->reg_loc12_6g_idx >= 0) {
+			ret |= ((int)country_definition->extra[ds->reg_loc12_6g_idx] <<
+				((CLM_LOC_IDX_NUM - loc_type + 2) * 4)) & 0xF00;
+			if (ds->reg_loc16_6g_idx >= 0) {
+				ret |= ((int)country_definition->extra[ds->reg_loc16_6g_idx] <<
+					((CLM_LOC_IDX_NUM - loc_type + 2) * 4 + 4)) & 0xF000;
+			}
+		}
+		ret &= ds->loc_idx_mask;
+	} else
+#endif /* WL_BAND6G */
+	{
+		if (ds->reg_loc10_idx >= 0) {
+			ret |= ((int)country_definition->extra[ds->reg_loc10_idx] <<
+				((CLM_LOC_IDX_NUM - loc_type)*2)) & 0x300;
+			if (ds->reg_loc12_idx >= 0) {
+				ret |= ((int)country_definition->extra[ds->reg_loc12_idx] <<
+					((CLM_LOC_IDX_NUM - loc_type) * 2 + 2)) & 0xC00;
+				if (ds->reg_loc14_idx >= 0) {
+					ret |= ((int)country_definition->extra[ds->reg_loc14_idx] <<
+						((CLM_LOC_IDX_NUM - loc_type) * 2 + 4)) & 0x3000;
+				}
+			}
+		}
 	}
-	if (idx12 >= 0) {
-		ret |= ((int)country_definition->extra[idx12] <<
-			((CLM_LOC_IDX_NUM - loc_type) * 2 + 2)) & 0xC00;
-		mask = 0xFFF;
-	}
-	if (idx14 >= 0) {
-		ret |= ((int)country_definition->extra[idx14] <<
-			((CLM_LOC_IDX_NUM - loc_type) * 2 + 4)) & 0x3000;
-		mask = 0x3FFF;
-	}
-	if (ret == (CLM_LOC_NONE & mask)) {
+	if (ret == (CLM_LOC_NONE & ds->loc_idx_mask)) {
 		ret = CLM_LOC_NONE;
-	} else if (ret == (CLM_LOC_SAME & mask)) {
+	} else if (ret == (CLM_LOC_SAME & ds->loc_idx_mask)) {
 		ret = CLM_LOC_SAME;
-	} else if (ret == (CLM_LOC_DELETED & mask)) {
+	} else if (ret == (CLM_LOC_DELETED & ds->loc_idx_mask)) {
 		ret = CLM_LOC_DELETED;
 	}
 	return ret;
@@ -2247,18 +2559,9 @@ clm_result_t clm_country_lookup(const ccode_t cc, unsigned int rev, clm_country_
 
 clm_result_t clm_country_def(const clm_country_t country, clm_country_locales_t *locales)
 {
-	struct locale_field_dsc {
-		unsigned clm_offset;
-		int data_idx;
-	};
-	static const struct locale_field_dsc fields[] = {
-		{OFFSETOF(clm_country_locales_t, locale_2G),	CLM_LOC_IDX_BASE_2G},
-		{OFFSETOF(clm_country_locales_t, locale_5G),	CLM_LOC_IDX_BASE_5G},
-		{OFFSETOF(clm_country_locales_t, locale_2G_HT), CLM_LOC_IDX_HT_2G},
-		{OFFSETOF(clm_country_locales_t, locale_5G_HT), CLM_LOC_IDX_HT_5G},
-	};
 	data_source_id_t ds_id;
-	int idx, i;
+	int idx;
+	unsigned int loc_type;
 	const clm_country_rev_definition_cd10_t *country_definition;
 	const clm_country_rev_definition_cd10_t *main_country_definition = NULL;
 	int flags_idx;
@@ -2270,9 +2573,11 @@ clm_result_t clm_country_def(const clm_country_t country, clm_country_locales_t 
 	if (!country_definition) {
 		return CLM_RESULT_NOT_FOUND;
 	}
-	for (i = 0; i < (int)ARRAYSIZE(fields); ++i) {
+	locales->main_loc_data_bitmask = 0;
+	for (loc_type = 0; loc_type < ARRAYSIZE(loc_type_dscs); ++loc_type) {
 		data_source_id_t locale_ds_id = ds_id;
-		int locale_idx = loc_idx(locale_ds_id, country_definition, fields[i].data_idx);
+		const unsigned char *loc_def;
+		int locale_idx = loc_idx(locale_ds_id, country_definition, loc_type);
 		if (locale_idx == CLM_LOC_SAME) {
 			if (!main_country_definition) {
 				clm_cc_rev4_t country_ccrev;
@@ -2282,12 +2587,42 @@ clm_result_t clm_country_def(const clm_country_t country, clm_country_locales_t 
 			}
 			locale_ds_id = DS_MAIN;
 			locale_idx = main_country_definition
-				? loc_idx(locale_ds_id, main_country_definition,
-				fields[i].data_idx)
+				? loc_idx(locale_ds_id, main_country_definition, loc_type)
 				: CLM_LOC_NONE;
 		}
-		iter_pack((int*)((char *)locales + fields[i].clm_offset), locale_ds_id,
-			locale_idx);
+		if (locale_idx == CLM_LOC_NONE) {
+			loc_def = NULL;
+		} else {
+			MY_BOOL is_base = loc_type_dscs[loc_type].flavor == BH_BASE;
+			loc_def = (const unsigned char *)get_data(locale_ds_id,
+				loc_type_dscs[loc_type].loc_def_field_offset);
+			while (locale_idx--) {
+				int tx_rec_len;
+				if (is_base) {
+					loc_def = skip_base_header(loc_def, NULL, NULL);
+				}
+				for (;;) {
+					unsigned char flags = *loc_def++;
+					if (flags & CLM_DATA_FLAG_FLAG2) {
+						loc_def++;
+					}
+					tx_rec_len = CLM_LOC_DSC_TX_REC_LEN +
+						((flags &
+						CLM_DATA_FLAG_PER_ANT_MASK) >>
+						CLM_DATA_FLAG_PER_ANT_SHIFT);
+					if (!(flags & CLM_DATA_FLAG_MORE)) {
+						break;
+					}
+					loc_def += 1 + tx_rec_len * (int)(*loc_def);
+				}
+				loc_def += 1 + tx_rec_len * (int)(*loc_def);
+			}
+		}
+		*(const unsigned char **)
+			((char *)locales + loc_type_dscs[loc_type].def_field_offset) = loc_def;
+		if (locale_ds_id == DS_MAIN) {
+			locales->main_loc_data_bitmask |= (1 << loc_type);
+		}
 	}
 	flags_idx = get_data_sources(ds_id)->reg_flags_idx;
 	locales->country_flags = (flags_idx >= 0) ? country_definition->extra[flags_idx] : 0;
@@ -2312,9 +2647,7 @@ clm_result_t clm_country_channels(const clm_country_locales_t *locales, clm_band
 	if (!valid_channels) {
 		valid_channels = &dummy_valid_channels;
 	}
-	if (!get_loc_def(locales, (band == CLM_BAND_2G) ?
-		CLM_LOC_IDX_BASE_2G : CLM_LOC_IDX_BASE_5G, &loc_data))
-	{
+	if (!get_loc_def(locales, compose_loc_type[band][BH_BASE], &loc_data)) {
 		return CLM_RESULT_ERR;
 	}
 	if (loc_data.def_ptr) {
@@ -2369,6 +2702,9 @@ clm_result_t clm_country_flags(const clm_country_locales_t *locales, clm_band_t 
 	case CLM_DATA_FLAG_DFS_UK:
 		*ret_flags |= CLM_FLAG_DFS_UK;
 		break;
+	case CLM_DATA_FLAG_DFS_JP:
+		*ret_flags |= CLM_FLAG_DFS_JP;
+		break;
 	}
 	if (base_flags & CLM_DATA_FLAG_FILTWAR1) {
 		*ret_flags |= CLM_FLAG_FILTWAR1;
@@ -2385,8 +2721,9 @@ clm_result_t clm_country_flags(const clm_country_locales_t *locales, clm_band_t 
 			MY_BOOL eirp;
 			unsigned char bw_idx;
 			unsigned long bw_flag_mask = 0;
-			const unsigned char *rate_sets;
-			unsigned int base_rate;
+			const unsigned char *rate_sets = NULL;
+			const unsigned short *rate_sets_index = NULL;
+			unsigned int base_rate = 0;
 
 			flags = *tx_rec++;
 			flags2 = (flags & CLM_DATA_FLAG_FLAG2) ? *tx_rec++ : 0;
@@ -2420,11 +2757,17 @@ clm_result_t clm_country_flags(const clm_country_locales_t *locales, clm_band_t 
 				continue;
 			case CLM_DATA_FLAG2_RATE_TYPE_EXT:
 				rate_sets = base_ht_loc_data[base_ht_idx].ext_rate_sets_bw[bw_idx];
+				rate_sets_index =
+					base_ht_loc_data[base_ht_idx].
+					ext_rate_sets_indices_bw[bw_idx];
 				base_rate = BASE_EXT_RATE;
 				break;
 			case CLM_DATA_FLAG2_RATE_TYPE_EXT4:
 #if WL_NUMRATES >= 336
 				rate_sets = base_ht_loc_data[base_ht_idx].ext4_rate_sets_bw[bw_idx];
+				rate_sets_index =
+					base_ht_loc_data[base_ht_idx].
+					ext4_rate_sets_indices_bw[bw_idx];
 				base_rate = BASE_EXT4_RATE;
 #else /* WL_NUMRATES >= 336 */
 				ASSERT(!"EXT4 rate may not happen when bcmwifi_rates.h is <=3TX");
@@ -2432,6 +2775,8 @@ clm_result_t clm_country_flags(const clm_country_locales_t *locales, clm_band_t 
 				break;
 			default:
 				rate_sets = base_ht_loc_data[base_ht_idx].rate_sets_bw[bw_idx];
+				rate_sets_index =
+					base_ht_loc_data[base_ht_idx].rate_sets_indices_bw[bw_idx];
 				base_rate = 0;
 				break;
 			}
@@ -2441,7 +2786,8 @@ clm_result_t clm_country_flags(const clm_country_locales_t *locales, clm_band_t 
 			ASSERT((rate_sets != NULL) || (num_rec == 0));
 			for (; num_rec--; tx_rec += tx_rec_len) {
 				const unsigned char *rates =
-					get_byte_string(rate_sets, tx_rec[CLM_LOC_DSC_RATE_IDX]);
+					get_byte_string(rate_sets, tx_rec[CLM_LOC_DSC_RATE_IDX],
+					rate_sets_index);
 				int num_rates = *rates++;
 				/* Check for a non-disabled power before
 				 * clearing NO_bw flag
@@ -2472,6 +2818,7 @@ clm_result_t clm_country_flags(const clm_country_locales_t *locales, clm_band_t 
 						*ret_flags &= ~CLM_FLAG_NO_MIMO;
 						break;
 					case RT_SU:
+						*ret_flags &= ~CLM_FLAG_NO_MIMO;
 						*ret_flags |= CLM_FLAG_HE;
 						break;
 					}
@@ -2575,15 +2922,14 @@ clm_result_t clm_country_advertised_cc(const clm_country_t country, ccode_t adve
  */
 static void
 get_country_data(const clm_country_locales_t *locales,
-	country_data_t *country_data)
+	country_data_v2_t *country_data)
 {
 	data_source_id_t ds_id =
 		(data_source_id_t)(locales->computed_flags & COUNTRY_FLAGS_DS_MASK);
-	const data_dsc_t *ds = get_data_sources(ds_id);
+	data_dsc_t *ds = get_data_sources(ds_id);
 	/* Index of region subchannel rules */
 	int rules_idx;
 	bzero(country_data, sizeof(*country_data));
-	country_data->chan_ranges_bw = ds->chan_ranges_bw;
 	/* Computing subchannel rules index */
 	if (ds->scr_idx_4) {
 		/* Deprecated 4-bit noncontiguous index field in first region
@@ -2610,10 +2956,16 @@ get_country_data(const clm_country_locales_t *locales,
 		 * country_data (band/bandwidth specific)
 		 */
 		static const struct rules_dsc {
-			/* Registry flags that must be set for field to be in
-			 * BLOB
+			/* Registry flags ('registry_flags' field) that must be
+			 * set for field to be in BLOB
 			 */
 			unsigned int registry_flags;
+
+			/* Registry flags ('registry_flags2' field) that must be
+			 * set for field to be in BLOB
+			 */
+			unsigned int registry_flags2;
+
 			/* Offset to pointer to clm_sub_chan_rules_set_t
 			 * structure in BLOB
 			 */
@@ -2627,28 +2979,46 @@ get_country_data(const clm_country_locales_t *locales,
 			 */
 			unsigned country_data_increments_offset;
 		} rules_dscs[] = {
-			{CLM_REGISTRY_FLAG_SUB_CHAN_RULES,
-			OFFSETOF(clm_registry_t, sub_chan_rules_80),
-			OFFSETOF(country_data_t, sub_chan_channel_rules_80),
-			OFFSETOF(country_data_t, sub_chan_increments_80)},
-			{CLM_REGISTRY_FLAG_SUB_CHAN_RULES | CLM_REGISTRY_FLAG_160MHZ,
-			OFFSETOF(clm_registry_t, sub_chan_rules_160),
-			OFFSETOF(country_data_t, sub_chan_channel_rules_160),
-			OFFSETOF(country_data_t, sub_chan_increments_160)},
-			{CLM_REGISTRY_FLAG_SUB_CHAN_RULES | CLM_REGISTRY_FLAG_SUBCHAN_RULES_40,
+			{CLM_REGISTRY_FLAG_SUB_CHAN_RULES | CLM_REGISTRY_FLAG_SUBCHAN_RULES_40, 0,
 			OFFSETOF(clm_registry_t, sub_chan_rules_2g_40m),
-			OFFSETOF(country_data_t, sub_chan_channel_rules_40[CLM_BAND_2G]),
-			OFFSETOF(country_data_t, sub_chan_increments_40[CLM_BAND_2G])},
-			{CLM_REGISTRY_FLAG_SUB_CHAN_RULES | CLM_REGISTRY_FLAG_SUBCHAN_RULES_40,
+			OFFSETOF(country_data_v2_t, sub_chan_channel_rules_40[CLM_BAND_2G]),
+			OFFSETOF(country_data_v2_t, sub_chan_increments_40[CLM_BAND_2G])},
+			{CLM_REGISTRY_FLAG_SUB_CHAN_RULES | CLM_REGISTRY_FLAG_SUBCHAN_RULES_40, 0,
 			OFFSETOF(clm_registry_t, sub_chan_rules_5g_40m),
-			OFFSETOF(country_data_t, sub_chan_channel_rules_40[CLM_BAND_5G]),
-			OFFSETOF(country_data_t, sub_chan_increments_40[CLM_BAND_5G])}};
+			OFFSETOF(country_data_v2_t, sub_chan_channel_rules_40[CLM_BAND_5G]),
+			OFFSETOF(country_data_v2_t, sub_chan_increments_40[CLM_BAND_5G])},
+			{CLM_REGISTRY_FLAG_SUB_CHAN_RULES, 0,
+			OFFSETOF(clm_registry_t, sub_chan_rules_80),
+			OFFSETOF(country_data_v2_t, sub_chan_channel_rules_80[CLM_BAND_5G]),
+			OFFSETOF(country_data_v2_t, sub_chan_increments_80[CLM_BAND_5G])},
+			{CLM_REGISTRY_FLAG_SUB_CHAN_RULES | CLM_REGISTRY_FLAG_160MHZ, 0,
+			OFFSETOF(clm_registry_t, sub_chan_rules_160),
+			OFFSETOF(country_data_v2_t, sub_chan_channel_rules_160[CLM_BAND_5G]),
+			OFFSETOF(country_data_v2_t, sub_chan_increments_160[CLM_BAND_5G])},
+#ifdef WL_BAND6G
+			{CLM_REGISTRY_FLAG_SUB_CHAN_RULES | CLM_REGISTRY_FLAG_SUBCHAN_RULES_40,
+			CLM_REGISTRY_FLAG2_6GHZ,
+			OFFSETOF(clm_registry_t, sub_chan_rules_6g_40),
+			OFFSETOF(country_data_v2_t, sub_chan_channel_rules_40[CLM_BAND_6G]),
+			OFFSETOF(country_data_v2_t, sub_chan_increments_40[CLM_BAND_6G])},
+			{CLM_REGISTRY_FLAG_SUB_CHAN_RULES, CLM_REGISTRY_FLAG2_6GHZ,
+			OFFSETOF(clm_registry_t, sub_chan_rules_6g_80),
+			OFFSETOF(country_data_v2_t, sub_chan_channel_rules_80[CLM_BAND_6G]),
+			OFFSETOF(country_data_v2_t, sub_chan_increments_80[CLM_BAND_6G])},
+			{CLM_REGISTRY_FLAG_SUB_CHAN_RULES | CLM_REGISTRY_FLAG_160MHZ,
+			CLM_REGISTRY_FLAG2_6GHZ,
+			OFFSETOF(clm_registry_t, sub_chan_rules_6g_160),
+			OFFSETOF(country_data_v2_t, sub_chan_channel_rules_160[CLM_BAND_6G]),
+			OFFSETOF(country_data_v2_t, sub_chan_increments_160[CLM_BAND_6G])},
+#endif /* WL_BAND6G */
+		};
 		/* Offset in BLOB to this region's rules from
 		 * clm_sub_chan_rules_set_t::region_rules
 		 */
 		unsigned int region_rules_offset = rules_idx *
-		((ds->registry_flags & CLM_REGISTRY_FLAG_SUBCHAN_RULES_INC_SEPARATE) ?
-		sizeof(clm_sub_chan_region_rules_inc_t) : sizeof(clm_sub_chan_region_rules_t));
+			((ds->registry_flags & CLM_REGISTRY_FLAG_SUBCHAN_RULES_INC_SEPARATE) ?
+			sizeof(clm_sub_chan_region_rules_inc_t) :
+			sizeof(clm_sub_chan_region_rules_t));
 		/* Index in rules_dscs. Corresponds to band/bandwidth */
 		uint ri;
 		for (ri = 0; ri < ARRAYSIZE(rules_dscs); ++ri) {
@@ -2664,8 +3034,8 @@ get_country_data(const clm_country_locales_t *locales,
 			 * destination country_data_t structure
 			 */
 			const unsigned char **country_data_increments_field =
-			(const unsigned char **)((unsigned char *)country_data +
-			rds->country_data_increments_offset);
+				(const unsigned char **)((unsigned char *)country_data +
+				rds->country_data_increments_offset);
 			/* Address of top-level clm_sub_chan_rules_set_t for
 			 * current band/bandwidth in BLOB
 			 */
@@ -2677,11 +3047,14 @@ get_country_data(const clm_country_locales_t *locales,
 			/* Can BLOB have subchannel rules for current
 			 * band/bandwidth?
 			 */
-			if ((ds->registry_flags & rds->registry_flags) != rds->registry_flags) {
+			if (((ds->registry_flags & rds->registry_flags) != rds->registry_flags) ||
+				((ds->registry_flags2 & rds->registry_flags2) !=
+				rds->registry_flags2))
+			{
 				continue;
 			}
 			blob_rule_set = (const clm_sub_chan_rules_set_t *)get_data(ds_id,
-			rds->registry_offset);
+				rds->registry_offset);
 			/* Does BLOB actually have subchannel rules for current
 			 * band/bandwidth?
 			 */
@@ -2694,14 +3067,15 @@ get_country_data(const clm_country_locales_t *locales,
 
 			country_data_rules_field->num = blob_region_rules->num;
 			country_data_rules_field->channel_rules =
-			relocate_ptr(ds_id, blob_region_rules->channel_rules);
+				relocate_ptr(ds_id, blob_region_rules->channel_rules);
 
 			*country_data_increments_field = (ds->registry_flags &
-			CLM_REGISTRY_FLAG_SUBCHAN_RULES_INC_SEPARATE) ?
-			(const unsigned char *)relocate_ptr(ds_id,
-			blob_region_rules->increments) : NULL;
+				CLM_REGISTRY_FLAG_SUBCHAN_RULES_INC_SEPARATE) ?
+				(const unsigned char *)relocate_ptr(ds_id,
+				blob_region_rules->increments) : NULL;
 		}
 	}
+	country_data->chan_ranges_band_bw = ds->chan_ranges_band_bw;
 }
 
 /** Fills subchannel table that maps bandwidth to subchannel numbers
@@ -2798,6 +3172,7 @@ int bw, clm_limits_type_t limits_type)
  * in group)
  * \param[in]tx_comb_set_for_bw Comb set for bandwidth of channels in group
  * \param[in]tx_rate_sets List of rate sets for channels in group
+ * \param[in]tx_rate_sets_index NULL or index or rate sets for channels in group
  * \param[in]tx_channel_rangesList of channel ranges for channels in group
  * \param[out]valid_channel True if any powers were found
  * \param[in]params clm_[ru_]limits() parameters
@@ -2813,7 +3188,7 @@ process_tx_rate_group(clm_power_t *per_rate_limits, const unsigned char *tx_rec,
 	clm_bandwidth_t tx_bw, int tx_power_idx,
 	unsigned int tx_base_rate, int tx_channel_for_bw,
 	const clm_channel_comb_set_t *tx_comb_set_for_bw,
-	const unsigned char *tx_rate_sets,
+	const unsigned char *tx_rate_sets, const unsigned short *tx_rate_sets_index,
 	const clm_channel_range_t *tx_channel_ranges,
 	MY_BOOL *valid_channel, const clm_limits_params_t *params, int ant_gain,
 	clm_power_t power_inc, const clm_channel_comb_set_t *const* comb_sets,
@@ -2870,7 +3245,7 @@ process_tx_rate_group(clm_power_t *per_rate_limits, const unsigned char *tx_rec,
 		{
 			/* Rate indices  for current records' rate set */
 			const unsigned char *rates = get_byte_string(tx_rate_sets,
-				tx_rec[CLM_LOC_DSC_RATE_IDX]);
+				tx_rec[CLM_LOC_DSC_RATE_IDX], tx_rate_sets_index);
 			int num_rates = *rates++;
 			/* Loop over this TX power record's rate indices */
 			while (num_rates--) {
@@ -2897,7 +3272,7 @@ process_tx_rate_group(clm_power_t *per_rate_limits, const unsigned char *tx_rec,
 		{
 			/* Same as above */
 			const unsigned char *rates = get_byte_string(tx_rate_sets,
-				tx_rec[CLM_LOC_DSC_RATE_IDX]);
+				tx_rec[CLM_LOC_DSC_RATE_IDX], tx_rate_sets_index);
 			int num_rates = *rates++;
 			while (num_rates--) {
 				unsigned int rate_idx = *rates++ + tx_base_rate;
@@ -2927,6 +3302,7 @@ process_tx_rate_group(clm_power_t *per_rate_limits, const unsigned char *tx_rec,
  * in group)
  * \param[in]tx_comb_set_for_bw Comb set for bandwidth of channels in group
  * \param[in]tx_rate_sets List of rate sets for channels in group
+ * \param[in]tx_rate_sets_index NULL or index or rate sets for channels in group
  * \param[in]tx_channel_ranges List of channel ranges for channels in group
  * \param[out]has_he_limit True if ther eis HE0 power for main channel
  * \param[in]params clm_[ru_]limits() parameters
@@ -2942,7 +3318,7 @@ process_tx_ru_rate_group(clm_power_t *per_rate_limits, const unsigned char *tx_r
 	unsigned char tx_flags2, clm_bandwidth_t tx_bw, int tx_power_idx,
 	unsigned int tx_base_rate, int tx_channel_for_bw,
 	const clm_channel_comb_set_t *tx_comb_set_for_bw,
-	const unsigned char *tx_rate_sets,
+	const unsigned char *tx_rate_sets, const unsigned short *tx_rate_sets_index,
 	const clm_channel_range_t *tx_channel_ranges,
 	MY_BOOL *has_he_limit, const clm_limits_params_t *params, int ant_gain,
 	clm_limits_type_t limits_type, unsigned char bw_to_chan[CLM_BW_NUM])
@@ -2975,6 +3351,15 @@ process_tx_ru_rate_group(clm_power_t *per_rate_limits, const unsigned char *tx_r
 	/* Bounds of (sub) channel in terms of channel numbers */
 	int left_bound = (int)bw_to_chan[subchannel_bw] - half_subchan_width;
 	int right_bound = (int)bw_to_chan[subchannel_bw] + half_subchan_width;
+	/** Half-width of channels in group in terms of channel numbers */
+	int tx_half_width =
+		(CHAN_STRIDE << ((
+#ifdef WL11AC
+		(tx_bw == CLM_BW_80_80) ? CLM_BW_80 :
+#endif /* WL11AC */
+		tx_bw) - CLM_BW_20)) / 2;
+	int min_intersection_width = (tx_half_width < half_subchan_width) ?
+		(2 * tx_half_width) : 2 * (half_subchan_width);
 
 	if ((!tx_channel_for_bw && (tx_bw > params->bw)) || (tx_power_idx >= tx_rec_len)) {
 		/* Nothing interesting can be found in this group */
@@ -2993,6 +3378,12 @@ process_tx_ru_rate_group(clm_power_t *per_rate_limits, const unsigned char *tx_r
 		/* Channel range for current transmission power record */
 		const clm_channel_range_t *range =
 			tx_channel_ranges + tx_rec[CLM_LOC_DSC_RANGE_IDX];
+		/* Range end channel number */
+		int range_end =
+#ifdef WL11AC
+			(tx_bw == CLM_BW_80_80) ? (int)range->start :
+#endif /* WL11AC */
+			(int)range->end;
 
 		/* Power targets for current transmission power record */
 		clm_power_t qdbm = (clm_power_t)tx_rec[tx_power_idx];
@@ -3013,15 +3404,13 @@ process_tx_ru_rate_group(clm_power_t *per_rate_limits, const unsigned char *tx_r
 		if (tx_channel_for_bw
 			? channel_in_range(tx_channel_for_bw, range, tx_comb_set_for_bw,
 			params->other_80_80_chan)
-			: ranges_intersect(left_bound, right_bound, (int)range->start,
-#ifdef WL11AC
-			(tx_bw == CLM_BW_80_80) ? (int)range->start :
-#endif /* WL11AC */
-			(int)range->end))
+			: ranges_intersect(left_bound, right_bound,
+				(int)range->start - tx_half_width, range_end + tx_half_width,
+				min_intersection_width))
 		{
 			/* Rate indices  for current records' rate set */
 			const unsigned char *rates = get_byte_string(tx_rate_sets,
-				tx_rec[CLM_LOC_DSC_RATE_IDX]);
+				tx_rec[CLM_LOC_DSC_RATE_IDX], tx_rate_sets_index);
 			int num_rates = *rates++;
 			/* Loop over this TX power record's rate indices */
 			while (num_rates--) {
@@ -3043,7 +3432,7 @@ process_tx_ru_rate_group(clm_power_t *per_rate_limits, const unsigned char *tx_r
 						continue;
 					}
 				} else {
-					/* Normal rate. Only HE0 rates are of interest */
+					/* SU rate. Only HE0 rates are of interest */
 					unsigned int he_tx_mode;
 					if ((RATE_TYPE(rate_idx) != RT_SU) ||
 						(RATE_TYPE(rate_idx - 1) == RT_SU))
@@ -3057,9 +3446,9 @@ process_tx_ru_rate_group(clm_power_t *per_rate_limits, const unsigned char *tx_r
 						 */
 						*has_he_limit = TRUE;
 					}
-					/* Computing equivalent RU rate. It is narrow
-					 * enough for sure, as it passed subchannel
-					 * number test
+					/* Computing equivalent RU rate. It is
+					 * narrow enough for sure, as it passed
+					 * subchannel number test
 					 */
 					he_tx_mode = get_he_tx_mode(rate_idx);
 					rate_idx = he_bw_to_ru_rate[tx_bw];
@@ -3077,13 +3466,15 @@ process_tx_ru_rate_group(clm_power_t *per_rate_limits, const unsigned char *tx_r
 					continue;
 				}
 				pp = per_rate_limits + rate_idx;
-				/* If limit for rate was not yet specified or if rate's
-				 * minimum bandwidth equals to subchannel bandwidth -
-				 * overwriting limit for rate (rate groups in BLOB sorted
-				 * appropriately), otherwise writing minimum value
+				/* If limit for rate was not yet specified or if
+				 * recod's channel range completely covers the
+				 * channel - overwriting limit for rate (assuming
+				 * that rate groups in BLOB sorted appropriately),
+				 * otherwise writing minimum value
 				 */
 				if ((*pp == (clm_power_t)(unsigned char)UNSPECIFIED_POWER) ||
-					(ru_min_bw == subchannel_bw) ||
+					((((int)range->start - tx_half_width) <= left_bound) &&
+					((range_end + tx_half_width) >= right_bound)) ||
 					((*pp > qdbm) && (*pp !=
 					(clm_power_t)(unsigned char)CLM_DISABLED_POWER)))
 				{
@@ -3166,6 +3557,11 @@ compute_locale_limits(clm_power_t *per_rate_limits,
 		 */
 		const unsigned char *tx_rate_sets = NULL;
 
+		/** Index of sequence of rate sets' definition for bw used in
+		 * this group
+		 */
+		const unsigned short *tx_rate_sets_index = NULL;
+
 		/* Base value for rates in current rate set */
 		unsigned int tx_base_rate = 0;
 
@@ -3191,15 +3587,18 @@ compute_locale_limits(clm_power_t *per_rate_limits,
 			case CLM_DATA_FLAG2_RATE_TYPE_MAIN:
 				tx_base_rate = 0;
 				tx_rate_sets = loc_data->rate_sets_bw[tx_bw];
+				tx_rate_sets_index = loc_data->rate_sets_indices_bw[tx_bw];
 				break;
 			case CLM_DATA_FLAG2_RATE_TYPE_EXT:
 				tx_base_rate = BASE_EXT_RATE;
 				tx_rate_sets = loc_data->ext_rate_sets_bw[tx_bw];
+				tx_rate_sets_index = loc_data->ext_rate_sets_indices_bw[tx_bw];
 				break;
 			case CLM_DATA_FLAG2_RATE_TYPE_EXT4:
 #if WL_NUMRATES >= 336
 				tx_base_rate = BASE_EXT4_RATE;
 				tx_rate_sets = loc_data->ext4_rate_sets_bw[tx_bw];
+				tx_rate_sets_index = loc_data->ext4_rate_sets_indices_bw[tx_bw];
 #else /* WL_NUMRATES >= 336 */
 				ASSERT(!"EXT4 rate may not happen when bcmwifi_rates.h is <=3TX");
 #endif /* else (WL_NUMRATES >= 336) */
@@ -3207,6 +3606,7 @@ compute_locale_limits(clm_power_t *per_rate_limits,
 			case CLM_DATA_FLAG2_RATE_TYPE_HE:
 				tx_base_rate = 0;
 				tx_rate_sets = loc_data->he_rate_sets_bw[tx_bw];
+				tx_rate_sets_index = loc_data->he_rate_sets_indices_bw[tx_bw];
 				break;
 			}
 			/* Fail on absent rate set table for a bandwidth when
@@ -3222,8 +3622,8 @@ compute_locale_limits(clm_power_t *per_rate_limits,
 				process_tx_ru_rate_group(per_rate_limits, tx_rec, tx_rec_len,
 					tx_num_rec, tx_flags, tx_flags2, tx_bw, tx_power_idx,
 					tx_base_rate, tx_channel_for_bw, tx_comb_set_for_bw,
-					tx_rate_sets, tx_channel_ranges, valid_channel, params,
-					ant_gain, limits_type, bw_to_chan);
+					tx_rate_sets, tx_rate_sets_index, tx_channel_ranges,
+					valid_channel, params, ant_gain, limits_type, bw_to_chan);
 			} else
 #else /* WL_RU_NUMRATES */
 			(void)limits_type;
@@ -3232,8 +3632,8 @@ compute_locale_limits(clm_power_t *per_rate_limits,
 				process_tx_rate_group(per_rate_limits, tx_rec, tx_rec_len,
 					tx_num_rec, tx_flags, tx_bw, tx_power_idx, tx_base_rate,
 					tx_channel_for_bw, tx_comb_set_for_bw, tx_rate_sets,
-					tx_channel_ranges, valid_channel, params, ant_gain,
-					power_inc, comb_sets, channel_dsss);
+					tx_rate_sets_index, tx_channel_ranges, valid_channel,
+					params, ant_gain, power_inc, comb_sets, channel_dsss);
 			}
 		}
 		tx_rec += tx_num_rec * tx_rec_len;
@@ -3283,7 +3683,7 @@ compute_clm_limits(const clm_country_locales_t *locales, clm_band_t band,
 	unsigned char subchannels[CLM_BW_NUM];
 
 	/** Country (region) precomputed data */
-	country_data_t country_data;
+	country_data_v2_t country_data;
 
 	/** Per-bandwidth channel comb sets taken from same data source as
 	 * country definition
@@ -3378,7 +3778,7 @@ compute_clm_limits(const clm_country_locales_t *locales, clm_band_t band,
 					/* Explicit 20-in-40 rules are defined */
 					fill_actual_subchan_table(bw_to_chan, &power_inc,
 						subchannels, limits_type, channel,
-						country_data.chan_ranges_bw[params->bw],
+						country_data.chan_ranges_band_bw[band][params->bw],
 						&country_comb_sets[CLM_BW_40],
 						rules_40,
 						country_data.sub_chan_increments_40[band],
@@ -3391,28 +3791,28 @@ compute_clm_limits(const clm_country_locales_t *locales, clm_band_t band,
 			} else if (params->bw == CLM_BW_80) {
 				fill_actual_subchan_table(bw_to_chan, &power_inc, subchannels,
 					limits_type, channel,
-					country_data.chan_ranges_bw[params->bw],
+					country_data.chan_ranges_band_bw[band][params->bw],
 					&country_comb_sets[CLM_BW_80],
-					&country_data.sub_chan_channel_rules_80,
-					country_data.sub_chan_increments_80,
+					&country_data.sub_chan_channel_rules_80[band],
+					country_data.sub_chan_increments_80[band],
 					CLM_DATA_SUB_CHAN_MAX_80, ds->registry_flags);
 			} else if (params->bw == CLM_BW_80_80) {
 				fill_actual_subchan_table(bw_to_chan, &power_inc, subchannels,
 					limits_type, channel,
-					country_data.chan_ranges_bw[CLM_BW_80],
+					country_data.chan_ranges_band_bw[band][CLM_BW_80],
 					&country_comb_sets[CLM_BW_80],
-					&country_data.sub_chan_channel_rules_80,
-					country_data.sub_chan_increments_80,
+					&country_data.sub_chan_channel_rules_80[band],
+					country_data.sub_chan_increments_80[band],
 					CLM_DATA_SUB_CHAN_MAX_80, ds->registry_flags);
 				bw_to_chan[CLM_BW_80_80] = bw_to_chan[CLM_BW_80];
 				bw_to_chan[CLM_BW_80] = 0;
 			} else if (params->bw == CLM_BW_160) {
 				fill_actual_subchan_table(bw_to_chan, &power_inc, subchannels,
 					limits_type, channel,
-					country_data.chan_ranges_bw[params->bw],
+					country_data.chan_ranges_band_bw[band][params->bw],
 					&country_comb_sets[CLM_BW_160],
-					&country_data.sub_chan_channel_rules_160,
-					country_data.sub_chan_increments_160,
+					&country_data.sub_chan_channel_rules_160[band],
+					country_data.sub_chan_increments_160[band],
 					CLM_DATA_SUB_CHAN_MAX_160, ds->registry_flags);
 				#endif /* WL11AC */
 			}
@@ -3475,7 +3875,7 @@ clm_result_t clm_ru_limits(const clm_country_locales_t *locales, clm_band_t band
 }
 #endif /* WL_RU_NUMRATES */
 
-#ifdef WL_RU_NUMRATES
+#if defined(WL_RU_NUMRATES) || defined(WL_NUM_HE_RT)
 clm_result_t clm_he_limit_params_init(struct clm_he_limit_params *params)
 {
 	if (!params) {
@@ -3487,7 +3887,9 @@ clm_result_t clm_he_limit_params_init(struct clm_he_limit_params *params)
 	params->chains = 1;
 	return CLM_RESULT_OK;
 }
+#endif /* defined(WL_RU_NUMRATES) || defined(WL_NUM_HE_RT) */
 
+#if defined(WL_RU_NUMRATES)
 clm_result_t clm_available_he_limits(const clm_country_locales_t *locales, clm_band_t band,
 	clm_bandwidth_t bandwidth, unsigned int channel,
 	clm_limits_type_t limits_type, clm_available_he_limits_result_t *result)
@@ -3516,7 +3918,7 @@ clm_result_t clm_available_he_limits(const clm_country_locales_t *locales, clm_b
 		return err;
 	}
 	limit_params.bw = bandwidth;
-	/* First retrieve HRE rates - they are part of normal rates */
+	/* First retrieve HE rates - they are part of normal rates */
 	err = compute_clm_limits(locales, band, channel, 0, limits_type, &limit_params,
 		limits.su_limits, ARRAYSIZE(limits.su_limits), FALSE);
 	if (err != CLM_RESULT_OK) {
@@ -3552,15 +3954,15 @@ clm_result_t clm_available_he_limits(const clm_country_locales_t *locales, clm_b
 	}
 	/* ... and looking which RU are defined */
 	for (rt_idx = 0; rt_idx < WL_RU_NUMRATES; ++rt_idx) {
-		const clm_he_rate_dsc_t *he_rate_dsc =
-			(he_rate_descriptors + (rt_idx % ARRAYSIZE(he_rate_descriptors)));
+		const clm_he_rate_dsc_t *he_rate_dsc;
+		wl_he_rate_type_t ru_rate_type;
 		wl_tx_mode_t tx_mode;
 		if (limits.ru_limits[rt_idx] == (clm_power_t)WL_RATE_DISABLED) {
 			continue;
 		}
 		/* Fail on absent HE rate table when there is enabled HE rate (ClmCompiler bug) */
-		result->rate_type_mask |=
-			(1 << (rt_idx / ARRAYSIZE(he_rate_descriptors) + 1));
+		get_ru_rate_info((clm_ru_rates_t)rt_idx, &he_rate_dsc, &ru_rate_type);
+		result->rate_type_mask |= (1 << ru_rate_type);
 		result->nss_mask |= (1 << he_rate_dsc->nss);
 		result->chains_mask |= (1 << he_rate_dsc->chains);
 		if (he_rate_dsc->flags & CLM_HE_RATE_FLAG_TXBF) {
@@ -3646,7 +4048,460 @@ clm_result_t clm_he_limit(const clm_country_locales_t *locales, clm_band_t band,
 	return (result->limit == (clm_power_t)WL_RATE_DISABLED) ? CLM_RESULT_NOT_FOUND :
 		CLM_RESULT_OK;
 }
-#endif /* WL_RU_NUMRATES */
+
+clm_result_t clm_get_ru_rate_params(clm_ru_rates_t ru_rate, clm_he_limit_params_t *params)
+{
+	const clm_he_rate_dsc_t *he_rate_dsc;
+	if (!params || ((unsigned int)ru_rate >= WL_RU_NUMRATES)) {
+		return CLM_RESULT_ERR;
+	}
+	get_ru_rate_info(ru_rate, &he_rate_dsc, &(params->he_rate_type));
+	params->chains = (unsigned int)he_rate_dsc->chains;
+	params->nss = (unsigned int)he_rate_dsc->nss;
+	if (he_rate_dsc->flags & CLM_HE_RATE_FLAG_TXBF) {
+		params->tx_mode = WL_TX_MODE_TXBF;
+	} else if ((he_rate_dsc->nss == 1) && (he_rate_dsc->chains > 1)) {
+		params->tx_mode = WL_TX_MODE_CDD;
+	} else {
+		params->tx_mode = WL_TX_MODE_NONE;
+	}
+	return CLM_RESULT_OK;
+}
+#elif defined(WL_NUM_HE_RT)
+
+/** Scans TX power limits and calls given callback for HE limits, defined for
+ * given channel. Helper function for clm_available_he_limits() and
+ * clm_he_limit()
+ * \param[in] locales Country (region) locales' information
+ * \param[in] band Band of channel in question
+ * \param[in] bandwidth Bandwidth of channel in question (of main channel if
+ * subchannel is requested). If CLM_BW_NUM then neitehr channel nor bandwidth
+ * is checked (i.e. 'fnc' is called for all HE TX power records
+ * \param[in] channel Channel number of channel in question (main channel if
+ * subchannel is requested). Ignored if 'bandwidth' is CLM_BW_NUM
+ * \param[in] limits_type Subchannel in question. Ignored if 'bandwidth' is
+ * CLM_BW_NUM
+ * \param[in] min_bw
+ * \param[in] use_subchan_rules
+ * \param[in] ignore_ru_subchannels
+ * \param[in] fnc Function to call for TX power record with HE limits of channel
+ * in question. Arguments of this function: 'limit' - power limit for current
+ * TX record, 'tx_flags' - address of first flag byte of TX records group,
+ * 'rates' - sequence of HE rate indices, 'num_rates' - number of rate indices,
+ * 'rate_dscs' - array of HE rate descriptors, 'chan_bw' - Bandwidth of channel
+ * to which current TX power record belongs to, 'is_main_bw' - TRUE if TX power
+ * record related to main channel bandwidth, FALSE if to narrower bandwidth,
+ * 'full_coverage' - TRUE if TX record completely covers requested subchannel,
+ * 'arg' - argument, passed to scan_he_limits(). Last return value of this
+ * function is used as return value of scan_he_limits()
+ * \param[in, out] arg - Argument, passed to callback function
+ * Returms CLM_RESULT_ERR if some parameters (except channel) were obviously
+ * wrong, CLM_RESULT_OK otherwise
+ */
+static clm_result_t
+scan_he_limits(const clm_country_locales_t *locales, clm_band_t band,
+	clm_bandwidth_t bandwidth, unsigned int channel, clm_limits_type_t limits_type,
+	clm_bandwidth_t min_bw, MY_BOOL use_subchan_rules, MY_BOOL ignore_ru_subchannels,
+	void (*fnc) (clm_power_t /* limit */, const unsigned char * /* tx_flags */,
+		const unsigned char * /* rates */, unsigned int /* num_rates */,
+		const clm_he_rate_dsc_t * /* rate_dscs */, clm_bandwidth_t /* chan_bw */,
+		MY_BOOL /* is_main_bw */, MY_BOOL /* full_coverage */, void * /* arg */),
+	void *arg)
+{
+	data_dsc_t *ds;
+	locale_data_t ht_loc_data; /* Helper information about locale being traversed */
+	/* Mapping of bandwidths (from subchannel up to to main channel) to channel numbers */
+	unsigned char subchannels[CLM_BW_NUM];
+	unsigned char bw_to_chan[CLM_BW_NUM]; /* actually used subset of 'subchannels' */
+	clm_power_t power_inc = 0; /* Power increment from subchannel rule */
+	const unsigned char *tx_rec; /* Pointer in TX power records' group */
+	clm_bandwidth_t subchannel_bw; /* Bandwidth of requested (sub)channel */
+	int half_subchan_width; /* Half width of requested (sub)channel in channel numbers */
+	int left_bound, right_bound; /* Bounds of (sub) channel in terms of channel numbers */
+
+	/* Parameter sanity check, filling in 'ht_loc_data' */
+	if (!locales || !fnc || ((unsigned)band >= (unsigned)CLM_BAND_NUM) ||
+		((unsigned)bandwidth >= (unsigned)CLM_BW_NUM) ||
+		((unsigned)limits_type >= CLM_LIMITS_TYPE_NUM) ||
+		!get_loc_def(locales, compose_loc_type[band][BH_HT], &ht_loc_data))
+	{
+		return CLM_RESULT_ERR;
+	}
+	ds = get_data_sources((data_source_id_t)(locales->computed_flags & COUNTRY_FLAGS_DS_MASK));
+#ifdef WL11AC
+	/* 80+80 channel is specified by its 'active' 80MHz subchannel - treat it as 80MHz channel
+	*/
+	if (bandwidth == CLM_BW_80_80) {
+		bandwidth = CLM_BW_80;
+	}
+#endif /* WL11AC */
+	tx_rec = ht_loc_data.def_ptr;
+	if (!tx_rec) {
+		return CLM_RESULT_NOT_FOUND; /* Locale has no TX power records */
+	}
+	if (!fill_full_subchan_table(subchannels, (int)channel, (int)bandwidth,
+		limits_type))
+	{
+		/* Filling full subchannel table for given main channel */
+		return CLM_RESULT_ERR;
+	}
+	if (use_subchan_rules) {
+		bzero(bw_to_chan, sizeof(bw_to_chan));
+		/* Computing 'bw_to_chan' and 'power_inc' */
+		if (limits_type == CLM_LIMITS_TYPE_CHANNEL) {
+			/* Main channel case - given channel is the only subchannel */
+			bw_to_chan[bandwidth] = (unsigned char)channel;
+		} else {
+			country_data_v2_t country_data;
+			const clm_sub_chan_region_rules_t *sub_chan_rules = NULL;
+			const signed char *sub_chan_increments = NULL;
+			int num_subchannels = 0;
+			get_country_data(locales, &country_data);
+			switch (bandwidth) {
+			case CLM_BW_40:
+				sub_chan_rules = &country_data.sub_chan_channel_rules_40[band];
+				sub_chan_increments = country_data.sub_chan_increments_40[band];
+				num_subchannels = CLM_DATA_SUB_CHAN_MAX_40;
+				break;
+#ifdef WL11AC
+			case CLM_BW_80:
+				sub_chan_rules = &country_data.sub_chan_channel_rules_80[band];
+				sub_chan_increments = country_data.sub_chan_increments_80[band];
+				num_subchannels = CLM_DATA_SUB_CHAN_MAX_80;
+				break;
+			case CLM_BW_160:
+				sub_chan_rules = &country_data.sub_chan_channel_rules_160[band];
+				sub_chan_increments = country_data.sub_chan_increments_160[band];
+				num_subchannels = CLM_DATA_SUB_CHAN_MAX_160;
+				break;
+#endif /* WL11AC */
+			default:
+				break;
+			}
+			if ((bandwidth == CLM_BW_40) && !sub_chan_rules->channel_rules) {
+				/* Default is to use 40 for 20-in-40 */
+				bw_to_chan[CLM_BW_40] = (unsigned char)channel;
+			} else if (num_subchannels) {
+				fill_actual_subchan_table(bw_to_chan, &power_inc,
+					subchannels, limits_type, channel,
+					country_data.chan_ranges_band_bw[band][bandwidth],
+					&(ds->valid_channel_combs[band][bandwidth]),
+					sub_chan_rules, sub_chan_increments,
+					num_subchannels, ds->registry_flags);
+			}
+		}
+	} else {
+		(void)memcpy_s(bw_to_chan, sizeof(bw_to_chan), subchannels, sizeof(subchannels));
+	}
+	subchannel_bw = bandwidth -
+		((subchan_paths[limits_type] & SUB_CHAN_PATH_COUNT_MASK) >>
+		SUB_CHAN_PATH_COUNT_OFFSET);
+	half_subchan_width = half_step(subchannel_bw);
+	left_bound = (int)bw_to_chan[subchannel_bw] - half_subchan_width;
+	right_bound = (int)bw_to_chan[subchannel_bw] + half_subchan_width;
+	for (;;) {
+		const unsigned char *tx_flags = tx_rec;
+		unsigned char flags = *tx_rec++;
+		unsigned char flags2 = (flags & CLM_DATA_FLAG_FLAG2) ? *tx_rec++ : 0;
+		int tx_rec_len = CLM_LOC_DSC_TX_REC_LEN +
+			((flags & CLM_DATA_FLAG_PER_ANT_MASK) >> CLM_DATA_FLAG_PER_ANT_SHIFT);
+		int num_rec = (int)*tx_rec++;
+		clm_bandwidth_t pg_bw =
+			(clm_bandwidth_t)bw_width_to_idx[flags & CLM_DATA_FLAG_WIDTH_MASK];
+		clm_bandwidth_t outer_bw =
+			(flags2 & CLM_DATA_FLAG2_OUTER_BW_MASK)
+			? outer_bw_to_bw[(flags2 & CLM_DATA_FLAG2_OUTER_BW_MASK) >>
+			CLM_DATA_FLAG2_OUTER_BW_SHIFT]
+			: pg_bw;
+		const clm_channel_comb_set_t *comb_set_for_bw = ht_loc_data.combs[pg_bw];
+		int channel_for_bw = bw_to_chan[pg_bw];
+		const clm_channel_range_t *ranges_for_bw = ht_loc_data.chan_ranges_bw[pg_bw];
+
+		if ((flags2 & CLM_DATA_FLAG2_WIDTH_EXT) ||
+			((flags2 & CLM_DATA_FLAG2_RATE_TYPE_MASK) != CLM_DATA_FLAG2_RATE_TYPE_HE) ||
+			(ignore_ru_subchannels && (flags2 & CLM_DATA_FLAG2_OUTER_BW_MASK)) ||
+			((flags2 & CLM_DATA_FLAG2_OUTER_BW_MASK) &&
+			(outer_bw_to_bw[(flags2 & CLM_DATA_FLAG2_OUTER_BW_MASK) >>
+			CLM_DATA_FLAG2_OUTER_BW_SHIFT] > bandwidth)) ||
+			(!channel_for_bw && ((pg_bw >= subchannel_bw) || (pg_bw < min_bw))))
+		{
+			tx_rec += tx_rec_len * num_rec;
+		} else {
+			int half_tx_width = half_step(pg_bw);
+			int min_intersection_width = (half_tx_width < half_subchan_width) ?
+				(2 * half_tx_width) : (2 * half_subchan_width);
+			for (; num_rec--; tx_rec += tx_rec_len) { /* Loop over TX records group */
+				const unsigned char *rates; /* Rate indices  for current rate set */
+				clm_power_t power; /* Power for current record */
+				const clm_channel_range_t *range =
+					ranges_for_bw + tx_rec[CLM_LOC_DSC_RANGE_IDX];
+				int range_end =
+#ifdef WL11AC
+					(pg_bw == CLM_BW_80_80) ? (int)range->start :
+#endif /* WL11AC */
+					(int)range->end;
+				if (!(channel_for_bw
+					? channel_in_range(channel_for_bw, range, comb_set_for_bw,
+					0)
+					: ranges_intersect(left_bound, right_bound,
+					(int)range->start - half_tx_width,
+					range_end + half_tx_width, min_intersection_width)))
+				{
+					continue; /* Channel not in range - skip this record */
+				}
+				rates = get_byte_string(ht_loc_data.he_rate_sets_bw[pg_bw],
+					tx_rec[CLM_LOC_DSC_RATE_IDX],
+					ht_loc_data.he_rate_sets_indices_bw[pg_bw]);
+				power = (clm_power_t)tx_rec[CLM_LOC_DSC_POWER_IDX];
+				if ((unsigned char)power  != (unsigned char)CLM_DISABLED_POWER) {
+					power += power_inc;
+				}
+				fnc(power, tx_flags, rates + 1, *rates, ds->he_rate_dscs, outer_bw,
+					outer_bw == bandwidth,
+					(((int)range->start - half_tx_width) <= left_bound) &&
+					((range_end + half_tx_width) >= right_bound), arg);
+			}
+		}
+		if (!(flags & CLM_DATA_FLAG_MORE)) {
+			break;
+		}
+	}
+	return CLM_RESULT_OK;
+}
+
+/** scan_he_limits() callback for clm_available_he_limits()
+ * \param[in] limit HE power limit (ignored)
+ * \param[in] tx_flags Flags of group of HE power records (ignored)
+ * \param[in] rates HE rate indices
+ * \param[in] num_rates Number of HE rate indices
+ * \param[in] rate_dscs HE rate descriptors
+ * \param[in] chan_bw Bandwidth of channel to which current TX power record
+ * belongs to
+ * \param[in] is_main_bw TRUE if TX power record related to main channel
+ * bandwidth, FALSE if to narrower bandwidth
+ * \param[in] full_coverage - TRUE if TX record completely covers requested
+ * subchannel
+ * \param[in] arg 'result' parameter, passed to clm_available_he_limits()
+ * Returns CLM_RESULT_OK
+ */
+static void
+available_he_limits_scan_fnc(clm_power_t limit, const unsigned char *tx_flags,
+	const unsigned char *rates, unsigned int num_rates,
+	const clm_he_rate_dsc_t *rate_dscs, clm_bandwidth_t chan_bw,
+	MY_BOOL is_main_bw, MY_BOOL full_coverage, void *arg)
+{
+	clm_available_he_limits_result_t *result = (clm_available_he_limits_result_t *)arg;
+	(void)limit;
+	(void)tx_flags;
+	(void)full_coverage;
+	while (num_rates--) {
+		const clm_he_rate_dsc_t *rate_dsc = &rate_dscs[*rates++];
+		wl_tx_mode_t tx_mode;
+		if (rate_dsc->flags & CLM_HE_RATE_FLAG_TXBF) {
+			tx_mode = WL_TX_MODE_TXBF;
+		} else if ((rate_dsc->nss == 1) && (rate_dsc->chains > 1)) {
+			tx_mode = WL_TX_MODE_CDD;
+		} else {
+			tx_mode = WL_TX_MODE_NONE;
+		}
+		result->tx_mode_mask |= (1 << tx_mode);
+		result->rate_type_mask |= (1 << rate_dsc->rate_type);
+		result->nss_mask |= (1 << rate_dsc->nss);
+		result->chains_mask |= (1 << rate_dsc->chains);
+		if (rate_dsc->rate_type == WL_HE_RT_SU) {
+			wl_he_rate_type_t ru_equivalent = he_bw_to_ru[chan_bw];
+			if (ru_equivalent != WL_NUM_HE_RT) {
+				result->rate_type_mask |= (1 << ru_equivalent);
+			}
+			if (is_main_bw) {
+				result->rate_type_mask |= (1 << WL_HE_RT_SU);
+			}
+		} else {
+			result->rate_type_mask |= (1 << rate_dsc->rate_type);
+		}
+	}
+}
+
+clm_result_t
+clm_available_he_limits(const clm_country_locales_t *locales, clm_band_t band,
+	clm_bandwidth_t bandwidth, unsigned int channel,
+	clm_limits_type_t limits_type, clm_available_he_limits_result_t *result)
+{
+	clm_result_t ret;
+	if (!result) {
+		return CLM_RESULT_ERR;
+	}
+	bzero(result, sizeof(*result));
+	ret = scan_he_limits(locales, band, bandwidth, channel, limits_type,
+		CLM_BW_20, FALSE, FALSE, available_he_limits_scan_fnc, result);
+	if (ret == CLM_RESULT_OK) {
+		if (!(result->rate_type_mask & (1 << WL_HE_RT_SU))) {
+			bzero(result, sizeof(*result));
+			ret = CLM_RESULT_NOT_FOUND;
+		} else if (limits_type != CLM_LIMITS_TYPE_CHANNEL) {
+			result->rate_type_mask &= ~(1 << WL_HE_RT_UB);
+			result->rate_type_mask &= ~(1 << WL_HE_RT_LUB);
+		}
+	}
+	return ret;
+}
+
+/** Argument structure for he_limit_scan_fnc */
+typedef struct he_limit_scan_arg {
+	/** clm_he_limit() 'params' - describes rate to look for */
+	const clm_he_limit_params_t *params;
+	/** clm_he_limit() result */
+	clm_he_limit_result_t *result;
+	/* Antenna gain */
+	clm_power_t ant_gain;
+
+	/** Ignore coverage and bandwidth, always compute minimum limit */
+	MY_BOOL ignore_coverage;
+
+	/**  Maximum outer bandwidth (CLM spreadsheet page, used for limit
+	 * computation - may be different fromchannel range bandwidth for
+	 * power, specified for subchannels) used in limit computation so far.
+	 * Initialized to -2, set to -1 for RU242-996 limit derived from HE
+	 * limit
+	 */
+	int max_outer_bw;
+
+	/** TRUE if at highest outer bandwidth so far the whole (sub)channel
+	 * was covered. FALSE means that limit shall be computed as minimum of
+	 * all pertinent limits
+	 */
+	MY_BOOL full_coverage;
+
+	/** HE limit found on main bandwidth */
+	MY_BOOL he_found;
+} he_limit_scan_arg_t;
+
+/** scan_he_limits() callback for clm_he_limit()
+ * \param[in] limit HE power limit
+ * \param[in] tx_flags Flags of group of HE power records
+ * \param[in] rates HE rate indices
+ * \param[in] num_rates Number of HE rate indices
+ * \param[in] rate_dscs HE rate descriptors
+ * \param[in] chan_bw Bandwidth of channel to which current TX power record
+ * belongs to
+ * \param[in] is_main_bw TRUE if TX power record related to main channel
+ * bandwidth, FALSE if to narrower bandwidth
+ * \param[in] full_coverage - TRUE if TX record completely covers requested
+ * subchannel
+ * \param[in] arg Address of he_limit_scan_arg_t structure
+ */
+static void
+he_limit_scan_fnc(clm_power_t limit, const unsigned char *tx_flags,
+	const unsigned char *rates, unsigned int num_rates,
+	const clm_he_rate_dsc_t *rate_dscs, clm_bandwidth_t chan_bw,
+	MY_BOOL is_main_bw, MY_BOOL full_coverage, void *arg)
+{
+	he_limit_scan_arg_t *hlsa = (he_limit_scan_arg_t *)arg;
+	const clm_he_limit_params_t *params = hlsa->params;
+	clm_he_limit_result_t *result = hlsa->result;
+	if (((*tx_flags & CLM_DATA_FLAG_MEAS_MASK) == CLM_DATA_FLAG_MEAS_EIRP) &&
+		(limit != (clm_power_t)(unsigned)CLM_DISABLED_POWER))
+	{
+		limit -= hlsa->ant_gain;
+	}
+	while (num_rates--) {
+		const clm_he_rate_dsc_t *rate_dsc = &rate_dscs[*rates++];
+		wl_he_rate_type_t ru_equivalent = (wl_he_rate_type_t)WL_NUM_HE_RT;
+		int outer_bw = (int)chan_bw;
+		if (rate_dsc->rate_type == WL_HE_RT_SU) {
+			if (is_main_bw) {
+				hlsa->he_found = TRUE;
+			}
+			ru_equivalent = he_bw_to_ru[chan_bw];
+			outer_bw = -1;
+		}
+		if (((params->he_rate_type == (wl_he_rate_type_t)rate_dsc->rate_type) ||
+			(params->he_rate_type == ru_equivalent)) &&
+			(params->nss == rate_dsc->nss) && (params->chains == rate_dsc->chains) &&
+			((params->tx_mode == WL_TX_MODE_TXBF) ==
+			((rate_dsc->flags & CLM_HE_RATE_FLAG_TXBF) != 0)))
+		{
+			if (!hlsa->ignore_coverage) {
+				if (hlsa->full_coverage && (hlsa->max_outer_bw > outer_bw)) {
+					continue;
+				}
+				if ((hlsa->max_outer_bw == outer_bw) ||
+					((hlsa->max_outer_bw > outer_bw) && !hlsa->full_coverage))
+				{
+					full_coverage = FALSE;
+				}
+			}
+			if ((full_coverage && !hlsa->ignore_coverage) ||
+				(result->limit == (clm_power_t)(unsigned)UNSPECIFIED_POWER) ||
+				((result->limit != (clm_power_t)(unsigned)CLM_DISABLED_POWER) &&
+				(limit < result->limit)))
+			{
+				result->limit = limit;
+			}
+			if (!hlsa->ignore_coverage) {
+				if (full_coverage || (outer_bw > hlsa->max_outer_bw)) {
+					hlsa->max_outer_bw = outer_bw;
+				}
+				hlsa->full_coverage = full_coverage;
+			}
+		}
+	}
+}
+
+clm_result_t
+clm_he_limit(const clm_country_locales_t *locales, clm_band_t band,
+	clm_bandwidth_t bandwidth, unsigned int channel, int ant_gain,
+	clm_limits_type_t limits_type, const clm_he_limit_params_t *params,
+	clm_he_limit_result_t *result)
+{
+	he_limit_scan_arg_t arg;
+	clm_result_t ret;
+	clm_bandwidth_t subchannel_bw, ru_bw;
+	MY_BOOL is_ru_ul;
+	if (!params || !result || ((unsigned)bandwidth >= (unsigned)CLM_BW_NUM) ||
+		((unsigned int)params->he_rate_type >= (unsigned int)WL_NUM_HE_RT) ||
+		((unsigned int)(params->chains - 1) >= (unsigned int)WL_TX_CHAINS_MAX) ||
+		((unsigned int)(params->nss - 1) >= (unsigned int)WL_TX_CHAINS_MAX) ||
+		(params->nss > params->chains) ||
+		((unsigned int)params->tx_mode >= (unsigned int)WL_NUM_TX_MODES))
+	{
+		return CLM_RESULT_ERR;
+	}
+	subchannel_bw = (
+#ifdef WL11AC
+		(bandwidth == CLM_BW_80_80) ? CLM_BW_80 :
+#endif /* WL11AC */
+		bandwidth) -
+		(int)((subchan_paths[limits_type] & SUB_CHAN_PATH_COUNT_MASK) >>
+		SUB_CHAN_PATH_COUNT_OFFSET);
+	ru_bw = min_ru_bw[params->he_rate_type];
+	is_ru_ul = (ru_bw != CLM_BW_NUM) && (params->he_rate_type != WL_HE_RT_SU);
+	if ((ru_bw == CLM_BW_NUM) ? (limits_type != CLM_LIMITS_TYPE_CHANNEL)
+		: (ru_bw > subchannel_bw))
+	{
+		result->limit = (clm_power_t)WL_RATE_DISABLED;
+		return CLM_RESULT_NOT_FOUND;
+	}
+	arg.params = params;
+	arg.result = result;
+	arg.ant_gain = (clm_power_t)ant_gain;
+	arg.max_outer_bw = -2;
+	arg.full_coverage = FALSE;
+	arg.ignore_coverage = !is_ru_ul;
+	arg.he_found = FALSE;
+	result->limit = (clm_power_t)(unsigned)UNSPECIFIED_POWER;
+	ret = scan_he_limits(locales, band, bandwidth, channel, limits_type,
+		is_ru_ul ? ru_bw : subchannel_bw, (params->he_rate_type == WL_HE_RT_SU),
+		!is_ru_ul, he_limit_scan_fnc, &arg);
+	if ((result->limit == (clm_power_t)(unsigned)UNSPECIFIED_POWER) ||
+		((params->he_rate_type != WL_HE_RT_SU) && !arg.he_found))
+	{
+		result->limit = (clm_power_t)WL_RATE_DISABLED;
+		ret = CLM_RESULT_NOT_FOUND;
+	}
+	return ret;
+}
+#endif /* WL_NUM_HE_RT */
 
 /** Retrieves information about channels with valid power limits for locales of
  * some region
@@ -3982,9 +4837,7 @@ get_base_loc_info(const clm_country_locales_t *locales, clm_band_t band,
 	{
 		return FALSE;
 	}
-	if (!get_loc_def(locales, (band == CLM_BAND_2G)
-			? CLM_LOC_IDX_BASE_2G : CLM_LOC_IDX_BASE_5G, &loc_data))
-	{
+	if (!get_loc_def(locales, compose_loc_type[band][BH_BASE], &loc_data)) {
 		return FALSE;
 	}
 	if (!loc_data.def_ptr) {
@@ -4262,7 +5115,7 @@ const char* clm_get_string(clm_string_type_t string_type,
 		((string_source == CLM_STRING_SOURCE_EFFECTIVE) &&
 		!get_data_sources(DS_INC)->data))
 		? DS_MAIN : DS_INC;
-	const data_dsc_t *ds = get_data_sources(ds_id);
+	data_dsc_t *ds = get_data_sources(ds_id);
 	const clm_data_header_t *header = ds->header;
 	const char* ret = NULL;
 	const char* def_value = "";

@@ -374,7 +374,7 @@ static void init_defaults(void)
 	main_opts.reverse_sdp = TRUE;
 	main_opts.name_resolv = TRUE;
 	main_opts.debug_keys = FALSE;
-#if 1
+#if !defined(RTAX95Q) && !defined(RTAX56_XD4)
 	main_opts.mode = BT_MODE_LE;
 #endif
 

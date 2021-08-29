@@ -1,7 +1,7 @@
 /*
  *   bcmwpa.c - shared WPA-related functions
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcmwpa.c 775370 2019-05-29 08:20:33Z $
+ * $Id: bcmwpa.c 781849 2019-12-03 09:16:21Z $
  */
 
 /* XXX: Define bcm_cfg.h to be the first header file included as some builds
@@ -83,8 +83,10 @@
 #if defined(BCMSUP_PSK) || defined(WLFBT) || defined(BCMAUTH_PSK) || defined(WL_OKC) || \
 	defined(WLTDLS) || defined(GTKOE) || defined(WLHOSTFBT)
 #ifdef WLHOSTFBT
+#if !defined(STB)
 #include <string.h>
-#endif // endif
+#endif /* STB */
+#endif /* WLHOSTFBT */
 #endif /* defined(BCMSUP_PSK) || defined(WLFBT) || defined(BCMAUTH_PSK) ||
 	* defined(WL_OKC) || defined(WLTDLS) || defined(GTKOE) || defined(WLHOSTFBT)
 	*/
@@ -968,6 +970,7 @@ bcmwpa_is_rsn_auth(uint32 auth)
 	   (auth == WPA2_AUTH_PSK_SHA256) ||
 	   (auth == WPA3_AUTH_SAE_PSK) ||
 	   (auth == WPA3_AUTH_DPP) ||
+	   (auth == WPA3_AUTH_SAE_FBT) ||
 	   WPA2_AUTH_IS_FILS(auth))
 		return TRUE;
 	else
@@ -978,7 +981,8 @@ bool
 bcmwpa_includes_rsn_auth(uint32 auth)
 {
 	if (auth & (WPA2_AUTH_UNSPECIFIED | WPA2_AUTH_PSK | BRCM_AUTH_PSK | WPA2_AUTH_1X_SHA256 |
-		WPA2_AUTH_PSK_SHA256 | WPA2_AUTH_IS_FILS(auth) | WPA3_AUTH_SAE_PSK | WPA3_AUTH_DPP))
+		WPA2_AUTH_PSK_SHA256 | WPA2_AUTH_IS_FILS(auth) | WPA3_AUTH_SAE_PSK |
+		WPA3_AUTH_DPP | WPA3_AUTH_SAE_FBT))
 		return TRUE;
 	else
 		return FALSE;
@@ -987,5 +991,5 @@ bcmwpa_includes_rsn_auth(uint32 auth)
 bool
 bcmwpa_includes_wpa3_auth(uint32 auth)
 {
-	return ((auth & (WPA3_AUTH_SAE_PSK | WPA3_AUTH_DPP)) != 0);
+	return ((auth & (WPA3_AUTH_SAE_PSK | WPA3_AUTH_DPP | WPA3_AUTH_SAE_FBT)) != 0);
 }

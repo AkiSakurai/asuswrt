@@ -100,6 +100,7 @@ extern int get_wsec(wsec_info_t *info, unsigned char *mac, char *osifname);
 extern bool wl_wlif_is_psta(char *ifname);
 extern bool wl_wlif_is_dwds(char *ifname);
 extern bool wl_wlif_is_psr_ap(char *ifname);
+extern bool wl_wlif_is_wet_ap(char *ifname);
 
 extern int wl_wlif_do_bss_trans(void *hdl, char *ifname, uint8 rclass, chanspec_t chanspec,
 	struct ether_addr bssid, struct ether_addr addr, int timeout, int event_fd);
@@ -140,6 +141,9 @@ extern bool wl_wlif_is_wet_ap(char *ifname);
 #define WLIF_SSID_MAX_SZ               32
 #define WLIF_PSK_MAX_SZ                        64
 
+#ifdef RTCONFIG_HND_ROUTER_AX
+#define WLIF_DPP_PARAMS_MAX_SIZE	512
+#endif
 
 // WPS states to update the UI
 typedef enum wlif_wps_ui_status_code_id {
@@ -196,6 +200,17 @@ typedef struct wlif_wps_nw_settings {
        bool invalid;           // Check for the validity of credentials
 } wlif_wps_nw_creds_t;
 
+#ifdef RTCONFIG_HND_ROUTER_AX
+// Structure to hold the network settings received in DPP config response.
+typedef struct wlif_dpp_config_settings {
+	char ssid[WLIF_SSID_MAX_SZ + /* '\0' */ 1];		// SSID
+	char akm[WLIF_PSK_MAX_SZ + /* '\0' */ 1];		// AKM
+	char dpp_connector[WLIF_DPP_PARAMS_MAX_SIZE];		// DPP connector
+	char dpp_csign[WLIF_DPP_PARAMS_MAX_SIZE];		// DPP C-sign
+	char dpp_netaccess_key[WLIF_DPP_PARAMS_MAX_SIZE];	// DPP Net access key
+} wlif_dpp_creds_t;
+#endif
+
 /* Struct to store the bss info */
 typedef struct wlif_bss {
        char ifname[IFNAMSIZ];          // Ifname of type ethx
@@ -224,7 +239,7 @@ int wl_wlif_wps_stop_session(char *wps_ifname);
 /* Function pointer to be provided to the thread creation routine */
 typedef void* (*wlif_thrd_func)(void *arg);
 /* Thread creation routine */
-int wl_wlif_create_thrd(wlif_thrd_func fptr, void *arg);
+int wl_wlif_create_thrd(pthread_t *thread_id, wlif_thrd_func fptr, void *arg, bool is_detached);
 #ifdef MULTIAP
 /* Checks whether the wps session for the multiap onboarding or not */
 bool wl_wlif_is_map_onboarding(char *prefix);
@@ -232,7 +247,11 @@ bool wl_wlif_is_map_onboarding(char *prefix);
 int wl_wlif_map_configure_backhaul_sta_interface(wlif_bss_t *bss, wlif_wps_nw_creds_t *creds);
 /* Gets the timeout value for the multiap repeter */
 int wl_wlif_wps_map_timeout();
-#endif  /* MULTIAP */
+#endif	/* MULTIAP */
+#ifdef RTCONFIG_HND_ROUTER_AX
+/* Applies DPP credentials to the interface provided in bss */
+int wl_wlif_apply_dpp_creds(wlif_bss_t *bss, wlif_dpp_creds_t *dpp_creds);
+#endif
 /* wps session timeout */
 #define WLIF_WPS_TIMEOUT                120
 

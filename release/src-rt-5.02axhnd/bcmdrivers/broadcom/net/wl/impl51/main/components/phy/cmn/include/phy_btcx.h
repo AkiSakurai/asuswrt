@@ -1,7 +1,7 @@
 /*
  * BlueToothCoExistence module internal interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_btcx.h 775501 2019-06-02 00:18:19Z $
+ * $Id: phy_btcx.h 778624 2019-09-06 01:52:43Z $
  */
 
 #ifndef _phy_btcx_h_
@@ -66,7 +66,8 @@ void phy_btcx_enable_arbiter(phy_btcx_info_t *bi);
 void wlc_phy_btcx_override_enable(phy_info_t *pi);
 void wlc_phy_btcx_override_disable(phy_info_t *pi);
 bool phy_btcx_is_eci_coex_enabled(phy_info_t *pi);
-bool phy_btcx_is_sw_coex_enabled(phy_info_t *pi);
+bool phy_btcx_is_gci_coex_enabled(phy_info_t *pi);
+bool phy_btcx_is_gpio_coex_enabled(phy_info_t *pi);
 bool phy_btcx_is_override_enabled(phy_info_t *pi);
 void phy_btcx_override_enable(phy_info_t *pi);
 void phy_btcx_override_disable(phy_info_t *pi);

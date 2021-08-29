@@ -22,6 +22,9 @@
 <script type="text/javascript" src="/js/httpApi.js"></script>
 <script language="JavaScript" type="text/javascript" src="/js/asus_eula.js"></script>
 <style>
+*{
+	box-sizing: content-box;
+}	
 #switch_menu{
 	text-align:right
 }
@@ -248,7 +251,7 @@ function addRow_main(obj, length){
 		document.form.PC_devicename.focus();
 		return false;
 	}
-	else if(!check_macaddr(document.form.PC_devicename, check_hwaddr_flag(document.form.PC_devicename))){
+	else if(!check_macaddr(document.form.PC_devicename, check_hwaddr_flag(document.form.PC_devicename, 'inner'))){
 		document.form.PC_devicename.focus();
 		document.form.PC_devicename.select();
 		return false;
@@ -569,7 +572,8 @@ var ctf_disable = '<% nvram_get("ctf_disable"); %>';
 var ctf_fa_mode = '<% nvram_get("ctf_fa_mode"); %>';
 function applyRule(){
 	document.form.action_script.value = "restart_wrs;restart_firewall";
-	if(amesh_support && isSwMode("rt"))
+
+	if(amesh_support && isSwMode("rt") && ameshRouter_support)
 		document.form.action_script.value += ";apply_amaslib";
 
 	if(document.form.wrs_enable.value == "1") {
@@ -800,7 +804,7 @@ function switch_control(_status){
 </script>
 </head>
 
-<body onload="initial();" onunload="unload_body();">
+<body onload="initial();" onunload="unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <div id="hiddenMask" class="popup_bg" style="z-index:999;">
@@ -933,7 +937,7 @@ function switch_control(_status){
 											<div id="mainTable" style="margin-top:10px;"></div>
 											<div id="ctrlBtn" style="text-align:center;margin-top:20px;">
 												<input class="button_gen" type="button" onclick="applyRule();" value="<#CTL_apply#>">
-												<div style="width:135px;height:55px;position:absolute;bottom:5px;right:5px;background-image:url('images/New_ui/tm_logo_power.png');"></div>
+												<div style="width:96px;height:44px;position:absolute;bottom:5px;right:5px;background-image:url('images/New_ui/TrendMirco_logo.svg');background-size: 100%;"></div>
 											</div>
 										</td>
 									</tr>

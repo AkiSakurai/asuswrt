@@ -1,7 +1,7 @@
 /*
  * Radio 20698 channel tuning header file
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -126,11 +126,52 @@ typedef struct _chan_info_radio20698_rffe_5G {
 	uint8 RFP0_xtal1_xtal_LDO_Vctrl;
 } chan_info_radio20698_rffe_5G_t;
 
+typedef struct _chan_info_radio20698_rffe_6G {
+	/* 6G tuning data */
+	uint8 RFP0_logen_reg1_logen_mix_ctune;
+	uint8 RF0_logen_core_reg3_logen_lc_ctune;
+	uint8 RFP1_logen_reg1_logen_mix_ctune;
+	uint8 RF1_logen_core_reg3_logen_lc_ctune;
+	uint8 RF2_logen_core_reg3_logen_lc_ctune;
+	uint8 RF3_logen_core_reg3_logen_lc_ctune;
+	uint8 RF0_logen_core_reg1_logen_rccr_tune;
+	uint8 RF0_tx5g_mix_reg2_mx5g_tune;
+	uint8 RF0_tx5g_pa_reg4_tx5g_pa_tune;
+	uint8 RF0_tx5g_pad_reg3_pad5g_tune;
+	uint8 RF0_rx5g_reg1_rx5g_lna_tune;
+	uint8 RF0_rx5g_reg5_rx5g_mix_Cin_tune;
+	uint8 RF1_logen_core_reg1_logen_rccr_tune;
+	uint8 RF1_tx5g_mix_reg2_mx5g_tune;
+	uint8 RF1_tx5g_pa_reg4_tx5g_pa_tune;
+	uint8 RF1_tx5g_pad_reg3_pad5g_tune;
+	uint8 RF1_rx5g_reg1_rx5g_lna_tune;
+	uint8 RF1_rx5g_reg5_rx5g_mix_Cin_tune;
+	uint8 RF2_logen_core_reg1_logen_rccr_tune;
+	uint8 RF2_tx5g_mix_reg2_mx5g_tune;
+	uint8 RF2_tx5g_pa_reg4_tx5g_pa_tune;
+	uint8 RF2_tx5g_pad_reg3_pad5g_tune;
+	uint8 RF2_rx5g_reg1_rx5g_lna_tune;
+	uint8 RF2_rx5g_reg5_rx5g_mix_Cin_tune;
+	uint8 RF3_logen_core_reg1_logen_rccr_tune;
+	uint8 RF3_tx5g_mix_reg2_mx5g_tune;
+	uint8 RF3_tx5g_pa_reg4_tx5g_pa_tune;
+	uint8 RF3_tx5g_pad_reg3_pad5g_tune;
+	uint8 RF3_rx5g_reg1_rx5g_lna_tune;
+	uint8 RF3_rx5g_reg5_rx5g_mix_Cin_tune;
+	uint8 RFP0_xtal2_xtal_cmos_pg_ctrl0;
+	uint8 RFP0_pll_lvldo1_ldo_1p0_ldo_LOGEN_vout_sel;
+	uint8 RFP0_pll_hvldo3_ldo_1p8_ldo_CP_vout_sel;
+	uint8 RFP0_pll_refdoubler3_RefDoublerbuf_rstrg;
+	uint8 RFP0_pll_refdoubler3_RefDoublerbuf_fstrg;
+	uint8 RFP0_xtal1_xtal_LDO_Vctrl;
+} chan_info_radio20698_rffe_6G_t;
+
 typedef struct _chan_info_radio20698_rffe {
 	uint16 channel;
 	uint16 freq;
 	union {
 		/* In this union, make sure the largest struct is at the top. */
+		chan_info_radio20698_rffe_6G_t val_6G;
 		chan_info_radio20698_rffe_5G_t val_5G;
 		chan_info_radio20698_rffe_2G_t val_2G;
 	} u;
@@ -142,26 +183,35 @@ extern const chan_info_radio20698_rffe_t
 	chan_tune_20698_rev1[];
 extern const chan_info_radio20698_rffe_t
 	chan_tune_20698_rev2[];
+extern const chan_info_radio20698_rffe_t
+	chan_tune_20698_rev3_2g[];
+extern const chan_info_radio20698_rffe_t
+	chan_tune_20698_rev3_5g[];
+extern const chan_info_radio20698_rffe_t
+	chan_tune_20698_rev3_6g[];
 
 extern const uint16 chan_tune_20698_rev0_length;
 extern const uint16 chan_tune_20698_rev1_length;
 extern const uint16 chan_tune_20698_rev2_length;
+extern const uint16 chan_tune_20698_rev3_length_2g;
+extern const uint16 chan_tune_20698_rev3_length_5g;
+extern const uint16 chan_tune_20698_rev3_length_6g;
 
 #if (defined(BCMDBG) && defined(DBG_PHY_IOV)) || defined(BCMDBG_PHYDUMP)
 extern const radio_20xx_dumpregs_t dumpregs_20698_rev0[];
 extern const radio_20xx_dumpregs_t dumpregs_20698_rev1[];
 extern const radio_20xx_dumpregs_t dumpregs_20698_rev2[];
+extern const radio_20xx_dumpregs_t dumpregs_20698_rev3[];
 #endif // endif
 
 /* Radio referred values tables */
 extern const radio_20xx_prefregs_t prefregs_20698_rev0[];
 extern const radio_20xx_prefregs_t prefregs_20698_rev1[];
 extern const radio_20xx_prefregs_t prefregs_20698_rev2[];
+extern const radio_20xx_prefregs_t prefregs_20698_rev3[];
 
 extern int8 BCMATTACHDATA(lna12_gain_tbl_2g_20698r0)[2][N_LNA12_GAINS];
 extern int8 BCMATTACHDATA(lna12_gain_tbl_5g_20698r0)[2][N_LNA12_GAINS];
-extern int8 BCMATTACHDATA(lna12_gainbits_tbl_2g_20698r0)[2][N_LNA12_GAINS];
-extern int8 BCMATTACHDATA(lna12_gainbits_tbl_5g_20698r0)[2][N_LNA12_GAINS];
 extern uint8 BCMATTACHDATA(lna1_rout_map_2g_20698r0)[N_LNA12_GAINS];
 extern uint8 BCMATTACHDATA(lna1_rout_map_5g_20698r0)[N_LNA12_GAINS];
 extern uint8 BCMATTACHDATA(lna1_gain_map_2g_20698r0)[N_LNA12_GAINS];
@@ -173,8 +223,6 @@ extern int8 BCMATTACHDATA(biq01_gain_tbl_20698r0)[2][N_BIQ01_GAINS];
 extern int8 BCMATTACHDATA(biq01_gainbits_tbl_20698r0)[2][N_BIQ01_GAINS];
 extern int8 BCMATTACHDATA(lna12_gain_tbl_2g_20698rX)[2][N_LNA12_GAINS];
 extern int8 BCMATTACHDATA(lna12_gain_tbl_5g_20698rX)[2][N_LNA12_GAINS];
-extern int8 BCMATTACHDATA(lna12_gainbits_tbl_2g_20698rX)[2][N_LNA12_GAINS];
-extern int8 BCMATTACHDATA(lna12_gainbits_tbl_5g_20698rX)[2][N_LNA12_GAINS];
 extern uint8 BCMATTACHDATA(lna1_rout_map_2g_20698rX)[N_LNA12_GAINS];
 extern uint8 BCMATTACHDATA(lna1_rout_map_5g_20698rX)[N_LNA12_GAINS];
 extern uint8 BCMATTACHDATA(lna1_gain_map_2g_20698rX)[N_LNA12_GAINS];

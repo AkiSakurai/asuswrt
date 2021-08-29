@@ -1,7 +1,7 @@
 /*
  * PHY modules debug utilities
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -69,6 +69,7 @@
 #endif // endif
 
 extern uint32 phyhal_msg_level;
+extern uint32 wl_msg_level;
 
 #if defined(BCMDBG) && !defined(BCMDONGLEHOST) && !defined(BCMDBG_EXCLUDE_HW_TIMESTAMP)
 char *wlc_dbg_get_hw_timestamp(void);
@@ -87,7 +88,7 @@ extern void phy_log(phy_info_t *pi, const char* str, uint32 p1, uint32 p2);
 #define phy_log(wlc, str, p1, p2)       do {} while (0)
 #endif // endif
 
-#define PHY_PRINT(args) do { PHY_TIMESTAMP(); printf args; } while (0)
+#define PHY_PRINT(args) do { if (wl_msg_level & WL_ERROR_VAL) { PHY_TIMESTAMP(); printf args; } } while (0)
 
 #if defined(EVENT_LOG_COMPILE) && defined(BCMDBG_ERR) && defined(ERR_USE_EVENT_LOG)
 #define	PHY_ERROR(args)		do { \

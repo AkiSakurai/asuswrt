@@ -1,7 +1,7 @@
 /*
  * PHY modules reclaimable strings.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_rstr.c 775037 2019-05-16 02:01:47Z $
+ * $Id: phy_rstr.c 786173 2020-04-20 13:59:54Z $
  */
 
 #include <typedefs.h>
@@ -89,8 +89,26 @@ const char BCMATTACHDATA(rstr_proxdt_rate80m)[] = "proxdt_rate80m";
 const char BCMATTACHDATA(rstr_proxdt_rate40m)[] = "proxdt_rate40m";
 const char BCMATTACHDATA(rstr_proxdt_rate20m)[] = "proxdt_rate20m";
 const char BCMATTACHDATA(rstr_proxdt_rate2g)[] = "proxdt_rate2g";
+const char BCMATTACHDATA(rstr_proxdi_rate80m_43684)[] = "proxdi_rate80m_43684";
+const char BCMATTACHDATA(rstr_proxdi_rate40m_43684)[] = "proxdi_rate40m_43684";
+const char BCMATTACHDATA(rstr_proxdi_rate20m_43684)[] = "proxdi_rate20m_43684";
+const char BCMATTACHDATA(rstr_proxdi_rate2g_43684)[] = "proxdi_rate2g_43684";
+const char BCMATTACHDATA(rstr_proxdt_rate80m_43684)[] = "proxdt_rate80m_43684";
+const char BCMATTACHDATA(rstr_proxdt_rate40m_43684)[] = "proxdt_rate40m_43684";
+const char BCMATTACHDATA(rstr_proxdt_rate20m_43684)[] = "proxdt_rate20m_43684";
+const char BCMATTACHDATA(rstr_proxdt_rate2g_43684)[] = "proxdt_rate2g_43684";
+const char BCMATTACHDATA(rstr_proxdi_rate80m_47622)[] = "proxdi_rate80m_47622";
+const char BCMATTACHDATA(rstr_proxdi_rate40m_47622)[] = "proxdi_rate40m_47622";
+const char BCMATTACHDATA(rstr_proxdi_rate20m_47622)[] = "proxdi_rate20m_47622";
+const char BCMATTACHDATA(rstr_proxdi_rate2g_47622)[] = "proxdi_rate2g_47622";
+const char BCMATTACHDATA(rstr_proxdt_rate80m_47622)[] = "proxdt_rate80m_47622";
+const char BCMATTACHDATA(rstr_proxdt_rate40m_47622)[] = "proxdt_rate40m_47622";
+const char BCMATTACHDATA(rstr_proxdt_rate20m_47622)[] = "proxdt_rate20m_47622";
+const char BCMATTACHDATA(rstr_proxdt_rate2g_47622)[] = "proxdt_rate2g_47622";
 const char BCMATTACHDATA(rstr_proxdi_ack)[] = "proxdi_ack";
 const char BCMATTACHDATA(rstr_proxdt_ack)[] = "proxdt_ack";
+const char BCMATTACHDATA(rstr_proxdt_ack_43684)[] = "proxdt_ack_43684";
+const char BCMATTACHDATA(rstr_proxdt_ack_47622)[] = "proxdt_ack_47622";
 const char BCMATTACHDATA(rstr_proxd_sub80m40m)[] = "proxd_sub80m40m";
 const char BCMATTACHDATA(rstr_proxd_sub80m20m)[] = "proxd_sub80m20m";
 const char BCMATTACHDATA(rstr_proxd_sub40m20m)[] = "proxd_sub40m20m";
@@ -405,6 +423,7 @@ const char BCMATTACHDATA(rstr_sw_rxchain_mask)[] = "sw_rxchain_mask";
 const char BCMATTACHDATA(rstr_pagc5g)[] = "pagc5g";
 const char BCMATTACHDATA(rstr_rpcal2g)[] = "rpcal2g";
 const char BCMATTACHDATA(rstr_rpcal2gcore3)[] = "rpcal2gcore3";
+const char BCMATTACHDATA(rstr_rpcal_phase2g)[] = "rpcal_phase2g";
 const char BCMATTACHDATA(rstr_femctrl)[] = "femctrl";
 const char BCMATTACHDATA(rstr_papdmode)[] = "papdmode";
 const char BCMATTACHDATA(rstr_pdgain2g)[] = "pdgain2g";
@@ -423,6 +442,10 @@ const char BCMATTACHDATA(rstr_rpcal5gb0core3)[] = "rpcal5gb0core3";
 const char BCMATTACHDATA(rstr_rpcal5gb1core3)[] = "rpcal5gb1core3";
 const char BCMATTACHDATA(rstr_rpcal5gb2core3)[] = "rpcal5gb2core3";
 const char BCMATTACHDATA(rstr_rpcal5gb3core3)[] = "rpcal5gb3core3";
+const char BCMATTACHDATA(rstr_rpcal_phase5gb0)[] = "rpcal_phase5gb0";
+const char BCMATTACHDATA(rstr_rpcal_phase5gb1)[] = "rpcal_phase5gb1";
+const char BCMATTACHDATA(rstr_rpcal_phase5gb2)[] = "rpcal_phase5gb2";
+const char BCMATTACHDATA(rstr_rpcal_phase5gb3)[] = "rpcal_phase5gb3";
 const char BCMATTACHDATA(rstr_txidxcap2g)[] = "txidxcap2g";
 const char BCMATTACHDATA(rstr_txidxcap5g)[] = "txidxcap5g";
 const char BCMATTACHDATA(rstr_txidxmincap2g)[] = "txidxmincap2g";
@@ -723,3 +746,7 @@ const char BCMATTACHDATA(rstr_mcsbw20ul5glpo)[] = "mcsbw20ul5glpo";
 const char BCMATTACHDATA(rstr_mcsbw20ul5gmpo)[] = "mcsbw20ul5gmpo";
 const char BCMATTACHDATA(rstr_mcsbw20ul5ghpo)[] = "mcsbw20ul5ghpo";
 const char BCMATTACHDATA(rstr_legofdm40duppo)[] = "legofdm40duppo";
+
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+const char BCMATTACHDATA(rstr_phynoisebiasrxgainerr)[] = "phynoisebiasrxgainerr";
+#endif /* WL_EAP_NOISE_MEASUREMENTS */

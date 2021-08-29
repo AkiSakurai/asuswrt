@@ -1,7 +1,7 @@
 /*
  * PHY Core module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy.c 778037 2019-08-20 22:18:34Z $
+ * $Id: phy.c 777903 2019-08-14 16:26:25Z $
  */
 
 #include <typedefs.h>

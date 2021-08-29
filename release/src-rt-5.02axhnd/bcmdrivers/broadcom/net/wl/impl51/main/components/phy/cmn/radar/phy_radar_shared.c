@@ -1,7 +1,7 @@
 /*
  * RadarDetect module implementation (shared by PHY implementations)
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_radar_shared.c 777927 2019-08-15 01:59:15Z $
+ * $Id: phy_radar_shared.c 785213 2020-03-17 07:51:28Z $
  */
 
 /* XXX: Define phy_cfg.h to be the first header file included as some builds
@@ -73,7 +73,7 @@
 #endif /* !ALL_NEW_PHY_MOD */
 
 #define PHY_RADAR_FIFO_SUBBAND_FORMAT(pi) \
-		(ACMAJORREV_GE32((pi)->pubpi->phy_rev) && !ACMAJORREV_36((pi)->pubpi->phy_rev))
+		(ACMAJORREV_GE32((pi)->pubpi->phy_rev))
 
 #define MIN_PULSES		6	/* the minimum number of required consecutive pulses */
 #define INTERVAL_TOLERANCE	16	/* in 1/20 us */
@@ -170,6 +170,29 @@ static const radar_spec_t radar_spec[] = {
 	{ RADAR_TYPE_UK2, 5, 400, 400, 222, 222 },
 
 	{ RADAR_TYPE_NONE, 0, 0, 0, 0, 0 }
+};
+
+typedef struct {
+	uint8 radar_type;	/* one of RADAR_TYPE_XXX */
+	uint8 num_pulses;	/* min number of pulses required */
+	uint16 min_pw_sp;	/* minimum short pulse-width (usec * 20) */
+	uint16 max_pw_sp;	/* maximum short pulse-width (usec * 20) */
+	uint16 min_pw_lp;	/* minimum long pulse-width (usec * 20) */
+	uint16 max_pw_lp;	/* maximum long pulse-width (usec * 20) */
+	uint16 min_blk;		/* minimum pulse blank time (usec * 20) */
+	uint32 min_pri;		/* minimum pulse repetition interval (usec * 20) */
+	uint32 max_pri;         /* maximum pulse repetition interval (usec * 20) */
+	uint16 pri_tol;		/* tolerance of pulse repetition interval (usec * 20) */
+} radar_specNewJP_t;
+
+static const radar_specNewJP_t radar_specNewJP[] = {
+	{ RADAR_TYPE_NEW_JP_5, 30, 10, 30, 570, 672, 1000, 17889, 17953, 700 },
+	{ RADAR_TYPE_NEW_JP_6, 25, 10, 30, 570, 672, 1000, 21459, 21552, 700 },
+	{ RADAR_TYPE_NEW_JP_7, 24, 10, 30, 570, 672, 1000, 22472, 22573, 700 },
+	{ RADAR_TYPE_NEW_JP_8, 20, 10, 30, 570, 672, 1000, 26954, 27100, 700 },
+	{ RADAR_TYPE_NEW_JP_3, 26, 10, 100, 400, 2200, 1400, 20000, 100000, 2310 },
+	{ RADAR_TYPE_NEW_JP_4, 30, 10, 300, 400, 2200, 1400, 12500, 100000, 2530 },
+	{ RADAR_TYPE_NONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 };
 
 /* current radar fifo sample info */
@@ -281,7 +304,7 @@ bool bw80_80_mode)
 				ANT_num = 1;
 			} else if ((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
 				!ACMAJORREV_128(pi->pubpi->phy_rev)) && ((rdr_core_mask  == 0x8) ||
-				(rdr_core_mask == 0x4) || (rdr_core_mask == 0x2))) {
+				(rdr_core_mask == 0x4))) {
 				RadarFifoCtrlReg[0] =
 					ACPHY_Antenna1_radarFifoCtrl(pi->pubpi->phy_rev);
 				RadarFifoCtrlReg[1] = 0;
@@ -437,19 +460,25 @@ static bool
 wlc_phy_radar_valid(const phy_info_t *pi, uint16 feature_mask, uint8 radar_type)
 {
 	bool uk_new_valid = FALSE;
+	bool new_jp_valid = FALSE;
 
 	if ((CHSPEC_CHANNEL(pi->radio_chanspec) == 138) ||
 		(CHSPEC_CHANNEL(pi->radio_chanspec) >= 142))
 		uk_new_valid = TRUE;
+
+	if (CHSPEC_CHANNEL(pi->radio_chanspec) <= 64)
+		new_jp_valid = TRUE;
 
 	switch (radar_type) {
 	case RADAR_TYPE_NONE:
 	case RADAR_TYPE_UNCLASSIFIED:
 		return FALSE;
 
-	case RADAR_TYPE_ETSI_0:
 	case RADAR_TYPE_ETSI_1:
 	case RADAR_TYPE_ETSI_2:
+		return (((feature_mask & RADAR_FEATURE_ETSI_DETECT) != 0) ||
+			(new_jp_valid && ((feature_mask & RADAR_FEATURE_NEWJP_DETECT) != 0)));
+	case RADAR_TYPE_ETSI_0:
 	case RADAR_TYPE_ETSI_3:
 	case RADAR_TYPE_ETSI_4:
 		return ((feature_mask & RADAR_FEATURE_ETSI_DETECT) != 0);
@@ -470,8 +499,7 @@ wlc_phy_radar_detect_match(phy_info_t *pi, radar_params_t *rparams, const pulse_
 {
 	const radar_spec_t *pRadar;
 	const pulse_data_t *next_pulse = pulse + 1;
-	int intv_tol = ((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-		!ACMAJORREV_128(pi->pubpi->phy_rev)) && rparams->radar_args.max_deltat == 1) ?
+	int intv_tol = (rparams->radar_args.quant != INTERVAL_TOLERANCE) ?
 		rparams->radar_args.quant : INTERVAL_TOLERANCE;
 
 	/* scan the list of Radars for a possible match */
@@ -564,38 +592,24 @@ wlc_phy_radar_fc_chirp_2_subband(const phy_info_t *pi, int fc,
 	uint16 subband_idx = 0;
 	uint16 subband_weighting = 1;
 	int fc_tol = 0;
-	int32 radio_chanspec_sc;
+	int32 radio_chanspec_sc, chanspec;
 
 	phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi), &radio_chanspec_sc);
 
+	chanspec = sec_pll ? radio_chanspec_sc : pi->radio_chanspec;
 	/* prohibit subband radar detection on non-DFS channels */
-	if (((CHSPEC_CHANNEL(pi->radio_chanspec) == 50) || (sec_pll &&
-		(CHSPEC_CHANNEL(radio_chanspec_sc) == 50))) && (fc < 0))
+	if ((CHSPEC_CHANNEL(chanspec) == 50) && (fc < 0))
 		return 0;
 
-	if (sec_pll) {
-		if (CHSPEC_IS20(radio_chanspec_sc)) {
-			subband_result = ALLSUBBAND_BW20;
-			return subband_result;
-		} else if (CHSPEC_IS40(radio_chanspec_sc)) {
-			subband_num = SUBBAND_NUM_BW40;
-		} else if (CHSPEC_IS80(radio_chanspec_sc)) {
-			subband_num = SUBBAND_NUM_BW80;
-		} else if (CHSPEC_IS160(radio_chanspec_sc)) {
-			subband_num = SUBBAND_NUM_BW160;
-		}
-	} else {
-		if (CHSPEC_IS20(pi->radio_chanspec)) {
-			subband_result = ALLSUBBAND_BW20;
-			return subband_result;
-		} else if (CHSPEC_IS40(pi->radio_chanspec)) {
-			subband_num = SUBBAND_NUM_BW40;
-		} else if (CHSPEC_IS80(pi->radio_chanspec) ||
-			PHY_AS_80P80(pi, pi->radio_chanspec)) {
-			subband_num = SUBBAND_NUM_BW80;
-		} else if (CHSPEC_IS160(pi->radio_chanspec)) {
-			subband_num = SUBBAND_NUM_BW160;
-		}
+	if (CHSPEC_IS20(chanspec)) {
+		subband_result = ALLSUBBAND_BW20;
+		return subband_result;
+	} else if (CHSPEC_IS40(chanspec)) {
+		subband_num = SUBBAND_NUM_BW40;
+	} else if (CHSPEC_IS80(chanspec)) {
+		subband_num = SUBBAND_NUM_BW80;
+	} else if (CHSPEC_IS160(chanspec)) {
+		subband_num = SUBBAND_NUM_BW160;
 	}
 
 	if (fcc5 == 0) {
@@ -616,6 +630,52 @@ wlc_phy_radar_fc_chirp_2_subband(const phy_info_t *pi, int fc,
 	return subband_result;
 }
 
+static int phy_radar_check_newJP(phy_info_t *pi, radar_params_t *rparams, int *nconseq,
+	const pulse_data_t pulse[], uint16 j)
+{
+	const radar_specNewJP_t *pRadar;
+	int min_curr_pw, max_curr_pw, min_prev_pw, max_prev_pw;
+	int curr_pw_tol, prev_pw_tol, curr_pri;
+
+	for (pRadar = &radar_specNewJP[0]; pRadar->radar_type != RADAR_TYPE_NONE; ++pRadar) {
+		if ((int)pulse[j].pw <= 350) { /* New JP Short Pulses Detection, pw <= 17.5us */
+			min_curr_pw = pRadar->min_pw_sp;
+			max_curr_pw = pRadar->max_pw_sp;
+			min_prev_pw = pRadar->min_pw_lp;
+			max_prev_pw = pRadar->max_pw_lp;
+			curr_pw_tol = PULSE_WIDTH_TOLERANCE;
+			prev_pw_tol = 65;
+		} else { /* New JP Long Pulses Detection, pw > 17.5us */
+			min_curr_pw = pRadar->min_pw_lp;
+			max_curr_pw = pRadar->max_pw_lp;
+			min_prev_pw = pRadar->min_pw_sp;
+			max_prev_pw = pRadar->max_pw_sp;
+			curr_pw_tol = 65;
+			prev_pw_tol = PULSE_WIDTH_TOLERANCE;
+		}
+
+		curr_pri = (int)pulse[j].interval + (int)pulse[j].pw + (int)pulse[j - 1].interval +
+			(int)pulse[j - 1].pw;
+
+		if (ABS((int32)(pulse[j].interval - pulse[j - 2].interval)) <= INTERVAL_TOLERANCE &&
+			ABS((int32)(pulse[j - 1].interval - pulse[j - 3].interval)) <=
+			INTERVAL_TOLERANCE && (int)pulse[j].pw >= min_curr_pw - curr_pw_tol &&
+			(int)pulse[j].pw <= max_curr_pw + curr_pw_tol &&
+			(int)pulse[j - 1].pw >= min_prev_pw - prev_pw_tol &&
+			(int)pulse[j - 1].pw <= max_prev_pw + prev_pw_tol &&
+			(int)pulse[j].interval >= pRadar->min_blk - INTERVAL_TOLERANCE &&
+			(int)pulse[j - 1].interval >= pRadar->min_blk - INTERVAL_TOLERANCE &&
+			curr_pri >= pRadar->min_pri - pRadar->pri_tol &&
+			curr_pri <= pRadar->max_pri + pRadar->pri_tol &&
+			ABS((int32)(pulse[j].pw - pulse[j - 1].pw)) >= 300) {
+			++(*nconseq);
+			break;
+		}
+	}
+
+	return pRadar->radar_type;
+}
+
 #define MIN_STAGGERED_INTERVAL		16667	/* 833 us */
 #define MAX_STAGGERED_INTERVAL		66667	/* 3333 us */
 #define MAX_STAGGERED_PULSE_WIDTH	40	/* 2 us */
@@ -624,12 +684,13 @@ wlc_phy_radar_fc_chirp_2_subband(const phy_info_t *pi, int fc,
 static void phy_radar_check_staggered(phy_info_t *pi, radar_params_t *rparams, int *nconseq,
 	const pulse_data_t pulse[], uint16 j, int stg)
 {
-	int intv_tol = ((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-		!ACMAJORREV_128(pi->pubpi->phy_rev)) && rparams->radar_args.max_deltat == 1) ?
+	int intv_tol = (rparams->radar_args.quant != INTERVAL_TOLERANCE) ?
 		rparams->radar_args.quant : INTERVAL_TOLERANCE;
 	int lesi_rev47 = (ACMAJORREV_47(pi->pubpi->phy_rev) && !ACMINORREV_0(pi)) ? TRUE : FALSE;
 
 	if (ABS((int32)(pulse[j].interval - pulse[j - stg].interval)) <= intv_tol &&
+	    ABS((int32)(pulse[j - stg + 1].interval - pulse[j - stg].interval)) >=
+	    ((rparams->radar_args.autocorr >> 5) & 0x7ff) &&
 	    (int)pulse[j].pw <= MAX_STAGGERED_PULSE_WIDTH + PULSE_WIDTH_TOLERANCE &&
 	    (int)pulse[j].interval >= MIN_STAGGERED_INTERVAL - intv_tol &&
 	    (int)pulse[j].interval <= MAX_STAGGERED_INTERVAL + intv_tol) {
@@ -650,11 +711,10 @@ static void phy_radar_check_staggered(phy_info_t *pi, radar_params_t *rparams, i
 				max_pw = curr_pw;
 			}
 		}
-		if (max_pw - min_pw > (((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-			!ACMAJORREV_128(pi->pubpi->phy_rev)) &&
-			rparams->radar_args.max_deltat == 1) ? rparams->radar_args.max_pw_tol :
-			((lesi_rev47 ? PULSE_WIDTH_DIFFERENCE_STG_LESI : PULSE_WIDTH_DIFFERENCE) +
-			curr_pw / 200))) {
+		if (max_pw - min_pw > ((rparams->radar_args.max_pw_tol != PULSE_WIDTH_DIFFERENCE) ?
+			rparams->radar_args.max_pw_tol : ((lesi_rev47 ?
+			PULSE_WIDTH_DIFFERENCE_STG_LESI :
+			PULSE_WIDTH_DIFFERENCE) + curr_pw / 200))) {
 			/* alternate pulse widths inconsistent */
 			*nconseq = 0;
 		}
@@ -696,6 +756,8 @@ static bool phy_radar_ext_fm_check(phy_info_t *pi, radar_params_t *rparams, puls
 	int32 radio_chanspec_sc;
 	bool is43684mch2;
 	int etsi4_fm_thresh = MIN_FM_THRESH_ETSI4;
+	int etsi4_fm_thresh_args = ((radar_args->fra_pulse_err >> 8) & 0xff) -
+		((rparams->radar_args.ncontig >> 6) & 0xf);
 	int pw_thrs_fm_var_chk = (radar_thrs2->fm_chk_opt & EXT_FM_CHK_DBG) ?
 		radar_thrs2->fm_var_chk_pw : 25;
 	int div_fm_tol = (radar_thrs2->fm_chk_opt & EXT_FM_CHK_DBG) ?
@@ -704,20 +766,21 @@ static bool phy_radar_ext_fm_check(phy_info_t *pi, radar_params_t *rparams, puls
 	phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi), &radio_chanspec_sc);
 
 	is43684mch2 = ACMAJORREV_47(pi->pubpi->phy_rev) && CHSPEC_IS2G(pi->radio_chanspec) &&
-		CHSPEC_IS5G(radio_chanspec_sc) && !BF_ELNA_5G(pi->u.pi_acphy);
+		CHSPEC_ISPHY5G6G(radio_chanspec_sc) && !BF_ELNA_5G(pi->u.pi_acphy);
 
 	/* special case for ETSI 4, as it has a chirp of +/-2.5MHz */
 	if (det_type == RADAR_TYPE_ETSI_4) {
 		if (radar_thrs2->fm_chk_opt & EXT_FM_CHK_DBG) {
 			etsi4_fm_thresh = radar_thrs2->fm_thresh_etsi4;
-		} else if ((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-			!ACMAJORREV_128(pi->pubpi->phy_rev)) && radar_args->max_deltat == 1) {
-			etsi4_fm_thresh = ((radar_args->fra_pulse_err >> 8) & 0xff) -
-				((radar_args->ncontig >> 6) & 0xf);
+		} else if (etsi4_fm_thresh_args != MIN_FM_THRESH_ETSI4) {
+			etsi4_fm_thresh = etsi4_fm_thresh_args;
 		} else if (ACMAJORREV_51(pi->pubpi->phy_rev) &&
 			(CHSPEC_IS80(pi->radio_chanspec) && !(CHSPEC_CHANNEL(pi->radio_chanspec) <=
 			WL_THRESHOLD_LO_BAND))) {
 			etsi4_fm_thresh = 100;
+		} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+			etsi4_fm_thresh = CHSPEC_IS20(pi->radio_chanspec) ? 170 :
+				CHSPEC_IS40(pi->radio_chanspec) ? 240 : 160;
 		} else if (sec_pll == TRUE) {
 			etsi4_fm_thresh = is43684mch2 ? 0 : 50;
 		}
@@ -791,8 +854,7 @@ static bool phy_radar_ext_pw_tol(phy_info_t *pi, radar_params_t *rparams, int ma
 	int min_det_pw, uint16 blank_time, uint16 set)
 {
 	bool chk_set1, chk_set2, chk_set3, chk_set4;
-	int max_pw_tol = ((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-		!ACMAJORREV_128(pi->pubpi->phy_rev)) && rparams->radar_args.max_deltat == 1) ?
+	int max_pw_tol = (rparams->radar_args.max_pw_tol != PULSE_WIDTH_DIFFERENCE) ?
 		rparams->radar_args.max_pw_tol : PULSE_WIDTH_DIFFERENCE;
 	int lesi_rev47 = (ACMAJORREV_47(pi->pubpi->phy_rev) && !ACMINORREV_0(pi)) ? TRUE : FALSE;
 	/* ext pw tol for pw variations <= 37(1.85us)  */
@@ -820,6 +882,7 @@ static bool phy_radar_ext_pw_tol(phy_info_t *pi, radar_params_t *rparams, int ma
 
 #define MIN_INTERVAL	3000	/* 150 us */
 #define MAX_INTERVAL	120000	/* 6 ms */
+#define MIN_INTERVAL_NEWJP 1100	/* 55 us */
 #define MIN_CHIRP	0	/* 0 MHz */
 #define MAX_CHIRP	80	/* 40 MHz */
 #define MIN_FC	-160	/* -80 MHz */
@@ -827,13 +890,14 @@ static bool phy_radar_ext_pw_tol(phy_info_t *pi, radar_params_t *rparams, int ma
 #define MAX_FC_VARIATION	7
 
 static void
-get_min_max_avg_statistic(pulse_data_t pulses[], int idx, int num_pulses,
-	uint32 *min_detected_interval_p, uint32 *max_detected_interval_p,
+get_min_max_avg_statistic(pulse_data_t pulses[], radar_params_t *rparams, int idx,
+	int num_pulses, uint32 *min_detected_interval_p, uint32 *max_detected_interval_p,
 	int *avg_fc_p, int *var_fc_p)
 {
 	int i;
 	uint32 min_interval = MAX_INTERVAL;
-	uint32 max_interval = MIN_INTERVAL;
+	uint32 max_interval = (rparams->radar_args.feature_mask &
+		RADAR_FEATURE_NEWJP_DETECT) ? MIN_INTERVAL_NEWJP : MIN_INTERVAL;
 	uint32 interval;
 	uint min_chirp = MAX_CHIRP;
 	uint max_chirp = MIN_CHIRP;
@@ -892,18 +956,22 @@ wlc_phy_radar_detect_run_epoch(phy_info_t *pi,
 	uint16 j;
 	bool radar_detected = FALSE, fm_in_range = TRUE;
 	uint8 det_type;
+	uint8 det_type_newjp = 0;
 	uint8 previous_det_type = RADAR_TYPE_NONE;
+	uint32 min_interval = (rparams->radar_args.feature_mask &
+		RADAR_FEATURE_NEWJP_DETECT) ? MIN_INTERVAL_NEWJP : MIN_INTERVAL;
 	int detected_pulse_index = 0;
 	int nconsecq_pulses = 0;
 	int nconseq2even, nconseq2odd;
 	int nconseq3a, nconseq3b, nconseq3c;
+	int nconnewjp, npulse_newjp;
 	int first_interval;
 	bool pw_blank_condition;
 	const radar_spec_t *pRadar;
 	int pw_var_tol;
 
 	epoch_length = wlc_phy_radar_filter_list(rt->pulses, epoch_length,
-	                                         MIN_INTERVAL, MAX_INTERVAL);
+	                                         min_interval, MAX_INTERVAL);
 
 	/* Detect contiguous only pulses */
 	detected_pulse_index = 0;
@@ -913,6 +981,7 @@ wlc_phy_radar_detect_run_epoch(phy_info_t *pi,
 	nconseq3a = 0;
 	nconseq3b = 0;
 	nconseq3c = 0;
+	nconnewjp = 0;
 
 	first_interval = rt->pulses[0].interval;
 	*min_detected_pw_p = rt->pulses[0].pw;
@@ -930,11 +999,9 @@ wlc_phy_radar_detect_run_epoch(phy_info_t *pi,
 		if (det_type != RADAR_TYPE_NONE) {
 			/* same interval detected as first ? */
 			if (ABS((int32)(curr_interval - first_interval)) <
-			    (((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-			    !ACMAJORREV_128(pi->pubpi->phy_rev)) &&
-			    rparams->radar_args.max_deltat == 1) ?
+			    (rparams->radar_args.quant != INTERVAL_TOLERANCE) ?
 			    rparams->radar_args.quant : (INTERVAL_TOLERANCE +
-			    (int32)curr_interval / 4000))) {
+			    (int32)curr_interval / 4000)) {
 				if (curr_pw < *min_detected_pw_p) {
 					*min_detected_pw_p = curr_pw;
 				}
@@ -967,9 +1034,7 @@ wlc_phy_radar_detect_run_epoch(phy_info_t *pi,
 				}
 
 				if ((*max_detected_pw_p - *min_detected_pw_p <=
-				    (((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-				    !ACMAJORREV_128(pi->pubpi->phy_rev)) &&
-				    rparams->radar_args.max_deltat == 1) ?
+				    ((rparams->radar_args.max_pw_tol != PULSE_WIDTH_DIFFERENCE) ?
 				    rparams->radar_args.max_pw_tol : pw_var_tol)) ||
 				    pw_blank_condition) {
 					uint8 min_pulses;
@@ -1001,12 +1066,21 @@ wlc_phy_radar_detect_run_epoch(phy_info_t *pi,
 						radar_detected = TRUE;
 						*nconsecq_pulses_p = nconsecq_pulses;
 						detected_pulse_index = j - min_pulses + 1;
-						get_min_max_avg_statistic(rt->pulses,
+						get_min_max_avg_statistic(rt->pulses, rparams,
 								detected_pulse_index, min_pulses,
 								min_detected_interval_p,
 								max_detected_interval_p,
 								avg_fc_p,
 								var_fc_p);
+
+						if (rparams->radar_args.feature_mask &
+							RADAR_FEATURE_NEWJP_DETECT) {
+							if (det_type == RADAR_TYPE_ETSI_1)
+								det_type = RADAR_TYPE_NEW_JP_1;
+							else if (det_type == RADAR_TYPE_ETSI_2)
+								det_type = RADAR_TYPE_NEW_JP_2;
+						}
+
 						PHY_RADAR(("Radar %d: detected_pulse_index=%d\n",
 							det_type, detected_pulse_index));
 						break;
@@ -1031,6 +1105,33 @@ wlc_phy_radar_detect_run_epoch(phy_info_t *pi,
 			previous_det_type = RADAR_TYPE_NONE;
 			first_interval = rt->pulses[j].interval;
 			nconsecq_pulses = 0;
+		}
+
+		/* new JP radar detection, only support W53 band */
+		if ((rparams->radar_args.feature_mask & RADAR_FEATURE_NEWJP_DETECT) &&
+			CHSPEC_CHANNEL(pi->radio_chanspec) <= 64) {
+
+			if (j >= 3) {
+				det_type_newjp = phy_radar_check_newJP(pi, rparams, &nconnewjp,
+					rt->pulses, j);
+			}
+
+			npulse_newjp = (rparams->radar_args.npulses_fra >> 12) & 0xf;
+
+			if (nconnewjp >= npulse_newjp) {
+				radar_detected = TRUE;
+				detected_pulse_index = j - npulse_newjp + 1;
+				if (detected_pulse_index < 0)
+					detected_pulse_index = 0;
+				det_type = det_type_newjp;
+				*min_detected_pw_p = rt->pulses[detected_pulse_index].pw;
+				*max_detected_pw_p = *min_detected_pw_p;
+				*nconsecq_pulses_p = nconnewjp;
+				get_min_max_avg_statistic(rt->pulses, rparams, detected_pulse_index,
+					npulse_newjp, min_detected_interval_p,
+				max_detected_interval_p, avg_fc_p, var_fc_p);
+				break;	/* radar detected */
+			}
 		}
 
 		/* staggered 2/3 single filters */
@@ -1066,7 +1167,7 @@ wlc_phy_radar_detect_run_epoch(phy_info_t *pi,
 				*min_detected_pw_p = rt->pulses[detected_pulse_index].pw;
 				*max_detected_pw_p = *min_detected_pw_p;
 				*nconsecq_pulses_p = nconseq2odd + nconseq2even;
-				get_min_max_avg_statistic(rt->pulses, detected_pulse_index,
+				get_min_max_avg_statistic(rt->pulses, rparams, detected_pulse_index,
 					rparams->radar_args.npulses_stg2, min_detected_interval_p,
 					max_detected_interval_p, avg_fc_p, var_fc_p);
 				PHY_RADAR(("j=%d detected_pulse_index=%d\n",
@@ -1107,7 +1208,7 @@ wlc_phy_radar_detect_run_epoch(phy_info_t *pi,
 				*min_detected_pw_p = rt->pulses[detected_pulse_index].pw;
 				*max_detected_pw_p = *min_detected_pw_p;
 				*nconsecq_pulses_p = nconseq3a + nconseq3b + nconseq3c;
-				get_min_max_avg_statistic(rt->pulses, detected_pulse_index,
+				get_min_max_avg_statistic(rt->pulses, rparams, detected_pulse_index,
 					rparams->radar_args.npulses_stg3, min_detected_interval_p,
 					max_detected_interval_p, avg_fc_p, var_fc_p);
 				PHY_RADAR(("j=%d detected_pulse_index=%d\n",
@@ -1145,11 +1246,10 @@ phy_radar_output_pulses(phy_info_t *pi, pulse_data_t pulses[], uint16 length,
 			for (i = 0; i < length; i++)
 				if (feature_mask & RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
 					PHY_RADAR(("%u-%d ", pulses[i].interval/20, i));
-					PHY_RADAR(("];"));
 				} else {
 					PHY_RADAR(("%u-%d ", pulses[i].interval, i));
-					PHY_RADAR(("];"));
 				}
+			PHY_RADAR(("];"));
 		}
 
 		PHY_RADAR(("\nInterval:  "));
@@ -1246,7 +1346,10 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 	int16 avg_fc_bin5;
 	bool chirp_relax_lv1 = FALSE;
 	bool chirp_relax_lv2 = FALSE;
-	int32 radio_chanspec_sc;
+	int32 radio_chanspec_sc, chanspec;
+
+	phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi), &radio_chanspec_sc);
+	chanspec = sec_pll ? radio_chanspec_sc : pi->radio_chanspec;
 
 	if (ISACPHY(pi) && TONEDETECTION) {
 		FMCombineOffset =
@@ -1356,7 +1459,10 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 		}
 	} /* for ant loop */
 
-	ant = 0;	/* Use data from one of the antenna */
+	/* Use data from one of the antenna */
+	for (ant = 0; ant < ant_num; ant++) {
+
+	bzero(rt->pulses, sizeof(rt->pulses));
 	rt->length = 0;
 	for (i = 0; i < rt->length_bin5[ant]; i++) {
 		rt->pulses[rt->length] = rt->pulses_bin5[ant][i];
@@ -1398,6 +1504,10 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 		rt->length = j;
 	}
 
+	/* use FIFO data of next antenna */
+	if (rt->length == 0)
+		continue;
+
 #ifdef BCMDBG
 	if (rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_PRUNED_BIN5_PULSE) {
 		/* bin5 */
@@ -1408,32 +1518,16 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 	}
 #endif /* BCMDBG */
 
-	phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi), &radio_chanspec_sc);
-
-	if (sec_pll) {
-		if (CHSPEC_IS20(radio_chanspec_sc)) {
-			rollover_compl = (int64)TWO_POWER_32;
-		} else if (CHSPEC_IS40(radio_chanspec_sc)) {
-			rollover_compl = (int64)TWO_POWER_32/2;
-		} else if (CHSPEC_IS80(radio_chanspec_sc)) {
-			rollover_compl = (int64)TWO_POWER_32/4;
-		} else if (CHSPEC_IS160(radio_chanspec_sc)) {
-			rollover_compl = (int64)TWO_POWER_32/8;
-		} else {
-			rollover_compl = (int64)TWO_POWER_32;
-		}
+	if (CHSPEC_IS20(chanspec)) {
+		rollover_compl = (int64)TWO_POWER_32;
+	} else if (CHSPEC_IS40(chanspec)) {
+		rollover_compl = (int64)TWO_POWER_32/2;
+	} else if (CHSPEC_IS80(chanspec)) {
+		rollover_compl = (int64)TWO_POWER_32/4;
+	} else if (CHSPEC_IS160(chanspec)) {
+		rollover_compl = (int64)TWO_POWER_32/8;
 	} else {
-		if (CHSPEC_IS20(pi->radio_chanspec)) {
-			rollover_compl = (int64)TWO_POWER_32;
-		} else if (CHSPEC_IS40(pi->radio_chanspec)) {
-			rollover_compl = (int64)TWO_POWER_32/2;
-		} else if (CHSPEC_IS80(pi->radio_chanspec)) {
-			rollover_compl = (int64)TWO_POWER_32/4;
-		} else if (CHSPEC_IS160(pi->radio_chanspec)) {
-			rollover_compl = (int64)TWO_POWER_32/8;
-		} else {
-			rollover_compl = (int64)TWO_POWER_32;
-		}
+		rollover_compl = (int64)TWO_POWER_32;
 	}
 
 	/* prune lp buffer */
@@ -1653,10 +1747,7 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 			avg_fc_bin5 = rlpt->avg_detected_fc_bin5;
 		}
 
-		if ((sec_pll ? CHSPEC_IS20(radio_chanspec_sc) :
-			CHSPEC_IS20(pi->radio_chanspec)) &&
-			(sec_pll ? CHSPEC_CHANNEL(radio_chanspec_sc) :
-			CHSPEC_CHANNEL(pi->radio_chanspec)) > WL_THRESHOLD_LO_BAND) {
+		if (CHSPEC_IS20(chanspec) && CHSPEC_CHANNEL(chanspec) > WL_THRESHOLD_LO_BAND) {
 			chirp_relax_lv1 = TRUE;
 			if ((avg_fc_bin5 > CHIRP_RELAX_LV2_FC_BOUND) ||
 				((st->rparams.radar_thrs2.highpow_war_enb >> 15) & 0x1)) {
@@ -1679,6 +1770,7 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 		/* Check for chirp consistency within a transmission period (12 sec) */
 		if (PHY_RADAR_FIFO_SUBBAND_FORMAT(pi) && valid_lp &&
 			((st->rparams.radar_thrs2.highpow_war_enb >> 13) & 0x1) &&
+			!(rparams->radar_args.feature_mask & RADAR_FEATURE_NEWJP_DETECT) &&
 			!chirp_relax_lv2) {
 			if (rlpt->lp_length == 0) {
 				rlpt->transmission_chirp = rt->pulses[i].chirp;
@@ -2111,17 +2203,17 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 				rt_status->lp_csect_single = rlpt->lp_csect_single;
 
 				if (var_fc_bin5 > st->rparams.radar_thrs2.fc_varth_bin5_sb) {
-					if (CHSPEC_IS20(pi->radio_chanspec)) {
+					if (CHSPEC_IS20(chanspec)) {
 						radar_detected->subband = ALLSUBBAND_BW20;
-					} else if (CHSPEC_IS40(pi->radio_chanspec)) {
+					} else if (CHSPEC_IS40(chanspec)) {
 						radar_detected->subband = ALLSUBBAND_BW40;
-					} else if (CHSPEC_IS80(pi->radio_chanspec) ||
+					} else if (CHSPEC_IS80(chanspec) ||
 						PHY_AS_80P80(pi, pi->radio_chanspec)) {
 						radar_detected->subband = ALLSUBBAND_BW80;
-					} else if ((CHSPEC_CHANNEL(pi->radio_chanspec) == 50) &&
+					} else if ((CHSPEC_CHANNEL(chanspec) == 50) &&
 						(rlpt->avg_detected_fc_bin5 >= 0)) {
 						radar_detected->subband = ALLSUBBAND_BW160_CH50;
-					} else if (CHSPEC_CHANNEL(pi->radio_chanspec) == 114) {
+					} else if (CHSPEC_CHANNEL(chanspec) == 114) {
 						radar_detected->subband = ALLSUBBAND_BW160_CH114;
 					}
 				} else {
@@ -2132,7 +2224,7 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 						sec_pll, 1);
 				}
 				rlpt->subband_result = radar_detected->subband;
-				rt_status->detected = ((CHSPEC_CHANNEL(pi->radio_chanspec) == 50) &&
+				rt_status->detected = ((CHSPEC_CHANNEL(chanspec) == 50) &&
 					((rlpt->subband_result & 0x0f) == 0)) ? FALSE : TRUE;
 			}
 #ifdef BCMDBG
@@ -2155,8 +2247,12 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 		rlpt->lp_skip_cnt = 0;
 		rlpt->lp_csect_single = 0;
 		*first_radar_indicator = 0;
+		rlpt->min_detected_fc_bin5 = MAX_FC;
+		rlpt->max_detected_fc_bin5 = MIN_FC;
 		rlpt->avg_detected_fc_bin5 = 0;
-	}
+	} /* if rlpt->lp_length >= rparams->radar_args.npulses_lp */
+	break;
+	} /* for (ant = 0; ant < GET_RDR_NANTENNAS(pi); ant++) */
 }
 
 /* [PHY_REARCH] Need to rename this function. It is used in AC, N and HT */
@@ -2200,6 +2296,11 @@ bool bw80_80_mode)
 	int fm_thrs = -50;
 	int fm_chk_pw_thrs1 = fm_chk_pw[0];
 	int fm_chk_pw_thrs2 = fm_chk_pw[1];
+	int prev_interval = 0;
+	int32 radio_chanspec_sc, chanspec;
+
+	phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi), &radio_chanspec_sc);
+	chanspec = sec_pll ? radio_chanspec_sc : pi->radio_chanspec;
 
 	/* 4366 enlarge ofdm_nominal_clip_th when in DFS band to avoid radar triggers preemption */
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev)) {
@@ -2405,12 +2506,21 @@ bool bw80_80_mode)
 			mlength = rt->length_input[ant];
 			if (mlength > 1) {
 			for (i = 1; i < mlength; i++) {
-				deltat = ABS((int32)(rt->pulses_input[ant][i].interval -
-					rt->pulses_input[ant][i-1].interval));
-				if ((deltat < (int32)rparams->radar_args.min_deltat && FALSE) ||
-				    (deltat <= (int32)rparams->radar_args.max_pw && TRUE))
-				{
-					/* Combine fc, take pw as weighting */
+				if (rparams->radar_args.feature_mask & RADAR_FEATURE_NEWJP_DETECT) {
+					deltat = ABS((int32)(rt->pulses_input[ant][i].interval -
+						((i == 1) ? rt->pulses_input[ant][i-1].interval :
+						prev_interval)));
+					prev_interval = rt->pulses_input[ant][i].interval;
+				} else {
+					deltat = ABS((int32)(rt->pulses_input[ant][i].interval -
+						rt->pulses_input[ant][i-1].interval));
+				}
+				/* combine fc/pw/fm if deltat <= max_pw */
+				/* newJP radar is composed with short + long pulses, short and long
+				   pulses will be combined if we use LP's max_pw as check condition,
+				   so still use SP's max_pw and prev_interval for newJP radar
+				*/
+				if (deltat <= (int32)rparams->radar_args.max_pw) {
 					if (ISACPHY(pi) && TONEDETECTION &&
 					    PHY_RADAR_FIFO_SUBBAND_FORMAT(pi)) {
 						wlc_phy_radar_fc_chirp_cmb(
@@ -2419,15 +2529,11 @@ bool bw80_80_mode)
 					}
 
 					if (ISNPHY(pi) || ISACPHY(pi)) {
-						if (((uint32)(rt->pulses_input[ant][i].interval -
-							rt->pulses_input[ant][i-1].interval))
-							<= (uint32) rparams->radar_args.max_pw) {
-							rt->pulses_input[ant][i-1].pw =
+						rt->pulses_input[ant][i-1].pw =
 							ABS((int32)(
 							rt->pulses_input[ant][i].interval -
 							rt->pulses_input[ant][i-1].interval)) +
 							rt->pulses_input[ant][i].pw;
-						}
 					} else {
 #ifdef BCMDBG
 						/* print pulse combining debug messages */
@@ -2470,6 +2576,10 @@ bool bw80_80_mode)
 					}
 					mlength--;
 					rt->length_input[ant]--;
+					if (rparams->radar_args.feature_mask &
+						RADAR_FEATURE_NEWJP_DETECT) {
+						i--;
+					}
 				}
 			} /* for i < mlength */
 			} /* mlength > 1 */
@@ -2551,7 +2661,9 @@ bool bw80_80_mode)
 	j = 0;
 	for (i = 0; i < rt->length; i++) {
 		if ((rt->pulses[i].pw >= rparams->radar_args.min_pw) &&
-		    (rt->pulses[i].pw <= rparams->radar_args.max_pw)) {
+		    (rt->pulses[i].pw <= (((rparams->radar_args.feature_mask &
+			RADAR_FEATURE_NEWJP_DETECT) && (rparams->radar_args.max_pw == 690)) ?
+			2500 : rparams->radar_args.max_pw))) {
 			rt->pulses[j] = rt->pulses[i];
 			j++;
 		}
@@ -2636,7 +2748,9 @@ bool bw80_80_mode)
 #ifdef BCMDBG
 	if ((rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_SHORT_PULSE) != 0) {
 		PHY_RADAR(("\nShort pulses after removing pulses with pw outside [%d, %d]",
-		           rparams->radar_args.min_pw, rparams->radar_args.max_pw));
+		           rparams->radar_args.min_pw, (((rparams->radar_args.feature_mask &
+		           RADAR_FEATURE_NEWJP_DETECT) && (rparams->radar_args.max_pw == 690)) ?
+		           2500 : rparams->radar_args.max_pw)));
 		PHY_RADAR((" or fm < %d", fm_thrs));
 		PHY_RADAR(("\n%d pulses, ", rt->length));
 
@@ -2830,17 +2944,17 @@ bool bw80_80_mode)
 			if (var_fc > st->rparams.radar_thrs2.fc_varth_sb ||
 				det_type == RADAR_TYPE_JP4 ||
 				det_type == RADAR_TYPE_FCC_6) {
-				if (CHSPEC_IS20(pi->radio_chanspec)) {
+				if (CHSPEC_IS20(chanspec)) {
 					radar_detected->subband = ALLSUBBAND_BW20;
-				} else if (CHSPEC_IS40(pi->radio_chanspec)) {
+				} else if (CHSPEC_IS40(chanspec)) {
 					radar_detected->subband = ALLSUBBAND_BW40;
-				} else if (CHSPEC_IS80(pi->radio_chanspec) ||
+				} else if (CHSPEC_IS80(chanspec) ||
 					PHY_AS_80P80(pi, pi->radio_chanspec)) {
 					radar_detected->subband = ALLSUBBAND_BW80;
-				} else if ((CHSPEC_CHANNEL(pi->radio_chanspec) == 50) &&
+				} else if ((CHSPEC_CHANNEL(chanspec) == 50) &&
 					(avg_fc >= 0)) {
 					radar_detected->subband = ALLSUBBAND_BW160_CH50;
-				} else if (CHSPEC_CHANNEL(pi->radio_chanspec) == 114) {
+				} else if (CHSPEC_CHANNEL(chanspec) == 114) {
 					radar_detected->subband = ALLSUBBAND_BW160_CH114;
 				}
 			} else {
@@ -2855,7 +2969,7 @@ bool bw80_80_mode)
 				" Time from last detection = %u, = %dmin %dsec \n",
 				det_type, detected_pulse_index, nconsecq_pulses,
 				deltat2, deltat2/60, deltat2%60));
-			rt_status->detected = ((CHSPEC_CHANNEL(pi->radio_chanspec) == 50) &&
+			rt_status->detected = ((CHSPEC_CHANNEL(chanspec) == 50) &&
 				((rlpt->subband_result & 0x0f) == 0)) ? FALSE : TRUE;
 			rt_status->count = rt_status->count + 1;
 			rt_status->pretended = FALSE;

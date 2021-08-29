@@ -1,7 +1,7 @@
 /*
  * nPHY module internal interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_n_info.h 773640 2019-03-27 04:39:18Z $
+ * $Id: phy_n_info.h 779110 2019-09-19 10:09:47Z $
  */
 
 #ifndef _phy_n_info_h_
@@ -253,7 +253,7 @@ struct phy_info_nphy {
 	uint16	ntd_initgain;
 	uint16	ntd_current_rxdesens;
 	uint16	ntd_save_current_rxdesens;
-	uint16	ntd_save_current_rxdesens_channel;
+	chanspec_t	ntd_save_current_rxdesens_chanspec;
 	bool	ntd_rxdesens_active;
 #endif // endif
 	bool	ntd_papdcal_dcs;

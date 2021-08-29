@@ -5,7 +5,7 @@
  * Extensive use of anonymous structure/union.
  * Layouts defined to allow BitField(BF), shift/mask and C-Datatype(CD) access.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -137,8 +137,9 @@
 #endif /* BCMHWAPP */
 
 #if defined(HWA_RXPOST_BUILD) && !defined(HWA_RXFILL_BUILD)
-#define HWA_RXPOST_ONLY_BUILD                   // 1a ONLY
+#error "HWA_RXPOST_ONLY_BUILD is not support anymore!"
 #endif /* HWA_RXPOST_BUILD && !HWA_RXFILL_BUILD */
+
 /*
  * Register set for blocks 1a and 1b are grouped together. While it is
  * feasible to separate these blocks into their individual blocks the following
@@ -150,8 +151,8 @@
 #define HWA_RXPATH_BUILD                        // 1a, 1b and RxBM
 #endif /* HWA_RXPOST_BUILD || HWA_RXFILL_BUILD */
 
-#if defined(HWA_RXPOST_ONLY_BUILD) || defined(HWA_RXFILL_BUILD) || \
-	defined(HWA_CPLENG_BUILD) || defined(HWA_TXPOST_BUILD) || defined(HWA_TXSTAT_BUILD)
+#if defined(HWA_RXFILL_BUILD) || defined(HWA_CPLENG_BUILD) || defined(HWA_TXPOST_BUILD) \
+	|| defined(HWA_TXSTAT_BUILD)
 #define HWA_DPC_BUILD                           // Build HWA DPC blocks
 #endif // endif
 
@@ -522,12 +523,13 @@ typedef union hwa_txpost_eth_sada
 #endif // endif
 
 #define HWA_TXPOST_MEM_ADDR_W       4
-// DON"T CHANGE HWA_TXPOST_LOCAL_WORKITEMS and
-// HWA_TXPOST_WORKITEM_SIZE HW DEFAULT SETTING
-// 1536B Local memory for 128 legacy TxPost workitems of size 48B = 12[4B words]
-#define HWA_TXPOST_LOCAL_WORKITEMS  128         // 128 = 1536 / 12[4B words]
-// HWA-1.0 version TxPost uses bcmmsgbuf.h spec : H2DRING_TXPOST_ITEMSIZE
-#define HWA_TXPOST_WORKITEM_SIZE    48
+// Depth of TxPost HWA local memory to be programmed in terms of words [4 bytes]
+// and total depth should be integral multiple of number of compact work items and should
+// be less than or equal to 1024 [128 WIs] in compact-only mode or 512 [64 WIs]
+// with aggregate enabled
+// 1024 words Local memory for 128 WIs in compact-only mode [32B, 8 words]
+#define HWA_TXPOST_LOCAL_WORKITEMS  128         // 128 = 1024 / 8
+#define HWA_TXPOST_WORKITEM_SIZE    32          // WIs in compact-only mode [32B, 8 words]
 #define HWA_TXPOST_LOCAL_MEM_DEPTH \
 	((HWA_TXPOST_LOCAL_WORKITEMS * HWA_TXPOST_WORKITEM_SIZE) \
 	/ HWA_TXPOST_MEM_ADDR_W)
@@ -649,7 +651,7 @@ typedef volatile uint32 *hwa_reg_addr_t; // 32bit or 64bit address
 ({ \
 	HWA_DBGREG(("HWA %s WR_REG[%p] val16<0x%08x,%u> %s\n", \
 		HWA_NAME, (HWA_REG_ADDR), (VAL16), (VAL16), #HWA_REG_ADDR)); \
-	W_REG(NULL, (volatile uint16 *)(HWA_REG_ADDR), (VAL16)); \
+	W_REG(NULL, (volatile uint16 *)(HWA_REG_ADDR), (uint16)(VAL16)); \
 })
 
 // No debug trace - for use in dump functions
@@ -823,17 +825,6 @@ typedef union hwa_stats_control
 #else  /* ! HWA_RXPOST_BUILD */
 #define HWA_RXPOST_EXPR(expr)       HWA_NONE
 #endif /* ! HWA_RXPOST_BUILD */
-
-/*
- * -----------------------------------------------------------------------------
- * Section: HWA1a RxPost Block is built and HWA1b RxFill Block is not built
- * -----------------------------------------------------------------------------
- */
-#ifdef HWA_RXPOST_ONLY_BUILD
-#define HWA_RXPOST_ONLY_EXPR(expr)  expr
-#else /* ! HWA_RXPOST_ONLY_BUILD */
-#define HWA_RXPOST_ONLY_EXPR(expr)  HWA_NONE
-#endif /* ! HWA_RXPOST_ONLY_BUILD */
 
 /*
  * -----------------------------------------------------------------------------
@@ -1055,7 +1046,7 @@ typedef struct hwa_rxdata_rxstatus
 		uint16 mrxs2;
 		uint16 rxchan;
 		uint16 avbrxtimel;
-		uint16 avbrxtimeh;
+		uint16 ulrtinfo;
 		uint16 rxtsftml;
 		uint16 rxtsftmh;
 		uint16 murate;
@@ -2355,8 +2346,9 @@ typedef struct hwa_pp_pageout_rsp_pktlist {
 	uint8  trans_id;                          // closed REQ/RSP transaction
 	uint16 fifo_idx;                          // TxFIFO index(shadow list)
 	uint16 mpdu_count;                        // aqm descriptors used
-	uint16 pkt_count;                         // txdma descriptors used
-	uint32 PAD[2];                            // padding
+	uint16 total_txdma_desc;                  // txdma descriptors used
+	uint32 pkt_local;                         // ptr to local TxLfrag
+	uint32 PAD;                               // padding
 } hwa_pp_pageout_rsp_pktlist_t;
 
 // HWA_PP_PAGEMGR_ALLOC(RX, RX_RPH, TX) REQUEST command layout
@@ -2377,15 +2369,26 @@ typedef struct hwa_pp_pagemgr_rsp_alloc {
 	uint32 pktlist_tail;                      // pktlist tail
 } hwa_pp_pagemgr_rsp_alloc_t;
 
-// HWA_PP_PAGEMGR_PUSH REQUEST / RESPONSE command format
-typedef struct hwa_pp_pagemgr_push {
+// HWA_PP_PAGEMGR_PUSH REQUEST command format
+typedef struct hwa_pp_pagemgr_req_push {
 	uint8  trans;                             // value HWA_PP_PAGEMGR_PUSH = 6
 	uint8  trans_id;                          // closed REQ/RSP transaction
 	uint16 pkt_count;                         // length of pktlist
 	uint32 PAD;                               // padding
 	uint32 pktlist_head;                      // pktlist head
 	uint32 pktlist_tail;                      // pktlist tail
-} hwa_pp_pagemgr_req_push_t, hwa_pp_pagemgr_rsp_push_t;
+} hwa_pp_pagemgr_req_push_t;
+
+// HWA_PP_PAGEMGR_PUSH RESPONSE command format
+typedef struct hwa_pp_pagemgr_rsp_push {
+	uint8  trans;                             // value HWA_PP_PAGEMGR_PUSH = 6
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 pkt_count;                         // length of pktlist
+	uint16 pkt_mapid;                         // pkt_mapid of head packet
+	uint16 PAD;                               // padding
+	uint32 pktlist_head;                      // pktlist head
+	uint32 pktlist_tail;                      // pktlist tail
+} hwa_pp_pagemgr_rsp_push_t;
 
 // HWA_PP_PAGEMGR_PULL REQUEST command format
 typedef struct hwa_pp_pagemgr_req_pull {

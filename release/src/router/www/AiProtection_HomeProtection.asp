@@ -19,6 +19,9 @@
 <script type="text/javascript" src="/js/httpApi.js"></script>
 <script language="JavaScript" type="text/javascript" src="/js/asus_eula.js"></script>
 <style>
+*{
+	box-sizing: content-box;
+}
 .weakness{
 	width:650px;
 	height:590px;
@@ -83,9 +86,9 @@
 
 .alertpreference{
 	width:650px;
-	height:290px;
+	height:330px;
 	position:absolute;
-	background: rgba(0,0,0,0.8);
+	background: rgba(0,0,0,0.9);
 	z-index:10;
 	margin-left:260px;
 	border-radius:10px;
@@ -131,6 +134,7 @@
 	display: none;
 	border-radius: 10px;
 }
+
 .shadow_m{
 	margin-top: -9px;
 }
@@ -145,9 +149,6 @@ window.onresize = function() {
 		cal_panel_block("alert_preference", 0.25);
 	}
 }
-<% get_AiDisk_status(); %>
-var AM_to_cifs = get_share_management_status("cifs");  // Account Management for Network-Neighborhood
-var AM_to_ftp = get_share_management_status("ftp");  // Account Management for FTP
 
 var ctf_disable = '<% nvram_get("ctf_disable"); %>';
 var ctf_fa_mode = '<% nvram_get("ctf_fa_mode"); %>';
@@ -159,17 +160,20 @@ function initial(){
 	show_menu();
 	//	https://www.asus.com/support/FAQ/1008719/
 	httpApi.faqURL("1008719", function(url){document.getElementById("faq").href=url;});
-	if(lyra_hide_support){
+	if(based_modelid == "MAP-AC1750"){
 		$("#scenario_tr").css({"visibility":"hidden"});
 		$("#scenario_img").attr({"height":"0"});
 		$("#security_scan_tr").hide();
 		$(".AiProtection_02").hide();
 		$(".AiProtection_03").hide();
-		$(".line_1").hide();
-		if(!isSupport("dpi_vp")){
-			$("#twoWayIPS_padding").hide();
-			$("#twoWayIPS_field").hide();
-		}
+		$(".line_1").hide();	
+		$("#tm_logo").css("margin-left", "10px");
+	}
+
+	if(!isSupport("dpi_vp")){
+		$("#twoWayIPS_padding").hide();
+		$("#twoWayIPS_field").hide();
+		$("#vp_service_field").hide();
 	}
 
 	if(document.form.wrs_protect_enable.value == '1'){
@@ -919,7 +923,7 @@ function shadeHandle(flag){
 </script>
 </head>
 
-<body onload="initial();" onunload="unload_body();">
+<body onload="initial();" onunload="unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <div id="hiddenMask" class="popup_bg" style="z-index:999;">
@@ -1015,7 +1019,7 @@ function shadeHandle(flag){
 								<div id="wrs_service"></div>
 							</td>
 						</tr>
-						<tr>
+						<tr id="vp_service_field">
 							<th><#AiProtection_scan_item13#> -</th>
 							<td>
 								<div id="vp_service"></div>
@@ -1095,12 +1099,18 @@ function shadeHandle(flag){
 						<th><#Notification_Item#></th>
 						<td>
 							<div>
-								<input type="checkbox" class="" id="mal_website_item" value="">
-								<label><#AiProtection_sites_blocking#></label>
-								<input type="checkbox" class="" id="vp_item" value="">
-								<label><#AiProtection_Vulnerability#></label>
-								<input type="checkbox" class="" id="cc_item" value="">
-								<label><#AiProtection_detection_blocking#></label>
+								<div>
+									<input type="checkbox" id="mal_website_item">
+									<span style="color: #FFF;"><#AiProtection_sites_blocking#></span>
+								</div>
+								<div>
+									<input type="checkbox" id="vp_item">
+									<span style="color: #FFF;"><#AiProtection_two-way_IPS#></span>
+								</div>
+								<div>
+									<input type="checkbox" id="cc_item">
+									<span style="color: #FFF;"><#AiProtection_detection_blocking#></span>
+								</div>
 							</div>
 						</td>
 					</tr>
@@ -1195,13 +1205,13 @@ function shadeHandle(flag){
 													<table>
 														<tr>
 															<td>
-																<div style="width:430px"><#AiProtection_desc#></div>
+																<div style="width:430px"><#AiProtection_HomeDesc2#></div>
 																<div style="width:430px">
 																	<a id="faq" style="text-decoration:underline;" href="" target="_blank"><#AiProtection_title#> FAQ</a>
 																</div>
 															</td>
 															<td>
-																<div style="width:100px;height:48px;margin-left:-40px;background-image:url('images/New_ui/tm_logo.png');"></div>
+																<div id="tm_logo" style="width:100px;height:48px;margin-left:-40px;background-image:url('images/New_ui/tm_logo.png');"></div>
 															</td>
 														</tr>
 														<tr id="scenario_tr">
@@ -1219,7 +1229,7 @@ function shadeHandle(flag){
 									<div style="margin:10px;">
 										<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable">
 											<tr>
-												<th><#AiProtection_title#></th>
+												<th><#CTL_Enabled#> <#AiProtection_title#></th>
 												<td>
 													<div align="center" class="left" style="width:94px; float:left; cursor:pointer;" id="radio_protection_enable"></div>
 													<div class="iphone_switch_container" style="height:32px; width:74px; position: relative; overflow: hidden">
@@ -1431,7 +1441,7 @@ function shadeHandle(flag){
 											<input class="button_gen" type="button" onclick="show_alert_preference();" value="<#AiProtection_alert_pref#>">
 										</div>
 									</div>
-									<div style="width:135px;height:55px;margin: -10px 0 0 600px;background-image:url('images/New_ui/tm_logo_power.png');"></div>
+									<div style="width:96px;height:44px;margin: 10px 0 0 600px;background-image:url('images/New_ui/TrendMirco_logo.svg');background-size: 100%;"></div>
 								</td>
 							</tr>
 							</tbody>
