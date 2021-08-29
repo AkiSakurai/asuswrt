@@ -3320,6 +3320,9 @@ void generate_wl_para(char *ifname, int unit, int subunit)
 #ifdef RTCONFIG_DPSTA
 				|| is_dpsta(unit)
 #endif
+#if defined(RTCONFIG_AMAS) && defined(RTCONFIG_HND_ROUTER_AX)
+				|| is_router_mode() && !nvram_get_int("x_Setting") && nvram_get_int("amesh_wps_enr")
+#endif
 			))
 #endif
 			)) ? "enabled" : "disabled");
@@ -3388,6 +3391,9 @@ void generate_wl_para(char *ifname, int unit, int subunit)
 				nvram_set(strcat_r(prefix, "bw", tmp), "1");
 #endif
 				nvram_set(strcat_r(prefix, "chanspec", tmp), "0");
+#ifdef RTCONFIG_HND_ROUTER_AX
+				nvram_set(strcat_r(prefix, "he_features", tmp), "3");
+#endif
 			}
 
 #if defined(RTCONFIG_BCMWL6) && defined(RTCONFIG_PROXYSTA)
@@ -5496,7 +5502,7 @@ _dprintf("*** Multicast IPTV: config Singtel TR069 on wan port ***\n");
 		}
 
 		/* Using vlanctl to handle vlan forwarding */
-		if (wan_vid || switch_stb > 0 || nvram_match("switch_wantag", "unifi_biz")) { /* config wan port or bridge hinet IPTV traffic */
+		if ((wan_vid || switch_stb > 0 || nvram_match("switch_wantag", "unifi_biz")) && !nvram_match("switch_wantag", "superonline")) { /* config wan port or bridge hinet IPTV traffic */
 #if 0
 			/* Handle no vid traffic */
 #endif
@@ -5510,7 +5516,7 @@ _dprintf("*** Multicast IPTV: config Singtel TR069 on wan port ***\n");
 				nvram_match("switch_wantag", "aapt") || nvram_match("switch_wantag", "intronode") ||
 				nvram_match("switch_wantag", "amaysim") || nvram_match("switch_wantag", "dodo") ||
 				nvram_match("switch_wantag", "iprimus") ||
-				(nvram_match("switch_wantag", "none") && switch_stb == 0 && !wan_vid)) {
+				(nvram_match("switch_wantag", "manual") && switch_stb == 0 && wan_vid)) {
 				eval("vconfig", "add", "eth0", port_id);
 				sprintf(wan_dev, "vlan%d", wan_vid);
 				eval("ifconfig", wan_dev, "allmulti", "up");
@@ -5710,6 +5716,21 @@ _dprintf("*** Multicast IPTV: config Singtel TR069 on wan port ***\n");
 				eval("vlanctl", "--if", ethPort1, "--tx", "--tags", "0", "--filter-txif", vlanDev1, "--rule-append");
 				eval("ifconfig", vlanDev1, "allmulti", "up");
 				eval("brctl", "addif", "br1", vlanDev1);
+			}
+			else if (nvram_match("switch_wantag", "superonline")) {
+				sprintf(port_id, "%d", iptv_vid);
+				eval("vconfig", "add", "eth0", port_id);
+				sprintf(vlanDev1, "vlan%d", iptv_vid);
+				if (!nvram_match("switch_wan1prio", "0"))
+					eval("vconfig", "set_egress_map", vlanDev1, "0", nvram_get("switch_wan1prio"));
+				eval("ifconfig", vlanDev1, "allmulti", "up");
+				eval("brctl", "addbr", "br1");
+				eval("bcmmcastctl", "mode", "-i",  "br1",  "-p", "1",  "-m", "0");
+				eval("bcmmcastctl", "mode", "-i",  "br1",  "-p", "2",  "-m", "0");
+				eval("ifconfig", "br1", "allmulti", "up");
+				eval("brctl", "delif", "br0", ethPort1);
+				eval("brctl", "addif", "br1", vlanDev1);
+				eval("brctl", "addif", "br1", ethPort1);
 			}
 			else {  /* Nomo case, untag it. */
 				/* config ethPort1 = IPTV */

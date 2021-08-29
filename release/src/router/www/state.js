@@ -542,6 +542,7 @@ var cfg_sync_support = isSupport("cfg_sync");
 var meoVoda_support = isSupport("meoVoda");
 var movistarTriple_support = isSupport("movistarTriple");
 var utf8_ssid_support = isSupport("utf8_ssid");
+var uu_support = isSupport('uu_accel');
 
 var QISWIZARD = "QIS_wizard.htm";
 

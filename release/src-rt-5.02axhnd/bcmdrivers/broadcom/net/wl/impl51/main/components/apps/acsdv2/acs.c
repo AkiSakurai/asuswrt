@@ -195,7 +195,7 @@ acs_idx_from_map(char *name)
 			return cur_map->idx;
 		}
 	}
-	ACSD_ERROR("cannot find the mapped entry for ifname: %s\n", name);
+	ACSD_INFO("cannot find the mapped entry for ifname: %s\n", name);
 	return -1;
 }
 
@@ -434,7 +434,8 @@ acs_start(char *name, acs_chaninfo_t *c_info)
 	}
 
 	ret = acs_run_cs_scan(c_info);
-	ACS_ERR(ret, "cs scan failed\n");
+	if (acs_allow_scan(c_info, ACS_SCAN_TYPE_CS))
+		ACS_ERR(ret, "cs scan failed\n");
 
 	ACS_FREE(c_info->acs_bss_info_q);
 
@@ -446,6 +447,9 @@ acs_start(char *name, acs_chaninfo_t *c_info)
 	ACS_ERR(ret, "request data failed\n");
 
 acs_start_done:
+	if (is_router_mode() && !nvram_get_int("x_Setting") && !c_info->unit)
+		nvram_set_int("obd_allow_scan", 1);
+
 	return ret;
 }
 
@@ -764,48 +768,63 @@ acs_init_run(acs_info_t ** acs_info_p)
 	acs_chaninfo_t * c_info;
 	int ret = 0;
 	acs_init_info(acs_info_p);
-	int if_count = 0, loop_count, last_loop_count = 0;
+	int if_count = 0, loop_count;
+	int finished = 0, loop_ret = 0;
 	char acs_ifnames[32];
 
 	snprintf(acs_ifnames, sizeof(acs_ifnames), "%s", nvram_safe_get("acs_ifnames"));
 
-	foreach(name, acs_ifnames, next)
+	foreach(name, acs_ifnames, next){
 		++if_count;
+		finished += 1<<if_count;
+	}
+ACSD_INFO("if_count=%d, finished=%d\n", if_count, finished);
 
 LOOP_AGAIN:
 	loop_count = 0;
 
 	foreach(name, acs_ifnames, next) {
 		++loop_count;
+ACSD_INFO("loop head: loop_count=%d, loop_ret=%d\n", loop_count, loop_ret);
+		if((loop_ret>>loop_count)&0x1){
+ACSD_INFO("%d interface had been done\n", loop_count);
+			continue;
+		}
+
 		c_info = NULL;
 		osifname_to_nvifname(name, prefix, sizeof(prefix));
 		if (acs_check_bss_is_enabled(name, &c_info, prefix) != BCME_OK) {
 			strcat(prefix, "_vifs");
 			vifname = nvram_safe_get(prefix);
 			foreach(name_enab_if, vifname, vif_next) {
-				if (acs_check_bss_is_enabled(name_enab_if,
-					&c_info, NULL) == BCME_OK) {
+				if (acs_check_bss_is_enabled(name_enab_if, &c_info, NULL) == BCME_OK) {
+ACSD_INFO("sub bss(%s) is enabled\n", name_enab_if);
 					break;
 				}
 			}
 		}
+		else
+ACSD_INFO("bss(%s) is enabled\n", name);
+
 		memset(name, 0, sizeof(name));
 		if (c_info != NULL) {
 			memcpy(name, c_info->name, strlen(c_info->name) + 1);
 		} else {
+ACSD_INFO("the gotten acs_chaninfo_t was NULL\n");
 			continue;
 		}
+
+ACSD_INFO("sitesurvey %s\n", name);
 		ret = acs_start(name, c_info);
-
 		if (ret) {
-			ACSD_ERROR("acs_start failed for ifname: %s\n", name);
-			break;
+			if (acs_allow_scan(c_info, ACS_SCAN_TYPE_CS))
+				ACSD_ERROR("acs_start failed for ifname: %s\n", name);
+			continue;
 		}
-
-		if (loop_count <= last_loop_count) continue;
 
 		if ((AUTOCHANNEL(c_info) || COEXCHECK(c_info)) && 
 			!(c_info->wet_enabled && acs_check_assoc_scb(c_info))) {
+ACSD_INFO("%s select channel...\n", name);
 			/* First call to pick the chanspec for exit DFS chan */
 			c_info->switch_reason = APCS_INIT;
 
@@ -833,12 +852,21 @@ LOOP_AGAIN:
 		if (c_info->acs_boot_only) {
 			c_info->mode = ACS_MODE_DISABLE;
 		}
+
+		loop_ret += 1<<loop_count;
+ACSD_INFO("loop tail: loop_count=%d, loop_ret=%d\n", loop_count, loop_ret);
 	}
 
-	last_loop_count = loop_count;
-
-	if (loop_count != if_count)
+	if(loop_ret != finished){
+ACSD_INFO("wait 2 seconds for next loop...\n");
+		int i;
+		// cannot use sleep(2) directly, or acsd2 won't sleep
+		for(i = 0; i <= 2; ++i)
+			sleep_ms(1000);
 		goto LOOP_AGAIN;
+	}
+	else
+ACSD_INFO("finish loop\n");
 }
 
 /*

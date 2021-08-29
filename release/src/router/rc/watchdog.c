@@ -3846,6 +3846,7 @@ int timecheck_reboot(char *activeSchedule)
 	return active;
 }
 
+
 int svcStatus[12] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 
 /* Check for time-reated service 	*/
@@ -4002,20 +4003,24 @@ void timecheck(void)
 #ifdef RTCONFIG_REBOOT_SCHEDULE
 	/* Reboot Schedule */
 	char reboot_schedule[PATH_MAX];
-	if (nvram_match("ntp_ready", "1") && nvram_match("reboot_schedule_enable", "1"))
+	if (nvram_match("reboot_schedule_enable", "1"))
 	{
-		//SMTWTFSHHMM
-		//XXXXXXXXXXX
-		snprintf(reboot_schedule, sizeof(reboot_schedule), "%s", nvram_safe_get("reboot_schedule"));
-		if (strlen(reboot_schedule) == 11 && atoi(reboot_schedule) > 2359)
+		if (nvram_match("ntp_ready", "1"))
 		{
-			if (timecheck_reboot(reboot_schedule))
+			//SMTWTFSHHMM
+			//XXXXXXXXXXX
+			snprintf(reboot_schedule, sizeof(reboot_schedule), "%s", nvram_safe_get("reboot_schedule"));
+			if (strlen(reboot_schedule) == 11 && atoi(reboot_schedule) > 2359)
 			{
-				_dprintf("reboot plan alert...\n");
-				sleep(1);
-				eval("reboot");
+				if (timecheck_reboot(reboot_schedule))
+				{
+					logmessage("reboot scheduler", "[%s] The system is going down for reboot\n", __FUNCTION__);
+					kill(1, SIGTERM);
+				}
 			}
 		}
+		else
+			logmessage("reboot scheduler", "[%s] NTP sync error\n", __FUNCTION__);
 	}
 #endif
 
@@ -7442,7 +7447,7 @@ void watchdog(int sig)
 #endif
 
 #ifdef RTCONFIG_HND_ROUTER_AX
-	dump_WlGetDriverStats(0);
+	dump_WlGetDriverStats(0, 1);
 #endif
 
 #ifdef WATCHDOG_PERIOD2

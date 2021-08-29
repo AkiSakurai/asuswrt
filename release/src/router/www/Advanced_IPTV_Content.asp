@@ -103,6 +103,10 @@ function initial(){
 		document.form.iptv_port_settings.disabled = false;
 		change_port_settings(iptv_port_settings_orig);
 	}
+
+	if(hnd_support){
+		$('#igmp_default_ver_field').show();
+	}
 }
 
 function create_stb_select(switch_stb_x){
@@ -1590,6 +1594,15 @@ function change_mr_enable(switch_stb_x){
 			<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(6, 6);"><#RouterConfig_IPTV_itemname#></a></th>
 			<td>
 				<input id="udpxy_enable_x" type="text" maxlength="5" class="input_6_table" name="udpxy_enable_x" value="<% nvram_get("udpxy_enable_x"); %>" onkeypress="return validator.isNumber(this,event);" autocorrect="off" autocapitalize="off">
+			</td>
+		</tr>
+		<tr id="igmp_default_ver_field" style="display:none;">
+			<th>IGMP default version</th>
+			<td>
+				<select name="igmp_default_version" class="input_option">
+					<option value="2" <% nvram_match("igmp_default_version", "2","selected"); %> >2</option>
+					<option value="3" <% nvram_match("igmp_default_version", "3","selected"); %> >3</option>
+				</select>
 			</td>
 		</tr>
 		</table>

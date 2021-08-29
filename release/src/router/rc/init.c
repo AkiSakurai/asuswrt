@@ -1619,10 +1619,11 @@ misc_defaults(int restore_defaults)
 #ifdef RTCONFIG_AMAS
 	nvram_unset("amesh_found_cap");
 	nvram_unset("amesh_led");
-#ifdef RTCONFIG_LANTIQ
-	nvram_unset("amesh_hexdata");
+#ifdef CONFIG_BCMWL5
+	nvram_unset("amesh_wps_enr");
+	nvram_unset("obd_allow_scan");
 #endif
-
+	nvram_unset("obd_scan_state");
 #ifdef RTCONFIG_ADV_RAST
 	nvram_unset("diag_chk_cap");
 	nvram_unset("diag_chk_re1");
@@ -1635,6 +1636,7 @@ misc_defaults(int restore_defaults)
 	nvram_unset("diag_chk_re8");
 #endif
 #endif
+	nvram_unset("wlc_scan_state");
 }
 
 /* ASUS use erase nvram to reset default only */
@@ -10942,11 +10944,18 @@ int init_main(int argc, char *argv[])
 #endif
 
 #ifdef RTCONFIG_BCM_HND_CRASHLOG
+	struct stat crashlog_stat;
+	char clogpath[32];
 #if defined(RTCONFIG_JFFS2) || defined(RTCONFIG_BRCM_NAND_JFFS2)
-	f_write_string("/proc/sys/kernel/crashlog_filename", "/jffs/crashlog.log", 0, 0);
+	snprintf(clogpath, sizeof(clogpath), "/jffs/crashlog.log");
 #else
-	f_write_string("/proc/sys/kernel/crashlog_filename", "/tmp/crashlog.log", 0, 0);
+	snprintf(clogpath, sizeof(clogpath), "/tmp/crashlog.log");
 #endif
+	f_write_string("/proc/sys/kernel/crashlog_filename", clogpath, 0, 0);
+	if(!stat(clogpath, &crashlog_stat)) {
+		if(!crashlog_stat.st_size)
+			unlink(clogpath);
+	}
 #endif
 
 #ifdef RTN65U

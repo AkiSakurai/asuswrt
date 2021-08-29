@@ -393,8 +393,7 @@ acsd_main_loop(struct timeval *tv)
 
 	if (test_cswitch_ifname[0]) {
 		if ((idx = acs_idx_from_map(test_cswitch_ifname)) < 0) {
-			ACSD_ERROR("cannot find the mapped entry for ifname: %s\n",
-				test_cswitch_ifname);
+			ACSD_INFO("cannot find the mapped entry for ifname: %s\n", test_cswitch_ifname);
 			return;
 		}
 		c_info = d_info->acs_info->chan_info[idx];
@@ -503,7 +502,7 @@ acsd_main_loop(struct timeval *tv)
 		ACSD_INFO("recved brcm event, event_type: %d\n", evt_type);
 
 		if ((idx = acs_idx_from_map(ifname)) < 0) {
-			ACSD_ERROR("cannot find the mapped entry for ifname: %s\n", ifname);
+			ACSD_INFO("cannot find the mapped entry for ifname: %s\n", ifname);
 			return;
 		}
 
@@ -1142,6 +1141,8 @@ main(int argc, char *argv[])
 		goto cleanup;
 	    }
 	}
+
+	nvram_unset("obd_allow_scan");
 
 	val = nvram_safe_get("acs_ifnames");
 	if (!strcmp(val, "")) {

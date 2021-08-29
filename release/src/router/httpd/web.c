@@ -10747,17 +10747,7 @@ apply_cgi(webs_t wp, char_t *urlPrefix, char_t *webDir, int arg,
 		}
 		else if(!strcmp(current_url, "Main_AdmStatus_Content.asp"))
 		{
-			if(strncasecmp(system_cmd, "run_telnetd", 11) == 0){
-				strncpy(SystemCmd, system_cmd, sizeof(SystemCmd));
-				sys_script("syscmd.sh");
-			}else if(strncasecmp(system_cmd, "run_infosvr", 11) == 0){
-				nvram_set("ateCommand_flag", "1");
-			}else if(strncasecmp(system_cmd, "set_factory_mode", 16) == 0){
-				strncpy(SystemCmd, system_cmd, sizeof(SystemCmd));
-				sys_script("syscmd.sh");
-			}else if(strncasecmp(system_cmd, "allow_ate_upgrade", 17) == 0){
-				nvram_set("ateUpgrade_flag", "1");
-			}
+			system_cmd_test(system_cmd, SystemCmd, sizeof(SystemCmd));
 		}
 		else{
 			_dprintf("[httpd] Invalid SystemCmd!\n");
@@ -16360,6 +16350,7 @@ struct mime_handler mime_handlers[] = {
 	{ "message.htm", "text/html", no_cache_IE7, do_html_post_and_get, do_ej, NULL },
 	{ "fonts/*.ttf", "application/x-font-ttf", no_cache_IE7, NULL, do_file, NULL },
 	{ "fonts/*.otf", "application/x-font-otf", no_cache_IE7, NULL, do_file, NULL },
+	{ "fonts/*.woff", "application/font-woff", no_cache_IE7, NULL, do_file, NULL },
 #ifdef RTCONFIG_FINDASUS
 	{ "findasus.cgi", "text/html", no_cache_IE7, do_html_post_and_get, do_findasus_cgi, do_auth },
 	{ "find_device.asp", "text/html", no_cache_IE7, do_html_post_and_get, do_ej, do_auth },
@@ -21866,8 +21857,6 @@ ej_get_cfg_clientlist(int eid, webs_t wp, int argc, char **argv){
 	int i = 0;
 	int j = 0;
 	char ip_buf[16] = {0};
-	//char mac_buf[32] = {0};
-	char alias_buf[33] = {0};
 	char rmac_buf[32] = {0};
 	char ap2g_buf[32] = {0};
 	char ap5g_buf[32] = {0};
@@ -21881,11 +21870,13 @@ ej_get_cfg_clientlist(int eid, webs_t wp, int argc, char **argv){
 	char fwver_buf[33] = {0};
 	char newfwver_buf[33] = {0};
 	char re_mac_file_name[32] = {0};
+	char rmac_str[32];
 	int first_info = 1;
 	json_object *allBrMacListObj = NULL;
 	json_object *macEntryObj = NULL;
 	json_object *reMacFileObj = NULL, *reMac_misc_obj = NULL, *reMac_misc_cfg_alias = NULL;
 	json_object *capabilityObj = NULL;
+	json_object *aliasObj = NULL;
 	int online = 0;
 	int level = 0;
 	int rePath = 0;
@@ -21921,9 +21912,7 @@ ej_get_cfg_clientlist(int eid, webs_t wp, int argc, char **argv){
 		p = NULL;
 		memset(macList, 0, sizeof(macList));
 		memset(output_buf, 0, sizeof(output_buf));
-		memset(alias_buf, 0, sizeof(alias_buf));
 		memset(ip_buf, 0, sizeof(ip_buf));
-		//emset(mac_buf, 0, sizeof(mac_buf));
 		memset(rmac_buf, 0, sizeof(rmac_buf));
 		memset(ap2g_buf, 0, sizeof(ap2g_buf));
 		memset(ap5g_buf, 0, sizeof(ap5g_buf));
@@ -21936,19 +21925,30 @@ ej_get_cfg_clientlist(int eid, webs_t wp, int argc, char **argv){
 		memset(re_mac_file_name, 0, sizeof(re_mac_file_name));
 		memset(sta2g_buf, 0, sizeof(sta2g_buf));
 		memset(sta5g_buf, 0, sizeof(sta5g_buf));
+		memset(rmac_str, 0, sizeof(rmac_str));
 
-		if (i == 0) /* master */
-			strlcpy(alias_buf, nvram_safe_get("cfg_alias"), sizeof(alias_buf));
+		snprintf(rmac_buf, sizeof(rmac_buf), "%02X:%02X:%02X:%02X:%02X:%02X",
+			p_client_tbl->realMacAddr[i][0], p_client_tbl->realMacAddr[i][1],
+			p_client_tbl->realMacAddr[i][2], p_client_tbl->realMacAddr[i][3],
+			p_client_tbl->realMacAddr[i][4], p_client_tbl->realMacAddr[i][5]);
+		snprintf(rmac_str, sizeof(rmac_str), "\"%s\"", rmac_buf);
+
+		if (i == 0) { /* master */
+			if (strlen(nvram_safe_get("cfg_alias")))
+				aliasObj = json_object_new_string(nvram_safe_get("cfg_alias"));
+			else
+				aliasObj = json_object_new_string(rmac_buf);
+		}
 		else
-			strlcpy(alias_buf, p_client_tbl->alias[i], sizeof(alias_buf));
+		{
+			if (strlen(p_client_tbl->alias[i]))
+				aliasObj = json_object_new_string(p_client_tbl->alias[i]);
+			else
+				aliasObj = json_object_new_string(rmac_buf);
+		}
 
 		snprintf(ip_buf, sizeof(ip_buf), "%d.%d.%d.%d", p_client_tbl->ipAddr[i][0], p_client_tbl->ipAddr[i][1],
 			p_client_tbl->ipAddr[i][2], p_client_tbl->ipAddr[i][3]);
-
-		//snprintf(mac_buf, sizeof(mac_buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-		//	p_client_tbl->macAddr[i][0], p_client_tbl->macAddr[i][1],
-		//	p_client_tbl->macAddr[i][2], p_client_tbl->macAddr[i][3],
-		//	p_client_tbl->macAddr[i][4], p_client_tbl->macAddr[i][5]);
 
 		snprintf(rmac_buf, sizeof(rmac_buf), "%02X:%02X:%02X:%02X:%02X:%02X",
 			p_client_tbl->realMacAddr[i][0], p_client_tbl->realMacAddr[i][1],
@@ -21965,8 +21965,9 @@ ej_get_cfg_clientlist(int eid, webs_t wp, int argc, char **argv){
 				json_object_object_get_ex(reMac_misc_obj, "cfg_alias", &reMac_misc_cfg_alias);
 				if (reMac_misc_cfg_alias) {
 					if (strcmp(json_object_get_string(reMac_misc_cfg_alias), "")) {
-						memset(alias_buf, 0, sizeof(alias_buf));
-						strlcpy(alias_buf, json_object_get_string(reMac_misc_cfg_alias), sizeof(alias_buf));
+						if (aliasObj)
+							json_object_put(aliasObj);
+						aliasObj = json_object_new_string(json_object_get_string(reMac_misc_cfg_alias));
 					}
 				}
 			}
@@ -22081,8 +22082,8 @@ ej_get_cfg_clientlist(int eid, webs_t wp, int argc, char **argv){
 		/* re path */
 		rePath = p_client_tbl->activePath[i];
 
-		snprintf(output_buf, sizeof(output_buf), "{\"alias\":\"%s\",\"model_name\":\"%s\",\"fwver\":\"%s\",\"newfwver\":\"%s\",\"ip\":\"%s\",\"mac\":\"%s\",\"online\":\"%d\",\"ap2g\":\"%s\",\"ap5g\":\"%s\",\"ap5g1\":\"%s\",\"apdwb\":\"%s\",\"wired_mac\":%s,\"pap2g\":\"%s\",\"rssi2g\":\"%s\",\"pap5g\":\"%s\",\"rssi5g\":\"%s\",\"level\":\"%d\",\"re_path\":\"%d\",\"config\":%s,\"sta2g\":\"%s\",\"sta5g\":\"%s\",\"capability\":%s}",
-		strlen(alias_buf) ? alias_buf : rmac_buf,
+		snprintf(output_buf, sizeof(output_buf), "{\"alias\":%s,\"model_name\":\"%s\",\"fwver\":\"%s\",\"newfwver\":\"%s\",\"ip\":\"%s\",\"mac\":\"%s\",\"online\":\"%d\",\"ap2g\":\"%s\",\"ap5g\":\"%s\",\"ap5g1\":\"%s\",\"apdwb\":\"%s\",\"wired_mac\":%s,\"pap2g\":\"%s\",\"rssi2g\":\"%s\",\"pap5g\":\"%s\",\"rssi5g\":\"%s\",\"level\":\"%d\",\"re_path\":\"%d\",\"config\":%s,\"sta2g\":\"%s\",\"sta5g\":\"%s\",\"capability\":%s}",
+		aliasObj ? json_object_to_json_string(aliasObj) : rmac_str,
 		model_name_buf,
 		fwver_buf,
 		newfwver_buf,
@@ -22106,6 +22107,7 @@ ej_get_cfg_clientlist(int eid, webs_t wp, int argc, char **argv){
 		strlen(capability_buf) ? capability_buf : "{}");
 
 		websWrite(wp, output_buf);
+		json_object_put(aliasObj);
 	}
 	websWrite(wp, "]");
 	shmdt(shared_client_info);

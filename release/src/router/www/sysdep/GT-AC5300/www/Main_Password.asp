@@ -408,6 +408,14 @@ var validator = {
 			return false;
 		}		
 
+		if(obj.value.length > 16){
+            showError("<#JS_max_password#>");
+            obj.value = "";
+            obj.focus();
+            obj.select();
+            return false;
+        }
+
 		if(obj.value.charAt(0) == '"'){
 			showError('<#JS_validstr1#> ["]');
 			obj.value = "";
@@ -446,7 +454,15 @@ var validator = {
 				obj.focus();
 				obj.select();
 				return false;	
-		}	
+		}
+
+		if(obj.value.length > 16){
+            showError("<#JS_max_password#>");
+            obj.value = "";
+            obj.focus();
+            obj.select();
+            return false;
+        }	
 		
 		var invalid_char = "";
 		for(var i = 0; i < obj.value.length; ++i){
@@ -506,11 +522,11 @@ function showError(str){
 			</div>
 			<div id="router_password_tr" style="display:none" class="p1"><#PASS_new#></div>
 			<div class="input-container">
-				<input type="password" id="http_passwd_x" name="http_passwd_x" tabindex="1" class="form-input" maxlength="20" autocapitalize="off" autocomplete="off" placeholder="<#PASS_new#>">
+				<input type="password" id="http_passwd_x" name="http_passwd_x" tabindex="2" class="form-input" maxlength="17" autocapitalize="off" autocomplete="off" placeholder="<#PASS_new#>">
 			</div>
 			<div id="router_password_confirm_tr" style="display:none" class="p1"><#Confirmpassword#></div>
 			<div class="input-container">
-				<input type="password" id="http_passwd_2_x" name="http_passwd_2_x" tabindex="1" class="form-input" maxlength="20" autocapitalize="off" autocomplete="off" placeholder="<#Confirmpassword#>">
+				<input type="password" id="http_passwd_2_x" name="http_passwd_2_x" tabindex="3" class="form-input" maxlength="17" autocapitalize="off" autocomplete="off" placeholder="<#Confirmpassword#>">
 			</div>
 			<div id="error_status_field" class="error-hint-bg" style="display: none;" ></div>
 			<div id="btn_modify" class="login-btn-bg" onclick="submitForm();"><#CTL_modify#></div>

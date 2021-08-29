@@ -267,7 +267,7 @@ acs_run_ci_scan(acs_chaninfo_t *c_info)
 {
 	int ret = 0;
 
-	if (is_router_mode() && !nvram_get_int("x_Setting") && !c_info->unit) {
+	if (is_router_mode() && !nvram_get_int("x_Setting") && !c_info->unit && nvram_get_int("obd_allow_scan")) {
 		int val = nvram_get_int("obd_scan_state");
 		if ((val > WLCSCAN_STATE_STOPPED) && (val < WLCSCAN_STATE_FINISHED))
 			return -1;
@@ -499,7 +499,7 @@ int acs_run_normal_ci_scan(acs_chaninfo_t *c_info)
 			if (!ci.scan_channel)
 				break;
 
-			ACSD_PRINT("scan in progress ...\n");
+			ACSD_PRINT("ci scan in progress ...\n");
 			sleep_ms(2);
 		}
 	}
@@ -512,9 +512,9 @@ int acs_run_normal_ci_scan(acs_chaninfo_t *c_info)
 int
 acs_run_cs_scan(acs_chaninfo_t *c_info)
 {
-	int ret;
+	int ret = 0;
 
-	if (is_router_mode() && !nvram_get_int("x_Setting") && !c_info->unit) {
+	if (is_router_mode() && !nvram_get_int("x_Setting") && !c_info->unit && nvram_get_int("obd_allow_scan")) {
 		int val = nvram_get_int("obd_scan_state");
 		if ((val > WLCSCAN_STATE_STOPPED) && (val < WLCSCAN_STATE_FINISHED))
 			return -1;
@@ -578,7 +578,7 @@ acs_run_normal_cs_scan(acs_chaninfo_t *c_info)
 			if (!ci.scan_channel)
 				break;
 
-			ACSD_PRINT("scan in progress ...\n");
+			ACSD_PRINT("cs scan in progress ...\n");
 			sleep_ms(ACS_CS_SCAN_DWELL);
 		}
 	}

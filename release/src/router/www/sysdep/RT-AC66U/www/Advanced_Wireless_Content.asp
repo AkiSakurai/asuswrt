@@ -159,9 +159,18 @@ function initial(){
 		}
 	}
 	else if((is_UA_sku || is_RU_sku) && !Qcawifi_support && !Rawifi_support && !sdk_5){
+
 		if(document.form.wl_channel.value  == '0' && wl_unit == '1'){
 			document.getElementById('acs_band3_checkbox').style.display = "";
 		}		
+	}
+	else if(wl_unit == '2' && band5g2_support){
+		if(document.form.acs_band3.value == '1'){
+			document.form.acs_dfs_checkbox.checked = true;
+		}
+		else{
+			document.form.acs_dfs_checkbox.checked = false;
+		}
 	}
 	else if(country == "US" || country == "SG"){		//display checkbox of band1 channel under 5GHz
 		if(based_modelid == "RT-AC68U" || based_modelid == "RT-AC68A" || based_modelid == "4G-AC68U" || based_modelid == "DSL-AC68U"
@@ -174,6 +183,7 @@ function initial(){
 				document.getElementById('acs_band1_checkbox').style.display = "";					
 		}
 	}
+	
 
 	if(wl_channel_list_2g.length == '14'){
 		if(!Qcawifi_support && !Rawifi_support){
@@ -743,8 +753,18 @@ function applyRule(){
 				}
 			}
 		}
+		else{
+			if(wl_unit == '2' && band5g2_support){
+				document.form.acs_dfs.disabled = true;
+				if(document.form.acs_dfs_checkbox.checked){
+					document.form.acs_band3.value = "1";
+				}
+				else{
+					document.form.acs_band3.value = "0";
+				}
+			}
+		}
 		
-
 		if (based_modelid == "RT-AC87U" && wl_unit == "1"){
 			detect_qtn_ready();
 		}
@@ -1108,13 +1128,6 @@ function enableSmartCon(val){
 				}
 			}
 		}
-		else if(val == '1'){
-			//$('#acs_ch13_checkbox').show();
-		}
-		else{
-			$("#acs_ch13_checkbox").hide();
-		}
-		
 		
 		if(dwb_info.mode && wl_unit == dwb_info.band && wl_unit != 0 && bw_160_support) {
 			$("#enable_160_field").show();
@@ -1504,15 +1517,6 @@ function separateGenChannel(unit, channel, bandwidth){
 		}
 		else if (curBandwidth == '1') {
 			$('#band0_extChannel_field').hide();
-		}
-
-		if (channel_2g.length == '13') {
-			if (document.form.band0_channel.value == '0') {
-				$('#band0_acs_ch13').show();
-			}
-			else {
-				$('#band0_acs_ch13').hide();
-			}
 		}
 
 		channel_2g.unshift('<#Auto#>');

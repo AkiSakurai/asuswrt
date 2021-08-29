@@ -68,7 +68,7 @@
 #define BAND_5G(band) (band == WLC_BAND_5G)
 #define ACS_SM_BUF_LEN  1024
 #define ACS_CS_MAX_2G_CHAN	CH_MAX_2G_CHANNEL	/* max channel # in 2G band */
-#define ACS_SRSLT_BUF_LEN (32*1024)
+#define ACS_SRSLT_BUF_LEN (64*1024)
 /* acs config flags */
 #define ACS_FLAGS_INTF_THRES_CCA	0x1
 #define ACS_FLAGS_INTF_THRES_BGN	0x2

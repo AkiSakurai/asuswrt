@@ -1440,6 +1440,10 @@ define RouterOptions
 		sed -i "/RTCONFIG_BCN_RPT/d" $(1); \
 		echo "RTCONFIG_BCN_RPT=y" >>$(1); \
 	fi; \
+	if [ "$(BTM_11V)" = "y" ]; then \
+		sed -i "/RTCONFIG_BTM_11V/d" $(1); \
+		echo "RTCONFIG_BTM_11V=y" >>$(1); \
+	fi; \
 	if [ "$(NEW_USER_LOW_RSSI)" = "y" ]; then \
 		sed -i "/RTCONFIG_NEW_USER_LOW_RSSI/d" $(1); \
 		echo "RTCONFIG_NEW_USER_LOW_RSSI=y" >>$(1); \
@@ -2671,6 +2675,12 @@ define RouterOptions
 		echo "RTCONFIG_MASTER_DET=y" >>$(1); \
 		sed -i "/RTCONFIG_ADV_RAST/d" $(1); \
 		echo "RTCONFIG_ADV_RAST=y" >>$(1); \
+		if [ "$(BTM_11V)" = "y" ]; then \
+			if [ "$(INFO_EXAP)" = "y" ]; then \
+				sed -i "/RTCONFIG_CONN_EVENT_TO_EX_AP/d" $(1); \
+				echo "RTCONFIG_CONN_EVENT_TO_EX_AP=y" >>$(1); \
+			fi; \
+		fi; \
 		if [ "$(LANTIQ)" = "y" ]; then \
 			sed -i "/RTCONFIG_HAPDEVENT/d" $(1); \
 			echo "RTCONFIG_HAPDEVENT=y" >>$(1); \
@@ -2769,6 +2779,10 @@ define RouterOptions
 	if [ "$(GAME_PROFILE)" = "y" ]; then \
 		sed -i "/RTCONFIG_GAME_PROFILE/d" $(1); \
 		echo "RTCONFIG_GAME_PROFILE=y" >>$(1); \
+	fi; \
+	if [ "$(UUPLUGIN)" = "y" ]; then \
+		sed -i "/RTCONFIG_UUPLUGIN/d" $(1); \
+		echo "RTCONFIG_UUPLUGIN=y" >>$(1); \
 	fi; \
 	)
 	$(call platformRouterOptions, $(1))
@@ -3764,6 +3778,12 @@ fi; \
 		echo "CONFIG_RTN53=y" >>$(1); \
 	else \
 		echo "# CONFIG_RTN53 is not set" >>$(1); \
+	fi; \
+	if [ "$(UUPLUGIN)" = "y" ]; then \
+		if [ "$(BUILD_NAME)" = "RT-AC86U" ] || [ "$(BUILD_NAME)" = "GT-AC2900" ] || [ "$(BUILD_NAME)" = "GT-AC5300" ] || [ "$(BUILD_NAME)" = "RT-AX88U" ] || [ "$(BUILD_NAME)" = "RT-AX92U" ] || [ "$(BUILD_NAME)" = "GT-AX11000" ]; then \
+			sed -i "/CONFIG_BCM_PKTRUNNER_WAR_SKIP_TUN/d" $(1); \
+			echo "CONFIG_BCM_PKTRUNNER_WAR_SKIP_TUN=y" >>$(1); \
+		fi; \
 	fi; \
 	if [ "$(GMAC3)" = "y" ]; then \
 		sed -i "/CONFIG_BCM_GMAC3/d" $(1); \

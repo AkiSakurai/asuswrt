@@ -486,7 +486,7 @@ function validForm(){
 		var msg_dualwan = "<#WANAggregation_disable_dualwan#>";
 		var msg_iptv = "<#WANAggregation_PortConflict_hint2#>";
 		var msg_both = "<#WANAggregation_disable_IPTVDualWAN#>";
-		var msg_wanType = "WAN Aggregation does not support WAN type such as PPPoE, PPTP, and L2TP. If your WAN type changes to PPPoE, PPTP, or L2TP, WAN aggregation will be disabled automatically. Are you sure you want to continue?";
+		var msg_wanType = "<#WANAggregation_wanType_hint#>";
 
 		if(orig_bond_wan != document.form.bond_wan_radio.value && document.form.bond_wan_radio.value == "1"){
 			if(wans_dualwan.indexOf("none") == -1 && (original_switch_stb_x == "4" || original_switch_stb_x == "6")){
@@ -1049,7 +1049,7 @@ function ppp_echo_control(flag){
 							</tr>
 
 							<tr style="display:none;">
-								<th>Enable WAN Aggregation</th>
+								<th><#WANAggregation_enable#></th>
 								<td>
 									<input type="radio" name="bond_wan_radio" class="input" value="1" onclick="return change_common_radio(this, 'LANHostConfig', 'bond_wan', '1')" <% nvram_match("bond_wan", "1", "checked"); %>><#checkbox_Yes#>
 									<input type="radio" name="bond_wan_radio" class="input" value="0" onclick="return change_common_radio(this, 'LANHostConfig', 'bond_wan', '0')" <% nvram_match("bond_wan", "0", "checked"); %>><#checkbox_No#>
