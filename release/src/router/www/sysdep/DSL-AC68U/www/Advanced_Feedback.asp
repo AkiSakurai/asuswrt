@@ -390,7 +390,14 @@ function applyRule(){
 				return false;
 			}
 		}
-
+		
+		var re = new RegExp("^[a-zA-Z][0-9]{10}","gi");
+		if(!re.test(document.form.fb_serviceno.value) && document.form.fb_serviceno.value != ""){
+			alert("<#JS_validchar#>");
+			document.form.fb_serviceno.focus();
+			return false;
+		}
+		
 		if(fb_trans_id != "")
 		{
 			document.form.fb_transid.value = fb_trans_id;
@@ -770,7 +777,7 @@ function dblog_stop() {
 <div style="margin: 10px 0 10px 5px;" class="splitLine"></div>
 <div id="fb_desc0" class="formfontdesc" style="display:none;"><#Feedback_desc0#></div>
 <div id="fb_desc1" class="formfontdesc" style="display:none;"><#Feedback_desc1#></div>
-<div id="fb_desc_disconnect" class="formfontdesc" style="display:none;color:#FC0;"><#Feedback_desc_disconnect#> <a href="mailto:xdsl_feedback@asus.com?Subject=<%nvram_get("productid");%>" target="_top" style="color:#FFCC00;">xdsl_feedback@asus.com </a></div>
+<div id="fb_desc_disconnect" class="formfontdesc" style="display:none;color:#FC0;"><#Feedback_desc_disconnect#> <a href="mailto:broadband_feedback@asus.com?Subject=<%nvram_get("productid");%>" target="_top" style="color:#FFCC00;">broadband_feedback@asus.com </a></div>
 <table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable">
 <tr>
 <th width="30%"><#feedback_country#> *</th>
@@ -798,9 +805,9 @@ function dblog_stop() {
 </tr>
 
 <tr>
-<th>ASUS Service No./Case#</th>
+<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(34,2);">ASUS Service No./Case#</a></th>
 <td>
-	<input type="text" name="fb_serviceno" maxlength="50" class="input_25_table" value="" autocorrect="off" autocapitalize="off">
+	<input type="text" name="fb_serviceno" maxlength="11" class="input_15_table" value="" autocorrect="off" autocapitalize="off">
 </td>
 </tr>
 

@@ -295,6 +295,11 @@ config RTCONFIG_BCMWL6A
 	depends on RTCONFIG_BCMARM && RTCONFIG_BCMWL6
 	default n
 
+config RTCONFIG_BCM4708
+	bool "BCM WL 6.37.14"
+	depends on RTCONFIG_BCMARM && RTCONFIG_BCMWL6
+	default n
+
 config RTCONFIG_WIRELESSWAN
 	bool "Wireless WAN Function"
 	default n
@@ -743,7 +748,6 @@ config RTCONFIG_NEWSSID_REV2
 
 config RTCONFIG_NEWSSID_REV4
 	bool "RT-V4 SSID rule"
-	depends on RTCONFIG_NEWSSID_REV2
 	default n
 
 config RTCONFIG_QCA

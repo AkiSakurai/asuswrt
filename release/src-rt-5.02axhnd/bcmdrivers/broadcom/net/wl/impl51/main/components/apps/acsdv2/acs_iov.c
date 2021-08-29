@@ -261,7 +261,7 @@ uint acs_get_chanim_scb_lastused(acs_chaninfo_t* c_info)
 	uint lastused = 0;
 	int ret;
 
-	ret = wl_iovar_getint(c_info->name, "scb_lastused", (int *)&lastused);
+	ret = wl_iovar_get(c_info->name, "scb_lastused", &lastused, sizeof(uint));
 
 	if (ret < 0) {
 		ACSD_ERROR("failed to get scb_lastused");

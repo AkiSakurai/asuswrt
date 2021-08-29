@@ -64,6 +64,7 @@ body{
 	height: 191px;
 }
 .model-name{
+	width: 420px;
 	height: 100%;
 	font-size: 48px;
 	font-weight: bold;
@@ -115,14 +116,17 @@ body{
 	font-size: 20px;
 }
 .login-btn-bg{
+	width: 250px;
 	height: 60px;
 	line-height: 60px;
-	border: 1px solid rgb(207, 10, 44);
+	border: 2px solid #842500;
 	float: right;
 	margin: 20px 230px 0 0;
-	width: 250px;
-	background: rgba(0,0,0,.5);
-	border-radius: 4px;
+	background: #141618;
+	border-radius: 8px;
+}
+.login-btn-bg:hover{
+	border: 2px solid #AB0015;
 }
 .login-btn-bg-odm{
 	width: 404px;
@@ -150,8 +154,7 @@ body{
 .error-text, 
 .nologin-container, 
 .logout-text, 
-.error_hint, 
-.login-btn-bg:hover,
+.error_hint,
 .login-btn-bg-odm:hover{
 	color: #45FFF0;
 }
@@ -167,12 +170,14 @@ body{
 	padding: 18px 22px;
 	border: none;
 	outline: none;
-	border-bottom: 1px solid rgb(207, 10, 44);
+	border-bottom: 2px solid rgb(112, 0, 14);
 	border-radius: 4px;
 	background-color: rgba(0,0,0,0.5);
 	background-color: #576D73\9;
 }
-
+.form-input:focus{
+	border-bottom: 2px solid #AB0015;
+}
 /*for mobile device*/
 @media screen and (max-width: 1000px){
 .main-field-bg, .main-field-bg-odm{

@@ -319,6 +319,33 @@ acs_expire_scan_entry(acs_chaninfo_t *c_info, time_t limit)
 	}
 }
 
+int acs_allow_scan(acs_chaninfo_t *c_info, uint8 type)
+{
+	time_t now = uptime();
+	uint32 diff = now - c_info->timestamp_acs_scan;
+	if (c_info->txrx_score > ACS_CHANIM_TXRX_PER) {
+		ACSD_DEBUG("scan is not initiated due to current txrx_score: %d is more than"
+			"limit:%d\n", c_info->txrx_score, ACS_CHANIM_TXRX_PER);
+		return FALSE;
+	}
+	if ((type == ACS_SCAN_TYPE_CI) && diff >= c_info->acs_ci_scan_timeout) {
+		if (c_info->cur_is_dfs) {
+			return TRUE;
+		} else {
+			return (c_info->last_scan_type != ACS_SCAN_TYPE_CI);
+		}
+	} else if ((type == ACS_SCAN_TYPE_CS) && diff >= c_info->acs_cs_scan_timer) {
+		if (c_info->cur_is_dfs) {
+			ACSD_DEBUG("Don't allow CS scan when operating on dfs channel\n");
+			return FALSE;
+		}
+		return (c_info->last_scan_type != ACS_SCAN_TYPE_CS);
+	} else {
+		ACSD_DEBUG("Invalid scan type \n");
+		return FALSE;
+	}
+}
+
 int acs_ci_scan_check(acs_chaninfo_t *c_info)
 {
 	acs_scan_chspec_t* chspec_q = &c_info->scan_chspec_list;
@@ -335,15 +362,19 @@ int acs_ci_scan_check(acs_chaninfo_t *c_info)
 	*/
 
 	/* scan pref chan: when txop < thld, start ci scan for pref chan */
-	if (c_info->scan_chspec_list.ci_pref_scan_request && (chspec_q->pref_count > 0)) {
-		ACSD_PRINT("acs_ci_scan_timeout start CI pref scan: scan_count %d\n",
-			chspec_q->pref_count);
-		c_info->scan_chspec_list.ci_pref_scan_request = FALSE;
+	if (acs_allow_scan(c_info, ACS_SCAN_TYPE_CI)) {
+		if (c_info->scan_chspec_list.ci_pref_scan_request && (chspec_q->pref_count > 0)) {
+			ACSD_PRINT("acs_ci_scan_timeout start CI pref scan: scan_count %d\n",
+					chspec_q->pref_count);
+			c_info->scan_chspec_list.ci_pref_scan_request = FALSE;
 
-		if (chspec_q->ci_scan_running != ACS_CI_SCAN_RUNNING_PREF) {
-			chspec_q->ci_scan_running = ACS_CI_SCAN_RUNNING_PREF;
-			c_info->acs_ci_scan_count = chspec_q->pref_count;
-			acs_ci_scan_update_idx(&c_info->scan_chspec_list, 0);
+			if (chspec_q->ci_scan_running != ACS_CI_SCAN_RUNNING_PREF) {
+				chspec_q->ci_scan_running = ACS_CI_SCAN_RUNNING_PREF;
+				c_info->last_scan_type = ACS_SCAN_TYPE_CI;
+				c_info->timestamp_acs_scan = now;
+				c_info->acs_ci_scan_count = chspec_q->pref_count;
+				acs_ci_scan_update_idx(&c_info->scan_chspec_list, 0);
+			}
 		}
 	}
 	/* check for current scanning status */
@@ -351,9 +382,11 @@ int acs_ci_scan_check(acs_chaninfo_t *c_info)
 		return 1;
 
 	/* check scan timeout, and trigger CI scan if timeout happened */
-	if ((now - c_info->timestamp_acs_scan) >= c_info->acs_ci_scan_timeout) {
+	if (acs_allow_scan(c_info, ACS_SCAN_TYPE_CI)) {
 		c_info->acs_ci_scan_count = chspec_q->count - chspec_q->excl_count;
 		chspec_q->ci_scan_running = ACS_CI_SCAN_RUNNING_NORM;
+		c_info->last_scan_type = ACS_SCAN_TYPE_CI;
+		c_info->timestamp_acs_scan = now;
 		acs_ci_scan_update_idx(&c_info->scan_chspec_list, 0);
 		ACSD_INFO("acs_ci_scan_timeout start CI scan: now %u(%u), scan_count %d\n",
 			(uint)now, c_info->timestamp_acs_scan,
@@ -394,8 +427,14 @@ acs_do_ci_update(uint ticks, acs_chaninfo_t * c_info)
 	if (!(c_info->scan_chspec_list.ci_scan_running))
 		return ret;
 
+	if (c_info->acs_bgdfs != NULL && c_info->acs_bgdfs->state != BGDFS_STATE_IDLE) {
+		ACSD_DEBUG("Don't initiate CI scan when bgdfs is in progress\n");
+		return ret;
+	}
+
 	ret = acs_run_ci_scan(c_info);
-	ACS_ERR(ret, "ci scan failed\n");
+	if (ret < 0)
+	ACSD_INFO("ci scan failed\n");
 
 	ret = acs_request_data(c_info);
 	ACS_ERR(ret, "request data failed\n");
@@ -695,6 +734,8 @@ acs_escan_prep_cs(acs_chaninfo_t *c_info, wl_scan_params_t *params, int *params_
 
 	params->home_time = -1;
 	params->channel_num = 0;
+	c_info->timestamp_acs_scan = uptime();
+	c_info->timestamp_tx_idle = c_info->timestamp_acs_scan;
 
 	ret = acs_build_scanlist(c_info);
 	ACS_ERR(ret, "failed to build scan chanspec list");
@@ -1064,7 +1105,13 @@ acs_scan_timer_or_dfsr_check(acs_chaninfo_t * c_info)
 	start_idx = MODSUB(cur_idx, 1, CHANIM_ACS_RECORD);
 	start_record = &ch_info->record[start_idx];
 
-	if (AUTOCHANNEL(c_info) && (c_info->country_is_edcrs_eu || !(c_info->cur_is_dfs))) {
+	if (c_info->acs_bgdfs != NULL && c_info->acs_bgdfs->state != BGDFS_STATE_IDLE) {
+		ACSD_DEBUG("%s: Don't allow CS Scan when bgdfs is in progress\n", c_info->name);
+		return ret;
+	}
+
+	if (AUTOCHANNEL(c_info) && (c_info->country_is_edcrs_eu || !(c_info->cur_is_dfs)) &&
+		acs_allow_scan(c_info, ACS_SCAN_TYPE_CS)) {
 		/* Check whether we should switch now because of the CS scan timer */
 		cs_scan_timer = c_info->acs_cs_scan_timer;
 
@@ -1078,6 +1125,7 @@ acs_scan_timer_or_dfsr_check(acs_chaninfo_t * c_info)
 			if (acs_tx_idle_check(c_info) ||
 				((passed > cs_scan_timer) && (!acs_check_assoc_scb(c_info)))) {
 				switch_reason = APCS_CSTIMER;
+				c_info->last_scan_type = ACS_SCAN_TYPE_CS;
 			}
 		}
 	}

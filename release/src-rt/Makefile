@@ -1066,6 +1066,10 @@ define RouterOptions
 		sed -i "/RTCONFIG_BCMWL6A/d" $(1); \
 		echo "RTCONFIG_BCMWL6A=y" >>$(1); \
 	fi; \
+	if [ "$(BCM4708)" = "y" ]; then \
+		sed -i "/RTCONFIG_BCM4708/d" $(1); \
+		echo "RTCONFIG_BCM4708=y" >>$(1); \
+	fi; \
 	if [ "$(ARM)" = "y" ]; then \
 		sed -i "/RTCONFIG_BCMARM/d" $(1); \
 		echo "RTCONFIG_BCMARM=y" >>$(1); \
@@ -1221,10 +1225,10 @@ define RouterOptions
 	if [ "$(NEWSSID_REV2)" = "y" ]; then \
 		sed -i "/RTCONFIG_NEWSSID_REV2/d" $(1); \
 		echo "RTCONFIG_NEWSSID_REV2=y" >>$(1); \
-		if [ "$(NEWSSID_REV4)" = "y" ]; then \
-			sed -i "/RTCONFIG_NEWSSID_REV4/d" $(1); \
-			echo "RTCONFIG_NEWSSID_REV4=y" >>$(1); \
-		fi; \
+	fi; \
+	if [ "$(NEWSSID_REV4)" = "y" ]; then \
+		sed -i "/RTCONFIG_NEWSSID_REV4/d" $(1); \
+		echo "RTCONFIG_NEWSSID_REV4=y" >>$(1); \
 	fi; \
 	if [ "$(NEW_APP_ARM)" = "y" ]; then \
 		sed -i "/RTCONFIG_NEW_APP_ARM/d" $(1); \

@@ -484,8 +484,8 @@ int wl_get_bw(int unit)
 
 	wl_ifname(unit, 0, ifname);
 
-	wl_iovar_getint(ifname, "bss", (int *) &up);
-	wl_iovar_getint(ifname, "chanspec", (int *) &chspec);
+	wl_iovar_getint(ifname, "bss", &up);
+	wl_iovar_get(ifname, "chanspec", &chspec, sizeof(chanspec_t));
 
 	if (up && wf_chspec_valid(chspec)) {
 		if (CHSPEC_IS20(chspec))

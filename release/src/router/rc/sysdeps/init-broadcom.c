@@ -1895,7 +1895,7 @@ void init_switch()
 #ifdef CONFIG_BCMWL5
 	// ctf should be disabled when some functions are enabled
 	if ((nvram_get_int("qos_enable") == 1 && nvram_get_int("qos_type") == 0) ||
-	    (check_wl_guest_bw_enable()  && (nvram_get_int("qos_enable") && nvram_get_int("qos_type") == 2)) ||
+	    (check_wl_guest_bw_enable() || (nvram_get_int("qos_enable") && nvram_get_int("qos_type") == 2)) ||
 #if defined(RTCONFIG_AMAS) && defined(RTCONFIG_BCM_7114)
 	(sw_mode() == SW_MODE_AP && nvram_match("re_mode", "1")) ||
 #endif
@@ -4334,12 +4334,14 @@ void generate_wl_para(char *ifname, int unit, int subunit)
 #endif
 
 #ifdef RTCONFIG_BCMARM
+#ifndef RTCONFIG_BCM4708
 		if (is_ure(unit)
 #if defined(RTCONFIG_BCMWL6) && defined(RTCONFIG_PROXYSTA)
 			|| is_psta(unit) || is_psr(unit)
 #endif
 		)
 			nvram_set_int(strcat_r(prefix, "mfp", tmp), 1);
+#endif
 #endif
 
 		dbG("bw: %s\n", nvram_safe_get(strcat_r(prefix, "bw", tmp)));
@@ -4420,12 +4422,14 @@ void generate_wl_para(char *ifname, int unit, int subunit)
 #else
 			nvram_set(strcat_r(prefix, "dwds", tmp), is_ure(unit) ? "0" : "1");
 
+#ifndef RTCONFIG_BCM4708
 			if (is_ure(unit)
 #if defined(RTCONFIG_BCMWL6) && defined(RTCONFIG_PROXYSTA)
 				|| is_psta(unit) || is_psr(unit)
 #endif
 			)
 				nvram_set_int(strcat_r(prefix, "mfp", tmp), 1);
+#endif
 #endif
 #endif
 		}
@@ -7285,14 +7289,15 @@ ERROR:
 }
 
 #ifdef RTCONFIG_AVBLCHAN
-#define MAX_CHANS	32
+#define MAX_5G_CHANNEL_LIST_NUM 	32
+#define MAX_CHANS			MAX_5G_CHANNEL_LIST_NUM*4 
 
 void add_cfgexcl_2_acsexcl(unsigned int *echx)
 {
 	char ex_tmp[24], word[256], *next, *asus_excl;
 	int i = 0, unit = 0, exist = 0;
 	unsigned int ech;
-	char acsexcl_wlx[1024], *sp;
+	char acsexcl_wlx[1000], chtmp[7], *sp;
 
 	for(unit = 0; unit < 3; ++unit) {
 		memset(ex_tmp, 0, sizeof(ex_tmp));
@@ -7316,11 +7321,12 @@ void add_cfgexcl_2_acsexcl(unsigned int *echx)
 		}
 		memset(acsexcl_wlx, 0, sizeof(acsexcl_wlx));
 		for(i=0; i<MAX_CHANS; ++i) {
-			sp = acsexcl_wlx;
-			if(*(echx + unit*MAX_CHANS + i)) {
-				if(strlen(acsexcl_wlx) + 6 < sizeof(acsexcl_wlx) - 1)
-					snprintf(acsexcl_wlx, sizeof(acsexcl_wlx), "%s%s0x%2x", sp, *sp?",":"", *(echx + unit*MAX_CHANS + i));
-				else
+			sp = acsexcl_wlx[0]?",":"";
+			if(*(echx + unit*MAX_CHANS + i) && snprintf(chtmp, sizeof(chtmp), "0x%x", *(echx + unit*MAX_CHANS + i)) > 0) {
+				if(strlen(acsexcl_wlx) + 6 < sizeof(acsexcl_wlx) - 1) {
+					strncat(acsexcl_wlx, sp, sizeof(acsexcl_wlx)-strlen(acsexcl_wlx)-1);
+					strncat(acsexcl_wlx, chtmp, sizeof(acsexcl_wlx)-strlen(acsexcl_wlx)-1);
+				} else
 					_dprintf("acsexcl_wlx full!(rc)\n");
 			}
 		}

@@ -1051,6 +1051,12 @@ int amas_lib_device_ip_query(char *mac, char *ip)
 	int ret = 0;
 	AMASLIB_EVENT_T *event = NULL;
 
+	// Workaround for ipv6 case.
+#ifdef RTCONFIG_IPV6
+	if(ipv6_enabled())
+		return ret;
+#endif
+
 #if defined(RTCONFIG_WIFI_SON)
         if (nvram_match("wifison_ready", "1"))
                 return ret;

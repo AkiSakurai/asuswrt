@@ -487,20 +487,41 @@ acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix)
 	else
 		c_info->acs_tx_idle_cnt = atoi(str);
 
-	if ((str = nvram_get(strcat_r(prefix, "acs_ci_scan_timeout", tmp))) == NULL)
+	if ((str = nvram_get(strcat_r(prefix, "acs_ci_scan_timeout", tmp))) == NULL) {
 		c_info->acs_ci_scan_timeout = ACS_CI_SCAN_TIMEOUT;
-	else
+	} else {
 		c_info->acs_ci_scan_timeout = atoi(str);
+		if (c_info->acs_ci_scan_timeout < ACS_CI_SCAN_TIMEOUT)
+		{
+			c_info->acs_ci_scan_timeout = ACS_CI_SCAN_TIMEOUT;
+			ACSD_INFO(" ifname :%s adjusting the ci scan timeout to default %d\n",
+			c_info->name, c_info->acs_ci_scan_timeout);
+		}
+	}
 
-	if ((str = nvram_get(strcat_r(prefix, "acs_cs_scan_timer", tmp))) == NULL)
+	if ((str = nvram_get(strcat_r(prefix, "acs_cs_scan_timer", tmp))) == NULL) {
 		c_info->acs_cs_scan_timer = ACS_DFLT_CS_SCAN_TIMER;
-	else
+	} else {
 		c_info->acs_cs_scan_timer = atoi(str);
+		if (c_info->acs_cs_scan_timer < ACS_DFLT_CS_SCAN_TIMER)
+		{
+			c_info->acs_cs_scan_timer = ACS_DFLT_CS_SCAN_TIMER;
+			ACSD_INFO(" ifname :%s adjusting the cs scan timer to default %d\n",
+				c_info->name, c_info->acs_cs_scan_timer);
+		}
+	}
 
-	if ((str = nvram_get(strcat_r(prefix, "acs_ci_scan_timer", tmp))) == NULL)
+	if ((str = nvram_get(strcat_r(prefix, "acs_ci_scan_timer", tmp))) == NULL) {
 		c_info->acs_ci_scan_timer = ACS_DFLT_CI_SCAN_TIMER;
-	else
+	} else {
 		c_info->acs_ci_scan_timer = atoi(str);
+		if (c_info->acs_ci_scan_timer < ACS_DFLT_CI_SCAN_TIMER)
+		{
+			c_info->acs_ci_scan_timer = ACS_DFLT_CI_SCAN_TIMER;
+			ACSD_INFO(" ifname :%s adjusting the ci scan timer to default %d\n",
+				c_info->name, c_info->acs_ci_scan_timer);
+		}
+	}
 
 	if ((str = nvram_get(strcat_r(prefix, "intfer_period", tmp))) == NULL)
 		c_info->intfparams.period = ACS_INTFER_SAMPLE_PERIOD;

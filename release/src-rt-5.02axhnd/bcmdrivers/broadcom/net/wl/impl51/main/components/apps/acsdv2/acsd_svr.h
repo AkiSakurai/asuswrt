@@ -108,7 +108,7 @@
 #define ACS_CI_SCAN_WINDOW	5   /* sec: how often for ci scan */
 #define ACS_CS_SCAN_TIMER_MIN	60  /* sec */
 #define ACS_DFLT_CS_SCAN_TIMER	900  /* sec */
-#define ACS_DFLT_CI_SCAN_TIMER  10 /* sec */
+#define ACS_DFLT_CI_SCAN_TIMER  20 /* sec */
 #define ACS_CS_SCAN_MIN_RSSI -80 /* dBm */
 #define ACS_CI_SCAN_MIN_RSSI -80 /* dBm */
 #define ACS_CI_SCAN_EXPIRE	300  /* sec: how long to expire an scan entry */
@@ -141,6 +141,8 @@
 
 #define ACS_DYN160_CENTER_CH	50 /* on 160MHz with dyn160 enabled, use this center chanspec */
 #define ACS_DYN160_CENTER_CH_80	58 /* with dyn160 enabled, use this center chanspec on 80MHz */
+#define ACS_CHANIM_POLL_MIN	60 /* Query chanim_stats in cur ch only after 60sec */
+#define ACS_CHANIM_TXRX_PER	20 /* Combination of tx+inbss */
 
 #define ACS_BW_DWNGRD_ITERATIONS	2 /* No of iterations to check before downgrading BW */
 
@@ -208,7 +210,7 @@ typedef enum {
 #define ACS_NOFCS_LEAST_RSSI		-60
 #define ACS_CHAN_DWELL_TIME			30
 #define ACS_TX_IDLE_CNT				300		/* around 3.5Mbps */
-#define ACS_CI_SCAN_TIMEOUT			300		/* 5 min */
+#define ACS_CI_SCAN_TIMEOUT			900		/* 15 min */
 #define ACS_SCAN_CHANIM_STATS		70
 #define ACS_CI_SCAN_CHANIM_STATS		50 /* do pref ci scan if TXOP threshold */
 #define ACS_BOOT_ONLY_DEFAULT		0
@@ -665,10 +667,12 @@ typedef struct acs_chaninfo {
 	uint32 cur_timestamp;
 	uint32 timestamp;
 	uint8 txop_channel_select;
-	uint8 txop_score;
+	uint8 txop_score;		/* Combination of (tx+inbss+txop)scores */
 	uint8 dfs_reentry;
 	bool bgdfs160;			/* bgdfs is 160Mhz capable */
 	bool wet_enabled;
+	uint8 last_scan_type; 		/* Remember last scan type (CS or CI) */
+	uint8 txrx_score; 		/* Combination of (tx+inbss) scores */
 	int unit;
 } acs_chaninfo_t;
 
@@ -835,4 +839,5 @@ extern int acs_set_chan_table(char *channel_list, chanspec_t *chspec_list,
 extern void acs_ci_scan_update_idx(acs_scan_chspec_t *chspec_q, uint8 increment);
 /* look for str in capability (wl cap) and return true if found */
 extern bool acs_check_cap(acs_chaninfo_t *c_info, char *str);
+extern int acs_allow_scan(acs_chaninfo_t *c_info, uint8 type);
 #endif  /* _acsd_srv_h_ */

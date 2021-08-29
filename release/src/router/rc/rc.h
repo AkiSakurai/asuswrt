@@ -637,6 +637,7 @@ extern void fc_fini();
 extern void hnd_nat_ac_init(int bootup);
 extern void setLANLedOn(void);
 extern void setLANLedOff(void);
+extern void activateLANLed();
 #ifdef RTCONFIG_HNDMFG
 extern void hnd_mfg_init();
 extern void hnd_mfg_services();
@@ -860,7 +861,7 @@ extern pid_t pid_from_file(char *pidfile);
 extern int delay_main(int argc, char *argv[]);
 #ifdef RTCONFIG_IPV6
 extern void set_default_accept_ra(int flag);
-extern void set_intf_ipv6_accept_ra(const char *ifname, int flag);
+extern void set_default_accept_ra_defrtr(int flag);
 extern void set_intf_ipv6_dad(const char *ifname, int bridge, int flag);
 extern void config_ipv6(int enable, int incl_wan);
 #ifdef RTCONFIG_DUALWAN

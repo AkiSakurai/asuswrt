@@ -2033,6 +2033,14 @@ int smbc_parser_basic_authentication(server *srv, connection* con, char** userna
 				free(pass);							
 				return 0;
 			}
+			
+			if (basic_msg->used>1024) {
+                                buffer_free(basic_msg);
+                                free(user);
+                                free(pass);
+                                return 0;
+                        }
+
 			char *s, bmsg[1024] = {0};
 
 			//fetech the username and password from credential

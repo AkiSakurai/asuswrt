@@ -231,12 +231,6 @@ function applyRule(){
 		document.form.wan_vid.disabled = true;
 	}
 
-	if(wan_bonding_support && orig_bond_wan != document.form.bond_wan_radio.value){
-		document.form.bond_wan.disabled = false;
-		document.form.bond_wan.value = document.form.bond_wan_radio.value;
-		FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
-	}
-
 	if(validForm()){
 		showLoading();
 		inputCtrl(document.form.wan_dhcpenable_x[0], 1);
@@ -252,6 +246,12 @@ function applyRule(){
 		if(!document.form.wan_dnsenable_x[0].checked){
 			inputCtrl(document.form.wan_dns1_x, 1);
 			inputCtrl(document.form.wan_dns2_x, 1);
+		}
+
+		if(wan_bonding_support && orig_bond_wan != document.form.bond_wan_radio.value){
+			document.form.bond_wan.disabled = false;
+			document.form.bond_wan.value = document.form.bond_wan_radio.value;
+			FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
 		}
 
 		document.form.submit();	

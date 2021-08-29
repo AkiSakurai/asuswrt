@@ -434,28 +434,30 @@ chanim_upd_state(acs_chaninfo_t * c_info)
 		}
 
 		/* taking action */
-		ret = acs_run_cs_scan(c_info);
-		ACS_ERR(ret, "cs scan failed\n");
+		if (acs_allow_scan(c_info, ACS_SCAN_TYPE_CS)) {
+			c_info->last_scan_type = ACS_SCAN_TYPE_CS;
+			ret = acs_run_cs_scan(c_info);
+			ACS_ERR(ret, "cs scan failed\n");
 
-		ret = acs_request_data(c_info);
-		ACS_ERR(ret, "request data failed\n");
+			ret = acs_request_data(c_info);
+			ACS_ERR(ret, "request data failed\n");
 
-		c_info->switch_reason = APCS_CHANIM;
-		acs_select_chspec(c_info);
-		/* some other can request to change the channel via acsd, in that
-		 * case proper reason will be provided by requesting APP, For ACSD
-		 * USE_ACSD_DEF_METHOD: ACSD's own default method to set channel
-		 */
-		acs_set_chspec(c_info, TRUE, ACSD_USE_DEF_METHOD);
-		chanim_upd_acs_record(ch_info, c_info->selected_chspec, APCS_CHANIM);
+			c_info->switch_reason = APCS_CHANIM;
+			acs_select_chspec(c_info);
+			/* some other can request to change the channel via acsd, in that
+			 * case proper reason will be provided by requesting APP, For ACSD
+			 * USE_ACSD_DEF_METHOD: ACSD's own default method to set channel
+			 */
+			acs_set_chspec(c_info, TRUE, ACSD_USE_DEF_METHOD);
+			chanim_upd_acs_record(ch_info, c_info->selected_chspec, APCS_CHANIM);
 
-		ret = acs_update_driver(c_info);
-		ACS_ERR(ret, "update driver failed\n");
+			ret = acs_update_driver(c_info);
+			ACS_ERR(ret, "update driver failed\n");
 
-		cur_state = CHANIM_STATE_DETECTING;
-		ACSD_CHANIM("state changed: from %d to %d\n",
-			chanim_mark(ch_info).state, cur_state);
-
+			cur_state = CHANIM_STATE_DETECTING;
+			ACSD_CHANIM("state changed: from %d to %d\n",
+				chanim_mark(ch_info).state, cur_state);
+		}
 post_act:
 		chanim_mark(ch_info).detecttime = 0;
 		chanim_restore_scbprobe(c_info);
@@ -559,6 +561,8 @@ acsd_update_chanim(acs_chaninfo_t * c_info, wl_chanim_stats_t * chanim_stats, ui
 		c_info->txop_score = stats_v3->ccastats[CCASTATS_TXOP] +
 			stats_v3->ccastats[CCASTATS_TXDUR] +
 			stats_v3->ccastats[CCASTATS_INBSS];
+		c_info->txrx_score = stats_v3->ccastats[CCASTATS_TXDUR] +
+			stats_v3->ccastats[CCASTATS_INBSS];
 	} else if (chanim_stats->version == WL_CHANIM_STATS_V2) {
 		chanim_stats_v2_t tmp;
 		chanim_stats_v2_t *stats_v2 = (chanim_stats_v2_t *)chanim_stats->stats;
@@ -599,6 +603,8 @@ acsd_update_chanim(acs_chaninfo_t * c_info, wl_chanim_stats_t * chanim_stats, ui
 		c_info->cur_timestamp = tmp.timestamp;
 		c_info->txop_score = stats_v2->ccastats[CCASTATS_TXOP] +
 			stats_v2->ccastats[CCASTATS_TXDUR] +
+			stats_v2->ccastats[CCASTATS_INBSS];
+		c_info->txrx_score = stats_v2->ccastats[CCASTATS_TXDUR] +
 			stats_v2->ccastats[CCASTATS_INBSS];
 	}
 

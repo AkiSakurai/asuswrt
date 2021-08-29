@@ -152,7 +152,7 @@ function initial(){
 		}
 	}
 
-	if(wl_reg_mode == 'h'){
+	if(wl_unit == 1 && (_chanspecs_5g.indexOf('56') != -1 || _chanspecs_5g.indexOf('100') != -1)){
 		if(document.form.wl_channel.value  == '0' && wl_unit == '1'){
 			document.getElementById('dfs_checkbox').style.display = "";
 			check_DFS_support(document.form.acs_dfs_checkbox);
@@ -201,6 +201,7 @@ function initial(){
 			return true;
 
 		document.getElementById("auto_channel").style.display = "";
+		ajax_wl_channel();
 		var temp = "";
 		if(smart_connect_flag_t == "1"){		//Tri-Band Smart Connect
 			if(isSupport("triband") && dwb_info.mode) {
@@ -342,7 +343,6 @@ function change_wl_nmode(o){
 
 	wl_chanspec_list_change();
 	genBWTable(wl_unit);
-	change_channel(document.form.wl_channel);
 	controlAXOnlyHint();
 }
 
@@ -1109,9 +1109,7 @@ function enableSmartCon(val){
 			}
 		}
 		else if(val == '1'){
-			if (!Qcawifi_support && !Rawifi_support) {
-				$('#acs_ch13_checkbox').show();
-			}
+			//$('#acs_ch13_checkbox').show();
 		}
 		else{
 			$("#acs_ch13_checkbox").hide();
@@ -1851,6 +1849,20 @@ function controlAXOnlyHint() {
 		$("#wl_AXOnly_note").show();
 	else
 		$("#wl_AXOnly_note").hide();
+}
+
+function ajax_wl_channel(){
+	$.ajax({
+		url: '/ajax_wl_channel.asp',
+		dataType: 'script',	
+		error: function(xhr) {
+			setTimeout("ajax_wl_channel();", 1000);
+		},
+		success: function(response){
+			$("#auto_channel").html("<#wireless_control_channel#>: " + cur_control_channel[wl_unit]);
+			setTimeout("ajax_wl_channel();", 5000);
+		}
+	});
 }
 </script>
 </head>

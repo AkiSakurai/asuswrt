@@ -422,7 +422,7 @@ acs_trigger_name(int trigger)
 {
 	static const char *trig_str[APCS_MAX] = {
 		"INIT", "IOCTL", "CHANIM", "TIMER",
-		"BTA", "TXDLY", "NONACS", "DFS-REENTRY", "TXFAIL"
+		"BTA", "TXOP/TXDLY", "NONACS", "DFS-REENTRY", "TXFAIL"
 	};
 	return (trigger < APCS_MAX) ? trig_str[trigger] : "(invalid)";
 }

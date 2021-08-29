@@ -357,7 +357,7 @@ misc_ioctrl(void)
 #endif
 
 #if defined(HND_ROUTER)
-			setLANLedOn();
+			activateLANLed();
 #endif
 
 #if defined(HND_ROUTER) && defined(RTCONFIG_HNDMFG)
@@ -701,6 +701,11 @@ wl_defaults(void)
 		}
 
 		snprintf(prefix, sizeof(prefix), "wl%d_", unit);
+
+#ifdef RTCONFIG_AVBLCHAN
+		nvram_set(strcat_r(prefix, "acs_excl_chans_cfg", tmp), "");
+		nvram_set(strcat_r(prefix, "acs_excl_chans", tmp), "");
+#endif
 		if (strlen(wlx_vifnames))
 		{
 #if defined(RTCONFIG_AMAS)
@@ -824,7 +829,7 @@ restore_defaults_wifi(int all)
 	unsigned int max_mssid;
 	char prefix[]="wlXXXXXX_", tmp[100];
 
-#ifdef RTCONFIG_NEWSSID_REV2
+#if defined(RTCONFIG_NEWSSID_REV2) || defined(RTCONFIG_NEWSSID_REV4)
 	rev3 = 1;
 #endif
 	unit = 0;
@@ -11175,20 +11180,13 @@ dbg("boot/continue fail= %d/%d\n", nvram_get_int("Ate_boot_fail"),nvram_get_int(
 			start_wan();
 
 #ifdef RTCONFIG_HND_ROUTER_AX
-#ifdef RTCONFIG_AMAS
-			if(!is_router_mode())
-				eth_phypower("eth0", 1);
-			else
-#endif
+			char word[64], *next;
+			foreach(word, nvram_safe_get("wan_ifnames"), next)
 			{
-			    	char word[64], *next;
-				foreach(word, nvram_safe_get("wan_ifnames"), next)
-				{
-					if(!strncmp(word, "br1", 3) || !strncmp(word, "vlan", 4) || !strncmp(word, "eth", 3))
-						eth_phypower("eth0", 1);
-					else
-						eth_phypower(word, 1);
-				}
+				if(!strncmp(word, "br1", 3) || !strncmp(word, "vlan", 4) || !strncmp(word, "eth", 3))
+					eth_phypower("eth0", 1);
+				else
+					eth_phypower(word, 1);
 			}
 #endif
 

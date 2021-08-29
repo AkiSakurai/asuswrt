@@ -1283,7 +1283,7 @@ ej_get_clientlist_from_json_database(int eid, webs_t wp, int argc, char_t **argv
 	if(!clients) {
 		clients = json_object_new_object();
 		json_object_object_add(clients, "maclist", macArray);
-		json_object_object_add(clients, "ClientAPILevel", json_object_new_string(CLIENTAPILEVEL));
+		//json_object_object_add(clients, "ClientAPILevel", json_object_new_string(CLIENTAPILEVEL));
 		ret = websWrite(wp, "%s", json_object_to_json_string(clients));
 
 		json_object_put(clients);
@@ -1362,7 +1362,7 @@ ej_get_clientlist_from_json_database(int eid, webs_t wp, int argc, char_t **argv
 	}
 
 	json_object_object_add(clients, "maclist", macArray);
-	json_object_object_add(clients, "ClientAPILevel", json_object_new_string(CLIENTAPILEVEL));
+	//json_object_object_add(clients, "ClientAPILevel", json_object_new_string(CLIENTAPILEVEL));
 	ret = websWrite(wp, "%s", json_object_to_json_string(clients));
 
 	if(customList)
@@ -3356,8 +3356,8 @@ static int validate_apply(webs_t wp, json_object *root) {
 						wans_dualwan_usb |= NVRAM_MODIFIED_DUALWAN_REBOOT;
 				}
 #endif
-				if( !strcmp(name, "PM_MY_EMAIL") || !strcmp(name, "PM_SMTP_AUTH_USER")){
-					if (strpbrk(value, "`") != NULL)
+				if( !strcmp(name, "PM_MY_EMAIL") || !strcmp(name, "PM_SMTP_AUTH_USER") || !strcmp(name, "fb_email")){
+					if (strchr(value, '`') != NULL)
 						continue;
 				}
 #ifdef RTCONFIG_CFGSYNC
@@ -8579,7 +8579,8 @@ static int ej_get_clientlist(int eid, webs_t wp, int argc, char_t **argv)
 	}
 	
 	if(!pids("networkmap")){
-		websWrite(wp, "{\"maclist\": [], \"ClientAPILevel\":\"%s\"}", CLIENTAPILEVEL);
+		//websWrite(wp, "{\"maclist\": [], \"ClientAPILevel\":\"%s\"}", CLIENTAPILEVEL);
+		websWrite(wp, "{\"maclist\": []}");
 		return 0;
 	}
 
@@ -8640,7 +8641,7 @@ static int ej_get_clientlist(int eid, webs_t wp, int argc, char_t **argv)
 #endif
 
 	json_object_object_add(clients, "maclist", macArray);
-	json_object_object_add(clients, "ClientAPILevel", json_object_new_string(CLIENTAPILEVEL));
+	//json_object_object_add(clients, "ClientAPILevel", json_object_new_string(CLIENTAPILEVEL));
 	websWrite(wp, "%s", json_object_to_json_string(clients));
 
 	//strcat(maclist_buf,brackets_d);
@@ -22785,7 +22786,7 @@ ej_get_default_ssid(int eid, webs_t wp, int argc, char_t **argv)
 	char word[256], *next;
 
 	websWrite(wp, "[");
-#ifdef RTCONFIG_NEWSSID_REV2
+#if defined(RTCONFIG_NEWSSID_REV2) || defined(RTCONFIG_NEWSSID_REV4)
 	while (unit < band_num){
 		SKIP_ABSENT_BAND_AND_INC_UNIT(unit)
 		if(unit != 0) websWrite(wp, ", ");

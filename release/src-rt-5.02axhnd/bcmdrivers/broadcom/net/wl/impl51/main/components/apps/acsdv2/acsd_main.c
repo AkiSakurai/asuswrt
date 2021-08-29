@@ -1062,6 +1062,9 @@ acsd_watchdog(uint ticks)
 			acs_update_status(c_info);
 
 		acsd_chanim_check(ticks, c_info);
+		if ((ticks % ACS_CHANIM_POLL_MIN) == 0) {
+			acsd_chanim_check(ticks, c_info);
+		}
 
 		if (c_info->txop_channel_select && (-- c_info->txop_channel_select == 0) &&
 			(c_info->switch_reason != APCS_TXFAIL)) {
@@ -1088,11 +1091,11 @@ acsd_watchdog(uint ticks)
 						c_info->selected_chspec, wf_chspec_ntoa(c_info->selected_chspec, chanspecbuf));
 					acs_set_chspec(c_info, TRUE, ACSD_USE_DEF_METHOD);
 					ret = acs_update_driver(c_info);
-					if (start_record->trigger == APCS_IOCTL) {
+					if (start_record->trigger == APCS_TXDLY) {
 						chanim_mark(ch_info).record_idx = start_idx;
 					}
 					chanim_upd_acs_record(c_info->chanim_info,
-							c_info->selected_chspec, APCS_IOCTL);
+							c_info->selected_chspec, APCS_TXDLY);
 				}
 			} else {
 				c_info->selected_chspec = c_info->cur_chspec;
