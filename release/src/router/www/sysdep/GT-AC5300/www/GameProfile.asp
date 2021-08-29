@@ -604,7 +604,7 @@ function newProfileOK(){
 				</div>
 
 				<!-- Content field -->
-				<div class="description-container">OpenNAT offers a hassle-free way to create port forwarding rules for online games and optimizes the routing packets from your game console to the modem with an optimized gaming performance.</div>
+				<div class="description-container"><#OpenNAT_desc#></div>
 				<div class="world-map">
 					<div class="map-connection-line"></div>
 					<div class="location-indicator location-US3"></div>
@@ -646,7 +646,7 @@ function newProfileOK(){
 					<div class="title-content"><#Game_Profile#></div>
 				</div>
 
-				<div class="description-container">Game Profile includes built-in rules for popular online games. Select your game in the list below and complete basic settings. An optimized gaming experience is just around the corner.</div>
+				<div class="description-container"><#Game_Profile_desc#></div>
 				<div class="button-container button-container-left" onclick="addNewProfile();">
 					<div class="button-icon icon-plus"></div>
 					<div class="button-text"><#CTL_add#></div>

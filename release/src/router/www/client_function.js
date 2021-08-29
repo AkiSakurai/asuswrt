@@ -909,6 +909,10 @@ function card_confirm(callBack) {
 				if(originalCustomListArray[i].split('>')[1].toUpperCase() == onEditClient[1].toUpperCase()){
 					onEditClient[4] = originalCustomListArray[i].split('>')[4]; // set back callback for ROG device
 					onEditClient[5] = originalCustomListArray[i].split('>')[5]; // set back keeparp for ROG device
+					var app_group_tag = originalCustomListArray[i].split('>')[6]; // for app group tag
+					if(typeof app_group_tag != "undefined")	onEditClient[6] = app_group_tag;
+					var app_age_tag = originalCustomListArray[i].split('>')[7]; // for app age tag
+					if(typeof app_age_tag != "undefined")	onEditClient[7] = app_age_tag;
 					originalCustomListArray.splice(i, 1); // remove the selected client from original list
 				}
 			}
@@ -2346,6 +2350,10 @@ function saveClientName(index, type, obj) {
 			if(originalCustomListArray[i].split('>')[1].toUpperCase() == onEditClient[1].toUpperCase()){
 				onEditClient[4] = originalCustomListArray[i].split('>')[4]; // set back callback for ROG device
 				onEditClient[5] = originalCustomListArray[i].split('>')[5]; // set back keeparp for ROG device
+				var app_group_tag = originalCustomListArray[i].split('>')[6]; // for app group tag
+				if(typeof app_group_tag != "undefined")	onEditClient[6] = app_group_tag;
+				var app_age_tag = originalCustomListArray[i].split('>')[7]; // for app age tag
+				if(typeof app_age_tag != "undefined")	onEditClient[7] = app_age_tag;
 				originalCustomListArray.splice(i, 1); // remove the selected client from original list
 			}
 		}

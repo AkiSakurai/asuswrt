@@ -23,6 +23,7 @@
 #define RAST_EVENT_INTERVAL_MAX 5	/* maximum additional time for next event trigger */
 #define RAST_EVENT_FREEZE 10		/* event of specific will be freezed once event is triggered over this number */
 #define RAST_OBVS_RSSI_DELTA 3		/* condition of rssi for obvious moving */
+#define RAST_DFT_WEAK_RSSI_DIFF 10	/* rssi delta allow to roam the station which stamon result is not better than trigger criteria */
 #define WL_NBAND_2G 2
 #define WL_NBAND_5G 1
 #endif
@@ -270,6 +271,7 @@ typedef enum {
 
 typedef struct rast_adv_conf {
 	uint32 aclist_timeout;
+	uint8 weak_rssi_diff;
 } rast_adv_conf_t;
 #endif
 

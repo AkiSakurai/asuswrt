@@ -945,7 +945,7 @@ void
 tagged_vlan_defaults(void)
 {
 	char *buf, *g, *p;
-	char *mac, *ip, *gateway, *lan_ipaddr;
+	char *mac, *ip, *gateway, *lan_ipaddr, *dns;
 	char dhcp_staticlist[sizeof(DHCP_STATICLIST_EXAMPLE) * STATIC_MAC_IP_BINDING_PER_LAN + 8];			/* 2240 + 8 */
 	char subnet_rulelist[(sizeof(SUBNET_RULE_EXAMPLE) + sizeof(SUBNET_STATICLIST_EXAMPLE) * STATIC_MAC_IP_BINDING_PER_VLAN) * (VLAN_MAX_NUM - 1) + sizeof(dhcp_staticlist)];	/* 2954 + 2240 + 8 */
 	char subnet_rulelist_ext_default[24]={0};
@@ -957,15 +957,15 @@ tagged_vlan_defaults(void)
 	nvram_set("vlan_if_list","00>00FF>007F>007F");
 	nvram_set("vlan_pvid_list","1>1>1>1>1>1>1>1");
 
-	g = buf = strdup(nvram_default_get("dhcp_staticlist")? : "");
-	while (buf) {
-		if ((p = strsep(&g, "<")) == NULL) break;
-		if((vstrsep(p, ">", &mac, &ip)) != 2) continue;
-		if(strlen(dhcp_staticlist) != 0)
-			strcat(dhcp_staticlist, ";");
-		strcat(dhcp_staticlist, mac);
-		strcat(dhcp_staticlist, " ");
-		strcat(dhcp_staticlist, ip);
+	g = buf = strdup(nvram_default_get("dhcp_staticlist") ? : "");
+	while (buf && (p = strsep(&g, "<")) != NULL) {
+		if ((vstrsep(p, ">", &mac, &ip, &dns)) < 2)
+			continue;
+		if (*dhcp_staticlist)
+			strlcat(dhcp_staticlist, ";", sizeof(dhcp_staticlist));
+		strlcat(dhcp_staticlist, mac, sizeof(dhcp_staticlist));
+		strlcat(dhcp_staticlist, " ", sizeof(dhcp_staticlist));
+		strlcat(dhcp_staticlist, ip, sizeof(dhcp_staticlist));
 	}
 	free(buf);
 
@@ -7272,6 +7272,7 @@ int init_nvram(void)
 #ifdef RTCONFIG_EXTPHY_BCM84880
                 add_rc_support("2p5G_LWAN");
 #endif
+		add_rc_support("app");
 
 
 		break;
@@ -7574,6 +7575,7 @@ int init_nvram(void)
 		add_rc_support("smart_connect");
 		add_rc_support("movistarTriple");
 		add_rc_support("wifi2017");
+		add_rc_support("app");
 
 		break;
 #endif
@@ -9546,6 +9548,10 @@ NO_USB_CAP:
 	config_tcode(2);
 #endif
 
+#if defined(RTCONFIG_HND_ROUTER)
+	add_rc_support("bcmhnd");
+#endif
+
 #ifdef RTCONFIG_CONNDIAG
 	add_rc_support("conndiag");
 #endif
@@ -11292,6 +11298,10 @@ dbg("boot/continue fail= %d/%d\n", nvram_get_int("Ate_boot_fail"),nvram_get_int(
 				start_telnetd();
 				Ate_on_off_led_fail_loop();	// keep loop in this function
 			}
+
+#ifdef RTAX88U
+			pcie_probe_check();
+#endif
 
 #if defined(RTCONFIG_BCM_7114) || (defined(HND_ROUTER) && !defined(RTCONFIG_HND_ROUTER_AX))
 			if(!factory_debug()) {

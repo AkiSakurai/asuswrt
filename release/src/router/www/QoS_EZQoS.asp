@@ -621,6 +621,7 @@ function validForm(){
 				return false;
 			}
 
+			document.form.qos_bw_rulelist.disabled = false;
 			document.form.qos_bw_rulelist.value = qos_bw_rulelist;
 		}
 	}
@@ -683,7 +684,6 @@ function change_qos_type(value){
 		document.getElementById('bandwidth_setting_tr').style.display = "none";
 		show_up_down(1);
 		document.getElementById('list_table').style.display = "none";
-		document.form.qos_bw_rulelist.disabled = true;
 		if(document.form.qos_type_orig.value == 0 && document.form.qos_enable_orig.value != 0){
 			document.form.action_script.value = "restart_qos;restart_firewall";
 		}
@@ -699,7 +699,6 @@ function change_qos_type(value){
 		document.getElementById('bw_limit_type').checked = false;
 		document.getElementById('bandwidth_setting_tr').style.display = "";
 		document.getElementById('list_table').style.display = "none";
-		document.form.qos_bw_rulelist.disabled = true;
 		if(document.getElementById("auto").checked){
 			show_up_down(0);
 		}
@@ -723,7 +722,6 @@ function change_qos_type(value){
 		document.getElementById('bandwidth_setting_tr').style.display = "none";
 		show_up_down(0);
 		document.getElementById('list_table').style.display = "block";
-		document.form.qos_bw_rulelist.disabled = false;
 		if(document.form.qos_type_orig.value == 2 && document.form.qos_enable_orig.value != 0)
 			document.form.action_script.value = "restart_qos;restart_firewall";
 		else{
@@ -1414,7 +1412,7 @@ function setGroup(name){
 			<input type="hidden" name="qos_obw1" value="<% nvram_get("qos_obw1"); %>" disabled>
 			<input type="hidden" name="qos_ibw1" value="<% nvram_get("qos_ibw1"); %>" disabled>
 			<input type="hidden" name="bwdpi_app_rulelist" value="<% nvram_get("bwdpi_app_rulelist"); %>" disabled>
-			<input type="hidden" name="qos_bw_rulelist" value="">
+			<input type="hidden" name="qos_bw_rulelist" value="" disabled>
 
 			<table width="95%" border="0" align="left" cellpadding="0" cellspacing="0" class="FormTitle" id="FormTitle" style="height:820px;">
 				<tr>

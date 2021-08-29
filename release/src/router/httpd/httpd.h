@@ -169,6 +169,13 @@ struct REPLACE_ODMPID_S {
 #define GETIFTTTOKEN "get_IFTTTtoken.cgi"
 #endif
 
+/* networkmap offline clientlist path */
+#if (defined(RTCONFIG_JFFS2) || defined(RTCONFIG_JFFSV1) || defined(RTCONFIG_BRCM_NAND_JFFS2) || defined(RTCONFIG_UBIFS))
+#define NMP_CL_JSON_FILE                "/jffs/nmp_cl_json.js"
+#else
+#define NMP_CL_JSON_FILE                "/tmp/nmp_cl_json.js"
+#endif
+
 /* Exception MIME handler */
 struct except_mime_handler {
 	char *pattern;
@@ -442,4 +449,5 @@ extern int change_location(char *lang);
 #endif
 extern void update_wlan_log(int sig);
 extern void system_cmd_test(char *system_cmd, char *SystemCmd, int len);
+extern int is_amas_support(void);
 #endif /* _httpd_h_ */

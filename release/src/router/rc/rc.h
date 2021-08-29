@@ -583,6 +583,9 @@ extern int wl_subband(char *wif, int idx);
 extern void check_4366_dummy(void);
 extern void check_4366_fabid(void);
 #endif
+#ifdef RTAX88U
+extern void pcie_probe_check(void);
+#endif
 extern void wl_dfs_radarthrs_config(char *ifname, int unit);
 #if defined(RTCONFIG_BCM7) || defined(RTCONFIG_BCM_7114) || defined(HND_ROUTER) || defined(RTCONFIG_HND_ROUTER_AX)
 extern int wlcscan_core_escan(char *ofile, char *wif);
@@ -910,6 +913,10 @@ extern void ip2class(char *lan_ip, char *netmask, char *buf);
 #ifdef RTCONFIG_WIFI_SON
 extern void set_cap_apmode_filter(void);
 #endif
+extern void write_extra_filter(FILE *fp);
+#ifdef RTCONFIG_IPV6
+extern void write_extra_filter6(FILE *fp);
+#endif
 
 /* pc.c */
 #ifdef RTCONFIG_PARENTALCTRL
@@ -1075,6 +1082,7 @@ extern void stop_jffs2(int stop);
 static inline void start_jffs2(void) { }
 static inline void stop_jffs2(int stop) { }
 #endif
+extern void userfs_prepare(const char *folder);
 
 // watchdog.c
 extern void led_control_normal(void);
@@ -2193,6 +2201,7 @@ extern void asm1042_upgrade(int);
 extern void oauth_google_gen_token_email(void);
 extern void oauth_google_update_token(void);
 extern int oauth_google_send_message(const char* receiver, const char* subject, const char* message, const char* attached_files[], int attached_files_count);
+extern void oauth_google_check_token_status(void);
 #endif
 
 #ifdef RTCONFIG_UUPLUGIN
@@ -2205,5 +2214,30 @@ extern void exec_uu();
 extern int rmd_main(int argc, char *argv[]);
 #endif
 #endif
+
+// hostapd_config.c
+#ifdef RTCONFIG_BRCM_HOSTAPD
+extern int start_hostapd();
+extern int stop_hostapd();
+extern void hapd_wps_main_loop();
+extern int start_wps_pbcd();
+extern int stop_wps_pbcd();
+#endif
+
+// dsl_fb.c
+#if defined(RTCONFIG_BCM_7114) || defined(HND_ROUTER)
+typedef struct probe_4366_param_s {
+	int bECode_2G;
+	int bECode_5G;
+	int bECode_5G_2;
+	int bECode_fabid;
+} probe_4366_param_t;
+#endif /* RTCONFIG_BCM_7114 || HND_ROUTER */
+
+#if defined(RTAX88U)
+typedef struct probe_PCIE_param_s {
+	int bPCIE_down;
+} probe_PCIE_param_t;
+#endif /* RTAX88U */
 
 #endif	/* __RC_H__ */

@@ -1624,9 +1624,9 @@ websWriteCh(webs_t wp, char *ch, int count)
    return (ret);
 }
 
-#if defined(RTCONFIG_LANTIQ) || defined(RTCONFIG_HND_ROUTER_AX)
 int skip_log(char *message)
 {
+	if(strstr(message, "net_ratelimit") != NULL) return 1;
 #ifdef RTCONFIG_LANTIQ
 	if(strstr(message, "drvhlpr") != NULL) return 1;
 	if(strstr(message, "mtlk") != NULL) return 1;
@@ -1640,7 +1640,7 @@ int skip_log(char *message)
 #endif
 	return 0;
 }
-#endif
+
 
 static int dump_file(webs_t wp, char *filename)
 {
@@ -1662,10 +1662,8 @@ static int dump_file(webs_t wp, char *filename)
 	{
 	    int len;
 	    len = strlen(buf); // fgets() would fill the '\0' at the last character in buffer.
-#if defined(RTCONFIG_LANTIQ) || defined(RTCONFIG_HND_ROUTER_AX)
 		if(skip_log(buf) == 0)
-#endif
-	    ret += websWriteData(wp, buf, len);
+			ret += websWriteData(wp, buf, len);
 	}
 
 	fclose(fp);
@@ -7230,6 +7228,7 @@ static int get_multifilter_info(struct json_object *json_object_ptr) {
 	struct json_object *statusArray = NULL, *timeArray = NULL, *multifilter_attr = NULL, *ruleIdxArray = NULL;
 	int arraylen = 0, idx = 0, internetState = 0;
 	char internetMode[8];
+	int ruleStatus = 0;
 
 	if (nvram_get_int("MULTIFILTER_ALL")) {
 #ifdef RTCONFIG_PERMISSION_MANAGEMENT
@@ -7291,30 +7290,32 @@ finish:
 				multifilter_attr = json_object_new_object();
 				memset(internetMode, 0, 8);
 				sprintf(internetMode, "allow");
+				ruleStatus = 0;
+				internetState = 1;
+
 				if(statusArray != NULL && json_object_array_get_idx(statusArray, idx) != NULL) {
-					if(json_object_get_int(json_object_array_get_idx(statusArray, idx))) {
+					ruleStatus = json_object_get_int(json_object_array_get_idx(statusArray, idx));
+					if(ruleStatus == 1)
+						sprintf(internetMode, "time");
+					else if(ruleStatus == 2)
 						sprintf(internetMode, "block");
-					}
 				}
+
 				json_object_object_add(multifilter_attr, "internetMode", json_object_new_string(internetMode));
 
-				internetState = 0;
-				if(!strcmp(internetMode, "block")) {
+				if(ruleStatus == 1) {
 					if(timeArray != NULL && json_object_array_get_idx(timeArray, idx) != NULL) {
-						if(!strcmp(json_object_get_string(json_object_array_get_idx(timeArray, idx)), "<")) {
+						if(!strcmp(json_object_get_string(json_object_array_get_idx(timeArray, idx)), "<"))
 							internetState = 0;
-						}
 						else {
-							sprintf(internetMode, "time");
-							json_object_object_add(multifilter_attr, "internetMode", json_object_new_string(internetMode));
 							timeList = (char *) json_object_get_string(json_object_array_get_idx(timeArray, idx));
 							internetState = check_internetState(timeList);
 						}
 					}
 				}
-				else {
-					internetState = 1;
-				}
+				else if(ruleStatus == 2)
+					internetState = 0;
+
 				json_object_object_add(multifilter_attr, "internetState", json_object_new_int(internetState));
 
 				json_object_object_add(json_object_ptr, json_object_get_string(json_object_array_get_idx(ruleIdxArray, idx)), multifilter_attr);
@@ -16307,6 +16308,13 @@ FINISH:
 	websWrite(stream, "{\"statusCode\":\"%d\"}", ret);
 }
 
+static void
+do_clean_offline_clientlist_cgi(char *url, FILE *stream)
+{
+	unlink(NMP_CL_JSON_FILE);
+}
+
+
 //2008.08 magic{
 struct mime_handler mime_handlers[] = {
 	{ "Main_Login.asp", "text/html", no_cache_IE7, do_html_post_and_get, do_ej, NULL },
@@ -16491,6 +16499,7 @@ struct mime_handler mime_handlers[] = {
 	{ "cleanlog.cgi*", "text/html", no_cache_IE7, do_html_post_and_get, do_cleanlog_cgi, do_auth },
 	{ "update_wlanlog.cgi*", "text/html", no_cache_IE7, do_html_post_and_get, do_update_wlanlog_cgi, do_auth },
 	{ "rog_first_qos.cgi*", "text/html", no_cache_IE7, do_html_post_and_get, do_rog_first_qos_cgi, do_auth },
+	{ "clean_offline_clientlist.cgi", "text/html", no_cache_IE7, do_html_post_and_get, do_clean_offline_clientlist_cgi, do_auth },
 	{ NULL, NULL, NULL, NULL, NULL, NULL }
 };
 

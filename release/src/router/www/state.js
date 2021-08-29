@@ -323,6 +323,15 @@ var is_CN = in_territory_code("CN");
 var is_TW_sku = in_territory_code("TW");
 var is_US_sku = in_territory_code("US");
 var is_UA_sku = in_territory_code("UA");
+var is_RU_sku = (function(){
+	var location = '<% nvram_get("location_code"); %>';
+	if(location != ''){
+		return (location.indexOf("RU") != -1);
+	}
+	else{
+		return in_territory_code("RU");
+	}
+})();
 
 //wireless
 var wl_nband_title = [];
@@ -872,8 +881,8 @@ function show_banner(L3){// L3 = The third Level of Menu
 		banner_code +='</div>';
 		banner_code +='<div style="display:table-cell;vertical-align:middle;width:100%;text-align:center">';
 		if(is_CN){
-			Android_app_link = "http://www.wandoujia.com/apps/com.asus.aihome";
-			banner_code +='<div style="padding-left: 30px;"><a href="'+Android_app_link+'" target="_blank"><div style="width:172px;font-size:24px;font-weight:bold;text-decoration:underline"><#WanDouJia#></div></a></div>';
+			Android_app_link = "https://dlcdnets.asus.com/pub/ASUS/LiveUpdate/Release/Wireless/ASUSRouter_Android_Release.apk";
+			banner_code +='<div style="padding-left: 30px;"><a href="'+Android_app_link+'" target="_blank"><div style="width:172px;font-size:24px;border:1px solid #BDBDBD;padding: 10px 4px;border-radius: 6px;">Android App</div></a></div>';
 		}
 		else{
 			banner_code +='<div style="padding-left: 30px;"><a href="'+Android_app_link+'" target="_blank"><div style="width:172px;height:60px;background:url(\'images/googleplay.png\') no-repeat;"></div></a></div>';

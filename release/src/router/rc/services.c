@@ -2917,8 +2917,9 @@ int stop_8021x(void)
 void write_static_leases(FILE *fp)
 {
 	char *nv, *nvp, *b;
-	char *mac, *ip;
+	char *mac, *ip, *dns;
 	char lan_if[IFNAMSIZ];
+	unsigned char ea[ETHER_ADDR_LEN];
 	in_addr_t ip1, lan_net, lan_mask;
 #if defined(RTCONFIG_PORT_BASED_VLAN) || defined(RTCONFIG_TAGGED_BASED_VLAN)
 	int i, nr_vnets = 0, host_bits;
@@ -2988,13 +2989,38 @@ void write_static_leases(FILE *fp)
 
 	/* Parsing dhcp_staticlist nvram variable. */
 	while ((b = strsep(&nvp, "<")) != NULL) {
-		if ((vstrsep(b, ">", &mac, &ip) != 2))
-			continue;
-		if (!strlen(mac) || !strlen(ip) || (ip1 = inet_network(ip)) == -1)
+		dns = NULL;
+		if ((vstrsep(b, ">", &mac, &ip, &dns) < 2))
 			continue;
 
+		if (!ether_atoe(mac, ea))
+			continue;
+
+		if (dns) {
+			struct in_addr in4;
+#ifdef RTCONFIG_IPV6
+			struct in6_addr in6;
+
+			if (*dns && inet_pton(AF_INET6, dns, &in6) > 0 &&
+			    !IN6_IS_ADDR_UNSPECIFIED(&in6) && !IN6_IS_ADDR_LOOPBACK(&in6)) {
+				fprintf(fp, "dhcp-option=tag:%s,option6:23,%s\n", mac, dns);
+			} else
+#endif
+			if (*dns && inet_pton(AF_INET, dns, &in4) > 0 &&
+			    in4.s_addr != INADDR_ANY && in4.s_addr != INADDR_LOOPBACK && in4.s_addr != INADDR_BROADCAST) {
+				fprintf(fp, "dhcp-option=tag:%s,6,%s\n", mac, dns);
+			} else
+				dns = NULL;
+		}
+
+		if (*ip == '\0' || (ip1 = inet_network(ip)) == -1) {
+			if (dns)
+				fprintf(fp, "dhcp-host=%s,set:%s\n", mac, mac);
+			continue;
+		}
+
 		if ((ip1 & lan_mask) == lan_net) {
-			fprintf(fp, "dhcp-host=%s,%s\n", mac, ip);
+			fprintf(fp, "dhcp-host=%s,set:%s,%s\n", mac, mac, ip);
 			continue;
 		}
 #if defined(RTCONFIG_PORT_BASED_VLAN) || defined(RTCONFIG_TAGGED_BASED_VLAN)
@@ -3002,7 +3028,7 @@ void write_static_leases(FILE *fp)
 			if ((ip1 & v->mask) != v->net || *v->br_if == '\0')
 				continue;
 
-			fprintf(fp, "dhcp-host=%s,%s\n", mac, ip);
+			fprintf(fp, "dhcp-host=%s,set:%s,%s\n", mac, mac, ip);
 			break;
 		}
 #endif
@@ -12223,6 +12249,10 @@ check_ddr_done:
 		(void)send_cfgmnt_event(event_msg);
 		//  WEVENT_GENERIC_MSG	 "{\""WEVENT_PREFIX"\":{\""EVENT_ID"\":\"%d\"}}"
 #endif	// RTCONFIG_CFGSYNC
+	}
+	else if (strcmp(script, "oauth_google_check_token_status") == 0)
+	{
+		oauth_google_check_token_status();
 	}
 #endif
 	else if (strcmp(script, "logger") == 0)
