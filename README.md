@@ -8,5 +8,7 @@
 
 [RT-AX82U](../../tree/RT-AX82U)
 
-
 [RT-AX88U](../../tree/RT-AX88U)
+
+[RT-AX92U](../../tree/RT-AX92U)
+
