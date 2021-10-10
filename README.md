@@ -14,3 +14,6 @@
 
 [RT-AX92U](../../tree/RT-AX92U)
 
+[RT-AX11000](../../tree/RT-AX11000)
+
+
