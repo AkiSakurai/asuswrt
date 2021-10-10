@@ -1480,21 +1480,16 @@ function hideEditBlock(){
 
 function oui_query(mac){
 	var queryStr = mac.replace(/\:/g, "").splice(6,6,"");
-	$.ajax({
-	    url: 'https://services11.ieee.org/RST/standards-ra-web/rest/assignments/download/?registry=MA-L&format=html&text='+ queryStr,
-		type: 'GET',
-		success: function(response) {
+
+	$.getJSON("http://nw-dlcdnet.asus.com/plugin/js/ouiDB.json", function(data){
+		if(data != "" && data[queryStr] != undefined){
 			if(document.getElementById("edit_client_block").style.display == "none") return true;
-			if(response.search("Sorry!") == -1) {
-				if(response.search(queryStr) != -1) {
-					var retData = response.split("pre")[1].split("(hex)")[1].split(queryStr)[0].split("<b>");
-					document.getElementById('manufacturer_field').value = retData[0].trim();
-					document.getElementById('manufacturer_field').title = "";
-					if(retData[0].trim().length > 38) {
-						document.getElementById('manufacturer_field').value = retData[0].trim().substring(0, 36) + "..";
-						document.getElementById('manufacturer_field').title = retData[0].trim();
-					}
-				}
+			var vendor_name = data[queryStr].trim();
+			document.getElementById('manufacturer_field').value = vendor_name;
+			document.getElementById('manufacturer_field').title = "";
+			if(vendor_name.length > 38) {
+				document.getElementById('manufacturer_field').value = vendor_name.substring(0, 36) + "..";
+				document.getElementById('manufacturer_field').title = vendor_name;
 			}
 		}
 	});
@@ -2053,37 +2048,14 @@ function redirectTimeScheduling() {
 	location.href = "ParentalControl.asp" ;
 }
 function updateClientsCount() {
-	$.ajax({
-		url: '/update_networkmapd.asp',
-		dataType: 'script', 
-		error: function(xhr) {
-			setTimeout("updateClientsCount();", 1000);
-		},
-		success: function(response){
-			//When not click iconClient and not click View Client List need update client count.
-			if(lastName != "iconClient") {
-				if(document.getElementById("clientlist_viewlist_content")) {
-					if(document.getElementById("clientlist_viewlist_content").style.display == "none"){
-						if(fromNetworkmapd_maclist[0].length == '0'){
-							show_client_status(totalClientNum.online);
-						}
-						else{
-							show_client_status(fromNetworkmapd_maclist[0].length);
-						}
-					}
-				}
-				else{
-					if(fromNetworkmapd_maclist[0].length == '0'){
-						show_client_status(totalClientNum.online);
-					}
-					else{
-						show_client_status(fromNetworkmapd_maclist[0].length);
-					}
-				}
-			}
-			setTimeout("updateClientsCount();", 5000);
-		}
-	});
+	//When not click iconClient and not click View Client List need update client count.
+	var viewlist_obj = document.getElementById("clientlist_viewlist_content");
+	if(lastName != "iconClient" && (viewlist_obj == null || (viewlist_obj && viewlist_obj.style.display == "none"))){
+		originData.fromNetworkmapd[0] = httpApi.hookGet("get_clientlist", true);
+		genClientList();
+		show_client_status(totalClientNum.online);
+	}
+	setTimeout("updateClientsCount();", 5000);
 }
 function setDefaultIcon() {
 	var mac = document.getElementById("macaddr_field").value;

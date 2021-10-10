@@ -411,6 +411,10 @@ config RTCONFIG_AHS
 	bool "Auto Healing System"
 	default n
 
+config RTCONFIG_LIBASC
+	bool "ASUS server command library"
+	default n
+
 config RTCONFIG_DUALWAN
 	bool "Dual WAN Support"
 	default n
@@ -1781,6 +1785,14 @@ config RTCONFIG_SINGLE_LED
 	bool "model which has only one LED"
 	default n
 
+config RTCONFIG_PIPEFW
+	bool "pipe-write fw to flash directly, don't store in mem"
+	default n
+
+config RTCONFIG_URLFW
+	bool "url-download fw to flash directly"
+	default n
+
 config RTCONFIG_AURASYNC
 	bool "AURASYNC support"
 	default n
@@ -1893,8 +1905,16 @@ config RTCONFIG_FRS_LIVE_UPDATE
 	bool "RTCONFIG_FRS_LIVE_UPDATE support"
 	default n
 
+config RTCONFIG_ASD
+	bool "RTCONFIG_ASD support"
+	default n
+
 config RTCONFIG_UUPLUGIN
 	bool "UU plugin support"
+	default n
+
+config RTCONFIG_TCPLUGIN
+	bool "Tencent plugin support"
 	default n
 
 config RTCONFIG_IPERF3
@@ -1929,3 +1949,14 @@ config RTCONFIG_AMAS_ADTBW
 	bool "AMAS BH ADTBW"
 	default n
 
+config RTCONFIG_CAPTCHA
+	bool "Web UI supprts captcha"
+	default n
+
+config RTCONFIG_TENCENT_QMACC
+	bool "Tencent game acceleration support"
+	default n
+
+config RTCONFIG_BCMRGBLED
+	bool "Brcm RGB LED"
+	default n

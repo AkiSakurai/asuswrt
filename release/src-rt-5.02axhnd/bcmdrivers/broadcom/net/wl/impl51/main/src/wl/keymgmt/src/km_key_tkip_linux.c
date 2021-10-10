@@ -1,6 +1,6 @@
 /*
  * Implementation of wlc_key algo 'tkip' using linux crypto
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

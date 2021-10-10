@@ -3,7 +3,7 @@
  * PHY ioctl processing of Broadcom BCM43XX 802.11abg
  * Networking Device Driver.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -47,7 +47,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phy_ioctl.c 776000 2019-06-17 14:14:53Z $
+ * $Id: wlc_phy_ioctl.c 780666 2019-10-31 10:04:54Z $
  */
 
 /*
@@ -69,7 +69,6 @@
 #include <phy_utils_reg.h>
 #include <wlc_phy_radio.h>
 #include <wlc_phyreg_n.h>
-#include <wlc_phy_lcn20.h>
 #include <phy_noise_api.h>
 #include <phy_misc_api.h>
 
@@ -311,17 +310,6 @@ wlc_phy_ioctl_dispatch(phy_info_t *pi, int cmd, int len, void *arg, bool *ta_ok)
 		ASSERT(pval != NULL);
 		*pval = 0;
 		switch (pi->pubpi->phy_type) {
-		case PHY_TYPE_LCN20:
-			PHY_TRACE(("%s:***CHECK***\n", __FUNCTION__));
-			CASECHECK(PHYTYPE, PHY_TYPE_LCN20);
-			{
-				int8 ofdm_pwr = 0, cck_pwr = 0;
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-				wlc_lcn20phy_get_tssi(pi, &ofdm_pwr, &cck_pwr);
-#endif /* #if (defined(LCN20CONF) && (LCN20CONF != 0)) */
-				*pval =  ((uint16)ofdm_pwr << 8) | (uint16)cck_pwr;
-				break;
-			}
 		case PHY_TYPE_N:
 			CASECHECK(PHYTYPE, PHY_TYPE_N);
 			{
@@ -364,11 +352,12 @@ wlc_phy_ioctl_dispatch(phy_info_t *pi, int cmd, int len, void *arg, bool *ta_ok)
 		}
 
 		long_train_fn = pi->pi_fptr->longtrn;
-		if (long_train_fn)
+		if (long_train_fn) {
 			bcmerror = (*long_train_fn)(pi, val);
-		else
+		}
+		else {
 			PHY_ERROR(("WLC_LONGTRAIN: unsupported phy type\n"));
-
+		}
 			break;
 		}
 
@@ -386,7 +375,7 @@ wlc_phy_ioctl_dispatch(phy_info_t *pi, int cmd, int len, void *arg, bool *ta_ok)
 /* This if condition is already present in BISON6T branch
  * needed for 'wl fqacurcy' IOVAR to work on 43430
  */
-#if !SSLPNCONF && !LCN20CONF
+#if !SSLPNCONF
 		/* SSLPNCONF transmits a few frames before running PAPD Calibration
 		 * it does papd calibration each time it enters a new channel
 		 * We cannot be down for this reason
@@ -469,7 +458,7 @@ wlc_phy_ioctl_dispatch(phy_info_t *pi, int cmd, int len, void *arg, bool *ta_ok)
 		break;
 
 	case WLC_GET_INTERFERENCE_OVERRIDE_MODE:
-		if (!(ISLCN20PHY(pi) || ISACPHY(pi) || ISNPHY(pi))) {
+		if (!(ISACPHY(pi) || ISNPHY(pi))) {
 			break;
 		}
 
@@ -483,7 +472,7 @@ wlc_phy_ioctl_dispatch(phy_info_t *pi, int cmd, int len, void *arg, bool *ta_ok)
 
 	case WLC_SET_INTERFERENCE_OVERRIDE_MODE:
 		max_aci_mode = ISACPHY(pi) ? ACPHY_ACI_MAX_MODE : WLAN_AUTO_W_NOISE;
-		if (!(ISLCN20PHY(pi) || ISACPHY(pi) || ISNPHY(pi))) {
+		if (!(ISACPHY(pi) || ISNPHY(pi))) {
 			break;
 		}
 

@@ -1,7 +1,7 @@
 /*
  * TXIQLO CAL module implementation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_txiqlocal.c 635707 2016-05-05 00:32:31Z $
+ * $Id: phy_txiqlocal.c 781257 2019-11-15 00:45:58Z $
  */
 
 #include <phy_cfg.h>
@@ -193,3 +193,29 @@ void phy_txiqlocal_scanroam_cache(phy_info_t *pi, bool set)
 	if (fns->scanroam_cache != NULL)
 		(fns->scanroam_cache)(fns->ctx, set);
 }
+
+#if defined(WLTEST)
+int
+phy_txiqlocal_get_calidx(phy_info_t *pi, int32* calidx)
+{
+	phy_type_txiqlocal_fns_t *fns = pi->txiqlocali->priv->fns;
+
+	if (fns->get_calidx != NULL) {
+		return (fns->get_calidx)(fns->ctx, calidx);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+
+int
+phy_txiqlocal_set_calidx(phy_info_t *pi, int32 calidx)
+{
+	phy_type_txiqlocal_fns_t *fns = pi->txiqlocali->priv->fns;
+
+	if (fns->set_calidx != NULL) {
+		return (fns->set_calidx)(fns->ctx, calidx);
+	} else {
+		return BCME_UNSUPPORTED;
+	}
+}
+#endif // endif

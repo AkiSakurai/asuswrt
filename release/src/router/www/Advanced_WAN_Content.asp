@@ -244,6 +244,8 @@ function applyRule(){
 	}
 
 	if(validForm()){
+		var new_bond_wan = (document.form.bond_wan_radio[0].checked)? "1": "0";
+
 		showLoading();
 		inputCtrl(document.form.wan_dhcpenable_x[0], 1);
 		inputCtrl(document.form.wan_dhcpenable_x[1], 1);
@@ -260,9 +262,9 @@ function applyRule(){
 			inputCtrl(document.form.wan_dns2_x, 1);
 		}
 
-		if(wan_bonding_support && orig_bond_wan != document.form.bond_wan_radio.value){
+		if(wan_bonding_support && orig_bond_wan != new_bond_wan){
 			document.form.bond_wan.disabled = false;
-			document.form.bond_wan.value = document.form.bond_wan_radio.value;
+			document.form.bond_wan.value = new_bond_wan;
 			FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
 		}
 
@@ -499,11 +501,15 @@ function validForm(){
 		var msg_iptv = "<#WANAggregation_PortConflict_hint2#>";
 		var msg_both = "<#WANAggregation_disable_IPTVDualWAN#>";
 		var msg_wanType = "<#WANAggregation_wanType_hint#>";
+		var new_bond_wan = (document.form.bond_wan_radio[0].checked)? "1":"0";
 
-		if(orig_bond_wan != document.form.bond_wan_radio.value && document.form.bond_wan_radio.value == "1"){
+		if(orig_bond_wan != new_bond_wan && new_bond_wan == "1"){
 			if(wans_dualwan.indexOf("none") == -1 && (original_switch_stb_x == "4" || original_switch_stb_x == "6")){
 				if(!confirm(msg_both)){
-					document.form.bond_wan_radio.value = orig_bond_wan;
+					if(orig_bond_wan == "1")
+						document.form.bond_wan_radio[0].checked = true;
+					else
+						document.form.bond_wan_radio[1].checked = true;
 					return false;
 				}
 				else{
@@ -517,7 +523,10 @@ function validForm(){
 			}
 			else if(wans_dualwan.indexOf("none") == -1){
 				if(!confirm(msg_dualwan)){
-					document.form.bond_wan_radio.value = orig_bond_wan;
+					if(orig_bond_wan == "1")
+						document.form.bond_wan_radio[0].checked = true;
+					else
+						document.form.bond_wan_radio[1].checked = true;
 					return false;
 				}
 				else{
@@ -527,7 +536,10 @@ function validForm(){
 			}
 			else if(original_switch_stb_x == "4" || original_switch_stb_x == "6"){
 				if(!confirm(msg_iptv)){
-					document.form.bond_wan_radio.value = orig_bond_wan;
+					if(orig_bond_wan == "1")
+						document.form.bond_wan_radio[0].checked = true;
+					else
+						document.form.bond_wan_radio[1].checked = true;
 					return false;
 				}
 				else{
@@ -589,7 +601,7 @@ function change_wan_type(wan_type, flag){
 		if(wan_bonding_support){
 			inputCtrl(document.form.bond_wan_radio[0], 0);
 			inputCtrl(document.form.bond_wan_radio[1], 0);
-			document.form.bond_wan_radio.value = "0";
+			document.form.bond_wan_radio[1].checked = true;
 		}
 	}
 	else if(wan_type == "pptp"){
@@ -620,7 +632,7 @@ function change_wan_type(wan_type, flag){
 		if(wan_bonding_support){
 			inputCtrl(document.form.bond_wan_radio[0], 0);
 			inputCtrl(document.form.bond_wan_radio[1], 0);
-			document.form.bond_wan_radio.value = "0";
+			document.form.bond_wan_radio[1].checked = true;
 		}
 	}
 	else if(wan_type == "l2tp"){
@@ -651,7 +663,7 @@ function change_wan_type(wan_type, flag){
 		if(wan_bonding_support){
 			inputCtrl(document.form.bond_wan_radio[0], 0);
 			inputCtrl(document.form.bond_wan_radio[1], 0);
-			document.form.bond_wan_radio.value = "0";
+			document.form.bond_wan_radio[1].checked = true;
 		}
 	}
 	else if(wan_type == "static"){
@@ -682,7 +694,10 @@ function change_wan_type(wan_type, flag){
 		if(wan_bonding_support){
 			inputCtrl(document.form.bond_wan_radio[0], 1);
 			inputCtrl(document.form.bond_wan_radio[1], 1);
-			document.form.bond_wan_radio.value = orig_bond_wan;
+			if(orig_bond_wan == "1")
+				document.form.bond_wan_radio[0].checked = true;
+			else
+				document.form.bond_wan_radio[1].checked = true;
 		}
 	}
 	else{	// Automatic IP or 802.11 MD or ""		
@@ -713,7 +728,10 @@ function change_wan_type(wan_type, flag){
 		if(wan_bonding_support){
 			inputCtrl(document.form.bond_wan_radio[0], 1);
 			inputCtrl(document.form.bond_wan_radio[1], 1);
-			document.form.bond_wan_radio.value = orig_bond_wan;
+			if(orig_bond_wan == "1")
+				document.form.bond_wan_radio[0].checked = true;
+			else
+				document.form.bond_wan_radio[1].checked = true;
 		}
 	}
 }
@@ -1302,6 +1320,7 @@ function ppp_echo_control(flag){
 		<select name="dhcpc_mode" class="input_option">
 			<option value="0" <% nvram_match(" dhcpc_mode", "0","selected"); %>><#DHCPnormal#></option>
 			<option value="1" <% nvram_match(" dhcpc_mode", "1","selected"); %>><#DHCPaggressive#></option>
+			<option value="2" <% nvram_match(" dhcpc_mode", "2","selected"); %>><#Continuous_Mode#></option>
 		</select>
 		</td>
 		</tr>

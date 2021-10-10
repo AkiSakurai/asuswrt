@@ -1,7 +1,7 @@
 /*
  * TOF based proximity detection implementation for Broadcom 802.11 Networking Driver
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: wlc_tof.c 777286 2019-07-25 19:43:30Z $
+ * $Id: wlc_tof.c 778924 2019-09-13 19:33:40Z $
  */
 
 #include <typedefs.h>
@@ -410,6 +410,8 @@ tof_find_window(void *pparams, uint32 *pW, uint32 *pWr, uint32 max, int *pmax, i
 	uint32 lmax = 0;
 	int ret = BCME_OK;
 	wl_proxd_phy_error_t err_mask = 0;
+	int loop;
+
 	BCM_REFERENCE(lpmax);
 
 	if (((struct tof_rtd_adj_params *)pparams)->gd_shift) {
@@ -432,7 +434,7 @@ tof_find_window(void *pparams, uint32 *pW, uint32 *pWr, uint32 max, int *pmax, i
 		 * Start the sample window 'wzero' samples to the left from the max.
 		 */
 		*thresh = ((uint32)thresh_scale * max) >> thresh_log2;
-		int loop = 0;
+		loop = 0;
 		/* Position window to include leading edge of impulse response */
 		do {
 			lmax = 0;

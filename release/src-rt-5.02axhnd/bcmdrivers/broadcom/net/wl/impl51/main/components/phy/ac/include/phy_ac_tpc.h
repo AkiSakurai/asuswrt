@@ -1,7 +1,7 @@
 /*
  * ACPHY TxPowerCtrl module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tpc.h 769618 2018-11-21 06:20:37Z $
+ * $Id: phy_ac_tpc.h 780339 2019-10-22 18:40:16Z $
  */
 
 #ifndef _phy_ac_tpc_h_
@@ -91,6 +91,7 @@ extern int8 wlc_phy_tone_pwrctrl(phy_info_t *pi, int8 tx_idx, uint8 core);
 
 extern void wlc_phy_txpwrctrl_set_target_acphy(phy_info_t *pi, uint8 pwr_qtrdbm, uint8 core);
 extern void wlc_phy_txpwrctrl_config_acphy(phy_info_t *pi);
+extern void wlc_phy_txpwrctrl_idle_tssi_phyreg_setup_acphy(phy_info_t *pi);
 
 #if defined(WLTEST)
 void wlc_phy_iovar_patrim_acphy(phy_info_t *pi, int32 *ret_int_ptr);
@@ -121,7 +122,7 @@ extern int phy_ac_tpc_force_fail_baseindex(phy_ac_tpc_info_t *tpci);
 /* define number of MCSs for NDP PWR lookup table:
  * every two are packed into one 16-bit entry
  */
-#define D11_MU_NDPPWR_MAXMCS	9
+#define D11_MU_NDPPWR_MAXMCS	11
 
 #ifdef TXPWRBACKOFF
 #define TXPWR_BACKOFF_V_HI 0

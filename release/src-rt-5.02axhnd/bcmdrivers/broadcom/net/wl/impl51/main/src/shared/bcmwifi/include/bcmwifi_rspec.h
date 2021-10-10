@@ -1,7 +1,7 @@
 /*
  * Common OS-independent driver header for rate management.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcmwifi_rspec.h 773615 2019-03-26 14:03:49Z $
+ * $Id: bcmwifi_rspec.h 779517 2019-10-01 14:48:46Z $
  */
 
 #ifndef _bcmwifi_rspec_h_
@@ -172,20 +172,12 @@ typedef uint32	ratespec_t;
 #define RSPEC_TXEXP(rspec)	(((rspec) & WL_RSPEC_TXEXP_MASK) >> WL_RSPEC_TXEXP_SHIFT)
 
 #define RSPEC_ENCODE(rspec)	(((rspec) & WL_RSPEC_ENCODING_MASK) >> WL_RSPEC_ENCODING_SHIFT)
-#ifdef WL11N
 #define RSPEC_ISLEGACY(rspec)	(((rspec) & WL_RSPEC_ENCODING_MASK) == WL_RSPEC_ENCODE_RATE)
-#else /* WL11N */
-#define RSPEC_ISLEGACY(rspec)	1
-#endif /* WL11N */
 #define	RSPEC_ISCCK(rspec)	(RSPEC_ISLEGACY(rspec) && \
 				 (int8)rate_info[(rspec) & WL_RSPEC_LEGACY_RATE_MASK] > 0)
 #define	RSPEC_ISOFDM(rspec)	(RSPEC_ISLEGACY(rspec) && \
 				 (int8)rate_info[(rspec) & WL_RSPEC_LEGACY_RATE_MASK] < 0)
-#ifdef WL11N
 #define RSPEC_ISHT(rspec)	(((rspec) & WL_RSPEC_ENCODING_MASK) == WL_RSPEC_ENCODE_HT)
-#else /* WL11N */
-#define RSPEC_ISHT(rspec)	0
-#endif /* WL11N */
 #ifdef WL11AC
 #define RSPEC_ISVHT(rspec)	(((rspec) & WL_RSPEC_ENCODING_MASK) == WL_RSPEC_ENCODE_VHT)
 #else /* WL11AC */
@@ -225,11 +217,7 @@ typedef uint32	ratespec_t;
  * ==================
  */
 /* return rate in unit of Kbps */
-#ifdef WL11N
 #define RSPEC2KBPS(rspec)	wf_rspec_to_rate(rspec)
-#else
-#define RSPEC2KBPS(rspec)	(((rspec) & WL_RSPEC_LEGACY_RATE_MASK) * 500)
-#endif // endif
 
 /* return rate in unit of 500Kbps */
 #ifdef BCMDBG
@@ -253,6 +241,17 @@ extern const uint8 rate_info[];
 #define	RATE_INFO_RATE_ISCCK(r)	((r) <= WLC_MAXRATE && (int8)rate_info[r] > 0)
 #define	RATE_INFO_RATE_ISOFDM(r) ((r) <= WLC_MAXRATE && (int8)rate_info[r] < 0)
 
+typedef enum {
+	D11AX_RU26_TYPE,
+	D11AX_RU52_TYPE,
+	D11AX_RU106_TYPE,
+	D11AX_RU242_TYPE,
+	D11AX_RU484_TYPE,
+	D11AX_RU996_TYPE,
+	D11AX_RU1992_TYPE,
+	D11AX_RU_MAX_TYPE
+} ru_type_t;
+
 /**
  * ===================
  * function prototypes
@@ -266,6 +265,12 @@ ratespec_t wf_ht_plcp_to_rspec(uint8 *plcp);
 #ifdef BCMDBG
 uint wf_rspec_to_rate_legacy(ratespec_t rspec);
 #endif // endif
+
 uint wf_rspec_to_rate(ratespec_t rspec);
+
+ru_type_t wf_he_ruidx_to_ru_type(uint32 ruidx);
+uint wf_he_rspec_ru_type_to_rate(ratespec_t rspec, ru_type_t ru_type);
+uint32 wf_he_ru_type_to_nsd(ru_type_t ru_type);
+uint32 wf_he_ru_type_to_tones(ru_type_t ru_type);
 
 #endif /* _bcmwifi_rspec_h_ */

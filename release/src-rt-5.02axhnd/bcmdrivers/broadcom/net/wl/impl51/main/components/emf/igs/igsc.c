@@ -46,7 +46,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: igsc.c 775532 2019-06-03 16:29:20Z $
+ * $Id: igsc.c 779297 2019-09-24 18:34:27Z $
  */
 
 #include <typedefs.h>
@@ -895,7 +895,6 @@ igsc_init(int8 *inst_id, void *igs_info, osl_t *osh, igsc_wrapper_t *wrapper)
 void
 igsc_exit(igsc_info_t *igsc_info)
 {
-	emfc_igmp_snooper_unregister(igsc_info->emf_handle);
 #ifdef BCM_NBUFF_WLMCAST_IPV6
 #ifdef BCM_WMF_MCAST_DBG
 	{

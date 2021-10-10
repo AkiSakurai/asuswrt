@@ -1,7 +1,7 @@
 /*
  * CHanSPEC manipulation module implementation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_chanmgr.c 773578 2019-03-26 00:28:43Z $
+ * $Id: phy_chanmgr.c 783661 2020-02-05 02:40:06Z $
  */
 
 #include <phy_cfg.h>
@@ -496,6 +496,15 @@ phy_chanmgr_tdcs_enable_160m(phy_info_t *pi, bool set_val)
 }
 
 void
+phy_chanmgr_pad_online_enable(phy_info_t *pi, bool set_val, bool up_check)
+{
+	phy_type_chanmgr_fns_t *fns = pi->chanmgri->fns;
+
+	if (fns->pad_online_enable != NULL)
+		(fns->pad_online_enable)(pi, set_val, up_check);
+}
+
+void
 phy_chanmgr_dccal_force(phy_info_t *pi)
 {
 	phy_type_chanmgr_fns_t *fns = pi->chanmgri->fns;
@@ -702,8 +711,8 @@ phy_chanmgr_set_shm(phy_info_t *pi, chanspec_t chanspec)
 	if (D11REV_LT(pi->sh->corerev, 40)) {
 		/* d11 rev < 40: compose a channel info value */
 		curchannel = CHSPEC_CHANNEL(chanspec);
-#ifdef BAND5G
-		if (CHSPEC_IS5G(chanspec))
+#if BAND5G
+		if (CHSPEC_ISPHY5G6G(chanspec))
 			curchannel |= D11_CURCHANNEL_5G;
 #endif /* BAND5G */
 		if (CHSPEC_IS40(chanspec))

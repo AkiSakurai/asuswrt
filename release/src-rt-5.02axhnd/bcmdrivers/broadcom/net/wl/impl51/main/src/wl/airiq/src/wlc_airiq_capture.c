@@ -4,7 +4,7 @@
  *
  *  Air-IQ data capture
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -159,6 +159,7 @@ void wlc_airiq_vasipfftcapture(airiq_info_t *airiqh)
 	default:
 		WL_ERROR(("wl%d: %s: Unknown bandwidth: %d bw\n",
 			WLCWLUNIT(airiqh->wlc), __FUNCTION__, bw));
+		if (WL_ERROR_ON())
 		prhex("FFT header:", (uchar*)header_ptr, VASIP_FFT_HEADER_SIZE);
 		//ASSERT(0);
 		return;
@@ -168,7 +169,7 @@ void wlc_airiq_vasipfftcapture(airiq_info_t *airiqh)
 	buffer = wlc_airiq_msg_get_buffer(airiqh, datalen);
 
 	if (! buffer) {
-		WL_ERROR(("wl%d %s: buffer fail.\n", airiqh->wlc->pub->unit, __FUNCTION__));
+		WL_ERROR(("wl%d %s: buffer fail.\n", WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 		return;
 	}
 
@@ -224,8 +225,8 @@ void wlc_airiq_vasipfftcapture(airiq_info_t *airiqh)
 
 	wlc_airiq_msg_sendup(airiqh, datalen, force_sendup);
 
-	/* AIRIQ_DBG(("%s: chanspec=%x size=%d timestamp=%08d seqno=%x\n",
-	 *  __FUNCTION__,hdr->chanspec,datalen,hdr->timestamp,hdr->seqno));
+	/* AIRIQ_DBG(("wl%d: %s: chanspec=%x size=%d timestamp=%08d seqno=%x\n",
+	 *  WLCWLUNIT(airiqh->wlc), __FUNCTION__,hdr->chanspec,datalen,hdr->timestamp,hdr->seqno));
 	 */
 
 	/* clean V2H_STATUS flag */

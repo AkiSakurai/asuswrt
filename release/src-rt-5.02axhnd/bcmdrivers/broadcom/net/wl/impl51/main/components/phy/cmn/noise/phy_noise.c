@@ -1,7 +1,7 @@
 /*
  * NOISEmeasure module implementation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_noise.c 777128 2019-07-19 20:03:15Z $
+ * $Id: phy_noise.c 779349 2019-09-25 19:58:57Z $
  */
 
 #include <phy_cfg.h>
@@ -110,7 +110,7 @@ BCMATTACHFN(phy_noise_attach)(phy_info_t *pi, int bandtype)
 	/* Initialize noise params */
 	info->bandtype = bandtype;
 
-	pi->interf->curr_home_channel = CHSPEC_CHANNEL(pi->radio_chanspec);
+	pi->interf->home_chanspec = pi->radio_chanspec;
 	pi->sh->interference_mode_override = FALSE;
 	pi->sh->interference_mode_2G = INTERFERE_NONE;
 	pi->sh->interference_mode_5G = INTERFERE_NONE;
@@ -118,7 +118,7 @@ BCMATTACHFN(phy_noise_attach)(phy_info_t *pi, int bandtype)
 	/* Default to 60. Each PHY specific attach should initialize it
 	 * to PHY/chip specific.
 	 */
-	pi->aci_exit_check_period = 60;
+	pi->aci_exit_check_period = (CHIPID(pi->sh->chip) == BCM43217_CHIP_ID) ? 15 : 60;
 	pi->aci_enter_check_period = 16;
 	pi->aci_state = 0;
 
@@ -340,15 +340,7 @@ wlc_phy_noise_calc(phy_info_t *pi, uint32 *cmplx_pwr, int8 *pwr_ant, uint8 extra
 		M_PWRIND_BLKS(pi)+0xC)));
 #endif /* WL_EAP_NOISE_MEASUREMENTS */
 
-#ifdef WL_EAP_NOISE_MEASUREMENTS
-	/* Compute total gain as a function of active antennas, e.g., for a
-	 * 2x2 deployment of a 4x4 chip
-	 */
-	math_cmplx_computedB(cmplx_pwr, cmplx_pwr_dbm,
-		PHY_BITSCNT(phy_stf_get_data(pi->stfi)->phyrxchain));
-#else
 	math_cmplx_computedB(cmplx_pwr, cmplx_pwr_dbm, PHYCORENUM(pi->pubpi->phy_corenum));
-#endif /* WL_EAP_NOISE_MEASUREMENTS */
 
 	if (fns->calc != NULL)
 		(fns->calc)(fns->ctx, cmplx_pwr_dbm, extra_gain_1dB);
@@ -1059,7 +1051,7 @@ phy_noise_interf_chan_stats_upd(wlc_phy_t *ppi, chanspec_t chanspec, uint32 crsg
 
 	/* Doing interference update of chan stats here  */
 
-	if (pi->interf->curr_home_channel == (CHSPEC_CHANNEL(chanspec))) {
+	if (pi->interf->home_chanspec == chanspec) {
 		pi->interf->cca_stats_func_called = TRUE;
 		pi->interf->cca_stats_total_glitch = crsglitch;
 		pi->interf->cca_stats_bphy_glitch = bphy_crsglitch;

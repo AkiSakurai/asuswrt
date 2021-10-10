@@ -2,7 +2,7 @@
  * Monitor Mode routines.
  * This header file housing the Monitor Mode routines implementation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -170,22 +170,25 @@ wlc_recv_mon_compute_rspec(wlc_d11rxhdr_t *wrxh, uint8 *plcp, uint32 corerev)
 
 	return rspec;
 } /* wlc_recv_compute_rspec */
+
 uint32
 wlc_he_sig_a1_from_plcp(uint8 *plcp)
 {
+	/* plcp offset handle: plcp += D11_PHY_RXPLCP_OFF(wlc->pub->corerev) */
 	uint32 plcp0 = 0;
 	ASSERT(plcp);
-	plcp0 = ((plcp[7] << 24) | (plcp[6] << 16) | (plcp[5] << 8) | plcp[4]);
+	plcp0 = ((plcp[3] << 24) | (plcp[2] << 16) | (plcp[1] << 8) | plcp[0]);
 	return (plcp0 & HE_SIGA_MASK);
 }
+
 uint32
 wlc_he_sig_a2_from_plcp(uint8 *plcp)
 {
 	uint32 plcp1 = 0;
 	ASSERT(plcp);
-	plcp1 = ((plcp[10] << 24) | (plcp[9] << 16) | (plcp[8] << 8) | plcp[7]) >> 2;
+	plcp1 = ((plcp[6] << 24) | (plcp[5] << 16) | (plcp[4] << 8) | plcp[3]) >> 2;
 	return (plcp1 & HE_SIGA2_MASK);
-} /* wlc_recv_compute_rspec */
+}
 
 /* recover 32bit TSF value from the 16bit TSF value */
 /* assumption is time in rxh is within 65ms of the current tsf */
@@ -565,8 +568,8 @@ wl_d11rx_to_rxsts(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
 		sts.nss = (rspec & WL_RSPEC_HE_NSS_MASK) >> WL_RSPEC_HE_NSS_SHIFT;
 		sts.mcs = (rspec & WL_RSPEC_HE_MCS_MASK);
 
-		sts.sig_a1 = wlc_he_sig_a1_from_plcp(plcp);
-		sts.sig_a2 = wlc_he_sig_a2_from_plcp(plcp);
+		sts.sig_a1 = wlc_he_sig_a1_from_plcp(plcp + D11_PHY_RXPLCP_OFF(corerev));
+		sts.sig_a2 = wlc_he_sig_a2_from_plcp(plcp + D11_PHY_RXPLCP_OFF(corerev));
 	} else {
 		/* round non-HT data rate to nearest 500bkps unit */
 		sts.datarate = RSPEC2KBPS(rspec)/500;

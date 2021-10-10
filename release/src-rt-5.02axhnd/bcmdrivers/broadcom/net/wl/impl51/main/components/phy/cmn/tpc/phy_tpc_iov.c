@@ -1,7 +1,7 @@
 /*
  * TxPowerControl module implementation - iovar table
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tpc_iov.c 769138 2018-11-05 21:39:04Z $
+ * $Id: phy_tpc_iov.c 779613 2019-10-03 12:07:45Z $
  */
 
 #include <phy_tpc.h>
@@ -84,7 +84,7 @@ static const bcm_iovar_t phy_tpc_iovars[] = {
 #endif /* WL_SARLIMIT */
 #ifdef WLTEST
 	{"fem2g", IOV_PHY_FEM2G, (IOVF_SET_DOWN | IOVF_MFG), 0, IOVT_BUFFER, 0},
-#ifdef BAND5G
+#if BAND5G
 	{"fem5g", IOV_PHY_FEM5G, (IOVF_SET_DOWN | IOVF_MFG), 0, IOVT_BUFFER, 0},
 #endif /* BAND5G */
 #endif /* WLTEST */
@@ -160,7 +160,7 @@ phy_tpc_doiovar(void *ctx, uint32 aid,
 		phy_tpc_ipa_upd(pi->tpci);
 		break;
 	}
-#ifdef BAND5G
+#if BAND5G
 	case IOV_GVAL(IOV_PHY_FEM5G): {
 		bcopy(pi->fem5g, a, sizeof(srom_fem_t));
 		break;

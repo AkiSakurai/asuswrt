@@ -1,7 +1,7 @@
 /*
  * PHY Core module internal interface.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy.h 692080 2017-03-25 01:24:18Z $
+ * $Id: phy.h 778873 2019-09-12 09:45:22Z $
  */
 
 #ifndef _phy_h_
@@ -104,7 +104,7 @@
 /* PHY Dual band support */
 #if defined(ROM_ENAB_RUNTIME_CHECK)
 	#define PHY_BAND5G_ENAB(pi)   ((pi)->ff->_dband)
-#elif defined(DBAND)
+#elif defined(MULTIBAND)
 	#define PHY_BAND5G_ENAB(pi)   (1)
 #else
 	#define PHY_BAND5G_ENAB(pi)   (0)

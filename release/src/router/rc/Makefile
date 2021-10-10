@@ -274,6 +274,9 @@ OBJS += mtd_sflash.o
 else
 OBJS += mtd.o
 endif
+ifeq ($(RTCONFIG_URLFW),y)
+OBJS += mtd_curl.o
+endif
 
 ifeq ($(RTCONFIG_FANCTRL),y)
 OBJS += phy_tempsense.o
@@ -287,7 +290,7 @@ OBJS += init-broadcom.o wps-broadcom.o broadcom.o ate-broadcom.o
 ifeq ($(RTCONFIG_AMAS),y)
 OBJS += obd-broadcom.o
 endif
-ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME),RT-AC68U RT-AC3200 4G-AC68U RT-AX58U TUF-AX3000))
+ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME),RT-AC68U RT-AC3200 4G-AC68U RT-AX58U TUF-AX3000 RT-AX82U RT-AX55 RT-AX1800))
 OBJS += cfe.o
 endif
 ifeq ($(RTCONFIG_ADTBW),y)
@@ -387,6 +390,10 @@ ifeq ($(RTCONFIG_WTFAST),y)
 OBJS += wtfast.o
 endif
 
+ifeq ($(RTCONFIG_TENCENT_QMACC),y)
+OBJS += qmacc.o
+endif
+
 ifeq ($(or $(RTCONFIG_PPTPD),$(RTCONFIG_ACCEL_PPTPD)),y)
 OBJS += vpn.o
 endif
@@ -440,6 +447,7 @@ endif
 endif
 
 ifeq ($(and $(RTCONFIG_BCMWL6),$(RTCONFIG_PROXYSTA)),y)
+OBJS += arpreq.o
 OBJS += psta_monitor.o
 endif
 
@@ -555,6 +563,10 @@ ifeq ($(RTCONFIG_IPERF),y)
 OBJS += monitor.o
 endif
 
+ifeq ($(or $(RTCONFIG_FRS_LIVE_UPDATE),$(RTCONFIG_FRS_FEEDBACK),$(RTCONFIG_URLFW)),y)
+CFLAGS += -I$(TOP)/curl-7.21.7/include
+LDFLAGS += -L$(TOP)/curl-7.21.7/lib/.libs -lcurl
+endif
 
 ifeq ($(RTCONFIG_HTTPS),y)
 CFLAGS += -I$(TOP)/curl-7.21.7/include
@@ -721,6 +733,7 @@ ifeq ($(RTCONFIG_HND_ROUTER_AX),y)
 CFLAGS += $(ACSDV2_DIR)
 endif
 CFLAGS += -I$(TOP)/acsd$(BCMEX)$(EX7)
+CFLAGS  += -I$(TOP)/sqlite
 LDFLAGS2 += -L$(TOP)/sqlite/.libs -lsqlite3
 LDFLAGS2 += -L. -lconn_diag
 
@@ -735,6 +748,10 @@ endif
 DIAG_OBJS += conn_diag-sql.o
 endif
 
+ifeq ($(RTAX82U),y)
+OBJS += ledg.o
+OBJS += ledbtn.o
+endif
 
 all: $(if $(RTCONFIG_BRCM_HOSTAPD), $(WPS_PBCD)) PB rc init.prep
 
@@ -789,6 +806,7 @@ ifeq ($(HND_ROUTER),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc hnd-write
 	@cd $(INSTALLDIR)/sbin && ln -sf rc hnd-erase
 	@cd $(INSTALLDIR)/sbin && ln -sf rc mtd_erase_image_update
+	@cd $(INSTALLDIR)/sbin && ln -sf rc mtd_erase_misc2
 else
 	@cd $(INSTALLDIR)/sbin && ln -sf rc nvram_erase
 ifeq ($(RTCONFIG_BCMARM),y)
@@ -829,6 +847,7 @@ ifeq ($(RTCONFIG_FANCTRL),y)
 endif
 
 ifeq ($(and $(RTCONFIG_BCMWL6),$(RTCONFIG_PROXYSTA)),y)
+	@cd $(INSTALLDIR)/sbin && ln -sf rc sendarp
 	@cd $(INSTALLDIR)/sbin && ln -sf rc psta_monitor
 endif
 
@@ -910,7 +929,9 @@ endif
 ifeq ($(RTCONFIG_EXT_RTL8370MB),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc rtkswitch
 endif
-
+ifeq ($(or $(RTAX55),$(RTAX1800)),y)
+	@cd $(INSTALLDIR)/sbin && ln -sf rc rtkswitch
+endif
 ifeq ($(RTCONFIG_QCA),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc rtkswitch
 endif
@@ -1151,6 +1172,15 @@ ifeq ($(RTAC68U),y)
 	@cd $(INSTALLDIR)/sbin && ln -sf rc fw_check
 endif
 
+ifeq ($(RTCONFIG_EXTPHY_BCM84880),y)
+	@cd $(INSTALLDIR)/sbin && ln -sf rc extphy_bit_op
+endif
+
+ifeq ($(RTAX82U),y)
+	@cd $(INSTALLDIR)/sbin && ln -sf rc ledg
+	@cd $(INSTALLDIR)/sbin && ln -sf rc ledbtn
+endif
+
 clean:
 	rm -f rc *.o .*.depend *.prep libconn_diag.so
 ifeq ($(RTCONFIG_BRCM_HOSTAPD),y)
@@ -1255,7 +1285,7 @@ ifneq ($(wildcard ./prebuild/ate.o),)
 ate.o:
 	@-cp -f ./prebuild/ate.o .
 endif
-ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME),RT-AC68U RT-AC3200))
+ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME),RT-AC68U RT-AC3200 4G-AC68U RT-AX58U TUF-AX3000 RT-AX82U RT-AX55 RT-AX1800))
 ifneq ($(wildcard ./prebuild/cfe.o),)
 cfe.o:
 	@-cp -f ./prebuild/cfe.o .
@@ -1481,6 +1511,13 @@ endif
 ifneq ($(wildcard ./prebuild/amas_wlcconnect.o),)
 amas_wlcconnect.o:
 	@-cp -f ./prebuild/amas_wlcconnect.o .
+endif
+endif
+
+ifeq ($(RTAX82U),y)
+ifneq ($(wildcard ./prebuild/ledg.o.o),)
+ledg.o:
+	@-cp -f ./prebuild/ledg.o .
 endif
 endif
 

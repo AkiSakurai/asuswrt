@@ -2,7 +2,7 @@
  * Proxd FTM method support. See twiki FineTimingMeasurement.
  * This header is private/internal to proxd FTM method
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmpvt.h 777979 2019-08-19 23:14:13Z $
+ * $Id: pdftmpvt.h 777940 2019-08-15 20:25:56Z $
  */
 
 #ifndef _pdftmpvt_h_

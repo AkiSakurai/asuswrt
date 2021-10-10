@@ -2,7 +2,7 @@
  * MBO+OCE IE management implementation for
  * Broadcom 802.11bang Networking Device Driver
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -83,18 +83,18 @@ uint16 ie_build_fstbmp = FT2BMP(FC_ASSOC_REQ) |
 	FT2BMP(FC_ASSOC_RESP) |
 	FT2BMP(FC_REASSOC_RESP) |
 	FT2BMP(FC_PROBE_RESP) |
-#ifdef WL_OCE_AP
+#if defined(WL_OCE_AP) || defined(MBO_AP)
 	FT2BMP(FC_BEACON) |
-#endif // endif
+#endif /* WL_OCE_AP || MBO_AP */
 	FT2BMP(FC_PROBE_REQ);
 uint16 ie_parse_fstbmp = FT2BMP(FC_BEACON) |
 	FT2BMP(FC_PROBE_RESP) |
 	FT2BMP(FC_ASSOC_RESP) |
 	FT2BMP(FC_REASSOC_RESP) |
-#ifdef WL_OCE_AP
+#if defined(WL_OCE_AP) || defined(MBO_AP)
 	FT2BMP(FC_ASSOC_REQ) |
 	FT2BMP(FC_REASSOC_REQ) |
-#endif // endif
+#endif /* WL_OCE_AP || MBO_AP */
 	FT2BMP(WLC_IEM_FC_SCAN_BCN) |
 	FT2BMP(WLC_IEM_FC_SCAN_PRBRSP);
 
@@ -343,6 +343,10 @@ wlc_mbo_oce_ie_calc_len(void *ctx, wlc_iem_calc_data_t *data)
 			if ((entry->fstbmp & FT2BMP(data->ft)) && entry->build_fn) {
 				total_len += entry->build_fn(entry->ctx, &attr_data);
 			}
+		}
+		if (total_len == MBO_OCE_IE_HDR_SIZE) {
+			/* both mbo and oce are not enabled */
+			return 0;
 		}
 	}
 	return total_len;

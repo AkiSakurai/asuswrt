@@ -59,6 +59,22 @@
 #include "notify_ahs.h"
 #endif /* RTCONFIG_AHS */
 
+#ifdef RTCONFIG_EXTPHY_BCM84880
+#if 1
+#define EXTPHY_ADDR 0x1e
+#define EXTPHY_ADDR_STR "0x1e"
+#else // RTL8226
+#define EXTPHY_ADDR 0x01
+#define EXTPHY_ADDR_STR "0x01"
+#endif
+
+#if defined(GTAX11000)
+#define PHY_ID_54991E "3590:5099"
+#elif defined(RTAX86U) || defined(RTAX5700)
+#define PHY_ID_54991EL "3590:5089"
+#endif
+#endif
+
 /* Endian conversion functions. */
 #define __bswap16(x) (uint16_t)	( \
 				(((uint16_t)(x) & 0x00ffu) << 8) | \
@@ -160,6 +176,12 @@
 #define WLREADY			"wlready"
 #endif
 
+#if defined(RTAX58U) || defined(TUFAX3000) || defined(RTAX82U)
+#define WAN_IF_ETH	"eth4"
+#else
+#define WAN_IF_ETH	"eth0"
+#endif
+
 /**
  * skb->mark usage
  * 1.	bit 28~31:	Load-balance rule, IPTABLES_MARK_LB_*
@@ -180,6 +202,7 @@
 #define IS_BW_QOS()             (nvram_get_int("qos_enable") == 1 && nvram_get_int("qos_type") == 2)   // Bandwidth limiter
 #define IS_GFN_QOS()            (nvram_get_int("qos_enable") == 1 && nvram_get_int("qos_type") == 3)   // GeForce NOW QoS (Nvidia)
 #define IS_NON_AQOS()           (nvram_get_int("qos_enable") == 1 && nvram_get_int("qos_type") != 1)   // non A.QoS = others QoS (T.QoS / bandwidth monitor ... etc.)
+#define IS_NON_FC_QOS()         (nvram_get_int("qos_enable") == 1 && nvram_get_int("qos_type") != 1 && nvram_get_int("qos_type") != 2) // non FC QoS= others QoS except A.QOS / BW QOS
 
 /* Guest network */
 #define GUEST_INIT_MARKNUM 10   /*10 ~ 30 for Guest Network. */
@@ -376,13 +399,11 @@ enum {
 #ifdef RTCONFIG_ADV_RAST
 enum romaingEvent {
 	EID_RM_STA_MON = 1,
-	EID_RM_STA_MON_REPORT,
-	EID_RM_STA_CANDIDATE,
-	EID_RM_STA_ACL,
-#ifdef RTCONFIG_CONN_EVENT_TO_EX_AP
-	EID_RM_STA_EX_AP_CHECK,
-#endif
-	EID_RM_STA_FILTER,
+	EID_RM_STA_MON_REPORT = 2,
+	EID_RM_STA_CANDIDATE = 3,
+	EID_RM_STA_ACL = 4,
+	EID_RM_STA_FILTER = 5,
+	EID_RM_STA_EX_AP_CHECK = 6,
 	EID_RM_MAX
 };
 enum conndiagEvent {
@@ -465,6 +486,7 @@ enum {
 	FROM_ASSIA,
 	FROM_IFTTT,
 	FROM_ALEXA,
+	FROM_WebView,
 	FROM_UNKNOWN
 };
 
@@ -703,148 +725,8 @@ extern int exec_for_host(int host, int obsolete, uint flags, host_exec func);
 extern int is_no_partition(const char *discname);
 #endif //RTCONFIG_USB
 
-#define MODEL_UNUSED(x)	__MDL_UNUSED(x)
-#define __MDL_UNUSED(s)	MODEL_unused ## s
-
-/* NOTE: Do not insert new entries in the middle of this enum,
- * always add them to the end! */
-enum {
-	MODEL_GENERIC = -1,
-	MODEL_UNKNOWN = 0,
-	MODEL_DSLN55U,
-	MODEL_DSLAC68U,
-	MODEL_EAN66,
-	MODEL_RTN11P,
-	MODEL_RTN300,
-	MODEL_RTN13U,
-	MODEL_RTN14U,
-	MODEL_RTAC52U,
-	MODEL_RTAC51U,
-	MODEL_RTN54U,
-	MODEL_RTAC54U,
-	MODEL_RTN56UB1,
-	MODEL_RTN56UB2,
-	MODEL_RTAC1200HP,
-	MODEL_RTAC55U,
-	MODEL_RTAC55UHP,
-	MODEL_RT4GAC55U,
-	MODEL_RTAC59U,
-	MODEL_PLN12,
-	MODEL_PLAC56,
-	MODEL_PLAC66U,
-	MODEL_RTAC58U,
-	MODEL_RT4GAC53U,
-	MODEL_RTAC82U,
-	MODEL_MAPAC1300,
-	MODEL_MAPAC2200,
-	MODEL_VZWAC1300,
-	MODEL_MAPAC1750,
-	MODEL_MAPAC3000,
-	MODEL_MAPAC2200V,
-	MODEL_RTN36U3,
-	MODEL_RTN56U,
-	MODEL_RTN65U,
-	MODEL_RTN67U,
-	MODEL_RTN12,
-	MODEL_RTN12B1,
-	MODEL_RTN12C1,
-	MODEL_RTN12D1,
-	MODEL_RTN12VP,
-	MODEL_RTN12HP,
-	MODEL_RTN12HP_B1,
-	MODEL_APN12,
-	MODEL_APN12HP,
-	MODEL_RTN16,
-	MODEL_RTN18U,
-	MODEL_RTN15U,
-	MODEL_RTN53,
-	MODEL_RTN66U,
-	MODEL_RTAC66U,
-	MODEL_RTAC68U,
-	MODEL_UNUSED(__LINE__),
-	MODEL_RTAC87U,
-	MODEL_RTAC56S,
-	MODEL_RTAC56U,
-	MODEL_RTAC53U,
-	MODEL_RTAC3200,
-	MODEL_RTAC88U,
-	MODEL_RTAC3100,
-	MODEL_RTAC5300,
-	MODEL_GTAC5300,
-	MODEL_RTN14UHP,
-	MODEL_RTN10U,
-	MODEL_RTN10P,
-	MODEL_RTN10D1,
-	MODEL_RTN10PV2,
-	MODEL_RTAC1200,
-	MODEL_RTAC1200G,
-	MODEL_RTAC1200GP,
-	MODEL_RTAC1200GA1,
-	MODEL_RTAC1200GU,
-	MODEL_RPAC66,
-	MODEL_RPAC51,
-	MODEL_RTAC51UP,
-	MODEL_RTAC53,
-	MODEL_RTN11P_B1,
-	MODEL_RPAC87,
-	MODEL_RTAC85U,
-	MODEL_RTAC85P,
-	MODEL_RTACRH26,
-	MODEL_RTN800HP,
-	MODEL_RTAC88N,
-	MODEL_BRTAC828,
-	MODEL_RTAC88S,
-	MODEL_RPAC53,
-	MODEL_RPAC68U,
-	MODEL_RPAC55,
-	MODEL_RTAC86U,
-	MODEL_GTAC9600,
-	MODEL_BLUECAVE,
-	MODEL_RTAD7200,
-	MODEL_GTAX6000,
-	MODEL_GTAX6000N,
-	MODEL_GTAX6000S,
-	MODEL_RTAC1200V2,
-	MODEL_RTN19,
-	MODEL_TUFAC1750,
-	MODEL_RTAX88U,
-	MODEL_GTAX11000,
-	MODEL_RTAX92U,
-	MODEL_RTAX95Q,
-	MODEL_RTAX58U,
-	MODEL_RTAX56U,
-	MODEL_SHAC1300,
-	MODEL_RPAC92,
-	MODEL_ZENWIFICD6R,
-	MODEL_ZENWIFICD6N,
-	MODEL_RTAX86U,
-	MODEL_RTAX68U,
-	MODEL_MAX
-};
-
-/* NOTE: Do not insert new entries in the middle of this enum,
- * always add them to the end! */
-enum {
-	SWITCH_GENERIC = -1,
-	SWITCH_UNKNOWN = 0,
-	SWITCH_BCM5325,
-	SWITCH_BCM53115,
-	SWITCH_BCM53125,
-	SWITCH_BCM5301x,
-	SWITCH_BCM5301x_EX,
-	SWITCH_BCM53134,
-	SWITCH_RT305x,
-	SWITCH_RT3350,
-	SWITCH_RT3352,
-	SWITCH_RT5350,
-	SWITCH_MT7620,
-	SWITCH_MT7621,
-	SWITCH_MT7628,
-	SWITCH_RTL8365MB,
-	SWITCH_RTL8367MB,
-	SWITCH_RTL8367RB,
-	SWITCH_RTL8370M,
-};
+/* MODEL_*, SWITCH_* and model.c */
+#include "model.h"
 
 #define RTCONFIG_NVRAM_VER "1"
 
@@ -884,9 +766,6 @@ enum {
 
 extern int check_hw_type(void);
 //	extern int get_hardware(void) __attribute__ ((weak, alias ("check_hw_type")));
-extern int get_model(void);
-extern char *get_modelid(int model);
-extern int get_switch(void);
 extern int supports(unsigned long attr);
 
 // pids.c
@@ -1023,6 +902,9 @@ enum led_id {
 #else
 	LED_LAN,
 #endif
+#if defined(RTAX86U) || defined(RTAX5700)
+	LED_LAN,
+#endif
 #ifdef RTCONFIG_LOGO_LED
 	LED_LOGO,
 #endif
@@ -1128,15 +1010,33 @@ enum led_id {
 #if defined(RTAC5300) || defined(GTAC5300)
 	RPM_FAN,	/* use to control FAN RPM (Hi/Lo) */
 #endif
-#if defined(RTCONFIG_USB) || defined (RTCONFIG_LED_BTN) || defined (RTCONFIG_WPS_ALLLED_BTN)
+#if defined(RTCONFIG_USB) || defined (RTCONFIG_LED_BTN) || defined (RTCONFIG_WPS_ALLLED_BTN) || (!defined(RTCONFIG_WIFI_TOG_BTN) && !defined(RTCONFIG_QCA))
 	PWR_USB,
 #endif
-#if defined(RTAX95Q)
+#if defined(RTAX95Q) || defined(RTAX56_XD4)
 	BT_RESET,
 	BT_DISABLE,
 	LED_RGB1_RED,
 	LED_RGB1_GREEN,
 	LED_RGB1_BLUE,
+#endif
+#if defined(RTAX56_XD4)
+	IND_BT,
+	IND_PA,
+#endif
+#ifdef RTAX82U
+	LED_GROUP1_RED,
+	LED_GROUP1_GREEN,
+	LED_GROUP1_BLUE,
+	LED_GROUP2_RED,
+	LED_GROUP2_GREEN,
+	LED_GROUP2_BLUE,
+	LED_GROUP3_RED,
+	LED_GROUP3_GREEN,
+	LED_GROUP3_BLUE,
+	LED_GROUP4_RED,
+	LED_GROUP4_GREEN,
+	LED_GROUP4_BLUE,
 #endif
 
 	LED_ID_MAX,	/* last item */
@@ -1522,12 +1422,18 @@ extern int set_pwr_usb(int boolOn);
 extern int set_pwr_modem(int boolOn);
 #endif
 extern int button_pressed(int which);
+#if defined(RTAX86U) || defined(RTAX5700)
+void config_ext_wan_led(int onoff);
+#endif
 extern int led_control(int which, int mode);
 
 /* api-*.c */
 extern uint32_t gpio_dir(uint32_t gpio, int dir);
 extern uint32_t set_gpio(uint32_t gpio, uint32_t value);
 extern uint32_t get_gpio(uint32_t gpio);
+#if defined(RTCONFIG_HND_ROUTER_AX_6710) || defined(RTAX58U) || defined(TUFAX3000) || defined(RTAX82U)
+extern uint32_t get_gpio2(uint32_t gpio);
+#endif
 extern int get_switch_model(void);
 #if defined(RTCONFIG_ALPINE) || defined(RTCONFIG_LANTIQ)
 extern uint32_t get_phy_status(int wan_unit);
@@ -1752,12 +1658,23 @@ extern uint32_t hnd_get_phy_speed(int port);
 #else
 extern uint32_t hnd_get_phy_status(int port, int offs, unsigned int regv, unsigned int pmdv);
 extern uint32_t hnd_get_phy_speed(int port, int offs, unsigned int regv, unsigned int pmdv);
+#if defined(RTAX55) || defined(RTAX1800)
+extern int rtkswitch_port_speed(int port);
+extern int rtkswitch_port_duplex(int port);
+extern int rtkswitch_port_stat(int port);
+extern int rtkswitch_port_mactable(int port);
+#endif
 #endif
 extern int hnd_ethswctl(ecmd_t act, unsigned int val, int len, int wr, unsigned long long regdata);
 extern uint32_t set_ex53134_ctrl(uint32_t portmask, int ctrl);
 extern int ethctl_phy_op(char* phy_type, int addr, unsigned int reg, unsigned int value, int wr);
+#ifdef RTCONFIG_EXTPHY_BCM84880
+extern int extphy_bit_op(unsigned int reg, unsigned int val, int wr, unsigned int start_bit, unsigned int end_bit, unsigned int wait_ms);
+#endif
+#if !defined(RTCONFIG_HND_ROUTER_AX_675X) || defined(RTCONFIG_EXTPHY_BCM84880)
 extern int ethctl_get_link_status(char *ifname);
 #endif
+#endif // HND_ROUTER
 extern int fw_check(void);
 extern int with_non_dfs_chspec(char *wif);
 extern chanspec_t select_band1_chspec_with_same_bw(char *wif, chanspec_t chanspec);
@@ -1818,6 +1735,7 @@ extern int remove_word(char *buffer, const char *word);
 extern void trim_space(char *str);
 extern void toLowerCase(char *str);
 extern void toUpperCase(char *str);
+extern void trim_colon(char *str);
 
 // file.c
 extern int check_if_file_exist(const char *file);
@@ -1975,14 +1893,14 @@ extern double traffic_limiter_get_realtime(int unit);
 #if defined(RTCONFIG_PORT_BASED_VLAN) || defined(RTCONFIG_TAGGED_BASED_VLAN)
 extern struct vlan_rules_s *get_vlan_rules(void);
 #endif
-#if defined(HND_ROUTER) && defined(RTCONFIG_BONDING)
+#if defined(RTCONFIG_BONDING)
+#if defined(HND_ROUTER)
 extern int get_bonding_status();
 #endif
-#ifdef RTCONFIG_BONDING
 #ifdef RTCONFIG_HND_ROUTER_AX
 extern int get_bonding_speed(char *bond_if);
 #endif
-#endif
+#endif // RTCONFIG_BONDING
 extern int isValidMacAddress(const char* mac);
 extern int isValidEnableOption(const char* option, int range);
 extern int isValid_digit_string(const char *string);
@@ -2007,9 +1925,6 @@ extern int notify_rc_and_wait(const char *event_name);
 extern int notify_rc_and_wait_1min(const char *event_name);
 extern int notify_rc_and_wait_2min(const char *event_name);
 extern int notify_rc_and_period_wait(const char *event_name, int wait);
-
-/* models.c */
-extern int get_blver(char *bls);
 
 /* wl.c */
 #ifdef CONFIG_BCMWL5
@@ -2159,7 +2074,7 @@ static inline int turbo_led_control(int onoff)
 static inline int turbo_led_control(__attribute__ ((unused)) int onoff) { return 0; }
 #endif
 
-#if defined(RTCONFIG_LED_BTN) || defined(RTCONFIG_WPS_ALLLED_BTN) || defined(RTCONFIG_TURBO_BTN)
+#if defined(RTCONFIG_LED_BTN) || defined(RTCONFIG_WPS_ALLLED_BTN) || defined(RTCONFIG_TURBO_BTN) || (!defined(RTCONFIG_WIFI_TOG_BTN) && !defined(RTCONFIG_QCA))
 static inline int inhibit_led_on(void) { return !nvram_get_int("AllLED"); }
 #else
 static inline int inhibit_led_on(void) { return 0; }
@@ -2433,7 +2348,7 @@ extern void erase_symbol(char *old, char *sym);
 #define NVRAM_ENC_LEN	1024
 #define NVRAM_ENC_MAXLEN	4096
 extern int pw_enc(const char *input, char *output);
-extern int pw_dec(const char *input, char *output);
+extern int pw_dec(const char *input, char *output, int len);
 extern int pw_enc_blen(const char *input);
 extern int pw_dec_len(const char *input);
 extern int set_enc_nvram(char *name, char *input, char *output);
@@ -2602,39 +2517,34 @@ extern int getAmasSupportMode();
 
 typedef enum __amaslib_action__t_
 {
-	AMASLIB_ACTION_NODE_MAC_UPDATE = 0,
-	AMASLIB_ACTION_DEVICE_IP_QUERY
+       AMASLIB_ACTION_NODE_MAC_UPDATE = 0,
+       AMASLIB_ACTION_DEVICE_IP_QUERY
 } AMASLIB_ACTION_T;
 /*
-	AMAS_LIB define for event and socket
+       AMAS_LIB define for event and socket
 */
 typedef struct __amaslib_notification__t_
 {
-	AMASLIB_ACTION_T action;
-	char sta2g[18];     /* Node 2G MAC */
-	char sta5g[18];     /* Node 5G MAC */
-	int  flag;          /* Node status */
-	char ip[16];        /* Device IP */
+       AMASLIB_ACTION_T action;
+       char sta2g[18];     /* Node 2G MAC */
+       char sta5g[18];     /* Node 5G MAC */
+       int  flag;          /* Node status */
+       char ip[16];        /* Device IP */
 } AMASLIB_EVENT_T;
 
 #define AMASLIB_PID_PATH           "/var/run/amas_lib.pid"
-#define AMASLIB_SOCKET_PATH        "/etc/amas_lib_socket"
-#define MAX_AMASLIB_SOCKET_CLIENT  5
-
-/* DEBUG DEFINE */
-#define AMASLIB_DEBUG             "/tmp/AMASLIB_DEBUG"
-#define AMASLIB_DBG(fmt,args...) \
-	if(f_exists(AMASLIB_DEBUG) > 0) { \
-		_dprintf("[AMASLIB][%s:(%d)]"fmt, __FUNCTION__, __LINE__, ##args); \
-	}
-
-extern int AMAS_EVENT_TRIGGER(char *sta2g, char *sta5g, int flag);
-extern int is_amaslib_enabled();
+#define AMASLIB_SOCKET_PATH        "/var/run/amas_lib_socket"
 
 #endif /* defined(RTCONFIG_AMAS) */
 
+
+extern int get_discovery_ssid(char *ssid_g, int size);
 extern int get_index_page(char *page, int size);
 extern int get_chance_to_control(void);
+
+#ifdef RTCONFIG_AMAS_WGN
+extern int get_iptv_and_dualwan_info(int *iptv_vids,int size, unsigned int *wan_deny_list, unsigned int *lan_deny_list);
+#endif	// RTCONFIG_AMAS_WGN
 
 #ifdef RTCONFIG_GEFORCENOW
 extern int wl_set_wifiscan(char *ifname, int val);
@@ -2658,6 +2568,71 @@ enum {
 	BCM_CLED_STEADY_BLINK,
 	BCM_CLED_PULSATING,
 	BCM_CLED_MODE_END
+};
+#endif
+
+#ifdef RTAX82U
+#define LEDG_OFF			0
+#define LEDG_STEADY_MODE		1
+#define LEDG_FADING_REVERSE_MODE	2
+#define LEDG_PULSATING_MODE		3
+#define LEDG_PULSATING_WITH_DELAY_MODE	4
+#define LEDG_RUNNING_LIGHT_MODE		5
+#define LEDG_COLOR_CYCLE_MODE		6
+#define LEDG_RAINBOW_MODE		7
+#define LEDG_WATER_FLOW_MODE		8
+#define LEDG_SCROLLING_MODE		9
+#define LEDG_BLINKING_MODE		10
+#define LEDG_MODE_MAX			11
+
+#define LEDG_SCHEME_OFF			0
+#define LEDG_SCHEME_GRADIENT		1
+#define LEDG_SCHEME_STEADY_RED		2
+#define LEDG_SCHEME_PULSATING		3
+#define LEDG_SCHEME_COLOR_CYCLE		4
+#define LEDG_SCHEME_RAINBOW		5
+#define LEDG_SCHEME_WATER_FLOW		6
+#define LEDG_SCHEME_SCROLLING		7
+#define LEDG_SCHEME_CUSTOM		8
+#define LEDG_SCHEME_BLINKING		9
+#define LEDG_SCHEME_MAX			10
+
+struct cled_config0 {
+	uint32_t mode : 2;
+	uint32_t reserved : 1;
+	uint32_t flash_ctl : 3;
+	uint32_t bright_ctl : 8;
+	uint32_t repeat_cycle : 1;
+	uint32_t bright_change_dir : 1;
+	uint32_t phase_1_bright : 1;
+	uint32_t phase_2_bright : 1;
+	uint32_t reserved2 : 2;
+	uint32_t initial_delay : 4;
+	uint32_t final_delay : 4;
+	uint32_t color_blend_ctrl : 4;
+};
+
+struct cled_config1 {
+	uint32_t bstep1 : 4;
+	uint32_t tstep1 : 4;
+	uint32_t nstep1 : 4;
+	uint32_t bstep2 : 4;
+	uint32_t tstep2 : 4;
+	uint32_t nstep2 : 4;
+	uint32_t reserved : 8;
+};
+
+struct cled_config2 {
+	uint32_t bstep3 : 4;
+	uint32_t tstep3 : 4;
+	uint32_t nstep3 : 4;
+	uint32_t final_step: 4;
+	uint32_t reserved : 16;
+};
+
+struct cled_config3 {
+	uint32_t phase_delay1: 16;
+	uint32_t phase_delay2: 16;
 };
 #endif
 

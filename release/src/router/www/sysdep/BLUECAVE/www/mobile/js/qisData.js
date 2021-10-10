@@ -24,6 +24,8 @@ var wanObj = {
 	},
 
 	"pppoe": {
+		"wan_dhcpenable_x": "1",
+		"wan_dnsenable_x": "1",
 		"wan_pppoe_username": "",
 		"wan_pppoe_passwd": ""
 	},
@@ -238,6 +240,7 @@ var systemVariable = {
 	},
 	"isNewFw": 0,
 	"newFwVersion": "",
+	"forceLevel": "",
 	"papList": [],
 	"papListAiMesh": [],
 	"selectedAP": {},
@@ -259,7 +262,8 @@ var systemVariable = {
 	"wanOption": false,
 	"interval_status": false,
 	"modelCloudIcon": [],
-	"onboardingInfo": {}
+	"onboardingInfo": {},
+	"authModePostData": {}
 }
 
 var aimeshObj = {

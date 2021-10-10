@@ -2,7 +2,7 @@
  * PHY Core module implementation - register all PHY type specific implementations'
  * iovar tables/handlers to IOCV module - used by high driver
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_type_disp_high.c 689072 2017-03-08 23:39:16Z $
+ * $Id: phy_type_disp_high.c 778524 2019-09-04 08:02:19Z $
  */
 
 #include <typedefs.h>
@@ -61,11 +61,7 @@
 #include "phy_type_n_iovt_high.h"
 #include "phy_type_n_ioct_high.h"
 #endif // endif
-#if LCN20CONF
-#include "phy_type_lcn20_iovt_high.h"
-#include "phy_type_lcn20_ioct_high.h"
-#endif // endif
-#if ACCONF || ACCONF2
+#if ACCONF || ACCONF2 || ACCONF5
 #include "phy_type_ac_iovt_high.h"
 #include "phy_type_ac_ioct_high.h"
 #endif // endif
@@ -82,10 +78,7 @@ static phy_type_reg_tbl_t BCMATTACHDATA(phy_type_reg_tbl)[] = {
 #if NCONF
 	{PHY_TYPE_N, phy_n_high_register_iovt, phy_n_high_register_ioct},
 #endif // endif
-#if LCN20CONF
-	{PHY_TYPE_LCN20, phy_lcn20_high_register_iovt, phy_lcn20_high_register_ioct},
-#endif // endif
-#if ACCONF || ACCONF2
+#if ACCONF || ACCONF2 || ACCONF5
 	{PHY_TYPE_AC, phy_ac_high_register_iovt, phy_ac_high_register_ioct},
 #endif // endif
 	/* *** ADD NEW PHY TYPE IMPLEMENTATION ENTRIES HERE *** */

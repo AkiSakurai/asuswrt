@@ -108,7 +108,7 @@ define(function(){
 					{url: "AdaptiveQoS_Adaptive.asp", tabName: "__INHERIT__"},
 					{url: "NULL", tabName: "__INHERIT__"}
 				] 
-			},
+			},		
 			{
 				menuName: "网易UU加速器",
 				index: "menu_UU", 
@@ -136,6 +136,22 @@ define(function(){
 					{url: "GameBoost.asp", tabName: "<#Game_Boost#>"},
 					{url: "NULL", tabName: "__INHERIT__"}
 				] 
+			},
+			{
+				menuName: "Open NAT",
+				index: "menu_OpenNAT", 
+				tab: [
+					{url: "GameProfile.asp", tabName: "Open NAT"},
+					{url: "NULL", tabName: "__INHERIT__"}
+				] 
+			},
+			{
+				menuName: "腾讯网游加速器",
+				index: "menu_TencentAcceleration",
+				tab: [
+					{url: "GameBoost_Tencent.asp", tabName: "Tencent Game Acceleration"},
+					{url: "NULL", tabName: "__INHERIT__"}
+				]
 			},
 			{
 				menuName: "<#Menu_usb_application#>",
@@ -270,6 +286,7 @@ define(function(){
 					{url: "Advanced_PerformanceTuning_Content.asp", tabName: "Performance tuning"},
 					{url: "Advanced_ADSL_Content.asp", tabName: "<#menu_dsl_setting#>"},
 					{url: "Advanced_Feedback.asp", tabName: "<#menu_feedback#>"},
+					{url: "Feedback_Info.asp", tabName: "__INHERIT__"},
 					{url: "Advanced_SNMP_Content.asp", tabName: "SNMP"},
 					{url: "Advanced_TR069_Content.asp", tabName: "TR-069"},
 					{url: "Advanced_Notification_Content.asp", tabName: "Notification"},
@@ -357,8 +374,17 @@ define(function(){
 					retArray.push("menu_VLAN");
 				}
 
-				if(!wtfast_support) {
+				if(!gameMode_support) {
 					retArray.push("menu_GameBoost");
+					retArray.push("menu_OpenNAT");
+				}
+
+				if(!rog_support && !tuf_support){
+					for(i=0; i<menuTree.list.length; i++){
+						if(menuTree.list[i].menuName == '<#Game_Boost#>'){
+							menuTree.list[i].menuName = 'Game';
+						}
+					}
 				}
 
 				if(!uu_support){
@@ -379,6 +405,7 @@ define(function(){
 					retArray.push("menu_Firewall");
 					retArray.push("menu_ParentalControl");
 					retArray.push("menu_QoS");
+					retArray.push("menu_OpenNAT");
 
 					if(!userRSSI_support){
 						retArray.push("menu_Wireless");
@@ -405,6 +432,7 @@ define(function(){
 					retArray.push("menu_Firewall");
 					retArray.push("menu_ParentalControl");
 					retArray.push("menu_QoS");
+					retArray.push("menu_OpenNAT");
 
 					if(ifttt_support || alexa_support){
 						retArray.push("menu_Alexa_IFTTT");
@@ -425,6 +453,7 @@ define(function(){
 					retArray.push("menu_Firewall");
 					retArray.push("menu_ParentalControl");
 					retArray.push("menu_QoS");
+					retArray.push("menu_OpenNAT");
 
 					if(ifttt_support || alexa_support){
 						retArray.push("menu_Alexa_IFTTT");
@@ -494,6 +523,7 @@ define(function(){
 
 				if(!frs_feedback_support) {		
 					retArray.push("Advanced_Feedback.asp");
+					retArray.push("Feedback_Info.asp");
 				}
 
 				if(noftp_support){
@@ -582,9 +612,12 @@ define(function(){
 					retArray.push("AdaptiveQoS_ROG.asp");
 				}
 
-				if(!wtfast_support){
+				if(!wtfast_support && !gameMode_support){
 					retArray.push("GameBoost.asp");
 				}
+
+				if(!tencent_qmacc_support)
+					retArray.push("GameBoost_Tencent.asp");
 
 				if(!alexa_support){
 					retArray.push("Advanced_Smart_Home_Alexa.asp");

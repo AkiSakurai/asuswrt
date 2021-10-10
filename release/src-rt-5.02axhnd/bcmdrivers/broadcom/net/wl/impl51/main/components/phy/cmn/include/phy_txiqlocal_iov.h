@@ -1,7 +1,7 @@
 /*
  * TXIQLO CAL module internal interface - iovar table/handlers
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -52,6 +52,11 @@
 #define _phy_txiqlocal_iov_t_
 
 #include <phy_api.h>
+
+/* iovar ids */
+enum {
+	IOV_PHY_TXIQCALIDX = 1
+};
 
 /* register iovar table/handlers */
 int phy_txiqlocal_register_iovt(phy_info_t *pi, wlc_iocv_info_t *ii);

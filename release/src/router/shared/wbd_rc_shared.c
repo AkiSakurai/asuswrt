@@ -2,7 +2,7 @@
  * Broadcom Home Gateway Reference Design
  * Broadcom Wi-Fi Blanket shared functions
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -49,6 +49,7 @@
 #include "wbd_rc_shared.h"
 
 /* Wi-Fi Blanket Buffer Lengths */
+#define WBD_MAX_BUF_16			16
 #define WBD_MAX_BUF_256			256
 #define WBD_MIN_PSK_LEN			8
 #define WBD_MAX_PSK_LEN			63
@@ -232,7 +233,6 @@ extern char* strncpy_n(char *destination, const char *source, size_t num);
 extern void nvram_initialize_all(char *prefix);
 static inline void sys_reboot(void)
 {
-	eval("wl", "reboot");
 	kill(1, SIGTERM);
 }
 
@@ -1122,33 +1122,43 @@ end:
 	return fbt;
 }
 
+/* Disable FBT */
+int
+wbd_disable_fbt(char *prefix)
+{
+	char strnvval[WBD_MAX_BUF_16] = {0};
+	char *nvval = NULL;
+
+	/* Set wbd_fbt NVRAM */
+	snprintf(strnvval, sizeof(strnvval), "%d", WBD_FBT_DEF_FBT_DISABLED);
+	wbd_nvram_prefix_set(prefix, WBD_NVRAM_FBT, strnvval);
+	WBD_RC_PRINT("Disabling FBT by setting %swbd_fbt as [%s]\n", prefix, strnvval);
+
+	/* If psk2ft is defined in akm NVRAM, remove it */
+	nvval = wbd_nvram_prefix_safe_get(prefix, NVRAM_AKM);
+	remove_from_list("psk2ft",nvval, strlen(nvval));
+	wbd_nvram_prefix_set(prefix, NVRAM_AKM, nvval);
+
+	return 0;
+}
+
 /* Check whether FBT enabling is possible or not. First it checks for psk2 and then wbd_fbt */
 int
 wbd_is_fbt_possible(char *prefix)
 {
-	int fbt = 0;
 	char *nvval;
 
 	/* Check if the akm contains psk2 or not */
 	nvval = wbd_nvram_prefix_safe_get(prefix, NVRAM_AKM);
+
+	/* TODO : FBT + pure SAE is not supported now. Modify below code to check for SAE also
+	   when support is added
+	 */
 	if (find_in_list(nvval, "psk2") == NULL) {
 		WBD_RC_PRINT("%s%s[%s]. Not psk2\n", prefix, NVRAM_AKM, nvval);
-		goto end;
+		return 0;
 	}
-
-	/* TODO : FBT + SAE Not supported now. Remove below code when support is added */
-	if (find_in_list(nvval, "sae") != NULL) {
-		WBD_RC_PRINT("%s%s[%s]. SAE + FBT not supported\n", prefix, NVRAM_AKM, nvval);
-		goto end;
-	}
-
-	/* Get the wlxy_wbd_ft NVRAM value, which tells whether FBT is enabled from WBD or not
-	 * If the NVRAM is not defined it returns not defined(-1)
-	 */
-	fbt = wbd_nvram_safe_get_int(prefix, WBD_NVRAM_FBT, WBD_FBT_NOT_DEFINED);
-
-end:
-	return fbt;
+	return 1;
 }
 
 /* If Device is Upstream AP, Initialize the FBT NVRAMs */
@@ -1179,7 +1189,12 @@ wbd_uap_init_fbt_nvram_config(char *prefix)
 	}
 
 	/* [1] If wbd_fbt NVRAM is not defined. Enable the FBT by setting the wbd_fbt */
-	fbt = wbd_is_fbt_possible(prefix);
+	if (!wbd_is_fbt_possible(prefix)) {
+		WBD_RC_PRINT("Prefix[%s] FBT is not possible\n", prefix);
+		goto end;
+	}
+
+	fbt = wbd_nvram_safe_get_int(prefix, WBD_NVRAM_FBT, WBD_FBT_NOT_DEFINED);
 	if (fbt == WBD_FBT_NOT_DEFINED) {
 		WBD_RC_PRINT("Prefix[%s]\n Enabling FBT...", prefix);
 		fbt = wbd_enable_fbt(prefix);
@@ -1476,4 +1491,33 @@ end:
 	}
 
 	return isweak;
+}
+
+int
+disable_map_bh_bss(char *name, char *ifname, int bsscfg_idx)
+{
+	int map, map_mode, macmode, mac_filter=1;
+	char prefix[IFNAMSIZ];
+
+	map_mode = wbd_nvram_safe_get_int(NULL, NVRAM_MAP_MODE, MAP_MODE_FLAG_DISABLED);
+	if (MAP_IS_CONTROLLER(map_mode)) {
+		/* Do not disable backhaul BSS of controller */
+		return 0;
+	}
+
+	wbd_get_prefix(ifname, prefix, sizeof(prefix));
+	map = wbd_nvram_safe_get_int(prefix, NVRAM_MAP, 0);
+	if (!I5_IS_BSS_BACKHAUL(map)) {
+		/* Do not disable if this is not a MAP backhaul BSS */
+		return 0;
+	}
+
+	WBD_RC_PRINT("MAC Block MAP backhaul BSS (%s) till controller is detected\n", ifname);
+	macmode = htod32(WLC_MACMODE_ALLOW);
+	if (wl_ioctl(ifname, WLC_SET_MACMODE, &macmode, sizeof(macmode)) != 0) {
+		WBD_RC_PRINT("%s: WLC_SET_MACMODE failed to set to WLC_MACMODE_ALLOW\n", ifname);
+	}
+	wl_iovar_setint(ifname, "probresp_mac_filter", mac_filter);
+
+	return 0;
 }

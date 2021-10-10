@@ -1,7 +1,7 @@
 /*
  * NPHY NOISE module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_n_noise.c 769388 2018-11-13 10:08:13Z $
+ * $Id: phy_n_noise.c 779613 2019-10-03 12:07:45Z $
  */
 
 #include <phy_cfg.h>
@@ -435,7 +435,7 @@ phy_n_noise_interf_rssi_update(phy_type_noise_ctx_t *ctx, chanspec_t chanspec, i
 {
 	phy_n_noise_info_t *info = (phy_n_noise_info_t *)ctx;
 	phy_info_t *pi = info->pi;
-	if ((CHSPEC_CHANNEL(chanspec) == pi->interf->curr_home_channel)) {
+	if (chanspec == pi->interf->home_chanspec) {
 		pi->u.pi_nphy->intf_rssi_avg = leastRSSI;
 		pi->interf->rssi = leastRSSI;
 	}
@@ -825,7 +825,7 @@ wlc_phy_noisemode_upd(phy_info_t *pi)
 	int8 bphy_desense_delta = 0, ofdm_desense_delta = 0;
 	uint16 glitch_badplcp_sum;
 
-	if (CHSPEC_CHANNEL(pi->radio_chanspec) != pi->interf->curr_home_channel)
+	if (pi->radio_chanspec != pi->interf->home_chanspec)
 		return;
 
 	if (pi->interf->scanroamtimer != 0) {
@@ -1219,7 +1219,7 @@ phy_n_noise_get_srom_level(phy_type_noise_ctx_t *ctx, int32 *ret_int_ptr)
 			/* 2G */
 			noiselvl[core] = pi->noiselvl_2g[core];
 		} else {
-#ifdef BAND5G
+#if BAND5G
 			/* 5G */
 			if (channel <= 48) {
 				/* 5G-low: channels 36 through 48 */

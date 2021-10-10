@@ -83,9 +83,9 @@
 
 .alertpreference{
 	width:650px;
-	height:290px;
+	height:330px;
 	position:absolute;
-	background: rgba(0,0,0,0.8);
+	background: rgba(0,0,0,0.9);
 	z-index:10;
 	margin-left:260px;
 	border-radius:10px;
@@ -1095,12 +1095,18 @@ function shadeHandle(flag){
 						<th><#Notification_Item#></th>
 						<td>
 							<div>
-								<input type="checkbox" class="" id="mal_website_item" value="">
-								<label><#AiProtection_sites_blocking#></label>
-								<input type="checkbox" class="" id="vp_item" value="">
-								<label><#AiProtection_Vulnerability#></label>
-								<input type="checkbox" class="" id="cc_item" value="">
-								<label><#AiProtection_detection_blocking#></label>
+								<div>
+									<input type="checkbox" id="mal_website_item">
+									<span style="color: #FFF;"><#AiProtection_sites_blocking#></span>
+								</div>
+								<div>
+									<input type="checkbox" id="vp_item">
+									<span style="color: #FFF;"><#AiProtection_two-way_IPS#></span>
+								</div>
+								<div>
+									<input type="checkbox" id="cc_item">
+									<span style="color: #FFF;"><#AiProtection_detection_blocking#></span>
+								</div>
 							</div>
 						</td>
 					</tr>
@@ -1195,7 +1201,7 @@ function shadeHandle(flag){
 													<table>
 														<tr>
 															<td>
-																<div style="width:430px"><#AiProtection_desc#></div>
+																<div style="width:430px"><#AiProtection_HomeDesc2#></div>
 																<div style="width:430px">
 																	<a id="faq" style="text-decoration:underline;" href="" target="_blank"><#AiProtection_title#> FAQ</a>
 																</div>
@@ -1219,7 +1225,7 @@ function shadeHandle(flag){
 									<div style="margin:10px;">
 										<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3"  class="FormTable">
 											<tr>
-												<th><#AiProtection_title#></th>
+												<th><#CTL_Enabled#> <#AiProtection_title#></th>
 												<td>
 													<div align="center" class="left" style="width:94px; float:left; cursor:pointer;" id="radio_protection_enable"></div>
 													<div class="iphone_switch_container" style="height:32px; width:74px; position: relative; overflow: hidden">
@@ -1431,7 +1437,7 @@ function shadeHandle(flag){
 											<input class="button_gen" type="button" onclick="show_alert_preference();" value="<#AiProtection_alert_pref#>">
 										</div>
 									</div>
-									<div style="width:135px;height:55px;margin: -10px 0 0 600px;background-image:url('images/New_ui/tm_logo_power.png');"></div>
+									<div style="width:96px;height:44px;margin: 10px 0 0 600px;background-image:url('images/New_ui/TrendMirco_logo.svg');background-size: 100%;"></div>
 								</td>
 							</tr>
 							</tbody>

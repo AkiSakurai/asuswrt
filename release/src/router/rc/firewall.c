@@ -85,7 +85,7 @@ const int allowed_local_icmpv6[] =
 #endif
 
 #ifdef RTCONFIG_VPN_FUSION
-extern int write_vpn_fusion(FILE *fp, const char* lan_ip);
+extern int write_vpn_fusion_nat(FILE *fp, const char* lan_ip);
 #endif
 
 char *mac_conv(char *mac_name, int idx, char *buf);	// oleg patch
@@ -1535,6 +1535,9 @@ void write_port_forwarding(FILE *fp, char *config, char *lan_ip, char *lan_if)
 		}
 	}
 #endif	/* RTCONFIG_MULTIWAN_CFG */
+#if defined(RTAX56_XD4)
+	write_extra_port_forwarding(fp, lan_ip);
+#endif
 }
 
 void nat_setting(char *wan_if, char *wan_ip, char *wanx_if, char *wanx_ip, char *lan_if, char *lan_ip, char *logaccept, char *logdrop)	// oleg patch
@@ -1685,7 +1688,7 @@ void nat_setting(char *wan_if, char *wan_ip, char *wanx_if, char *wanx_ip, char 
 #endif
 
 #ifdef RTCONFIG_VPN_FUSION
-        write_vpn_fusion(fp, lan_ip);
+        write_vpn_fusion_nat(fp, lan_ip);
 #endif
 
 #ifdef RTCONFIG_YANDEXDNS
@@ -1844,7 +1847,7 @@ void nat_setting(char *wan_if, char *wan_ip, char *wanx_if, char *wanx_ip, char 
 	symlink(name, NAT_RULES);
 
 	wan_unit = wan_ifunit(wan_if);
-	if(is_phy_connect(wan_unit)){
+	if(is_phy_connect2(wan_unit)){
 		/* force nat update */
 		nvram_set_int("nat_state", NAT_STATE_UPDATE);
 _dprintf("nat_rule: start_nat_rules 1.\n");
@@ -2334,6 +2337,9 @@ void redirect_setting(void)
 		"-I YADNS 1 -p udp -j DNAT --to-destination %s:18018\n", lan_ipaddr_t);
 #endif
 
+#if defined(RTAX56_XD4)
+	write_extra_port_forwarding(redirect_fp, lan_ipaddr_t);
+#endif
 	fprintf(redirect_fp, "COMMIT\n");
 
 	fclose(redirect_fp);
@@ -2806,7 +2812,7 @@ void write_UrlFilter(char *chain, char *lan_if, char *lan_ip, char *logdrop, FIL
 						continue;
 					}
 
-					snprintf(list2, sizeof(list2), "%s|%02d|%s", list, strlen(p), p);
+					snprintf(list2, sizeof(list2), "%s|%02x|%s", list, strlen(p), p);
 					strlcpy(list, list2, sizeof(list));
 				}
 
@@ -2840,7 +2846,7 @@ void write_UrlFilter(char *chain, char *lan_if, char *lan_ip, char *logdrop, FIL
 							continue;
 						}
 
-						snprintf(list2, sizeof(list2), "%s|%02d|%s", list, strlen(p), p);
+						snprintf(list2, sizeof(list2), "%s|%02x|%s", list, strlen(p), p);
 						strlcpy(list, list2, sizeof(list));
 					}
 
@@ -3187,6 +3193,14 @@ TRACE_PT("writing Parental Control\n");
 #endif
 
 	if (nvram_match("fw_enable_x", "1")) {
+
+#if defined(RTCONFIG_TR069)
+            if(nvram_match("tr_enable", "1")){
+                /*add _cassie_*/
+                fprintf(fp, "-I INPUT -p tcp -m tcp --dport %s -j %s\n", nvram_safe_get("tr_conn_port"), logaccept);
+                fprintf(fp, "-I INPUT -p udp -m udp --dport %s -j %s\n", nvram_safe_get("tr_conn_port"), logaccept);
+            }
+#endif
 		/* Drop ICMP before ESTABLISHED state */
 		if (!nvram_get_int("misc_ping_x")) {
 #ifdef RTCONFIG_IPV6
@@ -5257,7 +5271,7 @@ mangle_setting(char *wan_if, char *wan_ip, char *lan_if, char *lan_ip, char *log
 	}
 #endif
 
-#if defined(RTAC58U) || defined(RTAC88U) || defined(RTAX58U)
+#if defined(RTAC58U) || defined(RTAC88U) || defined(RTAX58U) || defined(RTAX56U)
 	if (nvram_match("switch_wantag", "stuff_fibre")) {
 		eval("iptables", "-t", "mangle", "-A", "POSTROUTING", "-p", "udp", "--dport", "53", "-j", "CLASSIFY", "--set-class", "0:3");
 		eval("iptables", "-t", "mangle", "-A", "POSTROUTING", "-d", "27.111.14.67", "-j", "CLASSIFY", "--set-class", "0:3");

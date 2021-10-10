@@ -1,7 +1,7 @@
 /*
  * txiqlocal module implementation - iovar table/handlers & registration
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -69,6 +69,10 @@ static const bcm_iovar_t phy_txiqlocal_iovars[] = {
 	(IOVF_GET_UP | IOVF_SET_UP | IOVF_MFG), 0, IOVT_BUFFER, 6
 	},
 #endif // endif
+
+#if defined(WLTEST)
+	{"phy_txiqcalidx", IOV_PHY_TXIQCALIDX, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_UINT32, 0},
+#endif // endif
 	{NULL, 0, 0, 0, 0, 0}
 };
 
@@ -109,6 +113,19 @@ phy_txiqlocal_doiovar(void *ctx, uint32 aid,
 	case IOV_SVAL(IOV_PHY_TXLOCC):
 	{
 		phy_txiqlocal_txloccset(pi, p);
+		break;
+	}
+#endif // endif
+
+#if defined(WLTEST)
+	case IOV_GVAL(IOV_PHY_TXIQCALIDX):
+	{
+		err = phy_txiqlocal_get_calidx(pi, (int32 *)a);
+		break;
+	}
+	case IOV_SVAL(IOV_PHY_TXIQCALIDX):
+	{
+		err = phy_txiqlocal_set_calidx(pi, (int32)int_val);
 		break;
 	}
 #endif // endif

@@ -1,7 +1,7 @@
 /*
  * RadarDetect module internal interface (to PHY specific implementation).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_type_radar.h 657811 2016-09-02 17:48:43Z $
+ * $Id: phy_type_radar.h 780019 2019-10-14 08:28:40Z $
  */
 
 #ifndef _phy_type_radar_h_
@@ -72,6 +72,7 @@ typedef uint8 (*phy_type_radar_run_fn_t)(phy_type_radar_ctx_t *ctx,
 typedef int (*phy_type_radar_dump_fn_t)(phy_type_radar_ctx_t *ctx, struct bcmstrbuf *b);
 typedef int (*phy_type_radar_set_thresholds_fn_t)(phy_type_radar_ctx_t *ctx,
 	wl_radar_thr_t *thresholds);
+typedef void (*phy_type_radar_tuning_reset_fn_t)(phy_type_radar_ctx_t *ctx);
 
 typedef struct {
 	phy_type_radar_init_fn_t init;
@@ -80,6 +81,7 @@ typedef struct {
 	phy_type_radar_run_fn_t run;
 	phy_type_radar_ctx_t *ctx;
 	phy_type_radar_set_thresholds_fn_t set_thresholds;
+	phy_type_radar_tuning_reset_fn_t reset;
 } phy_type_radar_fns_t;
 
 /*

@@ -1,7 +1,7 @@
 /*
  * Radio 20709 table definition header file
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -116,12 +116,8 @@ extern const radio_20xx_prefregs_t prefregs_20709_rev0[];
 
 extern int8 BCMATTACHDATA(lna12_gain_tbl_2g_20709r0_ilna)[2][N_LNA12_GAINS];
 extern int8 BCMATTACHDATA(lna12_gain_tbl_5g_20709r0_ilna)[2][N_LNA12_GAINS];
-extern int8 BCMATTACHDATA(lna12_gainbits_tbl_2g_20709r0_ilna)[2][N_LNA12_GAINS];
-extern int8 BCMATTACHDATA(lna12_gainbits_tbl_5g_20709r0_ilna)[2][N_LNA12_GAINS];
 extern int8 BCMATTACHDATA(lna12_gain_tbl_2g_20709r0_elna)[2][N_LNA12_GAINS];
 extern int8 BCMATTACHDATA(lna12_gain_tbl_5g_20709r0_elna)[2][N_LNA12_GAINS];
-extern int8 BCMATTACHDATA(lna12_gainbits_tbl_2g_20709r0_elna)[2][N_LNA12_GAINS];
-extern int8 BCMATTACHDATA(lna12_gainbits_tbl_5g_20709r0_elna)[2][N_LNA12_GAINS];
 extern uint8 BCMATTACHDATA(lna1_rout_map_2g_20709r0)[N_LNA12_GAINS];
 extern uint8 BCMATTACHDATA(lna1_rout_map_5g_20709r0)[N_LNA12_GAINS];
 extern uint8 BCMATTACHDATA(lna1_gain_map_2g_20709r0)[N_LNA12_GAINS];

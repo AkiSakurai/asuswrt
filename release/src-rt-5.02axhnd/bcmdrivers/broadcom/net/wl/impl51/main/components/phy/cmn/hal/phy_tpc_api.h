@@ -1,7 +1,7 @@
 /*
  * TxPowerCtrl module public interface (to MAC driver).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tpc_api.h 773008 2019-03-11 03:17:43Z $
+ * $Id: phy_tpc_api.h 776932 2019-07-13 21:29:21Z $
  */
 
 #ifndef _phy_tpc_api_h_
@@ -128,6 +128,8 @@ void phy_tpc_set_txpwr_cache(wlc_phy_t *ppi, void* cacheptr);
 /* Tx backoff config */
 #define TXPWRBACKOFF_RANGE_LO		0
 #define TXPWRBACKOFF_RANGE_HI		20
+
+void phy_tpc_get_target_max_per_core(wlc_phy_t *ppi, phy_tx_targets_per_core_t *max_per_core);
 
 typedef struct phy_txpwrbackoff_tvpm_info {
 	bool  enable; /* Dynamic txbackoff control */

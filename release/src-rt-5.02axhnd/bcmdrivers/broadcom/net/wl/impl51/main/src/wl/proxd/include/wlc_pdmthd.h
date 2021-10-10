@@ -2,7 +2,7 @@
  * Required functions exported by the wlc_pdrssi.c
  * to common driver code
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: wlc_pdmthd.h 777979 2019-08-19 23:14:13Z $
+ * $Id: wlc_pdmthd.h 777940 2019-08-15 20:25:56Z $
  */
 #ifndef _wlc_pdmthd_h
 #define _wlc_pdmthd_h

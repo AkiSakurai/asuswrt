@@ -1,7 +1,7 @@
 /*
  * ACPHY Calibration Manager module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_calmgr.c 775501 2019-06-02 00:18:19Z $
+ * $Id: phy_ac_calmgr.c 785365 2020-03-23 14:11:48Z $
  */
 
 #include <phy_cfg.h>
@@ -299,6 +299,10 @@ phy_ac_calmgr_wd(phy_type_calmgr_ctx_t *ctx)
 			LAST_CAL_TIME(pi), GLACIAL_TIMER(pi)));
 		wlc_phy_cal_perical((wlc_phy_t *)pi, PHY_PERICAL_WATCHDOG);
 	}
+
+	if (PHY_PAPDEN(pi) && ACMAJORREV_129(pi->pubpi->phy_rev) && !(pi->skip_wdpapd)) {
+		wlc_phy_txpwr_papd_cal_acphy(pi);
+	}
 	return TRUE;
 }
 
@@ -372,7 +376,7 @@ phy_ac_calmgr_init_cals(phy_info_t *pi, uint8 *searchmode, acphy_cal_result_t *a
 
 #ifdef WL_NAP
 	/* Disable napping during cals */
-	if (ACMAJORREV_36(pi->pubpi->phy_rev) || ACMAJORREV_40(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		ci->save_nap_en = READ_PHYREGFLD(pi, NapCtrl, nap_en);
 		phy_ac_nap_enable(pi, FALSE, FALSE);
 	}
@@ -425,6 +429,9 @@ phy_ac_calmgr_init_cals(phy_info_t *pi, uint8 *searchmode, acphy_cal_result_t *a
 		}
 	}
 
+	/* Do all cores PAPD cal at a time */
+	pi->cal_info->cal_core = -1;
+
 #ifdef WFD_PHY_LL_DEBUG
 	ci->cal_phase_id = pi->cal_info->cal_phase_id;
 	ci->start_time = hnd_time_us();
@@ -468,8 +475,6 @@ phy_ac_calmgr_clean(phy_info_t *pi)
 	BCM_REFERENCE(phyrxchain);
 
 	if ((PHY_IPA(pi)) && (ci->tx_pwr_ctrl_state == PHY_TPC_HW_ON) && (!TINY_RADIO(pi)) &&
-		(!ACMAJORREV_36(pi->pubpi->phy_rev)) &&
-		(!ACMAJORREV_44(pi->pubpi->phy_rev)) &&
 		(!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		phyrxchain = phy_stf_get_data(pi->stfi)->phyrxchain;
 		FOREACH_ACTV_CORE(pi, phyrxchain, core) {
@@ -507,7 +512,7 @@ phy_ac_calmgr_clean(phy_info_t *pi)
 
 #ifdef WL_NAP
 	/* Restore nap_en state */
-	if (ACMAJORREV_36(pi->pubpi->phy_rev) || ACMAJORREV_40(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		phy_ac_nap_enable(pi, ci->save_nap_en, FALSE);
 	}
 #endif /* WL_NAP */
@@ -543,7 +548,7 @@ phy_ac_calmgr_singleshot(phy_info_t *pi, uint8 searchmode, acphy_cal_result_t *a
 	/* carry out all phases "en bloc", for comments see the various phases below */
 	uint8 sr_reg[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 	bool nonbf_mode = 0;
-	uint8 extraLOcal_cnt;
+	uint8 multilo_cal_cnt;
 
 #if defined(PHYCAL_CACHING)
 	ch_calcache_t *ctx = wlc_phy_get_chanctx(pi, pi->radio_chanspec);
@@ -559,16 +564,6 @@ phy_ac_calmgr_singleshot(phy_info_t *pi, uint8 searchmode, acphy_cal_result_t *a
 			MOD_RADIO_REG_20691(pi, PLL_XTAL2, 0, xtal_pu_caldrv, 0x1);
 		}
 		wlc_phy_radio_tiny_vcocal(pi);
-	} else if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		bool need_refresh = (phy_ac_radio_get_data(pi->u.pi_acphy->radioi)->pll_sel
-				== PLL_2G) ? READ_RADIO_REGFLD_28NM(pi, RFP, PLL_CFGR1, 0,
-				rfpll_monitor_need_refresh) :
-				READ_RADIO_REGFLD_28NM(pi, RFP, PLL5G_CFGR1, 0,
-				rfpll_5g_monitor_need_refresh);
-		if (need_refresh) {
-			wlc_phy_28nm_radio_vcocal(pi, VCO_CAL_MODE_20695,
-					VCO_CAL_COUPLING_MODE_20695);
-		}
 	}
 
 	/* turn off VCO Calibration clock */
@@ -579,23 +574,20 @@ phy_ac_calmgr_singleshot(phy_info_t *pi, uint8 searchmode, acphy_cal_result_t *a
 
 	if ((ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) ||
 		!ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
-
 		wlc_phy_cal_txiqlo_acphy(pi, searchmode, FALSE, FALSE, 0);
-		if (phy_txiqlocal_extra_local(pi) != 0) {
-			/* lopwr TX-CAL */
-			/* phy_txiqlocal_extra_local returns number of extra LO cals */
-			for (extraLOcal_cnt = 1;
-				extraLOcal_cnt < (phy_txiqlocal_extra_local(pi) + 1);
-				extraLOcal_cnt++) {
-				/* for each extra LO cal, searchmode = PHY_CAL_SEARCHMODE_LOPWR */
-				wlc_phy_cal_txiqlo_acphy(pi, PHY_CAL_SEARCHMODE_LOPWR,
-						FALSE, FALSE, extraLOcal_cnt);
+		if (phy_txiqlocal_num_multilo(pi) != 0) {
+			/* multi-point LO cal */
+			/* phy_txiqlocal_num_multilo returns number of multi-point LO cals */
+			for (multilo_cal_cnt = 1;
+				multilo_cal_cnt <= phy_txiqlocal_num_multilo(pi);
+				multilo_cal_cnt++) {
+				/* for each multi-point LO cal, searchmode =
+				 * PHY_CAL_SEARCHMODE_MULTILO
+				 */
+				wlc_phy_cal_txiqlo_acphy(pi, PHY_CAL_SEARCHMODE_MULTILO,
+						FALSE, FALSE, multilo_cal_cnt);
 			}
 		}
-	}
-
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		phy_ac_dccal(pi);
 	}
 
 	/* XXX 4349BU XXX
@@ -623,11 +615,7 @@ phy_ac_calmgr_singleshot(phy_info_t *pi, uint8 searchmode, acphy_cal_result_t *a
 		phy_ac_dccal(pi);
 	}
 
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		wlc_phy_btcx_override_enable(pi);
-		wlc_phy_cal_rx_fdiqi_acphy(pi);
-		wlc_phy_btcx_override_disable(pi);
-	} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		phy_ac_dccal_init(pi);
 		phy_ac_load_gmap_tbl(pi);
 
@@ -639,7 +627,7 @@ phy_ac_calmgr_singleshot(phy_info_t *pi, uint8 searchmode, acphy_cal_result_t *a
 		if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 			nonbf_mode = phy_ac_chanmgr_get_val_nonbf_logen_mode(
 					pi->u.pi_acphy->chanmgri);
-			if (!nonbf_mode && CHSPEC_IS5G(pi->radio_chanspec)) {
+			if (!nonbf_mode && CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 				wlc_phy_turnon_rxlogen_20694(pi, sr_reg);
 			}
 		}
@@ -647,13 +635,9 @@ phy_ac_calmgr_singleshot(phy_info_t *pi, uint8 searchmode, acphy_cal_result_t *a
 		wlc_phy_cal_txiqlo_acphy(pi, searchmode, FALSE, FALSE, 0);
 
 		wlc_phy_cal_rx_fdiqi_acphy(pi);
-		/* 2G NB PAPD CAL */
-		if (ACMAJORREV_44(pi->pubpi->phy_rev) && PHY_PAPDEN(pi) &&
-			CHSPEC_IS2G(pi->radio_chanspec)) {
-			wlc_phy_do_papd_cal_acphy(pi);
-		}
+
 		if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
-			if (!nonbf_mode && CHSPEC_IS5G(pi->radio_chanspec)) {
+			if (!nonbf_mode && CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 				wlc_phy_turnoff_rxlogen_20694(pi, sr_reg);
 				wlc_phy_cal_txiqlo_acphy(pi, searchmode, FALSE, FALSE, 0);
 			}
@@ -677,7 +661,7 @@ phy_ac_calmgr_singleshot(phy_info_t *pi, uint8 searchmode, acphy_cal_result_t *a
 
 		/* 2G NB PAPD CAL */
 		if (PHY_PAPDEN(pi)) {
-			wlc_phy_do_papd_cal_acphy(pi);
+			wlc_phy_do_papd_cal_acphy(pi, -1);
 		}
 		if (pi->u.pi_acphy->sromi->srom_low_adc_rate_en) {
 			wlc_phy_low_rate_adc_enable_acphy(pi, TRUE);
@@ -695,11 +679,12 @@ phy_ac_calmgr_singleshot(phy_info_t *pi, uint8 searchmode, acphy_cal_result_t *a
 			phy_ac_dssf(pi->u.pi_acphy->rxspuri, TRUE);
 		}
 		if (PHY_PAPDEN(pi)) {
-			wlc_phy_do_papd_cal_acphy(pi);
+			wlc_phy_do_papd_cal_acphy(pi, -1);
 		}
 	}
 	if (PHY_PAPDEN(pi) && ACMAJORREV_51_129(pi->pubpi->phy_rev)) {
-			wlc_phy_do_papd_cal_acphy(pi);
+		wlc_phy_do_papd_cal_acphy(pi, -1);
+		pi->skip_wdpapd = FALSE;
 	}
 
 #if defined(PHYCAL_CACHING)
@@ -779,12 +764,11 @@ phy_ac_calmgr_multiphase(phy_info_t *pi, uint8 phase_id, uint8 searchmode)
 
 	phy_ac_calmgr_info_t *ci = pi->u.pi_acphy->calmgri;
 	multiphase_caltimes_t *cal_times = &ci->cal_times;
+	uint8 multilo_cal_cnt;
 
 #if defined(PHYCAL_CACHING)
 	ch_calcache_t *ctx = wlc_phy_get_chanctx(pi, pi->radio_chanspec);
 #endif // endif
-
-	if (ACMAJORREV_129(pi->pubpi->phy_rev)) return;
 
 	PHY_CAL(("phy_ac_calmgr_multiphase\n"));
 
@@ -814,10 +798,16 @@ phy_ac_calmgr_multiphase(phy_info_t *pi, uint8 phase_id, uint8 searchmode)
 		phy_ac_txiqlocal_multiphase(pi, searchmode, FALSE, cal_times->tx, 0);
 		break;
 
-	case PHY_CAL_PHASE_TX_LOPWR:
-		if ((phy_txiqlocal_extra_local(pi) != 0) && (!ACMAJORREV_129(pi->pubpi->phy_rev))) {
-			phy_ac_txiqlocal_multiphase(pi, PHY_CAL_SEARCHMODE_LOPWR, 0,
-				cal_times->tx, 1);
+	case PHY_CAL_PHASE_TX_MULTILO:
+		if ((phy_txiqlocal_num_multilo(pi) != 0)) {
+			/* phy_txiqlocal_num_multilo returns number of multi-point LO cals */
+			for (multilo_cal_cnt = 1;
+				multilo_cal_cnt <= phy_txiqlocal_num_multilo(pi);
+				multilo_cal_cnt++) {
+				wlc_phy_cal_txiqlo_acphy(pi, PHY_CAL_SEARCHMODE_MULTILO,
+						FALSE, FALSE, multilo_cal_cnt);
+			}
+			pi->cal_info->cal_phase_id++;
 			break;
 		} else {
 			pi->cal_info->cal_phase_id++;
@@ -833,7 +823,19 @@ phy_ac_calmgr_multiphase(phy_info_t *pi, uint8 phase_id, uint8 searchmode)
 		break;
 
 	case PHY_CAL_PHASE_PAPDCAL:
-		phy_ac_papdcal_multiphase(pi);
+		if (pi->cal_info->cal_core == -1) {
+			/* do PAPD cal for all cores in one phase */
+			phy_ac_papdcal_multiphase(pi, -1);
+		} else if ((pi->cal_info->cal_core >= 0) &&
+				(pi->cal_info->cal_core < PHYCORENUM((pi)->pubpi->phy_corenum))) {
+			phy_ac_papdcal_multiphase(pi, pi->cal_info->cal_core);
+			if (pi->cal_info->cal_core == PHYCORENUM((pi)->pubpi->phy_corenum)-1) {
+				pi->cal_info->cal_core = 0;
+			} else {
+				pi->cal_info->cal_core++;
+			}
+		}
+		pi->skip_wdpapd = FALSE;
 		break;
 
 	default:
@@ -959,6 +961,13 @@ wlc_phy_cals_acphy(phy_type_calmgr_ctx_t *ctx, uint8 legacy_caltype, uint8 searc
 	 */
 	phy_ac_calmgr_clean(pi);
 
+	if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+		/* After cal cleanup, with final radio config and with c2c_sync re-enabled,
+		 * re-calibrate DC (BCAWLAN-214876)
+		 */
+		phy_ac_dccal(pi);
+	}
+
 	if (pi->pubpi->phy_rev >= 47) {
 		phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, FALSE);
 	}
@@ -1013,7 +1022,7 @@ wlc_phy_low_rate_adc_enable_acphy(phy_info_t *pi, bool enable)
 	if (ACMAJORREV_129(pi->pubpi->phy_rev) && 0) {
 		mode = enable ? pi->u.pi_acphy->sromi->srom_low_adc_rate_en : 0;
 	    phy_ac_chanmgr_low_rate_tssi_rfseq_fiforst_dly(pi, enable);
-		wlc_phy_set_rfseqext_tbl_majrev47(pi, mode);
+		wlc_phy_set_rfseqext_tbl(pi, mode);
 	}
 }
 

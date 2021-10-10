@@ -548,6 +548,8 @@ var amesh_wgn_support = isSupport("amas_wgn");
 var ifttt_support = isSupport("ifttt");
 var alexa_support = isSupport("alexa");
 var hnd_support = isSupport("hnd");
+var pipefw_support = isSupport("pipefw");
+var urlfw_support = isSupport("urlfw");
 var tagged_based_vlan = isSupport("tagged_based_vlan");
 var vpn_fusion_support = isSupport("vpn_fusion");
 var cfg_sync_support = isSupport("cfg_sync");
@@ -556,7 +558,7 @@ var movistarTriple_support = isSupport("movistarTriple");
 var utf8_ssid_support = isSupport("utf8_ssid");
 var wpa3_support = isSupport('wpa3');
 var uu_support = isSupport('uu_accel');
-
+var gameMode_support = isSupport('gameMode');
 var QISWIZARD = "QIS_wizard.htm";
 
 var wl_version = "<% nvram_get("wl_version"); %>";
@@ -568,10 +570,20 @@ var sdk_5 = sdk_version_array[0] == 5 ? true : false;
 var bcm_mumimo_support = isSupport("mumimo");		//Broadcom MU-MIMOs
 var he_frame_support = isSupport("11AX");
 var ofdma_support = isSupport("ofdma");
+var mbo_support = (function(){
+	var wl_unit = '<% nvram_get("wl_unit"); %>';
+	if(based_modelid == 'RT-AX92U' && (wl_unit == '0' || wl_unit == '1')){
+		return false;
+	}	
+	else{
+		return (isSupport("mbo") == "1") ? true : false;
+	}
+})();
 var nt_center_support = isSupport("nt_center");
 var dblog_support = isSupport("dblog");
 var wan_bonding_support = isSupport("wanbonding");
 var geforceNow_support = isSupport("nvgfn");
+var tencent_qmacc_support = isSupport("tencent_qmacc");
 
 var amazon_wss_support = isSupport("amazon_wss");
 if(nt_center_support)
@@ -677,6 +689,8 @@ var external_ip = 0;
 
 var link_internet = '<% nvram_get("link_internet"); %>';
 var le_restart_httpd_chk = "";
+
+var ui_lang = '<% nvram_get("preferred_lang"); %>';
 
 if(lyra_hide_support){
 	var Android_app_link = "https://play.google.com/store/apps/details?id=com.asus.hive";
@@ -881,7 +895,7 @@ function show_banner(L3){// L3 = The third Level of Menu
 		//Play Store
 		banner_code +='<div style="padding:20px 10px;">';
 		banner_code +='<div style="display:table-cell;vertical-align:middle;padding-left:10px;">';
-		if(is_CN){
+		if(is_CN || ui_lang == "CN"){
 			banner_code +='<div><img src="images/New_ui/asus_router_android_qr_cn.png" style="width:75px;height:75px;"></div>';
 		}
 		else{
@@ -890,12 +904,12 @@ function show_banner(L3){// L3 = The third Level of Menu
 
 		banner_code +='</div>';
 		banner_code +='<div style="display:table-cell;vertical-align:middle;width:100%;text-align:center">';
-		if(is_CN){
+		if(is_CN || ui_lang == "CN"){
 			Android_app_link = "https://dlcdnets.asus.com/pub/ASUS/LiveUpdate/Release/Wireless/ASUSRouter_Android_Release.apk";
-			banner_code +='<div style="padding-left: 30px;"><a href="'+Android_app_link+'" target="_blank"><div style="width:172px;font-size:24px;border:1px solid #BDBDBD;padding: 10px 4px;border-radius: 6px;">Android App</div></a></div>';
+			banner_code +='<div style="padding-left: 30px;"><a href="'+Android_app_link+'" target="_blank"><div style="width:160px;font-size:24px;border:1px solid #BDBDBD;padding: 10px 4px;border-radius: 6px;margin: auto;">Android App</div></a></div>';
 		}
 		else{
-			banner_code +='<div style="padding-left: 30px;"><a href="'+Android_app_link+'" target="_blank"><div style="width:172px;height:60px;background:url(\'images/googleplay.png\') no-repeat;"></div></a></div>';
+			banner_code +='<div style="padding-left: 30px;"><a href="'+Android_app_link+'" target="_blank"><div style="width:160px;height:46px;background:url(\'images/googleplay.png\') no-repeat;background-size:100%;margin:auto;"></div></a></div>';
 		}
 		
 		banner_code +='</div>';	
@@ -906,7 +920,7 @@ function show_banner(L3){// L3 = The third Level of Menu
 		banner_code +='<div><img src="images/New_ui/asus_router_ios_qr.png" style="width:75px;height:75px;"></div>';
 		banner_code +='</div>';
 		banner_code +='<div style="display:table-cell;vertical-align:middle;width:100%;text-align:center">';
-		banner_code +='<div style="padding-left: 30px;"><a href="'+IOS_app_link+'" target="_blank"><div style="width:172px;height:51px;background:url(\'images/AppStore.png\') no-repeat;"></div></a></div>';
+		banner_code +='<div style="padding-left: 30px;"><a href="'+IOS_app_link+'" target="_blank"><div style="width:160px;height:46px;background:url(\'images/AppStore.png\') no-repeat;background-size:100%;margin:auto;"></div></a></div>';
 		banner_code +='</div>';	
 		banner_code +='</div>';
 		
@@ -1462,6 +1476,9 @@ function showMenuTree(menuList, menuExclude){
 			}
 			else if(isSupport("amazon_avs") && current_url.indexOf("Advanced_Smart_Home_Alexa") >= 0 && tableHeight < 890){
 				document.getElementById("FormTitle").style.height = "890px";
+			}
+			else if(current_url.indexOf("GameBoost.asp") != -1){
+				document.getElementById("FormTitle").style.height = "auto";
 			}
 			else{
 				document.getElementById("FormTitle").style.height = tableHeight - CONTENT_PADDING + "px";
@@ -2461,14 +2478,24 @@ function refreshStatus(xhr){
 	
 	//Adaptive QoS mode	
 	if(bwdpi_support && qos_enable_flag && qos_type_flag == "1"){
-		if(bwdpi_app_rulelist == "9,20<8<4<0,5,6,15,17<13,24<1,3,14<7,10,11,21,23<<game")
-			document.getElementById("bwdpi_status").className = "bwdpistatus_game";			
-		else if(bwdpi_app_rulelist == "9,20<4<0,5,6,15,17<8<13,24<1,3,14<7,10,11,21,23<<media")
+		if(bwdpi_app_rulelist.indexOf('game') != -1){
+			document.getElementById("bwdpi_status").className = "bwdpistatus_game";
+		}	
+		else if(bwdpi_app_rulelist.indexOf('media') != -1){
 			document.getElementById("bwdpi_status").className = "bwdpistatus_media";
-		else if(bwdpi_app_rulelist == "9,20<13,24<4<0,5,6,15,17<8<1,3,14<7,10,11,21,23<<web")
+		}
+		else if(bwdpi_app_rulelist.indexOf('web') != -1){
 			document.getElementById("bwdpi_status").className = "bwdpistatus_web";
-		else
-			document.getElementById("bwdpi_status").className = "bwdpistatus_customize";			
+		}
+		else if(bwdpi_app_rulelist.indexOf('eLearning') != -1){
+			document.getElementById("bwdpi_status").className = "bwdpistatus_eLearning";
+		}
+		else if(bwdpi_app_rulelist.indexOf('videoConference') != -1){
+			document.getElementById("bwdpi_status").className = "bwdpistatus_videoConference";
+		}
+		else{
+			document.getElementById("bwdpi_status").className = "bwdpistatus_customize";
+		}		
 		
 		document.getElementById("bwdpi_status").onclick = function(){openHint(24,9);}
 		document.getElementById("bwdpi_status").onmouseover = function(){overHint("A");}

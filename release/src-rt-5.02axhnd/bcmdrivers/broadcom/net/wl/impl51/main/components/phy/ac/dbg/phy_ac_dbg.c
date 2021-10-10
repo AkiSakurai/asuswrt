@@ -1,7 +1,7 @@
 /*
  * ACPHY Debug modules implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_dbg.c 766954 2018-08-22 18:47:13Z $
+ * $Id: phy_ac_dbg.c 778608 2019-09-05 16:50:19Z $
  */
 
 #include <phy_cfg.h>
@@ -278,10 +278,12 @@ phy_ac_dbg_gpio_out_enab(phy_type_dbg_ctx_t *ctx, bool enab)
 	phy_info_t *pi = di->pi;
 
 	if (D11REV_LT(pi->sh->corerev, 50)) {
-		W_REG(pi->sh->osh, D11_PHY_REG_ADDR(pi), ACPHY_gpioLoOutEn(pi->pubpi->phy_rev));
-		W_REG(pi->sh->osh, D11_PHY_REG_DATA(pi), 0);
-		W_REG(pi->sh->osh, D11_PHY_REG_ADDR(pi), ACPHY_gpioHiOutEn(pi->pubpi->phy_rev));
-		W_REG(pi->sh->osh, D11_PHY_REG_DATA(pi), 0);
+		W_REG(pi->sh->osh, D11_PHY_REG_ADDR(pi),
+		    (uint16)ACPHY_gpioLoOutEn(pi->pubpi->phy_rev));
+		W_REG(pi->sh->osh, D11_PHY_REG_DATA(pi), (uint16)0);
+		W_REG(pi->sh->osh, D11_PHY_REG_ADDR(pi),
+		    (uint16)ACPHY_gpioHiOutEn(pi->pubpi->phy_rev));
+		W_REG(pi->sh->osh, D11_PHY_REG_DATA(pi), (uint16)0);
 	}
 }
 #endif // endif

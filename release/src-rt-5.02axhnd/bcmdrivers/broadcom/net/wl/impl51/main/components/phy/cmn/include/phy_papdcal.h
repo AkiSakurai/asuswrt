@@ -1,7 +1,7 @@
 /*
  * PAPD CAL module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_papdcal.h 773285 2019-03-16 00:12:14Z $
+ * $Id: phy_papdcal.h 780340 2019-10-22 18:55:57Z $
  */
 
 #ifndef _phy_papdcal_h_
@@ -84,7 +84,16 @@ void phy_papdcal_epa_dpd_set(phy_info_t *pi, uint8 enab_epa_dpd, bool in_2g_band
 #if defined(WLTEST)
 int phy_papdcal_get_lut_idx0(phy_info_t *pi, int32* idx);
 int phy_papdcal_get_lut_idx1(phy_info_t *pi, int32* idx);
+int phy_papdcal_get_idx(phy_info_t *pi, int32* idx);
 int phy_papdcal_set_idx(phy_info_t *pi, int8 idx);
+int phy_papdcal_get_bbmult(phy_info_t *pi, int32* bbmult);
+int phy_papdcal_set_bbmult(phy_info_t *pi, int32 bbmult);
+int phy_papdcal_get_extraepsoffset(phy_info_t *pi, int32* extraepsoffset);
+int phy_papdcal_set_extraepsoffset(phy_info_t *pi, int32 extraepsoffset);
+int phy_papdcal_get_tiagain(phy_info_t *pi, int32* tiagain);
+int phy_papdcal_set_tiagain(phy_info_t *pi, int8 tiagain);
+int phy_papdcal_get_comp_disable(phy_info_t *pi, int32* comp_disable);
+int phy_papdcal_set_comp_disable(phy_info_t *pi, int8 comp_disable);
 #endif // endif
 #if defined(WLTEST) || defined(DBG_PHY_IOV) || defined(WFD_PHY_LL_DEBUG)
 #ifndef ATE_BUILD

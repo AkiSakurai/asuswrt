@@ -33,27 +33,13 @@
 #endif
 #include <rtconfig.h>
 
-/* DEBUG DEFINE */
-#define HTTPD_DEBUG             "/tmp/HTTPD_DEBUG"
-#if (defined(RTCONFIG_JFFS2) || defined(RTCONFIG_JFFSV1) || defined(RTCONFIG_BRCM_NAND_JFFS2) || defined(RTCONFIG_UBIFS))
-#define HTTPD_DEBUG_FILE                "/jffs/HTTPD_DEBUG.log"
-#else
-#define HTTPD_DEBUG_FILE                  "/tmp/HTTPD_DEBUG.log"
-#endif
-
-/* DEBUG FUNCTION */
-extern void Debug2File(const char *path, const char *fmt, ...);
-#define HTTPD_DBG(fmt, args...) ({ \
-	int save_errno = errno; \
-	if (f_exists(HTTPD_DEBUG) > 0 || nvram_get_int("HTTPD_DBG") > 0) \
-		Debug2File(HTTPD_DEBUG_FILE, "[%s:(%d)]: "fmt, __FUNCTION__, __LINE__, ##args); \
-	errno = save_errno; \
-})
-
 /* Basic authorization userid and passwd limit */
 #define AUTH_MAX 64
 
 #define DEFAULT_LOGIN_MAX_NUM	5
+
+/* Limit of login failure. If the number of login failure excceds this limit, captcha will show. */
+#define CAPTCHA_MAX_LOGIN_NUM   2
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
@@ -161,6 +147,9 @@ struct REPLACE_PRODUCTID_S {
 #define LOGINLOCK	7
 #define ISLOGOUT	8
 #define NOLOGIN		9
+#ifdef RTCONFIG_CAPTCHA
+#define WRONGCAPTCHA   10
+#endif
 
 #define LOCKTIME 60*5
 
@@ -188,6 +177,27 @@ struct REPLACE_PRODUCTID_S {
 #else
 #define NMP_CL_JSON_FILE                "/tmp/nmp_cl_json.js"
 #endif
+
+enum {
+	HTTP_OK = 200,
+	HTTP_FAIL = 400,
+	HTTP_RULE_ADD_SUCCESS = 2001,
+	HTTP_RULE_DEL_SUCCESS,
+	HTTP_NORULE_DEL,
+	HTTP_OVER_MAX_RULE_LIMIT = 4000,
+	HTTP_INVALID_ACTION,
+	HTTP_INVALID_MAC,
+	HTTP_INVALID_ENABLE_OPT,
+	HTTP_INVALID_NAME,
+	HTTP_INVALID_EMAIL,
+	HTTP_INVALID_INPUT,
+	HTTP_INVALID_IPADDR,
+	HTTP_INVALID_TS,
+	HTTP_INVALID_FILE,
+        HTTP_INVALID_SUPPORT,
+	HTTP_SHMGET_FAIL = 5000,
+	HTTP_FB_SVR_FAIL
+};
 
 /* Exception MIME handler */
 struct except_mime_handler {
@@ -304,6 +314,7 @@ typedef char char_t;
 #define websDefaultHandler(wp, urlPrefix, webDir, arg, url, path, query) ({ do_ej(path, wp); fflush(wp); 1; })
 #define websWriteData(wp, buf, nChars) ({ int TMPVAR = fwrite(buf, 1, nChars, wp); fflush(wp); TMPVAR; })
 #define websWriteDataNonBlock websWriteData
+#define nvram_default_safe_get(name) (nvram_default_get(name) ? : "")
 
 extern int ejArgs(int argc, char_t **argv, char_t *fmt, ...);
 
@@ -318,6 +329,13 @@ extern struct ej_handler ej_handlers[];
 #define MAX_LOGIN_BLOCK_TIME	300
 #define LOCK_LOGIN_LAN 	0x01
 #define LOCK_LOGIN_WAN 	0x02
+
+#ifdef RTAX82U
+enum {
+        LEDG_QIS_RUN = 1,
+        LEDG_QIS_FINISH
+};
+#endif
 
 #ifdef vxworks
 #define fopen(path, mode)	tar_fopen((path), (mode))
@@ -358,7 +376,7 @@ extern void set_cgi(char *name, char *value);
 /* httpd.c */
 extern int json_support;
 extern int amas_support;
-extern void start_ssl(void);
+extern void start_ssl(int http_port);
 extern char *gethost(void);
 extern void http_logout(unsigned int ip, char *cookies, int fromapp_flag);
 extern int is_auth(void);
@@ -393,6 +411,7 @@ extern char* reverse_str( char *str );
 #ifdef RTCONFIG_AMAS
 extern int check_AiMesh_whitelist(char *page);
 #endif
+extern int check_cmd_injection_blacklist(char *para);
 
 /* web-*.c */
 extern int ej_wl_status(int eid, webs_t wp, int argc, char_t **argv, int unit);
@@ -469,5 +488,11 @@ extern void do_dfb_log_file(char *url, FILE *stream);
 extern void do_set_fw_path_cgi(char *url, FILE *stream);
 #if defined(RTCONFIG_AMAZON_WSS)
 extern void amazon_wss_enable(char *wss_enable, char *do_rc);
+#endif
+#ifdef RTCONFIG_CAPTCHA
+extern int is_captcha_match(char *catpch);
+#endif
+#ifdef RTAX82U
+extern void switch_ledg(int action);
 #endif
 #endif /* _httpd_h_ */

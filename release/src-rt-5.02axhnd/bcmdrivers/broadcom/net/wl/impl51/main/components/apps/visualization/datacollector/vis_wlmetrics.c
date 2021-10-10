@@ -1,7 +1,7 @@
 /*
  * metric tab  statistics for visualization tool
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: vis_wlmetrics.c 660350 2016-09-20 07:37:40Z $
+ * $Id: vis_wlmetrics.c 776856 2019-07-11 15:18:09Z $
  */
 
 #ifdef WIN32
@@ -273,19 +273,19 @@ wl_txq_prec_dump(wl_iov_pktq_log_t* iov_pktq_log, bool is_aqm, int i,
 	uint32 totacked = 0;
 	float tottput = 0.00, totphyrate = 0.00;
 
-	#define PREC_DUMPV(v4, v5)  ((iov_pktq_log->version == 4) ? (v4) : (v5))
+	#define PREC_DUMPV(v6, v5)  ((iov_pktq_log->version == 6) ? (v6) : (v5))
 
 	uint8  index;
 	uint8  prec;
 	uint32 prec_mask = 0;
 	pktq_log_format_v05_t* logv05 = NULL;
-	pktq_log_format_v04_t* logv04 = NULL;
+	pktq_log_format_v06_t* logv06 = NULL;
 	uint32 num_prec = 0;
 
-	if (iov_pktq_log->version == 0x04) {
-		logv04 = &iov_pktq_log->pktq_log.v04;
-	} else if (iov_pktq_log->version == 0x05) {
+	if (iov_pktq_log->version == 0x05) {
 		logv05 = &iov_pktq_log->pktq_log.v05;
+	} else if (iov_pktq_log->version == 0x06) {
+		logv06 = &iov_pktq_log->pktq_log.v06;
 	} else {
 		VIS_METRICS("Unknown/unsupported binary format (%x)\n",
 		        iov_pktq_log->version);
@@ -294,8 +294,8 @@ wl_txq_prec_dump(wl_iov_pktq_log_t* iov_pktq_log, bool is_aqm, int i,
 
 	index = 0;
 
-	prec_mask = PREC_DUMPV(logv04->counter_info[index], logv05->counter_info[index]);
-	num_prec = PREC_DUMPV(logv04->num_prec[index], logv05->num_prec[index]);
+	prec_mask = PREC_DUMPV(logv06->counter_info[index], logv05->counter_info[index]);
+	num_prec = PREC_DUMPV(logv06->num_prec[index], logv05->num_prec[index]);
 
 	/* Note that this is zero if the data is invalid */
 	if (!num_prec) {
@@ -309,22 +309,39 @@ wl_txq_prec_dump(wl_iov_pktq_log_t* iov_pktq_log, bool is_aqm, int i,
 	for (prec = 0; prec < num_prec; prec++) {
 		float tput = 0.0;
 		float txrate_succ = 0.0;
-		pktq_log_counters_v05_t counters;
+		pktq_log_counters_v06_t counters;
 
 		if (!(prec_mask & (1 << prec))) {
 			continue;
 		}
 
-		if (iov_pktq_log->version == 5) {
-			counters = logv05->counters[index][prec];
+		memset(&counters, 0, sizeof(counters));
+
+		if (iov_pktq_log->version == 6) {
+			counters = logv06->counters[index].pktq[prec];
+		} else if (iov_pktq_log->version == 5) {
+			/* read back from v05 structure, fill in equivalent into v06 data struct */
+#define PREC_COUNT_COPY(a, b, c)   a.c = b->counters[index][prec].c
+
+			PREC_COUNT_COPY(counters, logv05, airtime);
+			PREC_COUNT_COPY(counters, logv05, requested);
+			PREC_COUNT_COPY(counters, logv05, stored);
+			PREC_COUNT_COPY(counters, logv05, dropped);
+			PREC_COUNT_COPY(counters, logv05, busy);
+			PREC_COUNT_COPY(counters, logv05, retry);
+			PREC_COUNT_COPY(counters, logv05, ps_retry);
+			PREC_COUNT_COPY(counters, logv05, suppress);
+			PREC_COUNT_COPY(counters, logv05, retry_drop);
+			PREC_COUNT_COPY(counters, logv05, max_used);
+			PREC_COUNT_COPY(counters, logv05, queue_capacity);
+			PREC_COUNT_COPY(counters, logv05, rtsfail);
+			PREC_COUNT_COPY(counters, logv05, acked);
+			PREC_COUNT_COPY(counters, logv05, txrate_succ);
+			PREC_COUNT_COPY(counters, logv05, txrate_main);
+			PREC_COUNT_COPY(counters, logv05, throughput);
+			PREC_COUNT_COPY(counters, logv05, time_delta);
 		} else {
-			/* the following is a trick - it is possible because
-			 * V4 and V5 are both common except that V5 has extra fields
-			 * at the end
-			*/
-			memcpy(&counters, &logv04->counters[index][prec],
-				sizeof(pktq_log_counters_v04_t));
-			counters.airtime = 0;
+			return -1;
 		}
 
 		txrate_succ = (float)counters.txrate_succ * 0.5;
@@ -343,22 +360,6 @@ wl_txq_prec_dump(wl_iov_pktq_log_t* iov_pktq_log, bool is_aqm, int i,
 		if (!(is_aqm && (prec & 1))) {
 			uint32 acked = counters.acked;
 
-			if (is_aqm && (prec_mask & (1 << (prec + 1)))) {
-				pktq_log_counters_v05_t hi;
-
-				if (iov_pktq_log->version == 5) {
-					hi = logv05->counters[index][prec + 1];
-				} else {
-					/* the following is a trick - it is possible
-					 * fields V4 and V5 are both common except
-					 * that V5 has extra fields at the end
-					 */
-					memcpy(&hi, &logv04->counters[index][prec + 1],
-						sizeof(pktq_log_counters_v04_t));
-				}
-
-				acked += hi.acked;
-			}
 			if (acked) {
 				txrate_succ /= (float) acked;
 			} else {
@@ -422,9 +423,10 @@ wl_get_pktq_stats(void *wl, assoc_sta_list_t **stas_listout, int i)
 	int ret;
 	char addrType[2] = {"A"};
 
-	wl_iov_mac_params_t*  params = (wl_iov_mac_params_t*)g_vis_cmdoutbuf;
+	wl_iov_mac_full_params_t*  full = (wl_iov_mac_full_params_t*)g_vis_cmdoutbuf;
+	wl_iov_mac_params_t*  params = &full->params;
 
-	memset(params, 0, sizeof(*params));
+	memset(full, 0, sizeof(*full));
 
 	/* is there a prefix character? */
 	params->addr_type[params->num_addrs] = toupper((int)(addrType[0]));
@@ -435,14 +437,20 @@ wl_get_pktq_stats(void *wl, assoc_sta_list_t **stas_listout, int i)
 	/* the prefix C: denotes no given MAC address (to refer to "common") */
 	if (((params->addr_type[params->num_addrs] & 0x7F) == 'C') ||
 		wl_ether_atoe((*stas_listout)->sta[i].mac, &params->ea[params->num_addrs])) {
+
+		full->extra_params.addr_info[params->num_addrs] = (0xFFFF | PKTQ_LOG_DEF_PREC);
+
 		params->num_addrs ++;
 	} else {
 		params->addr_type[params->num_addrs] = 0;
 		VIS_METRICS("Bad parameter '%s'\n", (*stas_listout)->sta[i].mac);
 	}
 
-	if ((ret = wlu_iovar_getbuf(wl, "pktq_stats", params,
-			sizeof(*params), g_vis_cmdoutbuf, WLC_IOCTL_MAXLEN)) < 0) {
+	/* set version number of param block */
+	params->num_addrs |= (4 << 8);
+
+	if ((ret = wlu_iovar_getbuf(wl, "pktq_stats", full,
+			sizeof(*full), g_vis_cmdoutbuf, WLC_IOCTL_MAXLEN)) < 0) {
 		VIS_METRICS("Error getting pktq_stats\n");
 		return ret;
 	}

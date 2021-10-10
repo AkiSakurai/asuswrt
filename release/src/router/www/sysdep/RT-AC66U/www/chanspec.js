@@ -49,20 +49,14 @@ if(band5g_support){
 		return false;
 	})();
 	wl_info['1'].bw_160_support = (function(){
-		if(based_modelid == 'RT-AX92U'|| based_modelid == 'RT-AX95Q' || based_modelid == 'RT-AX56U'){
-			return false;
+		var count = 0;
+		for(i=0;i<_chanspecs_5g.length;i++){
+			if(_chanspecs_5g[i].indexOf('/160') != -1){
+				count++;
+			}
 		}
-		else if(based_modelid == 'GT-AC2900'){
-			return (country == 'JP') ? false : true;
-		}
-		else if(based_modelid == 'RT-AX58U' || based_modelid == 'TUF-AX3000'){		// special case, added temporary
-			 return (_chanspecs_5g.indexOf('56') != -1 || _chanspecs_5g.indexOf('100') != -1) ? true : false;
-		}
-		else if(band5g_11ax_support){
-			return true;
-		}
-
-		return false;
+		
+		return (count != 0) ? true : false;
 	})();
 }
 
@@ -111,7 +105,14 @@ if(wl_info.band5g_2_support){
 		return false;
 	})();
 	wl_info['2'].bw_160_support = (function(){
-		return band5g_11ax_support ? true : false;
+		var count = 0;
+		for(i=0;i<_chanspecs_5g_2.length;i++){
+			if(_chanspecs_5g_2[i].indexOf('/160') != -1){
+				count++;
+			}
+		}
+		
+		return (count != 0) ? true : false;
 	})();
 
 
@@ -717,50 +718,53 @@ function change_channel(obj){
 	var channel_length =obj.length;
 	var band = document.form.wl_unit.value;
 	var smart_connect = document.form.smart_connect_x.value;
+	cur = '<% nvram_get("wl_chanspec"); %>';
+	cur_extend_channel = cur.slice(-1);			//current control channel
+
 	if(document.form.wl_bw.value != 1){   // 20/40 MHz or 40MHz
 		if(channel_length == 12){    // 1 ~ 11
 			if(selected_channel >= 1 && selected_channel <= 4){
 				extend_channel = ["<#WLANConfig11b_EChannelAbove#>"];
 				extend_channel_value = ["l"];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);				
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, 'l');				
 			}
 			else if(selected_channel >= 5 && selected_channel <= 7){
 				extend_channel = ["<#WLANConfig11b_EChannelAbove#>", "<#WLANConfig11b_EChannelBelow#>"];
 				extend_channel_value = ["l", "u"];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);							
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, cur_extend_channel);							
 			}
 			else if(selected_channel >= 8 && selected_channel <= 11){
 				extend_channel = ["<#WLANConfig11b_EChannelBelow#>"];
 				extend_channel_value = ["u"];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);								
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, 'u');								
 			}
-			else{				//for 0: Auto
+			else{		//for 0: Auto
 				extend_channel = ["<#Auto#>"];
 				extend_channel_value = [""];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);
-			}
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, cur_extend_channel);
+			}		
 		}
 		else{		// 1 ~ 13
 			if(selected_channel >= 1 && selected_channel <= 4){
 				extend_channel = ["<#WLANConfig11b_EChannelAbove#>"];
 				extend_channel_value = ["l"];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);							
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, 'l');							
 			}
 			else if(selected_channel >= 5 && selected_channel <= 9){
 				extend_channel = ["<#WLANConfig11b_EChannelAbove#>", "<#WLANConfig11b_EChannelBelow#>"];
 				extend_channel_value = ["l", "u"];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);							
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, cur_extend_channel);							
 			}
 			else if(selected_channel >= 10 && selected_channel <= 13){
 				extend_channel = ["<#WLANConfig11b_EChannelBelow#>"];
 				extend_channel_value = ["u"];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);								
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, 'u');								
 			}
-			else{				//for 0: Auto
+			else{		//for 0: Auto
 				extend_channel = ["<#Auto#>"];
 				extend_channel_value = [""];
-				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value);
-			}
+				add_options_x2(document.form.wl_nctrlsb, extend_channel, extend_channel_value, cur_extend_channel);
+			}			
 		}
 	}
 	

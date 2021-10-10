@@ -2,7 +2,7 @@
  * OCE declarations/definitions for
  * Broadcom 802.11abgn Networking Device Driver
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -105,7 +105,11 @@ wifi_oce_probe_suppress_bssid_attr_t*
 wifi_oce_probe_suppress_ssid_attr_t*
 wlc_oce_get_prb_suppr_ssid_attr(uint8 *parse, uint16 buf_len);
 
+void wlc_oce_detect_environment(wlc_oce_info_t *oce, uint8* body, uint16 body_len);
+int wlc_oce_update_control_field(wlc_oce_info_t *oce, uint8 option);
 #if defined(WL_OCE_AP) && !defined(WLMCNX)
 void wlc_oce_pretbtt_fd_callback(wlc_oce_info_t *oce);
 #endif // endif
+uint8 wlc_oce_get_apcfg_idx_used_for_fd_frame(wlc_info_t *wlc);
+void wlc_oce_set_short_ssid(wlc_info_t *wlc, wlc_bsscfg_t *apcfg);
 #endif	/* _wlc_oce_h_ */

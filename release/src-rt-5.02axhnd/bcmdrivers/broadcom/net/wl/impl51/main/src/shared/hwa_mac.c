@@ -1,7 +1,7 @@
 /*
  * HWA library routines for MAC facing blocks: 1b, 2a, 3b, and 4a
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -91,8 +91,13 @@
 #include "hnddma_priv.h"
 #include <wlc_event_utils.h>
 #include <wlc_cfp.h>
-#include <bcm_buzzz.h>
 #include <bcmudp.h>
+#ifdef BCM_BUZZZ
+#include <bcm_buzzz.h> // Full Dongle
+#endif /* BCM_BUZZZ */
+#ifdef WLDURATION
+#include <wlc_duration.h>
+#endif // endif
 
 typedef struct wl_info wl_info_t; // forward declaration
 
@@ -595,6 +600,7 @@ hwa_rxfill_init(hwa_rxfill_t *rxfill)
 		HWA_WR_REG_NAME(HWA1b, regs, rx_core[core], rxpmgr_cfg, u32);
 
 		// Setup the minimum number of descriptors threshold for FIFO refilling
+		HWA_ASSERT(rxfill->fifo_depth[core][0] > HWA_RXFILL_FIFO_MIN_THRESHOLD);
 		u32 = BCM_SBF(HWA_RXFILL_FIFO_MIN_THRESHOLD,
 		              HWA_RX_MAC_COUNTER_CTRL_POSTCNT);
 		HWA_WR_REG_NAME(HWA1b, regs, rx_core[core], mac_counter_ctrl, u32);
@@ -760,14 +766,17 @@ hwa_rxfill_rxbuffer_free(struct hwa_dev *dev, uint32 core,
 	rxfree->index = HWA_TABLE_INDX(hwa_rxbuffer_t,
 	                               dev->rx_bm.memory, rx_buffer);
 
+#if HWA_REVISION_LE_130
 	/* XXX, I encounter below errors
 	 * cmn::errorstatusreg report 3
 	 * rx::debug_errorstatus 4
 	 * RxBM audit: Get duplicate rxbuffer<154> from RxBM  which
 	 * the rxbuffer idx is just freed to freeindexQ in paired type.
 	 * Add a WAR at pciedev_lbuf_callback
+	 * XXX, CRBCAHWA-558
 	 */
 	HWA_ASSERT(has_rph == FALSE);
+#endif // endif
 
 	rxfree->control_info = (has_rph == TRUE) ?
 	                        HWA_RXFILL_RXFREE_PAIRED : HWA_RXFILL_RXFREE_SIMPLE;
@@ -1196,7 +1205,9 @@ hwa_rxfill_bmac_recv(void *context, uintptr arg1, uintptr arg2, uint32 core, uin
 #if defined(BCMPCIE_IPC_HPA)
 	hwa_rxpath_hpa_req_test(dev, rph_req->hostinfo64.host_pktid);
 #endif // endif
+#ifdef BCM_BUZZZ
 	BUZZZ_KPI_PKT1(KPI_PKT_MAC_RXFIFO, 1, rph_req->hostinfo64.host_pktid);
+#endif // endif
 
 	// Start from RxStatus
 	PKTSETBUF(dev->osh, frag, rxbuffer + rxfill->config.wrxh_offset, rxfill->config.rx_size);
@@ -1592,7 +1603,7 @@ hwa_rxdata_init(hwa_rxdata_t *rxdata)
 
 	v32 =
 		BCM_SBIT(_RXHWACTRL_GLOBALFILTEREN) |
-#if HWA_REVISION_GE_131 || defined(WAR_HWA2A_SW_MONITOR)
+#if HWA_REVISION_GE_130
 		BCM_SBIT(_RXHWACTRL_PKTCOMPEN) |
 #endif // endif
 		BCM_SBIT(_RXHWACTRL_CLRALLFILTERSTAT);
@@ -3208,7 +3219,7 @@ hwa_txfifo_dma_reclaim(struct hwa_dev *dev, uint32 core)
 		pktcnt = hwa_txfifo_shadow_reclaim(dev, 0,
 			WLC_HW_MAP_TXFIFO(wlc, i));
 		if (pktcnt > 0) {
-			wlc_txfifo_complete(wlc, i, pktcnt);
+			wlc_txfifo_complete(wlc, NULL, i, pktcnt);
 			HWA_ERROR(("%s reclaim fifo %d pkts %d\n", HWA3b, i, pktcnt));
 		}
 
@@ -3219,10 +3230,13 @@ hwa_txfifo_dma_reclaim(struct hwa_dev *dev, uint32 core)
 		HWA_TRACE(("%s pktpend fifo %d cleared\n", HWA3b, i));
 	}
 
+#if HWA_REVISION_EQ_129
+	// XXX, CRBCAHWA-581
 	// 3B reset impacts 3A/4A HWA internal memory regions, so we need to
 	// make sure 3A/4A DMA jobs are done.  Here the MAC has suspended.
 	// Wait until 3A finish schedcmd and txfree_ring
 	HWA_TXPOST_EXPR(hwa_txpost_wait_to_finish(&dev->txpost));
+#endif // endif
 
 	// Reset 3b block
 	hwa_module_request(dev, HWA_MODULE_TXFIFO, HWA_MODULE_RESET, TRUE);
@@ -3596,6 +3610,43 @@ hwa_txfifo_pktchain_ring_isfull(struct hwa_dev *dev)
 
 	return (hwa_ring_is_full(&dev->txfifo.pktchain_ring));
 }
+
+#if defined(BCM_BUZZZ_KPI_QUE_LEVEL) && (BCM_BUZZZ_KPI_QUE_LEVEL > 0)
+static uint8 * buzzz_mac_txfifo(uint8 *buzzz_log);
+static uint8 * // Log all logical Tx Fifos pkt and mpdu count, occupancy
+buzzz_mac_txfifo(uint8 *buzzz_log)
+{
+	uint16 fifo_idx, fifo_cnt;
+	hwa_dev_t *dev;
+	hwa_txfifo_shadow32_t * shadow32;
+
+	struct buzzz_log_fifo {
+		uint16 pkt_count; uint16 mpdu_count;
+	} * buzzz_log_fifo;
+	bcm_buzzz_subsys_hdr_t *buzzz_log_mac;
+
+	dev = HWA_DEVP(FALSE); // CAUTION: global access without audit
+	if (dev == NULL) return buzzz_log;
+
+	fifo_cnt = WLC_HW_NFIFO_INUSE((wlc_info_t *)dev->wlc);
+
+	buzzz_log_mac  = (bcm_buzzz_subsys_hdr_t*)buzzz_log;
+	buzzz_log_mac->id  = BUZZZ_MAC_SUBSYS;
+	buzzz_log_mac->u8  = fifo_cnt;
+
+	buzzz_log_fifo = (struct buzzz_log_fifo *)(buzzz_log_mac + 1);
+
+	shadow32 = (hwa_txfifo_shadow32_t *)dev->txfifo.txfifo_shadow;
+	for (fifo_idx = 0; fifo_idx < fifo_cnt; fifo_idx++) {
+		buzzz_log_fifo->pkt_count  = shadow32[fifo_idx].pkt_count;
+		buzzz_log_fifo->mpdu_count = shadow32[fifo_idx].mpdu_count;
+		buzzz_log_fifo++;
+	}
+
+	return (uint8*)buzzz_log_fifo;
+
+} /* buzzz_mac_txfifo */
+#endif /* BCM_BUZZZ_KPI_QUE_LEVEL */
 
 // HWA3b TxFifo block statistics collection
 static void _hwa_txfifo_stats_dump(hwa_dev_t *dev, uintptr buf, uint32 core);
@@ -4159,7 +4210,7 @@ hwa_txstat_wait_to_finish(hwa_txstat_t *txstat, uint32 core)
 }
 
 void // HWA4a TxStatus block reclaim
-hwa_txstat_reclaim(hwa_dev_t *dev, uint32 core)
+hwa_txstat_reclaim(hwa_dev_t *dev, uint32 core, bool reinit)
 {
 	wlc_info_t *wlc;
 	hwa_txstat_t *txstat; // SW txstat state
@@ -4197,6 +4248,15 @@ hwa_txstat_reclaim(hwa_dev_t *dev, uint32 core)
 
 	// Make sure 4a's job is done.
 	hwa_txstat_wait_to_finish(txstat, core);
+
+	// Don't reset HWA 4a for normal cases.
+	if (!reinit && !txstat->status_stall) {
+		(void)hwa_txstat_process(dev, 0, HWA_PROCESS_NOBOUND);
+		return;
+	}
+
+	HWA_PRINT("%s %s: reinit<%d> stall<%d>\n", HWA4a, __FUNCTION__,
+		reinit, txstat->status_stall);
 
 	// Deinit 4a
 	hwa_txstat_deinit(txstat);
@@ -4258,7 +4318,6 @@ int // Consume all txstatus in H2S txstatus interface
 hwa_txstat_process(struct hwa_dev *dev, uint32 core, bool bound)
 {
 	int ret;
-	uint32 loop_count;
 	uint32 proc_cnt;
 	uint32 elem_ix; // location of next element to read
 	void *txstatus; // MAC generate txstatus blob
@@ -4277,7 +4336,6 @@ hwa_txstat_process(struct hwa_dev *dev, uint32 core, bool bound)
 
 	// Setup locals
 	fatal = FALSE;
-	loop_count = 0;
 	proc_cnt = 0;
 	txstat = &dev->txstat;
 	h2s_ring = &txstat->status_ring[core];
@@ -4289,7 +4347,14 @@ hwa_txstat_process(struct hwa_dev *dev, uint32 core, bool bound)
 
 	HWA_STATS_EXPR(txstat->wake_cnt[core]++);
 
-	// CRBCAHWA-592:
+#if HWA_REVISION_GE_130
+	// fetch HWA txstatus ring's WR index once
+	hwa_ring_cons_get(h2s_ring);
+#else
+{
+	uint32 loop_count = 0;
+
+	// XXX, CRBCAHWA-592
 	// SW probably read the value 0x400 for write index when set the depth to 0x400.
 	// Because write index will be updated from 0x3ff to 0x0 through 0x400 in a cycle.
 	// This value is invalid. Driver should read it again to fecth the real one.
@@ -4308,6 +4373,8 @@ hwa_txstat_process(struct hwa_dev *dev, uint32 core, bool bound)
 			__FUNCTION__, HWA_RING_STATE(h2s_ring)->write));
 		HWA_ASSERT(0);
 	}
+}
+#endif /* HWA_REVISION_GE_130 */
 
 	// Consume all TxStatus received in status_ring, handing each upstream
 	// XXX: FIXME: Should we use bound to limit the process ?
@@ -4445,8 +4512,12 @@ hwa_txstat_bmac_proc(void *context, uintptr arg1, uintptr arg2, uint32 core, uin
 		txs.status.suppr_ind =
 				(status_bits & TX_STATUS40_SUPR) >> TX_STATUS40_SUPR_SHIFT;
 
+#ifdef BCM_BUZZZ
 		BUZZZ_KPI_PKT1(KPI_PKT_MAC_TXSTAT, 2,
 			ncons, D11_TXFID_GET_FIFO(wlc, txs.frameid));
+		BUZZZ_KPI_QUE1(KPI_QUE_MAC_RD_UPD, 2,
+			ncons, D11_TXFID_GET_FIFO(wlc, txs.frameid));
+#endif /* BCM_BUZZZ */
 
 		/* pkg 2 comes always */
 		txserr = hwa_txstat_read_txs_pkg16(wlc, ++pkg);
@@ -5083,3 +5154,12 @@ hwa_get_wlc_sih(void *wlc)
 {
 	return ((wlc_info_t *)wlc)->pub->sih;
 }
+
+#if defined(BCM_BUZZZ_KPI_QUE_LEVEL) && (BCM_BUZZZ_KPI_QUE_LEVEL > 0)
+uint8 * // Log all MAC facing queues
+buzzz_mac(uint8 *buzzz_log)
+{
+	HWA_TXFIFO_EXPR(buzzz_log = buzzz_mac_txfifo(buzzz_log));
+	return buzzz_log;
+}
+#endif /* BCM_BUZZZ_KPI_QUE_LEVEL */

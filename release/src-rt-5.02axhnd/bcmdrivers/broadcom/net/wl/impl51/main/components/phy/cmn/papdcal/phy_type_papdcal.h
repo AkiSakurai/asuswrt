@@ -1,7 +1,7 @@
 /*
  * PAPD CAL module internal interface (to PHY specific implementations).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_type_papdcal.h 639713 2016-05-24 18:02:57Z $
+ * $Id: phy_type_papdcal.h 780340 2019-10-22 18:55:57Z $
  */
 
 #ifndef _phy_type_papdcal_h_
@@ -64,7 +64,7 @@
 			(((pi)->papdcali->data->epacal2g && CHSPEC_IS2G((pi)->radio_chanspec) && \
 			(((pi)->papdcali->data->epacal2g_mask >> \
 			(CHSPEC_CHANNEL(pi->radio_chanspec) - 1)) & 1)) || \
-			((pi)->papdcali->data->epacal5g && CHSPEC_IS5G((pi)->radio_chanspec)))
+			((pi)->papdcali->data->epacal5g && CHSPEC_ISPHY5G6G((pi)->radio_chanspec)))
 #elif defined(DONGLEBUILD)
 	#define PHY_EPAPD(pi)   0
 #else
@@ -72,7 +72,7 @@
 			(((pi)->papdcali->data->epacal2g && CHSPEC_IS2G((pi)->radio_chanspec) && \
 			(((pi)->papdcali->data->epacal2g_mask >> \
 			(CHSPEC_CHANNEL(pi->radio_chanspec) - 1)) & 1)) || \
-			((pi)->papdcali->data->epacal5g && CHSPEC_IS5G((pi)->radio_chanspec)))
+			((pi)->papdcali->data->epacal5g && CHSPEC_ISPHY5G6G((pi)->radio_chanspec)))
 #endif /* WLPHY_IPA_ONLY */
 
 typedef struct phy_papdcal_priv_info phy_papdcal_priv_info_t;
@@ -111,6 +111,7 @@ typedef void (*phy_type_papdcal_perratedpdset_fn_t) (phy_type_papdcal_ctx_t *ctx
 typedef int (*phy_type_papdcal_set_uint_fn_t) (phy_type_papdcal_ctx_t *ctx, uint8 var);
 typedef int (*phy_type_papdcal_get_var_fn_t) (phy_type_papdcal_ctx_t *ctx, int32 *var);
 typedef int (*phy_type_papdcal_set_int_fn_t) (phy_type_papdcal_ctx_t *ctx, int8 var);
+typedef int (*phy_type_papdcal_set_int32_fn_t) (phy_type_papdcal_ctx_t *ctx, int32 var);
 typedef void (*phy_type_papdcal_void_fn_t) (phy_type_papdcal_ctx_t *ctx);
 typedef struct {
 	phy_type_papdcal_epa_dpd_set_fn_t epa_dpd_set;
@@ -118,7 +119,16 @@ typedef struct {
 	phy_type_papdcal_perratedpdset_fn_t	perratedpdset;
 	phy_type_papdcal_get_var_fn_t get_idx0;
 	phy_type_papdcal_get_var_fn_t get_idx1;
+	phy_type_papdcal_get_var_fn_t get_idx;
 	phy_type_papdcal_set_int_fn_t set_idx;
+	phy_type_papdcal_get_var_fn_t get_bbmult;
+	phy_type_papdcal_set_int32_fn_t set_bbmult;
+	phy_type_papdcal_get_var_fn_t get_extraepsoffset;
+	phy_type_papdcal_set_int32_fn_t set_extraepsoffset;
+	phy_type_papdcal_get_var_fn_t get_tiagain;
+	phy_type_papdcal_set_int_fn_t set_tiagain;
+	phy_type_papdcal_get_var_fn_t get_comp_disable;
+	phy_type_papdcal_set_int_fn_t set_comp_disable;
 	phy_type_papdcal_set_uint_fn_t set_skip;
 	phy_type_papdcal_get_var_fn_t get_skip;
 	phy_type_papdcal_void_fn_t wd_wfd_ll;

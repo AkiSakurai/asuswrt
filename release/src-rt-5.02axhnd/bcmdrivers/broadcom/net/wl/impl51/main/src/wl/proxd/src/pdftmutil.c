@@ -1,7 +1,7 @@
 /*
  * Proxd FTM method implementation - utils. See twiki FineTimingMeasurement.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmutil.c 777979 2019-08-19 23:14:13Z $
+ * $Id: pdftmutil.c 777940 2019-08-15 20:25:56Z $
  */
 
 #include "pdftmpvt.h"

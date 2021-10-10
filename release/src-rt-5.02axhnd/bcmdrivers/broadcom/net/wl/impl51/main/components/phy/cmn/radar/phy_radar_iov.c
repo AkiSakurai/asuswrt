@@ -2,7 +2,7 @@
 /*
  * RadarDetect module implementation - iovar table/handlers & registration
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_radar_iov.c 775218 2019-05-23 09:24:10Z $
+ * $Id: phy_radar_iov.c 775631 2019-06-07 07:15:31Z $
  */
 
 /* XXX: Define phy_cfg.h to be the first header file included as some builds
@@ -73,7 +73,7 @@
 #endif // endif
 
 #define PHY_RADAR_FIFO_SUBBAND_FORMAT(pi) \
-	(ACMAJORREV_GE32((pi)->pubpi->phy_rev) && !ACMAJORREV_36((pi)->pubpi->phy_rev))
+	(ACMAJORREV_GE32((pi)->pubpi->phy_rev))
 
 /* id's */
 enum {

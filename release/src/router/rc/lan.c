@@ -2240,6 +2240,16 @@ void start_lan(void)
 					set_hwaddr(ifname, (const char *) get_lan_hwaddr());
 #endif
 
+#if defined(RTAX56_XD4)
+				if (!strcmp(ifname, "wl0"))
+					set_hwaddr(ifname, (const char *) nvram_safe_get("0:macaddr"));
+				if (!strcmp(ifname, "wl1"))
+					set_hwaddr(ifname, (const char *) nvram_safe_get("1:macaddr"));
+#endif
+#if defined(RTAX55) || defined(RTAX1800)
+				if (!strcmp(ifname, "eth3"))
+					set_hwaddr(ifname, (const char *) nvram_safe_get("sb/1/macaddr"));
+#endif
 #if defined(RTAC56U) || defined(RTAC56S)
 				if (!strcmp(ifname, "eth2")) {
 					if (wl_exist(ifname, 2)) {
@@ -3192,14 +3202,14 @@ void hotplug_net(void)
 	char lan_ifname[16];
 	char *interface, *action;
 	bool psta_if, dyn_if, add_event, remove_event;
-	int unit = WAN_UNIT_NONE;
-	char tmp[100], prefix[32];
 #ifdef RTCONFIG_USB_MODEM
 	char device_path[128], usb_path[PATH_MAX], usb_node[32], port_path[8];
 	char nvram_name[32];
 	char word[PATH_MAX], *next;
 	char modem_type[8];
+	int unit = WAN_UNIT_NONE;
 	int modem_unit;
+	char tmp[100], prefix[32];
 	char tmp2[100], prefix2[32];
 	unsigned int vid, pid;
 	char buf[32];
@@ -3377,10 +3387,13 @@ void hotplug_net(void)
 NEITHER_WDS_OR_PSTA:
 	/* PPP interface removed */
 	if (strncmp(interface, "ppp", 3) == 0 && remove_event) {
+		_dprintf("hotplug net: remove net %s.\n", interface);
+		/* do not clear interface too early
 		while ((unit = ppp_ifunit(interface)) >= 0) {
 			snprintf(prefix, sizeof(prefix), "wan%d_", unit);
 			nvram_set(strcat_r(prefix, "pppoe_ifname", tmp), "");
 		}
+		*/
 	}
 #ifdef RTCONFIG_USB_MODEM
 	// Android phone, RNDIS interface, NCM, qmi_wwan.
@@ -3748,15 +3761,21 @@ NEITHER_WDS_OR_PSTA:
 			snprintf(modem_type, sizeof(modem_type), "%s", nvram_safe_get(strcat_r(prefix2, "act_type", tmp2)));
 			_dprintf("hotplug net: %s=%s.\n", tmp2, modem_type);
 
-			snprintf(nvram_name, sizeof(nvram_name), "usb_path%s_act", port_path);
-			snprintf(word, sizeof(word), "%s", nvram_safe_get(nvram_name));
-			_dprintf("hotplug net(%s): %s %s.\n", interface, nvram_name, word);
+			if(strcmp(modem_type, "rndis")){
+				snprintf(nvram_name, sizeof(nvram_name), "usb_path%s_act", port_path);
+				snprintf(word, sizeof(word), "%s", nvram_safe_get(nvram_name));
+				_dprintf("hotplug net(%s): %s %s.\n", interface, nvram_name, word);
 
-			logmessage("hotplug", "set net %s.", interface);
-			_dprintf("hotplug net: set net %s.\n", interface);
-			nvram_set(nvram_name, interface);
-			nvram_set(strcat_r(prefix2, "act_dev", tmp2), interface);
-			nvram_set(strcat_r(prefix, "ifname", tmp), interface);
+				logmessage("hotplug", "set net %s.", interface);
+				_dprintf("hotplug net: set net %s.\n", interface);
+				nvram_set(nvram_name, interface);
+				nvram_set(strcat_r(prefix2, "act_dev", tmp2), interface);
+				nvram_set(strcat_r(prefix, "ifname", tmp), interface);
+			}
+			else{
+				logmessage("hotplug", "android skip to set net %s.", interface);
+				_dprintf("hotplug net: android skip set net %s.\n", interface);
+			}
 
 #if defined(RTCONFIG_DUALWAN) && !defined(RTCONFIG_ALPINE) && !defined(RTCONFIG_LANTIQ)
 			// avoid the busy time of every start_wan when booting.
@@ -4404,6 +4423,11 @@ lan_up(char *lan_ifname)
 	if(get_invoke_later()&INVOKELATER_DMS)
 		notify_rc("restart_dms");
 #endif
+#endif
+
+#if defined(RTCONFIG_SAMBASRV) && defined(RTCONFIG_AMAS)
+	if(sw_mode() == SW_MODE_AP && nvram_get_int("re_mode") == 1 && get_invoke_later()&INVOKELATER_DMS)
+		notify_rc("restart_samba");
 #endif
 
 #ifdef RTCONFIG_REDIRECT_DNAME
@@ -5452,9 +5476,6 @@ void restart_wl(void)
 	init_wllc();
 #endif
 
-#ifndef RTCONFIG_QCA
-	nvram_set_int("wlready", 1);
-#endif
 	nvram_set("reload_svc_radio", "1");
 #ifndef RTCONFIG_QCA
 	timecheck();
@@ -5471,6 +5492,7 @@ void lanaccess_mssid_ban(const char *limited_ifname)
 
 #ifdef RTCONFIG_AMAS_WGN
 	char lan_ipaddr[16] = {0}, lan_netmask[16] = {0};
+	char *s1 = NULL, *s2 = NULL;
 #endif	/* RTCONFIG_AMAS_WGN */	
 
 #ifdef RTAC87U
@@ -5509,7 +5531,12 @@ void lanaccess_mssid_ban(const char *limited_ifname)
  	}
 
 #ifdef RTCONFIG_AMAS_WGN
- 	snprintf(lan_subnet, sizeof(lan_subnet), "%s/%s", wgn_guest_lan_ipaddr(limited_ifname, lan_ipaddr, sizeof(lan_ipaddr)-1), wgn_guest_lan_netmask(limited_ifname, lan_netmask, sizeof(lan_netmask)-1));
+	s1 = wgn_guest_lan_ipaddr(limited_ifname, lan_ipaddr, sizeof(lan_ipaddr)-1);
+	s2 = wgn_guest_lan_netmask(limited_ifname, lan_netmask, sizeof(lan_netmask)-1);
+	if (s1 != NULL && s2 != NULL)
+ 		snprintf(lan_subnet, sizeof(lan_subnet), "%s/%s", s1, s2);
+	else
+		snprintf(lan_subnet, sizeof(lan_subnet), "%s/%s", nvram_safe_get("lan_ipaddr"), nvram_safe_get("lan_netmask"));
 #else 	/* RTCONFIG_AMAS_WGN */
 	snprintf(lan_subnet, sizeof(lan_subnet), "%s/%s", nvram_safe_get("lan_ipaddr"), nvram_safe_get("lan_netmask"));
 #endif 	/* RTCONFIG_AMAS_WGN */
@@ -5522,7 +5549,10 @@ void lanaccess_mssid_ban(const char *limited_ifname)
 	}
 #endif
 #ifdef RTCONFIG_AMAS_WGN
-	eval("ebtables", "-t", "broute", "-A", "BROUTING", "-i", (char*)limited_ifname, "-p", "ipv4", "--ip-proto", "icmp", "--ip-dst", lan_ipaddr, "-j", "ACCEPT");
+	if (s1 != NULL)
+		eval("ebtables", "-t", "broute", "-A", "BROUTING", "-i", (char*)limited_ifname, "-p", "ipv4", "--ip-proto", "icmp", "--ip-dst", lan_ipaddr, "-j", "ACCEPT");
+	else
+		eval("ebtables", "-t", "broute", "-A", "BROUTING", "-i", (char*)limited_ifname, "-p", "ipv4", "--ip-proto", "icmp", "--ip-dst", nvram_safe_get("lan_ipaddr"), "-j", "ACCEPT");
 #else  	/* RTCONFIG_AMAS_WGN */
 	eval("ebtables", "-t", "broute", "-A", "BROUTING", "-i", (char*)limited_ifname, "-p", "ipv4", "--ip-proto", "icmp", "--ip-dst", nvram_safe_get("lan_ipaddr"), "-j", "ACCEPT");
 #endif	/* RTCONFIG_AMAS_WGN */
@@ -5909,6 +5939,9 @@ void restart_wireless(void)
 #ifndef CONFIG_BCMWL5
 	restart_wl();
 	lanaccess_wl();
+#endif
+#ifndef RTCONFIG_QCA
+	nvram_set_int("wlready", 1);
 #endif
 
 #ifdef CONFIG_BCMWL5

@@ -1,7 +1,7 @@
 /*
  * PAPD CAL module internal interface - iovar table registration
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_papdcal_iov.h 639713 2016-05-24 18:02:57Z $
+ * $Id: phy_papdcal_iov.h 780340 2019-10-22 18:55:57Z $
  */
 
 #ifndef _phy_papdcal_iov_t_
@@ -60,10 +60,14 @@ enum {
 	IOV_PHY_PACALIDX0 = 3,
 	IOV_PHY_PACALIDX1 = 4,
 	IOV_PHY_PACALIDX = 5,
-	IOV_PAPD_EN_WAR = 6,
-	IOV_PHY_SKIPPAPD = 7,
-	IOV_PHY_EPACAL2GMASK = 8,
-	IOV_PHY_WFD_LL_ENABLE = 9
+	IOV_PHY_PAPDBBMULT = 6,
+	IOV_PHY_PAPDEXTRAEPSOFFSET = 7,
+	IOV_PHY_PAPDTIAGAIN = 8,
+	IOV_PAPDCOMP_DISABLE = 9,
+	IOV_PAPD_EN_WAR = 10,
+	IOV_PHY_SKIPPAPD = 11,
+	IOV_PHY_EPACAL2GMASK = 12,
+	IOV_PHY_WFD_LL_ENABLE = 13
 };
 
 /* register iovar table/handlers */

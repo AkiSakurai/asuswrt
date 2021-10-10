@@ -1,7 +1,7 @@
 /*
  * Named dump callback registry functions
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,13 +45,15 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_dump_reg.c 630436 2016-04-08 23:03:14Z $
+ * $Id: wlc_dump_reg.c 780751 2019-11-01 21:11:15Z $
  */
 #include <typedefs.h>
 #include <bcmdefs.h>
 #include <osl.h>
 #include <bcmutils.h>
 #include <wlc_dump_reg.h>
+#include <wlioctl_defs.h>
+#include <wl_dbg.h>
 
 #ifndef WLC_DUMP_REG_STR_SIZE
 #define WLC_DUMP_REG_STR_SIZE	16
@@ -71,9 +73,6 @@ struct wlc_dump_reg_info {
 	wlc_dump_reg_ent_t *ent;
 };
 
-/* debug */
-#define WL_DUMP(x)
-
 /* registry alloc size */
 #define WLC_DUMP_REG_SZ(cnt) (sizeof(wlc_dump_reg_info_t) + \
 			      sizeof(wlc_dump_reg_ent_t) * (cnt))
@@ -88,7 +87,7 @@ BCMATTACHFN(wlc_dump_reg_create)(osl_t *osh, uint16 count)
 		uint sz = (uint)WLC_DUMP_REG_SZ(count);
 		reg = MALLOCZ(osh, sz);
 		if (reg == NULL) {
-			WL_DUMP(("%s: MALLOC(%d) failed; total malloced %d bytes\n",
+			WL_ERROR(("%s: MALLOC(%d) failed; total malloced %d bytes\n",
 			          __FUNCTION__, sz, MALLOCED(osh)));
 			goto fail;
 		}
@@ -145,7 +144,7 @@ wlc_dump_reg_add_fns(wlc_dump_reg_info_t *reg, const char *name,
 	/* do not add to table if namelen is 0 or longer than WLC_DUMP_REG_STR_SIZE */
 	namelen = strlen(name);
 	if (namelen == 0 || namelen > WLC_DUMP_REG_STR_SIZE) {
-		WL_DUMP(("%s: %s: name length should be between 1 and %d\n",
+		WL_ERROR(("%s: %s: name length should be between 1 and %d\n",
 		          __FUNCTION__, name, WLC_DUMP_REG_STR_SIZE));
 		return BCME_BADARG;
 	}
@@ -161,12 +160,14 @@ wlc_dump_reg_add_fns(wlc_dump_reg_info_t *reg, const char *name,
 			ret = BCME_OK;
 		}
 		else {
-			WL_DUMP(("%s: registry is full\n", __FUNCTION__));
+			WL_ERROR(("%s: registry is full. Dropping dump for %s\n",
+			    __FUNCTION__, name));
 			ret = BCME_NORESOURCE;
+			ASSERT(0);
 		}
 	}
 	else if (ret >= 0) {
-		WL_DUMP(("%s: %s already in registry\n", __FUNCTION__, name));
+		WL_ERROR(("%s: %s already in registry\n", __FUNCTION__, name));
 		ret = BCME_ERROR;
 	}
 

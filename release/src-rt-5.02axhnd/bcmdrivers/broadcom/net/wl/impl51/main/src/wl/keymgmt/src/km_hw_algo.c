@@ -1,6 +1,6 @@
 /*
  * Key Management Module km_hw algo implementation
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_hw_algo.c 774133 2019-04-11 09:15:54Z $
+ * $Id: km_hw_algo.c 780020 2019-10-14 08:36:53Z $
  */
 
 #include "km_hw_impl.h"
@@ -89,6 +89,9 @@ km_hw_algo_write_key(km_hw_t *hw, shm_addr_t addr, const uint8 *data, size_t dat
 {
 	wlc_info_t *wlc = KM_HW_WLC(hw);
 
+	if ((data_len > 0) && !data[0]) {
+	        data = km_hw_fixup_null_hw_key(hw, data, data_len);
+	}
 	KM_HW_COPYTO_SHM(wlc, addr, data, (int)data_len);
 	if (data_len < hw->max_key_size)
 		KM_HW_SET_SHM(wlc, addr + (shm_addr_t)data_len, 0,

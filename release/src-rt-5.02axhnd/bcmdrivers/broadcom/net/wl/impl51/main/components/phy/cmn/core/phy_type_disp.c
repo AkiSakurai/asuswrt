@@ -1,7 +1,7 @@
 /*
  * PHY Core module implementation - connect PHY type specific layer to common layer
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_type_disp.c 689072 2017-03-08 23:39:16Z $
+ * $Id: phy_type_disp.c 778524 2019-09-04 08:02:19Z $
  */
 
 #include <typedefs.h>
@@ -71,10 +71,7 @@
 #if NCONF
 #include "phy_type_n.h"
 #endif // endif
-#if LCN20CONF
-#include "phy_type_lcn20.h"
-#endif // endif
-#if ACCONF || ACCONF2
+#if ACCONF || ACCONF2 || ACCONF5
 #include "phy_type_ac.h"
 #endif // endif
 
@@ -89,10 +86,7 @@ static phy_type_reg_t BCMATTACHDATA(phy_type_reg_tbl)[] = {
 #if NCONF
 	{PHY_TYPE_N, phy_n_attach, phy_n_detach},
 #endif // endif
-#if LCN20CONF
-	{PHY_TYPE_LCN20, phy_lcn20_attach, phy_lcn20_detach},
-#endif // endif
-#if ACCONF || ACCONF2
+#if ACCONF || ACCONF2 || ACCONF5
 	{PHY_TYPE_AC, phy_ac_attach, phy_ac_detach},
 #endif // endif
 	/* *** ADD NEW PHY TYPE IMPLEMENTATION ENTRIES HERE *** */

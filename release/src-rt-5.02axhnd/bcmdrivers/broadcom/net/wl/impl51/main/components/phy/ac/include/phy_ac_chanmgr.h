@@ -1,7 +1,7 @@
 /*
  * ACPHY Channel Manager module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_chanmgr.h 775385 2019-05-29 11:30:21Z $
+ * $Id: phy_ac_chanmgr.h 784711 2020-03-04 17:11:18Z $
  */
 
 #ifndef _phy_ac_chanmgr_h_
@@ -61,6 +61,12 @@
 /* forward declaration */
 typedef struct phy_ac_chanmgr_info phy_ac_chanmgr_info_t;
 
+typedef enum {
+	ACPHY_PLL_ADJ_MODE_OFF,
+	ACPHY_PLL_ADJ_MODE_ON,
+	ACPHY_PLL_ADJ_MODE_AUTO
+} acphy_vco_pll_adjust_mode_t;
+
 typedef struct phy_ac_chanmgr_data {
 	/* this data is shared between chanmgr and radio */
 	int		bbmult_comp;
@@ -74,6 +80,8 @@ typedef struct phy_ac_chanmgr_data {
 	bool	init_done;
 	bool	both_txchain_rxchain_eq_1;
 	bool	rxchain_hw_notset;
+	acphy_vco_pll_adjust_mode_t vco_pll_adjust_mode;
+	bool	vco_pll_adjust_state;
 } phy_ac_chanmgr_data_t;
 
 /* register/unregister ACPHY specific implementations to/from common */
@@ -502,11 +510,16 @@ extern void wlc_phy_ulb_mode(phy_info_t *pi, uint8 ulb_mode);
 
 extern void phy_ac_chanmgr_core2core_sync_setup(phy_ac_chanmgr_info_t *chanmgri, bool enable);
 extern void phy_ac_chanmgr_core2core_sync_dac_clks(phy_ac_chanmgr_info_t *chanmgri, bool enable);
-extern void phy_ac_chanmgr_hwobss(phy_ac_chanmgr_info_t *chanmgri, bool enable_hwobss);
+extern void phy_ac_chanmgr_hwobss(phy_ac_chanmgr_info_t *chanmgri, bool enable_hwobss,
+	bool preemp_enable);
 
 int phy_ac_chanmgr_iovar_get_lowratetssi(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
 int phy_ac_chanmgr_iovar_get_lowratetssi_ovrd(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
 int phy_ac_chanmgr_iovar_set_lowratetssi_ovrd(phy_ac_chanmgr_info_t *chanmgri, int32 set_val);
+int phy_ac_chanmgr_iovar_get_papr_en(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
+int phy_ac_chanmgr_iovar_set_papr_en(phy_ac_chanmgr_info_t *chanmgri, int32 set_val);
+int phy_ac_chanmgr_iovar_get_papr_gamma(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
+int phy_ac_chanmgr_iovar_set_papr_gamma(phy_ac_chanmgr_info_t *chanmgri, int32 set_val);
 
 void phy_ac_chanmgr_cal_init(phy_info_t *pi, uint8 *enULB);
 void phy_ac_chanmgr_cal_reset(phy_info_t *pi);
@@ -522,6 +535,7 @@ int phy_ac_chanmgr_iovar_set_chanup_ovrd(phy_info_t *pi, int32 set_val);
 
 int phy_ac_chanmgr_enable_mac_aided(phy_info_t *pi, bool set, uint16 val);
 int phy_ac_chanmgr_enable_mac_aided_timing(phy_info_t *pi, bool set, uint16 val);
+int phy_ac_chanmgr_enable_vco_pll_adj_mode(phy_info_t *pi, bool set, uint16 val);
 
 /* to help with 3+1 mode and radar scan core */
 extern int phy_ac_chanmgr_set_val_sc_chspec(phy_ac_chanmgr_info_t *chanmgri, int32 set_val);
@@ -531,9 +545,11 @@ extern int phy_ac_chanmgr_get_val_phymode(phy_ac_chanmgr_info_t *chanmgri, int32
 extern int phy_ac_chanmgr_get_val_phy_vcore(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
 extern bool phy_ac_chanmgr_get_val_nonbf_logen_mode(phy_ac_chanmgr_info_t *chanmgri);
 extern void phy_ac_chanmgr_low_rate_tssi_rfseq_fiforst_dly(phy_info_t *pi, bool enable);
-extern void wlc_phy_set_rfseqext_tbl_majrev47(phy_info_t *pi, uint8 mode);
+extern void wlc_phy_set_rfseqext_tbl(phy_info_t *pi, uint8 mode);
 
 /* WAR */
 extern void phy_ac_chanmgr_mutx_war(wlc_phy_t *pih, bool enable);
 extern void impbf_radio_ovrs_4347(phy_info_t *pi, bool ovr);
+
+extern bool phy_ac_chanmgr_lesi_en(phy_info_t *pi);
 #endif /* _phy_ac_chanmgr_h_ */

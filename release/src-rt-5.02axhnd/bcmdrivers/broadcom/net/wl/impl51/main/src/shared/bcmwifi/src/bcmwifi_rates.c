@@ -2,7 +2,7 @@
  * Common [OS-independent] rate management
  * 802.11 Networking Adapter Device Driver.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcmwifi_rates.c 774598 2019-04-29 17:29:56Z $
+ * $Id: bcmwifi_rates.c 776848 2019-07-11 09:39:49Z $
  */
 
 #include <typedefs.h>
@@ -157,17 +157,12 @@ wf_he_mcs_to_Ndbps(uint mcs, uint nss, uint bw, bool dcm)
  * rate (Kbps) = (Nsd * Nbpscs * nss * (coding_q/coding_d) * 1000) / (sym_len + GI_value) * 10
  */
 uint
-wf_he_mcs_to_rate(uint mcs, uint nss, uint bw, uint gi, bool dcm)
+wf_he_mcs_nsd_to_rate(uint mcs, uint nss, uint nsd, uint gi, bool dcm)
 {
-	uint rate = 0;
-	uint rate_deno;
-
-	if (bw < ARRAYSIZE(wlc_he_nsd)) {
-		rate = wlc_he_nsd[bw];
-	}
+	uint rate, rate_deno;
 
 	/* Nbpscs: multiply by bits per number from the constellation in use */
-	rate = rate * wlc_mcs_info[mcs].constellation_bits;
+	rate = nsd * wlc_mcs_info[mcs].constellation_bits;
 
 	/* Nss: adjust for the number of spatial streams */
 	rate = rate * nss;
@@ -201,6 +196,17 @@ wf_he_mcs_to_rate(uint mcs, uint nss, uint bw, uint gi, bool dcm)
 	rate *= 10; /* *100 was already done above. Splitting is done to avoid overflow. */
 
 	return rate;
+}
+
+uint
+wf_he_mcs_to_rate(uint mcs, uint nss, uint bw, uint gi, bool dcm)
+{
+	uint nsd = 0;
+
+	if (bw < ARRAYSIZE(wlc_he_nsd)) {
+		nsd = wlc_he_nsd[bw];
+	}
+	return wf_he_mcs_nsd_to_rate(mcs, nss, nsd, gi, dcm);
 }
 
 uint

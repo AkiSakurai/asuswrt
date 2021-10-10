@@ -1,7 +1,7 @@
 /*
  * PHY Core module public interface (to MAC driver).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_api.h 769452 2018-11-15 05:58:17Z $
+ * $Id: phy_api.h 779113 2019-09-19 10:18:17Z $
  */
 
 #ifndef _phy_api_h_
@@ -123,6 +123,7 @@
 /* Phy pre attach caps used by wlc */
 #define PHY_PREATTACH_CAP_SUP_5G	0x00000001
 #define PHY_PREATTACH_CAP_SUP_2G	0x00000002
+#define PHY_PREATTACH_CAP_SUP_6G	0x00000004
 
 /* AFE Override */
 #define PHY_AFE_OVERRIDE_USR	1
@@ -165,6 +166,10 @@
 /* add the feature to disable DSSF  0: disable 1: enable */
 #define DSSF_ENABLE 1
 #define DSSFB_ENABLE 1
+
+typedef struct phy_tx_targets_per_core {
+	int8 pwr[PHY_CORE_MAX];
+} phy_tx_targets_per_core_t;
 
 /*
  * Attach/detach all PHY modules to/from the system.

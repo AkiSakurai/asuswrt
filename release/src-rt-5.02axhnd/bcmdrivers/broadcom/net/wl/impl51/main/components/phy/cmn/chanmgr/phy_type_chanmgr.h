@@ -1,7 +1,7 @@
 /*
  * Channel manager interface (to PHY specific implementations).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_type_chanmgr.h 772811 2019-03-05 04:53:22Z $
+ * $Id: phy_type_chanmgr.h 783661 2020-02-05 02:40:06Z $
  */
 
 #ifndef _phy_type_chanmgr_h_
@@ -74,6 +74,8 @@ typedef void (*phy_type_chanmgr_upd_interf_mode_fn_t)(phy_type_chanmgr_ctx_t *ct
 typedef uint8 (*phy_type_set_chanspec_sr_vsdb_fn_t) (phy_type_chanmgr_ctx_t *ctx,
 		chanspec_t chanspec, uint8 *last_chan_saved);
 typedef void (*phy_type_chanmgr_tdcs_enable_160m_fn_t)(phy_info_t *pi, bool set_val);
+typedef void (*phy_type_chanmgr_pad_online_enable_fn_t)(phy_info_t *pi, bool set_val,
+	bool up_check);
 typedef void (*phy_type_chanmgr_dccal_t)(phy_info_t *pi);
 typedef int (*phy_type_chanmgr_get_fn_t)(phy_type_chanmgr_ctx_t *ctx, int32 *ret_int_ptr);
 typedef int (*phy_type_chanmgr_set_fn_t)(phy_type_chanmgr_ctx_t *ctx, int8 int_val);
@@ -103,6 +105,8 @@ typedef struct {
 	phy_type_set_chanspec_sr_vsdb_fn_t set_chanspec_sr_vsdb;
 	/* set TDCS for 160M */
 	phy_type_chanmgr_tdcs_enable_160m_fn_t tdcs_enable_160m;
+	/* keep PAD online all the time */
+	phy_type_chanmgr_pad_online_enable_fn_t pad_online_enable;
 	/* force dc cal */
 	phy_type_chanmgr_dccal_t dccal_force;
 	/* set stf chain */

@@ -1,7 +1,7 @@
 /*
  * Proxd FTM method implementation - session mgmt. See twiki FineTimingMeasurement.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmsn.c 777979 2019-08-19 23:14:13Z $
+ * $Id: pdftmsn.c 784408 2020-02-26 18:11:41Z $
  */
 
 #include "bcmdevs.h"
@@ -1714,6 +1714,7 @@ done:
 	if (err != BCME_OK) {
 		if (sn->ftm_state) {
 			MFREE(FTM_OSH(ftm), sn->ftm_state, sizeof(*sn->ftm_state));
+			sn->ftm_state = NULL;
 		}
 		if (sn->ftm1_tx_timer) {
 			wlc_hrt_free_timeout(sn->ftm1_tx_timer);
@@ -1832,6 +1833,8 @@ pdftm_change_session_state(pdftm_session_t *sn, wl_proxd_status_t status,
 	wl_proxd_session_state_t old_state = WL_PROXD_SESSION_STATE_NONE;
 	pdftm_t *ftm = sn->ftm;
 	uint8 err_at = 0;
+
+	BCM_REFERENCE(err_at);
 
 	ASSERT(FTM_VALID(ftm));
 	if (!FTM_VALID_SESSION(sn)) {
@@ -2458,6 +2461,27 @@ wlc_ftm_stop_sess_inprog(wlc_ftm_t *ftm, wlc_bsscfg_t *cfg)
 		}
 	}
 	return;
+				}
+
+int
+wlc_ftm_num_sessions_inprog(const wlc_ftm_t *ftm)
+{
+	int i;
+	int num_active = 0;
+	pdftm_cmn_t *ftm_cmn = ftm->ftm_cmn;
+	ASSERT(FTM_VALID(ftm));
+
+	/* Loop through all sessions */
+	for (i = 0; i < ftm_cmn->max_sessions; i++) {
+		pdftm_session_t *sn = ftm_cmn->sessions[i];
+		if (sn) {
+			if ((sn->state > WL_PROXD_SESSION_STATE_CONFIGURED) &&
+					(sn->state <= WL_PROXD_SESSION_STATE_BURST)) {
+				num_active++;
+			}
+		}
+	}
+	return num_active;
 }
 
 int

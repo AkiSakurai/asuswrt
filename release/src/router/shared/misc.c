@@ -2443,7 +2443,7 @@ unsigned int netdev_calc(char *ifname, char *ifname_desc, unsigned long *rx, uns
 				*rx2 = backup_rx;
 				*tx2 = backup_tx;				
 				/* Cherry Cho modified for RT-AC3200 Bug#202 in 2014/11/4. */	
-				unit = get_wan_unit("eth0");
+				unit = get_wan_unit(WAN_IF_ETH);
 
 #ifdef RTCONFIG_DUALWAN			
 				if ( (unit == wan_primary_ifunit()) || ( !strstr(nvram_safe_get("wans_dualwan"), "none") && nvram_match("wans_mode", "lb")) )
@@ -2481,7 +2481,7 @@ unsigned int netdev_calc(char *ifname, char *ifname_desc, unsigned long *rx, uns
 			get_realtek_wan_bytecount(tx, rx);			
 #endif//end sherry}
 #if !defined(RTCONFIG_BCM5301X_TRAFFIC_MONITOR) && !defined(HND_ROUTER)
-			if(strlen(modelvlan) && !strcmp(ifname, "eth0"))
+			if(strlen(modelvlan) && !strcmp(ifname, WAN_IF_ETH))
 			{
 				backup_rx = *rx;
 				backup_tx = *tx;
@@ -4166,92 +4166,81 @@ int is_valid_domainname(const char *name)
 	return p - name;
 }
 
-#if defined(RTCONFIG_AMAS)
-/*
-	define amas_lib trigger function
-*/
-static int SEND_AMAS_NODE_EVENT(AMASLIB_EVENT_T *event)
+int get_discovery_ssid(char *ssid_g, int size)
 {
-	struct    sockaddr_un addr;
-	int       sockfd, n;
-
-	if ((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-		printf("[%s:(%d)] ERROR socket.\n", __FUNCTION__, __LINE__);
-		perror("socket error");
-		return 0;
-	}
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sun_family = AF_UNIX;
-	strlcpy(addr.sun_path, AMASLIB_SOCKET_PATH, sizeof(addr.sun_path));
-
-	if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-		printf("[%s:(%d)] ERROR connecting:%s.\n", __FUNCTION__, __LINE__, strerror(errno));
-		perror("connect error");
-		close(sockfd);
-		return 0;
-	}
-
-	n = write(sockfd, (AMASLIB_EVENT_T *)event, sizeof(AMASLIB_EVENT_T));
-
-	close(sockfd);
-
-	if (n < 0) {
-		printf("[%s:(%d)] ERROR writing:%s.\n", __FUNCTION__, __LINE__, strerror(errno));
-		perror("writing error");
-		return 0;
-	}
-
-	return 1;
-}
-
-int AMAS_EVENT_TRIGGER(char *sta2g, char *sta5g, int flag)
-{
-	AMASLIB_EVENT_T *node = NULL;
-	node = (AMASLIB_EVENT_T *)malloc(sizeof(AMASLIB_EVENT_T));
-
-	char *buf1 = sta2g;
-	char *buf2 = sta5g;
-
-	if (node == NULL) {
-		printf("[%s:(%d)] malloc(AMASLIB_EVENT_T) error:%s.\n", __FUNCTION__, __LINE__, strerror(errno));
-		return 0;
-	}
-
-	if (sta2g == NULL) buf1 = "\0";
-	if (sta5g == NULL) buf2 = "\0";
-
-	//printf("[%s:(%d)] sta2g=%s, sta5g=%s, flag=%d\n", __FUNCTION__, __LINE__, buf1, buf2, flag);
-	memset(node, 0, sizeof(AMASLIB_EVENT_T));
-	memcpy(node->sta2g, buf1, sizeof(node->sta2g));
-	memcpy(node->sta5g, buf2, sizeof(node->sta5g));
-	node->flag = flag;
-
-	/* send wlc event into wlc_nt */
-	SEND_AMAS_NODE_EVENT(node);
-
-	/* free memory */
-	if (node) free(node);
-
-	return 1;
-}
-
-/*
-	define amaslib enable function for check
-*/
-int is_amaslib_enabled()
-{
-	int ret = 0;
-	if ((nvram_get_int("wrs_enable") && nvram_get_int("wrs_app_enable")) ||
-		(nvram_get_int("qos_enable") && (nvram_get_int("qos_type") == 0 || nvram_get_int("qos_type") == 2)) ||
-		nvram_get_int("MULTIFILTER_ALL"))
-	{
-		ret = 1;
-	}
-
-	return ret;
-}
+#if defined(RTCONFIG_WIRELESSREPEATER) || defined(RTCONFIG_PROXYSTA)
+	char tmp[100], prefix[] = "wlXXXXXXXXXXXXXX";
 #endif
+#ifdef RTCONFIG_DPSTA
+	char word[80], *next;
+	int unit, connected;
+#endif
+#ifdef RTCONFIG_WIRELESSREPEATER
+	if (sw_mode() == SW_MODE_REPEATER)
+	{
+#ifdef RTCONFIG_CONCURRENTREPEATER
+		if (nvram_get_int("wlc_band") < 0 || nvram_get_int("wlc_express") == 0)
+			snprintf(prefix, sizeof(prefix), "wl0.1_");
+		else if (nvram_get_int("wlc_express") == 1)
+			snprintf(prefix, sizeof(prefix), "wl1.1_");
+		else if (nvram_get_int("wlc_express") == 2)
+			snprintf(prefix, sizeof(prefix), "wl0.1_");
+		else
+#endif
+			snprintf(prefix, sizeof(prefix), "wl%d.1_", nvram_get_int("wlc_band"));
+		strlcpy(ssid_g, nvram_safe_get(strcat_r(prefix, "ssid", tmp)), size);
+	}
+	else
+#ifdef RTCONFIG_REALTEK
+		if (sw_mode() == SW_MODE_AP && nvram_get_int("wlc_psta") == 1)
+		{
+#ifdef RTCONFIG_CONCURRENTREPEATER
+			snprintf(prefix, sizeof(prefix), "wl0_");
+#else
+			snprintf(prefix, sizeof(prefix), "wl%d.1_", nvram_get_int("wlc_band"));
+#endif
+			strlcpy(ssid_g, nvram_safe_get(strcat_r(prefix, "ssid", tmp)), size);
+		}
+		else
+#endif
+#endif
+#ifdef RTCONFIG_BCMWL6
+#ifdef RTCONFIG_PROXYSTA
+#ifdef RTCONFIG_DPSTA
+		if (dpsta_mode() && nvram_get_int("re_mode") == 0)
+		{
+			connected = 0;
+			foreach(word, nvram_safe_get("dpsta_ifnames"), next) {
+				wl_ioctl(word, WLC_GET_INSTANCE, &unit, sizeof(unit));
+				snprintf(prefix, sizeof(prefix), "wlc%d_", unit == 0 ? 0 : 1);
+				if (nvram_get_int(strcat_r(prefix, "state", tmp)) == 2) {
+					connected = 1;
+					snprintf(prefix, sizeof(prefix), "wl%d.1_", unit);
+					strncpy(ssid_g, nvram_safe_get(strcat_r(prefix, "ssid", tmp)), size);
+					break;
+				}
+			}
+		if (!connected)
+			strlcpy(ssid_g, nvram_safe_get("wl0.1_ssid"), size);
+		}
+		else
+#endif
+		if (is_psta(nvram_get_int("wlc_band")))
+		{
+			snprintf(prefix, sizeof(prefix), "wl%d_", nvram_get_int("wlc_band"));
+			strncpy(ssid_g, nvram_safe_get(strcat_r(prefix, "ssid", tmp)), size);
+		}
+		else if (is_psr(nvram_get_int("wlc_band")))
+		{
+			snprintf(prefix, sizeof(prefix), "wl%d.1_", nvram_get_int("wlc_band"));
+			strlcpy(ssid_g, nvram_safe_get(strcat_r(prefix, "ssid", tmp)), size);
+		}
+		else
+#endif
+#endif
+	strlcpy(ssid_g, nvram_safe_get("wl0_ssid"), size);
+	return 0;
+}
 
 int get_chance_to_control(void)
 {
@@ -4303,3 +4292,134 @@ int amazon_wss_ap_isolate_support(char *prefix)
 
 	return 0;
 }
+
+#ifdef RTCONFIG_AMAS_WGN
+int get_iptv_and_dualwan_info(int *iptv_vids,int size, unsigned int *wan_deny_list, unsigned int *lan_deny_list)
+{
+	char *wans_dualwan = NULL,*switch_wantag=NULL;
+	int wans_lanport=0,switch_stb_x=0;
+	unsigned int lan_deny_list_tmp=0;
+
+	lan_deny_list_tmp = *lan_deny_list;
+
+	wans_dualwan = nvram_safe_get("wans_dualwan");
+	if( wans_dualwan && strstr(wans_dualwan,"lan") )
+	{
+		wans_lanport = nvram_get_int("wans_lanport");
+		if(wans_lanport >=5 && wans_lanport <= 8){
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (wans_lanport-1) );
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (wans_lanport-1 + 16) );
+		}
+	}
+
+	switch_wantag = strdup(nvram_safe_get("switch_wantag"));
+
+	if(!switch_wantag) {
+		*lan_deny_list = lan_deny_list_tmp;
+		return 0;
+	}
+
+	if( !strcmp(switch_wantag,"none" ) || !strcmp(switch_wantag,"" ) || !strcmp(switch_wantag,"hinet" ) )   
+	{
+		switch_stb_x = nvram_get_int("switch_stb_x");
+
+		if(switch_stb_x == 1) {
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (1-1));
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (1-1+16));
+		}
+		else if(switch_stb_x == 2) {
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (2-1));
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (2-1+16));
+		}
+		else if(switch_stb_x == 3) {
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1));
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1+16));
+		}
+		else if(switch_stb_x == 4) {
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1));
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1+16));
+		}
+		else if(switch_stb_x == 5) {
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (1-1));
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (1-1+16));
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (2-1));
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (2-1+16));			
+		}
+		else if(switch_stb_x == 6 || switch_stb_x == 8) {
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1));
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1+16));
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1));
+			lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1+16));
+		}
+	} else if ( !strcmp(switch_wantag,"unifi_home" ) ) {
+		iptv_vids[0] = 500;
+		iptv_vids[1] = 600;
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1+16));
+	} else if ( !strcmp(switch_wantag,"unifi_biz" ) ) {
+		iptv_vids[0] = 500;
+	} else if ( !strcmp(switch_wantag,"singtel_mio" ) ) {
+		iptv_vids[0] = 10;
+		iptv_vids[1] = 20;
+		iptv_vids[2] = 30;
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1+16));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1+16));
+	} else if ( !strcmp(switch_wantag,"singtel_others" ) ) {
+		iptv_vids[0] = 10;
+		iptv_vids[1] = 20;
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1));//0x00010011
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1+16));		
+	} else if ( !strcmp(switch_wantag,"m1_fiber" ) ) {
+		iptv_vids[0] = 1103;
+		iptv_vids[1] = 1107;
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1+16));
+	} else if ( !strcmp(switch_wantag,"maxis_fiber_sp" ) ) {
+		iptv_vids[0] = 11;
+		iptv_vids[1] = 14;
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1+16));
+	} else if ( !strcmp(switch_wantag,"maxis_fiber" ) ) {
+		iptv_vids[0] = 621;
+		iptv_vids[1] = 821;
+		iptv_vids[2] = 822;
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1+16));
+	} else if ( !strcmp(switch_wantag,"movistar" ) ) {
+		iptv_vids[0] = 2;
+		iptv_vids[1] = 3;
+		iptv_vids[2] = 6;
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1+16));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1+16));
+	} else if ( !strcmp(switch_wantag,"meo" ) ) {
+		iptv_vids[0] = 12;
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1+16));
+	} else if ( !strcmp(switch_wantag,"manual" ) ) {
+		iptv_vids[0] = nvram_get_int("switch_wan0tagid");
+		iptv_vids[1] = nvram_get_int("switch_wan1tagid");;
+		iptv_vids[2] = nvram_get_int("switch_wan2tagid");;
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1+16));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1+16));		
+	} else if ( !strcmp(switch_wantag,"vodafone" ) ) {
+		iptv_vids[0] = 100;
+		iptv_vids[1] = 105;
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (3-1+16));
+		lan_deny_list_tmp = lan_deny_list_tmp & ~(1 << (4-1+16));
+	}
+	
+	*lan_deny_list = lan_deny_list_tmp;
+	//printf("lan_deny_list_tmp %x wans_lanport %x\n",lan_deny_list_tmp,wans_lanport);
+	free(switch_wantag);
+	return 0;
+}
+#endif	// RTCONFIG_AMAS_WGN
+

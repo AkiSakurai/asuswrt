@@ -993,7 +993,7 @@ var isSupport = function(_ptn){
 			matchingResult = (ui_support["smart_connect"] == 1 || ui_support["bandstr"] == 1) ? true : false;
 			break;
 		case "WPA3Support":
-			matchingResult = (based_modelid == 'RT-AX88U' || based_modelid == 'RT-AX92U'  || based_modelid == 'RT-AX95Q' || based_modelid == 'RT-AX58U' || based_modelid == "TUF-AX3000" || based_modelid == 'RT-AX56U' || based_modelid == 'GT-AX11000') ? true : false;
+			matchingResult = (based_modelid == 'RT-AX88U' || based_modelid == 'RT-AX92U'  || based_modelid == 'RT-AX95Q' || based_modelid == 'RT-AX56_XD4' || based_modelid == 'RT-AX58U' || based_modelid == "TUF-AX3000" || based_modelid == "RT-AX82U" || based_modelid == 'RT-AX56U' || based_modelid == 'GT-AX11000') ? true : false;
 			break;
 		case "MB_mode_concurrep":
 			if(isSwMode("MB") && isSupport("concurrep") && odmpid != "RP-AC1900")
@@ -1128,13 +1128,14 @@ function startLiveUpdate(){
 		setTimeout(arguments.callee, 1000);
 	}
 	else{
-		httpApi.nvramSet({"action_mode":"apply", "rc_service":"start_webs_update"}, function(){
+		httpApi.nvramSet({"action_mode":"apply", "webs_update_trigger":"QIS", "rc_service":"start_webs_update"}, function(){
 			setTimeout(function(){
-				var fwInfo = httpApi.nvramGet(["webs_state_update", "webs_state_info", "webs_state_flag"], true);
+				var fwInfo = httpApi.nvramGet(["webs_state_update", "webs_state_info", "webs_state_flag", "webs_state_level"], true);
 				
 				if(fwInfo.webs_state_flag == "1" || fwInfo.webs_state_flag == "2"){
 					systemVariable.isNewFw = fwInfo.webs_state_flag;
 					systemVariable.newFwVersion = fwInfo.webs_state_info;
+					systemVariable.forceLevel = fwInfo.webs_state_level;
 				}
 
 				setTimeout(arguments.callee, 1000);

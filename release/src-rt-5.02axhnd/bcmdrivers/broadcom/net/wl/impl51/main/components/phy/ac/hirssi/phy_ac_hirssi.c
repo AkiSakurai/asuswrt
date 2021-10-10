@@ -1,7 +1,7 @@
 /*
  * ACPHY HiRSSI eLNA Bypass module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_hirssi.c 769908 2018-11-29 12:28:51Z $
+ * $Id: phy_ac_hirssi.c 778436 2019-08-30 23:21:30Z $
  */
 
 #include <typedefs.h>
@@ -295,7 +295,7 @@ phy_ac_hirssi_apply(phy_ac_hirssi_info_t *pi_ac)
 	if (!ACPHY_ENABLE_FCBS_HWACI(pi)) {
 		/* ACI - reset aci for current band & restore defaults */
 		wlc_phy_desense_aci_reset_params_acphy(pi, FALSE, CHSPEC_IS2G(pi->radio_chanspec),
-		                                       CHSPEC_IS5G(pi->radio_chanspec));
+		                                       CHSPEC_ISPHY5G6G(pi->radio_chanspec));
 		wlc_phy_desense_calc_total_acphy(pi->u.pi_acphy->rxgcrsi);
 		wlc_phy_desense_apply_acphy(pi, FALSE);
 	}
@@ -413,7 +413,8 @@ bool phy_ac_hirssi_set(phy_info_t *pi)
 	phy_ac_hirssi_info_t  *pi_ac = pi->u.pi_acphy->hirssii;
 	bool elna_bypass = FALSE;
 	if ((CHSPEC_IS2G(pi->radio_chanspec) && (pi_ac->hirssi_timer2g > PHY_SW_HIRSSI_OFF)) ||
-		(CHSPEC_IS5G(pi->radio_chanspec) && (pi_ac->hirssi_timer5g > PHY_SW_HIRSSI_OFF))) {
+		(CHSPEC_ISPHY5G6G(pi->radio_chanspec) &&
+		(pi_ac->hirssi_timer5g > PHY_SW_HIRSSI_OFF))) {
 		elna_bypass = TRUE;
 	}
 	return elna_bypass;
@@ -423,7 +424,7 @@ bool phy_ac_hirssi_get(phy_info_t *pi)
 {
 	phy_ac_hirssi_info_t  *pi_ac = pi->u.pi_acphy->hirssii;
 	return (CHSPEC_IS2G(pi->radio_chanspec) & pi_ac->hirssi_elnabyp2g_en) ||
-		(CHSPEC_IS5G(pi->radio_chanspec) & pi_ac->hirssi_elnabyp5g_en);
+		(CHSPEC_ISPHY5G6G(pi->radio_chanspec) & pi_ac->hirssi_elnabyp5g_en);
 }
 /* ******************  HIRSSI ELNABYPASS (uCode supported). End  ****************** */
 

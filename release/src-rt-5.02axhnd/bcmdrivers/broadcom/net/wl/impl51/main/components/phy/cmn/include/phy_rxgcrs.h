@@ -1,7 +1,7 @@
 /*
  * Rx Gain Control and Carrier Sense module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_rxgcrs.h 771175 2019-01-17 05:27:50Z $
+ * $Id: phy_rxgcrs.h 778192 2019-08-26 18:35:50Z $
  */
 
 #ifndef _phy_rxgcrs_h_
@@ -65,6 +65,7 @@ int phy_rxgcrs_down(phy_rxgcrs_info_t *cmn_info);
 
 uint8 wlc_phy_get_locale(phy_rxgcrs_info_t *info);
 int wlc_phy_adjust_ed_thres(phy_info_t *pi, int32 *assert_thresh_dbm, bool set_threshold);
+extern bool wlc_phy_is_edcrs_high(phy_info_t *pi);
 /* Rx desense Module */
 int phy_rxgcrs_get_rxdesens(phy_info_t *pi, int32 *ret_int_ptr);
 int phy_rxgcrs_set_rxdesens(phy_info_t *pi, int32 int_val);

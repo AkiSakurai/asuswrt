@@ -1,7 +1,7 @@
 /*
  * Key Management Module km_hw algo HW keytable implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: km_hw_algo_hwktab.c 758497 2018-04-19 04:26:55Z $
+ * $Id: km_hw_algo_hwktab.c 780020 2019-10-14 08:36:53Z $
  */
 
 #include "km_hw_impl.h"
@@ -72,6 +72,10 @@ static void
 km_hw_algo_write_key(km_hw_t *hw, hwktab_addr_t addr, const uint8 *data, size_t data_len)
 {
 	wlc_info_t *wlc = KM_HW_WLC(hw);
+
+	if ((data_len > 0) && !data[0]) {
+		data = km_hw_fixup_null_hw_key(hw, data, data_len);
+	}
 
 	KM_HW_COPYTO_HWKTAB(wlc, addr, data, data_len & ~3);
 	KM_DBG_ASSERT((data_len & 0x1) == 0);

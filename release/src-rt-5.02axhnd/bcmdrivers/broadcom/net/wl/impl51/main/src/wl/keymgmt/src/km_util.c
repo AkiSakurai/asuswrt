@@ -1,6 +1,6 @@
 /*
  * Key Management Module Implementation - utilities
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_util.c 774133 2019-04-11 09:15:54Z $
+ * $Id: km_util.c 784903 2020-03-09 07:54:00Z $
  */
 
 #include "km_pvt.h"
@@ -66,8 +66,7 @@ km_find_scb(keymgmt_t *km, wlc_bsscfg_t *bsscfg, const struct ether_addr *addr,
 	bool create)
 {
 	scb_t *scb = NULL;
-	uint bandunit;
-	uint other_bandunit;
+	enum wlc_bandunit bandunit, other_bandunit;
 	wlc_info_t *wlc;
 
 	wlc = km->wlc;
@@ -76,7 +75,7 @@ km_find_scb(keymgmt_t *km, wlc_bsscfg_t *bsscfg, const struct ether_addr *addr,
 		goto done;
 
 	bandunit = (bsscfg->associated) ?
-		CHSPEC_WLCBANDUNIT(bsscfg->current_bss->chanspec) :
+		CHSPEC_BANDUNIT(bsscfg->current_bss->chanspec) :
 		wlc->band->bandunit;
 
 	scb = wlc_scbfindband(wlc, bsscfg, addr, bandunit);
@@ -409,6 +408,9 @@ void km_null_key_deauth(keymgmt_t *km, scb_t *scb, void *pkt)
 			 * interface is tied to as our BSSID.  We can't use the
 			 * BSSCFG's BSSID because the BSSCFG may not be "up" (yet).
 			 */
+			KM_ASSOC(("wl%d.%d: %s: send deauth to "MACF" with reason %d\n",
+				wlc->pub->unit, WLC_BSSCFG_IDX(bsscfg), __FUNCTION__,
+				ETHER_TO_MACF(scb->ea), DOT11_RC_AUTH_INVAL));
 			wlc_senddeauth(wlc, bsscfg, scb, &scb->ea,
 				&bsscfg->cur_etheraddr, &bsscfg->cur_etheraddr,
 				DOT11_RC_AUTH_INVAL);
@@ -618,9 +620,8 @@ km_needs_hw_key(keymgmt_t *km, km_pvt_key_t *km_pvt_key, wlc_key_info_t *key_inf
 			/* AP group keys need hw keys, for tx */
 		}
 
-		/* TKIP: use SW keys for BCMC traffic on secondary BSS */
+		/* TKIP: use SW keys for BCMC traffic */
 		if (KM_HW_COREREV_GE128(km) && (key_info->algo == CRYPTO_ALGO_TKIP) &&
-			!WLC_KEY_IS_DEFAULT_BSS(key_info) &&
 			(km_pvt_key->flags & KM_FLAG_BSS_KEY))
 			break;
 
@@ -1118,7 +1119,7 @@ wlc_bsscfg_t *from_cfg, wlc_bsscfg_t *to_cfg)
 	if (!BSSCFG_AP(from_cfg)) {
 		from_scb = wlc_scblookupband(from_cfg->wlc, from_cfg,
 			&to_cfg->current_bss->BSSID,
-			CHSPEC_WLCBANDUNIT(to_cfg->current_bss->chanspec));
+			CHSPEC_BANDUNIT(to_cfg->current_bss->chanspec));
 
 		if (!from_scb) {
 			KM_ERR(("wlc%d: from_scb is not found \n", WLCWLUNIT(from_cfg->wlc)));
@@ -1126,7 +1127,7 @@ wlc_bsscfg_t *from_cfg, wlc_bsscfg_t *to_cfg)
 		}
 
 		to_scb = wlc_scblookupband(to_cfg->wlc, to_cfg,
-		&from_cfg->current_bss->BSSID, CHSPEC_WLCBANDUNIT(to_cfg->current_bss->chanspec));
+		&from_cfg->current_bss->BSSID, CHSPEC_BANDUNIT(to_cfg->current_bss->chanspec));
 
 		if (!to_scb) {
 			KM_ERR(("wlc%d: to_scb is not found \n", WLCWLUNIT(to_cfg->wlc)));
@@ -1242,13 +1243,15 @@ wlc_bsscfg_t *from_cfg, wlc_bsscfg_t *to_cfg)
 	return BCME_OK;
 }
 
+/* to allocate dummy key entry - used in stamon */
 int
 wlc_keymgmt_alloc_amt(wlc_keymgmt_t *km)
 {
 	km_amt_idx_t  amt_idx;
 
-	if ((amt_idx = km_hw_amt_find_and_resrv(km->hw)) != KM_HW_AMT_IDX_INVALID)
+	if ((amt_idx = km_hw_amt_find_and_resrv(km->hw)) != KM_HW_AMT_IDX_INVALID) {
 		return amt_idx;
+	}
 
 	return BCME_NORESOURCE;
 }

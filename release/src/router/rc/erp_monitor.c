@@ -356,9 +356,17 @@ static void erp_standby_mode(int model)
 			eval("wl", "-i", "eth4", "down");
 			eval("wl", "-i", "eth5", "down"); // turn off 5g radio
 			break;
+		case MODEL_RTAX56_XD4:
+			eval("wl", "-i", "wl0", "down");
+			eval("wl", "-i", "wl1", "down"); // turn off 5g radio
+			break;
 		case MODEL_RTAX58U:
 			eval("wl", "-i", "eth5", "down");
 			eval("wl", "-i", "eth6", "down"); // turn off 5g radio
+			break;
+		case MODEL_RTAX55:
+			eval("wl", "-i", "eth2", "down");
+			eval("wl", "-i", "eth3", "down"); // turn off 5g radio
 			break;
 		case MODEL_RTAX56U:
 			eval("wl", "-i", "eth5", "down");
@@ -401,6 +409,11 @@ static void erp_standby_mode(int model)
 		eval("wl", "-i", "eth4", "down"); // turn off 2g radio
 	}
 
+	if (model == MODEL_RTAX56_XD4) {
+		// triple band
+		eval("wl", "-i", "wl0", "down"); // turn off 2g radio
+	}
+
 	if (model == MODEL_RTAX58U) {
 		// triple band
 		eval("wl", "-i", "eth5", "down"); // turn off 2g radio
@@ -409,6 +422,11 @@ static void erp_standby_mode(int model)
 	if (model == MODEL_RTAX56U) {
 		// triple band
 		eval("wl", "-i", "eth5", "down"); // turn off 2g radio
+	}
+
+	if (model == MODEL_RTAX55) {
+		// triple band
+		eval("wl", "-i", "eth2", "down"); // turn off 2g radio
 	}
 
 	if (model == MODEL_DSLAC68U) {
@@ -478,19 +496,27 @@ static void ERP_BTN_WAKEUP()
 {
 	int active = 0;
 	int model = get_model();
-#ifdef RTCONFIG_LED_BTN
+#if defined(RTCONFIG_LED_BTN) || !defined(RTCONFIG_WIFI_TOG_BTN)
 	static int led_status_on = 1;
 #endif
 
 	if (erp_status != ERP_STANDBY || erp_count != -1)
 		return;
 
-#ifdef RTCONFIG_LED_BTN
+#if defined(RTCONFIG_LED_BTN) || !defined(RTCONFIG_WIFI_TOG_BTN)
 	if (model != MODEL_RTAC87U) {
 #if defined(RTAX88U) || defined(RTAX92U) || defined(RTCONFIG_HND_ROUTER_AX_675X)
+#ifndef RTCONFIG_WIFI_TOG_BTN
+		if (button_pressed(BTN_WPS) && nvram_match("btn_ez_radiotoggle", "0") && nvram_match("btn_ez_mode", "1"))
+#else
 		if (button_pressed(BTN_LED))
+#endif
+#else
+#ifndef RTCONFIG_WIFI_TOG_BTN
+		if (!button_pressed(BTN_WPS) && nvram_match("btn_ez_radiotoggle", "0") && nvram_match("btn_ez_mode", "1"))
 #else
 		if (!button_pressed(BTN_LED))
+#endif
 #endif
 		{
 			ERP_DBG("PRESSED LED BUTTON!\n");
@@ -571,7 +597,9 @@ static void ERP_CHECK_MODE()
 		&& model != MODEL_GTAX11000
 		&& model != MODEL_RTAX92U
 		&& model != MODEL_RTAX95Q
+		&& model != MODEL_RTAX56_XD4
 		&& model != MODEL_RTAX58U
+		&& model != MODEL_RTAX55
 		&& model != MODEL_RTAX56U)
 	{
 		ERP_DBG("The model isn't under support list!\n");
@@ -601,7 +629,7 @@ static void ERP_CHECK_MODE()
 	int erp_arp  = erp_check_arp_stat(model);
 	int erp_gphy = erp_check_gphy_stat(model);
 	int erp_dsl  = erp_check_dsl_stat(model); // DSL model
-	if (model == MODEL_GTAC5300 || model == MODEL_RTAX88U || model == MODEL_GTAX11000 || model == MODEL_RTAX92U || model == MODEL_RTAX95Q || model == MODEL_RTAX58U || model == MODEL_RTAX56U)
+	if (model == MODEL_GTAC5300 || model == MODEL_RTAX88U || model == MODEL_GTAX11000 || model == MODEL_RTAX92U || model == MODEL_RTAX95Q || model == MODEL_RTAX56_XD4 || model == MODEL_RTAX58U || model == MODEL_RTAX55 || model == MODEL_RTAX56U)
 		erp_wl_sta_num = erp_check_wl_auth_stat();
 
 	ERP_DBG("erp_usb=%d, erp_wl=%d, erp_arp=%d, erp_gphy=%d, erp_dsl=%d, erp_status=%d, erp_wl_sta_num=%d, erp_count=%d\n",
@@ -719,7 +747,9 @@ int erp_monitor_main(int argc, char **argv)
 		&& model != MODEL_GTAX11000
 		&& model != MODEL_RTAX92U
 		&& model != MODEL_RTAX95Q
+		&& model != MODEL_RTAX56_XD4
 		&& model != MODEL_RTAX58U
+		&& model != MODEL_RTAX55
 		&& model != MODEL_RTAX56U)
 	{
 		logmessage("ERP", "The model isn't under support list!\n");

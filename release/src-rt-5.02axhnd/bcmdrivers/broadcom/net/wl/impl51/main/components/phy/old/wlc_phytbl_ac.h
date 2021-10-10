@@ -5,7 +5,7 @@
  * THIS IS A GENERATED FILE - DO NOT EDIT
  * Generated on Tue Aug 16 16:22:54 PDT 2011
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -50,7 +50,7 @@
  * <<Broadcom-WL-IPTag/Proprietary:>>
  * All Rights Reserved.
  *
- * $Id: wlc_phytbl_ac.h 767145 2018-08-29 11:53:31Z $
+ * $Id: wlc_phytbl_ac.h 778106 2019-08-22 17:58:50Z $
  */
 /* FILE-CSTYLED */
 #ifndef _wlc_phytbl_ac_h_
@@ -98,6 +98,8 @@ extern CONST acphytbl_info_t acphytbl_info_rev128[];
 extern CONST uint32 acphytbl_info_sz_rev128;
 extern CONST acphytbl_info_t acphytbl_info_rev129[];
 extern CONST uint32 acphytbl_info_sz_rev129;
+extern CONST acphytbl_info_t acphytbl_info_rev130[];
+extern CONST uint32 acphytbl_info_sz_rev130;
 
 extern CONST acphytbl_info_t acphyzerotbl_info_rev0[];
 extern CONST uint32 acphyzerotbl_info_cnt_rev0;
@@ -135,6 +137,8 @@ extern CONST acphytbl_info_t acphyzerotbl_info_rev128[];
 extern CONST uint32 acphyzerotbl_info_cnt_rev128;
 extern CONST acphytbl_info_t acphyzerotbl_info_rev129[];
 extern CONST uint32 acphyzerotbl_info_cnt_rev129;
+extern CONST acphytbl_info_t acphyzerotbl_info_rev130[];
+extern CONST uint32 acphyzerotbl_info_cnt_rev130;
 
 extern CONST chan_info_radio2069_t chan_tuning_2069rev3[NUM_ROWS_CHAN_TUNING];
 extern CONST chan_info_radio2069_t chan_tuning_2069rev4[NUM_ROWS_CHAN_TUNING];

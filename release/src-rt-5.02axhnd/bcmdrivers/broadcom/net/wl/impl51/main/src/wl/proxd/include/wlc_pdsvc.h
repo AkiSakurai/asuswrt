@@ -2,7 +2,7 @@
  * Required functions exported by the wlc_pdsvc.c
  * to common driver code
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_pdsvc.h 777286 2019-07-25 19:43:30Z $
+ * $Id: wlc_pdsvc.h 784322 2020-02-25 16:29:23Z $
  */
 
 /********************************************************************
@@ -191,5 +191,8 @@ void wlc_proxd_process_tx_rx_status(wlc_info_t *wlc, tx_status_t *txs,
 struct ether_addr * wlc_proxd_get_randmac(wlc_pdsvc_info_t *pdsvc, wlc_bsscfg_t *bsscfg);
 
 int wlc_proxd_release_randmac(wlc_pdsvc_info_t *pdsvc, wlc_bsscfg_t *bsscfg);
+
+void wlc_proxd_set_pkttag_flags(wlc_info_t *wlc, wlc_pkttag_t *pkttag);
+uint16 wlc_proxd_get_tx_subband(wlc_info_t *wlc, chanspec_t chanspec);
 
 #endif /* _wlc_pdsvc_h */

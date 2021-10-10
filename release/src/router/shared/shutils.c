@@ -1101,26 +1101,28 @@ make_wl_prefix(char *prefix, int prefix_size, int mode, char *ifname)
  * locate the string "needle"
  */
 char *
-find_in_list(const char *haystack, const char *needle)
+_find_in_list(const char *haystack, const char *needle, char deli)
 {
 	const char *ptr = haystack;
 	int needle_len = 0;
 	int haystack_len = 0;
 	int len = 0;
+	char strde[2];
 
 	if (!haystack || !needle || !*haystack || !*needle)
 		return NULL;
 
+	sprintf(strde, "%c", deli);
 	needle_len = strlen(needle);
 	haystack_len = strlen(haystack);
 
 	while (*ptr != 0 && ptr < &haystack[haystack_len])
 	{
 		/* consume leading spaces */
-		ptr += strspn(ptr, " ");
+		ptr += strspn(ptr, strde);
 
 		/* what's the length of the next word */
-		len = strcspn(ptr, " ");
+		len = strcspn(ptr, strde);
 
 		if ((needle_len == len) && (!strncmp(needle, ptr, len)))
 			return (char*) ptr;
@@ -1130,6 +1132,12 @@ find_in_list(const char *haystack, const char *needle)
 	return NULL;
 }
 
+
+char *
+find_in_list(const char *haystack, const char *needle)
+{
+	return _find_in_list(haystack, needle, ' ');
+}
 
 /**
  *	remove_from_list
@@ -1142,7 +1150,7 @@ find_in_list(const char *haystack, const char *needle)
  *	@return	error code
  */
 int
-remove_from_list(const char *name, char *list, int listsize)
+_remove_from_list(const char *name, char *list, int listsize, char deli)
 {
 	int namelen = 0;
 	char *occurrence = list;
@@ -1152,7 +1160,7 @@ remove_from_list(const char *name, char *list, int listsize)
 
 	namelen = strlen(name);
 
-	occurrence = find_in_list(occurrence, name);
+	occurrence = _find_in_list(occurrence, name, deli);
 
 	if (!occurrence)
 		return EINVAL;
@@ -1165,7 +1173,7 @@ remove_from_list(const char *name, char *list, int listsize)
 			occurrence--;
 		occurrence[0] = 0;
 	}
-	else if (occurrence[namelen] == ' ')
+	else if (occurrence[namelen] == deli)
 	{
 		/* Using memmove because of possible overlapping source and destination buffers */
 		memmove(occurrence, &occurrence[namelen+1 /* space */],
@@ -1173,6 +1181,12 @@ remove_from_list(const char *name, char *list, int listsize)
 	}
 
 	return 0;
+}
+
+int
+remove_from_list(const char *name, char *list, int listsize)
+{
+	return _remove_from_list(name, list, listsize, ' ');
 }
 
 /**
@@ -2349,4 +2363,39 @@ found_next:
                 ptr += len;
         }
         return NULL;
+}
+
+/* Compare two space-separated/null-terminated lists(str1 and str2)
+ * NOTE : The individual names in the list should not exceed NVRAM_MAX_VALUE_LEN
+ *
+ * @param      str1    space-separated/null-terminated list
+ * @param      str2    space-separated/null-terminated list
+ *
+ * @return     0 if both strings are same else return -1
+ */
+int
+compare_lists(char *str1, char *str2)
+{
+       char name[NVRAM_MAX_VALUE_LEN + 1], *next_str;
+
+       /* Check for arg and len */
+       if (!str1 || !str2 || (strlen(str1) != strlen(str2))) {
+               return -1;
+       }
+
+       /* First check whether each element in str1 list is present in str2's list */
+       foreach(name, str1, next_str) {
+               if (find_in_list(str2, name) == NULL) {
+                       return -1;
+               }
+       }
+
+       /* Now check whether each element in str2 list is present in str1's list */
+       foreach(name, str2, next_str) {
+               if (find_in_list(str1, name) == NULL) {
+                       return -1;
+               }
+       }
+
+       return 0;
 }

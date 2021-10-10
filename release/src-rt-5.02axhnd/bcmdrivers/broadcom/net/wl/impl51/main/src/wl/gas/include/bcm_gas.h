@@ -2,7 +2,7 @@
  * GAS state machine functions which implements the GAS protocol
  * as defined in 802.11u.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -152,7 +152,7 @@ int bcm_gas_deinitialize(void);
 
 /* create GAS protocol instance to destination */
 bcm_gas_t *bcm_gas_create(struct bcm_gas_wl_drv_hdl *drv, int bsscfg_idx,
-	void *wl_drv_if, uint16 channel, struct ether_addr *dst);
+	void *wl_drv_if, uint16 channel, struct ether_addr *dst, bool isIncoming);
 
 /* destroy GAS protocol instance */
 int bcm_gas_destroy(bcm_gas_t *gas);
@@ -216,6 +216,7 @@ struct bcm_gas_wl_drv_hdl *bcm_gas_get_drv(bcm_gas_t *gas);
 void bcm_gas_process_wlan_event(void *context, uint32 eventType,
 	wl_event_msg_t *wlEvent, uint8 *data, uint32 length);
 struct ether_addr* bcm_gas_get_mac_addr(bcm_gas_t* gas);
+struct ether_addr* bcm_gas_get_peer_mac_addr(bcm_gas_t* gas);
 int bcm_gas_no_query_response(bcm_gas_t *gas);
 void bcm_gas_update_gas_incoming_info(bcm_gas_t* gas, bool is_incoming);
 #endif /* _BCM_GAS_H_ */

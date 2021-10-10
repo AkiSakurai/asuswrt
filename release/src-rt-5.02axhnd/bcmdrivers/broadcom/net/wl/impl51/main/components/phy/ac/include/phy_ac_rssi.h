@@ -1,7 +1,7 @@
 /*
  * ACPHY RSSI Compute module interface
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rssi.h 770653 2018-12-24 07:37:55Z $
+ * $Id: phy_ac_rssi.h 775853 2019-06-13 23:30:06Z $
  */
 
 #ifndef _phy_ac_rssi_h_
@@ -74,6 +74,7 @@ typedef struct {
 	uint16 txtrig_cnt;
 	uint16 rxofdma_cnt;
 	uint16 rxofdma_cnt_last;
+	uint8 ulofdma_rssi_cal_disable;
 } phy_ulofdma_per_user_rxstats_t;
 
 typedef struct {

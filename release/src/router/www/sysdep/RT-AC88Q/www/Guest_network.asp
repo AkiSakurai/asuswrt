@@ -1487,7 +1487,7 @@ function dis_qos_enable(_wl_idx, _form_obj, _control_item){
 <input type="hidden" name="gwlu" value="" disabled>
 <input type="hidden" name="modified" value="0">
 <input type="hidden" name="action_mode" value="apply_new">
-<input type="hidden" name="action_script" value="restart_wireless">
+<input type="hidden" name="action_script" value="restart_wireless;restart_firewall;">
 <input type="hidden" name="action_wait" value="15">
 <input type="hidden" name="preferred_lang" id="preferred_lang" value="<% nvram_get("preferred_lang"); %>">
 <input type="hidden" name="wl_country_code" value="<% nvram_get("wl0_country_code"); %>" disabled>

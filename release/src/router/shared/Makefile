@@ -315,8 +315,7 @@ CFLAGS += -DSMART_CONNECT
 endif
 OBJS += $(if $(wildcard sysdeps/amas/amas_dwb.c),amas_dwb.o,prebuild/amas_dwb.o)
 endif
-OBJS += amas_utils.o
-OBJS += $(if $(wildcard amas_utils.c),amas_utils.o,prebuild/amas_utils.o)
+OBJS += $(if $(wildcard amas_utils.c),amas_utils.o, prebuild/amas_utils.o)
 ifeq ($(RTCONFIG_AMASDB),y)
 CFLAGS += -DAMASDB
 endif
@@ -352,6 +351,9 @@ else
 vpath %.c sysdeps/broadcom  $(SRCBASE)/shared/bcmwifi/src
 ifeq ($(RTCONFIG_HND_ROUTER_AX),y)
 OBJS += bcmxtlv.o bcmutils.o
+ifeq ($(or $(RTAX55),$(RTAX1800)),y)
+OBJS += rtkswitch.o
+endif
 endif
 endif
 

@@ -2,7 +2,7 @@
  * Proxd FTM method support. See twiki FineTimingMeasurement.
  * This header is internal to proxd and specifies s/w interface to FTM
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftm.h 777286 2019-07-25 19:43:30Z $
+ * $Id: pdftm.h 778924 2019-09-13 19:33:40Z $
  */
 
 #ifndef _pdftm_h_
@@ -295,9 +295,9 @@ bool pdftm_is_ftm_action(pdftm_t *ftm, const dot11_management_header_t *hdr,
 	uint8 *body, uint body_len);
 
 /* process a received action frame */
-int pdftm_rx(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, const dot11_management_header_t *hdr,
-	const uint8 *body, uint body_len,
-	const wlc_d11rxhdr_t *wrxh, ratespec_t rspec);
+int pdftm_rx(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, dot11_management_header_t *hdr,
+	uint8 *body, uint body_len,
+	wlc_d11rxhdr_t *wrxh, ratespec_t rspec);
 
 /* dump configuration and state */
 void pdftm_dump(const pdftm_t *ftm, struct bcmstrbuf *b);
@@ -327,8 +327,8 @@ bool pdftm_vs_is_ftm_action(pdftm_t *ftm, const dot11_management_header_t *hdr,
 
 /* handle receiving a FTM Vendor Specific Action Frame */
 int pdftm_vs_rx_frame(pdftm_t *ftm, wlc_bsscfg_t *bsscfg,
-	const dot11_management_header_t *hdr, const uint8 *body, uint body_len,
-	const wlc_d11rxhdr_t *wrxh, ratespec_t rspec);
+	dot11_management_header_t *hdr, uint8 *body, uint body_len,
+	wlc_d11rxhdr_t *wrxh, ratespec_t rspec);
 
 #ifdef WL_RANGE_SEQ
 /* update the vendor specific info to the session */

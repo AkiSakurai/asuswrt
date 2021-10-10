@@ -1,7 +1,7 @@
 /*
  * ACPHY DeepSleepInit module DATA interface
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_dsi_data.h 775385 2019-05-29 11:30:21Z $
+ * $Id: phy_ac_dsi_data.h 775590 2019-06-05 07:51:57Z $
  */
 
 #ifndef _PHY_AC_DSI_DATA_H_

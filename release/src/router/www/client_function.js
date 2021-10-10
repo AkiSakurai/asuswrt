@@ -339,11 +339,11 @@ function getUploadIconList() {
 
 function getVenderIconClassName(venderName) {
 	var vender_class_name = "";
-	if(Boolean(venderName.match(venderArrayRE))) {
-		vender_class_name = venderName;
-		if(venderName == "hon hai") {
+	var match_data = venderName.match(venderArrayRE);
+	if(Boolean(match_data) && match_data[0] != undefined) {
+		vender_class_name = match_data[0];
+		if(vender_class_name == "hon hai")
 			vender_class_name = "honhai";
-		}
 	}
 	else {
 		vender_class_name = "";
@@ -1233,29 +1233,22 @@ function select_image(type,  vender) {
 
 function oui_query_card(mac) {
 	var queryStr = mac.replace(/\:/g, "").splice(6,6,"");
-	$.ajax({
-	    url: 'https://services11.ieee.org/RST/standards-ra-web/rest/assignments/download/?registry=MA-L&format=html&text='+ queryStr,
-		type: 'GET',
-		success: function(response) {
-			if(document.getElementById("edit_client_block") == null) return true;
-			if(mac != document.getElementById("client_macaddr_field").value) {//avoid click two device quickly
-				oui_query_card(document.getElementById("client_macaddr_field").value);
-			}
-			else {
-				if(response.search("Sorry!") == -1) {
-					if(response.search(queryStr) != -1) {
-						var retData = response.split("pre")[1].split("(hex)")[1].split(queryStr)[0].split("<b>");
-						document.getElementById("client_manufacturer_field").value = retData[0].trim();
-						document.getElementById("client_manufacturer_field").title = "";
-						if(retData[0].trim().length > 38) {
-							document.getElementById("client_manufacturer_field").value = retData[0].trim().substring(0, 36) + "..";
-							document.getElementById("client_manufacturer_field").title = retData[0].trim();
-						}
-					}
+	if(mac != document.getElementById("client_macaddr_field").value) //avoid click two device quickly
+		oui_query_card(document.getElementById("client_macaddr_field").value);
+	else{
+		$.getJSON("http://nw-dlcdnet.asus.com/plugin/js/ouiDB.json", function(data){
+			if(data != "" && data[queryStr] != undefined){
+				if(document.getElementById("edit_client_block") == null) return true;
+				var vendor_name = data[queryStr].trim();
+				document.getElementById("client_manufacturer_field").value = vendor_name;
+				document.getElementById("client_manufacturer_field").title = "";
+				if(vendor_name.length > 38) {
+					document.getElementById("client_manufacturer_field").value = vendor_name.substring(0, 36) + "..";
+					document.getElementById("client_manufacturer_field").title = vendor_name;
 				}
 			}
-		}
-	});
+		});
+	}
 }
 
 /*
@@ -1625,6 +1618,7 @@ function changeClientListViewMode() {
 	sorter.wl3_display = true;
 }
 
+var interval_clientlist_listview_update = null;
 function pop_clientlist_listview() {
 	if(document.getElementById("clientlist_viewlist_content") != null) {
 		removeElement(document.getElementById("clientlist_viewlist_content"));
@@ -1659,7 +1653,14 @@ function pop_clientlist_listview() {
 	clientlist_view_hide_flag = false;
 
 	create_clientlist_listview();
-	setTimeout("updateClientListBackground();", 5000);//avoiding no data when open the view list
+	setTimeout(function(){parent.document.networkmapdRefresh.submit();}, 5000);//avoiding no data when open the view list
+	clearInterval(interval_clientlist_listview_update);
+	interval_clientlist_listview_update = setInterval(function(){
+		if(document.getElementById("clientlist_viewlist_content").style.display != "none")
+			parent.document.networkmapdRefresh.submit();
+		else
+			clearInterval(interval_clientlist_listview_update);
+	}, 1000*60*3);
 	setTimeout("sorterClientList();updateClientListView();", 500);
 
 	registerIframeClick("statusframe", hide_clientlist_view_block);
@@ -2217,6 +2218,7 @@ function showHideContent(objnmae, thisObj) {
 	}
 }
 
+var updateClientListView_timer = null;
 function updateClientListView(){
 	$.ajax({
 		url: '/update_clients.asp',
@@ -2232,9 +2234,12 @@ function updateClientListView(){
 					if(parent.show_client_status != undefined)
 						parent.show_client_status(totalClientNum.online);
 				}
-				setTimeout("updateClientListView();", 3000);	
+				clearTimeout(updateClientListView_timer);
+				updateClientListView_timer = setTimeout("updateClientListView();", 3000);
 			}
-		}    
+			else
+				clearTimeout(updateClientListView_timer);
+		}
 	});
 }
 
@@ -2391,20 +2396,6 @@ function saveClientName(index, type, mac) {
 	view_custom_name = originalCustomListArray.join('<');
 	document.view_clientlist_form.custom_clientlist.value = view_custom_name;
 	document.view_clientlist_form.submit();
-}
-
-function updateClientListBackground() {
-	$.ajax({
-		url: '/update_networkmapd.asp',
-		dataType: 'script', 
-		error: function(xhr) {
-			setTimeout("updateClientListBackground();", 1000);
-		},
-		success: function(response) {
-			parent.document.networkmapdRefresh.submit();
-			setTimeout("updateClientListBackground();", 180000);
-		}
-	});
 }
 
 function removeClient(_mac, _controlObj, _controlPanel) {

@@ -1,7 +1,7 @@
 /*
  * TxPowerCtrl module implementation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tpc.c 774858 2019-05-09 02:42:47Z $
+ * $Id: phy_tpc.c 779613 2019-10-03 12:07:45Z $
  */
 
 #include <phy_cfg.h>
@@ -95,7 +95,7 @@ static bool
 wlc_phy_ppr_check_vt_backoff(phy_tpc_info_t *tpci, chanspec_t chspec);
 #endif /* WLTXPWR_CACHE && TXPWRBACKOFF */
 
-#ifdef BAND5G
+#if BAND5G
 static int8 wlc_phy_convert_srom_txpwr40Moffset(uint8 offset);
 #endif // endif
 /* attach/detach */
@@ -1376,7 +1376,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom11_read_ppr)(phy_info_t *pi)
 		pi->ppr->u.sr11.offset_dup_l 		=
 		                (uint16)PHY_GETINTVAR(pi, rstr_dot11agduplrpo);
 
-#ifdef BAND5G
+#if BAND5G
 		/* ---------------5G--------------- */
 		/* 5G 11agnac_20IN20 */
 		pi->ppr->u.sr11.ofdm_5g.bw20[0] 		=
@@ -1449,7 +1449,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom11_read_ppr)(phy_info_t *pi)
 	    pi->ppr->u.sr11.ppmcsexp[1] = (uint32)PHY_GETINTVAR(pi, rstr_mcs9poexp);
 	    pi->ppr->u.sr11.ppmcsexp[2] = (uint32)PHY_GETINTVAR(pi, rstr_mcs10poexp);
 	    pi->ppr->u.sr11.ppmcsexp[3] = (uint32)PHY_GETINTVAR(pi, rstr_mcs11poexp);
-#ifdef BAND5G
+#if BAND5G
 	    /* 1024 qam fields for SROM <= 12 */
 	    pi->ppr->u.sr11.pp1024qam5g[0] = (uint32)PHY_GETINTVAR(pi, rstr_mcs1024qam5glpo);
 	    pi->ppr->u.sr11.pp1024qam5g[1] = (uint32)PHY_GETINTVAR(pi, rstr_mcs1024qam5gmpo);
@@ -1557,8 +1557,20 @@ BCMATTACHFN(wlc_phy_txpwr_srom12_read_ppr)(phy_info_t *pi)
 
 	    pi->ppr->u.sr11.offset_dup_h = (uint16)PHY_GETINTVAR_SLICE(pi, rstr_dot11agduphrpo);
 	    pi->ppr->u.sr11.offset_dup_l = (uint16)PHY_GETINTVAR_SLICE(pi, rstr_dot11agduplrpo);
+#ifdef NO_PROPRIETARY_VHT_RATES
+#else
+#ifdef WL11AC
+	    PHY_INFORM(("Get SROM <= 11 1024 QAM Power Offset per rate\n"));
+	    pi->ppr->u.sr11.pp1024qam2g = (uint16)PHY_GETINTVAR(pi, rstr_mcs1024qam2gpo);
 
-#ifdef BAND5G
+	    pi->ppr->u.sr11.ppmcsexp[0] = (uint32)PHY_GETINTVAR(pi, rstr_mcs8poexp);
+	    pi->ppr->u.sr11.ppmcsexp[1] = (uint32)PHY_GETINTVAR(pi, rstr_mcs9poexp);
+	    pi->ppr->u.sr11.ppmcsexp[2] = (uint32)PHY_GETINTVAR(pi, rstr_mcs10poexp);
+	    pi->ppr->u.sr11.ppmcsexp[3] = (uint32)PHY_GETINTVAR(pi, rstr_mcs11poexp);
+#endif /* WL11AC */
+#endif /* NO_PROPRIETARY_VHT_RATES */
+
+#if BAND5G
 	    /* ---------------5G--------------- */
 	    /* 5G 11agnac_20IN20 */
 	    pi->ppr->u.sr11.ofdm_5g.bw20[0] = (uint32)PHY_GETINTVAR_SLICE(pi, rstr_mcsbw205glpo);
@@ -1629,6 +1641,20 @@ BCMATTACHFN(wlc_phy_txpwr_srom12_read_ppr)(phy_info_t *pi)
 			(uint16)PHY_GETINTVAR_SLICE(pi, rstr_sb40and80lr5gx2po);
 		pi->ppr->u.sr11.offset_40in80_h[4] =
 			(uint16)PHY_GETINTVAR_SLICE(pi, rstr_sb40and80hr5gx2po);
+
+#ifdef NO_PROPRIETARY_VHT_RATES
+#else
+#ifdef WL11AC
+	    /* 1024 qam fields for SROM <= 12 */
+	    pi->ppr->u.sr11.pp1024qam5g[0] = (uint32)PHY_GETINTVAR(pi, rstr_mcs1024qam5glpo);
+	    pi->ppr->u.sr11.pp1024qam5g[1] = (uint32)PHY_GETINTVAR(pi, rstr_mcs1024qam5gmpo);
+	    pi->ppr->u.sr11.pp1024qam5g[2] = (uint32)PHY_GETINTVAR(pi, rstr_mcs1024qam5ghpo);
+	    pi->ppr->u.sr11.pp1024qam5g[3] = (uint32)PHY_GETINTVAR(pi, rstr_mcs1024qam5gx1po);
+	    pi->ppr->u.sr11.pp1024qam5g[4] = (uint32)PHY_GETINTVAR(pi, rstr_mcs1024qam5gx2po);
+
+#endif /* WL11AC */
+#endif /* NO_PROPRIETARY_VHT_RATES */
+
 #endif /* BAND5G */
 	}
 }
@@ -2145,6 +2171,13 @@ phy_tpc_get_target_min(wlc_phy_t *ppi)
 	return tx_pwr_min;
 }
 
+void
+phy_tpc_get_target_max_per_core(wlc_phy_t *ppi, phy_tx_targets_per_core_t *max_per_core)
+{
+	phy_info_t *pi = (phy_info_t*)ppi;
+	memcpy(max_per_core->pwr, pi->tx_power_max_per_core, sizeof(*max_per_core));
+}
+
 uint8
 phy_tpc_get_target_max(wlc_phy_t *ppi)
 {
@@ -2193,7 +2226,7 @@ phy_tpc_get_band_from_channel(phy_tpc_info_t *tpci, uint channel)
 	 */
 	uint8 band = 0;
 
-#ifdef BAND5G
+#if BAND5G
 	if ((channel >= FIRST_LOW_5G_CHAN_SSLPNPHY) &&
 		(channel <= LAST_LOW_5G_CHAN_SSLPNPHY)) {
 		band = WL_CHAN_FREQ_RANGE_5GL;
@@ -2216,7 +2249,7 @@ phy_tpc_get_band_from_channel(phy_tpc_info_t *tpci, uint channel)
 }
 #endif /* PPR_API */
 
-#ifdef BAND5G
+#if BAND5G
 static int8
 wlc_phy_convert_srom_txpwr40Moffset(uint8 offset)
 {
@@ -2246,14 +2279,14 @@ bool
 BCMATTACHFN(wlc_phy_txpwr_srom9_read)(phy_info_t *pi)
 {
 	srom_pwrdet_t	*pwrdet  = pi->pwrdet;
-#ifdef BAND5G
+#if BAND5G
 	uint32 offset_40MHz[PHY_MAX_CORES] = {0};
 #endif /* BAND5G */
 	int b;
 
 	/* read in antenna-related config */
 	pi->aa2g = (uint8) PHY_GETINTVAR(pi, rstr_aa2g);
-#ifdef BAND5G
+#if BAND5G
 	pi->aa5g = (uint8) PHY_GETINTVAR(pi, rstr_aa5g);
 #endif /* BAND5G */
 
@@ -2264,7 +2297,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom9_read)(phy_info_t *pi)
 	pi->fem2g->triso = (uint8)PHY_GETINTVAR(pi, rstr_triso2g);
 	pi->fem2g->antswctrllut = (uint8)PHY_GETINTVAR(pi, rstr_antswctl2g);
 
-#ifdef BAND5G
+#if BAND5G
 	pi->fem5g->tssipos = (uint8)PHY_GETINTVAR(pi, rstr_tssipos5g);
 	pi->fem5g->extpagain = (uint8)PHY_GETINTVAR(pi, rstr_extpagain5g);
 	pi->fem5g->pdetrange = (uint8)PHY_GETINTVAR(pi, rstr_pdetrange5g);
@@ -2272,7 +2305,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom9_read)(phy_info_t *pi)
 	pi->fem5g->antswctrllut = (uint8)PHY_GETINTVAR(pi, rstr_antswctl5g);
 #endif /* BAND5G */
 
-#ifdef BAND5G
+#if BAND5G
 	offset_40MHz[PHY_CORE_0] = PHY_GETINTVAR(pi, rstr_pa2gw0a3);
 	if (PHYCORENUM(pi->pubpi->phy_corenum) > 1)
 		offset_40MHz[PHY_CORE_1] = PHY_GETINTVAR(pi, rstr_pa2gw1a3);
@@ -2314,7 +2347,7 @@ BCMATTACHFN(wlc_phy_txpwr_srom9_read)(phy_info_t *pi)
 				pwrdet->pwr_offset40[PHY_CORE_2][b] = 0;
 			}
 			break;
-#ifdef BAND5G
+#if BAND5G
 		case WL_CHAN_FREQ_RANGE_5G_BAND0: /* 1 */
 			pwrdet->max_pwr[PHY_CORE_0][b] = (int8)PHY_GETINTVAR(pi, rstr_maxp5gla0);
 			pwrdet->pwrdet_a1[PHY_CORE_0][b] = (int16)PHY_GETINTVAR(pi, rstr_pa5glw0a0);
@@ -2497,7 +2530,7 @@ BCMATTACHFN(wlc_phy_read_srom9_txpwr_ppr)(phy_info_t *pi)
 		pi->ppr->u.sr9.mcs[WL_CHAN_FREQ_RANGE_2G].bw40 =
 			(uint32)PHY_GETINTVAR(pi, rstr_mcsbw402gpo);
 
-#ifdef BAND5G
+#if BAND5G
 		/* 5G power offsets */
 		pi->ppr->u.sr9.ofdm[WL_CHAN_FREQ_RANGE_5G_BAND0].bw20 =
 			(uint32)PHY_GETINTVAR(pi, rstr_legofdmbw205glpo);
@@ -2561,7 +2594,7 @@ BCMATTACHFN(wlc_phy_read_srom9_txpwr_ppr)(phy_info_t *pi)
 				pi->ppr->u.sr9.ofdm[WL_CHAN_FREQ_RANGE_2G].bw40 =
 				pi->ppr->u.sr9.ofdm[WL_CHAN_FREQ_RANGE_2G].bw20ul +
 				dup40_offset;
-#ifdef BAND5G
+#if BAND5G
 			else if (i == 1)
 				pi->ppr->u.sr9.ofdm[WL_CHAN_FREQ_RANGE_5G_BAND0].bw40 =
 				pi->ppr->u.sr9.ofdm[WL_CHAN_FREQ_RANGE_5G_BAND0].bw20ul +
@@ -2813,7 +2846,7 @@ phy_tpc_get_paparams_for_band(phy_info_t *pi, int32 *a1, int32 *b0, int32 *b1)
 			*b1 = pi->txpa_2g[1];
 			*a1 = pi->txpa_2g[2];
 			break;
-#ifdef BAND5G
+#if BAND5G
 	case WL_CHAN_FREQ_RANGE_5GL:
 			/* 5 GHz low */
 			ASSERT((pi->txpa_5g_low[0] != -1) &&

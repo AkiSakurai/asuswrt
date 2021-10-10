@@ -941,8 +941,10 @@ function register_event(){
 				based_modelid == "GT-AX11000" ||
 				based_modelid == "RT-AX92U" ||
 				based_modelid == "RT-AX95Q" ||
+				based_modelid == "RT-AX56_XD4" ||
 				based_modelid == "RT-AX58U" ||
 				based_modelid == "TUF-AX3000" ||
+				based_modelid == "RT-AX82U" ||
 				based_modelid == "RT-AX56U"
 				|| based_modelid == "RT-AX86U" || based_modelid == "RT-AX5700" || based_modelid == "RT-AX68U"
 				)?1000:600,
@@ -969,8 +971,10 @@ function register_event(){
 				based_modelid == "GT-AX11000" ||
 				based_modelid == "RT-AX92U" ||
 				based_modelid == "RT-AX95Q" ||
+				based_modelid == "RT-AX56_XD4" ||
 				based_modelid == "RT-AX58U" ||
 				based_modelid == "TUF-AX3000" ||
+				based_modelid == "RT-AX82U" ||
 				based_modelid == "RT-AX56U"
 				|| based_modelid == "RT-AX86U" || based_modelid == "RT-AX5700" || based_modelid == "RT-AX68U"
 				)?1000:600,
@@ -997,8 +1001,10 @@ function register_event(){
 				based_modelid == "GT-AX11000" ||
 				based_modelid == "RT-AX92U" ||
 				based_modelid == "RT-AX95Q" ||
+				based_modelid == "RT-AX56_XD4" ||
 				based_modelid == "RT-AX58U" ||
 				based_modelid == "TUF-AX3000" ||
+				based_modelid == "RT-AX82U" ||
 				based_modelid == "RT-AX56U"
 				|| based_modelid == "RT-AX86U" || based_modelid == "RT-AX5700" || based_modelid == "RT-AX68U"
 				)?2167:1300,
@@ -1025,8 +1031,10 @@ function register_event(){
 				based_modelid == "GT-AX11000" ||
 				based_modelid == "RT-AX92U" ||
 				based_modelid == "RT-AX95Q" ||
+				based_modelid == "RT-AX56_XD4" ||
 				based_modelid == "RT-AX58U" ||
 				based_modelid == "TUF-AX3000" ||
+				based_modelid == "RT-AX82U" ||
 				based_modelid == "RT-AX56U"
 				|| based_modelid == "RT-AX86U" || based_modelid == "RT-AX5700" || based_modelid == "RT-AX68U"
 				)?2167:1300,
@@ -1103,8 +1111,10 @@ function register_event(){
 				based_modelid == "GT-AX11000" ||
 				based_modelid == "RT-AX92U" ||
 				based_modelid == "RT-AX95Q" ||
+				based_modelid == "RT-AX56_XD4" ||
 				based_modelid == "RT-AX58U" ||
 				based_modelid == "TUF-AX3000" ||
+				based_modelid == "RT-AX82U" ||
 				based_modelid == "RT-AX56U"
 				|| based_modelid == "RT-AX86U" || based_modelid == "RT-AX5700" || based_modelid == "RT-AX68U"
 				)?1000:600,
@@ -1131,8 +1141,10 @@ function register_event(){
 				based_modelid == "GT-AX11000" ||
 				based_modelid == "RT-AX92U" ||
 				based_modelid == "RT-AX95Q" ||
+				based_modelid == "RT-AX56_XD4" ||
 				based_modelid == "RT-AX58U" ||
 				based_modelid == "TUF-AX3000" ||
+				based_modelid == "RT-AX82U" ||
 				based_modelid == "RT-AX56U"
 				|| based_modelid == "RT-AX86U" || based_modelid == "RT-AX5700" || based_modelid == "RT-AX68U"
 				)?1000:600,
@@ -1159,8 +1171,10 @@ function register_event(){
 				based_modelid == "GT-AX11000" ||
 				based_modelid == "RT-AX92U" ||
 				based_modelid == "RT-AX95Q" ||
+				based_modelid == "RT-AX56_XD4" ||
 				based_modelid == "RT-AX58U" ||
 				based_modelid == "TUF-AX3000" ||
+				based_modelid == "RT-AX82U" ||
 				based_modelid == "RT-AX56U"
 				|| based_modelid == "RT-AX86U" || based_modelid == "RT-AX5700" || based_modelid == "RT-AX68U"
 				)?2167:1300,
@@ -1187,8 +1201,10 @@ function register_event(){
 				based_modelid == "GT-AX11000" ||
 				based_modelid == "RT-AX92U" ||
 				based_modelid == "RT-AX95Q" ||
+				based_modelid == "RT-AX56_XD4" ||
 				based_modelid == "RT-AX58U" ||
 				based_modelid == "TUF-AX3000" ||
+				based_modelid == "RT-AX82U" ||
 				based_modelid == "RT-AX56U"
 				|| based_modelid == "RT-AX86U" || based_modelid == "RT-AX5700" || based_modelid == "RT-AX68U"
 				)?2167:1300,
@@ -1319,8 +1335,10 @@ function check_power(power_value,flag){
 			based_modelid == "GT-AX11000" ||
 			based_modelid == "RT-AX92U" ||
 			based_modelid == "RT-AX95Q" ||
+			based_modelid == "RT-AX56_XD4" ||
 			based_modelid == "RT-AX58U" ||
 			based_modelid == "TUF-AX3000" ||
+			based_modelid == "RT-AX82U" ||
 			based_modelid == "RT-AX56U"
 			|| based_modelid == "RT-AX86U" || based_modelid == "RT-AX5700" || based_modelid == "RT-AX68U"
 			)
@@ -1356,8 +1374,10 @@ function set_lg_power(power_value,flag,idx){
 			based_modelid == "RT-AX92U" ||
 			based_modelid == "RT-AX92U" ||
 			based_modelid == "RT-AX95Q" ||
+			based_modelid == "RT-AX56_XD4" ||
 			based_modelid == "RT-AX58U" ||
 			based_modelid == "TUF-AX3000" ||
+			based_modelid == "RT-AX82U" ||
 			based_modelid == "RT-AX56U"
 			|| based_modelid == "RT-AX86U" || based_modelid == "RT-AX5700" || based_modelid == "RT-AX68U"
 			)
@@ -1376,8 +1396,10 @@ function set_lg_power(power_value,flag,idx){
 			based_modelid == "GT-AX11000" ||
 			based_modelid == "RT-AX92U" ||
 			based_modelid == "RT-AX95Q" ||
+			based_modelid == "RT-AX56_XD4" ||
 			based_modelid == "RT-AX58U" ||
 			based_modelid == "TUF-AX3000" ||
+			based_modelid == "RT-AX82U" ||
 			based_modelid == "RT-AX56U"
 			|| based_modelid == "RT-AX86U" || based_modelid == "RT-AX5700" || based_modelid == "RT-AX68U"
 			)

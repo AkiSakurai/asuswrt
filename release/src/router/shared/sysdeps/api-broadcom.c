@@ -211,7 +211,7 @@ int _bcm_cled_ctrl(int rgb, int cled_mode)
 int bcm_cled_ctrl(int rgb, int cled_mode)
 {
 	int state_changed = 0;
-#if defined(RTAX95Q)
+#if defined(RTAX95Q) || defined(RTAX56_XD4)
 	state_changed = _bcm_cled_ctrl(rgb, cled_mode);
 	if(state_changed == 1){
 		f_write_string("/proc/bcm_cled/activate", "0x0001C000", 0, 0);
@@ -258,6 +258,27 @@ uint32_t get_gpio(uint32_t gpio)
 #endif
 }
 
+#if defined(RTCONFIG_HND_ROUTER_AX_6710) || defined(RTAX58U) || defined(TUFAX3000) || defined(RTAX82U)
+uint32_t get_gpio2(uint32_t gpio)
+{
+	int board_fp = open("/dev/brcmboard", O_RDWR);
+	BOARD_IOCTL_PARMS ioctl_parms = {0};
+
+	if (board_fp <= 0) {
+		printf("Open /dev/brcmboard failed!\n");
+		return -1;
+	}
+
+	ioctl_parms.strLen = gpio;
+
+	if (ioctl(board_fp, BOARD_IOCTL_GET_GPIO, &ioctl_parms) < 0)
+		printf("\nhnd iotcl fail!\n");
+	//printf("\nhnd get_gpio: %04x\n", ioctl_parms.offset);
+
+	close(board_fp);
+	return ioctl_parms.offset;
+}
+#endif
 
 uint32_t set_gpio(uint32_t gpio, uint32_t value)
 {
@@ -335,7 +356,7 @@ int get_fa_rev(void)
 	var.len = sizeof(rev);
 
 	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, "eth0");
+	strcpy(ifr.ifr_name, WAN_IF_ETH);
 	ifr.ifr_data = (caddr_t) &var;
 
 	ret = ioctl(fd, SIOCSETGETVAR, (caddr_t)&ifr);
@@ -365,7 +386,7 @@ int get_fa_dump(void)
 	var.len = sizeof(rev);
 
 	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, "eth0");
+	strcpy(ifr.ifr_name, WAN_IF_ETH);
 	ifr.ifr_data = (caddr_t) &var;
 
 	ret = ioctl(fd, SIOCSETGETVAR, (caddr_t)&ifr);
@@ -402,7 +423,7 @@ int get_switch_model(void)
 	var.len = sizeof(devid);
 
 	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, "eth0"); // is it always the same?
+	strcpy(ifr.ifr_name, WAN_IF_ETH); // is it always the same?
 	ifr.ifr_data = (caddr_t) &var;
 
 	ret = ioctl(fd, SIOCSETGETVAR, (caddr_t)&ifr);
@@ -430,7 +451,7 @@ int robo_ioctl(int fd, int write, int page, int reg, uint32_t *value)
 	int ret, vecarg[4];
 
 	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, "eth0"); // is it always the same?
+	strcpy(ifr.ifr_name, WAN_IF_ETH); // is it always the same?
 	ifr.ifr_data = (caddr_t) vecarg;
 
 	vecarg[0] = (page << 16) | reg;
@@ -461,11 +482,11 @@ int phy_ioctl(int fd, int write, int phy, int reg, uint32_t *value)
 	struct ifreq ifr;
 	int ret, vecarg[2];
 
-#ifdef RTAX95Q
+#if defined(RTAX95Q) || defined(RTAX56_XD4) || defined(RTAX55) || defined(RTAX1800)
 	return 1;
 #endif
 	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, "eth0"); // is it always the same?
+	strcpy(ifr.ifr_name, WAN_IF_ETH); // is it always the same?
 	ifr.ifr_data = (caddr_t) vecarg;
 
 	vecarg[0] = (phy << 16) | reg;
@@ -485,7 +506,7 @@ static inline int ethswctl_init(struct ifreq *p_ifr)
 {
     int skfd;
 
-#ifdef RTAX95Q
+#if defined(RTAX95Q) || defined(RTAX56_XD4) || defined(RTAX55) || defined(RTAX1800)
 	return 1;
 #endif
     /* Open a basic socket */
@@ -497,10 +518,10 @@ static inline int ethswctl_init(struct ifreq *p_ifr)
     /* Get the name -> if_index mapping for ethswctl */
     strcpy(p_ifr->ifr_name, "bcmsw");
     if (ioctl(skfd, SIOCGIFINDEX, p_ifr) < 0 ) {
-        strcpy(p_ifr->ifr_name, "eth0");
+        strcpy(p_ifr->ifr_name, WAN_IF_ETH);
         if (ioctl(skfd, SIOCGIFINDEX, p_ifr) < 0 ) {
             close(skfd);
-            printf("neither bcmsw nor eth0 exist\n");
+            printf("neither bcmsw nor %s exist\n", WAN_IF_ETH);
             return -1;
         }
     }
@@ -508,7 +529,7 @@ static inline int ethswctl_init(struct ifreq *p_ifr)
     return skfd;
 }
 
-#ifndef RTCONFIG_HND_ROUTER_AX_675X
+#if !defined(RTCONFIG_HND_ROUTER_AX_675X) || defined(RTCONFIG_EXTPHY_BCM84880)
 static int et_dev_subports_query(int skfd, struct ifreq *ifr)
 {
 	int port_list = 0;
@@ -621,6 +642,31 @@ static void mdio_write(int skfd, struct ifreq *ifr, int phy_id, int location, in
 
 int ethctl_get_link_status(char *ifname)
 {
+#ifdef RTCONFIG_HND_ROUTER_AX_6710
+	char *cmd[] = {"ethctl", ifname, "media-type", NULL};
+	char *output = "/tmp/ethctl_get_link_status.txt";
+	char *str;
+	int ret;
+
+	unlink(output);
+	_eval(cmd, output, 0, NULL);
+
+	str = file2str(output);
+	//_dprintf("%s", str);
+	if(!strstr(str, "Enabled"))
+		ret = -1;
+	else{
+		if(strstr(str, "Up"))
+			ret = 1;
+		else
+			ret = 0;
+	}
+
+	free(str);
+	unlink(output);
+
+	return ret;
+#else
 	int skfd=0, err, bmsr;
 	struct ethswctl_data ifdata;
 	struct ifreq ifr;
@@ -683,6 +729,7 @@ int ethctl_get_link_status(char *ifname)
 error:
 	if (skfd) close(skfd);
 	return -1;
+#endif
 }
 
 #define _MB 0x1
@@ -790,7 +837,7 @@ error:
 	if (skfd) close(skfd);
 	return -1;
 }
-#endif
+#endif // RTCONFIG_HND_ROUTER_AX_675X
 
 struct ethctl_data ethctl;
 int ethctl_phy_op(char* phy_type, int addr, unsigned int reg, unsigned int value, int wr)
@@ -888,6 +935,93 @@ int ethctl_phy_op(char* phy_type, int addr, unsigned int reg, unsigned int value
 
 	return 0;
 }
+
+#ifdef RTCONFIG_EXTPHY_BCM84880
+int extphy_bit_op(unsigned int reg, unsigned int val, int wr, unsigned int start_bit, unsigned int end_bit, unsigned int wait_ms){
+#define MIN_BIT 0
+#define MAX_BIT 15
+	struct ifreq ifr;
+	int skfd, err;
+	int orig_val, val_mask, val_reverse_mask;
+	int bit;
+
+	if((skfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0){
+		fprintf(stderr, "socket open error\n");
+		return -1;
+	}
+
+	strcpy(ifr.ifr_name, "bcmsw");
+	if(ioctl(skfd, SIOCGIFINDEX, &ifr) < 0 ){
+		fprintf(stderr, "ioctl failed. check if %s exists\n", ifr.ifr_name);
+		close(skfd);
+		return -1;
+	}
+
+	ethctl.phy_addr = EXTPHY_ADDR;
+	ethctl.phy_reg = reg;
+	ethctl.flags = ETHCTL_FLAG_ACCESS_EXT_PHY;
+
+	// Read
+	ethctl.op = ETHGETMIIREG;
+	ifr.ifr_data = (void *)&ethctl;
+	err = ioctl(skfd, SIOCETHCTLOPS, &ifr);
+	if(ethctl.ret_val || err){
+		_dprintf("GET ERROR!!!\n");
+		fprintf(stderr, "command return error!\n");
+		close(skfd);
+		return -1;
+	}
+
+	if(start_bit < MIN_BIT || start_bit > MAX_BIT)
+		start_bit = MIN_BIT;
+
+	if(end_bit < MIN_BIT || end_bit > MAX_BIT)
+		end_bit = MAX_BIT;
+
+	val_mask = 0;
+	for(bit = start_bit; bit <= end_bit; ++bit)
+		val_mask |= 0x1<<bit;
+	//_dprintf("[val_mask] [%u:%u], 0x%04x\n", end_bit, start_bit, val_mask);
+
+	val_reverse_mask = val_mask^0xffff;
+	//_dprintf("[val_reverse_mask] [%u:%u], 0x%04x\n", end_bit, start_bit, val_reverse_mask);
+
+	orig_val = ethctl.val;
+	if(!wr){
+		ethctl.val &= val_mask;
+		ethctl.val >>= start_bit;
+		_dprintf("[GET] 0x%08x [%u:%u] = 0x%04x, full 0x%04x\n", reg, end_bit, start_bit, ethctl.val, orig_val);
+		close(skfd);
+		return ethctl.val;
+	}
+	else
+		_dprintf("[Ori] 0x%08x [%u:%u] = 0x%04x\n", reg, MAX_BIT, MIN_BIT, orig_val);
+
+	// Write
+	ethctl.op = ETHSETMIIREG;
+	ethctl.val = (orig_val&val_reverse_mask) + (val<<start_bit);
+	ifr.ifr_data = (void *)&ethctl;
+	err = ioctl(skfd, SIOCETHCTLOPS, &ifr);
+	if (ethctl.ret_val || err) {
+		_dprintf("SET ERROR!!!\n");
+		fprintf(stderr, "command return error!\n");
+		close(skfd);
+		return -1;
+	}
+
+	_dprintf("[SET] 0x%08x [%u:%u] = 0x%04x, full 0x%04x\n", reg, end_bit, start_bit, val, ethctl.val);
+	close(skfd);
+
+	if(wait_ms > 0){
+		//_dprintf("Sleeping %u mini seconds...\n", wait_ms);
+		usleep(wait_ms*1000);
+	}
+
+	//_dprintf("done\n");
+
+	return ethctl.val;
+}
+#endif
 
 int bcm_reg_read_X(int unit, unsigned int addr, char* data, int len)
 {
@@ -1058,6 +1192,12 @@ int hnd_ethswctl(ecmd_t act, unsigned int val, int len, int wr, unsigned long lo
 	return ret_val;
 }
 
+typedef struct {
+	unsigned int link[4];
+	unsigned int speed[4];
+	unsigned int duplex[4];
+} phyState;
+
 #if defined(RTCONFIG_HND_ROUTER_AX_6710)
 uint32_t hnd_get_phy_status(char *ifname)
 {
@@ -1076,14 +1216,39 @@ uint32_t hnd_get_phy_status(int port)
 {
 	char ifname[16], tmp[100], buf[32];
 
-	snprintf(ifname, sizeof(ifname), "eth%d", port);
-	snprintf(tmp, sizeof(tmp), "/sys/class/net/%s/operstate", ifname);
+#if defined(RTAX55) || defined(RTAX1800)
+	int fd;
+	phyState pS;
 
-	f_read_string(tmp, buf, sizeof(buf));
-	if(!strncmp(buf, "up", 2))
-		return 1;
+	if (port)
+	{
+		fd = open("/dev/rtkswitch", O_RDONLY);
+		if (fd < 0) {
+			perror("/dev/rtkswitch");
+		} else {
+			memset(&pS, 0, sizeof(pS));
+			if (ioctl(fd, 0, &pS) < 0) {
+				perror("rtkswitch ioctl");
+				close(fd);
+			}
+
+			close(fd);
+		}
+
+		return pS.link[port - 1];
+	}
 	else
-		return 0;
+#endif
+	{
+		snprintf(ifname, sizeof(ifname), "eth%d", port);
+		snprintf(tmp, sizeof(tmp), "/sys/class/net/%s/operstate", ifname);
+
+		f_read_string(tmp, buf, sizeof(buf));
+		if(!strncmp(buf, "up", 2))
+			return 1;
+		else
+			return 0;
+	}
 }
 #else
 uint32_t hnd_get_phy_status(int port, int offs, unsigned int regv, unsigned int pmdv)
@@ -1095,9 +1260,9 @@ uint32_t hnd_get_phy_status(int port, int offs, unsigned int regv, unsigned int 
 	) {			// wan port
 #ifdef RTCONFIG_EXTPHY_BCM84880
 		// port4(eth0)->1G WAN, port7(eth5)->2.5G LAN
-		return ethctl_get_link_status(port == 4 ? "eth0" : "eth5");
+		return ethctl_get_link_status(port == 4 ? WAN_IF_ETH : "eth5");
 #else
-		return ethctl_get_link_status("eth0");
+		return ethctl_get_link_status(WAN_IF_ETH);
 #endif
 	} else if (!offs || (port-offs < 0)) {	// main switch
 		return regv & (1<<port) ? 1 : 0;
@@ -1122,11 +1287,39 @@ uint32_t hnd_get_phy_speed(int port)
 {
 	char ifname[16], tmp[100], buf[32];
 
-	snprintf(ifname, sizeof(ifname), "eth%d", port);
-	snprintf(tmp, sizeof(tmp), "/sys/class/net/%s/speed", ifname);
+#if defined(RTAX55) || defined(RTAX1800)
+	int fd;
+	phyState pS;
 
-	f_read_string(tmp, buf, sizeof(buf));
-	return strtoul(buf, NULL, 10);
+	if (port)
+	{
+		fd = open("/dev/rtkswitch", O_RDONLY);
+		if (fd < 0) {
+			perror("/dev/rtkswitch");
+		} else {
+			memset(&pS, 0, sizeof(pS));
+			if (ioctl(fd, 0, &pS) < 0) {
+				perror("rtkswitch ioctl");
+				close(fd);
+			}
+
+			close(fd);
+		}
+
+		if (pS.link[port - 1])
+			return ((pS.speed[port - 1] == 2) ? 1000 : 100);
+		else
+			return 0;
+	}
+	else
+#endif
+	{
+		snprintf(ifname, sizeof(ifname), "eth%d", port);
+		snprintf(tmp, sizeof(tmp), "/sys/class/net/%s/speed", ifname);
+
+		f_read_string(tmp, buf, sizeof(buf));
+		return strtoul(buf, NULL, 10);
+	}
 }
 #else
 uint32_t hnd_get_phy_speed(int port, int offs, unsigned int regv, unsigned int pmdv)
@@ -1139,9 +1332,9 @@ uint32_t hnd_get_phy_speed(int port, int offs, unsigned int regv, unsigned int p
 	) {			// wan port
 #ifdef RTCONFIG_EXTPHY_BCM84880
                 // port4(eth0)->1G WAN, port7(eth5)->2.5G LAN
-		return ethctl_get_link_speed(port == 4 ? "eth0" : "eth5");
+		return ethctl_get_link_speed(port == 4 ? WAN_IF_ETH : "eth5");
 #else
-		return ethctl_get_link_speed("eth0");
+		return ethctl_get_link_speed(WAN_IF_ETH);
 #endif
 	}
 	else if (!offs || (port-offs < 0)) {	// main switch
@@ -1266,7 +1459,7 @@ uint32_t set_ex53134_ctrl(uint32_t portmask, int ctrl)
 	int i=0;
 	uint32_t value;
 
-#ifdef RTAX95Q
+#if defined(RTAX95Q) || defined(RTAX56_XD4)
 	return 1;
 #endif
 	for (i = 0; i < 4 && (portmask >> i); i++) {
@@ -1288,7 +1481,7 @@ uint32_t set_phy_ctrl(uint32_t portmask, int ctrl)
 	int fd, i, model;
 	uint32_t value;
 
-#ifdef RTAX95Q
+#if defined(RTAX95Q) || defined(RTAX56_XD4) || defined(RTAX55) || defined(RTAX1800)
 	return 1;
 #endif
 	model = get_switch();
@@ -1776,7 +1969,23 @@ int get_bonding_port_status(int port)
 	int ports[lan_ports+1];
 	/* 7 3 2 1 0	W0 L1 L2 L3 L4 */
 	ports[0]=7; ports[1]=3; ports[2]=2; ports[3]=1; ports[4]=0;
-#elif defined(RTAX58U) || defined(TUFAX3000)
+#elif defined(RTAX56_XD4)
+	int lan_ports=1;
+
+	if(nvram_match("HwId", "A") || nvram_match("HwId", "C")){
+		lan_ports = 1;
+	} else {
+		lan_ports = 0;
+	}
+	int ports[lan_ports+1];
+	if(nvram_match("HwId", "A") || nvram_match("HwId", "C")){
+		/* 7 3	W0 L1 */
+		ports[0]=7; ports[1]=3;
+	} else {
+		/* 7 W0 */
+		ports[0]=7;
+	}
+#elif defined(RTAX58U) || defined(TUFAX3000) || defined(RTAX82U)
 	int lan_ports=4;
 	int ports[lan_ports+1];
 	/* 4 3 2 1 0	W0 L1 L2 L3 L4 */
@@ -1786,6 +1995,18 @@ int get_bonding_port_status(int port)
 	int ports[lan_ports+1];
 	/* 4 3 2 1 0	W0 L1 L2 L3 L4 */
 	ports[0]=4; ports[1]=3; ports[2]=2; ports[3]=1; ports[4]=0;
+#elif defined(RTAX86U) || defined(RTAX5700)
+	int lan_ports = 5;
+	char *ports[lan_ports+1];
+	/* 7 4 3 2 1 0	L5(2.5G) W0 L1 L2 L3 L4 */
+	/* eth5 eth0 eth4 eth3 eth2 eth1 */
+	ports[0] = "eth0"; ports[1] = "eth4"; ports[2] = "eth3"; ports[3] = "eth2"; ports[4] = "eth1"; ports[5] = "eth5";
+#elif defined(RTAX68U)
+	int lan_ports = 4;
+	char *ports[lan_ports+1];
+	/* 4 3 2 1 0	W0 L1 L2 L3 L4 */
+	/* eth0 eth4 eth3 eth2 eth1 */
+	ports[0] = "eth0"; ports[1] = "eth4"; ports[2] = "eth3"; ports[3] = "eth2"; ports[4] = "eth1";
 #elif defined(RTCONFIG_EXTPHY_BCM84880) /* GT-AX11000 */
 	int lan_ports=5;
 	int ports[lan_ports+1];
@@ -1812,10 +2033,23 @@ int get_bonding_port_status(int port)
 #endif
 
 	/* WAN port */
-	if (hnd_get_phy_status(ports[port], extra_p0, regv, pmdv)==0) {/*Disconnect*/
+#ifdef RTCONFIG_HND_ROUTER_AX_6710
+	if (!hnd_get_phy_status(ports[port]))				/*Disconnect*/
+#elif defined(RTCONFIG_HND_ROUTER_AX_675X)
+	if (!hnd_get_phy_status(ports[port]))				/*Disconnect*/
+#else
+	if (!hnd_get_phy_status(ports[port], extra_p0, regv, pmdv))	/*Disconnect*/
+#endif
+	{
 		port_status = 0;
 	}else{
+#ifdef RTCONFIG_HND_ROUTER_AX_6710
+		ret = hnd_get_phy_speed(ports[port]);
+#elif defined(RTCONFIG_HND_ROUTER_AX_675X)
+		ret = hnd_get_phy_speed(ports[port]);
+#else
 		ret = hnd_get_phy_speed(ports[port], extra_p0, regv2, pmdv2);
+#endif
 		port_status =
 #ifdef RTCONFIG_EXTPHY_BCM84880
                  (ret & 4)? 2500 :
@@ -1830,9 +2064,10 @@ int get_bonding_port_status(int port)
 	port_status = 2500 : connect and phy speed 2500Mbps
 */
 	return port_status;
-#else
+#else // RTCONFIG_BONDING_WAN
 	return 0;
-#endif
+#endif // RTCONFIG_BONDING_WAN
 }
-#endif
-#endif
+#endif // RTCONFIG_HND_ROUTER_AX
+#endif // RTCONFIG_BONDING
+

@@ -1,7 +1,7 @@
 #
 # GNUmakefile.nok
 #
-# Copyright 2019 Broadcom
+# Copyright 2020 Broadcom
 #
 # This program is the proprietary software of Broadcom and/or
 # its licensors, and may only be used, duplicated, modified or distributed
@@ -154,6 +154,7 @@ SOURCES += wluc_heb.c
 SOURCES += wlu_subcounters.c
 SOURCES += wluc_otp.c
 SOURCES += wluc_tdmtx.c
+SOURCES += wluc_perf_utils.c
 
 ##ifdef WL_NAN
 #C_DEFINES += -D WL_NAN

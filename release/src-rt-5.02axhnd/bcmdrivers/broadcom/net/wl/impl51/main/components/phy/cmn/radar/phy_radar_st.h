@@ -1,7 +1,7 @@
 /*
  * RadarDetect module internal interface.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_radar_st.h 777256 2019-07-24 23:41:25Z $
+ * $Id: phy_radar_st.h 777181 2019-07-22 23:43:07Z $
  */
 
 #ifndef _phy_radar_st_

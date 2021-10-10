@@ -1,7 +1,7 @@
 /*
  * ACPHY ANTennaDIVersity module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_antdiv.c 766954 2018-08-22 18:47:13Z $
+ * $Id: phy_ac_antdiv.c 778436 2019-08-30 23:21:30Z $
  */
 
 #include <typedefs.h>
@@ -427,7 +427,7 @@ wlc_phy_antdiv_acphy(phy_info_t *pi, uint8 val)
 			 */
 		ACPHY_REG_LIST_EXECUTE(pi);
 
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			if (CHSPEC_IS80(pi->radio_chanspec) ||
 				PHY_AS_80P80(pi, pi->radio_chanspec)) {
 				MOD_PHYREG(pi, DivEnableClipGain, AntDivEnClipGains_Hi, 1);
@@ -651,13 +651,9 @@ wlc_phy_swdiv_get_rxantmap(phy_type_antdiv_ctx_t *ctx)
 {
 	phy_ac_antdiv_info_t *info = (phy_ac_antdiv_info_t *)ctx;
 	phy_info_t *pi = info->pi;
-	uint16 swdiv_shm_addr;
-	uint16 rx_pref_ant_addr;
 	uint16 rxantmap;
 
-	swdiv_shm_addr = 2 * wlapi_bmac_read_shm(pi->sh->physhim, M_ACPHY_SWDIV_BLK_PTR);
-	rx_pref_ant_addr = swdiv_shm_addr + M_ACPHY_SWDIV_PREF_ANT;
-	rxantmap = wlapi_bmac_read_shm(pi->sh->physhim, rx_pref_ant_addr);
+	rxantmap = wlapi_bmac_read_shm(pi->sh->physhim, M_SWDIV_PREF_ANT(pi));
 	return (rxantmap & ACPHY_SWDIV_PREFANT_SHM_MASK);
 }
 
@@ -775,7 +771,6 @@ void
 phy_ac_swdiv_txpwrcap_shmem_set(phy_type_antdiv_ctx_t *ctx,
 	uint core, uint8 cap_tx, uint8 cap_rx, uint16 txantmap, uint16 rxantmap)
 {
-	uint16 swdiv_shm_addr, rx_pref_ant_addr, tx_pref_ant_addr;
 	uint16 rxant, txant;
 	phy_ac_antdiv_info_t *info = (phy_ac_antdiv_info_t *)ctx;
 	phy_info_t *pi = info->pi;
@@ -784,11 +779,8 @@ phy_ac_swdiv_txpwrcap_shmem_set(phy_type_antdiv_ctx_t *ctx,
 		PHY_ERROR(("%s: core %d idx is out of the range\n", __FUNCTION__, core));
 		return;
 	}
-	swdiv_shm_addr = 2 * wlapi_bmac_read_shm(pi->sh->physhim, M_ACPHY_SWDIV_BLK_PTR);
-	rx_pref_ant_addr = swdiv_shm_addr + M_ACPHY_SWDIV_PREF_ANT;
-	tx_pref_ant_addr = swdiv_shm_addr + M_ACPHY_SWDIV_TX_PREF_ANT;
 	if (rxantmap == ANTDIV_ANTMAP_NOCHANGE) {
-		rxant = wlapi_bmac_read_shm(pi->sh->physhim, rx_pref_ant_addr);
+		rxant = wlapi_bmac_read_shm(pi->sh->physhim, M_SWDIV_PREF_ANT(pi));
 	} else {
 #ifdef WLC_SWDIV_MULTI_CORE_ENABLE
 		rxant = rxantmap;
@@ -797,7 +789,7 @@ phy_ac_swdiv_txpwrcap_shmem_set(phy_type_antdiv_ctx_t *ctx,
 #endif /* WLC_SWDIV_MULTI_CORE_ENABLE */
 	}
 	if (txantmap == ANTDIV_ANTMAP_NOCHANGE) {
-		txant = wlapi_bmac_read_shm(pi->sh->physhim, tx_pref_ant_addr);
+		txant = wlapi_bmac_read_shm(pi->sh->physhim, M_SWDIV_TX_PREF_ANT(pi));
 	} else {
 #ifdef WLC_SWDIV_MULTI_CORE_ENABLE
 		txant = txantmap;
@@ -808,10 +800,10 @@ phy_ac_swdiv_txpwrcap_shmem_set(phy_type_antdiv_ctx_t *ctx,
 	/* when ucode is ready to support multi-core based txpwrcap
 	 * this need to be extended.
 	 */
-	wlapi_bmac_write_shm(pi->sh->physhim, rx_pref_ant_addr,
+	wlapi_bmac_write_shm(pi->sh->physhim, M_SWDIV_PREF_ANT(pi),
 		(cap_rx << ACPHY_TXPOWERCAP_SWDIV_SHM_OFFSET) |
 			(rxant & ACPHY_SWDIV_PREFANT_SHM_MASK));
-	wlapi_bmac_write_shm(pi->sh->physhim, tx_pref_ant_addr,
+	wlapi_bmac_write_shm(pi->sh->physhim, M_SWDIV_TX_PREF_ANT,
 		(cap_tx << ACPHY_TXPOWERCAP_SWDIV_SHM_OFFSET) |
 			(txant & ACPHY_SWDIV_PREFANT_SHM_MASK));
 }

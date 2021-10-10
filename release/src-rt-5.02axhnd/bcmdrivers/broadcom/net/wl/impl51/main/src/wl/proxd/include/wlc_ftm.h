@@ -2,7 +2,7 @@
  * Proxd FTM method support. See twiki FineTimingMeasurement.
  * This header is specifies external s/w interface to FTM
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_ftm.h 777286 2019-07-25 19:43:30Z $
+ * $Id: wlc_ftm.h 784258 2020-02-24 22:00:37Z $
  */
 
 #ifndef _wlc_ftm_h_
@@ -236,5 +236,6 @@ uint16 wlc_ftm_build_vs_req_params(wlc_ftm_t *ftm, wl_proxd_session_id_t sid,
 	uint8 vs_ie_in_len);
 int wlc_ftm_set_session_vs_req_params(wlc_ftm_t * ftm, wl_proxd_session_id_t sid,
 	const dot11_ftm_vs_ie_pyld_t *vs_ie, uint16 vs_ie_len);
+int wlc_ftm_num_sessions_inprog(const wlc_ftm_t *ftm);
 
 #endif /* _wlc_ftm_h_ */

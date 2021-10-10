@@ -1,7 +1,7 @@
 /*
  * Required external functions and definitions for proximity detection
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: wlc_pddefs.h 777286 2019-07-25 19:43:30Z $
+ * $Id: wlc_pddefs.h 784251 2020-02-24 19:15:18Z $
  */
 #ifndef _wlc_pddefs_h
 #define _wlc_pddefs_h
@@ -122,7 +122,7 @@
 #define TOF_DEFAULT_SEQ_EN	0
 #define TOF_DEFAULT_VHTACK	1
 #define TOF_DEFAULT_CORE_SELECTION 255 /* auto core selection */
-#define TOF_DEFAULT_TDCS_EN     TRUE
+#define TOF_DEFAULT_TDCS_EN     FALSE
 #define TOF_DEFAULT_LONGWIN_EN     TRUE
 
 #define TOF_DEFAULT_THRESHOLD_SCALE_2G	5

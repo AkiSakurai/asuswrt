@@ -1,7 +1,7 @@
 /*
  * NPHY BT Coex module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_n_btcx.c 775981 2019-06-17 10:59:30Z $
+ * $Id: phy_n_btcx.c 775651 2019-06-08 02:10:40Z $
  */
 
 #include <phy_cfg.h>

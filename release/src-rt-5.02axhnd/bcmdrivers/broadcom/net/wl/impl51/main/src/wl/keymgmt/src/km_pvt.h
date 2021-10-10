@@ -1,6 +1,6 @@
 /*
  * Key Management Module Implementation
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_pvt.h 767352 2018-09-06 19:20:10Z $
+ * $Id: km_pvt.h 779298 2019-09-24 18:38:16Z $
  */
 
 /* This header file is private to keymgmt implementation */
@@ -536,4 +536,5 @@ bool km_bsscfg_wowl_down(keymgmt_t *km, const wlc_bsscfg_t *bsscfg);
 #else
 #define km_bsscfg_wowl_down(_km, _bsscfg) FALSE
 #endif /* WOWL */
+
 #endif /* _km_pvt_h_ */

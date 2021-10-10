@@ -2,7 +2,7 @@
  * HWA library routines for PCIE facing blocks: HWA1a, HWA2b, HWA3a, and HWA4b
  *
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -109,25 +109,11 @@ typedef enum hwa_rxpost_wi_format
 	HWA_RXPOST_WI_FORMAT_MAX = 4
 } hwa_rxpost_wi_format_t;
 
-#ifdef HWA_RXPOST_ONLY_BUILD
-// Next 4 functions are customized for RxPost CWI32, CWI64, ACWI32 and ACWI64
-
-// Handlers for parsing RxPost WI formats: CWI32, CWI64, ACWI32 and ACWI64
-static uint32 hwa_rxpost_cwi32_parser(hwa_rxpost_t *rxpost,
-	hwa_ring_t *rxpost_ring, uint32 elem_ix, hwa_handler_t *rxpost_handler);
-static uint32 hwa_rxpost_cwi64_parser(hwa_rxpost_t *rxpost,
-	hwa_ring_t *rxpost_ring, uint32 elem_ix, hwa_handler_t *rxpost_handler);
-static uint32 hwa_rxpost_acwi32_parser(hwa_rxpost_t *rxpost,
-	hwa_ring_t *rxpost_ring, uint32 elem_ix, hwa_handler_t *rxpost_handler);
-static uint32 hwa_rxpost_acwi64_parser(hwa_rxpost_t *rxpost,
-	hwa_ring_t *rxpost_ring, uint32 elem_ix, hwa_handler_t *rxpost_handler);
-#else /* !HWA_RXPOST_ONLY_BUILD */
 // No handlers required when RxFill is built
 #define hwa_rxpost_cwi32_parser  ((hwa_rxpost_wi_parser_fn_t)NULL)
 #define hwa_rxpost_cwi64_parser  ((hwa_rxpost_wi_parser_fn_t)NULL)
 #define hwa_rxpost_acwi32_parser ((hwa_rxpost_wi_parser_fn_t)NULL)
 #define hwa_rxpost_acwi64_parser ((hwa_rxpost_wi_parser_fn_t)NULL)
-#endif /* !HWA_RXPOST_ONLY_BUILD */
 
 // HWA1a possible combinations of RxPost WorkItems and their sizes
 // HWA-2.0: ~0 is used to indicate undefined offsets of length or address fields
@@ -175,40 +161,6 @@ hwa_rxpost_preinit(hwa_rxpost_t *rxpost)
 		HWA1a, rxpost->config->wi_name, rxpost->config->wi_parser,
 		rxpost->config->wi_format, rxpost->config->wi_size));
 
-#ifdef HWA_RXPOST_ONLY_BUILD
-	{
-		void *memory;
-		uint32 mem_sz;
-		uint32 depth;
-		hwa_regs_t *regs;
-		pcie_ipc_rings_t *pcie_ipc_rings;
-		pcie_ipc_ring_mem_t *pcie_ipc_ring_mem;
-
-		regs = dev->regs
-		pcie_ipc_rings = dev->pcie_ipc_rings;
-
-		// Single Host2Dongle RxPost common ring serves multiple MAC cores.
-		pcie_ipc_ring_mem =
-			HWA_UINT2PTR(pcie_ipc_ring_mem_t, pcie_ipc_rings->ring_mem_daddr32)
-			+ BCMPCIE_H2D_MSGRING_RXPOST_SUBMIT;
-
-		// Allocate HWA1a->SW RxPost Interface
-		depth  = pcie_ipc_ring_mem->max_items;
-		mem_sz = depth * rxpost->config->wi_size;
-		if ((memory = MALLOCZ(dev->osh, mem_sz)) == NULL) {
-			HWA_ERROR(("%s rxpost_ring %s malloc size<%u> failure\n",
-				HWA1a, rxpost->config->wi_name, mem_sz));
-			HWA_ASSERT(memory != (void*)NULL);
-			return HWA_FAILURE;
-		}
-		HWA_TRACE(("%s rxpost_ring +memory[%p:%u]\n", HWA1a, memory, mem_sz));
-		hwa_ring_init(&rxpost->rxpost_ring, "RXP",
-			HWA_RXPOST_ID, HWA_RING_H2S, HWA_RXPOST_WI_H2S_RINGNUM, depth, memory,
-			&regs->rx_core[0].rxpdest_ring_wrindex,
-			&regs->rx_core[0].rxpdest_ring_rdindex);
-	}
-#endif  /* HWA_RXPOST_ONLY_BUILD */
-
 	// Initialize the RxPost memory AXI memory address
 	rxpost->rxpost_addr = hwa_axi_addr(dev, HWA_AXI_RXPOST_MEMORY);
 
@@ -219,30 +171,6 @@ hwa_rxpost_preinit(hwa_rxpost_t *rxpost)
 void // HWA1a: Free resources for HWA1a block
 hwa_rxpost_free(hwa_rxpost_t *rxpost)
 {
-#ifdef HWA_RXPOST_ONLY_BUILD
-	void *memory;
-	uint32 core, mem_sz;
-	hwa_dev_t *dev;
-
-	HWA_FTRACE(HWA1b);
-
-	if (rxpost == (hwa_rxpost_t*)NULL)
-		return; // nothing to release done
-
-	// Audit pre-conditions
-	dev = HWA_DEV(rxpost);
-
-	// Release resources used by HWA1a->SW RxPost Interface
-	if (rxpost->rxpost_ring.memory != (void*)NULL) {
-		memory = rxpost->rxpost_ring.memory;
-		mem_sz = rxpost->rxpost_ring.depth * rxpost->config->wi_size
-		HWA_TRACE(("%s rxfree_ring -memory[%p,%u]\n", HWA1a, memory, mem_sz));
-		MFREE(dev->osh, memory, mem_sz);
-		hwa_ring_fini(&rxpost->rxpost_ring);
-		rxpost->rxpost_ring.memory = (void*)NULL;
-	}
-#endif  /* HWA_RXPOST_ONLY_BUILD */
-
 }
 
 int // HWA1a initialization, supports only 1 core
@@ -382,34 +310,6 @@ hwa_rxpost_init(hwa_rxpost_t *rxpost)
 		pcie_ipc_ring_mem->item_size);
 	HWA_WR_REG_NAME(HWA1a, regs, rx_core[0], rxp_localfifo_cfg_status, u32);
 
-#ifdef HWA_RXPOST_ONLY_BUILD
-	// Intitialize HWA1a->SW RxPost Interface
-	u32 = HWA_PTR2UINT(rxpost->rxpost_ring.memory);
-	HWA_WR_REG_NAME(HWA1a, regs, rx_core[0], rxpdest_ring_addr_lo, u32);
-	u32 = 0U;
-	HWA_WR_REG_NAME(HWA1a, regs, rx_core[0], rxpdest_ring_addr_hi, u32);
-
-	u32 = (0U
-		| BCM_SBIT(HWA_RX_RXPDEST_RING_CFG_TEMPLATE_NOTPCIE)
-		| BCM_SBIT(HWA_RX_RXPDEST_RING_CFG_TEMPLATE_COHERENT)
-		| BCM_SBF(0, HWA_RX_RXPDEST_RING_CFG_TEMPLATE_ADDREXT)
-		| BCM_SBF(rxpost->config->wi_size, HWA_RX_RXPDEST_RING_CFG_ELSIZE)
-		| BCM_SBF(rxpost->rxpost_ring.depth, HWA_RX_RXPDEST_RING_CFG_DEPTH)
-		| 0U);
-	HWA_WR_REG_NAME(HWA1a, regs, rx_core[0], rxpdest_ring_cfg, u32);
-	u32 = (0U
-		| BCM_SBF(HWA_RXPOST_INTRAGGR_COUNT,
-		        HWA_RX_RXPDEST_INTRAGGR_SEQNUM_CFG_AGGR_COUNT)
-		| BCM_SBF(HWA_RXPOST_INTRAGGR_TMOUT,
-		        HWA_RX_RXPDEST_INTRAGGR_SEQNUM_CFG_AGGR_TIMER)
-		| 0U);
-	HWA_WR_REG_NAME(HWA1a, regs, rx_core[0], rxpdest_intraggr_seqnum_cfg, u32);
-
-	// Assign the interested rxpost interrupt mask.
-	dev->defintmask |= HWA_COMMON_INTSTATUS_RXPDEST0_INT_MASK;
-
-#else  /* !HWA_RXPOST_ONLY_BUILD */
-
 	// Software may reserve RPH when HWA1a and HWA1b are built.
 	// Rx pktfetch needs to use RPH.
 
@@ -424,7 +324,6 @@ hwa_rxpost_init(hwa_rxpost_t *rxpost)
 		HWA_COMMON_INTSTATUS_D11BDEST0_INT_MASK |
 		HWA_COMMON_INTSTATUS_FREEIDXSRC0_INT_MASK |
 		HWA_COMMON_INTSTATUS_FWALERT0_INT_MASK);
-#endif /* !HWA_RXPOST_ONLY_BUILD */
 
 	return HWA_SUCCESS;
 
@@ -550,193 +449,6 @@ hwa_rxpost_data_buf_len(void)
 
 	return (dev->pcie_ipc_rings->rxpost_data_buf_len);
 }
-
-#ifdef HWA_RXPOST_ONLY_BUILD
-// Next 4 functions are customized for RxPost CWI32, CWI64, ACWI32 and ACWI64
-
-static uint32 // Parse RxPost CWI32 and forward to upstream RxPost handler
-hwa_rxpost_cwi32_parser(hwa_rxpost_t *rxpost, hwa_ring_t *rxpost_ring,
-	uint32 elem_ix, hwa_handler_t *rxpost_handler)
-{
-	hwa_dev_t *dev;
-	const uint32 core = 0U;
-	uint32 host_pktid, host_physaddrhi;
-	hwa_rxpost_cwi32_t *rxpost_cwi32;
-
-	// Audit pre-conditions
-	dev = HWA_DEV(rxpost);
-
-	// Setup locals
-	host_physaddrhi = dev->host_physaddrhi; // HWA_PCI64ADDR_HI32 form: 0x80000000 ORed
-
-	// Fetch location of next CWI32 in rxpost_ring to process
-	rxpost_cwi32 = HWA_RING_ELEM(hwa_rxpost_cwi32_t, rxpost_ring, elem_ix);
-	host_pktid = rxpost_cwi32->host_pktid;
-
-	// Invalid Host PktID is not permitted in non aggregated mode
-	if (HWA_HOST_PKTID_ISVALID(host_pktid)) {
-
-		// Handoff to upstream handler
-		(*rxpost_handler->callback)(rxpost_handler->context,
-			(uintptr)core, (uintptr)host_pktid,
-			rxpost_cwi32->data_buf_haddr32, host_physaddrhi);
-
-	} else {
-		HWA_ERROR(("%s cwi32_parse host_pktid<null>\n", HWA1a));
-		HWA_ASSERT(0);
-		return 0;
-	}
-
-	return 1;
-
-} // hwa_rxpost_cwi32_parse
-
-static uint32 // Parse RxPost CWI64 and forward to upstream RxPost handler
-hwa_rxpost_cwi64_parser(hwa_rxpost_t *rxpost, hwa_ring_t *rxpost_ring,
-	uint32 elem_ix, hwa_handler_t *rxpost_handler)
-{
-	haddr64_t *haddr64;
-	const uint32 core = 0U;
-	uint32 host_pktid;
-	hwa_rxpost_cwi64_t *rxpost_cwi64;
-
-	// Fetch location of next CWI64 in rxpost_ring to process
-	rxpost_cwi64 = HWA_RING_ELEM(hwa_rxpost_cwi64_t, rxpost_ring, elem_ix);
-	host_pktid = rxpost_cwi64->host_pktid;
-
-	// Invalid Host PktID is not permitted in non aggregated mode
-	if (HWA_HOST_PKTID_ISVALID(host_pktid)) {
-		haddr64 = &rxpost_cwi64->data_buf_haddr64;
-
-		// Handoff to upstream handler
-		(*rxpost_handler->callback)(rxpost_handler->context,
-			(uintptr)core, (uintptr)host_pktid,
-			HADDR64_LO(*haddr64), HWA_HOSTADDR64_HI32(HADDR64_HI(*haddr64)));
-
-	} else {
-		HWA_ERROR(("%s cwi64_parse host_pktid<null>\n", HWA1a));
-		HWA_ASSERT(0);
-		return 0;
-	}
-
-	return 1;
-
-} // hwa_rxpost_cwi64_parse
-
-static uint32 // Parse RxPost ACWI32 and forward to upstream RxPost handler
-hwa_rxpost_acwi32_parser(hwa_rxpost_t *rxpost, hwa_ring_t *rxpost_ring,
-	uint32 elem_ix, hwa_handler_t *rxpost_handler)
-{
-	hwa_dev_t *dev;
-	const uint32 core = 0U;
-	uint32 host_pktid, host_physaddrhi, parse_cnt;
-	hwa_rxpost_acwi32_t *rxpost_acwi32;
-
-	// Audit pre-conditions
-	dev = HWA_DEV(rxpost);
-
-	// Setup locals
-	host_physaddrhi = dev->host_physaddrhi; // HWA_PCI64ADDR_HI32 form: 0x80000000 ORed
-
-	// Fetch location of next ACWI32 in rxpost_ring to process
-	rxpost_acwi32 = HWA_RING_ELEM(hwa_rxpost_acwi32_t, rxpost_ring, elem_ix);
-
-	for (parse_cnt = 0; parse_cnt < HWA_AGGR_MAX; parse_cnt++) {
-		host_pktid = rxpost_acwi32->host_pktid[parse_cnt];
-
-		// Stop processing on the first invalid host_pktid in an aggregate
-		if (HWA_HOST_PKTID_ISVALID(host_pktid)) {
-
-			// Handoff to upstream handler
-			(*rxpost_handler->callback)(rxpost_handler->context,
-				(uintptr)core, (uintptr)host_pktid,
-				rxpost_acwi32->data_buf_haddr32[parse_cnt], host_physaddrhi);
-
-		} else {
-			break;
-		}
-	}
-
-	return parse_cnt;
-
-} // hwa_rxpost_acwi32_parse
-
-static uint32 // Parse RxPost ACWI64 and forward to upstream RxPost handler
-hwa_rxpost_acwi64_parser(hwa_rxpost_t *rxpost, hwa_ring_t *rxpost_ring,
-	uint32 elem_ix, hwa_handler_t *rxpost_handler)
-{
-	haddr64_t *haddr64;
-	const uint32 core = 0U;
-	uint32 host_pktid, parse_cnt;
-	hwa_rxpost_acwi64_t *rxpost_acwi64;
-
-	// Fetch location of next ACWI64 in rxpost_ring to process
-	rxpost_acwi64 = HWA_RING_ELEM(hwa_rxpost_acwi64_t, rxpost_ring, elem_ix);
-
-	for (parse_cnt = 0; parse_cnt < HWA_AGGR_MAX; parse_cnt++) {
-		host_pktid = rxpost_acwi64->host_pktid[parse_cnt];
-
-		// Stop processing on the first invalid host_pktid in an aggregate
-		if (HWA_HOST_PKTID_ISVALID(host_pktid)) {
-			haddr64 = &rxpost_acwi64->data_buf_haddr64[parse_cnt];
-
-			// Handoff to upstream handler
-			(*rxpost_handler->callback)(rxpost_handler->context,
-				(uintptr)core, (uintptr)host_pktid,
-				HADDR64_LO(*haddr64), HWA_HOSTADDR64_HI32(HADDR64_HI(*haddr64)));
-
-		} else {
-			break;
-		}
-	}
-
-	return parse_cnt;
-
-} // hwa_rxpost_acwi64_parse
-
-int // Process RxPost workitems forwarded by HWA1a in RXPOST ONLY builds
-hwa_rxpost_process(hwa_dev_t *dev)
-{
-	uint32 elem_ix; // location of next element to read
-	uint32 rxpost_cnt; // total rxpost work items processed count
-	hwa_rxpost_t *rxpost; // SW rxpost state
-	hwa_ring_t *h2s_ring; // H2S RXPOST workitem rxpost_ring
-	hwa_handler_t *rxpost_handler; // upstream rx post workitem processing
-	hwa_rxpost_wi_parser_fn_t rxpost_wi_parser; // RxPost WI parser
-
-	HWA_FTRACE(HWA1a);
-
-	// Audit parameters and pre-conditions
-	HWA_AUDIT_DEV(dev);
-
-	// Setup locals
-	rxpost = &dev->rxpost;
-
-	// Fetch registered upstream callback handlers
-	rxpost_handler = &dev->handlers[HWA_RXPOST_PROC_CB];
-	rxpost_wi_parser = rxpost->config->wi_parser; // custom WI handler - 4 forms
-
-	h2s_ring = &rxpost->rxpost_ring;
-
-	hwa_ring_cons_get(h2s_ring); // fetch HWA rxpost ring's WR index once
-	rxpost_cnt = 0U;
-
-	// Consume all RxPost WI received in RxPort ring, handing them upstream
-	while ((elem_ix = hwa_ring_cons_upd(h2s_ring)) != BCM_RING_EMPTY) {
-
-		// Parse next rxpost WI and forward to upstream rxpost handler
-		rxpost_cnt += (rxpost_wi_parser)(h2s_ring, elem_ix, rxpost_handler);
-
-		hwa_ring_cons_put(h2s_ring); // commit RD index now
-	}
-
-	HWA_STATS_EXPR(rxpost->rxpost_cnt += rxpost_cnt);
-
-	return HWA_SUCCESS;
-
-} // hwa_rxpost_process
-
-#else /* !HWA_RXPOST_ONLY_BUILD */
 
 static void hwa_rph_reclaim(hwa_rxpost_t *rxpost, uint32 core);
 
@@ -883,8 +595,6 @@ hwa_rph_reclaim(hwa_rxpost_t *rxpost, uint32 core)
 	HWA_WARN(("%s Reclaim 1 RPH\n", HWA1a));
 }
 
-#endif /* !HWA_RXPOST_ONLY_BUILD */
-
 #if defined(BCMDBG) || defined(HWA_DUMP)
 
 void // Debug support for HWA1a RxPost block
@@ -894,10 +604,6 @@ hwa_rxpost_dump(hwa_rxpost_t *rxpost, struct bcmstrbuf *b, bool verbose)
 
 	if (rxpost == (hwa_rxpost_t*)NULL)
 		return;
-
-	HWA_RXPOST_ONLY_EXPR(hwa_ring_dump(&rxpost->rxpost_ring, b, "+ rxpost_ring"));
-	HWA_RXPOST_ONLY_EXPR(HWA_STATS_EXPR(
-		HWA_BPRINT(b, "+ rxpost_cnt<%u>\n", rxpost->rxpost_cnt)));
 
 	HWA_BPRINT(b, "+ Config: %s parser<%p> format<%u> size<%u> "
 		" offset len<%u> addr<%u>\n",
@@ -1594,21 +1300,40 @@ hwa_txpost_init(hwa_txpost_t *txpost)
 		local_mem_depth =
 			BCM_GBF(u32, HWA_TX_TXPOST_CONFIG_TXPOSTLOCALMEMDEPTH);
 
-		// 1536 x 4 is a multiple of 192 hwa_txpost_cwi64_t workitems
+		// HW default value is out of sync. 3A can support maximum to
+		// 128 WI in cwi64 format [32B, 8 words].
+		if (local_mem_depth < HWA_TXPOST_LOCAL_MEM_DEPTH) {
+			HWA_TRACE(("Adjust local_mem_depth <%u> to <%u>\n",
+				local_mem_depth, HWA_TXPOST_LOCAL_MEM_DEPTH));
+			local_mem_depth = HWA_TXPOST_LOCAL_MEM_DEPTH;
+		}
+		// 1024 x 4 is a multiple of 128 hwa_txpost_cwi64_t workitems
 		num_wi = (local_mem_depth * HWA_TXPOST_MEM_ADDR_W)
 			/ HWA_TXPOST_CWI64_BYTES;
 		// NOTE: The # of WI in HWA local memory cannot > 128
 		// Override the local_mem_depth to meet maximum 128 workitems.
 		if (num_wi > HWA_TXPOST_LOCAL_WORKITEMS) {
-			HWA_PRINT("HWA_64BIT_ADDRESSING: adjust num_wi <%u> to <%u>\n",
-				num_wi, HWA_TXPOST_LOCAL_WORKITEMS);
+			HWA_TRACE(("Adjust num_wi <%u> to <%u>\n",
+				num_wi, HWA_TXPOST_LOCAL_WORKITEMS));
 			num_wi = HWA_TXPOST_LOCAL_WORKITEMS;
 		}
 
+		/* XXX, CRBCAHWA_529.
+		 * In 43684Bx, HWA request DMA to generating descriptor to get workitem
+		 * to HWA internal memory without pre-checking internal memory resources
+		 * which may cause HWA DMA stall problem (request a zero size DMA) when
+		 * internal memory resources is zero.  (43684Cx has fixed it)
+		 * In 43684Bx, PCIEDEV_MAX_PACKETFETCH_COUNT is 64, if we enlarge
+		 * HWA internal memory to 128 workitem then it easy to hit DMA stall issue
+		 * in 8 MU iperf UDP TX test.  But I don't see the issue for 127 workitem setting.
+		 * 128 workitem setting only apply to 43684C0
+		 */
+#if HWA_REVISION_EQ_129
+		num_wi -= 1;
+#endif // endif
+
 		local_mem_depth = (num_wi * HWA_TXPOST_CWI64_BYTES)
 			/ HWA_TXPOST_MEM_ADDR_W;
-		// new local_mem_depth = 1024, limited by maximum
-		// HWA_TXPOST_LOCAL_WORKITEMS.
 
 		wi_size = HWA_TXPOST_CWI64_BYTES;
 		HWA_PRINT("%s(%d): HWA_TXPOST_CWI64_BYTES, num_wi<%u> local_mem_depth<%u>"
@@ -1662,6 +1387,9 @@ hwa_txpost_init(hwa_txpost_t *txpost)
 		| BCM_SBIT(HWA_TX_TXPOST_CFG1_BIT63OFPAYLOADADDR)
 		| BCM_SBIT(HWA_TX_TXPOST_CFG1_SETSOFEOF4WIF)
 		| 0U);
+#if HWA_REVISION_GE_130
+	u32 |= BCM_SBF(32, HWA_TX_TXPOST_CFG1_TXP_MEMORY_TH);
+#endif // endif
 	HWA_WR_REG_NAME(HWA3a, regs, tx, txpost_cfg1, u32);
 
 	// Settings "NotPCIE, Coherent and AddrExt" for misc HW DMA transactions
@@ -3951,7 +3679,7 @@ BCMATTACHFN(_hwa_cple_attach)(hwa_dev_t *dev, const char *name,
 		HWAce, name, memory, mem_sz));
 	u32 = HWA_PTR2UINT(memory);
 	HWA_WR_REG_NAME(HWAce, regs, cpl, cedq[cedq_idx].base, u32);
-	HWA_WR_REG_NAME(HWAce, regs, cpl, cedq[cedq_idx].depth, cedq_ring_depth);
+	HWA_WR_REG_NAME(HWAce, regs, cpl, cedq[cedq_idx].depth, (uint32)cedq_ring_depth);
 	hwa_ring_init(&cple->cedq_ring, name, cedq_ring_id,
 		HWA_RING_S2H, cedq_ring_num, cedq_ring_depth, memory,
 		&cpl_regs->cedq[cedq_idx].wridx, &cpl_regs->cedq[cedq_idx].rdidx);

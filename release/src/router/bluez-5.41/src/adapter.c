@@ -5715,7 +5715,7 @@ static void adapter_remove_connection(struct btd_adapter *adapter,
 #ifdef RTCONFIG_LANTIQ
 	notify_rc("restart_bluetooth_service");
 #endif
-#if defined(RTAX95Q)
+#if defined(RTAX95Q) || defined(RTAX56_XD4)
 	/// enable advertising
 	if (bdaddr_type != BDADDR_BREDR) {
 		int dd = hci_open_dev(adapter->dev_id);

@@ -224,7 +224,7 @@ int wl_wlif_wps_stop_session(char *wps_ifname);
 /* Function pointer to be provided to the thread creation routine */
 typedef void* (*wlif_thrd_func)(void *arg);
 /* Thread creation routine */
-int wl_wlif_create_thrd(wlif_thrd_func fptr, void *arg);
+int wl_wlif_create_thrd(pthread_t *thread_id, wlif_thrd_func fptr, void *arg, bool is_detached);
 #ifdef MULTIAP
 /* Checks whether the wps session for the multiap onboarding or not */
 bool wl_wlif_is_map_onboarding(char *prefix);

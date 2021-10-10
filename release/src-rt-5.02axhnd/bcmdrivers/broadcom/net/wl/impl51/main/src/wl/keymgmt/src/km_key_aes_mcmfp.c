@@ -1,6 +1,6 @@
 /*
  * Implementation of wlc_key algo 'aes' for multicast mgmt frames
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_key_aes_mcmfp.c 684036 2017-02-10 06:12:06Z $
+ * $Id: km_key_aes_mcmfp.c 782567 2019-12-24 06:43:32Z $
  */
 
 #ifdef MFP
@@ -307,11 +307,10 @@ km_key_aes_tx_mmpdu_mcmfp(wlc_key_t *key, void *pkt, const struct dot11_header *
 	if (key->info.flags & WLC_KEY_FLAG_GEN_REPLAY) {
 		key->info.flags &= ~WLC_KEY_FLAG_GEN_REPLAY;
 	} else
-#else
+#endif // endif
 	{
 		KEY_SEQ_INCR(aes_igtk->seq, AES_KEY_SEQ_SIZE);
 	}
-#endif // endif
 	memcpy(ie->ipn, aes_igtk->seq, AES_KEY_SEQ_SIZE);
 	memset(ie->mic, 0, key->info.icv_len);
 
@@ -327,12 +326,12 @@ km_key_aes_tx_mmpdu_mcmfp(wlc_key_t *key, void *pkt, const struct dot11_header *
 		PKTSETLEN(KEY_OSH(key), pkt, pkt_len);
 	}
 
-#ifdef BCMDBG
+#if defined(BCMDBG) || defined(MFP_TEST)
 	if (key->info.flags & (WLC_KEY_FLAG_GEN_ICV_ERR|WLC_KEY_FLAG_GEN_MIC_ERR)) {
 		ie->mic[0] =  ~ie->mic[0];
 		key->info.flags &= ~(WLC_KEY_FLAG_GEN_ICV_ERR|WLC_KEY_FLAG_GEN_MIC_ERR);
 	}
-#endif // endif
+#endif /* BCMDBG || MFP_TEST */
 
 done:
 	return err;

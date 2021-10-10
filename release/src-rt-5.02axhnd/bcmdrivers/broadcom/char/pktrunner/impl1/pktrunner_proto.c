@@ -120,11 +120,11 @@ static uint16_t key_last_used = 0;
 struct mcast_hw_channel_key_list_t mcast_hw_channel_key_list;
 
 
-static bdmf_object_handle ip_class = NULL;
+bdmf_object_handle ip_class = NULL;
+bdmf_object_handle system_obj = NULL;
 static bdmf_object_handle iptv = NULL;
 #if defined(XRDP)
 static bdmf_object_handle l2_class = NULL;
-static bdmf_object_handle system_obj = NULL;
 #if defined(CONFIG_BCM_FCACHE_CLASSIFICATION_BYPASS)
 #define MAX_NUM_OF_RADIOS 3
 static bdmf_object_handle dhd_helper_obj[MAX_NUM_OF_RADIOS] = {};
@@ -277,13 +277,10 @@ static bdmf_boolean is_ecn_remark_set(void)
     int rc;
     bdmf_boolean is_ecn_remark = 0;
 
-    rdpa_system_get(&system_obj);
     if ((rc = rdpa_system_cfg_get(system_obj, &system_cfg) == BDMF_ERR_OK))
     {
     	is_ecn_remark = (system_cfg.options == 2);
     }
-    bdmf_put(system_obj);
-
     return is_ecn_remark;
 }
 #endif
@@ -399,7 +396,7 @@ static int runner_refresh_ucast(uint32_t tuple, uint32_t *pktsCnt_p, uint32_t *o
 
 static int runner_refresh_mcast(uint32_t tuple, uint32_t *pktsCnt_p, uint32_t *octetsCnt_p)
 {
-#ifndef MCAST_FORWARD_TO_HOST
+//#ifndef MCAST_FORWARD_TO_HOST
     int rc, flowIdx = runner_get_hw_entix(tuple);
     pktRunner_flowStat_t flowStat, resetFlowStat;
 
@@ -418,7 +415,7 @@ static int runner_refresh_mcast(uint32_t tuple, uint32_t *pktsCnt_p, uint32_t *o
     protoDebug( "flowIdx<%03u> "
         "cumm_pkt_hits<%u> cumm_octet_hits<%u>\n",
         flowIdx, *pktsCnt_p, *octetsCnt_p );
-#endif
+//#endif
 
     return 0; 
 }
@@ -741,6 +738,7 @@ static int add_fwd_commands(rdpa_ip_flow_info_t *ip_flow, Blog_t *blog_p)
     }
 
     ip_flow->key.prot = blog_p->key.protocol;
+    ip_flow->key.tcp_pure_ack = blog_p->key.tcp_pure_ack;
     if (blog_p->rx.info.bmap.PLD_IPv6 && !(T4in6DN(blog_p)))
     {
         /* This is a IPv6 flow */
@@ -969,7 +967,7 @@ static int add_l3_commands(rdpa_ip_flow_result_t *ip_flow_result, Blog_t *blog_p
     }
     else if (T4in6UP(blog_p))
     { }
-    else if ((blog_p->rx.info.bmap.PLD_IPv6) ||(blog_p->l2_ipv6))
+    else if ((blog_p->rx.info.bmap.PLD_IPv6) || (blog_p->l2_ipv6))
     {   /* rx IPv6; tx IPv6 */
         if (blog_p->rx.tuple.tos >> BLOG_RULE_DSCP_IN_TOS_SHIFT !=
             PKT_IPV6_GET_TOS_WORD(blog_p->tupleV6.word0) >> BLOG_RULE_DSCP_IN_TOS_SHIFT)
@@ -989,7 +987,7 @@ static int add_l3_commands(rdpa_ip_flow_result_t *ip_flow_result, Blog_t *blog_p
     }
 
     if ((rxIp_p->tos >> BLOG_RULE_DSCP_IN_TOS_SHIFT != txIp_p->tos >> BLOG_RULE_DSCP_IN_TOS_SHIFT) &&
-        (!T6in4UP(blog_p)) && (!T6in4DN(blog_p)) && !blog_p->l2_ipv6)
+        (!T6in4UP(blog_p)) && (!T6in4DN(blog_p)) && !(blog_p->l2_ipv6) && !(blog_p->rx.info.bmap.PLD_IPv6))
     {
         ip_flow_result->action_vec |= rdpa_fc_action_dscp_remark;
         /* Note: we are not remarking ECN */
@@ -1369,6 +1367,7 @@ static int blog_parse_mcast_request_key(Blog_t *blog_p, rdpa_iptv_channel_key_t 
     return 0;
 }
 
+
 static uint32_t runner_activate_mcast(Blog_t *blog_p)
 {
     int rc;
@@ -1380,6 +1379,7 @@ static uint32_t runner_activate_mcast(Blog_t *blog_p)
     rdpa_iptv_channel_t channel;
     bdmf_index tmp;
 #endif
+    int invalidate_key = 0;
     BCM_ASSERT((blog_p!=BLOG_NULL));
 
     BCM_LOGCODE(if(protoLogDebug)
@@ -1441,10 +1441,16 @@ static uint32_t runner_activate_mcast(Blog_t *blog_p)
         /* XXX: Temporary work-around: If already exist, it's possible that we got a blog rule with capabilities
          * that we currently don't handle. In this case just find the channel for the port. */
         if (rc != BDMF_ERR_ALREADY)
+        {
             goto exit;
+        }
+        else
+        {
         /* XXX: It seems fcache expects us to return a valid port here, otherwise it does not record the tuple index
          * of the valid first blog, so return a valid index: */
-        rc = 0;
+            invalidate_key = 1;
+            rc = 0;
+        }
     }
 
     channel_map_idx = request_key_add(request_key.channel_index);
@@ -1474,7 +1480,7 @@ exit:
         protoDebug("::: runner_activate_mcast flowId<%03u> cumm_activates<%u> :::\n\n",
             channel_map_idx, pktrunner_state_g.activates);
     }
-    return channel_map_idx;
+    return (invalidate_key)? FLOW_HW_INVALID : channel_map_idx;
 }
 
 
@@ -1668,6 +1674,7 @@ static void cleanup_rdpa_objects(void)
     dhd_helper_destruct();
 #endif
 
+    bdmf_put(system_obj);
 }
 
 #if defined(XRDP) && !defined(G9991)
@@ -1749,6 +1756,8 @@ int __init pktrunner_init(void)
 #error Runner FW does not support L2 header bigger then 32
 #endif
 
+    rdpa_system_get(&system_obj);
+
     memset(&pktrunner_state_g, 0, sizeof(pktrunner_state_g));
     DLIST_INIT(&mcast_hw_channel_key_list);
 
@@ -1791,13 +1800,10 @@ int __init pktrunner_init(void)
     rc = rdpa_iptv_get(&iptv);
     if (rc)
     {
-        bdmf_object_handle system_obj;
         rdpa_system_init_cfg_t init_cfg;
         rdpa_iptv_lookup_method method = iptv_lookup_method_group_ip_src_ip_vid;
 
-        rdpa_system_get(&system_obj);
         rdpa_system_init_cfg_get(system_obj, &init_cfg);
-        bdmf_put(system_obj);
         
         /* CMS MCPD is expected to work with group_ip_src_ip only in GPON SFU */
         rc = rdpa_port_get(rdpa_if_wan0, &port_obj); /* FIXME : Multi-WAN XPON */

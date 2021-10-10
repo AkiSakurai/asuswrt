@@ -10,7 +10,7 @@
  * - response ring handlers
  * - attach, config, preinit, init, status and debug dump
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -707,7 +707,7 @@ hwa_pktpgr_preinit(hwa_pktpgr_t *pktpgr)
 
 	// Configure Host Packet Pool
 	HADDR64_SET(pktpgr->hostpktpool_haddr64, dev->pcie_ipc->host_mem_haddr64);
-	HADD64_LTOH(pktpgr->hostpktpool_haddr64);
+	HADDR64_LTOH(pktpgr->hostpktpool_haddr64);
 	pktpgr->hostpktpool_max =
 		ltoh16(dev->pcie_ipc->host_mem_len) / HWA_PP_LBUF_SZ;
 

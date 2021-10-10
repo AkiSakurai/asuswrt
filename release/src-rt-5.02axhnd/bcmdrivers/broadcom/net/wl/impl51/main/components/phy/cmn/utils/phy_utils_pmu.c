@@ -1,7 +1,7 @@
 /*
  * PMU control module implementation - shared by PHY type specific implementations.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_utils_pmu.c 659421 2016-09-14 06:45:22Z $
+ * $Id: phy_utils_pmu.c 781636 2019-11-26 10:48:34Z $
  */
 
 #include <phy_cfg.h>
@@ -56,6 +56,7 @@
 #include <phy_utils_pmu.h>
 #include <siutils.h>
 #include <sbchipc.h>
+#include <hndpmu.h>
 
 #include <wlc_phy_hal.h>
 #include <wlc_phy_int.h>
@@ -75,12 +76,12 @@ phy_utils_pmu_regcontrol_access(phy_info_t *pi, uint8 addr, uint32* val, bool wr
 	ASSERT(cc != NULL);
 
 	if (write) {
-		W_REG(si_osh(sih), &cc->regcontrol_addr, addr);
+		W_REG(si_osh(sih), &cc->regcontrol_addr, (uint32)addr);
 		W_REG(si_osh(sih), &cc->regcontrol_data, *val);
 		/* read back to confirm */
 		*val = R_REG(si_osh(sih), &cc->regcontrol_data);
 	} else {
-		W_REG(si_osh(sih), &cc->regcontrol_addr, addr);
+		W_REG(si_osh(sih), &cc->regcontrol_addr, (uint32)addr);
 		*val = R_REG(si_osh(sih), &cc->regcontrol_data);
 	}
 
@@ -103,15 +104,50 @@ phy_utils_pmu_chipcontrol_access(phy_info_t *pi, uint8 addr, uint32* val, bool w
 	ASSERT(cc != NULL);
 
 	if (write) {
-		W_REG(si_osh(sih), &cc->chipcontrol_addr, addr);
+		W_REG(si_osh(sih), &cc->chipcontrol_addr, (uint32)addr);
 		W_REG(si_osh(sih), &cc->chipcontrol_data, *val);
 		/* read back to confirm */
 		*val = R_REG(si_osh(sih), &cc->chipcontrol_data);
 	} else {
-		W_REG(si_osh(sih), &cc->chipcontrol_addr, addr);
+		W_REG(si_osh(sih), &cc->chipcontrol_addr, (uint32)addr);
 		*val = R_REG(si_osh(sih), &cc->chipcontrol_data);
 	}
 
 	/* Return to original core */
 	si_restore_core(sih, origidx, intr_val);
+}
+
+/*
+ * APIs for 6710 to switch and restore setting of BBPLL post-divider
+ * Switch BBPLL frequency before calling resetcca of phy calibration
+ * Restore BBPLL frequency after finishing resetcca
+ */
+#define BBPLL_DIV_2_6710		0x18181812
+#define BBPLL_DIV_4_6710		0x30303024
+#define BBPLL_DIV_8_6710		0x60606048
+#define BBPLL_DIV_16_6710		0xc0c0c090
+#define BBPLL_SW_DELAY			1
+
+void
+phy_utils_pmu_bbpll_freq_switch(phy_info_t *pi, uint *pll_val, uint restore)
+{
+	si_t *sih;
+	uint div_ratio = BBPLL_DIV_16_6710;
+	uint dly = BBPLL_SW_DELAY;
+
+	ASSERT(pll_val != NULL);
+
+	/* shared pi handler */
+	sih = (si_t*)pi->sh->sih;
+
+	if (BCM6710_CHIP(sih->chip)) {
+		if (restore) {
+			si_pmu_pllcontrol(sih, PMU_CHIPCTL4, ~0, *pll_val);
+		} else {
+			*pll_val = si_pmu_pllcontrol(sih, PMU_CHIPCTL4, 0, 0);
+			si_pmu_pllcontrol(sih, PMU_CHIPCTL4, ~0, div_ratio);
+		}
+		si_pmu_pllupd(sih);
+		OSL_DELAY(dly);
+	}
 }

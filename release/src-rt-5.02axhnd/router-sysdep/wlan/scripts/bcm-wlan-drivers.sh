@@ -16,6 +16,7 @@ KERNELVER=_set_by_buildFS_
 HNDROUTER=_set_by_buildFS_
 CPEROUTER=_set_by_buildFS_
 PROD_FW_PATH=_set_by_buildFS_
+BRCM_CHIP=_set_by_buildFS_
 if [ ! -z $PROD_FW_PATH ]; then
     MFG_FW_PATH=$PROD_FW_PATH"/mfg"
 else
@@ -166,13 +167,12 @@ load_modules()
 
         echo "loading WLAN kernel modules ... $modules_list"
 
-        if [ -f /lib/modules/$KERNELVER/kernel/net/wireless/cfg80211.ko ]; then
-            insmod /lib/modules/$KERNELVER/kernel/net/wireless/cfg80211.ko
-        fi
-
         for module in $modules_list
         do
             case "$module" in
+                cfg80211)
+                    insmod /lib/modules/$KERNELVER/kernel/net/wireless/$module.ko
+                    ;;
                 wlemf|hnd|hnd_mfgtest|emf|igs)
                     #no module parameters
                     module_params=""
@@ -237,6 +237,15 @@ if [ ! -z $HNDROUTER ]; then
     fi
 fi
 
+# For 47189 Host CPU, Check nvram "forcegen1rc" and set default vaule if not exist.
+# the part must before dhd.ko insmod.
+if [ "$BRCM_CHIP" == "47189" ]; then
+    forcegen1rc_val=`nvram get forcegen1rc`
+    if [ -z "$forcegen1rc_val" ]; then
+        `nvram set forcegen1rc=1 ; nvram commit`
+    fi
+fi
+
 # Sanity check for drivers directory
 if [ ! -d /lib/modules/$KERNELVER/extra ]; then
     echo "ERROR: wlan-drivers.sh: /lib/modules/$KERNELVER/extra does not exist" 1>&2
@@ -250,7 +259,11 @@ if [ ! -z "$2" ]; then
     unload_modules_list=$modules_list
 else
     if [ ! -z $CPEROUTER ]; then
-        all_wlan_modules="hnd emf igs dhd wl"
+        if [ -f /lib/modules/$KERNELVER/kernel/net/wireless/cfg80211.ko ]; then
+            all_wlan_modules="cfg80211 hnd emf igs dhd wl"
+        else
+            all_wlan_modules="hnd emf igs dhd wl"
+        fi
     else
         all_wlan_modules="wlemf dhd wl"
     fi

@@ -1,7 +1,7 @@
 /*
  * ACPHY DeepSleepInit module
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_dsi.c 775385 2019-05-29 11:30:21Z $
+ * $Id: phy_ac_dsi.c 780478 2019-10-26 09:55:49Z $
  */
 
 #include <phy_cfg.h>
@@ -147,7 +147,6 @@ static void dsi_update_snapshot(phy_info_t *pi, fcbs_input_data_t *save_seq);
 static void dsi_save_ACMAJORREV_36(phy_info_t *pi);
 #endif /* BCMULP */
 static void dsi_update_radio_seq_ACMAJORREV_36(phy_info_t *pi, int8 ds_idx, bool *seq_en_flags);
-static void dsi_update_radio_seq_ACMAJORREV_44(phy_info_t *pi, int8 ds_idx, bool *seq_en_flags);
 
 static void update_vco_cal_codes(phy_info_t *pi, fcbs_input_data_t *data);
 
@@ -166,10 +165,10 @@ dsi_radio_fcbs_t ds0_radio_maj36_min0_seq[] = {
 	dyn_ram_20695_maj1_min0_radio_2g_pll_pwr_up},
 	{FCBS_DS0_RADIO_PU_BLOCK, DS0_EXEC_PLL_PU,
 	dyn_ram_20695_maj1_min0_radio_5g_pll_to_2g_pwr_up},
-#ifdef DBAND
+#ifdef MULTIBAND
 	{FCBS_DS0_RADIO_PU_BLOCK, DS0_EXEC_PLL_PU,
 	dyn_ram_20695_maj1_min0_radio_5g_pll_pwr_up},
-#endif /* DBAND */
+#endif /* MULTIBAND */
 	{FCBS_DS0_RADIO_PU_BLOCK, DS0_EXEC_CHAN_TUNE,
 	ram_20695_maj1_min0_chan_tune}
 };
@@ -183,10 +182,10 @@ dsi_radio_fcbs_t ds1_radio_maj36_min0_seq[] = {
 	dyn_ram_20695_maj1_min0_radio_2g_pll_pwr_up},
 	{FCBS_DS1_PHY_RADIO_BLOCK, DS1_EXEC_PLL_PU,
 	dyn_ram_20695_maj1_min0_radio_5g_pll_to_2g_pwr_up},
-#ifdef DBAND
+#ifdef MULTIBAND
 	{FCBS_DS1_PHY_RADIO_BLOCK, DS1_EXEC_PLL_PU,
 	dyn_ram_20695_maj1_min0_radio_5g_pll_pwr_up},
-#endif /* DBAND */
+#endif /* MULTIBAND */
 	{FCBS_DS1_PHY_RADIO_BLOCK, DS1_EXEC_CHAN_TUNE,
 	ram_20695_maj1_min0_chan_tune}
 };
@@ -207,10 +206,10 @@ dsi_radio_fcbs_t ds0_radio_maj36_min1_seq[] = {
 	dyn_ram_20695_maj2_min0_radio_2g_pll_pwr_up},
 	{FCBS_DS0_RADIO_PU_BLOCK, DS0_EXEC_PLL_PU,
 	dyn_ram_20695_maj2_min0_radio_5g_pll_to_2g_pwr_up},
-#ifdef DBAND
+#ifdef MULTIBAND
 	{FCBS_DS0_RADIO_PU_BLOCK, DS0_EXEC_PLL_PU,
 	dyn_ram_20695_maj2_min0_radio_5g_pll_pwr_up},
-#endif /* DBAND */
+#endif /* MULTIBAND */
 	{FCBS_DS0_RADIO_PU_BLOCK, DS0_EXEC_CHAN_TUNE,
 	ram_20695_maj2_min0_chan_tune}
 };
@@ -224,10 +223,10 @@ dsi_radio_fcbs_t ds1_radio_maj36_min1_seq[] = {
 	dyn_ram_20695_maj2_min0_radio_2g_pll_pwr_up},
 	{FCBS_DS1_PHY_RADIO_BLOCK, DS1_EXEC_PLL_PU,
 	dyn_ram_20695_maj2_min0_radio_5g_pll_to_2g_pwr_up},
-#ifdef DBAND
+#ifdef MULTIBAND
 	{FCBS_DS1_PHY_RADIO_BLOCK, DS1_EXEC_PLL_PU,
 	dyn_ram_20695_maj2_min0_radio_5g_pll_pwr_up},
-#endif /* DBAND */
+#endif /* MULTIBAND */
 	{FCBS_DS1_PHY_RADIO_BLOCK, DS1_EXEC_CHAN_TUNE,
 	ram_20695_maj2_min0_chan_tune}
 };
@@ -238,11 +237,11 @@ typedef enum {
 	PLL_2G_OFF = 1,
 	PLL_5G_TO_2G_OFF = 2,
 	PLL_5G_OFF = 3,
-#ifdef DBAND
+#ifdef MULTIBAND
 	CHAN_TUNE_OFF = 4,
 #else
 	CHAN_TUNE_OFF = 3
-#endif /* DBAND */
+#endif /* MULTIBAND */
 } radio_pu_seq_off_t;
 
 typedef enum {
@@ -257,20 +256,9 @@ typedef enum {
 dsi_fcbs_t *
 BCMRAMFN(dsi_get_ram_seq)(phy_info_t *pi)
 {
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		if (ACMINORREV_0(pi)) {
-			return ram_maj36_min0_seq;
-		} else if (ACMINORREV_1(pi)) {
-			return ram_maj36_min1_seq;
-		} else {
-			PHY_ERROR(("wl%d %s: Invalid ACMINORRREV!\n", PI_INSTANCE(pi),
-					__FUNCTION__));
-			ASSERT(0);
-		}
-	} else {
-		PHY_ERROR(("wl%d %s: Invalid ACMAJORREV!\n", PI_INSTANCE(pi), __FUNCTION__));
-		ASSERT(0);
-	}
+	PHY_ERROR(("wl%d %s: Invalid ACMAJORREV!\n", PI_INSTANCE(pi), __FUNCTION__));
+	ASSERT(0);
+
 	return NULL;
 }
 
@@ -279,44 +267,8 @@ BCMRAMFN(dsi_get_radio_pu_dyn_seq)(phy_info_t *pi, int8 ds_idx)
 {
 	dsi_radio_fcbs_t *ret_ptr = NULL;
 
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		if (ACMINORREV_0(pi)) {
-			if (ds_idx == FCBS_DS0) {
-				ret_ptr = ds0_radio_maj36_min0_seq;
-			} else {
-#ifdef BCMULP
-				ret_ptr = ds1_radio_maj36_min0_seq;
-#else
-				ret_ptr = NULL;
-#endif /* BCMULP */
-			}
-		} else if (ACMINORREV_1(pi)) {
-			if (ds_idx == FCBS_DS0) {
-				ret_ptr = ds0_radio_maj36_min1_seq;
-			} else {
-#ifdef BCMULP
-				ret_ptr = ds1_radio_maj36_min1_seq;
-#else
-				ret_ptr = NULL;
-#endif /* BCMULP */
-			}
-		} else {
-			PHY_ERROR(("wl%d %s: Invalid ACMINORRREV!\n", PI_INSTANCE(pi),
-					__FUNCTION__));
-			ASSERT(0);
-		}
-	} else if (ACMAJORREV_44(pi->pubpi->phy_rev)) {
-		if (ds_idx == FCBS_DS0) {
-			ret_ptr = ((pi->pubpi->slice == DUALMAC_MAIN) ?
-				ds0_radio_maj44_min0_main_seq :
-				((RADIOREV_AUX(pi->pubpi->radiorev) == 7) ?
-					ds0_radio_maj44_min0_aux_seq :
-					ds0_radio_maj44_min0_aux_ipa_seq));
-		}
-	} else {
-		PHY_ERROR(("wl%d %s: Invalid ACMAJORREV!\n", PI_INSTANCE(pi), __FUNCTION__));
-		ASSERT(0);
-	}
+	PHY_ERROR(("wl%d %s: Invalid ACMAJORREV!\n", PI_INSTANCE(pi), __FUNCTION__));
+	ASSERT(0);
 
 	return ret_ptr;
 }
@@ -325,20 +277,9 @@ BCMRAMFN(dsi_get_radio_pu_dyn_seq)(phy_info_t *pi, int8 ds_idx)
 fcbs_input_data_t *
 BCMRAMFN(dsi_get_radio_pd_seq)(phy_info_t *pi)
 {
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		if (ACMINORREV_0(pi)) {
-			return rom_20695_maj1_min0_radio_pwr_down;
-		} else if (ACMINORREV_1(pi)) {
-			return rom_20695_maj2_min0_radio_pwr_down;
-		} else {
-			PHY_ERROR(("wl%d %s: Invalid ACMINORRREV!\n", PI_INSTANCE(pi),
-					__FUNCTION__));
-			ASSERT(0);
-		}
-	} else {
-		PHY_ERROR(("wl%d %s: Invalid ACMAJORREV!\n", PI_INSTANCE(pi), __FUNCTION__));
-		ASSERT(0);
-	}
+	PHY_ERROR(("wl%d %s: Invalid ACMAJORREV!\n", PI_INSTANCE(pi), __FUNCTION__));
+	ASSERT(0);
+
 	return NULL;
 }
 #endif /* USE_FCBS_ROM */
@@ -351,13 +292,8 @@ phy_dsi_ulp_enter_cb(void *handle, ulp_ext_info_t *einfo, uint8 *cache_data)
 	bool seq_en[NUM_RADIO_SEQ] = {TRUE, TRUE, TRUE, TRUE};
 
 	/* Call chip specific save function */
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		/* Save PHY and Radio snapshot */
-		dsi_save_ACMAJORREV_36(pi);
-	} else {
-		PHY_ERROR(("wl%d %s: Invalid ACMAJORREV!\n", PI_INSTANCE(pi), __FUNCTION__));
-		ASSERT(0);
-	}
+	PHY_ERROR(("wl%d %s: Invalid ACMAJORREV!\n", PI_INSTANCE(pi), __FUNCTION__));
+	ASSERT(0);
 
 	/* Dynamic sequence update */
 	dsi_update_radio_seq(pi, FCBS_DS1, seq_en);
@@ -741,68 +677,6 @@ dsi_update_radio_seq_ACMAJORREV_36(phy_info_t *pi, int8 ds_idx, bool *seq_en_fla
 	}
 }
 
-void
-dsi_update_radio_seq_ACMAJORREV_44(phy_info_t *pi, int8 ds_idx, bool *seq_en_flags)
-{
-	phy_info_acphy_t *pi_ac = pi->u.pi_acphy;
-	phy_ac_dsi_params_t *param = pi_ac->dsii->dp;
-
-	uint16 stall_val;
-	dsi_radio_fcbs_t *radio_pu_seq;
-	bool suspend = FALSE;
-	fcbs_input_data_t *radio_pd_seq;
-	fcbs_input_data_t *seq_ptr;
-	uint8 i;
-
-	BCM_REFERENCE(pi_ac);
-	BCM_REFERENCE(param);
-	BCM_REFERENCE(radio_pd_seq);
-
-	radio_pu_seq = dsi_get_radio_pu_dyn_seq(pi, ds_idx);
-
-	if (radio_pu_seq == NULL) {
-		return;
-	}
-
-	suspend = !(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC);
-
-	if (!suspend) {
-		wlapi_suspend_mac_and_wait(pi->sh->physhim);
-		phy_utils_phyreg_enter(pi);
-	}
-
-	stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
-
-	phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, TRUE);
-	ACPHY_DISABLE_STALL(pi);
-
-	/* Update the sequence based on enable flag */
-	for (i = 0; i < NUM_RADIO_PU_SEQ; i++) {
-		if (seq_en_flags[i] == TRUE) {
-			/* Sequence enabled, update */
-			dsi_update_snapshot(pi, radio_pu_seq[i].data);
-			seq_ptr = radio_pu_seq[i].data;
-		} else {
-			/* Sequence not enabled, skip it */
-			seq_ptr = (fcbs_input_data_t *)FCBS_DYN_SEQ_SKIP;
-		}
-
-#ifdef WL_DSI
-		fcbs_add_dynamic_seq(seq_ptr,
-			radio_pu_seq[i].blk_num, radio_pu_seq[i].exec_seq_num);
-#endif /* WL_DSI */
-	}
-
-	update_vco_cal_codes(pi, radio_pu_seq[1].data);
-
-	ACPHY_ENABLE_STALL(pi, stall_val);
-	phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, FALSE);
-	if (!suspend) {
-		phy_utils_phyreg_exit(pi);
-		wlapi_enable_mac(pi->sh->physhim);
-	}
-}
-
 #ifdef BCMULP
 static void
 dsi_restore(phy_type_dsi_ctx_t *ctx)
@@ -826,10 +700,7 @@ dsi_save(phy_type_dsi_ctx_t *ctx)
 	bool seq_en[NUM_RADIO_SEQ] = {TRUE, TRUE, TRUE, TRUE};
 
 	/* Call phy specific save routines  */
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		/* Save PHY and Radio snapshot */
-		dsi_save_ACMAJORREV_36(pi);
-	} else if (ACMAJORREV_1(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_1(pi->pubpi->phy_rev)) {
 		dsi_save_ACMAJORREV_1(pi);
 	} else {
 		PHY_ERROR(("wl%d %s: Invalid ACMAJORREV!\n", PI_INSTANCE(pi), __FUNCTION__));
@@ -847,12 +718,7 @@ static void
 dsi_update_radio_seq(phy_info_t *pi, int8 ds_idx, bool *seq_en_flags)
 {
 	/* Call phy specific update routines  */
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		/* Update Radio sequence */
-		dsi_update_radio_seq_ACMAJORREV_36(pi, ds_idx, seq_en_flags);
-	} else if (ACMAJORREV_44(pi->pubpi->phy_rev)) {
-		dsi_update_radio_seq_ACMAJORREV_44(pi, ds_idx, seq_en_flags);
-	} else if (ACMAJORREV_1(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_1(pi->pubpi->phy_rev)) {
 		PHY_INFORM(("wl%d %s : There is no dynamic seq in 4335c0\n",
 				PI_INSTANCE(pi), __FUNCTION__));
 	} else {
@@ -893,7 +759,7 @@ ds0_radio_seq_update(phy_info_t *pi)
 	blk_shm_addr = (drv_ucode_if_blk_addr * SHM_ENTRY_SIZE) +
 			M_FCBS_DS0_RADIO_PU_BLOCK_OFFSET(pi);
 
-	if (CCT_INIT(pi_ac) || ACMAJORREV_44(pi->pubpi->phy_rev)) {
+	if (CCT_INIT(pi_ac)) {
 		seq_en_ptr = init_seq_en;
 	} else if (CCT_BAND_CHG(pi_ac)) {
 		seq_en_ptr = band_change_seq_en;

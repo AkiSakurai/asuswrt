@@ -2,7 +2,7 @@
  * Rx Gain Control and Carrier Sense module internal interface
  * (to PHY specific implementations).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_type_rxgcrs.h 658925 2016-09-11 16:42:42Z $
+ * $Id: phy_type_rxgcrs.h 778192 2019-08-26 18:35:50Z $
  */
 
 #ifndef _phy_type_rxgcrs_h_
@@ -69,6 +69,7 @@ typedef int (*phy_type_rxgcrs_dump_fn_t)(phy_type_rxgcrs_ctx_t *ctx, struct bcms
 typedef void (*phy_type_rxgcrs_locale_eu_fn_t)(phy_type_rxgcrs_ctx_t *ctx, uint8 region_group);
 typedef void (*phy_type_rxgcrs_adjust_ed_thres_fn_t)(phy_type_rxgcrs_ctx_t *pi,
 	int32 *assert_thresh_dbm, bool set_threshold);
+typedef bool (*phy_type_rxgcrs_is_edcrs_high_fn_t)(phy_info_t *pi);
 typedef int (*phy_type_rxgcrs_get_fn_t)(phy_type_rxgcrs_ctx_t *ctx, int32 *ret_int_ptr);
 typedef int (*phy_type_rxgcrs_set_fn_t)(phy_type_rxgcrs_ctx_t *ctx, int32 int_val);
 typedef int (*phy_type_rxgcrs_forcecal_noise_fn_t)(phy_type_rxgcrs_ctx_t *ctx, void *a, bool set);
@@ -86,6 +87,7 @@ typedef struct {
 	phy_type_rxgcrs_ctx_t *ctx;
 	phy_type_rxgcrs_locale_eu_fn_t set_locale;
 	phy_type_rxgcrs_adjust_ed_thres_fn_t adjust_ed_thres;
+	phy_type_rxgcrs_is_edcrs_high_fn_t is_edcrs_high;
 	phy_type_rxgcrs_init_fn_t init_rxgcrs;
 	phy_type_rxgcrs_get_fn_t get_rxdesens;
 	phy_type_rxgcrs_set_fn_t set_rxdesens;

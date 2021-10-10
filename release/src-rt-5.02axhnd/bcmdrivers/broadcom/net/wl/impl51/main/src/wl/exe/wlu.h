@@ -1,7 +1,7 @@
 /*
  * Common code for wl command line utility
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlu.h 775988 2019-06-17 12:33:51Z $
+ * $Id: wlu.h 777601 2019-08-06 11:51:42Z $
  */
 
 #ifndef _wlu_h_
@@ -211,6 +211,7 @@ extern void wluc_slot_bss_module_init(void);
 extern void wluc_tdmtx_module_init(void);
 extern void wluc_oce_module_init(void);
 extern void wluc_esp_module_init(void);
+extern void wluc_perf_utils_module_init(void);
 
 extern void wluc_ecounters_module_init(void);
 extern int hexstrtobitvec(const char *cp, uchar *bitvec, int veclen);
@@ -223,6 +224,7 @@ extern int get_counter_offset(char *name, uint32 *offset, uint8 counter_ver);
 extern int print_counter_help(uint8 counter_ver);
 
 extern void wluc_btl_module_init(void);
+extern void wluc_dtpc_module_init(void);
 
 /* wl functions used by the ndis wl. */
 struct ipv4_addr;	/* forward declaration */
@@ -285,14 +287,11 @@ extern void raw_puts(const char *buf, void *dll_fd_out);
 #define SSID_FMT_BUF_LEN (4*32+1)	/* Length for SSID format string */
 #endif // endif
 
-/* some OSes (FC4) have trouble allocating (kmalloc) 128KB worth of memory,
- * hence keeping WL_DUMP_BUF_LEN below that
- */
 #if !defined(WL_DUMP_BUF_LEN)
 #if defined(BWL_SMALL_WLU_DUMP_BUF)
 #define WL_DUMP_BUF_LEN (4 * 1024)
 #else
-#define WL_DUMP_BUF_LEN (256 * 1024)
+#define WL_DUMP_BUF_LEN (255 * 1024)
 #endif /* BWL_SMALL_WLU_DUMP_BUF */
 #endif /* WL_DUMP_BUF_LEN */
 

@@ -1,7 +1,7 @@
 /*
  * ACPHY PHYTableInit module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tbl.c 776062 2019-06-18 10:20:17Z $
+ * $Id: phy_ac_tbl.c 781681 2019-11-27 00:10:21Z $
  */
 
 #include <phy_cfg.h>
@@ -136,7 +136,6 @@ static int phy_ac_tbl_dumptbl(phy_type_tbl_ctx_t *ctx, struct bcmstrbuf *b);
 #define phy_ac_tbl_dumptbl NULL
 #endif // endif
 static void wlc_phy_rfldo_trim_value(phy_ac_tbl_info_t *tbli, phy_info_t *pi);
-static void wlc_phy_force_dac_clk_from_bbpll(phy_info_t *pi, bool set, uint16 *orig_dac_clk_pu);
 
 /* local functions */
 static void phy_ac_tbl_nvram_attach(phy_ac_tbl_info_t *tbli, phy_info_t *pi);
@@ -347,7 +346,7 @@ BCMATTACHFN(phy_ac_tbl_create_gain_tbls)(phy_ac_tbl_info_t *tbli)
 	/* Copy the table to the new location. */
 	bcopy(tx_pwrctrl_tbl, tbli->gaintbl_2g, sizeof(uint16) * TXGAIN_TABLES_LEN);
 
-#ifdef BAND5G
+#if BAND5G
 	ASSERT(tbli->gaintbl_5g == NULL);
 	if ((tbli->gaintbl_5g = phy_malloc(pi,
 		sizeof(uint16) * TXGAIN_TABLES_LEN)) == NULL) {
@@ -431,7 +430,7 @@ BCMATTACHFN(phy_ac_tbl_delete_gain_tbls)(phy_ac_tbl_info_t *tbli)
 		tbli->gaintbl_2g = NULL;
 	}
 
-#ifdef BAND5G
+#if BAND5G
 	if (tbli->gaintbl_5g) {
 		phy_mfree(tbli->pi, (void *)tbli->gaintbl_5g,
 			sizeof(uint16)*TXGAIN_TABLES_LEN);
@@ -607,8 +606,6 @@ wlc_phy_get_tbl_id_gainctrlbbmultluts(phy_info_t *pi, uint8 core)
 			   tbl_id = ACPHY_TBL_ID_TXGAINCTRLBBMULTLUTS2;
 			   break;
 	   }
-	} else if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		tbl_id = ACPHY_TBL_ID_GAINCTRLBBMULTLUTS0;
 	} else if (ACREV_GE(pi->pubpi->phy_rev, 40) ||
 		ACMAJORREV_32(pi->pubpi->phy_rev) ||
 		ACMAJORREV_33(pi->pubpi->phy_rev) ||
@@ -632,8 +629,6 @@ wlc_phy_get_tbl_id_estpwrshftluts(phy_info_t *pi, uint8 core)
 		if ((phy_get_phymode(pi) != PHYMODE_RSDB) && (core == 1))  {
 			tbl_id = ACPHY_TBL_ID_ESTPWRSHFTLUTS1;
 		}
-	} else if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		tbl_id = ACPHY_TBL_ID_ESTPWRSHFTLUTS0;
 	} else if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 		ACMAJORREV_33(pi->pubpi->phy_rev) ||
 		ACMAJORREV_37(pi->pubpi->phy_rev) ||
@@ -1919,103 +1914,6 @@ static phy_table_info_t acphy_tables[] = {
 	{ 0xff,	0,	0 }
 };
 
-static phy_table_info_t acphy_tables_rev44[] = {
-	{2, 0,     56},
-	{3, 1,   1024},
-	{4, 0,   1024},
-	{5, 1,     86},
-	{6, 0,     72},
-	{8, 3,     44},
-	{9, 0,     64},
-	{10, 0,	 1024},
-	{12, 2,	  256},
-	{13, 1,	  68 },
-	{14, 1,	  256},
-	{16, 1,	 8784},
-	{19, 1,	   36},
-	{20, 2,	  128},
-	{22, 0,	   64},
-	{24, 1,	  688},
-	{25, 1,	   64},
-	{27, 0,	   46},
-	{29, 1,	   35},
-	{30, 1,	   64},
-	{31, 1,	   35},
-	{37, 1,	   77},
-	{38, 1,	   35},
-	{39, 1,	   35},
-	{40, 1,	    5},
-	{50, 0,	  160},
-	{51, 0,	 1024},
-	{52, 0,	 1024},
-	{53, 1,	 1024},
-	{54, 1,	  128},
-	{55, 0,	   16},
-	{56, 0,	  128},
-	{58, 0,	   24},
-	{59, 0,	   11},
-	{60, 0,	   77},
-	{64, 1,	  128},
-	{65, 1,	  128},
-	{66, 1,	  128},
-	{67, 0,	  128},
-	{68, 0,	  119},
-	{69, 0,	  119},
-	{70, 1,	   22},
-	{71, 1,	  512},
-	{72, 1,	  128},
-	{73, 1,	 4096},
-	{78, 1,	 2048},
-	{85, 0,	  128},
-	{88, 0,	   72},
-	{89, 0,	   16},
-	{90, 0,	   64},
-	{91, 0,	   64},
-	{92, 0,	   64},
-	{93, 0,	  128},
-	{94, 0,	  105},
-	{96, 1,	  128},
-	{97, 1,	  128},
-	{98, 1,	  128},
-	{99, 0,	  128},
-	{100, 0,  119},
-	{101, 0,  119},
-	{102, 1,   22},
-	{103, 1,  512},
-	{104, 1,  128},
-	{105, 1, 4096},
-	{112, 2,  128},
-	{113, 1,   64},
-	{115, 1,    8},
-	{116, 1,   64},
-	{117, 0,  128},
-	{125, 0,  128},
-	{126, 0,  105},
-	{127, 1,   11},
-	{144, 2,  128},
-	{147, 1,    8},
-	{159, 1,   11},
-	{320, 0,  247},
-	{321, 1,   36},
-	{322, 1,   24},
-	{323, 0,   24},
-	{324, 0,  105},
-	{325, 0,  119},
-	{326, 0,  119},
-	{327, 1,   22},
-	{328, 1,   11},
-	{352, 0,  247},
-	{353, 1,   36},
-	{354, 1,   24},
-	{355, 0,   24},
-	{356, 0,  105},
-	{357, 0,  119},
-	{358, 0,  119},
-	{359, 1,   22},
-	{360, 1,   11},
-	{0xff, 0,   0}
-};
-
 static void
 phy_ac_tbl_read_table(phy_type_tbl_ctx_t *ctx,
 	phy_table_info_t *ti, uint addr, uint16 *val, uint16 *qval)
@@ -2087,8 +1985,6 @@ phy_ac_tbl_dumptbl(phy_type_tbl_ctx_t *ctx, struct bcmstrbuf *b)
 			ti = acphy_tables_rev3;
 	} else if (ACMAJORREV_1(pi->pubpi->phy_rev)) {
 			ti = acphy2_tables;
-	} else if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-			ti = acphy_tables_rev44;
 	} else {
 		ti = acphy_tables;
 	}
@@ -2139,8 +2035,7 @@ wlc_phy_ac_ht_proprietary_rates(phy_info_t *pi)
 
 	return ACMAJORREV_3(pi->pubpi->phy_rev) ||
 	       ACMAJORREV_4(pi->pubpi->phy_rev) ||
-	       ACMAJORREV_5(pi->pubpi->phy_rev) ||
-	       ACMAJORREV_36(pi->pubpi->phy_rev);
+	       ACMAJORREV_5(pi->pubpi->phy_rev);
 }
 
 /** Return True if PHY is capable of STBC. Currently returns 1 for all ACPHY except 4335A0/B0 */
@@ -2198,7 +2093,7 @@ static bool wlc_phy_ac_1024qam_capable(phy_info_t *pi)
 #ifdef WL11ULB
 static bool wlc_phy_ac_ulb_10_capable(phy_info_t *pi)
 {
-	if ((ACMAJORREV_4(pi->pubpi->phy_rev)) || (ACMAJORREV_36(pi->pubpi->phy_rev)) ||
+	if ((ACMAJORREV_4(pi->pubpi->phy_rev)) ||
 			IS_4364_1x1(pi) || (ACMAJORREV_32(pi->pubpi->phy_rev)) ||
 			(ACMAJORREV_33(pi->pubpi->phy_rev)))
 		/* No phycapability bit indicating ulb capable for 4349 */
@@ -2210,7 +2105,7 @@ static bool wlc_phy_ac_ulb_10_capable(phy_info_t *pi)
 
 static bool wlc_phy_ac_ulb_5_capable(phy_info_t *pi)
 {
-	if ((ACMAJORREV_4(pi->pubpi->phy_rev)) || (ACMAJORREV_36(pi->pubpi->phy_rev)) ||
+	if ((ACMAJORREV_4(pi->pubpi->phy_rev)) ||
 			IS_4364_1x1(pi) || (ACMAJORREV_32(pi->pubpi->phy_rev)) ||
 			(ACMAJORREV_33(pi->pubpi->phy_rev)))
 		/* No phycapability bit indicating ulb capable for 4349 */
@@ -2222,8 +2117,7 @@ static bool wlc_phy_ac_ulb_5_capable(phy_info_t *pi)
 
 static bool wlc_phy_ac_ulb_2P5_capable(phy_info_t *pi)
 {
-	if (IS_4364_1x1(pi) ||
-			(ACMAJORREV_36(pi->pubpi->phy_rev)))
+	if (IS_4364_1x1(pi))
 		/* 2.5MHz mode is supported in 4364 1x1 PHY */
 		return TRUE;
 	else
@@ -2433,7 +2327,7 @@ WLBANDINITFN(wlc_phy_init_acphy)(phy_ac_tbl_info_t *tbli)
 		 * start with disabling PAVREF programming by ucode;
 		 * it will be enabled for MCH2/MCH5 boards later on
 		 */
-		W_REG(pi->sh->osh, D11_PSM_INTSEL_1(pi), 0x0);
+		W_REG(pi->sh->osh, D11_PSM_INTSEL_1(pi), (uint16)0x0);
 	}
 
 	if (IS_4364_1x1(pi) || IS_4364_3x3(pi)) {
@@ -2710,6 +2604,10 @@ wlc_phy_table_write_acphy(phy_info_t *pi, uint32 id, uint32 len, uint32 offset, 
 	acphytbl_info_t tbl;
 	uint8 mac_suspend = 1;
 	uint8 stall_val = 0;
+#if defined(WL_PROXDETECT)
+	phy_ac_tof_info_t *tofi;
+	uint16 tof_rfseq_bundle_offset;
+#endif /* defined(WL_PROXDETECT) */
 
 	mac_suspend = (R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC);
 	if (mac_suspend) {
@@ -2720,8 +2618,8 @@ wlc_phy_table_write_acphy(phy_info_t *pi, uint32 id, uint32 len, uint32 offset, 
 	stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
 
 #if defined(WL_PROXDETECT)
-	phy_ac_tof_info_t *tofi = (phy_ac_tof_info_t *)pi->u.pi_acphy->tofi;
-	uint16 tof_rfseq_bundle_offset = phy_ac_tof_get_rfseq_bundle_offset(tofi);
+	tofi = (phy_ac_tof_info_t *)pi->u.pi_acphy->tofi;
+	tof_rfseq_bundle_offset = phy_ac_tof_get_rfseq_bundle_offset(tofi);
 
 	phy_ac_tof_tbl_offset(pi->u.pi_acphy->tofi, id, offset);
 
@@ -2853,27 +2751,6 @@ wlc_phy_table_clrbit_acphy(phy_info_t *pi, uint32 id, uint32 offset,
 	wlc_phy_table_write_acphy(pi, id, 1, offset, width, &temp);
 }
 
-/* This function is currently specific to 43012. To access the epsilon table this function
- * forces the dac clk to be taken from bbpll
- */
-static void
-wlc_phy_force_dac_clk_from_bbpll(phy_info_t *pi, bool set, uint16 *orig_dac_clk_pu)
-{
-	/* Currently commented out since the new phyregs are not yet checked in */
-	if (set) {
-		uint16 vals[] = {1, 3, 7, 5, 4};
-		uint8 i;
-
-		*orig_dac_clk_pu = READ_PHYREG(pi, dac_clock_from_bbpll);
-		for (i = 0; i < 5; i++) {
-			WRITE_PHYREG(pi, dac_clock_from_bbpll, vals[i]);
-		}
-	} else {
-		/* Restore original value */
-		WRITE_PHYREG(pi, dac_clock_from_bbpll, *orig_dac_clk_pu);
-	}
-}
-
 /* Use this proc to write tables which need dac clk power up WAR.
  * Current list of tables which need this WAR are
  * epsilon0, epsilon1, bbpdepsiloni0, bbpdepsiloni1, bbpdepsilonq0, bbpdepsilonq1
@@ -2886,36 +2763,25 @@ void wlc_phy_table_write_acphy_dac_war(phy_info_t *pi, uint32 id, uint32 len, ui
 	bool dacclk_saved = FALSE;
 
 	/* Implement the dac_war for tiny chips.For others simply call table read/write functions */
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		/* Force dacclk_saved to TRUE so that the value of this register is restored */
-		dacclk_saved = TRUE;
-
-		wlc_phy_force_dac_clk_from_bbpll(pi, 1, &orig_ovr_dac_clk_pu);
-	} else if (TINY_RADIO(pi)) {
+	if (TINY_RADIO(pi)) {
 		dacclk_saved = wlc_phy_poweron_dac_clocks(pi, core, &orig_dac_clk_pu,
 			&orig_ovr_dac_clk_pu);
 	}
-	if (ACMAJORREV_44(pi->pubpi->phy_rev) || ACMAJORREV_51_129(pi->pubpi->phy_rev) ||
-			ACMAJORREV_128(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_51_129(pi->pubpi->phy_rev) || ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		MOD_PHYREGCE(pi, wbcal_ctl_21, core, wb_mem_access_sel, 0);
 		MOD_PHYREGCE(pi, papdEpsilonTable, core, mem_access_sel, 0);
 	}
 	/* Now Call table write */
 	wlc_phy_table_write_acphy(pi, id, len, offset, width, data);
 
-	if (ACMAJORREV_44(pi->pubpi->phy_rev) || ACMAJORREV_51_129(pi->pubpi->phy_rev) ||
-			ACMAJORREV_128(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_51_129(pi->pubpi->phy_rev) || ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		MOD_PHYREGCE(pi, wbcal_ctl_21, core, wb_mem_access_sel, 1);
 		MOD_PHYREGCE(pi, papdEpsilonTable, core, mem_access_sel, 1);
 	}
 
 	/* Restore dac clocks after the table access */
 	if (dacclk_saved == TRUE) {
-		if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-			wlc_phy_force_dac_clk_from_bbpll(pi, 0, &orig_ovr_dac_clk_pu);
-		} else {
-			wlc_phy_restore_dac_clocks(pi, core, orig_dac_clk_pu, orig_ovr_dac_clk_pu);
-		}
+		wlc_phy_restore_dac_clocks(pi, core, orig_dac_clk_pu, orig_ovr_dac_clk_pu);
 	}
 }
 
@@ -2931,10 +2797,7 @@ void wlc_phy_table_read_acphy_dac_war(phy_info_t *pi, uint32 id, uint32 len, uin
 	bool dacclk_saved = FALSE;
 
 	/* Implement the dac_war for tiny chips.For others simply call table read/write functions */
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		dacclk_saved = TRUE;
-		wlc_phy_force_dac_clk_from_bbpll(pi, 1, &orig_ovr_dac_clk_pu);
-	} else if (TINY_RADIO(pi)) {
+	if (TINY_RADIO(pi)) {
 		dacclk_saved = wlc_phy_poweron_dac_clocks(pi, core, &orig_dac_clk_pu,
 			&orig_ovr_dac_clk_pu);
 	}
@@ -2954,11 +2817,7 @@ void wlc_phy_table_read_acphy_dac_war(phy_info_t *pi, uint32 id, uint32 len, uin
 
 	/* Restore dac clocks after the table access */
 	if (dacclk_saved == TRUE) {
-		if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-			wlc_phy_force_dac_clk_from_bbpll(pi, 0, &orig_ovr_dac_clk_pu);
-		} else {
 		wlc_phy_restore_dac_clocks(pi, core, orig_dac_clk_pu, orig_ovr_dac_clk_pu);
-		}
 	}
 }
 
@@ -2988,7 +2847,7 @@ void wlc_phy_force_mac_clk(phy_info_t *pi, uint16 *orig_phy_ctl)
 {
 	*orig_phy_ctl = R_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi));
 	W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi),
-		(*orig_phy_ctl | MAC_PHY_FORCE_CLK));
+		(uint16)(*orig_phy_ctl | MAC_PHY_FORCE_CLK));
 }
 
 void
@@ -3265,42 +3124,6 @@ wlc_phy_get_txgain_tbl_20694(phy_info_t *pi)
 	return tx_pwrctrl_tbl;
 }
 
-const uint16 *
-wlc_phy_get_txgain_tbl_20695(phy_info_t *pi)
-{
-	const uint16 *tx_pwrctrl_tbl = NULL;
-
-	ASSERT((RADIOID_IS(pi->pubpi->radioid, BCM20695_ID)));
-
-	if (PHY_BAND5G_ENAB(pi)) {
-		tx_pwrctrl_tbl = (PHY_IPA(pi)) ?
-			((CHSPEC_IS2G(pi->radio_chanspec)) ? txgain_20695_phyrev36_2g_ipa
-				: txgain_20695_phyrev36_5g_ipa)
-			: ((CHSPEC_IS2G(pi->radio_chanspec)) ? txgain_20695_phyrev36_2g_epa
-				: (ACMINORREV_0(pi) ? txgain_20695_phyrev36_5g_epa
-				: txgain_20695_phyrev36_5g_epa_B0));
-	} else {
-		tx_pwrctrl_tbl = (PHY_IPA(pi)) ? txgain_20695_phyrev36_2g_ipa
-			: ((CHSPEC_IS2G(pi->radio_chanspec)) ? txgain_20695_phyrev36_2g_epa
-			: NULL);
-	}
-
-	return tx_pwrctrl_tbl;
-}
-
-static const uint16 *
-wlc_phy_get_txgain_tbl_20696(phy_info_t *pi)
-{
-	const uint16 *tx_pwrctrl_tbl = NULL;
-
-	ASSERT((RADIOID_IS(pi->pubpi->radioid, BCM20696_ID)));
-
-	tx_pwrctrl_tbl = CHSPEC_IS2G(pi->radio_chanspec) ? acphy28nm_txgain_epa_2g_p5_20696a0_rev0
-						: acphy28nm_txgain_epa_5g_p5_20696a0_rev0;
-
-	return tx_pwrctrl_tbl;
-}
-
 static const uint16 *
 wlc_phy_get_txgain_tbl_20698(phy_info_t *pi)
 {
@@ -3316,11 +3139,15 @@ wlc_phy_get_txgain_tbl_20698(phy_info_t *pi)
 			acphy28nm_txgain_epa_2g_p5_20698a0_rev0:
 			acphy28nm_txgain_epa_5g_p5_20698a0_rev0;
 		break;
-	case 2:
-	case 3:
+	case 2: /* 43684B0 */
 		tx_pwrctrl_tbl = CHSPEC_IS2G(pi->radio_chanspec) ?
 			acphy28nm_txgain_epa_2g_p5_20698b0_rev2:
 			acphy28nm_txgain_epa_5g_p5_20698b0_rev2;
+		break;
+	case 3: /* 43684C0 */
+		tx_pwrctrl_tbl = CHSPEC_IS2G(pi->radio_chanspec) ?
+			acphy28nm_txgain_epa_2g_p5_20698c0_rev3:
+			acphy28nm_txgain_epa_5g_p5_20698c0_rev3;
 		break;
 	default:
 		PHY_ERROR(("wl%d: %s: Unsupported radio revision %d\n",
@@ -3379,6 +3206,15 @@ wlc_phy_get_txgain_tbl_20707(phy_info_t *pi)
 		} else {
 			tx_pwrctrl_tbl = PHY_IPA(pi) ? acphy28nm_txgain_ipa_5g_p5_20707a0_rev0:
 				acphy28nm_txgain_epa_5g_p5_20707a0_rev0;
+		}
+		break;
+	case 1:
+		if (CHSPEC_IS2G(pi->radio_chanspec)) {
+			tx_pwrctrl_tbl = PHY_IPA(pi) ? acphy28nm_txgain_ipa_2g_p5_20707a1_rev1:
+				acphy28nm_txgain_epa_2g_p5_20707a1_rev1;
+		} else {
+			tx_pwrctrl_tbl = PHY_IPA(pi) ? acphy28nm_txgain_ipa_5g_p5_20707a1_rev1:
+				acphy28nm_txgain_epa_5g_p5_20707a1_rev1;
 		}
 		break;
 	default:
@@ -3461,10 +3297,6 @@ wlc_phy_ac_gains_load(phy_ac_tbl_info_t *tbli)
 		tx_pwrctrl_tbl = wlc_phy_get_tiny_txgain_tbl(pi);
 	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20694_ID)) {
 		tx_pwrctrl_tbl = wlc_phy_get_txgain_tbl_20694(pi);
-	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20695_ID)) {
-		tx_pwrctrl_tbl = wlc_phy_get_txgain_tbl_20695(pi);
-	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20696_ID)) {
-		tx_pwrctrl_tbl = wlc_phy_get_txgain_tbl_20696(pi);
 	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20698_ID)) {
 		tx_pwrctrl_tbl = wlc_phy_get_txgain_tbl_20698(pi);
 	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20704_ID)) {
@@ -3515,7 +3347,7 @@ wlc_phy_ac_gains_load(phy_ac_tbl_info_t *tbli)
 				BF3_2GTXGAINTBL_BLANK(pi->u.pi_acphy)) {
 					txidxcap = pi->sromi->txidxcap2g & 0xFF;
 			}
-			if (CHSPEC_IS5G(pi->radio_chanspec) &&
+			if (CHSPEC_ISPHY5G6G(pi->radio_chanspec) &&
 				BF3_5GTXGAINTBL_BLANK(pi->u.pi_acphy)) {
 					txidxcap = pi->sromi->txidxcap5g & 0xFF;
 			}

@@ -1,7 +1,7 @@
 /*
  * Driver O/S-independent utility routines
  *
- * Copyright (C) 2019, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmutils.c 777533 2019-08-05 10:02:41Z $
+ * $Id: bcmutils.c 779309 2019-09-25 03:15:04Z $
  */
 
 #include <bcm_cfg.h>
@@ -1137,7 +1137,7 @@ pktsetprio(void *pkt, bool update_vtag)
 		uint16 vlan_tag;
 		int vlan_prio, dscp_prio = 0;
 
-		evh = (struct ethervlan_header *)eh;
+		evh = (struct ethervlan_header *)pktdata;
 
 		vlan_tag = ntoh16(evh->vlan_tag);
 		vlan_prio = (int) (vlan_tag >> VLAN_PRI_SHIFT) & VLAN_PRI_MASK;
@@ -1543,7 +1543,7 @@ typedef struct bcm_mwbmap {     /* Hierarchical multiword bitmap allocator    */
 
 /* Incarnate a hierarchical multiword bitmap based small index allocator. */
 struct bcm_mwbmap *
-BCMATTACHFN(bcm_mwbmap_init)(osl_t *osh, uint32 items_max)
+bcm_mwbmap_init(osl_t *osh, uint32 items_max)
 {
 	struct bcm_mwbmap * mwbmap_p;
 	uint32 wordix, size, words, extra;
@@ -1617,7 +1617,7 @@ error1:
 
 /* Release resources used by multiword bitmap based small index allocator. */
 void
-BCMATTACHFN(bcm_mwbmap_fini)(osl_t * osh, struct bcm_mwbmap * mwbmap_hdl)
+bcm_mwbmap_fini(osl_t * osh, struct bcm_mwbmap * mwbmap_hdl)
 {
 	bcm_mwbmap_t * mwbmap_p;
 
@@ -2354,6 +2354,21 @@ bcm_bprintf(struct bcmstrbuf *b, const char *fmt, ...)
 exit:
 	va_end(ap);
 
+	return r;
+}
+
+int
+bcm_bprintf_val_pcent(bcmstrbuf_t *b, uint32 val, uint32 pcent, int pad)
+{
+	int r = 1;
+
+	if ((!val) && (!pcent)) {
+		r = bcm_bprintf(b, "%*d(0%%)  ", pad, val);
+	} else {
+		r = bcm_bprintf(b, "%*d(%d%%)", pad, val, pcent);
+		if (pcent < 10) bcm_bprintf(b, " "), r++;
+		if (pcent < 100) bcm_bprintf(b, " "), r++;
+	}
 	return r;
 }
 
@@ -3875,6 +3890,17 @@ bcm_next_tlv(const  bcm_tlv_t *elt, int *buflen)
 bcm_tlv_t *
 bcm_parse_tlvs(const void *buf, int buflen, uint key)
 {
+	return bcm_parse_tlvs_ext(buf, buflen, key, -1);
+}
+
+/* Extends bcm_parse_tlvs() to look-up ext_key (first octet of variable lenvth
+ * value) when the key is 255.
+ * When not matching ext_key, pass special value -1.
+ * Pass non-negative ext_key only when the key is 255.
+ */
+bcm_tlv_t *
+bcm_parse_tlvs_ext(const void *buf, int buflen, uint key, int ext_key)
+{
 	const bcm_tlv_t *elt;
 	int totlen;
 
@@ -3886,14 +3912,21 @@ bcm_parse_tlvs(const void *buf, int buflen, uint key)
 	/* find tagged parameter */
 	while (totlen >= TLV_HDR_LEN) {
 		int len = elt->len;
-
 		/* validate remaining totlen */
 		if ((elt->id == key) && (totlen >= (int)(len + TLV_HDR_LEN))) {
-		GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
-		return (bcm_tlv_t *)(elt);
-		GCC_DIAGNOSTIC_POP();
+			/*
+			 * for key == 255, data[0] holds ext_key
+			 *
+			 * if ext_key == -1 or key != 255, main tag id match is enough
+			 * else match ext_key in data[0] also
+			 */
+			if (ext_key == -1 || key != 255 ||
+					(len > 0 && elt->data[0] == ext_key)) {
+				GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+				return (bcm_tlv_t *)(elt);
+				GCC_DIAGNOSTIC_POP();
+			}
 		}
-
 		elt = (const bcm_tlv_t*)((const uint8*)elt + (len + TLV_HDR_LEN));
 		totlen -= (len + TLV_HDR_LEN);
 	}
@@ -4309,7 +4342,7 @@ bcm_mkiovar(const char *name, const char *data, uint datalen, char *buf, uint bu
 	strncpy(buf, name, buflen);
 
 	/* append data onto the end of the name string */
-	if (data) {
+	if (data && datalen != 0) {
 		memcpy(&buf[len], data, datalen);
 		len += datalen;
 	}

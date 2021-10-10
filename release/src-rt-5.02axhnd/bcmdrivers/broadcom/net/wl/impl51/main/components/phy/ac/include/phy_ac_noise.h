@@ -1,7 +1,7 @@
 /*
  * ACPHY Noise module interface (to other PHY modules).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_noise.h 776005 2019-06-17 15:01:05Z $
+ * $Id: phy_ac_noise.h 778436 2019-08-30 23:21:30Z $
  */
 
 #ifndef _phy_ac_noise_h_
@@ -108,6 +108,14 @@ void phy_ac_noise_unregister_impl(phy_ac_noise_info_t *ac_info);
 #define ACPHY_ACI_OFDM_HI_GLITCH_THRESH_TINY 300
 #define ACPHY_ACI_OFDM_LO_GLITCH_THRESH_TINY 100
 
+#define ACPHY_ACI_NUM_MAX_RXCRS_SEC_AVG 2
+#define ACPHY_ACI_RXCRS_SEC_BUFFER_SZ 4
+#define ACPHY_ACI_BORDER_RXCRS_SEC_SLEEP 12
+#define ACPHY_ACI_MD_RXCRS_SEC_SLEEP 8
+#define ACPHY_ACI_LO_RXCRS_SEC_SLEEP 4
+#define ACPHY_ACI_OFDM_HI_RXCRS_SEC_THRESH 30
+#define ACPHY_ACI_OFDM_LO_RXCRS_SEC_THRESH 10
+
 #define ACPHY_JAMMER_SLEEP 90
 
 /* hw aci */
@@ -121,15 +129,15 @@ void phy_ac_noise_unregister_impl(phy_ac_noise_info_t *ac_info);
 #define HWACI_FORCED_MITON	3
 #define HWACI_AUTO_SW		4
 
-#define HWACI_DETECT_ENERGY_TH_HARPOON ((CHSPEC_IS5G(pi->radio_chanspec) && \
+#define HWACI_DETECT_ENERGY_TH_HARPOON ((CHSPEC_ISPHY5G6G(pi->radio_chanspec) && \
 				(CHSPEC_IS40(pi->radio_chanspec))) ? 5000 : \
 				(CHSPEC_IS80(pi->radio_chanspec) ? 2500 : \
-				(CHSPEC_IS5G(pi->radio_chanspec) ? 5500 : 6000)))
+				(CHSPEC_ISPHY5G6G(pi->radio_chanspec) ? 5500 : 6000)))
 
-#define HWACI_DETECT_ENERGY_TH_GODZILLA ((CHSPEC_IS5G(pi->radio_chanspec) && \
+#define HWACI_DETECT_ENERGY_TH_GODZILLA ((CHSPEC_ISPHY5G6G(pi->radio_chanspec) && \
 				(CHSPEC_IS40(pi->radio_chanspec))) ? 4000 : \
 				(CHSPEC_IS80(pi->radio_chanspec) ? 2500 : \
-				(CHSPEC_IS5G(pi->radio_chanspec) ? 6200 : 3000)))
+				(CHSPEC_ISPHY5G6G(pi->radio_chanspec) ? 6200 : 3000)))
 
 /* ACI (end) */
 
@@ -143,15 +151,17 @@ void phy_ac_noise_unregister_impl(phy_ac_noise_info_t *ac_info);
 #ifndef WLC_DISABLE_ACI
 #define ACPHY_ENABLE_FCBS_HWACI(pi) \
 	(ACMAJORREV_3((pi)->pubpi->phy_rev) || ACMAJORREV_4((pi)->pubpi->phy_rev) || \
-	ACMAJORREV_36(pi->pubpi->phy_rev) || ACMAJORREV_GE40(pi->pubpi->phy_rev))
+	ACMAJORREV_GE40(pi->pubpi->phy_rev))
 #define ACPHY_HWACI_WITH_DESENSE_ENG(pi) (ACMAJORREV_4((pi)->pubpi->phy_rev) || \
-	ACMAJORREV_36(pi->pubpi->phy_rev) || ACMAJORREV_GE40(pi->pubpi->phy_rev))
-#define ACPHY_HWACI_HWTBL_MITIGATION(pi) (ACMAJORREV_33((pi)->pubpi->phy_rev) || \
-	ACMAJORREV_51((pi)->pubpi->phy_rev))
+	ACMAJORREV_GE40(pi->pubpi->phy_rev))
+#define ACPHY_HWACI_HWTBL_MITIGATION(pi) (ACMAJORREV_33((pi)->pubpi->phy_rev))
+#define ACPHY_MCLIP_ACI_MITIGATION(pi) (ACMAJORREV_51((pi)->pubpi->phy_rev) || \
+	ACMAJORREV_128((pi)->pubpi->phy_rev))
 #else
 #define ACPHY_ENABLE_FCBS_HWACI(pi) 0
 #define ACPHY_HWACI_WITH_DESENSE_ENG(pi) (0)
 #define ACPHY_HWACI_HWTBL_MITIGATION(pi) (0)
+#define ACPHY_MCLIP_ACI_MITIGATION(pi) (0)
 #endif // endif
 
 #define ACPHY_HWACI_28NM(pi)  ACMAJORREV_GE40(pi->pubpi->phy_rev)
@@ -181,7 +191,7 @@ void phy_ac_noise_unregister_impl(phy_ac_noise_info_t *ac_info);
 typedef struct acphy_desense_values
 {
 	uint8 clipgain_desense[4]; /* in dBs */
-	uint8 ofdm_desense, bphy_desense;      /* in dBs */
+	uint8 ofdm_desense, ofdm_sec_desense, bphy_desense;      /* in dBs */
 	uint8 lna1_tbl_desense, lna2_tbl_desense;   /* in ticks */
 	uint8 lna1_gainlmt_desense, lna2_gainlmt_desense;   /* in ticks */
 	uint8 lna1rout_gainlmt_desense;
@@ -193,7 +203,7 @@ typedef struct acphy_desense_values
 	uint8 lna1_idx_min, lna1_idx_max;   /* in ticks */
 	uint8 lna2_idx_min, lna2_idx_max;   /* in ticks */
 	uint8 mix_idx_min, mix_idx_max;   /* in ticks */
-	uint8 ofdm_desense_extra_halfdB;
+	uint8 ofdm_desense_extra_halfdB, ofdm_sec_desense_extra_halfdB;
 	int8 edcrs;
 }  acphy_desense_values_t;
 
@@ -202,6 +212,12 @@ typedef struct desense_history {
 	uint8 hi_glitch_dB;
 	uint8 lo_glitch_dB;
 	uint8 no_desense_change_time_cnt;
+	uint8 cnt_thresh_prim;
+
+	uint8 rxcrs_sec[ACPHY_ACI_RXCRS_SEC_BUFFER_SZ];
+	uint8 hi_rxcrs_sec_dB;
+	uint8 lo_rxcrs_sec_dB;
+	uint8 no_desense_sec_change_time_cnt;
 } desense_history_t;
 
 typedef struct
@@ -320,6 +336,7 @@ void phy_ac_noise_preempt(phy_ac_noise_info_t *ni, bool enable_preempt,
 	bool EnablePostRxFilter_Proc);
 extern void wlc_phy_desense_aci_upd_txop_acphy(phy_info_t *pi, chanspec_t chanspec,
         uint8 txop);
+uint8 wlc_phy_desense_aci_upd_rxcrs_sec_acphy(phy_info_t *pi);
 #ifdef RADIO_HEALTH_CHECK
 int phy_ac_noise_force_fail_desense(phy_ac_noise_info_t *noisei);
 #endif /* RADIO_HEALTH_CHECK */

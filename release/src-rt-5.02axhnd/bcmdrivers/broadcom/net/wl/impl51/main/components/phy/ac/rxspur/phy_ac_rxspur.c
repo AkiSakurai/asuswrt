@@ -1,7 +1,7 @@
 /*
  * ACPHY Rx Spur canceller module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rxspur.c 776481 2019-07-01 08:01:41Z $
+ * $Id: phy_ac_rxspur.c 782990 2020-01-10 09:38:07Z $
  */
 
 #include <phy_cfg.h>
@@ -170,13 +170,15 @@ static const uint32 acphy_spurcan_spur_freqKHz_router_4349_rsdb[] = {2432000, 24
 static const uint32 acphy_spurcan_spur_freqKHz_rev129[] = {2450000,
 	5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5750000, 5800000};
 
-// 63178/47622 has an Xtal spur on 2450 MHz, 49th harmonic of 50 MHz
-static const uint32 acphy_spurcan_spur_freqKHz_rev51[] = {2450000};
+// 63178/47622 has Xtal spurs at harmonic of 50 MHz
+static const uint32 acphy_spurcan_spur_freqKHz_rev51[] = {2450000,
+	5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5750000, 5800000};
 
 // 6878 has an Xtal spur on 2450 MHz, 49th harmonic of 50 MHz
 // also seeing 25 MHz spurs so making seperate entry for 6878
-// 5GHz spurs yet unknown
-static const uint32 acphy_spurcan_spur_freqKHz_rev128[] = {2425000, 2450000, 2475000};
+// 5GHz spurs also need to be cancelled out because they cause PER floor with LESI
+static const uint32 acphy_spurcan_spur_freqKHz_rev128[] = {2425000, 2450000, 2475000,
+	5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5750000, 5800000};
 
 /* local functions */
 static int phy_ac_rxspur_std_params(phy_ac_rxspur_info_t *info);
@@ -283,9 +285,6 @@ static int
 BCMATTACHFN(phy_ac_rxspur_std_params)(phy_ac_rxspur_info_t *rxspuri)
 {
 	phy_info_t *pi = rxspuri->pi;
-	uint8 i;
-	uint16 *Sp_chanlist;
-	int16 *Sp_freqlist;
 	phy_stf_data_t *stf_shdata = phy_stf_get_data(pi->stfi);
 
 	rxspuri->curr_spurmode = 0;
@@ -312,34 +311,11 @@ BCMATTACHFN(phy_ac_rxspur_std_params)(phy_ac_rxspur_info_t *rxspuri)
 	}
 	rxspuri->acphy_spuravoid_mode_override = 0;
 
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		rxspuri->spurcan_NoSpurs  = (uint8)PHY_GETINTVAR_DEFAULT(pi,
-			rstr_spurcan_numspur, 0);
-		if (rxspuri->spurcan_NoSpurs != 0) {
-			rxspuri->spurcan_ChanList = phy_malloc(pi,
-					rxspuri->spurcan_NoSpurs * sizeof(uint16));
-			rxspuri->spurcan_SpurFreq = phy_malloc(pi,
-					rxspuri->spurcan_NoSpurs * sizeof(int16));
-
-			if ((rxspuri->spurcan_ChanList == NULL) ||
-				(rxspuri->spurcan_SpurFreq == NULL)) {
-				return BCME_NOMEM;
-			}
-
-			Sp_chanlist = rxspuri->spurcan_ChanList;
-			Sp_freqlist = rxspuri->spurcan_SpurFreq;
-			for (i = 0; i < rxspuri->spurcan_NoSpurs; i++) {
-				Sp_chanlist[i] = (uint16)PHY_GETINTVAR_ARRAY_DEFAULT
-						(pi, rstr_spurcan_chlist, i, 0);
-				Sp_freqlist[i] = (int16)PHY_GETINTVAR_ARRAY_DEFAULT
-						(pi, rstr_spurcan_spfreq, i, 0);
-			}
-		}
-	}
 	if (ACMAJORREV_51(pi->pubpi->phy_rev) || ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		rxspuri->spurcan_CoreMask = (uint8)PHY_GETINTVAR_DEFAULT(pi,
 				rstr_spurcan_coremask, 0);
 	}
+
 	if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
 		rxspuri->spurcan_CoreMask = stf_shdata->hw_phytxchain;
 	}
@@ -410,11 +386,7 @@ phy_ac_spurcan_setup(phy_ac_rxspur_info_t *rxspuri, bool enable)
 		MOD_PHYREGCM(pi, spur_can_p, s1_en, core, spur_can_stage_enable, 0);
 		MOD_PHYREGCM(pi, spur_can_p, s2_en, core, spur_can_stage_enable, 0);
 		MOD_PHYREGCM(pi, spur_can_p, s3_en, core, spur_can_stage_enable, 0);
-		if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-			phy_ac_spurcan_clk(pi, core, 0);
-		} else {
-			phy_ac_spurcan_clk(pi, core, enable);
-		}
+		phy_ac_spurcan_clk(pi, core, enable);
 	}
 }
 
@@ -587,9 +559,9 @@ phy_ac_spurcan(phy_ac_rxspur_info_t *rxspuri, bool enable)
 	uint8 i, core;
 	uint8 num_spurs;
 	uint8 spur_1st_stage = 2;	/* Use stage2 and stage3 */
-	bool enable_final;
 	uint8 num_slms, num_fll;
 	uint8 tbl_len = 0;
+	uint8 tbl_len_vco = 0;
 	uint16 channel = CHSPEC_CHANNEL(pi->radio_chanspec);
 	uint32 fc_KHz, omega;
 	int bw = CHSPEC_BW_LE20(pi->radio_chanspec) ?
@@ -597,10 +569,10 @@ phy_ac_spurcan(phy_ac_rxspur_info_t *rxspuri, bool enable)
 	int freq;
 	int fsp, sign;
 	const uint32 *spurfreq = NULL;
-	uint16 *Sp_chanlist;
-	int16 *Sp_freqlist;
+	uint32 spurfreq_vco[2];
+	uint32 omega_frac_adj = 0;
 
-	freq = wf_channel2mhz(channel, CHSPEC_IS5G(pi->radio_chanspec) ?
+	freq = wf_channel2mhz(channel, CHSPEC_ISPHY5G6G(pi->radio_chanspec) ?
 		WF_CHAN_FACTOR_5_G : WF_CHAN_FACTOR_2_4_G);
 	fc_KHz = freq*1000;
 
@@ -623,14 +595,40 @@ phy_ac_spurcan(phy_ac_rxspur_info_t *rxspuri, bool enable)
 		/* Make default to 0x6E 110 later change the value if there is spur */
 		MOD_PHYREG(pi, overideDigiGain1, cckdigigainEnCntValue, 0x6E);
 
-	} else if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		tbl_len = rxspuri->spurcan_NoSpurs;
-		MOD_PHYREG(pi, overideDigiGain1, cckdigigainEnCntValue, 0xAF);
 	} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
 		spurfreq = acphy_spurcan_spur_freqKHz_rev51;
 		tbl_len = ARRAYSIZE(acphy_spurcan_spur_freqKHz_rev51);
 		num_slms = 2;
 		num_fll = 1;
+		/* additonal vco spurs (fvco - n*100MHz) found in 2GHz band */
+		if (freq < 3000 && bw == 20000) {
+			if (freq == 2412) {
+				spurfreq_vco[tbl_len_vco] = 2418000;
+			} else if (freq == 2417) {
+				spurfreq_vco[tbl_len_vco] = 2425500;
+			}
+			tbl_len_vco += 1;
+		} else if (freq < 3000 && bw == 40000) {
+			if (freq == 2422) {
+				spurfreq_vco[tbl_len_vco]  = 2433000;
+			} else if (freq == 2427) {
+				spurfreq_vco[tbl_len_vco] = 2436000;
+			} else if (freq == 2432) {
+				spurfreq_vco[tbl_len_vco] = 2442666;
+				omega_frac_adj = 0x14444;
+			} else if (freq == 2437) {
+				spurfreq_vco[tbl_len_vco] = 2455500;
+			} else if (freq == 2447) {
+				spurfreq_vco[tbl_len_vco] = 2462666;
+				omega_frac_adj = 0x14444;
+			} else if (freq == 2452) {
+				spurfreq_vco[tbl_len_vco] = 2469333;
+				omega_frac_adj = 0xeeee;
+			} else if (freq == 2457) {
+				spurfreq_vco[tbl_len_vco] = 2476000;
+			}
+			tbl_len_vco += 1;
+		}
 	} else if (ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		spurfreq = acphy_spurcan_spur_freqKHz_rev128;
 		tbl_len = ARRAYSIZE(acphy_spurcan_spur_freqKHz_rev128);
@@ -642,60 +640,27 @@ phy_ac_spurcan(phy_ac_rxspur_info_t *rxspuri, bool enable)
 		num_slms = 2;
 		num_fll = 1;
 	}
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		Sp_chanlist = (rxspuri->spurcan_ChanList);
-		Sp_freqlist = (rxspuri->spurcan_SpurFreq);
-		if (rxspuri->spurcan_NoSpurs != 0) {
-			bzero(spurcan, sizeof(acphy_spurcan_values_t));
-			spurcan->bw = bw/1000;
-			num_spurs = 0;
-			for (i = 0; i < tbl_len; i++) {
-				if (freq == Sp_chanlist[i]) {
-					// Spur frequency in KHz
-					fsp = Sp_freqlist[i];
-					spurcan->spurcan_en = 1;
-					sign = (fsp > 0) - (fsp < 0);
-					math_uint64_divide(&omega, sign * fsp, 0, bw);
-					omega = sign * omega;
-					if ((spur_1st_stage + num_spurs) == 1) {
-						spurcan->s1_en = 1;
-						spurcan->s1_omega_high = omega >> 16;
-						spurcan->s1_omega_low = omega & 0x0000ffff;
-					} else if ((spur_1st_stage + num_spurs) == 2) {
-						spurcan->s2_en = 1;
-						spurcan->s2_omega_high = omega >> 16;
-						spurcan->s2_omega_low = omega & 0x0000ffff;
-					} else if ((spur_1st_stage + num_spurs) == 3) {
-						spurcan->s3_en = 1;
-						spurcan->s3_omega_high = omega >> 16;
-						spurcan->s3_omega_low = omega & 0x0000ffff;
-						break;
-					}
-					num_spurs++;
-				}
-			}
-			if ((num_spurs == 0) || (!enable)) {
-				enable_final = FALSE;
-			} else {
-				enable_final = TRUE;
-			}
-			phy_ac_spurcan_setup(pi_ac->rxspuri, enable_final);
-		}
-	} else if (spurfreq != NULL) {
+
+	ASSERT(tbl_len_vco <= ARRAYSIZE(spurfreq_vco));
+	if (spurfreq != NULL || tbl_len_vco > 0) {
 		FOREACH_CORE(pi, core) {
 			bzero(spurcan, sizeof(acphy_spurcan_values_t));
 			spurcan->channel = channel;
 			spurcan->core = core;
 			spurcan->bw = bw/1000;
 			num_spurs = 0;
-			for (i = 0; i < tbl_len; i++) {
+			for (i = 0; i < (tbl_len + tbl_len_vco); i++) {
 				// Next statement could be outside loop but this way code
 				// is more compact
 				if (!enable || ((rxspuri->spurcan_CoreMask & (1 << core)) == 0)) {
 					break;
 				}
-
-				fsp = spurfreq[i] - fc_KHz;
+				/* handle xtal spurs first followed by vco spurs */
+				if (i < tbl_len) {
+					fsp = spurfreq[i] - fc_KHz;
+				} else {
+					fsp = spurfreq_vco[i - tbl_len] - fc_KHz;
+				}
 
 				/* JIRA: SWWLAN-92418
 				 * Issue: Enabling spurcan at DC freq is degrading rx sensitivity.
@@ -711,6 +676,11 @@ phy_ac_spurcan(phy_ac_rxspur_info_t *rxspuri, bool enable)
 					sign = (fsp > 0) - (fsp < 0);
 					math_uint64_divide(&omega, sign * fsp, 0, bw);
 					omega = sign * omega;
+					/* correct for fractional part in vco spur freq */
+					if  ((i >= tbl_len) && (omega_frac_adj != 0)) {
+						omega = omega & 0xffff0000;
+						omega = omega + omega_frac_adj;
+					}
 					PHY_CAL(("%s: spur @ %d kHz, omega = %d\n",
 						__FUNCTION__, fsp, omega));
 					if ((spur_1st_stage + num_spurs) == 1) {
@@ -745,11 +715,6 @@ phy_ac_spurcan(phy_ac_rxspur_info_t *rxspuri, bool enable)
 						MOD_PHYREG(pi, overideDigiGain1,
 							cckdigigainEnCntValue, 0x82);
 					}
-					if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-						MOD_PHYREG(pi, overideDigiGain1,
-							cckdigigainEnCntValue, 0xAF);
-					}
-
 				}
 			}
 			PHY_CAL(("%s: channel %d, core %d, bw = %d MHz",
@@ -795,7 +760,7 @@ phy_ac_dssf(phy_ac_rxspur_info_t *rxspuri, bool on)
 		return;
 	}
 
-	if (ACMAJORREV_4(pi->pubpi->phy_rev) || ACMAJORREV_36(pi->pubpi->phy_rev) ||
+	if (ACMAJORREV_4(pi->pubpi->phy_rev) ||
 		ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
 		ACMAJORREV_37(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
 		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
@@ -2014,7 +1979,7 @@ phy_ac_spurwar_4345(phy_info_t *pi, uint32 xtal_hz, uint8 i,
 	uint32 xtal = xtal_hz / 100000;
 	uint16 channel = CHSPEC_CHANNEL(pi->radio_chanspec);
 
-	fc = wf_channel2mhz(channel, CHSPEC_IS5G(pi->radio_chanspec)
+	fc = wf_channel2mhz(channel, CHSPEC_ISPHY5G6G(pi->radio_chanspec)
 		? WF_CHAN_FACTOR_5_G : WF_CHAN_FACTOR_2_4_G);
 
 	if (CHSPEC_IS80(pi->radio_chanspec))
@@ -2449,16 +2414,7 @@ phy_ac_get_spurmode(phy_ac_rxspur_info_t *rxspuri, uint16 freq)
 		}
 	} else if (EMBEDDED_2x2AX_CORE(pi->sh->chip) ||
 			ACMAJORREV_128(pi->pubpi->phy_rev)) {
-		if (CHSPEC_IS2G(pi->radio_chanspec) &&
-			(((CHSPEC_CHANNEL(pi->radio_chanspec) >= 1) &&
-			(CHSPEC_CHANNEL(pi->radio_chanspec) <= 5)) ||
-			(CHSPEC_IS40(pi->radio_chanspec) &&
-			((CHSPEC_CHANNEL(pi->radio_chanspec) >= 3) &&
-			(CHSPEC_CHANNEL(pi->radio_chanspec) <= 7))))) {
-			rxspuri->acphy_spuravoid_mode = 1;
-		} else {
-			rxspuri->acphy_spuravoid_mode = 0;
-		}
+		rxspuri->acphy_spuravoid_mode = 1;
 	} else {
 		rxspuri->acphy_spuravoid_mode = 0;
 	}

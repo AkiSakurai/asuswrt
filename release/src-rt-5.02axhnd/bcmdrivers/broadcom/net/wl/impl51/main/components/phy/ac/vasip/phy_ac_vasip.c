@@ -1,7 +1,7 @@
 /*
  * ACPHY VASIP modules implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_vasip.c 776984 2019-07-15 23:14:47Z $
+ * $Id: phy_ac_vasip.c 786234 2020-04-22 03:49:16Z $
  */
 
 #include <phy_cfg.h>
@@ -292,8 +292,8 @@ phy_ac_vasip_write_bin(phy_type_vasip_ctx_t *ctx, const uint32 vasip_code[], con
 {
 	phy_ac_vasip_info_t *info = (phy_ac_vasip_info_t *)ctx;
 	phy_info_t *pi = info->pi;
-	uint8	stall_val, mem_id;
-	uint32	count;
+	uint8	stall_val;
+	uint32	count, mem_id;
 	uint32 svmp_addr = 0x0;
 
 	wlapi_suspend_mac_and_wait(pi->sh->physhim);
@@ -320,8 +320,8 @@ phy_ac_vasip_write_spectrum_tbl(phy_type_vasip_ctx_t *ctx,
 {
 	phy_ac_vasip_info_t *info = (phy_ac_vasip_info_t *)ctx;
 	phy_info_t *pi = info->pi;
-	uint8  stall_val, mem_id_tbl;
-	uint32 count_tbl;
+	uint8  stall_val;
+	uint32 count_tbl, mem_id_tbl;
 	uint32 svmp_tbl_addr = 0x3400; // (0x26800-0x8000*4)>>1
 
 	wlapi_suspend_mac_and_wait(pi->sh->physhim);
@@ -348,8 +348,8 @@ phy_ac_vasip_write_svmp(phy_type_vasip_ctx_t *ctx, uint32 offset, uint16 val)
 {
 	phy_ac_vasip_info_t *info = (phy_ac_vasip_info_t *)ctx;
 	phy_info_t *pi = info->pi;
-	uint32 tbl_val;
-	uint8  stall_val, mem_id, odd_even;
+	uint32 tbl_val, mem_id;
+	uint8  stall_val, odd_even;
 
 	mem_id = offset/0x8000;
 	offset = offset%0x8000;
@@ -384,8 +384,8 @@ phy_ac_vasip_read_svmp(phy_type_vasip_ctx_t *ctx, uint32 offset, uint16 *val)
 {
 	phy_ac_vasip_info_t *info = (phy_ac_vasip_info_t *)ctx;
 	phy_info_t *pi = info->pi;
-	uint32 tbl_val;
-	uint8 stall_val, mem_id, odd_even;
+	uint32 tbl_val, mem_id;
+	uint8 stall_val, odd_even;
 
 	mem_id = offset/0x8000;
 	offset = offset%0x8000;
@@ -414,8 +414,8 @@ phy_ac_vasip_write_svmp_blk(phy_type_vasip_ctx_t *ctx, uint32 offset, uint16 len
 {
 	phy_ac_vasip_info_t *info = (phy_ac_vasip_info_t *)ctx;
 	phy_info_t *pi = info->pi;
-	uint32 tbl_val;
-	uint8  stall_val, mem_id;
+	uint32 tbl_val, mem_id;
+	uint8  stall_val;
 	uint16 n, odd_start, odd_end;
 
 	mem_id = offset / 0x8000;
@@ -464,8 +464,8 @@ phy_ac_vasip_read_svmp_blk(phy_type_vasip_ctx_t *ctx, uint32 offset, uint16 len,
 {
 	phy_ac_vasip_info_t *info = (phy_ac_vasip_info_t *)ctx;
 	phy_info_t *pi = info->pi;
-	uint32 tbl_val;
-	uint8 stall_val, mem_id;
+	uint32 tbl_val, mem_id;
+	uint8 stall_val;
 	uint16 n, odd_start, odd_end;
 
 	mem_id = offset / 0x8000;
@@ -703,7 +703,7 @@ static void phy_ac_dump_svmp(phy_type_vasip_ctx_t *ctx, struct bcmstrbuf *b)
 	phy_info_t *pi = info->pi;
 
 	uint8 stall_val;
-	uint m, n, idx, step, svmp_len;
+	uint m, n, idx, step, svmp_len, offset_size;
 	uint16 svmp_list_len, svmp_block_len;
 	uint16 svmp_val[32], phyreg_list_len, reg_val;
 	uint16 vasipreg_list_len, vasipreg_val;
@@ -715,54 +715,83 @@ static void phy_ac_dump_svmp(phy_type_vasip_ctx_t *ctx, struct bcmstrbuf *b)
 	uint32 cqi_rpt_start = 0, cqi_rpt_end = 0;
 
 	static const svmp_list_t svmpmems_4x4[] = {
-		{0x40000, 128},
-		{0x40080, 32},
-		{0x40100, 32},
-		{0x40180, 128},
-		{0x40260, 32},
-		{0x40280, 0x400},
-		{0x2bb20, 0x60},
-		{0x30000, 32},
-		{0x30900, 32},
-		{0x31200, 32},
-		{0x31b00, 32},
-		{0x3c010, 32},
-		{0x3c080, 32},
-		{0xe000, 0x2000}, /* CQI report */
-		{0x10000, 0x8000}, /* TXV_IDX =  0 ~ 31 */
-		{0x18000, 0x8000}, /* TXV_IDX = 32 ~ 63 */
-		{0x20000, 32}, /* TXV_IDX = 64 */
-		{0x22000, 32} /* TXV_IDX = 65 */
+		{0x40000, 0x80},   // interrupt & FW info/config/knob
+		{0x40080, 0x40},   // m2v_buf0
+		{0x40100, 0x40},   // m2v_buf1
+		{0x38000, 0x80},   // m2v_buf_grp_sel & grp_forced_buf
+		{0x38080, 0x80},   // v2m_buf_grp
+		{0x38160, 0x80},   // v2m_buf_grp_he
+		{0x40180, 0x40},   // m2v_buf_precoder
+		{0x401c0, 0x20},   // v2m_buf_mvp
+		{0x2bb20, 0x20},   // pwr_per_ant & pwr_per_ant
+		{0x40280, 0x400},  // bfds_log_buffer
+		{0x30000, 0x20},   // txv_decompressed_report 0
+		{0x30900, 0x20},   // txv_decompressed_report 1
+		{0x31200, 0x20},   // txv_decompressed_report 2
+		{0x31b00, 0x20},   // txv_decompressed_report 3
+		{0x3c010, 0x20},   // steering_mcs & recommend_mcs
+		{0x3c080, 0x80},   // txv_header_addr
+		{0x46000, 0x180},  // ru allocation - ru_alloc_buf & v2m_ru_alloc_buf & ...
+		{0x46200, 0x40},   // ru allocation - cqi_rpt_buf & v2m_buf_cqi
+		{0x47380, 0x20},   // ru allocation - cqi_ready
+		{0x46240, 0x400},  // ru allocation - cqi_thpt_gain
+		{0x46800, 0x400},  // ru allocation - cqi_ru_index
+		{0x46dc0, 0x400},  // ru allocation - cqi_ru_mask
+		{0x47b00, 0x190},  // ru allocation - dbg0
+		{0xe000,  0x2000}, // CQI report
+		{0x10000, 0x8000}, // TXV_IDX =  0 ~ 31
+		{0x18000, 0x8000}, // TXV_IDX = 32 ~ 63
+		{0x20000, 0x20},   // TXV_IDX = 64
+		{0x22000, 0x20},   // TXV_IDX = 65
+		{0x24000, 0x20},   // TXV_IDX = 66
+		{0x26000, 0x20}    // TXV_IDX = 67
 	};
 	static const svmp_list_t svmpmems_2x2[] = {
-		{0x18000, 128},		/* interrupt -- err_code_curr */
-		{0x18080, 32},		/* m2v_buf0 (first part) */
-		{0x18100, 32},		/* m2v_buf1 (first part) */
-		{0x18180, 128},		/* v2m_buf_grp */
-		{0x18260, 32},		/* v2m_buf_mvp, v2m_transfer_done */
-		{0x18280, 0x400},	/* bfd_log_buffer */
-		{0x13120, 0x60},	/* pwr_per_ant, param, precoder_buf */
-		{0x0a000, 32},		/* txv_decompressed_report (part) */
-		{0x0a500, 32},		/* txv_decompressed_report (part) */
-		{0x17010, 32},		/* steering_mcs,recommend_mcs */
-		{0x17080, 32},		/* txv_header_addr */
-		{0x0e800, 0x1800},	/* CQI report */
-		{0x10000, 0x2000}	/* BFD compressed report */
+		{0x18000, 0x80},        /* interrupt -- err_code_curr */
+		{0x18080, 0x40},        /* m2v_buf0 (first part) */
+		{0x18100, 0x40},        /* m2v_buf1 (first part) */
+		{0x16080, 0x80},        /* v2m_buf_grp */
+		{0x16160, 0x80},        /* v2m_buf_grp_he */
+		{0x181c0, 0x40},        /* v2m_buf_mvp, v2m_transfer_done */
+		{0x18280, 0x400},       /* bfds_log_buffer */
+		{0x13120, 0x20},        /* pwr_per_ant, param, precoder_buf */
+		{0x0a000, 0x20},        /* txv_decompressed_report (txvheadr) */
+		{0x0a500, 0x20},        /* txv_decompressed_report (txvheadr) */
+		{0x17010, 0x20},        /* steering_mcs,recommend_mcs */
+		{0x17080, 0x20},        /* txv_header_addr */
+		{0x1e000, 0x180},       /* ru allocation - ru_alloc_buf & v2m_ru_alloc_buf & ... */
+		{0x1e200, 0x40},        /* ru allocation - cqi_rpt_buf & v2m_buf_cqi */
+		{0x1f380, 0x20},        /* ru allocation - cqi_ready */
+		{0x1e240, 0x400},       /* ru allocation - cqi_thpt_gain */
+		{0x1e800, 0x400},       /* ru allocation - cqi_ru_index */
+		{0x1edc0, 0x400},       /* ru allocation - cqi_ru_mask */
+		{0x1fb00, 0x190},       /* ru allocation - dbg0 */
+		{0xe800,  0x1000},      /* CQI report */
+		{0x10000, 0x2000}       /* BFD compressed report */
 	};
 	static const svmp_list_t svmpmems_3x3[] = {
-		{0x20000, 128},		/* interrupt -- err_code_curr */
-		{0x20080, 32},		/* m2v_buf0 (first part) */
-		{0x20100, 32},		/* m2v_buf1 (first part) */
-		{0x20180, 128},		/* v2m_buf_grp */
-		{0x20260, 32},		/* v2m_buf_mvp, v2m_transfer_done */
-		{0x20280, 0x400},	/* bfd_log_buffer */
-		{0x1a500, 0x60},	/* pwr_per_ant, param, precoder_buf */
-		{0xc800, 32},		/* txv_decompressed_report (part) */
-		{0xcf00, 32},		/* txv_decompressed_report (part) */
-		{0x1c410, 32},		/* steering_mcs,recommend_mcs */
-		{0x1c480, 32},		/* txv_header_addr */
-		{0x0e800, 0x1800},	/* CQI report */
-		{0x10000, 0x8000}	/* BFD compressed report */
+		{0x20000, 0x80},        /* interrupt -- err_code_curr */
+		{0x20080, 0x40},        /* m2v_buf0 (first part) */
+		{0x20100, 0x40},        /* m2v_buf1 (first part) */
+		{0x1d080, 0x80},        /* v2m_buf_grp */
+		{0x1d160, 0x80},        /* v2m_buf_grp */
+		{0x201c0, 0x40},        /* v2m_buf_mvp, v2m_transfer_done */
+		{0x20280, 0x400},       /* bfds_log_buffer */
+		{0x1a500, 0x20},        /* pwr_per_ant, param, precoder_buf */
+		{0xc800,  0x20},        /* txv_decompressed_report (txvheadr) */
+		{0xcf00,  0x20},        /* txv_decompressed_report (txvheadr) */
+		{0xd600,  0x20},        /* txv_decompressed_report (txvheadr) */
+		{0x1c410, 0x20},        /* steering_mcs,recommend_mcs */
+		{0x1c480, 0x20},        /* txv_header_addr */
+		{0x26000, 0x180},       /* ru allocation - ru_alloc_buf & v2m_ru_alloc_buf & ... */
+		{0x26200, 0x40},        /* ru allocation - cqi_rpt_buf & v2m_buf_cqi */
+		{0x27380, 0x20},        /* ru allocation - cqi_ready */
+		{0x26240, 0x400},       /* ru allocation - cqi_thpt_gain */
+		{0x26800, 0x400},       /* ru allocation - cqi_ru_index */
+		{0x26dc0, 0x400},       /* ru allocation - cqi_ru_mask */
+		{0x27b00, 0x190},       /* ru allocation - dbg0 */
+		{0x1e800, 0x1000},      /* CQI report */
+		{0x10000, 0x8000}       /* BFD compressed report */
 	};
 
 	const svmp_list_t *svmpmems = NULL;
@@ -945,19 +974,19 @@ static void phy_ac_dump_svmp(phy_type_vasip_ctx_t *ctx, struct bcmstrbuf *b)
 			svmp_addr = svmpmems[m].addr;
 
 			if ((svmp_addr >= compr_rpt_start) && (svmp_addr < compr_rpt_end)) {
-				step = compr_rpt_step, svmp_len = 16;
+				step = compr_rpt_step, svmp_len = 16, offset_size = 32;
 			} else if ((svmp_addr >= cqi_rpt_start) && (svmp_addr < cqi_rpt_end)) {
-				step = 6, svmp_len = 16;
+				step = 11, svmp_len = 176, offset_size = 16;
 			} else {
-				step = 1, svmp_len = 32;
+				step = 1, svmp_len = 32, offset_size = 32;
 			}
 
 			for (n = 0; n < svmp_block_len; n += step) {
-				phy_ac_vasip_read_svmp_blk(ctx, svmp_addr + 32*n, svmp_len,
+				phy_ac_vasip_read_svmp_blk(ctx, svmp_addr + offset_size*n, svmp_len,
 					&svmp_val[0]);
 				for (idx = 0; idx < svmp_len; idx++)
 					bcm_bprintf(b, "svmp   0x%-4x   0x%-4x\n",
-							svmp_addr + 32*n + idx, svmp_val[idx]);
+						svmp_addr + offset_size*n + idx, svmp_val[idx]);
 			}
 		}
 	} else {

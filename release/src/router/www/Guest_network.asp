@@ -195,8 +195,14 @@ function translate_auth(flag){
 	else if(flag == "sae"){
 		return "WPA3-Personal";
 	}	
-	else if(flag == "pskpsk2")
-		return "WPA-Auto-Personal";
+	else if(flag == "pskpsk2"){
+		if(wpa3_support){
+			return "WPA/WPA2-Personal";
+		}
+		else{
+			return "WPA-Auto-Personal";
+		}
+	}	
 	else if(flag == "psk2sae"){
 		return "WPA2/WPA3-Personal";	
 	}
@@ -367,14 +373,7 @@ function gen_gntable_tr(unit, gn_array, slicesb){
 						htmlcode += '<tfoot><tr rowspan="3"><td align="center"><span style="color:#FFCC00;">Used by ' + captive_portal_used_wl_array["wl" + unit_subunit] + '</span></td></tr></tfoot>';
 					}
 				}else{
-					if(amazon_wss_if_support){
-						htmlcode += '<tfoot>';
-						htmlcode += '<tr rowspan="3"><td align="center"><input type="button" class="button_gen" value="<#WLANConfig11b_WirelessCtrl_button1name#>" onclick="create_guest_unit('+ unit +','+ subunit +');"></td></tr>';
-						htmlcode += '<tr rowspan="3"><td align="center"><input type="button" class="button_gen" value="Amazon Wi-Fi Simple Setup" onclick="enable_amazon_wss('+ unit +','+ subunit +');"></td></tr>';/* untranslated */
-						htmlcode += '</tfoot>';
-					}
-					else
-						htmlcode += '<tfoot><tr rowspan="3"><td align="center"><input type="button" class="button_gen" value="<#WLANConfig11b_WirelessCtrl_button1name#>" onclick="create_guest_unit('+ unit +','+ subunit +');"></td></tr></tfoot>';
+					htmlcode += '<tfoot><tr rowspan="3"><td align="center"><input type="button" class="button_gen" value="<#WLANConfig11b_WirelessCtrl_button1name#>" onclick="create_guest_unit('+ unit +','+ subunit +');"></td></tr></tfoot>';
 				}
 
 				if(sw_mode != "3"){
@@ -394,8 +393,11 @@ function gen_gntable_tr(unit, gn_array, slicesb){
 				}
 			}
 			htmlcode += '</table>';
-			if(amazon_wss_if_support && amazon_wss_status){
-				htmlcode += '<div style="font-size:12px;font-weight:bolder;color:#FC0;position:absolute;text-align:center;width:100%;">Used by <br>Amazon Wi-Fi Simple Setup</div>';/* untranslated */
+			if(amazon_wss_if_support){
+				if(amazon_wss_status)
+					htmlcode += '<div style="font-size:12px;font-weight:bolder;color:#FC0;position:absolute;text-align:center;width:100%;">Used by <br>Amazon Wi-Fi Simple Setup</div>';/* untranslated */
+				else
+					htmlcode += '<div style="position:absolute;margin-top:10px;text-align:center;""><input type="button" class="button_gen" value="Amazon Wi-Fi Simple Setup" onclick="enable_amazon_wss('+ unit +','+ subunit +');"></div>';/* untranslated */
 			}
 			if(i == (gn_array_length-1)){
 				htmlcode += '<div id="smart_home_'+unit+'" style="font-size:12px;font-weight:bolder;color:#FC0;position:absolute;text-align:center;display:none;width:100%;"><#Guest_Network_AlexaIFTTT_setting#></div>';
@@ -1388,7 +1390,7 @@ function apply_amazon_wss(){
 <input type="hidden" name="gwlu" value="" disabled>
 <input type="hidden" name="modified" value="0">
 <input type="hidden" name="action_mode" value="apply_new">
-<input type="hidden" name="action_script" value="restart_wireless">
+<input type="hidden" name="action_script" value="restart_wireless;restart_firewall;">
 <input type="hidden" name="action_wait" value="15">
 <input type="hidden" name="preferred_lang" id="preferred_lang" value="<% nvram_get("preferred_lang"); %>">
 <input type="hidden" name="wl_country_code" value="<% nvram_get("wl0_country_code"); %>" disabled>
@@ -1448,7 +1450,7 @@ function apply_amazon_wss(){
 									</td>
 									<td>
 										<div id="gn_desc" class="formfontdesc" style="font-style: italic;font-size: 14px;"><#GuestNetwork_desc#></div>
-										<div id="nat_off_hint" class="formfontdesc" style="color:#FC0;display:none;">NAT accelerator is turned off because of bandwidth limiter of Guest Network enabled.</div><!-- untranslated -->
+										<div id="nat_off_hint" class="formfontdesc" style="color:#FC0;display:none;"><#NAT_Acceleration_disabled#></div>
 									</td>
 								</tr>
 							</table>
@@ -1481,19 +1483,17 @@ function apply_amazon_wss(){
 							<table style="margin-left:20px;margin-top:25px;" width="95%" align="center" cellpadding="4" cellspacing="0" class="gninfo_head_table">
 								<tr>
 									<td align="left" style="color:#5AD; font-size:16px; border-bottom:1px dashed #AAA;" colspan="2">
-										<span>Amazon Wi-Fi simple setup</span><!-- untranslated -->
+										<span><#WSS_setup#></span>
 									</td>
 								</tr>
 								<tr>
 									<td>
-										<span style="line-height:20px;">Amazon Wi-Fi simple setup helps you connect supported devices to your Wi-Fi network and Alexa account in fewer steps. Enabling this feature creates a simple setup network that supported devices can use to access Wi-Fi credentials saved in the Amazon Wi-Fi Locker.<!-- untranslated -->
-										</span>
-										&nbsp;
-										<a style="color:#FC0;text-decoration:underline;cursor:pointer;" href="https://www.amazon.com/gp/help/customer/display.html/?nodeId=GMPKVYDBR223TRPY" target="_blank">Learn more.</a><!-- untranslated -->
+										<span style="line-height:20px;"><#WSS_setup_desc0#></span>&nbsp;
+										<a style="color:#FC0;text-decoration:underline;cursor:pointer;" href="https://www.amazon.com/gp/help/customer/display.html/?nodeId=GMPKVYDBR223TRPY" target="_blank"><#Learn_more#></a>
 										<br>
-										<span>You can only turn on either the 2nd set of Guest Network on 2.4GHz or Amazon Wi-Fi simple setup feature.</span><!-- untranslated -->
+										<span><#WSS_setup_desc1#></span>
 										<br>
-										<span id="amazon_wss_hint" style="color:#FC0;line-height:20px;">[Note] Enable this feature will turn off NAT acceleration for more precise packet inspection and turn on QoS function of traffic manager with setting as Bandwidth Limiter mode by default.</span><!-- untranslated -->
+										<span id="amazon_wss_hint" style="color:#FC0;line-height:20px;"><#FW_note#>&nbsp;<#WSS_setup_desc2#></span>
 									</td>
 								</tr>
 								<tr>

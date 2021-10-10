@@ -1,7 +1,7 @@
 /*
  * ACPHY TXIQLO CAL module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_txiqlocal.c 778100 2019-08-22 14:02:37Z $
+ * $Id: phy_ac_txiqlocal.c 783055 2020-01-13 12:26:33Z $
  */
 
 #include <typedefs.h>
@@ -62,7 +62,6 @@
 #include <wlc_radioreg_20693.h>
 #include <wlc_radioreg_20694.h>
 #include <wlc_radioreg_20695.h>
-#include <wlc_radioreg_20696.h>
 #include <wlc_radioreg_20698.h>
 #include <wlc_radioreg_20704.h>
 #include <wlc_radioreg_20707.h>
@@ -145,6 +144,11 @@ typedef struct {
 	bool casc_gctrl;
 	int16 target_tssi_set[4];
 	bool reset_loftcoefs_prerxcal;
+
+	uint8 num_multilo;
+	uint16 multilo_cal_idx[10];
+	uint16 multilo_start_idx[10];
+	uint16 multilo_end_idx[10];
 } txiqcal_params_t;
 
 typedef struct acphy_tx_fdiqi_ctl_struct {
@@ -217,6 +221,7 @@ struct phy_ac_txiqlocal_info {
 	uint8  prerxcal;
 	uint8  phase_id;
 	uint8  num_mphases;
+	int8   txiqcalidx_iovar;
 };
 
 /* local functions */
@@ -334,6 +339,23 @@ BCMATTACHFN(phy_ac_txiqlocal_populate_params)(phy_ac_txiqlocal_info_t *iqcal_inf
 	/* Reset LOFT comp coeffs before prerx cal */
 	uint8 reset_loftcoefs_prerxcal = 0;
 
+	uint16 *multilo_cal_idx_ptr = NULL;
+	uint16 *multilo_start_idx_ptr = NULL;
+	uint16 *multilo_end_idx_ptr = NULL;
+	uint8 num_multilo = 0;
+
+	uint16 multilo_cal_idx_majrev47[] = {35, 20};
+	uint16 multilo_start_idx_majrev47[] = {35, 0};
+	uint16 multilo_end_idx_majrev47[] = {127, 34};
+
+	uint16 multilo_cal_idx_epa_majrev129[] = {55, 35};
+	uint16 multilo_start_idx_epa_majrev129[] = {55, 0};
+	uint16 multilo_end_idx_epa_majrev129[] = {127, 54};
+
+	uint16 multilo_cal_idx_ipa_majrev129[] = {50, 45, 40, 35, 30, 25, 5};
+	uint16 multilo_start_idx_ipa_majrev129[] = {48, 43, 39, 33, 29, 22, 0};
+	uint16 multilo_end_idx_ipa_majrev129[] = {127, 47, 42, 38, 32, 28, 21};
+
 	if (RADIOID_IS(pi->pubpi->radioid, BCM2069_ID) &&
 			(RADIO2069_MAJORREV(pi->pubpi->radiorev) == 1) &&
 			!(ACRADIO_2069_EPA_IS(pi->pubpi->radiorev))) {
@@ -361,8 +383,6 @@ BCMATTACHFN(phy_ac_txiqlocal_populate_params)(phy_ac_txiqlocal_info_t *iqcal_inf
 		nsamp_gctrl[0] = 0x76; nsamp_gctrl[1] = 0x87; nsamp_gctrl[2] = 0x98;
 		if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev)) {
 			nsamp_corrs[0] = 0x7D; nsamp_corrs[1] = 0x7E; nsamp_corrs[2] = 0x7E;
-		} else if (ACMAJORREV_36(pi->pubpi->phy_rev) && PHY_IPA(pi)) {
-			nsamp_corrs[0] = 0x7a; nsamp_corrs[1] = 0x7a; nsamp_corrs[2] = 0x7a;
 		} else if (ACMAJORREV_37(pi->pubpi->phy_rev)) {
 			nsamp_gctrl[0] = 0x54; nsamp_gctrl[1] = 0x54; nsamp_gctrl[2] = 0x54;
 			nsamp_corrs[0] = 0x7B; nsamp_corrs[1] = 0x7B; nsamp_corrs[2] = 0x7B;
@@ -389,7 +409,7 @@ BCMATTACHFN(phy_ac_txiqlocal_populate_params)(phy_ac_txiqlocal_info_t *iqcal_inf
 			thresh_ladder_len = 7;
 
 			if (ACMAJORREV_4(pi->pubpi->phy_rev)) {
-				if ((CHSPEC_IS5G(pi->radio_chanspec)) && !PHY_IPA(pi)) {
+				if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec)) && !PHY_IPA(pi)) {
 					cmds_RESTART[0] = 0x264; cmds_RESTART[1] = 0x233;
 					cmds_RESTART[2] = 0x085; cmds_RESTART[3] = 0x044;
 
@@ -443,13 +463,6 @@ BCMATTACHFN(phy_ac_txiqlocal_populate_params)(phy_ac_txiqlocal_info_t *iqcal_inf
 				thres_ladder[4] = 0x03; thres_ladder[5] = 0x01;
 				thresh_ladder_len = 6;
 			}
-			if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-				thres_ladder[0] = 0x3d; thres_ladder[1] = 0x2d;
-				thres_ladder[2] = 0x1d;
-				thres_ladder[3] = 0x0d; thres_ladder[4] = 0x07;
-				thres_ladder[5] = 0x03; thres_ladder[6] = 0x01;
-				thresh_ladder_len = 7;
-			}
 
 			if (ACMAJORREV_1(pi->pubpi->phy_rev)) {
 				cmds_REFINE_majrev1[0] =  0x423; cmds_REFINE_majrev1[1] = 0x334;
@@ -463,8 +476,8 @@ BCMATTACHFN(phy_ac_txiqlocal_populate_params)(phy_ac_txiqlocal_info_t *iqcal_inf
 				cmds_REFINE[3] =  0x267; cmds_REFINE[4] = 0x045;
 				cmds_REFINE[5] = 0x234;
 			}
-			if (ACMAJORREV_36(pi->pubpi->phy_rev) ||
-				ACMAJORREV_40(pi->pubpi->phy_rev)) {
+
+			if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 				// May need to modify these commands
 				cmds_RESTART[0] = 0x265; cmds_RESTART[1] = 0x234;
 				cmds_RESTART[2] = 0x084; cmds_RESTART[3] = 0x074;
@@ -476,10 +489,6 @@ BCMATTACHFN(phy_ac_txiqlocal_populate_params)(phy_ac_txiqlocal_info_t *iqcal_inf
 
 				if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 					nsamp_corrs[0] = nsamp_corrs[1] = nsamp_corrs[2] = 0x7B;
-					nsamp_gctrl[0] = nsamp_gctrl[1] = nsamp_gctrl[2] = 0x54;
-				}
-				if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-					nsamp_corrs[0] = nsamp_corrs[1] = nsamp_corrs[2] = 0x79;
 					nsamp_gctrl[0] = nsamp_gctrl[1] = nsamp_gctrl[2] = 0x54;
 				}
 			}
@@ -519,7 +528,7 @@ BCMATTACHFN(phy_ac_txiqlocal_populate_params)(phy_ac_txiqlocal_info_t *iqcal_inf
 		cmd_restart_ptr = cmds_RESTART;
 		cmd_refine_ptr  = cmds_REFINE;
 		/* numb of commands in tiny are 5 only */
-		if (ACMINORREV_2(pi) && (CHSPEC_IS5G(pi->radio_chanspec))) {
+		if (ACMINORREV_2(pi) && (CHSPEC_ISPHY5G6G(pi->radio_chanspec))) {
 			num_cmds_restart = 4;
 			num_cmds_refine  = 4;
 		} else {
@@ -531,7 +540,7 @@ BCMATTACHFN(phy_ac_txiqlocal_populate_params)(phy_ac_txiqlocal_info_t *iqcal_inf
 			ACMAJORREV_33(pi->pubpi->phy_rev)) {
 			cmd_restart_fdiq_ptr = cmds_RESTART_FDIQ;
 			cmd_refine_fdiq_ptr = cmds_REFINE_FDIQ;
-			if (ACMINORREV_2(pi) && (CHSPEC_IS5G(pi->radio_chanspec))) {
+			if (ACMINORREV_2(pi) && (CHSPEC_ISPHY5G6G(pi->radio_chanspec))) {
 				num_cmds_restart_fdiq = 4;
 				num_cmds_refine_fdiq  = 4;
 			} else {
@@ -555,7 +564,7 @@ BCMATTACHFN(phy_ac_txiqlocal_populate_params)(phy_ac_txiqlocal_info_t *iqcal_inf
 		num_cmds_restart_prerx = num_cmds_restart;
 		cmd_refine_prerx_ptr = cmd_restart_ptr;
 		num_cmds_refine_prerx = num_cmds_restart;
-		if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+		if (ACMAJORREV_51(pi->pubpi->phy_rev) || ACMAJORREV_128(pi->pubpi->phy_rev)) {
 			reset_loftcoefs_prerxcal = 1;
 		}
 	} else {
@@ -583,12 +592,10 @@ BCMATTACHFN(phy_ac_txiqlocal_populate_params)(phy_ac_txiqlocal_info_t *iqcal_inf
 
 #endif /* fdiq loop */
 
-		if (ACMAJORREV_36(pi->pubpi->phy_rev) ||
-			ACMAJORREV_40(pi->pubpi->phy_rev)) {
+		if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 			num_cmds_refine = ARRAYSIZE(cmds_REFINE) - 1;
 			num_cmds_restart = ARRAYSIZE(cmds_RESTART) - 1;
 		}
-
 	}
 
 	/* update params */
@@ -614,6 +621,30 @@ BCMATTACHFN(phy_ac_txiqlocal_populate_params)(phy_ac_txiqlocal_info_t *iqcal_inf
 	params->lower_lim = 0;
 	params->initindex = 0;
 	params->casc_gctrl = FALSE;
+
+	if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+		multilo_cal_idx_ptr = multilo_cal_idx_majrev47;
+		multilo_start_idx_ptr = multilo_start_idx_majrev47;
+		multilo_end_idx_ptr = multilo_end_idx_majrev47;
+		num_multilo = ARRAYSIZE(multilo_cal_idx_majrev47);
+	} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		if (PHY_IPA(pi)) {
+			multilo_cal_idx_ptr = multilo_cal_idx_ipa_majrev129;
+			multilo_start_idx_ptr = multilo_start_idx_ipa_majrev129;
+			multilo_end_idx_ptr = multilo_end_idx_ipa_majrev129;
+			num_multilo = ARRAYSIZE(multilo_cal_idx_ipa_majrev129);
+		} else {
+			multilo_cal_idx_ptr = multilo_cal_idx_epa_majrev129;
+			multilo_start_idx_ptr = multilo_start_idx_epa_majrev129;
+			multilo_end_idx_ptr = multilo_end_idx_epa_majrev129;
+			num_multilo = ARRAYSIZE(multilo_cal_idx_epa_majrev129);
+		}
+	}
+	params->num_multilo = num_multilo;
+
+	memcpy(params->multilo_cal_idx, multilo_cal_idx_ptr, sizeof(uint16)*num_multilo);
+	memcpy(params->multilo_start_idx, multilo_start_idx_ptr, sizeof(uint16)*num_multilo);
+	memcpy(params->multilo_end_idx, multilo_end_idx_ptr, sizeof(uint16)*num_multilo);
 
 	memcpy(params->cmds_REFINE, cmd_refine_ptr, sizeof(uint16)*num_cmds_refine);
 	memcpy(params->cmds_RESTART, cmd_restart_ptr, sizeof(uint16)*num_cmds_restart);
@@ -643,6 +674,11 @@ static void phy_ac_txiqlocal_txiqccget(phy_type_txiqlocal_ctx_t *ctx, void *a);
 static void phy_ac_txiqlocal_txiqccset(phy_type_txiqlocal_ctx_t *ctx, void *b);
 static void phy_ac_txiqlocal_txloccget(phy_type_txiqlocal_ctx_t *ctx, void *a);
 static void phy_ac_txiqlocal_txloccset(phy_type_txiqlocal_ctx_t *ctx, void *b);
+
+#if defined(WLTEST)
+static int phy_ac_txiqlocal_get_calidx(phy_type_txiqlocal_ctx_t *ctx, int32* calidx);
+static int phy_ac_txiqlocal_set_calidx(phy_type_txiqlocal_ctx_t *ctx, int32 calidx);
+#endif // endif
 
 /* local functions */
 static void phy_ac_txiqlocal_nvram_attach(phy_ac_txiqlocal_info_t *ti);
@@ -715,6 +751,11 @@ BCMATTACHFN(phy_ac_txiqlocal_register_impl)(phy_info_t *pi, phy_ac_info_t *aci,
 	fns.txiqccset = phy_ac_txiqlocal_txiqccset;
 	fns.txloccget = phy_ac_txiqlocal_txloccget;
 	fns.txloccset = phy_ac_txiqlocal_txloccset;
+#if defined(WLTEST)
+	fns.get_calidx = phy_ac_txiqlocal_get_calidx;
+	fns.set_calidx = phy_ac_txiqlocal_set_calidx;
+#endif // endif
+
 #if !defined(PHYCAL_CACHING)
 	fns.scanroam_cache = wlc_phy_scanroam_cache_txcal_acphy;
 #endif // endif
@@ -894,9 +935,7 @@ static const uint8 tbl_offset_bphy_d[] = {114, 118, 122, 126};
 
 static void wlc_phy_precal_target_tssi_search(phy_info_t *pi, txgain_setting_t *target_gains);
 static void wlc_phy_txcal_radio_setup_acphy_tiny(phy_info_t *pi);
-static void wlc_phy_txcal_radio_setup_acphy_28nm(phy_ac_txiqlocal_info_t *ti);
 static void wlc_phy_txcal_radio_setup_acphy_20694(phy_ac_txiqlocal_info_t *ti);
-static void wlc_phy_txcal_radio_setup_acphy_20696(phy_ac_txiqlocal_info_t *ti, uint8 Biq2byp);
 static void wlc_phy_txcal_radio_setup_acphy_20698(phy_ac_txiqlocal_info_t *ti, uint8 Biq2byp);
 static void wlc_phy_txcal_radio_setup_acphy_20704(phy_ac_txiqlocal_info_t *ti, uint8 Biq2byp);
 static void wlc_phy_txcal_radio_setup_acphy_20707(phy_ac_txiqlocal_info_t *ti, uint8 Biq2byp);
@@ -962,7 +1001,7 @@ wlc_phy_precal_target_tssi_search(phy_info_t *pi, txgain_setting_t *target_gains
 	 * Image/LO rejection at room temp
 	 */
 
-	if (CHSPEC_IS5G(pi->radio_chanspec) == 1) {
+	if (CHSPEC_ISPHY5G6G(pi->radio_chanspec) == 1) {
 		if (CHSPEC_IS80(pi->radio_chanspec) ||
 			PHY_AS_80P80(pi, pi->radio_chanspec)) {
 			target_tssi = 900;
@@ -1456,136 +1495,6 @@ wlc_phy_txcal_radio_setup_acphy_20694(phy_ac_txiqlocal_info_t *ti)
 }
 
 static void
-wlc_phy_txcal_radio_setup_acphy_20696(phy_ac_txiqlocal_info_t *ti, uint8 Biq2byp)
-{
-	/* This stores off and sets Radio-Registers for Tx-iqlo-Calibration;
-	 *
-	 * Note that Radio Behavior controlled via RFCtrl is handled in the
-	 * phy_setup routine, not here; also note that we use the "shotgun"
-	 * approach here ("coreAll" suffix to write to all jtag cores at the
-	 * same time)
-	 */
-	phy_info_t *pi = ti->pi;
-	uint8 core;
-	uint8 phyrxchain;
-
-	BCM_REFERENCE(phyrxchain);
-
-	ASSERT(RADIOID(pi->pubpi->radioid) == BCM20696_ID);
-
-	/* save radio config before changing it */
-	phy_ac_reg_cache_save(ti->aci, RADIOREGS_TXIQCAL);
-
-	/* This stores off and sets Radio-Registers for Tx-iqlo-Calibration;
-	 * inits & abbreviations
-	 */
-	phyrxchain = phy_stf_get_data(pi->stfi)->phyrxchain;
-	FOREACH_ACTV_CORE(pi, phyrxchain, core) {
-		RADIO_REG_LIST_START
-			/* Power loopback blocks bias and wideband PGA for IQCAL */
-			MOD_RADIO_REG_20696_ENTRY(pi, IQCAL_OVR1, core, ovr_loopback_bias_pu, 0x1)
-			MOD_RADIO_REG_20696_ENTRY(pi, IQCAL_OVR1, core, ovr_iqcal_PU_tssi, 0x1)
-			MOD_RADIO_REG_20696_ENTRY(pi, IQCAL_CFG1, core, iqcal_PU_iqcal,	0x1)
-			MOD_RADIO_REG_20696_ENTRY(pi, IQCAL_CFG1, core, iqcal_PU_tssi,	0x0)
-			MOD_RADIO_REG_20696_ENTRY(pi, IQCAL_CFG5, core, wbpga_pu,	0x1)
-			MOD_RADIO_REG_20696_ENTRY(pi, IQCAL_CFG5, core, loopback_bias_pu, 0x1)
-
-			/* Mux AUX path to ADC, disable other paths to ADC */
-			MOD_RADIO_REG_20696_ENTRY(pi, LPF_OVR1, core, ovr_lpf_sw_bq2_adc, 0x1)
-			MOD_RADIO_REG_20696_ENTRY(pi, LPF_OVR2, core, ovr_lpf_sw_bq1_adc, 0x1)
-			MOD_RADIO_REG_20696_ENTRY(pi, LPF_OVR2, core, ovr_lpf_sw_aux_adc, 0x1)
-			MOD_RADIO_REG_20696_ENTRY(pi, LPF_REG7, core, lpf_sw_bq2_adc,	0x0)
-			MOD_RADIO_REG_20696_ENTRY(pi, LPF_REG7, core, lpf_sw_bq1_adc,	0x0)
-			MOD_RADIO_REG_20696_ENTRY(pi, LPF_REG7, core, lpf_sw_aux_adc,	0x1)
-		RADIO_REG_LIST_EXECUTE(pi, core);
-
-		if (Biq2byp) {
-			RADIO_REG_LIST_START
-				/* Put alpf in Rx mode for RXIQ cal */
-				MOD_RADIO_REG_20696_ENTRY(pi, LPF_OVR1, core,
-					ovr_lpf_sw_bq2_rc, 0x1)
-				MOD_RADIO_REG_20696_ENTRY(pi, LPF_OVR1, core,
-					ovr_lpf_sw_dac_bq2, 0x1)
-				MOD_RADIO_REG_20696_ENTRY(pi, LPF_OVR1, core,
-					ovr_lpf_sw_dac_rc, 0x1)
-				MOD_RADIO_REG_20696_ENTRY(pi, LPF_OVR2, core,
-					ovr_lpf_sw_bq1_bq2, 0x1)
-				MOD_RADIO_REG_20696_ENTRY(pi, LPF_REG7, core, lpf_sw_bq1_bq2, 0x1)
-				MOD_RADIO_REG_20696_ENTRY(pi, LPF_REG7, core, lpf_sw_dac_bq2, 0x0)
-				MOD_RADIO_REG_20696_ENTRY(pi, LPF_REG7, core, lpf_sw_bq2_rc, 0x0)
-				MOD_RADIO_REG_20696_ENTRY(pi, LPF_REG7, core, lpf_sw_dac_rc, 0x1)
-			RADIO_REG_LIST_EXECUTE(pi, core);
-
-			MOD_RADIO_REG_20696(pi, TXDAC_REG3, core, i_config_IQDACbuf_2g_cmref_en,
-					CHSPEC_IS2G(pi->radio_chanspec) ? 1 : 0);
-			MOD_RADIO_REG_20696(pi, TXDAC_REG0, core, iqdac_buf_cmsel, 0);
-			MOD_RADIO_REG_20696(pi, TXDAC_REG1, core, iqdac_lowcm_en, 1);
-			MOD_RADIO_REG_20696(pi, TXDAC_REG0, core, iqdac_attn, 3);
-		} else {
-			RADIO_REG_LIST_START
-				/* Put alpf default position during txiqlocal is in Tx path */
-				MOD_RADIO_REG_20696_ENTRY(pi, TXDAC_REG3, core,
-					i_config_IQDACbuf_2g_cmref_en, 0)
-				MOD_RADIO_REG_20696_ENTRY(pi, TXDAC_REG0, core, iqdac_buf_cmsel, 1)
-				MOD_RADIO_REG_20696_ENTRY(pi, TXDAC_REG1, core, iqdac_lowcm_en, 0)
-				MOD_RADIO_REG_20696_ENTRY(pi, TXDAC_REG0, core, iqdac_attn, 0)
-			RADIO_REG_LIST_EXECUTE(pi, core);
-		}
-
-		/* Adjust the accuracy of power detector for 5g */
-		MOD_RADIO_REG_20696(pi, TX5G_MISC_CFG1, core, pa5g_tssi_ctrl,		0xb);
-
-		if (CHSPEC_IS2G(pi->radio_chanspec)) {
-			RADIO_REG_LIST_START
-				MOD_RADIO_REG_20696_ENTRY(pi, TX2G_CFG1_OVR, core,
-					ovr_pa2g_tssi_ctrl_pu, 0x1)
-				MOD_RADIO_REG_20696_ENTRY(pi, TX2G_MIX_REG0, core,
-					pa2g_tssi_ctrl_pu, 0x1)
-
-				MOD_RADIO_REG_20696_ENTRY(pi, IQCAL_CFG1, core,
-					iqcal_sel_sw, 0x8)
-				MOD_RADIO_REG_20696_ENTRY(pi, TX2G_CFG1_OVR, core,
-					ovr_pa2g_tssi_ctrl_sel, 0x1)
-				MOD_RADIO_REG_20696_ENTRY(pi, TX2G_MISC_CFG1, core,
-					pa2g_tssi_ctrl_sel, 0x0)
-			RADIO_REG_LIST_EXECUTE(pi, core);
-		} else {
-			MOD_RADIO_REG_20696(pi, IQCAL_CFG1, core, iqcal_sel_sw, 0xA);
-			MOD_RADIO_REG_20696(pi, TX5G_CFG2_OVR, core, ovr_pa5g_tssi_ctrl_sel, 0x1);
-			/* Changed this setting for envelop detector going from A0 to A1 chip.
-			 * Reason is that particular envelop detector was removed.
-			 */
-			MOD_RADIO_REG_20696(pi, TX5G_MISC_CFG1, core, pa5g_tssi_ctrl_sel, 0x0);
-		}
-
-		RADIO_REG_LIST_START
-			MOD_RADIO_REG_20696_ENTRY(pi, IQCAL_CFG1, core, iqcal_sel_ext_tssi, 0x0)
-			MOD_RADIO_REG_20696_ENTRY(pi, IQCAL_CFG1, core, iqcal_tssi_GPIO_ctrl, 0x0)
-			MOD_RADIO_REG_20696_ENTRY(pi, TX5G_CFG2_OVR, core,
-				ovr_pa5g_tssi_ctrl_range, 0x1)
-			MOD_RADIO_REG_20696_ENTRY(pi, TX5G_MISC_CFG1, core,
-				pa5g_tssi_ctrl_range, 0x0)
-
-			/* AUX PGA is powered down because we are using WBPGA */
-			MOD_RADIO_REG_20696_ENTRY(pi, AUXPGA_OVR1, core, ovr_auxpga_i_pu, 0x1)
-			MOD_RADIO_REG_20696_ENTRY(pi, AUXPGA_CFG1, core, auxpga_i_pu, 0x0)
-			MOD_RADIO_REG_20696_ENTRY(pi, AUXPGA_OVR1, core,
-				ovr_auxpga_i_sel_input, 0x1)
-			MOD_RADIO_REG_20696_ENTRY(pi, AUXPGA_CFG1, core, auxpga_i_sel_input, 0x0)
-
-			MOD_RADIO_REG_20696_ENTRY(pi, IQCAL_CFG4, core, iqcal2adc, 0x1)
-			MOD_RADIO_REG_20696_ENTRY(pi, IQCAL_CFG4, core, auxpga2adc, 0x0)
-
-			MOD_RADIO_REG_20696_ENTRY(pi, TESTBUF_OVR1, core, ovr_testbuf_PU, 0x1)
-			MOD_RADIO_REG_20696_ENTRY(pi, TESTBUF_CFG1, core, testbuf_PU, 0x0)
-
-			WRITE_RADIO_REG_20696_ENTRY(pi, IQCAL_GAIN_RIN, core, 0x1000)
-			WRITE_RADIO_REG_20696_ENTRY(pi, IQCAL_GAIN_RFB, core, 0x0200)
-		RADIO_REG_LIST_EXECUTE(pi, core);
-	}
-}
-
-static void
 wlc_phy_txcal_radio_setup_acphy_20698(phy_ac_txiqlocal_info_t *ti, uint8 Biq2byp)
 {
 	/* 20698_procs.tcl r708279: 20698_tx_iqlo_cal_radio_setup */
@@ -1752,7 +1661,7 @@ wlc_phy_txcal_radio_setup_acphy_20704(phy_ac_txiqlocal_info_t *ti, uint8 Biq2byp
 					0x1)
 			RADIO_REG_LIST_EXECUTE(pi, core);
 
-			if (CHSPEC_IS5G(pi->radio_chanspec)) {
+			if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 				/* keep RX RCCR ON during aux TX IQ CAL for best RX IQ cal */
 				RADIO_REG_LIST_START
 					MOD_RADIO_REG_20704_ENTRY(pi, LOGEN_CORE_REG0, core,
@@ -1799,8 +1708,14 @@ wlc_phy_txcal_radio_setup_acphy_20704(phy_ac_txiqlocal_info_t *ti, uint8 Biq2byp
 			MOD_RADIO_REG_20704_ENTRY(pi, TESTBUF_OVR1, core, ovr_testbuf_PU,	0x1)
 
 			WRITE_RADIO_REG_20704_ENTRY(pi, IQCAL_GAIN_RIN, core,		0x1000)
-			WRITE_RADIO_REG_20704_ENTRY(pi, IQCAL_GAIN_RFB, core,		0x0200)
 		RADIO_REG_LIST_EXECUTE(pi, core);
+
+		if (Biq2byp) {
+			/* Reduce WBPGA gain by 6 dB wrt 0x200, as alpf byp has more gain */
+			WRITE_RADIO_REG_20704(pi, IQCAL_GAIN_RFB, core,	0x0400);
+		} else {
+			WRITE_RADIO_REG_20704(pi, IQCAL_GAIN_RFB, core,	0x0200);
+		}
 	}
 }
 
@@ -1881,7 +1796,7 @@ wlc_phy_txcal_radio_setup_acphy_20707(phy_ac_txiqlocal_info_t *ti, uint8 Biq2byp
 				MOD_RADIO_REG_20707_ENTRY(pi, LPF_OVR2, core, ovr_lpf_sw_bq1_bq2,
 					0x1)
 			RADIO_REG_LIST_EXECUTE(pi, core);
-			if CHSPEC_IS5G(pi->radio_chanspec) {
+			if CHSPEC_ISPHY5G6G(pi->radio_chanspec) {
 				RADIO_REG_LIST_START
 					MOD_RADIO_REG_20707_ENTRY(pi, LOGEN_CORE_REG0, core,
 						logen_rx_rccr_pu, 0x1)
@@ -2064,52 +1979,101 @@ wlc_phy_txcal_radio_setup_acphy_20707(phy_ac_txiqlocal_info_t *ti, uint8 Biq2byp
 						ovr_tx5g_ipa_tssi_ctrl_range, 1)
 				RADIO_REG_LIST_EXECUTE(pi, core);
 			} else {
-				RADIO_REG_LIST_START
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
-						tx5g_tssi_ctrl, 0x0)
+				if (pi->epagain5g == 2) {
+					RADIO_REG_LIST_START
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
+							tx5g_tssi_ctrl, 0x0)
 
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
-						tx5g_tssi_ctrl_pu, 0x0)
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
-						ovr_tx5g_tssi_ctrl_pu, 0x1)
-					MOD_RADIO_REG_20707_ENTRY(pi, IQCAL_CFG1, core,
-						iqcal_sel_sw, 0xa)
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG1, core,
-						tx5g_tssi_sel, 0x0)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
+							tx5g_tssi_ctrl_pu, 0x0)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
+							ovr_tx5g_tssi_ctrl_pu, 0x1)
+						MOD_RADIO_REG_20707_ENTRY(pi, IQCAL_CFG1, core,
+							iqcal_sel_sw, 0xa)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG1, core,
+							tx5g_tssi_sel, 0x0)
 
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
-						tx5g_tssi_ctrl_sel, 0x0)
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
-						ovr_tx5g_tssi_ctrl_sel, 0x1)
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
-						tx5g_tssi_ctrl_range, 0x0)
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
-						ovr_tx5g_tssi_ctrl_range, 0x1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
+							tx5g_tssi_ctrl_sel, 0x0)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
+							ovr_tx5g_tssi_ctrl_sel, 0x1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
+							tx5g_tssi_ctrl_range, 0x1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
+							ovr_tx5g_tssi_ctrl_range, 0x1)
 
-					/* Set DACbuf cm sel */
-					MOD_RADIO_REG_20707_ENTRY(pi, TXDAC_REG3, core,
-						i_config_IQDACbuf_cm_2g_sel, 0)
+						/* Set DACbuf cm sel */
+						MOD_RADIO_REG_20707_ENTRY(pi, TXDAC_REG3, core,
+							i_config_IQDACbuf_cm_2g_sel, 0)
 
-					/* Power up the iPA and TSSI det */
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_IPA_REG0, core,
-						tx5g_ipa_bias_pu, 0x1)
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_IPA_CFG_OVR, core,
-						ovr_tx5g_ipa_bias_pu, 0x1)
+						/* Power up the iPA and TSSI det */
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_IPA_REG0, core,
+							tx5g_ipa_bias_pu, 0x1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_IPA_CFG_OVR,
+							core, ovr_tx5g_ipa_bias_pu, 0x1)
 
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
-						tx5g_ipa_tssi_ctrl_pu, 1)
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
-						ovr_tx5g_ipa_tssi_ctrl_pu, 1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
+							tx5g_ipa_tssi_ctrl_pu, 1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
+							ovr_tx5g_ipa_tssi_ctrl_pu, 1)
 
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
-						tx5g_ipa_tssi_ctrl_range, 0)
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
-						ovr_tx5g_ipa_tssi_ctrl_range, 1)
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_IPA_GC_REG, core,
-						tx5g_ipa_gc, 255)
-					MOD_RADIO_REG_20707_ENTRY(pi, TX5G_IPA_CFG_OVR, core,
-						ovr_tx5g_ipa_gc, 1)
-				RADIO_REG_LIST_EXECUTE(pi, core);
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
+							tx5g_ipa_tssi_ctrl_range, 1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
+							ovr_tx5g_ipa_tssi_ctrl_range, 1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_IPA_GC_REG, core,
+							tx5g_ipa_gc, 255)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_IPA_CFG_OVR,
+							core, ovr_tx5g_ipa_gc, 1)
+					RADIO_REG_LIST_EXECUTE(pi, core);
+				} else {
+					RADIO_REG_LIST_START
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
+							tx5g_tssi_ctrl, 0x0)
+
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
+							tx5g_tssi_ctrl_pu, 0x0)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
+							ovr_tx5g_tssi_ctrl_pu, 0x1)
+						MOD_RADIO_REG_20707_ENTRY(pi, IQCAL_CFG1, core,
+							iqcal_sel_sw, 0xa)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG1, core,
+							tx5g_tssi_sel, 0x0)
+
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
+							tx5g_tssi_ctrl_sel, 0x0)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
+							ovr_tx5g_tssi_ctrl_sel, 0x1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
+							tx5g_tssi_ctrl_range, 0x1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
+							ovr_tx5g_tssi_ctrl_range, 0x1)
+
+						/* Set DACbuf cm sel */
+						MOD_RADIO_REG_20707_ENTRY(pi, TXDAC_REG3, core,
+							i_config_IQDACbuf_cm_2g_sel, 0)
+
+						/* Power up the iPA and TSSI det */
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_IPA_REG0, core,
+							tx5g_ipa_bias_pu, 0x1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_IPA_CFG_OVR,
+							core, ovr_tx5g_ipa_bias_pu, 0x1)
+
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
+							tx5g_ipa_tssi_ctrl_pu, 1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
+							ovr_tx5g_ipa_tssi_ctrl_pu, 1)
+
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_TSSI_REG0, core,
+							tx5g_ipa_tssi_ctrl_range, 0)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_CFG_OVR, core,
+							ovr_tx5g_ipa_tssi_ctrl_range, 1)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_IPA_GC_REG, core,
+							tx5g_ipa_gc, 255)
+						MOD_RADIO_REG_20707_ENTRY(pi, TX5G_IPA_CFG_OVR,
+							core, ovr_tx5g_ipa_gc, 1)
+					RADIO_REG_LIST_EXECUTE(pi, core);
+				}
 			}
 		}
 
@@ -2339,7 +2303,7 @@ wlc_txprecal_gain_control_43012(phy_ac_txiqlocal_info_t *ti, txgain_setting_t *t
 	phy_ac_tssi_loopback_path_setup(pi, LOOPBACK_FOR_IQCAL);
 
 	set_idx = PHY_IPA(pi);
-	band_idx = CHSPEC_IS5G(pi->radio_chanspec);
+	band_idx = CHSPEC_ISPHY5G6G(pi->radio_chanspec);
 
 	target_tssi = target_tssi_set[band_idx + 2 * set_idx];
 
@@ -2483,125 +2447,6 @@ wlc_txprecal_gain_control_43012(phy_ac_txiqlocal_info_t *ti, txgain_setting_t *t
 
 	PHY_TRACE(("======= IQLOCAL PreCalGainControl : END =======\n"));
 	return;
-}
-
-/* This is specific to 28nm radio (Ex: 20695 used in 43012) */
-static void
-wlc_phy_txcal_radio_setup_acphy_28nm(phy_ac_txiqlocal_info_t *ti)
-{
-	phy_info_t *pi = ti->pi;
-
-	/* save radio config before changing it */
-	phy_ac_reg_cache_save(ti->aci, RADIOREGS_TXIQCAL);
-
-	/* Using default DAC LPF BW settings */
-
-	if (RADIOMAJORREV(pi) >= 2)
-	{
-		//43012b0 making ntssi 0 during TX for cal
-		// To have rx adc in normal mode
-		MOD_RADIO_REG_28NM(pi, RF, AFEDIV2G_CFG1_OVR, 0, ovr_afediv_rst_en, 0x1);
-		MOD_RADIO_REG_28NM(pi, RF, AFEDIV2G_CFG1_OVR, 0, ovr_afediv_reset, 0x1);
-
-		MOD_RADIO_REG_28NM(pi, RF, AFEDIV2G_REG5, 0, afediv_rst_en, 0x1);
-
-		if (CHSPEC_IS2G(pi->radio_chanspec)) {
-			MOD_RADIO_REG_28NM(pi, RF, SPARE_CFG1, 0, ovr_afediv2g_adc_Ntssi, 1);
-			MOD_RADIO_REG_28NM(pi, RF, AFEDIV2G_REG1, 0, afediv2g_adc_Ntssi, 0);
-		} else {
-			MOD_RADIO_REG_28NM(pi, RF, SPARE_CFG1, 0, ovr_afediv5g_adc_Ntssi, 1);
-			MOD_RADIO_REG_28NM(pi, RF, AFEDIV5G_REG1, 0, afediv5g_adc_Ntssi,  0);
-		}
-		MOD_RADIO_REG_28NM(pi, RF, AFEDIV2G_REG1, 0, afediv_reset, 0x1);
-		MOD_RADIO_REG_28NM(pi, RF, AFEDIV2G_REG1, 0, afediv_reset, 0x0);
-
-		MOD_RADIO_REG_28NM(pi, RF, AFEDIV2G_REG5, 0, afediv_rst_en, 0x0);
-	}
-
-	/* Enabling and Muxing per band */
-	if (CHSPEC_IS2G(pi->radio_chanspec)) {
-
-		MOD_RADIO_REG_28NM(pi, RF, IQCAL_CFG1, 0, iqcal_sel_sw, 0x8);
-		/*  pa2g_tssi_ctrl_sel: 0 for PA Ouput, 1 for PA input
-		    To select envelop detector input
-		*/
-		MOD_RADIO_REG_28NM(pi, RF, TX2G_CFG2_OVR, 0, ovr_pad2g_tssi_ctrl_sel, 0x1);
-		MOD_RADIO_REG_28NM(pi, RF, PAD2G_CFG11,   0,     pad2g_tssi_ctrl_sel, 0x1);
-		/*  2g ED powerup */
-		MOD_RADIO_REG_28NM(pi, RF, TX2G_CFG1_OVR, 0, ovr_pad2g_tssi_ctrl_pu, 0x1);
-		MOD_RADIO_REG_28NM(pi, RF, PAD2G_CFG11,   0,     pad2g_tssi_ctrl_pu, 0x1);
-
-		MOD_RADIO_REG_28NM(pi, RF, PAD2G_CFG11,   0,        pad2g_wrssi0_en, 0x0);
-
-	} else {
-		MOD_RADIO_REG_28NM(pi, RF, IQCAL_CFG1, 0, iqcal_sel_sw, 0xa);
-		/* #tap from PAD output */
-		MOD_RADIO_REG_28NM(pi, RF, TX5G_CFG2_OVR, 0, ovr_pad5g_tssi_ctrl_sel, 0x1);
-		MOD_RADIO_REG_28NM(pi, RF, PAD5G_CFG14,   0,     pad5g_tssi_ctrl_sel, 0x1);
-		/*  5g ED powerup */
-		MOD_RADIO_REG_28NM(pi, RF, TX5G_CFG2_OVR, 0, ovr_pad5g_tssi_ctrl_pu, 0x1);
-		MOD_RADIO_REG_28NM(pi, RF, PAD5G_CFG14,   0,     pad5g_tssi_ctrl_pu, 0x1);
-
-		MOD_RADIO_REG_28NM(pi, RF, PAD5G_CFG14,   0,        pad5g_wrssi0_en, 0x0);
-	}
-
-	RADIO_REG_LIST_START
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, TIA_CFG2_OVR, 0, ovr_tia_sw_bq2_adc,   1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, TIA_CFG2_OVR, 0, ovr_tia_sw_wbcal_adc, 1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, TIA_CFG2_OVR, 0, ovr_tia_sw_aux_adc,   1)
-
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, TIA_REG16, 0, tia_sw_bq2_adc,   0)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, TIA_REG16, 0, tia_sw_aux_adc,   1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, TIA_REG18, 0, tia_sw_wbcal_adc, 0)
-
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, AFE_CFG1_OVR2, 0, ovr_adc_pu_I, 1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF,    RXADC_CFG0, 0,    rxadc_puI, 1)
-
-		/* Controlled by iqcal_ctg1.tssi_GPIO_ctrl <1:0>
-			bit1   bit0
-			   1     0    tssi to gpaio
-			   0     1    iqcal to gpaio
-			   0     0    disable both
-		*/
-
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, IQCAL_CFG1, 0, iqcal_tssi_GPIO_ctrl, 0x0)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, IQCAL_CFG1, 0, iqcal_sel_ext_tssi, 0x0)
-
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, IQCAL_OVR1, 0, ovr_iqcal_PU_iqcal, 1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, IQCAL_OVR1, 0, ovr_iqcal_PU_tssi, 1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, IQCAL_CFG1, 0,     iqcal_PU_iqcal, 0x1)
-		/* power up iqlocal */
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, IQCAL_CFG1, 0,     iqcal_PU_tssi,  0x0)
-		/*  power off tssi */
-
-		/*  power up auxpga */
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, AUXPGA_OVR1, 0, ovr_auxpga_i_pu, 0x1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, AUXPGA_CFG1, 0,     auxpga_i_pu, 0x1)
-
-		/* auxpga_i_sel_input  0: NB IQCAL, 1: Tempsense/VBAT, 3: Tempsense/VBAT, 2: TSSI */
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, AUXPGA_OVR1, 0, ovr_auxpga_i_sel_input, 0x1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, AUXPGA_CFG1, 0,     auxpga_i_sel_input, 0x0)
-		/* testbuf_sel_test_port .
-		 * 000 = TX IQCAL
-		 * 001 = Tempsense
-		 * 010 = TSSI
-		 * 011 = Vbat monitor
-		 * 100 = logen12g power detector
-		 * 101 = logen5g power detector,
-		*/
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, TESTBUF_OVR1, 0, ovr_testbuf_sel_test_port, 1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, TESTBUF_CFG1, 0,     testbuf_sel_test_port, 0)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, TESTBUF_OVR1, 0, ovr_testbuf_PU, 0x1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, TESTBUF_CFG1, 0,     testbuf_PU, 0x1)
-
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, IQCAL_OVR1, 0, ovr_iqcal_PU_loopback_bias, 0x1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, IQCAL_CFG5, 0,           loopback_bias_pu, 0x1)
-		/* set auxpga gain */
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, AUXPGA_OVR1, 0, ovr_auxpga_i_sel_gain, 1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, AUXPGA_CFG1, 0, auxpga_i_sel_gain, 0x3)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, AUXPGA_OVR1, 0, ovr_auxpga_i_sel_vmid, 1)
-		MOD_RADIO_REG_28NM_ENTRY(pi, RF, AUXPGA_VMID, 0, auxpga_i_sel_vmid, 0x9c)
-	RADIO_REG_LIST_EXECUTE(pi, 0);
 }
 
 static void
@@ -2813,7 +2658,7 @@ wlc_phy_txcal_radio_setup_acphy(phy_info_t *pi)
 
 		/* now write desired values */
 
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			MOD_RADIO_REGC(pi, IQCAL_CFG1, core, sel_sw, 0xb);
 			MOD_RADIO_REGC(pi, TX5G_TSSI, core, pa5g_ctrl_tssi_sel, 0x1);
 
@@ -2916,8 +2761,6 @@ wlc_phy_txcal_phy_setup_acphy(phy_info_t *pi, uint8 Biq2byp)
 			MOD_PHYREG_ENTRY(pi, RxSdFeConfig6, rx_farrow_rshift_0, 2)
 			MOD_PHYREG_ENTRY(pi, TSSIMode, tssiADCSel, 1)
 		ACPHY_REG_LIST_EXECUTE(pi);
-	} else if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		MOD_PHYREG(pi, TSSIMode, tssiADCSel, 1);
 	}
 
 	/* turn off tssi sleep feature during cal */
@@ -3339,7 +3182,7 @@ wlc_phy_precal_txgain_control(phy_info_t *pi, txgain_setting_t *target_gains)
 	/* prevent crs trigger */
 	phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, TRUE);
 
-	band_idx = CHSPEC_IS5G(pi->radio_chanspec);
+	band_idx = CHSPEC_ISPHY5G6G(pi->radio_chanspec);
 
 	if (band_idx == 0 && ACMAJORREV_1(pi->pubpi->phy_rev)) {
 			max_pad_idx = 19;
@@ -3609,16 +3452,12 @@ wlc_phy_txcal_txgain_setup_acphy(phy_info_t *pi, txgain_setting_t *txcal_txgain,
 	uint8 core;
 	uint8 stall_val;
 	uint8 phyrxchain;
-	uint16 lpfgain;
 	BCM_REFERENCE(phyrxchain);
 
 	stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
 	ACPHY_DISABLE_STALL(pi);
 	phyrxchain = phy_stf_get_data(pi->stfi)->phyrxchain;
-	if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-		lpfgain = ((txcal_txgain->rad_gain & 0x3c) >> 2) & 0x7;
-		lpfgain = lpfgain | (lpfgain <<3) | (lpfgain <<6);
-	}
+
 	FOREACH_ACTV_CORE(pi, phyrxchain, core) {
 		if (core == 3) {
 			wlc_phy_table_read_acphy(pi, ACPHY_TBL_ID_RFSEQ, 1, 0x501, 16,
@@ -3648,10 +3487,6 @@ wlc_phy_txcal_txgain_setup_acphy(phy_info_t *pi, txgain_setting_t *txcal_txgain,
 				&(txcal_txgain[core].rad_gain_mi));
 			wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_RFSEQ, 1, (0x106 + core), 16,
 				&(txcal_txgain[core].rad_gain_hi));
-		}
-		if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-			wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_RFSEQ, 1,
-			    (0x17e + 16*core), 16, &lpfgain);
 		}
 
 		PHY_NONE(("\n radio gain = 0x%x %x %x, bbm=%d, dacgn = %d  \n",
@@ -3777,7 +3612,7 @@ wlc_phy_txcal_phy_setup_acphy_core_disable_rf(phy_info_t *pi, uint8 core)
 	if (TINY_RADIO(pi)) {
 		if ((CHSPEC_IS2G(pi->radio_chanspec) &&
 			(READ_RADIO_REGFLD_TINY(pi, PA2G_CFG1, core, pa2g_tssi_ctrl_sel) == 0)) ||
-			(CHSPEC_IS5G(pi->radio_chanspec) &&
+			(CHSPEC_ISPHY5G6G(pi->radio_chanspec) &&
 			(READ_RADIO_REGFLD_TINY(pi, TX5G_MISC_CFG1, core,
 			pa5g_tssi_ctrl_sel) == 0))) {
 			MOD_PHYREGCE(pi, RfctrlCoreTxPus,     core, pa_pwrup,       1);
@@ -3846,13 +3681,7 @@ wlc_phy_txcal_phy_setup_acphy_core_sd_adc(phy_info_t *pi, uint8 core, uint16 sda
 {
 	MOD_PHYREGCE(pi, RfctrlCoreAfeCfg2, core, afe_iqadc_mode, sdadc_config & 0x7);
 	MOD_PHYREGCE(pi, RfctrlOverrideAfeCfg, core, afe_iqadc_mode, 1);
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-	MOD_PHYREGCE(pi, RfctrlCoreAfeCfg1, core, afe_iqadc_pwrup,
-		(sdadc_config) & 0x1);
-	} else {
-		MOD_PHYREGCE(pi, RfctrlCoreAfeCfg1, core, afe_iqadc_pwrup,
-			(sdadc_config >> 3) & 0x3f);
-	}
+	MOD_PHYREGCE(pi, RfctrlCoreAfeCfg1, core, afe_iqadc_pwrup, (sdadc_config >> 3) & 0x3f);
 	MOD_PHYREGCE(pi, RfctrlOverrideAfeCfg, core, afe_iqadc_pwrup, 1);
 	MOD_PHYREGCE(pi, RfctrlCoreAfeCfg2, core, afe_iqadc_flashhspd, (sdadc_config >> 9) & 0x1);
 	MOD_PHYREGCE(pi, RfctrlOverrideAfeCfg, core, afe_iqadc_flashhspd, 1);
@@ -4003,8 +3832,7 @@ wlc_phy_poll_adc_acphy(phy_info_t *pi, int32 *adc_buf, uint8 nsamps,
 				math_sqrt_int_32((uint32)(rx_iq_est[core].q_pwr >> 3))*bitw_scale;
 			adc_buf[2*core+1] = ((1 << 10) - adc_buf[2*core+1]) << 3;
 			MOD_PHYREG(pi, RxSdFeConfig6, rx_farrow_rshift_0, 0);
-		} else if (ACMAJORREV_36(pi->pubpi->phy_rev) ||
-			ACMAJORREV_37(pi->pubpi->phy_rev) ||
+		} else if (ACMAJORREV_37(pi->pubpi->phy_rev) ||
 			(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
 			!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 			int tmp;
@@ -4083,19 +3911,14 @@ wlc_phy_poll_samps_acphy(phy_info_t *pi, int16 *samp, bool is_tssi,
 
 	/* tssi val is (adc >> 2) */
 	for (k = 0; k < (1 << log2_nsamps); k++) {
-		if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-			wlc_phy_poll_adc_acphy(pi, adc_buf, 1, 0, core, is_tssi);
-		} else {
-			wlc_phy_poll_adc_acphy(pi, adc_buf, 1, init_adc_inside, core, is_tssi);
-		}
+		wlc_phy_poll_adc_acphy(pi, adc_buf, 1, init_adc_inside, core, is_tssi);
 		if (ACMAJORREV_4(pi->pubpi->phy_rev) ||
 			ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 			/* 13-10bit converstion In 4349A0 */
 			tmp_samp = adc_buf[2*core+iq_swap] >> 3;
 		} else if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev)) {
 			tmp_samp = adc_buf[2*core+iq_swap] >> 3;
-		} else if (ACMAJORREV_36(pi->pubpi->phy_rev) ||
-		           ACMAJORREV_37(pi->pubpi->phy_rev) ||
+		} else if (ACMAJORREV_37(pi->pubpi->phy_rev) ||
 		           ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 			tmp_samp = adc_buf[2*core+iq_swap];
 		} else {
@@ -4193,10 +4016,30 @@ static void phy_ac_txiqlocal_txloccset(phy_type_txiqlocal_ctx_t *ctx, void *p)
 		loccValues[3], loccValues[4], loccValues[5]);
 }
 
+#if defined(WLTEST)
+static int
+phy_ac_txiqlocal_set_calidx(phy_type_txiqlocal_ctx_t *ctx, int32 calidx)
+{
+	phy_ac_txiqlocal_info_t *info = (phy_ac_txiqlocal_info_t *)ctx;
+	if (calidx >= -1 && calidx <= 127)
+		info->txiqcalidx_iovar = calidx;
+	return BCME_OK;
+}
+
+static int
+phy_ac_txiqlocal_get_calidx(phy_type_txiqlocal_ctx_t *ctx, int32* calidx)
+{
+	phy_ac_txiqlocal_info_t *info = (phy_ac_txiqlocal_info_t *)ctx;
+	*calidx = (int32)info->txiqcalidx_iovar;
+	return BCME_OK;
+}
+#endif // endif
+
 static void
 BCMATTACHFN(phy_ac_txiqlocal_nvram_attach)(phy_ac_txiqlocal_info_t *ti)
 {
 	ti->aci->sromi->oob_gaint = (uint8)PHY_GETINTVAR_DEFAULT_SLICE(ti->pi, rstr_oob_gaint, 0);
+	ti->txiqcalidx_iovar = -1;
 }
 /* ********************************************* */
 /*				External Definitions					*/
@@ -4404,79 +4247,34 @@ wlc_phy_populate_tx_loft_comp_tbl_acphy(phy_info_t *pi, uint16 *loft_coeffs)
 }
 
 uint8
-phy_txiqlocal_extra_local(phy_info_t *pi)
+phy_txiqlocal_num_multilo(phy_info_t *pi)
 {
-	uint8 ret = 0;
+	txiqcal_params_t * paramsi = pi->u.pi_acphy->txiqlocali->paramsi;
 
-	/* returns the number of extra LO cals that are needed for multi point LO cal */
-	/* if none required, will return the value 0 decimal */
-
-	if (ACMAJORREV_47(pi->pubpi->phy_rev) && (CHSPEC_IS5G(pi->radio_chanspec) == 1)) {
-		/* 43684B0: do 2 TxLO cals for 5G so one extra LO cal. */
-		ret = 1;
-	}
-	if (ACMAJORREV_129(pi->pubpi->phy_rev) && (CHSPEC_IS5G(pi->radio_chanspec) == 1)) {
-		/* 6710A0: do 4 TxLO cals for 5G so 3 extra LO cal. */
-		ret = 3;
-	}
-
-	return ret;
-}
-
-void
-wlc_phy_txiqlocal_lopwr_gettblidx(phy_info_t *pi, txiqlocal_lopwr_cal_t *txiqlocal_lopwr_cal,
-	uint8 extraLOcal_cnt, bool cache)
-{
-	if (ACMAJORREV_47(pi->pubpi->phy_rev) && (CHSPEC_IS5G(pi->radio_chanspec) == 1)) {
-		/* 43684: Settings for second lopwr TX-CAL */
-		if (cache) {
-			/* this is for restoring cache */
-			/* and start_idx to end_idx is ofdm_txd_lopwr */
-			txiqlocal_lopwr_cal->lofttbl_start_idx = 35;
-			txiqlocal_lopwr_cal->lofttbl_end_idx = 127;
-		} else {
-			switch (extraLOcal_cnt) {
-				case 0:
-					txiqlocal_lopwr_cal->lofttbl_start_idx = 0;
-					txiqlocal_lopwr_cal->lofttbl_end_idx = 34;
-					break;
-				case 1:
-					txiqlocal_lopwr_cal->lofttbl_start_idx = 35;
-					txiqlocal_lopwr_cal->lofttbl_end_idx = 127;
-					break;
-				default:
-					ASSERT(0);
-			}
-		}
-	}
-	if (ACMAJORREV_129(pi->pubpi->phy_rev) && (CHSPEC_IS5G(pi->radio_chanspec) == 1)) {
-		/* 6710A0, Settings for extra TX-CAL */
-		/* this is for populating after doing the calibration */
-		switch (extraLOcal_cnt) {
-			case 0:
-				txiqlocal_lopwr_cal->lofttbl_start_idx = 0;
-				txiqlocal_lopwr_cal->lofttbl_end_idx = 40;
-				break;
-			case 1:
-				txiqlocal_lopwr_cal->lofttbl_start_idx = 41;
-				txiqlocal_lopwr_cal->lofttbl_end_idx = 50;
-				break;
-			case 2:
-				txiqlocal_lopwr_cal->lofttbl_start_idx = 51;
-				txiqlocal_lopwr_cal->lofttbl_end_idx = 60;
-				break;
-			case 3:
-				txiqlocal_lopwr_cal->lofttbl_start_idx = 61;
-				txiqlocal_lopwr_cal->lofttbl_end_idx = 127;
-				break;
-			default:
-				ASSERT(0);
-		}
+	/* returns the number of multi-point LO cals */
+	if (ACMAJORREV_47_129(pi->pubpi->phy_rev) && (CHSPEC_ISPHY5G6G(pi->radio_chanspec) == 1)) {
+		/* 43684 and 6710MCM: do 2 multi-point LO cals for 5G. */
+		return paramsi->num_multilo;
+	} else {
+		return 0;
 	}
 }
 
 void
-wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint8 extraLOcal_cnt)
+wlc_phy_txiqlocal_lopwr_gettblidx(phy_info_t *pi, txiqlocal_multilo_t *multilo_cal,
+	uint8 multilo_cal_cnt)
+{
+	txiqcal_params_t * paramsi = pi->u.pi_acphy->txiqlocali->paramsi;
+
+	/* 43684, 6710A0: Settings for multi-point LO cal */
+	/* this is for populating after doing the calibration */
+	multilo_cal->lofttbl_start_idx = paramsi->multilo_start_idx[multilo_cal_cnt-1];
+	multilo_cal->lofttbl_end_idx = paramsi->multilo_end_idx[multilo_cal_cnt-1];
+
+}
+
+void
+wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint8 multilo_cal_cnt)
 {
 	/*   This function determines the tx gain settings to be
 	 *   used during tx iqlo calibration; that is, it sends back
@@ -4499,6 +4297,7 @@ wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint
 	 */
 	phy_ac_info_t *pi_ac = pi->u.pi_acphy;
 	phy_ac_txiqlocal_info_t *ti = pi_ac->txiqlocali;
+	txiqcal_params_t * paramsi = ti->paramsi;
 
 	uint8 core;
 	uint8 subband;
@@ -4555,10 +4354,6 @@ wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint
 	   en_precal_gain_control = 0;
 	}
 
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		en_precal_gain_control = 5;
-	}
-
 	if (en_precal_gain_control == 0) {
 		/* get target tx gain settings */
 		FOREACH_ACTV_CORE(pi, stf_shdata->phyrxchain, core) {
@@ -4570,7 +4365,7 @@ wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint
 				subband = phy_ac_chanmgr_get_chan_freq_range(pi,
 					0, PRIMARY_FREQ_SEGMENT);
 				if ((pi->sromi->precal_tx_idx) &&
-				    CHSPEC_IS5G(pi->radio_chanspec) && (subband >= 1)) {
+				    CHSPEC_ISPHY5G6G(pi->radio_chanspec) && (subband >= 1)) {
 					--subband;
 					target_pwr_idx = tx_pwr_idx_5g[subband][core];
 				} else {
@@ -4599,14 +4394,14 @@ wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint
 			} else if (TINY_RADIO(pi)) {
 				if (PHY_IPA(pi)) {
 					if (ACMAJORREV_4(pi->pubpi->phy_rev)) {
-						if (CHSPEC_IS5G(pi->radio_chanspec)) {
+						if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 							target_pwr_idx = ROUTER_4349(pi) ?
 								(IS_ACR(pi) ? 70 : 40) : 40;
 						} else {
 							target_pwr_idx = 50;
 						}
 					} else {
-						if (CHSPEC_IS5G(pi->radio_chanspec)) {
+						if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 							target_pwr_idx = 62;
 						} else {
 							target_pwr_idx = 50;
@@ -4614,7 +4409,7 @@ wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint
 					}
 				} else {
 					if (ACMAJORREV_4(pi->pubpi->phy_rev)) {
-						if (CHSPEC_IS5G(pi->radio_chanspec)) {
+						if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 							if (RADIOREV(pi->pubpi->radiorev) == 10) {
 								target_pwr_idx = 4;
 							} else {
@@ -4637,7 +4432,7 @@ wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint
 								target_pwr_idx = 0;
 						}
 					} else if (IS_4364_1x1(pi)) {
-						if (CHSPEC_IS5G(pi->radio_chanspec)) {
+						if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 							if (pi->txgaintbl5g == 1) {
 								target_pwr_idx = 20;
 							} else
@@ -4649,7 +4444,7 @@ wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint
 						ACMAJORREV_33(pi->pubpi->phy_rev)) {
 						target_pwr_idx = 35;
 					} else {
-						if (CHSPEC_IS5G(pi->radio_chanspec)) {
+						if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 							if (pi->txgaintbl5g == 1) {
 								target_pwr_idx = 60;
 							} else {
@@ -4663,16 +4458,10 @@ wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint
 				if (CHSPEC_IS2G(pi->radio_chanspec) &&
 						(pi->txiqlocali->data->txiqcalidx2g != -1)) {
 					target_pwr_idx = pi->txiqlocali->data->txiqcalidx2g;
-				} else if (CHSPEC_IS5G(pi->radio_chanspec) &&
+				} else if (CHSPEC_ISPHY5G6G(pi->radio_chanspec) &&
 					(pi->txiqlocali->data->txiqcalidx5g != -1)) {
 					target_pwr_idx = pi->txiqlocali->data->txiqcalidx5g;
 				}
-			} else if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-				if (CHSPEC_IS2G(pi->radio_chanspec)) {
-					target_pwr_idx = 10;
-				 } else {
-					target_pwr_idx = 0;
-				 }
 			} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 				if (CHSPEC_IS2G(pi->radio_chanspec)) {
 					target_pwr_idx = ((PHY_IPA(pi)) ? 30 : 10);
@@ -4686,34 +4475,40 @@ wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint
 					target_pwr_idx = 40;
 				}
 			} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
-				if (PHY_IPA(pi))
-					target_pwr_idx = 40;
-				else {
-					target_pwr_idx = 20;
-					/* for multi LO cal, choose the right index */
-					switch (extraLOcal_cnt) {
-					case 0:
-						target_pwr_idx = 20;
-						break;
-					case 1:
-						target_pwr_idx = 45;
-						break;
-					case 2:
-						target_pwr_idx = 55;
-						break;
-					case 3:
-						target_pwr_idx = 65;
-						break;
-					default:
-						ASSERT(0);
+				if (multilo_cal_cnt == 0) {
+					if (ti->txiqcalidx_iovar != -1) {
+						target_pwr_idx = ti->txiqcalidx_iovar;
+					} else {
+						/* Aux TxIQLO and main TxIQ cal index */
+						if (PHY_IPA(pi)) {
+							if (CHSPEC_IS2G(pi->radio_chanspec)) {
+								target_pwr_idx = 35;
+							} else {
+								target_pwr_idx = 40;
+							}
+						} else {
+							target_pwr_idx = 20;
+						}
 					}
+				} else {
+					/* for multi LO cal, choose the right index */
+					target_pwr_idx =
+					    paramsi->multilo_cal_idx[multilo_cal_cnt-1];
 				}
 			} else if (ACMAJORREV_37(pi->pubpi->phy_rev) ||
 			           ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
-				target_pwr_idx = 20;
-				if (extraLOcal_cnt != 0) target_pwr_idx = 35;
-			} else if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-					target_pwr_idx = 30;
+				if (multilo_cal_cnt == 0) {
+					if (ti->txiqcalidx_iovar != -1) {
+						target_pwr_idx = ti->txiqcalidx_iovar;
+					} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+						target_pwr_idx = 30;
+					} else {
+						target_pwr_idx = 20;
+					}
+				} else {
+					target_pwr_idx =
+					    paramsi->multilo_cal_idx[multilo_cal_cnt-1];
+				}
 			} else {
 				target_pwr_idx = 30;
 			}
@@ -4728,7 +4523,7 @@ wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint
 				target_gains[core].bbmult = 20;
 			}
 
-			if ((CHSPEC_IS5G(pi->radio_chanspec) == 1) &&
+			if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec) == 1) &&
 			    (RADIOID_IS(pi->pubpi->radioid, BCM2069_ID) &&
 			     (RADIO2069_MAJORREV(pi->pubpi->radiorev) == 1))) {
 				/* use PAD gain 255 for TXIQLOCAL */
@@ -4740,7 +4535,7 @@ wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint
 				* in AC2PHY_TBL_ID_IQLOCAL phytble
 				*/
 				target_gains[core].bbmult = 64;
-				if (extraLOcal_cnt != 0) target_gains[core].rad_gain |= 0xff00;
+				if (multilo_cal_cnt != 0) target_gains[core].rad_gain |= 0xff00;
 			}
 		}
 
@@ -4765,9 +4560,9 @@ wlc_phy_precal_txgain_acphy(phy_info_t *pi, txgain_setting_t *target_gains, uint
 }
 
 static int phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase,
-	uint8 extraLOcal_cnt);
+	uint8 multilo_cal_cnt);
 static int phy_ac_txiqlocal_cmd(phy_ac_txiqlocal_info_t *ti, bool last_phase,
-	int32 tone_freq, uint16 tone_ampl, int bcmerror, uint8 extraLOcal_cnt);
+	int32 tone_freq, uint16 tone_ampl, int bcmerror, uint8 multilo_cal_cnt);
 static int phy_ac_txiqlocal_cleanup(phy_ac_txiqlocal_info_t *ti, uint8 Biq2byp,
 	txgain_setting_t orig_txgain[], bool suspend);
 
@@ -4780,7 +4575,7 @@ wlc_phy_cal_txiqlo_init_acphy(phy_info_t *pi)
 
 void
 phy_ac_txiqlocal_multiphase(phy_info_t *pi, uint8 searchmode, bool Biq2byp, uint16 cts_time,
-	uint8 extraLOcal_cnt)
+	uint8 multilo_cal_cnt)
 {
 	phy_info_acphy_t *pi_ac = (phy_info_acphy_t *)pi->u.pi_acphy;
 	phy_ac_txiqlocal_info_t *ti = pi_ac->txiqlocali;
@@ -4788,7 +4583,7 @@ phy_ac_txiqlocal_multiphase(phy_info_t *pi, uint8 searchmode, bool Biq2byp, uint
 
 	wlc_phy_cts2self(pi, cts_time);
 
-	wlc_phy_cal_txiqlo_acphy(pi, searchmode, TRUE, Biq2byp, extraLOcal_cnt);
+	wlc_phy_cal_txiqlo_acphy(pi, searchmode, TRUE, Biq2byp, multilo_cal_cnt);
 	last_phase = (ti->phase_id >= (ti->num_mphases - 1));
 
 	if (last_phase) {
@@ -4802,7 +4597,7 @@ phy_ac_txiqlocal_multiphase(phy_info_t *pi, uint8 searchmode, bool Biq2byp, uint
 
 void
 wlc_phy_cal_txiqlo_acphy(phy_info_t *pi, uint8 searchmode, uint8 mphase, bool Biq2byp,
-	uint8 extraLOcal_cnt)
+	uint8 multilo_cal_cnt)
 {
 	phy_info_acphy_t *pi_ac = (phy_info_acphy_t *)pi->u.pi_acphy;
 	phy_ac_txiqlocal_info_t *ti = pi_ac->txiqlocali;
@@ -4816,10 +4611,10 @@ wlc_phy_cal_txiqlo_acphy(phy_info_t *pi, uint8 searchmode, uint8 mphase, bool Bi
 	/* First Phase - call precal-txgain */
 	if (first_phase)
 		wlc_phy_precal_txgain_acphy(pi, pi->cal_info->u.accal.txcal_txgain,
-			extraLOcal_cnt);
+			multilo_cal_cnt);
 
 	/* Call the Cal */
-	if (phy_ac_txiqlocal(pi, searchmode, Biq2byp, last_phase, extraLOcal_cnt) != BCME_OK) {
+	if (phy_ac_txiqlocal(pi, searchmode, Biq2byp, last_phase, multilo_cal_cnt) != BCME_OK) {
 		/* rare case, just reset */
 		PHY_ERROR(("wlc_phy_cal_txiqlo_acphy failed\n"));
 		phy_calmgr_mphase_reset(pi->calmgri);
@@ -4829,7 +4624,7 @@ wlc_phy_cal_txiqlo_acphy(phy_info_t *pi, uint8 searchmode, uint8 mphase, bool Bi
 
 static int
 phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase,
-	uint8 extraLOcal_cnt)
+	uint8 multilo_cal_cnt)
 {
 	uint16 tone_ampl, tone_freq, *coeff_ptr;
 	int    bcmerror = BCME_OK;
@@ -4839,7 +4634,6 @@ phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase
 	phy_stf_data_t *stf_shdata = phy_stf_get_data(pi->stfi);
 	phy_ac_info_t *pi_ac = pi->u.pi_acphy;
 	phy_ac_txiqlocal_info_t *ti = pi_ac->txiqlocali;
-	txiqcal_params_t * paramsi = ti->paramsi;
 
 	/* zeros start coeffs (a,b,di/dq,ei/eq,fi/fq for each core) */
 	uint16 start_coeffs_RESTART[] = {0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
@@ -4890,9 +4684,7 @@ phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase
 	ti->classifier_state = READ_PHYREG(pi, ClassifierCtrl);
 	phy_rxgcrs_sel_classifier(pi, 4);
 
-	if (ACMAJORREV_36(pi->pubpi->phy_rev))
-		wlc_phy_txcal_radio_setup_acphy_28nm(ti);
-	else if (ACMAJORREV_47(pi->pubpi->phy_rev))
+	if (ACMAJORREV_47(pi->pubpi->phy_rev))
 		wlc_phy_txcal_radio_setup_acphy_20698(ti, Biq2byp);
 	else if (ACMAJORREV_51(pi->pubpi->phy_rev))
 		wlc_phy_txcal_radio_setup_acphy_20704(ti, Biq2byp);
@@ -4900,9 +4692,8 @@ phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase
 		wlc_phy_txcal_radio_setup_acphy_20709(ti, Biq2byp);
 	else if (ACMAJORREV_129(pi->pubpi->phy_rev))
 		wlc_phy_txcal_radio_setup_acphy_20707(ti, Biq2byp);
-	else if (ACMAJORREV_37(pi->pubpi->phy_rev))
-		wlc_phy_txcal_radio_setup_acphy_20696(ti, Biq2byp);
-	else if (ACMAJORREV_40(pi->pubpi->phy_rev))
+	else if (ACMAJORREV_37(pi->pubpi->phy_rev)) {
+	} else if (ACMAJORREV_40(pi->pubpi->phy_rev))
 		wlc_phy_txcal_radio_setup_acphy_20694(ti);
 	else if (TINY_RADIO(pi))
 		wlc_phy_txcal_radio_setup_acphy_tiny(pi);
@@ -4965,8 +4756,7 @@ phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase
 		wlapi_bmac_phyclk_fgc(pi->sh->physhim, ON);
 
 	/* This is different from TCL proc  for 4347, and thus for phy_maj44 as well */
-	if (TINY_RADIO(pi) || ACMAJORREV_36(pi->pubpi->phy_rev) ||
-		ACMAJORREV_40(pi->pubpi->phy_rev)) {
+	if (TINY_RADIO(pi) || ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		/* # no radio LOFT or programmable radio gain for tiny */
 		ACPHY_REG_LIST_START
 			WRITE_PHYREG_ENTRY(pi, TX_iqcal_gain_bwAddress, 0)
@@ -4975,7 +4765,7 @@ phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase
 			WRITE_PHYREG_ENTRY(pi, TX_loft_coarse_iAddress, 0)
 			WRITE_PHYREG_ENTRY(pi, TX_loft_coarse_qAddress, 0)
 		ACPHY_REG_LIST_EXECUTE(pi);
-	} else if (ACMAJORREV_37(pi->pubpi->phy_rev) || ACMAJORREV_44_46(pi->pubpi->phy_rev) ||
+	} else if (ACMAJORREV_37(pi->pubpi->phy_rev) ||
 	           (ACMAJORREV_GE47(pi->pubpi->phy_rev))) {
 		/* BCM7271 CRDOT11ACPHY-2219 radioreg crash WAR */
 		ACPHY_REG_LIST_START
@@ -5019,7 +4809,7 @@ phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase
 	} else {
 		/* single-phase cal or first phase of mphase cal */
 		if ((searchmode == PHY_CAL_SEARCHMODE_REFINE) ||
-		    (searchmode == PHY_CAL_SEARCHMODE_LOPWR)) {
+		    (searchmode == PHY_CAL_SEARCHMODE_MULTILO)) {
 			/* recal ("refine") */
 			coeff_ptr = accal->txiqlocal_coeffs; /* use previous cal's final results */
 		} else {
@@ -5066,28 +4856,29 @@ phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase
 
 	/* Fixing tone_ampl = 450/400/450 in 5g20/40/80 for 4364_3x3 */
 	if (IS_4364_3x3(pi) && !(USE_OOB_GAINT(pi))) {
-		if ((CHSPEC_IS5G(pi->radio_chanspec)) &&
+		if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec)) &&
 		(CHSPEC_IS20(pi->radio_chanspec))) {
 			tone_ampl = 450;
-		} else if ((CHSPEC_IS5G(pi->radio_chanspec)) &&
+		} else if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec)) &&
 		(CHSPEC_IS40(pi->radio_chanspec))) {
 			tone_ampl = 400;
-		} else if ((CHSPEC_IS5G(pi->radio_chanspec)) &&
+		} else if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec)) &&
 		(CHSPEC_IS80(pi->radio_chanspec))) {
 			tone_ampl = 450;
 		}
 	} else if (IS_4364_3x3(pi) && (USE_OOB_GAINT(pi))) {
-		if ((CHSPEC_IS5G(pi->radio_chanspec)) &&
+		if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec)) &&
 			(CHSPEC_IS20(pi->radio_chanspec))) {
 				tone_ampl = 300;
-		} else if ((CHSPEC_IS5G(pi->radio_chanspec)) &&
+		} else if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec)) &&
 				(CHSPEC_IS40(pi->radio_chanspec))) {
 			tone_ampl = 325;
-		} else if ((CHSPEC_IS5G(pi->radio_chanspec)) &&
+		} else if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec)) &&
 				(CHSPEC_IS80(pi->radio_chanspec))) {
 			tone_ampl = 375;
 		}
 	}
+
 	/* fixme: wlc_phy_tx_tone_acphy is playing 2x frequency.
 	 * once that's fixed, we should use 4/8/12 mHz for iqlocal
 	 */
@@ -5096,10 +4887,8 @@ phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase
 		CHSPEC_IS160(pi->radio_chanspec) ? ACPHY_IQCAL_TONEFREQ_16MHz :
 		CHSPEC_IS40(pi->radio_chanspec) ? ACPHY_IQCAL_TONEFREQ_4MHz :
 		ACPHY_IQCAL_TONEFREQ_2MHz;
-	if ((ACMAJORREV_36(pi->pubpi->phy_rev))) {
-	  tone_freq = paramsi->tone_freq;
-	} else if ((ACMAJORREV_40(pi->pubpi->phy_rev))) {
-		if (CHSPEC_IS20(pi->radio_chanspec) && CHSPEC_IS5G(pi->radio_chanspec)) {
+	if ((ACMAJORREV_40(pi->pubpi->phy_rev))) {
+		if (CHSPEC_IS20(pi->radio_chanspec) && CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 				tone_freq = ACPHY_IQCAL_TONEFREQ_4MHz;
 		}
 	} else if (!((ACMAJORREV_4(pi->pubpi->phy_rev)) ||
@@ -5116,7 +4905,7 @@ phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase
 		OSL_DELAY(5);
 	}
 
-	if (TINY_RADIO(pi) || ACMAJORREV_36(pi->pubpi->phy_rev)) {
+	if (TINY_RADIO(pi)) {
 		/* #restore bbmult overwritten by tone */
 		if (ACMAJORREV_4(pi->pubpi->phy_rev)) {
 			wlc_phy_ipa_set_bbmult_acphy(pi, &(accal->txcal_txgain[0].bbmult),
@@ -5150,7 +4939,7 @@ phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase
 		  searchmode, ti->cmd_idx, ti->cmd_stop_idx, Biq2byp, ti->prerxcal));
 
 	bcmerror = phy_ac_txiqlocal_cmd(ti, last_phase,
-	                                tone_freq, tone_ampl, bcmerror, extraLOcal_cnt);
+	                                tone_freq, tone_ampl, bcmerror, multilo_cal_cnt);
 	phy_ac_txiqlocal_cleanup(ti, Biq2byp, orig_txgain, suspend);
 
 	return bcmerror;
@@ -5158,7 +4947,7 @@ phy_ac_txiqlocal(phy_info_t *pi, uint8 searchmode, bool Biq2byp, bool last_phase
 
 static int
 phy_ac_txiqlocal_cmd(phy_ac_txiqlocal_info_t *ti, bool last_phase,
-                     int32 tone_freq, uint16 tone_ampl, int bcmerror, uint8 extraLOcal_cnt)
+                     int32 tone_freq, uint16 tone_ampl, int bcmerror, uint8 multilo_cal_cnt)
 {
 	phy_info_t *pi = ti->pi;
 	uint8  rd_select = 0, wr_select1 = 0, wr_select2 = 0;
@@ -5166,7 +4955,7 @@ phy_ac_txiqlocal_cmd(phy_ac_txiqlocal_info_t *ti, bool last_phase,
 	uint16 cmd, coeffs[2], zero = 0;
 	acphy_cal_result_t *accal = &pi->cal_info->u.accal;
 	phy_stf_data_t *stf_shdata = phy_stf_get_data(pi->stfi);
-	uint8  cr, thidx, thidx_start, thidx_stop;
+	uint8  thidx, thidx_start, thidx_stop;
 	/* structure for saving txpu_ovrd, txpu_val
 	 * 2 register values for each core
 	 */
@@ -5195,9 +4984,9 @@ phy_ac_txiqlocal_cmd(phy_ac_txiqlocal_info_t *ti, bool last_phase,
 	uint8 sweep_tone = 0;
 	uint8 tone_idx = 0;
 	uint16 stall_val;
-	txgain_setting_t siso_txgain[PHY_CORE_MAX], dummygain;
+	txgain_setting_t siso_txgain[PHY_CORE_MAX], dummygain[PHY_CORE_MAX];
 	txgain_setting_t *txcal_txgain = &(pi->cal_info->u.accal).txcal_txgain[0];
-	txiqlocal_lopwr_cal_t lopwr_cal;
+	txiqlocal_multilo_t multilo_cal = {0, 0};
 #if defined(PHYCAL_CACHING)
 	ch_calcache_t *ctx = wlc_phy_get_chanctx(pi, pi->radio_chanspec);
 #endif // endif
@@ -5208,10 +4997,6 @@ phy_ac_txiqlocal_cmd(phy_ac_txiqlocal_info_t *ti, bool last_phase,
 	 *  Cmd Execution
 	 * ---------------
 	 */
-
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		wlc_phy_btcx_override_enable(pi);
-	}
 	if (bcmerror == BCME_OK) { /* in case tone doesn't start (still needed?) */
 
 		/* loop over commands in this cal phase */
@@ -5281,7 +5066,7 @@ phy_ac_txiqlocal_cmd(phy_ac_txiqlocal_info_t *ti, bool last_phase,
 				memset(siso_txgain, 0, PHY_CORE_MAX * sizeof(txgain_setting_t));
 				memcpy(&siso_txgain[core], &txcal_txgain[core],
 					sizeof(txgain_setting_t));
-				wlc_phy_txcal_txgain_setup_acphy(pi, &siso_txgain[0], &dummygain);
+				wlc_phy_txcal_txgain_setup_acphy(pi, &siso_txgain[0], dummygain);
 			}
 
 			cmd = ti->cmds[ti->cmd_idx % ti->num_cmds_per_core] | 0x8000 | (core << 12);
@@ -5364,7 +5149,8 @@ phy_ac_txiqlocal_cmd(phy_ac_txiqlocal_info_t *ti, bool last_phase,
 
 				/* set intervals settling and measurement intervals */
 				if (ACMAJORREV_4(pi->pubpi->phy_rev)) {
-					if ((CHSPEC_IS5G(pi->radio_chanspec)) && !PHY_IPA(pi)) {
+					if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec)) &&
+						!PHY_IPA(pi)) {
 						WRITE_PHYREG(pi, iqloCalCmdNnum,
 						(paramsi->nsamp_corrs_new[ti->cmd_idx] << 8) |
 						paramsi->nsamp_gctrl[ti->bw_idx]);
@@ -5635,36 +5421,36 @@ phy_ac_txiqlocal_cmd(phy_ac_txiqlocal_info_t *ti, bool last_phase,
 		/* single phase or last tx stage in multiphase cal: apply & store overall results */
 		if (last_phase) {
 			if (ti->prerxcal == 0) {
-				if (phy_txiqlocal_extra_local(pi) != 0) {
-					wlc_phy_txiqlocal_lopwr_gettblidx(pi, &lopwr_cal,
-						extraLOcal_cnt, FALSE);
+				if (phy_txiqlocal_num_multilo(pi) != 0) {
+					wlc_phy_txiqlocal_lopwr_gettblidx(pi, &multilo_cal,
+						multilo_cal_cnt);
 				}
-				for (cr = 0; cr < ti->num_cores; cr++) {
+				FOREACH_CORE(pi, core) {
 					/* Save and Apply IQ Cal Results */
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_READ, coeffs,
-					                                PI_INTER_COEFFS_AB, cr);
+					                                PI_INTER_COEFFS_AB, core);
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_WRITE, coeffs,
-					                                PI_FINAL_COEFFS_AB, cr);
+					                                PI_FINAL_COEFFS_AB, core);
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_WRITE, coeffs,
-					                                TB_OFDM_COEFFS_AB,  cr);
+					                                TB_OFDM_COEFFS_AB,  core);
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_WRITE, coeffs,
-					                                TB_BPHY_COEFFS_AB,  cr);
+					                                TB_BPHY_COEFFS_AB,  core);
 
 					/* Save and Apply Dig LOFT Cal Results */
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_READ, coeffs,
-					                                PI_INTER_COEFFS_D, cr);
+					                                PI_INTER_COEFFS_D, core);
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_WRITE, coeffs,
-					                                PI_FINAL_COEFFS_D, cr);
+					                                PI_FINAL_COEFFS_D, core);
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_WRITE, coeffs,
-					                                TB_OFDM_COEFFS_D,  cr);
+					                                TB_OFDM_COEFFS_D,  core);
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_WRITE, coeffs,
-					                                TB_BPHY_COEFFS_D,  cr);
+					                                TB_BPHY_COEFFS_D,  core);
 
-					if (phy_txiqlocal_extra_local(pi) != 0) {
+					if (phy_txiqlocal_num_multilo(pi) != 0) {
 						/* Save LOFT (COEFFS_D) coeff to table */
-						start_idx = lopwr_cal.lofttbl_start_idx;
-						end_idx = lopwr_cal.lofttbl_end_idx;
-						wlc_phy_populate_tx_loftcoefluts_acphy(pi, cr,
+						start_idx = multilo_cal.lofttbl_start_idx;
+						end_idx = multilo_cal.lofttbl_end_idx;
+						wlc_phy_populate_tx_loftcoefluts_acphy(pi, core,
 							coeffs[0],
 							start_idx,
 							end_idx);
@@ -5680,37 +5466,37 @@ phy_ac_txiqlocal_cmd(phy_ac_txiqlocal_info_t *ti, bool last_phase,
 
 					/* Save Analog LOFT Comp in PI State */
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_READ, coeffs,
-					                                PI_INTER_COEFFS_E, cr);
+					                                PI_INTER_COEFFS_E, core);
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_WRITE, coeffs,
-					                                PI_FINAL_COEFFS_E, cr);
+					                                PI_FINAL_COEFFS_E, core);
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_READ, coeffs,
-					                                PI_INTER_COEFFS_F, cr);
+					                                PI_INTER_COEFFS_F, core);
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_WRITE, coeffs,
-					                                PI_FINAL_COEFFS_F, cr);
+					                                PI_FINAL_COEFFS_F, core);
 					/* Print out Results */
-					wlc_phy_txcal_coeffs_print(accal->txiqlocal_coeffs, cr);
-				} /* for cr */
+					wlc_phy_txcal_coeffs_print(accal->txiqlocal_coeffs, core);
+				} /* for core */
 
 				/* Save into Cache */
 #if defined(PHYCAL_CACHING)
 				if (ctx)
-					phy_ac_txiqlocal_save_cache(ti, ctx, extraLOcal_cnt);
+					phy_ac_txiqlocal_save_cache(ti, ctx, multilo_cal_cnt);
 #else
 				wlc_phy_scanroam_cache_txcal_acphy(pi->u.pi_acphy->txiqlocali, 1);
 #endif /* PHYCAL_CACHING */
 			} else {
-				for (cr = 0; cr < ti->num_cores; cr++) {
+				FOREACH_CORE(pi, core) {
 					/* Save IQ Cal coeffs for RX-cal */
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_READ, coeffs,
-					                                PI_INTER_COEFFS_AB, cr);
+					                                PI_INTER_COEFFS_AB, core);
 					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_WRITE_BIQ2BYP,
 					                                coeffs, PI_INTER_COEFFS_AB,
-					                                cr);
+					                                core);
 					/* Print out Results a & b */
-					PHY_CAL(("\tcore-%d: a/b = (%4d,%4d)\n", cr,
-					         (int16)accal->txiqlocal_biq2byp_coeffs[cr*2+0],
-					         (int16)accal->txiqlocal_biq2byp_coeffs[cr*2+1]));
-				} /* for cr */
+					PHY_CAL(("\tcore-%d: a/b = (%4d,%4d)\n", core,
+					        (int16)accal->txiqlocal_biq2byp_coeffs[core*2+0],
+					        (int16)accal->txiqlocal_biq2byp_coeffs[core*2+1]));
+				} /* for core */
 			}
 
 			/* validate availability of results and store off channel */
@@ -5769,9 +5555,6 @@ phy_ac_txiqlocal_cleanup(phy_ac_txiqlocal_info_t *ti, uint8 Biq2byp,
 	 *  Cleanup  *
 	 *-----------
 	 */
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		wlc_phy_btcx_override_disable(pi);
-	}
 
 	/* BCM7271 CRDOT11ACPHY-2219 radioreg crash WAR */
 	if (ACMAJORREV_37(pi->pubpi->phy_rev) ||
@@ -6130,8 +5913,6 @@ wlc_phy_get_tbl_id_iqlocal(phy_info_t *pi, uint16 core)
 		if ((phy_get_phymode(pi) != PHYMODE_RSDB) && (core == 1))  {
 			tbl_id = ACPHY_TBL_ID_IQLOCAL1;
 		}
-	} else if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		tbl_id = ACPHY_TBL_ID_IQLOCAL0;
 	} else if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 		ACMAJORREV_33(pi->pubpi->phy_rev) ||
 		ACMAJORREV_GE37(pi->pubpi->phy_rev)) {
@@ -6280,26 +6061,21 @@ wlc_phy_poll_samps_WAR_acphy(phy_info_t *pi, int16 *samp, bool is_tssi,
 			(RADIOID_IS(pi->pubpi->radioid, BCM20691_ID)) ||
 			(RADIOID_IS(pi->pubpi->radioid, BCM20693_ID) &&
 			!(RADIOMAJORREV(pi) == 3)) ||
-			(RADIOID_IS(pi->pubpi->radioid, BCM20696_ID)) ||
 			(RADIOID_IS(pi->pubpi->radioid, BCM20698_ID)) ||
 			(RADIOID_IS(pi->pubpi->radioid, BCM20704_ID)) ||
 			(RADIOID_IS(pi->pubpi->radioid, BCM20707_ID)) ||
-			(RADIOID_IS(pi->pubpi->radioid, BCM20709_ID)) ||
-			(ACMAJORREV_36(pi->pubpi->phy_rev))) {
+			(RADIOID_IS(pi->pubpi->radioid, BCM20709_ID))) {
 			/* set same gain for all cores */
 			FOREACH_ACTV_CORE(pi, stf_shdata->hw_phyrxchain, core) {
 				WRITE_PHYREGCE(pi, RfctrlCoreTXGAIN1, core, txgain1);
 				WRITE_PHYREGCE(pi, RfctrlCoreTXGAIN2, core, txgain2);
-				if (!(ACMAJORREV_36(pi->pubpi->phy_rev))) {
-					WRITE_PHYREGCE(pi, Dac_gain, core, dac_gain);
-				}
+				WRITE_PHYREGCE(pi, Dac_gain, core, dac_gain);
 				MOD_PHYREGCE(pi, RfctrlCoreLpfGain, core, lpf_bq2_gain, lpf_gain);
 				MOD_PHYREGCE(pi, RfctrlOverrideGains, core, txgain, 1);
 				MOD_PHYREGCE(pi, RfctrlOverrideGains, core, lpf_bq2_gain, 1);
 				wlc_phy_set_tx_bbmult_acphy(pi, &bbmult, core);
 
-				if (!TINY_RADIO(pi) && !(ACMAJORREV_36(pi->pubpi->phy_rev)) &&
-				    !RADIOID_IS(pi->pubpi->radioid, BCM20696_ID) &&
+				if (!TINY_RADIO(pi) &&
 				    !RADIOID_IS(pi->pubpi->radioid, BCM20698_ID) &&
 				    !RADIOID_IS(pi->pubpi->radioid, BCM20704_ID) &&
 				    !RADIOID_IS(pi->pubpi->radioid, BCM20707_ID) &&
@@ -6337,9 +6113,6 @@ wlc_phy_poll_samps_WAR_acphy(phy_info_t *pi, int16 *samp, bool is_tssi,
 
 		OSL_DELAY(100);
 		if (for_idle) {
-			if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-				phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, TRUE);
-			}
 			wlc_phy_tx_tone_acphy(pi, ACPHY_IQCAL_TONEFREQ_2MHz, 0,
 				TX_TONE_IQCAL_MODE_OFF, FALSE);
 		} else {
@@ -6361,9 +6134,6 @@ wlc_phy_poll_samps_WAR_acphy(phy_info_t *pi, int16 *samp, bool is_tssi,
 		if (champ)
 			log2_nsamps = 4;
 		wlc_phy_poll_samps_acphy(pi, samp, TRUE, log2_nsamps, init_adc_inside, ADCcore);
-		if ((ACMAJORREV_36(pi->pubpi->phy_rev)) && for_idle) {
-			phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, FALSE);
-		}
 		wlc_phy_stopplayback_acphy(pi, STOPPLAYBACK_W_CCA_RESET);
 
 		/* Disable WLAN priority */
@@ -6430,19 +6200,15 @@ wlc_phy_poll_samps_WAR_acphy(phy_info_t *pi, int16 *samp, bool is_tssi,
 			(RADIOID_IS(pi->pubpi->radioid, BCM20691_ID)) ||
 			(RADIOID_IS(pi->pubpi->radioid, BCM20693_ID) &&
 			!(RADIOMAJORREV(pi) == 3)) ||
-			(RADIOID_IS(pi->pubpi->radioid, BCM20696_ID)) ||
 			(RADIOID_IS(pi->pubpi->radioid, BCM20698_ID)) ||
 			(RADIOID_IS(pi->pubpi->radioid, BCM20704_ID)) ||
 			(RADIOID_IS(pi->pubpi->radioid, BCM20707_ID)) ||
-			(RADIOID_IS(pi->pubpi->radioid, BCM20709_ID)) ||
-			(ACMAJORREV_36(pi->pubpi->phy_rev))) {
+			(RADIOID_IS(pi->pubpi->radioid, BCM20709_ID))) {
 			FOREACH_ACTV_CORE(pi, stf_shdata->hw_phyrxchain, core) {
 				/* Remove TX gain & lpf_bq1 gain override */
 				WRITE_PHYREGCE(pi, RfctrlCoreTXGAIN1, core, txgain1_save[core]);
 				WRITE_PHYREGCE(pi, RfctrlCoreTXGAIN2, core, txgain2_save[core]);
-				if (!(ACMAJORREV_36(pi->pubpi->phy_rev))) {
-					WRITE_PHYREGCE(pi, Dac_gain, core, dacgain_save[core]);
-				}
+				WRITE_PHYREGCE(pi, Dac_gain, core, dacgain_save[core]);
 				WRITE_PHYREGCE(pi, RfctrlOverrideGains, core,
 					overridegains_save[core]);
 				WRITE_PHYREGCE(pi, RfctrlCoreLpfGain, core, bq2gain_save[core]);
@@ -6451,8 +6217,7 @@ wlc_phy_poll_samps_WAR_acphy(phy_info_t *pi, int16 *samp, bool is_tssi,
 				WRITE_PHYREGCE(pi, RfctrlCoreAuxTssi1, core,
 					overridevlin2_save[core]);
 				wlc_phy_set_tx_bbmult_acphy(pi, &(bbmult_save[core]), core);
-				if (!TINY_RADIO(pi) && !(ACMAJORREV_36(pi->pubpi->phy_rev)) &&
-				    !RADIOID_IS(pi->pubpi->radioid, BCM20696_ID) &&
+				if (!TINY_RADIO(pi) &&
 				    !RADIOID_IS(pi->pubpi->radioid, BCM20698_ID) &&
 				    !RADIOID_IS(pi->pubpi->radioid, BCM20704_ID) &&
 				    !RADIOID_IS(pi->pubpi->radioid, BCM20707_ID) &&
@@ -6559,7 +6324,7 @@ wlc_txprecal4349_gain_control(phy_info_t *pi, txgain_setting_t *target_gains)
 	phy_ac_tssi_loopback_path_setup(pi, LOOPBACK_FOR_IQCAL);
 
 	set_idx = PHY_IPA(pi);
-	band_idx = CHSPEC_IS5G(pi->radio_chanspec);
+	band_idx = CHSPEC_ISPHY5G6G(pi->radio_chanspec);
 
 	if (CHSPEC_IS80(pi->radio_chanspec)) {
 		band_bw_idx = 2;
@@ -6935,12 +6700,13 @@ phy_ac_txiqlocal_fdiqi_lin_reg(phy_ac_txiqlocal_info_t *ti, acphy_fdiqi_t *freq_
 #ifdef PHYCAL_CACHING
 void
 phy_ac_txiqlocal_save_cache(phy_ac_txiqlocal_info_t *txiqlocali, ch_calcache_t *ctx,
-	uint8 extraLOcal_cnt)
+	uint8 multilo_cal_cnt)
 {
 	phy_info_t *pi = txiqlocali->pi;
 	acphy_calcache_t *cache;
 	uint8 core;
 	uint16 ab_int[2];
+	uint8 corenum = (uint8) PHYCORENUM(pi->pubpi->phy_corenum);
 	cache = &ctx->u.acphy_cache;
 
 	/* save the calibration to cache */
@@ -6951,31 +6717,12 @@ phy_ac_txiqlocal_save_cache(phy_ac_txiqlocal_info_t *txiqlocali, ch_calcache_t *
 		cache->ofdm_txa[core] = ab_int[0];
 		cache->ofdm_txb[core] = ab_int[1];
 
-		if (extraLOcal_cnt != 0) {
-			if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+		if (multilo_cal_cnt != 0) {
+			if (ACMAJORREV_47_129(pi->pubpi->phy_rev)) {
 				wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_READ,
-						&cache->ofdm_txd_lopwr[core],
-						TB_OFDM_COEFFS_D, core);
-			} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
-				switch (extraLOcal_cnt) {
-				case 1:
-					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_READ,
-						&cache->ofdm_txd_lopwr[core],
-						TB_OFDM_COEFFS_D, core);
-					break;
-				case 2:
-					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_READ,
-						&cache->ofdm_txd_lopwr1[core],
-						TB_OFDM_COEFFS_D, core);
-					break;
-				case 3:
-					wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_READ,
-						&cache->ofdm_txd_lopwr2[core],
-						TB_OFDM_COEFFS_D, core);
-					break;
-				}
+					&cache->ofdm_txd[core+corenum*(multilo_cal_cnt-1)],
+					TB_OFDM_COEFFS_D, core);
 			}
-
 		} else {
 			wlc_phy_cal_txiqlo_coeffs_acphy(pi, CAL_COEFF_READ,
 			                                &cache->ofdm_txd[core],
@@ -7095,7 +6842,7 @@ wlc_phy_txcal_set_cal_params(phy_info_t *pi, uint8 searchmode, uint8 mphase, boo
 		} else if (ACMAJORREV_4(pi->pubpi->phy_rev)) {
 			ti->cmds = paramsi->cmds_RESTART;
 			/* numb of commands in tiny are 5 only */
-			if ((CHSPEC_IS5G(pi->radio_chanspec)) && !PHY_IPA(pi)) {
+			if ((CHSPEC_ISPHY5G6G(pi->radio_chanspec)) && !PHY_IPA(pi)) {
 				ti->num_cmds_per_core = 4;
 			} else {
 				ti->num_cmds_per_core = 5;
@@ -7104,7 +6851,7 @@ wlc_phy_txcal_set_cal_params(phy_info_t *pi, uint8 searchmode, uint8 mphase, boo
 			ti->cmds = paramsi->cmds_RESTART;
 			ti->num_cmds_per_core = paramsi->num_cmds_restart;
 		}
-	} else if (searchmode == PHY_CAL_SEARCHMODE_LOPWR) {
+	} else if (searchmode == PHY_CAL_SEARCHMODE_MULTILO) {
 		ti->cmds = paramsi->cmds_LOPWR;
 		ti->num_cmds_per_core = paramsi->num_cmds_lopwr;
 	} else {

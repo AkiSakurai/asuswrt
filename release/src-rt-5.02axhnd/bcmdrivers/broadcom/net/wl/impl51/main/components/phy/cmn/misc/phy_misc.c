@@ -1,7 +1,7 @@
 /*
  * Miscellaneous module implementation.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_misc.c 775501 2019-06-02 00:18:19Z $
+ * $Id: phy_misc.c 779590 2019-10-03 03:28:07Z $
  */
 
 #include <phy_cfg.h>
@@ -177,7 +177,7 @@ wlc_phy_test_init(phy_info_t *pi, int channel, bool txpkt)
 {
 	phy_type_misc_fns_t *fns = pi->misci->fns;
 
-	if (channel > MAXCHANNEL)
+	if ((uint)channel > MAXCHANNEL)
 		return BCME_OUTOFRANGECHAN;
 
 	wlc_phy_chanspec_set((wlc_phy_t*)pi, CH20MHZ_CHSPEC(channel));
@@ -519,11 +519,6 @@ wlc_phy_hold_upd(wlc_phy_t *pih, mbool id, bool set)
 		((id == PHY_HOLD_FOR_TOF) ? "TOF" :
 		((id == PHY_HOLD_FOR_NOT_ASSOC) ? "NOT-ASSOC" : "")))))))))))));
 
-	if (set) {
-		mboolset(pi->measure_hold, id);
-	} else {
-		mboolclr(pi->measure_hold, id);
-	}
 	if (id & PHY_HOLD_FOR_SCAN) {
 		PHY_CAL(("wl%d: %s: %s SCAN flag\n", pi->sh->unit, __FUNCTION__,
 			set ? "SET" : "CLR"));
@@ -536,6 +531,18 @@ wlc_phy_hold_upd(wlc_phy_t *pih, mbool id, bool set)
 			 */
 			if (!set) phy_chanmgr_dccal_force(pi);
 		}
+
+		if (set && !SCAN_INPROG_PHY(pi)) {
+			phy_watchdog_suspend(pi);
+		} else if (!set && SCAN_INPROG_PHY(pi)) {
+			phy_watchdog_resume(pi);
+		}
+	}
+
+	if (set) {
+		mboolset(pi->measure_hold, id);
+	} else {
+		mboolclr(pi->measure_hold, id);
 	}
 }
 

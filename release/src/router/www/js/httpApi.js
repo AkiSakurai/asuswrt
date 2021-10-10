@@ -324,8 +324,9 @@ var httpApi ={
 	},
 
 	"detwanGetRet": function(){
-		var wanInfo = httpApi.nvramGet(["wan0_state_t", "wan0_sbstate_t", "wan0_auxstate_t", "autodet_state", "autodet_auxstate", "wan0_proto", "link_internet", "x_Setting"], true);
-	
+		var wanInfo = httpApi.nvramGet(["wan0_state_t", "wan0_sbstate_t", "wan0_auxstate_t", "autodet_state", "autodet_auxstate", "wan0_proto",
+										 "link_internet", "x_Setting", "link_wan"], true);
+
 		var wanTypeList = {
 			"dhcp": "DHCP",
 			"static": "STATIC",
@@ -360,6 +361,12 @@ var httpApi ={
 			retData.isIPConflict = false;
 			retData.isError = true;
 		}
+		else if(wanInfo.link_wan == ""){
+			retData.wanType = wanTypeList.check;
+		}
+		else if(wanInfo.link_wan == "0"){
+			retData.wanType = wanTypeList.noWan;
+		}
 		else if(
 			wanInfo.link_internet   == "2" &&
 			wanInfo.wan0_state_t    == "2" &&
@@ -367,6 +374,11 @@ var httpApi ={
 			wanInfo.wan0_auxstate_t == "0"
 		){
 			retData.wanType = (iCanUsePPPoE && wanInfo.x_Setting  == "0") ? wanTypeList.pppdhcp : wanTypeList.connected;
+		}
+		else if( (wanInfo.wan0_state_t    == "2" && wanInfo.wan0_sbstate_t  == "0" && wanInfo.wan0_auxstate_t == "2") ||
+				 (wanInfo.wan0_state_t    == "2" && wanInfo.wan0_sbstate_t  == "0" && wanInfo.wan0_auxstate_t == "0")
+		){
+				retData.wanType = wanTypeList.dhcp;
 		}
 		else if(wanInfo.autodet_state == ""){
 			retData.wanType = wanTypeList.check;
@@ -386,9 +398,6 @@ var httpApi ={
 		else if(hadPlugged("modem")){
 			retData.wanType = wanTypeList.modem;
 		}
-		else if(wanInfo.wan0_auxstate_t == "1"){
-			retData.wanType = wanTypeList.noWan;
-		}
 		else if(wanInfo.autodet_state == "3" || wanInfo.autodet_state == "5"){
 			retData.wanType = wanTypeList.resetModem;
 		}
@@ -403,9 +412,6 @@ var httpApi ={
 			else{
 				retData.wanType = wanTypeList.noWan;
 			}
-		}
-		else if(wanInfo.autodet_state == "2"){
-			retData.wanType = wanTypeList.dhcp;
 		}
 		else{
 			retData.wanType = wanTypeList.check;
@@ -975,5 +981,19 @@ var httpApi ={
 				value: "Check Now"
 			}))			
 			.appendTo("body").submit().remove();
+	},
+
+	"set_ledg" : function(postData, parmData){
+		var asyncDefault = true;
+		$.ajax({
+			url: '/set_ledg.cgi',
+			dataType: 'json',
+			data: postData,
+			async: asyncDefault,
+			error: function(){},
+			success: function(response){
+				if(parmData != undefined && parmData.callBack) parmData.callBack.call(response);
+			}
+		});
 	}
 }

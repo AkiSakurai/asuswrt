@@ -100,6 +100,9 @@ static const struct led_btn_table_s {
 #else
 	{ "led_lan_gpio",	&led_gpio_table[LED_LAN] },
 #endif
+#if defined(RTAX86U) || defined(RTAX5700)
+	{ "led_lan_gpio",	&led_gpio_table[LED_LAN] },
+#endif
 	{ "led_wan_gpio",	&led_gpio_table[LED_WAN] },
 #ifdef HND_ROUTER
 	{ "led_wan_normal_gpio",&led_gpio_table[LED_WAN_NORMAL] },
@@ -224,12 +227,30 @@ static const struct led_btn_table_s {
 	{ "led_sig1_gpio",		&led_gpio_table[LED_SIG1] },
 	{ "led_sig2_gpio",		&led_gpio_table[LED_SIG2] },
 #endif		
-#if defined(RTAX95Q)
-	{ "bt_rst_gpio",	&led_gpio_table[BT_RESET] },
-	{ "bt_disable_gpio",	&led_gpio_table[BT_DISABLE] },
+#if defined(RTAX95Q) || defined(RTAX56_XD4)
+	{ "bt_rst_gpio",        &led_gpio_table[BT_RESET] },
+	{ "bt_disable_gpio",    &led_gpio_table[BT_DISABLE] },
 	{ "led_rgb1_red_gpio",	&led_gpio_table[LED_RGB1_RED] },
 	{ "led_rgb1_green_gpio",	&led_gpio_table[LED_RGB1_GREEN] },
 	{ "led_rgb1_blue_gpio",	&led_gpio_table[LED_RGB1_BLUE] },
+#endif
+#if defined(RTAX56_XD4)
+	{ "btn_bt_indicator_gpio",        &led_gpio_table[IND_BT] },
+	{ "btn_pa_indicator_gpio",    &led_gpio_table[IND_PA] },
+#endif
+#ifdef RTAX82U
+	{ "led_group1_red_gpio",	&led_gpio_table[LED_GROUP1_RED] },
+	{ "led_group1_green_gpio",	&led_gpio_table[LED_GROUP1_GREEN] },
+	{ "led_group1_blue_gpio",	&led_gpio_table[LED_GROUP1_BLUE] },
+	{ "led_group2_red_gpio",	&led_gpio_table[LED_GROUP2_RED] },
+	{ "led_group2_green_gpio",	&led_gpio_table[LED_GROUP2_GREEN] },
+	{ "led_group2_blue_gpio",	&led_gpio_table[LED_GROUP2_BLUE] },
+	{ "led_group3_red_gpio",	&led_gpio_table[LED_GROUP3_RED] },
+	{ "led_group3_green_gpio",	&led_gpio_table[LED_GROUP3_GREEN] },
+	{ "led_group3_blue_gpio",	&led_gpio_table[LED_GROUP3_BLUE] },
+	{ "led_group4_red_gpio",	&led_gpio_table[LED_GROUP4_RED] },
+	{ "led_group4_green_gpio",	&led_gpio_table[LED_GROUP4_GREEN] },
+	{ "led_group4_blue_gpio",	&led_gpio_table[LED_GROUP4_BLUE] },
 #endif
 
 	{ NULL, NULL },
@@ -652,6 +673,42 @@ int button_pressed(int which)
 	else return 0;
 }
 
+#if defined(RTAX86U) || defined(RTAX5700)
+void config_ext_wan_led(int onoff) {
+	unsigned int val = 0;
+	unsigned int mask = 0x200000; // bit20
+	char buf1[32], buf2[32], *ptr;
+	char *reg1 = "0xFF800528";
+	char *rd_argv[] = {"dw", reg1, NULL};
+	char *wr_argv[] = {"sw", reg1, buf1, NULL};
+
+	if(onoff != 0 && onoff != 1)
+		return;
+
+	_eval(rd_argv, ">/tmp/output_reg", 0, NULL);
+
+	memset(buf1, 0, sizeof(buf1));
+	f_read("/tmp/output_reg", buf1, sizeof(buf1));
+
+	if((ptr = strstr(buf1, reg1)) == NULL)
+		return;
+	snprintf(buf2, sizeof(buf2), "%s", ptr);
+	ptr = buf2+strlen(reg1)+3;
+
+	val = strtoul(ptr, NULL, 16);
+
+	if(onoff)
+		val &= ~mask;
+	else
+		val |= mask;
+
+	snprintf(buf1, sizeof(buf1), "0x%x", val);
+
+	_eval(wr_argv, NULL, 0, NULL);
+
+	return;
+}
+#endif
 
 int led_control(int which, int mode)
 #ifdef RT4GAC55U
@@ -677,6 +734,13 @@ int do_led_control(int which, int mode)
 
 	if (which < 0 || which >= LED_ID_MAX || mode < 0 || mode >= LED_FAN_MODE_MAX)
 		return -1;
+
+#if defined(RTAX86U) || defined(RTAX5700)
+	if(which == LED_LAN){
+		config_ext_wan_led(mode);
+		return 0;
+	}
+#endif
 
 	get_gpio_values_once(0);
 	use_gpio = led_gpio_table[which];
@@ -767,7 +831,9 @@ int get_port_status(int unit)
 	int mask = 0;
 
 #ifdef HND_ROUTER
-	int i, ret = 0, extra_p0 = 0;
+	int i, ret = 0;
+#ifndef RTCONFIG_HND_ROUTER_AX_675X
+	int extra_p0 = 0;
 	unsigned int regv=0, pmdv=0;
 
 #ifdef RTCONFIG_EXT_BCM53134
@@ -783,6 +849,7 @@ int get_port_status(int unit)
 			extra_p0 = S_53134;
 			break;
 	}
+#endif
 #endif
 
 #if defined(RTCONFIG_HND_ROUTER_AX_6710)
@@ -826,7 +893,10 @@ int wanport_status(int wan_unit)
 	return get_phy_status(wan_unit);
 #else // Broadcom
 #if defined(RTCONFIG_HND_ROUTER_AX_6710)
-	return hnd_get_phy_status(get_wanx_ifname(wan_unit));
+	if(!is_router_mode())
+		return hnd_get_phy_status(nvram_safe_get("eth_ifnames"));
+	else
+		return hnd_get_phy_status(get_wanx_ifname(wan_unit));
 #elif defined(RTCONFIG_HND_ROUTER_AX_675X)
 	int i = 0;
 	char word[100], *next;
@@ -839,7 +909,7 @@ int wanport_status(int wan_unit)
 	}
 
 	return 0;
-#else
+#else // RTCONFIG_HND_ROUTER_AX_675X
 	char word[100], *next;
 	int mask;
 	char wan_ports[16];
@@ -885,7 +955,7 @@ int wanport_status(int wan_unit)
 		}
 #endif
 	}
-#else
+#else // HND_ROUTER
 #ifndef RTN53
 	if(sw_mode() == SW_MODE_AP && nvram_get_int("re_mode") == 0)
 		strcpy(wan_ports, "lanports");
@@ -901,7 +971,7 @@ int wanport_status(int wan_unit)
 		if(sw_mode() == SW_MODE_AP)
 			break;
 	}
-#endif
+#endif // HND_ROUTER
 
 #ifdef RTCONFIG_WIRELESSWAN
 	// to do for report wireless connection status
@@ -934,7 +1004,7 @@ int wanport_status(int wan_unit)
 		}
 	}
 	return ret;
-#else
+#else // HND_ROUTER
 	return get_phy_status(mask);
 #endif // HND_ROUTER
 #endif	/* RTCONFIG_HND_ROUTER_AX_675X */
@@ -1009,6 +1079,8 @@ int lanport_status(void)
 #endif
 
 #elif defined(RTCONFIG_QCA)
+	return rtkswitch_lanPorts_phyStatus();
+#elif defined(RTAX55) || defined(RTAX1800)
 	return rtkswitch_lanPorts_phyStatus();
 #else
 	char word[100], *next;
@@ -1103,6 +1175,12 @@ int lanport_ctrl(int ctrl)
 		system("/usr/bin/switch_cli GSW_MDIO_DATA_WRITE nAddressDev=4 nAddressReg=0 nData=0x1c00");
 		system("/usr/bin/switch_cli GSW_MDIO_DATA_WRITE nAddressDev=5 nAddressReg=0 nData=0x1c00");
 	}
+	return 1;
+#elif defined(RTAX55) || defined(RTAX1800)
+	if (ctrl)
+		rtkswitch_LanPort_linkUp();
+	else
+		rtkswitch_LanPort_linkDown();
 	return 1;
 #else
 	char word[100], *next;

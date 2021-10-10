@@ -1,7 +1,7 @@
 /*
  * ACPHY Miscellaneous modules implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_misc.c 778060 2019-08-21 18:50:19Z $
+ * $Id: phy_ac_misc.c 780478 2019-10-26 09:55:49Z $
  */
 
 #include <phy_cfg.h>
@@ -1654,7 +1654,7 @@ wlc_phy_force_rfseq_acphy(phy_info_t *pi, uint8 cmd)
 	/* Force gated clocks on */
 	if ((pi->pubpi->phy_rev >= 32)) {
 		wlapi_bmac_phyclk_fgc(pi->sh->physhim, ON);
-		W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), 0x6); /* set reg(PHY_CTL) 0x6 */
+		W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), (uint16)0x6); /* set reg(PHY_CTL) 0x6 */
 
 		/* Disable Stalls */
 		if (stall_val == 0)
@@ -1698,7 +1698,7 @@ wlc_phy_force_rfseq_acphy(phy_info_t *pi, uint8 cmd)
 		OSL_DELAY(1);
 
 		/* Force gated clocks off */
-		W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), phyctl_save); /* restore */
+		W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), (uint16)phyctl_save); /* restore */
 		wlapi_bmac_phyclk_fgc(pi->sh->physhim, OFF);
 	}
 	WRITE_PHYREG(pi, RfseqMode, orig_RfseqCoreActv);
@@ -1921,6 +1921,9 @@ wlc_phy_cts2self(phy_info_t *pi, uint16 duration)
 	/* Make sure mac is suspended when this function is called and over */
 	ASSERT((R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC) == 0);
 
+	/* Make sure pktproc is not at tx state */
+	ASSERT(READ_PHYREGFLD(pi, pktprocdebug, pktprocstate) != 0x11);
+
 	while (carrier_depth) {
 		/* Leave the stay in carrier status as original */
 		phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, TRUE);
@@ -1996,8 +1999,7 @@ wlc_phy_gen_load_samples_acphy(phy_info_t *pi, int32 f_kHz, uint16 max_val)
 	uint16 tbl_len, norm_val;
 	math_cint32* tone_buf = NULL;
 
-	if (ACMAJORREV_3(pi->pubpi->phy_rev) || ACMAJORREV_4(pi->pubpi->phy_rev) ||
-		(ACMAJORREV_44(pi->pubpi->phy_rev) && HW_ACMINORREV(pi) == 0)) {
+	if (ACMAJORREV_3(pi->pubpi->phy_rev) || ACMAJORREV_4(pi->pubpi->phy_rev)) {
 		spb_depth = 256;
 	}
 
@@ -2339,7 +2341,7 @@ wlc_phy_stopplayback_acphy(phy_info_t *pi, bool no_reset)
 		SPINWAIT(((READ_PHYREG(pi, sampleStatus) & 0x7) != 0),
 			ACPHY_SPINWAIT_RUNSAMPLE);
 		if ((READ_PHYREG(pi, sampleStatus) & 0x7) != 0) {
-			W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), 0);
+			W_REG(pi->sh->osh, D11_PSM_PHY_CTL(pi), (uint16)0);
 			PHY_FATAL_ERROR_MESG((" %s: SPINWAIT ERROR : Sample play stop failed \n",
 				__FUNCTION__));
 			PHY_FATAL_ERROR(pi, PHY_RC_RX2TX_FAILED);
@@ -2890,73 +2892,7 @@ wlc_phy_gpaio_acphy(phy_info_t *pi, wl_gpaio_option_t option, int core)
 					break;
 		}
 	} else {
-		if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-			MOD_RADIO_REG_28NM(pi, RFP, GPAIO_SEL2, core, gpaio_pu, 0x1);
-			/* powerdown rcal, otherwise it conflicts */
-			MOD_RADIO_REG_28NM(pi, RFP, GPAIO_SEL2, core, gpaio_rcal_pu, 0);
-			/* To bring out various radio test signals on gpaio. */
-			switch (option) {
-				case (GPAIO_PMU_AFELDO): {
-						test_en = 1;
-						ana_mux = 0;
-						testpoint = 34;
-						break;
-				}
-				case (GPAIO_PMU_TXLDO): {
-						test_en = 1;
-						ana_mux = 1;
-						testpoint = 34;
-						break;
-				}
-				case (GPAIO_PMU_VCOLDO): {  // logen LDO
-						test_en = 1;
-						ana_mux = 2;
-						testpoint = 34;
-						break;
-				}
-				case GPAIO_PMU_LNALDO: {  //   ldo1p6
-						test_en = 1;
-						ana_mux = 3;
-						testpoint = 34;
-						break;
-				}
-				case GPAIO_PMU_CLEAR: {
-						test_en = 0;
-						ana_mux = 0;
-						testpoint = 100;
-						break;
-				}
-				case GPAIO_OFF: {
-						test_en = 0;
-						ana_mux = 0;
-						testpoint = 100;
-						MOD_RADIO_REG_28NM(pi, RFP, GPAIO_SEL2,
-						core, gpaio_pu, 0);
-						break;
-				}
-				default:
-						break;
-			}
-
-			if (testpoint < 16) {
-				gpaiosel0 = 1 << (testpoint - 0);
-			} else if (testpoint < 32) {
-				gpaiosel1 = 1 << (testpoint - 16);
-			} else if (testpoint < 37) {
-				gpaiosel3 = 1 << (testpoint - 32);
-			}
-
-			MOD_RADIO_REG_28NM(pi, RFP, GPAIO_SEL0, core,
-					gpaio_sel_0to15_port, gpaiosel0);
-			MOD_RADIO_REG_28NM(pi, RFP, GPAIO_SEL1, core,
-					gpaio_sel_16to31_port, gpaiosel1);
-			MOD_RADIO_REG_28NM(pi, RFP, GPAIO_SEL3, core,
-					gpaio_sel_32to47_port, gpaiosel3);
-
-			MOD_RADIO_REG_28NM(pi, RF, PMU_OP2, core, wlpmu_tsten, test_en);
-			MOD_RADIO_REG_28NM(pi, RF, PMU_OP2, core, wlpmu_ana_mux, ana_mux);
-		} else if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
-
+		if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 			MOD_RADIO_REG_20694(pi, RF, GPAIO_SEL2, core, gpaio_pu, 0x1);
 			/* powerdown rcal, otherwise it conflicts */
 			MOD_RADIO_REG_20694(pi, RF, GPAIO_SEL2, core, gpaio_rcal_pu, 0);
@@ -3500,7 +3436,7 @@ phy_ac_misc_get_rxgainerr(phy_type_misc_ctx_t *ctx, int16 *gainerr)
 	phy_info_t *pi = info->pi;
 	bool srom_isempty[PHY_CORE_MAX] = { 0 };
 	uint8 core;
-#ifdef BAND5G
+#if BAND5G
 	uint8 core_freq_segment_map;
 	uint16 channel;
 	chanspec_t chanspec = pi->radio_chanspec;

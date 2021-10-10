@@ -1,7 +1,7 @@
 /*
  * ACPHY One Core Listen (OCL) module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -98,12 +98,6 @@ static uint16 *get_tiny_4349_ocl_wakeonclip_cmd(void);
 static uint16 *get_tiny_4349_ocl_wakeonclip_dly(void);
 static uint16 *BCMRAMFN(get_ocl_shutoff_cmd_rev40)(void);
 static uint16 *BCMRAMFN(get_ocl_shutoff_dly_rev40)(void);
-static uint16 *BCMRAMFN(get_ocl_wakeoncrs_cmd_rev44)(void);
-static uint16 *BCMRAMFN(get_ocl_wakeoncrs_dly_rev44)(void);
-static uint16 *BCMRAMFN(get_ocl_wakeonclip_cmd_rev44)(void);
-static uint16 *BCMRAMFN(get_ocl_wakeonclip_dly_rev44)(void);
-static uint16 *BCMRAMFN(get_ocl_shutoff_cmd_rev44)(void);
-static uint16 *BCMRAMFN(get_ocl_shutoff_dly_rev44)(void);
 
 /* ocl reset2rx */
 uint16 tiny_4349_ocl_reset2rx_cmd[] =
@@ -847,29 +841,19 @@ static void
 phy_ac_ocl_phy_reg_config_28nm(phy_info_t *pi)
 {
 	if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
-		if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-			MOD_PHYREG(pi, OCLControl1, dsss_cck_scd_shutOff_enable, 0);
-			MOD_PHYREG(pi, ocl_inactivecore_gain_ctrl,
-					ocl_inactivecore_wakeon_crs_defer_pktgain, 1);
-			MOD_PHYREG(pi, ocl_inactivecore_gain_ctrl,
-					ocl_inactivecore_wakeon_crs_defer_pktgain_initindx, 2);
-			WRITE_PHYREG(pi, ocl_ant_decision_est_holdoff_ctr_ofdm_det, 64);
-			WRITE_PHYREG(pi, ocl_ant_decision_est_holdoff_ctr_cck_det, 64);
-			//more blanking time needed for asymmetric SOI
-			WRITE_PHYREG(pi, ocl_inactivecore_wakeon_crs_pktabort_blanking_len, 360);
-			MOD_PHYREG(pi, OCLControl2, OCLcckdigigainEnCntValue, 130);
-		} else {	/* ACMAJORREV_40 */
-			MOD_PHYREG(pi, OCLControl1, dsss_cck_scd_shutOff_enable, 1);
-			MOD_PHYREG(pi, ocl_inactivecore_gain_ctrl,
-					ocl_inactivecore_wakeon_crs_defer_pktgain, 1);
-			MOD_PHYREG(pi, ocl_inactivecore_gain_ctrl,
-					ocl_inactivecore_wakeon_crs_defer_pktgain_initindx, 2);
-			WRITE_PHYREG(pi, ocl_ant_decision_est_holdoff_ctr_ofdm_det, 64);
-			WRITE_PHYREG(pi, ocl_ant_decision_est_holdoff_ctr_cck_det, 64);
-			//more blanking time needed for asymmetric SOI
-			WRITE_PHYREG(pi, ocl_inactivecore_wakeon_crs_pktabort_blanking_len, 360);
-			MOD_PHYREG(pi, OCLControl2, OCLcckdigigainEnCntValue, 130);
-		}
+		/* ACMAJORREV_40 */
+		MOD_PHYREG(pi, OCLControl1, dsss_cck_scd_shutOff_enable, 1);
+		MOD_PHYREG(pi, ocl_inactivecore_gain_ctrl,
+		           ocl_inactivecore_wakeon_crs_defer_pktgain, 1);
+		MOD_PHYREG(pi, ocl_inactivecore_gain_ctrl,
+		           ocl_inactivecore_wakeon_crs_defer_pktgain_initindx, 2);
+		WRITE_PHYREG(pi, ocl_ant_decision_est_holdoff_ctr_ofdm_det, 64);
+		WRITE_PHYREG(pi, ocl_ant_decision_est_holdoff_ctr_cck_det, 64);
+
+		//more blanking time needed for asymmetric SOI
+		WRITE_PHYREG(pi, ocl_inactivecore_wakeon_crs_pktabort_blanking_len, 360);
+		MOD_PHYREG(pi, OCLControl2, OCLcckdigigainEnCntValue, 130);
+
 		if (CHSPEC_IS20(pi->radio_chanspec))
 			MOD_PHYREG(pi, FSTRHiPwrTh, finestr_hiPwr_th, 0x38);
 		else
@@ -922,110 +906,6 @@ phy_ac_ocl_logen_config_28nm(phy_info_t *pi)
 			wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_RFSEQ, 1, 0x1b6, 16, &regval);
 
 		}
-	}
-	/* rf seq config for logen. Related JIRAs: HW-1518, HW-1519 */
-	/* Related TCL proc acphy_load_rfseq_logen */
-	if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-
-		mask = 0x8484;
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xe8, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xe7, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xe3, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xe5, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xe1, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xeb, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xe4, 16, mask);
-
-		mask = 0x303;
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x586, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x581, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x583, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xee, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xef, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x582, 16, mask);
-
-		mask = 0x3;
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x585, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xed, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x580, 16, mask);
-
-		mask = 0x88a;
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x36f, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x37f, 16, mask);
-
-		mask = 0x2;
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x176, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x170, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x172, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x174, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x186, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x210, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x340, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x180, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x182, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x181, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x183, 16, mask);
-
-		mask = 0x8400;
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xe2, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xe6, 16, mask);
-
-		mask = 0x300;
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x580, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x584, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x585, 16, mask);
-
-		mask = 0x800;
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x36e, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x37e, 16, mask);
-
-		mask = 0x84;
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xe0, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0xe2, 16, mask);
-
-		/* turn off rx2g_gm_bias_en and lna2g_lna1_bias_pu */
-		mask = 0x600;
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x1A0, 16, mask);
-		wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x1B0, 16, mask);
-
-		/* 0x36f, 0x37f, 0x38f corresonds logen_pwrup for core 0, 1 and 2(legacy) */
-		mask = 0xa020;
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x36f, 16, mask);
-		wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x37f, 16, mask);
-
-		if (ac_ocl_info->data->ocl_coremask == 1) {
-			/* settings for OCL Shutdown for RXPD_TXPD, RXPD_TXPD1 and RXPD_TXPD2
-			 * 0x171, 0x173, 0x175 corresponds to logen_core0_pu for PD, PD1 and PD2
-			 * 0x181, 0x183, 0x185 corresponds to logen_core1_pu for PD, PD1 and PD2
-			 * 0x191, 0x193, 0x195 corresponds to logen_core2_pu for PD, PD1 and PD2
-			 */
-			mask = 0x2;
-			wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x171, 16, mask);
-			wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x181, 16, mask);
-
-			wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x173, 16, mask);
-			wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x183, 16, mask);
-
-			wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x175, 16, mask);
-			wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x185, 16, mask);
-		} else if (ac_ocl_info->data->ocl_coremask == 2) {
-			/* settings for OCL Shutdown for RXPD_TXPD, RXPD_TXPD1 and RXPD_TXPD2
-			 * 0x36f, 0x37f, 0x38f corresonds logen_pwrup for core 0, 1 and 2(legacy)
-			 * 0x171, 0x173, 0x175 corresponds to logen_core0_pu for PD, PD1 and PD2
-			 * 0x181, 0x183, 0x185 corresponds to logen_core1_pu for PD, PD1 and PD2
-			 * 0x191, 0x193, 0x195 corresponds to logen_core2_pu for PD, PD1 and PD2
-			 */
-			mask = 0x2;
-			wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x171, 16, mask);
-			wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x181, 16, mask);
-
-			wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x173, 16, mask);
-			wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x183, 16, mask);
-
-			wlc_phy_table_clrbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x175, 16, mask);
-			wlc_phy_table_setbit_acphy(pi, ACPHY_TBL_ID_RFSEQ, 0x185, 16, mask);
-		}
-
 	}
 }
 
@@ -1108,11 +988,6 @@ phy_ac_ocl_enable(phy_info_t *pi, bool enable)
 				MOD_PHYREG(pi, fineRxclockgatecontrol, EncodeGainClkEn, 0);
 				MOD_PHYREG(pi, RxFeCtrl1, forceSdFeClkEn, 3);
 			}
-		} else if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-			if (pi->pubpi->slice == DUALMAC_AUX) {
-				MOD_PHYREG(pi, HPFBWovrdigictrl, bphy_core_sel_ovr, 1);
-			}
-			MOD_PHYREG(pi, OCLControl1, InactiveCore_Adc_turnOff, 1);
 		}
 	} else {
 		MOD_PHYREG(pi, OCLControl1, ocl_mode_enable, 0);
@@ -1143,8 +1018,6 @@ phy_ac_ocl_enable(phy_info_t *pi, bool enable)
 				MOD_PHYREG(pi, fineRxclockgatecontrol, EncodeGainClkEn, 1);
 				MOD_PHYREG(pi, RxFeCtrl1, forceSdFeClkEn, 0);
 			}
-		} else if (ACMAJORREV_44(pi->pubpi->phy_rev) && pi->pubpi->slice == DUALMAC_AUX) {
-			MOD_PHYREG(pi, HPFBWovrdigictrl, bphy_core_sel_ovr, 0);
 		}
 	}
 	phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, FALSE);

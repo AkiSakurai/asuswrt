@@ -3,7 +3,7 @@
  * PHY iovar processing of Broadcom BCM43XX 802.11abg
  * Networking Device Driver.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phy_iovar.c 775443 2019-05-30 09:07:19Z $
+ * $Id: wlc_phy_iovar.c 779613 2019-10-03 12:07:45Z $
  */
 
 /*
@@ -205,7 +205,7 @@ static const bcm_iovar_t phy_iovars[] = {
 	{"carrier_suppress", IOV_CARRIER_SUPPRESS,
 	(IOVF_SET_UP | IOVF_MFG), 0, IOVT_UINT8, 0
 	},
-#ifdef BAND5G
+#if BAND5G
 	{"subband5gver", IOV_PHY_SUBBAND5GVER,
 	0, 0, IOVT_INT8, 0
 	},
@@ -249,7 +249,7 @@ static const bcm_iovar_t phy_iovars[] = {
 	{"phy_forcesteer", IOV_PHY_FORCESTEER,
 	(IOVF_SET_UP | IOVF_MFG), 0, IOVT_UINT8, 0
 	},
-#ifdef BAND5G
+#if BAND5G
 	{"phy_5g_pwrgain", IOV_PHY_5G_PWRGAIN,
 	(IOVF_SET_DOWN | IOVF_MFG), 0, IOVT_UINT8, 0
 	},
@@ -383,6 +383,9 @@ static const bcm_iovar_t phy_iovars[] = {
 	{"rpcalvars", IOV_RPCALVARS,
 	(IOVF_SET_DOWN | IOVF_MFG), 0, IOVT_BUFFER, 2*WL_NUM_RPCALVARS * sizeof(wl_rpcal_t)
 	},
+	{"rpcalphasevars", IOV_RPCALPHASEVARS,
+	(IOVF_SET_DOWN | IOVF_MFG), 0, IOVT_BUFFER, WL_NUM_RPCALPHASEVARS * sizeof(wl_rpcal_phase_t)
+	},
 #endif // endif
 #if defined(WLTEST)
 	{"phy_tpc_av", IOV_TPC_AV,
@@ -403,25 +406,17 @@ static const bcm_iovar_t phy_iovars[] = {
 	{"phy_afeoverride", IOV_PHY_AFE_OVERRIDE,
 	(0), 0, IOVT_UINT8, 0
 	},
-#if (NCONF || LCN20CONF || ACCONF || ACCONF2)
+#if (NCONF || ACCONF || ACCONF2)
 	{"phy_rssi_gain_cal_temp", IOV_PHY_RSSI_GAIN_CAL_TEMP,
 	(0), 0, IOVT_INT32, 0
 	},
-#endif /* (NCONF || LCN20CONF || ACCONF || ACCONF2) && WLTEST */
+#endif /* (NCONF || ACCONF || ACCONF2) && WLTEST */
 #if defined(WLTEST)
 	{"phy_auxpga", IOV_PHY_AUXPGA,
 	(IOVF_SET_DOWN | IOVF_MFG), 0, IOVT_BUFFER, 6*sizeof(uint8)
 	},
 #endif // endif
 #if defined(WLTEST)
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-	{"lcnphy_txclampdis", IOV_LCNPHY_TXPWRCLAMP_DIS,
-	IOVF_GET_UP, 0, IOVT_UINT8, 0
-	},
-	{"lcnphy_txclampofdm", IOV_LCNPHY_TXPWRCLAMP_OFDM,
-	IOVF_GET_UP, 0, IOVT_INT32, 0
-	},
-#endif /* (defined(LCN20CONF) && (LCN20CONF != 0)) */
 #endif /* #if defined(WLTEST) */
 #if defined(BCMDBG)
 	{"lcnphy_txclampcck", IOV_LCNPHY_TXPWRCLAMP_CCK,
@@ -518,8 +513,6 @@ static const bcm_iovar_t phy_iovars[] = {
 #include <wlc_phytbl_20693.h>
 #include <wlc_phytbl_20694.h>
 #include <wlc_phy_radio.h>
-#include <wlc_phy_lcn20.h>
-#include <wlc_phyreg_lcn20.h>
 #include <bcmwifi_channels.h>
 #include <bcmotp.h>
 #ifdef WLSRVSDB
@@ -993,30 +986,6 @@ wlc_phy_cap_get(wlc_phy_t *pih)
 		break;
 #endif /* ACCONF || ACCONF2 */
 
-	case PHY_TYPE_LCN20:
-	/*                 A0     non-A0
-	 * FW default:     OFF    ON
-	 * nvram: ldpc=0   OFF    OFF
-	 * nvram: ldpc=1   ON     ON
-	 * nvram: ldpc=2   ON     OFF
-	 * nvram: ldpc=3   OFF    ON
-	 */
-
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-#ifdef WL11ULB
-		cap |= (wlc_phy_lcn20_ulb_10_capable(pi) ? PHY_CAP_10MHZ : 0);
-		cap |= (wlc_phy_lcn20_ulb_5_capable(pi) ? PHY_CAP_5MHZ : 0);
-#endif /* WL11ULB */
-#endif /* (defined(LCN20CONF) && (LCN20CONF != 0)) */
-
-		if  ((pi->ldpc_en == 1) ||
-		     ((CHIPREV(pi->sh->chiprev) == 0) && (pi->ldpc_en == 2)) ||
-		     (!(CHIPREV(pi->sh->chiprev) == 0) && (pi->ldpc_en == 3)))
-			cap |= (PHY_CAP_HT_PROP_RATES | PHY_CAP_SGI | PHY_CAP_STBC | PHY_CAP_LDPC);
-		else
-			cap |= (PHY_CAP_HT_PROP_RATES | PHY_CAP_SGI | PHY_CAP_STBC);
-		break;
-
 	default:
 		break;
 	}
@@ -1039,7 +1008,6 @@ wlc_phy_acimode_noisemode_reset(wlc_phy_t *pih, chanspec_t chanspec,
 	bool clear_aci_state, bool clear_noise_state, bool disassoc)
 {
 	phy_info_t *pi = (phy_info_t *)pih;
-	uint channel = CHSPEC_CHANNEL(chanspec);
 
 	pi->interf->cca_stats_func_called = FALSE;
 
@@ -1050,16 +1018,16 @@ wlc_phy_acimode_noisemode_reset(wlc_phy_t *pih, chanspec_t chanspec,
 		return BCME_NOTREADY;
 
 	PHY_TRACE(("%s: CurCh %d HomeCh %d disassoc %d\n",
-		__FUNCTION__, channel,
-		pi->interf->curr_home_channel, disassoc));
+		__FUNCTION__, CHSPEC_CHANNEL(chanspec),
+		CHSPEC_CHANNEL(pi->interf->home_chanspec), disassoc));
 
 #ifndef WLC_DISABLE_ACI
 	if ((disassoc) ||
-		((channel != pi->interf->curr_home_channel) &&
+		((chanspec != pi->interf->home_chanspec) &&
 		(disassoc == FALSE))) {
 		/* not home channel... reset */
 		if (ISNPHY(pi)) {
-			wlc_phy_aci_noise_reset_nphy(pi, channel,
+			wlc_phy_aci_noise_reset_nphy(pi, chanspec,
 				clear_aci_state, clear_noise_state, disassoc);
 		}
 	}
@@ -1067,7 +1035,6 @@ wlc_phy_acimode_noisemode_reset(wlc_phy_t *pih, chanspec_t chanspec,
 	UNUSED_PARAMETER(clear_aci_state);
 	UNUSED_PARAMETER(clear_noise_state);
 	UNUSED_PARAMETER(disassoc);
-	BCM_REFERENCE(channel);
 #endif /* Compiling out ACI code */
 
 	return BCME_OK;
@@ -1084,8 +1051,8 @@ wlc_phy_interference_set(wlc_phy_t *pih, bool init)
 
 	if (pi->sh->interference_mode_override == TRUE) {
 		/* keep the same values */
-#ifdef BAND5G
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+#if BAND5G
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			if (pi->sh->interference_mode_5G_override == 0 ||
 				pi->sh->interference_mode_5G_override == 1) {
 				wanted_mode = pi->sh->interference_mode_5G_override;
@@ -1099,8 +1066,8 @@ wlc_phy_interference_set(wlc_phy_t *pih, bool init)
 		}
 	} else {
 
-#ifdef BAND5G
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+#if BAND5G
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			wanted_mode = pi->sh->interference_mode_5G;
 		} else
 #endif /* BAND5G */
@@ -1109,7 +1076,7 @@ wlc_phy_interference_set(wlc_phy_t *pih, bool init)
 		}
 	}
 
-	if (CHSPEC_CHANNEL(pi->radio_chanspec) != pi->interf->curr_home_channel) {
+	if (pi->radio_chanspec != pi->interf->home_chanspec) {
 		wlapi_suspend_mac_and_wait(pi->sh->physhim);
 
 #ifndef WLC_DISABLE_ACI
@@ -1221,12 +1188,6 @@ wlc_phy_iovar_tempsense_paldosense(phy_info_t *pi, int32 *ret_int_ptr, uint8 tem
 			*ret_int_ptr = (int32)wlc_phy_tempsense_acphy(pi);
 		else
 			err = BCME_RADIOOFF;
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-	} else if (ISLCN20PHY(pi)) {
-		int32 int_val = wlc_lcn20phy_tempsense(pi, TEMPER_VBAT_TRIGGER_NEW_MEAS);
-
-		bcopy(&int_val, ret_int_ptr, sizeof(int_val));
-#endif /* #if (defined(LCN20CONF) && (LCN20CONF != 0)) */
 	} else
 		err = BCME_UNSUPPORTED;
 
@@ -1271,10 +1232,6 @@ wlc_phy_iovar_idletssi_reg(phy_info_t *pi, int32 *ret_int_ptr, int32 int_val, bo
 			*ret_int_ptr = tmp;
 		}
 	}
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-	else if (ISLCN20PHY(pi))
-		*ret_int_ptr = wlc_lcn20phy_idle_tssi_reg_iovar(pi, int_val, set, &err);
-#endif /* #if (defined(LCN20CONF) && (LCN20CONF != 0)) */
 
 	return err;
 }
@@ -1285,10 +1242,6 @@ wlc_phy_iovar_avgtssi_reg(phy_info_t *pi, int32 *ret_int_ptr)
 	int err = BCME_OK;
 	if (ISNPHY(pi)) {
 		*ret_int_ptr = wlc_nphy_tssi_read_iovar(pi);
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-	} else if (ISLCN20PHY(pi)) {
-		*ret_int_ptr = wlc_lcn20phy_avg_tssi_reg_iovar(pi);
-#endif /* #if (defined(LCN20CONF) && (LCN20CONF != 0)) */
 	}
 	return err;
 }
@@ -1384,9 +1337,6 @@ wlc_phy_iovar_forcecal(phy_info_t *pi, int32 int_val, int32 *ret_int_ptr, int vs
 
 		/* phy_forcecal will trigger noisecal */
 		pi->trigger_noisecal = TRUE;
-
-	} else if (ISLCN20PHY(pi)) {
-		pi->pi_fptr->calibmodes(pi, PHY_FULLCAL);
 	}
 
 	return err;
@@ -1467,10 +1417,6 @@ wlc_phy_iovar_txpwrctrl(phy_info_t *pi, int32 int_val, bool bool_val, int32 *ret
 			*ret_int_ptr = pi->txpwrctrl;
 		} else if (ISNPHY(pi)) {
 			*ret_int_ptr = pi->nphy_txpwrctrl;
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-		} else if (ISLCN20PHY(pi)) {
-				err = wlc_lcn20phy_iovar_isenabled_tpc(pi, ret_int_ptr);
-#endif /* #if (defined(LCN20CONF) && (LCN20CONF != 0)) */
 		}
 
 	} else {
@@ -1495,11 +1441,6 @@ wlc_phy_iovar_txpwrctrl(phy_info_t *pi, int32 int_val, bool bool_val, int32 *ret
 				wlc_phy_txpwrctrl_enable_acphy(pi, (uint8) int_val);
 			phy_utils_phyreg_exit(pi);
 			wlapi_enable_mac(pi->sh->physhim);
-
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-		} else if (ISLCN20PHY(pi)) {
-			err = wlc_lcn20phy_iovar_txpwrctrl(pi, int_val, ret_int_ptr);
-#endif /* #if (defined(LCN20CONF) && (LCN20CONF != 0)) */
 		}
 	}
 
@@ -1516,10 +1457,6 @@ wlc_phy_iovar_txpwrindex_get(phy_info_t *pi, int32 int_val, bool bool_val, int32
 		*ret_int_ptr = wlc_phy_txpwr_idx_get_nphy(pi);
 	} else if (ISACPHY(pi)) {
 		*ret_int_ptr = wlc_phy_txpwr_idx_get_acphy(pi);
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-	} else if (ISLCN20PHY(pi)) {
-		*ret_int_ptr = wlc_lcn20phy_get_current_tx_pwr_idx(pi);
-#endif /* #if (defined(LCN20CONF) && (LCN20CONF != 0)) */
 	}
 	return err;
 }
@@ -1607,10 +1544,6 @@ wlc_phy_iovar_txpwrindex_set(phy_info_t *pi, void *p)
 			wlc_phy_txpwrctrl_enable_acphy(pi, PHY_TPC_HW_OFF);
 			wlc_phy_txpwr_by_index_acphy(pi, (1 << core), idx[core]);
 		}
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-	} else if (ISLCN20PHY(pi)) {
-		wlc_lcn20phy_set_tx_pwr_by_index(pi, idx[0]);
-#endif /* #if (defined(LCN20CONF) && (LCN20CONF != 0)) */
 	}
 
 	phy_utils_phyreg_exit(pi);
@@ -1780,9 +1713,8 @@ wlc_phy_iovar_test_tssi(phy_info_t *pi, uint8 val, uint8 pwroffset)
 		tssi = (int16) wlc_phy_test_tssi_nphy(pi, val, pwroffset);
 	} else if (ISACPHY(pi)) {
 		tssi = (int16) wlc_phy_test_tssi_acphy(pi, val, pwroffset);
-	} else if (ISLCN20PHY(pi)) {
-		tssi = (int16) wlc_phy_test_tssi_lcn20phy(pi, val, pwroffset);
 	}
+
 	return tssi;
 }
 
@@ -1792,9 +1724,8 @@ wlc_phy_iovar_test_idletssi(phy_info_t *pi, uint8 val)
 	int16 idletssi = INVALID_IDLETSSI_VAL;
 	if (ISACPHY(pi)) {
 		idletssi = (int16) wlc_phy_test_idletssi_acphy(pi, val);
-	} else if (ISLCN20PHY(pi)) {
-		idletssi = (int16) wlc_phy_test_idletssi_lcn20phy(pi, val);
 	}
+
 	return idletssi;
 }
 
@@ -1850,10 +1781,16 @@ wlc_phy_iovar_forceimpbf(phy_info_t *pi)
 			!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 			/* put the steering report in index 127 */
 			uint16 tmpdata16;
-			uint32 tmpdata32 = 0x26002400;
+			uint32 tmpdata32;
+			if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+				tmpdata16 = 0x17C0;
+				tmpdata32 = 0x17C00000;
+			} else {
+				tmpdata16 = 0x2600;
+				tmpdata32 = 0x26002400;
+			}
 			wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_BFDINDEXLUT,
 				1, 159, 32, &tmpdata32);
-			tmpdata16 = 0x2600;
 			wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_IBFERPTADDRLUT,
 				1, 63, 16, &tmpdata16);
 		}
@@ -2014,21 +1951,11 @@ wlc_phy_iovar_get_bphymrc(phy_info_t *pi, int32 *ret_val)
 static void
 wlc_phy_iovar_set_papd_offset(phy_info_t *pi, int16 int_val)
 {
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-	if (ISLCN20PHY(pi)) {
-		wlc_phy_set_papd_offset_lcn20phy(pi, int_val);
-	}
-#endif /* #if ((defined(LCN20CONF) && (LCN20CONF != 0))) */
 }
 
 static int
 wlc_phy_iovar_get_papd_offset(phy_info_t *pi)
 {
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-	if (ISLCN20PHY(pi)) {
-		return wlc_phy_get_papd_offset_lcn20phy(pi);
-	} else
-#endif /* #if ((defined(LCN20CONF) && (LCN20CONF != 0))) */
 		return BCME_UNSUPPORTED;
 }
 #endif // endif
@@ -2399,7 +2326,7 @@ wlc_phy_iovar_dispatch_old(phy_info_t *pi, uint32 actionid, void *p, void *a, in
 		*((uint*)a) = wlc_phy_iovar_test_tssi(pi, (uint8)int_val, 12);
 		break;
 
-#ifdef BAND5G
+#if BAND5G
 	case IOV_SVAL(IOV_NPHY_5G_PWRGAIN):
 		pi->phy_5g_pwrgain = bool_val;
 		break;
@@ -2676,7 +2603,7 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 		break;
 	}
 
-#ifdef BAND5G
+#if BAND5G
 	case IOV_GVAL(IOV_PHY_SUBBAND5GVER):
 		/* Retrieve 5G subband version */
 		int_val = (uint8)(pi->sromi->subband5Gver);
@@ -2755,7 +2682,7 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 	case IOV_SVAL(IOV_PHY_FORCESTEER):
 		wlc_phy_iovar_forcesteer(pi, (uint8)int_val);
 		break;
-#ifdef BAND5G
+#if BAND5G
 	case IOV_SVAL(IOV_PHY_5G_PWRGAIN):
 		pi->phy_5g_pwrgain = bool_val;
 		break;
@@ -2893,7 +2820,7 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 		break;
 
 	case IOV_GVAL(IOV_MIN_TXPOWER):
-		if (ACMAJORREV_4(pi->pubpi->phy_rev) && CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (ACMAJORREV_4(pi->pubpi->phy_rev) && CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			int_val = pi->min_txpower_5g;
 		} else {
 			int_val = pi->min_txpower;
@@ -3008,7 +2935,7 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 		pi->tunings[2] = (uint16)int_val;
 		break;
 #endif /* #if defined(WLTEST) */
-#if (NCONF || LCN20CONF || ACCONF || ACCONF2)
+#if (NCONF || ACCONF || ACCONF2)
 	case IOV_GVAL(IOV_PHY_RSSI_GAIN_CAL_TEMP):
 		*ret_int_ptr = pi->srom_gain_cal_temp;
 		break;
@@ -3016,7 +2943,7 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 	case IOV_SVAL(IOV_PHY_RSSI_GAIN_CAL_TEMP):
 		pi->srom_gain_cal_temp  = (int16)int_val;
 		break;
-#endif /* (NCONF || LCN20CONF || ACCONF || ACCONF2) && WLTEST */
+#endif /* (NCONF || ACCONF || ACCONF2) && WLTEST */
 
 #if defined(BCMDBG) || defined(WLTEST) || defined(ATE_BUILD) || \
 	defined(BCMDBG_TEMPSENSE)
@@ -3214,7 +3141,7 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 				bcopy(&pi->ppr->u.sr8.mcs[tmppo.band][0], &tmppo.mcspo,
 					8*sizeof(uint16));
 				break;
-#ifdef BAND5G
+#if BAND5G
 			case WL_CHAN_FREQ_RANGE_5G_BAND0:
 				tmppo.ofdmpo = pi->ppr->u.sr8.ofdm[tmppo.band];
 				bcopy(&pi->ppr->u.sr8.mcs[tmppo.band], &tmppo.mcspo,
@@ -3270,7 +3197,7 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 				bcopy(inpo.mcspo, &(pi->ppr->u.sr8.mcs[inpo.band][0]),
 					8*sizeof(uint16));
 				break;
-#ifdef BAND5G
+#if BAND5G
 			case WL_CHAN_FREQ_RANGE_5G_BAND0:
 				pi->ppr->u.sr8.ofdm[inpo.band] = inpo.ofdmpo;
 				bcopy(inpo.mcspo, &(pi->ppr->u.sr8.mcs[inpo.band][0]),
@@ -3445,6 +3372,59 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 		}
 		break;
 	}
+	case IOV_SVAL(IOV_RPCALPHASEVARS): {
+		const wl_rpcal_phase_t *rpcal_phase = p;
+		if (ACMAJORREV_1(pi->pubpi->phy_rev)) {
+			PHY_ERROR(("Number of TX Chain has to be > 1!\n"));
+			err = BCME_UNSUPPORTED;
+		} else {
+			pi->u.pi_acphy->sromi->rpcal_phase2g =
+				rpcal_phase[WL_CHAN_FREQ_RANGE_2G].update ?
+				rpcal_phase[WL_CHAN_FREQ_RANGE_2G].value :
+				pi->u.pi_acphy->sromi->rpcal_phase2g;
+
+			pi->u.pi_acphy->sromi->rpcal_phase5gb0 =
+				rpcal_phase[WL_CHAN_FREQ_RANGE_5G_BAND0].update ?
+				rpcal_phase[WL_CHAN_FREQ_RANGE_5G_BAND0].value :
+				pi->u.pi_acphy->sromi->rpcal_phase5gb0;
+
+			pi->u.pi_acphy->sromi->rpcal_phase5gb1 =
+				rpcal_phase[WL_CHAN_FREQ_RANGE_5G_BAND1].update ?
+				rpcal_phase[WL_CHAN_FREQ_RANGE_5G_BAND1].value :
+				pi->u.pi_acphy->sromi->rpcal_phase5gb1;
+
+			pi->u.pi_acphy->sromi->rpcal_phase5gb2 =
+				rpcal_phase[WL_CHAN_FREQ_RANGE_5G_BAND2].update ?
+				rpcal_phase[WL_CHAN_FREQ_RANGE_5G_BAND2].value :
+				pi->u.pi_acphy->sromi->rpcal_phase5gb2;
+
+			pi->u.pi_acphy->sromi->rpcal_phase5gb3 =
+				rpcal_phase[WL_CHAN_FREQ_RANGE_5G_BAND3].update ?
+				rpcal_phase[WL_CHAN_FREQ_RANGE_5G_BAND3].value :
+				pi->u.pi_acphy->sromi->rpcal_phase5gb3;
+		}
+		break;
+	}
+
+	case IOV_GVAL(IOV_RPCALPHASEVARS): {
+		wl_rpcal_phase_t *rpcal_phase = a;
+		if (ACMAJORREV_1(pi->pubpi->phy_rev)) {
+			PHY_ERROR(("Number of TX Chain has to be > 1!\n"));
+			err = BCME_UNSUPPORTED;
+		} else {
+			rpcal_phase[WL_CHAN_FREQ_RANGE_2G].value =
+				pi->u.pi_acphy->sromi->rpcal_phase2g;
+			rpcal_phase[WL_CHAN_FREQ_RANGE_5G_BAND0].value =
+				pi->u.pi_acphy->sromi->rpcal_phase5gb0;
+			rpcal_phase[WL_CHAN_FREQ_RANGE_5G_BAND1].value =
+				pi->u.pi_acphy->sromi->rpcal_phase5gb1;
+			rpcal_phase[WL_CHAN_FREQ_RANGE_5G_BAND2].value =
+				pi->u.pi_acphy->sromi->rpcal_phase5gb2;
+			rpcal_phase[WL_CHAN_FREQ_RANGE_5G_BAND3].value =
+				pi->u.pi_acphy->sromi->rpcal_phase5gb3;
+		}
+		break;
+	}
 #endif // endif
 #if defined(BCMDBG)
 	case IOV_SVAL(IOV_PHY_FORCE_FDIQI):
@@ -3465,11 +3445,11 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 
 		if (int_val == 0)
 		{
-			W_REG(pi->sh->osh, D11_IFS_CTL_SEL_PRICRS(pi), 0x000F);
+			W_REG(pi->sh->osh, D11_IFS_CTL_SEL_PRICRS(pi), (uint16)0x000F);
 		}
 		else
 		{
-			W_REG(pi->sh->osh, D11_IFS_CTL_SEL_PRICRS(pi), 0x0F0F);
+			W_REG(pi->sh->osh, D11_IFS_CTL_SEL_PRICRS(pi), (uint16)0x0F0F);
 		}
 		break;
 	}
@@ -3507,28 +3487,6 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 		break;
 #endif // endif
 #if defined(WLTEST)
-#if (defined(LCN20CONF) && (LCN20CONF != 0))
-	case IOV_GVAL(IOV_LCNPHY_TXPWRCLAMP_DIS):
-		if (ISLCN20PHY(pi)) {
-			*ret_int_ptr = (int32)(int32)pi->u.pi_lcn20phy->txpwr_clamp_dis;
-		}
-		break;
-	case IOV_SVAL(IOV_LCNPHY_TXPWRCLAMP_DIS):
-		if (ISLCN20PHY(pi)) {
-			pi->u.pi_lcn20phy->txpwr_clamp_dis = (uint8)int_val;
-		}
-		break;
-	case IOV_GVAL(IOV_LCNPHY_TXPWRCLAMP_OFDM):
-		if (ISLCN20PHY(pi)) {
-			*ret_int_ptr = (int32)pi->u.pi_lcn20phy->target_pwr_ofdm_max;
-		}
-		break;
-	case IOV_GVAL(IOV_LCNPHY_TXPWRCLAMP_CCK):
-		if (ISLCN20PHY(pi)) {
-			*ret_int_ptr = (int32)pi->u.pi_lcn20phy->target_pwr_cck_max;
-		}
-		break;
-#endif /* #if LCN20CONF */
 #endif /* #if defined(WLTEST) */
 #if defined(BCMDBG) || defined(WLTEST)
 	case IOV_GVAL(IOV_PHY_MASTER_OVERRIDE): {

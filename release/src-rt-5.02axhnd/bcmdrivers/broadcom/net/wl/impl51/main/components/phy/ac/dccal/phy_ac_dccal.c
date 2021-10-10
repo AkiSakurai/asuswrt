@@ -1,7 +1,7 @@
 /*
  * dccal module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_dccal.c 776730 2019-07-08 13:57:50Z $
+ * $Id: phy_ac_dccal.c 785902 2020-04-08 20:10:42Z $
  */
 
 #include <phy_cfg.h>
@@ -89,7 +89,11 @@ struct phy_ac_dccal_info {
 	phy_dccal_info_t *dccali;
 	int16 idac_min_i;  /* DCC sw-cal - i-rail minimum idac index */
 	int16 idac_min_q;  /* DCC sw-cal - q-rail minimum idac index */
+	uint32 dcoe_table[4][36];
+	uint32 idacc_table[4][24];
 };
+
+#define DEFAULT_TIA_FOR_IDACC 6
 
 /* local functions */
 static void wlc_phy_get_rx_hpf_dc_est_acphy(phy_info_t *pi, phy_hpf_dc_est_t *hpf_iqdc,
@@ -357,7 +361,7 @@ wlc_phy_tiny_static_dc_offset_cal(phy_info_t *pi)
 	FOREACH_CORE(pi, core) {
 		/* set LNA off */
 		/* save config */
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			ovr[core] = READ_RADIO_REGFLD_TINY(pi, RX_TOP_5G_OVR, core,
 				ovr_lna5g_lna1_pu);
 			pu[core] = READ_RADIO_REGFLD_TINY(pi, LNA5G_CFG1, core, lna5g_lna1_pu);
@@ -561,7 +565,7 @@ wlc_phy_tiny_static_dc_offset_cal(phy_info_t *pi)
 	/* Restore settings */
 	FOREACH_CORE(pi, core) {
 		MOD_RADIO_REG_TINY(pi, TIA_CFG8, core, tia_offset_dac_biasadj, idacbias[core]);
-		if (CHSPEC_IS5G(pi->radio_chanspec)) {
+		if (CHSPEC_ISPHY5G6G(pi->radio_chanspec)) {
 			MOD_RADIO_REG_TINY(pi, RX_TOP_5G_OVR, core, ovr_lna5g_lna1_pu, ovr[core]);
 			if ((!ACMAJORREV_4(pi->pubpi->phy_rev)) &&
 			    (!ACMAJORREV_32(pi->pubpi->phy_rev)) &&
@@ -748,7 +752,6 @@ phy_ac_dccal_multiphase_isen(phy_info_t *pi)
 {
 	bool en = FALSE;
 
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) en = TRUE;
 	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) en = TRUE;
 
 	return en;
@@ -787,21 +790,7 @@ phy_ac_dccal(phy_info_t *pi)
 		wlc_phy_btcx_override_enable(pi);
 	}
 
-	if (pi_ac->c2c_sync_en && (ACMAJORREV_47(pi->pubpi->phy_rev) ||
-		ACMAJORREV_129(pi->pubpi->phy_rev))) {
-		if (pi->u.pi_acphy->c2csync_dac_clks_on == FALSE) {
-			phy_ac_chanmgr_core2core_sync_dac_clks(pi->u.pi_acphy->chanmgri,
-			                                       TRUE);
-			dac_clks_forced_on = TRUE;
-		}
-	}
-
-	if (ACMAJORREV_40(pi->pubpi->phy_rev) ||
-		(ACMAJORREV_44_46(pi->pubpi->phy_rev) && pi->pubpi->slice == DUALMAC_MAIN)) {
-		if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-			wlc_phy_pulse_adc_reset_acphy(pi);
-			//FIXME: DCOE CAL WAS TIMINGOUT, MAY REQUIRE BETTER FIX
-		}
+	if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		MOD_PHYREG(pi, dccal_common, dcc_method_select, 1);
 		FOREACH_CORE(pi, core) {
 			MOD_PHYREGCE(pi, dccal_control_7, core, dccal_clkgate_en, 0);
@@ -816,7 +805,7 @@ phy_ac_dccal(phy_info_t *pi)
 
 			MOD_PHYREGCE(pi, dccal_control_16, core, idact_bypass, 1);
 		}
-	} else if (ACMAJORREV_44(pi->pubpi->phy_rev) && pi->pubpi->slice == DUALMAC_AUX) {
+	} else if (ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		MOD_PHYREG(pi, dccal_common, dcc_method_select, 1);
 		FOREACH_CORE(pi, core) {
 			MOD_PHYREGCE(pi, dccal_control_7, core, dccal_clkgate_en, 0);
@@ -824,14 +813,25 @@ phy_ac_dccal(phy_info_t *pi)
 			MOD_PHYREGCE(pi, dccal_control_13, core, override_dcoe_done, 0x1);
 			MOD_PHYREGCE(pi, dccal_control_13, core, override_dcoe_done, 0x0);
 
-			MOD_PHYREGCE(pi, dccal_control_23, core, ld_idac_cal_done_0, 0xf000);
+			MOD_PHYREGCE(pi, dccal_control_26, core, idacc_done_init_0, 0xff00);
+			MOD_PHYREGCE(pi, dccal_control_23, core, ld_idac_cal_done_0, 0xff00);
 			MOD_PHYREGCE(pi, dccal_control_22, core, ld_idac_cal_done_1, 0xff);
 			MOD_PHYREGCE(pi, dccal_control_16, core, override_idac_cal_done, 0x1);
 			MOD_PHYREGCE(pi, dccal_control_16, core, override_idac_cal_done, 0x0);
 
 			MOD_PHYREGCE(pi, dccal_control_16, core, idact_bypass, 1);
 		}
-	} else if (ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev)) {
+	} else if (ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
+		if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			/* No need force dac clks on as DC will be re-calibrated after cal cleanup
+			 * with PHY in final Rx configuration with c2c_sync on.(BCAWLAN-214876)
+			 */
+			dac_clks_forced_on = FALSE;
+		} else if (pi_ac->c2c_sync_en && (pi->u.pi_acphy->c2csync_dac_clks_on == FALSE)) {
+			phy_ac_chanmgr_core2core_sync_dac_clks(pi->u.pi_acphy->chanmgri, TRUE);
+			dac_clks_forced_on = TRUE;
+		}
+
 		//wlc_phy_pulse_adc_reset_acphy(pi);
 		MOD_PHYREG(pi, dccal_common, dcc_method_select, 1);
 		FOREACH_CORE(pi, core) {
@@ -839,7 +839,14 @@ phy_ac_dccal(phy_info_t *pi)
 			MOD_PHYREGCE(pi, dccal_control_13, core, ld_dcoe_done, 0);
 			if ((ACMAJORREV_47(pi->pubpi->phy_rev) && ACMINORREV_GE(pi, 1)) ||
 			     ACMAJORREV_51_129(pi->pubpi->phy_rev)) {
-				MOD_PHYREGCE(pi, dccal_control_49, core, ld_dcoe_done_0, 0xf);
+
+				if (!ACMAJORREV_129(pi->pubpi->phy_rev)) {
+					MOD_PHYREGCE(pi, dccal_control_49, core,
+						ld_dcoe_done_0, 0xf);
+				} else {
+					MOD_PHYREGCE(pi, dccal_control_49, core,
+						ld_dcoe_done_0, 0x0);
+				}
 				MOD_PHYREGCE(pi, dccal_control_48, core, ld_dcoe_done_1, 0x0);
 				MOD_PHYREGCE(pi, dccal_control_47, core, ld_dcoe_done_0, 0x0);
 				MOD_PHYREGCE(pi, dccal_control_26, core, idacc_done_init_0, 0xe000);
@@ -871,22 +878,6 @@ phy_ac_dccal(phy_info_t *pi)
 			MOD_PHYREGCE(pi, dccal_control_15, core, idacc_tx2rx_reinit, 0);
 			MOD_PHYREGCE(pi, dccal_control_18, core, idacc_tx2rx_only, 0);
 		}
-	} else if (ACMAJORREV_128(pi->pubpi->phy_rev)) {
-		MOD_PHYREG(pi, dccal_common, dcc_method_select, 1);
-		FOREACH_CORE(pi, core) {
-			MOD_PHYREGCE(pi, dccal_control_7, core, dccal_clkgate_en, 0);
-			MOD_PHYREGCE(pi, dccal_control_13, core, ld_dcoe_done, 0);
-			MOD_PHYREGCE(pi, dccal_control_13, core, override_dcoe_done, 0x1);
-			MOD_PHYREGCE(pi, dccal_control_13, core, override_dcoe_done, 0x0);
-
-			MOD_PHYREGCE(pi, dccal_control_26, core, idacc_done_init_0, 0xff00);
-			MOD_PHYREGCE(pi, dccal_control_23, core, ld_idac_cal_done_0, 0xff00);
-			MOD_PHYREGCE(pi, dccal_control_22, core, ld_idac_cal_done_1, 0xff);
-			MOD_PHYREGCE(pi, dccal_control_16, core, override_idac_cal_done, 0x1);
-			MOD_PHYREGCE(pi, dccal_control_16, core, override_idac_cal_done, 0x0);
-
-			MOD_PHYREGCE(pi, dccal_control_16, core, idact_bypass, 1);
-		}
 	} else {
 		MOD_PHYREG(pi, dccal_control_130, ld_dcoe_done, 0x0);
 		MOD_PHYREG(pi, dccal_control_130, override_dcoe_done, 0x1);
@@ -907,7 +898,7 @@ phy_ac_dccal(phy_info_t *pi)
 		MOD_PHYREG(pi, dccal_control_160, idact_bypass, 0x1);
 	}
 
-	if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_51_129(pi->pubpi->phy_rev)) {
 		phy_ac_dccal_3steps(pi);
 	} else if (ACMAJORREV_GE40(pi->pubpi->phy_rev)) {
 		phy_ac_dccal_2steps(pi);
@@ -969,12 +960,8 @@ phy_ac_dccal(phy_info_t *pi)
 		}
 	}
 
-	if (pi_ac->c2c_sync_en && (ACMAJORREV_47(pi->pubpi->phy_rev) ||
-		ACMAJORREV_129(pi->pubpi->phy_rev))) {
-		if (dac_clks_forced_on) {
-			phy_ac_chanmgr_core2core_sync_dac_clks(pi->u.pi_acphy->chanmgri,
-			                                       FALSE);
-		}
+	if (dac_clks_forced_on) {
+		phy_ac_chanmgr_core2core_sync_dac_clks(pi->u.pi_acphy->chanmgri, FALSE);
 	}
 
 	phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, FALSE);
@@ -982,6 +969,7 @@ phy_ac_dccal(phy_info_t *pi)
 
 	/* Resume MAC */
 	wlc_phy_conditional_resume(pi, &suspend);
+
 }
 
 static void
@@ -1033,13 +1021,23 @@ phy_ac_dccal_init_tia(phy_info_t *pi)
 	}
 }
 
+static void
+phy_ac_dccal_init_tia_percore(phy_info_t *pi, uint8 core)
+{
+	MOD_PHYREGCE(pi, dccal_control_15, core, dccal_sw_reset_h, 0);
+	if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		MOD_RADIO_REG_20707(pi, TIA_CFG1_OVR, core, ovr_tia_dcdac_pu, 0);
+		MOD_RADIO_REG_20707(pi, TIA_DCDAC_REG2, core, tia_dcdac_scale, 6);
+	}
+}
+
 void
 phy_ac_dccal_init(phy_info_t *pi)
 {
 	uint8 core;
 	// new DCC with digcorr
 	if ((ACMAJORREV_47(pi->pubpi->phy_rev) && ACMINORREV_GE(pi, 1)) ||
-		ACMAJORREV_51_129(pi->pubpi->phy_rev)) {
+		ACMAJORREV_129(pi->pubpi->phy_rev)) {
 		phy_ax_dccal_digcorr_init(pi);
 	} else {
 	// old DCC without digcorr
@@ -1104,117 +1102,7 @@ phy_ac_dccal_init(phy_info_t *pi)
 				MOD_PHYREGCE(pi, dccal_control_16, core, idact_bypass, 1);
 				MOD_PHYREGCE(pi, dccal_control_14, core, idacc_bypass, 1);
 
-				if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-					MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_0, 0);
-					MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_1, 1);
-					MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_2, 2);
-					MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_3, 3);
-					MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_4, 0);
-					MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_5, 0);
-					MOD_PHYREGCE(pi, dccal_control_42, core,
-						dcoe_lpf_inv_map_0, 0);
-					MOD_PHYREGCE(pi, dccal_control_42, core,
-						dcoe_lpf_inv_map_1, 1);
-					MOD_PHYREGCE(pi, dccal_control_42, core,
-						dcoe_lpf_inv_map_2, 2);
-					MOD_PHYREGCE(pi, dccal_control_42, core,
-						dcoe_lpf_inv_map_3, 3);
-					MOD_PHYREGCE(pi, dccal_control_43, core,
-						dcoe_lpf_inv_map_4, 3);
-					MOD_PHYREGCE(pi, dccal_control_43, core,
-						dcoe_lpf_inv_map_5, 3);
-					MOD_PHYREGCE(pi, dccal_control_38, core,
-						dcoe_tia_inv_map_0, 0);
-					MOD_PHYREGCE(pi, dccal_control_38, core,
-						dcoe_tia_inv_map_1, 1);
-					MOD_PHYREGCE(pi, dccal_control_38, core,
-						dcoe_tia_inv_map_2, 2);
-					MOD_PHYREGCE(pi, dccal_control_38, core,
-						dcoe_tia_inv_map_3, 3);
-					MOD_PHYREGCE(pi, dccal_control_39, core,
-						dcoe_tia_inv_map_4, 4);
-					MOD_PHYREGCE(pi, dccal_control_39, core,
-						dcoe_tia_inv_map_5, 5);
-					MOD_PHYREGCE(pi, dccal_control_39, core,
-						dcoe_tia_inv_map_6, 6);
-					MOD_PHYREGCE(pi, dccal_control_39, core,
-						dcoe_tia_inv_map_7, 7);
-					MOD_PHYREGCE(pi, dccal_control_40, core,
-						dcoe_tia_inv_map_8, 7);
-					MOD_PHYREGCE(pi, dccal_control_40, core,
-						dcoe_tia_inv_map_9, 7);
-					MOD_PHYREGCE(pi, dccal_control_40, core,
-						dcoe_tia_inv_map_10, 7);
-					MOD_PHYREGCE(pi, dccal_control_40, core,
-						dcoe_tia_inv_map_11, 7);
-					MOD_PHYREGCE(pi, dccal_control_41, core,
-						dcoe_tia_inv_map_12, 7);
-					MOD_PHYREGCE(pi, dccal_control_41, core,
-						dcoe_tia_inv_map_13, 7);
-					MOD_PHYREGCE(pi, dccal_control_41, core,
-						dcoe_tia_inv_map_14, 7);
-					MOD_PHYREGCE(pi, dccal_control_35, core,
-						dcoe_tia_map_0, 0);
-					MOD_PHYREGCE(pi, dccal_control_35, core,
-						dcoe_tia_map_1, 1);
-					MOD_PHYREGCE(pi, dccal_control_35, core,
-						dcoe_tia_map_2, 2);
-					MOD_PHYREGCE(pi, dccal_control_35, core,
-						dcoe_tia_map_3, 3);
-					MOD_PHYREGCE(pi, dccal_control_36, core,
-						dcoe_tia_map_4, 4);
-					MOD_PHYREGCE(pi, dccal_control_36, core,
-						dcoe_tia_map_5, 5);
-					MOD_PHYREGCE(pi, dccal_control_36, core,
-						dcoe_tia_map_6, 6);
-					MOD_PHYREGCE(pi, dccal_control_36, core,
-						dcoe_tia_map_7, 15);
-					MOD_PHYREGCE(pi, dccal_control_37, core,
-						dcoe_tia_map_8, 0);
-					MOD_PHYREGCE(pi, dccal_control_37, core,
-						dcoe_tia_map_9, 0);
-					MOD_PHYREGCE(pi, dccal_control_37, core,
-						dcoe_tia_map_10, 0);
-					MOD_PHYREGCE(pi, dccal_control_37, core,
-						dcoe_tia_map_11, 0);
-					MOD_PHYREGCE(pi, dccal_control_8,  core,
-						idacc_acc_cexp, 6);
-					MOD_PHYREGCE(pi, dccal_control_8,  core, dcoe_acc_cexp, 6);
-					if (pi->pubpi->slice == DUALMAC_AUX) {
-						MOD_PHYREGCE(pi, dccal_control_36, core,
-								dcoe_tia_map_7, 9);
-						MOD_PHYREGCE(pi, dccal_control_1,  core,
-								idacc_tia_init_00, 5);
-						MOD_PHYREGCE(pi, dccal_control_1,  core,
-								idacc_tia_init_01, 5);
-						MOD_PHYREGCE(pi, dccal_control_2,  core,
-								idacc_tia_init_02, 5);
-						MOD_PHYREGCE(pi, dccal_control_2,  core,
-								idacc_tia_init_03, 5);
-						MOD_PHYREGCE(pi, dccal_control_2,  core,
-								idacc_tia_init_04, 5);
-						MOD_PHYREGCE(pi, dccal_control_2,  core,
-								idacc_tia_init_05, 5);
-						MOD_PHYREGCE(pi, dccal_control_3,  core,
-								idacc_tia_init_06, 5);
-						MOD_PHYREGCE(pi, dccal_control_3,  core,
-								idacc_tia_init_07, 5);
-						MOD_PHYREGCE(pi, dccal_control_3,  core,
-								idacc_tia_init_08, 5);
-						MOD_PHYREGCE(pi, dccal_control_3,  core,
-								idacc_tia_init_09, 5);
-						MOD_PHYREGCE(pi, dccal_control_4,  core,
-								idacc_tia_init_10, 5);
-						MOD_PHYREGCE(pi, dccal_control_4,  core,
-								idacc_tia_init_11, 5);
-						MOD_PHYREGCE(pi, dccal_control_4,  core,
-								idacc_tia_init_12, 5);
-						MOD_PHYREGCE(pi, dccal_control_4,  core,
-								idacc_tia_init_13, 5);
-						MOD_PHYREGCE(pi, dccal_control_26, core,
-								idacc_done_init_0, 0xf000);
-					}
-				} else if (ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
+				if (ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 					MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_0, 0);
 					MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_1, 1);
 					MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_2, 2);
@@ -1375,35 +1263,6 @@ phy_ac_load_gmap_tbl(phy_info_t *pi)
 			wlc_phy_table_write_acphy(pi, AC2PHY_TBL_ID_IDAC_GMAP_TABLE1, 7, 0, 16,
 				&gmap_tbl_r40_5g);
 		}
-	} else if (ACMAJORREV_44_46(pi->pubpi->phy_rev)) {
-		if (pi->pubpi->slice == DUALMAC_MAIN) {
-			//# TR[12] eLNA[11] LNA1_Bypass[10] LNA1_low_ct[9]
-			//LNA1_gm[8:6] LNA1_Rout[5:2] LNA2_gm[1:0]
-			uint16 gmap_tbl_r44_5g[] = {0x10f3, 0x1127, 0x11ab, 0x11eb,
-				0x11df, 0x11c3, 0x1000};
-			wlc_phy_table_write_acphy(pi, AC2PHY_TBL_ID_IDAC_GMAP_TABLE0, 7, 0, 16,
-					&gmap_tbl_r44_5g);
-			wlc_phy_table_write_acphy(pi, AC2PHY_TBL_ID_IDAC_GMAP_TABLE1, 7, 0, 16,
-					&gmap_tbl_r44_5g);
-		} else {
-			/* Modified Rout and Gm of aux */
-			uint16 gmap_tbl_r44_2g[] = {4258, 4322, 4386, 4450, 4442, 4418, 4259,
-				4323, 4387, 4451, 4443, 4419, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-			uint16 gmap_tbl_r44_5g[] = {0x1126, 0x1166, 0x11A6, 0x11E6, 0x11DA,
-				0x11C2, 0x1127,	0x1167, 0x11A7, 0x11E7, 0x11DB, 0x11C3,
-				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-			if (CHSPEC_IS2G(pi->radio_chanspec)) {
-				wlc_phy_table_write_acphy(pi, AC2PHY_TBL_ID_IDAC_GMAP_TABLE0,
-						12, 0, 16, &gmap_tbl_r44_2g);
-				wlc_phy_table_write_acphy(pi, AC2PHY_TBL_ID_IDAC_GMAP_TABLE1,
-						12, 0, 16, &gmap_tbl_r44_2g);
-			} else {
-				wlc_phy_table_write_acphy(pi, AC2PHY_TBL_ID_IDAC_GMAP_TABLE0,
-						12, 0, 16, &gmap_tbl_r44_5g);
-				wlc_phy_table_write_acphy(pi, AC2PHY_TBL_ID_IDAC_GMAP_TABLE1,
-						12, 0, 16, &gmap_tbl_r44_5g);
-			}
-		}
 	} else if ((ACMAJORREV_47(pi->pubpi->phy_rev) && ACMINORREV_GE(pi, 1))) {
 		/* read directly from AGC lna1 gain/rout tables */
 		uint16 gmap_tbl[13];
@@ -1550,7 +1409,6 @@ phy_ac_load_gmap_tbl(phy_info_t *pi)
 void phy_ac_dccal_2steps(phy_info_t *pi)
 {
 	if ((ACMAJORREV_47(pi->pubpi->phy_rev) && ACMINORREV_GE(pi, 1)) ||
-		(ACMAJORREV_51(pi->pubpi->phy_rev)) ||
 		(ACMAJORREV_129(pi->pubpi->phy_rev))) {
 		phy_ax_dccal_digcorr_dcoe(pi);
 		phy_ax_dccal_digcorr_idacc(pi);
@@ -1568,12 +1426,19 @@ static void phy_ac_dccal_3steps(phy_info_t *pi)
 	uint16 mask;
 
 	uint8 core;
+
+	phy_ax_dccal_digcorr_init(pi);
+
 	FOREACH_CORE(pi, core) {
 		MOD_PHYREGCE(pi, dccal_control_16, core, dcoe_zero_idac, 0);
 		WRITE_PHYREGCE(pi, dccal_control_26, core, 0xfffe);
 		WRITE_PHYREGCE(pi, dccal_control_23, core, 0xfffe);
 		MOD_PHYREGCE(pi, dccal_control_50, core, biq0_gidx_init, 1);
-		MOD_RADIO_REG_20704(pi, LOGEN_CORE_REG1, core, logen_rx_db_mux_pu, 0);
+		if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			MOD_RADIO_REG_20704(pi, LOGEN_CORE_REG1, core, logen_rx_db_mux_pu, 0);
+		} else {
+			MOD_RADIO_REG_20707(pi, LOGEN_CORE_REG1, core, logen_rx_db_mux_pu, 0);
+		}
 	}
 	phy_ax_dccal_digcorr_idacc(pi);
 	phy_ax_dccal_digcorr_dcoe(pi);
@@ -1583,9 +1448,155 @@ static void phy_ac_dccal_3steps(phy_info_t *pi)
 		WRITE_PHYREGCE(pi, dccal_control_26, core, mask);
 		WRITE_PHYREGCE(pi, dccal_control_23, core, mask);
 		MOD_PHYREGCE(pi, dccal_control_50, core, biq0_gidx_init, 1);
-		MOD_RADIO_REG_20704(pi, LOGEN_CORE_REG1, core, logen_rx_db_mux_pu, 1);
+		if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
+			MOD_RADIO_REG_20704(pi, LOGEN_CORE_REG1, core, logen_rx_db_mux_pu, 1);
+		} else {
+			MOD_RADIO_REG_20707(pi, LOGEN_CORE_REG1, core, logen_rx_db_mux_pu, 1);
+		}
 	}
 	phy_ax_dccal_digcorr_idacc(pi);
+
+}
+
+void
+phy_ac_dccal_papd_special(phy_info_t *pi, int8 tia_init, uint8 core)
+{
+	uint8 coree;
+	uint8 save_fifo_rst = 0;
+
+	bool suspend = FALSE;
+
+	/* Suspend MAC if haven't done so */
+	wlc_phy_conditional_suspend(pi, &suspend);
+	save_fifo_rst = READ_PHYREGFLD(pi, RxFeCtrl1,
+			soft_sdfeFifoReset);
+	MOD_PHYREG(pi, RxFeCtrl1, soft_sdfeFifoReset, 0);
+	phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, TRUE);
+
+	//wlc_phy_pulse_adc_reset_acphy(pi);
+	MOD_PHYREG(pi, dccal_common, dcc_method_select, 1);
+	FOREACH_CORE(pi, coree) {
+		MOD_PHYREGCE(pi, dccal_control_7, coree, dccal_clkgate_en, 0);
+		MOD_PHYREGCE(pi, dccal_control_13, coree, ld_dcoe_done, 0);
+
+		MOD_PHYREGCE(pi, dccal_control_49, coree, ld_dcoe_done_0, 0x0);
+
+		MOD_PHYREGCE(pi, dccal_control_48, coree, ld_dcoe_done_1, 0x0);
+		MOD_PHYREGCE(pi, dccal_control_47, coree, ld_dcoe_done_0, 0x0);
+		MOD_PHYREGCE(pi, dccal_control_26, coree, idacc_done_init_0, 0xe000);
+		MOD_PHYREGCE(pi, dccal_control_27, coree, idacc_done_init_1, 0xff);
+		MOD_PHYREGCE(pi, dccal_control_23, coree, ld_idac_cal_done_0, 0xe000);
+		MOD_PHYREGCE(pi, dccal_control_22, coree, ld_idac_cal_done_1, 0xff);
+		MOD_PHYREGCE(pi, dccal_control_16, coree, override_idac_cal_done, 0x1);
+		MOD_PHYREGCE(pi, dccal_control_16, coree, override_idac_cal_done, 0x0);
+		MOD_PHYREGCE(pi, dccal_control_13, coree, override_dcoe_done, 0x1);
+		MOD_PHYREGCE(pi, dccal_control_13, coree, override_dcoe_done, 0x0);
+
+		MOD_PHYREGCE(pi, dccal_control_16, coree, idact_bypass, 1);
+		MOD_PHYREGCE(pi, dccal_control_16, coree, idacc_ppkt_reinit, 0);
+		MOD_PHYREGCE(pi, dccal_control_15, coree, idacc_tx2rx_reinit, 0);
+		MOD_PHYREGCE(pi, dccal_control_18, coree, idacc_tx2rx_only, 0);
+	}
+
+	ASSERT(ACMAJORREV_129(pi->pubpi->phy_rev));
+
+	FOREACH_CORE(pi, coree) {
+		phy_ax_dccal_digcorr_init_tiainit(pi, tia_init, coree);
+	}
+	FOREACH_CORE(pi, coree) {
+		MOD_PHYREGCE(pi, dccal_control_16, core, dcoe_zero_idac, 0);
+		if (coree == core) {
+			WRITE_PHYREGCE(pi, dccal_control_26, coree, 0xfffe);
+			WRITE_PHYREGCE(pi, dccal_control_23, coree, 0xfffe);
+		} else {
+			WRITE_PHYREGCE(pi, dccal_control_26, coree, 0xffff);
+			WRITE_PHYREGCE(pi, dccal_control_23, coree, 0xffff);
+		}
+		MOD_PHYREGCE(pi, dccal_control_50, coree, biq0_gidx_init, 1);
+	}
+
+	phy_ax_dccal_digcorr_idacc_override(pi, core);
+
+	MOD_PHYREG(pi, dccal_common, dcc_method_select, 0);
+	FOREACH_CORE(pi, coree) {
+		MOD_PHYREGCE(pi, dccal_control_7, coree, dccal_clkgate_en, 1);
+		MOD_PHYREGCE(pi, dccal_control_16, coree, dcoe_bypass, 1);
+		MOD_PHYREGCE(pi, dccal_control_14, coree, idacc_bypass, 1);
+	}
+
+	phy_rxgcrs_stay_in_carriersearch(pi->rxgcrsi, FALSE);
+	MOD_PHYREG(pi, RxFeCtrl1, soft_sdfeFifoReset, save_fifo_rst);
+
+	/* Resume MAC */
+	wlc_phy_conditional_resume(pi, &suspend);
+}
+
+void
+phy_ac_dccal_save(phy_info_t *pi)
+{
+	uint8 core, idx;
+	uint16 tbl_id;
+	uint16 idacc_size = 24;
+	uint32 read_val;
+	uint16 dcoe_size;
+
+	if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		dcoe_size = 36;
+	} else {
+		dcoe_size = READ_PHYREGFLD(pi, dccal_control_430, dcoe_num_entries);
+	}
+
+	FOREACH_CORE(pi, core) {
+		tbl_id = AC2PHY_TBL_ID_DCOE_TABLE0 + 32 * core;
+		for (idx = 0; idx < dcoe_size; idx++) {
+			wlc_phy_table_read_acphy(pi, tbl_id, 1, idx, 32, &read_val);
+			pi->u.pi_acphy->dccali->dcoe_table[core][idx] = read_val;
+		}
+
+		tbl_id = AC2PHY_TBL_ID_IDAC_TABLE0 + 32 * core;
+		for (idx = 0; idx < idacc_size; idx++) {
+			wlc_phy_table_read_acphy(pi, tbl_id, 1, idx, 32, &read_val);
+			pi->u.pi_acphy->dccali->idacc_table[core][idx] = read_val;
+		}
+	}
+}
+
+void
+phy_ac_dccal_restore(phy_info_t *pi)
+{
+	uint8 core, idx;
+	uint16 tbl_id;
+	uint16 idacc_size = 24;
+	uint32 write_val;
+	uint16 dcoe_size;
+
+	if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		dcoe_size = 36;
+	} else {
+		dcoe_size = READ_PHYREGFLD(pi, dccal_control_430, dcoe_num_entries);
+	}
+
+	FOREACH_CORE(pi, core) {
+		tbl_id = AC2PHY_TBL_ID_DCOE_TABLE0 + 32 * core;
+		for (idx = 0; idx < dcoe_size; idx++) {
+			write_val = pi->u.pi_acphy->dccali->dcoe_table[core][idx];
+			wlc_phy_table_write_acphy(pi, tbl_id, 1, idx, 32, &write_val);
+		}
+
+		tbl_id = AC2PHY_TBL_ID_IDAC_TABLE0 + 32 * core;
+		for (idx = 0; idx < idacc_size; idx++) {
+			write_val = pi->u.pi_acphy->dccali->idacc_table[core][idx];
+			wlc_phy_table_write_acphy(pi, tbl_id, 1, idx, 32, &write_val);
+		}
+
+		MOD_RADIO_REG_20707(pi, TIA_CFG1_OVR, core, ovr_tia_dcdac_pu, 0);
+		MOD_RADIO_REG_20707(pi, TIA_DCDAC_REG2, core, tia_dcdac_pu, 0);
+		MOD_RADIO_REG_20707(pi, TIA_DCDAC_REG2, core, tia_dcdac_scale, 6);
+		MOD_RADIO_REG_20707(pi, TIA_CFG1_OVR, core, ovr_tia_dcdac_i, 0);
+		MOD_RADIO_REG_20707(pi, TIA_CFG1_OVR, core, ovr_tia_dcdac_q, 0);
+		MOD_RADIO_REG_20707(pi, TIA_DCDAC_REG1, core, tia_dcdac_i, 0);
+		MOD_RADIO_REG_20707(pi, TIA_DCDAC_REG2, core, tia_dcdac_q, 0);
+	}
 }
 
 void phy_ac_dccal_dcoe_only(phy_info_t  *pi)
@@ -1602,8 +1613,8 @@ void phy_ac_dccal_dcoe_only(phy_info_t  *pi)
 		MOD_PHYREGCE(pi, dccal_control_16, core, dcoe_bypass, 0);
 		MOD_PHYREGCE(pi, dccal_control_14, core, idacc_bypass, 1);
 	}
-	if (ACMAJORREV_44_46(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		MOD_PHYREG(pi, dccal_common, dcc_method_select, 1);
 	}
 	FOREACH_ACTV_CORE(pi, phyrxchain, core) {
@@ -1723,8 +1734,8 @@ void phy_ac_dccal_dcoe_only(phy_info_t  *pi)
 					}
 		}
 	}
-	if (ACMAJORREV_44_46(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		MOD_PHYREG(pi, dccal_common, dcc_method_select, 0);
 	}
 }
@@ -1739,15 +1750,15 @@ void phy_ac_dccal_idacc_only(phy_info_t  *pi)
 	phyrxchain = phy_stf_get_data(pi->stfi)->phyrxchain;
 
 	//CAL idacc only
-	if (ACMAJORREV_44_46(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		MOD_PHYREG(pi, dccal_common, dcc_method_select, 1);
 	}
 	FOREACH_CORE(pi, core) {
 		MOD_PHYREGCE(pi, dccal_control_16, core, dcoe_bypass, 1);
 		MOD_PHYREGCE(pi, dccal_control_14, core, idacc_bypass, 0);
-		if (ACMAJORREV_44_46(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-			!ACMAJORREV_128(pi->pubpi->phy_rev))) {
+		if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 			MOD_PHYREGCE(pi, dccal_control_7,  core, dccal_clkgate_en, 0x0);
 		}
 	}
@@ -1780,13 +1791,13 @@ void phy_ac_dccal_idacc_only(phy_info_t  *pi)
 	}
 
 	FOREACH_ACTV_CORE(pi, phyrxchain, core) {
-		if (ACMAJORREV_44_46(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-			!ACMAJORREV_128(pi->pubpi->phy_rev))) {
+		if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 			MOD_PHYREGCE(pi, dccal_control_7,  core, dccal_clkgate_en, 0x1);
 		}
 	}
-	if (ACMAJORREV_44_46(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
-		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		MOD_PHYREG(pi, dccal_common, dcc_method_select, 0);
 	}
 }
@@ -1832,50 +1843,98 @@ phy_ax_dccal_digcorr_init(phy_info_t *pi)
 		MOD_PHYREGCE(pi, dccal_control_18, core, dccal_blank_enable_farrow_in, 1);
 
 		// dcoe gain map
-		MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_num_entries, 32);
-		MOD_PHYREGCE(pi, dccal_control_33, core, dcc_tia_num_entries, 8);
-		MOD_PHYREGCE(pi, dccal_control_33, core, dcc_lpf_num_entries, 4);
+		if (!ACMAJORREV_129(pi->pubpi->phy_rev)) {
+			MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_num_entries, 32);
+			MOD_PHYREGCE(pi, dccal_control_33, core, dcc_tia_num_entries, 8);
+			MOD_PHYREGCE(pi, dccal_control_33, core, dcc_lpf_num_entries, 4);
 
-		MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_0, 0);
-		MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_1, 1);
-		MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_2, 2);
-		MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_3, 3);
-		MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_4, 0);
-		MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_5, 0);
-		MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_0, 0);
-		MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_1, 1);
-		MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_2, 2);
-		MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_3, 3);
-		MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_lpf_inv_map_4, 3);
-		MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_lpf_inv_map_5, 3);
+			MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_0, 0);
+			MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_1, 1);
+			MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_2, 2);
+			MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_3, 3);
+			MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_4, 0);
+			MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_5, 0);
+			MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_0, 0);
+			MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_1, 1);
+			MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_2, 2);
+			MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_3, 3);
+			MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_lpf_inv_map_4, 3);
+			MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_lpf_inv_map_5, 3);
 
-		MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_0, 0);
-		MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_1, 1);
-		MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_2, 2);
-		MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_3, 3);
-		MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_4, 4);
-		MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_5, 5);
-		MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_6, 6);
-		MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_7, 15);
-		MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_8, 0);
-		MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_9, 0);
-		MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_10, 0);
-		MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_11, 0);
-		MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_0, 0);
-		MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_1, 1);
-		MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_2, 2);
-		MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_3, 3);
-		MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_4, 4);
-		MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_5, 5);
-		MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_6, 6);
-		MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_7, 7);
-		MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_8, 7);
-		MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_9, 7);
-		MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_10, 7);
-		MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_11, 7);
-		MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_12, 7);
-		MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_13, 7);
-		MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_14, 7);
+			MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_0, 0);
+			MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_1, 1);
+			MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_2, 2);
+			MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_3, 3);
+			MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_4, 4);
+			MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_5, 5);
+			MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_6, 6);
+			MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_7, 15);
+			MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_8, 0);
+			MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_9, 0);
+			MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_10, 0);
+			MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_11, 0);
+			MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_0, 0);
+			MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_1, 1);
+			MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_2, 2);
+			MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_3, 3);
+			MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_4, 4);
+			MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_5, 5);
+			MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_6, 6);
+			MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_7, 7);
+			MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_8, 7);
+			MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_9, 7);
+			MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_10, 7);
+			MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_11, 7);
+			MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_12, 7);
+			MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_13, 7);
+			MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_14, 7);
+		} else {
+			MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_num_entries, 36);
+			MOD_PHYREGCE(pi, dccal_control_33, core, dcc_tia_num_entries, 9);
+			MOD_PHYREGCE(pi, dccal_control_33, core, dcc_lpf_num_entries, 4);
+
+			MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_0, 0);
+			MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_1, 1);
+			MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_2, 2);
+			MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_3, 3);
+			MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_4, 0);
+			MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_5, 0);
+			MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_0, 0);
+			MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_1, 1);
+			MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_2, 2);
+			MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_3, 3);
+			MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_lpf_inv_map_4, 3);
+			MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_lpf_inv_map_5, 3);
+
+			MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_0, 1);
+			MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_1, 2);
+			MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_2, 3);
+			MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_3, 4);
+			MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_4, 5);
+			MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_5, 6);
+			MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_6, 7);
+			MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_7, 8);
+			MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_8, 15);
+			MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_9, 0);
+			MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_10, 0);
+			MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_11, 0);
+			MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_0, 0);
+			MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_1, 0);
+			MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_2, 1);
+			MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_3, 2);
+			MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_4, 3);
+			MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_5, 4);
+			MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_6, 5);
+			MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_7, 6);
+			MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_8, 7);
+			MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_9, 7);
+			MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_10, 7);
+			MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_11, 7);
+			MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_12, 7);
+			MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_13, 7);
+			MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_14, 7);
+			MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_15, 8);
+		}
 
 		// dcoe init regs
 		MOD_PHYREGCE(pi, dccal_control,    core, dcoe_lna1_inpshort, 0);
@@ -1886,7 +1945,11 @@ phy_ax_dccal_digcorr_init(phy_info_t *pi)
 		MOD_PHYREGCE(pi, dccal_control_8,  core, dcoe_acc_cexp, 4);
 
 		// clear dcoe done
-		MOD_PHYREGCE(pi, dccal_control_49, core, ld_dcoe_done_0, 0xf);
+		if (!ACMAJORREV_129(pi->pubpi->phy_rev)) {
+			MOD_PHYREGCE(pi, dccal_control_49, core, ld_dcoe_done_0, 0xf);
+		} else {
+			MOD_PHYREGCE(pi, dccal_control_49, core, ld_dcoe_done_0, 0x0);
+		}
 		MOD_PHYREGCE(pi, dccal_control_48, core, ld_dcoe_done_1, 0x0);
 		MOD_PHYREGCE(pi, dccal_control_47, core, ld_dcoe_done_0, 0x0);
 		MOD_PHYREGCE(pi, dccal_control_13, core, override_dcoe_done, 1);
@@ -1948,19 +2011,250 @@ phy_ax_dccal_digcorr_init(phy_info_t *pi)
 	ACPHY_ENABLE_STALL(pi, stall_val);
 }
 
+void
+phy_ax_dccal_digcorr_init_tiainit(phy_info_t *pi, int8 tia_init, uint8 core)
+{
+	uint8 coree;
+	uint8 stall_val;
+	uint32 zeros[36] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0,	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+	stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
+	ACPHY_DISABLE_STALL(pi);
+
+	WRITE_PHYREG(pi, idacc_update_hw_reset_len, 64000);
+	MOD_PHYREG(pi, dccal_common, dcc_method_select, 1);
+	MOD_PHYREG(pi, radio_pu_seq, dcc_tia_dac_method_select, 1);
+	MOD_PHYREG(pi, dccal_common, dcc_opt_1024qam, 1);
+	// Bypass DC fixed correction after HT/VHT/HE STF, better 11ax performance
+	// We enable the DC fixed corr back if either DCOE or IDAC cal fails
+	MOD_PHYREG(pi, DcFiltAddress, bypass_HT_VHT_HE_STF, 1);
+
+	MOD_PHYREGCE(pi, dccal_control_7,  core, dccal_en, 1);
+	MOD_PHYREGCE(pi, dccal_control_9,  core, idac_lna1_refidx, 0);
+
+	MOD_PHYREGCE(pi, dccal_control_14, core, idacc_bypass, 1);
+	MOD_PHYREGCE(pi, dccal_control_15, core, scale_acc_wlen, 1);
+	MOD_PHYREGCE(pi, dccal_control_15, core, bypass_idac_res_apply, 0);
+	MOD_PHYREGCE(pi, dccal_control_15, core, tbl_accessClk_sel, 1);
+	FOREACH_CORE(pi, coree) {
+		MOD_PHYREGCE(pi, dccal_control_16, coree, dcoe_bypass, 1);
+		MOD_PHYREGCE(pi, dccal_control_16, coree, idact_bypass, 1);
+	}
+	MOD_PHYREGCE(pi, dccal_control_16, core, idact_enable, 0);
+	MOD_PHYREGCE(pi, dccal_control_16, core, dcoe_zero_idac, 1);
+	MOD_PHYREGCE(pi, dccal_control_14, core, dcoe_force_zero_ovrride, 0);
+
+	MOD_PHYREGCE(pi, dccal_control_17, core, dcctrigger_wait_cinit, 28);
+
+	MOD_PHYREGCE(pi, dccal_control_18, core, farrow_blankctr_init, 40);
+	MOD_PHYREGCE(pi, dccal_control_18, core, rssi_blank_enable_during_dcc, 1);
+	MOD_PHYREGCE(pi, dccal_control_18, core, dccal_blank_enable_farrow_in, 1);
+
+	// set override registers
+	WRITE_PHYREGCE(pi, dccal_control_29, core, 0);
+	WRITE_PHYREGCE(pi, dccal_control_30, core, 0);
+	WRITE_PHYREGCE(pi, dccal_control_31, core, 0);
+	WRITE_PHYREGCE(pi, dccal_control_32, core, 0);
+
+	// dcoe gain map
+	if (!ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_num_entries, 32);
+		MOD_PHYREGCE(pi, dccal_control_33, core, dcc_tia_num_entries, 8);
+		MOD_PHYREGCE(pi, dccal_control_33, core, dcc_lpf_num_entries, 4);
+
+		MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_0, 0);
+		MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_1, 1);
+		MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_2, 2);
+		MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_3, 3);
+		MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_4, 0);
+		MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_5, 0);
+		MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_0, 0);
+		MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_1, 1);
+		MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_2, 2);
+		MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_3, 3);
+		MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_lpf_inv_map_4, 3);
+		MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_lpf_inv_map_5, 3);
+
+		MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_0, 0);
+		MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_1, 1);
+		MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_2, 2);
+		MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_3, 3);
+		MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_4, 4);
+		MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_5, 5);
+
+		MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_6, 6);
+		MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_7, 15);
+		MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_8, 0);
+		MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_9, 0);
+		MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_10, 0);
+		MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_11, 0);
+		MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_0, 0);
+		MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_1, 1);
+		MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_2, 2);
+		MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_3, 3);
+		MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_4, 4);
+		MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_5, 5);
+
+		MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_6, 6);
+		MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_7, 7);
+		MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_8, 7);
+		MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_9, 7);
+		MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_10, 7);
+		MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_11, 7);
+		MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_12, 7);
+		MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_13, 7);
+		MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_14, 7);
+	} else {
+		MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_num_entries, 36);
+		MOD_PHYREGCE(pi, dccal_control_33, core, dcc_tia_num_entries, 9);
+		MOD_PHYREGCE(pi, dccal_control_33, core, dcc_lpf_num_entries, 4);
+		MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_0, 0);
+		MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_1, 1);
+		MOD_PHYREGCE(pi, dccal_control_33, core, dcoe_lpf_map_2, 2);
+		MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_3, 3);
+		MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_4, 0);
+		MOD_PHYREGCE(pi, dccal_control_34, core, dcoe_lpf_map_5, 0);
+		MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_0, 0);
+		MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_1, 1);
+		MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_2, 2);
+		MOD_PHYREGCE(pi, dccal_control_42, core, dcoe_lpf_inv_map_3, 3);
+		MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_lpf_inv_map_4, 3);
+		MOD_PHYREGCE(pi, dccal_control_43, core, dcoe_lpf_inv_map_5, 3);
+
+		MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_0, 1);
+		MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_1, 2);
+		MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_2, 3);
+		MOD_PHYREGCE(pi, dccal_control_35, core, dcoe_tia_map_3, 4);
+		MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_4, 5);
+		MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_5, 6);
+		MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_6, 7);
+		MOD_PHYREGCE(pi, dccal_control_36, core, dcoe_tia_map_7, 8);
+		MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_8, 15);
+		MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_9, 0);
+		MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_10, 0);
+		MOD_PHYREGCE(pi, dccal_control_37, core, dcoe_tia_map_11, 0);
+		MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_0, 0);
+		MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_1, 0);
+		MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_2, 1);
+		MOD_PHYREGCE(pi, dccal_control_38, core, dcoe_tia_inv_map_3, 2);
+		MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_4, 3);
+		MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_5, 4);
+		MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_6, 5);
+		MOD_PHYREGCE(pi, dccal_control_39, core, dcoe_tia_inv_map_7, 6);
+		MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_8, 7);
+		MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_9, 7);
+		MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_10, 7);
+		MOD_PHYREGCE(pi, dccal_control_40, core, dcoe_tia_inv_map_11, 7);
+		MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_12, 7);
+		MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_13, 7);
+		MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_14, 7);
+		MOD_PHYREGCE(pi, dccal_control_41, core, dcoe_tia_inv_map_15, 8);
+	}
+
+	// dcoe init regs
+	MOD_PHYREGCE(pi, dccal_control,    core, dcoe_lna1_inpshort, 0);
+	MOD_PHYREGCE(pi, dccal_control,    core, dcoe_lna1_outshort, 1);
+	MOD_PHYREGCE(pi, dccal_control,    core, dcoe_lna1_init, 0);
+	MOD_PHYREGCE(pi, dccal_control,    core, dcoe_wait_cinit, 24);
+	MOD_PHYREGCE(pi, dccal_control_16, core, dcoe_zero_idac, 1);
+	MOD_PHYREGCE(pi, dccal_control_8,  core, dcoe_acc_cexp, 4);
+
+	// clear dcoe done
+	if (!ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		MOD_PHYREGCE(pi, dccal_control_49, core, ld_dcoe_done_0, 0xf);
+	} else {
+		MOD_PHYREGCE(pi, dccal_control_49, core, ld_dcoe_done_0, 0x0);
+	}
+	MOD_PHYREGCE(pi, dccal_control_48, core, ld_dcoe_done_1, 0x0);
+	MOD_PHYREGCE(pi, dccal_control_47, core, ld_dcoe_done_0, 0x0);
+	MOD_PHYREGCE(pi, dccal_control_13, core, override_dcoe_done, 1);
+	MOD_PHYREGCE(pi, dccal_control_13, core, override_dcoe_done, 0);
+
+	// idacc init regs
+	MOD_PHYREGCE(pi, dccal_control_7,  core, idacc_wait_cinit, 32);
+	MOD_PHYREGCE(pi, dccal_control_8,  core, idacc_mag_select, 2);
+	MOD_PHYREGCE(pi, dccal_control_1,  core, idacc_tia_init_00, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_1,  core, idacc_tia_init_01, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_2,  core, idacc_tia_init_02, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_2,  core, idacc_tia_init_03, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_2,  core, idacc_tia_init_04, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_2,  core, idacc_tia_init_05, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_3,  core, idacc_tia_init_06, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_3,  core, idacc_tia_init_07, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_3,  core, idacc_tia_init_08, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_3,  core, idacc_tia_init_09, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_4,  core, idacc_tia_init_10, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_4,  core, idacc_tia_init_11, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_4,  core, idacc_tia_init_12, tia_init);
+	MOD_PHYREGCE(pi, dccal_control_4,  core, idacc_tia_init_13, tia_init);
+
+	PHY_CAL(("PAPD special dccal: core =%d, tia_init=%d\n", core, tia_init));
+
+	MOD_PHYREGCE(pi, dccal_control_50, core, tia_casc_idx, 10);
+	MOD_PHYREGCE(pi, dccal_control_50, core, tia_casc_map, 6);
+
+	MOD_PHYREGCE(pi, dccal_control_50, core, biq0_gidx_init, 0);
+
+	MOD_PHYREGCE(pi, dccal_control_14, core, multi_clip_dcc_tia_war, 0);
+
+	// clear idacc done
+	MOD_PHYREGCE(pi, dccal_control_26, core, idacc_done_init_0, 0xe000);
+	MOD_PHYREGCE(pi, dccal_control_27, core, idacc_done_init_1, 0xff);
+	MOD_PHYREGCE(pi, dccal_control_23, core, ld_idac_cal_done_0, 0xe000);
+	MOD_PHYREGCE(pi, dccal_control_22, core, ld_idac_cal_done_1, 0xff);
+	MOD_PHYREGCE(pi, dccal_control_16, core, override_idac_cal_done, 1);
+	MOD_PHYREGCE(pi, dccal_control_16, core, override_idac_cal_done, 0);
+
+	MOD_PHYREGCE(pi, dccal_control_15, core, tbl_accessClk_sel, 0);
+
+	MOD_PHYREGCE(pi, dccal_control_15, core, tbl_accessClk_sel, 0);
+	wlc_phy_table_write_acphy(pi,
+			AC2PHY_TBL_ID_DCOE_TABLE0 + (core *
+			(AC2PHY_TBL_ID_DCOE_TABLE1 - AC2PHY_TBL_ID_DCOE_TABLE0)),
+			36, 0, 32, zeros);
+	wlc_phy_table_write_acphy(pi,
+			AC2PHY_TBL_ID_IDAC_TABLE0 + (core *
+			(AC2PHY_TBL_ID_IDAC_TABLE1 - AC2PHY_TBL_ID_IDAC_TABLE0)),
+			24, 0, 32, zeros);
+	wlc_phy_table_write_acphy(pi,
+			AXPHY_TBL_ID_IDAC_RES_TABLE0 + (core *
+			(AXPHY_TBL_ID_IDAC_RES_TABLE1 - AXPHY_TBL_ID_IDAC_RES_TABLE0)),
+			24, 0, 32, zeros);
+	MOD_PHYREGCE(pi, dccal_control_15, core, tbl_accessClk_sel, 1);
+
+	MOD_RADIO_REG_20707(pi, TIA_CFG1_OVR, core, ovr_tia_dcdac_pu, 0);
+	MOD_RADIO_REG_20707(pi, TIA_CFG1_OVR, core, ovr_tia_dcdac_i, 0);
+	MOD_RADIO_REG_20707(pi, TIA_CFG1_OVR, core, ovr_tia_dcdac_q, 0);
+
+	phy_ax_dccal_digcorr_bwspecific_percore(pi, core);
+	phy_ac_dccal_init_tia_percore(pi, core);
+	ACPHY_ENABLE_STALL(pi, stall_val);
+}
+
 void phy_ax_dccal_digcorr_bwspecific(phy_info_t *pi)
 {
 	uint8 core;
 
 	if (CHSPEC_IS80(pi->radio_chanspec) || CHSPEC_IS160(pi->radio_chanspec)) {
 		FOREACH_CORE(pi, core) {
-			MOD_PHYREGCE(pi, dccal_control_1,  core, dcoe_abort_threshold, 150);
+			if (ACMAJORREV_129(pi->pubpi->phy_rev) && PHY_IPA(pi) &&
+				CHSPEC_IS5G(pi->radio_chanspec)) {
+				MOD_PHYREGCE(pi, dccal_control_1,  core, dcoe_abort_threshold, 255);
+			} else {
+				MOD_PHYREGCE(pi, dccal_control_1,  core, dcoe_abort_threshold, 150);
+			}
 			MOD_PHYREGCE(pi, dccal_control_8,  core, idacc_abort_threshold, 255);
 			MOD_PHYREGCE(pi, dccal_control_8,  core, idacc_acc_cexp, 4);
 		}
 	} else {
 		FOREACH_CORE(pi, core) {
-			MOD_PHYREGCE(pi, dccal_control_1,  core, dcoe_abort_threshold, 50);
+			if (ACMAJORREV_129(pi->pubpi->phy_rev) && PHY_IPA(pi) &&
+				CHSPEC_IS5G(pi->radio_chanspec)) {
+				MOD_PHYREGCE(pi, dccal_control_1,  core, dcoe_abort_threshold, 100);
+			} else {
+				MOD_PHYREGCE(pi, dccal_control_1,  core, dcoe_abort_threshold, 50);
+			}
 			if (ACMAJORREV_51_129(pi->pubpi->phy_rev)) {
 				//increase init thresholds to avoid timeouts in 63178.
 				//Adding it to 6710 too.
@@ -1973,6 +2267,20 @@ void phy_ax_dccal_digcorr_bwspecific(phy_info_t *pi)
 			}
 		}
 	}
+}
+
+void phy_ax_dccal_digcorr_bwspecific_percore(phy_info_t *pi, uint8 core)
+{
+	ASSERT(ACMAJORREV_129(pi->pubpi->phy_rev));
+
+	if (CHSPEC_IS80(pi->radio_chanspec)) {
+		MOD_PHYREGCE(pi, dccal_control_1,  core, dcoe_abort_threshold, 150);
+	} else {
+		MOD_PHYREGCE(pi, dccal_control_1,  core, dcoe_abort_threshold, 50);
+	}
+
+	MOD_PHYREGCE(pi, dccal_control_8,  core, idacc_abort_threshold, 255);
+	MOD_PHYREGCE(pi, dccal_control_8,  core, idacc_acc_cexp, 4);
 }
 
 void phy_ax_dccal_digcorr_dcoe(phy_info_t  *pi)
@@ -2039,10 +2347,19 @@ void phy_ax_dccal_digcorr_dcoe(phy_info_t  *pi)
 	}
 
 	// longer wait time for 80/160 to avoid time-outs
-	if (CHSPEC_IS80(pi->radio_chanspec) || CHSPEC_IS160(pi->radio_chanspec)) {
-		dly = 700;
-	} else {
-		dly = 300;
+	if (ACMAJORREV_129(pi->pubpi->phy_rev) && PHY_IPA(pi) && CHSPEC_IS5G(pi->radio_chanspec)) {
+		num_rst_retry = 12;
+		if (CHSPEC_IS80(pi->radio_chanspec)) {
+			dly = 1000;
+		} else {
+			dly = 500;
+		}
+	} else { /* For 63178 and others */
+		if (CHSPEC_IS80(pi->radio_chanspec) || CHSPEC_IS160(pi->radio_chanspec)) {
+			dly = 700;
+		} else {
+			dly = 300;
+		}
 	}
 
 	while ((retry <= num_rst_retry) && (cal_done < num_actv_cores)) {
@@ -2128,10 +2445,19 @@ void phy_ax_dccal_digcorr_idacc(phy_info_t  *pi)
 	}
 
 	// longer wait time for 80/160 to avoid time-outs
-	if (CHSPEC_IS80(pi->radio_chanspec) || CHSPEC_IS160(pi->radio_chanspec)) {
-		dly = 500;
-	} else {
-		dly = 300;
+	if (ACMAJORREV_129(pi->pubpi->phy_rev) && PHY_IPA(pi) && CHSPEC_IS5G(pi->radio_chanspec)) {
+		num_rst_retry = 12;
+		if (CHSPEC_IS80(pi->radio_chanspec)) {
+			dly = 1000;
+		} else {
+			dly = 500;
+		}
+	} else { /* For 63178 and others */
+		if (CHSPEC_IS80(pi->radio_chanspec) || CHSPEC_IS160(pi->radio_chanspec)) {
+			dly = 500;
+		} else {
+			dly = 300;
+		}
 	}
 
 	while ((retry <= num_rst_retry) && (cal_done < num_actv_cores)) {
@@ -2177,4 +2503,94 @@ void phy_ax_dccal_digcorr_idacc(phy_info_t  *pi)
 	FOREACH_ACTV_CORE(pi, phyrxchain, core) {
 		MOD_PHYREGCE(pi, RfCtrlCoreITRCtrl, core, lnaKillSwOvr, 0);
 	}
+}
+
+void phy_ax_dccal_digcorr_idacc_override(phy_info_t  *pi, uint8 core)
+{
+	uint8 num_rst_retry = 6;
+	uint8 cal_done = 0;
+	uint8 retry = 0;
+	uint8 num_actv_cores = 0;
+	uint16 dly;
+	uint16 id;
+	uint16 idac0_q, idac0_i;
+	uint32 idac0;
+	uint8 coree;
+
+	//CAL idac
+	FOREACH_CORE(pi, coree) {
+		MOD_PHYREGCE(pi, dccal_control_16, coree, dcoe_bypass, 1);
+		MOD_PHYREGCE(pi, dccal_control_14, coree, idacc_bypass, 0);
+	}
+
+	num_actv_cores++;
+
+	MOD_PHYREGCE(pi, RfCtrlCoreITRCtrl, core, lnaKillSw5GVal, 1);
+	MOD_PHYREGCE(pi, RfCtrlCoreITRCtrl, core, lnaKillSwOvr, 1);
+	MOD_PHYREGCE(pi, dccal_control_7,  core, dccal_clkgate_en, 0x0);
+
+	// longer wait time for 80/160 to avoid time-outs
+	if (CHSPEC_IS80(pi->radio_chanspec) || CHSPEC_IS160(pi->radio_chanspec)) {
+		dly = 500;
+	} else {
+		dly = 300;
+	}
+
+	while ((retry <= num_rst_retry) && (cal_done < num_actv_cores)) {
+		cal_done = 0;
+
+		// toggle the override_idac_cal_done bit to reset dcoe_done
+		MOD_PHYREGCE(pi, dccal_control_16, core, override_idac_cal_done, 1);
+		MOD_PHYREGCE(pi, dccal_control_16, core, override_idac_cal_done, 0);
+
+		MOD_PHYREG(pi, RxControl, dbgpktprocReset, 0x1);
+		OSL_DELAY(10);
+		MOD_PHYREG(pi, RxControl, dbgpktprocReset, 0x0);
+		OSL_DELAY(dly);
+
+		if (READ_PHYREGFLDCE(pi, dccal_control_21, core,
+				idac_cal_done_0) == 0xffff &&
+			READ_PHYREGFLDCE(pi, dccal_control_22, core,
+				idac_cal_done_1) == 0xff) {
+			cal_done++;
+			PHY_CAL(("dccal: idacc complete for core %d, retried = %d times,"
+				" cal_done = %d\n",	core, retry, cal_done));
+		} else {
+			if (retry == num_rst_retry) {
+				PHY_CAL(("dccal: idacc timeout core%d at the final trial\n",
+					core));
+				// enable the DC fixed corr back since IDAC cal failed
+				MOD_PHYREG(pi, DcFiltAddress, bypass_HT_VHT_HE_STF, 0);
+			} else {
+				PHY_CAL(("dccal: idacc temporary timeout core%d."
+					" Retrying...\n", core));
+			}
+		}
+		retry++;
+	}
+
+	MOD_PHYREGCE(pi, dccal_control_14, core, idacc_bypass, 1);
+	MOD_PHYREGCE(pi, RfCtrlCoreITRCtrl, core, lnaKillSwOvr, 0);
+
+	id = AC2PHY_TBL_ID_IDAC_TABLE0 + (core * (AC2PHY_TBL_ID_IDAC_TABLE1
+		- AC2PHY_TBL_ID_IDAC_TABLE0));
+	wlc_phy_table_read_acphy(pi, id, 1, 0, 32, &(idac0));
+	idac0_i = ((idac0 >> 10) & 0x3ff);
+	idac0_q = (idac0 & 0x3ff);
+	if (idac0_i >= 512) {
+		idac0_i = 1024 - (idac0_i - 512) - 1;
+	}
+	if (idac0_q >= 512) {
+		idac0_q = 1024 - (idac0_q - 512) - 1;
+	}
+	PHY_CAL(("PAPD special dccal: core =%d, idac0_i=%d, idac0_q=%d\n", core, idac0_i, idac0_q));
+
+	MOD_RADIO_REG_20707(pi, TIA_DCDAC_REG2, core, tia_dcdac_pu, 1);
+	MOD_RADIO_REG_20707(pi, TIA_DCDAC_REG2, core, tia_dcdac_scale, 6);
+	MOD_RADIO_REG_20707(pi, TIA_DCDAC_REG1, core, tia_dcdac_i, idac0_i);
+	MOD_RADIO_REG_20707(pi, TIA_DCDAC_REG2, core, tia_dcdac_q, idac0_q);
+	MOD_RADIO_REG_20707(pi, TIA_CFG1_OVR, core, ovr_tia_dcdac_pu, 1);
+	MOD_RADIO_REG_20707(pi, TIA_CFG1_OVR, core, ovr_tia_dcdac_i, 1);
+	MOD_RADIO_REG_20707(pi, TIA_CFG1_OVR, core, ovr_tia_dcdac_q, 1);
+
 }

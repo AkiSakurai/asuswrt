@@ -14,7 +14,7 @@
  * whose associated chanspec is used as the current radio chanspec, and
  * whose s/w properties are applied to the corresponding h/w if any.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -58,7 +58,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_chanmgr_api.h 769448 2018-11-15 04:59:58Z $
+ * $Id: phy_chanmgr_api.h 783661 2020-02-05 02:40:06Z $
  */
 
 #ifndef _phy_chanmgr_api_h_
@@ -100,6 +100,7 @@ int phy_chanmgr_bsinit(phy_info_t *pi, chanspec_t chanspec, bool forced);
 int phy_chanmgr_bwinit(phy_info_t *pi, chanspec_t chanspec);
 
 void phy_chanmgr_tdcs_enable_160m(phy_info_t *pi, bool set_val);
+void phy_chanmgr_pad_online_enable(phy_info_t *pi, bool set_val, bool up_check);
 
 /*     VSDB, RVSDB Module related definitions         */
 uint8 phy_chanmgr_vsdb_sr_attach_module(wlc_phy_t *ppi, chanspec_t chan0, chanspec_t chan1);

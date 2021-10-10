@@ -1,7 +1,7 @@
 /*
  * Decode functions which provides decoding of GAS packets as defined in 802.11u.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -50,9 +50,7 @@
 
 #include "802.11.h"
 #include "bcmutils.h"
-#ifdef BCMDBG
 #include "wlioctl_defs.h"
-#endif // endif
 #include "wl_dbg.h"
 #include "bcm_decode_ie.h"
 #include "bcm_decode_gas.h"
@@ -163,7 +161,13 @@ int bcm_decode_gas(bcm_decode_t *pkt, bcm_decode_gas_t *gasDecode)
 	(void)bcm_decode_byte(pkt, &gasDecode->action);
 	(void)bcm_decode_byte(pkt, &gasDecode->dialogToken);
 
-	if (gasDecode->category != DOT11_ACTION_CAT_PUBLIC) {
+	if ((gasDecode->category != DOT11_ACTION_CAT_PUBLIC) &&
+		(gasDecode->category != DOT11_ACTION_CAT_PDPA)) {
+		/* During MAP-R2 cert testing, 4.3.4 test case: GAS QUERY
+		 * for neighbor report can come after association with
+		 * category Protected dual public address category fra,e
+		 * instead of public action frame.
+		 */
 		WL_P2PO(("invalid category %d\n", gasDecode->category));
 		return FALSE;
 	}

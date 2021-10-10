@@ -1,7 +1,7 @@
 /*
  * Proxd FTM method implementation - protocol support. See twiki FineTimingMeasurement.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: pdftmproto.c 777979 2019-08-19 23:14:13Z $
+ * $Id: pdftmproto.c 784407 2020-02-26 18:02:04Z $
  */
 
 #include "pdftmpvt.h"
@@ -565,13 +565,16 @@ ftm_proto_find_loc_req(pdftm_t *ftm, uint8 meas_type,
 	const dot11_rm_ie_t *meas_req = NULL;
 	bcm_tlv_t *tlv = NULL;
 	bcm_tlv_t *req_tlv = NULL;
+	uint tlv_size;
 
 	tlv = bcm_parse_tlvs((const uint8 *)*body, *body_len, DOT11_MNG_MEASURE_REQUEST_ID);
 	if (tlv) {
 		if (tlv->len < DOT11_MNG_IE_MREQ_LCI_FIXED_LEN) {
 			goto done;
 		}
-		uint tlv_size = TLV_HDR_LEN + tlv->len;
+
+		tlv_size = TLV_HDR_LEN + tlv->len;
+
 		if (tlv_size < sizeof(*meas_req)) {
 			goto done;
 		}
@@ -609,13 +612,16 @@ ftm_proto_find_lci_civic_rep(pdftm_t *ftm, pdftm_session_t *sn, uint8 meas_type,
 	int err = BCME_OK;
 	const dot11_rm_ie_t *meas_rep = NULL;
 	pdftm_notify_info_t notify_info;
+	uint tlv_size;
 
 	tlv = bcm_parse_tlvs((const uint8 *)*body, *body_len, DOT11_MNG_MEASURE_REPORT_ID);
 	if (tlv) {
 		if (tlv->len < DOT11_MNG_IE_MREQ_LCI_FIXED_LEN) {
 			goto done;
 		}
-		uint tlv_size = TLV_HDR_LEN + tlv->len;
+
+		tlv_size = TLV_HDR_LEN + tlv->len;
+
 		if (tlv_size < sizeof(*meas_rep)) {
 			FTM_LOGPROTO(ftm, (("wl%d: %s: recvd measure-rep,  invalid len %d\n",
 				FTM_UNIT(ftm), __FUNCTION__, tlv_size)));
@@ -934,6 +940,7 @@ ftm_proto_session_config_from_params(pdftm_t *ftm, wlc_bsscfg_t *rx_bsscfg,
 	uint32 dur_usec, req_dur;
 	uint8 burst_tmo;
 	int ret_err = BCME_OK;
+	scb_t *scb = NULL;
 
 	sncfg = sn->config;
 	ASSERT(!(sncfg->flags & WL_PROXD_SESSION_FLAG_INITIATOR));
@@ -962,7 +969,7 @@ ftm_proto_session_config_from_params(pdftm_t *ftm, wlc_bsscfg_t *rx_bsscfg,
 
 	chaninfo = FTM_PARAMS_CHAN_INFO(params);
 	do {
-		uint8 sn_chaninfo;
+		uint8 sn_chaninfo = chaninfo;
 		chanspec_t rx_cspec =
 			D11RXHDR_ACCESS_VAL(&wrxh->rxhdr, ftm->wlc->pub->corerev, RxChan);
 
@@ -971,17 +978,38 @@ ftm_proto_session_config_from_params(pdftm_t *ftm, wlc_bsscfg_t *rx_bsscfg,
 			break;
 
 		sn->config->burst_config->chanspec = chanspec;
-		err = ftm_proto_resolve_ratespec(ftm, chanspec, chaninfo, rx_rspec, &ratespec);
+		if (BSSCFG_AP(sn->bsscfg) && sn->bsscfg->up) {
+			/* update chaninfo in the case of bw downgrade */
+			sn_chaninfo = ftm_proto_get_chaninfo(ftm, sn);
+		}
+		err = ftm_proto_resolve_ratespec(ftm, chanspec, sn_chaninfo, rx_rspec, &ratespec);
 		if (err != BCME_OK)
 			break;
 
 		sn->config->burst_config->ratespec = ratespec;
+		sn_chaninfo = ftm_proto_get_chaninfo(ftm, sn);
+
+		/* for AP and associated case, update ratespec in case of b/w downgrade */
+		scb = wlc_scbfindband(ftm->wlc, sn->bsscfg, &sn->config->burst_config->peer_mac,
+			CHSPEC_BANDUNIT(rx_cspec));
+		if ((BSSCFG_AP(sn->bsscfg) && sn->bsscfg->up) ||
+			(scb != NULL && SCB_ASSOCIATED(scb))) {
+			err = ftm_proto_resolve_ratespec(ftm, chanspec, sn_chaninfo,
+				rx_rspec, &ratespec);
+			if (err != BCME_OK)
+				break;
+			sn->config->burst_config->ratespec = ratespec;
+		}
 		err = pdftm_validate_ratespec(ftm, sn);
 		if (err != BCME_OK)
 			break;
-		sn_chaninfo = ftm_proto_get_chaninfo(ftm, sn);
-		if (chaninfo != sn_chaninfo)
+
+		if (chaninfo != sn_chaninfo) {
 			sn->flags |= FTM_SESSION_PARAM_OVERRIDE;
+			FTM_LOGPROTO(ftm, (("wl%d: %s: status %d, ret %d, "
+				"chanspec/ratespec override from chaninfo %d to %d\n",
+				FTM_UNIT(ftm), __FUNCTION__, err, ret_err, chaninfo, sn_chaninfo)));
+		}
 	} while (0);
 
 	if (err != BCME_OK) {
@@ -1242,7 +1270,7 @@ done:
 }
 
 static int
-ftm_proto_handle_req(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, const dot11_management_header_t *hdr,
+ftm_proto_handle_req(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, dot11_management_header_t *hdr,
 	const uint8 *body, uint body_len, const wlc_d11rxhdr_t *wrxh, ratespec_t rspec)
 {
 	const dot11_ftm_req_t *req;
@@ -1767,7 +1795,7 @@ done:
 }
 
 static int
-ftm_proto_handle_meas(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, const dot11_management_header_t *hdr,
+ftm_proto_handle_meas(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, dot11_management_header_t *hdr,
 	const uint8 *body, uint body_len, const wlc_d11rxhdr_t *wrxh, ratespec_t rspec)
 {
 	const dot11_ftm_t *meas;
@@ -2571,8 +2599,8 @@ pdftm_is_ftm_action(pdftm_t *ftm, const dot11_management_header_t *hdr,
 }
 
 int
-pdftm_rx(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, const dot11_management_header_t *hdr,
-	const uint8 *body, uint body_len, const wlc_d11rxhdr_t *wrxh, ratespec_t rspec)
+pdftm_rx(pdftm_t *ftm, wlc_bsscfg_t *bsscfg, dot11_management_header_t *hdr,
+	uint8 *body, uint body_len, wlc_d11rxhdr_t *wrxh, ratespec_t rspec)
 {
 	uint8 action = 0;
 	int err;

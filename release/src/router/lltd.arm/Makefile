@@ -68,12 +68,18 @@ else ifeq ($(BUILD_NAME), RT-AX92U)
 else ifeq ($(BUILD_NAME), RT-AX95Q)
 	install icon.rtax95q.ico $(INSTALLDIR)/usr/sbin/icon.ico
 	install icon.large.rtax95q.ico $(INSTALLDIR)/usr/sbin/icon.large.ico
+else ifeq ($(BUILD_NAME), RT-AX56_XD4)
+	install icon.rtax56_xd4.ico $(INSTALLDIR)/usr/sbin/icon.ico
+	install icon.large.rtax56_xd4.ico $(INSTALLDIR)/usr/sbin/icon.large.ico
 else ifeq ($(BUILD_NAME), RT-AX58U)
 	install icon.rtax58u.ico $(INSTALLDIR)/usr/sbin/icon.ico
 	install icon.large.rtax58u.ico $(INSTALLDIR)/usr/sbin/icon.large.ico
 else ifeq ($(BUILD_NAME), RT-AX56U)
 	install icon.rtax56u.ico $(INSTALLDIR)/usr/sbin/icon.ico
 	install icon.large.rtax56u.ico $(INSTALLDIR)/usr/sbin/icon.large.ico
+else ifeq ($(BUILD_NAME), RT-AX68U)
+	install icon.rtax68u.ico $(INSTALLDIR)/usr/sbin/icon.ico
+	install icon.large.rtax68u.ico $(INSTALLDIR)/usr/sbin/icon.large.ico	
 else ifeq ($(BUILD_NAME),RT-AC1200G)
 	install icon.rtac1200g.ico $(INSTALLDIR)/usr/sbin/icon.ico
 	install icon.large.rtac1200g.ico $(INSTALLDIR)/usr/sbin/icon.large.ico

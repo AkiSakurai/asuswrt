@@ -1,7 +1,7 @@
 /*
  * ACPHY Napping module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -116,7 +116,6 @@ static void* BCMRAMFN(phy_ac_get_nap_param_tbl)(phy_info_t *pi,
 #ifdef WL_NAP
 static void phy_ac_set_nap_params(phy_info_t *pi);
 static void phy_ac_reset_nap_params(phy_info_t *pi);
-static void phy_ac_nap_enable_majrev44(phy_info_t *pi, bool enable);
 static void phy_ac_load_nap_sequencer_28nm_ulp(phy_info_t *pi);
 static uint8 phy_ac_nap_ed_thresh_scale(phy_info_t *pi, uint32 *lo_thresh, uint32 *hi_thresh,
 		uint8 strt_stage);
@@ -250,37 +249,7 @@ BCMATTACHFN(phy_ac_populate_nap_params)(phy_ac_nap_info_t *nap_info)
 		goto fail;
 	}
 
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		/* Copy NAP2RX and RX2NAP seq */
-		memcpy(nap_params->rx2nap_seq,
-				phy_ac_get_nap_param_tbl(pi, RX2NAP_SEQ_TBL),
-				sizeof(uint16) * 16);
-		memcpy(nap_params->rx2nap_seq_dly,
-				phy_ac_get_nap_param_tbl(pi, RX2NAP_SEQ_DLY_TBL),
-				sizeof(uint16) * 16);
-		memcpy(nap_params->nap2rx_seq,
-				phy_ac_get_nap_param_tbl(pi, NAP2RX_SEQ_TBL),
-				sizeof(uint16) * 16);
-		memcpy(nap_params->nap2rx_seq_dly,
-				phy_ac_get_nap_param_tbl(pi, NAP2RX_SEQ_DLY_TBL),
-				sizeof(uint16) * 16);
-
-		/* Nap ED threshold computation adjust factors */
-		memcpy(nap_params->nap_lo_th_adj,
-				phy_ac_get_nap_param_tbl(pi, NAP_LO_TH_ADJ_TBL),
-				sizeof(uint16) * 5);
-		memcpy(nap_params->nap_hi_th_adj,
-				phy_ac_get_nap_param_tbl(pi, NAP_HI_TH_ADJ_TBL),
-				sizeof(uint16) * 5);
-
-		nap_params->nap_wait_in_cs_len = 10;
-		nap_params->nap_len = 64;
-		nap_params->nap2cs_wait_in_reset = 2;
-		nap_params->pktprocResetLen = 112;
-
-		/* Start stage to do ED threshold cal */
-		nap_params->ed_thresh_cal_start_stage = 5;
-	} else if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
 		/* Nap ED threshold computation adjust factors */
 		memcpy(nap_params->nap_lo_th_adj,
 				phy_ac_get_nap_param_tbl(pi, NAP_LO_TH_ADJ_TBL),
@@ -314,30 +283,7 @@ fail:
 static void *
 BCMATTACHFN(phy_ac_get_nap_param_tbl)(phy_info_t *pi, phy_ac_nap_param_tbl_t tbl_id)
 {
-	if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-		switch (tbl_id) {
-			case RX2NAP_SEQ_TBL:
-				return rx2nap_seq_maj36;
-
-			case RX2NAP_SEQ_DLY_TBL:
-				return rx2nap_seq_dly_maj36;
-
-			case NAP2RX_SEQ_TBL:
-				return nap2rx_seq_maj36;
-
-			case NAP2RX_SEQ_DLY_TBL:
-				return nap2rx_seq_dly_maj36;
-
-			case NAP_LO_TH_ADJ_TBL:
-				return nap_lo_th_adj_maj36;
-
-			case NAP_HI_TH_ADJ_TBL:
-				return nap_hi_th_adj_maj36;
-
-			default:
-				return NULL;
-		}
-	} else if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
 		switch (tbl_id) {
 			case NAP_LO_TH_ADJ_TBL:
 				return nap_lo_th_adj_maj40;
@@ -708,20 +654,6 @@ phy_ac_set_nap_params(phy_info_t *pi)
 		}
 		phy_ac_nap_update_energy_threshold(pi_ac->napi);
 	}
-
-	if (ACMAJORREV_36(pi->pubpi->phy_rev) && (!ACMINORREV_0(pi))) {
-		/* Fix to pktproc stuck in nap state on nap disable : CRDOT11ACPHY-2102
-		    SpareRegB0(7) = 0
-		*/
-		spare_reg = READ_PHYREG(pi, SpareRegB0) & 0xff7f;
-		WRITE_PHYREG(pi, SpareRegB0, spare_reg);
-
-		/* Fix to nap tx issue : CRDOT11ACPHY-2234
-		    SpareReg(11) = 1
-		*/
-		spare_reg = READ_PHYREG(pi, SpareReg) | (1 << 11);
-		WRITE_PHYREG(pi, SpareReg, spare_reg);
-	}
 }
 
 static void
@@ -737,35 +669,6 @@ phy_ac_reset_nap_params(phy_info_t *pi)
 	ACPHY_REG_LIST_EXECUTE(pi);
 }
 
-static void
-phy_ac_nap_enable_majrev44(phy_info_t *pi, bool enable)
-{
-	bool digital_nap = DIGITAL_NAPPING_EN;
-
-	if (!ACMAJORREV_44(pi->pubpi->phy_rev)) {
-		return;
-	}
-	/* Have increase predetect th to reduce false wakes from predetect */
-	MOD_PHYREG(pi, bphyPreDetectThreshold0, ac_det_1us_min_pwr_0,
-		enable ? BPHY_PREDETECTTH_NAP_EN : BPHY_PREDETECTTH_NAP_DIS);
-	MOD_PHYREG(pi, RxSdFeConfig1, forceStallEninNAP, !enable);
-	if (digital_nap) {
-		if (pi->pubpi->slice == DUALMAC_AUX)  {
-			MOD_PHYREG(pi, RxFeCtrl1, forceSdFeClkEn,
-				enable ? pi->pubpi->phy_coremask : 0);
-		}
-	} else {
-		if (pi->pubpi->slice == DUALMAC_MAIN)  {
-			MOD_PHYREG(pi, phy_workaround_ctrl, enable, enable);
-		} else {
-			MOD_PHYREG(pi, RxFeCtrl1, forceSdFeClkEn,
-				enable ? pi->pubpi->phy_coremask : 0);
-			MOD_PHYREG(pi, PHY1_Div_Clock_Root_Gating_Control,
-			phy1_tree1_main_divider_root_gating_force_on, enable);
-		}
-	}
-}
-
 void
 phy_ac_nap_enable(phy_info_t *pi, bool enable, bool agc_reconfig)
 {
@@ -776,25 +679,9 @@ phy_ac_nap_enable(phy_info_t *pi, bool enable, bool agc_reconfig)
 	if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		MOD_PHYREG(pi, NapCtrl, nap_en, enable);
 		MOD_PHYREG(pi, NapCtrl, napCrsRstAccDis, enable);
-	} else if (ACMAJORREV_44(pi->pubpi->phy_rev)) {
-		/* WARs for phy_maj44. Different sequence for enabling and disabling */
-		if (enable) {
-			phy_ac_nap_enable_majrev44(pi, TRUE);
-			MOD_PHYREG(pi, NapCtrl, nap_en, TRUE);
-			MOD_PHYREG(pi, NapCtrl, napCrsRstAccDis, TRUE);
-		} else {
-			MOD_PHYREG(pi, NapCtrl, nap_en, FALSE);
-			MOD_PHYREG(pi, NapCtrl, napCrsRstAccDis, FALSE);
-			phy_ac_nap_enable_majrev44(pi, FALSE);
-		}
 	} else {
-		if (enable) {
-			/* Set napping related params */
-			phy_ac_set_nap_params(pi);
-		} else {
-			/* Reset napping related params */
-			phy_ac_reset_nap_params(pi);
-		}
+		/* Set or reset napping related params */
+		phy_ac_set_nap_params(pi);
 
 		/* Indicate Ucode Napping feature enabled/disabled using host flag */
 		(enable == TRUE) ? wlapi_mhf(pi->sh->physhim, MHF4, MHF4_NAPPING_ENABLE,
@@ -805,12 +692,7 @@ phy_ac_nap_enable(phy_info_t *pi, bool enable, bool agc_reconfig)
 		/* Reconfigure AGC parameters */
 		if (agc_reconfig) {
 			if (enable) {
-				/* Configure SSAGC */
-				if (ACMAJORREV_36(pi->pubpi->phy_rev)) {
-					phy_ac_agc_config(pi, SINGLE_SHOT_AGC);
-				} else {
-					phy_ac_agc_config(pi, FAST_AGC);
-				}
+				phy_ac_agc_config(pi, FAST_AGC);
 			} else {
 				/* Configure FastAGC */
 				phy_ac_agc_config(pi, FAST_AGC);
@@ -905,19 +787,6 @@ phy_ac_nap_ed_thresh_cal(phy_info_t *pi, int8 *cmplx_pwr_dBm)
 	/* since we are touching phy regs mac has to be suspended */
 	wlapi_suspend_mac_and_wait(pi->sh->physhim);
 	phy_utils_phyreg_enter(pi);
-
-	if (ACMAJORREV_36(pi->pubpi->phy_rev) && !ACMINORREV_0(pi)) {
-		uint8 scale_conf;
-		uint16 spare_reg;
-
-		/* Nap ED threshold scaling : CRDOT11ACPHY-2200 */
-		scale_conf = phy_ac_nap_ed_thresh_scale(pi, lo_thresh, hi_thresh,
-				nap_params->ed_thresh_cal_start_stage);
-
-		/* Configure scale config : SpareReg(13:12) */
-		spare_reg = (READ_PHYREG(pi, SpareReg) & 0xcfff) | (scale_conf << 12);
-		WRITE_PHYREG(pi, SpareReg, spare_reg);
-	}
 
 	/* Write thresholds to registers */
 	for (i = 0; i < 5; i++) {

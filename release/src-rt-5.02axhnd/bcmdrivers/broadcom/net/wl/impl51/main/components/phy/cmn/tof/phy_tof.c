@@ -1,7 +1,7 @@
 /*
  * TOF module implementation
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tof.c 688501 2017-03-06 20:58:21Z $
+ * $Id: phy_tof.c 784256 2020-02-24 20:32:21Z $
  */
 
 #ifdef WL_PROXDETECT
@@ -156,7 +156,6 @@ wlc_phy_tof(wlc_phy_t *ppi, bool enter, bool tx, bool hw_adj, bool seq_en, int c
 	phy_info_t *pi = (phy_info_t *)ppi;
 	int err;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -189,7 +188,6 @@ phy_tof_seq_params(wlc_phy_t *ppi, bool assign_buffer)
 
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -209,7 +207,6 @@ phy_tof_set_ri_rr(wlc_phy_t *ppi, const uint8* ri_rr, const uint16 len,
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -228,7 +225,6 @@ phy_tof_seq_upd_dly(wlc_phy_t *ppi, bool tx, uint8 core, bool mac_suspend)
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -247,7 +243,6 @@ phy_tof_seq_params_get_set(wlc_phy_t *ppi, uint8 *delays, bool set, bool tx, int
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -266,7 +261,6 @@ phy_tof_dbg(wlc_phy_t *ppi, int arg)
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -289,7 +283,6 @@ wlc_phy_tof(wlc_phy_t *ppi, bool enter, bool hw_adj)
 
 	int err;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -317,7 +310,6 @@ wlc_phy_tof_calc_snr_bitflips(wlc_phy_t *ppi, void *In,
 	int err = BCME_OK;
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -332,7 +324,6 @@ wlc_phy_tof_calc_snr_bitflips(wlc_phy_t *ppi, void *In,
 void phy_tof_setup_ack_core(wlc_phy_t *ppi, int core)
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
-	ASSERT(pi != NULL);
 	phy_tof_info_t *tofi = pi->tofi;
 	phy_type_tof_fns_t *fns = tofi->fns;
 
@@ -352,7 +343,6 @@ void phy_tof_core_select(wlc_phy_t *ppi, const uint32 gdv_th, const int32 gdmm_t
 		const int8 rssi_th, const int8 delta_rssi_th, uint8* core, uint8 core_mask)
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
-	ASSERT(pi != NULL);
 	phy_tof_info_t *tofi = pi->tofi;
 	phy_type_tof_fns_t *fns = tofi->fns;
 
@@ -378,7 +368,6 @@ phy_tof_chan_freq_response(wlc_phy_t *ppi, int len, int nbits, int32* Hr, int32*
 	uint8 core_max = (single_core) ? 1 : num_cores;
 	uint8 sts_max = (single_core) ? 1 : num_sts;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *tofi = pi->tofi;
 	phy_type_tof_fns_t *fns = tofi->fns;
 
@@ -409,7 +398,6 @@ wlc_phy_chan_mag_sqr_impulse_response(wlc_phy_t *ppi, int frame_type,
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -428,7 +416,6 @@ int wlc_phy_tof_info(wlc_phy_t *ppi, wlc_phy_tof_info_t *tof_info,
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -445,7 +432,6 @@ int wlc_phy_tof_info(wlc_phy_t *ppi, int* p_frame_type, int* p_frame_bw, int8* p
 	phy_info_t *pi = (phy_info_t *)ppi;
 	int cfo;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -464,7 +450,6 @@ wlc_phy_seq_ts(wlc_phy_t *ppi, int n, void* p_buffer, int tx, int cfo, int adj, 
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -481,7 +466,6 @@ void phy_tof_cmd(wlc_phy_t *ppi, bool seq, int emu_delay)
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -497,7 +481,6 @@ wlc_phy_tof_kvalue(wlc_phy_t *ppi, chanspec_t chanspec, uint32 *kip, uint32 *ktp
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -515,7 +498,6 @@ wlc_phy_kvalue(wlc_phy_t *ppi, chanspec_t chanspec, uint32 rspecidx, uint32 *kip
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -532,7 +514,6 @@ int
 wlc_phy_tof_kvalue(wlc_phy_t *ppi, chanspec_t chanspec, uint32 *kip, uint32 *ktp)
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -548,7 +529,6 @@ void
 phy_tof_init_gdmm_th(wlc_phy_t *ppi, int32 *gdmm_th)
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -563,7 +543,6 @@ void
 phy_tof_init_gdv_th(wlc_phy_t *ppi, uint32 *gdv_th)
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -579,7 +558,6 @@ int phy_tof_dbg(wlc_phy_t *ppi, int arg)
 {
 	phy_info_t *pi = (phy_info_t *)ppi;
 
-	ASSERT(pi != NULL);
 	phy_tof_info_t *info = pi->tofi;
 	phy_type_tof_fns_t *fns = info->fns;
 
@@ -590,5 +568,55 @@ int phy_tof_dbg(wlc_phy_t *ppi, int arg)
 	}
 }
 #endif /* TOF_DBG */
+
+#ifdef WL_PROXD_GDCOMP
+/* Group delay compensation */
+/* theta is in 19bits format. Hence 3.1416 - > 2^19 -> 524288 */
+/* It uses 20 bits to represent (-PI to PI) */
+#define CORDIC32_PI 19u
+/* PI(deg) s(15,16) 180 << 16 */
+#define PI_DEG 11796480u
+#define FIXED_PHASE(DELAY, N) (2u * PI_DEG * DELAY/(N))
+#define SIGN(X) (X < 0) ? (1) : (0)
+#define ADJUST_PHASE(X) ((X >> 28u) == 0x7)
+void
+phy_tof_gdcomp(cint32* H, int32 theta, int nfft, int delay_imp)
+{
+	math_fixed theta_k = 0;
+	math_cint32 exp_val, tmp;
+	int k;
+
+	if (theta == 0)
+		return;
+
+	/* Convert theta (pi->1<<19) to degs s(15,16) -> pi(deg)(s(15,16))/2^19 */
+	theta = (int32)(((int64) theta * PI_DEG) >> (CORDIC32_PI));
+	/* Apply a fixed integer group delay equal to FIXED_DELAY no. of samples */
+	/* to avoid wrapping of channel taps in time domain */
+	/* Effective group delay to be compensated is as follow */
+	/* theta - (2*pi*FIXED_DELAY/N) s(15,16) */
+	theta = theta - FIXED_PHASE(delay_imp, nfft);
+	/* Generate a phase ramp (-N/2 : N/2-1)*theta and compensate */
+	theta_k = (-nfft >> 1) * theta;
+	for (k = 0; k < nfft; k++) {
+		if (ADJUST_PHASE(ABS(theta_k))) {
+			if (SIGN(theta_k)) {
+				theta_k += (2u * PI_DEG);
+			} else {
+				theta_k -= (2u * PI_DEG);
+			}
+			PHY_INFORM(("Adjusting phase to avoid overflow\n"));
+		}
+		/* theta is in degrees and should be in s15.16 fixed-point */
+		math_cmplx_cordic(theta_k, &exp_val);
+		tmp.i = FLOAT(H->i * exp_val.i) - FLOAT(H->q * exp_val.q);
+		tmp.q = FLOAT(H->i * exp_val.q) + FLOAT(H->q * exp_val.i);
+		H->i = (int32)tmp.i;
+		H->q = (int32)tmp.q;
+		H++;
+		theta_k += theta;
+	}
+}
+#endif /* WL_PROXD_GDCOMP */
 
 #endif /* WL_PROXDETECT */

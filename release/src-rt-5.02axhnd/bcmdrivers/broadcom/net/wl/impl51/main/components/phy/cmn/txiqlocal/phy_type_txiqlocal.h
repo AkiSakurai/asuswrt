@@ -1,7 +1,7 @@
 /*
  * TXIQLO CAL module internal interface (to PHY specific implementations).
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_type_txiqlocal.h 635707 2016-05-05 00:32:31Z $
+ * $Id: phy_type_txiqlocal.h 781257 2019-11-15 00:45:58Z $
  */
 
 #ifndef _phy_type_txiqlocal_h_
@@ -82,13 +82,17 @@ typedef void (*phy_type_txiqlocal_txiqccset_fn_t)(phy_type_txiqlocal_ctx_t *ctx,
 typedef void (*phy_type_txiqlocal_txloccget_fn_t)(phy_type_txiqlocal_ctx_t *ctx, void *a);
 typedef void (*phy_type_txiqlocal_txloccset_fn_t)(phy_type_txiqlocal_ctx_t *ctx, void *b);
 typedef void (*phy_type_txiqlocal_scanroam_cache_fn_t)(phy_type_txiqlocal_ctx_t *ctx, bool set);
+typedef int (*phy_type_txiqlocal_get_var_fn_t) (phy_type_txiqlocal_ctx_t *ctx, int32 *var);
+typedef int (*phy_type_txiqlocal_set_int_fn_t) (phy_type_txiqlocal_ctx_t *ctx, int32 var);
 typedef struct {
 	phy_type_txiqlocal_txiqccget_fn_t	txiqccget;
 	phy_type_txiqlocal_txiqccset_fn_t	txiqccset;
 	phy_type_txiqlocal_txloccget_fn_t	txloccget;
 	phy_type_txiqlocal_txloccset_fn_t	txloccset;
-	phy_type_txiqlocal_scanroam_cache_fn_t scanroam_cache;
-	phy_type_txiqlocal_ctx_t	*ctx;
+	phy_type_txiqlocal_scanroam_cache_fn_t	scanroam_cache;
+	phy_type_txiqlocal_ctx_t		*ctx;
+	phy_type_txiqlocal_get_var_fn_t		get_calidx;
+	phy_type_txiqlocal_set_int_fn_t		set_calidx;
 } phy_type_txiqlocal_fns_t;
 
 /*

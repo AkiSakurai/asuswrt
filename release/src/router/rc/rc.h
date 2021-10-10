@@ -73,6 +73,10 @@
 #include <amas_lib.h>
 #endif
 
+#ifdef RTCONFIG_EXTPHY_BCM84880
+void config_ext_wan_port();
+void get_ext_phy_id();
+#endif
 
 #define IFUP (IFF_UP | IFF_RUNNING | IFF_BROADCAST | IFF_MULTICAST)
 
@@ -285,10 +289,6 @@ extern int ate_run_arpstrom(void);
 extern void ate_stress_pkteng(void);
 extern void ate_temperature_record(void);
 extern void wl_driver_mode_update(void);
-#ifdef RTCONFIG_EXTPHY_BCM84880
-void config_ext_wan_port();
-void get_ext_phy_id();
-#endif
 extern void eth_phypower(char *port, int onoff);
 #endif
 #ifdef BLUECAVE
@@ -663,6 +663,9 @@ extern void update_cfe_675x();
 #if defined(RTAX58U) || defined(TUFAX3000)
 extern void update_cfe_ax58u();
 #endif
+#if defined(GTAX11000) || defined(RTAX88U)
+extern void update_cfe_basemac();
+#endif
 #ifdef RTCONFIG_BCM_MFG
 extern void brcm_mfg_init();
 extern void brcm_mfg_services();
@@ -673,8 +676,16 @@ extern void fc_fini();
 extern void hnd_nat_ac_init(int bootup);
 extern void setLANLedOn(void);
 extern void setLANLedOff(void);
+#ifdef RTAX82U
+extern void setLEDGroupOn(void);
+extern void setLEDGroupOff(void);
+extern void cled_set(int gpio, uint32_t config0, uint32_t config1, uint32_t config2, uint32_t config3);
+extern void LEDGroupReset(int mode);
+extern void setAllLedNormal(void);
+#endif
 extern void activateLANLed();
 extern int mtd_erase_image_update();
+extern int mtd_erase_misc2();
 extern int wait_to_forward_state(char *ifname);
 #endif
 #ifdef RTCONFIG_BCMWL6
@@ -711,8 +722,10 @@ void set_dpsta_ifnames();
 #ifdef RTAC86U
 extern void hnd_cfe_check();
 #endif
-#ifdef RTCONFIG_HND_ROUTER_AX
+#ifdef HND_ROUTER
 extern void dump_WlGetDriverStats(int fb, int count);
+#endif
+#ifdef RTCONFIG_HND_ROUTER_AX
 extern void dfs_cac_check(void);
 #endif
 #endif
@@ -1109,6 +1122,9 @@ extern int mtd_write(const char *path, const char *mtd);
 extern int mtd_write_main(int argc, char *argv[]);
 extern int mtd_unlock_erase_main(int argc, char *argv[]);
 #endif
+#ifdef RTCONFIG_URLFW
+extern FILE *url_fopen(const char *path, const char *mode);
+#endif /* RTCONFIG_URLFW */
 
 // jffs2.c
 #if defined(RTCONFIG_UBIFS)
@@ -1164,8 +1180,15 @@ extern int usbled_main(int argc, char *argv[]);
 extern int phy_tempsense_main(int argc, char *argv[]);
 #endif
 #if defined(RTCONFIG_BCMWL6) && defined(RTCONFIG_PROXYSTA)
+// arp.c
+extern int send_arpreq(void);
 // psta_monitor.c
 extern int psta_monitor_main(int argc, char *argv[]);
+#endif
+// ledg.c
+#ifdef RTAX82U
+extern int ledg_main(int argc, char *argv[]);
+extern int ledbtn_main(int argc, char *argv[]);
 #endif
 #if defined(RTCONFIG_AMAS) && (defined(RTCONFIG_BCMWL6) || defined(RTCONFIG_LANTIQ) || defined(RTCONFIG_QCA))
 // obd.c
@@ -1354,6 +1377,10 @@ extern int mount_cifs_main(int argc, char *argv[]);
 static inline void start_cifs(void) {};
 static inline void stop_cifs(void) {};
 #endif
+#ifdef RTAX82U
+extern int start_ledg(void);
+extern int stop_ledg(void);
+#endif
 
 // linkmonitor.c
 extern int linkmonitor_main(int argc, char *argv[]);
@@ -1419,6 +1446,7 @@ extern void subtime(struct timeval *a, struct timeval *b, struct timeval *res);
 extern void setupset(fd_set *theset, int *numfds);
 extern void waitforconnects();
 extern int tcpcheck_main(int argc, char *argv[]);
+extern int tcpcheck_retval(int timeout, char *host_port);
 
 // readmem.c
 #ifdef BUILD_READMEM
@@ -1597,6 +1625,10 @@ extern void stop_sshd(void);
 extern void start_wtfast(void);
 extern void stop_wtfast(void);
 #endif
+#ifdef RTCONFIG_TENCENT_QMACC
+extern void start_qmacc(void);
+extern void stop_qmacc(void);
+#endif
 extern void start_hotplug2(void);
 extern void stop_services(void);
 extern void stop_services_mfg(void);
@@ -1670,7 +1702,7 @@ extern int firmware_check_main(int argc, char *argv[]);
 #ifdef RTCONFIG_HTTPS
 extern int rsasign_check_main(int argc, char *argv[]);
 extern int rsarootca_check_main(int argc, char *argv[]);
-extern char *pwdec(const char *input, char *output);
+extern char *pwdec(const char *input, char *output, int output_len);
 extern char *pwdec_dsl(char *input);
 #endif
 extern int service_main(int argc, char *argv[]);
@@ -2295,6 +2327,9 @@ extern void oauth_google_check_token_status(void);
 #ifdef RTCONFIG_UUPLUGIN
 extern void exec_uu();
 #endif
+#ifdef RTCONFIG_TCPLUGIN
+extern void exec_tcplugin();
+#endif
 
 // rmd.c
 #if defined(RTCONFIG_AMAS) && defined(RTCONFIG_CFGSYNC)
@@ -2324,6 +2359,7 @@ typedef struct probe_4366_param_s {
 	int bECode_5G_2;
 	int bECode_fabid;
 } probe_4366_param_t;
+void envram_dump_factory_data();
 #endif /* RTCONFIG_BCM_7114 || HND_ROUTER */
 
 #if defined(RTAX88U)

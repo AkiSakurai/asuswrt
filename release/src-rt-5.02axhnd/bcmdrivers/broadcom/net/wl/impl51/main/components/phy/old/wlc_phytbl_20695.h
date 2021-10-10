@@ -1,7 +1,7 @@
 /*
  * Radio 20695 channel tuning header file
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phytbl_20695.h 650058 2016-07-20 09:50:45Z $
+ * $Id: wlc_phytbl_20695.h 775590 2019-06-05 07:51:57Z $
  */
 
 #ifndef _wlc_phytbl_20695_h_

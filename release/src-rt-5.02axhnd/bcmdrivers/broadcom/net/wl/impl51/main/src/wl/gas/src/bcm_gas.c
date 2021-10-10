@@ -2,7 +2,7 @@
  * GAS state machine functions which implements the GAS protocol
  * as defined in 802.11u.
  *
- * Copyright 2019 Broadcom
+ * Copyright 2020 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -320,6 +320,7 @@ struct bcm_gas_struct
 	/* next in linked list */
 	struct bcm_gas_struct *next;
 	bool is_no_response;
+	uint8 category;
 	/* Store wlcif to derive interface index when scanmac is used
 	* while sending events to host.
 	*/
@@ -797,7 +798,7 @@ int bcm_gas_deinitialize(void)
 /* ----------------------------------------------------------- */
 
 bcm_gas_t *bcm_gas_create(struct bcm_gas_wl_drv_hdl *drv, int bsscfg_idx,
-	void *wl_drv_if, uint16 channel, struct ether_addr *dst)
+	void *wl_drv_if, uint16 channel, struct ether_addr *dst, bool isIncoming)
 {
 	bcm_gas_t *gas;
 #if defined(BCMDBG) || defined(BCMDBG_ERR)
@@ -811,7 +812,7 @@ bcm_gas_t *bcm_gas_create(struct bcm_gas_wl_drv_hdl *drv, int bsscfg_idx,
 		return 0;
 
 	memset(gas, 0, sizeof(*gas));
-	gas->isIncoming = FALSE;
+	gas->isIncoming = isIncoming;
 	gas->drv = drv;
 	gas->bsscfgIndex = bsscfg_idx;
 	gas->wl_drv_if = wl_drv_if;
@@ -1268,7 +1269,7 @@ void bcm_gas_process_wlan_event(void *context, uint32 eventType,
 #endif /* BCMDRIVER */
 				WL_P2PO(("creating incoming instance\n"));
 				gas = bcm_gas_create(drv, wlEvent->bsscfgidx,
-					NULL, channel, src);
+					NULL, channel, src, isIncoming);
 				if (gas == 0) {
 					WL_ERROR(("failed to create instance\n"));
 					return;
@@ -1671,7 +1672,7 @@ static void tx_gas_response(bcm_gas_t *gas, uint32 responseTimeout,
 	/* encode GAS response */
 	bcm_encode_init(&enc, sizeof(gas->tx.data), gas->tx.data);
 	gas->tx.length = bcm_encode_gas_response(&enc, dialogToken, statusCode, comebackDelay,
-		bcm_encode_length(&apie), bcm_encode_buf(&apie), rspLen, rsp);
+		bcm_encode_length(&apie), bcm_encode_buf(&apie), rspLen, rsp, gas->category);
 	WL_NONE(("%s: sz=%zu rspLen=%u rsp=%p tx.len=%d\n", __FUNCTION__,
 		sizeof(gas->tx.data), rspLen, OSL_OBFUSCATE_BUF(rsp), gas->tx.length));
 
@@ -1721,9 +1722,9 @@ static void tx_gas_comeback_response(bcm_gas_t *gas, uint32 responseTimeout,
 static void state_idle(bcm_gas_t *gas, eventT event,
 	bcm_decode_gas_t *gasDecode, int dataLen, uint8 *data)
 {
+	uint8 i = 0;
 	(void)dataLen;
 	(void)data;
-	uint8 i = 0;
 
 	switch (event) {
 	case EVENT_CONFIGURE:
@@ -1753,6 +1754,7 @@ static void state_idle(bcm_gas_t *gas, eventT event,
 	{
 		/* save dialog token from request */
 		gas->dialogToken = gasDecode->dialogToken;
+		gas->category = gasDecode->category;
 
 		if (!is_valid_advertisement_protocol(&gasDecode->request.apie)) {
 			/* transmit failed GAS response */
@@ -1789,6 +1791,13 @@ static void state_idle(bcm_gas_t *gas, eventT event,
 	case EVENT_RX_RESPONSE:
 		break;
 	case EVENT_RX_COMEBACK_REQUEST:
+		if (gas->is_no_response) {
+			/* free gas instance */
+			idle_reset(gas);
+			change_state(gas, STATE_IDLE);
+			bcm_gas_destroy(gas);
+			break;
+		}
 		/* save dialog token from request */
 		gas->dialogToken = gasDecode->dialogToken;
 		/* transmit failed GAS comeback response */
@@ -2230,6 +2239,11 @@ static void state_wait_query_response_process_query_response(bcm_gas_t *gas)
 	if (gas->is_no_response) {
 		idle_reset(gas);
 		change_state(gas, STATE_IDLE);
+		/* free gas instance */
+		if (gas->isIncoming && (gas->state == STATE_IDLE) &&
+			(gas->nextState == STATE_IDLE)) {
+			bcm_gas_destroy(gas);
+		}
 		return;
 	}
 	/* determine query data size */
@@ -2460,6 +2474,13 @@ bcm_gas_get_mac_addr(bcm_gas_t *gas)
 {
 	return (&gas->mac);
 }
+
+struct ether_addr*
+bcm_gas_get_peer_mac_addr(bcm_gas_t *gas)
+{
+	return (&gas->peer);
+}
+
 /* update gas instance as incoming, by default will be False */
 void
 bcm_gas_update_gas_incoming_info(bcm_gas_t* gas, bool is_incoming)
