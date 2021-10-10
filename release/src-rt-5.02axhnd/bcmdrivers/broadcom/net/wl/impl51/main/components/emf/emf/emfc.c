@@ -536,7 +536,7 @@ emfc_input(emfc_info_t *emfc, void *sdu, void *ifp, uint8 *iph, bool rt_port)
 			/* Dont forward the frame on to the port on which it
 			 * was received.
 			 */
-			if (ifp == mi->mi_mhif->mhif_ifp)
+			if (ifp == mi->mi_mhif->mhif_ifp || mi->mi_mhif->mhif_ifp == NULL)
 				continue;
 
 			EMF_DEBUG("Cloning the buffer for forwarding\n");
@@ -563,7 +563,7 @@ emfc_input(emfc_info_t *emfc, void *sdu, void *ifp, uint8 *iph, bool rt_port)
 		mi = clist_entry(ptr, emfc_mi_t, mi_list);
 
 		/* Dont forward the frame on to the port on which it was received */
-	        if (ifp != mi->mi_mhif->mhif_ifp)
+		if (ifp != mi->mi_mhif->mhif_ifp && mi->mi_mhif->mhif_ifp != NULL)
 		{
 			EMF_DEBUG("Sending the original packet buffer\n");
 
@@ -1288,7 +1288,7 @@ emfc_iflist_add(emfc_info_t *emfc, void *ifp)
 
 	if (ifp == NULL)
 	{
-		EMF_ERROR("Invalid interface identifier\n");
+		EMF_DEBUG("Invalid interface identifier\n");
 		return (FAILURE);
 	}
 
@@ -1334,7 +1334,7 @@ _emfc_iflist_del(emfc_info_t *emfc, void *ifp)
 
 	if (ifp == NULL)
 	{
-		EMF_ERROR("Invalid interface identifier\n");
+		EMF_DEBUG("Invalid interface identifier\n");
 		return (FAILURE);
 	}
 

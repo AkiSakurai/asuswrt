@@ -50,12 +50,14 @@ include ../../../src/makefiles/WLAN_Common.mk
 export SRCBASE := $(WLAN_SrcBaseA)
 export BASEDIR := $(WLAN_TreeBaseA)
 export TOP = ../../router
+include $(SRCBASE)/platform.mak
 CFLAGS	+= -I. -I$(TOP)/shared -I$(SRCBASE)/include ${WLAN_StdIncPathA} -I$(SRCBASE)/common/include -Wall -Werror
 CFLAGS	+= $(if $(WLAN_ComponentIncPath),$(WLAN_ComponentIncPath),$(addprefix -I,$(wildcard $(SRCBASE)/shared/bcmwifi/include $(SRCBASE)/../components/math/include)))
 #CFLAGS	+= -g -DDEBUG
 #CFLAGS += -DACS_DEBUG
 CFLAGS	+= -s -O2 -fno-strict-aliasing
 CFLAGS  += -DWL11AC_80P80 -DWL11AC_160
+CFLAGS  += $(EXTRACFLAGS)
 LDFLAGS += -L$(TOP_PLATFORM)/nvram -L$(INSTALLDIR)/nvram/usr/lib -lnvram
 LDFLAGS += -L$(TOP)/shared -L$(INSTALLDIR)/shared/usr/lib -lshared
 LDFLAGS += -L$(TOP_PLATFORM)/wlcsm -lwlcsm
@@ -85,8 +87,15 @@ clean:
 
 ${OBJS}: acsd.h acsd_svr.h acs_dfsr.h
 
+ifneq ($(PREBUILT_BCMBIN),1)
 acsd2: bcmutils.o bcmxtlv.o bcm_app_utils.o ${OBJS}
 	$(CC) $(CFLAGS) $^ -o $@  $(LDFLAGS)
 
 acs_cli2: acsd_cli.o acsd_utils.o bcmwifi_channels.o
 	$(CC) $(CFLAGS) $^ -o $@  $(LDFLAGS)
+else
+acsd2:
+	cp -f $(SRCBASE)/../components/apps/acsdv2/$(PRBM_DIR)/$@ ./
+acs_cli2:
+	cp -f $(SRCBASE)/../components/apps/acsdv2/$(PRBM_DIR)/$@ ./
+endif

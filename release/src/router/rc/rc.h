@@ -65,6 +65,11 @@
 #include "pc.h"
 #endif
 
+#ifdef RTCONFIG_AMAS
+#include <amas_lib.h>
+#endif
+
+
 #define IFUP (IFF_UP | IFF_RUNNING | IFF_BROADCAST | IFF_MULTICAST)
 
 #if LINUX_KERNEL_VERSION >= KERNEL_VERSION(3,2,0)
@@ -259,6 +264,7 @@ extern void wl_driver_mode_update(void);
 #ifdef RTCONFIG_EXTPHY_BCM84880
 void config_ext_wan_port();
 #endif
+extern void eth_phypower(char *port, int onoff);
 #endif
 #ifdef BLUECAVE
 extern int setCentralLedLv(int lv);
@@ -438,7 +444,7 @@ extern char *getStaMAC(void);
 extern char *get_qca_iwpriv(char *name, char *command);
 extern unsigned int getPapState(int unit);
 extern unsigned int getStaXRssi(int unit);
-#if RTCONFIG_CONCURRENTREPEATER
+#ifdef RTCONFIG_CONCURRENTREPEATER
 extern unsigned int get_conn_link_quality(int unit);
 #endif
 typedef unsigned int	u_int;
@@ -629,10 +635,8 @@ extern void bsd_defaults(void);
 extern void fc_init();
 extern void fc_fini();
 extern void hnd_nat_ac_init(int bootup);
-#ifdef RTCONFIG_LAN4WAN_LED
 extern void setLANLedOn(void);
 extern void setLANLedOff(void);
-#endif
 #ifdef RTCONFIG_HNDMFG
 extern void hnd_mfg_init();
 extern void hnd_mfg_services();
@@ -665,7 +669,7 @@ void set_dpsta_ifnames();
 extern void hnd_cfe_check();
 #endif
 #ifdef RTCONFIG_HND_ROUTER_AX
-extern void dump_WlGetDriverStats();
+extern void dump_WlGetDriverStats(int fb);
 extern void config_bcn_stuck_watchdog();
 extern void dfs_cac_check(void);
 #endif
@@ -715,7 +719,6 @@ extern int init_nvram3(void);
 extern void wl_defaults(void);
 extern void wl_defaults_wps(void);
 extern void restore_defaults_module(char *prefix);
-extern void clean_modem_state(int modem_unit, int flag);
 extern void restore_defaults_wifi(int all);
 extern void clean_vlan_ifnames(void);
 
@@ -1340,15 +1343,11 @@ extern void create_openvpn_passwd();
 #endif
 
 // wanduck.c
-#if defined(RTCONFIG_FAILOVER_LED)
-extern int update_failover_led(void);
-#else
-static inline int update_failover_led(void) { return 0; }
+#if defined(RTCONFIG_LANWAN_LED) || defined(RTCONFIG_HND_ROUTER_AX)
+extern int update_wan_leds(int wan_unit, int link_wan_unit);
 #endif
-#if defined(RTCONFIG_LANWAN_LED)
-extern int update_wan_leds(int wan_unit);
-#else
-static inline int update_wan_leds(int wan_unit) { update_failover_led(); return 0; }
+#if defined(RTCONFIG_LANWAN_LED) || defined(RTCONFIG_LAN4WAN_LED)
+int LanWanLedCtrl(void);
 #endif
 extern int wanduck_main(int argc, char *argv[]);
 #ifdef RTCONFIG_CONNDIAG
@@ -1379,7 +1378,6 @@ extern int asus_tty(const char *device_name, const char *action);
 extern int asus_usb_interface(const char *device_name, const char *action);
 extern int asus_sg(const char *device_name, const char *action);
 extern int asus_usbbcm(const char *device_name, const char *action);
-#endif
 #ifdef RTCONFIG_USB_MODEM
 extern int is_create_file_dongle(const unsigned int vid, const unsigned int pid);
 #ifdef RTCONFIG_USB_BECEEM
@@ -1390,10 +1388,12 @@ extern int write_beceem_conf(const char *eth_node);
 extern int write_gct_conf(void);
 #endif
 extern int is_android_phone(const int mode, const unsigned int vid, const unsigned int pid);
-extern int is_storage_cd(const int mode, const unsigned int vid, const unsigned int pid);
+extern int is_storage_cd(const unsigned int vid, const unsigned int pid);
+extern int is_gobi_dongle(const unsigned int vid, const unsigned int pid);
 extern int write_3g_conf(FILE *fp, int dno, int aut, const unsigned int vid, const unsigned int pid);
 extern int init_3g_param(const char *port_path, const unsigned int vid, const unsigned int pid);
 extern int write_3g_ppp_conf(int modem_unit);
+#endif
 #endif
 
 #ifdef RTCONFIG_DSL
@@ -1413,6 +1413,9 @@ extern int restart_dnsmasq(int need_link_DownUp);
 extern void start_dnsmasq(void);
 extern void stop_dnsmasq(void);
 extern void reload_dnsmasq(void);
+#if defined(RTCONFIG_TR069) || defined(RTCONFIG_AMAS)
+extern int dnsmasq_script_main(int argc, char **argv);
+#endif
 extern int ddns_updated_main(int argc, char *argv[]);
 #ifdef RTCONFIG_IPV6
 extern void add_ip6_lanaddr(void);
@@ -1859,6 +1862,15 @@ extern void web_history_save();
 extern void AiProtectionMonitor_mail_log();
 #endif
 
+/* amas_lib.c */
+#ifdef RTCONFIG_AMAS
+extern int amas_lib_main(int argc, char **argv);
+extern void stop_amas_lib();
+extern void start_amas_lib();
+extern int amaslib_lease_main(int argc, char **argv);
+extern void amaslib_check();
+#endif
+
 // tcode_rc.c
 extern int config_tcode(int type);
 
@@ -1941,7 +1953,7 @@ extern int monitor_main(int argc, char *argv[]);
 #ifdef RTCONFIG_TR069
 extern int start_tr(void);
 extern void stop_tr(void);
-extern int dhcpc_lease_main(int argc, char *argv[]);
+extern int tr_lease_main(int argc, char *argv[]);
 #endif
 
 #ifdef RTCONFIG_NEW_USER_LOW_RSSI
@@ -2058,6 +2070,13 @@ extern void ATE_BRCM_COMMIT(void);
 
 #if defined(RTCONFIG_LACP)
 void config_lacp(void);
+#endif
+
+#ifdef RTCONFIG_HND_ROUTER_AX
+#ifdef RTCONFIG_BONDING_WAN
+void start_wan_bonding(void);
+void stop_wan_bonding(void);
+#endif
 #endif
 
 #if defined(CONFIG_BCMWL5) && defined(RTCONFIG_DUALWAN)

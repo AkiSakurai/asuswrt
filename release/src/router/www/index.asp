@@ -86,59 +86,6 @@
 	-moz-border-radius: 10px;
 	border-radius: 10px;
 }
-.AiMesh_promoteHint_bg {
-	position: absolute;
-	-webkit-border-radius: 5px;
-	-moz-border-radius: 5px;
-	border-radius: 5px;
-	z-index: 200;
-	background-color:#2b373b;
-	margin-left: 140px;
-	width: 600px;
-	height: auto;
-	box-shadow: 3px 3px 10px #000;
-	display:block;
-	overflow: auto;
-	line-height: 180%;
-	font-size: 14px;
-}
-.AiMesh_promoteHint_content_bg {
-	width: 570px;
-	height: 200px;
-	position: relative;
-	overflow: hidden;
-	margin: auto;
-	margin-top: 10px;
-}
-.AiMesh_promoteHint_content_bg.redirect {
-	height: auto;
-	text-align: center;
-}
-.AiMesh_promoteHint_content_left_bg {
-	float: left;
-	width: 48%;
-	height: 100%;
-	margin: 0 1%;
-}
-.AiMesh_promoteHint_title {
-	font-weight: bolder;
-	text-align: center;
-	font-size: 16px;
-	height: 50px;
-	line-height: 50px;
-}
-.AiMesh_promoteHint_img {
-	background-size: 100%;
-	background-repeat: no-repeat;
-	background-position-y: 50%;
-	background-image: url(/images/New_ui/amesh/house_final_dea.png);
-}
-.AiMesh_promoteHint_redirect_text {
-	font-weight: bolder;
-	text-decoration: underline;
-	cursor: pointer;
-	margin: 10px;
-}
 </style>
 <script type="text/javascript" src="/md5.js"></script>
 <script type="text/javascript" src="/state.js"></script>
@@ -278,7 +225,6 @@ function initial(){
 			updateAMeshCount();
 			setInterval(updateAMeshCount, 5000);
 		});
-		setTimeout(AiMesh_promoteHint, 1000);
 	}
 	else
 		$("#ameshContainer").remove();
@@ -393,6 +339,13 @@ function initial(){
 		
 		if(wanlink_ipaddr == '0.0.0.0' || wanlink_ipaddr == '')
 			document.getElementById("wanIP_div").style.display = "none";
+
+		if(wan_bonding_support && orig_bond_wan == "1"){
+			document.getElementById("wanAggr_div").style.display = "block";
+			document.getElementById('single_wan_line').style.display = "none";
+			document.getElementById('primary_wan_line').style.display = "";
+			document.getElementById('secondary_wan_line').style.display = "";
+		}
 	}
 
 	if(smart_connect_support){
@@ -1014,7 +967,6 @@ function change_wan_unit(wan_unit_flag){
 }
 
 function show_ddns_fail_hint() {
-	var ddns_return_code = '<% nvram_get_ddns("LANHostConfig","ddns_return_code"); %>';
 	var str="";
 	if(sw_mode != 3 && document.getElementById("connect_status").className == "connectstatusoff")
 		str = "<#Disconnected#>";
@@ -1026,7 +978,8 @@ function show_ddns_fail_hint() {
 	else 
 		str = "<#LANHostConfig_x_DDNS_alarm_2#>";
 
-	overlib(str);
+	if(str != "")
+		overlib(str);
 }
 
 function check_dualwan(flag){
@@ -2039,34 +1992,25 @@ function updateClientsCount() {
 			setTimeout("updateClientsCount();", 1000);
 		},
 		success: function(response){
-			var re_tune_client_count = function() {
-				var count = 0;
-				count = fromNetworkmapd_maclist[0].length;
-				for(var i in fromNetworkmapd_maclist[0]){
-					if (fromNetworkmapd_maclist[0].hasOwnProperty(i)) {
-						if(clientList[fromNetworkmapd_maclist[0][i]] != undefined) {
-							if(clientList[fromNetworkmapd_maclist[0][i]].amesh_isRe)
-								count--;
-						}
-					}
-				}
-				return count;
-			};
 			//When not click iconClient and not click View Client List need update client count.
 			if(lastName != "iconClient") {
 				if(document.getElementById("clientlist_viewlist_content")) {
-					if(document.getElementById("clientlist_viewlist_content").style.display == "none") {
-						if(amesh_support && (isSwMode("rt") || isSwMode("ap")))
-							show_client_status(re_tune_client_count());
-						else
+					if(document.getElementById("clientlist_viewlist_content").style.display == "none"){
+						if(fromNetworkmapd_maclist[0].length == '0'){
+							show_client_status(totalClientNum.online);
+						}
+						else{
 							show_client_status(fromNetworkmapd_maclist[0].length);
-					}
+						}
+					}	
 				}
-				else {
-					if(amesh_support && (isSwMode("rt") || isSwMode("ap")))
-						show_client_status(re_tune_client_count());
-					else
+				else{
+					if(fromNetworkmapd_maclist[0].length == '0'){
+						show_client_status(totalClientNum.online);
+					}
+					else{
 						show_client_status(fromNetworkmapd_maclist[0].length);
+					}
 				}
 			}
 			setTimeout("updateClientsCount();", 5000);
@@ -2079,74 +2023,6 @@ function setDefaultIcon() {
 }
 function closeClientDetailView() {
 	edit_cancel();
-}
-function AiMesh_promoteHint() {
-	var AiMesh_promoteHint_flag = (httpApi.uiFlag.get("AiMeshHint") == "1") ? true : false;
-	var get_cfg_clientlist = [<% get_cfg_clientlist(); %>][0];
-	var AiMesh_node_count_flag = (get_cfg_clientlist.length < 2) ? true : false;
-	if(!AiMesh_promoteHint_flag && AiMesh_node_count_flag) {
-		httpApi.uiFlag.set("AiMeshHint", "1")
-		var $AiMesh_promoteHint = $('<div>');
-		$AiMesh_promoteHint.attr({"id" : "AiMesh_promoteHint"});
-		$AiMesh_promoteHint.addClass("AiMesh_promoteHint_bg");
-		$AiMesh_promoteHint.css("display", "none");
-		$AiMesh_promoteHint.attr({"onselectstart" : "return false"});
-		$AiMesh_promoteHint.appendTo($('body'));
-
-		var $AiMesh_promoteHint_content_bg = $('<div>');
-		$AiMesh_promoteHint_content_bg.addClass("AiMesh_promoteHint_content_bg");
-		$AiMesh_promoteHint.append($AiMesh_promoteHint_content_bg);
-
-		var $AiMesh_promoteHint_content_left_bg = $('<div>');
-		$AiMesh_promoteHint_content_left_bg.addClass("AiMesh_promoteHint_content_left_bg");
-		$AiMesh_promoteHint_content_bg.append($AiMesh_promoteHint_content_left_bg);
-
-		var $AiMesh_promoteHint_title = $('<div>');
-		$AiMesh_promoteHint_title.addClass("AiMesh_promoteHint_title");
-		var title = "<#NewFeatureAvailable#>";
-		$AiMesh_promoteHint_title.html(title);
-		$AiMesh_promoteHint_content_left_bg.append($AiMesh_promoteHint_title);
-
-		var $AiMesh_promoteHint_description = $('<div>');
-		var description = "<#AiMesh_Feature_Desc#>";
-		$AiMesh_promoteHint_description.html(description);
-		$AiMesh_promoteHint_content_left_bg.append($AiMesh_promoteHint_description);
-
-		var $AiMesh_promoteHint_content_right_bg = $('<div>');
-		$AiMesh_promoteHint_content_right_bg.addClass("AiMesh_promoteHint_content_left_bg AiMesh_promoteHint_img");
-		$AiMesh_promoteHint_content_bg.append($AiMesh_promoteHint_content_right_bg);
-
-		var $AiMesh_promoteHint_content_link_bg = $('<div>');
-		$AiMesh_promoteHint_content_link_bg.addClass("AiMesh_promoteHint_content_bg redirect");
-		$AiMesh_promoteHint.append($AiMesh_promoteHint_content_link_bg);
-
-		var $AiMesh_promoteHint_confirm = $("<input/>");
-		$AiMesh_promoteHint_confirm.addClass("button_gen");
-		$AiMesh_promoteHint_confirm.attr({"type" : "button"});
-		$AiMesh_promoteHint_confirm.val("<#CTL_ok#>");
-
-		$AiMesh_promoteHint_confirm.click(
-			function() {
-				if($('.AiMesh_promoteHint_bg').length > 0)
-					$('.AiMesh_promoteHint_bg').remove();
-			}
-		);
-		$AiMesh_promoteHint_content_link_bg.append($AiMesh_promoteHint_confirm);
-
-		var $AiMesh_promoteHint_link = $('<div>');
-		$AiMesh_promoteHint_link.addClass("AiMesh_promoteHint_redirect_text");
-		var redirect_text = "<a id='AiMesh_promoteHint_faq' href='https://www.asus.com/AiMesh/' target='_blank'><#AiMesh_FAQ#></a>";
-		$AiMesh_promoteHint_link.html(redirect_text);
-		$AiMesh_promoteHint_content_link_bg.append($AiMesh_promoteHint_link);
-
-		$("#AiMesh_promoteHint").fadeIn(300);
-		cal_panel_block("AiMesh_promoteHint", 0.2);
-		adjust_panel_block_top("AiMesh_promoteHint", 170);
-	}
-	else {
-		if($('.AiMesh_promoteHint_bg').length > 0)
-			$('.AiMesh_promoteHint_bg').remove();
-	}
 }
 
 function cal_panel_block(obj){
@@ -2639,6 +2515,10 @@ function notice_apply(){
 						<div id="rssi_div" style="margin-top:5px;display:none">
 							<span style="font-size:14px;font-family: Verdana, Arial, Helvetica, sans-serif;">RSSI:</span>
 							<strong id="rssi_status" class="index_status" style="font-size:14px;"></strong>
+						</div>
+						<div id="wanAggr_div" style="margin-top:5px;display:none;">
+							<span style="font-size:14px;font-family: Verdana, Arial, Helvetica, sans-serif; color: #FFCC00;">WAN Aggregation:</span>
+							<strong id="wan_bonding_status" class="index_status" style="font-size:14px;"></strong>
 						</div>
 					</td>
 						

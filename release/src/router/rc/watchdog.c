@@ -2504,9 +2504,7 @@ static inline void __handle_led_onoff_button(int led_onoff)
 	if (led_onoff) {
 		led_control(LED_POWER, LED_ON);
 		kill_pidfile_s("/var/run/wanduck.pid", SIGUSR2);
-#if defined(RTCONFIG_LAN4WAN_LED)
 		setLANLedOn();
-#endif
 #if defined(RTAX88U) || defined(GTAX11000)
 		eval("wl", "-i", "eth6", "ledbh", "15", "7");
 		eval("wl", "-i", "eth7", "ledbh", "15", "7");
@@ -2999,9 +2997,6 @@ void btn_check(void)
 	if (!nvram_get_int("wlready")) return;
 #endif
 
-	if (!nvram_match("x_Setting", "1"))
-		goto dowps;
-
 #if defined(RTCONFIG_WIRELESS_SWITCH) && defined(RTCONFIG_QCA)
 	if (wifi_sw_old != button_pressed(BTN_WIFI_SW))
 	{
@@ -3239,7 +3234,7 @@ void btn_check(void)
 
 #if defined(RTAC3200) || defined(RTCONFIG_BCM_7114) || defined(HND_ROUTER)
 			kill_pidfile_s("/var/run/wanduck.pid", SIGUSR2);
-#if defined(HND_ROUTER) && defined(RTCONFIG_LAN4WAN_LED)
+#if defined(HND_ROUTER)
 			setLANLedOn();
 #endif
 #else
@@ -3364,7 +3359,6 @@ void btn_check(void)
 #endif
 #endif	/* RTCONFIG_LED_BTN */
 
-dowps:
 #if defined(RTCONFIG_BCMWL6) && defined(RTCONFIG_PROXYSTA)
 	if ((psta_exist() || psr_exist())
 		&& !dpsr_mode()
@@ -4329,20 +4323,23 @@ void fake_etlan_led(void)
 
 	phystatus = GetPhyStatus(0);
 #ifdef GTAX11000
-	if (!(phystatus & 0x1e)) { // ignore 2.5G port
+	if (!(phystatus & 0x1e)) // ignore 2.5G port
 #else
 	if (!phystatus
 #ifdef RTAX92U
 		|| phystatus == 1 // ignore WAN
 #endif
-	) {
+			)
 #endif
-		if (lstatus)
+	{
+		if (lstatus){
 #if defined(GTAC5300) || defined(RTAX88U)
 			aggled_control(AGGLED_ACT_ALLOFF);
 #else
 			led_control(LED_LAN, LED_OFF);
 #endif
+		}
+
 		lstatus = 0;
 		status = -1;
 		return;
@@ -6026,38 +6023,43 @@ static void ntevent_disk_usage_check(){
 }
 #endif
 
+#ifdef RTCONFIG_FORCE_AUTO_UPGRADE
+/* DEBUG DEFINE */
+#define FAUPGRADE_DEBUG             "/tmp/FAUPGRADE_DEBUG"
+
+/* DEBUG FUNCTION */
+
+#define FAUPGRADE_DBG(fmt,args...) \
+    { \
+        char msg[1024]; \
+        snprintf(msg, sizeof(msg), "[FAUPGRADE][%s:(%d)]"fmt"", __FUNCTION__, __LINE__, ##args); \
+        logmessage("WATCHDOG", "%s",msg); \
+        dbg("%s\n",msg); \
+        if(f_exists(FAUPGRADE_DEBUG) > 0) { \
+                char info[1024]; \
+                snprintf(info, sizeof(info), "echo \"%s\" >> /tmp/FAUPGRADE_DEBUG.log", msg); \
+                system(info); \
+        } \
+    }
+
 static void auto_firmware_check()
 {
-#ifdef RTCONFIG_FORCE_AUTO_UPGRADE
-	static int period = -1;
-	static int bootup_check = 0;
-#else
-	static int period = 5757;
+	static int period_retry = -1;
+	static int period = 2877;
 	static int bootup_check = 1;
-#endif
 	static int periodic_check = 0;
-#ifndef RTCONFIG_FORCE_AUTO_UPGRADE
 	int cycle_manual = nvram_get_int("fw_check_period");
-	int cycle = (cycle_manual > 1) ? cycle_manual : 5760;
-#endif
+	int cycle = (cycle_manual > 1) ? cycle_manual : 2880;
+
 	time_t now;
 	struct tm *tm;
-#ifndef RTCONFIG_FORCE_AUTO_UPGRADE
 	static int rand_hr, rand_min;
-#endif
 
-	if (!nvram_get_int("ntp_ready"))
+	if (!nvram_get_int("ntp_ready")){
+		FAUPGRADE_DBG("ntp_ready false");
 		return;
+	}
 
-#ifdef RTCONFIG_FORCE_AUTO_UPGRADE
-	setenv("TZ", nvram_safe_get("time_zone_x"), 1);
-	time(&now);
-	tm = localtime(&now);
-	if ((tm->tm_hour >= 2) && (tm->tm_hour <= 6))	// 2 am to 6 am
-		periodic_check = 1;
-	else
-		periodic_check = 0;
-#else
 	if (!bootup_check && !periodic_check)
 	{
 		time(&now);
@@ -6070,26 +6072,22 @@ static void auto_firmware_check()
 			period = -1;
 		}
 	}
-#endif
 
 	if (bootup_check || periodic_check)
-#ifdef RTCONFIG_FORCE_AUTO_UPGRADE
-		period = (period + 1) % 20;
-#else
 		period = (period + 1) % cycle;
-#endif
 	else
 		return;
-
-	if (!period)
+	//FAUPGRADE_DBG("period = %d, period_retry = %d, bootup_check = %d", period, period_retry, bootup_check);
+	if (!period || (period_retry < 2 && bootup_check == 0))
 	{
+		period_retry = (period_retry+1) % 3;
+		FAUPGRADE_DBG("period_retry = %d", period_retry);
 		if (bootup_check)
 		{
 			bootup_check = 0;
-#ifndef RTCONFIG_FORCE_AUTO_UPGRADE
 			rand_hr = rand_seed_by_time() % 4;
 			rand_min = rand_seed_by_time() % 60;
-#endif
+			FAUPGRADE_DBG("periodic_check AM %d:%d", 2 + rand_hr, rand_min);
 		}
 
 		if(!nvram_contains_word("rc_support", "noupdate")){
@@ -6109,18 +6107,21 @@ static void auto_firmware_check()
 		    !nvram_get_int("webs_state_error") &&
 		    strlen(nvram_safe_get("webs_state_info")))
 		{
-			dbg("retrieve firmware information\n");
+			FAUPGRADE_DBG("retrieve firmware information");
 
-#ifdef RTCONFIG_FORCE_AUTO_UPGRADE
-			if (nvram_get("login_ip") && !nvram_match("login_ip", ""))
+			if (!get_chance_to_control()){
+				FAUPGRADE_DBG("user in use");
 				return;
+			}
 
-			if (nvram_match("x_Setting", "0"))
+			if (nvram_match("x_Setting", "0")){
+				FAUPGRADE_DBG("default status");
 				return;
+			}
 
 			if (nvram_get_int("webs_state_flag") != 2)
 			{
-				dbg("no need to upgrade firmware\n");
+				FAUPGRADE_DBG("no need to upgrade firmware");
 				return;
 			}
 
@@ -6130,32 +6131,18 @@ static void auto_firmware_check()
 
 			if (nvram_get_int("webs_state_error"))
 			{
-				dbg("error execute upgrade script\n");
+				FAUPGRADE_DBG("error execute upgrade script");
 				goto ERROR;
 			}
-
-#ifdef RTCONFIG_DUAL_TRX
-			int count = 80;
-#else
-			int count = 50;
-#endif
-			while ((count-- > 0) && (nvram_get_int("webs_state_upgrade") == 1))
-			{
-				dbg("reboot count down: %d\n", count);
-				sleep(1);
-			}
-
-			reboot(RB_AUTOBOOT);
-#endif
 		}
-		else
-			dbg("could not retrieve firmware information!\n");
-#ifdef RTCONFIG_FORCE_AUTO_UPGRADE
+		else{
+			FAUPGRADE_DBG("could not retrieve firmware information: webs_state_update = %d, webs_state_error = %d, webs_state_info.len = %d", nvram_get_int("webs_state_update"), nvram_get_int("webs_state_error"), strlen(nvram_safe_get("webs_state_info")));
+		}
 ERROR:
 		nvram_set_int("auto_upgrade", 0);
-#endif
 	}
 }
+#endif
 
 #ifdef RTCONFIG_WIFI_SON
 static void link_pap_status()
@@ -6319,6 +6306,10 @@ static void bt_turn_off_service()
 #ifdef RTCONFIG_AMAS
 void amas_ctl_check()
 {
+
+	if (!nvram_match("start_service_ready", "1"))
+		return;
+
 	if (
 #ifdef RTCONFIG_DPSTA
 		dpsta_mode() && 
@@ -6595,6 +6586,62 @@ void rssi_check()
 		if(strlen(temp) > 0)
 			rssi_check_unit(ii);
 	}
+}
+#endif
+#ifdef RTCONFIG_WATCH_WLREINIT
+void wlcnt_chk()
+{
+	char cmdbuf[64], buf[16], rbuf[128];
+        int i, unit = 0;
+        char nv_param[NVRAM_MAX_PARAM_LEN];
+        char temp[16], wlif[16];
+        char tmp[64], prefix[] = "wlXXXXXXXXXX_";
+        static unsigned int pre_val = 0, watch_prd = 1;
+	unsigned int val = 0, tmp_val = 0;
+	int fd;
+	int wlshoot = nvram_get_int("reinits")?:9;
+	int wlshoot_period = nvram_get_int("ws_prd")?:200;
+
+	if(nvram_match("nocnt", "1") || !nvram_get_int("wlready"))
+		return;
+
+	memset(cmdbuf, 0, sizeof(cmdbuf));
+        for (unit = 0; unit < DEV_NUMIFS; unit++) {
+                snprintf(nv_param, sizeof(nv_param), "wl%d_unit", unit);
+                snprintf(temp, sizeof(temp), "%s", nvram_safe_get(nv_param));
+
+                if(strlen(temp) > 0){
+                        snprintf(prefix, sizeof(prefix), "wl%d_", unit);
+                        snprintf(wlif, sizeof(wlif), "%s", nvram_safe_get(strcat_r(prefix, "ifname", tmp)));
+			snprintf(cmdbuf, sizeof(cmdbuf), "wl -i %s counters | grep \"reinit \" > /tmp/.wlcnts", wlif);
+			system(cmdbuf);
+
+			for(i=0; i<3; ++i) {
+				if((fd = open("/tmp/.wlcnts", O_RDONLY)) < 0) {
+					usleep(30*1000);
+					continue;
+				}
+				break;
+			}
+			if(i == 3 && fd < 0) {
+				printf("failed to open %s wlreinit file.\n", wlif);
+				continue;
+			}
+
+			read(fd, rbuf, sizeof(rbuf));
+			sscanf(rbuf, "%s %d", buf, &tmp_val);
+
+			if(tmp_val > 0) val += tmp_val;
+			close(fd);
+		}
+	}
+	if(watch_prd++ % wlshoot_period) {
+		if(val - pre_val > wlshoot) {
+			printf("\nWL go insanity! calm down it\n");
+			reboot(RB_AUTOBOOT);
+		}
+	} else
+		pre_val = val;
 }
 #endif
 
@@ -7400,7 +7447,7 @@ void watchdog(int sig)
 #endif
 
 #ifdef RTCONFIG_HND_ROUTER_AX
-	dump_WlGetDriverStats();
+	dump_WlGetDriverStats(0);
 #endif
 
 #ifdef WATCHDOG_PERIOD2
@@ -7419,6 +7466,9 @@ wdp:
 
 #ifdef RTCONFIG_USER_LOW_RSSI
 	rssi_check();
+#endif
+#ifdef RTCONFIG_WATCH_WLREINIT
+	wlcnt_chk();
 #endif
 
 	/* check for time-related services */
@@ -7457,8 +7507,9 @@ wdp:
 		modem_flow_check(modem_unit);
 #endif
 #endif
+#ifdef RTCONFIG_FORCE_AUTO_UPGRADE
 	auto_firmware_check();
-
+#endif
 #ifdef RTCONFIG_BWDPI
 	auto_sig_check();		// libbwdpi.so
 	web_history_save();		// libbwdpi.so
@@ -7499,6 +7550,9 @@ wdp:
 #endif
 #ifdef RTCONFIG_TUNNEL
 	mastiff_check();
+#endif
+#if defined(RTCONFIG_AMAS)
+	amaslib_check();
 #endif
 }
 

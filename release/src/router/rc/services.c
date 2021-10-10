@@ -888,26 +888,6 @@ void start_hour_monitor_service()
 	}
 }
 
-#ifdef RTCONFIG_CONNTRACK
-void stop_pctime_service()
-{
-	killall("pctime", SIGTERM);
-}
-
-void start_pctime_service()
-{
-	char *cmd[] = {"pctime", NULL};
-	int pid;
-
-	if (!is_router_mode())
-		return;
-
-	if (!pids("pctime")) {
-		_eval(cmd, NULL, 0, &pid);
-	}
-}
-#endif
-
 void check_hour_monitor_service()
 {
 	if(hour_monitor_function_check()) start_hour_monitor_service();
@@ -1679,6 +1659,16 @@ void start_dnsmasq(void)
 	if (nvram_match("dhcp_static_x","1")) {
 		write_static_leases(fp);
 	}
+#if (defined(RTCONFIG_TR069) && !defined(RTCONFIG_TR181)) || \
+    (defined(RTCONFIG_AMAS))
+	/* dhcp-script */
+	fprintf(fp, "dhcp-script=/sbin/dhcpc_lease\n");
+#if defined(RTCONFIG_AMAS)
+	fprintf(fp, "script-arp\n");
+#endif
+#endif
+
+	/* close fp move to the last */
 	fclose(fp);
 
 	/* Create resolv.conf with empty nameserver list */
@@ -1714,6 +1704,21 @@ void reload_dnsmasq(void)
 	/* notify dnsmasq */
 	kill_pidfile_s("/var/run/dnsmasq.pid", SIGHUP);
 }
+
+#if defined(RTCONFIG_TR069) ||  defined(RTCONFIG_AMAS)
+int dnsmasq_script_main(int argc, char **argv)
+{
+	// TODO : call function directly
+#if defined(RTCONFIG_TR069) && !defined(RTCONFIG_TR181)
+	tr_lease_main(argc, argv);
+#endif
+
+#if defined(RTCONFIG_AMAS)
+	amaslib_lease_main(argc, argv);
+#endif
+	return 0;
+}
+#endif
 
 #ifdef RTCONFIG_IPV6
 void add_ip6_lanaddr(void)
@@ -3844,10 +3849,7 @@ int
 start_acsd()
 {
 	int ret = 0;
-#if defined(RTCONFIG_DHDAP) && !defined(RTCONFIG_BCM7)
-#ifdef RTCONFIG_HND_ROUTER_AX
-	char *acsd2_argv[] = { "/usr/sbin/acsd2", NULL };
-#endif
+#ifdef RTCONFIG_BCM_7114
 	char *acsd_argv[] = { "/usr/sbin/acsd", NULL };
 	int pid;
 #endif
@@ -3860,16 +3862,16 @@ start_acsd()
 	stop_acsd();
 
 	if (!restore_defaults_g && strlen(nvram_safe_get("acs_ifnames"))) {
-#if defined(RTCONFIG_DHDAP) && !defined(RTCONFIG_BCM7)
+#ifdef RTCONFIG_BCM_7114
+		ret = _eval(acsd_argv, NULL, 0, &pid);
+#else
 #ifdef RTCONFIG_HND_ROUTER_AX
 		/* depending on NVRAM start the respective version */
-		if (nvram_match("acs_version", "2")) 
-			ret = _eval(acsd2_argv, NULL, 0, &pid);
+		if (nvram_match("acs_version", "2"))
+			ret = eval("/usr/sbin/acsd2");
 		/* default acsd version; to use even when the NVRAM is not set */
 		else
 #endif
-		ret = _eval(acsd_argv, NULL, 0, &pid);
-#else
 		ret = eval("/usr/sbin/acsd");
 #endif
 	}
@@ -5705,6 +5707,17 @@ void start_ethbl_lldpd(void)
 
 void start_hyfi_process(void)
 {
+#ifdef RTCONFIG_AMAS
+#if defined(RTCONFIG_WIFI_SON)
+	if(nvram_match("wifison_ready","1"))
+	{
+		stop_amas_lib();
+#ifdef RTCONFIG_NEW_USER_LOW_RSSI
+		stop_roamast();
+#endif
+	}
+#endif
+#endif
 	hyfi_process();
 }
 
@@ -7996,6 +8009,9 @@ start_services(void)
 #endif /* RTCONFIG_DBLOG */
 #endif /* RTCONFIG_PUSH_EMAIL */
 
+#if defined(RTCONFIG_AMAS)
+	start_amas_lib();
+#endif
 #if defined(RTCONFIG_RGBLED)
 	start_aurargb();
 #endif
@@ -8005,6 +8021,9 @@ start_services(void)
 void
 stop_services(void)
 {
+#if defined(RTCONFIG_AMAS)
+	stop_amas_lib();
+#endif
 #ifdef RTCONFIG_ADTBW
 	stop_adtbw();
 #endif
@@ -8021,7 +8040,7 @@ stop_services(void)
 #if defined(RTCONFIG_BWDPI)
 	stop_bwdpi_wred_alive();
 	stop_bwdpi_check();
-	stop_dpi_engine_service(1);
+	stop_dpi_engine_service(2); // reboot case
 #endif
 #ifdef RTCONFIG_IXIAEP
 	stop_ixia_endpoint();
@@ -9064,7 +9083,7 @@ void start_aurargb(void)
 		aura_rgb_led(ROUTER_AURA_SET, &rgb_cfg, 0, 0);
 #if defined(RTCONFIG_TURBO_BTN)
 	if (nvram_get_int("turbo_mode") == BOOST_AURA_RGB_SW) {
-#ifdef GTAX11000 
+#ifdef GTAX11000
 		led_control(LED_LOGO, nvram_match("aurargb_enable", "1")? LED_ON : LED_OFF);
 #else
 		turbo_led_control(nvram_match("aurargb_enable", "1")? LED_ON : LED_OFF);
@@ -9149,7 +9168,8 @@ void check_services(void)
 #endif
 #ifdef RTCONFIG_AMAS
 	if(init_x_Setting == 0 && nvram_get_int("x_Setting") == 1) {
-		notify_rc("restart_amas_lldpd");
+		// To avoid deadlock, no need to use notify_rc("restart_amas_lldpd") here because the current function is called by process "init".
+		start_amas_lldpd();
 		init_x_Setting = 1;
 	}
 #endif
@@ -9726,7 +9746,7 @@ again:
 			// to avoid affecting upgrade
 #ifdef RTCONFIG_BWDPI
 			/* dpi engine needs 40-50MB memory, it will make some platform run out of memory before upgrade, so stop it to release memory */
-			stop_dpi_engine_service(1);
+			stop_dpi_engine_service(2); // reboot case
 #endif
 			stop_misc();
 			stop_all_webdav();
@@ -10085,6 +10105,10 @@ script_allnet:
 			start_dsl();
 #endif
 			start_lan();
+#ifdef CONFIG_BCMWL5
+			start_wl();
+			lanaccess_wl();
+#endif
 #if defined(RTCONFIG_RALINK) && defined(RTCONFIG_WLMODULE_MT7615E_AP)
 			start_wds_ra();
 #endif
@@ -10167,8 +10191,10 @@ script_allnet:
 #if defined(RTCONFIG_USB) && defined(RTCONFIG_USB_PRINTER)
 			start_usblpsrv();
 #endif
+#ifndef CONFIG_BCMWL5
 			start_wl();
 			lanaccess_wl();
+#endif
 #ifdef RTCONFIG_CAPTIVE_PORTAL
 			start_chilli();
 			start_CP();
@@ -10185,6 +10211,9 @@ script_allnet:
 #ifdef RTCONFIG_CONNDIAG
 			start_conn_diag();
 #endif
+#endif
+#if defined(RTCONFIG_AMAS)
+			start_amas_lib();
 #endif
 		}
 	}
@@ -10273,6 +10302,10 @@ script_allnet:
 		if(action & RC_SERVICE_START) {
 			//start_vlan();
 			start_lan();
+#ifdef CONFIG_BCMWL5
+			start_wl();
+			lanaccess_wl();
+#endif
 #if defined(RTCONFIG_RALINK) && defined(RTCONFIG_WLMODULE_MT7615E_AP)
 			start_wds_ra();
 #endif
@@ -10360,8 +10393,10 @@ script_allnet:
 			setup_passwd();
 			start_uam_srv();
 #endif
+#ifndef CONFIG_BCMWL5
 			start_wl();
 			lanaccess_wl();
+#endif
 #ifdef RTCONFIG_BCMWL6
 #ifdef RTCONFIG_HSPOT
 			start_hspotap();
@@ -10372,6 +10407,9 @@ script_allnet:
 #ifdef RTCONFIG_CONNDIAG
 			start_conn_diag();
 #endif
+#endif
+#if defined(RTCONFIG_AMAS)
+			start_amas_lib();
 #endif
 		}
 	}
@@ -10490,6 +10528,17 @@ script_allnet:
 			//stop_vlan();
 			stop_lan_port();
 
+#if defined(RTCONFIG_AMAS)
+#if defined(RTCONFIG_WIFI_SON)
+			if(nvram_match("wifison_ready","1"))
+			{
+				stop_amas_lib();
+#ifdef RTCONFIG_NEW_USER_LOW_RSSI
+				stop_roamast();
+#endif
+			}
+#endif
+#endif
 			// free memory here
 		}
 #ifdef RTCONFIG_LANTIQ
@@ -10504,6 +10553,10 @@ script_allnet:
 			config_lacp();
 #endif
 			start_lan();
+#ifdef CONFIG_BCMWL5
+			start_wl();
+			lanaccess_wl();
+#endif
 			start_dnsmasq();
 #ifdef RTCONFIG_DHCP_OVERRIDE
 			start_detectWAN_arp();
@@ -10597,8 +10650,10 @@ script_allnet:
 			start_samba();
 			start_ftpd();
 #endif
+#ifndef CONFIG_BCMWL5
 			start_wl();
 			lanaccess_wl();
+#endif
 #ifdef RTCONFIG_CAPTIVE_PORTAL
 			start_chilli();
 			start_CP();
@@ -10622,6 +10677,9 @@ script_allnet:
 #ifdef RTCONFIG_CONNDIAG
 			start_conn_diag();
 #endif
+#endif
+#if defined(RTCONFIG_AMAS)
+			start_amas_lib();
 #endif
 #ifdef RTCONFIG_LANTIQ
 			if(client_mode()){
@@ -11082,6 +11140,8 @@ check_ddr_done:
 	else if (strcmp(script, "nas") == 0) {
 		if(action & RC_SERVICE_STOP) stop_nas();
 		if(action & RC_SERVICE_START) {
+			start_wl();
+			lanaccess_wl();
 			start_eapd();
 			start_nas();
 			start_wps();
@@ -11116,8 +11176,6 @@ check_ddr_done:
 			start_aspmd();
 #endif
 #endif
-			start_wl();
-			lanaccess_wl();
 #ifdef RTCONFIG_BCMWL6
 #ifdef RTCONFIG_HSPOT
 			start_hspotap();
@@ -11277,6 +11335,17 @@ check_ddr_done:
 		if(action&RC_SERVICE_START) start_radiusd();
 	}
 #endif
+#ifdef RTCONFIG_BCMWL6
+	else if (strcmp(script, "acsd") == 0)
+	{
+		if(action & RC_SERVICE_STOP){
+			stop_acsd();
+		}
+		if(action & RC_SERVICE_START) {
+			start_acsd();
+		}
+	}
+#endif  /* RTCONFIG_BCMWL6 */
 #ifdef RTCONFIG_WEBDAV
 	else if (strcmp(script, "webdav") == 0)
 	{
@@ -12037,12 +12106,10 @@ check_ddr_done:
 	{
 		if(action & RC_SERVICE_START){
 			char *sig_update_argv[] = {"sig_update.sh", NULL};
-			pid_t pid;
-			_eval(sig_update_argv, NULL, 0, &pid);
+			_eval(sig_update_argv, NULL, 0, NULL);
 			if(nvram_get_int("sig_state_flag")){
 				char *sig_upgrade_argv[] = {"sig_upgrade.sh", NULL};
-				pid_t pid1;
-				_eval(sig_upgrade_argv, NULL, 0, &pid1);
+				_eval(sig_upgrade_argv, NULL, 0, NULL);
 			}
 			stop_dpi_engine_service(0);
 			start_dpi_engine_service();
@@ -12363,6 +12430,9 @@ retry_wps_enr:
 			stop_conn_diag();
 #endif
 			stop_cfgsync();
+#endif
+#if defined(RTCONFIG_AMAS)
+			stop_amas_lib();
 #endif
 			stop_dnsmasq();
 			stop_lan_wlc();
@@ -13069,6 +13139,10 @@ _dprintf("test 2. turn off the USB power during %d seconds.\n", reset_seconds[re
 		if(action&RC_SERVICE_START) start_conn_diag();
 	}
 #endif
+	else if (strcmp(script, "apply_amaslib") == 0)
+	{
+		AMAS_EVENT_TRIGGER(NULL, NULL, 0);
+	}
 #endif
 #ifdef RTCONFIG_HD_SPINDOWN
 #ifdef LINUX26
@@ -13365,74 +13439,84 @@ void gen_lldpd_if(char *bind_ifnames)
 	char *eth_ifnames =nvram_safe_get("eth_ifnames");
 	/* prepare binding interface list */
 
-	if (nvram_get_int("re_mode") == 1)
+	if (nvram_get_int("x_Setting") == 0)
 	{
-		/* for lan_ifnames */
-		foreach (word, nvram_safe_get("lan_ifnames"), next) {
-
-#ifdef HND_ROUTER
-			if(lacp_ifs && strstr(lacp_ifs, word))
-				continue;
-#endif
-
-			if (i == 0)
+		if(wan_ifname != NULL) {
+			if (i == 0){
+				bind_ifnames += sprintf(bind_ifnames, "%s", wan_ifname);
 				i = 1;
-			else
-				bind_ifnames += sprintf(bind_ifnames, ",");
-
-			bind_ifnames += sprintf(bind_ifnames, "%s", word);
+			}else{
+				bind_ifnames += sprintf(bind_ifnames, ",%s", wan_ifname);
+			}
 		}
-
-		/* for sta_phy_ifnames */
-		foreach (word, nvram_safe_get("sta_phy_ifnames"), next) {
-			if (i == 0)
+		if (wan_ifname != NULL && eth_ifnames != NULL && strcmp(wan_ifname, eth_ifnames)) {
+			if (i == 0){
+				bind_ifnames += sprintf(bind_ifnames, "%s", eth_ifnames);
 				i = 1;
-			else
-				bind_ifnames += sprintf(bind_ifnames, ",");
-
-			bind_ifnames += sprintf(bind_ifnames, "%s", word);
+			}
+			else{
+				bind_ifnames += sprintf(bind_ifnames, ",%s", eth_ifnames);
+			}
 		}
 	}
 	else
 	{
-		/* for lan_ifnames */
-		foreach (word, nvram_safe_get("lan_ifnames"), next) {
-#ifdef HND_ROUTER
-			if(lacp_ifs && strstr(lacp_ifs, word))
-				continue;
-#endif
-			if (i == 0)
-				i = 1;
-			else
-				bind_ifnames += sprintf(bind_ifnames, ",");
-			bind_ifnames += sprintf(bind_ifnames, "%s", word);
-		}
-	}
 
-	if (nvram_get_int("x_Setting") == 0)
-	{
-		if(wan_ifname != NULL) {
+		if (nvram_get_int("re_mode") == 1)
+		{
+			/* for lan_ifnames */
+			foreach (word, nvram_safe_get("lan_ifnames"), next) {
+
+	#ifdef HND_ROUTER
+				if(lacp_ifs && strstr(lacp_ifs, word))
+					continue;
+	#endif
+
+				if (i == 0)
+					i = 1;
+				else
+					bind_ifnames += sprintf(bind_ifnames, ",");
+
+				bind_ifnames += sprintf(bind_ifnames, "%s", word);
+			}
+
+			/* for sta_phy_ifnames */
+			foreach (word, nvram_safe_get("sta_phy_ifnames"), next) {
+				if (i == 0)
+					i = 1;
+				else
+					bind_ifnames += sprintf(bind_ifnames, ",");
+
+				bind_ifnames += sprintf(bind_ifnames, "%s", word);
+			}
+		}
+		else
+		{
+			/* for lan_ifnames */
+			foreach (word, nvram_safe_get("lan_ifnames"), next) {
+	#ifdef HND_ROUTER
+				if(lacp_ifs && strstr(lacp_ifs, word))
+					continue;
+	#endif
+				if (i == 0)
+					i = 1;
+				else
+					bind_ifnames += sprintf(bind_ifnames, ",");
+				bind_ifnames += sprintf(bind_ifnames, "%s", word);
+			}
+		}
+
+
+		#if defined(RTCONFIG_BCMARM) && defined(RTCONFIG_PROXYSTA) && defined(RTCONFIG_DPSTA)
 			if (i == 1)
 				bind_ifnames += sprintf(bind_ifnames, ",");
-			bind_ifnames += sprintf(bind_ifnames, "%s", wan_ifname);
-		}
-
-		if (wan_ifname != NULL && eth_ifnames != NULL && strcmp(wan_ifname, eth_ifnames)) {
-			if (i == 1)
-				bind_ifnames += sprintf(bind_ifnames, ",");
-			bind_ifnames += sprintf(bind_ifnames, "%s", eth_ifnames);
-		}
+		#if defined(HND_ROUTER)
+			bind_ifnames += sprintf(bind_ifnames, "wds0.*.*,wds1.*.*,wds2.*.*");
+		#else
+			bind_ifnames += sprintf(bind_ifnames, "wds0.*,wds1.*,wds2.*");
+		#endif
+		#endif
 	}
-
-#if defined(RTCONFIG_BCMARM) && defined(RTCONFIG_PROXYSTA) && defined(RTCONFIG_DPSTA)
-	if (i == 1)
-		bind_ifnames += sprintf(bind_ifnames, ",");
-#if defined(HND_ROUTER)
-	bind_ifnames += sprintf(bind_ifnames, "wds0.*.*,wds1.*.*,wds2.*.*");
-#else
-	bind_ifnames += sprintf(bind_ifnames, "wds0.*,wds1.*,wds2.*");
-#endif
-#endif
 }
 
 void gen_lldpd_desc(char *bind_desc)
@@ -13484,6 +13568,11 @@ void start_amas_lldpd(void)
 
 	if(nvram_match("stop_amas_lldpd", "1")) {
 		_dprintf("stop_amas_lldpd = 1, don't start amas lldpd.\n");
+		return;
+	}
+
+	if(getpid()!=1) {
+		notify_rc("start_amas_lldpd");
 		return;
 	}
 
@@ -13776,14 +13865,15 @@ int start_bsd(void)
 
 	stop_bsd();
 
+#ifndef RTCONFIG_AMASDB
 	if (!nvram_get_int("smart_connect_x"))
 		ret = -1;
 	else {
-#if 0
-		nvram_unset("bsd_ifnames");
 #endif
 		ret = eval("/usr/sbin/bsd");
+#ifndef RTCONFIG_AMASDB
 	}
+#endif
 
 	return ret;
 }

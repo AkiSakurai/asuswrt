@@ -238,7 +238,7 @@ igsc_rtlist_add(igsc_info_t *igsc_info, void *ifp, uint32 mr_ip)
 	{
 		OSL_UNLOCK(igsc_info->rtlist_lock);
 		MFREE(igsc_info->osh, rtlist_ptr, sizeof(igsc_rtlist_t));
-		IGS_ERROR("Failed to add EMF rtport entry for %p\n", ifp);
+		IGS_DEBUG("Failed to add EMF rtport entry for %p\n", ifp);
 		return (FAILURE);
 	}
 

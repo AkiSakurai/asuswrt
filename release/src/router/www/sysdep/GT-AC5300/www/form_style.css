@@ -897,7 +897,7 @@ form{
 /* CSS Document */
 @font-face{
 	font-family: rog;
-	src: url(./ROG_Fonts-Regular.otf) format("opentype");
+	src: url(./fonts/ROG_Fonts-Regular.otf) format("opentype");
 }
 body{
 color:#FFFFFF;
@@ -998,8 +998,9 @@ color:#FFFFFF;
 	text-decoration: none;
 	text-align:center;
 	max-width:240px;
-	background: rgb(104,5,22);
+/*	background: rgb(104,5,22);*/
 	border-radius: 5px 5px 0 0;
+	border-bottom: 2px solid #680516;
 }
 .tab_NW span {
 	cursor:pointer;
@@ -1032,7 +1033,7 @@ color:#FFFFFF;
 	text-align:center;
 	text-decoration: none;
 	max-width:240px;
-	background: rgb(62,3,13);
+	background: #680516;
 	border-radius: 5px 5px 0 0;
 }
 .tabclick_NW span {
@@ -1069,17 +1070,20 @@ color:#FFFFFF;
 	text-align: center;
 }
 .tab_item  {
+/*
 	background-color: rgb(104,5,22);
+*/
 	border-radius: 6px 6px 0 0;
 	height: 100%;
 	width: 99%;
 	display: table;
+	border-bottom: 2px solid #680516;
 }
 .tab_item:hover {
 	background-color: rgb(207,10,44);
 }
 .tab_item_click {
-	background-color: rgb(62,3,13);
+	background-color: #680516;
 	border-radius: 6px 6px 0 0;
 	height: 100%;
 	width: 99%;
@@ -2095,7 +2099,7 @@ padding-top:1px;
 .tab_font_color{
 	color: #FFF;
 }
-.pop_div_bg, .list_bg{
+.pop_div_bg{
 	background-color: rgb(62,3,13);
 }
 .analysis_bg, .web_frame{
@@ -2124,7 +2128,7 @@ padding-top:1px;
 	font-weight: bolder;
 }
 .tab_info_bg{
-	background: #1E0505;
+	background: #860220;
 }
 .textarea_bg{
 	background: rgb(62,3,13);

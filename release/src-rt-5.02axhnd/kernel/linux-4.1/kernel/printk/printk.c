@@ -1512,6 +1512,10 @@ static void call_console_drivers(int level, const char *text, size_t len)
 	struct console *con;
 
 	trace_console_rcuidle(text, len);
+#ifdef CRASHLOG
+	if (crashlog_enable)
+		crashLogText(text, len);
+#endif
 
 	if (level >= console_loglevel && !ignore_loglevel)
 		return;
@@ -2316,6 +2320,13 @@ out:
 	raw_spin_unlock_irqrestore(&logbuf_lock, flags);
 }
 
+#define PROCESS_CONSOLE_UNLOCK_TIMEOUT (100)	/* msec */
+
+#ifdef PROCESS_CONSOLE_UNLOCK_TIMEOUT
+static unsigned long process_console_unlock_timeout = PROCESS_CONSOLE_UNLOCK_TIMEOUT;
+#endif /* PROCESS_CONSOLE_UNLOCK_TIMEOUT */
+
+
 /**
  * console_unlock - unlock the console system
  *
@@ -2337,6 +2348,10 @@ void console_unlock(void)
 	unsigned long flags;
 	bool wake_klogd = false;
 	bool do_cond_resched, retry;
+#ifdef PROCESS_CONSOLE_UNLOCK_TIMEOUT
+	unsigned long expire = jiffies + msecs_to_jiffies(process_console_unlock_timeout);
+	bool abort = false;
+#endif /* PROCESS_CONSOLE_UNLOCK_TIMEOUT */
 
 	if (console_suspended) {
 		up_console_sem();
@@ -2382,6 +2397,13 @@ again:
 			len = 0;
 		}
 skip:
+#ifdef PROCESS_CONSOLE_UNLOCK_TIMEOUT
+		if (process_console_unlock_timeout && time_after(jiffies, expire)) {
+			abort = true;
+			break;
+		}
+#endif /* PROCESS_CONSOLE_UNLOCK_TIMEOUT */
+
 		if (console_seq == log_next_seq)
 			break;
 
@@ -2433,6 +2455,13 @@ skip:
 
 	up_console_sem();
 
+#ifdef PROCESS_CONSOLE_UNLOCK_TIMEOUT
+	if (abort) {
+		local_irq_restore(flags);
+		goto skip_retry;
+	}
+#endif /* PROCESS_CONSOLE_UNLOCK_TIMEOUT */
+
 	/*
 	 * Someone could have filled up the buffer again, so re-check if there's
 	 * something to flush. In case we cannot trylock the console_sem again,
@@ -2445,6 +2474,10 @@ skip:
 
 	if (retry && console_trylock())
 		goto again;
+
+#ifdef PROCESS_CONSOLE_UNLOCK_TIMEOUT
+skip_retry:
+#endif /* PROCESS_CONSOLE_UNLOCK_TIMEOUT */
 
 	if (wake_klogd)
 		wake_up_klogd();

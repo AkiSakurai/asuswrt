@@ -12,7 +12,7 @@
 <style>
 @font-face{
 	font-family: ROG;
-	src: url(../ROG_Fonts-Regular.otf) format("opentype");
+	src: url(/fonts/ROG_Fonts-Regular.otf) format("opentype");
 }
 body, .p1, .form-input{
 	color: #FFF;
@@ -107,7 +107,7 @@ body{
 	height: 70px;
 	display:flex;
 	align-items: center;
-	margin: 20px auto;
+	margin: 40px auto;
 	background: url('./images/New_ui/icon_Sec_hint.png') no-repeat;
 }
 .error-text{
@@ -144,8 +144,7 @@ body{
 	padding-bottom: 5px;
 }
 .logout-text{
-	margin-left: 112px;
-	line-height: 70px;
+	margin: 0 30px 0 112px;
 	font-size: 22px;
 }
 .error-text, 

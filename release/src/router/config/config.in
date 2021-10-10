@@ -88,11 +88,6 @@ config RTCONFIG_DFS_US
 	depends on RTCONFIG_HND_ROUTER
 	default n
 
-config RTCONFIG_BW160M
-	bool "Bandwidth 160MHz support"
-	depends on RTCONFIG_HND_ROUTER
-	default n
-
 config RTCONFIG_BCM9
 	bool "Bcm sdk 9_10_162_x"
 	default n
@@ -119,6 +114,11 @@ config RTCONFIG_NVRAM_SIZE
 
 config RTCONFIG_DHDAP
 	bool "Bcm7 dhdap"
+	default n
+
+config RTCONFIG_BW160M
+	bool "Bandwidth 160MHz support"
+	depends on RTCONFIG_DHDAP
 	default n
 
 config RTCONFIG_WLEXE
@@ -400,6 +400,10 @@ config RTCONFIG_USER_LOW_RSSI
 
 config RTCONFIG_NEW_USER_LOW_RSSI
 	bool "User specified accepted min rssi"
+	default n
+
++config RTCONFIG_WATCH_WLREINIT
+	bool "reboot when wlreinit cannot save wl"
 	default n
 
 config RTCONFIG_PUSH_EMAIL
@@ -735,6 +739,11 @@ config RTCONFIG_LOCALE2012
 
 config RTCONFIG_NEWSSID_REV2
 	bool "New ASUS_2GMAC_xG rule"
+	default n
+
+config RTCONFIG_NEWSSID_REV4
+	bool "RT-V4 SSID rule"
+	depends on RTCONFIG_NEWSSID_REV2
 	default n
 
 config RTCONFIG_QCA
@@ -1220,6 +1229,7 @@ config RTCONFIG_PWRRED_LED
 
 config RTCONFIG_FAILOVER_LED
 	bool "Fail-over LED"
+	depends on RTCONFIG_LANWAN_LED
 	default n
 
 config RTCONFIG_SATA_LED
@@ -1321,6 +1331,10 @@ config RTCONFIG_BONDING
 	bool "Linux Net Bonding"
 	default n
 
+config RTCONFIG_BONDING_WAN
+	bool "WAN Bonding"
+	default n
+
 config RTCONFIG_UIDEBUG
 	bool "Enable UI debug mode"
 	default n
@@ -1365,6 +1379,10 @@ config RTCONFIG_EXT_BCM53134
 
 config RTCONFIG_EXTPHY_BCM84880
 	bool "BCM84880 external 2.5Gbps PHY"
+
+config RTCONFIG_BCM_HND_CRASHLOG
+	bool "BRCM HND crashlog"
+	default n
 
 config RTCONFIG_TOR
 	bool "The orion router function"
@@ -1690,6 +1708,10 @@ config RTCONFIG_ADV_RAST
 	bool "enable advanced roaming assistant"
 	default n
 
+config RTCONFIG_BCN_RPT
+	bool "enable 802.11k beacon request/report for roaming"
+	default n
+
 config RTCONFIG_CFGSYNC
 	bool "Sync config"
 
@@ -1732,6 +1754,14 @@ config RTCONFIG_DBG_BLUECAVE_OBD
 
 config RTCONFIG_AMAS
 	bool "AMAS architecture."
+	default n
+
+config RTCONFIG_AMASDB
+	bool "AMAS DB-sta collection."
+	default n
+
+config RTCONFIG_AVBLCHAN
+	bool "(CAP)exclude (RE)unavailble chanspec."
 	default n
 
 config RTCONFIG_NO_SELECT_CHANNEL

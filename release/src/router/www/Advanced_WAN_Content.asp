@@ -31,6 +31,8 @@ var original_switch_wantag = '<% nvram_get("switch_wantag"); %>';
 var original_switch_stb_x = '<% nvram_get("switch_stb_x"); %>';
 var original_wan_dot1q = '<% nvram_get("wan_dot1q"); %>';
 var original_wan_vid = '<% nvram_get("wan_vid"); %>';
+if(wan_bonding_support)
+	var orig_bond_wan = httpApi.nvramGet(["bond_wan"], true).bond_wan;
 
 if(dualWAN_support && ( wans_dualwan.search("wan") >= 0 || wans_dualwan.search("lan") >= 0)){
 	var wan_type_name = wans_dualwan.split(" ")[<% nvram_get("wan_unit"); %>].toUpperCase();
@@ -127,6 +129,9 @@ function initial(){
 		document.form.wan_dot1q.value = "0";
 		showhide("wan_dot1q_setting",0);
 	}
+
+	if(wan_bonding_support)
+		httpApi.faqURL("1039053", function(url){console.log(url); document.getElementById("wanAgg_faq").href=url;});
 }
 
 function change_notusb_unit(){
@@ -224,6 +229,12 @@ function applyRule(){
 		document.form.wan_dot1q[0].disabled = true;
 		document.form.wan_dot1q[1].disabled = true;
 		document.form.wan_vid.disabled = true;
+	}
+
+	if(wan_bonding_support && orig_bond_wan != document.form.bond_wan_radio.value){
+		document.form.bond_wan.disabled = false;
+		document.form.bond_wan.value = document.form.bond_wan_radio.value;
+		FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
 	}
 
 	if(validForm()){
@@ -469,6 +480,62 @@ function validForm(){
 	if(document.form.wan_heartbeat_x.value.length > 0)
 		 if(!validator.string(document.form.wan_heartbeat_x))
 		 	return false;
+
+
+	if(wan_bonding_support){
+		var msg_dualwan = "<#WANAggregation_disable_dualwan#>";
+		var msg_iptv = "<#WANAggregation_PortConflict_hint2#>";
+		var msg_both = "<#WANAggregation_disable_IPTVDualWAN#>";
+		var msg_wanType = "WAN Aggregation does not support WAN type such as PPPoE, PPTP, and L2TP. If your WAN type changes to PPPoE, PPTP, or L2TP, WAN aggregation will be disabled automatically. Are you sure you want to continue?";
+
+		if(orig_bond_wan != document.form.bond_wan_radio.value && document.form.bond_wan_radio.value == "1"){
+			if(wans_dualwan.indexOf("none") == -1 && (original_switch_stb_x == "4" || original_switch_stb_x == "6")){
+				if(!confirm(msg_both)){
+					document.form.bond_wan_radio.value = orig_bond_wan;
+					return false;
+				}
+				else{
+					document.form.wans_dualwan.disabled = false;
+					document.form.wans_dualwan.value = "wan none";
+					document.form.switch_wantag.disabled = false;
+					document.form.switch_wantag.value = "none";
+					document.form.switch_stb_x.disabled = false;
+					document.form.switch_stb_x.value = "0";
+				}
+			}
+			else if(wans_dualwan.indexOf("none") == -1){
+				if(!confirm(msg_dualwan)){
+					document.form.bond_wan_radio.value = orig_bond_wan;
+					return false;
+				}
+				else{
+					document.form.wans_dualwan.disabled = false;
+					document.form.wans_dualwan.value = "wan none";
+				}
+			}
+			else if(original_switch_stb_x == "4" || original_switch_stb_x == "6"){
+				if(!confirm(msg_iptv)){
+					document.form.bond_wan_radio.value = orig_bond_wan;
+					return false;
+				}
+				else{
+					document.form.switch_wantag.disabled = false;
+					document.form.switch_wantag.value = "none";
+					document.form.switch_stb_x.disabled = false;
+					document.form.switch_stb_x.value = "0";
+				}
+			}
+		}
+
+		if(document.form.wan_proto.value != "dhcp" && document.form.wan_proto.value != "static" && orig_bond_wan == "1"){
+			if(!confirm(msg_wanType)){
+				document.form.wan_proto.value = wan_proto_orig;
+				change_wan_type(wan_proto_orig);
+				return false;
+			}
+		}
+	}
+
 	return true;
 }
 
@@ -506,6 +573,12 @@ function change_wan_type(wan_type, flag){
 		document.getElementById("vpn_dhcp").style.display = "";
 		inputCtrl(document.form.wan_ppp_echo, 1);
 		ppp_echo_control();
+
+		if(wan_bonding_support){
+			inputCtrl(document.form.bond_wan_radio[0], 0);
+			inputCtrl(document.form.bond_wan_radio[1], 0);
+			document.form.bond_wan_radio.value = "0";
+		}
 	}
 	else if(wan_type == "pptp"){
 		inputCtrl(document.form.wan_dnsenable_x[0], 1);
@@ -531,6 +604,12 @@ function change_wan_type(wan_type, flag){
 		document.getElementById("vpn_dhcp").style.display = "none";
 		inputCtrl(document.form.wan_ppp_echo, 1);
 		ppp_echo_control();
+
+		if(wan_bonding_support){
+			inputCtrl(document.form.bond_wan_radio[0], 0);
+			inputCtrl(document.form.bond_wan_radio[1], 0);
+			document.form.bond_wan_radio.value = "0";
+		}
 	}
 	else if(wan_type == "l2tp"){
 		inputCtrl(document.form.wan_dnsenable_x[0], 1);
@@ -556,6 +635,12 @@ function change_wan_type(wan_type, flag){
 		document.getElementById("vpn_dhcp").style.display = "none";
 		inputCtrl(document.form.wan_ppp_echo, 1);
 		ppp_echo_control();
+
+		if(wan_bonding_support){
+			inputCtrl(document.form.bond_wan_radio[0], 0);
+			inputCtrl(document.form.bond_wan_radio[1], 0);
+			document.form.bond_wan_radio.value = "0";
+		}
 	}
 	else if(wan_type == "static"){
 		inputCtrl(document.form.wan_dnsenable_x[0], 0);
@@ -581,6 +666,12 @@ function change_wan_type(wan_type, flag){
 		document.getElementById("vpn_dhcp").style.display = "none";
 		inputCtrl(document.form.wan_ppp_echo, 0);
 		ppp_echo_control(0);
+
+		if(wan_bonding_support){
+			inputCtrl(document.form.bond_wan_radio[0], 1);
+			inputCtrl(document.form.bond_wan_radio[1], 1);
+			document.form.bond_wan_radio.value = orig_bond_wan;
+		}
 	}
 	else{	// Automatic IP or 802.11 MD or ""		
 		inputCtrl(document.form.wan_dnsenable_x[0], 1);
@@ -606,6 +697,12 @@ function change_wan_type(wan_type, flag){
 		document.getElementById("vpn_dhcp").style.display = "none";
 		inputCtrl(document.form.wan_ppp_echo, 0);
 		ppp_echo_control(0);
+
+		if(wan_bonding_support){
+			inputCtrl(document.form.bond_wan_radio[0], 1);
+			inputCtrl(document.form.bond_wan_radio[1], 1);
+			document.form.bond_wan_radio.value = orig_bond_wan;
+		}
 	}
 }
 
@@ -862,6 +959,10 @@ function ppp_echo_control(flag){
 <input type="hidden" name="lan_netmask" value="<% nvram_get("lan_netmask"); %>">
 <input type="hidden" name="ctf_fa_mode" value="<% nvram_get("ctf_fa_mode"); %>">
 <input type="hidden" name="ctf_disable_force" value="<% nvram_get("ctf_disable_force"); %>">
+<input type="hidden" name="wans_dualwan" value="<% nvram_get("wans_dualwan"); %>" disabled>
+<input type="hidden" name="bond_wan" value="<% nvram_get("bond_wan"); %>" disabled>
+<input type="hidden" name="switch_wantag" value="<% nvram_get("switch_wantag"); %>" disabled>
+<input type="hidden" name="switch_stb_x" value="<% nvram_get("switch_stb_x"); %>" disabled>
 
 <table class="content" align="center" cellpadding="0" cellspacing="0">
   <tr>
@@ -945,7 +1046,16 @@ function ppp_echo_control(flag){
 									<input type="radio" name="wan_upnp_enable" class="input" value="1" onclick="return change_common_radio(this, 'LANHostConfig', 'wan_upnp_enable', '1')" <% nvram_match("wan_upnp_enable", "1", "checked"); %>><#checkbox_Yes#>
 									<input type="radio" name="wan_upnp_enable" class="input" value="0" onclick="return change_common_radio(this, 'LANHostConfig', 'wan_upnp_enable', '0')" <% nvram_match("wan_upnp_enable", "0", "checked"); %>><#checkbox_No#>
 								</td>
-							</tr>										
+							</tr>
+
+							<tr style="display:none;">
+								<th>Enable WAN Aggregation</th>
+								<td>
+									<input type="radio" name="bond_wan_radio" class="input" value="1" onclick="return change_common_radio(this, 'LANHostConfig', 'bond_wan', '1')" <% nvram_match("bond_wan", "1", "checked"); %>><#checkbox_Yes#>
+									<input type="radio" name="bond_wan_radio" class="input" value="0" onclick="return change_common_radio(this, 'LANHostConfig', 'bond_wan', '0')" <% nvram_match("bond_wan", "0", "checked"); %>><#checkbox_No#>
+									<div style="color:#FFCC00;"><#WANAggregation_desc#></div>
+								</td>
+							</tr>
 						</table>
 
 						<table id="dot1q_setting" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable">

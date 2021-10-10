@@ -14,6 +14,7 @@
 <link rel="stylesheet" type="text/css" href="menu_style.css">
 <link rel="stylesheet" type="text/css" href="device-map/device-map.css">
 <link rel="stylesheet" type="text/css" href="css/rog_cod.css">
+<link rel="stylesheet" type="text/css" href="css/basic.css">
 <script type="text/javascript" src="js/loader.js"></script>
 <script type="text/javascript" src="/js/jquery.js"></script>
 <script type="text/javascript" src="/form.js"></script>
@@ -83,31 +84,134 @@
 .wan_icon_disconnect{
 	background: url('images/New_ui/wan-disconnect.png') no-repeat;
 }
-.aura-scheme-icon-enable{
-	background: url('images/New_ui/ic-aurasync-all-focus.png') no-repeat;
+
+.aura-scheme-container{
+	display: flex;
+	overflow-x: auto;
+	overflow-y: hidden;
+	word-break: break-all;
 }
-.aura-scheme-icon{
-	background: url('images/New_ui/ic-aurasync-all-normal.png') no-repeat;
+.aura-event-container{
+	position: absolute;
+	z-index: 20;
+	width: 345px;
+	background: rgba(0,0,0,.9);
+	font-family: Roboto;
+	font-size: 14px;
+	padding: 0 5px;
+	overflow-y: auto;
+	transition-duration: 0.3s;
+	transition-timing-function: ease-out;
+}
+.aura-event-desc-show{
+	margin-left: 0;
+	opacity: 1;
+	height: 425px;
+}
+
+.aura-event-desc-hide{
+	margin-left: 0px;
+	opacity: 0;
+	height: 0;
+}
+.aura-scheme-container::-webkit-scrollbar-track,
+.aura-event-container::-webkit-scrollbar-track{
+    border: 6px solid #000;
+	padding: 2px 0;
+	background-color: #404040;
+}
+.aura-scheme-container::-webkit-scrollbar,
+.aura-event-container::-webkit-scrollbar{
+    width: 10px;
+}
+.aura-scheme-container::-webkit-scrollbar-thumb,
+.aura-event-container::-webkit-scrollbar-thumb{
+    border: 4px solid #000;
+    border-radius: 10px;
+    background-color: #737272;
 }
 .aura-scheme{
-	width: 37px;
-	height: 37px;
-	cursor: pointer;
+	margin: 8px;
+	text-align: center;
 }
-.aura-scheme-static{
-	background-position: 0 0;
+.aura-icon{
+	width: 36px;
+	height: 36px;
+	margin: 0 6px;
+	background-repeat: no-repeat;
+	cursor:pointer;
+	background-size: 100%;
 }
-.aura-scheme-breath{
-	background-position: -36px 0;
+.aura-desc{
+	margin-top: 8px;
+	line-height: 14px;
+	word-break: keep-all;
 }
-.aura-scheme-flash{
-	background-position: -72px 0;
+.aura-icon-static{
+	background-image: url('images/aura/static.svg');
 }
-.aura-scheme-rainbow{
-	background-position: -108px 0;
+.aura-icon-static:hover, .aura-icon-static-active{
+	background-image: url('images/aura/static_active.svg');
 }
-.aura-scheme-commet{
-	background-position: -142px 0;
+.aura-icon-breathing{
+	background-image: url('images/aura/breathing.svg');
+}
+.aura-icon-breathing:hover, .aura-icon-breathing-active{
+	background-image: url('images/aura/breathing_active.svg');
+}
+.aura-icon-rainbow{
+	background-image: url('images/aura/rainbow.svg');
+}
+.aura-icon-rainbow:hover, .aura-icon-rainbow-active{
+	background-image: url('images/aura/rainbow_active.svg');
+}
+.aura-icon-comet{
+	background-image: url('images/aura/comet.svg');
+}
+.aura-icon-comet:hover, .aura-icon-comet-active{
+	background-image: url('images/aura/comet_active.svg');
+}
+.aura-icon-flash{
+	background-image: url('images/aura/flash.svg');
+}
+.aura-icon-flash:hover, .aura-icon-flash-active{
+	background-image: url('images/aura/flash_active.svg');
+}
+.aura-icon-yoyo{
+	background-image: url('images/aura/glowing_yoyo.svg');
+}
+.aura-icon-yoyo:hover, .aura-icon-yoyo-active{
+	background-image: url('images/aura/glowing_yoyo_active.svg');
+}
+.aura-icon-ccycle{
+	background-image: url('images/aura/color_cycle.svg');
+}
+.aura-icon-ccycle:hover, .aura-icon-ccycle-active{
+	background-image: url('images/aura/color_cycle_active.svg');
+}
+.aura-icon-snight{
+	background-image: url('images/aura/starry_night.svg');
+}
+.aura-icon-snight:hover, .aura-icon-snight-active{
+	background-image: url('images/aura/starry_night_active.svg');
+}
+.aura-icon-strobing{
+	background-image: url('images/aura/strobing.svg');
+}
+.aura-icon-strobing:hover, .aura-icon-strobing-active{
+	background-image: url('images/aura/strobing_active.svg');
+}
+.aura-icon-wave{
+	background-image: url('images/aura/wave.svg');
+}
+.aura-icon-wave:hover, .aura-icon-wave-active{
+	background-image: url('images/aura/wave_active.svg');
+}
+.aura-icon-event{
+	background-image: url('images/aura/event.svg');
+}
+.aura-icon-event:hover, .aura-icon-event-active{
+	background-image: url('images/aura/event_active.svg');
 }
 .boost-function{
 	width: 150px;
@@ -137,6 +241,19 @@
 	font-size: 26px;
 	color:#BFBFBF;
 }
+.event-cancel{
+	width: 20px;
+	height: 20px;
+	background: url('images/gameprofile/cancel.svg');
+	border: 1px solid #842500;
+	background-color:#262626;
+	border-radius: 50%;
+	margin-right: 5px;
+	cursor: pointer;
+}
+.event-cancel:hover{
+	border: 1px solid #E64000;
+}
 </style>
 <script>
 // disable auto log out
@@ -145,7 +262,6 @@ var isDemoMode = ('<% nvram_get("demoMode"); %>' == 1) ? true : false;
 
 google.charts.load('current', {'packages':['corechart']});
 <% wanlink(); %>
-var wanlink_ipaddr = wanlink_ipaddr();
 var ddns_enable = '<% nvram_get("ddns_enable_x"); %>';
 var ddns_server_x = '<% nvram_get("ddns_server_x");%>';
 var ddnsName = decodeURIComponent('<% nvram_char_to_ascii("", "ddns_hostname_x"); %>');
@@ -187,6 +303,7 @@ function getTime(){
 
 var aurargb = "";
 var aura_settings = new Array();
+var boost_id = "";
 function initial(){
 	if(odm_support){
 		$(".banner").attr("class", "banner_COD");
@@ -233,7 +350,7 @@ function initial(){
 	if(isSwMode('rt')){
 		if (ddns_enable == '0' || ddnsName == '' || ddnsName == isMD5DDNSName()) {
 			$('#wan_ip_title').html('WAN IP');
-			$('#wan_ip_field').html(wanlink_ipaddr);
+			updateWANIP();
 		}
 		else {
 			$('#wan_ip_title').html('DDNS');
@@ -241,40 +358,92 @@ function initial(){
 		}
 	}
 	else{	// AP/Repeater/Media Bridge
-		$('#wan_ip_title').html('<#LAN_IP#>');
+		$('#wan_ip_title').html("<#LAN_IP#>");
 		$('#wan_ip_field').html('<% nvram_get("lan_ipaddr"); %>');
 	}
 
-	
 	aura_settings = document.form.aurargb_val.value.split(',');
 	aurargb = "#" + rgbToHex(aura_settings[0]) + rgbToHex(aura_settings[1]) + rgbToHex(aura_settings[2]);
 	setColor(aurargb);
 
-	if(aura_settings[3] == "1"){
-		$("#_static").removeClass("aura-scheme-icon").addClass("aura-scheme-icon-enable");
-	}
-	else if(aura_settings[3] == "2"){
-		$("#_breath").removeClass("aura-scheme-icon").addClass("aura-scheme-icon-enable");
-	}
-	else if(aura_settings[3] == "3"){
-		$("#_flash").removeClass("aura-scheme-icon").addClass("aura-scheme-icon-enable");
-	}
-	else if(aura_settings[3] == "5"){
-		$("#_rainbow").removeClass("aura-scheme-icon").addClass("aura-scheme-icon-enable");
-	}
-	else if(aura_settings[3] == "8"){
-		$("#_commet").removeClass("aura-scheme-icon").addClass("aura-scheme-icon-enable");
+	if(httpApi.nvramGet(["aurargb_enable"]).aurargb_enable == "1"){
+		$('#aura_switch').prop('checked', true);
 	}
 
-	var ch = eval('<% channel_list_5g(); %>');
-	if(isSupport("triband"))
-		ch += eval('<% channel_list_5g_2(); %>');
-	if(ch.indexOf("52") != -1 || ch.indexOf("56") != -1 || ch.indexOf("60") != -1 || ch.indexOf("64") != -1 || ch.indexOf("100") != -1 || ch.indexOf("104") != -1 || ch.indexOf("108") != -1 || ch.indexOf("112") != -1 || ch.indexOf("116") != -1 || ch.indexOf("120") != -1 || ch.indexOf("124") != -1 || ch.indexOf("128") != -1 || ch.indexOf("132") != -1 || ch.indexOf("136") != -1 || ch.indexOf("140") != -1 || ch.indexOf("144") != -1){
-		document.getElementById("boost_dfs").style.display = "";
+	for(i=0; i < auraEffectArray.length; i++){
+		if(aura_settings[3] == auraEffectArray[i][2]){
+			$("#" + auraEffectArray[i][0]).removeClass(auraEffectArray[i][1]).addClass(auraEffectArray[i][1] + "-active");
+		}
 	}
+
+	if(isSwMode("rt") || isSwMode("ap")){
+		var wl1_reg_mode = '<% nvram_get("wl1_reg_mode"); %>';
+		if(isSupport("triband")){
+			var wl2_reg_mode = '<% nvram_get("wl2_reg_mode"); %>';
+		}
+
+		if(wl1_reg_mode == 'h' || wl2_reg_mode == 'h'){
+			document.getElementById("boost_dfs").style.display = "";
+		}
+	}
+
+	if (isSwMode("rt"))
+		document.getElementById("boost_qos").style.display = "";
+
 	var boost_key = '<% nvram_get("turbo_mode"); %>';
-	var _array = ["boost_led", "boost_dfs", "boost_aura", "boost_qos"];
 	$("#" + _array[boost_key]).addClass("boost-key-checked");
+	boost_id = _array[boost_key];
+
+	if(based_modelid == "GT-AC2900"){
+		$('#boost_led').hide();
+		$('#boost_shuffle').show();
+		$('#boost_aura').hide();
+
+		$('#boost_shuffle').mouseenter(function(e){
+			boostKeyDesc(e.target.id);
+		}).mouseleave(function(){
+			boostKeyDesc(boost_id);
+		});
+		$('#boost_qos').mouseenter(function(e){
+			boostKeyDesc(e.target.id);
+		}).mouseleave(function(){
+			boostKeyDesc(boost_id);
+		});
+		$('#boost_dfs').mouseenter(function(e){
+			boostKeyDesc(e.target.id);
+		}).mouseleave(function(){
+			boostKeyDesc(boost_id);
+		});
+
+		// GT-AC2900, handle Geforce Now
+		$('#boost_geforce').show();
+		$('#boost_geforce').mouseenter(function(e){
+			boostKeyDesc(e.target.id);
+		}).mouseleave(function(){
+			boostKeyDesc(boost_id);
+		});
+
+		boostKeyDesc(boost_id);
+	}
+	else{
+		$('#boost_led').show();
+		$('#boost_shuffle').hide();
+		$('#boost_aura').show();
+	}
+}
+
+function updateWANIP(){
+	$.ajax({
+		url: '/ajax_wanlink.asp',
+		dataType: 'script', 
+		error: function(xhr) {
+			setTimeout("updateWANIP();", 1000);
+		},
+		success: function(){
+			$('#wan_ip_field').html(wanlink_ipaddr());
+			setTimeout("updateWANIP();", 3000);
+		}
+	});
 }
 
 function check_eula(){
@@ -661,26 +830,9 @@ function updateClientsCount() {
 			setTimeout("updateClientsCount();", 1000);
 		},
 		success: function(response){
-			var re_tune_client_count = function() {
-				var count = 0;
-				count = fromNetworkmapd_maclist[0].length;
-				for(var i in fromNetworkmapd_maclist[0]){
-					if (fromNetworkmapd_maclist[0].hasOwnProperty(i)) {
-						if(clientList[fromNetworkmapd_maclist[0][i]] != undefined) {
-							if(clientList[fromNetworkmapd_maclist[0][i]].amesh_isRe)
-								count--;
-						}
-					}
-				}
-				return count;
-			};
-
-			var client_count = 0;		
-			if(amesh_support && (isSwMode("rt") || isSwMode("ap"))){
-				client_count = re_tune_client_count();
-			}
-			else{
-				client_count = fromNetworkmapd_maclist[0].length;
+			client_count = fromNetworkmapd_maclist[0].length;
+			if(fromNetworkmapd_maclist[0].length == '0'){
+				client_count = totalClientNum.online;
 			}
 
 			$("#client_count").html(client_count);
@@ -716,6 +868,23 @@ function inputColor(color){
 	submitAura();
 }
 
+function aura_enable(obj){
+	if(obj.checked){
+		httpApi.nvramSet({
+			"aurargb_enable": "1",
+		   	"action_mode": "apply",
+		   	"rc_service": "start_aurargb"
+		});
+	}
+	else{
+		httpApi.nvramSet({
+			"aurargb_enable": "0",
+		   	"action_mode": "apply",
+		   	"rc_service": "start_aurargb"
+		});	
+	}
+}
+
 function submitAura(){
 	httpApi.nvramSet({
     	"aurargb_val": aura_settings.join(","),
@@ -723,49 +892,57 @@ function submitAura(){
     	"rc_service": "start_aurargb"
 	});
 }
-
+var auraEffectArray = [["_static", "aura-icon-static", "1", "0"], 
+				  ["_breathing", "aura-icon-breathing", "2", "0"], 
+				  ["_rainbow", "aura-icon-rainbow", "5", "0"],
+				  ["_comet", "aura-icon-comet", "8", "0"],
+				  ["_flash", "aura-icon-flash", "3", "0"],
+				  ["_yoyo", "aura-icon-yoyo", "12", "0"],
+				  ["_ccycle", "aura-icon-ccycle", "4", "2"],
+				  ["_snight", "aura-icon-snight", "13", "0"],
+				  ["_strobing", "aura-icon-strobing", "6", "0"],
+				  ["_wave", "aura-icon-wave", "11", "0"],
+				  ["_event", "aura-icon-event", "0", "0"]];
 function changeRgbMode(obj){
-	var _array = ["_static", "_breath", "_flash", "_rainbow", "_commet"];
-	for(i=0;i<_array.length;i++){
-		$("#" + _array[i]).removeClass("aura-scheme-icon-enable")
-					.addClass("aura-scheme-icon");
+	for(i=0;i<auraEffectArray.length;i++){
+		var prefixID = auraEffectArray[i][0].split("_");
+		$("#" + auraEffectArray[i][0]).removeClass(auraEffectArray[i][1] + "-active").addClass(auraEffectArray[i][1]);
 	}
 
-	var _id = "_" + obj.id;
-	$("#" + _id).removeClass("aura-scheme-icon")
-				.addClass("aura-scheme-icon-enable");
-
-	if(obj.id == "static"){
-		aura_settings[3] = "1";
-		aura_settings[4] = "0";
-	}
-	else if(obj.id == "breath"){
-		aura_settings[3] = "2";
-		aura_settings[4] = "0";
-	}
-	else if(obj.id == "flash"){
-		aura_settings[3] = "3";
-		aura_settings[4] = "0";
-	}
-	else if(obj.id == "rainbow"){
-		aura_settings[3] = "5";
-		aura_settings[4] = "2";
-	}
-	else if(obj.id == "commet"){
-		aura_settings[3] = "8";
-		aura_settings[4] = "0";
+	var _id = obj.id;
+	for(i=0;i<auraEffectArray.length;i++){
+		if(auraEffectArray[i][0] == _id){
+			var prefixID = auraEffectArray[i][0].split("_");
+			$("#" + _id).removeClass(auraEffectArray[i][1]).addClass(auraEffectArray[i][1] + "-active");
+			aura_settings[3] = auraEffectArray[i][2];
+			aura_settings[4] = auraEffectArray[i][3];
+		}
 	}
 
 	submitAura();
 }
 
+var _array = ["boost_led", "boost_dfs", "boost_aura", "boost_qos", "boost_shuffle", "boost_geforce"];
 function handleBoostKey(obj){
-	var _array = ["boost_led", "boost_dfs", "boost_aura", "boost_qos"];
+	var _id = obj.id;
+	var _nvram = httpApi.nvramGet(["turbo_mode"], true);
+	var _rcService = 'saveNvram';
+	
+	if(_array[_nvram.turbo_mode] == _id){
+		return false;
+	}
+
+	var tm_status = httpApi.nvramGet(["TM_EULA", "TM_EULA_time"], true);
+	if(_id == 'boost_qos' && (tm_status.TM_EULA == "0" || tm_status.TM_EULA_time == "")){
+		$('#Loading').css('visibility', 'visible');
+		$('#alert_tm_EULA').show();
+		return false;
+	}
+
 	for(i=0;i<_array.length;i++){
 		$("#" + _array[i]).removeClass("boost-key-checked")
 	}
 
-	var _id = obj.id;
 	$("#" + _id).addClass("boost-key-checked");
 
 	if(obj.id == "boost_dfs"){
@@ -776,15 +953,23 @@ function handleBoostKey(obj){
 	}
 	else if(obj.id == "boost_qos"){
 		_boost_key = "3";
+		_rcService += ';restart_wrs;restart_firewall';
+	}
+	else if(obj.id == "boost_shuffle"){
+		_boost_key = "4";
+	}
+	else if(obj.id == "boost_geforce"){
+		_boost_key = "5";
 	}
 	else{		//default, LED (boost_led)
 		_boost_key = "0";
 	}
 
+	boost_id = obj.id;
 	httpApi.nvramSet({
     	"turbo_mode": _boost_key,
     	"action_mode": "apply",
-    	"rc_service": "saveNvram"
+    	"rc_service": _rcService
 	});
 }
 
@@ -792,12 +977,68 @@ var isMD5DDNSName = function(){
 	var macAddr = '<% nvram_get("lan_hwaddr"); %>'.toUpperCase().replace(/:/g, "");
 	return "A"+hexMD5(macAddr).toUpperCase()+".asuscomm.com";
 }
+function boostKeyDesc(id){
+	if(id == ""){
+		return true;
+	}
+	
+	var desc = {
+		"boost_shuffle": {
+			content: "<#BoostKey_AURA_Shuffle_desc#>"
+		},
+		"boost_qos": {
+			content: "<#BoostKey_Boost_desc#>"
+		},
+		"boost_dfs": {
+			content: "<#BoostKey_DFS_desc#>"
+		},
+		"boost_geforce": {
+			content: "<#BoostKey_GeForce_desc#>"
+		}
+	}
+
+	if(desc[id] == undefined){
+		return false;
+	}
+
+	$('#boostKey_desc').html(desc[id].content);
+}
+function tm_agree(){
+	httpApi.nvramSet({
+		"turbo_mode": '3',
+		"TM_EULA": '1',
+    	"action_mode": "apply",
+    	"rc_service": "saveNvram;restart_wrs;restart_firewall"
+	});
+
+	$('#Loading').css('visibility', 'hidden');
+	$('#alert_tm_EULA').hide();
+	for(i=0;i<_array.length;i++){
+		$("#" + _array[i]).removeClass("boost-key-checked")
+	}
+
+	$("#boost_qos").addClass("boost-key-checked");
+}
+function tm_disagree(){
+	$('#Loading').css('visibility', 'hidden');
+	$('#alert_tm_EULA').hide();
+}
+
+function showEventTriggerDesc(){
+	$('#aura_event_trigger').removeClass('aura-event-desc-hide')
+							.addClass('aura-event-desc-show');
+}
+function hideEventTriggerDesc(){
+	$('#aura_event_trigger').removeClass('aura-event-desc-show')
+							.addClass('aura-event-desc-hide');
+}
+
 </script>
 </head>
 
-<body onload="initial();" onunload="unload_body();">
+<body onload="initial();" onunload="unload_body();" class="bg">
 <div id="TopBanner"></div>
-<div id="Loading" class="popup_bg"></div>
+<div id="Loading" class="popup_bg" style="height:300%;"></div>
 <iframe name="hidden_frame" id="hidden_frame" width="0" height="0" frameborder="0"></iframe>
 <form method="post" name="form" action="/start_apply.htm" target="hidden_frame">
 <input type="hidden" name="productid" value="<% nvram_get("productid"); %>">
@@ -810,7 +1051,58 @@ var isMD5DDNSName = function(){
 <input type="hidden" name="preferred_lang" id="preferred_lang" value="<% nvram_get("preferred_lang"); %>" disabled>
 <input type="hidden" name="firmver" value="<% nvram_get("firmver"); %>">
 <input type="hidden" name="aurargb_val" value="<% nvram_get("aurargb_val"); %>">
+<input type="hidden" name="TM_EULA" value="<% nvram_get("TM_EULA"); %>">
+
 <table class="content" align="center" cellpadding="0" cellspacing="0" >
+	<!-- EULA -->
+	<div id="alert_tm_EULA" class="eula_panel_container" style="margin-top:1100px;width: 600px; line-height: 18px; text-align: left; font-size: 14px; border-radius: 6px; font-family: monospace; display: block;display:none">
+			<div style="background:#232E32;height:40px;border-top-left-radius: 4px;border-top-right-radius: 4px;">
+				<div style="font: 16px bolder monospace;padding: 12px 0 0 10px;"><#lyra_TrendMicro_agreement#></div>
+			</div>
+			<div id="tm_eula_content" style="background:#293438;border-top:1px solid #3B474B;border-bottom: 1px solid #3B474B;overflow-y: auto;font-size:14px;padding:15px 12px 0 12px;">
+			  <div><#TM_eula_desc1#></div>
+				<div style="margin: 18px 0;"><#TM_eula_desc2#></div>
+				<div style="margin-top: -10px;"><#TM_privacy_policy#></div>
+				<div style="margin-top: 5px;"><#TM_data_collection#></div>
+				<div style="margin: 18px 0;"><#TM_eula_desc3#></div>
+			</div>
+			<div style="text-align: center;background:#232E32;height:60px;border-bottom-left-radius: 4px;border-bottom-right-radius: 4px;">
+				<input id="cancelBtn" class="button_gen" type="button" style="margin-top:15px;" value="<#CTL_Disagree#>" onclick="tm_disagree();">
+				<input id="applyBtn" class="button_gen" type="button" value="<#CTL_Agree#>" onclick="tm_agree();">
+			</div>
+		
+			<script>
+				$("#tm_eula_content").html($("#tm_eula_content").html().replace(/\\'/g, "'"))
+				$("#eula_url").attr("href", "https://www.asus.com/Microsite/networks/Trend_Micro_EULA/");
+				$("#tm_eula_url").attr("href", "https://www.trendmicro.com/en_us/about/legal/privacy-policy-product.html");
+				$("#tm_disclosure_url").attr("href", "https://success.trendmicro.com/data-collection-disclosure");
+		
+				httpApi.nvramGetAsync({
+					data: ["preferred_lang"],
+					success: function(resp){
+						var preferredLang = resp.preferred_lang;
+						var lang_str = (preferredLang == "EN") ? "" : preferredLang.toLowerCase();
+						var tm_url = "";
+		
+						if(preferredLang == "BR")
+							lang_str = "pt";
+		
+						tm_url = "https://www.asus.com/Microsite/networks/Trend_Micro_EULA/" + lang_str;
+						$.ajax({
+							url: tm_url,
+							dataType: "jsonp",
+							statusCode: {
+								200: function(response) {
+									$("#eula_url").attr("href", tm_url);
+								}
+							}
+						});
+					}
+				})
+			</script>
+		</div>	
+	
+	<!-- END Eula -->
 	<tr>
 		<td width="17">&nbsp;</td>		
 		<td valign="top" width="202">				
@@ -953,12 +1245,43 @@ var isMD5DDNSName = function(){
 									<script>
 										$("#pingMap").load("/cards/pingMap.html");
 									</script>
-									<div id="aura_field" style="width:345px;height:425px;margin:-360px 0 0 390px;display:none">
+									<div id="aura_field" style="width:345px;height:425px;margin:-360px 0 0 390px;display:none;position: relative'">
+										<div id="aura_event_trigger" class="aura-event-container aura-event-desc-hide">
+											<div>
+												<div style="display: flex;justify-content: space-between">
+													<div style="font-size: 16px;font-weight: bold;"><#AURA_Event#></div>
+													<div class="event-cancel" onclick="hideEventTriggerDesc();"></div>
+												</div>
+												
+												<div style="margin: 3px 0 6px 0;color:#BFBFBF;"><#AURA_Event_desc#></div>
+											</div>
+											<div style="margin-left:12px;">
+												<div>
+													<li style="font-size: 14px;font-weight: bold;;"><#Game_Boost#></li>
+													<div style="margin: 0 0 6px 0;color:#BFBFBF"><#AURA_Event_Boost_desc#></div>
+												</div>
+												<div>
+													<li style="font-size: 14px;font-weight: bold;"><#AURA_Event_Traffic#></li>
+													<div style="margin: 0 0 6px 0;color:#BFBFBF;"><#AURA_Event_Traffic_desc#></div>
+												</div>
+												<div>
+													<li style="font-size: 14px;font-weight: bold;"><#AURA_Event_Login#></li>
+													<div style="margin: 0 0 6px 0;color:#BFBFBF;"><#AURA_Event_Login_desc#></div>
+												</div>
+
+												<div>
+													<li style="font-size: 14px;font-weight: bold;"><#AURA_Event_Attack#></li>
+													<div style="margin: 0 0 6px 0;color:#BFBFBF;"><#AURA_Event_Attack_desc#></div>
+												</div>
+												<div style="margin: 12px 0 0 -12px;"><#AURA_Event_Note#></div>
+											</div>
+										</div>
+
 										<div style="display:flex;align-items: center;justify-content: space-around;;">
 											<div class="rog-title" style="height:65px;">AURA RGB</div>
 											<div style="width: 68px;height:68px;margin-top:10px;background: url('./images/New_ui/img-aurasync-logo.png')"></div>
 										</div>
-										<div style="display:flex;">
+										<div style="display:flex;margin-top:-20px;">
 											<div style="position: relative;">
 											    <canvas id="picker"></canvas><br>
 											</div>
@@ -977,91 +1300,118 @@ var isMD5DDNSName = function(){
 											        method : 'quad',
 											        input: 'color',
 											        input_color : false,
-											        userEvents : { mouseuph  : function(event, handler, dot) {
-											             $("#color_pad").css({"background": handler.getCurColorHex()});
-											             $("#color").val(handler.getCurColorHex().toUpperCase());
-											             var _rgb = handler.getCurColorRgb();
-											             aura_settings[0] = _rgb.r.toString(); 
-											             aura_settings[1] = _rgb.g.toString(); 
-											             aura_settings[2] = _rgb.b.toString();
-											             submitAura();
-											        }, change: function(handler){
+											        userEvents : {mouseupsv: function(event, handler, dot){
 											        	$("#color_pad").css({"background": handler.getCurColorHex()});
-											        }}
+											            $("#color").val(handler.getCurColorHex().toUpperCase());
+											            var _rgb = handler.getCurColorRgb();
+											            aura_settings[0] = _rgb.r.toString(); 
+											            aura_settings[1] = _rgb.g.toString(); 
+														aura_settings[2] = _rgb.b.toString();
+											            submitAura();
+													},
+													mouseuph: function(event, handler, dot){
+														$("#color_pad").css({"background": handler.getCurColorHex()});
+											            $("#color").val(handler.getCurColorHex().toUpperCase());
+											            var _rgb = handler.getCurColorRgb();
+											            aura_settings[0] = _rgb.r.toString(); 
+											            aura_settings[1] = _rgb.g.toString(); 
+														aura_settings[2] = _rgb.b.toString();
+											            submitAura();
+													}}
 											    });
 											</script>
 										</div>
-										
-										<div style="margin-top:25px;font-weight: bolder;font-size: 16px;display:flex;align-items: center;">
-											<div style="margin-left:15px;">Enable Aura</div>
-											<div style="margin-left:30px;">
-												<div align="center" class="left" style="width:94px; float:left; cursor:pointer;" id="radio_aura_enable"></div>
-												<div class="iphone_switch_container" style="height:32px; width:74px; position: relative; overflow: hidden">
-													<script type="text/javascript">
-														$('#radio_aura_enable').iphoneSwitch('<% nvram_get("aurargb_enable"); %>',
-															function(){
-																httpApi.nvramSet({
-																	"aurargb_enable": "1",
-																   	"action_mode": "apply",
-																   	"rc_service": "start_aurargb"
-																});	
-															},
-															function(){
-																httpApi.nvramSet({
-																"aurargb_enable": "0",
-															    	"action_mode": "apply",
-															    	"rc_service": "start_aurargb"
-																});	
-															}
-														);
-													</script>
-												</div>
+
+										<div style="display:flex;align-items:center;margin: 12px;">
+											<div style="font-size:14px;font-family: Xolonium;">Enable LED</div>
+											<div class="switch-button-container" >
+												<label for="aura_switch" style="cursor:pointer;">
+													<input type="checkbox" id="aura_switch" class="switch-button" style="display:none;" onchange="aura_enable(this);">
+													<div class="switch-button-bg"></div>
+													<div class="switch-button-circle"></div>
+												</label>
 											</div>
 										</div>
-										<div style="display: flex;flex-wrap: wrap;">	
-											<div id="static" style="display:flex;align-items: center;margin: 5px 10px;" onclick="changeRgbMode(this);">
-												<div id="_static" class="aura-scheme aura-scheme-icon aura-scheme-static"></div>
-												<div style="padding-left: 5px;">STATIC</div>
+
+										<div class="aura-scheme-container">
+											<div class="aura-scheme">
+												<div id="_event" class="aura-icon aura-icon-event" onclick="changeRgbMode(this);"></div>
+												<div class="aura-desc">Event</div>
+												<div style="width:16px;height:16px;background: url('images/New_ui/helpicon.png');margin: 5px auto 0 auto;cursor:pointer;" onclick="showEventTriggerDesc();"></div>
 											</div>
-											<div id="breath" style="display:flex;align-items: center;margin: 5px 10px;" onclick="changeRgbMode(this);">
-												<div id="_breath" class="aura-scheme aura-scheme-icon aura-scheme-breath"></div>
-												<div style="padding-left: 5px;">BREATHING</div>
+											<div class="aura-scheme">
+												<div id="_static" class="aura-icon aura-icon-static" onclick="changeRgbMode(this);"></div>
+												<div class="aura-desc">Static</div>
 											</div>
-											<div id="flash" style="display:flex;align-items: center;margin: 5px 10px;" onclick="changeRgbMode(this);">
-												<div id="_flash" class="aura-scheme aura-scheme-icon aura-scheme-flash"></div>
-												<div style="padding-left: 5px;">FLASH</div>
+											<div class="aura-scheme">
+												<div id="_breathing" class="aura-icon aura-icon-breathing" onclick="changeRgbMode(this);"></div>
+												<div class="aura-desc">Breathing</div>
 											</div>
-											<div id="rainbow" style="display:flex;align-items: center;margin: 5px 10px;" onclick="changeRgbMode(this);">
-												<div id="_rainbow" class="aura-scheme aura-scheme-icon aura-scheme-rainbow"></div>
-												<div style="padding-left: 5px;">COLOR CYCLE</div>
+											<div class="aura-scheme">
+												<div id="_rainbow" class="aura-icon aura-icon-rainbow" onclick="changeRgbMode(this);"></div>
+												<div class="aura-desc">Rainbow</div>
 											</div>
-											<div id="commet" style="display:flex;align-items: center;margin: 5px 10px;" onclick="changeRgbMode(this);">
-												<div id="_commet" class="aura-scheme aura-scheme-icon aura-scheme-commet"></div>
-												<div style="padding-left: 5px;">COMET</div>
+											<div class="aura-scheme">
+												<div id="_comet" class="aura-icon aura-icon-comet" onclick="changeRgbMode(this);"></div>
+												<div class="aura-desc">Comet</div>
 											</div>
-										</div>									
+											<div class="aura-scheme">
+												<div id="_flash" class="aura-icon aura-icon-flash" onclick="changeRgbMode(this);"></div>
+												<div class="aura-desc">Flash</div>
+											</div>
+											<div class="aura-scheme">
+												<div id="_yoyo" class="aura-icon aura-icon-yoyo" onclick="changeRgbMode(this);"></div>
+												<div class="aura-desc">Glowing Yoyo</div>
+											</div>
+											<div class="aura-scheme">
+												<div id="_ccycle" class="aura-icon aura-icon-ccycle" onclick="changeRgbMode(this);"></div>
+												<div class="aura-desc">Color Cycle</div>
+											</div>
+											<div class="aura-scheme">
+												<div id="_snight" class="aura-icon aura-icon-snight" onclick="changeRgbMode(this);"></div>
+												<div class="aura-desc">Starry-Night</div>
+											</div>
+											<div class="aura-scheme">
+												<div id="_strobing" class="aura-icon aura-icon-strobing" onclick="changeRgbMode(this);"></div>
+												<div class="aura-desc">Strobing</div>
+											</div>
+											<div class="aura-scheme">
+												<div id="_wave" class="aura-icon aura-icon-wave" onclick="changeRgbMode(this);"></div>
+												<div class="aura-desc">Wave</div>
+											</div>
+										</div>
 									</div>
+									
 									<div id="boostKey_field" style="width:720px;height:340px;margin: 33px 0 20px 15px;display:none">
-										<div style="display:flex;align-items: center;justify-content: space-around;">
+										<div style="display:flex;align-items: center;justify-content: space-around;margin-bottom:40px;">
 											<div>
-												<div class="rog-title" style="margin-bottom:50px;">Boost Key</div>
+												<div class="rog-title" style="margin: 0px 10px 40px 10px;"><#BoostKey#></div>			
 												<div style="width:240px;height: 150px;background: url('./images/New_ui/Img-subProd-base.png') no-repeat;background-size: 100%;"></div>
 											</div>
-											<div style="width:360px;height: 250px;background: url('./images/New_ui/Img-mainProd-base.png') no-repeat;background-size: 100%;"></div>
+											<div style="width: 350px;height:170px;">
+												<div style="font-size: 16px;font-family: Roboto;margin-bottom: 24px;height: 80px;"><#BoostKey_desc#></div>
+												<div id="boostKey_desc" style="font-size: 16px;font-family: Roboto;color: #BFBFBF;"></div>
+											</div>	
 										</div>
-										<div style="display:flex;width:720px;height: 76px;margin-left:20px;">
+										<div style="display:flex;width:720px;height: 76px;margin: 20px 0 10px 30px;">
 											<div style="width:30px;height:76px;background: rgb(145,7,31);transform: skew(-30deg);"></div>
 											<div id="boost_led" class="boost-function boost-border-odd" onclick="handleBoostKey(this)">
 												<div class="boost-text">LED</div>
 											</div>
+											<div id="boost_shuffle" style="display:none;" class="boost-function boost-border-even" onclick="handleBoostKey(this)">
+												<div class="boost-text">AURA Shuffle</div>
+											</div>
 											<div id="boost_dfs" style="display:none;" class="boost-function boost-border-even" onclick="handleBoostKey(this)">
-												<div class="boost-text"><#WLANConfig11b_EChannel_dfs#></div>
+												<div class="boost-text">DFS Channel</div>
 											</div>
 											<div id="boost_aura" class="boost-function boost-border-odd" onclick="handleBoostKey(this)">
 												<div class="boost-text">AURA RGB</div>
 											</div>
-											<div id="boost_qos" class="boost-function boost-border-even" onclick="handleBoostKey(this)">
+											<div id="boost_qos" style="display:none;" class="boost-function boost-border-even" onclick="handleBoostKey(this)">
 												<div class="boost-text">Game Boost</div>
+											</div>
+											<div id="boost_geforce" style="display:none;" class="boost-function boost-border-even" onclick="handleBoostKey(this)">
+												<div class="boost-text">Geforce Now</div>
 											</div>
 										</div>
 									</div>

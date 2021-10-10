@@ -1109,6 +1109,10 @@ define RouterOptions
 	if [ "$(PARENTAL2)" = "y" -o "$(PARENTAL)" = "y" ]; then \
 		sed -i "/RTCONFIG_PARENTALCTRL/d" $(1); \
 		echo "RTCONFIG_PARENTALCTRL=y" >>$(1); \
+		if [ "$(CONFIG_BCMWL5)" = "y" ] && [ "$(ARM)" = "y" ]; then \
+			sed -i "/RTCONFIG_CONNTRACK/d" $(1); \
+			echo "RTCONFIG_CONNTRACK=y" >>$(1); \
+		fi; \
 	fi; \
 	if [ "$(YANDEXDNS)" = "y" ]; then \
 		sed -i "/RTCONFIG_YANDEXDNS/d" $(1); \
@@ -1217,6 +1221,10 @@ define RouterOptions
 	if [ "$(NEWSSID_REV2)" = "y" ]; then \
 		sed -i "/RTCONFIG_NEWSSID_REV2/d" $(1); \
 		echo "RTCONFIG_NEWSSID_REV2=y" >>$(1); \
+		if [ "$(NEWSSID_REV4)" = "y" ]; then \
+			sed -i "/RTCONFIG_NEWSSID_REV4/d" $(1); \
+			echo "RTCONFIG_NEWSSID_REV4=y" >>$(1); \
+		fi; \
 	fi; \
 	if [ "$(NEW_APP_ARM)" = "y" ]; then \
 		sed -i "/RTCONFIG_NEW_APP_ARM/d" $(1); \
@@ -1423,6 +1431,10 @@ define RouterOptions
 	if [ "$(ADV_RAST)" = "y" ]; then \
 		sed -i "/RTCONFIG_ADV_RAST/d" $(1); \
 		echo "RTCONFIG_ADV_RAST=y" >>$(1); \
+	fi; \
+	if [ "$(BCN_RPT)" = "y" ]; then \
+		sed -i "/RTCONFIG_BCN_RPT/d" $(1); \
+		echo "RTCONFIG_BCN_RPT=y" >>$(1); \
 	fi; \
 	if [ "$(NEW_USER_LOW_RSSI)" = "y" ]; then \
 		sed -i "/RTCONFIG_NEW_USER_LOW_RSSI/d" $(1); \
@@ -2146,11 +2158,6 @@ define RouterOptions
 		else \
 			echo "# RTCONFIG_DFS_US is not set" >>$(1); \
 		fi; \
-		if [ "$(BW160M)" = "y" ]; then \
-			echo "RTCONFIG_BW160M=y" >>$(1); \
-		else \
-			echo "# RTCONFIG_BW160M is not set" >>$(1); \
-		fi; \
 	fi; \
 	if [ "$(HND_ROUTER_AX)" = "y" ]; then \
 		sed -i "/RTCONFIG_HND_ROUTER_AX/d" $(1); \
@@ -2179,6 +2186,11 @@ define RouterOptions
 	if [ "$(DHDAP)" = "y" ]; then \
 		sed -i "/RTCONFIG_DHDAP/d" $(1); \
 		echo "RTCONFIG_DHDAP=y" >>$(1); \
+		if [ "$(BW160M)" = "y" ]; then \
+			echo "RTCONFIG_BW160M=y" >>$(1); \
+		else \
+			echo "# RTCONFIG_BW160M is not set" >>$(1); \
+		fi; \
 	fi; \
 	if [ "$(DPSTA)" = "y" ]; then \
 		sed -i "/RTCONFIG_DPSTA/d" $(1); \
@@ -2210,8 +2222,12 @@ define RouterOptions
 			echo "RTCONFIG_NVRAM_SIZE=`printf 0x%x $(NVRAM_SIZE)`" >>$(1); \
 		fi; \
 	fi; \
+	if [ "$(BONDING_WAN)" = "y" ]; then \
+		sed -i "/RTCONFIG_BONDING_WAN/d" $(1); \
+		echo "RTCONFIG_BONDING_WAN=y" >>$(1); \
+	fi; \
 	if [ "$(BONDING)" = "y" ]; then \
-		sed -i "/RTCONFIG_BONDING/d" $(1); \
+		sed -i "/\bRTCONFIG_BONDING\b/d" $(1); \
 		echo "RTCONFIG_BONDING=y" >>$(1); \
 	fi; \
 	if [ "$(WIFILOGO)" = "y" ]; then \
@@ -2256,6 +2272,10 @@ define RouterOptions
 		echo "# RTCONFIG_EXTPHY_BCM84880 is not set" >>$(1); \
 		sed -i "/RTCONFIG_EXTPHY_BCM84880/d" $(1); \
 		echo "RTCONFIG_EXTPHY_BCM84880=y" >>$(1); \
+	fi; \
+	if [ "$(CRASHLOG)" = "y" ]; then \
+		sed -i "/RTCONFIG_BCM_HND_CRASHLOG/d" $(1); \
+		echo "RTCONFIG_BCM_HND_CRASHLOG=y" >>$(1); \
 	fi; \
 	if [ "$(TOR)" = "y" ]; then \
 		sed -i "/RTCONFIG_TOR/d" $(1); \
@@ -2546,9 +2566,11 @@ define RouterOptions
 		sed -i "/RTCONFIG_PERMISSION_MANAGEMENT/d" $(1); \
 		echo "RTCONFIG_PERMISSION_MANAGEMENT=y" >>$(1); \
 	fi; \
+	sed -i "/RTCONFIG_CONNTRACK/d" $(1); \
 	if [ "$(CONNTRACK)" = "y" ]; then \
-		sed -i "/RTCONFIG_CONNTRACK/d" $(1); \
 		echo "RTCONFIG_CONNTRACK=y" >>$(1); \
+	else \
+		echo "# RTCONFIG_CONNTRACK is not set" >>$(1); \
  	fi; \
 	if [ "$(DETWAN)" = "y" ]; then \
 		sed -i "/RTCONFIG_DETWAN/d" $(1); \
@@ -2633,6 +2655,8 @@ define RouterOptions
 	if [ "$(AMAS)" = "y" ]; then \
 		sed -i "/RTCONFIG_AMAS/d" $(1); \
 		echo "RTCONFIG_AMAS=y" >>$(1); \
+		sed -i "/RTCONFIG_DBLOG/d" $(1); \
+		echo "RTCONFIG_DBLOG=y" >>$(1); \
 		if [ "$(DISABLE_REPEATER_UI)" = "y" ] ; then \
 			sed -i "/RTCONFIG_DISABLE_REPEATER_UI/d" $(1); \
 			echo "# RTCONFIG_DISABLE_REPEATER_UI is not set" >>$(1); \
@@ -2661,6 +2685,23 @@ define RouterOptions
 		fi; \
 		sed -i "/RTCONFIG_LIBASUSLOG/d" $(1); \
 		echo "RTCONFIG_LIBASUSLOG=y" >>$(1); \
+		sed -i "/RTCONFIG_AMASDB/d" $(1); \
+		if [ "$(AMASDB)" = "y" ]; then \
+			echo "RTCONFIG_AMASDB=y" >>$(1); \
+		else \
+			echo "# RTCONFIG_AMASDB is not set" >>$(1); \
+		fi; \
+		if [ "$(AVBLCHAN)" = "y" ]; then \
+			echo "RTCONFIG_AVBLCHAN=y" >>$(1); \
+		else \
+			echo "# RTCONFIG_AVBLCHAN is not set" >>$(1); \
+		fi; \
+	fi; \
+	sed -i "/RTCONFIG_WATCH_WLREINIT/d" $(1); \
+	if [ "$(WATCH_REINIT)" = "y" ]; then \
+		echo "RTCONFIG_WATCH_WLREINIT=y" >>$(1); \
+	else \
+		echo "# RTCONFIG_WATCH_WLREINIT is not set" >>$(1); \
 	fi; \
 	if [ "$(NO_SELECT_CHANNEL)" = "y" ]; then \
 		sed -i "/RTCONFIG_NO_SELECT_CHANNEL/d" $(1); \
@@ -3066,6 +3107,8 @@ define BusyboxOptions
 		echo "CONFIG_FEATURE_BASH_IS_ASH=y" >>$(1); \
 		sed -i "/CONFIG_FEATURE_BASH_IS_NONE/d" $(1); \
 		echo "# CONFIG_FEATURE_BASH_IS_NONE is not set" >>$(1); \
+		sed -i "/CONFIG_SPLIT/d" $(1); \
+		echo "CONFIG_SPLIT=y" >>$(1); \
 	fi; \
 	if [ "$(CONNDIAG)" = "y" ]; then \
 		sed -i "/CONFIG_IPCRM/d" $(1); \
@@ -3792,10 +3835,14 @@ fi; \
 		echo "CONFIG_LINUX_MTD=$(LINUX_MTD)" >>$(1); \
 	fi; \
 	sed -i "/CONFIG_NF_CONNTRACK_EVENTS/d" $(1); \
-	if [ "$(BWDPI)" = "y" ] || [ "$(HND_ROUTER)" = "y" ]; then \
+	if [ "$(BWDPI)" = "y" ] || [ "$(HND_ROUTER)" = "y" || "$(CONNTRACK)" = "y" ] || [ "$(PARENTAL2)" = "y" -o "$(PARENTAL)" = "y" ] && [ "$(CONFIG_BCMWL5)" = "y" ] && [ "$(ARM)" = "y" ]; then \
 		echo "CONFIG_NF_CONNTRACK_EVENTS=y" >>$(1); \
 	else \
 		echo "# CONFIG_NF_CONNTRACK_EVENTS is not set" >>$(1); \
+	fi; \
+	if [ "$(CONNTRACK)" = "y" ] || [ "$(PARENTAL2)" = "y" -o "$(PARENTAL)" = "y" ] && [ "$(CONFIG_BCMWL5)" = "y" ] && [ "$(ARM)" = "y" ]; then \
+		sed -i "/CONFIG_NF_CT_NETLINK/d" $(1); \
+		echo "CONFIG_NF_CT_NETLINK=y" >>$(1); \
 	fi; \
 	if [ "$(BWDPI)" = "y" ]; then \
 		sed -i "/CONFIG_NET_SCH_HTB/d" $(1); \

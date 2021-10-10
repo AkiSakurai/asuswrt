@@ -19,6 +19,7 @@
 <script type="text/javascript" src="validator.js"></script>
 <script type="text/javaScript" src="/js/jquery.js"></script>
 <script type="text/javascript" src="switcherplugin/jquery.iphone-switch.js"></script>
+<script type="text/javascript" src="/js/httpApi.js"></script>
 
 <style>
 .contentM_connection{
@@ -56,10 +57,11 @@ var lacp_enabled = '<% nvram_get("lacp_enabled"); %>' == 1 ?true: false;
 var orig_mr_enable = '<% nvram_get("mr_enable_x"); %>';
 var orig_emf_enable = '<% nvram_get("emf_enable"); %>';
 var orig_wan_vpndhcp = '<% nvram_get("wan_vpndhcp"); %>';
-var orig_quagga_enable = '<% nvram_get("quagga_enable"); %>';
 var orig_ttl_inc_enable = '<% nvram_get("ttl_inc_enable"); %>';
 var iptv_profiles = [<% get_iptvSettings();%>][0];
 var isp_profiles = iptv_profiles.isp_profiles;
+if(wan_bonding_support)
+	var orig_bond_wan = httpApi.nvramGet(["bond_wan"], true).bond_wan;
 
 function initial(){
 	show_menu();
@@ -191,13 +193,19 @@ function set_manual_items(){
 
 
 	if(manual_settings.iptv_port != ""){
-		port_name = "LAN Port " + manual_settings.iptv_port.substr(3);
+		if(manual_settings.iptv_port.substr(0, 3) == "LAN")
+			port_name = "LAN Port " + manual_settings.iptv_port.substr(3);
+		else
+			port_name = manual_settings.iptv_port;
 		document.getElementById("wan_iptv_port4_x").style.display = "";
 		document.getElementById("iptv_port4").innerHTML = port_name;
 	}
 
 	if(manual_settings.voip_port != ""){
-		port_name = "LAN Port " + manual_settings.voip_port.substr(3);
+		if(manual_settings.voip_port.substr(0, 3) == "LAN")
+			port_name = "LAN Port " + manual_settings.voip_port.substr(3);
+		else
+			port_name = manual_settings.voip_port;
 		document.getElementById("wan_voip_port3_x").style.display = "";
 		document.getElementById("voip_port3").innerHTML = port_name;
 	}
@@ -211,9 +219,9 @@ function get_isp_settings(isp){
 	}
 }
 
-function control_wans_primary() {
+function control_wans_primary(switch_stb_x) {
 	if(based_modelid == "BRT-AC828" || based_modelid == "RT-AD7200"){
-		if(document.form.switch_stb_x0.value != "0" || document.form.switch_stb_x0.value != "none"){
+		if(switch_stb_x != "0" || document.form.switch_wantag.value != "none"){
 			var primary_wan = wans_dualwan_orig.split(" ")[0];
 			if(primary_wan != "lan") {
 				document.getElementById("tr_wans_primary").style.display = "";
@@ -254,6 +262,7 @@ function ISP_Profile_Selection(isp){
 		document.getElementById("wan_internet_x").style.display = "none";
 		document.getElementById("wan_iptv_port4_x").style.display = "none";
 		document.getElementById("wan_voip_port3_x").style.display = "none";
+		document.form.switch_stb_x.value = isp_settings.switch_stb_x;
 		document.form.switch_wan0tagid.disabled = true;
 		document.form.switch_wan0prio.disabled = true;
 		document.form.switch_wan1tagid.disabled = true;
@@ -323,49 +332,28 @@ function ISP_Profile_Selection(isp){
 	/* Special Applications */
 	if(isp_settings.mr_enable_x != ""){
 		document.getElementById("mr_enable_field").style.display = "none";
-		document.form.mr_enable_x.value = isp_settings.mr_enable_x;
+		document.form.mr_enable_x.disabled = true;
 	}
 	else{
 		document.getElementById("mr_enable_field").style.display = "";
+		document.form.mr_enable_x.disabled = false;
 		document.form.mr_enable_x.value = orig_mr_enable;
+		change_mr_enable(isp_settings.switch_stb_x); //hnd or BLUECAVE
 	}
 
 	if(isp_settings.emf_enable != ""){
 		document.getElementById("enable_eff_multicast_forward").style.display = "none";
-		document.form.emf_enable.value = isp_settings.emf_enable;
+		document.form.emf_enable.disabled = true;
 	}
 	else{
 		document.getElementById("enable_eff_multicast_forward").style.display = "";
+		document.form.emf_enable.disabled = false;
 		document.form.emf_enable.value = orig_emf_enable;
-	}
-
-	if(isp_settings.wan_vpndhcp != ""){
-		document.form.wan_vpndhcp.value = isp_settings.wan_vpndhcp;
-	}
-	else{
-		document.form.wan_vpndhcp.value = orig_wan_vpndhcp;
-	}
-
-	if(isp_settings.quagga_enable != ""){
-		document.form.quagga_enable.value = isp_settings.quagga_enable;
-	}
-	else{
-		document.form.quagga_enable.value = orig_quagga_enable;
-	}
-
-	document.form.mr_altnet_x.value = isp_settings.mr_altnet_x;
-
-	if(isp_settings.ttl_inc_enable != ""){
-		document.form.ttl_inc_enable.value = isp_settings.ttl_inc_enable;
-	}
-	else{
-		document.form.ttl_inc_enable.value = orig_ttl_inc_enable;
 	}
 	/*--*/
 
 	/* Model dependent requirements */
-	control_wans_primary(); //BRT-AC828
-	change_mr_enable(isp_settings.switch_stb_x); //hnd or BLUECAVE
+	control_wans_primary(isp_settings.switch_stb_x); //BRT-AC828
 	if(based_modelid == "GT-AC5300" || based_modelid == "GT-AC9600"){
 		change_port_settings(document.form.iptv_port_settings.value);
 	}
@@ -426,7 +414,7 @@ function applyRule(){
 
 			if (port_conflict) {
 				alert("<#RouterConfig_IPTV_conflict#>");
-				return;
+				return false;
 			}
 		}
 	}
@@ -486,6 +474,21 @@ function applyRule(){
 			if(lacp_enabled && document.form.iptv_port_settings.value == "56"){
 				document.form.lacp_enabled.disabled = false;
 				document.form.lacp_enabled.value = "0";
+			}
+		}
+
+		if(wan_bonding_support && orig_bond_wan == "1"){
+			if(document.form.switch_stb_x.value == "4" || document.form.switch_stb_x.value == "6"){
+				var msg = "<#WANAggregation_PortConflict_hint1#>";
+				if(confirm(msg)){
+					document.form.bond_wan.disabled = false;
+					document.form.bond_wan.value = "0";
+				}
+				else{
+					document.form.switch_wantag.value = original_switch_wantag;
+					ISP_Profile_Selection(original_switch_wantag);
+					return false;
+				}
 			}
 		}
 
@@ -1169,10 +1172,9 @@ function change_mr_enable(switch_stb_x){
 <input type="hidden" name="wan11_dns1_x" value="<% nvram_get("wan11_dns1_x"); %>">
 <input type="hidden" name="wan11_dns2_x" value="<% nvram_get("wan11_dns2_x"); %>">
 <input type="hidden" name="wan11_auth_x" value="<% nvram_get("wan11_auth_x"); %>">
-<input type="hidden" name="quagga_enable" value="<% nvram_get("quagga_enable"); %>">
-<input type="hidden" name="mr_altnet_x" value="<% nvram_get("mr_altnet_x"); %>">
 <input type="hidden" name="lacp_enabled" value="<% nvram_get("lacp_enabled"); %>" disabled>
 <input type="hidden" name="switch_stb_x" value="<% nvram_get("switch_stb_x"); %>" disabled>
+<input type="hidden" name="bond_wan" value="<% nvram_get("bond_wan"); %>" disabled>
 
 <!---- connection settings start  ---->
 <div id="connection_settings_table"  class="contentM_connection">
@@ -1434,7 +1436,7 @@ function change_mr_enable(switch_stb_x){
 		<tr id="wan_stb_x">
 		<th width="30%"><#Layer3Forwarding_x_STB_itemname#></th>
 		<td align="left">
-		    <select id="switch_stb_x0" name="switch_stb_x0" class="input_option" onchange="control_wans_primary();change_mr_enable(this.value);">
+		    <select id="switch_stb_x0" name="switch_stb_x0" class="input_option" onchange="control_wans_primary(this.value);change_mr_enable(this.value);">
 		    </select>
 		</td>
 		</tr>
@@ -1459,21 +1461,21 @@ function change_mr_enable(switch_stb_x){
 			<th width="30%">Bridge Port</th>
 			<td><span id="bridge_port">LAN4</span></td>
 		</tr>
-		<tr id="wan_internet_x">
+		<tr id="wan_internet_x" style="display: none;">
 			<th width="30%"><#Internet#></th>
 			<td>
 				VID&nbsp;<input type="text" name="switch_wan0tagid" class="input_6_table" maxlength="4" value="" onKeyPress="return validator.isNumber(this, event);" autocorrect="off" autocapitalize="off" disabled>&nbsp;&nbsp;&nbsp;&nbsp;
 				PRIO&nbsp;<input type="text" name="switch_wan0prio" class="input_3_table" maxlength="1" value="0" onKeyPress="return validator.isNumber(this, event);" autocorrect="off" autocapitalize="off" disabled>
 			</td>
 		</tr>
-		<tr id="wan_iptv_port4_x">
+		<tr id="wan_iptv_port4_x" style="display: none;">
 			<th id="iptv_port4" width="30%">LAN port 4</th>
 			<td>
 				VID&nbsp;<input type="text" name="switch_wan1tagid" class="input_6_table" maxlength="4" value="" onKeyPress="return validator.isNumber(this, event);" autocorrect="off" autocapitalize="off" disabled>&nbsp;&nbsp;&nbsp;&nbsp;
 				PRIO&nbsp;<input type="text" name="switch_wan1prio" class="input_3_table" maxlength="1" value="0" onKeyPress="return validator.isNumber(this, event);" autocorrect="off" autocapitalize="off" disabled>
 			</td>
 		</tr>
-		<tr id="wan_voip_port3_x">
+		<tr id="wan_voip_port3_x" style="display: none;">
 			<th id="voip_port3" width="30%">LAN port 3</th>
 			<td>
 				VID&nbsp;<input type="text" name="switch_wan2tagid" class="input_6_table" maxlength="4" value="" onKeyPress="return validator.isNumber(this, event);" autocorrect="off" autocapitalize="off" disabled>&nbsp;&nbsp;&nbsp;&nbsp;
@@ -1553,7 +1555,7 @@ function change_mr_enable(switch_stb_x){
 				</select>
 			</td>
 		</tr>
-		<tr id="mr_enable_field">
+		<tr id="mr_enable_field" style="display:none;">
 			<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(5,11);"><#RouterConfig_GWMulticastEnable_itemname#> (IGMP Proxy)</a></th>
 			<td>
 				<select id="mr_enable_x" name="mr_enable_x" class="input_option">

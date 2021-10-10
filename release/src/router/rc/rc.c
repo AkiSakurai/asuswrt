@@ -838,7 +838,7 @@ static const applets_t applets[] = {
 	{ "delay_exec",			delay_main			},
 
 	{ "wanduck",			wanduck_main			},
-#ifdef RTCONFIG_CONNDIAG
+#if defined(RTCONFIG_CONNDIAG) && defined(RTCONFIG_ADV_RAST)
 	{ "conn_diag",			conn_diag_main			},
 #endif
 #if defined(CONFIG_BCMWL5) && !defined(HND_ROUTER) && defined(RTCONFIG_DUALWAN)
@@ -885,6 +885,9 @@ static const applets_t applets[] = {
 	{ "bwdpi_db_10",		bwdpi_db_10_main		},
 	{ "rsasign_sig_check",		rsasign_sig_check_main		},
 #endif
+#ifdef RTCONFIG_AMAS
+	{ "amas_lib",		        amas_lib_main			},
+#endif
 	{ "hour_monitor",		hour_monitor_main		},
 #ifdef RTCONFIG_USB_MODEM
 #ifdef RTCONFIG_INTERNAL_GOBI
@@ -894,8 +897,8 @@ static const applets_t applets[] = {
 #endif
 #endif
 #endif
-#ifdef RTCONFIG_TR069
-	{ "dhcpc_lease",		dhcpc_lease_main		},
+#if defined(RTCONFIG_TR069) || defined(RTCONFIG_AMAS)
+	{ "dhcpc_lease",		dnsmasq_script_main		},
 #endif
 #ifdef RTCONFIG_NEW_USER_LOW_RSSI
 	{ "roamast",			roam_assistant_main		},
@@ -1432,6 +1435,33 @@ int main(int argc, char **argv)
 		}
 
 		return asus_usb_interface(argv[1], argv[2]);
+	}
+	else if (!strcmp(base, "get_usb_node_by_string")) {
+		char usb_node[16];
+
+		if(argc != 2)
+			return 0;
+
+		if(!get_usb_node_by_string(argv[1], usb_node, sizeof(usb_node)))
+			return -1;
+
+		printf("%s", usb_node);
+
+		return 0;
+	}
+	else if (!strcmp(base, "unset_usb_nvram")) {
+		if(argc > 2)
+			return 0;
+
+		if(argc == 2)
+			unset_usb_nvram(argv[1]);
+		else
+			unset_usb_nvram(NULL);
+
+		return 0;
+	}
+	else if (!strcmp(base, "detect_usb_devices")) {
+		return detect_usb_devices();
 	}
 	else if (!strcmp(base, "usb_notify")) {
 #if defined(RTCONFIG_APP_PREINSTALLED) || defined(RTCONFIG_APP_NETINSTALLED)

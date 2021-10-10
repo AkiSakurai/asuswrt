@@ -370,6 +370,11 @@ igsc_sdb_member_add(igsc_info_t *igsc_info, void *ifp, uint32 mgrp_ip,
 	ASSERT(IP_ISMULTI(mgrp_ip));
 	ASSERT(!IP_ISMULTI(mh_ip));
 
+	if (!ifp) {
+		dump_stack();
+		return (FAILURE);
+	}
+
 	OSL_LOCK(igsc_info->sdb_lock);
 
 	/* If the group entry doesn't exist, add a new entry and update
