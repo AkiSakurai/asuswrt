@@ -670,7 +670,7 @@ void set_dpsta_ifnames();
 extern void hnd_cfe_check();
 #endif
 #ifdef RTCONFIG_HND_ROUTER_AX
-extern void dump_WlGetDriverStats(int fb);
+extern void dump_WlGetDriverStats(int fb, int count);
 extern void config_bcn_stuck_watchdog();
 extern void dfs_cac_check(void);
 #endif
@@ -861,7 +861,7 @@ extern pid_t pid_from_file(char *pidfile);
 extern int delay_main(int argc, char *argv[]);
 #ifdef RTCONFIG_IPV6
 extern void set_default_accept_ra(int flag);
-extern void set_intf_ipv6_accept_ra(const char *ifname, int flag);
+extern void set_default_accept_ra_defrtr(int flag);
 extern void set_intf_ipv6_dad(const char *ifname, int bridge, int flag);
 extern void config_ipv6(int enable, int incl_wan);
 #ifdef RTCONFIG_DUALWAN
@@ -2193,6 +2193,10 @@ extern void asm1042_upgrade(int);
 extern void oauth_google_gen_token_email(void);
 extern void oauth_google_update_token(void);
 extern int oauth_google_send_message(const char* receiver, const char* subject, const char* message, const char* attached_files[], int attached_files_count);
+#endif
+
+#ifdef RTCONFIG_UUPLUGIN
+extern void exec_uu();
 #endif
 
 // rmd.c

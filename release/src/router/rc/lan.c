@@ -1400,6 +1400,12 @@ void set_default_accept_ra(int flag)
 	ipv6_sysconf("default", "accept_ra", flag ? 1 : 0);
 }
 
+void set_default_accept_ra_defrtr(int flag)
+{
+	ipv6_sysconf("all", "accept_ra_defrtr", flag ? 1 : 0);
+	ipv6_sysconf("default", "accept_ra_defrtr", flag ? 1 : 0);
+}
+
 void set_default_forwarding(int flag)
 {
 	ipv6_sysconf("all", "forwarding", flag ? 1 : 0);
@@ -1434,10 +1440,8 @@ void config_ipv6(int enable, int incl_wan)
 	DIR *dir;
 	struct dirent *dirent;
 	char word[256], *next;
-	int service, match;
-	char tmp[100];
-	char prefix[] = "wanXXXXXXXXXX_";
-	char wan_proto[16];
+	char prefix[sizeof("wanXXXXXXXXXX_")], *wan_proto;
+	int service, match, accept_defrtr;
 
 	if (enable) {
 		enable_ipv6("default");
@@ -1483,18 +1487,18 @@ void config_ipv6(int enable, int incl_wan)
 		service = get_ipv6_service();
 		switch (service) {
 		case IPV6_NATIVE_DHCP:
-			snprintf(prefix, sizeof(prefix), "wan%d_", wan_primary_ifunit_ipv6());
-			snprintf(wan_proto, sizeof(wan_proto), "%s", nvram_safe_get(strcat_r(prefix, "proto", tmp)));
-			if (strcmp(wan_proto, "dhcp") != 0 && strcmp(wan_proto, "static") != 0 &&
-				nvram_match(ipv6_nvname("ipv6_ifdev"), "ppp")) {
-				set_default_accept_ra(nvram_get_int(ipv6_nvname("ipv6_accept_ra")) ? 1 : 0);
-				break;
-			}
 #ifdef RTCONFIG_6RELAYD
 		case IPV6_PASSTHROUGH:
-			set_default_accept_ra(1);
-			break;
 #endif
+			snprintf(prefix, sizeof(prefix), "wan%d_", wan_primary_ifunit_ipv6());
+			wan_proto = nvram_safe_get(strcat_r(prefix, "proto", word));
+			accept_defrtr = service == IPV6_NATIVE_DHCP && /* limit to native by now */
+					strcmp(wan_proto, "dhcp") != 0 && strcmp(wan_proto, "static") != 0 &&
+					nvram_match(ipv6_nvname("ipv6_ifdev"), "ppp") ?
+					nvram_get_int(ipv6_nvname("ipv6_accept_defrtr")) : 1;
+			set_default_accept_ra(1);
+			set_default_accept_ra_defrtr(accept_defrtr);
+			break;
 		case IPV6_6IN4:
 		case IPV6_6TO4:
 		case IPV6_6RD:
@@ -2341,6 +2345,18 @@ void start_lan(void)
 						ioctl(sfd, SIOCSIFHWADDR, &ifr);
 					}
 
+#ifdef RTCONFIG_EMF
+					if ((nvram_get_int("emf_enable")
+#if defined(RTCONFIG_BCMWL6) && !defined(HND_ROUTER)
+						|| wl_igs_enabled()
+#endif
+					) && !strcmp(ifname, "dpsta")) {
+						eval("emf", "add", "iface", lan_ifname, ifname);
+						eval("emf", "add", "uffp", lan_ifname, ifname);
+						eval("emf", "add", "rtport", lan_ifname, ifname);
+					}
+#endif
+
 					if (dpsta)
 						add_to_list(ifname, list, sizeof(list));
 				}
@@ -2440,7 +2456,11 @@ gmac3_no_swbr:
 #ifdef HND_ROUTER
 						if (!strstr(bonding_ifnames, ifname))
 #endif
-						eval("emf", "add", "iface", lan_ifname, ifname);
+						{
+							eval("emf", "add", "iface", lan_ifname, ifname);
+							eval("emf", "add", "uffp", lan_ifname, ifname);
+							eval("emf", "add", "rtport", lan_ifname, ifname);
+						}
 					}
 #endif
 				}
@@ -2578,12 +2598,19 @@ gmac3_no_swbr:
 	/* Configure dpsta module */
 	if (dpsta) {
 		int di = 0;
-
+		
 		/* Enable and set the policy to in-band and cross-band
 		 * forwarding policy.
 		 */
 		info.enable = 1;
+#ifdef RTCONFIG_HND_ROUTER_AX
+		if (!nvram_get_int("dpsta_ctrl"))
+			info.policy = DPSTA_POLICY_AUTO_1;
+		else
+			info.policy = atoi(nvram_safe_get("dpsta_policy"));
+#else
 		info.policy = atoi(nvram_safe_get("dpsta_policy"));
+#endif
 		info.lan_uif = atoi(nvram_safe_get("dpsta_lan_uif"));
 		foreach(name, nvram_safe_get("dpsta_ifnames"), next) {
 			strcpy((char *)info.upstream_if[di], name);
@@ -2978,7 +3005,11 @@ gmac3_no_swbr:
 					|| wl_igs_enabled()
 #endif
 				)
+				{
 					eval("emf", "del", "iface", lan_ifname, ifname);
+					eval("emf", "del", "uffp", lan_ifname, ifname);
+					eval("emf", "del", "rtport", lan_ifname, ifname);
+				}
 #endif
 #if defined (RTCONFIG_WLMODULE_RT3352_INIC_MII)
 				{ // remove interface for iNIC packets
@@ -4698,7 +4729,9 @@ void start_lan_wl(void)
 #ifdef CONFIG_BCMWL5
 	init_wl_compact();
 	wlconf_pre();
-
+#ifdef RTCONFIG_AMAS
+	del_beacon_vsie("");
+#endif
 #ifdef REMOVE
 	foreach_wif(1, NULL, set_wlmac);
 	check_afterburner();
@@ -5058,6 +5091,18 @@ void start_lan_wl(void)
 						close(s);
 					}
 
+#ifdef RTCONFIG_EMF
+					if ((nvram_get_int("emf_enable")
+#if defined(RTCONFIG_BCMWL6) && !defined(HND_ROUTER)
+						|| wl_igs_enabled()
+#endif
+					) && !strcmp(ifname, "dpsta")) {
+						eval("emf", "add", "iface", lan_ifname, ifname);
+						eval("emf", "add", "uffp", lan_ifname, ifname);
+						eval("emf", "add", "rtport", lan_ifname, ifname);
+					}
+#endif
+
 					if (dpsta)
 						add_to_list(ifname, list2, sizeof(list2));
 				}
@@ -5140,7 +5185,11 @@ gmac3_no_swbr:
 #ifdef HND_ROUTER
 						if (!strstr(bonding_ifnames, ifname))
 #endif
-						eval("emf", "add", "iface", lan_ifname, ifname);
+						{
+							eval("emf", "add", "iface", lan_ifname, ifname);
+							eval("emf", "add", "uffp", lan_ifname, ifname);
+							eval("emf", "add", "rtport", lan_ifname, ifname);
+						}
 					}
 #endif
 				}
@@ -5174,7 +5223,14 @@ gmac3_no_swbr:
 		 * forwarding policy.
 		 */
 		info.enable = 1;
+#ifdef RTCONFIG_HND_ROUTER_AX
+		if (!nvram_get_int("dpsta_ctrl"))
+			info.policy = DPSTA_POLICY_AUTO_1;
+		else
+			info.policy = atoi(nvram_safe_get("dpsta_policy"));
+#else
 		info.policy = atoi(nvram_safe_get("dpsta_policy"));
+#endif
 		info.lan_uif = atoi(nvram_safe_get("dpsta_lan_uif"));
 		foreach(name, nvram_safe_get("dpsta_ifnames"), next) {
 			strcpy((char *)info.upstream_if[di], name);
@@ -5571,6 +5627,10 @@ void restart_wireless(void)
 #ifdef RTCONFIG_AMAS
 	stop_amas_wlcconnect();
 	stop_amas_bhctrl();
+#ifdef CONFIG_BCMWL5
+	if (!nvram_get_int("re_mode"))
+		nvram_set_int("obd_allow_scan", 0);
+#endif
 #endif
 #ifdef RTCONFIG_LANTIQ
 #ifdef LANTIQ_BSD

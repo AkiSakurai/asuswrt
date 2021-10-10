@@ -55,6 +55,10 @@
 #include <wlc_pktfetch.h>
 #endif /* BCM43684_HDRCONVTD_ETHER_LEN_WAR */
 
+#ifdef DECRYPT_ERR_RECOVER
+extern void wlc_set_reinit_reason(wlc_info_t *wlc, uint32 reinit_reason);
+#endif /* DECRYPT_ERR_RECOVER */
+
 /* internal interface */
 
 struct key_algo_entry {
@@ -763,6 +767,26 @@ done:
 		if (ETHER_ISMULTI(&hdr->a1))
 			WLCNTINCR(KEY_CNT(key)->decsuccess_mcst);
 	}
+
+#ifdef DECRYPT_ERR_RECOVER
+	if (err == BCME_DECERR) {
+		key->info.decrypt_err_cnt++;
+		if (key->info.decrypt_err_cnt > DECRYPT_ERR_RECOVER)
+			wlc_set_reinit_reason(KEY_WLC(key), WL_REINIT_RC_RX_DECRYPT_ERROR);
+	}
+	else {
+		key->info.decrypt_err_cnt = 0;
+	}
+
+	if (err != BCME_OK) {
+		WL_ERROR(("wl%d: %s: exit status %d rxs %04x DECATMPT %d DECERR %d wep %d decrypt_err_cnt %d\n",
+		KEY_WLUNIT(key), __FUNCTION__, err, *RxStatus1,
+		((*RxStatus1 & RXS_DECATMPT) ? 1 : 0),
+		((*RxStatus1 & RXS_DECERR) ? 1 : 0),
+		((fc & FC_WEP) ? 1 : 0),
+		key->info.decrypt_err_cnt));
+	}
+#endif /* DECRYPT_ERR_RECOVER */
 
 	KEY_LOG(("wl%d: %s: exit status %d rxs %04x DECATMPT %d DECERR %d wep %d\n",
 		KEY_WLUNIT(key), __FUNCTION__, err, *RxStatus1,

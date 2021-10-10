@@ -87,15 +87,8 @@ clean:
 
 ${OBJS}: acsd.h acsd_svr.h acs_dfsr.h
 
-ifneq ($(PREBUILT_BCMBIN),1)
 acsd2: bcmutils.o bcmxtlv.o bcm_app_utils.o ${OBJS}
 	$(CC) $(CFLAGS) $^ -o $@  $(LDFLAGS)
 
 acs_cli2: acsd_cli.o acsd_utils.o bcmwifi_channels.o
 	$(CC) $(CFLAGS) $^ -o $@  $(LDFLAGS)
-else
-acsd2:
-	cp -f $(SRCBASE)/../components/apps/acsdv2/$(PRBM_DIR)/$@ ./
-acs_cli2:
-	cp -f $(SRCBASE)/../components/apps/acsdv2/$(PRBM_DIR)/$@ ./
-endif

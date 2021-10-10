@@ -207,6 +207,8 @@ typedef uint32 wlc_key_flags_t;
  */
 typedef int32 wlc_key_expiration_t;
 
+#define DECRYPT_ERR_RECOVER 64
+
 /* Key information used for query, creation and update  - key data, sequence,
  * and expiration are treated separately.  Lengths are specified in bytes.
  * IV and ICV lengths are per PDU (WAPI/TKIP MIC dealt with separately i.e.
@@ -224,6 +226,9 @@ struct wlc_key_info {
 	uint8 				key_len;	/* algorithm key (data) length */
 	uint8 				iv_len;
 	uint8 				icv_len;
+#ifdef DECRYPT_ERR_RECOVER
+	uint8			decrypt_err_cnt;
+#endif /* DECRYPT_ERR_RECOVER */
 };
 
 /* Convenience macros */

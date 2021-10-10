@@ -3525,14 +3525,6 @@ void btn_check(void)
 
 			if (is_wps_stopped() || --wsc_timeout == 0)
 			{
-#if defined(HND_ROUTER) && defined(RTCONFIG_PROXYSTA)
-				if (!nvram_get_int("wps_band_x") && (is_dpsr(nvram_get_int("wps_band_x"))
-#ifdef RTCONFIG_DPSTA
-					|| is_dpsta(nvram_get_int("wps_band_x"))
-#endif
-				))
-					eval("wl", "spatial_policy", "1");
-#endif
 				wsc_timeout = 0;
 
 				btn_pressed_setup = BTNSETUP_NONE;
@@ -3854,6 +3846,7 @@ int timecheck_reboot(char *activeSchedule)
 	return active;
 }
 
+
 int svcStatus[12] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 
 /* Check for time-reated service 	*/
@@ -4010,20 +4003,24 @@ void timecheck(void)
 #ifdef RTCONFIG_REBOOT_SCHEDULE
 	/* Reboot Schedule */
 	char reboot_schedule[PATH_MAX];
-	if (nvram_match("ntp_ready", "1") && nvram_match("reboot_schedule_enable", "1"))
+	if (nvram_match("reboot_schedule_enable", "1"))
 	{
-		//SMTWTFSHHMM
-		//XXXXXXXXXXX
-		snprintf(reboot_schedule, sizeof(reboot_schedule), "%s", nvram_safe_get("reboot_schedule"));
-		if (strlen(reboot_schedule) == 11 && atoi(reboot_schedule) > 2359)
+		if (nvram_match("ntp_ready", "1"))
 		{
-			if (timecheck_reboot(reboot_schedule))
+			//SMTWTFSHHMM
+			//XXXXXXXXXXX
+			snprintf(reboot_schedule, sizeof(reboot_schedule), "%s", nvram_safe_get("reboot_schedule"));
+			if (strlen(reboot_schedule) == 11 && atoi(reboot_schedule) > 2359)
 			{
-				_dprintf("reboot plan alert...\n");
-				sleep(1);
-				eval("reboot");
+				if (timecheck_reboot(reboot_schedule))
+				{
+					logmessage("reboot scheduler", "[%s] The system is going down for reboot\n", __FUNCTION__);
+					kill(1, SIGTERM);
+				}
 			}
 		}
+		else
+			logmessage("reboot scheduler", "[%s] NTP sync error\n", __FUNCTION__);
 	}
 #endif
 
@@ -4249,6 +4246,8 @@ unsigned long get_etlan_count()
 		if (strcmp(ifname, "eth1") && strcmp(ifname, "eth2") && strcmp(ifname, "eth3") && strcmp(ifname, "eth4")
 #ifdef RTCONFIG_EXT_BCM53134
  			&& strcmp(ifname, "eth5")
+#elif defined(RTCONFIG_EXTPHY_BCM84880)
+			&& (strcmp(ifname, "eth5") && !nvram_get_int("wans_extwan"))
 #endif
 		) continue;
 
@@ -4322,8 +4321,9 @@ void fake_etlan_led(void)
 #endif
 
 	phystatus = GetPhyStatus(0);
-#ifdef GTAX11000
-	if (!(phystatus & 0x1e)) // ignore 2.5G port
+#if defined(GTAX11000) && defined(RTCONFIG_EXTPHY_BCM84880)
+	if (	(nvram_get_int("wans_extwan") && !(phystatus & 0x3e)) || // configure 2.5G port as WAN, need to consider 1G WAN connectivity
+		(!nvram_get_int("wans_extwan") && !(phystatus & 0x1e)))  // configure 2.5G port as LAN, ignore 2.5G port
 #else
 	if (!phystatus
 #ifdef RTAX92U
@@ -7447,7 +7447,7 @@ void watchdog(int sig)
 #endif
 
 #ifdef RTCONFIG_HND_ROUTER_AX
-	dump_WlGetDriverStats(0);
+	dump_WlGetDriverStats(0, 1);
 #endif
 
 #ifdef WATCHDOG_PERIOD2

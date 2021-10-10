@@ -72,4 +72,5 @@
 extern void wlc_phy_set_locale(phy_info_t *pi, uint8 region_group);
 
 uint16 phy_rxgcrs_sel_classifier(phy_info_t *pi, uint16 class_mask);
+int wlc_phy_update_ed_thres(phy_info_t *pi, int32 *assert_thresh_dbm, bool set_threshold);
 #endif /* _phy_rxgcrs_api_h_ */

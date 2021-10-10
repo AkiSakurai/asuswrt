@@ -37,7 +37,7 @@ body{
 .logo-container{
 	display: flex;
 	align-items: center;
-	margin-left: 150px;
+	margin-left: 90px;
 }
 .logo-rog{
 	background:url('./images/New_ui/ROG-logo.png') no-repeat;
@@ -47,6 +47,7 @@ body{
 	height: 191px;
 }
 .login-title{
+	width: 420px;
 	height: 100%;
 	font-size: 48px;
 	margin-left: 25px;
@@ -54,7 +55,7 @@ body{
 }
 .login-title-desc{
 	font-size: 16pt;
-	margin: 15px 0px 15px 150px;
+	margin: 15px 30px 36px 120px;
 }
 .desc{
 	margin: 12px 0;
@@ -68,19 +69,21 @@ body{
 .login-btn-bg{
 	height: 60px;
 	line-height: 60px;
-	border: 1px solid rgb(207, 10, 44);
+	border: 2px solid #842500;
 	float: right;
 	margin: 20px 230px 0 0;
 	width: 250px;
-	background: rgba(0,0,0,.5);
-	border-radius: 4px;
+	background: #141618;
+	border-radius: 8px;
 	text-align: center;
 	font-size: 28px;
 	cursor: pointer;
 }
-.error-text, 
-.logout-text, 
 .login-btn-bg:hover{
+	border: 2px solid #AB0015;
+}
+.error-text, 
+.logout-text{
 	color: #45FFF0;
 }
 .form-input{
@@ -90,10 +93,13 @@ body{
 	padding: 18px 22px;
 	border: none;
 	outline: none;
-	border-bottom: 1px solid rgb(207, 10, 44);
+	border-bottom: 2px solid rgb(112, 0, 14);
 	border-radius: 4px;
 	background-color: rgba(0,0,0,0.5);
 	background-color: #576D73\9;
+}
+.form-input:focus{
+	border-bottom: 2px solid #AB0015;
 }
 .p1{
 	font-size: 16pt;
@@ -172,7 +178,7 @@ body{
 }
 .login-title-desc{
 	font-size: 14pt;
-	margin: auto;
+	margin: auto 15px;;
 }
 }
 </style>
@@ -402,6 +408,14 @@ var validator = {
 			return false;
 		}		
 
+		if(obj.value.length > 16){
+            showError("<#JS_max_password#>");
+            obj.value = "";
+            obj.focus();
+            obj.select();
+            return false;
+        }
+
 		if(obj.value.charAt(0) == '"'){
 			showError('<#JS_validstr1#> ["]');
 			obj.value = "";
@@ -440,7 +454,15 @@ var validator = {
 				obj.focus();
 				obj.select();
 				return false;	
-		}	
+		}
+
+		if(obj.value.length > 16){
+            showError("<#JS_max_password#>");
+            obj.value = "";
+            obj.focus();
+            obj.select();
+            return false;
+        }	
 		
 		var invalid_char = "";
 		for(var i = 0; i < obj.value.length; ++i){
@@ -500,11 +522,11 @@ function showError(str){
 			</div>
 			<div id="router_password_tr" style="display:none" class="p1"><#PASS_new#></div>
 			<div class="input-container">
-				<input type="password" id="http_passwd_x" name="http_passwd_x" tabindex="1" class="form-input" maxlength="20" autocapitalize="off" autocomplete="off" placeholder="<#PASS_new#>">
+				<input type="password" id="http_passwd_x" name="http_passwd_x" tabindex="2" class="form-input" maxlength="17" autocapitalize="off" autocomplete="off" placeholder="<#PASS_new#>">
 			</div>
 			<div id="router_password_confirm_tr" style="display:none" class="p1"><#Confirmpassword#></div>
 			<div class="input-container">
-				<input type="password" id="http_passwd_2_x" name="http_passwd_2_x" tabindex="1" class="form-input" maxlength="20" autocapitalize="off" autocomplete="off" placeholder="<#Confirmpassword#>">
+				<input type="password" id="http_passwd_2_x" name="http_passwd_2_x" tabindex="3" class="form-input" maxlength="17" autocapitalize="off" autocomplete="off" placeholder="<#Confirmpassword#>">
 			</div>
 			<div id="error_status_field" class="error-hint-bg" style="display: none;" ></div>
 			<div id="btn_modify" class="login-btn-bg" onclick="submitForm();"><#CTL_modify#></div>
