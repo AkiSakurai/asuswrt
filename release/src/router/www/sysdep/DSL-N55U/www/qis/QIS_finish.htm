@@ -427,6 +427,161 @@ function redirect_page(redirect_flag){
 	document.redirectForm.action = "/qis/QIS_"+redirect_flag+".htm";
 	document.redirectForm.submit();
 }
+
+var isNewFw=0;
+var redirect_count=0;
+function startLiveUpdate(){
+	document.getElementById('loadingDesc').innerHTML = "<#QIS_detect_desc5#>";
+	var linkLnternet = httpApi.isConnected();
+	if(redirect_count >= 180){
+		top.location.href = "/";
+	}
+	else if(!linkLnternet){
+		redirect_count++;
+		setTimeout(arguments.callee, 1000);
+		//console.log("False connected");
+	}
+	else{
+		//console.log("Well connected");
+		httpApi.nvramSet({"action_mode":"apply", "rc_service":"start_webs_update"}, function(){
+			setTimeout(function(){
+				var fwInfo = httpApi.nvramGet(["webs_state_update", "webs_state_info", "webs_state_flag", "firmver", "buildno", "extendno"], true);
+
+				if(fwInfo.webs_state_update == "0" || fwInfo.webs_state_update == ""){
+					setTimeout(arguments.callee, 1000);
+				}
+				else if(fwInfo.webs_state_info !== ""){
+					
+					isNewFw = fwInfo.webs_state_flag;
+					var newFwVersion = fwInfo.webs_state_info;
+					newFwVersion = newFwVersion.splice(3,0,".");
+					newFwVersion = newFwVersion.splice(2,0,".");
+					newFwVersion = newFwVersion.splice(1,0,".");
+					if(isNewFw != 0){
+
+						document.getElementById("QISmain").style.display = "none";
+						document.getElementById("liveUpdate_div").style.display = "";
+						document.getElementById("current_fw_div").style.display = "";
+						document.getElementById("Latest_fw_div").style.display = "";
+						document.getElementById("currentFW").innerHTML = fwInfo.firmver + "_" + fwInfo.buildno + "_" + fwInfo.extendno; 
+						document.getElementById("latestFW").innerHTML = newFwVersion;
+
+						if(isNewFw == 2){
+							document.getElementById("liveUpdate_div_leftbutton").value = "<#CTL_UpgradeNight#>";
+							document.getElementById("liveUpdate_div_rightbutton").value = "<#CTL_UpgradeNow#>";
+						}
+					}
+					else{
+						top.location.href = "/";
+					}
+				}
+			}, 1000);
+		});
+	}
+}
+
+/* Live update */
+function doLiveUpdate(_do){
+	if(_do){
+		document.getElementById("newFWDetected").style.display = "none";
+		document.getElementById("progressBar").style.display = "";
+		document.start_update.action_mode.value="apply";
+		document.start_update.action_script.value="stop_upgrade;start_webs_upgrade";
+		document.start_update.action_wait.value="300";
+		document.start_update.submit();
+	}
+	else{
+		setTimeout("parent.location.href='/'", 3000);
+	}
+}
+function returnNewFWDetected(){
+	document.getElementById("newFWDetected").style.display = "";
+	document.getElementById("newFWCancel").style.display = "none";
+}
+
+function showCancel(){
+	document.getElementById("newFWDetected").style.display = "none";
+	document.getElementById("newFWCancel").style.display = "";
+	if(isNewFw==2){
+		document.getElementById("newFWCancelDesc").innerHTML = "<#exist_new_force#>";
+	} 	
+}
+
+var dead = 0;
+function detect_httpd(){
+	$.ajax({
+		url: '/detect_firmware.asp',
+		dataType: 'script',
+		timeout: 2000,
+		error: function(xhr){
+			dead++;
+			if(dead < 70)
+				setTimeout("detect_httpd();", 1000);
+			else{
+				progressBar = 100;
+				document.getElementById('progress_bar_no').innerHTML = "100%";
+				document.getElementById("updateProgress").style.width = "100%";
+				// document.getElementById("newFWgradedFail").style.display = "";
+				document.getElementById("hidden_frame").contentWindow.showWlHint(1);
+			}
+		},
+		success: function(){
+			if(webs_state_error == "1"){
+				progressBar = 100;
+				document.getElementById('progress_bar_no').innerHTML = "100%";
+				document.getElementById("updateProgress").style.width = "100%";
+				document.getElementById("liveUpdateResult").innerHTML = "<#info_failed#>";
+				document.getElementById("newFWgraded").style.display = "";
+				return false;
+			}else if(webs_state_error == "2"){
+				progressBar = 100;
+				document.getElementById('progress_bar_no').innerHTML = "100%";
+				document.getElementById("updateProgress").style.width = "100%";
+				document.getElementById("liveUpdateResult").innerHTML = "Memory space is NOT enough to upgrade on internet. Please wait for rebooting.<br><#FW_desc1#>";	/* untranslated */	/* Need to fine tune error cases */
+				document.getElementById("newFWgraded").style.display = "";
+				return false;				
+			}else if(webs_state_error == "3"){
+				progressBar = 100;
+				document.getElementById('progress_bar_no').innerHTML = "100%";
+				document.getElementById("updateProgress").style.width = "100%";
+				document.getElementById("liveUpdateResult").innerHTML = "<#FIRM_fail_desc#><br><#FW_desc1#>";
+				document.getElementById("newFWgraded").style.display = "";
+			}
+
+			if(webs_state_upgrade == ""){	//after reboot
+				progressBar = 100;
+				document.getElementById('progress_bar_no').innerHTML = "100%";
+				document.getElementById("updateProgress").style.width = "100%";				
+				document.getElementById("newFWgraded").style.display = "";		
+			}
+			else{
+				setTimeout("detect_httpd();", 1000);
+			}
+		}
+	});
+}
+
+var progressBar = 0;
+function showLoadingUpdate(){
+	if(progressBar == 100){
+		return false;
+	}
+	else if(progressBar == 10){
+		detect_httpd();
+		setTimeout("showLoadingUpdate();", 2700);
+	}
+	else if(progressBar == 80){
+		detect_httpd();
+		return false;
+	}
+	else{	
+		document.getElementById("updateProgress").style.width = progressBar+"%";
+		document.getElementById('progress_bar_no').innerHTML = progressBar+"%";
+		setTimeout("showLoadingUpdate();", 2700);
+	}
+	
+	progressBar++;	
+}
 </script>
 </head>
 

@@ -130,9 +130,9 @@ function genListTable(){
 	var code = '';
 	var _count = 0;
 	code += '<div class="flexbox table-title">';
-	code += '<div class="table-content1-width"><div>Game</div></div>';
-	code += '<div class="table-content2-width"><div>Device</div></div>';
-	code += '<div class="table-content3-width"><div>Protocol</div></div>';
+	code += '<div class="table-content1-width"><div><#AiProtection_filter_stream1#></div></div>';
+	code += '<div class="table-content2-width"><div><#Clientlist_device#></div></div>';
+	code += '<div class="table-content3-width"><div><#IPConnection_VServerProto_itemname#></div></div>';
 	code += '<div class="table-content4-width"><div>Actions</div></div>';
 	code += '</div>';
 
@@ -604,7 +604,7 @@ function newProfileOK(){
 				</div>
 
 				<!-- Content field -->
-				<div class="description-container">OpenNAT offers a hassle-free way to create port forwarding rules for online games and optimizes the routing packets from your game console to the modem with an optimized gaming performance.</div>
+				<div class="description-container"><#OpenNAT_desc#></div>
 				<div class="world-map">
 					<div class="map-connection-line"></div>
 					<div class="location-indicator location-US3"></div>
@@ -625,7 +625,7 @@ function newProfileOK(){
 				<!-- End division line -->
 
 				<div class="flexbox flex-a-center control-f-container">
-					<div class="control-description">Enable Port Forwarding</div>
+					<div class="control-description"><#IPConnection_VServerEnable_itemname#></div>
 					<div class="switch-button-container">
 						<label for="PF_switch" >
 							<input type="checkbox" id="PF_switch" class="switch-button" onchange="switchPortForward(this);">
@@ -646,7 +646,7 @@ function newProfileOK(){
 					<div class="title-content"><#Game_Profile#></div>
 				</div>
 
-				<div class="description-container">Game Profile includes built-in rules for popular online games. Select your game in the list below and complete basic settings. An optimized gaming experience is just around the corner.</div>
+				<div class="description-container"><#Game_Profile_desc#></div>
 				<div class="button-container button-container-left" onclick="addNewProfile();">
 					<div class="button-icon icon-plus"></div>
 					<div class="button-text"><#CTL_add#></div>
@@ -656,8 +656,7 @@ function newProfileOK(){
 
 				<div id='empty_qiuckAdd' class="flexbox flex-d-column flex-w-wrap game-profile-container"></div>
 				<div class="divide-line"></div>
-				<div class="right-desc">** All game names, logos, and brands are property of their respective owners. 
-Use of these names, logos, and brands does not imply endorsement.</div>
+				<div class="right-desc">** <#AiProtection_title_Radar_desc2#></div>
 			</div>
 
 			<!-- New rule field -->
@@ -679,7 +678,7 @@ Use of these names, logos, and brands does not imply endorsement.</div>
 				<div>
 					<div class="flexbox flex-a-center new-g-profile">
 						<div class="new-g-p-step">1</div>
-						<div class="new-g-p-s-title">Game</div>	
+						<div class="new-g-p-s-title"><#Game_List#></div>	
 					</div>
 					<div id="inner_quickAdd" class="new-g-p-container"></div>
 					<div class="divide-line new-p-divide"></div>
@@ -688,7 +687,7 @@ Use of these names, logos, and brands does not imply endorsement.</div>
 				<div>
 					<div class="flexbox flex-a-center new-g-profile">
 						<div class="new-g-p-step">2</div>
-						<div class="new-g-p-s-title">Platform</div>	
+						<div class="new-g-p-s-title"><#Game_Platform#></div>	
 					</div>
 					<div class="flexbox new-p-platform">
 						<div id="platformPC_field" class="checkbox-container">
@@ -761,22 +760,22 @@ Use of these names, logos, and brands does not imply endorsement.</div>
 				<div>
 					<div class="flexbox flex-a-center new-g-profile">
 						<div class="new-g-p-step">3</div>
-						<div class="new-g-p-s-title">Settings</div>
+						<div class="new-g-p-s-title"><#Settings#></div>
 					</div>
 
 					<div class="new-p-platform">
 						<div id="name_field" class="game-p-s-field">
-							<div class="settings-filed-title">Name</div>
+							<div class="settings-filed-title"><#BM_UserList1#></div>
 							<input id="new_profile_name" type="text" class="input-container" value="" maxlength="30" onkeypress="return validator.isString(this, event);" autocomplete="off" autocorrect="off" autocapitalize="off" >
 						</div>
 
 						<div id="protocol_field" class="game-p-s-field">
-							<div class="settings-filed-title">Protocol</div>
+							<div class="settings-filed-title"><#IPConnection_VServerProto_itemname#></div>
 							<div class="select-container">
 								<select name="" id="new_profile_protocol">
 									<option value="TCP">TCP</option>
 									<option value="UDP">UDP</option>
-									<option value="BOTH">BOTH</option>
+									<option value="BOTH"><#option_both_direction#></option>
 								</select>
 								<div class="select-arrow">
 									<div></div>
@@ -784,18 +783,18 @@ Use of these names, logos, and brands does not imply endorsement.</div>
 							</div>	
 						</div>
 						<div id="externalPort_field" class="game-p-s-field">
-							<div class="settings-filed-title">External Port</div>
+							<div class="settings-filed-title"><#IPConnection_VSList_External_Port#></div>
 							<input id="new_profile_externalPort" type="text" class="input-container" value="" maxlength="60" onkeypress="return validator.isPortRange(this, event);" autocomplete="off" autocorrect="off" autocapitalize="off" >
 						</div>
 
 						<div id="localPort_field" class="game-p-s-field">
-							<div class="settings-filed-title">Internal Port</div>
+							<div class="settings-filed-title"><#IPConnection_VSList_Internal_Port#></div>
 							<input id="new_profile_localPort" type="text" class="input-container" value="" maxlength="60" onkeypress="return validator.isNumber(this,event);" autocomplete="off" autocorrect="off" autocapitalize="off" >
-							<div class="hint">*optional</div>
+							<div class="hint"><#feedback_optional#></div>
 						</div>
 
 						<div id="localIP_field" class="game-p-s-field" >
-							<div class="settings-filed-title">Internal IP</div>
+							<div class="settings-filed-title"><#IPConnection_VSList_Internal_IP#></div>
 							<div style="position: relative">
 								<input id="new_profile_localIP" type="text" class="input-container" value="" maxlength="15" onkeypress="return validator.isIPAddr(this, event);" autocomplete="off" autocorrect="off" autocapitalize="off">
 								<div class="select-arrow" style="cursor:pointer;z-index: 999;" onclick="pullLANIPList(this);" >
@@ -808,9 +807,9 @@ Use of these names, logos, and brands does not imply endorsement.</div>
 						</div>
 
 						<div id="sourceIP_field" class="game-p-s-field">
-							<div class="settings-filed-title">Souce IP</div>
+							<div class="settings-filed-title"><#IPConnection_VSList_SourceTarget#></div>
 							<input id="new_profile_sourceIP" type="text" class="input-container" value="" maxlength="15" onkeypress="return validator.isIPAddrPlusNetmask(this, event)" autocomplete="off" autocorrect="off" autocapitalize="off" >
-							<div class="hint">*optional</div>
+							<div class="hint"><#feedback_optional#></div>
 						</div>
 					</div>
 				</div>
@@ -845,20 +844,20 @@ Use of these names, logos, and brands does not imply endorsement.</div>
 				</div>
 
 				<div class="flexbox flex-a-center flex-j-spaceB new-g-p-t-field ">
-					<div class="new-g-p-title">Game List</div>
+					<div class="new-g-p-title"><#Game_List#></div>
 					<div class="new-g-p-rule"><span id="rule_num">2</span> Rules (<#List_limit#> 32)</div>
 				</div>
 
 				<div id="list_content"> 
 					<div class="flexbox table-title">
 						<div class="table-content1-width">
-							<div>Game</div>
+							<div><#AiProtection_filter_stream1#></div>
 						</div>
 						<div class="table-content2-width">
-							<div>Device</div>
+							<div><#Clientlist_device#></div>
 						</div>
 						<div class="table-content3-width">
-							<div>Protocol</div>
+							<div><#IPConnection_VServerProto_itemname#></div>
 						</div>
 						<div class="table-content4-width">
 							<div>Actions</div>

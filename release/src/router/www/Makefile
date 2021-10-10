@@ -353,7 +353,6 @@ endif
 ifeq ($(RTCONFIG_OPENVPN), y)
 	cd $(INSTALLDIR)/www && ln -sf ../etc/openvpn/server1/client.ovpn && cd $(TOP)/www
 else
-	rm -rf $(INSTALLDIR)/www/merlin.js
 	rm -rf $(INSTALLDIR)/www/ajax_openvpn_server.asp
 	rm -rf $(INSTALLDIR)/www/Advanced_VPN_OpenVPN.asp
 ifneq ($(RTCONFIG_ACCEL_PPTPD), y)
@@ -746,4 +745,42 @@ ifneq ($(RTCONFIG_ROG_UI),y)
 	rm -rf $(INSTALLDIR)/www/images/gameprofile
 	rm -rf $(INSTALLDIR)/www/css/gameprofile.css
 	rm -rf $(INSTALLDIR)/www/ajax_wanlink.asp
+endif
+
+ifeq ($(RTCONFIG_FW_JUMP), y)
+	rm -rf $(INSTALLDIR)/www/images/aura
+	rm -rf $(INSTALLDIR)/www/images/cloudsync
+	rm -rf $(INSTALLDIR)/www/images/gameprofile
+	rm -rf $(INSTALLDIR)/www/images/mobile
+	rm -rf $(INSTALLDIR)/www/images/qis
+	rm -rf $(INSTALLDIR)/www/images/survey
+	rm -rf $(INSTALLDIR)/www/images/Tree
+	rm -rf $(INSTALLDIR)/www/images/triLvGameAcceleration
+	rm -rf $(INSTALLDIR)/www/images/*.jpg
+	rm -rf $(INSTALLDIR)/www/images/*.svg
+	rm -rf $(INSTALLDIR)/www/qis
+	rm -rf $(INSTALLDIR)/www/qis_m
+	rm -rf $(INSTALLDIR)/www/QIS_wizard_m.htm
+	rm -rf $(INSTALLDIR)/www/QIS_wizard.htm
+	rm -rf $(INSTALLDIR)/www/mobile
+	rm -rf $(INSTALLDIR)/www/device-map/*.asp
+	rm -rf $(INSTALLDIR)/www/aidisk
+	rm -rf $(INSTALLDIR)/www/getfoldertree.asp
+	rm -rf $(INSTALLDIR)/www/gettree.asp
+	rm -rf $(INSTALLDIR)/www/calendar
+	rm -rf $(INSTALLDIR)/www/notification_center
+	rm -rf $(INSTALLDIR)/www/nt_content.json
+	rm -rf $(INSTALLDIR)/www/AdaptiveQoS_*.asp
+	rm -rf $(INSTALLDIR)/www/Advanced_*.asp
+	rm -rf $(INSTALLDIR)/www/AiProtection_*.asp
+	rm -rf $(INSTALLDIR)/www/cloud_*.asp
+	mkdir $(INSTALLDIR)/jump_temp
+	cp $(INSTALLDIR)/www/Main_Login.asp $(INSTALLDIR)/jump_temp/
+	cp $(INSTALLDIR)/www/Main_Password.asp $(INSTALLDIR)/jump_temp/
+	rm -rf $(INSTALLDIR)/www/Main_*.asp
+	cp $(INSTALLDIR)/jump_temp/*.asp $(INSTALLDIR)/www/
+	rm -rf $(INSTALLDIR)/jump_temp
+	rm -rf $(INSTALLDIR)/www/*.svg
+else
+	rm -rf $(INSTALLDIR)/Manual_FirmwareUpgrade.asp
 endif

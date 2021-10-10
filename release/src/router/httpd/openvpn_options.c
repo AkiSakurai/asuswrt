@@ -423,8 +423,6 @@ add_option (char *p[], int line, int unit)
 
 		if(p[2])
 			nvram_pf_set(prefix, "port", p[2]);
-		else
-			nvram_pf_set(prefix, "port", "1194");
 
 		if(p[3])
 			nvram_pf_set(prefix, "proto", p[3]);

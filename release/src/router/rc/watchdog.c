@@ -6047,24 +6047,29 @@ static void auto_firmware_check()
 	static int period_retry = -1;
 	static int period = 2877;
 	static int bootup_check = 1;
+#ifndef RTCONFIG_FW_JUMP
 	static int periodic_check = 0;
 	int cycle_manual = nvram_get_int("fw_check_period");
 	int cycle = (cycle_manual > 1) ? cycle_manual : 2880;
-
+	char *datestr[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 	time_t now;
 	struct tm *tm;
 	static int rand_hr, rand_min;
+#endif
 
 	if (!nvram_get_int("ntp_ready")){
 		FAUPGRADE_DBG("ntp_ready false");
 		return;
 	}
 
+#ifdef RTCONFIG_FW_JUMP
+	period = 0;
+#else
+	time(&now);
+	tm = localtime(&now);
+
 	if (!bootup_check && !periodic_check)
 	{
-		time(&now);
-		tm = localtime(&now);
-
 		if ((tm->tm_hour == (2 + rand_hr)) &&	// every 48 hours at 2 am + random offset
 		    (tm->tm_min == rand_min))
 		{
@@ -6077,9 +6082,19 @@ static void auto_firmware_check()
 		period = (period + 1) % cycle;
 	else
 		return;
+#endif
+
 	//FAUPGRADE_DBG("period = %d, period_retry = %d, bootup_check = %d", period, period_retry, bootup_check);
 	if (!period || (period_retry < 2 && bootup_check == 0))
 	{
+#ifndef RTCONFIG_FW_JUMP
+		if(nvram_get_int("webs_state_dl_error")){
+			if(!strncmp(datestr[tm->tm_wday], nvram_safe_get("webs_state_dl_error_day"), 3))
+				return;
+			else
+				nvram_set("webs_state_dl_error", "0");
+		}
+
 		period_retry = (period_retry+1) % 3;
 		FAUPGRADE_DBG("period_retry = %d", period_retry);
 		if (bootup_check)
@@ -6089,6 +6104,7 @@ static void auto_firmware_check()
 			rand_min = rand_seed_by_time() % 60;
 			FAUPGRADE_DBG("periodic_check AM %d:%d", 2 + rand_hr, rand_min);
 		}
+#endif
 
 		if(!nvram_contains_word("rc_support", "noupdate")){
 #if defined(RTL_WTDOG)
@@ -6103,9 +6119,11 @@ static void auto_firmware_check()
 		eval("/usr/sbin/notif_update.sh");
 #endif
 
-		if (nvram_get_int("webs_state_update") &&
-		    !nvram_get_int("webs_state_error") &&
-		    strlen(nvram_safe_get("webs_state_info")))
+		if (nvram_get_int("webs_state_update")
+				&& !nvram_get_int("webs_state_error")
+				&& !nvram_get_int("webs_state_dl_error")
+				&& strlen(nvram_safe_get("webs_state_info"))
+				)
 		{
 			FAUPGRADE_DBG("retrieve firmware information");
 
@@ -6114,10 +6132,12 @@ static void auto_firmware_check()
 				return;
 			}
 
+#ifndef RTCONFIG_FW_JUMP
 			if (nvram_match("x_Setting", "0")){
 				FAUPGRADE_DBG("default status");
 				return;
 			}
+#endif
 
 			if (nvram_get_int("webs_state_flag") != 2)
 			{
@@ -6125,21 +6145,22 @@ static void auto_firmware_check()
 				return;
 			}
 
-			nvram_set_int("auto_upgrade", 1);
+			nvram_set("webs_state_dl", "1");
 
-			eval("/usr/sbin/webs_upgrade.sh");
+			notify_rc_and_wait("stop_upgrade;start_webs_upgrade");
 
-			if (nvram_get_int("webs_state_error"))
+			nvram_set("webs_state_dl", "0");
+
+			if (nvram_get_int("webs_state_dl_error"))
 			{
 				FAUPGRADE_DBG("error execute upgrade script");
-				goto ERROR;
+				reboot(RB_AUTOBOOT);
 			}
 		}
 		else{
-			FAUPGRADE_DBG("could not retrieve firmware information: webs_state_update = %d, webs_state_error = %d, webs_state_info.len = %d", nvram_get_int("webs_state_update"), nvram_get_int("webs_state_error"), strlen(nvram_safe_get("webs_state_info")));
+			FAUPGRADE_DBG("could not retrieve firmware information: webs_state_update = %d, webs_state_error = %d, webs_state_dl_error = %d, webs_state_info.len = %d", nvram_get_int("webs_state_update"), nvram_get_int("webs_state_error"), nvram_get_int("webs_state_dl_error"), strlen(nvram_safe_get("webs_state_info")));
 		}
-ERROR:
-		nvram_set_int("auto_upgrade", 0);
+		return;
 	}
 }
 #endif
@@ -7515,6 +7536,7 @@ wdp:
 	web_history_save();		// libbwdpi.so
 	AiProtectionMonitor_mail_log();	// libbwdpi.so
 	tm_eula_check();		// libbwdpi.so
+	check_hour_monitor_service();
 #endif
 
 #ifdef RTCONFIG_NOTIFICATION_CENTER
@@ -7522,7 +7544,6 @@ wdp:
 	ntevent_intranet_usage_insight();
 #endif
 
-	check_hour_monitor_service();
 
 #if defined(RTCONFIG_TOR) && (defined(RTCONFIG_JFFS2) || defined(RTCONFIG_BRCM_NAND_JFFS2))
 	if (nvram_get_int("Tor_enable"))

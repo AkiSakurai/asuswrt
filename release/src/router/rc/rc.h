@@ -263,6 +263,7 @@ extern void ate_temperature_record(void);
 extern void wl_driver_mode_update(void);
 #ifdef RTCONFIG_EXTPHY_BCM84880
 void config_ext_wan_port();
+void get_ext_phy_id();
 #endif
 extern void eth_phypower(char *port, int onoff);
 #endif
@@ -551,6 +552,7 @@ extern int is_ure(int unit);
 /* The below macros handle endian mis-matches between wl utility and wl driver. */
 extern bool g_swap;
 #define htod32(i) (g_swap?bcmswap32(i):(uint32)(i))
+#define dtoh64(i) (g_swap?bcmswap64(i):(uint64)(i))
 #define dtoh32(i) (g_swap?bcmswap32(i):(uint32)(i))
 #define dtoh16(i) (g_swap?bcmswap16(i):(uint16)(i))
 #define dtohchanspec(i) (g_swap?dtoh16(i):i)
@@ -582,6 +584,9 @@ extern int wl_subband(char *wif, int idx);
 #if defined(RTCONFIG_BCM_7114) || defined(HND_ROUTER)
 extern void check_4366_dummy(void);
 extern void check_4366_fabid(void);
+#endif
+#ifdef RTAX88U
+extern void pcie_probe_check(void);
 #endif
 extern void wl_dfs_radarthrs_config(char *ifname, int unit);
 #if defined(RTCONFIG_BCM7) || defined(RTCONFIG_BCM_7114) || defined(HND_ROUTER) || defined(RTCONFIG_HND_ROUTER_AX)
@@ -910,6 +915,10 @@ extern void ip2class(char *lan_ip, char *netmask, char *buf);
 #ifdef RTCONFIG_WIFI_SON
 extern void set_cap_apmode_filter(void);
 #endif
+extern void write_extra_filter(FILE *fp);
+#ifdef RTCONFIG_IPV6
+extern void write_extra_filter6(FILE *fp);
+#endif
 
 /* pc.c */
 #ifdef RTCONFIG_PARENTALCTRL
@@ -962,6 +971,7 @@ extern int vpnc_ovpn_route_up_main(int argc, char **argv);
 #else
 extern void update_vpnc_state(char *prefix, int state, int reason);
 #endif
+extern int is_vpnc_connected(void);
 #endif
 
 /*rc_ipsec.c*/
@@ -1075,6 +1085,7 @@ extern void stop_jffs2(int stop);
 static inline void start_jffs2(void) { }
 static inline void stop_jffs2(int stop) { }
 #endif
+extern void userfs_prepare(const char *folder);
 
 // watchdog.c
 extern void led_control_normal(void);
@@ -1239,7 +1250,7 @@ extern void remove_storage_main(int shutdn);
 extern int start_usbled(void);
 extern int stop_usbled(void);
 #endif
-extern void restart_nas_services(int stop, int start);
+extern void restart_nas_services(int stop, int start, int force);
 extern void stop_nas_services(int force);
 extern int sd_partition_num();
 #endif
@@ -1254,7 +1265,7 @@ extern int start_quagga(void);
 extern void start_webdav(void);
 #ifdef RTCONFIG_SAMBASRV
 extern void create_custom_passwd(void);
-extern void stop_samba(void);
+extern void stop_samba(int force);
 extern void start_samba(void);
 #endif
 #ifdef RTCONFIG_WEBDAV
@@ -1264,11 +1275,11 @@ extern void stop_all_webdav(void);
 static inline void stop_all_webdav(void) { }
 #endif
 #ifdef RTCONFIG_FTP
-extern void stop_ftpd(void);
+extern void stop_ftpd(int force);
 extern void start_ftpd(void);
 #endif
 #ifdef RTCONFIG_TFTP_SERVER
-extern void stop_tftpd(void);
+extern void stop_tftpd(int force);
 extern void start_tftpd(void);
 #endif
 #ifdef RTCONFIG_CLOUDSYNC
@@ -1628,28 +1639,28 @@ extern void stop_dsl_diag(void);
 extern int start_dsl_diag(void);
 #endif
 #endif
-#ifdef RTCONFIG_PUSH_EMAIL
-extern void start_DSLsendmail(void);
+#ifdef RTCONFIG_FRS_FEEDBACK
+extern void start_sendfeedback(void);
 #ifdef RTCONFIG_DBLOG
 extern void start_senddblog(char *path);
 extern void start_dblog(int option);
 extern void stop_dblog(void);
 #endif /* RTCONFIG_DBLOG */
 #ifdef RTCONFIG_DSL_TCLINUX
-extern void start_DSLsenddiagmail(void);
+extern void start_sendDSLdiag(void);
 #endif
-#endif
+#endif /* RTCONFIG_FRS_FEEDBACK */
 #ifdef RTCONFIG_SNMPD
 extern void start_snmpd(void);
 extern void stop_snmpd(void);
 #endif
 #ifdef RTCONFIG_TIMEMACHINE
 extern int start_timemachine(void);
-extern void stop_timemachine(void);
+extern void stop_timemachine(int force);
 extern int start_afpd(void);
-extern void stop_afpd(void);
+extern void stop_afpd(int force);
 extern int start_cnid_metad(void);
-extern void stop_cnid_metad(void);
+extern void stop_cnid_metad(int force);
 extern int start_avahi_daemon(void);
 extern void stop_avahi_daemon(void);
 #endif
@@ -1679,7 +1690,7 @@ extern int stop_norton(void);
 
 #ifdef RTCONFIG_MEDIA_SERVER
 void force_stop_dms(void);
-void stop_mt_daapd(void);
+void stop_mt_daapd(int force);
 void start_dms(void);
 void start_mt_daapd(void);
 void set_invoke_later(int flag);
@@ -1967,10 +1978,6 @@ extern int roam_assistant_main(int argc, char *argv[]);
 extern int detectWAN_arp_main(int argc, char **argv);
 #endif
 
-#ifdef RTCONFIG_PUSH_EMAIL
-extern void am_send_mail(int type, char *path);
-#endif
-
 #if defined(RTCONFIG_KEY_GUARD)
 extern void stop_keyguard(void);
 extern void start_keyguard(void);
@@ -2193,6 +2200,7 @@ extern void asm1042_upgrade(int);
 extern void oauth_google_gen_token_email(void);
 extern void oauth_google_update_token(void);
 extern int oauth_google_send_message(const char* receiver, const char* subject, const char* message, const char* attached_files[], int attached_files_count);
+extern void oauth_google_check_token_status(void);
 #endif
 
 #ifdef RTCONFIG_UUPLUGIN
@@ -2205,5 +2213,34 @@ extern void exec_uu();
 extern int rmd_main(int argc, char *argv[]);
 #endif
 #endif
+
+// hostapd_config.c
+#ifdef RTCONFIG_BRCM_HOSTAPD
+extern int start_hostapd();
+extern int stop_hostapd();
+extern void hapd_wps_main_loop();
+extern int start_wps_pbcd();
+extern int stop_wps_pbcd();
+#endif
+
+// dsl_fb.c
+#ifdef RTCONFIG_FRS_FEEDBACK
+extern int do_feedback(const char* feedback_file, char* attach_cmd);
+#endif
+
+#if defined(RTCONFIG_BCM_7114) || defined(HND_ROUTER)
+typedef struct probe_4366_param_s {
+	int bECode_2G;
+	int bECode_5G;
+	int bECode_5G_2;
+	int bECode_fabid;
+} probe_4366_param_t;
+#endif /* RTCONFIG_BCM_7114 || HND_ROUTER */
+
+#if defined(RTAX88U)
+typedef struct probe_PCIE_param_s {
+	int bPCIE_down;
+} probe_PCIE_param_t;
+#endif /* RTAX88U */
 
 #endif	/* __RC_H__ */

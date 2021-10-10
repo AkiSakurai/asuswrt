@@ -3,7 +3,7 @@
  * Originally written by Bodo Moeller for the OpenSSL project.
  */
 /* ====================================================================
- * Copyright (c) 1998-2018 The OpenSSL Project.  All rights reserved.
+ * Copyright (c) 1998-2019 The OpenSSL Project.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -69,6 +69,10 @@
 #include "ec_lcl.h"
 
 const char EC_version[] = "EC" OPENSSL_VERSION_PTEXT;
+
+/* local function prototypes */
+
+static int ec_precompute_mont_data(EC_GROUP *group);
 
 /* functions for EC_GROUP objects */
 
@@ -318,17 +322,25 @@ int EC_GROUP_set_generator(EC_GROUP *group, const EC_POINT *generator,
     } else
         BN_zero(&group->cofactor);
 
-    /*
-     * Some groups have an order with
-     * factors of two, which makes the Montgomery setup fail.
-     * |group->mont_data| will be NULL in this case.
+    /*-
+     * Access to the `mont_data` field of an EC_GROUP struct should always be
+     * guarded by an EC_GROUP_VERSION(group) check to avoid OOB accesses, as the
+     * group might come from the FIPS module, which does not define the
+     * `mont_data` field inside the EC_GROUP structure.
      */
-    if (BN_is_odd(&group->order)) {
-        return ec_precompute_mont_data(group);
+    if (EC_GROUP_VERSION(group)) {
+        /*-
+         * Some groups have an order with
+         * factors of two, which makes the Montgomery setup fail.
+         * |group->mont_data| will be NULL in this case.
+         */
+        if (BN_is_odd(&group->order))
+            return ec_precompute_mont_data(group);
+
+        BN_MONT_CTX_free(group->mont_data);
+        group->mont_data = NULL;
     }
 
-    BN_MONT_CTX_free(group->mont_data);
-    group->mont_data = NULL;
     return 1;
 }
 
@@ -860,7 +872,15 @@ int EC_POINT_set_affine_coordinates_GFp(const EC_GROUP *group,
               EC_R_INCOMPATIBLE_OBJECTS);
         return 0;
     }
-    return group->meth->point_set_affine_coordinates(group, point, x, y, ctx);
+    if (!group->meth->point_set_affine_coordinates(group, point, x, y, ctx))
+        return 0;
+
+    if (EC_POINT_is_on_curve(group, point, ctx) <= 0) {
+        ECerr(EC_F_EC_POINT_SET_AFFINE_COORDINATES_GFP,
+              EC_R_POINT_IS_NOT_ON_CURVE);
+        return 0;
+    }
+    return 1;
 }
 
 #ifndef OPENSSL_NO_EC2M
@@ -878,7 +898,15 @@ int EC_POINT_set_affine_coordinates_GF2m(const EC_GROUP *group,
               EC_R_INCOMPATIBLE_OBJECTS);
         return 0;
     }
-    return group->meth->point_set_affine_coordinates(group, point, x, y, ctx);
+    if (!group->meth->point_set_affine_coordinates(group, point, x, y, ctx))
+        return 0;
+
+    if (EC_POINT_is_on_curve(group, point, ctx) <= 0) {
+        ECerr(EC_F_EC_POINT_SET_AFFINE_COORDINATES_GF2M,
+              EC_R_POINT_IS_NOT_ON_CURVE);
+        return 0;
+    }
+    return 1;
 }
 #endif
 
@@ -1098,17 +1126,22 @@ int EC_GROUP_have_precompute_mult(const EC_GROUP *group)
                                  * been performed */
 }
 
-/*
+/*-
  * ec_precompute_mont_data sets |group->mont_data| from |group->order| and
  * returns one on success. On error it returns zero.
+ *
+ * Note: this function must be called only after verifying that
+ * EC_GROUP_VERSION(group) returns true.
+ * The reason for this is that access to the `mont_data` field of an EC_GROUP
+ * struct should always be guarded by an EC_GROUP_VERSION(group) check to avoid
+ * OOB accesses, as the group might come from the FIPS module, which does not
+ * define the `mont_data` field inside the EC_GROUP structure.
  */
+static
 int ec_precompute_mont_data(EC_GROUP *group)
 {
     BN_CTX *ctx = BN_CTX_new();
     int ret = 0;
-
-    if (!EC_GROUP_VERSION(group))
-        goto err;
 
     if (group->mont_data) {
         BN_MONT_CTX_free(group->mont_data);
