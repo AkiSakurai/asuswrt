@@ -27,6 +27,7 @@ span{
 <script type="text/JavaScript" src="/js/jquery.js"></script>
 <script type="text/javascript" src="/help.js"></script>
 <script type="text/javascript" src="/form.js"></script>
+<script type="text/JavaScript" src="/js/httpApi.js"></script>
 <script>
 /*
 	# restart needed service after loading this page immediately by restartService();
@@ -254,7 +255,7 @@ function detect_httpd(){
 				progressBar = 100;
 				document.getElementById('progress_bar_no').innerHTML = "100%";
 				document.getElementById("updateProgress").style.width = "100%";
-				document.getElementById("liveUpdateResult").innerHTML = "<#connect_failed#>";
+				document.getElementById("liveUpdateResult").innerHTML = "<#info_failed#>";
 				document.getElementById("newFWgraded").style.display = "";
 				return false;
 			}else if(webs_state_error == "2"){
@@ -417,10 +418,6 @@ function checkIsNewFirmware(){
 			$("#rog_feature_field").hide();
 		}
 
-		//force_upgrade_support : rc_support with "fupgrade"
-		if(!parent.is_CN && parent.force_upgrade_support){
-			doLiveUpdate(true);
-		}
 	}
 	else{
 		if((parent.based_modelid == "4G-AC55U" || parent.based_modelid == "4G-AC68U") && parent.wan_autodet_state == "4" && parent.usb_connected == 1 && wans_dualwan_orig == "wan usb"){
@@ -574,6 +571,11 @@ function QKfinish_load_body(){
 	parent.detect_firmware();
 	document.getElementById("QISmain").style.display = "";
 	parent.document.title = "<#Web_Title#> - <#QKSet_all_title#>";
+
+	var linkInternet = httpApi.isConnected();
+	if(linkInternet){
+		document.getElementById("main_manual").style.display = "";
+	}
 
 	if(gobi_support){
 		$("#freqtitle2")[0].style.display = "none";
@@ -1777,7 +1779,7 @@ function cancel(){
 
 <div id="AreaHint" style="margin-top:10px; margin-left:5px;">
 	<div style="width: 720px; *width: 710px; height: 2px;" class="splitLine"></div>	
-	<div id="main_manual" style="padding-left:20px;margin-top:10px">
+	<div id="main_manual" style="padding-left:20px;margin-top:10px;display:none;">
 		<span><#ASUS_Registration#></span>
 	</div>
 </div>
@@ -1985,7 +1987,7 @@ function cancel(){
 	<!-- END Stage Bandwidth Utilization  -->
 	<!-- ROG Finish state -->
 	<div id="rog_finish" style="display:none">
-		<div style="font-size: 32px;color:rgb(207,10,44); margin: 60px 0 0 70px;"><#Congratulations#></div>
+		<!-- div style="font-size: 32px;color:rgb(207,10,44); margin: 60px 0 0 70px;"><#Congratulations#></div -->
 		<div style="margin: 5px 0 10px 70px;font-size:18px;"><#ROG_finish_info#></div>
 		<div style="margin: 10px 0 10px 70px;font-size:14px;">
 			<div style="padding: 2px 0">2.4 GHz</div>

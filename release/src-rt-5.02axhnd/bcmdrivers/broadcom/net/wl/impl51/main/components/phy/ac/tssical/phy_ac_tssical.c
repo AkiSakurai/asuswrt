@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tssical.c 785370 2020-03-23 16:25:54Z $
+ * $Id: phy_ac_tssical.c 788383 2020-06-30 12:28:15Z $
  */
 
 #include <phy_cfg.h>
@@ -419,14 +419,6 @@ wlc_phy_txpwrctrl_idle_tssi_meas_acphy(phy_info_t *pi)
 		} else {
 			wlc_phy_poll_samps_WAR_acphy(pi, idle_tssi, TRUE, TRUE, NULL,
 				FALSE, TRUE, core, 0);
-			if (idle_tssi[core] == 0 && (ACMAJORREV_47_51(pi->pubpi->phy_rev))) {
-				/* 43684 BW80 comes with settling issue
-				 * at first time toggling. redo tssi can solve the issue
-				 * 47622 have the same issue also, added here.
-				 */
-				wlc_phy_poll_samps_WAR_acphy(pi, idle_tssi, TRUE, TRUE,
-					NULL, FALSE, TRUE, core, 0);
-			}
 		}
 		tssicali->idle_tssi[core] = idle_tssi[core];
 		wlc_phy_txpwrctrl_set_idle_tssi_acphy(pi, idle_tssi[core], core);

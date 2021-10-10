@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_chanmgr.h 784711 2020-03-04 17:11:18Z $
+ * $Id: phy_ac_chanmgr.h 788401 2020-06-30 17:05:46Z $
  */
 
 #ifndef _phy_ac_chanmgr_h_
@@ -510,8 +510,7 @@ extern void wlc_phy_ulb_mode(phy_info_t *pi, uint8 ulb_mode);
 
 extern void phy_ac_chanmgr_core2core_sync_setup(phy_ac_chanmgr_info_t *chanmgri, bool enable);
 extern void phy_ac_chanmgr_core2core_sync_dac_clks(phy_ac_chanmgr_info_t *chanmgri, bool enable);
-extern void phy_ac_chanmgr_hwobss(phy_ac_chanmgr_info_t *chanmgri, bool enable_hwobss,
-	bool preemp_enable);
+extern void phy_ac_chanmgr_hwobss(phy_ac_chanmgr_info_t *chanmgri, bool enable_hwobss);
 
 int phy_ac_chanmgr_iovar_get_lowratetssi(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);
 int phy_ac_chanmgr_iovar_get_lowratetssi_ovrd(phy_ac_chanmgr_info_t *chanmgri, int32 *ret_val);

@@ -1940,6 +1940,7 @@ static void bpm_attach_skb( void *skbp, void *buf, uint32_t datalen )
     skb->len   = datalen;
     skb->mark  = 0;
 
+    memset(skb_shinfo, 0, sizeof(struct skb_shared_info));
     atomic_set(&skb->users, 1);
     atomic_set(&(skb_shinfo->dataref), 1);
 
@@ -2131,6 +2132,7 @@ static void * bpm_alloc_buf_skb_attach( uint32_t datalen )
     skb->len   = datalen;
     skb->mark  = 0;
 
+    memset(skb_shinfo, 0, sizeof(struct skb_shared_info));
     atomic_set(&skb->users, 1);
     atomic_set(&(skb_shinfo->dataref), 1);
 

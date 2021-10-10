@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_papdcal.c 784012 2020-02-14 22:26:39Z $
+ * $Id: phy_ac_papdcal.c 785862 2020-04-08 01:20:21Z $
  */
 #include <phy_cfg.h>
 #include <typedefs.h>
@@ -91,6 +91,7 @@ uint16 papd_gainctrl_calidx_5g[PHY_CORE_MAX];
 uint16 papd_gainctrl_bbmult[PHY_CORE_MAX];
 uint8 papd_tiagain_1st[PHY_CORE_MAX];
 uint8 papd_tiagain[PHY_CORE_MAX];
+uint8 papdcal_dumpinfo;
 
 /* MACROS */
 #define WBPAPD_REFDB_BASE	6872
@@ -325,6 +326,8 @@ static int phy_ac_papdcal_get_tiagain(phy_type_papdcal_ctx_t *ctx, int32* tiagai
 static int phy_ac_papdcal_set_tiagain(phy_type_papdcal_ctx_t *ctx, int8 tiagain);
 static int phy_ac_papdcal_get_comp_disable(phy_type_papdcal_ctx_t *ctx, int32* comp_disable);
 static int phy_ac_papdcal_set_comp_disable(phy_type_papdcal_ctx_t *ctx, int8 comp_disable);
+static int phy_ac_papdcal_get_dump(phy_type_papdcal_ctx_t *ctx, int32* papdcal_dump);
+static int phy_ac_papdcal_set_dump(phy_type_papdcal_ctx_t *ctx, int8 papdcal_dump);
 #endif // endif
 #if defined(WLTEST) || defined(DBG_PHY_IOV) || defined(WFD_PHY_LL_DEBUG)
 #ifndef ATE_BUILD
@@ -470,6 +473,8 @@ BCMATTACHFN(phy_ac_papdcal_register_impl)(phy_info_t *pi, phy_ac_info_t *aci,
 	fns.set_tiagain = phy_ac_papdcal_set_tiagain;
 	fns.get_comp_disable = phy_ac_papdcal_get_comp_disable;
 	fns.set_comp_disable = phy_ac_papdcal_set_comp_disable;
+	fns.get_dump = phy_ac_papdcal_get_dump;
+	fns.set_dump = phy_ac_papdcal_set_dump;
 #endif // endif
 #if defined(WLTEST) || defined(DBG_PHY_IOV) || defined(WFD_PHY_LL_DEBUG)
 #ifndef ATE_BUILD
@@ -912,6 +917,24 @@ phy_ac_papdcal_get_comp_disable(phy_type_papdcal_ctx_t *ctx, int32* comp_disable
 {
 	phy_ac_papdcal_info_t *info = (phy_ac_papdcal_info_t *)ctx;
 	*comp_disable = (int32)info->comp_disable_iovar;
+	return BCME_OK;
+}
+
+static int
+phy_ac_papdcal_set_dump(phy_type_papdcal_ctx_t *ctx, int8 papdcal_dump)
+{
+	if (papdcal_dump == 1 || papdcal_dump == 0) {
+		papdcal_dumpinfo = papdcal_dump;
+		return BCME_OK;
+	} else {
+		return BCME_ERROR;
+	}
+}
+
+static int
+phy_ac_papdcal_get_dump(phy_type_papdcal_ctx_t *ctx, int32* papdcal_dump)
+{
+	*papdcal_dump = (int32)papdcal_dumpinfo;
 	return BCME_OK;
 }
 #endif // endif
@@ -3688,6 +3711,9 @@ wlc_phy_papd_dump_eps_trace_acphy(phy_info_t *pi, struct bcmstrbuf *b)
 		ACPHY_TBL_ID_EPSILON2, ACPHY_TBL_ID_EPSILON3};
 	phy_stf_data_t *stf_shdata = phy_stf_get_data(pi->stfi);
 
+	if (papdcal_dumpinfo == 0)
+		return;
+
 	BCM_REFERENCE(stf_shdata);
 
 	FOREACH_ACTV_CORE(pi, stf_shdata->phytxchain, core) {
@@ -3935,6 +3961,7 @@ BCMATTACHFN(phy_ac_papdcal_nvram_attach_old)(phy_ac_papdcal_info_t *papdcal_info
 	papdcal_info->papdtiagain_iovar = -1;
 	papdcal_info->comp_disable_iovar = -1;
 	papdcal_info->papdmode = (uint8)PHY_GETINTVAR_DEFAULT_SLICE(pi, rstr_papdmode, PAPD_LMS);
+	papdcal_dumpinfo = 1;
 
 	if ((PHY_GETVAR_SLICE(pi, rstr_pagc2g)) != NULL) {
 		papdcal_info->srom_pagc2g = (uint8)PHY_GETINTVAR_SLICE(pi, rstr_pagc2g);

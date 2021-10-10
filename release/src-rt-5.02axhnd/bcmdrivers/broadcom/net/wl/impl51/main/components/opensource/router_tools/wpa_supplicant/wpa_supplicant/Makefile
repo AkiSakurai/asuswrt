@@ -26,8 +26,7 @@ CFLAGS += $(EXTRA_CFLAGS)
 CFLAGS += -I$(abspath ../src)
 CFLAGS += -I$(abspath ../src/utils)
 CFLAGS += -I$(TOP)/openssl/include
-LDFLAGS += -L$(TOP)/openssl -lcrypto -lm -lssl -lpthread
-
+LDFLAGS += -L$(TOP)/openssl -lcrypto -lm -lssl -lpthread -L$(TOP)/libnl/lib/.libs
 -include .config
 
 ifndef CONFIG_NO_GITVER

@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_chanmgr.c 783661 2020-02-05 02:40:06Z $
+ * $Id: phy_chanmgr.c 787172 2020-05-20 20:25:54Z $
  */
 
 #include <phy_cfg.h>
@@ -297,6 +297,18 @@ wlc_phy_is_smth_en(wlc_phy_t *ppi)
 	}
 }
 
+void
+wlc_phy_bypass_idletssi_init(wlc_phy_t *ppi, bool force)
+{
+	phy_info_t *pi = (phy_info_t*)ppi;
+	phy_chanmgr_info_t *chanmgri = pi->chanmgri;
+	phy_type_chanmgr_fns_t *fns = chanmgri->fns;
+
+	if (fns->bypass_itssi != NULL) {
+		(fns->bypass_itssi)(fns->ctx, force);
+	}
+}
+
 int
 wlc_phy_chanspec_bandrange_get(phy_info_t *pi, chanspec_t chanspec)
 {
@@ -397,8 +409,10 @@ wlc_phy_chanspec_set(wlc_phy_t *ppi, chanspec_t chanspec)
 	pi->srvsdb_state->prev_chanspec = chanspec;
 #endif /* WLSRVSDB */
 
+	wlapi_suspend_mac_and_wait(pi->sh->physhim);
 	/* Update ucode channel value */
 	phy_chanmgr_set_shm(pi, chanspec);
+	wlapi_enable_mac(pi->sh->physhim);
 
 #if defined(AP) && defined(RADAR)
 	/* indicate first time radar detection */

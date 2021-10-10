@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_rstr.c 784648 2020-03-03 19:36:22Z $
+ * $Id: phy_rstr.c 786173 2020-04-20 13:59:54Z $
  */
 
 #include <typedefs.h>
@@ -746,3 +746,7 @@ const char BCMATTACHDATA(rstr_mcsbw20ul5glpo)[] = "mcsbw20ul5glpo";
 const char BCMATTACHDATA(rstr_mcsbw20ul5gmpo)[] = "mcsbw20ul5gmpo";
 const char BCMATTACHDATA(rstr_mcsbw20ul5ghpo)[] = "mcsbw20ul5ghpo";
 const char BCMATTACHDATA(rstr_legofdm40duppo)[] = "legofdm40duppo";
+
+#ifdef WL_EAP_NOISE_MEASUREMENTS
+const char BCMATTACHDATA(rstr_phynoisebiasrxgainerr)[] = "phynoisebiasrxgainerr";
+#endif /* WL_EAP_NOISE_MEASUREMENTS */

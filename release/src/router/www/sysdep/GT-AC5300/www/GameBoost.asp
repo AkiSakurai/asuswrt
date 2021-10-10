@@ -32,6 +32,9 @@ var ctf_fa_mode = '<% nvram_get("ctf_fa_mode"); %>';
 var label_mac = <% get_label_mac(); %>;
 var bwdpi_app_rulelist = "<% nvram_get("bwdpi_app_rulelist"); %>".replace(/&#60/g, "<");
 var CNSku = in_territory_code("CN");
+var outfox_code = httpApi.nvramGet(["outfox_code"], true).outfox_code;
+var outfox_site = 'https://getoutfox.com/asus?code='+ outfox_code +'&utm_source=asus&utm_medium=affiliate&utm_campaign=' + support_site_modelid + '&utm_content=router_cta';
+
 function initial(){
 	show_menu();
 	httpApi.faqURL("1010951", function(url){document.getElementById("faq").href=url;});
@@ -49,7 +52,12 @@ function initial(){
 
 	if(!ASUS_EULA.status("tm")){
 		ASUS_EULA.config(eula_confirm, cancel);
-	}	
+	}
+
+	if(outfox_support)
+		$("#outfox_div").css("display", "");
+	else
+		$("#wtfast_div").css("display", "");
 }
 
 function sign_eula(){
@@ -108,9 +116,11 @@ function eula_confirm(){
 function cancel(){
 	refreshpage();
 }
-var siteInfo = ['https://www.asus.com/Motherboards/ROG-Republic-of-Gamers-Products',
+var siteInfo = ['https://www.asus.com/support/FAQ/1042778/',
 	     		'Advanced_WTFast_Content.asp',
-				'QoS_EZQoS.asp'];
+				'QoS_EZQoS.asp',
+				outfox_site];
+
 function redirectSite(url){
 	window.open(url, '_blank');
 }
@@ -310,7 +320,7 @@ function uuRegister(mac){
 								</div>
 							</div>
 						</div>
-						<div class="flexbox flex-a-center">
+						<div id="wtfast_div" class="flexbox flex-a-center" style="display: none;">
 							<div class="content-image-container Game-wtfast-image"></div>
 							<div class="content-divide-line"></div>
 							<div class="flex-as-start content-desc-container">
@@ -325,6 +335,23 @@ function uuRegister(mac){
 							</div>
 							<div class="content-divide-line"></div>
 							<div class="content-action-container" onclick="redirectSite(siteInfo[1]);">
+								<div class="button-container button-container-sm">
+									<div class="button-icon icon-go"></div>
+									<div class="button-text"><#btn_go#></div>
+								</div>
+							</div>
+						</div>
+						<div id="outfox_div" class="flexbox flex-a-center" style="display: none;">
+							<div class="content-image-container Game-outfox-image"></div>
+							<div class="content-divide-line"></div>
+							<div class="flex-as-start content-desc-container">
+								<div class="flexbox flex-a-center">
+									<div class="content-desc-title">Outfox&reg;</div>
+								</div>
+								<div class="content-desc">An optimized gaming network that improves performance by routing your traffic to provide a faster, more stable path to your game’s server. To get an exclusive, free 90-day trial simply register for Outfox and download the application to your PC.</div>
+							</div>
+							<div class="content-divide-line"></div>
+							<div class="content-action-container" onclick="redirectSite(siteInfo[3]);">
 								<div class="button-container button-container-sm">
 									<div class="button-icon icon-go"></div>
 									<div class="button-text"><#btn_go#></div>

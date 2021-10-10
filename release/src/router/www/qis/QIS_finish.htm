@@ -10,7 +10,7 @@ span{
 	border:0px solid #FFFFFF;
 	color:#FFFFFF;
 	font-size:12px;
-	font-family:Arial, Helvetica, sans-serif;
+	font-family: Arial, Helvetica, MS UI Gothic, MS P Gothic, sans-serif;
 	/*width:27px;*/
 	text-align:right;
 	margin:0px auto;
@@ -26,6 +26,7 @@ span{
 <script type="text/javascript" src="/qis/QISMobilePlugin.js"></script>
 <script type="text/JavaScript" src="/js/jquery.js"></script>
 <script type="text/javascript" src="/help.js"></script>
+<script type="text/javascript" src="/js/httpApi.js"></script>
 <script>
 /*
 	# restart needed service after loading this page immediately by restartService();
@@ -250,7 +251,7 @@ function doLiveUpdate(_do){
 		document.start_update.submit();
 	}
 	else{
-		setTimeout("parent.location.href='/'", 3000);
+		finish_qis();
 	}
 }
 
@@ -285,7 +286,7 @@ function detect_httpd(){
 				progressBar = 100;
 				document.getElementById('progress_bar_no').innerHTML = "100%";
 				document.getElementById("updateProgress").style.width = "100%";
-				document.getElementById("liveUpdateResult").innerHTML = "<#connect_failed#>";
+				document.getElementById("liveUpdateResult").innerHTML = "<#info_failed#>";
 				document.getElementById("newFWgraded").style.display = "";
 				return false;
 			}else if(webs_state_error == "2"){
@@ -443,29 +444,29 @@ function checkIsNewFirmware(){
 			document.getElementById("liveUpdate_div_leftbutton").value = "<#CTL_UpgradeNight#>";
 			document.getElementById("liveUpdate_div_rightbutton").value = "<#CTL_UpgradeNow#>";
 			if(parent.forceLevel==1){
-                document.getElementById("liveUpdate_div_leftbutton").style.display = "none";
-            }
+		                document.getElementById("liveUpdate_div_leftbutton").style.display = "none";
+	        	}
 		}
 
-		//force_upgrade_support : rc_support with "fupgrade"
-		if(!parent.is_CN && parent.force_upgrade_support){
-			doLiveUpdate(true);
-		}
 	}
 	else{
-		if(parent.sysReboot || isWLclient())
-			restartService();
-		else if(parent.changeSubnet){
-			document.restartForm.action_wait.value = 10;
-			document.restartForm.action_script.value = "restart_subnet";
-			document.restartForm.submit();
-		}
-		else
-		{
-			setTimeout(function(){
-				parent.location.href = '/';
-			}, delayTimeout);
-		}
+		finish_qis();
+	}
+}
+
+function finish_qis(){
+	if(parent.sysReboot || isWLclient())
+		restartService();
+	else if(parent.changeSubnet){
+		document.restartForm.action_wait.value = 10;
+		document.restartForm.action_script.value = "restart_subnet";
+		document.restartForm.submit();
+	}
+	else
+	{
+		setTimeout(function(){
+			parent.location.href = '/';
+		}, delayTimeout);
 	}
 }
 
@@ -589,14 +590,14 @@ function QKfinish_load_body(){
 		}, 6000);
 	}
 
-	/* MODELDEP */
-	if(document.restartForm.productid.value == "AC2900"){	//MODELDEP: AC2900(RT-AC86U)
-		$("#main_manual")[0].style.display = "none";
-	}
-
 	parent.detect_firmware();
 	document.getElementById("QISmain").style.display = "";
 	parent.document.title = "<#Web_Title#> - <#QKSet_all_title#>";
+
+	var linkInternet = httpApi.isConnected();
+	if(linkInternet){
+		document.getElementById("main_manual").style.display = "";
+	}
 
 	if(gobi_support){
 		$("#freqtitle2")[0].style.display = "none";
@@ -1421,6 +1422,7 @@ var startQuery = function(){
 		}
 	});
 };
+
 </script>
 </head>
 
@@ -1689,7 +1691,7 @@ var startQuery = function(){
 	<div>
 		<div style="width: 720px; *width: 710px; height: 2px;" class="splitLine"></div>
 	</div>
-	<div id="main_manual" style="padding-left:20px;margin-top:10px">
+	<div id="main_manual" style="padding-left:20px;margin-top:10px;display:none;">
 		<span><#ASUS_Registration#></span>
 	</div>	
 </div>

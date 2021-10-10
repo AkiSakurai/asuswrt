@@ -9,9 +9,12 @@
 
 // traffic_analyzer.c
 extern int traffic_analyzer_main(int argc, char **argv);
+extern int sql_integrity_check(sqlite3 *db, char *db_path);
+extern void sql_remove_journal(char *db_file);
 
 // sqlite_stat.c
 extern int sql_get_table(sqlite3 *db, const char *sql, char ***pazResult, int *pnRow, int *pnColumn);
+extern void bwdpi_maclist_db(char *type, int *retval, webs_t wp);
 extern char *AiProtectionMontior_GetType(char *c);
 extern void AiProtectionMonitor_result(int *tmp, char **result, int rows, int cols, int shift);
 extern void sqlite_Stat_hook(int type, char *client, char *mode, char *dura, char *date, int *retval, webs_t wp);

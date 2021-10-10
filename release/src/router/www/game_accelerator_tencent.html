@@ -59,6 +59,24 @@ body{
 	background-position: center center;
 }
 
+#network_disconnect_hint{
+	margin: 10px 10px 0 10px;
+	color: #FFCC00;
+	display: none;
+}
+
+#setting_window_mask{
+	position: fixed;
+	width: 420px;
+	height: 180px;
+	border-radius: 24px;
+	background: #000000;
+	z-index: 999;
+	opacity: 0.5;
+	margin-top: 20px;
+	display: none;
+}
+
 .tencent_setting_window{
 	width: 420px;
 	height: 180px;
@@ -228,6 +246,14 @@ body{
 	margin: 20px 0 0 10px;
 }
 
+@media screen and (-ms-high-contrast: active),(-ms-high-contrast: none)
+ {
+    #switch_mask { margin-top: -16px; } /* IE10 */
+    *::-ms-backdrop, #switch_mask { margin-top: -16px; } /* IE11 */
+    #tencent_login_btn_mask { margin-top: -17px; } /* IE10 */
+    *::-ms-backdrop, #tencent_login_btn_mask { margin-top: -17px; } /* IE11 */
+ }
+
 @media (max-width: 420px) {
 	.bg-tencent{
 		height: 100%;
@@ -260,6 +286,16 @@ body{
 		display: none;
 	}
 
+	#network_disconnect_hint{
+		margin-left: 24px;
+	}
+
+	#setting_window_mask{
+		width: 85%;
+		height: 150px;
+		border-radius: 20px;
+	}
+
 	.tencent_setting_window{
 		width: 85%;
 		height: 150px;
@@ -286,7 +322,9 @@ body{
 </style>
 <script>
 var orig_tencent_qmacc_enable = httpApi.nvramGet(["tencent_qmacc_enable"], true).tencent_qmacc_enable;
+var curState = orig_tencent_qmacc_enable;
 var orig_tencent_eula_check = httpApi.nvramGet(["tencent_eula_check"], true).tencent_eula_check;
+var cur_eula_check = orig_tencent_eula_check;
 var label_mac = <% get_label_mac(); %>.toLowerCase().split(":").join("");
 var productid = httpApi.nvramGet(["productid"], true).productid;
 
@@ -295,10 +333,16 @@ $(document).ready(function(){
 });
 
 function initial(){
+	var login_url = "https://jiasu.qq.com/mobile/routercontent/asus/#/login?type=asus&sn="+label_mac+"&model="+productid;
+	var loginObj = document.getElementById("login_url");
+	loginObj.setAttribute('href',login_url);
+
 	if(document.body.clientWidth > 420){
 		var height = document.body.clientHeight * 0.95;
 		$(".bg-tencent").css("height", height);
 	}
+
+	check_link_internet();
 
 	if(orig_tencent_eula_check == "1"){
 		$("#tencent_eula_div").css("display", "none");
@@ -310,7 +354,20 @@ function initial(){
 	else{
 		$("#switch_mask").css("display", "block");
 	}
+}
 
+function check_link_internet(){
+	var link_internet = httpApi.nvramGet(["link_internet"], true).link_internet;
+	if(link_internet != "2"){
+		$("#setting_window_mask").css("display", "block");
+		$("#network_disconnect_hint").css("display", "block");
+	}
+	else{
+		$("#setting_window_mask").css("display", "none");
+		$("#network_disconnect_hint").css("display", "none");
+	}
+
+	setTimeout(check_link_internet, 3000);
 }
 
 function open_tencent_eula(){
@@ -324,20 +381,18 @@ function close_tencent_eula(){
 }
 
 function check_eula(){
-	var eula_check = "0";
-
 	$("#tencent_eula_checkbox").toggleClass("tencent_eula_check_yes");
 	if($("#tencent_eula_checkbox").hasClass("tencent_eula_check_yes")){
-		eula_check = "1";
+		cur_eula_check = "1";
 		$("#switch_mask").css("display", "none");
 	}
 	else{
-		eula_check = "0";
+		cur_eula_check = "0";
 		$("#switch_mask").css("display", "block");
 	}
 
 	httpApi.nvramSet({
-		"tencent_eula_check": eula_check,
+		"tencent_eula_check": cur_eula_check,
 		"action_mode": "apply",
 		"action_script": "saveNvram"
 	});
@@ -365,11 +420,6 @@ function show_tencent_login(show){
 		$("#tencent_login_btn_mask").show();
 	}
 }
-
-function open_h5_page(){
-	var url = "https://jiasu.qq.com/mobile/routercontent/asus/#/login?type=asus&sn="+label_mac+"&model="+productid;
-	window.open(url);
-}
 </script>
 <div class="bg-tencent">
 	<div style="margin: 0px 10px 0 10px;">
@@ -382,7 +432,9 @@ function open_h5_page(){
 			</div>
 		</div>
 	</div>
+	<div id="network_disconnect_hint"><#tencent_disconnect_hint#></div>
 	<div style="display: flex; justify-content: center;">
+		<div id="setting_window_mask"></div>
 		<div class="tencent_setting_window">
 			<div class="tencent_setting_div">
 				<div class="tencent_setting_logo_div">
@@ -393,37 +445,48 @@ function open_h5_page(){
 					<div class="left" style="cursor:pointer;" id="tencent_qmacc_enable"></div>
 					<div class="iphone_switch_container">
 					<script type="text/javascript">
-						$('#tencent_qmacc_enable').iphoneSwitch(orig_tencent_qmacc_enable == "1",
-
+						$('#tencent_qmacc_enable').iphoneSwitch(orig_tencent_qmacc_enable,
 							function() {
-								httpApi.nvramSet({
-									"tencent_qmacc_enable": "1",
-									"action_mode": "apply",
-									"rc_service": "start_qmacc"
-								}, function( response ) {
-									if($("#tencent_eula_div").css("display") != "none"){
-										$("#tencent_eula_div").hide();
-									}
+								if(cur_eula_check == "1"){
+									httpApi.nvramSet({
+										"tencent_qmacc_enable": "1",
+										"action_mode": "apply",
+										"rc_service": "start_qmacc"
+										}, function( response ) {
+											if($("#tencent_eula_div").css("display") != "none"){
+												$("#tencent_eula_div").hide();
+											}
 
-									if($("#tencent_login_div").css("display") != "none")
-										$("#tencent_login_div").hide();
+											if($("#tencent_login_div").css("display") != "none")
+												$("#tencent_login_div").hide();
 
-									$("#loadingIcon").show();
-									setTimeout("show_tencent_login(1);", 10000);
-								});
+											$("#loadingIcon").show();
+											setTimeout("show_tencent_login(1);", 10000);
+									});
+									curState = "1";
+								}
+								else{
+									$('#tencent_qmacc_enable').find('.iphone_switch').animate({backgroundPosition: -37}, "slow");
+								}
 							},
 							function() {
-								httpApi.nvramSet({
-									"tencent_qmacc_enable": "0",
-									"action_mode": "apply",
-									"rc_service": "stop_qmacc"
-								}, function( response ) {
-									if($("#tencent_login_div").css("display") != "none")
-										$("#tencent_login_div").hide();
+								if(cur_eula_check == "1"){
+									httpApi.nvramSet({
+										"tencent_qmacc_enable": "0",
+										"action_mode": "apply",
+										"rc_service": "stop_qmacc"
+										}, function( response ) {
+											if($("#tencent_login_div").css("display") != "none")
+												$("#tencent_login_div").hide();
 
-									$("#loadingIcon").show();
-									setTimeout("show_tencent_login(-1);", 5000);
-								});
+											$("#loadingIcon").show();
+											setTimeout("show_tencent_login(-1);", 5000);
+									});
+									curState = "0";
+								}
+								else{
+									$('#tencent_qmacc_enable').find('.iphone_switch').animate({backgroundPosition: 0}, "slow");
+								}
 							}
 						);
 					</script>
@@ -441,7 +504,7 @@ function open_h5_page(){
 				</div>
 				<div id="tencent_login_div" class="tencent_bottom_div" style="display: none;">
 					<div id="tencent_login_btn_mask"></div>
-					<div class="tencent_login_btn"><span style="color: #00FCFF; text-decoration: underline;" onclick="open_h5_page();">登录腾讯网游加速器</span></div>
+					<div class="tencent_login_btn"><a id="login_url" target="_blank" style="color: #00FCFF; text-decoration: underline;">登录腾讯网游加速器</span></div>
 				</div>
 			</div>
 		</div>

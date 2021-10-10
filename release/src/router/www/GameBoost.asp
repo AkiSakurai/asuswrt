@@ -127,21 +127,27 @@ var fc_disable_orig = '<% nvram_get("fc_disable"); %>';
 var runner_disable_orig = '<% nvram_get("runner_disable"); %>';
 var ctf_disable = '<% nvram_get("ctf_disable"); %>';
 var ctf_fa_mode = '<% nvram_get("ctf_fa_mode"); %>';
-var bwdpi_app_rulelist = "<% nvram_get("bwdpi_app_rulelist"); %>".replace(/&#60/g, "<");
+var outfox_code = httpApi.nvramGet(["outfox_code"], true).outfox_code;
+var outfox_site = 'https://getoutfox.com/asus?code='+ outfox_code +'&utm_source=asus&utm_medium=affiliate&utm_campaign=' + support_site_modelid + '&utm_content=router_cta';
+
 function initial(){
 	show_menu();
-	/*if((document.form.qos_enable.value == '1') && (document.form.qos_type.value == '1') && (bwdpi_app_rulelist.indexOf('game') != -1)){
-		document.getElementById("game_boost_enable").checked = true;
-	}
-	else{
-		document.getElementById("game_boost_enable").checked = false;
-	}*/
 
-	if((document.form.qos_enable.value == '1') && (document.form.qos_type.value == '0')){
-		document.getElementById("game_priority_enable").checked = true;
+	if(adaptiveqos_support){
+		if(document.form.qos_enable.value == '1' && document.form.qos_type.value == '1'){
+			document.getElementById("game_priority_enable").checked = true;
+		}
+		else{
+			document.getElementById("game_priority_enable").checked = false;
+		}
 	}
 	else{
-		document.getElementById("game_priority_enable").checked = false;
+		if(document.form.rog_enable.value == '1' && document.form.qos_type.value == '0'){
+			document.getElementById("game_priority_enable").checked = true;
+		}
+		else{
+			document.getElementById("game_priority_enable").checked = false;
+		}
 	}
 
 	if(is_CN || document.form.preferred_lang.value == 'CN'){
@@ -162,68 +168,23 @@ function initial(){
 		$('#qmacc_3').show();
 	}
 
+	if(outfox_support){
+		$('#outfox_1').show();
+		$('#outfox_2').show();
+		$('#outfox_3').show();
+	}
+
 	if(!ASUS_EULA.status("tm"))
 		ASUS_EULA.config(eula_confirm, cancel);
 
 	setTimeout("showDropdownClientList('setClientIP', 'mac', 'all', 'ClientList_Block_PC', 'pull_arrow', 'all');", 500);
 	genGameList();
-
-	if(!tencent_qmacc_support){
-
-	}
-}
-
-function sign_eula(){
-	if(document.getElementById("game_boost_enable").checked){
-		if(!reset_wan_to_fo.check_status()) {
-			document.getElementById("game_boost_enable").checked = false;
-			return false;
-		}
-	}
-
-	if(ASUS_EULA.check("tm")){
-		check_game_boost();
-	}
-}
-
-function check_game_boost(){
-	if(document.getElementById("game_boost_enable").checked){
-		document.form.qos_enable.value = '1';
-		document.form.qos_type.value = '1';
-		document.form.bwdpi_app_rulelist.disabled = false;
-		document.form.bwdpi_app_rulelist.value = "9,20<8<4<0,5,6,15,17<4,13<13,24<1,3,14<7,10,11,21,23<game";
-	}
-	else{
-		document.form.qos_enable.value = '0';
-		document.form.bwdpi_app_rulelist.disabled = true;
-	}
-
-	if(ctf_disable == 1){
-		document.form.action_script.value = "restart_qos;restart_firewall";
-	}
-	else{
-		if(ctf_fa_mode == "2"){
-			FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
-		}
-		else{
-			if(document.form.qos_type.value == 0)
-				FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
-			else{
-				document.form.action_script.value = "restart_qos;restart_firewall";
-			}
-		}
-	}
-
-	if(reset_wan_to_fo.change_status)
-		reset_wan_to_fo.change_wan_mode(document.form);
-
-	document.form.submit();
 }
 
 function eula_confirm(){
 	document.form.TM_EULA.value = 1;
 	document.form.action_wait.value = "15";
-	check_game_boost();
+	enableGamePriority();
 }
 
 function cancel(){
@@ -252,11 +213,18 @@ function pullLANIPList(obj){
 	else
 		hideClients_Block();
 }
-var gameList = '<% nvram_get("rog_clientlist"); %>'.replace(/&#60/g, "<");;
+
+if(adaptiveqos_support){
+	var gameList = '<% nvram_get("bwdpi_game_list"); %>'.replace(/&#60/g, "<");;
+}
+else{
+	var gameList = '<% nvram_get("rog_clientlist"); %>'.replace(/&#60/g, "<");
+}
+
 function genGameList(){
 	var list_array = gameList.split('<');
 	var code = '';
-	code += '<thead><tr><td colspan="4">Game Device List&nbsp;(<#List_limit#>&nbsp;64)</td></tr></thead>';
+	code += '<thead><tr><td colspan="4"><#Gear_Accelerator_List#>&nbsp;(<#List_limit#>&nbsp;64)</td></tr></thead>';
 	code += '<tr>';
 	code += '<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(5,10);"><#Client_Name#> (<#PPPConnection_x_MacAddressForISP_itemname#>)</a></th>';
 	code += '<th><#list_add_delete#></th>';
@@ -306,7 +274,7 @@ function addGameList(){
 	var list_array = gameList.split('<');
 	var maximum = '64';
 	if(mac == ''){
-		alert('client can not be empty!');
+		alert("<#JS_fieldblank#>");
 		return false;
 	}
 
@@ -318,24 +286,29 @@ function addGameList(){
 	// check mac is whether in the list
 	for(i=1; i<list_array.length; i++){
 		if(list_array[i] == mac){
-			alert('Already is the list');
+			alert("<#JS_duplicate#>");
 			return false;
 		}
 	}
 
 	gameList = '<' + mac + gameList;
-	$.ajax({
-		url: '/rog_first_qos.cgi',
-		dataType: 'json',
-		data: {
-			rog_mac: mac,
-			action: 'add'
-		},
-		error: function(){},
-		success: function(response){
-			genGameList();
-		}
-	});
+	if(adaptiveqos_support){
+		genGameList();
+	}
+	else{
+		$.ajax({
+			url: '/rog_first_qos.cgi',
+			dataType: 'json',
+			data: {
+				rog_mac: mac,
+				action: 'add'
+			},
+			error: function(){},
+			success: function(response){
+				genGameList();
+			}
+		});
+	}
 
 	setTimeout("showDropdownClientList('setClientIP', 'mac', 'all', 'ClientList_Block_PC', 'pull_arrow', 'all');", 500);
 }
@@ -351,19 +324,24 @@ function delGameList(target){
 	}
 
 	gameList = temp;
-	$.ajax({
-		url: '/rog_first_qos.cgi',
-		dataType: 'json',
-		data: {
-			rog_mac: mac,
-			action: 'delete'
-		},
-		error: function(){},
-		success: function(response){
-			genGameList();
-		}
-	});
-
+	if(adaptiveqos_support){
+		genGameList();
+	}
+	else{
+		$.ajax({
+			url: '/rog_first_qos.cgi',
+			dataType: 'json',
+			data: {
+				rog_mac: mac,
+				action: 'delete'
+			},
+			error: function(){},
+			success: function(response){
+				genGameList();
+			}
+		});
+	}
+	
 	setTimeout("showDropdownClientList('setClientIP', 'mac', 'all', 'ClientList_Block_PC', 'pull_arrow', 'all');", 500);
 }
 
@@ -377,56 +355,135 @@ function hideGameListField(){
 }
 
 function enableGamePriority(){
-	if(document.form.qos_enable.value == '0'){		// OFF -> ON
-		if(document.form.qos_obw.value == '0' || document.form.qos_obw.value == ''){
-			document.form.qos_obw.disabled = false;
-			document.form.qos_obw.value = '2048000';
-		}
-
-		if(document.form.qos_ibw.value == '0' || document.form.qos_ibw.value == ''){
-			document.form.qos_ibw.disabled = false;
-			document.form.qos_ibw.value = '1024000';
-		}
-	}
-	
-	if(document.getElementById("game_priority_enable").checked){
-		document.form.qos_enable.value = '1';
-		document.form.qos_type.value = '0';
-		document.form.action_script.value = 'reboot';
-
-		if(document.form.qos_type.value == 0 && !lantiq_support){
-			FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
-		}
-	}
-	else{
-		document.form.qos_enable.value = '0';
-	}
-
-	if(ctf_disable == 1 || (fc_disable_orig != '' && runner_disable_orig != '')){
-		document.form.action_script.value = "restart_qos;restart_firewall";
-	}
-	else{
-		if(ctf_fa_mode == "2"){
-			FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
+	if(adaptiveqos_support){
+		if(document.form.qos_enable.value == "0" && document.form.TM_EULA.value == "0"){
+			ASUS_EULA
+				.config(eula_confirm, cancel)
+				.show("tm");
 		}
 		else{
-			if(document.form.qos_type.value == 0 && !lantiq_support){
-				FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
-			}	
+			if(document.getElementById("game_priority_enable").checked){
+				document.form.qos_enable.value = '1';
+				document.form.qos_type.value = '1';
+			}
 			else{
+				document.form.qos_enable.value = '0';
+			}
+
+			if(ctf_disable == 1 || (fc_disable_orig != '' && runner_disable_orig != '')){
 				document.form.action_script.value = "restart_qos;restart_firewall";
 			}
+			else{
+				if(ctf_fa_mode == "2"){
+					FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
+				}
+				else{
+					document.form.action_script.value = "restart_qos;restart_firewall";
+				}
+			}
+
+			if(reset_wan_to_fo.change_status)
+				reset_wan_to_fo.change_wan_mode(document.form);
+
+			document.form.bwdpi_game_list.disabled = false;
+			document.form.bwdpi_game_list.value = gameList;
+			document.form.submit();
 		}
 	}
+	else{
+		if(document.form.rog_enable.value == '0'){		// OFF -> ON
+			if(isSupport("is_ax5400_i1")) {
+				if(document.form.qos_obw.value == '0' || document.form.qos_obw.value == ''){
+					document.form.qos_obw.disabled = false;
+					document.form.qos_obw.value = '51200';
+				}
+				if(document.form.qos_obw1.value == '0' || document.form.qos_obw1.value == ''){
+					document.form.qos_obw1.disabled = false;
+					document.form.qos_obw1.value = '51200';
+				}
+			}
 
-	if(reset_wan_to_fo.change_status)
-		reset_wan_to_fo.change_wan_mode(document.form);
+			if(document.form.qos_obw.value == '0' || document.form.qos_obw.value == ''){
+				document.form.qos_obw.disabled = false;
+				document.form.qos_obw.value = '2048000';
+			}
+
+			if(document.form.qos_ibw.value == '0' || document.form.qos_ibw.value == ''){
+				document.form.qos_ibw.disabled = false;
+				document.form.qos_ibw.value = '1024000';
+			}
+
+			if(mtwancfg_support) {
+				if(document.form.qos_obw1.value == '0' || document.form.qos_obw1.value == ''){
+					document.form.qos_obw1.disabled = false;
+					document.form.qos_obw1.value = '1048576';
+				}
+
+				if(document.form.qos_ibw1.value == '0' || document.form.qos_ibw1.value == ''){
+					document.form.qos_ibw1.disabled = false;
+					document.form.qos_ibw1.value = '1048576';
+				}
+			}
+		}
+	
+		if(document.getElementById("game_priority_enable").checked){
+			document.form.rog_enable.value = '1';
+//			document.form.qos_enable.value = '0';
+			document.form.qos_type.value = '0';
+			document.form.action_script.value = 'reboot';
+
+			if(document.form.qos_type.value == 0 && !lantiq_support){
+				FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
+			}
+		}
+		else{
+			document.form.rog_enable.value = '0';
+		}
+			
+		if(ctf_disable == 1 || (fc_disable_orig != '' && runner_disable_orig != '')){
+			document.form.action_script.value = "restart_qos;restart_firewall";
+		}
+		else{
+			if(ctf_fa_mode == "2"){
+				FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
+			}
+			else{
+				if(document.form.qos_type.value == 0 && !lantiq_support){
+					FormActions("start_apply.htm", "apply", "reboot", "<% get_default_reboot_time(); %>");
+				}	
+				else{
+					document.form.action_script.value = "restart_qos;restart_firewall";
+				}
+			}
+		}
+
+		if(reset_wan_to_fo.change_status)
+			reset_wan_to_fo.change_wan_mode(document.form);
+
+		document.form.submit();
+	}
+}
+
+function eula_confirm(){
+	document.form.TM_EULA.value = 1;
+	enableGamePriority();
+}
+
+function cancel(){
+	refreshpage();
+}
+
+function applyRule(){
+	if(adaptiveqos_support){
+		document.form.bwdpi_game_list.disabled = false;
+		document.form.bwdpi_game_list.value = gameList;
+	}
 
 	document.form.submit();
 }
 
-function applyRule(){
-	document.form.submit();
+function redirectSite(url){
+	window.open(url, '_blank');
 }
 </script>
 </head>
@@ -458,11 +515,13 @@ function applyRule(){
 <input type="hidden" name="action_wait" value="5">
 <input type="hidden" name="qos_enable" value="<% nvram_get("qos_enable"); %>">
 <input type="hidden" name="qos_type" value="<% nvram_get("qos_type"); %>">
-<input type="hidden" name="qos_type_ori" value="<% nvram_get("qos_type"); %>">
-<input type="hidden" name="bwdpi_app_rulelist" value="<% nvram_get("bwdpi_app_rulelist"); %>">
 <input type="hidden" name="TM_EULA" value="<% nvram_get("TM_EULA"); %>">
 <input type="hidden" name="qos_obw" value="<% nvram_get("qos_obw"); %>" disabled>
 <input type="hidden" name="qos_ibw" value="<% nvram_get("qos_ibw"); %>" disabled>
+<input type="hidden" name="qos_obw1" value="<% nvram_get("qos_obw1"); %>" disabled>
+<input type="hidden" name="qos_ibw1" value="<% nvram_get("qos_ibw1"); %>" disabled>
+<input type="hidden" name="bwdpi_game_list" value="<% nvram_get("bwdpi_game_list"); %>" disabled>
+<input type="hidden" name="rog_enable" value="<% nvram_get("rog_enable"); %>">
 </form>
 <div>
 	<table class="content" align="center" cellspacing="0" style="margin:auto;">
@@ -500,51 +559,13 @@ function applyRule(){
 								<div>
 									<table style="border-collapse:collapse;width:100%">
 										<tbody>
-											<!-- Game Boost (Adaptive QoS) -->	
-											<!-- <tr>
-												<td>
-													<div style="padding: 5px 0;font-size:20px;">Game Boost</div>
-												</td>
-												<td colspan="2">
-													<div style="padding: 5px 10px;font-size:20px;color:#FFCC66;"><#Game_Boost_lan_title#></div>
-												</td>
-											</tr>
-											<tr>
-												<td colspan="3">
-													<div style="width:100%;height:1px;background-color:#D30606"></div>
-												</td>
-											</tr>
-											<tr>
-												<td align="center" style="width:85px;">
-													<div style="width:97px;height:71px;background:url('images/New_ui/GameBoost_QoS.png');no-repeat"></div>
-												</td>
-												<td style="width:400px;height:120px;">
-													<div style="height:60px;font-size:16px;color:#A0A0A0;padding-left:10px;">
-														<#Game_Boost_lan_desc#>
-													</div>
-												</td>
-												<td>
-													<div class="switch" style="margin:auto;width:100px;height:40px;text-align:center;line-height:40px;font-size:18px">
-														<input id="game_boost_enable" type="checkbox" onclick="sign_eula();">
-														<div class="container" style="display:table;border-radius:5px;">
-															<div style="display:table-cell;width:50%;">
-																<div>ON</div>
-															</div>
-															<div style="display:table-cell">
-																<div>OFF</div>
-															</div>
-														</div>
-													</div>
-												</td>
-											</tr> -->
 											<!-- Gear Accelerator -->
-											<!-- <tr style="height:50px;"></tr> -->
 											<tr>
 												<td style="width:200px">
-													<div style="padding: 5px 0;font-size:20px;">Gear Accelerator</div>
+													<div style="padding: 5px 0;font-size:20px;"><#Gear_Accelerator#></div>
 												</td>
 												<td colspan="2">
-													<div style="padding: 5px 10px;font-size:20px;color:#FFCC66">Game Device Prioritizing</div>
+													<div style="padding: 5px 10px;font-size:20px;color:#FFCC66"><#Gear_Accelerator_desc#></div>
 												</td>
 											</tr>
 											<tr>
@@ -557,7 +578,7 @@ function applyRule(){
 													<div style="width:85px;height: 85px;background-image: url('images/New_ui/GameBoost_gamePriority.svg');background-size: 100%;"></div>													
 												</td>
 												<td style="width:400px;height:120px;">
-													<div style="font-size:16px;color:#949393;padding-left:10px;">Prioritizing your game devices for the best gaming experience.</div>
+													<div style="font-size:16px;color:#949393;padding-left:10px;"><#Gear_Accelerator_desc1#></div>
 													<div onclick="showGameListField();" class="btn" style="margin: 12px 0;width:100px;height:40px;line-height: 40px;text-align: center;border-radius: 5px;font-size:18px;"><#CTL_add#></div>
 												</td>
 												<td>
@@ -574,14 +595,14 @@ function applyRule(){
 													</div>
 												</td>
 											</tr>
-											<!-- Mobile Game mode -->
+											<!-- Mobile Game Mode -->
 											<tr style="height:50px;"></tr>
 											<tr>
 												<td style="width:200px">
-													<div style="padding: 5px 0;font-size:20px;">Mobile Game mode</div>
+													<div style="padding: 5px 0;font-size:20px;"><#GB_mobile#></div>
 												</td>
 												<td colspan="2">
-													<div style="padding: 5px 10px;font-size:20px;color:#FFCC66">Boost your Mobile Game Play</div>
+													<div style="padding: 5px 10px;font-size:20px;color:#FFCC66"><#GB_mobile_desc#></div>
 												</td>
 											</tr>
 											<tr>
@@ -595,7 +616,7 @@ function applyRule(){
 													<!-- <img style="padding-right:10px;;" src="/images/New_ui/GameBoost_WTFast.png" > -->
 												</td>
 												<td style="width:400px;height:120px;">
-													<div style="font-size:16px;color:#949393;padding-left:10px;">Download and install ASUS Router App. Enable mobile game mode in app to ensure the best mobile gaming experiences.</div>
+													<div style="font-size:16px;color:#949393;padding-left:10px;"><#GB_mobile_desc1#></div>
 												</td>
 												<td>
 													<div style="display:flex;align-items: center;">
@@ -627,7 +648,7 @@ function applyRule(){
 													<div style="padding: 5px 0;font-size:20px;">Open NAT</div>
 												</td>
 												<td colspan="2">
-													<div style="padding: 5px 10px;font-size:20px;color:#FFCC66">3-steps Port Forwarding Setup</div>
+													<div style="padding: 5px 10px;font-size:20px;color:#FFCC66"><#GB_OpenNAT_desc#></div>
 												</td>
 											</tr>
 											<tr>
@@ -640,7 +661,7 @@ function applyRule(){
 													<div style="width:85px;height: 85px;background-image: url('images/New_ui/GameBoost_openNAT.svg');background-size: 100%;"></div>
 												</td>
 												<td style="width:400px;height:120px;">
-													<div style="font-size:16px;color:#949393;padding-left:10px;">Open NAT offers a hassle-free way to create port forwarding rules for online games and optimizes the routing packets from your game console to the modem with an optimized gaming experience.</div>
+													<div style="font-size:16px;color:#949393;padding-left:10px;"><#GB_OpenNAT_desc1#></div>
 												</td>
 												<td>
 													<div class="btn" style="margin:auto;width:100px;height:40px;text-align:center;line-height:40px;font-size:18px;cursor:pointer;border-radius:5px;" onclick="location.href='GameProfile.asp';"><#btn_go#></div>
@@ -696,6 +717,31 @@ function applyRule(){
 												</td>
 												<td>
 													<div class="btn" style="margin:auto;width:100px;height:40px;text-align:center;line-height:40px;font-size:18px;cursor:pointer;border-radius:5px;" onclick="location.href='GameBoost_Tencent.asp';"><#btn_go#></div>
+												</td>
+											</tr>
+											<!-- Outfox -->
+											<tr id="outfox_1" style="margin-top: 50px; display: none;">
+												<td style="width:200px">
+													<div style="padding: 5px 0;font-size:20px;"><#Game_Boost_internet#></div>
+												</td>
+												<td colspan="2">
+													<div style="padding: 5px 10px;font-size:20px;color:#FFCC66">Outfox</div>
+												</td>
+											</tr>
+											<tr id="outfox_2" style="display: none;">
+												<td colspan="3">
+													<div style="width:100%;height:1px;background-color:#D30606"></div>
+												</td>
+											</tr>
+											<tr id="outfox_3" style="display: none;">
+												<td align="center">
+													<div style="height: 85px;background-image: url('images/outfox_dark.png');background-size: 90%;background-repeat: no-repeat; background-position: center;"></div>
+												</td>
+												<td style="width:400px;height:120px;">
+													<div style="font-size:16px;color:#949393;padding-left:10px; padding-top: 5px; padding-bottom: 10px;">An optimized gaming network that improves performance by routing your traffic to provide a faster, more stable path to your game’s server. To get an exclusive, free 90-day trial simply register for Outfox and download the application to your PC.</div>
+												</td>
+												<td>
+													<div class="btn" style="margin:auto;width:100px;height:40px;text-align:center;line-height:40px;font-size:18px;cursor:pointer;border-radius:5px;" onclick="redirectSite(outfox_site)"><#btn_go#></div>
 												</td>
 											</tr>
 										</tbody>

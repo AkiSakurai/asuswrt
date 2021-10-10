@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_radio.c 784711 2020-03-04 17:11:18Z $
+ * $Id: phy_ac_radio.c 787995 2020-06-17 21:35:47Z $
  */
 
 #include <typedefs.h>
@@ -16249,7 +16249,20 @@ wlc_phy_radio20698_afecal(phy_info_t *pi)
 {
 	/* 20698_procs.tcl r708059: 20698_afe_cal */
 
+	uint8 core;
+	uint8 restore_ext_5g_papu[PHY_CORE_MAX];
+	uint8 restore_override_ext_pa[PHY_CORE_MAX];
+
 	ASSERT(RADIOID(pi->pubpi->radioid) == BCM20698_ID);
+	/* Disable PA during rfseq setting */
+	FOREACH_CORE(pi, core) {
+		restore_ext_5g_papu[core] = READ_PHYREGFLDCE(pi, RfctrlIntc,
+				core, ext_5g_papu);
+		restore_override_ext_pa[core] = READ_PHYREGFLDCE(pi, RfctrlIntc,
+				core, override_ext_pa);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, override_ext_pa, 1);
+		MOD_PHYREGCE(pi, RfctrlIntc, core, ext_5g_papu, 0);
+	}
 
 	wlc_phy_radio20698_adc_cap_cal(pi, 0);
 	//for 160(TI-ADC) calibrate rail 1 too.
@@ -16259,6 +16272,13 @@ wlc_phy_radio20698_afecal(phy_info_t *pi)
 
 	wlc_phy_radio20698_txdac_bw_setup(pi);
 	wlc_phy_radio20698_adc_offset_gain_cal(pi);
+	/* Restore PA reg value after reseq setting */
+	FOREACH_CORE(pi, core) {
+		MOD_PHYREGCE(pi, RfctrlIntc,
+				core, ext_5g_papu, restore_ext_5g_papu[core]);
+		MOD_PHYREGCE(pi, RfctrlIntc,
+				core, override_ext_pa, restore_override_ext_pa[core]);
+	}
 }
 
 static void
@@ -18372,6 +18392,9 @@ wlc_phy_radio20698_pu_rx_core(phy_info_t *pi, uint core, uint ch, bool restore)
 					ovr_lna2g_lna1_Rout, 0x1)
 				MOD_RADIO_REG_20698_ENTRY(pi, LNA2G_REG1, core,
 					lna2g_lna1_Rout, 0x0)
+				MOD_RADIO_REG_20698_ENTRY(pi, RX2G_REG1, core, rx2g_lo_en, 0x1)
+				MOD_RADIO_REG_20698_ENTRY(pi, RX2G_CFG1_OVR, core,
+					ovr_rx2g_lo_en, 0x1)
 
 				/* ----- turn off rx5g core${core} only ----- */
 				MOD_RADIO_REG_20698_ENTRY(pi, RX5G_CFG1_OVR, core,
@@ -18482,6 +18505,8 @@ wlc_phy_radio20698_pu_rx_core(phy_info_t *pi, uint core, uint ch, bool restore)
 			MOD_RADIO_REG_20698_ENTRY(pi, RX5G_CFG1_OVR, core, ovr_rx5g_lna_rout, 0x0)
 			MOD_RADIO_REG_20698_ENTRY(pi, LOGEN_CORE_OVR0, core,
 				ovr_logen_rx_rccr_pu, 0x0)
+			MOD_RADIO_REG_20698_ENTRY(pi, RX2G_CFG1_OVR, core, ovr_rx2g_lo_en, 0x0)
+
 		RADIO_REG_LIST_EXECUTE(pi, core);
 	}
 }

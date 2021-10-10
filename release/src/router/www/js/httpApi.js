@@ -209,6 +209,17 @@ var httpApi ={
 		return retData;
 	},
 
+	"nvramGetWanByUnit": function(unit, nvrams){
+		if(!nvrams.every(function(nvram){return nvram.indexOf("wan_") !== -1}) || isNaN(unit)) return {};
+
+		var reult = {};
+		var nvramsByUnit = function(nvram){return nvram.replace("wan_", "wan" + unit + "_");}
+		var wanInfo = httpApi.nvramGet(nvrams.map(nvramsByUnit), 1);
+		$.each(wanInfo, function(item){reult[item.replace(unit, "")] = wanInfo[item];});
+
+		return reult;
+	},
+
 	"nvramSet": function(postData, handler){
 		delete postData.isError;
 
@@ -323,9 +334,13 @@ var httpApi ={
 		$.get("/appGet.cgi?hook=start_force_autodet()");
 	},
 
+	"startDSLAutoDet": function(){
+		$.get("/appGet.cgi?hook=start_dsl_autodet()");
+	},
+
 	"detwanGetRet": function(){
 		var wanInfo = httpApi.nvramGet(["wan0_state_t", "wan0_sbstate_t", "wan0_auxstate_t", "autodet_state", "autodet_auxstate", "wan0_proto",
-										 "link_internet", "x_Setting", "link_wan"], true);
+										 "link_internet", "x_Setting", "usb_modem_act_sim", "link_wan"], true);
 
 		var wanTypeList = {
 			"dhcp": "DHCP",
@@ -341,11 +356,23 @@ var httpApi ={
 			"noWan": "NOWAN"
 		}
 
+		var simStateList = {
+			"nosim": "NOSIM",
+			"ready": "READY",
+			"pin": "PIN",
+			"puk": "PUK",
+			"pin2": "PIN2",
+			"puk2": "PUK2",
+			"wait": "WAITING",
+			"fail": "FAIL"
+		}
+
 		var retData = {
 			"wanType": "CHECKING",
 			"isIPConflict": (function(){
 				return (wanInfo.wan0_state_t == "4" && wanInfo.wan0_sbstate_t == "4")
 			})(),
+			"simState": "WAITING",
 			"isError": false
 		};
 
@@ -354,7 +381,31 @@ var httpApi ={
 			return (usbDeviceList.join().search(deviceType) != -1)
 		}
 
-		var iCanUsePPPoE = (wanInfo.autodet_state == "6" || wanInfo.autodet_auxstate == "6")
+		var iCanUsePPPoE = (wanInfo.autodet_state == "6" || wanInfo.autodet_auxstate == "6");
+		var sim_state = parseInt(wanInfo.usb_modem_act_sim);
+
+		if(isSupport("gobi") && (sim_state >= 1 && sim_state <= 6)){
+			switch(wanInfo.usb_modem_act_sim){
+				case "1":
+					retData.simState = simStateList.ready;
+					break;
+				case "2":
+					retData.simState = simStateList.pin;
+					break;
+				case "3":
+					retData.simState = simStateList.puk;
+					break;
+				case "4":
+					retData.simState = simStateList.pin2;
+					break;
+				case "5":
+					retData.simState = simStateList.puk2;
+					break;
+				case "6":
+					retData.simState = simStateList.wait;
+					break;
+			}
+		}
 
 		if(wanInfo.isError){
 			retData.wanType = wanTypeList.check;
@@ -364,7 +415,7 @@ var httpApi ={
 		else if(wanInfo.link_wan == ""){
 			retData.wanType = wanTypeList.check;
 		}
-		else if(wanInfo.link_wan == "0"){
+		else if(wanInfo.link_wan == "0" && (isSupport("gobi") || !hadPlugged("modem"))){
 			retData.wanType = wanTypeList.noWan;
 		}
 		else if(
@@ -378,24 +429,12 @@ var httpApi ={
 		else if( (wanInfo.wan0_state_t    == "2" && wanInfo.wan0_sbstate_t  == "0" && wanInfo.wan0_auxstate_t == "2") ||
 				 (wanInfo.wan0_state_t    == "2" && wanInfo.wan0_sbstate_t  == "0" && wanInfo.wan0_auxstate_t == "0")
 		){
-				retData.wanType = wanTypeList.dhcp;
-		}
-		else if(wanInfo.autodet_state == ""){
-			retData.wanType = wanTypeList.check;
-			if(this.detRetryCnt > 0){
-				this.detRetryCnt --;
-			}
-			else{
-				this.startAutoDet();
-				retData.isIPConflict = false;
-				retData.isError = false;
-				this.detRetryCnt = this.detRetryCnt_MAX;
-			}
+			retData.wanType = wanTypeList.dhcp;
 		}
 		else if(iCanUsePPPoE){
 			retData.wanType = wanTypeList.pppoe;
 		}
-		else if(hadPlugged("modem")){
+		else if(!isSupport("gobi") && hadPlugged("modem")){
 			retData.wanType = wanTypeList.modem;
 		}
 		else if(wanInfo.autodet_state == "3" || wanInfo.autodet_state == "5"){
@@ -413,6 +452,10 @@ var httpApi ={
 				retData.wanType = wanTypeList.noWan;
 			}
 		}
+		else if(wanInfo.wan0_state_t == "4" && wanInfo.wan0_sbstate_t == "4"){
+			retData.wanType = wanTypeList.dhcp;
+			retData.isIPConflict = true;
+		}
 		else{
 			retData.wanType = wanTypeList.check;
 			if(this.detRetryCnt > 0){
@@ -425,6 +468,100 @@ var httpApi ={
 				this.detRetryCnt = this.detRetryCnt_MAX;
 			}
 		}
+
+		return retData;
+	},
+
+	"detDSLwanGetRet": function(){
+		var wanInfo = httpApi.nvramGet(["wan0_state_t", "wan0_sbstate_t", "wan0_auxstate_t", 
+										//dsl_autodet_state     dsl_line_state        wan_type                   dslx_annex_state
+										"dsltmp_autodet_state", "dsltmp_adslsyncsts", "dsltmp_autodet_wan_type", "dslx_annex",
+										"link_internet", "x_Setting", "usb_modem_act_sim", "link_wan"], true);
+
+		var wanTypeList = {
+			"check": "CHECKING",
+			"dhcp": "DHCP",
+			"ppp": "PPP",
+			"ptm": "PTM_Manual",
+			"atm": "Manual",
+			"modem": "MODEM",
+			"resetModem": "RESETMODEM",
+			"connected": "CONNECTED",
+			"noWan": "NOWAN"
+		}
+
+		var retData = {
+			"wanType": "CHECKING",
+			"dsl_line_state": wanInfo.dsltmp_autodet_state,
+			"isIPConflict": (function(){
+				return (wanInfo.wan0_state_t == "4" && wanInfo.wan0_sbstate_t == "4")
+			})(),
+			"simState": "WAITING",
+			"isError": false
+		};
+
+		if(wanInfo.isError){
+			retData.wanType = wanTypeList.check;
+			retData.isIPConflict = false;
+			retData.isError = true;
+		}
+		else if(wanInfo.link_wan == ""){
+			retData.wanType = wanTypeList.check;
+		}
+		else if(wanInfo.link_wan == "0"){
+			retData.wanType = wanTypeList.noWan;
+		}
+		else if(wanInfo.dsltmp_adslsyncsts == "up"){
+
+			if(wanInfo.dsltmp_autodet_wan_type == "PTM"){
+				retData.wanType = wanTypeList.ptm;
+			}
+			else if(wanInfo.dsltmp_autodet_wan_type == "ATM" && (wanInfo.dslx_annex == "5" || wanInfo.dslx_annex == "6")){
+				retData.wanType = wanTypeList.atm;
+			}
+			else if(wanInfo.dsltmp_autodet_state == "pppoe" || wanInfo.dsltmp_autodet_state == "pppoa"){
+				retData.wanType = wanTypeList.ppp;
+			}
+			else if(wanInfo.dsltmp_autodet_state == "dhcp"){
+				retData.wanType = wanTypeList.dhcp;
+			}
+			else if(wanInfo.dsltmp_autodet_state == "Fail"){
+				if(wanInfo.dsltmp_autodet_wan_type == "PTM"){
+					retData.wanType = wanTypeList.ptm;
+				}
+				else{
+					retData.wanType = wanTypeList.atm;
+				}
+			}
+			else {
+				retData.wanType = wanTypeList.check;	//annex re-detect... or timeout
+			}
+
+		}
+		else if(wanInfo.dsltmp_adslsyncsts == "init" || wanInfo.dsltmp_adslsyncsts == "initializing" || wanInfo.dsltmp_adslsyncsts == "wait"){
+			//if(linkup_autodet == 1) {	//up -> down, restart auto det
+			//		linkup_autodet = 0;
+			//		Redirect_count = 0;
+			//		document.redirectForm.rc_service.value = "restart_dsl_autodet";
+			//		document.redirectForm.submit();
+			//}
+			//AnnexSwitch_enable = 0;
+
+			set_state_info(wanInfo.dsltmp_autodet_state);
+			retData.wanType = wanTypeList.check;
+		}
+		else if(wanInfo.dsltmp_adslsyncsts == "down" || wanInfo.dsltmp_adslsyncsts == "Detecting" || wanInfo.dsltmp_adslsyncsts == "wait for init" || wanInfo.dsltmp_adslsyncsts == ""){
+
+			//(AnnexSwitch_enable == 1) &&
+			set_state_info(wanInfo.dsltmp_autodet_state);
+			retData.wanType = wanTypeList.check;
+		}
+		else{
+
+			set_state_info(wanInfo.dsltmp_autodet_state);
+			retData.wanType = wanTypeList.check;
+		}
+
 
 		return retData;
 	},
@@ -603,51 +740,66 @@ var httpApi ={
 	},
 
 	"boostKey_support": function(){
-		var ch = eval('<% channel_list_5g(); %>');
-		if(isSupport("triband"))
-			ch += eval('<% channel_list_5g_2(); %>');
-		if(ch.indexOf("52") != -1 || ch.indexOf("56") != -1 || ch.indexOf("60") != -1 || ch.indexOf("64") != -1 || ch.indexOf("100") != -1 || ch.indexOf("104") != -1 || ch.indexOf("108") != -1 || ch.indexOf("112") != -1 || ch.indexOf("116") != -1 || ch.indexOf("120") != -1 || ch.indexOf("124") != -1 || ch.indexOf("128") != -1 || ch.indexOf("132") != -1 || ch.indexOf("136") != -1 || ch.indexOf("140") != -1 || ch.indexOf("144") != -1){
-			return {
+		var retData = {
 				"GAME_BOOST": {
 					"value": 3,
-					"text": "Enable GameBoost",
-					"desc": "Game Boost analyzes network traffic and prioritizes gaming packets, giving games a second level of acceleration for the best possible performance."
+					"text": "<#BoostKey_enable#>",
+					"desc": "<#BoostKey_Boost_desc#>"
 				},
 				"ACS_DFS": {
 					"value": 1,
 					"text": "<#WLANConfig11b_EChannel_dfs#>",
-					"desc": "Auto channel selection includes DFS band allows <#Web_Title2#> to utilize extra 5GHz channels for less interferences and greater bandwidth."
+					"desc": "<#BoostKey_DFS_desc#>"
 				},
 				"LED": {
 					"value": 0,
-					"text": "LED On/Off",
-					"desc": "The LED on/off control is used to turn off all LEDs includes Aura light."
+					"text": "<#BoostKey_LED#>",
+					"desc": "<#BoostKey_LED_desc#>"
 				},
 				"AURA_RGB": {
 					"value": 2,
-					"text": "Aura RGB",
-					"desc": "Aura sync control is used to get Aura control from other ROG devices, if disabled, it will be customized Aura RGB."
+					"text": "<#BoostKey_Aura_RGB#>",
+					"desc": "<#BoostKey_Aura_RGB_desc#>"
 				}
+		};
+
+		var productid = httpApi.nvramGet(["productid"]).productid;
+		if(productid == "GT-AC2900"){
+			delete retData.LED;
+			delete retData.AURA_RGB;
+
+			retData.AURA_SHUFFLE = {
+				"value": 4,
+				"text": "<#BoostKey_AURA_Shuffle#>",
+				"desc": "<#BoostKey_AURA_Shuffle_desc#>"				
 			}
-		}else{
-			return {
-				"GAME_BOOST": {
-					"value": 3,
-					"text": "Enable GameBoost",
-					"desc": "Game Boost analyzes network traffic and prioritizes gaming packets, giving games a second level of acceleration for the best possible performance."
-				},
-				"LED": {
-					"value": 0,
-					"text": "LED On/Off",
-					"desc": "The LED on/off control is used to turn off all LEDs includes Aura light."
-				},
-				"AURA_RGB": {
-					"value": 2,
-					"text": "Aura RGB",
-					"desc": "Aura sync control is used to get Aura control from other ROG devices, if disabled, it will be customized Aura RGB."
-				}
+
+			retData.GEFORCE_NOW = {
+				"value": 5,
+				"text": "<#BoostKey_GeForce#>",
+				"desc": "<#BoostKey_GeForce_desc#>"				
 			}
 		}
+
+		var sw_mode = (window.hasOwnProperty("qisPostData") && qisPostData.hasOwnProperty("sw_mode")) ? qisPostData.sw_mode : httpApi.nvramGet(["sw_mode"]).sw_mode;
+		if(sw_mode != "1"){
+			delete retData.GAME_BOOST;
+		}
+
+		if(sw_mode == "1" || sw_mode == "3"){
+			var ch_5g1 = httpApi.hookGet("channel_list_5g");
+			var ch_5g2 = httpApi.hookGet("channel_list_5g_2");
+			var ch = ch_5g1.concat(ch_5g2).toString().split(",");
+
+			if((ch.indexOf("52") == -1 && ch.indexOf("56") == -1 && ch.indexOf("60") == -1 && ch.indexOf("64") == -1 && ch.indexOf("100") == -1 && ch.indexOf("104") == -1 && ch.indexOf("108") == -1 && ch.indexOf("112") == -1 && ch.indexOf("116") == -1 && ch.indexOf("120") == -1 && ch.indexOf("124") == -1 && ch.indexOf("128") == -1 && ch.indexOf("132") == -1 && ch.indexOf("136") == -1 && ch.indexOf("140") == -1 && ch.indexOf("144") == -1)){
+				delete retData.ACS_DFS;
+			}
+		}
+		else{
+			delete retData.ACS_DFS;
+		}
+
+		return retData;
 	},
 
 	"getPAPStatus": function(_band){
@@ -663,7 +815,16 @@ var httpApi ={
 			return ssid;
 		};
 		var dpsta_rep = (httpApi.nvramGet(["wlc_dpsta"]).wlc_dpsta == "") ? false : true;
-		if(dpsta_rep){
+		if(isSupport("proxysta") && !dpsta_rep){
+			var wlc_psta_state = httpApi.hookGet("wlc_psta_state", true);
+			if(wlc_psta_state.wlc_state == "1" && wlc_psta_state.wlc_state_auth == "0")
+				papStatus = get_ssid(_band);
+			else if(wlc_psta_state.wlc_state == "2" && wlc_psta_state.wlc_state_auth == "1")
+				papStatus = "<#APSurvey_action_ConnectingStatus1#>";
+			else
+				papStatus = "<#Disconnected#>";
+		}
+		else{
 			var wlc_state = "0";
 			if(_band == undefined)
 				wlc_state = httpApi.nvramGet(["wlc_state"]).wlc_state;
@@ -684,16 +845,6 @@ var httpApi ={
 					break;
 			}
 		}
-		else{
-			var wlc_psta_state = httpApi.hookGet("wlc_psta_state", true);
-			if(wlc_psta_state.wlc_state == "1" && wlc_psta_state.wlc_state_auth == "0")
-				papStatus = get_ssid(_band);
-			else if(wlc_psta_state.wlc_state == "2" && wlc_psta_state.wlc_state_auth == "1")
-				papStatus = "<#APSurvey_action_ConnectingStatus1#>";
-			else
-				papStatus = "<#Disconnected#>";
-
-		}
 		return papStatus;
 	},
 
@@ -710,32 +861,37 @@ var httpApi ={
 		return specified_profile;
 	},
 
-	"checkCloudModelIcon": function(modelName, callBackSuccess, callBackError){
-		var getCloudModelIconSrc = function(modelName){
-			var handle_cloud_icon_model_name = function(_modelName) {
-				var transformName = _modelName;
-				if(transformName == "RT-AC66U_B1" || transformName == "RT-AC1750_B1" || transformName == "RT-N66U_C1" || transformName == "RT-AC1900U" || transformName == "RT-AC67U")
-					transformName = "RT-AC66U_V2";
-				else if(transformName == "BLUE_CAVE")
-					transformName = "BLUECAVE";
-				else if(transformName == "Lyra")
-					transformName = "MAP-AC2200";
-				else if(transformName == "Lyra_Mini" || transformName == "LyraMini")
-					transformName = "MAP-AC1300";
-				else if(transformName == "Lyra_Trio")
-					transformName = "MAP-AC1750";
-				else if(transformName == "LYRA_VOICE")
-					transformName = "MAP-AC2200V";
-				return transformName;
-			};
+	"checkCloudModelIcon": function(modelName, callBackSuccess, callBackError, tcode){
+		var getCloudModelIconSrc = function(_modelName, _tcode){
+			var transformName = _modelName;
+			if(transformName == "RT-AC66U_B1" || transformName == "RT-AC1750_B1" || transformName == "RT-N66U_C1" || transformName == "RT-AC1900U" || transformName == "RT-AC67U")
+				transformName = "RT-AC66U_V2";
+			else if(transformName == "BLUE_CAVE")
+				transformName = "BLUECAVE";
+			else if(transformName == "Lyra")
+				transformName = "MAP-AC2200";
+			else if(transformName == "Lyra_Mini" || transformName == "LyraMini")
+				transformName = "MAP-AC1300";
+			else if(transformName == "Lyra_Trio")
+				transformName = "MAP-AC1750";
+			else if(transformName == "LYRA_VOICE")
+				transformName = "MAP-AC2200V";
+
+			if(tcode != undefined && tcode != ""){
+				if(transformName == "RT-AX86U" && tcode == "GD/01")
+					transformName = "RT-AX86U_GD01";
+				else if(transformName == "RT-AX82U" && tcode == "GD/01")
+					transformName = "RT-AX82U_GD01";
+			}
+
 			var server = "http://nw-dlcdnet.asus.com";
-			var fileName = "/plugin/productIcons/" + handle_cloud_icon_model_name(modelName) + ".png";
+			var fileName = "/plugin/productIcons/" + transformName + ".png";
 
 			return server + fileName;
 		};
 
 		$("<img>")
-			.attr('src', getCloudModelIconSrc(modelName))
+			.attr('src', getCloudModelIconSrc(modelName, tcode))
 			.on("load", function(e){
 				if(callBackSuccess) callBackSuccess($(this).attr("src"));
 				$(this).remove();
@@ -755,7 +911,7 @@ var httpApi ={
 			return;
 		}
 
-		if(modelName != "Lyra" && modelName != "Lyra_Mini" && modelName != "LyraMini" && modelName != "LYRA_VOICE" && modelName != "Lyra_Trio")
+		if(modelName != "Lyra" && modelName != "Lyra_Mini" && modelName != "LyraMini" && modelName != "LYRA_VOICE" && modelName != "Lyra_Trio" && modelName != "GT-AXY16000" && modelName != "RT-AX89X" && modelName != "SH-AC1300")
 			return;
 
 		var isMac = function(_mac){
@@ -796,14 +952,26 @@ var httpApi ={
 		var returnMacAddr = "";
 		var offset = 0;
 		switch(modelName){
-			case "LYRA_VOICE":
 			case "Lyra":
+				{
+					var last_mac = _macAddr.substr(-1);
+				        if (last_mac == "9") offset = -9;
+				        else if (last_mac == "5" || last_mac == "D") offset = -5;
+				        else offset = -3;
+				}
+				break;
+			case "LYRA_VOICE":
 			case "Lyra_Mini":
 			case "LyraMini":
+			case "SH-AC1300":
 				offset = -3;
 				break;
 			case "Lyra_Trio":
 				offset = -1;
+				break;
+			case "GT-AXY16000":
+			case "RT-AX89X":
+				offset = -5;
 				break;
 			default:
 				offset = 0;
@@ -827,7 +995,7 @@ var httpApi ={
 
 	"hasAiMeshNode": function(){
 		var status = false;
-		if(amesh_support && (isSwMode("rt") || isSwMode("ap"))) {
+		if(amesh_support && (isSwMode("rt") || isSwMode("ap")) && ameshRouter_support) {
 			var get_cfg_clientlist = httpApi.hookGet("get_cfg_clientlist", true);
 			if(get_cfg_clientlist != undefined && get_cfg_clientlist.length > 1) {
 				get_cfg_clientlist.shift();//filter CAP
@@ -993,6 +1161,245 @@ var httpApi ={
 			error: function(){},
 			success: function(response){
 				if(parmData != undefined && parmData.callBack) parmData.callBack.call(response);
+			}
+		});
+	},
+
+	"get_wl_sched": function(wl_unit, callBack){
+		var _wl_unit = "all";
+		if(wl_unit != undefined && wl_unit.toString() != "")
+			_wl_unit = wl_unit;
+
+		$.ajax({
+			url: "/get_wl_sched.cgi?unit=" + _wl_unit,
+			dataType: 'json',
+			async: true,
+			error: function(){},
+			success: function(response){
+				if(callBack)
+					callBack(response);
+			}
+		});
+	},
+	"set_wl_sched": function(postData){
+		$.ajax({
+			url: "/set_wl_sched.cgi",
+			type: "POST",
+			dataType: 'json',
+			data: JSON.stringify(postData),
+			async: true,
+			error: function(){},
+			success: function(response){}
+		});
+	},
+	"aimesh_get_node_capability" : function(_node_info){
+		var node_capability_list = {
+			"led_control" : {
+				"value" : 1,
+				"def" : {
+					"central_led" : {"bit" : 0},
+					"lp55xx_led" : {"bit" : 1},
+					"led_on_off" : {"bit" : 2},
+					"led_brightness" : {"bit" : 3},
+					"led_aura" : {"bit" : 4}
+				}
+			},
+			"reboot_ctl" : {
+				"value" : 2,
+				"def" : {
+					"manual_reboot" : {"bit" : 0}
+				}
+			},
+			"force_topology_ctl" : {
+				"value" : 3,
+				"def" : {
+					"preferable_backhaul" : {"bit" : 0},
+					"prefer_node_apply" : {"bit" : 1}
+				}
+			},
+			"rc_support" : {
+				"value" : 4,
+				"def" : {
+					"usb" : {"bit" : 0},
+					"guest_network" : {"bit" : 1},
+					"wpa3" : {"bit" : 2},
+					"vif_onboarding" : {"bit" : 3},
+					"sched_v2" : {"bit" : 4},
+					"wifi_radio" : {"bit" : 5}
+				}
+			},
+			"link_aggregation" : {
+				"value" : 5,
+				"def" : {
+					"lacp" : {"bit" : 0},
+				}
+			},
+			"wans_cap" : {
+				"value" : 15,
+				"def" : {
+					"wans_cap_wan" : {"bit" : 0}//Support ethernet wan or not
+				}
+			},
+			"re_reconnect" : {
+				"value" : 16,
+				"def" : {
+					"manual_reconn" : {"bit" : 0}
+				}
+			},
+			"force_roaming" : {
+				"value" : 17,
+				"def" : {
+					"manual_force_roaming" : {"bit" : 0}
+				}
+			},
+			"fronthaul_ap_ctl" : {
+				"value" : 18,
+				"def" : {
+					"fronthaul_ap_option_off" : {"bit" : 0},
+					"fronthaul_ap_option_auto" : {"bit" : 1},
+					"fronthaul_ap_option_on" : {"bit" : 2}
+				}
+			},
+			"sta_binding_ap" : {
+				"value" : 19,
+				"def" : {
+					"manual_sta_binding" : {"bit" : 0}
+				}
+			},
+			"reset_default" : {
+				"value" : 20,
+				"def" : {
+					"manual_reset_default" : {"bit" : 0}
+				}
+			},
+			"wifi_radio_ctl" : {
+				"value" : 22,
+				"def" : {
+					"wifi_radio_0" : {"bit" : 0},
+					"wifi_radio_1" : {"bit" : 1},
+					"wifi_radio_2" : {"bit" : 2}
+				}
+			},
+			"conn_eap_mode" : {
+				"value" : 23,
+				"def" : {
+					"ethernet_backhaul_mode" : {"bit" : 0}
+				}
+			}
+		};
+		var node_capability_status = {};
+		if("capability" in _node_info) {
+			for(var type in node_capability_list) {
+				if(node_capability_list.hasOwnProperty(type)) {
+					var capability_type_idx = node_capability_list[type].value;
+					var capability_value = 0;
+					if(capability_type_idx in _node_info.capability) //check capability idx exist
+						capability_value = (_node_info.capability[capability_type_idx] == "") ? 0 : _node_info.capability[capability_type_idx];
+					else if(capability_type_idx == "15")//exception, for old FW, not have this capability
+						capability_value = 1;
+					var capability_type_def_list = node_capability_list[type].def;
+					for(var def_item in capability_type_def_list) {
+						if(capability_type_def_list.hasOwnProperty(def_item)) {
+							var def_item_bitwise = capability_type_def_list[def_item]["bit"];
+							var support = (capability_value & (1 << def_item_bitwise)) ? true : false;
+							node_capability_status[def_item] = support;
+						}
+					}
+				}
+			}
+		}
+		return node_capability_status;
+	},
+	"get_ipsec_cert_info": function(callBack){
+		$.ajax({
+			url: "/ipsec_cert_info.cgi",
+			dataType: 'json',
+			async: true,
+			error: function(){},
+			success: function(response){
+				if(callBack)
+					callBack(response);
+			}
+		});
+	},
+	"get_ipsec_clientlist": function(callBack){
+		$.ajax({
+			url: "/get_ipsec_clientlist.cgi",
+			dataType: 'json',
+			data: {"get_json":"1"},
+			async: true,
+			error: function(){},
+			success: function(response){
+				if(callBack)
+					callBack(response);
+			}
+		});
+	},
+	"set_ipsec_clientlist": function(postData){
+		$.ajax({
+			url: "/set_ipsec_clientlist.cgi",
+			type: "POST",
+			dataType: 'json',
+			data: JSON.stringify(postData),
+			async: true,
+			error: function(){},
+			success: function(response){}
+		});
+	},
+	"renew_ikev2_cert_key": function(callBack){
+		$.ajax({
+			url: "/renew_ikev2_cert_key.cgi",
+			async: true,
+			error: function(){},
+			success: function(response){
+				if(callBack)
+					callBack(response);
+			}
+		});
+	},
+	"get_ipsec_conn": function(callBack){
+		$.ajax({
+			url: "/appGet.cgi",
+			async: true,
+			error: function(){},
+			success: function(response){
+				if(callBack)
+					callBack(response);
+			}
+		});
+	},
+	"clean_ipsec_log": function(callBack) {
+		$.ajax({
+			url: '/clear_file.cgi?clear_file_name=ipsec',
+			dataType: 'script',
+			error: function(xhr) {
+				alert("Clean error!");/*untranslated*/
+			},
+			success: function(response) {
+				if(callBack)
+					callBack(response);
+			}
+		});
+	},
+	"set_ig_config": function(postData){
+		$.ajax({
+			url: "/set_ig_config.cgi",
+			type: "POST",
+			dataType: 'json',
+			data: JSON.stringify(postData),
+			async: true,
+			error: function(){},
+			success: function(response){}
+		});
+	},
+	"get_ig_config": function(callBack){
+		$.ajax({
+			url: "/get_ig_config.cgi",
+			async: true,
+			error: function(){},
+			success: function(response){
+				if(callBack)
+					callBack(response);
 			}
 		});
 	}

@@ -720,9 +720,9 @@ function showopenvpnd_clientlist(){
 					if(vpn_server_clientlist_col[0].length >32){
 						overlib_str2[i] += vpn_server_clientlist_col[0];
 						vpn_server_clientlist_col[0] = vpn_server_clientlist_col[0].substring(0, 30)+"...";
-						code +='<td width="35%" title="'+overlib_str2[i]+'">'+ vpn_server_clientlist_col[0] +'</td>';
+						code +='<td width="35%" title="'+htmlEnDeCode.htmlEncode(overlib_str2[i])+'">'+ htmlEnDeCode.htmlEncode(vpn_server_clientlist_col[0]) +'</td>';
 					}else{
-						code +='<td width="35%" title="'+vpn_server_clientlist_col[0]+'">'+ vpn_server_clientlist_col[0] +'</td>';
+						code +='<td width="35%" title="'+htmlEnDeCode.htmlEncode(vpn_server_clientlist_col[0])+'">'+ htmlEnDeCode.htmlEncode(vpn_server_clientlist_col[0]) +'</td>';
 					}	
 				}
 				else if(j ==1){
@@ -795,7 +795,7 @@ function update_vpn_server_state() {
 				document.getElementById('openvpn_error_message').innerHTML = "<span><#vpn_openvpn_fail1#></span>";
 				document.getElementById('openvpn_error_message').style.display = "";
 			}
-			else if(vpnd_state != '2' && vpn_server1_errno == '4'){
+			else if(vpnd_state != '2' && (vpn_server1_errno == '4' || vpn_server1_errno == '7')){
 				document.getElementById('openvpn_initial').style.display = "none";
 				document.getElementById('openvpn_error_message').innerHTML = "<span><#vpn_openvpn_fail2#></span>";
 				document.getElementById('openvpn_error_message').style.display = "";
@@ -1209,7 +1209,7 @@ function callback_upload_cert(_flag) {
 }
 </script>
 </head>
-<body onload="initial();">
+<body onload="initial();" class="bg">
 <div id="tlsKey_panel"  class="contentM_qis">
 	<!--===================================Beginning of tls Content===========================================-->
 	<table class="QISform_wireless" border=0 align="center" cellpadding="5" cellspacing="0">
@@ -1628,7 +1628,7 @@ function callback_upload_cert(_flag) {
 												</td>
 											</tr>
 											<tr>
-												<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(32,26);">HMAC Authentication<!--untranslated--></a></th>
+												<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(32,26);"><#vpn_openvpn_AuthHMAC#></a></th>
 												<td>
 													<select name="vpn_server_digest" class="input_option" onChange="update_digest();"></select>
 													<span id="digest_hint" style="color:#FC0">(Not recommended)<!--untranslated--></span>
@@ -1642,6 +1642,7 @@ function callback_upload_cert(_flag) {
 														<option value="no" <% nvram_match("vpn_server_comp","no","selected"); %> ><#wl_securitylevel_0#></option>
 														<option value="yes" <% nvram_match("vpn_server_comp","yes","selected"); %> ><#WLANConfig11b_WirelessCtrl_button1name#></option>
 														<option value="adaptive" <% nvram_match("vpn_server_comp","adaptive","selected"); %> ><#Adaptive#></option>
+														<option value="lz4" <% nvram_match("vpn_server_comp","lz4","selected"); %> >LZ4</option>
 													</select>
 												</td>
 											</tr>
@@ -1661,7 +1662,7 @@ function callback_upload_cert(_flag) {
 												<td>
 													<input type="radio" name="vpn_server_igncrt" class="input" value="1" onchange="enable_server_igncrt(this.value);" <% nvram_match_x("", "vpn_server_igncrt", "1", "checked"); %>><#checkbox_Yes#>
 													<input type="radio" name="vpn_server_igncrt" class="input" value="0" onchange="enable_server_igncrt(this.value);" <% nvram_match_x("", "vpn_server_igncrt", "0", "checked"); %>><#checkbox_No#>
-													<span id="Hint_fixed_tls_crypto" style="display:none;">Authorization Mode fixes on TLS</span><!--untranslated-->
+													<span id="Hint_fixed_tls_crypto" style="display:none;"><#vpn_openvpn_AuthOnly_hint#></span>
 												</td>
 											</tr>
 											<tr>
@@ -1679,7 +1680,7 @@ function callback_upload_cert(_flag) {
 												</td>
 											</tr>
 											<tr>
-												<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(32,8);">RSA Encryption</a><!--untranslated--></th>
+												<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(32,8);"><#RSA_Encryption#></a></th>
 												<td>
 													<input type="radio" name="vpn_server_tls_keysize_adv" id="vpn_server_tls_keysize_adv_0" class="input" value="0" <% nvram_match_x("", "vpn_server_tls_keysize", "0", "checked"); %> onchange="vpnServerTlsKeysize(this);">
 													<label for='vpn_server_tls_keysize_adv_0'>1024 bit<!--untranslated--></label>
@@ -1688,7 +1689,7 @@ function callback_upload_cert(_flag) {
 												</td>
 											</tr>
 											<tr id="server_authhmac">
-												<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(32,10);"><#vpn_openvpn_AuthHMAC#></a></th>
+												<th><a class="hintstyle" href="javascript:void(0);" onClick="openHint(32,10);"><#vpn_openvpn_ExtraHMAC#></a></th>
 												<td>
 													<select name="vpn_server_hmac" class="input_option">
 														<option value="-1" <% nvram_match("vpn_server_hmac","-1","selected"); %> ><#WLANConfig11b_WirelessCtrl_buttonname#></option>
@@ -1806,8 +1807,8 @@ function callback_upload_cert(_flag) {
 								 				</td>
 								 				<td width="12%">
 													<select name="vpn_clientlist_push_0" class="input_option">
-														<option value="0" selected>No</option>
-														<option value="1">Yes</option>
+														<option value="0" selected><#checkbox_No#></option>
+														<option value="1"><#checkbox_Yes#></option>
 													</select>
 												</td>
 								 				<td width="12%">

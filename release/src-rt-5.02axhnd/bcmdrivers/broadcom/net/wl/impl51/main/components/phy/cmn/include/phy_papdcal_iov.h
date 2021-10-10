@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_papdcal_iov.h 780340 2019-10-22 18:55:57Z $
+ * $Id: phy_papdcal_iov.h 785862 2020-04-08 01:20:21Z $
  */
 
 #ifndef _phy_papdcal_iov_t_
@@ -66,8 +66,9 @@ enum {
 	IOV_PAPDCOMP_DISABLE = 9,
 	IOV_PAPD_EN_WAR = 10,
 	IOV_PHY_SKIPPAPD = 11,
-	IOV_PHY_EPACAL2GMASK = 12,
-	IOV_PHY_WFD_LL_ENABLE = 13
+	IOV_PHY_PAPD_DUMP = 12,
+	IOV_PHY_EPACAL2GMASK = 13,
+	IOV_PHY_WFD_LL_ENABLE = 14
 };
 
 /* register iovar table/handlers */

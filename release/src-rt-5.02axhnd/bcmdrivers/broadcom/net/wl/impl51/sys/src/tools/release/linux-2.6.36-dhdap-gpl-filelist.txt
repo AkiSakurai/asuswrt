@@ -46,7 +46,7 @@
 #
 # <<Broadcom-WL-IPTag/Proprietary:>>
 #
-# $Id: linux-2.6.36-dhdap-gpl-filelist.txt 784998 2020-03-10 17:34:19Z $
+# $Id: linux-2.6.36-dhdap-gpl-filelist.txt 788376 2020-06-30 10:09:14Z $
 #
 # NOTE: Wildcards are NOT allowed in any filelist. List actual file/dir names
 
@@ -39198,6 +39198,8 @@ main/components/apps/moca/moca20core-gen22.bin
 main/components/apps/moca/Makefile
 main/components/apps/utils/WlGetDriverCfg.sh
 main/components/apps/utils/WlGetDriverStats.sh
+main/components/apps/utils/debug_loop_acs_dfs.sh
+main/components/apps/utils/mapgetcfg.sh
 main/components/apps/cevent_app
 main/components/opensource/sqlite3
 main/components/opensource/libxml2

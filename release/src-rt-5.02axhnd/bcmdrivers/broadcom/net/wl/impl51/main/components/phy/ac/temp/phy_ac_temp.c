@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_temp.c 783988 2020-02-14 02:19:40Z $
+ * $Id: phy_ac_temp.c 788401 2020-06-30 17:05:46Z $
  */
 
 #include <typedefs.h>
@@ -2007,6 +2007,7 @@ wlc_phy_tempsense_vbatsense_acphy_20704(phy_info_t *pi, uint8 tempsense_vbatsens
 	uint8  stall_val;
 	phy_ac_temp_info_t *ti = pi->u.pi_acphy->tempi;
 	phy_stf_data_t *stf_shdata = phy_stf_get_data(pi->stfi);
+	uint8 hwobss_en;
 
 	core = phy_ac_temp_get_first_actv_core(stf_shdata->phyrxchain);
 
@@ -2023,7 +2024,11 @@ wlc_phy_tempsense_vbatsense_acphy_20704(phy_info_t *pi, uint8 tempsense_vbatsens
 			&save_chipc, &fval2g_orig, &fval5g_orig,
 			&fval2g, &fval5g, &stall_val, &save_gpioHiOutEn);
 
+	/* Need to disable HWOBSS when doing voltage measurement */
+	hwobss_en = READ_PHYREGFLD(pi, obss_control, obss_mit_en);
+	phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, FALSE);
 	wlc_phy_tempsense_poll_adc_war_20704(pi, TRUE, measured_voltage, core);
+	phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, (hwobss_en != 0));
 
 	radio_temp += (int32)(((measured_voltage[0] + measured_voltage[2]
 		- measured_voltage[1] - measured_voltage[3]) / 2)) * t_slope[core];
@@ -2097,9 +2102,9 @@ wlc_phy_tempsense_vbatsense_acphy_20707(phy_info_t *pi, uint8 tempsense_vbatsens
 
 	/* Need to disable HWOBSS when doing voltage measured */
 	hwobss_en = READ_PHYREGFLD(pi, obss_control, obss_mit_en);
-	phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, FALSE, TRUE);
+	phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, FALSE);
 	wlc_phy_tempsense_poll_adc_war_20707(pi, TRUE, measured_voltage, core);
-	phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, (hwobss_en != 0), TRUE);
+	phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, (hwobss_en != 0));
 
 	radio_temp += (int32)(((measured_voltage[0] + measured_voltage[2]
 		- measured_voltage[1] - measured_voltage[3]) / 2)) * t_slope[core];
@@ -2211,6 +2216,7 @@ wlc_phy_tempsense_vbatsense_acphy_20698(phy_info_t *pi, uint8 tempsense_vbatsens
 	uint8  stall_val;
 	phy_ac_temp_info_t *ti = pi->u.pi_acphy->tempi;
 	phy_stf_data_t *stf_shdata = phy_stf_get_data(pi->stfi);
+	uint8 hwobss_en;
 
 	core = phy_ac_temp_get_first_actv_core(stf_shdata->phyrxchain);
 
@@ -2230,7 +2236,11 @@ wlc_phy_tempsense_vbatsense_acphy_20698(phy_info_t *pi, uint8 tempsense_vbatsens
 			&fval2g, &fval5g, &stall_val, &save_gpioHiOutEn);
 
 	/* FIXME43684: need to skip on DFS_CORE and on NO_RADAR_CHAN */
+	/* Need to disable HWOBSS when doing voltage measured */
+	hwobss_en = READ_PHYREGFLD(pi, obss_control, obss_mit_en);
+	phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, FALSE);
 	wlc_phy_tempsense_poll_adc_war_20698(pi, TRUE, measured_voltage, core);
+	phy_ac_chanmgr_hwobss(pi->u.pi_acphy->chanmgri, (hwobss_en != 0));
 	radio_temp += (int32)(((measured_voltage[0] + measured_voltage[2]
 		- measured_voltage[1] - measured_voltage[3]) / 2)) * t_slope[core];
 

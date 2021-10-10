@@ -90,7 +90,7 @@
 </style>
 <script>
 $(function () {
-	if(amesh_support) {
+	if(amesh_support && ameshRouter_support) {
 		addNewScript('/require/modules/amesh.js');
 	}
 });
@@ -147,7 +147,7 @@ function initial(){
 				"value" : "1"
 			},
 			"label" : {
-				"text" : (amesh_support) ? "<#AiMesh_GW_item#>" : "<#OP_GW_item#>"
+				"text" : (amesh_support && ameshRouter_support) ? "<#AiMesh_GW_item#>" : "<#OP_GW_item#>"
 			},
 			"mode" : "1",
 			"express" : "0",
@@ -163,7 +163,7 @@ function initial(){
 				"value" : "3"
 			},
 			"label" : {
-				"text" : (amesh_support) ? "<#AiMesh_AP_item#>" : "<#OP_AP_item#>"
+				"text" : (amesh_support && ameshRouter_support) ? "<#AiMesh_AP_item#>" : "<#OP_AP_item#>"
 			},
 			"mode" : "3",
 			"express" : "0",
@@ -286,6 +286,11 @@ function initial(){
 		document.getElementById("mbMode").style.display = "none";
 		document.getElementById("sw_mode4_radio").disabled = true;
 	}
+
+	if(isSupport("noAP")){
+		$("#apMode").hide();
+		$("#sw_mode3_radio").attr("disabled", true);
+	}
 }
 
 function restore_wl_config(prefix){
@@ -351,7 +356,7 @@ function saveMode(){
 		}
 	}
 
-	if(amesh_support) {
+	if(amesh_support && ameshRouter_support) {
 		if(!AiMesh_confirm_msg("Operation_Mode", document.form.sw_mode.value))
 			return false;
 	}
@@ -385,7 +390,7 @@ function saveMode(){
 		document.form.wlc_psta.value = 0;
 		document.form.wlc_psta.disabled = false;
 
-		if(amesh_support) {
+		if(amesh_support && ameshRouter_support) {
 			document.form.cfg_master.disabled = false;
 			document.form.cfg_master.value = 1;
 		}
@@ -404,7 +409,7 @@ function saveMode(){
 					restore_wl_config_wep("wl1_");
 					restore_wl_config("wl1.1_");
 				}
-				if(wl_info.band5g_2_support){
+				if(wl_info.band5g_2_support || wl_info.band6g_support){
 					restore_wl_config_wep("wl2_");
 					restore_wl_config("wl2.1_");
 				}
@@ -420,7 +425,7 @@ function saveMode(){
 				close_guest_unit(1,1);
 			}
 			
-			if(wl_info.band5g_2_support){
+			if(wl_info.band5g_2_support || wl_info.band6g_support){
 				inputCtrl(document.form.wl2_ssid,1);
 				inputCtrl(document.form.wl2_crypto,1);
 				inputCtrl(document.form.wl2_wpa_psk,1);
@@ -435,7 +440,11 @@ function saveMode(){
 				document.getElementById('routerSSID').style.height="370px";				
 			}
 
-			if(wl_info.band5g_2_support){
+			if(wl_info.band5g_2_support || wl_info.band6g_support){
+				if(band6g_support){
+					document.getElementById("5g2_title").innerHTML = '6 GHz - <#Security#>';
+				}
+				
 				document.getElementById("wl_unit_field_4").style.display = "";
 				document.getElementById("wl_unit_field_5").style.display = "";
 				document.getElementById("wl_unit_field_6").style.display = "";	
@@ -516,7 +525,7 @@ function applyRule(){
 					document.form.wl1_auth_mode_x.value = "open";
 			}
 
-			if(wl_info.band5g_2_support){
+			if(wl_info.band5g_2_support || wl_info.band6g_support){
 				inputCtrl(document.form.wl2_ssid,1);
 				inputCtrl(document.form.wl2_crypto,1);
 				inputCtrl(document.form.wl2_wpa_psk,1);
@@ -617,7 +626,7 @@ function setScenerion(mode, express){
 			$("#mode_desc").html("<#OP_AP_desc#><br/><span style=\"color:#FC0\"><#OP_AP_hint#></span>");
 		}else{*/
 			var desc = "";
-			if(amesh_support) {
+			if(amesh_support && ameshRouter_support) {
 				desc += "<#AiMesh_AP_desc#>";
 				desc += "<br>";
 				desc += "<#AiMesh_Node_Add#>";
@@ -644,7 +653,7 @@ function setScenerion(mode, express){
 			pstaDesc += "<br/><span style=\"color:#FC0\"><#deviceDiscorvy4#></span>";
 
 		var url = "/images/New_ui/mb.jpg";
-		var height = "250px";
+		var height = "305px";
 		if(odmpid == "RT-AC66U_B1" || odmpid == "RT-AC1750_B1" || odmpid == "RT-N66U_C1" || odmpid == "RT-AC1900U" || odmpid == "RT-AC67U")
 			url = "/images/RT-AC66U_V2/mb.jpg";
 		else if(odmpid == "RP-AC1900")
@@ -681,7 +690,7 @@ function setScenerion(mode, express){
 		else
 			$("#Senario").css({"height": "", "background": "url(/images/New_ui/rt.jpg) center no-repeat", "margin": "auto", "margin-bottom": "30px"});
 		var desc = "";
-		if(amesh_support) {
+		if(amesh_support && ameshRouter_support) {
 			desc += "<#AiMesh_GW_desc#>";
 			desc += "<br>";
 			desc += "<#AiMesh_Node_Add#>";
@@ -756,7 +765,7 @@ function change_smart_con(v){
 }
 </script>
 </head>
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="hiddenMask" class="popup_bg">
 <table cellpadding="4" cellspacing="0" id="dr_sweet_advise" class="dr_sweet_advise" align="center">
@@ -885,7 +894,7 @@ function change_smart_con(v){
 			</td>
 		</tr>
 		<tr id="wl_unit_field_4" style="display:none;">
-			<th width="180">5 GHz-2 - <#Security#> </th>
+			<th id="5g2_title" width="180">5 GHz-2 - <#Security#> </th>
 			<td class="QISformtd" id="wl_unit_field_4_2">
 				<input type="checkbox" id="sync_with_5ghz" name="sync_with_5ghz" tabindex="8" class="input" onclick="setTimeout('Sync_5ghz(2);',0);" checked="checked"><span id="syncCheckbox_5_2"><#qis_ssid_desc#></span>
 			</td>

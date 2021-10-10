@@ -27,6 +27,12 @@
 #noWanPic{
 	width: 350px;
 }
+#noWanDsl{
+	position: absolute;
+	margin-top: -260px;
+	margin-left: -80px;
+	display: none;
+}
 #noWanEth{
 	position: absolute;
 	margin-top: -260px;
@@ -50,7 +56,7 @@
 	color: #4E87CC;
 }
 .sort_background{
-	background-color: #FFFFFFB3
+	background-color: #FFFFFF;
 }
 .sort_field{
 	background: #4E87CC;

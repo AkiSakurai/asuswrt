@@ -94,25 +94,31 @@
 	background-position: 0px 0px;
 }
 .wl1_icon_on{
-	background-position: 0px 120px;
+	background-position: 0px -40px;
 }
 .wl1_1_icon_on{
-	background-position: 0px 80px;
+	background-position: 0px -79px;
 }
 .wl2_icon_on{
-	background-position: 0px 40px;
+	background-position: 0px -119px;
+}
+.wl6_icon_on{
+	background-position: 0px -158px;
 }
 .wl0_icon_off{
 	background-position: 40px 0px;
 }
 .wl1_icon_off{
-	background-position: 40px 80px;
+	background-position: 40px -40px;
 }
 .wl1_1_icon_off{
-	background-position: 40px 120px;
+	background-position: 40px -79px;
 }
 .wl2_icon_off{
-	background-position: 40px 40px;
+	background-position: 40px -119px;
+}
+.wl6_icon_off{
+	background-position: 40px -158px;
 }
 </style>
 <script type="text/javascript" src="/md5.js"></script>
@@ -121,8 +127,8 @@
 <script type="text/javascript" src="/popup.js"></script>
 <script type="text/javascript" src="/help.js"></script>
 <script type="text/javascript" src="/validator.js"></script>
-<script language="JavaScript" type="text/javascript" src="/client_function.js"></script>
 <script language="JavaScript" type="text/javascript" src="/js/jquery.js"></script>
+<script language="JavaScript" type="text/javascript" src="/client_function.js"></script>
 <script language="JavaScript" type="text/javascript" src="/js/httpApi.js"></script>
 <script type="text/javascript" src="/switcherplugin/jquery.iphone-switch.js"></script>
 <script language="JavaScript" type="text/javascript" src="/form.js"></script>
@@ -177,6 +183,8 @@ var MULTIFILTER_ENABLE_orig = decodeURIComponent('<% nvram_char_to_ascii("", "MU
 var MULTIFILTER_MAC_orig = decodeURIComponent('<% nvram_char_to_ascii("", "MULTIFILTER_MAC"); %>').replace(/&#62/g, ">").replace(/&#60/g, "<");
 var MULTIFILTER_DEVICENAME_orig = decodeURIComponent('<% nvram_char_to_ascii("", "MULTIFILTER_DEVICENAME"); %>').replace(/&#62/g, ">").replace(/&#60/g, "<");
 var MULTIFILTER_MACFILTER_DAYTIME_orig = decodeURIComponent('<% nvram_char_to_ascii("", "MULTIFILTER_MACFILTER_DAYTIME"); %>').replace(/&#62/g, ">").replace(/&#60/g, "<");
+if(isSupport("PC_SCHED_V3"))
+	MULTIFILTER_MACFILTER_DAYTIME_orig = decodeURIComponent('<% nvram_char_to_ascii("", "MULTIFILTER_MACFILTER_DAYTIME_V2"); %>').replace(/&#62/g, ">").replace(/&#60/g, "<");
 var MULTIFILTER_num = (MULTIFILTER_MAC_orig == "") ? 0 : MULTIFILTER_ENABLE_orig.split(">").length;
 var wanlink_status = wanlink_statusstr();
 var wanlink_ipaddr = wanlink_ipaddr();
@@ -245,18 +253,25 @@ function initial(){
 
 		show_middle_status(wlc_auth_mode, 0);
 	}
+	else if(sw_mode == 2){
+		var wl_auth_mode = '<% nvram_get("wl0.1_auth_mode_x"); %>';
+		var wl_wep_x = '<% nvram_get("wl0.1_wep_x"); %>';
+		show_middle_status(wl_auth_mode, wl_wep_x);
+	}
 	else
 		show_middle_status(document.form.wl_auth_mode_x.value, parseInt(document.form.wl_wep_x.value));
 
-	if(amesh_support && (isSwMode("rt") || isSwMode("ap"))) {
+	if(amesh_support && (isSwMode("rt") || isSwMode("ap")) && ameshRouter_support) {
 		var html = '<a id="clientStatusLink" href="device-map/amesh.asp" target="statusframe">';
 		html += '<div id="iconAMesh" class="iconAMesh_dis" style="margin-top:20px;" onclick="clickEvent(this);"></div>';
 		html += '</a>';
 		html += '<div class="clients" id="ameshNumber" style="cursor:pointer;"><#AiMesh_Node#>: <span>0</span></div>';
 		$("#ameshContainer").html(html);
 		require(['/require/modules/amesh.js'], function(){
-			updateAMeshCount();
-			setInterval(updateAMeshCount, 5000);
+			if(typeof updateAMeshCount == "function"){
+				updateAMeshCount();
+				setInterval(updateAMeshCount, 5000);
+			}
 		});
 	}
 	else
@@ -360,10 +375,18 @@ function initial(){
 				document.getElementById('rssi_div').style.display = "none";
 			else
 				document.getElementById('rssi_div').style.display = "";
-			if(wlc_band == 0)
-				document.getElementById('wlc_band_status').innerHTML = "2.4GHz"; 
-			else	
-				document.getElementById('wlc_band_status').innerHTML = "5GHz";
+			
+			if(wlc_band == 0){
+				document.getElementById('wlc_band_status').innerHTML = "2.4 GHz"; 
+			}
+			else{
+				if(band6g_support && wlc_band == '2'){
+					document.getElementById('wlc_band_status').innerHTML = "6 GHz";
+				}
+				else{
+					document.getElementById('wlc_band_status').innerHTML = "5 GHz";
+				}				
+			}	
 		}
 		document.getElementById('NM_connect_title').innerHTML = "<#parent_AP_status#> :";
 	}
@@ -373,6 +396,14 @@ function initial(){
 		
 		if(wanlink_ipaddr == '0.0.0.0' || wanlink_ipaddr == '')
 			document.getElementById("wanIP_div").style.display = "none";
+
+		if(wan_bonding_support && orig_bond_wan == "1"){
+			document.getElementById("wanAggr_div").style.display = "block";
+			document.getElementById('single_wan_line').style.display = "none";
+			document.getElementById('primary_wan_line').style.display = "";
+			document.getElementById('secondary_wan_line').style.display = "";
+			$("#background_div").css("background-image", "url('images/New_ui/networkmap/networkmap_bg2.png')")
+		}
 	}
 
 	if(smart_connect_support){
@@ -387,7 +418,11 @@ function initial(){
 	document.list_form.MULTIFILTER_ENABLE.value = MULTIFILTER_ENABLE_orig;
 	document.list_form.MULTIFILTER_MAC.value = MULTIFILTER_MAC_orig;
 	document.list_form.MULTIFILTER_DEVICENAME.value = MULTIFILTER_DEVICENAME_orig;
-	document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value = MULTIFILTER_MACFILTER_DAYTIME_orig;
+	if(isSupport("PC_SCHED_V3"))
+		document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.value = MULTIFILTER_MACFILTER_DAYTIME_orig;
+	else
+		document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value = MULTIFILTER_MACFILTER_DAYTIME_orig;
+
 	updateClientsCount();
 
 	if(isSwMode("mb")){
@@ -730,9 +765,10 @@ function get_clicked_device_order(){
 }
 
 function clickEvent(obj){
-	if(amesh_support && (isSwMode("rt") || isSwMode("ap"))) {
+	if(amesh_support && (isSwMode("rt") || isSwMode("ap")) && ameshRouter_support) {
 		require(['/require/modules/amesh.js'], function(){
-			initial_amesh_obj();
+			if(typeof initial_amesh_obj == "function")
+				initial_amesh_obj();
 		});	
 	}
 	var icon;
@@ -850,7 +886,7 @@ function clickEvent(obj){
 		if(lastClicked.id.indexOf("USBdisk") > 0)
 			lastClicked.style.backgroundPosition = '1px -4px';
 		else if(lastClicked.id.indexOf("iconRouter") >= 0){
-			lastClicked.style.backgroundPosition = '35% -3%';
+			lastClicked.style.backgroundPosition = '60% -3%';
 		}
 		else if(lastClicked.id.indexOf("AMesh") > 0) {
 			lastClicked.classList.remove('iconAMesh');
@@ -880,7 +916,7 @@ function clickEvent(obj){
 		obj.style.backgroundPosition = '0% 100%';
 	}
 	else if(obj.id.indexOf("iconRouter") >= 0){
-		obj.style.backgroundPosition = '35% 100%';
+		obj.style.backgroundPosition = '60% 100%';
 	}
 	else if(obj.id.indexOf("AMesh") > 0) {
 		obj.classList.add('iconAMesh');
@@ -1244,7 +1280,10 @@ function edit_confirm(){
 			document.list_form.MULTIFILTER_ENABLE.disabled = true;
 			document.list_form.MULTIFILTER_MAC.disabled = true;
 			document.list_form.MULTIFILTER_DEVICENAME.disabled = true;
-			document.list_form.MULTIFILTER_MACFILTER_DAYTIME.disabled = true;
+			if(isSupport("PC_SCHED_V3"))
+				document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.disabled = true;
+			else
+				document.list_form.MULTIFILTER_MACFILTER_DAYTIME.disabled = true;
 		}
 		else {
 			document.list_form.flag.value = "";
@@ -1263,12 +1302,18 @@ function edit_confirm(){
 			document.list_form.MULTIFILTER_ENABLE.disabled = false;
 			document.list_form.MULTIFILTER_MAC.disabled = false;
 			document.list_form.MULTIFILTER_DEVICENAME.disabled = false;
-			document.list_form.MULTIFILTER_MACFILTER_DAYTIME.disabled = false;
+			if(isSupport("PC_SCHED_V3"))
+				document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.disabled = false;
+			else
+				document.list_form.MULTIFILTER_MACFILTER_DAYTIME.disabled = false;
 		}
 		MULTIFILTER_ENABLE_orig = document.list_form.MULTIFILTER_ENABLE.value;
 		MULTIFILTER_MAC_orig = document.list_form.MULTIFILTER_MAC.value;
 		MULTIFILTER_DEVICENAME_orig = document.list_form.MULTIFILTER_DEVICENAME.value;
-		MULTIFILTER_MACFILTER_DAYTIME_orig = document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value;
+		if(isSupport("PC_SCHED_V3"))
+			MULTIFILTER_MACFILTER_DAYTIME_orig = document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.value;
+		else
+			MULTIFILTER_MACFILTER_DAYTIME_orig = document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value;
 
 		// handle user image
 		document.list_form.custom_usericon.disabled = true;
@@ -1291,7 +1336,7 @@ function edit_confirm(){
 			document.getElementById("loadingIcon").style.display = "";
 			setTimeout(function(){
 				if(timeSchedulingFlag && document.getElementById("internetTimeScheduling").style.display == "none") { //if the latest internetMode is not time mode, then redirect to ParentalControl
-					redirectTimeScheduling();
+					redirectTimeScheduling(document.getElementById('macaddr_field').value);
 				}
 				else {
 					document.getElementById("statusframe").contentWindow.refreshpage();
@@ -1302,7 +1347,7 @@ function edit_confirm(){
 			hideEditBlock(); 
 			setTimeout(function(){
 				if(timeSchedulingFlag && document.getElementById("internetTimeScheduling").style.display == "none") { //if the latest internetMode is not time mode, then redirect to ParentalControl
-					redirectTimeScheduling();
+					redirectTimeScheduling(document.getElementById('macaddr_field').value);
 				}
 				else {
 					refreshpage();
@@ -1470,7 +1515,10 @@ function popupEditBlock(clientObj){
 		document.list_form.MULTIFILTER_ENABLE.value = MULTIFILTER_ENABLE_orig;
 		document.list_form.MULTIFILTER_MAC.value = MULTIFILTER_MAC_orig;
 		document.list_form.MULTIFILTER_DEVICENAME.value = MULTIFILTER_DEVICENAME_orig;
-		document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value = MULTIFILTER_MACFILTER_DAYTIME_orig;
+		if(isSupport("PC_SCHED_V3"))
+			document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.value = MULTIFILTER_MACFILTER_DAYTIME_orig;
+		else
+			document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value = MULTIFILTER_MACFILTER_DAYTIME_orig;
 		document.getElementById("divDropClientImage").ondrop = null;
 		document.getElementById("internetTimeScheduling").style.display = "none";
 		if(sw_mode == "1" && !clientObj.amesh_isRe) {
@@ -1481,14 +1529,6 @@ function popupEditBlock(clientObj){
 		}
 		document.getElementById("custom_image").style.display = "none";
 		document.getElementById("changeIconTitle").innerHTML = "<#CTL_Change#>";
-		
-		var convRSSI = function(val) {
-			val = parseInt(val);
-			if(val >= -50) return 4;
-			else if(val >= -80)	return Math.ceil((24 + ((val + 80) * 26)/10)/25);
-			else if(val >= -90)	return Math.ceil((((val + 90) * 26)/10)/25);
-			else return 1;
-		};
 
 		var rssi_t = 0;
 		var connectModeTip = "";
@@ -1498,7 +1538,7 @@ function popupEditBlock(clientObj){
 			connectModeTip = "<#tm_wired#>";
 		}
 		else {
-			rssi_t = convRSSI(clientObj.rssi);
+			rssi_t = client_convRSSI(clientObj.rssi);
 			switch (rssi_t) {
 				case 1:
 					connectModeTip = "<#Radio#>: <#PASS_score1#>\n";
@@ -1523,13 +1563,16 @@ function popupEditBlock(clientObj){
 		}
 
 		if(sw_mode != 4){
-			clientIconHtml += '<div class="radioIcon radio_' + rssi_t +'" title="' + connectModeTip + '"></div>';
+			var radioIcon_css = "radioIcon";
+			if(clientObj.isGN != "" && clientObj.isGN != undefined)
+				radioIcon_css += " GN";
+			clientIconHtml += '<div class="' + radioIcon_css + ' radio_' + rssi_t +'" title="' + connectModeTip + '"></div>';
 			if(clientObj.isWL != 0) {
 				var bandClass = "band_txt";
 				if(navigator.userAgent.toUpperCase().match(/CHROME\/([\d.]+)/)){
 					bandClass = "band_txt_chrome";
 				}
-				clientIconHtml += '<div class="band_block"><span class="' + bandClass + '">' + wl_nband_title[clientObj.isWL-1].replace("Hz", "") + '</span></div>';
+				clientIconHtml += '<div class="band_block"><span class="' + bandClass + '">' + isWL_map[clientObj.isWL]["text"] + '</span></div>';
 			}
 			document.getElementById('client_interface').innerHTML = clientIconHtml;
 			document.getElementById('client_interface').title = connectModeTip;
@@ -1804,10 +1847,11 @@ function popupEditBlock(clientObj){
 
 function check_usb3(){
 	if(based_modelid == "DSL-AC68U" || based_modelid == "RT-AC3200" || based_modelid == "RT-AC87U" || based_modelid == "RT-AC68U" || based_modelid == "RT-AC68A" || based_modelid == "RT-AC56S" || based_modelid == "RT-AC56U" || based_modelid == "RT-AC55U" || based_modelid == "RT-AC55UHP" || based_modelid == "RT-N18U" || based_modelid == "RT-AC88U" || based_modelid == "RT-AC86U" || based_modelid == "GT-AC2900" || based_modelid == "RT-AC3100" || based_modelid == "RT-AC5300" || based_modelid == "RP-AC68U" || based_modelid == "RT-AC58U"  || based_modelid == "RT-AC82U" ||
-	based_modelid == "MAP-AC3000" || based_modelid == "RT-AC85P" || based_modelid == "RT-AC85U" || based_modelid == "RT-AC65U"|| based_modelid == "4G-AC68U" || based_modelid == "BLUECAVE" || based_modelid == "RT-AX92U" || based_modelid == "RT-AX95Q" || based_modelid == "RT-AX56_XD4" || based_modelid == "RT-AX58U" || based_modelid == "TUF-AX3000" || based_modelid == "RT-AX82U" || based_modelid == "RT-AX56U" || based_modelid == "RT-ACRH26"){
+	based_modelid == "MAP-AC3000" || based_modelid == "RT-AC85P" || based_modelid == "RT-AC85U" || based_modelid == "RT-AC65U"|| based_modelid == "4G-AC68U" || based_modelid == "BLUECAVE" || based_modelid == "RT-AX92U" || based_modelid == "RT-AX95Q" || based_modelid == "RT-AXE95Q" || based_modelid == "RT-AX56_XD4" || based_modelid == "CT-AX56_XD4" || based_modelid == "RT-AX58U" || based_modelid == "TUF-AX3000" || based_modelid == "RT-AX82U" || based_modelid == "RT-AX56U" || based_modelid == "RT-ACRH26" || based_modelid == "GS-AX3000" || based_modelid == "GS-AX5400"){
 		document.getElementById('usb_text_1').innerHTML = "USB 3.0";
 	}
-	else if(based_modelid == "RT-AC88Q" || based_modelid == "RT-AX89U" || based_modelid == "RT-AD7200" || based_modelid == "RT-N65U" || based_modelid == "GT-AC5300" || based_modelid == "RT-AX88U" || based_modelid == "GT-AX11000" || based_modelid == "GT-AC9600" || based_modelid == "GT-AXY16000"){
+	else if(based_modelid == "RT-AC88Q" || based_modelid == "RT-AX89U" || based_modelid == "RT-AD7200" || based_modelid == "RT-N65U" || based_modelid == "GT-AC5300" || based_modelid == "RT-AX88U" || based_modelid == "GT-AX11000" || based_modelid == "GT-AC9600" || based_modelid == "GT-AXY16000" || based_modelid == "GT-AXE11000"){
+
 		document.getElementById('usb_text_1').innerHTML = "USB 3.0";
 		document.getElementById('usb_text_2').innerHTML = "USB 3.0";
 	}
@@ -1828,7 +1872,10 @@ function addToBlockMacList(macAddr){
 					document.list_form.MULTIFILTER_ENABLE.value += "2";
 				document.list_form.MULTIFILTER_MAC.value += macAddr;
 				document.list_form.MULTIFILTER_DEVICENAME.value += document.getElementById("client_name").value.trim();
-				document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value += "<";
+				if(isSupport("PC_SCHED_V3"))
+					document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.value += "W03E21000700<W04122000800";
+				else
+					document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value += "<";
 			}
 			else {
 				document.list_form.MULTIFILTER_ENABLE.value += ">";
@@ -1840,7 +1887,10 @@ function addToBlockMacList(macAddr){
 				document.list_form.MULTIFILTER_MAC.value += macAddr;
 				document.list_form.MULTIFILTER_DEVICENAME.value += ">";
 				document.list_form.MULTIFILTER_DEVICENAME.value += document.getElementById("client_name").value.trim();
-				document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value += "><";
+				if(isSupport("PC_SCHED_V3"))
+					document.list_form.MULTIFILTER_MACFILTER_DAYTIME_V2.value += ">W03E21000700<W04122000800";
+				else
+					document.list_form.MULTIFILTER_MACFILTER_DAYTIME.value += "><";
 			}
 		}
 	}
@@ -1995,10 +2045,6 @@ function previewImage(imageObj) {
 	}
 }
 
-function redirectTimeScheduling() {
-	cookie.set("time_scheduling_mac", document.getElementById('macaddr_field').value, 1);
-	location.href = "ParentalControl.asp" ;
-}
 function updateClientsCount() {
 	//When not click iconClient and not click View Client List need update client count.
 	var viewlist_obj = document.getElementById("clientlist_viewlist_content");
@@ -2032,7 +2078,12 @@ function check_wireless(){
 		}
 		temp = (wl1_radio == "1") ? "wl1_icon_on" : "wl1_icon_off";
 		if(band5g2_support){
-			temp = (wl1_radio == "1") ? "wl1_1_icon_on" : "wl1_1_icon_off";
+			if(band6g_support){
+				temp = (wl1_radio == "1") ? "wl1_icon_on" : "wl1_icon_off";
+			}
+			else{
+				temp = (wl1_radio == "1") ? "wl1_1_icon_on" : "wl1_1_icon_off";
+			}	
 		}
 
 		$("#wl1_icon").show();
@@ -2044,7 +2095,14 @@ function check_wireless(){
 		if (isSwMode('mb')) {
 			wl2_radio = '0';
 		}
-		temp = (wl2_radio == "1") ? "wl2_icon_on" : "wl2_icon_off";
+
+		if(band6g_support){
+			temp = (wl2_radio == "1") ? "wl6_icon_on" : "wl6_icon_off";
+		}
+		else{
+			temp = (wl2_radio == "1") ? "wl2_icon_on" : "wl2_icon_off";
+		}
+		
 		$("#wl2_icon").show();
 		$("#wl2_icon").addClass(temp);
 	}
@@ -2156,6 +2214,7 @@ function notice_apply(){
 	<input type="hidden" name="MULTIFILTER_MAC" value="" disabled>
 	<input type="hidden" name="MULTIFILTER_DEVICENAME" value="" disabled>
 	<input type="hidden" name="MULTIFILTER_MACFILTER_DAYTIME" value="" disabled>
+	<input type="hidden" name="MULTIFILTER_MACFILTER_DAYTIME_V2" value="" disabled>
 </form>
 
 <form method="post" name="maclist_form" id="maclist_form" action="/start_apply2.htm" target="hidden_frame">
@@ -2415,7 +2474,7 @@ function notice_apply(){
 						<span id="time_scheduling_title" onmouseover="return overlib('Time Scheduling allows you to set the time limit for a client\'s network usage.');" onmouseout="return nd();"><#Parental_Control#></span><!--untranslated-->
 					</div>
 					<div align="center" class="left" style="cursor:pointer;float:right;" id="radio_TimeScheduling_enable"></div>
-					<div id="internetTimeScheduling" class="internetTimeEdit" style="float:right;margin-right:10px;" title="<#Time_Scheduling#>" onclick="redirectTimeScheduling();" ></div>
+					<div id="internetTimeScheduling" class="internetTimeEdit" style="float:right;margin-right:10px;" title="<#Time_Scheduling#>" onclick="redirectTimeScheduling(document.getElementById('macaddr_field').value);" ></div>
 				</div>
 				<div class="clientList_line"></div>
 				<div style="height:32px;width:100%;margin:5px 0;">
@@ -2441,7 +2500,7 @@ function notice_apply(){
 							});
 						}
 
-						if(wl_info.band5g_2_support){
+						if(wl_info.band5g_2_support || wl_info.band6g_support){
 							'<% nvram_get("wl2_maclist_x"); %>'.split("&#60").forEach(function(element, index){
 								if(wl0_maclist_x_array.indexOf(element) == -1) wl0_maclist_x_array.push(element);
 							});
@@ -2482,13 +2541,13 @@ function notice_apply(){
 		<div id="tabMenu"></div>
 		<div id="NM_shift" style="margin-top:-140px;"></div>
 		<div id="NM_table" class="NM_table" >
-		<div id="NM_table_div" style="background-color:rgba(0,0,0,.5);height:805px;">
-			<div style="width:51%;float:left;background:url('images/New_ui/networkmap/networkmap_bg.png') no-repeat rgba(0,0,0,.5);background-position-x: 4px; height:805px;">
+		<div id="NM_table_div" style="background-color:rgba(0,0,0,.5);height:810px;">
+			<div id="background_div" style="width:51%;float:left;background:url('images/New_ui/networkmap/networkmap_bg.png') no-repeat rgba(0,0,0,.5);background-position-x: 4px; height:810px;">
 			<table id="_NM_table" border="0" cellpadding="0" cellspacing="0" style="opacity:.95;margin-left:-30px;" >
 				<tr>
 					<td width="40px" rowspan="11" valign="center"></td>
 					<!--== Dual WAN ==-->
-					<td id="primary_wan_icon" width="160px;" align="center" class="NM_radius" onclick="showstausframe('Internet_primary');" style="display:none;height:180px">
+					<td id="primary_wan_icon" width="160px;" align="center" class="NM_radius" onclick="showstausframe('Internet_primary');" style="display:none;height:140px; padding-top: 10px;">
 						<a href="/device-map/internet.asp" target="statusframe"><div id="iconInternet_primary" onclick="clickEvent(this);"></div></a>
 						<div id="first_wan_title"><#dualwan_primary#>:</div>
 						<div id="primary_pap_concurrent" style="display:none">
@@ -2500,7 +2559,7 @@ function notice_apply(){
 					</td>
 					<td id="dual_wan_gap" width="40px" style="display:none">
 					</td>
-					<td id="secondary_wan_icon" width="160px;" align="center" class="NM_radius" onclick="showstausframe('Internet_secondary');" style="display:none;height:180px">
+					<td id="secondary_wan_icon" width="160px;" align="center" class="NM_radius" onclick="showstausframe('Internet_secondary');" style="display:none;height:140px; padding-top: 10px;">
 						<a href="/device-map/internet.asp" target="statusframe"><div id="iconInternet_secondary" onclick="clickEvent(this);"></div></a>
 						<div id="second_wan_title"><#dualwan_secondary#>:</div>
 						<div id="secondary_pap_concurrent" style="display:none">
@@ -2511,10 +2570,10 @@ function notice_apply(){
 						<div style="padding:5px"><strong id="secondary_status"></strong></div>
 					</td>
 					<!--== single WAN ==-->
-					<td id="single_wan_icon" align="right" class="NM_radius_left" style="height:180px" onclick="showstausframe('Internet');">
+					<td id="single_wan_icon" align="right" class="NM_radius_left" style="height:147px" onclick="showstausframe('Internet');">
 						<a href="/device-map/internet.asp" target="statusframe"><div id="iconInternet" onclick="clickEvent(this);"></div></a>
 					</td>
-					<td id="single_wan_status" colspan="2" class="NM_radius_right" onclick="" style="padding:5px;cursor:auto;width:180px;height:170px">
+					<td id="single_wan_status" colspan="2" class="NM_radius_right" onclick="" style="padding:5px;cursor:auto;width:180px;height:143px">
 						<div>
 							<span id="NM_connect_title" style="font-size:12px;font-family: Verdana, Arial, Helvetica, sans-serif;"><#statusTitle_Internet#>:</span>
 							<br>
@@ -2542,23 +2601,27 @@ function notice_apply(){
 							<span style="font-size:14px;font-family: Verdana, Arial, Helvetica, sans-serif;">RSSI:</span>
 							<strong id="rssi_status" class="index_status" style="font-size:14px;"></strong>
 						</div>
+						<div id="wanAggr_div" style="margin-top:5px;display:none;">
+							<span style="font-size:14px;font-family: Verdana, Arial, Helvetica, sans-serif; color: #FFCC00;">WAN Aggregation:</span>
+							<strong id="wan_bonding_status" class="index_status" style="font-size:14px;"></strong>
+						</div>
 					</td>
 				</tr>
-				<tr style="display:none">
+				<tr>
 					<!--==line of dual wan==-->
-					<td id="primary_wan_line"  height="35px" style="display:none;">
+					<td id="primary_wan_line">
 						<div id="primary_line" class="primary_wan_connected"></div>
 					</td>
-					<td id="secondary_wan_line" colspan="2" height="35px"  style="display:none;">
+					<td id="secondary_wan_line" colspan="2" style="display:none;">
 						<div id="secondary_line" class="secondary_wan_connected"></div>
 					</td>
 					<!--==line of single wan==-->
-					<td id="single_wan_line" colspan="3" align="center" height="35px">
+					<td id="single_wan_line" colspan="3" align="center">
 						<div id="single_wan" class="single_wan_connected"></div>
 					</td>
 				</tr>			
 				<tr>
-					<td style="height:150px;" colspan="3">
+					<td style="height:130px;" colspan="3">
 					<div style="width:350px;">
 						<div style="display:table-cell;width:100px;text-align: center;">
 							<div>

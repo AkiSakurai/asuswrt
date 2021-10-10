@@ -46,6 +46,14 @@ static int LED_status = -1;
 static int LED_status_changed = 0;
 static int LED_status_first = 1;
 static int LED_status_on = -1;
+#ifdef RTAX82U
+static int phystatus_period = -1;
+static int phystatus = -1;
+static int phystatus_old = -1;
+#endif
+#if defined(RTAX82U) && !defined(RTCONFIG_BCM_MFG)
+static int force_down = 0;
+#endif
 
 static void
 alarmtimer(unsigned long sec, unsigned long usec)
@@ -54,14 +62,6 @@ alarmtimer(unsigned long sec, unsigned long usec)
 	itv.it_value.tv_usec = usec;
 	itv.it_interval = itv.it_value;
 	setitimer(ITIMER_REAL, &itv, NULL);
-}
-
-static void ledbtn_exit(int sig)
-{
-	alarmtimer(0, 0);
-
-	remove("/var/run/ledbtn.pid");
-	exit(0);
 }
 
 static void ledbtn_init()
@@ -76,7 +76,11 @@ static void ledbtn_alarmtimer()
 static void ledbtn(int sig)
 {
 	LED_status = 0;
+#if !defined(RTCONFIG_LED_BTN) && !defined(RTCONFIG_WIFI_TOG_BTN)
+	int val = button_pressed(BTN_WPS) && nvram_match("btn_ez_radiotoggle", "0") && nvram_match("btn_ez_mode", "1");
+#else
 	int val = button_pressed(BTN_LED);
+#endif
 	if (val) {
 		if (!btn_led_pressed)
 		{
@@ -88,7 +92,8 @@ static void ledbtn(int sig)
 			if ((ledg_scheme >= LEDG_SCHEME_BLINKING) || (ledg_scheme == LEDG_SCHEME_OFF)) {
 				if (ledg_scheme == LEDG_SCHEME_OFF)
 					LED_status = 1;
-				ledg_scheme = LEDG_SCHEME_WATER_FLOW;
+				if (nvram_default_get("ledg_scheme"))
+					nvram_set("ledg_scheme", nvram_default_get("ledg_scheme"));
 			} else {
 				ledg_scheme = (ledg_scheme + 1) % (LEDG_SCHEME_MAX - 2);
 				if (ledg_scheme == LEDG_SCHEME_OFF)
@@ -159,6 +164,50 @@ static void ledbtn(int sig)
 		else
 			setAllLedOff();
 	}
+
+#if defined(RTAX82U) && !defined(RTCONFIG_BCM_MFG)
+	if (!nvram_get_int("LED_order")) {
+		if (nvram_get_int("asus_mfg")) return;
+
+		if (!nvram_get_int("AllLED")) return;
+
+		phystatus_period = (phystatus_period + 1) % 10;
+
+		if (phystatus_period) return;
+
+		phystatus_old = phystatus;
+		phystatus = hnd_get_phy_status(4);
+		if (phystatus != phystatus_old) {
+			if (force_down) {
+				alarmtimer(0, 0);
+				return;
+			}
+
+			eval("wl", "-i", "eth6", "ledbh", "15", (phystatus == 1) ? "0" : "1");
+		}
+	}
+#endif
+}
+
+#ifdef RTAX82U
+static void phystatus_reset(int sig)
+{
+	phystatus = phystatus_old = -1;
+}
+#endif
+
+static void ledbtn_exit(int sig)
+{
+#if defined(RTAX82U) && !defined(RTCONFIG_BCM_MFG)
+	if (!nvram_get_int("LED_order") && !nvram_get_int("asus_mfg") && nvram_get_int("AllLED")) {
+		force_down = 1;
+		eval("wl", "-i", "eth6", "ledbh", "15", "1");
+	}
+#endif
+	alarmtimer(0, 0);
+
+	remove("/var/run/ledbtn.pid");
+	exit(0);
 }
 
 int
@@ -178,10 +227,18 @@ ledbtn_main(int argc, char *argv[])
 	sigemptyset(&sigs_to_catch);
 	sigaddset(&sigs_to_catch, SIGALRM);
 	sigaddset(&sigs_to_catch, SIGTERM);
+#if defined(RTAX82U) && !defined(RTCONFIG_BCM_MFG)
+	if (!nvram_get_int("LED_order"))
+	sigaddset(&sigs_to_catch, SIGUSR1);
+#endif
 	sigprocmask(SIG_UNBLOCK, &sigs_to_catch, NULL);
 
 	signal(SIGALRM, ledbtn);
 	signal(SIGTERM, ledbtn_exit);
+#if defined(RTAX82U) && !defined(RTCONFIG_BCM_MFG)
+	if (!nvram_get_int("LED_order"))
+	signal(SIGUSR1, phystatus_reset);
+#endif
 
 	ledbtn_init();
 	ledbtn_alarmtimer();

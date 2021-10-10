@@ -4,3 +4,10 @@
 .unplug{
 	background: url('../../images/modem_unplug.png') no-repeat;
 }
+.productIconContainer > div{
+	background: #0b59c5;
+}
+.productIconContainer > div > div{
+	width: 250px;
+	height: 250px;
+}

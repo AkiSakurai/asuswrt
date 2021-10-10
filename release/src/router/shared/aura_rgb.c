@@ -14,18 +14,19 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include <aura_rgb.h>
 #include <shutils.h>
 #include <shared.h>
 #include "i2c-dev.h"
 
-#if defined(GTAX6000) || defined(GTAX11000)
+#if defined(GTAXY16000) || defined(GTAX11000) || defined(GTAC2900) || defined(GTAXE11000)
 #define	I2C_SLAVE_ADDR	0x4E
 #endif
 
 #ifndef I2C_SLAVE_ADDR
-#error Define your model I2C address
+#error "Define your model's I2C address"
 #endif
 
 extern __s32 i2c_smbus_read_byte(int file);
@@ -96,6 +97,9 @@ aura_rgb_led(int type, RGB_LED_STATUS_T *status, int group, int from_server)
 	char rgb_cmd[255] = {0};
 	int i, ret = 0;
 	char i2c_addr[12];
+#if defined(GTAC2900) || defined(GTAXE11000)
+	int y, num_of_set = 1;
+#endif
 
 	snprintf(i2c_addr, sizeof(i2c_addr), "%2x", I2C_SLAVE_ADDR);
 	ASS_DEBUG("RGB LED AURA SYNC\n");
@@ -127,19 +131,19 @@ aura_rgb_led(int type, RGB_LED_STATUS_T *status, int group, int from_server)
 		i = group;
 		{
 			//get Red
-			snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_RED + (i*16));
+			snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_RED);
 			ASS_DEBUG("#AURA get: %s\n", rgb_cmd);
 			system(rgb_cmd);
 			if(rgb_read_byte(&status->red) < 0) return -1;
 
 			//get Green
-			snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_GREEN + (i*16));
+			snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_GREEN);
 			ASS_DEBUG("#AURA get: %s\n", rgb_cmd);
 			system(rgb_cmd);
 			if(rgb_read_byte(&status->green) < 0) return -1;
 
 			//get Blue
-			snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_BLUE + (i*16));
+			snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_BLUE);
 			ASS_DEBUG("#AURA get: %s\n", rgb_cmd);
 			system(rgb_cmd);
 			if(rgb_read_byte(&status->blue) < 0) return -1;
@@ -189,37 +193,61 @@ aura_rgb_led(int type, RGB_LED_STATUS_T *status, int group, int from_server)
 			ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
 			system(rgb_cmd);
 
-			//set Red
-			if(pStatus->red >= 0 && pStatus->red <= 255)
+			//set RGB
+			if(pStatus->red >= 0 && pStatus->red <= 255 && pStatus->green >= 0 && pStatus->green <= 255 && pStatus->blue >= 0 && pStatus->blue <= 255)
 			{
-				snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_RED + (i*16));
+				snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_RED);
 				ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
 				system(rgb_cmd);
 				snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0x03 0x01 0x%02x i", I2C_SLAVE_ADDR, pStatus->red);
 				ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
 				system(rgb_cmd);
-			}
 
-			if(pStatus->green >= 0 && pStatus->green <= 255)
-			{
-				//set Green
-				snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_GREEN + (i*16));
+				snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_GREEN);
 				ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
 				system(rgb_cmd);
 				snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0x03 0x01 0x%02x i", I2C_SLAVE_ADDR, pStatus->green);
 				ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
 				system(rgb_cmd);
-			}
 
-			if(pStatus->blue >= 0 && pStatus->blue <= 255)
-			{
-				//set Blue
-				snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_BLUE + (i*16));
+				snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_BLUE);
 				ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
 				system(rgb_cmd);
 				snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0x03 0x01 0x%02x i", I2C_SLAVE_ADDR, pStatus->blue);
 				ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
 				system(rgb_cmd);
+#if defined(GTAC2900) || defined(GTAXE11000)
+				//handle multiple sets RGB LEDs
+#if defined(GTAC2900)
+				num_of_set = 5;
+#elif defined(GTAXE11000)
+				num_of_set = 3;
+#endif
+				for( y = 1; y < 5; y++)
+				{
+
+					snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_RED + (y * 3));
+					ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
+					system(rgb_cmd);
+					snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0x03 0x01 0x%02x i", I2C_SLAVE_ADDR, pStatus->red);
+					ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
+					system(rgb_cmd);
+
+					snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_GREEN + (y * 3));
+					ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
+					system(rgb_cmd);
+					snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0x03 0x01 0x%02x i", I2C_SLAVE_ADDR, pStatus->green);
+					ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
+					system(rgb_cmd);
+
+					snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_BLUE + (y * 3));
+					ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
+					system(rgb_cmd);
+					snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0x03 0x01 0x%02x i", I2C_SLAVE_ADDR, pStatus->blue);
+					ASS_DEBUG("#AURA set: %s\n", rgb_cmd);
+					system(rgb_cmd);
+				}
+#endif
 			}
 
 			//set control stop
@@ -370,7 +398,7 @@ int __nv_to_rgb(char *aurargb_val, RGB_LED_STATUS_T *out_rgb)
 		out_rgb->direction = (unsigned char) convert_val;
 	else
 		return -1;
-_dprintf("[%s]:%d,%d,%d,%d,%d,%d\n",__func__,out_rgb->red, out_rgb->green, out_rgb->blue, out_rgb->mode, out_rgb->speed, out_rgb->direction);
+ASS_DEBUG("[%s]:%d,%d,%d,%d,%d,%d\n",__func__,out_rgb->red, out_rgb->green, out_rgb->blue, out_rgb->mode, out_rgb->speed, out_rgb->direction);
 	return 0;
 }
 
@@ -459,3 +487,66 @@ int switch_rgb_mode(char *nv_name, RGB_LED_STATUS_T *out_rgb, int led_onoff)
 	_dprintf("[%s]:%d,%d,%d,%d,%d,%d\n", __func__ ,out_rgb->red, out_rgb->green, out_rgb->blue, out_rgb->mode, out_rgb->speed, out_rgb->direction);
 	return 0;
 }
+
+#if defined(RTCONFIG_RGBLED) && defined(GTAC2900)
+int send_aura_event(const char *event_name)
+{
+	nvram_set("aura_event", event_name);
+	kill_pidfile_s("/var/run/aura_rgb_nt.pid", SIGUSR1);
+	return 0;
+}
+
+int check_aura_rgb_reg(void)
+{
+	int y=0;
+#if defined(GTAC2900)
+	int led_num = 5;
+#else
+	int led_num = 1;
+#endif
+	char rgb_cmd[255] = {0};
+	RGB_LED_STATUS_T rgb_cfg = {0};
+	RGB_LED_STATUS_T rgb_cfg_nv = { 0 };
+
+	if (inhibit_led_on() || !nvram_get_int("aurargb_enable"))
+	{
+		memset(&rgb_cfg_nv, 0x00, sizeof(rgb_cfg_nv));
+	}
+	else if(nv_to_rgb("aurargb_val", &rgb_cfg_nv) == -1)
+	{
+		return -1;
+	}
+	else if(rgb_cfg_nv.mode == 0)
+	{
+		return -1;
+	}
+
+	for(y = 0; y < led_num; y++){
+		memset(&rgb_cfg, 0x00, sizeof(rgb_cfg));
+		//get Red
+		snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_RED + (y * 3));
+		ASS_DEBUG("#AURA get: %s\n", rgb_cmd);
+		system(rgb_cmd);
+		if(rgb_read_byte(&rgb_cfg.red) < 0) return -1;
+
+		//get Green
+		snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_GREEN + (y * 3));
+		ASS_DEBUG("#AURA get: %s\n", rgb_cmd);
+		system(rgb_cmd);
+		if(rgb_read_byte(&rgb_cfg.green) < 0) return -1;
+
+		//get Blue
+		snprintf(rgb_cmd, sizeof(rgb_cmd), "i2cset -y 0 0x%02x 0 0x80 0x%02x i", I2C_SLAVE_ADDR, RGBLED_USER_BLUE + (y * 3));
+		ASS_DEBUG("#AURA get: %s\n", rgb_cmd);
+		system(rgb_cmd);
+		if(rgb_read_byte(&rgb_cfg.blue) < 0) return -1;
+
+		if(rgb_cfg.red != rgb_cfg_nv.red || rgb_cfg.green != rgb_cfg_nv.green || rgb_cfg.blue != rgb_cfg_nv.blue){
+			dbg("aura_rgb_val: %d %d %d\n", rgb_cfg_nv.red, rgb_cfg_nv.green, rgb_cfg_nv.blue);
+			dbg("led%d: %d %d %d\n", led_num, rgb_cfg.red, rgb_cfg.green, rgb_cfg.blue);
+			return -1;
+		}
+	}
+	return 0;
+}
+#endif

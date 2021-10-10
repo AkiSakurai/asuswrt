@@ -7,8 +7,12 @@ static int is_mesh_re_mode()
 	int re_mode = 0;
 #if defined(RTCONFIG_AMAS) // aimesh
 	re_mode |= nvram_get_int("re_mode");
-#elif defined(RTCONFIG_WIFI_SON) // Lyra
-	re_mode |= !nvram_get_int("cfg_master");
+#endif
+#if defined(RTCONFIG_WIFI_SON) // Lyra
+	if(nvram_match("wifison_ready", "1")) {
+		re_mode = 0; /* overwrite AMAS */
+		re_mode |= !nvram_get_int("cfg_master");
+	}
 #endif
 	return re_mode;
 }
@@ -30,7 +34,7 @@ void start_aae()
 		// add enable
 		//nvram_set_int("aae_enable", (nvram_get_int("aae_enable") | 1));
 		system("aaews &");
-		logmessage("AAE", "AAE Service is started");
+		//logmessage("AAE", "AAE Service is started");
 	}
 }
 
@@ -44,7 +48,7 @@ void stop_aae()
 	// remove enable
 	nvram_set_int("aae_enable", (nvram_get_int("aae_enable") & ~1));
 	killall_tk("aaews");
-	logmessage("NAT Tunnel", "AAE Service is stopped");
+	//logmessage("NAT Tunnel", "AAE Service is stopped");
 }
 
 void start_aae_sip_conn(int sdk_init)
@@ -117,6 +121,11 @@ void start_mastiff()
 #endif
 	return;
 
+#ifdef RTCONFIG_MFGFW
+	if(nvram_match("mfgfw", "1"))
+		return;
+#endif
+
 	if (is_mesh_re_mode())
 		return;
 
@@ -132,7 +141,7 @@ void start_mastiff()
 
 	if ( !pids("mastiff" )){
 		system("mastiff &");
-		logmessage("AAE", "AAE Service is started");
+		//logmessage("AAE", "AAE Service is started");
 		//start_aae();
 	}
 
@@ -146,7 +155,7 @@ void stop_mastiff()
 	}
 	
 	killall_tk("mastiff");
-	logmessage("NAT Tunnel", "AAE Service is stopped");
+	//logmessage("NAT Tunnel", "AAE Service is stopped");
 	
 	stop_aae();
 }

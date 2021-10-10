@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcmwifi_rspec.c 779517 2019-10-01 14:48:46Z $
+ * $Id: bcmwifi_rspec.c 787915 2020-06-16 09:14:08Z $
  */
 
 #include <typedefs.h>
@@ -77,13 +77,14 @@ wf_he_rspec_to_rate(ratespec_t rspec)
 	uint bw =  RSPEC_BW(rspec) >> WL_RSPEC_BW_SHIFT;
 	uint gi =  RSPEC_HE_LTF_GI(rspec);
 
-	ASSERT(mcs <= WLC_MAX_HE_MCS);
-	ASSERT(nss != 0 && nss <= 8);
-
 	if (mcs <= WLC_MAX_HE_MCS && nss != 0 && nss <= 8) {
 		return wf_he_mcs_to_rate(mcs, nss, bw, gi, dcm);
 	}
-
+#ifdef BCMDBG
+	printf("%s: rspec %x, mcs %u, nss %u\n", __FUNCTION__, rspec, mcs, nss);
+#endif // endif
+	ASSERT(mcs <= WLC_MAX_HE_MCS);
+	ASSERT(nss != 0 && nss <= 8);
 	return 0;
 } /* wf_he_rspec_to_rate */
 

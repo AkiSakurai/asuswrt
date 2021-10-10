@@ -14,20 +14,24 @@
 <link rel="stylesheet" type="text/css" href="form_style.css">
 <link rel="stylesheet" type="text/css" href="usp_style.css">
 <link href="other.css"  rel="stylesheet" type="text/css">
+<script type="text/javascript" src="/js/jquery.js"></script>
+<script type="text/javascript" src="/js/httpApi.js"></script>
 <script type="text/javascript" src="/state.js"></script>
+<script type="text/javascript" src="/js/device.js"></script>
 <script type="text/javascript" src="/help.js"></script>
 <script type="text/javascript" src="/general.js"></script>
 <script type="text/javascript" src="/popup.js"></script>
 <script type="text/javascript" src="/md5.js"></script>
 <script type="text/javascript" src="/chanspec.js"></script>
 <script type="text/javascript" src="/validator.js"></script>
-<script type="text/javascript" src="/js/jquery.js"></script>
+
 <script type="text/javascript" src="/switcherplugin/jquery.iphone-switch.js"></script>
-<script type="text/javascript" src="/js/httpApi.js"></script>
+
+
 <script>
 <% wl_get_parameter(); %>
 $(function () {
-	if(amesh_support && (isSwMode("rt") || isSwMode("ap"))) {
+	if(amesh_support && (isSwMode("rt") || isSwMode("ap")) && ameshRouter_support) {
 		addNewScript('/require/modules/amesh.js');
 	}
 });
@@ -72,9 +76,12 @@ function initial(){
 	}
 
 	genBWTable(wl_unit);
-	if((sw_mode == 2 || sw_mode == 4) && wl_unit == '<% nvram_get("wlc_band"); %>' && '<% nvram_get("wl_subunit"); %>' != '1'){
-		_change_wl_unit(wl_unit);
+	if(concurrent_pap){
+		if((sw_mode == 2 || sw_mode == 4)  && '<% nvram_get("wl_subunit"); %>' != '1')
+			_change_wl_unit(wl_unit);
 	}
+	else if((sw_mode == 2 || sw_mode == 4) && wl_unit == '<% nvram_get("wlc_band"); %>' && '<% nvram_get("wl_subunit"); %>' != '1')
+		_change_wl_unit(wl_unit);
 
 	//Change wireless mode help desc
 	if(band5g_support && band5g_11ac_support && document.form.wl_unit[1].selected == true){ //AC 5G
@@ -139,17 +146,64 @@ function initial(){
 	if(!band5g_support)	
 		document.getElementById("wl_unit_field").style.display = "none";
 
-	if(sw_mode == 2 || sw_mode == 4)
-		document.form.wl_subunit.value = (wl_unit == '<% nvram_get("wlc_band"); %>') ? 1 : -1;
-				
+	if(sw_mode == 2 || sw_mode == 4){
+		if(concurrent_pap)
+			document.form.wl_subunit.value = 1;
+		else
+			document.form.wl_subunit.value = (wl_unit == '<% nvram_get("wlc_band"); %>') ? 1 : -1;
+	}
+
 	change_wl_nmode(document.form.wl_nmode_x);
 
 	var is_RU_sku = ('<% nvram_get("location_code"); %>'.indexOf("RU") != -1);
+
 	if(wl_info[wl_unit].bw_160_support){
 		document.getElementById('enable_160_field').style.display = "";
-		if((based_modelid == 'GT-AX11000' || based_modelid == 'RT-AX92U' || based_modelid == 'RT-AX95Q') && wl2.channel_160m == "" && wl_unit == '2'){
+		if((based_modelid == 'GT-AX11000' || based_modelid == 'RT-AX92U' || based_modelid == 'RT-AX95Q' || based_modelid == 'GT-AXE11000') && wl2.channel_160m == "" && wl_unit == '2'){
 				document.getElementById('enable_160_field').style.display = "none";
 		}
+	}				
+
+	if((is_UA_sku || is_RU_sku) && !Qcawifi_support && !Rawifi_support && !sdk_5){
+		if(document.form.wl_channel.value  == '0' && wl_unit == '1'){
+			document.getElementById('acs_band3_checkbox').style.display = "";
+		}		
+	}
+	else if(based_modelid == 'RT-AX88U' || based_modelid == 'GT-AX11000' || (based_modelid == 'RT-AX92U' && wl_unit == '2') || (based_modelid == 'GT-AC2900' && wl_unit == '1') || ((based_modelid == 'RT-AX58U' || based_modelid == 'TUF-AX3000' || based_modelid == "DSL-AX82U" || based_modelid == "RT-AX82U" || based_modelid == "GS-AX3000" || based_modelid == "GS-AX5400") && wl_unit == '1') || based_modelid == 'GT-AXE11000'){
+		if(bw_160_support){
+			document.getElementById('enable_160_field').style.display = "";
+			$("#enable_160mhz").attr("checked", enable_bw_160);
+		}
+
+		if(document.form.wl_channel.value  == '0' && ((wl_unit == '1' && based_modelid != 'RT-AX92U') || wl_unit == '2')){
+			document.getElementById('dfs_checkbox').style.display = "";
+			check_DFS_support(document.form.acs_dfs_checkbox);
+		}
+	}
+	else if(country == "EU"){		//display checkbox of DFS channel under 5GHz
+		if(based_modelid == "RT-AC68U" || based_modelid == "RT-AC68A" || based_modelid == "4G-AC68U" || based_modelid == "DSL-AC68U"
+		|| based_modelid == "RT-AC87U"
+		|| based_modelid == "RT-AX92U"
+		|| (based_modelid == "RT-AC66U" && wl1_dfs == "1")		//0: A2 not support, 1: B0 support
+		|| based_modelid == "RT-N66U"){
+			if(document.form.wl_channel.value  == '0' && wl_unit == '1'){
+				document.getElementById('dfs_checkbox').style.display = "";
+				check_DFS_support(document.form.acs_dfs_checkbox);
+			}
+		}
+	}
+
+	if(wl_unit == '2' && band5g2_support){
+		if(document.form.acs_band3.value == '1'){
+			document.form.acs_dfs_checkbox.checked = true;
+		}
+		else{
+			document.form.acs_dfs_checkbox.checked = false;
+		}
+	}
+
+	if(band6g_support && wl_unit == '2'){
+		document.getElementById('psc6g_field').style.display = "";	
 	}
 
 	if(wl_info[wl_unit].dfs_support){
@@ -159,18 +213,9 @@ function initial(){
 		}
 	}
 	else if((is_UA_sku || is_RU_sku) && !Qcawifi_support && !Rawifi_support && !sdk_5){
-
 		if(document.form.wl_channel.value  == '0' && wl_unit == '1'){
 			document.getElementById('acs_band3_checkbox').style.display = "";
 		}		
-	}
-	else if(wl_unit == '2' && band5g2_support){
-		if(document.form.acs_band3.value == '1'){
-			document.form.acs_dfs_checkbox.checked = true;
-		}
-		else{
-			document.form.acs_dfs_checkbox.checked = false;
-		}
 	}
 	else if(country == "US" || country == "SG"){		//display checkbox of band1 channel under 5GHz
 		if(based_modelid == "RT-AC68U" || based_modelid == "RT-AC68A" || based_modelid == "4G-AC68U" || based_modelid == "DSL-AC68U"
@@ -183,7 +228,12 @@ function initial(){
 				document.getElementById('acs_band1_checkbox').style.display = "";					
 		}
 	}
-	
+	else if((odmpid == "RT-AC66U_B1" || odmpid == "RT-AC1750_B1" || odmpid == "RT-N66U_C1" || odmpid == "RT-AC1900U" || odmpid == "RP-AC1900" || odmpid == "RT-AC67U") && country == "AU"){
+		if(document.form.wl_channel.value  == '0' && wl_unit == '1'){
+			document.getElementById('dfs_checkbox').style.display = "";
+			check_DFS_support(document.form.acs_dfs_checkbox);
+		}
+	}
 
 	if(wl_channel_list_2g.length == '14'){
 		if(!Qcawifi_support && !Rawifi_support){
@@ -198,7 +248,7 @@ function initial(){
 		smart_connect_flag_t = (flag=='')?document.form.smart_connect_x.value:flag;
 
 		document.getElementById("smartcon_enable_field").style.display = "";
-		if(wl_info.band2g_support && wl_info.band5g_support && wl_info.band5g_2_support)
+		if(wl_info.band2g_support && wl_info.band5g_support && (wl_info.band5g_2_support || wl_info.band6g_support))
 			inputCtrl(document.form.smart_connect_t, 1);
 
 		document.form.smart_connect_t.value = (smart_connect_flag_t == 0)?1:smart_connect_flag_t;
@@ -231,7 +281,7 @@ function initial(){
 			}
 			else {
 				temp = cur_control_channel[0] + ", " + cur_control_channel[1];
-				if(wl_info.band5g_2_support)
+				if(wl_info.band5g_2_support || wl_info.band6g_support)
 					temp += ", " + cur_control_channel[2];
 			}
 		}
@@ -266,7 +316,7 @@ function initial(){
 			$('#band1_autoChannel').html('Current Control Channel: ' + cur_control_channel[1]);
 		}
 
-		if(wl_info.band5g2_support){
+		if(wl_info.band5g2_support || wl_info.band6g_support){
 			band2_channel = '<% nvram_get("wl2_chanspec"); %>';
 			separateGenBWTable('2');
 			if (band2_channel == '0') {
@@ -287,7 +337,7 @@ function initial(){
 				$('#band1_autoChannel').html('Current Control Channel: ' + cur_control_channel[1]);
 			}
 
-			if (wl_info.band5g2_support) {
+			if (wl_info.band5g2_support || wl_info.band6g_support) {
 				band2_channel = '<% nvram_get("wl2_chanspec"); %>';
 				separateGenBWTable('2');
 				if (band2_channel == '0') {
@@ -307,6 +357,29 @@ function initial(){
 	}
 }
 
+function cal_panel_block(obj){
+	var blockmarginLeft;
+	if (window.innerWidth)
+		winWidth = window.innerWidth;
+	else if ((document.body) && (document.body.clientWidth))
+		winWidth = document.body.clientWidth;
+
+	if (document.documentElement  && document.documentElement.clientHeight && document.documentElement.clientWidth){
+		winWidth = document.documentElement.clientWidth;
+	}
+
+	if(winWidth >1050){
+		winPadding = (winWidth-1050)/2;
+		winWidth = 1105;
+		blockmarginLeft= (winWidth*0.2)+winPadding;
+	}
+	else if(winWidth <=1050){
+		blockmarginLeft= (winWidth)*0.2 + document.body.scrollLeft;
+	}
+
+	document.getElementById(obj).style.marginLeft = blockmarginLeft+"px";
+}
+
 function change_wl_nmode(o){
 	if(Bcmwifi_support) {
 		if(o.value == '2')
@@ -324,7 +397,7 @@ function change_wl_nmode(o){
 	}
 
 	if(he_frame_support){
-		if(o.value == '0' || o.value == '8'){
+		if(o.value == '0'){
 			if (based_modelid != 'RT-AX92U' || (wl_unit != '0' && wl_unit != '1')) {
 				$("#he_mode_field").show();
 			}
@@ -420,17 +493,18 @@ function genBWTable(_unit){
 				based_modelid == "RT-AC66U" || 
 				based_modelid == "RT-AC3200" || 
 				based_modelid == "RT-AC3100" || based_modelid == "RT-AC88U" || based_modelid == "RT-AX88U" || based_modelid == "RT-AC86U" || based_modelid == "GT-AC2900" ||
-				based_modelid == "RT-AC5300" || based_modelid == "GT-AC5300" || based_modelid == "GT-AX11000" || based_modelid == "RT-AX92U" || based_modelid == "RT-AX95Q" || based_modelid == "RT-AX56_XD4" || based_modelid == "RT-AX58U" || based_modelid == "TUF-AX3000" || based_modelid == "RT-AX82U" || based_modelid == "RT-AX56U" ||
+				based_modelid == "RT-AC5300" || based_modelid == "GT-AC5300" || based_modelid == "GT-AX11000" || based_modelid == "RT-AX92U" || based_modelid == "RT-AX95Q" || based_modelid == "RT-AXE95Q" || based_modelid == "RT-AX56_XD4" || based_modelid == "CT-AX56_XD4" || based_modelid == "RT-AX58U" || based_modelid == "TUF-AX3000" || based_modelid == "DSL-AX82U" || based_modelid == "RT-AX82U" || based_modelid == "RT-AX56U" || based_modelid == "GT-AXE11000" || based_modelid == "GS-AX3000" || based_modelid == "GS-AX5400" ||
 				based_modelid == "RT-AC53U") && document.form.wl_nmode_x.value == 1){		//N only
 				bws = [0, 1, 2];
 				bwsDesc = ["20/40 MHz", "20 MHz", "40 MHz"];
+				
 			}
 			else{
 				if(no_vht_support){		//Hide 11AC/80MHz from GUI
 					bws = [0, 1, 2];
 					bwsDesc = ["20/40 MHz", "20 MHz", "40 MHz"];
 				}
-				else if(band5g_11ax_support){
+				else if(band5g_11ax_support || bw_160_support){
 					if(enable_bw_160){
 						if( (wl_unit == 1 && wl1.channel_160m == '') ||(wl_unit == 2 && wl2.channel_160m == '')){
 							bws = [0, 1, 2, 3];
@@ -461,7 +535,7 @@ function genBWTable(_unit){
 function mbss_display_ctrl(){
 	// generate options
 	if(multissid_support){
-		for(var i=1; i<multissid_support+1; i++)
+		for(var i=1; i<multissid_count+1; i++)
 			add_options_value(document.form.wl_subunit, i, '<% nvram_get("wl_subunit"); %>');
 	}	
 	else
@@ -499,7 +573,7 @@ function applyRule(){
 	}
 
 	if(validForm()){
-		if(amesh_support && (isSwMode("rt") || isSwMode("ap"))) {
+		if(amesh_support && (isSwMode("rt") || isSwMode("ap")) && ameshRouter_support) {
 			if(!check_wl_auth_support(auth_mode, $("select[name=wl_auth_mode_x] option:selected")))
 				return false;
 			else {
@@ -584,18 +658,14 @@ function applyRule(){
 		}
 
 		var mbo = document.form.wl_mbo_enable.value;
-		if(auth_mode == 'sae'){
+		if(auth_mode == 'sae' || auth_mode == 'owe'){
 			document.form.wl_mfp.value = '2';
 		}
-		else if(auth_mode == 'psk2sae'){
+		else if(auth_mode == 'psk2sae' && document.form.wl_mfp.value == '0'){
 			document.form.wl_mfp.value = '1';
 		}
 		else if(auth_mode == 'psk2' || auth_mode == 'pskpsk2' || auth_mode == 'wpa2' || auth_mode == 'wpawpa2'){
 			if(mbo_support && mbo == '1' && document.form.wl_mfp.value == '0'){
-				document.form.wl_mfp.value = '1';
-			}
-
-			if(document.form.wl_mfp.value == '2'){
 				document.form.wl_mfp.value = '1';
 			}
 		}
@@ -688,11 +758,23 @@ function applyRule(){
 				document.form.wl1_bw.value = document.form.band1_bw.value;
 				document.form.wl1_chanspec.value = document.form.band1_channel.value;
 				if($('#band1_acsDFS').is(':visible')){
-					if($('#band1_acsDFS_checkbox').is(':checked')){
-						document.form.acs_dfs.value = 1;
+					if(band6g_support){
+						if($('#band1_acsDFS_checkbox').is(':checked')){
+							document.form.acs_dfs.value = 1;
+							document.form.acs_band3.value = 1;
+						}
+						else{
+							document.form.acs_dfs.value = 0;
+							document.form.acs_band3.value = 0;
+						}
 					}
 					else{
-						document.form.acs_dfs.value = 0;
+						if($('#band1_acsDFS_checkbox').is(':checked')){
+							document.form.acs_dfs.value = 1;
+						}
+						else{
+							document.form.acs_dfs.value = 0;
+						}
 					}
 				}
 
@@ -703,7 +785,7 @@ function applyRule(){
 					document.form.wl1_bw_160.value = 0;
 				}
 
-				if(wl_info.band5g_2_support){
+				if(wl_info.band5g_2_support || wl_info.band6g_support){
 					document.form.wl2_bw.value = document.form.band2_bw.value;
 					document.form.wl2_chanspec.value = document.form.band2_channel.value;
 					if ($('#band2_acsDFS').is(':visible')) {
@@ -720,6 +802,13 @@ function applyRule(){
 					}
 					else {
 						document.form.wl2_bw_160.value = 0;
+					}
+
+					if(band6g_support && $('#band2_psc6g_checkbox').is(':checked')){
+						document.form.psc6g.value = 1;
+					}
+					else{
+						document.form.psc6g.value = 0;
 					}
 				}
 			}
@@ -760,15 +849,40 @@ function applyRule(){
 				else {
 					document.form.wl2_bw_160.value = 0;
 				}
+
+				if(band6g_support && $('#band2_psc6g_checkbox').is(':checked')){
+					document.form.psc6g.value = 1;
+				}
+				else{
+					document.form.psc6g.value = 0;
+				}
 			}
 		}
 		else{
-			if(wl_unit == '2' && band5g2_support){
+			if(wl_unit == '2' && band6g_support){
+				if(document.getElementById('psc6g_checkbox').checked){
+					document.form.psc6g.value = "1";
+				}
+				else{
+					document.form.psc6g.value = "0";
+				}
+			}
+			else if(wl_unit == '2' && band5g2_support){
 				document.form.acs_dfs.disabled = true;
 				if(document.form.acs_dfs_checkbox.checked){
 					document.form.acs_band3.value = "1";
 				}
 				else{
+					document.form.acs_band3.value = "0";
+				}
+			}
+			else if(wl_unit == '1' && band6g_support){
+				if(document.form.acs_dfs_checkbox.checked){
+					document.form.acs_dfs.value = "1";
+					document.form.acs_band3.value = "1";
+				}
+				else{
+					document.form.acs_dfs.value = "0";
 					document.form.acs_band3.value = "0";
 				}
 			}
@@ -840,7 +954,7 @@ function validForm(){
 		ssid_array.push(httpApi.nvramGet(["wl0_ssid"]).wl0_ssid);
 		if(wl_info.band5g_support)
 			ssid_array.push(httpApi.nvramGet(["wl1_ssid"]).wl1_ssid);
-		if(wl_info.band5g_2_support)
+		if(wl_info.band5g_2_support || wl_info.band6g_support)
 			ssid_array.push(httpApi.nvramGet(["wl2_ssid"]).wl2_ssid);
 		jsonPara["current_ssid"] = ssid_array;
 		if(!validator.dwb_check_wl_setting(jsonPara)) {
@@ -870,9 +984,13 @@ function disableAdvFn(){
 }
 
 function _change_wl_unit(val){
-	if(sw_mode == 2 || sw_mode == 4)
-		document.form.wl_subunit.value = (val == '<% nvram_get("wlc_band"); %>') ? 1 : -1;
-	
+	if(sw_mode == 2 || sw_mode == 4){
+		if(concurrent_pap)
+			document.form.wl_subunit.value = 1;
+		else
+			document.form.wl_subunit.value = (val == '<% nvram_get("wlc_band"); %>') ? 1 : -1;
+	}
+
 	if(smart_connect_support && (isSwMode("rt") || isSwMode("ap")))
 		document.form.current_page.value = "Advanced_Wireless_Content.asp?flag=" + document.form.smart_connect_x.value;
 
@@ -886,20 +1004,36 @@ function _change_smart_connect(val){
 	var band_value = new Array();
 	if(val == 0){
 		band_value = [0, 1, 2];
-		band_desc = ['2.4GHz', '5GHz-1', '5GHz-2'];
+		if(band6g_support){
+			band_desc = ['2.4 GHz', '5 GHz', '6 GHz'];
+		}else{
+			band_desc = ['2.4 GHz', '5 GHz-1', '5 GHz-2'];
+		}		
 	}else if(val == 1){
 		if(dwb_info.mode) {
 			band_value = [0, 2];
-			band_desc = ['2.4GHz, 5GHz-1', '5GHz-2'];
+			if(band6g_support){
+				band_desc = ['2.4 GHz, 5 GHz', '6 GHz'];
+			}else{
+				band_desc = ['2.4 GHz, 5 GHz-1', '5 GHz-2'];
+			}				
 		}
 		else {
 			document.getElementById("wl_unit_field").style.display = "none";
 			band_value = [0];
-			band_desc = ['2.4GHz, 5GHz-1 and 5GHz-2'];
+			if(band6g_support){
+				band_desc = ['2.4 GHz, 5 GHz and 6 GHz'];
+			}else{
+				band_desc = ['2.4 GHz, 5 GHz-1 and 5 GHz-2'];
+			}
 		}
 	}else if(val == 2){
 		band_value = [0, 1];
-		band_desc = ['2.4GHz', '5GHz-1 and 5GHz-2'];
+		if(band6g_support){
+			band_desc = ['2.4 GHz', '5 GHz and 6 GHz'];
+		}else{
+			band_desc = ['2.4 GHz', '5 GHz-1 and 5 GHz-2'];
+		}	
 	}
 	add_options_x2(document.form.wl_unit, band_desc, band_value, current_band);
 }
@@ -1058,16 +1192,22 @@ function enableSmartCon(val){
 	var desc = new Array();
 
 	if(isSupport("triband") && dwb_info.mode) {
-		desc = ["Dual-Band Smart Connect (2.4GHz and 5GHz)"];
+		desc = ["Dual-Band Smart Connect (2.4 GHz and 5 GHz)"];
 		value = ["1"];
 	}
 	else {
-		if(wl_info.band2g_support && wl_info.band5g_support && wl_info.band5g_2_support){
-			desc = ["Tri-Band Smart Connect (2.4GHz, 5GHz-1 and 5GHz-2)", "5GHz Smart Connect (5GHz-1 and 5GHz-2)"];
-			value = ["1", "2"];
+		if(wl_info.band2g_support && wl_info.band5g_support && (wl_info.band5g_2_support || wl_info.band6g_support)){
+			if(band6g_support){
+				desc = ["Tri-Band Smart Connect (2.4 GHz, 5 GHz and 6 GHz)"];
+				value = ["1"];
+			}
+			else{
+				desc = ["Tri-Band Smart Connect (2.4 GHz, 5 GHz-1 and 5 GHz-2)", "5 GHz Smart Connect (5 GHz-1 and 5 GHz-2)"];
+				value = ["1", "2"];
+			}
 		}
 		else if(wl_info.band2g_support && wl_info.band5g_support){
-			desc = ["Dual-Band Smart Connect (2.4GHz and 5GHz)"];
+			desc = ["Dual-Band Smart Connect (2.4 GHz and 5 GHz)"];
 			value = ["1"];
 		}
 	}
@@ -1082,7 +1222,7 @@ function enableSmartCon(val){
 		if(wl_unit != 0){
 			if(wl_info[wl_unit].bw_160_support){
 				$("#enable_160_field").show();
-				if((based_modelid == 'GT-AX11000' || based_modelid == 'RT-AX92U' || based_modelid == 'RT-AX95Q') && wl2.channel_160m == '' && wl_unit == '2'){
+				if((based_modelid == 'GT-AX11000' || based_modelid == 'RT-AX92U' || based_modelid == 'RT-AX95Q' || based_modelid == 'RT-AXE95Q' || based_modelid == 'GT-AXE11000') && wl2.channel_160m == '' && wl_unit == '2'){
 					$("#enable_160_field").hide();
 				}
 			}
@@ -1092,7 +1232,7 @@ function enableSmartCon(val){
 			}
 			else{
 				$("#dfs_checkbox").hide();
-			}
+			}	
 
 			$('#acs_ch13_checkbox').hide();
 		}
@@ -1123,12 +1263,13 @@ function enableSmartCon(val){
 		document.form.wl1_chanspec.disabled = true;
 		document.form.wl2_chanspec.disabled = true;
 		document.form.wl1_bw_160.disabled = true;
-		document.form.wl2_bw_160.disabled = true;
+		document.form.wl2_bw_160.disabled = true;		
+
 	}else if(val > 0){
 		document.getElementById("smart_connect_field").style.display = "";
 		document.getElementById("smartcon_rule_link").style.display = "table-cell";
 		$("#enable_160_field").hide();
-		if ((wl_unit == '0' && val == '2') || based_modelid == "RT-AC3200" || ((based_modelid == "RT-AX92U" || based_modelid == "RT-AX95Q") && country != "EU" && wl_unit == "1")) {
+		if ((wl_unit == '0' && val == '2') || based_modelid == "RT-AC3200" || ((based_modelid == "RT-AX92U" || based_modelid == "RT-AX95Q" || based_modelid == "RT-AXE95Q") && country != "EU" && wl_unit == "1")) {
 			$("#dfs_checkbox").hide();
 		}
 		else {
@@ -1145,7 +1286,7 @@ function enableSmartCon(val){
 		
 		if(dwb_info.mode && wl_unit == dwb_info.band && wl_unit != 0 && bw_160_support) {
 			$("#enable_160_field").show();
-			if((based_modelid == 'GT-AX11000' || based_modelid == 'RT-AX92U' || based_modelid == 'RT-AX95Q') && wl2.channel_160m == '' && wl_unit == '2'){
+			if((based_modelid == 'GT-AX11000' || based_modelid == 'RT-AX92U' || based_modelid == 'RT-AX95Q' || based_modelid == 'RT-AXE95Q' || based_modelid == 'GT-AXE11000') && wl2.channel_160m == '' && wl_unit == '2'){
 				$("#enable_160_field").hide();
 			}
 		}
@@ -1181,7 +1322,7 @@ function enableSmartCon(val){
 				$('#band1_autoChannel').html('Current Control Channel: ' + cur_control_channel[1]);
 			}
 
-			if (wl_info.band5g_2_support) {
+			if (wl_info.band5g_2_support || wl_info.band6g_support) {
 				band2_channel = '<% nvram_get("wl2_chanspec"); %>';
 				separateGenBWTable('2');
 				if(wl_info['2'].bw_160_support){
@@ -1210,8 +1351,14 @@ function enableSmartCon(val){
 			document.form.wl2_chanspec.disabled = false;
 			document.form.wl1_bw_160.disabled = false;
 			document.form.wl2_bw_160.disabled = false;
-			if(wl_info.band5g_2_support){
-				$('#5ghz_title').html('5 GHz-1');
+			if(wl_info.band5g_2_support || wl_info.band6g_support){
+				if(band6g_support){
+					$('#5ghz_title').html('5 GHz');
+				}
+				else{
+					$('#5ghz_title').html('5 GHz-1');
+				}
+
 				if(dwb_info.mode){
 					$('#band2_title_field').hide();
 					$('#band2_bandwidth_field').hide();
@@ -1233,6 +1380,10 @@ function enableSmartCon(val){
 					}
 				}
 				else{
+					if(band6g_support){
+						$('#5g2_title').html('6 GHz');
+					}
+
 					$('#band2_title_field').show();
 					$('#band2_bandwidth_field').show();
 					$('#band2_channel_field').show();
@@ -1272,7 +1423,7 @@ function enableSmartCon(val){
 					$('#band1_autoChannel').html('Current Control Channel: ' + cur_control_channel[1]);
 				}
 
-				if (wl_info.band5g_2_support) {
+				if (wl_info.band5g_2_support || wl_info.band6g_support) {
 					band2_channel = '<% nvram_get("wl2_chanspec"); %>';
 					separateGenBWTable('2');
 					if (wl_info['2'].bw_160_support) {
@@ -1309,6 +1460,10 @@ function enableSmartCon(val){
 				$('#band1_bandwidth_field').show();
 				$('#band1_channel_field').show();
 				$('#band1_extChannel_field').show();
+				if(band6g_support){
+					$('#5g2_title').html('6 GHz');
+				}
+
 				$('#band2_title_field').show();
 				$('#band2_bandwidth_field').show();
 				$('#band2_channel_field').show();
@@ -1316,6 +1471,8 @@ function enableSmartCon(val){
 			}
 		}
 
+		$("#dfs_checkbox").hide();
+		document.form.acs_dfs.value = 0;
 	}
 
 	if((val == 0 || (val == 2 && wl_unit == 0)) || (dwb_info.mode && wl_unit == dwb_info.band)){
@@ -1344,7 +1501,7 @@ function enableSmartCon(val){
 		regen_auto_option(document.form.wl_nctrlsb);			
 	}
 	
-	if(wl_info.band2g_support && wl_info.band5g_support && wl_info.band5g_2_support)
+	if(wl_info.band2g_support && wl_info.band5g_support && (wl_info.band5g_2_support || wl_info.band6g_support))
 		_change_smart_connect(val);
 
 	controlHideSSIDHint();
@@ -1365,6 +1522,8 @@ function enable_160MHz(obj){
 		bws = [0, 1, 2, 3, 5];
 		bwsDesc = ["20/40/80/160 MHz", "20 MHz", "40 MHz", "80 MHz", "160 MHz"];
 		enable_bw_160 = true;
+		document.form.acs_dfs_checkbox.checked = true;
+		check_DFS_support(document.form.acs_dfs_checkbox);
 	}
 	else{
 		bws = [0, 1, 2, 3];
@@ -1385,6 +1544,7 @@ function he_frame_mode(obj) {
 		document.form.acs_dfs.value = 0;		
 	}
 }
+
 var band1_enable_bw_160 = '<% nvram_get("wl1_bw_160"); %>';
 var band2_enable_bw_160 = '<% nvram_get("wl2_bw_160"); %>';
 function separateGenBWTable(unit){
@@ -1639,7 +1799,6 @@ function separateGenChannel(unit, channel, bandwidth){
 		
 		channel_5g_1.unshift('<#Auto#>');
 		channel_5g_1_val.unshift('0');
-
 		add_options_x2(document.form.band1_channel, channel_5g_1, channel_5g_1_val, band1_curChannel);
 		if (document.form.band1_channel.value == '0') {
 			if(channel_5g_1.indexOf('56') != -1 || channel_5g_1.indexOf('100') != -1){
@@ -1654,6 +1813,21 @@ function separateGenChannel(unit, channel, bandwidth){
 		}
 	}
 	else if(unit == '2'){
+		if(band6g_support){		// due to GT-AXE11000 does not support
+			if(document.getElementById('band2_psc6g_checkbox').checked){
+				channel_5g_2 = ['37', '53', '69', '85', '101', '117', '133', '149', '165', '181', '197', '213'];
+			}
+
+			for(var i=channel_5g_2.length-1; i>=0; i--){
+				var _channel = parseInt(channel_5g_2[i]);
+				if(_channel < 30 || _channel > 221){
+					channel_5g_2.splice(i, 1);
+				}
+			}
+
+			$('#band2_psc6g').show();
+		}
+
 		if (curBandwidth == '0') {
 			$('#band2_extChannel_field').show();
 			loop_auto: for (i = 0; i < channel_5g_2.length; i++) {
@@ -1661,7 +1835,13 @@ function separateGenChannel(unit, channel, bandwidth){
 				if (band2_enable_bw_160 == '1') {
 					for (j = 0; j < wl2.channel_160m.length; j++) {
 						if (wl2.channel_160m[j].indexOf(_cur_channel) != -1) {
-							channel_5g_2_val[i] = _cur_channel + "/160";
+							if(band6g_support){
+								channel_5g_2_val[i] = "6g" + _cur_channel + "/160";
+							}
+							else{
+								channel_5g_2_val[i] = _cur_channel + "/160";
+							}
+							
 							continue loop_auto;
 						}
 					}
@@ -1669,21 +1849,39 @@ function separateGenChannel(unit, channel, bandwidth){
 
 				for (j = 0; j < wl2.channel_80m.length; j++) {
 					if (wl2.channel_80m[j].indexOf(_cur_channel) != -1) {
-						channel_5g_2_val[i] = _cur_channel + "/80";
+						if(band6g_support){
+							channel_5g_2_val[i] = "6g" + _cur_channel + "/80";
+						}
+						else{
+							channel_5g_2_val[i] = _cur_channel + "/80";
+						}
+						
 						continue loop_auto;
 					}
 				}
 
 				for (j = 0; j < wl2.channel_40m.length; j++) {
 					if (wl2.channel_40m[j].indexOf(_cur_channel) != -1) {
-						channel_5g_2_val[i] = wlextchannel_fourty(_cur_channel);
+						if(band6g_support){
+							channel_5g_2_val[i] = "6g" + _cur_channel + "/40";
+						}
+						else{
+							channel_5g_2_val[i] = wlextchannel_fourty(_cur_channel);
+						}
+						
 						continue loop_auto;
 					}
 				}
 
 				for (j = 0; j < wl2.channel_20m.length; j++) {
 					if (wl2.channel_20m[j].indexOf(_cur_channel) != -1) {
-						channel_5g_2_val[i] = _cur_channel.toString();
+						if(band6g_support){
+							channel_5g_2_val[i] = "6g" + _cur_channel.toString();
+						}
+						else{
+							channel_5g_2_val[i] = _cur_channel.toString();
+						}
+						
 						continue loop_auto;
 					}
 				}
@@ -1694,12 +1892,20 @@ function separateGenChannel(unit, channel, bandwidth){
 			var _wl_channel = new Array();
 			for (i = 0; i < channel_5g_2.length; i++) {
 				var _cur_channel = parseInt(channel_5g_2[i]);
-				var _reg = new RegExp("^" + _cur_channel);
+				var _reg = new RegExp("^" + _cur_channel);					
 				for (j = 0; j < wl2.channel_160m.length; j++) {
-					if (wl2.channel_160m[j].match(_reg) != null) {
-						_wl_channel.push(_cur_channel);
-						channel_5g_2_val.push(_cur_channel + "/160");
+					if(band6g_support){
+						if (wl2.channel_160m[j].includes('6g' + _cur_channel + '/160')) {
+							_wl_channel.push(_cur_channel);		
+							channel_5g_2_val.push("6g" + _cur_channel + "/160");											
+						}
 					}
+					else{
+						if (wl2.channel_160m[j].match(_reg) != null) {
+							_wl_channel.push(_cur_channel);		
+							channel_5g_2_val.push(_cur_channel + "/160");											
+						}	
+					}													
 				}
 			}
 
@@ -1712,10 +1918,18 @@ function separateGenChannel(unit, channel, bandwidth){
 				var _cur_channel = parseInt(channel_5g_2[i]);
 				var _reg = new RegExp("^" + _cur_channel);
 				for (j = 0; j < wl2.channel_80m.length; j++) {
-					if (wl2.channel_80m[j].match(_reg) != null) {
-						_wl_channel.push(_cur_channel);
-						channel_5g_2_val.push(_cur_channel + "/80");
+					if(band6g_support){
+						if (wl2.channel_80m[j].includes('6g' + _cur_channel + '/80')) {
+							_wl_channel.push(_cur_channel);		
+							channel_5g_2_val.push("6g" + _cur_channel + "/80");
+						}						
 					}
+					else{
+						if (wl2.channel_80m[j].match(_reg) != null) {
+							_wl_channel.push(_cur_channel);					
+							channel_5g_2_val.push(_cur_channel + "/80");											
+						}
+					}					
 				}
 			}
 
@@ -1728,10 +1942,18 @@ function separateGenChannel(unit, channel, bandwidth){
 				var _cur_channel = parseInt(channel_5g_2[i]);
 				var _reg = new RegExp("^" + _cur_channel);
 				for (j = 0; j < wl2.channel_40m.length; j++) {
-					if (wl2.channel_40m[j].match(_reg) != null) {
-						_wl_channel.push(_cur_channel);
-						channel_5g_2_val.push(wlextchannel_fourty(_cur_channel));
+					if(band6g_support){
+						if (wl2.channel_40m[j].includes('6g' + _cur_channel + '/40')) {
+							_wl_channel.push(_cur_channel);		
+							channel_5g_2_val.push("6g" + _cur_channel + "/40");
+						}						
 					}
+					else{
+						if (wl2.channel_40m[j].match(_reg) != null) {
+							_wl_channel.push(_cur_channel);		
+							channel_5g_2_val.push(wlextchannel_fourty(_cur_channel));												
+						}
+					}				
 				}
 			}
 
@@ -1743,7 +1965,12 @@ function separateGenChannel(unit, channel, bandwidth){
 			for (i = 0; i < channel_5g_2.length; i++) {
 				var _cur_channel = parseInt(channel_5g_2[i]);
 				_wl_channel.push(_cur_channel);
-				channel_5g_2_val.push(_cur_channel);;
+				if(band6g_support){
+					channel_5g_2_val.push("6g" + _cur_channel);
+				}
+				else{
+					channel_5g_2_val.push(_cur_channel);
+				}				
 			}
 		}
 		
@@ -1877,7 +2104,7 @@ function separateChannelHandler(unit, channel){
 }
 function controlHideSSIDHint() {
 	$("#dwb_band_hide_hint").hide();
-	if(dwb_info.mode && (dwb_info.band == wl_unit) && document.form.smart_connect_x.value == "1" && (based_modelid == "RT-AX92U" || based_modelid == "RT-AX95Q"))
+	if(dwb_info.mode && (dwb_info.band == wl_unit) && document.form.smart_connect_x.value == "1" && (based_modelid == "RT-AX92U" || based_modelid == "RT-AX95Q" || based_modelid == "RT-AXE95Q"))
 		$("#dwb_band_hide_hint").show();
 }
 function controlAXOnlyHint() {
@@ -1909,10 +2136,11 @@ function handleMFP(){
 		$('#mbo_notice').hide();
 	}
 }
+
 </script>
 </head>
 
-<body onload="initial();" onunLoad="return unload_body();">
+<body onload="initial();" onunLoad="return unload_body();" class="bg">
 <div id="TopBanner"></div>
 <div id="Loading" class="popup_bg"></div>
 <div id="hiddenMask" class="popup_bg">
@@ -1995,12 +2223,14 @@ function handleMFP(){
 <input type="hidden" name="wl2_chanspec" value='<% nvram_get("wl2_chanspec"); %>'>
 <input type="hidden" name="wl1_bw_160" value='<% nvram_get("wl1_bw_160"); %>'>
 <input type="hidden" name="wl2_bw_160" value='<% nvram_get("wl2_bw_160"); %>'>
+
 <input type="hidden" name="wl_subunit" value='-1'>
 <input type="hidden" name="wl1_dfs" value='<% nvram_get("wl1_dfs"); %>'>
 <input type="hidden" name="acs_dfs" value='<% nvram_get("acs_dfs"); %>'>
 <input type="hidden" name="acs_band1" value='<% nvram_get("acs_band1"); %>'>
 <input type="hidden" name="acs_band3" value='<% nvram_get("acs_band3"); %>'>
 <input type="hidden" name="acs_ch13" value='<% nvram_get("acs_ch13"); %>'>
+<input type="hidden" name="psc6g" value='<% nvram_get("psc6g"); %>'>
 <input type="hidden" name="wps_enable" value="<% nvram_get("wps_enable"); %>">
 <input type="hidden" name="wps_band" value="<% nvram_get("wps_band_x"); %>">
 <input type="hidden" name="wps_dualband" value="<% nvram_get("wps_dualband"); %>">
@@ -2034,7 +2264,7 @@ function handleMFP(){
       <div style="margin: 10px 0 10px 5px" class="splitLine"></div>
       <div class="formfontdesc"><#adv_wl_desc#></div>
 		
-			<table width="99%" border="1" align="center" cellpadding="4" cellspacing="0" id="WLgeneral" class="FormTable">
+			<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" id="WLgeneral" class="FormTable">
 			<tr id="smartcon_enable_field" style="display:none;">
 				<th width="30%"><a class="hintstyle" href="javascript:void(0);" onClick="openHint(0,27);"><#smart_connect_enable#></a></th>
 			  	<td>
@@ -2068,8 +2298,8 @@ function handleMFP(){
 					<th><#smart_connect#></th>                                            
 					<td id="smart_connect_switch">
 					<select name="smart_connect_t" class="input_option" onChange="enableSmartCon(this.value);">
-						<option class="content_input_fd" value="1" >Tri-band Smart Connect (2.4GHz, 5GHz-1 and 5GHz-2)</optio>
-						<option class="content_input_fd" value="2">5GHz Smart Connect (5GHz-1 and 5GHz-2)</option>
+						<option class="content_input_fd" value="1" >Tri-band Smart Connect (2.4 GHz, 5 GHz-1 and 5 GHz-2)</optio>
+						<option class="content_input_fd" value="2">5 GHz Smart Connect (5 GHz-1 and 5 GHz-2)</option>
 					</select>                       
 					</td>
 				</tr>
@@ -2077,9 +2307,9 @@ function handleMFP(){
 					<th><#Interface#></th>
 					<td>
 						<select name="wl_unit" class="input_option" onChange="_change_wl_unit(this.value);">
-							<option class="content_input_fd" value="0" <% nvram_match("wl_unit", "0","selected"); %>>2.4GHz</option>
-							<option class="content_input_fd" value="1" <% nvram_match("wl_unit", "1","selected"); %>>5GHz</option>
-							<option class="content_input_fd" value="1" <% nvram_match("wl_unit", "2","selected"); %>>5GHz-2</option>
+							<option class="content_input_fd" value="0" <% nvram_match("wl_unit", "0","selected"); %>>2.4 GHz</option>
+							<option class="content_input_fd" value="1" <% nvram_match("wl_unit", "1","selected"); %>>5 GHz</option>
+							<option class="content_input_fd" value="1" <% nvram_match("wl_unit", "2","selected"); %>>5 GHz-2</option>
 						</select>			
 					</td>
 		  	</tr>
@@ -2147,7 +2377,7 @@ function handleMFP(){
 			</tr>
 			<tr id="mbo_field" style="display:none">
 				<th>
-					<a class="hintstyle">Wi-Fi Agile Multiband</a>
+					<a class="hintstyle"><#WLANConfig11b_AgileMultiband_itemdesc#></a>
 				</th>
 				<td>
 					<div style="width:465px;display:flex;align-items: center;">
@@ -2160,7 +2390,7 @@ function handleMFP(){
 			</tr>
 			<tr id="twt_field" style="display:none">
 				<th>
-					<a class="hintstyle">Target Wake Time</a>
+					<a class="hintstyle"><#WLANConfig11b_WakeTime_itemname#></a>
 				</th>
 				<td>
 					<div style="width:465px;display:flex;align-items: center;">
@@ -2194,6 +2424,7 @@ function handleMFP(){
 						<span id="acs_band1_checkbox" style="display:none;"><input type="checkbox" onClick="check_acs_band1_support(this);" <% nvram_match("acs_band1", "1", "checked"); %>><#WLANConfig11b_EChannel_band1#></span>
 						<span id="acs_band3_checkbox" style="display:none;"><input type="checkbox" onClick="check_acs_band3_support(this);" <% nvram_match("acs_band3", "1", "checked"); %>><#WLANConfig11b_EChannel_band3#></span>
 						<span id="acs_ch13_checkbox" style="display:none;"><input type="checkbox" onClick="check_acs_ch13_support(this);" <% nvram_match("acs_ch13", "1", "checked"); %>><#WLANConfig11b_EChannel_acs_ch13#></span>
+						<span id="psc6g_field" style="display:none;"><input id="psc6g_checkbox" type="checkbox" onClick="wl_chanspec_list_change();" <% nvram_match("psc6g", "1", "checked"); %>>enable PSC (Preferred Scanning Channel) to ensure the 6GHz devices connectivity. Please check <a href="https://www.asus.com/support/FAQ/1044625" target="_blank" style="color:#FC0;text-decoration: underline;">FAQ</a>.</span>
 					</td>
 			  </tr> 
 		  	<!-- end -->
@@ -2216,6 +2447,7 @@ function handleMFP(){
 								<option value="shared"  <% nvram_match("wl_auth_mode_x", "shared", "selected"); %>>Shared Key</option>
 								<option value="psk"     <% nvram_match("wl_auth_mode_x", "psk",    "selected"); %>>WPA-Personal</option>
 								<option value="psk2"    <% nvram_match("wl_auth_mode_x", "psk2",   "selected"); %>>WPA2-Personal</option>
+								<option value="owe"    <% nvram_match("wl_auth_mode_x", "owe",   "selected"); %>>Opportunistic Wireless Encryptio</option>
 								<option value="sae"    <% nvram_match("wl_auth_mode_x", "sae",   "selected"); %>>WPA3-Personal</option>
 								<option value="pskpsk2" <% nvram_match("wl_auth_mode_x", "pskpsk2","selected"); %>>WPA-Auto-Personal</option>
 								<option value="psk2sae" <% nvram_match("wl_auth_mode_x", "psk2sae","selected"); %>>WPA2/WPA3-Personal</option>
@@ -2352,7 +2584,7 @@ function handleMFP(){
 			  	</tr>
 			  </table>
 
-			<table id="band_separate" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable">
+			<table id="band_separate" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable" style="margin-top:5px">
 				<thead>
 					<tr id="band0_title_field">
 						<td colspan="2">2.4 GHz</td>
@@ -2386,7 +2618,7 @@ function handleMFP(){
 				
 				<thead>
 					<tr>
-						<td id="5ghz_title"colspan="2">5 GHz</td>
+						<td id="5ghz_title" colspan="2">5 GHz</td>
 					</tr>
 				</thead>
 				<tr>
@@ -2423,7 +2655,7 @@ function handleMFP(){
 
 				<thead>
 					<tr id="band2_title_field" style="display:none">
-						<td colspan="2">5 GHz-2</td>
+						<td id="5g2_title" colspan="2">5 GHz-2</td>
 					</tr>
 				</thead>
 				<tr id="band2_bandwidth_field" style="display:none">
@@ -2441,8 +2673,8 @@ function handleMFP(){
 					<td>
 						<select name="band2_channel" class="input_option" onChange="separateChannelHandler('2', this.value);"></select>
 						<span id="band2_autoChannel" style="display:none;margin-left:10px;">Current Control Channel</span><br>
-						<span id="band2_acsDFS"><input id="band2_acsDFS_checkbox" type="checkbox" <% nvram_match("acs_band3", "1" ,
-							 "checked" ); %>><#WLANConfig11b_EChannel_dfs#></span>
+						<span id="band2_acsDFS"><input id="band2_acsDFS_checkbox" type="checkbox" <% nvram_match("acs_band3", "1" , "checked" ); %>><#WLANConfig11b_EChannel_dfs#></span>
+						<span id="band2_psc6g" style="display:none"><input id="band2_psc6g_checkbox" type="checkbox" onclick="separateGenChannel('2', document.form.band2_channel.value, document.form.band2_bw.value);" <% nvram_match("psc6g", "1" , "checked" ); %>>enable PSC (Preferred Scanning Channel) to ensure the 6GHz devices connectivity. Please check <a href="https://www.asus.com/support/FAQ/1044625" target="_blank" style="color:#FC0;text-decoration: underline;">FAQ</a>.</span>
 					</td>
 				</tr>
 				<tr id="band2_extChannel_field" style="display:none">

@@ -6,7 +6,7 @@
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
- *
+ * 
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
@@ -27,8 +27,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
-#include <pthread.h>
-#include <signal.h>
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -45,14 +44,6 @@
 
 #include <stdarg.h>   // for va_list
 #include "shared.h"
-
-#ifdef BCA_HNDROUTER
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/ioctl.h>
-#include <board.h>
-#endif /* BCA_HNDROUTER */
 
 #ifndef MAX_NVPARSE
 #define MAX_NVPARSE 16
@@ -88,23 +79,8 @@
 #define WLIF_BSSTRANS(fmt, args...)
 #endif /* WLIF_BSSTRANS_DBG */
 
-#ifdef RTCONFIG_BRCM_HOSTAPD
-#define WPA_CLI_APP "wpa_cli-2.7"
-#else
-#define WPA_CLI_APP "wpa_cli"
-#endif
-
 /* From wlc_rate.[ch] */
 #define MCS_TABLE_SIZE				33
-
-#ifndef ARRAYSIZE
-#define ARRAYSIZE(a) (sizeof(a) / sizeof(a[0]))
-#endif /* ARRAYSIZE */
-
-#define WLIF_MIN_BUF           128
-#define WLIF_DUMP_BUF_LEN      8 * 1024
-#define WLIF_MAP_BHSTA_NVVAL   0x4
-#define WLIF_SCAN_TRY_COUNT	5
 
 /* IOCTL swapping mode for Big Endian host with Little Endian dongle.  Default to off */
 /* The below macros handle endian mis-matches between wl utility and wl driver. */
@@ -119,16 +95,6 @@ bool g_swap = FALSE;
 #define dtohchanspec(i) (g_swap?dtoh16(i):i)
 #define htodenum(i) (g_swap?((sizeof(i) == 4) ? htod32(i) : ((sizeof(i) == 2) ? htod16(i) : i)):i)
 #define dtohenum(i) (g_swap?((sizeof(i) == 4) ? dtoh32(i) : ((sizeof(i) == 2) ? htod16(i) : i)):i)
-
-/* From wlc_rate.[ch] */
-#define MCS_TABLE_SIZE         33
-
-/* nvram lan_ifname/wan_ifname cache */
-static int nv_first = 0;
-char nv_lan_ifnames[WLIFU_MAX_NO_BRIDGE][256];
-char nv_lan_ifname[WLIFU_MAX_NO_BRIDGE][64];
-char nv_wan_ifnames[64];
-char nv_wan_ifname[64];
 
 /*
  * Flag Bit Values
@@ -377,63 +343,8 @@ get_wlname_by_mac(unsigned char *mac, char *wlname)
 }
 
 bool
-wl_wlif_is_wet_ap(char *ifname)
-{
-	int wet = 0, ap = 0;
-
-#ifdef __CONFIG_DHDAP__
-	if (!dhd_probe(ifname)) {
-		wl_iovar_getint(ifname, "wet_enab", &wet);
-	} else
-#endif /* __CONFIG_DHDAP__ */
-	{
-		wl_iovar_getint(ifname, "wet", &wet);
-	}
-
-	if (wl_probe(ifname) < 0)
-		return FALSE;
-
-	wl_iovar_getint(ifname, "ap", &ap);
-
-	return (wet && ap);
-}
-
-void get_ifname_by_wlmac_prep(void)
-{
-	int i;
-	char if_name[16], if_names[16];
-
-	memset(nv_lan_ifnames, 0, sizeof(nv_lan_ifnames));
-	memset(nv_lan_ifname, 0, sizeof(nv_lan_ifname));
-	memset(nv_wan_ifnames, 0, sizeof(nv_wan_ifnames));
-	memset(nv_wan_ifname, 0, sizeof(nv_wan_ifname));
-
-	for (i = 0; i < WLIFU_MAX_NO_BRIDGE; i++) {
-		if (i == 0 ) {
-			sprintf(if_names, "lan_ifnames");
-			sprintf(if_name, "lan_ifname");
-		}
-		else {
-			sprintf(if_names, "lan%d_ifnames", i);
-			sprintf(if_name, "lan%d_ifname", i);
-		}
-
-		strncpy(nv_lan_ifnames[i], nvram_safe_get(if_names), 256);
-		strncpy(nv_lan_ifname[i], nvram_safe_get(if_name), 64);
-	}
-	strncpy(nv_wan_ifnames, nvram_safe_get("wan_ifnames"), 64);
-	strncpy(nv_wan_ifname, nvram_safe_get("wan0_ifname"), 64);
-	return;
-}
-
-
-bool
 wl_wlif_is_psta(char *ifname)
 {
-#ifndef PSTA
-	/* PSTA not defined */
-	return FALSE;
-#else
 	int32 psta = FALSE;
 
 	if (wl_probe(ifname) < 0)
@@ -443,7 +354,6 @@ wl_wlif_is_psta(char *ifname)
 		return FALSE;
 
 	return psta ? TRUE : FALSE;
-#endif /* !PSTA */
 }
 
 bool
@@ -482,6 +392,28 @@ wl_wlif_is_psr_ap(char *ifname)
 	return FALSE;
 }
 
+bool
+wl_wlif_is_wet_ap(char *ifname)
+{
+	int wet = 0, ap = 0;
+
+#ifdef __CONFIG_DHDAP__
+	if (!dhd_probe(ifname)) {
+		wl_iovar_getint(ifname, "wet_enab", &wet);
+	} else
+#endif /* __CONFIG_DHDAP__ */
+	{
+		wl_iovar_getint(ifname, "wet", &wet);
+	}
+
+	if (wl_probe(ifname) < 0)
+		return FALSE;
+
+	wl_iovar_getint(ifname, "ap", &ap);
+
+	return (wet && ap);
+}
+
 /*
  * Get LAN or WAN ifname by wl mac
  * NOTE: We pass ifname in case of same mac in vifs (like URE TR mode)
@@ -494,11 +426,6 @@ get_ifname_by_wlmac(unsigned char *mac, char *name)
 	char tmptr[] = "lanXX_ifnames";
 	char *ifnames, *ifname;
 	int i;
-
-	if (!nv_first) {
-		nv_first = 1;
-		get_ifname_by_wlmac_prep();
-	}
 
 	/*
 	  * In case of URE mode, wl0.1 and wl0 have same mac,
@@ -515,11 +442,11 @@ get_ifname_by_wlmac(unsigned char *mac, char *name)
 	if (osifname_to_nvifname(os_name, nv_name, sizeof(nv_name)) < 0)
 		return 0;
 
+
 	/* find for dpsta */
 	if (wl_wlif_is_psta(os_name))
 		return name;
 
-	/* find LAN ifname for wlmac which is in dpsta */
 	ifnames = nvram_get("dpsta_ifnames");
 	if (ifnames && (find_in_list(ifnames, nv_name) || find_in_list(ifnames, os_name))) {
 		/* find dpsta in which bridge */
@@ -539,19 +466,11 @@ get_ifname_by_wlmac(unsigned char *mac, char *name)
 			}
 		}
 	}
+	
+
 
 	/* find for lan */
 	for (i = 0; i < WLIFU_MAX_NO_BRIDGE; i++) {
-
-		ifnames = nv_lan_ifnames[i];
-		ifname = nv_lan_ifname[i];
-		if (ifname[0]) {
-			/* the name in ifnames may nvifname or osifname */
-			if (find_in_list(ifnames, nv_name) ||
-				find_in_list(ifnames, os_name))
-				return ifname;
-		}
-#if 0
 		if (i == 0) {
 			ifnames = nvram_get("lan_ifnames");
 			ifname = nvram_get("lan_ifname");
@@ -567,6 +486,7 @@ get_ifname_by_wlmac(unsigned char *mac, char *name)
 			sprintf(tmptr, "lan%d_ifname", i);
 			ifnames = nvram_get(if_name);
 			ifname = nvram_get(tmptr);
+
 			if (ifname) {
 				/* the name in ifnames may nvifname or osifname */
 				if (find_in_list(ifnames, nv_name) ||
@@ -574,16 +494,11 @@ get_ifname_by_wlmac(unsigned char *mac, char *name)
 					return ifname;
 			}
 		}
-#endif
 	}
 
 	/* find for wan  */
-	ifnames = nv_wan_ifnames;
-	ifname = nv_wan_ifname;
-#if 0
 	ifnames = nvram_get("wan_ifnames");
 	ifname = nvram_get("wan0_ifname");
-#endif
 	/* the name in ifnames may nvifname or osifname */
 	if (find_in_list(ifnames, nv_name) ||
 	    find_in_list(ifnames, os_name))
@@ -1344,97 +1259,6 @@ wl_wlif_get_max_nss(wl_bss_info_t *bi)
 	}
 
 	return nss;
-}
-
-#ifdef __CONFIG_RSDB__
-int
-wl_wlif_get_rsdb_mode()
-{
-        char *mode;
-        int rsdb_mode = WLIF_RSDB_MODE_2X2; /* default rsdb_mode is mimo */
-
-        mode = nvram_get("rsdb_mode");
-        if (mode)
-                rsdb_mode = atoi(mode);
-        return rsdb_mode;
-}
-#endif /* __CONFIG_RSDB__ */
-
-/* Generic utility function to check for a known capability */
-int
-wl_wlif_get_chip_cap(char *ifname, char *cap)
-{
-        char caps[WLC_IOCTL_MEDLEN], var[WLC_IOCTL_SMLEN], *next;
-
-        if (wl_iovar_get(ifname, "cap", (void *)caps, sizeof(caps)) != BCME_OK)
-                return FALSE;
-
-        foreach(var, caps, next) {
-                if (strncmp(var, cap, sizeof(var)) == 0)
-                        return TRUE;
-        }
-
-        return FALSE;
-}
-
-int
-get_bridge_by_ifname(char* ifname, char** brname)
-{
-        char name[IFNAMSIZ] = {0}, *next = NULL;
-        char *br_ifnames = NULL;
-        int found = 0;
-
-        /* Search in LAN network */
-        br_ifnames = nvram_safe_get("lan_ifnames");
-        foreach(name, br_ifnames, next) {
-                if (!strcmp(name, ifname)) {
-                        found = 1;
-                        break;
-                }
-        }
-
-        if (found) {
-                *brname = nvram_safe_get("lan_ifname");
-                return 0;
-        }
-	/* Search in GUEST network */
-        br_ifnames = nvram_safe_get("lan1_ifnames");
-        foreach(name, br_ifnames, next) {
-                if (!strcmp(name, ifname)) {
-                        found = 1;
-                        break;
-                }
-        }
-
-        if (found) {
-                *brname = nvram_safe_get("lan1_ifname");
-                return 0;
-        }
-
-        return -1;
-}
-
-/* Get associated AP ifname for WDS link */
-int
-wl_wlif_wds_ap_ifname(char *ifname, char *apname)
-{
-        int ret;
-        char wdsap_nvifname[IFNAMSIZ] = {0};
-
-        if (wl_probe(ifname) < 0) {
-                return -1;
-        }
-
-        /* Get associated AP ifname and convert it to OS ifname */
-        ret = wl_iovar_get(ifname, "wds_ap_ifname", (void *)wdsap_nvifname, IFNAMSIZ);
-
-        if (!ret) {
-                ret = nvifname_to_osifname(wdsap_nvifname, apname, IFNAMSIZ);
-        } else {
-                printf("Err: get %s wds_ap_ifname fails %d\n", ifname, ret);
-        }
-
-        return ret;
 }
 #endif
 

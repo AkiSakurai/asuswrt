@@ -10,6 +10,8 @@
 var page_modified = 0;
 var restart_time = 0;
 
+var rc_support = '<% nvram_get("rc_support"); %>'; 
+var dsl_support = (rc_support.search("dsl") == -1) ? false : true;
 var current_page = '<% get_parameter("current_page"); %>';
 var next_page = '<% get_parameter("next_page"); %>';
 var action_script = '<% get_parameter("action_script"); %>';
@@ -206,7 +208,17 @@ function showWlHint(updateFlag){
 			}
 			else if(wl_nband_array[j] == '1'){
 				band5g_count++;
-				wl_nband_title.push("5 GHz-" + band5g_count);
+				if(parent.band6g_support){
+					if(band5g_count == '1'){
+						wl_nband_title.push("5 GHz");
+					}
+					else{
+						wl_nband_title.push("6 GHz");
+					}
+				}
+				else{					
+					wl_nband_title.push("5 GHz-" + band5g_count);
+				}				
 			}
 		}
 		if(wl_nband_title.indexOf("2.4 GHz-2") == -1) wl_nband_title[wl_nband_title.indexOf("2.4 GHz-1")] = "2.4 GHz";
@@ -522,10 +534,16 @@ function initial(){
 			}
 		}
 		
-		if(action_script == "reboot" || action_script.search("restart_dsl_wireless") != -1){
-			setTimeout(function(){
-				top.location.href = next_page;
-			}, restart_time*1000);
+		if(action_script == "reboot"){
+            setTimeout(function(){
+                top.location.href = next_page;
+            }, restart_time*1000);
+        }
+        else if(dsl_support){
+			//if(action_script.search("restart_dsl_wireless") != -1){
+			setTimeout(parent.startLiveUpdate, 40000);
+			setTimeout("parent.parent.document.getElementById('btn_gotoindex').style.visibility = 'visible';", 40000);
+			//}
 		}
 		else if(action_script.search("restart_subnet") !== -1){
 			setTimeout(doDetect, restart_time*1000);
@@ -583,6 +601,16 @@ function initial(){
 				showWlHint();
 				return;
 			}
+			else if(getflag == "finish"){
+				if(parent.document.getElementById("hidden_frame")){
+					setTimeout("parent.location.href='/qis/QIS_finish.htm';", restart_time*1000);  // Get
+				}
+				else{
+					parent.parent.showLoading(restart_time, "waiting");
+					setTimeout("showdr_advise('finish');", (restart_time+1)*1000);
+				}
+			}
+
 			if(current_page.indexOf(parent.ABS_INDEXPAGE) >= 0){
 				parent.showLoading(restart_time, "waiting");
 			}

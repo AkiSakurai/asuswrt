@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 #include <net/if.h>
 #include <bcmnvram.h>
 #include <shutils.h>
@@ -26,7 +27,7 @@ extern char label_mac[];
 
 int getStorageStatus(STORAGE_INFO_T *st)
 {
-	memset(st, sizeof(st), 0);
+	memset(st, 0, sizeof(*st));
 
 	st->AppHttpPort = __cpu_to_le16(nvram_get_int("dm_http_port"));
 

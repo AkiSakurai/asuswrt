@@ -1,7 +1,7 @@
 /*
  * Common utility functions across router code
  *
- * Copyright (C) 2018, Broadcom. All Rights Reserved.
+ * Copyright (C) 2020, Broadcom. All Rights Reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -127,4 +127,5 @@ extern char* strncpy_n(char *destination, const char *source, size_t num);
 
 extern void dm_register_app_restart_info(int pid, int argc, char **argv,
 		char *dependent_services);
+extern void dm_unregister_app_restart_info(int pid);
 #endif /* _COMMON_UTILS_H_ */

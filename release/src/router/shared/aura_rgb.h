@@ -66,4 +66,8 @@ extern int aura_rgb_led(int type, RGB_LED_STATUS_T *status, int group, int from_
 extern int __nv_to_rgb(char *aurargb_val, RGB_LED_STATUS_T *out_rgb);
 extern int nv_to_rgb(char *nv_name, RGB_LED_STATUS_T *out_rgb);
 extern int switch_rgb_mode(char *nv_name, RGB_LED_STATUS_T *out_rgb, int led_onoff);
+#if defined(RTCONFIG_RGBLED) && defined(GTAC2900)
+extern int send_aura_event(const char *event_name);
+extern int check_aura_rgb_reg(void);
+#endif
 #endif	/* ! __AURA_SYNC_H__ */

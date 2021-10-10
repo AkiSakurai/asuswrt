@@ -4499,7 +4499,7 @@ hwa_txstat_bmac_proc(void *context, uintptr arg1, uintptr arg2, uint32 core, uin
 			((v_s1 & 0x4) != 0)));
 		txs.frameid = (v_s1 & TXS_FID_MASK) >> TXS_FID_SHIFT;
 		txs.sequence = v_s2 & TXS_SEQ_MASK;
-		txs.phyerr = (v_s2 & TXS_PTX_MASK) >> TXS_PTX_SHIFT;
+		txs.phyerr = TXS_PTX(v_s2, wlc->pub->corerev);
 		txs.lasttxtime = R_REG(osh, D11_TSFTimerLow(wlc));
 		status_bits = v_s1 & TXS_STATUS_MASK;
 		txs.status.raw_bits = status_bits;

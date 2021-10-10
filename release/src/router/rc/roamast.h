@@ -27,6 +27,25 @@
 #define RAST_DFT_RSSI_VIDEO_CALL -80	/* rssi thresold to change idle rate weighting scheme */
 #define WL_NBAND_2G 2
 #define WL_NBAND_5G 1
+
+#define ROAMING_BYPASS 1
+#define ROAMING_NOT_BYPASS 2
+
+#endif
+#define MAC_STR_LEN 17
+#ifdef RTCONFIG_11K_RCPI_CHECK
+struct report_entry {
+	uint8 rcpi;
+	char ap_mac[MAC_STR_LEN+1];
+	struct report_entry *next;
+};
+
+struct rcpi_checklist {
+	char report_ok;
+	char sta_mac[MAC_STR_LEN+1];
+	struct report_entry *rplist;
+	struct rcpi_checklist *next;
+};
 #endif
 
 #define RAST_SUPPORT_K_PASSIVE_SCAN	0x1
@@ -40,25 +59,16 @@
 #define RAST_TIMEOUT_STA 10
 #endif
 #define	MAX_IF_NUM 3
+# ifdef RTCONFIG_FRONTHAUL_DWB
+#define MAX_SUBIF_NUM 6
+#else
 #define MAX_SUBIF_NUM 4
+#endif
 #define MAX_STA_COUNT 128
 #define ETHER_ADDR_STR_LEN 18
 #define MACF_UP	"%02X:%02X:%02X:%02X:%02X:%02X"
 #define MACF	"%02x:%02x:%02x:%02x:%02x:%02x"
-#if defined(RTCONFIG_RALINK)
-#define ETHERP_TO_MACF(ea)      ((struct ether_addr *) (ea))->ether_addr_octet[0], \
-                                ((struct ether_addr *) (ea))->ether_addr_octet[1], \
-                                ((struct ether_addr *) (ea))->ether_addr_octet[2], \
-                                ((struct ether_addr *) (ea))->ether_addr_octet[3], \
-                                ((struct ether_addr *) (ea))->ether_addr_octet[4], \
-                                ((struct ether_addr *) (ea))->ether_addr_octet[5]
-#define ETHER_TO_MACF(ea)       (ea).ether_addr_octet[0], \
-                                (ea).ether_addr_octet[1], \
-                                (ea).ether_addr_octet[2], \
-                                (ea).ether_addr_octet[3], \
-                                (ea).ether_addr_octet[4], \
-                                (ea).ether_addr_octet[5]
-#elif defined(RTCONFIG_QCA) || defined(RTCONFIG_LANTIQ)
+#if defined(RTCONFIG_RALINK) || defined(RTCONFIG_QCA) || defined(RTCONFIG_LANTIQ)
 #define ETHERP_TO_MACF(ea)	((struct ether_addr *) (ea))->ether_addr_octet[0], \
 				((struct ether_addr *) (ea))->ether_addr_octet[1], \
 				((struct ether_addr *) (ea))->ether_addr_octet[2], \
@@ -185,25 +195,6 @@ typedef struct _ROAMING_TABLE {
 #define xR_MAX  4
 extern int xTxR;
 #elif defined(RTCONFIG_QCA)
-typedef struct _WLANCONFIG_LIST {
-         char addr[18];
-         unsigned int aid;
-         unsigned int chan;
-         char txrate[6];
-         char rxrate[6];
-         unsigned int rssi;
-         unsigned int idle;
-         unsigned int txseq;
-         unsigned int rcseq;
-         char caps[12];
-         char acaps[10];
-         char erp[7];
-         char state_maxrate[20];
-         char wps[4];
-         char rsn[4];
-         char wme[4];
-         char mode[31];
-} WLANCONFIG_LIST;
 #endif
 
 typedef struct rast_sta_info {
@@ -242,6 +233,7 @@ typedef struct rast_sta_info {
 #endif
 	uint32 tx_rate;
 	uint32 rx_rate;
+#if defined(RTCONFIG_BCMARM) || defined(RTCONFIG_LANTIQ) || defined(RTCONFIG_QCA)
 	uint64 tx_byte;
 	uint64 rx_byte;
 #if defined(RTCONFIG_BCMARM)
@@ -251,16 +243,31 @@ typedef struct rast_sta_info {
 	char rx_nrate[64];
 #endif
 #endif
+#endif
+#ifdef RTCONFIG_STA_AP_BAND_BIND
+	int in_binding_list;
+#endif	
 } rast_sta_info_t;
 
 
 #ifdef RTCONFIG_ADV_RAST
 typedef struct rast_maclist {
-        time_t timestamp;
+	time_t timestamp;
 	uint8 mesh_node;
-        struct ether_addr addr;
-        struct rast_maclist *next;
+	struct ether_addr addr;
+	struct rast_maclist *next;
+	int force_roaming_blocktime;
+	int sta_ap_band_bind_action;
 } rast_maclist_t;
+#endif
+
+#ifdef RTCONFIG_FORCE_ROAMING
+struct force_roaming_list {
+	char stamac[18];
+	int  blocktime;
+	char target[18];
+	struct force_roaming_list *next;
+};
 #endif
 
 typedef struct rast_bss_info {
@@ -284,6 +291,10 @@ typedef struct rast_bss_info {
 	rast_maclist_t *static_client;
 	char tmp_static_client_path[32];
 #endif
+#ifdef RTCONFIG_FRONTHAUL_DWB
+	int fhdwb_if_enable[MAX_SUBIF_NUM];
+	int user_low_rssi_for_fhdwb_if;
+#endif
 }rast_bss_info_t;
 
 #ifdef RTCONFIG_ADV_RAST
@@ -304,6 +315,7 @@ int rast_syslog;
 int rast_force_syslog;
 
 #ifdef RTCONFIG_ADV_RAST
+struct ether_addr* rast_ether_atoe(char *a,struct ether_addr *ret_ea);
 rast_adv_conf_t adv_conf;
 extern int alarm_count;
 char maclist_buf[4096];
@@ -371,3 +383,28 @@ extern void rast_retrieve_bs_data(int bssidx, int vifidx, int interval);
 #define WLC_MACMODE_ALLOW       1      /* Allow specified (i.e. deny unspecified) */
 #define WLC_MACMODE_DENY        2      /* Deny specified (i.e. allow unspecified) */
 #endif
+
+#ifdef RTCONFIG_11K_RCPI_CHECK
+void add_to_rcpi_checklist(char *sta, char *ap_mac, char rcpi,struct rcpi_checklist **rcpi_list);
+#endif
+
+#ifdef RTCONFIG_RAST_NONMESH_KVONLY
+struct roaming_list_entry{
+	int idx;
+	int vidx;
+	struct ether_addr sta;
+	int rssi;
+	time_t trigger_time;
+	struct roaming_list_entry *next;
+};
+struct report_list_entry {
+	struct ether_addr sta;
+	struct ether_addr bssid;
+	int8 rcpi;
+	time_t recv_time;
+	struct report_list_entry *next;
+};
+int add_to_roaming_list(int idx,int vidx ,struct ether_addr *sta,int rssi);
+int remove_from_roaming_list(int idx,int vidx ,struct ether_addr *sta);
+
+#endif //RTCONFIG_RAST_NONMESH_KVONLY

@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_txiqlocal.c 783055 2020-01-13 12:26:33Z $
+ * $Id: phy_ac_txiqlocal.c 788383 2020-06-30 12:28:15Z $
  */
 
 #include <typedefs.h>
@@ -6040,6 +6040,9 @@ wlc_phy_poll_samps_WAR_acphy(phy_info_t *pi, int16 *samp, bool is_tssi,
 				}
 				wlc_phy_radio20709_afe_div_ratio(pi, 1);
 			}
+
+			/* Make sure low-rate TSSI is efective */
+			wlc_phy_resetcca_acphy(pi);
 		} else {
 			/* This is to measure the tone tssi */
 			bbmult   = target_gains->bbmult;
@@ -6191,6 +6194,7 @@ wlc_phy_poll_samps_WAR_acphy(phy_info_t *pi, int16 *samp, bool is_tssi,
 			MOD_PHYREG(pi, TSSIMode, tssiADCSel, 0);
 		}
 
+		if (for_idle) wlc_phy_resetcca_acphy(pi);
 	} else {
 		wlc_phy_poll_samps_acphy(pi, samp, FALSE, 3, init_adc_inside, ADCcore);
 	}

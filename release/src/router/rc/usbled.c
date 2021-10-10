@@ -204,17 +204,9 @@ static void usbled(int sig)
 	got_m2ssd = check_m2_ssd();
 #endif
 
-	if (nvram_match("asus_mfg", "1")
-#if defined(RTCONFIG_LED_BTN) || defined(RTCONFIG_WPS_ALLLED_BTN) || (!defined(RTCONFIG_WIFI_TOG_BTN) && !defined(RTCONFIG_QCA))
-			|| !nvram_get_int("AllLED")
-#endif
-			)
+	if (nvram_match("asus_mfg", "1") || inhibit_led_on())
 		no_blink(sig);
-	else if (!usb_busy
-#if defined(RTCONFIG_LED_BTN) || defined(RTCONFIG_WPS_ALLLED_BTN) || (!defined(RTCONFIG_WIFI_TOG_BTN) && !defined(RTCONFIG_QCA))
-			&& nvram_get_int("AllLED")
-#endif
-			)
+	else if (!usb_busy && !inhibit_led_on())
 	{
 #ifdef RTCONFIG_USB_XHCI
 		if (have_usb3_led(model)) {
@@ -259,10 +251,7 @@ static void usbled(int sig)
 				led_control(LED_USB, LED_OFF);
 		}
 	}
-	else
-#if defined(RTCONFIG_LED_BTN) || defined(RTCONFIG_WPS_ALLLED_BTN) || (!defined(RTCONFIG_WIFI_TOG_BTN) && !defined(RTCONFIG_QCA))
-	if (nvram_get_int("AllLED"))
-#endif
+	else if (!inhibit_led_on())
 	{
 		if (strcmp(usb_path1, "storage") && strcmp(usb_path2, "storage"))
 		{

@@ -295,7 +295,7 @@
 	position: relative;
 	opacity: 0;
 }
-.horizontal_line{
+.horizontal_line {
 	background: rgba(255,255,255,0.08);
 	height: 1px;
 	margin: 2px 0;
@@ -413,4 +413,10 @@
 	-moz-user-select: none;
 	-ms-user-select: none;
 	user-select: none;
+}
+.all_led_off {
+	color: #FC0;
+	font-size: 14px;
+	padding: 0px 10px 10px 10px;
+	display: none;
 }

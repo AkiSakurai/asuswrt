@@ -2323,7 +2323,7 @@ extern int add_account(const char *const account, const char *const password){
 	int acc_num;
 	int len;
 	char nvram_value[PATH_MAX], *ptr;
-	char ascii_user[64], ascii_passwd[64];
+	char ascii_user[64], ascii_passwd[84];
 	int lock;
 
 	if(account == NULL || strlen(account) <= 0){
@@ -2344,7 +2344,6 @@ extern int add_account(const char *const account, const char *const password){
 
 	memset(ascii_passwd, 0, sizeof(ascii_passwd));
 	char_to_ascii_safe(ascii_passwd, password, sizeof(ascii_passwd));
-
 #ifdef RTCONFIG_NVRAM_ENCRYPT
 	int enclen = pw_enc_blen(ascii_passwd);
 	char enc_passwd[enclen];

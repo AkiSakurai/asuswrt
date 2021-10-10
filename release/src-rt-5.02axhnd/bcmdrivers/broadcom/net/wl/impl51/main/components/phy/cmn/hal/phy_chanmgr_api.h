@@ -58,7 +58,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_chanmgr_api.h 783661 2020-02-05 02:40:06Z $
+ * $Id: phy_chanmgr_api.h 787172 2020-05-20 20:25:54Z $
  */
 
 #ifndef _phy_chanmgr_api_h_
@@ -93,6 +93,7 @@ void wlc_phy_chanspec_set(wlc_phy_t *ppi, chanspec_t chanspec);
 void wlc_phy_chanspec_radio_set(wlc_phy_t *ppi, chanspec_t newch);
 bool wlc_phy_is_txbfcal(wlc_phy_t *ppi);
 bool wlc_phy_is_smth_en(wlc_phy_t *ppi);
+void wlc_phy_bypass_idletssi_init(wlc_phy_t *ppi, bool force);
 
 /* band specific init */
 int phy_chanmgr_bsinit(phy_info_t *pi, chanspec_t chanspec, bool forced);

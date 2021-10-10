@@ -28,6 +28,10 @@ ifeq ($(HND_ROUTER),y)
 CFLAGS += -DNON_P_THREAD
 endif
 
+ifeq ($(RPAC92),y)
+CFLAGS += -DRPAC92
+endif
+
 ifeq ($(RTCONFIG_BCMARM),y)
 CFLAGS += -I$(SRCBASE)/shared/bcmwifi/include -DTYPEDEF_FLOAT_T
 endif

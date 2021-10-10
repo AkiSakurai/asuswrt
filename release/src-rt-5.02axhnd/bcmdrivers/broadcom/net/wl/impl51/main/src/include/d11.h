@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: d11.h 784740 2020-03-04 23:58:30Z $
+ * $Id: d11.h 787049 2020-05-15 00:38:14Z $
  */
 
 #ifndef	_D11_H
@@ -477,8 +477,21 @@ typedef struct {
 #define	TXS_SEQ_MASK		0xffff
 #define	TXS_PTX_MASK		0xffff0000
 #define	TXS_PTX_SHIFT		16
+#define	TXS_PTXFLG_MASK		0x80000000
+#define	TXS_PTXFLG_SHIFT	31
 #define	TXS_MU_MASK		0x01000000
 #define	TXS_MU_SHIFT		24
+
+#define TXS_PTXVAL(s2)	((s2 & TXS_PTX_MASK) >> TXS_PTX_SHIFT)
+#define TXS_PTXFLG(s2)	((s2 & TXS_PTXFLG_MASK) >> TXS_PTXFLG_SHIFT)
+
+#define TXS_PTX(s2, _corerev) (D11REV_GE((_corerev), 129) ? \
+	(TXS_PTXFLG(s2) ? TXS_PTXVAL(s2) : 0) : TXS_PTXVAL(s2))
+
+#define TX_STATUS128_TXDUR_MASK		0x7fff0000
+#define TX_STATUS128_TXDUR_SHIFT	16
+#define TX_STATUS128_TXDUR(s2) (TXS_PTXFLG(s2) ? 0 : (((s2) & TX_STATUS128_TXDUR_MASK) \
+		>> TX_STATUS128_TXDUR_SHIFT) << 1)
 
 /* clk_ctl_st, corerev >= 17 */
 #define CCS_ERSRC_REQ_D11PLL	0x00000100	/**< d11 core pll request */
@@ -2008,6 +2021,26 @@ BWL_PRE_PACKED_STRUCT struct tx_status {
 			(((s5) & TX_STATUS128_MUTP_MASK) >> TX_STATUS128_MUTP_SHIFT) : \
 			(TX_STATUS_MUTP_VHTMU)
 
+#define TX_STATUS128_EPOCH_MASK		0x0400
+#define TX_STATUS128_EPOCH_SHIFT	10
+#define TX_STATUS128_EPOCH(s5)	(((s5) & TX_STATUS128_EPOCH_MASK) >> TX_STATUS128_EPOCH_SHIFT)
+
+#define TX_STATUS128_SNDFL_EPCH_MASK		0x2000
+#define TX_STATUS128_SNDFL_EPCH_SHIFT		13
+#define TX_STATUS128_SNDFL_EPCH(s5)	(((s5) &\
+			TX_STATUS128_SNDFL_EPCH_MASK) >> TX_STATUS128_SNDFL_EPCH_SHIFT)
+typedef enum {
+	C_M2SQ_REASON_NONE	= 0,
+	C_M2SQ_NOT_IN_ANYGRP	= 1,
+	C_M2SQ_SOUNDNG_FAIL	= 2,
+	C_M2SQ_RETRY_LMT_RCHD	= 3,
+	C_M2SQ_REASON_MAX	= 4
+} eM2SqReasonCode_t;
+
+#define TX_STATUS128_M2SQ_MASK		0x1800
+#define TX_STATUS128_M2SQ_SHIFT		11
+#define TX_STATUS128_M2SQ(s5)	(((s5) & TX_STATUS128_M2SQ_MASK) >> TX_STATUS128_M2SQ_SHIFT)
+
 /* HEOM tx status rate info */
 #define TX_STATUS128_HEOM_RUIDX_MASK		0x0000ff00
 #define TX_STATUS128_HEOM_RUIDX_SHIFT		8
@@ -2024,6 +2057,11 @@ BWL_PRE_PACKED_STRUCT struct tx_status {
 #define TX_STATUS128_HEOM_CPLTF(s4) (((s4) & TX_STATUS128_HEOM_CPLTF_MASK) >> \
 		TX_STATUS128_HEOM_CPLTF_SHIFT)
 
+#define TX_STATUS128_HEOM_NUSRS_MASK	0x000f0000
+#define TX_STATUS128_HEOM_NUSRS_SHIFT	16
+#define TX_STATUS128_HEOM_NUSRS(s3) (((s3) & TX_STATUS128_HEOM_NUSRS_MASK) >> \
+		TX_STATUS128_HEOM_NUSRS_SHIFT)
+
 /* HEUL tx status info */
 #define PHYRSSI_SIGN_MASK		0x200
 #define PHYRSSI_2SCOMPLEMENT		0x400
@@ -2035,8 +2073,8 @@ BWL_PRE_PACKED_STRUCT struct tx_status {
 
 /* first package */
 /* s1 */
-#define TGTXS_REASON_MASK		0x000000f0	// stop reason code
-#define TGTXS_REASON_SHIFT		4
+#define TGTXS_REASON_MASK		0x000000f8	// stop reason code
+#define TGTXS_REASON_SHIFT		3
 #define TGTXS_USRIDX_MASK		0x00000f00
 #define TGTXS_USRIDX_SHIFT		8
 #define TGTXS_NUSR_MASK			0x0000f000
@@ -2304,6 +2342,17 @@ enum  {
 #define AMT_ATTR_A2			0x0004	/**< Match for A2 */
 #define AMT_ATTR_A3			0x0002	/**< Match for A3 */
 #define AMT_ATTR_ADDR_MASK		0xF	/**< Address Mask */
+#define AMT_ATTR_INCARN_SHIFT		4       /**< Used for SW incarnation */
+#define __AMT_ATTR_INCARN_MASK		0x3	/**< used for SW incarnation */
+#define AMT_ATTR_INCARN_MASK \
+	(__AMT_ATTR_INCARN_MASK << AMT_ATTR_INCARN_SHIFT)
+
+#define SCB_UCODE_STS_AMT_IDX_MASK	0x1FF
+#define __SCB_UCODE_STS_AMT_INCARN_MASK	__AMT_ATTR_INCARN_MASK
+#define SCB_UCODE_STS_AMT_INCARN_SHIFT   9
+#define SCB_UCODE_STS_AMT_INCARN_MASK \
+	(__SCB_UCODE_STS_AMT_INCARN_MASK << SCB_UCODE_STS_AMT_INCARN_SHIFT)
+#define SCB_UCODE_STS_AMT_INVALID_MASK   (0x1 << 11)
 
 /* AMT Index defines */
 #define AMT_SIZE_64			64	/**< number of AMT entries */
@@ -2774,6 +2823,7 @@ BWL_PRE_PACKED_STRUCT struct shm_acparams {
 #define MXHF1_NOMIXBW		0x0040		/* 0-mixbw dlofdma, 1-single bw dlofdma only */
 #define MXHF1_WFA20IN80		0x0080		/* 20in80 dl ofdma WAR for wfa test (HE-4.69.1) */
 #define MXHF1_MIXACKP		0x0100		/* 1: allow mixed ackp1 and ackp0, 0: disallow */
+#define MXHF1_SUBMVP_DISA       0x0200          /* 1: disable, 0: enable, sub precoding */
 
 /* M_HOST_FLAGS6 */
 #define MHF6_RESERVED		0x0001
@@ -3450,20 +3500,20 @@ enum rxs_dmaflags {
 						(ACPHY_RXPWR_ANT3(rxs))))
 
 /* HECAPPHY PhyRxStatus_4: */
-#define PRXS4_DYNBWINNONHT_MASK_REV_GE80	0x1000
+#define PRXS4_DYNBWINNONHT_MASK_REV_GE129	0x2000
 #define PRXS4_DYNBWINNONHT_REV_GE129(rxs)	(D11PHYSTSBUF_GE129_ACCESS_VAL(rxs, \
 						PhyRxStatus_4) & \
-						PRXS4_DYNBWINNONHT_MASK_REV_GE80)
+						PRXS4_DYNBWINNONHT_MASK_REV_GE129)
 
 #define PRXS_PHY_DYNBWINNONHT(corerev, rxs)     (D11REV_GE(corerev, 129) ? \
 						PRXS4_DYNBWINNONHT_REV_GE129(rxs) : \
 						PRXS5_ACPHY_DYNBWINNONHT(rxs))
 
 /* HECAPPHY PhyRxStatus_8 (part of phyrxs_rem[2]) : */
-#define PRXS8_CHBWINNONHT_MASK_REV_GE80		0x0100
+#define PRXS8_CHBWINNONHT_MASK_REV_GE129	0xC000
 #define PRXS8_CHBWINNONHT_REV_GE129(rxs)	(D11PHYSTSBUF_GE129_ACCESS_VAL(rxs, \
-						phyrxs_rem[2]) & \
-						PRXS8_CHBWINNONHT_MASK_REV_GE80)
+						PhyRxStatus_4) & \
+						PRXS8_CHBWINNONHT_MASK_REV_GE129)
 
 #define PRXS_PHY_CHBWINNONHT(corerev, rxs)	(D11REV_GE(corerev, 129) ? \
 						PRXS8_CHBWINNONHT_REV_GE129(rxs) : \
@@ -3581,8 +3631,8 @@ enum rxs_dmaflags {
 					(D11RXHDR_ACCESS_VAL(rxh, rev, RxStatus2) >> 8) : \
 					D11PHYSTSBUF_ACCESS_VAL(rxh, rev, PhyRxStatus_0)) & \
 						PRXS_FTFMT_MASK(rev))
-
-#define PRXS_SHORTH(corerev)		(D11REV_GE(corerev, 129) ? (PRXS0_SHORTH_GE129) : \
+/* Short Preamble bitmask */
+#define PRXS_SHORTPMBL(corerev)		(D11REV_GE(corerev, 129) ? (PRXS0_SHORTH_GE129) : \
 					(D11REV_GE(corerev, 128) ? (PRXS0_SHORTH_GE128) : \
 					(PRXS0_SHORTH)))
 

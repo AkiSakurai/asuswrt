@@ -287,30 +287,6 @@ void usage_exit(const char *cmd, const char *help)
 	exit(1);
 }
 
-#if 0 // replaced by #define in rc.h
-int modprobe(const char *mod)
-{
-#if 1
-	return eval("modprobe", "-s", (char *)mod);
-#else
-	int r = eval("modprobe", "-s", (char *)mod);
-	cprintf("modprobe %s = %d\n", mod, r);
-	return r;
-#endif
-}
-#endif // 0
-
-int modprobe_r(const char *mod)
-{
-#if 1
-	return eval("modprobe", "-r", (char *)mod);
-#else
-	int r = eval("modprobe", "-r", (char *)mod);
-	cprintf("modprobe -r %s = %d\n", mod, r);
-	return r;
-#endif
-}
-
 #ifndef ct_modprobe
 #ifdef LINUX26
 #define ct_modprobe(mod, args...) ({ \
@@ -677,7 +653,7 @@ void setup_ct_timeout(int connflag)
 			v[1] = read_ct_timeout("icmp", NULL);
 
 			snprintf(buf, sizeof(buf), "%u %u", v[0], v[1]);
-#ifdef RTCONFIG_HND_ROUTER_AX_675X
+#if defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)
 		if(strcmp(buf, "0 0") != 0)
 #endif
 			nvram_set("ct_timeout", buf);
@@ -710,7 +686,7 @@ void setup_conntrack(void)
 	snprintf(p, sizeof(p), "%s", nvram_safe_get("ct_tcp_timeout"));
 	if (sscanf(p, "%u%u%u%u%u%u%u%u%u%u",
 		&v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7], &v[8], &v[9]) == 10) {	// lightly verify
-#ifdef RTCONFIG_HND_ROUTER_AX_675X
+#if defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)
 		fprintf(stderr, "ct_tcp_timeout:[%s]\n", p);
 #endif
 		write_tcp_timeout("established", v[1]);
@@ -733,7 +709,7 @@ void setup_conntrack(void)
 		v[8] = read_tcp_timeout("last_ack");
 		snprintf(buf, sizeof(buf), "0 %u %u %u %u %u %u %u %u 0",
 			v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]);
-#ifdef RTCONFIG_HND_ROUTER_AX_675X
+#if defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)
 		if(strcmp(buf, "0 0 0 0 0 0 0 0 0 0") != 0)
 #endif
 			nvram_set("ct_tcp_timeout", buf);
@@ -743,7 +719,7 @@ void setup_conntrack(void)
 
 	snprintf(p, sizeof(p), "%s", nvram_safe_get("ct_timeout"));
 	if (sscanf(p, "%u%u", &v[0], &v[1]) == 2) {
-#ifdef RTCONFIG_HND_ROUTER_AX_675X
+#if defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)
 		fprintf(stderr, "ct_timeout:[%s]\n", p);
 #endif
 //		write_ct_timeout("generic", NULL, v[0]);
@@ -753,7 +729,7 @@ void setup_conntrack(void)
 		v[0] = read_ct_timeout("generic", NULL);
 		v[1] = read_ct_timeout("icmp", NULL);
 		snprintf(buf, sizeof(buf), "%u %u", v[0], v[1]);
-#ifdef RTCONFIG_HND_ROUTER_AX_675X
+#if defined(RTCONFIG_HND_ROUTER_AX_675X) && !defined(RTCONFIG_HND_ROUTER_AX_6710)
 		if(strcmp(buf, "0 0") != 0)
 #endif
 		nvram_set("ct_timeout", buf);
@@ -864,12 +840,28 @@ void setup_pt_conntrack(void)
 	}
 
 #ifdef LINUX26
+#if defined(BRTAC828)
+	if (!nvram_match("fw_pt_sip", "0")) {
+		if (nvram_get_int("fw_pt_sip_mode") == 1) {
+			ct_modprobe_r("sip");
+			ct_modprobe("cisco_sip");
+		} else {
+			ct_modprobe_r("cisco_sip");
+			ct_modprobe("sip");
+		}
+	}
+	else {
+		ct_modprobe_r("sip");
+		ct_modprobe_r("cisco_sip");
+	}
+#else
 	if (!nvram_match("fw_pt_sip", "0")) {
 		ct_modprobe("sip");
 	}
 	else {
 		ct_modprobe_r("sip");
 	}
+#endif
 #endif
 }
 
@@ -881,6 +873,9 @@ void remove_conntrack(void)
 	ct_modprobe_r("h323");
 #ifdef LINUX26
 	ct_modprobe_r("sip");
+#if defined(BRTAC828)
+	ct_modprobe_r("cisco_sip");
+#endif
 #endif
 }
 
@@ -1041,20 +1036,14 @@ void killall_tk(const char *name)
 	}
 }
 
-void kill_pidfile_tk(const char *pidfile)
+void kill_pid_tk(pid_t pid)
 {
-	FILE *fp;
-	char buf[256];
-	pid_t pid = 0;
 	int n;
 
-	if ((fp = fopen(pidfile, "r")) != NULL) {
-		if (fgets(buf, sizeof(buf), fp) != NULL)
-			pid = strtoul(buf, NULL, 0);
-		fclose(fp);
-	}
+	if (pid <= 1 && pid >= -1)
+		return;
 
-	if (pid > 1 && kill(pid, SIGTERM) == 0) {
+	if (kill(pid, SIGTERM) == 0) {
 		n = 10;
 		while ((kill(pid, 0) == 0) && (n-- > 0)) {
 			_dprintf("%s: waiting pid=%d n=%d\n", __FUNCTION__, pid, n);
@@ -1067,6 +1056,36 @@ void kill_pidfile_tk(const char *pidfile)
 				usleep(100 * 1000);
 			}
 		}
+	}
+}
+
+void kill_pidfile_tk(const char *pidfile)
+{
+	FILE *fp;
+	char buf[256];
+	pid_t pid = 0;
+
+	if ((fp = fopen(pidfile, "r")) != NULL) {
+		if (fgets(buf, sizeof(buf), fp) != NULL)
+			pid = strtoul(buf, NULL, 0);
+		fclose(fp);
+		kill_pid_tk(pid);
+	}
+}
+
+void kill_pidfile_tk_g(const char *pidfile)
+{
+	FILE *fp;
+	char buf[256];
+	pid_t pid = 0;
+	pid_t pgid;
+
+	if ((fp = fopen(pidfile, "r")) != NULL) {
+		if (fgets(buf, sizeof(buf), fp) != NULL)
+			pid = strtoul(buf, NULL, 0);
+		fclose(fp);
+		pgid = getpgid(pid);
+		kill_pid_tk(-pgid);
 	}
 }
 
@@ -1252,6 +1271,7 @@ void time_zone_x_mapping(void)
 	FILE *fp;
 	char tmpstr[32];
 	char *ptr;
+	int len;
 
 #ifdef HND_ROUTER
 	int idx;
@@ -1326,8 +1346,11 @@ void time_zone_x_mapping(void)
 	else if (nvram_match("time_zone", "UTC-3_5")){	/*Volgograd*/
 		nvram_set("time_zone", "UTC-4_7");
 	}
+	else if (nvram_match("time_zone", "UTC-6_2")){  /*Novosibirsk*/
+		nvram_set("time_zone", "UTC-7_3");
+	}
 
-	snprintf(tmpstr, sizeof(tmpstr), "%s", nvram_safe_get("time_zone"));
+	len = snprintf(tmpstr, sizeof(tmpstr), "%s", nvram_safe_get("time_zone"));
 	/* replace . with : */
 	while ((ptr=strchr(tmpstr, '.'))!=NULL) *ptr = ':';
 	/* remove *_? */
@@ -1335,7 +1358,7 @@ void time_zone_x_mapping(void)
 
 	/* check time_zone_dst for daylight saving */
 	if (nvram_get_int("time_zone_dst"))
-		sprintf(tmpstr, "%s,%s", tmpstr, nvram_safe_get("time_zone_dstoff"));
+		len += sprintf(tmpstr + len, ",%s", nvram_safe_get("time_zone_dstoff"));
 #ifdef CONVERT_TZ_TO_GMT_DST
 	else	gettzoffset(tmpstr, tmpstr, sizeof(tmpstr));
 #endif
@@ -1560,6 +1583,67 @@ int rand_seed_by_time(void)
 
 	return rand();
 }
+
+//Andrew add
+#ifdef RTCONFIG_CONNTRACK
+void conntrack_check(int action)
+{
+	static unsigned int conntrack_times = 0;
+	char cmd[80];
+
+	if (!nvram_match("fb_conntrack_debug", "1"))
+		return;
+
+	int pid = pidof("conntrack");
+	/*
+	time_t now;
+	struct tm *info;
+	char t_str[10];
+
+	time(&now);
+	info = localtime(&now);
+	strftime(t_str, 10, "%H:%M:%S", info);
+	*/
+	switch (action) {
+	case CONNTRACK_START:
+		//_dprintf("%s conntrack_check, action=[%d][START], pid=[%d]\n", t_str, CONNTRACK_START, pid);
+		if (pid < 1) {
+			snprintf(cmd, sizeof(cmd), "conntrack -E -p tcp -v %s &", NF_CONNTRACK_FILE);
+			_dprintf("cmd=[%s]\n", cmd);
+			system(cmd);
+			conntrack_times = 0;
+		}
+		break;
+
+	case CONNTRACK_STOP:
+		//_dprintf("%s conntrack_check, action=[%d][STOP], pid=[%d]\n", t_str, CONNTRACK_STOP, pid);
+		if (pid >= 1) {
+			snprintf(cmd, sizeof(cmd), "kill -SIGTERM %d", pid);
+			_dprintf("cmd=[%s]\n", cmd);
+			system(cmd);
+			conntrack_times = 0;
+		}
+		break;
+
+	case CONNTRACK_ROTATE:
+		//_dprintf("%s conntrack_check, action=[%d][ROTATE], pid=[%d], times=[%d]\n", t_str, CONNTRACK_ROTATE, pid, conntrack_times);
+		conntrack_times++;
+		if (conntrack_times < ONEDAY)
+			return;
+
+		if (pid >= 1) {
+			snprintf(cmd, sizeof(cmd), "kill -SIGUSR1 %d", pid);
+			_dprintf("cmd=[%s]\n", cmd);
+			system(cmd);
+			conntrack_times = 0;
+		}
+		break;
+	}
+
+	return;
+}
+#endif //RTCONFIG_CONNTRACK
+//Andrew end
 
 #if defined(RTCONFIG_QCA)
 char *get_wpa_supplicant_pidfile(const char *ifname, char *buf, int size)

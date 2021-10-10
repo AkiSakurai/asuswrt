@@ -440,7 +440,7 @@ var tableApi = {
 		//title
 		var $titleHtml = $("<div>");
 		$titleHtml.addClass("pureText");
-		$titleHtml.html("Create New Policy");/*untranslated*/
+		$titleHtml.html("<#JS_create_policy#>");/*untranslated*/
 		$titleHtml.appendTo($divHtml);
 
 		//close icon
@@ -835,9 +835,9 @@ var tableApi = {
 			.append(
 				tableApi.genTable_frame(tableApi._attr)
 					// thead
-					//.append(
-					//	tableApi.genThead_frame(tableApi._attr.title, tableApi._privateAttr.header_item_num)
-					//)
+					.append(
+						((tableApi._attr.capability.add) ? "" : tableApi.genThead_frame(tableApi._attr.title, tableApi._privateAttr.header_item_num))
+					)
 					// title
 					.append(
 						tableApi.genTitle_frame(tableApi._attr.header, tableApi._privateAttr.header_item_width)

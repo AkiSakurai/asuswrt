@@ -17,17 +17,17 @@
 <script type="text/javascript" src="/js/jquery.js"></script>
 <script>
 $(document).ready(function(){
-	document.getElementById("tencent_acceleration_iframe").src = "game_accelerator_tencent.html";
 	initial();
 });
 
-function reSize(){
+function load_page(){
 	document.getElementById("tencent_acceleration_iframe").height=document.body.scrollHeight;
+	document.getElementById("tencent_acceleration_iframe").src = "game_accelerator_tencent.html";
 }
 
 function initial(){
 	show_menu();
-	reSize();
+	setTimeout(load_page, 100);
 }
 </script>
 </head>
