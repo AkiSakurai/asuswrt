@@ -357,7 +357,7 @@ misc_ioctrl(void)
 #endif
 
 #if defined(HND_ROUTER)
-			setLANLedOn();
+			activateLANLed();
 #endif
 
 #if defined(HND_ROUTER) && defined(RTCONFIG_HNDMFG)

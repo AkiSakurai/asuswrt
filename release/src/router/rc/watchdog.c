@@ -2443,7 +2443,7 @@ static inline void toggle_aura_rgb_mode(int led_onoff)
 static inline void toggle_aura_rgb_mode(int led_onoff) { }
 #endif
 
-#if ((defined(RTCONFIG_LED_BTN) || defined(RTCONFIG_TURBO_BTN)) && defined(RTCONFIG_QCA))
+#if (defined(RTCONFIG_LED_BTN) || defined(RTCONFIG_TURBO_BTN)) && defined(RTCONFIG_QCA)
 static inline void __handle_led_onoff_button(int led_onoff)
 {
 	int unit, onoff;
@@ -4392,7 +4392,7 @@ void fake_etlan_led(void)
 	blink_etlan_check++;
 #endif
 }
-#endif
+#endif // RTCONFIG_FAKE_ETLAN_LED
 
 #if defined(RTCONFIG_WLAN_LED) || defined(RTN18U)
 unsigned long get_2g_count()

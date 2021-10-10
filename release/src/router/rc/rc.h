@@ -637,6 +637,7 @@ extern void fc_fini();
 extern void hnd_nat_ac_init(int bootup);
 extern void setLANLedOn(void);
 extern void setLANLedOff(void);
+extern void activateLANLed();
 #ifdef RTCONFIG_HNDMFG
 extern void hnd_mfg_init();
 extern void hnd_mfg_services();
