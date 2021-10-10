@@ -1,7 +1,7 @@
 /*
  * TxPowerControl module implementation - iovar table
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tpc_iov.c 691388 2017-03-22 02:17:00Z $
+ * $Id: phy_tpc_iov.c 769138 2018-11-05 21:39:04Z $
  */
 
 #include <phy_tpc.h>
@@ -69,7 +69,9 @@ enum {
 	IOV_PAVARS = 7,
 	IOV_PHY_VBAT_TEMPSENSE_PWRBACKOFF = 8,
 	IOV_PHY_VBAT_PWRBACKOFF_THRESHOLD = 9,
-	IOV_PHY_TEMPSENSE_PWRBACKOFF_THRESHOLD = 10
+	IOV_PHY_TEMPSENSE_PWRBACKOFF_THRESHOLD = 10,
+	IOV_PHY_TXINSTPWR = 11,
+	IOV_PHY_TXINSTPWR_PERCORE = 12
 };
 
 /* iovar table */
@@ -91,6 +93,8 @@ static const bcm_iovar_t phy_tpc_iovars[] = {
 	{"initbaseidx5g", IOV_INITBASEIDX5G, (IOVF_SET_UP|IOVF_GET_UP), 0, IOVT_UINT8, 0},
 	{"pavars", IOV_PAVARS,
 	(IOVF_SET_DOWN | IOVF_MFG), 0, IOVT_BUFFER, WL_PHY_PAVARS_LEN * sizeof(uint16)},
+	{"txinstpwr", IOV_PHY_TXINSTPWR, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_INT8, 0},
+	{"txinstpwr_percore", IOV_PHY_TXINSTPWR_PERCORE, (IOVF_GET_UP | IOVF_MFG), 0, IOVT_INT8, 0},
 #endif // endif
 #if defined(TXPWRBACKOFF) && defined(WLTEST)
 	{"phy_vbat_tempsense_pwrbackoff", IOV_PHY_VBAT_TEMPSENSE_PWRBACKOFF,
@@ -197,6 +201,12 @@ phy_tpc_doiovar(void *ctx, uint32 aid,
 
 	case IOV_SVAL(IOV_PAVARS):
 		phy_tpc_set_pavars(pi->tpci, a, p);
+		break;
+	case IOV_GVAL(IOV_PHY_TXINSTPWR):
+		phy_tpc_txpower_get_instant(pi->tpci, a);
+		break;
+	case IOV_GVAL(IOV_PHY_TXINSTPWR_PERCORE):
+		phy_tpc_txpower_get_instant_percore(pi->tpci, a);
 		break;
 #endif // endif
 

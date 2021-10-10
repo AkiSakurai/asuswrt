@@ -5,7 +5,7 @@
  * update the multicast forwarding database. This file contains the
  * common code routines of IGS module.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: igsc.c 759252 2018-04-24 19:19:59Z $
+ * $Id: igsc.c 775532 2019-06-03 16:29:20Z $
  */
 
 #include <typedefs.h>
@@ -58,6 +58,9 @@
 #include <clist.h>
 #if defined(linux)
 #include <osl_linux.h>
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+#include <igs_linux.h>
+#endif // endif
 #else /* !defined(linux) */
 #error "Unsupported osl"
 #endif /* defined(linux) */
@@ -331,7 +334,7 @@ static int32 igsc_update_leave_member(igsc_info_t *igsc_info, void *ifp,
 
 	if (ret != SUCCESS)
 		IGS_WARN("Deleting unknown member with grp %x host %x if %p",
-		         igmpv3g->mcast_addr, mh_ip, ifp);
+				mcast_ip, mh_ip, ifp);
 	return ((ret == SUCCESS) ? EMF_FORWARD : EMF_FLOOD);
 }
 
@@ -423,39 +426,46 @@ igsc_input(emfc_snooper_t *s, void *ifp, uint8 *iph, uint8 *igmph, bool from_rp)
 
 			for (grp_num = 0; grp_num < ntoh16(*(uint16 *)&igmpv3h->group_num);
 				grp_num++) {
+				uint16 src_num;
+
+				src_num = ntoh16(*(uint16 *)&igmpv3g->src_num);
+				mgrp_ip = ntoh32(*(uint32 *)&igmpv3g->mcast_addr);
+
+				IGS_DEBUG("IGMPv3 grp_num %d type %d mcast_addr=%x, src_num=%x\n",
+					grp_num,
+					igmpv3g->type,
+					mgrp_ip,
+					src_num);
 
 				switch (igmpv3g->type) {
 					case IGMPV3_MODE_IS_EXCLUDE:
-					case IGMPV3_ALLOW_NEW_SOURCES:
 					case IGMPV3_BLOCK_OLD_SOURCES:
 					case IGMPV3_CHANGE_TO_EXCLUDE:
-						mgrp_ip = ntoh32(*(uint32 *)&igmpv3g->mcast_addr);
+						if (!IP_ISMULTI(mgrp_ip)) {
+						IGS_ERROR("ignore EXCLUDE non-multicast %x\n",
+								mgrp_ip);
+							break;
+						}
 
-						IGS_DEBUG("Leave mcast_addr=%x, src_num=%x\n",
-							mgrp_ip,
-							ntoh16(*(uint16 *)&igmpv3g->src_num));
-
-						if (!IP_ISMULTI(mgrp_ip))
-							IGS_ERROR("ADD mgrp_ip=%x\n", mgrp_ip);
-						else
+						if (src_num == 0)
 							ret = igsc_update_join_member(igsc_info,
 								ifp, dest_ip, mgrp_ip, mh_ip);
+						else
+							ret = igsc_update_leave_member(igsc_info,
+								ifp, mgrp_ip, mh_ip);
 						break;
 
 					case IGMPV3_CHANGE_TO_INCLUDE:
 					case IGMPV3_MODE_IS_INCLUDE:
-						mgrp_ip = ntoh32(*(uint32 *)&igmpv3g->mcast_addr);
-
-						IGS_DEBUG("Leave mcast_addr=%x, src_num=%x\n",
-							mgrp_ip,
-							ntoh16(*(uint16 *)&igmpv3g->src_num));
-
+					/* Treat ALLOW_NEW_SOURCE as leave when src_num=0 */
+					case IGMPV3_ALLOW_NEW_SOURCES:
 						if (!IP_ISMULTI(mgrp_ip)) {
-							IGS_ERROR("CHANGE mgrp_ip=%x\n", mgrp_ip);
+						IGS_ERROR("ignore INCLUDE non-multicast %x\n",
+								mgrp_ip);
 							break;
 						}
 
-						if (ntoh32(igmpv3g->src_num) == 0)
+						if (src_num == 0)
 							ret = igsc_update_leave_member(igsc_info,
 								ifp, mgrp_ip, mh_ip);
 						else
@@ -718,6 +728,19 @@ igsc_cfg_request_process(igsc_info_t *igsc_info, igs_cfg_request_t *cfg)
 			cfg->status = IGSCFG_STATUS_SUCCESS;
 			break;
 
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+		case IGSCFG_CMD_IGSDB_LIST_IPV6:
+			if (igsc_sdb_list_ipv6(igsc_info, (igs_cfg_sdb_list_t *)cfg->arg,
+			                  cfg->size) != SUCCESS)
+			{
+				cfg->status = IGSCFG_STATUS_FAILURE;
+				cfg->size = sprintf(cfg->arg, "IGSDB listing failed\n");
+				break;
+			}
+			cfg->status = IGSCFG_STATUS_SUCCESS;
+			break;
+#endif // endif
+
 		case IGSCFG_CMD_RTPORT_LIST:
 			if (igsc_rtport_list(igsc_info, (igs_cfg_rtport_list_t *)cfg->arg,
 			                     cfg->size) != SUCCESS)
@@ -736,8 +759,12 @@ igsc_cfg_request_process(igsc_info_t *igsc_info, igs_cfg_request_t *cfg)
 			break;
 	}
 }
-
 #ifdef BCM_NBUFF_WLMCAST
+/* igsc_remove_sta API is an obsolete function which will not be used in
+ * BRANCH_KUDU_17_10 after IPV6 mc support is checked in, it is keep here to
+ * make old KUDU)_TWIG branches like TWIG_17_10_25 branches to compile as it
+ * use trunk emf source
+ */
 static int32
 igsc_remove_sta(emfc_snooper_t *s, void *ifp, uint32 src_ip)
 {
@@ -797,6 +824,12 @@ igsc_init(int8 *inst_id, void *igs_info, osl_t *osh, igsc_wrapper_t *wrapper)
 	/* Fill in the wrapper specific data */
 	igsc_info->wrapper.igs_broadcast = wrapper->igs_broadcast;
 
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+	if (igsc_init_ipv6(igsc_info, osh) == NULL) {
+		MFREE(osh, igsc_info, sizeof(igsc_info_t));
+		return NULL;
+	}
+#endif // endif
 	/* Initialize the IGSDB */
 	igsc_sdb_init(igsc_info);
 
@@ -844,6 +877,13 @@ igsc_init(int8 *inst_id, void *igs_info, osl_t *osh, igsc_wrapper_t *wrapper)
 
 	IGS_DEBUG("Initialized IGSDB\n");
 
+#if defined(BCM_NBUFF_WLMCAST_IPV6) && defined(BCM_WMF_MCAST_DBG)
+	if (!wrapper->cmdline_indicator) {
+		igs_instance_add(inst_id, NULL, igsc_info);
+	}
+	strncpy(igsc_info->inst_id, inst_id, IFNAMSIZ);
+#endif // endif
+
 	return (igsc_info);
 }
 
@@ -856,7 +896,16 @@ void
 igsc_exit(igsc_info_t *igsc_info)
 {
 	emfc_igmp_snooper_unregister(igsc_info->emf_handle);
-
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+#ifdef BCM_WMF_MCAST_DBG
+	{
+		igs_info_t *igs_info = igs_instance_find(igsc_info->inst_id);
+		if (igs_info)
+			igs_instance_del(igs_info, igsc_info);
+	}
+#endif // endif
+	igsc_exit_ipv6(igsc_info);
+#endif /* BCM_NBUFF_WLMCAST_IPV6 */
 	/* Cleanup the IGS router port list entries */
 	igsc_rtlist_clear(igsc_info);
 	OSL_LOCK_DESTROY(igsc_info->rtlist_lock);

@@ -4,7 +4,7 @@
  *
  *  Air-IQ userspace interface
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -77,6 +77,8 @@
 /* Offload message types */
 #define MESSAGE_TYPE_OL_DATA 5
 #define MESSAGE_TYPE_OL_REBOOT 6
+/* bundle of multiple messages */
+#define MESSAGE_TYPE_BUNDLE 10
 
 typedef struct {
     uint32 message_type;
@@ -84,6 +86,15 @@ typedef struct {
     uint16 corerev;
     uint16 unit;
 } airiq_message_header_t;
+
+/* pad bundle to 16 bytes (64-bit alignment) */
+typedef struct {
+	uint32 message_type;
+	uint32 size_bytes;
+	uint16 corerev;
+	uint16 unit;
+	uint32 __pad;
+} airiq_bundle_header_t;
 
 #define MAX_CHANSPECS   190
 #define MAX_SCAN_CHANSPECS 64
@@ -139,15 +150,15 @@ typedef struct {
 	/* must be same as airiq_message_header_t */
 	uint32 message_type;       /* 0 */
 	uint32 size_bytes;         /* 4 */
-	uint16 corerev;            /* 6 */
-	uint16 unit;               /* 8 */
+	uint16 corerev;            /* 8 */
+	uint16 unit;               /* a */
 	/*  */
-	int16       gaincode;      /* a */
-	uint16      fc_mhz;        /* c */
-	chanspec_t  chanspec;      /* e */
-	uint16      bins;          /* 10 */
-	uint16      seqno;         /* 12 */
-	uint16      flags;         /* 14 */
+	int16       gaincode;      /* c */
+	uint16      fc_mhz;        /* e */
+	chanspec_t  chanspec;      /* 10 */
+	uint16      bins;          /* 12 */
+	uint16      seqno;         /* 14 */
+	uint16      flags;         /* 16 */
 	uint32      timestamp;     /* 18 */
 	uint32      data_bytes;    /* 1c */
 	uint16      fc_3x3_mhz;    /* 20 */

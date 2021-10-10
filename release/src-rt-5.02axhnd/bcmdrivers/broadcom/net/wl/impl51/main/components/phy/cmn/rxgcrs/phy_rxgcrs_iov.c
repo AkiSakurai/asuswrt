@@ -1,7 +1,7 @@
 /*
  * Rx Gain Control and Carrier Sense module implementation - iovar table
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_rxgcrs_iov.c 681954 2017-01-30 19:33:26Z $
+ * $Id: phy_rxgcrs_iov.c 774720 2019-05-03 23:16:37Z $
  */
 
 #include <phy_rxgcrs.h>
@@ -67,9 +67,12 @@ enum {
 /* iovar table */
 static const bcm_iovar_t phy_rxgcrs_iovars[] = {
 	{"phy_ed_thresh", IOV_ED_THRESH, (IOVF_SET_UP | IOVF_GET_UP), 0, IOVT_INT32, 0},
-#if defined(RXDESENS_EN)
+	{"dy_ed_thresh", IOV_DYNAMIC_ED_THRESH_EN, (IOVF_SET_UP | IOVF_GET_UP), 0, IOVT_INT32, 0},
+	{"dy_ed_setup", IOV_DED_SETUP,	(IOVF_SET_UP | IOVF_GET_UP), 0, IOVT_BUFFER, 0},
+	/* added for debug purposes. Now one can overwrite the initialization */
+	{"dy_ed_thresh_acphy", IOV_DYNAMIC_ED_THRESH_ACPHY_NVRAM,
+	(IOVF_SET_UP | IOVF_GET_UP), 0, IOVT_INT32, 0},
 	{"phy_rxdesens", IOV_PHY_RXDESENS, IOVF_GET_UP, 0, IOVT_INT32, 0},
-#endif /* defined(RXDESENS_EN) */
 #ifndef ATE_BUILD
 #if defined(WLTEST) || defined(DBG_PHY_IOV) || defined(WFD_PHY_LL_DEBUG)
 	{"phy_forcecal_noise", IOV_PHY_FORCECAL_NOISE,
@@ -95,15 +98,80 @@ phy_rxgcrs_doiovar(void *ctx, uint32 aid, void *p, uint plen, void *a, uint alen
 	int int_val = 0;
 	int32 *ret_int_ptr = (int32 *)a;
 
+	if (plen >= (uint)sizeof(int_val))
+		bcopy(p, &int_val, sizeof(int_val));
+
 	switch (aid) {
 	case IOV_SVAL(IOV_ED_THRESH):
 		BCM_REFERENCE(int_val);
-		err = wlc_phy_adjust_ed_thres(pi, p, TRUE);
+		if (pi->dynamic_ed_thresh_enable == 0) {
+			err = wlc_phy_adjust_ed_thres(pi, &int_val, TRUE);
+		}
 		break;
 	case IOV_GVAL(IOV_ED_THRESH):
 		err = wlc_phy_adjust_ed_thres(pi, ret_int_ptr, FALSE);
 		break;
-#if defined(RXDESENS_EN)
+	case IOV_SVAL(IOV_DYNAMIC_ED_THRESH_EN):
+		if (int_val == 0) {
+			wlc_dynamic_ed_thresh_enable(pi, FALSE);
+		} else {
+			wlc_dynamic_ed_thresh_enable(pi, TRUE);
+		}
+		break;
+	case IOV_GVAL(IOV_DYNAMIC_ED_THRESH_EN):
+		*ret_int_ptr = pi->dynamic_ed_thresh_enable;
+		break;
+	case IOV_SVAL(IOV_DYNAMIC_ED_THRESH_ACPHY_NVRAM):
+		wlc_dynamic_ed_th_overwrite_acphy(pi, int_val);
+		break;
+	case IOV_GVAL(IOV_DYNAMIC_ED_THRESH_ACPHY_NVRAM):
+		*ret_int_ptr = pi->acphy_for_dynamic_ed;
+		break;
+	case IOV_GVAL(IOV_DED_SETUP): {
+		dynamic_ed_setup_t *setup = (dynamic_ed_setup_t *)a;
+		setup->ed_monitor_window = pi->const_ed_monitor_window;
+		setup->sed_dis = pi->const_sed_disable;
+		setup->sed_upper_bound = pi->const_sed_upper_bound;
+		setup->sed_lower_bound = pi->const_sed_lower_bound;
+		setup->ed_th_high = pi->const_ed_th_high;
+		setup->ed_th_low = pi->const_ed_th_low;
+		setup->ed_inc_step = pi->const_ed_inc_step;
+		setup->ed_dec_step = pi->const_ed_dec_step;
+		break;
+	}
+	case IOV_SVAL(IOV_DED_SETUP): {
+		dynamic_ed_setup_t *setup = (dynamic_ed_setup_t *)a;
+		if (setup->ed_monitor_window > 0) {
+			wlc_dynamic_ed_th_overwrite_mon_win(pi, setup->ed_monitor_window);
+		}
+		if (setup->sed_dis <= DYN_ED_MAX_SED) {
+			wlc_dynamic_ed_th_overwrite_sed_dis(pi, setup->sed_dis);
+		}
+		if (setup->sed_upper_bound >= pi->const_sed_lower_bound &&
+			setup->sed_upper_bound <= DYN_ED_MAX_SED) {
+			wlc_dynamic_ed_th_overwrite_sed_high(pi, setup->sed_upper_bound);
+		}
+		if (setup->sed_lower_bound <= pi->const_sed_upper_bound &&
+			setup->sed_lower_bound >= DYN_ED_MIN_SED) {
+			wlc_dynamic_ed_th_overwrite_sed_low(pi, setup->sed_lower_bound);
+		}
+		if (setup->ed_th_high >= pi->const_ed_th_low &&
+			setup->ed_th_high <= DYN_ED_MAX_ACC_TH) {
+			wlc_dynamic_ed_th_overwrite_th_high(pi, setup->ed_th_high);
+		}
+		if (setup->ed_th_low >= DYN_ED_MIN_ACC_TH &&
+			setup->ed_th_low <= pi->const_ed_th_high) {
+			wlc_dynamic_ed_th_overwrite_th_low(pi, setup->ed_th_low);
+		}
+		if (setup->ed_inc_step > 0) {
+			wlc_dynamic_ed_th_overwrite_step_inc(pi, setup->ed_inc_step);
+		}
+		if (setup->ed_dec_step > 0) {
+			wlc_dynamic_ed_th_overwrite_step_dec(pi, setup->ed_dec_step);
+		}
+
+		break;
+	}
 	case IOV_GVAL(IOV_PHY_RXDESENS):
 		err = phy_rxgcrs_get_rxdesens(pi, ret_int_ptr);
 		break;
@@ -113,7 +181,6 @@ phy_rxgcrs_doiovar(void *ctx, uint32 aid, void *p, uint plen, void *a, uint alen
 				bcopy(p, &int_val, sizeof(int_val));
 		err = phy_rxgcrs_set_rxdesens(pi, int_val);
 		break;
-#endif /* defined(RXDESENS_EN) */
 #ifndef ATE_BUILD
 #if defined(WLTEST) || defined(DBG_PHY_IOV) || defined(WFD_PHY_LL_DEBUG)
 	case IOV_GVAL(IOV_PHY_FORCECAL_NOISE): /* Get crsminpwr for core 0 & core 1 */

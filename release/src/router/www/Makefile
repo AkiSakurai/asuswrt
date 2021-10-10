@@ -8,13 +8,15 @@ MODELS_HAVE_USB3 = AC2900 \
 	DSL-AC68U \
 	RT-AC5300 GT-AC5300 GT-AC9600 RT-AC95U RT-AC3100 RT-AC3200 GT-AX11000\
 	RT-AC55U RT-AC55UHP RT-AC58U 4G-AC53U RT-AC82U RT-AC88Q \
-	RT-AC86U RT-AC88U RT-AX88U RT-AC87U RT-AC85U RT-AC68U RT-AC68A 4G-AC68U RT-AC65U RT-AC56S RT-AC56U RT-AX92U \
+	RT-AC86U RT-AC88U RT-AX88U RT-AC87U RT-AC85U RT-AC68U RT-AC68A 4G-AC68U RT-AC65U RT-AC56S RT-AC56U RT-AX92U RT-AX95Q RT-AX58U TUF-AX3000 RT-AX56U \
+	RT-AX86U RT-AX5700 RT-AX68U \
 	RT-N65U \
 	RT-N18U \
 	RP-AC68U
 
 MODELS_HAVE_TRAFFIC_ANALYZER = RT-AC3200 RT-AC87U RT-AC88U RT-AX88U RT-AC86U RT-AC3100 RT-AC5300 GT-AC5300 GT-AC9600 DSL-AC68U RT-AC68U \
-	4G-AC68U RT-AC68R RT-AC68W RT-AC68RW GT-AX11000 RT-AC1900P RT-AC67U RT-AC56U RT-AC56R RT-AC85U RT-AC85P RT-AC65U BRT-AC828 BLUECAVE RT-AX92U
+	4G-AC68U RT-AC68R RT-AC68W RT-AC68RW GT-AX11000 RT-AC1900P RT-AC67U RT-AC56U RT-AC56R RT-AC85U RT-AC85P RT-AC65U BRT-AC828 BLUECAVE RT-AX92U RT-AX95Q RT-AX58U TUF-AX3000 RT-AX56U \
+	RT-AX86U RT-AX5700 RT-AX68U
 
 MODELS_QIS_SLIDER = GT-AX11000 GT-AX6000 GT-AC5400
 
@@ -65,6 +67,8 @@ endif # CONFIG_VISUALIZATION
 	rm -rf $(INSTALLDIR)/www/.gitignore
 	rm -rf `find $(INSTALLDIR) -name "*.bak"`
 	rm -rf $(INSTALLDIR)/www/device-map/compatibility.asp
+	cp -rf $(INSTALLDIR)/www/images/new/* $(INSTALLDIR)/www/images/
+	rm -rf $(INSTALLDIR)/www/images/new
 
 ifeq ($(RTCONFIG_AMAS),y)
 ifneq ($(RTCONFIG_DSL),y)
@@ -144,7 +148,6 @@ ifeq ($(RTCONFIG_8M_SFP),y)
 	rm -rf $(INSTALLDIR)/www/images/qis/security_key.png
 	rm -rf $(INSTALLDIR)/www/images/qis/select_wireless.jpg
 	rm -rf $(INSTALLDIR)/www/images/New_ui/networkmap/vender-listover.png
-	rm -rf $(INSTALLDIR)/www/images/New_ui/Bandwidth_Limiter.png
 	cd $(INSTALLDIR)/www/images/New_ui/networkmap && ln -sf vender-list.png vender-listover.png && cd $(TOP)/www
 endif
 ifeq ($(RTCONFIG_4M_SFP),y)
@@ -193,7 +196,6 @@ ifeq ($(RTCONFIG_4M_SFP),y)
 	rm -rf $(INSTALLDIR)/www/images/backtohomeclick.png
 	rm -rf $(INSTALLDIR)/www/images/wifi_hw_sw.png
 	rm -rf $(INSTALLDIR)/www/images/New_ui/networkmap/vender-listover.png
-	rm -rf $(INSTALLDIR)/www/images/New_ui/Bandwidth_Limiter.png
 	cd $(INSTALLDIR)/www/images/New_ui/networkmap && ln -sf vender-list.png vender-listover.png && cd $(TOP)/www
 endif
 ifneq ($(RTCONFIG_PROXYSTA),y)
@@ -400,6 +402,18 @@ ifneq ($(RTCONFIG_BWDPI)$(RTCONFIG_BWDPI_DEP),y)
 	rm -rf $(INSTALLDIR)/www/images/New_ui/mals.svg
 	rm -rf $(INSTALLDIR)/www/images/New_ui/recount.svg
 	rm -rf $(INSTALLDIR)/www/images/New_ui/recount_hover.svg
+	rm -rf $(INSTALLDIR)/www/images/New_ui/add.svg
+	rm -rf $(INSTALLDIR)/www/images/New_ui/add_hover.svg
+	rm -rf $(INSTALLDIR)/www/images/New_ui/disable.svg
+	rm -rf $(INSTALLDIR)/www/images/save.svg
+	rm -rf $(INSTALLDIR)/www/images/save_hover.svg
+	rm -rf $(INSTALLDIR)/www/images/save_active.svg
+	rm -rf $(INSTALLDIR)/www/images/delete.svg
+	rm -rf $(INSTALLDIR)/www/images/delete_hover.svg
+	rm -rf $(INSTALLDIR)/www/images/delete_active.svg
+	rm -rf $(INSTALLDIR)/www/images/edit.svg
+	rm -rf $(INSTALLDIR)/www/images/edit_hover.svg
+	rm -rf $(INSTALLDIR)/www/images/edit_active.svg
 ifneq ($(RTCONFIG_PARENTALCTRL),y)
 	rm -rf $(INSTALLDIR)/www/blocking.asp
 endif
@@ -456,7 +470,7 @@ ifneq ($(RTCONFIG_SNMPD), y)
 	rm -rf $(INSTALLDIR)/www/Advanced_SNMP_Content.asp
 endif
 
-ifneq ($(BUILD_NAME),$(filter $(BUILD_NAME), RT-AC3200 RT-AC5300 GT-AC5300 GT-AC9600 RT-AC86U AC2900 RT-AC88U RT-AX88U RT-AC3100 GT-AX11000 RT-AX92U))
+ifneq ($(BUILD_NAME),$(filter $(BUILD_NAME), RT-AC3200 RT-AC5300 GT-AC5300 GT-AC9600 RT-AC86U AC2900 RT-AC88U RT-AX88U RT-AC3100 GT-AX11000 RT-AX92U RT-AX95Q RT-AX58U TUF-AX3000 RT-AX56U RT-AX86U RT-AX5700 RT-AX68U))
 	rm -rf $(INSTALLDIR)/www/Advanced_Smart_Connect.asp
 	rm -rf $(INSTALLDIR)/www/images/New_ui/smart_connect.png
 	rm -rf $(INSTALLDIR)/www/images/New_ui/smart_connect_concept.gif
@@ -496,7 +510,7 @@ ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME), 4G-AC53U 4G-AC55U 4G-AC68U))
 	rm -rf $(INSTALLDIR)/www/Advanced_Modem_Content.asp
 endif
 
-ifneq ($(BUILD_NAME),$(filter $(BUILD_NAME), RT-AC88U RT-AX88U RT-AC3100 RT-AC5300 GT-AC5300 GT-AC9600 RT-AC86U AC2900 RT-AC3200 GT-AX11000 RT-AX92U))
+ifneq ($(BUILD_NAME),$(filter $(BUILD_NAME), RT-AC88U RT-AX88U RT-AC3100 RT-AC5300 GT-AC5300 GT-AC9600 RT-AC86U AC2900 RT-AC3200 GT-AX11000 RT-AX92U RT-AX95Q RT-AX58U TUF-AX3000 RT-AX56U RT-AX86U RT-AX5700 RT-AX68U))
 	rm -rf $(INSTALLDIR)/www/QIS_wizard_m.htm
 	rm -rf $(INSTALLDIR)/www/css/effect.css
 	rm -rf $(INSTALLDIR)/www/qis_m
@@ -536,24 +550,25 @@ ifneq ($(RTCONFIG_WTFAST), y)
 	rm -rf $(INSTALLDIR)/www/images/wtfast_back_hover.svg
 	rm -rf $(INSTALLDIR)/www/images/wtfast_device.svg
 	rm -rf $(INSTALLDIR)/www/images/wtfast_point.gif
-	rm -rf $(INSTALLDIR)/www/images/GameBoost_AiProtection.png
-	rm -rf $(INSTALLDIR)/www/images/GameBoost_QoS.png
-	rm -rf $(INSTALLDIR)/www/images/GameBoost_WTFast.png
-	rm -rf $(INSTALLDIR)/www/images/New_ui/game.svg
-	rm -rf $(INSTALLDIR)/www/images/New_ui/mainimage_img_Game.png
-	rm -rf $(INSTALLDIR)/www/images/New_ui/add.svg
-	rm -rf $(INSTALLDIR)/www/images/New_ui/add_hover.svg
 ifneq ($(RTCONFIG_BWDPI)$(RTCONFIG_BWDPI_DEP),y)
 	rm -rf $(INSTALLDIR)/www/images/New_ui/delete.svg
 	rm -rf $(INSTALLDIR)/www/images/New_ui/delete_hover.svg
 endif
-	rm -rf $(INSTALLDIR)/www/images/New_ui/disable.svg
 	rm -rf $(INSTALLDIR)/www/images/New_ui/enable.svg
 	rm -rf $(INSTALLDIR)/www/images/New_ui/logout.svg
 	rm -rf $(INSTALLDIR)/www/images/New_ui/logout_hover.svg
 	rm -rf $(INSTALLDIR)/www/images/New_ui/upgrade.svg
 	rm -rf $(INSTALLDIR)/www/images/New_ui/upgrade_hover.svg
 endif
+ifneq ($(RTCONFIG_WTF_REDEEM)$(RTCONFIG_WTFAST), y)
+	rm -rf $(INSTALLDIR)/www/images/New_ui/game.svg
+	rm -rf $(INSTALLDIR)/www/GameBoost.asp
+	rm -rf $(INSTALLDIR)/www/images/New_ui/GameBoost_AiProtection.png
+	rm -rf $(INSTALLDIR)/www/images/New_ui/GameBoost_QoS.png
+	rm -rf $(INSTALLDIR)/www/images/New_ui/GameBoost_WTFast.png
+	rm -rf $(INSTALLDIR)/www/images/New_ui/mainimage_img_Game.jpg
+endif
+
 ifneq ($(RTCONFIG_IPSEC), y)
 	rm -rf $(INSTALLDIR)/www/Advanced_VPN_IPSec.asp
 	rm -rf $(INSTALLDIR)/www/ajax_ipsec.asp
@@ -657,6 +672,8 @@ else ifeq ($(BUILD_NAME),BLUECAVE)
 	cd $(INSTALLDIR)/www/require && mv menuTrees/menuTree_BLUECAVE.js modules/menuTree.js
 else ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME), MAP-AC1300 MAP-AC2200 VZW-AC1300 MAP-AC1750))
 	cd $(INSTALLDIR)/www/require && mv menuTrees/menuTree_LYRA.js modules/menuTree.js
+else ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME), TUF-AX3000))
+	cd $(INSTALLDIR)/www/require && mv menuTrees/menuTree_TUF.js modules/menuTree.js	
 else ifeq ($(RTCONFIG_BWDPI),y)
 ifeq ($(findstring $(BUILD_NAME),$(MODELS_HAVE_TRAFFIC_ANALYZER)),)
 	cd $(INSTALLDIR)/www/require && mv menuTrees/menuTree_bwdpi_no_traffic_analyzer.js modules/menuTree.js
@@ -680,7 +697,7 @@ ifeq ($(BUILD_NAME),BLUECAVE)
 	rm -rf $(INSTALLDIR)/www/QIS_wizard_m.htm
 endif
 
-ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME), GT-AC5300 GT-AC9600 GT-AX11000))
+ifeq ($(BUILD_NAME),$(filter $(BUILD_NAME), GT-AC5300 GT-AC9600 GT-AX11000 TUF-AX3000))
 	rm -rf $(INSTALLDIR)/www/images/New_ui/networkmap/white_04.gif
 endif
 
@@ -709,10 +726,9 @@ ifneq ($(RTCONFIG_AMAS), y)
 	rm -rf $(INSTALLDIR)/www/message.htm
 	rm -rf $(INSTALLDIR)/www/AiMesh_Node_FirmwareUpgrade.asp
 	rm -rf $(INSTALLDIR)/www/Advanced_Roaming_Block_Content.asp
+endif
 	rm -rf $(INSTALLDIR)/www/Main_ChkSta_Content.asp
 	rm -rf $(INSTALLDIR)/www/ajax_chk_sta.asp
-endif
-
 ifeq ($(RTCONFIG_TCPDUMP),y)
 ifeq ($(RTCONFIG_SOC_IPQ40XX)$(RTCONFIG_PSISTLOG),yy)
 	ln -fs /jffs/pppoe.pcap $(INSTALLDIR)/www/pppoe.pcap
@@ -735,52 +751,26 @@ endif
 
 ifneq ($(RTCONFIG_UUPLUGIN), y)
 	rm -rf $(INSTALLDIR)/www/images/uu_accelerator.png
+	rm -rf $(INSTALLDIR)/www/images/New_ui/icon_UU.png
 endif
 
 ifneq ($(RTCONFIG_ROG_UI),y)
 	rm -rf $(INSTALLDIR)/www/fonts
-	rm -rf $(INSTALLDIR)/www/css/basic.css
 	rm -rf $(INSTALLDIR)/www/images/triLvGameAcceleration
 	rm -rf $(INSTALLDIR)/www/css/triLvGameAcceleration.css
-	rm -rf $(INSTALLDIR)/www/images/gameprofile
+ifneq ($(BUILD_NAME),$(filter $(BUILD_NAME), TUF-AX3000))
+	rm -rf $(INSTALLDIR)/www/images/gameprofile/arrow-icon.svg
+	rm -rf $(INSTALLDIR)/www/images/gameprofile/card-frame-corner.svg
+	rm -rf $(INSTALLDIR)/www/images/gameprofile/check.svg
+	rm -rf $(INSTALLDIR)/www/images/gameprofile/default-game.png
+	rm -rf $(INSTALLDIR)/www/images/gameprofile/edit.svg
+	rm -rf $(INSTALLDIR)/www/images/gameprofile/map_light_indicator.png
+	rm -rf $(INSTALLDIR)/www/images/gameprofile/open-nat_map-link.png
+	rm -rf $(INSTALLDIR)/www/images/gameprofile/pause.svg
+	rm -rf $(INSTALLDIR)/www/images/gameprofile/plus.svg
+	rm -rf $(INSTALLDIR)/www/images/gameprofile/trashcan.svg
+	rm -rf $(INSTALLDIR)/www/images/gameprofile/world_map.png
 	rm -rf $(INSTALLDIR)/www/css/gameprofile.css
+endif	
 	rm -rf $(INSTALLDIR)/www/ajax_wanlink.asp
-endif
-
-ifeq ($(RTCONFIG_FW_JUMP), y)
-	rm -rf $(INSTALLDIR)/www/images/aura
-	rm -rf $(INSTALLDIR)/www/images/cloudsync
-	rm -rf $(INSTALLDIR)/www/images/gameprofile
-	rm -rf $(INSTALLDIR)/www/images/mobile
-	rm -rf $(INSTALLDIR)/www/images/qis
-	rm -rf $(INSTALLDIR)/www/images/survey
-	rm -rf $(INSTALLDIR)/www/images/Tree
-	rm -rf $(INSTALLDIR)/www/images/triLvGameAcceleration
-	rm -rf $(INSTALLDIR)/www/images/*.jpg
-	rm -rf $(INSTALLDIR)/www/images/*.svg
-	rm -rf $(INSTALLDIR)/www/qis
-	rm -rf $(INSTALLDIR)/www/qis_m
-	rm -rf $(INSTALLDIR)/www/QIS_wizard_m.htm
-	rm -rf $(INSTALLDIR)/www/QIS_wizard.htm
-	rm -rf $(INSTALLDIR)/www/mobile
-	rm -rf $(INSTALLDIR)/www/device-map/*.asp
-	rm -rf $(INSTALLDIR)/www/aidisk
-	rm -rf $(INSTALLDIR)/www/getfoldertree.asp
-	rm -rf $(INSTALLDIR)/www/gettree.asp
-	rm -rf $(INSTALLDIR)/www/calendar
-	rm -rf $(INSTALLDIR)/www/notification_center
-	rm -rf $(INSTALLDIR)/www/nt_content.json
-	rm -rf $(INSTALLDIR)/www/AdaptiveQoS_*.asp
-	rm -rf $(INSTALLDIR)/www/Advanced_*.asp
-	rm -rf $(INSTALLDIR)/www/AiProtection_*.asp
-	rm -rf $(INSTALLDIR)/www/cloud_*.asp
-	mkdir $(INSTALLDIR)/jump_temp
-	cp $(INSTALLDIR)/www/Main_Login.asp $(INSTALLDIR)/jump_temp/
-	cp $(INSTALLDIR)/www/Main_Password.asp $(INSTALLDIR)/jump_temp/
-	rm -rf $(INSTALLDIR)/www/Main_*.asp
-	cp $(INSTALLDIR)/jump_temp/*.asp $(INSTALLDIR)/www/
-	rm -rf $(INSTALLDIR)/jump_temp
-	rm -rf $(INSTALLDIR)/www/*.svg
-else
-	rm -rf $(INSTALLDIR)/Manual_FirmwareUpgrade.asp
 endif

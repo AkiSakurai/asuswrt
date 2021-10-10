@@ -1,7 +1,7 @@
 /*
  * WPS AP thread (Platform independent portion)
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: wps_ap.c 742933 2018-01-24 06:52:45Z $
+ * $Id: wps_ap.c 774170 2019-04-13 00:37:38Z $
  */
 
 #include <stdio.h>
@@ -457,6 +457,103 @@ new_tlv_convert(uint8 *new_tlv_str, char *nattr_tlv, int *nattr_len)
 }
 #endif /* WFA_WPS_20_TESTBED */
 
+static void
+wpsap_readSecuritySettings(char *prefix, char *ssid, int ssid_len, char *psk, int psk_len,
+	unsigned int *akm_val, unsigned int *wsec_val)
+{
+	char *value, *next;
+	char akmstr[32], tmp[100];
+	unsigned int akm = 0, wsec = 0;
+
+	value = wps_safe_get_conf(strcat_r(prefix, "ssid", tmp));
+	wps_strncpy(ssid, value, ssid_len);
+
+	value = wps_safe_get_conf(strcat_r(prefix, "akm", tmp));
+	foreach(akmstr, value, next) {
+		if (!strcmp(akmstr, "psk"))
+			akm |= WPA_AUTH_PSK;
+
+		if (!strcmp(akmstr, "psk2"))
+			akm |= WPA2_AUTH_PSK;
+	}
+
+	value = wps_safe_get_conf(strcat_r(prefix, "wep", tmp));
+	wsec = !strcmp(value, "enabled") ? WEP_ENABLED : 0;
+
+	value = wps_safe_get_conf(strcat_r(prefix, "crypto", tmp));
+	if (WPS_WLAKM_PSK(akm) || WPS_WLAKM_PSK2(akm)) {
+		if (!strcmp(value, "tkip"))
+			wsec |= TKIP_ENABLED;
+		else if (!strcmp(value, "aes"))
+			wsec |= AES_ENABLED;
+		else if (!strcmp(value, "tkip+aes"))
+			wsec |= TKIP_ENABLED|AES_ENABLED;
+
+		/* Set PSK key */
+		value = wps_safe_get_conf(strcat_r(prefix, "wpa_psk", tmp));
+		wps_strncpy(psk, value, psk_len);
+	}
+
+	*akm_val = akm;
+	*wsec_val = wsec;
+}
+
+#if defined(MULTIAP)
+static void
+wpsap_readBackhaulConfig(wpsap_wksp_t *wps_wksp, DevInfo *ap_devinfo)
+{
+	char ssid[SIZE_32_BYTES + 1] = {0};
+	char psk[SIZE_64_BYTES + 1] = {0};
+	unsigned int akm = 0;
+	unsigned int wsec = 0;
+	char prefix[] = "wlXXXXXXXXXX_";
+	char tmp[100], *value;
+
+	if (strlen(wps_wksp->backhaul_ifname)) {
+		sprintf(prefix, "%s_", wps_wksp->backhaul_ifname);
+
+		value = wps_safe_get_conf(strcat_r(prefix, "map", tmp));
+		if (value[0] != '\0') {
+			uint16 val = (uint16)strtoul(value, NULL, 0);
+			ap_devinfo->map_attr = (val & WPS_NVVAL_MAP_BH_BSS) ? WPS_WFA_MAP_BHBSS : 0;
+		}
+
+		wpsap_readSecuritySettings(prefix, ssid,
+			sizeof(ssid), psk, sizeof(psk), &akm, &wsec);
+
+		/* Backhaul SSID */
+		wps_strncpy(ap_devinfo->backhaul_ssid,
+			ssid, sizeof(ap_devinfo->backhaul_ssid));
+
+		/* Backhaul network key */
+		memset(ap_devinfo->backhaul_nwKey, 0, SIZE_64_BYTES);
+		if (psk) {
+			wps_strncpy(ap_devinfo->backhaul_nwKey, psk,
+				sizeof(ap_devinfo->backhaul_nwKey));
+		}
+
+		/* Set crypto algorithm */
+		ap_devinfo->backhaul_crypto = 0;
+		if (wsec & TKIP_ENABLED)
+			ap_devinfo->backhaul_crypto |= WPS_ENCRTYPE_TKIP;
+		if (wsec & AES_ENABLED)
+			ap_devinfo->backhaul_crypto |= WPS_ENCRTYPE_AES;
+		if (ap_devinfo->backhaul_crypto == 0)
+			ap_devinfo->backhaul_crypto = WPS_ENCRTYPE_NONE;
+
+		/* Backhaul key mgmt */
+		if (WPS_WLAKM_BOTH(akm))
+			strcpy(ap_devinfo->backhaul_keyMgmt, "WPA-PSK WPA2-PSK");
+		else if (WPS_WLAKM_PSK(akm))
+			strcpy(ap_devinfo->backhaul_keyMgmt, "WPA-PSK");
+		else if (WPS_WLAKM_PSK2(akm))
+			strcpy(ap_devinfo->backhaul_keyMgmt, "WPA2-PSK");
+		else
+			ap_devinfo->backhaul_keyMgmt[0] = 0;
+	}
+}
+#endif	/* MULTIAP */
+
 static int
 wpsap_readConfigure(wpsap_wksp_t *wps_wksp, DevInfo *ap_devinfo)
 {
@@ -683,35 +780,8 @@ wpsap_readConfigure(wpsap_wksp_t *wps_wksp, DevInfo *ap_devinfo)
 		 * get ssid, akm, wep, crypto and mgmt key from config.
 		 * because oob mode might change the settings.
 		 */
-		value = wps_safe_get_conf(strcat_r(prefix, "ssid", tmp));
-		wps_strncpy(ssid, value, sizeof(ssid));
-
-		value = wps_safe_get_conf(strcat_r(prefix, "akm", tmp));
-		foreach(akmstr, value, next) {
-			if (!strcmp(akmstr, "psk"))
-				akm |= WPA_AUTH_PSK;
-
-			if (!strcmp(akmstr, "psk2"))
-				akm |= WPA2_AUTH_PSK;
-		}
-
-		value = wps_safe_get_conf(strcat_r(prefix, "wep", tmp));
-		wsec = !strcmp(value, "enabled") ? WEP_ENABLED : 0;
-
-		value = wps_safe_get_conf(strcat_r(prefix, "crypto", tmp));
-		if (WPS_WLAKM_PSK(akm) || WPS_WLAKM_PSK2(akm)) {
-			if (!strcmp(value, "tkip"))
-				wsec |= TKIP_ENABLED;
-			else if (!strcmp(value, "aes"))
-				wsec |= AES_ENABLED;
-			else if (!strcmp(value, "tkip+aes"))
-				wsec |= TKIP_ENABLED|AES_ENABLED;
-
-			/* Set PSK key */
-			value = wps_safe_get_conf(strcat_r(prefix, "wpa_psk", tmp));
-			wps_strncpy(psk, value, sizeof(psk));
-		}
-
+		wpsap_readSecuritySettings(prefix, ssid, sizeof(ssid),
+			psk, sizeof(psk), &akm, &wsec);
 		if (wsec & WEP_ENABLED) {
 			/* Key index */
 			value = wps_safe_get_conf(strcat_r(prefix, "key", tmp));
@@ -722,6 +792,11 @@ wpsap_readConfigure(wpsap_wksp_t *wps_wksp, DevInfo *ap_devinfo)
 			wep_key = wps_safe_get_conf(strcat_r(prefix, key, tmp));
 		}
 
+		/*
+		 * PR65690.
+		 * Use customized security and ssid to run wps protocol
+		 * when adding an enrollee in unconfig mode.
+		 */
 		if (wps_wksp->config_state == WPS_SCSTATE_UNCONFIGURED &&
 		    wps_wksp->sc_mode == SCMODE_AP_REGISTRAR) {
 			oob_addenr = 1;
@@ -767,9 +842,14 @@ wpsap_readConfigure(wpsap_wksp_t *wps_wksp, DevInfo *ap_devinfo)
 			dev_crypto[0] = 0;
 
 		/* Do customization, and check credentials again */
-		wpsapp_utils_update_custom_cred(ssid, psk, dev_akm, dev_crypto, oob_addenr,
-			wps_wksp->b_wps_version2);
-
+		if (wpsapp_update_custom_cred_callback != NULL) {
+			wpsapp_update_custom_cred_callback(ssid, psk, dev_akm, dev_crypto, oob_addenr,
+				wps_wksp->b_wps_version2, ap_devinfo->rfBand);
+		}
+		else {
+			wpsapp_utils_update_custom_cred(ssid, psk, dev_akm, dev_crypto, oob_addenr,
+				wps_wksp->b_wps_version2);
+		}
 		/* Parsing return akm and crypto */
 		if (strlen(dev_akm)) {
 			if (!strcmp(dev_akm, "WPA-PSK WPA2-PSK"))
@@ -866,7 +946,10 @@ wpsap_readConfigure(wpsap_wksp_t *wps_wksp, DevInfo *ap_devinfo)
 		memcpy(ap_devinfo->pre_nonce, wps_wksp->pre_nonce, SIZE_128_BITS);
 		ap_devinfo->flags |= DEVINFO_FLAG_PRE_NONCE;
 		TUTRACE((TUTRACE_INFO, "wpsap is triggered by UPnP PMR message\n"));
+		wps_set_conf("wps_is_upnp", "1");
 	}
+	else
+		wps_set_conf("wps_is_upnp", "0");
 
 	if (wps_wksp->pre_privkey) {
 		memcpy(ap_devinfo->pre_privkey, wps_wksp->pre_privkey, SIZE_PUB_KEY);
@@ -954,6 +1037,11 @@ wpsap_readConfigure(wpsap_wksp_t *wps_wksp, DevInfo *ap_devinfo)
 
 	/* WPS M1 Pairing Auth */
 	ap_devinfo->pairing_auth_str = wps_get_conf("wps_pairing_auth");
+
+#if defined(MULTIAP)
+	/* Set Backhaul interface data */
+	wpsap_readBackhaulConfig(wps_wksp, ap_devinfo);
+#endif	/* MULTIAP */
 
 #ifdef _TUDEBUGTRACE
 	wpsap_dump_config(ap_devinfo);
@@ -1095,6 +1183,7 @@ wpsap_wksp_deinit(wpsap_wksp_t *wps_wksp)
 		free(wps_wksp);
 	}
 
+	wps_pb_ifname_reset();
 	return;
 }
 
@@ -1196,6 +1285,8 @@ wpsap_close_session(wpsap_wksp_t *wps_wksp, int opcode)
 	uint16 mgmt_data;
 	char tmp[100];
 
+	if (sc_mode != SCMODE_AP_REGISTRAR)
+		restart = 1;
 	if (opcode == WPS_SUCCESS) {
 		switch (sc_mode) {
 		case SCMODE_AP_ENROLLEE:
@@ -1337,6 +1428,11 @@ wpsap_close_session(wpsap_wksp_t *wps_wksp, int opcode)
 			wps_ui_set_env("wps_pinfail_state", "");
 			wps_set_conf("wps_pinfail_state", "");
 
+			/*
+			 * PR65690.
+			 * Set security to driver when adding an enrollee
+			 * in OOB mode is succeed.
+			 */
 			if (wps_wksp->config_state == WPS_SCSTATE_UNCONFIGURED) {
 				WpsEnrCred credential;
 				DevInfo *devinfo = g_mc->dev_info;
@@ -1376,6 +1472,10 @@ wpsap_close_session(wpsap_wksp_t *wps_wksp, int opcode)
 					&credential, sc_mode);
 			}
 
+			/*
+			 * PR65690.
+			 * Record client's MAC address when WPS success
+			 */
 			ether_etoa(wps_wksp->mac_sta, tmp);
 			wps_ui_set_env("wps_sta_mac", tmp);
 			wps_set_conf("wps_sta_mac", tmp);
@@ -1395,6 +1495,10 @@ wpsap_close_session(wpsap_wksp_t *wps_wksp, int opcode)
 			break;
 		}
 
+		/*
+		 * PR65690.
+		 * Clear pin fail flag whan WPS succeed.
+		 */
 		wps_ui_set_env("wps_pinfail", "0");
 		wps_set_conf("wps_pinfail", "0");
 
@@ -1535,12 +1639,14 @@ wpsap_open_session(wps_app_t *wps_app, int sc_mode, unsigned char *mac, unsigned
 	uint32 authorizedMacs_len, bool b_reqToEnroll, bool b_nwKeyShareable)
 {
 	char *wl_mode;
-
 	char tmp[100];
 	char *wlnames;
 	char ifname[IFNAMSIZ];
 	char *next = NULL;
 	int i, imax;
+#if defined(MULTIAP)
+	char backhaul_ifname[IFNAMSIZ] = {0};
+#endif	/* MULTIAP */
 	wpsap_wksp_t *ap_wksp;
 
 	if (!osifname || !mac) {
@@ -1579,12 +1685,15 @@ found:
 
 	/* Check mode */
 	switch (sc_mode) {
+
 	case SCMODE_AP_ENROLLEE:
 		/* If AP is under aplockdown mode, disable all configuring to AP */
 		if (wps_aplockdown_islocked()) {
 			TUTRACE((TUTRACE_INFO, "AP in lock up state, deny AP configuring\n"));
 			return WPS_ERR_OPEN_SESSION;
 		}
+		break;
+
 	case SCMODE_AP_REGISTRAR:
 		break;
 	default:
@@ -1606,6 +1715,7 @@ found:
 
 	/* Save variables from ui env */
 	ap_wksp->sc_mode = sc_mode;
+
 	ap_wksp->ess_id = i;
 	wps_strncpy(ap_wksp->ifname, osifname, sizeof(ap_wksp->ifname));
 	memcpy(ap_wksp->mac_ap, mac, SIZE_6_BYTES);
@@ -1631,6 +1741,13 @@ found:
 	ap_wksp->b_nwKeyShareable = b_nwKeyShareable;
 	ap_wksp->eap_frag_threshold = EAP_WPS_FRAG_MAX;
 	ap_wksp->wps_delay_deauth_ms = EAP_WPS_DEALY_DEAUTH_MS;
+#if defined(MULTIAP)
+	wps_map_get_ap_backhaul_ifname(backhaul_ifname, sizeof(backhaul_ifname));
+	if (backhaul_ifname[0] != '\0') {
+		wps_strncpy(ap_wksp->backhaul_ifname,
+			backhaul_ifname, sizeof(ap_wksp->backhaul_ifname));
+	}
+#endif	/* MULTIAP */
 
 	/* update mode */
 	TUTRACE((TUTRACE_INFO, "Start %s mode\n", WPS_SMODE2STR(sc_mode)));
@@ -1642,6 +1759,7 @@ found:
 
 	/* Hook to wps_monitor */
 	wps_app->wksp = ap_wksp;
+
 	wps_app->sc_mode = sc_mode;
 	wps_app->close = (int (*)(void *))wpsap_wksp_deinit;
 	wps_app->process = (int (*)(void *, char *, int, int))wpsap_process;

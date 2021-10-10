@@ -2,7 +2,7 @@
  * HWA library routines for PCIE facing blocks: HWA1a, HWA2b, HWA3a, and HWA4b
  *
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -60,6 +60,7 @@
 #include <bcmmsgbuf.h>
 #include <hwa_lib.h>
 #include <d11_cfg.h>
+#include <bcm_buzzz.h>
 
 //+ ----------------------------------------------------------------------------
 
@@ -293,22 +294,12 @@ hwa_rxpost_init(hwa_rxpost_t *rxpost)
 	u32 = HWA_HOSTADDR64_HI32(HADDR64_HI(pcie_ipc_ring_mem->haddr64));
 	HWA_WR_REG_NAME(HWA1a, regs, rx_core[0], rxpsrc_ring_addr_hi, u32);
 
-#if HWA_REVISION_EQ_128
-	// WAR for 43684A0 HWA coherent issue.
-	u32 = (0U
-		// | BCM_SBIT(HWA_RX_RXPSRC_RING_CFG_SEQNUMENABLE)
-		// | BCM_SBIT(HWA_RX_RXPSRC_RING_CFG_SEQNUM_OR_POLARITY)
-		// | BCM_SBIT(HWA_RX_RXPSRC_RING_CFG_SEQNUM_WIDTH)
-		| BCM_SBIT(HWA_RX_RXPSRC_RING_CFG_UPDATE_RDIDX)
-		| BCM_SBIT(HWA_RX_RXPSRC_RING_CFG_UPDATE_RDIDX_RD_AFTER_WR)
-		| BCM_SBF(dev->host_coherency, HWA_RX_RXPSRC_RING_CFG_TEMPLATE_NOTPCIE)
-		/* alway FALSE! */
-		//| BCM_SBF(dev->host_coherency, HWA_RX_RXPSRC_RING_CFG_TEMPLATE_COHERENT)
-		| BCM_SBF(0, HWA_RX_RXPSRC_RING_CFG_TEMPLATE_ADDREXT)
-		| BCM_SBF(pcie_ipc_ring_mem->item_size/4, HWA_RX_RXPSRC_RING_CFG_ELSIZE)
-		| BCM_SBF(pcie_ipc_ring_mem->max_items, HWA_RX_RXPSRC_RING_CFG_DEPTH)
-		| 0U);
-#else /* HWA_REVISION_GE_129 */
+	/* XXX FIXME FABIAN here for item_size/4.
+	 * The item_size/4 is dangerous, when I get CWI/ACWI, the item_size will
+	 * be length of a _cwi32_t or _cwi64_t or _acwi32_t or _acwi64_t and no
+	 * need for a /4
+	 * NOTE: We do need a/4 because HWA_RX_RXPSRC_RING_CFG_ELSIZE is in 4 byte unit.
+	 */
 	u32 = (0U
 		// | BCM_SBIT(HWA_RX_RXPSRC_RING_CFG_SEQNUMENABLE)
 		// | BCM_SBIT(HWA_RX_RXPSRC_RING_CFG_SEQNUM_OR_POLARITY)
@@ -321,8 +312,6 @@ hwa_rxpost_init(hwa_rxpost_t *rxpost)
 		| BCM_SBF(pcie_ipc_ring_mem->item_size/4, HWA_RX_RXPSRC_RING_CFG_ELSIZE)
 		| BCM_SBF(pcie_ipc_ring_mem->max_items, HWA_RX_RXPSRC_RING_CFG_DEPTH)
 		| 0U);
-#endif /* HWA_REVISION_GE_129 */
-
 	HWA_WR_REG_NAME(HWA1a, regs, rx_core[0], rxpsrc_ring_cfg, u32);
 
 	u32 = (0U
@@ -344,6 +333,15 @@ hwa_rxpost_init(hwa_rxpost_t *rxpost)
 
 	// Configure H2D RxPost Ring RD Index
 #if !defined(SBTOPCIE_INDICES)
+	/* FABIAN: Both FW and HWA-HW will update RxPost ring rd_index.
+	 * If we enable SBTOPCIE_INDICES along with HWA 1a+1b then FW will not update
+	 * RxPost ring rd_index because FW doesn't handle Rxpost Ring.
+	 * If we don't want to enable SBTOPCIE_INDICES then we need HWA update FW RxPost
+	 * Ring rd_index and then FW use M2M to sync up with Host.
+	 * FIXME: When SBTOPCIE_INDICES is disabled FW needs to know when HWA update RxPost
+	 * read index to trigger M2M sync up. Otherwise it only relies on other events to
+	 * sync up.
+	 */
 	u32 = pcie_ipc_rings->h2d_rd_daddr32 +
 		BCMPCIE_RW_INDEX_OFFSET(HWA_PCIE_RW_INDEX_SZ,
 		BCMPCIE_H2D_MSGRING_RXPOST_SUBMIT_IDX);
@@ -368,12 +366,10 @@ hwa_rxpost_init(hwa_rxpost_t *rxpost)
 		          HWA_RX_RXPSRC_RING_HWA2CFG_PKTS_PER_AGGR)
 		| BCM_SBF((dev->wi_aggr_cnt > 0),
 		          HWA_RX_RXPSRC_RING_HWA2CFG_RXP_AGGR_MODE)
-#if HWA_REVISION_GE_129
 		| BCM_SBF((dev->driver_mode == HWA_NIC_MODE),
 		          HWA_RX_RXPSRC_RING_HWA2CFG_NIC64_1B)
 		| BCM_SBF((dev->driver_mode == HWA_NIC_MODE),
-		          HWA_RC_RXPSRC_RING_HWA2CFG_NIC_1A_DISABLE)
-#endif // endif
+		          HWA_RX_RXPSRC_RING_HWA2CFG_NIC_1A_DISABLE)
 		| 0U);
 	HWA_WR_REG_NAME(HWA1a, regs, rx_core[0], rxpsrc_ring_hwa2cfg, u32);
 
@@ -717,7 +713,7 @@ hwa_rxpost_process(hwa_dev_t *dev)
 	rxpost = &dev->rxpost;
 
 	// Fetch registered upstream callback handlers
-	rxpost_handler = &dev->handlers[HWA_RXPOST_RECV];
+	rxpost_handler = &dev->handlers[HWA_RXPOST_PROC_CB];
 	rxpost_wi_parser = rxpost->config->wi_parser; // custom WI handler - 4 forms
 
 	h2s_ring = &rxpost->rxpost_ring;
@@ -812,7 +808,12 @@ pending_rph_req:
 	rxpost->pending_rph_req = TRUE;
 
 	HWA_STATS_EXPR(rxpost->rph_fails_cnt++);
-	HWA_WARN(("%s rph alloc failure%s\n", HWA1x, (pre_req) ? " [Pre Req]" : ""));
+
+	if (pre_req) {
+		HWA_TRACE(("%s rph alloc failure [Pre Req]\n", HWA1x));
+	} else {
+		HWA_WARN(("%s rph alloc failure\n", HWA1x));
+	}
 
 	return (hwa_rxpost_hostinfo_t*)NULL;
 
@@ -884,7 +885,7 @@ hwa_rph_reclaim(hwa_rxpost_t *rxpost, uint32 core)
 
 #endif /* !HWA_RXPOST_ONLY_BUILD */
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 
 void // Debug support for HWA1a RxPost block
 hwa_rxpost_dump(hwa_rxpost_t *rxpost, struct bcmstrbuf *b, bool verbose)
@@ -1048,6 +1049,8 @@ hwa_rxpath_queue_rxcomplete_fast(hwa_dev_t *dev, uint32 pktid)
 {
 	BCMPCIE_IPC_HPA_TEST(dev->pciedev, pktid,
 		BCMPCIE_IPC_PATH_RECEIVE, BCMPCIE_IPC_TRANS_REQUEST);
+	BUZZZ_KPI_PKT3(KPI_PKT_BUS_RXBMRC, 1, pktid); /* RxBM Reclaim */
+
 	return pciedev_hwa_queue_rxcomplete_fast(dev->pciedev, pktid);
 }
 
@@ -1156,7 +1159,7 @@ hwa_rxpath_error(hwa_dev_t *dev, uint32 core)
 
 } // hwa_rxpath_error
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 
 void // Dump software state for HWA1x blocks 1a + 1b
 hwa_rxpath_dump(hwa_rxpath_t *rxpath, struct bcmstrbuf *b, bool verbose, bool dump_regs)
@@ -1169,13 +1172,13 @@ hwa_rxpath_dump(hwa_rxpath_t *rxpath, struct bcmstrbuf *b, bool verbose, bool du
 	if (verbose)
 		hwa_rxpath_stats_dump(rxpath, b, /* clear */ 0);
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 	if (dump_regs)
 		hwa_rxpath_regs_dump(rxpath, b);
 #endif // endif
 } // hwa_rxpath_dump
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 void // Dump HWA registers for HWA1x blocks 1a + 1b
 hwa_rxpath_regs_dump(hwa_rxpath_t *rxpath, struct bcmstrbuf *b)
 {
@@ -1224,6 +1227,17 @@ hwa_rxpath_regs_dump(hwa_rxpath_t *rxpath, struct bcmstrbuf *b)
 		HWA_BPR_FIFO_REG(b, core, d0dest);
 		HWA_BPR_FIFO_REG(b, core, d1dest);
 		HWA_BPR_RING_REG(b, core, d11bdest);
+#endif /* HWA_RXFILL_BUILD */
+#if HWA_REVISION_GE_131
+		HWA_BPR_RING_REG(b, rx_core[core], d11bdest_threshold_l1l0);
+		HWA_BPR_RING_REG(b, rx_core[core], d11bdest_threshold_l2);
+#endif /* HWA_REVISION_GE_131 */
+#ifdef HWA_PKTPGR_BUILD
+		HWA_BPR_RING_REG(b, rx_core[core], d11bdest_ring_wrindex_dir);
+		HWA_BPR_RING_REG(b, rx_core[core], pagein_status);
+		HWA_BPR_RING_REG(b, rx_core[core], recycle_status);
+#endif /* HWA_PKTPGR_BUILD */
+#ifdef HWA_RXFILL_BUILD
 		HWA_BPR_RING_REG(b, core, freeidxsrc);
 #endif /* HWA_RXFILL_BUILD */
 #ifdef HWA_RXPOST_BUILD
@@ -1282,9 +1296,11 @@ hwa_rxpath_regs_dump(hwa_rxpath_t *rxpath, struct bcmstrbuf *b)
  * Section: HWA3a TxPost Block
  * -----------------------------------------------------------------------------
  */
-static int hwa_txpost_sendup(void *context, uintptr arg1, uintptr arg2, uint32 pkt_count,
+static int hwa_txpost_sendup(void *context, uintptr arg1, uint32 arg2, uint32 pkt_count,
 	uint32 total_octets);
 
+static int hwa_txpost_schedcmd_done(void *context, uint32 arg1,
+	uint32 arg2, uint32 arg3, uint32 arg4);
 /*
  * -----------------------------------------------------------------------------
  * Section: HWA3a block bringup: attach, detach, and init phases
@@ -1335,20 +1351,17 @@ BCMATTACHFN(hwa_txpost_detach)(hwa_txpost_t *txpost)
 		txpost->frc_table = (hwa_txpost_frc_t*)NULL;
 	}
 
-#if HWA_REVISION_GE_129
-	if (dev->tx_pktdealloc) {
-		// HWA3a TxPost TxFree Ring: free memory
-		if (txpost->txfree_ring.memory != (void*)NULL) {
-			memory = txpost->txfree_ring.memory;
-			mem_sz = txpost->txfree_ring.depth * sizeof(hwa_txpost_txfree_t);
-			HWA_TRACE(("%s txfree_ring -memory[%p:%u]\n", HWA3a, memory, mem_sz));
-			MFREE(dev->osh, memory, mem_sz);
-			hwa_ring_fini(&txpost->txfree_ring);
-			txpost->txfree_ring.memory = (void*)NULL;
-		}
+#ifdef HWA_TXPOST_FREEIDXTX
+	// HWA3a TxPost TxFree Ring: free memory
+	if (txpost->txfree_ring.memory != (void*)NULL) {
+		memory = txpost->txfree_ring.memory;
+		mem_sz = txpost->txfree_ring.depth * sizeof(hwa_txpost_txfree_t);
+		HWA_TRACE(("%s txfree_ring -memory[%p:%u]\n", HWA3a, memory, mem_sz));
+		MFREE(dev->osh, memory, mem_sz);
+		hwa_ring_fini(&txpost->txfree_ring);
+		txpost->txfree_ring.memory = (void*)NULL;
 	}
-#endif /* HWA_REVISION_GE_129 */
-
+#endif /* HWA_TXPOST_FREEIDXTX */
 } // hwa_txpost_detach
 
 hwa_txpost_t * // HWA3a: Allocate resources for HWA3a txpost block
@@ -1386,21 +1399,8 @@ BCMATTACHFN(hwa_txpost_attach)(hwa_dev_t *dev)
 		cap = HWA_RD_REG_NAME(HWA3a, regs, top, hwahwcap1);
 		HWA_ASSERT(BCM_GBF(cap, HWA_TOP_HWAHWCAP1_MAXSEGCNT3A3B) ==
 			HWA_TX_DATABUF_SEGCNT_MAX);
-#if HWA_REVISION_EQ_128
-		HWA_ASSERT(BCM_GBF(cap, HWA_TOP_HWAHWCAP1_NUMTXPOSTLOCALBUF3A) ==
-			HWA_TXPOST_LOCAL_WORKITEMS);
-#endif /* HWA_REVISION_EQ_128 */
 		numbuf3a = BCM_GBF(cap, HWA_TOP_HWAHWCAP1_NUMBUF3A);
-
-#if HWA_REVISION_EQ_128
-		// In HWA2.0, numbuf3a high bits in cap2 registers.
-		cap = HWA_RD_REG_NAME(HWA3a, regs, top, hwahwcap2);
-		numbuf3a |= BCM_GBF(cap, HWA_TOP_HWAHWCAP2_NUMBUF3A_HN) << 4U;
-#endif /* HWA_REVISION_EQ_128 */
-
-#ifndef BCM43684A0_COHERENT_WAR
 		HWA_ASSERT((numbuf3a * 256) == HWA_TXPATH_PKTS_MAX_CAP);
-#endif // endif
 		BCM_REFERENCE(numbuf3a);
 	}
 
@@ -1443,23 +1443,21 @@ BCMATTACHFN(hwa_txpost_attach)(hwa_dev_t *dev)
 	HWA_TRACE(("%s frc_table +memory[%p,%u]\n", HWA3a, memory, mem_sz));
 	txpost->frc_table = (hwa_txpost_frc_t*)memory;
 
-#if HWA_REVISION_GE_129
-	if (dev->tx_pktdealloc) {
-		// Allocate and initialize S2H "FREEIDXTX" interface
-		depth = HWA_TXPOST_TXFREE_DEPTH;
-		mem_sz = depth * sizeof(hwa_txpost_txfree_t);
-		if ((memory = MALLOCZ(dev->osh, mem_sz)) == NULL) {
-			HWA_ERROR(("%s txfree malloc size<%u> failure\n", HWA3a, mem_sz));
-			HWA_ASSERT(memory != (void*)NULL);
-			goto failure;
-		}
-		HWA_TRACE(("%s txfree_ring +memory[%p,%u]\n", HWA3a, memory, mem_sz));
-		hwa_ring_init(&txpost->txfree_ring, "TXF", HWA_TXPOST_ID,
-			HWA_RING_S2H, HWA_TXPOST_TXFREE_S2H_RINGNUM, depth, memory,
-			&regs->tx.pktdealloc_ring_wrindex,
-			&regs->tx.pktdealloc_ring_rdindex);
+#ifdef HWA_TXPOST_FREEIDXTX
+	// Allocate and initialize S2H "FREEIDXTX" interface
+	depth = HWA_TXPOST_TXFREE_DEPTH;
+	mem_sz = depth * sizeof(hwa_txpost_txfree_t);
+	if ((memory = MALLOCZ(dev->osh, mem_sz)) == NULL) {
+		HWA_ERROR(("%s txfree malloc size<%u> failure\n", HWA3a, mem_sz));
+		HWA_ASSERT(memory != (void*)NULL);
+		goto failure;
 	}
-#endif /* HWA_REVISION_GE_129 */
+	HWA_TRACE(("%s txfree_ring +memory[%p,%u]\n", HWA3a, memory, mem_sz));
+	hwa_ring_init(&txpost->txfree_ring, "TXF", HWA_TXPOST_ID,
+		HWA_RING_S2H, HWA_TXPOST_TXFREE_S2H_RINGNUM, depth, memory,
+		&regs->tx.pktdealloc_ring_wrindex,
+		&regs->tx.pktdealloc_ring_rdindex);
+#endif /* HWA_TXPOST_FREEIDXTX */
 
 	/*
 	 * Following registers are ONLY for debugging HWA
@@ -1483,7 +1481,10 @@ BCMATTACHFN(hwa_txpost_attach)(hwa_dev_t *dev)
 #endif /* !HWA_NO_LUT */
 
 	// Over-write the register handle function
-	hwa_register(dev, HWA_PKTCHAIN_SENDUP, dev, hwa_txpost_sendup);
+	hwa_register(dev, HWA_TXPOST_PROC_CB, dev, hwa_txpost_sendup);
+
+	// Registered callback function for every schedcmd transaction
+	hwa_register(dev, HWA_TXPOST_DONE_CB, dev, hwa_txpost_schedcmd_done);
 
 	// Reset schedule command histogram
 	HWA_BCMDBG_EXPR(memset(txpost->schecmd_histogram, 0,
@@ -1566,56 +1567,33 @@ hwa_txpost_init(hwa_txpost_t *txpost)
 	u32 = HWA_PTR2UINT(txpost->frc_table);
 	HWA_WR_REG_NAME(HWA3a, regs, tx, txpost_frc_base_addr, u32);
 
-#if HWA_REVISION_GE_129
-	if (dev->tx_pktdealloc) {
-		// Initialize S2H "FREEIDXTX" interface
-		u32 = HWA_PTR2UINT(txpost->txfree_ring.memory);
-		HWA_WR_REG_NAME(HWA3a, regs, tx, pktdealloc_ring_addr, u32);
+#ifdef HWA_TXPOST_FREEIDXTX
+	// Initialize S2H "FREEIDXTX" interface
+	u32 = HWA_PTR2UINT(txpost->txfree_ring.memory);
+	HWA_WR_REG_NAME(HWA3a, regs, tx, pktdealloc_ring_addr, u32);
 
-		u32 = BCM_SBF(txpost->txfree_ring.depth,
-				HWA_TX_PKTDEALLOC_RING_DEPTH_PKTDEALLOCRINGRDDEPTH);
-		HWA_WR_REG_NAME(HWA3a, regs, tx, pktdealloc_ring_depth, u32);
-		u32 = (0U
-			| BCM_SBF(HWA_TXPOST_RING_INTRAGGR_COUNT,
-				HWA_TX_PKTDEALLOC_RING_LAZYINTRCONFIG_PKTDEALLOCRINGINTRAGGRCOUNT)
-			| BCM_SBF(HWA_TXPOST_RING_INTRAGGR_TMOUT,
-				HWA_TX_PKTDEALLOC_RING_LAZYINTRCONFIG_PKTDEALLOCRINGINTRAGGRTIMER)
-			| 0U);
-		HWA_WR_REG_NAME(HWA3a, regs, tx, pktdealloc_ring_lazyintrconfig, u32);
-	}
-#endif /* HWA_REVISION_GE_129 */
+	u32 = BCM_SBF(txpost->txfree_ring.depth,
+			HWA_TX_PKTDEALLOC_RING_DEPTH_PKTDEALLOCRINGRDDEPTH);
+	HWA_WR_REG_NAME(HWA3a, regs, tx, pktdealloc_ring_depth, u32);
+	u32 = (0U
+		| BCM_SBF(HWA_TXPOST_RING_INTRAGGR_COUNT,
+			HWA_TX_PKTDEALLOC_RING_LAZYINTRCONFIG_PKTDEALLOCRINGINTRAGGRCOUNT)
+		| BCM_SBF(HWA_TXPOST_RING_INTRAGGR_TMOUT,
+			HWA_TX_PKTDEALLOC_RING_LAZYINTRCONFIG_PKTDEALLOCRINGINTRAGGRTIMER)
+		| 0U);
+	HWA_WR_REG_NAME(HWA3a, regs, tx, pktdealloc_ring_lazyintrconfig, u32);
+#endif /* HWA_TXPOST_FREEIDXTX */
 
 	{   // Update txpost_config::TxPostLocalMemDepth to be multiple of WI size
 		uint8 wi_size; // size of a TxPost work item
 		uint32 num_wi; // number of work items
 		uint32 local_mem_depth; // HWA3a local memory to save DMAed work items
-#if HWA_REVISION_EQ_128
-		uint32 stats_reg_set; // HWA3a number of statistics register sets
-
-		BCM_REFERENCE(stats_reg_set);
-#endif // endif
 
 		// Read HW default value
 		u32 = HWA_RD_REG_NAME(HWA3a, regs, tx, txpost_config);
 		local_mem_depth =
 			BCM_GBF(u32, HWA_TX_TXPOST_CONFIG_TXPOSTLOCALMEMDEPTH);
-#if HWA_REVISION_EQ_128
-		stats_reg_set =
-			BCM_GBF(u32, HWA_TX_TXPOST_CONFIG_NUMSTATISTICSREGSET);
-#endif // endif
 
-#if HWA_REVISION_EQ_128 && (HWA_CHIP_GENERIC == 0x43684)
-		/* A0: local_mem_depth HW default is not correct */
-		HWA_PRINT("%s HW(rev128) default TxPostConfig<0x%08x>, override "
-			"local_mem_depth<%u> to <%u>\n",
-			HWA3a, u32, local_mem_depth, HWA_TXPOST_LOCAL_MEM_DEPTH);
-		local_mem_depth = HWA_TXPOST_LOCAL_MEM_DEPTH;
-		HWA_ASSERT(local_mem_depth == HWA_TXPOST_LOCAL_MEM_DEPTH);
-		HWA_ASSERT(stats_reg_set == HWA_TXPOST_FRC_SRS_MAX);
-#endif /* HWA_REVISION_EQ_128 && HWA_CHIP_GENERIC == 0x43684 */
-
-		/* HWA 2.x use HWA_TXPOST_CWI64_BYTES always */
-		HWA_ASSERT(HWA_REVISION_GE_128);
 		// 1536 x 4 is a multiple of 192 hwa_txpost_cwi64_t workitems
 		num_wi = (local_mem_depth * HWA_TXPOST_MEM_ADDR_W)
 			/ HWA_TXPOST_CWI64_BYTES;
@@ -1638,20 +1616,15 @@ hwa_txpost_init(hwa_txpost_t *txpost)
 			wi_size);
 
 		u32 = (0U
-#if HWA_REVISION_GE_129
 			| BCM_SBF(hwa_txpost_sequence_fw_command,
 				HWA_TX_TXPOST_CONFIG_TXPOSTLOCALMEMMODE)
-#endif // endif
 			| BCM_SBF(local_mem_depth, HWA_TX_TXPOST_CONFIG_TXPOSTLOCALMEMDEPTH)
-#if HWA_REVISION_EQ_128
-			| BCM_SBIT(HWA_TX_TXPOST_CONFIG_TXPOSTBLOCKENABLE)
-			// | BCM_SBIT(HWA_TX_TXPOST_CONFIG_SEQNUMENABLE) HWA1.0
-			| BCM_SBF(stats_reg_set, HWA_TX_TXPOST_CONFIG_NUMSTATISTICSREGSET)
-#else
 			| BCM_SBF(HWA_TXPOST_MIN_FETCH_THRESH_FREEIDX,
 				HWA_TX_TXPOST_CONFIG_MIN_FETCH_THRESH_TXPPKTDEALLOC)
-			| BCM_SBF((dev->tx_pktdealloc) ? 1 : 0,
-				HWA_TX_TXPOST_CONFIG_SWTXPKTDEALLOCIFENABLE)
+#ifdef HWA_TXPOST_FREEIDXTX
+			| BCM_SBF(1, HWA_TX_TXPOST_CONFIG_SWTXPKTDEALLOCIFENABLE)
+#else
+			| BCM_SBF(0, HWA_TX_TXPOST_CONFIG_SWTXPKTDEALLOCIFENABLE)
 #endif // endif
 			| BCM_SBIT(HWA_TX_TXPOST_CONFIG_AUTOSTARTNEXTEMPYLOCDISABLE)
 			| BCM_SBIT(HWA_TX_TXPOST_CONFIG_TXPKTPKTNEXTDEALLOCHW)
@@ -1680,15 +1653,14 @@ hwa_txpost_init(hwa_txpost_t *txpost)
 			HWA3a, txpost->wi_size, txpost->aggr_spec));
 	}
 
+	// FIXME HWA2.1: Do we have some non-PktTag fields that must not be bzeroed?
 	// Enable HWA3a to BZERO the rest of the SW Packet
 	u32 = (0U
 #ifdef HWA_TXPOST_BZERO_PKTTAG
 		| BCM_SBIT(HWA_TX_TXPOST_CFG1_BZERO_PKTTAG_SUPPORT)
 #endif // endif
-#if HWA_REVISION_GE_129
 		| BCM_SBIT(HWA_TX_TXPOST_CFG1_BIT63OFPAYLOADADDR)
 		| BCM_SBIT(HWA_TX_TXPOST_CFG1_SETSOFEOF4WIF)
-#endif /* HWA_REVISION_GE_129 */
 		| 0U);
 	HWA_WR_REG_NAME(HWA3a, regs, tx, txpost_cfg1, u32);
 
@@ -1770,6 +1742,7 @@ hwa_txpost_wait_to_finish(hwa_txpost_t *txpost)
 	dev = HWA_DEV(txpost);
 
 	// Wait until HWA cons all 3a schedcmd ring
+	// XXX, what should we do if running out of TxBM?
 	loop_count = HWA_FSM_IDLE_POLLLOOP;
 	while (!hwa_ring_is_cons_all(&txpost->schedcmd_ring)) {
 		HWA_TRACE(("%s HWA consuming 3a schedcmd ring\n",
@@ -1781,21 +1754,19 @@ hwa_txpost_wait_to_finish(hwa_txpost_t *txpost)
 		}
 	}
 
-#if HWA_REVISION_GE_129
-	if (dev->tx_pktdealloc) {
-		// Wait until HWA cons all 3a txfree ring
-		loop_count = HWA_FSM_IDLE_POLLLOOP;
-		while (!hwa_ring_is_cons_all(&txpost->txfree_ring)) {
-			HWA_TRACE(("%s HWA consuming 3a txfree ring\n",
-			__FUNCTION__));
-			OSL_DELAY(1);
-			if (--loop_count == 0) {
-				HWA_ERROR(("%s Cannot consume 3a txfree ring\n", __FUNCTION__));
-				break;
-			}
+#ifdef HWA_TXPOST_FREEIDXTX
+	// Wait until HWA cons all 3a txfree ring
+	loop_count = HWA_FSM_IDLE_POLLLOOP;
+	while (!hwa_ring_is_cons_all(&txpost->txfree_ring)) {
+		HWA_TRACE(("%s HWA consuming 3a txfree ring\n",
+		__FUNCTION__));
+		OSL_DELAY(1);
+		if (--loop_count == 0) {
+			HWA_ERROR(("%s Cannot consume 3a txfree ring\n", __FUNCTION__));
+			break;
 		}
 	}
-#endif /* HWA_REVISION_GE_129 */
+#endif /* HWA_TXPOST_FREEIDXTX */
 
 	// Poll txpost_status_reg2 to make sure it's done
 	loop_count = 0;
@@ -1906,6 +1877,38 @@ hwa_txpost_flowring_rdidx_update(hwa_txpost_t *txpost, uint32 ring_id)
 
 } // hwa_txpost_flowring_rdidx_update
 
+/* Utility to update schedule command flags after a real update */
+int
+hwa_txpost_schedcmd_flags_update(struct hwa_dev *dev, uint8 schedule_flags)
+{
+	hwa_txpost_t *txpost;
+	uint16 schedcmd_id;
+
+	txpost = &dev->txpost;
+
+	// Get the last updated schedule command ID
+	schedcmd_id = PREVTXP(txpost->schedcmd_id, HWA_TXPOST_SCHEDCMD_RING_DEPTH);
+
+	// Make sure schedcmd_id is an active entry
+	HWA_ASSERT(txpost->flowring_id[schedcmd_id] != 0);
+
+	switch (schedule_flags) {
+		case TXPOST_SCHED_FLAGS_RESP_PEND:
+			// If allready set, return error
+			if (!TXPOST_RESP_PEND_ISSET(txpost, schedcmd_id)) {
+				// Mark this schedcmd to send a eops response on completion
+				TXPOST_RESP_PEND_SET(txpost, schedcmd_id);
+				return BCME_OK;
+			}
+			break;
+		case TXPOST_SCHED_FLAGS_SQS_FORCE:
+			// Request from a SQS force path and not from TAF
+			TXPOST_SCHED_FLAGS_SQS_FORCE_SET(txpost, schedcmd_id);
+			break;
+	}
+	return BCME_ERROR;
+}
+
 /*
  * -----------------------------------------------------------------------------
  * Section: Support for posting Schedule Commands in SchedCmd S2H hwa_ring
@@ -1945,6 +1948,9 @@ hwa_txpost_schedcmd_request(struct hwa_dev *dev,
 			__FUNCTION__, txpost->schedcmd_id));
 		goto failure;
 	}
+
+	// Entry should be cleared on pktchain processing
+	HWA_ASSERT(TXPOST_SCHED_FLAGS(txpost, txpost->schedcmd_id) == 0);
 
 	// Find location where schedcmd needs to be constructed, and populate it
 	schedcmd = HWA_RING_PROD_ELEM(hwa_txpost_schedcmd_t, schedcmd_ring);
@@ -2008,7 +2014,6 @@ failure:
 int // Consume all packet chains in packet chain ring
 hwa_txpost_pktchain_process(hwa_dev_t *dev)
 {
-	bool pend_trans;
 	uint32 elem_ix; // location of next element to read
 	void *head, *tail; // pktchain head pkt and tail pkt pointer
 	hwa_txpost_t *txpost; // SW txpost state
@@ -2019,23 +2024,28 @@ hwa_txpost_pktchain_process(hwa_dev_t *dev)
 	uint8 trans_id; // current trans_id
 	uint16 pkt_count; // current pkt_count;
 	uint32 total_octets; // current total_octets;
+	uint16 sched_cmd_id;
+	uint8 schedule_flags;
+	bool schedcmd_done;
 
 	HWA_FTRACE(HWA3a);
+	BCM_REFERENCE(tail);
 
 	// Audit pre-conditions
 	HWA_AUDIT_DEV(dev);
 
 	// Setup locals
+	schedule_flags = 0;
+	sched_cmd_id = 0;
 	txpost = &dev->txpost;
 
 	// Fetch registered upstream callback handlers
-	sendup_handler = &dev->handlers[HWA_PKTCHAIN_SENDUP];
-	trans_handler = &dev->handlers[HWA_SCHEDCMD_DONE];
+	sendup_handler = &dev->handlers[HWA_TXPOST_PROC_CB];
+	trans_handler = &dev->handlers[HWA_TXPOST_DONE_CB];
 
 	h2s_ring = &txpost->pktchain_ring;
 
 	hwa_ring_cons_get(h2s_ring); // fetch HWA pktchain ring's WR index once
-	pend_trans = FALSE;
 	pktchain = (hwa_txpost_pktchain_t*)NULL;
 	trans_id = (HWA_TXPOST_SCHEDCMD_RING_DEPTH - 1);
 	pkt_count = 0;
@@ -2044,9 +2054,10 @@ hwa_txpost_pktchain_process(hwa_dev_t *dev)
 	// Consume all packet chains in ring, sending them upstream
 	while ((elem_ix = hwa_ring_cons_upd(h2s_ring)) != BCM_RING_EMPTY) {
 
+		schedcmd_done =  FALSE;	// remember to issue a schedcmd done callback
+
 		// Fetch location of next packet chain to process
 		pktchain = HWA_RING_ELEM(hwa_txpost_pktchain_t, h2s_ring, elem_ix);
-		pend_trans = TRUE; // remember to issue a schedcmd done callback
 
 		// Get current pktchain info.
 		head = HWA_UINT2PTR(void, pktchain->head);
@@ -2058,6 +2069,7 @@ hwa_txpost_pktchain_process(hwa_dev_t *dev)
 		HWA_STATS_EXPR(txpost->pkt_proc_cnt += pkt_count);
 		HWA_STATS_EXPR(txpost->oct_proc_cnt += total_octets);
 
+		// FIXME: Ensure that head::pktflags is clear
 		HWA_TRACE(("%s pktchain<%p> id<%u> chn<%x,%x> cnt<%x,%x>\n", HWA3a,
 			pktchain, trans_id, HWA_PTR2UINT(head), HWA_PTR2UINT(tail),
 			pkt_count, total_octets));
@@ -2081,15 +2093,19 @@ hwa_txpost_pktchain_process(hwa_dev_t *dev)
 				HWA_ASSERT(trans_id == NEXTTXP(txpost->pktchain_id,
 					HWA_TXPOST_SCHEDCMD_RING_DEPTH)));
 
-			// Inform upstream that schedcmd transaction has indeed completed
-			(*trans_handler->callback)(trans_handler->context,
-				HWA_SCHEDCMD_CONFIRMED_DONE, 0,
-				txpost->pktchain_id, trans_id);
+			// Check if this entry was already processed in previous iteration
+			if (txpost->flowring_id[txpost->pktchain_id]) {
+				schedcmd_done = TRUE;
+				schedule_flags = TXPOST_SCHED_FLAGS(txpost, txpost->pktchain_id);
+				sched_cmd_id = txpost->pktchain_id;
 
-			// Clear flowring_id
-			txpost->flowring_id[txpost->pktchain_id] = 0;
+				// Clear schedule flags
+				TXPOST_SCHED_FLAGS(txpost, txpost->pktchain_id) = 0;
 
-			pend_trans = FALSE; // schedcmd done notification sent upstream
+				// Clear flowring_id
+				txpost->flowring_id[txpost->pktchain_id] = 0;
+			}
+
 			txpost->pktchain_id = trans_id; // start next trans
 		}
 
@@ -2111,18 +2127,49 @@ hwa_txpost_pktchain_process(hwa_dev_t *dev)
 
 		// Send packet chain upstream
 		(*sendup_handler->callback)(sendup_handler->context,
-			(uintptr)head, (uintptr)tail,
+			(uintptr)head, (uint32)TXPOST_SCHED_FLAGS(txpost, trans_id),
 			pkt_count, total_octets);
+
+		if (schedcmd_done) {
+			// Inform schedcmd transaction has indeed completed
+			(*trans_handler->callback)(trans_handler->context,
+				HWA_SCHEDCMD_CONFIRMED_DONE, sched_cmd_id,
+				schedule_flags, 0);
+		}
+
 	} // while pktchain_ring not empty
 
-	// Inform upstream that schedcmd transaction potentially completed
-	if (pend_trans == TRUE) {
+	// Look for ring empty condition if atleast 1 packet found
+	if (pkt_count) {
+		uint16 last_sched_cmd_id = PREVTXP(txpost->schedcmd_id,
+			HWA_TXPOST_SCHEDCMD_RING_DEPTH);
 		HWA_ASSERT(pktchain != (hwa_txpost_pktchain_t*)NULL);
-		(*trans_handler->callback)(trans_handler->context,
-			HWA_SCHEDCMD_POTENTIALLY_DONE, 0,
-			txpost->pktchain_id, trans_id);
-		// do pktchain_id update if SchedCmd ring is empty.
-		if (hwa_ring_is_empty(&txpost->schedcmd_ring)) {
+
+		// Sync up the h2s ring write pointer
+		hwa_ring_cons_get(h2s_ring);
+
+		HWA_TRACE(("%s : Last sched cmd <%d> Cur sched cmd <%d>"
+			"Cur trans cmd <%d>  h2s ring empty %d \n",
+			last_sched_cmd_id, txpost->schedcmd_id,
+			trans_id, hwa_ring_is_empty(h2s_ring)));
+
+		// do pktchain_id update if SchedCmd ring  & Pktchain ring are empty.
+		//
+		// XXX This is the best SW could do. its possible HW is still holding
+		// on to pktchains which are still not visible in pktchain_ring.
+		// In that case both the rings may look empty but pkts still being inside HW block.
+		if ((last_sched_cmd_id == trans_id) && (hwa_ring_is_empty(h2s_ring))) {
+			// Inform schedcmd transaction has indeed completed
+			(*trans_handler->callback)(trans_handler->context,
+				HWA_SCHEDCMD_CONFIRMED_DONE, txpost->pktchain_id,
+				TXPOST_SCHED_FLAGS(txpost, txpost->pktchain_id), 0);
+
+			//Clear schedule flags
+			TXPOST_SCHED_FLAGS(txpost, txpost->pktchain_id) = 0;
+
+			// Clear flowring_id
+			txpost->flowring_id[txpost->pktchain_id] = 0;
+
 			txpost->pktchain_id = trans_id;
 		}
 	}
@@ -2167,18 +2214,35 @@ hwa_txpost_frc_table_init(hwa_txpost_t *txpost)
 		frc->flowid = HWA_TXPOST_FLOWID_INVALID; // CFP mode: from prio lut
 		frc->lkup_override = HWA_TXPOST_FRC_LKUP_OVERRIDE_NONE;
 
+		/*
+		 * XXX: A0: I cannot get 3a output interrupt (txpktchn_int)
+		 * Case1: When audit is enabled.
+		 *   No 3a PktChain intr ((bit18: txpktchn_int) when 3a scheduler command
+		 *   transfer count >= 2 and one of the WI payload length < pyld_min_length.
+		 *   TXPOST_STATUS_REG is 0x00000002 (AuditFailPlLen) and
+		 *   TXPOST_STATUS_REG2 is 0x0000a980. (3a hang)
+		 *   If only schedule 1 transfer count then TXPOST_STATUS_REG2 stay 0, SW
+		 *   can receive bit18 txpktchn_int triggered. (3a no hang)
+		 *   So, don't use audit and set flowid_override as flowid in DHD.
+		 *
+		 * Case2: When etype_ip_enable is enabled and flowid_override in WI is not set.
+		 *   No 3a PktChain intr ((bit18: txpktchn_int) when 3a scheduler command
+		 *   transfer count >= 2.
+		 *   TXPOST_STATUS_REG is 0 and TXPOST_STATUS_REG2 is 0x0000a980. (3a hang)
+		 *   If only schedule 1 transfer count then TXPOST_STATUS_REG2 stay 0, SW
+		 *   hit this issue happened when  (Schedule transfer count >= 2) +
+		 *   (frc->etype_ip_enable == 1) + (flowid_override in WI is not set).
+		 */
 		frc->pyld_min_length = 21; // The second packet of "ping -s 1473" is 21
 		frc->ifid = HWA_IFID_INVALID; // --- RUNTIME
 
 		frc->lkup_type = HWA_TXPOST_FRC_LKUP_TYPE_b11; // prio lut
 
+		/* XXX, etype_ip_enable needs flowid lookup enabled, so it doesn't
+		 * work at all in A0.
+		 */
 		frc->etype_ip_enable = 1; // enable etype == IPv4|6 check
-
-#if HWA_REVISION_GE_129
 		frc->audit_enable = 1; // Enable audit
-#else
-		frc->audit_enable = 0; // Disable audit
-#endif // endif
 		frc->avg_pkt_size = 0; // Octet scheduling not supported
 
 		frc->epoch = 0; // no epoch audit
@@ -2949,7 +3013,6 @@ hwa_txpost_stats_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b,
 
 } // hwa_txpost_stats_dump
 
-#if HWA_REVISION_GE_129
 static INLINE int // Handle a Free TxBuffer request from WLAN driver, returns success|failure
 _hwa_txpost_txbuffer_free(hwa_txpost_t *txpost, void *buf)
 {
@@ -3003,7 +3066,6 @@ failure:
 	return HWA_FAILURE;
 
 } // hwa_txpost_txbuffer_free
-#endif /* HWA_REVISION_GE_129 */
 
 void * // Handle SW allocate tx buffer from TxBM. Return txpost buffer || NULL
 hwa_txpost_txbuffer_get(struct hwa_dev *dev)
@@ -3046,15 +3108,11 @@ hwa_txpost_txbuffer_free(struct hwa_dev *dev, void *buf)
 	// Audit pre-conditions
 	HWA_AUDIT_DEV(dev);
 
-#if HWA_REVISION_GE_129
-	if (dev->tx_pktdealloc) {
-		ret = _hwa_txpost_txbuffer_free(&dev->txpost, buf);
-	}
-	else
-#endif // endif
-	{
-		ret = hwa_bm_free(&dev->tx_bm, hwa_bm_ptr2idx(&dev->tx_bm, buf));
-	}
+#ifdef HWA_TXPOST_FREEIDXTX
+	ret = _hwa_txpost_txbuffer_free(&dev->txpost, buf);
+#else
+	ret = hwa_bm_free(&dev->tx_bm, hwa_bm_ptr2idx(&dev->tx_bm, buf));
+#endif /* HWA_TXPOST_FREEIDXTX */
 
 	return ret;
 }
@@ -3065,7 +3123,7 @@ hwa_txpost_txbuffer_free(struct hwa_dev *dev, void *buf)
  * -----------------------------------------------------------------------------
  */
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 
 void // HWA3a FRC Table dump
 hwa_txpost_frc_table_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b, bool verbose)
@@ -3204,26 +3262,23 @@ hwa_txpost_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b, bool verbose, bool du
 
 	hwa_ring_dump(&txpost->schedcmd_ring, b, "+ schedcmd");
 	hwa_ring_dump(&txpost->pktchain_ring, b, "+ pktchain");
-#if HWA_REVISION_GE_129
 	hwa_ring_dump(&txpost->txfree_ring, b, "+ txfree_ring");
-#endif // endif
+
 	HWA_BPRINT(b, "+ TransId: schedcmd<%u> pktchain<%u>\n",
 		txpost->schedcmd_id, txpost->pktchain_id);
 
 	HWA_STATS_EXPR(
 		HWA_BPRINT(b, "+ pkt_post<%u> oct_proc<%u>\n",
 		          txpost->pkt_proc_cnt, txpost->oct_proc_cnt));
-#if HWA_REVISION_GE_129
 	if (txpost->txfree_ring.memory != NULL) {
 		HWA_STATS_EXPR(HWA_BPRINT(b, "+ txfree_cnt<%u>\n", txpost->txfree_cnt));
 	}
-#endif // endif
 
 	if (verbose == TRUE) {
 		hwa_txpost_stats_dump(txpost, b, /* all sets */ ~0U, /* clear */ 0);
 	}
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 	hwa_txpost_frc_table_dump(txpost, b, verbose);
 #if !defined(HWA_NO_LUT)
 	hwa_txpost_prio_lut_dump(txpost, b, verbose);
@@ -3232,14 +3287,14 @@ hwa_txpost_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b, bool verbose, bool du
 #endif /* !HWA_NO_LUT */
 #endif /* BCMDBG */
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 	if (dump_regs == TRUE)
 		hwa_txpost_regs_dump(txpost, b);
 #endif // endif
 
 } // hwa_txpost_dump
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 
 void // Dump HWA3a block registers
 hwa_txpost_regs_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b)
@@ -3273,13 +3328,11 @@ hwa_txpost_regs_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b)
 	HWA_BPR_REG(b, tx, pkt_chq_ctrl);
 	HWA_BPR_REG(b, tx, txpost_frc_base_addr);
 
-#if HWA_REVISION_GE_129
 	HWA_BPR_REG(b, tx, pktdealloc_ring_addr);
 	HWA_BPR_REG(b, tx, pktdealloc_ring_wrindex);
 	HWA_BPR_REG(b, tx, pktdealloc_ring_rdindex);
 	HWA_BPR_REG(b, tx, pktdealloc_ring_depth);
 	HWA_BPR_REG(b, tx, pktdealloc_ring_lazyintrconfig);
-#endif /* HWA_REVISION_GE_129 */
 
 	HWA_DEBUG_EXPR({
 		HWA_BPR_REG(b, tx, pkt_ch_valid);
@@ -3311,23 +3364,16 @@ hwa_txpost_regs_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b)
 		HWA_BPRINT(b, "+ FSM[cmd<%u> dma<%u> pkt<%u>]"
 			" xfer<%u> evallch<%u> chnint<%u> clk<%u> idle<%u> evlong<%u>"
 			" cmdq_rd_intr<%u>"
-#if HWA_REVISION_GE_129
 			" pkt_dealloc_rd_intr<%u>"
-#endif /* HWA_REVISION_GE_129 */
 			"\n",
 			reg.cmd_frc_dma_fsm, reg.dma_fsm, reg.pkt_proc_fsm,
 			reg.pkt_xfer_done, reg.evict_all_chains, reg.pktchn_interrupt,
 			reg.clk_req, reg.txdata_idle, reg.evict_longest_chain,
-#if HWA_REVISION_GE_129
 			reg.cmdq_rd_intr, reg.pkt_dealloc_rd_intr);
-#else
-			reg.cmdq_rd_intr);
-#endif /* HWA_REVISION_GE_129 */
 	}
 
 	HWA_BPR_REG(b, tx, txpost_cfg1);
 
-#if HWA_REVISION_GE_129
 	HWA_BPR_REG(b, tx, pktdeallocmgr_tfrstatus);
 	HWA_BPR_REG(b, tx, pktdealloc_localfifo_cfg_status);
 	HWA_BPR_REG(b, tx, txpost_aggr_config);
@@ -3344,8 +3390,6 @@ hwa_txpost_regs_dump(hwa_txpost_t *txpost, struct bcmstrbuf *b)
 			reg.pktid0_zero, reg.pktid1_zero, reg.pktid_order_err,
 			reg.transid_oflow, reg.transid_uflow, reg.fw_cmd_cnt);
 	}
-#endif /* HWA_REVISION_GE_129 */
-
 } // hwa_txpost_regs_dump
 
 #endif // endif
@@ -3356,7 +3400,7 @@ void
 hwa_txpost_dump_pkt(hwa_txfifo_pkt_t *pkt, struct bcmstrbuf *b,
 	const char *title, uint32 pkt_index, bool one_shot)
 {
-#if (HWA_DEBUG_BUILD >= 3) || defined(BCMDBG) || 0
+#if (HWA_DEBUG_BUILD >= 3) || defined(BCMDBG) || 0 || defined(HWA_DUMP)
 	uint32 index;
 	hwa_txpost_pkt_t *curr;
 	char eabuf_da[ETHER_ADDR_STR_LEN];
@@ -3399,17 +3443,17 @@ hwa_txpost_dump_pkt(hwa_txfifo_pkt_t *pkt, struct bcmstrbuf *b,
  * Go through HW provided packet chain and initial lbuf.
  */
 static int
-hwa_txpost_sendup(void *context, uintptr arg1, uintptr arg2, uint32 pkt_count, uint32 total_octets)
+hwa_txpost_sendup(void *context, uintptr arg1, uint32 arg2, uint32 pkt_count, uint32 total_octets)
 {
 	hwa_dev_t *dev = (hwa_dev_t *)context;
 	hwa_txpost_pkt_t *head = (hwa_txpost_pkt_t *)arg1;
-	hwa_txpost_pkt_t *tail = (hwa_txpost_pkt_t *)arg2;
 	void *pktc;
 	uint32 flowid;
-	bool drop_pkt;
+	uint16 ring_state;
 	void *pktcs[HWA_PKTC_TYPE_MAX];
 	uint32 pktc_cnts[HWA_PKTC_TYPE_MAX];
 	uint32 type;
+	uint8 flags = (uint8)arg2;
 
 	/* Storage space to move data across hwa-cpf-pciedev */
 	hwa_cfp_tx_info_t hwa_cfp_tx_info = {0};
@@ -3417,19 +3461,12 @@ hwa_txpost_sendup(void *context, uintptr arg1, uintptr arg2, uint32 pkt_count, u
 	HWA_FTRACE(HWA3a);
 	HWA_ASSERT(context != (void *)NULL);
 	HWA_ASSERT(arg1 != 0);
-	HWA_ASSERT(arg2 != 0);
 
 	// Setup locals
 	flowid = head->flowid_override;
-	drop_pkt = FALSE;
 
-	/* Drop the packet chain if
-	 * 1. HWA device is down.
-	 * 2. pciedev_flowring_drop_pkts() return TRUE.
-	 */
-	if (!dev->up || pciedev_flowring_drop_pkts(dev->pciedev, flowid)) {
-		drop_pkt = TRUE;
-	}
+	/* Read the current flow ring state */
+	ring_state = pciedev_flowring_state_get(dev->pciedev, flowid);
 
 #ifdef WLCFP
 	/* Check if CFP Enabled for the given packet list
@@ -3437,10 +3474,16 @@ hwa_txpost_sendup(void *context, uintptr arg1, uintptr arg2, uint32 pkt_count, u
 	 */
 	hwa_cfp_tx_info.pktlist_count = pkt_count;
 	pciedev_hwa_cfp_tx_enabled(dev->pciedev, head, &hwa_cfp_tx_info);
+#ifdef WLSQS
+	/* V2R request done. Dequeue the counters now */
+	pciedev_sqs_v2r_dequeue(dev->pciedev, flowid,
+		hwa_cfp_tx_info.pktlist_prio, pkt_count,
+		TXPOST_SCHED_FLAGS_SQS_FORCE_ISSET(flags));
+#endif // endif
 #endif /* WLCFP */
 
 	/* Translate hwa_txpost_pkt_t 3a-SWPKT (44 Bytes) to lfrag */
-	pciedev_hwa_txpost_pkt2native(dev->pciedev, head, tail, pkt_count, total_octets,
+	pciedev_hwa_txpost_pkt2native(dev->pciedev, head, pkt_count, total_octets,
 		&hwa_cfp_tx_info, pktcs, pktc_cnts);
 
 	for (type = HWA_PKTC_TYPE_UNICAST; type < HWA_PKTC_TYPE_MAX; type++) {
@@ -3450,23 +3493,28 @@ hwa_txpost_sendup(void *context, uintptr arg1, uintptr arg2, uint32 pkt_count, u
 		pktc = pktcs[type];
 		HWA_ASSERT(pktc);
 
-		// Send to bus layer
-		if (drop_pkt || (type == HWA_PKTC_TYPE_FLOW_MISMATCH)) {
+		/* Drop the packets */
+		if (!dev->up || (type == HWA_PKTC_TYPE_FLOW_MISMATCH) ||
+			(ring_state != FLOW_RING_STATE_ACTIVE)) {
 			void *p, *n;
-#ifdef WLSQS
-			/* Stale flowring pkts. Free and adjust v2r count */
-			sqs_v2r_sendup_slow(dev->pciedev, flowid,
-			    hwa_cfp_tx_info.pktlist_prio, pktc_cnts[type]);
-#endif // endif
+
 			p = pktc;
 			FOREACH_CHAINED_PKT(p, n) {
 				PKTCLRCHAINED(dev->osh, p);
+
+				/* Suppress the packet based on flow ring state */
+				if (ring_state == FLOW_RING_STATE_SUPPRESS_PEND) {
+					pciedev_lfrag_suppress_to_host(dev->pciedev, flowid, p);
+				}
 				PKTFREE(dev->osh, p, FALSE);
 			}
 
 			/* Check if driver need to send pending_flring_resp */
 			pciedev_hwa_process_pending_flring_resp(dev->pciedev, flowid);
 		} else {
+			/* At this point CFP flowid should be valid */
+			ASSERT_CFP_FLOWID(hwa_cfp_tx_info.cfp_flowid);
+
 			/* Forward the tx packets to the wireless subsystem */
 #ifdef WLCFP
 			if (hwa_cfp_tx_info.cfp_capable &&
@@ -3484,10 +3532,6 @@ hwa_txpost_sendup(void *context, uintptr arg1, uintptr arg2, uint32 pkt_count, u
 #endif /* WLCFP */
 			{
 				/* Legacy path Dongle Sendup */
-#ifdef WLSQS
-				sqs_v2r_sendup_slow(dev->pciedev, flowid,
-					hwa_cfp_tx_info.pktlist_prio, pktc_cnts[type]);
-#endif // endif
 				if (type != HWA_PKTC_TYPE_BCMC) {
 					dngl_sendup(dev->dngl, pktc);
 				} else {
@@ -3504,6 +3548,26 @@ hwa_txpost_sendup(void *context, uintptr arg1, uintptr arg2, uint32 pkt_count, u
 	}
 
 	return HWA_SUCCESS;
+}
+
+// Callback function for per sched cmd transaction
+static int
+hwa_txpost_schedcmd_done(void *context, uint32 arg1, uint32 arg2, uint32 arg3, uint32 arg4)
+{
+	//hwa_dev_t *dev = (hwa_dev_t *)context;
+	uint16 sched_cmd_id = (uint16)arg2;
+	uint8 schedule_flags = (uint8)arg3;
+
+	BCM_REFERENCE(sched_cmd_id);
+
+	HWA_TRACE(("%s schedcmd_id<%u> Flags %x\n",
+		__FUNCTION__, sched_cmd_id, schedule_flags));
+
+	if (TXPOST_RESP_PEND_FLAGS_ISSET(schedule_flags)) {
+		/* Send EOPS Response back to WL layer */
+		wlc_sqs_eops_response();
+	}
+	return 0;
 }
 
 void
@@ -3552,6 +3616,16 @@ hwa_txpost_schecmd_dens(struct hwa_dev *dev, struct bcmstrbuf *b, bool clear)
  * -----------------------------------------------------------------------------
  * Section: HWA2b RxCplE and HWA4b TxCplE completion engines
  * -----------------------------------------------------------------------------
+ */
+
+/*
+ * XXX TBD
+ * In 43684, use the non-descriptor mem2mem mechanism to perform a synchronous
+ * transfer of completion workitems. For this mechanism to be effective, it is
+ * necessary that software performs additional work while the DMA is in progress
+ * and before a WR index update with a doorbell raised. Additional work may be
+ * recycling of local RxCpl and Tx SW packet structures. The cost to manage a
+ * Completion descriptor ring may be offsetted.
  */
 
 #define HWA_CPLE_AWI_NONE       ((void*)(NULL))
@@ -3788,6 +3862,12 @@ __hwa_cple_commit(hwa_cple_t *cple, const hwa_cple_commit_req_t commit_req)
 
 commit_ced: // Post CED due to threshold, wrap, no free AWI, or SYNC commit req
 
+#if  defined(SBTOPCIE_INDICES)
+	if (cple->cpl_ring_idx == HWA_CPLENG_CEDQ_TX) {
+		hwa_sync_flowring_read_ptrs(hwa_dev->pciedev);
+	}
+#endif /* PCIE_DMA_INDEX && SBTOPCIE_INDICES */
+
 	__hwa_cple_flush(cple);
 
 	// Lazily allocate a new AWI and prepare it for WI additions
@@ -3882,6 +3962,7 @@ BCMATTACHFN(_hwa_cple_attach)(hwa_dev_t *dev, const char *name,
 		ced = HWA_RING_ELEM(hwa_cpleng_ced_t, &cple->cedq_ring, idx);
 
 		// Setup remote and local interrupt generation per CED
+		// XXX: Disable fw interrupt after CED completion, nothing to do now.
 		ced->host_intr_valid = 1;
 		ced->fw_intr_valid   = 0; //((idx % HWA_CPLENG_CEDQ_FW_WAKEUP) == 0);
 		ced->cpl_ring_id     = cpl_ring_idx; // all CEDs to same D2H ring
@@ -4094,6 +4175,7 @@ hwa_cpleng_init(hwa_cpleng_t *cpleng)
 	pcie_ipc_rings = dev->pcie_ipc_rings;
 	sys_mem = &cpleng_ring.u32[0];
 
+	// FIXME: HWA2.0 must not be restricted by local depth as no seqnum
 	u32 = HWA_RD_REG_NAME(HWAce, regs, cpl, cpl_dma_config);
 	HWA_TRACE(("%s cpl_dma_config numcompletionworkitem<%u>\n",
 		HWAce, BCM_GBF(u32, HWA_CPL_CPL_DMA_CONFIG_NUMCOMPLETIONWORKITEM)));
@@ -4104,6 +4186,9 @@ hwa_cpleng_init(hwa_cpleng_t *cpleng)
 	u32 = BCM_CBF(u32, HWA_CPL_CPL_DMA_CONFIG_TXCPLRINGOFFSET);
 	HWA_WR_REG_NAME(HWAce, regs, cpl, cpl_dma_config, u32);
 
+	// FIXME: TxCpl offset specification deleted from cpl_dma_config.
+	// FIXME: RxCpl offset specification not present in cpl_dma_config.
+	// FIXME: Need clarification on How iDMA is used for RD index update and
 	//        how WR index is updated in host RD index arrays.
 
 	// Setup base addresses of indices arrays in host memory
@@ -4125,6 +4210,7 @@ hwa_cpleng_init(hwa_cpleng_t *cpleng)
 		| BCM_SBIT(HWA_CPL_DMA_DESC_TEMPLATE_CPL_DMATCMDESCTEMPLATECOHERENT)
 		| BCM_SBF(0U,
 		          HWA_CPL_DMA_DESC_TEMPLATE_CPL_DMATCMPCIEDESCTEMPLATEADDREXT)
+		// HWA Local memory as src/dest : FIXME remove this in HWA2.1
 		| BCM_SBIT(HWA_CPL_DMA_DESC_TEMPLATE_CPL_DMAHWADESCTEMPLATENOTPCIE)
 		// non DMA direct AXI transfer of CPL WR index update to host memory
 		| BCM_SBF(dev->host_coherency,
@@ -4158,8 +4244,8 @@ hwa_cpleng_init(hwa_cpleng_t *cpleng)
 	cpleng_ring.base_addr_hi   =
 		HWA_HOSTADDR64_HI32(HADDR64_HI(pcie_ipc_ring_mem->haddr64));
 	cpleng_ring.base_addr_lo   = HADDR64_LO(pcie_ipc_ring_mem->haddr64);
-	cpleng_ring.wr_index       = 0;
-	cpleng_ring.rd_index       = 0;
+	cpleng_ring.wr_index       = 0; // FIXME Are these RD ONLY
+	cpleng_ring.rd_index       = 0; // FIXME Are these RD ONLY
 	cpleng_ring.element_sz     = pcie_ipc_ring_mem->item_size;
 	cpleng_ring.depth          = pcie_ipc_ring_mem->max_items;
 	cpleng_ring.seqnum_enable  = FALSE;
@@ -4198,8 +4284,8 @@ hwa_cpleng_init(hwa_cpleng_t *cpleng)
 		cpleng_ring.base_addr_hi   =
 			HWA_HOSTADDR64_HI32(HADDR64_HI(pcie_ipc_ring_mem->haddr64));
 		cpleng_ring.base_addr_lo   = HADDR64_LO(pcie_ipc_ring_mem->haddr64);
-		cpleng_ring.wr_index	   = 0;
-		cpleng_ring.rd_index	   = 0;
+		cpleng_ring.wr_index	   = 0; // FIXME Are these RD ONLY
+		cpleng_ring.rd_index	   = 0; // FIXME Are these RD ONLY
 		cpleng_ring.element_sz	   = pcie_ipc_ring_mem->item_size;
 		cpleng_ring.depth		   = pcie_ipc_ring_mem->max_items;
 		cpleng_ring.seqnum_enable  = FALSE;
@@ -4220,8 +4306,8 @@ hwa_cpleng_init(hwa_cpleng_t *cpleng)
 	cpleng_ring.base_addr_hi   =
 		HWA_HOSTADDR64_HI32(HADDR64_HI(pcie_ipc_ring_mem->haddr64));
 	cpleng_ring.base_addr_lo   = HADDR64_LO(pcie_ipc_ring_mem->haddr64);
-	cpleng_ring.wr_index       = 0;
-	cpleng_ring.rd_index       = 0;
+	cpleng_ring.wr_index       = 0; // FIXME Are these RD ONLY
+	cpleng_ring.rd_index       = 0; // FIXME Are these RD ONLY
 	cpleng_ring.element_sz     = pcie_ipc_ring_mem->item_size;
 	cpleng_ring.depth          = pcie_ipc_ring_mem->max_items;
 	cpleng_ring.seqnum_enable  = FALSE;
@@ -4376,7 +4462,7 @@ hwa_cpleng_stats_dump(hwa_cpleng_t *cpleng, struct bcmstrbuf *b, uint8 clear_on_
 
 } // hwa_cpleng_stats_dump
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 
 void // Dump software state of a completion engine
 hwa_cple_dump(hwa_cple_t *cple, struct bcmstrbuf *b, const char *name, bool verbose)
@@ -4430,13 +4516,13 @@ hwa_cpleng_dump(hwa_cpleng_t *cpleng, struct bcmstrbuf *b, bool verbose, bool du
 	if (verbose)
 		hwa_cpleng_stats_dump(cpleng, b, /* clear */ 0);
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 	if (dump_regs)
 		hwa_cpleng_regs_dump(cpleng, b);
 #endif // endif
 } // hwa_cpleng_dump
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 void // Dump HWA registers for HWA2b and HWA4b blocks
 hwa_cpleng_regs_dump(hwa_cpleng_t *cpleng, struct bcmstrbuf *b)
 {
@@ -4635,6 +4721,12 @@ hwa_txcple_wi_add(struct hwa_dev *dev, uint32 pktid, uint16 ringid, uint8 ifindx
 		return HWA_FAILURE;
 	}
 
+	hwa_upd_last_queued_flowring(dev->pciedev, ringid);
+
+	BCMPCIE_IPC_HPA_TEST(dev->pciedev, pktid,
+		BCMPCIE_IPC_PATH_TRANSMIT, BCMPCIE_IPC_TRANS_RESPONSE);
+	BUZZZ_KPI_PKT1(KPI_PKT_BUS_TXCMPL, 2, pktid, ringid);
+
 	HWA_ASSERT(txcple->awi_curr != HWA_CPLE_AWI_NONE);
 	HWA_ASSERT(txcple->wi_entry < txcple->aggr_max);
 
@@ -4642,8 +4734,8 @@ hwa_txcple_wi_add(struct hwa_dev *dev, uint32 pktid, uint16 ringid, uint8 ifindx
 	txcple_awi = (hwa_txcple_acwi_t*)txcple->awi_curr;
 
 	// Populate the composite entry into the aggregate composite WI
-	txcple_awi->aggr[txcple->wi_entry].host_pktid = pktid;
-	txcple_awi->aggr[txcple->wi_entry].flow_ring_id = ringid;
+	txcple_awi->aggr[txcple->wi_entry].host_pktid = htol32(pktid);
+	txcple_awi->aggr[txcple->wi_entry].flow_ring_id = htol16(ringid);
 	txcple_awi->aggr[txcple->wi_entry].if_id = ifindx;
 
 	txcple->wi_added++;

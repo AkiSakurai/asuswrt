@@ -1,7 +1,7 @@
 /*
  * ACSD shared include file
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acsd.h 754789 2018-03-29 05:23:07Z $
+ * $Id: acsd.h 766308 2018-07-30 09:35:53Z $
  */
 
 #ifndef _acsd_h_
@@ -98,7 +98,7 @@ typedef enum {
 
 #define ACSD_VERSION 1
 #define ACSD_DFLT_FD			-1
-#define ACSD_DFLT_CLI_PORT	  5918 /* need to double check if it is used */
+#define ACSD_DFLT_CLI_PORT	  ACSD_DEFAULT_CLI_PORT
 
 extern bool acsd_swap;
 #define htod32(i) (acsd_swap?bcmswap32(i):(uint32)(i))
@@ -184,6 +184,15 @@ extern int acsd_debug_level;
 			acsddbg("acsd: "fmt, ##arg); \
 			if (acsd_debug_level & ACSD_DEBUG_SYSLOG) \
 				logmessage("acsd", fmt, ##arg); \
+		} while (0)
+
+#define ACSD_PRINT2(fmt, arg...) \
+		do { \
+			acsddbg("acsd: "fmt, ##arg); \
+			if (acsd_debug_level & ACSD_DEBUG_DETAIL) { \
+				if (acsd_debug_level & ACSD_DEBUG_SYSLOG) \
+					logmessage("acsd", fmt, ##arg); \
+			} \
 		} while (0)
 
 #define HERE ACSD_ERROR("trace\n")

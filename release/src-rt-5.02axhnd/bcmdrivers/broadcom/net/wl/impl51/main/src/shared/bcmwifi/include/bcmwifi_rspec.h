@@ -1,7 +1,7 @@
 /*
  * Common OS-independent driver header for rate management.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcmwifi_rspec.h 764780 2018-06-03 04:49:54Z $
+ * $Id: bcmwifi_rspec.h 773615 2019-03-26 14:03:49Z $
  */
 
 #ifndef _bcmwifi_rspec_h_
@@ -214,6 +214,10 @@ typedef uint32	ratespec_t;
 #define HE_RSPEC(mcs, nss)	(WL_RSPEC_ENCODE_HE | \
 				 (((nss) << WL_RSPEC_HE_NSS_SHIFT) & WL_RSPEC_HE_NSS_MASK) | \
 				 ((mcs) & WL_RSPEC_HE_MCS_MASK))
+
+/* convenience MACRO for lowest possible SU HE RATE */
+#define LOWEST_RATE_HE_RSPEC	(HE_RSPEC(0, 1) | WL_RSPEC_BW_20MHZ | \
+				HE_GI_TO_RSPEC(WL_RSPEC_HE_2x_LTF_GI_1_6us))
 
 /**
  * ==================

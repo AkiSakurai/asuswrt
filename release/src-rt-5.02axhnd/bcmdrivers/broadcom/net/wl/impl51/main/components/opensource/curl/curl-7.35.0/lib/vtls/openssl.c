@@ -1209,6 +1209,11 @@ static CURLcode verifyhost(struct connectdata *conn,
     if(i>=0) {
       ASN1_STRING *tmp = X509_NAME_ENTRY_get_data(X509_NAME_get_entry(name,i));
 
+      /* In OpenSSL 0.9.7d and earlier, ASN1_STRING_to_UTF8 fails if the input
+         is already UTF-8 encoded. We check for this case and copy the raw
+         string manually to avoid the problem. This code can be made
+         conditional in the future when OpenSSL has been fixed. Work-around
+         brought by Alexis S. L. Carvalho. */
       if(tmp) {
         if(ASN1_STRING_type(tmp) == V_ASN1_UTF8STRING) {
           j = ASN1_STRING_length(tmp);
@@ -1476,6 +1481,42 @@ ossl_connect_step1(struct connectdata *conn,
   }
 #endif // endif
 
+  /* OpenSSL contains code to work-around lots of bugs and flaws in various
+     SSL-implementations. SSL_CTX_set_options() is used to enabled those
+     work-arounds. The man page for this option states that SSL_OP_ALL enables
+     all the work-arounds and that "It is usually safe to use SSL_OP_ALL to
+     enable the bug workaround options if compatibility with somewhat broken
+     implementations is desired."
+
+     The "-no_ticket" option was introduced in Openssl0.9.8j. It's a flag to
+     disable "rfc4507bis session ticket support".  rfc4507bis was later turned
+     into the proper RFC5077 it seems: http://tools.ietf.org/html/rfc5077
+
+     The enabled extension concerns the session management. I wonder how often
+     libcurl stops a connection and then resumes a TLS session. also, sending
+     the session data is some overhead. .I suggest that you just use your
+     proposed patch (which explicitly disables TICKET).
+
+     If someone writes an application with libcurl and openssl who wants to
+     enable the feature, one can do this in the SSL callback.
+
+     SSL_OP_NETSCAPE_REUSE_CIPHER_CHANGE_BUG option enabling allowed proper
+     interoperability with web server Netscape Enterprise Server 2.0.1 which
+     was released back in 1996.
+
+     Due to CVE-2010-4180, option SSL_OP_NETSCAPE_REUSE_CIPHER_CHANGE_BUG has
+     become ineffective as of OpenSSL 0.9.8q and 1.0.0c. In order to mitigate
+     CVE-2010-4180 when using previous OpenSSL versions we no longer enable
+     this option regardless of OpenSSL version and SSL_OP_ALL definition.
+
+     OpenSSL added a work-around for a SSL 3.0/TLS 1.0 CBC vulnerability
+     (http://www.openssl.org/~bodo/tls-cbc.txt). In 0.9.6e they added a bit to
+     SSL_OP_ALL that _disables_ that work-around despite the fact that
+     SSL_OP_ALL is documented to do "rather harmless" workarounds. In order to
+     keep the secure work-around, the SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS bit
+     must not be set.
+  */
+
   ctx_options = SSL_OP_ALL;
 
 #ifdef SSL_OP_NO_TICKET
@@ -1492,6 +1533,8 @@ ossl_connect_step1(struct connectdata *conn,
 #endif // endif
 
 #ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
+  /* unless the user explicitly ask to allow the protocol vulnerability we
+     use the work-around */
   if(!conn->data->set.ssl_enable_beast)
     ctx_options &= ~SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
 #endif // endif

@@ -1,7 +1,7 @@
 /*
  * ACPHY PAPD CAL module data interface
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_papdcal_data.h 712753 2017-07-26 09:28:47Z $
+ * $Id: phy_ac_papdcal_data.h 775204 2019-05-22 15:22:17Z $
  */
 
 #ifndef _phy_ac_papdcal_data_h_
@@ -72,10 +72,9 @@ extern const int8 pga_gain_array_5g_epapd_1[SZ_PGA_GAIN_ARRAY];
 extern const int8 pga_gain_array_5g_epapd_2[SZ_PGA_GAIN_ARRAY];
 extern const int8 pga_gain_array_5g_epapd_3[SZ_PGA_GAIN_ARRAY];
 extern const int8 lut_log20_bbmult[100];
-
+extern const uint32 acphy_papd_scaltbl_128_plus3dB[SZ_SCAL_TABLE_1];
 extern const uint32 acphy_papd_scaltbl_128[SZ_SCAL_TABLE_1];
 extern const uint32 acphy_papd_scaltbl[SZ_SCAL_TABLE_0];
 extern const uint32 acphy_wbpapd_waveform[SZ_WBPAPD_WAVEFORM];
-extern uint32 fcbs_wbpapd_waveform[SZ_WBPAPD_WAVEFORM];
 
 #endif /* _phy_ac_papdcal_data_h_ */

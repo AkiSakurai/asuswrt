@@ -1,7 +1,7 @@
 /*
  * RADIO control module public interface (to MAC driver).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_radio_api.h 742511 2018-01-22 14:14:24Z $
+ * $Id: phy_radio_api.h 775385 2019-05-29 11:30:21Z $
  */
 
 #ifndef _phy_radio_api_h_
@@ -134,9 +134,10 @@
 #define BCM20694_ID		0x45a
 #define BCM20695_ID		0x53a
 #define BCM20696_ID		0x58e
-#define BCM20697_ID		0x5fb
 #define BCM20698_ID		0x5fc
 #define BCM20704_ID		0x50e0
+#define BCM20707_ID		0x50e3
+#define BCM20709_ID		0x50e5
 
 /* AFE Override */
 #define PHY_AFE_OVERRIDE_USR	1

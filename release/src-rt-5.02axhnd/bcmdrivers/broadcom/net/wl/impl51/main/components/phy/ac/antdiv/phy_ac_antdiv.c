@@ -1,7 +1,7 @@
 /*
  * ACPHY ANTennaDIVersity module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_antdiv.c 702070 2017-05-30 15:43:06Z $
+ * $Id: phy_ac_antdiv.c 766954 2018-08-22 18:47:13Z $
  */
 
 #include <typedefs.h>
@@ -432,7 +432,7 @@ wlc_phy_antdiv_acphy(phy_info_t *pi, uint8 val)
 				PHY_AS_80P80(pi, pi->radio_chanspec)) {
 				MOD_PHYREG(pi, DivEnableClipGain, AntDivEnClipGains_Hi, 1);
 			} else if (CHSPEC_IS160(pi->radio_chanspec)) {
-				ASSERT(0);
+				ASSERT(0); //FIXME
 			} else {
 				MOD_PHYREG(pi, DivEnableClipGain, AntDivEnClipGains_Hi, 0);
 			}
@@ -496,7 +496,7 @@ phy_acphy_swdiv_init(phy_type_antdiv_ctx_t *ctx)
 			case SWDIV_SWCTRL_0:
 			case SWDIV_SWCTRL_1:
 				/* 4357 family use txvlin overriding */
-				if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+				if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 					ACPHY_REG_LIST_START
 					/* override RF_SW_CTRL_3 */
 					MOD_PHYREG_ENTRY(pi, RfctrlCoreGlobalPus,
@@ -991,6 +991,9 @@ void wlc_phy_write_regtbl_fc_from_nvram(phy_info_t *pi)
 				/* read appropriate byte from swctrlmap */
 				ant =  (ovr_en == 1) ? ovr_ant : WL_ANT_SEL;
 
+				/* JIRA: SWWLAN-66107.
+				   Core1 EVM degradation is seen when compared to core 0
+				 */
 				if (ACMAJORREV_4(pi->pubpi->phy_rev)) {
 					ant = phy_get_rsdbbrd_corenum(pi, core);
 				} else if (PHYCORENUM(pi->pubpi->phy_corenum) == 2) {

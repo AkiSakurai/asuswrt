@@ -256,6 +256,7 @@ typedef enum
     BCMEPONCfgPowerSaveSleepCtrl,
     BCMEPONCfgPowerSavingDebugState,
     BCMEPONCfgHoldMacState,
+    BCMEPONCfgFatalErrRst,
     BCM_EPON_IOCTL_MAX
     } EponioctlCmd_e;
 
@@ -947,6 +948,7 @@ typedef union {
         SleepCtrlPara sleepCtrl;
         EponPowerSavingRunningState runningState;
         BOOL holdMacState;
+        U8 fatalErrRstEn;
 } PACK EponParm;
 
 typedef struct {

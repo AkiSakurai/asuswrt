@@ -1,7 +1,7 @@
 /*
  * WPS main (platform dependent portion)
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_linux_main.c 766036 2018-07-23 22:20:10Z $
+ * $Id: wps_linux_main.c 772297 2019-02-20 06:50:21Z $
  */
 #include <stdio.h>
 #include <linux/types.h>
@@ -92,9 +92,22 @@ typedef u_int8_t u8;
 #include <wps_ui.h>
 #include <wps_wps.h>
 #include <wps_wl.h>
+#ifdef BCMWPSAPSTA
+#include <wps_pb.h>
+#endif // endif
+#include <wps_aplockdown.h>
+#include <wps_apputils.h>
 #ifdef BCA_CPEROUTER
+#ifdef BCA_SUPPORT_UNFWLCFG
+/* In UNFWLCFG project, nothing to do for the lock functions temporarily.
+ * We will implement it once encountering issues.
+*/
+#define brcm_get_lock(name, timeout)
+#define brcm_release_lock(name);
+#else
 extern void brcm_get_lock(char *name, int timeout);
 extern void brcm_release_lock(char *name);
+#endif /* BCA_SUPPORT_UNFWLCFG */
 extern void cperouter_restart_wlan(void);
 #endif /* BCA_CPEROUTER */
 #define WPSM_PID_FILE_PATH	"/tmp/wps_monitor.pid"
@@ -110,20 +123,29 @@ static char *wps_conf_list[256];
 void
 wps_osl_restart_wl()
 {
+#ifdef __CONFIG_STBAP__
+	char *wps_argv[] = {"rc", "restart", NULL};
+	pid_t pid;
+#endif /* __CONFIG_STBAP__ */
 	/* Wait for M8/DONE packet completed */
 	WpsSleep(1);
-
-#if 0
+	TUTRACE((TUTRACE_ERR, "%s:rc restart -> \n", __FUNCTION__));
+#ifdef __CONFIG_STBAP__
+	/* STB maps 'kill -1 1' to /etc/inittab, AP maps it to 'rc restart' */
+	_eval(wps_argv, NULL, 0, &pid);
+#else /* __CONFIG_STBAP__ */
 #ifdef BCA_CPEROUTER
 	cperouter_restart_wlan();
 #else
+#if 0
 	/* restart all process */
 	system("kill -1 1");
-#endif /* BCA_CPEROUTER */
 #else
 	/* restart wps only */
 	system("restart_wireless");
 #endif
+#endif /* BCA_CPEROUTER */
+#endif /* __CONFIG_STBAP__ */
 }
 
 int
@@ -160,6 +182,7 @@ wps_getProcessStates()
 	case WPS_UI_NFC_OP_TO:		value = WPS_NFC_OP_TO;		break;
 	case WPS_UI_NFC_FM:		value = WPS_NFC_FM;		break;
 	case WPS_UI_NFC_FM_CPLT:	value = WPS_NFC_FM_CPLT;	break;
+	case WPS_UI_MAP_TIMEOUT:	value = WPS_MAP_TIMEOUT;	break;
 	case WPS_UI_NFC_HO_DPI_MISMATCH:	value = WPS_NFC_HO_DPI_MISMATCH;	break;
 	case WPS_UI_NFC_HO_PKH_MISMATCH:	value = WPS_NFC_HO_PKH_MISMATCH;	break;
 
@@ -206,6 +229,7 @@ wps_setProcessStates(int state)
 	case WPS_NFC_OP_TO:	value = WPS_UI_NFC_OP_TO;	break;
 	case WPS_NFC_FM:	value = WPS_UI_NFC_FM;		break;
 	case WPS_NFC_FM_CPLT:	value = WPS_UI_NFC_FM_CPLT;	break;
+	case WPS_MAP_TIMEOUT:	value = WPS_UI_MAP_TIMEOUT;	break;
 	case WPS_NFC_HO_DPI_MISMATCH:	value = WPS_UI_NFC_HO_DPI_MISMATCH;	break;
 	case WPS_NFC_HO_PKH_MISMATCH:	value = WPS_UI_NFC_HO_PKH_MISMATCH;	break;
 	default:
@@ -690,9 +714,10 @@ wps_set_wsec(int ess_id, char *wps_ifname, void *credential, int mode)
 	value = wps_safe_get_conf(tmp);
 	if (strcmp(value, "wre") == 0 &&
 		strcmp(wps_safe_get_conf("wps_pbc_apsta"), "enabled") == 0 &&
-		strcmp(wps_ifname, wps_safe_get_conf("wps_pbc_sta_ifname")) == 0) {
+		strcmp(wps_ifname,
+			wps_safe_get_conf(wps_pbc_sta_ifnames[0].name)) == 0) {
 
-		char *ap_ifname = wps_safe_get_conf("wps_pbc_ap_ifname");
+		char *ap_ifname = wps_safe_get_conf(wps_pbc_ap_ifnames[0].name);
 
 		/* Set wsec to ap interface */
 
@@ -978,21 +1003,22 @@ wps_osl_validate_default()
 }
 
 static bool
-is_wps_pbc_apsta_enabled(int ess_num, char *ap_ifname, char *sta_ifname)
+is_wps_pbc_apsta_enabled(int ess_num, int ap_num, int sta_num)
 {
-	if (strcmp(nvram_safe_get("wps_pbc_apsta"), "enabled") != 0)
-		return FALSE;
+	TUTRACE((TUTRACE_INFO, "ap_num = %d, sta_num = %d, ess_num = %d\n",
+		ap_num, sta_num, ess_num));
 
-	if (ess_num == 2 &&
-	    nvram_match("ure_disable", "0") &&
-	    strcmp(ap_ifname, "") != 0 &&
-	    strcmp(sta_ifname, "") != 0) {
-		TUTRACE((TUTRACE_INFO, "%s : wps_pbc_apsta enabled, ap ifname = %s\n",
-			nvram_match("router_disable", "0")? "TR":"URE", ap_ifname));
-		TUTRACE((TUTRACE_INFO, "%s : wps_pbc_apsta enabled, sta ifname = %s\n",
-			nvram_match("router_disable", "0")? "TR":"URE", sta_ifname));
-		return  TRUE;
+	if (strcmp(nvram_safe_get("wps_pbc_apsta"), "enabled") != 0) {
+		TUTRACE((TUTRACE_INFO, "nvram wps_pbc_apsta is disable ...\n"));
+		return FALSE;
 	}
+
+	if ((ess_num >= 2) && (ap_num >= 1) && (sta_num >= 1)) {
+		TUTRACE((TUTRACE_INFO, "PBC APSTA mode enabled .....\n"));
+		return TRUE;
+	}
+
+	TUTRACE((TUTRACE_INFO, "PBC APSTA mdoe disable .....\n"));
 
 	return FALSE;
 }
@@ -1022,10 +1048,10 @@ wps_osl_build_conf()
 	char *wl_mode;
 	char *wl_radio, *wl_bss_enabled;
 	unsigned char uuid_string[36];
-	char wps_pbc_ap_ifname[IFNAMSIZ] = {0};
-	char wps_pbc_sta_ifname[IFNAMSIZ] = {0};
 	int wps_pbc_ap_index = 0;
-
+#ifdef BCMWPSAPSTA
+	int ap_idx = 0, sta_idx = 0;
+#endif // endif
 	/* Init print pointer */
 	wps_conf_buf_ptr = wps_conf_buf;
 
@@ -1038,6 +1064,8 @@ wps_osl_build_conf()
 	print_conf(NULL, NULL, "wps_random_ssid_prefix", NULL);
 	print_conf(NULL, NULL, "wps_randomssid", NULL);
 	print_conf(NULL, NULL, "wps_randomkey", NULL);
+	print_conf(NULL, NULL, "wps_pbc_prefer_intf", NULL);
+	print_conf(NULL, NULL, "wps_pbc_prefer_intf_count", NULL);
 	print_conf(NULL, NULL, "wps_device_name", NULL);
 	print_conf(NULL, NULL, "wps_mfstring", NULL);
 	print_conf(NULL, NULL, "wps_modelname", NULL);
@@ -1101,6 +1129,7 @@ wps_osl_build_conf()
 	/* set delay deauth time after EAP-FAIL */
 	print_conf(NULL, NULL, "wps_delay_deauth_ms", NULL);
 
+	print_conf(NULL, NULL, "wps_custom_ifnames", NULL);
 	ess_id = 0;
 	/* (LAN) for UPnP and push button */
 	for (i = 0; i < 256; i ++) {
@@ -1186,7 +1215,9 @@ wps_osl_build_conf()
 			print_conf(os_name, wl_name, "akm", NULL);
 			print_conf(os_name, wl_name, "crypto", NULL);
 			print_conf(os_name, wl_name, "wpa_psk", NULL);
-
+#if defined(MULTIAP)
+			print_conf(os_name, wl_name, "map", NULL);
+#endif	/* MULTIAP */
 			value = print_conf(os_name, wl_name, "key", NULL);
 			if (value) {
 				sprintf(key, "key%s", value);
@@ -1242,9 +1273,15 @@ wps_osl_build_conf()
 				TUTRACE((TUTRACE_INFO, "%s(%s) bandtype = %d\n",
 					os_name, wl_name, bandtype));
 
+#ifdef BCMWPSAPSTA
 				/* Save apsta AP ifname */
-				strcpy(wps_pbc_ap_ifname, os_name);
+				if (ap_idx < WPS_MAX_PBC_APSTA) {
+					strncpy(wps_pbc_ap_ifnames[ap_idx].ifname,
+						os_name, IFNAMSIZ);
+					ap_idx++;
+				}
 				wps_pbc_ap_index = i;
+#endif // endif
 
 #ifdef __CONFIG_WFI__
 				/* Get Wifi-Invite configuration for this (virtual) interface */
@@ -1262,9 +1299,15 @@ wps_osl_build_conf()
 			}
 			/* Set only for STA mode */
 			else {
+#ifdef BCMWPSAPSTA
 				/* Save apsta STA ifname */
-				strcpy(wps_pbc_sta_ifname, os_name);
-
+				if (sta_idx < WPS_MAX_PBC_APSTA) {
+					strncpy(wps_pbc_sta_ifnames[sta_idx].ifname,
+						os_name, IFNAMSIZ);
+					sta_idx++;
+				}
+				wps_init_escan_bss_results(os_name, unit);
+#endif // endif
 				/* Save stanames of this lan */
 				if (strlen(stanames))
 					strcat(stanames, " ");
@@ -1396,9 +1439,13 @@ wps_osl_build_conf()
 					sprintf(key, "key%s", value);
 					print_conf(os_name, wl_name, key, NULL);
 				}
-
+#ifdef BCMWPSAPSTA
 				/* Save apsta STA ifname */
-				strcpy(wps_pbc_sta_ifname, os_name);
+				if (sta_idx < WPS_MAX_PBC_APSTA)
+					strncpy(wps_pbc_sta_ifnames[sta_idx].ifname,
+						os_name, IFNAMSIZ);
+				sta_idx++;
+#endif // endif
 
 				/* Set ESS instance prefix */
 				sprintf(ess_name, "ess%d", ess_id);
@@ -1415,10 +1462,21 @@ wps_osl_build_conf()
 	}
 
 #ifdef BCMWPSAPSTA
-	if (is_wps_pbc_apsta_enabled(ess_id, wps_pbc_ap_ifname, wps_pbc_sta_ifname)) {
+	for (i = 0; i < WPS_MAX_PBC_APSTA; i++) {
+		TUTRACE((TUTRACE_INFO, " ap%d ifname = %s\n", i, wps_pbc_ap_ifnames[i].ifname));
+		TUTRACE((TUTRACE_INFO, " sta%d ifname = %s\n", i, wps_pbc_sta_ifnames[i].ifname));
+	}
+
+	if (is_wps_pbc_apsta_enabled(ess_id, ap_idx, sta_idx)) {
 		print_conf(NULL, NULL, "wps_pbc_apsta", "enabled");
-		print_conf(NULL, NULL, "wps_pbc_ap_ifname", wps_pbc_ap_ifname);
-		print_conf(NULL, NULL, "wps_pbc_sta_ifname", wps_pbc_sta_ifname);
+		for (i = 0; i < WPS_MAX_PBC_APSTA; i++) {
+			if (strlen(wps_pbc_ap_ifnames[i].ifname))
+				print_conf(NULL, NULL, wps_pbc_ap_ifnames[i].name,
+						wps_pbc_ap_ifnames[i].ifname);
+			if (strlen(wps_pbc_sta_ifnames[i].ifname))
+				print_conf(NULL, NULL, wps_pbc_sta_ifnames[i].name,
+						wps_pbc_sta_ifnames[i].ifname);
+		}
 		sprintf(tmp, "%d", wps_pbc_ap_index);
 		print_conf(NULL, NULL, "wps_pbc_ap_index", tmp);
 	}
@@ -1437,6 +1495,409 @@ wps_osl_build_conf()
 	}
 }
 
+#if defined(MULTIAP)
+/* Fill the prim interface prefix */
+static bool
+wps_map_get_prefix(char *ifname, char *out_prefix, int size)
+{
+	int unit = 0;
+
+	if (!out_prefix)
+		return FALSE;
+
+	if (wl_probe(ifname) ||
+		wl_ioctl(ifname, WLC_GET_INSTANCE, &unit, sizeof(unit))) {
+		return FALSE;
+	}
+
+	snprintf(out_prefix, size, "wl%d_", unit);
+
+	return TRUE;
+}
+
+/* Check whether interface is virtual */
+static bool
+wps_map_is_vifs(char *ifname)
+{
+	int unit = -1, subunit = -1;
+	bool ret = FALSE;
+
+	if (get_ifname_unit(ifname, &unit, &subunit) < 0) {
+		return FALSE;
+	}
+
+	if (unit < 0) {
+		ret = FALSE;
+	}
+
+	if (subunit >= 0) {
+		ret = TRUE;
+	}
+
+	return ret;
+
+}
+
+/* Get ifname corrosponding to matching band */
+static void
+wps_map_filter_ifnames(char *ifnames, int band, char *out_ifname, int size)
+{
+	char ifname[32] = {0}, *next;
+	uint16 chanspec;
+	int curr_band = 0;
+
+	foreach(ifname, ifnames, next) {
+		if (wl_iovar_get(ifname, "chanspec", &chanspec, sizeof(chanspec))) {
+			continue;
+		}
+		if (!wf_chspec_valid(chanspec) || wps_map_is_vifs(ifname)) {
+			continue;
+		}
+
+		if (CHSPEC_IS2G(chanspec)) {
+			curr_band = 1;	/* 2G */
+		} else if (CHSPEC_IS5G(chanspec)) {
+			uint8 channel = CHSPEC_CHANNEL(chanspec);
+
+			if (channel < 100) {
+				curr_band = 2;	/* 5GL */
+			} else {
+				curr_band = 3;	/* 5GH */
+			}
+		}
+
+		if (curr_band == band) {
+			strncpy(out_ifname, ifname, size - 1);
+			out_ifname[size -1] = '\0';
+			TUTRACE((TUTRACE_INFO, "Found ifname %s for band %d\n", ifname, band));
+			break;
+		}
+	}
+}
+
+/* Get backhaul interface name if backhaul band nvram is present */
+int
+wps_map_get_sta_backhaul_ifname(char *ifname, int size)
+{
+	char *backhaul_ifname = nvram_safe_get("wbd_backhaul_band");
+	char *ifnames = nvram_safe_get("lan_ifnames");
+	int ret = 1;
+
+	if (backhaul_ifname[0] == '\0' || !ifname || !size) {
+		return 0;
+	}
+
+	wps_map_filter_ifnames(ifnames, atoi(backhaul_ifname), ifname, size);
+
+	if (ifname[0] == '\0') {
+		ret = 0;
+	}
+
+	return ret;
+}
+
+/* Update the settings of interfaces except skip_ifr */
+void
+wps_map_update_settings(char *skip_ifr)
+{
+	char ifname[32] = {0}, *next;
+	char *ifnames = nvram_safe_get("lan_ifnames");
+
+	foreach(ifname, ifnames, next) {
+		char prefix[16] = {0}, tmp[64] = {0};
+
+		if (skip_ifr && !strcmp(ifname, skip_ifr)) {
+			continue;
+		}
+		if (!wps_map_is_vifs(ifname) &&
+			wps_map_get_prefix(ifname, prefix, sizeof(prefix))) {
+			nvram_unset(strcat_r(prefix, "map", tmp));
+			nvram_set(strcat_r(prefix, "mode", tmp), "ap");
+		}
+	}
+
+	nvram_unset("tmp_ifnames");
+	nvram_set("map_onboarded", "1");
+	nvram_commit();
+}
+
+/* Get the multiap ifnames */
+char*
+wps_map_get_ifnames()
+{
+	char *ifnames = nvram_safe_get("tmp_ifnames");
+
+	if (ifnames[0] == '\0') {
+		ifnames = nvram_safe_get("wps_custom_ifnames");
+		nvram_set("tmp_ifnames", ifnames);
+	}
+
+	return ifnames;
+}
+
+/* Update the multiap ifnames */
+void
+wps_map_update_ifnames(char *skip_ifr)
+{
+	char buf[128] = {0}, len = 0;
+	char ifname[32] = {0}, *next;
+	char *ifnames = nvram_safe_get("tmp_ifnames");
+
+	foreach(ifname, ifnames, next) {
+		if (skip_ifr && !strcmp(ifname, skip_ifr)) {
+			continue;
+		}
+		if ((len + strlen(ifname) + 1) < sizeof(buf)) {
+			len += snprintf(buf + len, sizeof(buf) - len, "%s%c", ifname, ' ');
+		}
+	}
+
+	nvram_set("tmp_ifnames", buf);
+
+	TUTRACE((TUTRACE_INFO, "Updated tmp ifnames %s \n", buf));
+}
+
+/* Checks whether its multiap onboarding or not */
+bool
+wps_map_is_onboarding(char *ifname)
+{
+	char tmp[32] = {0};
+	bool ret = FALSE;
+
+	if (ifname == NULL) {
+		return FALSE;
+	}
+
+	snprintf(tmp, sizeof(tmp), "%s_map", ifname);
+	if (atoi(wps_safe_get_conf(tmp)) == 4 &&
+		atoi(nvram_safe_get("map_onboarded")) == 0) {
+		ret = TRUE;
+	}
+
+	return ret;
+}
+
+/* Returns total count of wireless interfaces in sta mode present in wps_custom_ifnames nvram */
+int
+wps_map_sta_intf_count()
+{
+	char *ifnames = nvram_safe_get("wps_custom_ifnames"), *mode = NULL, tmp[64] = {0};
+	char ifname[IFNAMSIZ] = {0}, *next, os_ifname[IFNAMSIZ] = {0};
+	int total = 0, unit = 0;
+
+	BCM_REFERENCE(unit);
+	foreach(ifname, ifnames, next) {
+		if (nvifname_to_osifname(ifname, os_ifname, sizeof(os_ifname)) < 0) {
+			continue;
+		}
+
+		if (wl_probe(os_ifname) ||
+			wl_ioctl(os_ifname, WLC_GET_INSTANCE, &unit, sizeof(unit))) {
+			continue;
+		}
+		snprintf(tmp, sizeof(tmp), "%s_mode", ifname);
+		mode = wps_safe_get_conf(tmp);
+		if (strcmp(mode, "sta")) {
+			continue;
+		}
+
+		total++;
+	}
+
+	return total;
+}
+
+/* calculates the multiap timeout as follow :
+ * Fetch multiap timeout value from nvram.
+ * If nvram contains Non-zero value than same will be used,
+ * otherwise wps timeout value (120 secs) will be devided by the no of
+ * wireless sta interfaces present in wps_custom_ifnames nvram.
+ */
+int
+wps_map_get_timeout_val()
+{
+	int timeout = WPS_MAX_TIMEOUT, total = 0;
+	int map_timeout = atoi(nvram_safe_get("wps_map_timeout"));
+
+	if (map_timeout > 0) {
+		timeout = map_timeout;
+	} else {
+		total = wps_map_sta_intf_count();
+		if (total > 0) {
+			timeout = timeout/total;
+		}
+	}
+
+	TUTRACE((TUTRACE_INFO, "Multiap timeout val = %d\n", timeout));
+
+	return timeout;
+}
+
+/* Get candidate backhaul interface names */
+void
+wps_map_get_candidate_backhaul_ifnames(char *out_ifname, int size)
+{
+	char ifname[IFNAMSIZ] = {0}, tmp[64] = {0};
+	char *ifnames = nvram_safe_get("lan_ifnames");
+	char *next, *mode, *map;
+	char prefix[] = "wlxxxxxxxxxxxxxx_";
+	uint16 chanspec;
+	int len = 0;
+#ifdef BCMWPSAPSTA
+	int idx = 0;
+#endif // endif
+
+	if (!out_ifname || !size) {
+		return;
+	}
+
+	foreach(ifname, ifnames, next) {
+		if (wl_iovar_get(ifname, "chanspec", &chanspec, sizeof(chanspec))) {
+			continue;
+		}
+
+		if (!wf_chspec_valid(chanspec) || wps_map_is_vifs(ifname)) {
+			continue;
+		}
+
+		if (osifname_to_nvifname(ifname, prefix, sizeof(prefix)) != 0) {
+			continue;
+		}
+
+		snprintf(tmp, sizeof(tmp), "%s_%s", prefix, "mode");
+		mode = nvram_safe_get(tmp);
+		snprintf(tmp, sizeof(tmp), "%s_%s", prefix, "map");
+		map = nvram_safe_get(tmp);
+		if (strcmp(mode, "sta") || (atoi(map) != 4)) {
+			continue;
+		}
+
+		if (size > (len + strlen(ifname) + 1)) {
+			len += snprintf(out_ifname + len, size - len, "%s ", ifname);
+#ifdef BCMWPSAPSTA
+			wps_init_escan_bss_results(ifname, idx);
+			idx++;
+#endif // endif
+		}
+	}
+}
+
+/* Issue the wl down followed by up.  */
+void
+wps_map_do_wl_up_down(char *ifname)
+{
+	if (!ifname) {
+		return;
+	}
+
+	wl_ioctl(ifname, WLC_DOWN, NULL, 0);
+	wl_ioctl(ifname, WLC_UP, NULL, 0);
+}
+
+/* Get AP backhaul interface name */
+void
+wps_map_get_ap_backhaul_ifname(char *out_ifname, int size)
+{
+	char tmp[64] = {0}, *mode = NULL;
+	char *ifnames = nvram_safe_get("lan_ifnames"), *next, ifname[IFNAMSIZ] = {0};
+	char *ptr;
+
+	if (!out_ifname || !size) {
+		return;
+	}
+
+	ptr = nvram_safe_get("wps_backhaul_ifname");
+	if (ptr[0] != '\0') {
+		wps_strncpy(out_ifname, ptr, size);
+	} else {
+		foreach(ifname, ifnames, next) {
+			uint16 map = 0;
+
+			snprintf(tmp, sizeof(tmp), "%s_map", ifname);
+			ptr = wps_safe_get_conf(tmp);
+			if (ptr[0] != '\0') {
+				map = (uint16)strtoul(ptr, NULL, 0);
+			}
+
+			snprintf(tmp, sizeof(tmp), "%s_mode", ifname);
+			mode = wps_safe_get_conf(tmp);
+			TUTRACE((TUTRACE_INFO, "ifname[%s] map[%d] mode[%s] \n",
+				ifname, map, mode));
+			if (!strcmp(mode, "ap") && (map & WPS_NVVAL_MAP_BH_BSS)) {
+				wps_strncpy(out_ifname, ifname, size);
+				/* Dedicated bh interface found */
+				if (map == WPS_NVVAL_MAP_BH_BSS) {
+					break;
+				}
+			}
+		}
+	}
+	TUTRACE((TUTRACE_INFO, "Selected backhaul ifname [%s] \n", out_ifname));
+}
+
+/* Check whether the interface is operable or not in given chanspec */
+bool
+wps_map_is_ifr_opr_on_chanspec(char *ifname, uint16 chanspec)
+{
+	wl_uint32_list_t *list = NULL;
+	uint32 buf[WL_NUMCHANNELS + 1] = {0};
+	int idx = 0;
+	bool ret = FALSE;
+	uint8 channel;
+
+	if (!ifname || wf_chspec_malformed(chanspec)) {
+		TUTRACE((TUTRACE_ERR, "Invalid ifname or Malformed chanspec\n"));
+		goto end;
+	}
+
+	list = (wl_uint32_list_t *)buf;
+	list->count = htod32(WL_NUMCHANNELS);
+	if (wl_ioctl(ifname, WLC_GET_VALID_CHANNELS, buf, sizeof(buf)) < 0) {
+		TUTRACE((TUTRACE_INFO, "Channels iovar is failed \n"));
+		goto end;
+	}
+
+	channel = wf_chspec_ctlchan(chanspec);
+	list->count = dtoh32(list->count);
+
+	for (idx = 0; idx < list->count; idx++) {
+		if (channel == list->element[idx]) {
+			ret = TRUE;
+			break;
+		}
+	}
+
+#if defined(_TUDEBUGTRACE)
+	TUTRACE((TUTRACE_INFO, "Channel of Backhaul AP %d \n", channel));
+	TUTRACE((TUTRACE_INFO, "Output of channels iovar for %s\n", ifname));
+	for (idx = 0; idx < list->count; idx++) {
+		printf(" %d ", list->element[idx]);
+	}
+	TUTRACE((TUTRACE_INFO, "\n*** END **** \n"));
+#endif	/* _TUDEBUGTRACE */
+
+end:
+	return ret;
+}
+#endif	/* MULTIAP */
+
+void
+wps_custom_init()
+{
+	wps_aplockdown_custom.init = NULL;
+	wps_aplockdown_custom.wps_pinfail_added = NULL;
+	wpsapp_update_custom_cred_callback = NULL;
+	return;
+}
+
+void
+wps_custom_deinit()
+{
+	wps_aplockdown_custom.init = NULL;
+	wps_aplockdown_custom.wps_pinfail_added = NULL;
+	wpsapp_update_custom_cred_callback = NULL;
+	return;
+}
 /*
  * Name        : main
  * Description : Main entry point for the WPS monitor
@@ -1499,6 +1960,16 @@ main(int argc, char* argv[])
 	/* Enter main loop */
 	flag = wps_mainloop(wps_conf_num, wps_conf_list);
 
+#if defined(MULTIAP)
+	/* Need to apply the settings to the sta interface before restart */
+	if (wps_map_get_settings() && (flag & WPSM_WKSP_FLAG_SUCCESS_RESTART)) {
+		wps_map_do_configure();
+		TUTRACE((TUTRACE_INFO, "******* Multiap onboarding done ******\n"));
+	}
+#endif	/* MULTIAP */
+	/* XXX,
+	 * We need to back here to find what is that.
+	 */
 	if (flag & WPSM_WKSP_FLAG_SET_RESTART)
 		nvram_set("wps_restart", "1");
 

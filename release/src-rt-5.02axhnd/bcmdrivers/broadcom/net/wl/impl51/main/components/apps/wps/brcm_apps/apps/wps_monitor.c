@@ -1,7 +1,7 @@
 /*
  * WPS monitor
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: wps_monitor.c 766036 2018-07-23 22:20:10Z $
+ * $Id: wps_monitor.c 772297 2019-02-20 06:50:21Z $
  */
 #include <stdio.h>
 #include <unistd.h>
@@ -78,6 +78,10 @@
 #ifdef __CONFIG_WFI__
 #include <wps_wfi.h>
 #endif /* __CONFIG_WFI__ */
+
+#if defined(MULTIAP)
+#include <wps_1905.h>
+#endif // endif
 
 extern void wps_setProcessStates(int state);
 extern int wps_getProcessStates();
@@ -239,6 +243,9 @@ wps_close_session()
 		wps_app->process = 0;
 		wps_app->check_timeout = 0;
 		wps_app->sc_mode = 0;
+#if defined(MULTIAP)
+		wps_app->map_timeout = 0;
+#endif	/* MULTIAP */
 	}
 
 	wps_ie_set(NULL, NULL);
@@ -372,6 +379,12 @@ wps_process_msg(char *buf, int buflen, wps_hndl_t *hndl)
 		ret = wps_nfc_process_msg(buf, buflen);
 		break;
 #endif // endif
+
+#if defined(MULTIAP)
+	case WPS_RECEIVE_PKT_1905:
+		ret = wps_1905_process_msg(buf, buflen);
+		break;
+#endif // endif
 	default:
 		break;
 	}
@@ -451,6 +464,8 @@ wps_open()
 		return -1;
 	}
 
+	wps_custom_init();
+
 	/* Init wps led */
 	wps_led_init();
 
@@ -463,6 +478,10 @@ wps_open()
 	wps_eap_init();
 
 	wps_ui_init();
+
+#if defined(MULTIAP)
+	wps_1905_init();
+#endif // endif
 
 #if defined(BCMWPSAP) && defined(__CONFIG_WFI__)
 	wps_wfi_init();
@@ -509,6 +528,10 @@ wps_close()
 
 	wps_ui_deinit();
 
+#if defined(MULTIAP)
+	wps_1905_deinit();
+#endif // endif
+
 #ifdef WPS_UPNP_DEVICE
 	/* detach upnp */
 	wps_upnp_deinit();
@@ -523,6 +546,7 @@ wps_close()
 	wps_wfi_cleanup();
 #endif /* BCMWPSAP && __CONFIG_WFI__ */
 
+	wps_custom_deinit();
 	return 0;
 }
 
@@ -557,6 +581,7 @@ wps_timeout()
 		 * when session timeout or user stop
 		 */
 		wps_pb_state_reset();
+		wps_pb_ifname_reset();
 	}
 
 #ifdef WPS_UPNP_DEVICE
@@ -605,6 +630,23 @@ wps_dispatch()
 	/* 4. if app exist, check app timeout */
 	if (wps_app->wksp && ret == WPS_CONT)
 		ret = (*wps_app->check_timeout)(wps_app->wksp);
+
+#if defined(MULTIAP)
+	/* Handle multiap wifi onboarding case */
+	if (wps_app->wksp && ret == WPS_CONT) {
+		int map_ret = WPS_CONT;
+		if (wps_app->map_timeout) {
+			map_ret = (*wps_app->map_timeout)(wps_app->wksp);
+		}
+
+		if (map_ret == MAP_TIMEOUT) {
+			/* Multiap timeout has occured start WPS session in another interface */
+			TUTRACE((TUTRACE_ERR, "MultiAP timeout occured retry  WPS session!\n"));
+			wps_setProcessStates(WPS_MAP_TIMEOUT);
+			wps_ui_map_try_pbc();
+		}
+	}
+#endif	/* MULTIAP */
 
 	/* 5. check wps application process result */
 	if (wps_app->wksp) {
@@ -864,6 +906,47 @@ wps_restarthandler(int sig)
 #endif // endif
 	return;
 }
+
+#if defined(MULTIAP)
+/* Initialize loopback socket with eapd */
+int
+wps_map_eap_init()
+{
+	int ret = 0;
+
+	if (wps_eap_init() < 0) {
+		TUTRACE((TUTRACE_ERR, "WPS EAPD init failed \n"));
+		ret = -1;
+	}
+
+	return ret;
+}
+
+/* Close loopback socket with eapd */
+void
+wps_map_eap_dinit()
+{
+	wps_eap_deinit();
+}
+
+/* Handles the escan event received from eapd */
+int
+wps_map_escan_handler()
+{
+	int ret;
+	wps_hndl_t *hndl;
+
+	wps_buflen = sizeof(wps_readbuf);
+
+	memset(&wps_readbuf, 0, sizeof(wps_readbuf));
+
+	hndl = wps_osl_wait_for_all_packets(wps_readbuf, &wps_buflen, wps_hndl_head);
+
+	ret = wps_process_msg(wps_readbuf, wps_buflen, hndl);
+
+	return ret;
+}
+#endif	/* MULTIAP */
 
 void
 wps_conf_upd(int num, char **list)

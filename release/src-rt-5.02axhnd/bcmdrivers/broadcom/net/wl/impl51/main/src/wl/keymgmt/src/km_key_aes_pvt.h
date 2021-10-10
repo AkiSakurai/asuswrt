@@ -1,6 +1,6 @@
 /*
  * private interface for wlc_key algo 'aes'
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -104,6 +104,12 @@
 	((_tx) && (_ins) == 0) ||\
 	(!(_tx) && (_ins) < KEY_NUM_RX_SEQ(_key)))
 
+/* context data type for aes - except for broadcast mgmt frames.
+ * seq is in LE order and key allocation extends beyond struct
+ * definition to accommodate varying length keys
+ * XXX when MFP is enabled, one less rx seq can be allocated for GTK.
+ * however, allocating the extra rx seq makes the code simpler.
+ */
 struct aes_key {
 	uint8 tx_seq[AES_KEY_SEQ_SIZE];
 	uint8 key[AES_KEY_MIN_SIZE];

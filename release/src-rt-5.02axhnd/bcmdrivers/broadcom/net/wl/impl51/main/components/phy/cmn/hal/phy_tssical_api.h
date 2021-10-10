@@ -1,7 +1,7 @@
 /*
  * TSSI Cal module public interface (to MAC driver).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tssical_api.h 610412 2016-01-06 23:43:14Z $
+ * $Id: phy_tssical_api.h 771295 2019-01-22 05:01:58Z $
  */
 
 #ifndef _phy_tssical_api_h_
@@ -56,5 +56,6 @@
 
 int wlc_phy_tssivisible_thresh(wlc_phy_t *ppi);
 void wlc_phy_get_tssi_sens_min(wlc_phy_t *ppi, int8 *tssiSensMinPwr);
+void wlc_idletssi_force(phy_info_t *pi, int16 *idletssi, bool read);
 
 #endif /* _phy_tssical_api_h_ */

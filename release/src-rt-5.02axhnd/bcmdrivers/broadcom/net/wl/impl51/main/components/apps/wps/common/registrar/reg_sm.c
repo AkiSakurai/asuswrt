@@ -1,7 +1,7 @@
 /*
  * Registrataion state machine
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: reg_sm.c 678846 2017-01-11 08:50:19Z $
+ * $Id: reg_sm.c 766338 2018-07-31 04:55:48Z $
  */
 
 #ifdef WIN32
@@ -1023,7 +1023,11 @@ reg_proto_process_m1(RegData *regInfo, BufferObj *msg)
 			if (WPS_WFA_SUBID_REQ_TO_ENROLL == buffobj_NextSubId(vendorExt_bufObj))
 				subtlv_dserialize(&m.reqToEnr, WPS_WFA_SUBID_REQ_TO_ENROLL,
 					vendorExt_bufObj, 0, 0);
-
+#if defined(MULTIAP)
+			if (WPS_WFA_SUBID_MAP_EXT_ATTR == buffobj_NextSubId(vendorExt_bufObj))
+				subtlv_dserialize(&m.mapAttr, WPS_WFA_SUBID_MAP_EXT_ATTR,
+					vendorExt_bufObj, 0, 0);
+#endif	/* MULTIAP */
 			buffobj_del(vendorExt_bufObj);
 		}
 	}
@@ -1078,6 +1082,10 @@ reg_proto_process_m1(RegData *regInfo, BufferObj *msg)
 		b_oob_devpw = true;
 	}
 #endif /* WPS_NFC_DEVICE */
+
+#if defined(MULTIAP)
+	enrollee->map_attr = m.mapAttr.m_data;
+#endif	/* MULTIAP */
 
 	enrollee->authTypeFlags = m.authTypeFlags.m_data;
 	enrollee->encrTypeFlags = m.encrTypeFlags.m_data;
@@ -2381,6 +2389,11 @@ reg_proto_process_m7(RegData *regInfo, BufferObj *msg, void **encrSettings)
 		reg_proto_decrypt_data(cipherText, iv, regInfo->keyWrapKey,
 			regInfo->authKey, plainText);
 
+		/*
+		 * PR80698, DT Speedport W 101 Bridge (Enrollee)'s M1 contents
+		 * Primary Device Category/Sub Category (Network Infrastructure(6)/AP(1)).
+		 * Registrar send M8Ap when registrar is not a AP.
+		 */
 		if (regInfo->enrollee->b_ap) {
 			CTlvSsid ssid;
 
@@ -2546,7 +2559,11 @@ reg_proto_create_m8(RegData *regInfo, BufferObj *msg)
 			WPS_SSLIST *itr;
 			CTlvCredential *pCred;
 			EsM8Sta *staEs = (EsM8Sta *)regInfo->dev_info->mp_tlvEsM8Sta;
-
+#if defined(MULTIAP)
+			if (regInfo->enrollee->map_attr) {
+				staEs = (EsM8Sta *)regInfo->dev_info->mp_tlvEsM8BhSta;
+			}
+#endif	/* MULTIAP */
 			if (!staEs) {
 				TUTRACE((TUTRACE_ERR, "Encrypted settings settings are NULL\n"));
 				err =  WPS_ERR_INVALID_PARAMETERS;

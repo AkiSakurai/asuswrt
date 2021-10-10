@@ -3,7 +3,7 @@
  * This header file housing the define and function prototype use by
  * both the wl firmware and drivers.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -71,7 +71,7 @@ typedef struct BWL_PRE_PACKED_STRUCT wl_rxsts {
     int32   noise;          /* in dBm */
     uint    preamble;       /* Unknown, short, long */
     uint    encoding;       /* Unknown, CCK, PBCC, OFDM, HT, VHT */
-    uint    nfrmtype;       /* special 802.11n frames(AMPDU, AMSDU) */
+    uint    nfrmtype;       /* special 802.11 frames(AMPDU, AMSDU) or addition PPDU fromat */
     uint8   nss;            /* Number of spatial streams for VHT frame */
     uint8   coding;
     uint16  aid;            /* Partial AID for VHT frame */
@@ -182,6 +182,18 @@ typedef struct BWL_PRE_PACKED_STRUCT wl_rxsts {
 #define WL_RXS_NFRM_AMPDU_SUB		0x00000002 /* subsequent MPDU(s) in A-MPDU */
 #define WL_RXS_NFRM_AMSDU_FIRST		0x00000004 /* first MSDU in A-MSDU */
 #define WL_RXS_NFRM_AMSDU_SUB		0x00000008 /* subsequent MSDU(s) in A-MSDU */
+#define WL_RXS_NFRM_SMPDU			0x00000080 /* MRXS2 b7 : S-MPDU */
+#define WL_RXS_NFRM_HE_ER_SU		0x00000800 /* MRXS2 b12:11 :
+									HE PPDU additional format
+									*/
+#define WL_RXS_NFRM_HE_MU			0x00001000 /* MRXS2 b12:11 :
+									HE PPDU additional format
+									*/
+#define WL_RXS_NFRM_HE_TB			0x00001800 /* MRXS2 b12:11 :
+									HE PPDU additional format
+									*/
+#define WL_RXS_NFRM_HE_EXT_MASK		0x00001800 /* MRXS2 b12:11 mask */
+#define WL_RXS_NFRM_HE_EXT_SHIFT	11         /* MRXS2 b12:11 shift */
 
 #include <packed_section_start.h>
 typedef struct BWL_PRE_PACKED_STRUCT wl_txsts {

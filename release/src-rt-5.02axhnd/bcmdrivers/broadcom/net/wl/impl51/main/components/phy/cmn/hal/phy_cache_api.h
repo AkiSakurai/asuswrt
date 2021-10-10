@@ -1,7 +1,7 @@
 /*
  * Cache module public interface (to MAC driver).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_cache_api.h 656063 2016-08-25 03:56:25Z $
+ * $Id: phy_cache_api.h 768660 2018-10-22 05:15:09Z $
  */
 
 #ifndef _phy_cache_api_h_
@@ -53,6 +53,14 @@
 
 #include <typedefs.h>
 #include <phy_api.h>
+
+/* default cache capacity : This is the max number of cache entries */
+#ifndef PHY_CACHE_SZ
+#define PHY_CACHE_SZ 4
+#endif // endif
+
+/* API for cache validation */
+typedef int (*phy_cache_validate_fn_t)(void *context);
 
 #if defined(PHYCAL_CACHING)
 void phy_cache_cal(phy_info_t *pi);
@@ -66,6 +74,7 @@ extern int	wlc_phy_cal_cache_init(wlc_phy_t *ppi);
 extern void wlc_phy_cal_cache_deinit(wlc_phy_t *ppi);
 extern void wlc_phy_cal_cache_set(wlc_phy_t *ppi, bool state);
 extern bool wlc_phy_cal_cache_get(wlc_phy_t *ppi);
+int phy_cache_register_cb(wlc_phy_t *ppi, phy_cache_validate_fn_t fn, void *context);
 #endif /* PHYCAL_CACHING */
 
 #endif /* _phy_cache_api_h_ */

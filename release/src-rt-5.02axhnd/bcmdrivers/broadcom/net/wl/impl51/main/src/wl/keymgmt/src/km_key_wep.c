@@ -1,6 +1,6 @@
 /*
  * Implementation of wlc_key algo 'wep'
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_key_wep.c 685197 2017-02-15 20:37:25Z $
+ * $Id: km_key_wep.c 774133 2019-04-11 09:15:54Z $
  */
 
 #include "km_key_wep_pvt.h"
@@ -235,11 +235,9 @@ wep_rx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 
 	wep_key = (wep_key_t *)key->algo_impl.ctx;
 
-	{
-		memcpy(&rc4_data[0], body, WEP_RC4_IV_SIZE);
-		memcpy(&rc4_data[WEP_RC4_IV_SIZE], wep_key->key, key->info.key_len);
-		prepare_key(&rc4_data[0], WEP_RC4_IV_SIZE + key->info.key_len, &rc4_ks);
-	}
+	memcpy(&rc4_data[0], body, WEP_RC4_IV_SIZE);
+	memcpy(&rc4_data[WEP_RC4_IV_SIZE], wep_key->key, key->info.key_len);
+	prepare_key(&rc4_data[0], WEP_RC4_IV_SIZE + key->info.key_len, &rc4_ks);
 
 	rc4(body + key->info.iv_len, body_len - key->info.iv_len, &rc4_ks);
 	if (hndcrc32(body + key->info.iv_len, body_len - key->info.iv_len,
@@ -287,6 +285,10 @@ wep_is_weak_iv(uint32 iv, uint8 key_len)
 		goto done;
 
 	weak = FALSE;
+
+	/* XXX additional weak ivs - for odd B, ((a == B && b == (B + 1) * 2)) where
+	 * z = (iv >> 16) & 0xff; b = (x + y) - z, subsumed by a <= key_len above
+	 */
 
 	B = 3;
 	while (B < key_len/2 + 3) {
@@ -353,12 +355,10 @@ wep_tx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 	body_len += sizeof(icv);
 	/* now body starts at iv spans to end-of icv. */
 
-	{
-		/* encrypt from end-of-iv to end-of-icv */
-		memcpy(&rc4_data[0], body, WEP_RC4_IV_SIZE);
-		memcpy(&rc4_data[WEP_RC4_IV_SIZE], wep_key->key, key->info.key_len);
-		prepare_key(&rc4_data[0], WEP_RC4_IV_SIZE + key->info.key_len, &rc4_ks);
-	}
+	/* encrypt from end-of-iv to end-of-icv */
+	memcpy(&rc4_data[0], body, WEP_RC4_IV_SIZE);
+	memcpy(&rc4_data[WEP_RC4_IV_SIZE], wep_key->key, key->info.key_len);
+	prepare_key(&rc4_data[0], WEP_RC4_IV_SIZE + key->info.key_len, &rc4_ks);
 
 	rc4(body + key->info.iv_len, body_len - key->info.iv_len, &rc4_ks);
 
@@ -394,7 +394,6 @@ wep_dump(const wlc_key_t *key, struct bcmstrbuf *b)
 #define WEP_DUMP NULL
 #endif // endif
 
-/* ccx supports mic checks for wep */
 #define WEP_RX_MSDU NULL
 #define WEP_TX_MSDU NULL
 

@@ -1,7 +1,7 @@
 /*
  * RADIO control module internal interface - shared by PHY type specific implementations.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

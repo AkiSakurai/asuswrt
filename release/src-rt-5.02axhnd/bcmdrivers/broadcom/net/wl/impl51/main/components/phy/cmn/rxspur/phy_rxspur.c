@@ -1,7 +1,7 @@
 /*
  * Rx Spur canceller module implementation.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_rxspur.c 657044 2016-08-30 21:37:55Z $
+ * $Id: phy_rxspur.c 768374 2018-10-11 10:26:08Z $
  */
 
 #include <phy_cfg.h>
@@ -180,6 +180,17 @@ phy_rxspur_change_block_bbpll(wlc_phy_t *pih, bool block, bool going_down)
 		if (fns->set_spurmode != NULL && pi->blocked_freq_for_slowcal && !going_down) {
 			(fns->set_spurmode)(fns->ctx, pi->blocked_freq_for_slowcal);
 		}
+	}
+}
+
+void
+phy_rxspur_change_bbpll(wlc_phy_t *pih)
+{
+	phy_info_t *pi = (phy_info_t *)pih;
+	phy_type_rxspur_fns_t *fns = pi->rxspuri->fns;
+
+	if (fns->set_spurmode != NULL) {
+		(fns->set_spurmode)(fns->ctx, 0);
 	}
 }
 

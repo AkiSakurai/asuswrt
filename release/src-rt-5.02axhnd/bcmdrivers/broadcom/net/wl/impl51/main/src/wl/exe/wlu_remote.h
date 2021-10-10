@@ -1,7 +1,7 @@
 /*
  * OS independent remote wl declarations
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlu_remote.h 712601 2017-07-25 12:01:48Z $
+ * $Id: wlu_remote.h 774769 2019-05-07 08:46:22Z $
  */
 #ifndef _wlu_remote_h
 #define _wlu_remote_h
@@ -182,10 +182,6 @@ typedef struct remote_wifi_cmds {
 #define DPRINT_DBG	if (defined_debug & DEBUG_DBG) \
 			    fprintf
 extern unsigned short defined_debug;
-#ifdef WIN32
-/* Function defined in wlu.c for client and wlu_server_ce.c for server */
-extern int wl_atoip(const char *a, struct ipv4_addr *n);
-#endif // endif
 /* Function defined to do host to network and network to host conversions */
 void rwl_swap_header(rem_ioctl_t *rem_ptr, bool host_to_network);
 
@@ -223,10 +219,6 @@ extern int rwl_GetifAddr(char *ifname, struct sockaddr_in* sa);
 
 extern int set_interface(void *wl, char *intf_name);
 
-/* Win32 specific function wlu_pipe_win32.c */
-extern int rwl_init_ws2_32dll(void);
-extern int rwl_terminate_ws2_32dll(void);
-
 /* Function definitions for wlu_client_shared.c and wlu_server_shared.c */
 extern int rwl_var_getbuf(void *wl, const char *iovar, void *param, int param_len, void **bufptr);
 extern int rwl_var_setbuf(void *wl, const char *iovar, void *param, int param_len);
@@ -254,7 +246,6 @@ extern int rwl_check_port_number(char *s, int len);
  * Separate paths are defined for android and linux machines
  * / filesystem on android is read only memory
  */
-#ifndef WIN32
 #ifdef TARGETENV_android
 #define SH_PATH "/data/busybox/sh"
 #define SHELL_RESP_PATH  "/data/local/RWL/" /* Default path for storing files for shell response */
@@ -264,5 +255,4 @@ extern int rwl_check_port_number(char *s, int len);
 #define	TEMPLATE         "/tmp/RWL/SyncXXXXXX"
 #define SH_PATH "/bin/sh"
 #endif // endif
-#endif /* !WIN32 */
 #endif /* _wlu_remote_h */

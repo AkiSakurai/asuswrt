@@ -1,7 +1,7 @@
 /*
  * CALibrationManaGeR module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -442,6 +442,11 @@ BCMINITFN(phy_calmgr_init)(wlc_phy_t *ppi)
 				MA_WINDOW_SZ;
 		}
 
+		/* XXX: It would be cleaner to actually call the
+		 * initializations here rather than as side-effects
+		 * of the phy_init's, but each one needs to be
+		 * reviewed for requirements.
+		 */
 		pi->initialized = TRUE;
 	}
 	return err;
@@ -538,6 +543,10 @@ phy_calmgr_timer_cb(void *ctx)
 
 		PHY_CAL(("phy_calmgr_timer_cb: phase_id %d\n", pi->cal_info->cal_phase_id));
 
+		/* XXX phy_init can be called after "wl out"(due to bandwidth switch.
+		 * but scheduling calibration seems inappropriate. test cals after "wl out"
+		 * can invoke the wlc_phy_cal_perical_nphy_run() directly if desired.
+		 */
 		if (!pi->sh->up) {
 			phy_calmgr_mphase_reset(pi->calmgri);
 			return;
@@ -1087,6 +1096,11 @@ phy_calmgr_wd(phy_wd_ctx_t *ctx)
 }
 #endif /* NEW_PHY_CAL_ARCH */
 
+/* This function includes two parameters in order to be able to connect to legacy
+ * n PHY that uses caltype and also new PHYs that use only the searchmode.
+ * legacy_caltype is not to be used for AC and HT PHY.
+ * XXX This has to be removed in the future.
+ */
 void
 phy_calmgr_cals(phy_info_t *pi, uint8 legacy_caltype, uint8 searchmode)
 {

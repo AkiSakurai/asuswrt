@@ -1,7 +1,7 @@
 /*
  * ACPHY TxPowerControl module implementation - iovar handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tpc_iov.c 733401 2017-11-28 07:58:49Z $
+ * $Id: phy_ac_tpc_iov.c 775352 2019-05-28 22:19:51Z $
  */
 
 #include <phy_ac_tpc.h>
@@ -58,8 +58,7 @@
 /* iovar ids */
 enum {
 	IOV_OVRINITBASEIDX = 1,
-	IOV_PHY_TONE_TXPWR = 2,
-	IOV_PHY_LOWRATETSSI = 3
+	IOV_PHY_TONE_TXPWR = 2
 };
 
 static const bcm_iovar_t phy_ac_tpc_iovars[] = {
@@ -67,7 +66,6 @@ static const bcm_iovar_t phy_ac_tpc_iovars[] = {
 #if defined(WLTEST)
 	{"phy_txpwr_ovrinitbaseidx", IOV_OVRINITBASEIDX, (IOVF_SET_UP|IOVF_GET_UP), 0,
 	IOVT_UINT8, 0},
-	{"phy_lowratetssi", IOV_PHY_LOWRATETSSI, 0, 0, IOVT_INT8, 0},
 #endif // endif
 	{"phy_tone_txpwr", IOV_PHY_TONE_TXPWR, (IOVF_SET_UP), 0, IOVT_INT8, 0},
 #endif // endif
@@ -99,9 +97,6 @@ phy_ac_tpc_doiovar(void *ctx, uint32 aid,
 	case IOV_SVAL(IOV_OVRINITBASEIDX):
 		pi->tpci->data->ovrinitbaseidx = (bool)int_val;
 		wlc_phy_txpwr_ovrinitbaseidx(pi);
-		break;
-	case IOV_GVAL(IOV_PHY_LOWRATETSSI):
-		*ret_int_ptr = pi->u.pi_acphy->sromi->srom_low_adc_rate_en;
 		break;
 #endif // endif
 #if defined(ATE_BUILD)

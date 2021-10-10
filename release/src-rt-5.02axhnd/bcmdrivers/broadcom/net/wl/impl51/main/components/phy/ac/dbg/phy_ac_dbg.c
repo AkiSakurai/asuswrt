@@ -1,7 +1,7 @@
 /*
  * ACPHY Debug modules implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_dbg.c 765492 2018-07-05 10:49:51Z $
+ * $Id: phy_ac_dbg.c 766954 2018-08-22 18:47:13Z $
  */
 
 #include <phy_cfg.h>
@@ -200,7 +200,7 @@ wlc_acphy_txerr_dump(phy_type_dbg_ctx_t *ctx, uint16 err)
 		uint rev = pi->pubpi->phy_rev;
 		BCM_REFERENCE(rev);
 
-		if (ACMAJORREV_47_51(rev)) {
+		if (ACMAJORREV_GE47(rev)) {
 			uint ft = (err & ACPHY_phytxerrorStatusReg0_frameType_MASK(rev)) >>
 				ACPHY_phytxerrorStatusReg0_frameType_SHIFT(rev);
 			uint usridx = (err & ACPHY_phytxerrorStatusReg0_UsrIdx_MASK(rev)) >>

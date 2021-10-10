@@ -1,7 +1,7 @@
 /*
  * Radio 20698 channel tuning table defintion
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -4079,9 +4079,9 @@ const radio_20xx_prefregs_t prefregs_20698_rev1[] = {
 };
 
 const radio_20xx_prefregs_t prefregs_20698_rev2[] = {
-	/* copied from 20698_rev2_regs.txt r772133 */
+	/* copied from 20698_rev2_regs.txt r784310 */
 	{ RF0_20698_PMU_CFG1(2),       0xaa4},
-	{ RF0_20698_PMU_OP1(2),       0x200},
+	{ RF0_20698_PMU_OP1(2),      0x1200},
 	{ RF0_20698_LNA2G_REG2(2),      0xf200},
 	{ RF0_20698_LNA2G_REG3(2),       0x75d},
 	{ RF0_20698_RX2G_REG1(2),       0x660},
@@ -4098,7 +4098,8 @@ const radio_20xx_prefregs_t prefregs_20698_rev2[] = {
 	{ RF0_20698_RX5G_CFG1_OVR(2),       0x110},
 	{ RF0_20698_AFEDIV_REG2(2),      0x1c09},
 	{ RF0_20698_AFEDIV_REG1(2),      0x1c09},
-	{ RF0_20698_TXDAC_REG1(2),        0x7f},
+	{ RF0_20698_TXDAC_REG0(2),      0x1800},
+	{ RF0_20698_TXDAC_REG1(2),      0x847f},
 	{ RF0_20698_RXADC_CFG0(2),      0x6280},
 	{ RF0_20698_RXADC_CFG1(2),      0x7cbf},
 	{ RF0_20698_RXADC_CFG2(2),        0x7f},
@@ -4122,7 +4123,7 @@ const radio_20xx_prefregs_t prefregs_20698_rev2[] = {
 	{ RF0_20698_LOGEN_CORE_REG3(2),      0x71bf},
 	{ RF0_20698_TX5G_MIX_REG1(2),      0x9350},
 	{ RF1_20698_PMU_CFG1(2),       0xaa4},
-	{ RF1_20698_PMU_OP1(2),       0x200},
+	{ RF1_20698_PMU_OP1(2),      0x1200},
 	{ RF1_20698_LNA2G_REG2(2),      0xf200},
 	{ RF1_20698_LNA2G_REG3(2),       0x75d},
 	{ RF1_20698_RX2G_REG1(2),       0x660},
@@ -4139,7 +4140,8 @@ const radio_20xx_prefregs_t prefregs_20698_rev2[] = {
 	{ RF1_20698_RX5G_CFG1_OVR(2),       0x110},
 	{ RF1_20698_AFEDIV_REG2(2),      0x1c09},
 	{ RF1_20698_AFEDIV_REG1(2),      0x1c09},
-	{ RF1_20698_TXDAC_REG1(2),        0x7f},
+	{ RF1_20698_TXDAC_REG0(2),      0x1800},
+	{ RF1_20698_TXDAC_REG1(2),      0x847f},
 	{ RF1_20698_RXADC_CFG0(2),      0x6280},
 	{ RF1_20698_RXADC_CFG1(2),      0x7cbf},
 	{ RF1_20698_RXADC_CFG2(2),        0x7f},
@@ -4163,7 +4165,7 @@ const radio_20xx_prefregs_t prefregs_20698_rev2[] = {
 	{ RF1_20698_LOGEN_CORE_REG3(2),      0x71bf},
 	{ RF1_20698_TX5G_MIX_REG1(2),      0x9350},
 	{ RF2_20698_PMU_CFG1(2),       0xaa4},
-	{ RF2_20698_PMU_OP1(2),       0x200},
+	{ RF2_20698_PMU_OP1(2),      0x1200},
 	{ RF2_20698_LNA2G_REG2(2),      0xf200},
 	{ RF2_20698_LNA2G_REG3(2),       0x75d},
 	{ RF2_20698_RX2G_REG1(2),       0x660},
@@ -4180,7 +4182,8 @@ const radio_20xx_prefregs_t prefregs_20698_rev2[] = {
 	{ RF2_20698_RX5G_CFG1_OVR(2),       0x110},
 	{ RF2_20698_AFEDIV_REG2(2),      0x1c09},
 	{ RF2_20698_AFEDIV_REG1(2),      0x1c09},
-	{ RF2_20698_TXDAC_REG1(2),        0x7f},
+	{ RF2_20698_TXDAC_REG0(2),      0x1800},
+	{ RF2_20698_TXDAC_REG1(2),      0x847f},
 	{ RF2_20698_RXADC_CFG0(2),      0x6280},
 	{ RF2_20698_RXADC_CFG1(2),      0x7cbf},
 	{ RF2_20698_RXADC_CFG2(2),        0x7f},
@@ -4204,7 +4207,7 @@ const radio_20xx_prefregs_t prefregs_20698_rev2[] = {
 	{ RF2_20698_LOGEN_CORE_REG3(2),      0x71bf},
 	{ RF2_20698_TX5G_MIX_REG1(2),      0x9350},
 	{ RF3_20698_PMU_CFG1(2),       0xaa4},
-	{ RF3_20698_PMU_OP1(2),       0x200},
+	{ RF3_20698_PMU_OP1(2),      0x1200},
 	{ RF3_20698_LNA2G_REG2(2),      0xf200},
 	{ RF3_20698_LNA2G_REG3(2),       0x75d},
 	{ RF3_20698_RX2G_REG1(2),       0x660},
@@ -4221,7 +4224,8 @@ const radio_20xx_prefregs_t prefregs_20698_rev2[] = {
 	{ RF3_20698_RX5G_CFG1_OVR(2),       0x110},
 	{ RF3_20698_AFEDIV_REG2(2),      0x1c09},
 	{ RF3_20698_AFEDIV_REG1(2),      0x1c09},
-	{ RF3_20698_TXDAC_REG1(2),        0x7f},
+	{ RF3_20698_TXDAC_REG0(2),      0x1800},
+	{ RF3_20698_TXDAC_REG1(2),      0x847f},
 	{ RF3_20698_RXADC_CFG0(2),      0x6280},
 	{ RF3_20698_RXADC_CFG1(2),      0x7cbf},
 	{ RF3_20698_RXADC_CFG2(2),        0x7f},
@@ -5509,7 +5513,22 @@ CONST chan_info_radio20698_rffe_t chan_tune_20698_rev2[] = {
 	0x04, 0x03, 0x0f, 0x01, 0x01, 0x05, 0x04, 0x03, 0x0f, 0x01,
 	0x01, 0x05, 0x04, 0x03, 0x0f, 0x01, 0x00, 0x05, 0x04, 0x03,
 	0x00, 0x07, 0x07, 0x0f, 0x0f, 0x00} } },
+	{ 169, 5845, { {
+	0x04, 0x02, 0x04, 0x02, 0x02, 0x02, 0x0f, 0x01, 0x00, 0x05,
+	0x04, 0x03, 0x0f, 0x01, 0x01, 0x05, 0x04, 0x03, 0x0f, 0x01,
+	0x01, 0x05, 0x04, 0x03, 0x0f, 0x01, 0x00, 0x05, 0x04, 0x03,
+	0x00, 0x07, 0x07, 0x0f, 0x0f, 0x00} } },
 	{ 170, 5850, { {
+	0x04, 0x02, 0x04, 0x02, 0x02, 0x02, 0x0f, 0x01, 0x00, 0x05,
+	0x04, 0x03, 0x0f, 0x01, 0x01, 0x05, 0x04, 0x03, 0x0f, 0x01,
+	0x01, 0x05, 0x04, 0x03, 0x0f, 0x01, 0x00, 0x05, 0x04, 0x03,
+	0x00, 0x07, 0x07, 0x0f, 0x0f, 0x00} } },
+	{ 171, 5855, { {
+	0x04, 0x02, 0x04, 0x02, 0x02, 0x02, 0x0f, 0x01, 0x00, 0x05,
+	0x04, 0x03, 0x0f, 0x01, 0x01, 0x05, 0x04, 0x03, 0x0f, 0x01,
+	0x01, 0x05, 0x04, 0x03, 0x0f, 0x01, 0x00, 0x05, 0x04, 0x03,
+	0x00, 0x07, 0x07, 0x0f, 0x0f, 0x00} } },
+	{ 173, 5865, { {
 	0x04, 0x02, 0x04, 0x02, 0x02, 0x02, 0x0f, 0x01, 0x00, 0x05,
 	0x04, 0x03, 0x0f, 0x01, 0x01, 0x05, 0x04, 0x03, 0x0f, 0x01,
 	0x01, 0x05, 0x04, 0x03, 0x0f, 0x01, 0x00, 0x05, 0x04, 0x03,
@@ -5715,7 +5734,7 @@ int8 BCMATTACHDATA(gainlimit_tbl_20698r0)[RXGAIN_CONF_ELEMENTS][MAX_RX_GAINS_PER
 int8 BCMATTACHDATA(gainlimit_tbl_20698rX)[RXGAIN_CONF_ELEMENTS][MAX_RX_GAINS_PER_ELEM] = {
 {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},   /* LNA1 Table */
 {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},   /* Gm Table */
-{0, 0, 0, 0, 0, 0, 0, 127, 127, 127, 127, 127}, /* TIA Table */
+{0, 0, 0, 0, 0, 0, 0, 55, 127, 127, 127, 127}, /* TIA Table */
 {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},   /* LPF Table */
 {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 };

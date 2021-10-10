@@ -1,7 +1,7 @@
 /*
  * WPS Station specific (Platform independent portion)
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -78,6 +78,22 @@
 #error "wps_version.h doesn't exist !"
 #endif // endif
 
+#if defined(MULTIAP)
+#ifndef IFNAMSIZ
+#define IFNAMSIZ 16
+#endif	/* IFNAMSIZ */
+static unsigned long map_time;
+static int map_timeout_val;
+typedef struct {
+	unsigned char *data;
+	int ess_id;
+	int mode;
+} wpssta_map_settings_t;
+
+static wpssta_map_settings_t s_map_settings = {NULL, -1, -1};
+static wpssta_map_settings_t *map_settings = &s_map_settings;
+static int wps_map_save_settings(void *data, int len, int ess_id, int mode);
+#endif	/* MULTIAP */
 static char def_pin[9] = "12345670\0";
 static unsigned long start_time;
 static char *pin = def_pin; /* set pin to default */
@@ -110,7 +126,7 @@ typedef struct {
 	int 	ess_id;
 } wpssta_wksp_t;
 
-static uint32 wpssta_enr_config_init();
+static uint32 wpssta_enr_config_init(char *ifname);
 static uint32 wpssta_reg_config_init(wpssta_wksp_t *wksp, char *ifname, char *bssid, char oob);
 static int wpssta_do_protocol_again(wpssta_wksp_t *wksp);
 #ifdef WPS_NFC_DEVICE
@@ -389,7 +405,7 @@ found:
 		(env_bssid? (char *)env_bssid : "NULL"),
 		((env_pin && oob_devpwid == 0)? (char *)env_pin : "NULL"),
 		(oob == 1? "Enabled": "Disabled")));
-
+	wps_set_conf("wps_sta_current_band", ifname);
 	/*
 	 * setup device configuration for WPS
 	 * needs to be done before eventual scan for PBC.
@@ -401,7 +417,7 @@ found:
 		}
 	}
 	else {
-		if (wpssta_enr_config_init() != WPS_SUCCESS) {
+		if (wpssta_enr_config_init(ifname) != WPS_SUCCESS) {
 			TUTRACE((TUTRACE_ERR, "wpssta_enr_config_init failed, exit.\n"));
 			goto exit;
 		}
@@ -453,6 +469,10 @@ found:
 
 	/* start WPS two minutes period at Finding a PBC AP or Associating with AP */
 	start_time = get_current_time();
+#if defined(MULTIAP)
+	map_time = start_time;
+	map_timeout_val = wps_map_get_timeout_val();
+#endif	/* MULTIAP */
 
 	if (start_ok) {
 		/* clear current security setting */
@@ -668,12 +688,28 @@ wpssta_success(wpssta_wksp_t *sta_wksp)
 	wpssta_filter_credential(credential);
 
 	wpsenr_osl_proc_states(WPS_OK); /* SUCCEEDED */
+#if defined(MULTIAP)
+	if (wpssta_is_map_backhaul_sta()) {
+		char bh_ifname[IFNAMSIZ] = {0};
+		if (wps_map_get_sta_backhaul_ifname(bh_ifname, sizeof(bh_ifname))) {
+			TUTRACE((TUTRACE_INFO, "Applying settings to ifr %s\n", bh_ifname));
+			retVal = wpsenr_map_osl_set_wsec(bh_ifname, sta_wksp->ess_id,
+				credential, sta_wksp->sc_mode);
+		} else {
+			TUTRACE((TUTRACE_INFO, "Saving creadential received in M8"));
+			retVal = wps_map_save_settings(credential, sizeof(*credential),
+				sta_wksp->ess_id, sta_wksp->sc_mode);
+		}
+	} else {
+#endif	/* MULTIAP */
 
 	if (wpsenr_osl_set_wsec(sta_wksp->ess_id, credential, sta_wksp->sc_mode))
 		retVal  = WPS_RESULT_SUCCESS_RESTART;
 	else
 		retVal  = WPS_RESULT_SUCCESS;
-
+#ifdef MULTIAP
+	}
+#endif	/* MULTIAP */
 	/* free memory */
 	free(credential);
 
@@ -846,6 +882,7 @@ wpssta_process(wpssta_wksp_t *sta_wksp, char *buf, int len, int msgtype)
 		    retVal != WPS_RESULT_SUCCESS &&
 		    retVal != WPS_CONT) {
 			wpsenr_osl_restore_wsec();
+			wps_pb_ifname_reset();
 		}
 	}
 
@@ -881,6 +918,7 @@ wpssta_check_timeout(wpssta_wksp_t *sta_wksp)
 		}
 
 		wpsenr_osl_proc_states(WPS_TIMEOUT);
+		wps_pb_ifname_reset();
 		return REG_FAILURE;
 	}
 
@@ -1036,6 +1074,34 @@ wpssta_check_timeout(wpssta_wksp_t *sta_wksp)
 	return retVal;
 }
 
+#if defined(MULTIAP)
+static int
+wpssta_map_timeout(wpssta_wksp_t *sta_wksp)
+{
+	uint32 retVal = WPS_CONT;
+	unsigned long now = get_current_time();
+
+	if ((wps_getProcessStates() != WPS_MAP_TIMEOUT) &&
+		now > (map_time + map_timeout_val)) {
+		TUTRACE((TUTRACE_INFO, "Multiap onboarding timeout happened\n"));
+		switch (assoc_state) {
+			case WPS_ASSOC_STATE_SCANNING:
+			case WPS_ASSOC_STATE_FINDINGAP:
+				rem_wps_ie(NULL, 0, VNDR_IE_PRBREQ_FLAG);
+				if (b_wps_version2)
+					rem_wps_ie(NULL, 0, VNDR_IE_ASSOCREQ_FLAG);
+				retVal = MAP_TIMEOUT;
+				break;
+
+			default:
+				break;
+		}
+		map_time = now;
+	}
+
+	return retVal;
+}
+#endif	/* MULTIAP */
 /*
  *  Let customer have a chance to modify credential
  */
@@ -1434,13 +1500,17 @@ wpssta_reg_config_init(wpssta_wksp_t *sta_wksp, char *ifname, char *bssid, char 
  */
 
 static uint32
-wpssta_enr_config_init()
+wpssta_enr_config_init(char *ifname)
 {
 	DevInfo info;
 	unsigned char mac[6];
 	char *value;
 	char uuid[16] = {0x22, 0x21, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
 		0x08, 0x09, 0xa, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
+#if defined(MULTIAP)
+	char tmp[100];
+	char prefix[] = "wlXXXXXXXXXX_";
+#endif	/* MULTIAP */
 
 	/* fill in device specific info. The way this information is stored is app specific */
 	/* Would be good to document all of these ...  */
@@ -1510,7 +1580,14 @@ wpssta_enr_config_init()
 		info.b_reqToEnroll = TRUE;
 		info.b_nwKeyShareable = FALSE;
 	}
-
+#if defined(MULTIAP)
+	sprintf(prefix, "%s_", ifname);
+	value = wps_safe_get_conf(strcat_r(prefix, "map", tmp));
+	if (value[0] != '\0') {
+		uint16 val = (uint16)strtoul(value, NULL, 0);
+		info.map_attr = (val & WPS_NVVAL_MAP_BH_STA) ? WPS_WFA_MAP_BHSTA : 0;
+	}
+#endif	/* MULTIAP */
 #ifdef WPS_NFC_DEVICE
 	if (pre_privkey) {
 		memcpy(info.pre_privkey, pre_privkey, SIZE_PUB_KEY);
@@ -1649,6 +1726,138 @@ wpssta_open_session(wps_app_t *wps_app, char* ifname)
 	wps_app->close = (int (*)(void *))wpssta_wksp_deinit;
 	wps_app->process = (int (*)(void *, char *, int, int))wpssta_process;
 	wps_app->check_timeout = (int (*)(void *))wpssta_check_timeout;
+#if defined(MULTIAP)
+	if (wps_map_is_onboarding(ifname) && (wps_map_sta_intf_count() > 1)) {
+		wps_app->map_timeout = (int (*) (void *))wpssta_map_timeout;
+	}
+#endif	/* MULTIAP */
 
 	return WPS_CONT;
 }
+
+#if defined(MULTIAP)
+/* Get the wps session start time. */
+unsigned long
+wpssta_get_start_time()
+{
+	TUTRACE((TUTRACE_INFO, "Start Time %ld\n", start_time));
+
+	return start_time;
+}
+
+/* Set the wps session start time. */
+void
+wpssta_set_start_time(unsigned long time)
+{
+	TUTRACE((TUTRACE_INFO, "Set Start Time to %ld\n", time));
+
+	start_time = time;
+}
+
+/* Save the settings for later use */
+static int
+wps_map_save_settings(void *data, int len, int ess_id, int mode)
+{
+	int retVal = WPS_RESULT_SUCCESS_RESTART;
+
+	map_settings->data = (unsigned char *)malloc(len);
+	if (!map_settings->data) {
+		TUTRACE((TUTRACE_ERR, "Malloc failed for size d\n", len));
+		retVal = WPS_RESULT_FAILURE;
+		goto end;
+	}
+
+	memset(map_settings->data, 0, len);
+	memcpy(map_settings->data, data, len);
+	map_settings->ess_id = ess_id;
+	map_settings->mode = mode;
+
+end:
+	return retVal;
+}
+
+/* Fetch settings for map backhaul sta */
+unsigned char*
+wps_map_get_settings()
+{
+	return map_settings->data;
+}
+
+/* Multiap configuration
+ * Fetch all the map backhaul sta interfaces and Issue escan cmd in each interface,
+ * Once scan results are available fetch the rssi for backhaul ap ssid.
+ * Compare and apply the settings to the sta interface having best rssi value.
+ */
+void
+wps_map_do_configure()
+{
+	char ifnames[IFNAMSIZ * IFNAMSIZ] = {0};
+	char ifname[IFNAMSIZ] = {0}, *next = NULL;
+	wps_ap_list_info_t *ap_list = NULL;
+	char sel_ifname[IFNAMSIZ] = {0};
+	WpsEnrCred *creds = (WpsEnrCred*)map_settings->data;
+
+	if (!creds) {
+		return;
+	}
+
+	wps_map_get_candidate_backhaul_ifnames(ifnames, sizeof(ifnames));
+	TUTRACE((TUTRACE_INFO, "Backhaul ifnames %s \n", ifnames));
+
+	if (wps_map_eap_init()) {
+		TUTRACE((TUTRACE_ERR, "Multiap eap init failed \n"));
+		goto end;
+	}
+
+	foreach(ifname, ifnames, next) {
+		int err = 0;
+		time_t start, end;
+
+		wps_osl_set_ifname(ifname);
+		/* Escan for sta interface sometimes fails because sta tries to do association
+		 * To make sure sta does escan, do a wl down followed by wl up before escan cmd
+		 */
+		wps_map_do_wl_up_down(ifname);
+		if ((err = do_map_wps_escan(creds->ssid))) {
+			TUTRACE((TUTRACE_INFO, "Escan failed for ifr %s err %d.", ifname, err));
+		}
+
+		start = end = time(NULL);
+
+		while (end - start < ESCAN_TIMER_INTERVAL_S) {
+			wps_map_escan_handler();
+
+			if (get_wps_escan_state() == WPS_ESCAN_DONE ||
+				get_wps_escan_state() == WPS_ESCAN_TIMEDOUT) {
+				TUTRACE((TUTRACE_INFO, "Escan done\n"));
+				break;
+			}
+			end = time(NULL);
+		}
+
+		ap_list = create_aplist_escan();
+		if (ap_list) {
+			uint16 chanspec = 0;
+			if (wpssta_get_chspec_from_scan_results(ap_list, creds->ssid, &chanspec) &&
+				wps_map_is_ifr_opr_on_chanspec(ifname, chanspec)) {
+				TUTRACE((TUTRACE_INFO, "For ssid %s selected ifname is %s\n",
+					creds->ssid, ifname));
+					goto end;
+			}
+		}
+	}
+
+end:
+	wps_map_eap_dinit();
+	if (ifname[0] != '\0') {
+		TUTRACE((TUTRACE_INFO, "Applying seetings to ifr %s \n", ifname));
+		wpsenr_map_osl_set_wsec(ifname, map_settings->ess_id, creds, map_settings->mode);
+	} else {
+		/* Intentional printf for error indicator */
+		printf("**** Backhaul interface not found for ssid %s ****\n", creds->ssid);
+	}
+
+	free(map_settings->data);
+	map_settings->data = NULL;
+}
+#endif	/* MULTIAP */

@@ -1,7 +1,7 @@
 /*
  * BlueToothCoExistence module implementation - iovar handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_btcx_iov.c 691048 2017-03-20 16:47:17Z $
+ * $Id: phy_btcx_iov.c 775501 2019-06-02 00:18:19Z $
  */
 
 #include <phy_btcx_iov.h>
@@ -62,7 +62,8 @@ enum {
 	IOV_PHY_BTCOEX_DESENSE = 4,
 	IOV_PHY_BTCOEX_DESENSE_RXGAIN = 5,
 	IOV_PHY_BTC_SISO_ACK_PWR = 6,
-	IOV_PHY_BTC_CURR_PWROFFSET = 7
+	IOV_PHY_BTC_CURR_PWROFFSET = 7,
+	IOV_PHY_BTC_CONFIG = 8
 };
 
 static const bcm_iovar_t phy_btcx_iovars[] = {
@@ -83,6 +84,9 @@ static const bcm_iovar_t phy_btcx_iovars[] = {
 	},
 	{"phy_btc_curr_pwroffset", IOV_PHY_BTC_CURR_PWROFFSET,
 	0, 0, IOVT_BUFFER, 3 * sizeof(int8)
+	},
+	{"phy_btc_config", IOV_PHY_BTC_CONFIG,
+	0, 0, IOVT_BUFFER, sizeof(wlc_phy_btc_config_t),
 	},
 	{NULL, 0, 0, 0, 0, 0}
 };
@@ -165,7 +169,12 @@ phy_btcx_doiovar(void *ctx, uint32 aid,
 		break;
 	}
 #endif /* WL_UCM */
-
+	case IOV_SVAL(IOV_PHY_BTC_CONFIG):
+	{
+		wlc_phy_btc_config_t *config = (wlc_phy_btc_config_t *)p;
+		phy_btcx_update_config(pi->btcxi, config);
+		break;
+	}
 	default:
 		err = BCME_UNSUPPORTED;
 		break;

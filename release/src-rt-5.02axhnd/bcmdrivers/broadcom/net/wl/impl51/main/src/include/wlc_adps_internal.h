@@ -1,7 +1,7 @@
 /*
  * ADaptive Power Save Functions
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -56,6 +56,11 @@
 #define ADPS_MIN_STEP_NUM 2
 #define ADPS_MAX_STEP_NUM 10
 
+/* XXX ADPS algorithm related contents should not open to customers.
+ * ADPS common structrues and definitions that can be expose ADPS internal
+ * should be located here instead of wlioctl.h
+ */
+
 #define WL_ADPS_IOV_PARAMS	0x8001
 
 typedef struct wl_adps_step {
@@ -86,6 +91,8 @@ typedef struct wl_adps_step_params_v2 {
 	wl_adps_step_t step[1];	/* PM2 step parameters for each step */
 } wl_adps_step_params_v2_t;
 
+/* XXX Only WL_ADPS_IOVAR_DUMP_CMD_SUMMARY is provided to customer
+*/
 #define	WL_ADPS_IOV_DUMP_CMD_SUMMARY		0x00
 #define	WL_ADPS_IOV_DUMP_CMD_GENERAL		0x01
 #define	WL_ADPS_IOV_DUMP_CMD_STAT		0x02

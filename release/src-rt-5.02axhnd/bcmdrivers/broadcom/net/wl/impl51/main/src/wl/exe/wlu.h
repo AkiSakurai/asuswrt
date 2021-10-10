@@ -1,7 +1,7 @@
 /*
  * Common code for wl command line utility
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlu.h 733321 2017-11-28 01:37:08Z $
+ * $Id: wlu.h 775988 2019-06-17 12:33:51Z $
  */
 
 #ifndef _wlu_h_
@@ -78,6 +78,12 @@ typedef struct {
 	int8 pwr20in8080;
 	int8 pwr40in8080;
 	int8 pwr80in8080;
+	int8 pwrru26;
+	int8 pwrru52;
+	int8 pwrru106;
+	int8 pwrru242;
+	int8 pwrru484;
+	int8 pwrru996;
 } txpwr_row_t;
 
 extern const char *wlu_av0;
@@ -127,9 +133,9 @@ extern uint32 wl_chspec32_to_driver(chanspec_t chanspec);
 extern chanspec_t wl_chspec32_from_driver(uint32 chanspec32);
 /* return TRUE if all the values in the array are uniformly the same */
 extern int wl_array_uniform(uint8 *pwr, int start, int count);
-extern void wl_txpwr_print_header(int8 channel_bandwidth, bool verbose);
+extern void wl_txpwr_print_header(int8 channel_bandwidth, bool verbose, uint32 curpower_flag);
 extern void wl_txpwr_print_row(const char *label, uint8 chains, txpwr_row_t powers,
-	int8 unsupported_rate, int8 channel_bandwidth, bool verbose);
+	int8 unsupported_rate, int8 channel_bandwidth, bool verbose, uint32 curpower_flag);
 extern int get_oui_bytes(uchar *oui_str, uchar *oui);
 
 /* Format a ratespec for output of any of the wl_rate() iovars */
@@ -156,6 +162,7 @@ extern void wluc_rrm_module_init(void);
 extern void wluc_wowl_module_init(void);
 extern void wluc_nan_module_init(void);
 extern void wluc_ap_module_init(void);
+extern void wluc_omn_module_init(void);
 extern void wluc_ampdu_module_init(void);
 extern void wluc_ampdu_cmn_module_init(void);
 extern void wluc_bmac_module_init(void);
@@ -192,17 +199,14 @@ extern void wluc_proxd_module_init(void);
 extern void wluc_p2po_module_init(void);
 extern void wluc_anqpo_module_init(void);
 extern void wluc_btcdyn_module_init(void);
-extern void wluc_mesh_module_init(void);
 extern void wluc_msch_module_init(void);
 extern void wluc_bdo_module_init(void);
 extern void wluc_randmac_module_init(void);
-extern void wluc_tko_module_init(void);
 extern void wluc_natoe_module_init(void);
 extern void wluc_rsdb_module_init(void);
 extern void wluc_he_module_init(void);
 extern void wluc_twt_module_init(void);
 extern void wluc_mbo_module_init(void);
-extern void wluc_hoffload_module_init(void);
 extern void wluc_slot_bss_module_init(void);
 extern void wluc_tdmtx_module_init(void);
 extern void wluc_oce_module_init(void);
@@ -288,7 +292,7 @@ extern void raw_puts(const char *buf, void *dll_fd_out);
 #if defined(BWL_SMALL_WLU_DUMP_BUF)
 #define WL_DUMP_BUF_LEN (4 * 1024)
 #else
-#define WL_DUMP_BUF_LEN (255 * 1024)
+#define WL_DUMP_BUF_LEN (256 * 1024)
 #endif /* BWL_SMALL_WLU_DUMP_BUF */
 #endif /* WL_DUMP_BUF_LEN */
 

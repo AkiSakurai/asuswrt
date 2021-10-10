@@ -1,7 +1,7 @@
 /*
  * WPS wireless related
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_wl.h 676790 2016-12-24 17:51:50Z $
+ * $Id: wps_wl.h 769092 2018-11-05 06:19:23Z $
  */
 #ifndef _WPS_WL_H_
 #define _WPS_WL_H_
@@ -109,5 +109,17 @@ int wps_wl_bss_config(char *ifname, int enabled);
 #endif // endif
 int wps_wl_channel(char *ifname);
 extern char *ether_etoa(const unsigned char *e, char *a);
-
+#if defined(MULTIAP)
+int wps_map_get_sta_backhaul_ifname(char *ifname, int size);
+void wps_map_update_settings(char *skip_ifr);
+char* wps_map_get_ifnames();
+void wps_map_update_ifnames(char *skip_ifr);
+bool wps_map_is_onboarding(char *ifname);
+int wps_map_get_timeout_val();
+int wps_map_sta_intf_count();
+void wps_map_get_candidate_backhaul_ifnames(char *out_ifname, int size);
+void wps_map_get_ap_backhaul_ifname(char *out_ifname, int size);
+void wps_map_do_wl_up_down(char *ifname);
+bool wps_map_is_ifr_opr_on_chanspec(char *ifname, uint16 chanspec);
+#endif	/* MULTIAP */
 #endif /* _WPS_WL_H_ */

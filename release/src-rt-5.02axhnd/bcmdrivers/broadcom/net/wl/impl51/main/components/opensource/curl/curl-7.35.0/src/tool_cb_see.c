@@ -55,6 +55,9 @@ int tool_seek_cb(void *userdata, curl_off_t offset, int whence)
      macros that provide the support to do 64bit seeks correctly */
 
   if(offset > OUR_MAX_SEEK_O) {
+    /* Some precaution code to work around problems with different data sizes
+       to allow seeking >32bit even if off_t is 32bit. Should be very rare and
+       is really valid on weirdo-systems. */
     curl_off_t left = offset;
 
     if(whence != SEEK_SET)

@@ -1,7 +1,7 @@
 /*
  * WatchDog module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -85,6 +85,11 @@ typedef enum phy_wd_prd {
 /*
  * WATCHDOG callback execution orders.
  * Note: Keep the enums between 0 and 255!
+ */
+/* XXX No need to manually assign any value even for ROM'ing reasons.
+ * Remember to update the PHY_WD_CB_REG_SZ in phy_wd_cfg.h when adding new
+ * call back function entry.
+ * Each entry can be used only once.
  */
 typedef enum phy_wd_order {
 	PHY_WD_1TICK_START = 0,

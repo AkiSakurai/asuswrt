@@ -1,7 +1,7 @@
 /*
  * TSSI Cal module internal interface (to PHY specific implementations).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_type_tssical.h 685812 2017-02-18 02:44:08Z $
+ * $Id: phy_type_tssical.h 771295 2019-01-22 05:01:58Z $
  */
 
 #ifndef _phy_type_tssical_h_
@@ -66,6 +66,8 @@ typedef void phy_type_tssical_ctx_t;
 typedef int (*phy_type_tssical_init_fn_t)(phy_type_tssical_ctx_t *ctx);
 typedef int8 (*phy_type_tssical_get_visible_thresh_fn_t)(phy_type_tssical_ctx_t *ctx);
 typedef void (*phy_type_tssical_sens_min_fn_t)(phy_type_tssical_ctx_t *ctx, int8 *tssiSensMinPwr);
+typedef void (*phy_type_tssical_idletssi_force_fn_t)(phy_type_tssical_ctx_t *ctx,
+		int16 *idletssi, bool read);
 typedef int (*phy_type_tssical_dump_fn_t)(phy_type_tssical_ctx_t *ctx, struct bcmstrbuf *b);
 
 #ifdef WLC_TXCAL
@@ -90,6 +92,7 @@ typedef void (*phy_type_tssical_apply_pwr_tssi_tbl_fn_t)(phy_type_tssical_ctx_t 
 typedef struct {
 	phy_type_tssical_get_visible_thresh_fn_t visible_thresh;
 	phy_type_tssical_sens_min_fn_t sens_min;
+	phy_type_tssical_idletssi_force_fn_t idletssi_force;
 
 #ifdef WLC_TXCAL
 	/* compute olpc index */

@@ -1,7 +1,7 @@
 /*
  * ACPHY 20704 Radio PLL configuration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -71,8 +71,8 @@
 #define RFPLL_VCOCAL_DELAYSTARTWARM_FX  0x8000
 /* 1.0 in 1.15.16 */
 #define RFPLL_VCOCAL_PAUSECNT_FX        0x10000
-/* 1.7 in 1.15.16 */
-#define T_OFF_FX                        0x1b333
+/* 1.0 in 1.15.16 */
+#define T_OFF_FX                        0x10000
 /* 1.0 in 1.15.16 */
 #define FX_ONE                          0x10000
 /* ((1000 * 2 * pi) / f3db_ovr_fn) in 1.23.8 */
@@ -105,8 +105,14 @@
 #define CONST_P27314_FX                 0x45ec80c7
 /* 3/2 in (0.1.31) */
 #define CONST_3_OVER_2_FX               0xc0000000
+/* 4/3 in (0.1.31) */
+#define CONST_4_OVER_3_FX               0xaaaaaaaa
 /* 2/3 in (0.1.31) */
 #define CONST_2_OVER_3_FX               0x55555555
+/* 1/2 in (0.1.31) */
+#define CONST_1_OVER_2_FX               0x40000000
+/* 3/4 in (0.1.31) */
+#define CONST_3_OVER_4_FX               0x60000000
 /* 13.151136 in (0.16.16) */
 #define CONST_13P151136_FX              0x000d26b1
 /* 1607.45  in (0.16.16) */
@@ -125,10 +131,6 @@
 /* pi = 3.14159265358979 */
 /* ((kvco * f3db_ovr_fn^2) / (4 * pi^2)) * 1e9 in 1.32.16; Kvco = 11.2 */
 /* NOTE: All C values expressed here in pF (while F in Tcl) */
-#define C1_PASSIVE_LF_CONST_FX          0x6833eeda173eULL
-/* (2 * damp) / (kvco) in 0.0.32; kvco=11.2 */
-#define R1_PASSIVE_LF_CONST_FX          0x2db6db6e
-/* 5 * 256 * 1e-3 in 0.16.16 */
 #define IOFF_REF_CONST_FX               0x147ae
 /* max icp is 2.5mA in 0.16.16 */
 #define ICP_MAX_FX                      0x28000
@@ -181,8 +183,8 @@
 #define RFPLL_VCOCAL_SECONDMESEN_DEC            3
 #define RFPLL_VCOCAL_UPDATESELCOUP_DEC          0
 #define RFPLL_VCOCAL_COUPLINGIN_DEC             0
-#define RFPLL_VCOCAL_FORCE_AUX1_OVR_DEC         0
-#define RFPLL_VCOCAL_FORCE_AUX1_OVRVAL_DEC      0
+#define RFPLL_VCOCAL_FORCE_AUX1_OVR_DEC         1
+#define RFPLL_VCOCAL_FORCE_AUX1_OVRVAL_DEC    127
 #define RFPLL_VCOCAL_FORCE_AUX2_OVR_DEC         0
 #define RFPLL_VCOCAL_FORCE_AUX2_OVRVAL_DEC      0
 #define RFPLL_VCO_CAP_MODE_DEC                  0
@@ -190,16 +192,20 @@
 #define CAP_MULTIPLIER_RATIO_PLUS_ONE           9
 
 /* PLL loop bw in kHz */
-#define LOOP_BW                     560   /* default PLL BW */
+#define LOOP_BW                     700
 #define USE_DOUBLER                 1
 /* VCO_SELECT: 0->VCO1; 1->VCO2; 2->VCO1+VCO2 */
-#define VCO_SELECT                  2
+#define VCO_SELECT                  0
+#if VCO_SELECT != 0
+#error 20704 radio does not implement VCO2
+#endif // endif
 
 /* No of fraction bits */
 #define NF0      0
 #define NF6      6
 #define NF8      8
 #define NF16    16
+#define NF19    19
 #define NF20    20
 #define NF21    21
 #define NF22    22
@@ -209,8 +215,11 @@
 #define NF31    31
 #define NF32    32
 
-#define PRINT_PLL_CONFIG_20704(pll_struct, offset) \
-	printf("%s = %u\n", #offset, (pll_struct->reg_field_val[IDX_20704_##offset]))
+#define PRINT_PLL_CONFIG_20704(pi, pll_struct, offset) \
+	printf("%s = %u\n", #offset, \
+	((phy_utils_read_radioreg(pi, pll_struct->reg_addr[IDX_20704_##offset]) & \
+	pll_struct->reg_field_mask[IDX_20704_##offset]) >> \
+	pll_struct->reg_field_shift[IDX_20704_##offset]))
 
 #define PLL_CONFIG_20704_VAL_ENTRY(pll_struct, offset, val) \
 	pll_struct->reg_field_val[IDX_20704_##offset] = val
@@ -223,7 +232,7 @@
 			RF_##20704##_##reg##_##fld##_SHIFT(pi->pubpi->radiorev);
 
 /* structure to hold computed PLL config values */
-typedef struct {
+struct pll_config_20704_tbl_s {
 	uint32 xtal_fx;
 	uint32 loop_bw;
 	uint8 use_doubler;
@@ -232,7 +241,9 @@ typedef struct {
 	uint16 *reg_field_mask;
 	uint8 *reg_field_shift;
 	uint16 *reg_field_val;
-} pll_config_20704_tbl_t;
+};
+
+typedef struct pll_config_20704_tbl_s pll_config_20704_tbl_t;
 
 typedef enum {
 	IDX_20704_OVR_RFPLL_VCOCAL_SLOPEIN,
@@ -314,44 +325,20 @@ typedef enum {
 static void phy_ac_radio20704_write_pll_config(phy_info_t *pi, pll_config_20704_tbl_t *pll);
 static void BCMATTACHFN(phy_ac_radio20704_pll_config_const_calc)(phy_info_t *pi,
 		pll_config_20704_tbl_t *pll);
-static void phy_ac_radio20704_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
-		uint8 ac_mode, pll_config_20704_tbl_t *pll);
+
 #if DBG_PLL != 0
-static void print_pll_config_20704(pll_config_20704_tbl_t *pll, uint32 lo_freq,
-	uint32 loop_bw, uint32 icp_fx);
+static void print_pll_config_20704(phy_info_t *pi, pll_config_20704_tbl_t *pll,
+		uint32 xtal_freq, uint32 lo_freq, uint32 loop_bw, uint32 vco_freq_fx,
+		uint32 kvco_fx, uint32 icp_fx);
 #endif // endif
 
-/* Structure to hold 20704 PLL config values */
-static pll_config_20704_tbl_t pll_conf_20704;
-
-static pll_config_20704_tbl_t *
-BCMRAMFN(wlc_phy_ac_get_20704_pll_config)(phy_info_t *pi)
-{
-	return &pll_conf_20704;
-}
-
 void
-wlc_phy_radio20704_pll_tune(phy_info_t *pi, uint32 chan_freq)
+BCMATTACHFN(phy_ac_radio20704_populate_pll_config_mfree)(phy_info_t *pi,
+                                                         pll_config_20704_tbl_t *pll)
 {
-	uint8 ac_mode;
-	pll_config_20704_tbl_t *pll = wlc_phy_ac_get_20704_pll_config(pi);
-
-	ac_mode = 1;
-	phy_ac_radio20704_pll_config_ch_dep_calc(pi, chan_freq, ac_mode, pll);
-
-	/* Write computed values to PLL registers */
-	phy_ac_radio20704_write_pll_config(pi, pll);
-
-	/* Turn on logen_top and logen_vcobuf */
-	MOD_RADIO_PLLREG_20704(pi, LOGEN_REG0, 0, logen_pu, 1);
-	MOD_RADIO_PLLREG_20704(pi, LOGEN_REG0, 0, logen_vcobuf_pu, 1);
-
-}
-
-void
-BCMATTACHFN(phy_ac_radio20704_populate_pll_config_mfree)(phy_info_t *pi)
-{
-	pll_config_20704_tbl_t *pll = wlc_phy_ac_get_20704_pll_config(pi);
+	if (pll == NULL) {
+		return;
+	}
 
 	if (pll->reg_addr != NULL) {
 		phy_mfree(pi, pll->reg_addr, (sizeof(uint16) * PLL_CONFIG_20704_ARRAY_SIZE));
@@ -370,12 +357,19 @@ BCMATTACHFN(phy_ac_radio20704_populate_pll_config_mfree)(phy_info_t *pi)
 	if (pll->reg_field_val != NULL) {
 		phy_mfree(pi, pll->reg_field_val, (sizeof(uint16) * PLL_CONFIG_20704_ARRAY_SIZE));
 	}
+
+	phy_mfree(pi, pll, sizeof(pll_config_20704_tbl_t));
 }
 
-int
+pll_config_20704_tbl_t *
 BCMATTACHFN(phy_ac_radio20704_populate_pll_config_tbl)(phy_info_t *pi)
 {
-	pll_config_20704_tbl_t *pll = wlc_phy_ac_get_20704_pll_config(pi);
+	pll_config_20704_tbl_t *pll;
+
+	if ((pll = phy_malloc(pi, sizeof(pll_config_20704_tbl_t))) == NULL) {
+		PHY_ERROR(("%s: phy_malloc pll_conf failed\n", __FUNCTION__));
+		goto fail;
+	}
 
 	if ((pll->reg_addr =
 		phy_malloc(pi, (sizeof(uint16) * PLL_CONFIG_20704_ARRAY_SIZE))) == NULL) {
@@ -553,28 +547,12 @@ BCMATTACHFN(phy_ac_radio20704_populate_pll_config_tbl)(phy_info_t *pi)
 	/* Add frequency independent data */
 	phy_ac_radio20704_pll_config_const_calc(pi, pll);
 
-	return BCME_OK;
+	return pll;
 
 fail:
-	if (pll->reg_addr != NULL) {
-		phy_mfree(pi, pll->reg_addr, (sizeof(uint16) * PLL_CONFIG_20704_ARRAY_SIZE));
-	}
+	phy_ac_radio20704_populate_pll_config_mfree(pi, pll);
 
-	if (pll->reg_field_mask != NULL) {
-		phy_mfree(pi, pll->reg_field_mask,
-				(sizeof(uint16) * PLL_CONFIG_20704_ARRAY_SIZE));
-	}
-
-	if (pll->reg_field_shift != NULL) {
-		phy_mfree(pi, pll->reg_field_shift,
-				(sizeof(uint8) * PLL_CONFIG_20704_ARRAY_SIZE));
-	}
-
-	if (pll->reg_field_val != NULL) {
-		phy_mfree(pi, pll->reg_field_val, (sizeof(uint16) * PLL_CONFIG_20704_ARRAY_SIZE));
-	}
-
-	return BCME_NOMEM;
+	return NULL;
 }
 
 static void
@@ -600,7 +578,7 @@ phy_ac_radio20704_write_pll_config(phy_info_t *pi, pll_config_20704_tbl_t *pll)
 static void
 BCMATTACHFN(phy_ac_radio20704_pll_config_const_calc)(phy_info_t *pi, pll_config_20704_tbl_t *pll)
 {
-	/* 20704_procs.tcl r710814: 20704_pll_config */
+	/* 20704_procs.tcl r774108: 20704_pll_config */
 	uint32 xtal_freq;
 	uint32 xtal_fx;
 	uint64 temp_64;
@@ -699,11 +677,10 @@ BCMATTACHFN(phy_ac_radio20704_pll_config_const_calc)(phy_info_t *pi, pll_config_
 	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_VCO_CAP_MODE, RFPLL_VCO_CAP_MODE_DEC);
 }
 
-static void
-phy_ac_radio20704_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
-	uint8 ac_mode, pll_config_20704_tbl_t *pll)
+void
+wlc_phy_radio20704_pll_tune(phy_info_t *pi, pll_config_20704_tbl_t *pll, uint32 lo_freq)
 {
-	/* 20704_procs.tcl r710814: 20704_pll_config */
+	/* 20704_procs.tcl r823745: 20704_pll_config */
 	uint32 icp_fx;
 	uint32 kvco_fx;
 	uint32 pfd_ref_freq_fx;
@@ -779,8 +756,6 @@ phy_ac_radio20704_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 	uint16 rfpll_vcocal_force_caps2_ovr_dec = 0;
 	uint16 rfpll_vcocal_force_caps2_ovrval_dec = 0;
 
-	ASSERT(ac_mode == 1);  /* Other mode no longer supported */
-
 	/* ------------------------------------------------------------------- */
 	/* PFD Reference Frequency */
 	/* <0.8.24> * <0.1.0> --> <0.8.24> */
@@ -788,14 +763,36 @@ phy_ac_radio20704_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 	/* ------------------------------------------------------------------- */
 
 	/* ------------------------------------------------------------------- */
-	/* VCO Frequency: 3453 < f < 3883 in (0,12,20) */
+	/* VCO Frequency: 3453 < f < 4125 in (0.13.19) */
 	/* In 2G: VCO = LO x 3/2 */
+	/* except on ch12 VCO = LO x 4/3 */
 	/* In 5G: VCO = LO x 2/3  */
-	/* <0.13.0> * <0.1.31> --> <0.12,20> */
+	/* In 5G ch100: VCO = LO x 3/4  */
+	/* <0.13.0> * <0.1.31> --> <0.13.19> */
 	vco_freq_fx = (uint32)math_fp_mult_64(
 		lo_freq,
-		(lo_freq <= 3000)? CONST_3_OVER_2_FX : CONST_2_OVER_3_FX,
-		NF0, NF31, NF20);
+		(lo_freq == 2427)? CONST_4_OVER_3_FX :
+		(lo_freq == 2432)? CONST_4_OVER_3_FX :
+		(lo_freq == 2447)? CONST_4_OVER_3_FX :
+		(lo_freq == 2452)? CONST_4_OVER_3_FX :
+		(lo_freq == 2457)? CONST_4_OVER_3_FX :
+		(lo_freq == 2462)? CONST_4_OVER_3_FX :
+		(lo_freq == 2467)? CONST_4_OVER_3_FX :
+		(lo_freq == 2484)? CONST_4_OVER_3_FX :
+		(lo_freq <= 3000)? CONST_3_OVER_2_FX :
+		(lo_freq == 4945)? CONST_3_OVER_4_FX :
+		(lo_freq == 5180)? CONST_3_OVER_4_FX :
+#if defined(CONFIG_BCM947622)
+		(lo_freq == 5540)? CONST_3_OVER_4_FX :
+		(lo_freq == 5550)? CONST_3_OVER_4_FX :
+		(lo_freq == 5560)? CONST_3_OVER_4_FX :
+		(lo_freq == 5570)? CONST_3_OVER_4_FX :
+		(lo_freq == 5580)? CONST_3_OVER_4_FX :
+		(lo_freq == 5620)? CONST_3_OVER_4_FX :
+		(lo_freq == 5630)? CONST_3_OVER_4_FX :
+#endif /* CONFIG_BCM947662 */
+		(lo_freq <  6290)? CONST_2_OVER_3_FX : CONST_1_OVER_2_FX,
+		NF0, NF31, NF19);
 	/* ------------------------------------------------------------------- */
 
 	/* ------------------------------------------------------------------- */
@@ -818,13 +815,13 @@ phy_ac_radio20704_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 
 	/* ------------------------------------------------------------------- */
 	/* VCO Frequency dependent calculations */
-	/* <0.12.20> / <0.8.24> --> <0.(32 - nf).nf> */
-	nf = math_fp_div_64(vco_freq_fx, pfd_ref_freq_fx, NF20, NF24, &divide_ratio_fx);
+	/* <0.13.19> / <0.8.24> --> <0.(32 - nf).nf> */
+	nf = math_fp_div_64(vco_freq_fx, pfd_ref_freq_fx, NF19, NF24, &divide_ratio_fx);
 	/* floor(<0.(32-nf).nf>, (nf-21)) -> 0.11.21 */
 	divide_ratio_fx = math_fp_round_32(divide_ratio_fx, (nf - NF21));
 
-	/* <0.32.0> / <0.12.20> --> <0.(32 - nf).nf> */
-	nf = math_fp_div_64(lo_freq, vco_freq_fx, NF0, NF20, &lo_div_vco_ratio_fx);
+	/* <0.32.0> / <0.13.19> --> <0.(32 - nf).nf> */
+	nf = math_fp_div_64(lo_freq, vco_freq_fx, NF0, NF19, &lo_div_vco_ratio_fx);
 	/* floor(<0.(32-nf).nf>, (nf-16)) -> 0.16.16 */
 	lo_div_vco_ratio_fx = math_fp_floor_32(lo_div_vco_ratio_fx, (nf - NF16));
 
@@ -860,41 +857,44 @@ phy_ac_radio20704_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 		rfpll_vcocal_DeltaPllVal_dec);
 
 	/* Frequency range dependent constants */
-	if (lo_freq >= 2000 && lo_freq <= 3000) {
-		rfpll_vcocal_InitCapA = 1536;
-		rfpll_vcocal_InitCapB = 1792;
-		rfpll_vcocal_ErrorThres  = 3;
-		rfpll_vcocal_TargetCountCenter  = 2442;
-	} else if  (lo_freq < 5250) {
-		rfpll_vcocal_InitCapA  = 2432;
-		rfpll_vcocal_InitCapB  = 2688;
-		rfpll_vcocal_ErrorThres = 5;
-		rfpll_vcocal_TargetCountCenter = 5070;
-	} else if (lo_freq >= 5250 && lo_freq < 5500) {
-		rfpll_vcocal_InitCapA = 1792;
-		rfpll_vcocal_InitCapB = 2048;
-		rfpll_vcocal_ErrorThres = 5;
-		rfpll_vcocal_TargetCountCenter = 5370;
-	} else if (lo_freq >= 5500) {
-		rfpll_vcocal_InitCapA = 1088;
-		rfpll_vcocal_InitCapB = 1344;
-		rfpll_vcocal_ErrorThres = 8;
-		rfpll_vcocal_TargetCountCenter = 5700;
-	}
-	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_VCOCAL_ERRORTHRES, rfpll_vcocal_ErrorThres);
-	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_VCOCAL_INITCAPA, rfpll_vcocal_InitCapA);
-	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_VCOCAL_INITCAPB, rfpll_vcocal_InitCapB);
+	rfpll_vcocal_InitCapA =
+		(vco_freq_fx < (3200 << NF19)) ? 3300 :
+		(vco_freq_fx < (3400 << NF19)) ? 2800 :
+		(vco_freq_fx < (3600 << NF19)) ? 1950 :
+		(vco_freq_fx < (3800 << NF19)) ? 1300 :
+		(vco_freq_fx < (4000 << NF19)) ? 750 : 400;
 
-	if (lo_freq >= 2000 && lo_freq <= 3000) {
-		rfpll_vcocal_NormCountLeft = -39;
+	rfpll_vcocal_ErrorThres =
+		(lo_freq <= 3000) ? 3 :
+		(lo_freq <  5250) ? 5 :
+		(lo_freq <  5500) ? 5 : 8;
+
+	rfpll_vcocal_TargetCountCenter =
+		(lo_freq <= 3000) ? 2442 :
+		(lo_freq <  5250) ? 5070 :
+		(lo_freq <  5500) ? 5370 :
+		(lo_freq <  6000) ? 5700 :
+		(lo_freq <  6500) ? 6100 :
+		(lo_freq <  7000) ? 6600 :
+		(lo_freq <  7500) ? 7100 :
+		(lo_freq <  8000) ? 7600 : 8100;
+
+	if (lo_freq <= 3000) {
 		rfpll_vcocal_NormCountRight = 39;
 		rfpll_vcocal_CouplThres2_dec = 25;
 	} else {
-		rfpll_vcocal_NormCountLeft = -50;
 		rfpll_vcocal_NormCountRight = 50;
 		rfpll_vcocal_CouplThres2_dec = 40;
 	}
 
+	rfpll_vcocal_InitCapB = rfpll_vcocal_InitCapA + 256;
+	rfpll_vcocal_NormCountLeft = -rfpll_vcocal_NormCountRight;
+	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_VCOCAL_ERRORTHRES,
+			rfpll_vcocal_ErrorThres);
+	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_VCOCAL_INITCAPA,
+			rfpll_vcocal_InitCapA);
+	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_VCOCAL_INITCAPB,
+			rfpll_vcocal_InitCapB);
 	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_VCOCAL_NORMCOUNTLEFT,
 			rfpll_vcocal_NormCountLeft);
 	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_VCOCAL_NORMCOUNTRIGHT,
@@ -998,27 +998,12 @@ phy_ac_radio20704_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_FRCT_WILD_BASE_LOW,
 			(uint16)(rfpll_frct_wild_base_dec_fx & 0xFFFF));
 
-	/* ------------------------------------------------------------------- */
-	/* VCO register (11n vs 11ac mode) */
-	/* ------------------------------------------------------------------- */
-	/* There is no Class-C VCO anymore. Always CMOS VCO */
-	/* 2 VCO mode: 11abgn, 11ac */
 	loop_band = LOOP_BW;
 	rfpll_vco_cvar_dec = 9;
-	rfpll_vco_ALC_ref_ctrl_dec = 9;
+	rfpll_vco_ALC_ref_ctrl_dec = 10;
 	rfpll_vco_bias_mode_dec = 1;
 	rfpll_vco_tempco_dcadj_dec = 3;
 	rfpll_vco_tempco_dec = 5;
-
-	/* Special settings for spur affected channels */
-	if (lo_freq == 5510) {
-		loop_band = 340;
-		rfpll_vco_cvar_dec = 8;
-	}
-	else if (lo_freq == 5590) {
-		loop_band = 300;
-		rfpll_vco_cvar_dec = 6;
-	}
 	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_VCO_CVAR, rfpll_vco_cvar_dec);
 	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_VCO_ALC_REF_CTRL, rfpll_vco_ALC_ref_ctrl_dec);
 	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_VCO_BIAS_MODE, rfpll_vco_bias_mode_dec);
@@ -1042,12 +1027,12 @@ phy_ac_radio20704_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 		NF32, NF0, NF26);
 	dcv_fx = temp_32 + temp_32_1;
 
-	/* VCO Frequency: 3453 < f < 3883 in (0,12,20)
+	/* VCO Frequency: 3453 < f < 4125 in (0.13.19)
 	 * Kvco_const = 0.000722
 	 * Kvco = (Kvco_const * VCO_frequency)**3 * dCv
 	 * Kvco in <0.6.26> ( 31.97 < Kvco < 35.96 )
 	 */
-	temp_32 = (uint32)math_fp_mult_64(KVCO_CONST_FX, vco_freq_fx, NF32, NF20, NF26);
+	temp_32 = (uint32)math_fp_mult_64(KVCO_CONST_FX, vco_freq_fx, NF32, NF19, NF26);
 	temp_32_1 = (uint32)math_fp_mult_64(temp_32, temp_32, NF26, NF26, NF26);
 	temp_32 = (uint32)math_fp_mult_64(temp_32, temp_32_1, NF26, NF26, NF26);
 	kvco_fx = (uint32)math_fp_mult_64(temp_32, dcv_fx, NF26, NF26, NF26);
@@ -1226,107 +1211,98 @@ phy_ac_radio20704_pll_config_ch_dep_calc(phy_info_t *pi, uint32 lo_freq,
 	PLL_CONFIG_20704_VAL_ENTRY(pll, RFPLL_CP_IOFF, rfpll_cp_ioff_ideal);
 	/* ------------------------------------------------------------------- */
 
+	/* Write computed values to PLL registers */
+	phy_ac_radio20704_write_pll_config(pi, pll);
+
 #if DBG_PLL != 0
-		print_pll_config_20704(pll, lo_freq, loop_band, icp_fx);
+	print_pll_config_20704(pi, pll, pll->xtal_fx, lo_freq,
+			loop_band, vco_freq_fx, kvco_fx, icp_fx);
 #endif /* DBG_PLL */
+
+	/* Turn on logen_top and logen_vcobuf */
+	MOD_RADIO_PLLREG_20704(pi, LOGEN_REG0, 0, logen_pu, 1);
+	MOD_RADIO_PLLREG_20704(pi, LOGEN_REG0, 0, logen_vcobuf_pu, 1);
 }
 
 #if DBG_PLL != 0
 static void
-print_pll_config_20704(pll_config_20704_tbl_t *pll, uint32 lo_freq, uint32 loop_bw, uint32 icp_fx)
+print_pll_config_20704(phy_info_t *pi, pll_config_20704_tbl_t *pll,
+		uint32 xtal_freq, uint32 lo_freq, uint32 loop_bw, uint32 vco_freq_fx,
+		uint32 kvco_fx, uint32 icp_fx)
 {
 	printf("------------------------------------------------------------\n");
-	printf("\nLO_Freq = %d MHz\n", lo_freq);
-	printf("\nLoopFilter_bandwidth = %d kHz\n", loop_bw);
-	printf("\nIcp_fx = %u (0.16.16 format)\n", icp_fx);
-	printf("\nRegister Definition (upper):\n");
+	printf("F_xtal = %d MHz (0.8.24 format)\n", xtal_freq);
+	printf("F_LO = %d MHz\n", lo_freq);
+	printf("F_vco = %u MHz (0.13.19 format)\n", vco_freq_fx);
+	printf("BW = %d kHz\n", loop_bw);
+	printf("Kvco = %u MHz/V (0.6.26 format)\n", kvco_fx);
+	printf("Icp = %u mA (0.16.16 format)\n", icp_fx);
 	printf("------------------------------------------------------------\n");
 
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_DELAYEND);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_DELAYSTARTCOLD);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_DELAYSTARTWARM);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_XTALCOUNT);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_DELTAPLLVAL);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_ERRORTHRES);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FASTSWITCH);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FIXMSB);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FOURTHMESEN);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_INITCAPA);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_INITCAPB);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_NORMCOUNTLEFT);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_NORMCOUNTRIGHT);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_PAUSECNT);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_ROUNDLSB);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_TARGETCOUNTBASE);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_TARGETCOUNTCENTER);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_OFFSETIN);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_PLL_VAL);
-
-	printf("\nother VCOCAL register (not channel/XTAL dependent):\n");
-	printf("------------------------------------------------------------\n");
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_SLOPEIN);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_UPDATESEL);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_CALCAPRBMODE);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_TESTVCOCNT);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FORCE_CAPS_OVR);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FORCE_CAPS_OVRVAL);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FAST_SETTLE_OVR);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FAST_SETTLE_OVRVAL);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FORCE_VCTRL_OVR);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FORCE_VCTRL_OVRVAL);
-
-	printf("\nVCOCAL register (required by coupled VCOs):\n");
-	printf("------------------------------------------------------------\n");
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_ENABLECOUPLING);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_COUPLINGMODE);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_SWAPVCO12);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_MIDCODESEL);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_COUPLTHRES);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_COUPLTHRES2);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_SECONDMESEN);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_UPDATESELCOUP);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_COUPLINGIN);
-
-	printf("\nVCOCAL register (optional for coupled VCOs):\n");
-	printf("------------------------------------------------------------\n");
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FORCE_CAPS2_OVR);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FORCE_CAPS2_OVRVAL);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FORCE_AUX1_OVR);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FORCE_AUX1_OVRVAL);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FORCE_AUX2_OVR);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCOCAL_FORCE_AUX2_OVRVAL);
-
-	printf("\nVCO register:\n");
-	printf("------------------------------------------------------------\n");
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCO_CORE1_EN);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCO_CORE2_EN);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCO_PREFER);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCO_CAP_MODE);
-
-	printf("\nFract-N (Sigma-Delta) register:\n");
-	printf("------------------------------------------------------------\n");
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_FRCT_WILD_BASE_HIGH);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_FRCT_WILD_BASE_LOW);
-
-	printf("\nVCO Register (11n vs 11ac mode):\n");
-	printf("------------------------------------------------------------\n");
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCO_CVAR);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCO_ALC_REF_CTRL);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCO_BIAS_MODE);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCO_TEMPCO_DCADJ);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_VCO_TEMPCO);
-
-	printf("\nCP and Loop Filter register:\n");
-	printf("------------------------------------------------------------\n");
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_LF_LF_R2);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_LF_LF_R3);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_LF_LF_RS_CM);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_LF_LF_RF_CM);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_LF_LF_C1);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_LF_LF_C2);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_LF_LF_C3);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_LF_LF_C4);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_CP_KPD_SCALE);
-	PRINT_PLL_CONFIG_20704(pll, RFPLL_CP_IOFF);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_DELAYEND);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_DELAYSTARTCOLD);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_DELAYSTARTWARM);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_XTALCOUNT);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_DELTAPLLVAL);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_ERRORTHRES);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FASTSWITCH);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FIXMSB);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FOURTHMESEN);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_INITCAPA);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_INITCAPB);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_NORMCOUNTLEFT);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_NORMCOUNTRIGHT);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_PAUSECNT);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_ROUNDLSB);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_TARGETCOUNTBASE);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_TARGETCOUNTCENTER);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_OFFSETIN);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_PLL_VAL);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_SLOPEIN);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_UPDATESEL);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_CALCAPRBMODE);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_TESTVCOCNT);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FORCE_CAPS_OVR);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FORCE_CAPS_OVRVAL);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FAST_SETTLE_OVR);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FAST_SETTLE_OVRVAL);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FORCE_VCTRL_OVR);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FORCE_VCTRL_OVRVAL);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_ENABLECOUPLING);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_COUPLINGMODE);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_SWAPVCO12);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_MIDCODESEL);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_COUPLTHRES);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_COUPLTHRES2);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_SECONDMESEN);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_UPDATESELCOUP);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_COUPLINGIN);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FORCE_CAPS2_OVR);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FORCE_CAPS2_OVRVAL);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FORCE_AUX1_OVR);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FORCE_AUX1_OVRVAL);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FORCE_AUX2_OVR);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCOCAL_FORCE_AUX2_OVRVAL);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCO_CORE1_EN);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCO_CORE2_EN);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCO_PREFER);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCO_CAP_MODE);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_FRCT_WILD_BASE_HIGH);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_FRCT_WILD_BASE_LOW);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCO_CVAR);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCO_ALC_REF_CTRL);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCO_BIAS_MODE);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCO_TEMPCO_DCADJ);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_VCO_TEMPCO);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_LF_LF_R2);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_LF_LF_R3);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_LF_LF_RS_CM);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_LF_LF_RF_CM);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_LF_LF_C1);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_LF_LF_C2);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_LF_LF_C3);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_LF_LF_C4);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_CP_KPD_SCALE);
+	PRINT_PLL_CONFIG_20704(pi, pll, RFPLL_CP_IOFF);
 }
 #endif /* DBG_PLL */

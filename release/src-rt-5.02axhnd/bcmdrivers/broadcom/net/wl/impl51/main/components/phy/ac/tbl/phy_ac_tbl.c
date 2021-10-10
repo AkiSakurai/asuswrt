@@ -1,7 +1,7 @@
 /*
  * ACPHY PHYTableInit module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tbl.c 767381 2018-09-07 23:44:46Z $
+ * $Id: phy_ac_tbl.c 776062 2019-06-18 10:20:17Z $
  */
 
 #include <phy_cfg.h>
@@ -318,6 +318,11 @@ BCMATTACHFN(phy_ac_tbl_create_gain_tbls)(phy_ac_tbl_info_t *tbli)
 			}
 		}
 	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20693_ID)) {
+		/*
+		  FIXME: For now, forcing 2G gain tables on B0
+		  based on variant,need to make this compile
+		  time to make it clean
+		*/
 		tx_pwrctrl_tbl = (PHY_IPA_ATTACH_2G_PARAMS(pi)) ? txgain_20693_phyrev12_2g_ipa
 			: (RADIOREV(pi->pubpi->radiorev) == 32 ||
 			RADIOREV(pi->pubpi->radiorev) == 33) ? txgain_20693_phyrev32_2g_epa
@@ -378,6 +383,10 @@ BCMATTACHFN(phy_ac_tbl_create_gain_tbls)(phy_ac_tbl_info_t *tbli)
 			}
 		}
 	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20693_ID)) {
+		/*
+		  FIXME: Forcing B0 gain table in 5G, will clean up
+		  once we have band based flags for iPA/ePA
+		*/
 		tx_pwrctrl_tbl = (PHY_IPA_ATTACH_5G_PARAMS(pi))?
 			(ROUTER_4349(pi))? txgain_20693_phyrev15_5g_ipa_53573:
 			txgain_20693_phyrev12_5g_ipa
@@ -604,7 +613,8 @@ wlc_phy_get_tbl_id_gainctrlbbmultluts(phy_info_t *pi, uint8 core)
 		ACMAJORREV_32(pi->pubpi->phy_rev) ||
 		ACMAJORREV_33(pi->pubpi->phy_rev) ||
 		ACMAJORREV_37(pi->pubpi->phy_rev) ||
-		ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		tbl_id = AC2PHY_TBL_ID_GAINCTRLBBMULTLUTS0;
 	} else {
 		tbl_id = ACPHY_TBL_ID_GAINCTRLBBMULTLUTS;
@@ -627,7 +637,8 @@ wlc_phy_get_tbl_id_estpwrshftluts(phy_info_t *pi, uint8 core)
 	} else if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 		ACMAJORREV_33(pi->pubpi->phy_rev) ||
 		ACMAJORREV_37(pi->pubpi->phy_rev) ||
-		ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		tbl_id = AC2PHY_TBL_ID_ESTPWRSHFTLUTS0;
 	} else {
 		tbl_id = ACPHY_TBL_ID_ESTPWRSHFTLUTS;
@@ -985,9 +996,460 @@ static phy_table_info_t acphy_tables_rev47[] = {
 	{0xff,   0,  0},
 };
 
+static phy_table_info_t acphy_tables_rev128[] = {
+	{1,	0,	128},
+	{2,	0,	40},
+	{3,	1,	256},
+	{4,	0,	256},
+	{5,	1,	22},
+	{6,	0,	72},
+	{7,	0,	1407},
+	{8,	3,	44},
+	{9,	0,	64},
+	{10,	0,	1024},
+	{11,	1,	22},
+	{13,	1,	68},
+	{14,	1,	512},
+	{15,	1,	128},
+	{16,	1,	8784},
+	{17,	2,	512},
+	{18,	1,	1920},
+	{19,	0,	800},
+	{20,	2,	128},
+	{21,	0,	96},
+	{22,	0,	64},
+	{23,	1,	520},
+	{24,	1,	520},
+	{25,	1,	64},
+	{26,	1,	22},
+	{27,	0,	46},
+	{28,	0,	46},
+	{29,	1,	35},
+	{30,	1,	64},
+	{31,	1,	35},
+	{32,	1,	128},
+	{33,	1,	128},
+	{34,	0,	128},
+	{35,	0,	128},
+	{36,	2,	512},
+	{37,	1,	77},
+	{38,	1,	35},
+	{39,	1,	35},
+	{40,	1,	5},
+	{41,	1,	1024},
+	{48,	1,	262144},
+	{49,	0,	64},
+	{50,	0,	160},
+	{51,	0,	256},
+	{52,	0,	256},
+	{53,	1,	256},
+	{54,	1,	128},
+	{55,	0,	16},
+	{56,	0,	128},
+	{57,	0,	96},
+	{58,	0,	24},
+	{59,	0,	11},
+	{60,	0,	77},
+	{61,	1,	16},
+	{64,	1,	128},
+	{65,	1,	128},
+	{66,	0,	128},
+	{67,	0,	128},
+	{68,	0,	119},
+	{69,	0,	119},
+	{70,	1,	22},
+	{71,	1,	512},
+	{72,	1,	128},
+	{73,	1,	1024},
+	{78,	1,	1024},
+	{79,	2,	64},
+	{80,	0,	8},
+	{81,	0,	128},
+	{82,	0,	128},
+	{83,	0,	128},
+	{84,	0,	128},
+	{85,	0,	128},
+	{86,	0,	128},
+	{87,	0,	128},
+	{88,	0,	72},
+	{89,	0,	16},
+	{90,	0,	64},
+	{91,	0,	64},
+	{92,	0,	64},
+	{93,	0,	128},
+	{94,	0,	105},
+	{95,	0,	40},
+	{96,	1,	128},
+	{97,	1,	128},
+	{98,	0,	128},
+	{99,	0,	128},
+	{100,	0,	119},
+	{101,	0,	119},
+	{102,	1,	22},
+	{103,	1,	512},
+	{104,	1,	128},
+	{105,	1,	1024},
+	{110,	1,	1024},
+	{111,	2,	64},
+	{112,	2,	128},
+	{113,	1,	64},
+	{115,	1,	8},
+	{116,	1,	64},
+	{117,	0,	128},
+	{118,	0,	128},
+	{119,	0,	128},
+	{120,	0,	72},
+	{121,	0,	16},
+	{122,	0,	64},
+	{123,	0,	64},
+	{124,	0,	64},
+	{125,	0,	128},
+	{126,	0,	105},
+	{127,	1,	11},
+	{144,	2,	128},
+	{145,	1,	64},
+	{147,	1,	8},
+	{148,	1,	64},
+	{159,	1,	11},
+	{224,	1,	64},
+	{226,	0,	24},
+	{320,	0,	247},
+	{321,	1,	36},
+	{322,	1,	24},
+	{323,	0,	24},
+	{324,	0,	105},
+	{325,	0,	119},
+	{326,	0,	119},
+	{327,	1,	22},
+	{328,	1,	11},
+	{352,	0,	247},
+	{353,	1,	36},
+	{354,	1,	24},
+	{355,	0,	24},
+	{356,	0,	105},
+	{357,	0,	119},
+	{358,	0,	119},
+	{359,	1,	22},
+	{360,	1,	11},
+};
+
+static phy_table_info_t acphy_tables_rev129[] = {
+	{  1,  0,    128},
+	{  2,  0,     58},
+	{  5,  1,    150},
+	{  6,  0,     72},
+	{  7,  1,   1475},
+	{  8,  3,     44},
+	{  9,  0,     64},
+	{ 10,  0,   1024},
+	{ 11,  1,    150},
+	{ 13,  1,     68},
+	{ 15,  2,    128},
+	{ 16,  2,   8784},
+	{ 17,  3,   1024},
+	{ 18,  2,   1920},
+	{ 19,  1,    800},
+	{ 20,  3,    128},
+	{ 21,  0,     96},
+	{ 22,  1,     64},
+	{ 23,  2,    520},
+	{ 25,  2,     64},
+	{ 26,  1,     22},
+	{ 27,  0,     46},
+	{ 28,  0,     46},
+	{ 29,  1,     35},
+	{ 30,  2,     64},
+	{ 31,  1,     35},
+	{ 36,  3,    512},
+	{ 37,  1,     77},
+	{ 38,  1,     35},
+	{ 39,  1,     35},
+	{ 40,  1,      5},
+	{ 41,  2,   1024},
+	{ 45,  2,   1024},
+	{ 46,  2,   4096},
+	{ 47,  3,   2048},
+	{ 48,  2, 262144},
+	{ 49,  2,    512},
+	{ 50,  1,    160},
+	{ 51,  1,    256},
+	{ 52,  1,    256},
+	{ 53,  1,    256},
+	{ 54,  1,    128},
+	{ 55,  0,     16},
+	{ 56,  0,    128},
+	{ 57,  0,     96},
+	{ 58,  0,     24},
+	{ 59,  0,     11},
+	{ 60,  0,     77},
+	{ 61,  2,     16},
+	{ 62,  0,      8},
+	{ 63,  2,    256},
+	{ 64,  2,    128},
+	{ 65,  1,    128},
+	{ 66,  1,    128},
+	{ 67,  0,    128},
+	{ 68,  0,    119},
+	{ 69,  0,    119},
+	{ 70,  1,     22},
+	{ 71,  1,   1024},
+	{ 72,  1,    128},
+	{ 78,  1,   1024},
+	{ 79,  3,     64},
+	{ 80,  1,      8},
+	{ 81,  1,    128},
+	{ 82,  1,    128},
+	{ 83,  1,    128},
+	{ 84,  1,    128},
+	{ 85,  0,    128},
+	{ 86,  0,    128},
+	{ 87,  0,    128},
+	{ 93,  0,    128},
+	{ 94,  0,    105},
+	{ 95,  0,     40},
+	{ 96,  2,    128},
+	{ 97,  1,    128},
+	{ 98,  1,    128},
+	{ 99,  0,    128},
+	{100,  0,    119},
+	{101,  0,    119},
+	{102,  1,     22},
+	{103,  1,   1024},
+	{104,  1,    128},
+	{110,  1,   1024},
+	{111,  3,     64},
+	{112,  3,    128},
+	{113,  2,     64},
+	{115,  1,      8},
+	{116,  1,     64},
+	{117,  0,    128},
+	{118,  0,    128},
+	{119,  0,    128},
+	{125,  0,    128},
+	{126,  0,    105},
+	{127,  1,     11},
+	{128,  2,    128},
+	{129,  1,    128},
+	{130,  1,    128},
+	{131,  0,    128},
+	{132,  0,    119},
+	{133,  0,    119},
+	{134,  1,     22},
+	{135,  1,   1024},
+	{136,  1,    128},
+	{142,  1,   1024},
+	{143,  3,     64},
+	{144,  3,    128},
+	{145,  2,     64},
+	{147,  1,      8},
+	{148,  1,     64},
+	{149,  0,    128},
+	{150,  0,    128},
+	{151,  0,    128},
+	{157,  0,    128},
+	{158,  0,    105},
+	{159,  1,     11},
+	{176,  3,    128},
+	{177,  2,     64},
+	{179,  1,      8},
+	{180,  1,     64},
+	{191,  1,     11},
+	{224,  1,     64},
+	{226,  1,     24},
+	{228,  1,    256},
+	{229,  4,    128},
+	{231,  0,     64},
+	{232,  3,     96},
+	{320,  0,    247},
+	{321,  1,     36},
+	{322,  1,     24},
+	{323,  1,     24},
+	{324,  0,    105},
+	{325,  0,    119},
+	{326,  0,    119},
+	{327,  1,     22},
+	{328,  1,     11},
+	{329,  1,     24},
+	{330,  1,     16},
+	{331,  0,     64},
+	{336,  0,    105},
+	{337,  0,    119},
+	{338,  0,    119},
+	{339,  1,     22},
+	{340,  1,     11},
+	{352,  0,    247},
+	{353,  1,     36},
+	{354,  1,     24},
+	{355,  1,     24},
+	{356,  0,    105},
+	{357,  0,    119},
+	{358,  0,    119},
+	{359,  1,     22},
+	{360,  1,     11},
+	{361,  1,     24},
+	{362,  1,     16},
+	{363,  0,     64},
+	{368,  0,    105},
+	{369,  0,    119},
+	{370,  0,    119},
+	{371,  1,     22},
+	{372,  1,     11},
+	{384,  0,    247},
+	{385,  1,     36},
+	{386,  1,     24},
+	{387,  1,     24},
+	{388,  0,    105},
+	{389,  0,    119},
+	{390,  0,    119},
+	{391,  1,     22},
+	{392,  1,     11},
+	{393,  1,     24},
+	{394,  1,     16},
+	{395,  0,     64},
+	{400,  0,    105},
+	{401,  0,    119},
+	{402,  0,    119},
+	{403,  1,     22},
+	{404,  1,     11},
+};
+
 static phy_table_info_t acphy_tables_rev51[] = {
-	// FIXME63178: need to convert from def(acphy_table_list) in acphydefs_rev51.tcl
-	{0xff,   0,  0},
+	{  2,  0,   58},
+	{  3,  1,  512},
+	{  4,  0,  512},
+	{  5,  1,  150},
+	{  6,  0,   72},
+	{  7,  0, 1475},
+	{  8,  3,   44},
+	{  9,  0,   64},
+	{ 10,  0, 1024},
+	{ 11,  1,  150},
+	{ 13,  1,   68},
+	{ 14,  1,  256},
+	{ 15,  1,  128},
+	{ 16,  1, 8784},
+	{ 17,  2,  256},
+	{ 18,  1, 1920},
+	{ 19,  0,  800},
+	{ 20,  2,  128},
+	{ 21,  0,   96},
+	{ 22,  0,   64},
+	{ 23,  1,  520},
+	{ 24,  1, 1751},
+	{ 25,  1,   64},
+	{ 26,  1,   22},
+	{ 27,  0,   46},
+	{ 28,  0,   46},
+	{ 29,  1,   35},
+	{ 30,  1,   64},
+	{ 31,  1,   35},
+	{ 36,  2,  512},
+	{ 37,  1,   77},
+	{ 38,  1,   35},
+	{ 39,  1,   35},
+	{ 40,  1,    5},
+	{ 41,  1, 1024},
+	{ 42,  1,  160},
+	{ 43,  1,  512},
+	{ 44,  1,  512},
+	{ 45,  1, 1024},
+	{ 46,  1, 4096},
+	{ 47,  2, 2048},
+	{ 49,  1,  512},
+	{ 50,  0,  160},
+	{ 51,  0,  256},
+	{ 52,  0,  256},
+	{ 53,  1,  256},
+	{ 54,  1,  128},
+	{ 55,  0,   16},
+	{ 56,  0,  128},
+	{ 57,  0,   96},
+	{ 58,  0,   24},
+	{ 59,  0,   11},
+	{ 60,  0,   77},
+	{ 61,  1,   16},
+	{ 62,  0,    8},
+	{ 63,  1,  256},
+	{ 64,  1,  128},
+	{ 65,  1,  128},
+	{ 66,  1,  128},
+	{ 67,  0,  128},
+	{ 68,  0,  119},
+	{ 69,  0,  119},
+	{ 70,  1,   22},
+	{ 71,  1, 1024},
+	{ 72,  1,  128},
+	{ 73,  1, 8192},
+	{ 78,  1, 1024},
+	{ 79,  2,   64},
+	{ 80,  0,    8},
+	{ 81,  0,  128},
+	{ 82,  0,  128},
+	{ 83,  0,  128},
+	{ 84,  0,  128},
+	{ 85,  0,  128},
+	{ 86,  0,  128},
+	{ 87,  0,  128},
+	{ 93,  0,  128},
+	{ 94,  0,  105},
+	{ 95,  0,   40},
+	{ 96,  1,  128},
+	{ 97,  1,  128},
+	{ 98,  1,  128},
+	{ 99,  0,  128},
+	{100,  0,  119},
+	{101,  0,  119},
+	{102,  1,   22},
+	{103,  1, 1024},
+	{104,  1,  128},
+	{105,  1, 8192},
+	{110,  1, 1024},
+	{111,  2,   64},
+	{112,  2,  128},
+	{113,  1,   64},
+	{115,  1,    8},
+	{116,  1,   64},
+	{117,  0,  128},
+	{118,  0,  128},
+	{119,  0,  128},
+	{125,  0,  128},
+	{126,  0,  105},
+	{127,  1,   11},
+	{144,  2,  128},
+	{145,  1,   64},
+	{147,  1,    8},
+	{148,  1,   64},
+	{159,  1,   11},
+	{224,  1,   64},
+	{226,  0,   24},
+	{227,  1,  512},
+	{228,  1,  256},
+	{229,  3,  128},
+	{230,  1, 4096},
+	{231,  0,   64},
+	{320,  0,  247},
+	{321,  1,   36},
+	{322,  1,   24},
+	{323,  0,   24},
+	{324,  0,  105},
+	{325,  0,  119},
+	{326,  0,  119},
+	{327,  1,   22},
+	{328,  1,   11},
+	{329,  0,   24},
+	{330,  1,   16},
+	{352,  0,  247},
+	{353,  1,   36},
+	{354,  1,   24},
+	{355,  0,   24},
+	{356,  0,  105},
+	{357,  0,  119},
+	{358,  0,  119},
+	{359,  1,   22},
+	{360,  1,   11},
+	{361,  0,   24},
+	{362,  1,   16},
+	{0xff, 0,    0},
 };
 
 static phy_table_info_t acphy_tables_rev12_rsdb[] = {
@@ -1604,7 +2066,12 @@ phy_ac_tbl_dumptbl(phy_type_tbl_ctx_t *ctx, struct bcmstrbuf *b)
 		ti = acphy_tables_rev47;
 	} else if (ACMAJORREV_51(pi->pubpi->phy_rev)) {
 		ti = acphy_tables_rev51;
+	} else if (ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		ti = acphy_tables_rev128;
+	} else if (ACMAJORREV_129(pi->pubpi->phy_rev)) {
+		ti = acphy_tables_rev129;
 	} else if (ACMAJORREV_37(pi->pubpi->phy_rev)) {
+		// FIXME: add support for 7271 tables
 		ti = acphy_tables_rev33;
 	} else if (ACMAJORREV_4(pi->pubpi->phy_rev)) {
 		uint16 phymode = phy_get_phymode(pi);
@@ -1842,7 +2309,8 @@ WLBANDINITFN(wlc_phy_init_acphy)(phy_ac_tbl_info_t *tbli)
 		if (!ACMAJORREV_32(pi->pubpi->phy_rev) &&
 			!ACMAJORREV_33(pi->pubpi->phy_rev) &&
 			!ACMAJORREV_37(pi->pubpi->phy_rev) &&
-			!ACMAJORREV_47_51(pi->pubpi->phy_rev))
+			!(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev)))
 			tbli->phy_hw_minor_rev = 0;
 	}
 
@@ -1856,7 +2324,8 @@ WLBANDINITFN(wlc_phy_init_acphy)(phy_ac_tbl_info_t *tbli)
 	if (ACMAJORREV_5(pi->pubpi->phy_rev) ||
 		(ACMAJORREV_2(pi->pubpi->phy_rev) && !ACMINORREV_0(pi)) ||
 		ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-		ACMAJORREV_37(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		ACMAJORREV_37(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		ACPHY_ENABLE_STALL(pi, 0);
 	}
 
@@ -1868,7 +2337,8 @@ WLBANDINITFN(wlc_phy_init_acphy)(phy_ac_tbl_info_t *tbli)
 	phyver = READ_PHYREGFLD(pi, Version, version);
 	if (ACMAJORREV_5(pi->pubpi->phy_rev) || ACMAJORREV_0(pi->pubpi->phy_rev) ||
 		ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-		ACMAJORREV_37(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		ACMAJORREV_37(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		if (phyver == 0) {
 			/* 4360a0 */
 			if (tbli->rfldo == 0) {
@@ -1889,7 +2359,8 @@ WLBANDINITFN(wlc_phy_init_acphy)(phy_ac_tbl_info_t *tbli)
 				ACMAJORREV_32(pi->pubpi->phy_rev) ||
 				ACMAJORREV_33(pi->pubpi->phy_rev) ||
 				ACMAJORREV_37(pi->pubpi->phy_rev) ||
-				ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+				(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 			rfldo = rfldo << 20;
 			si_pmu_regcontrol(pi->sh->sih, 0, 0x1f00000, rfldo);
 		} else {
@@ -1941,7 +2412,7 @@ WLBANDINITFN(wlc_phy_init_acphy)(phy_ac_tbl_info_t *tbli)
 		}
 	}
 
-	if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 		if (paldo_setting != -1) {
 			si_t *sih;
 			sih = (si_t*)pi->sh->sih;
@@ -1958,6 +2429,10 @@ WLBANDINITFN(wlc_phy_init_acphy)(phy_ac_tbl_info_t *tbli)
 	si_gpiocontrol(pi->sh->sih, 0xffff, 0, GPIO_DRV_PRIORITY);
 
 	if (BCM43602_CHIP(pi->sh->chip)) {
+		/* JIRA:HW43602-197 WAR:
+		 * start with disabling PAVREF programming by ucode;
+		 * it will be enabled for MCH2/MCH5 boards later on
+		 */
 		W_REG(pi->sh->osh, D11_PSM_INTSEL_1(pi), 0x0);
 	}
 
@@ -2062,14 +2537,16 @@ WLBANDINITFN(wlc_phy_init_acphy)(phy_ac_tbl_info_t *tbli)
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 		ACMAJORREV_33(pi->pubpi->phy_rev) ||
 		ACMAJORREV_37(pi->pubpi->phy_rev) ||
-		ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		txbf_stall_val = READ_PHYREGFLD(pi, RxFeCtrl1, disable_stalls);
 		ACPHY_DISABLE_STALL(pi);
 
 		MOD_PHYREG(pi, BfrMuConfigReg0, useTxbfIndexAddr, 0);
 		MOD_PHYREG(pi, BfeMuConfigReg0, useTxbfIndexAddr, 0);
 		//no need for 43684
-		if (!ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		if (!(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 			WRITE_PHYREG(pi, BfrMuConfigReg1, 0x1000);
 			WRITE_PHYREG(pi, BfmMuConfig3, 0x1000);
 			WRITE_PHYREG(pi, BfeMuConfigReg1, 0x1000);
@@ -2104,7 +2581,8 @@ WLBANDINITFN(wlc_phy_init_acphy)(phy_ac_tbl_info_t *tbli)
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_33(pi->pubpi->phy_rev) ||
 	    ACMAJORREV_37(pi->pubpi->phy_rev) ||
-	    ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	    (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		MOD_PHYREG(pi, RfseqMode, Trigger_override, 0);
 	}
 }
@@ -2120,7 +2598,8 @@ WLBANDINITFN(phy_ac_set_decode_timeouts)(phy_info_t *pi)
 	    (ACMAJORREV_1(pi->pubpi->phy_rev) && ACMINORREV_2(pi)) ||
 		(ACMAJORREV_4(pi->pubpi->phy_rev)) ||
 	    ACMAJORREV_5(pi->pubpi->phy_rev) || ACMAJORREV_32(pi->pubpi->phy_rev) ||
-	    ACMAJORREV_33(pi->pubpi->phy_rev) || ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	    ACMAJORREV_33(pi->pubpi->phy_rev) || (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 #else /* defined(BCMINTERNAL) || defined(WLTEST) */
 	/* For customer builds we like to enable PHY timeouts that will catch when
 	 * pktproc is hanging and reset the PHY
@@ -2139,7 +2618,7 @@ WLBANDINITFN(phy_ac_set_decode_timeouts)(phy_info_t *pi)
 	}
 
 	/* WAR: Enable timeout for 4347A0 for paydecode pktproc hang state */
-	if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 		ACPHY_REG_LIST_START
 			WRITE_PHYREG_ENTRY(pi, ofdmpaydecodetimeoutlen, 0x7d0)
 			/* 2000 * 25 us = 50 ms */
@@ -2186,6 +2665,9 @@ wlc_phy_ac_caps(phy_info_t *pi)
 		cap |= wlc_phy_ac_ulb_2P5_capable(pi) ? PHY_CAP_2P5MHZ : 0;
 	}
 #endif /* WL11ULB */
+
+	cap |= (PHY_CAP_HE & pi_ac->phy_caps);
+
 	return cap;
 }
 
@@ -2194,7 +2676,8 @@ uint32
 wlc_phy_ac_caps1(phy_info_t *pi)
 {
 	uint32 cap = 0;
-	if (ACREV_GE(pi->pubpi->phy_rev, HECAP_FIRST_ACREV))
+	if (ACREV_GE(pi->pubpi->phy_rev, HECAP_FIRST_ACREV) &&
+		!(ACMAJORREV_128(pi->pubpi->phy_rev)))
 		cap = pi->u.pi_acphy->phy_caps1;
 
 	return cap;
@@ -2412,14 +2895,16 @@ void wlc_phy_table_write_acphy_dac_war(phy_info_t *pi, uint32 id, uint32 len, ui
 		dacclk_saved = wlc_phy_poweron_dac_clocks(pi, core, &orig_dac_clk_pu,
 			&orig_ovr_dac_clk_pu);
 	}
-	if (ACMAJORREV_44(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_44(pi->pubpi->phy_rev) || ACMAJORREV_51_129(pi->pubpi->phy_rev) ||
+			ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		MOD_PHYREGCE(pi, wbcal_ctl_21, core, wb_mem_access_sel, 0);
 		MOD_PHYREGCE(pi, papdEpsilonTable, core, mem_access_sel, 0);
 	}
 	/* Now Call table write */
 	wlc_phy_table_write_acphy(pi, id, len, offset, width, data);
 
-	if (ACMAJORREV_44(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_44(pi->pubpi->phy_rev) || ACMAJORREV_51_129(pi->pubpi->phy_rev) ||
+			ACMAJORREV_128(pi->pubpi->phy_rev)) {
 		MOD_PHYREGCE(pi, wbcal_ctl_21, core, wb_mem_access_sel, 1);
 		MOD_PHYREGCE(pi, papdEpsilonTable, core, mem_access_sel, 1);
 	}
@@ -2454,8 +2939,18 @@ void wlc_phy_table_read_acphy_dac_war(phy_info_t *pi, uint32 id, uint32 len, uin
 			&orig_ovr_dac_clk_pu);
 	}
 
+	if (ACMAJORREV_51_129(pi->pubpi->phy_rev) || ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		MOD_PHYREGCE(pi, wbcal_ctl_21, core, wb_mem_access_sel, 0);
+		MOD_PHYREGCE(pi, papdEpsilonTable, core, mem_access_sel, 0);
+	}
+
 	/* Now Call table read */
 	wlc_phy_table_read_acphy(pi, id, len, offset, width, data);
+
+	if (ACMAJORREV_51_129(pi->pubpi->phy_rev) || ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		MOD_PHYREGCE(pi, wbcal_ctl_21, core, wb_mem_access_sel, 1);
+		MOD_PHYREGCE(pi, papdEpsilonTable, core, mem_access_sel, 1);
+	}
 
 	/* Restore dac clocks after the table access */
 	if (dacclk_saved == TRUE) {
@@ -2822,6 +3317,7 @@ wlc_phy_get_txgain_tbl_20698(phy_info_t *pi)
 			acphy28nm_txgain_epa_5g_p5_20698a0_rev0;
 		break;
 	case 2:
+	case 3:
 		tx_pwrctrl_tbl = CHSPEC_IS2G(pi->radio_chanspec) ?
 			acphy28nm_txgain_epa_2g_p5_20698b0_rev2:
 			acphy28nm_txgain_epa_5g_p5_20698b0_rev2;
@@ -2846,6 +3342,15 @@ wlc_phy_get_txgain_tbl_20704(phy_info_t *pi)
 	switch (RADIOREV(pi->pubpi->radiorev)) {
 	case 0:
 		tx_pwrctrl_tbl = CHSPEC_IS2G(pi->radio_chanspec) ?
+			PHY_IPA(pi) ? acphy28nm_txgain_ipa_2g_p5_20704a0_rev0:
+			acphy28nm_txgain_epa_2g_p5_20704a0_rev0:
+			acphy28nm_txgain_epa_5g_p5_20704a0_rev0;
+		break;
+	case 1:
+	case 2:
+	case 3:
+		tx_pwrctrl_tbl = CHSPEC_IS2G(pi->radio_chanspec) ?
+			PHY_IPA(pi) ? acphy28nm_txgain_ipa_2g_p5_20704a0_rev1:
 			acphy28nm_txgain_epa_2g_p5_20704a0_rev0:
 			acphy28nm_txgain_epa_5g_p5_20704a0_rev0;
 		break;
@@ -2859,48 +3364,57 @@ wlc_phy_get_txgain_tbl_20704(phy_info_t *pi)
 }
 
 static const uint16 *
-wlc_phy_get_txgain_tbl_20697(phy_info_t *pi)
+wlc_phy_get_txgain_tbl_20707(phy_info_t *pi)
 {
 	const uint16 *tx_pwrctrl_tbl = NULL;
-	uint16 idx, dac_attn, mix_gm_gc;
 
-	ASSERT((RADIOID_IS(pi->pubpi->radioid, BCM20697_ID)));
+	ASSERT((RADIOID_IS(pi->pubpi->radioid, BCM20707_ID)));
 
-	if (pi->pubpi->slice == DUALMAC_AUX) {
-		switch (RADIOREV_AUX(pi->pubpi->radiorev)) {
-			case 7:
-				tx_pwrctrl_tbl = acphy28nm_txgain_aux_epa_2g_p5_20697a0_rev7;
-				break;
-			case 9:
-				tx_pwrctrl_tbl = acphy28nm_txgain_aux_ipa_2g_p5_20697a0_rev9;
-				break;
-			default:
-				tx_pwrctrl_tbl = acphy28nm_txgain_aux_epa_2g_p5_20697a0_rev7;
-				break;
+	/* Choose the right table to use */
+	switch (RADIOREV(pi->pubpi->radiorev)) {
+	case 0:
+		if (CHSPEC_IS2G(pi->radio_chanspec)) {
+			tx_pwrctrl_tbl = PHY_IPA(pi) ? acphy28nm_txgain_ipa_2g_p5_20707a0_rev0:
+				acphy28nm_txgain_epa_2g_p5_20707a0_rev0;
+		} else {
+			tx_pwrctrl_tbl = PHY_IPA(pi) ? acphy28nm_txgain_ipa_5g_p5_20707a0_rev0:
+				acphy28nm_txgain_epa_5g_p5_20707a0_rev0;
 		}
-	} else {
-		switch (RADIOREV(pi->pubpi->radiorev)) {
-			case 6:
-				tx_pwrctrl_tbl = acphy28nm_txgain_main_epa_5g_p5_20697a0_rev6;
-				break;
-			default:
-				tx_pwrctrl_tbl = acphy28nm_txgain_main_epa_5g_p5_20697a0_rev6;
-		}
+		break;
+	default:
+		PHY_ERROR(("wl%d: %s: Unsupported radio revision %d\n",
+			pi->sh->unit, __FUNCTION__, RADIOREV(pi->pubpi->radiorev)));
+		ASSERT(FALSE);
 	}
 
-	/* Sanitizing IPA gain table entries */
-	if (tx_pwrctrl_tbl != NULL && PHY_IPA(pi)) {
-		for (idx = 0; idx < 128; idx++) {
-			dac_attn = ((tx_pwrctrl_tbl[3*idx] >> 8) & 0xf);
-			mix_gm_gc = ((tx_pwrctrl_tbl[3*idx+2] >> 4) & 0xf);
-			if ((dac_attn != IPA_20697_DAC_ATTN_VAL) &&
-				(mix_gm_gc > IPA_20697_MAX_MIX_GM_GC_VAL)) {
-				PHY_ERROR(("%s: Invalid dac_attn(%d) or mx_gm_gc(%d) value\n",
-					__FUNCTION__, dac_attn, mix_gm_gc));
-				ASSERT(0);
-			}
+	return tx_pwrctrl_tbl;
+}
+
+static const uint16 *
+wlc_phy_get_txgain_tbl_20709(phy_info_t *pi)
+{
+	const uint16 *tx_pwrctrl_tbl = NULL;
+
+	ASSERT((RADIOID_IS(pi->pubpi->radioid, BCM20709_ID)));
+
+	/* Choose the right table to use */
+	switch (RADIOREV(pi->pubpi->radiorev)) {
+	case 0:
+	case 1:
+		if (CHSPEC_IS2G(pi->radio_chanspec)) {
+			tx_pwrctrl_tbl = PHY_IPA(pi) ? acphy28nm_txgain_ipa_2g_p5_20709a0_rev0:
+				acphy28nm_txgain_epa_2g_p5_20709a0_rev0;
+		} else {
+			tx_pwrctrl_tbl = PHY_IPA(pi) ? acphy28nm_txgain_ipa_5g_p5_20709a0_rev0:
+				acphy28nm_txgain_epa_5g_p5_20709a0_rev0;
 		}
+		break;
+	default:
+		PHY_ERROR(("wl%d: %s: Unsupported radio revision %d\n",
+			pi->sh->unit, __FUNCTION__, RADIOREV(pi->pubpi->radiorev)));
+		ASSERT(FALSE);
 	}
+
 	return tx_pwrctrl_tbl;
 }
 
@@ -2951,12 +3465,14 @@ wlc_phy_ac_gains_load(phy_ac_tbl_info_t *tbli)
 		tx_pwrctrl_tbl = wlc_phy_get_txgain_tbl_20695(pi);
 	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20696_ID)) {
 		tx_pwrctrl_tbl = wlc_phy_get_txgain_tbl_20696(pi);
-	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20697_ID)) {
-		tx_pwrctrl_tbl = wlc_phy_get_txgain_tbl_20697(pi);
 	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20698_ID)) {
 		tx_pwrctrl_tbl = wlc_phy_get_txgain_tbl_20698(pi);
 	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20704_ID)) {
 		tx_pwrctrl_tbl = wlc_phy_get_txgain_tbl_20704(pi);
+	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20707_ID)) {
+		tx_pwrctrl_tbl = wlc_phy_get_txgain_tbl_20707(pi);
+	} else if (RADIOID_IS(pi->pubpi->radioid, BCM20709_ID)) {
+		tx_pwrctrl_tbl = wlc_phy_get_txgain_tbl_20709(pi);
 	} else {
 		PHY_ERROR(("%s: Unsupported Radio!: 0x%x\n", __FUNCTION__,
 			RADIOID(pi->pubpi->radioid)));

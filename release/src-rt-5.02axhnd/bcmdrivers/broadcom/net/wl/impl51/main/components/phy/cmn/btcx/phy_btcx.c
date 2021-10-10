@@ -1,7 +1,7 @@
 /*
  * BlueToothCoExistence module implementation.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_btcx.c 691048 2017-03-20 16:47:17Z $
+ * $Id: phy_btcx.c 776091 2019-06-18 12:31:18Z $
  */
 
 #include <phy_cfg.h>
@@ -64,7 +64,9 @@
 struct phy_btcx_priv_info {
 	phy_info_t *pi;
 	phy_type_btcx_fns_t	*fns; /* PHY specific function ptrs */
-	uint16	mhf1_cache;
+	uint16	mhf1_cache;		/* backup copy of coex enablement bits */
+	bool	override_enab;		/* 1=wlc_phy_btcx_override_enable() in effect */
+	wlc_phy_btc_config_t *phy_btc_config;	/* config info sync'd over from wlc_btcx */
 };
 
 /* module private states memory layout */
@@ -81,7 +83,7 @@ static bool phy_btcx_wd(phy_wd_ctx_t *ctx);
 static bool wlc_phy_btc_adjust(phy_wd_ctx_t *ctx);
 static int phy_btcx_init(phy_init_ctx_t *ctx);
 
-#define BTCX_WAIT_MAX_US 5000
+#define BTCX_WAIT_MAX_US	5000
 
 /* UCM Support */
 #ifdef WL_UCM
@@ -101,6 +103,7 @@ phy_btcx_info_t *
 BCMATTACHFN(phy_btcx_attach)(phy_info_t *pi)
 {
 	phy_btcx_info_t *info;
+	wlc_phy_btc_config_t *config;
 
 	PHY_TRACE(("%s\n", __FUNCTION__));
 
@@ -109,8 +112,13 @@ BCMATTACHFN(phy_btcx_attach)(phy_info_t *pi)
 		PHY_ERROR(("%s: phy_malloc failed\n", __FUNCTION__));
 		goto fail;
 	}
+	if ((config = phy_malloc(pi, sizeof(wlc_phy_btc_config_t))) == NULL) {
+		PHY_ERROR(("%s: phy_malloc failed\n", __FUNCTION__));
+		goto fail;
+	}
 	info->priv = &((phy_btcx_mem_t *)info)->priv;
 	info->priv->pi = pi;
+	info->priv->phy_btc_config = config;
 	info->priv->fns = &((phy_btcx_mem_t *)info)->fns;
 	info->data = &((phy_btcx_mem_t *)info)->data;
 #ifdef WL_UCM
@@ -157,6 +165,10 @@ BCMATTACHFN(phy_btcx_detach)(phy_btcx_info_t *info)
 
 	pi = info->priv->pi;
 
+	if (info->priv->phy_btc_config) {
+		phy_mfree(pi, info->priv->phy_btc_config,
+			sizeof(wlc_phy_btc_config_t));
+	}
 	phy_mfree(pi, info, sizeof(phy_btcx_mem_t));
 }
 
@@ -282,6 +294,32 @@ wlc_phy_btc_adjust(phy_wd_ctx_t *ctx)
 	return TRUE;
 }
 
+bool
+phy_btcx_is_eci_coex_enabled(phy_info_t *pi)
+{
+	phy_btcx_info_t *btcxi = pi->btcxi;
+
+	return (btcxi->priv->phy_btc_config->eci_coex && CHSPEC_IS2G(pi->radio_chanspec) &&
+		wlapi_bmac_btc_mode_get(pi->sh->physhim) != 0);
+}
+
+bool
+phy_btcx_is_sw_coex_enabled(phy_info_t *pi)
+{
+	phy_btcx_info_t *btcxi = pi->btcxi;
+
+	return (btcxi->priv->phy_btc_config->sw_coex && CHSPEC_IS2G(pi->radio_chanspec) &&
+		wlapi_bmac_btc_mode_get(pi->sh->physhim) != 0);
+}
+
+bool
+phy_btcx_is_override_enabled(phy_info_t *pi)
+{
+	phy_btcx_info_t *btcxi = pi->btcxi;
+
+	return btcxi->priv->override_enab;
+}
+
 void
 phy_btcx_disable_arbiter(phy_btcx_info_t *bi)
 {
@@ -289,21 +327,24 @@ phy_btcx_disable_arbiter(phy_btcx_info_t *bi)
 
 	PHY_TRACE(("%s\n", __FUNCTION__));
 	ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
-	/* Enable manual BTCX mode */
-	OR_REG(pi->sh->osh, D11_BTCX_CTL(pi),
-		BTCX_CTRL_EN | BTCX_CTRL_SW);
-	/* Reenable WLAN priority, and then wait for BT to finish */
-	OR_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi), BTCX_TRANS_TXCONF);
-	/* While RF_ACTIVE is asserted... */
-	SPINWAIT(R_REG(pi->sh->osh, D11_BTCX_STAT(pi)) & BTCX_STAT_RA,
-		BTCX_WAIT_MAX_US);
 
-	if (R_REG(pi->sh->osh, D11_BTCX_STAT(pi)) & BTCX_STAT_RA) {
-		PHY_INFORM(("wl%d: %s: BT still active ... overriding prisel\n",
+	if (phy_btcx_is_eci_coex_enabled(pi)) {
+		/* Enable manual BTCX mode */
+		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi),
+		       BTCX_CTRL_EN | BTCX_CTRL_SW);
+		/* Reenable WLAN priority, and then wait for BT to finish */
+		OR_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi), BTCX_TRANS_TXCONF);
+		/* While RF_ACTIVE is asserted... */
+		SPINWAIT(R_REG(pi->sh->osh, D11_BTCX_STAT(pi)) & BTCX_STAT_RA,
+				BTCX_WAIT_MAX_US);
+
+		if (R_REG(pi->sh->osh, D11_BTCX_STAT(pi)) & BTCX_STAT_RA) {
+			PHY_INFORM(("wl%d: %s: BT still active ... overriding prisel\n",
 				pi->sh->unit, __FUNCTION__));
+		}
+		OR_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
+		       BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL);
 	}
-	OR_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
-		BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL);
 
 	/* Cache the MHF state and disable BT coex */
 	bi->priv->mhf1_cache = wlapi_bmac_mhf_get(pi->sh->physhim, MHF1,
@@ -319,15 +360,20 @@ phy_btcx_enable_arbiter(phy_btcx_info_t *bi)
 
 	PHY_TRACE(("%s\n", __FUNCTION__));
 	ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
-	/* Enable manual BTCX mode */
-	OR_REG(pi->sh->osh, D11_BTCX_CTL(pi),
-		BTCX_CTRL_EN | BTCX_CTRL_SW);
-	/* Force BT priority */
-	AND_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
-		~(BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL));
+
+	if (phy_btcx_is_eci_coex_enabled(pi)) {
+		/* Enable manual BTCX mode */
+		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi),
+		       BTCX_CTRL_EN | BTCX_CTRL_SW);
+		/* Force BT priority */
+		AND_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
+			~(BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL));
+	}
+
 	/* Enable BT coex */
 	wlapi_bmac_mhf(pi->sh->physhim, MHF1, MHF1_WLAN_CRITICAL | MHF1_BTCOEXIST,
-		bi->priv->mhf1_cache, WLC_BAND_2G);
+		bi->priv->mhf1_cache | (bi->priv->phy_btc_config->mode ? MHF1_BTCOEXIST : 0),
+		WLC_BAND_2G);
 }
 
 static void phy_btcx_override_enable_legacy(phy_info_t *pi)
@@ -340,17 +386,13 @@ static void phy_btcx_override_enable_legacy(phy_info_t *pi)
 
 		wlapi_coex_flush_a2dp_buffers(pi->sh->physhim);
 
-		/* Enable manual BTCX mode */
-		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi),
-			BTCX_CTRL_EN | BTCX_CTRL_SW);
 		/* Force WLAN antenna and priority */
-		OR_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
-			BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL);
+		phy_btcx_override_enable(pi);
 	}
 }
 
 void
-wlc_btcx_override_enable(phy_info_t *pi)
+wlc_phy_btcx_override_enable(phy_info_t *pi)
 {
 	phy_btcx_info_t *btcxi = pi->btcxi;
 	phy_type_btcx_fns_t *fns = btcxi->priv->fns;
@@ -364,18 +406,38 @@ wlc_btcx_override_enable(phy_info_t *pi)
 	}
 }
 
+void
+phy_btcx_override_enable(phy_info_t *pi)
+{
+	phy_btcx_info_t *btcxi = pi->btcxi;
+	wlc_phy_btc_config_t *btc_config = btcxi->priv->phy_btc_config;
+
+	/* Ucode had better be suspended when we mess with BTCX regs directly */
+	ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
+	if (phy_btcx_is_sw_coex_enabled(pi)) {
+		uint32 gi = (~btc_config->gpio_out) & btc_config->gpio_mask;
+		/* Take control of the GPIO */
+		si_gpiocontrol(pi->sh->sih, btc_config->gpio_mask, gi, GPIO_DRV_PRIORITY);
+		/* Deny BT */
+		si_gpioout(pi->sh->sih, (1 << (btc_config->btc_wlan_gpio - 1)),
+			(1 << (btc_config->btc_wlan_gpio - 1)), GPIO_DRV_PRIORITY);
+	} else if (phy_btcx_is_eci_coex_enabled(pi)) {
+		/* Enable manual BTCX mode */
+		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi),
+		       BTCX_CTRL_EN | BTCX_CTRL_SW);
+		/* Force WLAN antenna and priority */
+		OR_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
+		       BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL);
+	}
+	btcxi->priv->override_enab = 1;
+}
+
 static void phy_btcx_override_disable_legacy(phy_info_t *pi)
 {
 	if ((pi->sh->machwcap & MCAP_BTCX_SUP(pi->sh->corerev)) &&
 		CHSPEC_IS2G(pi->radio_chanspec)) {
-		/* Ucode better be suspended when we mess with BTCX regs directly */
-		ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
-		/* Enable manual BTCX mode */
-		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi),
-			BTCX_CTRL_EN | BTCX_CTRL_SW);
 		/* Force BT priority */
-		AND_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
-			~(BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL));
+		phy_btcx_override_disable(pi);
 	}
 }
 
@@ -392,6 +454,52 @@ wlc_phy_btcx_override_disable(phy_info_t *pi)
 	} else {
 		phy_btcx_override_disable_legacy(pi);
 	}
+}
+
+void
+phy_btcx_override_disable(phy_info_t *pi)
+{
+	phy_btcx_info_t *btcxi = pi->btcxi;
+	wlc_phy_btc_config_t *btc_config = btcxi->priv->phy_btc_config;
+
+	/* Ucode had better be suspended when we mess with BTCX regs directly */
+	ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
+	if (phy_btcx_is_sw_coex_enabled(pi)) {
+		/* Release control of the GPIO */
+		si_gpiocontrol(pi->sh->sih, btc_config->gpio_mask, btc_config->gpio_mask,
+			GPIO_DRV_PRIORITY);
+	} else if (phy_btcx_is_eci_coex_enabled(pi)) {
+		/* Enable manual BTCX mode */
+		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi), BTCX_CTRL_EN | BTCX_CTRL_SW);
+		/* Force BT priority */
+		AND_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
+			~(BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL));
+	}
+	btcxi->priv->override_enab = 0;
+}
+
+void
+phy_btcx_invert_prisel_polarity(phy_info_t *pi, int8 state)
+{
+	uint16 btcx_ctrl;
+
+	if (phy_btcx_is_eci_coex_enabled(pi)) {
+		btcx_ctrl = R_REG(pi->sh->osh, D11_BTCX_CTL(pi));
+		if (state == ON) { /* invert prisel polarity */
+			W_REG(pi->sh->osh, D11_BTCX_CTL(pi),
+				btcx_ctrl | BTCX_CTRL_PRI_POL);
+		} else {
+			W_REG(pi->sh->osh, D11_BTCX_CTL(pi),
+				btcx_ctrl & ~BTCX_CTRL_PRI_POL);
+		}
+	}
+}
+
+void
+phy_btcx_update_config(phy_btcx_info_t *btcxi, wlc_phy_btc_config_t *config)
+{
+	wlc_phy_btc_config_t *btc_config = btcxi->priv->phy_btc_config;
+	memcpy(btc_config, config, sizeof(wlc_phy_btc_config_t));
 }
 
 void

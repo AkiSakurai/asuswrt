@@ -5,7 +5,7 @@
  * THIS IS A GENERATED FILE - DO NOT EDIT
  * Generated on Wed Aug 30 17:06:38 PDT 2006
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -1039,6 +1039,11 @@ CONST uint32 frame_struct_rev3[] = {
 	0x00000000,
 };
 
+/* PR 87670: compact initialization for sparse tables, ie, with large consecutive blocks of 0s
+ *    1. list only non-zero init values in initialization data array
+ *    2. list the starting offset of blocks of non-zero init values, together with the length
+ *       of the block
+ */
 CONST phytbl_init_t frame_struct_rev8_offsets[] = {
 	{ 0x000, 0x008 }, /* starting offset, num of non-zero init values */
 	{ 0x010, 0x008 },
@@ -4233,6 +4238,11 @@ CONST uint32 pltlut_tbl_rev3[] = {
 	0x76430521,
 };
 
+/* PR 87670: compact initialization for sparse tables, ie, with large consecutive blocks of 0s
+ *    1. list only non-zero init values in initialization data array
+ *    2. list the starting offset of blocks of non-zero init values, together with the length
+ *       of the block
+ */
 CONST uint8 chanest_tbl_rev3_offsets[] = {
 	0x00,
 	0x08,
@@ -6091,6 +6101,11 @@ CONST uint32 papd_cal_scalars_tbl_core1_rev3[] = {
 	0x002606a4,
 };
 
+/* PR 87670: compact initialization for sparse tables, ie, with large consecutive blocks of 0s
+ *    1. list only non-zero init values in initialization data array
+ *    2. list the starting offset of blocks of non-zero init values, together with the length
+ *       of the block
+ */
 CONST phytbl_init_t tmap_tbl_rev7_offsets[] = {
 	{ 0x000, 0x50 }, /* starting offset, num of non-zero init values */
 	{ 0x080, 0xFF },
@@ -7179,6 +7194,9 @@ CONST mimophytbl_info_t mimophytbl_info_rev7[] = {
 
 CONST uint32 mimophytbl_info_sz_rev7 = sizeof(mimophytbl_info_rev7)/sizeof(mimophytbl_info_rev7[0]);
 
+/* PR 72423: update frame_struct table only for REVs 8-10
+ * PR 87670: drop tables that have structure and init them more efficiently
+ */
 CONST mimophytbl_info_t mimophytbl_info_rev8to10[] = {
 	{              &pilot_tbl_rev3,                      sizeof(pilot_tbl_rev3)/sizeof(pilot_tbl_rev3[0]),  11,    0,  16 },
 	{              &intlv_tbl_rev3,                      sizeof(intlv_tbl_rev3)/sizeof(intlv_tbl_rev3[0]),  13,    0,  32 },
@@ -7194,6 +7212,9 @@ CONST mimophytbl_info_t mimophytbl_info_rev8to10[] = {
 
 CONST uint32 mimophytbl_info_sz_rev8to10 = sizeof(mimophytbl_info_rev8to10)/sizeof(mimophytbl_info_rev8to10[0]);
 
+/* PR 87670: PHY tables have unfortunately been ROM-ed for 43236,
+ * so keep most of the original code so as not to increase RAM size
+ */
 CONST mimophytbl_info_t mimophytbl_info_43236[] = {
 	{           &frame_struct_rev8,                sizeof(frame_struct_rev8)/sizeof(frame_struct_rev8[0]),  10,    0,  32 },
 	{              &pilot_tbl_rev3,                      sizeof(pilot_tbl_rev3)/sizeof(pilot_tbl_rev3[0]),  11,    0,  16 },

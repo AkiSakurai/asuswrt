@@ -1,7 +1,7 @@
 /*
  * ACPHY DeepSleepInit module - 4339 Prototype Work
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -335,6 +335,10 @@ dsi_populate_addr_ACMAJORREV_1(phy_info_t *pi)
 {
 	int i = 0;
 
+	/* XXX
+	 * Make sure you update macros NUM_PHYREGS and NUM_RADIOREGS
+	 * appropriately incase you modify these address map values
+	 */
 	uint16 map_PA[] =
 	{
 		ACPHY_REG(pi, Core0_TRLossValue),

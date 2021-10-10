@@ -1,7 +1,7 @@
 /*
  * TOF module public interface (to MAC driver).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tof_api.h 688501 2017-03-06 20:58:21Z $
+ * $Id: phy_tof_api.h 777255 2019-07-24 23:39:53Z $
  */
 #ifndef _phy_tof_api_h_
 #define _phy_tof_api_h_
@@ -79,7 +79,7 @@ typedef struct wlc_phy_tof_info {
 	wl_proxd_rssi_t		rssi;
 	wl_proxd_snr_t		snr;
 	wl_proxd_bitflips_t	bitflips;
-	wl_proxd_phy_error_t tof_phy_error;
+	wl_proxd_phy_error_t	tof_phy_error;
 } wlc_phy_tof_info_t;
 
 #define WL_PROXD_SEQ
@@ -93,6 +93,11 @@ typedef struct wlc_phy_tof_info {
 #define WL_PROXD_RATE_LEGACY	2
 #define WL_PROXD_RATE_MCS_0	3
 #define WL_PROXD_RATE_MCS	4
+
+#define WL_RSPEC_FTMIDX_MASK 0x00ff
+#define WL_RSPEC_FTMIDX_SHIFT 0
+#define WL_RSPEC_ACKIDX_MASK 0xff00
+#define WL_RSPEC_ACKIDX_SHIFT 8
 /* #define TOF_DBG */
 /* #define TOF_DBG_SEQ */
 /* #define TOF_SEQ_40_IN_40MHz */

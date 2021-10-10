@@ -1222,7 +1222,7 @@ function shadeHandle(flag){
 													</div>
 												</td>
 												 <td width="6px">
-													v<div class="line_vertical"></div>
+													<div class="line_vertical"></div>
 												</td>
 												<td style="width:20%;">
 													<div style="position:relative;">

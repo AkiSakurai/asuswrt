@@ -1,7 +1,7 @@
 /*
  * HWA library routines for MAC facing blocks: 1b, 2a, 3b, and 4a
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -91,6 +91,8 @@
 #include "hnddma_priv.h"
 #include <wlc_event_utils.h>
 #include <wlc_cfp.h>
+#include <bcm_buzzz.h>
+#include <bcmudp.h>
 
 typedef struct wl_info wl_info_t; // forward declaration
 
@@ -340,10 +342,10 @@ hwa_rxfill_preinit(hwa_rxfill_t *rxfill)
 
 	// Setup D11 offset and SW RXHDR offset
 	rxfill->config.d11_offset = WLC_RXHDR_LEN;
-	rxfill->config.wrxh_offset = rxfill->config.rph_size;
+	// XXX, 43684A0 MAC enforces 8B alignment, assume buffers in RXBM are 8B aligned already.
 	// B0 has the same requirement.
 	rxh_offset = (rxfill->config.rph_size + rxfill->config.d11_offset);
-	rxfill->config.wrxh_offset += rxh_offset % 8;
+	rxfill->config.wrxh_offset = ROUNDUP(rxh_offset, 8) - rxfill->config.d11_offset;
 
 	rxfill->config.rx_size = HWA_RXBUFFER_BYTES - rxfill->config.wrxh_offset;
 
@@ -352,6 +354,8 @@ hwa_rxfill_preinit(hwa_rxfill_t *rxfill)
 		dev->rxfill.config.d11_offset, dev->rxfill.config.len_offset,
 		dev->rxfill.config.addr_offset));
 
+	// FIXME during integration phase ... allocate Split-Lbuf RxBuffers
+	// FIXME ignore NIC mode for now ...
 	// We need RxBM at 8B alignment.
 	mem_sz = HWA_RXBUFFER_BYTES * HWA_RXPATH_PKTS_MAX;
 	// We need RxBM at 8B alignment.
@@ -403,8 +407,8 @@ hwa_rxfill_preinit(hwa_rxfill_t *rxfill)
 	}
 
 	// Override registered dpc callback handler
-	hwa_register(dev, HWA_RXFIFO_RECV, dev, hwa_rxfill_bmac_recv);
-	hwa_register(dev, HWA_RXFIFO_DONE, dev, hwa_rxfill_bmac_done);
+	hwa_register(dev, HWA_RXFIFO_PROC_CB, dev, hwa_rxfill_bmac_recv);
+	hwa_register(dev, HWA_RXFIFO_DONE_CB, dev, hwa_rxfill_bmac_done);
 
 	return HWA_SUCCESS;
 
@@ -498,26 +502,11 @@ hwa_rxfill_init(hwa_rxfill_t *rxfill)
 	// Using D11BDEST based SHIFT and MASK macros for programming registers
 
 	// FREEIDXSRC and D11BDEST use same SHIFT and MASK values
-#if HWA_REVISION_EQ_128
-	/* FREEIDXSRC_RING_CFG:template_coherent[bit6] map to
-	 * DMA_DESCRIPTOR:FixedBurst[bit16] and FREEIDXSRC_RING_CFG:template_notpcie[bit5]
-	 * map to DMA_DESCRIPTOR:Coherent[bit17].
-	 * So we still can use FREEIDXSRC_RING_CFG:template_notpcie[bit5] to enable
-	 * DMA_DESCRIPTOR:Coherent[bit17]
-	 */
-	ring_cfg = (0U
-		//| BCM_SBF(dev->macif_placement, HWA_RX_D11BDEST_RING_CFG_TEMPLATE_NOTPCIE)
-		| BCM_SBF(dev->macif_coherency, HWA_RX_D11BDEST_RING_CFG_TEMPLATE_NOTPCIE)
-		| BCM_SBF(0, HWA_RX_D11BDEST_RING_CFG_TEMPLATE_COHERENT)
-		| BCM_SBF(0, HWA_RX_D11BDEST_RING_CFG_TEMPLATE_ADDREXT)
-		| 0U);
-#else /* HWA_REVISION_GE_129 */
 	ring_cfg = (0U
 		| BCM_SBF(dev->macif_placement, HWA_RX_D11BDEST_RING_CFG_TEMPLATE_NOTPCIE)
 		| BCM_SBF(dev->macif_coherency, HWA_RX_D11BDEST_RING_CFG_TEMPLATE_COHERENT)
 		| BCM_SBF(0, HWA_RX_D11BDEST_RING_CFG_TEMPLATE_ADDREXT)
 		| 0U);
-#endif /* HWA_REVISION_GE_129 */
 
 	// ring_intraggr configuration is applied FREEIDXSRC, D11BDEST,
 
@@ -532,6 +521,7 @@ hwa_rxfill_init(hwa_rxfill_t *rxfill)
 	// Configure HWA1b "FREEIDXSRC" and "D11BDEST" interfaces for inited cores
 	for (core = 0; core < HWA_RX_CORES; core++)
 	{
+		// In NIC mode, only MAC FIFO0 will be configured: FIXME broken RxFILL
 		if (rxfill->inited[core][0] == FALSE) {
 			HWA_ASSERT(dev->driver_mode == HWA_NIC_MODE);
 			continue;
@@ -539,21 +529,10 @@ hwa_rxfill_init(hwa_rxfill_t *rxfill)
 
 		// Same register layout for both "D0DEST" and "D1DEST"
 		// Using D0DEST SHIFT and MASK macros for depth and coherency settings
-#if HWA_REVISION_EQ_128
-		/* D0DEST_RING_CFG:template_coherent[bit6] map to
-		 * DMA_DESCRIPTOR:FixedBurst[bit16] so we don't have solution
-		 * to control it. A0 ECO tie it low.
-		 */
-		fifo_cfg = (
-			BCM_SBF(0,
-				HWA_RX_D0DEST_RING_CFG_TEMPLATE_COHERENT) |
-			BCM_SBF(rxfill->fifo_depth[core][0], HWA_RX_D0DEST_RING_CFG_DEPTH));
-#else /* HWA_REVISION_GE_129 */
 		fifo_cfg = (
 			BCM_SBF(dev->macif_coherency,
 				HWA_RX_D0DEST_RING_CFG_TEMPLATE_COHERENT) |
 			BCM_SBF(rxfill->fifo_depth[core][0], HWA_RX_D0DEST_RING_CFG_DEPTH));
-#endif /* HWA_REVISION_GE_129 */
 
 		// Configure HWA MAC FIFO0
 		HWA_WR_REG_NAME(HWA1b, regs, rx_core[core], d0dest_ring_addr_lo,
@@ -632,33 +611,6 @@ hwa_rxfill_init(hwa_rxfill_t *rxfill)
 		// fw_rxcompensate ... not required
 
 		// Setup RxFILL Ctrl0
-#if HWA_REVISION_EQ_128
-		/* RXFILL_CTRL0:template_coherent[bit4] map to
-		 * DMA_DESCRIPTOR:FixedBurst[bit16] and RXFILL_CTRL0:template_notpcie[bit3]
-		 * map to DMA_DESCRIPTOR:Coherent[bit17].
-		 * So we still can use RXFILL_CTRL0:template_notpcie[bit3] to enable
-		 * DMA_DESCRIPTOR:Coherent[bit17]
-		 */
-		u32 = (0U
-			| BCM_SBIT(HWA_RX_RXFILL_CTRL0_USE_CORE0_FIH)
-			// | BCM_SBIT(HWA_RX_RXFILL_CTRL0_RPH_COMPRESS_ENABLE) NA in HWA2.0
-			| BCM_SBIT(HWA_RX_RXFILL_CTRL0_WAIT_FOR_D11B_DONE)
-			// RX Descr1 buffers based on MAC IF placement in dongle SysMem
-			| BCM_SBF(dev->macif_coherency,
-			          HWA_RX_RXFILL_CTRL0_TEMPLATE_NOTPCIE)
-			| BCM_SBF(0,
-			          HWA_RX_RXFILL_CTRL0_TEMPLATE_COHERENT)
-			| BCM_SBF(0, HWA_RX_RXFILL_CTRL0_TEMPLATE_ADDREXT)
-			// Core1 shares RXP from Core0
-			| BCM_SBIT(HWA_RX_RXFILL_CTRL0_USE_CORE0_RXP)
-			| BCM_SBF(rxfill->config.rph_size, HWA_RX_RXFILL_CTRL0_RPHSIZE)
-			// NA in HWA2.0
-			// | BCM_SBF(rxfill->config.len_offset,
-			//          HWA_RX_RXFILL_CTRL0_LEN_OFFSET_IN_RPH)
-			| BCM_SBF(rxfill->config.addr_offset,
-				HWA_RX_RXFILL_CTRL0_ADDR_OFFSET_IN_RPH)
-			| 0U);
-#else /* HWA_REVISION_GE_129 */
 		u32 = (0U
 			| BCM_SBIT(HWA_RX_RXFILL_CTRL0_USE_CORE0_FIH)
 			// | BCM_SBIT(HWA_RX_RXFILL_CTRL0_RPH_COMPRESS_ENABLE) NA in HWA2.0
@@ -678,7 +630,6 @@ hwa_rxfill_init(hwa_rxfill_t *rxfill)
 			| BCM_SBF(rxfill->config.addr_offset,
 				HWA_RX_RXFILL_CTRL0_ADDR_OFFSET_IN_RPH)
 			| 0U);
-#endif /* HWA_REVISION_GE_129 */
 
 		HWA_WR_REG_NAME(HWA1b, regs, rx_core[core], rxfill_ctrl0, u32);
 
@@ -797,6 +748,7 @@ hwa_rxfill_rxbuffer_free(struct hwa_dev *dev, uint32 core,
 	rxfree_ring = &rxfill->rxfree_ring[core];
 
 	if (hwa_ring_is_full(rxfree_ring)) {
+		// FIXME
 		HWA_ASSERT(1);
 		goto failure;
 	}
@@ -807,6 +759,15 @@ hwa_rxfill_rxbuffer_free(struct hwa_dev *dev, uint32 core,
 	// Convert rxbuffer pointer to its index within Rx Buffer Manager
 	rxfree->index = HWA_TABLE_INDX(hwa_rxbuffer_t,
 	                               dev->rx_bm.memory, rx_buffer);
+
+	/* XXX, I encounter below errors
+	 * cmn::errorstatusreg report 3
+	 * rx::debug_errorstatus 4
+	 * RxBM audit: Get duplicate rxbuffer<154> from RxBM  which
+	 * the rxbuffer idx is just freed to freeindexQ in paired type.
+	 * Add a WAR at pciedev_lbuf_callback
+	 */
+	HWA_ASSERT(has_rph == FALSE);
 
 	rxfree->control_info = (has_rph == TRUE) ?
 	                        HWA_RXFILL_RXFREE_PAIRED : HWA_RXFILL_RXFREE_SIMPLE;
@@ -923,6 +884,9 @@ hwa_rxfill_rxbuffer_process(hwa_dev_t *dev, uint32 core, bool bound)
 	uint32 rxfifo_cnt; // total rxbuffers processed
 	int ret, elem_ix_pend; // location of next pend element to read
 	wlc_info_t *wlc;	// wlc pointer
+#ifdef STS_FIFO_RXEN
+	rx_list_t rx_sts_list = {NULL};
+#endif // endif
 
 	HWA_FTRACE(HWA1b);
 
@@ -939,8 +903,8 @@ hwa_rxfill_rxbuffer_process(hwa_dev_t *dev, uint32 core, bool bound)
 	rxfill->tsf_l = R_REG(wlc->osh, D11_TSFTimerLow(wlc));
 
 	// Fetch registered upstream callback handlers
-	rxfifo_recv_handler = &dev->handlers[HWA_RXFIFO_RECV];
-	rxfifo_done_handler = &dev->handlers[HWA_RXFIFO_DONE];
+	rxfifo_recv_handler = &dev->handlers[HWA_RXFIFO_PROC_CB];
+	rxfifo_done_handler = &dev->handlers[HWA_RXFIFO_DONE_CB];
 
 	h2s_ring = &rxfill->rxfifo_ring[core];
 
@@ -964,8 +928,19 @@ hwa_rxfill_rxbuffer_process(hwa_dev_t *dev, uint32 core, bool bound)
 			(uintptr)rxfill->wlc[core], (uintptr)rxbuffer, core, rxfifo->index);
 
 		// Callback cannot handle it, don't update ring read and break the loop.
-		if (ret != HWA_SUCCESS)
+		if (ret != HWA_SUCCESS) {
+#ifdef STS_FIFO_RXEN
+	if (STS_RX_ENAB(wlc->pub)) {
+		dma_sts_rx(wlc->hw->di[STS_FIFO], &rx_sts_list);
+		if (rx_sts_list.rx_head != NULL) {
+			wlc_bmac_recv_append_sts_list(wlc, &wlc->hw->rx_sts_list, &rx_sts_list);
+			wlc_bmac_dma_rxfill(wlc->hw, STS_FIFO);
+		}
+	}
+#endif /* STS_FIFO_RXEN */
+
 			break;
+		}
 
 		// Commit a previously pending read
 		hwa_ring_cons_done(h2s_ring, elem_ix_pend);
@@ -1026,7 +1001,7 @@ hwa_rxfill_fifo_avail(hwa_rxfill_t *rxfill, uint32 core)
 
 } // hwa_rxfill_fifo_avail
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 
 void // Debug support for HWA1b RxFill block
 hwa_rxfill_dump(hwa_rxfill_t *rxfill, struct bcmstrbuf *b, bool verbose)
@@ -1074,7 +1049,7 @@ hwa_rxfill_dump(hwa_rxfill_t *rxfill, struct bcmstrbuf *b, bool verbose)
 
 } // hwa_rxfill_dump
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 
 // Debug dump of various Transfer Status, using RXPMGR TRFSTATUS layout
 #define HWA_RXFILL_TFRSTATUS_DECLARE(mgr) \
@@ -1146,6 +1121,23 @@ hwa_rxfill_status(hwa_rxfill_t *rxfill, uint32 core)
 
 #endif /* BCMDBG */
 
+/*
+ * This is HWA RX handle function to process a HWA rxbuffer and construct a WL packet
+ * to forward to WL subsystem.
+ *
+ * In order to compatible with legacy dongle WL driver, this function require a zero size of
+ * data buffer lbuf_frag packet (need DHDHDR (split lbuf) support ) which is getting from
+ * SHARED_RXFRAG_POOL.  Then this function will connect HWA rxbuffer data partion to
+ * lbuf struct.
+ *
+ * FIXME: now we use pure SW wlc_rxframe_chainable function for PKTC.  If HWA 2a FHR,
+ * PKTCLASS and AMT are enabled we can offload part of SW comparsion to it.
+ *
+ * After a WL packet is constructed, we pass it to WL subsystem through wlc_recv, once
+ * CFP is enabled we should pass it to CFP instead.
+ *
+ * NOTE: FIXME: for now this function only consider FD mode.
+ */
 static int
 hwa_rxfill_bmac_recv(void *context, uintptr arg1, uintptr arg2, uint32 core, uint32 arg4)
 {
@@ -1204,6 +1196,7 @@ hwa_rxfill_bmac_recv(void *context, uintptr arg1, uintptr arg2, uint32 core, uin
 #if defined(BCMPCIE_IPC_HPA)
 	hwa_rxpath_hpa_req_test(dev, rph_req->hostinfo64.host_pktid);
 #endif // endif
+	BUZZZ_KPI_PKT1(KPI_PKT_MAC_RXFIFO, 1, rph_req->hostinfo64.host_pktid);
 
 	// Start from RxStatus
 	PKTSETBUF(dev->osh, frag, rxbuffer + rxfill->config.wrxh_offset, rxfill->config.rx_size);
@@ -1253,19 +1246,28 @@ hwa_rxfill_bmac_recv(void *context, uintptr arg1, uintptr arg2, uint32 core, uin
 	return HWA_SUCCESS;
 }
 
+/*
+ * This function will be called when we finished hwa_rxfill_rxbuffer_process() .
+ * You can add some post processes in function if needed, for example PKTC stuff.
+ * If there is any pending SW pktc chain, we pass it to WL through wlc_sendup_chain().
+ * NOTE: FIXME: for now this function only consider FD mode.
+ */
 static int
 hwa_rxfill_bmac_done(void *context, uintptr arg1, uintptr arg2, uint32 core, uint32 rxfifo_cnt)
 {
 	hwa_dev_t *dev = (hwa_dev_t *)context;
 	wlc_info_t *wlc = (wlc_info_t *)arg1;
 	hwa_rxfill_t *rxfill;
-	void *rx_list, *p;
+	void *p;
+	rx_list_t rx_list = {NULL};
+#ifdef STS_FIFO_RXEN
+	rx_list_t rx_sts_list = {NULL};
+#endif // endif
 #ifdef PKTC_DONGLE
 	void *pktc_head = NULL;
 	void *pktc_tail = NULL;
 	uint16 pktc_index = 0;
 #endif // endif
-
 	HWA_FTRACE(HWA1b);
 	HWA_ASSERT(context != (void *)NULL);
 	HWA_ASSERT(arg1 != 0);
@@ -1277,26 +1279,33 @@ hwa_rxfill_bmac_done(void *context, uintptr arg1, uintptr arg2, uint32 core, uin
 		PKTSETLINK(rxfill->rx_tail, NULL);
 	}
 
-	rx_list = rxfill->rx_head;
+	rx_list.rx_head = rxfill->rx_head;
+	rx_list.rx_tail = rxfill->rx_tail;
+
 #ifdef STS_FIFO_RXEN
-	if (STS_RX_ENAB(wlc->pub) && rx_list) {
-		void *sts_list = dma_sts_rx(wlc->hw->di[STS_FIFO]);
-		wlc_bmac_recv_process_sts(wlc->hw, rx_list, sts_list, WLC_RXHDR_LEN);
+	if (STS_RX_ENAB(wlc->pub)) {
+		dma_sts_rx(wlc->hw->di[STS_FIFO], &rx_sts_list);
+		if (rx_sts_list.rx_head != NULL) {
+			wlc_bmac_dma_rxfill(wlc->hw, STS_FIFO);
+		}
+		(void) wlc_bmac_recv_process_sts(wlc->hw, RX_FIFO1, &rx_list,
+				&rx_sts_list, WLC_RXHDR_LEN);
 	}
 #endif /* STS_FIFO_RXEN */
-	while (rx_list != NULL) {
-		p = rx_list;
-		rx_list = PKTLINK(rx_list);
+	while (rx_list.rx_head != NULL) {
+		p = rx_list.rx_head;
+		rx_list.rx_head = PKTLINK(p);
 		PKTSETLINK(p, NULL);
+		ASSERT(PKTNEXT(wlc->osh, p) == NULL);
 
-#if defined(WLCFP) && defined(WLCFP_RXSM4)
+#if defined(WLCFP)
 		if (CFP_RCB_ENAB(wlc->cfp)) {
 			/* Classify the packets based on per packet info. On the very first
 			 * unchained packet, release all chained packets and continue.
 			 */
 			wlc_cfp_rxframe(wlc, p);
 		} else
-#endif /* WLCFP && WLCFP_RXSM4 */
+#endif /* WLCFP */
 		{
 			/* Legacy RX processing */
 #ifdef PKTC_DONGLE
@@ -1329,13 +1338,14 @@ hwa_rxfill_bmac_done(void *context, uintptr arg1, uintptr arg2, uint32 core, uin
 	}
 
 	rxfill->rx_head = rxfill->rx_tail = NULL;
+	rx_list.rx_tail = NULL;
 
-#if defined(WLCFP) && defined(WLCFP_RXSM4)
+#if defined(WLCFP)
 	if (CFP_RCB_ENAB(wlc->cfp)) {
 		/* Sendup chained CFP packets */
 		wlc_cfp_rx_sendup(wlc, NULL);
 	} else
-#endif /* WLCFP && WLCFP_RXSM4 */
+#endif /* WLCFP */
 	{
 #if defined(PKTC_DONGLE)
 		if (pktc_tail) {
@@ -1346,7 +1356,6 @@ hwa_rxfill_bmac_done(void *context, uintptr arg1, uintptr arg2, uint32 core, uin
 	}
 
 	HWA_TRACE(("%s %s(): core<%u> rxfifo_cnt<%u>\n", HWA00, __FUNCTION__, core, rxfifo_cnt));
-
 	return HWA_SUCCESS;
 }
 
@@ -1366,6 +1375,7 @@ hwa_mac_config(hwa_mac_config_t config,
 	uint32 v32;
 	hwa_dev_t *dev;
 	hwa_regs_t *regs;
+	HWA_SWITCHCORE_DEFS();
 
 	HWA_TRACE(("%s PHASE MAC config<%u> core<%u> ptr<%p> val<0x%08x,%u>\n",
 		HWA00, config, core, ptr, val, val));
@@ -1376,6 +1386,8 @@ hwa_mac_config(hwa_mac_config_t config,
 	HWA_ASSERT(core < HWA_RX_CORES);
 
 	regs = dev->regs;
+
+	HWA_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
 
 	switch (config) {
 
@@ -1456,6 +1468,8 @@ hwa_mac_config(hwa_mac_config_t config,
 
 	} // switch
 
+	HWA_RESTORECORE(dev->sih, orig_core_idx, intr_val);
+
 } // hwa_mac_config
 
 #endif /* HWA_MAC_BUILD */
@@ -1468,8 +1482,11 @@ hwa_mac_config(hwa_mac_config_t config,
  */
 
 #ifdef HWA_RXDATA_FHR_IND_BUILD
+// FIXME: Determine hos to use direct access, and use same solution for both
 // FHR Register file and FHR counter statistics. Then remove this function.
-
+/* hwa_rxdata_fhr_indirect_write is called from hwa_rxdata_init
+ * where MAC_SWITCHCORE has already been issued. Hence not calling MAC_SWITCHCORE here
+ */
 static void // Use Indirect Access to configure FHR register file
 hwa_rxdata_fhr_indirect_write(hwa_rxdata_t *rxdata,
 	hwa_rxdata_fhr_entry_t *filter)
@@ -1496,6 +1513,7 @@ hwa_rxdata_fhr_indirect_write(hwa_rxdata_t *rxdata,
 		| BCM_SBF(MAC_AXI_RXDATA_FHR_SELECT, _OBJADDR_SELECT)
 		| BCM_SBIT(_OBJADDR_WRITEINC)
 		| 0U);
+
 	HWA_WR_REG_ADDR(HWA2a, &mac_regs->objaddr, v32);
 	v32 = HWA_RD_REG_ADDR(HWA2a, &mac_regs->objaddr); // ensure WR completes
 
@@ -1558,6 +1576,7 @@ hwa_rxdata_init(hwa_rxdata_t *rxdata)
 {
 	uint32 v32;
 	hwa_dev_t *dev;
+	MAC_SWITCHCORE_DEFS();
 
 	HWA_FTRACE(HWA2a);
 
@@ -1568,6 +1587,8 @@ hwa_rxdata_init(hwa_rxdata_t *rxdata)
 	HWA_ASSERT(rxdata->mac_fhr_base != 0U);
 	HWA_ASSERT(rxdata->mac_fhr_stats != 0U);
 	HWA_ASSERT(dev->mac_regs != (hc_hin_regs_t*)NULL);
+
+	MAC_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
 
 	v32 =
 		BCM_SBIT(_RXHWACTRL_GLOBALFILTEREN) |
@@ -1577,19 +1598,24 @@ hwa_rxdata_init(hwa_rxdata_t *rxdata)
 		BCM_SBIT(_RXHWACTRL_CLRALLFILTERSTAT);
 	HWA_WR_REG_ADDR(HWA2a, &dev->mac_regs->rxhwactrl, v32);
 
-	// Only need to configure it once.
+	// Rx filter configuration
 	if (!dev->inited) {
 		hwa_rxdata_fhr_filter_init_pktfetch(rxdata);
 	} else {
-		// After core reset, rxfilteren will be 0. Driver need to reconfigure it.
-		HWA_WR_REG_ADDR(HWA2a, &dev->mac_regs->rxfilteren, rxdata->rxfilteren);
+		// After MAC reset, rx filter configuration will be reset.
+		// Driver need to reconfigure it.
+		hwa_rxdata_fhr_filter_reinit(rxdata);
 	}
+
+	MAC_RESTORECORE(dev->sih, orig_core_idx, intr_val);
+
 } // hwa_rxdata_init
 
 void // HWA2a RxData: Deinit RxData block
 hwa_rxdata_deinit(hwa_rxdata_t *rxdata)
 {
 	hwa_dev_t *dev;
+	MAC_SWITCHCORE_DEFS();
 
 	HWA_FTRACE(HWA2a);
 
@@ -1601,10 +1627,18 @@ hwa_rxdata_deinit(hwa_rxdata_t *rxdata)
 	HWA_ASSERT(rxdata->mac_fhr_stats != 0U);
 	HWA_ASSERT(dev->mac_regs != (hc_hin_regs_t*)NULL);
 
+	MAC_SWITCHCORE(dev->sih, &orig_core_idx, &intr_val);
+
 	HWA_WR_REG_ADDR(HWA2a, &dev->mac_regs->rxhwactrl, 0);
+
+	MAC_RESTORECORE(dev->sih, orig_core_idx, intr_val);
 }
 
 // HWA2a RxData FHR Table Management
+
+// VeriWave specific UDP source/destination port numbers
+#define VW_UDP_SRC_PORT	(45000)
+#define VW_UDP_DST_PORT	(46000)
 
 // Init exist known pktfetch filter
 void
@@ -1695,9 +1729,144 @@ hwa_rxdata_fhr_filter_init_pktfetch(hwa_rxdata_t *rxdata)
 	}
 #endif /* WLTDLS */
 
+	/* Dynamic frameburst filters */
+	/* UDPv6 Packet */
+	fid = hwa_rxdata_fhr_filter_new(HWA_RXDATA_FHR_L2FILTER, 0, 4);
+	if (fid != HWA_FAILURE) {
+		offset = ETHER_TYPE_2_OFFSET;
+		bitmask = 0xffff;
+		pattern = HTON16(ETHER_TYPE_IPV6);
+		hwa_rxdata_fhr_param_add(fid, 0, offset, (uint8 *)&bitmask, (uint8 *)&pattern, 2);
+
+		offset += (ETHER_TYPE_LEN + IPV6_NEXT_HDR_OFFSET);
+		bitmask = 0xff;
+		pattern = IP_PROT_UDP;
+		hwa_rxdata_fhr_param_add(fid, 0, offset, (uint8 *)&bitmask, (uint8 *)&pattern, 1);
+
+		/* source port */
+		offset += (IPV6_SRC_IP_OFFSET - IPV6_NEXT_HDR_OFFSET + IPV6_ADDR_LEN * 2);
+		bitmask = 0xffff;
+		pattern = HTON16(VW_UDP_SRC_PORT);
+		hwa_rxdata_fhr_param_add(fid, 0, offset, (uint8 *)&bitmask, (uint8 *)&pattern, 2);
+
+		/* destination port */
+		offset += UDP_DEST_PORT_OFFSET;
+		bitmask = 0xffff;
+		pattern = HTON16(VW_UDP_DST_PORT);
+		hwa_rxdata_fhr_param_add(fid, 0, offset, (uint8 *)&bitmask, (uint8 *)&pattern, 2);
+
+		hwa_rxdata_fhr_filter_add(fid);
+		rxdata->udpv6_filter |= BCM_BIT(fid);
+		rxdata->chainable_filters |= BCM_BIT(fid);
+	}
+	/* UDPv4 Packet */
+	fid = hwa_rxdata_fhr_filter_new(HWA_RXDATA_FHR_L2FILTER, 0, 4);
+	if (fid != HWA_FAILURE) {
+		offset = ETHER_TYPE_2_OFFSET;
+		bitmask = 0xffff;
+		pattern = HTON16(ETHER_TYPE_IP);
+		hwa_rxdata_fhr_param_add(fid, 0, offset, (uint8 *)&bitmask, (uint8 *)&pattern, 2);
+
+		offset += (ETHER_TYPE_LEN + IPV4_PROT_OFFSET);
+		bitmask = 0xff;
+		pattern = IP_PROT_UDP;
+		hwa_rxdata_fhr_param_add(fid, 0, offset, (uint8 *)&bitmask, (uint8 *)&pattern, 1);
+
+		/* source port */
+		offset += (IPV4_MIN_HEADER_LEN - IPV4_PROT_OFFSET);
+		bitmask = 0xffff;
+		pattern = HTON16(VW_UDP_SRC_PORT);
+		hwa_rxdata_fhr_param_add(fid, 0, offset, (uint8 *)&bitmask, (uint8 *)&pattern, 2);
+
+		/* destination port */
+		offset += UDP_DEST_PORT_OFFSET;
+		bitmask = 0xffff;
+		pattern = HTON16(VW_UDP_DST_PORT);
+		hwa_rxdata_fhr_param_add(fid, 0, offset, (uint8 *)&bitmask, (uint8 *)&pattern, 2);
+
+		hwa_rxdata_fhr_filter_add(fid);
+		rxdata->udpv4_filter |= BCM_BIT(fid);
+		rxdata->chainable_filters |= BCM_BIT(fid);
+	}
+	/* TCPv6 Packet */
+	fid = hwa_rxdata_fhr_filter_new(HWA_RXDATA_FHR_L2FILTER, 0, 2);
+	if (fid != HWA_FAILURE) {
+		offset = ETHER_TYPE_2_OFFSET;
+		bitmask = 0xffff;
+		pattern = HTON16(ETHER_TYPE_IPV6);
+		hwa_rxdata_fhr_param_add(fid, 0, offset, (uint8 *)&bitmask, (uint8 *)&pattern, 2);
+
+		offset += (ETHER_TYPE_LEN + IPV6_NEXT_HDR_OFFSET);
+		bitmask = 0xff;
+		pattern = IP_PROT_TCP;
+		hwa_rxdata_fhr_param_add(fid, 0, offset, (uint8 *)&bitmask, (uint8 *)&pattern, 1);
+
+		hwa_rxdata_fhr_filter_add(fid);
+		rxdata->tcp_filter |= BCM_BIT(fid);
+		rxdata->chainable_filters |= BCM_BIT(fid);
+	}
+	/* TCPv4 Packet */
+	fid = hwa_rxdata_fhr_filter_new(HWA_RXDATA_FHR_L2FILTER, 0, 2);
+	if (fid != HWA_FAILURE) {
+		offset = ETHER_TYPE_2_OFFSET;
+		bitmask = 0xffff;
+		pattern = HTON16(ETHER_TYPE_IP);
+		hwa_rxdata_fhr_param_add(fid, 0, offset, (uint8 *)&bitmask, (uint8 *)&pattern, 2);
+
+		offset += (ETHER_TYPE_LEN + IPV4_PROT_OFFSET);
+		bitmask = 0xff;
+		pattern = IP_PROT_TCP;
+		hwa_rxdata_fhr_param_add(fid, 0, offset, (uint8 *)&bitmask, (uint8 *)&pattern, 1);
+
+		hwa_rxdata_fhr_filter_add(fid);
+		rxdata->tcp_filter |= BCM_BIT(fid);
+		rxdata->chainable_filters |= BCM_BIT(fid);
+	}
+}
+
+void
+hwa_rxdata_fhr_filter_reinit(hwa_rxdata_t *rxdata)
+{
+	hwa_dev_t *dev;
+	hwa_rxdata_fhr_entry_t *filter;
+	hwa_rxdata_fhr_filter_type_t filter_type;
+	int id;
+
+	HWA_FTRACE(HWA2a);
+
+	// Audit pre-conditions
+	dev = HWA_DEV(rxdata);
+
+	for (id = 0; id < HWA_RXDATA_FHR_FILTERS_SW; id++) {
+		filter = &rxdata->fhr[id].filter;
+		if (filter->config.type != HWA_RXDATA_FHR_FILTER_DISABLED) {
+			filter_type = filter->config.type; // SW only
+			filter->config.type = 0U; // SW use only
+
+#ifdef HWA_RXDATA_FHR_IND_BUILD
+			hwa_rxdata_fhr_indirect_write(rxdata, filter);
+#else  /* ! HWA_RXDATA_FHR_IND_BUILD */
+			{
+				hwa_mem_addr_t fhr_addr;
+				// Copy the filter to the HWA2a FHR Reg File using 32bit AXI access
+				fhr_addr = HWA_TABLE_ADDR(hwa_rxdata_fhr_entry_t,
+					rxdata->mac_fhr_base, filter_id);
+
+				// FIXME: Reference section 5.1.2 for Direct Access using AXI Slave
+				HWA_WR_MEM32(HWA2a, hwa_rxdata_fhr_entry_t, fhr_addr, filter);
+			}
+#endif /* ! HWA_RXDATA_FHR_IND_BUILD */
+
+			filter->config.type = filter_type; // SW only
+		}
+	}
+
+	HWA_WR_REG_ADDR(HWA2a, &dev->mac_regs->rxfilteren, rxdata->rxfilteren);
+
 }
 
 #ifdef WLNDOE
+// FIXME: Enable filter in the right place.
 void
 hwa_rxdata_fhr_filter_ndoe(bool enable)
 {
@@ -1781,7 +1950,8 @@ hwa_rxdata_fhr_filter_ndoe(bool enable)
 }
 #endif /* WLNDOE */
 
-#if defined(BDO) || defined(TKO) || defined(ICMP)
+#if defined(BDO) || defined(ICMP)
+// FIXME: Enable filter in the right place.
 void
 hwa_rxdata_fhr_filter_ip(bool enable)
 {
@@ -1837,9 +2007,10 @@ hwa_rxdata_fhr_filter_ip(bool enable)
 	}
 
 }
-#endif /* defined(BDO) || defined(TKO) || defined(ICMP) */
+#endif /* defined(BDO) || defined(ICMP) */
 
 #ifdef WL_TBOW
+// FIXME: Enable filter in the right place.
 void
 hwa_rxdata_fhr_filter_tbow(bool enable)
 {
@@ -2036,6 +2207,11 @@ hwa_rxdata_fhr_filter_add(uint32 filter_id)
 
 	filter->config.type = 0U; // SW use only
 
+	// This count indicates the number of patterns to match.
+	// A value of 0 indicates one pattern to match and so on.
+	// This Param Count cannot be greater than the value that is supported by a FHR.
+	filter->config.param_count -= 1;
+
 #ifdef HWA_RXDATA_FHR_IND_BUILD
 	hwa_rxdata_fhr_indirect_write(rxdata, filter);
 #else  /* ! HWA_RXDATA_FHR_IND_BUILD */
@@ -2045,6 +2221,7 @@ hwa_rxdata_fhr_filter_add(uint32 filter_id)
 		fhr_addr = HWA_TABLE_ADDR(hwa_rxdata_fhr_entry_t,
 		                              rxdata->mac_fhr_base, filter_id);
 
+		// FIXME: Reference section 5.1.2 for Direct Access using AXI Slave
 		HWA_WR_MEM32(HWA2a, hwa_rxdata_fhr_entry_t, fhr_addr, filter);
 	}
 #endif /* ! HWA_RXDATA_FHR_IND_BUILD */
@@ -2120,6 +2297,7 @@ hwa_rxdata_fhr_filter_del(uint32 filter_id)
 		fhr_addr = HWA_TABLE_ADDR(hwa_rxdata_fhr_entry_t,
 		                              rxdata->mac_fhr_base, filter_id);
 
+		// FIXME: Reference section 5.1.2 for Direct Access using AXI Slave
 		HWA_WR_MEM32(HWA2a, hwa_rxdata_fhr_entry_t, fhr_addr, filter);
 	}
 #endif /* ! HWA_RXDATA_FHR_IND_BUILD */
@@ -2196,6 +2374,63 @@ hwa_rxdata_fhr_is_llc_snap_da(uint32 fhr_filter_match)
 
 	return (rxdata->llc_snap_da_filter & fhr_filter_match);
 }
+
+uint32 // Determine whether any filters hit a UDPv6 type
+hwa_rxdata_fhr_is_udpv6(uint32 fhr_filter_match)
+{
+	hwa_dev_t *dev;
+	hwa_rxdata_t *rxdata;
+
+	HWA_FTRACE(HWA2a);
+
+	dev = HWA_DEVP(FALSE); // CAUTION: global access without audit
+	rxdata = &dev->rxdata;
+
+	return (rxdata->udpv6_filter & fhr_filter_match);
+}
+
+uint32 // Determine whether any filters hit a UDPv4 type
+hwa_rxdata_fhr_is_udpv4(uint32 fhr_filter_match)
+{
+	hwa_dev_t *dev;
+	hwa_rxdata_t *rxdata;
+
+	HWA_FTRACE(HWA2a);
+
+	dev = HWA_DEVP(FALSE); // CAUTION: global access without audit
+	rxdata = &dev->rxdata;
+
+	return (rxdata->udpv4_filter & fhr_filter_match);
+}
+
+uint32 // Determine whether any filters hit a TCP type
+hwa_rxdata_fhr_is_tcp(uint32 fhr_filter_match)
+{
+	hwa_dev_t *dev;
+	hwa_rxdata_t *rxdata;
+
+	HWA_FTRACE(HWA2a);
+
+	dev = HWA_DEVP(FALSE); // CAUTION: global access without audit
+	rxdata = &dev->rxdata;
+
+	return (rxdata->tcp_filter & fhr_filter_match);
+}
+
+uint32 // Clear chainable filter bits
+hwa_rxdata_fhr_unchainable(uint32 fhr_filter_match)
+{
+	hwa_dev_t *dev;
+	hwa_rxdata_t *rxdata;
+
+	HWA_FTRACE(HWA2a);
+
+	dev = HWA_DEVP(FALSE); // CAUTION: global access without audit
+	rxdata = &dev->rxdata;
+
+	return (fhr_filter_match & ~(rxdata->chainable_filters));
+}
+
 // FHR match statistics management
 uint32 // Get the hit statistics for a filter
 hwa_rxdata_fhr_hits_get(uint32 filter_id)
@@ -2214,6 +2449,8 @@ hwa_rxdata_fhr_hits_get(uint32 filter_id)
 	if (!dev->up) {
 		return 0;
 	}
+
+	// XXX FIXME: Unclear documentation
 
 	fhr_stats_addr = HWA_TABLE_ADDR(hwa_rxdata_fhr_stats_entry_t,
 	                                    rxdata->mac_fhr_stats, filter_id);
@@ -2254,7 +2491,7 @@ hwa_rxdata_fhr_hits_clr(uint32 filter_id)
 
 } // hwa_rxdata_fhr_hits_clr
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 // HWA2a RxData debug support
 
 static void hwa_rxdata_filter_dump(hwa_rxdata_fhr_entry_t *filter, struct bcmstrbuf *b);
@@ -2268,9 +2505,9 @@ hwa_rxdata_filter_dump(hwa_rxdata_fhr_entry_t *filter, struct bcmstrbuf *b)
 
 	// Filter config
 	HWA_BPRINT(b, "+ Filter<%u> polarity<%u> params<%u>\n",
-		filter->config.id, filter->config.polarity, filter->config.param_count);
+		filter->config.id, filter->config.polarity, filter->config.param_count+1);
 
-	for (id = 0; id < filter->config.param_count; id++) {
+	for (id = 0; id <= filter->config.param_count; id++) {
 		param = &filter->params[id];
 		// Param config
 		HWA_BPRINT(b, "+    Param<%u> polarity<%u> offset<%u>: bitmask[",
@@ -2283,8 +2520,9 @@ hwa_rxdata_filter_dump(hwa_rxdata_fhr_entry_t *filter, struct bcmstrbuf *b)
 		HWA_BPRINT(b, "]\n");
 	}
 
+#ifdef DONGLEBUILD
 	HWA_BPRINT(b, "+    Filter_hits<%u>\n", hwa_rxdata_fhr_hits_get(filter->config.id));
-
+#endif // endif
 } // hwa_rxdata_filter_dump
 
 void // HWA2a RxData: dump FHR table
@@ -2370,6 +2608,19 @@ BCMATTACHFN(hwa_txfifo_detach)(hwa_txfifo_t *txfifo)
 		txfifo->pktchain_ring.memory = (void*)NULL;
 	}
 
+	// HWA3b TxFifo shadow context: free memory
+	if (txfifo->txfifo_shadow != (void*)NULL) {
+		memory = txfifo->txfifo_shadow;
+		if (sizeof(memory) == sizeof(int)) {
+			mem_sz = HWA_TX_FIFOS * sizeof(hwa_txfifo_shadow32_t);
+		} else { // NIC 64bit
+			mem_sz = HWA_TX_FIFOS * sizeof(hwa_txfifo_shadow64_t);
+		}
+		HWA_TRACE(("%s txfifos shadow context -memory[%p:%u]\n", HWA3b, memory, mem_sz));
+		MFREE(dev->osh, memory, mem_sz);
+		txfifo->txfifo_shadow = (void*)NULL;
+	}
+
 } // hwa_txfifo_detach
 
 hwa_txfifo_t * // HWA3b: Allocate resources for TxFifo block
@@ -2392,7 +2643,7 @@ BCMATTACHFN(hwa_txfifo_attach)(hwa_dev_t *dev)
 	txfifo = &dev->txfifo;
 
 	// Verify HWA3b block's structures
-	HWA_ASSERT(HWA_TX_CORES == 1);
+	HWA_ASSERT(HWA_TX_CORES == 1); // XXX HWA3b in 43684 supports only one core
 	HWA_ASSERT(sizeof(hwa_txfifo_pktchain32_t) == HWA_TXFIFO_PKTCHAIN32_BYTES);
 	HWA_ASSERT(sizeof(hwa_txfifo_pktchain64_t) == HWA_TXFIFO_PKTCHAIN64_BYTES);
 	HWA_ASSERT(sizeof(hwa_txfifo_ovflwqctx_t) == HWA_TXFIFO_OVFLWQCTX_BYTES);
@@ -2406,13 +2657,6 @@ BCMATTACHFN(hwa_txfifo_attach)(hwa_dev_t *dev)
 		cap2 = HWA_RD_REG_NAME(HWA3b, regs, top, hwahwcap2);
 		HWA_ASSERT(BCM_GBF(cap1, HWA_TOP_HWAHWCAP1_MAXSEGCNT3A3B) ==
 			HWA_TX_DATABUF_SEGCNT_MAX);
-#if !HWA_REVISION_EQ_128 && !HWA_REVISION_GE_129
-		// What's this "bit 15:13 / maxRingInfo3b / Maximum number of ringinfo
-		// table structures supported in 3b." ?
-		// Don't check in rev128 and rev129
-		HWA_ASSERT(BCM_GBF(cap1, HWA_TOP_HWAHWCAP1_MAXRINGINFO3B) ==
-			HWA_TXFIFO_CHICKEN_FEATURE);
-#endif /* !HWA_REVISION_EQ_128 && !HWA_REVISION_GE_129 */
 		HWA_ASSERT(BCM_GBF(cap2, HWA_TOP_HWAHWCAP2_NUMMACTXFIFOQ) ==
 			HWA_TX_FIFOS);
 		HWA_ASSERT(BCM_GBIT(cap2, HWA_TOP_HWAHWCAP2_TOP2REGS_RINFO_CAP) ==
@@ -2458,11 +2702,10 @@ BCMATTACHFN(hwa_txfifo_attach)(hwa_dev_t *dev)
 
 	// Allocate and initialize TxFIFOs shadow context
 	if (sizeof(memory) == sizeof(int)) {
-		depth = HWA_TX_FIFOS * sizeof(hwa_txfifo_shadow32_t);
+		mem_sz = HWA_TX_FIFOS * sizeof(hwa_txfifo_shadow32_t);
 	} else { // NIC 64bit
-		depth = HWA_TX_FIFOS * sizeof(hwa_txfifo_shadow64_t);
+		mem_sz = HWA_TX_FIFOS * sizeof(hwa_txfifo_shadow64_t);
 	}
-	mem_sz = depth * HWA_TX_FIFOS;
 	if ((memory = MALLOCZ(dev->osh, mem_sz)) == NULL) {
 		HWA_ERROR(("%s txfifos shadow context malloc size<%u> failure\n",
 			HWA3b, mem_sz));
@@ -2489,9 +2732,7 @@ hwa_txfifo_init(hwa_txfifo_t *txfifo)
 	hwa_dev_t *dev;
 	hwa_regs_t *regs;
 	hwa_ring_t *pktchain_ring; // S2H pktchain ring context
-#if HWA_REVISION_GE_129
 	uint16 u16;
-#endif // endif
 
 	HWA_FTRACE(HWA3b);
 
@@ -2509,11 +2750,7 @@ hwa_txfifo_init(hwa_txfifo_t *txfifo)
 			// PKT FIFO context: hwa_txfifo_fifoctx::pkt_fifo
 			// hwa_txfifo_fifoctx::pkt_fifo.base.loaddr
 			u32 = txfifo->fifo_base[i].loaddr;
-#if HWA_REVISION_EQ_128
-			HWA_WR_REG_NAME(HWA3b, regs, txdma, fifo_base_addr, u32);
-#else
 			HWA_WR_REG_NAME(HWA3b, regs, txdma, fifo_base_addrlo, u32);
-#endif // endif
 			// hwa_txfifo_fifoctx::pkt_fifo.base.hiaddr
 			u32 = txfifo->fifo_base[i].hiaddr;
 			HWA_WR_REG_NAME(HWA3b, regs, txdma, fifo_base_addrhi, u32);
@@ -2568,14 +2805,12 @@ hwa_txfifo_init(hwa_txfifo_t *txfifo)
 	HWA_WR_REG_NAME(HWA3b, regs, txdma,
 		sw2hwa_tx_pkt_chain_q_base_addr_h, u32);
 
-#if HWA_REVISION_EQ_128
-	HWA_WR_REG_NAME(HWA3b, regs, txdma,
-		num_txfifo_percore, txfifo->fifo_total);
-#endif // endif
-
 	// Settings "NotPCIE, Coherent and AddrExt" for misc HW DMA transactions
 	u32 = (0U
 	// PCIE Source or Destination: NIC mode MAC Ifs may be placed in SysMem
+	// FIXME: Is this used for TxFIFO/AQM FIFO or S2H PktChainIf
+	// FIXME: NIC mode, would like to have option to place FIFOs in SysMem,
+	// FIXME: while S2H PktChainIf in Host mem.
 	| BCM_SBF(dev->macif_placement, // NIC mode S2H PktChainIf is over PCIe
 	          HWA_TXDMA_DMA_DESC_TEMPLATE_TXDMA_DMAPCIEDESCTEMPLATENOTPCIE)
 	| BCM_SBF(dev->macif_coherency, // NIC mode S2H PktChainIf is host_coh
@@ -2613,29 +2848,25 @@ hwa_txfifo_init(hwa_txfifo_t *txfifo)
 		          HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_PKTCHAIN_64BITADDRESS)
 		| BCM_SBIT(HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_USE_OVFLOWQ)
 		// BCM_SBIT(HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_NON_AQM_CTDMA_MODE)
-#if HWA_REVISION_GE_129
-		//CRWLHWA-446
-		//txdma_last_ptr_update	AQM/TxDMA last ptr update
-		//0: with direct path; 1 : with APB interface.
+		// XXX CRWLHWA-446
+		// txdma_last_ptr_update	AQM/TxDMA last ptr update
+		// 0: with direct path; 1 : with APB interface.
 		| BCM_SBF(dev->txfifo_apb, HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_LAST_PTR_UPDATE)
-		// CRWLHWA-439
+		// XXX CRWLHWA-439
 		| BCM_SBF(dev->txfifo_hwupdnext,
 			HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_HW_UPDATE_PKTNXT)
 		// SW check TXFIFO context with signal burst. 0:muliti 1:signal.
 		| BCM_SBIT(HWA_TXDMA_HWA_TXDMA2_CFG1_TXDMA_CHECK_TXFIFO_CONTEXT)
-#endif // endif
 		| 0U);
 	HWA_WR_REG_NAME(HWA3b, regs, txdma, hwa_txdma2_cfg1, u32);
 
 	// Setup HWA_TXDMA2_CFG2
-#if HWA_REVISION_EQ_128
-	HWA_WR_REG_NAME(HWA3b, regs, txdma, hwa_txdma2_cfg2, hi32);
-#else
 	// We must to set txdma_aggr_aqm_descriptor_enable when txfifo_apb is 0,
 	// otherwise we will hit frameid mismatch type3.
 	// RTL simulation suggest to keep txdma_aggr_aqm_descriptor_enable and
 	// txdma_aggr_aqm_descriptor_threshold as default 1 and 3.
 
+	// XXX: HWA_TXFIFO_AGGR_AQM_DESC_THRESHOLD has bug that will cause
 	// txs->frameid 0x8ac1 seq 277 txh->TxFrameID 0x8a41 seq 276 when it
 	// configure more than 0. (0 imply 1 aqm).  So, keep it update per one aqm.
 	// Enlarge HWA_TXDMA_HWA_TXDMA2_CFG3_AQM_DESC_FREE_SPACE
@@ -2648,34 +2879,25 @@ hwa_txfifo_init(hwa_txfifo_t *txfifo)
 			HWA_TXDMA_HWA_TXDMA2_CFG2_TXDMA_SWTXPKT_CNT_REACH)
 		| 0U);
 	HWA_WR_REG_NAME(HWA3b, regs, txdma, hwa_txdma2_cfg2, u32);
-#endif /* HWA_REVISION_EQ_128 */
 
 	// Setup HWA_TXDMA2_CFG3
 	u32 = HWA_TXFIFO_LIMIT_THRESHOLD;
-#if HWA_REVISION_GE_129
 	// aqm_desc_free_space
 	u32 |= (BCM_SBF(HWA_TXFIFO_AGGR_AQM_DESC_THRESHOLD + 1,
 		HWA_TXDMA_HWA_TXDMA2_CFG3_AQM_DESC_FREE_SPACE));
-#endif // endif
 	HWA_WR_REG_NAME(HWA3b, regs, txdma, hwa_txdma2_cfg3, u32);
 
 	// Setup HWA_TXDMA2_CFG4 that controls descriptor generation
-	u32 = (0U
-		| BCM_SBF(HWA_TXFIFO_EMPTY_THRESHOLD,
-			HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_EMPTY_CNT_REACH)
-#if HWA_REVISION_EQ_128
-		| BCM_SBF(HWA_TXFIFO_PKTCNT_THRESHOLD,
-			HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_SWTXPKT_CNT_REACH)
-#endif // endif
-		| 0U);
+	u32 = BCM_SBF(HWA_TXFIFO_EMPTY_THRESHOLD,
+		HWA_TXDMA_HWA_TXDMA2_CFG4_TXDMA_EMPTY_CNT_REACH);
 	HWA_WR_REG_NAME(HWA3b, regs, txdma, hwa_txdma2_cfg4, u32);
 
 	// pktchain head, tail and swtx::pkt_next all point to packets and
+	// share the same hi32 address. reg sw_tx_pkt_nxt_h is redundant. FIXME
 	HWA_WR_REG_NAME(HWA3b, regs, txdma, sw_tx_pkt_nxt_h, hi32);
 
-#if HWA_REVISION_GE_129
-	//CRWLHWA-446
-	//Enable Req-Ack based MAC_HWA i/f is enabled for tx Dma last index update.
+	// XXX CRWLHWA-446
+	// Enable Req-Ack based MAC_HWA i/f is enabled for tx Dma last index update.
 	u16 = HWA_RD_REG16_ADDR(HWA4a, &dev->mac_regs->hwa_macif_ctl);
 	if (dev->txfifo_apb == 0) {
 		u16 |= BCM_SBIT(_HWA_MACIF_CTL_TXDMAEN);
@@ -2683,7 +2905,6 @@ hwa_txfifo_init(hwa_txfifo_t *txfifo)
 		u16 = BCM_CBIT(u16, _HWA_MACIF_CTL_TXDMAEN);
 	}
 	HWA_WR_REG16_ADDR(HWA4a, &dev->mac_regs->hwa_macif_ctl, u16);
-#endif // endif
 
 	return;
 } // hwa_txfifo_init
@@ -2691,7 +2912,6 @@ hwa_txfifo_init(hwa_txfifo_t *txfifo)
 void // HWA3b: Deinit TxFifo block
 hwa_txfifo_deinit(hwa_txfifo_t *txfifo)
 {
-#if HWA_REVISION_GE_129
 	hwa_dev_t *dev;
 
 	HWA_FTRACE(HWA3b);
@@ -2707,7 +2927,6 @@ hwa_txfifo_deinit(hwa_txfifo_t *txfifo)
 		u16 = BCM_CBIT(u16, _HWA_MACIF_CTL_TXDMAEN);
 		HWA_WR_REG16_ADDR(HWA4a, &dev->mac_regs->hwa_macif_ctl, u16);
 	}
-#endif /* HWA_REVISION_GE_129 */
 }
 
 int // Configure a TxFIFO's pkt and aqm ring context in HWA AXI memory
@@ -2813,10 +3032,10 @@ hwa_txfifo_disable_prep(struct hwa_dev *dev, uint32 core)
 		if (loop_count)
 			OSL_DELAY(1);
 		u32 = HWA_RD_REG_NAME(HWA3b, dev->regs, txdma, state_sts);
-		HWA_TRACE(("%s Polling STATE_STS::sw_pkt_curstate <%d>\n",
-			__FUNCTION__, idle));
 		dma_desc_busy = BCM_GBF(u32, HWA_TXDMA_STATE_STS_DMA_DES_CURSTATE);
 		dma_desc_busy |= BCM_GBF(u32, HWA_TXDMA_STATE_STS_FIFO_DMA_CURSTATE);
+		HWA_TRACE(("%s Polling STATE_STS::dma_desc_busy <%d>\n",
+			__FUNCTION__, dma_desc_busy));
 	} while (dma_desc_busy && ++loop_count != HWA_FSM_IDLE_POLLLOOP);
 	if (loop_count == HWA_FSM_IDLE_POLLLOOP) {
 		HWA_ERROR(("%s STATE_STS::state_sts dma desc is not idle <%u>\n",
@@ -2859,10 +3078,10 @@ hwa_txfifo_enable(struct hwa_dev *dev, uint32 core, bool enable)
 		if (loop_count)
 			OSL_DELAY(1);
 		u32 = HWA_RD_REG_NAME(HWA3b, dev->regs, txdma, state_sts);
-		HWA_TRACE(("%s Polling STATE_STS::sw_pkt_curstate <%d>\n",
-			__FUNCTION__, idle));
 		dma_desc_busy = BCM_GBF(u32, HWA_TXDMA_STATE_STS_DMA_DES_CURSTATE);
 		dma_desc_busy |= BCM_GBF(u32, HWA_TXDMA_STATE_STS_FIFO_DMA_CURSTATE);
+		HWA_TRACE(("%s Polling STATE_STS::dma_desc_busy <%d>\n",
+			__FUNCTION__, dma_desc_busy));
 	} while (dma_desc_busy && ++loop_count != HWA_FSM_IDLE_POLLLOOP);
 	if (loop_count == HWA_FSM_IDLE_POLLLOOP) {
 		HWA_ERROR(("%s STATE_STS::state_sts dma desc is not idle <%u>\n",
@@ -2940,6 +3159,13 @@ hwa_txfifo_dma_init(struct hwa_dev *dev, uint32 core, uint32 fifo_idx)
 	}
 }
 
+/* XXX NOTE: Don't accress fifoctx through AXI.
+ * We may hit following error.
+ * AXI timeout  CoreID: 851
+ *        errlog: lo 0x28509820, hi 0x00000000, id 0x001b001b, flags 0x00111200, status 0x00000002
+ *
+ * Use txfifo_shadow as an indicator of active.
+ */
 uint // Get TxFIFO's active descriptor count
 hwa_txfifo_dma_active(struct hwa_dev *dev, uint32 core, uint32 fifo_idx)
 {
@@ -2982,7 +3208,7 @@ hwa_txfifo_dma_reclaim(struct hwa_dev *dev, uint32 core)
 		pktcnt = hwa_txfifo_shadow_reclaim(dev, 0,
 			WLC_HW_MAP_TXFIFO(wlc, i));
 		if (pktcnt > 0) {
-			WLC_TXFIFO_COMPLETE(wlc, i, pktcnt, 0);
+			wlc_txfifo_complete(wlc, i, pktcnt);
 			HWA_ERROR(("%s reclaim fifo %d pkts %d\n", HWA3b, i, pktcnt));
 		}
 
@@ -2997,9 +3223,6 @@ hwa_txfifo_dma_reclaim(struct hwa_dev *dev, uint32 core)
 	// make sure 3A/4A DMA jobs are done.  Here the MAC has suspended.
 	// Wait until 3A finish schedcmd and txfree_ring
 	HWA_TXPOST_EXPR(hwa_txpost_wait_to_finish(&dev->txpost));
-
-	// Make sure 4A has finished it's job.
-	HWA_TXSTAT_EXPR(hwa_txstat_wait_to_finish(&dev->txstat, 0));
 
 	// Reset 3b block
 	hwa_module_request(dev, HWA_MODULE_TXFIFO, HWA_MODULE_RESET, TRUE);
@@ -3128,11 +3351,12 @@ __hwa_txfifo_pktchain64_post(hwa_txfifo_t *txfifo,
 	uint32 fifo_idx, void *pktchain_head, void *pktchain_tail,
 	uint16 pkt_count, uint16 mpdu_count)
 {
+	// FIXME: NIC mode 64bit addressing mode ...
 	HWA_ASSERT(0);
 	HWA_ERROR(("XXX: %s pktchain64 not ready\n", HWA3b));
 } // __hwa_txfifo_pktchain64_post
 
-#if (HWA_DEBUG_BUILD >= 1) && (defined(BCMDBG) || 0)
+#if (HWA_DEBUG_BUILD >= 1) && (defined(BCMDBG) || 0 || defined(HWA_DUMP))
 static void
 _hwa_txfifo_dump_pkt(hwa_txfifo_pkt_t *pkt, struct bcmstrbuf *b,
 	const char *title, bool one_shot)
@@ -3190,48 +3414,6 @@ _hwa_txfifo_dump_shadow32(hwa_txfifo_t *txfifo, struct bcmstrbuf *b,
 	}
 }
 #endif /* HWA_DEBUG_BUILD >= 1 */
-
-#if HWA_REVISION_EQ_128
-/* SW WAR to handle frameid mismatch type2 in A0 */
-void *
-hwa_txfifo_picknext2txp32(struct hwa_dev *dev, uint32 fifo_idx)
-{
-	uint16 mpdu_count;
-	hwa_txfifo_t *txfifo;
-	hwa_txfifo_shadow32_t *shadow32, *myshadow32;
-	hwa_txfifo_pkt_t *txfifo_pkt, *curr;
-
-	HWA_PRINT("%s: fifo <%u>\n", __FUNCTION__, fifo_idx);
-
-	// Audit pre-conditions
-	HWA_AUDIT_DEV(dev);
-	HWA_ASSERT(fifo_idx < HWA_OVFLWQ_MAX);
-
-	txfifo = &dev->txfifo;
-	shadow32 = (hwa_txfifo_shadow32_t *)txfifo->txfifo_shadow;
-	myshadow32 = &shadow32[fifo_idx];
-	txfifo_pkt = HWA_UINT2PTR(hwa_txfifo_pkt_t, myshadow32->pkt_head);
-
-	if (txfifo_pkt == NULL)
-		return NULL;
-
-	//The num_desc in pkt_head should not be 0
-	ASSERT(txfifo_pkt->num_desc > 0);
-
-	//Find the next non-zero num_desc 3b-SWPTK
-	curr = txfifo_pkt;
-	mpdu_count = 0;
-	while (curr) {
-		if (curr->num_desc != 0)
-			mpdu_count++;
-		if (mpdu_count == 2)
-			return (void*)HWAPKT2LFRAG((char *)curr);
-		curr = curr->next;
-	}
-
-	return NULL;
-}
-#endif /* HWA_REVISION_EQ_128 */
 
 void * // Provide the TXed packet
 hwa_txfifo_getnexttxp32(struct hwa_dev *dev, uint32 fifo_idx, uint32 range)
@@ -3359,22 +3541,24 @@ hwa_txfifo_map_pkts(struct hwa_dev *dev, uint32 fifo_idx, void *cb, void *ctx)
 	return BCME_OK;
 }
 
-int // Handle a request from WLAN driver for transmission of a packet chain
+bool // Handle a request from WLAN driver for transmission of a packet chain
 hwa_txfifo_pktchain_xmit_request(struct hwa_dev *dev, uint32 core,
 	uint32 fifo_idx, void *pktchain_head, void *pktchain_tail,
 	uint16 pkt_count, uint16 mpdu_count)
 {
 	hwa_ring_t *pktchain_ring; // S2H pktchain ring context
 	hwa_txfifo_t *txfifo;
+	bool pktchain_ring_full;
 
 	HWA_ASSERT(dev != (struct hwa_dev*)NULL);
 	HWA_FTRACE(HWA3b);
 
 	txfifo = &dev->txfifo;
 	pktchain_ring = &txfifo->pktchain_ring;
+	pktchain_ring_full = FALSE;
 
-	if (hwa_ring_is_full(pktchain_ring))
-		goto failure;
+	// Caller need to check if pktchain_ring is full.
+	HWA_ASSERT(!hwa_ring_is_full(pktchain_ring));
 
 	if (txfifo->pktchain_fmt == sizeof(hwa_txfifo_pktchain32_t))
 		__hwa_txfifo_pktchain32_post(txfifo,
@@ -3385,25 +3569,33 @@ hwa_txfifo_pktchain_xmit_request(struct hwa_dev *dev, uint32 core,
 
 	hwa_ring_prod_upd(pktchain_ring, 1, TRUE); // update/commit WR
 
+	// Notify WL txfifo pktchain ring is full
+	if (hwa_ring_is_full(pktchain_ring)) {
+		wlc_bmac_hwa_txfifo_ring_full(dev->wlc, TRUE);
+		pktchain_ring_full = TRUE;
+	}
+
 	HWA_TRACE(("%s xmit pktchain[%u,%u]"
 		" fifo<%u> head<%p> tail<%p> pkt<%u> mpdu<%u>\n",
 		HWA3b, HWA_RING_STATE(pktchain_ring)->write,
 		HWA_RING_STATE(pktchain_ring)->read,
 		fifo_idx, pktchain_head, pktchain_tail, pkt_count, mpdu_count));
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 	HWA_DEBUG_EXPR(_hwa_txfifo_dump_shadow32(txfifo, NULL, fifo_idx, TRUE));
 #endif // endif
 
-	return txfifo->pktchain_id++;
-
-failure:
-	HWA_WARN(("%s xmit failure fifo<%u> head<%p> tail<%p> pkt<%u> mpdu<%u>\n",
-		HWA3b, fifo_idx, pktchain_head, pktchain_tail, pkt_count, mpdu_count));
-
-	return HWA_FAILURE;
+	return pktchain_ring_full;
 
 } // hwa_txfifo_pktchain_xmit_request
+
+bool
+hwa_txfifo_pktchain_ring_isfull(struct hwa_dev *dev)
+{
+	HWA_ASSERT(dev != (struct hwa_dev*)NULL);
+
+	return (hwa_ring_is_full(&dev->txfifo.pktchain_ring));
+}
 
 // HWA3b TxFifo block statistics collection
 static void _hwa_txfifo_stats_dump(hwa_dev_t *dev, uintptr buf, uint32 core);
@@ -3425,15 +3617,10 @@ _hwa_txfifo_stats_dump(hwa_dev_t *dev, uintptr buf, uint32 core)
 	hwa_txfifo_stats_t *txfifo_stats = &dev->txfifo.stats;
 	struct bcmstrbuf *b = (struct bcmstrbuf *)buf;
 
-#if HWA_REVISION_EQ_128
-	HWA_BPRINT(b, "%s statistics TBD<%u>\n", HWA3b, txfifo_stats->TBD);
-#else
 	HWA_BPRINT(b, "%s statistics pktcq_empty<%u> ovfq_empty<%u> "
 		"ovfq_full<%u> stall<%u>\n", HWA3b,
 		txfifo_stats->pktc_empty, txfifo_stats->ovf_empty,
 		txfifo_stats->ovf_full, txfifo_stats->pull_fsm_stall);
-#endif // endif
-
 } // _hwa_txfifo_stats_dump
 
 void // Query and dump common statistics for HWA3b TxFifo block
@@ -3443,6 +3630,7 @@ hwa_txfifo_stats_dump(hwa_txfifo_t *txfifo, struct bcmstrbuf *b, uint8 clear_on_
 
 	dev = HWA_DEV(txfifo);
 
+	// FIXME TBD is this per core?
 	hwa_txfifo_stats_t *txfifo_stats = &txfifo->stats;
 	hwa_stats_copy(dev, HWA_STATS_TXDMA,
 		HWA_PTR2UINT(txfifo_stats), HWA_PTR2HIADDR(txfifo_stats),
@@ -3451,7 +3639,7 @@ hwa_txfifo_stats_dump(hwa_txfifo_t *txfifo, struct bcmstrbuf *b, uint8 clear_on_
 
 } // hwa_txfifo_stats_dump
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 
 void // Dump HWA3b state
 hwa_txfifo_state(hwa_dev_t *dev)
@@ -3587,7 +3775,10 @@ hwa_txfifo_dump(hwa_txfifo_t *txfifo, struct bcmstrbuf *b,
 	HWA_BPRINT(b, "+ TxFIFO config<%u> total<%u>\n+ TxFIFO Enabled:\n",
 		txfifo->fifo_config, txfifo->fifo_total);
 
-#if defined(WLTEST)
+	/* XXX, Sometime TxFIFO AQM context dump may cause AXI timeout when 3B is in trouble,
+	 * so move registers/stats dump before TxFIFO AQM context dump.
+	 */
+#if defined(WLTEST) || defined(HWA_DUMP)
 	if (dump_regs == TRUE)
 		hwa_txfifo_regs_dump(txfifo, b);
 #endif // endif
@@ -3676,7 +3867,7 @@ dump_shadow:
 	}
 } // hwa_txfifo_dump
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 
 void // HWA3b TxFifo: dump block registers
 hwa_txfifo_regs_dump(hwa_txfifo_t *txfifo, struct bcmstrbuf *b)
@@ -3693,46 +3884,6 @@ hwa_txfifo_regs_dump(hwa_txfifo_t *txfifo, struct bcmstrbuf *b)
 	HWA_BPRINT(b, "%s registers[0x%p] offset[0x%04x]\n",
 		HWA3b, &regs->txdma, OFFSETOF(hwa_regs_t, txdma));
 
-#if HWA_REVISION_EQ_128
-	HWA_BPR_REG(b, txdma, txd_ctrl);
-	// HWA-1.0 txd_host_addr_h, txd_rinfo_XXX, txd_cache_XXX,
-	// txd_pktinfo_XXX, txd_cacheinfo_XXX
-	HWA_BPR_REG(b, txdma, mac_txd_bm_pool_base_addr_l);
-	HWA_BPR_REG(b, txdma, mac_txd_bm_config);
-	HWA_BPR_REG(b, txdma, mac_txd_bm_pool_avail_count_sts);
-	// HWA-1.0 eth_type_out[0..3]
-	HWA_BPR_REG(b, txdma, sw2hwa_tx_pkt_chain_q_base_addr_l);
-	HWA_BPR_REG(b, txdma, sw2hwa_tx_pkt_chain_q_wr_index);
-	HWA_BPR_REG(b, txdma, sw2hwa_tx_pkt_chain_q_rd_index);
-	HWA_BPR_REG(b, txdma, sw2hwa_tx_pkt_chain_q_ctrl);
-	HWA_BPR_REG(b, txdma, fifo_index);
-	HWA_BPR_REG(b, txdma, fifo_base_addr);
-	HWA_BPR_REG(b, txdma, fifo_wr_index);
-	HWA_BPR_REG(b, txdma, fifo_depth);
-	HWA_BPR_REG(b, txdma, sw_pkt_size);
-	HWA_BPR_REG(b, txdma, dma_desc_template_txdma);
-	HWA_BPR_REG(b, txdma, state_sts);
-	HWA_BPR_REG(b, txdma, hwa_txdma2_cfg1);
-	HWA_BPR_REG(b, txdma, hwa_txdma2_cfg2);
-	HWA_BPR_REG(b, txdma, ovflowq_base_addr_lo);
-	HWA_BPR_REG(b, txdma, ovflowq_base_addr_hi);
-	HWA_BPR_REG(b, txdma, num_txfifo_percore);
-	HWA_BPR_REG(b, txdma, fifo_rd_index);
-	HWA_BPR_REG(b, txdma, fifo_attrib);
-	HWA_BPR_REG(b, txdma, fifo_base_addrhi);
-	HWA_BPR_REG(b, txdma, aqm_base_addr_lo);
-	HWA_BPR_REG(b, txdma, aqm_base_addr_hi);
-	HWA_BPR_REG(b, txdma, aqm_wr_index);
-	HWA_BPR_REG(b, txdma, aqm_depth);
-	HWA_BPR_REG(b, txdma, aqm_rd_index);
-	HWA_BPR_REG(b, txdma, aqm_attrib);
-	HWA_BPR_REG(b, txdma, state_sts2);
-	HWA_BPR_REG(b, txdma, state_sts3);
-	HWA_BPR_REG(b, txdma, hwa_txdma2_cfg3);
-	HWA_BPR_REG(b, txdma, hwa_txdma2_cfg4);
-	HWA_BPR_REG(b, txdma, sw2hwa_tx_pkt_chain_q_base_addr_h);
-	HWA_BPR_REG(b, txdma, sw_tx_pkt_nxt_h);
-#else  /* HWA_REVISION_GE_129 */
 	HWA_BPR_REG(b, txdma, hwa_txdma2_cfg1);
 	HWA_BPR_REG(b, txdma, hwa_txdma2_cfg2);
 	HWA_BPR_REG(b, txdma, hwa_txdma2_cfg3);
@@ -3760,7 +3911,12 @@ hwa_txfifo_regs_dump(hwa_txfifo_t *txfifo, struct bcmstrbuf *b)
 	HWA_BPR_REG(b, txdma, aqm_attrib);
 	HWA_BPR_REG(b, txdma, sw_tx_pkt_nxt_h);
 	HWA_BPR_REG(b, txdma, dma_desc_template_txdma);
-#endif /* HWA_REVISION_GE_129 */
+#ifdef HWA_PKTPGR_BUILD
+	HWA_BPR_REG(b, txdma, pp_pageout_cfg);
+	HWA_BPR_REG(b, txdma, pp_pageout_sts);
+	HWA_BPR_REG(b, txdma, pp_pagein_cfg);
+	HWA_BPR_REG(b, txdma, pp_pagein_sts);
+#endif /* HWA_PKTPGR_BUILD */
 } // hwa_txfifo_regs_dump
 
 #endif // endif
@@ -3779,7 +3935,7 @@ hwa_txfifo_regs_dump(hwa_txfifo_t *txfifo, struct bcmstrbuf *b)
 static int hwa_txstat_bmac_proc(void *context, uintptr arg1, uintptr arg2,
 	uint32 core, uint32 arg4);
 static int hwa_txstat_bmac_done(void *context, uintptr arg1, uintptr arg2,
-	uint32 core, uint32 rxfifo_cnt);
+	uint32 core, uint32 proc_cnt);
 
 // HWA4a TxStat block level management
 void
@@ -3821,7 +3977,7 @@ hwa_txstat_t *
 BCMATTACHFN(hwa_txstat_attach)(hwa_dev_t *dev)
 {
 	void *memory;
-	uint32 v32, core, mem_sz, depth;
+	uint32 core, mem_sz, depth;
 	hwa_regs_t *regs;
 	hwa_txstat_t *txstat;
 
@@ -3834,7 +3990,7 @@ BCMATTACHFN(hwa_txstat_attach)(hwa_dev_t *dev)
 	regs = dev->regs;
 	txstat = &dev->txstat;
 
-	// Allocate and initialize the H2S txstatus interface
+	// Allocate the H2S txstatus interface
 	for (core = 0; core < HWA_TX_CORES; core++) {
 		depth = HWA_TXSTAT_QUEUE_DEPTH;
 		mem_sz = depth * sizeof(hwa_txstat_status_t);
@@ -3846,31 +4002,19 @@ BCMATTACHFN(hwa_txstat_attach)(hwa_dev_t *dev)
 		}
 		HWA_TRACE(("%s status_ring<%u> +memory[%p,%u]\n",
 			HWA4a, core, memory, mem_sz));
-		v32 = HWA_PTR2UINT(memory);
-		HWA_WR_REG_NAME(HWA4a, regs, tx_status[core], tseq_base_lo, v32);
-		v32 = HWA_PTR2HIADDR(memory); // hiaddr for NIC mode 64b hosts
-		HWA_WR_REG_NAME(HWA4a, regs, tx_status[core], tseq_base_hi, v32);
 		hwa_ring_init(&txstat->status_ring[core], "TXS", HWA_TXSTAT_ID,
 			HWA_RING_H2S, HWA_TXSTAT_QUEUE_H2S_RINGNUM, depth, memory,
 			&regs->tx_status[core].tseq_wridx,
 			&regs->tx_status[core].tseq_rdidx);
-		v32 = HWA_TXSTAT_QUEUE_DEPTH;
-		HWA_WR_REG_NAME(HWA4a, regs, tx_status[core], tseq_size, v32);
-		v32 = (0U
-			| BCM_SBF(HWA_TXSTAT_RING_ELEM_SIZE,
-			        HWA_TX_STATUS_TSE_CTL_MACTXSTATUSSIZE)
-			| BCM_SBF(HWA_TXSTAT_INTRAGGR_TMOUT,
-			        HWA_TX_STATUS_TSE_CTL_LAZYINTRTIMEOUT)
-			| BCM_SBF(HWA_TXSTAT_INTRAGGR_COUNT,
-			         HWA_TX_STATUS_TSE_CTL_LAZYCOUNT)
-			| 0U);
-		HWA_WR_REG_NAME(HWA4a, regs, tx_status[core], tse_ctl, v32);
-
 	} // for core
 
+	// Initialize the TxStat memory AXI memory address
+	txstat->txstat_addr = hwa_axi_addr(dev, HWA_AXI_TXSTAT_MEMORY);
+	HWA_TRACE(("%s AXI memory address <0x%x>\n", HWA4a, txstat->txstat_addr));
+
 	// Registered dpc callback handler
-	hwa_register(dev, HWA_TXSTAT_PROC, dev, hwa_txstat_bmac_proc);
-	hwa_register(dev, HWA_TXSTAT_DONE, dev, hwa_txstat_bmac_done);
+	hwa_register(dev, HWA_TXSTAT_PROC_CB, dev, hwa_txstat_bmac_proc);
+	hwa_register(dev, HWA_TXSTAT_DONE_CB, dev, hwa_txstat_bmac_done);
 
 	return txstat;
 
@@ -3889,15 +4033,12 @@ hwa_txstat_init(hwa_txstat_t *txstat)
 	hwa_dev_t *dev;
 	hwa_regs_t *regs;
 	uint16 v16;
+	void *memory;
 
 	HWA_FTRACE(HWA4a);
 
 	// Audit pre-conditions
 	dev = HWA_DEV(txstat);
-
-	// Check initialization.
-	if (dev->inited)
-		goto done;
 
 	// Setup locals
 	regs = dev->regs;
@@ -3910,6 +4051,7 @@ hwa_txstat_init(hwa_txstat_t *txstat)
 			HWA_TX_STATUS_DMA_DESC_TEMPLATE_TXS_DMAPCIEDESCTEMPLATECOHERENT)
 		| BCM_SBF(0U,
 			HWA_TX_STATUS_DMA_DESC_TEMPLATE_TXS_DMAPCIEDESCTEMPLATEADDREXT)
+		// HWA local memory as source or address FIXME Typo in regs doc
 		//| BCM_SBIT(HWA_TX_STATUS_DMA_DESC_TEMPLATE_TXS_DMAHWADESCTEMPLATENOTPCIE)
 		| BCM_SBIT(HWA_TX_STATUS_DMA_DESC_TEMPLATE_TXS_DMAHWADESCTEMPLATECOHERENT)
 		//| BCM_SBIT(HWA_TX_STATUS_DMA_DESC_TEMPLATE_TXS_NONDMAHWADESCTEMPLATECOHERENT)
@@ -3917,32 +4059,45 @@ hwa_txstat_init(hwa_txstat_t *txstat)
 		HWA_WR_REG_NAME(HWA4a, regs, tx_status[core],
 			dma_desc_template_txs, v32);
 
-#if HWA_REVISION_GE_129
-		//CRWLHWA-454
-		//Access mode
-		//0: get MAC TX status with APB interface. 1: get MAX TX status with AXI interface.
+		// XXX CRWLHWA-454
+		// Access mode
+		// 0: get MAC TX status with APB interface. 1: get MAX TX status with AXI interface.
 		v32 = BCM_SBF((dev->txstat_apb == 0) ? 1 : 0,
 			HWA_TX_STATUS_TXE_CFG1_ACCESSMODE);
 		HWA_WR_REG_NAME(HWA4a, regs, tx_status[core], txe_cfg1, v32);
-#endif /* HWA_REVISION_GE_129 */
-	} // for core
 
-done:
+		// Initialize the H2S txstatus interface
+		memory = txstat->status_ring[core].memory;
+		v32 = HWA_PTR2UINT(memory);
+		HWA_WR_REG_NAME(HWA4a, regs, tx_status[core], tseq_base_lo, v32);
+		v32 = HWA_PTR2HIADDR(memory); // hiaddr for NIC mode 64b hosts
+		HWA_WR_REG_NAME(HWA4a, regs, tx_status[core], tseq_base_hi, v32);
+
+		v32 = HWA_TXSTAT_QUEUE_DEPTH;
+		HWA_WR_REG_NAME(HWA4a, regs, tx_status[core], tseq_size, v32);
+		v32 = (0U
+			| BCM_SBF(HWA_TXSTAT_RING_ELEM_SIZE,
+				HWA_TX_STATUS_TSE_CTL_MACTXSTATUSSIZE)
+			| BCM_SBF(HWA_TXSTAT_INTRAGGR_TMOUT,
+				HWA_TX_STATUS_TSE_CTL_LAZYINTRTIMEOUT)
+			| BCM_SBF(HWA_TXSTAT_INTRAGGR_COUNT,
+				HWA_TX_STATUS_TSE_CTL_LAZYCOUNT)
+			| 0U);
+		HWA_WR_REG_NAME(HWA4a, regs, tx_status[core], tse_ctl, v32);
+	} // for core
 
 	// Enable Req-Ack based MAC_HWA i/f is enabled for txStatus.
 	v16 = HWA_RD_REG16_ADDR(HWA4a, &dev->mac_regs->hwa_macif_ctl);
 	v16 |= BCM_SBIT(_HWA_MACIF_CTL_TXSTATUSEN);
 	v16 |= BCM_SBF(HWA_TXSTAT_RING_ELEM_SIZE/HWA_TXSTAT_PKG_SIZE,
 		_HWA_MACIF_CTL_TXSTATUS_COUNT);
-#if HWA_REVISION_GE_129
-	//CRWLHWA-454:
-	//0: get MAC TX status with APB interface. 1: get MAX TX status with AXI interface.
+	// XXX CRWLHWA-454:
+	// 0: get MAC TX status with APB interface. 1: get MAX TX status with AXI interface.
 	if (dev->txstat_apb == 0) {
 		v16 |= BCM_SBIT(_HWA_MACIF_CTL_TXSTATUSMEM_AXI);
 	} else {
 		v16 = BCM_CBIT(v16, _HWA_MACIF_CTL_TXSTATUSMEM_AXI);
 	}
-#endif /* HWA_REVISION_GE_129 */
 	HWA_WR_REG16_ADDR(HWA4a, &dev->mac_regs->hwa_macif_ctl, v16);
 
 	// Assign the txstat interrupt mask.
@@ -3999,15 +4154,24 @@ hwa_txstat_wait_to_finish(hwa_txstat_t *txstat, uint32 core)
 	if (loop_count == HWA_FSM_IDLE_POLLLOOP) {
 		HWA_ERROR(("%s txs_debug_reg is not idle <%u:%u>\n", __FUNCTION__,
 			start_curstate, num_tx_status_count));
+		txstat->status_stall = TRUE;
 	}
 }
 
 void // HWA4a TxStatus block reclaim
-hwa_txstat_reclaim(hwa_dev_t *dev)
+hwa_txstat_reclaim(hwa_dev_t *dev, uint32 core)
 {
-	uint32 core;
+	wlc_info_t *wlc;
 	hwa_txstat_t *txstat; // SW txstat state
 	hwa_ring_t *h2s_ring; // H2S TxStatus status_ring
+	hwa_handler_t *proc_handler; // upstream per TxStatus handler
+	hwa_handler_t *done_handler; // upstream all TxStatus done handler
+	hwa_module_block_t blk;
+	void *txstatus;
+	hwa_txstat_status_t txs_cache;
+	wlc_txs_pkg16_t pkg;
+	uint8 pkg_len;
+	bool fatal;
 
 	HWA_FTRACE(HWA4a);
 
@@ -4015,23 +4179,79 @@ hwa_txstat_reclaim(hwa_dev_t *dev)
 	HWA_AUDIT_DEV(dev);
 
 	// Setup locals
+	wlc = (wlc_info_t *)dev->wlc;
 	txstat = &dev->txstat;
+	h2s_ring = &txstat->status_ring[core];
+	pkg_len = sizeof(wlc_txs_pkg16_t);
+	fatal = FALSE;
 
-	// Consume all txstatus in H2S TxStatus status_ring
-	for (core = 0; core < HWA_TX_CORES; core++) {
-		h2s_ring = &txstat->status_ring[core];
-		hwa_ring_cons_get(h2s_ring); // fetch HWA txstatus ring's WR index once
-		hwa_ring_cons_all(h2s_ring); // consume all elements.
-		hwa_ring_cons_put(h2s_ring); // commit RD index now
+	// Fetch registered upstream callback handler
+	proc_handler = &dev->handlers[HWA_TXSTAT_PROC_CB];
+	done_handler = &dev->handlers[HWA_TXSTAT_DONE_CB];
+
+	if (core == 0) {
+		blk = HWA_MODULE_TXSTAT0;
+	} else {
+		blk = HWA_MODULE_TXSTAT1;
 	}
-}
 
-void // Process active txstatus in H2S TxStatus status_ring before fifo sync.
-hwa_txstat_service_txstatus(hwa_dev_t *dev)
-{
 	// Make sure 4a's job is done.
-	hwa_txstat_wait_to_finish(&dev->txstat, 0);
+	hwa_txstat_wait_to_finish(txstat, core);
+
+	// Deinit 4a
+	hwa_txstat_deinit(txstat);
+
+	// Disable 4a block
+	hwa_module_request(dev, blk, HWA_MODULE_ENABLE, FALSE);
+
+	// Process remain txstatus in H2S TxStatus status_ring
 	(void)hwa_txstat_process(dev, 0, HWA_PROCESS_NOBOUND);
+
+	// Process stall txstatus
+	if (txstat->status_stall) {
+		HWA_RD_MEM32(HWA4a, wlc_txs_pkg16_t, txstat->txstat_addr, &pkg);
+		if (pkg.word[0] & TX_STATUS40_FIRST) {
+			// pkg 1
+			bcopy(&pkg, &txs_cache, pkg_len);
+			// pkg 2
+			wlc_bmac_read_txs_pkg16(wlc->hw, &pkg);
+			bcopy(&pkg, ((uint8 *)&txs_cache) + pkg_len, pkg_len);
+			prhex("F", (uint8 *)&txs_cache, sizeof(txs_cache));
+		} else {
+			// pkg 1
+			HWA_ASSERT(hwa_ring_is_empty(h2s_ring));
+			// The next txs will be placed at read index
+			txstatus = HWA_RING_ELEM(hwa_txstat_status_t, h2s_ring,
+				HWA_RING_STATE(h2s_ring)->read);
+			bcopy(txstatus, &txs_cache, pkg_len);
+			// pkg 2
+			bcopy(&pkg, ((uint8 *)&txs_cache) + pkg_len, pkg_len);
+			prhex("S", (uint8 *)&txs_cache, sizeof(txs_cache));
+		}
+		// Invoke upstream bound handler
+		(*proc_handler->callback)(proc_handler->context,
+			(uintptr)&txs_cache, (uintptr)&fatal, core, 0);
+		HWA_STATS_EXPR(txstat->proc_cnt[core] += 1);
+		(*done_handler->callback)(done_handler->context,
+			(uintptr)&fatal, (uintptr)0, core, 1);
+		txstat->status_stall = FALSE;
+	}
+
+	// Process remain txstatus
+	wlc_bmac_txstatus(wlc->hw, FALSE, &fatal);
+
+	// Reset 4a block
+	hwa_module_request(dev, blk, HWA_MODULE_RESET, TRUE);
+	hwa_module_request(dev, blk, HWA_MODULE_RESET, FALSE);
+	HWA_RING_STATE(h2s_ring)->write = 0;
+	HWA_RING_STATE(h2s_ring)->read = 0;
+
+	// Enable 4a block
+	hwa_module_request(dev, blk, HWA_MODULE_ENABLE, TRUE);
+
+	// Init 4a
+	hwa_txstat_init(txstat);
+
 }
 
 int // Consume all txstatus in H2S txstatus interface
@@ -4064,8 +4284,8 @@ hwa_txstat_process(struct hwa_dev *dev, uint32 core, bool bound)
 	wlc = (wlc_info_t *)dev->wlc;
 
 	// Fetch registered upstream callback handler
-	proc_handler = &dev->handlers[HWA_TXSTAT_PROC];
-	done_handler = &dev->handlers[HWA_TXSTAT_DONE];
+	proc_handler = &dev->handlers[HWA_TXSTAT_PROC_CB];
+	done_handler = &dev->handlers[HWA_TXSTAT_DONE_CB];
 
 	HWA_STATS_EXPR(txstat->wake_cnt[core]++);
 
@@ -4090,10 +4310,12 @@ hwa_txstat_process(struct hwa_dev *dev, uint32 core, bool bound)
 	}
 
 	// Consume all TxStatus received in status_ring, handing each upstream
+	// XXX: FIXME: Should we use bound to limit the process ?
 	while ((elem_ix = hwa_ring_cons_upd(h2s_ring)) != BCM_RING_EMPTY) {
 
 		txstatus = HWA_RING_ELEM(hwa_txstat_status_t, h2s_ring, elem_ix);
 
+		// XXX: FIXME: we should check wlc->pub->up in hwa_dpc
 		if (!wlc->hw->up)
 			break;
 
@@ -4118,9 +4340,8 @@ hwa_txstat_process(struct hwa_dev *dev, uint32 core, bool bound)
 
 	hwa_ring_cons_put(h2s_ring); // commit RD index now
 
-	HWA_STATS_EXPR(txstat->proc_cnt[core] += proc_cnt);
-
 	if (proc_cnt) {
+		HWA_STATS_EXPR(txstat->proc_cnt[core] += proc_cnt);
 		(*done_handler->callback)(done_handler->context,
 			(uintptr)&fatal, (uintptr)0, core, proc_cnt);
 	}
@@ -4167,6 +4388,10 @@ hwa_txstat_read_txs_pkg16(wlc_info_t *wlc, wlc_txs_pkg16_t *txs)
 	return BCME_OK;
 }
 
+/*
+ * This is HWA TX handle function to process txstatus.
+ * NOTE: FIXME: for now this function only consider FD mode.
+ */
 static int
 hwa_txstat_bmac_proc(void *context, uintptr arg1, uintptr arg2, uint32 core, uint32 arg4)
 {
@@ -4220,6 +4445,9 @@ hwa_txstat_bmac_proc(void *context, uintptr arg1, uintptr arg2, uint32 core, uin
 		txs.status.suppr_ind =
 				(status_bits & TX_STATUS40_SUPR) >> TX_STATUS40_SUPR_SHIFT;
 
+		BUZZZ_KPI_PKT1(KPI_PKT_MAC_TXSTAT, 2,
+			ncons, D11_TXFID_GET_FIFO(wlc, txs.frameid));
+
 		/* pkg 2 comes always */
 		txserr = hwa_txstat_read_txs_pkg16(wlc, ++pkg);
 		/* store saved extras (check valid pkg) */
@@ -4238,6 +4466,8 @@ hwa_txstat_bmac_proc(void *context, uintptr arg1, uintptr arg2, uint32 core, uin
 			v_s1, v_s2, v_s3, v_s4,
 			pkg->word[0], pkg->word[1], pkg->word[2], pkg->word[3]));
 
+		txs.status.s1 = v_s1;
+		txs.status.s2 = v_s2;
 		txs.status.s3 = v_s3;
 		txs.status.s4 = v_s4;
 		txs.status.s5 = pkg->word[0];
@@ -4254,19 +4484,13 @@ hwa_txstat_bmac_proc(void *context, uintptr arg1, uintptr arg2, uint32 core, uin
 			/* Only RT0 entry is used for frag_tx_cnt in ucode */
 			txs.status.frag_tx_cnt = TX_STATUS40_TXCNT_RT0(v_s3);
 		} else {
+			/* XXX: Need to be recalculated to "txs->status.s3 & 0xffff"
+			 * if this tx was fixed rate.
+			 * The recalculation is done in wlc_dotxstatus() as we need
+			 * TX descriptor from pkt ptr to know if it was fixed rate or not.
+			 */
 			txs.status.frag_tx_cnt = TX_STATUS40_TXCNT(v_s3, v_s4);
 		}
-
-#ifdef WLFCTS
-		if (WLFCTS_ENAB(wlc->pub)) {
-			uint32 lasttxtime_lo16 = (pkg->word[3] >> 16) & 0x0000ffff;
-			uint32 dequeuetime_lo16 = pkg->word[3] & 0x0000ffff;
-			txs.dequeuetime = ((txs.lasttxtime - dequeuetime_lo16) & 0xffff0000)
-					| dequeuetime_lo16;
-			txs.lasttxtime = ((txs.lasttxtime - lasttxtime_lo16) & 0xffff0000)
-					| lasttxtime_lo16;
-		}
-#endif /* WLFCTS */
 
 #ifdef WLC_TSYNC
 		if (TSYNC_ENAB(wlc->pub)) {
@@ -4309,6 +4533,11 @@ done:
 	return HWA_SUCCESS;
 }
 
+/*
+ * This function will be called when we finished hwa_txstat_process() .
+ * You can add some post processes in function if needed.
+ * NOTE: FIXME: for now this function only consider FD mode.
+ */
 static int
 hwa_txstat_bmac_done(void *context, uintptr arg1, uintptr arg2, uint32 core, uint32 proc_cnt)
 {
@@ -4319,19 +4548,17 @@ hwa_txstat_bmac_done(void *context, uintptr arg1, uintptr arg2, uint32 core, uin
 
 	HWA_TRACE(("%s %s(): core<%u> proc_cnt<%u>\n", HWA4a, __FUNCTION__, core, proc_cnt));
 
+	if (*fatal) {
+		HWA_ERROR(("wl%d: %s HAMMERING fatal txs err\n",
+			wlc_hw->unit, __FUNCTION__));
+		wlc_check_assert_type(wlc, WL_REINIT_RC_INV_TX_STATUS);
+		return HWA_FAILURE;
+	}
+
 	if (wlc->active_queue != NULL && WLC_TXQ_OCCUPIED(wlc)) {
 		WLDURATION_ENTER(wlc, DUR_DPC_TXSTATUS_SENDQ);
 		wlc_send_q(wlc, wlc->active_queue);
 		WLDURATION_EXIT(wlc, DUR_DPC_TXSTATUS_SENDQ);
-	}
-
-	if (*fatal) {
-		HWA_ERROR(("wl%d: %s HAMMERING fatal txs err\n",
-			wlc_hw->unit, __FUNCTION__));
-		if (wlc_hw->need_reinit == WL_REINIT_RC_NONE) {
-			wlc_hw->need_reinit = WL_REINIT_RC_INV_TX_STATUS;
-		}
-		WLC_FATAL_ERROR(wlc);
 	}
 
 	return HWA_SUCCESS;
@@ -4382,7 +4609,7 @@ hwa_txstat_stats_dump(hwa_txstat_t *txstat, struct bcmstrbuf *b, uint8 clear_on_
 
 } // hwa_txstat_stats_dump
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 
 void // HWA4a TxStat: debug dump
 hwa_txstat_dump(hwa_txstat_t *txstat, struct bcmstrbuf *b, bool verbose, bool dump_regs)
@@ -4408,14 +4635,14 @@ hwa_txstat_dump(hwa_txstat_t *txstat, struct bcmstrbuf *b, bool verbose, bool du
 		hwa_txstat_stats_dump(txstat, b, /* clear */ 0);
 	}
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 	if (dump_regs == TRUE)
 		hwa_txstat_regs_dump(txstat, b);
 #endif // endif
 
 } // hwa_txstat_dump
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 
 void // HWA4a TxStat: dump block registers
 hwa_txstat_regs_dump(hwa_txstat_t *txstat, struct bcmstrbuf *b)
@@ -4444,11 +4671,9 @@ hwa_txstat_regs_dump(hwa_txstat_t *txstat, struct bcmstrbuf *b)
 		HWA_BPR_REG(b, tx_status[core], tse_sts);
 		HWA_BPR_REG(b, tx_status[core], txs_debug_reg);
 		HWA_BPR_REG(b, tx_status[core], dma_desc_template_txs);
-#if HWA_REVISION_GE_129
 		HWA_BPR_REG(b, tx_status[core], txe_cfg1);
 		HWA_BPR_REG(b, tx_status[core], tse_axi_base);
 		HWA_BPR_REG(b, tx_status[core], tse_axi_ctl);
-#endif /* HWA_REVISION_GE_129 */
 	} // for core
 
 } // hwa_txstat_regs_dump
@@ -4650,16 +4875,15 @@ hwa_down(void *hdl)
 	return BCME_OK;
 }
 
-#if defined(BCMDBG)
+#if defined(BCMDBG) || defined(HWA_DUMP)
 #define HWA_DUMP_ARGV_MAX	64
 #define HWA_DUMP_FIFO_MAX	128
-/* wl dump hwa [-b all top cmn dma 1a 1b 2a 2b 3a 3b 4a 4b -v -r -s] */
 static int
-hwa_wl_dump_parse_args(wlc_info_t *wlc, uint32 *block_bitmap, bool *verbose,
-	bool *dump_regs, bool *dump_txfifo_shadow, uint8 *fifo_bitmap, bool *help)
+hwa_dump_parse_args(wlc_info_t *wlc, char *args, uint32 *block_bitmap,
+	bool *verbose, bool *dump_regs, bool *dump_txfifo_shadow, uint8 *fifo_bitmap,
+	bool *help)
 {
 	int i, err = BCME_OK;
-	char *args = wlc->dump_args;
 	char *p, **argv = NULL;
 	uint argc = 0;
 	char opt, curr = '\0';
@@ -4791,12 +5015,10 @@ exit:
 	return err;
 }
 
-/* wl dump hwa [-b <blocks> -v -r -s -f <HWA fifos> -h] */
-int
-hwa_wl_dump(struct hwa_dev *dev, struct bcmstrbuf *b)
+static int
+_hwa_dump(hwa_dev_t *dev, char *dump_args, struct bcmstrbuf *b)
 {
 	int i, err = BCME_OK;
-	wlc_info_t *wlc = (wlc_info_t *)dev->wlc;
 	uint32 block_bitmap = HWA_DUMP_ALL;
 	bool verbose = FALSE;
 	bool dump_regs = FALSE;
@@ -4810,22 +5032,25 @@ hwa_wl_dump(struct hwa_dev *dev, struct bcmstrbuf *b)
 	}
 
 	/* Parse args if needed */
-	if (wlc->dump_args) {
-		err = hwa_wl_dump_parse_args(wlc, &block_bitmap, &verbose,
+	if (dump_args) {
+		err = hwa_dump_parse_args(dev->wlc, dump_args, &block_bitmap, &verbose,
 			&dump_regs, &dump_txfifo_shadow, fifo_bitmap, &help);
 		if (err != BCME_OK)
 			return err;
 
 		if (help) {
-			char *help_str = "Dump HWA:\n"
-				"\tUsage: wl dump hwa [-b <blocks> -v -r -s -f <HWA fifos> -h]\n"
-				"\t       blocks: <top> <cmn> <dma> <1a> <1b> <2a> <2b>"
+			char *help_str_wl = "Usage: wl dump hwa [-b <blocks> -v -r -s "
+				"-f <HWA fifos> -h]\n";
+			char *help_str_dhd = "Usage: hwa dump -b <blocks> -v -r -s "
+				"-f <HWA fifos> -h\n";
+			char *help_str_cmn =
+				"       blocks: <top> <cmn> <dma> <1a> <1b> <2a> <2b>"
 				" <3a> <3b> <4a> <4b>\n"
-				"\t       v: verbose\n"
-				"\t       r: dump registers\n"
-				"\t       s: dump txfifo shadow\n"
-				"\t       f: specific fifos\n";
-			bcm_bprintf(b, "%s", help_str);
+				"       v: verbose\n"
+				"       r: dump registers\n"
+				"       s: dump txfifo shadow\n"
+				"       f: specific fifos\n";
+			HWA_BPRINT(b, "%s%s", b ? help_str_wl : help_str_dhd, help_str_cmn);
 			return BCME_OK;
 		}
 	}
@@ -4834,4 +5059,27 @@ hwa_wl_dump(struct hwa_dev *dev, struct bcmstrbuf *b)
 
 	return BCME_OK;
 }
+
+/* wl dump hwa [-b <blocks> -v -r -s -f <HWA fifos> -h] */
+int
+hwa_wl_dump(struct hwa_dev *dev, struct bcmstrbuf *b)
+{
+	wlc_info_t *wlc = (wlc_info_t *)dev->wlc;
+
+	return _hwa_dump(dev, wlc->dump_args, b);
+}
+
+/* dhd cons "hwa dump -b <blocks> -v -r -s -f <HWA fifos> -h" */
+int
+hwa_dhd_dump(struct hwa_dev *dev, char *dump_args)
+{
+	return _hwa_dump(dev, dump_args, NULL);
+}
+
 #endif // endif
+
+si_t *
+hwa_get_wlc_sih(void *wlc)
+{
+	return ((wlc_info_t *)wlc)->pub->sih;
+}

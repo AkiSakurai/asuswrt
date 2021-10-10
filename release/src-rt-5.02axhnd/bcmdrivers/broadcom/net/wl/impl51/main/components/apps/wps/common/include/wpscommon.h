@@ -1,7 +1,7 @@
 /*
  * WPS Common
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wpscommon.h 525052 2015-01-08 20:18:35Z $
+ * $Id: wpscommon.h 768362 2018-10-11 06:45:41Z $
  */
 
 #ifndef _WPS_COMMON_
@@ -103,39 +103,40 @@ typedef enum {
 	SCMODE_STA_ENROLLEE,
 	SCMODE_STA_REGISTRAR,
 	SCMODE_AP_ENROLLEE,
-	SCMODE_AP_REGISTRAR
+	SCMODE_AP_REGISTRAR,
 } WPS_SCMODE;
 
 typedef enum {
-	WPS_INIT = 0,
-	WPS_ASSOCIATED,
-	WPS_OK,
-	WPS_MSG_ERR,
-	WPS_TIMEOUT,
-	WPS_SENDM2,
-	WPS_SENDM7,
-	WPS_MSGDONE,
-	WPS_PBCOVERLAP,
-	WPS_FIND_PBC_AP,
-	WPS_ASSOCIATING,
-	WPS_FIND_SEL_AP,
-	WPS_NFC_WR_CFG,
-	WPS_NFC_WR_PW,
-	WPS_NFC_WR_CPLT,
-	WPS_NFC_RD_CFG,
-	WPS_NFC_RD_PW,
-	WPS_NFC_RD_CPLT,
-	WPS_NFC_HO_S,
-	WPS_NFC_HO_R,
-	WPS_NFC_HO_NDEF,
-	WPS_NFC_HO_CPLT,
-	WPS_NFC_OP_ERROR,
-	WPS_NFC_OP_STOP,
-	WPS_NFC_OP_TO,
-	WPS_NFC_FM,
-	WPS_NFC_FM_CPLT,
-	WPS_NFC_HO_DPI_MISMATCH,
-	WPS_NFC_HO_PKH_MISMATCH
+	WPS_INIT		= 0,	/* Idle and ready to be initiated */
+	WPS_ASSOCIATED		= 1,	/* Any request event was detected, example PBC */
+	WPS_OK			= 2,	/* WPS procedure (M1 ~ M8) was successfully done */
+	WPS_MSG_ERR		= 3,	/* Any error during WPS procedure */
+	WPS_TIMEOUT		= 4,	/* WPS procedure was incomplete within overall timeout */
+	WPS_SENDM2		= 5,	/* Send M2 msg */
+	WPS_SENDM7		= 6,	/* Send M7 msg */
+	WPS_MSGDONE		= 7,	/* WPS DONE msg was processed completely */
+	WPS_PBCOVERLAP		= 8,	/* PBC overlap detected */
+	WPS_FIND_PBC_AP		= 9,	/* Found an AP with selregistar as true in PBC method */
+	WPS_ASSOCIATING		= 10,	/* WPS sta associate to AP after finding PBC AP */
+	WPS_FIND_SEL_AP		= 11,	/* Found a AP with selregistar as true in PIN method */
+	WPS_NFC_WR_CFG		= 12,
+	WPS_NFC_WR_PW		= 13,
+	WPS_NFC_WR_CPLT		= 14,
+	WPS_NFC_RD_CFG		= 15,
+	WPS_NFC_RD_PW		= 16,
+	WPS_NFC_RD_CPLT		= 17,
+	WPS_NFC_HO_S		= 18,
+	WPS_NFC_HO_R		= 19,
+	WPS_NFC_HO_NDEF		= 20,
+	WPS_NFC_HO_CPLT		= 21,
+	WPS_NFC_OP_ERROR	= 22,
+	WPS_NFC_OP_STOP		= 23,
+	WPS_NFC_OP_TO		= 24,
+	WPS_NFC_FM		= 25,
+	WPS_NFC_FM_CPLT		= 26,
+	WPS_NFC_HO_DPI_MISMATCH	= 27,
+	WPS_NFC_HO_PKH_MISMATCH	= 28,
+	WPS_MAP_TIMEOUT		= 29	/* Multiap timeout occured in WPS sta */
 } WPS_SCSTATE;
 
 typedef enum {

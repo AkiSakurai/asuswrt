@@ -1,7 +1,7 @@
 /*
  * ACPHY RSSI Compute module interface
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rssi.h 653304 2016-08-06 03:05:00Z $
+ * $Id: phy_ac_rssi.h 770653 2018-12-24 07:37:55Z $
  */
 
 #ifndef _phy_ac_rssi_h_
@@ -59,6 +59,31 @@
 /* forward declaration */
 typedef struct phy_ac_rssi_info phy_ac_rssi_info_t;
 
+#define MAX_NUM_ULOFDMA_USERS 16
+
+typedef struct {
+	uint8 num_users;
+	uint8 mu_fstr_error;
+	uint8 mu_error_code;
+	uint8 user_mac_idx[MAX_NUM_ULOFDMA_USERS];
+	int16 user_rssi[MAX_NUM_ULOFDMA_USERS];
+	uint8 user_snr[MAX_NUM_ULOFDMA_USERS];
+	int16 user_freq_error[MAX_NUM_ULOFDMA_USERS];
+	int16 ul_pwr_ctrl;
+	uint32 timestamp;
+	uint16 txtrig_cnt;
+	uint16 rxofdma_cnt;
+	uint16 rxofdma_cnt_last;
+} phy_ulofdma_per_user_rxstats_t;
+
+typedef struct {
+	bool   pos_freq;
+	uint16 freq_offset_l, freq_offset_h;
+	uint32 freq_offset_total;
+	uint32 tracked_freq_offsetHz;
+	uint32 pll_wild_base_offset;
+} phy_tracked_freq_offset_t;
+
 typedef struct phy_ac_rssi_data {
 	/* this data is shared between rssi and misc */
 	bool	rxgaincal_rssical;	/* 0 = rxgain error cal and 1 = RSSI error cal */
@@ -66,6 +91,8 @@ typedef struct phy_ac_rssi_data {
 	bool	rssi_cal_rev;		/* 0 = OLD and 1 = NEW */
 	/* this data is only shared to phy_ac_rssi_iov */
 	bool	rssi_qdB_en; /* 0 = dqB reporting of RSSI is disabled */
+	phy_ulofdma_per_user_rxstats_t per_user_stats;
+	phy_tracked_freq_offset_t tracked_freq_stats;
 } phy_ac_rssi_data_t;
 
 /* register/unregister ACPHY specific implementations to/from common */

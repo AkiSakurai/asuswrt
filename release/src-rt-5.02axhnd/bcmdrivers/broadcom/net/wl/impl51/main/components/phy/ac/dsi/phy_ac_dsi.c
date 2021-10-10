@@ -1,7 +1,7 @@
 /*
  * ACPHY DeepSleepInit module
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_dsi.c 692482 2017-03-28 08:53:50Z $
+ * $Id: phy_ac_dsi.c 775385 2019-05-29 11:30:21Z $
  */
 
 #include <phy_cfg.h>
@@ -106,9 +106,6 @@ typedef struct {
 static const char BCMATTACHDATA(rstr_ds1nap)[] = "ds1_nap";
 
 #define DSI_DBG_PRINTS 0
-
-#define VCOCAL_CAP_MASK_20697 ((1 << 12) -1)
-#define VCOCAL_CAP_SHIFT_20697 (0)
 
 #define FCBS_DS0_RADIO_PD_BLOCK_AUX (2)
 #define FCBS_DS0_RADIO_PU_BLOCK_AUX (3)
@@ -175,36 +172,6 @@ dsi_radio_fcbs_t ds0_radio_maj36_min0_seq[] = {
 #endif /* DBAND */
 	{FCBS_DS0_RADIO_PU_BLOCK, DS0_EXEC_CHAN_TUNE,
 	ram_20695_maj1_min0_chan_tune}
-};
-
-/* Radio sequence for DS0 for Main Slice (20697_maj0_min0) */
-dsi_radio_fcbs_t ds0_radio_maj44_min0_main_seq[] = {
-	{FCBS_DS0_RADIO_PU_BLOCK, DS0_EXEC_MINIPMU_PU,
-	dyn_ram_20697_maj0_min0_pm_mode_pwr_up_main},
-	{FCBS_DS0_RADIO_PU_BLOCK, DS0_EXEC_PLL_PU,
-	dyn_ram_20697_maj0_min0_pm_mode_vco_cache_main},
-	{FCBS_DS0_RADIO_PD_BLOCK, DS0_EXEC_RADIO_PD,
-	dyn_ram_20697_maj0_min0_pm_mode_pwr_dn_main}
-};
-
-/* Radio sequence for DS0 Aux Slice (20697_maj0_min0) */
-dsi_radio_fcbs_t ds0_radio_maj44_min0_aux_seq[] = {
-	{FCBS_DS0_RADIO_PU_BLOCK_AUX, DS0_EXEC_MINIPMU_PU,
-	dyn_ram_20697_maj0_min0_pm_mode_pwr_up_aux},
-	{FCBS_DS0_RADIO_PU_BLOCK_AUX, DS0_EXEC_PLL_PU,
-	dyn_ram_20697_maj0_min0_pm_mode_vco_cache_aux},
-	{FCBS_DS0_RADIO_PD_BLOCK_AUX, DS0_EXEC_RADIO_PD,
-	dyn_ram_20697_maj0_min0_pm_mode_pwr_dn_aux}
-};
-
-/* Radio sequence for DS0 Aux Slice (20697_maj0_min0) */
-dsi_radio_fcbs_t ds0_radio_maj44_min0_aux_ipa_seq[] = {
-	{FCBS_DS0_RADIO_PU_BLOCK_AUX, DS0_EXEC_MINIPMU_PU,
-	dyn_ram_20697_maj0_min0_pm_mode_pwr_up_aux_ipa},
-	{FCBS_DS0_RADIO_PU_BLOCK_AUX, DS0_EXEC_PLL_PU,
-	dyn_ram_20697_maj0_min0_pm_mode_vco_cache_aux_ipa},
-	{FCBS_DS0_RADIO_PD_BLOCK_AUX, DS0_EXEC_RADIO_PD,
-	dyn_ram_20697_maj0_min0_pm_mode_pwr_dn_aux_ipa}
 };
 
 #ifdef BCMULP
@@ -368,12 +335,6 @@ BCMRAMFN(dsi_get_radio_pd_seq)(phy_info_t *pi)
 					__FUNCTION__));
 			ASSERT(0);
 		}
-	} else if (ACMAJORREV_44(pi->pubpi->phy_rev)) {
-		return ((pi->pubpi->slice == DUALMAC_MAIN) ?
-			dyn_ram_20697_maj0_min0_pm_mode_pwr_dn_main :
-			((RADIOREV_AUX(pi->pubpi->radiorev) == 7) ?
-				dyn_ram_20697_maj0_min0_pm_mode_pwr_dn_aux :
-				dyn_ram_20697_maj0_min0_pm_mode_pwr_dn_aux_ipa));
 	} else {
 		PHY_ERROR(("wl%d %s: Invalid ACMAJORREV!\n", PI_INSTANCE(pi), __FUNCTION__));
 		ASSERT(0);
@@ -898,33 +859,6 @@ dsi_update_radio_seq(phy_info_t *pi, int8 ds_idx, bool *seq_en_flags)
 		PHY_ERROR(("wl%d %s: Invalid ACMAJORREV!\n", PI_INSTANCE(pi), __FUNCTION__));
 		ASSERT(0);
 	}
-}
-
-static void update_vco_cal_codes(phy_info_t *pi, fcbs_input_data_t *data)
-{
-
-	phy_rad_dyn_adp_t *seq;
-	uint16 maincap, secondcap, auxcap;
-
-	wlc_phy_get_radio20697_vcocal_codes(pi, &maincap, &secondcap, &auxcap);
-
-	if (pi->pubpi->slice == DUALMAC_MAIN) {
-		seq = (phy_rad_dyn_adp_t *)data[0].data;
-		seq[0].data = ((seq[0].data & ~(VCOCAL_CAP_MASK_20697)) | maincap);
-		seq[1].data = ((seq[1].data & ~(VCOCAL_CAP_MASK_20697)) | maincap);
-
-		seq = (phy_rad_dyn_adp_t *)data[2].data;
-		seq[1].data = ((seq[1].data & ~(VCOCAL_CAP_MASK_20697)) | auxcap);
-		seq[2].data = ((seq[2].data & ~(VCOCAL_CAP_MASK_20697)) | auxcap);
-
-		seq[3].data = ((seq[3].data & ~(VCOCAL_CAP_MASK_20697)) | auxcap);
-		seq[4].data = ((seq[4].data & ~(VCOCAL_CAP_MASK_20697)) | auxcap);
-	} else {
-		seq = (phy_rad_dyn_adp_t *)data[0].data;
-		seq[0].data = ((seq[0].data & ~(VCOCAL_CAP_MASK_20697)) | auxcap);
-		seq[1].data = ((seq[1].data & ~(VCOCAL_CAP_MASK_20697)) | auxcap);
-	}
-
 }
 
 #ifdef WL_DSI

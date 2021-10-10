@@ -1,7 +1,7 @@
 /*
  * Enrollee state machine
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: enr_reg_sm.c 765251 2018-06-26 10:48:22Z $
+ * $Id: enr_reg_sm.c 766338 2018-07-31 04:55:48Z $
  */
 
 #ifdef WIN32
@@ -63,6 +63,7 @@
 
 #include <wpsheaders.h>
 #include <wpscommon.h>
+
 #include <wpserror.h>
 #include <portability.h>
 #include <tutrace.h>
@@ -441,6 +442,7 @@ enr_sm_handleMessage(EnrSM *e, BufferObj *msg, BufferObj *outmsg)
 			}
 
 			err = reg_proto_process_m2(e->reg_info, msg, &encrSettings, regNonce);
+
 			if (WPS_SUCCESS != err) {
 				if (err == RPROT_ERR_AUTH_ENC_FLAG) {
 					TUTRACE((TUTRACE_ERR, "ENRSM: Check auth or encry flag "
@@ -563,6 +565,10 @@ enr_sm_handleMessage(EnrSM *e, BufferObj *msg, BufferObj *outmsg)
 			if (err == RPROT_ERR_CRYPTO) {
 				retVal = state_machine_send_nack(e->reg_info,
 					WPS_ERROR_DEV_PWD_AUTH_FAIL, outmsg, NULL);
+				/*
+				 * PR65690.
+				 * Notify application that decryption error occurred.
+				 */
 				retVal = WPS_ERR_ENROLLMENT_PINFAIL;
 			} else if (err == RPROT_ERR_WRONG_MSGTYPE &&
 				msgType == WPS_ID_MESSAGE_NACK) {
@@ -946,6 +952,17 @@ reg_proto_create_m1(RegData *regInfo, BufferObj *msg)
 	 */
 	if (enrollee->b_ap) {
 		if (enrollee->version2 >= WPS_VERSION2) {
+			/*
+			 * Windows 7 uses incorrect way of figuring out AP's WPS capabilities by
+			 * acting as a Registrar and using M1 from the AP. The config methods
+			 * attribute in that message is supposed to indicate only the configuration
+			 * method supported by the AP in Enrollee role, i.e., to add an external
+			 * Registrar. For that case, PBC shall not be used and as such, the
+			 * PushButton config method is removed from M1 by default.
+			 *
+			 * But now we need a workaround for Windows 7 capability discovery
+			 * for PBC, so do not filter out the PBC method.
+			 */
 			/* configMethods &= ~(WPS_CONFMET_VIRT_PBC | WPS_CONFMET_PHY_PBC); */
 		}
 		else {
@@ -1001,7 +1018,13 @@ reg_proto_create_m1(RegData *regInfo, BufferObj *msg)
 			subtlv_serialize(WPS_WFA_SUBID_REQ_TO_ENROLL, vendorExt_bufObj,
 				&enrollee->b_reqToEnroll,
 				WPS_WFA_SUBID_REQ_TO_ENROLL_S);
-
+#if defined(MULTIAP)
+		/* Add MultiAp Attributes */
+		if (enrollee->map_attr) {
+			subtlv_serialize(WPS_WFA_SUBID_MAP_EXT_ATTR, vendorExt_bufObj,
+				&enrollee->map_attr, 1);
+		}
+#endif	/* MULTIAP */
 		/* Serialize subelemetns to Vendor Extension */
 		vendorExt.vendorId = (uint8 *)WFA_VENDOR_EXT_ID;
 		vendorExt.vendorData = buffobj_GetBuf(vendorExt_bufObj);
@@ -1151,6 +1174,10 @@ reg_proto_process_m2(RegData *regInfo, BufferObj *msg, void **encrSettings, uint
 	}
 
 	/* AP have received M2,it must ignor other M2 */
+	/*
+	 * PR78004, WiFi test plan 1.8 item 5.1.5, we may receive multiple M2, if we
+	 * have more than one external registrars.  This will cause M2 process failed.
+	 */
 	if (regInfo->registrar &&
 	    memcmp(regInfo->registrar->uuid, null_uuid, SIZE_16_BYTES) != 0 &&
 	    memcmp(regInfo->registrar->uuid, m.uuid.m_data, m.uuid.tlvbase.m_len) != 0) {
@@ -1446,6 +1473,7 @@ reg_proto_process_m2(RegData *regInfo, BufferObj *msg, void **encrSettings, uint
 					err = RPROT_ERR_REQD_TLV_MISSING;
 					goto error;
 				}
+
 				*encrSettings = (void *)esAP;
 			}
 			else {
@@ -1490,10 +1518,13 @@ reg_proto_process_m2(RegData *regInfo, BufferObj *msg, void **encrSettings, uint
 	/* Store the received buffer */
 	buffobj_Reset(regInfo->inMsg);
 	buffobj_Append(regInfo->inMsg, msg->m_dataLength, msg->pBase);
+
 	err = WPS_SUCCESS;
 
 error:
+
 	if (err != WPS_SUCCESS)
+
 		TUTRACE((TUTRACE_ERR, "ProcessMessageM2 : got error %x\n", err));
 	buffobj_del(buf1);
 	buffobj_del(buf1_dser);

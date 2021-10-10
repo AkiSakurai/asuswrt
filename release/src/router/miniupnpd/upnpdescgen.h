@@ -82,6 +82,11 @@ char *
 genAS(int * len);
 #endif
 
+#ifdef ENABLE_NVGFN
+char *
+genNVGFN(int * len);
+#endif
+
 #ifdef ENABLE_EVENTS
 char *
 getVarsWANIPCn(int * len);
@@ -104,6 +109,10 @@ getVarsDP(int * len);
 #ifdef ENABLE_AURASYNC
 char *
 getVarsAS(int * len);
+#endif
+#ifdef ENABLE_NVGFN
+char *
+getVarsNVGFN(int * len);
 #endif
 #endif /* ENABLE_EVENTS */
 

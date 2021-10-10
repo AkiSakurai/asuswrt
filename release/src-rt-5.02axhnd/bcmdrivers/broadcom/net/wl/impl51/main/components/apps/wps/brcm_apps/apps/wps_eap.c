@@ -1,7 +1,7 @@
 /*
  * WPS eap
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -269,6 +269,10 @@ wps_eap_parse_prob_reqIE(unsigned char *mac, unsigned char *p_data, uint32 len,
 	return 0;
 
 err_out:
+	/*
+	 * XXX, If Probe Request attributes are out-of-order, we can not detect PBC.
+	 * If we must detect it we can use tlv_find_dserialize to find it
+	*/
 	if (bufObj)
 		buffobj_del(bufObj);
 	return -1;

@@ -1,7 +1,7 @@
 /*
  * WPS HAL
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_hal.c 738257 2017-12-27 22:59:37Z $
+ * $Id: wps_hal.c 773620 2019-03-26 18:31:43Z $
  */
 
 #include <typedefs.h>
@@ -209,7 +209,8 @@ wps_led_lan_mode(int ledcr, int mode, unsigned char portmap[])
 	int val = 0, ret = -1;
 
 	if (wps_led_lanfd >= 0) {
-		wps_strncpy(ifr.ifr_name, wps_led_lanifname, sizeof(ifr.ifr_name));
+		strncpy(ifr.ifr_name, wps_led_lanifname, sizeof(ifr.ifr_name));
+		ifr.ifr_name[sizeof(ifr.ifr_name) - 1] = '\0';
 		args[0] = WPS_LED_CR_PAGE0 << 16;
 		if (ledcr == -1) /* use default LEDa */
 			args[0] |= WPS_LED_CR & 0xffff;
@@ -284,7 +285,8 @@ wps_led_lan_support_filter()
 		return;
 
 	/* check is the switch we can support */
-	wps_strncpy(ifr.ifr_name, wps_led_lanifname, sizeof(ifr.ifr_name));
+	strncpy(ifr.ifr_name, wps_led_lanifname, sizeof(ifr.ifr_name));
+	ifr.ifr_name[sizeof(ifr.ifr_name) - 1] = '\0';
 	memset(&var, 0, sizeof(var));
 	var.cmd = IOV_ET_ROBO_DEVID;
 	var.buf = &devid;
@@ -335,7 +337,8 @@ wps_led_lan_init(char *ifname, char *vlan0ports)
 
 	WPS_LED_INFO("ifname = %s, vlan0ports = %s\n", ifname, vlan0ports);
 
-	wps_strncpy(wps_led_lanifname, ifname, sizeof(wps_led_lanifname));
+	strncpy(wps_led_lanifname, ifname, sizeof(wps_led_lanifname));
+	wps_led_lanifname[sizeof(wps_led_lanifname) - 1] = '\0';
 
 	if ((wps_led_lanfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
 		WPS_LED_ERROR("Create LAN leds control socket failed\n");
@@ -539,7 +542,8 @@ wps_led_lan_flash_time(int rate)
 	int args[2], ret = -1;
 
 	if (wps_led_lanfd >= 0) {
-		wps_strncpy(ifr.ifr_name, wps_led_lanifname, sizeof(ifr.ifr_name));
+		strncpy(ifr.ifr_name, wps_led_lanifname, sizeof(ifr.ifr_name));
+		ifr.ifr_name[sizeof(ifr.ifr_name) - 1] = '\0';
 		args[0] = WPS_LED_CR_PAGE0 << 16;
 		args[0] |= WPS_LED_FLASH_CR & 0xffff;
 		args[1] = rate;

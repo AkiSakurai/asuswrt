@@ -1,7 +1,7 @@
 /*
  * Rx Gain Control and Carrier Sense module implementation.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_rxgcrs.c 689894 2017-03-13 23:32:18Z $
+ * $Id: phy_rxgcrs.c 771175 2019-01-17 05:27:50Z $
  */
 
 #include <phy_cfg.h>
@@ -237,18 +237,7 @@ wlc_phy_adjust_ed_thres(phy_info_t *pi, int32 *assert_thresh_dbm, bool set_thres
 	return BCME_UNSUPPORTED;
 }
 
-int
-wlc_phy_update_ed_thres(phy_info_t *pi, int32 *assert_thresh_dbm, bool set_threshold)
-{
-        int err = BCME_OK;
-
-        err = wlc_phy_adjust_ed_thres(pi, assert_thresh_dbm, set_threshold);
-
-        return err;
-}
-
 /* Rx desense Module */
-#if defined(RXDESENS_EN)
 int
 phy_rxgcrs_get_rxdesens(phy_info_t *pi, int32 *ret_int_ptr)
 {
@@ -276,7 +265,6 @@ phy_rxgcrs_set_rxdesens(phy_info_t *pi, int32 int_val)
 		return BCME_UNSUPPORTED;
 	}
 }
-#endif /* RXDESENS_EN */
 
 int
 wlc_phy_set_rx_gainindex(phy_info_t *pi, int32 gain_idx)
@@ -474,6 +462,9 @@ phy_rxgcrs_dump_phycal_rx_min(void *ctx, struct bcmstrbuf *b)
 
 #ifndef ATE_BUILD
 #if defined(WLTEST) || defined(DBG_PHY_IOV) || defined(WFD_PHY_LL_DEBUG)
+/* JIRA: SWWLAN-32606, RB: 12975: function to do only Noise cal & read crsmin power of
+ * core 0 & core 1
+*/
 int
 wlc_phy_iovar_forcecal_noise(phy_info_t *pi, void *a, bool set)
 {

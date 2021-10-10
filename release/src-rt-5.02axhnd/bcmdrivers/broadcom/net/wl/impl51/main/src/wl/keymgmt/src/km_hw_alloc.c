@@ -1,6 +1,6 @@
 /*
  * Key Management Module km_hw Implementation - allocation support
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

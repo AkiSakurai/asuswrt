@@ -1,7 +1,7 @@
 /*
  * NPHY Rx Gain Control and Carrier Sense module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_n_rxgcrs.c 707224 2017-06-27 01:13:09Z $
+ * $Id: phy_n_rxgcrs.c 772787 2019-03-05 01:32:28Z $
  */
 
 #include <phy_cfg.h>
@@ -181,7 +181,8 @@ BCMATTACHFN(phy_n_rxgcrs_unregister_impl)(phy_n_rxgcrs_info_t *n_info)
 static void phy_n_rxgcrs_adjust_ed_thres(phy_type_rxgcrs_ctx_t * ctx, int32 *assert_thresh_dbm,
 	bool set_threshold)
 {
-	phy_info_t *pi = (phy_info_t *)ctx;
+	phy_n_rxgcrs_info_t *info = (phy_n_rxgcrs_info_t *)ctx;
+	phy_info_t *pi = info->pi;
 	/* Set the EDCRS Assert and De-assert Threshold
 	The de-assert threshold is set to 6dB lower then the assert threshold
 	Accurate Formula:64*log2(round((10.^((THRESHOLD_dBm +65-30)./10).*50).*(2^9./0.4).^2))
@@ -255,6 +256,9 @@ phy_n_rxgcrs_set_rxdesens(phy_type_rxgcrs_ctx_t *ctx, int32 int_val)
 
 #ifndef ATE_BUILD
 #if defined(WLTEST) || defined(DBG_PHY_IOV) || defined(WFD_PHY_LL_DEBUG)
+/* JIRA: SWWLAN-32606, RB: 12975: function to do only Noise cal & read crsmin power of
+ * core 0 & core 1
+*/
 static int
 phy_n_rxgcrs_forcecal_noise(phy_type_rxgcrs_ctx_t *ctx, void *a, bool set)
 {

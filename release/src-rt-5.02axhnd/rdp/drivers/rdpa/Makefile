@@ -74,7 +74,7 @@ endif
 	OBJS += $(RDD_OBJS)
 	OBJS += $(SUBSYS_OBJS)
 ifneq ($(PREBUILT_EXTRAMOD),1)
-	rdpa-objs = $(OBJS)
+        rdpa-objs = $(OBJS)
 else
 	rdpa-objs := rdpa$(PRBM_EXT).o
 endif

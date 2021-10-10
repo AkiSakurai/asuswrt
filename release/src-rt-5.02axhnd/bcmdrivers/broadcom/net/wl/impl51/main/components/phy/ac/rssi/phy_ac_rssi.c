@@ -1,7 +1,7 @@
 /*
  * ACPHY RSSI Compute module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_rssi.c 742511 2018-01-22 14:14:24Z $
+ * $Id: phy_ac_rssi.c 775385 2019-05-29 11:30:21Z $
  */
 
 #include <phy_cfg.h>
@@ -99,6 +99,8 @@ typedef struct {
 static void wlc_phy_nvram_rssioffset_read(phy_info_t *pi);
 static void wlc_phy_nvram_rssioffset_read_sub(phy_ac_rssi_info_t *ri, phy_info_t *pi);
 static void phy_ac_rssi_compute(phy_type_rssi_ctx_t *ctx, wlc_d11rxhdr_t *wrxh);
+static void phy_ulofdma_per_user_rxstats(phy_type_rssi_ctx_t *ctx, wlc_d11rxhdr_t *wrxh);
+static void phy_tracked_freq_offset(phy_type_rssi_ctx_t *ctx, wlc_d11rxhdr_t *wrxh);
 static uint8 phy_ac_rssi_11b_WAR(phy_ac_info_t *aci, d11rxhdr_t *rxh);
 static void _phy_ac_rssi_init_gain_err(phy_type_rssi_ctx_t *ctx);
 static bool phy_ac_wd_report_rssi(phy_wd_ctx_t *ctx);
@@ -122,6 +124,9 @@ static int phy_ac_rssi_set_gain_delta_2gb(phy_type_rssi_ctx_t *ctx, uint32 aid, 
 static int phy_ac_rssi_get_gain_delta_2gb(phy_type_rssi_ctx_t *ctx, uint32 aid, int8 *deltaValues);
 static int phy_ac_rssi_set_cal_freq_2g(phy_type_rssi_ctx_t *ctx, int8 *nvramValues);
 static int phy_ac_rssi_get_cal_freq_2g(phy_type_rssi_ctx_t *ctx, int8 *nvramValues);
+static int phy_ac_calc_ru_size(int ru_index);
+static void phy_ac_ul_pwr_control(phy_type_rssi_ctx_t *ctx, bool trig_by_wd);
+static void phy_ac_align_sniffer(phy_type_rssi_ctx_t *ctx);
 
 /* register phy type specific implementation */
 phy_ac_rssi_info_t *
@@ -153,6 +158,8 @@ BCMATTACHFN(phy_ac_rssi_register_impl)(phy_info_t *pi, phy_ac_info_t *aci, phy_r
 	/* register PHY type specific implementation */
 	bzero(&fns, sizeof(fns));
 	fns.compute = phy_ac_rssi_compute;
+	fns.ulofdma_per_user_rxstats = phy_ulofdma_per_user_rxstats;
+	fns.tracked_freq_offset = phy_tracked_freq_offset;
 	fns.init_gain_err = _phy_ac_rssi_init_gain_err;
 	fns.dump = phy_ac_rssi_dump;
 #if defined(WLTEST)
@@ -359,7 +366,7 @@ BCMATTACHFN(wlc_phy_nvram_rssioffset_read_sub)(phy_ac_rssi_info_t *ri, phy_info_
 
 	ri->data->rssi_cal_rev = (bool)PHY_GETINTVAR(pi, rstr_rssi_cal_rev);
 
-	if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 		/* enable rssi_qdB_en by default for REV 40 & 44 */
 		ri->data->rssi_qdB_en = (bool)PHY_GETINTVAR_DEFAULT(pi, rstr_rssi_qdB_en, 1);
 	} else
@@ -499,13 +506,20 @@ phy_ac_wd_report_rssi(phy_wd_ctx_t *ctx)
 	        !(ACMAJORREV_32(pi->pubpi->phy_rev) ||
 	          ACMAJORREV_33(pi->pubpi->phy_rev) ||
 	          ACMAJORREV_37(pi->pubpi->phy_rev) ||
-	          ACMAJORREV_47_51(pi->pubpi->phy_rev))) {
+	          (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)))) {
 		wlapi_suspend_mac_and_wait(pi->sh->physhim);
 		MOD_PHYREG(pi, RssiStatusControl, coreSel, ac_info->rssi_coresel);
 		ac_info->rssi_coresel = (ac_info->rssi_coresel + 1) %
 			PHYCORENUM(pi->pubpi->phy_corenum);
 		wlapi_enable_mac(pi->sh->physhim);
 	}
+
+	if (ACMAJORREV_47(pi->pubpi->phy_rev) && ACMINORREV_GE(pi, 2)) {
+		phy_ac_ul_pwr_control(ctx, 1);
+		phy_ac_align_sniffer(ctx);
+	}
+
 	return TRUE;
 }
 
@@ -625,6 +639,303 @@ phy_ac_rssi_compute(phy_type_rssi_ctx_t *ctx, wlc_d11rxhdr_t *wrxh)
 
 }
 
+/* extract ulofdma per user status bytes */
+static void BCMFASTPATH
+phy_ulofdma_per_user_rxstats(phy_type_rssi_ctx_t *ctx, wlc_d11rxhdr_t *wrxh)
+{
+	phy_ac_rssi_info_t *info = (phy_ac_rssi_info_t *)ctx;
+	phy_info_t *pi = info->pi;
+	phy_ulofdma_per_user_rxstats_t *per_user_stat = &info->data->per_user_stats;
+	d11rxhdr_t *rxh = &wrxh->rxhdr;
+	uint8 num_users, mu_fstr_error, mu_error_code;
+	uint8 user_mac_idx[MAX_NUM_ULOFDMA_USERS];
+	uint16 user_rssi[MAX_NUM_ULOFDMA_USERS];
+	uint8 user_snr[MAX_NUM_ULOFDMA_USERS];
+	int16 user_freq_error[MAX_NUM_ULOFDMA_USERS];
+	uint8 user, he_format, frame_type;
+
+	BCM_REFERENCE(pi);
+
+	frame_type = (uint8)D11PPDU_FT(rxh, pi->sh->corerev);
+	he_format = (uint8)D11PPDU_HEF(rxh, pi->sh->corerev);
+
+	if (D11REV_GE(pi->sh->corerev, 128) && (frame_type == 4) && (he_format == 3)) {
+		bzero(user_rssi, sizeof(int16)*MAX_NUM_ULOFDMA_USERS);
+		bzero(user_snr, sizeof(int8)*MAX_NUM_ULOFDMA_USERS);
+		bzero(user_freq_error, sizeof(int16)*MAX_NUM_ULOFDMA_USERS);
+		bzero(user_mac_idx, sizeof(uint8)*MAX_NUM_ULOFDMA_USERS);
+
+		/* Common fields */
+		num_users = MIN((uint8)PRXS_NUM_ULOFDMA_USERS_REV_GE129(rxh),
+			MAX_NUM_ULOFDMA_USERS);
+		mu_fstr_error = (uint8)PRXS_MU_FSTR_ERROR_REV_GE129(rxh);
+		mu_error_code = (uint8)PRXS_MU_ERROR_CODE_REV_GE129(rxh);
+
+		/* Per user fields */
+		for (user = 0; user < num_users; user++) {
+			user_mac_idx[user] = (uint8)PRXS_USER_MAC_IDX_REV_GE129(rxh, user);
+			user_rssi[user] = (uint16)PRXS_USER_RSSI_REV_GE129(rxh, user);
+			user_snr[user] = (uint8)PRXS_USER_SNR_REV_GE129(rxh, user);
+			user_freq_error[user] = (int16)PRXS_USER_FREQ_ERROR_REV_GE129(rxh, user);
+		}
+
+		per_user_stat->num_users = num_users;
+		per_user_stat->mu_fstr_error = mu_fstr_error;
+		per_user_stat->mu_error_code = mu_error_code;
+		for (user = 0; user < MAX_NUM_ULOFDMA_USERS; user++) {
+			per_user_stat->user_mac_idx[user] = user_mac_idx[user];
+			per_user_stat->user_rssi[user] = (user_rssi[user] > 511) ?
+				((int16)user_rssi[user] - 1024) : (int16)user_rssi[user];
+			per_user_stat->user_snr[user] = user_snr[user];
+			per_user_stat->user_freq_error[user] = user_freq_error[user];
+		}
+
+		if (ACMAJORREV_47(pi->pubpi->phy_rev) && ACMINORREV_GE(pi, 2))
+			phy_ac_ul_pwr_control(ctx, 0);
+	}
+}
+
+/* calculate tracked frequency offset */
+static void BCMFASTPATH
+phy_tracked_freq_offset(phy_type_rssi_ctx_t *ctx, wlc_d11rxhdr_t *wrxh)
+{
+	phy_ac_rssi_info_t *info = (phy_ac_rssi_info_t *)ctx;
+	phy_info_t *pi = info->pi;
+	phy_tracked_freq_offset_t *tracked_freq_stat = &info->data->tracked_freq_stats;
+	d11rxhdr_t *rxh = &wrxh->rxhdr;
+	uint16 low_bit;
+	uint16 high_bit;
+	uint32 total;
+	bool   pos_freq;
+
+	BCM_REFERENCE(pi);
+
+	if (D11REV_GE(pi->sh->corerev, 128)) {
+		low_bit = (uint16)PRXS_TRACKED_FREQ_L_REV_GE129(rxh);
+	        high_bit = (uint16)PRXS_TRACKED_FREQ_H_REV_GE129(rxh);
+		total = (uint32)((high_bit << 6) + low_bit);
+		/* take away the sign bit so that we have one more bit for scaling factor */
+		pos_freq = TRUE;
+		if (total > (1 << 19)) {
+			total = (1 << 20) - total;
+			pos_freq = FALSE;
+		}
+
+		tracked_freq_stat->freq_offset_l = low_bit;
+		tracked_freq_stat->freq_offset_h = high_bit;
+		tracked_freq_stat->freq_offset_total = total;
+		tracked_freq_stat->pos_freq = pos_freq;
+
+		/* Scaling factor selection
+		   freq_offset_total is 19 bits maximum (unsigned).
+		   The scaling factor should be smaller than 8192 (13 bits)
+		   freq_offset_total to Hz (add 2^13 scaling for integer operation):
+		       4883 ~= 1/(3.2e-6*2^19)*2^13
+		   freq_offset_total to pll_wild_base_offset
+		   A band: 7716 ~= 1/(3.2e-6*2^19)/1.5/108*2^21
+		   G band: 4340 ~= 1/(3.2e-6*2^19)/(4/3)/108*2^20 (overflow with 2^21)
+		*/
+
+		tracked_freq_stat->tracked_freq_offsetHz = total * 4883;
+		if (CHSPEC_IS2G(pi->radio_chanspec)) {
+			tracked_freq_stat->pll_wild_base_offset = (uint32)(total * 4340) / 500000;
+		} else {
+			tracked_freq_stat->pll_wild_base_offset = (uint32)(total * 7716) / 1000000;
+		}
+	}
+}
+
+static int phy_ac_calc_ru_size(int ru_index)
+{
+	int ru_size;
+
+	if (ru_index < 37)
+		ru_size = 0;
+	else if (ru_index < 53)
+		ru_size = 1;
+	else if (ru_index < 61)
+		ru_size = 2;
+	else if (ru_index < 65)
+		ru_size = 3;
+	else
+		ru_size = 4;
+
+	return ru_size;
+}
+
+static void phy_ac_ul_pwr_control(phy_type_rssi_ctx_t *ctx, bool trig_by_wd)
+{
+	/*
+	 * 1. measured_rssi: Per user RSSI in 1/4dB resoluiton.
+	 *    Signed 10 bits number covering range -128dBm to 127dBm in 0.25dB steps.
+	 * 2. target_rssi_field in trigger frame: values 0 to 90 map to -110 dBm to -20 dBm
+	*/
+	phy_ac_rssi_info_t *info = (phy_ac_rssi_info_t *)ctx;
+	phy_info_t *pi = info->pi;
+	phy_ulofdma_per_user_rxstats_t *per_user_stat = &info->data->per_user_stats;
+	int m, psd, ru_size, psd_maxmcs, N_user, ru_index, signed_rssi, mcs_thres_offset;
+	int trig_delta, ofdma_delta, rssi_maxmcs;
+	uint16 user_info_0, user_info_1, user_info_2, target_rssi, user_mac_idx;
+	uint32 time_passed, cur_time;
+	uint8 next_mcs, nss, ldpc;
+	//MCS threshold(single stream) for 26 tone RU in dBm.
+	int mcs_thres[12] = {-98, -94, -92, -88, -86, -82, -80, -78, -74, -72, -66, -64};
+
+	//RSSI for 11x1 of 26 tone RU in dBm
+	psd_maxmcs = -61;
+
+	/*
+	 * ul_pwr_ctrl = 0: both ul power control and ul rate recommendation are off
+	 * ul_pwr_ctrl = 1: ul power control is on, ul rate recommendation is off
+	 * ul_pwr_ctrl = 2: both ul power control and ul rate recommendation are on
+	 */
+	if (per_user_stat->ul_pwr_ctrl == 0)
+		return;
+
+	if (trig_by_wd == 1) {
+		//In phywatchdog period, if number of received ofdma frame is much less than number
+		//of transmitted trigger frame, we reset mcs and target RSSI to default value.
+		trig_delta =  wlapi_bmac_read_shm(pi->sh->physhim, M_TXTRIG_CNT(pi))
+			- per_user_stat->txtrig_cnt;
+		ofdma_delta = per_user_stat->rxofdma_cnt - per_user_stat->rxofdma_cnt_last;
+
+		per_user_stat->txtrig_cnt = wlapi_bmac_read_shm(pi->sh->physhim, M_TXTRIG_CNT(pi));
+		per_user_stat->rxofdma_cnt_last = per_user_stat->rxofdma_cnt;
+		//PHY_ERROR(("\n\nphy_ac_ul_pwr_control ===============================\n"));
+		//PHY_ERROR(("trig_delta is %d, ofdam_delta is %d \n", trig_delta, ofdma_delta));
+
+		if ((trig_delta > 0) && (ofdma_delta >= 0) && (trig_delta > 32*ofdma_delta)) {
+			N_user = wlapi_bmac_read_shm(pi->sh->physhim, M_TXTRIG_SRXCTL(pi));
+			N_user = N_user & 0xff;
+			for (m = 0; m < N_user; m++) {
+				user_mac_idx = per_user_stat->user_mac_idx[m];
+				user_info_0 = wlapi_bmac_read_shm(pi->sh->physhim,
+					(M_TXTRIG_CMNINFO(pi) + 8 + 6 * user_mac_idx));
+				user_info_1 = wlapi_bmac_read_shm(pi->sh->physhim,
+					(M_TXTRIG_CMNINFO(pi) + 10 + 6 * user_mac_idx));
+				ru_index = ((user_info_0 >> 13) & 0x7) + ((user_info_1 & 0xf) << 3);
+				ru_size = phy_ac_calc_ru_size(ru_index);
+				wlapi_bmac_write_shm(pi->sh->physhim, (M_TXTRIG_CMNINFO(pi) + 12 +
+					6 * user_mac_idx), psd_maxmcs + 3 * ru_size + 110);
+				if (per_user_stat->ul_pwr_ctrl == 2) {
+					//set MCS to be 0
+					user_info_1 = user_info_1 & ~(0xf << 5);
+					wlapi_bmac_write_shm(pi->sh->physhim,
+					(M_TXTRIG_CMNINFO(pi) + 10 + 6*user_mac_idx), user_info_1);
+				}
+			}
+		}
+		return;
+	}
+
+	per_user_stat->rxofdma_cnt++;
+	cur_time = R_REG(GENERIC_PHY_INFO(pi)->osh, D11_TSFTimerLow(pi));
+	per_user_stat->timestamp = (per_user_stat->timestamp < cur_time)
+		? per_user_stat->timestamp : cur_time;
+	time_passed = (uint32)(cur_time - per_user_stat->timestamp);
+
+	//After setting target RSSI, we wait at least 50ms to measure MU RSSI.
+	if (time_passed < 50000) {
+		return;
+	}
+
+	//PHY_ERROR(("\n\nphy_ac_ul_pwr_control =======================\n"));
+	N_user = wlapi_bmac_read_shm(pi->sh->physhim, M_TXTRIG_SRXCTL(pi));
+	N_user = N_user & 0xff;
+	for (m = 0; m < N_user; m++) {
+		user_mac_idx = per_user_stat->user_mac_idx[m];
+		user_info_0 = wlapi_bmac_read_shm(pi->sh->physhim,
+			(M_TXTRIG_CMNINFO(pi) + 8 + 6 * user_mac_idx));
+		user_info_1 = wlapi_bmac_read_shm(pi->sh->physhim,
+			(M_TXTRIG_CMNINFO(pi) + 10 + 6 * user_mac_idx));
+		user_info_2 = wlapi_bmac_read_shm(pi->sh->physhim,
+			(M_TXTRIG_CMNINFO(pi) + 12 + 6 * user_mac_idx));
+		//PHY_ERROR((" user index is  %d ...\n", user_mac_idx));
+
+		signed_rssi = (per_user_stat->user_rssi[m] & 0x1ff)
+				- (per_user_stat->user_rssi[m] & 0x200);
+		if ((signed_rssi == 0) || (signed_rssi < -360))
+			continue;
+
+		ru_index = ((user_info_0 >> 13) & 0x7) + ((user_info_1 & 0xf) << 3);
+		ru_size = phy_ac_calc_ru_size(ru_index);
+		nss = (user_info_1 >> 13) & 0x7;
+		ldpc = (user_info_1 >> 4) & 1;
+		//increase mcs_thres by 3dB with LDPC off;
+		mcs_thres_offset = ldpc ? 0 : 3;
+
+		//nss = num_stream - 1;
+		if (nss == 1)
+			mcs_thres_offset += 3;
+		if (nss == 2)
+			mcs_thres_offset += 5;
+		if (nss == 3)
+			mcs_thres_offset += 6;
+
+		//signed_rssi is in qdB unit, psd is in dB unit
+		psd = signed_rssi/4 - 3*ru_size;
+		rssi_maxmcs = psd_maxmcs + mcs_thres_offset + 3*ru_size;
+		target_rssi = user_info_2 & 0x7f;
+		target_rssi += rssi_maxmcs - signed_rssi/4;
+		target_rssi = (target_rssi > (rssi_maxmcs+120)) ? (rssi_maxmcs+120) : target_rssi;
+		target_rssi = (target_rssi < (rssi_maxmcs+100)) ? (rssi_maxmcs+100) : target_rssi;
+
+		wlapi_bmac_write_shm(pi->sh->physhim,
+			(M_TXTRIG_CMNINFO(pi) + 12 + 6 * user_mac_idx), target_rssi);
+		//PHY_ERROR(("ru_index is %d, user_rssi is %d, new target_rssi is %d\n",
+		//	ru_index, signed_rssi/4, target_rssi-110));
+
+		if (per_user_stat->ul_pwr_ctrl == 2) {
+			for (next_mcs = 11; next_mcs > 0; next_mcs--) {
+				if (psd > (mcs_thres[next_mcs] + mcs_thres_offset)) {
+					break;
+				}
+			}
+			user_info_1 = user_info_1 & ~(0xf << 5);
+			user_info_1 |= (next_mcs << 5);
+			wlapi_bmac_write_shm(pi->sh->physhim, (M_TXTRIG_CMNINFO(pi)
+					+ 10 + 6 * user_mac_idx), user_info_1);
+			//PHY_ERROR(("ldpc is %d, nss is %d, next MCS is %d \n",
+			//		ldpc, nss, next_mcs));
+		}
+	}
+	per_user_stat->timestamp = cur_time;
+}
+
+static void phy_ac_align_sniffer(phy_type_rssi_ctx_t *ctx)
+{
+	phy_ac_rssi_info_t *ac_info = (phy_ac_rssi_info_t *)ctx;
+	phy_info_t *pi = ac_info->pi;
+	uint32 wild_base_high;
+	uint32 wild_base_low;
+	uint32 wild_base;
+
+	if (pi->u.pi_acphy->sniffer_aligner.enabled &&
+		!pi->u.pi_acphy->sniffer_aligner.active) {
+		wlapi_suspend_mac_and_wait(pi->sh->physhim);
+
+		wild_base_high = READ_RADIO_PLLREGFLD_20698(pi, PLL_FRCT2,
+				0, rfpll_frct_wild_base_high);
+		wild_base_low  = READ_RADIO_PLLREGFLD_20698(pi, PLL_FRCT3,
+				0, rfpll_frct_wild_base_low);
+		wild_base = (wild_base_high << 16) + wild_base_low;
+		printf("\nBefore adj wild_base = %d\n", wild_base);
+		printf("\nwild_base_offset = %d\n",
+				pi->u.pi_acphy->sniffer_aligner.wild_base_offset);
+		wild_base = wild_base + pi->u.pi_acphy->sniffer_aligner.wild_base_offset;
+		printf("\nAfter adj wild_base = %d\n", wild_base);
+		wild_base_high = (wild_base >> 16);
+		wild_base_low  = (wild_base & 0xFFFF);
+		MOD_RADIO_PLLREG_20698(pi, PLL_FRCT2, 0,
+				rfpll_frct_wild_base_high, (uint16) wild_base_high);
+		MOD_RADIO_PLLREG_20698(pi, PLL_FRCT3, 0,
+				rfpll_frct_wild_base_low,  (uint16) wild_base_low);
+		pi->u.pi_acphy->sniffer_aligner.active = TRUE;
+
+		wlapi_enable_mac(pi->sh->physhim);
+	}
+}
+
 int16
 phy_ac_rssi_compute_compensation(phy_type_rssi_ctx_t *ctx, int16 *rxpwr_core, bool db_qdb)
 {
@@ -707,7 +1018,7 @@ phy_ac_rssi_compute_compensation(phy_type_rssi_ctx_t *ctx, int16 *rxpwr_core, bo
 								: (bands[1] - 1);
 						} else {
 							subband_idx = bands[0] - 1;
-							ASSERT(0);
+							ASSERT(0); // FIXME
 						}
 					} else {
 					/* core_freq_segment_map is only required for 80P80 mode.
@@ -773,7 +1084,7 @@ phy_ac_rssi_compute_compensation(phy_type_rssi_ctx_t *ctx, int16 *rxpwr_core, bo
 								: (bands[1] - 1);
 						} else {
 							subband_idx = bands[0] - 1;
-							ASSERT(0);
+							ASSERT(0); // FIXME
 						}
 					} else {
 						subband_idx = phy_ac_chanmgr_get_chan_freq_range(pi,
@@ -813,7 +1124,8 @@ phy_ac_rssi_compute_compensation(phy_type_rssi_ctx_t *ctx, int16 *rxpwr_core, bo
 				if (!ACMAJORREV_32(pi->pubpi->phy_rev) &&
 				    !ACMAJORREV_33(pi->pubpi->phy_rev) &&
 				    !ACMAJORREV_37(pi->pubpi->phy_rev) &&
-				    !ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+				    !(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				    !ACMAJORREV_128(pi->pubpi->phy_rev))) {
 					/* By this point, both temp and rssi_corr_gain_delta's are
 					 * converted into 0.25 dB steps.
 					 * So, convert irrespective of conditions to 1 dB steps.
@@ -947,10 +1259,6 @@ wlc_phy_rssi_get_chan_freq_range_acphy(phy_info_t *pi, uint8 core_segment_mappin
 			const chan_info_radio20696_rffe_t *chan_info;
 			freq = wlc_phy_chan2freq_20696(pi, channel,
 				&chan_info);
-		} else if (RADIOID_IS(pi->pubpi->radioid, BCM20697_ID)) {
-			chan_info_radio20697_rffe_t chan_info;
-			freq = wlc_phy_chan2freq_20697(pi, channel,
-				&chan_info);
 		} else if (RADIOID_IS(pi->pubpi->radioid, BCM20698_ID)) {
 			const chan_info_radio20698_rffe_t *chan_info;
 			freq = wlc_phy_chan2freq_20698(pi, channel,
@@ -958,6 +1266,10 @@ wlc_phy_rssi_get_chan_freq_range_acphy(phy_info_t *pi, uint8 core_segment_mappin
 		} else if (RADIOID_IS(pi->pubpi->radioid, BCM20704_ID)) {
 			const chan_info_radio20704_rffe_t *chan_info;
 			freq = wlc_phy_chan2freq_20704(pi, channel,
+				&chan_info);
+		} else if (RADIOID_IS(pi->pubpi->radioid, BCM20707_ID)) {
+			const chan_info_radio20707_rffe_t *chan_info;
+			freq = wlc_phy_chan2freq_20707(pi, channel,
 				&chan_info);
 		} else {
 			const chan_info_radio20691_t *chan_info_20691;
@@ -1059,18 +1371,28 @@ _phy_ac_rssi_init_gain_err(phy_type_rssi_ctx_t *ctx)
 	phy_ac_rssi_info_t *info = (phy_ac_rssi_info_t *)ctx;
 	phy_info_t *pi = info->pi;
 
+	/* XXX
+	 * Gain error computed as follows:
+	 * 1) Backoff subband dependent init_gain from gaintable,
+	 * 2) add back fixed init-gain assumed by rxiqest,
+	 * 3) add subband-dependent rxiqest gain error (retrieved from srom)
+	 */
 	int16 gainerr[PHY_CORE_MAX];
 	int16 initgain_dB[PHY_CORE_MAX];
 	int16 rxiqest_gain;
 	uint8 core;
 	bool srom_isempty = FALSE;
 	uint8 dummy[ACPHY_MAX_RX_GAIN_STAGES];
-	int8 init_gain_to_program = (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev)) ?
+	int8 init_gain_to_program = (ACMAJORREV_40_128(pi->pubpi->phy_rev)) ?
 			ACPHY_INIT_GAIN_28NM : ACPHY_INIT_GAIN;
 
 	/* Retrieve rxiqest gain error: */
 	srom_isempty = wlc_phy_get_rxgainerr_phy(pi, gainerr);
 	if (srom_isempty) {
+		/* XXX
+		 * Do not apply gain error correction
+		 * if nothing was written to SROM
+		 */
 		FOREACH_CORE(pi, core) {
 			info->gain_err[core] = 0;
 		}
@@ -1078,6 +1400,9 @@ _phy_ac_rssi_init_gain_err(phy_type_rssi_ctx_t *ctx)
 	}
 
 	/* Retrieve rxiqest gain: */
+	/* XXX
+	 * Must sync with rxiqest if gain assumed changes there
+	 */
 	if (BFCTL(pi->u.pi_acphy) == 2) {
 		if (CHSPEC_IS2G(pi->radio_chanspec)) {
 			rxiqest_gain = (int16)(ACPHY_NOISE_INITGAIN_X29_2G);
@@ -1096,6 +1421,10 @@ _phy_ac_rssi_init_gain_err(phy_type_rssi_ctx_t *ctx)
 		/* report rssi gainerr in 0.5dB steps */
 		info->gain_err[core] =
 		        (int8)((rxiqest_gain << 1) - (initgain_dB[core] << 1) + gainerr[core]);
+		/* JIRA:SWWLAN-71620 gainerr is calibrated using iqest module, which sees 2dB less
+			power than the phy_rxpwr at 2G and 1dB at 5G (BW20/40). Put this adjustment
+			for 43602 only now
+		*/
 		if (ACMAJORREV_5(pi->pubpi->phy_rev) &&
 				(info->data->rxgaincal_rssical == FALSE)) {
 			pi->phy_rssi_gain_error[core] += CHSPEC_IS2G(pi->radio_chanspec) ? 4 :
@@ -1391,7 +1720,7 @@ phy_ac_rssi_set_gain_delta_5g(phy_type_rssi_ctx_t *ctx, uint32 aid, int8 *deltaV
 			}
 		}
 		if (pi->sh->clk) {
-			if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev) &&
+			if (ACMAJORREV_40_128(pi->pubpi->phy_rev) &&
 			    (pi->u.pi_acphy->sromi->num_rssi_cal_gi_5g == 3)) {
 					/* Adjust gaindB table with RSSI CAL results */
 					if (core == 0) {
@@ -1497,7 +1826,7 @@ phy_ac_rssi_set_gain_delta_2gb(phy_type_rssi_ctx_t *ctx, uint32 aid, int8 *delta
 		}
 	}
 	if (pi->sh->clk) {
-		if (ACMAJORREV_GE40_NE47_NE51(pi->pubpi->phy_rev) &&
+		if (ACMAJORREV_40_128(pi->pubpi->phy_rev) &&
 		    (pi->u.pi_acphy->sromi->num_rssi_cal_gi_2g == 3)) {
 					/* Adjust gaindB table with RSSI CAL results */
 					if (core == 0) {

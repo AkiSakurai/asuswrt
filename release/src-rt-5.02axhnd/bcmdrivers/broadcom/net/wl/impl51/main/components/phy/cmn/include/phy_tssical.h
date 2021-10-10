@@ -1,7 +1,7 @@
 /*
  * TSSI Cal module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tssical.h 766697 2018-08-10 00:10:49Z $
+ * $Id: phy_tssical.h 765542 2018-07-06 22:21:16Z $
  */
 
 #ifndef _phy_tssical_h_

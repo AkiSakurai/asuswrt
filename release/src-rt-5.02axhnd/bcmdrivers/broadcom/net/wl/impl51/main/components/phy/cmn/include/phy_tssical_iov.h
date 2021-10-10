@@ -1,7 +1,7 @@
 /*
  * TSSI CAL module internal interface - iovar table/handlers
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tssical_iov.h 657820 2016-09-02 18:26:33Z $
+ * $Id: phy_tssical_iov.h 765209 2018-06-22 18:37:42Z $
  */
 
 #ifndef _phy_tssical_iov_t_
@@ -64,7 +64,9 @@ enum {
 	IOV_OLPC_IDX_VALID = 7,
 	IOV_PHY_TXCAL_STATUS = 8,
 	IOV_PHY_ADJUSTED_TSSI = 9,
-	IOV_OLPC_OFFSET = 10
+	IOV_OLPC_OFFSET = 10,
+	IOV_OLPC_THRESH2G = 11,
+	IOV_OLPC_THRESH5G = 12
 };
 
 /* register iovar table/handlers */

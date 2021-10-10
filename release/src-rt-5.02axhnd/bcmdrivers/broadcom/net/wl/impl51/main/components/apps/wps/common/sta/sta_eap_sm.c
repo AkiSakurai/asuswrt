@@ -8,7 +8,7 @@
  * For that reason we use statically allocated memory.
  * This code IS NOT RE-ENTRANT.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -815,6 +815,9 @@ wps_get_msg_string(int mtype)
 		return WPS_MSG_STRS[mtype];
 }
 
+/* XXX, According to RFC 3748, the Responses MUST only be sent in reply to a valid Request
+ * and never be retransmitted on a timer.
+ */
 int
 wps_eap_check_timer(uint32 time)
 {
@@ -846,6 +849,9 @@ wps_eap_check_timer(uint32 time)
 			return WPS_CONT;
 		}
 
+		/* XXX, According to RFC 3748, the Responses MUST only be sent in reply
+		 * to a valid Request and never be retransmitted on a timer ???.
+		 */
 		/* We need WPS_SEND_RET_MSG_CONT to re-send M1 */
 		return WPS_SEND_RET_MSG_CONT; /* re-transmit  */
 	}

@@ -1,7 +1,7 @@
 /*
  * Implementation of event notification component.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -48,6 +48,9 @@
  * $Id: bcm_notif.c 684669 2017-02-14 05:44:39Z $
  */
 
+/* XXX: Define bcm_cfg.h to be the first header file included as some builds
+ * get their feature flags thru this file.
+ */
 #include <bcm_cfg.h>
 #include <typedefs.h>
 #include <osl.h>

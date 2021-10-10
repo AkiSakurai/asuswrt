@@ -1,7 +1,7 @@
 /*
  * ACPHY Core module internal interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -89,6 +89,10 @@ void wlc_phy_logen_reset(phy_info_t *pi, uint8 core);
 #define PHY_TXPWR_MIN_ACPHY_4349_5G	0	/* for 5G 4349 acphy devices */
 #define ACPHY_MIN_POWER_SUPPORTED_WITH_OLPC_QDBM (-40)
 #define MAX_TX_IDX	127 /* maximum index for TX gain table */
+/* Offset of Target Power per channel in 2GHz feature,
+ * designed for 4354 iPa with LTE filter, but can support any ACPHY chip
+ * XXX also to be moved to TPC header once the AC modules are created
+ */
 #ifdef POWPERCHANNL
 #define CH20MHz_NUM_2G	14 /* Number of 20MHz channels in 2G band */
 #define PWR_PER_CH_NORM_TEMP	0	/* Temp zone  in norm for power per channel  */

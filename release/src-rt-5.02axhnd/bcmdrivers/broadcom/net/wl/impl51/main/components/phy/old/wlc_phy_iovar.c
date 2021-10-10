@@ -3,7 +3,7 @@
  * PHY iovar processing of Broadcom BCM43XX 802.11abg
  * Networking Device Driver.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,13 +46,16 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phy_iovar.c 764806 2018-06-04 23:04:30Z $
+ * $Id: wlc_phy_iovar.c 775443 2019-05-30 09:07:19Z $
  */
 
 /*
  * This file contains high portion PHY iovar processing and table.
  */
 
+/* XXX: Define wlc_cfg.h to be the first header file included as some builds
+ * get their feature flags thru this file.
+ */
 #include <wlc_cfg.h>
 
 #include <typedefs.h>
@@ -433,6 +436,12 @@ static const bcm_iovar_t phy_iovars[] = {
 	{"phy_txpwrindex", IOV_PHY_TXPWRINDEX,
 	(IOVF_GET_UP | IOVF_SET_UP | IOVF_MFG), 0, IOVT_BUFFER, 0
 	},
+	{"txpwr_cap", IOV_PHY_TXPWRCAP,
+	(IOVF_GET_UP | IOVF_SET_UP | IOVF_MFG), 0, IOVT_BUFFER, 0
+	},
+	{"align_sniffer", IOV_PHY_SNIFFER_ALIGN,
+	(IOVF_GET_UP | IOVF_SET_UP | IOVF_MFG), 0, IOVT_BUFFER, sizeof(struct ether_addr)
+	},
 #endif // endif
 #if defined(WLTEST)
 	{"patrim", IOV_PATRIM,
@@ -533,7 +542,7 @@ static const bcm_iovar_t phy_iovars[] = {
 
 #if defined(WLTEST)
 #define BFECONFIGREF_FORCEVAL    0x9
-#define BFECONFIG0_IMPBF         0xa
+#define BFECONFIG0_IMPBF         0x3fa
 #define BFMCON_FORCEVAL          0x8c03
 #define BFMCON_RELEASEVAL        0x8c1d
 #define REFRESH_THR_FORCEVAL     0xffff
@@ -624,6 +633,10 @@ wlc_phy_iovar_txpwrctrl(phy_info_t *pi, int32 int_val, bool bool_val, int32 *ret
 	bool set);
 static int
 wlc_phy_iovar_txpwrindex_get(phy_info_t *pi, int32 int_val, bool bool_val, int32 *ret_int_ptr);
+static int
+wlc_phy_iovar_txpwrcap_get(phy_info_t *pi, int32 int_val, bool bool_val, int32 *ret_int_ptr);
+static int
+wlc_phy_iovar_txpwrcap_set(phy_info_t *pi, void *p);
 #endif // endif
 
 int phy_iovars_wrapper_sample_collect(phy_info_t *pi, uint32 actionid, uint16 type,
@@ -763,6 +776,12 @@ wlc_phy_cal_perical(wlc_phy_t *pih, uint8 reason)
 		if (ISNPHY(pi))
 			pi->u.pi_nphy->cal_type_override = PHY_PERICAL_FULL;
 
+		/* force in-line rx/tx cal before join.  Multiphase cal
+		 * could cause loss of packets while mac is suspended
+		 * XXX PR63371
+		 * wlc_phy_cal_perical_mphase_schedule(pi, PHY_PERICAL_ASSOC_DELAY);
+		 */
+
 		/* Update last cal temp to current tempsense reading */
 		if (temp->phycal_tempdelta) {
 			pi->cal_info->last_cal_temp = phy_temp_sense_read((wlc_phy_t *)pi);
@@ -870,8 +889,8 @@ wlc_phy_cal_perical(wlc_phy_t *pih, uint8 reason)
 					if (PHY_PERICAL_MPHASE_PENDING(pi)) {
 						phy_calmgr_mphase_reset(pi->calmgri);
 					}
-					wlc_phy_cals_acphy(pi->u.pi_acphy->calmgri,
-						PHY_PERICAL_UNDEF, PHY_CAL_SEARCHMODE_RESTART);
+					phy_calmgr_cals(pi, PHY_PERICAL_UNDEF,
+							PHY_CAL_SEARCHMODE_RESTART);
 				}
 			} else if (pi->phy_cal_mode == PHY_PERICAL_SPHASE) {
 				phy_calmgr_cals(pi, PHY_PERICAL_AUTO, PHY_CAL_SEARCHMODE_RESTART);
@@ -935,7 +954,6 @@ wlc_phy_cal_perical(wlc_phy_t *pih, uint8 reason)
 /* ************************************************************* */
 /* ************************************************************* */
 
-/* wlc_awdl non-AC */
 void
 wlc_phy_cal_mode(wlc_phy_t *ppi, uint mode)
 {
@@ -1328,7 +1346,8 @@ wlc_phy_iovar_forcecal(phy_info_t *pi, int32 int_val, int32 *ret_int_ptr, int vs
 			pi->cal_info->cal_searchmode = searchmode;
 			wlc_phy_cal_perical_mphase_schedule(pi, PHY_PERICAL_NODELAY);
 		} else {
-			if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
+			if (ACMAJORREV_40_128(pi->pubpi->phy_rev) ||
+				ACMAJORREV_47_51_129(pi->pubpi->phy_rev)) {
 				/* Indicate PHY forcecal requested */
 				pi->cal_info->phy_forcecal_request = TRUE;
 			}
@@ -1337,9 +1356,12 @@ wlc_phy_iovar_forcecal(phy_info_t *pi, int32 int_val, int32 *ret_int_ptr, int vs
 			wlc_phy_cals_acphy(pi->u.pi_acphy->calmgri, PHY_PERICAL_UNDEF,
 					searchmode);
 
-			if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
+			if (ACMAJORREV_40_128(pi->pubpi->phy_rev)) {
 				phy_ac_ovr_rxgain_noise_sample_request(
 					pi->u.pi_acphy->rxgcrsi, TRUE);
+			} else if (ACMAJORREV_47_51_129(pi->pubpi->phy_rev)) {
+				pi->cal_info->phy_forcecal_request = FALSE;
+				phy_ac_rxgcrs_cal(pi->u.pi_acphy->rxgcrsi, 0);
 			}
 		}
 	} else if (ISNPHY(pi)) {
@@ -1501,6 +1523,50 @@ wlc_phy_iovar_txpwrindex_get(phy_info_t *pi, int32 int_val, bool bool_val, int32
 	}
 	return err;
 }
+
+static int
+wlc_phy_iovar_txpwrcap_get(phy_info_t *pi, int32 int_val, bool bool_val, int32 *ret_int_ptr)
+{
+	int err = BCME_OK;
+
+	if (ISACPHY(pi)) {
+		*ret_int_ptr = wlc_phy_txpwr_cap_get_acphy(pi);
+	} else {
+		err = BCME_UNSUPPORTED;
+	}
+	return err;
+}
+
+static int
+wlc_phy_iovar_txpwrcap_set(phy_info_t *pi, void *p)
+{
+	int err = BCME_OK;
+	uint32 *txpwrcapp;
+	int8 idx[PHY_CORE_MAX], core;
+
+	/* IOV has idx as uint32's, convert to int8 */
+	txpwrcapp = (uint32 *)p;
+	FOREACH_CORE(pi, core) {
+		idx[core] =  (int8)(txpwrcapp[core] & 0xff);
+		if (idx[core] < 0) {
+			err = BCME_RANGE;
+			goto end;
+		}
+	}
+
+	wlapi_suspend_mac_and_wait(pi->sh->physhim);
+	phy_utils_phyreg_enter(pi);
+
+	if (ISACPHY(pi)) {
+		wlc_phy_txpwr_cap_set_acphy(pi, idx);
+	}
+
+	phy_utils_phyreg_exit(pi);
+	wlapi_enable_mac(pi->sh->physhim);
+
+end:
+	return err;
+}
 #endif // endif
 
 int
@@ -1535,6 +1601,9 @@ wlc_phy_iovar_txpwrindex_set(phy_info_t *pi, void *p)
 		}
 	} else if (ISACPHY(pi)) {
 		FOREACH_CORE(pi, core) {
+			/* XXX: wlc_phy_txpwrctrl_enable_acphy can be moved into
+			 * wlc_phy_txpwr_by_index_acphy
+			 */
 			wlc_phy_txpwrctrl_enable_acphy(pi, PHY_TPC_HW_OFF);
 			wlc_phy_txpwr_by_index_acphy(pi, (1 << core), idx[core]);
 		}
@@ -1754,7 +1823,8 @@ wlc_phy_iovar_forceimpbf(phy_info_t *pi)
 		phy_utils_phyreg_enter(pi);
 
 		/* reset bfe before using the engine */
-		if (ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+		if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 			bfeConfigVal = phy_utils_read_phyreg(pi,
 				ACPHY_BfeConfigReg0(pi->pubpi->phy_rev));
 			phy_utils_write_phyreg(pi,
@@ -1764,7 +1834,8 @@ wlc_phy_iovar_forceimpbf(phy_info_t *pi)
 				bfeConfigVal);
 		}
 
-		bfeConfigVal = ACMAJORREV_47_51(pi->pubpi->phy_rev)?
+		bfeConfigVal = ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev) ?
 			BFECONFIG0_IMPBF : BFECONFIGREF_FORCEVAL;
 		phy_utils_write_phyreg(pi, ACPHY_BfeConfigReg0(pi->pubpi->phy_rev),
 			bfeConfigVal);
@@ -1775,18 +1846,17 @@ wlc_phy_iovar_forceimpbf(phy_info_t *pi)
 			WRITE_PHYREG(pi, BfeMuConfigReg1, 0x1000);
 			WRITE_PHYREG(pi, BfeMuConfigReg2, 0x2000);
 			WRITE_PHYREG(pi, BfeMuConfigReg3, 0x1000);
-		} else if (ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
-			/* put the steering report in index 72 */
+		} else if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev)) {
+			/* put the steering report in index 127 */
 			uint16 tmpdata16;
-			uint32 tmpdata32 = 0x2a002800;
-
+			uint32 tmpdata32 = 0x26002400;
 			wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_BFDINDEXLUT,
-				1, 132, 32, &tmpdata32);
-			tmpdata16 = 0x2800;
+				1, 159, 32, &tmpdata32);
+			tmpdata16 = 0x2600;
 			wlc_phy_table_write_acphy(pi, ACPHY_TBL_ID_IBFERPTADDRLUT,
-				1, 0, 16, &tmpdata16);
+				1, 63, 16, &tmpdata16);
 		}
-
 		phy_utils_phyreg_exit(pi);
 		wlapi_enable_mac(pi->sh->physhim);
 		return 0;
@@ -1805,8 +1875,9 @@ wlc_phy_iovar_forcesteer(phy_info_t *pi, uint8 enable)
 	uint16 shm_base, bfrctl = 0;
 	uint8 nsts_shift;
 
-	if (ISACPHY(pi) && (!ACMAJORREV_1(pi->pubpi->phy_rev)) &&
-			!ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+	if (ISACPHY(pi) && (((!ACMAJORREV_1(pi->pubpi->phy_rev)) &&
+			!ACMAJORREV_GE47(pi->pubpi->phy_rev)) ||
+			ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		phy_stf_data_t *stf_shdata = phy_stf_get_data(pi->stfi);
 
 		BCM_REFERENCE(stf_shdata);
@@ -1820,7 +1891,7 @@ wlc_phy_iovar_forcesteer(phy_info_t *pi, uint8 enable)
 
 		shm_base = M_BFI_BLK(pi) >> 1;
 
-		if (!ACMAJORREV_47(pi->pubpi->phy_rev)) {
+		if (!ACMAJORREV_GE47(pi->pubpi->phy_rev) || ACMAJORREV_128(pi->pubpi->phy_rev)) {
 			/* NDP streams */
 			nsts_shift = C_BFI_BFRCTL_POS_NSTS_SHIFT;
 			if (PHY_BITSCNT(stf_shdata->phytxchain) == 4) {
@@ -1856,9 +1927,9 @@ wlc_phy_iovar_forcesteer(phy_info_t *pi, uint8 enable)
 		wlapi_enable_mac(pi->sh->physhim);
 		return 0;
 	} else if ((ACMAJORREV_47(pi->pubpi->phy_rev) && ACMINORREV_GE(pi, 1)) ||
-		ACMAJORREV_51(pi->pubpi->phy_rev)) {
+		ACMAJORREV_51(pi->pubpi->phy_rev) || ACMAJORREV_129(pi->pubpi->phy_rev)) {
 
-		wlapi_forcesteer_ge129(pi->sh->physhim);
+		wlapi_forcesteer_gerev129(pi->sh->physhim, enable);
 		return 0;
 	}
 #endif /* (ACCONF || ACCONF2) && WL_BEAMFORMING */
@@ -1962,6 +2033,10 @@ wlc_phy_iovar_get_papd_offset(phy_info_t *pi)
 }
 #endif // endif
 
+/* OLD PHYTYPE specific iovars, to be phased out gradually,
+ * do NOT add more. Instead, share, expand or create unified ones in wlc_phy_iovar_dispatch
+ * XXX to reorganize and consolidate
+ */
 static int
 wlc_phy_iovar_dispatch_old(phy_info_t *pi, uint32 actionid, void *p, void *a, int vsize,
 	int32 int_val, bool bool_val)
@@ -3066,6 +3141,52 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 		}
 		wlc_phy_iovar_txpwrindex_get(pi, int_val, bool_val, ret_int_ptr);
 		break;
+	case IOV_SVAL(IOV_PHY_TXPWRCAP):
+		if (!pi->sh->clk) {
+			err = BCME_NOCLK;
+			break;
+		}
+		err = wlc_phy_iovar_txpwrcap_set(pi, p);
+		break;
+
+	case IOV_GVAL(IOV_PHY_TXPWRCAP):
+		if (!pi->sh->clk) {
+			err = BCME_NOCLK;
+			break;
+		}
+		wlc_phy_iovar_txpwrcap_get(pi, int_val, bool_val, ret_int_ptr);
+		break;
+
+	case IOV_SVAL(IOV_PHY_SNIFFER_ALIGN):
+		{
+			const struct ether_addr *eap;
+			eap = (struct ether_addr *)p;
+			if (!pi->sh->clk) {
+				err = BCME_NOCLK;
+				break;
+			}
+			pi->u.pi_acphy->sniffer_aligner.ea = *eap;
+			if (!ETHER_ISNULLADDR(eap->octet)) {
+				pi->u.pi_acphy->sniffer_aligner.enabled = TRUE;
+				pi->u.pi_acphy->sniffer_aligner.active = TRUE;
+			} else {
+				pi->u.pi_acphy->sniffer_aligner.enabled = FALSE;
+				pi->u.pi_acphy->sniffer_aligner.active = FALSE;
+			}
+			break;
+		}
+
+	case IOV_GVAL(IOV_PHY_SNIFFER_ALIGN):
+		{
+			struct ether_addr *eap;
+			eap = (struct ether_addr *)a;
+			if (!pi->sh->clk) {
+				err = BCME_NOCLK;
+				break;
+			}
+			*eap = pi->u.pi_acphy->sniffer_aligner.ea;
+			break;
+		}
 #endif // endif
 #if defined(WLTEST)
 	case IOV_GVAL(IOV_PATRIM):
@@ -3239,7 +3360,10 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 #if defined(WLTEST)
 	case IOV_SVAL(IOV_RPCALVARS): {
 		const wl_rpcal_t *rpcal = p;
-		if (ACMAJORREV_1(pi->pubpi->phy_rev)) {
+		if (!ISACPHY(pi)) {
+			PHY_ERROR(("Support for AC phy only!\n"));
+			err = BCME_UNSUPPORTED;
+		} else if (ACMAJORREV_1(pi->pubpi->phy_rev)) {
 			PHY_ERROR(("Number of TX Chain has to be > 1!\n"));
 			err = BCME_UNSUPPORTED;
 		} else {
@@ -3261,7 +3385,8 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 			if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 				ACMAJORREV_33(pi->pubpi->phy_rev) ||
 				ACMAJORREV_37(pi->pubpi->phy_rev) ||
-				ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+				(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 				pi->sromi->rpcal2gcore3 =
 				rpcal[WL_NUM_RPCALVARS+WL_CHAN_FREQ_RANGE_2G].update ?
 				rpcal[WL_NUM_RPCALVARS+WL_CHAN_FREQ_RANGE_2G].value :
@@ -3289,7 +3414,10 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 
 	case IOV_GVAL(IOV_RPCALVARS): {
 		wl_rpcal_t *rpcal = a;
-		if (ACMAJORREV_1(pi->pubpi->phy_rev)) {
+		if (!ISACPHY(pi)) {
+			PHY_ERROR(("Support for AC phy only!\n"));
+			err = BCME_UNSUPPORTED;
+		} else if (ACMAJORREV_1(pi->pubpi->phy_rev)) {
 			PHY_ERROR(("Number of TX Chain has to be > 1!\n"));
 			err = BCME_UNSUPPORTED;
 		} else {
@@ -3301,7 +3429,8 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 			if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 				ACMAJORREV_33(pi->pubpi->phy_rev) ||
 				ACMAJORREV_37(pi->pubpi->phy_rev) ||
-				ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+				(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 				rpcal[WL_NUM_RPCALVARS+WL_CHAN_FREQ_RANGE_2G].value =
 				pi->sromi->rpcal2gcore3;
 				rpcal[WL_NUM_RPCALVARS+WL_CHAN_FREQ_RANGE_5G_BAND0].value =
@@ -3321,7 +3450,11 @@ phy_doiovar(void *ctx, uint32 actionid, void *p, uint plen, void *a, uint alen, 
 	case IOV_SVAL(IOV_PHY_FORCE_FDIQI):
 	{
 
-		wlc_phy_force_fdiqi_acphy(pi, (uint16) int_val);
+		if (ISACPHY(pi)) {
+			wlc_phy_force_fdiqi_acphy(pi, (uint16) int_val);
+		} else {
+			err = BCME_UNSUPPORTED;
+		}
 
 		break;
 	}

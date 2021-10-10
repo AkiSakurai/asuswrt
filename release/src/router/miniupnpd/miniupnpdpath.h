@@ -50,5 +50,10 @@
 #define AS_CONTROLURL		"/ctl/AS"
 #define AS_EVENTURL		"/evt/AS"
 #endif
-#endif
 
+#ifdef ENABLE_NVGFN
+#define NVGFN_PATH			"/NvGfn1.xml"
+#define NVGFN_CONTROLURL	"/ctl/NvGfn"
+#define NVGFN_EVENTURL		"/evt/NvGfn"
+#endif
+#endif

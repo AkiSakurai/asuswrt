@@ -2,7 +2,7 @@
  * Monitor Mode routines.
  * This header file housing the Monitor Mode routines implementation.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -94,20 +94,19 @@
 
 #define RXHDR_GET_AGG_TYPE(rxh, corerev, corerev_minor) (IS_D11RXHDRSHORT(rxh, corerev) ? \
 	((D11RXHDRSHORT_ACCESS_VAL(rxh, corerev, corerev_minor, mrxs) & \
-	  RXSS_AGGTYPE_MASK) >> RXSS_AGGTYPE_SHIFT) : D11REV_GE(corerev, 80) ? \
-	((D11RXHDR_GE80_ACCESS_VAL(rxh, mrxs) & RXSS_AGGTYPE_MASK) >> RXSS_AGGTYPE_SHIFT) : \
+	  RXSS_AGGTYPE_MASK) >> RXSS_AGGTYPE_SHIFT) : D11REV_GE(corerev, 128) ? \
+	((D11RXHDR_GE128_ACCESS_VAL(rxh, mrxs) & RXSS_AGGTYPE_MASK) >> RXSS_AGGTYPE_SHIFT) : \
 	((D11RXHDR_LT80_ACCESS_VAL(rxh, RxStatus2) & RXS_AGGTYPE_MASK) >> RXS_AGGTYPE_SHIFT))
 
 #define RXHDR_GET_PAD_LEN(rxh, corerev, corerev_minor) (IS_D11RXHDRSHORT(rxh, corerev) ? \
 	        (((D11RXHDRSHORT_ACCESS_VAL(rxh, corerev, corerev_minor, mrxs) & \
-		           RXSS_PBPRES) != 0) ? HDRCONV_PAD : 0) : D11REV_GE(corerev, 80) ? \
-	        (((D11RXHDR_GE80_ACCESS_VAL(rxh, mrxs) & RXSS_PBPRES) != 0) ? HDRCONV_PAD : 0) : \
+		           RXSS_PBPRES) != 0) ? HDRCONV_PAD : 0) : D11REV_GE(corerev, 128) ? \
+	        (((D11RXHDR_GE128_ACCESS_VAL(rxh, mrxs) & RXSS_PBPRES) != 0) ? HDRCONV_PAD : 0) : \
 	        (((D11RXHDR_LT80_ACCESS_VAL(rxh, RxStatus1) & RXS_PBPRES) != 0) ? HDRCONV_PAD : 0))
 
 /** For accessing members of d11rxhdr_t by reference (address of members) */
 #define D11PHYSTSBUF_ACCESS_REF_D(rxh, corerev, member) \
-	 (D11REV_IS(corerev, 128) ? D11PHYSTSBUF_GE128_ACCESS_REF(rxh, member) : \
-	 D11REV_GE(corerev, 80) ? D11PHYSTSBUF_GE80_ACCESS_REF(rxh, member) : \
+	 (D11REV_GE(corerev, 128) ? D11PHYSTSBUF_GE128_ACCESS_REF(rxh, member) : \
 	 D11PHYSTSBUF_LT80_ACCESS_REF(rxh, member))
 
 /** Calculate the rate of a received frame and return it as a ratespec (monitor mode) */
@@ -197,6 +196,13 @@ wlc_recover_tsf32(uint16 rxh_tsf, uint32 ts_tsf)
 	uint16 rfdly;
 
 	/* adjust rx dly added in RxTSFTime */
+	/* XXX comment in d11.h:
+	 * BWL_PRE_PACKED_STRUCT struct d11rxhdr {
+	 *	...
+	 *	uint16 RxTSFTime;	RxTSFTime time of first MAC symbol + M_PHY_PLCPRX_DLY
+	 *	...
+	 * }
+	 */
 
 	/* TODO: add PHY type specific value here... */
 	rfdly = M_BPHY_PLCPRX_DLY;
@@ -286,7 +292,7 @@ wl_rxsts_to_rtap(struct wl_rxsts* rxsts, void *payload, uint16 len, void *pout, 
 	} else {
 		rtap_len = sizeof(wl_radiotap_legacy_t);
 	}
-#if defined(DONGLEBUILD)
+#if defined(BCMDONGLEHOST)
 	radio_tap = (void *)((uint8 *)pout - rtap_len);
 #else
 	radio_tap = pout;
@@ -294,7 +300,7 @@ wl_rxsts_to_rtap(struct wl_rxsts* rxsts, void *payload, uint16 len, void *pout, 
 			!(rxsts->nfrmtype & WL_RXS_NFRM_AMSDU_SUB)) {
 		memcpy((uint8*)pout + rtap_len, (uint8*)p, len);
 	}
-#endif /* DONGLEBUILD */
+#endif /* BCMDONGLEHOST */
 	mac_header = (struct dot11_header *)(p);
 	len += rtap_len;
 
@@ -417,6 +423,10 @@ wl_d11rx_to_rxsts(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
 				info->ampdu_counter++;
 			} else {
 				/* Last MPDU */
+				/* XXX: done to take care of the last MPDU in A-mpdu
+				* VHT packets are considered A-mpdu
+				* Use the saved rspec
+				*/
 				rspec = info->ampdu_rspec;
 			}
 
@@ -593,9 +603,8 @@ wl_d11rx_to_rxsts(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
 	if (D11RXHDR_ACCESS_VAL(&wrxh->rxhdr, corerev, RxStatus1) & RXS_FCSERR)
 		sts.pkterror |= WL_RXS_CRC_ERROR;
 
-	if (D11RXHDR_ACCESS_VAL(&wrxh->rxhdr, corerev, RxStatus1) & RXS_PBPRES) {
-		p += 2; len -= 2;
-	}
+	p += RXHDR_GET_PAD_LEN(&wrxh->rxhdr, corerev, 0);
+	len -= RXHDR_GET_PAD_LEN(&wrxh->rxhdr, corerev, 0);
 
 	p += (hwrxoff + D11_PHY_RXPLCP_LEN(info->corerev));
 	len -= (hwrxoff + D11_PHY_RXPLCP_LEN(info->corerev));
@@ -638,8 +647,8 @@ wl_monitor_amsdu(monitor_info_t* info, monitor_pkt_info_t* pkt_info, wlc_d11rxhd
 			pad_present = ((srxh->lt80.mrxs & RXSS_PBPRES) != 0);
 		}
 		else {
-			if (D11REV_GE(info->corerev, 80)) {
-				pad_present = D11RXHDR_GE80_ACCESS_VAL(&wrxh->rxhdr, mrxs)
+			if (D11REV_GE(info->corerev, 128)) {
+				pad_present = D11RXHDR_GE128_ACCESS_VAL(&wrxh->rxhdr, mrxs)
 					& RXS_PBPRES;
 			} else {
 				pad_present = D11RXHDR_LT80_ACCESS_VAL(&wrxh->rxhdr, RxStatus1)
@@ -740,8 +749,8 @@ bcmwifi_monitor(monitor_info_t* info, monitor_pkt_info_t* pkt_info,
 			*pkt_type = MON_PKT_AMSDU_ERROR;
 			return 0;
 		}
-		if (D11REV_GE(info->corerev, 80)) {
-			pad_present = D11RXHDR_GE80_ACCESS_VAL(&wrxh->rxhdr, mrxs) & RXS_PBPRES;
+		if (D11REV_GE(info->corerev, 128)) {
+			pad_present = D11RXHDR_GE128_ACCESS_VAL(&wrxh->rxhdr, mrxs) & RXS_PBPRES;
 		} else {
 			pad_present = D11RXHDR_LT80_ACCESS_VAL(&wrxh->rxhdr, RxStatus1)
 				& RXS_PBPRES;

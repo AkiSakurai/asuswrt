@@ -18,7 +18,6 @@
 <script language="JavaScript" type="text/javascript" src="/general.js"></script>
 <script language="JavaScript" type="text/javascript" src="/popup.js"></script>
 <script language="JavaScript" type="text/javascript" src="/help.js"></script>
-<script language="JavaScript" type="text/javascript" src="merlin.js"></script>
 <script language="JavaScript" type="text/javascript" src="js/jquery.js"></script>
 <script type="text/javascript" src="js/httpApi.js"></script>
 <style>
@@ -448,9 +447,15 @@ function applyRule(){
 			httpApi.update_wlanlog();
 
 		document.form.fb_browserInfo.value = navigator.userAgent;
-
-		startLogPrep();
-
+		if(dsl_support){
+			if(document.form.dslx_diag_enable[0].checked == true){
+				document.form.action_wait.value="120";
+				showLoading(120);
+			}else	
+				showLoading(60);
+		}
+		else
+			showLoading(60);
 		document.form.submit();
 }
 
@@ -680,7 +685,7 @@ function diag_tune_service_option() {
 
 		return $labelHtml;
 	};
-	if(amesh_support && (isSwMode("rt") || isSwMode("ap")) && ameshRouter_support) {
+	if(amesh_support && (isSwMode("rt") || isSwMode("ap"))) {
 		if($(".dblog_service_item.AiMesh").length == 0)
 			$(".dblog_service_item.all").after(gen_service_option(8, "AiMesh", "AiMesh"));
 	}
@@ -703,35 +708,6 @@ function dblog_stop() {
 	showLoading(3);
 	document.stop_dblog_form.submit();
 }
-
-function startLogPrep(){
-	dr_advise();
-}
-
-var redirect_info = 0;
-function CheckFBSize(){
-	$.ajax({
-		url: '/ajax_fb_size.asp',
-		dataType: 'script',
-		timeout: 1500,
-		error: function(xhr){
-				redirect_info++;
-				if(redirect_info < 10){
-					setTimeout("CheckFBSize();", 1000);
-				}
-				else{
-					showLoading(35);
-					setTimeout("redirect()", 35000);
-				}
-		},
-		success: function(){
-				if(fb_state == 0)
-					setTimeout("CheckFBSize()", 3000);
-				else
-					setTimeout("redirect()", 1000);
-		}
-	});
-}
 </script>
 </head>
 <body onload="initial();" onunLoad="return unload_body();">
@@ -740,10 +716,12 @@ function CheckFBSize(){
 <table cellpadding="5" cellspacing="0" id="dr_sweet_advise" class="dr_sweet_advise" align="center">
 <tr>
 <td>
-<div class="drword" id="drword" style="height:110px;"><#Main_alert_proceeding_desc4#> <#QKSet_detect_waitdesc1#>...
+<div class="drword" id="drword" style="height:110px;"><#Main_alert_proceeding_desc4#> <#Main_alert_proceeding_desc1#>...
 <br/>
 <br/>
 </div>
+<div class="drImg"><img src="/images/alertImg.png"></div>
+<div style="height:70px;"></div>
 </td>
 </tr>
 </table>
@@ -857,7 +835,7 @@ function CheckFBSize(){
 <tr id="dslx_diag_duration">
 	<th><#feedback_capturing_duration#> *</th>
 	<td>
-		<select class="input_option" name="dslx_diag_duration">
+		<select id="" class="input_option" name="dslx_diag_duration">
 			<option value="0" selected><#Auto#></option>
 			<option value="3600">1 <#Hour#></option>
 			<option value="18000">5 <#Hour#></option>

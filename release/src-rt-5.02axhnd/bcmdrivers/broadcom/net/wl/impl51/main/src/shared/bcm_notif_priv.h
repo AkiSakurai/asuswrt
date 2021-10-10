@@ -1,7 +1,7 @@
 /*
  * Private header file for event-component data structure and API
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -73,7 +73,7 @@
  *        n is a "next" pointer of the list
  *        tail is the server's pointer to the list.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

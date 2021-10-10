@@ -1,7 +1,7 @@
 /*
  * metric tab  statistics for visualization tool
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -71,6 +71,9 @@
 #pragma warning(disable : 4761)
 #endif // endif
 
+#ifdef BCMCCX
+#include <proto/802.11_ccx.h>
+#endif // endif
 #include <bcmendian.h>
 #include "vis_common.h"
 #if defined(WLPFN) && defined(linux)
@@ -185,6 +188,13 @@ wl_counters(void *wl, counters_t *countersout, counters_t *oldcountersout)
 	    printf("%s: IOVAR buffer short!\n", __FUNCTION__);
 	}
 	if (ver == WL_CNT_VERSION_11) {
+		/* XXX: This version of FW/driver's ucode has significant MACSTAT SHM
+		 * layout change, but use of xtlv format is not implemented in wlc layer
+		 * due to rom invalidation.
+		 * It uses the deprecated wl cnt struct (wl_cnt_ver_11_t), each macstat
+		 * variable of which has only one name, but they need to be copied to
+		 * different macstat structs according to corerev.
+		 */
 		wlc_rev_info_t revinfo;
 		memset(&revinfo, 0, sizeof(revinfo));
 		err = wlu_get(wl, WLC_GET_REVINFO, &revinfo, sizeof(revinfo));

@@ -26,6 +26,9 @@ enum subscriber_service_enum {
 #ifdef ENABLE_AURASYNC
  EAS,
 #endif
+#ifdef ENABLE_NVGFN
+ ENVGFN,
+#endif
 };
 
 void

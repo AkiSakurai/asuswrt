@@ -1,7 +1,7 @@
 /*
  * IOCV module interface - abstract interface
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -59,6 +59,9 @@ struct wlc_iocv_info {
 	/* bmac/phy iovar/ioctl table/handlers registration fn */
 	int (*iovt_reg_fn)(wlc_iocv_info_t *ii, wlc_iovt_desc_t *iovd);
 	int (*ioct_reg_fn)(wlc_iocv_info_t *ii, wlc_ioct_desc_t *iocd);
+	/* XXX should hide the object pointer too but leave it here
+	 * to simplify the implemenation (ROM complication).
+	 */
 	void *obj;	/* object pointer */
 };
 

@@ -1,7 +1,7 @@
 /*
  * Enrollee API
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: enr_api.c 542265 2015-03-19 08:29:38Z $
+ * $Id: enr_api.c 766493 2018-08-03 05:39:41Z $
  */
 
 #ifdef WIN32
@@ -466,6 +466,11 @@ wpssta_get_reg_M7credentials(WpsEnrCred* credential)
 	if (nwKey->m_data && nwKey->tlvbase.m_len) {
 		memcpy(credential->nwKey, nwKey->m_data, data16);
 
+		/*
+		* PR86919, for WRT610N V1.  It always set nwKeyLen to 64 in M7AP.
+		* Correct nwKey->tlvbase.m_len when nwKey->m_data remaining
+		* characters are all zero
+		*/
 		m7keystr_len = (uint16)strlen(nwKey->m_data);
 		if (m7keystr_len < data16) {
 			for (offset = m7keystr_len; offset < data16; offset++) {
@@ -1483,7 +1488,9 @@ wps_get_select_aplist(wps_ap_list_info_t *list_in, wps_ap_list_info_t *list_out)
 
 	while (ap_in->used == TRUE && i < WPS_MAX_AP_SCAN_LIST_LEN) {
 		if (true == is_wps_ies(ap_in->ie_buf, ap_in->ie_buflen)) {
-			TUTRACE((TUTRACE_INFO, "wpscli_create_wps_ap_list: wps_get_select_reg returns %d\n", wps_get_select_reg(ap_in)));
+			TUTRACE((TUTRACE_INFO,
+				"wpscli_create_wps_ap_list: wps_get_select_reg returns %d\n",
+				wps_get_select_reg(ap_in)));
 			printf("wps_get_select_reg() returns:%d\n", wps_get_select_reg(ap_in));
 			if (true == is_ConfiguredState(ap_in->ie_buf, ap_in->ie_buflen) &&
 			    true == wps_get_select_reg(ap_in))
@@ -1870,3 +1877,37 @@ error:
 	return ret;
 }
 #endif /* WFA_WPS_20_TESTBED */
+
+#if defined(MULTIAP)
+uint8
+wpssta_is_map_backhaul_sta()
+{
+	TUTRACE((TUTRACE_INFO, "Enrollee multiap attributes %d \n",
+		g_mc->mp_enrSM->reg_info->enrollee->map_attr));
+	return (g_mc->mp_enrSM->reg_info->enrollee->map_attr & WPS_WFA_MAP_BHSTA);
+}
+/* Get the chanspec from the scan results for backhaul ssid */
+bool
+wpssta_get_chspec_from_scan_results(wps_ap_list_info_t *list, char *ssid, uint16 *chanspec)
+{
+	bool ret = FALSE;
+	int idx = 0;
+	wps_ap_list_info_t *ap = &list[0];
+
+	if (!list || !ssid || !chanspec) {
+		goto end;
+	}
+
+	while (ap->used = TRUE && idx < WPS_MAX_AP_SCAN_LIST_LEN) {
+		if (!strcmp(ssid, (char*)ap->ssid)) {
+			*chanspec = ap->chanspec;
+			ret = TRUE;
+			break;
+		}
+		idx++;
+		ap = &list[idx];
+	}
+end:
+	return ret;
+}
+#endif	/* MULTIAP */

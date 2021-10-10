@@ -4,7 +4,7 @@
  *
  *  Air-IQ IOVAR
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -148,7 +148,10 @@ enum {
 	IOV_LTE_U_SCAN_CONFIG            = 0x92,
 	IOV_LTE_U_DETECTOR_CONFIG        = 0x93,
 	IOV_LTE_U_DEBUG_CAPTURE          = 0x94,
-	IOV_LTE_U_AGING_INTERVAL         = 0x95
+	IOV_LTE_U_AGING_INTERVAL         = 0x95,
+#ifdef AIRIQ_UNITTEST
+	IOV_AIRIQ_MSGBUNDLE_TEST         = 0xc0
+#endif /* AIRIQ_UNITTEST */
 };
 
 const bcm_iovar_t airiq_iovars[] = {
@@ -249,12 +252,16 @@ const bcm_iovar_t airiq_iovars[] = {
 	},
 	{ "lte_u_aging_interval",
 	IOV_LTE_U_AGING_INTERVAL, (0), (0), IOVT_UINT32, 0 },
-	{ NULL, 0, 0, 0, 0 }
+#ifdef AIRIQ_UNITTEST
+	{ "airiq_msgbundle_ut",
+	IOV_AIRIQ_MSGBUNDLE_TEST, (0), (0), IOVT_UINT32, 0 },
+#endif /* AIRIQ_UNITTEST */
+	{ NULL, 0, 0, 0, 0 , 0 }
 };
 
 /* Handling AIRIQ related iovars */
 int
-airiq_doiovar(void *hdl, uint32 actionid, 	void *p, uint plen,
+airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 	void *arg, uint alen, uint vsize, struct wlc_if *wlcif)
 {
 	airiq_info_t *airiqh = (airiq_info_t*)hdl;
@@ -690,6 +697,86 @@ airiq_doiovar(void *hdl, uint32 actionid, 	void *p, uint plen,
 	case IOV_GVAL(IOV_LTE_U_AGING_INTERVAL):
 		*ret_int_ptr = airiqh->lte_u_aging_interval;
 		break;
+#ifdef AIRIQ_UNITTEST
+	case IOV_SVAL(IOV_AIRIQ_MSGBUNDLE_TEST):
+	{
+		uint32 msgsz = (uint32) int_val;
+		uint32 k;
+		airiq_fftdata_header_t *hdr;
+		uint8 *msgdata;
+
+		if (msgsz > 0 && msgsz < VASIP_FFT_SIZE) {
+			WL_PRINT(("sending %d...\n", msgsz));
+
+			hdr = (airiq_fftdata_header_t *)wlc_airiq_msg_get_buffer(airiqh, msgsz);
+			if (! hdr) {
+				err = BCME_NOMEM;
+			} else {
+				hdr->timestamp = 0x12345678;
+				hdr->seqno = airiqh->ut_seqno++;
+				hdr->flags = 0;
+				hdr->message_type = MESSAGE_TYPE_FFTCPX_VASIP;
+				hdr->corerev = airiqh->wlc->pub->corerev;
+				hdr->unit = airiqh->wlc->pub->unit;
+				hdr->size_bytes = msgsz + sizeof(airiq_fftdata_header_t);
+				hdr->fc_mhz = 2442; /* invalid but ok for unit test */
+				hdr->chanspec = airiqh->wlc->chanspec;
+				hdr->gaincode = 75;
+				hdr->fc_3x3_mhz = 5180; /* invalid but ok for unit test */
+				if (msgsz < 257) {
+					hdr->bins = 64;
+					hdr->data_bytes = 256;
+				} else if (msgsz < 513) {
+					hdr->bins = 128;
+					hdr->data_bytes = 512;
+				} else if (msgsz < 1025) {
+					hdr->bins = 256;
+					hdr->data_bytes = 1024;
+				} else {
+					hdr->bins = 512;
+					hdr->data_bytes = 2048;
+				}
+				msgdata = (uint8 *)&hdr[1]; /* just after the header */
+				for (k = 0; k < msgsz; k++) {
+					msgdata[k] = k;
+				}
+
+				wlc_airiq_msg_sendup(airiqh, hdr->size_bytes, FALSE);
+			}
+		} else {
+			err = BCME_BADARG;
+		}
+
+		break;
+	}
+	case IOV_GVAL(IOV_AIRIQ_MSGBUNDLE_TEST):
+	{
+		airiq_message_header_t *msg;
+		uint8 *hdr;
+
+		int k;
+
+		WL_PRINT(("Air-IQ MSG: %d msgs queued/total %d/%d (%d free)\n",
+			airiqh->bundle_msg_cnt, airiqh->bundle_size, airiqh->bundle_capacity,
+			airiqh->bundle_capacity - airiqh->bundle_size));
+		WL_PRINT(("fft_buffer=%p write_ptr=%p (delta=%d) capacity=%d\n",
+			airiqh->fft_buffer, airiqh->bundle_write_ptr,
+			airiqh->bundle_write_ptr - airiqh->fft_buffer, airiqh->bundle_capacity));
+
+		msg = (airiq_message_header_t *)airiqh->fft_buffer;
+
+		WL_PRINT(("HDR: type=%d size=%d corerev=%d unit=%d\n",
+			msg->message_type, msg->size_bytes, msg->corerev, msg->unit));
+		hdr = (uint8 *)airiqh->fft_buffer + sizeof(airiq_message_header_t);
+		for (k = 0; k < airiqh->bundle_msg_cnt; k++) {
+			msg = (airiq_message_header_t *)hdr;
+			WL_PRINT(("Submessage[%d]: type=%d size=%d corerev=%d unit=%d\n",
+				k, msg->message_type, msg->size_bytes, msg->corerev, msg->unit));
+			hdr += msg->size_bytes;
+		}
+		break;
+	}
+#endif /* AIRIQ_UNITTEST */
 	default:
 		err = BCME_UNSUPPORTED;
 		break;

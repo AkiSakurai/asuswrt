@@ -1,7 +1,7 @@
 /*
  * Site survey statistics for visualization tool
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -76,6 +76,9 @@
 #include <typedefs.h>
 #include <bcmwifi_rates.h>
 
+#ifdef BCMCCX
+#include <proto/802.11_ccx.h>
+#endif // endif
 #include <bcmendian.h>
 #include <bcmsrom_fmt.h>
 #include "vis_common.h"
@@ -441,6 +444,11 @@ wl_rsn_ie_dump(bcm_tlv_t *ie, char *mcastrsntype, char *ucastrsntype, char *akmr
 			if (!wlu_bcmp(suite->oui, std_oui, 3)) {
 				get_ucast_rsn_string(suite->type, ucastrsntype);
 			}
+#ifdef  BCMCCX
+			else if (!wlu_bcmp(suite->oui, CISCO_AIRONET_OUI, 3)) {
+				get_ucast_rsn_string(suite->type+CISCO_BASE, ucastrsntype);
+			}
+#endif /* BCMCCX */
 		}
 	}
 	/* Authentication Key Management */
@@ -451,6 +459,11 @@ wl_rsn_ie_dump(bcm_tlv_t *ie, char *mcastrsntype, char *ucastrsntype, char *akmr
 			if (!wlu_bcmp(suite->oui, std_oui, 3)) {
 				get_akm_rsn_string(suite->type, rsn, akmrsntype);
 			}
+#ifdef BCMCCX
+			else if (!wlu_bcmp(suite->oui, CISCO_AIRONET_OUI, 3)) {
+				get_akm_rsn_string(suite->type+CISCO_BASE, rsn, akmrsntype);
+			}
+#endif /* BCMCCX */
 		}
 	}
 }
@@ -688,6 +701,22 @@ get_ucast_rsn_string(int type, char *ucastrsntype)
 				MAX_UNICAST_RSN-strlen(ucastrsntype), "AES-CCMP ");
 			break;
 	}
+#ifdef BCMCCX
+	switch (type) {
+		case WPA_CIPHER_CKIP:
+			snprintf(ucastrsntype+strlen(ucastrsntype),
+				MAX_UNICAST_RSN-strlen(ucastrsntype), "CKIP ");
+			break;
+		case WPA_CIPHER_CKIP_MMH:
+			snprintf(ucastrsntype+strlen(ucastrsntype),
+				MAX_UNICAST_RSN-strlen(ucastrsntype), "CKIP+CMIC ");
+			break;
+		case WPA_CIPHER_WEP_MMH:
+			snprintf(ucastrsntype+strlen(ucastrsntype),
+				MAX_UNICAST_RSN-strlen(ucastrsntype), "CMIC ");
+			break;
+	}
+#endif // endif
 }
 
 /* Dumps the RSN AKM string from the type to structure */
@@ -717,6 +746,14 @@ get_akm_rsn_string(int type, int rsn, char *akmrsntype)
 			break;
 	}
 
+#ifdef BCMCCX
+	switch (type) {
+		case WPA_AUTH_CCKM:
+			snprintf(akmrsntype+strlen(akmrsntype), MAX_AKM_TYPE-strlen(akmrsntype),
+				"CCKM ");
+			break;
+	}
+#endif // endif
 }
 
 struct d11_mcs_rate_info {
@@ -1189,6 +1226,10 @@ vis_get_wpa_auth(void *wl, char *akmrsntype)
 		{{WPA_AUTH_NONE,	"WPA-NONE"},
 		{WPA_AUTH_UNSPECIFIED,	"WPA-802.1x"},
 		{WPA_AUTH_PSK,		"WPA-PSK"},
+#ifdef	BCMCCX
+		{WPA_AUTH_CCKM,	"CCKM(WPA)"},
+		{WPA2_AUTH_CCKM,	"CCKM(WPA2)"},
+#endif	/* BCMCCX */
 		{WPA2_AUTH_UNSPECIFIED, "WPA2-802.1x"},
 		{WPA2_AUTH_PSK,	"WPA2-PSK"},
 		{WPA2_AUTH_1X_SHA256,	"1X-SHA256"},

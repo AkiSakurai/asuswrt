@@ -17,15 +17,12 @@ AC_CONFIG_HEADERS([config.h])
 AC_PROG_CC
 
 # Checks for libraries.
-# FIXME: Replace `main' with a function in `-lpthread':
 AC_CHECK_LIB([pthread], [pthread_create], [], [
 	echo "pthread library is required for this program"
 	exit -1])
-# FIXME: Replace `main' with a function in `-lsqlite3':
 #AC_CHECK_LIB([sqlite3], [sqlite3_open_v2], [], [
 #	echo "sqlite3 library is required for this program"
 #	exit -1])
-# FIXME: Replace `main' with a function in `-lxml2':
 #AC_CHECK_LIB([xml2], [xmlParseMemory], [], [
 #	echo "libxml2 library is required for this program"
 #	exit -1])

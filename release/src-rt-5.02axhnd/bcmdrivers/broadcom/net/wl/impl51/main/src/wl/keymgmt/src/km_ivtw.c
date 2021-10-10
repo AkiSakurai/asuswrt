@@ -1,6 +1,6 @@
 /*
  * Key Management Module Implementation - replay/iv trace window support
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_ivtw.c 720526 2017-09-11 07:10:29Z $
+ * $Id: km_ivtw.c 774672 2019-05-02 06:59:47Z $
  */
 
 #include "km.h"
@@ -82,7 +82,7 @@ typedef signed long long km_int64_t;
 #define IVTW_TWSIZE	BRCMAPIVTW
 
 #define IVTW_SEQ_TO_U64(_seq) ((km_uint64_t)(uint32)ltoh32_ua(_seq) | \
-	((km_uint64_t)(ltoh16_ua((uint8 *)(_seq) + 4)) << 32))
+	((km_uint64_t)(ltoh16_ua((const uint8 *)(_seq) + 4)) << 32))
 
 #define U64_TO_IVTW_SEQ(_val, _seq) {\
 	htol32_ua_store((km_uint64_t)(_val) & 0xffffffff, (uint8 *)(_seq)); \
@@ -114,6 +114,40 @@ struct km_ivtw {
 	ivtw_key_info_t		**key_info; /* 0..max_keys - 1 */
 };
 typedef struct km_ivtw ivtw_t;
+
+int
+km_ivtw_set(km_ivtw_t *ivtw, wlc_key_info_t *key_info, int ins,
+	const uint8 *rx_seq, size_t seq_len) {
+
+	ivtw_key_info_t *ivtw_key_info;
+	ivtw_seq_info_t *seq_info;
+	km_uint64_t lb;
+	km_uint64_t rx;
+
+	KM_DBG_ASSERT(IVTW_VALID(ivtw));
+	KM_DBG_ASSERT(key_info != NULL);
+	KM_DBG_ASSERT(key_info->key_idx < ivtw->max_keys);
+	KM_DBG_ASSERT(ins <  IVTW_NUM_RX_SEQ(ivtw));
+
+	ivtw_key_info = ivtw->key_info[key_info->key_idx];
+	if (!ivtw_key_info) {
+		return BCME_BADKEYIDX;
+	}
+
+	seq_info = &ivtw_key_info->seq_info[ins];
+	lb = seq_info->wstart;
+	rx = IVTW_SEQ_TO_U64(rx_seq);
+	if (!rx) {
+		return BCME_OK;
+	}
+	if (rx < lb) {
+		return BCME_REPLAY;
+	}
+
+	km_ivtw_update(ivtw, key_info, ins, rx_seq, seq_len, TRUE);
+
+	return BCME_OK;
+}
 
 /* public interface */
 km_ivtw_t*
@@ -283,7 +317,7 @@ done:
 
 bool
 km_ivtw_is_replay(km_ivtw_t *ivtw, wlc_key_info_t *key_info, int ins,
-	uint8 *key_seq, uint8 *rx_seq, size_t seq_len)
+	uint8 *key_seq, const uint8 *rx_seq, size_t seq_len)
 {
 	ivtw_key_info_t *ivtw_key_info;
 	ivtw_seq_info_t *seq_info;
@@ -327,7 +361,7 @@ km_ivtw_is_replay(km_ivtw_t *ivtw, wlc_key_info_t *key_info, int ins,
 
 void
 km_ivtw_update(km_ivtw_t *ivtw, wlc_key_info_t *key_info, int ins,
-	uint8 *rx_seq, size_t seq_len, bool chained)
+	const uint8 *rx_seq, size_t seq_len, bool chained)
 {
 	ivtw_key_info_t *ivtw_key_info;
 	ivtw_seq_info_t *seq_info;

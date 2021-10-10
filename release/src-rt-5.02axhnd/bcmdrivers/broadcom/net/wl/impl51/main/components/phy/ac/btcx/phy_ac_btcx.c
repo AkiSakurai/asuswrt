@@ -1,7 +1,7 @@
 /*
  * ACPHY BT Coex module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_btcx.c 702070 2017-05-30 15:43:06Z $
+ * $Id: phy_ac_btcx.c 775501 2019-06-02 00:18:19Z $
  */
 
 #include <phy_cfg.h>
@@ -641,15 +641,8 @@ wlc_phy_bt_on_gpio4_acphy(phy_info_t *pi)
 static void
 wlc_phy_btcx_invert_prisel_polarity(phy_ac_btcx_info_t *btcxi, int8 state)
 {
-	uint16 btcx_ctrl = 0;
-	btcx_ctrl = R_REG(btcxi->pi->sh->osh, D11_BTCX_CTL(btcxi->pi));
-	if (state == ON) { /* invert prisel polarity */
-		W_REG(btcxi->pi->sh->osh, D11_BTCX_CTL(btcxi->pi),
-				btcx_ctrl |= BTCX_CTRL_PRI_POL);
-	} else {
-		W_REG(btcxi->pi->sh->osh, D11_BTCX_CTL(btcxi->pi),
-				btcx_ctrl &= ~BTCX_CTRL_PRI_POL);
-	}
+	phy_info_t *pi = btcxi->pi;
+	phy_btcx_invert_prisel_polarity(pi, state);
 	btcxi->btswitch = state;
 }
 
@@ -785,7 +778,7 @@ phy_ac_btcx_override_enable(phy_type_btcx_ctx_t *ctx)
 	phy_info_t *pi = btcxi->pi;
 
 	/* This is required only for 2G operation. No BTCX in 5G */
-	if ((pi->sh->machwcap & MCAP_BTCX_SUP(pi->sh->corerev)) &&
+	if (BF_SROM11_BTCOEX(pi->u.pi_acphy) &&
 		(CHSPEC_IS2G(pi->radio_chanspec) || ACMAJORREV_36(pi->pubpi->phy_rev))) {
 		/* Ucode better be suspended when we mess with BTCX regs directly */
 		ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
@@ -800,17 +793,13 @@ phy_ac_btcx_override_enable(phy_type_btcx_ctx_t *ctx)
 
 		wlapi_coex_flush_a2dp_buffers(pi->sh->physhim);
 
-		/* Enable manual BTCX mode */
-		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi), BTCX_CTRL_EN | BTCX_CTRL_SW);
-		/* Force WLAN antenna and priority */
-		OR_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
-			BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL);
+		phy_btcx_override_enable(pi);
 
 #if (!defined(WL_SISOCHIP) && defined(SWCTRL_TO_BT_IN_COEX))
 		/* Give FEMctrl to WLAN */
 		if (btcxi->swctrl_to_bt_in_coex) {
 			phy_utils_write_phyreg(pi, ACPHY_FemCtrl(pi->pubpi->phy_rev),
-			              btcxi->btcx_femctrl_wlan_val);
+					btcxi->btcx_femctrl_wlan_val);
 		}
 #endif // endif
 	}
@@ -822,7 +811,7 @@ phy_ac_btcx_override_disable(phy_type_btcx_ctx_t *ctx)
 	phy_ac_btcx_info_t *btcxi = (phy_ac_btcx_info_t *)ctx;
 	phy_info_t *pi = btcxi->pi;
 
-	if ((pi->sh->machwcap & MCAP_BTCX_SUP(pi->sh->corerev)) &&
+	if (BF_SROM11_BTCOEX(pi->u.pi_acphy) &&
 		(CHSPEC_IS2G(pi->radio_chanspec) || ACMAJORREV_36(pi->pubpi->phy_rev))) {
 		/* Ucode better be suspended when we mess with BTCX regs directly */
 		ASSERT(!(R_REG(pi->sh->osh, D11_MACCONTROL(pi)) & MCTL_EN_MAC));
@@ -833,12 +822,7 @@ phy_ac_btcx_override_disable(phy_type_btcx_ctx_t *ctx)
 			wlc_phy_btcx_wlan_femctrl_restore(btcxi);
 		}
 #endif // endif
-
-		/* Enable manual BTCX mode */
-		OR_REG(pi->sh->osh, D11_BTCX_CTL(pi), BTCX_CTRL_EN | BTCX_CTRL_SW);
-		/* Force BT priority */
-		AND_REG(pi->sh->osh, D11_BTCX_TRANSCTL(pi),
-			~(BTCX_TRANS_TXCONF | BTCX_TRANS_ANTSEL));
+		phy_btcx_override_disable(pi);
 	}
 }
 

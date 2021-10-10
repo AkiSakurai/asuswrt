@@ -1,7 +1,7 @@
 /*
  * LCN20PHY Miscellaneous modules implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_lcn20_misc.c 671526 2016-11-22 08:37:30Z $
+ * $Id: phy_lcn20_misc.c 775501 2019-06-02 00:18:19Z $
  */
 
 #include <typedefs.h>
@@ -268,7 +268,7 @@ phy_lcn20_init_test(phy_type_misc_ctx_t *ctx, bool encals)
 	phy_info_t *pi = info->pi;
 
 	/* Force WLAN antenna */
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 	/* Disable tx power control */
 	wlc_lcn20phy_set_tx_pwr_ctrl(pi, LCN20PHY_TX_PWR_CTRL_OFF);
 	/* Recalibrate for this channel */

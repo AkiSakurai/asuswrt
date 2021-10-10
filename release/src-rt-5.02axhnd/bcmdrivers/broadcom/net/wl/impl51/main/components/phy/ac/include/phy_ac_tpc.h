@@ -1,7 +1,7 @@
 /*
  * ACPHY TxPowerCtrl module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tpc.h 714981 2017-08-08 23:19:37Z $
+ * $Id: phy_ac_tpc.h 769618 2018-11-21 06:20:37Z $
  */
 
 #ifndef _phy_ac_tpc_h_
@@ -81,6 +81,12 @@ extern uint32 wlc_phy_txpwr_idx_get_acphy(phy_info_t *pi);
 extern void wlc_phy_txpwrctrl_enable_acphy(phy_info_t *pi, uint8 ctrl_type);
 extern void wlc_phy_txpwr_fixpower_acphy(phy_info_t *pi);
 extern void wlc_phy_txpwr_est_pwr_acphy(phy_info_t *pi, uint8 *Pout, uint8 *Pout_adj);
+extern uint32 wlc_phy_txpwr_cap_get_acphy(phy_info_t *pi);
+extern void wlc_phy_txpwr_cap_set_acphy(phy_info_t *pi, int8 *pwr_cap);
+extern void wlc_phy_txpwr_cap_enable(phy_info_t *pi, bool enable);
+#ifdef WL11AX
+extern void wlc_phy_txpwr_est_pwr_mu_acphy(phy_info_t *pi, phy_txctrl_info_t* txctrlwd_info);
+#endif /* WL11AX */
 extern int8 wlc_phy_tone_pwrctrl(phy_info_t *pi, int8 tx_idx, uint8 core);
 
 extern void wlc_phy_txpwrctrl_set_target_acphy(phy_info_t *pi, uint8 pwr_qtrdbm, uint8 core);

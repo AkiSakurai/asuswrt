@@ -1,6 +1,6 @@
 /*
  * Key Management Module  Implementation - private header shared by km_hw implementations
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_hw_impl.h 766718 2018-08-10 07:36:23Z $
+ * $Id: km_hw_impl.h 768458 2018-10-15 23:05:24Z $
  */
 
 #ifndef _km_hw_impl_h_
@@ -202,6 +202,7 @@ struct km_hw_algo_entry {
 #define KM_HW_COREREV_GE40(_hw) D11REV_GE(KM_HW_COREREV(_hw), 40)
 #define KM_HW_COREREV_GE61(_hw) D11REV_GE(KM_HW_COREREV(_hw), 61)
 #define KM_HW_COREREV_GE80(_hw) D11REV_GE(KM_HW_COREREV(_hw), 80)
+#define KM_HW_COREREV_GE128(_hw) D11REV_GE(KM_HW_COREREV(_hw), 128)
 
 #define KM_HW_IDX_VALID(_hw, _idx) ((_idx) < (_hw)->max_idx)
 

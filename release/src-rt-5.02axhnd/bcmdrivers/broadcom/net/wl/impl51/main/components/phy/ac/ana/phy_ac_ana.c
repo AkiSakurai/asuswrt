@@ -1,7 +1,7 @@
 /*
  * ACPHY ANAcore control module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_ana.c 742511 2018-01-22 14:14:24Z $
+ * $Id: phy_ac_ana.c 775501 2019-06-02 00:18:19Z $
  */
 
 #include <phy_cfg.h>
@@ -755,6 +755,7 @@ wlc_tiny_dc_static_WAR(phy_info_t *pi)
 				}
 			}
 		} else if (CHSPEC_IS160(pi->radio_chanspec)) {
+			//FIXME
 		} else {
 			MOD_RADIO_REG_TINY(pi, ADC_CFG15, core, adc_clk_slow_pu, 1);
 			MOD_RADIO_REG_TINY(pi, ADC_OVR1, core, ovr_adc_clk_slow_pu, 1);
@@ -1713,6 +1714,12 @@ wlc_phy_set_regtbl_on_femctrl(phy_info_t *pi)
 			/* Chip default, do nothing */
 			break;
 		case 1:
+			/* MC & MCI
+			   FIXME: Condition this on femctrl
+			   5516fem, no BT, same fe_ctrl on all three cores
+			   12x12 - bcm94360bu, bcm94360mc
+			   12x9  - bcm94360s9bu, bcm94360mci
+			*/
 			/* chip_bandsel = bandsel */
 			MOD_PHYREG(pi, BT_SwControl, bt_sharing_en, 1);
 			wlc_phy_write_femctrl_table(pi->u.pi_acphy->anai);
@@ -1862,10 +1869,12 @@ wlc_phy_set_regtbl_on_femctrl(phy_info_t *pi)
 		}
 	}
 
-	if (!ACMAJORREV_4(pi->pubpi->phy_rev) &&
+	if ((!ACMAJORREV_4(pi->pubpi->phy_rev) &&
 	    !ACMAJORREV_37(pi->pubpi->phy_rev) &&
-	    !ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
-		if (BF_SROM11_BTCOEX(pi->u.pi_acphy)) {
+	    !ACMAJORREV_GE47(pi->pubpi->phy_rev)) ||
+		ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		if (BF_SROM11_BTCOEX(pi->u.pi_acphy) &&
+		    phy_btcx_is_eci_coex_enabled(pi)) {
 			if (ACMAJORREV_0(pi->pubpi->phy_rev)) {
 				if (ACMINORREV_0(pi)) {
 					si_corereg(pi->sh->sih,
@@ -1881,7 +1890,7 @@ wlc_phy_set_regtbl_on_femctrl(phy_info_t *pi)
 			} else if (ACMAJORREV_1(pi->pubpi->phy_rev) ||
 				ACMAJORREV_2(pi->pubpi->phy_rev) ||
 				ACMAJORREV_3(pi->pubpi->phy_rev) ||
-				ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev) ||
+				ACMAJORREV_40_128(pi->pubpi->phy_rev) ||
 				ACMAJORREV_5(pi->pubpi->phy_rev)) {
 				PHY_ERROR(("\n"));
 			} else {
@@ -1925,7 +1934,7 @@ wlc_phy_set_mask_for_femctrl10(phy_info_t *pi)
 static int
 BCMATTACHFN(phy_ac_ana_srom_swctrlmap4_read)(phy_info_t *pi)
 {
-	uint8 core, slice_ant_core;
+	uint8 i, core, slice_ant_core;
 	uint16 tmp;
 	uint8 mode_idx;
 	const char *mode_key[] = {"TX", "RX", "RXByp", "misc"};
@@ -1949,12 +1958,18 @@ BCMATTACHFN(phy_ac_ana_srom_swctrlmap4_read)(phy_info_t *pi)
 	swctrl->bitwidth8 = (uint8)((tmp >> 1) & 0x1);
 	swctrl->misc_usage = (uint8)((tmp >> 2) & 0x3);
 	swctrl->bitwidth10_ext = (uint8)((tmp >> 4) & 0x1) & swctrl->bitwidth8;
-	swctrl->bandsel_on_gpio9 = (uint8)((tmp >> 5) & 0x1);
-	swctrl->bandsel_on_gpio11 = (uint8)((tmp >> 7) & 0x1);
+
+	for (i = 0; i < MAX_GPIO_BANDSEL; i++)
+		swctrl->bandsel_on_gpio[i] = 0;
+	swctrl->bandsel_on_gpio[9] = (uint8)((tmp >> 5) & 0x1);
+	swctrl->bandsel_on_gpio[11] = (uint8)((tmp >> 7) & 0x1);
+	swctrl->bandsel_on_gpio[5] = (uint8)((tmp >> 8) & 0x1);
+
 	if ((ACMAJORREV_32(pi->pubpi->phy_rev) ||
 		ACMAJORREV_33(pi->pubpi->phy_rev) ||
 		ACMAJORREV_37(pi->pubpi->phy_rev) ||
-		ACMAJORREV_47_51(pi->pubpi->phy_rev)) &&
+		(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev))) &&
 		swctrl->enable == 0)
 		return TRUE;
 
@@ -1978,7 +1993,8 @@ BCMATTACHFN(phy_ac_ana_srom_swctrlmap4_read)(phy_info_t *pi)
 		if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 			ACMAJORREV_33(pi->pubpi->phy_rev) ||
 			ACMAJORREV_37(pi->pubpi->phy_rev) ||
-			ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+			(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev))) {
 			swctrl->tx2g[core] = (uint8)((((mode_7to4[0] >> (4*core)) & 0xf) << 4) +
 			                             ((mode_3to0[0] >> (4*core)) & 0xf));
 			swctrl->rx2g[core] = (uint8)((((mode_7to4[1] >> (4*core)) & 0xf) << 4) +
@@ -2033,7 +2049,7 @@ BCMATTACHFN(phy_ac_ana_srom_swctrlmap4_read)(phy_info_t *pi)
 		if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 			ACMAJORREV_33(pi->pubpi->phy_rev) ||
 			ACMAJORREV_37(pi->pubpi->phy_rev) ||
-			ACMAJORREV_47_51(pi->pubpi->phy_rev)) {
+			ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 			swctrl->tx5g[core] = (uint8)((((mode_7to4[0] >> (4*core)) & 0xf) << 4) +
 			                             ((mode_3to0[0] >> (4*core)) & 0xf));
 			swctrl->rx5g[core] = (uint8)((((mode_7to4[1] >> (4*core)) & 0xf) << 4) +

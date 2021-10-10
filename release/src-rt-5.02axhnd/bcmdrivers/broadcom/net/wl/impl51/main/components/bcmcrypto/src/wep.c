@@ -1,7 +1,7 @@
 /*
  *   wep.c - WEP functions
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -48,6 +48,9 @@
  * $Id: wep.c 680841 2017-01-23 22:28:09Z $
  */
 
+/* XXX: Define bcm_cfg.h to be the first header file included as some builds
+ * get their feature flags thru this file.
+ */
 #include <bcm_cfg.h>
 #include <typedefs.h>
 
@@ -66,6 +69,9 @@
 /* WEP-encrypt a buffer */
 /* assumes a contiguous buffer, with IV prepended, and with enough space at
  * the end for the ICV
+ */
+/* FIXME: need incremental encrypt function, to handle fragmentation and
+ * non-contiguous buffers
  */
 void
 wep_encrypt(uint buf_len, uint8 *buf, uint sec_len, uint8 *sec_data)

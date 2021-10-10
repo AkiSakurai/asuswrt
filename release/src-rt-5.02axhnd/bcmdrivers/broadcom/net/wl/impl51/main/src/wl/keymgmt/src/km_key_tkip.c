@@ -1,6 +1,6 @@
 /*
  * Implementation of wlc_key algo 'tkip'
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_key_tkip.c 765768 2018-07-16 11:27:45Z $
+ * $Id: km_key_tkip.c 774257 2019-04-17 10:08:19Z $
  */
 
 #include "km_key_pvt.h"
@@ -267,9 +267,10 @@ tkip_get_mic_key(wlc_key_t *key, void *pkt, tkip_key_t *tkip_key, bool tx,
 
 	if ((BSSCFG_AP(bsscfg) && (!scb || !KM_SCB_WDS(scb) || KM_SCB_WPA_SUP(scb))) ||
 		(BSSCFG_STA(bsscfg) && KM_BSSCFG_IS_IBSS(bsscfg))) {
-			mic_key = tx ? tkip_key->mic_keys.from_ds : tkip_key->mic_keys.to_ds;
-	} else
+		mic_key = tx ? tkip_key->mic_keys.from_ds : tkip_key->mic_keys.to_ds;
+	} else {
 		mic_key = tx ? tkip_key->mic_keys.to_ds : tkip_key->mic_keys.from_ds;
+	}
 
 	*micl = ltoh32_ua(mic_key);
 	*micr = ltoh32_ua(mic_key + sizeof(uint32));
@@ -506,6 +507,9 @@ tkip_set_data(wlc_key_t *key, const uint8 *data,
 			err = BCME_BADARG;
 			break;
 		} else {
+			/* XXX although the interface allows each rx seq to be set independently,
+			 * not exactly sure what that means.
+			 */
 			memcpy(TKIP_KEY_SEQ(tkip_key, tx, seq_id), data, TKIP_KEY_SEQ_SIZE);
 		}
 		break;
@@ -808,20 +812,6 @@ tkip_tx_mpdu(wlc_key_t *key, void *pkt, struct dot11_header *hdr,
 					D11AC_TXC_AMIC);
 			}
 			goto done;
-		} else if (KEY_COREREV_GE80(key)) {
-			d11txh_rev80_t *rev80_txh = &txd->rev80;
-			rev80_txh->CacheInfo.tkipph1_index =
-				(key->hw_idx != WLC_KEY_INDEX_INVALID &&
-					key->hw_idx >= WLC_KEYMGMT_NUM_GROUP_KEYS) ?
-					(key->hw_idx - WLC_KEYMGMT_NUM_GROUP_KEYS) : -1;
-
-			/* Inform ucode to use hardware to append TKIP MIC to the frame */
-			if (hwmic) {
-				rev80_txh->PktInfo.MacTxControlLow =
-					htol16(ltoh16(rev80_txh->PktInfo.MacTxControlLow) |
-					D11AC_TXC_AMIC);
-			}
-			goto done;
 		} else if (KEY_COREREV_GE40(key)) {
 			d11actxh_t *txh = &txd->rev40;
 			d11actxh_cache_t	*cache_info;
@@ -900,7 +890,9 @@ tkip_rx_msdu(wlc_key_t *key, void *pkt, struct ether_header *hdr,
 	KM_DBG_ASSERT(pkt_info != NULL);
 
 	tkip_key = (tkip_key_t *)key->algo_impl.ctx;
-	if (body_len < TKIP_MIC_SIZE) {
+
+	/* If packet is split between dongle & host, MIC bytes are in host */
+	if ((PKTFRAGUSEDLEN(KEY_OSH(key), pkt) + body_len) < TKIP_MIC_SIZE)  {
 		err = BCME_BUFTOOSHORT;
 		goto done;
 	}

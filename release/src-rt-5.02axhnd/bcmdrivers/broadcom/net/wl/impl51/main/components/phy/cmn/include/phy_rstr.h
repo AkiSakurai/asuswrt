@@ -1,7 +1,7 @@
 /*
  * PHY modules reclaimable strings.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_rstr.h 766697 2018-08-10 00:10:49Z $
+ * $Id: phy_rstr.h 775037 2019-05-16 02:01:47Z $
  */
 
 #ifndef _phy_rstr_h_
@@ -467,7 +467,12 @@ extern const char BCMATTACHDATA(rstr_lowpowerrange5g)[];
 extern const char BCMATTACHDATA(rstr_paprdis)[];
 extern const char BCMATTACHDATA(rstr_papdwar)[];
 extern const char BCMATTACHDATA(rstr_low_adc_rate_en)[];
+extern const char BCMATTACHDATA(rstr_ppr_backoff_2g)[];
+extern const char BCMATTACHDATA(rstr_ppr_backoff_5g)[];
+extern const char BCMATTACHDATA(rstr_dssf_dis_ch138)[];
 extern const char BCMATTACHDATA(rstr_asymmetricjammermod)[];
+extern const char BCMATTACHDATA(rstr_idletssi_disable_2g)[];
+extern const char BCMATTACHDATA(rstr_idletssi_disable_5g)[];
 
 extern const char BCMATTACHDATA(rstr_tssisleep_en)[];
 extern const char BCMATTACHDATA(ed_thresh2g)[];
@@ -551,8 +556,12 @@ extern const char BCMATTACHDATA(rstr_ulpadc)[];
 extern const char BCMATTACHDATA(rstr_spurcan_chlist)[];
 extern const char BCMATTACHDATA(rstr_spurcan_spfreq)[];
 extern const char BCMATTACHDATA(rstr_spurcan_numspur)[];
+extern const char BCMATTACHDATA(rstr_spurcan_coremask)[];
 
 extern const char BCMATTACHDATA(rstr_vcotune)[];
+
+/* NVRAM PARAM for alternative AFE DIV Ratio to avoid spurs */
+extern const char BCMATTACHDATA(rstr_dacdiv10_2g)[];
 
 #ifdef WLC_SW_DIVERSITY
 extern const char BCMATTACHDATA(rstr_swdiv_en)[];

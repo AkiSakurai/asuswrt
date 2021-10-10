@@ -2097,9 +2097,9 @@ static void * bpm_alloc_buf_skb_attach( uint32_t datalen )
         BPM_SKB_POOL_STATS_SUB(skb_alloc_cnt, 1);
         BPM_SKB_POOL_STATS_SUB(skb_bpm_alloc_cnt, 1);
 
-        bpm_free_buf(buf);
-
         BPM_UNLOCK_IRQ();
+
+        bpm_free_buf(buf);
 
         return (void *)NULL;
     }

@@ -176,6 +176,15 @@ static bool pathmatch(const char* cookie_path, const char* request_uri)
       return FALSE;
   }
 
+  /* here, RFC6265 5.1.4 says
+     4. Output the characters of the uri-path from the first character up
+        to, but not including, the right-most %x2F ("/").
+     but URL path /hoge?fuga=xxx means /hoge/index.cgi?fuga=xxx in some site
+     without redirect.
+     Ignore this algorithm because /hoge is uri path for this case
+     (uri path is not /).
+   */
+
   uri_path_len = strlen(uri_path);
 
   if(uri_path_len < cookie_path_len) {

@@ -1,7 +1,7 @@
 /*
  * RadarDetect module implementation (shared by PHY implementations)
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,9 +45,12 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_radar_shared.c 767730 2018-09-25 03:30:30Z $
+ * $Id: phy_radar_shared.c 777927 2019-08-15 01:59:15Z $
  */
 
+/* XXX: Define phy_cfg.h to be the first header file included as some builds
+ * get their feature flags thru this file.
+ */
 #include <phy_cfg.h>
 #include <typedefs.h>
 #include <phy_api.h>
@@ -56,7 +59,7 @@
 #include <phy_radar_utils.h>
 #include <phy_radar_shared.h>
 #include <phy_radar_api.h>
-
+#include <wlc_dfs.h>
 #include <phy_utils_reg.h>
 
 #ifndef ALL_NEW_PHY_MOD
@@ -78,6 +81,7 @@
 #define PULSE_WIDTH_DIFFERENCE	12	/* in 1/20 us */
 #define PULSE_WIDTH_DIFFERENCE_ETSI4     21 /* in 1/20 us */
 #define PULSE_WIDTH_DIFFERENCE_STG_LESI  17 /* in 1/20 us */
+#define GOOD_CHIRP_CNT_LIMIT 4
 
 typedef struct {
 	uint8 radar_type;	/* one of RADAR_TYPE_XXX */
@@ -200,13 +204,15 @@ static const uint16 fm_thrs_sp_lesi[] = {0, 15, 60, 0, 0, 200, 0, 0, 100, 0, 20,
 #define ALLSUBBAND_BW20	1
 #define ALLSUBBAND_BW40	3
 #define ALLSUBBAND_BW80	15
+#define ALLSUBBAND_BW160_CH50 15
+#define ALLSUBBAND_BW160_CH114 255
 
 #define FC_TOL_SB 2
 #define FC_TOL_BIN5_SB 5
 #define PW_TOL_HIPOWWAR_BIN5 400
 #define PW_CHIRP_ADJ_TH_BIN5 800
-#define CHIRP_TH1 4
-#define CHIRP_TH2 6
+#define CHIRP_TH1 3
+#define CHIRP_TH2 3
 #define CHIRP_FC_TH 60
 
 #define FCC5_CHIRP	40	/* 20 MHz */
@@ -215,6 +221,12 @@ static const uint16 fm_thrs_sp_lesi[] = {0, 15, 60, 0, 0, 200, 0, 0, 100, 0, 20,
 
 #define MIN_FM_THRESH_SHORT_PULSES	100
 #define MIN_FM_THRESH_ETSI4		240
+
+#define MAX_INTV_LP		42000	/* 2 msec max interval of fcc bin 5 pulses */
+#define TWO_POWER_32	4294967296
+#define CSECT_SINGLE_DECR	2
+#define CHIRP_RELAX_LV2_FC_BOUND 0
+#define CHIRP_TOL_RELAX_COUNT 1
 
 void
 BCMATTACHFN(phy_radar_shared_attach)(phy_info_t *pi)
@@ -267,7 +279,8 @@ bool bw80_80_mode)
 					RadarFifoDataReg[1] = 0;
 				}
 				ANT_num = 1;
-			} else if (ACMAJORREV_47(pi->pubpi->phy_rev) && ((rdr_core_mask  == 0x8) ||
+			} else if ((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				!ACMAJORREV_128(pi->pubpi->phy_rev)) && ((rdr_core_mask  == 0x8) ||
 				(rdr_core_mask == 0x4) || (rdr_core_mask == 0x2))) {
 				RadarFifoCtrlReg[0] =
 					ACPHY_Antenna1_radarFifoCtrl(pi->pubpi->phy_rev);
@@ -374,7 +387,8 @@ bool bw80_80_mode)
 				/* extract the timestamp, pw, chirp, notradar from the 6 words */
 				rt->pulses_input[core][i].interval = (uint32)((w0 << 16) +
 						((w1 & 0x0fff) << 4) + (w3 & 0xf));
-				if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+				if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+					!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 					rt->pulses_input[core][i].pw = (((w3 & 0x10) << 8) +
 						((w2 & 0x00ff) << 4) + ((w1 >> 12) & 0x000f)) +
 						((w3 & 0x8000) << 13);
@@ -456,7 +470,8 @@ wlc_phy_radar_detect_match(phy_info_t *pi, radar_params_t *rparams, const pulse_
 {
 	const radar_spec_t *pRadar;
 	const pulse_data_t *next_pulse = pulse + 1;
-	int intv_tol = (ACMAJORREV_47(pi->pubpi->phy_rev) && rparams->radar_args.max_deltat == 1) ?
+	int intv_tol = ((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)) && rparams->radar_args.max_deltat == 1) ?
 		rparams->radar_args.quant : INTERVAL_TOLERANCE;
 
 	/* scan the list of Radars for a possible match */
@@ -542,25 +557,45 @@ wlc_phy_radar_fc_chirp_cmb(pulse_data_t *input0, pulse_data_t *input1)
 
 static uint16
 wlc_phy_radar_fc_chirp_2_subband(const phy_info_t *pi, int fc,
-	uint chirp, uint fcc5)
+	uint chirp, bool sec_pll, uint fcc5)
 {
 	uint16 subband_result = 0;
 	uint16 subband_num = 1;
 	uint16 subband_idx = 0;
 	uint16 subband_weighting = 1;
 	int fc_tol = 0;
+	int32 radio_chanspec_sc;
 
-	//subband detection
-	if (CHSPEC_IS20(pi->radio_chanspec)) {
-		subband_result = ALLSUBBAND_BW20;
-		return subband_result;
-	} else if (CHSPEC_IS40(pi->radio_chanspec)) {
-		subband_num = SUBBAND_NUM_BW40;
-	} else if (CHSPEC_IS80(pi->radio_chanspec) ||
-		PHY_AS_80P80(pi, pi->radio_chanspec)) {
-		subband_num = SUBBAND_NUM_BW80;
-	} else if (CHSPEC_IS160(pi->radio_chanspec)) {
-		subband_num = SUBBAND_NUM_BW160;
+	phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi), &radio_chanspec_sc);
+
+	/* prohibit subband radar detection on non-DFS channels */
+	if (((CHSPEC_CHANNEL(pi->radio_chanspec) == 50) || (sec_pll &&
+		(CHSPEC_CHANNEL(radio_chanspec_sc) == 50))) && (fc < 0))
+		return 0;
+
+	if (sec_pll) {
+		if (CHSPEC_IS20(radio_chanspec_sc)) {
+			subband_result = ALLSUBBAND_BW20;
+			return subband_result;
+		} else if (CHSPEC_IS40(radio_chanspec_sc)) {
+			subband_num = SUBBAND_NUM_BW40;
+		} else if (CHSPEC_IS80(radio_chanspec_sc)) {
+			subband_num = SUBBAND_NUM_BW80;
+		} else if (CHSPEC_IS160(radio_chanspec_sc)) {
+			subband_num = SUBBAND_NUM_BW160;
+		}
+	} else {
+		if (CHSPEC_IS20(pi->radio_chanspec)) {
+			subband_result = ALLSUBBAND_BW20;
+			return subband_result;
+		} else if (CHSPEC_IS40(pi->radio_chanspec)) {
+			subband_num = SUBBAND_NUM_BW40;
+		} else if (CHSPEC_IS80(pi->radio_chanspec) ||
+			PHY_AS_80P80(pi, pi->radio_chanspec)) {
+			subband_num = SUBBAND_NUM_BW80;
+		} else if (CHSPEC_IS160(pi->radio_chanspec)) {
+			subband_num = SUBBAND_NUM_BW160;
+		}
 	}
 
 	if (fcc5 == 0) {
@@ -589,7 +624,8 @@ wlc_phy_radar_fc_chirp_2_subband(const phy_info_t *pi, int fc,
 static void phy_radar_check_staggered(phy_info_t *pi, radar_params_t *rparams, int *nconseq,
 	const pulse_data_t pulse[], uint16 j, int stg)
 {
-	int intv_tol = (ACMAJORREV_47(pi->pubpi->phy_rev) && rparams->radar_args.max_deltat == 1) ?
+	int intv_tol = ((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)) && rparams->radar_args.max_deltat == 1) ?
 		rparams->radar_args.quant : INTERVAL_TOLERANCE;
 	int lesi_rev47 = (ACMAJORREV_47(pi->pubpi->phy_rev) && !ACMINORREV_0(pi)) ? TRUE : FALSE;
 
@@ -614,7 +650,8 @@ static void phy_radar_check_staggered(phy_info_t *pi, radar_params_t *rparams, i
 				max_pw = curr_pw;
 			}
 		}
-		if (max_pw - min_pw > ((ACMAJORREV_47(pi->pubpi->phy_rev) &&
+		if (max_pw - min_pw > (((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev)) &&
 			rparams->radar_args.max_deltat == 1) ? rparams->radar_args.max_pw_tol :
 			((lesi_rev47 ? PULSE_WIDTH_DIFFERENCE_STG_LESI : PULSE_WIDTH_DIFFERENCE) +
 			curr_pw / 200))) {
@@ -654,26 +691,35 @@ static bool phy_radar_ext_fm_check(phy_info_t *pi, radar_params_t *rparams, puls
 	int fm_min = 1030;
 	int fm_max = 0;
 	bool fm_chk = TRUE;
-	phy_radar_info_t *ri = pi->radari;
-	phy_radar_st_t *st = phy_radar_get_st(ri);
 	wl_radar_args_t *radar_args = &rparams->radar_args;
 	wl_radar_thr2_t *radar_thrs2 = &rparams->radar_thrs2;
+	int32 radio_chanspec_sc;
+	bool is43684mch2;
 	int etsi4_fm_thresh = MIN_FM_THRESH_ETSI4;
 	int pw_thrs_fm_var_chk = (radar_thrs2->fm_chk_opt & EXT_FM_CHK_DBG) ?
 		radar_thrs2->fm_var_chk_pw : 25;
 	int div_fm_tol = (radar_thrs2->fm_chk_opt & EXT_FM_CHK_DBG) ?
 		radar_thrs2->fm_tol_div : 5;
 
+	phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi), &radio_chanspec_sc);
+
+	is43684mch2 = ACMAJORREV_47(pi->pubpi->phy_rev) && CHSPEC_IS2G(pi->radio_chanspec) &&
+		CHSPEC_IS5G(radio_chanspec_sc) && !BF_ELNA_5G(pi->u.pi_acphy);
+
 	/* special case for ETSI 4, as it has a chirp of +/-2.5MHz */
 	if (det_type == RADAR_TYPE_ETSI_4) {
 		if (radar_thrs2->fm_chk_opt & EXT_FM_CHK_DBG) {
 			etsi4_fm_thresh = radar_thrs2->fm_thresh_etsi4;
-		} else if (ACMAJORREV_47(pi->pubpi->phy_rev) && radar_args->max_deltat == 1) {
+		} else if ((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev)) && radar_args->max_deltat == 1) {
 			etsi4_fm_thresh = ((radar_args->fra_pulse_err >> 8) & 0xff) -
 				((radar_args->ncontig >> 6) & 0xf);
+		} else if (ACMAJORREV_51(pi->pubpi->phy_rev) &&
+			(CHSPEC_IS80(pi->radio_chanspec) && !(CHSPEC_CHANNEL(pi->radio_chanspec) <=
+			WL_THRESHOLD_LO_BAND))) {
+			etsi4_fm_thresh = 100;
 		} else if (sec_pll == TRUE) {
-			etsi4_fm_thresh = (st->chanset_elna_chk == (NC_CHAN_2GBW20 |
-				NC_CHAN_2GBW40 | SC_CHAN_5GBW20 | EXT_LNA_5G_OFF)) ? 0 : 50;
+			etsi4_fm_thresh = is43684mch2 ? 0 : 50;
 		}
 		/* not a valid ETSI 4 if fm doesn't vary */
 		for (k = 0; k < nconsecq_pulses; k++) {
@@ -745,9 +791,9 @@ static bool phy_radar_ext_pw_tol(phy_info_t *pi, radar_params_t *rparams, int ma
 	int min_det_pw, uint16 blank_time, uint16 set)
 {
 	bool chk_set1, chk_set2, chk_set3, chk_set4;
-	int max_pw_tol = (ACMAJORREV_47(pi->pubpi->phy_rev) &&
-		rparams->radar_args.max_deltat == 1) ? rparams->radar_args.max_pw_tol :
-		PULSE_WIDTH_DIFFERENCE;
+	int max_pw_tol = ((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)) && rparams->radar_args.max_deltat == 1) ?
+		rparams->radar_args.max_pw_tol : PULSE_WIDTH_DIFFERENCE;
 	int lesi_rev47 = (ACMAJORREV_47(pi->pubpi->phy_rev) && !ACMINORREV_0(pi)) ? TRUE : FALSE;
 	/* ext pw tol for pw variations <= 37(1.85us)  */
 	chk_set1 = ((set & EXT_PW_TOL_SET1) && (((max_det_pw >= 30) && (max_det_pw <= (lesi_rev47 ?
@@ -778,6 +824,7 @@ static bool phy_radar_ext_pw_tol(phy_info_t *pi, radar_params_t *rparams, int ma
 #define MAX_CHIRP	80	/* 40 MHz */
 #define MIN_FC	-160	/* -80 MHz */
 #define MAX_FC	160	/* 80 MHz */
+#define MAX_FC_VARIATION	7
 
 static void
 get_min_max_avg_statistic(pulse_data_t pulses[], int idx, int num_pulses,
@@ -883,7 +930,8 @@ wlc_phy_radar_detect_run_epoch(phy_info_t *pi,
 		if (det_type != RADAR_TYPE_NONE) {
 			/* same interval detected as first ? */
 			if (ABS((int32)(curr_interval - first_interval)) <
-			    ((ACMAJORREV_47(pi->pubpi->phy_rev) &&
+			    (((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			    !ACMAJORREV_128(pi->pubpi->phy_rev)) &&
 			    rparams->radar_args.max_deltat == 1) ?
 			    rparams->radar_args.quant : (INTERVAL_TOLERANCE +
 			    (int32)curr_interval / 4000))) {
@@ -905,7 +953,8 @@ wlc_phy_radar_detect_run_epoch(phy_info_t *pi,
 						blank_time, EXT_PW_TOL_SET1);
 					}
 					pw_var_tol = PULSE_WIDTH_DIFFERENCE + curr_pw / 200;
-				} else if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+				} else if (ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+					!ACMAJORREV_128(pi->pubpi->phy_rev)) {
 					pw_blank_condition = phy_radar_ext_pw_tol(
 					pi, rparams, *max_detected_pw_p, *min_detected_pw_p,
 					blank_time, (EXT_PW_TOL_SET1 | EXT_PW_TOL_SET2));
@@ -918,12 +967,14 @@ wlc_phy_radar_detect_run_epoch(phy_info_t *pi,
 				}
 
 				if ((*max_detected_pw_p - *min_detected_pw_p <=
-				    ((ACMAJORREV_47(pi->pubpi->phy_rev) &&
+				    (((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+				    !ACMAJORREV_128(pi->pubpi->phy_rev)) &&
 				    rparams->radar_args.max_deltat == 1) ?
 				    rparams->radar_args.max_pw_tol : pw_var_tol)) ||
 				    pw_blank_condition) {
 					uint8 min_pulses;
-					if (ACMAJORREV_47(pi->pubpi->phy_rev) &&
+					if ((ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+					    !ACMAJORREV_128(pi->pubpi->phy_rev)) &&
 					    rparams->radar_args.max_deltat == 1) {
 					    min_pulses = (det_type == RADAR_TYPE_FCC_1 ||
 					      det_type == RADAR_TYPE_JP4 ||
@@ -1081,52 +1132,84 @@ wlc_phy_radar_detect_run_epoch(phy_info_t *pi,
 
 #ifdef BCMDBG
 static void
-phy_radar_output_pulses(phy_info_t *pi, pulse_data_t pulses[], uint16 length, uint16 feature_mask)
+phy_radar_output_pulses(phy_info_t *pi, pulse_data_t pulses[], uint16 length,
+	uint8 feature_mask, bool ntstart)
 {
 	uint16 i;
 
-	if (feature_mask & RADAR_FEATURE_DEBUG_PULSE_DATA) {
-		if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-			ACMAJORREV_47(pi->pubpi->phy_rev)) {
+	if ((ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
+		ACMAJORREV_GE47(pi->pubpi->phy_rev)) &&
+		!ACMAJORREV_128(pi->pubpi->phy_rev)) {
+		if (ntstart) {
 			PHY_RADAR(("\ntstart0=[  "));
 			for (i = 0; i < length; i++)
-			  PHY_RADAR(("%u ", pulses[i].interval));
-					  PHY_RADAR(("];"));
+				if (feature_mask & RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
+					PHY_RADAR(("%u-%d ", pulses[i].interval/20, i));
+					PHY_RADAR(("];"));
+				} else {
+					PHY_RADAR(("%u-%d ", pulses[i].interval, i));
+					PHY_RADAR(("];"));
+				}
+		}
 
-			PHY_RADAR(("\nInterval:  "));
-			for (i = 1; i < length; i++)
-				PHY_RADAR(("%u ", pulses[i].interval -
-				   pulses[i - 1].interval));
+		PHY_RADAR(("\nInterval:  "));
+		for (i = 1; i < length; i++)
+			if (feature_mask & RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
+				PHY_RADAR(("%u-%d ", (pulses[i].interval -
+					pulses[i - 1].interval)/20, i));
+			} else {
+				PHY_RADAR(("%u-%d ", pulses[i].interval -
+					pulses[i - 1].interval, i));
+			}
 
-			PHY_RADAR(("\nPulse Widths:  "));
-			for (i = 0; i < length; i++)
-			  PHY_RADAR(("%d-%d ", pulses[i].pw, i));
+		PHY_RADAR(("\nPulse Widths:  "));
+		for (i = 0; i < length; i++)
+			if (feature_mask & RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
+				PHY_RADAR(("%d-%d ", pulses[i].pw/20, i));
+			} else {
+				PHY_RADAR(("%d-%d ", pulses[i].pw, i));
+			}
 
-			PHY_RADAR(("\nFM:  "));
-			for (i = 0; i < length; i++)
-			  PHY_RADAR(("%d-%d ", pulses[i].fm, i));
+		PHY_RADAR(("\nFM:  "));
+		for (i = 0; i < length; i++)
+		  PHY_RADAR(("%d-%d ", pulses[i].fm, i));
 
-			PHY_RADAR(("\nNotradar:  "));
-			for (i = 0; i < length; i++)
-			  PHY_RADAR(("%d-%d ", pulses[i].notradar, i));
-			PHY_RADAR(("\n"));
-		} else {
-			PHY_RADAR(("\ntstamp=[ "));
-			for (i = 0; i < length; i++) {
+		PHY_RADAR(("\nCHIRP:  "));
+		for (i = 0; i < length; i++)
+		  PHY_RADAR(("%d-%d ", pulses[i].chirp, i));
+
+		PHY_RADAR(("\nNotradar:  "));
+		for (i = 0; i < length; i++)
+		  PHY_RADAR(("%d-%d ", pulses[i].notradar, i));
+		PHY_RADAR(("\n"));
+	} else {
+		PHY_RADAR(("\ntstamp=[ "));
+		for (i = 0; i < length; i++) {
+			if (feature_mask & RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
+				PHY_RADAR(("%u ", pulses[i].interval/20));
+			} else {
 				PHY_RADAR(("%u ", pulses[i].interval));
 			}
-			PHY_RADAR(("];\n"));
+		}
+		PHY_RADAR(("];\n"));
 
-			PHY_RADAR(("(Interval, PW, FM, FC, CHIRP, NOTRADAR) = [ "));
-			for (i = 1; i < length; i++) {
+		PHY_RADAR(("(Interval, PW, FM, FC, CHIRP, NOTRADAR) = [ "));
+		for (i = 1; i < length; i++) {
+			if (feature_mask & RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
+				PHY_RADAR(("(%u, %u, %d, %d, %u, %u) ",
+					(pulses[i].interval - pulses[i - 1].interval)/20,
+					pulses[i].pw, pulses[i].fm,
+					pulses[i].fc, pulses[i].chirp,
+					pulses[i].notradar));
+			} else {
 				PHY_RADAR(("(%u, %u, %d, %d, %u, %u) ",
 					pulses[i].interval - pulses[i - 1].interval,
 					pulses[i].pw, pulses[i].fm,
 					pulses[i].fc, pulses[i].chirp,
 					pulses[i].notradar));
 			}
-			PHY_RADAR(("];\n"));
 		}
+		PHY_RADAR(("];\n"));
 	}
 }
 #else
@@ -1149,7 +1232,7 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 	uint16 width;
 	int16 fm;
 	bool valid_lp;
-	int32 salvate_intv;
+	uint8 invalid_type;
 	int pw_dif, pw_tol, fm_dif, fm_tol;
 	int FMCombineOffset;
 	int16 ant_num = 1;
@@ -1159,6 +1242,11 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 	bool *first_radar_indicator;
 	radar_lp_info_t *rlpt;
 	wl_radar_status_t *rt_status;
+	int64 rollover_compl;
+	int16 avg_fc_bin5;
+	bool chirp_relax_lv1 = FALSE;
+	bool chirp_relax_lv2 = FALSE;
+	int32 radio_chanspec_sc;
 
 	if (ISACPHY(pi) && TONEDETECTION) {
 		FMCombineOffset =
@@ -1223,16 +1311,15 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 	}	/* for ant loop */
 
 #ifdef BCMDBG
-	if ((rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_PULSE_DATA) &&
-		((rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_SHORT_PULSE) == 0)) {
+	if (rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_BIN5_PULSE) {
 		/* bin5 */
 		for (ant = 0; ant < ant_num; ant++) {
-			PHY_RADAR(("\nBin5 after removing noise pulses with pw <= %d",
-				((rparams->radar_args.t2_min >> 4) & 0xf) * 10));
+			PHY_RADAR(("\nBin5 after removing noise pulses with pw <= %dus",
+				((rparams->radar_args.t2_min >> 4) & 0xf) * 10/20));
 			PHY_RADAR(("\nAnt %d: %d pulses, ", ant, rt->length_bin5[ant]));
 
 			phy_radar_output_pulses(pi, rt->pulses_bin5[ant], rt->length_bin5[ant],
-			                        rparams->radar_args.feature_mask);
+				rparams->radar_args.feature_mask, TRUE);
 		}
 	}
 #endif /* BCMDBG */
@@ -1277,14 +1364,13 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 	}
 
 #ifdef BCMDBG
-	if ((rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_PULSE_DATA) &&
-		((rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_SHORT_PULSE) == 0)) {
+	if (rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_BIN5_PULSE) {
 		/* bin5 */
 		PHY_RADAR(("\nBin5 after use data from one of two antennas"));
 		PHY_RADAR(("\n%d pulses, ", rt->length));
 
 		phy_radar_output_pulses(pi, rt->pulses, rt->length,
-			rparams->radar_args.feature_mask);
+			rparams->radar_args.feature_mask, TRUE);
 	}
 #endif /* BCMDBG */
 
@@ -1313,47 +1399,132 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 	}
 
 #ifdef BCMDBG
-	if ((rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_PULSE_DATA) &&
-		((rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_SHORT_PULSE) == 0)) {
+	if (rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_PRUNED_BIN5_PULSE) {
 		/* bin5 */
-		PHY_RADAR(("\nBin5 after removing pulses that are spaced < %d",
-		           rparams->radar_args.quant >> 8));
-		PHY_RADAR(("\n%d pulses, ", rt->length));
+		PHY_RADAR(("\nBin5 pulses after pruning (filtering)"));
 
 		phy_radar_output_pulses(pi, rt->pulses, rt->length,
-			rparams->radar_args.feature_mask);
+			rparams->radar_args.feature_mask, TRUE);
 	}
 #endif /* BCMDBG */
 
+	phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi), &radio_chanspec_sc);
+
+	if (sec_pll) {
+		if (CHSPEC_IS20(radio_chanspec_sc)) {
+			rollover_compl = (int64)TWO_POWER_32;
+		} else if (CHSPEC_IS40(radio_chanspec_sc)) {
+			rollover_compl = (int64)TWO_POWER_32/2;
+		} else if (CHSPEC_IS80(radio_chanspec_sc)) {
+			rollover_compl = (int64)TWO_POWER_32/4;
+		} else if (CHSPEC_IS160(radio_chanspec_sc)) {
+			rollover_compl = (int64)TWO_POWER_32/8;
+		} else {
+			rollover_compl = (int64)TWO_POWER_32;
+		}
+	} else {
+		if (CHSPEC_IS20(pi->radio_chanspec)) {
+			rollover_compl = (int64)TWO_POWER_32;
+		} else if (CHSPEC_IS40(pi->radio_chanspec)) {
+			rollover_compl = (int64)TWO_POWER_32/2;
+		} else if (CHSPEC_IS80(pi->radio_chanspec)) {
+			rollover_compl = (int64)TWO_POWER_32/4;
+		} else if (CHSPEC_IS160(pi->radio_chanspec)) {
+			rollover_compl = (int64)TWO_POWER_32/8;
+		} else {
+			rollover_compl = (int64)TWO_POWER_32;
+		}
+	}
+
 	/* prune lp buffer */
-	/* remove any entry outside the time max delta_t_lp */
-	if (rlpt->lp_length > 1) {
-		deltat = ABS((int32)(rlpt->lp_buffer[rlpt->lp_length - 1] - rlpt->lp_buffer[0]));
+	/* remove any entry outside the time MAX_LP_BUFFER_SPAN_20MHZ */
+	/* compared to the latest incoming pulse */
+	if ((rlpt->lp_length > 0) && (rt->length > 0)) {
+		/* calculate deltat taking into account possible numerical rollover */
+		if (rlpt->lp_buffer[0] > rt->pulses[rt->length - 1].interval) {
+			deltat = ABS((int32)((int64)rt->pulses[rt->length - 1].interval -
+				(int64)rlpt->lp_buffer[0] + rollover_compl));
+			PHY_RADAR(("    LP_BUFFER ROLLOVER: rt->pulses.interval[%d]=%u "
+				"lp_buffer[%d]=%u rollover_compl=%lld Kdeltat=%u\n",
+				rt->length - 1, rt->pulses[rt->length - 1].interval,
+				0, rlpt->lp_buffer[0], rollover_compl, deltat/1000));
+		} else {
+			deltat = ABS((int32)(rt->pulses[rt->length - 1].interval -
+				rlpt->lp_buffer[0]));
+		}
+
 		i = 0;
-		while ((i < (rlpt->lp_length - 1)) && (deltat > MAX_LP_BUFFER_SPAN_20MHZ)) {
+		while ((i < rlpt->lp_length) && (deltat > MAX_LP_BUFFER_SPAN_20MHZ)) {
 			i++;
-			deltat = ABS((int32)(rlpt->lp_buffer[rlpt->lp_length - 1] -
-					rlpt->lp_buffer[i]));
+			/* calculate deltat taking into account possible numerical rollover */
+			if (rlpt->lp_buffer[i] > rt->pulses[rt->length - 1].interval) {
+				deltat = ABS((int32)((int64)rt->pulses[rt->length - 1].interval -
+					(int64)rlpt->lp_buffer[i] + rollover_compl));
+				PHY_RADAR(("    LP_BUFFER ROLLOVER: rt->pulses.interval[%d]=%u "
+					"lp_buffer[%d]=%u rollover_compl=%lld Kdeltat=%u\n",
+					rt->length - 1, rt->pulses[rt->length - 1].interval,
+					i, rlpt->lp_buffer[i], rollover_compl, deltat/1000));
+			} else {
+				deltat = ABS((int32)(rt->pulses[rt->length - 1].interval
+					- rlpt->lp_buffer[i]));
+			}
 		}
 
 		if (i > 0) {
+			PHY_RADAR(("    **** LP_BUFFER old entries purched: # of entries"
+				" purched i=%d\n", i));
 			for (j = i; j < rlpt->lp_length; j++) {
 				rlpt->lp_buffer[j-i] = rlpt->lp_buffer[j];
 			}
 
-			rlpt->lp_length -= i;
+			if (i <= rlpt->lp_length) {
+				rlpt->lp_length -= i;
+			} else {
+				PHY_RADAR(("    **** unexpected error: lp_length=%d i=%d\n",
+					rlpt->lp_length, i));
+				rlpt->lp_length = 0;
+			}
+		}
+
+		/* reset detection parameters */
+		if (rlpt->lp_length == 0) {
+			rlpt->lp_cnt = 0;
+			rlpt->lp_skip_cnt = 0;
+			rlpt->lp_csect_single = 0;
+			rlpt->lp_len_his_idx = 0;
+			rlpt->min_detected_fc_bin5 = MAX_FC;
+			rlpt->max_detected_fc_bin5 = MIN_FC;
+			rlpt->avg_detected_fc_bin5 = 0;
+			rlpt->last_detection_time = pi->sh->now;
+			rlpt->last_detection_time_lp = pi->sh->now;
+			rlpt->subband_result = 0;
+			rlpt->last_tstart = 0;
+			rlpt->transmission_chirp = 0;
+			rlpt->chirp_fail_cnt = 0;
+			rlpt->chirp_match_cnt = 0;
 		}
 	}
+
 	/* First perform FCC-5 detection */
 	/* add new pulses */
 
 	/* process each new pulse */
 	for (i = 0; i < rt->length; i++) {
-		deltat = ABS((int32)(rt->pulses[i].interval - rlpt->last_tstart));
-		salvate_intv = ABS((int32)(rt->pulses[i].interval - rlpt->last_skipped_time));
+		invalid_type = 0;
+		/* calculate deltat taking into account possible numerical rollover */
+		if (rlpt->last_tstart > rt->pulses[i].interval) {
+			deltat = ABS((int32)((int64)rt->pulses[i].interval
+				- (int64)rlpt->last_tstart + rollover_compl));
+			PHY_RADAR(("    TSTART ROLLOVER: tstart=%u last_tstart=%u "
+				"rollover_compl=%lld Kdeltat=%u\n",
+				rt->pulses[i].interval, rlpt->last_tstart, rollover_compl,
+				deltat/1000));
+		} else {
+			deltat = ABS((int32)(rt->pulses[i].interval - rlpt->last_tstart));
+		}
 
 		if (PHY_RADAR_FIFO_SUBBAND_FORMAT(pi) &&
-		    (st->rparams.radar_thrs2.highpow_war_enb & 0x1) == 1) {
+			(st->rparams.radar_thrs2.highpow_war_enb & 0x1) == 1) {
 			valid_lp = (rt->pulses[i].pw >= PW_TOL_HIPOWWAR_BIN5) &&
 				(rt->pulses[i].pw <= rparams->radar_args.max_pw_lp) &&
 				(rt->pulses[i].fm >=
@@ -1362,15 +1533,21 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 				rparams->radar_args.min_fm_lp/2 :
 				min_fm_lp_sc/2)) &&
 				(deltat >= rparams->min_deltat_lp);
+			if (!valid_lp) {
+				invalid_type = 1;
+			}
 		} else {
 			valid_lp = (rt->pulses[i].pw >= rparams->radar_args.min_pw_lp) &&
 				(rt->pulses[i].pw <= rparams->radar_args.max_pw_lp) &&
 				(rt->pulses[i].fm >= ((sec_pll == FALSE && bw80_80_mode == FALSE) ?
 				rparams->radar_args.min_fm_lp : min_fm_lp_sc)) &&
 				(deltat >= rparams->min_deltat_lp);
+			if (!valid_lp) {
+				invalid_type = 2;
+			}
 		}
 
-		if (PHY_RADAR_FIFO_SUBBAND_FORMAT(pi)) {
+		if (valid_lp && PHY_RADAR_FIFO_SUBBAND_FORMAT(pi)) {
 			if (((st->rparams.radar_thrs2.highpow_war_enb >> 1) & 0x1) == 1) {
 				bool chirp_condi;
 				if (!PHY_AS_80P80(pi, pi->radio_chanspec)) {
@@ -1389,98 +1566,236 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 					rt->pulses[i].fc >= CHIRP_FC_TH);
 				}
 				valid_lp = valid_lp && chirp_condi;
+				if (!valid_lp) {
+					invalid_type = 3;
+				}
 			}
 		}
 
-		/* filter out: max_deltat_l < pburst_intv_lp < min_burst_intv_lp */
-		/* this was skip-type = 2, now not skipping for this */
-		valid_lp = valid_lp &&(deltat <= (int32) rparams->max_deltat_lp ||
-			deltat >= (int32) rparams->radar_args.min_burst_intv_lp);
+		/* filter out: pulse interval > max_deltat_lp, and pulse interval <
+		 * min_burst_intv_lp,  and pulse interval > max_burst_intv_lp while nLP != 0
+		 */
+		if (valid_lp) {
+			if (deltat > (int32) rparams->max_deltat_lp &&
+				deltat < (int32) rparams->radar_args.min_burst_intv_lp) {
+				valid_lp = FALSE;
+				invalid_type = 4;
+			}
+		}
+
+		if (valid_lp && (rt_status->detected == FALSE)) {
+			rt_status->intv[(rlpt->lp_length)%10] = deltat;
+			rt_status->pw[(rlpt->lp_length)%10] = rt->pulses[i].pw;
+			rt_status->fm[(rlpt->lp_length)%10] = rt->pulses[i].fm;
+		}
 
 		//Need to check notradar for bin5 radar detection of scan core
-		if (PHY_RADAR_FIFO_SUBBAND_FORMAT(pi)) {
+		if (valid_lp && PHY_RADAR_FIFO_SUBBAND_FORMAT(pi)) {
 			if (sec_pll == FALSE && bw80_80_mode == FALSE) {
 				if ((st->rparams.radar_thrs2.notradar_enb>>3 & 0x1) == 1)
 					valid_lp = valid_lp &&
 						(rt->pulses[i].notradar <
 						st->rparams.radar_thrs2.max_notradar_lp);
+				if (!valid_lp) {
+					invalid_type = 5;
+				}
 			} else {
 				if ((st->rparams.radar_thrs2.notradar_enb>>1 & 0x1) == 1)
 					valid_lp = valid_lp &&
 						(rt->pulses[i].notradar <
 						st->rparams.radar_thrs2.max_notradar_lp_sc);
+				if (!valid_lp) {
+					invalid_type = 6;
+				}
 			}
 		}
 
-		if (rlpt->lp_length > 0 && rlpt->lp_length < LP_BUFFER_SIZE) {
+		/* remove pulses that start at the same time as the last one */
+		if (valid_lp && rlpt->lp_length > 0 && rlpt->lp_length < LP_BUFFER_SIZE) {
 			valid_lp = valid_lp &&
 				(rt->pulses[i].interval != rlpt->lp_buffer[rlpt->lp_length]);
+			if (!valid_lp) {
+				PHY_RADAR(("lp_length=%d tstart=%d lp_buff->tstart=%d\n",
+					rlpt->lp_length, rt->pulses[i].interval,
+					rlpt->lp_buffer[rlpt->lp_length]));
+				invalid_type = 7;
+			}
 		}
 
 		skip_type = 0;
-		if (valid_lp && deltat >= (int32) rparams->radar_args.min_burst_intv_lp &&
-			deltat < (int32) rparams->radar_args.max_burst_intv_lp) {
+
+		if (valid_lp && deltat >= (int32) rparams->radar_args.min_burst_intv_lp) {
 			rlpt->lp_cnt = 0;
 		}
 
-		/* skip the pulse if outside of pulse interval range (1-2ms), */
+		/* Skip the pulse if outside of pulse interval range (1-2ms), */
 		/* burst to burst interval not within range, more than 3 pulses in a */
-		/* burst, and not skip salvated */
+		/* burst */
 
-		if ((valid_lp && ((rlpt->lp_length != 0)) &&
-			((deltat < (int32) rparams->min_deltat_lp) ||
+		if ((deltat < (int32) rparams->min_deltat_lp) ||
 			(deltat > (int32) rparams->max_deltat_lp &&
-			deltat < (int32) rparams->radar_args.min_burst_intv_lp) ||
-			(deltat > (int32) rparams->radar_args.max_burst_intv_lp) ||
-			(rlpt->lp_cnt > 2)))) {	/* possible skip lp */
-
+			deltat < (int32) rparams->radar_args.min_burst_intv_lp)
+			) {	/* possible skip lp */
 			/* get skip type */
 			if (deltat < (int32) rparams->min_deltat_lp) {
 				skip_type = 1;
 			} else if (deltat > (int32) rparams->max_deltat_lp &&
 				deltat < (int32) rparams->radar_args.min_burst_intv_lp) {
 				skip_type = 2;
-			} else if (deltat > (int32) rparams->radar_args.max_burst_intv_lp) {
-				skip_type = 3;
-				rlpt->lp_cnt = 0;
-			} else if (rlpt->lp_cnt > 2) {
-				skip_type = 4;
 			} else {
 				skip_type = 999;
 			}
+		}
 
-			/* skip_salvate */
-			if ((((salvate_intv > (int32) rparams->min_deltat_lp &&
-				salvate_intv < (int32) rparams->max_deltat_lp)) ||
-				((salvate_intv > (int32)rparams->radar_args.min_burst_intv_lp) &&
-				(salvate_intv < (int32)rparams->radar_args.max_burst_intv_lp))) &&
-				(skip_type != 4)) {
-				/* note valid_lp is not reset in here */
-				skip_type = -1;  /* salvated PASSED */
-				if (salvate_intv >= (int32) rparams->radar_args.min_burst_intv_lp &&
-					salvate_intv <
-						(int32) rparams->radar_args.max_burst_intv_lp) {
-					rlpt->lp_cnt = 0;
+		if (rlpt->avg_detected_fc_bin5 == 0) {
+			avg_fc_bin5 = rt->pulses[i].fc;
+		} else {
+			avg_fc_bin5 = rlpt->avg_detected_fc_bin5;
+		}
+
+		if ((sec_pll ? CHSPEC_IS20(radio_chanspec_sc) :
+			CHSPEC_IS20(pi->radio_chanspec)) &&
+			(sec_pll ? CHSPEC_CHANNEL(radio_chanspec_sc) :
+			CHSPEC_CHANNEL(pi->radio_chanspec)) > WL_THRESHOLD_LO_BAND) {
+			chirp_relax_lv1 = TRUE;
+			if ((avg_fc_bin5 > CHIRP_RELAX_LV2_FC_BOUND) ||
+				((st->rparams.radar_thrs2.highpow_war_enb >> 15) & 0x1)) {
+				chirp_relax_lv2 = TRUE;
+			} else {
+				chirp_relax_lv2 = FALSE;
+			}
+		} else {
+			chirp_relax_lv1 = FALSE;
+		}
+
+		/*
+		   PHY_RADAR(("avg_fc_bin5=%d chirp_relax_lv1=%d chirp_relax_lv2=%d "
+		   "CHSPEC_CHANNEL(pi->radio_chanspec)=%d WL_THRESHOLD_LO_BAND=%d\n",
+		   avg_fc_bin5, chirp_relax_lv1, chirp_relax_lv2,
+		   sec_pll ? CHSPEC_CHANNEL(radio_chanspec_sc) :
+		   CHSPEC_CHANNEL(pi->radio_chanspec), WL_THRESHOLD_LO_BAND));
+		*/
+
+		/* Check for chirp consistency within a transmission period (12 sec) */
+		if (PHY_RADAR_FIFO_SUBBAND_FORMAT(pi) && valid_lp &&
+			((st->rparams.radar_thrs2.highpow_war_enb >> 13) & 0x1) &&
+			!chirp_relax_lv2) {
+			if (rlpt->lp_length == 0) {
+				rlpt->transmission_chirp = rt->pulses[i].chirp;
+				rlpt->chirp_match_cnt = 0;
+				rlpt->chirp_fail_cnt = 0;
+				skip_type = -2;
+			} else if (rlpt->lp_length > 0) {
+				if (ABS(rt->pulses[i].chirp - rlpt->transmission_chirp)
+					<= (chirp_relax_lv1 ?
+					(((st->rparams.radar_thrs2.highpow_war_enb
+					>> 4) & 0x7) + CHIRP_TOL_RELAX_COUNT)
+					:((st->rparams.radar_thrs2.highpow_war_enb >> 4) & 0x7))) {
+					/* bits 4-6 of highpow_war_enb = good_chirp_tollerance */
+					PHY_RADAR(("    GOOD Chirp: txCHIRP=%d CHIRP=%d"
+						" chirp_fail_cnt=%d"
+						" chirp_match_cnt=%d"
+						" NOTRADAR=%d\n",
+						rlpt->transmission_chirp,
+						rt->pulses[i].chirp, rlpt->chirp_fail_cnt,
+						rlpt->chirp_match_cnt,
+						rt->pulses[i].notradar));
+					rlpt->chirp_match_cnt++;
+					rlpt->chirp_fail_cnt = 0;
+					if (deltat > (int32) rparams->radar_args.max_burst_intv_lp)
+					{
+						/* This to align txChirp to the one from a new */
+						/* burst in case it's too close to the existing */
+						/* one and passing the check */
+						rlpt->transmission_chirp = rt->pulses[i].chirp;
+						PHY_RADAR(("    NEW Chirp 2: txCHIRP=%d CHIRP=%d"
+							" chirp_fail_cnt=%d"
+							" chirp_match_cnt=%d"
+							" NOTRADAR=%d\n",
+							rlpt->transmission_chirp,
+							rt->pulses[i].chirp, rlpt->chirp_fail_cnt,
+							rlpt->chirp_match_cnt,
+							rt->pulses[i].notradar));
+						rlpt->lp_length = 0;
+						rlpt->chirp_match_cnt = 0;
+						rlpt->chirp_fail_cnt = 0;
+						rlpt->lp_skip_cnt = 0;
+						rlpt->lp_csect_single = 0;
+						rlpt->lp_cnt = 0;
+						rlpt->min_detected_fc_bin5 = MAX_FC;
+						rlpt->max_detected_fc_bin5 = MIN_FC;
+						rlpt->avg_detected_fc_bin5 = 0;
+						rlpt->subband_result = 0;
+						skip_type = -2;
+					}
+				} else {
+					PHY_RADAR(("    BAD Chirp: txCHIRP=%d CHIRP=%d"
+						" chirp_fail_cnt=%d chirp_match_cnt=%d"
+						" NOTRADAR=%d"
+						"\n",
+						rlpt->transmission_chirp,
+						rt->pulses[i].chirp, rlpt->chirp_fail_cnt,
+						rlpt->chirp_match_cnt,
+						rt->pulses[i].notradar));
+
+					if ((rlpt->chirp_match_cnt > 0) &&
+						(rlpt->chirp_match_cnt
+						< GOOD_CHIRP_CNT_LIMIT)) {
+						rlpt->chirp_match_cnt--;
+					}
+					rlpt->chirp_fail_cnt++;
+					if (deltat > (int32) rparams->radar_args.max_burst_intv_lp)
+					{
+						/* New burst comes. Update txChirp */
+						rlpt->transmission_chirp = rt->pulses[i].chirp;
+						PHY_RADAR(("    NEW Chirp: txCHIRP=%d CHIRP=%d"
+							" chirp_fail_cnt=%d"
+							" chirp_match_cnt=%d"
+							" NOTRADAR=%d\n",
+							rlpt->transmission_chirp,
+							rt->pulses[i].chirp, rlpt->chirp_fail_cnt,
+							rlpt->chirp_match_cnt,
+							rt->pulses[i].notradar));
+						rlpt->lp_length = 0;
+						rlpt->chirp_match_cnt = 0;
+						rlpt->chirp_fail_cnt = 0;
+						rlpt->lp_skip_cnt = 0;
+						rlpt->lp_csect_single = 0;
+						rlpt->lp_cnt = 0;
+						rlpt->min_detected_fc_bin5 = MAX_FC;
+						rlpt->max_detected_fc_bin5 = MIN_FC;
+						rlpt->avg_detected_fc_bin5 = 0;
+						rlpt->subband_result = 0;
+						skip_type = -2;
+					} else {
+						if (rlpt->chirp_fail_cnt >=
+							((st->rparams.radar_thrs2.highpow_war_enb
+							>> 7) & 0x7)) {
+							skip_type = 4;
+						} else {
+							valid_lp = 0;
+							invalid_type = 9;
+						}
+					}
 				}
 			}
-		} else {  /* valid lp not by skip salvate */
-			skip_type = -2;
 		}
 
 		width = 0;
 		fm = 0;
 		pw_dif = 0;
 		fm_dif = 0;
-		pw_tol = rparams->radar_args.max_span_lp & 0xff;
 		fm_tol = 0;
+		pw_tol = rparams->radar_args.max_span_lp & 0xff;
 		/* monitor the number of pw and fm matching */
-		/* max_span_lp[15:12] = skip_tot max */
 		/* max_span_lp[11:8] = x, x/16 = % alowed fm tollerance */
 		/* max_span_lp[7:0] = alowed pw tollerance */
 		if (valid_lp && skip_type <= 0) {
-			if (rlpt->lp_cnt == 0) {
+			if ((rlpt->lp_cnt == 0) ||
+				(deltat >= (int32) rparams->radar_args.min_burst_intv_lp)) {
 				rlpt->lp_pw[0] = rt->pulses[i].pw;
 				rlpt->lp_fm[0] = rt->pulses[i].fm;
+				rlpt->lp_cnt++;
 			} else if (rlpt->lp_cnt == 1) {
 				width = rlpt->lp_pw[0];
 				fm = rlpt->lp_fm[0];
@@ -1500,44 +1815,15 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 					fm_tol = 999;
 				}
 				if (pw_dif < pw_tol && fm_dif < fm_tol) {
-					rlpt->lp_pw[1] = rt->pulses[i].pw;
-					rlpt->lp_fm[1] = rt->pulses[i].fm;
-					++rlpt->lp_n_non_single_pulses;
-					++rlpt->lp_pw_fm_matched;
-				} else if (rlpt->lp_just_skipped) {
-					width = rlpt->lp_skipped_pw;
-					fm = rlpt->lp_skipped_fm;
-					pw_dif = ABS(rt->pulses[i].pw - width);
-					fm_dif = ABS(rt->pulses[i].fm - fm);
-					if (rparams->radar_args.t2_min & 0x200) {
-						if ((st->rparams.radar_thrs2.highpow_war_enb & 0x1)
-							== 1) {
-							fm_tol = (fm*
-								((rparams->radar_args.max_span_lp
-								>> 8) & 0xf))/4;
-						} else {
-							fm_tol = (fm*
-							((rparams->radar_args.max_span_lp >> 8)
-							& 0xf))/16;
-						}
-					} else {
-						fm_tol = 999;
-					}
-					if (pw_dif < pw_tol && fm_dif < fm_tol) {
+					if (deltat < MAX_INTV_LP) {
 						rlpt->lp_pw[1] = rt->pulses[i].pw;
 						rlpt->lp_fm[1] = rt->pulses[i].fm;
-						++rlpt->lp_n_non_single_pulses;
-						++rlpt->lp_pw_fm_matched;
-						skip_type = -1;  /* salvated PASSED */
+						rlpt->lp_cnt++;
 					} else {
-						if (rparams->radar_args.t2_min & 0x100) {
-							skip_type = 5;
-						}
-					}
-				} else {
-					if (rparams->radar_args.t2_min & 0x100) {
 						skip_type = 5;
 					}
+				} else if (rparams->radar_args.t2_min & 0x100) {
+						skip_type = 6;
 				}
 			} else if (rlpt->lp_cnt == 2) {
 				width = rlpt->lp_pw[1];
@@ -1551,95 +1837,98 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 					fm_tol = 999;
 				}
 				if (pw_dif < pw_tol && fm_dif < fm_tol) {
-					rlpt->lp_pw[2] = rt->pulses[i].pw;
-					rlpt->lp_fm[2] = rt->pulses[i].fm;
-					++rlpt->lp_n_non_single_pulses;
-					++rlpt->lp_pw_fm_matched;
-				} else if (rlpt->lp_just_skipped) {
-					width = rlpt->lp_skipped_pw;
-					fm = rlpt->lp_skipped_fm;
-					pw_dif = ABS(rt->pulses[i].pw - width);
-					fm_dif = ABS(rt->pulses[i].fm - fm);
-					if (rparams->radar_args.t2_min & 0x200) {
-						fm_tol = (fm*((rparams->radar_args.max_span_lp >> 8)
-							& 0xf))/16;
-					} else {
-						fm_tol = 999;
-					}
-					if (pw_dif < pw_tol && fm_dif < fm_tol) {
+					if (deltat < MAX_INTV_LP) {
 						rlpt->lp_pw[2] = rt->pulses[i].pw;
 						rlpt->lp_fm[2] = rt->pulses[i].fm;
-						++rlpt->lp_n_non_single_pulses;
-						++rlpt->lp_pw_fm_matched;
-						skip_type = -1;  /* salvated PASSED */
+						rlpt->lp_cnt++;
 					} else {
-						if (rparams->radar_args.t2_min & 0x100) {
-							skip_type = 5;
-						}
+						skip_type = 7;
 					}
-				} else {
-					if (rparams->radar_args.t2_min & 0x100) {
-						skip_type = 5;
-					}
+				} else if (rparams->radar_args.t2_min & 0x100) {
+						skip_type = 8;
 				}
+			} else {
+				rlpt->lp_cnt++;
+				skip_type = 9;
 			}
 		}
 
-		if (valid_lp && skip_type != -1 && skip_type != -2) {	/* skipped lp */
+		if (skip_type >= 3 && skip_type <= 9)  {	/* skipped lp */
 			valid_lp = FALSE;
 			rlpt->lp_skip_cnt++;
-			rlpt->lp_skip_tot++;
-			rlpt->lp_just_skipped = TRUE;
 			rlpt->lp_skipped_pw = rt->pulses[i].pw;
 			rlpt->lp_skipped_fm = rt->pulses[i].fm;
 
-			rlpt->last_skipped_time = rt->pulses[i].interval;
-
-#ifdef BCMDBG
 			/* print "SKIPPED LP" debug messages */
-			PHY_RADAR(("Skipped LP:"
-/*
-				" KTstart=%u Klast_ts=%u Klskip=%u"
-*/
-				" nLP=%d nSKIP=%d KIntv=%u"
-				" Ksalintv=%d PW=%d FM=%d"
-				" Type=%d pulse#=%d skip_tot=%d csect_single=%d\n",
-/*
-			(rt->pulses[i].interval)/1000, rlpt->last_tstart/1000, tmp_uint32/1000,
-*/
-				rlpt->lp_length, rlpt->lp_skip_cnt, deltat/1000, salvate_intv/1000,
-				rt->pulses[i].pw, rt->pulses[i].fm,
-				skip_type, rlpt->lp_cnt, rlpt->lp_skip_tot, rlpt->lp_csect_single));
-			if (skip_type == 5) {
-				PHY_RADAR(("           "
-					" pw2=%d pw_dif=%d pw_tol=%d fm2=%d fm_dif=%d fm_tol=%d\n",
-					width, pw_dif, pw_tol, fm, fm_dif, fm_tol));
+			/* print inteval in us or 20MHz k-sample */
+			if (rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
+				PHY_RADAR(("SKIPPED LP:"
+					" nLP=%d skip_cnt=%d (K)Intv=%u"
+					" PW=%d FM=%d"
+					" skip_type=%d lp_cnt=%d csect_single=%d CHIRP=%d"
+					" txCHIRP=%d chirp_match_cnt=%d chirp_fail_cnt=%d"
+					" NOTRADAR=%d tot_lp_cnt=%d"
+					"\n",
+					rlpt->lp_length, rlpt->lp_skip_cnt, deltat/20,
+					rt->pulses[i].pw/20, rt->pulses[i].fm,
+					skip_type, rlpt->lp_cnt, rlpt->lp_csect_single,
+					rt->pulses[i].chirp, rlpt->transmission_chirp,
+					rlpt->chirp_match_cnt, rlpt->chirp_fail_cnt,
+					rt->pulses[i].notradar,
+					rlpt->tot_lp_cnt));
+			} else {
+				PHY_RADAR(("SKIPPED LP:"
+					" nLP=%d skip_cnt=%d (K)Intv=%u"
+					" PW=%d FM=%d"
+					" skip_type=%d lp_cnt=%d csect_single=%d CHIRP=%d"
+					" txCHIRP=%d chirp_match_cnt=%d chirp_fail_cnt=%d"
+					" NOTRADAR=%d tot_lp_cnt=%d"
+					"\n",
+					rlpt->lp_length, rlpt->lp_skip_cnt, deltat/1000,
+					rt->pulses[i].pw, rt->pulses[i].fm,
+					skip_type, rlpt->lp_cnt, rlpt->lp_csect_single,
+					rt->pulses[i].chirp, rlpt->transmission_chirp,
+					rlpt->chirp_match_cnt, rlpt->chirp_fail_cnt,
+					rt->pulses[i].notradar,
+					rlpt->tot_lp_cnt));
+			}
+			if ((skip_type >= 5) && (skip_type <= 9)) {
+				if (rparams->radar_args.feature_mask &
+					RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
+					PHY_RADAR(("           "
+						" pw_prv=%d pw_dif=%d pw_tol=%d fm_prv=%d fm_dif=%d"
+						" fm_tol=%d\n", width/20, pw_dif/20, pw_tol/20, fm,
+						fm_dif, fm_tol));
+				} else {
+					PHY_RADAR(("           "
+						" pw_prv=%d pw_dif=%d pw_tol=%d fm_prv=%d fm_dif=%d"
+						" fm_tol=%d\n", width, pw_dif, pw_tol, fm,
+						fm_dif, fm_tol));
+				}
 			}
 			if (skip_type == 999) {
 				PHY_RADAR(("UNKOWN SKIP TYPE: %d\n", skip_type));
 			}
-#endif /* BCMDBG */
 
-			/* if a) 2 consecutive skips, or */
-			/*    b) too many consective singles, or */
-			/*    c) too many total skip so far */
-			/*  then reset lp buffer ... */
-			if (rlpt->lp_skip_cnt >= rparams->radar_args.nskip_rst_lp) {
+			/* if a) 2 consecutive skips and */
+			/*    b) LP length has not reached detection threshold */
+			/* then reset lp buffer ... */
+			if ((rlpt->lp_skip_cnt >= rparams->radar_args.nskip_rst_lp) &&
+				(rlpt->lp_length < rparams->radar_args.npulses_lp)) {
 				if (rlpt->lp_len_his_idx < LP_LEN_HIS_SIZE) {
 					rlpt->lp_len_his[rlpt->lp_len_his_idx] = rlpt->lp_length;
 					rlpt->lp_len_his_idx++;
 				}
+				PHY_RADAR(("**** SKIPPED RESET ****\n"));
 				rlpt->lp_length = 0;
-				rlpt->lp_skip_tot = 0;
 				rlpt->lp_skip_cnt = 0;
 				rlpt->lp_csect_single = 0;
-				rlpt->lp_pw_fm_matched = 0;
-				rlpt->lp_n_non_single_pulses = 0;
 				rlpt->lp_cnt = 0;
 				rlpt->min_detected_fc_bin5 = MAX_FC;
 				rlpt->max_detected_fc_bin5 = MIN_FC;
 				rlpt->avg_detected_fc_bin5 = 0;
 				rlpt->subband_result = 0;
+				rlpt->chirp_fail_cnt = 0;
 			}
 		} else if (valid_lp && (rlpt->lp_length < LP_BUFFER_SIZE)) {	/* valid lp */
 			if (rt->pulses[i].fc <= rlpt->min_detected_fc_bin5)
@@ -1648,63 +1937,104 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 				rlpt->max_detected_fc_bin5 = rt->pulses[i].fc;
 
 			if (rlpt->avg_detected_fc_bin5 == 0) {
-				rlpt->avg_detected_fc_bin5 = (rt->pulses[i].fc*4);
+				rlpt->avg_detected_fc_bin5 = (rt->pulses[i].fc);
 			} else {
-				rlpt->avg_detected_fc_bin5 = 3*(rlpt->avg_detected_fc_bin5)
-								+ (rt->pulses[i].fc*4);
-				rlpt->avg_detected_fc_bin5 = rlpt->avg_detected_fc_bin5/4;
+				/* add 1(1/2=0.5) for rounding case */
+				rlpt->avg_detected_fc_bin5 = (rlpt->avg_detected_fc_bin5
+								+ rt->pulses[i].fc + 1) / 2;
 			}
-			/* reset consecutive singles counter if pulse # > 0 */
-			if (rlpt->lp_cnt > 0) {
+			/* reset consecutive singles counter if # of pulses > 1 */
+			if (rlpt->lp_cnt > 1) {
 				rlpt->lp_csect_single = 0;
 			} else {
 				++rlpt->lp_csect_single;
 			}
 
-			rlpt->lp_just_skipped = FALSE;
-			/* print "VALID LP" debug messages */
 			rlpt->lp_skip_cnt = 0;
-			PHY_RADAR(("Valid LP:"
-/*
-				" KTstart=%u KTlast_ts=%u Klskip=%u"
-*/
-				" KIntv=%u"
-				" Ksalintv=%d PW=%d FM=%d pulse#=%d"
-				" pw2=%d pw_dif=%d pw_tol=%d fm2=%d fm_dif=%d fm_tol=%d\n"
-				" FC=%d CHIRP=%d NOTRADAR=%d\n",
-/*
-				(rt->pulses[i].interval)/1000, rlpt->last_tstart/1000,
-					rlpt->last_skipped_time/1000,
-*/
-				deltat/1000, salvate_intv/1000,
-				rt->pulses[i].pw, rt->pulses[i].fm, rlpt->lp_cnt,
-				width, pw_dif, pw_tol,
-				fm, fm_dif, fm_tol,
-				rt->pulses[i].fc, rt->pulses[i].chirp, rt->pulses[i].notradar));
+			rlpt->lp_buffer[rlpt->lp_length] = rt->pulses[i].interval;
+			rlpt->lp_length++;
+			if (rlpt->lp_length == 1) {
+				rlpt->tot_lp_cnt = 0;
+			} else if (rlpt->lp_length >= 2 && deltat < MAX_INTV_LP) {
+				rlpt->tot_lp_cnt++;
+			}
+
+			/* print "VALID LP" debug messages */
+			/* print interval in us or 20MHz k-sample */
+			if (rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
+				PHY_RADAR(("VALID LP:"
+					" (K)Intv=%u"
+					" PW=%d FM=%d lp_cnt=%d"
+					" pw_prv=%d pw_dif=%d pw_tol=%d fm_prv=%d"
+					" fm_dif=%d fm_tol=%d"
+					" FC=%d CHIRP=%d NOTRADAR=%d\n",
+					deltat/20,
+					rt->pulses[i].pw/20, rt->pulses[i].fm, rlpt->lp_cnt,
+					width/20, pw_dif/20, pw_tol/20,
+					fm, fm_dif, fm_tol,
+					rt->pulses[i].fc, rt->pulses[i].chirp,
+					rt->pulses[i].notradar));
+			} else {
+				PHY_RADAR(("VALID LP:"
+					" (K)Intv=%u"
+					" PW=%d FM=%d lp_cnt=%d"
+					" pw_prv=%d pw_dif=%d pw_tol=%d fm_prv=%d"
+					" fm_dif=%d fm_tol=%d"
+					" FC=%d CHIRP=%d NOTRADAR=%d\n",
+					deltat/1000,
+					rt->pulses[i].pw, rt->pulses[i].fm, rlpt->lp_cnt,
+					width, pw_dif, pw_tol,
+					fm, fm_dif, fm_tol,
+					rt->pulses[i].fc, rt->pulses[i].chirp,
+					rt->pulses[i].notradar));
+			}
 			PHY_RADAR(("         "
-				" nLP=%d nSKIP=%d skipped_salvate=%d"
-				" pw_fm_matched=%d #non-single=%d skip_tot=%d csect_single=%d\n",
-				rlpt->lp_length + 1, rlpt->lp_skip_cnt, (skip_type == -1 ? 1 : 0),
-				rlpt->lp_pw_fm_matched,
-				rlpt->lp_n_non_single_pulses, rlpt->lp_skip_tot,
-				rlpt->lp_csect_single));
+				" nLP=%d skip_cnt=%d"
+				" csect_single=%d"
+				" txCHIRP=%d chirp_match_cnt=%d chirp_fail_cnt=%d tot_lp_cnt=%d"
+				"\n",
+				rlpt->lp_length, rlpt->lp_skip_cnt,
+				rlpt->lp_csect_single, rlpt->transmission_chirp,
+				rlpt->chirp_match_cnt, rlpt->chirp_fail_cnt, rlpt->tot_lp_cnt));
 
-				rlpt->lp_buffer[rlpt->lp_length] = rt->pulses[i].interval;
-				rlpt->lp_length++;
 				rlpt->last_tstart = rt->pulses[i].interval;
-				rlpt->last_skipped_time = rt->pulses[i].interval;
-
-				rlpt->lp_cnt++;
 
 			if (rlpt->lp_csect_single >= ((rparams->radar_args.t2_min >> 12) & 0xf)) {
-				if (rlpt->lp_length > rparams->radar_args.npulses_lp / 2)
-					rlpt->lp_length -= rparams->radar_args.npulses_lp / 2;
-				else {
+				if (rlpt->lp_length >
+					((st->rparams.radar_thrs2.highpow_war_enb >> 10) & 0x7)) {
+					rlpt->lp_length -=
+						((st->rparams.radar_thrs2.highpow_war_enb >> 10)
+						& 0x7);
+				} else {
 					rlpt->lp_length = 0;
-					rlpt->min_detected_fc_bin5 = MAX_FC;
-					rlpt->max_detected_fc_bin5 = MIN_FC;
-					rlpt->avg_detected_fc_bin5 = 0;
-					rlpt->subband_result = 0;
+				}
+				PHY_RADAR(("    **** lp_csect_single=%d >= %d, new nLP=%d\n",
+					rlpt->lp_csect_single, ((rparams->radar_args.t2_min >> 12)
+					& 0xf), rlpt->lp_length));
+				rlpt->lp_csect_single -= CSECT_SINGLE_DECR;
+			}
+		} else if (!valid_lp || invalid_type != 0) {
+		/* the above "if" is to make ivalide_type usefull to not trigger compile warning */
+			if (rparams->radar_args.feature_mask &
+				RADAR_FEATURE_DEBUG_INVLID_LP && !valid_lp) {
+				/* print in3terval in us or 20MHz k-sample */
+				if (rparams->radar_args.feature_mask &
+					RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
+					PHY_RADAR(("INVALID LP:"
+						" nLP=%d Invalid_type=%u (K)Intv=%u PW=%d FM=%d"
+						" FC=%d CHIRP=%d NOTRADAR=%d\n",
+						rlpt->lp_length, invalid_type, deltat/20,
+						rt->pulses[i].pw/20, rt->pulses[i].fm,
+						rt->pulses[i].fc, rt->pulses[i].chirp,
+						rt->pulses[i].notradar));
+				} else {
+					PHY_RADAR(("INVALID LP:"
+						" nLP=%d Invalid_type=%u (K)Intv=%u PW=%d FM=%d"
+						" FC=%d CHIRP=%d NOTRADAR=%d\n",
+						rlpt->lp_length, invalid_type, deltat/1000,
+						rt->pulses[i].pw, rt->pulses[i].fm,
+						rt->pulses[i].fc, rt->pulses[i].chirp,
+						rt->pulses[i].notradar));
 				}
 			}
 		}
@@ -1720,23 +2050,57 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 	}
 	PHY_RADAR(("\n"));
 #endif // endif
+	/* nLP (meaning rlpt->lp_length) > = detection threshold */
 	if (rlpt->lp_length >= rparams->radar_args.npulses_lp) {
-		/* reject detection spaced more than 3 minutes */
-		deltat = (uint32) (pi->sh->now - rlpt->last_detection_time_lp);
-		PHY_RADAR(("last_detection_time_lp=%u, watchdog_timer=%u, deltat=%d,"
-			" deltat_min=%d, deltat_sec=%d\n",
-			rlpt->last_detection_time_lp, pi->sh->now, deltat, deltat/60, deltat%60));
-		rlpt->last_detection_time_lp = pi->sh->now;
-		if ((uint32) deltat < (rparams->radar_args.fra_pulse_err & 0xff)*60 ||
-		    (*first_radar_indicator == 1 && (uint32) deltat < 30 * 60)) {
-			if (rlpt->lp_csect_single <= rparams->radar_args.npulses_lp - 2 &&
-			    rlpt->lp_skip_tot < ((rparams->radar_args.max_span_lp >> 12) & 0xf)) {
+		/* check fc variation */
+		if ((rlpt->max_detected_fc_bin5 -
+			rlpt->avg_detected_fc_bin5) >=
+			(rlpt->avg_detected_fc_bin5 -
+			rlpt->min_detected_fc_bin5)) {
+			var_fc_bin5 = rlpt->avg_detected_fc_bin5
+				- rlpt->min_detected_fc_bin5;
+		} else {
+			var_fc_bin5 = rlpt->max_detected_fc_bin5
+				- rlpt->avg_detected_fc_bin5;
+		}
+		PHY_RADAR(("max_detected_fc_bin5=%d min_detected_fc_bin5=%d"
+			" avg_detected_fc_bin5=%d var_fc_bin5=%d\n",
+			rlpt->max_detected_fc_bin5, rlpt->min_detected_fc_bin5,
+			rlpt->avg_detected_fc_bin5, var_fc_bin5));
+
+		/* check fc variation and tot_lp_cnt */
+		if ((((var_fc_bin5 > MAX_FC_VARIATION) && (PHY_RADAR_FIFO_SUBBAND_FORMAT(pi))) &&
+			((st->rparams.radar_thrs2.highpow_war_enb >> 14) & 0x1)) ||
+			((rlpt->tot_lp_cnt < ((rparams->radar_args.max_span_lp >> 12) & 0x7)) &&
+			((rparams->radar_args.max_span_lp >> 15) & 0x1))) {
+			if ((var_fc_bin5 > MAX_FC_VARIATION) &&
+				((st->rparams.radar_thrs2.highpow_war_enb >> 14) & 0x1) &&
+				(PHY_RADAR_FIFO_SUBBAND_FORMAT(pi))) {
+				PHY_RADAR(("**** Failed FC variation check: var_fc_bin5=%d"
+					" > %d\n", var_fc_bin5, MAX_FC_VARIATION));
+			}
+			if ((rlpt->tot_lp_cnt <
+				((rparams->radar_args.max_span_lp >> 12) & 0x7)) &&
+				((rparams->radar_args.max_span_lp >> 15) & 0x1)) {
+				PHY_RADAR(("**** Failed tot_lp_cnt check:"
+					" tot_lp_cnt=%d < %d\n", rlpt->tot_lp_cnt,
+					(rparams->radar_args.max_span_lp >> 12) & 0x7));
+			}
+		} else {
+			/* reject detection spaced more than x minutes */
+			deltat = (uint32) (pi->sh->now - rlpt->last_detection_time_lp);
+			PHY_RADAR(("last_detection_time_lp=%u, watchdog_timer=%u, deltat=%d,"
+				" deltat_min=%d, deltat_sec=%d\n",
+				rlpt->last_detection_time_lp, pi->sh->now, deltat, deltat/60,
+				deltat%60));
+			rlpt->last_detection_time_lp = pi->sh->now;
+			if ((uint32) deltat < (rparams->radar_args.fra_pulse_err & 0xff)*60 ||
+			    (*first_radar_indicator == 1 && (uint32) deltat < 15 * 60)) {
 				PHY_RADAR(("FCC-5 Radar Detection. Time from last detection"
 					" = %u, = %dmin %dsec\n",
 					deltat, deltat / 60, deltat % 60));
 
 				radar_detected->radar_type = RADAR_TYPE_FCC_5;
-				rt_status->detected = TRUE;
 				rt_status->count =
 					rt_status->count + 1;
 				rt_status->pretended = FALSE;
@@ -1746,51 +2110,49 @@ phy_radar_detect_fcc5(phy_info_t *pi,
 				rt_status->ch = pi->radio_chanspec;
 				rt_status->lp_csect_single = rlpt->lp_csect_single;
 
-				//check fc variation
-				if ((rlpt->max_detected_fc_bin5 -
-				    (rlpt->avg_detected_fc_bin5+2)/4) >=
-				    ((rlpt->avg_detected_fc_bin5+2)/4 -
-				    rlpt->min_detected_fc_bin5)) {
-					var_fc_bin5 = ((rlpt->avg_detected_fc_bin5+2)/4
-							- rlpt->min_detected_fc_bin5);
-				} else {
-					var_fc_bin5 = (rlpt->max_detected_fc_bin5
-							- (rlpt->avg_detected_fc_bin5+2)/4);
-				}
 				if (var_fc_bin5 > st->rparams.radar_thrs2.fc_varth_bin5_sb) {
-					if (CHSPEC_IS40(pi->radio_chanspec)) {
+					if (CHSPEC_IS20(pi->radio_chanspec)) {
+						radar_detected->subband = ALLSUBBAND_BW20;
+					} else if (CHSPEC_IS40(pi->radio_chanspec)) {
 						radar_detected->subband = ALLSUBBAND_BW40;
 					} else if (CHSPEC_IS80(pi->radio_chanspec) ||
 						PHY_AS_80P80(pi, pi->radio_chanspec)) {
 						radar_detected->subband = ALLSUBBAND_BW80;
+					} else if ((CHSPEC_CHANNEL(pi->radio_chanspec) == 50) &&
+						(rlpt->avg_detected_fc_bin5 >= 0)) {
+						radar_detected->subband = ALLSUBBAND_BW160_CH50;
+					} else if (CHSPEC_CHANNEL(pi->radio_chanspec) == 114) {
+						radar_detected->subband = ALLSUBBAND_BW160_CH114;
 					}
 				} else {
 					//subband detection
 					radar_detected->subband =
 						wlc_phy_radar_fc_chirp_2_subband(pi,
-						(rlpt->avg_detected_fc_bin5+2)/4, FCC5_CHIRP, 1);
+						rlpt->avg_detected_fc_bin5, FCC5_CHIRP,
+						sec_pll, 1);
 				}
 				rlpt->subband_result = radar_detected->subband;
+				rt_status->detected = ((CHSPEC_CHANNEL(pi->radio_chanspec) == 50) &&
+					((rlpt->subband_result & 0x0f) == 0)) ? FALSE : TRUE;
 			}
-		}
 #ifdef BCMDBG
-		else {
-			if (rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_REJECTED_RADAR) {
-				PHY_RADAR(("SKIPPED false FCC-5 Radar Detection."
-					" Time from last detection = %u, = %dmin %dsec,"
-					" ncsect_single=%d\n",
-					deltat, deltat / 60, deltat % 60, rlpt->lp_csect_single));
+			else {
+				if (RADAR_FEATURE_DEBUG_REJECTED_RADAR) {
+					PHY_RADAR(("SKIPPED false FCC-5 Radar Detection."
+						" Time from last detection = %u, = %dmin %dsec,"
+						" ncsect_single=%d\n",
+						deltat, deltat / 60, deltat % 60,
+						rlpt->lp_csect_single));
+				}
 			}
-		}
 #endif /* BCMDBG */
+		}
 		if (rlpt->lp_len_his_idx < LP_LEN_HIS_SIZE) {
 			rlpt->lp_len_his[rlpt->lp_len_his_idx] = rlpt->lp_length;
 			rlpt->lp_len_his_idx++;
 		}
 		rlpt->lp_length = 0;
-		rlpt->lp_pw_fm_matched = 0;
-		rlpt->lp_n_non_single_pulses = 0;
-		rlpt->lp_skip_tot = 0;
+		rlpt->lp_skip_cnt = 0;
 		rlpt->lp_csect_single = 0;
 		*first_radar_indicator = 0;
 		rlpt->avg_detected_fc_bin5 = 0;
@@ -1896,7 +2258,7 @@ bool bw80_80_mode)
 
 	if (ACMAJORREV_32(pi->pubpi->phy_rev) ||
 		ACMAJORREV_33(pi->pubpi->phy_rev) ||
-		ACMAJORREV_47(pi->pubpi->phy_rev)) {
+		(ACMAJORREV_GE47(pi->pubpi->phy_rev) && !ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		blank_time = (blank_time & 0xff);
 		if (CHSPEC_IS40(pi->radio_chanspec)) {
 			blank_time = blank_time/2;
@@ -1926,11 +2288,8 @@ bool bw80_80_mode)
 		}
 		PHY_RADAR(("%d; now CLEARED\n", rlpt->lp_length));
 		rlpt->lp_length = 0;
-		rlpt->lp_pw_fm_matched = 0;
-		rlpt->lp_n_non_single_pulses = 0;
 		rlpt->lp_cnt = 0;
 		rlpt->lp_skip_cnt = 0;
-		rlpt->lp_skip_tot = 0;
 		rlpt->lp_csect_single = 0;
 		rlpt->lp_len_his_idx = 0;
 		rlpt->min_detected_fc_bin5 = MAX_FC;
@@ -1939,6 +2298,10 @@ bool bw80_80_mode)
 		rlpt->last_detection_time = pi->sh->now;
 		rlpt->last_detection_time_lp = pi->sh->now;
 		rlpt->subband_result = 0;
+		rlpt->last_tstart = 0;
+		rlpt->transmission_chirp = 0;
+		rlpt->chirp_fail_cnt = 0;
+		rlpt->chirp_match_cnt = 0;
 	}
 	if (!rparams->radar_args.npulses) {
 		PHY_ERROR(("%s: radar params not initialized\n", __FUNCTION__));
@@ -1995,13 +2358,13 @@ bool bw80_80_mode)
 	}
 
 #ifdef BCMDBG
-	if (rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_PULSE_DATA) {
+	if (rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_FIFO_OUTPUT) {
 		for (ant = 0; ant < ant_num; ant++) {
 			PHY_RADAR(("\nPulses read from PHY FIFO"));
 			PHY_RADAR(("\nAnt %d: %d pulses, ", ant, rt->length_input[ant]));
 
 			phy_radar_output_pulses(pi, rt->pulses_input[ant], rt->length_input[ant],
-				rparams->radar_args.feature_mask);
+				rparams->radar_args.feature_mask, TRUE);
 		}
 	}
 #endif /* BCMDBG */
@@ -2120,7 +2483,7 @@ bool bw80_80_mode)
 			PHY_RADAR(("\nAnt %d: %d pulses, ", ant, rt->length_input[ant]));
 
 			phy_radar_output_pulses(pi, rt->pulses_input[ant], rt->length_input[ant],
-			                        rparams->radar_args.feature_mask);
+				rparams->radar_args.feature_mask, TRUE);
 		}
 	}
 #endif /* BCMDBG */
@@ -2143,7 +2506,7 @@ bool bw80_80_mode)
 		PHY_RADAR(("\n%d pulses, ", rt->length));
 
 		phy_radar_output_pulses(pi, rt->pulses, rt->length,
-			rparams->radar_args.feature_mask);
+			rparams->radar_args.feature_mask, TRUE);
 	}
 #endif /* BCMDBG */
 
@@ -2178,7 +2541,7 @@ bool bw80_80_mode)
 		PHY_RADAR(("\n%d pulses, ", rt->length));
 
 		phy_radar_output_pulses(pi, rt->pulses, rt->length,
-			rparams->radar_args.feature_mask);
+			rparams->radar_args.feature_mask, TRUE);
 	}
 #endif /* BCMDBG */
 
@@ -2278,7 +2641,7 @@ bool bw80_80_mode)
 		PHY_RADAR(("\n%d pulses, ", rt->length));
 
 		phy_radar_output_pulses(pi, rt->pulses, rt->length,
-			rparams->radar_args.feature_mask);
+			rparams->radar_args.feature_mask, TRUE);
 	}
 #endif /* BCMDBG */
 
@@ -2336,11 +2699,11 @@ bool bw80_80_mode)
 		&avg_fc, &var_fc, blank_time, sec_pll);
 
 #ifdef BCMDBG
-	if ((rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_INTV_PW) != 0) {
+	if ((rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_PRUNED_SHORT_PULSE) != 0) {
 		PHY_RADAR(("\nShort pulses after pruning (filtering)"));
 
 		phy_radar_output_pulses(pi, rt->pulses, rt->length,
-			rparams->radar_args.feature_mask);
+			rparams->radar_args.feature_mask, TRUE);
 
 		PHY_RADAR(("nconsecq_pulses=%d max_pw_delta=%d min_pw=%d max_pw=%d\n",
 			nconsecq_pulses, max_detected_pw - min_detected_pw, min_detected_pw,
@@ -2351,16 +2714,28 @@ bool bw80_80_mode)
 	if (min_detected_interval != 0 || det_type != RADAR_TYPE_NONE) {
 #ifdef BCMDBG
 		if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-			ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			(ACMAJORREV_GE47(pi->pubpi->phy_rev) &&
+			!ACMAJORREV_128(pi->pubpi->phy_rev))) {
+			PHY_RADAR(("\n-- Output Pruned Pulses for Detected radar only -- "));
 			PHY_RADAR(("\nPruned Intv: "));
 			for (i = 0; i < rt->length; i++) {
-				PHY_RADAR(("%d-%d ", rt->pulses[i].interval, i));
+				if (rparams->radar_args.feature_mask &
+					RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
+					PHY_RADAR(("%d-%d ", rt->pulses[i].interval/20, i));
+				} else {
+					PHY_RADAR(("%d-%d ", rt->pulses[i].interval, i));
+				}
 			}
 			PHY_RADAR(("\n"));
 
 			PHY_RADAR(("Pruned PW:  "));
 			for (i = 0; i <  rt->length; i++) {
-				PHY_RADAR(("%i-%d ", rt->pulses[i].pw, i));
+				if (rparams->radar_args.feature_mask &
+					RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
+					PHY_RADAR(("%i-%d ", rt->pulses[i].pw/20, i));
+				} else {
+					PHY_RADAR(("%i-%d ", rt->pulses[i].pw, i));
+				}
 			}
 			PHY_RADAR(("\n"));
 
@@ -2394,9 +2769,16 @@ bool bw80_80_mode)
 
 			PHY_RADAR(("\n(Interval, PW, FM) = [ "));
 			for (i = 0; i < rt->length; i++) {
-				PHY_RADAR(("(%u, %u, %d) ",
-					rt->pulses[i].interval, rt->pulses[i].pw,
-					rt->pulses[i].fm));
+				if (rparams->radar_args.feature_mask &
+					RADAR_FEATURE_DEBUG_TIME_UNIT_US) {
+					PHY_RADAR(("(%u, %u, %d) ",
+						rt->pulses[i].interval, rt->pulses[i].pw/20,
+						rt->pulses[i].fm));
+				} else {
+					PHY_RADAR(("(%u, %u, %d) ",
+						rt->pulses[i].interval, rt->pulses[i].pw,
+						rt->pulses[i].fm));
+				}
 			}
 			PHY_RADAR(("];\n"));
 		}
@@ -2455,11 +2837,16 @@ bool bw80_80_mode)
 				} else if (CHSPEC_IS80(pi->radio_chanspec) ||
 					PHY_AS_80P80(pi, pi->radio_chanspec)) {
 					radar_detected->subband = ALLSUBBAND_BW80;
+				} else if ((CHSPEC_CHANNEL(pi->radio_chanspec) == 50) &&
+					(avg_fc >= 0)) {
+					radar_detected->subband = ALLSUBBAND_BW160_CH50;
+				} else if (CHSPEC_CHANNEL(pi->radio_chanspec) == 114) {
+					radar_detected->subband = ALLSUBBAND_BW160_CH114;
 				}
 			} else {
 				radar_detected->subband =
 					wlc_phy_radar_fc_chirp_2_subband(pi,
-						avg_fc, max_detected_chirp, 0);
+						avg_fc, max_detected_chirp, sec_pll, 0);
 			}
 			rlpt->subband_result = radar_detected->subband;
 
@@ -2468,7 +2855,8 @@ bool bw80_80_mode)
 				" Time from last detection = %u, = %dmin %dsec \n",
 				det_type, detected_pulse_index, nconsecq_pulses,
 				deltat2, deltat2/60, deltat2%60));
-			rt_status->detected = TRUE;
+			rt_status->detected = ((CHSPEC_CHANNEL(pi->radio_chanspec) == 50) &&
+				((rlpt->subband_result & 0x0f) == 0)) ? FALSE : TRUE;
 			rt_status->count = rt_status->count + 1;
 			rt_status->pretended = FALSE;
 			rt_status->radartype = det_type;
@@ -2487,7 +2875,7 @@ bool bw80_80_mode)
 			radar_detected->max_pri =
 				(uint16)((max_detected_interval + 10) / 20);	/* in usec */
 		} else {
-			if (rparams->radar_args.feature_mask & RADAR_FEATURE_DEBUG_REJECTED_RADAR) {
+			if (RADAR_FEATURE_DEBUG_REJECTED_RADAR) {
 				PHY_RADAR(("SKIPPED false Type %d Radar Detection."
 					" min_pw=%d pw_delta=%d pri=%u"
 					" nconsecq_pulses=%d. Time from last"
@@ -2504,6 +2892,8 @@ bool bw80_80_mode)
 					PHY_ERROR((". Detected pulse index too high: %d\n",
 						detected_pulse_index));
 			}
+			/* skipping false detection, return radar type none */
+			det_type = RADAR_TYPE_NONE;
 		}
 		break;
 	}

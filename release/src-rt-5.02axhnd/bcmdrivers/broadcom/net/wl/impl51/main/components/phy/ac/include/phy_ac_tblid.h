@@ -1,7 +1,7 @@
 /*
  * ACPHY Core module internal interface holding tbl id's
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tblid.h 766999 2018-08-24 01:14:37Z $
+ * $Id: phy_ac_tblid.h 773410 2019-03-20 02:51:58Z $
  */
 
 #ifndef _phy_ac_tblid_h_
@@ -189,6 +189,7 @@
 #define ACPHY_TBL_ID_CORE2CHANESTTBL			137
 #define ACPHY_TBL_ID_DYNRADIOREGTBL1			147
 #define ACPHY_TBL_ID_ADCSAMPCAP_PATH1			148
+#define ACPHY_TBL_ID_PAPDLUTSELECT2			157
 #define ACPHY_TBL_ID_GAINLIMIT2				158
 #define ACPHY_TBL_ID_TXGAINCTRLBBMULTLUTS2		159
 #define ACPHY_TBL_ID_GAINCTRLBBMULTLUTS1		160

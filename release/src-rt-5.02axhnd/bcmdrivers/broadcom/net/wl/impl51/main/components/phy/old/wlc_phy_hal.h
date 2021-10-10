@@ -2,7 +2,7 @@
  * Required functions exported by the PHY module (phy-dependent)
  * to common (os-independent) driver code.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wlc_phy_hal.h 715546 2017-08-11 13:02:58Z $
+ * $Id: wlc_phy_hal.h 770792 2019-01-04 01:55:04Z $
  */
 
 #ifndef _wlc_phy_h_
@@ -163,6 +163,9 @@ enum {
 	IOV_PAVARS2,
 	IOV_PHY_DSSF,
 	IOV_EDCRS,
+	IOV_DYNAMIC_ED_THRESH_EN,
+	IOV_DYNAMIC_ED_THRESH_ACPHY_NVRAM,
+	IOV_DED_SETUP,
 	IOV_PHY_FORCECAL_OBT,
 	IOV_PHY_DYN_ML,
 	IOV_PHY_ACI_NAMS,
@@ -198,6 +201,8 @@ enum {
 	IOV_PHY_TXCALVER, /* version for handing different structrues of txcal */
 	IOV_PHY_BPHYMRC,
 	IOV_PHY_BSSCOLOR,
+	IOV_PHY_TXPWRCAP,
+	IOV_PHY_SNIFFER_ALIGN,
 	IOV_PHY_LAST	/* insert before this one */
 };
 
@@ -246,7 +251,38 @@ struct phy_txcore_pwr_offsets {
 #define WL_TX_POWER_F_MIMO		4
 #define WL_TX_POWER_F_SISO		8
 #define WL_TX_POWER_F_HT		0x10
-
+#ifdef WL11AX
+typedef struct {
+	uint8 frame_type;
+	uint8 he_format;
+	bool not_sounding;
+	bool preamble;
+	uint8 mcs_nss;
+	bool stbc;
+	uint8 n_pwr;
+	uint8 n_user;
+	bool mu;
+	uint8 core_mask;
+	uint8 ant_cfg;
+	uint8 pktbw;
+	uint8 subband;
+	uint8 partial_ofdma_subband;
+	bool dynBW_present;
+	bool dynBW_mode;
+	uint8 scrambler;
+	uint32 cfo_comp_val;
+	bool cfo_comp_en;
+	bool has_trigger_info;
+	uint8 pwr_offset[4];
+	uint8 bfm_mu[16];
+	uint8 usridx_mu[16];
+	uint8 ruidx_mu[16];
+	uint8 mcs_nss_mu[16];
+	bool ldpc_mu[16];
+	uint16 aid_mu[16];
+	uint8 rl_backoff;
+} phy_txctrl_info_t;
+#endif /* WL11AX */
 typedef struct {
 	uint32 flags;
 	chanspec_t chanspec;		/* txpwr report for this channel */
@@ -257,9 +293,15 @@ typedef struct {
 	uint8 est_Pout_act[4]; /* Latest tx power out estimate per RF chain w/o adjustment */
 	uint8 est_Pout_cck;			/* Latest CCK tx power out estimate */
 	uint8 tx_power_max[4];		/* Maximum target power among all rates */
+	/* XXX this parameter is no longer being populated because the data structures being
+	 * indexed were removed as part of the PPR_OPT overhaul. This can probably be deleted.
+	 */
 	uint tx_power_max_rate_ind[4];		/* Index of the rate with the max target power */
 	ppr_t *ppr_board_limits;
 	ppr_t *ppr_target_powers;
+#ifdef WL11AX
+	phy_txctrl_info_t txctrl_info;
+#endif /* WL11AX */
 #ifdef WL_SARLIMIT
 	int8 SARLIMIT[PHY_MAX_CORES];
 #endif // endif
@@ -326,7 +368,9 @@ extern int8 wlc_phy_get_tx_power_offset_by_mcs(wlc_phy_t *ppi, uint8 mcs_offset)
 extern int8 wlc_phy_get_tx_power_offset(wlc_phy_t *ppi, uint8 tbl_offset);
 int wlc_phy_get_est_pout(wlc_phy_t *ppi, uint8* est_Pout, uint8* est_Pout_adj,
 	uint8* est_Pout_cck);
-
+#ifdef WL11AX
+int wlc_phy_get_txctrl_mu(wlc_phy_t *ppi, phy_txctrl_info_t* txctrl_info);
+#endif /* WL11AX */
 /* Calibration caching Module (regular caching, per channel, smart cal) */
 extern void wlc_phy_avvmid_txcal(wlc_phy_t *ppi, wlc_phy_avvmid_txcal_t *val, bool set);
 /* Calibration caching Module (regular caching, per channel, smart cal) */

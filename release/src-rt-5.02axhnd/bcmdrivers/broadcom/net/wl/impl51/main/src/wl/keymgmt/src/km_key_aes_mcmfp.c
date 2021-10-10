@@ -1,6 +1,6 @@
 /*
  * Implementation of wlc_key algo 'aes' for multicast mgmt frames
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -156,6 +156,9 @@ aes_bip_gmac_mic(wlc_key_t *key, void *pkt, const struct dot11_management_header
 	memset(&data[data_len], 0, key->info.icv_len); /* zero mic */
 	data_len += key->info.icv_len;
 
+	/* XXX All data needs to be folded into AAD, according to NIST SP-800-38D
+	 * plaintext for GMAC is empty.
+	 */
 	aes_igtk = (aes_igtk_t *)key->algo_impl.ctx;
 	aes_gcm_mac(aes_igtk->key, key->info.key_len, nonce, nonce_len,
 		data, data_len, NULL, 0, mic, key->info.icv_len);

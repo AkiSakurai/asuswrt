@@ -136,7 +136,7 @@ static inline int _str_int_aligned_len(char *name)
 }
 static inline int _get_valuepair_total_len(char *name, char *value,int len)
 {
-    return 2*sizeof(int)+_str_int_aligned_len(name)+(len?len:(value!=NULL?(strlen(value)+1):0));
+    return 2*sizeof(int)+_str_int_aligned_len(name)+(len?len:(value!=NULL?((int)strlen(value)+1):0));
 }
 
 static inline t_WLCSM_NAME_VALUEPAIR *_get_valuepair_value(t_WLCSM_NAME_VALUEPAIR *v)

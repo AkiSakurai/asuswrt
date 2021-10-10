@@ -5,7 +5,7 @@
  * to enums defined in wlc_phy_hal.h and ultimately calls wlc_phy_iovar_dispatch() in
  * the wlc_phy_hal.h
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -50,6 +50,21 @@
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
  * $Id: wlc_phy_iovar.h 657820 2016-09-02 18:26:33Z $
+ */
+
+/*
+ * XXX  Note that while the wlc_phy_iovar_dispatch() is the intended receipt of a iovar execution,
+ * this module calls a trivial relay function in wlc_bmac.c. i.e
+ *
+ *  int wlc_bmac_phy_iovar_dispatch(wlc_hw_info_t *wlc_hw, uint32 actionid, uint16 type,
+ *                                  void *p, uint plen, void *a, int alen, int vsize)
+ *  {
+ *      return wlc_phy_iovar_dispatch(wlc_hw->band->pi, actionid, type, p, plen, a, alen, vsize);
+ *  }
+ *
+ * It isn't clear to me why this relay function exists:  Since wlc_bamc_stubs.c provides stubs
+ * for many wlc_phy_hal.h functions, not just wlc_bmac.h functions, it seems like we could just
+ * call wlc_phy_iovar_dispatch() and also implement this function in wlc_bmac_stubs.c
  */
 
 #ifndef _wlc_phy_iovar_h_

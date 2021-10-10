@@ -1,7 +1,7 @@
 /*
  * WPS ui
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: wps_ui.c 676559 2016-12-22 17:02:55Z $
+ * $Id: wps_ui.c 770390 2018-12-13 19:07:04Z $
  */
 
 #include <stdio.h>
@@ -151,6 +151,10 @@ typedef struct {
 	int wps_nfc_err_code;
 #endif // endif
 	unsigned int wps_msglevel;
+
+#ifdef MULTIAP
+	int map_pbc_method;
+#endif // endif
 } wps_ui_t;
 
 static wps_hndl_t ui_hndl;
@@ -276,6 +280,12 @@ wps_ui_get_env(char *name)
 	}
 #endif // endif
 
+#ifdef MULTIAP
+	if (!strcmp(name, "map_pbc_method")) {
+		sprintf(buf, "%d", wps_ui->map_pbc_method);
+		return buf;
+	}
+#endif // endif
 	return "";
 }
 
@@ -315,6 +325,11 @@ wps_ui_set_env(char *name, char *value)
 		wps_strncpy(wps_ui->wps_enr_ssid, value, sizeof(wps_ui->wps_enr_ssid));
 	else if (!strcmp(name, "wps_enr_bssid"))
 		wps_strncpy(wps_ui->wps_enr_bssid, value, sizeof(wps_ui->wps_enr_bssid));
+#endif // endif
+
+#ifdef MULTIAP
+	else if (!strcmp(name, "map_pbc_method"))
+		wps_ui->map_pbc_method = atoi(value);
 #endif // endif
 
 	return;
@@ -1249,6 +1264,9 @@ wps_ui_do_set(char *buf)
 	wps_ui_t a_ui;
 	wps_ui_t *ui = &a_ui;
 	wps_app_t *wps_app = get_wps_app();
+#if defined(MULTIAP)
+	unsigned long start_tm = 0;
+#endif	/* MULTIAP */
 
 	/* Process set command */
 	memset(ui, 0, sizeof(wps_ui_t));
@@ -1325,6 +1343,9 @@ wps_ui_do_set(char *buf)
 		wps_tutrace_set_msglevel(ui->wps_msglevel);
 	}
 	else {
+#if defined(MULTIAP)
+		start_tm = wpssta_get_start_time();
+#endif	/* MULTIAP */
 		/* Add in PF #3 */
 		if (ui->wps_config_command == WPS_UI_CMD_START &&
 		    ui->wps_pbc_method == WPS_UI_PBC_SW &&
@@ -1360,6 +1381,20 @@ wps_ui_do_set(char *buf)
 					/* set the process status */
 					wps_setProcessStates(WPS_ASSOCIATED);
 					ret = wpssta_open_session(wps_app, wps_ui->wps_ifname);
+#if defined(MULTIAP)
+					/* If multiap onboarding is happening map time being
+					 * updated in open_session and update the start time
+					 * to the time when session was started, for the first
+					 * session variable start_tm will be 0 hence it will get
+					 * updated only after first iteration is done.
+					 */
+					if (wps_map_is_onboarding(wps_ui->wps_ifname)) {
+						if (start_tm != 0 &&
+							(get_current_time() - start_tm) < 120) {
+							wpssta_set_start_time(start_tm);
+						}
+					}
+#endif	/* MULTIAP */
 					if (ret != WPS_CONT) {
 						/* Normally it cause by associate time out */
 						wps_setProcessStates(WPS_TIMEOUT);
@@ -1454,6 +1489,8 @@ wps_ui_init()
 	 * always read WPS status from the ui variable.
 	*/
 	value = wps_get_conf("wps_proc_status");
+	if (value == NULL)
+		value = "0"; /* Init */
 	wps_ui_set_env("wps_proc_status", value);
 
 	return 0;
@@ -1466,3 +1503,46 @@ wps_ui_deinit()
 	wps_osl_ui_handle_deinit(ui_hndl.handle);
 	return;
 }
+
+#if defined(MULTIAP)
+/* Try map onboarding in another wireless sta interface */
+void
+wps_ui_map_try_pbc()
+{
+	char buf[512] = {0}, ifname[15] = {0}, *next;
+	int len = 0;
+	char *ifnames = wps_map_get_ifnames();
+	char *mode = NULL, tmp[64] = {0};
+
+	TUTRACE((TUTRACE_INFO, "Multiap timeout happend trying wps in "
+		"other than %s interface!\n", wps_ui->wps_ifname));
+
+	foreach(ifname, ifnames, next) {
+		if (!strcmp(ifname, wps_ui->wps_ifname)) {
+			continue;
+		}
+		snprintf(tmp, sizeof(tmp), "%s_mode", ifname);
+		mode = wps_safe_get_conf(tmp);
+		if (strcmp(mode, "sta")) {
+			continue;
+		}
+
+		break;
+	}
+
+	if (ifname[0] != '\0') {
+		wps_map_update_ifnames(wps_ui->wps_ifname);
+
+		TUTRACE((TUTRACE_INFO, "Current wps session was in %s now "
+			"trying in interface %s !\n", wps_ui->wps_ifname, ifname));
+
+		len += sprintf(buf + len, "wps_config_command=\"%d\" ", WPS_UI_CMD_START);
+		len += sprintf(buf + len, "wps_action=\"%d\" ", WPS_UI_ACT_ENROLL);
+		len += sprintf(buf + len, "wps_method=\"%d\" ", WPS_UI_METHOD_PBC);
+		len += sprintf(buf + len, "wps_pbc_method=\"%d\" ", WPS_UI_PBC_SW);
+		len += sprintf(buf + len, "wps_ifname=%s ", ifname);
+
+		wps_ui_do_set(buf);
+	}
+}
+#endif	/* MULTIAP */

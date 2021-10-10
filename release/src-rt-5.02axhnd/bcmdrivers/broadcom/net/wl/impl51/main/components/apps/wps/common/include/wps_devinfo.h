@@ -1,7 +1,7 @@
 /*
  * WPS device infomation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_devinfo.h 525052 2015-01-08 20:18:35Z $
+ * $Id: wps_devinfo.h 766179 2018-07-26 07:49:15Z $
  */
 
 #ifndef __WPS_DEVICE_INFO_H__
@@ -131,7 +131,14 @@ typedef struct {
 		uint16 secDeviceSubCategory;
 		uint32 secDeviceOui;
 #endif // endif
-
+#if defined(MULTIAP)
+	uint8	map_attr;
+	char    backhaul_ssid[SIZE_SSID_LENGTH];
+	char    backhaul_keyMgmt[SIZE_20_BYTES+1];
+	char    backhaul_nwKey[SIZE_64_BYTES+1];
+	uint16  backhaul_crypto;
+	void    *mp_tlvEsM8BhSta;
+#endif	/* MULTIAP */
 } DevInfo;
 
 typedef enum {
@@ -149,5 +156,8 @@ DevInfo *devinfo_new();
 void devinfo_delete(DevInfo *dev_inf);
 
 uint16 devinfo_getKeyMgmtType(DevInfo *inf);
+#if defined(MULTIAP)
+uint16 devinfo_getBackhaulKeyMgmtType(DevInfo *inf);
+#endif	/* MULTIAP */
 
 #endif /* __WPS_DEVICE_INFO_H__ */

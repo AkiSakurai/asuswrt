@@ -165,6 +165,11 @@ Curl_addrinfo *Curl_ipv4_resolve_r(const char *hostname,
     buf = calloc(1, CURL_HOSTENT_SIZE);
     if(!buf)
       return NULL; /* major failure */
+    /*
+     * The clearing of the buffer is a workaround for a gethostbyname_r bug in
+     * qnx nto and it is also _required_ for some of these functions on some
+     * platforms.
+     */
 
 #if defined(HAVE_GETHOSTBYNAME_R_5)
     /* Solaris, IRIX and more */

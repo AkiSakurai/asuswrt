@@ -1,6 +1,6 @@
 /*
  * private interface for wlc_key algo 'wep'
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_key_wep_pvt.h 684564 2017-02-13 21:59:26Z $
+ * $Id: km_key_wep_pvt.h 774133 2019-04-11 09:15:54Z $
  */
 
 #ifndef km_key_wep_pvt_h_
@@ -70,7 +70,6 @@
 struct wep_key {
 	uint8 key[WEP_KEY_ALLOC_SIZE];		/* key data */
 	uint8 tx_seq[DOT11_IV_LEN];			/* LE order - need only 24 bits */
-
 };
 
 typedef struct wep_key wep_key_t;

@@ -1,6 +1,6 @@
 /*
  * Security and Key Management WLC Module Public Interface
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: wlc_keymgmt.h 762095 2018-05-10 21:01:48Z $
+ * $Id: wlc_keymgmt.h 771986 2019-02-12 22:20:04Z $
  */
 
 /* This file is the interface to WLC key management fucntionality
@@ -70,14 +70,6 @@
 #define WLC_KEYMGMT_IBSS_MAX_PEERS		16
 #define WLC_KEYMGMT_NUM_WOWL_KEYS		(WLC_KEYMGMT_NUM_GROUP_KEYS + 1)
 #define WLC_KEYMGMT_IBSS_MAX_PEERS		16
-
-#ifndef WLC_KEYMGMT_MAX_KEYS
-#ifdef AP
-#define WLC_KEYMGMT_MAX_KEYS 132
-#else
-#define WLC_KEYMGMT_MAX_KEYS 54
-#endif /* AP */
-#endif /* WLC_KEYMGMT_MAX_KEYS */
 
 /* Support for Key Management events */
 enum wlc_keymgmt_event {

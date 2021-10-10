@@ -2,7 +2,7 @@
  * This file contains the common code routines to access/update the
  * IGMP Snooping database.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: igsc_sdb.c 759252 2018-04-24 19:19:59Z $
+ * $Id: igsc_sdb.c 775532 2019-06-03 16:29:20Z $
  */
 #include <typedefs.h>
 #include <bcmdefs.h>
@@ -81,6 +81,9 @@ igsc_sdb_init(igsc_info_t *igsc_info)
 	for (i = 0; i < IGSDB_HASHT_SIZE; i++)
 	{
 		clist_init_head(&igsc_info->mgrp_sdb[i]);
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+		clist_init_head(&igsc_info->mgrp_sdb_ipv6[i]);
+#endif // endif
 	}
 
 	return;
@@ -143,6 +146,7 @@ igsc_sdb_mh_delete(igsc_info_t *igsc_info, igsc_mh_t *mh)
 	return;
 }
 
+#define MAX_MISS_REPORT_CNT	3
 /*
  * Description: This function is called when no reports are received
  *              from any of the participating group members with in
@@ -160,17 +164,36 @@ igsc_sdb_timer(igsc_mh_t *mh)
 	igsc_info = mh->mh_mgrp->igsc_info;
 	OSL_LOCK(igsc_info->sdb_lock);
 
-	IGSC_STATS_INCR(igsc_info, igmp_mem_timeouts);
+	if (mh->missed_report_cnt >= MAX_MISS_REPORT_CNT) {
+		IGSC_STATS_INCR(igsc_info, igmp_mem_timeouts);
 
-	IGS_IGSDB("Multicast host entry %d.%d.%d.%d timed out\n",
-	          (mh->mh_ip >> 24), ((mh->mh_ip >> 16) & 0xff),
-	          ((mh->mh_ip >> 8) & 0xff), (mh->mh_ip & 0xff));
+		IGS_IGSDB("Multicast host entry %d.%d.%d.%d for %d.%d.%d.%d timed out\n",
+			(mh->mh_ip >> 24), ((mh->mh_ip >> 16) & 0xff),
+			((mh->mh_ip >> 8) & 0xff), (mh->mh_ip & 0xff),
+			(mh->mh_mgrp->mgrp_ip >> 24), ((mh->mh_mgrp->mgrp_ip >> 16) & 0xff),
+			((mh->mh_mgrp->mgrp_ip >> 8) & 0xff), (mh->mh_mgrp->mgrp_ip & 0xff));
 
-	/* Timer expiry indicates that no report is seen from the
-	 * member. First check the interface entry before deleting
-	 * the host entry.
-	 */
-	igsc_sdb_mh_delete(igsc_info, mh);
+	        /* Timer expiry indicates that no report is seen from the
+		 * member. First check the interface entry before deleting
+	         * the host entry.
+		 */
+	        igsc_sdb_mh_delete(igsc_info, mh);
+	} else {
+		mh->missed_report_cnt++;
+		IGSC_STATS_INCR(igsc_info, igmp_missed_report_to);
+		IGS_IGSDB("Missed report from %d.%d.%d.%d for %d.%d.%d.%d %d times.Waiting..\n",
+				(mh->mh_ip >> 24), ((mh->mh_ip >> 16) & 0xff),
+				((mh->mh_ip >> 8) & 0xff), (mh->mh_ip & 0xff),
+				(mh->mh_mgrp->mgrp_ip >> 24), ((mh->mh_mgrp->mgrp_ip >> 16) & 0xff),
+				((mh->mh_mgrp->mgrp_ip >> 8) & 0xff), (mh->mh_mgrp->mgrp_ip & 0xff),
+				mh->missed_report_cnt);
+
+		mh->mgrp_timer = igs_osl_timer_init("IGMPV2_GRP_MEM_INTV",
+				(void (*)(void *))igsc_sdb_timer, (void *)mh);
+
+		igs_osl_timer_add(mh->mgrp_timer, igsc_info->grp_mem_intv, FALSE);
+	}
+
 	OSL_UNLOCK(igsc_info->sdb_lock);
 
 	return;
@@ -370,10 +393,8 @@ igsc_sdb_member_add(igsc_info_t *igsc_info, void *ifp, uint32 mgrp_ip,
 	ASSERT(IP_ISMULTI(mgrp_ip));
 	ASSERT(!IP_ISMULTI(mh_ip));
 
-	if (!ifp) {
-		dump_stack();
+	if (!ifp)
 		return (FAILURE);
-	}
 
 	OSL_LOCK(igsc_info->sdb_lock);
 
@@ -421,6 +442,7 @@ igsc_sdb_member_add(igsc_info_t *igsc_info, void *ifp, uint32 mgrp_ip,
 		if (mh != NULL)
 		{
 			OSL_UNLOCK(igsc_info->sdb_lock);
+			mh->missed_report_cnt = 0;
 #ifdef MEDIAROOM_IGMP_WAR
 			/* Refresh the group interval timer for all group members */
 			update_all_timers_in_group(igsc_info, mgrp, mh_ip, ifp);
@@ -442,6 +464,7 @@ igsc_sdb_member_add(igsc_info_t *igsc_info, void *ifp, uint32 mgrp_ip,
 	}
 
 	/* Initialize the host entry */
+	mh->missed_report_cnt = 0;
 	mh->mh_ip = mh_ip;
 	mh->mh_mgrp = mgrp;
 
@@ -537,6 +560,11 @@ sdb_add_exit0:
 }
 
 #ifdef BCM_NBUFF_WLMCAST
+/* igsc_sdb_sta_del API is an obsolete function which will not be used in
+ * BRANCH_KUDU_17_10 after IPV6 mc support is checked in, it is keep here to
+ * make old KUDU)_TWIG branches like TWIG_17_10_25 branches to compile as it
+ * use trunk emf source
+ */
 int32
 igsc_sdb_sta_del(igsc_info_t *igsc_info, void *ifp, uint32 mh_ip)
 {
@@ -545,7 +573,6 @@ igsc_sdb_sta_del(igsc_info_t *igsc_info, void *ifp, uint32 mh_ip)
 	clist_head_t *ptr;
 	int32 ret = SUCCESS;
 	igsc_mh_t *mh;
-
 	OSL_LOCK(igsc_info->sdb_lock);
 	/* go through all mutlicast group and find the sta to remove it */
 	for (hash = 0; hash < IGSDB_HASHT_SIZE; hash++) {
@@ -559,13 +586,10 @@ igsc_sdb_sta_del(igsc_info_t *igsc_info, void *ifp, uint32 mh_ip)
 			{
 				/* Delete the timer */
 				igs_osl_timer_del(mh->mgrp_timer);
-
 				IGS_IGSDB("Deleting host entry %d.%d.%d.%d\n",
 						(mh_ip >> 24), ((mh_ip >> 16) & 0xff),
 						((mh_ip >> 8) & 0xff), (mh_ip & 0xff));
-
 				igsc_sdb_mh_delete(igsc_info, mh);
-
 			}
 		}
 	}
@@ -696,6 +720,9 @@ igsc_sdb_list(igsc_info_t *igsc_info, igs_cfg_sdb_list_t *list, uint32 size)
 		return (FAILURE);
 	}
 
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+	OSL_LOCK(igsc_info->sdb_lock);
+#endif // endif
 	for (i = 0; i < IGSDB_HASHT_SIZE; i++)
 	{
 		for (ptr1 = igsc_info->mgrp_sdb[i].next;
@@ -712,7 +739,13 @@ igsc_sdb_list(igsc_info_t *igsc_info, igs_cfg_sdb_list_t *list, uint32 size)
 				list->sdb_entry[index].mh_ip = mh->mh_ip;
 				if_name_size = sizeof(list->sdb_entry[index].if_name);
 				strncpy(list->sdb_entry[index].if_name,
-				        DEV_IFNAME(mh->mh_mi->mi_ifp), if_name_size);
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+						igsc_info->inst_id, if_name_size);
+						// here, mh_ifp is not device, but it is STA, so
+						// DEV_IFNAME wont' retrun device name
+#else
+						DEV_IFNAME(mh->mh_mi->mi_ifp), if_name_size);
+#endif // endif
 				list->sdb_entry[index].if_name[if_name_size -1] = '\0';
 				index++;
 			}
@@ -720,6 +753,9 @@ igsc_sdb_list(igsc_info_t *igsc_info, igs_cfg_sdb_list_t *list, uint32 size)
 	}
 
 	list->num_entries = index;
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+	OSL_UNLOCK(igsc_info->sdb_lock);
+#endif // endif
 
 	return (SUCCESS);
 }
@@ -813,6 +849,8 @@ igsc_sdb_interface_del(igsc_info_t *igsc_info, void *ifp)
 	}
 
 	OSL_UNLOCK(igsc_info->sdb_lock);
-
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+	igsc_sdb_interface_del_ipv6(igsc_info, ifp);
+#endif // endif
 	return (SUCCESS);
 }

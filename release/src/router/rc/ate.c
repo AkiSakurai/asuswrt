@@ -240,6 +240,115 @@ static int setAllSpecificColorLedOn(enum ate_led_color color)
 		}
 		break;
 #endif
+#if defined(RTAX95Q)
+	case MODEL_RTAX95Q:
+		{
+			if(color == LED_COLOR_RED) {
+				setAllRedLedOn();
+			}else if (color == LED_COLOR_GREEN) {
+				setAllGreenLedOn();
+			}else if (color == LED_COLOR_BLUE) {
+				setAllBlueLedOn();
+			}
+		}
+		break;
+#endif
+#if defined(RTAX58U) || defined(TUFAX3000)
+	case MODEL_RTAX58U:
+		{
+			static enum led_id white_led[] = {
+				LED_POWER,
+				LED_LAN1, LED_LAN2, LED_LAN3, LED_LAN4,
+				LED_WAN_NORMAL,
+				LED_ID_MAX
+			};
+			static enum led_id red_led[] = {
+				LED_WAN,
+				LED_ID_MAX
+			};
+			all_led[LED_COLOR_WHITE] = white_led;
+			all_led[LED_COLOR_RED] = red_led;
+
+			if(color == LED_COLOR_WHITE) {
+				eval("wl", "-i", "eth5", "ledbh", "0", "1");	// wl 2.4G
+				eval("wl", "-i", "eth6", "ledbh", "15", "1");	// wl 5G low
+			}
+			else {
+				eval("wl", "-i", "eth5", "ledbh", "0", "21");	// wl 2.4G
+				eval("wl", "-i", "eth6", "ledbh", "15", "0");	// wl 5G low
+			}
+		}
+		break;
+#endif
+#if defined(RTAX56U)
+	case MODEL_RTAX56U:
+		{
+			static enum led_id white_led[] = {
+				LED_POWER,
+				LED_WAN,
+				LED_ID_MAX
+			};
+			static enum led_id red_led[] = {
+				LED_WAN_NORMAL,
+				LED_ID_MAX
+			};
+			all_led[LED_COLOR_WHITE] = white_led;
+			all_led[LED_COLOR_RED] = red_led;
+
+			if(color == LED_COLOR_WHITE) {
+				eval("wl", "-i", "eth5", "ledbh", "0", "1");	// wl 2.4G
+				eval("wl", "-i", "eth6", "ledbh", "0", "1");	// wl 5G low
+			}
+			else {
+				eval("wl", "-i", "eth5", "ledbh", "0", "21");	// wl 2.4G
+				eval("wl", "-i", "eth6", "ledbh", "0", "21");	// wl 5G low
+			}
+		}
+		break;
+#endif
+#if defined(RTAX86U) || defined(RTAX5700) || defined(RTAX68U)
+	case MODEL_RTAX86U:
+	case MODEL_RTAX68U:
+		{
+			static enum led_id white_led[] = {
+					LED_POWER, LED_WAN_NORMAL,
+#ifdef RTCONFIG_LAN4WAN_LED
+					LED_LAN1, LED_LAN2, LED_LAN3, LED_LAN4,
+#elif RTCONFIG_LANWAN_LED
+					LED_LAN,
+#endif
+					//LED_WPS,
+					LED_ID_MAX
+					};
+			static enum led_id red_led[] = {
+					LED_WAN,
+#ifdef RTCONFIG_EXTPHY_BCM84880
+					LED_EXTPHY,
+#endif
+					LED_ID_MAX
+					};
+			all_led[LED_COLOR_WHITE] = white_led;
+			all_led[LED_COLOR_RED] = red_led;
+
+			if(color == LED_COLOR_WHITE) {
+				eval("wl", "-i", "eth6", "ledbh", "7", "1"); // wl 2.4G
+				eval("wl", "-i", "eth7", "ledbh", "15", "1"); // wl 5G
+#ifdef RTCONFIG_EXTPHY_BCM84880
+				eval("ethctl", "phy", "ext", "0x1e", "0x07FFF0", "0x0011");	// 2.5G LED (1000M/100M)
+				eval("ethctl", "phy", "ext", "0x1e", "0x1a832", "0x21");        // 2.5G LED (2500M)
+				eval("ethctl", "phy", "ext", "0x1e", "0x1a83b", "0xa490");
+#endif
+			}
+			else {
+				eval("wl", "-i", "eth6", "ledbh", "7", "0"); // wl 2.4G
+				eval("wl", "-i", "eth7", "ledbh", "15", "0"); // wl 5G
+#ifdef RTCONFIG_EXTPHY_BCM84880
+				eval("ethctl", "phy", "ext", "0x1e", "0x07FFF0", "0x0009");
+#endif
+			}
+		}
+		break;
+#endif
 #if defined(MAPAC1750)
 	case MODEL_MAPAC1750:
 		{
@@ -285,6 +394,7 @@ static int setAllSpecificColorLedOn(enum ate_led_color color)
 	puts("1");
 	return 0;
 }
+
 int isValidMacAddr(const char* mac)
 {
 	int sec_byte;
@@ -441,42 +551,17 @@ pincheck(const char *a)
 
 int isValidSN(const char *sn)
 {
-	int i;
-	unsigned char *c;
+	int i = 0;
+	unsigned char *c = (unsigned char *) sn;
 
 	if (strlen(sn) != SERIAL_NUMBER_LENGTH)
 		return 0;
 
-	c = (unsigned char *)sn;
-	/* [1]year: C~Z (2012=C, 2013=D, ...) */
-	if (*c < 0x43 || *c > 0x5A)
-		return 0;
-	c++;
-	/* [2]month: 1~9 & ABC */
-	if (!((*c > 0x30 && *c < 0x3A) || *c == 0x41 || *c == 0x42 || *c == 0x43))
-		return 0;
-	c++;
-	/* [3]WLAN & ADSL: I(aye) */
-	if (*c != 0x49)
-		return 0;
-	c++;
-	/* [4]Channel: AEJ0(zero) (A:11ch, E:13ch, J:14ch, 0:no ch) */
-	if (*c != 0x41 && *c != 0x45 && *c != 0x4A && *c != 0x30)
-		return 0;
-	c++;
-	/* [5]factory: 0~9 & A~Z, except I(aye) & O(oh) */
-	if (!((*c > 0x2F && *c < 0x3A) || (*c > 0x40 && *c < 0x5B)) || *c == 0x49 || *c == 0x4F)
-		return 0;
-	c++;
-	/* [6]model: 0~9 & A~Z */
-	if (!((*c > 0x2F && *c < 0x3A) || (*c > 0x40 && *c < 0x5B)))
-		return 0;
-	c++;
-	/* [7~12]serial: 0~9 */
-	i = 7;
-	while (i < 13) {
-		if (*c < 0x30 || *c > 0x39)
+	while (i < SERIAL_NUMBER_LENGTH) {
+		/*  0~9 & A~Z */
+		if (!((*c > 0x2F && *c < 0x3A) || (*c > 0x40 && *c < 0x5B)))
 			return 0;
+
 		c++;
 		i++;
 	}
@@ -916,7 +1001,7 @@ int asus_ate_command(const char *command, const char *value, const char *value2)
 		}
 		return 0;
 	}
-#if defined(RTAC3200) || defined(RTAC5300)|| defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U) || \
+#if defined(RTAC3200) || defined(RTAC5300)|| defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U)  || defined(RTAX95Q)|| \
 	(defined(RTCONFIG_QCA) && defined(RTCONFIG_HAS_5G_2))
 	else if (!strcmp(command, "Set_MacAddr_5G_2")) {
 #if defined(RTCONFIG_CFEZ) && defined(RTCONFIG_BCMARM)
@@ -1517,7 +1602,7 @@ int asus_ate_command(const char *command, const char *value, const char *value2)
 #endif
 		return 0;
 	}
-#if defined(RTAC3200) || defined(RTAC5300) || defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U) || \
+#if defined(RTAC3200) || defined(RTAC5300) || defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U)  || defined(RTAX95Q)|| \
     (defined(RTCONFIG_QCA) && defined(RTCONFIG_HAS_5G_2))
 	else if (!strcmp(command, "Get_MacAddr_5G_2")) {
 		getMAC_5G_2();
@@ -1657,7 +1742,7 @@ int asus_ate_command(const char *command, const char *value, const char *value2)
 			puts("ATE_ERROR");
 		return 0;
 	}
-#if defined(RTAC3200) || defined(RTAC5300) || defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U) || \
+#if defined(RTAC3200) || defined(RTAC5300) || defined(GTAC5300) || defined(GTAX11000) || defined(RTAX92U) || defined(RTAX95Q) || \
     (defined(RTCONFIG_QCA) && defined(RTCONFIG_HAS_5G_2))
 	else if (!strcmp(command, "Get_ChannelList_5G_2")) {
 		if (!Get_ChannelList_5G_2())
@@ -2009,7 +2094,15 @@ int asus_ate_command(const char *command, const char *value, const char *value2)
 #endif
 #ifdef RTCONFIG_AMAS
 	else if (!strcmp(command, "Set_AB")) {
-		set_amas_bdl();
+		int flag;
+		if (value)
+			flag = atoi(value);
+		else
+			flag = 1; /* old flag */
+		if ((flag <= AB_FLAG_NONE) || (flag >= AB_FLAG_MAX))
+			puts("ATE_ERROR");
+		else
+			set_amas_bdl(flag);
 		return 0;
 	}
 	else if (!strcmp(command, "Unset_AB")) {
@@ -2018,6 +2111,21 @@ int asus_ate_command(const char *command, const char *value, const char *value2)
 	}
 	else if (!strcmp(command, "Get_AB")) {
 		get_amas_bdl();
+		return 0;
+	}
+	else if (!strcmp(command, "Set_ABK")) {
+		if (!value || strlen(value)!=CFGSYNC_GROUPID_LEN || !is_valid_group_id(value))
+			puts("ATE_ERROR");
+		else
+			set_amas_bdlkey(value);
+		return 0;
+	}
+	else if (!strcmp(command, "Unset_ABK")) {
+		unset_amas_bdlkey();
+		return 0;
+	}
+	else if (!strcmp(command, "Get_ABK")) {
+		get_amas_bdlkey();
 		return 0;
 	}
 #endif
@@ -2380,7 +2488,7 @@ int ate_dev_status(void)
 	{
 #define RETRY_MAX 100
 		int retry;
-#ifdef RTCONFIG_LANTIQ
+#if defined(RTCONFIG_LANTIQ) || defined(RTAX95Q)
 		system("killall bluetoothd");
 		system("hciconfig hci0 down");
 		system("hciconfig hci0 reset");
@@ -2411,9 +2519,15 @@ int ate_dev_status(void)
 #endif
 
 
-#if defined(GTAX11000) && defined(RTCONFIG_EXTPHY_BCM84880)
+#if defined(RTCONFIG_EXTPHY_BCM84880)
 	/* Get extend 2.5G phy bcm84880 status */
-	if(ethctl_get_link_status("eth5") == -1 || ethctl_phy_op("ext", 0x1e, 0x1E4037, 0, 0) == -1)
+	if(
+#if defined(RTCONFIG_HND_ROUTER_AX_6710)
+			!hnd_get_phy_status("eth5")
+#else
+			ethctl_get_link_status("eth5") == -1
+#endif
+			|| ethctl_phy_op("ext", 0x1e, 0x1E4037, 0, 0) == -1)
 		result = 'X';
 	else
 		result = 'O';

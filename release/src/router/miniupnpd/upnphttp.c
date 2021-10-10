@@ -730,6 +730,9 @@ ProcessHttpQuery_upnphttp(struct upnphttp * h)
 #ifdef ENABLE_AURASYNC
 		{ AS_PATH, genAS},
 #endif
+#ifdef ENABLE_NVGFN
+		{ NVGFN_PATH, genNVGFN},
+#endif
 		{ NULL, NULL}
 	};
 	char HttpCommand[16];

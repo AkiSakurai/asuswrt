@@ -1,7 +1,7 @@
 /*
  * WPS app utilies
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -52,6 +52,12 @@
 #include <wps_wps.h>
 #include <wps_apputils.h>
 #include <wlif_utils.h>
+
+/*
+ * PR65690. Let customer have a chance to modify credential
+ */
+int (*wpsapp_update_custom_cred_callback)(char *, char *, char *,
+	char *, int, bool, uint8);
 
 int
 wpsapp_utils_update_custom_cred(char *ssid, char *key, char *akm, char *crypto, int oob_addenr,

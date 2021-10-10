@@ -1,7 +1,7 @@
 /*
  * ACPHY Prephy modules implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_prephy.c 750488 2018-03-06 23:32:01Z $
+ * $Id: phy_ac_prephy.c 769209 2018-11-06 11:34:29Z $
  */
 
 #include <phy_cfg.h>
@@ -93,7 +93,7 @@ phy_ac_prephy_vasip_ver_get(prephy_info_t *pi, d11regs_t *regs, uint32 *vasipver
 {
 	bool vasippresent;
 
-	if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		vasippresent = TRUE;
 	} else {
 		vasippresent = READ_PHYREGFLD_PREPHY(pi, regs, PhyCapability2, vasipPresent);
@@ -113,7 +113,7 @@ phy_ac_prephy_vasip_proc_reset(prephy_info_t *pi, d11regs_t *regs, bool reset)
 	uint16 reset_offset = reset ? VASIPREGISTERS_RESET : VASIPREGISTERS_SET;
 	uint16 reset_val = 1;
 
-	if (ACMAJORREV_47(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 		reset_offset >>= 2;
 	}
 
@@ -127,7 +127,7 @@ phy_ac_prephy_vasip_proc_reset(prephy_info_t *pi, d11regs_t *regs, bool reset)
 void
 phy_ac_prephy_vasip_clk_set(prephy_info_t *pi, d11regs_t *regs, bool set)
 {
-	if (ACMAJORREV_GE40_NE47(pi->pubpi->phy_rev)) {
+	if (ACMAJORREV_40(pi->pubpi->phy_rev)) {
 		phy_ac_vasip_clk_enable(pi->sh->sih, set);
 	} else {
 		uint16 regval;
@@ -150,7 +150,8 @@ phy_ac_prephy_caps(prephy_info_t *pi, uint32 *pacaps)
 	int ret = BCME_OK;
 
 	ASSERT(pacaps);
-	if (ACREV_LT(pi->pubpi->phy_rev, HECAP_FIRST_ACREV)) {
+	if (ACREV_LT(pi->pubpi->phy_rev, HECAP_FIRST_ACREV) ||
+		(ACMAJORREV_128(pi->pubpi->phy_rev))) {
 		ret = BCME_UNSUPPORTED;
 		goto done;
 	}

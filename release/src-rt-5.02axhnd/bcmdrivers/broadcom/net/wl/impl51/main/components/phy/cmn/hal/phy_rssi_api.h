@@ -1,7 +1,7 @@
 /*
  * RSSICompute module public interface (to MAC driver).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_rssi_api.h 663973 2016-10-07 18:16:09Z $
+ * $Id: phy_rssi_api.h 770921 2019-01-08 22:15:54Z $
  */
 
 #ifndef _phy_rssi_api_h_
@@ -60,6 +60,7 @@
  * Return the computed rssi value as well.
  */
 int8 phy_rssi_compute_rssi(phy_info_t *pi, wlc_d11rxhdr_t *wrxh);
+void phy_ac_align_sniffer_compute_offset(phy_info_t *pi, d11rxhdr_t *rxh);
 
 #if defined(WLTEST)
 void wlc_phy_pkteng_rxstats_update(wlc_phy_t *ppi, uint8 statidx);

@@ -1,7 +1,7 @@
 /*
  * Channel manager internal interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_chanmgr.h 767248 2018-08-31 20:55:03Z $
+ * $Id: phy_chanmgr.h 767170 2018-08-29 21:29:23Z $
  */
 
 #ifndef _phy_chanmgr_h_

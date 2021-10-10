@@ -1,7 +1,7 @@
 /*
  * ACPHY Core module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_iovt.c 647115 2016-07-04 01:33:05Z $
+ * $Id: phy_ac_iovt.c 774164 2019-04-12 21:09:47Z $
  */
 
 #include <typedefs.h>
@@ -59,6 +59,7 @@
 #include <phy_ac_rxgcrs_iov.h>
 #include <phy_ac_tbl_iov.h>
 #include <phy_ac_tpc_iov.h>
+#include <phy_ac_rxspur_iov.h>
 #include "phy_type_ac.h"
 #include "phy_type_ac_iovt.h"
 
@@ -109,6 +110,12 @@ BCMATTACHFN(phy_ac_register_iovt)(phy_info_t *pi, phy_type_info_t *ti, wlc_iocv_
 	/* Register TxPowerControl module ACPHY iovar table/handlers */
 	if ((err = phy_ac_tpc_register_iovt(pi, ii)) != BCME_OK) {
 		PHY_ERROR(("%s: phy_ac_tpc_register_iovt failed\n", __FUNCTION__));
+		goto fail;
+	}
+
+	/* Register rxspur module ACPHY iovar table/handlers */
+	if ((err = phy_ac_rxspur_register_iovt(pi, ii)) != BCME_OK) {
+		PHY_ERROR(("%s: phy_ac_rxspur_register_iovt failed\n", __FUNCTION__));
 		goto fail;
 	}
 

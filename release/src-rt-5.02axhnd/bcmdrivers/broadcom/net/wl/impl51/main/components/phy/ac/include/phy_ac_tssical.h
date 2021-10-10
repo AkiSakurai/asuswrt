@@ -1,7 +1,7 @@
 /*
  * ACPHY TSSI Cal module interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_tssical.h 742511 2018-01-22 14:14:24Z $
+ * $Id: phy_ac_tssical.h 775385 2019-05-29 11:30:21Z $
  */
 
 #ifndef _phy_ac_tssical_h_
@@ -69,9 +69,10 @@ extern void wlc_phy_tssi_radio_setup_acphy_tiny(phy_info_t *pi, uint8 core_mask,
 extern void wlc_phy_tssi_radio_setup_acphy_28nm(phy_info_t *pi, uint8 for_iqcal);
 extern void wlc_phy_tssi_radio_setup_acphy_20694(phy_info_t *pi, uint8 for_iqcal);
 extern void wlc_phy_tssi_radio_setup_acphy_20696(phy_info_t *pi, uint8 for_iqcal);
-extern void wlc_phy_tssi_radio_setup_acphy_20697(phy_info_t *pi);
 extern void wlc_phy_tssi_radio_setup_acphy_20698(phy_info_t *pi, uint8 for_iqcal);
 extern void wlc_phy_tssi_radio_setup_acphy_20704(phy_info_t *pi, uint8 for_iqcal);
+extern void wlc_phy_tssi_radio_setup_acphy_20707(phy_info_t *pi, uint8 for_iqcal);
+extern void wlc_phy_tssi_radio_setup_acphy_20709(phy_info_t *pi, uint8 for_iqcal);
 extern int8 wlc_phy_tssivisible_thresh_acphy(phy_info_t *pi);
 extern void wlc_phy_txpwrctrl_idle_tssi_meas_acphy(phy_info_t *pi);
 extern void wlc_phy_tssi_phy_setup_acphy(phy_info_t *pi, uint8 for_iqcal);
@@ -100,8 +101,7 @@ void wlc_phy_populate_pwr_tssi_tble_chan_acphy(phy_info_t *pi,
 
 extern void
 wlc_phy_set_tssisens_lim_acphy(phy_info_t *pi, uint8 override);
-
-void phy_ac_tssical_idle(phy_info_t *pi);
+void phy_ac_tssical_idle_multiphase(phy_info_t *pi, uint16 cts_time);
 #ifdef PHYCAL_CACHING
 void phy_ac_tssical_idle_save_cache(phy_ac_tssical_info_t *ti, ch_calcache_t *ctx);
 #endif /* PHYCAL_CACHING */

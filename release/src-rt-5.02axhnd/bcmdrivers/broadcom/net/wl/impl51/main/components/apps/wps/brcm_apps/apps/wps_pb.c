@@ -1,7 +1,7 @@
 /*
  * WPS push button
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: wps_pb.c 762687 2018-05-15 18:48:21Z $
+ * $Id: wps_pb.c 771948 2019-02-12 09:40:01Z $
  */
 
 #include <stdio.h>
@@ -66,6 +66,7 @@
 #include <wps_enr_osl.h>
 #include <wps_enrapi.h>
 #endif /* BCMWPSAPSTA */
+#include <bcmnvram.h>
 
 extern void wps_setProcessStates(int state);
 
@@ -81,11 +82,25 @@ static char pb_ifname[IFNAMSIZ] = {0};
 #define WPS_FINDPBC_STATE_INIT		0
 #define WPS_FINDPBC_STATE_SCANNING	1
 #define WPS_FINDPBC_STATE_FINDINGAP	2
+#define WPS_PBC_PREFER_INTF_COUNT	15
 
-static unsigned long wps_enr_scan_state_time = 0;
-static char wps_enr_scan_state = WPS_FINDPBC_STATE_INIT;
+wps_pbc_apsta_intf_t wps_pbc_ap_ifnames[WPS_MAX_PBC_APSTA] = {
+	{"wps_pbc_ap_ifname", ""},
+	{"wps_pbc_ap2_ifname", ""},
+	{"wps_pbc_ap3_ifname", ""}
+};
+wps_pbc_apsta_intf_t wps_pbc_sta_ifnames[WPS_MAX_PBC_APSTA] = {
+	{"wps_pbc_sta_ifname", ""},
+	{"wps_pbc_sta2_ifname", ""},
+	{"wps_pbc_sta3_ifname", ""}
+};
+
+static unsigned long wps_enr_scan_state_time[WPS_MAX_PBC_APSTA];
+static char wps_enr_scan_state[WPS_MAX_PBC_APSTA];
 static int wps_virtual_pressed = WPS_NO_BTNPRESS;
-static bool wps_pbc_apsta_upstream_pushed = FALSE;
+static bool wps_pbc_apsta_upstream_pushed[WPS_MAX_PBC_APSTA];
+static int wps_pbc_prefer_intf_delay_count;
+static int wps_pbc_prefer_intf_count_tmp;
 #endif /* BCMWPSAPSTA */
 
 /* PBC Overlapped detection */
@@ -264,11 +279,12 @@ wps_pb_virtual_btn_pressed()
 #endif /* BCMWPSAPSTA */
 
 static int
-wps_pb_retrieve_event(int unit, char *wps_ifname)
+wps_pb_retrieve_event(int unit, char *wps_ifname, int wps_ifname_sz)
 {
 	int press;
 	int event = WPSBTN_EVTI_NULL;
 	int imax = wps_get_ess_num();
+	char *custom_ifnames = NULL;
 
 #ifdef BCMWPSAPSTA
 	bool wps_pbc_apsta_enabled = FALSE;
@@ -283,6 +299,32 @@ wps_pb_retrieve_event(int unit, char *wps_ifname)
 	 * to run WPS when WPS ESS only have one
 	 */
 	press = wps_hal_btn_pressed();
+#ifdef MULTIAP
+	if (!strcmp(wps_ui_get_env("map_pbc_method"), "1")) {
+		press = WPS_SHORT_BTNPRESS;
+	}
+#endif	/* MULTIAP */
+
+#ifdef MULTIAP
+	custom_ifnames = nvram_safe_get("wps_custom_ifnames");
+#else
+	custom_ifnames = wps_safe_get_conf("wps_custom_ifnames");
+#endif	/* MULTIAP */
+
+	/* When custom_ifnames are defined only short press is used for both selection
+	 * as well as starting the wps on particular bss. Long press event is being ignored
+	 * it can be used in future for some other purpose.
+	 */
+	if (custom_ifnames[0] != '\0') {
+		if (press == WPS_SHORT_BTNPRESS) {
+			find_next_in_list(custom_ifnames, pb_ifname, wps_ifname, wps_ifname_sz);
+			wps_strncpy(pb_ifname, wps_ifname, sizeof(pb_ifname));
+
+			return WPSBTN_EVTI_PUSH;
+		} else {
+			return WPSBTN_EVTI_NULL;
+		}
+	}
 
 #ifdef BCMWPSAPSTA
 	if (wps_pbc_apsta_enabled == TRUE && press == WPS_NO_BTNPRESS)
@@ -304,10 +346,18 @@ wps_pb_retrieve_event(int unit, char *wps_ifname)
 			 * For apsta mode (wps_pbc_apsta enabled),
 			 * wps_monitor decide which interface to run WPS when HW PBC pressed
 			 */
-			if (wps_pbc_apsta_upstream_pushed == TRUE)
-				strcpy(wps_ifname, wps_safe_get_conf("wps_pbc_sta_ifname"));
-			else
-				strcpy(wps_ifname, wps_safe_get_conf("wps_pbc_ap_ifname"));
+			int i;
+			for (i = 0; i < WPS_MAX_PBC_APSTA; i++) {
+				if (wps_pbc_apsta_upstream_pushed[i]) {
+					strncpy(wps_ifname,
+						wps_safe_get_conf(wps_pbc_sta_ifnames[i].name),
+						IFNAMSIZ);
+					break;
+				}
+			}
+			if (i == WPS_MAX_PBC_APSTA)
+				strncpy(wps_ifname,
+					wps_safe_get_conf(wps_pbc_ap_ifnames[0].name), IFNAMSIZ);
 
 			TUTRACE((TUTRACE_INFO, "wps_pbc_apsta mode enabled, wps_ifname = %s \n",
 				wps_ifname));
@@ -422,60 +472,97 @@ wps_pb_apsta_scan(int session_opened)
 	uint8 bssid[6];
 	char ssid[SIZE_SSID_LENGTH] = "";
 	uint8 wsec = 1;
+	uint8 i, j, wps_sta_scan_no = 0;
+	char prefer_sta_ifname[IFNAMSIZ];
+	int prefer_sta_idx = 0;
 
 	if (strcmp(wps_safe_get_conf("wps_pbc_apsta"), "enabled") == 0 &&
 	    wps_pb_apsta_HW_pressed() == TRUE && session_opened == 0) {
 
-		now = get_current_time();
+		for (i = 0; i < WPS_MAX_PBC_APSTA; i++) {
+			if (strlen(wps_pbc_sta_ifnames[i].ifname))
+				wps_sta_scan_no++;
+		}
 
-		/* continue to find pbc ap or check associating status */
-		wps_osl_set_ifname(wps_safe_get_conf("wps_pbc_sta_ifname"));
-		switch (wps_enr_scan_state) {
-		case WPS_FINDPBC_STATE_INIT:
-			wps_wl_bss_config(wps_safe_get_conf("wps_pbc_sta_ifname"), 1);
-			do_wps_escan();
-			wps_enr_scan_state = WPS_FINDPBC_STATE_SCANNING;
-			break;
-
-		case WPS_FINDPBC_STATE_SCANNING:
-			/* keep checking scan results for 10 second and issue scan again */
-			if ((now - wps_enr_scan_state_time) > 10) {
-				TUTRACE((TUTRACE_INFO,  "%s: do_wps_scan\n", __FUNCTION__));
-				do_wps_escan();
-				wps_enr_scan_state_time = get_current_time();
-			}
-			else if (get_wps_escan_results() != NULL) {
-				/* got scan results, check to find pbc ap state */
-				wps_enr_scan_state = WPS_FINDPBC_STATE_FINDINGAP;
-			}
-			break;
-
-		case WPS_FINDPBC_STATE_FINDINGAP:
-			/* find pbc ap */
-			find_pbc = wps_pb_find_pbc_ap((char *)bssid, (char *)ssid, &wsec);
-			if (find_pbc == PBC_OVERLAP) {
-				TUTRACE((TUTRACE_INFO,  "%s: PBC_OVERLAP\n", __FUNCTION__));
-				wps_enr_scan_state = WPS_FINDPBC_STATE_INIT;
+		strncpy(prefer_sta_ifname, wps_safe_get_conf("wps_pbc_prefer_intf"), IFNAMSIZ);
+		for (i = 0; i < WPS_MAX_PBC_APSTA; i++) {
+			if (!strcmp(prefer_sta_ifname, wps_pbc_sta_ifnames[i].ifname)) {
+				prefer_sta_idx = i;
 				break;
 			}
-			if (find_pbc == PBC_FOUND_OK) {
-				TUTRACE((TUTRACE_INFO,  "%s: PBC_FOUND_OK\n", __FUNCTION__));
+		}
 
-				/* 1. Switch wps_pbc_apsta_role to WPS_PBC_APSTA_ENR */
-				wps_pbc_apsta_upstream_pushed = TRUE;
+		now = get_current_time();
+		for (i = 0; i < wps_sta_scan_no; i++) {
+			/* continue to find pbc ap or check associating status */
+			wps_osl_set_ifname(wps_safe_get_conf(wps_pbc_sta_ifnames[i].name));
 
-				/* 2. Generate a virtual PBC pressed event */
-				wps_pb_virtual_btn_pressed();
+			switch (wps_enr_scan_state[i]) {
+			/* continue to find pbc ap or check associating status */
+			case WPS_FINDPBC_STATE_INIT:
+				wps_wl_bss_config(wps_safe_get_conf(
+					wps_safe_get_conf(wps_pbc_sta_ifnames[i].name)), 1);
+				do_wps_escan();
+				wps_enr_scan_state[i] = WPS_FINDPBC_STATE_SCANNING;
+				break;
 
-				wps_enr_scan_state = WPS_FINDPBC_STATE_INIT;
-				wps_enr_scan_state_time = get_current_time();
+			case WPS_FINDPBC_STATE_SCANNING:
+				/* keep checking scan results for 10 second and issue scan again */
+				if ((now - wps_enr_scan_state_time[i]) > 10) {
+					TUTRACE((TUTRACE_INFO,  "%s: do_wps_scan\n", __FUNCTION__));
+					do_wps_escan();
+					wps_enr_scan_state_time[i] = get_current_time();
+				}
+				else if (get_wps_escan_results() != NULL) {
+					/* got scan results, check to find pbc ap state */
+					wps_enr_scan_state[i] = WPS_FINDPBC_STATE_FINDINGAP;
+				}
+				break;
+
+			case WPS_FINDPBC_STATE_FINDINGAP:
+				/* find pbc ap */
+				find_pbc = wps_pb_find_pbc_ap((char *)bssid, (char *)ssid, &wsec);
+				if (find_pbc == PBC_OVERLAP) {
+					TUTRACE((TUTRACE_INFO,  "%s: PBC_OVERLAP\n", __FUNCTION__));
+					wps_enr_scan_state[i] = WPS_FINDPBC_STATE_INIT;
+					wps_pbc_prefer_intf_delay_count = wps_pbc_prefer_intf_count_tmp;
+					break;
+				}
+				if (find_pbc == PBC_FOUND_OK) {
+					if ((i != prefer_sta_idx) &&
+						(wps_pbc_prefer_intf_delay_count > 0))
+					{
+						TUTRACE((TUTRACE_INFO,  "%s: PBC_FOUND_OK, but not"
+						"prefered intf. delay count %d...\n", __FUNCTION__,
+						wps_pbc_prefer_intf_delay_count));
+						wps_pbc_prefer_intf_delay_count--;
+						break;
+					}
+					TUTRACE((TUTRACE_INFO,  "%s: PBC_FOUND_OK, i=%d\n",
+						__FUNCTION__, i));
+
+					/* 1. Switch wps_pbc_apsta_role to WPS_PBC_APSTA_ENR */
+					wps_pbc_apsta_upstream_pushed[i] = TRUE;
+
+					/* 2. Generate a virtual PBC pressed event */
+					wps_pb_virtual_btn_pressed();
+
+					for (j = 0; j < WPS_MAX_PBC_APSTA; j++) {
+						wps_enr_scan_state[j] = WPS_FINDPBC_STATE_INIT;
+					}
+					wps_pbc_prefer_intf_delay_count = wps_pbc_prefer_intf_count_tmp;
+					wps_enr_scan_state_time[i] = get_current_time();
+					goto force_end;
+				}
+				else {
+					wps_enr_scan_state[i] = WPS_FINDPBC_STATE_SCANNING;
+				}
+				break;
 			}
-			else {
-				wps_enr_scan_state = WPS_FINDPBC_STATE_SCANNING;
-			}
-			break;
 		}
 	}
+force_end:
+	return;
 }
 #endif /* BCMWPSAPSTA */
 
@@ -520,12 +607,12 @@ wps_pb_check(char *buf, int *buflen)
 
 	/* note: push button currently only support wireless unit 0 */
 	/* user can use PBC to tigger wps_enr start */
-	if (WPSBTN_EVTI_PUSH == wps_pb_retrieve_event(0, wps_ifname)) {
+	if (WPSBTN_EVTI_PUSH == wps_pb_retrieve_event(0, wps_ifname, sizeof(wps_ifname))) {
 		int uilen = 0;
 
 		uilen += sprintf(buf + uilen, "SET ");
 
-		TUTRACE((TUTRACE_INFO, "wps monitor: Button pressed!!\n"));
+		TUTRACE((TUTRACE_INFO, "%s :wps monitor: Button pressed!!\n", wps_ifname));
 
 		wps_close_session();
 
@@ -557,23 +644,50 @@ wps_pb_check(char *buf, int *buflen)
 void
 wps_pb_reset()
 {
+#ifdef BCMWPSAPSTA
+	int i;
+#endif // endif
 	memset(pbc_info, 0, sizeof(pbc_info));
 
 #ifdef BCMWPSAPSTA
-	wps_pbc_apsta_upstream_pushed = FALSE;
-	wps_wl_bss_config(wps_safe_get_conf("wps_pbc_sta_ifname"), 0);
+	for (i = 0; i < WPS_MAX_PBC_APSTA; i++) {
+		wps_pbc_apsta_upstream_pushed[i] = FALSE;
+		wps_enr_scan_state_time[i] = 0;
+		wps_enr_scan_state[i] = WPS_FINDPBC_STATE_INIT;
+		wps_wl_bss_config(wps_safe_get_conf(wps_pbc_sta_ifnames[i].name), 0);
+	}
 #endif // endif
 }
 
 int
 wps_pb_init()
 {
+#ifdef BCMWPSAPSTA
+	int i;
+#endif // endif
 	memset(pbc_info, 0, sizeof(pbc_info));
 
 	memset(&pb_hndl, 0, sizeof(pb_hndl));
 	pb_hndl.type = WPS_RECEIVE_PKT_PB;
 	pb_hndl.handle = -1;
+#ifdef BCMWPSAPSTA
+	if (wps_safe_get_conf("wps_pbc_prefer_intf_count") != "")
+	{
+		wps_pbc_prefer_intf_count_tmp = atoi(wps_safe_get_conf("wps_pbc_prefer_intf_count"));
+		TUTRACE((TUTRACE_INFO, "%s: nvram override delay count to %d...\n",
+			__FUNCTION__, wps_pbc_prefer_intf_count_tmp));
+	}
+	else
+		wps_pbc_prefer_intf_count_tmp = WPS_PBC_PREFER_INTF_COUNT; /* default */
 
+	wps_pbc_prefer_intf_delay_count = wps_pbc_prefer_intf_count_tmp;
+
+	for (i = 0; i < WPS_MAX_PBC_APSTA; i++) {
+		wps_pbc_apsta_upstream_pushed[i] = FALSE;
+		wps_enr_scan_state_time[i] = 0;
+		wps_enr_scan_state[i] = WPS_FINDPBC_STATE_INIT;
+	}
+#endif // endif
 	return (wps_hal_btn_init());
 }
 
@@ -585,4 +699,18 @@ wps_pb_deinit()
 	wps_hal_btn_cleanup();
 
 	return 0;
+}
+
+/* Interface names listed in nvram wps_custom_ifnames are used for selection as well as
+ * starting the wps session on the selected interface.
+ * The selected ifname gets copied into pb_ifname variable which is used for selcting
+ * the next ifname from the ifnames list present in nvram in subsequent pbc press.
+ * After successful wps session or when wps session times out pb_ifname needs to be cleared.
+ * So that the next pbc press selects the first ifname listed in the nvram.
+ */
+void
+wps_pb_ifname_reset()
+{
+	TUTRACE((TUTRACE_INFO, "Current pbc ifname[%s] cleared \n", pb_ifname));
+	memset(pb_ifname, 0, sizeof(pb_ifname));
 }

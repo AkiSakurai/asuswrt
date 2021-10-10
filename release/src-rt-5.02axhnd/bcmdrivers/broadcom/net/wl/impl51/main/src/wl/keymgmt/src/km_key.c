@@ -1,6 +1,6 @@
 /*
  * Implementation of wlc_key operations
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,12 +43,13 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_key.c 767108 2018-08-28 12:23:52Z $
+ * $Id: km_key.c 774180 2019-04-15 07:45:12Z $
  */
 
 #include "km_key_pvt.h"
 #include <wlc_txc.h>
 #include <wlc_rx.h>
+#include <wlc_wnm.h>
 
 #ifdef BCM43684_HDRCONVTD_ETHER_LEN_WAR
 #include <wlc_bmac.h>
@@ -145,16 +146,10 @@ km_key_update_txd(wlc_key_t *key, void *pkt,
 		/* nothing can be done here, link_entry should be ok already */
 	} else if (KEY_COREREV_GE40(key)) {
 		d11txh_cache_common_t *cache_info;
-
-		if (KEY_COREREV_GE80(key)) {
-			d11txh_rev80_t *rev80_txh = &txd->rev80;
-			cache_info = &rev80_txh->CacheInfo.common;
-		} else {
-			d11actxh_t *ac_txh = &txd->rev40;
-			d11actxh_cache_t *d11ac_cache_info;
-			d11ac_cache_info = WLC_TXD_CACHE_INFO_GET(ac_txh, KEY_PUB(key)->corerev);
-			cache_info = &d11ac_cache_info->common;
-		}
+		d11actxh_t *ac_txh = &txd->rev40;
+		d11actxh_cache_t *d11ac_cache_info;
+		d11ac_cache_info = WLC_TXD_CACHE_INFO_GET(ac_txh, KEY_PUB(key)->corerev);
+		cache_info = &d11ac_cache_info->common;
 
 		cache_info->BssIdEncAlg |= key->info.hw_algo << D11AC_ENCRYPT_ALG_SHIFT;
 		cache_info->KeyIdx = (uint8)KM_KEY_HW_IDX_TO_SLOT(key, key->hw_idx);
@@ -292,7 +287,7 @@ wlc_key_get_info(const wlc_key_t *key, key_info_t *key_info)
 /* get pkt info and ptr to body */
 static uint8*
 km_key_dot11_pkt_get_body(struct dot11_header *hdr, int pkt_len,
-	const d11rxhdr_t *rxh, key_pkt_info_t *pkt_info,  d11_info_t *d11_info)
+	const d11rxhdr_t *rxh, key_pkt_info_t *pkt_info)
 {
 	int body_off;
 	uint16 fc;
@@ -364,8 +359,7 @@ int wlc_key_prep_tx_mpdu(wlc_key_t *key, void *pkt, d11txhdr_t *txd)
 	/* debug: dump pkt */
 	KEY_LOG_DUMP_PKT(__FUNCTION__, key, pkt);
 
-	body = km_key_dot11_pkt_get_body(hdr, KEY_PKT_LEN(key, pkt), NULL /* no rxh */,
-		&pkt_info, key->wlc->d11_info);
+	body = km_key_dot11_pkt_get_body(hdr, KEY_PKT_LEN(key, pkt), NULL /* no rxh */, &pkt_info);
 	body_len = pkt_info.body_len;
 
 	fc  = pkt_info.fc;
@@ -551,8 +545,7 @@ wlc_key_rx_mpdu(wlc_key_t *key, void *pkt, d11rxhdr_t *rxh)
 
 	KEY_LOG_DUMP_PKT(__FUNCTION__, key, pkt);
 
-	body = km_key_dot11_pkt_get_body(hdr, KEY_PKT_LEN(key, pkt), rxh, &pkt_info,
-		key->wlc->d11_info);
+	body = km_key_dot11_pkt_get_body(hdr, KEY_PKT_LEN(key, pkt), rxh, &pkt_info);
 	body_len = pkt_info.body_len;
 
 	fc  = pkt_info.fc;
@@ -607,6 +600,10 @@ wlc_key_rx_mpdu(wlc_key_t *key, void *pkt, d11rxhdr_t *rxh)
 		}
 	} else if (*RxStatus1 &	RXS_DECERR) {
 		err = BCME_DECERR;
+		/* XXX WAR for CRWLDOT11M-3109:
+		 * Hardware reports decryption error when there is zero payload in the last
+		 * fragment. Driver tries to recover with SW decryption and MIC calculation.
+		 */
 		if (key->info.algo == CRYPTO_ALGO_TKIP &&
 			body_len <= (DOT11_IV_TKIP_LEN + TKIP_MIC_SIZE + DOT11_ICV_LEN)) {
 			hwdec = FALSE;
@@ -733,6 +730,15 @@ done:
 			if (!km_allow_unencrypted(KEY_KM(key), &key->info, scb,
 				hdr, qc, body, body_len, pkt)) {
 				KEY_LOG_DECL(char eabuf[ETHER_ADDR_STR_LEN]);
+
+				WLCNTINCR(KEY_CNT(key)->rxbadproto);
+				WLCNTINCR(KEY_CNT(key)->wepexcluded);
+				if (ETHER_ISMULTI(&hdr->a1))
+					WLCNTINCR(KEY_CNT(key)->wepexcluded_mcst);
+
+				KEY_LOG(("wl%d.%d: %s: disallowed unencrypted frame from %s\n",
+					KEY_WLUNIT(key), WLC_BSSCFG_IDX(SCB_BSSCFG(scb)),
+					__FUNCTION__, bcm_ether_ntoa(&hdr->a2, eabuf)));
 				if (SCB_LEGACY_WDS(scb)) {
 					uint32 wpa_auth;
 					wlc_bsscfg_t *bsscfg = NULL;
@@ -744,20 +750,8 @@ done:
 						KM_DBG_ASSERT(pkt != NULL);
 						km_null_key_deauth(KEY_KM(key),
 							WLPKTTAGSCBGET(pkt), pkt);
-						km_notify(KEY_KM(key),
-							WLC_KEYMGMT_NOTIF_DECODE_ERROR,
-							NULL, NULL, key, pkt);
 					}
 				}
-
-				WLCNTINCR(KEY_CNT(key)->rxbadproto);
-				WLCNTINCR(KEY_CNT(key)->wepexcluded);
-				if (ETHER_ISMULTI(&hdr->a1))
-					WLCNTINCR(KEY_CNT(key)->wepexcluded_mcst);
-
-				KEY_LOG(("wl%d.%d: %s: disallowed unencrypted frame from %s\n",
-					KEY_WLUNIT(key), WLC_BSSCFG_IDX(SCB_BSSCFG(scb)),
-					__FUNCTION__, bcm_ether_ntoa(&hdr->a2, eabuf)));
 			} else {
 				err = BCME_OK;
 			}
@@ -949,6 +943,15 @@ wlc_key_set_seq(wlc_key_t *key, const uint8 *seq, size_t seq_len,
 		if (err != BCME_OK) {
 			break;
 		}
+#ifdef BRCMAPIVTW
+		if (WLC_KEY_USE_IVTW(&key->info)) {
+			err = KM_SET_IVTW(KEY_KM(key), &key->info, ins, seq, seq_len);
+			if (err != BCME_OK) {
+				break;
+			}
+		}
+#endif /* BRCMAPIVTW */
+
 	}
 
 	KEY_LOG(("wl%d: %s: key@%p key_idx 0x%04x seq len %d status %d\n",
@@ -962,6 +965,9 @@ wlc_key_set_data(wlc_key_t *key, wlc_key_algo_t algo,
 {
 	const key_algo_entry_t *ae;
 	int err;
+#ifdef WLWNM
+	wlc_info_t *wlc;
+#endif /* WLWNM */
 
 	KM_DBG_ASSERT(KEY_VALID(key));
 	KM_ASSERT(data_len == 0 || data != NULL);
@@ -969,7 +975,13 @@ wlc_key_set_data(wlc_key_t *key, wlc_key_algo_t algo,
 	KEY_LOG(("wl%d: %s: enter key@%p key idx 0x%04x algo %d[%s] data len %d\n",
 		KEY_WLUNIT(key), __FUNCTION__, key, key->info.key_idx, algo,
 		wlc_keymgmt_get_algo_name(KEY_KM(key), algo), (int)data_len));
-
+#ifdef WLWNM
+	wlc = key->wlc;
+	/* Dont install new keys until STA exits WNM sleep mode */
+	if ((err = wlc_wnm_is_wnmsleeping(wlc)) != BCME_OK) {
+		goto done;
+	}
+#endif /* WLWNM */
 	/* algo must be supported, and key must have a valid key index */
 	if (!km_algo_is_supported(KEY_KM(key), algo) ||
 		(key->info.key_idx == WLC_KEY_INDEX_INVALID)) {

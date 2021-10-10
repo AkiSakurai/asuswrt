@@ -24,6 +24,20 @@
 
 /* wraps curl_easy_setopt() with typechecking */
 
+/* To add a new kind of warning, add an
+ *   if(_curl_is_sometype_option(_curl_opt))
+ *     if(!_curl_is_sometype(value))
+ *       _curl_easy_setopt_err_sometype();
+ * block and define _curl_is_sometype_option, _curl_is_sometype and
+ * _curl_easy_setopt_err_sometype below
+ *
+ * NOTE: We use two nested 'if' statements here instead of the && operator, in
+ *       order to work around gcc bug #32061.  It affects only gcc 4.3.x/4.4.x
+ *       when compiling with -Wlogical-op.
+ *
+ * To add an option that uses the same type as an existing option, you'll just
+ * need to extend the appropriate _curl_*_option macro
+ */
 #define curl_easy_setopt(handle, option, value)                               \
 __extension__ ({                                                              \
   __typeof__ (option) _curl_opt = option;                                     \
@@ -356,6 +370,9 @@ _CURL_WARNING(_curl_easy_getinfo_err_curl_slist,
    _curl_is_arr((expr), signed char) ||                                       \
    _curl_is_arr((expr), unsigned char))
 
+/* evaluates to true if expr is a long (no matter the signedness)
+ * XXX: for now, int is also accepted (and therefore short and char, which
+ * are promoted to int when passed to a variadic function) */
 #define _curl_is_long(expr)                                                   \
   (__builtin_types_compatible_p(__typeof__(expr), long) ||                    \
    __builtin_types_compatible_p(__typeof__(expr), signed long) ||             \
@@ -393,6 +410,10 @@ _CURL_WARNING(_curl_easy_getinfo_err_curl_slist,
   (_curl_is_ptr((expr), void) ||                                              \
    _curl_is_arr((expr), char))
 
+/* FIXME: the whole callback checking is messy...
+ * The idea is to tolerate char vs. void and const vs. not const
+ * pointers in arguments at least
+ */
 /* helper: __builtin_types_compatible_p distinguishes between functions and
  * function pointers, hide it */
 #define _curl_callback_compatible(func, type)                                 \

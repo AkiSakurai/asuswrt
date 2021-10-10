@@ -1,10 +1,11 @@
 /*
- * HWA-2.0 definitions. No support for HWA-1.0.
+ * HWA-2.x definitions. No support for HWA-1.0.
  *
  * HWA AXI memory resident structures extracted from DV UVM scripts.
+ * Extensive use of anonymous structure/union.
  * Layouts defined to allow BitField(BF), shift/mask and C-Datatype(CD) access.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -80,7 +81,7 @@
  * NOTE: Host should communicate "capability" to dongle, the following:
  * Host Addressing: 32 or 64 bit PCIE IPC capability (init handshake)
  * Host Coherency:  SW or HW coherency capability (init handshake)
- * PCIeIPC Format: Compact or Aggregate Format and Count (RxPost,RxCpl,TxCpl)
+ * PCIe IPC Format: Compact or Aggregate Format and Count (RxPost,RxCpl,TxCpl)
  */
 #define HWA_SW_DRIVER_MODE          HWA_FD_MODE
 #else /* ! BCMPCIEDEV */
@@ -128,6 +129,13 @@
 #endif // endif
 #endif /* HWA_MAC_BLOCK */
 
+#ifdef BCMHWAPP
+#define HWA_PKTPGR_BUILD
+#if ! HWA_REVISION_GE_131
+#error "HWA Packet Pager needs revision 131 or above"
+#endif // endif
+#endif /* BCMHWAPP */
+
 #if defined(HWA_RXPOST_BUILD) && !defined(HWA_RXFILL_BUILD)
 #define HWA_RXPOST_ONLY_BUILD                   // 1a ONLY
 #endif /* HWA_RXPOST_BUILD && !HWA_RXFILL_BUILD */
@@ -153,18 +161,19 @@
 #error "HWA need BCM_DHDHDR support in dongle mode"
 #endif // endif
 
-// SW defined IDS, no significance to HW
-#define HWA_RING_S2H                0x01
-#define HWA_RING_H2S                0x02
+// SW defined IDs, no significance to HW. Used in per block/ring reporting
+#define HWA_RING_S2H                (1)
+#define HWA_RING_H2S                (2)
 
-#define HWA_RXPOST_ID               0x01
-#define HWA_RXFILL_ID               0x02
-#define HWA_RXDATA_ID               0x04
-#define HWA_RXCPLE_ID               0x08
-#define HWA_TXPOST_ID               0x10
-#define HWA_TXFIFO_ID               0x20
-#define HWA_TXSTAT_ID               0x40
-#define HWA_TXCPLE_ID               0x80
+#define HWA_RXPOST_ID               (1)
+#define HWA_RXFILL_ID               (2)
+#define HWA_RXDATA_ID               (3)
+#define HWA_RXCPLE_ID               (4)
+#define HWA_TXPOST_ID               (5)
+#define HWA_TXFIFO_ID               (6)
+#define HWA_TXSTAT_ID               (7)
+#define HWA_TXCPLE_ID               (8)
+#define HWA_PKTPGR_ID               (9)
 
 #define HWA_NONE
 #define HWA_NOOP                    do { /* noop */ } while (0)
@@ -179,6 +188,7 @@
 // SW Driver for MAC facing blocks may be BigEndian or LittleEndian.
 // assume little endian for now
 #define HWA_DRIVER_MODE_LE
+// #warning "FIXME for NIC mode, which may be BE or LE"
 #endif // endif
 
 #if defined(HWA_DRIVER_MODE_BE)
@@ -221,8 +231,8 @@ typedef uintptr hwa_mem_addr_t;
 #endif // endif
 
 #define HWA_PTR2UINT(PTR)           ((uintptr)(PTR))
-/* NOTE: All second arguments to the macro HWA_UINT2PTR must be valid 64 bit values on
- * 64 bit platform
+/* NOTE: All second arguments to the macro HWA_UINT2PTR must be
+ *       valid 64 bit values on 64 bit platforms.
  */
 #define HWA_UINT2PTR(TYPE, UINTPTR)     ((TYPE*)(UINTPTR))
 
@@ -283,7 +293,7 @@ typedef uintptr hwa_mem_addr_t;
 
 // WL debug level
 #if (HWA_DEBUG_BUILD >= 2) || defined(BCMDBG) || 0 || defined(WLTEST) || \
-	defined(BCMDBG_AMPDU)
+	defined(BCMDBG_AMPDU) || defined(HWA_DUMP)
 #define HWA_BCMDBG_EXPR(expr)       expr
 #else
 #define HWA_BCMDBG_EXPR(expr)       HWA_NONE
@@ -292,7 +302,8 @@ typedef uintptr hwa_mem_addr_t;
 // HWA prefixes used in debug printing
 #define HWA00                       "HWA00 Common:" // Common/TOP/DMA/BM/...
 #define HWAde                       "HWA00 DMAEng:" // HWA Internal DMA Engines
-#define HWAbm                       "HWA00 Bufgr:"  // HWA Buffer Manager
+#define HWAbm                       "HWA00 BufMgr:" // HWA Buffer Manager
+#define HWApp                       "HWA00 PktPgr:" // HWA Packet Pager
 
 #define HWA1a                       "HWA1a RxPOST:" // BUS Facing RxPost Ring
 #define HWA3a                       "HWA3a TxPOST:" // BUS Facing TxPost Ring
@@ -307,18 +318,25 @@ typedef uintptr hwa_mem_addr_t;
 #define HWA3b                       "HWA3b TxFIFO:" // MAC Facing TxDMA AQM/FIFO
 #define HWA4a                       "HWA4a TxSTAT:" // MAC Facing TxStatus
 
+// -----------------------------------------------------------------------------
+// `design/backplane/wl_chip_core.versions   :
+// `design/backplane/hwa_top_wrap.vhd        : HWA AXI and APB BASE_ADDR
+
+#if (HWA_REVISION_ID == 128)
+#error "HWA Revision 128 used for BCM43684-A0 has been deprecated and deleted"
+#endif /* HWA_REVISION_EQ_128 */
+
+#if HWA_REVISION_EQ_129 || HWA_REVISION_EQ_130
 /*
  * -----------------------------------------------------------------------------
- * Section: 43684 specific settings for HWA, CoreId = 0x851
+ * Section: HWA 2.1, CoreId = 0x851
+ * - 43684 Bx specific settings for HWA 2.1 rev 129
+ * - 43684 Cx specific settings for HWA 2.1 rev 130
  * -----------------------------------------------------------------------------
  */
-// ARM IRQ input for HWA : OOB Bus A
-#define HWA_IRQ_OOB_BUSA            6
 
-// -----------------------------------------------------------------------------
-
-// HWA APB Register Region : CCI400 M0 Port
-#define HWA_APB_BASE_ADDR           0x28005000
+// HWA APB Register Region : CCI500 M0 Port
+#define HWA_APB_BASE_ADDR           0x28005000  // `hwa_top_wrap.vhd 671109120
 #define HWA_APB_REGION_SZ           0x00000fff  // 4 KBytes
 #define HWA_AXI_APB0_PORT           5
 
@@ -326,27 +344,83 @@ typedef uintptr hwa_mem_addr_t;
 #define HWA_IDM_BASE_ADDR           0x28105000
 #define HWA_IDM_REGION_SZ           0x00000fff  // 4 KBytes
 
-// -----------------------------------------------------------------------------
-
-// HWA AXI Memory Region : CCI400 M0 Port
-#define HWA_AXI_BASE_ADDR           0x28500000
+// HWA AXI Memory Region : CCI500 M0 Port
+#define HWA_AXI_BASE_ADDR           0x28500000  // `hwa_top_wrap.vhd 676331520
 #define HWA_AXI_REGION_SZ           0x000fffff  // 1 MByte
 
+#endif /* HWA_REVISION_EQ_129 || HWA_REVISION_EQ_130 */
+
+#if HWA_REVISION_GE_131
+/*
+ * -----------------------------------------------------------------------------
+ * Section: HWA 2.2 (including Packet Pager 1.0), CoreId = 0x851
+ * - 6715 Ax specific settings for HWA 2.2 rev 131
+ * -----------------------------------------------------------------------------
+ */
+
+// HWA APB Register Region : CCI400 M0 Port
+#define HWA_APB_BASE_ADDR           0x28004000  // `hwa_top_wrap.vhd 671109120
+#define HWA_APB_REGION_SZ           0x00001fff  // 8 KBytes
+#define HWA_AXI_APB0_PORT           3
+
+// HWA IDM Wrapper Register Region on APB1
+#define HWA_IDM_BASE_ADDR           0x28105000
+#define HWA_IDM_REGION_SZ           0x00000fff  // 4 KBytes
+
+// HWA AXI Memory Region : CCI400 M0 Port
+#define HWA_AXI_BASE_ADDR           0x28500000  // `hwa_top_wrap.vhd 676331520
+#define HWA_AXI_REGION_SZ           0x000fffff  // 1 MByte
+
+#endif /* HWA_REVISION_GE_131 */
+
+// -----------------------------------------------------------------------------
+// Access to HWA Internal memory over AXI using hwa_axi_addr(), for programming
+// table entries or debug purposes.
+// Reference: `design/hwa/design/hwa_top/hwa_mem_offsets.v
+
+// HWA RxBM and TxBM Memory offsets
+#define HWA_AXI_RXBM_MEMORY         0x00000000  // `rxbmMemOffset        Size_2k
+#define HWA_AXI_TXBM_MEMORY         0x00010400  // `txbmMemOffset      Size_512b
+
 // HWA1a block memories offsets in AXI memory space
-#define HWA_AXI_RXPOST_MEMORY       0x00001000  // HWA1a Rx Post memory
+#define HWA_AXI_RXPOST_MEMORY       0x00001000  // `rxpFifoMemOffset
 
 // HWA3b block memories offsets in AXI memory space
-#define HWA_AXI_TXFIFO_OVFLWQS      0x00008000  // HWA3b Overflow Queue Contexts
-#define HWA_AXI_TXFIFO_TXFIFOS      0x00009000  // HWA3b TxFIFO Contexts
+#define HWA_AXI_TXFIFO_OVFLWQS      0x00008000  // `ovflowqMemOffset     Size_4k
+#define HWA_AXI_TXFIFO_TXFIFOS      0x00009000  // + TxFIFO Contexts   + Size_4k
 
 // HWA3a block memories offsets in AXI memory space
-#define HWA_AXI_TXPOST_PRIO_LUT     0x0000c000  // HWA3a Priority Lkup Table
-#define HWA_AXI_TXPOST_SADA_LUT     0x0000c400  // HWA3a SADA Lkup Table
-#define HWA_AXI_TXPOST_FLOW_LUT     0x0000d000  // HWA3a FlowId Lkup table
+#define HWA_AXI_TXPOST_PRIO_LUT     0x0000c000  // `txpriolutMemOffset   Size_1k
+#if HWA_REVISION_GE_131
+#define HWA_AXI_TXPOST_SADA_LUT     0x0000c800  // `txSADAtMemOffset     Size_2k
+#else  /* < 131 */
+#define HWA_AXI_TXPOST_SADA_LUT     0x0000c400  // `txSADAtMemOffset     Size_1k
+#endif /* < 131 */
+#define HWA_AXI_TXPOST_FLOW_LUT     0x0000d000  // `txflowidMemOffset    Size_1k
 #define HWA_AXI_TXPOST_FRCT_LUT     0x0000f000  // Deleted in HWA-2.0
 
-// HWA2b, HWA4b block memories offsets in AXI memory space
-#define HWA_AXI_CPLE_RING_CONTEXTS  0x00012000  // 1 TxCpl 4 RxCpl
+// HWA4a block memories offsets in AXI memory space
+#define HWA_AXI_TXSTAT_MEMORY       0x0000f908  // `txsDmaMemOffset  2x Size_16b
+
+// HWA2b, HWA4b block memories offsets in AXI memory space : 1 TxCpl 4 RxCpl
+#define HWA_AXI_CPLE_RING_CONTEXTS  0x00012000  // `cplRCMemOffset       Size_1k
+
+// HWA Statistics block
+#define HWA_AXI_STATS_MEMORY        0x00014000  // `statsMemOffset       Size_8k
+
+// XXX CRBCAHWA-605
+#define HWA_AXI_D11BINT_MEMORY      0x00018000  // `d11bIntMemOffset    Size_32k
+
+// Pager Local Memory for DMA : debug read only
+#define HWA_PAGER_DMA_D2L_MEMORY    0x00021000  // `PagerDMAD2LMemOffset Size_2k
+#define HWA_PAGER_DMA_L2D_MEMORY    0x00021800  // `PagerDMAD2LMemOffset Size_2k
+
+// Packet Pager BitMap for Host and Dngl BitMaps : debug read only
+#define HWA_PAGER_HDBM_BITMAP       0x00022000  // `PagerHDBMMemOffset   Size_4k
+#define HWA_PAGER_DDBM_BITMAP       0x00023000  // `PagerDDBMMemOffset   Size_2k
+
+// Packet Pager Table : debug read only
+#define HWA_PAGER_TABLE             0x00024000 // `PagerTblMemOffset     Size_8k
 
 // -----------------------------------------------------------------------------
 
@@ -444,6 +518,7 @@ typedef union hwa_txpost_eth_sada
 // HWA3a TxPost
 #if defined(HWA_TXPOST_BUILD)
 #define HWA_TXPOST_FLOWRINGS_MAX	BCMPCIE_MAX_TX_FLOWS
+#define HWA_TXPOST_FREEIDXTX		            // Use free queue base.
 #endif // endif
 
 #define HWA_TXPOST_MEM_ADDR_W       4
@@ -457,7 +532,7 @@ typedef union hwa_txpost_eth_sada
 	((HWA_TXPOST_LOCAL_WORKITEMS * HWA_TXPOST_WORKITEM_SIZE) \
 	/ HWA_TXPOST_MEM_ADDR_W)
 
-//NOTE: We don't need to use LUT.
+// NOTE: We don't need to use LUT.
 #if !defined(HWA_NO_LUT)
 
 #define HWA_TXPOST_SADA_LUT_DEPTH   32
@@ -528,8 +603,8 @@ typedef volatile uint32 *hwa_reg_addr_t; // 32bit or 64bit address
 ({ \
 	uint32 val32; \
 	val32 = R_REG(NULL, (volatile uint32 *)(HWA_REG_ADDR)); \
-	HWA_DBGREG(("HWA %s RD_REG[%p] val32<0x%08x,%u>\n", \
-		HWA_NAME, (HWA_REG_ADDR), val32, val32)); \
+	HWA_DBGREG(("HWA %s RD_REG[%p] val32<0x%08x,%u> %s\n", \
+		HWA_NAME, (HWA_REG_ADDR), val32, val32, #HWA_REG_ADDR)); \
 	val32; \
 })
 
@@ -537,8 +612,8 @@ typedef volatile uint32 *hwa_reg_addr_t; // 32bit or 64bit address
 ({ \
 	uint16 val16; \
 	val16 = R_REG(NULL, (volatile uint16 *)(HWA_REG_ADDR)); \
-	HWA_DBGREG(("HWA %s RD_REG[%p] val16<0x%08x,%u>\n", \
-		HWA_NAME, (HWA_REG_ADDR), val16, val16)); \
+	HWA_DBGREG(("HWA %s RD_REG[%p] val16<0x%08x,%u> %s\n", \
+		HWA_NAME, (HWA_REG_ADDR), val16, val16, #HWA_REG_ADDR)); \
 	val16; \
 })
 
@@ -558,8 +633,8 @@ typedef volatile uint32 *hwa_reg_addr_t; // 32bit or 64bit address
 
 #define HWA_WR_REG_ADDR(HWA_NAME, HWA_REG_ADDR, VAL32) \
 ({ \
-	HWA_DBGREG(("HWA %s WR_REG[%p] val32<0x%08x,%u>\n", \
-		HWA_NAME, (HWA_REG_ADDR), (VAL32), (VAL32))); \
+	HWA_DBGREG(("HWA %s WR_REG[%p] val32<0x%08x,%u> %s\n", \
+		HWA_NAME, (HWA_REG_ADDR), (VAL32), (VAL32), #HWA_REG_ADDR)); \
 	W_REG(NULL, (volatile uint32 *)(HWA_REG_ADDR), (VAL32)); \
 })
 
@@ -572,8 +647,8 @@ typedef volatile uint32 *hwa_reg_addr_t; // 32bit or 64bit address
 
 #define HWA_WR_REG16_ADDR(HWA_NAME, HWA_REG_ADDR, VAL16) \
 ({ \
-	HWA_DBGREG(("HWA %s WR_REG[%p] val16<0x%08x,%u>\n", \
-		HWA_NAME, (HWA_REG_ADDR), (VAL16), (VAL16))); \
+	HWA_DBGREG(("HWA %s WR_REG[%p] val16<0x%08x,%u> %s\n", \
+		HWA_NAME, (HWA_REG_ADDR), (VAL16), (VAL16), #HWA_REG_ADDR)); \
 	W_REG(NULL, (volatile uint16 *)(HWA_REG_ADDR), (VAL16)); \
 })
 
@@ -581,7 +656,7 @@ typedef volatile uint32 *hwa_reg_addr_t; // 32bit or 64bit address
 #define HWA_RD_REG(HWA_REG_ADDR)        R_REG(NULL, (volatile uint32 *)(HWA_REG_ADDR))
 #define HWA_WR_REG(HWA_REG_ADDR, VAL32) W_REG(NULL, (volatile uint32 *)(HWA_REG_ADDR), (VAL32))
 
-#if defined(WLTEST)
+#if defined(WLTEST) || defined(HWA_DUMP)
 #define _HWA_PR_REG(BUF, STRUCT, MEMBER) \
 ({ \
 	uint32 val32 = HWA_RD_REG(&hwa_dev->regs->STRUCT.MEMBER); \
@@ -611,22 +686,6 @@ typedef volatile uint32 *hwa_reg_addr_t; // 32bit or 64bit address
  * -----------------------------------------------------------------------------
  */
 
-// What is frontdoor/backdoor access? see hwa_axi_addr()
-#if HWA_REVISION_EQ_128
-#define HWA_RD_MEM32(HWA_NAME, STRUCT, HWA_MEM, SYS_MEM) \
-({ \
-	int i; \
-	volatile uint32 *src_p = HWA_UINT2PTR(uint32, HWA_MEM); \
-	uint32 *dst_p = (uint32 *)(SYS_MEM); \
-	for (i = 0; i < sizeof(STRUCT) / NBU32; i++) { \
-		*(dst_p + i) = *(src_p + i); \
- \
-		*(dst_p + i) = *(src_p + i); \
-		HWA_DBGREG(("HWA %s RD_MEM[%p]<0x%08x> val32<0x%08x,%u> %s[%d]\n", HWA_NAME, \
-			dst_p + i, *(dst_p + i), *(src_p + i), *(src_p + i), #STRUCT, i)); \
-	} \
-})
-#else
 #define HWA_RD_MEM32(HWA_NAME, STRUCT, HWA_MEM, SYS_MEM) \
 ({ \
 	int i; \
@@ -638,7 +697,6 @@ typedef volatile uint32 *hwa_reg_addr_t; // 32bit or 64bit address
 			dst_p + i, *(dst_p + i), *(src_p + i), *(src_p + i), #STRUCT, i)); \
 	} \
 })
-#endif /* HWA_REVISION_EQ_128 */
 
 #define HWA_WR_MEM32(HWA_NAME, STRUCT, HWA_MEM, SYS_MEM) \
 ({ \
@@ -646,7 +704,7 @@ typedef volatile uint32 *hwa_reg_addr_t; // 32bit or 64bit address
 	uint32 *src_p = (uint32 *)(SYS_MEM); \
 	volatile uint32 *dst_p = HWA_UINT2PTR(uint32, HWA_MEM); \
 	for (i = 0; i < sizeof(STRUCT) / NBU32; i++) { \
-		*(dst_p + i) = *(src_p + i); \
+		*(dst_p + i) = *(src_p + i); /* AXI Access */ \
 		HWA_DBGREG(("HWA %s WR_MEM[%p] val32<0x%08x,%u> %s[%d]\n", HWA_NAME, \
 			dst_p + i, *(src_p + i), *(src_p + i), #STRUCT, i)); \
 	} \
@@ -658,7 +716,7 @@ typedef volatile uint32 *hwa_reg_addr_t; // 32bit or 64bit address
 	volatile uint16 *src_p = HWA_UINT2PTR(uint16, HWA_MEM); \
 	uint16 *dst_p = (uint16 *)(SYS_MEM); \
 	for (i = 0; i < sizeof(STRUCT) / sizeof(uint16); i++) { \
-		*(dst_p + i) = *(src_p + i); \
+		*(dst_p + i) = *(src_p + i); /* AXI Access */ \
 		HWA_DBGREG(("HWA %s RD_MEM[%p] val16<0x%04x,%u> %s[%d]\n", HWA_NAME, \
 			dst_p + i, *(src_p + i), *(src_p + i), #STRUCT, i)); \
 	} \
@@ -670,7 +728,7 @@ typedef volatile uint32 *hwa_reg_addr_t; // 32bit or 64bit address
 	uint16 *src_p = (uint16 *)(SYS_MEM); \
 	volatile uint16 *dst_p = HWA_UINT2PTR(uint16, HWA_MEM); \
 	for (i = 0; i < sizeof(STRUCT) / sizeof(uint16); i++) { \
-		*(dst_p + i) = *(src_p + i); \
+		*(dst_p + i) = *(src_p + i); /* AXI Access */ \
 		HWA_DBGREG(("HWA %s WR_MEM[%p] val16<0x%04x,%u> %s[%d]\n", HWA_NAME, \
 			dst_p + i, *(src_p + i), *(src_p + i), #STRUCT, i)); \
 	} \
@@ -700,12 +758,10 @@ typedef volatile uint32 *hwa_reg_addr_t; // 32bit or 64bit address
  *
  */
 
-/* Use MAXPKTRXFRAGSZ for the RX BM buffer size. Must be 8 bytes aligned.
- * 43684A0 is 512 bytes.
- * 43684B0 is 360 bytes.
+/* Use PKTRXFRAGSZ [data section of rxlfrag]  for the RX BM buffer size. Must be 8 bytes aligned.
  */
 #define HWA_RXBUFFER_WORDS          (HWA_RXBUFFER_BYTES / NBU32)
-#define HWA_RXBUFFER_BYTES          ((MAXPKTRXFRAGSZ + (8 - 1)) & ~ (8 - 1))
+#define HWA_RXBUFFER_BYTES          ((PKTRXFRAGSZ + (8 - 1)) & ~ (8 - 1))
 
 typedef union hwa_rxbuffer
 {
@@ -716,7 +772,7 @@ typedef union hwa_rxbuffer
 
 // HWA Statistics Management
 
-#define HWA_BLOCK_STATISTICS_WORDS  32    // per block 32 max 32b statistics
+#define HWA_BLOCK_STATISTICS_WORDS  32        // per block 32 max 32b statistics
 #define HWA_BLOCK_STATISTICS_BYTES  (HWA_BLOCK_STATISTICS_WORDS * NBU32)
 
 typedef enum hwa_stats_set_index
@@ -724,13 +780,13 @@ typedef enum hwa_stats_set_index
 	HWA_STATS_RXPOST_CORE0      =  0,
 	HWA_STATS_RXPOST_CORE1      =  1,
 	HWA_STATS_CPLENG_COMMON     =  2,
-	HWA_STATS_CPLENG_CEDQ       =  3, // indices  3 .. 12, for 10 rings
+	HWA_STATS_CPLENG_CEDQ       =  3,         // indices  3 .. 12, for 10 rings
 	HWA_STATS_CPLENG_CEDQ_LAST  = 12,
 	HWA_STATS_TXDMA             = 13,
 	HWA_STATS_TXSTS_CORE0       = 14,
 	HWA_STATS_TXSTS_CORE1       = 15,
 	HWA_STATS_TXPOST_COMMON     = 16,
-	HWA_STATS_TXPOST_RING       = 17, // indices 17 .. 48, for 32 rings
+	HWA_STATS_TXPOST_RING       = 17,         // indices 17 .. 48, for 32 rings
 	HWA_STATS_TXPOST_RING_LAST  = 48,
 	HWA_STATS_SET_INDEX_MAX     = 49
 } hwa_stats_set_index_t;
@@ -739,16 +795,16 @@ typedef union hwa_stats_control
 {
 	uint32 u32;
 	struct {
-		uint32 stats_set_index  : 10;   // see hwa_stats_set_index_t
-		uint32 clear_command    :  1;   // clear HWA managed stats
-		uint32 copy_command     :  1;   // copy out to SW state
-		uint32 num_sets         : 10;   // number of sets to copy
+		uint32 stats_set_index  : 10;         // see hwa_stats_set_index_t
+		uint32 clear_command    :  1;         // clear HWA managed stats
+		uint32 copy_command     :  1;         // copy out to SW state
+		uint32 num_sets         : 10;         // number of sets to copy
 #ifdef HWA_TXPOST_BUILD
-		uint32 update_command   :  1;   // SW busy with FRC update
+		uint32 update_command   :  1;         // SW busy with FRC update
 #else
 		uint32 PAD              :  1;
 #endif // endif
-		uint32 notpcie          :  1;   // Used in DMA descr for stats xfer
+		uint32 notpcie          :  1;         // used in stats xfer dma descr
 		uint32 coherent         :  1;
 		uint32 addrext          :  2;
 		uint32 hwa_notpcie      :  1;
@@ -761,6 +817,7 @@ typedef union hwa_stats_control
  * Section: HWA RxPost Block 1a
  * -----------------------------------------------------------------------------
  */
+// HWA1a RxPOST support is placed into RxPATH alongwith 1b and 2a
 #if defined(HWA_RXPOST_BUILD)
 #define HWA_RXPOST_EXPR(expr)       expr
 #else  /* ! HWA_RXPOST_BUILD */
@@ -783,6 +840,7 @@ typedef union hwa_stats_control
  * Section: HWA1b RxFill Block
  * -----------------------------------------------------------------------------
  */
+// HWA1b RxFILL support is placed into RxPath alongwith 1a and 2a
 #if defined(HWA_RXFILL_BUILD)
 #define HWA_RXFILL_EXPR(expr)       expr
 
@@ -795,7 +853,7 @@ typedef union hwa_stats_control
 
 // After rev129, HWA can support both 64bits or 32bits, (nic64_1b control it)
 // In FD mode, we keep using 32bits mode.
-#if HWA_REVISION_GE_129 && !defined(BCMPCIEDEV)
+#if !defined(BCMPCIEDEV)
 #define HWA_RXFILL_RXFREE_WORDS     2
 #else
 #define HWA_RXFILL_RXFREE_WORDS     1
@@ -812,8 +870,9 @@ typedef union hwa_rxfill_rxfree               // aka FREEIDXSRC S2H Interface
 		uint8  control_info;                  // paired, simple
 		uint8  PAD;
 	};
-#if HWA_REVISION_GE_129 && !defined(BCMPCIEDEV)
-	struct {                       // +----- word #0 #1
+#if !defined(BCMPCIEDEV)
+	// XXX, CRWLHWA-437
+	struct {                                  // +----- word #0 #1
 		union {
 			uint32 RSVD_FIELD       : 2;
 			uint32 haddr_lsb30      : 30;
@@ -826,7 +885,7 @@ typedef union hwa_rxfill_rxfree               // aka FREEIDXSRC S2H Interface
 // HWA1b provides sequence of RxBufIndices posted to MAC Rx FIFO0 / FIFO1
 // After rev129, HWA can support both 64bits or 32bits, (nic64_1b control it)
 // In FD mode, we keep using 32bits mode.
-#if HWA_REVISION_GE_129 && !defined(BCMPCIEDEV)
+#if !defined(BCMPCIEDEV)
 #define HWA_RXFILL_RXFIFO_WORDS     2
 #else
 #define HWA_RXFILL_RXFIFO_WORDS     1
@@ -842,8 +901,9 @@ typedef union hwa_rxfill_rxfifo               // aka D11BDEST H2S Interface
 		uint16 index;                         // +----- word#0 lsb16
 		uint16 PAD;
 	};
-#if HWA_REVISION_GE_129 && !defined(BCMPCIEDEV)
-	struct {                       // +----- word #0 #1
+#if !defined(BCMPCIEDEV)
+	// XXX, CRWLHWA-441
+	struct {                                  // +----- word #0 #1
 		union {
 			uint32 RSVD_FIELD       : 2;
 			uint32 haddr_lsb30      : 30;
@@ -877,8 +937,8 @@ typedef union hwa_rxpath_stats
 		uint16 num_stalls_bm;                 // Rx BM depleted occurrences
 		uint16 num_stalls_dma;                // H2D mem2mem DMA busy
 		uint32 num_d2h_rd_upd;                // D2H RD doorbell INTs generated
-		uint32 num_d11b_allocs;               // Rx BM allocations
-		uint32 num_d11b_frees;                // Rx BM de-allocations
+		uint16 num_d11b_allocs;               // Rx BM allocations
+		uint16 num_d11b_frees;                // Rx BM de-allocations
 		uint16 dur_bm_empty;                  // duation BM depleted
 		uint16 dur_dma_busy;                  // duration DMA busy
 	};
@@ -929,8 +989,13 @@ typedef union hwa_rxpost_hostinfo
  * Section: HWA2a RxData Block
  * -----------------------------------------------------------------------------
  */
+// SW driver stuff related 2a stuff goes here!
 #if defined(HWA_RXDATA_BUILD)
 #define HWA_RXDATA_EXPR(expr)       expr
+
+#ifndef DONGLEBUILD
+#define ETHER_TYPE_2_OFFSET 14 /* DA(6) + SA(6)+ PAD(2) */
+#endif // endif
 
 // HWA2a RxData FHR Filter Match 32 bit result byte offset in RxStatus
 // CAUTION 32 bit filtermap is NOT on a 32 bit boundary.
@@ -1231,6 +1296,7 @@ typedef enum hwa_txpost_local_mem_mode
 #define HWA_TXPOST_FRC_LKUP_TYPE_b10        2 // Use DA in FlowTable LUT
 #define HWA_TXPOST_FRC_LKUP_TYPE_b11        3 // Use Interface Priority LUT
 
+// `TX_FRC_CNTXT_SIZE 28
 #define HWA_TXPOST_FRC_WORDS        7
 #define HWA_TXPOST_FRC_BYTES        (HWA_TXPOST_FRC_WORDS * NBU32)
 
@@ -1290,7 +1356,7 @@ typedef union hwa_txpost_frc                  // Flow Ring Context configuration
 		}; // u32[6]
 	};
 
-} hwa_txpost_frc_t;
+} hwa_txpost_frc_t; // `wlan_hwa_TxFlowRingContext in wlan_hwa_structures.sv
 
 // Bits in hwa_txpost_frc::word#2
 #define HWA_TXPOST_FRC_WR_IDX_OFFSET_SHIFT      0
@@ -1350,6 +1416,7 @@ typedef union hwa_txpost_frc                  // Flow Ring Context configuration
 #define HWA_TXPOST_SCHEDCMD_WORKITEMS       0 // units of Workitems
 #define HWA_TXPOST_SCHEDCMD_OCTETS          1 // units of Octets
 
+// `TX_CMD_SIZE 8
 #define HWA_TXPOST_SCHEDCMD_WORDS   2
 #define HWA_TXPOST_SCHEDCMD_BYTES   (HWA_TXPOST_SCHEDCMD_WORDS * NBU32)
 
@@ -1384,7 +1451,7 @@ typedef union hwa_txpost_schedcmd             // FW -> HWA3a Schedule Command
 		}; // u32[1]
 	};
 
-} hwa_txpost_schedcmd_t;
+} hwa_txpost_schedcmd_t; // `wlan_hwa_TxDataCMD in wlan_hwa_structures.sv
 
 // Bits in hwa_txpost_schedcmd::word#0
 #define HWA_TXPOST_SCHEDCMD_FLOWRING_ID_SHIFT      0
@@ -1454,7 +1521,7 @@ typedef union hwa_txpost_pktchain             // HWA3a --> FW pktchain response
 		uint32 timestamp_lsb32;               // +----- word#4
 	};
 
-} hwa_txpost_pktchain_t;
+} hwa_txpost_pktchain_t; // `wlan_hwa_txp_pktchn in wlan_hwa_structures.sv
 
 // Bits in hwa_txpost_pktchain::word#2
 #define HWA_TXPOST_PKTCHAIN_TOTAL_OCTETS_SHIFT      0
@@ -1483,7 +1550,7 @@ typedef union hwa_txpost_pktchain             // HWA3a --> FW pktchain response
  */
 
 typedef struct hwa_txpost_prio_flowid {
-	uint16 flowid_table[HWA_PRIORITIES_MAX];    // [0..7, 8] 8 is override
+	uint16 flowid_table[HWA_PRIORITIES_MAX];  // [0..7, 8] 8 is override
 } hwa_txpost_prio_flowid_t;
 
 typedef struct hwa_txpost_prio_lut {
@@ -1517,7 +1584,7 @@ typedef union hwa_txpost_sada_lut_elem        // 64 bit entry in sada LUT
 
 	uint8   sada[HWA_ETHER_ADDR_LEN];         // Ethernet SA or DA address
 
-} hwa_txpost_sada_lut_elem_t;
+} hwa_txpost_sada_lut_elem_t; // XXX ??? in wlan_hwa_structures.sv
 
 typedef struct hwa_txpost_sada_lut            // Unique Ethernet SADA LUT
 {
@@ -1550,7 +1617,7 @@ typedef union hwa_txpost_flow_lut_elem        // 32 bit Entry in Flow based LUT
 		uint32 ifid    :  5;                  // [0..16] incld ifid = 16
 		uint32 valid   :  1;                  // entry is valid
 	};
-} hwa_txpost_flow_lut_elem_t;
+} hwa_txpost_flow_lut_elem_t; // XXX ??? in wlan_hwa_structures.sv
 
 typedef struct hwa_txpost_flow_lut
 {
@@ -1603,7 +1670,7 @@ typedef union hwa_txpost_frc_srs              // TxPost Statistics Register Set
 		uint16 pkt_allocs;                    // pkts allocated by SW
 		uint16 pkt_deallocs;                  // pkts de-allocated by SW
 	};
-} hwa_txpost_frc_srs_t;
+} hwa_txpost_frc_srs_t; // XXX ??? in wlan_hwa_structures.sv
 
 // Block level common statistics
 typedef union hwa_txpost_stats
@@ -1623,8 +1690,8 @@ typedef union hwa_txpost_stats
  * -----------------------------------------------------------------------------
  */
 
-#define HWAPKT2LFRAG(pkt)	(((char *)(pkt)) + HWA_TXPOST_PKT_BYTES)
-#define LFRAG2HWAPKT(lb)	(((char *)(lb)) - HWA_TXPOST_PKT_BYTES)
+#define HWAPKT2LFRAG(pkt)   (((char *)(pkt)) + HWA_TXPOST_PKT_BYTES)
+#define LFRAG2HWAPKT(lb)    (((char *)(lb)) - HWA_TXPOST_PKT_BYTES)
 
 #define HWA_TXPOST_PKT_FLAGS_SADA_MISS  12
 #define HWA_TXPOST_PKT_FLAGS_FLOW_MISS  13
@@ -1747,7 +1814,6 @@ typedef union hwa_txpost_pkt
 #define HWA_TXPOST_PKT_AUDIT_FLAGS_AUDIT_FAIL_MASK \
 	(0x1 << HWA_TXPOST_PKT_AUDIT_FLAGS_AUDIT_FAIL_SHIFT)
 
-#if HWA_REVISION_GE_129
 /*
  * -----------------------------------------------------------------------------
  * S2H TX Free TxBuf Index ring aka "FREEIDXTX"
@@ -1768,7 +1834,6 @@ typedef union hwa_txpost_txfree               // aka FREEIDXTX S2H Interface
 		uint16 PAD;
 	};
 } hwa_txpost_txfree_t;
-#endif /* HWA_REVISION_GE_129 */
 
 #else  /* ! HWA_TXPOST_BUILD */
 #define HWA_TXPOST_EXPR(expr)       HWA_NONE
@@ -1779,6 +1844,7 @@ typedef union hwa_txpost_txfree               // aka FREEIDXTX S2H Interface
  * Section: HWA3b TxFIFO Block
  * -----------------------------------------------------------------------------
  */
+// XXX SW driver related HWA3b stuff goes here!
 #if defined(HWA_TXFIFO_BUILD)
 #define HWA_TXFIFO_EXPR(expr)       expr
 
@@ -1918,25 +1984,25 @@ typedef struct hwa_txfifo_fifo
 // HWA3b TxFIFO packets shadow.
 typedef struct hwa_txfifo_shadow32
 {
-	uint32 pkt_head;                 // head pointer of this shadow
-	uint32 pkt_tail;                 // tail pointer of this shadow
-	uint16 pkt_count;                 // total packets in the shadow
-	uint16 mpdu_count;                // total MPDU in the shadow
+	uint32 pkt_head;                          // head pointer of this shadow
+	uint32 pkt_tail;                          // tail pointer of this shadow
+	uint16 pkt_count;                         // total packets in the shadow
+	uint16 mpdu_count;                        // total MPDU in the shadow
 	struct {
-		uint32 pkt_count;            // total packets in the shadow
-		uint32 mpdu_count;           // total MPDU in the shadow
+		uint32 pkt_count;                     // total packets in the shadow
+		uint32 mpdu_count;                    // total MPDU in the shadow
 	} stats;
 } hwa_txfifo_shadow32_t;
 
 typedef struct hwa_txfifo_shadow64
 {
-	dma64addr_t pkt_head;            // head pointer of this shadow
-	dma64addr_t pkt_tail;            // tail pointer of this shadow
-	uint16 pkt_count;                 // total packets in the shadow
-	uint16 mpdu_count;                // total MPDU in the shadow
+	dma64addr_t pkt_head;                     // head pointer of this shadow
+	dma64addr_t pkt_tail;                     // tail pointer of this shadow
+	uint16 pkt_count;                         // total packets in the shadow
+	uint16 mpdu_count;                        // total MPDU in the shadow
 	struct {
-		uint32 pkt_count;            // total packets in the shadow
-		uint32 mpdu_count;           // total MPDU in the shadow
+		uint32 pkt_count;                     // total packets in the shadow
+		uint32 mpdu_count;                    // total MPDU in the shadow
 	} stats;
 } hwa_txfifo_shadow64_t;
 
@@ -1970,15 +2036,13 @@ typedef union hwa_txfifo_stats
 		uint32 TBD;                           // TBD ...
 	};
 
-#if HWA_REVISION_GE_129
-	struct { // Valid after REV129
+	struct {
 		uint32 pktc_empty;                    // ptkChain queue empty
 		uint32 ovf_empty;                     // overflow queue empty
 		uint32 ovf_full;                      // overflow queue full
 		uint32 DBG[2];                        // debug #4, #5
 		uint32 pull_fsm_stall;                // pull fsm stall
 	};
-#endif // endif
 
 	uint32 u32[HWA_BLOCK_STATISTICS_WORDS];
 } hwa_txfifo_stats_t;
@@ -1992,6 +2056,7 @@ typedef union hwa_txfifo_stats
  * Section: HWA4a TxStat Block
  * -----------------------------------------------------------------------------
  */
+// XXX SW driver related 4a stuff goes here!
 #if defined(HWA_TXSTAT_BUILD)
 #define HWA_TXSTAT_EXPR(expr)       expr
 
@@ -2049,15 +2114,15 @@ typedef union hwa_cpleng_ced                  // Completion Entry Descriptor
 
 	struct {
 		struct {
-			uint8  fw_intr_valid    :  1; // Generate FW interrupt on CED
-			uint8  host_intr_valid  :  1; // Generate Host interrupt on CED
+			uint8  fw_intr_valid    :  1;     // generate FW interrupt on CED
+			uint8  host_intr_valid  :  1;     // generate Host interrupt on CED
 			uint8  PAD              :  6;
 			uint8  PAD;
-			uint16 cpl_ring_id;           // Selects a completion ring
+			uint16 cpl_ring_id;               // selects a completion ring
 		};
 		struct {
-			uint16 md_count;              // number of MD items in CED
-			uint16 wi_count;              // number of WI items in CED
+			uint16 md_count;                  // number of MD items in CED
+			uint16 wi_count;                  // number of WI items in CED
 		};
 		uint32  wi_array_addr;                // 32bit address of WI array
 		uint32  md_array_addr;                // 32bit address of MD array
@@ -2068,16 +2133,16 @@ typedef union hwa_cpleng_ced                  // Completion Entry Descriptor
 #define HWA_CPLENG_MD_WORDS         4
 #define HWA_CPLENG_MD_BYTES         (HWA_CPLENG_MD_WORDS * NBU32)
 
-typedef union hwa_cpleng_md                  // Metadata Buffer Descriptor
+typedef union hwa_cpleng_md                   // Metadata Buffer Descriptor
 {
-	uint8   u8[HWA_CPLENG_MD_BYTES];         // 16 Bytes
-	uint32 u32[HWA_CPLENG_MD_WORDS];         //  4 Words
+	uint8   u8[HWA_CPLENG_MD_BYTES];          // 16 Bytes
+	uint32 u32[HWA_CPLENG_MD_WORDS];          //  4 Words
 
 	struct {
-		uint32 dngl_addr;                    // src location in dongle SysMem
-		uint32 host_addr_hi;                 // dst location in host memory
+		uint32 dngl_addr;                     // src location in dongle SysMem
+		uint32 host_addr_hi;                  // dst location in host memory
 		uint32 host_addr_lo;
-		uint16 length;                       // length of metadata
+		uint16 length;                        // length of metadata
 		uint16 PAD;
 	};
 } hwa_cpleng_md_t;
@@ -2095,42 +2160,34 @@ typedef union hwa_cpleng_ring                 // completion ring context
 		uint32 base_addr_hi;                  // +----- word#0 : high 32
 		uint32 base_addr_lo;                  // +----- word#1 : low 32
 		struct {                              // +----- word#2
-			uint16 rd_index;              // read index
+			uint16 rd_index;                  // read index
 			uint16 PAD;
 		};
 		struct {                              // +----- word#3
-			uint32 element_sz       :  6; // size of each acwi compl element
-#if HWA_REVISION_GE_129
-			uint32 seqnum_enable    :  1; // HWA assisted seqnum insertion
-			uint32 aggr_mode        :  1; // aggregation enabled
-			uint32 pkts_per_aggr    :  4; // aggregation size
+			uint32 element_sz       :  6;     // size of each acwi compl element
+			uint32 seqnum_enable    :  1;     // HWA assisted seqnum insertion
+			uint32 aggr_mode        :  1;     // aggregation enabled
+			uint32 pkts_per_aggr    :  4;     // aggregation size
 			uint32 PAD              :  4;
-			uint32 depth            : 16; // depth of ring
-#else
-			uint32 depth            : 16; // depth of ring
-			uint32 seqnum_enable    :  1; // HWA assisted seqnum insertion
-			uint32 aggr_mode        :  1; // aggregation enabled
-			uint32 pkts_per_aggr    :  4; // aggregation size
-			uint32 PAD              :  4;
-#endif /* HWA_REVISION_GE_129 */
+			uint32 depth            : 16;     // depth of ring
 		};
 		struct {                              // +----- word#4
-			uint16 wr_index;              // write index
+			uint16 wr_index;                  // write index
 			uint16 PAD;
 		};
 		struct {                              // +----- word#5
-			uint32 intraggr_count   :  8; // interrupt aggregation count
-			uint32 intraggr_tmout   : 20; // interrupt aggregation timeout
+			uint32 intraggr_count   :  8;     // interrupt aggregation count
+			uint32 intraggr_tmout   : 20;     // interrupt aggregation timeout
 			uint32 PAD              :  2;
 		};
 		struct {                              // +----- word#6
-			uint16 seqnum_start;          // start seqnum value
-			uint8  seqnum_offset;         // position of seqnum in WI
-			uint8  seqnum_width     :  1; // Size of seqnum: 0 = 8b, 1 = 16b
+			uint16 seqnum_start;              // start seqnum value
+			uint8  seqnum_offset;             // position of seqnum in WI
+			uint8  seqnum_width     :  1;     // Size of seqnum: 0 = 8b, 1 = 16b
 			uint8  PAD              :  7;
 		};
 		struct {                              // +----- word#7
-			uint16 seqnum_current;        // current seqnum value - runtime
+			uint16 seqnum_current;            // current seqnum value - runtime
 			uint16 PAD;
 		};
 	};
@@ -2165,5 +2222,381 @@ typedef union hwa_cpleng_cedq_stats
 #define HWA_TXCPLE_EXPR(expr)       HWA_NONE
 #define HWA_CPLENG_EXPR(expr)       HWA_NONE
 #endif /* ! HWA_CPLENG_BUILD */
+
+#if defined(HWA_PKTPGR_BUILD)
+#define HWA_PKTPGR_EXPR(expr)       expr
+
+// Request and Response PAGEIN CMD = REQ|RSP types
+typedef enum hwa_pp_pagein_cmd
+{
+	HWA_PP_PAGEIN_RXPROCESS         =  0, // Page In a RxLfrag for RxProcess
+	HWA_PP_PAGEIN_TXSTATUS          =  1, // Page In a TxLfrag for TxStatus
+	HWA_PP_PAGEIN_TXPOST_WITEMS     =  2, // Page In TxLfrags from Flowrings
+	HWA_PP_PAGEIN_TXPOST_OCTETS     =  3, // Page In TxLfrags from Flowrings
+	HWA_PP_PAGEIN_TXPOST_WITEMS_FRC =  4, // + FlowRingContext Refresh
+	HWA_PP_PAGEIN_TXPOST_OCTETS_FRC =  5, // + FlowRingContext Refresh
+	HWA_PP_PAGEIN_CMD_MAX           =  6
+} hwa_pp_pagein_cmd_t;
+
+// Request and *Response PAGEOUT CMD = REQ|RSP types
+typedef enum hwa_pp_pageout_cmd
+{
+	HWA_PP_PAGEOUT_PKTLIST_NR       =  0, // Transmit TxLfrags: *NoResponse
+	HWA_PP_PAGEOUT_PKTLIST_WR       =  1, // Transmit TxLfrags: *w/Response
+	HWA_PP_PAGEOUT_PKTLOCAL         =  2, // Transmit local TxLfrag+buffer
+	HWA_PP_PAGEOUT_CMD_MAX          =  3
+} hwa_pp_pageout_cmd_t;
+
+// Request and *Response PAGEMGR CMD = REQ|RSP types
+typedef enum hwa_pp_pagemgr_cmd
+{
+	HWA_PP_PAGEMGR_ALLOC_RX         =  0, // Allocate RxLfrag
+	HWA_PP_PAGEMGR_ALLOC_RX_RPH     =  1, // Allocate RxLfrag w/ RxPostHost
+	HWA_PP_PAGEMGR_ALLOC_TX         =  2, // Allocate TxLfrag
+	HWA_PP_PAGEMGR_FREE_RX          =  3, // **Deallocate RxLfrag. No RSP
+	HWA_PP_PAGEMGR_FREE_TX          =  4, // **Deallocate TxLfrag. No RSP
+	HWA_PP_PAGEMGR_FREE_RPH         =  5, // **Deallocate RxPostHostInfo
+	HWA_PP_PAGEMGR_PUSH             =  6, // DMA out Lfrag, free Dngl entry
+	HWA_PP_PAGEMGR_PULL             =  7, // Allocate and DMA in Lfrag
+	HWA_PP_PAGEMGR_FREE_D11B        =  8, // **Deallocate D11B Pkt MapId. No RSP
+	HWA_PP_PAGEMGR_CMD_MAX          =  9
+} hwa_pp_pagemgr_cmd_t;
+
+#define HWA_PP_COMMAND_WORDS        4         // 4 x 32b words per command
+#define HWA_PP_COMMAND_BYTES        (HWA_PP_COMMAND_WORDS * NBU32)
+
+// HWA_PP_PAGEIN_RXPROCESS REQUEST command layout
+typedef struct hwa_pp_pagein_req_rxprocess {
+	uint8  trans;                             // value HWA_PP_PAGEIN_RXPROCESS
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 PAD;                               // padding
+	uint16 pkt_count;                         // requested number of packets
+	uint16 pkt_bound;                         // bound max pkts for pagein
+	uint32 PAD[2];                            // padding
+} hwa_pp_pagein_req_rxprocess_t;
+
+// HWA_PP_PAGEIN_RXPROCESS RESPONSE command layout
+typedef struct hwa_pp_pagein_rsp_rxprocess {
+	uint8  trans;                             // value HWA_PP_PAGEIN_RXPROCESS
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 PAD;                               // padding
+	uint16 pkt_count;                         // length of pktlist returned
+	uint16 pkt_ready;                         // D11B ready, but no rxLfrag
+	uint32 pktlist_head;                      // pktlist head
+	uint32 pktlist_tail;                      // pktlist tail
+} hwa_pp_pagein_rsp_rxprocess_t;
+
+// HWA_PP_PAGEIN_TXSTATUS REQUEST command layout
+typedef struct hwa_pp_pagein_req_txstatus {
+	uint8  trans;                             // value HWA_PP_PAGEIN_TXSTATUS
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 fifo_idx;                          // TxFifo index(shadow list)
+	uint16 mpdu_count;                        // MPDUs from shadow list
+	uint16 PAD;                               // padding
+	uint32 PAD[2];                            // padding
+} hwa_pp_pagein_req_txstatus_t;
+
+// HWA_PP_PAGEIN_TXSTATUS RESPONSE command layout
+typedef struct hwa_pp_pagein_rsp_txstatus {
+	uint8  trans;                             // value HWA_PP_PAGEIN_TXSTATUS
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 fifo_idx;                          // TxFifo index(shadow list)
+	uint16 mpdu_count;                        // MPDUs from shadow list
+	uint16 pkt_count;                         // length of pktlist returned
+	uint32 pktlist_head;                      // pktlist head
+	uint32 pktlist_tail;                      // pktlist tail
+} hwa_pp_pagein_rsp_txstatus_t;
+
+// HWA_PP_PAGEIN_TXPOST WITEMS form REQUEST command layout
+// Note: OCTET form is not supported.
+// value of command trans suggests whether a FlowRingContext Refresh is required
+typedef struct hwa_pp_pagein_req_txpost {     // see hwa_txpost_schedcmd
+	uint8  trans;                             // value 2|4: OCTETS not supported
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 rd_idx;                            // flowring RD index
+	uint32 transfer_count;                    // number of TxPosts witems
+	uint32 flowring_id;                       // flowring(FRC) index
+	uint32 PAD;                               // padding
+} hwa_pp_pagein_req_txpost_t;
+
+// HWA_PP_PAGEIN_TXPOST WITEMS form RESPONSE command layout
+typedef struct hwa_pp_pagein_rsp_txpost {
+	uint8  trans;                             // value 2|4: OCTETS not supported
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 pkt_count;                         // length of pktlist returned
+	uint32 oct_count;                         // valid for OCTET count form
+	uint32 pktlist_head;                      // pktlist head
+	uint32 pktlist_tail;                      // pktlist tail
+} hwa_pp_pagein_rsp_txpost_t;
+
+// HWA_PP_PAGEOUT_PKTLIST_NR, HWA_PP_PAGEOUT_PKTLIST_WR REQUEST command layout
+typedef struct hwa_pp_pageout_req_pktlist {
+	uint8  trans;                             // value 0, 1 : no/with response
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 fifo_idx;                          // TxFIFO index(shadow list)
+	uint16 mpdu_count;                        // total mpdus in pktlist
+	uint16 pkt_count;                         // total packets in pktlist
+	uint32 pktlist_head;                      // pktlist head
+	uint32 pktlist_tail;                      // pktlist tail
+} hwa_pp_pageout_req_pktlist_t;
+
+// HWA_PP_PAGEOUT_PKTLOCAL REQUEST command layout
+typedef struct hwa_pp_pageout_req_pktlocal {
+	uint8  trans;                             // value HWA_PP_PAGEOUT_PKTLOCAL
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 fifo_idx;                          // TxFIFO index(shadow list)
+	uint32 pkt_local;                         // ptr to local TxLfrag
+	uint32 PAD[2];                            // padding
+} hwa_pp_pageout_req_pktlocal_t;
+
+// HWA_PP_PAGEOUT_PKTLIST RESPONSE command layout
+typedef struct hwa_pp_pageout_rsp_pktlist {
+	uint8  trans;                             // value 1, 2
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 fifo_idx;                          // TxFIFO index(shadow list)
+	uint16 mpdu_count;                        // aqm descriptors used
+	uint16 pkt_count;                         // txdma descriptors used
+	uint32 PAD[2];                            // padding
+} hwa_pp_pageout_rsp_pktlist_t;
+
+// HWA_PP_PAGEMGR_ALLOC(RX, RX_RPH, TX) REQUEST command layout
+typedef struct hwa_pp_pagemgr_req_alloc {
+	uint8  trans;                             // value 0, 1, 2
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 pkt_count;                         // number of Lfrags
+	uint32 PAD[3];                            // padding
+} hwa_pp_pagemgr_req_alloc_t;
+
+// HWA_PP_PAGEMGR_ALLOC(RX, RX_RPH, TX) RESPONSE command layout
+typedef struct hwa_pp_pagemgr_rsp_alloc {
+	uint8  trans;                             // value 0, 1, 2
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 pkt_count;                         // length of pktlist returned
+	uint32 PAD;                               // padding
+	uint32 pktlist_head;                      // pktlist head
+	uint32 pktlist_tail;                      // pktlist tail
+} hwa_pp_pagemgr_rsp_alloc_t;
+
+// HWA_PP_PAGEMGR_PUSH REQUEST / RESPONSE command format
+typedef struct hwa_pp_pagemgr_push {
+	uint8  trans;                             // value HWA_PP_PAGEMGR_PUSH = 6
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 pkt_count;                         // length of pktlist
+	uint32 PAD;                               // padding
+	uint32 pktlist_head;                      // pktlist head
+	uint32 pktlist_tail;                      // pktlist tail
+} hwa_pp_pagemgr_req_push_t, hwa_pp_pagemgr_rsp_push_t;
+
+// HWA_PP_PAGEMGR_PULL REQUEST command format
+typedef struct hwa_pp_pagemgr_req_pull {
+	uint8  trans;                             // value HWA_PP_PAGEMGR_PULL = 7
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 pkt_count;                         // length of pktlist to pull
+	uint16 pkt_mapid;                         // pkt_mapid of head packet
+	uint16 PAD;                               // padding
+	uint32 PAD[2];                            // padding
+} hwa_pp_pagemgr_req_pull_t;
+
+// HWA_PP_PAGEMGR_PULL RESPONSE command format
+typedef struct hwa_pp_pagemgr_rsp_pull {
+	uint8  trans;                             // value HWA_PP_PAGEMGR_PULL
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 pkt_count;                         // length of pktlist returned
+	uint32 PAD;                               // padding
+	uint32 pktlist_head;                      // pktlist head
+	uint32 pktlist_tail;                      // pktlist tail
+} hwa_pp_pagemgr_rsp_pull_t;
+
+// HWA_PP_PAGEMGR_FREE(RX, TX) REQUEST command layout
+typedef struct hwa_pp_freepkt_req {
+	uint8  trans;                             // value 3, 4
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 pkt_count;                         // length of pktlist
+	uint32 PAD;                               // padding
+	uint32 pktlist_head;                      // pktlist head
+	uint32 pktlist_tail;                      // pktlist tail
+} hwa_pp_freepkt_req_t;
+
+// HWA_PP_PAGEMGR_FREE_RPH REQUEST command layout
+typedef struct hwa_pp_freerph_req {
+	uint8  trans;                             // value 5
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 host_datalen;                      // *fixed system wide
+	uint32 host_pktid;                        // 32b host pkt id
+	dma64addr_t data_buf_haddr64;             // 64 bit host data buffer addr
+} hwa_pp_freerph_req_t;
+
+// HWA_PP_PAGEMGR_FREE_D11B REQUEST command layout
+typedef struct hwa_pp_freed11_req {
+	uint8  trans;                             // value 8
+	uint8  trans_id;                          // closed REQ/RSP transaction
+	uint16 pkt_mapid;                         // index of packet in Host BM
+	uint32 host_pktid;                        // 32b host pkt id
+	dma64addr_t data_buf_haddr64;             // 64 bit host data buffer addr
+} hwa_pp_freed11_req_t;
+
+#define HWA_PP_CMD_TRANS            0         // trans cmd in u8[0]
+#define HWA_PP_CMD_TRANS_ID         1         // trans_id in u8[1]
+
+// Collection of all Packet Pager Commands
+typedef union hwa_pp_cmd
+{
+	uint8   u8[HWA_PP_COMMAND_BYTES];         // 16 Bytes
+	uint32 u32[HWA_PP_COMMAND_WORDS];         //  4 Words
+
+	// PAGE-IN Interface
+	hwa_pp_pagein_req_rxprocess_t   pagein_req_rxprocess;
+	hwa_pp_pagein_rsp_rxprocess_t   pagein_rsp_rxprocess;
+
+	hwa_pp_pagein_req_txstatus_t    pagein_req_txstatus;
+	hwa_pp_pagein_rsp_txstatus_t    pagein_rsp_txstatus;
+
+	hwa_pp_pagein_req_txpost_t      pagein_req_txpost;
+	hwa_pp_pagein_rsp_txpost_t      pagein_rsp_txpost;
+
+	// PAGEOUT Interface
+	hwa_pp_pageout_req_pktlist_t    pageout_req_pktlist;
+	hwa_pp_pageout_req_pktlocal_t   pageout_req_pktlocal;
+	hwa_pp_pageout_rsp_pktlist_t    pageout_rsp_pktlist;
+
+	// PAGEMGR Interface
+	hwa_pp_pagemgr_req_alloc_t      pagemgr_req_alloc;
+	hwa_pp_pagemgr_rsp_alloc_t      pagemgr_rsp_alloc;
+
+	hwa_pp_pagemgr_req_push_t       pagemgr_req_push;
+	hwa_pp_pagemgr_rsp_push_t       pagemgr_rsp_push;
+
+	hwa_pp_pagemgr_req_pull_t       pagemgr_req_pull;
+	hwa_pp_pagemgr_rsp_pull_t       pagemgr_rsp_pull;
+
+	// Misc Free Pkt Interface: (RX and Tx)
+	hwa_pp_freepkt_req_t            freepkt_req; // no response
+
+	// Misc Free RPH or D11 Interface:
+	hwa_pp_freerph_req_t            freerph_req; // no response
+	hwa_pp_freed11_req_t            freed11_req; // no response
+
+} hwa_pp_cmd_t;
+
+// +--------------------------------------------------------------------------+
+//  Layout of a Packet known to the Packet Pager
+// +--------------------------------------------------------------------------+
+
+// In RxLfrag, a portion of the unused Lfrag.FRAGINFO may be used as data buffer
+#define HWA_PP_PKTDATABUF_WORDS     32
+#define HWA_PP_PKTDATABUF_BYTES     (HWA_PP_PKTDATABUF_WORDS * NBU32)
+
+#define HWA_PP_PKTCONTEXT_WORDS     32
+#define HWA_PP_PKTCONTEXT_BYTES     (HWA_PP_PKTCONTEXT_WORDS * NBU32)
+
+#define HWA_PP_PKTCONTROL_WORDS     8
+#define HWA_PP_PKTCONTROL_BYTES     (HWA_PP_PKTCONTROL_WORDS * NBU32)
+
+typedef struct hwa_pp_lbuf_control {
+	uint16 pkt_mapid;                           // HW: slot index in HostPktPool
+	uint16 flowid;                              // SW: e.g. CFP flowid
+	uint32 next;                                // HW: frame(MPDU) fragment list
+	uint32 link;                                // HW: frame(MPDU) list
+	uint32 flags;                               // SW: lbuf flags
+	uint32 data;                                // HW: start of data
+	uint16 len;                                 // HW: length of data buffer
+	uint8  ifid;                                // SW: interface
+	uint8  prio;                                // SW: packet prio
+
+	union {
+		uint32 misc[2];                         // SW: RX and TxStatus path
+		struct {                                //
+			uint32 info             :  4;       // HW: Host field for future use
+			uint32 flowid_override  : 12;       // HW: Host flowid override
+			uint32 RSVD_FIELD       : 16;       //
+
+			uint32 copy             :  1;       // HW: COPY as-is bit
+			uint32 flags            :  7;       // HW: flags
+			uint32 RSVD_FIELD       :  8;       //
+			uint32 RSVD_FIELD       : 12;       //
+			uint32 sada_miss        :  1;       // HW: SADA Lkup Miss
+			uint32 flow_miss        :  1;       // HW: flowid LUT / SADA miss
+			uint32 copy_asis        :  1;       // HW: copy as-is
+			uint32 audit_fail       :  1;       // HW: audit failure
+		} txpost;                               // HW: HWA3a facing layout
+
+		struct {                                //
+			uint8  num_desc;                    // HW: see hwa_txpost_pkt
+			uint8  RSVD_FIELD;                  //
+			uint16 amsdu_total_len;             // HW: see hwa_txpost_pkt
+
+			uint32 txdma_flags;                 // HW: see hwa_txfifo_pkt
+		} txfifo;                               // HW: HWA3b facing layout
+	};
+} hwa_pp_pkt_control_t;
+
+#define HWA_PP_PKTTAG_WORDS         8
+#define HWA_PP_PKTTAG_BYTES         (HWA_PP_PKTTAG_WORDS * NBU32)
+
+typedef union hwa_pp_lbuf_pkttag {
+	uint8   u8[HWA_PP_PKTTAG_BYTES];
+	uint32 u32[HWA_PP_PKTTAG_WORDS];
+} hwa_pp_lbuf_pkttag_t;
+
+// 64 Bytes FragInfo, allowing 4-in-1 Host fragments for TxLfrag
+#define HWA_PP_FRAGINFO_WORDS       16
+#define HWA_PP_FRAGINFO_BYTES       (HWA_PP_FRAGINFO_WORDS * NBU32)
+
+#define HWA_PP_PKT_FRAGINFO_MAX     4
+
+typedef struct hwa_pp_lbuf_fraginfo {
+	uint8  frag_num;                            // SW: total number of fragments
+	uint8  flags;                               // SW: lbuf flags extension
+	uint16 misc;                                // SW: misc
+	union {                                     //
+		uint16 rx_misc[2];                      // SW: unused in RX(PhyRx?)
+		struct {                                //
+			uint16 flowring_id;                 // HW: Flowring Id
+			uint16 rd_idx;                      // HW: Flowring RD index
+		} tx;                                   // HW: used in TX
+	};                                          //
+
+	uint32 host_pktid[HWA_PP_PKT_FRAGINFO_MAX];
+	uint16 host_datalen[HWA_PP_PKT_FRAGINFO_MAX];
+	dma64addr_t data_buf_haddr64[HWA_PP_PKT_FRAGINFO_MAX];
+	// Rx: 24 Bytes data_buf_haddr64[1..3] memory can be used for data_buffer
+} hwa_pp_lbuf_fraginfo_t;
+
+// Packet Pager compliant Lbuf Context structure
+typedef union hwa_pp_lbuf_context {
+	uint8   u8[HWA_PP_PKTCONTEXT_BYTES];
+	uint32 u32[HWA_PP_PKTCONTEXT_WORDS];
+	struct {
+	    hwa_pp_pkt_control_t   control;         // Lbuf Control Header
+	    hwa_pp_lbuf_pkttag_t   pkttag;          // Lbuf Packet Tage
+	    hwa_pp_lbuf_fraginfo_t fraginfo;        // Lbuf Host Fragment Info
+	};
+} hwa_pp_lbuf_context_t;
+
+// Packet Pager manages Lbuf packets in Dongle and Host Packet Pools
+// Packet Pager compliant Lbuf Context structure and Data buffer
+typedef union hwa_pp_lbuf {
+	uint8   u8[HWA_PP_PKTCONTEXT_BYTES + HWA_PP_PKTDATABUF_BYTES];
+	uint32 u32[HWA_PP_PKTCONTEXT_WORDS + HWA_PP_PKTDATABUF_WORDS];
+	struct {
+		hwa_pp_lbuf_context_t context;
+		uint8                 data_buffer[HWA_PP_PKTDATABUF_BYTES];
+	};
+} hwa_pp_lbuf_t;
+
+#define HWA_PP_LBUF_SZ              (sizeof(hwa_pp_lbuf_t))
+
+// Below are specified in 4B words
+// Only a single dma64addr_t needed for RxLfrag, re-purposed for databuffer
+#define HWA_PP_RXLFRAG_DATABUF_OFFSET_U32 \
+	(HWA_PP_PKTCONTEXT_WORDS - \
+	 ((sizeof(dma64addr_t) * (HWA_PP_PKT_FRAGINFO_MAX - 1)) / NBU32))
+
+#define HWA_PP_RXLFRAG_DATABUF_LEN_U32 \
+	((HWA_PP_LBUF_SZ / NBU32) - HWA_PP_RXLFRAG_DATABUF_OFFSET_U32)
+
+#else  /* ! HWA_PKTPGR_BUILD */
+#define HWA_PKTPGR_EXPR(expr)       HWA_NONE
+#endif /* ! HWA_PKTPGR_BUILD */
 
 #endif /* _HWA_DEFS_H */

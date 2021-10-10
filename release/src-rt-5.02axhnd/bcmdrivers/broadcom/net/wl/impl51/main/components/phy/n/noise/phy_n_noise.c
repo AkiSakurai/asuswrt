@@ -1,7 +1,7 @@
 /*
  * NPHY NOISE module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_n_noise.c 721745 2017-09-15 18:03:27Z $
+ * $Id: phy_n_noise.c 769388 2018-11-13 10:08:13Z $
  */
 
 #include <phy_cfg.h>
@@ -705,6 +705,10 @@ phy_n_noise_update_aci_ma(phy_type_noise_ctx_t *ctx)
 		}
 	}
 
+	/* XXX
+	 * OFDM GLITCHES
+	 * evict old value, admit new value, compute new ma, readjust ma window
+	 */
 	if ((CHSPEC_IS5G(pi->radio_chanspec) && (ofdm_delta >= 0)) ||
 		(CHSPEC_IS2G(pi->radio_chanspec) && (delta >= 0) && (bphy_delta >= 0))) {
 		pi->interf->noise.ofdm_ma_total -= pi->interf->noise.
@@ -721,6 +725,10 @@ phy_n_noise_update_aci_ma(phy_type_noise_ctx_t *ctx)
 		}
 	}
 
+	/* XXX
+	 * BPHY GLITCHES
+	 * evict old value, admit new value, compute new ma, readjust ma window
+	 */
 	if (bphy_delta >= 0) {
 		pi->interf->noise.bphy_ma_total -= pi->interf->noise.
 				bphy_glitch_ma_list[pi->interf->noise.bphy_ma_index];
@@ -735,6 +743,10 @@ phy_n_noise_update_aci_ma(phy_type_noise_ctx_t *ctx)
 			pi->interf->noise.bphy_ma_index = 0;
 	}
 
+	/* XXX
+	 * OFDM BADPLCP
+	 * evict old value, admit new value, compute new ma, readjust ma window
+	 */
 	if ((CHSPEC_IS5G(pi->radio_chanspec) && (ofdm_badplcp_delta >= 0)) ||
 		(CHSPEC_IS2G(pi->radio_chanspec) && (badplcp_delta >= 0) &&
 		(bphy_badplcp_delta >= 0))) {
@@ -752,6 +764,10 @@ phy_n_noise_update_aci_ma(phy_type_noise_ctx_t *ctx)
 			pi->interf->noise.ofdm_badplcp_ma_index = 0;
 	}
 
+	/* XXX
+	 * BPHY BADPLCP
+	 * evict old value, admit new value, compute new ma, readjust ma window
+	 */
 	if (bphy_badplcp_delta >= 0) {
 		pi->interf->noise.bphy_badplcp_ma_total -= pi->interf->noise.
 			bphy_badplcp_ma_list[pi->interf->noise.bphy_badplcp_ma_index];
@@ -839,6 +855,15 @@ wlc_phy_noisemode_upd(phy_info_t *pi)
 	pi->interf->noise.ofdm_desense += ofdm_desense_delta;
 
 	wlc_phy_cmn_noise_limit_desense(pi);
+
+	/* XXX This function utilizes bphy_desense, ofdm_desense
+	  * and RSSI (if setting exact OFDM and BPHY settings is not possible).
+	  * This function finds out the best settings for BPHY (0x2e6, 0xc33, IG)
+	  * and OFDM(0x280 and IG), that can best set the desense.
+	  * Also, call this function if some desense is required.
+	  * if both OFDM, BPHY desense == 0, then never mind calling the function.
+	  * call the lower function only if there is any new desense to be done.
+	  */
 
 	if (bphy_desense_delta || ofdm_desense_delta) {
 		wlc_phy_bphy_ofdm_noise_hw_set_nphy(pi);
@@ -1054,8 +1079,7 @@ phy_n_noise_request_sample(phy_type_noise_ctx_t *ctx, uint8 reason, uint8 ch)
 			return;
 
 		/* Do not do noise mmt if in PM State */
-		if (phy_noise_pmstate_get(pi) &&
-			!wlapi_phy_awdl_is_on(pi->sh->physhim)) {
+		if (phy_noise_pmstate_get(pi)) {
 			/* Make sure that you do it every PHY_NOISE_MAX_IDLETIME atleast */
 			if ((pi->sh->now - pi->phynoise_lastmmttime)
 					< PHY_NOISE_MAX_IDLETIME)

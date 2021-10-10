@@ -3,7 +3,7 @@
  * AES encrypt/decrypt wrapper functions used around Rijndael reference
  * implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -47,9 +47,12 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: aes.c 745529 2018-02-08 14:38:01Z $
+ * $Id: aes.c 774213 2019-04-16 06:48:32Z $
  */
 
+/* XXX: Define bcm_cfg.h to be the first header file included as some builds
+ * get their feature flags thru this file.
+ */
 #include <bcm_cfg.h>
 #include <typedefs.h>
 

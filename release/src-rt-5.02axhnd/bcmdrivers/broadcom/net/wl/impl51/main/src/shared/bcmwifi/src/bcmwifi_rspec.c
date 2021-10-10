@@ -2,7 +2,7 @@
  * Common [OS-independent] rate management
  * 802.11 Networking Adapter Device Driver.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,7 +46,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcmwifi_rspec.c 764904 2018-06-08 11:28:25Z $
+ * $Id: bcmwifi_rspec.c 774598 2019-04-29 17:29:56Z $
  */
 
 #include <typedefs.h>
@@ -256,6 +256,8 @@ wf_he_plcp_to_rspec(uint8 *plcp, uint16 ft_fmt)
 			break;
 
 		case HE_FMT_HETB:
+			rspec |= ((plcp[3] & 0x3) + 1) << WL_RSPEC_BW_SHIFT;
+			rspec |= (plcp[6] & 0x10) ? WL_RSPEC_LDPC : 0;
 			break;
 
 		default:

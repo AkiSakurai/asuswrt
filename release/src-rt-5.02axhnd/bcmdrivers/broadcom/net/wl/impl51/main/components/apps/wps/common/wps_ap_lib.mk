@@ -1,5 +1,5 @@
 #
-# Copyright 2018 Broadcom
+# Copyright 2019 Broadcom
 #
 # This program is the proprietary software of Broadcom and/or
 # its licensors, and may only be used, duplicated, modified or distributed
@@ -40,7 +40,7 @@
 # OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
 # NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
 #
-# $Id: wps_ap_lib.mk 682847 2017-02-03 11:07:17Z $
+# $Id: wps_ap_lib.mk 768737 2018-10-23 22:07:55Z $
 #
 # Linux makefile
 #
@@ -58,11 +58,11 @@ CC_TYPE=linux
 endif
 
 ifeq ($(BLDTYPE),debug)
-export CFLAGS = -Wall -Wnested-externs -g -D_TUDEBUGTRACE
-export CXXFLAGS = -Wall -Wnested-externs -g -D_TUDEBUGTRACE
+export CFLAGS = -Os -Wall -Wnested-externs -g -D_TUDEBUGTRACE
+export CXXFLAGS = -Os -Wall -Wnested-externs -g -D_TUDEBUGTRACE
 else
-export CFLAGS = -Os -Wall -Wnested-externs
-export CXXFLAGS = -Os -Wall -Wnested-externs
+export CFLAGS = -Wall -Wnested-externs
+export CXXFLAGS = -Wall -Wnested-externs
 endif
 
 export CC = mipsel-$(CC_TYPE)-gcc

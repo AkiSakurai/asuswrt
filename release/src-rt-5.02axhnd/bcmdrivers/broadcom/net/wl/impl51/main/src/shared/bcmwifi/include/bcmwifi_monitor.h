@@ -2,7 +2,7 @@
  * Monitor Mode routines.
  * This header file housing the define and function use by DHD
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

@@ -1,7 +1,7 @@
 /*
  * Broadcom WPS module (for libupnp), WFADevice.c
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -285,6 +285,16 @@ WFADevice_scbrchk(UPNP_CONTEXT *context, UPNP_SERVICE *service,
 {
 	/* << USER CODE START >> */
 
+	/*
+	 * PR97482, once a STA enrollment with Win 7 ER successfully I pull out the Win 7
+	 * Ethernet and plug in again intentionally the problem happen in next enrollment.
+	 * The reason is Win 7 will do UPnP subscribption again when it detect the Ethernet
+	 * link down and up.  On our AP we deal with the two subscriptions as different
+	 * subscriptions.
+	 * In fact, we think one ER should not have multiple Registrar instances, so in WPS we
+	 * would like to change our AP UPnP to handle same IP and PORT subscription as same
+	 * subscriber.
+	 */
 	if (subscriber->ipaddr.s_addr == ipaddr.s_addr && subscriber->port == port)
 		return 1;
 

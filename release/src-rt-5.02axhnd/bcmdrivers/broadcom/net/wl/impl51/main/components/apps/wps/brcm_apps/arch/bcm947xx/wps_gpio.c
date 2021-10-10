@@ -1,7 +1,7 @@
 /*
  * WPS GPIO functions
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_gpio.c 766036 2018-07-23 22:20:10Z $
+ * $Id: wps_gpio.c 773434 2019-03-20 18:30:53Z $
  */
 
 #include <typedefs.h>
@@ -79,7 +79,7 @@
 #define WPS_ERROR(fmt, arg...)
 #endif // endif
 
-#ifdef BCA_HNDROUTER
+#if defined(BCA_HNDROUTER)
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -88,11 +88,18 @@
 #include <board.h>
 
 #ifdef BCA_CPEROUTER
+#ifdef BCA_SUPPORT_UNFWLCFG
+void cperouter_restart_wlan(void)
+{
+	system("nvram commit restart");
+}
+#else
 #include <wlcsm_lib_api.h>
 void cperouter_restart_wlan(void)
 {
 	wlcsm_mngr_restart(0, WLCSM_MNGR_RESTART_NVRAM, WLCSM_MNGR_RESTART_SAVEDM, 0);
 }
+#endif /* BCA_SUPPORT_UNFWLCFG */
 #endif /* BCA_CPEROUTER */
 
 static wps_blinktype_t current_blinktype = WPS_BLINKTYPE_STOP;
@@ -326,7 +333,7 @@ wps_gpio_led_blink(wps_blinktype_t blinktype)
 	return;
 }
 
-#else /* !BCA_HNDROUTER */
+#else /* !BCA_HNDROUTER || CMWIFI */
 extern int clock_gettime();
 
 #define WPS_GPIO_BUTTON_VALUE	"wps_button"
@@ -393,7 +400,6 @@ int
 wps_gpio_btn_init()
 {
 	char *value;
-
 	/* Reset wps_btn structure */
 	memset(&wps_btn, 0, sizeof(wps_btn));
 	wps_btn.gpio = BCMGPIO_UNDEFINED;
@@ -402,7 +408,6 @@ wps_gpio_btn_init()
 	wps_btn.status = WPS_NO_BTNPRESS;
 	wps_btn.first_time = TRUE;
 	wps_btn.prev_assertval = wps_btn.assertlvl ? 0 : 1;
-
 	/* Determine the GPIO pins for the WPS Button */
 //	wps_btn.gpio = bcmgpio_getpin(WPS_GPIO_BUTTON_VALUE, BCMGPIO_UNDEFINED);
 
@@ -421,7 +426,6 @@ wps_gpio_btn_init()
 			WPS_GPIO("Using assertlvl %d for wps button\n", wps_btn.assertlvl);
 		}
 	}
-
 	return 0;
 }
 
@@ -449,7 +453,6 @@ wps_gpio_led_multi_color_init(char *nv_wps_led, int *gpio_pin,
 				*led_assertlvl, nv_wps_led);
 		}
 	}
-
 	return 0;
 }
 
@@ -479,6 +482,10 @@ wps_gpio_led_multi_color_set_active(wps_blinktype_t blinktype)
 		if (wps_led.y_gpio != BCMGPIO_UNDEFINED) {
 			new_gpio_active = wps_led.y_gpio;
 			new_assertlvl_active = wps_led.y_assertlvl;
+		}
+		else if (wps_led.g_gpio != BCMGPIO_UNDEFINED) {
+			new_gpio_active = wps_led.g_gpio;
+			new_assertlvl_active = wps_led.g_assertlvl;
 		}
 		break;
 	case WPS_BLINKTYPE_ERROR: /* Multi-color red */
@@ -520,7 +527,7 @@ wps_gpio_led_multi_color_set_active(wps_blinktype_t blinktype)
 	value = ((unsigned long) ~old_assertlvl_active << old_gpio_active);
 	value &= led_mask;
 	bcmgpio_out(led_mask, value);
-#endif // endif
+#endif /* USE_LIBBCMSTB */
 
 	return;
 }
@@ -573,7 +580,6 @@ int
 wps_gpio_led_init()
 {
 	char *wps_led_def;
-
 	/* Reset wps_led structure */
 	memset(&wps_led, 0, sizeof(wps_led));
 	wps_led.gpio = BCMGPIO_UNDEFINED;
@@ -680,7 +686,6 @@ wps_gpio_led_init()
 		WPS_GPIO("Wrong wps led NV configuration, count %d\n", wps_led.count);
 			return -1;
 	}
-
 	return 0;
 }
 
@@ -801,7 +806,7 @@ wps_gpio_led_on()
 	led_mask = ((unsigned long)1 << wps_led.gpio_active);
 	value = ((unsigned long) wps_led.assertlvl_active << wps_led.gpio_active);
 	bcmgpio_out(led_mask, value);
-#endif // endif
+#endif /* USE_LIBBCMSTB */
 }
 
 static void
@@ -819,9 +824,8 @@ wps_gpio_led_off(int gpio_active, int assertlvl_active)
 	led_mask = ((unsigned long)1 << gpio_active);
 	value = ((unsigned long) ~assertlvl_active << gpio_active);
 	value &= led_mask;
-
 	bcmgpio_out(led_mask, value);
-#endif // endif
+#endif /* USE_LIBBCMSTB */
 
 }
 
@@ -953,4 +957,4 @@ wps_gpio_led_blink(wps_blinktype_t blinktype)
 
 	return;
 }
-#endif /* BCA_HNDROUTER */
+#endif // endif

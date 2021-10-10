@@ -4,7 +4,7 @@
  *
  *  Air-IQ PHY
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -211,10 +211,6 @@ const uint8 airiq_43465mc_femctrl_lut_2ghz[4][2] =
 const uint8 airiq_43465mc_femctrl_lut_5ghz[4][2] =
 	{ { 0x3, 0x1 }, { 0x3, 0x1 }, { 0x15, 0x11 }, { 0xb, 0x9 } };
 #endif // endif
-const uint8 airiq_43684mc_femctrl_lut_2ghz[4][2] =
-	{ { 0x6, 0x2 }, { 0x6, 0x2 }, { 0x6, 0x2 }, { 0x6, 0x2 } };
-const uint8 airiq_43684mc_femctrl_lut_5ghz[4][2] =
-	{ { 0x6, 0x2 }, { 0x6, 0x2 }, { 0x6, 0x2 }, { 0x6, 0x2 } };
 
 /* Scale factors {20MHz, 40MHz, 80MHz} */
 const int8 lte_u_rev64_scale_3plus1[3] = {50, 52, 50};
@@ -296,7 +292,8 @@ wlc_airiq_build_desens_lut(airiq_info_t *airiqh, airiq_gain_table_t *gt,
 		tia  = 3;
 		biq0 = 3;
 		biq1 = 3;
-		maxgain = 75;
+		maxgain = gt->elna + gt->lna1[lna1] + gt->lna2[lna2] +
+		    gt->mixtia[tia] + 3 * biq0 + 3 * biq1;
 	} else if (D11REV_IS(airiqh->wlc->pub->corerev, 42)) {
 		elna = (gt->elna > 0); /* If ELNA present */
 		lna1 = 5;
@@ -429,7 +426,7 @@ wlc_airiq_phy_init(airiq_info_t *airiqh)
 		airiqh->svmp_smpl_seq_num_addr= SVMP_SMPL_SEQ_NUM_ADDR;
 		airiqh->svmp_smpl_chanspec_addr= SVMP_SMPL_CHANSPEC_ADDR;
 		airiqh->svmp_smpl_chanspec_3x3_addr= SVMP_SMPL_CHANSPEC_3X3_ADDR;
-
+		airiqh->svmp_smpl_coex_gpio_mask_addr= SVMP_SMPL_COEX_GPIO_MASK_ADDR;
 		break;
 	case 128:
 	case 129:
@@ -440,13 +437,13 @@ wlc_airiq_phy_init(airiq_info_t *airiqh)
 		       sizeof(airiqh->gaintbl_5ghz));
 		/* Now determine ELNA */
 		//TODO:check boardflags/srom
-		if (IS_WAVE2_2G(airiqh->wlc->deviceid)) {
+		if (IS_43694MC2(airiqh->wlc->deviceid)) {
 			airiqh->gaintbl_24ghz.elna = airiq_sky85331_elna_24ghz;
 			airiqh->gaintbl_24ghz.offset = 2;
-			airiqh->gaintbl_5ghz.elna  = airiq_sky85743_elna_5ghz;
-			airiqh->gaintbl_5ghz.offset = 8;
-		} else if (IS_WAVE2_5G(airiqh->wlc->deviceid)) {
-			airiqh->gaintbl_24ghz.elna = airiq_sky85331_elna_24ghz;
+			airiqh->gaintbl_5ghz.elna  = 0;
+			airiqh->gaintbl_5ghz.offset = 10;
+		} else if (IS_43694MC5(airiqh->wlc->deviceid)) {
+			airiqh->gaintbl_24ghz.elna = 0;
 			airiqh->gaintbl_5ghz.elna  = airiq_sky85743_elna_5ghz;
 		} else {
 			airiqh->gaintbl_24ghz.elna = airiq_sky85337_elna_24ghz;
@@ -470,7 +467,7 @@ wlc_airiq_phy_init(airiq_info_t *airiqh)
 		airiqh->svmp_smpl_seq_num_addr= SVMP_AX_SMPL_SEQ_NUM_ADDR;
 		airiqh->svmp_smpl_chanspec_addr= SVMP_AX_SMPL_CHANSPEC_ADDR;
 		airiqh->svmp_smpl_chanspec_3x3_addr= SVMP_AX_SMPL_CHANSPEC_3X3_ADDR;
-
+		airiqh->svmp_smpl_coex_gpio_mask_addr= SVMP_AX_SMPL_COEX_GPIO_MASK_ADDR;
 		break;
 	default:
 		memcpy(&airiqh->gaintbl_24ghz, &airiq_gaintbl_rev65_24ghz,
@@ -528,12 +525,25 @@ static void
 wlc_airiq_phy_override_fem(airiq_info_t *airiqh, phy_info_t *pi, uint8 core,
 	uint8 elna, uint8 is5g, uint8 restore)
 {
+	uint8 lna2g,lna5g;
+	acphy_swctrlmap4_t *swctrl = pi->u.pi_acphy->sromi->swctrlmap4;
 
 	if (elna > 1) {
 		WL_ERROR(("%s: Invalid elna setting %d\n", __FUNCTION__, elna));
 		return;
 	}
 	if (D11REV_GE(airiqh->wlc->pub->corerev, 128)) {
+
+		/* use the FEM ctrol values as loaded from srom. We need to shift and
+		 OR with 0x1 since the FemOutputOvrCtrl register bit 0 is the override bit*/
+		if(elna) {
+			lna2g= ((swctrl->rx2g[core]) << 1) | 0x1;
+			lna5g= ((swctrl->rx5g[core]) << 1) | 0x1;
+		} else {
+			lna2g= ((swctrl->rxbyp2g[core]) << 1) & 0x1;
+			lna5g= ((swctrl->rxbyp5g[core]) << 1) & 0x1;
+		}
+
 		if (restore) {
 			/* Restore FemOvrd */
 			WRITE_PHYREGCE(pi, FemOutputOvrCtrl, core, airiqh->femctrl_ovrd);
@@ -541,13 +551,10 @@ wlc_airiq_phy_override_fem(airiq_info_t *airiqh, phy_info_t *pi, uint8 core,
 		}
 		/* Override external LNA */
 		airiqh->femctrl_ovrd = READ_PHYREGCE(pi, FemOutputOvrCtrl, core);
-
 		if (is5g) {
-			WRITE_PHYREGCE(pi, FemOutputOvrCtrl, core,
-				airiq_43684mc_femctrl_lut_5ghz[core][elna]);
+			WRITE_PHYREGCE(pi, FemOutputOvrCtrl, core, lna5g);
 		} else {
-			WRITE_PHYREGCE(pi, FemOutputOvrCtrl, core,
-				airiq_43684mc_femctrl_lut_2ghz[core][elna]);
+			WRITE_PHYREGCE(pi, FemOutputOvrCtrl, core, lna2g);
 		}
 
 	} else if (D11REV_GE(airiqh->wlc->pub->corerev, 64)) {
@@ -754,10 +761,9 @@ wlc_airiq_phy_enable_fft_capture(airiq_info_t* airiqh,
 	uint8 elna;
 	uint16 bw;
 	const int8 *bw_scale;
-    int32 radio_chanspec_sc;
+	int32 radio_chanspec_sc;
 
 	pi = (phy_info_t*)WLC_PI(wlc);
-	phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi), &radio_chanspec_sc);
 	if (airiqh->mangain != 0) {
 		/* override */
 		gaincode = airiqh->mangain;
@@ -776,6 +782,7 @@ wlc_airiq_phy_enable_fft_capture(airiq_info_t* airiqh,
 	if (airiqh->phy_mode == PHYMODE_3x3_1x1) {
 		bw_scale = airiq_rev65_scale_3plus1;
 	} else if (D11REV_GE(airiqh->wlc->pub->corerev, 65)) {
+		//TODO need to add rev128 > bw scale
 		bw_scale = airiq_rev65_scale_hwfft;
 	} else {
 		WL_ERROR(("%s: Air-IQ needs rev >= 65: %d\n",
@@ -822,61 +829,77 @@ wlc_airiq_phy_enable_fft_capture(airiq_info_t* airiqh,
 		lnarout, elna);
 
 	/* streamline vasip fft collect */
-
 	if (airiqh->phy_mode == PHYMODE_3x3_1x1) {
+		phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi), &radio_chanspec_sc);
 		wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_chanspec_addr, 1,
 			radio_chanspec_sc);
-	} else {
-		wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_chanspec_addr, 1,
-			pi->radio_chanspec);
-	}
-	wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_interval_addr, 1, fft_interval);
-	if (D11REV_GE(airiqh->wlc->pub->corerev, 128)) {
-		if (airiqh->phy_mode == PHYMODE_3x3_1x1) {
+		wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_interval_addr, 1, fft_interval);
+		if (D11REV_GE(airiqh->wlc->pub->corerev, 128)) {
 			// Core value passed to VASIP fw should be 4 for +1 core
 			wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_core_addr, 1, AIRIQ_SCAN_P1C);
 		} else {
 			wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_core_addr, 1, airiqh->core);
 		}
+
+		wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_seq_num_addr, 1, 0);
+		MOD_PHYREG(pi, RxFeCtrl1, swap_iq3, 0);
+		wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_gain_addr, 1, gaindb);
+		wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_chanspec_3x3_addr, 1, pi->radio_chanspec);
+		wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_ctrl_addr, 1, fft_count);
+
+		/* Reinitialize VASIP FFT handshake */
+		wlc_airiq_phy_clear_svmp_status(airiqh);
+		/* Check if coex_gpio_mask is set */
+		if ((airiqh->coex_gpio_mask_5g ) && CHSPEC_IS5G(chanspec)) {
+			wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_coex_gpio_mask_addr, 1,
+				airiqh->coex_gpio_mask_5g);
+		} else  if ((airiqh->coex_gpio_mask_2g ) && CHSPEC_IS2G(chanspec)) {
+			wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_coex_gpio_mask_addr, 1,
+				airiqh->coex_gpio_mask_2g);
+		} else {
+			wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_coex_gpio_mask_addr, 1, 0x0);
+		}
+		wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_enable_addr, 1,
+			SVMP_SMPL_ENABLE_NON_OFFLOAD_FLAG);
+		airiqh->iq_capture_enable = TRUE;
 	} else {
-		wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_core_addr, 1, airiqh->core);
+		wlc_write_shm(wlc, M_FFT_SMPL_INTERVAL(wlc), fft_interval);
+		// hardcode core to 0
+		wlc_write_shm(wlc, M_FFT_SMPL_RX_CHAIN(wlc), 0);
+		wlc_write_shm(wlc, M_FFT_SMPL_SEQUENCE_NUM(wlc), 0x0);
+		wlc_write_shm(wlc, M_FFT_SMPL_FFT_GAIN_RX0(wlc), gaindb );
+		wlc_write_shm(wlc, M_FFT_SMPL_CHANNEL(wlc), pi->radio_chanspec);
+
+		// ctrl holds # of FFT to capture.  enable kicks off the capturing
+		wlc_write_shm(wlc, M_FFT_SMPL_CTRL(wlc), fft_count);
+		wlc_write_shm(wlc, M_FFT_SMPL_ENABLE(wlc), 1);
+		// Check if AIRIQ is offloaded
+#ifdef WLOFFLD
+		if(WLOFFLD_AIRIQ_ENAB(wlc->pub)) {
+			wlc_write_shm(wlc, M_FFT_SMPL_ENABLE(wlc), 4);
+		}
+#endif // endif
 	}
-	wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_seq_num_addr, 1, 0);
-
-	MOD_PHYREG(pi, RxFeCtrl1, swap_iq3, 0);
-
-	wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_gain_addr, 1, gaindb);
-	wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_chanspec_3x3_addr, 1, pi->radio_chanspec);
-	wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_ctrl_addr, 1, fft_count);
-	/* Reinitialize VASIP FFT handshake */
-	wlc_airiq_phy_clear_svmp_status(airiqh);
-	/* Check if AIRIQ is offloaded */
-	wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_enable_addr, 1,
-		SVMP_SMPL_ENABLE_NON_OFFLOAD_FLAG);
-
-	airiqh->iq_capture_enable = TRUE;
 }
 
 void
 wlc_airiq_phy_disable_fft_capture(airiq_info_t *airiqh)
 {
-	phy_info_t *pi;
 	wlc_info_t *wlc = airiqh->wlc;
-	uint16 svmp_enable;
+	phy_info_t *pi = (phy_info_t*)WLC_PI(wlc);
 
-	wlc_svmp_mem_read_axi(airiqh->wlc->hw, &svmp_enable, airiqh->svmp_smpl_enable_addr, 1);
-
-	if (svmp_enable) {
-		pi = (phy_info_t*)WLC_PI(wlc);
+	if (airiqh->phy_mode == PHYMODE_3x3_1x1) {
 		wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_ctrl_addr, 1, 0);
 		wlc_svmp_mem_set_axi(airiqh->wlc->hw, airiqh->svmp_smpl_enable_addr, 1, 0);
-		//wlc_write_shm(wlc, M_AIRIQ_ENABLE, 0);
 		airiqh->iq_capture_enable = FALSE;
+	} else {
+		wlc_write_shm(wlc, M_FFT_SMPL_ENABLE(wlc), 0);
+		wlc_write_shm(wlc, M_FFT_SMPL_CTRL(wlc), 0);
 
-		/* restore old settings */
-		wlc_airiq_phy_rfctrl_override_rxgain_acphy(airiqh, pi, (uint8)airiqh->core,
-			1, NULL, 0, 0);
 	}
+	/* restore old settings */
+	wlc_airiq_phy_rfctrl_override_rxgain_acphy(airiqh, pi, (uint8)airiqh->core,
+		1, NULL, 0, 0);
 }
 
 void

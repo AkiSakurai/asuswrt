@@ -1,7 +1,7 @@
 /*
  * lcn20PHY TxPowerCtrl module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_lcn20_tpc.c 671526 2016-11-22 08:37:30Z $
+ * $Id: phy_lcn20_tpc.c 775501 2019-06-02 00:18:19Z $
  */
 
 #include <typedefs.h>
@@ -95,6 +95,7 @@ static void phy_lcn20_tpc_set_max(phy_type_tpc_ctx_t *ctx, phy_tx_power_t *power
 #if defined(WLTEST)
 static int phy_lcn20_tpc_set_pavars(phy_type_tpc_ctx_t *ctx, void* a, void* p);
 static int phy_lcn20_tpc_get_pavars(phy_type_tpc_ctx_t *ctx, void* a, void* p);
+static int phy_lcn20_tpc_txpower_get_instant(phy_type_tpc_ctx_t *ctx, void *pwr);
 #endif // endif
 static int phy_lcn20_tpc_get_est_pout(phy_type_tpc_ctx_t *ctx,
 	uint8* est_Pout, uint8* est_Pout_adj, uint8* est_Pout_cck);
@@ -134,6 +135,7 @@ BCMATTACHFN(phy_lcn20_tpc_register_impl)(phy_info_t *pi, phy_lcn20_info_t *lcn20
 #if defined(WLTEST)
 	fns.set_pavars = phy_lcn20_tpc_set_pavars;
 	fns.get_pavars = phy_lcn20_tpc_get_pavars;
+	fns.txpower_get_instant = phy_lcn20_tpc_txpower_get_instant;
 #endif // endif
 	fns.get_est_pout = phy_lcn20_tpc_get_est_pout;
 	fns.ctx = info;
@@ -613,7 +615,7 @@ wlc_lcn20phy_idle_tssi_est(phy_info_t *pi)
 
 	wlc_lcn20phy_set_bbmult(pi, 0x0);
 
-	wlc_btcx_override_enable(pi);
+	wlc_phy_btcx_override_enable(pi);
 	phy_tssical_do_dummy_tx(pi, TRUE, OFF);
 	/* Disable WLAN priority */
 	wlc_phy_btcx_override_disable(pi);
@@ -627,7 +629,7 @@ wlc_lcn20phy_idle_tssi_est(phy_info_t *pi)
 		PHY_REG_MOD(pi, LCN20PHY, TxPwrCtrlRfCtrlOverride0, tssiRangeOverride, 1);
 		PHY_REG_MOD(pi, LCN20PHY, TxPwrCtrlRfCtrlOverride0, tssiRangeOverrideVal, 0);
 
-		wlc_btcx_override_enable(pi);
+		wlc_phy_btcx_override_enable(pi);
 		phy_tssical_do_dummy_tx(pi, TRUE, OFF);
 		/* Disable WLAN priority */
 		wlc_phy_btcx_override_disable(pi);
@@ -971,6 +973,29 @@ phy_lcn20_tpc_get_pavars(phy_type_tpc_ctx_t *ctx, void *a, void *p)
 		return BCME_OUTOFRANGECHAN;
 	}
 }
+
+int
+phy_lcn20_tpc_txpower_get_instant(phy_type_tpc_ctx_t *ctx, void *pwr)
+{
+	int status;
+	phy_lcn20_tpc_info_t *tpc_info = (phy_lcn20_tpc_info_t *) ctx;
+	phy_info_t *pi = tpc_info->pi;
+	tx_inst_power_t *power = (tx_inst_power_t *)pwr;
+	uint8 est_Pout_adj;
+
+	/* Get power estimates */
+	wlapi_suspend_mac_and_wait(pi->sh->physhim);
+	phy_utils_phyreg_enter(pi);
+
+	status = phy_lcn20_tpc_get_est_pout(pi, &power->txpwr_est_Pout[1],
+		&est_Pout_adj, &power->txpwr_est_Pout[0]);
+
+	phy_utils_phyreg_exit(pi);
+	wlapi_enable_mac(pi->sh->physhim);
+
+	return status;
+}
+
 #endif // endif
 
 static int

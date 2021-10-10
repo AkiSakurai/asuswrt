@@ -1,6 +1,6 @@
 /*
  * Key Management Module Implementation - tkip support
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_tkip.c 716152 2017-08-16 20:49:30Z $
+ * $Id: km_tkip.c 774257 2019-04-17 10:08:19Z $
  */
 
 #include "km_pvt.h"
@@ -121,11 +121,7 @@ km_tkip_mic_error(keymgmt_t *km, void *pkt, wlc_key_t *key,
 
 		/* STA: clear txq */
 		if (BSSCFG_STA(bsscfg)) {
-			if (KM_BSSCFG_WIN7PLUS(KM_PUB(km), bsscfg))
-				wlc_txq_pktq_cfg_filter(km->wlc,
-					WLC_GET_CQ(bsscfg->wlcif->qi), bsscfg);
-			else
-				cpktq_flush(km->wlc, &bsscfg->wlcif->qi->cpktq);
+			cpktq_flush(km->wlc, &bsscfg->wlcif->qi->cpktq);
 		}
 
 		km_event_signal(km, WLC_KEYMGMT_EVENT_TKIP_CM_ACTIVE,

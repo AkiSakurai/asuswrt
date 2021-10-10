@@ -2,7 +2,7 @@
  * NPHY RADIO specific portion of Broadcom BCM43XX 802.11abgn
  * Networking Device Driver.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -4227,6 +4227,9 @@ wlc_phy_radio_init_2057(phy_info_t *pi)
 {
 	radio_20xx_regs_t *regs_2057_ptr = NULL;
 
+	/* PR82371: use compile-time checks (NREV and CHIPID) to identify chips,
+	 * instead of radio revs (run-time check), to limit compiled code size
+	 */
 	if (NREV_IS(pi->pubpi->phy_rev, 7)) {
 		/* Covers 43226a0/1 and 6362a0, until we need to separate them */
 		regs_2057_ptr = regs_2057_rev4;
@@ -4473,6 +4476,11 @@ wlc_phy_radio205x_rcal(phy_info_t *pi)
 
 		/* only needed for 2057 rev5 */
 
+		/* PR 79687: R-Cal needs 2.5V regulator and bias currents to be on.
+		 * But at reset, lpf_pu override forces their pwrup to 0. As a WAR,
+		 * use the Core0 lpf_pu overrides so 'vreg2p5_core0_pwrup' and
+		 * 'rxtxbias_rx_core0_pwrup' are high.
+		 */
 		PHY_REG_LIST_START
 			PHY_REG_MOD_RAW_ENTRY(NPHY_REV7_RfctrlMiscReg3,
 				NPHY_REV7_RfctrlMiscReg_lpf_pu_MASK,
@@ -4837,6 +4845,9 @@ wlc_phy_chanspec_radio2057_setup(phy_info_t *pi, const chan_info_nphy_radio2057_
 
 					txmix2g_tune_boost_pu = 0x61;
 
+					/* PR86211: Bandedge improvement WAR for
+					 * 5357NR2/5358NR2 and derivatives
+					 */
 					if (CHSPEC_IS40(pi->radio_chanspec)) {
 						if ((pi->sh->sromrev >= 8) &&
 						  (BOARDFLAGS2(GENERIC_PHY_INFO(pi)->boardflags2) &

@@ -1,7 +1,7 @@
 /*
  * PHY Core module public interface (to MAC driver).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_api.h 691048 2017-03-20 16:47:17Z $
+ * $Id: phy_api.h 769452 2018-11-15 05:58:17Z $
  */
 
 #ifndef _phy_api_h_
@@ -159,8 +159,9 @@
 
 #define DUAL_PHY_NUM_CORE_MAX 4
 
-/* add the feature to take out the BW RESET duriny the BW change  0: disable 1: enable */
-#define BW_RESET 1
+/* add the feature to take out PHYRESET on BW CHANGE */
+#define HW_PHYRESET_ON_BW_CHANGE 0
+
 /* add the feature to disable DSSF  0: disable 1: enable */
 #define DSSF_ENABLE 1
 #define DSSFB_ENABLE 1

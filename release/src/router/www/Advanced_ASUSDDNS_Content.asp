@@ -18,6 +18,7 @@
 <script type="text/javascript" language="JavaScript" src="/validator.js"></script>
 <script type="text/javaScript" src="/js/jquery.js"></script>
 <script type="text/javascript" src="/js/httpApi.js"></script>
+<script type="text/javascript" src="/form.js"></script>
 <script language="JavaScript" type="text/javascript" src="/js/asus_eula.js"></script>
 <style type="text/css">
 .contentM_upload{
@@ -250,8 +251,11 @@ function ddns_load_body(){
 	{
 		var ddnsHint = getDDNSState(ddns_return_code, ddns_hostname_x_t, ddns_old_name);
 
-		if(ddnsHint != "")
+		if(ddnsHint != ""){
 			alert(ddnsHint);
+			document.getElementById("ddns_result").innerHTML = ddnsHint;
+			document.getElementById('ddns_result_tr').style.display = "";
+		}
 		if(ddns_return_code.indexOf('200')!=-1 || ddns_return_code.indexOf('220')!=-1 || ddns_return_code == 'register,230'){
 			showhide("wan_ip_hide2", 0);
 			if(ddns_server_x == "WWW.ASUS.COM"){
@@ -524,19 +528,24 @@ function hide_upload_window(){
 
 function show_cert_details(){
 	if(httpd_cert_info.issueTo != "" && httpd_cert_info.issueBy != "" && httpd_cert_info.expire != ""){
-		if(orig_le_enable == "1" && le_state == "0" && httpd_cert_info.issueBy.indexOf("Let's Encrypt") == -1){
-			document.getElementById("cert_status").innerHTML = "<#upgrade_processing#>";
+		if(orig_le_enable == "1" && le_state == "0"){
+			if(httpd_cert_info.issueBy.indexOf("Let's Encrypt") == -1)
+				document.getElementById("cert_status").innerHTML = "<#vpn_openvpn_KC_Authorizing#>";
+			else
+				document.getElementById("cert_status").innerHTML = "<#upgrade_processing#>";
+			setTimeout("get_cert_info();", 1000);
 		}
-		else
-			document.getElementById("cert_status").innerHTML = "<#CTL_ok#>";
+		else{
+			document.getElementById("cert_status").innerHTML = "<#Status_Active#>";
+			document.getElementById("issueTo").innerHTML = httpd_cert_info.issueTo;
+			document.getElementById("issueBy").innerHTML = httpd_cert_info.issueBy;
+			document.getElementById("expireOn").innerHTML = httpd_cert_info.expire;
+		}
 	}
 	else{
 		document.getElementById("cert_status").innerHTML = "Authorizing";
 		setTimeout("get_cert_info();", 1000);
 	}
-	document.getElementById("issueTo").innerHTML = httpd_cert_info.issueTo;
-	document.getElementById("issueBy").innerHTML = httpd_cert_info.issueBy;
-	document.getElementById("expireOn").innerHTML = httpd_cert_info.expire;
 }
 
 function check_filename(){
@@ -711,6 +720,10 @@ function save_cert_key(){
 				<td>
 					<input type="hidden" maxlength="15" class="button_gen" size="12" name="" value="<% nvram_get("DDNSStatus"); %>">
 				  	<input type="submit" maxlength="15" class="button_gen" onclick="showLoading();return onSubmitApply('ddnsclient');" size="12" name="LANHostConfig_x_DDNSStatus_button" value="<#LANHostConfig_x_DDNSStatus_buttonname#>" /></td>
+			</tr>
+			<tr id="ddns_result_tr" style="display:none;">
+				<th>DDNS Registration Result</th>
+				<td id="ddns_result"></td>
 			</tr>
 			<tr id="https_cert" style="display:none;">
 				<th><#DDNS_https_cert#></th>

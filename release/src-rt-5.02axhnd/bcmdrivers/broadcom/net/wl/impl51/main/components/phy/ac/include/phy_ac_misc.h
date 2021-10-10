@@ -1,7 +1,7 @@
 /*
  * Miscellaneous modules interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_misc.h 735703 2017-12-12 05:40:37Z $
+ * $Id: phy_ac_misc.h 766272 2018-07-27 23:14:01Z $
  */
 
 #ifndef _phy_ac_misc_h_
@@ -64,6 +64,7 @@ phy_ac_misc_info_t *phy_ac_misc_register_impl(phy_info_t *pi,
 	phy_ac_info_t *aci, phy_misc_info_t *cmn_info);
 void phy_ac_misc_unregister_impl(phy_ac_misc_info_t *ac_info);
 
+extern void wlc_vasip_sample_capture_set(phy_info_t *pi, int val);
 extern void wlc_phy_force_rfseq_acphy(phy_info_t *pi, uint8 cmd);
 extern void wlc_phy_deaf_acphy(phy_info_t *pi, bool mode);
 extern bool wlc_phy_get_deaf_acphy(phy_info_t *pi);

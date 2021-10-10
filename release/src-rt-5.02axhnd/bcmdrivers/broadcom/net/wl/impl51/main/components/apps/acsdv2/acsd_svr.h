@@ -1,7 +1,7 @@
 /*
  * ACSD server include file
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: acsd_svr.h 764927 2018-06-11 06:02:47Z $
+ * $Id: acsd_svr.h 777995 2019-08-20 06:13:13Z $
  */
 
 #ifndef _acsd_srv_h_
@@ -59,16 +59,21 @@
 #define ACSD_IFNAME_SIZE		16
 #define ACSD_MAX_INTERFACES		3
 #define ACS_MAX_IF_NUM ACSD_MAX_INTERFACES
+#define ACS_EXCLUDE_IFACE_LIST		16
 
 #define ACSD_DFLT_POLL_INTERVAL 1  /* default polling interval */
 
 #define DCS_CSA_COUNT		20
 #define ACS_CSA_COUNT		2
 
+#define WL_CHSPEC_DEF_5G_L	0xD024		/* Default 5GL chanspec from Channel 36 */
+#define WL_CHSPEC_DEF_5G_H	0xD095		/* Default 5GH chanspec from Channel 149 */
+#define WL_RADIO_CHAN_5GL	0x0018
+#define WL_RADIO_CHAN_5GH	0x0007
 #define BAND_5G(band) (band == WLC_BAND_5G)
 #define ACS_SM_BUF_LEN  1024
 #define ACS_CS_MAX_2G_CHAN	CH_MAX_2G_CHANNEL	/* max channel # in 2G band */
-#define ACS_SRSLT_BUF_LEN (128*1024)
+#define ACS_SRSLT_BUF_LEN (32*1024)
 /* acs config flags */
 #define ACS_FLAGS_INTF_THRES_CCA	0x1
 #define ACS_FLAGS_INTF_THRES_BGN	0x2
@@ -103,11 +108,9 @@
 
 /* scan parameter */
 #define ACS_CS_SCAN_DWELL	250 /* ms */
-#define ACS_CI_SCAN_DWELL	10  /* ms */
+#define ACS_CI_SCAN_DWELL	20  /* ms */
 #define ACS_CS_SCAN_DWELL_ACTIVE 250 /* ms */
 #define ACS_CI_SCAN_WINDOW	5   /* sec: how often for ci scan */
-#define ACS_CS_SCAN_TIMER_MIN	60  /* sec */
-#define ACS_DFLT_CS_SCAN_TIMER	900  /* sec */
 #define ACS_DFLT_CI_SCAN_TIMER  20 /* sec */
 #define ACS_CS_SCAN_MIN_RSSI -80 /* dBm */
 #define ACS_CI_SCAN_MIN_RSSI -80 /* dBm */
@@ -135,16 +138,20 @@
 #define COEXCHECK(c_info)	((c_info)->mode == ACS_MODE_COEXCHECK)
 #define ACS11H(c_info)		((c_info)->mode == ACS_MODE_11H)
 #define FIXCHSPEC(c_info)	((c_info)->mode == ACS_MODE_FIXCHSPEC)
+#define MONITORCHECK(c_info)	((c_info)->mode == ACS_MODE_MONITOR)
 
 #define ACS_STATUS_POLL		5
 #define ACS_ASSOCLIST_POLL      30
+#define ACS_CHANIM_POLL_MIN	60 /* Query chanim_stats in cur ch only after 60sec */
+#define ACS_CHANIM_TX_AVAIL	70 /* Combination of tx+txop+inbss */
+#define ACS_CHANIM_DELTA	10
 
 #define ACS_DYN160_CENTER_CH	50 /* on 160MHz with dyn160 enabled, use this center chanspec */
 #define ACS_DYN160_CENTER_CH_80	58 /* with dyn160 enabled, use this center chanspec on 80MHz */
-#define ACS_CHANIM_POLL_MIN	60 /* Query chanim_stats in cur ch only after 60sec */
-#define ACS_CHANIM_TXRX_PER	20 /* Combination of tx+inbss */
 
 #define ACS_BW_DWNGRD_ITERATIONS	2 /* No of iterations to check before downgrading BW */
+#define ACS_LOCKOUT_ENABLE	0
+#define ACS_USE_CSA	1
 
 /* Predefined policy indices. These index into the table of predefined policies, with the
  * exception of ACS_POLICY_USER which is defined through the "acs_pol" nvram variable.
@@ -156,6 +163,11 @@ typedef enum {
 	ACS_POLICY_USER		= 3,
 	ACS_POLICY_MAX		= ACS_POLICY_USER
 } acs_policy_index;
+
+typedef enum {
+	ACS_CHAN_INFO_ACTIVE,
+	ACS_CHAN_INFO_INACTIVE
+} acs_chan_info_bmp_t;
 
 /* state defines */
 #define CHANIM_STATE_DETECTING	0
@@ -208,35 +220,49 @@ typedef enum {
 #define ACS_DFS_REENTRY				2
 #define ACS_FAR_STA_RSSI		-75
 #define ACS_NOFCS_LEAST_RSSI		-60
-#define ACS_CHAN_DWELL_TIME			30
+#define ACS_CHAN_DWELL_TIME			900
+#define ACS_CHAN_DWELL_TIME_MIN			300
+#define ACS_CHAN_DWELL_TIME_MAX			900
 #define ACS_TX_IDLE_CNT				300		/* around 3.5Mbps */
-#define ACS_CI_SCAN_TIMEOUT			900		/* 15 min */
+
+#define ACS_CS_SCAN_TIMER_DEFAULT		900		/* 15 min */
+#define ACS_CI_SCAN_TIMEOUT_DEFAULT		900		/* 15 min */
+#define ACS_CS_SCAN_TIMER_MIN			600		/* 10 min */
+#define ACS_CI_SCAN_TIMEOUT_MIN			600		/* 10 min */
+
 #define ACS_SCAN_CHANIM_STATS		70
 #define ACS_CI_SCAN_CHANIM_STATS		50 /* do pref ci scan if TXOP threshold */
 #define ACS_BOOT_ONLY_DEFAULT		0
+#define ACS_FALLBACK_TO_PRIMARY		1
 #define ACS_CHAN_FLOP_PERIOD		300 /* least time gap to dcs same chan */
 
 #define ACS_INTFER_SAMPLE_PERIOD		1
-#define ACS_INTFER_SAMPLE_COUNT			3
-#define ACS_INTFER_TXFAIL_THRESH		5
-#define ACS_INTFER_TCPTXFAIL_THRESH		5
-#define ACS_INTFER_TXFAIL_THRESH_HI		15
-#define ACS_INTFER_TCPTXFAIL_THRESH_HI		15
-#define ACS_INTFER_TXFAIL_THRESH_160		5
-#define ACS_INTFER_TCPTXFAIL_THRESH_160		5
-#define ACS_INTFER_TXFAIL_THRESH_160_HI		15
-#define ACS_INTFER_TCPTXFAIL_THRESH_160_HI	15
+#define ACS_INTFER_SAMPLE_COUNT			1
+#define ACS_INTFER_TXFAIL_THRESH		15
+#define ACS_INTFER_TCPTXFAIL_THRESH		15
+#define ACS_INTFER_TXFAIL_THRESH_HI		20
+#define ACS_INTFER_TCPTXFAIL_THRESH_HI		20
+#define ACS_INTFER_TXFAIL_THRESH_160		15
+#define ACS_INTFER_TCPTXFAIL_THRESH_160		15
+#define ACS_INTFER_TXFAIL_THRESH_160_HI		20
+#define ACS_INTFER_TCPTXFAIL_THRESH_160_HI	20
 
 #define ACS_AP_CFG		1
+#define ACS_STA_CFG		2
+#define ACS_MAC_CFG		3
+#define ACS_INTF_CFG		4
+#define ACS_BSS_CFG		5
 #define ACS_AC_BE		0
 #define ACS_AC_BK		1
 #define ACS_AC_VI		2
 #define ACS_AC_VO		3
 #define ACS_AC_TO		4
-#define ACS_INTFER_TRF_THRESH			5
-#define ACS_INTFER_TRF_NUMSECS			5
+#define ACS_TRF_AE		0x10
 #define ACS_IGNORE_TXFAIL               0
+#define ACS_TRAFFIC_THRESH_ENABLE	0
+#define ACS_MAX_VIFNAMES	8
 
+#define ACS_IGNORE_TXFAIL_ON_FAR_STA		0
 /* ACS TOA suport for video stas */
 #define ACS_MAX_VIDEO_STAS			5
 #define ACS_STA_EA_LEN				18
@@ -260,7 +286,8 @@ typedef enum {
 #define ACS_BGDFS_IDLE_INTERVAL			360	/* in seconds */
 #define ACS_BGDFS_IDLE_FRAMES_THLD		3600	/* number of frames */
 #define ACS_BGDFS_AVOID_ON_FAR_STA		1
-#define ACS_BGDFS_FALLBACK_BLOCKING_CAC		1	/* full MIMO blocking CAC */
+#define ACS_BGDFS_FALLBACK_BLOCKING_CAC		1	/* if ZDFS fails, use blocking/full CAC */
+#define ACS_ZDFS_2G_FALLBACK_5G			1	/* if ZDFS_2G fails, use ZDFS_5G */
 #define ACS_BGDFS_TX_LOADING			50	/* max tx loading % to allow 3+1 */
 
 #define ACS_BGDFS_TRAFFIC_INFO_QUEUE_SIZE	SW_NUM_SLOTS
@@ -290,9 +317,9 @@ typedef enum {
 #define BGDFS_STATES_MIN_SUB_STATES		2 /* at least two sub-states are required */
 
 /* macros to extract elements of substates given dfs_ap_move status and index */
-#define BGDFS_SUB_STATE(MOVEST, AT) ((MOVEST)->scan_status.dfs_sub_status[AT].chanspec)
-#define BGDFS_SUB_CHAN(MOVEST, AT) ((MOVEST)->scan_status.dfs_sub_status[AT].chanspec)
-#define BGDFS_SUB_LAST(MOVEST, AT) ((MOVEST)->scan_status.dfs_sub_status[AT].chanspec_last_cleared)
+extern wl_dfs_sub_status_t * acs_bgdfs_sub_at(wl_dfs_ap_move_status_v2_t *st, uint8 at);
+#define BGDFS_SUB_CHAN(MOVEST, AT)  (acs_bgdfs_sub_at(MOVEST, AT)->chanspec)
+#define BGDFS_SUB_LAST(MOVEST, AT)  (acs_bgdfs_sub_at(MOVEST, AT)->chanspec_last_cleared)
 
 #define BGDFS_STATE_IDLE			0
 #define BGDFS_STATE_MOVE_REQUESTED		1
@@ -309,7 +336,7 @@ typedef enum {
 #define ESCAN_EVENTS_BUFFER_SIZE 2048
 #define WL_CS_SCAN_TIMEOUT 10 /* Timeout in second for CS scan event from driver */
 #define WL_CI_SCAN_TIMEOUT 500000 /* Timeout in millisecond for CI scan event from driver */
-#define ACS_ESCAN_DEFAULT  0 /* Escan disabled by default */
+#define ACS_ESCAN_DEFAULT  1 /* Enable escan by default */
 
 #define ACS_WPS_RUNNING	(nvram_match("wps_proc_status", "1") || \
 	nvram_match("wps_proc_status", "9"))
@@ -317,7 +344,7 @@ typedef enum {
 #define ACS_CAP_STRING_DYN160			"dyn160 "	/* dyn160 in `wl cap` */
 #define ACS_CAP_STRING_BGDFS			"bgdfs "	/* bgdfs in `wl cap` */
 #define ACS_CAP_STRING_BGDFS160			"bgdfs160 "	/* bgdfs160 in `wl cap` */
-#define ACS_CAP_STRING_TRF_THOLD		"trf_thold "	/* trf_thold in `wl cap` */
+#define ACS_CAP_STRING_TRAFFIC_THRESH		"traffic_thresh " /* traffic_thresh in `wl cap` */
 
 #define ACS_OP_BW(op) ((op) & 0xf)
 #define ACS_OP_BW_IS_160_80p80(op)	(ACS_OP_BW(op) == ACS_BW_160_OP)
@@ -334,6 +361,10 @@ typedef enum {
 #define ACSD_USE_DEF_METHOD		-1
 #define BAND_2G(band) (band == WLC_BAND_2G)
 #define ACS_TXOP_LIMIT 90
+#define ACS_TXOP_THRESH 0
+
+/* Trigger channel change if c_info->txop_score crosses the limit after ci scan */
+#define ACS_TXOP_LIMIT_CI 80
 #define ACS_TXOP_CHANNEL_SELECT 2
 #define ACS_DFS_REENTRY_EN 1
 
@@ -341,6 +372,14 @@ typedef enum {
 #define ACS_LOW_POW_LAST_ETSI	64
 #define ACS_IS_LOW_POW_CH(CH, IS_EU) ((IS_EU) ? ((CH) <= ACS_LOW_POW_LAST_ETSI) : \
 	((CH) <= ACS_LOW_POW_LAST_FCC))
+#define ACS_CHANIM_GLITCH_THRESH	1000
+#define ACS_NON_WIFI_ENABLE	0
+
+/* Need 13, strlen("per_chan_info"), +4, sizeof(uint32). Rounded to 20. */
+#define ACS_PER_CHAN_INFO_BUF_LEN 20
+
+#define ACS_MAX_TXOP	100
+#define ACS_NORMALIZE_CHANIM_STATS_LIMIT 20
 
 /* chanim data structure */
 /* transient counters/stamps */
@@ -483,12 +522,6 @@ typedef struct acs_intfer_params {
 	acs_txfail_thresh_t acs_txfail_thresholds[ACSD_INTFER_PARAMS_MAX];
 } acs_intfer_params_t;
 
-typedef struct acs_intfer_trf_thold {
-	uint8 type;                   /* Access category type */
-	uint16 thresh;                /* txfail thresh limit */
-	uint16 num_secs;	      /*  window for the failed thresh */
-} acs_intfer_trf_thold_t;
-
 typedef struct acs_toa_video_sta {
 	struct ether_addr ea;
 	char vid_sta_mac[ACS_STA_EA_LEN];
@@ -536,6 +569,13 @@ typedef struct acs_activity_info {
 	int num_accumulated;				/* number of diffs accumulated */
 } acs_activity_info_t;
 
+typedef enum {
+	ACS_CAC_MODE_AUTO = 0,		/* Based on nvram, attempt ZDFS_2G, ZDFS_5G, full-CAC */
+	ACS_CAC_MODE_ZDFS_2G_ONLY,	/* attempt ZDFS_2G only; if not available, return */
+	ACS_CAC_MODE_ZDFS_5G_ONLY,	/* attempt ZDFS_5G only; if not available, return */
+	ACS_CAC_MODE_FULL_ONLY,		/* attempt full CAC only */
+} acs_cac_mode_t;
+
 struct acs_bgdfs_info {
 	int ahead;	/* to enable/disable bgdfs ahead of time (overrid by nvram) */
 	int idle_interval; /* minimum time to check for idle traffic condition */
@@ -549,11 +589,14 @@ struct acs_bgdfs_info {
 	chanspec_t last_attempted;	/* Last channel attempted using BGDFS */
 	chanspec_t last_attempted_at;	/* (Above) last channel attempted at time */
 	chanspec_t next_scan_chan;	/* Next channel to scan using BGDFS */
-	wl_dfs_ap_move_status_v2_t status; /* latest fetched status */
 	int bgdfs_avoid_on_far_sta;	/* avoid 3+1 DFS for a far sta */
 	int fallback_blocking_cac;	/* if bgdfs failed (tx blanking), full MIMO blocking CAC */
+	int zdfs_2g_fallback_5g;	/* if zdfs_2g fails (busy), use zdfs_5g */
 	bool acs_bgdfs_on_txfail;	/* 3+1 dfs on txfail */
 	uint8 txblank_th;		/* tx loading threshold for BGDFS */
+	wl_dfs_ap_move_status_v2_t status; /* latest fetched status */
+	wl_dfs_sub_status_t pad[2]; /* since above structure contains variable sized element */
+	int bgdfs_stunted;		/* Used to check stunt BGDFS */
 };
 
 struct escan_bss {
@@ -576,8 +619,12 @@ typedef struct acs_escaninfo {
 #define ACSD_NUM_SEG_MIN		2	/* minimum number of segments */
 #define ACSD_NUM_SEG_MAX		10	/* maximum number of segments */
 
+#define ACS_MAX_20MHZ_CH		32	/* maximum number of 20MHz channels per inteface */
+
+typedef struct acs_chaninfo acs_chaninfo_t;
+
 /* acs main data structure */
-typedef struct acs_chaninfo {
+struct acs_chaninfo {
 	char name[16];
 	int mode;
 	wl_country_t country;
@@ -587,6 +634,8 @@ typedef struct acs_chaninfo {
 	bool cur_is_dfs;
 	bool cur_is_dfs_weather;
 	acs_rsi_t rs_info;
+	uint32 ch20MHz_count;
+	uint32 ch20MHz_arr[ACS_MAX_20MHZ_CH];
 	acs_scan_chspec_t scan_chspec_list;
 	wl_chanim_stats_t *chanim_stats; /* chanim_stats from scan */
 	ch_candidate_t *candidate[ACS_BW_MAX];
@@ -615,6 +664,7 @@ typedef struct acs_chaninfo {
 	int acs_boot_only;
 	acs_activity_info_t acs_activity; /* activity details */
 	acs_bgdfs_info_t *acs_bgdfs;	/* structure allocated when bgdfs is enabled */
+	acs_cac_mode_t cac_mode;	/* temporarily override fallback per DFS request */
 	uint64 acs_prev_chan_at;	/* last channel swich time */
 	int acs_cs_dfs_pref;		/* Customer knob for dfs preference */
 	int acs_cs_high_pwr_pref;	/* Customer knob for channel pwr preference */
@@ -652,8 +702,6 @@ typedef struct acs_chaninfo {
 	uint8 acs_txdelay_cnt;		/* txdelay sample count */
 	int16 acs_txdelay_ratio;	/* txdelay jump ratio */
 	acs_intfer_params_t intfparams; /* intfer configuration parametres */
-	acs_intfer_trf_thold_t trf_params; /* intfer configuration parametres */
-
 	/* csa mode */
 	uint8 acs_dcs_csa;
 	/* toa video sta */
@@ -662,7 +710,7 @@ typedef struct acs_chaninfo {
 	acs_toa_video_sta_t vid_sta[ACS_MAX_VIDEO_STAS];
 	uint8 acs_start_on_nondfs;
 	int txop_weight;				/* TXOP channel score weight */
-	int trf_thold;			/* True If IOVAR cap include 'trf_thold' */
+	int traffic_thresh;			/* True If IOVAR cap include 'traffic_threshold' */
 	int ignore_txfail;		/* Ignore txfail events */
 	uint32 cur_timestamp;
 	uint32 timestamp;
@@ -670,17 +718,54 @@ typedef struct acs_chaninfo {
 	uint8 txop_score;		/* Combination of (tx+inbss+txop)scores */
 	uint8 dfs_reentry;
 	bool bgdfs160;			/* bgdfs is 160Mhz capable */
+	int ci_scan_txop_limit;		/* txop limit check to trigger channel change */
+	int traffic_thresh_en;		/* enabling traffic thresh feature */
+	char *vifnames[ACS_MAX_VIFNAMES];
+	uint8 acs_ignore_txfail_on_far_sta;
+	uint8 acs_txop_thresh;
+	uint32 glitch_cnt;
+	uint32 acs_chanim_glitch_thresh;
+	uint8 acs_nonwifi_enable;
+#ifdef ZDFS_2G
+	acs_chaninfo_t *ci_2g;	/* when self is 5g, fill if bgdfs is delegated to ci_2g iface */
+	acs_chaninfo_t *ci_5g;	/* when self is 2g, fill if bgdfs is done on behalf of ci_5g */
+	/* tx duration in seconds as reported by chanim_stats us; noted for 5g interfaces */
+	uint32 tx_dur_secs_start;	/* noted at start of ZDFS_2G CAC */
+	uint32 tx_dur_secs_end;		/* noted at end of ZDFS_2G CAC */
+	uint32 zdfs_2g_start_tick, zdfs_2g_end_tick;
+#endif /* ZDFS_2G */
+	uint32 last_scanned_time; /* When was the last time scan triggered/initiated */
+	uint8 acs_lockout_enable; /* Honour lockout period if enabled */
+	uint8 last_scan_type; /* Remember last scan type (CS or CI) */
+	uint8 txrx_score; /* Combination of (tx+inbss) scores */
+	bool acs_zdfs_2g_ignore_radar; /* Ignore radar detection if enabled only for 2G */
+	uint8 switch_reason_type; /* CI or CS scan */
+	uint8 channel_free; /* amount of time channel is free(txop) */
+	uint8 acs_chanim_tx_avail; /* channel free per */
+	uint8 acs_use_csa; /* If set csa will be used instead of update driver */
+	uint8 fallback_to_primary;
+	uint8 autochannel_through_cli; /* Becomes true on acs_cli autochannel command */
 	bool wet_enabled;
-	uint8 last_scan_type; 		/* Remember last scan type (CS or CI) */
-	uint8 txrx_score; 		/* Combination of (tx+inbss) scores */
 	int unit;
-} acs_chaninfo_t;
+};
 
 #define ACS_DFSR_CTX(ci) ((ci)->acs_dfsr)
+
+/* Given c_info, checks if the interface is zdfs_2g capable and enabled one operating on 2GHz.
+ * Use this sparingly as it makes iovar calls.
+ */
+#define ACS_CI_HAS_ZDFS_2G(ci, tmpint) (BAND_2G((ci)->rs_info.band_type) && (ci)->bgdfs160 && \
+		acs_get_zdfs_2g((ci), &(tmpint)) == BCME_OK && tmpint == 1)
 
 typedef struct {
 	acs_chaninfo_t* chan_info[ACS_MAX_IF_NUM];
 	ifname_idx_map_t acs_ifmap[ACS_MAX_IF_NUM];
+	char *exclude_ifnames[ACS_EXCLUDE_IFACE_LIST];
+#ifdef ZDFS_2G
+	acs_chaninfo_t *ci_zdfs_2g;
+	acs_chaninfo_t *ci_5g_all[ACSD_MAX_INTERFACES];
+	uint32 tx_5g_start_secs, tx_5g_end_secs;
+#endif /* ZDFS_2G */
 } acs_info_t;
 
 typedef struct acsd_wksp_s {
@@ -756,9 +841,8 @@ extern int dcs_handle_request(char* ifname, wl_bcmdcs_data_t *dcs_data, uint8 mo
 extern int acsd_proc_cmd(acsd_wksp_t* d_info, char* buf, uint size,
 	uint* resp_size);
 extern int acs_intfer_config_txfail(acs_chaninfo_t *c_info);
-extern int acs_intfer_config_trfthold(acs_chaninfo_t *c_info, char *prefix);
+extern int acs_intfer_config_traffic_thresh(acs_chaninfo_t *c_info, char *prefix);
 extern int acsd_trigger_dfsr_check(acs_chaninfo_t *c_info);
-extern int acsd_hi_chan_check(acs_chaninfo_t *c_info);
 extern bool acsd_need_chan_switch(acs_chaninfo_t *c_info);
 extern void acs_get_best_dfs_forced_chspec(acs_chaninfo_t *c_info);
 extern void acs_set_dfs_forced_chspec(acs_chaninfo_t * c_info);
@@ -779,7 +863,7 @@ extern int acs_activity_update(acs_chaninfo_t * c_info);
 extern int acs_get_initial_traffic_stats(acs_chaninfo_t * c_info);
 extern int acs_upgrade_to160(acs_chaninfo_t * c_info);
 extern void acsd_main_loop(struct timeval *tv);
-extern uint32 acs_channel_info(acs_chaninfo_t *c_info, chanspec_t chspec);
+extern uint32 acs_get_chanspec_info(acs_chaninfo_t *c_info, chanspec_t chspec);
 extern void acs_retrieve_config(acs_chaninfo_t *c_info, char *prefix);
 extern chanspec_t acs_pick_chanspec(acs_chaninfo_t *c_info, int bw);
 extern void acs_parse_chanspec(chanspec_t chanspec, acs_channel_t* chan_ptr);
@@ -795,8 +879,6 @@ extern int acs_build_candidates(acs_chaninfo_t *c_info, int bw);
 extern uint64 acs_get_recent_timestamp(acs_chaninfo_t *c_info, chanspec_t chspec);
 extern chanspec_t acs_pick_chanspec_common(acs_chaninfo_t *c_info, int bw, int score_type);
 extern bool acs_dfs_channel_is_usable(acs_chaninfo_t *c_info, chanspec_t chspec);
-/* is EU country  */
-extern bool acs_is_country_edcrs_eu(char * country_code);
 extern int acs_get_perband_chanspecs(acs_chaninfo_t *c_info, chanspec_t input, char *buf,
 	int length);
 extern int acs_get_per_chan_info(acs_chaninfo_t *c_info, chanspec_t sub_chspec, char *buf,
@@ -820,7 +902,7 @@ extern int acs_get_dyn160_status(char *name, int *dyn160_status);
 extern int acs_get_phydyn_switch_status(char *name, int *phy_dyn_switch);
 extern int acs_get_chanspec(acs_chaninfo_t *c_info, int *chanspec);
 extern int acs_set_intfer_params(char *name, wl_intfer_params_t *params, int size);
-extern int acs_set_intfer_trf_thold(char *name, wl_trf_thold_t *params, int size);
+extern int acs_set_intfer_traffic_thresh(char *name, wl_traffic_thresh_t *params, int size);
 extern int acs_get_stainfo(char *name, struct ether_addr *ea, int ether_len, char *stabuf,
 	int buf_len);
 extern int acs_set_chanim_sample_period(char *name, uint sample_period);
@@ -829,15 +911,42 @@ extern int acs_get_scb_probe(char *ifname, wl_scb_probe_t *scb_probe, int size);
 extern int acs_set_scb_probe(char *ifname, wl_scb_probe_t *scb_probe, int size_probe);
 extern int acs_get_country(acs_chaninfo_t * c_info);
 extern int chanim_update_state(acs_chaninfo_t *c_info, bool state);
-extern chanspec_t acs_pick_chanspec_fcs_policy(acs_chaninfo_t *c_info, int bw);
-extern bool acs_check_for_hp_chan(acs_chaninfo_t *c_info, int bw);
+extern bool acs_high_power_nondfs_chan_check(acs_chaninfo_t *c_info, int bw);
 extern bool acs_check_for_nondfs_chan(acs_chaninfo_t *c_info, int bw);
-extern bool acs_check_for_overlap_5g(chanspec_t cur_chspec, chanspec_t candi_chspec);
+extern bool acs_check_for_overlap(chanspec_t cur_chspec, chanspec_t candi_chspec);
 extern int acs_ci_scan_finish_check(acs_chaninfo_t * c_info);
 extern int acs_set_chan_table(char *channel_list, chanspec_t *chspec_list,
         unsigned int vector_size);
 extern void acs_ci_scan_update_idx(acs_scan_chspec_t *chspec_q, uint8 increment);
 /* look for str in capability (wl cap) and return true if found */
 extern bool acs_check_cap(acs_chaninfo_t *c_info, char *str);
+extern void acs_check_ifname_is_virtual(char **ifname);
+extern int acs_set_far_sta_rssi(acs_chaninfo_t *c_info, int far_sta);
+extern int acs_update_rssi(acs_chaninfo_t *c_info, unsigned char *addr);
+extern bool chanim_record_chan_dwell(acs_chaninfo_t *c_info, chanim_info_t *ch_info);
+/*extern bool acs_is_mode_check(char *osifname);*/
+extern bool acs_nondfs_chan_check_for_bgdfs_trigger(acs_chaninfo_t *c_info, int bw);
+extern bool acs_low_power_nondfs_chan_check(acs_chaninfo_t *c_info, int bw);
+extern int acs_bgdfs_check_candidates(acs_chaninfo_t *c_info, int bw);
+#ifdef ZDFS_2G
+extern acs_chaninfo_t* acs_get_zdfs_2g_ci();
+extern int acs_get_zdfs_2g(acs_chaninfo_t *c_info, int *zdfs_2g);
+extern int acs_set_zdfs_2g(acs_chaninfo_t *c_info, int zdfs_2g);
+extern int acs_set_per_chan_info(acs_chaninfo_t *c_info, chanspec_t sub_chspec, uint32 chinfo);
+extern int acs_set_chanspec_info(acs_chaninfo_t *c_info, chanspec_t chanspec,
+		uint8 bmp, acs_chan_info_bmp_t bmp_type);
+extern void acs_update_tx_dur_secs_start();
+extern void acs_update_tx_dur_secs_end();
+extern int acs_get_tx_dur_secs(acs_chaninfo_t *c_info);
+#endif /* ZDFS_2G */
+extern bool chanim_chk_lockout(chanim_info_t *ch_info);
 extern int acs_allow_scan(acs_chaninfo_t *c_info, uint8 type);
+extern int acs_csa_handle_request(acs_chaninfo_t *c_info);
+extern bool acs_is_initial_selection(acs_chaninfo_t* c_info);
+extern int acsd_segmentize_chanim(acs_chaninfo_t * c_info);
+#ifdef DEBUG
+void acs_dump_policy(acs_policy_t *a_pol);
+void acs_dump_config_extra(acs_chaninfo_t *c_info);
+#endif // endif
+
 #endif  /* _acsd_srv_h_ */

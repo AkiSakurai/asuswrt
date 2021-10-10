@@ -1,7 +1,7 @@
 /*
  * ACPHY HiRSSI eLNA Bypass module implementation
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_hirssi.c 655464 2016-08-19 23:20:17Z $
+ * $Id: phy_ac_hirssi.c 769908 2018-11-29 12:28:51Z $
  */
 
 #include <typedefs.h>
@@ -65,6 +65,16 @@
 #include <wlc_phyreg_ac.h>
 #include <wlc_phy_int.h>
 #endif // endif
+
+/* hirssi elnabypass */
+#define PHY_SW_HIRSSI_PERIOD      5    /* 5 second timeout */
+#define PHY_SW_HIRSSI_OFF         (-1)
+#define PHY_SW_HIRSSI_BYP_THR    (-13)
+#define PHY_SW_HIRSSI_RES_THR    (-15)
+#define PHY_SW_HIRSSI_W1_BYP_REG(pi)  ACPHY_W2W1ClipCnt3((pi)->pubpi->phy_rev)
+#define PHY_SW_HIRSSI_W1_BYP_CNT  31
+#define PHY_SW_HIRSSI_W1_RES_REG(pi)  ACPHY_W2W1ClipCnt1((pi)->pubpi->phy_rev)
+#define PHY_SW_HIRSSI_W1_RES_CNT  31
 
 /* module private states */
 struct phy_ac_hirssi_info {
@@ -354,7 +364,7 @@ void
 phy_ac_hirssi_set_ucode_params(phy_info_t *pi)
 {
 	int16 hirssi_rssi = 50;
-	uint16 hirssi_w1_reg =  PHY_SW_HIRSSI_W1_BYP_REG;
+	uint16 hirssi_w1_reg = PHY_SW_HIRSSI_W1_BYP_REG(pi);
 	uint16 hirssi_w1_cnt = 500;
 	bool res, en;
 	uint8 factor;
@@ -372,7 +382,7 @@ phy_ac_hirssi_set_ucode_params(phy_info_t *pi)
 
 	if (en) {
 		hirssi_rssi = (res) ? pi_ac->hirssi_res_rssi : pi_ac->hirssi_byp_rssi;
-		hirssi_w1_reg = (res) ? PHY_SW_HIRSSI_W1_RES_REG : PHY_SW_HIRSSI_W1_BYP_REG;
+		hirssi_w1_reg = (res) ? PHY_SW_HIRSSI_W1_RES_REG(pi) : PHY_SW_HIRSSI_W1_BYP_REG(pi);
 		hirssi_w1_cnt = (res) ? pi_ac->hirssi_res_cnt : pi_ac->hirssi_byp_cnt;
 
 		factor = CHSPEC_BW_LE20(pi->radio_chanspec) ? 1 :

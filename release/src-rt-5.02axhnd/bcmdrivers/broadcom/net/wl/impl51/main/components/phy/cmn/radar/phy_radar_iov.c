@@ -2,7 +2,7 @@
 /*
  * RadarDetect module implementation - iovar table/handlers & registration
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -46,9 +46,12 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_radar_iov.c 753604 2018-03-22 08:20:27Z $
+ * $Id: phy_radar_iov.c 775218 2019-05-23 09:24:10Z $
  */
 
+/* XXX: Define phy_cfg.h to be the first header file included as some builds
+ * get their feature flags thru this file.
+ */
 #include <phy_cfg.h>
 
 #include <typedefs.h>
@@ -63,9 +66,14 @@
 #include <wlc_iocv_reg.h>
 #include <phy_ac_info.h>
 
+#include <wlc_dfs.h>
+
 #ifndef ALL_NEW_PHY_MOD
 #include <wlc_phy_int.h>
 #endif // endif
+
+#define PHY_RADAR_FIFO_SUBBAND_FORMAT(pi) \
+	(ACMAJORREV_GE32((pi)->pubpi->phy_rev) && !ACMAJORREV_36((pi)->pubpi->phy_rev))
 
 /* id's */
 enum {
@@ -203,7 +211,7 @@ phy_radar_doiovar(void *ctx, uint32 aid, void *p, uint plen, void *a, uint alen,
 			break;
 		}
 		if (ACMAJORREV_32(pi->pubpi->phy_rev) || ACMAJORREV_33(pi->pubpi->phy_rev) ||
-			ACMAJORREV_47(pi->pubpi->phy_rev)) {
+			ACMAJORREV_GE47(pi->pubpi->phy_rev)) {
 			st->rparams.radar_thrs2.thresh0_sc_20_lo =
 				radar_thr2.thresh0_sc_20_lo;
 			st->rparams.radar_thrs2.thresh1_sc_20_lo =
@@ -286,8 +294,10 @@ phy_radar_doiovar(void *ctx, uint32 aid, void *p, uint plen, void *a, uint alen,
 		break;
 
 	case IOV_GVAL(IOV_RADAR_SUBBAND_STATUS):
-		if (ISACPHY(pi)) {
-			if (st->radar_work_lp_sc->subband_result == 0) {
+		if (PHY_RADAR_FIFO_SUBBAND_FORMAT(pi)) {
+			bool scancore = (PHY_SUPPORT_SCANCORE(pi) || PHY_SUPPORT_BW80P80(pi)) &&
+					(st->radar_work_lp_sc->subband_result != 0);
+			if (!scancore) {
 				if (CHSPEC_IS160(pi->radio_chanspec) &&
 					!PHY_AS_80P80(pi, pi->radio_chanspec)) {
 					subband_160 = ((st->radar_lp_info.subband_result &
@@ -298,23 +308,42 @@ phy_radar_doiovar(void *ctx, uint32 aid, void *p, uint plen, void *a, uint alen,
 					bcopy(&st->radar_lp_info.subband_result, a, sizeof(int));
 				}
 			} else {
-				subband_80p80 = st->radar_lp_info.subband_result +
-					(st->radar_work_lp_sc->subband_result << 4);
-				bcopy(&subband_80p80, a, sizeof(int));
+				if (PHY_SUPPORT_BW80P80(pi)) {
+					subband_80p80 = st->radar_lp_info.subband_result +
+						(st->radar_work_lp_sc->subband_result << 4);
+					bcopy(&subband_80p80, a, sizeof(int));
+				} else {
+					int32 radio_chanspec_sc = 0;
+					phy_ac_chanmgr_get_val_sc_chspec(PHY_AC_CHANMGR(pi),
+						&radio_chanspec_sc);
+					if (CHSPEC_IS160(radio_chanspec_sc)) {
+						subband_160 =
+							((st->radar_work_lp_sc->subband_result &
+							0xf) << 4) +
+							((st->radar_work_lp_sc->subband_result &
+							0xf0) >> 4);
+						bcopy(&subband_160, a, sizeof(int));
+					} else {
+						bcopy(&st->radar_work_lp_sc->subband_result, a,
+							sizeof(int));
+					}
+				}
 			}
 		} else
 			err = BCME_UNSUPPORTED;
 		break;
 
 	case IOV_SVAL(IOV_RADAR_SUBBAND_STATUS):
-		if (ISACPHY(pi)) {
+		if (PHY_RADAR_FIFO_SUBBAND_FORMAT(pi)) {
 			if (!pi->sh->up) {
 				err = BCME_NOTUP;
 				break;
 			}
 
 			st->radar_lp_info.subband_result = 0;
-			st->radar_work_lp_sc->subband_result = 0;
+			if (PHY_SUPPORT_SCANCORE(pi) || PHY_SUPPORT_BW80P80(pi)) {
+				st->radar_work_lp_sc->subband_result = 0;
+			}
 		} else
 			err = BCME_UNSUPPORTED;
 		break;

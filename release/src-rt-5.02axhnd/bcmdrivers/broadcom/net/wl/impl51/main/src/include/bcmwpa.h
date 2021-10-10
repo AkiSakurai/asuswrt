@@ -1,7 +1,7 @@
 /*
  * bcmwpa.h - interface definitions of shared WPA-related functions
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: bcmwpa.h 722778 2017-09-21 09:58:38Z $
+ * $Id: bcmwpa.h 774419 2019-04-24 08:26:14Z $
  */
 
 #ifndef _BCMWPA_H_
@@ -114,10 +114,12 @@
 #define IS_WPA_AKM(akm)	((akm) == RSN_AKM_NONE || \
 				 (akm) == RSN_AKM_UNSPECIFIED || \
 				 (akm) == RSN_AKM_PSK)
-#define IS_WPA2_AKM(akm)	((akm) == RSN_AKM_UNSPECIFIED || \
-				 (akm) == RSN_AKM_PSK)
+#define IS_RSN_AKM(akm)	((akm) == RSN_AKM_UNSPECIFIED || \
+					   (akm) == RSN_AKM_PSK || \
+					   (akm) == RSN_AKM_SAE_PSK)
 #define IS_FBT_AKM(akm)	((akm) == RSN_AKM_FBT_1X || \
-				 (akm) == RSN_AKM_FBT_PSK)
+			 (akm) == RSN_AKM_FBT_PSK ||	\
+			 (akm) == RSN_AKM_SAE_FBT)
 #define IS_MFP_AKM(akm)	((akm) == RSN_AKM_SHA256_1X || \
 				 (akm) == RSN_AKM_SHA256_PSK)
 #define IS_TDLS_AKM(akm)        ((akm) == RSN_AKM_TPK)
@@ -179,22 +181,23 @@ extern void wpa_incr_array(uint8 *array, uint len);
 extern bool wpa_cipher(wpa_suite_t *suite, ushort *cipher, bool wep_ok);
 
 /* Look for a WPA IE; return it's address if found, NULL otherwise */
-extern wpa_ie_fixed_t *bcm_find_wpaie(uint8 *parse, uint len);
-extern bcm_tlv_t *bcm_find_wmeie(uint8 *parse, uint len, uint8 subtype, uint8 subtype_len);
+extern wpa_ie_fixed_t *bcm_find_wpaie(const uint8 *parse, uint len);
+extern const bcm_tlv_t *bcm_find_wmeie(const uint8 *parse, uint len,
+		uint8 subtype, uint8 subtype_len);
 /* Look for a WPS IE; return it's address if found, NULL otherwise */
-extern wps_ie_fixed_t *bcm_find_wpsie(uint8 *parse, uint len);
+extern wps_ie_fixed_t *bcm_find_wpsie(const uint8 *parse, uint len);
 extern wps_at_fixed_t *bcm_wps_find_at(wps_at_fixed_t *at, int len, uint16 id);
 #ifdef WLP2P
 /* Look for a WiFi P2P IE; return it's address if found, NULL otherwise */
-extern wifi_p2p_ie_t *bcm_find_p2pie(uint8 *parse, uint len);
+extern wifi_p2p_ie_t *bcm_find_p2pie(const uint8 *parse, uint len);
 #endif // endif
 /* Look for a hotspot2.0 IE; return it's address if found, NULL otherwise */
-bcm_tlv_t *bcm_find_hs20ie(uint8 *parse, uint len);
+const bcm_tlv_t *bcm_find_hs20ie(const uint8 *parse, uint len);
 /* Look for a OSEN IE; return it's address if found, NULL otherwise */
-bcm_tlv_t *bcm_find_osenie(uint8 *parse, uint len);
+const bcm_tlv_t *bcm_find_osenie(const uint8 *parse, uint len);
 
 /* Check whether the given IE has the specific OUI and the specific type. */
-extern bool bcm_has_ie(uint8 *ie, uint8 **tlvs, uint *tlvs_len,
+extern bool bcm_has_ie(const uint8 *ie, const uint8 **tlvs, uint *tlvs_len,
                        const uint8 *oui, int oui_len, uint8 type);
 
 /* Check whether pointed-to IE looks like WPA. */
@@ -227,10 +230,10 @@ extern eapol_wpa2_encap_data_t *wpa_find_gtk_encap(uint8 *parse, uint len);
 extern eapol_wpa2_encap_data_t *wpa_find_igtk_encap(uint8 *parse, uint len);
 
 /* Check whether pointed-to IE looks like an encapsulated GTK. */
-extern bool wpa_is_gtk_encap(uint8 *ie, uint8 **tlvs, uint *tlvs_len);
+extern bool wpa_is_gtk_encap(uint8 *ie, const uint8 **tlvs, uint *tlvs_len);
 
 /* Look for encapsulated key data; return it's address if found, NULL otherwise */
-extern eapol_wpa2_encap_data_t *wpa_find_kde(uint8 *parse, uint len, uint8 type);
+extern eapol_wpa2_encap_data_t *wpa_find_kde(const uint8 *parse, uint len, uint8 type);
 #endif /* defined(BCMSUP_PSK) || defined(BCMSUPPL) || defined(GTKOE) */
 
 #if defined(BCMSUP_PSK) || defined(WLFBT) || defined(BCMAUTH_PSK)|| defined(WL_OKC) || \
@@ -242,7 +245,7 @@ extern void wpa_calc_ptk(const struct ether_addr *auth_ea, const struct ether_ad
 
 /* Compute Message Integrity Code (MIC) over EAPOL message */
 extern bool wpa_make_mic(eapol_header_t *eapol, uint key_desc, uint8 *mic_key,
-                                   uchar *mic);
+	uchar *mic);
 
 /* Check MIC of EAPOL message */
 extern bool wpa_check_mic(eapol_header_t *eapol, uint key_desc, uint8 *mic_key);
@@ -287,7 +290,7 @@ extern void wpa_derive_pmkR1_name(struct ether_addr *r1kh, struct ether_addr *st
 	* defined(WL_OKC) || defined(WLTDLS) || defined(GTKOE) || defined(WLHOSTFBT)
 	*/
 
-extern bool bcmwpa_akm2WPAauth(uint8 *akm, uint32 *auth, bool sta_iswpa);
+extern bool bcmwpa_akm2WPAauth(uint8 *akm, uint32 *auth);
 
 extern bool bcmwpa_cipher2wsec(uint8 *cipher, uint32 *wsec);
 extern uint32 bcmwpa_wpaciphers2wsec(uint8 unicast);
@@ -309,6 +312,8 @@ extern void wpa_calc_tpk(const struct ether_addr *init_ea,
 
 extern bool bcmwpa_is_wpa_auth(uint32 wpa_auth);
 extern bool bcmwpa_includes_wpa_auth(uint32 wpa_auth);
-extern bool bcmwpa_is_wpa2_auth(uint32 wpa_auth);
-extern bool bcmwpa_includes_wpa2_auth(uint32 wpa_auth);
+extern bool bcmwpa_is_rsn_auth(uint32 wpa_auth);
+extern bool bcmwpa_includes_wpa3_auth(uint32 wpa_auth);
+
+extern bool bcmwpa_includes_rsn_auth(uint32 wpa_auth);
 #endif	/* _BCMWPA_H_ */

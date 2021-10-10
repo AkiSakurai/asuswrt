@@ -1,7 +1,7 @@
 /*
  * Registrar protocol messages
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: reg_protomsg.h 542265 2015-03-19 08:29:38Z $
+ * $Id: reg_protomsg.h 766179 2018-07-26 07:49:15Z $
  */
 
 #ifndef _WPS_MSG_H
@@ -88,6 +88,9 @@ typedef struct {
 	CTlvVendorExt vendorExt;
 	CSubTlvVersion2 version2; /* C: WSC 2.0 */
 	CSubTlvReqToEnr reqToEnr; /* O: WSC 2.0 */
+#if defined(MULTIAP)
+	CSubTlvMAPAttr mapAttr;
+#endif	/* MULTIAP */
 } WpsM1;
 
 /* Message M2 */
@@ -322,6 +325,7 @@ typedef struct {
 #define ES_TYPE_M7AP	2
 #define ES_TYPE_M8AP	3
 #define ES_TYPE_M8STA	4
+#define ES_TYPE_M8BHSTA 5
 
 void reg_msg_init(void *m, int type);
 int reg_msg_version_check(uint8 msgId, BufferObj *theBuf, TlvObj_uint8 *version,

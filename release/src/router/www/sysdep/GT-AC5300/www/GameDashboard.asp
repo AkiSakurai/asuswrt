@@ -345,8 +345,6 @@ function initial(){
 		}
 	})
 
-	setTimeout(check_eula, 100);
-
 	if(isSwMode('rt')){
 		if (ddns_enable == '0' || ddnsName == '' || ddnsName == isMD5DDNSName()) {
 			$('#wan_ip_title').html('WAN IP');
@@ -390,6 +388,8 @@ function initial(){
 	if (isSwMode("rt"))
 		document.getElementById("boost_qos").style.display = "";
 
+	
+		
 	var boost_key = '<% nvram_get("turbo_mode"); %>';
 	$("#" + _array[boost_key]).addClass("boost-key-checked");
 	boost_id = _array[boost_key];
@@ -430,6 +430,10 @@ function initial(){
 		$('#boost_shuffle').hide();
 		$('#boost_aura').show();
 	}
+
+	if(!ASUS_EULA.status("tm")){
+		ASUS_EULA.config(tm_agree, tm_disagree);
+	}
 }
 
 function updateWANIP(){
@@ -444,23 +448,6 @@ function updateWANIP(){
 			setTimeout("updateWANIP();", 3000);
 		}
 	});
-}
-
-function check_eula(){
-	ASUS_EULA.config(check_eula, check_eula);
-
-	var asus_status = httpApi.nvramGet(["ASUS_EULA", "ASUS_EULA_time", "ddns_enable_x", "ddns_server_x"], true);
-	if( (asus_status.ASUS_EULA == "1" && asus_status.ASUS_EULA_time == "") ||
-		(asus_status.ASUS_EULA == "0" && asus_status.ddns_enable_x == "1" && asus_status.ddns_server_x == "WWW.ASUS.COM") ){
-		ASUS_EULA.check("asus");
-		return false;
-	}
-
-	var tm_status = httpApi.nvramGet(["TM_EULA", "TM_EULA_time"], true);
-	if(tm_status.TM_EULA == "1" &&  tm_status.TM_EULA_time == ""){
-		ASUS_EULA.check("tm");
-		return false;
-	}
 }
 
 function check_sw_mode(){
@@ -934,8 +921,7 @@ function handleBoostKey(obj){
 
 	var tm_status = httpApi.nvramGet(["TM_EULA", "TM_EULA_time"], true);
 	if(_id == 'boost_qos' && (tm_status.TM_EULA == "0" || tm_status.TM_EULA_time == "")){
-		$('#Loading').css('visibility', 'visible');
-		$('#alert_tm_EULA').show();
+		ASUS_EULA.check("tm");
 		return false;
 	}
 
@@ -1008,7 +994,7 @@ function tm_agree(){
 		"turbo_mode": '3',
 		"TM_EULA": '1',
     	"action_mode": "apply",
-    	"rc_service": "saveNvram;restart_wrs;restart_firewall"
+    	"rc_service": "restart_wrs;restart_firewall"
 	});
 
 	$('#Loading').css('visibility', 'hidden');
@@ -1054,55 +1040,7 @@ function hideEventTriggerDesc(){
 <input type="hidden" name="TM_EULA" value="<% nvram_get("TM_EULA"); %>">
 
 <table class="content" align="center" cellpadding="0" cellspacing="0" >
-	<!-- EULA -->
-	<div id="alert_tm_EULA" class="eula_panel_container" style="margin-top:1100px;width: 600px; line-height: 18px; text-align: left; font-size: 14px; border-radius: 6px; font-family: monospace; display: block;display:none">
-			<div style="background:#232E32;height:40px;border-top-left-radius: 4px;border-top-right-radius: 4px;">
-				<div style="font: 16px bolder monospace;padding: 12px 0 0 10px;"><#lyra_TrendMicro_agreement#></div>
-			</div>
-			<div id="tm_eula_content" style="background:#293438;border-top:1px solid #3B474B;border-bottom: 1px solid #3B474B;overflow-y: auto;font-size:14px;padding:15px 12px 0 12px;">
-			  <div><#TM_eula_desc1#></div>
-				<div style="margin: 18px 0;"><#TM_eula_desc2#></div>
-				<div style="margin-top: -10px;"><#TM_privacy_policy#></div>
-				<div style="margin-top: 5px;"><#TM_data_collection#></div>
-				<div style="margin: 18px 0;"><#TM_eula_desc3#></div>
-			</div>
-			<div style="text-align: center;background:#232E32;height:60px;border-bottom-left-radius: 4px;border-bottom-right-radius: 4px;">
-				<input id="cancelBtn" class="button_gen" type="button" style="margin-top:15px;" value="<#CTL_Disagree#>" onclick="tm_disagree();">
-				<input id="applyBtn" class="button_gen" type="button" value="<#CTL_Agree#>" onclick="tm_agree();">
-			</div>
-		
-			<script>
-				$("#tm_eula_content").html($("#tm_eula_content").html().replace(/\\'/g, "'"))
-				$("#eula_url").attr("href", "https://www.asus.com/Microsite/networks/Trend_Micro_EULA/");
-				$("#tm_eula_url").attr("href", "https://www.trendmicro.com/en_us/about/legal/privacy-policy-product.html");
-				$("#tm_disclosure_url").attr("href", "https://success.trendmicro.com/data-collection-disclosure");
-		
-				httpApi.nvramGetAsync({
-					data: ["preferred_lang"],
-					success: function(resp){
-						var preferredLang = resp.preferred_lang;
-						var lang_str = (preferredLang == "EN") ? "" : preferredLang.toLowerCase();
-						var tm_url = "";
-		
-						if(preferredLang == "BR")
-							lang_str = "pt";
-		
-						tm_url = "https://www.asus.com/Microsite/networks/Trend_Micro_EULA/" + lang_str;
-						$.ajax({
-							url: tm_url,
-							dataType: "jsonp",
-							statusCode: {
-								200: function(response) {
-									$("#eula_url").attr("href", tm_url);
-								}
-							}
-						});
-					}
-				})
-			</script>
-		</div>	
-	
-	<!-- END Eula -->
+
 	<tr>
 		<td width="17">&nbsp;</td>		
 		<td valign="top" width="202">				

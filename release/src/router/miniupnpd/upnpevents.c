@@ -106,6 +106,10 @@ newSubscriber(const char * eventurl, const char * callback, int callbacklen)
 	else if(strcmp(eventurl, AS_EVENTURL)==0 && GETFLAG(ENABLEAURASYNCMASK))
 		tmp->service = EAS;
 #endif
+#ifdef ENABLE_NVGFN
+	else if(strcmp(eventurl, NVGFN_EVENTURL)==0 && GETFLAG(ENABLENVGFNMASK))
+		tmp->service = ENVGFN;
+#endif
 	else {
 		free(tmp);
 		return NULL;
@@ -116,13 +120,19 @@ newSubscriber(const char * eventurl, const char * callback, int callbacklen)
 		return NULL;
 	}
 #endif
+#ifdef ENABLE_NVGFN
+	if (gfn_only && (tmp->service != ENVGFN)) {
+		free(tmp);
+		return NULL;
+	}
+#endif
 	memcpy(tmp->callback, callback, callbacklen);
 	tmp->callback[callbacklen] = '\0';
 	/* make a dummy uuid */
 	/* TODO: improve that */
 	strncpy(tmp->uuid, uuidvalue_igd, sizeof(tmp->uuid));
 	tmp->uuid[sizeof(tmp->uuid)-1] = '\0';
-	snprintf(tmp->uuid+37, 5, "%04lx", random() & 0xffff);
+	snprintf(tmp->uuid+sizeof(tmp->uuid)-5, 5, "%04lx", random() & 0xffff);
 	return tmp;
 }
 
@@ -391,6 +401,11 @@ static void upnp_event_prepare(struct upnp_event_notify * obj)
 #ifdef ENABLE_AURASYNC
 	case EAS:
 		xml = getVarsAS(&l);
+		break;
+#endif
+#ifdef ENABLE_NVGFN
+	case ENVGFN:
+		xml = getVarsNVGFN(&l);
 		break;
 #endif
 	default:

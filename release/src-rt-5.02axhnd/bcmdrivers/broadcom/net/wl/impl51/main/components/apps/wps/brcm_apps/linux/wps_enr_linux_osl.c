@@ -1,7 +1,7 @@
 /*
  * WPS ENROLL thread (Linux platform dependent portion)
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_enr_linux_osl.c 676790 2016-12-24 17:51:50Z $
+ * $Id: wps_enr_linux_osl.c 767092 2018-08-28 06:18:20Z $
  */
 
 #include <stdio.h>
@@ -84,7 +84,10 @@ extern void wps_setProcessStates(int state);
 
 extern int wps_set_wsec(int ess_id, char *ifname, void *credential, int mode);
 extern uint32 wps_eapol_send_data(char *dataBuffer, uint32 dataLen);
-
+#if defined(MULTIAP)
+extern int wps_map_get_sta_backhaul_ifname(char *ifname, int size);
+extern void wps_map_update_settings(char *skip_ifname);
+#endif	/* MULTIAP */
 /* For testing ... should be set to real peer value (bssid) */
 static uint8 peer_mac[6] = {0x00, 0x90, 0xac, 0x6d, 0x09, 0x48};
 static uint8 my_mac[6] = {0x00, 0x90, 0xac, 0x6d, 0x09, 0x48};
@@ -208,6 +211,17 @@ wps_osl_set_ifname(char *ifname)
 	/* this is a os name */
 	strncpy(if_name, ifname, sizeof(if_name) - 1);
 	if_name[sizeof(if_name) - 1] = '\0';
+	return 0;
+}
+
+int
+wps_osl_get_ifname(char *ifname, int buflen)
+{
+	int len = strnlen(if_name, sizeof(if_name));
+	if (buflen < (len + 1))
+		return -1;
+	strncpy(ifname, if_name, len);
+	ifname[len] = '\0';
 	return 0;
 }
 
@@ -463,3 +477,27 @@ wpsenr_osl_restore_wsec()
 
 	return 0;
 }
+
+#if defined(MULTIAP)
+/* Set security settings */
+int
+wpsenr_map_osl_set_wsec(char *ifname, int ess_id, void *credential, int mode)
+{
+	int retVal = WPS_RESULT_SUCCESS_RESTART;
+
+	if (!ifname) {
+		TUTRACE((TUTRACE_ERR, "NULL Sta ifname \n"));
+		return WPS_RESULT_FAILURE;
+	}
+
+	TUTRACE((TUTRACE_INFO, "Applying settings to sta ifr %s \n", ifname));
+	if (wps_set_wsec(ess_id, ifname, credential, mode)) {
+		wps_map_update_settings(ifname);
+		retVal = WPS_RESULT_SUCCESS_RESTART;
+	} else {
+		retVal = WPS_RESULT_FAILURE;
+	}
+
+	return retVal;
+}
+#endif	/* MULTIAP */

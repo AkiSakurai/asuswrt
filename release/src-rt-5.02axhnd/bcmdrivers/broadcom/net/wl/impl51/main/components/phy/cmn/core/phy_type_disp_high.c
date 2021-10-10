@@ -2,7 +2,7 @@
  * PHY Core module implementation - register all PHY type specific implementations'
  * iovar tables/handlers to IOCV module - used by high driver
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed

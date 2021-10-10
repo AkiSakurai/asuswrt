@@ -1,6 +1,6 @@
 /*
  * Key Management Module km_hw Implementation
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_hw.c 767425 2018-09-11 07:50:50Z $
+ * $Id: km_hw.c 775512 2019-06-03 09:01:10Z $
  */
 
 /* This file implements the wlc keymgmt functionality. It provides
@@ -108,7 +108,12 @@ BCMATTACHFN(km_hw_attach)(wlc_info_t *wlc, keymgmt_t *km)
 	 */
 	if (KM_HW_COREREV_GE40(hw)) {
 		hw->max_amt_idx = AMT_SIZE(corerev);
+#ifdef WL_HWKTAB
+		/* max hw idx is variant from HWKTAB_SLOT_SIZE */
+		hw->max_idx =  AMT_SIZE(corerev)/(KM_HWKTAB_SLOT_SIZE/KM_HWKTAB_DEF_SLOT_SIZE);
+#else
 		hw->max_idx =  AMT_SIZE(corerev);
+#endif // endif
 		amt_idx = hw->max_amt_idx - 2;
 #ifdef WL_RELMCAST
 		if (RMC_SUPPORT(KM_HW_PUB(hw)) && RMC_ENAB(KM_HW_PUB(hw))) {
@@ -132,6 +137,9 @@ BCMATTACHFN(km_hw_attach)(wlc_info_t *wlc, keymgmt_t *km)
 		hw->amt_info.mcnx_count = (uint8)amt_count;
 	}
 
+	/* XXX initialize max key size; this may become corerev dependent when
+	 * h/w supports longer keys.
+	 */
 	hw->max_key_size = D11_MAX_KEY_SIZE;
 
 	/* initialize hw/algo specific processing */
@@ -275,7 +283,7 @@ km_hw_reset(km_hw_t *hw)
 		km_hw_amt_reserve(hw, AMT_IDX_MAC, 1, TRUE);
 		km_hw_amt_reserve(hw, AMT_IDX_BSSID, 1, TRUE);
 		if (RATELINKMEM_ENAB(hw->wlc->pub)) {
-			km_hw_amt_reserve(hw, AMT_IDX_RSVD_START, AMT_IDX_RSVD_SIZE, TRUE);
+			km_hw_amt_reserve(hw, AMT_IDX_RLM_RSVD_START, AMT_IDX_RLM_RSVD_SIZE, TRUE);
 		}
 #ifdef WL_RELMCAST
 		if (RMC_SUPPORT(KM_HW_PUB(hw)) && RMC_ENAB(KM_HW_PUB(hw)))

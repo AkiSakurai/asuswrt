@@ -67,6 +67,9 @@ enum upnpconfigoptions {
 #ifdef ENABLE_AURASYNC
 	UPNPENABLEAURASYNC,
 #endif
+#ifdef ENABLE_NVGFN
+	UPNPENABLENVGFN,
+#endif
 	UPNPMINISSDPDSOCKET,	/* minissdpdsocket */
 	UPNPENABLE				/* enable_upnp */
 };

@@ -1,7 +1,7 @@
 /*
  * Health check module.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_hc.c 690362 2017-03-15 23:31:16Z $
+ * $Id: phy_hc.c 775928 2019-06-14 15:27:49Z $
  */
 #include <phy_cfg.h>
 #include <typedefs.h>
@@ -266,10 +266,10 @@ phy_hc_healthcheck(phy_hc_info_t *hci, phy_healthcheck_type_t hc)
 	if ((hc == PHY_HC_ALL) || (hc == PHY_HC_VCOCAL)) {
 		if (phy_radio_pll_lock(pi->radioi) == FALSE) {
 			bool pll_lock_status;
-			if ((RADIOID(pi->pubpi->radioid) == BCM2069_ID) ||
-				(RADIOID(pi->pubpi->radioid) == BCM20691_ID) ||
-				(RADIOID(pi->pubpi->radioid) == BCM20693_ID) ||
-				(RADIOID(pi->pubpi->radioid) == BCM20694_ID)) {
+			if ((RADIOID_IS(pi->pubpi->radioid, BCM2069_ID)) ||
+				(RADIOID_IS(pi->pubpi->radioid, BCM20691_ID)) ||
+				(RADIOID_IS(pi->pubpi->radioid, BCM20693_ID)) ||
+				(RADIOID_IS(pi->pubpi->radioid, BCM20694_ID))) {
 				int vcocal_status;
 				phy_vcocal_force(pi);
 				vcocal_status = phy_vcocal_status(pi->vcocali);

@@ -1,7 +1,7 @@
 /*
  * WPS Enrollee API
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_enrapi.h 525052 2015-01-08 20:18:35Z $
+ * $Id: wps_enrapi.h 766493 2018-08-03 05:39:41Z $
  */
 
 #ifndef __WPS_ENROLLEE_API_H__
@@ -101,7 +101,7 @@ typedef struct wps_ap_list_info {
 	uint8       BSSID[6];
 	uint8       *ie_buf;
 	uint32      ie_buflen;
-    chanspec_t  chanspec;           /* chanspec for bss */
+	chanspec_t  chanspec;           /* chanspec for bss */
 	uint8       channel;
 	uint16      band;
 	uint8       wep;
@@ -159,6 +159,12 @@ uint32 wps_update_partial_ie(uint8 *buff, int buflen, uint8 *ie, uint8 ie_len,
 	uint8 *updie, uint8 updie_len);
 int sta_eap_sm_set_eap_frag_threshold(int eap_frag_threshold);
 #endif /* WFA_WPS_20_TESTBED */
+
+#if defined(MULTIAP)
+uint8 wpssta_is_map_backhaul_sta();
+bool wpssta_get_chspec_from_scan_results(wps_ap_list_info_t *list, char *ssid, uint16 *chanspec);
+int wpssta_map_get_rssi(wps_ap_list_info_t *list, char *ssid, int *rssi);
+#endif	/* MULTIAP */
 uint32 wpssta_get_err_code();
 
 #endif /* __WPS_ENROLLEE_API_H__ */

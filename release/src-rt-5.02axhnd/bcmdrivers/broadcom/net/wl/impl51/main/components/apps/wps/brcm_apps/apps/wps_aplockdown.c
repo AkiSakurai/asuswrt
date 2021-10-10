@@ -1,7 +1,7 @@
 /*
  * WPS aplockdown
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -42,7 +42,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: wps_aplockdown.c 676559 2016-12-22 17:02:55Z $
+ * $Id: wps_aplockdown.c 772297 2019-02-20 06:50:21Z $
  */
 
 #include <stdio.h>
@@ -68,6 +68,7 @@ typedef struct {
 #define	WPS_APLOCKDOWN_FOREVER_CNT	10
 
 static WPS_APLOCKDOWN wps_aplockdown;
+wps_aplockdown_custom_callback_t wps_aplockdown_custom;
 
 int
 wps_aplockdown_init()
@@ -116,11 +117,28 @@ wps_aplockdown_init()
 	wps_aplockdown.start_cnt = start_cnt;
 	wps_aplockdown.forever_cnt = forever_cnt;
 
+	if (wps_aplockdown_custom.init != NULL) {
+		wps_aplockdown_custom.init(&wps_aplockdown.start_cnt,
+			&wps_aplockdown.forever_cnt, &wps_aplockdown.failed_cnt);
+		if (wps_aplockdown.failed_cnt >= wps_aplockdown.start_cnt) {
+			wps_aplockdown.locked = 1;
+
+			wps_ui_set_env("wps_aplockdown", "1");
+			wps_set_conf("wps_aplockdown", "1");
+
+			/* reset the IE */
+			wps_ie_set(NULL, NULL);
+
+			TUTRACE((TUTRACE_ERR, "AP is initially lock down\n"));
+		}
+	}
 	TUTRACE((TUTRACE_INFO,
-		"WPS aplockdown init: force_on = %d, start_cnt = %d, forever_cnt = %d!\n",
+		"WPS aplockdown init: force_on = %d, start_cnt = %d,"
+		"forever_cnt = %d failed_cnt = %d!\n",
 		wps_aplockdown.force_on,
 		wps_aplockdown.start_cnt,
-		wps_aplockdown.forever_cnt));
+		wps_aplockdown.forever_cnt,
+		wps_aplockdown.failed_cnt));
 
 	return 0;
 }
@@ -140,6 +158,15 @@ wps_aplockdown_add(void)
 	if (wps_aplockdown.failed_cnt < wps_aplockdown.forever_cnt)
 		wps_aplockdown.failed_cnt++;
 
+	if (wps_aplockdown_custom.wps_pinfail_added != NULL) {
+		wps_aplockdown_custom.wps_pinfail_added(wps_aplockdown.start_cnt,
+			wps_aplockdown.forever_cnt, &wps_aplockdown.failed_cnt);
+		TUTRACE((TUTRACE_INFO,
+			"WPS pin faulire: force_on = %d, start_cnt = %d,"
+			"forever_cnt = %d failed_cnt = %d!\n",
+			wps_aplockdown.force_on, wps_aplockdown.start_cnt,
+			wps_aplockdown.forever_cnt, wps_aplockdown.failed_cnt));
+	}
 	/*
 	 * Lock it if reach start count.
 	 */

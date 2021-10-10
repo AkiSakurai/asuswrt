@@ -262,7 +262,7 @@ int asus_reg_domain (int regType)
 	int retval = REGISTERES_OK;
 
 	buf[BUFFER_SIZE] = '\0';
-	if (do_connect((int *) &client_sockfd, server, port) != 0) {
+	if (do_connect((FILE **)&client_sockfp, server, port, ssl) != 0) {
 		PRINT ("error connecting to %s:%s\n", server, port);
 		show_message("error connecting to %s:%s\n", server, port);
 		nvram_set ("ddns_return_code", "connect_fail");
@@ -315,7 +315,7 @@ int asus_reg_domain (int regType)
 		bp += bytes;
 		btot += bytes;
 	}
-	close(client_sockfd);
+	fclose((FILE *)client_sockfp);
 	buf[btot] = '\0';
 	//show_message("Asus Reg domain:: return: %s\n", buf);
 	if(btot) { // TODO: according to server response, parsing code have to rewrite
@@ -439,7 +439,7 @@ int asus_update_entry(void)
 
 	buf[BUFFER_SIZE] = '\0';
 
-	if (do_connect((int *) &client_sockfd, server, port) != 0) {
+	if (do_connect((FILE **)&client_sockfp, server, port, ssl) != 0) {
 		show_message("error connecting to %s:%s\n", server, port);
 		nvram_set ("ddns_return_code", "connect_fail");
 		nvram_set ("ddns_return_code_chk", "connect_fail");
@@ -484,7 +484,7 @@ int asus_update_entry(void)
                 bp += bytes;
                 btot += bytes;
         }
-        close(client_sockfd);
+        fclose((FILE *)client_sockfp);
         buf[btot] = '\0';
         show_message("Asus update entry:: return: %s\n", buf);
         if(btot) { // TODO: according to server response, parsing code have to rewrite
@@ -692,7 +692,7 @@ int asus_private(void)
 	int i, l, c;
 	unsigned long secret;
 	unsigned char *p, user[256], hwaddr[6], hwaddr_str[18], key[64], msg[256], ipbuf[20], bin_pwd[16];
-#if defined(RTCONFIG_SOC_IPQ8064)
+#if defined(RTCONFIG_SOC_IPQ8064) || defined(RTCONFIG_SOC_IPQ8074)
 	unsigned char mac_buf[6], mac_buf_str[18];
 #endif
 
@@ -709,7 +709,7 @@ int asus_private(void)
 		return -1;
 	}
 
-#if defined(RTCONFIG_SOC_IPQ8064)
+#if defined(RTCONFIG_SOC_IPQ8064) || defined(RTCONFIG_SOC_IPQ8074)
 	/* Make sure last bytes of MAC address is aligned to 4. */
 	ether_atoe(p, mac_buf);
 	mac_buf[5] &= 0xFC;

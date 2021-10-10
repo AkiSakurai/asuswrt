@@ -1,7 +1,7 @@
 /*
  * Rx Spur canceller module public interface (to MAC driver)
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_rxspur_api.h 657044 2016-08-30 21:37:55Z $
+ * $Id: phy_rxspur_api.h 768374 2018-10-11 10:26:08Z $
  */
 
 #ifndef _phy_rxspur_api_h_
@@ -55,5 +55,6 @@
 #include <phy_api.h>
 
 void phy_rxspur_change_block_bbpll(wlc_phy_t *pih, bool block, bool going_down);
+void phy_rxspur_change_bbpll(wlc_phy_t *pih);
 
 #endif /* _phy_rxspur_api_h_ */

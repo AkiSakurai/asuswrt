@@ -4,7 +4,7 @@
  *
  *  Air-IQ general
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -80,6 +80,7 @@
 #include <wlc_event_utils.h>
 #include <wlc_event.h>
 #include <wlc_vasip.h>
+#include <wlc_dump.h>
 #include <wlc_airiq.h>
 
 void wlc_airiq_scantimer(void *arg);
@@ -87,7 +88,7 @@ void wlc_airiq_scantimer(void *arg);
 static void wlc_airiq_updown_cb(void *ctx, bsscfg_up_down_event_data_t *updown_data);
 extern void wlc_disable_hw_beacons(wlc_info_t *wlc);
 
-int airiq_doiovar(void *hdl, uint32 actionid, 	void *p, uint plen,
+int airiq_doiovar(void *hdl, uint32 actionid, void *p, uint plen,
 	void *arg, uint alen, uint vsize, struct wlc_if *wlcif);
 
 #ifdef BCMDBG
@@ -103,6 +104,9 @@ static const uint16 airiq_fft_latency_bins[AIRIQ_HISTOGRAM_BINCNT] =
 /* phy macros */
 /*  */
 
+static const char BCMATTACHDATA(rstr_airiq_coex_gpio_2g)[] = "airiq_coex_gpio_2g";
+static const char BCMATTACHDATA(rstr_airiq_coex_gpio_5g)[] = "airiq_coex_gpio_5g";
+
 /*
  * Initialize airiq private context. It returns a pointer to the
  * airiq private context if succeeded. Otherwise it returns NULL.
@@ -113,7 +117,7 @@ BCMATTACHFN(wlc_airiq_attach) (wlc_info_t * wlc)
 	airiq_info_t *airiqh;
 	extern const bcm_iovar_t airiq_iovars[];
 
-	WL_AIRIQ(("%s: attaching to wl%d\n", __FUNCTION__, wlc->pub->unit));
+	WL_AIRIQ(("wl%d: %s: attaching airiq\n", WLCWLUNIT(wlc), __FUNCTION__));
 
 	/* allocate airiq private info struct */
 	airiqh = MALLOC(wlc->osh, sizeof(airiq_info_t));
@@ -161,9 +165,13 @@ BCMATTACHFN(wlc_airiq_attach) (wlc_info_t * wlc)
 	airiqh->detector_config.detector_configured  = FALSE;
 	airiqh->lte_u_aging_interval = 10*1000*1000;   //10secs
 	airiqh->pkt_up_counter = 0;
+	airiqh->coex_gpio_mask_2g   = getintvar(wlc->pub->vars, rstr_airiq_coex_gpio_2g);
+	airiqh->coex_gpio_mask_5g   = getintvar(wlc->pub->vars, rstr_airiq_coex_gpio_5g);
 	/* get 64-bit aligned pointer */
 	airiqh->fft_buffer = (uint8*)(((uintptr)airiqh->__fft_buffer + 7) & (uintptr)(~7));
 	ASSERT(ISALIGNED(airiqh->fft_buffer, 8));
+
+	wlc_airiq_msg_reset(airiqh);
 
 	/* 3+1 scanning */
 #ifdef WL_MODESW
@@ -305,8 +313,8 @@ wlc_airiq_updown_cb(void *ctx, bsscfg_up_down_event_data_t *updown_data)
 	}
 	airiqh = wlc->airiq;
 
-	WL_AIRIQ(("%s:got callback from updown. interface %s\n",
-		__FUNCTION__, (updown_data->up ? "up" : "down")));
+	WL_AIRIQ(("wl%d: %s:got callback from updown. interface %s\n",
+		WLCWLUNIT(wlc), __FUNCTION__, (updown_data->up ? "up" : "down")));
 
 	if (updown_data->up == TRUE) {
 #ifdef WLOFFLD
@@ -331,7 +339,8 @@ wlc_airiq_updown_cb(void *ctx, bsscfg_up_down_event_data_t *updown_data)
 			wl_airiq_sendup_data(airiqh, buffer,  msg_size);
 			MFREE(airiqh->wlc->osh, buffer, msg_size);
 		} else {
-			WL_AIRIQ(("%s: Could not get bytes: queue full\n", __FUNCTION__));
+			WL_AIRIQ(("wl%d: %s: Could not get bytes: queue full\n",
+				WLCWLUNIT(wlc), __FUNCTION__));
 		}
 
 		spin_unlock_bh(&airiq.lock);
@@ -347,7 +356,7 @@ wlc_airiq_updown_cb(void *ctx, bsscfg_up_down_event_data_t *updown_data)
 	}
 	/* Interface is going down */
 	if (airiqh->phy_mode == PHYMODE_3x3_1x1) {
-		WL_AIRIQ(("Aborting Air-IQ scan\n"));
+		WL_AIRIQ(("wl%d: Aborting Air-IQ scan\n", WLCWLUNIT(wlc)));
 		wlc_airiq_scan_abort(airiqh, TRUE);
 	}
 }
@@ -362,9 +371,14 @@ wlc_airiq_fifo_suspend_complete(airiq_info_t *airiqh)
 	airiqh->tx_suspending = FALSE;
 }
 
+/* only set in 4x4 mode */
 void
 wlc_airiq_set_scan_in_progress(airiq_info_t *airiqh, bool in_progress)
 {
+	// need to marked scan in progress only in 4x4 mode
+	if (airiqh->phy_mode == PHYMODE_3x3_1x1)
+		return;
+
 	airiqh->wlc->scan->in_progress = in_progress;
 
 	if (in_progress) {
@@ -373,6 +387,15 @@ wlc_airiq_set_scan_in_progress(airiq_info_t *airiqh, bool in_progress)
 		/* note: no assert needed in this path since there could be other conditions
 		 * causing wake state to be set
 		 */
+	}
+	wlc_set_wake_ctrl(airiqh->wlc);
+}
+void
+wlc_airiq_set_enable(airiq_info_t *airiqh, bool enable)
+{
+	airiqh->scan_enable = enable;
+	if (airiqh->phy_mode != PHYMODE_3x3_1x1) {
+		wlc_phy_hold_upd(WLC_PI(airiqh->wlc),PHY_HOLD_FOR_SCAN, enable);
 	}
 	wlc_set_wake_ctrl(airiqh->wlc);
 }
@@ -437,7 +460,8 @@ bool wl_lte_u_send_scan_abort_event(airiq_info_t *airiqh, int reason)
 	lte_u_event->data_len = sizeof(lte_u_event_t) + sizeof(uint32);
 	memcpy(lte_u_event->data, &reason, sizeof(uint32));
 
-	WL_AIRIQ(("%s Sending scan abort event\n", __FUNCTION__));
+	WL_AIRIQ(("wl%d: %s: Sending scan abort event\n",
+		WLCWLUNIT(airiqh->wlc), __FUNCTION__));
 	wlc_mac_event(airiqh->wlc, WLC_E_LTE_U_EVENT, NULL, WLC_E_STATUS_SUCCESS,
 			0, 0, (void *)(lte_u_event), lte_u_event->data_len);
 	MFREE(airiqh->wlc->osh, lte_u_event, sizeof(lte_u_event_t) + sizeof(uint32));
@@ -475,8 +499,8 @@ void wlc_lte_u_send_status(airiq_info_t *airiqh)
 		/* Send the mac event if LTE-U present OR
 		 * Send the mac event if we are within aging interval
 		 */
-		WL_AIRIQ(("wl%d:[LTEU] time: 0x%x (prev 0x%x) active: %d present: %d\n",
-			airiqh->wlc->pub->unit,
+		WL_AIRIQ(("wl%d: [LTEU] time: 0x%x (prev 0x%x) active: %d present: %d\n",
+			WLCWLUNIT(airiqh->wlc),
 			airiqh->scan.lte_scan_status[scan_chidx].timestamp,
 			airiqh->scan.lte_scan_status[scan_chidx].prevTimestamp,
 			airiqh->scan.lte_scan_status[scan_chidx].lte_u_active,
@@ -505,8 +529,8 @@ void wlc_lte_u_send_status(airiq_info_t *airiqh)
 			airiqh->scan.lte_scan_status[scan_chidx].prevTimestamp) >
 			airiqh->lte_u_aging_interval)) {
 		/* Send the mac event to indicate end of detection (i.e. lte_u_active=false) */
-		WL_AIRIQ(("wl%d:[LTEU] time: 0x%x (prev 0x%x) active: %d present: %d\n",
-			airiqh->wlc->pub->unit,
+		WL_AIRIQ(("wl%d: [LTEU] time: 0x%x (prev 0x%x) active: %d present: %d\n",
+			WLCWLUNIT(airiqh->wlc),
 			airiqh->scan.lte_scan_status[scan_chidx].timestamp,
 			airiqh->scan.lte_scan_status[scan_chidx].prevTimestamp,
 			airiqh->scan.lte_scan_status[scan_chidx].lte_u_active,
@@ -525,4 +549,109 @@ void wlc_lte_u_send_status(airiq_info_t *airiqh)
 		MFREE(airiqh->wlc->osh, lte_u_event, sizeof(lte_u_event_t) +
 			sizeof(lte_u_scan_status_t));
 	}
+}
+
+#ifdef DONGLEBUILD
+bool wlc_airiq_nvram_enable(void)
+{
+	const char *var   = getvar(NULL, "airiq_enable");
+	int airiq_enable  = bcm_strtoul(var, NULL, 0);
+	if (airiq_enable  == 1) {
+		return TRUE;
+	} else {
+		return FALSE;
+	}
+}
+#endif // endif
+
+static void _wlc_airiq_msg_sendup(airiq_info_t *airiqh)
+{
+	airiq_message_header_t *msg;
+
+	/* configure header */
+	msg = (airiq_message_header_t *)airiqh->fft_buffer;
+	msg->message_type = MESSAGE_TYPE_BUNDLE;
+	msg->size_bytes = airiqh->bundle_size;
+	msg->corerev = airiqh->wlc->pub->corerev;
+	msg->unit = airiqh->wlc->pub->unit;
+
+	WL_AIRIQ_MSGTEST(("%s: SENDING %d msgs %d bytes freespace=%d\n", __FUNCTION__,
+		airiqh->bundle_msg_cnt, msg->size_bytes,
+		airiqh->bundle_capacity - airiqh->bundle_size));
+
+	wl_airiq_sendup_data(airiqh, airiqh->fft_buffer, airiqh->bundle_size);
+	wlc_airiq_msg_reset(airiqh);
+}
+
+/* Message bundling code */
+int wlc_airiq_msg_sendup(airiq_info_t *airiqh, int32 length, bool force_sendup)
+{
+	int32 total = length + airiqh->bundle_size;
+	int32 free_space;
+	bool sendup;
+
+	if (total > airiqh->bundle_capacity) {
+		WL_ERROR(("%s: too big: (%d+%d) %d > %d\n", __FUNCTION__,
+			length, airiqh->bundle_size, total, airiqh->bundle_capacity));
+		return -1;
+	}
+
+	airiqh->bundle_size += length;
+	airiqh->bundle_write_ptr += length;
+	airiqh->bundle_msg_cnt++;
+
+	free_space = airiqh->bundle_capacity - airiqh->bundle_size;
+
+	/* Cannot fit one more -> sendup */
+	sendup = force_sendup || (free_space < length);
+
+	if (sendup) {
+		_wlc_airiq_msg_sendup(airiqh);
+	} else {
+		WL_AIRIQ_MSGTEST(("%s: [QUEUE-%d byte] %d msgs %d bytes freespace=%d\n",
+			__FUNCTION__, length, airiqh->bundle_msg_cnt, airiqh->bundle_size,
+			free_space));
+	}
+
+	return BCME_OK;
+}
+
+void wlc_airiq_msg_reset(airiq_info_t *airiqh)
+{
+	airiqh->bundle_capacity = FFT_BUF_SIZE;
+	airiqh->bundle_msg_cnt = 0;
+	airiqh->bundle_size = sizeof(airiq_bundle_header_t);
+	airiqh->bundle_write_ptr = airiqh->fft_buffer + sizeof(airiq_bundle_header_t);
+	/* bundle message header is implemented in wlc_airiq_msg_sendup */
+}
+
+/* Returns buffer pointer for writing a message to the bundle.
+ * If there is insufficient free space, sendup the buffer and reset.
+ */
+uint8 *wlc_airiq_msg_get_buffer(airiq_info_t *airiqh, int32 length)
+{
+	int freebytes;
+
+	/* bundles multiple FFT's into one event */
+	/* sufficient space? */
+	freebytes = airiqh->bundle_capacity - airiqh->bundle_size;
+
+	ASSERT(freebytes >= 0);
+
+	if (freebytes < length) {
+		WL_AIRIQ_MSGTEST(("%s: [SEND] %d msgs queued/total %d/%d (%d free)\n", __FUNCTION__,
+			airiqh->bundle_msg_cnt, airiqh->bundle_size, airiqh->bundle_capacity, freebytes));
+		/* send bundle and reset */
+		_wlc_airiq_msg_sendup(airiqh);
+	} else {
+		WL_AIRIQ_MSGTEST(("%s: %d msgs queued/total %d/%d (%d free)\n", __FUNCTION__,
+			airiqh->bundle_msg_cnt, airiqh->bundle_size, airiqh->bundle_capacity, freebytes));
+	}
+
+	if (length >= airiqh->bundle_capacity) {
+		WL_ERROR(("%s: requested length %d exceeds buffer capacity %d\n",
+			__FUNCTION__, length, airiqh->bundle_capacity));
+		return NULL;
+	}
+	return airiqh->bundle_write_ptr;
 }

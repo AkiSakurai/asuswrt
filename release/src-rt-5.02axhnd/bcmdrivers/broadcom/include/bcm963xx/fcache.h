@@ -170,6 +170,7 @@ typedef enum FcacheIoctl
     FCACHE_DECL(FCACHE_IOCTL_DUMP_FLOW_INFO)
     FCACHE_DECL(FCACHE_IOCTL_TCP_ACK_MFLOWS)
     FCACHE_DECL(FCACHE_IOCTL_SET_HW_ACCEL)
+    FCACHE_DECL(FCACHE_IOCTL_SW_DEFER)
     FCACHE_DECL(FCACHE_IOCTL_INVALID)
 } FcacheIoctl_t;
 
@@ -185,6 +186,7 @@ typedef enum FcacheIoctl
 typedef struct {
 	int interval;
 	int defer;
+	int sw_defer;
 	int max_ent;
 	uint32_t cumm_insert;
 	uint32_t cumm_remove;
@@ -470,7 +472,8 @@ extern uint32_t fc_get_path_num_fhw(void);
 extern int fcacheDebug(int debug_level);
 
 extern int  fcacheStatus(void);
-extern int  fcacheDefer(int deferral);
+extern uint16_t fcacheDefer(uint16_t deferral);
+extern uint16_t fcache_set_sw_defer_count(uint16_t sw_defer_count);
 extern int  fcacheMonitor(int monitor);
 extern int  fcacheChkHwSupport(Blog_t * blog_p);
 extern void fcacheBindHwSupportHook(HOOKP hw_support_fn);
@@ -672,7 +675,7 @@ struct flow_t {
     uint8_t         unused;
 
     uint32_t        swhits;     /* Software lookup hits in last interval      */
-    int16_t         mtuAdj;
+    int16_t         mtuAdj;     /* max Rx packet length that is accelerated   */
     uint8_t         hwAccIx;    /* HW Accelerator Index                       */
     uint8_t         hwPolledCnt;
 
@@ -728,6 +731,8 @@ struct flow_t {
        };
     };
 
+    uint16_t        sw_defer_hits;  /* # of packets sw deferred */
+    uint16_t        unused2;
     uint32_t        cumm_hits;  /* Cummulative sw hit count since creation    */
     unsigned long long  cumm_bytes; /* Cummulative byte count since creation      */
     uint32_t        expires;

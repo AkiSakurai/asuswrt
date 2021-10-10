@@ -1,7 +1,7 @@
 /*
  * ACPHY DeepSleepInit module DATA interface
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -44,7 +44,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_ac_dsi_data.h 689609 2017-03-12 12:09:14Z $
+ * $Id: phy_ac_dsi_data.h 775385 2019-05-29 11:30:21Z $
  */
 
 #ifndef _PHY_AC_DSI_DATA_H_
@@ -85,16 +85,5 @@ extern fcbs_input_data_t rom_maj36_min1_tbl_access_cleanup[];
 extern fcbs_input_data_t ram_20695_maj2_min0_chan_tune[];
 extern fcbs_input_data_t rom_maj36_min1_phy_rst[];
 extern fcbs_input_data_t rom_maj36_min1_napping[];
-
-extern fcbs_input_data_t dyn_ram_20697_maj0_min0_pm_mode_pwr_dn_main[];
-extern fcbs_input_data_t dyn_ram_20697_maj0_min0_pm_mode_pwr_dn_aux[];
-extern fcbs_input_data_t dyn_ram_20697_maj0_min0_pm_mode_pwr_up_main[];
-extern fcbs_input_data_t dyn_ram_20697_maj0_min0_pm_mode_pwr_up_aux[];
-extern fcbs_input_data_t dyn_ram_20697_maj0_min0_pm_mode_vco_cache_main[];
-extern fcbs_input_data_t dyn_ram_20697_maj0_min0_pm_mode_vco_cache_aux[];
-
-extern fcbs_input_data_t dyn_ram_20697_maj0_min0_pm_mode_pwr_dn_aux_ipa[];
-extern fcbs_input_data_t dyn_ram_20697_maj0_min0_pm_mode_pwr_up_aux_ipa[];
-extern fcbs_input_data_t dyn_ram_20697_maj0_min0_pm_mode_vco_cache_aux_ipa[];
 
 #endif /* _PHY_AC_DSI_DATA_H_ */

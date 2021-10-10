@@ -1,7 +1,7 @@
 /*
  * Broadcom 802.11 device interface
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: wps_sta_wl.c 749115 2018-02-27 20:25:46Z $
+ * $Id: wps_sta_wl.c 767103 2018-08-28 11:25:29Z $
  */
 
 #include <stdio.h>
@@ -77,7 +77,9 @@
 #include <wpserror.h>
 #include <tutrace.h>
 #include <wps_wps.h>
-
+#ifdef BCMWPSAPSTA
+#include <wps_pb.h>
+#endif // endif
 int tolower(int);
 int wps_wl_ioctl(int cmd, void *buf, int len, bool set);
 static int wl_iovar_get(char *iovar, void *bufptr, int buflen);
@@ -100,15 +102,17 @@ static int wps_ioctl_set(int cmd, void *buf, int len);
 					 * credential and apply it.
 					 */
 #define WPS_IE_BUF_LEN	VNDR_IE_MAX_LEN * 8	/* 2048 */
-
+#ifdef BCMWPSAPSTA
+#define WPS_MULTI_STA_SCAN_NUM WPS_MAX_PBC_APSTA
+#else
+#define WPS_MULTI_STA_SCAN_NUM 1
+#endif // endif
 wps_ap_list_info_t ap_list[WPS_MAX_AP_SCAN_LIST_LEN];
 static char scan_result[WPS_DUMP_BUF_LEN];
 static char escan_result[WLC_IOCTL_MEDLEN];
 static uint8 wps_ie_setbuf[WPS_IE_BUF_LEN];
 
-struct escan_bss *escan_bss_head = NULL;
-struct escan_bss *escan_bss_tail = NULL;
-uint32_t is_scan_done = WPS_ESCAN_NOT_STARTED;
+escan_bss_results_t escan_bss_results[WPS_MULTI_STA_SCAN_NUM];
 
 void wps_fill_aplist(wl_bss_info_t *bi, uint wps_ap_count)
 {
@@ -138,7 +142,7 @@ void wps_fill_aplist(wl_bss_info_t *bi, uint wps_ap_count)
 		ap_list[wps_ap_count].band = (CHSPEC_IS2G(bi->chanspec) ?
 			WPS_RFBAND_24GHZ : WPS_RFBAND_50GHZ);
 		ap_list[wps_ap_count].wep = bi->capability & DOT11_CAP_PRIVACY;
-
+		ap_list[wps_ap_count].chanspec = dtoh16(bi->chanspec);
 	}
 
 }
@@ -156,21 +160,63 @@ void wpssta_display_aplist_set(uint8 *aplist_diplay, bool set)
 	}
 }
 
+void wps_init_escan_bss_results(char *ifname, int idx)
+{
+	if (idx >= WPS_MULTI_STA_SCAN_NUM) {
+		TUTRACE((TUTRACE_ERR, "%s: init idx %d exceed maximum sta bss number %d\n",
+			ifname, idx, WPS_MULTI_STA_SCAN_NUM));
+		return;
+	}
+	memset(&escan_bss_results[idx], 0, sizeof(escan_bss_results_t));
+	strncpy(escan_bss_results[idx].ifname, ifname, IFNAMSIZ);
+	escan_bss_results[idx].is_scan_done = WPS_ESCAN_NOT_STARTED;
+	return;
+}
+
+escan_bss_results_t *
+wps_find_escan_bss_results_by_ifname(char *ifname)
+{
+	int i;
+	for (i = 0; i < WPS_MULTI_STA_SCAN_NUM; i++) {
+		if (!strcmp(escan_bss_results[i].ifname, ifname)) {
+			return &escan_bss_results[i];
+		}
+	}
+	return NULL;
+}
+
+escan_bss_results_t *
+wps_get_current_escan_bss_results()
+{
+	escan_bss_results_t *bss_results = NULL;
+	char ifname[IFNAMSIZ];
+
+	if (wps_osl_get_ifname(ifname, sizeof(ifname)) == 0) {
+		bss_results = wps_find_escan_bss_results_by_ifname(ifname);
+	}
+	return bss_results;
+}
+
 uint32
 wps_eap_parse_scan_result(wl_event_msg_t* event, char* ifname)
 {
 	uint16_t event_type = ntohl(event->event_type);
 	uint32 bi_length;
 	struct escan_bss *result;
+	escan_bss_results_t *bss_results;
 	wps_ap_list_info_t *wpsaplist;
 	uint32 status;
 	struct ether_addr *addr = &event->addr;
 	wl_escan_result_t *escan_data;
 	uint8 aplist_display = 0;
+
 	if (event_type != WLC_E_ESCAN_RESULT) {
 		return 1;
 	}
-	if (is_scan_done != WPS_ESCAN_INPROGRESS) {
+
+	bss_results = wps_find_escan_bss_results_by_ifname(ifname);
+	if (!bss_results ||
+		(bss_results->is_scan_done != WPS_ESCAN_INPROGRESS)) {
 		return 1;
 	}
 
@@ -178,8 +224,9 @@ wps_eap_parse_scan_result(wl_event_msg_t* event, char* ifname)
 	status = ntohl(event->status);
 
 	if (status == WLC_E_STATUS_SUCCESS) {
-		TUTRACE((TUTRACE_ERR, "packet received: WLC_E_STATUS_SUCCESS\n", event->ifname));
-		is_scan_done = WPS_ESCAN_DONE;
+		TUTRACE((TUTRACE_ERR, "%s: packet received: WLC_E_STATUS_SUCCESS\n",
+			event->ifname));
+		bss_results->is_scan_done = WPS_ESCAN_DONE;
 
 		/* Display aplist and wps enabled ap list if requested */
 
@@ -215,7 +262,7 @@ wps_eap_parse_scan_result(wl_event_msg_t* event, char* ifname)
 		}
 
 		/* check if we've received info of same BSSID */
-		for (result = escan_bss_head; result; result = result->next) {
+		for (result = bss_results->bss_head; result; result = result->next) {
 			bss = result->bss;
 
 #define WLC_BSS_RSSI_ON_CHANNEL 0x0002 /* Copied from wlc.h. Is there a better way to do this? */
@@ -242,12 +289,12 @@ wps_eap_parse_scan_result(wl_event_msg_t* event, char* ifname)
 			ebss->next = NULL;
 			/* Copy bss info to scan buffer. */
 			memcpy(&ebss->bss, bi, bi_length);
-			if (escan_bss_tail) {
-				escan_bss_tail->next = ebss;
+			if (bss_results->bss_tail) {
+				bss_results->bss_tail->next = ebss;
 			} else {
-				escan_bss_head = ebss;
+				bss_results->bss_head = ebss;
 			}
-			escan_bss_tail = ebss;
+			bss_results->bss_tail = ebss;
 			/* list->count++; */
 		} else {
 			/* TUTRACE((TUTRACE_ERR, "Update\n")); */
@@ -271,7 +318,7 @@ wps_eap_parse_scan_result(wl_event_msg_t* event, char* ifname)
 	} else {
 		printf("sync_id: %d, WLC_E_STATUS %d, misc. error/abort\n",
 			dtoh16(escan_data->sync_id), status);
-		is_scan_done = WPS_ESCAN_DONE;
+		bss_results->is_scan_done = WPS_ESCAN_DONE;
 		return 1;
 	}
 
@@ -280,54 +327,72 @@ wps_eap_parse_scan_result(wl_event_msg_t* event, char* ifname)
 /* Return Current wps escan state */
 uint32 get_wps_escan_state()
 {
+	uint32 is_scan_done = WPS_ESCAN_DONE;
+	escan_bss_results_t *bss_results = NULL;
+
+	bss_results = wps_get_current_escan_bss_results();
+	if (bss_results)
+		is_scan_done = bss_results->is_scan_done;
+
 	return is_scan_done;
 }
 
 uint32
 wps_eap_reset_scan_result()
 {
+	escan_bss_results_t *bss_results = NULL;
 
-	struct escan_bss *result;
+	bss_results = wps_get_current_escan_bss_results();
+	if (bss_results) {
+		struct escan_bss *result;
 
-	is_scan_done = WPS_ESCAN_NOT_STARTED;
-	TUTRACE((TUTRACE_ERR, "restart scan\n"));
-	/* free scan results */
-	result = escan_bss_head;
-	while (result) {
-		struct escan_bss *tmp = result->next;
-		free(result);
-		result = tmp;
+		bss_results->is_scan_done = WPS_ESCAN_NOT_STARTED;
+		TUTRACE((TUTRACE_ERR, "restart scan\n"));
+		/* free scan results */
+		result = bss_results->bss_head;
+		while (result) {
+			struct escan_bss *tmp = result->next;
+			free(result);
+			result = tmp;
+		}
+		bss_results->bss_head = NULL;
+		bss_results->bss_tail = NULL;
 	}
-	escan_bss_head = NULL;
-	escan_bss_tail = NULL;
-
 	return 0;
 }
 
 char *
 get_wps_escan_results()
 {
-	if (is_scan_done == WPS_ESCAN_DONE) {
+	escan_bss_results_t *bss_results = NULL;
+
+	bss_results = wps_get_current_escan_bss_results();
+	if (bss_results &&
+		(bss_results->is_scan_done == WPS_ESCAN_DONE)) {
 		TUTRACE((TUTRACE_ERR, "Scan done.\n"));
-		return (char*)escan_bss_head;
+		return (char*)bss_results->bss_head;
 	}
 	return NULL;
 }
 
 wps_ap_list_info_t *create_aplist_escan()
 {
-	struct escan_bss *current = escan_bss_head;
+	struct escan_bss *current;
 	wl_bss_info_107_t *old_bi_107;
 	wl_bss_info_t *bi;
+	escan_bss_results_t *bss_results = NULL;
+
+	bss_results = wps_get_current_escan_bss_results();
 
 	uint wps_ap_count = 0;
 
 	TUTRACE((TUTRACE_ERR, "start \n"));
-	if (is_scan_done != WPS_ESCAN_DONE) {
+	if (!bss_results || (bss_results->is_scan_done != WPS_ESCAN_DONE)) {
 		TUTRACE((TUTRACE_ERR, "Error, scan not done !\n"));
 		return NULL;
 	}
 
+	current = bss_results->bss_head;
 	if (!current)
 		return NULL;
 	/*
@@ -359,18 +424,25 @@ int
 do_wps_escan()
 {
 	int ret;
+	escan_bss_results_t *bss_results = NULL;
+
+	bss_results = wps_get_current_escan_bss_results();
+	if (!bss_results) {
+		TUTRACE((TUTRACE_ERR, "current escan_bss_result not found\n"));
+		return -1;
+	}
 
 	wl_escan_params_t* params;
 	int params_size = (WL_SCAN_PARAMS_FIXED_SIZE
 		+ OFFSETOF(wl_escan_params_t, params)) +
 		WL_NUMCHANNELS * sizeof(uint16);
 	TUTRACE((TUTRACE_INFO, "start escan\n"));
-	if (is_scan_done == WPS_ESCAN_INPROGRESS) {
+	if (bss_results->is_scan_done == WPS_ESCAN_INPROGRESS) {
 		TUTRACE((TUTRACE_ERR, "Scan skip, escan In Progress\n"));
 		return -1;
 	}
 	wps_eap_reset_scan_result();
-	is_scan_done = WPS_ESCAN_INPROGRESS;
+	bss_results->is_scan_done = WPS_ESCAN_INPROGRESS;
 
 	params = (wl_escan_params_t*)malloc(params_size);
 	if (params == NULL) {
@@ -460,7 +532,8 @@ get_wps_scan_results()
 	return scan_result;
 }
 
-wps_ap_list_info_t *create_aplist()
+wps_ap_list_info_t *
+create_aplist()
 {
 	wl_scan_results_t *list = (wl_scan_results_t*)scan_result;
 	wl_bss_info_t *bi;
@@ -1054,7 +1127,8 @@ wps_get_bssid(char *bssid)
 	return wps_ioctl_get(WLC_GET_BSSID, bssid, 6);
 }
 
-int wps_get_ssid(char *ssid, int *len)
+int
+wps_get_ssid(char *ssid, int *len)
 {
 	int ret;
 	wlc_ssid_t wlc_ssid;
@@ -1223,3 +1297,60 @@ wps_iovar_mkbuf(const char *name, char *data, uint datalen, char *iovar_buf, uin
 	*perr = 0;
 	return (iovar_len + datalen);
 }
+
+#if defined(MULTIAP)
+/* Multiap escan handler */
+int
+do_map_wps_escan(char *ssid)
+{
+	int ret;
+	wl_escan_params_t* params;
+	int params_size = (WL_SCAN_PARAMS_FIXED_SIZE + OFFSETOF(wl_escan_params_t, params)) +
+		WL_NUMCHANNELS * sizeof(uint16);
+	escan_bss_results_t *bss_results = NULL;
+
+	if (get_wps_escan_state()  == WPS_ESCAN_INPROGRESS) {
+		TUTRACE((TUTRACE_ERR, "Scan skip, escan In Progress\n"));
+		return -1;
+	}
+
+	wps_eap_reset_scan_result();
+	bss_results = wps_get_current_escan_bss_results();
+	if (bss_results == NULL) {
+		TUTRACE((TUTRACE_ERR, "Error current bss_results not found !!\n"));
+		return -1;
+	}
+	bss_results->is_scan_done = WPS_ESCAN_INPROGRESS;
+
+	params = (wl_escan_params_t*)malloc(params_size);
+	if (params == NULL) {
+		TUTRACE((TUTRACE_ERR, "Error allocating %d bytes for scan params\n", params_size));
+		return -1;
+	}
+
+	memset(params, 0, params_size);
+	if (ssid != NULL && (strlen(ssid) < sizeof(params->params.ssid.SSID))) {
+		wps_strncpy(params->params.ssid.SSID, ssid, sizeof(params->params.ssid.SSID));
+		params->params.ssid.SSID_len = strlen(ssid);
+	}
+	params->params.bss_type = DOT11_BSSTYPE_ANY;
+	memcpy(&params->params.bssid, &ether_bcast, ETHER_ADDR_LEN);
+	params->params.scan_type = 0;
+	params->params.nprobes = -1;
+	params->params.active_time = -1;
+	params->params.passive_time = -1;
+	params->params.home_time = -1;
+	params->params.channel_num = 0;
+
+	params->version = htod32(ESCAN_REQ_VERSION);
+	params->action = htod16(WL_SCAN_ACTION_START);
+	srand((unsigned)time(NULL));
+	params->sync_id = htod16(rand() & 0xffff);
+	ret = wps_iovar_setbuf("escan", params, params_size, escan_result, sizeof(escan_result));
+	TUTRACE((TUTRACE_INFO, "escan iovar result: %d\n", ret));
+
+	wps_escan_timeout_handler(WPS_ESCAN_STARTED);
+	free(params);
+	return ret;
+}
+#endif	/* MULTIAP */

@@ -1,7 +1,7 @@
 /*
  * nPHY module internal interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_n_info.h 689894 2017-03-13 23:32:18Z $
+ * $Id: phy_n_info.h 773640 2019-03-27 04:39:18Z $
  */
 
 #ifndef _phy_n_info_h_
@@ -241,7 +241,11 @@ struct phy_info_nphy {
 
 	bool    nphy_crsminpwr_adjusted;
 	bool    nphy_noisevars_adjusted;
-	bool    nphy_base_nvars_adjusted;
+	bool    nphy_base_nvars_adjusted; /* These two flags indicate if the min_noise_var or
+					   * the baseline_noise_var have been modified.
+					   * FIXME: fold the 2 flags into a single one, but
+					   * this requires changing older code.
+					   */
 
 #if defined(RXDESENS_EN)
 	bool	ntd_crs_adjusted;
@@ -397,6 +401,7 @@ struct phy_info_nphy {
 	int32	ed_assert_thresh_dbm; /* nvram tunable for programming ed assert thresh */
 	bool txidxcap_hi_inuse;
 	bool txidxcap_lo_inuse;
+	uint8 high_edcrsthresh_rev17; /* used for 43217 increase edcrsthresh by 6dB */
 
 #if defined(BCMDBG)
 	uint16 nphy_papd_mix_ovr[NPHY_CORE_NUM];

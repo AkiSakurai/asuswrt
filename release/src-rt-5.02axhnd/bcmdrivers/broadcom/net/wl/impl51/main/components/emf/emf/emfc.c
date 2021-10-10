@@ -6,7 +6,7 @@
  * updated by IGMP Snooping layer to do the optimal forwarding. This file
  * contains the common code routines of EMFL.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -47,7 +47,7 @@
  * OR U.S. $1, WHICHEVER IS GREATER. THESE LIMITATIONS SHALL APPLY
  * NOTWITHSTANDING ANY FAILURE OF ESSENTIAL PURPOSE OF ANY LIMITED REMEDY.
  *
- * $Id: emfc.c 759252 2018-04-24 19:19:59Z $
+ * $Id: emfc.c 776823 2019-07-10 20:34:52Z $
  */
 #include <typedefs.h>
 #include <bcmdefs.h>
@@ -66,6 +66,8 @@
 #include "emfc_export.h"
 #include "emfc.h"
 #include "emf_export.h"
+
+static emfc_mgrp_t *emfc_mfdb_group_find(emfc_info_t *emfc, uint32 mgrp_ip);
 
 #ifndef BCM_NBUFF_WLMCAST
 #define EMFC_PKTDUP(emf, skb) PKTDUP((emf)->osh, (skb))
@@ -111,6 +113,12 @@ void
 	}
 }
 
+/* emfc_remove_sta API is an obsolete function which will not be used in
+ * BRANCH_KUDU_17_10 after IPV6 mc support is checked in, it is keep here to
+ * make old KUDU)_TWIG branches like TWIG_17_10_25 branches to compile as it
+ * use trunk emf source
+ */
+
 uint32
 emfc_remove_sta(struct emfc_info *emfc, void *ifp, uint32 src_ip)
 {
@@ -119,13 +127,12 @@ emfc_remove_sta(struct emfc_info *emfc, void *ifp, uint32 src_ip)
 	else
 		return 1;
 }
-
 #endif /* BCM_NBUFF_WLMCAST */
 
 static CLIST_DECL_INIT(emfc_list_head);
 static osl_lock_t emfc_list_lock;
 
-static emfc_info_t *
+emfc_info_t *
 emfc_instance_find(char *inst_id)
 {
 	emfc_info_t *emfc;
@@ -332,9 +339,11 @@ emfc_unreg_frame_handle(emfc_info_t *emfc, void *sdu, void *ifp, uint8 proto,
 		}
 	}
 
-	EMFC_PKTFREE(emfc, sdu, FALSE);
+	/* Do not free buffer not allocated locally in module,
+	 * let caller handle drop/free
+	 */
 
-	return (EMF_TAKEN);
+	return (EMF_DROP);
 }
 
 #ifdef  BCM_NBUFF_WLMCAST
@@ -563,7 +572,7 @@ emfc_input(emfc_info_t *emfc, void *sdu, void *ifp, uint8 *iph, bool rt_port)
 		mi = clist_entry(ptr, emfc_mi_t, mi_list);
 
 		/* Dont forward the frame on to the port on which it was received */
-		if (ifp != mi->mi_mhif->mhif_ifp && mi->mi_mhif->mhif_ifp != NULL)
+	        if (ifp != mi->mi_mhif->mhif_ifp && mi->mi_mhif->mhif_ifp != NULL)
 		{
 			EMF_DEBUG("Sending the original packet buffer\n");
 
@@ -595,7 +604,12 @@ emfc_input(emfc_info_t *emfc, void *sdu, void *ifp, uint8 *iph, bool rt_port)
 		else
 		{
 			EMF_DEBUG("Freeing the original packet buffer\n");
-			EMFC_PKTFREE(emfc, sdu, FALSE);
+			/* Do not free buffer not allocated locally in module,
+			 * let caller handle drop/free
+			 */
+			OSL_UNLOCK(emfc->fdb_lock);
+			EMFC_STATS_INCR(emfc, mcast_data_dropped);
+			return (EMF_DROP);
 		}
 
 		EMFC_STATS_INCR(emfc, mcast_data_fwd);
@@ -624,6 +638,9 @@ emfc_mfdb_init(emfc_info_t *emfc)
 	for (i = 0; i < MFDB_HASHT_SIZE; i++)
 	{
 		clist_init_head(&emfc->mgrp_fdb[i]);
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+		clist_init_head(&emfc->mgrp_fdb_ipv6[i]);
+#endif // endif
 	}
 
 	/* Initialize the multicast interface list. This list contains
@@ -632,6 +649,14 @@ emfc_mfdb_init(emfc_info_t *emfc)
 	 * specific to the interface.
 	 */
 	emfc->mhif_head = NULL;
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+	emfc->mhif_head_ipv6 = NULL;
+	/* at emfc.c#486, it will check this as well, who should assign it?
+	 * if this is not assigned, mutlicast traffic will not be passed
+	 * over to stack
+	 */
+	emfc->mc_data_ind = 1;
+#endif // endif
 
 	return;
 }
@@ -737,6 +762,7 @@ emfc_mfdb_mhif_add(emfc_info_t *emfc, void *ifp)
 	{
 		if (ptr->mhif_ifp == ifp)
 		{
+			ptr->mhif_ref++;
 			return (ptr);
 		}
 	}
@@ -750,11 +776,14 @@ emfc_mfdb_mhif_add(emfc_info_t *emfc, void *ifp)
 		return (NULL);
 	}
 
+	mhif->mhif_ref = 1;
 	mhif->mhif_ifp = ifp;
 	mhif->mhif_data_fwd = 0;
+	mhif->prev = mhif;
 	mhif->next = emfc->mhif_head;
+	if (emfc->mhif_head)
+		emfc->mhif_head->prev = mhif;
 	emfc->mhif_head = mhif;
-
 	return (mhif);
 }
 
@@ -792,6 +821,7 @@ emfc_mfdb_membership_find(emfc_info_t *emfc, uint32 mgrp_ip, void *ifp)
 			EMF_MFDB("Interface entry %d.%d.%d.%d:%p found\n",
 			         (mgrp_ip >> 24), ((mgrp_ip >> 16) & 0xff),
 			         ((mgrp_ip >> 8) & 0xff), (mgrp_ip & 0xff), ifp);
+			OSL_UNLOCK(emfc->fdb_lock);
 			return (mi);
 		}
 	}
@@ -964,6 +994,19 @@ emfc_mfdb_membership_del(emfc_info_t *emfc, uint32 mgrp_ip, void *ifp)
 		emfc->mgrp_cache_ip = ((emfc->mgrp_cache == mgrp) ?
 		                       0 : emfc->mgrp_cache_ip);
 		MFREE(emfc->osh, mgrp, sizeof(emfc_mgrp_t));
+	}
+
+	mi->mi_mhif->mhif_ref--;
+	if (mi->mi_mhif->mhif_ref == 0)  {
+		if (mi->mi_mhif == emfc->mhif_head) {
+			emfc->mhif_head = mi->mi_mhif->next;
+		}
+		else {
+			mi->mi_mhif->prev->next = mi->mi_mhif->next;
+			if (mi->mi_mhif->next)
+				mi->mi_mhif->next->prev = mi->mi_mhif->prev;
+		}
+		MFREE(emfc->osh, mi->mi_mhif, sizeof(emfc_mhif_t));
 	}
 
 	MFREE(emfc->osh, mi, sizeof(emfc_mi_t));
@@ -1770,6 +1813,10 @@ emfc_init(int8 *inst_id, void *emfi, osl_t *osh, emfc_wrapper_t *wrapper)
 	/* Set EMF status as disabled */
 	emfc->emf_enable = FALSE;
 
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+	memset(&emfc->mgrp_cache_ipv6_addr, 0, sizeof(struct ipv6_addr));
+	emfc->mgrp_cache_ipv6_grp = NULL;
+#endif // endif
 	/* Initialize Multicast FDB */
 	emfc_mfdb_init(emfc);
 
@@ -1781,6 +1828,14 @@ emfc_init(int8 *inst_id, void *emfi, osl_t *osh, emfc_wrapper_t *wrapper)
 		return (NULL);
 	}
 
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+	emfc->fdb_lock_ipv6 = OSL_LOCK_CREATE("FDB6 Lock");
+	if (emfc->fdb_lock_ipv6 == NULL)
+	{
+		MFREE(emfc->osh, emfc, sizeof(emfc_info_t));
+		return (NULL);
+	}
+#endif // endif
 	/* Create lock for router port list access */
 	emfc->iflist_lock = OSL_LOCK_CREATE("Router Port List Lock");
 	if (emfc->iflist_lock == NULL)
@@ -1851,6 +1906,19 @@ emfc_exit(emfc_info_t *emfc)
 
 	OSL_LOCK_DESTROY(emfc->fdb_lock);
 
+#ifdef BCM_NBUFF_WLMCAST_IPV6
+	OSL_LOCK(emfc->fdb_lock_ipv6);
+	ptr = emfc->mhif_head_ipv6;
+	/* Delete interface list */
+	while (ptr != NULL)
+	{
+		temp = ptr->next;
+		MFREE(emfc->osh, ptr, sizeof(emfc_mhif_t));
+		ptr = temp;
+	}
+	OSL_UNLOCK(emfc->fdb_lock_ipv6);
+	OSL_LOCK_DESTROY(emfc->fdb_lock_ipv6);
+#endif // endif
 	/* Delete the EMFC instance */
 	OSL_LOCK(emfc_list_lock);
 	clist_delete(&emfc->emfc_list);

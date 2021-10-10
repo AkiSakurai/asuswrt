@@ -1,7 +1,7 @@
 /*
  * TxPowerCtrl module internal interface (to other PHY modules).
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -45,7 +45,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
  *
- * $Id: phy_tpc.h 691388 2017-03-22 02:17:00Z $
+ * $Id: phy_tpc.h 769138 2018-11-05 21:39:04Z $
  */
 
 #ifndef _phy_tpc_h_
@@ -145,6 +145,8 @@ void phy_tpc_ipa_upd(phy_tpc_info_t *tpci);
 #if defined(WLTEST)
 int phy_tpc_set_pavars(phy_tpc_info_t *tpci, void* a, void* p);
 int phy_tpc_get_pavars(phy_tpc_info_t *tpci, void* a, void* p);
+int phy_tpc_txpower_get_instant(phy_tpc_info_t *tpci, void *pwr);
+int phy_tpc_txpower_get_instant_percore(phy_tpc_info_t *tpci, void *pwr);
 #endif // endif
 
 #ifdef RADIO_HEALTH_CHECK

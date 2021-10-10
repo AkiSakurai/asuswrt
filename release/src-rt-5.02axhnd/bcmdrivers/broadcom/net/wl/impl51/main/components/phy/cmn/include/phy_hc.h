@@ -2,7 +2,7 @@
 /*
  * Health check module.
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -58,6 +58,9 @@
 /* forward declaration */
 typedef struct phy_hc_info phy_hc_info_t;
 
+/* XXX : This needs to be changed based on any algorithm that can help reduce the temperature
+*	For now this is based on WLC_TEMPSENSE_PERIOD + 2 seconds buffer
+*/
 #define PHY_HC_TEMP_FAIL_THRESHOLD	12
 #define PHY_HC_TEMP_THRESHOLD		120
 

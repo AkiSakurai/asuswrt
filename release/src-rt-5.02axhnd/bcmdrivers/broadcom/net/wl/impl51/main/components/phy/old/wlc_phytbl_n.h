@@ -5,7 +5,7 @@
  * THIS IS A GENERATED FILE - DO NOT EDIT (ARE WE SURE??)
  * Generated on Wed Aug 30 17:06:38 PDT 2006
  *
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -94,6 +94,9 @@ extern CONST phytbl_init_t frame_struct_rev8_offsets[];
 extern CONST phytbl_init_t tmap_tbl_rev7_offsets[];
 extern CONST uint8 chanest_tbl_rev3_offsets[];
 
+/* PR 87670: PHY tables have unfortunately been ROM-ed for 43236,
+ * so keep most of the original code so as not to increase RAM size
+ */
 extern CONST mimophytbl_info_t mimophytbl_info_43236[];
 extern CONST uint32 mimophytbl_info_sz_43236;
 

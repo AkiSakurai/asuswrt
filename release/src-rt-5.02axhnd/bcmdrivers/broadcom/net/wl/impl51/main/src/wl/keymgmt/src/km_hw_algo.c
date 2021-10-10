@@ -1,6 +1,6 @@
 /*
  * Key Management Module km_hw algo implementation
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_hw_algo.c 691878 2017-03-24 07:37:22Z $
+ * $Id: km_hw_algo.c 774133 2019-04-11 09:15:54Z $
  */
 
 #include "km_hw_impl.h"
@@ -850,7 +850,6 @@ km_hw_algo_to_hw_algo(const km_hw_t *hw, wlc_key_algo_t algo)
 		return WSEC_ALGO_WEP1;
 
 	case CRYPTO_ALGO_WEP128:
-		/* fall through */
 		return rev40plus ? WSEC_ALGO_WEP128 : D11_PRE40_WSEC_ALGO_WEP128;
 
 	case CRYPTO_ALGO_TKIP:

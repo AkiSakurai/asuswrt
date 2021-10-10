@@ -804,6 +804,13 @@ static CURLcode readwrite_upload(struct SessionHandle *data,
 
   *didwhat |= KEEP_SEND;
 
+  /*
+   * We loop here to do the READ and SEND loop until we run out of
+   * data to send or until we get EWOULDBLOCK back
+   *
+   * FIXME: above comment is misleading. Currently no looping is
+   * actually done in do-while loop below.
+   */
   do {
 
     /* only read more data if there's no upload data already
@@ -1685,6 +1692,10 @@ CURLcode Curl_follow(struct SessionHandle *data,
    * a HTTP (proxy-) authentication scheme other than Basic.
    */
   switch(data->info.httpcode) {
+    /* 401 - Act on a WWW-Authenticate, we keep on moving and do the
+       Authorization: XXXX header in the HTTP request code snippet */
+    /* 407 - Act on a Proxy-Authenticate, we keep on moving and do the
+       Proxy-Authorization: XXXX header in the HTTP request code snippet */
     /* 300 - Multiple Choices */
     /* 306 - Not used */
     /* 307 - Temporary Redirect */

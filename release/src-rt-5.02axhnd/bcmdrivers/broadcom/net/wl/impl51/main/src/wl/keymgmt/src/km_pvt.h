@@ -1,6 +1,6 @@
 /*
  * Key Management Module Implementation
- * Copyright 2018 Broadcom
+ * Copyright 2019 Broadcom
  *
  * This program is the proprietary software of Broadcom and/or
  * its licensors, and may only be used, duplicated, modified or distributed
@@ -43,7 +43,7 @@
  *
  *
  * <<Broadcom-WL-IPTag/Proprietary:>>
- * $Id: km_pvt.h 767351 2018-09-06 19:07:05Z $
+ * $Id: km_pvt.h 767352 2018-09-06 19:20:10Z $
  */
 
 /* This header file is private to keymgmt implementation */
